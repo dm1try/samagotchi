@@ -5,21 +5,30 @@
 import Foundation
 
 /// A send to chi sessions as the chi calls it makes: `chi send` (a message,
-/// or `--new` on the new row) or `chi note`. Pure: nothing runs here.
+/// or `--new` on the new row) or `chi note`, one per machine. Pure: nothing
+/// runs here.
 struct SendPlan {
-  /// One chi call: its args after the launch file's argv, its stdin, and
-  /// its name in the panel's lines ("chi send").
+  /// One chi call: its args after the launch file's argv, its stdin, its
+  /// name in the panel's lines ("chi send"), the remote it goes to and its
+  /// time limit.
   struct Call: Equatable {
     let command: String
     let args: [String]
     let stdin: Data?
+    var remote: String?
+    var timeout: TimeInterval = 10
+  }
+
+  /// A session on a machine: nil is this Mac.
+  struct Target: Equatable {
+    let remote: String?
+    let id: String
   }
 
   let kind: SendKind
-  /// UUID-shaped session ids, in list order; not used with +new+.
-  let ids: [String]
-  /// The machine the ids are on; nil: this Mac (no caller sets it yet).
-  var remote: String?
+  /// UUID-shaped session ids and their machines, in list order; not used
+  /// with +new+.
+  let targets: [Target]
   let new: Bool
   /// Where a new session starts (PanelModel.newSessionDir).
   let newDir: String
@@ -37,13 +46,31 @@ struct SendPlan {
   let images: [String]
 
   /// The panel's state for this send.
-  static func from(_ model: PanelModel, kind: SendKind, ids: [String], new: Bool, images: [PanelImage]) -> SendPlan {
-    SendPlan(kind: kind, ids: ids, new: new, newDir: model.newSessionDir, model: model.modelForSend,
+  static func from(_ model: PanelModel, kind: SendKind, sessions: [LiveSession], new: Bool, images: [PanelImage]) -> SendPlan {
+    SendPlan(kind: kind, targets: sessions.map { Target(remote: $0.remote, id: $0.id) }, new: new, newDir: model.newSessionDir, model: model.modelForSend,
              prompt: model.trimmedPrompt, context: model.hasContext ? model.text : nil, note: model.noteText,
              source: model.source.trimmingCharacters(in: .whitespacesAndNewlines), images: images.map(\.url.path))
   }
 
+  /// This Mac's call first, then one per remote in list order. A session
+  /// goes once, to the first machine it is under; a remote whose name chi
+  /// wouldn't take is left out (the listing never makes one).
   var calls: [Call] {
+    if new { return [call(ids: [], remote: nil)] }
+    var machines: [String?] = []
+    var ids: [String?: [String]] = [:]
+    var seen = Set<String>()
+    let ordered = targets.filter { $0.remote == nil } + targets.filter { $0.remote != nil }
+    for target in ordered where target.remote.map(Remotes.valid) ?? true && seen.insert(target.id).inserted {
+      if ids[target.remote] == nil { machines.append(target.remote) }
+      ids[target.remote, default: []].append(target.id)
+    }
+    return machines.map { call(ids: ids[$0] ?? [], remote: $0) }
+  }
+
+  /// Reading, converting and a new worker's start take longer than text;
+  /// a remote's text, waking a stopped worker there, too.
+  private func call(ids: [String], remote: String?) -> Call {
     var args: [String]
     let command: String
     let stdin: Data?
@@ -65,18 +92,9 @@ struct SendPlan {
     }
     if !new { args += ids }
     if let remote { args = ["--remote", remote] + args }
-    return [Call(command: command, args: args, stdin: stdin)]
+    let timeout: TimeInterval = !images.isEmpty && kind != .note ? 30 : remote == nil ? 10 : 15
+    return Call(command: command, args: args, stdin: stdin, remote: remote, timeout: timeout)
   }
-}
-
-/// Waits on a headless seam's own queue for a ChiRunner call to answer.
-private func waitFor<T>(_ start: (DispatchQueue, @escaping (T) -> Void) -> Void) -> T {
-  let queue = DispatchQueue(label: "sessions-command")
-  let done = DispatchSemaphore(value: 0)
-  var answer: T?
-  start(queue) { value in answer = value; done.signal() }
-  done.wait()
-  return answer!
 }
 
 private func printJSON(_ object: Any) {
@@ -84,47 +102,95 @@ private func printJSON(_ object: Any) {
   print(String(decoding: data, as: UTF8.self))
 }
 
-/// `ChiHelper --sessions [--launch PATH]`: the panel's session rows in its
-/// order (live, then recent) and the new row's folder, as JSON
-/// ({"rows": [{"id", "desc", "cwd", "busy", "recent"}], "new_dir"}); a
-/// failed listing is its message on stderr, exit 1.
+/// `ChiHelper --sessions [--launch PATH] [--last KEY]... [--order
+/// local-first|remotes-first]`: the panel's session rows in its order
+/// (live, then recent), the new row's folder, a section per remote (rows not
+/// listed before, or its line) and what the panel preselects with KEYs as
+/// the remembered choice (none by default: never the user's) when the
+/// answers come in that order (this Mac's first by default), as JSON ({"rows": [{"id", "desc", "cwd", "busy",
+/// "recent"}], "new_dir", "remotes": [{"name", "rows" (each with "remote"),
+/// "error"}], "selected", "new_selected", "hint"}); a failed listing of this
+/// Mac's is its message on stderr, exit 1.
 func sessionsCommand(_ args: [String]) -> Int32 {
   var args = args
   var launchPath = ChiRunner.launchPath
+  var last: [String] = []
+  var remotesFirst = false
+  let usage = "usage: ChiHelper --sessions [--launch PATH] [--last KEY]... [--order local-first|remotes-first]\n"
   while !args.isEmpty {
     let arg = args.removeFirst()
     switch arg {
     case "--launch" where !args.isEmpty: launchPath = args.removeFirst()
+    case "--last" where !args.isEmpty: last.append(args.removeFirst())
+    case "--order" where !args.isEmpty:
+      let order = args.removeFirst()
+      guard ["local-first", "remotes-first"].contains(order) else {
+        FileHandle.standardError.write(usage.data(using: .utf8)!)
+        return 2
+      }
+      remotesFirst = order == "remotes-first"
     default:
-      FileHandle.standardError.write("usage: ChiHelper --sessions [--launch PATH]\n".data(using: .utf8)!)
+      FileHandle.standardError.write(usage.data(using: .utf8)!)
       return 2
     }
   }
   let runner = ChiRunner(launchPath: launchPath)
-  let result = waitFor { queue, done in runner.sessions(queue: queue, completion: done) }
-  switch result {
+  // As the panel: this Mac's lists beside `remote ls`, then each remote's
+  // at once. All are awaited, then fed to the panel's model in the order
+  // --order says (the panel takes them as they come).
+  let queue = DispatchQueue(label: "sessions-command")
+  let group = DispatchGroup()
+  var local: Result<[LiveSession], ChiError>?
+  var names: [String] = []
+  var answers: [String: Result<[LiveSession], ChiError>] = [:]
+  group.enter()
+  runner.sessions(queue: queue) { local = $0; group.leave() }
+  group.enter()
+  runner.remotes(queue: queue) { found in
+    names = found
+    for name in found {
+      group.enter()
+      runner.sessions(remote: name, queue: queue) { answers[name] = $0; group.leave() }
+    }
+    group.leave()
+  }
+  group.wait()
+  let model = PanelModel()
+  model.lastChoice = last
+  model.startRemotes(names)
+  let showRemotes = { for name in names { model.showRemote(name, answers[name]!) } }
+  if remotesFirst { showRemotes() }
+  model.showSessions(local!)
+  if !remotesFirst { showRemotes() }
+  switch local! {
   case .failure(let error):
     FileHandle.standardError.write("\(error.description)\n".data(using: .utf8)!)
     return 1
-  case .success(let sessions):
-    let model = PanelModel()
-    model.sessions = sessions
-    let rows: [[String: Any]] = model.sessions.map { s in
-      ["id": s.id, "desc": s.desc ?? NSNull(), "cwd": s.cwd ?? NSNull(), "busy": s.busy ?? NSNull(), "recent": s.recent]
+  case .success:
+    let row = { (s: LiveSession) -> [String: Any] in
+      var row: [String: Any] = ["id": s.id, "desc": s.desc ?? NSNull(), "cwd": s.cwd ?? NSNull(), "busy": s.busy ?? NSNull(),
+                                "recent": s.recent]
+      if let remote = s.remote { row["remote"] = remote }
+      return row
     }
-    printJSON(["rows": rows, "new_dir": model.newSessionDir])
+    let remotes: [[String: Any]] = model.remoteGroups.map { group in
+      ["name": group.section.name, "rows": group.rows.map(row), "error": group.section.error ?? NSNull()]
+    }
+    printJSON(["rows": model.sessions.map(row), "new_dir": model.newSessionDir, "remotes": remotes,
+               "selected": model.selected.sorted(), "new_selected": model.newSelected, "hint": model.machineHint])
     return 0
   }
 }
 
-/// `ChiHelper --send-plan message|note|paste [--id ID]... [--new DIR]
+/// `ChiHelper --send-plan message|note|paste [--id [REMOTE:]ID]... [--new DIR]
 /// [--default MODEL] [--model MODEL] [--prompt P] [--source S] [--image PATH]...`:
 /// the panel's text on stdin; prints the calls SendPlan makes as JSON
-/// ([{"command", "args", "stdin"}], stdin null when none). --new is the new
-/// row, DIR the folder of its only (live) session; --default is the
-/// configured model, --model the pick.
+/// ([{"command", "args", "stdin", "timeout"}], stdin null when none). An id
+/// as a row's key: "studio:<id>" on a remote. --new is the new row, DIR the
+/// folder of its only (live) session; --default is the configured model,
+/// --model the pick.
 func sendPlanCommand(_ args: [String]) -> Int32 {
-  let usage = "usage: ChiHelper --send-plan message|note|paste [--id ID]... [--new DIR] [--default MODEL] [--model MODEL] "
+  let usage = "usage: ChiHelper --send-plan message|note|paste [--id [REMOTE:]ID]... [--new DIR] [--default MODEL] [--model MODEL] "
     + "[--prompt P] [--source S] [--image PATH]...\n"
   var args = args
   let kinds: [String: SendKind] = ["message": .message, "note": .note, "paste": .paste]
@@ -134,13 +200,19 @@ func sendPlanCommand(_ args: [String]) -> Int32 {
   }
   args.removeFirst()
   let model = PanelModel()
-  var ids: [String] = [], newDir: String?, images: [PanelImage] = []
+  var sessions: [LiveSession] = [], newDir: String?, images: [PanelImage] = []
   while !args.isEmpty {
     let arg = args.removeFirst()
     guard !args.isEmpty else { FileHandle.standardError.write(usage.data(using: .utf8)!); return 2 }
     let value = args.removeFirst()
     switch arg {
-    case "--id": ids.append(value)
+    case "--id":
+      // A UUID has no ":", so the last one splits off the remote.
+      let colon = value.lastIndex(of: ":")
+      var session = LiveSession(id: colon.map { String(value[value.index(after: $0)...]) } ?? value, desc: nil, cwd: nil,
+                                busy: nil, owner: nil, updatedAt: nil)
+      session.remote = colon.map { String(value[..<$0]) }
+      sessions.append(session)
     case "--new": newDir = value
     case "--default": model.newModel = value
     case "--model": model.pickedModel = value
@@ -156,9 +228,9 @@ func sendPlanCommand(_ args: [String]) -> Int32 {
   if let newDir {
     model.sessions = [LiveSession(id: UUID().uuidString, desc: nil, cwd: newDir, busy: nil, owner: nil, updatedAt: nil)]
   }
-  let plan = SendPlan.from(model, kind: kind, ids: ids, new: newDir != nil, images: images)
+  let plan = SendPlan.from(model, kind: kind, sessions: sessions, new: newDir != nil, images: images)
   printJSON(plan.calls.map { call -> [String: Any] in
-    ["command": call.command, "args": call.args,
+    ["command": call.command, "args": call.args, "timeout": call.timeout,
      "stdin": call.stdin.map { String(decoding: $0, as: UTF8.self) } ?? NSNull()]
   })
   return 0

@@ -88,9 +88,10 @@ enum ImageIntake {
   static let sentMaxAge: TimeInterval = 7 * 86_400
 
   /// The paths an agent paste names: an image the helper wrote is copied to
-  /// sentDir first (the send deletes the original), with no spaces in its
-  /// name; a file of the user's is named as it is. Call before any send
-  /// job starts. An image that can't be copied is left out.
+  /// sentDir first (the helper deletes the original after the send; chi's
+  /// send copies what it reads and leaves it), with no spaces in its name;
+  /// a file of the user's is named as it is. Call before any send job
+  /// starts. An image that can't be copied is left out.
   static func keepForPaste(_ images: [PanelImage]) -> [String] {
     images.compactMap { image in
       guard image.temp else { return image.url.path }

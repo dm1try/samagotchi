@@ -496,10 +496,36 @@ RSpec.describe "the desktop helper's Swift sources", :macos_build do
     end
 
     before do
-      # Logs each call's argv on one line; --live answers live.json, any other
-      # list recent.json, as FAKE_CHI_MODE says.
+      # Logs each call's argv on one line (and its CHI_REMOTE on another
+      # file); --live answers live.json, any other list recent.json, as
+      # FAKE_CHI_MODE says. `remote ls` answers remotes.json (an older chi
+      # without it exits 2); `--remote NAME` lists NAME-live.json and
+      # NAME-recent.json, unless NAME.mode says it hangs or is refused.
       File.write(fake, <<~SH)
         echo "$*" >> "$FAKE_CHI_DIR/calls"
+        echo "${CHI_REMOTE-unset}" >> "$FAKE_CHI_DIR/env"
+        if [ "$1" = remote ]; then
+          [ -f "$FAKE_CHI_DIR/remotes.json" ] || { echo "chi: unknown command remote" >&2; exit 2; }
+          cat "$FAKE_CHI_DIR/remotes.json"; exit 0
+        fi
+        if [ "$1" = --remote ]; then
+          name=$2
+          case "$(cat "$FAKE_CHI_DIR/$name.mode" 2>/dev/null)" in
+            slow) exec sleep 8 ;;
+            refused)
+              printf 'chi sessions: remote %s (http://10.0.0.9:4567): the token was refused (add it again)\nsecond line\n' "$name" >&2
+              exit 1 ;;
+            warned)
+              echo "/gems/foo.rb:3: warning: method redefined" >&2
+              echo "chi sessions: remote $name (http://10.0.0.9:4567): connection refused" >&2
+              exit 1 ;;
+          esac
+          case "$*" in
+            *--live*) cat "$FAKE_CHI_DIR/$name-live.json" ;;
+            *) cat "$FAKE_CHI_DIR/$name-recent.json" ;;
+          esac
+          exit 0
+        fi
         case "$*" in
           *--live*)
             if [ "$FAKE_CHI_MODE" = live-fails ]; then echo "chi: no state dir" >&2; exit 1; fi
@@ -526,13 +552,16 @@ RSpec.describe "the desktop helper's Swift sources", :macos_build do
 
     after { FileUtils.remove_entry(tmp) }
 
-    def sessions(mode: "ok")
-      out, err, status = Open3.capture3({ "FAKE_CHI_DIR" => tmp, "FAKE_CHI_MODE" => mode },
-                                        executable, "--sessions", "--launch", launch)
+    def sessions(*args, mode: "ok", env: {})
+      out, err, status = Open3.capture3({ "FAKE_CHI_DIR" => tmp, "FAKE_CHI_MODE" => mode }.merge(env),
+                                        executable, "--sessions", "--launch", launch, *args)
       [status.exitstatus.zero? ? JSON.parse(out) : out, err, status.exitstatus]
     end
 
     def calls = File.readlines(File.join(tmp, "calls"), chomp: true)
+
+    # The local calls, in their order (`remote ls` runs beside them).
+    def local_calls = calls.reject { |c| c.start_with?("remote ", "--remote ") }
 
     it "lists the live sessions in chi's order, then up to 3 stopped ones neither live nor a REPL's, newest first" do
       result, err, status = sessions
@@ -543,8 +572,10 @@ RSpec.describe "the desktop helper's Swift sources", :macos_build do
       expect(result["rows"][1]).to eq("id" => ids[1], "desc" => "s1", "cwd" => dirs[1], "busy" => true, "recent" => false)
       expect(result["rows"][3]["desc"]).to be_nil
       expect(result["new_dir"]).to eq(dirs[1])
-      expect(calls).to eq(["sessions list --live --sort created_at --order asc --scope=all --format json",
-                           "sessions list --limit 20 --scope=all --format json"])
+      expect(local_calls).to eq(["sessions list --live --sort created_at --order asc --scope=all --format json",
+                                 "sessions list --limit 20 --scope=all --format json"])
+      expect(calls - local_calls).to eq(["remote ls --format json"])
+      expect(result["remotes"]).to eq([])
     end
 
     it "keeps the live rows when the recent list fails, and fails with chi's stderr when the live one does" do
@@ -555,16 +586,157 @@ RSpec.describe "the desktop helper's Swift sources", :macos_build do
       expect([out, status]).to eq(["", 1])
       expect(err).to eq("chi sessions list failed (exit 1): chi: no state dir\n\n")
     end
+
+    describe "another machine's sessions, through `chi remote ls`" do
+      let(:rids) { Array.new(4) { SecureRandom.uuid } }
+
+      def remote_session(index, **extra)
+        { "id" => rids[index], "desc" => "r#{index}", "cwd" => "/Users/other/proj", "busy" => false, "owner" => nil,
+          "updated_at" => "2026-10-27T09:00:00Z" }.merge(extra.transform_keys(&:to_s))
+      end
+
+      def remotes(*entries) = File.write(File.join(tmp, "remotes.json"), JSON.generate(entries))
+
+      def remote_lists(name, live, recent)
+        File.write(File.join(tmp, "#{name}-live.json"), JSON.generate(live))
+        File.write(File.join(tmp, "#{name}-recent.json"), JSON.generate(recent))
+      end
+
+      def remote_mode(name, mode) = File.write(File.join(tmp, "#{name}.mode"), mode)
+
+      def ids_of(rows) = rows.map { |r| [r["id"], r["recent"]] }
+
+      before do
+        remotes({ "name" => "studio", "url" => "http://10.0.0.9:4567", "token" => true },
+                { "name" => "nokey", "url" => "http://10.0.0.8:4567", "token" => false },
+                { "name" => "bad name", "url" => "http://10.0.0.7:4567", "token" => true },
+                { "name" => "-x", "url" => "http://10.0.0.6:4567", "token" => true })
+        remote_lists("studio", [remote_session(0)],
+                     [remote_session(0), remote_session(1), remote_session(2, owner: "repl")])
+      end
+
+      it "lists each remote with a token after this Mac's rows, live then recent, with chi's own name rule" do
+        result, err, status = sessions
+
+        expect([err, status]).to eq(["", 0])
+        expect(result["rows"].size).to eq(6)
+        expect(result["remotes"].map { |r| r.except("rows") }).to eq([{ "name" => "studio", "error" => nil }])
+        rows = result["remotes"][0]["rows"]
+        expect(ids_of(rows)).to eq([[rids[0], false], [rids[1], true]])
+        expect(rows[0]).to include("remote" => "studio", "cwd" => "/Users/other/proj")
+        expect(calls).to include("--remote studio sessions list --live --sort created_at --order asc --scope=all --format json",
+                                 "--remote studio sessions list --limit 20 --scope=all --format json")
+        expect(calls.grep(/nokey|bad|-x /)).to eq([])
+        # This Mac's new row stays on this Mac's folders.
+        expect(result["new_dir"]).to eq(dirs[1])
+      end
+
+      it "keeps CHI_REMOTE from the shell away from chi: this Mac's rows stay this Mac's" do
+        sessions(env: { "CHI_REMOTE" => "studio" })
+
+        expect(File.readlines(File.join(tmp, "env"), chomp: true).uniq).to eq(["unset"])
+      end
+
+      it "says a remote gave no answer within 4 s, running its two lists at once, and keeps the other rows" do
+        remotes({ "name" => "studio", "url" => "http://10.0.0.9:4567", "token" => true },
+                { "name" => "pod", "url" => "http://10.0.0.5:4567", "token" => true })
+        remote_mode("studio", "slow")
+        remote_lists("pod", [remote_session(3)], [])
+        started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+        result, err, status = sessions
+
+        # Two sequential 4 s calls would take 8 s.
+        expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < 7
+        expect([err, status]).to eq(["", 0])
+        expect(result["rows"].size).to eq(6)
+        expect(result["remotes"].map { |r| [r["name"], r["error"], ids_of(r["rows"])] })
+          .to eq([["studio", "studio: no answer within 4 s", []], ["pod", nil, [[rids[3], false]]]])
+      end
+
+      it "shows the first line of chi's stderr when chi gives up by itself (a refused token)" do
+        remote_mode("studio", "refused")
+        result, = sessions
+
+        expect(result["remotes"]).to eq([{ "name" => "studio", "rows" => [],
+                                           "error" => "chi sessions: remote studio (http://10.0.0.9:4567): " \
+                                                      "the token was refused (add it again)" }])
+        expect(result["rows"].size).to eq(6)
+      end
+
+      it "skips Ruby's warnings for that line, and names the remote when its answer isn't a list" do
+        File.write(File.join(tmp, "studio.mode"), "warned")
+        result, = sessions
+        expect(result["remotes"][0]["error"]).to eq("chi sessions: remote studio (http://10.0.0.9:4567): connection refused")
+
+        File.write(File.join(tmp, "studio-live.json"), "<html>")
+        File.delete(File.join(tmp, "studio.mode"))
+        result, = sessions
+        expect(result["remotes"][0]["error"]).to eq("studio: chi sessions list answered no session list")
+      end
+
+      it "lists a session once, where it shows first: this Mac, then the remotes in their order" do
+        remotes({ "name" => "studio", "url" => "http://10.0.0.9:4567", "token" => true },
+                { "name" => "studio-ts", "url" => "http://studio.ts.net", "token" => true })
+        # studio is this Mac too (ids[0]); studio-ts is the same Studio by another address.
+        remote_lists("studio", [session(0), remote_session(0)], [remote_session(1)])
+        remote_lists("studio-ts", [remote_session(0), remote_session(3)], [remote_session(1)])
+        result, = sessions
+
+        expect(result["remotes"].map { |r| [r["name"], ids_of(r["rows"])] })
+          .to eq([["studio", [[rids[0], false], [rids[1], true]]], ["studio-ts", [[rids[3], false]]]])
+      end
+
+      describe "the preselection" do
+        it "keeps the last choice where it is still live, a remote row's too, and says where it goes" do
+          result, = sessions("--last", "studio:#{rids[0]}", "--last", "studio:#{rids[1]}")
+
+          expect(result.slice("selected", "new_selected", "hint"))
+            .to eq("selected" => ["studio:#{rids[0]}"], "new_selected" => false, "hint" => " → studio")
+        end
+
+        it "never picks a remote row as the only live session" do
+          File.write(File.join(tmp, "live.json"), JSON.generate([session(0)]))
+          result, = sessions
+          expect(result.slice("selected", "new_selected", "hint"))
+            .to eq("selected" => [ids[0]], "new_selected" => false, "hint" => "")
+
+          File.write(File.join(tmp, "live.json"), "[]")
+          result, = sessions
+          expect(result.slice("selected", "new_selected")).to eq("selected" => [], "new_selected" => true)
+        end
+
+        # The panel's steps in the order the answers come: this Mac's list
+        # ticks its only live session, then a late remote answer.
+        it "never lets a late remote answer change what this Mac's list ticked (the user may be typing)" do
+          File.write(File.join(tmp, "live.json"), JSON.generate([session(0)]))
+          result, = sessions("--last", "studio:#{rids[0]}")
+          expect(result.slice("selected", "hint")).to eq("selected" => [ids[0]], "hint" => "")
+
+          File.write(File.join(tmp, "live.json"), "[]")
+          result, = sessions("--last", "studio:#{rids[0]}")
+          expect(result.slice("selected", "new_selected")).to eq("selected" => [], "new_selected" => true)
+        end
+
+        it "ticks the remembered remote row when the remote answers before this Mac's list" do
+          File.write(File.join(tmp, "live.json"), JSON.generate([session(0)]))
+          result, = sessions("--last", "studio:#{rids[0]}", "--order", "remotes-first")
+
+          expect(result.slice("selected", "new_selected", "hint"))
+            .to eq("selected" => ["studio:#{rids[0]}"], "new_selected" => false, "hint" => " → studio")
+        end
+      end
+    end
   end
 
   describe "ChiHelper --send-plan, the chi call a send to sessions makes" do
     let(:ids) { [SecureRandom.uuid, SecureRandom.uuid] }
     let(:context) { "  \nline one\n" }
 
-    def plan(*args, stdin: context)
+    # Each call's time limit only where asked.
+    def plan(*args, stdin: context, timeouts: false)
       out, err, status = Open3.capture3(executable, "--send-plan", *args, stdin_data: stdin)
       expect([err, status.exitstatus]).to eq(["", 0])
-      JSON.parse(out)
+      JSON.parse(out).map { |call| timeouts ? call : call.except("timeout") }
     end
 
     it "sends a message: -m, an --image per image, the ids last, the context on stdin" do
@@ -598,6 +770,38 @@ RSpec.describe "the desktop helper's Swift sources", :macos_build do
         .to eq(["send", "--new", "--dir", dir, "--model", "qwen", "--image", "/tmp/a.png"])
       expect(plan("message", "--new", dir, "--default", "box:small", "--model", "BOX:small").first["args"])
         .to eq(["send", "--new", "--dir", dir])
+    end
+
+    describe "to sessions on other machines (an --id of remote:ID)" do
+      let(:rid) { SecureRandom.uuid }
+
+      it "makes one call per machine, this Mac's first, --remote NAME only on a remote's, 15 s for a remote's text" do
+        result = plan("message", "--id", "studio:#{rid}", "--id", ids[0], "--id", "pod:#{ids[1]}", "--id", "studio:#{ids[1]}",
+                      "--prompt", "hi", timeouts: true)
+
+        expect(result).to eq([
+          { "command" => "chi send", "args" => ["send", "-m", "hi", ids[0]], "stdin" => context, "timeout" => 10 },
+          { "command" => "chi send", "args" => ["--remote", "studio", "send", "-m", "hi", rid], "stdin" => context,
+            "timeout" => 15 },
+          { "command" => "chi send", "args" => ["--remote", "pod", "send", "-m", "hi", ids[1]], "stdin" => context,
+            "timeout" => 15 }
+        ])
+        expect(plan("message", "--id", "studio:#{rid}", "--prompt", "hi", "--image", "/tmp/a.png", timeouts: true)
+          .map { |c| c["timeout"] }).to eq([30])
+        expect(plan("note", "--id", ids[0], "--id", "studio:#{rid}", stdin: "x"))
+          .to eq([{ "command" => "chi note", "args" => ["note", ids[0]], "stdin" => "x" },
+                  { "command" => "chi note", "args" => ["--remote", "studio", "note", rid], "stdin" => "x" }])
+      end
+
+      it "sends to a session once, the first machine it is listed on" do
+        expect(plan("message", "--id", ids[0], "--id", "studio:#{ids[0]}", "--id", "pod:#{ids[0]}").map { |c| c["args"] })
+          .to eq([["send", ids[0]]])
+      end
+
+      it "leaves out a remote whose name chi wouldn't take" do
+        expect(plan("message", "--id", "bad name:#{rid}", "--id", "-x:#{rid}", "--id", ids[0]).map { |c| c["args"] })
+          .to eq([["send", ids[0]]])
+      end
     end
   end
 

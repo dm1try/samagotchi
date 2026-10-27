@@ -8,7 +8,8 @@
 // only; `chi broadcast` on the Everyone row, Broadcast.swift), ⌥⏎ a paste
 // without Enter (agents in terminals only), ⇧⏎ a newline. ⌘M (or a click on
 // the new row's model) opens the model chooser for a new session in place of
-// the targets (Models.swift).
+// the targets (Models.swift). Remotes' sessions (`chi remote ls`) follow in
+// a section per remote, "on studio", sent with `chi --remote studio …`.
 import AppKit
 import SwiftUI
 
@@ -31,7 +32,12 @@ final class PanelModel: ObservableObject {
   /// @State: some Command Line Tools SDKs want the SwiftUIMacros plugin for
   /// @State and don't ship it ("plugin for module 'SwiftUIMacros' not found").
   @Published var hoveredImage: UUID?
+  /// This Mac's sessions.
   @Published var sessions: [LiveSession] = []
+  /// The remotes' sections, in `chi remote ls` order, each filled in as it
+  /// answers; never the previous open's (a stale row could send to a
+  /// stopped worker unseen).
+  @Published var remoteSections: [RemoteSection] = []
   /// Agents in terminals, and the terminals launch.json switches on
   /// (none: no agent rows and no note).
   @Published var agentTargets: [AgentTarget] = []
@@ -41,7 +47,8 @@ final class PanelModel: ObservableObject {
   @Published var agentNote: String?
   /// Why a terminal can't be asked, with or without rows; " · " between two.
   @Published var agentErrors: String?
-  /// Chi session ids and agent keys (never alike: UUIDs vs paths).
+  /// Session keys (LiveSession.key: a remote's carry its name) and agent
+  /// keys (never alike: UUIDs vs paths).
   @Published var selected: Set<String> = []
   /// The user changed the selection: a late agent listing keeps it.
   var touched = false
@@ -74,6 +81,8 @@ final class PanelModel: ObservableObject {
   @Published var message = ""
 
   static let lastChoiceKey = "lastSessionIds"
+  /// The remembered keys in place of UserDefaults' (a headless seam's).
+  var lastChoice: [String]?
 
   var bytes: Int { prompt.utf8.count + text.utf8.count }
   var canSend: Bool {
@@ -84,15 +93,41 @@ final class PanelModel: ObservableObject {
   /// A note's text (stdin of `chi note`): the message line, then the context.
   var noteText: String { [trimmedPrompt, hasContext ? text : ""].filter { !$0.isEmpty }.joined(separator: "\n\n") }
   var sendEnabled: Bool {
-    canSend && (newSelected || everyoneSelected || !selectedIds.isEmpty || !selectedAgents.isEmpty)
+    canSend && (newSelected || everyoneSelected || !selectedSessions.isEmpty || !selectedAgents.isEmpty)
       && (!trimmedPrompt.isEmpty || hasContext)
   }
   var live: [LiveSession] { sessions.filter { !$0.recent } }
 
-  /// One list for rows, ⌘ numbers and selection: live sessions (oldest
-  /// started first: their numbers stay put), then agents in terminals,
-  /// then recent sessions.
-  var targets: [Target] { live.map(Target.chi) + agentTargets.map(Target.agent) + recent.map(Target.chi) }
+  /// This Mac's rows: live sessions (oldest started first: their numbers
+  /// stay put), then agents in terminals, then recent sessions; the panel
+  /// shows the first nine.
+  var localTargets: [Target] { live.map(Target.chi) + agentTargets.map(Target.agent) + recent.map(Target.chi) }
+
+  /// One list for rows, ⌘ numbers and selection: this Mac's nine, then
+  /// the remotes' rows, so ⌘1…⌘9 number this Mac's first.
+  var targets: [Target] { Array(localTargets.prefix(9)) + remoteSessions.map(Target.chi) }
+
+  /// A remote's section as shown: its rows without a session listed
+  /// before (this Mac's, an earlier remote's: one Studio by two addresses,
+  /// or a remote that is this Mac), and the ⌘ index of its first row.
+  struct RemoteGroup: Identifiable {
+    let section: RemoteSection
+    let rows: [LiveSession]
+    let firstIndex: Int
+    var id: String { section.name }
+  }
+
+  var remoteGroups: [RemoteGroup] {
+    var seen = Set(sessions.map(\.id))
+    var index = min(localTargets.count, 9)
+    return remoteSections.map { section in
+      let rows = section.sessions.filter { seen.insert($0.id).inserted }
+      defer { index += rows.count }
+      return RemoteGroup(section: section, rows: rows, firstIndex: index)
+    }
+  }
+
+  var remoteSessions: [LiveSession] { remoteGroups.flatMap(\.rows) }
 
   /// Up to maxImages; the rest is dropped (and its temp files deleted).
   func add(_ new: [PanelImage]) {
@@ -194,13 +229,16 @@ final class PanelModel: ObservableObject {
     }
   }
 
-  /// The last choice, where still live or listed; else the only live
-  /// session; else, with none live and no agent chosen, the new row.
-  /// A recent (stopped) one is never preselected: a message would wake it.
+  /// The last choice, where still live or listed (a remote's live row
+  /// too: the hint names its machine); else this Mac's only live session
+  /// (never a remote's); else, with none live here and nothing chosen, the
+  /// new row. A recent (stopped) one is never preselected: a message would
+  /// wake it.
   func preselect() {
-    let last = Set(UserDefaults.standard.stringArray(forKey: Self.lastChoiceKey) ?? [])
-    selected = last.intersection(Set(live.map(\.id) + agentTargets.map(\.key)))
-    if selected.isEmpty, live.count == 1 { selected = [live[0].id] }
+    let last = Set(lastChoice ?? UserDefaults.standard.stringArray(forKey: Self.lastChoiceKey) ?? [])
+    let remoteLive = remoteSessions.filter { !$0.recent }
+    selected = last.intersection(Set(live.map(\.key) + remoteLive.map(\.key) + agentTargets.map(\.key)))
+    if selected.isEmpty, live.count == 1 { selected = [live[0].key] }
     newSelected = live.isEmpty && selected.isEmpty
   }
 
@@ -239,9 +277,53 @@ final class PanelModel: ObservableObject {
     return dir == NSHomeDirectory() ? "~" : (dir as NSString).lastPathComponent
   }
 
-  /// In list order, only ids that are live and UUID-shaped.
-  var selectedIds: [String] {
-    sessions.filter { selected.contains($0.id) && $0.valid }.map(\.id)
+  /// This Mac's listing answered: its rows, and the preselection unless
+  /// the user already chose (⌘0, ⌘M while it listed).
+  func showSessions(_ result: Result<[LiveSession], ChiError>) {
+    switch result {
+    case .success(let sessions):
+      self.sessions = sessions
+      if !touched { preselect() }
+      phase = .ready
+    case .failure(let error):
+      sessions = []
+      phase = .failed
+      message = error.description
+    }
+  }
+
+  /// `chi remote ls` answered: a section per remote, each asking.
+  func startRemotes(_ names: [String]) {
+    remoteSections = names.map { RemoteSection(name: $0) }
+  }
+
+  /// One remote answered: its rows or its line. It preselects only when
+  /// nothing is ticked yet and the panel is ready: a late answer never
+  /// changes a selection (the user may be typing to it, and the "→ studio"
+  /// hint would come too late), nor one being sent or failed.
+  func showRemote(_ name: String, _ result: Result<[LiveSession], ChiError>) {
+    guard let index = remoteSections.firstIndex(where: { $0.name == name }) else { return }
+    var section = RemoteSection(name: name, loading: false)
+    switch result {
+    case .success(let sessions): section.sessions = sessions
+    case .failure(let error): section.error = error.description
+    }
+    remoteSections[index] = section
+    if phase == .ready, !touched, selected.isEmpty, !newSelected, !everyoneSelected { preselect() }
+  }
+
+  /// The ticked sessions, this Mac's then the remotes', in list order;
+  /// only UUID-shaped ids.
+  var selectedSessions: [LiveSession] {
+    (sessions + remoteSessions).filter { selected.contains($0.key) && $0.valid }
+  }
+
+  /// The message field's hint while a remote's row is ticked: " → studio"
+  /// (both machines likely have the same paths); "" otherwise.
+  var machineHint: String {
+    var names: [String] = []
+    for name in selectedSessions.compactMap(\.remote) where !names.contains(name) { names.append(name) }
+    return names.isEmpty ? "" : " → " + names.joined(separator: ", ")
   }
 
   /// A listing's answer: the rows, "no agents in kitty" when there are
@@ -269,7 +351,7 @@ final class PanelModel: ObservableObject {
   var addressee: String {
     if everyoneSelected { return "everyone it concerns" }
     let agents = Set(selectedAgents.map(\.agent))
-    return agents.count == 1 && selectedIds.isEmpty && !newSelected ? agents.first! : "chi"
+    return agents.count == 1 && selectedSessions.isEmpty && !newSelected ? agents.first! : "chi"
   }
 }
 
@@ -280,7 +362,7 @@ enum Target: Identifiable {
 
   var id: String {
     switch self {
-    case .chi(let session): return session.id
+    case .chi(let session): return session.key
     case .agent(let target): return target.key
     }
   }
@@ -336,7 +418,7 @@ struct PanelView: View {
   /// The message is required with images, as in the web.
   var placeholder: String {
     if model.everyoneSelected { return "Tell everyone it concerns… (⌘⏎)" }
-    return model.images.isEmpty ? "Ask \(model.addressee)…" : "Say something about the image…"
+    return (model.images.isEmpty ? "Ask \(model.addressee)…" : "Say something about the image…") + model.machineHint
   }
 
   @ViewBuilder var imageStrip: some View {
@@ -373,7 +455,7 @@ struct PanelView: View {
           newRow
           everyoneRow
           let live = model.live.count, agents = model.agentTargets.count
-          ForEach(Array(model.targets.prefix(9).enumerated()), id: \.element.id) { index, target in
+          ForEach(Array(model.localTargets.prefix(9).enumerated()), id: \.element.id) { index, target in
             if index == live && agents > 0 { groupHeader(agentHeader, first: index == 0) }
             if index == live + agents && !model.recent.isEmpty {
               agentNoteLines
@@ -385,6 +467,13 @@ struct PanelView: View {
             }
           }
           if model.recent.isEmpty { agentNoteLines }
+          ForEach(model.remoteGroups) { group in
+            groupHeader("on \(group.section.name)", first: false)
+            remoteNoteLine(group)
+            ForEach(Array(group.rows.enumerated()), id: \.element.key) { offset, session in
+              row(session, index: group.firstIndex + offset)
+            }
+          }
         }
       }
     }
@@ -416,6 +505,27 @@ struct PanelView: View {
   func agentNoteLine(_ text: String) -> some View {
     HStack(spacing: 6) {
       Image(systemName: "terminal").font(.system(size: 11))
+      Text(text).font(.system(size: 11)).lineLimit(1)
+    }
+    .foregroundColor(.secondary.opacity(0.7))
+    .padding(.horizontal, 8).padding(.vertical, 4)
+  }
+
+  /// Under a remote's divider: asking, why it has no rows, or none.
+  @ViewBuilder func remoteNoteLine(_ group: PanelModel.RemoteGroup) -> some View {
+    if group.section.loading {
+      remoteLine("asking \(group.section.name)…")
+    } else if let error = group.section.error {
+      remoteLine(error).help(error)
+    } else if group.rows.isEmpty {
+      // All of them listed above: the same machine by another name.
+      remoteLine(group.section.sessions.isEmpty ? "no live or recent sessions" : "its sessions are listed above")
+    }
+  }
+
+  func remoteLine(_ text: String) -> some View {
+    HStack(spacing: 6) {
+      Image(systemName: "network").font(.system(size: 11))
       Text(text).font(.system(size: 11)).lineLimit(1)
     }
     .foregroundColor(.secondary.opacity(0.7))
@@ -486,7 +596,8 @@ struct PanelView: View {
           .foregroundColor(on ? .accentColor : .secondary)
           .frame(width: 18)
         VStack(alignment: .leading, spacing: 1) {
-          Text("Everyone it concerns").font(.system(size: 13, weight: .medium)).lineLimit(1)
+          // chi broadcast runs on this Mac only.
+          Text("Everyone it concerns (this Mac)").font(.system(size: 13, weight: .medium)).lineLimit(1)
           Text("a note for the sessions chi finds it concerns: ⌘⏎").font(.system(size: 11)).foregroundColor(.secondary).lineLimit(1)
         }
         Spacer()
@@ -581,9 +692,11 @@ struct PanelView: View {
     .help(row.kind == .typed ? "not in any host's list: sent as typed" : row.name)
   }
 
+  /// A session's row; a remote's names its machine (both likely have the
+  /// same paths). ⌘ numbers stop at nine.
   func row(_ session: LiveSession, index: Int) -> some View {
-    let on = model.selected.contains(session.id)
-    return Button(action: { model.toggle(session.id) }) {
+    let on = model.selected.contains(session.key)
+    return Button(action: { model.toggle(session.key) }) {
       HStack(spacing: 10) {
         Image(systemName: on ? "checkmark.circle.fill" : "circle")
           .font(.system(size: 16))
@@ -601,7 +714,15 @@ struct PanelView: View {
         if session.busy == true {
           Circle().fill(Color.orange).frame(width: 7, height: 7).help("working on a turn")
         }
-        Text("⌘\(index + 1)").font(.system(size: 11, design: .rounded)).foregroundColor(.secondary)
+        if let remote = session.remote {
+          Text(remote).font(.system(size: 10)).foregroundColor(.secondary)
+            .padding(.horizontal, 5).padding(.vertical, 1)
+            .background(Capsule().fill(Color.primary.opacity(0.07)))
+            .help("a session on \(remote): sent with chi --remote \(remote)")
+        }
+        if index < 9 {
+          Text("⌘\(index + 1)").font(.system(size: 11, design: .rounded)).foregroundColor(.secondary)
+        }
       }
       .padding(.horizontal, 8).padding(.vertical, 6)
       .background(RoundedRectangle(cornerRadius: 7).fill(on ? Color.accentColor.opacity(0.14) : Color.clear))
@@ -648,7 +769,7 @@ struct PanelView: View {
       // ⏎, ⌘⏎ and ⌥⏎ are handled by the panel (KeyPanel.sendEvent),
       // whatever has the focus; the buttons are for the mouse. Only agents
       // in terminals chosen: Paste instead of Note.
-      if !model.selectedAgents.isEmpty && model.selectedIds.isEmpty && !model.newSelected {
+      if !model.selectedAgents.isEmpty && model.selectedSessions.isEmpty && !model.newSelected {
         Button("Paste ⌥⏎") { send(.paste) }
           .disabled(!model.sendEnabled)
           .help("paste it into the agent's input without Enter: add more, then press Enter there")
@@ -661,6 +782,14 @@ struct PanelView: View {
           .disabled(!model.sendEnabled || !model.selectedAgents.isEmpty || model.newSelected)
           .help(model.newSelected ? "a note needs a session: pick one, or ⏎ starts a new one with the message"
                                   : "add it as background the model sees on its next turn; starts no turn")
+      }
+      // Where it goes while a remote's row is ticked: stays when the
+      // placeholder's hint is gone under typed text.
+      if !model.machineHint.isEmpty {
+        Text(model.machineHint.trimmingCharacters(in: .whitespaces))
+          .font(.system(size: 11, weight: .medium)).foregroundColor(.accentColor)
+          .lineLimit(1).fixedSize()
+          .help("sent to that machine's sessions (chi --remote)")
       }
       // A broadcast is a note: no Send.
       if model.everyoneSelected {
@@ -894,6 +1023,7 @@ final class PanelController: NSObject, NSWindowDelegate {
     placeOnActiveScreen()
     panel.makeKeyAndOrderFront(nil)
     loadSessions()
+    loadRemotes()
     loadAgents()
     loadModel()
     loadModels()
@@ -909,18 +1039,26 @@ final class PanelController: NSObject, NSWindowDelegate {
   }
 
   private func loadSessions() {
-    runner.sessions { [weak self] result in
-      guard let self else { return }
-      switch result {
-      case .success(let sessions):
-        self.model.sessions = sessions
-        // A choice made while it listed (⌘0, ⌘M) stays.
-        if !self.model.touched { self.model.preselect() }
-        self.model.phase = .ready
-      case .failure(let error):
-        self.model.sessions = []
-        self.model.phase = .failed
-        self.model.message = error.description
+    runner.sessions { [weak self] result in self?.model.showSessions(result) }
+  }
+
+  private var remotesGeneration = 0
+
+  /// The remotes' sections, beside this Mac's listing and never blocking
+  /// it: each fills in as it answers (or fails, D5); PanelModel.showRemote
+  /// says when one may preselect.
+  private func loadRemotes() {
+    remotesGeneration += 1
+    let generation = remotesGeneration
+    model.remoteSections = []
+    runner.remotes { [weak self] names in
+      guard let self, generation == self.remotesGeneration else { return }
+      self.model.startRemotes(names)
+      for name in names {
+        self.runner.sessions(remote: name) { [weak self] result in
+          guard let self, generation == self.remotesGeneration else { return }
+          self.model.showRemote(name, result)
+        }
       }
     }
   }
@@ -969,13 +1107,14 @@ final class PanelController: NSObject, NSWindowDelegate {
     }
   }
 
-  /// Fans out: one `chi send` / `chi note` for the chi sessions (or the new
-  /// row) and one paste per agent, with one combined line when all
-  /// finished. Images the helper wrote are copied for the agents first (chi's
-  /// send deletes them) and deleted only after every job.
+  /// Fans out: one `chi send` / `chi note` per machine for the chi sessions
+  /// (or one for the new row) and one paste per agent, all at once, with
+  /// one combined line when all finished. chi's send reads the images and
+  /// leaves them; the helper deletes the ones it wrote after every job, so
+  /// those are copied for the agents first (their paths are read later).
   func send(_ kind: SendKind) {
     if model.everyoneSelected { broadcast(kind); return }
-    let ids = model.selectedIds
+    let chosen = model.selectedSessions
     let windows = model.selectedAgents
     let new = model.newSelected
     if kind == .note, !windows.isEmpty {
@@ -983,7 +1122,7 @@ final class PanelController: NSObject, NSWindowDelegate {
       model.message = "Notes are for chi sessions"
       return
     }
-    if kind == .paste, windows.isEmpty || !ids.isEmpty || new {
+    if kind == .paste, windows.isEmpty || !chosen.isEmpty || new {
       NSSound.beep()
       model.message = model.pasteOnlyRefusal
       return
@@ -999,12 +1138,12 @@ final class PanelController: NSObject, NSWindowDelegate {
       model.message = "Notes are text only: ⏎ sends the image as a message"
       return
     }
-    guard model.sendEnabled, new || !(ids.isEmpty && windows.isEmpty) else { NSSound.beep(); return }
+    guard model.sendEnabled, new || !(chosen.isEmpty && windows.isEmpty) else { NSSound.beep(); return }
     model.phase = .sending
     model.message = ""
     if !new {
-      let liveIds = ids.filter { id in model.live.contains { $0.id == id } }
-      UserDefaults.standard.set(liveIds + windows.map(\.key), forKey: PanelModel.lastChoiceKey)
+      let liveKeys = chosen.filter { !$0.recent }.map(\.key)
+      UserDefaults.standard.set(liveKeys + windows.map(\.key), forKey: PanelModel.lastChoiceKey)
     }
     let images = kind == .note ? [] : model.images
     inFlight.formUnion(images.map(\.id))
@@ -1016,9 +1155,9 @@ final class PanelController: NSObject, NSWindowDelegate {
     var chiOutcome: SendOutcome?
     var agentOutcomes: [(AgentTarget, AgentTerminalError?)] = []
     let terminals = agents ?? AgentTerminals(launchPath: runner.launchPath)
-    if new || !ids.isEmpty {
+    if new || !chosen.isEmpty {
       group.enter()
-      sendToChi(kind, ids: ids, new: new, images: images) { outcome in chiOutcome = outcome; group.leave() }
+      sendToChi(kind, sessions: chosen, new: new, images: images) { outcome in chiOutcome = outcome; group.leave() }
     }
     for window in windows {
       guard let terminal = terminals.terminal(for: window.key) else {
@@ -1097,13 +1236,31 @@ final class PanelController: NSObject, NSWindowDelegate {
     var linger = 1.0
   }
 
-  /// Runs the SendPlan's call (Sessions.swift) and words its outcome.
-  private func sendToChi(_ kind: SendKind, ids: [String], new: Bool, images: [PanelImage],
+  /// Runs the SendPlan's calls (Sessions.swift: one per machine) at once
+  /// and words their outcome as one line, this Mac's first, a remote's
+  /// named ("sent · studio: sent").
+  private func sendToChi(_ kind: SendKind, sessions: [LiveSession], new: Bool, images: [PanelImage],
                          completion: @escaping (SendOutcome) -> Void) {
-    let call = SendPlan.from(model, kind: kind, ids: ids, new: new, images: images).calls[0]
+    let calls = SendPlan.from(model, kind: kind, sessions: sessions, new: new, images: images).calls
+    guard !calls.isEmpty else { completion(SendOutcome(ok: false, message: "No session to send to")); return }
+    var outcomes = [SendOutcome?](repeating: nil, count: calls.count)
+    let group = DispatchGroup()
+    for (index, call) in calls.enumerated() {
+      group.enter()
+      run(call, kind: kind, new: new) { outcome in outcomes[index] = outcome; group.leave() }
+    }
+    group.notify(queue: .main) {
+      let done = outcomes.compactMap { $0 }
+      let parts = zip(calls, done).map { call, outcome in call.remote.map { "\($0): \(outcome.message)" } ?? outcome.message }
+      completion(SendOutcome(ok: done.allSatisfy(\.ok), message: parts.joined(separator: " · "),
+                             linger: done.map(\.linger).max() ?? 1.0))
+    }
+  }
+
+  /// One machine's `chi send` / `chi note`, its outcome worded.
+  private func run(_ call: SendPlan.Call, kind: SendKind, new: Bool, completion: @escaping (SendOutcome) -> Void) {
     let command = call.command
-    // Reading, converting and a new worker's start take longer than text.
-    let timeout = images.isEmpty ? runner.timeout : 30
+    let timeout = call.timeout
     runner.run(call.args, stdin: call.stdin, timeout: timeout) { result in
       switch result {
       case .failure(let error):
