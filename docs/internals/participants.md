@@ -169,6 +169,9 @@ Everything else is `:owner`: `/answer`, `/command`, `/images` (an image a prompt
 
 ## Turns
 
+`ParticipantMode.of(session)` is the single resolver for a participant turn's rules. It returns `:review` for every
+session in P0; the existing review boundary therefore remains in force.
+
 A participant's `POST /api/sessions/:id/turn` (`ParticipantAccess#handle_participant_turn`) takes only the body's
 `prompt`. Three layers keep it a review turn.
 

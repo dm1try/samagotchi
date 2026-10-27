@@ -6,6 +6,7 @@ require_relative "participant_exposure"
 require_relative "../session_metrics"
 require_relative "../review_start"
 require_relative "../guardrails/review_paths"
+require_relative "../participant_mode"
 
 module Samagotchi
   module Web
@@ -49,6 +50,7 @@ module Samagotchi
       #   current_turn, waiting_for_owner, queued: {mine, others}, last_event_id}
       def handle_review(req, id)
         session = @session_class.load(id, state_dir: default_state_dir)
+        mode = ParticipantMode.of(session).to_s
         viewer = participant_viewer(req, session)
         live = bridge_get_json(id, "snapshot")
         turn_snapshot = live && live["snapshot"]
@@ -63,7 +65,7 @@ module Samagotchi
         status = displayed_status(session, state)
         status = Session::STATUS_IDLE if status == Session::STATUS_RUNNING && current.nil?
         json_response(200, {
-          viewer: review_viewer(req, id, session: session, state: state, queued: queued, viewer: viewer),
+          viewer: review_viewer(req, id, session: session, state: state, queued: queued, viewer: viewer, mode: mode),
           session: { id: session.id, title: participant_title(session), status: status },
           subjects: review_subjects(session, viewer),
           participants: participant_names(id).map { |entry| entry.slice(:id, :name, :kind) },
@@ -149,12 +151,12 @@ module Samagotchi
       # participant view (no composer, no usage: the owner has /stats).
       # +state+ the live worker's session state (nil without one), +queued+
       # its queue.
-      def review_viewer(req, id, session:, state:, queued:, viewer:)
-        return { kind: "owner", can_comment: false } if principal(req).owner?
+      def review_viewer(req, id, session:, state:, queued:, viewer:, mode:)
+        return { kind: "owner", can_comment: false, mode: mode } if principal(req).owner?
 
         grant = principal(req).grant
         capped = !participant_cap_refusal(grant).nil?
-        { kind: "participant", id: grant.id, name: grant.name, participant_kind: grant.kind, can_comment: !capped,
+        { kind: "participant", id: grant.id, name: grant.name, participant_kind: grant.kind, mode: mode, can_comment: !capped,
           cap_reached: capped, session_id: id,
           usage: review_usage(grant, session: session, state: state, queued: queued, viewer: viewer) }
       end

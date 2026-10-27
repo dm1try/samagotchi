@@ -140,6 +140,14 @@ RSpec.describe Samagotchi::ReviewStart do
     end
   end
 
+  it "keeps the existing warning for a working session while resolving its participant mode" do
+    session = Samagotchi::Session.new_session(mode: "assist", model_name: "main:gemma-small", working_directory: project)
+    expect(Samagotchi::ParticipantMode).to receive(:of).with(session).and_call_original
+    expect(described_class.share_warning(session))
+      .to eq("#{session.id[0, 8]} is a working session, not a review session: a participant's review turn can quote " \
+             "what its history holds (0 tool outputs so far). A review session starts from its recap instead.")
+  end
+
   it "keeps a review session's field across a continue" do
     session = described_class.start(subjects: ["docs/plan.md"], dir: project, model: "main:gemma-small", state_dir: state_dir)
     link = Samagotchi::SessionContinue.run(session.id, state_dir: state_dir, recap_wait: 0, archive_wait: 0)

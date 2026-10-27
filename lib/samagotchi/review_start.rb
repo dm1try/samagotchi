@@ -7,6 +7,7 @@ require_relative "session_chain"
 require_relative "recap_store"
 require_relative "guardrails/context"
 require_relative "guardrails/review_paths"
+require_relative "participant_mode"
 
 module Samagotchi
   autoload :SessionManager, File.expand_path("session_manager", __dir__)
@@ -147,10 +148,11 @@ module Samagotchi
     # @param session [Session]
     # @return [String, nil]
     def share_warning(session)
+      mode = ParticipantMode.of(session)
       return nil if session.review?
 
       count = session.tool_output_count
-      "#{session.id[0, 8]} is a working session, not a review session: a participant's review turn can quote what " \
+      "#{session.id[0, 8]} is a working session, not a review session: a participant's #{mode} turn can quote what " \
         "its history holds (#{count} tool output#{"s" unless count == 1} so far). A review session starts from its recap instead."
     end
 

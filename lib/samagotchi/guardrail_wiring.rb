@@ -15,6 +15,7 @@ require_relative "edit_preview"
 require_relative "system_one"
 require_relative "tool_activity"
 require_relative "turn_origin"
+require_relative "participant_mode"
 
 module Samagotchi
   # An Engine's tool guardrails: who can approve (the interface), the YAML
@@ -126,12 +127,12 @@ module Samagotchi
     # The gate's core checks, in order. A delegate child's boundary comes
     # before the rules, so its ask keeps the child-boundary rule id (and
     # its once/session scopes) when a strict rule asks too. The review
-    # boundary comes before both: a participant's turn is denied what it
-    # may not do, never asked about it (deny is sticky, so no later vote
-    # can turn it into a question).
+    # boundary comes before both: a participant's review turn is denied
+    # what it may not do, never asked about it.
     def checks
       rules = self.rules
-      [@failures, review_boundary, rules.hook_asks, protected_paths,
+      boundary = ParticipantMode.of(@session_lookup.call) == :review ? review_boundary : nil
+      [@failures, boundary, rules.hook_asks, protected_paths,
        (@scratch_writes ||= Guardrails::ScratchWrites.new if @scratch), child_boundary, rules].compact
     end
 

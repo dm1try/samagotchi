@@ -14,6 +14,7 @@ require_relative "tools/output_guardrails"
 require_relative "tools/tool_path"
 require_relative "memory_bundle/index_sync"
 require_relative "memory_bundle/index_size"
+require_relative "participant_mode"
 
 module Samagotchi
   # One call's result from ToolRunner#run, read by ToolResponse (the loops'
@@ -388,7 +389,7 @@ module Samagotchi
     end
 
     def unreached_group_refusal(call)
-      return if participant_turn?
+      return if participant_turn? && ParticipantMode.of(nil) == :review
 
       registry = tools
       index = registry&.index if registry.respond_to?(:index)

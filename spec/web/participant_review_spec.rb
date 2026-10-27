@@ -64,7 +64,8 @@ RSpec.describe Samagotchi::Web::App, "participant review" do
     expect(body.keys).to contain_exactly("viewer", "session", "participants", "messages", "current_turn", "waiting_for_owner",
                                          "queued", "last_event_id", "subjects")
     expect(body["subjects"]).to eq([])
-    expect(body["viewer"]).to include("kind" => "participant", "id" => issued.grant.id, "name" => "Alex", "can_comment" => true)
+    expect(body["viewer"]).to include("kind" => "participant", "id" => issued.grant.id, "name" => "Alex",
+                                      "mode" => "review", "can_comment" => true)
     expect(body["session"]).to eq("id" => session.id, "title" => "plan review", "status" => "running")
     expect(body["participants"]).to eq([{ "id" => issued.grant.id, "name" => "Alex", "kind" => "human" }])
     expect(body["messages"].map { |m| m["content"] }).to eq(%w[earlier ok])
@@ -153,7 +154,7 @@ RSpec.describe Samagotchi::Web::App, "participant review" do
     issued
     status, body = review(owner_token)
     expect(status).to eq(200)
-    expect(body["viewer"]).to eq("kind" => "owner", "can_comment" => false)
+    expect(body["viewer"]).to eq("kind" => "owner", "can_comment" => false, "mode" => "review")
     expect(body["queued"]).to eq("mine" => [], "others" => 2)
     expect(body["current_turn"]).to include("prompt" => "owner's question", "text" => "Let me check")
     expect(JSON.generate(body)).not_to include("env?", "CARD")

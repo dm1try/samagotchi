@@ -145,6 +145,7 @@ RSpec.describe "direct calls of deferred tools" do
       loads_tools!
       registry.toolkit = registry.toolkit.with(groups: [])
       kernel.participant_turn = -> { true }
+      expect(Samagotchi::ParticipantMode).to receive(:of).with(nil).and_call_original
       boundary = Samagotchi::Guardrails::ReviewBoundary.new(author: -> { "p:review" }, root: -> { Dir.pwd },
                                                             denied_dirs: -> { [] })
       checks << boundary
