@@ -112,6 +112,50 @@ RSpec.describe Samagotchi::Guardrails::PairBoundary do
     end
   end
 
+  def refused(command) = execute(command).then { |verdict| verdict.deny? ? verdict.reason : nil }
+
+  it "denies a command that runs chi, whatever runs it, but chi --version and --help" do
+    ["chi share cap abc p_1 1000", "bin/chi send --new hi", "bundle exec chi sessions list", "ruby -Ilib bin/chi answer x",
+     "ruby -I lib bin/chi answer x", "FOO=1 /usr/local/bin/chi send x", "sh -c 'chi share abc --name x'",
+     "echo $(chi sessions list)", "env X=1 nohup chi send x", "timeout 10 chi send x", "eval chi send x"].each do |command|
+      expect(refused(command)).to eq(described_class::CHI), command
+    end
+    ["chi --version", "chi --help", "grep chi README.md", "git commit -m 'chi: fix the probe'", "ls lib/chi"].each do |command|
+      expect(refused(command)).to be_nil, command
+    end
+  end
+
+  it "denies leaving a command running in the background" do
+    ["sleep 100 &", "nohup ruby server.rb", "setsid ruby server.rb", "ruby server.rb & disown",
+     "screen -dmS x ruby server.rb", "tmux new -d ruby server.rb", "a && b &"].each do |command|
+      expect(refused(command)).to eq(described_class::BACKGROUND), command
+    end
+    ["a && b", "ruby x.rb 2>&1 | tail", "ruby x.rb > out.log 2>&1"].each { |command| expect(refused(command)).to be_nil, command }
+  end
+
+  it "denies reading the environment or the keychain" do
+    ["env", "env -0", "printenv", "printenv HOME", "security find-generic-password -s chi -w", "cat /proc/1/environ",
+     "X=1 env"].each do |command|
+      expect(refused(command)).to eq(described_class::ENVIRONMENT), command
+    end
+    expect(refused("env RAILS_ENV=test bundle exec rspec")).to be_nil
+  end
+
+  it "denies a glob or a $var that leads into a secret, and sweeping a folder above one" do
+    File.write(File.join(home, ".zsh_history"), "x")
+    ["cat ~/.ss?/id_*", "cat ~/.config/*/config.yml", "cat .en?", "cat ~/.ss${d}h/id_rsa", "cat $HOME/.zsh_hist*",
+     "cat ~/$X", "cat #{home}/.ss$X/id_rsa"].each do |command|
+      expect(refused(command)).to eq(described_class::SECRET), command
+    end
+    ["find ~ -name id_rsa", "tar cf - ~", "cp -r ~/.local /tmp/x", "grep -r token ~", "rsync -a ~/ /tmp/x",
+     "cd ~ && find . -name x"].each do |command|
+      expect(refused(command)).to eq(described_class::HOME_SWEEP), command
+    end
+    ["ls docs/*.md", "grep -r plan .", "find . -name '*.md'", "cat docs/pl?n.md", "ls ~/other"].each do |command|
+      expect(refused(command)).to be_nil, command
+    end
+  end
+
   it "denies the owner-voiced tools, any delegate_* tool and every memory_write" do
     (described_class::OWNER_VOICED + %w[cancel_reminder task_stop find_tools delegate_result]).each do |tool|
       verdict = verdict_for({ name: tool, content: "x" })
@@ -175,6 +219,8 @@ RSpec.describe "GuardrailWiring: a participant's boundary by ParticipantMode" do
     expect(evaluate(w, { name: "read", content: File.join(Dir.home, ".ssh", "id_rsa") }).rule).to eq("pair-boundary")
     expect(evaluate(w, { name: "read", content: File.join(project, ".env") }).rule).to eq("pair-boundary")
     %w[delegate send_note].each { |tool| expect(evaluate(w, { name: tool, content: "x" })).to be_deny }
+    chi = evaluate(w, { name: "execute", content: "chi share cap x p_1 1000", cwd: project })
+    expect([chi.rule, chi.reason]).to eq(["pair-boundary", Samagotchi::Guardrails::PairBoundary::CHI])
     expect(evaluate(w, { name: "memory_write", path: "n", scope: "system", content: "x" }).rule).to eq("pair-boundary")
   end
 
