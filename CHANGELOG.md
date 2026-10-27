@@ -15,6 +15,10 @@ and commands may change between minor versions. How releases are made:
 - A `toolkit.kits` kit whose `groups:` isn't a name or a list (a map such as `{chrome: true}`) no longer loads
   silently with its base's groups: chi, `chi send --new`, chi web and `delegate` refuse a new session on it, naming
   the kit and the reason, and a session already saved on it reaches no tool-index group until config.yml is fixed.
+- A worker's liveness is one rule everywhere, the owner lock plus the sidecar's pid, with no port probe: after a
+  `kill -9` whose port another session's Bridge took, `chi send`, `--attach` and chi web no longer take the dead
+  worker for live (they wake a new one). A worker on a newer sidecar protocol is not driven by an older chi: a wake
+  answers 409 `worker_newer`.
 - System 1 no longer auto-allows a command that changes chi's own config through a spelling its check missed
   (`$XDG_CONFIG_HOME/samagotchi/config.yml`, `$HOME/.config/…`, `memories/../config.yml`, `cd ~/.config && …`): it
   refuses by the same test that makes an ask the user's alone, so such a call goes to the user. Memory files still

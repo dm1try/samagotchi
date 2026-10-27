@@ -292,8 +292,8 @@ bin/chi ── RunOptions.parse ── a remote, run flags ──> RemoteAttachC
 as is, else `SessionManager.resume_session` and `WorkerLink.await`, at most `WAKE_MAX_WAIT` 10 s, the attach's
 `BRIDGE_WAIT` here, after waiting for a worker still leaving to let go of its lock, `OwnerLock.await_release`: its
 recap on leave's timeout plus 5 s; a leftover scratch session is refused in `LaunchMode::SCRATCH_LEFTOVER`'s words, a late Bridge
-in `LaunchMode::BRIDGE_LATE`'s) and `GET …/worker` (`Local#worker`: live, the stop marker, the owner, `leaving` and `leave_seconds` when its worker
-is leaving, `WorkerState#leaving?`; it never starts one; it also names that machine's `default_model`), both answering the worker as `{epoch, started_at, version,
+in `LaunchMode::BRIDGE_LATE`'s; a worker on a newer sidecar protocol is refused, 409 `worker_newer`, never resumed over) and `GET …/worker` (`Local#worker`: live, the stop marker, the owner, `leaving` and `leave_seconds` when its worker
+is leaving, `WorkerState#leaving?`, `stuck` for a worker that never published its Bridge, `skew` for a newer protocol; it never starts one; it also names that machine's `default_model`), both answering the worker as `{epoch, started_at, version,
 features}`; `POST …/exit` (the worker's exit, `client_id` passed on only when it is a `tui:` one), `POST …/recap`,
 `GET …/stats` (the stats, else an older worker's state metrics), `GET …/children/counts` (`ChildrenStatus.counts`)
 and `GET …/turns/:turn_id/records` (`SessionMetrics`' saved tool records and turn record), every refusal with
