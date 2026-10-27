@@ -13,7 +13,8 @@ module Samagotchi
       # the summaries the page's trackAttention keeps (seeded by the
       # subscribe's snapshot, so what was open before never pushes), turns
       # each new attention (Attention.for: a question, an approval, a
-      # step-limit continue, a card with actions, a failed or done turn)
+      # step-limit continue, a card with actions, a failed or done turn, a
+      # recorded Verify verdict)
       # into a show, and hands it to its own sender thread through a Queue;
       # one answered anywhere (Attention.closed_keys) only cancels its
       # show's hold.
@@ -43,7 +44,7 @@ module Samagotchi
         HOLD = 3.0
         # Waiting kinds: kept 12 h for an offline phone, delivered at once.
         SHOW_TTL = 12 * 3600
-        # A failed or done turn: stale soon, no need to wake the phone.
+        # A failed, done or verdict turn: stale soon, no need to wake the phone.
         EVENT_TTL = 600
         # A newly available chi is useful for a day while the phone is away.
         UPDATE_TTL = 24 * 3600
@@ -280,7 +281,7 @@ module Samagotchi
           retries.each { |again| send_retry(again, open) if still_due?(again.show, open) }
         end
 
-        # A waiting show while its key is open; a failed or done turn's as
+        # A waiting show while its key is open; a failed, done or verdict turn's as
         # is (nothing to answer).
         def still_due?(show, open) = !Attention.waiting?(show.attention.reason) || open.include?(show.attention.key)
 

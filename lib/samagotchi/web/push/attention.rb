@@ -49,7 +49,7 @@ module Samagotchi
 
         # What +nxt+ newly needs the user for, compared with +prev+ (nil for
         # a session not seen yet): a new question first, then a new card,
-        # then a finished turn (notify.js attentionFor's order).
+        # then a finished turn or its new Verify verdict (notify.js's order).
         # @return [Event, nil]
         def for(prev, nxt)
           return nil unless nxt && nxt[:id]
@@ -70,13 +70,19 @@ module Samagotchi
           turn_event(prev, nxt)
         end
 
-        # A top-level turn that ended since +prev+: failed, or done when it
-        # ran long or nobody watched it. A delegated child's turn is
-        # reported by its parent's.
+        # A top-level turn that ended since +prev+: its new Verify verdict,
+        # failed, or done when it ran long or nobody watched it. A delegated
+        # child's turn is reported by its parent's.
         def turn_event(prev, nxt)
           turn = nxt[:last_turn]
           return nil unless turn.is_a?(Hash) && turn["ended_at"]
           return nil if turn["ended_at"] == prev&.dig(:last_turn, "ended_at") || nxt[:parent_id]
+
+          verdict = nxt[:last_verdict]
+          if verdict.is_a?(Hash) && present?(verdict[:check_turn_id]) &&
+             verdict[:check_turn_id] != prev&.dig(:last_verdict, :check_turn_id)
+            return Event.new(reason: "verdict", session_id: nxt[:id], key: key(nxt[:id], verdict[:check_turn_id]), hold: nil)
+          end
 
           reason = case turn["outcome"]
                    when "failed" then "failed"
@@ -133,9 +139,23 @@ module Samagotchi
           name = (summary && [summary[:title], summary[:auto_title], summary[:recap], summary[:first_preview], summary[:last_prompt]]
                              .find { |v| present?(v) }) ||
                  "chi session"
-          body = reason == "done" ? "done in #{seconds(summary&.dig(:last_turn) || {}).round} s" : BODIES.fetch(reason, "")
+          body = case reason
+                 when "done" then "done in #{seconds(summary&.dig(:last_turn) || {}).round} s"
+                 when "verdict" then verdict_text(summary&.dig(:last_verdict) || {})
+                 else BODIES.fetch(reason, "")
+                 end
           [clip(name.to_s.strip, TITLE_MAX), body]
         end
+
+        def verdict_text(verdict)
+          result = verdict[:verdict].to_s
+          icon = { "confirmed" => "✅", "refuted" => "❌", "unclear" => "❓" }.fetch(result, "")
+          by = verdict[:by_name]
+          by = verdict[:by].nil? ? "You" : "A participant" unless present?(by)
+          reason = clip(verdict[:reason].to_s, 120)
+          "#{by}: #{icon} #{result} — #{reason}"
+        end
+        private_class_method :verdict_text
 
         # notify.js Number(turn.seconds): anything that isn't a number is 0.
         def seconds(turn)

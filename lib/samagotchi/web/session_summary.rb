@@ -1,6 +1,8 @@
 # frozen_string_literal: true
 
 require_relative "../session"
+require_relative "../steer"
+require_relative "../participants"
 require_relative "../recap_store"
 require_relative "../archive_store"
 require_relative "../session_metrics"
@@ -109,9 +111,24 @@ module Samagotchi
           pending_question: session.waiting_question(live: !!owner&.worker?),
           pending_card: up ? Bridge::PendingCard.read(session_dir) : nil,
           last_turn: session.last_turn&.to_file,
-          verdicts: Array(session.verdicts)
+          verdicts: Array(session.verdicts),
+          last_verdict: last_verdict(session, session_dir)
         }
       end
+
+      def last_verdict(session, session_dir)
+        raw = Array(session.verdicts).last
+        return unless raw.is_a?(Hash)
+
+        verdict = raw.to_h { |key, value| [key.to_sym, value] }
+        author = verdict[:by]
+        return verdict unless Steer.participant_author?(author)
+
+        participant = Participants.read(session.id, state_dir: File.dirname(session_dir))
+                                  .find { |entry| entry.id == Steer.participant_id(author) }
+        participant ? verdict.merge(by_name: participant.name) : verdict
+      end
+      private_class_method :last_verdict
 
       # The budget resolver SessionMetrics.saved_summary takes: a callable,
       # so the session's llm_context budget (config + the registry's index,

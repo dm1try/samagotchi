@@ -124,6 +124,20 @@ RSpec.describe Samagotchi::Web::SessionSummary do
         .to eq(id: "q3", kind: "approval", relayed_to: "pppppppp")
     end
 
+    it "carries the newest verdict and resolves its participant author for notifications" do
+      s = session
+      FileUtils.mkdir_p(session_dir(s))
+      File.write(File.join(session_dir(s), "participants.json"),
+                 JSON.generate("participants" => [{ "id" => "reviewer", "name" => "Reviewer" }]))
+      s.verdicts = [{ "anchor" => { "turn_id" => "source", "quote" => "claim" }, "verdict" => "refuted",
+                      "reason" => "contradicted", "by" => "p:reviewer", "check_turn_id" => "check-1", "at" => "now" }]
+
+      json = described_class.build(s, owner: nil, session_dir: session_dir(s))
+
+      expect(json[:last_verdict]).to include(verdict: "refuted", reason: "contradicted", by: "p:reviewer",
+                                             by_name: "Reviewer", check_turn_id: "check-1")
+    end
+
     it "has no question without a live owner: one a dead worker saved can't be answered" do
       s = session(status: "running")
       s.pending_question = { id: "q1", question: "Which?" }

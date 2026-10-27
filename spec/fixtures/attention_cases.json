@@ -410,6 +410,47 @@
       "closed": []
     },
     {
+      "name": "a short completed Verify turn notifies with its verdict",
+      "prev": {
+        "id": "s1",
+        "last_turn": {
+          "outcome": "completed",
+          "ended_at": "2026-10-25T09:00:00.000+02:00",
+          "seconds": 12,
+          "origin": "user"
+        },
+        "last_verdict": {
+          "check_turn_id": "check-old",
+          "verdict": "confirmed",
+          "reason": "supported",
+          "by": null,
+          "by_name": null
+        }
+      },
+      "next": {
+        "id": "s1",
+        "last_turn": {
+          "outcome": "completed",
+          "ended_at": "2026-10-25T09:05:12.345+02:00",
+          "seconds": 1,
+          "origin": "user"
+        },
+        "last_verdict": {
+          "check_turn_id": "check-new",
+          "verdict": "refuted",
+          "reason": "contradicted by the source",
+          "by": "p:reviewer",
+          "by_name": "Reviewer"
+        }
+      },
+      "attention": {
+        "reason": "verdict",
+        "key": "s1:check-new",
+        "hold_ms": null
+      },
+      "closed": []
+    },
+    {
       "name": "a done turn of 10 s",
       "prev": {
         "id": "s1",

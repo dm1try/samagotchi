@@ -55,6 +55,14 @@ test("a failed turn, however short; a canceled one never", () => {
   assert.equal(attentionFor(base, { ...base, last_turn: turn("canceled", 60) }), null);
 });
 
+test("a completed Verify turn notifies for its new verdict, even when short", () => {
+  const prev = { ...base, last_turn: turn("completed", 12), last_verdict: { check_turn_id: "check-old" } };
+  const next = { ...base, last_turn: turn("completed", 1, "2026-09-28T10:01:00.000Z"),
+    last_verdict: { check_turn_id: "check-new", verdict: "refuted", reason: "contradicted", by: "p:reviewer", by_name: "Reviewer" } };
+  assert.deepEqual(attentionFor(prev, next), { reason: "verdict", sessionId: "s1", key: "s1:check-new" });
+  assert.equal(attentionFor(next, { ...next, status: "idle" }), null);
+});
+
 test("the same finished turn seen again is nothing", () => {
   const done = { ...base, last_turn: turn("completed", 30) };
   assert.equal(attentionFor(done, { ...done, status: "idle" }), null);
@@ -105,6 +113,10 @@ test("the words: session name and the reason, no question text", () => {
   assert.equal(attentionText(s, { reason: "approval" }).body, "needs approval");
   assert.equal(attentionText(s, { reason: "continue" }).body, "hit its step limit");
   assert.equal(attentionText(s, { reason: "failed" }).body, "turn failed");
+  assert.equal(attentionText({ ...s, last_verdict: { verdict: "refuted", reason: "contradicted by the source", by_name: "Reviewer" } },
+    { reason: "verdict" }).body, "Reviewer: ❌ refuted — contradicted by the source");
+  assert.equal(attentionText({ last_verdict: { verdict: "unclear", reason: "x".repeat(140) } }, { reason: "verdict" }).body,
+    `You: ❓ unclear — ${"x".repeat(119)}…`);
   assert.equal(attentionText({ id: "x" }, { reason: "failed" }).title, "chi session");
   // The auto title after a hand title, before the first message (D10).
   assert.equal(attentionText({ ...s, auto_title: "Build fix" }, { reason: "done" }).title, "Build fix");

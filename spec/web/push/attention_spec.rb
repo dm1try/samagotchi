@@ -89,5 +89,17 @@ RSpec.describe Samagotchi::Web::Push::Attention do
       expect(described_class.text({ title: "t" }, "done")).to eq(["t", "done in 0 s"])
       expect(described_class.text({ title: "t" }, "card")).to eq(["t", "needs you"])
     end
+
+    it "names the verdict author and clips its reason for a push" do
+      verdict = { verdict: "refuted", reason: "contradicted by the source", by: "p:reviewer", by_name: "Reviewer" }
+      expect(described_class.text({ title: "claim", last_verdict: verdict }, "verdict"))
+        .to eq(["claim", "Reviewer: ❌ refuted — contradicted by the source"])
+      expect(described_class.text({ last_verdict: verdict.merge(reason: "x" * 140) }, "verdict").last)
+        .to eq("Reviewer: ❌ refuted — #{"x" * 119}…")
+      expect(described_class.text({ last_verdict: verdict.merge(by_name: nil) }, "verdict").last)
+        .to eq("A participant: ❌ refuted — contradicted by the source")
+      expect(described_class.text({ last_verdict: verdict.merge(by: nil, by_name: nil) }, "verdict").last)
+        .to eq("You: ❌ refuted — contradicted by the source")
+    end
   end
 end

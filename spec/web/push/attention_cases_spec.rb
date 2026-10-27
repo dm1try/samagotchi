@@ -11,12 +11,12 @@ RSpec.describe "Web::Push::Attention on the shared attention cases" do
   attention = Samagotchi::Web::Push::Attention
 
   # The hub's summary as SessionSummary.build makes it: symbol keys at the
-  # top and in pending_question / pending_card, string keys in last_turn.
+  # top and in the notification records, string keys in last_turn.
   summary = lambda do |json|
     next nil if json.nil?
 
     json.to_h do |name, value|
-      value = value.transform_keys(&:to_sym) if %w[pending_question pending_card].include?(name) && value.is_a?(Hash)
+      value = value.transform_keys(&:to_sym) if %w[pending_question pending_card last_verdict].include?(name) && value.is_a?(Hash)
       [name.to_sym, value]
     end
   end
