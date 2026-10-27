@@ -171,7 +171,9 @@ agent logic and can be used without any terminal rendering; the UI is a thin lay
   activity slot gets a second, dim row: the turn's tool tally (`TurnTally`, seeded from the
   snapshot's tool parts on a mid-turn join). Reline still reads the input,
   but `RelineSeam` (prepended to `Reline::LineEditor`) sends its drawing to the
-  `Screen`. Without a capable terminal it falls back to `PlainSurface` (append-only).
+  `Screen`. The saved history and cards in a join or resync are rendered by
+  `TerminalUI::JoinReplay` with the loop's screen, view, link, gap clock and renderer.
+  Without a capable terminal it falls back to `PlainSurface` (append-only).
 
 #### Using the core
 
