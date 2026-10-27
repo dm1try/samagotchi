@@ -31,18 +31,28 @@ module Samagotchi
       attr_reader :dir, :path
 
       # @param dir [String] the guardrails store dir (Guardrails::Approvals.dir_for)
+      # @param file [String] the log file within +dir+
       # @param warn [#call] (reason) — the record for a failed write
-      def initialize(dir:, warn: nil)
+      def initialize(dir:, file: FILE, warn: nil)
         @dir = dir
-        @path = File.join(dir, FILE)
+        @path = File.join(dir, file)
         @warn = warn || ->(reason) { Samagotchi::Log.warn(:guardrails, "system_one_log_failed", echo: "[samagotchi:guardrails] #{reason}") }
+      end
+
+      # Append one generic event, with its kind and timestamp.
+      # @param kind [String, Symbol] the entry's kind
+      # @param fields [Hash] the entry's fields
+      # @return [Boolean] whether the line was written
+      def entry(kind, fields)
+        line = fields.transform_keys(&:to_s).merge("kind" => kind.to_s, "at" => Time.now.utc.iso8601)
+        append(line)
       end
 
       # @param fields [Hash] the judgment's own fields (rule, tool, p, …)
       # @return [String, nil] the judgment's id, nil when nothing was written
       def judgment(fields)
         id = SecureRandom.uuid
-        append({ "kind" => "judgment", "id" => id, "at" => Time.now.utc.iso8601 }.merge(fields)) ? id : nil
+        entry("judgment", { "id" => id }.merge(fields)) ? id : nil
       end
 
       # @param id [String] a judgment's id
@@ -54,9 +64,9 @@ module Samagotchi
       def label(id, answer, question_id: nil)
         return false if id.to_s.strip.empty?
 
-        line = { "kind" => "label", "id" => id.to_s, "at" => Time.now.utc.iso8601, "answer" => answer.to_s }
+        line = { "id" => id.to_s, "answer" => answer.to_s }
         line["question_id"] = question_id.to_s unless question_id.to_s.empty?
-        append(line)
+        entry("label", line)
       end
 
       # The judgments, oldest first, each joined with its LAST label

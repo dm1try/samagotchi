@@ -24,6 +24,15 @@ RSpec.describe Samagotchi::SystemOne::Log do
     expect(JSON.parse(lines.first)["at"]).to match(/\A\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z\z/)
   end
 
+  it "writes generic entries to a caller-named file" do
+    suggestion_log = described_class.new(dir: dir, file: "toolkit_suggestions.jsonl")
+    expect(suggestion_log.entry(:suggestion, "session_id" => "s1", "kit" => "lean")).to be(true)
+    line = JSON.parse(File.read(File.join(dir, "toolkit_suggestions.jsonl")))
+    expect(line).to include("kind" => "suggestion", "session_id" => "s1", "kit" => "lean")
+    expect(line["at"]).to match(/\A\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z\z/)
+    expect(File.exist?(path)).to be(false)
+  end
+
   it "creates the directory beside the approvals store and writes the file 0600" do
     log.judgment(rule: "git-push")
     expect(File.exist?(path)).to be true
