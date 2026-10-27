@@ -42,6 +42,7 @@ require_relative "llm/turn_settings"
 require_relative "session"
 require_relative "toolkit_binding"
 require_relative "participant_mode"
+require_relative "toolkit_suggest"
 require_relative "tool_loads"
 require_relative "answer_tail"
 require_relative "archive_store"
@@ -157,6 +158,7 @@ module Samagotchi
       @no_interrupt = no_interrupt
       @chat_backend = nil
       @chat_backend_mutex = Mutex.new
+      @toolkit_audit_thread = nil
       @host_registry = host_registry || HostRegistry.new
       # A model given here (a worker's session model) is the one it runs,
       # so its host is checked; the config default is only checked once it
@@ -1083,6 +1085,7 @@ module Samagotchi
 
     # How long #shutdown waits for the running anytime commands, in all.
     SHUTDOWN_JOIN_SECONDS = 3.0
+    TOOLKIT_AUDIT_JOIN_SECONDS = 0.25
 
     # The REPL or the session's worker is leaving (/exit, an idle exit, a
     # crash, TERM): stop the idle jobs, give the running anytime commands
@@ -1108,6 +1111,7 @@ module Samagotchi
 
         thread.join([deadline - Process.clock_gettime(Process::CLOCK_MONOTONIC), 0].max)
       end
+      @toolkit_audit_thread&.join(TOOLKIT_AUDIT_JOIN_SECONDS)
       left = threads.count(&:alive?)
       Log.warn(:plugins, "anytime_commands_left", count: left) if left.positive?
       @plugin_tasks.kill_leftovers
@@ -2136,6 +2140,8 @@ module Samagotchi
       emit_event(turn.on_event, turn.tag(turn_started))
       raise image_error if image_error
 
+      start_toolkit_suggestion_audit(turn)
+
       # The window and the profile probes run after run_turn's probe-cancel
       # swap, so a Stop cuts them; a failure ends the turn as turn_failed.
       # The cache itself was dropped at the previous turn's end, so this
@@ -2719,6 +2725,76 @@ module Samagotchi
     # @return [Boolean] whether the declared tools changed
     def apply_toolkit!(session, on_event = nil) = @toolkit_binding.apply!(session, on_event)
     private :apply_toolkit!
+
+    # Start an audit-only classifier after :turn_started. All session and
+    # tool-registry reads happen here; the thread receives only this snapshot.
+    def start_toolkit_suggestion_audit(turn)
+      mode = Config.get("toolkit.suggest.mode").to_s
+      return if mode == "off"
+      return if @toolkit_audit_thread&.alive?
+
+      session = turn.session
+      kits = @toolkit_binding.kits
+      default = Toolkit.of(session.toolkit)
+      candidates = ToolkitSuggest.candidates(kits, default_name: default.name)
+      path = ToolkitSuggest.log_path(session_state_dir)
+      log = SystemOne::Log.new(dir: File.dirname(path), file: File.basename(path),
+                               warn: lambda { |reason|
+                                 Log.warn(:toolkit, "toolkit_suggest_log_failed",
+                                          echo: "[samagotchi:toolkit] #{reason}")
+                               })
+      last = ToolkitSuggest.last_suggestion(log, session.id)
+      return unless ToolkitSuggest.eligible?(
+        session: session, prompt: turn.prompt, author: turn.origin.author,
+        candidate_count: candidates.size, last_suggestion: last,
+        defer_turns: Config.get("toolkit.suggest.defer_turns"),
+        defer_tokens: Config.get("toolkit.suggest.defer_tokens")
+      )
+
+      client = SystemOne::Client.from_config(host_registry: @host_registry, mode: "on", tag: :toolkit)
+      return unless client
+
+      model_host, = @host_registry.host_for_model(effective_model_name)
+      if model_host && client.host == model_host.name && !model_host.remote?
+        Log.info(:toolkit, "toolkit_suggest_shared_host_skipped", session_id: session.id, host: client.host)
+        return
+      end
+
+      snapshots = candidates.map do |kit|
+        resolved = Toolkit.resolve_kit(kit.name, kits)
+        filter = resolved.everything? ? nil : resolved
+        declared = @tools.entries(toolkit: filter)
+        ToolkitSuggest::Candidate.new(name: kit.name.dup.freeze, description: kit.description.dup.freeze,
+                                      tools: declared.map { |entry| entry.name.dup.freeze }.freeze,
+                                      groups: (resolved.groups == :all ? "all" : resolved.groups.map(&:dup).freeze))
+      end.freeze
+      default_resolved = default.resolve(kits)
+      default_tools = @tools.entries(toolkit: default_resolved.everything? ? nil : default_resolved)
+      default_snapshot = {
+        name: default.name.dup.freeze,
+        tools: default_tools.map { |entry| entry.name.dup.freeze }.freeze,
+        groups: default_resolved.groups == :all ? "all" : default_resolved.groups.map(&:dup).freeze
+      }.freeze
+      state = ToolkitSuggest.question(
+        default: default, kits: kits, project: File.basename(session.project_root.to_s),
+        prompt: turn.prompt
+      ).last
+      snapshot = ToolkitSuggest::Snapshot.new(
+        session_id: session.id.dup.freeze, turn_number: ToolkitSuggest.turn_number(session.messages),
+        default: default_snapshot, candidates: snapshots,
+        state: { project: state[:project].dup.freeze, prompt: state[:prompt].dup.freeze }.freeze
+      )
+      threshold = Config.get("toolkit.suggest.threshold")
+      @toolkit_audit_thread = Thread.new do
+        ToolkitSuggest.ask(client: client, log: log, snapshot: snapshot, threshold: threshold)
+      rescue StandardError => e
+        ToolkitSuggest.warn(e)
+      end
+    rescue StandardError => e
+      ToolkitSuggest.warn(e)
+      nil
+    end
+    private :start_toolkit_suggestion_audit
 
     # The session's toolkit (see #initialize for when).
     def build_toolkit_binding
