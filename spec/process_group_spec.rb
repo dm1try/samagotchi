@@ -41,7 +41,10 @@ RSpec.describe Samagotchi::ProcessGroup do
       pid = spawn_group("sleep 5")
       expect(described_class.stopped?(pid)).to be(false)
       Process.kill("STOP", pid)
-      wait_for("the group stopped") { described_class.stopped?(pid) }
+      # ps's own line, so a timeout says whether the sleep was killed (Z, or
+      # gone) or never stopped (S) — a flake seen once on CI macOS.
+      ps = -> { IO.popen(["ps", "-o", "state=,pgid=,comm=", "-p", pid.to_s], err: File::NULL, &:read) }
+      wait_for("the group stopped", seen: ps) { described_class.stopped?(pid) }
       Process.kill("CONT", pid)
       wait_for("the group continued") { !described_class.stopped?(pid) }
       reap(pid)
