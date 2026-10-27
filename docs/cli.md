@@ -1423,17 +1423,22 @@ chi share revoke --all          # every link to every session
   share cap` raises it. `/stats` shows each participant's spend. Their turns go only to a worker with the review
   boundary: restart an older one. While your turn waits at the step limit (Continue or Stop), their turns wait too
   (still queued, still counted): they run, in order, once you continue, stop or send a turn of your own.
-- **Pair turns: sharing a working session.** The read-only review turn is a review session's (`chi review`). Share a
-  working session instead and a participant's turn **acts** in it with its tools, writes included, under your
+- **Pair turns: sharing a working session.** The read-only review turn is a review session's (`chi review`). Invite
+  someone to a working session instead and their turns **act** in it with its tools, writes included, under your
   guardrails: what your rules allow runs, what they ask about comes to you as "Sam's turn asks: approve tool call?"
   with **Allow once** only (nothing session-wide or repo-wide is approved from their calls), and System 1 never
-  answers for you. It can't read secrets or chi's own files (anywhere, by `read` or in a command), delegate, set
-  reminders, send notes, start background tasks, forget outputs or write system memories, and it asks its questions
-  in its reply, not on a card. A pair turn stops mid-turn once their cap is passed. `chi share` and the panel's
-  Invite warn you with what it may do and how many tool outputs the history holds; while the session's worker
-  predates pair turns, their turns still only read (the warning says so) until you restart it. Their messages carry
-  a `pair` badge and no Apply (they acted already). A link without `--identity` gets the same access: share it only
-  with people you'd let type in your session.
+  answers for you. A write outside the project always asks you, whatever you approved before. It can't read or
+  write secrets or chi's own files (keys, shell startup files, histories, credential files; by a file tool, a
+  command, a glob or a variable), run chi, leave a command running in the background, read the environment or the
+  keychain, sweep your home with find/tar/cp/grep, delegate, set or cancel reminders, send notes, start or stop
+  background tasks, load tools, forget outputs or write memories, and it asks its questions in its reply, not on a
+  card. A pair turn stops mid-turn once their cap is passed or their link ends. `chi share` and the panel's Invite
+  warn you with what their turns may do and how many tool outputs the history holds, and only a link issued with
+  that warning acts: links from before, or issued while the session's worker predated pair turns (the warning says
+  so), stay read-only until you restart the worker and invite them again. Their messages carry a `pair` badge and no
+  Apply (they acted already). This is an accident guard for a trusted team, not containment: a pair turn can still
+  send what it reads out through `web_fetch` or your MCP tools. A link without `--identity` gets the same access:
+  share it only with people you'd let type in your session.
 - **The participant page.** Their link opens a page of its own (never yours): the session's title and status, who
   else takes part, and the conversation as a participant sees it: every prompt and reply with who wrote it, each
   step's tools as one line (`read docs/plan.md`: the tool and a project file's path, never arguments or output), and

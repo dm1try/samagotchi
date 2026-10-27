@@ -364,38 +364,73 @@ call is checked on the call it leaves.
 
 ## A participant's pair boundary
 
-A participant's turn in a **working session** (no `review:` key:
-`ParticipantMode.of` is `:pair`, on a worker that names the `pair_turns`
-feature; an older worker still runs it inside the review boundary) acts with
-the session's tools under the owner's guardrails, as the owner's own turns do:
-the rules, the protected paths and every approval the owner already granted
-apply, and an ask goes to the owner. `Guardrails::PairBoundary` (rule
-`pair-boundary`, source `core`) sits in the review boundary's seat in
-`GuardrailWiring#checks`, in every mode (also with `guardrails.enabled:
-false`), and **denies, never asks**:
+A participant's turn in a **working session** acts with the session's tools
+under the owner's guardrails, as the owner's own turns do: the rules, the
+protected paths and every approval the owner already granted apply, and an ask
+goes to the owner. It is a pair turn only when all three hold
+(`ParticipantMode.for_turn`, decided once at the turn's start:
+`GuardrailWiring#turn_mode`): the session has no `review:` key, its worker
+names the `pair_turns` feature, and the participant's grant was issued with
+`mode: pair`, which chi share and the web's Invite stamp only when the warning
+they showed said their turns act. A grant from before, or one issued while an
+older worker held the session, keeps review turns until it is invited again.
 
-- secrets: the review boundary's read denylist (chi's state and config dirs,
-  `grants.json` and the web token among them, `~/.ssh`, `~/.gnupg`, `~/.aws`,
-  the project's secret files, any config under `.git`) on a `read`'s path and
-  on the paths a command names (`execute`, and any call whose targets carry a
-  command), each word resolved as `touches: chi_dirs` resolves it
-  (`ShellPaths#any_path?`), with a text match for a word it can't resolve or a
-  command with `$(…)`. A pair turn reads anywhere else, outside the project too;
+`Guardrails::PairBoundary` (rule `pair-boundary`, source `core`) sits in the
+review boundary's seat in `GuardrailWiring#checks`, in every mode (also with
+`guardrails.enabled: false`), and **denies, never asks**, each with its own
+message:
+
+- secrets, read or written: the review boundary's denylist (chi's state and
+  config dirs, so `grants.json`, the web token and every `participants.json`;
+  `~/.ssh`, `~/.gnupg`, `~/.aws`, `~/.config/gh`; the home's shell startup
+  files, histories, `.gitconfig`, `.netrc`, `.npmrc`, `.pypirc`, `.claude.json`;
+  the project's secret files, any config under `.git`) on every file tool's
+  path (`read`, `write`, `edit`, a plugin's `targets:` paths) and on the paths
+  a command names (`execute`, and any call whose targets carry a command),
+  each word resolved as `touches: chi_dirs` resolves it; a glob that matches a
+  secret or whose fixed part leads into a denied folder (`~/.ss?/id_*`,
+  `~/.config/*/config.yml`, `.en?`), a `$var` word whose fixed part does
+  (`~/.ss${d}h`), and a text match for the rest;
+- sweeping a folder that holds secrets: `find`, `tar`, `cp`, `rsync`, `scp`,
+  `zip`, `grep`/`rg`/`ag` and the like given home or any folder above a denied
+  one;
+- the environment and the keychain: `env` or `printenv` alone, `security`,
+  `/proc/*/environ`;
+- running chi, by any wrapper (`bin/chi`, `bundle exec chi`, `ruby … bin/chi`,
+  `env … chi`, `sh -c 'chi …'`, `$(chi …)`), but `chi --version` and
+  `chi --help`: its commands act in the owner's name (shares, caps, sends,
+  answers, sessions);
+- leaving something running: `&` at a command's end, `nohup`, `setsid`,
+  `disown`, `screen -d…`, `tmux new -d`;
 - owner-voiced tools, which act in the owner's name beyond the turn:
-  `delegate`, `register_reminder`, `send_note`, `forget_outputs`,
-  `task_create`, and a `memory_write` whose scope isn't `project`;
+  `delegate` and any `delegate_*` tool, `register_reminder`,
+  `cancel_reminder`, `send_note`, `forget_outputs`, `task_create`,
+  `task_stop`, `find_tools` (it loads tools into the session), and
+  `memory_write` (a memory reaches the owner's later sessions);
 - `ask_user_question`, with the advice to ask in the reply: nobody on the
   participant's side answers a card.
 
+And it **asks the owner** before a `write` or `edit` outside the session's
+project root, every time: the ask is fresh (`Verdict#fresh_ask`: no stored
+approval answers it, and no rule lowers it), so it comes even in auto mode.
+
 A participant's ask names them on the owner's card ("Sam's turn asks: approve
-tool call?", `approval.author`/`author_name`, an "asked by" line in the plain
-question) and offers **Allow once** only: no session, repo or rule approval is
-made from a participant's call. System 1 never judges it. A pair turn stops
-before its next generation once the participant passed their spending cap
-([participants](internals/participants.md#limits-and-the-cap)). The
-trust model is a team's (everyone invited is trusted): the boundary is an
-accident guard for secrets and the owner's voice, not containment of a
-hostile participant; a review session is.
+tool call?", `approval.author`/`author_name`, `approval.asked_by`, the same
+line in the plain question: `Approval::ASKED_BY`) and offers **Allow once**
+only: no session, repo or rule approval is made from a participant's call.
+System 1 never judges it, and `chi guardrails replay` skips it. A pair turn
+stops before its next generation once the participant passed their spending
+cap or their link was revoked or expired
+([participants](internals/participants.md#limits-and-the-cap)).
+
+The trust model is a team's (everyone invited is trusted): the boundary is an
+**accident guard** for secrets and the owner's voice, not containment of a
+hostile participant; a review session is. A pair turn can still reach, through
+the owner's rules: `web_fetch` (an open egress path: what the turn can read it
+can send out in a URL), plugin and MCP tools, `memory_read` and `context_read`,
+`list_sessions` (the owner's other sessions' titles), and anything a script
+does that the command checks don't read (a script file's body, an interpreter's
+`-e` code). Share a working session only with people you would let type in it.
 
 ## Rules in config.yml
 

@@ -169,22 +169,33 @@ Everything else is `:owner`: `/answer`, `/command`, `/images` (an image a prompt
 
 ## Turns
 
-`ParticipantMode.of(session)` is the single resolver for a participant turn's rules:
+`ParticipantMode` is the single resolver for a participant turn's rules:
 
-- **`:review`**, a review session (its `review:` key; `chi review`): the turn only reads
-  (`Guardrails::ReviewBoundary`), and proposes what the owner applies ([Apply](#apply)).
-- **`:pair`**, a working session: the turn acts with the session's tools under the owner's guardrails, its asks go
-  to the owner and offer once only, and `Guardrails::PairBoundary` denies secrets, owner-voiced tools and the
-  model's own question ([guardrails](../guardrails.md#a-participants-pair-boundary)). No Apply: it acted itself.
+- **`:review`**, a review session (its `review:` key; `chi review`), and any participant whose grant wasn't issued
+  to act: the turn only reads (`Guardrails::ReviewBoundary`), and proposes what the owner applies ([Apply](#apply)).
+- **`:pair`**, a working session's participant invited to act: the turn acts with the session's tools under the
+  owner's guardrails, its asks go to the owner and offer once only, and `Guardrails::PairBoundary` denies secrets,
+  chi itself, background jobs, the environment, owner-voiced tools and the model's own question, and asks before a
+  write outside the project ([guardrails](../guardrails.md#a-participants-pair-boundary)). No Apply: it acted itself.
 
-No session is `:review`. A worker names `pair_turns` (`Delivery::PAIR_FEATURE`) when it runs pair turns; one
-without it runs every participant turn as a review turn, so chi web and chi share ask `ParticipantMode.live`, which
-reads the session's live worker's features (no live worker: this chi's, the one a delivery starts), for the share
-warning (`ReviewStart.share_warning`: a working session's says their turns act, writes included, asks to you; while
-an older worker holds it, that they only read until you restart it) and the page's `viewer.mode`. The worker
-itself decides by `of`: the stamp on the opening message (`participant_mode`), the boundary in `GuardrailWiring#checks`,
-`ToolRunner#unreached_group_refusal` (a review turn's boundary words the refusal; a pair turn gets the owner's), the
-system prompt's participants line, the mid-turn cap and the cap notice's words.
+`ParticipantMode.of(session, features:)` is the session's: what a participant invited now gets. No session is
+`:review`. A worker names `pair_turns` (`Delivery::PAIR_FEATURE`) when it runs pair turns; one without it runs
+every participant turn as a review turn, so chi web and chi share ask `ParticipantMode.live`, which reads the
+session's live worker's features (no live worker: this chi's, the one a delivery starts). `ReviewStart.share_terms`
+reads it once for an invite: the warning (a working session's says their turns act, writes included, asks to you;
+while an older worker holds it, that a participant invited now only reads, and to invite again after a restart),
+the list's `mode` (the panel's words) and the grant's stamp: `Grant#mode` / the `participants.json` entry's
+`mode` is `"pair"` only when the warning said their turns act. A grant without it (every grant from before pair
+turns) stays review until the owner invites them again.
+
+A turn's mode is `ParticipantMode.for_turn(session, entry)`: `:pair` only for a stamped entry in a pair session.
+The worker decides it once at the turn's start (`GuardrailWiring#begin_turn` → `#turn_mode`, from the entry
+`SessionParticipants#entry_for` reads), and everything in the turn reads that: the stamp on the opening message
+(`participant_mode`), the boundary in `GuardrailWiring#checks`, `ToolRunner#unreached_group_refusal` (through
+`KernelLoop#participant_mode`: a review turn's boundary words the refusal; a pair turn gets the owner's), the
+mid-turn stop and the cap notice's words. The system prompt's line is the pair one once an active participant is
+stamped pair (`SessionParticipants#prompt_mode`); the participant page's `viewer.mode` is their own grant's
+(`ParticipantMode.live_for`).
 
 A participant's `POST /api/sessions/:id/turn` (`ParticipantAccess#handle_participant_turn`) takes only the body's
 `prompt`. Three layers keep it a participant's own turn, inside its mode's boundary.
@@ -277,9 +288,12 @@ and `ctx.turn_author` names it ([hooks](../hooks.md#participants-turns)).
   session's: "Alex reached their $2.00 cap: their turns stop and are refused until you raise it (…)"). A review
   turn's spend counts from its end, so a review turn can finish past the cap. A pair turn stops mid-turn: before each
   generation (`KernelLoop#generation_guard`, both loops) `Engine#guard_participant_spend` asks the worker's check
-  (`Worker#participant_cap_stop`: `metrics.spend(author)` counts the running turn's finished generations) and, past
+  (`Worker#participant_turn_stop`: `metrics.spend(author)` counts the running turn's finished generations) and, past
   the cap, stops the turn on the plugins' stop path (`HookRoutes#stop_turn`: "stopped the turn: Alex reached their
-  $2.00 cap"), with the owner's notice once per cap. The session-wide `cost-cap` bundle still applies, and its
+  $2.00 cap"), with the owner's notice once per cap. A generation's cost is known only when it ends, so a pair turn
+  can overshoot the cap by its last generation (and the side requests it caused); there is no projection of the
+  next one. The same check stops a pair turn whose link ended mid-turn (revoked, expired, the session archived):
+  "stopped the turn: Alex's link was revoked or expired" (`Worker::REVOKED_STOP`). The session-wide `cost-cap` bundle still applies, and its
   question in a participant's turn goes to the owner.
 
 **Streams.** A participant's stream is filtered ([below](#what-a-participant-sees)), and it ends with their link:

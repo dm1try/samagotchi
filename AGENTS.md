@@ -49,8 +49,9 @@ In REPL mode `TerminalUI#run` is the single dispatch for the REPL, `-p`/`--promp
   `:participant` routes through chi web. Their `POST …/turn` is a queued turn of their own (no `!`/`/` lines, a turn
   limit, spend by author) whose rules `ParticipantMode.of` decides: in a review session a read-only review turn
   (`Guardrails::ReviewBoundary`, the reserved `review` kit); in a working session a pair turn under the owner's
-  guardrails (`Guardrails::PairBoundary`: no secrets, no owner-voiced tools; asks to the owner, once only; a mid-turn
-  cap stop; a worker without `pair_turns` stays review). Code and docs say "participants" / "review" / "pair", never
+  guardrails (`Guardrails::PairBoundary`: no secrets, no chi, no background jobs, no owner-voiced tools; asks to the
+  owner, once only, a write outside the project always asks; a mid-turn cap or revoke stop), only for a grant stamped
+  `mode: pair` at invite (`ReviewStart.share_terms`; a worker without `pair_turns` and older grants stay review). Code and docs say "participants" / "review" / "pair", never
   "shared". See docs/internals/participants.md.
 - `chi review FILE… [--dir D] [--model M]` / `chi review --from ID [FILE…]` (local or `--remote`): a review session
   (`review: {subjects, from}`, `ReviewStart`) to share: its subjects are project files checked by
