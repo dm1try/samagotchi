@@ -2,14 +2,13 @@
 
 module Samagotchi
   module Web
-    # Who a chi web request is (App#principal_for). Today there is one
-    # kind: the owner, a peer on this machine or a request with the
-    # Web::Token access token. The routes' permission column
+    # Who a chi web request is (App#principal_for): the owner or a
+    # participant admitted by a grant. The routes' permission column
     # (App::ROUTES, :owner or :participant) is checked against it, and a
     # turn's author comes from it, never from the request body. See
     # docs/internals/remote-sessions.md (Trust model).
     #
-    # +kind+ :owner; +grant+ what a non-owner principal was admitted by
+    # +kind+ :owner or :participant; +grant+ what admitted a participant
     # (nil for the owner).
     Principal = Data.define(:kind, :grant) do
       def owner? = kind == :owner

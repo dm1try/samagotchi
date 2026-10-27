@@ -816,8 +816,8 @@ module Samagotchi
     # What a parent's relay may say about this session's approval
     # (BridgeClient#relay): opened and closed only change how the question
     # shows (QuestionDesk#annotate); answered makes this worker ask the
-    # parent for the answer (RelayVerifier). No auth: a poke at opened or
-    # closed can at most show a wrong banner.
+    # parent for the answer (RelayVerifier). Like every Bridge route, this
+    # request requires the Bridge's secret.
     RELAY_ACTIONS = %w[opened closed answered].freeze
     # Why a relay closed, as a parent says it; anything else is "closed".
     RELAY_CLOSE_REASONS = %w[stopped closed child_gone answered_on_child].freeze
@@ -1446,7 +1446,8 @@ module Samagotchi
 
     # POST /session/:id/relay/status {relay_id}: what this (the parent's)
     # worker's relay holds, for the child that verifies an answer
-    # (RelayVerifier). Read-only and no secret; 404 for an unknown id.
+    # (RelayVerifier). Read-only; like every Bridge route, it requires the
+    # Bridge's secret. 404 for an unknown id.
     def handle_relay_status(_session_id, body)
       parsed = parse_json(body)
       return [{ "Allow" => "POST" }, 400, { error: "invalid_json" }] unless parsed.is_a?(Hash)

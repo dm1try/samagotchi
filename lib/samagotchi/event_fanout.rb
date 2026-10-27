@@ -56,7 +56,6 @@ module Samagotchi
       @announce_or_hold = announce_or_hold
       @working_set_emitted = nil
     end
-    # rubocop:enable Metrics/ParameterLists
 
     # Always return a handler so raw kernel loop events reach the persistent
     # SessionObserver (and thus the analytics collector) even when there is no
