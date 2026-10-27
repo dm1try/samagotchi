@@ -7,6 +7,14 @@ and commands may change between minor versions. How releases are made:
 [docs/releasing.md](docs/releasing.md).
 ## [Unreleased]
 
+### Added
+
+- chi web links to a claim: selecting text in a turn shows **Copy link**, a link for a participant's browser that
+  opens their page on that turn, scrolled to the quote and highlighted (no token: it opens where their review link
+  was opened, one link per browser); with no one invited, a link on your own page, which takes the same anchor.
+- A built-in **Verify** annotate preset on both pages, after `web.annotate_presets`: it quotes the selection and asks
+  to verify the claim against the code, ending on `Verdict: confirmed|refuted|unclear — <reason>`.
+
 ### Fixed
 
 - `chi sessions stop` (and the web's stop, delete and archive, which stop the same way) stops a stopped (SIGSTOPped,

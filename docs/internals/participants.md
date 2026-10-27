@@ -389,6 +389,26 @@ fields: a field added to an event later reaches nobody until it is named there.
   header, the Plan's truncation note. No plugin pills (a review turn refuses `/` lines), and none of it in the owner's
   participant view (no presets in its shell) or while `can_comment` is false. On a touch screen the bar docks above the
   composer. A re-read keeps unchanged thread nodes and the Plan's (redrawn only on change), so a selection survives it.
+  After the presets comes the built-in **Verify** (`verify_preset.js`, on the owner's page too): the quote, then
+  "Verify this claim against the code. If this session's context doesn't settle it, say so. End with a line
+  `Verdict: confirmed|refuted|unclear — <one-line reason>`." It fills the box like any preset and never sends.
+- **Deep links to a claim** (`claim_link.js`). The owner selects text in a turn's answer, step or own message and
+  Annotate's **Copy link** copies `<base>/#s=<id>&t=<turn8>&q=<quote>&p=<prefix>`: `base` the participants list's
+  `link_base` (`ParticipantsAdmin#participant_base`: `web.public_url`'s origin, else the LAN address, else the Host),
+  `t` the turn's id (its first 8 characters, the opening message's `data-turn-id`), `q` the selection's rendered
+  text (whitespace collapsed, at most 200 characters) and `p` up to 32 characters before it in the same bubble, both
+  URL-encoded by `URLSearchParams`. The owner's text is read as the participant page shows it: the session's folder
+  relative and the home folder `~` (the page's `data-home`). With no one active in the session, Copy link gives the
+  owner's own form, `#/s/<id>?t=…&q=…&p=…`; the owner's page also opens the participant form. Opening one: the turn's
+  bubbles (`.p-msg > .p-bubble`; the owner's answers, own messages and steps) are searched for the prefix and quote,
+  then the quote alone; the match's bubble is ringed (`.claim-hit`), a closed `<details>` around it opened, and the
+  quote highlighted (the CSS Highlight API, `::highlight(chi-claim)`, where the browser has it). A quote not found
+  (a redacted secret in it, text that reads differently) rings the turn's opening; a turn not found (another
+  session's, one from before a continue) leaves the page at the top and says so. The link holds no token, so it opens
+  only in a browser that already redeemed a grant for that session. Its limits: **one grant per browser** (the grant
+  cookie is one name: a second participant link redeemed there replaces the first), and **the owner opening a
+  participant's invite link** in their own browser swaps their owner cookie for that grant (the page asks first). A
+  continue archives the session and revokes its grants: re-share, and links to the old session stay on it.
 - **The comment box** is the owner's composer (`composer_mount.js`, styled by the shared `composer.css`), mounted by
   `participant.js` with a subset on. It has: the height that grows with the text, the grip (drag to resize,
   double-click resets, click or drag down folds it; folded, the grip is the handle on the dock's edge and typing on the
@@ -468,7 +488,7 @@ gate and routes) answers these.
 
 | Route | Body / params | Answer | Refusals |
 |---|---|---|---|
-| `GET /api/sessions/:id/participants` | | 200 `{participants: [grant], warning, identity_header}`, every state; `warning`: the share warning for a session that isn't a review session (`ReviewStart.share_warning`, null for one), shown before the panel's Invite with Start a review of it; `identity_header`: the header this chi web's proxy names the user in (null without one), the Invite's email field | |
+| `GET /api/sessions/:id/participants` | | 200 `{participants: [grant], warning, identity_header, link_base}`, every state; `warning`: the share warning for a session that isn't a review session (`ReviewStart.share_warning`, null for one), shown before the panel's Invite with Start a review of it; `identity_header`: the header this chi web's proxy names the user in (null without one), the Invite's email field; `link_base`: where a participant's link opens, no token (a claim link's base) | |
 | `GET /api/participants` | | 200 `{participants: [grant]}`, every session's | |
 | `POST /api/sessions/:id/participants` | `name`, `kind` (`human`/`agent`), `ttl` (seconds), `cap`, `identity` (an email: a bound grant) | 201 `{participant: grant, token, link, lan, qr_svg, warning}`: the token and the link once; `warning` for a session that isn't a review session (`ReviewStart.share_warning`, null for one); `link` names this chi web's LAN address (`http://IP:PORT/?token=…#s=<id>`), `lan` false when it has none | 400 `invalid_participant` (name, kind, ttl, an identity that isn't one address or with no proxy to check it, an archived session); 404 |
 | `GET /api/sessions/:id/apply[?turn=T]` | `turn`: a turn id or a prefix (none: the latest review turn with a reply) | 200 `{text, turn_id, author, author_name}`: the Apply turn for the composer, never sent | 404 `not_found` (no such turn, no review turn), 400 `not_review_turn` (an owner's turn), 409 `no_reply` |

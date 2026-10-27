@@ -1207,6 +1207,16 @@ their comment box, labelled `From docs/plan.md:` or `From Sam's comment:`,
 with the same presets. Not in the owner's participant view, and no plugin
 pills there (a review turn refuses `/` lines).
 
+After the presets, both pages have a built-in **Verify**: the quote, then
+an ask to check the claim against the code and end on a line `Verdict:
+confirmed|refuted|unclear — <reason>`. On your page a selection in a turn
+also offers **Copy link**: a link to that turn and quote for a participant's
+browser (the one their review link was opened in), which opens their page
+scrolled to the quote and highlights it; with no one invited, a link to it
+on your own page. One browser holds one participant link at a time, and
+opening a participant's invite link yourself swaps your own sign-in for it
+(see [participants.md](internals/participants.md#what-a-participant-sees)).
+
 The list is `web.annotate_presets`, `|`-separated (at most five; a preset
 can't contain `|`; a YAML list works too):
 
