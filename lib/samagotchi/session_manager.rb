@@ -164,6 +164,8 @@ module Samagotchi
     #   turn sees it
     # @param review [SessionReview, nil] a review session's (ReviewStart; a
     #   continue keeps its previous link's)
+    # @param verify_fresh [VerifyFreshOrigin, nil] a Verify fresh child's
+    #   requester, rules and claim (VerifyFresh.start)
     # @param before_spawn [#call, nil] (session) runs once the session and
     #   its note are saved, before its worker spawns
     # @return [Session] with #seed_images_dropped: refs whose file was gone,
@@ -171,7 +173,7 @@ module Samagotchi
     def self.spawn_session(prompt:, mode: "assist", working_directory: nil, model_name: nil, state_dir: nil,
                            memories: [], muted_memories: [], parent_id: nil, messages: [], images_from: nil,
                            preview: nil, title: nil, delegate: false, setup: SessionSetup.new, continues: nil, note: nil,
-                           note_source: "chi", before_spawn: nil, review: nil)
+                           note_source: "chi", before_spawn: nil, review: nil, verify_fresh: nil)
       sd = state_dir || Session.default_state_dir
       # The resolved ref is stored (a resumed session keeps its model when an
       # alias is retargeted), with the name as typed beside it. A wrong host
@@ -198,6 +200,8 @@ module Samagotchi
       )
       session.toolkit = Toolkit.configured(delegate: delegate) if session.toolkit.nil?
       session.toolkit_origin = setup.toolkit_origin || "default"
+      # Saved before the worker starts: its first turn is already the requester's.
+      session.verify_fresh = verify_fresh
       session.model_warning = model_warning
       # With no prompt there is no first turn to run (an attaching UI sends
       # the prompts), so the session starts idle.

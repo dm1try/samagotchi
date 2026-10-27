@@ -3,6 +3,7 @@
 require_relative "../session"
 require_relative "../steer"
 require_relative "../participants"
+require_relative "../verify_fresh"
 require_relative "../recap_store"
 require_relative "../archive_store"
 require_relative "../session_metrics"
@@ -112,6 +113,10 @@ module Samagotchi
           pending_card: up ? Bridge::PendingCard.read(session_dir) : nil,
           last_turn: session.last_turn&.to_file,
           verdicts: Array(session.verdicts),
+          # The Verify fresh checks running now ({of, child_id}: the card's
+          # "verifying fresh" and its link).
+          verify_fresh: VerifyFresh.running(session.id, state_dir: File.dirname(session_dir))
+                                   .map { |row| { of: row[:of], child_id: row[:child_id] } },
           last_verdict: last_verdict(session, session_dir)
         }
       end

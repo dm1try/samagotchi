@@ -109,8 +109,17 @@ module Samagotchi
       @git = Guardrails::GitInfo.new
       author = turn_author
       @turn_entry = author && @participant.call(author)
-      @turn_mode = author && ParticipantMode.for_turn(@session_lookup.call, @turn_entry)
+      @turn_mode = author && participant_turn_mode(@session_lookup.call, @turn_entry)
     end
+
+    # A participant's turn's mode: in a Verify fresh child the one saved
+    # on it at spawn (VerifyFreshOrigin#turn_mode: :review unless saved
+    # :pair), never looked up again; elsewhere ParticipantMode.for_turn.
+    def participant_turn_mode(session, entry)
+      fresh = session.respond_to?(:verify_fresh) && session.verify_fresh
+      fresh ? fresh.turn_mode : ParticipantMode.for_turn(session, entry)
+    end
+    private :participant_turn_mode
 
     # The running participant turn's mode (ParticipantMode.for_turn: :pair
     # only in a working session for a participant invited to act), decided

@@ -2165,6 +2165,9 @@ module Samagotchi
     # is set here and cleared in #release_turn only.
     def begin_turn(session, prompt, on_event:, cancel_controller:, origin:, continue:, id: nil, verify: nil)
       origin = TurnOrigin.of(origin)
+      # A participant's Verify fresh child: every turn is theirs (their
+      # author, boundary and cap), whoever started it.
+      origin = session.verify_fresh.origin_for(origin) if session.respond_to?(:verify_fresh) && session.verify_fresh
       # Track the active session for recap and status snapshot.
       @session = session
       # status is turn state: running now, idle again before the turn's end

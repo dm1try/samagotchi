@@ -33,6 +33,7 @@ require_relative "session_setting"
 require_relative "queued_command"
 require_relative "model_profile"
 require_relative "child_reports"
+require_relative "verify_fresh"
 require_relative "child_move"
 require_relative "context_absorber"
 require_relative "context_poller"
@@ -659,9 +660,13 @@ module Samagotchi
     # The first prompt (spawn_session's): a delegate child's task, which is
     # its parent's although no client sent it. Its turn carries the id
     # spawn_session gave it, so a wait for it (--new --wait) names it.
+    # A Verify fresh child's is a Verify turn on its claim (its verdict is
+    # recorded and forwarded to the parent).
     def run_initial_prompt(prompt)
       @initial_turn = true
-      run_prompt(WorkerInbound::Prompt.new(text: prompt, origin: TurnOrigin.new(enqueued_id: @session.first_turn_id)))
+      fresh = @session.verify_fresh
+      run_prompt(WorkerInbound::Prompt.new(text: prompt, origin: TurnOrigin.new(enqueued_id: @session.first_turn_id),
+                                           verify: fresh&.anchor))
     ensure
       @initial_turn = false
     end
@@ -672,7 +677,7 @@ module Samagotchi
 
     # @param prompt [WorkerInbound::Prompt]
     def run_prompt(prompt)
-      origin = prompt.origin
+      origin = fresh_origin(prompt.origin)
       # A participant's turn queued before their link ended or their cap was
       # reached doesn't start (chi web refuses new ones; this is the
       # worker's check).
@@ -699,6 +704,13 @@ module Samagotchi
       participant_refusal(origin.author)
     end
 
+    # +origin+ as this session's turns run it: a participant's Verify fresh
+    # child's are all theirs (VerifyFreshOrigin#origin_for).
+    def fresh_origin(origin)
+      fresh = @session&.verify_fresh
+      fresh ? fresh.origin_for(origin) : TurnOrigin.of(origin)
+    end
+
     # Why the participant +author+ ("p:<id>") may run no more turns, nil
     # while they may (and for the owner): "revoked" when participants.json
     # has no active entry for them (revoked, expired, never invited),
@@ -708,11 +720,11 @@ module Samagotchi
     def participant_refusal(author)
       author = Steer.sender_author(author) or return nil
 
-      entry = Participants.read(@session_id, state_dir: @state_dir).find { |e| Steer.author_for(e.id) == author }
+      entry = participant_entry(author)
       return "revoked" unless entry&.active?(Time.now)
 
       cap = participant_cap(entry)
-      return nil if @engine.metrics.spend(author) < cap
+      return nil if participant_spend(author) < cap
 
       cap_notice(author, entry, cap)
       "cap_reached"
@@ -725,11 +737,28 @@ module Samagotchi
     def participant_turn_stop(author)
       reason = participant_refusal(author) or return nil
 
-      entry = Participants.read(@session_id, state_dir: @state_dir).find { |e| Steer.author_for(e.id) == author }
+      entry = participant_entry(author)
       name = participant_label(author, entry&.name)
       return format(REVOKED_STOP, name: name) if reason == "revoked"
 
       format(CAP_STOP, name: name, cap: participant_cap(entry))
+    end
+
+    # +author+'s participants.json entry: this session's, a Verify fresh
+    # child's parent's (Session#participants_source_id); nil for none.
+    def participant_entry(author)
+      Participants.read(participants_id, state_dir: @state_dir).find { |e| Steer.author_for(e.id) == author }
+    end
+
+    # The session whose participants.json and audit trail this session's
+    # participants are in.
+    def participants_id = @session&.participants_source_id || @session_id
+
+    # What +author+ spent against their cap: this session's metrics (live)
+    # and, through Verify fresh, the parent's or the children's saved ones
+    # (VerifyFresh.related_spend).
+    def participant_spend(author)
+      @engine.metrics.spend(author) + VerifyFresh.related_spend(@session, author, state_dir: @state_dir)
     end
 
     # A participant's cap in dollars: their own, else the config's.
@@ -753,7 +782,7 @@ module Samagotchi
       id = Steer.participant_id(author)
       text = ParticipantMode.for_turn(@session, entry) == ParticipantMode::PAIR ? PAIR_CAP_NOTICE : CAP_NOTICE
       @engine.announce(type: :hook_notice, hook: Engine::PARTICIPANTS_HOOK, level: :warn, between_turns: true,
-                       text: format(text, name: participant_label(author, entry.name), cap: cap, session: @session_id[0, 8], id: id))
+                       text: format(text, name: participant_label(author, entry.name), cap: cap, session: participants_id[0, 8], id: id))
     end
 
     CAP_NOTICE = "%<name>s reached their $%<cap>.2f review cap: their comments are refused until you raise it " \
@@ -774,7 +803,7 @@ module Samagotchi
     # @param origin [TurnOrigin] a participant's
     def refuse_participant_turn(origin, reason)
       TurnCheckpoint.record_refused(@session_dir, origin.enqueued_id, reason: reason, author: origin.participant_author)
-      Participants.log(@session_id, :turn, state_dir: @state_dir, participant: origin.participant_id,
+      Participants.log(participants_id, :turn, state_dir: @state_dir, participant: origin.participant_id,
                                            enqueued_id: origin.enqueued_id, status: "refused", reason: reason)
       @engine.announce(type: :turn_dequeued, enqueued_id: origin.enqueued_id, client_id: origin.client_id)
       nil
@@ -1196,7 +1225,8 @@ module Samagotchi
       # Every kind of turn merges steering (a reminder turn too, which may be
       # a fresh worker's first), so the list is this turn's from the start.
       @merged_this_turn = []
-      origin = TurnOrigin.of(turn_args[:origin])
+      origin = fresh_origin(turn_args[:origin])
+      turn_args = turn_args.merge(origin: origin)
       @reporting_turn = reports_to_parent?(origin)
       # A participant's review turn merges no input (#pending_input_drain).
       @participant_turn = origin.participant?

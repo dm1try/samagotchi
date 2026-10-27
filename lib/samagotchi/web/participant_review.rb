@@ -7,6 +7,7 @@ require_relative "../session_metrics"
 require_relative "../review_start"
 require_relative "../guardrails/review_paths"
 require_relative "../participant_mode"
+require_relative "../verify_fresh"
 
 module Samagotchi
   module Web
@@ -74,6 +75,9 @@ module Samagotchi
           waiting_for_owner: waiting,
           queued: review_queue(queued || [], viewer),
           verdicts: ParticipantView.verdicts(session.verdicts, viewer),
+          # The verdicts a fresh check runs for now (their check_turn_id;
+          # never the child's id: a participant can't open it).
+          fresh_running: VerifyFresh.running(id, state_dir: default_state_dir).map { |row| row[:of] }.uniq,
           last_event_id: turn_snapshot && turn_snapshot["event_id"]
         })
       end
@@ -191,7 +195,8 @@ module Samagotchi
         dir = Session.session_dir(grant.session_id, state_dir: default_state_dir)
         saved = SessionMetrics.saved_spend(dir, grant.author)
         live = live_spend(state, grant.author)
-        [saved, live].max.round(4)
+        fresh = VerifyFresh.children_spend(grant.session_id, grant.author, state_dir: default_state_dir)
+        ([saved, live].max + fresh).round(4)
       end
 
       # +author+'s cost in the live worker's metrics (spend_by_author), 0.0

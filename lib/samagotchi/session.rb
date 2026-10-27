@@ -20,6 +20,10 @@ require_relative "project_scope"
 require_relative "guardrails/parent_levels"
 
 module Samagotchi
+  # Loaded on first use (a Verify fresh child): keeps the bundle test kit's
+  # load budget (spec/samagotchi/testing/sandbox_spec.rb).
+  autoload :VerifyFreshOrigin, File.expand_path("verify_fresh_origin", __dir__)
+
   # archive_store requires this file.
   autoload :ArchiveStore, File.expand_path("archive_store", __dir__)
 
@@ -288,6 +292,20 @@ module Samagotchi
     # Whether this is a review session (chi review, the web's Start review).
     def review? = !@review.nil?
 
+    # A Verify fresh child's requester, rules and claim (VerifyFreshOrigin),
+    # nil for any other session. Set once, at spawn (VerifyFresh.start).
+    attr_reader :verify_fresh
+
+    # @param value [VerifyFreshOrigin, Hash, nil] the session file's form too
+    def verify_fresh=(value)
+      @verify_fresh = value.nil? ? nil : VerifyFreshOrigin.of(value)
+    end
+
+    # The session whose participants.json names this session's
+    # participants: a Verify fresh child's parent (its requester's grant is
+    # the parent's), else the session itself.
+    def participants_source_id = @verify_fresh && @parent_id ? @parent_id : @id
+
     # How many tool outputs its history holds: its tool messages
     # (tool_response, a chat loop's tool; a native step's one message holds
     # every call's output and counts once).
@@ -341,7 +359,7 @@ module Samagotchi
                    last_turn: nil, model_typed: nil, delegate: false, llm_context: nil, prompt_notes: [],
                    continues: nil, thinking: nil, reasoning_history: nil, appended_prompt_files: [],
                    toolkit: nil, toolkit_origin: "chosen", settings: nil, interrupted_turn: nil, parent_answers: nil, title: nil,
-                   working_set_pins: [], review: nil, verdicts: nil)
+                   working_set_pins: [], review: nil, verdicts: nil, verify_fresh: nil)
       @id = id
       @metadata_version = metadata_version
       @mode = mode
@@ -379,6 +397,7 @@ module Samagotchi
       self.working_set_pins = working_set_pins
       self.review = review
       self.verdicts = verdicts
+      self.verify_fresh = verify_fresh
       self.interrupted_turn = interrupted_turn
       @turn_checkpoint = nil
       @archived = false
@@ -563,12 +582,13 @@ module Samagotchi
       "parent_answers" => nil,
       "working_set_pins" => [],
       "review" => nil,
-      "first_turn_id" => nil
+      "first_turn_id" => nil,
+      "verify_fresh" => nil
     }.freeze
 
     # FIELDS a session file has only when set: a session without them saves
     # as it did before they existed.
-    OPTIONAL_FIELDS = %w[review first_turn_id verdicts].freeze
+    OPTIONAL_FIELDS = %w[review first_turn_id verdicts verify_fresh].freeze
 
     # A session from a parsed session file. +messages+ false leaves the
     # conversation out (the lists' lightweight summaries).
@@ -722,6 +742,7 @@ module Samagotchi
                 when "last_turn" then @last_turn&.to_file
                 when "working_set_pins" then @working_set_pins.map(&:to_file)
                 when "review" then @review&.to_file
+                when "verify_fresh" then @verify_fresh&.to_file
                 when "verdicts"
                   @verdicts&.map do |record|
                     scrub_utf8(record.to_h do |key, entry|

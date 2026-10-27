@@ -138,6 +138,16 @@ RSpec.describe Samagotchi::Web::SessionSummary do
                                              by_name: "Reviewer", check_turn_id: "check-1")
     end
 
+    it "shows the fresh checks running now" do
+      s = session
+      dir = session_dir(s)
+      allow(Samagotchi::VerifyFresh).to receive(:running).and_return([{ of: "check-1", child_id: "c" * 36, author: nil }])
+
+      json = described_class.build(s, owner: nil, session_dir: dir)
+
+      expect(json[:verify_fresh]).to eq([{ of: "check-1", child_id: "c" * 36 }])
+    end
+
     it "has no question without a live owner: one a dead worker saved can't be answered" do
       s = session(status: "running")
       s.pending_question = { id: "q1", question: "Which?" }

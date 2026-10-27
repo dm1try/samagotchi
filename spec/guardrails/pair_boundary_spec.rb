@@ -361,3 +361,64 @@ RSpec.describe "GuardrailWiring: a participant's boundary by ParticipantMode" do
     expect(write.rule).to eq("review-boundary")
   end
 end
+
+RSpec.describe "GuardrailWiring: a Verify fresh child's boundary" do
+  let(:base) { File.realpath(Dir.mktmpdir("fresh-wiring")) }
+  let(:project) { File.join(base, "proj") }
+  let(:anchor) { { "turn_id" => "11111111-2222-3333-4444-555555555555", "quote" => "claim" } }
+
+  before do
+    allow(Samagotchi::Guardrails::PairCommand).to receive(:tmp_roots).and_return([])
+    FileUtils.mkdir_p(File.join(project, "docs"))
+  end
+
+  around { |example| with_env("HOME" => File.join(base, "home")) { example.run } }
+
+  after { FileUtils.rm_rf(base) }
+
+  def child(fresh)
+    Samagotchi::Session.new_session(mode: "assist", model_name: "m", working_directory: project, parent_id: "parent",
+                                    delegate: true).tap { |s| s.verify_fresh = fresh }
+  end
+
+  # The child has no participants.json: the author's lookup finds nobody
+  # (nil), or someone the parent invited to act (a pair entry).
+  def wiring(session, entry: nil, author: "p:alex")
+    Samagotchi::GuardrailWiring.new(scratch: false, hooks: -> {}, tools: -> {}, session: -> { session },
+                                    model_key: -> {}, cancelled: -> { false }, ask: ->(_) {},
+                                    participant: ->(_author) { entry }).tap do |w|
+      w.state_dir = File.join(base, "state")
+      w.begin_turn(session.verify_fresh.origin_for(Samagotchi::TurnOrigin.new(client_id: "web:x", author: author)))
+    end
+  end
+
+  def write(w) = w.gate.evaluate({ name: "write", path: File.join(project, "docs", "plan.md"), content: "x" },
+                                 iteration: 1, params: "")
+
+  it "keeps a review requester's child read-only though the child's own lookup finds nobody" do
+    w = wiring(child({ "author" => "p:alex", "mode" => "review", "of" => "c1", "anchor" => anchor }), author: nil)
+    expect(w.turn_author).to eq("p:alex")
+    expect(w.turn_mode).to eq(:review)
+    expect(write(w).rule).to eq("review-boundary")
+  end
+
+  it "runs a pair requester's child under PairBoundary from the saved mode, not the lookup" do
+    w = wiring(child({ "author" => "p:alex", "mode" => "pair", "of" => "c1", "anchor" => anchor }),
+               entry: Struct.new(:name, :mode).new("Alex", nil))
+    expect(w.turn_mode).to eq(:pair)
+    expect(w.checks[1]).to be(w.pair_boundary)
+    expect(w.gate.evaluate({ name: "delegate", content: "x" }, iteration: 1, params: "")).to be_deny
+  end
+
+  it "fails closed to review for a field that doesn't read" do
+    w = wiring(child({ "author" => "p:alex", "mode" => "root", "of" => "c1", "anchor" => anchor }), author: nil)
+    expect(w.turn_mode).to eq(:review)
+    expect(write(w).rule).to eq("review-boundary")
+  end
+
+  it "leaves the owner's child as any delegate child (the owner's turns, ChildBoundary)" do
+    w = wiring(child({ "of" => "c1", "anchor" => anchor }), author: nil)
+    expect([w.turn_author, w.turn_mode]).to eq([nil, nil])
+    expect(w.checks).to include(w.child_boundary)
+  end
+end

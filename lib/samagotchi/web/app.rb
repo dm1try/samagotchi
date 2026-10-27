@@ -69,6 +69,7 @@ require_relative "message_display"
 require_relative "session_show"
 require_relative "session_create"
 require_relative "session_control"
+require_relative "verify_fresh_routes"
 require_relative "push_routes"
 require_relative "update_check"
 require_relative "proxy_gate"
@@ -99,6 +100,7 @@ module Samagotchi
       include SessionShow
       include SessionCreate
       include SessionControl
+      include VerifyFreshRoutes
       include PushRoutes
       include ProxyGate
 
@@ -265,6 +267,7 @@ module Samagotchi
         ["POST", %r{\A/api/sessions/([^/]+)/turn\z}, :handle_turn, :participant, :session],
         ["POST", %r{\A/api/sessions/([^/]+)/wait/prepare\z}, :handle_wait_prepare, :participant, :session],
         ["POST", %r{\A/api/sessions/([^/]+)/wait\z}, :handle_wait, :participant, :session],
+        ["POST", %r{\A/api/sessions/([^/]+)/verdicts/([^/]+)/fresh\z}, :handle_verify_fresh, :participant, :session],
         ["POST", %r{\A/api/sessions/([^/]+)/notes\z}, :handle_notes, :owner, :session],
         ["POST", %r{\A/api/sessions/([^/]+)/wake\z}, :handle_wake, :owner, :session],
         ["GET", %r{\A/api/sessions/([^/]+)/worker\z}, :handle_worker, :owner, :session],

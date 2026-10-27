@@ -345,6 +345,29 @@ RSpec.describe Samagotchi::Engine do
       expect(events.find { |event| event[:type] == :turn_completed }[:verdict]).to eq(session.verdicts.first)
     end
 
+    it "runs every turn of a participant's Verify fresh child as theirs, whoever started it" do
+      session = make_session
+      verify = Samagotchi::VerifyAnchor.new(turn_id: "123e4567-e89b-12d3-a456-426614174000", quote: "the claim")
+      session.verify_fresh = Samagotchi::VerifyFreshOrigin.new(author: "p:guest", mode: "review", of: "c1", anchor: verify)
+      engine = build_engine(profile: "gemma4")
+      check_turn_id = "123e4567-e89b-12d3-a456-426614174005"
+      answer = "Verdict: refuted — no such key"
+      model_result = Samagotchi::LLM::ModelResult.new(
+        text: answer, conversation: [{ role: "user", content: "check", turn_id: check_turn_id }, { role: "model", content: answer }],
+        exhausted: false, pending_tool_calls: false, tool_activity: []
+      )
+      authors = []
+      allow(kernel).to receive(:run) do
+        authors << engine.turn_author
+        model_result
+      end
+
+      engine.run_turn(session, "check", id: check_turn_id, origin: { client_id: "web:owner" }, verify: verify)
+
+      expect(authors).to eq(["p:guest"])
+      expect(session.verdicts.last).to include(by: "p:guest", verdict: "refuted")
+    end
+
     it "does not parse verdict text from a regular turn or a verify turn with a non-verdict final line" do
       session = make_session
       engine = build_engine(profile: "gemma4")

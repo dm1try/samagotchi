@@ -22,8 +22,10 @@ module Samagotchi
     end
 
     # Reads +session+'s sidecar again.
+    # A Verify fresh child reads its parent's (Session#participants_source_id):
+    # its requester's grant is there.
     def refresh!(session)
-      @session_id = session&.id
+      @session_id = source_id(session)
       @entries = read
       self
     end
@@ -44,7 +46,7 @@ module Samagotchi
     def entry_for(author, session: nil)
       return nil unless Steer.participant_author?(author)
 
-      refresh!(session) if session && session.id != @session_id
+      refresh!(session) if session && source_id(session) != @session_id
       id = Steer.participant_id(author)
       @entries.find { |e| e.id == id } || (@entries = read).find { |e| e.id == id }
     end
@@ -61,6 +63,12 @@ module Samagotchi
     end
 
     private
+
+    def source_id(session)
+      return nil unless session
+
+      session.respond_to?(:participants_source_id) ? session.participants_source_id : session.id
+    end
 
     def read
       return [] if @session_id.to_s.empty?

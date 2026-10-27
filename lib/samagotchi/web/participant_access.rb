@@ -14,6 +14,7 @@ require_relative "../participant_messages"
 require_relative "../participants"
 require_relative "../session"
 require_relative "../turn_checkpoint"
+require_relative "../verify_fresh"
 require_relative "../log"
 
 module Samagotchi
@@ -293,13 +294,21 @@ module Samagotchi
 
       # [429, cap_reached, …] once the grant spent its cap (D7: their turns
       # and the side requests they caused, from the session's saved
-      # analytics; a running turn's spend counts from its end, and the
-      # worker checks again before a queued one starts), nil before.
+      # analytics, and their Verify fresh children's; a running turn's
+      # spend counts from its end, and the worker checks again before a
+      # queued one starts), nil before.
       def participant_cap_refusal(grant)
-        dir = Session.session_dir(grant.session_id, state_dir: default_state_dir)
-        return nil if SessionMetrics.saved_spend(dir, grant.author) < grant.spend_cap
+        return nil if participant_saved_spend(grant) < grant.spend_cap
 
         [429, "cap_reached", ParticipantMessages::CAP_REACHED]
+      end
+
+      # What +grant+'s participant spent, saved: in the session and in
+      # their Verify fresh children (VerifyFresh.children_spend).
+      def participant_saved_spend(grant)
+        dir = Session.session_dir(grant.session_id, state_dir: default_state_dir)
+        SessionMetrics.saved_spend(dir, grant.author) +
+          VerifyFresh.children_spend(grant.session_id, grant.author, state_dir: default_state_dir)
       end
 
       def participant_turn_refused(grant, prompt, status, code, detail)

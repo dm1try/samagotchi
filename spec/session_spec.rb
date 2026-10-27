@@ -73,10 +73,15 @@ RSpec.describe Samagotchi::Session do
         { anchor: { turn_id: "source-turn", quote: "claim" }, verdict: "confirmed", reason: "supported",
           by: nil, check_turn_id: "check-turn", at: "2026-01-01T00:00:00.000Z" }
       ]
+      session.verify_fresh = { "author" => "p:abc", "mode" => "pair", "of" => "check-turn",
+                               "anchor" => { "turn_id" => "11111111-2222-3333-4444-555555555555", "quote" => "claim" } }
       session.toolkit_origin = "default"
       session.save(state_dir: tmpdir)
       data = JSON.parse(File.read(File.join(tmpdir, "#{session.id}.json")))
       expect(data.keys).to eq(described_class::FIELDS.keys)
+      expect(data["verify_fresh"]).to eq("author" => "p:abc", "mode" => "pair", "of" => "check-turn",
+                                         "anchor" => { "turn_id" => "11111111-2222-3333-4444-555555555555",
+                                                       "quote" => "claim" })
       expect(data["review"]).to eq("subjects" => ["docs/plan.md"], "from" => "abc")
       expect(data["first_turn_id"]).to eq("turn-1")
       expect(data["verdicts"]).to eq([

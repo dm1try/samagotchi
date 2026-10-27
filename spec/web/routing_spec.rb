@@ -27,7 +27,7 @@ RSpec.describe Samagotchi::Web::App, "routing" do
        handle_question_answer handle_question_dismiss handle_command handle_image_upload handle_image
        handle_show handle_delete handle_context_list handle_context_show handle_context_delete handle_render
        handle_resolve handle_summaries handle_wait_prepare handle_wait handle_notes handle_context_add
-       handle_context_push]
+       handle_context_push handle_verify_fresh]
   end
 
   before do
@@ -102,6 +102,7 @@ RSpec.describe Samagotchi::Web::App, "routing" do
       ["POST", "/api/sessions/s1/turn"] => %w[handle_turn s1],
       ["POST", "/api/sessions/s1/wait/prepare"] => %w[handle_wait_prepare s1],
       ["POST", "/api/sessions/s1/wait"] => %w[handle_wait s1],
+      ["POST", "/api/sessions/s1/verdicts/c1/fresh"] => %w[handle_verify_fresh s1 c1],
       ["POST", "/api/sessions/s1/notes"] => %w[handle_notes s1],
       ["POST", "/api/sessions/s1/context"] => %w[handle_context_add s1],
       ["POST", "/api/sessions/s1/context/pr-1/push"] => %w[handle_context_push s1 pr-1],
