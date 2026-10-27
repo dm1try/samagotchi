@@ -12,6 +12,12 @@ and commands may change between minor versions. How releases are made:
 - chi web places each completed Verify verdict on its source claim, links to the checking turn, and sends a phone
   notification with the verdict and a short reason (including for short turns).
 
+### Fixed
+
+- The known-names hook lets through a protected name's CamelCase form (`CoffeeAssistant` or `coffeeAssistant` for a
+  repo named `coffee_assistant`) instead of rejecting it as a misspelling; `coffee-assistant` and `coffeeassistant`
+  are still caught.
+
 ## [0.125.0] - 2026-10-27
 
 ### Added

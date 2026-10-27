@@ -99,6 +99,8 @@ class KnownNames
         next if names.key?(down)
 
         names.each do |name_down, name|
+          next if camel_case?(candidate, name)
+
           max = @max_distance || (name.length < 10 ? 1 : 2)
           next if (candidate.length - name.length).abs > max
 
@@ -108,6 +110,18 @@ class KnownNames
       end
     end
     nil
+  end
+
+  # "CoffeeAssistant" or "coffeeAssistant" for "coffee_assistant": the
+  # name's own class or variable form, not a misspelling of it. Only a
+  # form with a capital: "coffeeassistant" and "coffee-assistant" are
+  # still near misses.
+  def camel_case?(candidate, name)
+    parts = name.split(PART_SPLIT)
+    return false if parts.size < 2
+
+    upper = parts.map(&:capitalize).join
+    [upper, upper[0].downcase + upper[1..]].include?(candidate)
   end
 
   # [where, text] pairs to scan: the command, the cwd a command names,

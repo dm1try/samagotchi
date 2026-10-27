@@ -112,6 +112,23 @@ RSpec.describe "The known-names bundle" do
     expect(v.reason).to include('"samagothci" in the command is 1 edit away from the known name "samagotchi"')
   end
 
+  context "with a name that has separators" do
+    let(:settings) { { "names" => ["coffee_assistant"] } }
+
+    it "lets through the name's CamelCase forms" do
+      ["cat app/CoffeeAssistant.swift", "ruby -e 'CoffeeAssistant.logger'", "echo coffeeAssistant",
+       "ls coffee_assistant"].each { |command| expect(shell(command)).to be_allow, command }
+      expect(notices).to be_empty
+    end
+
+    it "still rejects the name with other separators or none" do
+      { "cd coffee-assistant" => ["coffee-assistant", "1 edit"], "ls coffeeassistant" => ["coffeeassistant", "1 edit"],
+        "echo CofeeAssistant" => ["CofeeAssistant", "2 edits"] }.each do |command, (miss, edits)|
+        expect(shell(command).reason).to include("\"#{miss}\" in the command is #{edits} away from the known name \"coffee_assistant\""), command
+      end
+    end
+  end
+
   it "scans a read's path and a write's path, not a write's content" do
     expect(verdict_for({ name: "read", content: "~/../johndeo/x" }).reason).to include('"johndeo" in the path')
     expect(verdict_for({ name: "write", path: "/home/johndeo/a.txt", content: "x" })).to be_deny
