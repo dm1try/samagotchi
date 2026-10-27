@@ -568,7 +568,7 @@ module Samagotchi
       # one waits, like ask_user_question.
       engine.interface = :worker
       # A pair turn stops mid-turn at its participant's cap.
-      engine.participant_cap = ->(author) { participant_cap_stop(author) }
+      engine.participant_stop = ->(author) { participant_turn_stop(author) }
       engine.guardrail_state_dir = @state_dir if @state_dir
       engine.session_state_dir = @state_dir if @state_dir
       engine
@@ -711,14 +711,18 @@ module Samagotchi
       "cap_reached"
     end
 
-    # Why a participant's running pair turn stops (Engine#participant_cap,
-    # asked before each of its generations): their cap reached
+    # Why a participant's running pair turn stops (Engine#participant_stop,
+    # asked before each of its generations): their link ended (revoked,
+    # expired, the session archived) or their cap reached
     # (#participant_refusal, which gives the owner the cap notice), else nil.
-    def participant_cap_stop(author)
-      return nil unless participant_refusal(author) == "cap_reached"
+    def participant_turn_stop(author)
+      reason = participant_refusal(author) or return nil
 
       entry = Participants.read(@session_id, state_dir: @state_dir).find { |e| Steer.author_for(e.id) == author }
-      format(CAP_STOP, name: participant_label(author, entry&.name), cap: participant_cap(entry))
+      name = participant_label(author, entry&.name)
+      return format(REVOKED_STOP, name: name) if reason == "revoked"
+
+      format(CAP_STOP, name: name, cap: participant_cap(entry))
     end
 
     # A participant's cap in dollars: their own, else the config's.
@@ -752,6 +756,9 @@ module Samagotchi
     # The reason a pair turn stopped at its participant's cap (the turn's
     # "stopped the turn: …" notice).
     CAP_STOP = "%<name>s reached their $%<cap>.2f cap"
+    # The reason a pair turn stopped because its participant's link ended
+    # (revoked, expired, or the session archived).
+    REVOKED_STOP = "%<name>s's link was revoked or expired"
 
     # A participant's queued turn that may not start (#participant_refusal):
     # taken off the queue (:turn_dequeued, so every UI drops its bubble)

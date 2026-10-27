@@ -157,7 +157,7 @@ RSpec.describe "a participant's author on delivery" do
       expect(refused.map { |line| line.values_at("enqueued_id", "reason") }).to eq([%w[e1 cap_reached], %w[e2 cap_reached]])
     end
 
-    it "stops a participant's running pair turn at their cap (Engine#participant_cap): the reason, the owner told once" do
+    it "stops a participant's running pair turn at their cap (Engine#participant_stop): the reason, the owner told once" do
       author = grant.author
       notices = Queue.new
       engine.subscribe(observer: ->(event) { notices << event if event[:type] == :hook_notice })
@@ -165,7 +165,7 @@ RSpec.describe "a participant's author on delivery" do
       allow(engine.metrics).to receive(:spend).with(author) { spend }
       reasons = Queue.new
       allow(engine).to receive(:run_turn) do |*_args, **_opts|
-        check = engine.instance_variable_get(:@participant_cap)
+        check = engine.instance_variable_get(:@participant_stop)
         reasons << check.call(author).inspect
         spend = 2.5
         reasons << check.call(author).inspect
@@ -182,6 +182,24 @@ RSpec.describe "a participant's author on delivery" do
       expect(pop!(reasons, "the notices so far")).to eq(1)
       notice = pop!(notices, "the owner's cap notice")
       expect(notice[:text]).to start_with("Alex reached their $2.00 cap: their turns stop")
+    end
+
+    it "stops a participant's running pair turn once their link is revoked mid-turn (Engine#participant_stop)" do
+      author = grant.author
+      reasons = Queue.new
+      allow(engine).to receive(:run_turn) do |*_args, **_opts|
+        check = engine.instance_variable_get(:@participant_stop)
+        reasons << check.call(author).inspect
+        grants = Samagotchi::Web::Grants.new(Samagotchi::Web::Grants.path(state_dir: tmpdir))
+        Samagotchi::Participants.revoke(grants, session_id: session.id, id: grant.id, state_dir: tmpdir)
+        reasons << check.call(author).inspect
+        result
+      end
+      start_worker
+      Samagotchi::SessionInbox.write_input(session_dir, prompt: "q1", client_id: "review:p", author: author, enqueued_id: "e1")
+
+      expect(pop!(reasons, "while the link works")).to eq("nil")
+      expect(pop!(reasons, "once it is revoked")).to eq(%("Alex's link was revoked or expired"))
     end
 
     # Their chi send --wait (and chi web's participant /wait) reads the

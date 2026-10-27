@@ -9,7 +9,7 @@ require "samagotchi/session"
 
 # A pair turn (a participant's turn in a working session) stops mid-turn
 # once its participant passed their cap: before a generation the Engine asks
-# the Worker's check (Engine#participant_cap) and stops the turn on the
+# the Worker's check (Engine#participant_stop) and stops the turn on the
 # plugins' stop path, with its notice. A review turn and the owner's turns
 # are never checked mid-turn.
 RSpec.describe Samagotchi::Engine, "a pair turn's mid-turn cap" do
@@ -32,7 +32,7 @@ RSpec.describe Samagotchi::Engine, "a pair turn's mid-turn cap" do
   after { FileUtils.rm_rf(state_dir) }
 
   before do
-    engine.participant_cap = lambda { |who|
+    engine.participant_stop = lambda { |who|
       asked << who
       "Alex reached their $2.00 cap"
     }
