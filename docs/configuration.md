@@ -1451,9 +1451,11 @@ toolkit:
   says `from this turn`, and that request re-reads the whole prompt (system prompt, tools and conversation, which
   the defer limits keep small) without `/toolkit`'s cache confirmation. `/toolkit` or `ctx.use_toolkit` marks the
   toolkit chosen, and nothing is suggested after that; a `/toolkit` sent during a turn runs after it and replaces
-  that turn's suggestion. On mode doesn't skip a local System 1 host shared with the model (the turn waits before
-  its first request anyway), and an idle worker for an eligible session sends one warm-up ask with the real
-  question and a stand-in prompt so the server has its prefix cached; its answer is dropped and never logged. Each answered ask's line in `toolkit_suggestions.jsonl` adds
+  that turn's suggestion. When System 1's host is the model's own local server (the same `hosts:` name or server
+  root, as audit checks), on mode asks only on a session's first turn, never on the deferred path, and sends no
+  warm-up (one info line). Otherwise an idle worker for an eligible session sends one warm-up ask with the real
+  question and a stand-in prompt so the server has its prefix cached; its answer is dropped and never logged, and
+  the first real ask stops a warm-up still running. Each answered ask's line in `toolkit_suggestions.jsonl` adds
   `did`: `suggested`, `default`, `defer`, `chosen` (the toolkit was no longer the default), `unavailable` (the
   picked kit was gone), `timeout` or `canceled` (written when the late answer arrives; a Stop after a timeout
   doesn't cut it), or `failed` (the turn failed or the switch couldn't be saved); `chi toolkit report` grades

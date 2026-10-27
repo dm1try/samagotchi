@@ -79,6 +79,10 @@ right-hand column happens.
   `toolkit.suggest.defer_turns` / `defer_tokens`) is engine-side, so `/toolkit`'s CacheConfirm doesn't apply: it
   changes the declared tools at the front of the request, and the server re-reads **system prompt + tools +
   conversation** on that turn. The defer bound keeps that conversation small; its notice says "from this turn".
+  When System 1 runs on the model's own single-slot local server (`Engine#toolkit_judge_shares_local_host?`), any
+  ask takes the slot and evicts its cached prefix: a first-turn ask costs that cache even when nothing switches
+  (there is little cached on a session's first turn), so on mode asks only there, skips the deferred path, and
+  sends no worker warm-up.
 - A kit's prompt text (`toolkit.kits.<name>.prompt:`, `chi.toolkit … prompt:`) sits after the appended files and
   before the memory indexes (`SystemPrompt#kit_prompt_section`): one prefix per kit, never per-session text, so
   sessions on the kit share it; a memory write (the indexes after it) doesn't move it. It is part of the

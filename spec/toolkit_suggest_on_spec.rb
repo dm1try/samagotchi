@@ -372,6 +372,52 @@ RSpec.describe Samagotchi::Engine, "toolkit suggestion on mode" do
     expect(log_lines.last).to include("did" => "unavailable")
   end
 
+  context "when System 1 shares the model's local single-slot host (M2)" do
+    before do
+      allow(engine).to receive(:toolkit_judge_shares_local_host?).and_return(true)
+      allow(Samagotchi::Log).to receive(:info).and_call_original
+    end
+
+    it "asks on the first turn, but not on the deferred path" do
+      answers << pick("undecided", 0.9) << pick("kit:web", 0.9)
+      sess = session
+
+      turn(sess, "hi there")
+      turn(sess, "now fix the browser flow")
+
+      expect(asked.size).to eq(1)
+      expect(Samagotchi::Log).to have_received(:info).with(:toolkit, "toolkit_suggest_shared_host_skipped",
+                                                           hash_including(host: "judge"))
+      expect(sess.toolkit_origin).to eq("default")
+    end
+
+    it "doesn't warm up" do
+      engine.session = session
+
+      engine.warm_toolkit_suggestion!
+
+      expect(engine.instance_variable_get(:@toolkit_warmup_thread)).to be_nil
+    end
+  end
+
+  it "stops a still-running warm-up when the first real ask starts, so it never queues behind it (M3)" do
+    release = Queue.new
+    entered = Queue.new
+    answers << -> { (entered << true) && release.pop && nil } << pick("kit:web", 0.9)
+    sess = session
+    engine.session = sess
+    engine.warm_toolkit_suggestion!
+    warmup = engine.instance_variable_get(:@toolkit_warmup_thread)
+    pop!(entered, "the warm-up ask")
+
+    turn(sess)
+
+    expect(warmup).not_to be_alive
+    expect(sess.toolkit_origin).to eq("suggested")
+  ensure
+    release << true
+  end
+
   it "shows the notice in the TUI as the toolkit's own line" do
     line = Samagotchi::TerminalUI::EventRenderer.hook_notice_line(
       { hook: "toolkit", level: :info, text: Samagotchi::ToolkitBinding.suggestion_notice("web", 0.71, deferred: false) }

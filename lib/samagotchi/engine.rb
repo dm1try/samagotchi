@@ -1117,7 +1117,7 @@ module Samagotchi
       end
       @toolkit_audit_thread&.join(TOOLKIT_AUDIT_JOIN_SECONDS)
       # The warm-up's answer is dropped anyway.
-      @toolkit_warmup_thread&.kill
+      stop_toolkit_warmup
       left = threads.count(&:alive?)
       Log.warn(:plugins, "anytime_commands_left", count: left) if left.positive?
       @plugin_tasks.kill_leftovers
@@ -2787,13 +2787,18 @@ module Samagotchi
       client = SystemOne::Client.from_config(host_registry: @host_registry, mode: "on", tag: :toolkit)
       return unless client
 
-      # D7: audit's free ask would compete with the turn's prefill on a
-      # shared single-slot server; on mode's turn waits for it before any
-      # request, so there is nothing to compete with.
-      if !joined && toolkit_judge_shares_local_host?(client.host)
+      # D7: on a shared single-slot server audit's free ask would compete
+      # with the turn's prefill, and any ask evicts the session's cached
+      # prefix: on mode asks only on a first turn there (nothing is cached
+      # yet worth keeping), never on the deferred path.
+      if (!joined || ToolkitSuggest.model_reply?(session.messages)) && toolkit_judge_shares_local_host?(client.host)
         Log.info(:toolkit, "toolkit_suggest_shared_host_skipped", session_id: session.id, host: client.host)
         return
       end
+
+      # The warm-up's only value is the cache: the real ask never queues
+      # behind it.
+      stop_toolkit_warmup
 
       # Rules, not tool lists: this runs before await_init_tasks and
       # apply_staged_tools!, so a first turn's plugin/MCP tools aren't
@@ -2903,6 +2908,9 @@ module Samagotchi
 
       client = SystemOne::Client.from_config(host_registry: @host_registry, mode: "on", tag: :toolkit)
       return unless client
+      # D7: on the model's own single-slot server it would evict the
+      # session's cached prefix for a question that may never come.
+      return if toolkit_judge_shares_local_host?(client.host)
 
       project = File.basename(session.project_root.to_s)
       @toolkit_warmup_thread = Thread.new do
@@ -2913,6 +2921,14 @@ module Samagotchi
       nil
     end
     public :warm_toolkit_suggestion!
+
+    # A still-running warm-up, stopped: a real ask (or the worker leaving)
+    # doesn't wait behind it.
+    def stop_toolkit_warmup
+      @toolkit_warmup_thread&.kill
+      @toolkit_warmup_thread = nil
+    end
+    private :stop_toolkit_warmup
 
     def toolkit_suggestion_log
       path = ToolkitSuggest.log_path(session_state_dir)
