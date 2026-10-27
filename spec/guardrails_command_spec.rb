@@ -259,6 +259,15 @@ RSpec.describe Samagotchi::GuardrailsCommand do
   # A parent agent's answer is not the user's. Only its deny is a label, and
   # only where the parent could have allowed: the ask is not user-only, and
   # the session's parent level permits a "permit" option.
+  it "skips a participant's turn's ask: System 1 never judges one" do
+    asked = question("q-participant", "git-push", answer: answer(0))
+    asked["pending_question"]["approval"]["author"] = "p:p_0123abcd"
+    session([asked])
+    run(["replay"])
+    expect(lines).to eq([])
+    expect(out.string).to include("1 asked by a participant's turn")
+  end
+
   describe "a parent agent's answer" do
     DENY_INDEX = 4
 

@@ -38,9 +38,8 @@ module Samagotchi
         ls [ID]          the participants of ID, or of every session (never a token)
         cap ID P D       set participant P's cap to D dollars, from their next turn
         revoke ID [P]    end participant P's link, or every link to ID; --all every session's
-      Archiving or deleting a session revokes its links. You pay for a participant's turns:
-      in a review session (chi review) they may only read; in a working session they act
-      with its tools under your guardrails, and their asks come to you (once only).
+      Archiving or deleting a session revokes its links. You pay for a participant's turns;
+      what they may do in that session, chi share says when it invites them (the warning).
     TEXT
 
     SUBCOMMANDS = %w[ls cap revoke].freeze

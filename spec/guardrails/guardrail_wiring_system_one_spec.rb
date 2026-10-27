@@ -125,7 +125,7 @@ RSpec.describe "GuardrailWiring: System 1 on an approval (audit)" do
     expect(payload[:approval]).to include(author: "p:p_0123abcd", author_name: "Sam", scopes: ["once"])
     expect(payload[:options]).to eq(["Allow once", "Deny"])
     expect(payload[:header]).to eq("Sam's turn asks: approve tool call?")
-    expect(payload[:question]).to end_with("\n  asked by: Sam's turn (a participant, not you)")
+    expect(payload[:question]).to end_with("\n  asked by: Sam's turn (a participant, not you); Allow once only")
     expect([verdict.decision, verdict.scope, verdict.decided_by]).to eq([:allow, "once", "user"])
     expect(File.exist?(log_path)).to be false
   end

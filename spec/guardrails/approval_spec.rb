@@ -69,8 +69,9 @@ RSpec.describe Samagotchi::Guardrails::Approval do
       expect(payload[:options]).to eq(["Allow once", "Deny"])
       expect(payload[:effects]).to eq(%w[permit deny])
       expect(payload[:header]).to eq("Sam's turn asks: approve tool call?")
-      expect(payload[:question].lines.last).to eq("  asked by: Sam's turn (a participant, not you)")
-      expect(payload[:approval]).to include(author: "p:p_0123abcd", author_name: "Sam", scopes: ["once"])
+      expect(payload[:question].lines.last).to eq("  asked by: Sam's turn (a participant, not you); Allow once only")
+      expect(payload[:approval]).to include(author: "p:p_0123abcd", author_name: "Sam", scopes: ["once"],
+                                            asked_by: format(described_class::ASKED_BY, "Sam"))
       unnamed = described_class.payload(ask, author: "p:p_0123abcd")
       expect(unnamed[:header]).to eq("p_0123abcd's turn asks: approve tool call?")
       expect(unnamed[:approval]).to include(author: "p:p_0123abcd")

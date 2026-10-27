@@ -66,6 +66,7 @@ module Samagotchi
       parent_cannot_allow: "answered by a parent that could not allow",
       unanswered: "unanswered",
       no_approval: "no approval card",
+      participant: "asked by a participant's turn",
       no_question_id: "no question id"
     }.freeze
 
@@ -200,13 +201,17 @@ module Samagotchi
 
     # One card entry as an ask to judge: an Ask, a skip reason (:already_replayed,
     # :judged_live, :answered_by_parent, :parent_cannot_allow, :unanswered,
-    # :no_approval, :no_question_id), or nil for an entry that is not a
+    # :no_approval, :participant, :no_question_id), or nil for an entry that is not a
     # question at all.
     def ask_of(entry, session_id, judged, sessions_dir)
       return nil unless entry.is_a?(Hash) && entry[:type] == "question"
 
       pending = entry[:pending_question]
       return :no_approval unless pending.is_a?(Hash) && pending[:approval].is_a?(Hash)
+      # A participant's turn's ask is never System 1's to judge, live or here
+      # (GuardrailWiring#system_one_judge): no record of it is the user's
+      # rule-level decision (it offered once only).
+      return :participant if pending[:approval][:author]
 
       question_id = pending[:id].to_s
       return :no_question_id if question_id.empty?

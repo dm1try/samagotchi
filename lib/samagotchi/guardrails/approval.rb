@@ -18,7 +18,9 @@ module Samagotchi
       # the question's last line, so a UI that doesn't know the field still
       # says it.
       PARTICIPANT_HEADER = "%s's turn asks: approve tool call?"
-      PARTICIPANT_LINE = "  asked by: %s's turn (a participant, not you)"
+      # Who asks, in the plain question (indented) and as the card's line
+      # (approval asked_by:): the one wording every UI shows.
+      ASKED_BY = "asked by: %s's turn (a participant, not you); Allow once only"
       # The only scope a participant's ask offers: no session, repo or rule
       # approval is made from a participant's call.
       PARTICIPANT_SCOPES = %w[once].freeze
@@ -49,7 +51,7 @@ module Samagotchi
         scopes = offered_scopes(verdict, only: only)
         targets = verdict.targets
         question = question_text(verdict, label: label, preview: preview)
-        question = "#{question}\n#{format(PARTICIPANT_LINE, asker)}" if asker
+        question = "#{question}\n  #{format(ASKED_BY, asker)}" if asker
         {
           question: question,
           options: scopes.map { |scope| label(scope, verdict) } + [DENY],
@@ -82,7 +84,8 @@ module Samagotchi
             preview: preview,
             # A participant's turn asks (nil for the owner's).
             author: (author.to_s if asker),
-            author_name: (author_name_for(author_name) if asker)
+            author_name: (author_name_for(author_name) if asker),
+            asked_by: (format(ASKED_BY, asker) if asker)
           }.compact
         }
       end

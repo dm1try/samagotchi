@@ -98,14 +98,14 @@ RSpec.describe Samagotchi::TerminalUI::QuestionPrompt, "approval" do
 
   it "names a participant's turn's ask in its header and the line left in the scrollback; it offers once only" do
     payload = { "id" => "pq", "kind" => "approval", "header" => "Sam's turn asks: approve tool call?",
-                "question" => "execute: rm -rf build\n  why: deletes\n  asked by: Sam's turn (a participant, not you)",
+                "question" => "execute: rm -rf build\n  why: deletes\n  asked by: Sam's turn (a participant, not you); Allow once only",
                 "options" => ["Allow once", "Deny"], "allow_freeform" => true,
                 "approval" => { "tool" => "execute", "command" => "rm -rf build", "scopes" => ["once"],
                                 "author" => "p:p_0123abcd", "author_name" => "Sam" } }
     prompt = described_class.new(payload)
     rows = prompt.slot.fit(width: 80, height: nil)
     expect(rows.first).to eq("Sam's turn asks: approve tool call?")
-    expect(rows).to include("  asked by: Sam's turn (a participant, not you)")
+    expect(rows).to include("  asked by: Sam's turn (a participant, not you); Allow once only")
     expect(rows).not_to include(a_string_matching(/2\) Allow/))
     expect(prompt.summary("Allow once")).to eq("! Sam's turn: execute: rm -rf build → Allow once")
     unnamed = payload.merge("approval" => payload["approval"].except("author_name"))

@@ -382,6 +382,24 @@ test("participants panel: Start a review closes the panel when made, and keeps i
   c.done();
 });
 
+// The empty list's words follow the server's mode, never the warning: an
+// older worker's warning still means review turns.
+test("participants panel: the empty list says pair only when the server's mode is pair", async () => {
+  const words = async (body) => {
+    const c = panelControl({ api: { list: async () => body } });
+    await c.ctl.load();
+    c.chip.click();
+    await tick();
+    const text = c.pop.querySelector(".ctx-pop-meta").textContent;
+    c.done();
+    return text;
+  };
+  assert.match(await words({ participants: [], warning: "s1 is a working session", mode: "pair" }), /their turns act/);
+  assert.match(await words({ participants: [], warning: "s1 is a working session, but its worker predates pair turns",
+    mode: "review" }), /read-only review turns/);
+  assert.match(await words({ participants: [], warning: null, mode: "review" }), /read-only review turns/);
+});
+
 // Revoke can't be undone: it asks first, as a delete does.
 test("participants panel: Revoke asks first, naming them; a No sends nothing", async () => {
   const asked = [];
