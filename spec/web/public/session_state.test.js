@@ -105,6 +105,9 @@ test("sessionStateFrom copies the lists, owner, links and served model", () => {
   assert.equal(st.createdAt, "2026-10-17T09:12:00Z");
   const verdicts = [{ verdict: "confirmed" }];
   assert.deepEqual(sessionStateFrom(payload({ session: { verdicts } })).verdicts, verdicts);
+  const running = [{ of: "check", child_id: "child" }];
+  assert.deepEqual(sessionStateFrom(payload({ session: { verify_fresh: running } })).verifyFresh, running);
+  assert.deepEqual(st.verifyFresh, []);
   assert.deepEqual(st.commands, [{ name: "/x" }]);
 });
 

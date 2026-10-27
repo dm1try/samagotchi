@@ -157,6 +157,40 @@ test("participant page: a live verdict is placed on its source turn without wait
   assert.match(card.textContent, /The source says the opposite/);
 });
 
+test("participant page: Verify fresh on an unclear card posts once, says it runs, and the fresh verdict lands there", async (t) => {
+  const unclear = {
+    anchor: { turn_id: "source", quote: "the claim" }, verdict: "unclear", reason: "Context doesn't say.",
+    by: "p:alex", check_turn_id: "check",
+  };
+  const review = {
+    ...REVIEW,
+    viewer: { id: "alex", name: "Alex", can_comment: true, mode: "pair" },
+    participants: [{ id: "alex", name: "Alex", kind: "human" }],
+    messages: [{ role: "user", content: "Original claim", turn_id: "source" }, { role: "assistant", content: "The claim." }],
+    verdicts: [unclear],
+    fresh_running: [],
+  };
+  const { $, sources, posts } = await openPage(t, {
+    respond: (call) => (call.method === "GET" ? call.answer(200, review) : call.answer(202, { of: "check", running: true })),
+  });
+  const card = () => $("thread").querySelector(".verify-verdict");
+  card().querySelector(".verify-fresh-btn").click();
+  await settle();
+
+  assert.equal(posts().length, 1);
+  assert.equal(posts()[0].path, "/api/sessions/s1/verdicts/check/fresh");
+  assert.equal(card().querySelector(".verify-fresh-running").textContent, "Verifying fresh…");
+  assert.equal(card().querySelector(".verify-fresh-btn"), null);
+
+  sources[0].emit("verdict_recorded", {
+    verdict: { ...unclear, verdict: "confirmed", reason: "keys.rb hashes it", check_turn_id: "fresh-check", fresh: true, of: "check" },
+  });
+  await settle();
+  assert.equal($("thread").querySelectorAll(".verify-verdict").length, 1);
+  assert.equal(card().querySelector(".verify-fresh-result").textContent, "fresh: ✅ confirmed — keys.rb hashes it");
+  assert.equal(card().querySelector(".verify-fresh-running"), null);
+});
+
 test("participant page: what is typed while a comment is in flight stays in the box after it is accepted", async (t) => {
   const { $, posts } = await openPage(t);
   $("comment").value = "Is step 3 safe?";

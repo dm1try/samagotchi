@@ -6,3 +6,12 @@
 .verify-verdict-quote{margin:6px 0;color:var(--text-muted);font-style:italic;white-space:pre-wrap}
 .verify-verdict-reason{margin:4px 0 6px;white-space:pre-wrap;overflow-wrap:anywhere}
 .verify-verdict-link{color:var(--accent)}
+.verify-fresh{margin-top:6px;padding-top:6px;border-top:1px solid var(--border)}
+.verify-fresh p{margin:2px 0;white-space:pre-wrap;overflow-wrap:anywhere}
+.verify-fresh-result{font-weight:600;color:var(--text-bright)}
+.verify-fresh-running{color:var(--text-muted);font-style:italic}
+.verify-fresh-error{color:var(--danger-text)}
+.verify-fresh-link{color:var(--accent);font-weight:400}
+.verify-fresh-btn{font:inherit;font-size:12px;font-weight:600;padding:3px 12px;border-radius:8px;cursor:pointer;background:var(--accent-bg);color:var(--accent);border:1px solid var(--accent-border)}
+.verify-fresh-btn:hover{border-color:var(--accent)}
+.verify-fresh-btn:disabled{opacity:.6;cursor:default}

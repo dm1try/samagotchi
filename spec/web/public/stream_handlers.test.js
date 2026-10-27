@@ -92,7 +92,8 @@ test("every stream event type has its handler", () => {
     "participants_changed", "pending_input_merged", "plugin_init_finished", "plugin_init_started", "plugin_init_wait", "prompt_restored",
     "question_answered", "question_cancelled", "question_relay", "question_requested", "recap_ready", "reminder_injected",
     "reset", "side_usage", "steer_cut", "tool_call_completed", "tool_call_started", "turn_canceled", "turn_completed",
-    "turn_dequeued", "turn_enqueued", "turn_failed", "turn_started", "used_memories_updated", "working_set_updated",
+    "turn_dequeued", "turn_enqueued", "turn_failed", "turn_started", "used_memories_updated", "verdict_recorded",
+    "working_set_updated",
   ]);
 });
 
@@ -104,6 +105,15 @@ test("turn_completed places a recorded verdict after ending the live turn", asyn
   };
 
   await handlers.turn_completed({ type: "turn_completed", verdict });
+
+  assert.deepEqual(page.calls.filter(([name]) => name === "placeVerdict"), [["placeVerdict", verdict]]);
+});
+
+test("verdict_recorded places a Verify fresh child's verdict on its card", () => {
+  const { handlers, page } = fakePage();
+  const verdict = { verdict: "confirmed", fresh: true, of: "check", check_turn_id: "fresh-check" };
+
+  handlers.verdict_recorded({ type: "verdict_recorded", verdict });
 
   assert.deepEqual(page.calls.filter(([name]) => name === "placeVerdict"), [["placeVerdict", verdict]]);
 });
