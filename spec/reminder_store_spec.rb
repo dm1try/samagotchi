@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require "json"
+require "time"
 require "samagotchi/reminder_store"
 
 RSpec.describe Samagotchi::ReminderStore do
@@ -151,6 +153,61 @@ RSpec.describe Samagotchi::ReminderStore do
       store.register({ name: "cleanup", description: "test", interval_minutes: 10 })
       store.clear_all
       expect(store.reminders).to be_empty
+    end
+  end
+
+  describe "#export and #restore (a restart's hand-off: Worker, ReminderCarry)" do
+    let(:wall) { Time.utc(2026, 10, 27, 12, 0, 0) }
+
+    it "carries each reminder's id and schedule from one process's clock to another's, as wall-clock time" do
+      allow(Process).to receive(:clock_gettime).and_return(1000.0)
+      store.register({ name: "health", description: "Check API", interval_minutes: 20 })
+      id = store.reminders["health"][:id]
+      store.reminders["health"][:next_fire_at] = 1300.0 # due in 5 minutes
+
+      entries = store.export(wall: wall, mono: 1000.0)
+      expect(entries).to eq([{ "id" => id, "name" => "health", "description" => "Check API",
+                               "interval_minutes" => 20, "next_fire_at" => "2026-10-27T12:05:00.000Z" }])
+
+      other = described_class.new
+      expect(other.restore(JSON.parse(JSON.generate(entries)), wall: wall + 10, mono: 50.0)).to eq(["health"])
+      restored = other.reminders["health"]
+      expect(restored).to include(id: id, name: "health", description: "Check API", interval_minutes: 20)
+      expect(restored[:next_fire_at]).to be_within(0.001).of(340.0) # 290 s from the new process's now
+      expect(restored[:last_fire_at]).to be_within(0.001).of(340.0 - 1200)
+    end
+
+    it "makes an overdue reminder due once, now, and clamps one too far ahead to one interval" do
+      entries = [{ "id" => "a1", "name" => "late", "description" => "d", "interval_minutes" => 5,
+                   "next_fire_at" => (wall - 3600).iso8601(3) },
+                 { "id" => "b2", "name" => "far", "description" => "d", "interval_minutes" => 5,
+                   "next_fire_at" => (wall + 86_400).iso8601(3) }]
+      expect(store.restore(entries, wall: wall, mono: 100.0)).to eq(%w[late far])
+      expect(store.reminders["late"][:next_fire_at]).to eq(100.0)
+      expect(store.reminders["far"][:next_fire_at]).to eq(400.0)
+      allow(Process).to receive(:clock_gettime).and_return(100.0)
+      expect(store.due_reminders.map { |r| r[:name] }).to eq(["late"])
+    end
+
+    it "skips each entry register would refuse, or with no usable time, and keeps the rest" do
+      good = { "id" => "g1", "name" => "ok", "description" => "d", "interval_minutes" => 5,
+               "next_fire_at" => wall.iso8601(3) }
+      entries = [good,
+                 good.merge("name" => " "), good.merge("description" => ""),
+                 good.merge("name" => "zero", "interval_minutes" => 0),
+                 good.merge("name" => "big", "interval_minutes" => 1441),
+                 good.merge("name" => "words", "interval_minutes" => "five"),
+                 good.merge("name" => "when", "next_fire_at" => "soon"),
+                 "not a hash", nil]
+      expect(store.restore(entries, wall: wall, mono: 0.0)).to eq(["ok"])
+      expect(store.reminders.keys).to eq(["ok"])
+    end
+
+    it "gives an entry without an id a new one, and takes nothing from a list that isn't one" do
+      entry = { "name" => "ok", "description" => "d", "interval_minutes" => 5, "next_fire_at" => wall.iso8601(3) }
+      expect(store.restore([entry], wall: wall, mono: 0.0)).to eq(["ok"])
+      expect(store.reminders["ok"][:id]).to match(/\A\h{12}\z/)
+      expect(described_class.new.restore({ "ok" => entry }, wall: wall, mono: 0.0)).to eq([])
     end
   end
 
