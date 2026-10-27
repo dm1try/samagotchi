@@ -170,7 +170,7 @@ RSpec.describe Samagotchi::Tools::MemoryRead do
   describe "the hint for an orphaned project memory folder (MemoryOrphans)" do
     let(:hint) { "no project memories in /new, but /old has the same project name" }
 
-    before { allow(Samagotchi::MemoryOrphans).to receive(:message).and_return(hint) }
+    before { allow(Samagotchi::MemoryOrphans).to receive(:model_message).and_return(hint) }
 
     it "follows a project-scope miss on the next line" do
       expect(described_class.call("gone", scope: "project")).to eq("Error: memory not found: gone\nHint: #{hint}")

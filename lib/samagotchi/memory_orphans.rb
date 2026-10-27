@@ -51,6 +51,17 @@ module Samagotchi
       found && text(found)
     end
 
+    # A model-facing hint: report the name collision without giving the model
+    # a command that could move another live clone's memories.
+    def model_message(env: ENV, cwd: Dir.pwd)
+      found = find(env: env, cwd: cwd)
+      return unless found
+
+      name = File.basename(found.computed).sub(/_\h{8}\z/, "")
+      "a folder with the same project name (#{name}) exists with another path's hash; ask the user whether its " \
+        "memories belong to this project before using them."
+    end
+
     def text(found)
       computed = found.computed
       lead = "no project memories in #{computed}"

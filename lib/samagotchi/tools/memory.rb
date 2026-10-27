@@ -95,7 +95,7 @@ module Samagotchi
       # "\nHint: …" when this project's memory folder looks orphaned
       # (MemoryOrphans), else "".
       def self.orphan_hint
-        message = MemoryOrphans.message
+        message = MemoryOrphans.model_message
         message ? "\nHint: #{message}" : ""
       end
 

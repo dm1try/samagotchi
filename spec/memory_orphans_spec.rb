@@ -117,6 +117,17 @@ RSpec.describe Samagotchi::MemoryOrphans do
     end
   end
 
+  describe ".model_message" do
+    it "asks the user about a same-name folder without giving the model a move command" do
+      root = repo("app")
+      folder("app_0123abcd")
+
+      message = described_class.model_message(env: env, cwd: root)
+      expect(message).to include("folder with the same project name", "ask the user")
+      expect(message).not_to include("mv")
+    end
+  end
+
   describe "the session-start warning (Engine)" do
     around { |example| with_env("SAMAGOTCHI_DEFAULT_MODEL" => "Gemma-4B-it") { example.run } }
 
