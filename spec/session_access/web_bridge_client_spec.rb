@@ -300,11 +300,43 @@ RSpec.describe Samagotchi::SessionAccess::WebBridgeClient do
       port, = serve("HTTP/1.1 502 Bad Gateway\r\nContent-Length: #{body.bytesize}\r\n\r\n#{body}")
       expect(client_at(port).open_stream).to have_attributes(reason: :bridge_secret, detail: refusal)
 
-      port, = serve("HTTP/1.1 503 Service Unavailable\r\nContent-Length: 2\r\n\r\n{}")
-      expect(client_at(port).open_stream).to be_a(Samagotchi::BridgeClient::StreamOpen::Unreachable)
+      body = JSON.generate(error: "not_live")
+      port, = serve("HTTP/1.1 503 Service Unavailable\r\nContent-Length: #{body.bytesize}\r\n\r\n#{body}")
+      expect(client_at(port).open_stream)
+        .to have_attributes(attempts: 1, detail: "no live worker for session s1 on studio")
 
       port, = serve("HTTP/1.1 404 Not Found\r\nContent-Length: 2\r\n\r\n{}")
       expect(client_at(port).open_stream).to have_attributes(reason: :unknown_session)
+    end
+
+    it "uses chi web's known 503 details, but no other detail, for the remote stream refusal" do
+      worker_texts = [Samagotchi::WorkerLink.unanswered("s1"), Samagotchi::WorkerLink.not_live("s1")]
+      expected = worker_texts.map { |text| "#{text} on studio" } +
+                 ["#{Samagotchi::WorkerLink.not_live("s1")} on studio"]
+      (worker_texts + ["an unrelated server detail"]).zip(expected).each do |detail, message|
+        body = JSON.generate(error: "not_live", detail: detail)
+        sock = double(wait_readable: true, readpartial: body, close: nil)
+        outcome = described_class::Mapping.stream(sock, 503, { "content-length" => body.bytesize.to_s },
+                                                  session_id: "s1", remote: "studio")
+
+        expect(outcome).to have_attributes(attempts: 1, detail: message)
+      end
+    end
+
+    it "shows the unanswered-worker detail when the remote stream ends" do
+      detail = "#{Samagotchi::WorkerLink.unanswered("s1")} on studio"
+      body = JSON.generate(error: "not_live", detail: Samagotchi::WorkerLink.unanswered("s1"))
+      response = "HTTP/1.1 503 Service Unavailable\r\nContent-Length: #{body.bytesize}\r\n\r\n#{body}"
+      server, port, heads, thread = serve_sequence(response)
+      events = Queue.new
+      stream = client_at(port).follow(rediscover: -> { [:gone, nil] }, reconnect_delays: []) { |event| events << event }
+
+      expect(pop!(heads, "the remote stream request")).to include("GET /api/sessions/s1/stream?snapshot=1")
+      expect(pop!(events, "the stream refusal")).to eq("type" => "stream_closed", "reason" => detail)
+    ensure
+      stream&.close
+      server&.close unless server&.closed?
+      join!(thread, "the remote stream server") if thread
     end
 
     it "closes a remote stream refused with 502 bridge_secret" do

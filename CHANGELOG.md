@@ -14,8 +14,9 @@ and commands may change between minor versions. How releases are made:
 - A participant wait returns 401 revoked if its grant disappears while the wait is in progress.
 - Invalid chi web start folders identify whether they came from `--start-dir` or config; relative config paths use
   home.
+- Remote note calls refuse a 200 response without a status cleanly; remote worker polling uses its injected sleeper.
 - Remote `chi sessions restart` refusals retain fallback holds and print the remote `chi --remote NAME` stop command.
-- chi web's stream 503 distinguishes an unanswered live worker from a session with no live worker.
+- chi web's stream 503 distinguishes an unanswered worker from no live worker, including in remote terminals.
 
 ## [0.121.1] - 2026-10-27
 

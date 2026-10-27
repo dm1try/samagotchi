@@ -67,7 +67,14 @@ module Samagotchi
           end
         end
 
-        def stream(sock, status, headers) = BridgeClient::StreamOpen.classify(sock, status, headers)
+        def stream(sock, status, headers, session_id:, remote:)
+          outcome = BridgeClient::StreamOpen.classify(sock, status, headers)
+          return outcome unless status.to_i == 503 && outcome.is_a?(BridgeClient::StreamOpen::Unreachable)
+
+          expected = [WorkerLink.unanswered(session_id), WorkerLink.not_live(session_id)]
+          detail = expected.include?(outcome.detail) ? outcome.detail : WorkerLink.not_live(session_id)
+          BridgeClient::StreamOpen::Unreachable.new(attempts: outcome.attempts, detail: "#{detail} on #{remote}")
+        end
 
         def bridge(status, **body) = BridgeClient::Response.new(status: status, body: JSON.generate(body.compact))
       end
@@ -223,7 +230,7 @@ module Samagotchi
         end
         return refused("chunked_unsupported", sock) if headers["transfer-encoding"].to_s.downcase.include?("chunked")
 
-        Mapping.stream(sock, status, headers)
+        Mapping.stream(sock, status, headers, session_id: @session_id, remote: @remote.name)
       rescue SystemCallError, SocketError, IOError
         sock&.close rescue nil
         BridgeClient::StreamOpen::Unreachable.new(attempts: 1)

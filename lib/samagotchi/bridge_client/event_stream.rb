@@ -164,7 +164,11 @@ module Samagotchi
           sock = opened_sock if attach(opened_sock)
         end
         return :closed if closed?
-        return :unreachable if outcome.is_a?(StreamOpen::Unreachable)
+
+        if outcome.is_a?(StreamOpen::Unreachable)
+          @reason = outcome.detail if outcome.detail
+          return :unreachable
+        end
         return :unknown_session if outcome.is_a?(StreamOpen::Refused) && outcome.reason == :unknown_session
         return :secret_refused if outcome.is_a?(StreamOpen::Refused) && outcome.reason == :bridge_secret
         return :unreachable unless outcome.is_a?(StreamOpen::Opened)

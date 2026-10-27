@@ -10,7 +10,9 @@ module Samagotchi
     module StreamOpen
       Opened = Data.define(:sock, :status, :headers)
       Refused = Data.define(:reason, :detail, :status)
-      Unreachable = Data.define(:attempts)
+      Unreachable = Data.define(:attempts, :detail) do
+        def initialize(attempts:, detail: nil) = super
+      end
 
       BODY_LIMIT = 16_384
       BODY_TIMEOUT = 5.0
@@ -23,7 +25,11 @@ module Samagotchi
       def classify(sock, status, headers)
         return Unreachable.new(attempts: 0) unless sock
         return Opened.new(sock: sock, status: 200, headers: headers) if status.to_i == 200
-        return Unreachable.new(attempts: 1) if status.to_i == 503
+
+        if status.to_i == 503
+          json = parse(refusal_body(sock, headers))
+          return Unreachable.new(attempts: 1, detail: json&.[]("detail"))
+        end
 
         body = refusal_body(sock, headers)
         json = parse(body)
