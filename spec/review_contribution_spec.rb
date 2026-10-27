@@ -36,6 +36,14 @@ RSpec.describe "a participant's review contribution" do
       expect(described_class.wire_text(contribution)).to eq("#{header}\nIs step 3 safe?")
     end
 
+    it "chooses the participant header from the saved mode, defaulting unstamped history to review" do
+      stub_const("Samagotchi::Steer::PARTICIPANT_HEADERS",
+                 { "review" => described_class::REVIEW_HEADER, "test" => "[Test contribution from %s]" })
+      expect(described_class.header(contribution.merge(participant_mode: "test"))).to eq("[Test contribution from Alex]")
+      expect(described_class.header(contribution)).to eq(header)
+      expect(described_class.header(contribution.merge("participant_mode" => "review"))).to eq(header)
+    end
+
     it "gives a participant's merged input and steer the same header, never the user's steer header" do
       input = { role: "user", kind: "input", content: "and step 4", author: "p:p_0a1b2c3d", author_name: "Alex" }
       steer = described_class.message(text: "nudge", source: "user", author: "p:p_0a1b2c3d", author_name: "Alex")
@@ -195,6 +203,14 @@ RSpec.describe "a participant's review contribution" do
       expect(first.last).to eq(role: "user", content: [{ type: "text", text: "#{header}\nIs step 3 safe?" }])
       expect(again).to eq(first)
       expect(result.conversation[2]).to eq(contribution)
+    end
+
+    it "keeps the model request byte-identical when a review message has its saved mode stamp" do
+      run(history)
+      run(history[0, 2] + [contribution.merge(participant_mode: "review")])
+
+      wire_bodies = adapter.requests.map { |request| JSON.generate(request[:messages]) }
+      expect(wire_bodies.uniq.size).to eq(1)
     end
 
     it "sends the owner's messages as before" do

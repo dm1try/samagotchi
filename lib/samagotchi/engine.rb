@@ -41,6 +41,7 @@ require_relative "llm/openai_chat"
 require_relative "llm/turn_settings"
 require_relative "session"
 require_relative "toolkit_binding"
+require_relative "participant_mode"
 require_relative "tool_loads"
 require_relative "answer_tail"
 require_relative "archive_store"
@@ -1516,6 +1517,13 @@ module Samagotchi
       Steer.author_fields(author, @participants.name_for(author, session: session))
     end
 
+    # A participant's opening message keeps the rules it was delivered under
+    # (ParticipantMode), stamped before any request carries it, so its header
+    # never changes when the session's mode does.
+    def participant_mode_fields(author, session: @session)
+      Steer.participant_author?(author) ? { participant_mode: ParticipantMode.of(session).to_s } : {}
+    end
+
     # Why a turn stopped (TurnEndings#stop_facts).
     def stop_facts(event) = @turn_endings.stop_facts(event)
     private :stop_facts
@@ -2289,7 +2297,7 @@ module Samagotchi
 
       unless turn.continue
         user_message = { role: "user", content: turn.prompt, turn_id: turn.id, **author_fields(turn.origin.author),
-                         MessageTime::KEY => turn.at }
+                         **participant_mode_fields(turn.origin.author, session: session), MessageTime::KEY => turn.at }
         user_message[:images] = image_refs unless image_refs.empty?
         turn.messages << user_message
         session.last_prompt = turn.prompt
