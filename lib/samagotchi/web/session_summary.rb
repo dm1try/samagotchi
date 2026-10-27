@@ -112,9 +112,10 @@ module Samagotchi
           pending_question: session.waiting_question(live: !!owner&.worker?),
           pending_card: up ? Bridge::PendingCard.read(session_dir) : nil,
           last_turn: session.last_turn&.to_file,
-          verdicts: Array(session.verdicts),
-          # The Verify fresh checks running now ({of, child_id}: the card's
-          # "verifying fresh" and its link).
+          # Its Verify verdicts, the fresh ones its worker hasn't taken yet
+          # too (VerifyFresh.verdicts_of), and the fresh checks running now
+          # ({of, child_id}: the card's "verifying fresh" and its link).
+          verdicts: VerifyFresh.verdicts_of(session, session_dir),
           verify_fresh: VerifyFresh.running(session.id, state_dir: File.dirname(session_dir))
                                    .map { |row| { of: row[:of], child_id: row[:child_id] } },
           last_verdict: last_verdict(session, session_dir)

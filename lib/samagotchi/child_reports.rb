@@ -64,6 +64,9 @@ module Samagotchi
     def ring(child, why:, state_dir:, wake: nil)
       return nil if mode == "off"
       return nil unless child&.delegate?
+      # A Verify fresh child's verdict reaches its parent's card
+      # (VerifyFresh.forward), never its conversation.
+      return nil if child.verify_fresh
 
       parent_id = Session.parent_override(child.id, state_dir: state_dir) || child.parent_id
       return nil unless parent_id

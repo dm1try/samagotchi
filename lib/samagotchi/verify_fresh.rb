@@ -21,13 +21,19 @@ module Samagotchi
   # theirs: their author, the boundary their grant has in the parent, their
   # cap counted across the parent and all their fresh children (.spend).
   #
-  # LEDGER, in the parent's directory (never its conversation), has one
-  # line per child started (child id, the verdict it checks, who asked):
-  # the running check (one fresh child per verdict at a time) and the
-  # spend rollup read it.
+  # Two files in the parent's directory, neither in its conversation:
+  # - LEDGER, one line per child started (child id, the verdict it checks,
+  #   who asked): the running check (one fresh child per verdict at a time)
+  #   and the spend rollup read it;
+  # - INBOX, the child's verdicts (.forward, written by the child's worker
+  #   after its turn's save), taken into the parent's verdicts by the
+  #   parent's worker between turns (.take) and shown before that by chi
+  #   web (.verdicts_of). Verdicts are display state: nothing here enters a
+  #   prompt.
   module VerifyFresh
     LEDGER = "verify_fresh.jsonl"
     LOCK = "verify_fresh.lock"
+    INBOX = "fresh_verdicts"
     # The child's first message, after the claim.
     ASK = "Verify this claim against the files here. You have none of the original session's context. " \
           "End with a line `Verdict: confirmed|refuted|unclear — <one-line reason>`."
@@ -152,6 +158,67 @@ module Samagotchi
     rescue StandardError => e
       Log.warn(:worker, "fresh_spend_failed", error: e.class.name, msg: e.message)
       0.0
+    end
+
+    # The child's new verdicts (+records+, Engine's verdict records) into
+    # its parent's INBOX, marked fresh: true with the child's id and the
+    # verdict they check again (of). Best effort.
+    # @param child [Session] a Verify fresh child
+    # @return [Integer] how many were written
+    def forward(child, records, state_dir: Session.default_state_dir)
+      fresh = child&.verify_fresh
+      return 0 unless fresh&.of && child.parent_id && Session.exist?(child.parent_id, state_dir: state_dir)
+
+      dir = File.join(Session.session_dir(child.parent_id, state_dir: state_dir), INBOX)
+      FileUtils.mkdir_p(dir)
+      Array(records).count do |record|
+        check = field(record, :check_turn_id).to_s
+        next false unless Session.valid_id?(check)
+
+        out = record.to_h { |key, value| [key.to_s, value.is_a?(Hash) ? value.transform_keys(&:to_s) : value] }
+        out.merge!("fresh" => true, "of" => fresh.of, "child_id" => child.id)
+        AtomicFile.write(File.join(dir, "#{check}.json"), JSON.generate(out))
+        true
+      end
+    rescue StandardError => e
+      Log.warn(:worker, "fresh_forward_failed", parent: child&.parent_id.to_s[0, 8], error: e.class.name, msg: e.message)
+      0
+    end
+
+    # The verdicts waiting in +session_dir+'s INBOX: [[record, file]],
+    # oldest first.
+    def pending(session_dir)
+      Dir.glob(File.join(session_dir, INBOX, "*.json")).sort_by { |path| [File.mtime(path), path] }.filter_map do |path|
+        record = JSON.parse(File.read(path))
+        record.is_a?(Hash) && record["fresh"] == true ? [record, path] : nil
+      rescue JSON::ParserError, SystemCallError
+        nil
+      end
+    end
+
+    # The parent's side, between turns (its worker): the waiting verdicts
+    # appended to +session+'s verdicts (one already there is not added
+    # twice). The caller saves the session, then deletes the files.
+    # @return [Array(Array<Hash>, Array<String>)] the records added and the
+    #   files taken
+    def take(session, session_dir)
+      waiting = pending(session_dir)
+      return [[], []] if waiting.empty?
+
+      known = session.verdicts.map { |record| field(record, :check_turn_id) }
+      added = waiting.map(&:first).reject { |record| known.include?(record["check_turn_id"]) }
+      session.verdicts = session.verdicts + added unless added.empty?
+      [added, waiting.map(&:last)]
+    end
+
+    # +session+'s verdicts as a page shows them: its own, then the fresh
+    # ones still waiting in its INBOX (no worker took them yet).
+    def verdicts_of(session, session_dir)
+      own = Array(session.verdicts)
+      known = own.map { |record| field(record, :check_turn_id) }
+      own + pending(session_dir).map(&:first).reject { |record| known.include?(record["check_turn_id"]) }
+    rescue StandardError
+      Array(session.verdicts)
     end
 
     # The LEDGER's rows: [{child_id:, of:, author:}].

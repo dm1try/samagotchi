@@ -99,6 +99,15 @@ RSpec.describe Samagotchi::ChildrenStatus do
       expect(rows[silent.id]).to have_attributes(last_reply: nil, last_reply_at: nil, reported: false)
     end
 
+    it "counts a Verify fresh child's reply as given: its verdict goes to the card, never a report" do
+      fresh = make(parent_id: parent.id, delegate: true, status: "idle", last_turn: { "outcome" => "completed" })
+      fresh.verify_fresh = { "of" => "c1", "anchor" => { "turn_id" => "11111111-2222-3333-4444-555555555555", "quote" => "q" } }
+      fresh.save(state_dir: tmpdir)
+      reply(fresh, "Verdict: confirmed - yes")
+
+      expect(of.find { |c| c.id == fresh.id }).to have_attributes(last_reply: "Verdict: confirmed - yes", reported: true)
+    end
+
     it "reads the branch of the child's folder: a linked worktree's own, a detached sha, none outside git" do
       root = File.realpath(tmpdir)
       main = File.join(root, "app")

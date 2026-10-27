@@ -74,7 +74,7 @@ module Samagotchi
           current_turn: current,
           waiting_for_owner: waiting,
           queued: review_queue(queued || [], viewer),
-          verdicts: ParticipantView.verdicts(session.verdicts, viewer),
+          verdicts: ParticipantView.verdicts(VerifyFresh.verdicts_of(session, Session.session_dir(id, state_dir: default_state_dir)), viewer),
           # The verdicts a fresh check runs for now (their check_turn_id;
           # never the child's id: a participant can't open it).
           fresh_running: VerifyFresh.running(id, state_dir: default_state_dir).map { |row| row[:of] }.uniq,

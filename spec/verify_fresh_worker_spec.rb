@@ -96,6 +96,11 @@ RSpec.describe Samagotchi::Worker, "Verify fresh" do
     prompt, author, verify = pop!(turns, "the child's first turn")
     expect(prompt).to start_with("Claim:\n> the cache key ignores the model")
     expect([author, verify]).to eq([grant.author, anchor])
+    inbox = File.join(dir_of(parent.id), Samagotchi::VerifyFresh::INBOX, "33333333-3333-4444-5555-666666666666.json")
+    wait_for("the verdict in the parent's inbox") { File.exist?(inbox) }
+    expect(JSON.parse(File.read(inbox))).to include("verdict" => "confirmed", "fresh" => true, "of" => check_turn,
+                                                    "child_id" => child.id)
+    expect(Samagotchi::SessionInbox.find_ring_files(dir_of(parent.id))).to eq([])
   end
 
   it "refuses the requester's turn once the parent's spend reached their cap, audited in the parent" do
@@ -121,5 +126,21 @@ RSpec.describe Samagotchi::Worker, "Verify fresh" do
 
     wait_for("the refusal") { parent_audit.any? { |line| line["event"] == "turn" && line["reason"] == "revoked" } }
     expect(engine).not_to have_received(:run_turn)
+  end
+
+  it "takes a forwarded verdict into the parent's verdicts between turns, announced, its conversation untouched" do
+    record = { anchor: anchor, verdict: "refuted", reason: "no such key", by: grant.author,
+               check_turn_id: "44444444-3333-4444-5555-666666666666" }
+    Samagotchi::VerifyFresh.forward(child, [record], state_dir: tmpdir)
+    events = Queue.new
+    engine.subscribe(observer: ->(event) { events << event if event[:type] == :verdict_recorded })
+    start_worker(parent)
+
+    event = pop!(events, "the verdict's announcement")
+    expect(event[:verdict]).to include("verdict" => "refuted", "fresh" => true, "of" => check_turn)
+    saved = Samagotchi::Session.load(parent.id, state_dir: tmpdir)
+    expect(saved.verdicts.size).to eq(2)
+    expect(saved.messages.size).to eq(1)
+    expect(Samagotchi::VerifyFresh.pending(dir_of(parent.id))).to eq([])
   end
 end

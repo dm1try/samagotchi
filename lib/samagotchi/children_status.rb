@@ -86,10 +86,15 @@ module Samagotchi
                 state: state_of(session, row, reply), waiting: row[:waiting], live: !!row[:live],
                 delegate: session.delegate?, cwd: session.working_directory, branch: GitHead.branch(session.working_directory),
                 last_reply: reply && first_line(session.id, reply, state_dir: state_dir),
-                last_reply_at: reply && reply_time(reply), reported: !reply.nil? && cursor.reply_file == reply,
+                last_reply_at: reply && reply_time(reply), reported: !reply.nil? && reported?(session, cursor, reply),
                 updated_at: session.updated_at, archived: !!row[:archived])
     end
     private_class_method :child
+
+    # A reply the parent was given; a Verify fresh child's always counts
+    # (its verdict goes to the parent's card, never a report).
+    def reported?(session, cursor, reply) = !session.verify_fresh.nil? || cursor.reply_file == reply
+    private_class_method :reported?
 
     def state_of(session, row, reply)
       return "waiting" if row[:waiting]

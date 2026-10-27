@@ -424,6 +424,7 @@ module Samagotchi
       # A change that asks to wake may start a turn here (C4), but not
       # ahead of an exit or restart a client asked for: it is a note then.
       @inbound.absorb_notes
+      absorb_fresh_verdicts
       return if absorb_context(wake: nothing_queued? && !@exit_requested)
 
       if (prompt = @inbound.take_initial_prompt)
@@ -1227,6 +1228,7 @@ module Samagotchi
       @merged_this_turn = []
       origin = fresh_origin(turn_args[:origin])
       turn_args = turn_args.merge(origin: origin)
+      verdicts_before = @session.verdicts.size
       @reporting_turn = reports_to_parent?(origin)
       # A participant's review turn merges no input (#pending_input_drain).
       @participant_turn = origin.participant?
@@ -1271,6 +1273,33 @@ module Samagotchi
       # turn that failed (kept with its failed note), read them.
       settle_child_reports(rolled_back: @turn_flow.restores != restores || merges_lost?(error))
       ring_parent_after_turn
+      forward_fresh_verdicts(verdicts_before)
+    end
+
+    # A Verify fresh child's verdicts this turn recorded go to its parent
+    # (VerifyFresh.forward), after the save: the parent's card shows them.
+    # A fresh child never rings (ChildRing.ring): nothing enters the
+    # parent's conversation.
+    def forward_fresh_verdicts(before)
+      return unless @session.verify_fresh
+
+      added = @session.verdicts.drop(before)
+      VerifyFresh.forward(@session, added, state_dir: @state_dir) unless added.empty?
+    end
+
+    # The parent's side, between turns: the verdicts its Verify fresh
+    # children forwarded join the session's (saved, then their files go)
+    # and the UIs hear each (:verdict_recorded).
+    def absorb_fresh_verdicts
+      added, files = VerifyFresh.take(@session, @session_dir)
+      return if files.empty?
+
+      return unless save_or_log(:fresh_verdicts) { save_session }
+
+      FileUtils.rm_f(files)
+      added.each { |record| @engine.announce(type: :verdict_recorded, verdict: record) }
+    rescue StandardError => e
+      Log.warn(:worker, "fresh_verdicts_failed", error: e.class.name, msg: e.message)
     end
 
     # The delegate reports this turn took: a kept turn moves the cursors on

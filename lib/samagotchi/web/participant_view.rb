@@ -49,6 +49,9 @@ module Samagotchi
         "turn_completed" => :turn_ended,
         "turn_canceled" => :turn_ended,
         "turn_failed" => :turn_ended,
+        # A Verify fresh child's verdict landing on its card: the card's
+        # fields only (#verdict_record).
+        "verdict_recorded" => :verdict_recorded,
         "generation_chunk" => :generation_chunk,
         "generation_retrying" => :generation_retrying,
         "tool_call_started" => :tool_call_started,
@@ -150,11 +153,21 @@ module Samagotchi
         return unless check_turn_id.is_a?(String) && !check_turn_id.empty?
         return unless by.nil? || by.is_a?(String)
 
-        Redact.deep({
+        out = {
           "anchor" => { "turn_id" => anchor.turn_id, "quote" => anchor.quote },
           "verdict" => verdict, "reason" => reason, "by" => by,
           "check_turn_id" => check_turn_id
-        }, viewer)
+        }
+        # A Verify fresh verdict: which verdict it checked again (never the
+        # child's id: a participant can't open that session).
+        of = field(raw, :of)
+        out.merge!("fresh" => true, "of" => of) if field(raw, :fresh) == true && of.is_a?(String) && !of.empty?
+        Redact.deep(out, viewer)
+      end
+
+      def verdict_recorded(event, viewer)
+        verdict = verdict_record(field(event, :verdict), viewer) or return nil
+        { "type" => "verdict_recorded", "verdict" => verdict }
       end
 
       # The reply's visible text only: never thinking, a tool call's bytes

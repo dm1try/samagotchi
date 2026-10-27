@@ -152,6 +152,24 @@ RSpec.describe Samagotchi::Web::ParticipantView do
         "check_turn_id" => "123e4567-e89b-12d3-a456-426614174001"
       }])
     end
+
+    it "passes a Verify fresh verdict's landing with what it checked again, never the child's id" do
+      record = {
+        anchor: { turn_id: "123e4567-e89b-12d3-a456-426614174000", quote: "claim" },
+        verdict: "confirmed", reason: "supported", by: "p:p_2", check_turn_id: "123e4567-e89b-12d3-a456-426614174009",
+        fresh: true, of: "123e4567-e89b-12d3-a456-426614174001", child_id: "secret-child", at: "now"
+      }
+      expected = {
+        "anchor" => { "turn_id" => "123e4567-e89b-12d3-a456-426614174000", "quote" => "claim" },
+        "verdict" => "confirmed", "reason" => "supported", "by" => "p:p_2",
+        "check_turn_id" => "123e4567-e89b-12d3-a456-426614174009",
+        "fresh" => true, "of" => "123e4567-e89b-12d3-a456-426614174001"
+      }
+
+      expect(shown({ type: "verdict_recorded", verdict: record })).to eq("type" => "verdict_recorded", "verdict" => expected)
+      expect(described_class.verdicts([record], viewer)).to eq([expected])
+      expect(shown({ type: "verdict_recorded", verdict: { verdict: "maybe" } })).to be_nil
+    end
   end
 
   describe ".messages" do

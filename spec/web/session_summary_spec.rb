@@ -138,13 +138,18 @@ RSpec.describe Samagotchi::Web::SessionSummary do
                                              by_name: "Reviewer", check_turn_id: "check-1")
     end
 
-    it "shows the fresh checks running now" do
+    it "shows a fresh verdict its worker hasn't taken yet and the fresh checks running now" do
       s = session
       dir = session_dir(s)
+      FileUtils.mkdir_p(File.join(dir, Samagotchi::VerifyFresh::INBOX))
+      fresh = { "verdict" => "confirmed", "fresh" => true, "of" => "check-1", "child_id" => "c" * 36,
+                "check_turn_id" => "check-2" }
+      File.write(File.join(dir, Samagotchi::VerifyFresh::INBOX, "check-2.json"), JSON.generate(fresh))
       allow(Samagotchi::VerifyFresh).to receive(:running).and_return([{ of: "check-1", child_id: "c" * 36, author: nil }])
 
       json = described_class.build(s, owner: nil, session_dir: dir)
 
+      expect(json[:verdicts]).to eq([fresh])
       expect(json[:verify_fresh]).to eq([{ of: "check-1", child_id: "c" * 36 }])
     end
 

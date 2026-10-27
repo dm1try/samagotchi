@@ -158,6 +158,37 @@ RSpec.describe Samagotchi::VerifyFresh do
       expect(described_class.related_spend(child, nil, state_dir: state_dir)).to eq(0.0)
     end
   end
+
+  describe "the verdict's way back" do
+    let(:child) { Samagotchi::Session.load(start.id, state_dir: state_dir) }
+    let(:parent_dir) { Samagotchi::Session.session_dir(parent.id, state_dir: state_dir) }
+    let(:record) do
+      { anchor: anchor, verdict: "confirmed", reason: "keys.rb:12 hashes the model", by: "p:alex",
+        check_turn_id: "44444444-4444-4444-5555-666666666666", at: "2026-10-27T11:00:00.000Z" }
+    end
+
+    it "writes the child's verdict to the parent's inbox, marked fresh, and the parent takes it once" do
+      expect(described_class.forward(child, [record], state_dir: state_dir)).to eq(1)
+      expect(described_class.verdicts_of(Samagotchi::Session.load(parent.id, state_dir: state_dir), parent_dir).last)
+        .to include("verdict" => "confirmed", "fresh" => true, "of" => check_turn, "child_id" => child.id)
+
+      session = Samagotchi::Session.load(parent.id, state_dir: state_dir)
+      added, files = described_class.take(session, parent_dir)
+      expect(added.map { |r| r["check_turn_id"] }).to eq([record[:check_turn_id]])
+      expect(session.verdicts.size).to eq(2)
+      FileUtils.rm_f(files)
+      expect(described_class.take(session, parent_dir)).to eq([[], []])
+      expect(described_class.verdicts_of(session, parent_dir).size).to eq(2)
+
+      # The parent's conversation is untouched: verdicts are display state.
+      expect(session.messages.size).to eq(1)
+    end
+
+    it "never rings the parent: nothing enters its conversation" do
+      expect(Samagotchi::ChildRing.ring(child, why: "turn_end", state_dir: state_dir)).to be_nil
+      expect(Samagotchi::SessionInbox.find_ring_files(parent_dir)).to eq([])
+    end
+  end
 end
 
 RSpec.describe Samagotchi::VerifyFreshOrigin do
