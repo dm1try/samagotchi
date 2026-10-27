@@ -354,6 +354,16 @@ test("hook_notice: one the page shows elsewhere (by its capabilities then) isn't
   assert.deepEqual(page.names(), ["turnDom.notice"]);
 });
 
+// A toolkit notice (ctx.use_toolkit, or on mode's suggestion) carries the
+// toolkit's summary: the chip updates, and the notice is a row of the step.
+test("hook_notice with a toolkit updates the chip and still shows the notice", () => {
+  const { page, handlers } = fakePage();
+  const toolkit = { name: "web", label: "web", left_out: ["write"], reachable: [], removed: [], groups: "all" };
+  handlers.hook_notice({ hook: "toolkit", text: "toolkit: web (suggested, p=0.71) · /toolkit to change", toolkit });
+  assert.deepEqual(page.current.toolkit, toolkit);
+  assert.deepEqual(page.names(), ["updateInfoBar", "turnDom.notice"]);
+});
+
 // A side request (recap, /btw) counted: the ctx tooltip's side line at once.
 test("side_usage puts the side block on the open session's timing and re-renders the info bar", () => {
   const { page, handlers } = fakePage();

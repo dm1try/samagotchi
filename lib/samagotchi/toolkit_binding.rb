@@ -128,6 +128,32 @@ module Samagotchi
       true
     end
 
+    # On mode's suggestion (Engine#settle_toolkit_suggestion), on the turn
+    # thread before #apply!: put +session+ on kit +name+ with origin
+    # suggested, saved, and tell the user through #use's notice path. Not
+    # when the session's toolkit isn't the default any more (a /toolkit or
+    # ctx.use_toolkit while it was asked) or the kit is gone.
+    # +deferred+: the session already has a model reply, so the switch
+    # applies from this turn (and re-reads the whole request).
+    # @return [Boolean] whether the session switched
+    def suggest(session, name, confidence:, deferred:)
+      return false if session.nil? || session.toolkit_origin != "default" || !kits.key?(name)
+
+      session.toolkit = Toolkit.new(name: name)
+      session.toolkit_origin = "suggested"
+      session.save(state_dir: @state_dir.call)
+      @notify.call(self.class.suggestion_notice(name, confidence, deferred: deferred), :info, "toolkit",
+                   extra: { toolkit: explained(session.toolkit).summary })
+      true
+    end
+
+    # "toolkit: smoke (suggested, p=0.71) · /toolkit to change"; a
+    # deferred switch says "from this turn".
+    def self.suggestion_notice(name, confidence, deferred:)
+      when_text = deferred ? " from this turn" : ""
+      "toolkit: #{name}#{when_text} (suggested, p=#{format("%.2f", confidence.to_f)}) · /toolkit to change"
+    end
+
     # Resolve the session's toolkit into the Registry, on the turn thread at
     # a turn's start (before its prompt is built), and build the prompts
     # again when what it declares (or its kit's prompt text) changed. A

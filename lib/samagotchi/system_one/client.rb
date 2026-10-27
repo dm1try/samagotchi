@@ -46,12 +46,20 @@ module Samagotchi
         return nil if host.empty?
 
         model = (model.nil? ? Config.get("guardrails.system_one.model") : model).to_s.strip
-        timeout_ms = Config.get("guardrails.system_one.timeout_ms").to_i
-        timeout_ms = DEFAULT_TIMEOUT_MS unless timeout_ms.positive?
+        timeout_ms = configured_timeout_ms
 
         new(backend: HttpBackend.new(host_registry: host_registry, host: host, model: model.empty? ? nil : model,
                                      timeout_ms: timeout_ms, env: env),
             mode: mode, host: host, model: model.empty? ? nil : model, tag: tag)
+      end
+
+      # guardrails.system_one.timeout_ms, else the default: the whole
+      # request's limit, and how long a turn waits for an answer (toolkit
+      # suggestion's on mode).
+      # @return [Integer]
+      def self.configured_timeout_ms
+        timeout_ms = Config.get("guardrails.system_one.timeout_ms").to_i
+        timeout_ms.positive? ? timeout_ms : DEFAULT_TIMEOUT_MS
       end
 
       # @param state [String, Hash, Array] what the question is about, as the

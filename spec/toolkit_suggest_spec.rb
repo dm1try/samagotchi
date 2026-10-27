@@ -2,6 +2,9 @@
 
 require "spec_helper"
 require "samagotchi/toolkit_suggest"
+require "samagotchi/cancellation_controller"
+require "samagotchi/system_one/client"
+require "samagotchi/system_one/log"
 
 RSpec.describe Samagotchi::ToolkitSuggest do
   let(:kits) do
@@ -161,5 +164,58 @@ RSpec.describe Samagotchi::ToolkitSuggest do
     expect(rules.keys).to eq(%w[all_core core added removed groups])
     expect(rules).to be_frozen
     expect(described_class.rules(Samagotchi::Toolkit.resolve_kit("full", kits))).to include("all_core" => true, "groups" => "all")
+  end
+
+  describe described_class::Pending do
+    let(:log) { instance_double(Samagotchi::SystemOne::Log, entry: true) }
+    let(:judged) do
+      Samagotchi::ToolkitSuggest::Judged.new(suggestion: nil, would: "suggested", fields: { raw: "kit:web" })
+    end
+    let(:now) { [0.0] }
+    let(:clock) { -> { now.first } }
+
+    it "records an audit ask on its own thread, with no did" do
+      pending = described_class.new(log: log, timeout_seconds: 1, joined: false, clock: clock)
+
+      pending.finish(judged)
+
+      expect(log).to have_received(:entry).with("suggestion", { raw: "kit:web" }).once
+    end
+
+    it "leaves an on ask's line to the turn, once" do
+      pending = described_class.new(log: log, timeout_seconds: 1, joined: true, clock: clock)
+      pending.finish(judged)
+
+      expect(pending.wait(nil)).to eq([:answered, judged])
+      pending.record("suggested")
+      pending.record("default")
+
+      expect(log).to have_received(:entry).with("suggestion", { raw: "kit:web", did: "suggested" }).once
+    end
+
+    it "gives up at the deadline, and the late answer's line says timeout" do
+      pending = described_class.new(log: log, timeout_seconds: 1, joined: true, clock: clock)
+      now[0] = 1.0
+
+      expect(pending.wait(nil)).to eq([:timeout, nil])
+      expect(log).not_to have_received(:entry)
+      pending.finish(judged)
+
+      expect(log).to have_received(:entry).with("suggestion", { raw: "kit:web", did: "timeout" }).once
+    end
+
+    it "gives up on a Stop at once" do
+      pending = described_class.new(log: log, timeout_seconds: 10, joined: true, clock: clock)
+
+      expect(pending.wait(instance_double(Samagotchi::CancellationController, cancelled?: true))).to eq([:canceled, nil])
+    end
+
+    it "writes nothing for an ask cut or failed" do
+      pending = described_class.new(log: log, timeout_seconds: 1, joined: true, clock: clock)
+      pending.abandon(:failed)
+      pending.finish(nil)
+
+      expect(log).not_to have_received(:entry)
+    end
   end
 end

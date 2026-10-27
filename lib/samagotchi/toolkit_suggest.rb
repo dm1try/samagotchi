@@ -2,14 +2,18 @@
 
 require "json"
 
+require_relative "log"
 require_relative "message_time"
 require_relative "steer"
 require_relative "system_one/question"
+require_relative "toolkit"
 
 module Samagotchi
-  # The first-prompt toolkit classifier and its append-only audit record.
-  # The Engine prepares a Snapshot on its turn thread; #ask only sees that
-  # copy, so the question cannot change the running session or tool registry.
+  # The first-prompt toolkit classifier and its append-only record.
+  # The Engine prepares a Snapshot on its turn thread; #judge only sees that
+  # copy, so the question cannot change the running session or tool
+  # registry. On mode's turn applies the answer itself (Pending#wait,
+  # ToolkitBinding#suggest).
   class ToolkitSuggest
     FILE = "toolkit_suggestions.jsonl"
     QUESTION_ID = "toolkit"
@@ -24,6 +28,10 @@ module Samagotchi
     # built-ins registered when the ask started.
     Snapshot = Data.define(:session_id, :turn_number, :default, :candidates, :core_tools, :state)
     Suggestion = Data.define(:kit, :raw, :confidence, :decided)
+    # One ask's outcome: its Suggestion, what on mode would do with it
+    # (suggested, default, defer, below_threshold, invalid, no_judgment)
+    # and its log line's fields.
+    Judged = Data.define(:suggestion, :would, :fields)
 
     # The candidates with classifier descriptions, excluding the configured
     # default, the participants' review boundary, the defer sentinel, and a
@@ -56,8 +64,8 @@ module Samagotchi
       [question, { project: project.to_s, prompt: prompt.to_s[0, PROMPT_MAX] }]
     end
 
-    # The single turn eligibility predicate shared by audit and future on
-    # mode. A later prompt is eligible only inside an undecided defer window.
+    # The single turn eligibility predicate shared by audit and on mode.
+    # A later prompt is eligible only inside an undecided defer window.
     # +candidate_count+ and +last_suggestion+ may be callables: they are
     # read only once the session's own clauses pass (the kits read memory
     # files; the suggestion log is read whole), the log only on the defer
@@ -70,7 +78,7 @@ module Samagotchi
       return false if value(candidate_count).to_i < 2
 
       messages = Array(session.messages)
-      return true unless messages.any? { |message| field(message, :role).to_s == "model" }
+      return true unless model_reply?(messages)
       return false unless field(value(last_suggestion), :raw) == "undecided"
 
       current_turn_number = turn_number(messages)
@@ -108,15 +116,27 @@ module Samagotchi
       end
     end
 
-    # Runs one already-prepared ask, then appends its raw pick, what on mode
-    # would have done, and every offered kit's #rules (the default's too),
-    # so the report can tell a narrower kit that would also have covered
-    # the turn. A missing judgment is recorded too.
-    def self.ask(client:, log:, snapshot:, threshold:)
+    # Runs one already-prepared ask and appends its line (audit's thread).
+    # @return [Suggestion]
+    def self.ask(client:, log:, snapshot:, threshold:, cancel_controller: nil)
+      judged = judge(client: client, snapshot: snapshot, threshold: threshold, cancel_controller: cancel_controller)
+      record(log, judged)
+      judged.suggestion
+    end
+
+    # Runs one already-prepared ask: its raw pick, what on mode would do
+    # with it, and the log line's fields (every offered kit's #rules, the
+    # default's too, so the report can tell a narrower kit that would also
+    # have covered the turn). A missing judgment (Client#ask's nil) is a
+    # Judged too, would "no_judgment".
+    # @raise [LLM::RequestCancelled] the turn stopped while it was asked
+    # @return [Judged]
+    def self.judge(client:, snapshot:, threshold:, cancel_controller: nil)
       question, = question(default: Toolkit.new(name: snapshot.default.name),
                            kits: snapshot.candidates.to_h { |candidate| [candidate.name, kit_for(candidate)] },
                            project: snapshot.state.fetch(:project), prompt: snapshot.state.fetch(:prompt))
-      answer = client.ask(state: snapshot.state, questions: { QUESTION_ID => question })&.fetch(QUESTION_ID, nil)
+      answer = client.ask(state: snapshot.state, questions: { QUESTION_ID => question },
+                          cancel_controller: cancel_controller)&.fetch(QUESTION_ID, nil)
       raw = answer&.choice
       candidate_name = raw.to_s.delete_prefix("kit:")
       candidate = snapshot.candidates.find { |item| item.name == candidate_name } if raw.to_s.start_with?("kit:")
@@ -140,7 +160,7 @@ module Samagotchi
               else
                 "suggested"
               end
-      log.entry("suggestion", {
+      fields = {
         session_id: snapshot.session_id,
         turn_number: snapshot.turn_number,
         default_kit: snapshot.default.name,
@@ -151,8 +171,108 @@ module Samagotchi
         would: would,
         core_tools: snapshot.core_tools,
         kits: [snapshot.default, *snapshot.candidates].to_h { |kit| [kit.name, kit.rules] }
-      })
-      Suggestion.new(kit: selected, raw: raw, confidence: confidence, decided: !!decided)
+      }
+      Judged.new(suggestion: Suggestion.new(kit: selected, raw: raw, confidence: confidence, decided: !!decided),
+                 would: would, fields: fields)
+    end
+
+    # One line in the suggestion log. +did+ (on mode only) is what the
+    # turn did with it: suggested (the session switched), default, defer,
+    # chosen (the user picked a toolkit first), timeout or canceled (the
+    # turn stopped waiting; the line is written when the ask ends).
+    def self.record(log, judged, did: nil)
+      log.entry("suggestion", did.nil? ? judged.fields : judged.fields.merge(did: did))
+    end
+
+    # Whether the session has a model reply: a later prompt's ask is the
+    # defer path, and on mode's switch applies "from this turn".
+    def self.model_reply?(messages)
+      Array(messages).any? { |message| field(message, :role).to_s == "model" }
+    end
+
+    # An ask's hand-over between its thread and the turn. Audit mode never
+    # waits (+joined+ false): the thread records its line itself. On mode's
+    # turn waits (#wait) until the answer, a Stop or the deadline (System
+    # 1's timeout from the ask's start), and records what it did with the
+    # answer (#record); a turn that stopped waiting leaves the line to the
+    # thread, which writes it with why (timeout, canceled) when the ask
+    # ends.
+    class Pending
+      POLL_SECONDS = 0.05
+
+      def initialize(log:, timeout_seconds:, joined:, clock: -> { Process.clock_gettime(Process::CLOCK_MONOTONIC) })
+        @log = log
+        @clock = clock
+        @deadline = clock.call + timeout_seconds.to_f
+        @joined = joined
+        @mutex = Mutex.new
+        @done = ConditionVariable.new
+        @finished = false
+        @recorded = false
+        @judged = nil
+        @gave_up = nil
+      end
+
+      # On the ask's thread, always (an ensure): its Judged, nil when it
+      # was cut (a Stop) or raised.
+      def finish(judged)
+        @mutex.synchronize do
+          @finished = true
+          @judged = judged
+          if !@joined
+            write(nil)
+          elsif @gave_up
+            write(@gave_up)
+          end
+          @done.broadcast
+        end
+      end
+
+      # On the turn thread: [:answered, Judged or nil] once the ask ended,
+      # [:canceled, nil] when +controller+ is cancelled first, [:timeout,
+      # nil] at the deadline. It waits in short slices, so a Stop is seen
+      # at once even when the request doesn't watch the controller.
+      def wait(controller)
+        @mutex.synchronize do
+          loop do
+            return [:answered, @judged] if @finished
+            return give_up(:canceled) if controller&.cancelled?
+
+            remaining = @deadline - @clock.call
+            return give_up(:timeout) unless remaining.positive?
+
+            @done.wait(@mutex, [remaining, POLL_SECONDS].min)
+          end
+        end
+      end
+
+      # The answered ask's line, with what the turn did.
+      def record(did)
+        @mutex.synchronize { write(did.to_s) }
+      end
+
+      # The turn ended before it settled the ask (a Stop before the wait,
+      # a failure): its line says +reason+, now or when the ask ends.
+      def abandon(reason)
+        @mutex.synchronize do
+          @finished ? write(reason.to_s) : @gave_up ||= reason.to_s
+        end
+      end
+
+      private
+
+      def give_up(reason)
+        @gave_up = reason.to_s
+        [reason, nil]
+      end
+
+      # Once: an ask that ended with nothing (cut, raised) has no line.
+      def write(did)
+        return if @recorded || @judged.nil?
+
+        @recorded = true
+        ToolkitSuggest.record(@log, @judged, did: did)
+      end
     end
 
     # A resolved kit (Toolkit::Resolved) as frozen, JSON-ready rules, not

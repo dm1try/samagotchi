@@ -36,7 +36,7 @@ RSpec.describe Samagotchi::Engine do
 
   def start(engine, session: self.session, prompt: "Fix the browser workflow")
     turn = Struct.new(:session, :prompt, :origin).new(session, prompt, Struct.new(:author).new(nil))
-    engine.send(:start_toolkit_suggestion_audit, turn)
+    engine.send(:start_toolkit_suggestion, turn)
   end
 
   it "runs the ask off the turn thread using a copied question and leaves the session unchanged" do
@@ -46,7 +46,7 @@ RSpec.describe Samagotchi::Engine do
     release = Queue.new
     system_one = instance_double(Samagotchi::SystemOne::Client)
     allow(system_one).to receive(:host).and_return("judge")
-    allow(system_one).to receive(:ask) do |state:, questions:|
+    allow(system_one).to receive(:ask) do |state:, questions:, **|
       started << [state, questions.keys]
       release.pop
       nil

@@ -35,21 +35,27 @@ Engine#run_turn(session, prompt, on_event:, max_iterations:, cancel_controller:,
   │     #                      the user message's and the reminders' stamp too), continue: true (only on a continue),
   │     #                      resumed: true (only on a step-limit Continue: resumed: given),
   │     #                      images (only when there are any), cut_after (the model's cut wait, s)}
-  │     # starts ToolkitSuggest's audit asynchronously from a copied snapshot; it never blocks the turn or applies
-  │     # a suggestion to the session. See configuration.md (Toolkits) and guardrails.md (System 1).
+  │     # start_toolkit_suggestion: ToolkitSuggest's ask on its own thread from a copied snapshot (audit and on
+  │     #   mode: one eligibility, one thread). Audit never blocks the turn or changes the session; on mode
+  │     #   returns a ToolkitSuggest::Pending the turn joins below. See configuration.md (Toolkits) and
+  │     #   guardrails.md (System 1).
   │     # refresh_profile! (may ask the server's /props once)
   │     # turn.settings = LLM::TurnSettings (vision, sampling, thinking; model_name, loads_tools … are set in
   │     #   generate, after the hooks, from the final model),
   │     #   from one EffectiveModel; ThinkingNotices#turn_started keeps the level and says one the host can't do
   │     # announces guardrail load failures, starts and awaits plugin init tasks, applies staged tools,
+  │     #   then (on mode) settle_toolkit_suggestion: waits for the ask up to System 1's timeout from its
+  │     #   start, or a Stop (the request gets turn.controller), and on a candidate picked ≥ threshold
+  │     #   ToolkitBinding#suggest sets the session's toolkit, origin suggested, saved, with the notice;
   │     #   then the session's toolkit (apply_toolkit!: Registry#toolkit, ToolIndex#refresh! for find_tools'
-  │     #   chi line, a prompt rebuild when it changed)
+  │     #   chi line, a prompt rebuild when it changed). A Stop during the probes or the waits returns false
+  │     #   (the ask's line says canceled).
   │     # fires the :session_start hook on the Engine's first turn, then the :before_turn hook
   │     #   (a frozen copy of the history, the prompt, and resumed)
   │     # turn_messages: system head + history + due reminders (:reminder_injected) + the user message
   │     #   + the plugins' staged tool loads (ctx.load_tools: a kind "tool_change" system entry per bundle,
   │     #   only when the turn's host takes tool changes; #append_tool_loads)
-  │     # Returns false when a Stop came during the probes or the init wait, else true
+  │     # Returns false when a Stop came during the probes, the init wait or the toolkit ask, else true
   │
   ├── generate(turn, max_iterations:, max_tool_output_chars:, pending_input:)
   │     # one EffectiveModel (after the hooks, which may switch the model): sync_kernel_client!, then

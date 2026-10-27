@@ -249,7 +249,8 @@ module Samagotchi
       # delegate child's. toolkit.kits (the user's own) is read by Toolkit.kits.
       Entry.new(key: "toolkit.default",          yaml_path: %w[toolkit default],          type: :string, default: nil,              expose: %i[env config], lifecycle: :session_creation),
       Entry.new(key: "toolkit.child",            yaml_path: %w[toolkit child],            type: :string, default: nil,              expose: %i[env config], lifecycle: :session_creation),
-      # Toolkit suggestion (ToolkitSuggest): off, audit, or on; on currently behaves as audit and never changes a session.
+      # Toolkit suggestion (ToolkitSuggest): off; audit (logs, never blocks or changes a session); on (the first eligible
+      # turn waits up to guardrails.system_one.timeout_ms and may start on the suggested kit).
       Entry.new(key: "toolkit.suggest.mode",     yaml_path: %w[toolkit suggest mode],     type: :enum,   default: "off", expose: %i[config], enum_values: %w[off audit on], lifecycle: :worker_start),
       Entry.new(key: "toolkit.suggest.threshold", yaml_path: %w[toolkit suggest threshold], type: :float, default: 0.5, expose: %i[config], lifecycle: :worker_start),
       Entry.new(key: "toolkit.suggest.defer_turns", yaml_path: %w[toolkit suggest defer_turns], type: :integer, default: 3, expose: %i[config], lifecycle: :worker_start),

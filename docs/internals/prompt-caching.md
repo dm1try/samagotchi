@@ -73,6 +73,12 @@ right-hand column happens.
   beside `apply_staged_tools!`, then `reset!`): the chat loop builds `tools:` per request, so a mid-turn change
   would differ from the turn's prompt. Under `full` nothing is filtered and no line is added: the bytes are what
   they were before toolkits.
+- A toolkit suggestion (`toolkit.suggest.mode: on`) is set before `apply_toolkit!` of the turn it was asked on
+  (`Engine#settle_toolkit_suggestion` → `ToolkitBinding#suggest`), and no request goes out before that, so on a
+  session's first turn it costs nothing. Its **deferred switch** (a later prompt after `undecided`, within
+  `toolkit.suggest.defer_turns` / `defer_tokens`) is engine-side, so `/toolkit`'s CacheConfirm doesn't apply: it
+  changes the declared tools at the front of the request, and the server re-reads **system prompt + tools +
+  conversation** on that turn. The defer bound keeps that conversation small; its notice says "from this turn".
 - A kit's prompt text (`toolkit.kits.<name>.prompt:`, `chi.toolkit … prompt:`) sits after the appended files and
   before the memory indexes (`SystemPrompt#kit_prompt_section`): one prefix per kit, never per-session text, so
   sessions on the kit share it; a memory write (the indexes after it) doesn't move it. It is part of the

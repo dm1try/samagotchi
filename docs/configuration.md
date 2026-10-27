@@ -163,7 +163,7 @@ or `chi web` restart.
 | `append_system_prompt` | Worker start for the file list | The config list is not saved in the session file. File text is read when the prompt is built; `/model` rebuilds it, while an already-built prompt is cached. CLI `--append-system-prompt` files are saved in the session. |
 | `toolkit.default`, `toolkit.child` | Session creation | The chosen toolkit is saved; changing the defaults does not move existing sessions. |
 | `toolkit.kits`, `execute.description`, `llm_context.policy` | Worker start | These are held by the engine's toolkit or tool registry. |
-| `toolkit.suggest.mode`, `toolkit.suggest.threshold`, `toolkit.suggest.defer_turns`, `toolkit.suggest.defer_tokens` | Worker start | Suggestion settings are config-only and are resolved when the worker runs its audit. |
+| `toolkit.suggest.mode`, `toolkit.suggest.threshold`, `toolkit.suggest.defer_turns`, `toolkit.suggest.defer_tokens` | Worker start | Suggestion settings are config-only and are resolved when the worker runs its audit or on-mode ask. |
 | `skip_agents_md` | Prompt rebuild | A running engine caches its built prompt; a new worker or `/model` rebuild uses the changed value. |
 | `context.*` except `context.every_seconds`, `llm_context.*` except `llm_context.policy`, `steer.cut_after`, `memory.index_warn_tokens`, `status.line`, `web.participants.*` | Next matching turn, display, poll or write | Readers resolve these settings when they perform that operation. Session-specific LLM context and thinking values remain saved in the session. A participant's grant keeps the expiry and cap it was issued with; `web.participants.*` is what the next invite gets, and the cap and queue of a grant from before caps. |
 | `context.every_seconds` | Next context poll | The poller checks it for each source that has no explicit interval. |
@@ -1432,13 +1432,28 @@ toolkit:
   prompt, without changing its toolkit or delaying the turn. It offers the configured default as the fallback and
   `undecided` for greetings or check-ins. Only a default-origin session with at least two described candidates is
   asked; chosen or inherited toolkits, delegate children, review sessions and participant turns are skipped. After
-  `undecided`, later owner prompts may be asked again within both defer limits. `toolkit.suggest.mode: on` is accepted
-  but behaves exactly like `audit` in this build. The default is `off`. System 1's host, model and timeout come from
-  `guardrails.system_one.*`; the suggestion threshold and defer limits are its own settings below. Suggestions are
+  `undecided`, later owner prompts may be asked again within both defer limits. The default is `off`. System 1's
+  host, model and timeout come from `guardrails.system_one.*`; the suggestion threshold and defer limits are its own
+  settings below. Suggestions are
   kept in `toolkit_suggestions.jsonl`; `chi toolkit report` grades them against the session's tool calls. One ask
   runs at a time (a turn that comes while one still runs goes unasked, with an info line), and a kit that doesn't
   resolve (a missing base, a cycle) is left out of the candidates. A worker that exits waits about a second for a
   running ask, so a one-shot `-p --non-interactive` run may end before its suggestion is logged.
+- **On mode.** `toolkit.suggest.mode: on` asks the same question on the same eligible turns, but the turn waits for
+  the answer before it declares any tool, for at most `guardrails.system_one.timeout_ms` from the ask's start (it
+  starts right after the turn does, so plugin and MCP start-up hide most of it). A described kit picked with
+  confidence at or above `toolkit.suggest.threshold` becomes the session's toolkit, saved with `toolkit_origin:
+  suggested`, and the turn's first request declares it; the notice reads
+  `toolkit: web (suggested, p=0.71) · /toolkit to change`. Anything else (the default, a low-confidence or unknown
+  pick, `undecided`, no answer, a failing System 1, which warns once as `[samagotchi:toolkit]`) keeps the default
+  kit. A Stop during the wait ends the turn before its first request. After an `undecided`, a later prompt within
+  the defer limits may switch the session; that notice says `from this turn`, and that request re-reads the whole
+  prompt (system prompt, tools and conversation, which the defer limits keep small) without `/toolkit`'s cache
+  confirmation. `/toolkit` or `ctx.use_toolkit` at any time marks the toolkit chosen, and nothing is suggested
+  after that, even when it comes while the question is asked. On mode doesn't skip a local System 1 host shared
+  with the model (the turn waits before its first request anyway). Each answered ask's line in `toolkit_suggestions.jsonl` adds `did`:
+  `suggested`, `default`, `defer`, `chosen` (the user picked a toolkit first), `timeout` or `canceled` (written
+  when the late answer arrives), or `failed`; `chi toolkit report` grades on-mode lines by what they did.
 - **Tool-index groups.** `groups:` selects source groups by name or glob (`chrome`, `db*`; any case, `{a,b}` braces,
   as the guardrails rules' `models:`); for the MCP bundle each group is a server. Anything but a name or a list (a
   map such as `{chrome: true}`) refuses every new session on that kit or on a kit built on it, on every surface (chi,
@@ -2003,7 +2018,7 @@ column says so, a `--kebab-name` flag. The maps (`hosts:`, `models:`,
 | `context.peer_turns` | `3` | yes | Wake turns in a row a peer agent's answers may start (a peer bundle's outbox source, such as `codex-outbox`), with no message typed in the web or a TUI in between (`chi send` doesn't count); within `session.max_wakes`. Then answers wait as notes, and the UIs hear it once. An answer whose summary ends its verdicts with `VERDICT OK` wakes once to close the round, counted toward `session.max_wakes` only. `0`: a peer source wakes like any other. See [Waking](context.md#waking). |
 | `toolkit.default` | `full` | | The toolkit a new session is stored on: the tools its prompts declare (`full`, `lean`, `child`, one of `toolkit.kits` or a bundle's). `chi --toolkit` picks one per session. See "Toolkits". |
 | `toolkit.child` | `full` | | A delegate child's toolkit, unless its `delegate` call names one (`toolkit:`). See "Toolkits". |
-| `toolkit.suggest.mode` | `off` | | `audit` asks System 1 for a toolkit suggestion without changing the session; `on` currently behaves the same as `audit`. The System 1 host, model and timeout come from `guardrails.system_one.*`. config.yml only. |
+| `toolkit.suggest.mode` | `off` | | `audit` asks System 1 for a toolkit suggestion without changing the session; `on` waits for it (up to `guardrails.system_one.timeout_ms`) on an eligible turn and starts the session on a confidently suggested kit (Toolkits, On mode). The System 1 host, model and timeout come from `guardrails.system_one.*`. config.yml only. |
 | `toolkit.suggest.threshold` | `0.5` | | Minimum confidence for a non-default toolkit suggestion. config.yml only. |
 | `toolkit.suggest.defer_turns` | `3` | | Maximum owner-prompt number for another ask after `undecided` (the owner's own prompts: not steers, notes, reminders or `!` command output). config.yml only. |
 | `toolkit.suggest.defer_tokens` | `5000` | | Maximum estimated conversation size for another ask after `undecided` (characters / 4). config.yml only. |

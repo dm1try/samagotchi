@@ -311,7 +311,8 @@ declares every tool (full). The file stores only the name: a kit's tools and pro
 
 `toolkit_origin` records why the session is on that kit: `default` for the configured kit, `chosen` for a
 user-selected kit (including `/toolkit` and `ctx.use_toolkit`), `inherited` for a continue or fork, or `suggested`
-for a future toolkit suggestion. A session file from before the field reads as `chosen`.
+when `toolkit.suggest.mode: on` switched it ([Toolkits](configuration.md#toolkits)). A session file from before the
+field reads as `chosen`. Only a `default` session is ever suggested a kit.
 
 A `find_tools` result on a chat host saves the tools its hit loads as `loaded: ["list_sessions", "mcp_fs_read"]` on
 its `tool_response` entry (wire names: a built-in's, an MCP tool's `mcp_<server>_<tool>`), whatever the host: a

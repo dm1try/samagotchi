@@ -2143,7 +2143,10 @@ module Samagotchi
       emit_event(turn.on_event, turn.tag(turn_started))
       raise image_error if image_error
 
-      start_toolkit_suggestion_audit(turn)
+      # On mode's ask starts here too; the turn joins it before
+      # apply_toolkit! below, so its latency hides behind the probes and
+      # the init wait.
+      toolkit_suggestion = start_toolkit_suggestion(turn)
 
       # The window and the profile probes run after run_turn's probe-cancel
       # swap, so a Stop cuts them; a failure ends the turn as turn_failed.
@@ -2159,7 +2162,10 @@ module Samagotchi
       refuse_images!(turn.settings.vision) unless image_refs.empty?
       # A Stop during the probes: the turn ends before the load-failure
       # warnings, which show once, so the next turn still shows them.
-      return false if turn.controller.cancelled?
+      if turn.controller.cancelled?
+        toolkit_suggestion&.abandon(:canceled)
+        return false
+      end
 
       announce_guardrail_failures(turn.on_event)
       # Plugins' slow setup that brings tools (an MCP server's first
@@ -2172,9 +2178,12 @@ module Samagotchi
       # session's toolkit (a /toolkit change since the last turn): what the
       # prompt built next declares, unchanged until the next turn's start.
       apply_staged_tools!
+      # On mode: the suggested kit, before anything is declared (a Stop
+      # during the wait is caught by the check below).
+      settle_toolkit_suggestion(turn, toolkit_suggestion)
       apply_toolkit!(session, turn.on_event)
       refresh_participants!(session)
-      # A Stop during the wait above: the turn ends here,
+      # A Stop during the waits above: the turn ends here,
       # before the hooks run or a reminder is used up.
       return false if turn.controller.cancelled?
 
@@ -2191,6 +2200,10 @@ module Samagotchi
 
       turn_messages(turn, image_refs)
       true
+    rescue StandardError
+      # A turn that failed before it settled the ask: its line says so.
+      toolkit_suggestion&.abandon(:failed)
+      raise
     end
     private :prepare_turn
 
@@ -2729,20 +2742,22 @@ module Samagotchi
     def apply_toolkit!(session, on_event = nil) = @toolkit_binding.apply!(session, on_event)
     private :apply_toolkit!
 
-    # Start an audit-only classifier after :turn_started. All session and
-    # tool-registry reads happen here; the thread receives only this snapshot.
-    def start_toolkit_suggestion_audit(turn)
+    # Start the toolkit classifier after :turn_started, for audit and on
+    # mode alike (one eligibility, one snapshot, one thread). All session
+    # and tool-registry reads happen here; the thread receives only this
+    # snapshot. Audit never blocks: the thread logs its line. On mode
+    # returns the ask's Pending, which the turn joins before apply_toolkit!
+    # (#settle_toolkit_suggestion), with the turn's controller as the
+    # request's cancel controller.
+    # @return [ToolkitSuggest::Pending, nil] nil unless the turn joins an ask
+    def start_toolkit_suggestion(turn)
       mode = Config.get("toolkit.suggest.mode").to_s
       return if mode == "off"
 
+      joined = mode == "on"
       session = turn.session
       default = Toolkit.of(session.toolkit)
-      path = ToolkitSuggest.log_path(session_state_dir)
-      log = SystemOne::Log.new(dir: File.dirname(path), file: File.basename(path),
-                               warn: lambda { |reason|
-                                 Log.warn(:toolkit, "toolkit_suggest_log_failed",
-                                          echo: "[samagotchi:toolkit] #{reason}")
-                               })
+      log = toolkit_suggestion_log
       # The predicate checks the session first; the kits (memory kits are
       # read from disk) and the log (read whole) only when it gets there.
       kits = nil
@@ -2769,7 +2784,10 @@ module Samagotchi
       client = SystemOne::Client.from_config(host_registry: @host_registry, mode: "on", tag: :toolkit)
       return unless client
 
-      if toolkit_judge_shares_local_host?(client.host)
+      # D7: audit's free ask would compete with the turn's prefill on a
+      # shared single-slot server; on mode's turn waits for it before any
+      # request, so there is nothing to compete with.
+      if !joined && toolkit_judge_shares_local_host?(client.host)
         Log.info(:toolkit, "toolkit_suggest_shared_host_skipped", session_id: session.id, host: client.host)
         return
       end
@@ -2794,16 +2812,70 @@ module Samagotchi
         state: { project: state[:project].dup.freeze, prompt: state[:prompt].dup.freeze }.freeze
       )
       threshold = Config.get("toolkit.suggest.threshold")
+      controller = joined ? turn.controller : nil
+      pending = ToolkitSuggest::Pending.new(log: log, joined: joined,
+                                            timeout_seconds: SystemOne::Client.configured_timeout_ms / 1000.0)
       @toolkit_audit_thread = Thread.new do
-        ToolkitSuggest.ask(client: client, log: log, snapshot: snapshot, threshold: threshold)
-      rescue StandardError => e
-        ToolkitSuggest.warn(e)
+        judged = nil
+        begin
+          judged = ToolkitSuggest.judge(client: client, snapshot: snapshot, threshold: threshold,
+                                        cancel_controller: controller)
+        rescue LLM::RequestCancelled
+          nil
+        rescue StandardError => e
+          ToolkitSuggest.warn(e)
+        ensure
+          pending.finish(judged)
+        end
       end
+      joined ? pending : nil
     rescue StandardError => e
       ToolkitSuggest.warn(e)
       nil
     end
-    private :start_toolkit_suggestion_audit
+    private :start_toolkit_suggestion
+
+    # On mode, before apply_toolkit!: wait for the ask (#start_toolkit_
+    # suggestion) up to System 1's timeout from its start, or until a Stop,
+    # and put the session on a candidate picked with confidence ≥ threshold
+    # (ToolkitBinding#suggest: origin suggested, saved, the notice). Any
+    # other outcome (the default, below threshold, undecided, no judgment,
+    # a timeout, a Stop) leaves the session on its default. Nothing here
+    # sends a request; prepare_turn's cancel check ends a stopped turn.
+    def settle_toolkit_suggestion(turn, pending)
+      return if pending.nil?
+
+      outcome, judged = pending.wait(turn.controller)
+      unless outcome == :answered
+        Log.info(:toolkit, "toolkit_suggest_#{outcome}", session_id: turn.session.id)
+        return
+      end
+      return if judged.nil?
+
+      session = turn.session
+      did = case judged.would
+            when "suggested"
+              switched = @toolkit_binding.suggest(session, judged.suggestion.kit,
+                                                  confidence: judged.suggestion.confidence,
+                                                  deferred: ToolkitSuggest.model_reply?(session.messages))
+              switched ? "suggested" : "chosen"
+            when "defer" then "defer"
+            else "default"
+            end
+      pending.record(did)
+    rescue StandardError => e
+      ToolkitSuggest.warn(e)
+    end
+    private :settle_toolkit_suggestion
+
+    def toolkit_suggestion_log
+      path = ToolkitSuggest.log_path(session_state_dir)
+      SystemOne::Log.new(dir: File.dirname(path), file: File.basename(path),
+                         warn: lambda { |reason|
+                           Log.warn(:toolkit, "toolkit_suggest_log_failed", echo: "[samagotchi:toolkit] #{reason}")
+                         })
+    end
+    private :toolkit_suggestion_log
 
     # D7: System 1's host is the session's model server, and a local one
     # (a single-slot Splash or llama.cpp): the same name, or two hosts:

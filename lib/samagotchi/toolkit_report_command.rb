@@ -101,7 +101,8 @@ module Samagotchi
         tallies[kit]["would:#{entry["would"] || "unknown"}"] += 1
         confidence = entry["confidence"].nil? ? "n/a" : format("%.2f", entry["confidence"])
         @stdout.puts("#{timestamp(entry["at"]).iso8601} #{id[0, 8]} turn #{entry["turn_number"]}: " \
-                     "#{entry["raw"] || "no judgment"} (p=#{confidence}, would #{entry["would"] || "unknown"}) " \
+                     "#{entry["raw"] || "no judgment"} (p=#{confidence}, would #{entry["would"] || "unknown"}" \
+                     "#{", did #{entry["did"]}" if entry["did"]}) " \
                      "→ #{kit}: #{grade}#{detail}#{window}")
         labels = uses.is_a?(Array) ? uses.map(&:label).uniq : []
         @stdout.puts("  tools: #{labels.join(", ")}") unless labels.empty?
@@ -224,10 +225,11 @@ module Samagotchi
       name == "call_tool" ? :ungradable : ToolUse.new(name: name, group: nil, label: name)
     end
 
-    # The kit on mode would have run: the suggestion only when it would
-    # have been applied, else the session's default.
+    # The kit on mode would have run (audit), or ran (an on line's did):
+    # the suggestion only when it was (or would have been) applied, else
+    # the session's default.
     def graded_kit(entry)
-      name = entry["would"] == "suggested" ? entry["kit"] : entry["default_kit"]
+      name = (entry["did"] || entry["would"]) == "suggested" ? entry["kit"] : entry["default_kit"]
       name || "(unknown)"
     end
 

@@ -50,6 +50,14 @@ RSpec.describe Samagotchi::ToolkitReportCommand do
     expect(report.send(:joined_uses, message)).to eq([:ungradable])
   end
 
+  it "grades an on-mode line by what the turn did, not what it would have done" do
+    report = described_class.new(["report"], sessions_dir: sessions_dir, log: log)
+    late = { "would" => "suggested", "did" => "timeout", "kit" => "web", "default_kit" => "full" }
+
+    expect(report.send(:graded_kit, late)).to eq("full")
+    expect(report.send(:graded_kit, late.merge("did" => "suggested"))).to eq("web")
+  end
+
   it "caps days at retention and refuses a non-positive or malformed --days" do
     allow(Samagotchi::Config).to receive(:get).and_call_original
     allow(Samagotchi::Config).to receive(:get).with("session.retention_days").and_return(7)

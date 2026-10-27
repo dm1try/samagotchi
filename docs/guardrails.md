@@ -666,14 +666,16 @@ a body that isn't JSON, a question with no answer, a request longer than
 `timeout_ms`. A nil means "ask the user", which is what the caller would
 have done anyway.
 
-Toolkit suggestions are a separate audit use of System 1. When
-`toolkit.suggest.mode` is `audit` (or `on`, which is audit-only in this
-build), the engine asks a `choice` question from a background thread after
-the turn starts. This uses the same configured host, model and timeout, but
-is gated by `toolkit.suggest.mode`, not `guardrails.system_one.mode`, and it
-never changes the session's toolkit. Its audit records use the `toolkit` tag
-and are written to `toolkit_suggestions.jsonl` beside the guardrail logs.
-To avoid competing with the session's model, it skips (one info line) when
+Toolkit suggestions are a second use of System 1. When
+`toolkit.suggest.mode` is `audit` or `on`, the engine asks a `choice`
+question from a background thread after the turn starts. This uses the same
+configured host, model and timeout, but is gated by `toolkit.suggest.mode`,
+not `guardrails.system_one.mode`. Audit never changes the session's toolkit;
+on mode's turn waits for the answer (at most `timeout_ms`, cut by a Stop)
+and may start the session on the suggested kit (configuration.md, Toolkits).
+Its warnings use the `toolkit` tag and its records are written to
+`toolkit_suggestions.jsonl` beside the guardrail logs. To avoid competing
+with the session's model, audit skips (one info line) when
 the System 1 host is the model's local host: the same `hosts:` name, or
 another entry for the same server root (scheme, host and port). There is no
 reliable single-slot signal, so this host-identity check is the available
