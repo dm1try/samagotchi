@@ -86,6 +86,19 @@ Shape (plain Markdown, no frontmatter):
 - **Updating**: when a step turned out different, update the skill in the same turn: `edit` those steps in its file (`<scope dir>/skill_<name>.md`), or rewrite it with `memory_write`; keep the rest as it was, add a dated Changelog line. No confirmation needed.
 - **The `skills` bundle** (`chi bundle install skills`, optional) adds `/skill save [name] [--system]`, `/skill list`, `/skill show <name>`, `/skill diff <name> [N]`; it keeps older versions and shows a short diff line after each update.
 
+## Toolkit memories
+
+A memory named `toolkit_<name>` defines a kit named `<name>`. Its body is one fenced YAML block with `base`, `add`,
+`remove`, `groups` and a required `description`; never include `prompt:`. Only registered tools are declared, and
+the built-in names (`full`, `lean`, `child`, `review`) are reserved. Project kits take precedence over system kits;
+config and bundle kits take precedence over both. `/toolkit` lists a memory kit's source, and `--mute
+toolkit_<name>` skips it for the session.
+
+Write a kit when the user asks for one, when they use `/toolkit add` to choose the same tools for the same kind of
+work twice, or when `chi toolkit report` shows a kit repeatedly short of a tool for one kind of prompt. A tweak to a
+config or bundle kit is a new memory kit based on it (`base: staging`, for example), never a `config.yml` edit.
+Writing or updating a toolkit memory is free like writing a skill; say so in the reply.
+
 ## Memory Bundles — shareable packs
 
 Bundles are versioned directories/zips/tar.gz/git URLs with a `manifest.yml` and any of: memories (`*.md`), `hooks/*.rb` (bundle hooks, `docs/hooks.md`), `guardrails/*.yml` (rules, `docs/guardrails.md`), a `plugin.rb` (commands, tools, hooks, services; `docs/plugins.md`). They are shareable and installable.

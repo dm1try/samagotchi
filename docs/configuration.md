@@ -1420,6 +1420,13 @@ toolkit:
   (`review`'s least of all: it is the participants' boundary). A bundle declares its own with `chi.toolkit`
   ([plugins](plugins.md#chitoolkitname-base-add--remove--prompt-nil-groups-nil-description-nil)).
   `description:` is optional classifier input, up to 300 characters; it is not included in the session prompt.
+- **Memory kits.** A memory named `toolkit_<name>.md` defines kit `<name>` with one fenced YAML block containing
+  optional `base:`, `add:`, `remove:` and `groups:`, plus a required `description:` (up to 300 characters).
+  `prompt:` is refused. A memory kit may use a config or bundle kit as its base. Built-ins cannot be redefined.
+  The precedence is built-ins, config, bundles, then memory kits; within memories, project scope wins over system
+  scope. Muted memory kits are skipped, and `/toolkit` shows each one's `memory:project` or `memory:system` source.
+  Kits are read once per worker, so changes take effect when a new worker starts. See
+  [Toolkit memories](memory.md#toolkit-memories) for the format and when to create one.
 - **Tool-index groups.** `groups:` selects source groups by name or glob (`chrome`, `db*`; any case, `{a,b}` braces,
   as the guardrails rules' `models:`); for the MCP bundle each group is a server. Anything but a name or a list (a
   map such as `{chrome: true}`) refuses every new session on that kit or on a kit built on it, on every surface (chi,

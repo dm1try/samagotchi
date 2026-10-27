@@ -281,6 +281,39 @@ skills`, [docs/plugins.md](plugins.md#the-skills-bundle)) adds `/skill save`,
 one-line diff after each update, and nudges a model that skips a failing
 step instead of fixing the skill.
 
+## Toolkit memories
+
+A memory named `toolkit_<name>` defines a toolkit named `<name>`. Its body is
+one fenced YAML block; `description` is required and is classification input
+only, not prompt text:
+
+```yaml
+base: staging
+add: [web_fetch]
+remove: [memory_write]
+groups: [browser]
+description: Inspect browser behavior and verify web changes
+```
+
+`base`, `add`, `remove` and `groups` are optional; without a base the kit uses
+`full`. A kit can build on a config or bundle kit. `prompt:` is refused, and
+the built-in names (`full`, `lean`, `child`, `review`) cannot be redefined.
+Only registered tools can be declared.
+
+Chi reads project-scope kits before system-scope kits; a project kit with a
+name wins over a system kit. Config and bundle kits also win over memories.
+`/toolkit` lists memory kits with their source (`memory:project` or
+`memory:system`). `--mute toolkit_<name>` skips that memory kit for the
+session. Kits are loaded once when a worker starts, so edits take effect on a
+new worker.
+
+Write one when the user asks for a kit, when they choose the same tools with
+`/toolkit add` for the same kind of work more than once, or when
+`chi toolkit report` shows a kit repeatedly short of a tool for one kind of
+prompt. To adjust a config or bundle kit, create a memory kit on that base
+(for example, `base: staging`); do not edit `config.yml` or the bundle. Tell
+the user when you create or update a toolkit memory.
+
 ## What a bundle owns
 
 A bundle owns the memory files it wrote, nothing else. `chi bundle install`
