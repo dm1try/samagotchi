@@ -2203,10 +2203,10 @@ module Samagotchi
 
       turn_messages(turn, image_refs)
       true
-    rescue StandardError
-      # A turn that failed before it settled the ask: its line says so.
+    ensure
+      # A turn that ended (a failure, an Interrupt) before it settled the
+      # ask: its line says so. Nothing once it was settled.
       toolkit_suggestion&.abandon(:failed)
-      raise
     end
     private :prepare_turn
 
@@ -2815,9 +2815,11 @@ module Samagotchi
         state: { project: state[:project].dup.freeze, prompt: state[:prompt].dup.freeze }.freeze
       )
       threshold = Config.get("toolkit.suggest.threshold")
-      controller = joined ? turn.controller : nil
       pending = ToolkitSuggest::Pending.new(log: log, joined: joined,
                                             timeout_seconds: SystemOne::Client.configured_timeout_ms / 1000.0)
+      # On mode: cut by a Stop while the turn waits (Pending#wait), not
+      # by one after it went on; audit's ask is never cut.
+      controller = joined ? pending.cancel_controller : nil
       @toolkit_audit_thread = Thread.new do
         judged = nil
         begin
@@ -2844,7 +2846,8 @@ module Samagotchi
     # (ToolkitBinding#suggest: origin suggested, saved, the notice). Any
     # other outcome (the default, below threshold, undecided, no judgment,
     # a timeout, a Stop) leaves the session on its default. Nothing here
-    # sends a request; prepare_turn's cancel check ends a stopped turn.
+    # sends a request; prepare_turn's cancel check ends a stopped turn. A
+    # Stop wins over an answer already in (Pending#wait checks it first).
     def settle_toolkit_suggestion(turn, pending)
       return if pending.nil?
 
@@ -2855,21 +2858,30 @@ module Samagotchi
       end
       return if judged.nil?
 
-      session = turn.session
-      did = case judged.would
-            when "suggested"
-              switched = @toolkit_binding.suggest(session, judged.suggestion.kit,
-                                                  confidence: judged.suggestion.confidence,
-                                                  deferred: ToolkitSuggest.model_reply?(session.messages))
-              switched ? "suggested" : "chosen"
-            when "defer" then "defer"
-            else "default"
-            end
-      pending.record(did)
+      pending.record(toolkit_suggestion_outcome(turn.session, judged))
     rescue StandardError => e
       ToolkitSuggest.warn(e)
+      pending&.record("failed")
     end
     private :settle_toolkit_suggestion
+
+    # What the turn does with an answered ask, as the log line's did:
+    # suggested (switched), chosen (the toolkit isn't the default any
+    # more), unavailable (the kit is gone), defer or default.
+    def toolkit_suggestion_outcome(session, judged)
+      case judged.would
+      when "suggested"
+        return "chosen" unless session.toolkit_origin == "default"
+        return "unavailable" unless @toolkit_binding.kits.key?(judged.suggestion.kit)
+
+        switched = @toolkit_binding.suggest(session, judged.suggestion.kit, confidence: judged.suggestion.confidence,
+                                                                            deferred: ToolkitSuggest.model_reply?(session.messages))
+        switched ? "suggested" : "chosen"
+      when "defer" then "defer"
+      else "default"
+      end
+    end
+    private :toolkit_suggestion_outcome
 
     # On mode, as an idle worker starts (Worker#start_background): one ask
     # with the real question and a stand-in prompt, on its own thread,

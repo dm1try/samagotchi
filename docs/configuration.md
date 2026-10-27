@@ -1446,16 +1446,18 @@ toolkit:
   suggested`, and the turn's first request declares it; the notice reads
   `toolkit: web (suggested, p=0.71) · /toolkit to change`. Anything else (the default, a low-confidence or unknown
   pick, `undecided`, no answer, a failing System 1, which warns once as `[samagotchi:toolkit]`) keeps the default
-  kit. A Stop during the wait ends the turn before its first request. After an `undecided`, a later prompt within
-  the defer limits may switch the session; that notice says `from this turn`, and that request re-reads the whole
-  prompt (system prompt, tools and conversation, which the defer limits keep small) without `/toolkit`'s cache
-  confirmation. `/toolkit` or `ctx.use_toolkit` at any time marks the toolkit chosen, and nothing is suggested
-  after that, even when it comes while the question is asked. On mode doesn't skip a local System 1 host shared
-  with the model (the turn waits before its first request anyway), and an idle worker for an eligible session
-  sends one warm-up ask with the real question and a stand-in prompt so the server has its prefix cached; the
-  warm-up's answer is dropped and never logged. Each answered ask's line in `toolkit_suggestions.jsonl` adds `did`:
-  `suggested`, `default`, `defer`, `chosen` (the user picked a toolkit first), `timeout` or `canceled` (written
-  when the late answer arrives), or `failed`; `chi toolkit report` grades on-mode lines by what they did.
+  kit. A Stop during the wait (or before it, even with the answer in) ends the turn before its first request, and
+  nothing switches. After an `undecided`, a later prompt within the defer limits may switch the session; that notice
+  says `from this turn`, and that request re-reads the whole prompt (system prompt, tools and conversation, which
+  the defer limits keep small) without `/toolkit`'s cache confirmation. `/toolkit` or `ctx.use_toolkit` marks the
+  toolkit chosen, and nothing is suggested after that; a `/toolkit` sent during a turn runs after it and replaces
+  that turn's suggestion. On mode doesn't skip a local System 1 host shared with the model (the turn waits before
+  its first request anyway), and an idle worker for an eligible session sends one warm-up ask with the real
+  question and a stand-in prompt so the server has its prefix cached; its answer is dropped and never logged. Each answered ask's line in `toolkit_suggestions.jsonl` adds
+  `did`: `suggested`, `default`, `defer`, `chosen` (the toolkit was no longer the default), `unavailable` (the
+  picked kit was gone), `timeout` or `canceled` (written when the late answer arrives; a Stop after a timeout
+  doesn't cut it), or `failed` (the turn failed or the switch couldn't be saved); `chi toolkit report` grades
+  on-mode lines by what they did.
 - **Tool-index groups.** `groups:` selects source groups by name or glob (`chrome`, `db*`; any case, `{a,b}` braces,
   as the guardrails rules' `models:`); for the MCP bundle each group is a server. Anything but a name or a list (a
   map such as `{chrome: true}`) refuses every new session on that kit or on a kit built on it, on every surface (chi,

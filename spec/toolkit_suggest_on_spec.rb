@@ -191,7 +191,7 @@ RSpec.describe Samagotchi::Engine, "toolkit suggestion on mode" do
     release << true
   end
 
-  it "ends the turn before the model when a Stop comes during the wait, and passes the turn's controller on" do
+  it "ends the turn before the model when a Stop comes during the wait, and cuts the ask's request" do
     entered = Queue.new
     waiting = Queue.new
     release = Queue.new
@@ -212,7 +212,7 @@ RSpec.describe Samagotchi::Engine, "toolkit suggestion on mode" do
     result = turn(sess, cancel_controller: controller)
     join!(stopper, "the Stop")
 
-    expect(system_one).to have_received(:ask).with(hash_including(cancel_controller: controller))
+    expect(system_one).to have_received(:ask) { |**kw| expect(kw[:cancel_controller]).to be_cancelled }
     expect(declared).to be_empty
     expect(events.map { |e| e[:type] }).to include(:turn_canceled)
     expect(result).not_to be_nil
@@ -273,6 +273,103 @@ RSpec.describe Samagotchi::Engine, "toolkit suggestion on mode" do
     turn(sess, origin: origin)
 
     expect(asked).to be_empty
+  end
+
+  def ask_thread = engine.instance_variable_get(:@toolkit_audit_thread)
+
+  it "lets a Stop win over an answer already in: no switch, the line says canceled (M1)" do
+    answers << pick("kit:web", 0.9)
+    controller = Samagotchi::CancellationController.new
+    allow(engine).to receive(:apply_staged_tools!).and_wrap_original do |original|
+      join!(ask_thread, "the toolkit ask")
+      controller.cancel!(:manual)
+      original.call
+    end
+    sess = session
+
+    turn(sess, cancel_controller: controller)
+
+    expect(declared).to be_empty
+    expect([sess.toolkit.name, sess.toolkit_origin]).to eq(%w[full default])
+    expect(notices).to be_empty
+    expect(log_lines.last).to include("would" => "suggested", "did" => "canceled")
+  end
+
+  it "keeps a late ask going when the turn is stopped after its timeout, and logs it as timeout (L1)" do
+    allow(Samagotchi::SystemOne::Client).to receive(:configured_timeout_ms).and_return(50)
+    release = Queue.new
+    seen = Queue.new
+    allow(system_one).to receive(:ask).and_wrap_original do |original, **kw|
+      seen << kw[:cancel_controller]
+      original.call(**kw)
+    end
+    answers << -> { release.pop && pick("kit:web", 0.9) }
+    controller = Samagotchi::CancellationController.new
+    allow(kernel).to receive(:run) do |messages, **|
+      # A Stop while the model runs, after the toolkit wait timed out.
+      controller.cancel!(:manual)
+      Samagotchi::LLM::ModelResult.new(text: "ok", conversation: messages + [{ role: "model", content: "ok" }],
+                                       exhausted: false, pending_tool_calls: false, tool_activity: [])
+    end
+
+    turn(session, cancel_controller: controller)
+    ask_controller = pop!(seen, "the ask's controller")
+    release << true
+    join!(ask_thread, "the toolkit ask")
+
+    expect(ask_controller).not_to be_cancelled
+    expect(log_lines.last).to include("did" => "timeout")
+  ensure
+    release << true
+  end
+
+  it "logs an ask whose turn was interrupted before it settled as failed (L1)" do
+    answers << pick("kit:web", 0.9)
+    allow(engine).to receive(:refresh_profile!) do
+      join!(ask_thread, "the toolkit ask")
+      raise Interrupt
+    end
+    sess = session
+
+    expect { turn(sess) }.to raise_error(Interrupt)
+    expect(sess.toolkit_origin).to eq("default")
+    expect(log_lines.last).to include("did" => "failed")
+  end
+
+  it "doesn't switch when the save fails: the session keeps its default, the line says failed (L1)" do
+    answers << pick("kit:web", 0.9)
+    sess = session
+    allow(sess).to receive(:save).and_call_original
+    allow(sess).to receive(:save).with(state_dir: state_dir).and_wrap_original do |original, **kw|
+      raise Errno::ENOSPC if sess.toolkit_origin == "suggested"
+
+      original.call(**kw)
+    end
+    allow(Samagotchi::Log).to receive(:warn).and_call_original
+
+    turn(sess)
+
+    expect([sess.toolkit.name, sess.toolkit_origin]).to eq(%w[full default])
+    expect(declared.first).to eq(full_tools)
+    expect(Samagotchi::Log).to have_received(:warn).with(:toolkit, "toolkit_suggest_failed", anything)
+    expect(log_lines.last).to include("did" => "failed")
+  end
+
+  it "says unavailable when the picked kit is gone by the time it applies (L3)" do
+    answers << pick("kit:web", 0.9)
+    binding = engine.instance_variable_get(:@toolkit_binding)
+    calls = 0
+    allow(binding).to receive(:kits).and_wrap_original do |original, *args|
+      calls += 1
+      kits = original.call(*args)
+      calls == 1 ? kits : kits.except("web")
+    end
+    sess = session
+
+    turn(sess)
+
+    expect(sess.toolkit_origin).to eq("default")
+    expect(log_lines.last).to include("did" => "unavailable")
   end
 
   it "shows the notice in the TUI as the toolkit's own line" do

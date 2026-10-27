@@ -136,12 +136,20 @@ module Samagotchi
     # +deferred+: the session already has a model reply, so the switch
     # applies from this turn (and re-reads the whole request).
     # @return [Boolean] whether the session switched
+    # @raise the save's error, with the session's toolkit and origin as they were
     def suggest(session, name, confidence:, deferred:)
       return false if session.nil? || session.toolkit_origin != "default" || !kits.key?(name)
 
+      before = [session.toolkit, session.toolkit_origin]
       session.toolkit = Toolkit.new(name: name)
       session.toolkit_origin = "suggested"
-      session.save(state_dir: @state_dir.call)
+      begin
+        session.save(state_dir: @state_dir.call)
+      rescue StandardError
+        # Not saved, not switched: the turn runs the default it has on disk.
+        session.toolkit, session.toolkit_origin = before
+        raise
+      end
       @notify.call(self.class.suggestion_notice(name, confidence, deferred: deferred), :info, "toolkit",
                    extra: { toolkit: explained(session.toolkit).summary })
       true

@@ -2,6 +2,7 @@
 
 require "json"
 
+require_relative "cancellation_controller"
 require_relative "log"
 require_relative "message_time"
 require_relative "steer"
@@ -197,18 +198,28 @@ module Samagotchi
     # answer (#record); a turn that stopped waiting leaves the line to the
     # thread, which writes it with why (timeout, canceled) when the ask
     # ends.
+    #
+    # The request watches the ask's own controller (#cancel_controller),
+    # cut only by a Stop the turn sees before it settled (#wait, #abandon
+    # :canceled): a Stop later in a turn that went on after a timeout
+    # leaves the late ask (and its timeout line) alone.
     class Pending
       POLL_SECONDS = 0.05
+
+      # @return [CancellationController] what the ask's request watches
+      attr_reader :cancel_controller
 
       def initialize(log:, timeout_seconds:, joined:, clock: -> { Process.clock_gettime(Process::CLOCK_MONOTONIC) })
         @log = log
         @clock = clock
         @deadline = clock.call + timeout_seconds.to_f
         @joined = joined
+        @cancel_controller = CancellationController.new
         @mutex = Mutex.new
         @done = ConditionVariable.new
         @finished = false
         @recorded = false
+        @settled = false
         @judged = nil
         @gave_up = nil
       end
@@ -229,14 +240,14 @@ module Samagotchi
       end
 
       # On the turn thread: [:answered, Judged or nil] once the ask ended,
-      # [:canceled, nil] when +controller+ is cancelled first, [:timeout,
-      # nil] at the deadline. It waits in short slices, so a Stop is seen
-      # at once even when the request doesn't watch the controller.
+      # [:canceled, nil] when +controller+ is cancelled (first: a Stop wins
+      # over an answer already in), [:timeout, nil] at the deadline. It
+      # waits in short slices, so a Stop is seen at once.
       def wait(controller)
         @mutex.synchronize do
           loop do
-            return [:answered, @judged] if @finished
             return give_up(:canceled) if controller&.cancelled?
+            return [:answered, @judged] if @finished
 
             remaining = @deadline - @clock.call
             return give_up(:timeout) unless remaining.positive?
@@ -248,21 +259,37 @@ module Samagotchi
 
       # The answered ask's line, with what the turn did.
       def record(did)
-        @mutex.synchronize { write(did.to_s) }
+        @mutex.synchronize do
+          @settled = true
+          write(did.to_s)
+        end
       end
 
-      # The turn ended before it settled the ask (a Stop before the wait,
-      # a failure): its line says +reason+, now or when the ask ends.
+      # The turn ended before it settled the ask (a Stop before or after
+      # the wait, a failure, an Interrupt): its line says +reason+, now or
+      # when the ask ends. Nothing once the turn settled it (#record, a
+      # timeout or Stop in #wait), so prepare_turn calls it from an ensure.
       def abandon(reason)
         @mutex.synchronize do
-          @finished ? write(reason.to_s) : @gave_up ||= reason.to_s
+          next if @settled
+
+          if @finished
+            @settled = true
+            write(reason.to_s)
+          else
+            give_up(reason.to_sym)
+          end
         end
       end
 
       private
 
       def give_up(reason)
+        @settled = true
         @gave_up = reason.to_s
+        @cancel_controller.cancel!(:manual) if reason == :canceled
+        # An answer already in (a Stop wins over it): its line now.
+        write(@gave_up) if @finished
         [reason, nil]
       end
 

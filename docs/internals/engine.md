@@ -45,11 +45,12 @@ Engine#run_turn(session, prompt, on_event:, max_iterations:, cancel_controller:,
   │     #   from one EffectiveModel; ThinkingNotices#turn_started keeps the level and says one the host can't do
   │     # announces guardrail load failures, starts and awaits plugin init tasks, applies staged tools,
   │     #   then (on mode) settle_toolkit_suggestion: waits for the ask up to System 1's timeout from its
-  │     #   start, or a Stop (the request gets turn.controller), and on a candidate picked ≥ threshold
+  │     #   start, or a Stop (which wins over an answer already in, and cuts the ask's request through
+  │     #   Pending#cancel_controller; a Stop after a timeout doesn't), and on a candidate picked ≥ threshold
   │     #   ToolkitBinding#suggest sets the session's toolkit, origin suggested, saved, with the notice;
   │     #   then the session's toolkit (apply_toolkit!: Registry#toolkit, ToolIndex#refresh! for find_tools'
   │     #   chi line, a prompt rebuild when it changed). A Stop during the probes or the waits returns false
-  │     #   (the ask's line says canceled).
+  │     #   (the ask's line says canceled; an ensure marks one the turn never settled failed).
   │     # fires the :session_start hook on the Engine's first turn, then the :before_turn hook
   │     #   (a frozen copy of the history, the prompt, and resumed)
   │     # turn_messages: system head + history + due reminders (:reminder_injected) + the user message

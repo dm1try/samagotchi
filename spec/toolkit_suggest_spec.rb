@@ -210,6 +210,35 @@ RSpec.describe Samagotchi::ToolkitSuggest do
       expect(pending.wait(instance_double(Samagotchi::CancellationController, cancelled?: true))).to eq([:canceled, nil])
     end
 
+    it "lets a Stop win over an answer already in, logging it as canceled (M1)" do
+      pending = described_class.new(log: log, timeout_seconds: 1, joined: true, clock: clock)
+      pending.finish(judged)
+
+      expect(pending.wait(instance_double(Samagotchi::CancellationController, cancelled?: true))).to eq([:canceled, nil])
+      expect(log).to have_received(:entry).with("suggestion", { raw: "kit:web", did: "canceled" }).once
+    end
+
+    it "cuts the ask on a Stop, never on a timeout (L1)" do
+      stopped = described_class.new(log: log, timeout_seconds: 1, joined: true, clock: clock)
+      stopped.abandon(:canceled)
+      timed_out = described_class.new(log: log, timeout_seconds: 0, joined: true, clock: clock)
+      timed_out.wait(nil)
+
+      expect(stopped.cancel_controller).to be_cancelled
+      expect(timed_out.cancel_controller).not_to be_cancelled
+    end
+
+    it "abandons nothing once the turn settled the ask (L1)" do
+      pending = described_class.new(log: log, timeout_seconds: 1, joined: true, clock: clock)
+      pending.finish(judged)
+      pending.wait(nil)
+      pending.record("default")
+      pending.abandon(:failed)
+
+      expect(log).to have_received(:entry).once
+      expect(log).to have_received(:entry).with("suggestion", { raw: "kit:web", did: "default" })
+    end
+
     it "writes nothing for an ask cut or failed" do
       pending = described_class.new(log: log, timeout_seconds: 1, joined: true, clock: clock)
       pending.abandon(:failed)
