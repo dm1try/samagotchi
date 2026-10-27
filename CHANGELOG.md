@@ -7,6 +7,10 @@ and commands may change between minor versions. How releases are made:
 [docs/releasing.md](docs/releasing.md).
 ## [Unreleased]
 
+### Added
+
+- Toolkit kits accept an optional `description:` for classification, separate from their prompt text.
+
 ### Fixed
 
 - The model's orphaned-memory hint asks before using a same-named project's memories; it asks the user to confirm

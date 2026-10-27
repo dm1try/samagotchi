@@ -35,6 +35,18 @@ RSpec.describe "Plugin toolkits" do
         .to raise_error(ArgumentError, "toolkit long: prompt is over 2000 characters")
     end
 
+    it "declares an optional description for classification, but rejects invalid text" do
+      chi = api
+      chi.toolkit("web", base: "lean", description: "  Browsing websites  ")
+      chi.commit!
+      expect(kits.last.description).to eq("Browsing websites")
+
+      expect { api.toolkit("odd", base: "lean", description: :browsing) }
+        .to raise_error(ArgumentError, "toolkit odd: description must be text")
+      expect { api.toolkit("long", base: "lean", description: "x" * 301) }
+        .to raise_error(ArgumentError, "toolkit long: description is over 300 characters")
+    end
+
     it "accepts source group names and globs without changing inherited defaults" do
       chi = api
       chi.toolkit("web", base: "lean", groups: %w[chrome db* chrome])

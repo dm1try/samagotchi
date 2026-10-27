@@ -188,12 +188,15 @@ module Samagotchi
     # system prompt, verbatim (stripped); nil inherits the base's, "" clears
     #   it. +groups+: :all or a sorted list of source group names/globs; nil
     #   inherits the base's.
-    Kit = Data.define(:name, :base, :tools, :add, :remove, :source, :prompt, :groups) do
-      def initialize(name:, base: nil, tools: nil, add: [], remove: [], source: "core", prompt: nil, groups: nil)
+    #   +description+: optional classifier text; it is not prompt text.
+    Kit = Data.define(:name, :base, :tools, :add, :remove, :source, :prompt, :groups, :description) do
+      def initialize(name:, base: nil, tools: nil, add: [], remove: [], source: "core", prompt: nil, groups: nil,
+                     description: nil)
         super(name: name.to_s, base: base&.to_s, tools: tools == :all ? :all : Toolkit.tool_names(tools),
               add: Toolkit.tool_names(add), remove: Toolkit.tool_names(remove), source: source.to_s,
               prompt: prompt.is_a?(String) ? prompt.strip.freeze : nil,
-              groups: groups.nil? ? nil : Toolkit.group_names(groups))
+              groups: groups.nil? ? nil : Toolkit.group_names(groups),
+              description: description.is_a?(String) ? description.strip.freeze : nil)
       end
     end
 
@@ -208,6 +211,17 @@ module Samagotchi
       return "prompt must be text" unless value.is_a?(String)
 
       "prompt is over #{PROMPT_MAX} characters" if value.strip.length > PROMPT_MAX
+    end
+
+    DESCRIPTION_MAX = 300
+
+    # Why +value+ can't describe a kit (text, at most DESCRIPTION_MAX
+    # characters once stripped), nil when it can (nil too: no description).
+    def self.description_error(value)
+      return nil if value.nil?
+      return "description must be text" unless value.is_a?(String)
+
+      "description is over #{DESCRIPTION_MAX} characters" if value.strip.length > DESCRIPTION_MAX
     end
 
     # The built-ins `lean` declares: the file and shell tools, memories,
@@ -354,13 +368,13 @@ module Samagotchi
                       "name your kit something else"
 
     # The keys a config kit entry takes.
-    KIT_KEYS = %w[base add remove prompt groups].freeze
+    KIT_KEYS = %w[base add remove prompt groups description].freeze
 
     # The kits known: the built-ins, then config's toolkit.kits, then the
     # plugins' (chi.toolkit). A config kit with a built-in's name is left
     # out (one it can't redefine; review, the participants' boundary, is
     # reserved) with a line in +errors+, and so is one
-    #   that isn't a {base:, add:, remove:, prompt:, groups:} map. One with another key
+    #   that isn't a {base:, add:, remove:, prompt:, groups:, description:} map. One with another key
     # (a typo, a tools: list) still loads, with a line naming the key, and
     # so does one whose prompt isn't text or is over PROMPT_MAX characters:
     # without the prompt, with a line saying why. One whose groups: isn't
@@ -380,23 +394,28 @@ module Samagotchi
         elsif kits.key?(name)
           errors << "toolkit.kits.#{name}: #{name} is a built-in toolkit"
         elsif !spec.is_a?(Hash)
-          errors << "toolkit.kits.#{name}: expected {base:, add:, remove:, prompt:, groups:}"
+          errors << "toolkit.kits.#{name}: expected {base:, add:, remove:, prompt:, groups:, description:}"
         else
           spec = spec.transform_keys(&:to_s)
           (spec.keys - KIT_KEYS).each do |key|
             errors << "toolkit.kits.#{name}: unknown key #{key} " \
-                      "(a kit takes base:, add:, remove:, prompt:, groups:)"
+                      "(a kit takes base:, add:, remove:, prompt:, groups:, description:)"
           end
           if (problem = prompt_error(spec["prompt"]))
             errors << "toolkit.kits.#{name}: #{problem}; the kit loads without it"
             spec.delete("prompt")
+          end
+          if (problem = description_error(spec["description"]))
+            errors << "toolkit.kits.#{name}: #{problem}; the kit loads without it"
+            spec.delete("description")
           end
           if (problem = config_groups_error(name, spec["groups"]))
             errors << "#{problem}; the kit reaches no tool-index group until it is fixed"
             spec["groups"] = []
           end
           kits[name] = Kit.new(name: name, base: spec["base"] || FULL, add: spec["add"], remove: spec["remove"],
-                               prompt: spec["prompt"], groups: spec["groups"], source: "config")
+                               prompt: spec["prompt"], groups: spec["groups"], source: "config",
+                               description: spec["description"])
         end
       end
       plugins.each { |kit| kits[kit.name] ||= kit }

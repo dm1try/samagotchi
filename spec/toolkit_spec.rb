@@ -121,7 +121,7 @@ RSpec.describe Samagotchi::Toolkit do
     expect(kits["lean"].source).to eq("core")
     expect(kits).not_to have_key("odd")
     expect(errors).to eq(["toolkit.kits.lean: lean is a built-in toolkit",
-                          "toolkit.kits.odd: expected {base:, add:, remove:, prompt:, groups:}"])
+                          "toolkit.kits.odd: expected {base:, add:, remove:, prompt:, groups:, description:}"])
   end
 
   it "has a frozen review kit of reads whose name config can't take" do
@@ -139,8 +139,8 @@ RSpec.describe Samagotchi::Toolkit do
     kits = described_class.kits(config: { "audit" => { "base" => "lean", "tools" => ["read"], remvoe: ["x"] } },
                                 errors: errors)
     expect(kits["audit"].base).to eq("lean")
-    expect(errors).to eq(["toolkit.kits.audit: unknown key tools (a kit takes base:, add:, remove:, prompt:, groups:)",
-                          "toolkit.kits.audit: unknown key remvoe (a kit takes base:, add:, remove:, prompt:, groups:)"])
+    expect(errors).to eq(["toolkit.kits.audit: unknown key tools (a kit takes base:, add:, remove:, prompt:, groups:, description:)",
+                          "toolkit.kits.audit: unknown key remvoe (a kit takes base:, add:, remove:, prompt:, groups:, description:)"])
   end
 
   it "doesn't let a plugin kit replace one already known" do
@@ -284,6 +284,36 @@ RSpec.describe Samagotchi::Toolkit do
         expect(explained("lean").summary).not_to have_key(:prompt)
         expect(explained("full").summary).to be_nil
       end
+    end
+  end
+
+  describe "a kit's description" do
+    it "loads stripped description text without putting it into the resolved prompt" do
+      errors = []
+      kits = described_class.kits(config: { "web" => { "base" => "lean", "description" => "  Browse pages  " } },
+                                  errors: errors)
+      expect(kits["web"].description).to eq("Browse pages")
+      expect(kits["web"].description).to be_frozen
+      expect(described_class.new(name: "web").resolve(kits).prompt).to be_nil
+      explained = lambda do |name|
+        toolkit = described_class.new(name: name)
+        described_class::Explained.new(toolkit: toolkit, resolved: toolkit.resolve(kits), declared: [],
+                                       left_out: [], pending: false)
+      end
+      expect(explained.call("web").prompt_key).to eq(explained.call("lean").prompt_key)
+      expect(errors).to be_empty
+    end
+
+    it "loads without a non-text or overlong description, with one line naming the problem" do
+      errors = []
+      kits = described_class.kits(config: { "odd" => { "description" => ["text"] },
+                                            "long" => { "description" => "x" * 301 },
+                                            "limit" => { "description" => "x" * 300 } }, errors: errors)
+      expect(kits["odd"].description).to be_nil
+      expect(kits["long"].description).to be_nil
+      expect(kits["limit"].description.length).to eq(300)
+      expect(errors).to eq(["toolkit.kits.odd: description must be text; the kit loads without it",
+                            "toolkit.kits.long: description is over 300 characters; the kit loads without it"])
     end
   end
 

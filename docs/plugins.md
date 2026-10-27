@@ -579,7 +579,7 @@ end
 - Each task runs once per session start. A `-p … --non-interactive` run
   starts them with its turn and shows nothing but the answer.
 
-### `chi.toolkit(name, base:, add: [], remove: [], prompt: nil, groups: nil)`
+### `chi.toolkit(name, base:, add: [], remove: [], prompt: nil, groups: nil, description: nil)`
 
 A toolkit sessions can be put on: `base`'s tools (`full`, `lean`, `child`, a
 config or bundle toolkit) with `add` declared and `remove` left out, and
@@ -588,7 +588,8 @@ inherits the base's, `""` clears it; at most 2000 characters, and one that
 isn't a String or is longer is a load error). `groups` selects the source
 groups the toolkit reaches (names or globs, sorted and deduplicated; nil
 inherits the base's, `[]` reaches none, and `:all` reaches every group; anything
-else, a map say, is a load error).
+else, a map say, is a load error). `description` is optional classifier text
+(up to 300 characters); it is not included in the session prompt.
 Groups match against the tool index's load-time names. Users pick
 it like chi's own (`chi --toolkit NAME`, `toolkit.default`, `/toolkit NAME`),
 and the plugin with `ctx.use_toolkit` (below). Names are `a-z`, `0-9`, `_` and

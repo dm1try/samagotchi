@@ -312,17 +312,20 @@ module Samagotchi
       # a bundle has) with +add+ declared and +remove+ left out, and
       # +prompt+: text the sessions on it get in their system prompt (nil:
       #   its base's, "" none; at most Toolkit::PROMPT_MAX characters);
-      #   +groups+: MCP source group names/globs (nil inherits its base).
+      #   +groups+: MCP source group names/globs (nil inherits its base);
+      #   +description+: optional classifier text, not included in prompts
+      #   (at most Toolkit::DESCRIPTION_MAX characters).
       #   A
       # name chi (full, lean, child) or another bundle has is a load error,
       # and so is a prompt that isn't text or is too long; a base that
       # doesn't resolve leaves the sessions on it with every tool
       # (Toolkit#resolve).
-      def toolkit(name, base:, add: [], remove: [], prompt: nil, groups: nil)
+      def toolkit(name, base:, add: [], remove: [], prompt: nil, groups: nil, description: nil)
         name = name.to_s
         raise ArgumentError, "toolkit name #{name.inspect} must be a-z, 0-9, _ and -" unless name.match?(TOOLKIT_NAME)
 
-        problem = Toolkit.prompt_error(prompt) || (Toolkit.groups_error(groups) unless groups == :all)
+        problem = Toolkit.prompt_error(prompt) || Toolkit.description_error(description) ||
+                  (Toolkit.groups_error(groups) unless groups == :all)
         raise ArgumentError, "toolkit #{name}: #{problem}" if problem
         raise ArgumentError, "this chi has no toolkits (plugins: false)" unless @registries.toolkits
         if Toolkit::BUILTIN_KITS.key?(name)
@@ -333,7 +336,7 @@ module Samagotchi
         raise ArgumentError, "toolkit #{name} is declared twice" if @toolkits.any? { |kit| kit.name == name }
 
         @toolkits << Toolkit::Kit.new(name: name, base: base, add: add, remove: remove, prompt: prompt,
-                                      groups: groups, source: @bundle)
+                                      groups: groups, source: @bundle, description: description)
         nil
       end
 

@@ -1398,7 +1398,7 @@ toolkit:
   default: lean        # the sessions you start (unset: full)
   child: child         # delegate children (unset: full)
   kits:                # your own, on a base
-    audit: { base: lean, add: [web_fetch, delegate], remove: [memory_write] }
+    audit: { base: lean, add: [web_fetch, delegate], remove: [memory_write], description: "Code review and inspection" }
     terse: { base: lean, prompt: "- Be concise in your responses" }
     web: { base: lean, groups: [chrome] }
     coding: { base: lean, groups: [] }
@@ -1414,10 +1414,12 @@ toolkit:
 | `review` | `read`, `memory_read` (not `forget_outputs`, even under the `forget` layer): what a [participant's](internals/participants.md#turns) turn may call, whatever the session declares (the review boundary, [guardrails](guardrails.md#a-participants-review-boundary)). Reserved: `toolkit.kits.review` is refused ("review is reserved for participants' turns"), and a bundle can't declare it. A session may run on it too, as any kit |
 
 - **Plugin tools** are declared in every toolkit unless its `remove:` names them, and so is `forget_outputs` under
-  the `forget` layer. A `kits:` entry takes `base:` (default `full`), `add:`, `remove:`, `prompt:` and `groups:`
+  the `forget` layer. A `kits:` entry takes `base:` (default `full`), `add:`, `remove:`, `prompt:`, `groups:` and
+  `description:`
   (any other key, a typo or a `tools:` list, is ignored with a warning); it can't reuse a built-in's name
   (`review`'s least of all: it is the participants' boundary). A bundle declares its own with `chi.toolkit`
-  ([plugins](plugins.md#chitoolkitname-base-add--remove--prompt-nil-groups-nil)).
+  ([plugins](plugins.md#chitoolkitname-base-add--remove--prompt-nil-groups-nil-description-nil)).
+  `description:` is optional classifier input, up to 300 characters; it is not included in the session prompt.
 - **Tool-index groups.** `groups:` selects source groups by name or glob (`chrome`, `db*`; any case, `{a,b}` braces,
   as the guardrails rules' `models:`); for the MCP bundle each group is a server. Anything but a name or a list (a
   map such as `{chrome: true}`) refuses every new session on that kit or on a kit built on it, on every surface (chi,
