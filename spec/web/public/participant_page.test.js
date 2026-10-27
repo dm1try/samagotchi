@@ -191,6 +191,19 @@ test("participant page: Verify fresh on an unclear card posts once, says it runs
   assert.equal(card().querySelector(".verify-fresh-running"), null);
 });
 
+test("participant page: the header says pairing for a pair grant, review otherwise", async (t) => {
+  const pair = { ...REVIEW, viewer: { ...REVIEW.viewer, mode: "pair" } };
+  const { $ } = await openPage(t, { respond: (call) => call.answer(200, pair) });
+  assert.equal($("title").textContent, "Alex · pairing · Plan");
+  assert.equal(document.title, "chi · Alex · pairing");
+});
+
+test("participant page: a review grant's header stays the review's", async (t) => {
+  const { $ } = await openPage(t);
+  assert.equal($("title").textContent, "Alex's review · Plan");
+  assert.equal(document.title, "chi · Alex's review");
+});
+
 test("participant page: what is typed while a comment is in flight stays in the box after it is accepted", async (t) => {
   const { $, posts } = await openPage(t);
   $("comment").value = "Is step 3 safe?";
