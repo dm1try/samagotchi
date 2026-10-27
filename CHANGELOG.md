@@ -7,6 +7,8 @@ and commands may change between minor versions. How releases are made:
 [docs/releasing.md](docs/releasing.md).
 ## [Unreleased]
 
+## [0.121.1] - 2026-10-27
+
 ### Fixed
 
 - `chi sessions restart` can recover an unreachable, secret-refusing, newer-protocol or stuck-start worker without a
@@ -81,6 +83,9 @@ and commands may change between minor versions. How releases are made:
   line, as a local one does, instead of "… answered 409 grants_unwritable: …".
 - `chi web push test`'s line for a push that failed before the push service answered reads "failed (12 ms)", not
   "failed  (12 ms)".
+
+Update with `chi update` (claude-peer 0.4.5, codex-peer 0.3.4, github-pr 0.5.1), then restart `chi web` and
+`chi sessions restart` the running sessions.
 
 ## [0.121.0] - 2026-10-26
 
@@ -4626,7 +4631,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.121.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.121.1...HEAD
+[0.121.1]: https://github.com/dm1try/samagotchi/compare/v0.121.0...v0.121.1
 [0.121.0]: https://github.com/dm1try/samagotchi/compare/v0.120.0...v0.121.0
 [0.120.0]: https://github.com/dm1try/samagotchi/compare/v0.119.0...v0.120.0
 [0.119.0]: https://github.com/dm1try/samagotchi/compare/v0.118.0...v0.119.0
