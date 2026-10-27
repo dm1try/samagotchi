@@ -207,5 +207,27 @@ RSpec.describe Samagotchi::BridgeClient::EventStream do
 
       expect(collect(events, 1)).to eq([{ "type" => "stream_closed", "reason" => "bridge_secret" }])
     end
+
+    it "lets #close interrupt a refusal body that has not finished arriving" do
+      body = JSON.generate(error: "bridge_secret", detail: Samagotchi::BridgeSecret::REFUSED)
+      scripts = [lambda do |conn|
+        conn.write("HTTP/1.1 403 Forbidden\r\nContent-Length: #{body.bytesize + 10}\r\n\r\n#{body}")
+        hold(conn)
+      end]
+      slow_bridge = scripted_bridge(scripts)
+      slow_client = Samagotchi::BridgeClient.new(session_id: "s1", port: slow_bridge.port, secret: nil)
+      expect(slow_client).to receive(:open_stream)
+        .with(query: "?snapshot=1", last_event_id: nil, header_timeout: described_class::HEADER_TIMEOUT, attempts: 1)
+        .and_call_original
+      @stream = slow_client.follow(reconnect_delays: [5]) { |event| events << event }
+      pop!(slow_bridge.requests, "the refusal request")
+
+      @stream.close
+
+      expect(@stream).not_to be_alive
+      expect(events).to be_empty
+    ensure
+      slow_bridge&.close&.call
+    end
   end
 end

@@ -309,7 +309,7 @@ builtin the worker lacks names it (`command`). `/api/info`'s feature `remote_att
 **`SessionAccess::WebBridgeClient`** (`session_access/web_bridge_client.rb`, built by `Remote#attach_client(id,
 worker:)` from a wake's or worker read's `worker`): `post_turn` (`no_interrupt`, `history: false`), `post_command`,
 `answer`, `dismiss_question`, `dequeue`, `cancel`, `request_exit`, `request_recap`, `stats`, `children_counts`,
-`turn_records`, `follow`, `connect_stream`, `session_id`, `worker_key`, `port` (nil). One-shots go through
+`turn_records`, `follow`, `open_stream`, `session_id`, `worker_key`, `port` (nil). One-shots go through
 `Remote#route_request` (the server check, the auth and missing-route mapping), a new connection each, with a 45 s
 read timeout (chi web's 30 s Bridge read plus its wait for a waking Bridge; 75 s for answer and dismiss, which chi web
 sends twice on a 408; 5 s, `JOIN_READ_TIMEOUT`, for the join's reads: the children counts and a turn's records, L9). Every reply goes through **one status mapper**,
@@ -318,6 +318,7 @@ sends twice on a 408; 5 s, `JOIN_READ_TIMEOUT`, for the join's reads: the childr
 | chi web's answer | What the loop gets |
 |---|---|
 | 503 `not_live`, 404 `not_found` | raises `Unreachable` (< `IOError`): "no live worker for session ID on NAME" (`NO_WORKER`) |
+| 502 `bridge_secret` (stream) | `Refused(:bridge_secret)`; `EventStream` ends with `stream_closed bridge_secret` |
 | 504 (any) | `Response(408, {error: deadline_passed})`: the loop's late line |
 | 501 with `command` (`/command`) | `Response(400, {error: unknown_command, command})`: the loop names the command |
 | any other 501 | `Response(404, {error: not_found})`: the stale-worker line |
@@ -326,7 +327,7 @@ sends twice on a 408; 5 s, `JOIN_READ_TIMEOUT`, for the join's reads: the childr
 Every `RemoteFailed` (a transport failure, `RemoteTooOld`, a 401 or a 403 `forbidden`) becomes `Unreachable` with its
 message, so a loop that rescues `IOError` around Bridge calls never crashes on one mid-session.
 
-**The stream.** `connect_stream` writes `GET /api/sessions/:id/stream…` through `BridgeClient::StreamRequest` (the
+**The stream.** `open_stream` writes `GET /api/sessions/:id/stream…` through `BridgeClient::StreamRequest` (the
 GET a local stream writes, with `Authorization: Bearer` and `Last-Event-ID`; `Host` is the entry's host and port).
 An IPv6 entry (`http://[::1]:4567`) connects on the bare address (`URI#hostname`, as `HTTPTransport` does) and keeps
 the brackets in `Host`.
@@ -335,7 +336,9 @@ SYN isn't waited on for the OS's minutes on every reconnect.
 chi web proxies the Bridge's bytes unchanged (under WEBrick a hijacked body is raw, `Connection: close`). No chunked
 decoding in v1: a `Transfer-Encoding: chunked` reply (a proxy in between) and an https entry are logged
 (`stream_refused`, `chunked_unsupported` / `tls_unsupported`) and read as unreachable; decoding and TLS plug into
-`StreamRequest`. `follow` starts `EventStream` with three options a local stream never sets (`BridgeClient#follow`
+`StreamRequest`. `WebBridgeClient#open_stream` returns typed outcomes: chi web's 502 `bridge_secret` is a refusal
+(`stream_closed bridge_secret`), 503 is unreachable and retried with rediscovery, and 404 is an unknown-session
+refusal. `follow` starts `EventStream` with three options a local stream never sets (`BridgeClient#follow`
 passes none):
 - `idle_timeout:` 40 s (`STREAM_IDLE_TIMEOUT`: two of the Bridge's 15 s pings plus margin): no byte for that long is a
   half-open connection (Wi-Fi gone, a sleeping laptop), reconnected with the cursor.
@@ -343,8 +346,9 @@ passes none):
   `worker_changed {"port" => nil, "epoch" => new}` comes before it (the `reset` the new Bridge sends), and the
   client's `worker_key` is updated in place. A restart reaches the stream this way because `Bridge#stop` removes its
   sidecar before it ends the open streams: the reconnect finds no sidecar, chi web waits for the next worker's
-  (`await_bridge_port`) and proxies the cursor to it. A sidecar still naming the dead port would get an empty 200
-  (the proxy's connects refused), and the stream would move by rediscovery (`worker_changed`, then a `snapshot`).
+  (`await_worker_link`) and proxies the cursor to it. A sidecar still naming a dead port now gets 503 `not_live`;
+  a secret refusal gets 502 `bridge_secret`, and no refusal is sent as SSE frames. The stream moves by rediscovery
+  (`worker_changed`, then a `snapshot`).
 - `announce_retries:` `stream_retrying` once a reconnect fails and rediscovery neither moved the stream nor ended it
   (a stop prints its stopped line alone), `stream_resumed` once a stream answers again (a replay may bring no frame).
 
@@ -421,7 +425,7 @@ the closing line reads `stopped` as `unreachable`, the words it always had.
     TUI (`tui:PID` otherwise). `report_unanswered` takes the link's `strategy:` and `via:`.
   - The client the loop and `BridgeClient::EventStream` use: `follow`, `post_turn`, `post_command`, `answer`,
     `dismiss_question`, `dequeue`, `cancel`, `request_exit`, `request_recap`, `session_id`, and for the stream
-    `connect_stream(query:, last_event_id:, timeout:)` and `worker_key` (a new worker is a client with another key;
+    `open_stream(query:, last_event_id:, header_timeout:, attempts:)`, `read_stream` and `worker_key` (a new worker is a client with another key;
     a Bridge's is its port). `BridgeClient::StreamRequest` writes the stream's GET (host, port, path, extra headers)
     and reads its headers, for a stream through chi web too.
   - `RunOptions.parse(argv)` is bin/chi's one run-flag parser (`RunOptions.switches` lists its flags), so a remote

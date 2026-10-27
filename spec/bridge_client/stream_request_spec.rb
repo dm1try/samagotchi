@@ -66,7 +66,8 @@ RSpec.describe Samagotchi::BridgeClient::StreamRequest do
   it "gives up on headers that don't all come within the timeout" do
     port, = serve("HTTP/1.1 200 OK\r\nContent-Type: text/eve")
 
-    expect(described_class.open(host: "127.0.0.1", port: port, path: "/x", timeout: 0.2)).to be_nil
+    expect { described_class.open(host: "127.0.0.1", port: port, path: "/x", timeout: 0.2) }
+      .to raise_error(Errno::ETIMEDOUT)
   end
 
   it "answers nil when nothing listens" do

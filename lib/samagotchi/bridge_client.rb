@@ -8,6 +8,7 @@ require_relative "worker_sidecar"
 require_relative "bridge_secret"
 require_relative "delivery"
 require_relative "chi_invocation"
+require_relative "bridge_client/stream_open"
 require_relative "bridge_client/sse_parser"
 require_relative "bridge_client/event_stream"
 require_relative "bridge_client/stream_request"
@@ -27,7 +28,7 @@ module Samagotchi
     # The request header that carries the Bridge's secret (Bridge#secret_ok?).
     SECRET_HEADER = BridgeSecret::HEADER
     STREAM_CONNECT_ATTEMPTS = 3
-    # Seconds #stream waits for the Bridge's response headers, per attempt:
+    # Seconds #open_stream waits for the Bridge's response headers:
     # a worker that took the connection and froze must not hold the web's
     # proxy thread (as EventStream::HEADER_TIMEOUT for the TUI's).
     STREAM_HEADER_TIMEOUT = 5.0
@@ -293,22 +294,26 @@ module Samagotchi
     # @return [Array(Integer, Object)] the status and the parsed JSON body
     #   (nil when it isn't JSON); [nil, nil] when no reply came
     def get(path)
+      response = get_response(path)
+      [response.status, response.json]
+    rescue StandardError
+      [nil, nil]
+    end
+
+    # GET /session/:id/<path>, preserving the raw response and raising on I/O.
+    # @return [Response]
+    def get_response(path)
       sock = TCPSocket.new(@host, @port)
       sock.write("GET /session/#{@session_id}/#{path} HTTP/1.1\r\nHost: #{@host}:#{@port}\r\n#{secret_line}Connection: close\r\n\r\n")
       response = read_reply(sock, path)
-      sock.close rescue nil
       # A 500 whose text has "200" in it is not a 200.
       status = response && response[STATUS_LINE, 1]
-      return [nil, nil] unless status
+      raise IOError, "bridge #{path}: invalid response status" unless status
 
       body = response.split("\r\n\r\n", 2)[1] || ""
-      [status.to_i, begin
-        JSON.parse(body)
-      rescue JSON::ParserError
-        nil
-      end]
-    rescue StandardError
-      [nil, nil]
+      Response.new(status: status.to_i, body: body)
+    ensure
+      sock&.close rescue nil
     end
 
     # Monotonic SSE cursor of the live Engine, from GET /session/:id/state.
@@ -321,46 +326,49 @@ module Samagotchi
       nil
     end
 
-    # GET /session/:id/stream: yield the raw SSE body bytes as they arrive
-    # until the Bridge closes the stream.
-    # @param query [String] "" or "?from_seq=N"
-    # @param last_event_id [String, nil] reconnect cursor; the Bridge prefers it
-    #   over ?from_seq
-    # @param running [#call, nil] asked before every read, and every
-    #   STREAM_POLL seconds of silence: the stream ends once it returns
-    #   false. A quiet stream is never cut otherwise.
+    # Open GET /session/:id/stream and classify the response before the
+    # caller answers its own request.
     # @param header_timeout [Float] see STREAM_HEADER_TIMEOUT
-    def stream(query: "", last_event_id: nil, running: nil, header_timeout: STREAM_HEADER_TIMEOUT)
-      sock = nil
-      # Absorb the probe→connect race around a resumed worker's bridge:
-      # the sidecar probe can succeed a moment before the worker dies (or
-      # the bridge socket briefly refuses). A few quick bounded retries
-      # avoid the silent empty-200 that EventSource would otherwise keep
-      # re-opening.
-      status = nil
-      STREAM_CONNECT_ATTEMPTS.times do |attempt|
-        sock, status = connect_stream(query: query, last_event_id: last_event_id, timeout: header_timeout)
-        break if sock
-
-        sleep(0.15 * (attempt + 1))
+    # @param attempts [Integer] retries for connection failures only
+    # @yield [sock] called after response headers arrive, before classifying a
+    #   refusal; EventStream uses it to publish the socket for #close
+    # @return [StreamOpen::Opened, StreamOpen::Refused, StreamOpen::Unreachable]
+    def open_stream(query: "", last_event_id: nil, header_timeout: STREAM_HEADER_TIMEOUT,
+                    attempts: STREAM_CONNECT_ATTEMPTS)
+      count = 0
+      while count < attempts
+        count += 1
+        connection = connect_stream(query: query, last_event_id: last_event_id, timeout: header_timeout)
+        if connection
+          sock, status, headers = connection
+          unless !block_given? || yield(sock)
+            sock.close rescue nil
+            return StreamOpen::Unreachable.new(attempts: count)
+          end
+          return StreamOpen.classify(sock, status, headers)
+        end
+        sleep(0.15 * count) if count < attempts
       end
-      return unless sock
+      StreamOpen::Unreachable.new(attempts: count)
+    rescue Errno::ETIMEDOUT
+      StreamOpen::Unreachable.new(attempts: [count, 1].max)
+    rescue SystemCallError, SocketError, IOError
+      StreamOpen::Unreachable.new(attempts: [count, 1].max)
+    end
 
-      # A refusal (a 403 such as bridge_secret) is no event stream: its JSON
-      # isn't passed on as one.
-      if status == 403
-        sock.close rescue nil
-        return
-      end
-
+    # Read a successful stream opened by #open_stream.
+    # @param opened [StreamOpen::Opened]
+    # @param running [#call, nil] checked before every read and every
+    #   STREAM_POLL seconds of silence
+    def read_stream(opened, running: nil)
+      sock = opened.sock
       begin
         loop do
           if running
             break unless running.call
             next unless sock.wait_readable(STREAM_POLL)
           end
-          chunk = sock.readpartial(4096)
-          yield chunk
+          yield sock.readpartial(4096)
         rescue IOError, Errno::ECONNRESET, Errno::ECONNREFUSED # EOFError is an IOError
           break
         end

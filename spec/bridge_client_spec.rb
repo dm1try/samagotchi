@@ -43,7 +43,7 @@ RSpec.describe Samagotchi::BridgeClient do
       requests = [
         ->(client) { client.post_turn(prompt: "hi") },
         ->(client) { client.get("state") },
-        ->(client) { client.stream { nil } }
+        ->(client) { client.read_stream(client.open_stream) { nil } }
       ]
       heads = requests.map do |send_it|
         port, finish = serve_once(ok)
@@ -285,6 +285,15 @@ RSpec.describe Samagotchi::BridgeClient do
     expect(described_class::READ_TIMEOUT).to eq(30)
   end
 
+  it "raises on I/O from #get_response" do
+    server = TCPServer.new("127.0.0.1", 0)
+    port = server.local_address.ip_port
+    server.close
+
+    expect { described_class.new(session_id: "s1", port: port, secret: nil).get_response("stats") }
+      .to raise_error(Errno::ECONNREFUSED)
+  end
+
   it "reads a reply body as UTF-8" do
     port, _done = serve_once(json_reply("202 Accepted", JSON.generate(detail: "caf\u00e9")))
     reply = described_class.new(session_id: "s1", port: port, secret: nil).post_command(line: "/x")
@@ -303,7 +312,8 @@ RSpec.describe Samagotchi::BridgeClient do
     port, finish = serve_once("HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\n\r\nid: 8\r\ndata: {}\r\n\r\n")
     chunks = []
 
-    described_class.new(session_id: "s1", port: port, secret: nil).stream(query: "?from_seq=3", last_event_id: "7") { |c| chunks << c }
+    client = described_class.new(session_id: "s1", port: port, secret: nil)
+    client.read_stream(client.open_stream(query: "?from_seq=3", last_event_id: "7")) { |c| chunks << c }
 
     expect(chunks.join).to eq("id: 8\r\ndata: {}\r\n\r\n")
     expect(finish.call).to include("GET /session/s1/stream?from_seq=3 HTTP/1.1\r\n", "Last-Event-ID: 7\r\n")
@@ -313,7 +323,9 @@ RSpec.describe Samagotchi::BridgeClient do
     port, finish = serve_once(json_reply("403 Forbidden", JSON.generate(error: "bridge_secret", detail: "restart")))
     chunks = []
 
-    described_class.new(session_id: "s1", port: port, secret: nil).stream { |c| chunks << c }
+    client = described_class.new(session_id: "s1", port: port, secret: nil)
+    outcome = client.open_stream
+    expect(outcome).to have_attributes(reason: :bridge_secret)
 
     finish.call
     expect(chunks).to be_empty
@@ -331,7 +343,8 @@ RSpec.describe Samagotchi::BridgeClient do
     running = true
     asked = 0
     client = described_class.new(session_id: "s1", port: server.local_address.ip_port, secret: nil)
-    reader = Thread.new { client.stream(running: -> { asked += 1; running }) { nil } }
+    opened = client.open_stream
+    reader = Thread.new { client.read_stream(opened, running: -> { asked += 1; running }) { nil } }
 
     # Asked again after a silent STREAM_POLL: the quiet stream went on.
     wait_for("the stream to ask `running` twice") { asked >= 2 }
@@ -359,7 +372,8 @@ RSpec.describe Samagotchi::BridgeClient do
     running = true
     chunks = 0
     client = described_class.new(session_id: "s1", port: server.local_address.ip_port, secret: nil)
-    reader = Thread.new { client.stream(running: -> { running }) { chunks += 1 } }
+    opened = client.open_stream
+    reader = Thread.new { client.read_stream(opened, running: -> { running }) { chunks += 1 } }
 
     wait_for("the first chunk") { chunks.positive? }
     running = false
@@ -370,7 +384,7 @@ RSpec.describe Samagotchi::BridgeClient do
     server&.close
   end
 
-  it "gives up on a Bridge that accepts the stream but never sends its headers (4.20)" do
+  it "does not retry a Bridge that accepts the stream but never sends its headers" do
     server = TCPServer.new("127.0.0.1", 0)
     conns = []
     peer = Thread.new do
@@ -382,12 +396,11 @@ RSpec.describe Samagotchi::BridgeClient do
     end
     peer.report_on_exception = false
     client = described_class.new(session_id: "s1", port: server.local_address.ip_port, secret: nil)
-    reader = Thread.new { client.stream(header_timeout: 0.1) { raise "no body expected" } }
+    outcome = client.open_stream(header_timeout: 0.1)
 
-    join!(reader, "the stream to give up")
-    expect(conns.size).to eq(described_class::STREAM_CONNECT_ATTEMPTS)
+    expect(outcome).to have_attributes(attempts: 1)
+    expect(conns.size).to eq(1)
   ensure
-    reader&.kill
     peer&.kill
     conns&.each { |conn| conn.close rescue nil }
     server&.close
@@ -405,7 +418,7 @@ RSpec.describe Samagotchi::BridgeClient do
     client = described_class.new(session_id: "s1", port: server.local_address.ip_port, secret: nil)
 
     started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
-    expect(client.connect_stream(timeout: 0.2)).to be_nil
+    expect { client.connect_stream(timeout: 0.2) }.to raise_error(Errno::ETIMEDOUT)
     expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < 1.5
   ensure
     peer&.kill

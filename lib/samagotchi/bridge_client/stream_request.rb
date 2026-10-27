@@ -32,8 +32,14 @@ module Samagotchi
       # @return [Array(TCPSocket, Integer, Hash), nil] the socket positioned
       #   at the body, the HTTP status and the response headers (names in
       #   lower case), or nil when the server can't be reached
+      # @raise [Errno::ETIMEDOUT] a connected server didn't finish its headers
       def open(host:, port:, path:, last_event_id: nil, headers: {}, timeout: nil)
-        sock = TCPSocket.new(host, port, connect_timeout: timeout || CONNECT_TIMEOUT)
+        begin
+          sock = TCPSocket.new(host, port, connect_timeout: timeout || CONNECT_TIMEOUT)
+        rescue SystemCallError, SocketError, IOError
+          return nil
+        end
+
         sock.write(request(host: host, port: port, path: path, last_event_id: last_event_id, headers: headers))
         deadline = timeout && (Process.clock_gettime(Process::CLOCK_MONOTONIC) + timeout)
         status = header_line(sock, deadline).to_s[STATUS_LINE, 1].to_i
@@ -47,7 +53,7 @@ module Samagotchi
         [sock, status, received]
       rescue SystemCallError, SocketError, IOError
         sock&.close rescue nil
-        nil
+        raise
       end
 
       # The request's bytes.

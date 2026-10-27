@@ -69,6 +69,8 @@ module Samagotchi
           end
         end
 
+        def stream(sock, status, headers) = BridgeClient::StreamOpen.classify(sock, status, headers)
+
         def bridge(status, **body) = BridgeClient::Response.new(status: status, body: JSON.generate(body.compact))
       end
 
@@ -198,24 +200,35 @@ module Samagotchi
                                             idle_timeout: STREAM_IDLE_TIMEOUT, &on_event).start
       end
 
-      # GET /api/sessions/:id/stream through StreamRequest, with the token
-      # as Bearer. A chunked response (a proxy in between: no decoding in
-      # v1) and an https chi web (no TLS on the stream yet) are logged and
-      # read as unreachable.
-      # @return [Array(TCPSocket, Integer, Hash), nil] see StreamRequest.open
-      def connect_stream(query: "", last_event_id: nil, timeout: nil)
+      # GET /api/sessions/:id/stream through StreamRequest, classifying chi
+      # web's stream answers as Bridge outcomes.
+      # @param header_timeout [Float] see BridgeClient::STREAM_HEADER_TIMEOUT
+      # @yield [sock] called after response headers arrive, before classifying a
+      #   refusal; EventStream uses it to publish the socket for #close
+      # @return [BridgeClient::StreamOpen::Opened, BridgeClient::StreamOpen::Refused,
+      #   BridgeClient::StreamOpen::Unreachable]
+      def open_stream(query: "", last_event_id: nil, header_timeout: BridgeClient::STREAM_HEADER_TIMEOUT, attempts: 1)
         uri = URI(@remote.entry.url)
         return refused("tls_unsupported") if uri.scheme == "https"
 
         token = @remote.entry.token
-        opened = BridgeClient::StreamRequest.open(host: uri.hostname, port: uri.port,
-                                                  path: "/api/sessions/#{@session_id}/stream#{query}",
-                                                  last_event_id: last_event_id, timeout: timeout,
-                                                  headers: token ? { "Authorization" => "Bearer #{token}" } : {})
-        return opened unless opened && opened[2]["transfer-encoding"].to_s.downcase.include?("chunked")
+        connection = BridgeClient::StreamRequest.open(host: uri.hostname, port: uri.port,
+                                                      path: "/api/sessions/#{@session_id}/stream#{query}",
+                                                      last_event_id: last_event_id, timeout: header_timeout,
+                                                      headers: token ? { "Authorization" => "Bearer #{token}" } : {})
+        return BridgeClient::StreamOpen::Unreachable.new(attempts: 1) unless connection
 
-        opened[0].close rescue nil
-        refused("chunked_unsupported")
+        sock, status, headers = connection
+        unless !block_given? || yield(sock)
+          sock.close rescue nil
+          return BridgeClient::StreamOpen::Unreachable.new(attempts: 1)
+        end
+        return refused("chunked_unsupported", sock) if headers["transfer-encoding"].to_s.downcase.include?("chunked")
+
+        Mapping.stream(sock, status, headers)
+      rescue SystemCallError, SocketError, IOError
+        sock&.close rescue nil
+        BridgeClient::StreamOpen::Unreachable.new(attempts: 1)
       end
 
       private
@@ -234,9 +247,10 @@ module Samagotchi
         raise Unreachable, e.message
       end
 
-      def refused(reason)
+      def refused(reason, sock = nil)
+        sock&.close rescue nil
         Log.warn(:attached, "stream_refused", reason: reason, remote: @remote.name)
-        nil
+        BridgeClient::StreamOpen::Unreachable.new(attempts: 1)
       end
     end
   end

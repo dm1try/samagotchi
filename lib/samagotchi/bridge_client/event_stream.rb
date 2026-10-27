@@ -158,16 +158,18 @@ module Samagotchi
 
       # One connection: :events when it yielded any, else why it failed.
       def read_connection
-        sock, status, headers = @client.connect_stream(query: @query, last_event_id: @last_event_id, timeout: HEADER_TIMEOUT)
-        return :unreachable unless sock
-
-        unless attach(sock)
-          sock.close rescue nil
-          return :closed
+        sock = nil
+        outcome = @client.open_stream(query: @query, last_event_id: @last_event_id, header_timeout: HEADER_TIMEOUT,
+                                      attempts: 1) do |opened_sock|
+          sock = opened_sock if attach(opened_sock)
         end
-        return :unknown_session if status == 404
-        return :secret_refused if status == 403 && BridgeSecret.refused?(status, refusal_body(sock, headers))
-        return :unreachable unless status == 200
+        return :closed if closed?
+        return :unreachable if outcome.is_a?(StreamOpen::Unreachable)
+        return :unknown_session if outcome.is_a?(StreamOpen::Refused) && outcome.reason == :unknown_session
+        return :secret_refused if outcome.is_a?(StreamOpen::Refused) && outcome.reason == :bridge_secret
+        return :unreachable unless outcome.is_a?(StreamOpen::Opened)
+
+        sock = outcome.sock
 
         # Back as soon as the stream answers: a replay may bring nothing
         # (the session was quiet), and the next frame could be minutes away.
@@ -192,24 +194,6 @@ module Samagotchi
         yielded ? :events : :unreachable
       ensure
         detach(sock)
-      end
-
-      # A refusal's JSON body: its Content-Length's worth, else up to the
-      # Bridge's close, within HEADER_TIMEOUT.
-      def refusal_body(sock, headers)
-        body = +""
-        length = headers.to_h["content-length"]&.to_i
-        limit = length&.between?(0, 16_384) ? length : 16_384
-        deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + HEADER_TIMEOUT
-        while body.bytesize < limit
-          left = deadline - Process.clock_gettime(Process::CLOCK_MONOTONIC)
-          break unless left.positive? && sock.wait_readable(left)
-
-          body << sock.readpartial(limit - body.bytesize)
-        end
-        body
-      rescue IOError, SystemCallError
-        body
       end
 
       # Publish the socket for #close; false when already closed.

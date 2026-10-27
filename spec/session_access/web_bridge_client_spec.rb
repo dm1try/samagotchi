@@ -144,7 +144,8 @@ RSpec.describe Samagotchi::SessionAccess::WebBridgeClient do
 
     it "reads the recap, the stats, the children counts and a turn's records" do
       allow(bridge).to receive(:request_recap).and_return(reply(200, { enabled: false, session_off: true }))
-      allow(bridge).to receive(:get).with("stats").and_return([200, { "metrics" => { "turns" => 4 } }])
+      allow(bridge).to receive(:get_response).with("stats")
+        .and_return(Samagotchi::BridgeClient::Response.new(status: 200, body: '{"metrics":{"turns":4}}'))
 
       expect(client.request_recap.json).to eq("enabled" => false, "session_off" => true)
       expect(client.stats).to eq("turns" => 4)
@@ -198,7 +199,7 @@ RSpec.describe Samagotchi::SessionAccess::WebBridgeClient do
     end
   end
 
-  describe "#connect_stream" do
+  describe "#open_stream" do
     # A chi web stand-in: reads one request head, answers +reply+, stays open.
     def serve(reply, bind: "127.0.0.1")
       server = TCPServer.new(bind, 0)
@@ -228,15 +229,16 @@ RSpec.describe Samagotchi::SessionAccess::WebBridgeClient do
 
     it "asks chi web's stream route with the token as Bearer and the cursor as Last-Event-ID" do
       port, heads = serve("HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\n\r\n")
-      sock, status, = client_at(port).connect_stream(query: "?snapshot=1", last_event_id: "4-e1", timeout: 2)
+      opened = client_at(port).open_stream(query: "?snapshot=1", last_event_id: "4-e1", header_timeout: 2)
 
-      expect(status).to eq(200)
+      expect(opened).to be_a(Samagotchi::BridgeClient::StreamOpen::Opened)
+      expect(opened.status).to eq(200)
       expect(pop!(heads, "the request head")).to eq(
         "GET /api/sessions/s1/stream?snapshot=1 HTTP/1.1\r\nHost: 127.0.0.1:#{port}\r\nAccept: text/event-stream\r\n" \
         "Last-Event-ID: 4-e1\r\nAuthorization: Bearer tok\r\nConnection: keep-alive\r\n\r\n"
       )
     ensure
-      sock&.close
+      opened&.sock&.close
     end
 
     it "reaches an IPv6 chi web: the socket on the bare address, Host bracketed as the URL has it" do
@@ -245,19 +247,19 @@ RSpec.describe Samagotchi::SessionAccess::WebBridgeClient do
       rescue SystemCallError, SocketError
         skip("no IPv6 loopback here")
       end
-      sock, status, = client_at(port, url: "http://[::1]:#{port}").connect_stream(timeout: 2)
+      opened = client_at(port, url: "http://[::1]:#{port}").open_stream(header_timeout: 2)
 
-      expect(status).to eq(200)
+      expect(opened).to be_a(Samagotchi::BridgeClient::StreamOpen::Opened)
       expect(pop!(heads, "the request head")).to include("\r\nHost: [::1]:#{port}\r\n")
     ensure
-      sock&.close
+      opened&.sock&.close
     end
 
     it "refuses a chunked response (a proxy in between) as unreachable, with its reason logged" do
       port, = serve("HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n")
       allow(Samagotchi::Log).to receive(:warn)
 
-      expect(client_at(port).connect_stream(timeout: 2)).to be_nil
+      expect(client_at(port).open_stream(header_timeout: 2)).to be_a(Samagotchi::BridgeClient::StreamOpen::Unreachable)
       expect(Samagotchi::Log).to have_received(:warn).with(:attached, "stream_refused", reason: "chunked_unsupported",
                                                                                        remote: "studio")
     end
@@ -265,8 +267,21 @@ RSpec.describe Samagotchi::SessionAccess::WebBridgeClient do
     it "refuses an https chi web (no TLS on the stream in v1)" do
       allow(Samagotchi::Log).to receive(:warn)
 
-      expect(client_at(1, url: "https://studio.example:4567").connect_stream(timeout: 0.2)).to be_nil
+      expect(client_at(1, url: "https://studio.example:4567").open_stream(header_timeout: 0.2))
+        .to be_a(Samagotchi::BridgeClient::StreamOpen::Unreachable)
       expect(Samagotchi::Log).to have_received(:warn).with(:attached, "stream_refused", reason: "tls_unsupported", remote: "studio")
+    end
+
+    it "maps stream status responses through StreamOpen" do
+      body = JSON.generate(error: "bridge_secret", detail: Samagotchi::BridgeSecret::REFUSED)
+      port, = serve("HTTP/1.1 502 Bad Gateway\r\nContent-Length: #{body.bytesize}\r\n\r\n#{body}")
+      expect(client_at(port).open_stream).to have_attributes(reason: :bridge_secret, detail: Samagotchi::BridgeSecret::REFUSED)
+
+      port, = serve("HTTP/1.1 503 Service Unavailable\r\nContent-Length: 2\r\n\r\n{}")
+      expect(client_at(port).open_stream).to be_a(Samagotchi::BridgeClient::StreamOpen::Unreachable)
+
+      port, = serve("HTTP/1.1 404 Not Found\r\nContent-Length: 2\r\n\r\n{}")
+      expect(client_at(port).open_stream).to have_attributes(reason: :unknown_session)
     end
 
     it "follows with epoch_watch, announce_retries and the 40 s idle timeout" do
