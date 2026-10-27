@@ -2,7 +2,6 @@
 
 require "digest"
 require "json"
-require_relative "verify_anchor"
 require "socket"
 
 require_relative "worker_sidecar"
@@ -15,6 +14,10 @@ require_relative "bridge_client/event_stream"
 require_relative "bridge_client/stream_request"
 
 module Samagotchi
+  # Loaded on first use (a Verify turn): keeps the bundle test kit's load
+  # budget (spec/samagotchi/testing/sandbox_spec.rb).
+  autoload :VerifyAnchor, File.expand_path("verify_anchor", __dir__)
+
   # Client side of a session worker's Bridge: the 127.0.0.1 HTTP + SSE server
   # each SessionManager worker runs for its Engine (see Bridge). Discovery goes
   # through WorkerLink (the worker's `bridge.json` sidecar, WorkerSidecar, in

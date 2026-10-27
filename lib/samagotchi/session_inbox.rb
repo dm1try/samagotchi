@@ -10,9 +10,12 @@ require_relative "log"
 require_relative "session"
 require_relative "steer"
 require_relative "turn_origin"
-require_relative "verify_anchor"
 
 module Samagotchi
+  # Loaded on first use (a Verify turn's input): keeps the bundle test kit's
+  # load budget (spec/samagotchi/testing/sandbox_spec.rb).
+  autoload :VerifyAnchor, File.expand_path("verify_anchor", __dir__)
+
   # A session directory's file inbox and outbox (see SessionManager for the
   # layout): input/ holds one JSON file per queued turn, notes/ the context
   # notes a worker adds between turns, output/ one text file per reply,
@@ -231,7 +234,7 @@ module Samagotchi
     # older chi wrote, so nil).
     Input = Data.define(:prompt, :origin, :no_interrupt, :images, :delivery, :verify) do
       def initialize(prompt:, origin: nil, no_interrupt: false, images: [], delivery: nil, verify: nil)
-        super(prompt:, origin: TurnOrigin.of(origin), no_interrupt:, images:, delivery:, verify: VerifyAnchor.from(verify))
+        super(prompt:, origin: TurnOrigin.of(origin), no_interrupt:, images:, delivery:, verify: verify && VerifyAnchor.from(verify))
       end
     end
     # A file that doesn't parse, or isn't a JSON object: no prompt.
