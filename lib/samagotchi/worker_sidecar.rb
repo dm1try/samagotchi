@@ -13,12 +13,14 @@ module Samagotchi
   # one worker identity: the epoch in every event id, so a remote client
   # tells a restarted worker apart; nil from a worker before it), and its
   # Bridge's secret (every request names it in X-Chi-Bridge, Bridge#secret_ok?;
-  # nil from a worker before it, which asks for none). The Bridge writes it
-  # on start
-  # and removes it on stop; one a dead worker left stays until a client's
-  # probe finds its port closed (WorkerLink.resolve with unlink: true).
+  # nil from a worker before it, which asks for none), the pid of the worker
+  # process that wrote it (WorkerLink: it is Live only under the owner lock
+  # of that pid; nil from an older worker) and the WorkerLink::PROTOCOL it
+  # speaks (nil from an older one). The Bridge writes it on start and removes
+  # it on stop (only its own, by epoch); one a dead worker left stays until
+  # a client finds the lock free (WorkerLink.resolve with unlink: true).
   class WorkerSidecar < Data.define(:port, :bind, :session_id, :started_at, :version, :input_format, :features,
-                                    :epoch, :secret)
+                                    :epoch, :secret, :pid, :protocol)
     FILE = "bridge.json"
 
     def self.path(session_dir) = File.join(session_dir, FILE)
@@ -32,7 +34,8 @@ module Samagotchi
       port = data["port"]
       new(port: port.respond_to?(:to_i) ? port.to_i : 0, bind: data["bind"], session_id: data["session_id"],
           started_at: data["started_at"], version: data["version"], input_format: data["input_format"],
-          features: Array(data["features"]).map(&:to_s), epoch: data["epoch"]&.to_s, secret: secret_in(data["secret"]))
+          features: Array(data["features"]).map(&:to_s), epoch: data["epoch"]&.to_s, secret: secret_in(data["secret"]),
+          pid: integer_in(data["pid"]), protocol: integer_in(data["protocol"]))
     rescue JSON::ParserError, SystemCallError
       nil
     end
@@ -43,8 +46,10 @@ module Samagotchi
 
     def self.secret_in(value) = value.is_a?(String) && SECRET_SHAPE.match?(value) ? value : nil
 
+    def self.integer_in(value) = value.is_a?(Integer) ? value : nil
+
     def initialize(port:, bind: nil, session_id: nil, started_at: nil, version: nil, input_format: nil, features: [],
-                   epoch: nil, secret: nil) = super
+                   epoch: nil, secret: nil, pid: nil, protocol: nil) = super
 
     # The secret never shows in an inspect (a log line, an error's message).
     def inspect = "#<#{self.class.name} port=#{port} session_id=#{session_id.inspect} epoch=#{epoch.inspect}>"
@@ -52,14 +57,16 @@ module Samagotchi
 
     # Written whole or not at all, readable by this user only (0600 from the
     # moment the file exists, AtomicFile: no other account learns the
-    # worker's port or its secret from it); input_format, epoch and secret
-    # only when they name one.
+    # worker's port or its secret from it); input_format, epoch, secret, pid
+    # and protocol only when they name one.
     def write(session_dir)
       FileUtils.mkdir_p(session_dir)
       record = to_h.transform_keys(&:to_s)
       record.delete("input_format") if input_format.nil?
       record.delete("epoch") if epoch.nil?
       record.delete("secret") if secret.nil?
+      record.delete("pid") if pid.nil?
+      record.delete("protocol") if protocol.nil?
       AtomicFile.write(self.class.path(session_dir), "#{JSON.pretty_generate(record)}\n", perm: 0o600)
     end
   end

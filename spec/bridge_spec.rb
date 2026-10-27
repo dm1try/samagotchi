@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "spec_helper"
+require "support/worker_fixtures"
 require "samagotchi/worker_link"
 require "tmpdir"
 require "stringio"
@@ -524,6 +525,8 @@ RSpec.describe Samagotchi::Bridge do
   describe "integration" do
     let(:state_dir) { Dir.mktmpdir }
 
+    include WorkerFixtures
+
     before do
       @bridge = nil
       @clients = []
@@ -543,6 +546,7 @@ RSpec.describe Samagotchi::Bridge do
                      exit_stopped: nil, on_holds: nil, on_holds_stop: nil, heartbeat_interval: 0.2)
       @engine = make_engine
       @session = make_session
+      hold_worker(Samagotchi::Session.session_dir(@session.id, state_dir: state_dir))
       @bridge = described_class.new(
         engine: @engine, state_dir: state_dir, session_id: @session.id,
         heartbeat_interval: heartbeat_interval, input_format: input_format, on_input: on_input, on_command: on_command,
@@ -678,6 +682,12 @@ RSpec.describe Samagotchi::Bridge do
         .to include("version" => Samagotchi::VERSION, "features" => Samagotchi::Bridge::FEATURES, "epoch" => @bridge.epoch)
     end
 
+    it "writes its process's pid and the sidecar protocol" do
+      start_bridge
+      sidecar = File.join(Samagotchi::Session.session_dir(@session.id, state_dir: state_dir), "bridge.json")
+      expect(JSON.parse(File.read(sidecar))).to include("pid" => Process.pid, "protocol" => Samagotchi::WorkerLink::PROTOCOL)
+    end
+
     it "names the chi it runs in its snapshot (an attaching terminal compares it with its own)" do
       start_bridge
       expect(@bridge.snapshot).to include(chi_version: Samagotchi::VERSION)
@@ -699,6 +709,20 @@ RSpec.describe Samagotchi::Bridge do
         File.write(sidecar, JSON.generate("port" => @bridge_port + 1, "session_id" => @session.id))
         @bridge.stop
         expect(JSON.parse(File.read(sidecar))["port"]).to eq(@bridge_port + 1)
+      end
+
+      it "keeps a sidecar another Bridge wrote on the same port (its epoch differs)" do
+        start_bridge
+        File.write(sidecar, JSON.generate("port" => @bridge_port, "session_id" => @session.id, "epoch" => "someone-else"))
+        @bridge.stop
+        expect(JSON.parse(File.read(sidecar))["epoch"]).to eq("someone-else")
+      end
+
+      it "keeps a sidecar that carries no epoch" do
+        start_bridge
+        File.write(sidecar, JSON.generate("port" => @bridge_port, "session_id" => @session.id))
+        @bridge.stop
+        expect(File.exist?(sidecar)).to be(true)
       end
 
       it "can be called twice" do
@@ -887,12 +911,10 @@ RSpec.describe Samagotchi::Bridge do
         expect(@bridge.last_client_activity_at).to eq(before)
       end
 
-      it "ignores a bare connect that sends no request (a liveness probe)" do
+      it "ignores a bare connect that sends no request (a load balancer's health check)" do
         start_bridge
         before = @bridge.last_client_activity_at
-        expect(Samagotchi::WorkerLink.resolve(
-          Samagotchi::Session.session_dir(@session.id, state_dir: state_dir), unlink: true
-        ).port).to eq(@bridge_port)
+        TCPSocket.new("127.0.0.1", @bridge_port).close
         # The probe's connection thread read no request and ended: it noted nothing.
         threads = -> { @bridge.instance_variable_get(:@connection_threads) }
         wait_for("the probe's connection to end") { threads.call.any? && threads.call.none?(&:alive?) }

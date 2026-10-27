@@ -32,6 +32,7 @@ require_relative "log"
 require_relative "proxy_trace"
 require_relative "version"
 require_relative "worker_sidecar"
+require_relative "worker_link"
 require_relative "relay_verifier"
 require_relative "relay_watcher"
 require_relative "reply_wait"
@@ -1500,17 +1501,19 @@ module Samagotchi
       # secret: what every request must name (#secret_ok?).
       WorkerSidecar.new(port: @port, bind: @bind, session_id: @session_id, started_at: Time.now.iso8601(3),
                         version: Samagotchi::VERSION, input_format: @input_format, features: FEATURES,
-                        epoch: @epoch, secret: @secret).write(session_dir)
+                        epoch: @epoch, secret: @secret, pid: Process.pid,
+                        protocol: WorkerLink::PROTOCOL).write(session_dir)
     rescue StandardError => e
       Log.warn(:bridge, "sidecar_write_failed", echo: "Bridge: failed to write #{WorkerSidecar::FILE}: #{e.class}: #{e.message}", error: e.class.name)
     end
 
-    # Only while it still names this bridge: a racing worker for the same
-    # session may have written its own since.
+    # Only while it still carries this bridge's epoch: a racing worker for the
+    # same session may have written its own since (a file without an epoch
+    # is only ever an older worker's).
     def remove_sidecar
       return unless @server
 
-      File.unlink(WorkerSidecar.path(session_dir)) if WorkerSidecar.read(session_dir)&.port == @port
+      File.unlink(WorkerSidecar.path(session_dir)) if WorkerSidecar.read(session_dir)&.epoch == @epoch.to_s
     rescue StandardError
       nil
     end
