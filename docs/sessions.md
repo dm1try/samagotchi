@@ -264,7 +264,9 @@ A session can **continue** an earlier one: "the next run of the same routine" (a
 ## Review sessions
 
 A **review session** is one made to be shared with participants (the shared-sessions plan's D2: a review is its own
-session, so a participant's review turn can't quote a working session's tool outputs). `chi review FILE…` starts one
+session, so a participant's review turn can't quote a working session's tool outputs, and only reads). Sharing a
+working session itself is pairing: a participant's turns there act with its tools under the owner's guardrails
+([CLI: Participants](cli.md#participants), [guardrails](guardrails.md#a-participants-pair-boundary)). `chi review FILE…` starts one
 in a project, `chi review --from ID` as a review fork of a working session (see [CLI: Review
 sessions](cli.md#review-sessions)); both start idle and print the `chi share` line to invite someone.
 
@@ -292,7 +294,8 @@ sessions](cli.md#review-sessions)); both start idle and print the `chi share` li
   space-separated, relative to the page's folder; a path with a space in double quotes, `"docs/my plan.md"`): its
   chip then reads `review: plan.md +1`, and Start makes a review session (the message typed, if any, is its first
   turn; with none it starts idle). A refused file shows the server's one message in the chip's form, opened again. On a session that isn't a review session the participants panel (the session bar's
-  participants chip) says so before its Invite, with the share warning (how many tool outputs its history holds)
+  participants chip) says so before its Invite, with the share warning (that a participant's turns act there, writes
+  included and asks to the owner, or only read while an older worker holds it; how many tool outputs its history holds)
   and **Start a review of it**: a review fork of it, opened, with a toast (`Review 4b7e9a01 started from 3f9a1c2e's
   recap; 3f9a1c2e keeps running.`) whose **Invite** opens the new session's panel. Every summary carries `review`
   (null for other sessions).

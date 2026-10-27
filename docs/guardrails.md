@@ -315,8 +315,11 @@ ordinary sessions don't get it. Like the rules it reads command text: a
 
 ## A participant's review boundary
 
-Built in, for a [participant's](internals/participants.md#turns) turns only (a
-turn whose author is `p:<id>`), in every mode (also with
+Built in, for a [participant's](internals/participants.md#turns) turns in a
+**review session** only (a turn whose author is `p:<id>`, in a session with a
+`review:` key: `ParticipantMode.of` is `:review`; a working session's
+participant turns get the [pair boundary](#a-participants-pair-boundary)
+instead), in every mode (also with
 `guardrails.enabled: false`) and without the guardrails bundle:
 `Guardrails::ReviewBoundary`, rule `review-boundary`, source `core`. It comes
 right after the load-failure check (rules that don't load deny every call) and before the hooks' asks, the
@@ -358,6 +361,41 @@ is refused with one message ([configuration](configuration.md#toolkits)), so
 config can't widen the boundary. Hooks still run on a participant's turn, with
 the owner's power ([hooks](hooks.md#participants-turns)); a hook that rewrites a
 call is checked on the call it leaves.
+
+## A participant's pair boundary
+
+A participant's turn in a **working session** (no `review:` key:
+`ParticipantMode.of` is `:pair`, on a worker that names the `pair_turns`
+feature; an older worker still runs it inside the review boundary) acts with
+the session's tools under the owner's guardrails, as the owner's own turns do:
+the rules, the protected paths and every approval the owner already granted
+apply, and an ask goes to the owner. `Guardrails::PairBoundary` (rule
+`pair-boundary`, source `core`) sits in the review boundary's seat in
+`GuardrailWiring#checks`, in every mode (also with `guardrails.enabled:
+false`), and **denies, never asks**:
+
+- secrets: the review boundary's read denylist (chi's state and config dirs,
+  `grants.json` and the web token among them, `~/.ssh`, `~/.gnupg`, `~/.aws`,
+  the project's secret files, any config under `.git`) on a `read`'s path and
+  on the paths a command names (`execute`, and any call whose targets carry a
+  command), each word resolved as `touches: chi_dirs` resolves it
+  (`ShellPaths#any_path?`), with a text match for a word it can't resolve or a
+  command with `$(…)`. A pair turn reads anywhere else, outside the project too;
+- owner-voiced tools, which act in the owner's name beyond the turn:
+  `delegate`, `register_reminder`, `send_note`, `forget_outputs`,
+  `task_create`, and a `memory_write` whose scope isn't `project`;
+- `ask_user_question`, with the advice to ask in the reply: nobody on the
+  participant's side answers a card.
+
+A participant's ask names them on the owner's card ("Sam's turn asks: approve
+tool call?", `approval.author`/`author_name`, an "asked by" line in the plain
+question) and offers **Allow once** only: no session, repo or rule approval is
+made from a participant's call. System 1 never judges it. A pair turn stops
+before its next generation once the participant passed their spending cap
+([participants](internals/participants.md#limits-and-the-cap)). The
+trust model is a team's (everyone invited is trusted): the boundary is an
+accident guard for secrets and the owner's voice, not containment of a
+hostile participant; a review session is.
 
 ## Rules in config.yml
 
@@ -699,8 +737,8 @@ user's **earlier asks they answered** (`SystemOne::Similar`) — this rule in
 this repository first, then this rule anywhere, then any answered ask, ranked
 by how many words the logged call shares with this one, ties going to the
 newest. Reading the log is best-effort, so a log that cannot be read simply
-offers no examples. A participant's review turn is never judged: there is no
-user there to ask. The judgment runs before the card appears, so an ask is
+offers no examples. A participant's turn (review or pair) is never judged:
+there is no user there to ask, and its asks go to the owner. The judgment runs before the card appears, so an ask is
 slower by up to `timeout_ms` (2000 ms by default).
 
 Each judgment is a line in `judgments.jsonl`, beside `approvals.json` in
@@ -987,9 +1025,11 @@ send; [internals/participants.md](internals/participants.md#apply)). A quote
 lowers the risk, it doesn't remove it: your line still asks the model to act
 on what it quotes, with your tools, so read the quote before you send it.
 
-Within its own turn a participant's text can't act: the review boundary
-leaves it reads of the project only, and an injection that convinces the
-model still meets the boundary (containment over detection). What it can do
+Within its own turn in a review session a participant's text can't act: the
+review boundary leaves it reads of the project only, and an injection that
+convinces the model still meets the boundary (containment over detection). In
+a working session it acts, by design ([the pair boundary](#a-participants-pair-boundary)):
+invite only people you would let type in your session, under your guardrails. What it can do
 is make the model *say* what the history holds: a review turn's model sees the
 whole conversation, earlier tool outputs included, so start a review in a
 fresh session (or a continue), not on a working session full of outputs. A

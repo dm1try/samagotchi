@@ -12,6 +12,21 @@ and commands may change between minor versions. How releases are made:
 - `toolkit.suggest.mode: on` starts a new session on the kit System 1 suggests for its first prompt (or a later one
   after `undecided`), waiting at most System 1's timeout before the first request, with a
   `toolkit: NAME (suggested, p=…) · /toolkit to change` notice; anything uncertain keeps the default kit.
+- Pair access for a shared working session: a participant's turn in a working session (not a `chi review` session)
+  acts with the session's tools under the owner's guardrails. Its asks reach the owner's card naming who asks, with
+  Allow once only, and System 1 never answers them. A new core check (`pair-boundary`) denies reading secrets or
+  chi's own files (by `read` or in a command), the owner-voiced tools (delegate, reminders, notes, background tasks,
+  forgetting outputs, system memories) and the model's own question. A pair turn stops mid-turn once the
+  participant's cap is passed. Workers name a `pair_turns` feature; until an older worker restarts, its session's
+  participant turns stay read-only and the share warning says so.
+
+### Changed
+
+- Sharing a working session warns what a participant's turns may do there (writes included, asks to you) instead of
+  only how many tool outputs they can quote. Its participant messages carry a pair header, a `pair` badge and no
+  Apply; review sessions, their messages and their headers are unchanged. The system prompt's participants line,
+  the cap notice, the participant page's note and the participants panel follow the session's mode; the delivery
+  line says "after their turn".
 
 ## [0.122.0] - 2026-10-27
 
