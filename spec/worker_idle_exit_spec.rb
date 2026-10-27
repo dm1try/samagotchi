@@ -357,12 +357,12 @@ RSpec.describe Samagotchi::WorkerIdleExit do
       expect(policy(bridge: nil).hold_for_restart).to be_nil
     end
 
-    it "holds for a turn, queued input, a continue offer, a question and a reminder" do
+    it "holds for a turn, queued input, a continue offer and a question, not for reminders (the restart carries them)" do
+      reminders.register(name: "stretch", description: "Remind me to stretch", interval_minutes: 60)
+      expect(policy.hold_for_restart).to be_nil
       allow(engine).to receive(:pending_question).and_return({ id: "q1" })
       expect(policy.hold_for_restart).to eq(:question_pending)
-      reminders.register(name: "stretch", description: "Remind me to stretch", interval_minutes: 60)
       allow(engine).to receive(:pending_question).and_return(nil)
-      expect(policy.hold_for_restart).to eq(:reminders)
       offer[0] = true
       expect(policy.hold_for_restart).to eq(:continue_offered)
       queued[0] = true

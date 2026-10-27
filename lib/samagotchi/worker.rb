@@ -21,6 +21,7 @@ require_relative "worker_signals"
 require_relative "worker_task_wakes"
 require_relative "session_manager"
 require_relative "archive_store"
+require_relative "reminder_carry"
 require_relative "log"
 require_relative "turn_flow"
 require_relative "turn_checkpoint"
@@ -249,6 +250,7 @@ module Samagotchi
       # The running turn, on disk at its iteration boundaries.
       @checkpoint = TurnCheckpoint.new(session: @session, state_dir: @state_dir)
       @engine = build_engine
+      take_carried_reminders
       @config_restart_unsubscribe = ConfigFile.watch_restart_settings!(process: :worker) do |message|
         @engine.announce(type: :hook_notice, hook: "config", text: message, level: :warn, between_turns: true)
       end
@@ -1566,6 +1568,7 @@ module Samagotchi
             Log.info(:worker, "exit_held", reason: hold)
             next false
           end
+          next false if @exit_restart && !carry_reminders
 
           @bridge&.close_intake
           # Not joined: a recap tick's emit waits for the event log held here.
@@ -1574,6 +1577,29 @@ module Samagotchi
           true
         end
       end
+    end
+
+    # A restart hands the reminders to the next worker (ReminderCarry), while
+    # the event log is held: no turn can register or fire one from here. A
+    # write that fails keeps this worker up with them rather than losing them.
+    # @return [Boolean] false when the write failed
+    def carry_reminders
+      ReminderCarry.write(@session_dir, session_id: @session_id, store: @engine.reminder_store)
+      true
+    rescue StandardError => e
+      @exit_requested = nil
+      @exit_restart = false
+      Log.warn(:worker, "reminders_carry_failed", error: e.class.name, msg: e.message)
+      false
+    end
+
+    # The reminders a restart handed over (#carry_reminders), before the idle
+    # scheduler starts polling the store; a stopped session drops them.
+    def take_carried_reminders
+      ReminderCarry.take(@session_dir, session_id: @session_id, store: @engine.reminder_store,
+                                       stopped: stopped_on_disk?)
+    rescue StandardError => e
+      Log.warn(:worker, "reminders_carry_take_failed", error: e.class.name, msg: e.message)
     end
 
     # @return [Symbol] +result+, with #discard? decided and, for a session

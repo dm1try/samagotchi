@@ -34,7 +34,7 @@ module Samagotchi
              [--scope=all]: every project's sessions; by default only this git project's (all outside a repo)
              --archived: archived sessions too (marked [archived]; json: archived: true)
         stop ID...   # stop each session's worker (IDs or unique prefixes); chi --resume ID then starts a fresh one
-        restart ID...   # hand each session to a new worker on the newest chi installed; refused while a turn, question or reminder would be lost
+        restart ID...   # hand each session to a new worker on the newest chi installed; keeps its reminders; refused while a turn or question would be lost
         archive ID...   # hide sessions (and their delegates) from every list and keep them for good; unarchive ID... brings them back
         delete [--force] ID...   # delete sessions for good (IDs or unique prefixes); --force stops a live worker first
         prune [--dry-run] [--days N] [--keep N] [--keep-status running,...] [--test-only]

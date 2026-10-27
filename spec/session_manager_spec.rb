@@ -78,6 +78,18 @@ RSpec.describe Samagotchi::SessionManager do
       expect(loaded.status).to eq(Samagotchi::Session::STATUS_STOPPED)
     end
 
+    it "removes a restart's reminders hand-off, so a later resume doesn't bring them back" do
+      session = Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp")
+      session.save(state_dir: tmpdir)
+      dir = Samagotchi::Session.session_dir(session.id, state_dir: tmpdir)
+      FileUtils.mkdir_p(dir)
+      carry = File.join(dir, Samagotchi::ReminderCarry::FILE)
+      File.write(carry, "{}")
+
+      described_class.stop_session(session.id, state_dir: tmpdir)
+      expect(File.exist?(carry)).to be(false)
+    end
+
     context "with wait:" do
       let(:session) do
         Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp").tap do |s|
@@ -1337,7 +1349,7 @@ RSpec.describe Samagotchi::SessionManager do
       expect(Process).not_to receive(:kill)
 
       expect { described_class.restart_session(session.id, state_dir: tmpdir) }
-        .to raise_error(described_class::RestartRefused, "not now: it has reminders, which a restart would drop") { |e|
+        .to raise_error(described_class::RestartRefused, "not now: it has reminders, which its worker's older chi can't carry over a restart") { |e|
           expect(e.reason).to eq(:reminders)
         }
     end

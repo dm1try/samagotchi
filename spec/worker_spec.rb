@@ -1191,6 +1191,7 @@ RSpec.describe Samagotchi::Worker do
           expect(stopped).to eq(["c1c1c1c1-1111"])
           expect(engine.reminder_store.reminders).to be_empty
           expect(join!(@thread, "the worker").value).to eq(:exit_requested)
+          expect(File.exist?(File.join(session_dir, Samagotchi::ReminderCarry::FILE))).to be(false)
         end
 
         it "refuses the stop-all when something the user can't stop appeared meanwhile" do
@@ -1262,6 +1263,59 @@ RSpec.describe Samagotchi::Worker do
           expect(join!(@thread, "the worker").value).to eq(:restart)
           expect(@worker.discard?).to be(false)
           expect(engine).not_to have_received(:write_recap_now)
+        end
+
+        def carry_file = File.join(session_dir, Samagotchi::ReminderCarry::FILE)
+
+        it "carries its reminders to the next worker: written as it leaves, restored and deleted as that one starts" do
+          engine.reminder_store.register(name: "api_health", description: "check the API", interval_minutes: 20)
+          id = engine.reminder_store.reminders["api_health"][:id]
+          start_worker(poll_interval: 0.05)
+
+          expect(post_restart.first).to eq(200)
+          expect(join!(@thread, "the worker").value).to eq(:restart)
+          carried = JSON.parse(File.read(carry_file))
+          expect(carried).to include("session_id" => session.id)
+          expect(carried["reminders"].map { |r| r.slice("id", "name", "interval_minutes") })
+            .to eq([{ "id" => id, "name" => "api_health", "interval_minutes" => 20 }])
+
+          allow(Samagotchi::Engine).to receive(:new).and_call_original
+          successor = Samagotchi::Engine.new(client: test_client, kernel: test_kernel)
+          allow(successor).to receive(:start_idle)
+          allow(successor).to receive(:stop_idle)
+          allow(Samagotchi::Engine).to receive(:new).and_return(successor)
+          start_worker(poll_interval: 0.05)
+
+          wait_for("the successor's reminders") { successor.reminder_store.any? }
+          expect(successor.reminder_store.reminders["api_health"]).to include(id: id, interval_minutes: 20,
+                                                                              description: "check the API")
+          expect(File.exist?(carry_file)).to be(false)
+        end
+
+        it "stays up with its reminders when the hand-off can't be written" do
+          engine.reminder_store.register(name: "api_health", description: "check the API", interval_minutes: 20)
+          allow(Samagotchi::ReminderCarry).to receive(:write).and_raise(Errno::ENOSPC)
+          start_worker(poll_interval: 0.05)
+
+          expect(post_restart.first).to eq(200)
+          loop_rounds
+          expect(@thread).to be_alive
+          expect(engine.reminder_store.reminders.keys).to eq(["api_health"])
+        end
+
+        it "restores nothing from another session's hand-off, or one too old, and deletes it" do
+          [{ "session_id" => "99999999-2222-3333-4444-555555555555", "written_at" => Time.now.utc.iso8601(3) },
+           { "session_id" => session.id, "written_at" => (Time.now - 3600).utc.iso8601(3) }].each do |head|
+            File.write(carry_file, JSON.generate(head.merge("reminders" => [
+              { "id" => "a1", "name" => "stale", "description" => "d", "interval_minutes" => 5,
+                "next_fire_at" => Time.now.utc.iso8601(3) }
+            ])))
+            start_worker(poll_interval: 0.05)
+            expect(File.exist?(carry_file)).to be(false)
+            expect(engine.reminder_store.any?).to be(false)
+            expect(post_restart.first).to eq(200)
+            join!(@thread, "the worker")
+          end
         end
 
         it "stays up while a question waits, and checks again as it leaves" do

@@ -11,7 +11,8 @@ module Samagotchi
   # * a client holds the Bridge's stream (an attached TUI, even an idle one,
   #   or a web tab);
   # * a reminder is registered. Reminders live only in the Engine and repeat
-  #   until the agent cancels them, so an exit would drop them for good;
+  #   until the agent cancels them, so an exit would drop them for good (a
+  #   restart hands them to the next worker instead: ReminderCarry);
   # * a continue offer waits for an answer; it too lives only in memory;
   # * a background task the worker watches for a finish wake (TaskWatch)
   #   still runs, or finished and waits for the next pass's wake: its end
@@ -167,18 +168,18 @@ module Samagotchi
     # approval waiting (a turn's), a /btw (or another anytime command)
     # running, a delegate's approval relay this worker still answers for,
     # background tasks this conversation started (their output and end are
-    # this worker's to report). Clients' streams don't hold: a web tab
-    # reconnects on the new worker's bridge_up, an attached terminal finds
-    # the new worker's Bridge.
+    # this worker's to report). Reminders don't hold: the worker writes them
+    # for its successor as it leaves (Worker#leave_on_request, ReminderCarry).
+    # Clients' streams don't hold either: a web tab reconnects on the new
+    # worker's bridge_up, an attached terminal finds the new worker's Bridge.
     # @return [Symbol, nil] :turn_running, :input_queued, :continue_offered,
-    #   :question_pending, :reminders, :command_running, :relays_open or
+    #   :question_pending, :command_running, :relays_open or
     #   :background_tasks
     def hold_for_restart
       return :turn_running if @engine.turn_running?
       return :input_queued if @input_pending.call
       return :continue_offered if @awaiting_continue.call
       return :question_pending if @engine.pending_question
-      return :reminders if @engine.reminder_store&.any?
       return :command_running if @engine.anytime_running?
       return :relays_open if @engine.relay_desk.active?
       return :background_tasks if @running_tasks.call.any?

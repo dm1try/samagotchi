@@ -36,6 +36,7 @@ require_relative "model_profile"
 require_relative "installed_gem"
 require_relative "installed_versions"
 require_relative "recap_store"
+require_relative "reminder_carry"
 require_relative "archive_store"
 require_relative "continue_offer"
 require_relative "image_store"
@@ -663,7 +664,8 @@ module Samagotchi
         input_queued: "a prompt is queued",
         continue_offered: "the step-limit question waits for an answer",
         question_pending: "a question or approval waits for an answer",
-        reminders: "it has reminders, which a restart would drop",
+        # Only a worker from before ReminderCarry still holds a restart for its reminders.
+        reminders: "it has reminders, which its worker's older chi can't carry over a restart",
         command_running: "a /btw (or another command) is still running",
         relays_open: "a delegate's approval relayed here is open or just answered",
         background_tasks: "background tasks it started are still running"
@@ -838,6 +840,9 @@ module Samagotchi
       cancel_running_turn(session_id, state_dir: sd)
       # Mark first: a worker that has not taken the lock yet sees it and exits.
       Session.mark_stopped(session_id, state_dir: sd)
+      # A stop drops the reminders: a restart's hand-off no successor took
+      # yet must not bring them back on the next resume.
+      ReminderCarry.remove(Session.session_dir(session_id, state_dir: sd))
       pid = owner&.pid.to_i
       begin
         Process.kill("TERM", pid) if pid && pid > 0
