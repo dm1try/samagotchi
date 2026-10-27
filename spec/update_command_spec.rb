@@ -77,6 +77,40 @@ RSpec.describe Samagotchi::UpdateCommand do
     expect(err.string).to include("unknown option --frob", "Usage: chi update")
   end
 
+  it "refuses a target that isn't newer than the running chi" do
+    expect(gem_runner).not_to receive(:run)
+    expect(run("--to", Samagotchi::VERSION)).to eq(1)
+    expect(err.string).to include("chi update: #{Samagotchi::VERSION} is not newer than the running chi")
+  end
+
+  it "installs exactly the requested gem version" do
+    target = Gem::Version.new(Samagotchi::VERSION).bump.to_s + ".1"
+    expect(gem_runner).to receive(:run).with(["/rb/bin/gem", "install", "samagotchi", "--no-document", "-v", target])
+                                       .and_return(["Successfully installed\n", true])
+    expect(run("--to", target, "--no-bundles", "--no-desktop")).to eq(0)
+    expect(execs.last).to include("update", "--no-gem", "--gem-from", Samagotchi::VERSION)
+  end
+
+  it "fails a --to whose gem install is off: an exact version that wasn't installed is no success" do
+    target = Gem::Version.new(Samagotchi::VERSION).bump.to_s + ".1"
+    expect(gem_runner).not_to receive(:run)
+    expect(run("--to", target, "--json", "--no-gem", "--no-bundles", "--no-desktop")).to eq(1)
+    expect(JSON.parse(out.string).first).to include("component" => "chi (gem)", "failed" => true,
+                                                    "status" => "failed (skipped: --no-gem)")
+  end
+
+  it "prints JSON rows with kept files and sends progress to stderr" do
+    expect(run("--json", "--no-gem", "--no-bundles", "--no-desktop")).to eq(0)
+
+    rows = JSON.parse(out.string)
+    expect(rows).to be_an(Array)
+    expect(rows).to all(include("component", "from", "to", "status", "failed", "kept"))
+    expect(rows.map { |row| row["component"] }).to include("chi (gem)", "system bundle")
+    expect(rows.find { |row| row["component"] == "system bundle" }["kept"]).to eq([])
+    expect(out.string.lines.length).to eq(1)
+    expect(err.string).to be_empty
+  end
+
   it "dry-runs, updates, then says everything is up to date" do
     Samagotchi::MemoryBundle::SystemBundle.sync
     install_old_btw
@@ -193,15 +227,20 @@ RSpec.describe Samagotchi::UpdateCommand do
     it "installs a newer one with this Ruby's gem and hands over to the wrapper, passing the flags on" do
       expect(gem_runner).to receive(:run).with(["/rb/bin/gem", "install", "samagotchi", "--no-document", "-v", newer])
                                          .and_return(["Successfully installed\n", true])
-      run("--no-desktop")
-      expect(out.string).to include("installing samagotchi #{newer}…")
+      run("--no-desktop", "--to", newer, "--json")
+      expect(err.string).to include("installing samagotchi #{newer}…")
       expect(execs).to eq([[RbConfig.ruby, File.join(wrapper_dir, "bin", "chi"), "update", "--no-gem", "--gem-from",
-                            Samagotchi::VERSION, "--no-desktop"]])
+                            Samagotchi::VERSION, "--to", newer, "--no-desktop", "--json"]])
     end
 
     it "shows the handed-over update as the gem row" do
       run("--no-gem", "--gem-from", "0.2.0")
       expect(line("chi (gem)")).to match(/\Achi \(gem\)\s+0\.2\.0\s+#{Regexp.escape(Samagotchi::VERSION)}\s+updated\z/)
+    end
+
+    it "accepts the target handed over by the newly installed chi" do
+      expect(run("--to", Samagotchi::VERSION, "--gem-from", "0.2.0", "--json")).to eq(0)
+      expect(JSON.parse(out.string).first).to include("from" => "0.2.0", "to" => Samagotchi::VERSION)
     end
 
     it "says would update in a dry run, installing nothing" do

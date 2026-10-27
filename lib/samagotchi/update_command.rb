@@ -12,6 +12,7 @@ require_relative "memory_bundle/system_bundle"
 require_relative "session"
 require_relative "version"
 require_relative "web/lan"
+require "json"
 
 module Samagotchi
   # `chi update`: brings an installed chi up to date in one go: the system
@@ -24,13 +25,15 @@ module Samagotchi
     include CLI::Command
 
     USAGE = <<~TEXT
-      Usage: chi update [--dry-run] [--no-gem] [--no-bundles] [--no-desktop]
+      Usage: chi update [--dry-run] [--to VERSION] [--json] [--no-gem] [--no-bundles] [--no-desktop]
         Updates this chi's install: the gem (from rubygems.org), then the
         system bundle, the bundles chi ships that you installed (chi bundle
         list), and the desktop helper (macOS; rebuilt only when its sources
         changed). Edited memory files are kept and reported; nothing is
         installed that isn't already, and old gem versions stay.
         --dry-run      show what would change; change nothing
+        --to VERSION   install exactly this gem version (must be newer than this chi)
+        --json         print update rows as one JSON document
         --no-gem       don't install a newer gem (config update.gem: false)
         --no-bundles   leave the shipped bundles alone (config update.bundles: false)
         --no-desktop   leave the desktop helper alone (config update.desktop: false)
@@ -44,6 +47,8 @@ module Samagotchi
     FLAGS = CLI::Flags.new(args: false) do |f|
       f.switch "-h", "--help", "help"
       f.switch "--dry-run"
+      f.value "--to"
+      f.switch "--json"
       f.switch "--no-gem"
       f.switch "--no-bundles"
       f.switch "--no-desktop"
@@ -54,7 +59,7 @@ module Samagotchi
     end
     # The switches the newer gem's update gets again (hand_over).
     HANDED_OVER = { "--no-gem" => :no_gem, "--no-bundles" => :no_bundles, "--no-desktop" => :no_desktop,
-                    "--no-register" => :no_register }.freeze
+                    "--no-register" => :no_register, "--to" => :to, "--json" => :json }.freeze
 
     # A table row. info rows (live workers, chi web) say what runs; they
     # never fail.
@@ -95,6 +100,13 @@ module Samagotchi
         @stdout.puts(USAGE)
         return 0
       end
+      return usage_error("invalid version #{options[:to]}") if options[:to] && !Gem::Version.correct?(options[:to])
+
+      if options[:to] && !options[:gem_from] && Gem::Version.new(options[:to]) <= Gem::Version.new(VERSION)
+        @stderr.puts("chi update: #{options[:to]} is not newer than the running chi (#{VERSION})")
+        return 1
+      end
+
       unless @gem_spec
         @stderr.puts("chi update: running from a checkout (#{InstalledGem::ROOT}): chi update updates an installed chi; " \
                      "git pull, or chi bundle upgrade NAME for one bundle")
@@ -104,9 +116,13 @@ module Samagotchi
       @dry_run = options[:dry_run]
       gem = gem_row(options)
       rows = [gem, system_bundle_row, *bundle_rows(options), desktop_row(options), *live_rows].compact
-      print_table(rows)
-      footers(options).each { |line| @stdout.puts(line) }
-      @stdout.puts(summary(rows))
+      if options[:json]
+        @stdout.puts(JSON.generate(rows.map { |row| row.to_h.merge(failed: !!row.failed, kept: row.kept || []) }))
+      else
+        print_table(rows)
+        footers(options).each { |line| @stdout.puts(line) }
+        @stdout.puts(summary(rows))
+      end
       rows.any?(&:failed) ? 1 : 0
     end
 
@@ -133,22 +149,32 @@ module Samagotchi
         row.to = VERSION
         return done(row, :update)
       end
-      if (why = off(options, "gem"))
-        return skipped(row, why)
-      end
-      return skipped(row, "under Bundler: bundle update samagotchi") if @bundler
+      why = off(options, "gem") || ("under Bundler: bundle update samagotchi" if @bundler)
+      # --to asks for that exact version: not installing it is a failure, not a skip.
+      return options[:to] ? failed(row, "skipped: #{why}") : skipped(row, why) if why
 
       latest = begin
-        @gem_update.latest
+        if options[:to]
+          if ENV[GemUpdate::LOCAL_ENV].to_s.empty?
+            GemUpdate::Latest.new(version: options[:to], source: "samagotchi")
+          else
+            local = @gem_update.latest
+            return failed(row, "local gem file is #{local.version}, not #{options[:to]}") unless local.version == options[:to]
+
+            local
+          end
+        else
+          @gem_update.latest
+        end
       rescue GemUpdate::Error => e
         return row.tap { |r| r.status = "couldn't check (#{e.message})" }
       end
-      return up_to_date(row) unless @gem_update.newer?(latest)
+      return up_to_date(row) unless options[:to] || @gem_update.newer?(latest)
 
       row.to = latest.version
       return done(row, :update) if @dry_run
 
-      @stdout.puts("installing samagotchi #{latest.version}…")
+      (options[:json] ? @stderr : @stdout).puts("installing samagotchi #{latest.version}…")
       output, ok = @gem_update.install(latest)
       return failed(row, output.lines.map(&:strip).reject(&:empty?).last.to_s) unless ok
 
@@ -161,7 +187,8 @@ module Samagotchi
       wrapper = InstalledGem.wrapper(@gem_spec)
       return done(row, :update, "run chi update again to sync with it") unless wrapper
 
-      passed = HANDED_OVER.select { |_, key| options[key] }.keys
+      passed = options[:to] ? ["--to", options[:to]] : []
+      passed += HANDED_OVER.except("--to").select { |_, key| options[key] }.keys
       @stdout.flush
       @exec.call([RbConfig.ruby, wrapper, "update", "--no-gem", "--gem-from", VERSION, *passed])
       done(row, :update) # only when exec is a spec's stand-in

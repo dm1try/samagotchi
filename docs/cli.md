@@ -34,7 +34,7 @@
 - `chi desktop install|upgrade|uninstall|status` — the macOS "Send to chi" helper: a Service and a ⌃⌥⌘N hotkey that send text or images to a session (live, stopped or new) as a message (⏎, a turn runs) or a context note (⌘⏎) (see [Desktop helper](desktop.md))
 - `chi models [--format text|json] [--timeout S] [TEXT]` — list the models every configured host offers, as the names `--model` takes (see [Listing the models](#listing-the-models))
 - `chi self` — print version, source dir (checkout or installed gem), config/memory/session paths, model/host and bundles. Run by a session's `execute`, the `model` row (and host, loop, profile, thinking, served model) is **that session's** model, labelled `(this session <id8>; default …)`; elsewhere it is the default, `(default)`. `model key` is the memory overlay key (`<name>.<key>.md`), and `model notes` the model notes a prompt of that model loads (`model_notes_deepseek (system, 612 chars)`, `none`; inside a session its `--mute` list is left out). `chi self --model` prints only the model a new session starts on, an alias resolved to its target (the desktop helper's hint)
-- `chi update [--dry-run] [--no-gem] [--no-bundles] [--no-desktop]` — update an installed chi: the gem, the system bundle, the shipped bundles you installed and the desktop helper, in one table (see [Updating](#updating))
+- `chi update [--dry-run] [--to VERSION] [--json] [--no-gem] [--no-bundles] [--no-desktop]` — update an installed chi: the gem, the system bundle, the shipped bundles you installed and the desktop helper, in one table (see [Updating](#updating))
 - `chi bundle install|upgrade|uninstall|status|diff|list|build|trash|new|test|check` — manage memory bundles (see [Bundle hooks](hooks.md#bundle-hooks-unified-workflow-bundle)); `list` shows the installed ones and the ones shipped with chi, which `install <name>` installs; `core` and `dev` are profiles that install a set of them (see [Bundle profiles](memory.md#bundle-profiles-core-and-dev),  [Guardrails](guardrails.md), [Plugins](plugins.md#the-btw-bundle), [the mcp bundle](plugins.md#the-mcp-bundle) [the loop-guard bundle](plugins.md#the-loop-guard-bundle), [the check-in bundle](plugins.md#the-check-in-bundle) and [the skills bundle](plugins.md#the-skills-bundle)). `trash` lists and empties the bundle trash (moved files from uninstalls/upgrades). A usage error (an unknown subcommand or flag, a missing argument, a bad `build --scope`) exits 2, as for the other subcommands. Plain `chi` and `chi web` exit 1 on an unknown flag, a flag missing its value or a stray argument. `new`, `test` and `check` are for writing one: see [Writing a bundle](#writing-a-bundle-new-test-check)
 
 - `chi guardrails replay [--dry-run] [--threshold T] [--model M]` — seed System 1's record from the approvals this machine's sessions already answered: each ask is judged by the configured model and written to `guardrails/judgments.jsonl` with the answer the user gave, then a per-rule table prints (asks, allowed, denied, would-be auto-allows, false allows, asks with no judgment). A parent agent's answer is not the user's: only its deny is replayed, and only where the parent could have allowed. `--dry-run` judges without writing, `--threshold` overrides `guardrails.system_one.threshold` for the table, `--model` the configured model for this run. Exit 2 when `guardrails.system_one.mode` is off or no `host` is set; a usage error exits 2 (see [System 1](guardrails.md#system-1-experimental))
@@ -232,6 +232,13 @@ workers                      2 live on 0.2.0: they keep it until restarted (chi 
 Also shipped, not installed: dev (mcp, skills, source-links) (chi bundle install NAME)
 done
 ```
+
+- `--to VERSION` installs exactly that gem version instead of checking for the
+  newest release. It must be newer than the running chi; an equal or older
+  version is refused.
+- `--json` writes the component rows as one JSON array on stdout. Each row has
+  `component`, `from`, `to`, `status`, `failed` and `kept` fields; `kept` is an
+  array of edited filenames. Install progress is written to stderr.
 
 - **chi web update notices.** By default, chi web checks RubyGems about 30
   seconds after it starts and every 24 hours after that. Once a stable release
