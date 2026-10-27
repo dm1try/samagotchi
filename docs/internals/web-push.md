@@ -1,7 +1,8 @@
 # Web Push (internals)
 
 chi web pushes to the owner's phone when a session needs them, for what the tab notifies for: an approval, a
-question, a step-limit question, a card with actions, a failed turn, and (per device, off by default) a done one. The
+question, a step-limit question, a card with actions, a failed turn, a recorded Verify verdict, and (per device,
+off by default) a done one. The
 phone runs chi web as a Home Screen app (iOS 16.4+), its bell subscribes the device, and chi web, the only sender,
 pushes through the device's push service (Apple's `web.push.apple.com`). The user side is in
 [configuration.md](../configuration.md#phone-notifications-web-push). This page is how it is built (P1, P2a and P2b of the
@@ -146,17 +147,20 @@ the top and in `pending_question` / `pending_card`, strings in `last_turn`), `no
      3.5 s (notify.js `RELAY_HOLD_MS`): its parent may relay it.
   2. a new `pending_card` id: `card`, key `"<sid>:card:<cid>"`.
   3. a top-level turn whose `last_turn["ended_at"]` changed (a delegated child's is its parent's to report):
-     `failed`, or `done` when `completed` and `seconds` ≥ `DONE_MIN_SECONDS` 10 or its origin is in
-     `UNWATCHED_ORIGINS` (`delegate_report`, `context`, `task`); key `"<sid>:<ended_at>"`. A reminder turn follows
-     the same rules (no reminder event of its own).
+     a newly recorded verdict is `verdict`, keyed by `"<sid>:<check_turn_id>"`; otherwise `failed`, or `done` when
+     `completed` and `seconds` ≥ `DONE_MIN_SECONDS` 10 or its origin is in `UNWATCHED_ORIGINS`
+     (`delegate_report`, `context`, `task`), keyed by `"<sid>:<ended_at>"`. A verdict wins over the done/no-event
+     rule, including for a short turn. A reminder turn follows the same rules (no reminder event of its own).
 - `WAITING` (approval, question, continue, card) are the reasons that stay open until answered: badged, in `open`,
-  cleaned up, and pushed only while still open. A failed or done turn has nothing to answer.
+  cleaned up, and pushed only while still open. A failed, done or verdict turn has nothing to answer.
 - `Attention.closed_keys(prev, next)`: the question answered, replaced, newly relayed; the card resolved or
   replaced; both when the session is gone.
 - `Attention.text(summary, reason)`: notify.js `attentionText`'s words: the session's name as its card has it
   (title, auto title, the recap's first sentence, first preview, last prompt — the same order `format.js cardName`
   uses) clipped to 61, and "needs approval" / "needs an answer" / "hit its step limit" / "needs you" / "turn
-  failed" / "done in N s" (`last_turn["seconds"]` rounded). Never the question or the command.
+  failed" / "done in N s" (`last_turn["seconds"]` rounded) / "<who>: <icon> <verdict> — <reason>" (reason clipped
+  to 120 characters). A verdict names its participant from the session's participant sidecar, or says "You" for the
+  owner; only verdicts use that push copy, never the full reply. Never the question or the command.
 
 `Notifier#call(event)` is a `SessionHub` sink. **The hub calls it under its Monitor**, from the tick thread and also
 from chi web's request threads (`SessionHub#touch`, from the stop/archive/delete routes), so it only enqueues: a push

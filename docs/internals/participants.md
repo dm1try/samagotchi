@@ -315,7 +315,8 @@ fields: a field added to an event later reaches nobody until it is named there.
 - **Events** (`.event`, the stream). `EVENTS` names the types a participant gets, each rebuilt by its own method:
   `turn_started` (turn id, its wall time `at`, the author and name, `mine` for their own, the prompt only when a person sent the turn:
   `ClientId.human?`, else `automatic`; `continue`), the turn's end (`turn_completed`, `turn_canceled`, `turn_failed`:
-  type and turn id), `generation_chunk` (its visible `text` only; a thinking-only chunk is dropped),
+  type and turn id; `turn_completed` may also carry an allowlisted verdict card), `generation_chunk` (its visible
+  `text` only; a thinking-only chunk is dropped),
   `generation_retrying` (`restarted`), `tool_call_started` (the tool's name, and for a file tool the path relative to
   the session's folder when it is inside it; never when that folder is home or `/`), `tool_call_completed` (its status word), and bare markers (the type
   alone) for the queue (`turn_enqueued`, `turn_dequeued`, `input_merged`), the owner's question, approval or Continue
@@ -414,6 +415,12 @@ fields: a field added to an event later reaches nobody until it is named there.
   cookie is one name: a second participant link redeemed there replaces the first), and **the owner opening a
   participant's invite link** in their own browser swaps their owner cookie for that grant (the page asks first). A
   continue archives the session and revokes its grants: re-share, and links to the old session stay on it.
+- **Verify verdict cards** (`verdict_card.js`). The built-in Verify preset carries the selected source turn id and quote
+  with the submitted turn, without changing its prompt text. A completed Verify reply whose final non-empty line has
+  a valid `Verdict: confirmed|refuted|unclear — <reason>` appends a verdict to the session. Both pages place its card
+  after the source turn, name its author, show the reason and quote, and link to the checking turn; a live completion
+  adds the card without a reload. The participant view receives only the card fields through its allowlist, with the
+  quote and reason redacted by the view's normal rules, never the full reply.
 - **The comment box** is the owner's composer (`composer_mount.js`, styled by the shared `composer.css`), mounted by
   `participant.js` with a subset on. It has: the height that grows with the text, the grip (drag to resize,
   double-click resets, click or drag down folds it; folded, the grip is the handle on the dock's edge and typing on the

@@ -7,6 +7,11 @@ and commands may change between minor versions. How releases are made:
 [docs/releasing.md](docs/releasing.md).
 ## [Unreleased]
 
+### Added
+
+- chi web places each completed Verify verdict on its source claim, links to the checking turn, and sends a phone
+  notification with the verdict and a short reason (including for short turns).
+
 ## [0.125.0] - 2026-10-27
 
 ### Added
