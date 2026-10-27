@@ -587,7 +587,8 @@ config or bundle toolkit) with `add` declared and `remove` left out, and
 inherits the base's, `""` clears it; at most 2000 characters, and one that
 isn't a String or is longer is a load error). `groups` selects the source
 groups the toolkit reaches (names or globs, sorted and deduplicated; nil
-inherits the base's, `[]` reaches none, and `:all` reaches every group).
+inherits the base's, `[]` reaches none, and `:all` reaches every group; anything
+else, a map say, is a load error).
 Groups match against the tool index's load-time names. Users pick
 it like chi's own (`chi --toolkit NAME`, `toolkit.default`, `/toolkit NAME`),
 and the plugin with `ctx.use_toolkit` (below). Names are `a-z`, `0-9`, `_` and

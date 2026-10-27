@@ -58,6 +58,8 @@ and commands may change between minor versions. How releases are made:
 - A toolkit's `groups:` match source groups in any case and with `{a,b}` braces, as the guardrails rules' `models:`
   do (`groups: [Chrome]` missed `chrome`), and a config kit's `groups:` that isn't a name or a list (a map) is refused
   with a line, the kit loading without it, instead of matching its stringified pairs.
+- A plugin's `chi.toolkit(groups:)` that isn't a name, a list or `:all` (a map) is a load error ("toolkit NAME: groups
+  must be a list of group names or globs"), as a config kit's is refused, instead of matching its stringified pairs.
 
 ## [0.121.0] - 2026-10-26
 

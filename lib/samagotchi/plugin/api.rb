@@ -322,7 +322,7 @@ module Samagotchi
         name = name.to_s
         raise ArgumentError, "toolkit name #{name.inspect} must be a-z, 0-9, _ and -" unless name.match?(TOOLKIT_NAME)
 
-        problem = Toolkit.prompt_error(prompt)
+        problem = Toolkit.prompt_error(prompt) || (Toolkit.groups_error(groups) unless groups == :all)
         raise ArgumentError, "toolkit #{name}: #{problem}" if problem
         raise ArgumentError, "this chi has no toolkits (plugins: false)" unless @registries.toolkits
         if Toolkit::BUILTIN_KITS.key?(name)

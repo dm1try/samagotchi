@@ -44,6 +44,13 @@ RSpec.describe "Plugin toolkits" do
       expect(kits.map(&:groups)).to eq([%w[chrome db*], :all])
     end
 
+    it "refuses groups that aren't a name or a list (a map) like a bad prompt" do
+      expect { api.toolkit("odd", base: "lean", groups: { "chrome" => true }) }
+        .to raise_error(ArgumentError, "toolkit odd: groups must be a list of group names or globs")
+      expect { api.toolkit("odd", base: "lean", groups: [{ "chrome" => true }]) }
+        .to raise_error(ArgumentError, "toolkit odd: groups must be a list of group names or globs")
+    end
+
     it "refuses chi's own names, another bundle's, a twice-declared one and a bad name" do
       expect { api.toolkit("lean", base: "full") }.to raise_error(ArgumentError, "toolkit lean is chi's own")
       first = api("other")
