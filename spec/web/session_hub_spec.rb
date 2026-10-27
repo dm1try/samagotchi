@@ -539,6 +539,16 @@ RSpec.describe Samagotchi::Web::SessionHub do
       expect(events.last.data).to eq(version: Samagotchi::VERSION, installed: nil, available: "99.0.0",
                                      update_blocked: "bundler")
     end
+
+    it "publishes chi update progress and keeps the latest state for event snapshots" do
+      data = { state: "running", rows: [], progress: "installing samagotchi 99.0.0" }
+
+      hub.publish_update(**data)
+
+      expect(events.last.type).to eq("chi_update")
+      expect(events.last.data).to eq(data)
+      expect(hub.update_state).to eq(data)
+    end
   end
 
   describe "#hub_registry" do

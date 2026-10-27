@@ -80,6 +80,7 @@ module Samagotchi
         @installed = nil
         @available = nil
         @update_blocked = nil
+        @update_state = nil
         @manager = manager
         @now = now || -> { Process.clock_gettime(Process::CLOCK_MONOTONIC) }
         @scan_interval = scan_interval
@@ -159,6 +160,21 @@ module Samagotchi
           emit("chi", chi_state.merge(notify ? { update_notice: true } : {})) if changed || notify
         end
         nil
+      end
+
+      # Publish the owner-triggered update's progress or result for current
+      # tabs, and retain the latest state for a reconnect's snapshot.
+      def publish_update(state:, rows:, progress: nil)
+        @monitor.synchronize do
+          @update_state = { state: state, rows: rows }
+          @update_state[:progress] = progress unless progress.nil?
+          emit("chi_update", @update_state)
+        end
+        nil
+      end
+
+      def update_state
+        @monitor.synchronize { @update_state&.dup }
       end
 
       # Rescan one session now (its file, its folder, its owner), for the

@@ -4,6 +4,9 @@ require "cgi/escape" # CGI.escapeHTML; Ruby 4.0 ships only cgi/escape
 require "digest"
 require "fileutils"
 require "json"
+require "open3"
+require "rbconfig"
+require "rubygems/version"
 require "time"
 require "uri"
 require "rack"
@@ -67,10 +70,13 @@ require_relative "session_show"
 require_relative "session_create"
 require_relative "session_control"
 require_relative "push_routes"
+require_relative "update_check"
 require_relative "proxy_gate"
 require_relative "../log"
 require_relative "../paths"
 require_relative "../redacted_inspect"
+require_relative "../child_env"
+require_relative "../installed_gem"
 
 module Samagotchi
   module Web
@@ -156,7 +162,8 @@ module Samagotchi
                      events_heartbeat: EVENTS_HEARTBEAT, events_queue: EVENTS_QUEUE,
                      registry: nil, models_wait_timeout: MODELS_WAIT_TIMEOUT, lan: nil,
                      working_set: Config::BY_KEY["web.working_set"].default, wait_poll_interval: ReplyWait::POLL_INTERVAL,
-                     grants: nil, public_url: nil, public_token: nil, push: nil, start_dir: nil)
+                     grants: nil, public_url: nil, public_token: nil, push: nil, start_dir: nil, update_runner: nil,
+                     update_blocked: nil)
         @start_dir = start_dir
         @manager = manager || SessionManager
         @registry = registry
@@ -182,6 +189,10 @@ module Samagotchi
         @refused_logged = {}
         @wait_poll_interval = wait_poll_interval
         @push = push
+        @update_mutex = Mutex.new
+        @update_running = false
+        @update_runner = update_runner || method(:run_update_command)
+        @update_blocked = update_blocked || -> { UpdateCheck.blocked_reason }
         init_participant_access(grants, state_dir)
         init_proxy_gate(public_url, public_token)
       end
@@ -233,6 +244,7 @@ module Samagotchi
         ["GET", %r{\A/api/models\z}, :handle_models, :owner],
         ["GET", %r{\A/api/history\z}, :handle_history, :owner],
         ["GET", %r{\A/api/events\z}, :handle_events, :owner],
+        ["POST", %r{\A/api/update\z}, :handle_update, :owner],
         ["POST", %r{\A/api/render\z}, :handle_render, :owner],
         ["GET", %r{\A/api/sessions/([^/]+)/stream\z}, :handle_stream, :participant],
         ["GET", %r{\A/api/sessions/([^/]+)/review\z}, :handle_review, :participant, :session],
@@ -648,6 +660,80 @@ module Samagotchi
       # POST /api/token past the gate without a trade (nothing to trade here:
       # no token is asked of this request): nothing to do.
       def handle_token(_req) = [204, { "Cache-Control" => "no-store" }, []]
+
+      def handle_update(req)
+        return error_response(503, "no_hub", "this chi web has no session hub") unless @hub
+
+        raw = request_body(req, 16_385)
+        return error_response(413, "body_too_large", "update request is too large") if raw.bytesize > 16_384
+
+        payload = parse_json(raw)
+        return error_response(400, "invalid_update", "expected a JSON object with a version") unless payload.is_a?(Hash)
+
+        version = payload["version"]
+        # Gem::Version.correct? lets surrounding whitespace through; argv gets none.
+        unless version.is_a?(String) && !version.match?(/\s/) && Gem::Version.correct?(version)
+          return error_response(400, "invalid_version", "version must be a gem version")
+        end
+
+        version = Gem::Version.new(version).to_s
+        if Gem::Version.new(version) <= Gem::Version.new(VERSION)
+          return error_response(409, "update_not_newer", "version #{version} is not newer than this chi")
+        end
+
+        # Found out here, not from the hub: UpdateCheck (off with update.notify: off) is what tells it.
+        blocked = @update_blocked.call
+        return json_response(409, { error: "update_blocked", reason: blocked }) if blocked
+
+        already_running = @update_mutex.synchronize do
+          if @update_running
+            true
+          else
+            @update_running = true
+            false
+          end
+        end
+        return error_response(409, "update_running", "an update is already running") if already_running
+
+        @hub.publish_update(state: "running", rows: [])
+        Thread.new { perform_update(version) }
+        json_response(202, { state: "running", version: version })
+      rescue ThreadError => e
+        @update_mutex.synchronize { @update_running = false }
+        Log.warn(:web, "update_start_failed", error: e.class.name, msg: e.message)
+        @hub&.publish_update(state: "failed", rows: [
+          { "component" => "chi update", "status" => "failed (couldn't start update)", "failed" => true, "kept" => [] }
+        ])
+        error_response(503, "update_start_failed", "couldn't start chi update")
+      end
+
+      def perform_update(version)
+        argv = [RbConfig.ruby, InstalledGem.wrapper, "update", "--to", version, "--no-desktop", "--json"]
+        output, success = @update_runner.call(argv, env: ChildEnv.unbundled,
+                                              progress: ->(line) { @hub.publish_update(state: "running", rows: [], progress: line) })
+        rows = JSON.parse(output)
+        raise TypeError, "chi update returned rows in an invalid format" unless rows.is_a?(Array) && rows.all?(Hash)
+
+        @hub.publish_update(state: success ? "done" : "failed", rows: rows)
+      rescue StandardError => e
+        Log.exception(:web, "update_failed", e)
+        @hub.publish_update(state: "failed", rows: [
+          { "component" => "chi update", "status" => "failed (#{e.message.lines.first.to_s.strip})",
+            "failed" => true, "kept" => [] }
+        ])
+      ensure
+        @update_mutex.synchronize { @update_running = false }
+      end
+
+      def run_update_command(argv, env:, progress:)
+        Open3.popen3(env, *argv) do |stdin, stdout, stderr, wait_thread|
+          stdin.close
+          stderr_thread = Thread.new { stderr.each_line { |line| progress.call(line.chomp) } }
+          output = stdout.read
+          stderr_thread.value
+          [output, wait_thread.value.success?]
+        end
+      end
 
       def unauthorized(req)
         reason = req.env[REFUSED_ENV]
@@ -1805,7 +1891,10 @@ module Samagotchi
 
         def each
           # The page compares this full chi state with the one it was served by.
-          yield frame(nil, "snapshot", { sessions: @snapshot }.merge(@chi_state))
+          snapshot = { sessions: @snapshot }.merge(@chi_state)
+          update_state = @hub.update_state
+          snapshot[:chi_update] = update_state if update_state
+          yield frame(nil, "snapshot", snapshot)
           last_write = monotonic
           loop do
             event = @queue.pop([@heartbeat, EVENTS_POLL].min)

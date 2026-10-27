@@ -504,6 +504,111 @@ RSpec.describe Samagotchi::Web::App do
       end
     end
 
+    describe "POST /api/update" do
+      let(:state_dir) { Dir.mktmpdir("web-update-spec") }
+      let(:hub) { Samagotchi::Web::SessionHub.new(state_dir: state_dir) }
+
+      after do
+        hub.stop
+        FileUtils.rm_rf(state_dir)
+      end
+
+      # An install environment that allows the update (the specs run from a checkout).
+      def update_app(**kw) = events_app(hub: hub, update_blocked: -> {}, **kw)
+
+      def update_post(app, version)
+        status, _headers, body = app.call(env_for("/api/update", method: "POST", body: JSON.generate(version: version)))
+        [status, JSON.parse(body.first)]
+      end
+
+      it "runs the exact update command outside Bundler and publishes progress and result frames" do
+        calls = Queue.new
+        events = []
+        hub.subscribe(->(event) { events << event })
+        allow(Samagotchi::InstalledGem).to receive(:wrapper).and_return("/installed/bin/chi")
+        allow(Samagotchi::ChildEnv).to receive(:unbundled).and_return("BUNDLE_GEMFILE" => nil)
+        runner = lambda do |argv, env:, progress:|
+          calls << [argv, env]
+          progress.call("installing samagotchi 99.0.0…")
+          [[{ component: "chi (gem)", status: "updated", kept: [] }].to_json, true]
+        end
+        app = update_app(update_runner: runner)
+
+        expect(update_post(app, "99.0.0")).to eq([202, { "state" => "running", "version" => "99.0.0" }])
+        wait_for("the web update result") { hub.update_state&.dig(:state) == "done" }
+
+        argv, env = calls.pop
+        expect(argv).to eq([RbConfig.ruby, "/installed/bin/chi", "update", "--to", "99.0.0", "--no-desktop", "--json"])
+        expect(env).to eq("BUNDLE_GEMFILE" => nil)
+        expect(events.map(&:type)).to eq(%w[chi_update chi_update chi_update])
+        expect(events.map { |event| event.data[:state] }).to eq(%w[running running done])
+        expect(events[1].data[:progress]).to eq("installing samagotchi 99.0.0…")
+        expect(events.last.data[:rows]).to eq([{ "component" => "chi (gem)", "status" => "updated", "kept" => [] }])
+      end
+
+      it "refuses a second update while one is running" do
+        started = Queue.new
+        finish = Queue.new
+        runner = lambda do |_argv, env:, progress:|
+          started << true
+          finish.pop
+          ["[]", true]
+        end
+        app = update_app(update_runner: runner)
+
+        expect(update_post(app, "99.0.0").first).to eq(202)
+        started.pop
+        expect(update_post(app, "99.0.0")).to eq([409, { "error" => "update_running", "detail" => "an update is already running" }])
+      ensure
+        finish << true
+        wait_for("the web update to finish") { hub.update_state&.dig(:state) == "done" }
+      end
+
+      it "refuses an update blocked by the install environment" do
+        runner = ->(*) { raise "must not run" }
+        app = events_app(hub: hub, update_runner: runner, update_blocked: -> { "bundler" })
+
+        expect(update_post(app, "99.0.0")).to eq([409, { "error" => "update_blocked", "reason" => "bundler" }])
+      end
+
+      # update.notify: off: no UpdateCheck ever told the hub; the route finds it out itself.
+      it "refuses from a checkout without the update check's state" do
+        runner = ->(*) { raise "must not run" }
+        app = events_app(hub: hub, update_runner: runner)
+
+        expect(hub.chi_state[:update_blocked]).to be_nil
+        expect(update_post(app, "99.0.0")).to eq([409, { "error" => "update_blocked", "reason" => "checkout" }])
+      end
+
+      it "hands the child a normalized version and refuses one with whitespace" do
+        calls = Queue.new
+        runner = ->(argv, env:, progress:) { calls << argv; ["[]", true] }
+        app = update_app(update_runner: runner)
+
+        expect(update_post(app, "99.0.0\n").first).to eq(400)
+        expect(update_post(app, " 99.0.0").first).to eq(400)
+        expect(update_post(app, "99.0.0")).to eq([202, { "state" => "running", "version" => "99.0.0" }])
+        expect(calls.pop[4]).to eq("99.0.0")
+      ensure
+        wait_for("the web update to finish") { hub.update_state&.dig(:state) != "running" }
+      end
+
+      it "includes the running update in the next event snapshot" do
+        hub.publish_update(state: "running", rows: [])
+        app = events_app
+        _status, _headers, body = app.call(env_for("/api/events"))
+        raw = +""
+        reader = Thread.new { body.each { |chunk| raw << chunk } }
+        wait_for("the chi update snapshot") { raw.include?("\"chi_update\":{\"state\":\"running\"") }
+        hub.stop
+        join!(reader, "the events snapshot")
+
+        expect(JSON.parse(raw.split("data: ", 2).last.split("\r\n", 2).first)["chi_update"]).to eq("state" => "running", "rows" => [])
+      ensure
+        reader&.kill
+      end
+    end
+
     it "answers 503 no_hub without a hub, so the page falls back to fetching" do
       status, _, body = build_app(state_dir: state_dir).call(env_for("/api/events"))
 

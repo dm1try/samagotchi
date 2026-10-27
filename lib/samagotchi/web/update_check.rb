@@ -93,6 +93,19 @@ module Samagotchi
         end
       end
 
+      # Why chi web can't install a gem here (the notice's and POST /api/update's
+      # one answer), or nil: a source checkout, a Bundler run, a gem dir it
+      # can't write.
+      # @return [String, nil]
+      def self.blocked_reason(gem_spec: InstalledGem.spec, bundler: nil, gem_dir: Gem.dir)
+        bundler = defined?(::Bundler) || !ENV["BUNDLE_GEMFILE"].to_s.empty? if bundler.nil?
+        return "checkout" unless gem_spec
+        return "bundler" if bundler
+        return "gem_dir_not_writable" unless File.writable?(gem_dir)
+
+        nil
+      end
+
       private
 
       def run_loop
@@ -141,13 +154,7 @@ module Samagotchi
         version if version && Gem::Version.correct?(version) && Gem::Version.new(version) > version_floor
       end
 
-      def blocked_reason
-        return "checkout" unless @gem_spec
-        return "bundler" if @bundler
-        return "gem_dir_not_writable" unless File.writable?(@gem_dir)
-
-        nil
-      end
+      def blocked_reason = self.class.blocked_reason(gem_spec: @gem_spec, bundler: @bundler, gem_dir: @gem_dir)
 
       def load_state
         return { checked_at: nil, available: nil, notified: [] } unless File.file?(@state_file)

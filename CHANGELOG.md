@@ -16,6 +16,7 @@ and commands may change between minor versions. How releases are made:
   newest session's folder, on that remote's default model. The Everyone row, the model chooser and agents stay on
   this Mac.
 - `chi update --to VERSION` installs an exact newer gem release; `--json` prints update rows and kept edits as JSON.
+- chi web's owner can start a gem update; progress and component rows are published to its event stream.
 
 ## [0.123.0] - 2026-10-27
 
