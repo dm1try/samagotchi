@@ -230,7 +230,8 @@ if options[:web]
                                       working_set: Samagotchi::Config.get("web.working_set"),
                                       annotate_presets: Samagotchi::Config.get("web.annotate_presets"),
                                       editor: Samagotchi::Config.get("web.editor"),
-                                      start_dir: options[:start_dir] || Samagotchi::Config.get("web.start_dir"))
+                                      start_dir: options[:start_dir] || Samagotchi::Config.get("web.start_dir"),
+                                      start_dir_from: options[:start_dir] ? :flag : :config)
 end
 
 # --resume and --attach take a unique id prefix too, like git.

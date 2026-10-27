@@ -32,4 +32,12 @@ RSpec.describe Samagotchi::Web::StartDir do
       .to raise_error(described_class::Invalid, "--start-dir #{@tmp}/gone: no such folder")
     expect { described_class.resolve("f", cwd: @tmp) }.to raise_error(described_class::Invalid, "--start-dir f: not a folder")
   end
+
+  it "names the setting that supplied an invalid folder, and resolves a relative config value from home" do
+    expect { described_class.resolve("gone-#{File.basename(@tmp)}", cwd: @tmp, from: :config) }
+      .to raise_error(described_class::Invalid, "web.start_dir in config.yml gone-#{File.basename(@tmp)}: no such folder")
+    allow(Dir).to receive(:home).and_return(@tmp)
+    Dir.mkdir(File.join(@tmp, "proj"))
+    expect(described_class.resolve("proj", cwd: "/", from: :config)).to eq(File.join(@tmp, "proj"))
+  end
 end

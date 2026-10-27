@@ -9,15 +9,20 @@ module Samagotchi
     module StartDir
       class Invalid < StandardError; end
 
+      # Where +given+ came from, as its error names it.
+      SOURCES = { flag: "--start-dir", config: "web.start_dir in config.yml" }.freeze
+
       # +given+ as an absolute folder (~ expanded, a relative one against
-      # +cwd+); nil or blank: +cwd+.
+      # +cwd+, or the home folder for a config value); nil or blank: +cwd+.
+      # @param from [Symbol] :flag or :config (SOURCES)
       # @raise [Invalid] when it is no folder
-      def self.resolve(given, cwd: Dir.pwd)
+      def self.resolve(given, cwd: Dir.pwd, from: :flag)
         return File.expand_path(cwd) if given.nil? || given.to_s.strip.empty?
 
-        dir = File.expand_path(given.to_s.strip, cwd)
-        raise Invalid, "--start-dir #{given}: no such folder" unless File.exist?(dir)
-        raise Invalid, "--start-dir #{given}: not a folder" unless File.directory?(dir)
+        source = SOURCES.fetch(from)
+        dir = File.expand_path(given.to_s.strip, from == :config ? Dir.home : cwd)
+        raise Invalid, "#{source} #{given}: no such folder" unless File.exist?(dir)
+        raise Invalid, "#{source} #{given}: not a folder" unless File.directory?(dir)
 
         dir
       end

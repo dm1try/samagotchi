@@ -572,6 +572,23 @@ RSpec.describe Samagotchi::Web::Server do
       expect(described_class).not_to have_received(:rotate_token)
     end
 
+    it "names a bad config start folder and resolves a relative one from home" do
+      expect do
+        described_class.launch(port: 4567, start_dir: "/nope/gone",
+                               start_dir_from: :config)
+      end
+        .to output("Error: web.start_dir in config.yml /nope/gone: no such folder\n").to_stderr
+
+      allow(described_class).to receive(:probe).and_return(:free)
+      allow(described_class).to receive(:start).and_return(true)
+      expect(described_class.launch(port: 4567, start_dir: ".",
+                                    start_dir_from: :config)).to eq(0)
+      expect(described_class).to have_received(:start).with(hash_including(start_dir: Dir.home))
+
+      expect(described_class.launch(port: 4567, start_dir_from: :config)).to eq(0)
+      expect(described_class).to have_received(:start).with(hash_including(start_dir: Dir.pwd))
+    end
+
     it "says when the running chi web starts in another folder than the one given, and only then" do
       Dir.mktmpdir("start") do |wanted|
         allow(described_class).to receive(:probe).and_return({ "pid" => 42, "start_dir" => "/srv" })

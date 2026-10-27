@@ -86,9 +86,9 @@ module Samagotchi
       def self.launch(port: nil, host: nil, scope: "project", start_dir: nil, open_browser: false, markdown: false,
                       view: Config::BY_KEY["web.view"].default, annotate_presets: Config::BY_KEY["web.annotate_presets"].default,
                       editor: Config::BY_KEY["web.editor"].default, new_token: false,
-                      working_set: Config::BY_KEY["web.working_set"].default, tunnel: nil)
+                      working_set: Config::BY_KEY["web.working_set"].default, tunnel: nil, start_dir_from: :flag)
         start_given = !start_dir.to_s.strip.empty?
-        start_dir = StartDir.resolve(start_dir)
+        start_dir = StartDir.resolve(start_dir, from: start_dir_from)
         rotate_token if new_token
         public_url = public_url_setting unless tunnel
         setting = host_setting(host)
