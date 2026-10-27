@@ -10,19 +10,25 @@ require_relative "config"
 require_relative "session"
 require_relative "system_one/log"
 require_relative "toolkit"
+require_relative "tool_response"
 require_relative "toolkit_suggest"
 
 module Samagotchi
-  # `chi toolkit report`: compare the toolkit an audit suggestion named with
-  # the tools the corresponding user turn actually called.
+  # `chi toolkit report`: compare the toolkit on mode would have run (the
+  # suggestion when it would have been applied, else the default) with the
+  # tools the session called from that turn on, against every kit's rules
+  # the ask logged (ToolkitSuggest.rules).
   class ToolkitReportCommand
     include CLI::Command
 
     USAGE = <<~TEXT
       Usage: chi toolkit report [--days N]
-        Grade audit suggestions against the tools each session turn called,
-        including the target of call_tool. Shows covers, short-of-tool and
-        wider-than-needed results, then a per-kit tally. Includes archived
+        Grade the kit each audit suggestion would have run (the suggested
+        kit when on mode would have applied it, else the default) against
+        the tools the session called from that turn on, call_tool targets
+        included: covers, short of a tool (named), wider than needed (a
+        narrower offered kit would also cover), or ungradable. Then a
+        per-kit tally with what on mode would have done. Includes archived
         sessions; the report is limited to 14 days and 500 sessions.
     TEXT
 
@@ -88,14 +94,17 @@ module Samagotchi
       records.sort_by { |entry| timestamp(entry["at"]) }.each do |entry|
         id = entry["session_id"]
         session = loaded[id] ||= Session.load(id, state_dir: @sessions_dir)
-        uses = tool_uses_by_turn(session.messages).fetch(entry["turn_number"].to_i, [])
-        grade, detail = grade(entry, uses)
-        kit = entry["kit"] || entry["default_kit"] || "(unknown)"
+        uses, window = window_uses(session, entry["turn_number"].to_i)
+        kit = graded_kit(entry)
+        grade, detail = grade(entry, kit, uses)
         tallies[kit][grade] += 1
+        tallies[kit]["would:#{entry["would"] || "unknown"}"] += 1
         confidence = entry["confidence"].nil? ? "n/a" : format("%.2f", entry["confidence"])
         @stdout.puts("#{timestamp(entry["at"]).iso8601} #{id[0, 8]} turn #{entry["turn_number"]}: " \
-                     "#{entry["raw"] || "no judgment"} (p=#{confidence}) → #{kit}: #{grade}#{detail}")
-        @stdout.puts("  tools: #{uses.map(&:label).uniq.join(", ")}") unless uses.empty?
+                     "#{entry["raw"] || "no judgment"} (p=#{confidence}, would #{entry["would"] || "unknown"}) " \
+                     "→ #{kit}: #{grade}#{detail}#{window}")
+        labels = uses.is_a?(Array) ? uses.map(&:label).uniq : []
+        @stdout.puts("  tools: #{labels.join(", ")}") unless labels.empty?
       rescue StandardError => e
         @stderr.puts("chi toolkit report: session #{id}: #{e.class}: #{e.message}; skipped")
       end
@@ -128,28 +137,72 @@ module Samagotchi
       nil
     end
 
-    # Tool calls grouped by the user's own prompt number; steers and merged
+    # The tools the session called from the suggestion's turn on: to the
+    # session's end, or only that turn when the toolkit was chosen since
+    # (/toolkit, ctx.use_toolkit: no message marks when, and a change
+    # applies from the next turn's start, so the asked turn ran on it).
+    # @return [Array(Array<ToolUse>|Symbol, String)] the uses (:ungradable
+    #   when a turn's tools can't be read back) and a note on the window
+    def window_uses(session, turn_number)
+      by_turn = tool_uses_by_turn(session.messages)
+      changed = session.toolkit_origin == "chosen"
+      turns = by_turn.keys.select { |number| changed ? number == turn_number : number >= turn_number }
+      uses = turns.sort.flat_map { |number| by_turn[number] }
+      note = changed ? " (its turn only: the toolkit was chosen later)" : ""
+      [turns.empty? || uses.include?(:ungradable) ? :ungradable : uses, note]
+    end
+
+    # Tool uses grouped by the user's own prompt number; steers and merged
     # input lines remain part of that turn rather than starting another.
+    # The chat loop saves its calls on the model's message (tool_calls);
+    # the raw-prompt loop saves only the model's text, so its calls are
+    # read back from the batch's tool_response entry (#joined_uses).
     def tool_uses_by_turn(messages)
       number = 0
       current = nil
       uses = Hash.new { |hash, key| hash[key] = [] }
       Array(messages).each do |message|
-        if field(message, :role).to_s == "user"
+        case field(message, :role).to_s
+        when "user"
           if ToolkitSuggest.owner_prompt?(message)
             number += 1
             current = number
+            uses[current]
           elsif Steer.participant_author?(field(message, :author))
             current = nil
           end
-          next
+        when "model"
+          Array(field(message, :tool_calls)).each { |call| uses[current] << tool_use(call) } if current
+        when "tool_response"
+          uses[current].concat(joined_uses(message)) if current && !field(message, :tool_call_id)
         end
-        next unless current
-
-        calls = field(message, :tool_calls)
-        Array(calls).each { |call| uses[current] << tool_use(call) }
       end
-      uses.transform_values { |turn_uses| turn_uses.compact }
+      uses.transform_values(&:compact)
+    end
+
+    # A ran-as line (ToolRunner, a corrected call) may precede a run's lead.
+    RUN_LEAD = /\A(?:ran as: [^\n]*\n)?\[([^\]\s]+)\](?:\n| |\z)/
+
+    # A raw-prompt batch's tools: each run's "[name]" lead (ToolResponse),
+    # a call_tool's target from its saved params line ("group/tool …").
+    # When the leads don't match the batch's run count, :ungradable.
+    def joined_uses(message)
+      parts = field(message, :content).to_s.split(ToolResponse::SEPARATOR, -1)
+      names = parts.filter_map { |part| part[RUN_LEAD, 1] }
+      ids = field(message, :tool_ids)
+      return [:ungradable] if names.empty? || (ids.is_a?(Array) && ids.size != names.size)
+
+      params = field(message, :tool_params)
+      names.each_with_index.map do |name, index|
+        next ToolUse.new(name: name, group: nil, label: name) unless name == "call_tool"
+
+        line = params.is_a?(Array) ? params[index] : nil
+        target = line.to_s.split(" ", 2).first.to_s
+        next :ungradable unless target.include?("/")
+
+        group, tool = target.split("/", 2)
+        ToolUse.new(name: tool, group: group, label: "call_tool→#{target}")
+      end
     end
 
     def tool_use(call)
@@ -159,31 +212,81 @@ module Samagotchi
       name = (field(call, :name) || field(function, :name)).to_s
       arguments = field(call, :arguments) || field(function, :arguments) || field(call, :args)
       arguments = JSON.parse(arguments) if arguments.is_a?(String) && !arguments.empty?
+      return ToolUse.new(name: name, group: nil, label: name) unless name == "call_tool"
+
       target = arguments.is_a?(Hash) ? (field(arguments, :tool) || field(arguments, :name)) : nil
-      return ToolUse.new(name: name, group: nil, label: name) unless name == "call_tool" && target
+      return :ungradable unless target
 
       parts = target.to_s.split("/", 2)
       group, tool = parts.size == 2 ? parts : [nil, parts.first]
       ToolUse.new(name: tool, group: group, label: "call_tool→#{target}")
     rescue JSON::ParserError
-      ToolUse.new(name: name, group: nil, label: name)
+      name == "call_tool" ? :ungradable : ToolUse.new(name: name, group: nil, label: name)
     end
 
-    def grade(entry, uses)
-      selected = entry["suggested"] || entry["default"]
-      declared = Array(selected.is_a?(Hash) ? selected["tools"] : [])
-      groups = selected.is_a?(Hash) ? selected["groups"] : []
-      missing = uses.reject do |use|
-        declared.include?(use.name) ||
-          (use.group && use.group != "chi" && group_reached?(groups, use.group))
-      end
+    # The kit on mode would have run: the suggestion only when it would
+    # have been applied, else the session's default.
+    def graded_kit(entry)
+      name = entry["would"] == "suggested" ? entry["kit"] : entry["default_kit"]
+      name || "(unknown)"
+    end
+
+    # covers: the kit declares every tool the window used (pick ⊇ need);
+    # wider than needed: it covers, and so would a narrower logged kit;
+    # short of a tool: names what it leaves out. ungradable when the
+    # window's calls or the kit's rules can't be read.
+    def grade(entry, kit, uses)
+      kits = entry["kits"].is_a?(Hash) ? entry["kits"] : {}
+      rules = kits[kit]
+      core_tools = Array(entry["core_tools"])
+      return ["ungradable", " (no rules logged for #{kit})"] unless rules.is_a?(Hash)
+      return ["ungradable", " (tool calls not readable)"] if uses == :ungradable
+
+      missing = uses.reject { |use| covers?(rules, core_tools, use) }
       return ["short of a tool", " (#{missing.map(&:name).uniq.join(", ")})"] unless missing.empty?
 
-      used = uses.map(&:name).uniq
-      unused = declared - used
-      return ["wider than needed", " (#{unused.size} unused declared)"] unless unused.empty?
+      narrower = kits.filter_map do |name, other|
+        next if name == kit || !other.is_a?(Hash) || !narrower?(other, rules, core_tools)
+
+        name if uses.all? { |use| covers?(other, core_tools, use) }
+      end
+      return ["wider than needed", " (#{narrower.sort.join(", ")} would also cover)"] unless narrower.empty?
 
       ["covers", ""]
+    end
+
+    # Whether a kit's rules declare +use+ (Toolkit::Resolved#declares?): a
+    # tool-index group by the kit's groups; a built-in by its core list;
+    # any other tool (a plugin's) unless the kit removes it.
+    def covers?(rules, core_tools, use)
+      return group_reached?(rules["groups"], use.group) if use.group && use.group != "chi"
+
+      removed = Array(rules["removed"])
+      return false if removed.include?(use.name)
+      return true unless core_tools.include?(use.name)
+
+      rules["all_core"] || Array(rules["core"]).include?(use.name) || Array(rules["added"]).include?(use.name)
+    end
+
+    def core_set(rules, core_tools)
+      declared = rules["all_core"] ? core_tools : Array(rules["core"]) + Array(rules["added"])
+      (declared & core_tools) - Array(rules["removed"])
+    end
+
+    # +other+ declares no more built-ins and reaches no more groups than
+    # +rules+, and less of one of them.
+    def narrower?(other, rules, core_tools)
+      mine = core_set(rules, core_tools)
+      theirs = core_set(other, core_tools)
+      return false unless (theirs - mine).empty?
+
+      groups_mine = rules["groups"]
+      groups_theirs = other["groups"]
+      groups_within = groups_mine == "all" || (groups_theirs != "all" && (Array(groups_theirs) - Array(groups_mine)).empty?)
+      return false unless groups_within
+
+      theirs.size < mine.size || (groups_mine == "all" && groups_theirs != "all") ||
+        (groups_theirs != "all" && Array(groups_theirs).size < Array(groups_mine).size)
     end
 
     def group_reached?(groups, group)
@@ -192,12 +295,17 @@ module Samagotchi
       Array(groups).any? { |selector| Toolkit.group_matches?([selector], group) }
     end
 
+    GRADES = ["covers", "short of a tool", "wider than needed", "ungradable"].freeze
+
+    # Per graded kit: the grades, then what on mode would have done.
     def print_tallies(tallies)
       @stdout.puts("\nPer-kit")
-      @stdout.puts("kit | suggestions | covers | short of a tool | wider than needed")
+      @stdout.puts("kit | suggestions | #{GRADES.join(" | ")} | would")
       tallies.sort.each do |kit, counts|
-        @stdout.puts("#{kit} | #{counts.values.sum} | #{counts["covers"]} | " \
-                     "#{counts["short of a tool"]} | #{counts["wider than needed"]}")
+        would = counts.select { |key, _| key.start_with?("would:") }.sort
+                      .map { |key, count| "#{key.delete_prefix("would:")} #{count}" }
+        @stdout.puts("#{kit} | #{GRADES.sum { |grade| counts[grade] }} | " \
+                     "#{GRADES.map { |grade| counts[grade] }.join(" | ")} | #{would.join(", ")}")
       end
     end
 

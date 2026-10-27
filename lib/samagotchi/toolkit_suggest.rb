@@ -17,8 +17,11 @@ module Samagotchi
     INSTRUCTIONS = "A user is starting a session of a coding agent with the prompt in the state. " \
                    "Which toolkit should the session start on? Pick the smallest toolkit whose tools the work will need."
 
-    Candidate = Data.define(:name, :description, :tools, :groups)
-    Snapshot = Data.define(:session_id, :turn_number, :default, :candidates, :state)
+    # A kit as the ask saw it: its name, classifier description and #rules.
+    Candidate = Data.define(:name, :description, :rules)
+    # +default+ is a Candidate (no description needed); +core_tools+ the
+    # built-ins registered when the ask started.
+    Snapshot = Data.define(:session_id, :turn_number, :default, :candidates, :core_tools, :state)
     Suggestion = Data.define(:kit, :raw, :confidence, :decided)
 
     # The candidates with classifier descriptions, excluding the configured
@@ -76,10 +79,12 @@ module Samagotchi
       end
     end
 
-    # Runs one already-prepared ask, then appends its raw pick and the two
-    # kits' declared tool/group snapshots. A missing judgment is recorded too.
+    # Runs one already-prepared ask, then appends its raw pick, what on mode
+    # would have done, and every offered kit's #rules (the default's too),
+    # so the report can tell a narrower kit that would also have covered
+    # the turn. A missing judgment is recorded too.
     def self.ask(client:, log:, snapshot:, threshold:)
-      question, = question(default: Toolkit.new(name: snapshot.default.fetch(:name)),
+      question, = question(default: Toolkit.new(name: snapshot.default.name),
                            kits: snapshot.candidates.to_h { |candidate| [candidate.name, kit_for(candidate)] },
                            project: snapshot.state.fetch(:project), prompt: snapshot.state.fetch(:prompt))
       answer = client.ask(state: snapshot.state, questions: { QUESTION_ID => question })&.fetch(QUESTION_ID, nil)
@@ -87,7 +92,7 @@ module Samagotchi
       candidate_name = raw.to_s.delete_prefix("kit:")
       candidate = snapshot.candidates.find { |item| item.name == candidate_name } if raw.to_s.start_with?("kit:")
       selected = if raw == "default"
-                   snapshot.default.fetch(:name)
+                   snapshot.default.name
                  elsif candidate
                    candidate.name
                  end
@@ -109,16 +114,32 @@ module Samagotchi
       log.entry("suggestion", {
         session_id: snapshot.session_id,
         turn_number: snapshot.turn_number,
-        default_kit: snapshot.default.fetch(:name),
+        default_kit: snapshot.default.name,
         raw: raw,
         kit: selected,
         confidence: confidence,
         decided: !!decided,
         would: would,
-        suggested: candidate && candidate.to_h,
-        default: snapshot.default
+        core_tools: snapshot.core_tools,
+        kits: [snapshot.default, *snapshot.candidates].to_h { |kit| [kit.name, kit.rules] }
       })
       Suggestion.new(kit: selected, raw: raw, confidence: confidence, decided: !!decided)
+    end
+
+    # A resolved kit (Toolkit::Resolved) as frozen, JSON-ready rules, not
+    # a tool list: plugin and MCP tools may still be loading when the ask
+    # starts, and every kit declares a non-core tool anyway
+    # (Resolved#declares?), so the report expands these against the tools
+    # a turn really called (ToolkitReportCommand).
+    # @return [Hash{String => Object}]
+    def self.rules(resolved)
+      {
+        "all_core" => resolved.all_core,
+        "core" => resolved.core.map { |name| name.to_s.dup.freeze }.freeze,
+        "added" => resolved.added.map { |name| name.to_s.dup.freeze }.freeze,
+        "removed" => resolved.removed.map { |name| name.to_s.dup.freeze }.freeze,
+        "groups" => resolved.groups == :all ? "all" : resolved.groups.map { |name| name.to_s.dup.freeze }.freeze
+      }.freeze
     end
 
     def self.log_path(sessions_dir)

@@ -1,0 +1,32 @@
+{
+  "id": "55555555-5555-4555-8555-555555555555",
+  "mode": "assist",
+  "model_name": "fixture",
+  "working_directory": "/tmp/project",
+  "messages": [
+    {
+      "role": "user",
+      "turn_id": "turn-1",
+      "content": "hi"
+    },
+    {
+      "role": "model",
+      "content": "<tool_call>\u2026</tool_call>"
+    },
+    {
+      "role": "tool_response",
+      "content": "no lead here",
+      "tool_ids": [
+        "t1",
+        "t2"
+      ]
+    }
+  ],
+  "created_at": "2026-10-27T10:00:00Z",
+  "updated_at": "2026-10-27T10:05:00Z",
+  "status": "idle",
+  "toolkit": {
+    "name": "full"
+  },
+  "toolkit_origin": "default"
+}

@@ -67,6 +67,30 @@ RSpec.describe Samagotchi::Engine do
     end
   end
 
+  it "logs every offered kit's rules and the built-ins, with no tool list taken before plugins load" do
+    engine = build_engine
+    dir = Dir.mktmpdir("toolkit-audit")
+    engine.instance_variable_set(:@session_state_dir, File.join(dir, "sessions"))
+    engine.instance_variable_set(:@host_registry, double(host_for_model: [double(name: "model", remote?: true, root_url: "https://model:443"), nil],
+                                                         find_entry: nil))
+    allow(engine).to receive(:effective_model_name).and_return("model")
+    answer = Samagotchi::SystemOne::Answer.new(id: "toolkit", type: :choice, choice: "kit:web", confidence: 0.9)
+    system_one = instance_double(Samagotchi::SystemOne::Client, host: "judge", ask: { "toolkit" => answer })
+    allow(Samagotchi::SystemOne::Client).to receive(:from_config).and_return(system_one)
+
+    start(engine)
+    engine.instance_variable_get(:@toolkit_audit_thread).join(5)
+    line = JSON.parse(File.readlines(File.join(dir, Samagotchi::ToolkitSuggest::FILE)).last)
+
+    expect(line["kits"].keys).to contain_exactly("full", "web", "coding")
+    expect(line["kits"]["full"]).to include("all_core" => true, "groups" => "all")
+    expect(line["kits"]["web"]["all_core"]).to be(false)
+    expect(line["core_tools"]).to include("read", "write")
+    expect(line).not_to have_key("suggested")
+  ensure
+    FileUtils.rm_rf(dir) if dir
+  end
+
   it "joins the audit thread on shutdown, with the short audit timeout" do
     engine = build_engine
     started = Queue.new

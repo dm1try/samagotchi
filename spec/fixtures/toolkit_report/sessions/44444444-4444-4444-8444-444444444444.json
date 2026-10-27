@@ -1,0 +1,52 @@
+{
+  "id": "44444444-4444-4444-8444-444444444444",
+  "mode": "assist",
+  "model_name": "fixture",
+  "working_directory": "/tmp/project",
+  "messages": [
+    {
+      "role": "user",
+      "turn_id": "turn-1",
+      "content": "Read a file"
+    },
+    {
+      "role": "model",
+      "content": "",
+      "tool_calls": [
+        {
+          "id": "c1",
+          "name": "read",
+          "arguments": {}
+        },
+        {
+          "id": "c1b",
+          "name": "chrome_screenshot",
+          "arguments": {}
+        }
+      ]
+    },
+    {
+      "role": "user",
+      "turn_id": "turn-2",
+      "content": "Now write"
+    },
+    {
+      "role": "model",
+      "content": "",
+      "tool_calls": [
+        {
+          "id": "c2",
+          "name": "write",
+          "arguments": {}
+        }
+      ]
+    }
+  ],
+  "created_at": "2026-10-27T10:00:00Z",
+  "updated_at": "2026-10-27T10:05:00Z",
+  "status": "idle",
+  "toolkit": {
+    "name": "full"
+  },
+  "toolkit_origin": "chosen"
+}

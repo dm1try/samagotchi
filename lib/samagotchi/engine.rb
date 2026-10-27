@@ -2760,28 +2760,23 @@ module Samagotchi
         return
       end
 
+      # Rules, not tool lists: this runs before await_init_tasks and
+      # apply_staged_tools!, so a first turn's plugin/MCP tools aren't
+      # registered yet; the report expands the rules (ToolkitSuggest.rules).
       snapshots = candidates.map do |kit|
-        resolved = Toolkit.resolve_kit(kit.name, kits)
-        filter = resolved.everything? ? nil : resolved
-        declared = @tools.entries(toolkit: filter)
         ToolkitSuggest::Candidate.new(name: kit.name.dup.freeze, description: kit.description.dup.freeze,
-                                      tools: declared.map { |entry| entry.name.dup.freeze }.freeze,
-                                      groups: (resolved.groups == :all ? "all" : resolved.groups.map(&:dup).freeze))
+                                      rules: ToolkitSuggest.rules(Toolkit.resolve_kit(kit.name, kits)))
       end.freeze
-      default_resolved = default.resolve(kits)
-      default_tools = @tools.entries(toolkit: default_resolved.everything? ? nil : default_resolved)
-      default_snapshot = {
-        name: default.name.dup.freeze,
-        tools: default_tools.map { |entry| entry.name.dup.freeze }.freeze,
-        groups: default_resolved.groups == :all ? "all" : default_resolved.groups.map(&:dup).freeze
-      }.freeze
+      default_snapshot = ToolkitSuggest::Candidate.new(name: default.name.dup.freeze, description: nil,
+                                                       rules: ToolkitSuggest.rules(default.resolve(kits)))
+      core_tools = @tools.entries(toolkit: nil).select(&:core?).map { |entry| entry.name.dup.freeze }.freeze
       state = ToolkitSuggest.question(
         default: default, kits: kits, project: File.basename(session.project_root.to_s),
         prompt: turn.prompt
       ).last
       snapshot = ToolkitSuggest::Snapshot.new(
         session_id: session.id.dup.freeze, turn_number: ToolkitSuggest.turn_number(session.messages),
-        default: default_snapshot, candidates: snapshots,
+        default: default_snapshot, candidates: snapshots, core_tools: core_tools,
         state: { project: state[:project].dup.freeze, prompt: state[:prompt].dup.freeze }.freeze
       )
       threshold = Config.get("toolkit.suggest.threshold")

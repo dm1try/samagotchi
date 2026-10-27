@@ -4,14 +4,65 @@
   "model_name": "fixture",
   "working_directory": "/tmp/project",
   "messages": [
-    {"role": "user", "turn_id": "turn-1", "content": "Read a file"},
-    {"role": "model", "tool_calls": [{"name": "read", "arguments": {"path": "README.md"}}]},
-    {"role": "user", "turn_id": "turn-2", "content": "Write a file"},
-    {"role": "model", "tool_calls": [{"name": "call_tool", "arguments": {"tool": "chi/write", "args": {}}}]}
+    {
+      "role": "user",
+      "turn_id": "turn-1",
+      "content": "Read a file"
+    },
+    {
+      "role": "model",
+      "content": "",
+      "tool_calls": [
+        {
+          "id": "c1",
+          "name": "read",
+          "arguments": {
+            "path": "README.md"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool_response",
+      "tool_call_id": "c1",
+      "content": "[read]\nhello",
+      "tool_ids": [
+        "t1"
+      ]
+    },
+    {
+      "role": "user",
+      "turn_id": "turn-2",
+      "content": "Write a file"
+    },
+    {
+      "role": "model",
+      "content": "",
+      "tool_calls": [
+        {
+          "id": "c2",
+          "name": "call_tool",
+          "arguments": {
+            "tool": "chi/write",
+            "args": {}
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool_response",
+      "tool_call_id": "c2",
+      "content": "[write] ok",
+      "tool_ids": [
+        "t2"
+      ]
+    }
   ],
   "created_at": "2026-10-27T10:00:00Z",
   "updated_at": "2026-10-27T10:02:00Z",
   "status": "idle",
-  "toolkit": {"name": "full"},
+  "toolkit": {
+    "name": "full"
+  },
   "toolkit_origin": "default"
 }

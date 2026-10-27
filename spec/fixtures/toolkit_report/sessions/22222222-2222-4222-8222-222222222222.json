@@ -4,12 +4,30 @@
   "model_name": "fixture",
   "working_directory": "/tmp/project",
   "messages": [
-    {"role": "user", "turn_id": "turn-1", "content": "Run a command"},
-    {"role": "model", "tool_calls": [{"name": "execute", "arguments": {"command": "true"}}]}
+    {
+      "role": "user",
+      "turn_id": "turn-1",
+      "content": "Run a command"
+    },
+    {
+      "role": "model",
+      "content": "",
+      "tool_calls": [
+        {
+          "id": "c1",
+          "name": "execute",
+          "arguments": {
+            "command": "true"
+          }
+        }
+      ]
+    }
   ],
   "created_at": "2026-10-27T10:00:00Z",
   "updated_at": "2026-10-27T10:01:00Z",
   "status": "idle",
-  "toolkit": {"name": "full"},
+  "toolkit": {
+    "name": "full"
+  },
   "toolkit_origin": "default"
 }

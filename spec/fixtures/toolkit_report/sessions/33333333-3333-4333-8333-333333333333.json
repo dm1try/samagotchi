@@ -1,0 +1,38 @@
+{
+  "id": "33333333-3333-4333-8333-333333333333",
+  "mode": "assist",
+  "model_name": "fixture",
+  "working_directory": "/tmp/project",
+  "messages": [
+    {
+      "role": "user",
+      "turn_id": "turn-1",
+      "content": "Look up an issue"
+    },
+    {
+      "role": "model",
+      "content": "<tool_call>\u2026</tool_call>"
+    },
+    {
+      "role": "tool_response",
+      "content": "[read]\nhello\n\n---\n\nran as: read path=\"a\"\n[read] again\n\n---\n\n[call_tool]\n{}",
+      "tool_ids": [
+        "t1",
+        "t2",
+        "t3"
+      ],
+      "tool_params": [
+        null,
+        null,
+        "github/search_issues query=\"x\""
+      ]
+    }
+  ],
+  "created_at": "2026-10-27T10:00:00Z",
+  "updated_at": "2026-10-27T10:05:00Z",
+  "status": "idle",
+  "toolkit": {
+    "name": "full"
+  },
+  "toolkit_origin": "default"
+}

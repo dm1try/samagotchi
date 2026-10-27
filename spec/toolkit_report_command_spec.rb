@@ -15,15 +15,39 @@ RSpec.describe Samagotchi::ToolkitReportCommand do
     described_class.new(argv, stdout: stdout, stderr: stderr, sessions_dir: sessions_dir, log: log, now: now)
   end
 
-  it "grades tool calls, call_tool targets, and archived sessions into the three report outcomes" do
+  it "grades the kit on mode would run against the tools used from that turn on, against narrower logged kits" do
     expect(command.run).to eq(Samagotchi::CLI::Exit::OK)
+    out = stdout.string
 
-    expect(stdout.string).to include("turn 1: kit:web (p=0.91) → web: covers")
-    expect(stdout.string).to include("turn 2: kit:web (p=0.88) → web: short of a tool (write)")
-    expect(stdout.string).to include("call_tool→chi/write")
-    expect(stdout.string).to include("22222222 turn 1: kit:wide (p=0.80) → wide: wider than needed")
-    expect(stdout.string).to include("Per-kit")
+    # M2: the window runs to the session's end, so turn 1's web misses turn 2's write too.
+    expect(out).to include("11111111 turn 1: kit:web (p=0.91, would suggested) → web: short of a tool (write)")
+    expect(out).to include("11111111 turn 2: kit:web (p=0.88, would suggested) → web: short of a tool (write)")
+    expect(out).to include("call_tool→chi/write")
+    # M1: wider only when a narrower logged kit would also cover; archived sessions count.
+    expect(out).to include("22222222 turn 1: kit:wide (p=0.80, would suggested) → wide: wider than needed " \
+                           "(shell would also cover)")
+    # M3 + M4: a below-threshold pick grades the default; raw-prompt calls come from the tool_response.
+    expect(out).to include("33333333 turn 1: kit:web (p=0.30, would below_threshold) → full: wider than needed " \
+                           "(web would also cover)")
+    expect(out).to include("  tools: read, call_tool→github/search_issues")
+    expect(out).to include("  tools: read, chrome_screenshot")
+    # A toolkit chosen since: only the asked turn. A plugin tool (not a logged built-in) is declared by
+    # every kit, though it registered after the ask started (M6).
+    expect(out).to include("44444444 turn 1: kit:web (p=0.90, would suggested) → web: covers " \
+                           "(its turn only: the toolkit was chosen later)")
+    # Unreadable calls are never covers or wider; a defer grades the default.
+    expect(out).to include("55555555 turn 1: undecided (p=0.70, would defer) → full: ungradable (tool calls not readable)")
+    expect(out).to include("kit | suggestions | covers | short of a tool | wider than needed | ungradable | would")
+    expect(out).to include("full | 2 | 0 | 0 | 1 | 1 | below_threshold 1, defer 1")
+    expect(out).to include("web | 3 | 1 | 2 | 0 | 0 | suggested 3")
     expect(stderr.string).to eq("")
+  end
+
+  it "never grades a raw-prompt call_tool whose target it can't read as covered" do
+    report = described_class.new(["report"], sessions_dir: sessions_dir, log: log)
+    message = { role: "tool_response", content: "[call_tool]\n{}", tool_ids: ["t1"] }
+
+    expect(report.send(:joined_uses, message)).to eq([:ungradable])
   end
 
   it "caps days at retention and refuses a non-positive or malformed --days" do

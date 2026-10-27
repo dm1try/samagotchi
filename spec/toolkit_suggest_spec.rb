@@ -83,23 +83,35 @@ RSpec.describe Samagotchi::ToolkitSuggest do
     end
   end
 
-  it "records a normalized suggestion and marks low-confidence picks as undecided for mode on" do
+  it "records a normalized suggestion, every offered kit's rules and marks low-confidence picks for mode on" do
     client = instance_double(Samagotchi::SystemOne::Client)
     log = instance_double(Samagotchi::SystemOne::Log)
-    candidate = described_class::Candidate.new(name: "web", description: "Browser work", tools: ["read"], groups: ["browser"])
-    snapshot = described_class::Snapshot.new(session_id: "s1", turn_number: 1,
-                                             default: { name: "full", tools: %w[read write], groups: "all" },
-                                             candidates: [candidate], state: { project: "app", prompt: "Fix it" })
+    web_rules = described_class.rules(Samagotchi::Toolkit.resolve_kit("web", kits))
+    full_rules = described_class.rules(Samagotchi::Toolkit.resolve_kit("full", kits))
+    candidate = described_class::Candidate.new(name: "web", description: "Browser work", rules: web_rules)
+    default = described_class::Candidate.new(name: "full", description: nil, rules: full_rules)
+    snapshot = described_class::Snapshot.new(session_id: "s1", turn_number: 1, default: default,
+                                             candidates: [candidate], core_tools: %w[read write],
+                                             state: { project: "app", prompt: "Fix it" })
     answer = Samagotchi::SystemOne::Answer.new(id: described_class::QUESTION_ID, type: :choice, choice: "kit:web",
                                                confidence: 0.4)
     allow(client).to receive(:ask).and_return(described_class::QUESTION_ID => answer)
     expect(log).to receive(:entry).with("suggestion", hash_including(
       session_id: "s1", turn_number: 1, raw: "kit:web", kit: "web",
-      confidence: 0.4, would: "below_threshold"
+      confidence: 0.4, would: "below_threshold", core_tools: %w[read write],
+      kits: { "full" => full_rules, "web" => web_rules }
     ))
 
     suggestion = described_class.ask(client: client, log: log, snapshot: snapshot, threshold: 0.5)
 
     expect(suggestion).to eq(described_class::Suggestion.new(kit: "web", raw: "kit:web", confidence: 0.4, decided: false))
+  end
+
+  it "logs a kit as rules, not a tool list, so tools registered later still resolve" do
+    rules = described_class.rules(Samagotchi::Toolkit.resolve_kit("web", kits))
+
+    expect(rules.keys).to eq(%w[all_core core added removed groups])
+    expect(rules).to be_frozen
+    expect(described_class.rules(Samagotchi::Toolkit.resolve_kit("full", kits))).to include("all_core" => true, "groups" => "all")
   end
 end
