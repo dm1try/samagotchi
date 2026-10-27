@@ -9,7 +9,8 @@
 // without Enter (agents in terminals only), ⇧⏎ a newline. ⌘M (or a click on
 // the new row's model) opens the model chooser for a new session in place of
 // the targets (Models.swift). Remotes' sessions (`chi remote ls`) follow in
-// a section per remote, "on studio", sent with `chi --remote studio …`.
+// a section per remote, "on studio", sent with `chi --remote studio …`, each
+// with its own new row (`chi --remote studio send --new`, the remote's model).
 import AppKit
 import SwiftUI
 
@@ -54,6 +55,12 @@ final class PanelModel: ObservableObject {
   var touched = false
   /// The "New session" row; never together with sessions (`--new` takes no ids).
   @Published var newSelected = false
+  /// A remote's new row, by the remote's name: `chi --remote NAME send
+  /// --new` in that remote's folder (newSessionDir(remote:)), on its
+  /// default model. Ticked alone, as the new row; never preselected.
+  @Published var newRemote: String?
+  /// Either new row: a new session, here or on a remote.
+  var startsNew: Bool { newSelected || newRemote != nil }
   /// The "Everyone it concerns" row: ⌘⏎ broadcasts (`chi broadcast`);
   /// never together with the new row or picked targets.
   @Published var everyoneSelected = false
@@ -93,7 +100,7 @@ final class PanelModel: ObservableObject {
   /// A note's text (stdin of `chi note`): the message line, then the context.
   var noteText: String { [trimmedPrompt, hasContext ? text : ""].filter { !$0.isEmpty }.joined(separator: "\n\n") }
   var sendEnabled: Bool {
-    canSend && (newSelected || everyoneSelected || !selectedSessions.isEmpty || !selectedAgents.isEmpty)
+    canSend && (startsNew || everyoneSelected || !selectedSessions.isEmpty || !selectedAgents.isEmpty)
       && (!trimmedPrompt.isEmpty || hasContext)
   }
   var live: [LiveSession] { sessions.filter { !$0.recent } }
@@ -177,10 +184,25 @@ final class PanelModel: ObservableObject {
     row.kind == .standard ? modelForSend == nil : pickedModel.map { ModelPick.same($0, row.name) } ?? false
   }
 
+  /// D4 of the remote sessions plan: `chi models` answers for this Mac.
+  static let remoteModelRefusal = "Model choice is for this Mac's sessions"
+
+  /// ⌘M: opens or closes the chooser; on a remote's new row it says why
+  /// not instead (false: the caller beeps).
+  func pressModel() -> Bool {
+    if newRemote != nil {
+      message = Self.remoteModelRefusal
+      return false
+    }
+    if pickerOpen { closePicker() } else { openPicker() }
+    return true
+  }
+
   /// Opens the chooser on the new row, the current pick highlighted.
   func openPicker() {
     touched = true
     newSelected = true
+    newRemote = nil
     everyoneSelected = false
     selected = []
     modelQuery = ""
@@ -203,6 +225,7 @@ final class PanelModel: ObservableObject {
   func choose(_ row: ModelRow) {
     pickTouched = true
     newSelected = true
+    newRemote = nil
     everyoneSelected = false
     selected = []
     if row.kind == .standard {
@@ -244,20 +267,41 @@ final class PanelModel: ObservableObject {
 
   func toggle(_ id: String) {
     touched = true
-    if selected.contains(id) { selected.remove(id) } else { selected.insert(id); newSelected = false; everyoneSelected = false }
+    if selected.contains(id) {
+      selected.remove(id)
+    } else {
+      selected.insert(id)
+      newSelected = false
+      newRemote = nil
+      everyoneSelected = false
+    }
   }
 
   func toggleNew() {
     touched = true
     newSelected.toggle()
-    if newSelected { selected = []; everyoneSelected = false }
+    if newSelected { selected = []; newRemote = nil; everyoneSelected = false }
+  }
+
+  /// A remote's new row; nothing for a remote without one (no folder).
+  func toggleNew(remote name: String) {
+    guard newSessionDir(remote: name) != nil else { return }
+    touched = true
+    if newRemote == name {
+      newRemote = nil
+    } else {
+      newRemote = name
+      selected = []
+      newSelected = false
+      everyoneSelected = false
+    }
   }
 
   /// The preselected session is dropped: a broadcast picks its own.
   func toggleEveryone() {
     touched = true
     everyoneSelected.toggle()
-    if everyoneSelected { selected = []; newSelected = false }
+    if everyoneSelected { selected = []; newSelected = false; newRemote = nil }
   }
 
   /// Where a new session starts: the helper runs in $HOME, which is in no
@@ -270,6 +314,18 @@ final class PanelModel: ObservableObject {
     }
     let newest = { (list: [LiveSession]) in list.filter(exists).max { ($0.updated ?? .distantPast) < ($1.updated ?? .distantPast) } }
     return (newest(live) ?? newest(recent))?.cwd ?? NSHomeDirectory()
+  }
+
+  /// Where a new session on a remote starts: the folder of its most
+  /// recently updated live session, else of its newest recent one (as
+  /// listed, before any dedupe). Not checked here: the path is that
+  /// machine's. nil (no session with an absolute folder): no new row, never
+  /// a guess at its home.
+  func newSessionDir(remote name: String) -> String? {
+    guard let section = remoteSections.first(where: { $0.name == name }) else { return nil }
+    let placed = section.sessions.filter { $0.cwd?.hasPrefix("/") == true }
+    let newest = { (list: [LiveSession]) in list.max { ($0.updated ?? .distantPast) < ($1.updated ?? .distantPast) } }
+    return (newest(placed.filter { !$0.recent }) ?? newest(placed.filter(\.recent)))?.cwd
   }
 
   var newSessionFolder: String {
@@ -309,7 +365,7 @@ final class PanelModel: ObservableObject {
     case .failure(let error): section.error = error.description
     }
     remoteSections[index] = section
-    if phase == .ready, !touched, selected.isEmpty, !newSelected, !everyoneSelected { preselect() }
+    if phase == .ready, !touched, selected.isEmpty, !startsNew, !everyoneSelected { preselect() }
   }
 
   /// The ticked sessions, this Mac's then the remotes', in list order;
@@ -318,10 +374,11 @@ final class PanelModel: ObservableObject {
     (sessions + remoteSessions).filter { selected.contains($0.key) && $0.valid }
   }
 
-  /// The message field's hint while a remote's row is ticked: " → studio"
-  /// (both machines likely have the same paths); "" otherwise.
+  /// The message field's hint while a remote's row (or new row) is
+  /// ticked: " → studio" (both machines likely have the same paths); ""
+  /// otherwise.
   var machineHint: String {
-    var names: [String] = []
+    var names: [String] = newRemote.map { [$0] } ?? []
     for name in selectedSessions.compactMap(\.remote) where !names.contains(name) { names.append(name) }
     return names.isEmpty ? "" : " → " + names.joined(separator: ", ")
   }
@@ -351,7 +408,7 @@ final class PanelModel: ObservableObject {
   var addressee: String {
     if everyoneSelected { return "everyone it concerns" }
     let agents = Set(selectedAgents.map(\.agent))
-    return agents.count == 1 && selectedSessions.isEmpty && !newSelected ? agents.first! : "chi"
+    return agents.count == 1 && selectedSessions.isEmpty && !startsNew ? agents.first! : "chi"
   }
 }
 
@@ -470,6 +527,7 @@ struct PanelView: View {
           ForEach(model.remoteGroups) { group in
             groupHeader("on \(group.section.name)", first: false)
             remoteNoteLine(group)
+            if let dir = model.newSessionDir(remote: group.section.name) { remoteNewRow(group.section.name, dir: dir) }
             ForEach(Array(group.rows.enumerated()), id: \.element.key) { offset, session in
               row(session, index: group.firstIndex + offset)
             }
@@ -580,6 +638,44 @@ struct PanelView: View {
       .help("start a session with the message, as the web does (chi send --new); a note needs a session")
       modelLabel
       Text("⌘0").font(.system(size: 11, design: .rounded)).foregroundColor(.secondary)
+    }
+    .padding(.horizontal, 8).padding(.vertical, 6)
+    .background(RoundedRectangle(cornerRadius: 7).fill(on ? Color.accentColor.opacity(0.14) : Color.clear))
+  }
+
+  /// A remote's new row: its name and folder, whole (that machine's home
+  /// may differ), the remote's default model and no ⌘ number (⌘0 is this
+  /// Mac's new row).
+  func remoteNewRow(_ name: String, dir: String) -> some View {
+    let on = model.newRemote == name
+    return HStack(spacing: 10) {
+      Button(action: { model.toggleNew(remote: name) }) {
+        HStack(spacing: 10) {
+          Image(systemName: on ? "plus.circle.fill" : "plus.circle")
+            .font(.system(size: 16))
+            .foregroundColor(on ? .accentColor : .secondary)
+          VStack(alignment: .leading, spacing: 1) {
+            Text("New session on \(name) in \((dir as NSString).lastPathComponent)")
+              .font(.system(size: 13, weight: .medium)).lineLimit(1)
+            Text(dir).font(.system(size: 11)).foregroundColor(.secondary).lineLimit(1)
+          }
+          Spacer(minLength: 0)
+        }
+        .contentShape(Rectangle())
+      }
+      .buttonStyle(.plain)
+      .help("start a session on \(name) with the message (chi --remote \(name) send --new), in its newest session's folder")
+      Button(action: {
+        NSSound.beep()
+        model.message = PanelModel.remoteModelRefusal
+      }) {
+        Text("remote default").font(.system(size: 11)).foregroundColor(.secondary).contentShape(Rectangle())
+      }
+      .buttonStyle(.plain)
+      .help("the model \(name)'s chi starts a new session on: model choice is for this Mac's sessions")
+      Text(name).font(.system(size: 10)).foregroundColor(.secondary)
+        .padding(.horizontal, 5).padding(.vertical, 1)
+        .background(Capsule().fill(Color.primary.opacity(0.07)))
     }
     .padding(.horizontal, 8).padding(.vertical, 6)
     .background(RoundedRectangle(cornerRadius: 7).fill(on ? Color.accentColor.opacity(0.14) : Color.clear))
@@ -769,7 +865,7 @@ struct PanelView: View {
       // ⏎, ⌘⏎ and ⌥⏎ are handled by the panel (KeyPanel.sendEvent),
       // whatever has the focus; the buttons are for the mouse. Only agents
       // in terminals chosen: Paste instead of Note.
-      if !model.selectedAgents.isEmpty && model.selectedSessions.isEmpty && !model.newSelected {
+      if !model.selectedAgents.isEmpty && model.selectedSessions.isEmpty && !model.startsNew {
         Button("Paste ⌥⏎") { send(.paste) }
           .disabled(!model.sendEnabled)
           .help("paste it into the agent's input without Enter: add more, then press Enter there")
@@ -779,8 +875,8 @@ struct PanelView: View {
           .help("share it as a note with every session it concerns (chi broadcast); starts no turn")
       } else {
         Button("Note ⌘⏎") { send(.note) }
-          .disabled(!model.sendEnabled || !model.selectedAgents.isEmpty || model.newSelected)
-          .help(model.newSelected ? "a note needs a session: pick one, or ⏎ starts a new one with the message"
+          .disabled(!model.sendEnabled || !model.selectedAgents.isEmpty || model.startsNew)
+          .help(model.startsNew ? "a note needs a session: pick one, or ⏎ starts a new one with the message"
                                   : "add it as background the model sees on its next turn; starts no turn")
       }
       // Where it goes while a remote's row is ticked: stays when the
@@ -976,7 +1072,7 @@ final class PanelController: NSObject, NSWindowDelegate {
     let command = event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .command
     // By key code: ⌘M in any keyboard layout (a Cyrillic one types "ь").
     if command, event.keyCode == 46 {
-      if model.pickerOpen { model.closePicker() } else { model.openPicker() }
+      if !model.pressModel() { NSSound.beep() }
       return true
     }
     if model.pickerOpen {
@@ -1012,6 +1108,7 @@ final class PanelController: NSObject, NSWindowDelegate {
     model.source = source
     model.message = ""
     model.newSelected = false
+    model.newRemote = nil
     model.everyoneSelected = false
     model.selected = []
     model.touched = false
@@ -1108,7 +1205,7 @@ final class PanelController: NSObject, NSWindowDelegate {
   }
 
   /// Fans out: one `chi send` / `chi note` per machine for the chi sessions
-  /// (or one for the new row) and one paste per agent, all at once, with
+  /// (or one for a new row, this Mac's or a remote's) and one paste per agent, all at once, with
   /// one combined line when all finished. chi's send reads the images and
   /// leaves them; the helper deletes the ones it wrote after every job, so
   /// those are copied for the agents first (their paths are read later).
@@ -1116,7 +1213,7 @@ final class PanelController: NSObject, NSWindowDelegate {
     if model.everyoneSelected { broadcast(kind); return }
     let chosen = model.selectedSessions
     let windows = model.selectedAgents
-    let new = model.newSelected
+    let new = model.startsNew
     if kind == .note, !windows.isEmpty {
       NSSound.beep()
       model.message = "Notes are for chi sessions"

@@ -620,7 +620,7 @@ RSpec.describe "the desktop helper's Swift sources", :macos_build do
 
         expect([err, status]).to eq(["", 0])
         expect(result["rows"].size).to eq(6)
-        expect(result["remotes"].map { |r| r.except("rows") }).to eq([{ "name" => "studio", "error" => nil }])
+        expect(result["remotes"].map { |r| r.except("rows", "new_dir") }).to eq([{ "name" => "studio", "error" => nil }])
         rows = result["remotes"][0]["rows"]
         expect(ids_of(rows)).to eq([[rids[0], false], [rids[1], true]])
         expect(rows[0]).to include("remote" => "studio", "cwd" => "/Users/other/proj")
@@ -657,7 +657,7 @@ RSpec.describe "the desktop helper's Swift sources", :macos_build do
         remote_mode("studio", "refused")
         result, = sessions
 
-        expect(result["remotes"]).to eq([{ "name" => "studio", "rows" => [],
+        expect(result["remotes"]).to eq([{ "name" => "studio", "rows" => [], "new_dir" => nil,
                                            "error" => "chi sessions: remote studio (http://10.0.0.9:4567): " \
                                                       "the token was refused (add it again)" }])
         expect(result["rows"].size).to eq(6)
@@ -684,6 +684,75 @@ RSpec.describe "the desktop helper's Swift sources", :macos_build do
 
         expect(result["remotes"].map { |r| [r["name"], ids_of(r["rows"])] })
           .to eq([["studio", [[rids[0], false], [rids[1], true]]], ["studio-ts", [[rids[3], false]]]])
+      end
+
+      describe "a new session on a remote" do
+        before do
+          remotes({ "name" => "studio", "url" => "http://10.0.0.9:4567", "token" => true },
+                  { "name" => "pod", "url" => "http://10.0.0.5:4567", "token" => true },
+                  { "name" => "empty", "url" => "http://10.0.0.4:4567", "token" => true },
+                  { "name" => "down", "url" => "http://10.0.0.3:4567", "token" => true })
+          # studio: a live session, and a recent one updated later (live comes first).
+          remote_lists("studio", [remote_session(0, cwd: "/Users/other/live", updated_at: "2026-10-27T08:00:00Z")],
+                       [remote_session(1, cwd: "/Users/other/newer", updated_at: "2026-10-27T12:00:00Z")])
+          # pod: recent only; the newest updated wins.
+          remote_lists("pod", [], [remote_session(2, cwd: "/srv/old", updated_at: "2026-10-26T08:00:00Z"),
+                                   remote_session(3, cwd: "/srv/pod", updated_at: "2026-10-27T08:00:00Z")])
+          remote_lists("empty", [], [])
+          remote_mode("down", "refused")
+        end
+
+        def new_dirs(result) = result["remotes"].to_h { |r| [r["name"], r["new_dir"]] }
+
+        it "starts in that remote's newest session's folder, live first, never checked on this Mac; no session, no row" do
+          result, err, status = sessions
+
+          expect([err, status]).to eq(["", 0])
+          expect(new_dirs(result))
+            .to eq("studio" => "/Users/other/live", "pod" => "/srv/pod", "empty" => nil, "down" => nil)
+          expect(result["new_dir"]).to eq(dirs[1])
+        end
+
+        it "is never preselected, whichever list answers first" do
+          File.write(File.join(tmp, "live.json"), "[]")
+          %w[local-first remotes-first].each do |order|
+            result, = sessions("--order", order)
+            expect(result.slice("selected", "new_selected", "new_remote"))
+              .to eq("selected" => [], "new_selected" => true, "new_remote" => nil)
+          end
+        end
+
+        it "is ticked alone: it clears the sessions and the new row, and either clears it; it names its machine" do
+          result, = sessions("--click", ids[0], "--click", "studio:#{rids[0]}", "--click", "new:studio")
+          expect(result.slice("selected", "new_selected", "new_remote", "hint"))
+            .to eq("selected" => [], "new_selected" => false, "new_remote" => "studio", "hint" => " → studio")
+
+          result, = sessions("--click", "new:studio", "--click", "studio:#{rids[0]}")
+          expect(result.slice("selected", "new_remote")).to eq("selected" => ["studio:#{rids[0]}"], "new_remote" => nil)
+
+          result, = sessions("--click", "new:studio", "--click", "new")
+          expect(result.slice("new_selected", "new_remote")).to eq("new_selected" => true, "new_remote" => nil)
+
+          result, = sessions("--click", "new", "--click", "new:pod")
+          expect(result.slice("new_selected", "new_remote")).to eq("new_selected" => false, "new_remote" => "pod")
+
+          result, = sessions("--click", "new:studio", "--click", "new:studio")
+          expect(result["new_remote"]).to be_nil
+        end
+
+        it "has no row to tick on a remote without a folder" do
+          result, = sessions("--click", "new:empty")
+          expect(result["new_remote"]).to be_nil
+        end
+
+        it "refuses the model chooser on it: model choice is for this Mac's sessions" do
+          result, = sessions("--click", "new:studio", "--click", "model")
+          expect(result.slice("new_remote", "picker_open", "message"))
+            .to eq("new_remote" => "studio", "picker_open" => false, "message" => "Model choice is for this Mac's sessions")
+
+          result, = sessions("--click", "model")
+          expect(result.slice("new_selected", "picker_open")).to eq("new_selected" => true, "picker_open" => true)
+        end
       end
 
       describe "the preselection" do
@@ -770,6 +839,17 @@ RSpec.describe "the desktop helper's Swift sources", :macos_build do
         .to eq(["send", "--new", "--dir", dir, "--model", "qwen", "--image", "/tmp/a.png"])
       expect(plan("message", "--new", dir, "--default", "box:small", "--model", "BOX:small").first["args"])
         .to eq(["send", "--new", "--dir", dir])
+    end
+
+    it "starts a new session on a remote in its folder (--new REMOTE:DIR), never with --model, 15 s for text" do
+      result = plan("message", "--new", "studio:/Users/other/proj", "--default", "box:small", "--model", "qwen",
+                    "--prompt", "hi", timeouts: true)
+      expect(result).to eq([{ "command" => "chi send", "stdin" => context, "timeout" => 15,
+                              "args" => ["--remote", "studio", "send", "--new", "--dir", "/Users/other/proj", "-m", "hi"] }])
+      expect(plan("message", "--new", "studio:/Users/other/proj", "--image", "/tmp/a.png", timeouts: true))
+        .to eq([{ "command" => "chi send", "stdin" => context, "timeout" => 30,
+                  "args" => ["--remote", "studio", "send", "--new", "--dir", "/Users/other/proj", "--image", "/tmp/a.png"] }])
+      expect(plan("message", "--new", "bad name:/Users/other/proj")).to eq([])
     end
 
     describe "to sessions on other machines (an --id of remote:ID)" do
