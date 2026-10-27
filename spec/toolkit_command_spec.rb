@@ -71,14 +71,16 @@ RSpec.describe Samagotchi::ToolkitCommand do
     expect(saved.size).to eq(3)
   end
 
-  it "says so when nothing the prompt carries changes, and saves nothing" do
+  it "marks a no-op selection chosen without changing what the next turn declares" do
+    session.toolkit_origin = "default"
     output, changed, = command.run("full")
     expect(changed).to be(false)
     expect(output).to end_with("(no change to what the next turn declares)")
+    expect(session.toolkit_origin).to eq("chosen")
     # full declares delegate already: no "full +delegate".
     expect(command.run("add delegate")[1]).to be(false)
     expect(session.toolkit).to be_nil
-    expect(saved).to be_empty
+    expect(saved).to eq([session])
     expect(engine.toolkit_summary).to be_nil
   end
 

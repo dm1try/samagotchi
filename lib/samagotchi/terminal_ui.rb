@@ -295,7 +295,8 @@ module Samagotchi
         muted_memory_names: @muted_memory_names,
         scratch: @scratch,
         setup: SessionSetup.new(appended_prompt_files: @appended_prompt_files, toolkit: @toolkit || Toolkit.configured,
-                                settings: @session_settings, parent_answers: @parent_answers)
+                                toolkit_origin: @toolkit ? "chosen" : "default", settings: @session_settings,
+                                parent_answers: @parent_answers)
       ))
       # --llm-context*: the session's own values, over a resumed one's.
       # Saved at once on a resumed one: leaving before a turn keeps them.

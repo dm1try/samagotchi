@@ -32,6 +32,7 @@ module Samagotchi
     STATUS_RUNNING = "running"
     STATUS_ERROR = "error"
     STATUS_STOPPED = "stopped"
+    TOOLKIT_ORIGINS = %w[chosen default inherited suggested].freeze
 
     # A stopped session's marker, <session dir>/stopped: a stop (chi
     # sessions stop, from another process) creates it instead of rewriting
@@ -222,6 +223,15 @@ module Samagotchi
       @toolkit = value.is_a?(Toolkit) ? value : Toolkit.from_file(value)
     end
 
+    # Why this session is on its toolkit. Files from before the field read
+    # as chosen, so an old default session is never newly suggested.
+    attr_reader :toolkit_origin
+
+    def toolkit_origin=(value)
+      origin = value.to_s
+      @toolkit_origin = TOOLKIT_ORIGINS.include?(origin) ? origin : "chosen"
+    end
+
     # The session's own settings (chi --set), a SessionConfig::Settings:
     # empty for none and for a session from before them. Its core part
     # ({key => value}: recap.enabled) is the file's config_settings, its
@@ -322,7 +332,7 @@ module Samagotchi
                    preloaded_memory_names: [], muted_memory_names: [], parent_id: nil, scratch: false,
                    last_turn: nil, model_typed: nil, delegate: false, llm_context: nil, prompt_notes: [],
                    continues: nil, thinking: nil, reasoning_history: nil, appended_prompt_files: [],
-                   toolkit: nil, settings: nil, interrupted_turn: nil, parent_answers: nil, title: nil,
+                   toolkit: nil, toolkit_origin: "chosen", settings: nil, interrupted_turn: nil, parent_answers: nil, title: nil,
                    working_set_pins: [], review: nil)
       @id = id
       @metadata_version = metadata_version
@@ -355,6 +365,7 @@ module Samagotchi
       self.reasoning_history = reasoning_history
       self.appended_prompt_files = appended_prompt_files
       self.toolkit = toolkit
+      self.toolkit_origin = toolkit_origin
       self.settings = settings
       self.parent_answers = parent_answers
       self.working_set_pins = working_set_pins
@@ -464,6 +475,7 @@ module Samagotchi
         reasoning_history: setup.reasoning_history,
         appended_prompt_files: setup.appended_prompt_files,
         toolkit: setup.toolkit,
+        toolkit_origin: setup.toolkit_origin || "chosen",
         settings: setup.settings,
         parent_answers: setup.parent_answers,
         working_set_pins: setup.working_set_pins,
@@ -534,6 +546,7 @@ module Samagotchi
       "reasoning_history" => nil,
       "appended_prompt_files" => [],
       "toolkit" => nil,
+      "toolkit_origin" => "chosen",
       "bundle_settings" => {},
       "config_settings" => {},
       "interrupted_turn" => nil,

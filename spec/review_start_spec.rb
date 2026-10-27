@@ -72,6 +72,7 @@ RSpec.describe Samagotchi::ReviewStart do
       saved = Samagotchi::Session.load(session.id, state_dir: state_dir)
 
       expect(saved.review).to eq(Samagotchi::SessionReview.new(subjects: ["docs/plan.md"]))
+      expect(saved.toolkit_origin).to eq("chosen")
       expect(saved.status).to eq(Samagotchi::Session::STATUS_IDLE)
       expect(saved.first_preview).to eq("review: docs/plan.md")
       expect(saved.working_directory).to eq(project)
@@ -111,6 +112,7 @@ RSpec.describe Samagotchi::ReviewStart do
       saved = Samagotchi::Session.load(session.id, state_dir: state_dir)
 
       expect(saved.review).to eq(Samagotchi::SessionReview.new(subjects: ["docs/plan.md"], from: source.id))
+      expect(saved.toolkit_origin).to eq("chosen")
       expect(saved.continues).to be_nil
       expect(saved.messages).to eq([])
       expect(saved.working_directory).to eq(project)
@@ -141,6 +143,8 @@ RSpec.describe Samagotchi::ReviewStart do
   it "keeps a review session's field across a continue" do
     session = described_class.start(subjects: ["docs/plan.md"], dir: project, model: "main:gemma-small", state_dir: state_dir)
     link = Samagotchi::SessionContinue.run(session.id, state_dir: state_dir, recap_wait: 0, archive_wait: 0)
-    expect(Samagotchi::Session.load(link.id, state_dir: state_dir).review.subjects).to eq(["docs/plan.md"])
+    continued = Samagotchi::Session.load(link.id, state_dir: state_dir)
+    expect(continued.review.subjects).to eq(["docs/plan.md"])
+    expect(continued.toolkit_origin).to eq("inherited")
   end
 end

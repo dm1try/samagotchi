@@ -195,6 +195,7 @@ module Samagotchi
         review: review
       )
       session.toolkit = Toolkit.configured(delegate: delegate) if session.toolkit.nil?
+      session.toolkit_origin = setup.toolkit_origin || "default"
       session.model_warning = model_warning
       # With no prompt there is no first turn to run (an attaching UI sends
       # the prompts), so the session starts idle.

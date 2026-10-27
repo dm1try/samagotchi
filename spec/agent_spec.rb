@@ -300,11 +300,13 @@ file2.rb")
       configured = described_class.new(prompt: "hi", client: client, non_interactive: true)
       configured.run
       expect(configured.engine.session.toolkit).to eq(Samagotchi::Toolkit.new(name: "lean"))
+      expect(configured.engine.session.toolkit_origin).to eq("default")
 
       toolkit = Samagotchi::Toolkit.new(name: "child", add: ["delegate"])
       flagged = described_class.new(prompt: "hi", client: client, non_interactive: true, toolkit: toolkit)
       flagged.run
       expect(flagged.engine.session.toolkit).to eq(toolkit)
+      expect(flagged.engine.session.toolkit_origin).to eq("chosen")
     end
 
     it "keeps a resumed session's toolkit, with a line naming the toolkit flags given" do

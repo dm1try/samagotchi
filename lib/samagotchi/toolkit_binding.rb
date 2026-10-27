@@ -98,9 +98,16 @@ module Samagotchi
       return false if session.nil? || !@can_stage.call
 
       toolkit = Toolkit.new(name: name)
-      return true if session.toolkit == toolkit
+      if session.toolkit == toolkit
+        if session.toolkit_origin != "chosen"
+          session.toolkit_origin = "chosen"
+          session.save(state_dir: @state_dir.call)
+        end
+        return true
+      end
 
       session.toolkit = toolkit
+      session.toolkit_origin = "chosen"
       session.save(state_dir: @state_dir.call)
       @notify.call("toolkit: #{name} from the next turn's start", :info, "toolkit", extra: { toolkit: summary })
       true

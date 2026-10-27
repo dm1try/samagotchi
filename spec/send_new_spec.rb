@@ -92,6 +92,7 @@ RSpec.describe Samagotchi::SendCommand, "--new" do
     expect(run("--new", "--toolkit", "lean", "--tool", "delegate,list_sessions", "--no-tool", "web_fetch", "-m", "hi")).to eq(0), err.string
     expect(spawned.last[:setup].toolkit)
       .to eq(Samagotchi::Toolkit.new(name: "lean", add: %w[delegate list_sessions], remove: ["web_fetch"]))
+    expect(spawned.last[:setup].toolkit_origin).to eq("chosen")
     expect(run("--new", "-m", "hi")).to eq(0), err.string
     expect(spawned.last[:setup].toolkit).to be_nil
     expect(run("--toolkit", "lean", "-m", "hi", "abcd")).to eq(2)

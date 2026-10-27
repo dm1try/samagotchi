@@ -27,6 +27,7 @@ RSpec.describe Samagotchi::Session do
       expect(session.model_name).to eq("gemma4")
       expect(session.working_directory).to eq("/home/user/proj")
       expect(session.messages).to eq([])
+      expect(session.toolkit_origin).to eq("chosen")
     end
 
     it "sets created_at and updated_at as ISO8601 strings" do
@@ -52,6 +53,7 @@ RSpec.describe Samagotchi::Session do
       expect(loaded.model_name).to eq("gemma4")
       expect(loaded.working_directory).to eq("/tmp/proj")
       expect(loaded.metadata_version).to eq(described_class::METADATA_VERSION)
+      expect(loaded.toolkit_origin).to eq("chosen")
     end
 
     it "writes every FIELDS key, in that order (an OPTIONAL_FIELDS one only when set), and reads the same session back from it" do
@@ -67,11 +69,13 @@ RSpec.describe Samagotchi::Session do
 
       session.review = { "subjects" => ["docs/plan.md"], "from" => "abc" }
       session.first_turn_id = "turn-1"
+      session.toolkit_origin = "default"
       session.save(state_dir: tmpdir)
       data = JSON.parse(File.read(File.join(tmpdir, "#{session.id}.json")))
       expect(data.keys).to eq(described_class::FIELDS.keys)
       expect(data["review"]).to eq("subjects" => ["docs/plan.md"], "from" => "abc")
       expect(data["first_turn_id"]).to eq("turn-1")
+      expect(data["toolkit_origin"]).to eq("default")
       expect(described_class.load(session.id, state_dir: tmpdir).to_h).to eq(data)
     end
 
@@ -81,6 +85,7 @@ RSpec.describe Samagotchi::Session do
       session = described_class.from_h(data)
       expect([session.metadata_version, session.status, session.messages, session.used_memory_names])
         .to eq([1, "idle", [], []])
+      expect(session.toolkit_origin).to eq("chosen")
       expect { described_class.from_h(data.except("mode")) }.to raise_error(KeyError)
     end
 

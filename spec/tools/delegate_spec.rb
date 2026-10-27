@@ -190,6 +190,7 @@ RSpec.describe "delegate tools" do
         expect(out).to include("status: running")
         child = child_of_parent
         expect(child.toolkit).to eq(Samagotchi::Toolkit.new(name: "coding"))
+        expect(child.toolkit_origin).to eq("chosen")
         file = JSON.parse(File.read(File.join(tmpdir, "#{child.id}.json")))
         expect(file["toolkit"]).to eq({ "name" => "coding", "add" => [], "remove" => [] })
       end
@@ -203,7 +204,7 @@ RSpec.describe "delegate tools" do
       it "starts it on toolkit.child without one (a blank one too)" do
         allow(Samagotchi::Config).to receive(:get).with("toolkit.child").and_return("child")
         described_class.call("look", toolkit: " ", wait: false, peers: kit_peers)
-        expect(child_of_parent.toolkit).to eq(Samagotchi::Toolkit.new(name: "child"))
+        expect(child_of_parent).to have_attributes(toolkit: Samagotchi::Toolkit.new(name: "child"), toolkit_origin: "default")
       end
 
       it "refuses a name the parent doesn't know, starting nothing" do

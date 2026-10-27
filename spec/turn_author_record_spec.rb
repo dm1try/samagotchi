@@ -11,8 +11,8 @@ require "samagotchi/participants"
 
 # A participant's turn is on the record: its opening message carries
 # author: and the name it had (participants.json), last_turn and the
-# turn's analytics record carry the author. The owner's turns and old
-# session files are byte for byte what they were.
+# turn's analytics record carry the author. The owner's turns are unchanged;
+# an old session file reads with the safe toolkit origin.
 RSpec.describe "a turn's author on the record" do
   let(:state_dir) { Dir.mktmpdir("turn-author-record") }
 
@@ -22,16 +22,21 @@ RSpec.describe "a turn's author on the record" do
     let(:id) { "1b1a8963-0bdd-418b-ac29-ad63559379a3" }
     let(:fixture) { File.expand_path("fixtures/sessions/#{id}.json", __dir__) }
 
-    it "loads and saves byte for byte the same (but its save time)" do
+    it "loads as chosen and saves the new origin without changing the old fields" do
       FileUtils.cp(fixture, state_dir)
       session = Samagotchi::Session.load(id, state_dir: state_dir)
 
       expect(session.last_turn.author).to be_nil
       expect(session.messages.each_index.map { |i| Samagotchi::Steer.author_at(session.messages, i) }.uniq).to eq([nil])
+      expect(session.toolkit_origin).to eq("chosen")
 
       session.save(state_dir: state_dir)
-      without_save_time = ->(text) { text.sub(/"updated_at": "[^"]*"/, '"updated_at": ""') }
-      expect(without_save_time.call(File.read(File.join(state_dir, "#{id}.json")))).to eq(without_save_time.call(File.read(fixture)))
+      saved = File.read(File.join(state_dir, "#{id}.json"))
+      expect(JSON.parse(saved)["toolkit_origin"]).to eq("chosen")
+      without_new_fields = lambda do |text|
+        text.sub(/"updated_at": "[^"]*"/, '"updated_at": ""').sub("  \"toolkit_origin\": \"chosen\",\n", "")
+      end
+      expect(without_new_fields.call(saved)).to eq(without_new_fields.call(File.read(fixture)))
     end
   end
 

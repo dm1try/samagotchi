@@ -540,8 +540,15 @@ RSpec.describe Samagotchi::SessionManager do
       end
 
       it "starts one on a kit with a valid list or no groups:" do
-        expect(spawn("web").toolkit).to eq(Samagotchi::Toolkit.new(name: "web"))
-        expect(spawn("plain").toolkit).to eq(Samagotchi::Toolkit.new(name: "plain"))
+        expect(spawn("web")).to have_attributes(toolkit: Samagotchi::Toolkit.new(name: "web"), toolkit_origin: "chosen")
+        expect(spawn("plain")).to have_attributes(toolkit: Samagotchi::Toolkit.new(name: "plain"), toolkit_origin: "chosen")
+      end
+
+      it "marks a configured toolkit as the default" do
+        allow(Samagotchi::Config).to receive(:get).and_call_original
+        allow(Samagotchi::Config).to receive(:get).with("toolkit.default").and_return("web")
+
+        expect(spawn).to have_attributes(toolkit: Samagotchi::Toolkit.new(name: "web"), toolkit_origin: "default")
       end
     end
 

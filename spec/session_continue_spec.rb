@@ -85,6 +85,7 @@ RSpec.describe Samagotchi::SessionContinue, ".run" do
     expect(saved.reasoning_history).to eq(:drop)
     expect(saved.appended_prompt_files).to eq(["/r/extra.md"])
     expect(saved.toolkit).to eq(Samagotchi::Toolkit.new(name: "coordinator"))
+    expect(saved.toolkit_origin).to eq("inherited")
     expect(saved.parent_answers).to eq("standard")
     expect(saved.working_set_pins).to eq([Samagotchi::WorkingSetPin.new(kind: "file", key: "/r/lib/a.rb")])
     expect(archived?(previous.id)).to be(true)

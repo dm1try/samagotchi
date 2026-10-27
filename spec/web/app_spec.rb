@@ -2311,6 +2311,15 @@ RSpec.describe Samagotchi::Web::App do
       expect(JSON.parse(body.first)).to have_key("id")
     end
 
+    it "marks an explicit toolkit as chosen" do
+      manager = FakeResponsesManager.new
+      app = build_app(manager: manager)
+      status, = app.call(env_for("/api/sessions", method: "POST", body: '{"prompt":"hi","toolkit":"lean"}'))
+
+      expect(status).to eq(201)
+      expect(manager.spawn_calls.last.dig(:extra, :setup)).to have_attributes(toolkit_origin: "chosen")
+    end
+
     # The id the first prompt's turn gets, so a remote chi send --new --wait
     # can name it (chi send --wait --turn T ID).
     it "reports the first turn's id, and none for an idle create" do

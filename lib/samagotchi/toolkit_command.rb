@@ -43,8 +43,15 @@ module Samagotchi
       session = @engine.session or raise ArgumentError, "no session yet"
       before = @engine.toolkit_explained
       after = @engine.toolkit_explained(changed(before.toolkit, words.split))
-      # Nothing the prompt carries changes (full +delegate on full): not saved.
-      return [listing(before) + "\n(no change to what the next turn declares)", false, nil] if after.prompt_key == before.prompt_key
+      # Nothing the prompt carries changes (full +delegate on full): only
+      # the origin is saved, so a no-op choice still counts as user-selected.
+      if after.prompt_key == before.prompt_key
+        if session.toolkit_origin != "chosen"
+          session.toolkit_origin = "chosen"
+          @save.call(session)
+        end
+        return [listing(before) + "\n(no change to what the next turn declares)", false, nil]
+      end
 
       cost = Toolkit.cache_cost(before.prompt_key, after.prompt_key)
       if confirm && !yes && CacheConfirm.needed?(cost: cost, history: @engine.history?, changed: !cost.nil?)
@@ -53,6 +60,7 @@ module Samagotchi
       end
 
       session.toolkit = after.toolkit
+      session.toolkit_origin = "chosen"
       @save.call(session)
       [[listing(after), "From the next turn's start (a running turn keeps its tools)."].join("\n"), true, nil]
     end

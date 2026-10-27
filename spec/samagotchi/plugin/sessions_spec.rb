@@ -54,6 +54,7 @@ RSpec.describe Samagotchi::Plugin::Sessions do
 
   describe "#fork" do
     it "starts an idle child of this session from the messages (frozen ones too)" do
+      host.setup = -> { Samagotchi::SessionSetup.of(parent) }
       seed = [{ role: "user", content: "hello" }.freeze, { role: "model", content: "hi" }.freeze,
               { role: "user", content: "q" }, { role: "model", content: "a" }].freeze
 
@@ -61,7 +62,7 @@ RSpec.describe Samagotchi::Plugin::Sessions do
 
       child = Samagotchi::Session.load(id, state_dir: tmpdir)
       expect(child).to have_attributes(parent_id: parent.id, first_preview: "q", status: "idle",
-                                       model_name: "gemma4", working_directory: tmpdir)
+                                       model_name: "gemma4", working_directory: tmpdir, toolkit_origin: "inherited")
       expect(child.messages.map { |m| m[:content] }).to eq(%w[hello hi q a])
       expect(Samagotchi::SessionManager.children_of(parent.id, state_dir: tmpdir).map { |s| s[:id] }).to eq([id])
     end
@@ -72,6 +73,7 @@ RSpec.describe Samagotchi::Plugin::Sessions do
       host.setup = lambda {
         Samagotchi::SessionSetup.new(llm_context: override, thinking: :high, reasoning_history: :all,
                                      appended_prompt_files: ["/r/extra.md"], toolkit: Samagotchi::Toolkit.new(name: "lean"),
+                                     toolkit_origin: "inherited",
                                      settings: Samagotchi::SessionConfig::Settings.new(core: { "recap.enabled" => false }, bundles: { "cost-cap" => { "cap" => 0.5 } }))
       }
 
@@ -79,6 +81,7 @@ RSpec.describe Samagotchi::Plugin::Sessions do
 
       expect(child).to have_attributes(llm_context: override, thinking: :high, reasoning_history: :all,
                                        appended_prompt_files: ["/r/extra.md"], toolkit: Samagotchi::Toolkit.new(name: "lean"),
+                                       toolkit_origin: "inherited",
                                        settings: Samagotchi::SessionConfig::Settings.new(core: { "recap.enabled" => false }, bundles: { "cost-cap" => { "cap" => 0.5 } }))
     end
 

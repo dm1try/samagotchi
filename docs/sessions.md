@@ -309,6 +309,10 @@ declares every tool (full). The file stores only the name: a kit's tools and pro
 `/toolkit` changes it, saved at once, from the next turn's start. See
 [Toolkits](configuration.md#toolkits).
 
+`toolkit_origin` records why the session is on that kit: `default` for the configured kit, `chosen` for a
+user-selected kit (including `/toolkit` and `ctx.use_toolkit`), `inherited` for a continue or fork, or `suggested`
+for a future toolkit suggestion. A session file from before the field reads as `chosen`.
+
 A `find_tools` result on a chat host saves the tools its hit loads as `loaded: ["list_sessions", "mcp_fs_read"]` on
 its `tool_response` entry (wire names: a built-in's, an MCP tool's `mcp_<server>_<tool>`), whatever the host: a
 later turn on `api: anthropic` (after a `/model` switch, a resume) sends the load as references, any other host

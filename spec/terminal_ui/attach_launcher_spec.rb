@@ -176,7 +176,7 @@ RSpec.describe Samagotchi::TerminalUI::AttachLauncher do
       connect(attach: session.id, toolkit: toolkit, toolkit_flags: %w[--no-tool], err: err)
 
       expect(Samagotchi::SessionManager).to have_received(:spawn_session)
-        .with(hash_including(setup: Samagotchi::SessionSetup.new(toolkit: toolkit))).once
+        .with(hash_including(setup: have_attributes(toolkit: toolkit, toolkit_origin: "chosen"))).once
       expect(err.string).to eq("(--toolkit and --tool apply to a new session; #{session.id} keeps its own)\n" \
                                "(--no-tool applies to a new session; #{session.id} keeps its own)\n")
     end

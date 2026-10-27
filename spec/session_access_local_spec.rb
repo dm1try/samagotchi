@@ -28,6 +28,16 @@ RSpec.describe Samagotchi::SessionAccess::Local do
     end
   end
 
+  it "creates a session with the setup's toolkit origin" do
+    allow(Process).to receive(:spawn).and_return(12_345)
+    setup = Samagotchi::SessionSetup.new(toolkit: Samagotchi::Toolkit.new(name: "lean"))
+    spec = Samagotchi::SessionAccess::NewSession.new(prompt: "hi", working_directory: tmpdir, model_name: "m", setup: setup)
+
+    created = access.create(spec)
+
+    expect(Samagotchi::Session.load(created.id, state_dir: tmpdir).toolkit_origin).to eq("chosen")
+  end
+
   it "passes no state_dir: on when it has none (the callees' default)" do
     allow(Samagotchi::SessionManager).to receive(:restart_session)
     described_class.new.restart("abc")

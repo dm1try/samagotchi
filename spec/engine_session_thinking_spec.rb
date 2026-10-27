@@ -83,6 +83,7 @@ RSpec.describe Samagotchi::Engine, "session thinking level" do
 
     expect(engine.send(:plugin_host).setup.call)
       .to eq(Samagotchi::SessionSetup.new(llm_context: override, thinking: :off, toolkit: Samagotchi::Toolkit.new(name: "full"),
+                                          toolkit_origin: "inherited",
                                           parent_answers: "standard", working_set_pins: [{ "kind" => "memory", "key" => "notes" }]))
   end
 end

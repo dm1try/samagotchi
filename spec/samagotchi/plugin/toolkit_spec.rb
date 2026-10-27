@@ -95,8 +95,13 @@ RSpec.describe "Plugin toolkits" do
       expect(ctx.use_toolkit("lean")).to be(true)
       expect(ctx.toolkit).to eq("lean")
       expect(Samagotchi::Session.load(session.id).toolkit).to eq(Samagotchi::Toolkit.new(name: "lean"))
+      expect(Samagotchi::Session.load(session.id).toolkit_origin).to eq("chosen")
       expect(events.last).to include(type: :hook_notice, hook: "toolkit", text: "toolkit: lean from the next turn's start")
       expect(events.last[:toolkit]).to include(name: "lean", label: "lean")
+
+      session.toolkit_origin = "default"
+      expect(ctx.use_toolkit("lean")).to be(true)
+      expect(Samagotchi::Session.load(session.id).toolkit_origin).to eq("chosen")
     end
 
     it "reads the tools the next turn declares" do

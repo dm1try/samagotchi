@@ -75,6 +75,7 @@ module Samagotchi
       subjects = check_subjects(subjects, dir: dir)
       raise Refused, NO_SUBJECTS if subjects.empty?
 
+      setup = setup.with(toolkit_origin: "chosen")
       SessionManager.spawn_session(prompt: nil, preview: preview(subjects), working_directory: dir, model_name: model,
                                    setup: setup, review: SessionReview.new(subjects: subjects),
                                    note: note(subjects: subjects), note_source: NOTE_SOURCE, state_dir: state_dir)
@@ -103,7 +104,8 @@ module Samagotchi
       recap = RecapStore.read(Session.session_dir(source.id, state_dir: sd))
       session = SessionManager.spawn_session(
         prompt: nil, preview: preview(subjects, source: source), working_directory: dir, model_name: choice.model,
-        setup: SessionSetup.of(source), review: SessionReview.new(subjects: subjects, from: source.id),
+        setup: SessionSetup.of(source).with(toolkit_origin: "chosen"),
+        review: SessionReview.new(subjects: subjects, from: source.id),
         note: note(subjects: subjects, source: source, recap: recap, seed: seed), note_source: NOTE_SOURCE, state_dir: sd
       )
       warnings = [choice.warning, session.model_warning].compact

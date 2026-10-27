@@ -12,6 +12,8 @@ RSpec.describe Samagotchi::SessionSetup do
     expect(described_class.new(reasoning_history: :drop)).not_to be_empty
     expect(described_class.new(appended_prompt_files: ["/r/a.md"])).not_to be_empty
     expect(described_class.new(toolkit: Samagotchi::Toolkit.new(name: "lean"))).not_to be_empty
+    expect(described_class.new(toolkit: Samagotchi::Toolkit.new(name: "lean")).toolkit_origin).to eq("chosen")
+    expect(described_class.new(toolkit_origin: "chosen")).not_to be_empty
     expect(described_class.new(settings: Samagotchi::SessionConfig::Settings.new(bundles: { "cost-cap" => { "cap" => 3 } }))).not_to be_empty
     expect(described_class.new(settings: Samagotchi::SessionConfig::Settings.new(bundles: {}))).to be_empty
     expect(described_class.new(parent_answers: "hard")).not_to be_empty
@@ -29,9 +31,11 @@ RSpec.describe Samagotchi::SessionSetup do
     session = Samagotchi::Session.new_session(mode: "assist", model_name: "m", working_directory: Dir.pwd)
     # A session without a toolkit (from before them) is on full: its
     # continue and fork too, never config's default.
-    expect(described_class.of(session)).to eq(described_class.new(toolkit: Samagotchi::Toolkit.new(name: "full")))
+    expect(described_class.of(session)).to eq(described_class.new(toolkit: Samagotchi::Toolkit.new(name: "full"),
+                                                                  toolkit_origin: "inherited"))
     session.toolkit = Samagotchi::Toolkit.new(name: "lean", remove: ["web_fetch"])
     expect(described_class.of(session).toolkit).to eq(session.toolkit)
+    expect(described_class.of(session).toolkit_origin).to eq("inherited")
 
     session.llm_context = Samagotchi::LLMContextOverride.new(strategy: [:stale])
     expect(described_class.of(session).llm_context).to eq(Samagotchi::LLMContextOverride.new(strategy: [:stale]))
