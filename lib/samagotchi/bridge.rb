@@ -629,8 +629,11 @@ module Samagotchi
     # review_turns: a participant's turn runs as its own, inside the review
     # boundary (Guardrails::ReviewBoundary); a worker without it has none,
     # so chi web sends it no participant's turn (Delivery::REVIEW_FEATURE).
+    # pair_turns: a participant's turn in a working session runs as a pair
+    # turn (Guardrails::PairBoundary); a worker without it runs it as a
+    # review turn, and chi web says so (Delivery::PAIR_FEATURE).
     FEATURES = ["restart", "task_stop", "reparent", Delivery::QUEUE_FEATURE, ReplyWait::TURN_IDS_FEATURE,
-                SessionInbox::UNQUEUE_FEATURE, Delivery::REVIEW_FEATURE].freeze
+                SessionInbox::UNQUEUE_FEATURE, Delivery::REVIEW_FEATURE, Delivery::PAIR_FEATURE].freeze
 
     # The routes, by method and what follows /session/:id/: a handler takes
     # the session id and the request body and returns [headers, status, body].

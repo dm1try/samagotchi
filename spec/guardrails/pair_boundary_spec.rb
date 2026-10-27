@@ -3,6 +3,8 @@
 require "tmpdir"
 require "fileutils"
 require "samagotchi/guardrails"
+require "samagotchi/guardrail_wiring"
+require "samagotchi/session"
 
 RSpec.describe Samagotchi::Guardrails::PairBoundary do
   let(:base) { File.realpath(Dir.mktmpdir("pair-boundary")) }
@@ -95,5 +97,57 @@ RSpec.describe Samagotchi::Guardrails::PairBoundary do
     expect(verdict).to be_deny
     expect(verdict.reason).to eq(described_class::ASK)
     expect(verdict.deny_text).to include("ask in your reply")
+  end
+end
+
+RSpec.describe "GuardrailWiring: a participant's boundary by ParticipantMode" do
+  let(:base) { File.realpath(Dir.mktmpdir("pair-wiring")) }
+  let(:project) { File.join(base, "proj") }
+  let(:author) { "p:p_0123abcd" }
+  let(:working) { Samagotchi::Session.new_session(mode: "assist", model_name: "m", working_directory: project) }
+  let(:review) { Struct.new(:id, :working_directory) { def review? = true; def delegate? = false }.new("s1", project) }
+
+  before { FileUtils.mkdir_p(File.join(project, "docs")) }
+  after { FileUtils.rm_rf(base) }
+
+  def wiring(session)
+    Samagotchi::GuardrailWiring.new(scratch: false, hooks: -> {}, tools: -> {}, session: -> { session },
+                                    model_key: -> {}, cancelled: -> { false }, ask: ->(_) {}).tap do |w|
+      w.state_dir = File.join(base, "state")
+      w.begin_turn({ client_id: "review:p_0123abcd", author: author })
+    end
+  end
+
+  def evaluate(wiring, call) = wiring.gate.evaluate(call, iteration: 1, params: "")
+
+  it "seats PairBoundary for a working session and ReviewBoundary for a review session" do
+    pair = wiring(working)
+    expect(pair.checks[1]).to be(pair.pair_boundary)
+    expect(pair.checks).not_to include(pair.review_boundary)
+    reviewing = wiring(review)
+    expect(reviewing.checks[1]).to be(reviewing.review_boundary)
+    expect(reviewing.checks).not_to include(reviewing.pair_boundary)
+  end
+
+  it "lets a pair turn write and execute under the owner's rules, never secrets or owner-voiced tools" do
+    w = wiring(working)
+    write = evaluate(w, { name: "write", path: File.join(project, "docs", "plan.md"), content: "x" })
+    expect(write.rule).not_to eq("pair-boundary")
+    expect(write).not_to be_deny
+    execute = evaluate(w, { name: "execute", content: "ls docs", cwd: project })
+    expect(execute).not_to be_deny
+    grants = File.join(Samagotchi::Paths.state_dir, "web-grants", "grants.json")
+    expect(evaluate(w, { name: "read", content: grants }).rule).to eq("pair-boundary")
+    expect(evaluate(w, { name: "read", content: File.join(Dir.home, ".ssh", "id_rsa") }).rule).to eq("pair-boundary")
+    expect(evaluate(w, { name: "read", content: File.join(project, ".env") }).rule).to eq("pair-boundary")
+    %w[delegate send_note].each { |tool| expect(evaluate(w, { name: tool, content: "x" })).to be_deny }
+    expect(evaluate(w, { name: "memory_write", path: "n", scope: "system", content: "x" }).rule).to eq("pair-boundary")
+  end
+
+  it "keeps a review session's participant turn read-only" do
+    w = wiring(review)
+    write = evaluate(w, { name: "write", path: File.join(project, "docs", "plan.md"), content: "x" })
+    expect(write).to be_deny
+    expect(write.rule).to eq("review-boundary")
   end
 end

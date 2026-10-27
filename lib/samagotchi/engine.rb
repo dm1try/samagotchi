@@ -382,6 +382,7 @@ module Samagotchi
       @kernel.session_dir = -> { @session&.id && Session.session_dir(@session.id, state_dir: session_state_dir) }
       @kernel.guardrail_gate = @guardrail_wiring.gate
       @kernel.participant_turn = -> { Steer.participant_author?(turn_author) }
+      @kernel.session_lookup = -> { @session }
       # The turn-end warm-up; the kernel asks it for a slot pin per request.
       @prompt_warmup = PromptWarmup.new
       @kernel.warmup = @prompt_warmup

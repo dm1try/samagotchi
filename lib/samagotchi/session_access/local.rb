@@ -396,7 +396,7 @@ module Samagotchi
                end
         Invitation.new(participant: ParticipantView.from_h(issued.grant.public_h(grants.now)), token: issued.token,
                        link: link, lan: !public_url.nil? || !web.ip.nil?,
-                       warning: ReviewStart.share_warning(Session.load(id, **dir)))
+                       warning: ReviewStart.share_warning(Session.load(id, **dir), state_dir: state_dir!))
       rescue Web::Grants::Invalid => e
         raise BadRequest.new(e.message, code: "invalid_participant")
       end

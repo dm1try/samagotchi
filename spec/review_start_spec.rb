@@ -140,12 +140,26 @@ RSpec.describe Samagotchi::ReviewStart do
     end
   end
 
-  it "keeps the existing warning for a working session while resolving its participant mode" do
+  it "warns that a working session's participant turns act in it, and says so while an older worker reads only" do
     session = Samagotchi::Session.new_session(mode: "assist", model_name: "main:gemma-small", working_directory: project)
-    expect(Samagotchi::ParticipantMode).to receive(:of).with(session).and_call_original
-    expect(described_class.share_warning(session))
-      .to eq("#{session.id[0, 8]} is a working session, not a review session: a participant's review turn can quote " \
-             "what its history holds (0 tool outputs so far). A review session starts from its recap instead.")
+    id = session.id[0, 8]
+    expect(Samagotchi::ParticipantMode).to receive(:live).with(session, state_dir: state_dir).at_least(:once).and_call_original
+    expect(described_class.share_warning(session, state_dir: state_dir))
+      .to eq("#{id} is a working session: a participant's turns act in it with this session's tools (writes " \
+             "included; asks come to you) and read what its history holds (0 tool outputs so far). A review session " \
+             "only reads.")
+
+    sidecar = Samagotchi::WorkerSidecar.new(port: 1, session_id: session.id, features: %w[delivery review_turns])
+    allow(Samagotchi::WorkerLink).to receive(:resolve).and_return(Samagotchi::WorkerLink::Live.new(sidecar: sidecar))
+    expect(described_class.share_warning(session, state_dir: state_dir))
+      .to eq(format(described_class::OLDER_WORKER_WARNING, id: id, outputs: "0 tool outputs so far"))
+    expect(described_class.share_warning(session, state_dir: state_dir)).to include("only read until you restart it")
+  end
+
+  it "has no warning for a review session" do
+    session = Samagotchi::Session.new_session(mode: "assist", model_name: "main:gemma-small", working_directory: project)
+    session.review = { subjects: ["docs/plan.md"] }
+    expect(described_class.share_warning(session, state_dir: state_dir)).to be_nil
   end
 
   it "keeps a review session's field across a continue" do

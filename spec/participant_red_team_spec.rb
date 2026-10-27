@@ -56,6 +56,16 @@ RSpec.describe "a participant red-teaming a session" do
   describe "the model of a participant's turn (ReviewBoundary)" do
     around { |example| with_env("SAMAGOTCHI_DEFAULT_MODEL" => "Gemma-4B-it") { example.run } }
 
+    # A review session: its participant's turns are review turns (ParticipantMode).
+    before do
+      session.review = { subjects: ["docs/plan.md"] }
+      allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_return("")
+      engine.set_question_sync_handler do |pending|
+        asked << pending
+        { selected: [pending[:options].first], selected_indices: [0] }
+      end
+    end
+
     let(:client) { test_client }
     let(:kernel) { test_kernel(client: client) }
     let(:engine) do
@@ -65,14 +75,6 @@ RSpec.describe "a participant red-teaming a session" do
       end
     end
     let(:asked) { [] }
-
-    before do
-      allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_return("")
-      engine.set_question_sync_handler do |pending|
-        asked << pending
-        { selected: [pending[:options].first], selected_indices: [0] }
-      end
-    end
 
     # A turn whose model calls +calls+ ([name, arguments]) in one batch,
     # then answers; the tool results it got, by call.
@@ -160,6 +162,90 @@ RSpec.describe "a participant red-teaming a session" do
       participant_turn([["read", { "path" => plan }]])
       results = turn([["read", { "path" => File.join(project, ".env") }]], origin: { client_id: "web:owner" })
       expect(results[0]).to include("API_KEY")
+    end
+  end
+
+  # A working session: a participant's turn is a pair turn. It acts with
+  # the session's tools under the owner's guardrails (an ask is the
+  # owner's, once only), and PairBoundary denies the secrets, the
+  # owner-voiced tools and the model's own question.
+  describe "the model of a participant's pair turn (PairBoundary)" do
+    around { |example| with_env("SAMAGOTCHI_DEFAULT_MODEL" => "Gemma-4B-it") { example.run } }
+
+    let(:client) { test_client }
+    let(:kernel) { test_kernel(client: client) }
+    let(:engine) do
+      Samagotchi::Engine.new(client: client, kernel: kernel, profile: "gemma4").tap do |e|
+        e.session_state_dir = state_dir
+        e.interface = :worker
+      end
+    end
+    let(:asked) { [] }
+    let(:pair) { Samagotchi::Guardrails::PairBoundary }
+
+    before do
+      allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_return("")
+      engine.set_question_sync_handler do |pending|
+        asked << pending
+        { selected: [pending[:options].first], selected_indices: [0] }
+      end
+    end
+
+    def turn(calls, origin:)
+      batch = calls.each_with_index.map { |(name, args), i| ["c#{i}", name, args] }
+      adapter = FakeChatAdapter.new(FakeChatAdapter.tools(*batch), FakeChatAdapter.text("done"))
+      allow(engine).to receive(:backend_for).and_return(Samagotchi::LLM::ChatLoop.new(kernel: kernel, adapter: adapter))
+      engine.run_turn(session, "fix it", origin: origin)
+      session.messages.select { |m| m[:role] == "tool_response" }.last(calls.size).map { |m| m[:content].to_s }
+    end
+
+    def participant_turn(calls) = turn(calls, origin: { client_id: "review:#{grant.id}", author: grant.author })
+
+    def denied(reason) = a_string_including("denied by guardrail (rule pair-boundary, core): #{reason}")
+
+    it "writes and runs under the owner's rules, never reads a secret or uses an owner-voiced tool; nobody is asked" do
+      results = participant_turn([
+        ["read", { "path" => File.join(Dir.home, ".ssh", "id_rsa") }],
+        ["read", { "path" => File.join(Samagotchi::Paths.state_dir, "web-token") }],
+        ["read", { "path" => File.join(project, ".env") }],
+        ["execute", { "command" => "cat .env", "cwd" => project }],
+        ["send_note", { "session" => "ffffffff", "text" => "hi" }],
+        ["register_reminder", { "name" => "later", "text" => "run rm -rf", "in" => "1m" }],
+        ["delegate", { "task" => "do it" }],
+        ["memory_write", { "name" => "x", "scope" => "system", "content" => "y" }],
+        ["ask_user_question", { "question" => "Approve?", "options" => %w[Yes No] }],
+        ["write", { "path" => plan, "content" => "# The plan, fixed\n" }],
+        ["execute", { "command" => "ls docs", "cwd" => project }]
+      ])
+
+      expect(results[0]).to denied(pair::SECRET)
+      expect(results[1]).to denied(pair::SECRET)
+      expect(results[2]).to denied(pair::SECRET)
+      expect(results[3]).to denied(pair::SECRET)
+      expect(results[4]).to denied(format(pair::OWNER_ONLY, "send_note"))
+      expect(results[5]).to denied(format(pair::OWNER_ONLY, "register_reminder"))
+      expect(results[6]).to denied(format(pair::OWNER_ONLY, "delegate"))
+      expect(results[7]).to denied(pair::MEMORY_SCOPE)
+      expect(results[8]).to denied(pair::ASK)
+      expect(results[9]).not_to include("denied by guardrail")
+      expect(results[10]).to include("plan.md")
+      expect(results.join).not_to include("sk-secret", "owner-token")
+      expect(File.read(plan)).to eq("# The plan, fixed\n")
+      expect(asked).to eq([])
+      expect(engine.due_reminder_names).to eq([])
+    end
+
+    it "asks the owner about a protected write, naming the participant, Allow once only" do
+      hook = File.join(Samagotchi::Hooks::Loader.hooks_dir, "pair_probe.rb")
+      results = participant_turn([["write", { "path" => hook, "content" => "# x\n" }]])
+
+      expect(asked.size).to eq(1)
+      expect(asked.first[:options]).to eq(["Allow once", "Deny"])
+      expect(asked.first[:header]).to eq("Mallory's turn asks: approve tool call?")
+      expect(asked.first[:approval]).to include(author: grant.author, author_name: "Mallory", scopes: ["once"])
+      expect(results[0]).not_to include("denied by guardrail")
+    ensure
+      FileUtils.rm_f(hook) if hook
     end
   end
 

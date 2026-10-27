@@ -30,7 +30,7 @@ module Samagotchi
         grants = @grants.list(session_id: id).map { |grant| grant.public_h(now) }
         return json_response(200, { participants: grants }) unless id
 
-        warning = ReviewStart.share_warning(Session.load(id, state_dir: default_state_dir))
+        warning = ReviewStart.share_warning(Session.load(id, state_dir: default_state_dir), state_dir: default_state_dir)
         json_response(200, { participants: with_spend(id, grants), warning: warning,
                              identity_header: @public_url&.identity_header })
       rescue Grants::Unwritable => e
@@ -71,7 +71,7 @@ module Samagotchi
                                               ttl: ttl, cap: cap, identity: body["identity"], public_url: @public_url,
                                               state_dir: default_state_dir)
         link = participant_link(req, id, issued.token, expires_at: issued.grant.expires_at)
-        warning = ReviewStart.share_warning(Session.load(id, state_dir: default_state_dir))
+        warning = ReviewStart.share_warning(Session.load(id, state_dir: default_state_dir), state_dir: default_state_dir)
         json_response(201, { participant: issued.grant.public_h(@grants.now), token: issued.token,
                              link: link, lan: !@lan.nil? || !@public_url.nil?, qr_svg: QR.svg(link), warning: warning })
       rescue Grants::Invalid => e

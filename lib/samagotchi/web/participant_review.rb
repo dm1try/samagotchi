@@ -50,7 +50,7 @@ module Samagotchi
       #   current_turn, waiting_for_owner, queued: {mine, others}, last_event_id}
       def handle_review(req, id)
         session = @session_class.load(id, state_dir: default_state_dir)
-        mode = ParticipantMode.of(session).to_s
+        mode = ParticipantMode.live(session, state_dir: default_state_dir).to_s
         viewer = participant_viewer(req, session)
         live = bridge_get_json(id, "snapshot")
         turn_snapshot = live && live["snapshot"]

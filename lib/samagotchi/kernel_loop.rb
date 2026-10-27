@@ -179,6 +179,9 @@ module Samagotchi
     # Whether the current turn belongs to a participant, so pre-gate
     # refusals can defer to ReviewBoundary.
     attr_accessor :participant_turn
+    # The running session (a callable → Session or nil): ToolRunner reads
+    # its ParticipantMode for a participant's turn. The Engine sets it.
+    attr_accessor :session_lookup
 
     def participant_turn? = @participant_turn&.call == true
     # @return [LLM::TurnSettings] the turn's vision, sampling, thinking and

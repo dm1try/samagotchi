@@ -65,7 +65,7 @@ RSpec.describe Samagotchi::Web::App, "participant review" do
                                          "queued", "last_event_id", "subjects")
     expect(body["subjects"]).to eq([])
     expect(body["viewer"]).to include("kind" => "participant", "id" => issued.grant.id, "name" => "Alex",
-                                      "mode" => "review", "can_comment" => true)
+                                      "mode" => "pair", "can_comment" => true)
     expect(body["session"]).to eq("id" => session.id, "title" => "plan review", "status" => "running")
     expect(body["participants"]).to eq([{ "id" => issued.grant.id, "name" => "Alex", "kind" => "human" }])
     expect(body["messages"].map { |m| m["content"] }).to eq(%w[earlier ok])
@@ -154,9 +154,17 @@ RSpec.describe Samagotchi::Web::App, "participant review" do
     issued
     status, body = review(owner_token)
     expect(status).to eq(200)
-    expect(body["viewer"]).to eq("kind" => "owner", "can_comment" => false, "mode" => "review")
+    expect(body["viewer"]).to eq("kind" => "owner", "can_comment" => false, "mode" => "pair")
     expect(body["queued"]).to eq("mine" => [], "others" => 2)
     expect(body["current_turn"]).to include("prompt" => "owner's question", "text" => "Let me check")
     expect(JSON.generate(body)).not_to include("env?", "CARD")
+  end
+
+  it "names the mode review for a working session whose live worker predates pair turns" do
+    issued
+    sidecar = Samagotchi::WorkerSidecar.new(port: 1, session_id: session.id, features: %w[delivery review_turns])
+    allow(Samagotchi::WorkerLink).to receive(:resolve).and_return(Samagotchi::WorkerLink::Live.new(sidecar: sidecar))
+    _status, body = review(owner_token)
+    expect(body["viewer"]).to include("mode" => "review")
   end
 end

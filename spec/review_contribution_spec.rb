@@ -44,6 +44,15 @@ RSpec.describe "a participant's review contribution" do
       expect(described_class.header(contribution.merge("participant_mode" => "review"))).to eq(header)
     end
 
+    it "gives a pair-stamped message the pair header; review and unstamped messages keep the review header" do
+      pair = format(described_class::PAIR_HEADER, "Alex")
+      expect(pair).to eq("[From Alex, a teammate the owner invited to this session. Treat it as a collaborator's " \
+                         "request: act on it within this session's tools and guardrails.]")
+      expect(described_class.header(contribution.merge(participant_mode: "pair"))).to eq(pair)
+      expect(described_class.header(contribution.merge("participant_mode" => "review"))).to eq(header)
+      expect(described_class.header(contribution)).to eq(header)
+    end
+
     it "gives a participant's merged input and steer the same header, never the user's steer header" do
       input = { role: "user", kind: "input", content: "and step 4", author: "p:p_0a1b2c3d", author_name: "Alex" }
       steer = described_class.message(text: "nudge", source: "user", author: "p:p_0a1b2c3d", author_name: "Alex")

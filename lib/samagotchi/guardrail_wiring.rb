@@ -126,21 +126,32 @@ module Samagotchi
 
     # The gate's core checks, in order. A delegate child's boundary comes
     # before the rules, so its ask keeps the child-boundary rule id (and
-    # its once/session scopes) when a strict rule asks too. The review
-    # boundary comes before both: a participant's review turn is denied
-    # what it may not do, never asked about it.
+    # its once/session scopes) when a strict rule asks too. The
+    # participant's boundary comes before both, by the session's
+    # ParticipantMode: a review turn's (ReviewBoundary) or a pair turn's
+    # (PairBoundary). Either denies what a participant's turn may not do,
+    # never asks about it; both are no-ops for the owner's turns.
     def checks
       rules = self.rules
-      boundary = ParticipantMode.of(@session_lookup.call) == :review ? review_boundary : nil
-      [@failures, boundary, rules.hook_asks, protected_paths,
+      [@failures, participant_boundary, rules.hook_asks, protected_paths,
        (@scratch_writes ||= Guardrails::ScratchWrites.new if @scratch), child_boundary, rules].compact
     end
 
-    # A participant's turn's boundary (Guardrails::ReviewBoundary): in
-    # every session, a no-op unless the running turn's author is a
-    # participant's.
+    # The boundary for a participant's turn in this session (#checks).
+    def participant_boundary
+      ParticipantMode.of(@session_lookup.call) == ParticipantMode::PAIR ? pair_boundary : review_boundary
+    end
+
+    # A participant's review turn's boundary (Guardrails::ReviewBoundary): a
+    # no-op unless the running turn's author is a participant's.
     def review_boundary
       @review_boundary ||= Guardrails::ReviewBoundary.new(author: -> { turn_author }, root: -> { boundary_root })
+    end
+
+    # A participant's pair turn's boundary (Guardrails::PairBoundary): a
+    # no-op unless the running turn's author is a participant's.
+    def pair_boundary
+      @pair_boundary ||= Guardrails::PairBoundary.new(author: -> { turn_author })
     end
 
     # The delegate child's boundary (Guardrails::ChildBoundary); nil for

@@ -58,6 +58,13 @@ module Samagotchi
                   "the owner must restart it (chi sessions restart ID, or the web's update badge)"
     }.freeze
 
+    # A worker that runs a participant's turn in a working session as a pair
+    # turn (ParticipantMode :pair, Guardrails::PairBoundary). One without it
+    # still runs it as a review turn (ReviewBoundary), so chi web and chi
+    # share treat the session as :review (ParticipantMode.live) until it
+    # restarts.
+    PAIR_FEATURE = "pair_turns"
+
     # Whether it is the one every sender defaulting to a step boundary uses.
     def self.next_step?(value) = parse(value) == NEXT_STEP
 
