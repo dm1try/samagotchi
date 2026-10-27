@@ -61,7 +61,7 @@ module Samagotchi
       start(parsed.options, parsed.args)
     rescue ReviewStart::Refused, SessionAccess::BadRequest => e
       refused(e.message)
-    rescue ModelProfile::MissingModel => e
+    rescue ModelProfile::MissingModel, Toolkit::Refused => e
       refused("could not start: #{e.message}")
     rescue ArgumentError => e
       refused(e.is_a?(Session::AmbiguousId) ? e.message : e.message.sub(/\ASession not found: /, "no session "))

@@ -135,6 +135,52 @@ module Samagotchi
       "groups must be a list of group names or globs"
     end
 
+    # config.yml's toolkit.kits.NAME line for a +value+ that can't be its
+    # groups (groups_error), nil when it can: the one wording a worker's
+    # warning and a creation's refusal both start with.
+    def self.config_groups_error(name, value)
+      problem = groups_error(value)
+      problem && "toolkit.kits.#{name}: #{problem}"
+    end
+
+    # A new session refused: its toolkit, or a base it builds on, is a
+    # config.yml kit (toolkit.kits) whose groups: isn't a name or a list of
+    # them. A session never starts on a reach other than the one written
+    # (its base's groups: wider or narrower); the message is the one line
+    # every creation surface shows.
+    class Refused < StandardError
+      # @param toolkit [String] the new session's toolkit name
+      # @param problem [String] config_groups_error's line
+      def self.for(toolkit, problem) = new("#{problem}; fix config.yml to start a session on toolkit #{toolkit}")
+    end
+
+    # Raises Refused when +toolkit+ (a new session's: Session.new_session)
+    # names a config kit, or builds on one through its bases, whose
+    # groups: is invalid (config_groups_error). Only config.yml's kits are
+    # followed: a bundle's (chi.toolkit) refuses at its load, and a name
+    # that doesn't resolve stays the worker's warning.
+    # @param config [Hash, nil] toolkit.kits (config.yml's by default)
+    # @return [Toolkit] +toolkit+
+    # @raise [Refused]
+    def self.check_new!(toolkit, config: config_kits)
+      return toolkit unless toolkit && config.is_a?(Hash)
+
+      name = toolkit.name
+      seen = []
+      until seen.include?(name) || name == REVIEW || BUILTIN_KITS.key?(name)
+        seen << name
+        spec = config[name] || config[name.to_sym]
+        break unless spec.is_a?(Hash)
+
+        spec = spec.transform_keys(&:to_s)
+        problem = config_groups_error(name, spec["groups"])
+        raise Refused.for(toolkit.name, problem) if problem
+
+        name = (spec["base"] || FULL).to_s
+      end
+      toolkit
+    end
+
     # A named list of declared tools: +tools+ (:all, every built-in; or the
     # built-in names) when it has no +base+, else its +base+'s with +add+
     # and +remove+. +source+: "core", "config", or the bundle that declared
@@ -317,7 +363,10 @@ module Samagotchi
     #   that isn't a {base:, add:, remove:, prompt:, groups:} map. One with another key
     # (a typo, a tools: list) still loads, with a line naming the key, and
     # so does one whose prompt isn't text or is over PROMPT_MAX characters:
-    # without the prompt, with a line saying why.
+    # without the prompt, with a line saying why. One whose groups: isn't
+    # a name or a list (config_groups_error) loads reaching no group, with
+    # a line: a session saved on it before the typo (no new one starts on
+    # it: check_new!) never reaches wider than written.
     # @param config [Hash, nil] toolkit.kits
     # @param plugins [Array<Kit>]
     # @param errors [Array<String>] gets a line per kit left out or unknown key
@@ -338,11 +387,13 @@ module Samagotchi
             errors << "toolkit.kits.#{name}: unknown key #{key} " \
                       "(a kit takes base:, add:, remove:, prompt:, groups:)"
           end
-          { "prompt" => prompt_error(spec["prompt"]), "groups" => groups_error(spec["groups"]) }.each do |key, problem|
-            next unless problem
-
+          if (problem = prompt_error(spec["prompt"]))
             errors << "toolkit.kits.#{name}: #{problem}; the kit loads without it"
-            spec.delete(key)
+            spec.delete("prompt")
+          end
+          if (problem = config_groups_error(name, spec["groups"]))
+            errors << "#{problem}; the kit reaches no tool-index group until it is fixed"
+            spec["groups"] = []
           end
           kits[name] = Kit.new(name: name, base: spec["base"] || FULL, add: spec["add"], remove: spec["remove"],
                                prompt: spec["prompt"], groups: spec["groups"], source: "config")

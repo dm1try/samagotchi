@@ -48,7 +48,7 @@ module Samagotchi
       ignored(id) if existing
       launch(id, existing: existing)
     rescue TerminalUI::AttachLauncher::Error, SessionAccess::RemoteFailed, SessionAccess::Refused,
-           SessionManager::OwnedByTUI, ModelProfile::MissingModel, ArgumentError => e
+           SessionManager::OwnedByTUI, ModelProfile::MissingModel, Toolkit::Refused, ArgumentError => e
       e.is_a?(SessionAccess::BadRequest) ? usage(e.message) : failed(e.message)
     rescue Interrupt
       CLI::Exit::INTERRUPTED

@@ -391,7 +391,7 @@ if launch == :attached
                                                        toolkit_flags: options[:toolkit_flags] || [],
                                                        settings: options[:settings],
                                                        parent_answers: options[:parent_answers])
-  rescue Samagotchi::TerminalUI::AttachLauncher::Error => e
+  rescue Samagotchi::TerminalUI::AttachLauncher::Error, Samagotchi::Toolkit::Refused => e
     warn "Error: #{e.message}"
     exit 1
   rescue Interrupt
@@ -427,7 +427,8 @@ begin
   # limit, or Ctrl-C cancelled it.
   exit 1 if %i[turn_failed empty_answer iteration_limit].include?(ended)
   exit Samagotchi::CLI::Exit::INTERRUPTED if ended == :interrupted
-rescue Samagotchi::TerminalUI::SessionBusy, Samagotchi::TerminalUI::SessionNotFound, Samagotchi::ModelProfile::MissingModel => e
+rescue Samagotchi::TerminalUI::SessionBusy, Samagotchi::TerminalUI::SessionNotFound, Samagotchi::ModelProfile::MissingModel,
+       Samagotchi::Toolkit::Refused => e
   warn "Error: #{e.message}"
   exit 1
 rescue Samagotchi::LLM::ProviderError => e

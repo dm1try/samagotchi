@@ -81,7 +81,7 @@ module Samagotchi
         started = session.to_s.strip.empty? ? "Started a delegate session" : "Sent the follow-up to delegate #{child_id[0, 8]}"
         "#{note}session: #{child_id}\nstatus: running\n#{started}; #{running_hint(peers)} " \
           "It shows in chi sessions list and the web as a child of this session; the user can attach to it."
-      rescue ArgumentError => e
+      rescue ArgumentError, Toolkit::Refused => e
         "Error: #{e.message}"
       end
 

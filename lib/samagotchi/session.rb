@@ -427,10 +427,14 @@ module Samagotchi
     #   seed); [] by default
     # @param setup [SessionSetup] the session's own settings (none by default)
     # @param now [Time] its created_at and updated_at (a spec's clock)
+    # @raise [Toolkit::Refused] its toolkit (setup's, else the configured
+    #   one SessionManager.spawn_session gives it) builds on a config kit
+    #   with an invalid groups: (Toolkit.check_new!)
     def self.new_session(mode:, model_name:, working_directory:, test_run: nil,
                          preloaded_memory_names: [], muted_memory_names: [], parent_id: nil, messages: [],
                          scratch: false, model_typed: nil, delegate: false, setup: SessionSetup.new, continues: nil,
                          review: nil, now: Time.now)
+      Toolkit.check_new!(setup.toolkit || Toolkit.configured(delegate: delegate))
       now = now.iso8601(3)
       resolved_test = if test_run.nil?
                         test_session_env?

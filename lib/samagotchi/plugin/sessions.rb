@@ -81,7 +81,7 @@ module Samagotchi
 
         ReviewStart.fork(from: source, subjects: Array(subjects), seed: seed, state_dir: state_dir,
                          recap_wait: recap_wait).id
-      rescue ReviewStart::Refused, ModelProfile::MissingModel, ArgumentError => e
+      rescue ReviewStart::Refused, ModelProfile::MissingModel, Toolkit::Refused, ArgumentError => e
         raise Error, e.message
       end
 

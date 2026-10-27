@@ -322,6 +322,11 @@ module Samagotchi
         # Anything else is a file under public_dir (/assets/*, /public/* or
         # a bare path such as /style.css), or 404.
         serve_static(req)
+      rescue Toolkit::Refused => e
+        # A new session (create, continue, fork, review) on a config kit
+        # with an invalid groups: (Toolkit.check_new!), whichever handler
+        # spawned it.
+        error_response(400, "toolkit_refused", e.message)
       rescue StandardError => e
         Log.exception(:web, "request_failed", e, method: env["REQUEST_METHOD"], path: env["PATH_INFO"])
         # A participant never reads an exception's words (they may name a

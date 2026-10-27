@@ -680,6 +680,8 @@ module Samagotchi
         # No model configured there, or --model's host unknown there: what
         # spawn_session raises here (chi send: could not start a session).
         when "invalid_model" then raise ModelProfile::MissingModel, message.to_s
+        # A toolkit whose config kit's groups: is invalid there: the same.
+        when "toolkit_refused" then raise Toolkit::Refused, message.to_s
         # The grants store doesn't read there: chi share says what it says here.
         when "grants_unwritable" then raise Web::Grants::Unwritable, message.to_s
         when /\Ainvalid_/, "missing_fields", "bad_images"

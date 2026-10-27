@@ -511,6 +511,40 @@ RSpec.describe Samagotchi::SessionManager do
       expect(Dir.glob(File.join(tmpdir, "sessions", "*"))).to be_empty
     end
 
+    # Every creation surface (chi, chi send --new, chi web, delegate, a
+    # continue or a fork) refuses through this one check (Toolkit.check_new!).
+    describe "a toolkit on a config kit whose groups: is invalid" do
+      before do
+        allow(Process).to receive(:spawn).and_return(12_345)
+        allow(Samagotchi::Toolkit).to receive(:config_kits)
+          .and_return("typo" => { "base" => "lean", "groups" => { "chrome" => true } },
+                      "web" => { "base" => "lean", "groups" => ["chrome"] }, "plain" => { "base" => "lean" })
+      end
+
+      let(:refusal) do
+        "toolkit.kits.typo: groups must be a list of group names or globs; fix config.yml to start a session on toolkit typo"
+      end
+
+      def spawn(toolkit = nil)
+        described_class.spawn_session(prompt: "hi", model_name: "m", state_dir: tmpdir,
+                                      setup: Samagotchi::SessionSetup.new(toolkit: toolkit && Samagotchi::Toolkit.new(name: toolkit)))
+      end
+
+      it "refuses it, named or as toolkit.default, before anything is saved or spawned" do
+        expect { spawn("typo") }.to raise_error(Samagotchi::Toolkit::Refused, refusal)
+        allow(Samagotchi::Config).to receive(:get).and_call_original
+        allow(Samagotchi::Config).to receive(:get).with("toolkit.default").and_return("typo")
+        expect { spawn }.to raise_error(Samagotchi::Toolkit::Refused, refusal)
+        expect(Process).not_to have_received(:spawn)
+        expect(Dir.glob(File.join(tmpdir, "sessions", "*"))).to be_empty
+      end
+
+      it "starts one on a kit with a valid list or no groups:" do
+        expect(spawn("web").toolkit).to eq(Samagotchi::Toolkit.new(name: "web"))
+        expect(spawn("plain").toolkit).to eq(Samagotchi::Toolkit.new(name: "plain"))
+      end
+    end
+
     # A host's saved model list (ModelListStore: what `chi models` last
     # listed) names an id it doesn't have; the session starts anyway.
     describe "an unknown model id, with a saved list for the host" do

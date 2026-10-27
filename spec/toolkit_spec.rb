@@ -217,14 +217,55 @@ RSpec.describe Samagotchi::Toolkit do
                             "toolkit.kits.b: prompt is over 2000 characters; the kit loads without it"])
     end
 
-    it "loads a config kit without groups that aren't a name or a list of them, with a line saying why" do
+    # A session saved on it before the typo (no new one starts on it:
+    # .check_new!) never reaches wider than written: no group at all.
+    it "loads a config kit whose groups aren't a name or a list of them reaching no group, with a line saying why" do
       errors = []
       kits = described_class.kits(config: { "a" => { "base" => "lean", "groups" => { "chrome" => true } },
                                             "b" => { "base" => "lean", "groups" => [{ "x" => 1 }] },
                                             "c" => { "base" => "lean", "groups" => ["chrome", :db] } }, errors: errors)
-      expect([kits["a"].groups, kits["b"].groups, kits["c"].groups]).to eq([nil, nil, %w[chrome db]])
-      expect(errors).to eq(["toolkit.kits.a: groups must be a list of group names or globs; the kit loads without it",
-                            "toolkit.kits.b: groups must be a list of group names or globs; the kit loads without it"])
+      expect([kits["a"].groups, kits["b"].groups, kits["c"].groups]).to eq([[], [], %w[chrome db]])
+      expect(described_class.resolve_kit("a", kits).reaches_group?("chrome")).to be(false)
+      expect(errors).to eq(["toolkit.kits.a: groups must be a list of group names or globs; " \
+                            "the kit reaches no tool-index group until it is fixed",
+                            "toolkit.kits.b: groups must be a list of group names or globs; " \
+                            "the kit reaches no tool-index group until it is fixed"])
+    end
+
+    describe ".check_new!" do
+      let(:config) do
+        { "typo" => { "base" => "lean", "groups" => { "chrome" => true } },
+          "derived" => { "base" => "typo", "add" => ["delegate"] },
+          "listed" => { "base" => "lean", "groups" => ["chrome"] },
+          "inherits" => { "base" => "listed" } }
+      end
+
+      def check(name, add: []) = described_class.check_new!(described_class.new(name: name, add: add), config: config)
+
+      it "refuses a new session on a config kit whose groups aren't a name or a list, naming the kit and the reason" do
+        expect { check("typo") }.to raise_error(
+          Samagotchi::Toolkit::Refused,
+          "toolkit.kits.typo: groups must be a list of group names or globs; fix config.yml to start a session on toolkit typo"
+        )
+      end
+
+      it "refuses one on a kit that builds on it, naming the kit at fault" do
+        expect { check("derived", add: ["execute"]) }.to raise_error(
+          Samagotchi::Toolkit::Refused,
+          "toolkit.kits.typo: groups must be a list of group names or globs; " \
+          "fix config.yml to start a session on toolkit derived"
+        )
+      end
+
+      it "takes a valid list, an omitted groups (its base's), a built-in, an unknown name and a cycle" do
+        expect(check("listed").name).to eq("listed")
+        expect(check("inherits").name).to eq("inherits")
+        expect(check("lean").name).to eq("lean")
+        expect(check("nosuch").name).to eq("nosuch")
+        cycle = { "a" => { "base" => "b" }, "b" => { "base" => "a" } }
+        expect(described_class.check_new!(described_class.new(name: "a"), config: cycle).name).to eq("a")
+        expect(described_class.check_new!(nil, config: config)).to be_nil
+      end
     end
 
     describe "Explained" do
