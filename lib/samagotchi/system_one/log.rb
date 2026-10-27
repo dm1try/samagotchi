@@ -103,6 +103,16 @@ module Samagotchi
         []
       end
 
+      # Every parseable JSON line, in file order. Generic logs such as the
+      # toolkit suggestion record use this without interpreting their kinds.
+      # @return [Array<Hash>]
+      def records
+        with_lock(File::LOCK_SH) { |file| file.each_line.filter_map { |line| parse(line) } }
+      rescue StandardError => e
+        warn_about(e)
+        []
+      end
+
       private
 
       def append(line)

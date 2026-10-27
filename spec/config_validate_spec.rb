@@ -91,4 +91,14 @@ RSpec.describe "Samagotchi::Config.validate_yaml_sections" do
                                                    hash_including(echo: /guardrails\.system_one\.mode: "sometimes"/))
     expect(Samagotchi::Config.resolve("guardrails.system_one.mode", file_data: { "guardrails" => { "system_one" => { "mode" => "sometimes" } } }, env: {})).to eq("off")
   end
+
+  it "takes toolkit suggestion settings at worker start, with audit as the only active behavior" do
+    expect(problems("toolkit: {suggest: {mode: audit, threshold: 0.7, defer_turns: 2, defer_tokens: 1200}}")).to eq([])
+    file = { "toolkit" => { "suggest" => { "mode" => "on", "threshold" => "0.7" } } }
+
+    expect(Samagotchi::Config.resolve("toolkit.suggest.mode", file_data: file, env: {})).to eq("on")
+    expect(Samagotchi::Config.resolve("toolkit.suggest.threshold", file_data: file, env: {})).to eq(0.7)
+    expect(Samagotchi::Config.resolve("toolkit.suggest.defer_turns", file_data: {}, env: {})).to eq(3)
+    expect(Samagotchi::Config.resolve("toolkit.suggest.defer_tokens", file_data: {}, env: {})).to eq(5000)
+  end
 end

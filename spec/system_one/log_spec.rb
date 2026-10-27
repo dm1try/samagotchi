@@ -33,6 +33,15 @@ RSpec.describe Samagotchi::SystemOne::Log do
     expect(File.exist?(path)).to be(false)
   end
 
+  it "reads all generic entries in file order" do
+    suggestion_log = described_class.new(dir: dir, file: "toolkit_suggestions.jsonl")
+    suggestion_log.entry(:suggestion, session_id: "s1", raw: "undecided")
+    suggestion_log.entry(:suggestion, session_id: "s2", raw: "default")
+
+    expect(suggestion_log.records.map { |entry| [entry["kind"], entry["session_id"], entry["raw"]] })
+      .to eq([%w[suggestion s1 undecided], %w[suggestion s2 default]])
+  end
+
   it "creates the directory beside the approvals store and writes the file 0600" do
     log.judgment(rule: "git-push")
     expect(File.exist?(path)).to be true

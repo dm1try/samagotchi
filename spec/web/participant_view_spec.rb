@@ -15,7 +15,7 @@ RSpec.describe Samagotchi::Web::ParticipantView do
   # (EVENTS) or never does (DROPPED). A new type fails here until it is
   # named; unnamed, the filter drops it.
   describe "the event types" do
-    NOT_EVENTS = %w[bool enum float integer string].freeze
+    NOT_EVENTS = %w[bool choice enum float integer string].freeze
 
     def emitted
       found = Set.new

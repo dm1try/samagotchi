@@ -249,6 +249,11 @@ module Samagotchi
       # delegate child's. toolkit.kits (the user's own) is read by Toolkit.kits.
       Entry.new(key: "toolkit.default",          yaml_path: %w[toolkit default],          type: :string, default: nil,              expose: %i[env config], lifecycle: :session_creation),
       Entry.new(key: "toolkit.child",            yaml_path: %w[toolkit child],            type: :string, default: nil,              expose: %i[env config], lifecycle: :session_creation),
+      # Toolkit suggestion (ToolkitSuggest): off, audit, or on; on currently behaves as audit and never changes a session.
+      Entry.new(key: "toolkit.suggest.mode",     yaml_path: %w[toolkit suggest mode],     type: :enum,   default: "off", expose: %i[config], enum_values: %w[off audit on], lifecycle: :worker_start),
+      Entry.new(key: "toolkit.suggest.threshold", yaml_path: %w[toolkit suggest threshold], type: :float, default: 0.5, expose: %i[config], lifecycle: :worker_start),
+      Entry.new(key: "toolkit.suggest.defer_turns", yaml_path: %w[toolkit suggest defer_turns], type: :integer, default: 3, expose: %i[config], lifecycle: :worker_start),
+      Entry.new(key: "toolkit.suggest.defer_tokens", yaml_path: %w[toolkit suggest defer_tokens], type: :integer, default: 5000, expose: %i[config], lifecycle: :worker_start),
 
       Entry.new(key: "default.max_tokens",       yaml_path: %w[default max_tokens],       type: :integer, default: nil,              expose: %i[env config cli], lifecycle: :next_matching_use),
       Entry.new(key: "max_tool_output_chars",    yaml_path: %w[max_tool_output_chars],    type: :integer, default: 10_000,          expose: %i[env config cli], lifecycle: :next_matching_use),

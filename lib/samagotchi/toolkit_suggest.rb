@@ -1,0 +1,159 @@
+# frozen_string_literal: true
+
+require "json"
+
+require_relative "steer"
+require_relative "system_one/question"
+
+module Samagotchi
+  # The first-prompt toolkit classifier and its append-only audit record.
+  # The Engine prepares a Snapshot on its turn thread; #ask only sees that
+  # copy, so the question cannot change the running session or tool registry.
+  class ToolkitSuggest
+    FILE = "toolkit_suggestions.jsonl"
+    QUESTION_ID = "toolkit"
+    PROMPT_MAX = 1500
+    CHARS_PER_TOKEN = 4.0
+    INSTRUCTIONS = "A user is starting a session of a coding agent with the prompt in the state. " \
+                   "Which toolkit should the session start on? Pick the smallest toolkit whose tools the work will need."
+
+    Candidate = Data.define(:name, :description, :tools, :groups)
+    Snapshot = Data.define(:session_id, :turn_number, :default, :candidates, :state)
+    Suggestion = Data.define(:kit, :raw, :confidence, :decided)
+
+    # The candidates with classifier descriptions, excluding the configured
+    # default, the participants' review boundary, and the defer sentinel.
+    def self.candidates(kits, default_name:)
+      kits.values.filter_map do |kit|
+        next if [default_name.to_s, Toolkit::REVIEW, "undecided"].include?(kit.name)
+        next if kit.description.to_s.empty?
+
+        kit
+      end
+    end
+
+    # A System 1 choice and the small, bounded state it classifies.
+    def self.question(default:, kits:, project:, prompt:)
+      candidates = candidates(kits, default_name: default.name)
+      criteria = candidates.to_h { |kit| ["kit:#{kit.name}", "#{kit.name}: #{kit.description}"] }
+      criteria["default"] = "none of the other toolkits fits: the user's everyday default"
+      criteria["undecided"] = "There is no task yet; defer this choice"
+      question = SystemOne::Question.new(id: QUESTION_ID, type: :choice, instructions: INSTRUCTIONS, criteria: criteria)
+      [question, { project: project.to_s, prompt: prompt.to_s[0, PROMPT_MAX] }]
+    end
+
+    # The single turn eligibility predicate shared by audit and future on
+    # mode. A later prompt is eligible only inside an undecided defer window.
+    def self.eligible?(session:, prompt:, author:, candidate_count:, last_suggestion:, defer_turns:, defer_tokens:)
+      return false unless session&.toolkit_origin == "default"
+      return false if session.delegate? || session.review?
+      return false if Steer.participant_author?(author)
+      return false unless prompt.is_a?(String) && !prompt.strip.empty?
+      return false if candidate_count < 2
+
+      messages = Array(session.messages)
+      return true unless messages.any? { |message| field(message, :role).to_s == "model" }
+      return false unless field(last_suggestion, :raw) == "undecided"
+
+      current_turn_number = turn_number(messages)
+      current_turn_number <= defer_turns.to_i &&
+        JSON.generate(messages).length / CHARS_PER_TOKEN < defer_tokens.to_i
+    end
+
+    def self.turn_number(messages) = user_prompt_count(Array(messages)) + 1
+
+    def self.owner_prompt?(message)
+      field(message, :role).to_s == "user" &&
+        !Steer.participant_author?(field(message, :author)) &&
+        !%w[input steer note reminder].include?(field(message, :kind).to_s)
+    end
+
+    # The prior logged suggestion for this session; the log, not process
+    # memory, keeps a deferred choice alive across a worker respawn.
+    def self.last_suggestion(log, session_id)
+      log.records.reverse_each.find do |entry|
+        entry["kind"] == "suggestion" && entry["session_id"] == session_id
+      end
+    end
+
+    # Runs one already-prepared ask, then appends its raw pick and the two
+    # kits' declared tool/group snapshots. A missing judgment is recorded too.
+    def self.ask(client:, log:, snapshot:, threshold:)
+      question, = question(default: Toolkit.new(name: snapshot.default.fetch(:name)),
+                           kits: snapshot.candidates.to_h { |candidate| [candidate.name, kit_for(candidate)] },
+                           project: snapshot.state.fetch(:project), prompt: snapshot.state.fetch(:prompt))
+      answer = client.ask(state: snapshot.state, questions: { QUESTION_ID => question })&.fetch(QUESTION_ID, nil)
+      raw = answer&.choice
+      candidate_name = raw.to_s.delete_prefix("kit:")
+      candidate = snapshot.candidates.find { |item| item.name == candidate_name } if raw.to_s.start_with?("kit:")
+      selected = if raw == "default"
+                   snapshot.default.fetch(:name)
+                 elsif candidate
+                   candidate.name
+                 end
+      confidence = answer&.confidence
+      decided = raw == "default" || (candidate && confidence && confidence >= threshold.to_f)
+      would = if answer.nil?
+                "no_judgment"
+              elsif raw == "undecided"
+                "defer"
+              elsif raw == "default"
+                "default"
+              elsif candidate.nil?
+                "invalid"
+              elsif confidence.nil? || confidence < threshold.to_f
+                "below_threshold"
+              else
+                "suggested"
+              end
+      log.entry("suggestion", {
+        session_id: snapshot.session_id,
+        turn_number: snapshot.turn_number,
+        default_kit: snapshot.default.fetch(:name),
+        raw: raw,
+        kit: selected,
+        confidence: confidence,
+        decided: !!decided,
+        would: would,
+        suggested: candidate && candidate.to_h,
+        default: snapshot.default
+      })
+      Suggestion.new(kit: selected, raw: raw, confidence: confidence, decided: !!decided)
+    end
+
+    def self.log_path(sessions_dir)
+      File.join(File.dirname(sessions_dir), FILE)
+    end
+
+    def self.warn(error)
+      Log.warn(:toolkit, "toolkit_suggest_failed",
+               echo: "[samagotchi:toolkit] toolkit suggestion: #{error.class}: #{error.message}",
+               error: error.class.name, msg: error.message.to_s[0, 200])
+    end
+
+    class << self
+      private
+
+      def field(hash, key)
+        return nil unless hash.is_a?(Hash)
+
+        hash.key?(key) ? hash[key] : hash[key.to_s]
+      end
+
+      def user_prompt_count(messages)
+        prompts = messages.filter_map do |message|
+          next unless owner_prompt?(message)
+
+          field(message, :turn_id) || message.object_id
+        end
+        prompts.uniq.size
+      end
+
+      # Reconstitute only the candidate metadata needed to build the question;
+      # names, descriptions and groups are copied from the Snapshot.
+      def kit_for(candidate)
+        Toolkit::Kit.new(name: candidate.name, description: candidate.description)
+      end
+    end
+  end
+end
