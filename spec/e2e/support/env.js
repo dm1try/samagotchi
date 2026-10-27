@@ -32,6 +32,8 @@ hosts:
 ${mainModels ? `    models:\n${mainModels.replace(/^/gm, "      ")}\n` : ""}retry:
   max: 0
 recap: false
+update:
+  notify: off
 bundles:
   check-in:
     after: 3

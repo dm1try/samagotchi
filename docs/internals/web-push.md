@@ -105,7 +105,8 @@ The service worker is the only reader of the payload (JSON, at most `Notifier::O
   `Urgency: normal`. `open` only while the whole list fits the limit; the test push
   (`chi:test`) has neither `open` nor `badge`. URL (`Notifier.session_url`) is the session in its own project's
   view, `/?dir=<project root>#/s/<id>` (the folder URL-encoded, its slashes kept), or `/?scope=all#/s/<id>` for a
-  session in no repo: never the bare `/`, which is chi web's start project.
+  session in no repo: never the bare `/`, which is chi web's start project (except the update show, which names no
+  session: `/`).
 
 `badge` and `open` are the waiting keys still open in the Notifier's summaries (`Attention.open_keys`: a pending
 question of any reason, a hook's and a continue's too, not relayed, and a card with actions; never a failed or done

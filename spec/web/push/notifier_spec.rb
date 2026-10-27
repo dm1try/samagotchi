@@ -89,10 +89,10 @@ RSpec.describe Samagotchi::Web::Push::Notifier do
 
   def session(**kw) = notifier.call(hub_event(type: "session", seq: 1, data: { session: summary(**kw) }))
 
-  def update(version)
+  def update(version, blocked: nil)
     notifier.call(hub_event(type: "chi", seq: 2,
                             data: { version: Samagotchi::VERSION, installed: nil, available: version,
-                                    update_blocked: nil, update_notice: true }))
+                                    update_blocked: blocked, update_notice: true }))
   end
 
   def advance(seconds)
@@ -120,6 +120,13 @@ RSpec.describe Samagotchi::Web::Push::Notifier do
                                 url: "/", badge: 0, open: [] }]
       ])
       expect(store.sent_keys.keys).to eq(["chi:update:0.19.0"])
+    end
+
+    it "sends a blocked install to the page for its own command instead of chi update" do
+      update("0.19.0", blocked: "bundler")
+      advance(3)
+
+      expect(client.calls.map { |call| call[:payload][:body] }).to eq(["Open chi web for how to update this install."])
     end
 
     it "skips an update push while a chi web page is in front and marks it handled" do

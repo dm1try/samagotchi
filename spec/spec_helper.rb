@@ -62,6 +62,9 @@ ENV["SAMAGOTCHI_RECAP_ENABLED"] = "false"
 # The turn-end warm-up (cache.warmup) would send a request after every
 # turn: off for specs; examples tagged :warmup turn it back on.
 ENV["SAMAGOTCHI_CACHE_WARMUP"] = "off"
+# chi web's update check would ask rubygems.org from any chi web a spec
+# starts: off; UpdateCheck specs pass enabled: themselves.
+ENV["SAMAGOTCHI_UPDATE_NOTIFY"] = "off"
 # Log drops a record with an unknown tag or a bad event name; specs (and the
 # workers they spawn) raise instead, so a typo'd tag fails loudly.
 ENV["SAMAGOTCHI_LOG_STRICT"] = "1"
@@ -292,6 +295,7 @@ RSpec.configure do |config|
     ENV["SAMAGOTCHI_RECAP_ENABLED"] = "false"
     ENV["SAMAGOTCHI_KEYCHAIN"] = "off"
     ENV["SAMAGOTCHI_CACHE_WARMUP"] = "off"
+    ENV["SAMAGOTCHI_UPDATE_NOTIFY"] = "off"
     Samagotchi::Log.reset! if defined?(Samagotchi::Log)
   end
 

@@ -19,6 +19,8 @@ module Samagotchi
     # and version-level notice deduplication across chi web restarts.
     class UpdateCheck
       FIRST_CHECK = 30
+      # A failed check (offline at start) tries again this soon, not a whole check_hours later.
+      RETRY = 3600
 
       def initialize(hub:, enabled: Config.get("update.notify") == "on",
                      check_hours: Config.get("update.check_hours"),
@@ -44,6 +46,7 @@ module Samagotchi
         @wakeup = Queue.new
         @thread = nil
         @stopped = false
+        @failed = false
       end
 
       def start
@@ -51,7 +54,7 @@ module Samagotchi
         return self if @thread&.alive?
 
         @stopped = false
-        @hub.update_available(available: @state[:available], blocked: @blocked)
+        @hub.update_available(available: still_newer(@state[:available]), blocked: @blocked)
         @thread = Thread.new { run_loop }
         self
       end
@@ -61,7 +64,7 @@ module Samagotchi
         @wakeup << :stop
         thread = @thread
         @thread = nil
-        thread&.join(6.0)
+        thread&.join(11.0) # a fetch may take its 5 s open + 5 s read
         nil
       end
 
@@ -81,10 +84,11 @@ module Samagotchi
                          notified: notify ? (notified + [available]) : notified }
           persist(next_state)
           @hub.update_available(available: available, blocked: @blocked, notify: !!notify)
+          @failed = false
           true
         rescue StandardError => e
           Log.warn(:web, "update_check_failed", error: e.class.name, msg: e.message)
-          persist(@state.merge(checked_at: now.iso8601)) if now
+          @failed = true
           false
         end
       end
@@ -97,10 +101,20 @@ module Samagotchi
           break if @wakeup.pop(timeout: wait) == :stop
 
           check
-          wait = @check_seconds
+          wait = next_wait(@clock.call)
         end
       rescue StandardError => e
         Log.warn(:web, "update_check_failed", error: e.class.name, msg: e.message)
+      end
+
+      # Until the check is due again (at least FIRST_CHECK), or RETRY after a failure.
+      def next_wait(now)
+        return [RETRY, @check_seconds].min if @failed
+
+        checked_at = parsed_time(@state[:checked_at])
+        return FIRST_CHECK unless checked_at
+
+        [checked_at + @check_seconds - now, FIRST_CHECK].max
       end
 
       def due?(now)
@@ -109,13 +123,22 @@ module Samagotchi
       end
 
       def available_release(releases, now)
-        installed = @installed_versions.newest
-        floor = [VERSION, installed].compact.select { |version| Gem::Version.correct?(version) }
-                                   .map { |version| Gem::Version.new(version) }.max
+        floor = version_floor
         releases.select do |release|
           version = Gem::Version.new(release.version)
           !release.prerelease && version > floor && now - release.created_at >= @min_age_seconds
         end.max_by { |release| Gem::Version.new(release.version) }
+      end
+
+      # The newest of this chi and the installed ones: a release counts only above it.
+      def version_floor
+        [VERSION, @installed_versions.newest].compact.select { |version| Gem::Version.correct?(version) }
+                                             .map { |version| Gem::Version.new(version) }.max
+      end
+
+      # A saved answer the owner has since installed (or passed) is no longer available.
+      def still_newer(version)
+        version if version && Gem::Version.correct?(version) && Gem::Version.new(version) > version_floor
       end
 
       def blocked_reason

@@ -202,7 +202,12 @@ module Samagotchi
           @updates_seen[version] = true
           attention = Attention::Event.new(reason: "update", session_id: nil, key: "chi:update:#{version}", hold: nil)
           @queue << Show.new(attention: attention, title: "chi #{version} is available",
-                             body: "Run chi update to install it.", at: @now.call, url: "/")
+                             body: update_body(event.data[:update_blocked]), at: @now.call, url: "/")
+        end
+
+        # A blocked install (a checkout, Bundler, an unwritable gem dir) names its own command on the page.
+        def update_body(blocked)
+          blocked ? "Open chi web for how to update this install." : "Run chi update to install it."
         end
 
         # Cards carry no time: they seed as they are.

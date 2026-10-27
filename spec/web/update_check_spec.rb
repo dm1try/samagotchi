@@ -22,7 +22,7 @@ RSpec.describe Samagotchi::Web::UpdateCheck do
   end
 
   def checker(**options)
-    described_class.new(hub: hub, fetcher: fetcher, clock: -> { clock.first }, state_file: state_file,
+    described_class.new(hub: hub, enabled: true, fetcher: fetcher, clock: -> { clock.first }, state_file: state_file,
                         gem_spec: Object.new, bundler: false, gem_dir: root,
                         installed_versions: installed_versions, **options)
   end
@@ -60,17 +60,34 @@ RSpec.describe Samagotchi::Web::UpdateCheck do
     expect(hub).to have_received(:update_available).with(available: newest, blocked: nil, notify: true)
   end
 
-  it "keeps the previous answer and records a failed check without re-notifying" do
+  it "keeps the previous answer after a failed check, without re-notifying, and tries again within RETRY" do
     expect(checker.check).to be(true)
     clock[0] += 24 * 3600
     allow(fetcher).to receive(:call).and_raise(IOError, "offline")
     previous = JSON.parse(File.read(state_file))
 
-    expect(checker.check).to be(false)
-    state = JSON.parse(File.read(state_file))
-    expect(state["available"]).to eq(previous["available"])
-    expect(state["notified"]).to eq(previous["notified"])
-    expect(Time.iso8601(state["checked_at"])).to eq(clock.first)
+    failing = checker
+    expect(failing.check).to be(false)
+    expect(JSON.parse(File.read(state_file))).to eq(previous)
+    expect(failing.send(:next_wait, clock.first)).to eq(described_class::RETRY)
+  end
+
+  it "waits until the check is due again, never less than FIRST_CHECK" do
+    update_check = checker
+    expect(update_check.send(:next_wait, clock.first)).to eq(described_class::FIRST_CHECK)
+    update_check.check
+
+    expect(update_check.send(:next_wait, clock.first)).to eq(24 * 3600)
+    expect(update_check.send(:next_wait, clock.first + (20 * 3600))).to eq(4 * 3600)
+    expect(update_check.send(:next_wait, clock.first + (30 * 3600))).to eq(described_class::FIRST_CHECK)
+  end
+
+  it "publishes no saved answer the owner has installed since" do
+    expect(checker.check).to be(true)
+    allow(installed_versions).to receive(:newest).and_return(release_version)
+
+    checker.start.stop
+    expect(hub).to have_received(:update_available).with(available: nil, blocked: nil)
   end
 
   it "publishes the blocked update reasons for checkout, Bundler, and an unwritable gem directory" do
@@ -81,7 +98,7 @@ RSpec.describe Samagotchi::Web::UpdateCheck do
     ]
     cases.each do |settings, expected|
       hub = double("hub", update_available: nil)
-      described_class.new(hub: hub, fetcher: fetcher, clock: -> { clock.first },
+      described_class.new(hub: hub, enabled: true, fetcher: fetcher, clock: -> { clock.first },
                           state_file: File.join(root, expected, "update_check.json"),
                           installed_versions: installed_versions, gem_spec: Object.new, bundler: false,
                           gem_dir: root, **settings).check

@@ -12,7 +12,6 @@ require_relative "../log"
 require_relative "../installed_versions"
 require_relative "../version"
 require_relative "session_summary"
-require_relative "update_check"
 
 module Samagotchi
   module Web
