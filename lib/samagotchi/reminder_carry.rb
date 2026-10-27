@@ -5,16 +5,17 @@ require "json"
 require "time"
 require_relative "atomic_file"
 require_relative "log"
-require_relative "reminder_store"
 
 module Samagotchi
   # A restart's hand-off of the session's reminders, which otherwise live only
   # in the worker's Engine: the leaving worker writes `<id>/reminders.json`
   # (Worker#leave_on_request, as it takes a restart) and its successor takes
-  # it as it starts (Worker#start), reading and deleting it. Only an asked
+  # it as it starts (Worker#start): read and deleted before its Engine is
+  # built, restored into the Engine's store after. Only an asked
   # restart writes one: a stop, an idle exit, a crash and a fallback restart
-  # (a TERM) drop the reminders as before, and a stop removes a file left
-  # behind (SessionManager.stop_session). A file is honoured only by the same
+  # (a TERM) drop the reminders as before, and a stop or an archive removes a
+  # file left behind (SessionManager.stop_session, .archive_session); a
+  # restart a stop landed on starts no successor (.run_session_loop). A file is honoured only by the same
   # session, within WINDOW of its writing (a successor starts in seconds), so
   # one no successor read can't bring reminders back a day later.
   module ReminderCarry
@@ -41,25 +42,26 @@ module Samagotchi
       entries.size
     end
 
-    # Restore the hand-off into +store+ and delete it. A file of another
-    # session, outside WINDOW or unreadable, or one found as a stopped
-    # session starts, is deleted without restoring (log reminders_carry_dropped).
-    # @return [Array<String>] the names restored
-    def take(session_dir, session_id:, store:, stopped: false, wall: Time.now)
+    # Read the hand-off and delete it. A file of another session, outside
+    # WINDOW or unreadable, or one found as a stopped session starts, is
+    # deleted unused (log reminders_carry_dropped; at warn unless stopped).
+    # @return [Array<Hash>, nil] the entries for ReminderStore#restore, nil
+    #   when there is none to restore
+    def take(session_dir, session_id:, stopped: false, wall: Time.now)
       file = path(session_dir)
-      return [] unless File.exist?(file)
+      return nil unless File.exist?(file)
 
       data = read(file)
       remove(session_dir)
       why = drop_reason(data, session_id, stopped, wall)
-      if why
-        Log.info(:worker, "reminders_carry_dropped", why: why)
-        return []
-      end
+      return data["reminders"] unless why
 
-      names = store.restore(data["reminders"], wall: wall)
-      Log.info(:worker, "reminders_carried", count: names.size)
-      names
+      if why == :stopped
+        Log.info(:worker, "reminders_carry_dropped", why: why)
+      else
+        Log.warn(:worker, "reminders_carry_dropped", why: why)
+      end
+      nil
     end
 
     # @return [true]

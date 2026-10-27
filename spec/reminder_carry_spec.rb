@@ -3,6 +3,7 @@
 require "tmpdir"
 require "json"
 require "samagotchi/reminder_carry"
+require "samagotchi/reminder_store"
 
 RSpec.describe Samagotchi::ReminderCarry do
   let(:dir) { Dir.mktmpdir("reminder-carry") }
@@ -40,15 +41,15 @@ RSpec.describe Samagotchi::ReminderCarry do
   end
 
   describe ".take" do
-    it "restores the reminders and deletes the file" do
+    it "answers the entries for the store and deletes the file" do
       write_file
-      expect(described_class.take(dir, session_id: sid, store: store, wall: wall + 5)).to eq(["health"])
-      expect(store.reminders.keys).to eq(["health"])
+      entries = described_class.take(dir, session_id: sid, wall: wall + 5)
+      expect(store.restore(entries, wall: wall + 5)).to eq(["health"])
       expect(File.exist?(file)).to be(false)
     end
 
     it "is nothing without a file" do
-      expect(described_class.take(dir, session_id: sid, store: store, wall: wall)).to eq([])
+      expect(described_class.take(dir, session_id: sid, wall: wall)).to be_nil
     end
 
     it "deletes without restoring when the session is stopped, the file is another session's, old or unreadable" do
@@ -59,10 +60,20 @@ RSpec.describe Samagotchi::ReminderCarry do
        [{ written_at: "yesterday" }, {}],
        [nil, {}]].each do |fields, opts|
         fields.nil? ? File.write(file, "{not json") : write_file(**fields)
-        expect(described_class.take(dir, session_id: sid, store: store, wall: wall, **opts)).to eq([])
+        expect(described_class.take(dir, session_id: sid, wall: wall, **opts)).to be_nil
         expect(File.exist?(file)).to be(false)
       end
-      expect(store.any?).to be(false)
+    end
+
+    it "logs a stopped session's drop at info, any other at warn" do
+      allow(Samagotchi::Log).to receive(:info)
+      allow(Samagotchi::Log).to receive(:warn)
+      write_file
+      described_class.take(dir, session_id: sid, wall: wall, stopped: true)
+      write_file(written_at: (wall - 3600).iso8601(3))
+      described_class.take(dir, session_id: sid, wall: wall)
+      expect(Samagotchi::Log).to have_received(:info).with(:worker, "reminders_carry_dropped", why: :stopped)
+      expect(Samagotchi::Log).to have_received(:warn).with(:worker, "reminders_carry_dropped", why: :stale)
     end
   end
 

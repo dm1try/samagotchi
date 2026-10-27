@@ -1339,6 +1339,22 @@ RSpec.describe Samagotchi::Worker do
           expect(engine.reminder_store.reminders.keys).to eq(["api_health"])
         end
 
+        it "restores nothing into a stopped session's worker, and deletes the hand-off" do
+          File.write(carry_file, JSON.generate("session_id" => session.id, "written_at" => Time.now.utc.iso8601(3),
+                                               "reminders" => [{ "id" => "a1", "name" => "late", "description" => "d",
+                                                                 "interval_minutes" => 5,
+                                                                 "next_fire_at" => Time.now.utc.iso8601(3) }]))
+          Samagotchi::Session.mark_stopped(session.id, state_dir: tmpdir)
+          hold_worker(session_dir)
+          worker = described_class.new(session_id: session.id, state_dir: tmpdir, session_dir: session_dir,
+                                       idle_exit_minutes: 0, poll_interval: 0.05)
+          @thread = Thread.new { worker.run }
+
+          expect(join!(@thread, "the worker").value).to eq(:stopped)
+          expect(File.exist?(carry_file)).to be(false)
+          expect(engine.reminder_store.any?).to be(false)
+        end
+
         it "restores nothing from another session's hand-off, or one too old, and deletes it" do
           [{ "session_id" => "99999999-2222-3333-4444-555555555555", "written_at" => Time.now.utc.iso8601(3) },
            { "session_id" => session.id, "written_at" => (Time.now - 3600).utc.iso8601(3) }].each do |head|

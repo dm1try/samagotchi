@@ -249,8 +249,11 @@ module Samagotchi
       drop_dead_question
       # The running turn, on disk at its iteration boundaries.
       @checkpoint = TurnCheckpoint.new(session: @session, state_dir: @state_dir)
+      # A restart's hand-off, checked before the Engine's build (its window
+      # runs from the leave) and restored into it after.
+      carried = take_carried_reminders
       @engine = build_engine
-      take_carried_reminders
+      restore_carried_reminders(carried)
       @config_restart_unsubscribe = ConfigFile.watch_restart_settings!(process: :worker) do |message|
         @engine.announce(type: :hook_notice, hook: "config", text: message, level: :warn, between_turns: true)
       end
@@ -1607,13 +1610,24 @@ module Samagotchi
       false
     end
 
-    # The reminders a restart handed over (#carry_reminders), before the idle
-    # scheduler starts polling the store; a stopped session drops them.
+    # The reminders a restart handed over (#carry_reminders), read and
+    # deleted; a stopped session drops them.
+    # @return [Array<Hash>, nil] ReminderStore#export's entries
     def take_carried_reminders
-      ReminderCarry.take(@session_dir, session_id: @session_id, store: @engine.reminder_store,
-                                       stopped: stopped_on_disk?)
+      ReminderCarry.take(@session_dir, session_id: @session_id, stopped: stopped_on_disk?)
     rescue StandardError => e
       Log.warn(:worker, "reminders_carry_take_failed", error: e.class.name, msg: e.message)
+      nil
+    end
+
+    # Into the new Engine's store, before the idle scheduler starts polling it.
+    def restore_carried_reminders(entries)
+      return unless entries
+
+      names = @engine.reminder_store.restore(entries)
+      Log.info(:worker, "reminders_carried", count: names.size)
+    rescue StandardError => e
+      Log.warn(:worker, "reminders_carry_restore_failed", error: e.class.name, msg: e.message)
     end
 
     # @return [Symbol] +result+, with #discard? decided and, for a session
