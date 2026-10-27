@@ -26,6 +26,7 @@ and commands may change between minor versions. How releases are made:
   participant's cap is passed or their link is revoked or expires. A pair turn's commands run without
   secret-named environment variables and are killed at the execute limit, and one that writes outside the project
   asks the owner. Workers name a `pair_turns` feature.
+- Participant turns show a one-line tools overview with expandable, names-only rows that update as a turn runs.
 
 ### Changed
 

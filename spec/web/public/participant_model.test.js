@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
 import {
-  authorSlot, authorColor, authorLabel, toolLine, toolsSummary, refusalText, dequeueText, endedText, cursorSeq, streamURL, reloads, endsLiveTurn,
+  authorSlot, authorColor, authorLabel, toolLine, refusalText, dequeueText, endedText, cursorSeq, streamURL, reloads, endsLiveTurn,
   liveFrom, applyLive, liveText, AUTHOR_SLOTS, pickSubject, subjectBody, subjectsKey, narrowView,
   retries, retryDelay, PARTICIPANT_PREFIX, participantAuthor, threadGaps, withToolSteps, usageItems, leftText, USAGE_WARN,
   modeCopy,
@@ -42,8 +42,6 @@ test("participant: who wrote it: you, a participant's name, automatic, or the ow
 test("participant: a tool row is its name and project path; several fold into a summary", () => {
   assert.equal(toolLine({ tool: "read", path: "docs/plan.md" }), "read docs/plan.md");
   assert.equal(toolLine({ tool: "execute" }), "execute");
-  assert.equal(toolsSummary([{ tool: "read", path: "a.md" }, { tool: "execute" }, { tool: "memory_read" }]), "read a.md + 2 more");
-  assert.equal(toolsSummary([]), "");
 });
 
 test("participant: a refusal in the server's words, as a sentence; with none, the status", () => {

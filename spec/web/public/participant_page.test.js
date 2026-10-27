@@ -314,8 +314,8 @@ test("participant page: the reply's events that arrive while the review is re-re
   assert.equal($("liveReply").textContent, "Hello world");
 });
 
-test("participant page: a re-read keeps the tool lists as the reader left them, and the messages drawn already", async (t) => {
-  const tools = [{ tool: "read", path: "a.md", status: "ok" }, { tool: "read", path: "b.md", status: "ok" }];
+test("participant page: a re-read keeps the tool overview folded state and messages drawn already", async (t) => {
+  const tools = [{ tool: "read", path: "src/a.md", status: "ok" }, { tool: "read", path: "src/b.md", status: "ok" }];
   const messages = [{ role: "user", content: "Look" }, { role: "assistant", content: "Read both.", tools }];
   const running = { ...REVIEW, messages, current_turn: { prompt: "Again", text: "", tools }, last_event_id: "3-ab" };
   let gets = 0;
@@ -323,13 +323,17 @@ test("participant page: a re-read keeps the tool lists as the reader left them, 
     respond: (call) => call.answer(200, ++gets === 1 ? running : { ...running, last_event_id: "4-ab", queued: { mine: [], others: 1 } }),
   });
   const [done, current] = $("thread").querySelectorAll("details");
-  assert.equal(done.open, true, "a short list opens by default on a wide screen");
+  assert.equal(done.open, false, "tool rows fold into one line");
+  assert.equal(done.querySelector("summary").textContent, "read 2 files");
+  assert.deepEqual([...done.querySelectorAll("li")].map((row) => row.textContent), ["read src/a.md", "read src/b.md"]);
+  done.querySelector("summary").click();
+  assert.equal(done.open, true, "the native details summary opens the names-only rows");
   done.open = false;
   current.open = false;
   const bubble = $("thread").querySelector(".p-msg.reply .p-bubble");
 
   sources[0].emit("generation_chunk", { text: "Hm" });
-  assert.equal($("liveReply").querySelector("details").open, false, "the live reply's list stays closed as it streams");
+  assert.equal($("liveReply").querySelector("details").open, false, "the live reply's rows stay folded as it streams");
   sources[0].emit("turn_enqueued");
   await tick(120);
   assert.equal(gets, 2);
@@ -337,6 +341,22 @@ test("participant page: a re-read keeps the tool lists as the reader left them, 
   assert.equal(doneAfter.open, false);
   assert.equal(currentAfter.open, false);
   assert.equal($("thread").querySelector(".p-msg.reply .p-bubble"), bubble, "a message drawn already is kept, not drawn again");
+});
+
+test("participant page: a live turn's tool overview updates without showing command text", async (t) => {
+  const running = { ...REVIEW, current_turn: { prompt: "Work", text: "", tools: [] } };
+  const { $, sources } = await openPage(t, { respond: (call) => call.answer(200, running) });
+
+  sources[0].emit("tool_call_started", { tool: "execute", command: "secret command", iteration: 1, call_index: 0 });
+  let details = $("liveReply").querySelector("details");
+  assert.equal(details.querySelector("summary").textContent, "ran 1 command");
+  assert.deepEqual([...details.querySelectorAll("li")].map((row) => row.textContent), ["execute"]);
+  assert.doesNotMatch($("liveReply").textContent, /secret command/);
+
+  sources[0].emit("tool_call_started", { tool: "edit", path: "src/engine.rb", iteration: 1, call_index: 1 });
+  details = $("liveReply").querySelector("details");
+  assert.equal(details.querySelector("summary").textContent, "ran 1 command · edited 1 file (engine.rb)");
+  assert.deepEqual([...details.querySelectorAll("li")].map((row) => row.textContent), ["execute", "edit src/engine.rb"]);
 });
 
 test("participant page: history and the current prompt carry their turn ids", async (t) => {
