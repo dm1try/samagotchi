@@ -70,6 +70,8 @@ SUBCOMMANDS = {
   "bundle" => ["samagotchi/bundle_command", "BundleCommand"],
   # the System 1 record: replay the asks this machine's sessions already answered
   "guardrails" => ["samagotchi/guardrails_command", "GuardrailsCommand"],
+  # audit suggestions for which toolkit fits a session's first prompt
+  "toolkit" => ["samagotchi/toolkit_report_command", "ToolkitReportCommand"],
   # other machines' chi web, for chi --remote NAME (add, ls, rm)
   "remote" => ["samagotchi/remote_command", "RemoteCommand"]
 }.freeze
