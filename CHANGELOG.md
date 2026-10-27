@@ -9,6 +9,8 @@ and commands may change between minor versions. How releases are made:
 
 ### Added
 
+- chi web checks RubyGems daily and shows each aged, stable release newer than both the running and installed chi,
+  with its RubyGems page and a command to copy (`chi update`, or the blocker-specific command).
 - `toolkit.suggest.mode: on` starts a new session on the kit System 1 suggests for its first prompt (or a later one
   after `undecided`), waiting at most System 1's timeout before the first request, with a
   `toolkit: NAME (suggested, p=…) · /toolkit to change` notice; anything uncertain keeps the default kit.

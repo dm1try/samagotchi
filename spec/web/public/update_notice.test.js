@@ -1,6 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { compareVersions, newerVersion, restartConfirmText, versionNotice, workerBadge } from "../../../lib/samagotchi/web/public/update_notice.js";
+import {
+  compareVersions, mergeVersionState, newerVersion, restartConfirmText, versionNotice, workerBadge,
+} from "../../../lib/samagotchi/web/public/update_notice.js";
 
 test("versionNotice: a snapshot from another chi version than the page's asks for a reload", () => {
   assert.deepEqual(versionNotice({ loaded: "0.17.0", served: "0.18.0" }),
@@ -32,6 +34,32 @@ test("versionNotice: the reload comes first (the reloaded page then hears about 
   assert.equal(versionNotice({ loaded: "0.17.0", served: "0.18.0", installed: "0.19.0" }).key, "reload:0.18.0");
 });
 
+test("versionNotice: an available chi offers chi update and links to that RubyGems release", () => {
+  assert.deepEqual(versionNotice({ loaded: "0.18.1", served: "0.18.1", available: "0.19.0" }), {
+    key: "available:0.19.0",
+    text: "chi 0.19.0 is available (you run 0.18.1). Run chi update.",
+    command: "chi update",
+    releaseUrl: "https://rubygems.org/gems/samagotchi/versions/0.19.0",
+    reload: false,
+  });
+  assert.deepEqual(versionNotice({
+    loaded: "0.18.1", served: "0.18.1", available: "0.19.0", updateBlocked: "bundler",
+  }), {
+    key: "available:0.19.0",
+    text: "chi 0.19.0 is available (you run 0.18.1); chi update cannot run under Bundler. Run bundle update samagotchi.",
+    command: "bundle update samagotchi",
+    releaseUrl: "https://rubygems.org/gems/samagotchi/versions/0.19.0",
+    reload: false,
+  });
+});
+
+test("mergeVersionState retains installed when a partial chi frame omits it", () => {
+  const current = { served: "0.18.1", installed: "0.19.0", available: null, updateBlocked: null };
+  assert.deepEqual(mergeVersionState(current, { version: "0.18.1" }), current);
+  assert.deepEqual(mergeVersionState(current, { version: "0.18.1", installed: null }),
+    { ...current, installed: null });
+});
+
 test("versionNotice: once per notice (each reconnect's snapshot carries it again)", () => {
   assert.equal(versionNotice({ loaded: "0.17.0", served: "0.18.0", shown: new Set(["reload:0.18.0"]) }), null);
   assert.equal(versionNotice({ loaded: "0.17.0", served: "0.19.0", shown: new Set(["reload:0.18.0"]) }).key,
@@ -39,6 +67,9 @@ test("versionNotice: once per notice (each reconnect's snapshot carries it again
   const shown = new Set(["installed:0.19.0"]);
   assert.equal(versionNotice({ loaded: "0.18.1", served: "0.18.1", installed: "0.19.0", shown }), null);
   assert.equal(versionNotice({ loaded: "0.18.1", served: "0.18.1", installed: "0.19.1", shown }).key, "installed:0.19.1");
+  assert.equal(versionNotice({ loaded: "0.18.1", served: "0.18.1", available: "0.19.0", shown }).key, "available:0.19.0");
+  assert.equal(versionNotice({ loaded: "0.18.1", served: "0.18.1", available: "0.19.0",
+                               shown: new Set(["available:0.19.0"]) }), null);
 });
 
 test("compareVersions: Gem::Version's order, prereleases below their release", () => {

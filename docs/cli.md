@@ -233,6 +233,16 @@ Also shipped, not installed: dev (mcp, skills, source-links) (chi bundle install
 done
 ```
 
+- **chi web update notices.** By default, chi web checks RubyGems about 30
+  seconds after it starts and every 24 hours after that. Once a stable release
+  is at least 24 hours old and newer than both the running chi and the newest
+  installed one, the page shows its version, a link to that RubyGems release,
+  and a button to copy `chi update`. The notice is once per version per tab.
+  `update.notify: off` disables checking; `update.check_hours` and
+  `update.min_age_hours` tune the interval and release age (see
+  [configuration](configuration.md#all-settings)). If the gem can't be updated
+  in place, the notice gives the blocker and its command instead.
+
 - **The gem.** It asks rubygems.org for the newest samagotchi (5 s timeout)
   and, when that's newer, runs `gem install samagotchi` with the gem command
   of the Ruby chi runs on (the real one, not a mise/rbenv/asdf shim; a chi
