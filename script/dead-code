@@ -1,0 +1,54 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+# The methods defined under lib/ that nothing else in the repo names: a
+# Prism scan for a tech-debt audit round. Advisory: it always exits 0 and CI
+# doesn't run it; each row is a lead to check, not a verdict.
+#
+#   script/dead-code            # --help says more
+#
+# See docs/testing.md.
+
+HELP = <<~TEXT
+  usage: script/dead-code [--help]
+
+  Lists the methods defined under lib/ that nothing names, one per line:
+
+    path:line  name  [notes]
+
+  A name counts as used where it appears in lib, spec, bin, script, the erb
+  templates, the Rakefile, Gemfile, gemspec or rubocop/ as an identifier,
+  constant, label or a word in a string; be_foo counts for foo? and have_foo
+  for has_foo?. Ruby's hooks and operators (initialize, to_s, ==...) are skipped.
+  Notes say what may explain a row: docs (a doc names it), dyn-prefix (an
+  interpolated string starts like it: a name built at run time), a framework
+  hook (pretty_print...), dispatched by name (on_<event>, run_<sub>) or
+  bundle-spec. Rows with no explaining note are the ones to review: they come
+  first, and the last line counts them.
+
+  Advisory, not a gate: it always exits 0 and CI doesn't run it. Needs Prism
+  (Ruby 3.4+, or bundle exec on 3.3).
+TEXT
+
+if ARGV.include?("-h") || ARGV.include?("--help")
+  puts HELP
+  exit 0
+end
+
+begin
+  require "prism"
+rescue LoadError
+  warn "script/dead-code: needs Prism (Ruby 3.4+, or bundle exec on 3.3); skipped"
+  exit 0
+end
+require_relative "dead_code/scan"
+
+result = DeadCode::Scan.new(root: File.expand_path("..", __dir__)).run
+# The rows to review first, then the ones a note explains.
+(result.review_worthy + result.rows.select(&:explained?)).each do |row|
+  notes = row.notes.empty? ? "" : "  [#{row.notes.join(", ")}]"
+  puts "#{row.path}:#{row.line}  #{row.singleton}#{row.name}#{notes}"
+end
+puts "#{result.rows.size} unreferenced def sites (#{result.rows.map(&:name).uniq.size} names) " \
+     "of #{result.defs} defs; #{result.review_worthy.size} with no explaining note"
+exit 0

@@ -392,3 +392,8 @@ kept with the build id `/status` shows (`identity.cache.build_id`); when that ch
 the version and record it again. This step goes once a Splash release carries its version in `/status`.
 
 The code is `script/deps/deps_check.rb`; its spec stubs every request and command (`spec/deps_check_spec.rb`).
+
+`script/dead-code` (a tech-debt audit round runs it too) lists the methods defined under lib/ that nothing in the repo
+names (Prism; `be_foo`/`have_foo` count for `foo?`/`has_foo?`), as `path:line name [notes]` with a count; a note says
+what may explain a row (a doc, a name built at run time, a framework hook). Advisory: it always exits 0, CI doesn't
+run it. Its spec is `spec/script/dead_code_spec.rb`.
