@@ -1,7 +1,11 @@
 # frozen_string_literal: true
 
 require_relative "log"
+require_relative "memory_paths"
+require_relative "model_overlay"
+require_relative "muted_memories"
 require_relative "toolkit"
+require "yaml"
 
 module Samagotchi
   # An Engine's session toolkit: the kits it resolves against, what the
@@ -39,15 +43,26 @@ module Samagotchi
     # @return [Array<Toolkit::Kit>] the plugins' kits (Plugin::Registries' toolkits:)
     attr_reader :plugin_kits
 
-    # The kits a session's toolkit resolves against: the built-ins, config's
-    # toolkit.kits, the plugins' (Toolkit.kits). Config's are read once per
-    # process, like the plugins': an edit to toolkit.kits never changes a
-    # live session's tools mid-session (a new worker reads it).
-    # @param errors [Array<String>] gets a line per config kit left out
+    # The kits a session's toolkit resolves against: built-ins, config,
+    # plugins, then project and system memory kits. Config and memory kits
+    # are read once per worker, like the plugins': edits take effect when a
+    # new worker reads them.
+    # @param errors [Array<String>] gets a line per invalid or skipped kit
     # @return [Hash{String => Toolkit::Kit}]
     def kits(errors = [])
       @config_kits = Toolkit.config_kits unless defined?(@config_kits)
-      Toolkit.kits(config: @config_kits, plugins: @plugin_kits, errors: errors)
+      memory_kits, memory_errors = memory_kits_for(@session.call)
+      errors.concat(memory_errors)
+      kits = Toolkit.kits(config: @config_kits, plugins: @plugin_kits, errors: errors)
+      memory_kits.each do |kit|
+        if kits.key?(kit.name)
+          errors << "#{MEMORY_KIT_PREFIX}#{kit.name}.md (#{kit.source}): " \
+                    "toolkit name is already defined; skipping this memory kit"
+        else
+          kits[kit.name] = kit
+        end
+      end
+      kits
     end
 
     # The session's toolkit resolved (Toolkit::Resolved): what its next
@@ -149,6 +164,92 @@ module Samagotchi
     end
 
     private
+
+    MEMORY_KIT_PREFIX = "toolkit_"
+    MEMORY_KIT_KEYS = %w[base add remove groups description].freeze
+    MEMORY_KIT_BLOCK = /\A[ \t]*```yaml[ \t]*\r?\n(.*?)\r?\n```[ \t]*\r?\n?\z/m
+
+    # Read once per (folder, muted names): a call before the session exists
+    # (no project folder yet) never hides the project's kits afterwards.
+    def memory_kits_for(session)
+      key = [session&.working_directory, MutedMemories.normalize_list(session&.muted_memory_names)]
+      @memory_kits = { key => load_memory_kits(*key) } unless @memory_kits&.key?(key)
+      @memory_kits[key]
+    end
+
+    def load_memory_kits(cwd, muted)
+      candidates = []
+      errors = []
+      scopes = []
+      scopes << ["project", MemoryPaths.scope_dir(:project, cwd: cwd)] if cwd
+      scopes << ["system", MemoryPaths.scope_dir(:system, cwd: cwd)]
+      scopes.each do |scope, dir|
+        next unless dir && File.directory?(dir)
+
+        Dir.glob(File.join(dir, "#{MEMORY_KIT_PREFIX}*.md")).sort.each do |path|
+          next if ModelOverlay.overlay_file?(path)
+
+          memory_name = File.basename(path, ".md")
+          next if MutedMemories.muted?(memory_name, muted)
+
+          kit = read_memory_kit(path, scope, errors)
+          candidates << kit if kit
+        end
+      end
+      [candidates, errors]
+    end
+
+    def read_memory_kit(path, scope, errors)
+      memory_name = File.basename(path, ".md")
+      name = memory_name.delete_prefix(MEMORY_KIT_PREFIX)
+      return memory_kit_error(errors, memory_name, scope, "toolkit name is empty") if name.empty?
+
+      body = File.read(path, encoding: "UTF-8")
+      match = body.match(MEMORY_KIT_BLOCK)
+      return memory_kit_error(errors, memory_name, scope, "expected one fenced yaml block") unless match
+
+      spec = YAML.safe_load(match[1], permitted_classes: [], aliases: false)
+      return memory_kit_error(errors, memory_name, scope, "yaml block must be a map") unless spec.is_a?(Hash)
+
+      spec = spec.transform_keys(&:to_s)
+      if spec.key?("prompt")
+        return memory_kit_error(errors, memory_name, scope, "prompt: is not supported in toolkit memories")
+      end
+
+      unknown = spec.keys - MEMORY_KIT_KEYS
+      if unknown.any?
+        return memory_kit_error(errors, memory_name, scope, "unknown key #{unknown.first}")
+      end
+
+      description = spec["description"]
+      unless spec.key?("description") && !description.nil?
+        return memory_kit_error(errors, memory_name, scope, "description is required")
+      end
+      if (problem = Toolkit.description_error(description))
+        return memory_kit_error(errors, memory_name, scope, problem)
+      end
+      return memory_kit_error(errors, memory_name, scope, "description is required") if description.strip.empty?
+      if !spec["base"].nil? && (!spec["base"].is_a?(String) || spec["base"].strip.empty?)
+        return memory_kit_error(errors, memory_name, scope, "base must be a toolkit name")
+      end
+      if %w[add remove].any? { |key| spec.key?(key) && !(spec[key].is_a?(Array) && spec[key].all?(String)) }
+        return memory_kit_error(errors, memory_name, scope, "add and remove must be lists of tool names")
+      end
+      if (problem = Toolkit.groups_error(spec["groups"]))
+        return memory_kit_error(errors, memory_name, scope, problem)
+      end
+
+      Toolkit::Kit.new(name: name, base: spec["base"] || Toolkit::FULL, add: spec.fetch("add", []),
+                       remove: spec.fetch("remove", []), groups: spec["groups"], description: description,
+                       source: "memory:#{scope}")
+    rescue Psych::Exception, SystemCallError, EncodingError => e
+      memory_kit_error(errors, memory_name, scope, e.message.lines.first.to_s.strip)
+    end
+
+    def memory_kit_error(errors, memory_name, scope, message)
+      errors << "#{memory_name} (memory:#{scope}): #{message}"
+      nil
+    end
 
     # The toolkit's load warnings, each once per process: a name that
     # didn't resolve, config kits left out.

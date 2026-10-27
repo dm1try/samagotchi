@@ -96,7 +96,11 @@ module Samagotchi
         lines << "  reachable (#{route}): #{explained.reachable.join(", ")}"
         lines << "  removed: #{explained.removed.empty? ? "none" : explained.removed.join(", ")}"
       end
-      lines << "  toolkits: #{@engine.toolkit_kits.keys.join(", ")}; #{USAGE.delete_prefix("usage: ")} changes it"
+      choices = @engine.toolkit_kits.map do |name, kit|
+        source = kit.source.start_with?("memory:") ? " (#{kit.source})" : ""
+        "#{name}#{source}"
+      end
+      lines << "  toolkits: #{choices.join(", ")}; #{USAGE.delete_prefix("usage: ")} changes it"
       lines.join("\n")
     end
 

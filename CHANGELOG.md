@@ -10,6 +10,8 @@ and commands may change between minor versions. How releases are made:
 ### Added
 
 - Toolkit kits accept an optional `description:` for classification, separate from their prompt text.
+- Memory entries named `toolkit_<name>` define kits; project memories override system memories, and `/toolkit` shows
+  their source.
 
 ### Fixed
 
