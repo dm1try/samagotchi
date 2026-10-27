@@ -26,6 +26,8 @@ class KnownNames
   # name after it is what is checked.
   TOKEN_SPLIT = %r{[/\s"'=:,;|&()<>@~#]+}
   PART_SPLIT = /[-_.]+/
+  # Separators at a token's start or end, dropped before it is compared.
+  EDGE_SEPARATORS = /\A[-_.]+|[-_.]+\z/
   # A candidate with a shell glob character is not checked: `workato*`
   # is a pattern over the name, not a misspelling of it.
   GLOB = /[*?\[\]{}]/
@@ -94,17 +96,22 @@ class KnownNames
     return nil if names.empty?
 
     scan_targets(event).each do |where, text|
-      candidates(text).each do |candidate|
+      candidates(text).each do |token|
+        next if names.key?(token.downcase)
+
+        # "coffee_assistant-" (a prefix search) is the name, not a misspelling.
+        candidate = token.gsub(EDGE_SEPARATORS, "")
         down = candidate.downcase
-        next if names.key?(down)
+        next if candidate.empty? || names.key?(down)
 
         names.each do |name_down, name|
           next if camel_case?(candidate, name)
 
           max = @max_distance || (name.length < 10 ? 1 : 2)
-          next if (candidate.length - name.length).abs > max
+          bare = name_down.gsub(EDGE_SEPARATORS, "")
+          next if (candidate.length - bare.length).abs > max
 
-          d = self.class.distance(down, name_down)
+          d = self.class.distance(down, bare)
           return { miss: candidate, name: name, distance: d, where: where } if d.between?(1, max)
         end
       end

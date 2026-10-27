@@ -20,6 +20,8 @@ and commands may change between minor versions. How releases are made:
 - The known-names hook lets through a protected name's CamelCase form (`CoffeeAssistant` or `coffeeAssistant` for a
   repo named `coffee_assistant`) instead of rejecting it as a misspelling; `coffee-assistant` and `coffeeassistant`
   are still caught.
+- The known-names hook ignores separators at a word's start or end, so `grep coffee_assistant-` or
+  `.coffee_assistant` is no longer rejected as a misspelling; `mode: correct` keeps those separators.
 
 ## [0.125.0] - 2026-10-27
 

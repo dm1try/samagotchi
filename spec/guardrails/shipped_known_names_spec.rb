@@ -129,6 +129,24 @@ RSpec.describe "The known-names bundle" do
     end
   end
 
+  context "with separators at a token's edges" do
+    let(:settings) { { "names" => %w[coffee_assistant build_], "derive" => [] } }
+
+    it "lets through the name with leading or trailing separators" do
+      ["ls ../ | grep coffee_assistant-", "ls .coffee_assistant", "ls coffee_assistant__", "ls build_"].each do |command|
+        expect(shell(command)).to be_allow, command
+      end
+      expect(notices).to be_empty
+    end
+
+    it "checks the token without them" do
+      { "ls coffee_assistan-" => %w[coffee_assistan coffee_assistant], "ls _cofee_assistant_" => %w[cofee_assistant coffee_assistant],
+        "ls biuld_" => %w[biuld build_] }.each do |command, (miss, name)|
+        expect(shell(command).reason).to include("\"#{miss}\" in the command is 1 edit away from the known name \"#{name}\""), command
+      end
+    end
+  end
+
   it "scans a read's path and a write's path, not a write's content" do
     expect(verdict_for({ name: "read", content: "~/../johndeo/x" }).reason).to include('"johndeo" in the path')
     expect(verdict_for({ name: "write", path: "/home/johndeo/a.txt", content: "x" })).to be_deny
@@ -185,6 +203,10 @@ RSpec.describe "The known-names bundle" do
       expect(v.call[:content]).to eq("ls /home/johndoe/a /home/johndoe-old; echo johndeox")
       expect(notices).to eq([{ text: 'corrected "johndeo" → "johndoe" in execute', level: :info,
                                hook: "known_names.rb (bundle known-names)" }])
+    end
+
+    it "keeps the separators around a near miss it corrects" do
+      expect(shell("ls johndo-").call[:content]).to eq("ls johndoe-")
     end
 
     it "keeps the \"~\" of a \"~name\" it corrects" do
