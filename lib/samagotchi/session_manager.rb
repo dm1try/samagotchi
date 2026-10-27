@@ -822,7 +822,7 @@ module Samagotchi
     end
     private_class_method :running_created_task?
 
-    # Stop a session by sending TERM to its process.
+    # Stop a session by sending TERM (then CONT, for a stopped one) to its process.
     # With +wait+ (seconds), also wait for the owner to let go of the session,
     # so a resume right after spawns a fresh worker instead of finding the
     # dying one.
@@ -844,7 +844,18 @@ module Samagotchi
       rescue Errno::ESRCH
         nil # already exited
       end
+      continue_stopped(pid)
       wait_for_owner_release(session_id, timeout: wait, state_dir: sd) if wait
+    end
+
+    # A stopped worker (SIGSTOP, Ctrl-Z) runs its TERM handler only once
+    # continued: CONT it after the TERM (as ProcessGroup.stop does), so it
+    # leaves now rather than outliving the stop's wait. Best effort: one the
+    # TERM ended may be gone already.
+    private_class_method def self.continue_stopped(pid)
+      Process.kill("CONT", pid) if pid && pid > 0
+    rescue Errno::ESRCH, Errno::EPERM
+      nil
     end
 
     STOP_CANCEL_WAIT = 3.0

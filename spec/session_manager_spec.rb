@@ -100,6 +100,18 @@ RSpec.describe Samagotchi::SessionManager do
         expect(described_class.session_owner(session.id, state_dir: tmpdir)).not_to be_nil
       end
 
+      it "stops a stopped (SIGSTOPped) owner with its TERM, within the wait, and not by outliving it" do
+        spawn_owner
+        Process.kill("STOP", @owner_pid)
+        wait_for("the owner to be stopped") { Samagotchi::ProcessGroup.stopped?(@owner_pid) }
+        started = SpecWaiting.mono
+
+        expect(described_class.stop_session(session.id, state_dir: tmpdir, wait: 5)).to be true
+        expect(SpecWaiting.mono - started).to be < 2.5
+        expect(Process.wait2(@owner_pid).last.termsig).to eq(Signal.list["TERM"])
+        @owner_pid = nil
+      end
+
       it "returns true at once when nothing owns the session" do
         expect(described_class.stop_session(session.id, state_dir: tmpdir, wait: 5)).to be true
       end

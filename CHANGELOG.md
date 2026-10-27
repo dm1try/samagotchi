@@ -7,6 +7,12 @@ and commands may change between minor versions. How releases are made:
 [docs/releasing.md](docs/releasing.md).
 ## [Unreleased]
 
+### Fixed
+
+- `chi sessions stop` (and the web's stop, delete and archive, which stop the same way) stops a stopped (SIGSTOPped,
+  Ctrl-Z) worker at once, instead of waiting out the stop's 10 s and leaving it running; a command or background task
+  chi stops while it is stopped ends with its TERM, not the KILL after the grace.
+
 ## [0.124.0] - 2026-10-27
 
 ### Added

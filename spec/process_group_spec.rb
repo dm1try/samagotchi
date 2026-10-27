@@ -66,6 +66,36 @@ RSpec.describe Samagotchi::ProcessGroup do
       reap(pid)
     end
 
+    it "stops a stopped (SIGSTOPped) group with its TERM within the grace, not with the KILL after it" do
+      # A TERM handler, as a worker has: the TERM waits for a CONT to run it
+      # (macOS ends a stopped process at once only for a default TERM).
+      pid = spawn_group("trap 'exit 3' TERM; sleep 31.93 & wait")
+      wait_for("the trap set, the sleep started") { system("pgrep", "-g", pid.to_s, "-f", "sleep 31.93", out: File::NULL) }
+      Process.kill("STOP", -pid)
+      wait_for("the group stopped") { described_class.stopped?(pid) }
+      started = described_class.monotonic
+      status = nil
+      gone = -> { status ||= Process.wait2(pid, Process::WNOHANG)&.last }
+
+      expect(described_class.stop(pid, grace: 2, poll: 0.01, stopped: gone)).to be(true)
+      expect(described_class.monotonic - started).to be < 1.5
+      expect(status&.exitstatus).to eq(3)
+    ensure
+      reap(pid) unless status
+    end
+
+    # macOS answers a signal to a group of zombies only with EPERM: one the
+    # TERM ended before its CONT (seen in a task_stop spec, 2 runs in 3).
+    it "takes a refused CONT after the TERM as nothing to continue, even when only ESRCH is quiet" do
+      pid = spawn_group("sleep 31.94")
+      allow(Process).to receive(:kill).and_call_original
+      allow(Process).to receive(:kill).with("CONT", -pid).and_raise(Errno::EPERM)
+
+      expect(described_class.stop(pid, grace: 2, poll: 0.01, stopped: reaped(pid), quiet: [Errno::ESRCH])).to be(true)
+    ensure
+      reap(pid)
+    end
+
     it "KILLs a group that ignores TERM once the grace is over, and waits until it has stopped" do
       pid = spawn_group("trap '' TERM; sleep 31.92")
       wait_for("the TERM-ignoring sleep") { system("pgrep", "-f", "sleep 31.92", out: File::NULL) }

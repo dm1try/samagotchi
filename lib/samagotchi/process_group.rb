@@ -119,7 +119,7 @@ module Samagotchi
     # How long #stop waits for +stopped+ after the KILL by default.
     KILL_WAIT_SEC = 1.0
 
-    # TERMs the group, waits up to +grace+ for +stopped+, then KILLs it and
+    # TERMs (and CONTs) the group, waits up to +grace+ for +stopped+, then KILLs it and
     # waits up to +kill_wait+ for +stopped+ again (a KILL is delivered, not
     # done, when kill returns).
     #
@@ -146,6 +146,15 @@ module Samagotchi
       extra = walk ? descendant_groups(pgid) : []
       signal(pgid, "TERM", **signal_options)
       extra.each { |group| signal(group, "TERM") }
+      # A stopped process (SIGSTOP, Ctrl-Z) holds the TERM pending, its
+      # handler unrun, until it is continued: CONT it after the TERM, so it
+      # resumes with the TERM already waiting (a CONT first would let it run
+      # unsignalled, to be stopped again) and stops within the grace, not by
+      # the KILL. A running process ignores the CONT. Always quiet: a group
+      # the TERM already ended may be zombies only by now, which macOS
+      # refuses a signal with EPERM.
+      signal(pgid, "CONT", **signal_options, quiet: QUIET)
+      extra.each { |group| signal(group, "CONT") }
       # +stopped+ is asked until it says true once (it may reap: a second
       # wait on a reaped pid raises ECHILD), then only the extra groups.
       done = false
