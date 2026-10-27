@@ -41,7 +41,7 @@ alias as the model it names).
 
 ### Everyone it concerns
 
-The second row, **Everyone it concerns** (⌘B), shares a note with every session it may concern instead of the ones
+The second row, **Everyone it concerns (this Mac)** (⌘B), shares a note with every session it may concern instead of the ones
 you pick: ⌘⏎ (the **Broadcast** button) runs [`chi broadcast`](broadcast.md) with the line, then the text, on stdin.
 chi picks the sessions (a shared ticket, PR or link, else a small triage model), so the preselected session doesn't
 count: the row is ticked alone, like the new row. Write it the way you'd tell a colleague: a first line such as
@@ -51,6 +51,8 @@ count: the row is ticked alone, like the new row. Write it the way you'd tell a 
   skipped 2 · 1 unchecked: triage deadline`), and **stays open**: Esc closes. Which sessions got it and why:
   `chi broadcast log` in a terminal.
 - A broadcast is a text note: ⏎ and images beep. The source field and Send are hidden (its source is `broadcast`).
+- It reaches this Mac's sessions only (`chi broadcast` runs on this machine only), never a
+  [remote's](#remote-sessions).
 - It may take `broadcast.triage_deadline` (20 s) and 10 s more before the helper stops it ("the note may be partly
   delivered"). The helper reads that from its launch file: after changing the deadline, run `chi update` (or
   `chi desktop upgrade`).
@@ -105,6 +107,38 @@ thumbnails sit under the message line, 48 px high, the file name as a tooltip; h
 - Clipboard and dropped image data goes to temp files under `$TMPDIR/chi-helper`, deleted after the send or when
   the panel closes; files from Finder are sent as they are, never touched. A send with images may take up to 30 s
   (converting, a worker starting) before the panel gives up.
+
+## Remote sessions
+
+The panel also lists the sessions of the other machines `chi remote add` keeps (see
+[Remote sessions](cli.md#remote-sessions)), say the Studio's from a laptop: select text or take a screenshot here,
+and it lands in a session running there.
+
+- **Which:** every remote in `chi remote ls` that has a token, asked at each open (a remote you don't want in the
+  panel: `chi remote rm` it). No `chi update` or `chi desktop upgrade` after adding one.
+- **Where:** after this Mac's rows, one section per remote under an **on studio** divider: its live sessions, then up
+  to 3 recent ones, as for this Mac. Each row carries a grey **studio** tag and its whole folder path (that machine's
+  home may differ from this one's). ⌘1…⌘9 number this Mac's rows first, then the remotes' in order; past nine, a row
+  is clicked.
+- **Not twice:** a session shows once, where it is listed first (this Mac, then the remotes in `chi remote ls` order),
+  so two remotes for the same Studio (its LAN address and its ts.net name), or a remote that is this Mac, don't
+  list or send to it twice.
+- **Wrong machine:** both machines likely have the same paths. While a remote's row is ticked the message line's hint
+  ends in **→ studio**, and **→ studio** shows beside Send (it stays there while you type). The last choice is
+  preselected while it is still live, a remote's row too; the "only one live session" rule picks this Mac's only,
+  never a remote's. A remote that answers after this Mac's list never changes what is ticked: it is preselected only
+  when nothing is (so a remembered remote row is ticked when the remote answers first, or when this Mac has live
+  sessions but none was remembered).
+- **Keys:** ⏎ and ⌘⏎ work as for this Mac's sessions (`chi --remote studio send …`, `chi --remote studio note …`;
+  a note to a stopped session there waits for its next start). Images go along (`--image`: chi uploads them). With
+  rows of several machines ticked, the helper runs one call per machine at once and shows one line: `sent · studio:
+  sent`. ⌥⏎ (paste) beeps on a remote's row as on this Mac's.
+- **Down or refused:** this Mac's rows show as soon as they are in; each remote's fill in as it answers. A remote's
+  two lists run at once and get 4 s together: one that doesn't answer shows **studio: no answer within 4 s** under
+  its divider, one that chi gives up on by itself (connection refused, the token refused) the first line of chi's
+  error. The previous open's rows for it are never reused: a stale row could send to a stopped worker.
+- **What stays on this Mac:** the **New session** row (⌘0) and its model, the **Everyone it concerns** row
+  (`chi broadcast` is local only) and the agents in kitty and tmux.
 
 ## Agents in kitty and tmux
 
@@ -276,8 +310,14 @@ The helper uses only these commands, so it could ship on its own later:
   (`delivered N · skipped M…`); exit 0 when it ran, 1 when refused or a delivery failed.
 - `chi self --model` → the model a new session starts on (the panel's hint).
 - `chi models --format json` → the models the hosts offer (the new-session model picker).
+- `chi remote ls --format json` → `[{name, url, token}]` (never the token itself): the remotes whose sessions the
+  panel lists. A name goes on only when it has a token and passes chi's own rule (letters, digits, `_`, `-`, not
+  starting with `-`). An older chi without `chi remote` lists none.
+- `chi --remote NAME sessions list …`, `chi --remote NAME send …` and `chi --remote NAME note …`: the same calls on a
+  remote's sessions. `CHI_REMOTE` is taken out of the helper's environment, so this Mac's calls never go remote.
 
-Each call is stopped after 10 s, a send with images after 30 s, a broadcast after the launch file's
+Each call is stopped after 10 s, a remote's two lists after 4 s, a send of text to a remote after 15 s (waking a
+stopped worker there), a send with images after 30 s, a broadcast after the launch file's
 `broadcast_timeout` (`broadcast.triage_deadline` + 10 s; 30 s when it has none). A stopped `chi note` or `chi
 broadcast` says the note may be partly delivered.
 

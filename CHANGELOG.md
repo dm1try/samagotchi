@@ -7,6 +7,13 @@ and commands may change between minor versions. How releases are made:
 [docs/releasing.md](docs/releasing.md).
 ## [Unreleased]
 
+### Added
+
+- The desktop helper's panel lists and sends to the sessions of the remotes `chi remote add` keeps: a section per
+  remote ("on studio") after this Mac's rows, each row tagged with its machine, "→ studio" in the hint while one is
+  ticked, one call per machine at once; a remote that doesn't answer within 4 s or refuses shows one line, and this
+  Mac's rows don't wait for it. The Everyone row, the new row and agents stay on this Mac.
+
 ## [0.123.0] - 2026-10-27
 
 ### Added

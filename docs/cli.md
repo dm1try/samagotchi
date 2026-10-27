@@ -1325,6 +1325,8 @@ CHI_REMOTE=studio chi context push claude-outbox ab12 < answer.json
   studio (http://192.168.1.29:4567): connection refused`, exit 1; with
   `--format json` an `error` object).
 - Plain http, the same as the phone's: use it on your home network.
+- The macOS desktop helper's panel lists and sends to a remote's sessions too: see
+  [Desktop helper: Remote sessions](desktop.md#remote-sessions).
 
 A session there in this terminal (the attached TUI, through that machine's
 chi web; its worker stays there):
