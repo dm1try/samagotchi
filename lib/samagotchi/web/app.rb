@@ -699,7 +699,7 @@ module Samagotchi
         end
         return error_response(409, "update_running", "an update is already running") if already_running
 
-        @hub.publish_update(state: "running", rows: [])
+        @hub.publish_update(state: "running", rows: [], operation: "install", version: version)
         Thread.new { perform_update(version) }
         json_response(202, { state: "running", version: version })
       rescue ThreadError => e
@@ -707,26 +707,45 @@ module Samagotchi
         Log.warn(:web, "update_start_failed", error: e.class.name, msg: e.message)
         @hub&.publish_update(state: "failed", rows: [
           { "component" => "chi update", "status" => "failed (couldn't start update)", "failed" => true, "kept" => [] }
-        ])
+        ], operation: "install")
         error_response(503, "update_start_failed", "couldn't start chi update")
       end
 
       def perform_update(version)
         argv = [RbConfig.ruby, InstalledGem.wrapper, "update", "--to", version, "--no-desktop", "--json"]
+        said = nil
         output, success = @update_runner.call(argv, env: ChildEnv.unbundled,
-                                              progress: ->(line) { @hub.publish_update(state: "running", rows: [], progress: line) })
-        rows = JSON.parse(output)
-        raise TypeError, "chi update returned rows in an invalid format" unless rows.is_a?(Array) && rows.all?(Hash)
+                                              progress: lambda { |line|
+                                                said = line unless line.strip.empty?
+                                                @hub.publish_update(state: "running", rows: [], progress: line,
+                                                                    operation: "install", version: version)
+                                              })
+        rows = update_rows(output)
+        # No rows (a usage error, a refusal): what the child said is the reason.
+        raise UpdateFailed, said || output.lines.map(&:strip).find { |line| !line.empty? } || "chi update printed no rows" unless rows
 
-        @hub.publish_update(state: success ? "done" : "failed", rows: rows)
+        # The installed version as of now (the hub's own look is up to a probe interval old), before "done".
+        @hub.refresh_installed if success
+        @hub.publish_update(state: success ? "done" : "failed", rows: rows, operation: "install", version: version)
       rescue StandardError => e
         Log.exception(:web, "update_failed", e)
         @hub.publish_update(state: "failed", rows: [
           { "component" => "chi update", "status" => "failed (#{e.message.lines.first.to_s.strip})",
             "failed" => true, "kept" => [] }
-        ])
+        ], operation: "install", version: version)
       ensure
         @update_mutex.synchronize { @update_running = false }
+      end
+
+      # chi update's own words when it printed no rows.
+      class UpdateFailed < StandardError; end
+
+      # chi update --json's rows, or nil when it printed none.
+      def update_rows(output)
+        rows = JSON.parse(output)
+        rows if rows.is_a?(Array) && rows.all?(Hash)
+      rescue JSON::ParserError
+        nil
       end
 
       def run_update_command(argv, env:, progress:)
@@ -752,7 +771,7 @@ module Samagotchi
         end
         return error_response(409, "update_running", "a chi update operation is already running") if already_running
 
-        @hub.publish_update(state: "running", rows: [])
+        @hub.publish_update(state: "running", rows: [], operation: "workers")
         Thread.new { perform_worker_restarts }
         json_response(202, { state: "running" })
       rescue ThreadError => e
@@ -760,7 +779,7 @@ module Samagotchi
         Log.warn(:web, "worker_restart_start_failed", error: e.class.name, msg: e.message)
         @hub&.publish_update(state: "failed", rows: [
           { "state" => "failed", "reason" => "couldn't start worker restarts" }
-        ])
+        ], operation: "workers")
         error_response(503, "restart_start_failed", "couldn't start worker restarts")
       end
 
@@ -785,15 +804,15 @@ module Samagotchi
             { "session_id" => worker.session_id, "state" => "failed", "reason" => e.class.name, "detail" => e.message }
           end
           rows << row
-          @hub.publish_update(state: "running", rows: rows.dup)
+          @hub.publish_update(state: "running", rows: rows.dup, operation: "workers")
         end
         state = rows.any? { |row| row["state"] == "failed" } ? "failed" : "done"
-        @hub.publish_update(state: state, rows: rows)
+        @hub.publish_update(state: state, rows: rows, operation: "workers")
       rescue StandardError => e
         Log.exception(:web, "worker_restart_failed", e)
         @hub.publish_update(state: "failed", rows: [
           { "state" => "failed", "reason" => e.class.name, "detail" => e.message }
-        ])
+        ], operation: "workers")
       ensure
         @update_mutex.synchronize { @update_running = false }
       end

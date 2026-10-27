@@ -3,11 +3,78 @@
 import fs from "node:fs";
 import path from "node:path";
 import { test, expect } from "./support/fixtures.js";
-import { restartWeb } from "./support/env.js";
 
 test.use({ installed: "99.0.0" });
 
-test("a newer chi installed: the page says to restart chi web, once, and not again after a reconnect", async ({ chi, context }) => {
+test("the available update notice opens a progress sheet with kept edits", async ({ chi, context }) => {
+  const page = await context.newPage();
+  const errors = [];
+  const requests = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.addInitScript(() => {
+    window.eventSources = [];
+    const Original = window.EventSource;
+    window.EventSource = class extends Original {
+      constructor(...args) {
+        super(...args);
+        if (String(args[0]).startsWith("/api/events")) window.eventSources.push(this);
+      }
+    };
+  });
+  await page.route("**/api/update", async (route) => {
+    requests.push(JSON.parse(route.request().postData()));
+    await route.fulfill({ status: 202, contentType: "application/json", body: '{"state":"running","version":"100.0.0"}' });
+  });
+  await page.goto(chi.baseURL + "/");
+
+  const toast = page.locator("#toast");
+  await expect(toast).toContainText("chi 99.0.0 is installed");
+  await toast.locator(".toast-close").click();
+  await page.evaluate(() => {
+    const source = window.eventSources.at(-1);
+    source.dispatchEvent(new MessageEvent("chi", {
+      data: JSON.stringify({ version: document.body.dataset.version, installed: null, available: "100.0.0", update_blocked: null }),
+    }));
+  });
+  await expect(toast).toContainText("chi 100.0.0 is available");
+  await toast.getByRole("button", { name: "Update" }).click();
+
+  const sheet = page.locator("#updateSheet");
+  await expect(sheet).toBeVisible();
+  await expect.poll(() => requests).toEqual([{ version: "100.0.0" }]);
+  await page.evaluate(() => {
+    const source = window.eventSources.at(-1);
+    const publish = (name, data) => source.dispatchEvent(new MessageEvent(name, { data: JSON.stringify(data) }));
+    publish("chi_update", { operation: "install", version: "100.0.0", state: "running", progress: "Installing samagotchi", rows: [] });
+    publish("chi_update", {
+      operation: "install", version: "100.0.0", state: "done",
+      rows: [{
+        component: "chi (gem)", status: "updated", from: "0.123.0", to: "100.0.0",
+        kept: ["config.yml", `memories/${"edited-".repeat(18)}notes.md`],
+      }],
+    });
+  });
+  await expect(sheet).toContainText("Kept edited files");
+  await expect(sheet).toContainText("config.yml");
+  await expect(toast.locator(".toast-action")).toHaveText(["Restart workers", "Restart chi web"]);
+  const widths = await page.evaluate(() => {
+    const dialog = document.querySelector("#updateSheet");
+    return {
+      viewport: document.documentElement.clientWidth,
+      page: document.documentElement.scrollWidth,
+      dialog: dialog.getBoundingClientRect().width,
+      dialogContents: dialog.scrollWidth,
+      dialogClient: dialog.clientWidth,
+    };
+  });
+  expect(widths.dialog).toBeLessThanOrEqual(390);
+  expect(widths.dialogContents).toBeLessThanOrEqual(widths.dialogClient);
+  expect(widths.page).toBeLessThanOrEqual(widths.viewport);
+  expect(errors, "page errors").toEqual([]);
+});
+
+test("a newer chi installed: the notice restarts chi web, once, and not again after reconnect", async ({ chi, context }) => {
   const page = await context.newPage();
   const errors = [];
   page.on("pageerror", (e) => errors.push(e.message));
@@ -27,15 +94,12 @@ test("a newer chi installed: the page says to restart chi web, once, and not aga
   const toast = page.locator("#toast");
   await expect(toast).toBeVisible();
   await expect(toast).toContainText("chi 99.0.0 is installed; this chi web runs");
-  await expect(toast).toContainText("Restart it: Ctrl-C in its terminal, then chi web");
-  await expect(toast.locator(".toast-action")).toHaveCount(0); // nothing the page could do
-  await toast.locator(".toast-close").click();
-  await expect(toast).toBeHidden();
+  await expect(toast.locator(".toast-action")).toHaveText(["Restart workers", "Restart chi web"]);
 
   // chi web restarts on the same version: the tab reconnects, and its new
   // snapshot (the same versions) brings no toast back.
   const before = await page.evaluate(() => window.snapshots);
-  await restartWeb(chi);
+  await toast.getByRole("button", { name: "Restart chi web" }).click();
   await expect.poll(() => page.evaluate(() => window.snapshots), { timeout: 15_000 }).toBeGreaterThan(before);
   await expect(toast).toBeHidden();
   expect(errors, "page errors").toEqual([]);

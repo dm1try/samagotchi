@@ -540,8 +540,9 @@ RSpec.describe Samagotchi::Web::App do
         argv, env = calls.pop
         expect(argv).to eq([RbConfig.ruby, "/installed/bin/chi", "update", "--to", "99.0.0", "--no-desktop", "--json"])
         expect(env).to eq("BUNDLE_GEMFILE" => nil)
-        expect(events.map(&:type)).to eq(%w[chi_update chi_update chi_update])
+        events = events.select { |event| event.type == "chi_update" } # the installed version's `chi` aside
         expect(events.map { |event| event.data[:state] }).to eq(%w[running running done])
+        expect(events.first.data).to include(operation: "install", version: "99.0.0")
         expect(events[1].data[:progress]).to eq("installing samagotchi 99.0.0…")
         expect(events.last.data[:rows]).to eq([{ "component" => "chi (gem)", "status" => "updated", "kept" => [] }])
       end
@@ -591,6 +592,42 @@ RSpec.describe Samagotchi::Web::App do
         expect(calls.pop[4]).to eq("99.0.0")
       ensure
         wait_for("the web update to finish") { hub.update_state&.dig(:state) != "running" }
+      end
+
+      it "fails with the child's own words when it exits without JSON" do
+        runner = lambda do |_argv, env:, progress:|
+          progress.call("chi update: 99.0.0 is not newer than the running chi (99.0.0)")
+          ["", false]
+        end
+        app = update_app(update_runner: runner)
+
+        update_post(app, "99.0.0")
+        wait_for("the failed update") { hub.update_state&.dig(:state) == "failed" }
+        expect(hub.update_state[:rows]).to eq([
+          { "component" => "chi update", "status" => "failed (chi update: 99.0.0 is not newer than the running chi (99.0.0))",
+            "failed" => true, "kept" => [] }
+        ])
+      end
+
+      it "refreshes the hub's installed version once the install is done, before it says done" do
+        installed = double("installed versions", newest: Samagotchi::VERSION)
+        hub = Samagotchi::Web::SessionHub.new(state_dir: state_dir, installed_versions: installed)
+        events = []
+        hub.subscribe(->(event) { events << event })
+        runner = lambda do |_argv, env:, progress:|
+          allow(installed).to receive(:newest).and_return("99.0.0")
+          ["[]", true]
+        end
+        app = events_app(hub: hub, update_runner: runner, update_blocked: -> {})
+
+        update_post(app, "99.0.0")
+        wait_for("the update result") { hub.update_state&.dig(:state) == "done" }
+        expect(hub.installed).to eq("99.0.0")
+        chi = events.index { |event| event.type == "chi" && event.data[:installed] == "99.0.0" }
+        done = events.index { |event| event.type == "chi_update" && event.data[:state] == "done" }
+        expect(chi).to be < done
+      ensure
+        hub&.stop
       end
 
       it "includes the running update in the next event snapshot" do
@@ -651,6 +688,7 @@ RSpec.describe Samagotchi::Web::App do
             "holds" => ["turn_running"] },
           { "session_id" => "owned", "state" => "owned_by_tui", "detail" => "session owned is open in a chi REPL; close it there first" }
         ])
+        expect(hub.update_state[:operation]).to eq("workers")
       end
     end
 

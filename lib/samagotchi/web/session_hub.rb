@@ -174,9 +174,11 @@ module Samagotchi
 
       # Publish the owner-triggered update's progress or result for current
       # tabs, and retain the latest state for a reconnect's snapshot.
-      def publish_update(state:, rows:, progress: nil)
+      def publish_update(state:, rows:, progress: nil, operation: nil, version: nil)
         @monitor.synchronize do
           @update_state = { state: state, rows: rows }
+          @update_state[:operation] = operation unless operation.nil?
+          @update_state[:version] = version unless version.nil?
           @update_state[:progress] = progress unless progress.nil?
           emit("chi_update", @update_state)
         end

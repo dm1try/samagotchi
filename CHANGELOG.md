@@ -15,10 +15,10 @@ and commands may change between minor versions. How releases are made:
   Mac's rows don't wait for it. A remote with a session also gets a "New session on studio in <folder>" row, in its
   newest session's folder, on that remote's default model. The Everyone row, the model chooser and agents stay on
   this Mac.
-- `chi update --to VERSION` installs an exact newer gem release; `--json` prints update rows and kept edits as JSON.
-- chi web's owner can start a gem update; progress and component rows are published to its event stream.
-- chi web can restart every worker on an older chi and reports per-session restart results and holds.
-- chi web can restart itself into the installed version, preserving web options and adopting live worker starters.
+- chi web updates chi from its page: the notice's **Update** installs the release it names in a progress sheet
+  that lists kept edits, then offers **Restart workers** (each worker on an older chi; a busy one says what holds
+  it) and **Restart chi web** (in place: same port, token, flags and Tailscale Serve). `chi update --to VERSION`
+  installs an exact release; `--json` prints its rows as JSON.
 
 ## [0.123.0] - 2026-10-27
 

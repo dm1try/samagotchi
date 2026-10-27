@@ -549,6 +549,15 @@ RSpec.describe Samagotchi::Web::SessionHub do
       expect(events.last.data).to eq(data)
       expect(hub.update_state).to eq(data)
     end
+
+    it "retains the update operation and target version for a new tab's snapshot" do
+      data = { state: "running", rows: [], operation: "install", version: "99.0.0" }
+
+      hub.publish_update(**data)
+
+      expect(events.last.data).to eq(data)
+      expect(hub.update_state).to eq(data)
+    end
   end
 
   describe "#hub_registry" do

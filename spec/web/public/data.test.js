@@ -17,6 +17,9 @@ import {
   unarchiveSession,
   dismissQuestion,
   listModels,
+  updateChi,
+  restartWorkers,
+  restartWeb,
   fetchHistory,
   renderText,
 } from "../../../lib/samagotchi/web/public/data.js";
@@ -42,6 +45,23 @@ test("api wraps fetch and handles JSON responses", async () => {
   assert.ok(result.session.id === "x");
   assert.deepEqual(calls[0][0], "/api/sessions/1");
   assert.equal(calls[0][1].headers["Content-Type"], "application/json");
+});
+
+test("chi update actions call their owner endpoints with JSON bodies", async () => {
+  const calls = [];
+  const fetchImpl = (path, opts) => {
+    calls.push([path, opts.method, JSON.parse(opts.body)]);
+    return Promise.resolve(okResponse({ state: "running" }, 202));
+  };
+  await updateChi("99.0.0", { fetchImpl });
+  await restartWorkers({ fetchImpl });
+  await restartWeb({ fetchImpl });
+
+  assert.deepEqual(calls, [
+    ["/api/update", "POST", { version: "99.0.0" }],
+    ["/api/update/restart_workers", "POST", {}],
+    ["/api/update/restart_web", "POST", {}],
+  ]);
 });
 
 test("api raises on non-ok status", async () => {

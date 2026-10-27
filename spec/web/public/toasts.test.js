@@ -79,6 +79,21 @@ test("an action and a link dismiss only their own toast", (t) => {
   assert.equal(el.hidden, true);
 });
 
+test("a sticky toast can offer multiple actions", (t) => {
+  const { el, toasts } = setup(t);
+  const actions = [];
+  toasts.show("chi 99 is installed", [
+    { label: "Restart workers", run: () => actions.push("workers") },
+    { label: "Restart chi web", run: () => actions.push("web") },
+  ], { sticky: true });
+
+  assert.deepEqual([...el.querySelectorAll(".toast-action")].map((button) => button.textContent),
+    ["Restart workers", "Restart chi web"]);
+  el.querySelectorAll(".toast-action")[1].click();
+  assert.deepEqual(actions, ["web"]);
+  assert.equal(el.hidden, true);
+});
+
 test("a duplicate sticky message stays untimed when shown again", (t) => {
   const { el, toasts } = setup(t);
   toasts.show("persistent", null, { sticky: true });
@@ -119,4 +134,16 @@ test("a repeated words toast is drawn once, into its item: no throw-away item fo
   toasts.show(html`<a href="/s">link</a>`);
   toasts.show(html`<a href="/s">link</a>`);
   assert.equal(el.children.length, 2);
+});
+
+test("dismiss takes down the toast show returned, and only that one", (t) => {
+  const { el, toasts } = setup(t);
+  const installed = toasts.show("chi 2 is installed", null, { sticky: true });
+  toasts.show("other", null, { sticky: true });
+  toasts.dismiss(installed);
+  toasts.dismiss(installed);
+  toasts.dismiss(null);
+
+  assert.deepEqual([...el.querySelectorAll(".toast-message")].map((item) => item.textContent), ["other"]);
+  assert.equal(toasts.show("other", null, { sticky: true }).key, "other");
 });

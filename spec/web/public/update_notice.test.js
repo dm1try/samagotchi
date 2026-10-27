@@ -19,10 +19,11 @@ test("versionNotice: the same version, or one side unknown (an older chi web, a 
   assert.equal(versionNotice(), null);
 });
 
-test("versionNotice: a newer chi installed than chi web runs says to restart chi web, with no action", () => {
+test("versionNotice: a newer chi installed than chi web runs offers worker and web restarts", () => {
   assert.deepEqual(versionNotice({ loaded: "0.18.1", served: "0.18.1", installed: "0.19.0" }), {
     key: "installed:0.19.0",
-    text: "chi 0.19.0 is installed; this chi web runs 0.18.1. Restart it: Ctrl-C in its terminal, then chi web",
+    text: "chi 0.19.0 is installed; this chi web runs 0.18.1.",
+    actions: ["restartWorkers", "restartWeb"],
     reload: false,
   });
   assert.equal(versionNotice({ loaded: "0.18.1", served: "0.18.1", installed: "0.18.1" }), null);
@@ -34,11 +35,11 @@ test("versionNotice: the reload comes first (the reloaded page then hears about 
   assert.equal(versionNotice({ loaded: "0.17.0", served: "0.18.0", installed: "0.19.0" }).key, "reload:0.18.0");
 });
 
-test("versionNotice: an available chi offers chi update and links to that RubyGems release", () => {
+test("versionNotice: an available chi offers an in-page update and links to that RubyGems release", () => {
   assert.deepEqual(versionNotice({ loaded: "0.18.1", served: "0.18.1", available: "0.19.0" }), {
     key: "available:0.19.0",
-    text: "chi 0.19.0 is available (you run 0.18.1). Run chi update.",
-    command: "chi update",
+    text: "chi 0.19.0 is available (you run 0.18.1).",
+    updateVersion: "0.19.0",
     releaseUrl: "https://rubygems.org/gems/samagotchi/versions/0.19.0",
     reload: false,
   });

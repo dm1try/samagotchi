@@ -551,14 +551,23 @@ version than the server itself still means restart chi web (its workers already 
 web runs in) it names `start_dir`, the folder it starts in (`web.start_dir`, `--start-dir`;
 `Web::StartDir`), which a second `chi web` given another one mentions.
 
-The owner's update routes publish install progress and component rows as `chi_update` events.
-Worker restarts target every worker older than the installed version and publish per-session
-results. `POST /api/update/restart_web` schedules WEBrick shutdown only after its response is
-sent; after the hub and listener stop, `Server` execs the RubyGems chi wrapper with a canonical
-`chi web` argv rebuilt from parsed options. The re-entry skips the first-run update hint, adopts
-live worker-starter PIDs (workers themselves are detached), and adopts an exact Tailscale Serve
-handler. One-shot `--open` and `--new-token` options are not repeated; a failed exec or a port
-conflict turns off only the exact adopted Serve handler.
+The owner's update routes publish progress and results as `chi_update` events with an
+`operation` (`install` or `workers`), `state`, and `rows`; install events also name the target
+`version` and may include a progress line. The hub retains the latest event for a reconnecting
+tab's snapshot. `POST /api/update` decides itself whether this install can take a gem
+(`UpdateCheck.blocked_reason`: a checkout, Bundler, an unwritable gem dir → 409 `update_blocked`), so
+it holds with `update.notify: off`; a child that prints no rows fails with its own last line, and a
+done install refreshes the hub's installed version (`SessionHub#refresh_installed`) before its `done`.
+Worker restarts target every worker older than the version installed now (refreshed the same way)
+and publish per-session results. Only one of an install, a worker restart pass and a web restart runs
+at a time (409 `update_running`). `POST /api/update/restart_web` (409 `restart_unavailable` without a
+chi wrapper to exec) schedules WEBrick shutdown only after its response is sent; after the hub and
+listener stop, `Server` execs the RubyGems chi wrapper with every flag chi web was started with, as
+`RunOptions`' parser recorded them (`RunOptions.web_restart_argv`), but the one-shot `--open` and
+`--new-token`. The re-entry (`SAMAGOTCHI_WEB_RESTARTED`, taken out of ENV first by
+`Server.take_restart_env!`) skips the first-run update hint, adopts live worker-starter PIDs (workers
+themselves are detached), and adopts an exact Tailscale Serve handler. A failed exec, or a restarted
+chi web that doesn't start for any reason, turns off only that exact adopted handler.
 
 The page's scope is in its URL, and the server picks the default: `?dir=<folder>` is that folder's
 project (the list, the events stream and a new chat follow it), `?scope=all` every session, and a bare

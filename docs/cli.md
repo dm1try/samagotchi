@@ -243,10 +243,16 @@ done
 - **chi web update notices.** By default, chi web checks RubyGems about 30
   seconds after it starts and every 24 hours after that. Once a stable release
   is at least 24 hours old and newer than both the running chi and the newest
-  installed one, the page shows its version, a link to that RubyGems release,
-  and a button to copy `chi update`. The notice is once per version per
-  browser: a reload or a chi web restart doesn't repeat it.
-  `update.notify: off` disables checking; `update.check_hours` and
+  installed one, the owner's page shows its version and a link to that
+  RubyGems release. When the install is unblocked, **Update** installs that
+  exact release and opens a progress sheet with component results and any
+  edited files kept. A blocked install instead shows the reason and a command
+  to copy. After installation, the notice and the sheet's footer offer
+  **Restart workers** and **Restart chi web**; the sheet reports worker results
+  (a busy worker's refusal says what holds it) and waits for chi web to
+  reconnect, and keeps the other restart in reach. The notice is once per version per browser: a reload or a chi
+  web restart doesn't repeat it. `update.notify: off` disables checking;
+  `update.check_hours` and
   `update.min_age_hours` tune the interval and release age (see
   [configuration](configuration.md#all-settings)). If the gem can't be updated
   in place, the notice gives the blocker and its command instead.

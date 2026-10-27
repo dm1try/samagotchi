@@ -1182,6 +1182,23 @@ body.has-session.composer-folded #infoBar{border-top-color:transparent}
 .ss-foot{font-size:11.5px;color:var(--text-muted);margin-top:6px}
 .ctx-pop-head{display:flex;align-items:baseline;gap:8px}
 .ctx-pop-head strong{font-family:ui-monospace,monospace;color:var(--text-bright)}
+#updateSheet{width:calc(100vw - 32px);max-width:560px;max-height:calc(100dvh - 32px);overflow:auto;margin:auto;padding:14px 16px;border:1px solid var(--border-strong);border-radius:14px;background:var(--bg-panel);color:var(--text);box-shadow:var(--toast-shadow)}
+#updateSheet::backdrop{background:var(--backdrop);backdrop-filter:blur(3px)}
+.us-head{display:flex;align-items:center;gap:10px}
+.us-head h2{flex:1;min-width:0;font-size:16px;font-weight:650;color:var(--text-bright);overflow-wrap:anywhere}
+.us-close{flex:none;padding:0 6px;background:transparent;color:var(--text-muted);font-size:19px;line-height:1.2}
+.us-status{margin:8px 0;color:var(--text-2);font-size:13px;overflow-wrap:anywhere}
+.us-rows{display:flex;flex-direction:column;gap:7px;list-style:none;margin:10px 0;padding:0}
+.us-row{min-width:0;padding:9px 10px;border-radius:9px;background:var(--bg-inset);overflow-wrap:anywhere}
+.us-row-head{display:flex;align-items:baseline;justify-content:space-between;gap:8px;min-width:0}
+.us-row-head strong{flex:none;max-width:100%;color:var(--text-bright);overflow-wrap:anywhere}
+.us-row-head span{flex:1 1 0;min-width:0;text-align:right;color:var(--text-2);font-size:12px;overflow-wrap:anywhere}
+.us-detail{margin-top:4px;color:var(--text-muted);font-size:12px;overflow-wrap:anywhere}
+.us-kept{margin-top:6px;color:var(--warn-text);font-size:12px}
+.us-kept ul{margin:3px 0 0;padding-left:18px;color:var(--text-2)}
+.us-kept li{overflow-wrap:anywhere}
+.us-foot{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:8px;margin-top:10px}
+@media(max-width:600px){#updateSheet{position:fixed;inset:auto 8px 8px;width:auto;max-width:none;max-height:min(80dvh,calc(100dvh - 16px));margin:0}}
 .ctx-pop-kind{font-size:11px;color:var(--text-muted)}
 .ctx-pop-close{margin-left:auto;padding:0 6px;border:none;background:transparent;color:var(--text-muted);font-size:16px;line-height:1}
 .ctx-pop-close:hover{color:var(--text)}
@@ -1448,8 +1465,9 @@ body.all-view #center, body.all-view #topStrip{display:none}
 /* bottom: above the session's composer card when one shows (--toast-bottom, dock_reserve.js placeToast). */
 #toast{position:fixed;left:50%;bottom:var(--toast-bottom,24px);transform:translateX(-50%);width:max-content;max-width:calc(100vw - 32px);box-sizing:border-box;z-index:50;display:flex;flex-direction:column;align-items:center;gap:8px}
 #toast[hidden]{display:none}
-#toast .toast-item{display:flex;gap:12px;align-items:center;width:max-content;max-width:100%;box-sizing:border-box;padding:8px 14px;border-radius:10px;background:var(--bg-raised);color:var(--text);border:1px solid var(--border-strong);box-shadow:var(--toast-shadow);font-size:13px}
-#toast .toast-action{background:transparent;border:0;color:var(--accent);font-weight:600;cursor:pointer;padding:2px 4px}
+#toast .toast-item{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;width:max-content;max-width:100%;box-sizing:border-box;padding:8px 14px;border-radius:10px;background:var(--bg-raised);color:var(--text);border:1px solid var(--border-strong);box-shadow:var(--toast-shadow);font-size:13px}
+#toast .toast-message{flex:1 1 180px;min-width:0;overflow-wrap:anywhere}
+#toast .toast-action{flex:0 0 auto;white-space:nowrap;background:transparent;border:0;color:var(--accent);font-weight:600;cursor:pointer;padding:2px 4px}
 #toast .toast-close{background:transparent;border:0;color:var(--text-muted);cursor:pointer;padding:2px 4px;margin-left:-6px}
 #toast .toast-close:hover{color:var(--text)}
 /* Each row is as tall as its tallest card. An `auto` row in a grid that overflows its
@@ -1608,6 +1626,7 @@ a{color:var(--accent)}
     <div id="allList"></div>
   </section>
 </main>
+<dialog id="updateSheet" aria-labelledby="updateSheetTitle"></dialog>
 <div id="toast" role="status" aria-live="polite" hidden></div>
 <script type="module" src="/assets/app.js"></script>
 </body>
