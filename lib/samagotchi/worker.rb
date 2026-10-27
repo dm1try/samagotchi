@@ -386,6 +386,9 @@ module Samagotchi
       # the background, shown by the UIs; a turn waits only for the ones
       # that bring tools.
       @engine.start_init_tasks!
+      # Toolkit suggestion's on mode: System 1's question, asked once with a
+      # stand-in prompt so its prefix is cached before the first prompt.
+      @engine.warm_toolkit_suggestion!
       # Attached context's commands, in the background; a new text wakes
       # the loop to absorb it. Not activity: the idle exit stops it.
       @context_poller = ContextPoller.new(session_id: @session_id, state_dir: @state_dir,

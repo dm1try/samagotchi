@@ -282,4 +282,41 @@ RSpec.describe Samagotchi::Engine, "toolkit suggestion on mode" do
 
     expect(line).to eq("toolkit> toolkit: web (suggested, p=0.71) · /toolkit to change")
   end
+
+  describe "#warm_toolkit_suggestion!" do
+    it "asks once with the real question and a stand-in prompt, logging nothing" do
+      answers << pick("undecided", 0.9)
+      sess = session
+      engine.session = sess
+
+      engine.warm_toolkit_suggestion!
+      join!(engine.instance_variable_get(:@toolkit_warmup_thread), "the warm-up")
+
+      expect(asked).to eq([{ project: File.basename(sess.project_root.to_s), prompt: Samagotchi::ToolkitSuggest::WARMUP_PROMPT }])
+      expect(log_lines).to be_empty
+    end
+
+    it "doesn't warm a chosen session, one with a model reply, or one starting on its first prompt" do
+      chosen = session(origin: "chosen")
+      replied = session.tap { |s| s.messages << { role: "model", content: "ok" } }
+      prompted = session.tap { |s| s.last_prompt = "fix it" }
+
+      [chosen, replied, prompted].each do |s|
+        engine.session = s
+        engine.warm_toolkit_suggestion!
+      end
+
+      expect(engine.instance_variable_get(:@toolkit_warmup_thread)).to be_nil
+      expect(backend.calls).to eq(0)
+    end
+
+    it "doesn't warm in audit mode" do
+      allow(Samagotchi::Config).to receive(:get).with("toolkit.suggest.mode").and_return("audit")
+      engine.session = session
+
+      engine.warm_toolkit_suggestion!
+
+      expect(engine.instance_variable_get(:@toolkit_warmup_thread)).to be_nil
+    end
+  end
 end

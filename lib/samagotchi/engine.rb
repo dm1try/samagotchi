@@ -159,6 +159,7 @@ module Samagotchi
       @chat_backend = nil
       @chat_backend_mutex = Mutex.new
       @toolkit_audit_thread = nil
+      @toolkit_warmup_thread = nil
       @host_registry = host_registry || HostRegistry.new
       # A model given here (a worker's session model) is the one it runs,
       # so its host is checked; the config default is only checked once it
@@ -1115,6 +1116,8 @@ module Samagotchi
         thread.join([deadline - Process.clock_gettime(Process::CLOCK_MONOTONIC), 0].max)
       end
       @toolkit_audit_thread&.join(TOOLKIT_AUDIT_JOIN_SECONDS)
+      # The warm-up's answer is dropped anyway.
+      @toolkit_warmup_thread&.kill
       left = threads.count(&:alive?)
       Log.warn(:plugins, "anytime_commands_left", count: left) if left.positive?
       @plugin_tasks.kill_leftovers
@@ -2867,6 +2870,37 @@ module Samagotchi
       ToolkitSuggest.warn(e)
     end
     private :settle_toolkit_suggestion
+
+    # On mode, as an idle worker starts (Worker#start_background): one ask
+    # with the real question and a stand-in prompt, on its own thread,
+    # never logged and never waited for, so System 1's server has the
+    # question's prefix cached for the first prompt. Only for a session a
+    # first prompt could be asked for: origin default, no model reply, not
+    # a delegate child or a review session, at least two candidates; and
+    # not when the worker starts on a first prompt (that ask comes at once).
+    def warm_toolkit_suggestion!
+      return unless Config.get("toolkit.suggest.mode").to_s == "on"
+
+      session = @session
+      return if session.nil? || session.toolkit_origin != "default" || session.delegate? || session.review?
+      return if ToolkitSuggest.model_reply?(session.messages) || !session.last_prompt.to_s.strip.empty?
+
+      default = Toolkit.of(session.toolkit)
+      kits = @toolkit_binding.kits
+      return if ToolkitSuggest.candidates(kits, default_name: default.name).size < 2
+
+      client = SystemOne::Client.from_config(host_registry: @host_registry, mode: "on", tag: :toolkit)
+      return unless client
+
+      project = File.basename(session.project_root.to_s)
+      @toolkit_warmup_thread = Thread.new do
+        ToolkitSuggest.warm(client: client, default: default, kits: kits, project: project)
+      end
+    rescue StandardError => e
+      ToolkitSuggest.warn(e)
+      nil
+    end
+    public :warm_toolkit_suggestion!
 
     def toolkit_suggestion_log
       path = ToolkitSuggest.log_path(session_state_dir)

@@ -1451,7 +1451,9 @@ toolkit:
   prompt (system prompt, tools and conversation, which the defer limits keep small) without `/toolkit`'s cache
   confirmation. `/toolkit` or `ctx.use_toolkit` at any time marks the toolkit chosen, and nothing is suggested
   after that, even when it comes while the question is asked. On mode doesn't skip a local System 1 host shared
-  with the model (the turn waits before its first request anyway). Each answered ask's line in `toolkit_suggestions.jsonl` adds `did`:
+  with the model (the turn waits before its first request anyway), and an idle worker for an eligible session
+  sends one warm-up ask with the real question and a stand-in prompt so the server has its prefix cached; the
+  warm-up's answer is dropped and never logged. Each answered ask's line in `toolkit_suggestions.jsonl` adds `did`:
   `suggested`, `default`, `defer`, `chosen` (the user picked a toolkit first), `timeout` or `canceled` (written
   when the late answer arrives), or `failed`; `chi toolkit report` grades on-mode lines by what they did.
 - **Tool-index groups.** `groups:` selects source groups by name or glob (`chrome`, `db*`; any case, `{a,b}` braces,

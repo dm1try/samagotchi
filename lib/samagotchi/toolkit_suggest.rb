@@ -275,6 +275,25 @@ module Samagotchi
       end
     end
 
+    # The warm-up's stand-in prompt: the question (instruction + criteria)
+    # is the real one, so System 1's server has that prefix cached when
+    # the first real prompt is asked.
+    WARMUP_PROMPT = "hello"
+
+    # One ask with the real question and a stand-in prompt, its answer
+    # dropped: on mode's warm-up as an idle worker starts (Engine
+    # #warm_toolkit_suggestion!). Straight to the backend, so a failure is
+    # one info line, never Client#ask's warn, and nothing is logged as a
+    # suggestion.
+    def self.warm(client:, default:, kits:, project:)
+      question, state = question(default: default, kits: kits, project: project, prompt: WARMUP_PROMPT)
+      client.backend.ask(state: state, questions: { QUESTION_ID => question })
+      nil
+    rescue StandardError => e
+      Log.info(:toolkit, "toolkit_suggest_warmup_failed", error: e.class.name, msg: e.message.to_s[0, 200])
+      nil
+    end
+
     # A resolved kit (Toolkit::Resolved) as frozen, JSON-ready rules, not
     # a tool list: plugin and MCP tools may still be loading when the ask
     # starts, and every kit declares a non-core tool anyway
