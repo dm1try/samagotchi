@@ -211,6 +211,13 @@ RSpec.describe Samagotchi::Web::ParticipantView do
       expect(out).to include("Authorization: Bearer [redacted]", "token=[redacted]", "at a.rb in ., ~/notes", "/home/oscar stays")
     end
 
+    # The cases claim_link.js reads the same (its normalizeClaim mirrors these patterns).
+    it "reads the shared redact cases (spec/fixtures/redact_cases.json) as the claim link does" do
+      cases = JSON.parse(File.read(File.expand_path("../fixtures/redact_cases.json", __dir__)))
+      shared = Samagotchi::Web::ParticipantView::Viewer.new(cwd: cases["cwd"], home: cases["home"])
+      cases["cases"].each { |input, output| expect(described_class::Redact.text(input, shared)).to eq(output), input }
+    end
+
     it "takes a one-time link code (chc_, a bearer credential) and a Bridge's secret header out, in a reply too" do
       code = "chc_#{"aB3-_" * 8}xyz"
       text = "Send Bob https://pod/#code=#{code}&s=abc, and curl -H 'X-Chi-Bridge: 0123456789abcdef0123' there"

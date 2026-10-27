@@ -457,23 +457,42 @@ test("participant page: a #code= link asks before replacing the session, and a n
 // the thread is drawn; a turn this session doesn't have says so.
 const TURNED = { ...REVIEW, messages: [{ role: "user", content: "Say pong", turn_id: "0a1b2c3d-0000" }, { role: "assistant", content: "PONG" }] };
 async function openAt(t, hash) {
-  const saved = { location: globalThis.location };
+  const saved = { location: globalThis.location, history: globalThis.history };
   t.after(() => Object.assign(globalThis, saved));
+  const replaced = [];
   globalThis.location = { hash, pathname: "/", search: "" };
-  return openPage(t, { respond: (call) => (call.method === "GET" ? call.answer(200, TURNED) : undefined) });
+  globalThis.history = { replaceState: (_s, _t, url) => replaced.push(url) };
+  return { ...(await openPage(t, { respond: (call) => (call.method === "GET" ? call.answer(200, TURNED) : undefined) })), replaced };
 }
 
-test("participant page: a claim link marks its quote's reply", async (t) => {
-  const { $ } = await openAt(t, "#s=s1&t=0a1b2c3d&q=PONG");
+test("participant page: a claim link marks its quote's reply, and the hash drops the claim", async (t) => {
+  const { $, replaced } = await openAt(t, "#s=s1&t=0a1b2c3d&q=PONG");
+  assert.ok($("thread").querySelector(".p-msg.reply .p-bubble").classList.contains("claim-hit"));
+  assert.equal($("claimNote").hidden, true);
+  // Opened again, the same link is a hashchange.
+  assert.deepEqual(replaced, ["/#s=s1"]);
+});
+
+test("participant page: a claim link whose turn and quote this session doesn't have says so", async (t) => {
+  const { $, tick } = await openAt(t, "#s=s1&t=99999999&q=nowhere");
+  assert.equal($("thread").querySelectorAll(".claim-hit").length, 0);
+  assert.equal($("claimNote").hidden, false);
+  assert.equal($("claimNote").textContent, "The linked turn isn't in this session.");
+  await tick(6000);
+  assert.equal($("claimNote").hidden, true);
+});
+
+test("participant page: a claim link to an unstamped turn finds its quote in the thread", async (t) => {
+  const { $ } = await openAt(t, "#s=s1&t=99999999&q=PONG");
   assert.ok($("thread").querySelector(".p-msg.reply .p-bubble").classList.contains("claim-hit"));
   assert.equal($("claimNote").hidden, true);
 });
 
-test("participant page: a claim link to a turn this session doesn't have says so", async (t) => {
-  const { $ } = await openAt(t, "#s=s1&t=99999999&q=PONG");
+test("participant page: a claim link for another session says this browser holds this one's", async (t) => {
+  const { $ } = await openAt(t, "#s=s2&t=0a1b2c3d&q=PONG");
   assert.equal($("thread").querySelectorAll(".claim-hit").length, 0);
   assert.equal($("claimNote").hidden, false);
-  assert.equal($("claimNote").textContent, "The linked turn isn't in this session.");
+  assert.equal($("claimNote").textContent, 'This link is for another session; this browser holds your link for "Plan".');
 });
 
 // The comment box: the shared composer (composer_mount.js) with a subset on.

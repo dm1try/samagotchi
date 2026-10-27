@@ -1,8 +1,9 @@
 import "./dom_shim.js";
 import test from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
 import {
-  HIGHLIGHT, HIT_CLASS, PREFIX_MAX, QUOTE_MAX, claimFromHash, claimParams, claimQuote, clearClaim, findClaim, normalizeClaim,
+  HIGHLIGHT, HIT_CLASS, MARK, PREFIX_MAX, QUOTE_MAX, claimFromHash, claimParams, claimQuote, clearClaim, findClaim, normalizeClaim,
   normalizeWithMap, ownerClaimHash, participantClaimLink, selectionClaim, showClaim, turnIdOf, turnRoots,
 } from "../../../lib/samagotchi/web/public/claim_link.js";
 
@@ -20,6 +21,28 @@ test("normalized on the owner's page as the participant page shows it: the folde
   assert.equal(normalizeClaim("in /Users/sam/.config/x", OWNER), "in ~/.config/x");
   // Another user whose name starts the same isn't home.
   assert.equal(normalizeClaim("/Users/samuel/x", OWNER), "/Users/samuel/x");
+});
+
+// The cases Redact.text reads the same (participant_view_spec.rb): the
+// JS patterns are Ruby's.
+const REDACT = JSON.parse(fs.readFileSync(new URL("../../fixtures/redact_cases.json", import.meta.url), "utf8"));
+
+test("normalized as Redact.text reads the shared cases: secret shapes [redacted], the folder relative, home ~", () => {
+  for (const [input, output] of REDACT.cases) assert.equal(normalizeClaim(input, { home: REDACT.home, cwd: REDACT.cwd }), output, input);
+});
+
+test("a claim never carries a secret: in the quote, in the prefix, or cut by the selection", () => {
+  const key = "sk-ant-abcdefghijklmnopqrstu";
+  const pat = "ghp_abcdefghijklmnopqrstuvwxyz0123";
+  assert.deepEqual(claimQuote(`use ${key} now`, `set token=zzz9 and ${pat} `), { q: `use ${MARK} now`, p: `token=${MARK} and ${MARK} ` });
+  assert.equal(PREFIX_MAX, `token=${MARK} and ${MARK} `.length);
+  // The selection starts or ends inside a key: the whole key is marked.
+  assert.deepEqual(claimQuote("ijklmnopqrstu then", `key ${key.slice(0, 15)}`), { q: `${MARK} then`, p: "key " });
+  assert.deepEqual(claimQuote("then sk-ant-abc", "", {}, "defghijklmnopqrstu end"), { q: `then ${MARK}`, p: "" });
+  assert.deepEqual(claimQuote("zz9", "token=z", {}, "z"), { q: MARK, p: "token=" });
+  for (const claim of [claimQuote(`a ${key}`, "x"), claimQuote("b", `${pat} token=zzz9 `)]) {
+    assert.doesNotMatch(claimParams({ turnId: TURN, ...claim }), /abcdefgh|zzz9/);
+  }
 });
 
 test("the map points each normalized character back at the raw text", () => {
@@ -159,6 +182,14 @@ test("a quote not in the turn marks the turn's opening; no turn is null; clearCl
   clearClaim(div, { win });
   assert.equal(div.querySelectorAll(`.${HIT_CLASS}`).length, 0);
   assert.equal(win.set.has(HIGHLIGHT), false);
+});
+
+test("a turn no opening carries (a non-person turn): its quote found in the whole page", () => {
+  const div = thread();
+  const win = highlightWin();
+  assert.equal(showClaim(div, { turn: "12345678", q: "wrong in b.rb" }, { roots: ".p-bubble", win }), "quote");
+  assert.ok(div.querySelectorAll(".p-bubble")[3].classList.contains(HIT_CLASS));
+  assert.equal(win.set.get(HIGHLIGHT).ranges[0].toString(), "wrong in b.rb");
 });
 
 test("without the Highlight API the bubble is still marked", () => {

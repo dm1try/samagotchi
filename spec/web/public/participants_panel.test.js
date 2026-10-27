@@ -485,6 +485,13 @@ test("participants panel: a claim link's target is the list's link base and the 
   c.done();
 });
 
+test("participants panel: no claim target with only agents active (no browser to open it)", async () => {
+  const c = panelControl({ api: { list: async () => ({ participants: [grant({ kind: "agent", name: "Bot" })], link_base: "http://x/" }) } });
+  await c.ctl.load();
+  assert.equal(c.ctl.claimTarget(), null);
+  c.done();
+});
+
 test("participants panel: no claim target without a link base (an older chi web) or anyone active", async () => {
   const older = panelControl();
   await older.ctl.load();

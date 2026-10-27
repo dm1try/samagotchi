@@ -397,15 +397,20 @@ fields: a field added to an event later reaches nobody until it is named there.
   `link_base` (`ParticipantsAdmin#participant_base`: `web.public_url`'s origin, else the LAN address, else the Host),
   `t` the turn's id (its first 8 characters, the opening message's `data-turn-id`), `q` the selection's rendered
   text (whitespace collapsed, at most 200 characters) and `p` up to 32 characters before it in the same bubble, both
-  URL-encoded by `URLSearchParams`. The owner's text is read as the participant page shows it: the session's folder
-  relative and the home folder `~` (the page's `data-home`). With no one active in the session, Copy link gives the
-  owner's own form, `#/s/<id>?t=…&q=…&p=…`; the owner's page also opens the participant form. Opening one: the turn's
-  bubbles (`.p-msg > .p-bubble`; the owner's answers, own messages and steps) are searched for the prefix and quote,
-  then the quote alone; the match's bubble is ringed (`.claim-hit`), a closed `<details>` around it opened, and the
-  quote highlighted (the CSS Highlight API, `::highlight(chi-claim)`, where the browser has it). A quote not found
-  (a redacted secret in it, text that reads differently) rings the turn's opening; a turn not found (another
-  session's, one from before a continue) leaves the page at the top and says so. The link holds no token, so it opens
-  only in a browser that already redeemed a grant for that session. Its limits: **one grant per browser** (the grant
+  URL-encoded by `URLSearchParams`. The text is read as the participant page shows it, by `Redact`'s own rules
+  mirrored in JS (`spec/fixtures/redact_cases.json` holds cases both sides must read the same): secret shapes
+  `[redacted]`, whole even when the selection cuts into one, so a link never carries a secret; on the owner's page
+  also the session's folder relative and the home folder `~` (the page's `data-home`). Not the owner's token (the
+  page doesn't hold it). With no person (`kind: human`) active in the session, Copy link gives the owner's own form,
+  `#/s/<id>?t=…&q=…&p=…`; the owner's page also opens the participant form. Opening one: the turn's bubbles
+  (`.p-msg > .p-bubble`; the owner's answers, own messages and steps) are searched for the prefix and quote, then
+  the quote alone; the match's bubble is ringed (`.claim-hit`), a closed `<details>` around it opened, and the quote
+  highlighted (the CSS Highlight API, `::highlight(chi-claim)`, where the browser has it). A quote not found (text
+  that reads differently) rings the turn's opening. A turn no opening carries (a non-person turn the page doesn't
+  stamp) is searched for in the whole page; neither found (one from before a continue) leaves the page at the top and
+  says so. The hash then drops the claim (`#s=<id>`, `#/s/<id>`), so the same link opened again shows it again. The
+  link holds no token, so it opens only in a browser that already redeemed a grant for that session; a link for
+  another session says this browser holds the link for this one. Its limits: **one grant per browser** (the grant
   cookie is one name: a second participant link redeemed there replaces the first), and **the owner opening a
   participant's invite link** in their own browser swaps their owner cookie for that grant (the page asks first). A
   continue archives the session and revokes its grants: re-share, and links to the old session stay on it.

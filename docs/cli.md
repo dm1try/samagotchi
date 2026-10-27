@@ -1213,7 +1213,8 @@ confirmed|refuted|unclear — <reason>`. On your page a selection in a turn
 also offers **Copy link**: a link to that turn and quote for a participant's
 browser (the one their review link was opened in), which opens their page
 scrolled to the quote and highlights it; with no one invited, a link to it
-on your own page. One browser holds one participant link at a time, and
+on your own page. A secret in the selection goes into the link as
+`[redacted]`, as the participant's page shows it. One browser holds one participant link at a time, and
 opening a participant's invite link yourself swaps your own sign-in for it
 (see [participants.md](internals/participants.md#what-a-participant-sees)).
 

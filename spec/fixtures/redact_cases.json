@@ -1,0 +1,23 @@
+{
+  "_comment": "ParticipantView::Redact.text (participant_view_spec.rb) and claim_link.js normalizeClaim (claim_link.test.js) read each input the same: keep the JS patterns in step with the Ruby ones. Inputs are single-spaced (the JS side also collapses whitespace).",
+  "home": "/home/o",
+  "cwd": "/home/o/proj",
+  "cases": [
+    ["key sk-ant-abcdefghijklmnopqrstu here", "key [redacted] here"],
+    ["sk-proj-abcdefghijklmnopqrstu and sk-abcdefghijklmnopqrstu", "[redacted] and [redacted]"],
+    ["gh ghp_abcdefghijklmnopqrstuvwxyz0123 github_pat_abcdefghijklmnopqrstuvwxyz", "gh [redacted] [redacted]"],
+    ["AKIAABCDEFGHIJKLMNOP xoxb-1234567890-abc chp_abcdefghijklmnopqrstuvwxyz", "[redacted] [redacted] [redacted]"],
+    ["code chc_aB3-_aB3-_aB3-_aB3-_aB3-_aB3-_aB3-_aB3-_xyz end", "code [redacted] end"],
+    ["AIzaSyA1234567890abcdefghijklmnopqrstu rk_live_abcdefghijklmnop1234 sk_test_abcdefghijklmnop", "[redacted] [redacted] [redacted]"],
+    ["jwt eyJhbGciOiJIUzI1.eyJzdWIiOiIxMjM0.SflKxwRJSMeKKF2QT ok", "jwt [redacted] ok"],
+    ["hook https://hooks.slack.com/services/T0/B1/xyz done", "hook [redacted] done"],
+    ["a -----BEGIN RSA PRIVATE KEY-----\nMIIE\n-----END RSA PRIVATE KEY----- b", "a [redacted] b"],
+    ["Authorization: Bearer abc.def and X-Chi-Bridge: 0123456789abcdef0123", "Authorization: Bearer [redacted] and X-Chi-Bridge: [redacted]"],
+    ["token=zzz OPENAI_API_KEY=abc123 {\"api_key\": \"k1\"} ?access_token=t1&x=1", "token=[redacted] OPENAI_API_KEY=[redacted] {\"api_key\": \"[redacted]\"} ?access_token=[redacted]&x=1"],
+    ["`API_KEY=sk-ant-abcdefghijklmnopqrstu` here", "`API_KEY=[redacted]` here"],
+    ["password: hunter2, next", "password: [redacted], next"],
+    ["postgres://app:pa55@db/x", "postgres://app:[redacted]@db/x"],
+    ["at /home/o/proj/a.rb in /home/o/proj, /home/o/notes and /home/oscar stays", "at a.rb in ., ~/notes and /home/oscar stays"],
+    ["no secret here: the count is wrong", "no secret here: the count is wrong"]
+  ]
+}
