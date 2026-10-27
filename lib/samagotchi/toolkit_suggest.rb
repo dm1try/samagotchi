@@ -47,16 +47,20 @@ module Samagotchi
 
     # The single turn eligibility predicate shared by audit and future on
     # mode. A later prompt is eligible only inside an undecided defer window.
+    # +candidate_count+ and +last_suggestion+ may be callables: they are
+    # read only once the session's own clauses pass (the kits read memory
+    # files; the suggestion log is read whole), the log only on the defer
+    # path, when the session already has a model reply.
     def self.eligible?(session:, prompt:, author:, candidate_count:, last_suggestion:, defer_turns:, defer_tokens:)
       return false unless session&.toolkit_origin == "default"
       return false if session.delegate? || session.review?
       return false if Steer.participant_author?(author)
       return false unless prompt.is_a?(String) && !prompt.strip.empty?
-      return false if candidate_count < 2
+      return false if value(candidate_count).to_i < 2
 
       messages = Array(session.messages)
       return true unless messages.any? { |message| field(message, :role).to_s == "model" }
-      return false unless field(last_suggestion, :raw) == "undecided"
+      return false unless field(value(last_suggestion), :raw) == "undecided"
 
       current_turn_number = turn_number(messages)
       current_turn_number <= defer_turns.to_i &&
@@ -154,6 +158,8 @@ module Samagotchi
 
     class << self
       private
+
+      def value(given) = given.respond_to?(:call) ? given.call : given
 
       def field(hash, key)
         return nil unless hash.is_a?(Hash)

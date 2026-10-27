@@ -135,6 +135,70 @@ RSpec.describe Samagotchi::Engine do
     expect(system_one).not_to have_received(:ask)
   end
 
+  it "skips a local System 1 host under another name for the model's server root (D7)" do
+    engine = build_engine
+    model_host = double(name: "splash", remote?: false, root_url: "http://127.0.0.1:8080")
+    judge_host = double(name: "judge", root_url: "HTTP://127.0.0.1:8080")
+    registry = double(host_for_model: [model_host, nil])
+    allow(registry).to receive(:find_entry).with("judge").and_return(judge_host)
+    engine.instance_variable_set(:@host_registry, registry)
+    allow(engine).to receive(:effective_model_name).and_return("model")
+    system_one = instance_double(Samagotchi::SystemOne::Client, host: "judge")
+    allow(system_one).to receive(:ask)
+    allow(Samagotchi::SystemOne::Client).to receive(:from_config).and_return(system_one)
+    allow(Samagotchi::Log).to receive(:info)
+
+    start(engine)
+
+    expect(Samagotchi::Log).to have_received(:info).with(:toolkit, "toolkit_suggest_shared_host_skipped",
+                                                         hash_including(host: "judge"))
+    expect(system_one).not_to have_received(:ask)
+  end
+
+  it "asks when the local System 1 host is another server" do
+    engine = build_engine
+    model_host = double(name: "splash", remote?: false, root_url: "http://127.0.0.1:8080")
+    registry = double(host_for_model: [model_host, nil], find_entry: double(root_url: "http://127.0.0.1:8082"))
+    engine.instance_variable_set(:@host_registry, registry)
+    allow(engine).to receive(:effective_model_name).and_return("model")
+    asked = Queue.new
+    system_one = instance_double(Samagotchi::SystemOne::Client, host: "judge")
+    allow(system_one).to receive(:ask) { |**| (asked << true) && nil }
+    allow(Samagotchi::SystemOne::Client).to receive(:from_config).and_return(system_one)
+
+    start(engine)
+
+    expect(pop!(asked, "the audit ask")).to be(true)
+  end
+
+  it "reads neither the kits nor the suggestion log for a session that can't be asked" do
+    engine = build_engine
+    binding = engine.instance_variable_get(:@toolkit_binding)
+    allow(binding).to receive(:kits).and_call_original
+    allow(Samagotchi::ToolkitSuggest).to receive(:last_suggestion).and_call_original
+    s = session
+    s.toolkit_origin = "chosen"
+
+    start(engine, session: s)
+
+    expect(binding).not_to have_received(:kits)
+    expect(Samagotchi::ToolkitSuggest).not_to have_received(:last_suggestion)
+  end
+
+  it "reads the suggestion log only on the defer path, once the session has a model reply" do
+    engine = build_engine
+    allow(Samagotchi::SystemOne::Client).to receive(:from_config).and_return(nil)
+    allow(Samagotchi::ToolkitSuggest).to receive(:last_suggestion).and_return(nil)
+    s = session
+
+    start(engine, session: s)
+    expect(Samagotchi::ToolkitSuggest).not_to have_received(:last_suggestion)
+
+    s.messages << { role: "user", turn_id: "t1", content: "hi" } << { role: "model", content: "hello" }
+    start(engine, session: s)
+    expect(Samagotchi::ToolkitSuggest).to have_received(:last_suggestion).once
+  end
+
   it "warns when the audit ask fails without affecting the turn" do
     engine = build_engine
     model_host = double(name: "model", remote?: true)

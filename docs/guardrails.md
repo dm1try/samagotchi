@@ -673,10 +673,13 @@ the turn starts. This uses the same configured host, model and timeout, but
 is gated by `toolkit.suggest.mode`, not `guardrails.system_one.mode`, and it
 never changes the session's toolkit. Its audit records use the `toolkit` tag
 and are written to `toolkit_suggestions.jsonl` beside the guardrail logs.
-To avoid competing with the session's model, it skips when the System 1 host
-is the same named local host as the model host. There is no reliable
-single-slot signal, so this host-identity check is the available contention
-guard.
+To avoid competing with the session's model, it skips (one info line) when
+the System 1 host is the model's local host: the same `hosts:` name, or
+another entry for the same server root (scheme, host and port). There is no
+reliable single-slot signal, so this host-identity check is the available
+contention guard. The session's own checks come first; the kits and the
+suggestion log are read only for a session that can be asked, the log only
+after an earlier `undecided`.
 
 ### What the audit writes
 

@@ -2734,19 +2734,25 @@ module Samagotchi
       return if @toolkit_audit_thread&.alive?
 
       session = turn.session
-      kits = @toolkit_binding.kits
       default = Toolkit.of(session.toolkit)
-      candidates = ToolkitSuggest.candidates(kits, default_name: default.name)
       path = ToolkitSuggest.log_path(session_state_dir)
       log = SystemOne::Log.new(dir: File.dirname(path), file: File.basename(path),
                                warn: lambda { |reason|
                                  Log.warn(:toolkit, "toolkit_suggest_log_failed",
                                           echo: "[samagotchi:toolkit] #{reason}")
                                })
-      last = ToolkitSuggest.last_suggestion(log, session.id)
+      # The predicate checks the session first; the kits (memory kits are
+      # read from disk) and the log (read whole) only when it gets there.
+      kits = nil
+      candidates = nil
       return unless ToolkitSuggest.eligible?(
         session: session, prompt: turn.prompt, author: turn.origin.author,
-        candidate_count: candidates.size, last_suggestion: last,
+        candidate_count: lambda {
+          kits = @toolkit_binding.kits
+          candidates = ToolkitSuggest.candidates(kits, default_name: default.name)
+          candidates.size
+        },
+        last_suggestion: -> { ToolkitSuggest.last_suggestion(log, session.id) },
         defer_turns: Config.get("toolkit.suggest.defer_turns"),
         defer_tokens: Config.get("toolkit.suggest.defer_tokens")
       )
@@ -2754,8 +2760,7 @@ module Samagotchi
       client = SystemOne::Client.from_config(host_registry: @host_registry, mode: "on", tag: :toolkit)
       return unless client
 
-      model_host, = @host_registry.host_for_model(effective_model_name)
-      if model_host && client.host == model_host.name && !model_host.remote?
+      if toolkit_judge_shares_local_host?(client.host)
         Log.info(:toolkit, "toolkit_suggest_shared_host_skipped", session_id: session.id, host: client.host)
         return
       end
@@ -2790,6 +2795,19 @@ module Samagotchi
       nil
     end
     private :start_toolkit_suggestion_audit
+
+    # D7: System 1's host is the session's model server, and a local one
+    # (a single-slot Splash or llama.cpp): the same name, or two hosts:
+    # entries for one server root (scheme, host, port).
+    def toolkit_judge_shares_local_host?(judge_name)
+      model_host, = @host_registry.host_for_model(effective_model_name)
+      return false if model_host.nil? || model_host.remote?
+      return true if judge_name.to_s.strip.casecmp?(model_host.name.to_s)
+
+      judge = @host_registry.find_entry(judge_name)
+      !judge.nil? && judge.root_url.downcase == model_host.root_url.downcase
+    end
+    private :toolkit_judge_shares_local_host?
 
     # The session's toolkit (see #initialize for when).
     def build_toolkit_binding
