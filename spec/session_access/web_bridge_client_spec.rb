@@ -327,19 +327,46 @@ RSpec.describe Samagotchi::SessionAccess::WebBridgeClient do
       body = JSON.generate(error: "not_live")
       unavailable = "HTTP/1.1 503 Service Unavailable\r\nContent-Length: #{body.bytesize}\r\n\r\n#{body}"
       opened = "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\n\r\nid: 1-e1\ndata: {\"type\":\"snapshot\"}\n\n"
-      server, port, heads, thread = serve_sequence(unavailable, opened)
+      server = TCPServer.new("127.0.0.1", 0)
+      heads = Queue.new
+      release = Queue.new
+      thread = Thread.new do
+        first = server.accept
+        first_head = +""
+        first_head << first.gets.to_s until first_head.end_with?("\r\n\r\n")
+        heads << first_head
+        first.write(unavailable)
+        first.close
+
+        second = server.accept
+        second_head = +""
+        second_head << second.gets.to_s until second_head.end_with?("\r\n\r\n")
+        heads << second_head
+        release.pop
+        second.write(opened)
+        second.read
+        second.close
+      rescue IOError, SystemCallError
+        nil
+      ensure
+        server.close unless server.closed?
+      end
+      thread.report_on_exception = false
       events = Queue.new
-      stream = client_at(port).follow(reconnect_delays: [0.01]) { |event| events << event }
+      stream = client_at(server.local_address.ip_port).follow(reconnect_delays: [0.01]) { |event| events << event }
 
       expect(pop!(heads, "the first remote stream request")).to include("GET /api/sessions/s1/stream?snapshot=1")
       expect(pop!(events, "the retry notice")).to eq("type" => "stream_retrying")
       expect(pop!(heads, "the retried remote stream request")).to include("GET /api/sessions/s1/stream?snapshot=1")
+      expect(wait_until(timeout: 0.1) { !events.empty? }).to be(false)
+      release << true
       expect(pop!(events, "the resumed notice")).to eq("type" => "stream_resumed")
       expect(pop!(events, "the first frame after resuming")).to eq("type" => "snapshot")
     ensure
+      release << true if release && release.empty?
       stream&.close
       server&.close unless server&.closed?
-      join!(thread, "the remote stream server") if thread
+      join!(thread, "the remote stream server") unless thread.nil?
     end
 
     it "follows with epoch_watch, announce_retries and the 40 s idle timeout" do

@@ -1,10 +1,12 @@
 # frozen_string_literal: true
 
 require "json"
+require "socket"
 require "samagotchi/worker_link"
 require_relative "../support/worker_fixtures"
 require_relative "../support/worker_links"
 require "tmpdir"
+require "samagotchi/session_manager"
 require "samagotchi/terminal_ui/local_link"
 
 RSpec.describe Samagotchi::TerminalUI::LocalLink do
@@ -66,6 +68,70 @@ RSpec.describe Samagotchi::TerminalUI::LocalLink do
 
     expect(link.switched({ port: 4200 }).send(:secret_headers)).to eq("X-Chi-Bridge" => "5e" * 32)
     expect(link.switched({ port: 4300 })).to be_nil
+  end
+
+  it "follows the new worker after restart falls back to TERM, without treating it as stopped" do
+    session = Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: state_dir)
+    session.save(state_dir: state_dir)
+    dir = Samagotchi::Session.session_dir(session.id, state_dir: state_dir)
+    old_listener = TCPServer.new("127.0.0.1", 0)
+    old_port = old_listener.local_address.ip_port
+    old_listener.close
+    new_listener = TCPServer.new("127.0.0.1", 0)
+    new_port = new_listener.local_address.ip_port
+    old_lock = hold_worker(dir)
+    Samagotchi::WorkerSidecar.new(port: old_port, session_id: session.id, secret: "ab" * 32, pid: Process.pid,
+                                  protocol: Samagotchi::WorkerLink::PROTOCOL, epoch: "old", started_at: "old",
+                                  version: "0.18.1", features: ["restart"]).write(dir)
+    attached_client = Samagotchi::BridgeClient.new(session_id: session.id, port: old_port, secret: "ab" * 32)
+    attached_link = described_class.new(client: attached_client, state_dir: state_dir)
+    replacement = Samagotchi::WorkerSidecar.new(port: new_port, session_id: session.id, secret: "cd" * 32,
+                                                pid: Process.pid, protocol: Samagotchi::WorkerLink::PROTOCOL,
+                                                epoch: "new", started_at: "new", version: "0.19.0",
+                                                features: ["restart"])
+    allow(Process).to receive(:kill) do |signal, pid|
+      expect([signal, pid]).to eq(["TERM", Process.pid])
+      old_lock.release
+      worker_locks.delete(old_lock)
+    end
+    allow(Samagotchi::SessionManager).to receive(:resume_session) do |_session_id, state_dir:|
+      hold_worker(dir)
+      replacement.write(dir)
+    end
+
+    restarted = Samagotchi::SessionManager.restart_session(session.id, state_dir: state_dir, wait: 1)
+    expect(restarted).to have_attributes(from_version: "0.18.1", version: "0.19.0")
+    expect(Samagotchi::Session.stopped_marker?(session.id, state_dir: state_dir)).to be(false)
+
+    connection = Queue.new
+    bridge_thread = Thread.new do
+      socket = new_listener.accept
+      connection << socket
+      request = +""
+      request << socket.gets.to_s until request.end_with?("\r\n\r\n")
+      socket.write("HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\n\r\n")
+      socket.read
+    rescue IOError, SystemCallError
+      nil
+    ensure
+      socket&.close
+      new_listener.close unless new_listener.closed?
+    end
+    bridge_thread.report_on_exception = false
+    events = Queue.new
+    stream = attached_client.follow(rediscover: attached_link.method(:live_worker), reconnect_delays: [0.01]) do |event|
+      attached_link.switched(event) if event["type"] == "worker_changed"
+      events << event
+    end
+
+    expect(pop!(events, "the restarted worker's stream")).to include("type" => "worker_changed", "port" => new_port)
+    expect(attached_link.client.port).to eq(new_port)
+    expect(events).to be_empty
+  ensure
+    stream&.close
+    new_listener&.close unless new_listener&.closed?
+    join!(bridge_thread, "the replacement worker's Bridge") if bridge_thread
+    connection.pop.close unless connection && connection.empty?
   end
 
   it "switches to the very client #live_worker found for the stream, whatever the sidecar says by now" do

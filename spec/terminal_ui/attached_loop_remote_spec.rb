@@ -199,6 +199,14 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "through a remote" do
       expect(screen.lines).to eq(["(lost the connection to studio; reconnecting…)", "(reconnected)"])
     end
 
+    it "words a stream's refused Bridge secret with the remote chi invocation" do
+      attached.handle_event({ "type" => "stream_closed", "reason" => "bridge_secret" })
+
+      expect(screen.lines.last).to eq(
+        "Lost the session's worker: #{Samagotchi::BridgeSecret.refused(client.session_id, via: remote.invocation)}"
+      )
+    end
+
     it "words each reason the stream ended for, naming the remote and what brings the session back" do
       expect(closed("stopped")).to eq("The session was stopped on studio. Resume it with: chi --remote studio --resume s-1234")
       expect(closed("worker_gone"))

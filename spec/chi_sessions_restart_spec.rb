@@ -2,6 +2,8 @@
 
 require "tmpdir"
 require "stringio"
+require "socket"
+require "rbconfig"
 require "spec_helper"
 require "samagotchi/session"
 require "samagotchi/session_manager"
@@ -12,7 +14,25 @@ RSpec.describe "chi sessions restart" do
   let(:state_dir) { Samagotchi::Session.default_state_dir(env: { "XDG_STATE_HOME" => xdg_state }) }
   let(:env) { { "XDG_STATE_HOME" => xdg_state } }
 
-  after { FileUtils.rm_rf(xdg_state) }
+  after do
+    @replacement_pid ||= Samagotchi::SessionManager.session_owner(@replacement_id, state_dir: state_dir)&.pid if @replacement_id
+    [@replacement_pid, @unreachable_pid].compact.uniq.each do |pid|
+      Process.kill("TERM", pid)
+    rescue Errno::ESRCH
+      nil
+    end
+    wait_for("the replacement worker to release its owner lock") do
+      !@replacement_pid || Samagotchi::SessionManager.session_owner(@replacement_id, state_dir: state_dir)&.pid != @replacement_pid
+    end
+    if @unreachable_pid
+      begin
+        Process.wait(@unreachable_pid)
+      rescue Errno::ECHILD
+        nil
+      end
+    end
+    FileUtils.rm_rf(xdg_state)
+  end
 
   def run_restart(*ids)
     out = StringIO.new
@@ -24,6 +44,29 @@ RSpec.describe "chi sessions restart" do
   def saved_session
     Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp")
                        .tap { |s| s.save(state_dir: Samagotchi::Session.default_state_dir) }
+  end
+
+  def spawn_unreachable_worker(session)
+    dir = Samagotchi::Session.session_dir(session.id, state_dir: state_dir)
+    listener = TCPServer.new("127.0.0.1", 0)
+    port = listener.local_address.ip_port
+    listener.close
+    script = <<~RUBY
+      require "samagotchi/owner_lock"
+      require "samagotchi/worker_sidecar"
+      require "samagotchi/worker_link"
+      session_dir, session_id, port = ARGV
+      Samagotchi::OwnerLock.acquire(session_dir, kind: "worker") or abort "owner lock unavailable"
+      Samagotchi::WorkerSidecar.new(port: port.to_i, session_id: session_id, pid: Process.pid,
+                                    protocol: Samagotchi::WorkerLink::PROTOCOL, epoch: "old",
+                                    started_at: "old", version: "0.18.1", features: ["restart"]).write(session_dir)
+      sleep 60
+    RUBY
+    @unreachable_pid = Process.spawn(RbConfig.ruby, "-I", File.expand_path("../lib", __dir__), "-e", script,
+                                     dir, session.id, port.to_s, out: File::NULL, err: File::NULL)
+    wait_for("the unreachable worker to publish its sidecar") do
+      Samagotchi::WorkerLink.resolve(dir, unlink: false).live?
+    end
   end
 
   around { |example| with_env(env) { example.run } }
@@ -79,6 +122,24 @@ RSpec.describe "chi sessions restart" do
 
     expect(status).to eq(1)
     expect(err).to eq("session #{session.id} has no running worker; the next prompt starts one on the newest chi\n")
+  end
+
+  it "TERMs an unreachable real worker and starts a successor without a stop marker" do
+    session = saved_session
+    @replacement_id = session.id
+    spawn_unreachable_worker(session)
+
+    out, err, status = run_chi("sessions", "restart", session.id, env: env, timeout: 20)
+    expect([err, status]).to eq(["", 0])
+    expect(out).to eq("Restarted session #{session.id} on chi #{Samagotchi::VERSION} (was 0.18.1).\n")
+    expect(Samagotchi::Session.stopped_marker?(session.id, state_dir: state_dir)).to be(false)
+
+    fresh = wait_for("the replacement worker to publish its Bridge") do
+      link = Samagotchi::WorkerLink.resolve(Samagotchi::Session.session_dir(session.id, state_dir: state_dir), unlink: false)
+      link if link.live? && link.sidecar.pid != @unreachable_pid
+    end
+    @replacement_pid = fresh.sidecar.pid
+    expect(fresh.sidecar.version).to eq(Samagotchi::VERSION)
   end
 
   it "fails on an unknown session and asks for an id" do
