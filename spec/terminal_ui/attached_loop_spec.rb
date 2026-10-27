@@ -42,6 +42,9 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop do
 
     it "moves to a new worker (a restart): requests go there, and its snapshot resyncs without repeating the join" do
       allow(client).to receive(:host).and_return("127.0.0.1")
+      found = instance_double(Samagotchi::BridgeClient, session_id: "s-1234", port: 4321, host: "127.0.0.1")
+      allow(Samagotchi::WorkerLink).to receive(:resolve).and_return(live_link({ port: 4321 }, client: found))
+      allow(Samagotchi::Session).to receive(:stopped_marker?).and_return(false)
       feed(snapshot(messages: [{ role: "user", content: "hi" }, { role: "model", content: "hello there" }]))
       moved_snapshot = snapshot(messages: [{ role: "user", content: "hi" }, { role: "model", content: "hello there" }])
       moved_snapshot[:snapshot][:chi_version] = "0.19.0"
@@ -75,7 +78,7 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop do
 
     it "looks for the session's live worker for the stream, and gives up once the session was stopped" do
       allow(client).to receive(:host).and_return("127.0.0.1")
-      found = instance_double(Samagotchi::BridgeClient)
+      found = instance_double(Samagotchi::BridgeClient, session_id: "s-1234", port: 4321, host: "127.0.0.1")
       allow(Samagotchi::WorkerLink).to receive(:resolve).and_return(live_link(client: found))
       allow(Samagotchi::Session).to receive(:stopped_marker?)
         .with("s-1234", state_dir: Samagotchi::Session.default_state_dir).and_return(false)

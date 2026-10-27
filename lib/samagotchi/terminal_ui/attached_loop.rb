@@ -439,7 +439,7 @@ module Samagotchi
 
       # The stream moved to a new worker (a restart): requests go there too.
       def switch_worker(event)
-        @client = @link.switched(event)
+        @client = @link.switched(event) || @client
         @worker_changed = true
         # The new worker's machine may name another default model.
         @default_model_name = nil

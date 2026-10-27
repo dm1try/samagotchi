@@ -22,6 +22,10 @@ RSpec.describe Samagotchi::TerminalUI::LocalLink do
 
   def fixture(name) = File.expand_path("../fixtures/images/#{name}", __dir__)
 
+  def sidecar(port, secret)
+    Samagotchi::WorkerSidecar.new(port: port, session_id: id, secret: secret, pid: Process.pid).write(session_dir)
+  end
+
   it "defines every AttachLink method itself" do
     missing = Samagotchi::TerminalUI::AttachLink.public_instance_methods(false).reject do |name|
       described_class.instance_method(name).owner == described_class
@@ -45,18 +49,23 @@ RSpec.describe Samagotchi::TerminalUI::LocalLink do
   end
 
   it "switches to the new worker's port, for its client from then on" do
+    hold_worker(session_dir)
+    sidecar(4200, "ab" * 32)
     moved = link.switched({ port: 4200 })
 
     expect([moved.session_id, moved.port, moved.host]).to eq([id, 4200, "127.0.0.1"])
+    expect(moved.send(:secret_headers)).to eq("X-Chi-Bridge" => "ab" * 32)
     expect(link.client).to be(moved)
+    sidecar(4300, "cd" * 32)
     expect(link.switched({ "port" => 4300 }).port).to eq(4300)
   end
 
-  it "switches with the secret the new worker's sidecar names, none when the sidecar names another port" do
-    Samagotchi::WorkerSidecar.new(port: 4200, session_id: id, secret: "5e" * 32).write(session_dir)
+  it "never creates a secretless client when the sidecar names another port" do
+    hold_worker(session_dir)
+    sidecar(4200, "5e" * 32)
 
     expect(link.switched({ port: 4200 }).send(:secret_headers)).to eq("X-Chi-Bridge" => "5e" * 32)
-    expect(link.switched({ port: 4300 }).send(:secret_headers)).to eq({})
+    expect(link.switched({ port: 4300 })).to be_nil
   end
 
   it "switches to the very client #live_worker found for the stream, whatever the sidecar says by now" do

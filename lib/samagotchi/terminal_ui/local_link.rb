@@ -3,7 +3,6 @@
 require_relative "attach_link"
 require_relative "../session"
 require_relative "../bridge_client"
-require_relative "../worker_sidecar"
 require_relative "../worker_link"
 require_relative "../delivery"
 require_relative "../session_inbox"
@@ -43,6 +42,8 @@ module Samagotchi
                      installed_version: -> { InstalledVersions.new.newest },
                      children_counts: ->(id) { ChildrenStatus.counts(id, state_dir: state_dir) })
         @client = client
+        @session_id = client.session_id
+        @host = BridgeClient::HOST
         @state_dir = state_dir
         @delete_session = delete_session
         @archive_session = archive_session
@@ -53,10 +54,10 @@ module Samagotchi
       # The sidecar's worker, nil while none runs; gone once the session was
       # stopped (no worker is coming): its stop marker in +state_dir+.
       def live_worker
-        id = @client.session_id
+        id = @session_id
         return [:gone, "stopped"] if Session.stopped_marker?(id, state_dir: @state_dir)
 
-        link = WorkerLink.resolve(session_dir, unlink: true, host: @client.host)
+        link = WorkerLink.resolve(session_dir, unlink: true, host: @host)
         if link.is_a?(WorkerLink::Skew)
           @failure = link.message(id)
           return [:gone, "worker_newer"]
@@ -64,25 +65,25 @@ module Samagotchi
 
         # Kept: the stream moves to this very client (EventStream), and
         # #switched takes it, port and secret, rather than reading again.
-        @found = link.live? ? link.client(id, host: @client.host) : nil
+        @found = link.live? ? link.client(id, host: @host) : nil
         [@found, nil]
       end
 
       # A new worker's Bridge: the client #live_worker found for the stream
-      # (the event names its port), with that worker's secret. One the event
-      # doesn't name (another worker since) is read from the sidecar for that
-      # port, none when the sidecar names another one by now: that worker is
-      # gone too, and the stream finds the next.
+      # (the event names its port), with that worker's secret. An event that
+      # names another worker is resolved again; a mismatched sidecar never
+      # becomes a secretless client.
       def switched(event)
         port = AttachLink.event_port(event)
         found = @found
-        @client = if found&.port == port
-                    found
-                  else
-                    sidecar = WorkerSidecar.read(session_dir)
-                    sidecar = WorkerSidecar.new(port: port) unless sidecar&.port == port
-                    BridgeClient.for_sidecar(@client.session_id, sidecar, host: @client.host)
-                  end
+        candidate = if found&.port == port
+                      found
+                    else
+                      link = WorkerLink.resolve(session_dir, unlink: true, host: @host)
+                      link.live? && link.port == port ? link.client(@session_id, host: @host) : nil
+                    end
+        @client = candidate if candidate
+        candidate
       end
 
       # No sidecar to read: true, its Bridge answers (a P0-P2 worker refuses
@@ -154,7 +155,7 @@ module Samagotchi
 
       private
 
-      def session_dir = Session.session_dir(@client.session_id, state_dir: @state_dir)
+      def session_dir = Session.session_dir(@session_id, state_dir: @state_dir)
 
       def feature?(name)
         link = WorkerLink.resolve(session_dir, unlink: false)
