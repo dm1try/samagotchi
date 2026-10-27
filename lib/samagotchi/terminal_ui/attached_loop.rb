@@ -455,6 +455,8 @@ module Samagotchi
         return "Lost the session's worker: #{BridgeSecret::REFUSED}" if reason == BridgeSecret::ERROR
         return remote_closed_line(reason, id) if via.remote?
 
+        return "Lost the session's worker: #{@link.failure}" if reason == "worker_newer" && @link.failure
+
         # Here a stopped session has always read as unreachable.
         reason = "unreachable" if reason == "stopped"
         "Lost the session's worker (#{reason}). Resume it with: #{via.command("--shared --resume #{id}")}"

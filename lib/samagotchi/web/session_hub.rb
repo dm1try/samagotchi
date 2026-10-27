@@ -7,7 +7,7 @@ require "time"
 require_relative "../session"
 require_relative "../session_manager"
 require_relative "../bridge_client"
-require_relative "../worker_sidecar"
+require_relative "../worker_link"
 require_relative "../log"
 require_relative "../installed_versions"
 require_relative "../version"
@@ -353,11 +353,13 @@ module Samagotchi
       def live_stamp(owner, dir)
         return nil unless owner
 
-        { pid: owner.pid, kind: owner.kind, bridge_started_at: bridge_started_at(dir) }
+        { pid: owner.pid, kind: owner.kind, bridge_started_at: bridge_started_at(dir, owner) }
       end
 
-      def bridge_started_at(dir)
-        WorkerSidecar.read(dir)&.started_at
+      # The Live worker's start (the owner already read is the one the link answers by).
+      def bridge_started_at(dir, owner)
+        link = WorkerLink.resolve(dir, unlink: false, owner: owner)
+        link.live? ? link.started_at : nil
       end
 
       def emit(type, data)

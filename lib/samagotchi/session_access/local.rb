@@ -97,7 +97,16 @@ module Samagotchi
         raise Refused.new(LaunchMode::SCRATCH_LEFTOVER, code: "scratch") if session.scratch
 
         link = WorkerLink.resolve(session_dir(id), unlink: true)
-        return Woken.new(woke: false, sidecar: link.sidecar) if link.live?
+        case link
+        when WorkerLink::Live then return Woken.new(woke: false, sidecar: link.sidecar)
+        when WorkerLink::Skew then raise Refused.new(link.message(id), code: "worker_newer")
+        when WorkerLink::Starting
+          # A worker that never publishes its Bridge (a failed start, a
+          # crash's teardown) lets go of the lock: then resume, not 504.
+          found = WorkerLink.await(id, session_dir: session_dir(id), timeout: wait,
+                                       give_up: ->(link) { !link.worker_owned? })
+          return Woken.new(woke: false, sidecar: found.live? ? found.sidecar : nil) if found.worker_owned?
+        end
 
         OwnerLock.await_release(session_dir(id))
         SessionManager.resume_session(id, **dir)
@@ -110,9 +119,8 @@ module Samagotchi
       # @raise [ArgumentError] no such session
       def worker(id)
         show(id)
-        link = WorkerLink.resolve(session_dir(id), unlink: true)
-        WorkerState.new(sidecar: link.live? ? link.sidecar : nil,
-                        stopped: Session.stopped_marker?(id, state_dir: state_dir!), owner: owner(id))
+        WorkerState.new(link: WorkerLink.resolve(session_dir(id), unlink: true),
+                        stopped: Session.stopped_marker?(id, state_dir: state_dir!))
       end
 
       # --- create and send

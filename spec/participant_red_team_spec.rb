@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "spec_helper"
+require "support/worker_fixtures"
 require "tmpdir"
 require "json"
 require "rack/mock"
@@ -173,8 +174,11 @@ RSpec.describe "a participant red-teaming a session" do
     let(:announced) { [] }
     let(:input_dir) { File.join(Samagotchi::Session.session_dir(session.id, state_dir: state_dir), Samagotchi::SessionInbox::INPUT_DIR) }
 
+    include WorkerFixtures
+
     before do
       WebMock.allow_net_connect! if defined?(WebMock)
+      hold_worker(Samagotchi::Session.session_dir(session.id, state_dir: state_dir))
       allow(Samagotchi::SessionManager).to receive(:resume_session)
       allow(Samagotchi::PromptHistory).to receive(:append)
       engine.subscribe(observer: ->(event) { announced << event })

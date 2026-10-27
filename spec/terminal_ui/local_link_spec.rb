@@ -2,10 +2,15 @@
 
 require "json"
 require "samagotchi/worker_link"
+require_relative "../support/worker_fixtures"
+require_relative "../support/worker_links"
 require "tmpdir"
 require "samagotchi/terminal_ui/local_link"
 
 RSpec.describe Samagotchi::TerminalUI::LocalLink do
+  include WorkerFixtures
+  include WorkerLinks
+
   let(:state_dir) { Dir.mktmpdir("local-link") }
   let(:id) { "s-1234" }
   let(:session_dir) { Samagotchi::Session.session_dir(id, state_dir: state_dir) }
@@ -27,11 +32,11 @@ RSpec.describe Samagotchi::TerminalUI::LocalLink do
   describe "#live_worker" do
     it "finds the sidecar's worker, none while there is none, and is gone once the session was stopped" do
       found = instance_double(Samagotchi::BridgeClient)
-      allow(Samagotchi::WorkerLink).to receive(:client).and_return(nil, found)
+      allow(Samagotchi::WorkerLink).to receive(:resolve).and_return(none_link, live_link(client: found))
 
       expect(link.live_worker).to eq([nil, nil])
       expect(link.live_worker).to eq([found, nil])
-      expect(Samagotchi::WorkerLink).to have_received(:client).with(id, session_dir: session_dir, host: "127.0.0.1").twice
+      expect(Samagotchi::WorkerLink).to have_received(:resolve).with(session_dir, unlink: true, host: "127.0.0.1").twice
 
       # The stop marker in the link's state dir.
       allow(Samagotchi::Session).to receive(:stopped_marker?).with(id, state_dir: state_dir).and_return(true)
@@ -56,7 +61,7 @@ RSpec.describe Samagotchi::TerminalUI::LocalLink do
 
   it "switches to the very client #live_worker found for the stream, whatever the sidecar says by now" do
     found = Samagotchi::BridgeClient.new(session_id: id, port: 4200, secret: "ab" * 32)
-    allow(Samagotchi::WorkerLink).to receive(:client).and_return(found)
+    allow(Samagotchi::WorkerLink).to receive(:resolve).and_return(live_link(client: found))
     link.live_worker
     Samagotchi::WorkerSidecar.new(port: 4900, session_id: id, secret: "cd" * 32).write(session_dir) # a later worker
 
@@ -65,7 +70,10 @@ RSpec.describe Samagotchi::TerminalUI::LocalLink do
   end
 
   describe "#queues? and #unqueues?" do
-    def sidecar(features) = Samagotchi::WorkerSidecar.new(port: 1, session_id: id, features: features).write(session_dir)
+    def sidecar(features)
+      hold_worker(session_dir) if worker_locks.empty?
+      Samagotchi::WorkerSidecar.new(port: 1, session_id: id, features: features, pid: Process.pid).write(session_dir)
+    end
 
     it "are true with no sidecar to read (its Bridge answers)" do
       expect([link.queues?, link.unqueues?]).to eq([true, true])

@@ -380,6 +380,7 @@ RSpec.describe Samagotchi::SendCommand, "--wait" do
     # save that ReplyWait.settled waits up to SETTLE_SECONDS (1 s) for.
     stub_const("Samagotchi::ReplyWait::SETTLE_SECONDS", 0.1)
     allow(Samagotchi::SessionManager).to receive(:session_owner) { owner[0] }
+    allow(Samagotchi::OwnerLock).to receive(:owner) { owner[0] }
     allow(Samagotchi::SessionManager).to receive(:spawn_session) do |prompt:, **|
       # As spawn_session does: the prompt a session starts with is given its
       # turn's id, so the wait is for that turn by name.

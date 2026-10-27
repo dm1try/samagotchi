@@ -249,9 +249,13 @@ module Samagotchi
       end
 
       # @return [BridgeClient, nil] the running worker's, or nil when none runs
+      # @raise [Error] its worker is newer than this chi (Skew)
       def connect_existing(session_id, state_dir)
         Session.load(session_id, state_dir: state_dir)
-        WorkerLink.client(session_id, session_dir: Session.session_dir(session_id, state_dir: state_dir))
+        link = WorkerLink.resolve(Session.session_dir(session_id, state_dir: state_dir), unlink: true)
+        raise Error, link.message(session_id) if link.is_a?(WorkerLink::Skew)
+
+        link.live? ? link.client(session_id) : nil
       end
     end
   end

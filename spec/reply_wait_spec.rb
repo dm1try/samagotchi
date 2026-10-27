@@ -2,6 +2,7 @@
 
 require "tmpdir"
 require "spec_helper"
+require_relative "support/worker_fixtures"
 require "samagotchi/reply_wait"
 require "samagotchi/parent_report"
 require "samagotchi/session_manager"
@@ -9,6 +10,8 @@ require "samagotchi/session_manager"
 # A session's next reply: an output/ file past the caller's cursor, or the
 # reason none will come.
 RSpec.describe Samagotchi::ReplyWait do
+  include WorkerFixtures
+
   # A reply's session left running in the fixture never gets the worker's
   # save that ReplyWait.settled waits up to SETTLE_SECONDS (1 s) for: 0.1 s
   # here, but in an example about that wait (:real_settle).
@@ -988,9 +991,7 @@ RSpec.describe Samagotchi::ReplyWait do
         s.save(state_dir: tmpdir)
       end
 
-      def sidecar(features)
-        Samagotchi::WorkerSidecar.new(port: 1, features: features).write(dir)
-      end
+      def sidecar(features) = live_sidecar_fixture(dir, port: 1, features: features)
 
       def loaded = Samagotchi::Session.load(session.id, state_dir: tmpdir)
 

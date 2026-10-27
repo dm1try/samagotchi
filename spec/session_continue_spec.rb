@@ -141,8 +141,6 @@ RSpec.describe Samagotchi::SessionContinue, ".run" do
     previous = make
     save_recap(previous.id, "The old recap.")
     client = instance_double(Samagotchi::BridgeClient)
-    allow(manager).to receive(:worker_live?).and_call_original
-    allow(manager).to receive(:worker_live?).with(previous.id, state_dir: tmpdir).and_return(true)
     allow(Samagotchi::WorkerLink).to receive(:client).and_return(client)
     allow(client).to receive(:request_recap) do
       Thread.new do

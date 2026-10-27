@@ -298,7 +298,7 @@ module Samagotchi
         child = s.parent_id ? "  ↳ #{s.parent_id[0, 8]}" : ""
         child += "  ↪ #{s.continues[0, 8]}" if s.continues
         # A question waits for an answer (chi answer, the web, chi --attach).
-        live = s.pending_question && Samagotchi::SessionManager.worker_live?(s.id, state_dir: state_dir)
+        live = s.pending_question && worker_owned?(s.id, state_dir)
         waiting = s.waiting_question(live: !!live)
         status = if waiting&.dig(:relayed_to) then "waiting (in parent #{waiting[:relayed_to]})"
                  elsif waiting then "waiting"
@@ -384,7 +384,12 @@ module Samagotchi
       [snapshot, false, note]
     end
 
-    def live_worker?(session_id) = Samagotchi::SessionManager.worker_live?(session_id)
+    def live_worker?(session_id) = worker_owned?(session_id, nil)
+
+    def worker_owned?(session_id, state_dir)
+      dir = Samagotchi::Session.session_dir(session_id, state_dir: state_dir || Samagotchi::Session.default_state_dir)
+      Samagotchi::WorkerLink.resolve(dir, unlink: false).worker_owned?
+    end
 
     def stop(ids)
       return usage_error("give session ids") if ids.empty?

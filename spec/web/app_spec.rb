@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "spec_helper"
+require "support/worker_fixtures"
 require "tmpdir"
 require "json"
 require "fileutils"
@@ -86,6 +87,7 @@ end
 
 RSpec.describe Samagotchi::Web::App do
   include WorkerLinks
+  include WorkerFixtures
 
   around { |example| with_env("SAMAGOTCHI_DEFAULT_MODEL" => "Gemma-4B-it") { example.run } }
 
@@ -3542,7 +3544,9 @@ RSpec.describe Samagotchi::Web::App do
           end
         end
         accept_thread.report_on_exception = false
-        Samagotchi::WorkerSidecar.new(port: server.local_address.ip_port, secret: pair * 32).write(File.join(state_dir, "s1"))
+        worker_locks.each(&:release).clear # the previous worker is gone: the next takes the lock
+        hold_worker(File.join(state_dir, "s1"))
+        Samagotchi::WorkerSidecar.new(port: server.local_address.ip_port, secret: pair * 32, pid: Process.pid).write(File.join(state_dir, "s1"))
 
         status, = app.call(env_for("/api/sessions/s1/answer", method: "POST", body: '{"id":"q-1","selected":["A"]}'))
         expect(status).to eq(200)

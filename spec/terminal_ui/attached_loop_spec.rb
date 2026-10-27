@@ -2,11 +2,15 @@
 
 require "json"
 require "samagotchi/worker_link"
+require_relative "../support/worker_fixtures"
+require_relative "../support/worker_links"
 require "samagotchi/terminal_ui"
 require "samagotchi/terminal_ui/attached_loop"
 require_relative "../support/recording_surface"
 
 RSpec.describe Samagotchi::TerminalUI::AttachedLoop do
+  include WorkerLinks
+
   let(:screen) { RecordingSurface.new(columns: 80) }
   let(:client) { instance_double(Samagotchi::BridgeClient, session_id: "s-1234") }
   let(:attached) { described_class.new(client: client, screen: screen, client_id: "tui:1") }
@@ -72,12 +76,12 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop do
     it "looks for the session's live worker for the stream, and gives up once the session was stopped" do
       allow(client).to receive(:host).and_return("127.0.0.1")
       found = instance_double(Samagotchi::BridgeClient)
-      allow(Samagotchi::WorkerLink).to receive(:client).and_return(found)
+      allow(Samagotchi::WorkerLink).to receive(:resolve).and_return(live_link(client: found))
       allow(Samagotchi::Session).to receive(:stopped_marker?)
         .with("s-1234", state_dir: Samagotchi::Session.default_state_dir).and_return(false)
       expect(attached.send(:live_worker)).to eq([found, nil])
-      expect(Samagotchi::WorkerLink).to have_received(:client)
-        .with("s-1234", session_dir: Samagotchi::Session.session_dir("s-1234"), host: "127.0.0.1")
+      expect(Samagotchi::WorkerLink).to have_received(:resolve)
+        .with(Samagotchi::Session.session_dir("s-1234"), unlink: true, host: "127.0.0.1")
 
       allow(Samagotchi::Session).to receive(:stopped_marker?)
         .with("s-1234", state_dir: Samagotchi::Session.default_state_dir).and_return(true)
@@ -2024,6 +2028,8 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "answering the continue off
 end
 
 RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "a delivery while a turn runs" do
+  include WorkerFixtures
+
   let(:screen) { RecordingSurface.new(columns: 80) }
   let(:client) { instance_double(Samagotchi::BridgeClient, session_id: "s-1234", host: "127.0.0.1", port: 1) }
   let(:attached) { described_class.new(client: client, screen: screen, client_id: "tui:1") }
@@ -2169,8 +2175,8 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "a delivery while a turn ru
       after { FileUtils.rm_rf(state_dir) }
 
       it "asks nothing of a worker whose sidecar lacks unqueue, and says it needs a newer one" do
-        Samagotchi::WorkerSidecar.new(port: 1, session_id: "s-1234", features: %w[restart task_stop reparent delivery])
-                                 .write(Samagotchi::Session.session_dir("s-1234", state_dir: state_dir))
+        live_sidecar_fixture(Samagotchi::Session.session_dir("s-1234", state_dir: state_dir), port: 1, session_id: "s-1234",
+                                                                                               features: %w[restart task_stop reparent delivery])
         run_unqueue("/queue later", "/unqueue")
 
         expect(removed).to eq([])
@@ -2186,8 +2192,8 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "a delivery while a turn ru
     after { FileUtils.rm_rf(state_dir) }
 
     it "sends nothing when its sidecar names no delivery feature (it would steer), and says to restart it" do
-      Samagotchi::WorkerSidecar.new(port: 1, session_id: "s-1234", features: %w[restart task_stop reparent])
-                               .write(Samagotchi::Session.session_dir("s-1234", state_dir: state_dir))
+      live_sidecar_fixture(Samagotchi::Session.session_dir("s-1234", state_dir: state_dir), port: 1, session_id: "s-1234",
+                                                                                             features: %w[restart task_stop reparent])
       run_inputs("/queue later please", "/cut now please", ack: { "enqueued_id" => "e1", "delivery" => "cut", "cut" => "now" })
 
       expect(client).to have_received(:post_turn).once.with(prompt: "now please", client_id: "tui:1", delivery: "cut")

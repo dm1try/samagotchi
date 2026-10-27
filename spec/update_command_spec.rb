@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "spec_helper"
+require_relative "support/worker_fixtures"
 require_relative "support/fake_provider_server"
 require "socket"
 require "stringio"
@@ -9,6 +10,8 @@ require "yaml"
 require "samagotchi/update_command"
 
 RSpec.describe Samagotchi::UpdateCommand do
+  include WorkerFixtures
+
   # Real localhost HTTP (the chi web probe): other suites may enable WebMock.
   around { |example| FakeProviderServer.without_webmock { example.run } }
 
@@ -310,9 +313,8 @@ RSpec.describe Samagotchi::UpdateCommand do
     it "reports live workers on another version, without stopping them" do
       %w[aaaaaaaa-1 bbbbbbbb-2].each_with_index do |id, i|
         FileUtils.mkdir_p(File.join(state_dir, id))
-        data = { "port" => listener.addr[1] }
-        data["version"] = "0.2.0" if i.zero?
-        File.write(File.join(state_dir, id, "bridge.json"), JSON.generate(data))
+        fields = i.zero? ? { version: "0.2.0" } : {}
+        live_sidecar_fixture(File.join(state_dir, id), port: listener.addr[1], **fields)
       end
       run
       expect(line("workers")).to include("2 live on 0.2.0, an older chi: they keep it until restarted " \
@@ -325,8 +327,7 @@ RSpec.describe Samagotchi::UpdateCommand do
       allow(Samagotchi::Config).to receive(:get).with("session.idle_exit_minutes").and_return(0)
       { "aaaaaaaa-1" => ["restart"], "bbbbbbbb-2" => [] }.each do |id, features|
         FileUtils.mkdir_p(File.join(state_dir, id))
-        File.write(File.join(state_dir, id, "bridge.json"),
-                   JSON.generate("port" => listener.addr[1], "version" => "0.2.0", "features" => features))
+        live_sidecar_fixture(File.join(state_dir, id), port: listener.addr[1], version: "0.2.0", features: features)
       end
       run
       expect(line("workers")).to include("2 live on 0.2.0: they keep it until restarted (chi sessions restart " \

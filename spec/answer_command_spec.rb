@@ -4,6 +4,7 @@ require "json"
 require "stringio"
 require "tmpdir"
 require "spec_helper"
+require_relative "support/worker_fixtures"
 require "samagotchi/worker_link"
 require "samagotchi/answer_command"
 require_relative "support/remote_backend"
@@ -12,6 +13,8 @@ require_relative "support/reply_wait_looks"
 # chi answer: a parent agent (or a script) answers the question a session's
 # worker waits on, then waits for what comes next, as chi send --wait does.
 RSpec.describe Samagotchi::AnswerCommand do
+  include WorkerFixtures
+
   include ReplyWaitLooks
 
   # Remotely the parent's options are checked by the worker alone (chi web
@@ -58,6 +61,7 @@ RSpec.describe Samagotchi::AnswerCommand do
     stub_const("Samagotchi::AnswerCommand::POLL_INTERVAL", 0.02)
     count_reply_wait_looks
     allow(Samagotchi::SessionManager).to receive(:session_owner) { owner[0] }
+    allow(Samagotchi::OwnerLock).to receive(:owner) { owner[0] }
     allow(Samagotchi::WorkerLink).to receive(:client) { bridge }
     allow(Samagotchi::Config).to receive(:get).and_call_original
     allow(Samagotchi::Config).to receive(:get).with("guardrails.parent_answers") { @parent_answers || "soft" }
@@ -496,7 +500,8 @@ RSpec.describe Samagotchi::AnswerCommand do
         t.last_turn = Samagotchi::LastTurn.new(outcome: "completed", exhausted: true, limit: 30, enqueued_id: "x1",
                                                ended_at: "2026-10-13T10:00:00.000Z")
         t.save(state_dir: tmpdir)
-        Samagotchi::WorkerSidecar.new(port: 1, features: %w[delivery turn_ids]).write(session_dir(s))
+        owner[0] = Samagotchi::OwnerLock::Owner.new(pid: Process.pid, kind: "worker")
+        live_sidecar_fixture(session_dir(s), port: 1, features: %w[delivery turn_ids])
         threads << Thread.new do
           wait_for("the answer to be posted", timeout: 10) { posted.any? }
           turn_reply(s, "queued answer", "q1")

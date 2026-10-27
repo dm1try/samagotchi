@@ -3,6 +3,7 @@
 require "tmpdir"
 require "samagotchi/bridge_client"
 require "samagotchi/worker_link"
+require_relative "support/worker_fixtures"
 
 RSpec.describe Samagotchi::BridgeClient do
   # A one-connection fake Bridge: records the raw request, sends +reply+.
@@ -24,6 +25,8 @@ RSpec.describe Samagotchi::BridgeClient do
   end
 
   describe "the Bridge's secret" do
+    include WorkerFixtures
+
     let(:dir) { Dir.mktmpdir("bridge-client") }
     let(:secret) { "ab" * 32 }
     let(:ok) { json_reply("200 OK", "{}") }
@@ -32,27 +35,8 @@ RSpec.describe Samagotchi::BridgeClient do
 
     # A sidecar naming the fake Bridge's port and +secret+, as Bridge#write_sidecar writes it.
     def publish(port, secret)
-      Samagotchi::WorkerSidecar.new(port: port, secret: secret).write(dir)
-    end
-
-    # serve_once past the liveness probe (WorkerLink's connect that sends nothing).
-    def serve_once(reply)
-      server = TCPServer.new("127.0.0.1", 0)
-      received = +""
-      thread = Thread.new do
-        loop do
-          conn = server.accept
-          begin
-            received << conn.readpartial(16_384)
-          rescue EOFError
-            next conn.close
-          end
-          conn.write(reply)
-          break conn.close
-        end
-      end
-      thread.report_on_exception = false
-      [server.local_address.ip_port, -> { join!(thread, "the fake Bridge"); server.close; received }]
+      @worker ||= hold_worker(dir)
+      Samagotchi::WorkerSidecar.new(port: port, secret: secret, pid: Process.pid).write(dir)
     end
 
     it "is sent with every request, by a client made from the sidecar: a post, a get and the stream" do

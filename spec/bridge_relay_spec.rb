@@ -2,6 +2,7 @@
 
 require "spec_helper"
 require "samagotchi/worker_link"
+require "support/worker_fixtures"
 require "tmpdir"
 require "json"
 require "support/test_kernel"
@@ -33,6 +34,8 @@ RSpec.describe Samagotchi::Bridge, "approval relay" do
       approval: { tool: "execute", command: "git push", scopes: %w[once session] } }
   end
 
+  include WorkerFixtures
+
   before do
     WebMock.allow_net_connect! if defined?(WebMock)
     allow(Samagotchi::Config).to receive(:get).and_call_original
@@ -53,6 +56,7 @@ RSpec.describe Samagotchi::Bridge, "approval relay" do
   end
 
   def serve(engine, session)
+    hold_worker(Samagotchi::Session.session_dir(session.id, state_dir: state_dir))
     bridge = described_class.new(engine: engine, state_dir: state_dir, session_id: session.id, heartbeat_interval: 0.2).start
     @bridges << bridge
     bridge

@@ -5,6 +5,7 @@ require_relative "session"
 require_relative "archive_store"
 require_relative "git_head"
 require_relative "reply_wait"
+require_relative "worker_link"
 require_relative "tools/delegate"
 require_relative "tools/delegate_cursor"
 
@@ -106,7 +107,7 @@ module Samagotchi
     # The keys of a children_of row that state_of and child read, for a
     # session counts loaded itself.
     def summary_of(session, state_dir:)
-      live = SessionManager.worker_live?(session.id, state_dir: state_dir)
+      live = WorkerLink.resolve(Session.session_dir(session.id, state_dir: state_dir), unlink: false).worker_owned?
       { live: live, busy: live && session.status == Session::STATUS_RUNNING, status: session.status,
         updated_at: session.updated_at, waiting: session.waiting_question(live: live)&.dig(:kind),
         preview: session.last_prompt.to_s }

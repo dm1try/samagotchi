@@ -93,10 +93,8 @@ module Samagotchi
     # installed (SessionManager.worker_command): it moves.
     # @return [String, nil]
     def unmovable(child_id, state_dir:)
-      owner = SessionManager.session_owner(child_id, state_dir: state_dir) or return nil
-      return "open in a chi REPL; close it there" if owner.tui?
-
       link = WorkerLink.resolve(Session.session_dir(child_id, state_dir: state_dir), unlink: false)
+      return "open in a chi REPL; close it there" if link.owner&.tui?
       return nil if !link.live? || link.features.include?(FEATURE)
 
       "older chi worker#{" #{link.version}" if link.version}; restart it"

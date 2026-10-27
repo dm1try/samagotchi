@@ -304,8 +304,6 @@ module Samagotchi
     # answers at once. Best effort: the continue goes on without. A review
     # fork (ReviewStart) asks the same, with nothing archived after.
     def self.recap_before_archive(id, state_dir, wait:)
-      return unless SessionManager.worker_live?(id, state_dir: state_dir)
-
       dir = Session.session_dir(id, state_dir: state_dir)
       client = WorkerLink.client(id, session_dir: dir) or return
       before = RecapStore.read(dir)

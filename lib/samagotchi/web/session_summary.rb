@@ -7,7 +7,7 @@ require_relative "../session_metrics"
 require_relative "../llm_context_strategy"
 require_relative "../host_registry"
 require_relative "../bridge_client"
-require_relative "../worker_sidecar"
+require_relative "../worker_link"
 require_relative "../bridge/pending_card"
 
 module Samagotchi
@@ -37,8 +37,9 @@ module Samagotchi
       def build(session, owner:, session_dir:, status: displayed_status(session, owner: owner), root_cache: nil,
                 registry: nil)
         used = Array(session.used_memory_names)
-        up = bridge_up?(session_dir, owner)
-        sidecar = up ? WorkerSidecar.read(session_dir) : nil
+        link = WorkerLink.resolve(session_dir, unlink: false, owner: owner)
+        up = link.live?
+        sidecar = up ? link.sidecar : nil
         saved = SessionMetrics.saved_summary(session_dir, budget_tokens: budget_resolver(session, registry))
         recap_card = RecapStore.card(session_dir)
         {
@@ -93,8 +94,9 @@ module Samagotchi
           # Hidden from the strip and the list unless "include archived".
           archived: ArchiveStore.archived?(session_dir),
           project_root: session.project_root(cache: root_cache),
-          # A worker is reachable: its Bridge sidecar is there and the
-          # owner lock is held. A sidecar a dead worker left is not up.
+          # A worker is reachable: WorkerLink answers Live (the lock held by
+          # a worker whose sidecar names its pid). A sidecar a dead worker
+          # left is not up.
           bridge_up: up,
           # The chi the live worker runs and what it can do (its sidecar;
           # nil and [] without one): the page's stale-worker badge.
@@ -103,7 +105,7 @@ module Samagotchi
           # For the tab's notifications (notify.js): an open question, the
           # running turn's open card with actions, and how the last turn
           # ended. A question saved by a worker that died is not open, nor a
-          # chi REPL's (SessionManager.worker_live?'s rule: only a worker shares it).
+          # chi REPL's (only a worker shares it).
           pending_question: session.waiting_question(live: !!owner&.worker?),
           pending_card: up ? Bridge::PendingCard.read(session_dir) : nil,
           last_turn: session.last_turn&.to_file
@@ -127,16 +129,6 @@ module Samagotchi
         return session.status unless session.status == Session::STATUS_RUNNING
 
         owner ? session.status : Session::STATUS_IDLE
-      end
-
-      # @return [Boolean] the sidecar file is there and the session has a
-      #   live owner (the file alone says nothing: the worker may be gone).
-      #   The owner lock, not WorkerLink.resolve's port probe: a list builds
-      #   this for every session, and the lock costs no connect.
-      def bridge_up?(session_dir, owner)
-        !owner.nil? && File.file?(WorkerSidecar.path(session_dir))
-      rescue StandardError
-        false
       end
 
       def first_preview_for(session)

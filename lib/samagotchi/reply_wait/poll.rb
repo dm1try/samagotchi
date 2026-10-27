@@ -5,6 +5,7 @@ require_relative "../session_inbox"
 require_relative "../turn_checkpoint"
 require_relative "../continue_offer"
 require_relative "../steer"
+require_relative "../worker_link"
 
 module Samagotchi
   module ReplyWait
@@ -164,9 +165,14 @@ module Samagotchi
         pending = session.pending_question
         return nil unless pending && !@baseline&.question?(pending.id) &&
                           (@turn.nil? || ReplyWait.own_question?(session, @turn, @claimed)) &&
-                          session.waiting_question(live: SessionManager.worker_live?(@id, state_dir: @state_dir))
+                          session.waiting_question(live: worker_owned?)
 
         Result.new(status: :waiting_for_answer, question: pending, session: session)
+      end
+
+      # A worker holds the session's lock (a chi REPL's question is its own).
+      def worker_owned?
+        WorkerLink.resolve(Session.session_dir(@id, state_dir: @state_dir), unlink: false).worker_owned?
       end
 
       # A participant's turn its worker holds while the owner's Continue
@@ -176,7 +182,7 @@ module Samagotchi
       def held(session)
         pending = session.pending_question
         return nil unless @participant_input && !@claimed && pending&.kind.to_s == ContinueOffer::KIND &&
-                          session.waiting_question(live: SessionManager.worker_live?(@id, state_dir: @state_dir))
+                          session.waiting_question(live: worker_owned?)
 
         Result.new(status: :waiting_for_answer, question: pending, session: session)
       end

@@ -588,7 +588,7 @@ module Samagotchi
 
     # How long after a spawn a resume trusts that worker to take the
     # session, while it runs (and the session wasn't stopped since).
-    WORKER_START_GRACE = 30.0
+    WORKER_START_GRACE = WorkerLink::START_LIMIT
 
     @spawns = {}
     @spawns_mutex = Mutex.new
@@ -684,8 +684,8 @@ module Samagotchi
       Session.load(session_id, state_dir: sd) # ArgumentError for none
       owner = refuse_tui!(session_id, state_dir: sd)
       dir = Session.session_dir(session_id, state_dir: sd)
-      link = WorkerLink.resolve(dir, unlink: false) if owner&.worker?
-      raise RestartRefused.new(session_id, :not_running) unless link&.live?
+      link = WorkerLink.resolve(dir, unlink: false, owner: owner)
+      raise RestartRefused.new(session_id, :not_running) unless link.live?
 
       sidecar = link.sidecar
       unless sidecar.features.include?("restart")
@@ -760,7 +760,7 @@ module Samagotchi
     # session keeps. "pid" is the pid file workers wrote until 2026-10-01:
     # nothing writes or reads it now, but a folder from before still has one
     # and is still empty.
-    EMPTY_SKELETON_FILES = ["pid", "owner.lock", WorkerSidecar::FILE, AnalyticsFile::NAME].freeze
+    EMPTY_SKELETON_FILES = ["pid", "owner.lock", WorkerLink::FILE, AnalyticsFile::NAME].freeze
     EMPTY_DIRS = [SessionInbox::INPUT_DIR, SessionInbox::NOTES_DIR, "images"].freeze
     EMPTY_SKELETON_DIRS = (EMPTY_DIRS + [SessionInbox::OUTPUT_DIR]).freeze
 
@@ -1408,15 +1408,6 @@ module Samagotchi
     # @return [OwnerLock::Owner, nil]
     def self.session_owner(session_id, state_dir: nil)
       OwnerLock.owner(Session.session_dir(session_id, state_dir: state_dir || Session.default_state_dir))
-    end
-
-    # A worker owns the session now: the one rule for whether a saved
-    # pending question waits for anyone (Session#waiting_question's live:).
-    # A chi REPL's question is its own (nothing else can answer it), and one
-    # a dead worker saved waits for no one.
-    # @return [Boolean]
-    def self.worker_live?(session_id, state_dir: nil)
-      !!session_owner(session_id, state_dir: state_dir)&.worker?
     end
 
     # The session's owner (#session_owner), unless it is the interactive

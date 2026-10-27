@@ -11,6 +11,7 @@ require "samagotchi/launch_mode"
 require "samagotchi/session_access/remote"
 require_relative "../support/remote_backend"
 require_relative "../support/worker_links"
+require_relative "../support/worker_fixtures"
 
 # SessionAccess::Remote's calls for a remote attach (RemoteConnector,
 # RemoteLink), through chi web in this process (RackTransport: the token
@@ -18,6 +19,7 @@ require_relative "../support/worker_links"
 # feature check, and their refusals as the classes Local raises.
 RSpec.describe Samagotchi::SessionAccess::Remote, "for a remote attach" do
   include WorkerLinks
+  include WorkerFixtures
 
   let(:state_dir) { Dir.mktmpdir("remote-attach") }
   let(:app) { RemoteBackend.app(state_dir: state_dir) }
@@ -40,8 +42,9 @@ RSpec.describe Samagotchi::SessionAccess::Remote, "for a remote attach" do
 
   def live_worker(session, epoch: "e1e1e1e1")
     server = TCPServer.new("127.0.0.1", 0).tap { |opened| servers << opened }
-    Samagotchi::WorkerSidecar.new(port: server.local_address.ip_port, session_id: session.id, started_at: "2026-10-23T12:00:00.000Z",
-                                  version: "9.9.9", features: %w[delivery unqueue], epoch: epoch).write(dir_of(session))
+    live_sidecar_fixture(dir_of(session), port: server.local_address.ip_port, session_id: session.id,
+                                          started_at: "2026-10-23T12:00:00.000Z", version: "9.9.9",
+                                          features: %w[delivery unqueue], epoch: epoch)
   end
 
   it "wakes the session's worker: its worker, that machine's default model, parent strategy and newest chi" do

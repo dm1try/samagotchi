@@ -56,9 +56,15 @@ module Samagotchi
         id = @client.session_id
         return [:gone, "stopped"] if Session.stopped_marker?(id, state_dir: @state_dir)
 
+        link = WorkerLink.resolve(session_dir, unlink: true, host: @client.host)
+        if link.is_a?(WorkerLink::Skew)
+          @failure = link.message(id)
+          return [:gone, "worker_newer"]
+        end
+
         # Kept: the stream moves to this very client (EventStream), and
         # #switched takes it, port and secret, rather than reading again.
-        @found = WorkerLink.client(id, session_dir: session_dir, host: @client.host)
+        @found = link.live? ? link.client(id, host: @client.host) : nil
         [@found, nil]
       end
 
@@ -140,8 +146,9 @@ module Samagotchi
 
       def via = ChiInvocation::HERE
 
-      # The closing line says it all (unreachable, unknown_session).
-      def failure = nil
+      # The closing line says it all (unreachable, unknown_session); a worker
+      # newer than this chi names itself.
+      attr_reader :failure
 
       def close = nil
 
@@ -150,8 +157,8 @@ module Samagotchi
       def session_dir = Session.session_dir(@client.session_id, state_dir: @state_dir)
 
       def feature?(name)
-        sidecar = WorkerSidecar.read(session_dir)
-        sidecar.nil? || sidecar.features.include?(name)
+        link = WorkerLink.resolve(session_dir, unlink: false)
+        !link.live? || link.features.include?(name)
       end
     end
   end

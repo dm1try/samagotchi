@@ -179,15 +179,27 @@ module Samagotchi
     end
 
     # A session's worker as an attach finds it (Local#worker, chi web's GET
-    # …/worker): +sidecar+ the live worker's WorkerSidecar (port, version,
-    # features, epoch; nil: none runs), +stopped+ its stop marker, +owner+
-    # its OwnerLock::Owner (a worker, a chi REPL, nil).
-    WorkerState = Data.define(:sidecar, :stopped, :owner) do
-      def live? = !sidecar.nil?
+    # …/worker): +link+ the one WorkerLink outcome every field reads, +stopped+
+    # its stop marker.
+    WorkerState = Data.define(:link, :stopped) do
+      # @return [WorkerSidecar, nil] the live worker's (port, version,
+      #   features, epoch; nil: none answers)
+      def sidecar = link.live? ? link.sidecar : nil
 
-      # No Bridge, and the owner is a worker leaving (writing its recap on
-      # leave): a wake waits for it (Local#wake).
-      def leaving? = !live? && !!owner&.leaving?
+      # @return [OwnerLock::Owner, nil] a worker, a chi REPL, nil
+      def owner = link.owner
+
+      def live? = link.live?
+
+      # The owner is a worker leaving (writing its recap on leave): a wake
+      # waits for it (Local#wake).
+      def leaving? = link.is_a?(WorkerLink::Leaving)
+
+      # A worker holds the lock past WorkerLink::START_LIMIT with no Bridge.
+      def stuck? = link.is_a?(WorkerLink::Starting) && link.stuck
+
+      # A worker whose sidecar speaks a newer protocol than this chi.
+      def skew? = link.is_a?(WorkerLink::Skew)
     end
 
     # What a wake for an attach did (Local#wake, chi web's POST …/wake):

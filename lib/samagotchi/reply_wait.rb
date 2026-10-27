@@ -4,7 +4,7 @@ require_relative "session"
 require_relative "turn_note"
 require_relative "session_inbox"
 require_relative "turn_checkpoint"
-require_relative "worker_sidecar"
+require_relative "worker_link"
 require_relative "reply_wait/poll"
 
 module Samagotchi
@@ -214,9 +214,10 @@ module Samagotchi
       running || queued || ended
     end
 
-    # Whether the session's worker sidecar names TURN_IDS_FEATURE.
+    # Whether the session's live worker names TURN_IDS_FEATURE.
     def turn_ids?(session_dir)
-      WorkerSidecar.read(session_dir)&.features&.include?(TURN_IDS_FEATURE) || false
+      link = WorkerLink.resolve(session_dir, unlink: false)
+      link.live? && link.features.include?(TURN_IDS_FEATURE)
     end
 
     # A pending question is a turn: wait's (its enqueued_id) only when that

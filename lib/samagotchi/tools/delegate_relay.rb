@@ -97,7 +97,7 @@ module Samagotchi
       # was answered or cancelled there) or its worker is gone.
       def watch(child_id, qid, state_dir)
         lambda do
-          unless SessionManager.worker_live?(child_id, state_dir: state_dir)
+          unless WorkerLink.resolve(Session.session_dir(child_id, state_dir: state_dir), unlink: false).worker_owned?
             next "child_gone"
           end
 

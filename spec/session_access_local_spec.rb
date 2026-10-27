@@ -8,11 +8,13 @@ require "samagotchi/session_manager"
 require "samagotchi/reply_wait"
 require "socket"
 require_relative "support/worker_links"
+require_relative "support/worker_fixtures"
 
 # SessionAccess::Local: this machine's sessions, the calls the session
 # commands made before the seam (their own specs cover the behaviour).
 RSpec.describe Samagotchi::SessionAccess::Local do
   include WorkerLinks
+  include WorkerFixtures
 
   let(:tmpdir) { Dir.mktmpdir("session-access") }
   let(:access) { described_class.new(state_dir: tmpdir) }
@@ -47,8 +49,8 @@ RSpec.describe Samagotchi::SessionAccess::Local do
     after { server.close }
 
     def sidecar_for(session, epoch: "ab12cd34")
-      Samagotchi::WorkerSidecar.new(port: server.local_address.ip_port, session_id: session.id, epoch: epoch)
-                               .write(Samagotchi::Session.session_dir(session.id, state_dir: tmpdir))
+      live_sidecar_fixture(Samagotchi::Session.session_dir(session.id, state_dir: tmpdir),
+                           port: server.local_address.ip_port, session_id: session.id, epoch: epoch)
     end
 
     it "wakes nothing for a live worker, else resumes and waits; a Bridge that doesn't come is no sidecar" do
@@ -61,6 +63,42 @@ RSpec.describe Samagotchi::SessionAccess::Local do
       sidecar_for(session)
       expect(access.wake(session.id, wait: 0.1)).to have_attributes(woke: false, sidecar: have_attributes(epoch: "ab12cd34"))
       expect(Samagotchi::SessionManager).to have_received(:resume_session).once
+    end
+
+    it "reads stale files (a sidecar under a free lock) as no worker, and wakes by resuming" do
+      session = saved_session
+      dir = Samagotchi::Session.session_dir(session.id, state_dir: tmpdir)
+      Samagotchi::WorkerSidecar.new(port: server.local_address.ip_port, session_id: session.id, pid: Process.pid + 1).write(dir)
+      allow(Samagotchi::SessionManager).to receive(:resume_session)
+      allow(Samagotchi::WorkerLink).to receive(:await).and_return(none_link)
+
+      expect(access.worker(session.id)).to have_attributes(live?: false, owner: nil)
+      expect(access.wake(session.id, wait: 0.1)).to eq(Samagotchi::SessionAccess::Woken.new(woke: true, sidecar: nil))
+      expect(Samagotchi::SessionManager).to have_received(:resume_session).once
+    end
+
+    it "resumes when a starting worker lets go of the lock without publishing its Bridge" do
+      session = saved_session
+      owner = Samagotchi::OwnerLock::Owner.new(pid: Process.pid + 1, kind: "worker")
+      allow(Samagotchi::WorkerLink).to receive(:resolve).and_return(Samagotchi::WorkerLink::Starting.new(owner: owner))
+      allow(Samagotchi::WorkerLink).to receive(:await).and_return(none_link)
+      allow(Samagotchi::SessionManager).to receive(:resume_session)
+
+      expect(access.wake(session.id, wait: 0.1)).to eq(Samagotchi::SessionAccess::Woken.new(woke: true, sidecar: nil))
+      expect(Samagotchi::SessionManager).to have_received(:resume_session).once
+      expect(Samagotchi::WorkerLink).to have_received(:await).with(session.id, hash_including(:give_up)).once
+    end
+
+    it "refuses a wake of a worker on a newer protocol (worker_newer), and resumes nothing" do
+      session = saved_session
+      dir = Samagotchi::Session.session_dir(session.id, state_dir: tmpdir)
+      live_sidecar_fixture(dir, port: server.local_address.ip_port, session_id: session.id, protocol: Samagotchi::WorkerLink::PROTOCOL + 1)
+      allow(Samagotchi::SessionManager).to receive(:resume_session)
+
+      expect(access.worker(session.id)).to have_attributes(live?: false, skew?: true)
+      expect { access.wake(session.id, wait: 0.1) }
+        .to raise_error(Samagotchi::SessionAccess::Refused) { |e| expect(e.code).to eq("worker_newer") }
+      expect(Samagotchi::SessionManager).not_to have_received(:resume_session)
     end
 
     it "refuses a leftover scratch session and an unknown one" do

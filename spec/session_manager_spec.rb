@@ -1843,6 +1843,32 @@ RSpec.describe Samagotchi::SessionManager do
       locks << Samagotchi::OwnerLock.acquire(session_dir, kind: kind)
     end
 
+    it "resumes and delivers to the new worker after a kill -9 left a sidecar naming another Bridge's port" do
+      other = TCPServer.new("127.0.0.1", 0)
+      Samagotchi::WorkerSidecar.new(port: other.local_address.ip_port, pid: Process.pid + 1).write(session_dir)
+      bridge = instance_double(Samagotchi::BridgeClient)
+      reached = []
+      allow(Samagotchi::BridgeClient).to receive(:for_sidecar) { |_id, sidecar, **| (reached << sidecar.port) && bridge }
+      allow(bridge).to receive(:post_turn).and_return(
+        Samagotchi::BridgeClient::Response.new(status: 202, body: '{"status":"accepted","enqueued_id":"e1"}')
+      )
+      manager = Class.new do
+        def self.resume_session(*) = nil
+      end
+      allow(manager).to receive(:resume_session) do
+        own("worker")
+        Samagotchi::WorkerSidecar.new(port: 5555, pid: Process.pid, protocol: Samagotchi::WorkerLink::PROTOCOL).write(session_dir)
+      end
+
+      result = described_class.deliver_turn(session.id, prompt: "hi", client_id: "cli:send", state_dir: tmpdir, manager: manager)
+
+      expect(result).to have_attributes(status: :accepted, via: :bridge)
+      expect(reached).to eq([5555])
+      expect(input_files).to be_empty
+    ensure
+      other&.close
+    end
+
     it "posts through a live Bridge and writes no file" do
       own("worker")
       bridge = instance_double(Samagotchi::BridgeClient)
@@ -2403,16 +2429,17 @@ RSpec.describe Samagotchi::SessionManager do
       expect(summary[:preview]).to eq("answer: the build failed nested same bug?")
     end
 
-    it ".worker_live? is true only while a worker holds the session, not a REPL" do
+    it "WorkerLink reads a session worker-owned only while a worker holds it, not a REPL" do
       worker = make
       repl = make
       none = make
       own(worker)
       own(repl, kind: "tui")
 
-      expect(described_class.worker_live?(worker.id, state_dir: tmpdir)).to be(true)
-      expect(described_class.worker_live?(repl.id, state_dir: tmpdir)).to be(false)
-      expect(described_class.worker_live?(none.id, state_dir: tmpdir)).to be(false)
+      owned = ->(session) { Samagotchi::WorkerLink.resolve(Samagotchi::Session.session_dir(session.id, state_dir: tmpdir), unlink: false).worker_owned? }
+      expect(owned.call(worker)).to be(true)
+      expect(owned.call(repl)).to be(false)
+      expect(owned.call(none)).to be(false)
     end
 
     it "live: only sessions a worker owns now, not a REPL's and not a stale running status" do

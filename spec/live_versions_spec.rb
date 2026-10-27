@@ -5,6 +5,7 @@ require_relative "support/fake_provider_server"
 require "socket"
 require "tmpdir"
 require "samagotchi/live_versions"
+require_relative "support/worker_fixtures"
 
 RSpec.describe Samagotchi::LiveVersions do
   # Real localhost HTTP (the chi web probe): other suites may enable WebMock.
@@ -12,6 +13,8 @@ RSpec.describe Samagotchi::LiveVersions do
 
   let(:state_dir) { Dir.mktmpdir("live-versions") }
   let(:servers) { [] }
+
+  include WorkerFixtures
 
   after do
     servers.each(&:close)
@@ -22,8 +25,11 @@ RSpec.describe Samagotchi::LiveVersions do
     TCPServer.new("127.0.0.1", 0).tap { |s| servers << s }
   end
 
-  def sidecar(id, port:, version: nil)
+  # held: a worker holds the session's lock (the sidecar is a live worker's);
+  # else its worker died and left it.
+  def sidecar(id, port:, version: nil, held: true)
     FileUtils.mkdir_p(File.join(state_dir, id))
+    hold_worker(File.join(state_dir, id)) if held
     data = { "port" => port, "session_id" => id }
     data["version"] = version if version
     File.write(File.join(state_dir, id, "bridge.json"), JSON.generate(data))
@@ -34,7 +40,7 @@ RSpec.describe Samagotchi::LiveVersions do
     sidecar("b", port: listener.addr[1])
     dead = listener.addr[1]
     servers.pop.close
-    sidecar("c", port: dead, version: "0.2.0")
+    sidecar("c", port: dead, version: "0.2.0", held: false)
 
     expect(described_class.workers(state_dir: state_dir).map(&:to_h))
       .to eq([{ session_id: "a", version: "0.3.1", restart: false }, { session_id: "b", version: nil, restart: false }])

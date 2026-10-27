@@ -261,6 +261,31 @@ RSpec.describe Samagotchi::Web::SessionSummary do
       expect(described_class.build(s, owner: Samagotchi::OwnerLock::Owner.new(kind: "worker"), session_dir: session_dir(s))).to include(bridge_up: true)
     end
 
+    it "is bridge_up only when the sidecar names the lock holder's pid, under the owner the caller read" do
+      s = session
+      FileUtils.mkdir_p(session_dir(s))
+      File.write(File.join(session_dir(s), "bridge.json"), JSON.generate("port" => 1234, "pid" => 4242))
+      expect(Samagotchi::OwnerLock).not_to receive(:owner)
+      build = ->(pid) { described_class.build(s, owner: Samagotchi::OwnerLock::Owner.new(kind: "worker", pid: pid), session_dir: session_dir(s)) }
+
+      expect(build.call(4242)).to include(bridge_up: true, owner: "worker")
+      expect(build.call(4343)).to include(bridge_up: false, owner: "worker")
+    end
+
+    it "is not bridge_up for a sidecar under a free lock, a leaving worker or a newer protocol" do
+      s = session
+      FileUtils.mkdir_p(session_dir(s))
+      File.write(File.join(session_dir(s), "bridge.json"), JSON.generate("port" => 1234, "pid" => 4242))
+      leaving = Samagotchi::OwnerLock::Owner.new(kind: "worker", pid: 4242, leaving_at: Time.now.iso8601(3), leave_wait: 5.0)
+      expect(described_class.build(s, owner: leaving, session_dir: session_dir(s))).to include(bridge_up: false)
+
+      File.write(File.join(session_dir(s), "bridge.json"), JSON.generate("port" => 1234, "pid" => 4242, "protocol" => 99))
+      worker = Samagotchi::OwnerLock::Owner.new(kind: "worker", pid: 4242)
+      expect(described_class.build(s, owner: worker, session_dir: session_dir(s))).to include(bridge_up: false)
+      expect(described_class.build(s, owner: nil, session_dir: session_dir(s))).to include(bridge_up: false)
+      expect(File.exist?(File.join(session_dir(s), "bridge.json"))).to be(true)
+    end
+
     it "names the live worker's chi version and features from its sidecar, and none without a live worker" do
       s = session
       FileUtils.mkdir_p(session_dir(s))

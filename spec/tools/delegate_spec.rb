@@ -4,6 +4,7 @@ require "timeout"
 require "tmpdir"
 require "json"
 require "spec_helper"
+require_relative "../support/worker_fixtures"
 require "samagotchi/tools/builtins"
 require "samagotchi/tools/delegate"
 require "samagotchi/tools/delegate_result"
@@ -15,6 +16,8 @@ require "support/reply_wait_looks"
 # delegate / delegate_result: a child session as a visible peer; only its
 # final reply (an output/ file) comes back to the parent.
 RSpec.describe "delegate tools" do
+  include WorkerFixtures
+
   include ReplyWaitLooks
 
   let(:tmpdir) { Dir.mktmpdir("delegate-tools") }
@@ -496,7 +499,7 @@ RSpec.describe "delegate tools" do
       describe "the follow-up's turn (turn_ids)" do
         let(:child_dir) { Samagotchi::Session.session_dir(child.id, state_dir: tmpdir) }
 
-        def sidecar(features) = Samagotchi::WorkerSidecar.new(port: 1, features: features).write(child_dir)
+        def sidecar(features) = live_sidecar_fixture(child_dir, port: 1, features: features)
 
         def run_turn(id)
           s = Samagotchi::Session.load(child.id, state_dir: tmpdir)
@@ -562,7 +565,6 @@ RSpec.describe "delegate tools" do
         end
 
         it "is kept through a question the turn asks, and cleared once its end is reported" do
-          own(child)
           sidecar(%w[delivery turn_ids])
           run_turn("x1")
           deliver_acking("f1")

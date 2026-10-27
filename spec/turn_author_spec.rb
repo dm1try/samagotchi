@@ -2,6 +2,7 @@
 
 require "spec_helper"
 require "samagotchi/worker_link"
+require "support/worker_fixtures"
 require "tmpdir"
 require "json"
 require "rack/mock"
@@ -98,8 +99,11 @@ RSpec.describe "a turn's author" do
     let(:engine) { Samagotchi::Engine.new(client: test_client, kernel: test_kernel) }
     let(:session_dir) { Samagotchi::Session.session_dir("s1", state_dir: state_dir) }
 
+    include WorkerFixtures
+
     before do
       WebMock.allow_net_connect! if defined?(WebMock)
+      hold_worker(session_dir)
       @bridge = described_class.new(engine: engine, state_dir: state_dir, session_id: "s1", heartbeat_interval: 0.2).start
       @client = Samagotchi::WorkerLink.client("s1", session_dir: session_dir)
     end

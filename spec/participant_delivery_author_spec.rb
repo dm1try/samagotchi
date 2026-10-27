@@ -2,6 +2,7 @@
 
 require "spec_helper"
 require "samagotchi/worker_link"
+require "support/worker_fixtures"
 require "tmpdir"
 require "json"
 require "support/test_kernel"
@@ -336,8 +337,11 @@ RSpec.describe "a participant's author on delivery" do
     let(:announced) { [] }
     let(:commands) { [] }
 
+    include WorkerFixtures
+
     before do
       WebMock.allow_net_connect! if defined?(WebMock)
+      hold_worker(session_dir)
       engine.subscribe(observer: ->(event) { announced << event })
       @bridge = described_class.new(engine: engine, state_dir: tmpdir, session_id: "s1", heartbeat_interval: 0.2,
                                     on_command: lambda { |command, **|

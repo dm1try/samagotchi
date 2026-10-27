@@ -256,7 +256,8 @@ module Samagotchi
       # timeout and a margin, on top of +wait+); 409
       # owned_by_tui (a chi REPL has it), 409 scratch (a leftover scratch
       # session, as chi --attach here says); 504 worker_timeout (its Bridge
-      # didn't come in time); 404 not_found.
+      # didn't come in time); 409 worker_newer (a worker whose protocol is newer
+      # than this chi's, not resumed); 404 not_found.
       def handle_wake(req, id)
         body = body_hash(req) or return error_response(400, "invalid_json", "invalid JSON body")
         wait = body.fetch("wait", WAKE_MAX_WAIT)
@@ -284,7 +285,9 @@ module Samagotchi
       # rediscovery and its features after a restart, and before its wake
       # whether the worker is leaving (its recap on leave: the wake waits
       # for it, so the client says so). 200 {session_id, live, stopped,
-      # owner: worker|tui|null, leaving, leave_seconds (its leave's budget
+      # owner: worker|tui|null, leaving, stuck (a worker holds the lock with
+      # no Bridge past WorkerLink::START_LIMIT), skew (its protocol is
+      # newer than this chi's), leave_seconds (its leave's budget
       # left, nil unless leaving), worker: {epoch, started_at, version,
       # features}|null, default_model (this machine's config, as the
       # wake's), parent_strategy}; 404 not_found.
@@ -292,7 +295,7 @@ module Samagotchi
         state = session_access.worker(id)
         leaving = state.leaving?
         json_response(200, { session_id: id, live: state.live?, stopped: state.stopped, owner: state.owner&.kind,
-                             leaving: leaving, leave_seconds: (state.owner.leave_left.round(1) if leaving),
+                             leaving: leaving, stuck: state.stuck?, skew: state.skew?, leave_seconds: (state.owner.leave_left.round(1) if leaving),
                              worker: state.sidecar && worker_json(state.sidecar),
                              default_model: ModelProfile.default_model_name,
                              parent_strategy: strategy_json(session_access.parent_strategy(id)) })

@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "spec_helper"
+require "support/worker_fixtures"
 require "samagotchi/worker_link"
 require "tmpdir"
 require "net/http"
@@ -19,6 +20,7 @@ RSpec.describe Samagotchi::Worker do
   include BridgeAuth
 
   include WorkerLoopRounds
+  include WorkerFixtures
 
   def cmd(**fields) = Samagotchi::QueuedCommand.new(**fields)
 
@@ -110,6 +112,7 @@ RSpec.describe Samagotchi::Worker do
       worker = described_class.new(session_id: session.id, state_dir: tmpdir, session_dir: session_dir,
                                    idle_exit_minutes: idle_exit_minutes, poll_interval: poll_interval, **signal_args)
       @worker = worker
+      hold_worker(session_dir) if worker_locks.empty?
       count_loop_rounds(worker)
       @thread = Thread.new { worker.run }
       @thread.report_on_exception = false
