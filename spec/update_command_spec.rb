@@ -7,6 +7,7 @@ require "socket"
 require "stringio"
 require "tmpdir"
 require "yaml"
+require "digest"
 require "samagotchi/update_command"
 
 RSpec.describe Samagotchi::UpdateCommand do
@@ -134,6 +135,37 @@ RSpec.describe Samagotchi::UpdateCommand do
     expect(line("system bundle")).to match(/\s+#{Regexp.escape(Samagotchi::VERSION)}\s+installed\z/)
   end
 
+  it "keeps the edited files on the row as well as in its status" do
+    source = File.join(tmp, "gems", "samagotchi-0.0.1", "lib", "samagotchi", "bundles", "known-names")
+    FileUtils.mkdir_p(File.dirname(source))
+    FileUtils.cp_r(File.join(shipped, "known-names"), source)
+    manifest_path = File.join(source, "manifest.yml")
+    manifest = YAML.load_file(manifest_path)
+    manifest["version"] = "0.0.1"
+    manifest["files"].each_key do |file|
+      content = "old words\n"
+      File.write(File.join(source, file), content)
+      manifest["files"][file] = "sha256:#{Digest::SHA256.hexdigest(content)}"
+    end
+    File.write(manifest_path, YAML.dump(manifest))
+    Samagotchi::MemoryBundle::Installer.new(source: source, name: "known-names", scope: "system", strict: true,
+                                            shipped_dir: File.dirname(source)).run
+    edited = File.join(system_dir, "known_names.md")
+    File.write(edited, "old words\nmy note\n")
+
+    command = described_class.new(["--no-gem"], stdout: out, stderr: err, gem_spec: gem_spec,
+                                  platform: ->(register:) { helper }, supported: supported, state_dir: state_dir,
+                                  web: web, gem_update: gem_update, exec: ->(argv) { execs << argv }, bundler: bundler)
+    rows = nil
+    printer = command.method(:print_table)
+    allow(command).to receive(:print_table) { |printed| rows = printed; printer.call(printed) }
+
+    expect(command.run).to eq(0)
+    row = rows.find { |candidate| candidate.component == "known-names" }
+    expect(row.kept).to eq(["known_names.md"])
+    expect(row.status).to include("kept your edits in known_names.md")
+  end
+
   it "leaves the bundles alone with --no-bundles or update.bundles: false" do
     install_old_btw
     expect(run("--no-bundles")).to eq(0)
@@ -223,6 +255,23 @@ RSpec.describe Samagotchi::UpdateCommand do
   end
 
   describe Samagotchi::GemUpdate do
+    it "parses RubyGems releases with their creation time and prerelease flag" do
+      created_at = "2026-10-26T12:00:00.000Z"
+      update = described_class.new(env: {}, fetcher: lambda { |url|
+        expect(url.to_s).to end_with("/api/v1/versions/samagotchi.json")
+        JSON.generate([{ number: "9.0.0", prerelease: false, created_at: created_at, platform: "ruby" }])
+      })
+
+      expect(update.releases).to eq([described_class::Release.new(version: "9.0.0", created_at: Time.iso8601(created_at),
+                                                                  prerelease: false)])
+    end
+
+    it "wraps a malformed releases response in an Error" do
+      update = described_class.new(env: {}, fetcher: ->(_url) { "<html>" })
+
+      expect { update.releases }.to raise_error(described_class::Error, /JSON::ParserError/)
+    end
+
     it "treats SAMAGOTCHI_UPDATE_GEM_FILE's file as the newest and installs that file" do
       spec = Gem::Specification.new do |s|
         s.name = "samagotchi"
@@ -237,6 +286,11 @@ RSpec.describe Samagotchi::UpdateCommand do
       latest = update.latest
       expect(latest.version).to eq("9.0.0.pre2")
       expect(update.install_argv(latest)).to eq(["gem", "install", gem_file, "--no-document"])
+
+      release = update.releases.fetch(0)
+      expect(release.version).to eq("9.0.0.pre2")
+      expect(release.prerelease).to be(true)
+      expect(release.created_at).to eq(File.mtime(gem_file))
     end
 
     it "reads its file from a variable that isn't a config key's env form" do

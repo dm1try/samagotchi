@@ -5,6 +5,7 @@ require "net/http"
 require "open3"
 require "rbconfig"
 require "rubygems/package"
+require "time"
 require_relative "version"
 require_relative "redacted_inspect"
 
@@ -22,12 +23,14 @@ module Samagotchi
     end
 
     LATEST_URL = URI("https://rubygems.org/api/v1/versions/samagotchi/latest.json")
+    RELEASES_URL = URI("https://rubygems.org/api/v1/versions/samagotchi.json")
     # Not SAMAGOTCHI_UPDATE_GEM: that is the env form of config update.gem.
     LOCAL_ENV = "SAMAGOTCHI_UPDATE_GEM_FILE"
     TIMEOUT = 5
 
     # source is what `gem install` takes: the gem's name, or a .gem file.
     Latest = Struct.new(:version, :source, keyword_init: true)
+    Release = Data.define(:version, :created_at, :prerelease)
 
     # Runs a command without a shell; [output, success].
     class Runner
@@ -57,10 +60,33 @@ module Samagotchi
       local = @env[LOCAL_ENV].to_s
       return Latest.new(version: Gem::Package.new(local).spec.version.to_s, source: local) unless local.empty?
 
-      version = JSON.parse(@fetcher.call.to_s)["version"].to_s
+      version = JSON.parse(fetch_body(LATEST_URL).to_s)["version"].to_s
       raise Error, "rubygems.org answered without a version" if version.empty? || !Gem::Version.correct?(version)
 
       Latest.new(version: version, source: "samagotchi")
+    rescue Error
+      raise
+    rescue StandardError => e
+      raise Error, "#{e.class}: #{e.message}".lines.first.strip
+    end
+
+    # @return [Array<Release>] rubygems releases, or the one local smoke gem
+    def releases
+      local = @env[LOCAL_ENV].to_s
+      return [local_release(local)] unless local.empty?
+
+      records = JSON.parse(fetch_body(RELEASES_URL).to_s)
+      raise Error, "rubygems.org answered without a releases list" unless records.is_a?(Array)
+
+      records.map do |record|
+        version = record["number"].to_s
+        created_at = record["created_at"].to_s
+        unless Gem::Version.correct?(version) && !created_at.empty? && [true, false].include?(record["prerelease"])
+          raise Error, "rubygems.org answered with an invalid release"
+        end
+
+        Release.new(version: version, created_at: Time.iso8601(created_at), prerelease: record["prerelease"])
+      end
     rescue Error
       raise
     rescue StandardError => e
@@ -83,9 +109,20 @@ module Samagotchi
 
     private
 
-    def fetch
-      Net::HTTP.start(LATEST_URL.host, LATEST_URL.port, use_ssl: true, open_timeout: TIMEOUT, read_timeout: TIMEOUT) do |http|
-        request = Net::HTTP::Get.new(LATEST_URL)
+    def local_release(path)
+      version = Gem::Package.new(path).spec.version
+      Release.new(version: version.to_s, created_at: File.mtime(path), prerelease: version.prerelease?)
+    end
+
+    def fetch_body(url)
+      return @fetcher.call if @fetcher.arity.zero?
+
+      @fetcher.call(url)
+    end
+
+    def fetch(url = LATEST_URL)
+      Net::HTTP.start(url.host, url.port, use_ssl: true, open_timeout: TIMEOUT, read_timeout: TIMEOUT) do |http|
+        request = Net::HTTP::Get.new(url)
         request["User-Agent"] = USER_AGENT
         response = http.request(request)
         raise Error, "rubygems.org answered #{response.code}" unless response.code == "200"

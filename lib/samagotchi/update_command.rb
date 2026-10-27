@@ -58,7 +58,7 @@ module Samagotchi
 
     # A table row. info rows (live workers, chi web) say what runs; they
     # never fail.
-    Row = Struct.new(:component, :from, :to, :status, :failed, keyword_init: true)
+    Row = Struct.new(:component, :from, :to, :status, :failed, :kept, keyword_init: true)
 
     # What a row says after a change, and in a dry run.
     VERBS = { update: ["updated", "would update"], install: ["installed", "would install"],
@@ -180,7 +180,7 @@ module Samagotchi
       row = Row.new(component: "system bundle", from: result.from, to: result.to)
       case result.status
       when :installed then done(row, :install)
-      when :updated then done(row, :update, kept(result.kept, MemoryBundle::SystemBundle::BUNDLE_NAME))
+      when :updated then done(row, :update, kept(row, result.kept, MemoryBundle::SystemBundle::BUNDLE_NAME))
       when :restored then done(row, :restore).tap { |r| r.to = nil }
       when :up_to_date then up_to_date(row)
       when :newer_installed then skipped(row, "newer than this chi's #{result.to}: left").tap { |r| r.to = nil }
@@ -203,7 +203,7 @@ module Samagotchi
       row = Row.new(component: update.name, from: update.from, to: update.to)
       case update.status
       when :would_update, :updated
-        notes = [adds(update.adds), kept(update.kept, update.name), replaced(update.replaced), *update.kept_own].compact
+        notes = [adds(update.adds), kept(row, update.kept, update.name), replaced(update.replaced), *update.kept_own].compact
         done(row, :update, notes.empty? ? nil : notes.join("; "))
       when :up_to_date then up_to_date(row)
       when :skipped then skipped(row, update.note)
@@ -325,11 +325,12 @@ module Samagotchi
       members.nil? || members.empty? ? nil : "+ #{members.join(", ")}"
     end
 
-    def kept(files, bundle)
-      return nil if files.empty?
+    def kept(row, files, bundle)
+      row.kept = files.dup
+      return nil if row.kept.empty?
 
       verb = @dry_run ? "would keep" : "kept"
-      "#{verb} your edits in #{files.join(", ")}: chi bundle diff #{bundle} #{files.first}"
+      "#{verb} your edits in #{row.kept.join(", ")}: chi bundle diff #{bundle} #{row.kept.first}"
     end
 
     def replaced(files)
