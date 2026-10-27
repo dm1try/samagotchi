@@ -7,6 +7,8 @@ and commands may change between minor versions. How releases are made:
 [docs/releasing.md](docs/releasing.md).
 ## [Unreleased]
 
+## [0.123.0] - 2026-10-27
+
 ### Added
 
 - chi web checks RubyGems daily and shows the newest aged, stable release newer than both the running and installed
@@ -38,6 +40,9 @@ and commands may change between minor versions. How releases are made:
   Apply; review sessions, their messages and their headers are unchanged. The system prompt's participants line,
   the cap notice, the participant page's note and the participants panel follow the session's mode; the delivery
   line says "after their turn".
+
+Update with `chi update`, then restart `chi web` and the session workers (`chi sessions restart`); a participant
+invited before this release stays a review participant until invited again.
 
 ## [0.122.0] - 2026-10-27
 
@@ -4690,7 +4695,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.122.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.123.0...HEAD
+[0.123.0]: https://github.com/dm1try/samagotchi/compare/v0.122.0...v0.123.0
 [0.122.0]: https://github.com/dm1try/samagotchi/compare/v0.121.1...v0.122.0
 [0.121.1]: https://github.com/dm1try/samagotchi/compare/v0.121.0...v0.121.1
 [0.121.0]: https://github.com/dm1try/samagotchi/compare/v0.120.0...v0.121.0
