@@ -408,7 +408,7 @@ process that already owns the `Engine`); every worker starts it, and it exposes:
   (`BridgeClient::Response#secret_refused?`) and shows the one message: chi web's relays answer 502 `bridge_secret`,
   `chi answer` and a parent's approval relay say it instead of "refused", and an event stream ends with reason
   `bridge_secret` once rediscovery finds no newer worker (the attached terminal's closing line), never retrying in
-  silence; chi web's stream proxy passes no refusal on as frames. The secret is never logged (a refusal logs
+  silence; chi web's stream proxy answers 502 `bridge_secret`, never passing the refusal on as frames. The secret is never logged (a refusal logs
   `secret_refused` with the path, at most once a minute), never in an event, a reply, `/api/info` or a session
   file, and `WorkerSidecar`, `BridgeClient` and `Bridge` leave it out of `#inspect`.
 
@@ -509,9 +509,11 @@ successor from the old worker); chi web's `App#worker_link` / `#await_worker_lin
 `pid` and `protocol` with its port and removes its sidecar on stop only when the file still carries its epoch.
 
 `chi web`'s `GET /api/sessions/:id/stream` proxies this bridge
-(503 `not_live` when the worker is not running; full history of any session is served by
-`GET /api/sessions/:id/output`), as a byte pipe for the owner: `App#proxy_stream_body` gives `ProxyStreamBody` the
-request's frame filter (`App#stream_filter`: nil for the owner; for a participant, and the owner's participant view
+(503 `not_live` for no worker, a leaving or stuck worker, or an unreachable Bridge; 502 `worker_newer` for skew and
+`bridge_error` / `bridge_secret` for a refused Bridge; 200 only after the Bridge answers; full history of any session
+is served by `GET /api/sessions/:id/output`). It opens the Bridge before answering and gives the one opened socket to
+`App#proxy_stream_body` / `ProxyStreamBody`, which closes it when the body or hijacked client ends. The owner's stream
+is a byte pipe; the body gives it the request's frame filter (`App#stream_filter`: nil for the owner; for a participant, and the owner's participant view
 `?as=participant`, a `Web::ParticipantStreamFilter`, which cuts the Bridge's chunks into frames and writes each again
 from `Web::ParticipantView.event`'s allowlist, dropping every other event; only `from_seq` and `snapshot` reach the
 Bridge; [internals/participants.md](internals/participants.md#what-a-participant-sees)). Resume/ring-buffer state is **in-memory**, per worker: a cursor from
@@ -594,7 +596,7 @@ model: [internals/remote-sessions.md](internals/remote-sessions.md).
 | `GET /api/sessions/:id/worker` | owner | | 200 `{session_id, live, stopped, owner: worker \| tui \| null, worker: {epoch, started_at, version, features} \| null, default_model, parent_strategy}` (`Local#worker`; never starts one; `default_model` is this machine's) | 404 |
 | `POST /api/sessions/:id/exit` | owner | `client_id` (passed on only when it is an attached TUI's, `tui:…`; any other is dropped), `delete` | 200 the worker's `{status: exiting, session_id, discard}` (`BridgeClient#request_exit`; never wakes one) | 409 `held` with the worker's `{status, reason, tasks, hint}`; 503 `not_live`; 501 `not_supported`; 504 `worker_timeout` |
 | `POST /api/sessions/:id/recap` | owner | | 200 the worker's `{enabled, saved, request, min_user_turns, session_off}` (`BridgeClient#request_recap`) | 503, 501, 504 as every relay |
-| `GET /api/sessions/:id/stats` | owner | | 200 `{session_id, metrics}`: the worker's stats, its state's metrics for a worker from before the stats route | 503 `not_live`; 504 `worker_timeout`; 502 `bridge_error` |
+| `GET /api/sessions/:id/stats` | owner | | 200 `{session_id, metrics}`: the worker's stats, its state's metrics for a worker from before the stats route | 503 `not_live`; 504 `worker_timeout`; 502 `bridge_secret` or `bridge_error` |
 | `GET /api/sessions/:id/children/counts` | owner | | 200 `{running, waiting, unreported}` (`ChildrenStatus.counts`, the delegates' files here) | 404 |
 | `GET /api/sessions/:id/turns/:turn_id/records` | owner | | 200 `{tool_records: […], turn_record: {…} \| null}` (`SessionMetrics.saved_tool_records` / `saved_turn_record`, as saved) | 400 `invalid_turn_id`; 404 |
 | `POST /api/sessions/:id/turn` (`no_interrupt`) | owner | `no_interrupt: true`: the turn runs with the raised iteration limit (`SessionManager.deliver_turn(no_interrupt:)`, to the Bridge or the input file) | as before | |

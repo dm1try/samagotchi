@@ -16,7 +16,8 @@ module WorkerLinks
     sidecar = Samagotchi::WorkerSidecar.new(**sidecar) if sidecar.is_a?(Hash)
     return Samagotchi::WorkerLink::Live.new(sidecar: sidecar) unless client
 
-    instance_double(Samagotchi::WorkerLink::Live, live?: true, worker_owned?: true, sidecar: sidecar, client: client)
+    instance_double(Samagotchi::WorkerLink::Live, live?: true, worker_owned?: true, sidecar: sidecar, port: sidecar&.port,
+                                                  client: client)
   end
 
   # @return [Samagotchi::WorkerLink::None]

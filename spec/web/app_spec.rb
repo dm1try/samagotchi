@@ -182,6 +182,14 @@ RSpec.describe Samagotchi::Web::App do
   end
 
   describe "GET /api/sessions/:id/stream" do
+    def stub_stream_open(app)
+      opened = Samagotchi::BridgeClient::StreamOpen::Opened.new(sock: StringIO.new, status: 200, headers: {})
+      client = instance_double(Samagotchi::BridgeClient, port: 4100)
+      allow(client).to receive(:open_stream).and_return(opened)
+      allow(app).to receive(:link_client).and_return(client)
+      client
+    end
+
     it "returns a typed 503 not_live when no live bridge sidecar exists" do
       app = build_app(state_dir: Dir.mktmpdir)
       status, _headers, body = app.call(env_for("/api/sessions/s1/stream"))
@@ -193,6 +201,7 @@ RSpec.describe Samagotchi::Web::App do
     it "proxies to the live bridge and forwards the client query string" do
       app = build_app(state_dir: Dir.mktmpdir)
       allow(app).to receive(:worker_link).and_return(link_at(9_999))
+      stub_stream_open(app)
       status, headers, body = app.call(env_for("/api/sessions/s1/stream?from_seq=3"))
 
       expect(status).to eq(200)
@@ -201,10 +210,126 @@ RSpec.describe Samagotchi::Web::App do
       expect(body.instance_variable_get(:@query)).to eq("?from_seq=3")
     end
 
+    it "answers 503 before a status line when the live sidecar's Bridge refuses a connection" do
+      server = TCPServer.new("127.0.0.1", 0)
+      app = build_app(state_dir: Dir.mktmpdir)
+      allow(app).to receive(:worker_link).and_return(link_at(server.local_address.ip_port))
+
+      status, _headers, body = app.call(env_for("/api/sessions/s1/stream"))
+
+      expect(status).to eq(503)
+      expect(JSON.parse(body.first)).to include("error" => "not_live")
+    ensure
+      server&.close
+    end
+
+    it "maps a Bridge secret refusal to 502 before answering the stream" do
+      response_body = JSON.generate(error: "bridge_secret", detail: Samagotchi::BridgeSecret::REFUSED)
+      server = TCPServer.new("127.0.0.1", 0)
+      accept_thread = Thread.new do
+        conn = server.accept
+        request = +""
+        request << conn.gets.to_s until request.end_with?("\r\n\r\n")
+        conn.write("HTTP/1.1 403 Forbidden\r\nContent-Length: #{response_body.bytesize}\r\n\r\n#{response_body}")
+        conn.close
+      end
+      accept_thread.report_on_exception = false
+      app = build_app(state_dir: Dir.mktmpdir)
+      allow(app).to receive(:worker_link).and_return(link_at(server.local_address.ip_port))
+
+      status, _headers, body = app.call(env_for("/api/sessions/s1/stream"))
+      body.each { |_chunk| nil }
+
+      expect(status).to eq(502)
+      expect(JSON.parse(body.first)).to include("error" => "bridge_secret", "detail" => Samagotchi::BridgeSecret::REFUSED)
+    ensure
+      server&.close
+      join!(accept_thread, "the fake Bridge") if accept_thread
+    end
+
+    it "answers Leaving immediately with its remaining time" do
+      owner = instance_double(Samagotchi::OwnerLock::Owner, leave_left: 1.25)
+      leaving = Samagotchi::WorkerLink::Leaving.new(owner: owner)
+      app = build_app(state_dir: Dir.mktmpdir)
+      allow(app).to receive(:worker_link).and_return(leaving)
+      allow(app).to receive(:await_worker_link).and_call_original
+
+      status, _headers, body = app.call(env_for("/api/sessions/s1/stream"))
+
+      expect(status).to eq(503)
+      expect(JSON.parse(body.first)).to include("error" => "not_live", "leaving" => true, "leave_seconds" => 1.3)
+      expect(app).not_to have_received(:await_worker_link)
+    end
+
+    it "uses one Bridge connection for the status and the streamed bytes" do
+      server = TCPServer.new("127.0.0.1", 0)
+      request = Queue.new
+      ended = Queue.new
+      accept_thread = Thread.new do
+        conn = server.accept
+        head = +""
+        head << conn.gets.to_s until head.end_with?("\r\n\r\n")
+        request << true
+        conn.write("HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\n\r\nid: 1\r\ndata: {}\r\n\r\n")
+        conn.read
+        ended << true
+        conn.close
+      end
+      accept_thread.report_on_exception = false
+      app = build_app(state_dir: Dir.mktmpdir)
+      allow(app).to receive(:worker_link).and_return(link_at(server.local_address.ip_port))
+      running = true
+      app.server_running = -> { running }
+      status, _headers, body = app.call(env_for("/api/sessions/s1/stream"))
+
+      expect(status).to eq(200)
+      pop!(request, "the Bridge request")
+      body.each do |chunk|
+        expect(chunk).to include("data: {}")
+        running = false
+      end
+      expect(pop!(ended, "the Bridge socket to close")).to be(true)
+      expect(server.accept_nonblock(exception: false)).to eq(:wait_readable)
+    ensure
+      server&.close
+      join!(accept_thread, "the fake Bridge") if accept_thread
+    end
+
+    it "closes the opened Bridge socket when the hijacked client drops after the status line" do
+      server = TCPServer.new("127.0.0.1", 0)
+      upstream_closed = Queue.new
+      upstream_opened = Queue.new
+      accept_thread = Thread.new do
+        conn = server.accept
+        head = +""
+        head << conn.gets.to_s until head.end_with?("\r\n\r\n")
+        upstream_opened << true
+        conn.write("HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\n\r\nid: 1\r\ndata: {}\r\n\r\n")
+        upstream_closed << conn.read
+        conn.close
+      end
+      accept_thread.report_on_exception = false
+      app = build_app(state_dir: Dir.mktmpdir)
+      allow(app).to receive(:worker_link).and_return(link_at(server.local_address.ip_port))
+      status, headers, = app.call(env_for("/api/sessions/s1/stream", headers: { "rack.hijack?" => true }))
+
+      expect(status).to eq(200)
+      expect(pop!(upstream_opened, "the Bridge to be open before the status line")).to be(true)
+      sink = Object.new
+      sink.define_singleton_method(:write) { |_chunk| raise IOError, "client disconnected" }
+      headers.fetch("rack.hijack").call(sink)
+
+      expect(pop!(upstream_closed, "the Bridge to see EOF")).to eq("")
+    ensure
+      server&.close
+      join!(accept_thread, "the fake Bridge") if accept_thread
+    end
+
     # ?raw=1 is the worker port's debugging view (a chunk's provider payload).
     it "doesn't forward raw, in any spelling, and keeps the other parameters" do
       app = build_app(state_dir: Dir.mktmpdir)
       allow(app).to receive(:worker_link).and_return(link_at(9_999))
+      stub_stream_open(app)
       { "?raw=1&from_seq=3" => "?from_seq=3", "?from_seq=3&r%61w=1&snapshot=1" => "?from_seq=3&snapshot=1",
         "?raw" => "", "?raw=1" => "" }.each do |given, forwarded|
         _status, _headers, body = app.call(env_for("/api/sessions/s1/stream#{given}"))
@@ -236,6 +361,7 @@ RSpec.describe Samagotchi::Web::App do
     it "forwards the Last-Event-ID header through to the bridge" do
       app = build_app(state_dir: Dir.mktmpdir)
       allow(app).to receive(:worker_link).and_return(link_at(9_999))
+      stub_stream_open(app)
       _status, _headers, body = app.call(
         env_for("/api/sessions/s1/stream?from_seq=3", headers: { "HTTP_LAST_EVENT_ID" => "7" })
       )
@@ -2129,7 +2255,7 @@ RSpec.describe Samagotchi::Web::App do
     it "reports the bridge port once the worker bridge comes up" do
       manager = FakeResponsesManager.new
       app = described_class.new(manager: manager, session_class: StubSessionLoader, bridge_wait_timeout: 5)
-      allow(app).to receive(:worker_link).and_return(link_at(nil), link_at(nil), link_at(4_321))
+      allow(app).to receive(:await_worker_link).and_return(link_at(4_321))
       status, _headers, body = app.call(env_for("/api/sessions", method: "POST", body: '{"prompt":"hi"}'))
 
       expect(status).to eq(201)
@@ -2139,7 +2265,7 @@ RSpec.describe Samagotchi::Web::App do
     it "reports a null bridge_port when the bridge is not up by the deadline" do
       manager = FakeResponsesManager.new
       app = described_class.new(manager: manager, session_class: StubSessionLoader, bridge_wait_timeout: 0.3)
-      allow(app).to receive(:worker_link).and_return(link_at(nil))
+      allow(app).to receive(:await_worker_link).and_return(Samagotchi::WorkerLink::None.new)
       status, _headers, body = app.call(env_for("/api/sessions", method: "POST", body: '{"prompt":"hi"}'))
 
       expect(status).to eq(201)
@@ -2644,7 +2770,9 @@ RSpec.describe Samagotchi::Web::App do
   describe "ProxyStreamBody" do
     it "never prints the request's cookie or Authorization header in #inspect" do
       proxy = described_class::ProxyStreamBody.new(
-        client: Samagotchi::BridgeClient.new(session_id: "s1", port: 1, secret: bridge_secret), query: "?from_seq=0",
+        client: Samagotchi::BridgeClient.new(session_id: "s1", port: 1, secret: bridge_secret),
+        opened: Samagotchi::BridgeClient::StreamOpen::Opened.new(sock: StringIO.new, status: 200, headers: {}),
+        query: "?from_seq=0",
         headers: { "HTTP_COOKIE" => "chi_token=cookie-SECRET", "HTTP_AUTHORIZATION" => "Bearer auth-SECRET",
                    "HTTP_LAST_EVENT_ID" => "7" }
       )
@@ -2659,9 +2787,7 @@ RSpec.describe Samagotchi::Web::App do
     def capture_bridge_request(headers:, query: "")
       server = TCPServer.new("127.0.0.1", 0)
       port = server.local_address.ip_port
-      proxy = described_class::ProxyStreamBody.new(
-        client: Samagotchi::BridgeClient.new(session_id: "s1", port: port, secret: bridge_secret), query: query, headers: headers
-      )
+      client = Samagotchi::BridgeClient.new(session_id: "s1", port: port, secret: bridge_secret)
       request = nil
       t = Thread.new do
         conn = server.accept
@@ -2670,11 +2796,10 @@ RSpec.describe Samagotchi::Web::App do
         conn.close
       end
       t.report_on_exception = false
-      reader = Thread.new { proxy.each { |chunk| chunk } }
-      wait_for("the proxy's request to reach the bridge") { request }
-      server.close
+      opened = client.open_stream(query: query, last_event_id: headers["HTTP_LAST_EVENT_ID"])
+      proxy = described_class::ProxyStreamBody.new(client: client, opened: opened, query: query, headers: headers)
+      proxy.each { |_chunk| nil }
       join!(t, "the fake bridge")
-      join!(reader, "the proxy") # the bridge's close ends it
       request
     end
 
@@ -2722,11 +2847,12 @@ RSpec.describe Samagotchi::Web::App do
       # running: [running?, times asked]
       def proxy_for(running)
         client = Samagotchi::BridgeClient.new(session_id: "s1", port: server.local_address.ip_port, secret: bridge_secret)
+        opened = client.open_stream
         asked = lambda do
           running[1] = running[1].to_i + 1
           running[0]
         end
-        described_class::ProxyStreamBody.new(client: client, query: "", headers: {}, server_running: asked)
+        described_class::ProxyStreamBody.new(client: client, opened: opened, query: "", headers: {}, server_running: asked)
       end
 
       it "ends the body within a poll of the server leaving :Running, and closes the bridge socket" do

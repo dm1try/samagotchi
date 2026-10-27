@@ -831,16 +831,27 @@ RSpec.describe Samagotchi::Web::App, "session access routes" do
     end
 
     it "reads /stats from the worker, its state's metrics for an older one, 504 when it doesn't answer" do
-      allow(bridge).to receive(:get).with("stats").and_return([200, { "metrics" => { "turns" => 2 } }])
+      allow(bridge).to receive(:get_response).with("stats").and_return(reply(200, { "metrics" => { "turns" => 2 } }))
       expect(call("#{path}/stats")).to eq([200, { "session_id" => session.id, "metrics" => { "turns" => 2 } }])
 
-      allow(bridge).to receive(:get).with("stats").and_return([404, { "error" => "not_found" }])
-      allow(bridge).to receive(:get).with("state").and_return([200, { "session_state_snapshot" => { "metrics" => { "turns" => 1 } } }])
+      allow(bridge).to receive(:get_response).with("stats").and_return(reply(404, { "error" => "not_found" }))
+      allow(bridge).to receive(:get_response).with("state")
+        .and_return(reply(200, { "session_state_snapshot" => { "metrics" => { "turns" => 1 } } }))
       expect(call("#{path}/stats").last["metrics"]).to eq("turns" => 1)
 
-      allow(bridge).to receive(:get).with("stats").and_return([nil, nil])
+      allow(bridge).to receive(:get_response).with("stats").and_raise(Errno::ETIMEDOUT)
       status, body = call("#{path}/stats")
       expect([status, body["error"], body["message"]]).to eq([504, "worker_timeout", body["detail"]])
+    end
+
+    it "maps a stats request refused for the Bridge secret as bridge_secret" do
+      refusal = reply(403, { error: "bridge_secret", detail: Samagotchi::BridgeSecret::REFUSED })
+      allow(bridge).to receive(:get_response).with("stats").and_return(refusal)
+
+      status, body = call("#{path}/stats")
+
+      expect([status, body["error"], body["detail"]]).to eq([502, "bridge_secret", Samagotchi::BridgeSecret::REFUSED])
+      expect(bridge).to have_received(:get_response).with("stats").once
     end
 
     it "counts the session's delegates here; 404 for no session, never a missing route's words" do

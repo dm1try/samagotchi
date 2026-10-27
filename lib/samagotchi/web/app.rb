@@ -55,6 +55,7 @@ require_relative "markdown_renderer"
 require_relative "capabilities"
 require_relative "editor"
 require_relative "../message_parts"
+require_relative "../launch_mode"
 require_relative "session_summary"
 require_relative "session_access_routes"
 require_relative "principal"
@@ -1362,19 +1363,19 @@ module Samagotchi
           return error_response(404, "not_found", "Session not found: #{id}")
         end
 
-        # Single live transport: proxy to the session's Bridge. When no live
-        # worker exists there is nothing to stream — history is available via
-        # GET /api/sessions/:id/output.
         link = worker_link(id)
-        # A resume just spawned the worker: its bridge may still be binding.
-        # Wait briefly for it so the first SSE connect lands on a live bridge
-        # instead of an instantly-closed empty 200 / 503 during startup.
-        if !link.live? && @bridge_wait_timeout.to_i.positive?
+        if link.is_a?(WorkerLink::Starting)
+          return error_response(503, "not_live", format(LaunchMode::BRIDGE_LATE, id)) if link.stuck
+
           link = await_worker_link(id, timeout: [@bridge_wait_timeout.to_f, 2.0].min)
         end
-        return error_response(503, "not_live", "no live bridge for session #{id}") unless link.live?
+        return stream_link_error(id, link) unless link.live?
 
         client = link_client(id, link)
+        filter = stream_filter(req, id)
+        query = participant_view?(req) ? participant_stream_query(req) : stream_query(req)
+        opened = client.open_stream(query: query, last_event_id: req.env["HTTP_LAST_EVENT_ID"])
+        return stream_open_error(id, opened) unless opened.is_a?(BridgeClient::StreamOpen::Opened)
 
         headers = {
           "Content-Type" => "text/event-stream",
@@ -1389,20 +1390,20 @@ module Samagotchi
         # handler supports hijacking, stream frames straight to the socket
         # instead of returning an enumerable.
         if req.env["rack.hijack?"]
-          hijack = sse_hijack(id, req, client)
+          hijack = sse_hijack(id, req, client, opened, filter)
           return [200, headers.merge("rack.hijack" => hijack), []]
         end
 
-        [200, headers, proxy_stream_body(id, req, client)]
+        [200, headers, proxy_stream_body(id, req, client, opened, filter)]
       end
 
       # The one ProxyStreamBody both of #handle_stream's transports send:
       # the session's Bridge stream, through the request principal's frame
       # filter (#stream_filter).
-      def proxy_stream_body(id, req, client)
+      def proxy_stream_body(_id, req, client, opened, filter)
         query = participant_view?(req) ? participant_stream_query(req) : stream_query(req)
-        ProxyStreamBody.new(client: client, query: query, headers: req.env,
-                            server_running: stream_running(principal(req)), filter: stream_filter(req, id))
+        ProxyStreamBody.new(client: client, opened: opened, query: query, headers: req.env,
+                            server_running: stream_running(principal(req)), filter: filter)
       end
 
       # What a request's stream goes through on its way from the Bridge:
@@ -1472,10 +1473,10 @@ module Samagotchi
       # frames directly to the client socket until it disconnects. The handler
       # (WEBrick via rackup) has already sent the status line + headers, so
       # only body bytes go to the socket here.
-      def sse_hijack(id, req, client)
+      def sse_hijack(id, req, client, opened, filter)
         # Made before the status line goes out: a principal with no filter
         # is refused (#stream_filter), never streamed.
-        body = proxy_stream_body(id, req, client)
+        body = proxy_stream_body(id, req, client, opened, filter)
         lambda do |io|
           body.each { |chunk| io.write(chunk) }
         rescue Errno::EPIPE, Errno::ECONNRESET, IOError
@@ -1483,6 +1484,8 @@ module Samagotchi
         rescue StandardError => e
           Log.warn(:web, "proxy_failed", sid: id, port: client.port, error: e.class.name, msg: e.message)
           nil
+        ensure
+          body.close
         end
       end
 
@@ -1495,13 +1498,35 @@ module Samagotchi
       def await_worker_link(session_id, timeout: @bridge_wait_timeout)
         return WorkerLink::None.new if timeout.nil? || timeout <= 0
 
-        last = WorkerLink::None.new
-        found = BridgeClient.poll(timeout, interval: BridgeClient::SPAWN_POLL_INTERVAL) do
-          (last = worker_link(session_id)).live? && last
+        WorkerLink.await(session_id, session_dir: @session_class.session_dir(session_id, state_dir: default_state_dir),
+                         timeout: timeout, interval: BridgeClient::SPAWN_POLL_INTERVAL,
+                         give_up: lambda do |outcome|
+                           outcome.is_a?(WorkerLink::Leaving) || outcome.is_a?(WorkerLink::Stale) ||
+                             outcome.is_a?(WorkerLink::Skew) ||
+                             (outcome.is_a?(WorkerLink::Starting) && outcome.stuck)
+                         end,
+                         host: DEFAULT_HOST)
+      end
+
+      def stream_link_error(id, link)
+        return error_response(502, "worker_newer", link.message(id)) if link.is_a?(WorkerLink::Skew)
+        if link.is_a?(WorkerLink::Starting) && link.stuck
+          return error_response(503, "not_live", format(LaunchMode::BRIDGE_LATE, id))
         end
-        found || last
-      rescue StandardError
-        WorkerLink::None.new
+        if link.is_a?(WorkerLink::Leaving)
+          return json_response(503, { error: "not_live", detail: "no live bridge for session #{id}",
+                                      leaving: true, leave_seconds: link.left.round(1) })
+        end
+
+        error_response(503, "not_live", "no live bridge for session #{id}")
+      end
+
+      def stream_open_error(id, outcome)
+        return error_response(503, "not_live", "no live bridge for session #{id}") if outcome.is_a?(BridgeClient::StreamOpen::Unreachable)
+        return error_response(503, "not_live", "no live bridge for session #{id}") if outcome.reason == :unknown_session
+        return error_response(502, "bridge_secret", BridgeSecret::REFUSED) if outcome.reason == :bridge_secret
+
+        error_response(502, "bridge_error", outcome.detail || "the session's worker answered #{outcome.status}")
       end
 
       # The session's worker link (WorkerLink.resolve; stale sidecars are
@@ -1839,8 +1864,11 @@ module Samagotchi
         # @param filter [#call, nil] chunk -> String (nil or "": nothing sent);
         #   it sees the Bridge's reads as they come, not whole frames
         # @param client [BridgeClient] the session's Bridge (App#link_client)
-        def initialize(client:, query:, headers:, server_running: -> { true }, filter: nil)
+        # @param opened [BridgeClient::StreamOpen::Opened] the socket whose
+        #   200 was answered to the caller
+        def initialize(client:, opened:, query:, headers:, server_running: -> { true }, filter: nil)
           @client = client
+          @opened = opened
           @query = query
           @last_event_id = headers["HTTP_LAST_EVENT_ID"]
           @server_running = server_running
@@ -1848,16 +1876,23 @@ module Samagotchi
         end
 
         def each(&)
-          # Forward the browser's auto-reconnect cursor: the bridge prefers the
-          # Last-Event-ID header over ?from_seq, and the reconnect URL carries a
-          # stale initial cursor — without this the bridge would replay content
-          # already delivered (duplicate bubbles).
-          return @client.stream(query: @query, last_event_id: @last_event_id, running: @server_running, &) unless @filter
+          opened = @opened
+          return unless opened
 
-          @client.stream(query: @query, last_event_id: @last_event_id, running: @server_running) do |chunk|
-            out = @filter.call(chunk)
+          @client.read_stream(opened, running: @server_running) do |chunk|
+            out = @filter ? @filter.call(chunk) : chunk
             yield(out) unless out.nil? || out.empty?
           end
+        ensure
+          @opened = nil
+        end
+
+        def close
+          opened = @opened
+          @opened = nil
+          opened&.sock&.close
+        rescue IOError, SystemCallError
+          nil
         end
       end
     end

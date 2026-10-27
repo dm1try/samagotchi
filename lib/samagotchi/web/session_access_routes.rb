@@ -351,23 +351,28 @@ module Samagotchi
 
       # GET /api/sessions/:id/stats: the live worker's metrics for /stats
       # (its stats route; a worker from before it answers only its state's
-      # metrics). 200 {session_id, metrics}; 503 not_live, 504
-      # worker_timeout, 502 bridge_error.
+      # metrics). 200 {session_id, metrics}; 503 not_live, 504 worker_timeout,
+      # 502 bridge_secret or bridge_error.
       def handle_stats(_req, id)
         @session_class.load(id, state_dir: default_state_dir)
-        client = bridge_client(id) or return with_message(not_live(id))
-
-        status, json = client.get("stats")
-        metrics = json["metrics"] if status == 200 && json.is_a?(Hash)
-        if status == 404 && !(json.is_a?(Hash) && json["error"] == "unknown_session")
-          status, json = client.get("state")
-          metrics = json.dig("session_state_snapshot", "metrics") if status == 200 && json.is_a?(Hash)
+        request = lambda do |client|
+          response = client.get_response("stats")
+          if response.status == 404 && response.json&.dig("error") != "unknown_session"
+            response = client.get_response("state")
+          end
+          response
         end
-        return json_response(200, { session_id: id, metrics: metrics }) if status == 200
-        return with_message(worker_timeout("the stats were not read")) if status.nil?
-        return with_message(not_live(id)) if status == 404
+        with_message(relay(id, bridge_client(id), request, what: "the stats were not read", cant: "read stats") do |reply|
+          next unless reply.status == 200
 
-        with_message(error_response(502, "bridge_error", "the stats were not read: the session's worker answered #{status}"))
+          json = reply.json
+          metrics = if json.is_a?(Hash) && json["metrics"]
+                      json["metrics"]
+                    else
+                      json&.dig("session_state_snapshot", "metrics")
+                    end
+          json_response(200, { session_id: id, metrics: metrics })
+        end)
       end
 
       # GET /api/sessions/:id/children/counts: the session's delegates'
