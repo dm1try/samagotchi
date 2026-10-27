@@ -403,6 +403,9 @@ module Samagotchi
       stopped = tree.select { |sid| owners[sid] }
       stopped.each { |sid| stop_session(sid, state_dir: sd, wait: wait) }
       archived, discarded = tree.partition { |sid| ArchiveStore.archive(sid, state_dir: sd) }
+      # A restart's reminders hand-off no successor took (the stop above
+      # removes a live one's): archived sessions keep no reminders.
+      archived.each { |sid| ReminderCarry.remove(Session.session_dir(sid, state_dir: sd)) }
       # D8: an archive ends the review (unarchiving doesn't restore it).
       Participants.end_sessions(archived, by: "archive", state_dir: sd)
       { id: id, archived: archived, stopped: stopped, discarded: discarded }

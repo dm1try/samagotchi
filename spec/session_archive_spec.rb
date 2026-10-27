@@ -140,6 +140,19 @@ RSpec.describe "Session archive" do
       expect([archived?(parent), archived?(child)]).to eq([false, false])
     end
 
+    it "removes each archived session's reminders hand-off, with no live worker too" do
+      parent = make
+      child = make(parent: parent)
+      carries = [parent, child].map do |s|
+        dir = Samagotchi::Session.session_dir(s.id, state_dir: tmpdir)
+        FileUtils.mkdir_p(dir)
+        File.join(dir, Samagotchi::ReminderCarry::FILE).tap { |f| File.write(f, "{}") }
+      end
+
+      Samagotchi::SessionManager.archive_session(parent.id, state_dir: tmpdir)
+      expect(carries.map { |f| File.exist?(f) }).to eq([false, false])
+    end
+
     it "stops a live idle worker first" do
       live = make(owner: "worker")
       allow(Samagotchi::SessionManager).to receive(:stop_session) do |id, **|
