@@ -7,6 +7,8 @@ and commands may change between minor versions. How releases are made:
 [docs/releasing.md](docs/releasing.md).
 ## [Unreleased]
 
+## [0.125.0] - 2026-10-27
+
 ### Added
 
 - chi web links to a claim: selecting text in a turn shows **Copy link**, a link for a participant's browser that
@@ -27,6 +29,10 @@ and commands may change between minor versions. How releases are made:
 - `chi sessions stop` (and the web's stop, delete and archive, which stop the same way) stops a stopped (SIGSTOPped,
   Ctrl-Z) worker at once, instead of waiting out the stop's 10 s and leaving it running; a command or background task
   chi stops while it is stopped ends with its TERM, not the KILL after the grace.
+
+Update from chi web's Update button (or `chi update`, then restart `chi web` and the session workers with
+`chi sessions restart`). Workers on 0.124.0 still refuse a restart while they hold reminders: stop and resume those
+once; from 0.125.0 on a restart keeps them.
 
 ## [0.124.0] - 2026-10-27
 
@@ -4734,7 +4740,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.124.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.125.0...HEAD
+[0.125.0]: https://github.com/dm1try/samagotchi/compare/v0.124.0...v0.125.0
 [0.124.0]: https://github.com/dm1try/samagotchi/compare/v0.123.0...v0.124.0
 [0.123.0]: https://github.com/dm1try/samagotchi/compare/v0.122.0...v0.123.0
 [0.122.0]: https://github.com/dm1try/samagotchi/compare/v0.121.1...v0.122.0
