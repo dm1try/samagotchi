@@ -198,7 +198,7 @@ RSpec.describe "call_tool on a built-in" do
     hooks2.register(:before_tool_call) { |e| e[:call] = e[:call].except(:via) }
     allow(kernel).to receive(:hooks).and_return(hooks2)
     gate = Samagotchi::Guardrails::Gate.new(-> { hooks2 })
-    kernel.define_singleton_method(:guardrail_gate) { gate }
+    allow(kernel).to receive(:guardrail_gate).and_return(gate)
     toolkit!
     expect(run(via("chi/delegate", { "task" => "x" })).output).to include("\nError: delegate isn't declared")
     expect(ran).to eq([])

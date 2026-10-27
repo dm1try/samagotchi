@@ -226,6 +226,9 @@ RSpec.describe "The cost-cap bundle", :bundle do
       generation(bundle)
       expect(bundle.questions.last.question).to include("$6.00 spent of $5.00")
 
+      allow(Warning).to receive(:warn).and_wrap_original do |warn, message, **kwargs|
+        warn.call(message, **kwargs) unless message.include?("Float 1e400 out of range")
+      end
       %w[1e400 $1e400].each do |text|
         unread = plugin({ "default" => text }, cost: 9.0)
         generation(unread)
