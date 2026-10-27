@@ -7,6 +7,8 @@ and commands may change between minor versions. How releases are made:
 [docs/releasing.md](docs/releasing.md).
 ## [Unreleased]
 
+## [0.124.0] - 2026-10-27
+
 ### Added
 
 - The desktop helper's panel lists and sends to the sessions of the remotes `chi remote add` keeps: a section per
@@ -19,6 +21,9 @@ and commands may change between minor versions. How releases are made:
   that lists kept edits, then offers **Restart workers** (each worker on an older chi; a busy one says what holds
   it) and **Restart chi web** (in place: same port, token, flags and Tailscale Serve). `chi update --to VERSION`
   installs an exact release; `--json` prints its rows as JSON.
+
+Update with `chi update` (it rebuilds the desktop helper), then restart `chi web` and the session workers
+(`chi sessions restart`). From the next release on, chi web's Update button does this from its page.
 
 ## [0.123.0] - 2026-10-27
 
@@ -4708,7 +4713,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.123.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.124.0...HEAD
+[0.124.0]: https://github.com/dm1try/samagotchi/compare/v0.123.0...v0.124.0
 [0.123.0]: https://github.com/dm1try/samagotchi/compare/v0.122.0...v0.123.0
 [0.122.0]: https://github.com/dm1try/samagotchi/compare/v0.121.1...v0.122.0
 [0.121.1]: https://github.com/dm1try/samagotchi/compare/v0.121.0...v0.121.1
