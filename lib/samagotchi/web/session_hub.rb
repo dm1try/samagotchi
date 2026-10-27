@@ -143,6 +143,16 @@ module Samagotchi
         @monitor.synchronize { @installed }
       end
 
+      # Look at what is installed now, not at the next full probe (after an
+      # install): a change is the usual `chi` event.
+      # @return [String, nil] the newest installed chi
+      def refresh_installed
+        @monitor.synchronize do
+          check_installed
+          @installed
+        end
+      end
+
       # The complete chi version state used by event snapshots and info routes.
       def chi_state
         @monitor.synchronize do

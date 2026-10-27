@@ -480,8 +480,8 @@ RSpec.describe Samagotchi::Web::App do
 
     after { FileUtils.rm_rf(state_dir) }
 
-    def events_app(hub: self.hub, **kw)
-      described_class.new(manager: Samagotchi::SessionManager, session_class: Samagotchi::Session, state_dir: state_dir,
+    def events_app(hub: self.hub, manager: Samagotchi::SessionManager, **kw)
+      described_class.new(manager: manager, session_class: Samagotchi::Session, state_dir: state_dir,
                           bridge_wait_timeout: 0, hub: hub, events_heartbeat: 0.01, **kw)
     end
 
@@ -606,6 +606,51 @@ RSpec.describe Samagotchi::Web::App do
         expect(JSON.parse(raw.split("data: ", 2).last.split("\r\n", 2).first)["chi_update"]).to eq("state" => "running", "rows" => [])
       ensure
         reader&.kill
+      end
+    end
+
+    describe "POST /api/update/restart_workers" do
+      let(:state_dir) { Dir.mktmpdir("web-update-restart-spec") }
+      # The hub's installed version is stale (no full probe since the install): the route looks again.
+      let(:installed) { double("installed versions", newest: "99.0.0") }
+      let(:hub) { Samagotchi::Web::SessionHub.new(state_dir: state_dir, installed_versions: installed) }
+
+      after do
+        hub.stop
+        FileUtils.rm_rf(state_dir)
+      end
+
+      it "attempts every stale worker and publishes restart refusals without filtering" do
+        manager = double("manager")
+        workers = %w[restarted refused owned].map do |session_id|
+          Samagotchi::LiveVersions::Worker.new(session_id: session_id, version: "0.122.0", restart: false)
+        end
+        allow(hub).to receive(:touch)
+        expect(hub.installed).to be_nil
+        expect(Samagotchi::LiveVersions).to receive(:stale_workers).with("99.0.0", state_dir: state_dir).and_return(workers)
+        expect(manager).to receive(:restart_session).with("restarted", state_dir: state_dir, client_id: Samagotchi::ClientId::WEB_RESTART)
+          .and_return(Samagotchi::SessionManager::Restarted.new(session_id: "restarted", from_version: "0.122.0", version: "99.0.0"))
+        expect(manager).to receive(:restart_session).with("refused", state_dir: state_dir, client_id: Samagotchi::ClientId::WEB_RESTART)
+          .and_raise(Samagotchi::SessionManager::RestartRefused.new("refused", :fallback_held, holds: [:turn_running]))
+        expect(manager).to receive(:restart_session).with("owned", state_dir: state_dir, client_id: Samagotchi::ClientId::WEB_RESTART)
+          .and_raise(Samagotchi::SessionManager::OwnedByTUI.new("owned"))
+        app = events_app(manager: manager, hub: hub)
+
+        status, _headers, response = app.call(env_for("/api/update/restart_workers", method: "POST"))
+        expect(status).to eq(202)
+        expect(JSON.parse(response.first)).to eq("state" => "running")
+        wait_for("the worker restart results") { hub.update_state&.dig(:state) == "done" }
+        expect(hub).to have_received(:touch).with("restarted").once
+        expect(hub).not_to have_received(:touch).with("refused")
+        expect(hub.installed).to eq("99.0.0")
+
+        expect(hub.update_state[:rows]).to eq([
+          { "session_id" => "restarted", "state" => "restarted", "from_version" => "0.122.0", "version" => "99.0.0" },
+          { "session_id" => "refused", "state" => "refused", "reason" => "fallback_held",
+            "detail" => Samagotchi::SessionManager::RestartRefused.words("refused", :fallback_held, nil, [:turn_running]),
+            "holds" => ["turn_running"] },
+          { "session_id" => "owned", "state" => "owned_by_tui", "detail" => "session owned is open in a chi REPL; close it there first" }
+        ])
       end
     end
 

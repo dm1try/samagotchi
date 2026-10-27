@@ -77,6 +77,7 @@ require_relative "../paths"
 require_relative "../redacted_inspect"
 require_relative "../child_env"
 require_relative "../installed_gem"
+require_relative "../live_versions"
 
 module Samagotchi
   module Web
@@ -245,6 +246,7 @@ module Samagotchi
         ["GET", %r{\A/api/history\z}, :handle_history, :owner],
         ["GET", %r{\A/api/events\z}, :handle_events, :owner],
         ["POST", %r{\A/api/update\z}, :handle_update, :owner],
+        ["POST", %r{\A/api/update/restart_workers\z}, :handle_restart_workers, :owner],
         ["POST", %r{\A/api/render\z}, :handle_render, :owner],
         ["GET", %r{\A/api/sessions/([^/]+)/stream\z}, :handle_stream, :participant],
         ["GET", %r{\A/api/sessions/([^/]+)/review\z}, :handle_review, :participant, :session],
@@ -733,6 +735,65 @@ module Samagotchi
           stderr_thread.value
           [output, wait_thread.value.success?]
         end
+      end
+
+      def handle_restart_workers(_req)
+        return error_response(503, "no_hub", "this chi web has no session hub") unless @hub
+
+        already_running = @update_mutex.synchronize do
+          if @update_running
+            true
+          else
+            @update_running = true
+            false
+          end
+        end
+        return error_response(409, "update_running", "a chi update operation is already running") if already_running
+
+        @hub.publish_update(state: "running", rows: [])
+        Thread.new { perform_worker_restarts }
+        json_response(202, { state: "running" })
+      rescue ThreadError => e
+        @update_mutex.synchronize { @update_running = false }
+        Log.warn(:web, "worker_restart_start_failed", error: e.class.name, msg: e.message)
+        @hub&.publish_update(state: "failed", rows: [
+          { "state" => "failed", "reason" => "couldn't start worker restarts" }
+        ])
+        error_response(503, "restart_start_failed", "couldn't start worker restarts")
+      end
+
+      def perform_worker_restarts
+        # Installed now: the hub's own look is up to a full probe old (nil right after chi web started).
+        target = @hub.refresh_installed || VERSION
+        rows = []
+        LiveVersions.stale_workers(target, state_dir: default_state_dir).each do |worker|
+          row = begin
+            restarted = @manager.restart_session(worker.session_id, state_dir: @state_dir, client_id: ClientId::WEB_RESTART)
+            @hub.touch(worker.session_id)
+            { "session_id" => restarted.session_id, "state" => "restarted", "from_version" => restarted.from_version,
+              "version" => restarted.version }
+          rescue SessionManager::RestartRefused => e
+            # detail: the refusal's own words (RestartRefused.words), the reason code for clients.
+            { "session_id" => worker.session_id, "state" => "refused", "reason" => e.reason.to_s,
+              "detail" => e.message, "holds" => e.holds.map(&:to_s) }
+          rescue SessionManager::OwnedByTUI => e
+            { "session_id" => worker.session_id, "state" => "owned_by_tui", "detail" => e.message }
+          rescue StandardError => e
+            Log.exception(:web, "worker_restart_failed", e, sid: worker.session_id)
+            { "session_id" => worker.session_id, "state" => "failed", "reason" => e.class.name, "detail" => e.message }
+          end
+          rows << row
+          @hub.publish_update(state: "running", rows: rows.dup)
+        end
+        state = rows.any? { |row| row["state"] == "failed" } ? "failed" : "done"
+        @hub.publish_update(state: state, rows: rows)
+      rescue StandardError => e
+        Log.exception(:web, "worker_restart_failed", e)
+        @hub.publish_update(state: "failed", rows: [
+          { "state" => "failed", "reason" => e.class.name, "detail" => e.message }
+        ])
+      ensure
+        @update_mutex.synchronize { @update_running = false }
       end
 
       def unauthorized(req)
