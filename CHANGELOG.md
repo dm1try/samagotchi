@@ -7,6 +7,10 @@ and commands may change between minor versions. How releases are made:
 [docs/releasing.md](docs/releasing.md).
 ## [Unreleased]
 
+### Fixed
+
+- Remote `chi sessions restart` refusals retain fallback holds and print the remote `chi --remote NAME` stop command.
+
 ## [0.121.1] - 2026-10-27
 
 ### Fixed

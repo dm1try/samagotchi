@@ -1189,6 +1189,16 @@ RSpec.describe Samagotchi::SessionManager do
     end
   end
 
+  describe Samagotchi::SessionManager::RestartRefused do
+    it "spells the stop hint for the invocation's machine" do
+      via = Samagotchi::ChiInvocation.new(remote: "studio")
+
+      words = described_class.words("s-1234", :fallback_held, nil, [:turn_running], via: via)
+
+      expect(words).to include("run `#{via.command("sessions stop s-1234")}`, then any prompt")
+    end
+  end
+
   describe ".restart_session" do
     let(:session) do
       Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp")

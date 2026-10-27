@@ -181,6 +181,19 @@ RSpec.describe Samagotchi::SessionAccess::Remote do
       expect { remote.restart(make.id) }.to raise_error(Samagotchi::SessionManager::RestartRefused) { |e| expect(e.reason).to eq(:not_running) }
     end
 
+    it "carries fallback holds and prints the remote stop command" do
+      session = make
+      refusal = Samagotchi::SessionManager::RestartRefused.new(session.id, :fallback_held, holds: [:turn_running])
+      allow(Samagotchi::SessionManager).to receive(:restart_session).and_raise(refusal)
+
+      expect { remote.restart(session.id) }.to raise_error(Samagotchi::SessionManager::RestartRefused) { |error|
+        expect(error.holds).to eq([:turn_running])
+        expect(error.message).to eq(Samagotchi::SessionManager::RestartRefused.words(
+          session.id, :fallback_held, nil, [:turn_running], via: remote.invocation
+        ))
+      }
+    end
+
     it "asks chi web to stop with the CLI's wait, which it caps at SessionManager::STOP_WAIT" do
       session = make
       allow(Samagotchi::SessionManager).to receive(:stop_session).and_return(true)

@@ -432,7 +432,7 @@ module Samagotchi
                              version: result.version })
       rescue SessionManager::RestartRefused => e
         error = %i[not_running unsupported failed].include?(e.reason) ? e.reason.to_s : "held"
-        refusal_response(409, error, e, reason: e.reason.to_s, session_id: id, version: e.version)
+        refusal_response(409, error, e, reason: e.reason.to_s, session_id: id, version: e.version, holds: e.holds)
       rescue SessionManager::OwnedByTUI => e
         owned_by_tui(e)
       end

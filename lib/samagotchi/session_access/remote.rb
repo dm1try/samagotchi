@@ -674,7 +674,10 @@ module Samagotchi
         when "continued", "open_children", "folder_gone"
           raise SessionContinue::Refused.new(sid, reason, ids: Array(json["ids"]))
         when "held", "not_running", "unsupported", "failed"
-          raise SessionManager::RestartRefused.new(sid, reason, version: json["version"]) if reason
+          if reason
+            raise SessionManager::RestartRefused.new(sid, reason, version: json["version"], holds: json["holds"],
+                                                     via: invocation)
+          end
         when "parent_answers_refused", "parent_continue_refused", "no_vision"
           raise Refused.new(message.to_s, code: error)
         # No model configured there, or --model's host unknown there: what

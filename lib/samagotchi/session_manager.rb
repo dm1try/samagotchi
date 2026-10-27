@@ -27,6 +27,7 @@ require_relative "bridge_client"
 require_relative "worker_sidecar"
 require_relative "worker_link"
 require_relative "worker_signals"
+require_relative "chi_invocation"
 require_relative "log"
 require_relative "log_path"
 require_relative "paths"
@@ -633,12 +634,12 @@ module Samagotchi
     class RestartRefused < StandardError
       attr_reader :session_id, :reason, :version, :holds
 
-      def initialize(session_id, reason, version: nil, holds: [])
+      def initialize(session_id, reason, version: nil, holds: [], via: ChiInvocation::HERE)
         @session_id = session_id
         @reason = reason.to_sym
         @version = version
         @holds = Array(holds).map(&:to_sym).freeze
-        super(RestartRefused.words(session_id, @reason, version, @holds))
+        super(RestartRefused.words(session_id, @reason, version, @holds, via: via))
       end
 
       HOLDS = {
@@ -654,17 +655,18 @@ module Samagotchi
       }.freeze
 
       # What the CLI and the web say.
-      def self.words(session_id, reason, version = nil, holds = [])
+      def self.words(session_id, reason, version = nil, holds = [], via: ChiInvocation::HERE)
+        stop = via.command("sessions stop #{session_id}")
         case reason
         when :not_running
           "session #{session_id} has no running worker; the next prompt starts one on the newest chi"
         when :unsupported
           "session #{session_id}'s worker runs chi #{version || "(older)"}, which can't restart: " \
-            "chi sessions stop #{session_id}, then any prompt starts it on the newest chi"
+            "#{stop}, then any prompt starts it on the newest chi"
         when :fallback_held
           why = holds.map { |hold| HOLDS.fetch(hold, hold.to_s.tr("_", " ")) }.join("; ")
           "session #{session_id} has disk-visible work that a restart might lose#{": #{why}" unless why.empty?}; " \
-            "run `chi sessions stop #{session_id}`, then any prompt starts it on the newest chi"
+            "run `#{stop}`, then any prompt starts it on the newest chi"
         when :failed then "session #{session_id}'s worker didn't take the restart"
         else "not now: #{HOLDS.fetch(reason, reason.to_s.tr("_", " "))}"
         end
