@@ -41,10 +41,12 @@ RSpec.describe Samagotchi::ProcessGroup do
       pid = spawn_group("sleep 5")
       expect(described_class.stopped?(pid)).to be(false)
       Process.kill("STOP", pid)
-      # ps's own line, so a timeout says whether the sleep was killed (Z, or
-      # gone) or never stopped (S) — a flake seen once on CI macOS.
+      # STOPped again until ps says T: macOS drops a SIGSTOP that reaches a
+      # process inside execve (sh exec'ing the sleep, ~1-3 ms after spawn,
+      # just when the ps above returns), and the sleep runs on (TERM, KILL
+      # and HUP are kept). ps's own line, so a timeout says what it saw.
       ps = -> { IO.popen(["ps", "-o", "state=,pgid=,comm=", "-p", pid.to_s], err: File::NULL, &:read) }
-      wait_for("the group stopped", seen: ps) { described_class.stopped?(pid) }
+      wait_for("the group stopped", seen: ps) { described_class.stopped?(pid) || (Process.kill("STOP", pid) && false) }
       Process.kill("CONT", pid)
       wait_for("the group continued") { !described_class.stopped?(pid) }
       reap(pid)
