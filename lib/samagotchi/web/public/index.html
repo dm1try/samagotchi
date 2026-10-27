@@ -1268,13 +1268,32 @@ body.has-session #newBtn .brand-new{display:inline}
 /* The scope chip: "<project> · all", or "all projects" and where a new session starts (start page only). */
 #scope{display:inline-flex;align-items:center;gap:8px;min-width:0;font-size:12px;color:var(--text-muted)}
 #scope[hidden]{display:none}
-#scope .scope-name{flex-shrink:0;padding:2px 9px;border:1px solid var(--border-strong);border-radius:999px;color:var(--text-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:40vw}
+#scope .scope-name{display:inline-flex;align-items:center;flex-shrink:0;padding:2px 9px;border:1px solid var(--border-strong);border-radius:999px;background:transparent;color:var(--text-2);font:inherit;line-height:inherit;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:40vw;cursor:pointer;transition:none}
+#scope .scope-name:hover:not(:disabled){filter:none}
 #scope .scope-name.error{color:var(--warn-text);border-color:var(--warn-border)}
 #scope .scope-all{color:var(--text-muted);text-decoration:none}
 #scope .scope-all:hover{color:var(--accent);text-decoration:underline}
 #scope .scope-where{display:inline-flex;gap:5px;min-width:0;white-space:nowrap;font-size:11px}
 /* The path cuts on the left, so its last folders stay in view. */
 #scope .scope-where .path{overflow:hidden;text-overflow:ellipsis;direction:rtl;min-width:0;font-family:ui-monospace,monospace}
+#projectPicker{width:min(380px,calc(100vw - 32px))}
+.project-picker.sheet{border-radius:14px;padding:14px 16px}
+.project-picker .ctx-pop-head{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.project-picker .ctx-pop-head strong{font-family:inherit}
+.project-list{display:flex;flex-direction:column;gap:6px;margin:2px 0;padding:0}
+.project-row{display:flex;align-items:center;gap:12px;padding:8px 10px;border:1px solid transparent;border-radius:9px;background:var(--bg-inset);color:var(--text);text-decoration:none}
+.project-row:hover{background:var(--bg-hover);color:var(--text-hover)}
+.project-row:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.project-row[aria-current="page"]{border-color:var(--accent-border);background:var(--accent-bg)}
+.project-main{display:flex;flex:1;align-items:center;gap:7px;min-width:0;flex-wrap:wrap}
+.project-name{font-weight:600;overflow-wrap:anywhere}
+.project-root{flex-basis:100%;min-width:0;color:var(--text-muted);font:11px ui-monospace,monospace;overflow-wrap:anywhere}
+.project-meta{display:flex;flex-shrink:0;align-items:center;gap:7px;color:var(--text-muted);font-size:11px;white-space:nowrap}
+.project-default{padding:1px 6px;border-radius:999px;background:var(--bg-raised);color:var(--text-muted);font-size:10px}
+.project-check{color:var(--accent);font-weight:700}
+.project-all{margin-top:4px;padding-top:10px;border-top:1px solid var(--border);background:transparent}
+.project-note{padding:5px 2px;color:var(--text-muted);font-size:12px}
+.project-error{color:var(--warn-text)}
 body.has-session #scope .scope-where{display:none}
 /* A phone has no room for both; the hidden strip's pill (count, live) wins. */
 @media(max-width:600px){body.strip-hidden #scope .scope-where{display:none}}
@@ -1525,7 +1544,7 @@ body.all-view #center, body.all-view #topStrip{display:none}
 .card .dot.waiting,.family-row .dot.waiting{background:var(--warn);animation:attn-pulse 1.6s ease-in-out var(--pulse-delay,0s) infinite}
 @keyframes attn-pulse{0%,100%{box-shadow:0 0 0 0 color-mix(in srgb,var(--warn) 60%,transparent)}50%{box-shadow:0 0 0 4px color-mix(in srgb,var(--warn) 0%,transparent)}}
 @media (prefers-reduced-motion:reduce){.card .dot.running,.card .dot.waiting,.family-row .dot.running,.family-row .dot.waiting{animation:none}}
-.card .attn,.family-row .attn{font-size:11px;font-weight:600;padding:1px 7px;border-radius:999px;white-space:nowrap;flex-shrink:0;background:var(--warn-bg);color:var(--warn-text);border:1px solid var(--warn-border)}
+.card .attn,.family-row .attn,.project-picker .attn{font-size:11px;font-weight:600;padding:1px 7px;border-radius:999px;white-space:nowrap;flex-shrink:0;background:var(--warn-bg);color:var(--warn-text);border:1px solid var(--warn-border)}
 .card .stopped-badge,.family-row .stopped-badge{font-size:11px;font-weight:600;padding:1px 7px;border-radius:999px;white-space:nowrap;flex-shrink:0;background:var(--warn);color:var(--bg)}
 .status.running{background:var(--ok-bg);color:var(--ok-text)}
 .status.idle{background:var(--bg-raised)}

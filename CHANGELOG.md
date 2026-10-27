@@ -7,6 +7,10 @@ and commands may change between minor versions. How releases are made:
 [docs/releasing.md](docs/releasing.md).
 ## [Unreleased]
 
+### Added
+
+- chi web's header project chip opens a picker to switch projects without starting chi web in each one.
+
 ## [0.126.0] - 2026-10-27
 
 ### Added
