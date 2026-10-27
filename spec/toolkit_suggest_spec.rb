@@ -35,6 +35,37 @@ RSpec.describe Samagotchi::ToolkitSuggest do
     expect(state).to eq(project: "samagotchi", prompt: "x" * 1500)
   end
 
+  it "leaves out a kit that doesn't resolve rather than dropping the ask" do
+    broken = Samagotchi::Toolkit.kits(config: {
+      "web" => { "base" => "lean", "description" => "Browser work" },
+      "coding" => { "base" => "child", "description" => "Code changes" },
+      "ghost" => { "base" => "missing", "description" => "A typo'd base" },
+      "loop_a" => { "base" => "loop_b", "description" => "A cycle" },
+      "loop_b" => { "base" => "loop_a", "description" => "A cycle" }
+    })
+
+    names = described_class.candidates(broken, default_name: "full").map(&:name)
+
+    expect(names).to contain_exactly("web", "coding")
+  end
+
+  describe ".owner_prompt?" do
+    it "counts the Engine's prompt line and TurnCheckpoint's stamped one" do
+      expect(described_class.owner_prompt?({ role: "user", turn_id: "t1", content: "go" })).to be(true)
+      expect(described_class.owner_prompt?({ role: "user", content: "go", at: "2026-10-27T10:00:00.000+00:00" }))
+        .to be(true)
+    end
+
+    it "doesn't count a !command's output, a declined continue's reason or the Qwen recovery prompt" do
+      expect(described_class.owner_prompt?({ role: "user", content: "!(ls)\na b" })).to be(false)
+      expect(described_class.owner_prompt?({ role: "user", content: "The user chose not to continue: …" })).to be(false)
+      expect(described_class.owner_prompt?({ role: "user", content: "Finish the call", preserve_literals: true }))
+        .to be(false)
+      messages = [{ role: "user", turn_id: "t1", content: "go" }, { role: "user", content: "!(ls)\nout" }]
+      expect(described_class.turn_number(messages)).to eq(2)
+    end
+  end
+
   describe ".eligible?" do
     let(:session) do
       Struct.new(:toolkit_origin, :delegate?, :review?, :messages).new(
@@ -74,6 +105,23 @@ RSpec.describe Samagotchi::ToolkitSuggest do
       expect(described_class.eligible?(**args, last_suggestion: { "raw" => "default" })).to be(false)
       expect(described_class.eligible?(**args, defer_turns: 1)).to be(false)
       expect(described_class.eligible?(**args, defer_tokens: 1)).to be(false)
+    end
+
+    it "sizes the defer window without JSON, so invalid UTF-8 in the history doesn't raise" do
+      session.messages << { role: "user", turn_id: "one", content: "bad \xFF byte".dup.force_encoding("UTF-8") }
+      session.messages << { role: "model", content: "reply" }
+
+      expect(described_class.eligible?(**eligible, last_suggestion: { "raw" => "undecided" })).to be(true)
+    end
+
+    it "reads a callable candidate count and last suggestion only when it gets to them" do
+      read = []
+      args = eligible.merge(candidate_count: -> { (read << :kits) && 2 }, last_suggestion: -> { (read << :log) && nil })
+
+      expect(described_class.eligible?(**args)).to be(true)
+      expect(read).to eq([:kits])
+      expect(described_class.eligible?(**args, prompt: " ")).to be(false)
+      expect(read).to eq([:kits])
     end
 
     it "allows an initial turn with an undecided record because no model reply exists yet" do

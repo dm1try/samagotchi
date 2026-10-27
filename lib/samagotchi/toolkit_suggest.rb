@@ -2,6 +2,7 @@
 
 require "json"
 
+require_relative "message_time"
 require_relative "steer"
 require_relative "system_one/question"
 
@@ -25,14 +26,24 @@ module Samagotchi
     Suggestion = Data.define(:kit, :raw, :confidence, :decided)
 
     # The candidates with classifier descriptions, excluding the configured
-    # default, the participants' review boundary, and the defer sentinel.
+    # default, the participants' review boundary, the defer sentinel, and a
+    # kit that doesn't resolve (a missing base, a cycle): it is left out,
+    # not the whole ask, and the ≥ 2 clause counts what is left.
     def self.candidates(kits, default_name:)
       kits.values.filter_map do |kit|
         next if [default_name.to_s, Toolkit::REVIEW, "undecided"].include?(kit.name)
         next if kit.description.to_s.empty?
+        next unless resolves?(kit.name, kits)
 
         kit
       end
+    end
+
+    def self.resolves?(name, kits)
+      Toolkit.resolve_kit(name, kits)
+      true
+    rescue Toolkit::Unresolved
+      false
     end
 
     # A System 1 choice and the small, bounded state it classifies.
@@ -63,16 +74,30 @@ module Samagotchi
       return false unless field(value(last_suggestion), :raw) == "undecided"
 
       current_turn_number = turn_number(messages)
-      current_turn_number <= defer_turns.to_i &&
-        JSON.generate(messages).length / CHARS_PER_TOKEN < defer_tokens.to_i
+      current_turn_number <= defer_turns.to_i && conversation_chars(messages) / CHARS_PER_TOKEN < defer_tokens.to_i
+    end
+
+    # The conversation's size for the defer window: its messages' text and
+    # tool calls, summed (no JSON: a byte that isn't UTF-8 can't break it).
+    def self.conversation_chars(messages)
+      Array(messages).sum do |message|
+        field(message, :content).to_s.length + field(message, :tool_calls).to_s.length
+      end
     end
 
     def self.turn_number(messages) = user_prompt_count(Array(messages)) + 1
 
+    # The owner's own prompt: a user line the Engine kept for a turn (it
+    # carries the turn's id), or TurnCheckpoint's line for a turn killed
+    # before its first boundary (stamped, no id). A !command's output, a
+    # declined continue's reason and KernelLoop's recovery prompt are
+    # neither; steers, notes and reminders carry their kind.
     def self.owner_prompt?(message)
       field(message, :role).to_s == "user" &&
         !Steer.participant_author?(field(message, :author)) &&
-        !%w[input steer note reminder].include?(field(message, :kind).to_s)
+        !%w[input steer note reminder].include?(field(message, :kind).to_s) &&
+        !field(message, :preserve_literals) &&
+        !(field(message, :turn_id) || field(message, MessageTime::KEY)).nil?
     end
 
     # The prior logged suggestion for this session; the log, not process

@@ -113,6 +113,35 @@ RSpec.describe Samagotchi::Engine do
 
     expect(engine.instance_variable_get(:@toolkit_audit_thread)).not_to be_alive
     expect(Samagotchi::Engine::TOOLKIT_AUDIT_JOIN_SECONDS).to be < Samagotchi::Engine::SHUTDOWN_JOIN_SECONDS
+    expect(Samagotchi::Engine::TOOLKIT_AUDIT_JOIN_SECONDS).to be >= 1.0
+  end
+
+  it "says so when an eligible turn goes unasked because the last ask still runs" do
+    engine = build_engine
+    engine.instance_variable_set(:@host_registry, double(host_for_model: [double(name: "model", remote?: true), nil]))
+    allow(engine).to receive(:effective_model_name).and_return("model")
+    started = Queue.new
+    release = Queue.new
+    system_one = instance_double(Samagotchi::SystemOne::Client, host: "judge")
+    allow(system_one).to receive(:ask) do |**|
+      started << true
+      release.pop
+      nil
+    end
+    allow(Samagotchi::SystemOne::Client).to receive(:from_config).and_return(system_one)
+    allow(Samagotchi::Log).to receive(:info)
+
+    begin
+      start(engine)
+      pop!(started, "the first audit ask")
+      start(engine)
+
+      expect(Samagotchi::Log).to have_received(:info).with(:toolkit, "toolkit_suggest_in_flight_skipped",
+                                                           hash_including(:session_id))
+      expect(system_one).to have_received(:ask).once
+    ensure
+      release << true
+    end
   end
 
   it "skips a shared local System 1 host before starting the ask" do

@@ -1435,7 +1435,10 @@ toolkit:
   `undecided`, later owner prompts may be asked again within both defer limits. `toolkit.suggest.mode: on` is accepted
   but behaves exactly like `audit` in this build. The default is `off`. System 1's host, model and timeout come from
   `guardrails.system_one.*`; the suggestion threshold and defer limits are its own settings below. Suggestions are
-  kept in `toolkit_suggestions.jsonl`; `chi toolkit report` grades them against the session's tool calls.
+  kept in `toolkit_suggestions.jsonl`; `chi toolkit report` grades them against the session's tool calls. One ask
+  runs at a time (a turn that comes while one still runs goes unasked, with an info line), and a kit that doesn't
+  resolve (a missing base, a cycle) is left out of the candidates. A worker that exits waits about a second for a
+  running ask, so a one-shot `-p --non-interactive` run may end before its suggestion is logged.
 - **Tool-index groups.** `groups:` selects source groups by name or glob (`chrome`, `db*`; any case, `{a,b}` braces,
   as the guardrails rules' `models:`); for the MCP bundle each group is a server. Anything but a name or a list (a
   map such as `{chrome: true}`) refuses every new session on that kit or on a kit built on it, on every surface (chi,
@@ -2002,7 +2005,7 @@ column says so, a `--kebab-name` flag. The maps (`hosts:`, `models:`,
 | `toolkit.child` | `full` | | A delegate child's toolkit, unless its `delegate` call names one (`toolkit:`). See "Toolkits". |
 | `toolkit.suggest.mode` | `off` | | `audit` asks System 1 for a toolkit suggestion without changing the session; `on` currently behaves the same as `audit`. The System 1 host, model and timeout come from `guardrails.system_one.*`. config.yml only. |
 | `toolkit.suggest.threshold` | `0.5` | | Minimum confidence for a non-default toolkit suggestion. config.yml only. |
-| `toolkit.suggest.defer_turns` | `3` | | Maximum owner-prompt number for another ask after `undecided`. config.yml only. |
+| `toolkit.suggest.defer_turns` | `3` | | Maximum owner-prompt number for another ask after `undecided` (the owner's own prompts: not steers, notes, reminders or `!` command output). config.yml only. |
 | `toolkit.suggest.defer_tokens` | `5000` | | Maximum estimated conversation size for another ask after `undecided` (characters / 4). config.yml only. |
 | `reasoning_history` | `turn` | | Which of its reasoning a chat host's model gets back: `drop`, `turn`, `all`; environment only (`SAMAGOTCHI_REASONING_HISTORY`), below a session's own level (`/reasoning-history`), above the `models:`/`hosts:` entries. See "Reasoning history". |
 | `thinking.level` | `default` | `--thinking` | `off`, `low`, `medium`, `high` or `default` for every model; the flag and env outrank the `models:`/`hosts:` entries, the file's value doesn't; a session's own level outranks them all, and `--thinking` sets it on a session run (on `chi web` it sets this). See "Thinking". |

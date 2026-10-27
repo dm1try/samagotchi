@@ -1085,7 +1085,10 @@ module Samagotchi
 
     # How long #shutdown waits for the running anytime commands, in all.
     SHUTDOWN_JOIN_SECONDS = 3.0
-    TOOLKIT_AUDIT_JOIN_SECONDS = 0.25
+    # How long #shutdown waits for a running toolkit audit ask (a one-shot
+    # -p --non-interactive exits right after its turn); a slower ask goes
+    # unlogged.
+    TOOLKIT_AUDIT_JOIN_SECONDS = 1.0
 
     # The REPL or the session's worker is leaving (/exit, an idle exit, a
     # crash, TERM): stop the idle jobs, give the running anytime commands
@@ -2731,7 +2734,6 @@ module Samagotchi
     def start_toolkit_suggestion_audit(turn)
       mode = Config.get("toolkit.suggest.mode").to_s
       return if mode == "off"
-      return if @toolkit_audit_thread&.alive?
 
       session = turn.session
       default = Toolkit.of(session.toolkit)
@@ -2756,6 +2758,13 @@ module Samagotchi
         defer_turns: Config.get("toolkit.suggest.defer_turns"),
         defer_tokens: Config.get("toolkit.suggest.defer_tokens")
       )
+
+      # One ask at a time: an eligible turn while the last one still runs
+      # goes unasked, and says so.
+      if @toolkit_audit_thread&.alive?
+        Log.info(:toolkit, "toolkit_suggest_in_flight_skipped", session_id: session.id)
+        return
+      end
 
       client = SystemOne::Client.from_config(host_registry: @host_registry, mode: "on", tag: :toolkit)
       return unless client
