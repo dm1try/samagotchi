@@ -101,7 +101,8 @@ The service worker is the only reader of the payload (JSON, at most `Notifier::O
 
 - `{"v":1,"kind":"show","tag":KEY,"title":…,"body":…,"url":URL,"badge":N,"open":[KEY…]}`: a waiting
   reason's (approval, question, continue, card) TTL 12 h (`SHOW_TTL`), `Urgency: high`; a failed or done turn's
-  TTL 10 min (`EVENT_TTL`), `Urgency: normal`. `open` only while the whole list fits the limit; the test push
+  TTL 10 min (`EVENT_TTL`), `Urgency: normal`; an available chi update uses a 24 h TTL (`UPDATE_TTL`) and
+  `Urgency: normal`. `open` only while the whole list fits the limit; the test push
   (`chi:test`) has neither `open` nor `badge`. URL (`Notifier.session_url`) is the session in its own project's
   view, `/?dir=<project root>#/s/<id>` (the folder URL-encoded, its slashes kept), or `/?scope=all#/s/<id>` for a
   session in no repo: never the bare `/`, which is chi web's start project.
@@ -160,7 +161,9 @@ the top and in `pending_question` / `pending_card`, strings in `last_turn`), `no
 from chi web's request threads (`SessionHub#touch`, from the stop/archive/delete routes), so it only enqueues: a push
 is a 0.5 s https call. `emit` already rescues a raising sink. The sink keeps the last summary per session and turns
 each `session` / `session_gone` event into a `Show` (with its text) or a `Close` (it was answered anywhere) on a
-Queue.
+Queue. A `chi` event marked `update_notice` becomes a `chi:update:<version>` show for the bare page; the checker
+sets that marker only for a newly selected version not already in its persistent `notified` list. It uses the same
+Presence skip and hourly CAP as session shows, and the 24-hour TTL lets an offline phone receive it later.
 
 **Seeding**: `Notifier#start(hub)` subscribes with `snapshot: true` and takes the summaries as the seed, so what is
 open already never pushes. The hub's projection is empty before its first scan, so `Server.start` runs `hub.scan`

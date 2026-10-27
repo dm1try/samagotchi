@@ -45,6 +45,8 @@ module Samagotchi
         SHOW_TTL = 12 * 3600
         # A failed or done turn: stale soon, no need to wake the phone.
         EVENT_TTL = 600
+        # A newly available chi is useful for a day while the phone is away.
+        UPDATE_TTL = 24 * 3600
         # A show carries +open+ only while its JSON stays this small: one
         # aes128gcm record leaves 3993 bytes of plaintext under Web Push's
         # 4096 (86 header, 1 delimiter, 16 tag). Longer, it goes without
@@ -96,6 +98,7 @@ module Samagotchi
           # The sink's side (under @mutex): the last summary per session.
           @mutex = Mutex.new
           @by_id = {}
+          @updates_seen = {}
           @seeded = false
           @early = []
           # The sender's side (its thread only, or #pump in a spec).
@@ -185,7 +188,21 @@ module Samagotchi
             prev = @by_id.delete(event.data[:id])
             keys = Attention.closed_keys(prev, nil)
             @queue << Close.new(keys: keys) unless keys.empty?
+          when "chi"
+            notice_update(event)
           end
+        end
+
+        def notice_update(event)
+          return unless event.data[:update_notice]
+
+          version = event.data[:available]
+          return unless version.is_a?(String) && !version.empty? && !@updates_seen[version]
+
+          @updates_seen[version] = true
+          attention = Attention::Event.new(reason: "update", session_id: nil, key: "chi:update:#{version}", hold: nil)
+          @queue << Show.new(attention: attention, title: "chi #{version} is available",
+                             body: "Run chi update to install it.", at: @now.call, url: "/")
         end
 
         # Cards carry no time: they seed as they are.
@@ -328,8 +345,13 @@ module Samagotchi
         def deliver(subs, payload, show, final: false)
           reason = show.attention.reason
           waiting = Attention.waiting?(reason)
+          ttl = if reason == "update"
+                  UPDATE_TTL
+                else
+                  waiting ? SHOW_TTL : EVENT_TTL
+                end
           subs.map do |sub|
-            result = @client.deliver(sub, payload, ttl: waiting ? SHOW_TTL : EVENT_TTL, urgency: waiting ? "high" : "normal")
+            result = @client.deliver(sub, payload, ttl: ttl, urgency: waiting ? "high" : "normal")
             if result.retry_after && !final
               retry_later(show, sub, result)
               next false

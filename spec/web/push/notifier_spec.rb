@@ -89,6 +89,12 @@ RSpec.describe Samagotchi::Web::Push::Notifier do
 
   def session(**kw) = notifier.call(hub_event(type: "session", seq: 1, data: { session: summary(**kw) }))
 
+  def update(version)
+    notifier.call(hub_event(type: "chi", seq: 2,
+                            data: { version: Samagotchi::VERSION, installed: nil, available: version,
+                                    update_blocked: nil, update_notice: true }))
+  end
+
   def advance(seconds)
     clock[0] += seconds
     notifier.pump
@@ -101,6 +107,29 @@ RSpec.describe Samagotchi::Web::Push::Notifier do
 
   context "when started on a hub" do
     before { notifier.start(PushNotifierSpecHub.new, sender: false) }
+
+    it "pushes a newly available chi once with a 24-hour TTL and normal urgency" do
+      update("0.19.0")
+      advance(3)
+      update("0.19.0")
+      advance(3)
+
+      expect(client.calls.map { |call| call.values_at(:ttl, :urgency, :payload) }).to eq([
+        [24 * 3600, "normal", { v: 1, kind: "show", tag: "chi:update:0.19.0",
+                                title: "chi 0.19.0 is available", body: "Run chi update to install it.",
+                                url: "/", badge: 0, open: [] }]
+      ])
+      expect(store.sent_keys.keys).to eq(["chi:update:0.19.0"])
+    end
+
+    it "skips an update push while a chi web page is in front and marks it handled" do
+      presence.report("desk", true)
+      update("0.19.0")
+      advance(3)
+
+      expect(client.calls).to be_empty
+      expect(store.sent_keys.keys).to eq(["chi:update:0.19.0"])
+    end
 
     it "pushes a new approval once, after the 3 s hold, with the in-tab words, the session's url and the badge" do
       session(question: { id: "q1", kind: "approval" })
@@ -361,6 +390,16 @@ RSpec.describe Samagotchi::Web::Push::Notifier do
 
   context "with the hour's cap" do
     before { notifier.start(PushNotifierSpecHub.new, sender: false) }
+
+    it "counts update notices against the same hourly cap" do
+      31.times do |i|
+        update("0.19.#{i}")
+        advance(3)
+      end
+
+      expect(client.calls.size).to eq(30)
+      expect(store.sent_keys.keys).to include("chi:update:0.19.29", "chi:update:0.19.30")
+    end
 
     it "sends 30 shows an hour, holds back the 31st with one warning, and sends again once the hour has moved on" do
       allow(Samagotchi::Log).to receive(:warn).and_call_original
