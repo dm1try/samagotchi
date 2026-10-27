@@ -96,7 +96,7 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop do
 
     it "says what to restart when the worker asks for a secret this terminal doesn't send" do
       attached.handle_event({ "type" => "stream_closed", "reason" => "bridge_secret" })
-      expect(screen.lines.last).to eq("Lost the session's worker: #{Samagotchi::BridgeSecret::REFUSED}")
+      expect(screen.lines.last).to eq("Lost the session's worker: #{Samagotchi::BridgeSecret.refused("s-1234")}")
     end
 
     it "shows queued prompts and the turn so far, with a tool still running as the status line" do

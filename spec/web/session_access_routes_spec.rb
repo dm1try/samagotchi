@@ -817,8 +817,8 @@ RSpec.describe Samagotchi::Web::App, "session access routes" do
       allow(app).to receive(:bridge_client).and_return(nil)
       %w[exit recap].each do |route|
         expect(call("#{path}/#{route}", method: "POST", body: {}))
-          .to eq([503, { "error" => "not_live", "detail" => "no live bridge for session #{session.id}",
-                         "message" => "no live bridge for session #{session.id}" }])
+          .to eq([503, { "error" => "not_live", "detail" => Samagotchi::WorkerLink.not_live(session.id),
+                         "message" => Samagotchi::WorkerLink.not_live(session.id) }])
       end
       expect(call("#{path}/stats").first).to eq(503)
     end
@@ -845,12 +845,12 @@ RSpec.describe Samagotchi::Web::App, "session access routes" do
     end
 
     it "maps a stats request refused for the Bridge secret as bridge_secret" do
-      refusal = reply(403, { error: "bridge_secret", detail: Samagotchi::BridgeSecret::REFUSED })
+      refusal = reply(403, { error: "bridge_secret", detail: Samagotchi::BridgeSecret.refused(session.id) })
       allow(bridge).to receive(:get_response).with("stats").and_return(refusal)
 
       status, body = call("#{path}/stats")
 
-      expect([status, body["error"], body["detail"]]).to eq([502, "bridge_secret", Samagotchi::BridgeSecret::REFUSED])
+      expect([status, body["error"], body["detail"]]).to eq([502, "bridge_secret", Samagotchi::BridgeSecret.refused(session.id)])
       expect(bridge).to have_received(:get_response).with("stats").once
     end
 

@@ -243,6 +243,16 @@ with its `reason`; `chi answer` exits 1 with the line), checked against the
 question pending at that moment. Answers from the web and an attached
 terminal keep every option.
 
+If `chi answer` reaches a worker that refuses its Bridge secret (`403
+bridge_secret`), it prints a session-specific recovery message rather than
+treating that as a refused answer: `"session ID's worker refused this chi's
+request (it didn't name its secret): a chi web or terminal started before chi
+was updated can't reach it; restart chi web, re-attach with chi --attach ID,
+or restart the worker with chi sessions restart ID"`. `chi sessions restart
+ID` can also recover when the worker cannot be asked, but only if disk shows
+no running turn, pending question or approval, queued prompt, or running
+background task; when one exists, stop it explicitly and then send a prompt.
+
 A parent may also type its answer into chi itself: a piped `chi --attach ID`
 or `printf '2\n' | chi --no-shared -p …`. So chi treats an answer as a
 parent's, held to the same setting, when its input isn't a terminal or an

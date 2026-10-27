@@ -41,6 +41,7 @@ require_relative "plugin_session_state"
 require_relative "context_sources"
 require_relative "session_chain"
 require_relative "child_move"
+require_relative "tools/task_runtime"
 
 module Samagotchi
   # SessionManager coordinates background session processes.
@@ -627,15 +628,17 @@ module Samagotchi
     # the next prompt starts one on the newest chi anyway), :unsupported (a
     # worker from before restarts, running +version+: stop it instead), a
     # WorkerIdleExit#hold_for_restart hold (:turn_running, :reminders, ...),
-    # or :failed (the worker answered something else).
+    # :fallback_held (disk-visible work blocks an unresponsive-worker restart),
+    # or :failed (the worker answered something else or didn't release).
     class RestartRefused < StandardError
-      attr_reader :session_id, :reason, :version
+      attr_reader :session_id, :reason, :version, :holds
 
-      def initialize(session_id, reason, version: nil)
+      def initialize(session_id, reason, version: nil, holds: [])
         @session_id = session_id
         @reason = reason.to_sym
         @version = version
-        super(RestartRefused.words(session_id, @reason, version))
+        @holds = Array(holds).map(&:to_sym).freeze
+        super(RestartRefused.words(session_id, @reason, version, @holds))
       end
 
       HOLDS = {
@@ -651,13 +654,17 @@ module Samagotchi
       }.freeze
 
       # What the CLI and the web say.
-      def self.words(session_id, reason, version = nil)
+      def self.words(session_id, reason, version = nil, holds = [])
         case reason
         when :not_running
           "session #{session_id} has no running worker; the next prompt starts one on the newest chi"
         when :unsupported
           "session #{session_id}'s worker runs chi #{version || "(older)"}, which can't restart: " \
             "chi sessions stop #{session_id}, then any prompt starts it on the newest chi"
+        when :fallback_held
+          why = holds.map { |hold| HOLDS.fetch(hold, hold.to_s.tr("_", " ")) }.join("; ")
+          "session #{session_id} has disk-visible work that a restart might lose#{": #{why}" unless why.empty?}; " \
+            "run `chi sessions stop #{session_id}`, then any prompt starts it on the newest chi"
         when :failed then "session #{session_id}'s worker didn't take the restart"
         else "not now: #{HOLDS.fetch(reason, reason.to_s.tr("_", " "))}"
         end
@@ -672,9 +679,8 @@ module Samagotchi
 
     # Hand a session to a new worker on the newest chi installed: ask its
     # worker (POST /exit restart: true), which leaves only when nothing would
-    # be lost and starts its successor (Worker#exit_request), then wait up to
-    # +wait+ seconds for the successor's Bridge. Web tabs and attached
-    # terminals reconnect to it.
+    # be lost and starts its successor. If the worker cannot be asked, stop
+    # it without a stop marker and resume only when disk shows no work to lose.
     # @return [Restarted]
     # @raise [OwnedByTUI] a chi REPL owns the session
     # @raise [RestartRefused]
@@ -685,6 +691,15 @@ module Samagotchi
       owner = refuse_tui!(session_id, state_dir: sd)
       dir = Session.session_dir(session_id, state_dir: sd)
       link = WorkerLink.resolve(dir, unlink: false, owner: owner)
+      if link.is_a?(WorkerLink::Skew)
+        return restart_fallback(session_id, owner: owner, sidecar: link.sidecar, state_dir: sd, wait: wait, why: :skew)
+      end
+
+      if link.is_a?(WorkerLink::Starting)
+        return restart_fallback(session_id, owner: owner, sidecar: nil, state_dir: sd, wait: wait, why: :starting_stuck) if link.stuck
+
+        raise RestartRefused.new(session_id, :starting)
+      end
       raise RestartRefused.new(session_id, :not_running) unless link.live?
 
       sidecar = link.sidecar
@@ -692,17 +707,85 @@ module Samagotchi
         raise RestartRefused.new(session_id, :unsupported, version: sidecar.version)
       end
 
-      reply = BridgeClient.for_sidecar(session_id, sidecar).request_exit(client_id: client_id, restart: true)
+      begin
+        reply = BridgeClient.for_sidecar(session_id, sidecar).request_exit(client_id: client_id, restart: true)
+      rescue SystemCallError, IOError => e
+        return restart_fallback(session_id, owner: owner, sidecar: sidecar, state_dir: sd, wait: wait, why: :unreachable,
+                                                                        error: e)
+      end
       raise RestartRefused.new(session_id, reply.json&.fetch("reason", nil) || :failed) if reply.status == 409
+      if reply.secret_refused?
+        return restart_fallback(session_id, owner: owner, sidecar: sidecar, state_dir: sd, wait: wait, why: :bridge_secret)
+      end
       raise RestartRefused.new(session_id, :failed) unless reply.status == 200
 
       Log.info(:worker, "restart", sid: session_id, from: sidecar.version, by: client_id)
       fresh = WorkerLink.await(session_id, session_dir: dir, timeout: wait, unlink: false, interval: 0.1,
-                               until: ->(live) { live.started_at != sidecar.started_at })
+                               until: ->(live) { live.epoch != sidecar.epoch || live.started_at != sidecar.started_at })
       # Timed out: the last outcome, the old worker's Live too, is no successor.
-      version = fresh.live? && fresh.started_at != sidecar.started_at ? fresh.version : nil
+      changed = fresh.live? && (fresh.epoch != sidecar.epoch || fresh.started_at != sidecar.started_at)
+      version = fresh.version if changed
       Restarted.new(session_id: session_id, from_version: sidecar.version, version: version)
     end
+
+    def self.restart_fallback(session_id, owner:, sidecar:, state_dir:, wait:, why:, error: nil)
+      Log.info(:worker, "restart_fallback", sid: session_id, why: why, error: error&.class&.name, msg: error&.message)
+      dir = Session.session_dir(session_id, state_dir: state_dir)
+      session = Session.load(session_id, state_dir: state_dir)
+      holds = restart_fallback_holds(session, dir)
+      raise RestartRefused.new(session_id, :fallback_held, holds: holds) unless holds.empty?
+      raise RestartRefused.new(session_id, :failed, version: sidecar&.version) unless (owner&.pid || 0).to_i.positive?
+
+      begin
+        Process.kill("TERM", owner.pid)
+      rescue Errno::ESRCH
+        nil
+      rescue SystemCallError => e
+        Log.warn(:worker, "restart_fallback_failed", sid: session_id, why: why, error: e.class.name, msg: e.message)
+        raise RestartRefused.new(session_id, :failed, version: sidecar&.version)
+      end
+      unless wait_for_owner_release(session_id, timeout: STOP_WAIT, state_dir: state_dir)
+        raise RestartRefused.new(session_id, :failed, version: sidecar&.version)
+      end
+
+      resume_session(session_id, state_dir: state_dir)
+      previous_epoch = sidecar&.epoch
+      previous_started_at = sidecar&.started_at
+      fresh = WorkerLink.await(session_id, session_dir: dir, timeout: wait, unlink: false, interval: 0.1,
+                               until: ->(live) { live.epoch != previous_epoch || live.started_at != previous_started_at })
+      changed = fresh.live? && (fresh.epoch != previous_epoch || fresh.started_at != previous_started_at)
+      Restarted.new(session_id: session_id, from_version: sidecar&.version, version: (fresh.version if changed))
+    end
+    private_class_method :restart_fallback
+
+    def self.restart_fallback_holds(session, session_dir)
+      holds = []
+      holds << :turn_running if session.status == Session::STATUS_RUNNING
+      holds << :question_pending if session.pending_question
+      holds << :input_queued unless SessionInbox.find_new_input_files(session_dir).empty?
+      holds << :background_tasks if running_created_task?(session)
+      holds
+    end
+    private_class_method :restart_fallback_holds
+
+    def self.running_created_task?(session)
+      root = session.working_directory.to_s
+      return false if root.empty?
+
+      Tools::TaskRuntime.created_ids_in(session.messages).any? do |id|
+        next false unless Tools::TaskRuntime::TASK_ID.match?(id)
+
+        path = File.join(root, Tools::TaskRuntime::TASKS_DIR, id, Tools::TaskRuntime::METADATA_FILENAME)
+        next false unless File.file?(path)
+
+        Tools::TaskRecord.from_file(JSON.parse(File.read(path)))&.running?
+      rescue JSON::ParserError, SystemCallError => e
+        Log.warn(:worker, "restart_task_check_failed", sid: session.id, task_id: id,
+                                                           error: e.class.name, msg: e.message)
+        true
+      end
+    end
+    private_class_method :running_created_task?
 
     # Stop a session by sending TERM to its process.
     # With +wait+ (seconds), also wait for the owner to let go of the session,

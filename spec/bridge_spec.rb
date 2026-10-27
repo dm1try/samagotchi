@@ -1688,7 +1688,7 @@ RSpec.describe Samagotchi::Bridge do
       sock.close
 
       expect(raw).to start_with("HTTP/1.1 403")
-      expect(raw).to end_with(JSON.generate(error: "bridge_secret", detail: Samagotchi::BridgeSecret::REFUSED))
+      expect(raw).to end_with(JSON.generate(error: "bridge_secret", detail: Samagotchi::BridgeSecret.refused(@session.id)))
     end
 
     it "ends a stream that names no secret with reason bridge_secret, not after the header timeout" do

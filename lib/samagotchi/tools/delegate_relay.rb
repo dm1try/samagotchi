@@ -86,7 +86,8 @@ module Samagotchi
 
         fields = Relay.card(child, question, relay_id: relay_id, more: more)
         answer = relay.open_question(fields, watch: watch(child_id, qid, state_dir))
-        settle(answer, fields, label: label(question), client: client, desk: desk, relay_id: relay_id, qid: qid)
+        settle(answer, fields, label: label(question), client: client, desk: desk, relay_id: relay_id, qid: qid,
+                        child_id: child_id)
       ensure
         # A relay that failed before it settled closes, so the desk (which
         # prunes only settled ones) keeps none open; a settled one stays.
@@ -110,7 +111,7 @@ module Samagotchi
 
       # Record the parent's answer, tell the child, and say what came of it.
       # @param label [String] the outcome line's start (#label)
-      def settle(answer, fields, label:, client:, desk:, relay_id:, qid:)
+      def settle(answer, fields, label:, client:, desk:, relay_id:, qid:, child_id:)
         if answer.is_a?(Hash) && answer[:error] == "cancelled"
           desk.close(relay_id)
           return closed(answer[:reason].to_s, label, client: client, relay_id: relay_id, qid: qid)
@@ -121,7 +122,7 @@ module Samagotchi
         desk.record(relay_id, selected_indices: dismissed ? [] : answer.selected_indices,
                               freeform: dismissed ? nil : answer.freeform, dismissed: dismissed, by: by)
         response = post(client, "answered", relay_id, qid)
-        Outcome.new(line: line(label, delivered(response, answer, fields, dismissed)), stopped: false)
+        Outcome.new(line: line(label, delivered(response, answer, fields, dismissed, child_id)), stopped: false)
       end
 
       def closed(reason, label, client:, relay_id:, qid:)
@@ -137,12 +138,12 @@ module Samagotchi
       end
 
       # The outcome of an answer the child was told about.
-      def delivered(response, answer, fields, dismissed)
+      def delivered(response, answer, fields, dismissed, child_id)
         return "not delivered (the child's worker is gone)" unless response
 
         # The child's Bridge asked for a secret this worker didn't send (one
         # from before the child's chi): not the child's guardrails refusing.
-        return "not delivered (#{BridgeSecret::REFUSED})" if response.secret_refused?
+        return "not delivered (#{BridgeSecret.refused(child_id)})" if response.secret_refused?
 
         hook = fields[:kind] == HOOK_KIND
         case response.status

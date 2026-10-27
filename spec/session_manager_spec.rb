@@ -1222,6 +1222,65 @@ RSpec.describe Samagotchi::SessionManager do
       expect(result.to_h).to eq(session_id: session.id, from_version: "0.18.1", version: "0.19.0")
     end
 
+    it "falls back to TERM and resume when the live Bridge refuses connections, without a stop marker" do
+      fresh = old_sidecar.with(port: 4200, started_at: "t2", version: "0.19.0")
+      allow(Samagotchi::WorkerLink).to receive(:resolve).and_return(live_link(old_sidecar))
+      allow(client).to receive(:request_exit).and_raise(Errno::ECONNREFUSED)
+      allow(Process).to receive(:kill)
+      allow(described_class).to receive(:wait_for_owner_release).and_return(true)
+      allow(described_class).to receive(:resume_session)
+      allow(Samagotchi::WorkerLink).to receive(:await).and_return(live_link(fresh))
+
+      result = described_class.restart_session(session.id, state_dir: tmpdir, wait: 0.1)
+
+      expect(result.to_h).to eq(session_id: session.id, from_version: "0.18.1", version: "0.19.0")
+      expect(Process).to have_received(:kill).with("TERM", worker.pid)
+      expect(described_class).to have_received(:resume_session).with(session.id, state_dir: tmpdir)
+      expect(Samagotchi::Session.stopped_marker?(session.id, state_dir: tmpdir)).to be(false)
+    end
+
+    it "falls back when the live Bridge refuses the secret" do
+      fresh = old_sidecar.with(port: 4200, epoch: "e2", started_at: "t2", version: "0.19.0")
+      allow(Samagotchi::WorkerLink).to receive(:resolve).and_return(live_link(old_sidecar))
+      allow(client).to receive(:request_exit).and_return(
+        response(403, error: "bridge_secret", detail: Samagotchi::BridgeSecret.refused(session.id))
+      )
+      allow(Process).to receive(:kill)
+      allow(described_class).to receive(:wait_for_owner_release).and_return(true)
+      allow(described_class).to receive(:resume_session)
+      allow(Samagotchi::WorkerLink).to receive(:await).and_return(live_link(fresh))
+
+      result = described_class.restart_session(session.id, state_dir: tmpdir, wait: 0.1)
+
+      expect(result.to_h).to eq(session_id: session.id, from_version: "0.18.1", version: "0.19.0")
+      expect(Process).to have_received(:kill).with("TERM", worker.pid)
+      expect(described_class).to have_received(:resume_session).with(session.id, state_dir: tmpdir)
+      expect(Samagotchi::Session.stopped_marker?(session.id, state_dir: tmpdir)).to be(false)
+    end
+
+    it "falls back for Skew and stuck Starting links, but refuses an ordinary Starting link" do
+      skew = Samagotchi::WorkerLink::Skew.new(sidecar: old_sidecar.with(protocol: 2), owner: worker, reason: :protocol)
+      allow(Samagotchi::WorkerLink).to receive(:resolve).and_return(skew)
+      allow(Process).to receive(:kill)
+      allow(described_class).to receive(:wait_for_owner_release).and_return(true)
+      allow(described_class).to receive(:resume_session)
+      allow(Samagotchi::WorkerLink).to receive(:await).and_return(none_link)
+
+      expect(described_class.restart_session(session.id, state_dir: tmpdir, wait: 0)).to have_attributes(from_version: "0.18.1")
+      expect(Process).to have_received(:kill).with("TERM", worker.pid).once
+
+      allow(Samagotchi::WorkerLink).to receive(:resolve).and_return(Samagotchi::WorkerLink::Starting.new(owner: worker, stuck: true))
+      expect(described_class.restart_session(session.id, state_dir: tmpdir, wait: 0)).to have_attributes(from_version: nil)
+      expect(Process).to have_received(:kill).with("TERM", worker.pid).twice
+
+      allow(Samagotchi::WorkerLink).to receive(:resolve).and_return(Samagotchi::WorkerLink::Starting.new(owner: worker))
+      expect { described_class.restart_session(session.id, state_dir: tmpdir) }
+        .to raise_error(described_class::RestartRefused, "not now: its worker is still starting") { |error|
+          expect(error.reason).to eq(:starting)
+        }
+      expect(Process).to have_received(:kill).twice
+    end
+
     it "gives no version when the successor didn't come up within the wait" do
       allow(Samagotchi::WorkerLink).to receive(:resolve).and_return(live_link(old_sidecar))
       allow(client).to receive(:request_exit).and_return(response(200, status: "restarting"))
@@ -1232,11 +1291,61 @@ RSpec.describe Samagotchi::SessionManager do
     it "is refused with the worker's reason" do
       allow(Samagotchi::WorkerLink).to receive(:resolve).and_return(live_link(old_sidecar))
       allow(client).to receive(:request_exit).and_return(response(409, status: "held", reason: "reminders"))
+      expect(Process).not_to receive(:kill)
 
       expect { described_class.restart_session(session.id, state_dir: tmpdir) }
         .to raise_error(described_class::RestartRefused, "not now: it has reminders, which a restart would drop") { |e|
           expect(e.reason).to eq(:reminders)
         }
+    end
+
+    it "refuses the fallback when disk shows a running turn, question, queued input or running task" do
+      allow(Samagotchi::WorkerLink).to receive(:resolve).and_return(live_link(old_sidecar))
+      allow(client).to receive(:request_exit).and_raise(Errno::ECONNREFUSED)
+      allow(Process).to receive(:kill)
+      cases = {
+        turn_running: -> { session.status = Samagotchi::Session::STATUS_RUNNING },
+        question_pending: -> { session.pending_question = { id: "q1", kind: "approval", question: "Run it?" } },
+        input_queued: lambda do
+          Samagotchi::SessionInbox.write_input(Samagotchi::Session.session_dir(session.id, state_dir: tmpdir), prompt: "queued")
+        end,
+        background_tasks: lambda do
+          task_id = "20261027123456-abcdef01"
+          session.working_directory = tmpdir
+          session.messages = [{ role: "tool_response", content: "[task_create]\ntask_id: #{task_id}" }]
+          task_dir = File.join(tmpdir, Samagotchi::Tools::TaskRuntime::TASKS_DIR, task_id)
+          FileUtils.mkdir_p(task_dir)
+          File.write(File.join(task_dir, Samagotchi::Tools::TaskRuntime::METADATA_FILENAME), JSON.generate(status: "running"))
+        end
+      }
+
+      cases.each do |reason, setup|
+        session.status = Samagotchi::Session::STATUS_IDLE
+        session.pending_question = nil
+        session.messages = []
+        setup.call
+        session.save(state_dir: tmpdir)
+
+        expect { described_class.restart_session(session.id, state_dir: tmpdir) }
+          .to raise_error(described_class::RestartRefused) { |error|
+            expect(error.reason).to eq(:fallback_held), reason.to_s
+            expect(error.holds).to include(reason), reason.to_s
+            expect(error.message).to include("`chi sessions stop #{session.id}`, then any prompt"), reason.to_s
+          }
+      end
+      expect(Process).not_to have_received(:kill)
+    end
+
+    it "reports a failed fallback when the owner does not release, without resuming" do
+      allow(Samagotchi::WorkerLink).to receive(:resolve).and_return(live_link(old_sidecar))
+      allow(client).to receive(:request_exit).and_raise(Errno::ECONNREFUSED)
+      allow(Process).to receive(:kill)
+      allow(described_class).to receive(:wait_for_owner_release).and_return(false)
+      allow(described_class).to receive(:resume_session)
+
+      expect { described_class.restart_session(session.id, state_dir: tmpdir) }
+        .to raise_error(described_class::RestartRefused) { |error| expect(error.reason).to eq(:failed) }
+      expect(described_class).not_to have_received(:resume_session)
     end
 
     it "is refused for a worker from before restarts, which it never asks" do

@@ -50,7 +50,7 @@ module Samagotchi
     Response = Struct.new(:status, :body, keyword_init: true) do
       def ok? = status == 200
 
-      # The Bridge refused it for want of its secret (BridgeSecret::REFUSED says what to do).
+      # The Bridge refused it for want of its secret (BridgeSecret.refused says what to do).
       def secret_refused? = BridgeSecret.refused?(status, body)
 
       # @return [Hash, nil] the body parsed as JSON, or nil when it is not

@@ -294,7 +294,8 @@ RSpec.describe Samagotchi::Web::App do
     end
 
     it "maps a Bridge secret refusal to 502 before answering the stream" do
-      response_body = JSON.generate(error: "bridge_secret", detail: Samagotchi::BridgeSecret::REFUSED)
+      refusal = Samagotchi::BridgeSecret.refused("s1")
+      response_body = JSON.generate(error: "bridge_secret", detail: refusal)
       server = TCPServer.new("127.0.0.1", 0)
       accept_thread = Thread.new do
         conn = server.accept
@@ -311,7 +312,7 @@ RSpec.describe Samagotchi::Web::App do
       body.each { |_chunk| nil }
 
       expect(status).to eq(502)
-      expect(JSON.parse(body.first)).to include("error" => "bridge_secret", "detail" => Samagotchi::BridgeSecret::REFUSED)
+      expect(JSON.parse(body.first)).to include("error" => "bridge_secret", "detail" => refusal)
     ensure
       server&.close
       join!(accept_thread, "the fake Bridge") if accept_thread
@@ -3819,7 +3820,7 @@ RSpec.describe Samagotchi::Web::App do
       accept_thread = Thread.new do
         conn = server.accept
         conn.readpartial(16_384)
-        reply = JSON.generate(error: "bridge_secret", detail: Samagotchi::BridgeSecret::REFUSED)
+        reply = JSON.generate(error: "bridge_secret", detail: Samagotchi::BridgeSecret.refused("s1"))
         conn.write("HTTP/1.1 403 Forbidden\r\nContent-Type: application/json\r\nContent-Length: #{reply.bytesize}\r\n\r\n#{reply}")
         conn.close
       end
@@ -3834,7 +3835,7 @@ RSpec.describe Samagotchi::Web::App do
       accept_thread.join(1)
 
       expect(status).to eq(502)
-      expect(JSON.parse(body.first)).to include("error" => "bridge_secret", "detail" => Samagotchi::BridgeSecret::REFUSED)
+      expect(JSON.parse(body.first)).to include("error" => "bridge_secret", "detail" => Samagotchi::BridgeSecret.refused("s1"))
     end
 
     # 4.27: any unmapped bridge status used to become 503 not_live, so the page

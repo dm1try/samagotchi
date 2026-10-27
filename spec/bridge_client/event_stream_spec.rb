@@ -175,7 +175,7 @@ RSpec.describe Samagotchi::BridgeClient::EventStream do
 
   context "when the Bridge refuses it for want of its secret (403 bridge_secret)" do
     let(:refusal) do
-      body = JSON.generate(error: "bridge_secret", detail: Samagotchi::BridgeSecret::REFUSED)
+      body = JSON.generate(error: "bridge_secret", detail: Samagotchi::BridgeSecret.refused("s1"))
       ->(conn) { conn.write("HTTP/1.1 403 Forbidden\r\nContent-Length: #{body.bytesize}\r\nConnection: close\r\n\r\n#{body}") }
     end
     let(:scripts) { [refusal, refusal, refusal] }
@@ -209,7 +209,7 @@ RSpec.describe Samagotchi::BridgeClient::EventStream do
     end
 
     it "lets #close interrupt a refusal body that has not finished arriving" do
-      body = JSON.generate(error: "bridge_secret", detail: Samagotchi::BridgeSecret::REFUSED)
+      body = JSON.generate(error: "bridge_secret", detail: Samagotchi::BridgeSecret.refused("s1"))
       scripts = [lambda do |conn|
         conn.write("HTTP/1.1 403 Forbidden\r\nContent-Length: #{body.bytesize + 10}\r\n\r\n#{body}")
         hold(conn)

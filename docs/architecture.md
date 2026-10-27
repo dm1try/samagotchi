@@ -393,8 +393,12 @@ process that already owns the `Engine`); every worker starts it, and it exposes:
   worker.
 - **The secret.** Every request, on every route (the stream, the reads such as `state` and `stats`, the writes, and
   an unknown path), names the Bridge's secret in `X-Chi-Bridge`; one without it, or with another one, is
-  `403 bridge_secret` with one message (`BridgeSecret::REFUSED`: restart chi web, re-attach terminals and restart
-  older session workers), after the browser and proxy checks and before any route (`Bridge#secret_ok?`,
+  `403 bridge_secret` with one session-specific message (`BridgeSecret.refused`): "session ID's worker refused
+  this chi's request (it didn't name its secret): a chi web or terminal started before chi was updated can't
+  reach it; restart chi web, re-attach with `chi --attach ID`, or restart the worker with `chi sessions restart
+  ID`." `chi sessions restart` can also recover when the worker cannot be asked: TERM + resume if disk shows no
+  running turn, pending question or approval, queued input, or running background task. The check is after the
+  browser and proxy checks and before any route (`Bridge#secret_ok?`,
   `OpenSSL.secure_compare`). No route is left open: what the reads show is the session itself. Only a request that
   got past it counts as client activity, so a refused one (an older chi web's polls) never holds the idle exit. Each Bridge makes its own (`SecureRandom.hex(32)`, 64 hex
   characters) when it starts and writes it to `bridge.json`, which is 0600 from the moment it exists

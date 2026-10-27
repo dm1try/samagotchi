@@ -178,7 +178,7 @@ test("Submit with nothing chosen says so; with a pick it sends the answer to the
 });
 
 test("a send to a stopped session says to restart it", async () => {
-  const { cards } = setup({ fail: { message: "no live bridge for session s1", status: 503, code: "not_live" } });
+  const { cards } = setup({ fail: { message: "no live worker for session s1", status: 503, code: "not_live" } });
   cards.renderQuestion(PQ);
   const card = cards.questionCard();
   card.querySelectorAll(".question-option input")[0].checked = true;

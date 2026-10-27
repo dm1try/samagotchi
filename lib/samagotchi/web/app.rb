@@ -1093,7 +1093,7 @@ module Samagotchi
         reply = request.call(client)
         # Not the route's own 403 (a parent's option refused): the worker
         # asked for a secret this chi web didn't send.
-        return error_response(502, BridgeSecret::ERROR, BridgeSecret::REFUSED) if reply.secret_refused?
+        return error_response(502, BridgeSecret::ERROR, BridgeSecret.refused(id)) if reply.secret_refused?
 
         mapped = yield(reply)
         return mapped if mapped
@@ -1113,7 +1113,7 @@ module Samagotchi
       end
 
       def not_live(id)
-        error_response(503, "not_live", "no live bridge for session #{id}")
+        error_response(503, "not_live", WorkerLink.not_live(id))
       end
 
       # A live worker refused or failed the request (a 500 in its handler, a
@@ -1522,17 +1522,17 @@ module Samagotchi
           return error_response(503, "not_live", format(LaunchMode::BRIDGE_LATE, id))
         end
         if link.is_a?(WorkerLink::Leaving)
-          return json_response(503, { error: "not_live", detail: "no live bridge for session #{id}",
+          return json_response(503, { error: "not_live", detail: WorkerLink.not_live(id),
                                       leaving: true, leave_seconds: link.left.round(1) })
         end
 
-        error_response(503, "not_live", "no live bridge for session #{id}")
+        error_response(503, "not_live", WorkerLink.not_live(id))
       end
 
       def stream_open_error(id, outcome)
-        return error_response(503, "not_live", "no live bridge for session #{id}") if outcome.is_a?(BridgeClient::StreamOpen::Unreachable)
-        return error_response(503, "not_live", "no live bridge for session #{id}") if outcome.reason == :unknown_session
-        return error_response(502, "bridge_secret", BridgeSecret::REFUSED) if outcome.reason == :bridge_secret
+        return error_response(503, "not_live", WorkerLink.not_live(id)) if outcome.is_a?(BridgeClient::StreamOpen::Unreachable)
+        return error_response(503, "not_live", WorkerLink.not_live(id)) if outcome.reason == :unknown_session
+        return error_response(502, "bridge_secret", BridgeSecret.refused(id)) if outcome.reason == :bridge_secret
 
         error_response(502, "bridge_error", outcome.detail || "the session's worker answered #{outcome.status}")
       end

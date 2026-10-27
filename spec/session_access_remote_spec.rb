@@ -59,7 +59,7 @@ RSpec.describe Samagotchi::SessionAccess::Remote do
 
   describe "an answer chi web relays" do
     it "reads chi web's 502 bridge_secret as the worker's 403 refusal for want of its secret" do
-      remote, = scripted([502, { error: "bridge_secret", detail: Samagotchi::BridgeSecret::REFUSED }])
+      remote, = scripted([502, { error: "bridge_secret", detail: Samagotchi::BridgeSecret.refused("s-1") }])
       reply = remote.answer("s-1", question_id: "q1", selected: ["Allow once"], freeform: nil, client_id: nil)
 
       expect([reply.status, reply.secret_refused?]).to eq([403, true])

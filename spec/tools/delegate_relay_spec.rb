@@ -178,7 +178,7 @@ RSpec.describe Samagotchi::Tools::DelegateWait, "approval relay" do
     client.error = Samagotchi::BridgeSecret::ERROR
     client.on_answered = -> { finish_child }
     outcome = wait
-    expect(outcome).to include("→ not delivered (#{Samagotchi::BridgeSecret::REFUSED})")
+    expect(outcome).to include("→ not delivered (#{Samagotchi::BridgeSecret.refused(child.id)})")
     expect(outcome).not_to include("refused by the child")
   end
 

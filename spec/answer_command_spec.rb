@@ -413,7 +413,7 @@ RSpec.describe Samagotchi::AnswerCommand do
         it "exits 1 with the one restart message, not a refused option" do
           s = asking(approval)
           expect(run(s.id, "--question", "a1", "--option", "1", "--format", "json")).to eq(1)
-          expect(json_out).to include("status" => "error", "detail" => Samagotchi::BridgeSecret::REFUSED)
+          expect(json_out).to include("status" => "error", "detail" => Samagotchi::BridgeSecret.refused(s.id, via: via))
         end
       end
 

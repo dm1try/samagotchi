@@ -377,3 +377,15 @@ The `delegate` tool hands a task to a **child session**: an ordinary chi session
 - **A child asks before it changes anything outside its folder** (the work tree top of the folder it started in): a write or edit there, mutating git in another checkout, a command that isn't read-only run from outside it or naming the main checkout or a sibling worktree. It's a core guardrail, on in every mode and without the guardrails bundle, and answered once or for the child's session ([Guardrails](guardrails.md#a-delegate-childs-boundary)); the approval relays to the parent's user as any other.
 - Limits: a child cannot `delegate` (depth 1; the tool refuses), and one session may have at most `session.max_children` (default `4`, env `SAMAGOTCHI_SESSION_MAX_CHILDREN`) children running at a time, counted from the session files (a finished or idle-exited child does not count; one whose worker is still starting does, for 15 s). A refused call creates no session. Nothing stops children with the parent: `chi sessions stop ID` does.
 - The link is the session's `parent_id`, written before the worker starts, so a respawn keeps it (and `delegate: true`, which a fork's `parent_id` doesn't come with; a child saved before that field is known by its `system/delegated` memory); `GET /api/sessions`, `/api/sessions/:id` and the web hub's `session` frames carry it and `delegate` (a fork is `false`; the web parent's children chip counts delegates only); `SessionManager.children_of` lists a parent's children.
+## Restart fallback
+
+If `chi sessions restart ID` cannot ask its worker (the Bridge is unreachable
+or refuses its secret, the worker speaks a newer protocol, or its start is
+stuck), chi sends TERM without writing the stop marker, waits up to
+`SessionManager::STOP_WAIT` for the owner lock, and resumes the session. It
+refuses first if disk shows a running turn, pending question or approval,
+queued input, or a running background task started by the session; the
+message directs the user to `chi sessions stop ID`, then any prompt.
+Reminders, a running `/btw`, and other in-memory worker state cannot be
+checked and may be lost in this fallback. The web restart route behaves the
+same way.

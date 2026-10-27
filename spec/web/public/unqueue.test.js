@@ -41,8 +41,8 @@ test("unqueueFailureText: what each refusal means for the message", () => {
   assert.equal(unqueueFailureText(failure(409, "already_started")), "Not removed: it already started");
   assert.equal(unqueueFailureText(failure(409, "not_queued")), "Not removed: it goes in at the running turn's next step");
   assert.equal(unqueueFailureText(failure(404, "unknown_enqueued_id")), "Not removed: it is already gone");
-  assert.equal(unqueueFailureText(failure(503, "not_live", "no live bridge for session s1")),
-               "Not removed: no live bridge for session s1");
+  assert.equal(unqueueFailureText(failure(503, "not_live", "no live worker for session s1")),
+               "Not removed: no live worker for session s1");
 });
 
 test("a click on × posts the bubble's enqueued_id with the tab's client id; the bubble goes on 200", async () => {

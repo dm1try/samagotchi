@@ -295,9 +295,10 @@ RSpec.describe Samagotchi::SessionAccess::WebBridgeClient do
     end
 
     it "maps stream status responses through StreamOpen" do
-      body = JSON.generate(error: "bridge_secret", detail: Samagotchi::BridgeSecret::REFUSED)
+      refusal = Samagotchi::BridgeSecret.refused(session.id)
+      body = JSON.generate(error: "bridge_secret", detail: refusal)
       port, = serve("HTTP/1.1 502 Bad Gateway\r\nContent-Length: #{body.bytesize}\r\n\r\n#{body}")
-      expect(client_at(port).open_stream).to have_attributes(reason: :bridge_secret, detail: Samagotchi::BridgeSecret::REFUSED)
+      expect(client_at(port).open_stream).to have_attributes(reason: :bridge_secret, detail: refusal)
 
       port, = serve("HTTP/1.1 503 Service Unavailable\r\nContent-Length: 2\r\n\r\n{}")
       expect(client_at(port).open_stream).to be_a(Samagotchi::BridgeClient::StreamOpen::Unreachable)
@@ -307,7 +308,7 @@ RSpec.describe Samagotchi::SessionAccess::WebBridgeClient do
     end
 
     it "closes a remote stream refused with 502 bridge_secret" do
-      body = JSON.generate(error: "bridge_secret", detail: Samagotchi::BridgeSecret::REFUSED)
+      body = JSON.generate(error: "bridge_secret", detail: Samagotchi::BridgeSecret.refused(session.id))
       response = "HTTP/1.1 502 Bad Gateway\r\nContent-Length: #{body.bytesize}\r\n\r\n#{body}"
       server, port, heads, thread = serve_sequence(response)
       client = client_at(port)

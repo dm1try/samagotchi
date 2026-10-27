@@ -452,7 +452,7 @@ module Samagotchi
       def closed_line(reason)
         id = @client.session_id
         # The worker asked for a secret this terminal's chi doesn't send.
-        return "Lost the session's worker: #{BridgeSecret::REFUSED}" if reason == BridgeSecret::ERROR
+        return "Lost the session's worker: #{BridgeSecret.refused(id, via: via)}" if reason == BridgeSecret::ERROR
         return remote_closed_line(reason, id) if via.remote?
 
         return "Lost the session's worker: #{@link.failure}" if reason == "worker_newer" && @link.failure

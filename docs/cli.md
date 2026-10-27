@@ -518,10 +518,16 @@ chi installed, without stopping it: an attached terminal and the web's tabs
 move to the new worker. It is refused, with the reason, while something would
 be lost: a turn running or queued, a question or approval waiting, reminders,
 a `/btw` still running, an approval relayed from a delegate, or background
-tasks the session started. A session with no running worker needs none (its
-next prompt starts one on the newest chi), and a worker from before restarts
-needs `chi sessions stop ID`. The Web UI's `POST /api/sessions/:id/restart`
-does the same (409 with `reason` and `detail` when it can't). An attached
+tasks the session started. If the worker cannot be asked (a refused Bridge,
+protocol mismatch or stuck start), chi sends it TERM and resumes only when
+disk shows no running turn, pending question or approval, queued prompt, or
+running background task; otherwise it says to run `chi sessions stop ID`, then
+send any prompt. That fallback may lose reminders, a running `/btw`, and other
+in-memory state. A session with no running worker needs no restart (its next
+prompt starts one on the newest chi), and an older worker without restart
+support needs `chi sessions stop ID`. The Web UI's
+`POST /api/sessions/:id/restart` does the same (409 with `reason` and `detail`
+when it can't). An attached
 terminal says at the join, in one `chi>` line, when the worker or the terminal
 runs an older chi than the newest installed (the worker moves with `chi
 sessions restart ID`, the terminal with `/detach` and `chi --attach ID`), and

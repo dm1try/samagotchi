@@ -76,9 +76,6 @@ module Samagotchi
     SECRET_HEADER = BridgeSecret::HEADER.downcase
     # Bytes of randomness in a Bridge's secret (hex in bridge.json: twice as many characters).
     SECRET_BYTES = 32
-    # What a request without this Bridge's secret, or with another one, is told (403 bridge_secret).
-    SECRET_REFUSED = BridgeSecret::REFUSED
-
     # @param engine [Samagotchi::Engine] the owning engine (must already live
     #   in this process)
     # @param state_dir [String] the session state directory root
@@ -485,7 +482,7 @@ module Samagotchi
           break
         elsif !secret_ok?(headers)
           note_refused(:secret, "secret_refused", request[:path])
-          write_json(io, 403, nil, { error: BridgeSecret::ERROR, detail: SECRET_REFUSED })
+          write_json(io, 403, nil, { error: BridgeSecret::ERROR, detail: BridgeSecret.refused(@session_id) })
           break
         # From here on a client of this worker (it named the secret): only its
         # requests keep the worker from its idle exit, never a refused one's

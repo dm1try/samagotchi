@@ -6,6 +6,7 @@ require_relative "../session_access"
 require_relative "../bridge_client"
 require_relative "../delivery"
 require_relative "../log"
+require_relative "../worker_link"
 require_relative "http_transport"
 
 module Samagotchi
@@ -39,9 +40,6 @@ module Samagotchi
       # A read a join waits on (a turn's saved records, the children
       # counts): a slow chi web can't hold the join up for long (L9).
       JOIN_READ_TIMEOUT = 5
-      # chi web answers no live worker for the session (Mapping).
-      NO_WORKER = "no live worker for session %s on %s"
-
       # chi web's answers as the session's Bridge would have given them.
       module Mapping
         module_function
@@ -60,7 +58,7 @@ module Samagotchi
         def response(route, reply, session_id:, remote:)
           json = reply.json.is_a?(Hash) ? reply.json : {}
           case [reply.status, json["error"]]
-          in [503, "not_live"] | [404, "not_found"] then raise Unreachable, format(NO_WORKER, session_id, remote)
+          in [503, "not_live"] | [404, "not_found"] then raise Unreachable, "#{WorkerLink.not_live(session_id)} on #{remote}"
           in [504, _] then bridge(408, error: "deadline_passed", detail: json["detail"])
           in [501, _] if route == :command && json["command"]
             bridge(400, error: "unknown_command", detail: json["detail"], command: json["command"])

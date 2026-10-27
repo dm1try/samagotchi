@@ -147,6 +147,27 @@ RSpec.describe Samagotchi::WorkerLink do
     end
   end
 
+  describe ".not_live" do
+    it "owns the one no-live-worker message with the session id" do
+      expect(described_class.not_live("s-1234")).to eq("no live worker for session s-1234")
+    end
+  end
+
+  describe "Skew#message" do
+    it "names the newer worker and commands through the supplied invocation" do
+      link = described_class::Skew.new(
+        sidecar: Samagotchi::WorkerSidecar.new(port: 5001, version: "9.0.0", protocol: 2),
+        owner: worker, reason: :protocol
+      )
+      via = Samagotchi::ChiInvocation.new(remote: "studio")
+
+      message = link.message("s-1234", via: via)
+
+      expect(message).to include("session s-1234's worker runs chi 9.0.0 (protocol 2)")
+      expect(message).to include(via.web, "update this chi")
+    end
+  end
+
   describe ".client" do
     it "is a client for the Live worker (its port and secret), else nil" do
       write_sidecar(5001, secret: "5e" * 32)

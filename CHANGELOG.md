@@ -9,6 +9,8 @@ and commands may change between minor versions. How releases are made:
 
 ### Fixed
 
+- `chi sessions restart` can recover an unreachable, secret-refusing, newer-protocol or stuck-start worker without a
+  stop marker, but refuses when disk shows a running turn, pending question, queued input or running background task.
 - chi web now opens a session stream before answering: a missing, leaving or unreachable worker gets 503, a Bridge
   refusal gets 502 instead of an empty 200 or SSE frame, and the opened socket closes when the stream ends. Remote
   stream retries distinguish 503 from a 502 `bridge_secret`, and `/stats` reports secret refusals consistently.

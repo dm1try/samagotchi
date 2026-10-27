@@ -169,7 +169,7 @@ RSpec.describe Samagotchi::Bridge, "routing" do
   end
 
   describe "the Bridge's secret" do
-    let(:refused) { [403, { "error" => "bridge_secret", "detail" => described_class::SECRET_REFUSED }] }
+    let(:refused) { [403, { "error" => "bridge_secret", "detail" => Samagotchi::BridgeSecret.refused("s1") }] }
     # One request of each kind: the stream, a read, a write, a read-only POST, an unknown path.
     let(:route_classes) do
       [["GET", "/session/s1/stream"], ["GET", "/session/s1/state"], ["GET", "/session/s1/stats"],

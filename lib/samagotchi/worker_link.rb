@@ -6,6 +6,7 @@ require_relative "owner_lock"
 require_relative "version"
 require_relative "worker_sidecar"
 require_relative "bridge_client"
+require_relative "chi_invocation"
 
 module Samagotchi
   # Whether a session's worker can be reached, and how: the one question
@@ -101,13 +102,16 @@ module Samagotchi
       def live? = false
       def worker_owned? = true
 
-      def message(session_id)
+      def message(session_id, via: ChiInvocation::HERE)
         "session #{session_id}'s worker runs chi #{sidecar.version || "?"} (protocol #{sidecar.protocol}), " \
-          "newer than this chi #{Samagotchi::VERSION} (protocol #{PROTOCOL}): restart chi web or update this chi"
+          "newer than this chi #{Samagotchi::VERSION} (protocol #{PROTOCOL}): restart " \
+          "#{via.remote? ? via.web : "chi web"} or update this chi"
       end
     end
 
     module_function
+
+    def not_live(session_id) = "no live worker for session #{session_id}"
 
     # @param session_dir [String]
     # @param unlink [Boolean] remove a Stale sidecar (the clients that would
