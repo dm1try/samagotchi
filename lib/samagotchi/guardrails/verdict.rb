@@ -38,6 +38,13 @@ module Samagotchi
       # System 1's judgment that decided an ask, when it did: {id:, p:}.
       attr_accessor :judgment
 
+      # An ask no stored approval answers (Gate#settle_ask): the one a
+      # participant's pair turn gets before a write outside the project
+      # (PairBoundary), which the owner decides each time.
+      attr_writer :fresh_ask
+
+      def fresh_ask? = @fresh_ask == true
+
       def initialize(call:)
         @call = call
         @decision = :allow

@@ -153,7 +153,7 @@ module Samagotchi
     # A participant's pair turn's boundary (Guardrails::PairBoundary): a
     # no-op unless the running turn's author is a participant's.
     def pair_boundary
-      @pair_boundary ||= Guardrails::PairBoundary.new(author: -> { turn_author })
+      @pair_boundary ||= Guardrails::PairBoundary.new(author: -> { turn_author }, root: -> { boundary_root })
     end
 
     # The delegate child's boundary (Guardrails::ChildBoundary); nil for

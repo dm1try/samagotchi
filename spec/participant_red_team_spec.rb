@@ -170,7 +170,10 @@ RSpec.describe "a participant red-teaming a session" do
   # owner's, once only), and PairBoundary denies the secrets, the
   # owner-voiced tools and the model's own question.
   describe "the model of a participant's pair turn (PairBoundary)" do
-    around { |example| with_env("SAMAGOTCHI_DEFAULT_MODEL" => "Gemma-4B-it") { example.run } }
+    # A temp HOME: a pair turn that got past the boundary must never touch the real ~/.ssh or dotfiles.
+    around do |example|
+      with_env("SAMAGOTCHI_DEFAULT_MODEL" => "Gemma-4B-it", "HOME" => File.join(root, "home")) { example.run }
+    end
 
     let(:client) { test_client }
     let(:kernel) { test_kernel(client: client) }
@@ -225,7 +228,7 @@ RSpec.describe "a participant red-teaming a session" do
       expect(results[4]).to denied(format(pair::OWNER_ONLY, "send_note"))
       expect(results[5]).to denied(format(pair::OWNER_ONLY, "register_reminder"))
       expect(results[6]).to denied(format(pair::OWNER_ONLY, "delegate"))
-      expect(results[7]).to denied(pair::MEMORY_SCOPE)
+      expect(results[7]).to denied(pair::MEMORY_WRITE)
       expect(results[8]).to denied(pair::ASK)
       expect(results[9]).not_to include("denied by guardrail")
       expect(results[10]).to include("plan.md")
@@ -235,17 +238,28 @@ RSpec.describe "a participant red-teaming a session" do
       expect(engine.due_reminder_names).to eq([])
     end
 
-    it "asks the owner about a protected write, naming the participant, Allow once only" do
+    it "denies writing chi's files and the home's keys and startup files" do
       hook = File.join(Samagotchi::Hooks::Loader.hooks_dir, "pair_probe.rb")
-      results = participant_turn([["write", { "path" => hook, "content" => "# x\n" }]])
+      targets = [hook, File.join(Samagotchi::Paths.state_dir, "web-token"), File.join(Dir.home, ".ssh", "authorized_keys"),
+                 File.join(Dir.home, ".zshrc")]
+      results = participant_turn(targets.map { |path| ["write", { "path" => path, "content" => "pwned\n" }] })
+
+      expect(results).to all(denied(pair::SECRET))
+      expect(targets.reject { |path| path.end_with?("web-token") }.none? { |path| File.exist?(path) }).to be(true)
+      expect(File.read(File.join(Samagotchi::Paths.state_dir, "web-token"))).to eq("owner-token\n")
+      expect(asked).to eq([])
+    end
+
+    it "asks the owner before a write outside the project, naming the participant, Allow once only" do
+      outside = File.join(root, "outside.txt")
+      results = participant_turn([["write", { "path" => outside, "content" => "# x\n" }]])
 
       expect(asked.size).to eq(1)
       expect(asked.first[:options]).to eq(["Allow once", "Deny"])
       expect(asked.first[:header]).to eq("Mallory's turn asks: approve tool call?")
       expect(asked.first[:approval]).to include(author: grant.author, author_name: "Mallory", scopes: ["once"])
+      expect(asked.first[:approval]).to include(rule: "pair-boundary")
       expect(results[0]).not_to include("denied by guardrail")
-    ensure
-      FileUtils.rm_f(hook) if hook
     end
   end
 

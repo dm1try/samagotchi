@@ -85,7 +85,7 @@ module Samagotchi
       # answer that allows it beyond this once is stored.
       def settle_ask(verdict)
         approvals = @approvals_lookup.call
-        if (entry = stored(approvals, verdict))
+        if !verdict.fresh_ask? && (entry = stored(approvals, verdict))
           verdict.settle!(:allow, decided_by: "approval")
           verdict.scope = entry["scope"]
           return verdict

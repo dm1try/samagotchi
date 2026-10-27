@@ -14,8 +14,16 @@ module Samagotchi
     # a participant's turn; a review session's subjects (chi review, the
     # participant page's Plan) go through the same check.
     class ReviewPaths
-      # Home folders that hold keys and tokens, never read in a review turn.
-      HOME_SECRET_DIRS = %w[.ssh .gnupg .aws].freeze
+      # Home folders that hold keys and tokens, never read in a review turn
+      # (nor read or written in a pair turn).
+      HOME_SECRET_DIRS = %w[.ssh .gnupg .aws .config/gh].freeze
+      # Home files that start a shell, hold credentials or keep what was
+      # typed: a pair turn neither reads nor writes them (a review turn reads
+      # only inside the project anyway).
+      HOME_SECRET_FILES = %w[.zshrc .zshenv .zprofile .zlogin .bashrc .bash_profile .bash_login .profile .gitconfig
+                             .netrc .npmrc .pypirc .claude.json .zsh_history .bash_history .history .python_history
+                             .node_repl_history .psql_history .mysql_history .irb_history .lesshst
+                             .config/fish/config.fish .local/share/fish/fish_history].freeze
       # Project files that hold secrets, by a path part's name: .env*,
       # netrc, keys and certificates, anything named credentials, package
       # registry tokens (.npmrc, .pypirc), ssh keys, terraform state, a
@@ -80,12 +88,21 @@ module Samagotchi
         nil
       end
 
+      # The denylist's dirs and home files, absolute (as given and as they
+      # resolve): a pair turn's command check asks whether a word it can't
+      # resolve (a glob, a $var) may lead into one.
+      # @return [Array<String>]
+      def denied_roots
+        @denied_roots ||= begin
+          roots = @denied_dirs.compact.map { |dir| File.expand_path(dir) }
+          roots += (HOME_SECRET_DIRS + HOME_SECRET_FILES).map { |name| File.join(@home, name) } unless @home.empty?
+          (roots + roots.map { |root| ProtectedPaths.real(root) }).uniq
+        end
+      end
+
       # Whether +path+ (absolute) is on the read denylist.
       def secret?(path)
-        dirs = @denied_dirs.compact.map { |dir| File.expand_path(dir) }
-        dirs += dirs.map { |dir| ProtectedPaths.real(dir) }
-        dirs += HOME_SECRET_DIRS.map { |dir| File.join(@home, dir) } unless @home.empty?
-        return true if dirs.any? { |dir| ShellPaths.within?(path, dir) }
+        return true if denied_roots.any? { |root| ShellPaths.within?(path, root) }
 
         parts = path.split(File::SEPARATOR)
         return true if parts.any? { |part| SECRET_FILE.match?(part) }

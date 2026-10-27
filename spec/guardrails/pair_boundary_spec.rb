@@ -6,6 +6,8 @@ require "samagotchi/guardrails"
 require "samagotchi/guardrail_wiring"
 require "samagotchi/session"
 
+# Every example runs with HOME in a temp dir: nothing here may touch the
+# real ~/.ssh or dotfiles.
 RSpec.describe Samagotchi::Guardrails::PairBoundary do
   let(:base) { File.realpath(Dir.mktmpdir("pair-boundary")) }
   let(:home) { File.join(base, "home") }
@@ -14,6 +16,8 @@ RSpec.describe Samagotchi::Guardrails::PairBoundary do
   let(:config) { File.join(home, ".config", "samagotchi") }
   let(:grants) { File.join(state, "web-grants", "grants.json") }
   let(:author) { "p:p_0123abcd" }
+
+  around { |example| with_env("HOME" => home) { example.run } }
 
   before do
     FileUtils.mkdir_p([File.join(project, "docs"), File.join(home, ".ssh"), File.dirname(grants), config,
@@ -28,7 +32,8 @@ RSpec.describe Samagotchi::Guardrails::PairBoundary do
   after { FileUtils.rm_rf(base) }
 
   def boundary(turn_author: author)
-    described_class.new(author: -> { turn_author }, denied_dirs: -> { [state, config] }, home: -> { home })
+    described_class.new(author: -> { turn_author }, root: -> { project }, denied_dirs: -> { [state, config] },
+                        home: -> { home })
   end
 
   def verdict_for(call, **opts)
@@ -48,7 +53,32 @@ RSpec.describe Samagotchi::Guardrails::PairBoundary do
     expect(execute("bundle exec rspec spec/foo_spec.rb && git status")).to be_allow
     expect(verdict_for({ name: "write", path: "docs/plan.md", content: "x" })).to be_allow
     expect(verdict_for({ name: "edit", path: "docs/plan.md", old_str: "plan", new_str: "x" })).to be_allow
-    expect(verdict_for({ name: "memory_write", path: "notes", scope: "project", content: "x" })).to be_allow
+  end
+
+  it "denies writing chi's files, ~/.ssh, shell startup files and credentials, never asks" do
+    targets = [File.join(state, "web-token"), grants, File.join(state, "sessions", "s1", "participants.json"),
+               File.join(home, ".ssh", "authorized_keys"), File.join(home, ".zshrc"), File.join(home, ".bashrc"),
+               File.join(home, ".gitconfig"), File.join(home, ".config", "gh", "hosts.yml"),
+               File.join(home, ".claude.json"), File.join(home, ".zsh_history"), File.join(config, "config.yml"), ".env"]
+    targets.each do |path|
+      %w[write edit read].each do |tool|
+        verdict = verdict_for({ name: tool, path: path, content: path, old_str: "a", new_str: "b" })
+        expect(verdict).to be_deny, "#{tool} #{path}"
+        expect(verdict.reason).to eq(described_class::SECRET)
+      end
+    end
+  end
+
+  it "asks the owner, fresh and once only, before a write or edit outside the project" do
+    outside = File.join(home, "other", "notes.md")
+    %w[write edit].each do |tool|
+      verdict = verdict_for({ name: tool, path: outside, content: "x", old_str: "notes", new_str: "y" })
+      expect(verdict).to be_ask, tool
+      expect([verdict.rule, verdict.reason, verdict.scopes]).to eq(["pair-boundary", described_class::OUTSIDE_WRITE, ["once"]])
+      expect(verdict).to be_fresh_ask
+    end
+    expect(verdict_for({ name: "write", path: "docs/new.md", content: "x" })).not_to be_fresh_ask
+    expect(verdict_for({ name: "write", path: outside, content: "x" }, turn_author: nil)).to be_allow
   end
 
   it "is off for the owner's turns" do
@@ -82,14 +112,16 @@ RSpec.describe Samagotchi::Guardrails::PairBoundary do
     end
   end
 
-  it "denies the owner-voiced tools and a memory_write outside the project scope" do
-    described_class::OWNER_VOICED.each do |tool|
+  it "denies the owner-voiced tools, any delegate_* tool and every memory_write" do
+    (described_class::OWNER_VOICED + %w[cancel_reminder task_stop find_tools delegate_result]).each do |tool|
       verdict = verdict_for({ name: tool, content: "x" })
       expect(verdict).to be_deny, tool
       expect(verdict.reason).to eq(format(described_class::OWNER_ONLY, tool))
     end
-    verdict = verdict_for({ name: "memory_write", path: "notes", scope: "system", content: "x" })
-    expect(verdict.reason).to eq(described_class::MEMORY_SCOPE)
+    %w[system project].each do |scope|
+      verdict = verdict_for({ name: "memory_write", path: "notes", scope: scope, content: "x" })
+      expect(verdict.reason).to eq(described_class::MEMORY_WRITE)
+    end
   end
 
   it "denies ask_user_question with advice to ask in the reply" do
@@ -106,6 +138,8 @@ RSpec.describe "GuardrailWiring: a participant's boundary by ParticipantMode" do
   let(:author) { "p:p_0123abcd" }
   let(:working) { Samagotchi::Session.new_session(mode: "assist", model_name: "m", working_directory: project) }
   let(:review) { Struct.new(:id, :working_directory) { def review? = true; def delegate? = false }.new("s1", project) }
+
+  around { |example| with_env("HOME" => File.join(base, "home")) { example.run } }
 
   before { FileUtils.mkdir_p(File.join(project, "docs")) }
   after { FileUtils.rm_rf(base) }
@@ -142,6 +176,33 @@ RSpec.describe "GuardrailWiring: a participant's boundary by ParticipantMode" do
     expect(evaluate(w, { name: "read", content: File.join(project, ".env") }).rule).to eq("pair-boundary")
     %w[delegate send_note].each { |tool| expect(evaluate(w, { name: tool, content: "x" })).to be_deny }
     expect(evaluate(w, { name: "memory_write", path: "n", scope: "system", content: "x" }).rule).to eq("pair-boundary")
+  end
+
+  it "asks the owner before a pair turn writes outside the project, even with the owner's stored approval" do
+    asked = []
+    session = working
+    w = Samagotchi::GuardrailWiring.new(scratch: false, hooks: -> {}, tools: -> {}, session: -> { session },
+                                        model_key: -> {}, cancelled: -> { false },
+                                        ask: lambda { |payload|
+                                          asked << payload
+                                          Samagotchi::QuestionAnswer.new(id: "q", selected: ["Deny"], selected_indices: [1])
+                                        })
+    w.state_dir = File.join(base, "state")
+    w.interface = :worker
+    outside = File.join(base, "elsewhere.txt")
+    call = { name: "write", path: outside, content: "x" }
+    w.begin_turn({ client_id: "web:o" })
+    owner = evaluate(w, call)
+    owner.ask!("owner asked", scopes: %w[session], rule: "x", source: "config")
+    owner.settle!(:allow)
+    owner.scope = "session"
+    w.approvals.add(owner, "session")
+    w.begin_turn({ client_id: "review:p_0123abcd", author: author })
+    verdict = w.gate.settle_ask(evaluate(w, call))
+
+    expect(asked.size).to eq(1)
+    expect(asked.first[:approval]).to include(rule: "pair-boundary", scopes: ["once"], author: author)
+    expect(verdict).to be_deny
   end
 
   it "keeps a review session's participant turn read-only" do
