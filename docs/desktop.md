@@ -137,8 +137,16 @@ and it lands in a session running there.
   two lists run at once and get 4 s together: one that doesn't answer shows **studio: no answer within 4 s** under
   its divider, one that chi gives up on by itself (connection refused, the token refused) the first line of chi's
   error. The previous open's rows for it are never reused: a stale row could send to a stopped worker.
-- **What stays on this Mac:** the **New session** row (⌘0) and its model, the **Everyone it concerns** row
-  (`chi broadcast` is local only) and the agents in kitty and tmux.
+- **New session there:** a remote with a session has its own new row under its divider, **New session on studio in
+  proj**: the folder is that remote's most recently updated session's (live first, then recent), whole and not
+  checked on this Mac. A remote with no session has no new row (never a guess at its home). It is ticked alone like
+  this Mac's new row (ticking it clears the sessions, and the reverse), is never preselected and has no ⌘ number (⌘0
+  stays this Mac's). ⏎ runs `chi --remote studio send --new --dir <that folder>` with the message and images, and
+  shows `studio: started 1a2b3c4d…` for 3 s. It starts on the remote's default model, never `--model`: its hint
+  says **remote default**, and ⌘M or a click on it beeps with "Model choice is for this Mac's sessions" (`chi models`
+  answers for this Mac's hosts).
+- **What stays on this Mac:** the model chooser, the **Everyone it concerns** row (`chi broadcast` is local only)
+  and the agents in kitty and tmux.
 
 ## Agents in kitty and tmux
 
