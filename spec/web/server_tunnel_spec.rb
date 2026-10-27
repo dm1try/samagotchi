@@ -25,7 +25,9 @@ RSpec.describe Samagotchi::Web::Server, "with --tunnel tailscale" do
     allow(Samagotchi::Web::Grants).to receive(:check_permissions!)
   end
 
-  def launch = described_class.launch(port: 4567, start_dir: "/", tunnel: "tailscale")
+  def launch(restarted: false)
+    described_class.launch(port: 4567, start_dir: "/", tunnel: "tailscale", restarted: restarted)
+  end
 
   # A start that binds the port (calls on_bound, the tunnel's up), then
   # returns +result+ or raises +error+.
@@ -136,6 +138,88 @@ RSpec.describe Samagotchi::Web::Server, "with --tunnel tailscale" do
     expect(described_class).to have_received(:start)
       .with(hash_including(public_notes: include(a_string_including("Serve already forwarded port 443 here"))))
     expect(fake.serve).to eq({})
+  end
+
+  it "says the restarted web adopted the serve handler" do
+    fake.serve = "serve-443-on.json"
+    bound
+
+    expect { launch(restarted: true) }.to output(/off again/).to_stdout
+    expect(described_class).to have_received(:start)
+      .with(hash_including(public_notes: include(a_string_including("adopted by the restarted chi web"))))
+  end
+
+  it "turns the adopted Serve handler off when the restarted web loses the port race" do
+    fake.serve = "serve-443-on.json"
+    allow(described_class).to receive(:start) do
+      warn described_class.in_use_message(4567)
+      false
+    end
+
+    expect { expect(launch(restarted: true)).to eq(1) }
+      .to output("Tailscale Serve: port 443 is off again.\n").to_stdout
+      .and output("Error: port 4567 is in use (an older chi web? restart it, or use --port)\n").to_stderr
+    expect(fake.serve).to eq({})
+  end
+
+  # SAMAGOTCHI_WEB_RESTARTED: the handler on 443 is the old process's, left for this one; a start that
+  # fails any way must not leave Serve forwarding the tailnet to nothing (or to someone else).
+  describe "a restarted chi web that does not start" do
+    before { fake.serve = "serve-443-on.json" }
+
+    it "turns the adopted handler off when its start is refused after prepare" do
+      allow(described_class).to receive(:start)
+      allow(Samagotchi::Web::Grants).to receive(:check_permissions!).and_raise(Samagotchi::Web::Grants::Insecure, "0644")
+      expect { expect(launch(restarted: true)).to eq(1) }
+        .to output("Tailscale Serve: port 443 is off again.\n").to_stdout.and output("Error: 0644\n").to_stderr
+      allow(Samagotchi::Web::Grants).to receive(:check_permissions!)
+      fake.serve = "serve-443-on.json"
+      allow(Samagotchi::Web::Push).to receive(:preflight!).and_raise(Samagotchi::Web::Push::Refused, "push")
+      expect { expect(launch(restarted: true)).to eq(1) }.to output(/off again/).to_stdout.and output("Error: push\n").to_stderr
+      expect(described_class).not_to have_received(:start)
+      expect(fake.serve).to eq({})
+    end
+
+    it "turns it off when its start folder is refused before anything else" do
+      expect do
+        expect(described_class.launch(port: 4567, start_dir: File.join(dir, "missing"), tunnel: "tailscale",
+                                      restarted: true)).to eq(1)
+      end.to output(/off again/).to_stdout.and output(/\AError: /).to_stderr
+      expect(fake.serve).to eq({})
+    end
+
+    it "turns it off when another chi web or another listener has the port" do
+      allow(described_class).to receive(:probe).and_return({ "app" => "chi-web", "pid" => 42 })
+      expect { expect(launch(restarted: true)).to eq(1) }.to output(/off again/).to_stdout.and output(/Error: /).to_stderr
+      expect(fake.serve).to eq({})
+      fake.serve = "serve-443-on.json"
+      allow(described_class).to receive(:probe).and_return(:other)
+      expect { expect(launch(restarted: true)).to eq(1) }.to output(/off again/).to_stdout.and output(/is in use/).to_stderr
+      expect(fake.serve).to eq({})
+    end
+
+    it "leaves a handler that isn't its own exactly alone" do
+      allow(described_class).to receive(:probe).and_return(:other)
+      expect do
+        expect(described_class.launch(port: 4568, start_dir: "/", tunnel: "tailscale", restarted: true)).to eq(1)
+      end.to output(/is in use/).to_stderr
+      expect(fake.argv).not_to include("serve --https=443 off")
+      expect(fake.serve).to eq(FakeTailscale.fixture("serve-443-on.json"))
+    end
+  end
+
+  describe ".with_tunnel" do
+    let(:provider) { double("tunnel", up: nil, down: :off, down_line: "off line") }
+
+    it "leaves the tunnel up for the exec'd chi web on :restart, and takes it down on any other end" do
+      expect(described_class.with_tunnel(provider, :plan) { |up| up.call.then { :restart } }).to eq(:restart)
+      expect(provider).not_to have_received(:down)
+
+      expect { expect(described_class.with_tunnel(provider, :plan) { |up| up.call.then { true } }).to be(true) }
+        .to output("off line\n").to_stdout
+      expect { described_class.with_tunnel(provider, :plan) { |up| up.call.then { false } } }.to output("off line\n").to_stdout
+      expect(provider).to have_received(:down).with(:plan).twice
+    end
   end
 
   it "leaves a live tunnel's serve alone when a chi web already runs on the port" do

@@ -16,6 +16,32 @@ module Samagotchi
     # with the config registry's.
     KNOWN = %w[--prompt --resume --attach --shared --no-shared --model --thinking --toolkit --tool --no-tool --set --parent-answers --memory --mute --append-system-prompt --dir --llm-context --llm-context-apply --llm-context-budget --no-interrupt --non-interactive --verbose --no-default-input --port --open --new-token --tunnel --start-dir].freeze
 
+    # An OptionParser that also records each switch it took, as the
+    # normalized [flag] or [flag, value] (a --[no-]x as --x or --no-x; an
+    # abbreviation never gets this far): chi web's restart argv.
+    class RecordingParser < OptionParser
+      def initialize(record, *, &)
+        @record = record
+        super(*, &)
+      end
+
+      def define(*args, &block)
+        switch = nil
+        switch = super do |value|
+          @record&.push(RecordingParser.normalized(switch, value))
+          block&.call(value)
+        end
+      end
+
+      def self.normalized(switch, value)
+        flag = switch.long.first || switch.short.first
+        return [flag.sub("[no-]", value ? "" : "no-")] if flag.include?("[no-]")
+        return [flag] if switch.is_a?(OptionParser::Switch::NoArgument)
+
+        [flag, value.to_s]
+      end
+    end
+
     module_function
 
     # Parse +argv+ in place: what the parser leaves is bin/chi's to read
@@ -25,7 +51,7 @@ module Samagotchi
     #   (Config.reload!'s cli_overrides)
     def parse(argv)
       # no_interrupt / no_default_input start from config.yml or the env; the flags below turn them on.
-      options = { verbose: false, no_interrupt: Samagotchi::Config.get("no_interrupt"), non_interactive: false, no_default_input: Samagotchi::Config.get("no_default_input"), web: false, web_port: nil, web_open: false, web_markdown: nil }
+      options = { verbose: false, no_interrupt: Samagotchi::Config.get("no_interrupt"), non_interactive: false, no_default_input: Samagotchi::Config.get("no_default_input"), web: false, web_port: nil, web_open: false, web_markdown: nil, flags: [] }
       cli_overrides = {}
 
       # Strict kebab enforcement: --recap_base_url is unknown (OptionParser would otherwise accept _ as -)
@@ -100,11 +126,13 @@ module Samagotchi
           value = argv[index + 1]
           missing_no_tool.call if value.nil? || value.start_with?("-")
           (options[:no_tools] ||= []) << argv.delete_at(index + 1)
+          options[:flags] << ["--no-tool", value]
           argv.delete_at(index)
         elsif arg.start_with?("--no-tool=")
           value = arg.delete_prefix("--no-tool=")
           missing_no_tool.call if value.empty? || value.start_with?("-")
           options[:no_tools] = (options[:no_tools] || []) << value
+          options[:flags] << ["--no-tool", value]
           argv.delete_at(index)
         else
           reject_abbreviation.call(arg)
@@ -139,6 +167,19 @@ module Samagotchi
            .push("--no-tool").uniq
     end
 
+    # The flags not repeated by chi web's restart: one-shot actions of the
+    # first start (open a browser, replace the LAN token).
+    WEB_ONE_SHOT = %w[--open --new-token].freeze
+
+    # chi web's own command line again, for its in-place restart: every flag
+    # the parse took (options[:flags], in its normalized spelling) but the
+    # one-shot ones, so the restarted chi web parses to the same options and
+    # config overrides.
+    # @return [Array<String>]
+    def web_restart_argv(options)
+      ["web", *options.fetch(:flags).reject { |flag, _| WEB_ONE_SHOT.include?(flag) }.flatten(1)]
+    end
+
     # The parser's switches (OptionParser::Switch), short and long.
     def parser_switches(parser)
       parser.instance_variable_get(:@stack).flat_map { |list| list.list }
@@ -148,7 +189,7 @@ module Samagotchi
     # @param options [Hash] filled in by the parse
     # @param cli_overrides [Hash] the config keys the flags set
     def build_parser(options, cli_overrides)
-      OptionParser.new do |opts|
+      RecordingParser.new(options[:flags]) do |opts|
         opts.banner = <<~BANNER
           Usage: chi [options]
                  chi bootstrap [HOST[:PORT]|URL]  first setup: find the model server, write config.yml

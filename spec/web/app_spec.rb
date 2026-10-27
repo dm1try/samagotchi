@@ -654,6 +654,62 @@ RSpec.describe Samagotchi::Web::App do
       end
     end
 
+    describe "POST /api/update/restart_web" do
+      it "requests the server restart and acknowledges it" do
+        app = events_app
+        restart = double("restart")
+        allow(restart).to receive(:call).and_return(true)
+        app.restart_web = restart
+
+        status, _headers, response = app.call(env_for("/api/update/restart_web", method: "POST"))
+
+        expect(status).to eq(202)
+        expect(JSON.parse(response.first)).to eq("state" => "restarting")
+        expect(restart).to have_received(:call).once
+      end
+
+      it "refuses while an update runs (an exec would kill its chi update child), and holds updates once restarting" do
+        started = Queue.new
+        finish = Queue.new
+        runner = lambda do |_argv, env:, progress:|
+          started << true
+          finish.pop
+          ["[]", true]
+        end
+        app = events_app(update_runner: runner, update_blocked: -> {})
+        restart = double("restart", call: true)
+        app.restart_web = restart
+
+        expect(app.call(env_for("/api/update", method: "POST", body: JSON.generate(version: "99.0.0"))).first).to eq(202)
+        started.pop
+        status, _headers, response = app.call(env_for("/api/update/restart_web", method: "POST"))
+        expect([status, JSON.parse(response.first)["error"]]).to eq([409, "update_running"])
+        expect(restart).not_to have_received(:call)
+
+        finish << true
+        wait_for("the update to finish") { hub.update_state&.dig(:state) == "done" }
+        expect(app.call(env_for("/api/update/restart_web", method: "POST")).first).to eq(202)
+        status, _headers, response = app.call(env_for("/api/update/restart_workers", method: "POST"))
+        expect([status, JSON.parse(response.first)["error"]]).to eq([409, "update_running"])
+      ensure
+        finish << true
+      end
+
+      it "refuses when there is no chi wrapper to exec (a --bindir install), and lets updates run after" do
+        app = events_app
+        app.restart_web = -> { :no_wrapper }
+
+        status, _headers, response = app.call(env_for("/api/update/restart_web", method: "POST"))
+
+        expect(status).to eq(409)
+        expect(JSON.parse(response.first)).to eq("error" => "restart_unavailable",
+                                                 "detail" => "no chi wrapper to restart into (installed with --bindir?); " \
+                                                             "restart chi web in its terminal")
+        allow(Samagotchi::LiveVersions).to receive(:stale_workers).and_return([])
+        expect(app.call(env_for("/api/update/restart_workers", method: "POST")).first).to eq(202)
+      end
+    end
+
     it "answers 503 no_hub without a hub, so the page falls back to fetching" do
       status, _, body = build_app(state_dir: state_dir).call(env_for("/api/events"))
 

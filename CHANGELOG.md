@@ -18,6 +18,7 @@ and commands may change between minor versions. How releases are made:
 - `chi update --to VERSION` installs an exact newer gem release; `--json` prints update rows and kept edits as JSON.
 - chi web's owner can start a gem update; progress and component rows are published to its event stream.
 - chi web can restart every worker on an older chi and reports per-session restart results and holds.
+- chi web can restart itself into the installed version, preserving web options and adopting live worker starters.
 
 ## [0.123.0] - 2026-10-27
 

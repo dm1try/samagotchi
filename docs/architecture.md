@@ -551,6 +551,15 @@ version than the server itself still means restart chi web (its workers already 
 web runs in) it names `start_dir`, the folder it starts in (`web.start_dir`, `--start-dir`;
 `Web::StartDir`), which a second `chi web` given another one mentions.
 
+The owner's update routes publish install progress and component rows as `chi_update` events.
+Worker restarts target every worker older than the installed version and publish per-session
+results. `POST /api/update/restart_web` schedules WEBrick shutdown only after its response is
+sent; after the hub and listener stop, `Server` execs the RubyGems chi wrapper with a canonical
+`chi web` argv rebuilt from parsed options. The re-entry skips the first-run update hint, adopts
+live worker-starter PIDs (workers themselves are detached), and adopts an exact Tailscale Serve
+handler. One-shot `--open` and `--new-token` options are not repeated; a failed exec or a port
+conflict turns off only the exact adopted Serve handler.
+
 The page's scope is in its URL, and the server picks the default: `?dir=<folder>` is that folder's
 project (the list, the events stream and a new chat follow it), `?scope=all` every session, and a bare
 `/` the start folder's project when that folder is in a repo (`App#index_data_attributes` writes

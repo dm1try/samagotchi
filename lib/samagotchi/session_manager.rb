@@ -620,6 +620,17 @@ module Samagotchi
       @spawns_mutex.synchronize { @spawns.clear }
     end
 
+    # Starter processes are children of chi web, unlike the detached workers
+    # they launch; the web restart adopts these pids before replacing itself.
+    def self.live_spawn_pids
+      @spawns_mutex.synchronize do
+        @spawns.delete_if { |_, (_, waiter)| !(waiter.respond_to?(:alive?) && waiter.alive?) }
+        @spawns.values.filter_map do |_, waiter|
+          waiter.pid if waiter.respond_to?(:pid) && waiter.alive?
+        end.uniq.sort
+      end
+    end
+
     # Read any new output files from a session directory.
     # Optionally filters to only files newer than `since_time`.
     def self.read_responses(session_id, since_time: nil, state_dir: nil)

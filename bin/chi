@@ -18,6 +18,15 @@ rescue Samagotchi::ConfigFile::RemovedApi => e
 end
 require "samagotchi"
 
+# A web self-restart re-enters through the installed wrapper: its marker and
+# the worker starters to adopt leave ENV before anything spawns with it
+# (Server.take_restart_env!); a restarted chi web skips the first-run hint.
+web_restarted = false
+if ENV.key?("SAMAGOTCHI_WEB_RESTARTED") || ENV.key?("SAMAGOTCHI_WEB_ADOPT_PIDS")
+  require "samagotchi/web/server"
+  web_restarted = Samagotchi::Web::Server.take_restart_env!
+end
+
 # `chi self`: print version, source dir, config/memory/session paths, model and
 # bundles (read-only, offline) — lets the agent find its own code and state.
 if ARGV[0] == "self"
@@ -221,7 +230,7 @@ chi_update_hint = lambda do
 end
 
 if options[:web]
-  chi_update_hint.call
+  chi_update_hint.call unless web_restarted
   require "samagotchi/web/server"
   port = options[:web_port] || Samagotchi::Config.get("web.port")
   markdown = options[:web_markdown]
@@ -233,7 +242,9 @@ if options[:web]
                                       annotate_presets: Samagotchi::Config.get("web.annotate_presets"),
                                       editor: Samagotchi::Config.get("web.editor"),
                                       start_dir: options[:start_dir] || Samagotchi::Config.get("web.start_dir"),
-                                      start_dir_from: options[:start_dir] ? :flag : :config)
+                                      start_dir_from: options[:start_dir] ? :flag : :config,
+                                      restarted: web_restarted,
+                                      restart_argv: Samagotchi::RunOptions.web_restart_argv(options))
 end
 
 # --resume and --attach take a unique id prefix too, like git.

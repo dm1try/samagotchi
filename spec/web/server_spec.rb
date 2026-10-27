@@ -142,6 +142,119 @@ RSpec.describe Samagotchi::Web::Server do
     FileUtils.remove_entry(state_dir)
   end
 
+  it "returns :restart after the restart request schedules and completes a server shutdown" do
+    app = double("app")
+    allow(app).to receive(:server_running=)
+    restart = nil
+    allow(app).to receive(:restart_web=) { |callback| restart = callback }
+    allow(Samagotchi::Web::App).to receive(:new).and_return(app)
+    server = double("webrick", status: :Running, listeners: [])
+    shutdown = Queue.new
+    allow(server).to receive(:shutdown) { shutdown << true }
+    allow(Rackup::Handler::WEBrick).to receive(:run) do |_served, _options, &block|
+      block.call(server)
+      expect(restart.call).to be(true)
+      wait_for("the delayed server shutdown") { !shutdown.empty? }
+    end
+
+    expect(described_class.start(port: 4998, hub: hub)).to eq(:restart)
+    expect(server).to have_received(:shutdown)
+  end
+
+  it "refuses the restart, leaving the server up, when there is no chi wrapper to exec" do
+    app = double("app")
+    allow(app).to receive(:server_running=)
+    restart = nil
+    allow(app).to receive(:restart_web=) { |callback| restart = callback }
+    allow(Samagotchi::Web::App).to receive(:new).and_return(app)
+    allow(Samagotchi::InstalledGem).to receive_messages(spec: double("installed gem"), wrapper: nil)
+    server = double("webrick", status: :Running, listeners: [])
+    allow(server).to receive(:shutdown)
+    allow(Rackup::Handler::WEBrick).to receive(:run) do |_served, _options, &block|
+      block.call(server)
+      expect(restart.call).to eq(:no_wrapper)
+    end
+
+    expect(described_class.start(port: 4998, hub: hub)).to be(true)
+    expect(server).not_to have_received(:shutdown)
+  end
+
+  describe ".reexec" do
+    it "execs the installed wrapper with canonical argv and starter PIDs to adopt" do
+      calls = []
+      allow(Samagotchi::InstalledGem).to receive_messages(spec: double("installed gem"), wrapper: "/gem/bin/chi")
+      allow(Samagotchi::ChildEnv).to receive(:unbundled).and_return("BUNDLE_GEMFILE" => nil)
+      allow(Samagotchi::SessionManager).to receive(:live_spawn_pids).and_return([123, 456])
+      runner = ->(env, *argv) { calls << [env, argv]; :exec_called }
+
+      # No line before the exec: a hung-up terminal (EIO) must not turn a restart into a dead chi web.
+      expect { expect(described_class.reexec(["web", "--port", "4998"], exec: runner)).to eq(:exec_called) }
+        .not_to output.to_stdout
+      expect(calls).to eq([[
+        { "BUNDLE_GEMFILE" => nil, described_class::RESTARTED_ENV => "1",
+          described_class::ADOPT_PIDS_ENV => "123,456" },
+        [RbConfig.ruby, "/gem/bin/chi", "web", "--port", "4998"]
+      ]])
+    end
+
+    it "turns the tunnel off and returns failure when exec fails" do
+      provider = double("tunnel", down: :off, down_line: "Tailscale Serve: port 443 is off again.")
+      runner = ->(*) { raise Errno::ENOENT, "ruby" }
+
+      expect { expect(described_class.reexec(["web"], provider: provider, plan: :plan, exec: runner)).to eq(1) }
+        .to output("Tailscale Serve: port 443 is off again.\n").to_stdout
+        .and output("Error: couldn't restart chi web: No such file or directory - ruby\n").to_stderr
+      expect(provider).to have_received(:down).with(:plan)
+    end
+  end
+
+  it "reexecs when the web server returns :restart" do
+    allow(described_class).to receive(:probe).and_return(:free)
+    allow(Samagotchi::Web::Grants).to receive(:check_permissions!)
+    allow(described_class).to receive(:start).and_return(:restart)
+    allow(Samagotchi::InstalledGem).to receive_messages(spec: double("installed gem"), wrapper: "/gem/bin/chi")
+    allow(Samagotchi::ChildEnv).to receive(:unbundled).and_return({})
+    allow(Samagotchi::SessionManager).to receive(:live_spawn_pids).and_return([])
+    calls = []
+    runner = ->(env, *argv) { calls << [env, argv]; :exec_called }
+
+    expect(described_class.launch(port: 4998, start_dir: "/", restart_argv: ["web", "--port", "4998"], exec: runner))
+      .to eq(:exec_called)
+    expect(calls.first.last).to eq([RbConfig.ruby, "/gem/bin/chi", "web", "--port", "4998"])
+  end
+
+  describe ".take_restart_env!" do
+    let(:detach) { double("detach", call: nil) }
+
+    it "takes the restart marker and the starters to adopt out of the env, before anything spawns with it" do
+      env = { described_class::RESTARTED_ENV => "1", described_class::ADOPT_PIDS_ENV => "123", "PATH" => "/bin" }
+
+      expect(described_class.take_restart_env!(env, detach: detach)).to be(true)
+      expect(env).to eq("PATH" => "/bin")
+      expect(detach).to have_received(:call).with(123)
+    end
+
+    it "drops starters to adopt without the marker (a worker's env, say), adopting none" do
+      env = { described_class::ADOPT_PIDS_ENV => "123" }
+
+      expect(described_class.take_restart_env!(env, detach: detach)).to be(false)
+      expect(env).to eq({})
+      expect(detach).not_to have_received(:call)
+    end
+  end
+
+  it "adopts only the recorded starter pids and removes their environment entry" do
+    env = { described_class::ADOPT_PIDS_ENV => "123,456" }
+    detach = double("detach")
+    allow(detach).to receive(:call)
+
+    described_class.adopt_reexec_children!(env: env, detach: detach)
+
+    expect(detach).to have_received(:call).with(123).ordered
+    expect(detach).to have_received(:call).with(456).ordered
+    expect(env).not_to have_key(described_class::ADOPT_PIDS_ENV)
+  end
+
   it "binds to 127.0.0.1 whatever host it is given, with a warning" do
     allow(Samagotchi::Web::App).to receive(:new).and_return(double("app"))
     allow(Rackup::Handler::WEBrick).to receive(:run)

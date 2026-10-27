@@ -40,7 +40,7 @@ RSpec.describe Samagotchi::RunOptions do
     options, overrides, = parse
     expect(options).to eq(verbose: false, no_interrupt: Samagotchi::Config.get("no_interrupt"), non_interactive: false,
                           no_default_input: Samagotchi::Config.get("no_default_input"), web: false, web_port: nil,
-                          web_open: false, web_markdown: nil)
+                          web_open: false, web_markdown: nil, flags: [])
     expect(overrides).to eq({})
   end
 
@@ -48,6 +48,44 @@ RSpec.describe Samagotchi::RunOptions do
     options, overrides, rest = parse("web", "--start-dir", "~/proj")
     expect([options[:start_dir], overrides, rest]).to eq(["~/proj", {}, ["web"]])
     expect(refusal("--web-start-dir", "x")).to eq(["Error: invalid option: --web-start-dir (see chi --help)\n", 1])
+  end
+
+  describe ".web_restart_argv" do
+    let(:argv) do
+      ["web", "--port=4600", "--open", "--model", "m1", "--model-profile", "gemma4", "--no-interrupt",
+       "--recap-sentences", "2-3", "--session-idle-exit-minutes", "5", "--no-web-working-set", "--web-markdown",
+       "--new-token", "--tunnel", "tailscale", "--scope", "all", "--thinking", "low", "--start-dir", "/tmp/p", "-v",
+       "--web-host=lan", "--no-tool", "execute"]
+    end
+
+    it "rebuilds every flag chi web was started with, as parsed, but --open and --new-token" do
+      options, = parse(*argv)
+
+      expect(described_class.web_restart_argv(options)).to eq([
+        "web", "--no-tool", "execute", "--port", "4600", "--model", "m1", "--model-profile", "gemma4", "--no-interrupt",
+        "--recap-sentences", "2-3", "--session-idle-exit-minutes", "5", "--no-web-working-set", "--web-markdown",
+        "--tunnel", "tailscale", "--scope", "all", "--thinking", "low", "--start-dir", "/tmp/p", "--verbose",
+        "--web-host", "lan"
+      ])
+    end
+
+    # The shape that can't drift from the parser: what the restart parses to is what the first start did.
+    it "parses back to the same options and config overrides, the one-shot flags aside" do
+      options, overrides, rest = parse(*argv)
+      again, overrides_again, rest_again = parse(*described_class.web_restart_argv(options))
+
+      expect(overrides_again).to eq(overrides)
+      expect(rest_again).to eq(rest)
+      expect(again.except(:web_open, :new_token, :flags)).to eq(options.except(:web_open, :new_token, :flags))
+      expect(again).to include(web_open: false)
+      expect(again).not_to have_key(:new_token)
+    end
+
+    it "is just web for a bare chi web; an abbreviation never gets as far as the record" do
+      options, = parse("web")
+      expect(described_class.web_restart_argv(options)).to eq(["web"])
+      expect(refusal("web", "--ope")).to eq(["Error: invalid option: --ope (see chi --help)\n", 1])
+    end
   end
 
   it "keeps a prompt that looks like --no-tool as the prompt" do

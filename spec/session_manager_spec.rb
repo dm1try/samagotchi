@@ -11,9 +11,12 @@ require_relative "support/worker_links"
 RSpec.describe Samagotchi::SessionManager do
   include WorkerLinks
 
+  session_manager_class = described_class
   let(:tmpdir) { Dir.mktmpdir("session-manager-spec") }
+  let(:spawn_manager) { session_manager_class }
 
   after do
+    spawn_manager.forget_spawns
     FileUtils.rm_rf(tmpdir)
     if @owner_pid
       begin
@@ -26,6 +29,17 @@ RSpec.describe Samagotchi::SessionManager do
       rescue Errno::ECHILD
         nil
       end
+    end
+  end
+
+  describe ".live_spawn_pids" do
+    it "returns the unique pids of live worker starters" do
+      live = double("live waiter", pid: 123, alive?: true)
+      dead = double("dead waiter", pid: 456, alive?: false)
+      described_class.send(:note_spawn, "live", state_dir: tmpdir, waiter: live)
+      described_class.send(:note_spawn, "dead", state_dir: tmpdir, waiter: dead)
+
+      expect(described_class.live_spawn_pids).to eq([123])
     end
   end
 

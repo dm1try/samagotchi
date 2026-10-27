@@ -3,6 +3,7 @@
 require "json"
 require "rack"
 require "rackup/handler/webrick"
+require "rbconfig"
 require "uri"
 require "webrick"
 
@@ -21,9 +22,12 @@ require_relative "update_check"
 require_relative "token"
 require_relative "tunnel"
 require_relative "../config"
+require_relative "../child_env"
+require_relative "../installed_gem"
 require_relative "../paths"
 require_relative "../project_scope"
 require_relative "../log"
+require_relative "../session_manager"
 require_relative "../version"
 require_relative "../cli/exit"
 
@@ -65,6 +69,8 @@ module Samagotchi
       DEFAULT_HOST = "127.0.0.1"
       # How long `chi web` waits for a server already on its port to answer.
       PROBE_TIMEOUT = 0.3
+      RESTARTED_ENV = "SAMAGOTCHI_WEB_RESTARTED"
+      ADOPT_PIDS_ENV = "SAMAGOTCHI_WEB_ADOPT_PIDS"
 
       # The raw header names next to Rack's env (ProxyGate's identity check):
       # chi web is the only WEBrick server chi runs.
@@ -87,7 +93,9 @@ module Samagotchi
       def self.launch(port: nil, host: nil, scope: "project", start_dir: nil, open_browser: false, markdown: false,
                       view: Config::BY_KEY["web.view"].default, annotate_presets: Config::BY_KEY["web.annotate_presets"].default,
                       editor: Config::BY_KEY["web.editor"].default, new_token: false,
-                      working_set: Config::BY_KEY["web.working_set"].default, tunnel: nil, start_dir_from: :flag)
+                      working_set: Config::BY_KEY["web.working_set"].default, tunnel: nil, start_dir_from: :flag,
+                      restarted: false, restart_argv: ["web"], exec: nil)
+        handed_on = false # a :restart leaves Serve to the next process, a run turns it off itself
         start_given = !start_dir.to_s.strip.empty?
         start_dir = StartDir.resolve(start_dir, from: start_dir_from)
         rotate_token if new_token
@@ -120,6 +128,8 @@ module Samagotchi
           warn in_use_message(port)
           1
         else
+          provider = nil
+          plan = nil
           if tunnel
             provider = Tunnel.for(tunnel)
             plan = provider.prepare(port: port, config_owner: Samagotchi::Config.get("web.proxy.owner"),
@@ -142,11 +152,14 @@ module Samagotchi
                       public_url: public_url, start_dir: start_dir }
           started = if plan
                       with_tunnel(provider, plan) do |up|
-                        start(**options, public_notes: provider.start_lines(plan), on_bound: up)
+                        start(**options, public_notes: provider.start_lines(plan, restarted: restarted), on_bound: up)
                       end
                     else
                       start(**options)
                     end
+          handed_on = !!started
+          return reexec(restart_argv, provider: provider, plan: plan, exec: exec) if started == :restart
+
           started ? 0 : 1
         end
       rescue StartDir::Invalid, Lan::Error, Grants::Insecure, PublicUrl::Invalid, Tunnel::Refused, Push::Refused, Push::Store::Insecure => e
@@ -157,6 +170,11 @@ module Samagotchi
         # status a shell gives a command it interrupted.
         puts "#{"\n" if $stdout.tty?}Chi Web stopped."
         CLI::Exit::INTERRUPTED
+      ensure
+        # A restarted chi web that didn't get to serve (a refusal, the port
+        # race, a bad start folder): the old process's Serve handler it was
+        # to adopt goes off, never left forwarding to nothing.
+        stop_restarted_tunnel(tunnel, resolve_port(port)) if restarted && tunnel && !handed_on
       end
 
       # A second chi web given a start folder (--start-dir, web.start_dir)
@@ -177,16 +195,87 @@ module Samagotchi
       # (its command runs in its own process group, and Serve keeps what it
       # set even if chi stopped waiting), so it can't land between the serve
       # going on and the teardown being due; #up is bounded by its timeout.
+      # A :restart result leaves Serve up for the exec'd chi web to adopt.
       def self.with_tunnel(provider, plan)
         attempted = false
-        yield(lambda do
+        result = yield(lambda do
           Thread.handle_interrupt(SignalException => :never) do
             attempted = true
             provider.up(plan)
           end
         end)
+        result
       ensure
-        tunnel_down(provider, plan) if attempted
+        tunnel_down(provider, plan) if attempted && result != :restart
+      end
+
+      # Replace this process only after its listener and hub have stopped.
+      # Starter PIDs are children of this process; workers are detached and
+      # must not be adopted or signaled.
+      # No line before the exec: one on a hung-up terminal raises EIO, and
+      # the restart would end in a dead chi web; the log says it.
+      def self.reexec(argv, provider: nil, plan: nil, exec: nil)
+        program = reexec_program
+        raise ArgumentError, "RubyGems chi wrapper not found" if program.to_s.empty?
+
+        env = ChildEnv.unbundled.merge(
+          RESTARTED_ENV => "1",
+          ADOPT_PIDS_ENV => SessionManager.live_spawn_pids.join(",")
+        )
+        Samagotchi::Log.info(:web, "restart", program: program)
+        runner = exec || ->(environment, *args) { Kernel.exec(environment, *args) }
+        runner.call(env, RbConfig.ruby, program, *argv)
+      rescue SystemCallError, ArgumentError => e
+        tunnel_down(provider, plan) if provider && plan
+        warn "Error: couldn't restart chi web: #{e.message}"
+        1
+      end
+
+      # What a restart execs: the installed gem's wrapper (it activates the
+      # newest installed chi), this bin/chi in a checkout; nil for a gem
+      # installed without one (--bindir).
+      def self.reexec_program
+        gem_spec = InstalledGem.spec
+        gem_spec ? InstalledGem.wrapper(gem_spec) : $PROGRAM_NAME
+      end
+
+      # bin/chi's first step: the restart marker and the starters to adopt
+      # out of +env+, before anything (a worker, chi update) is spawned with
+      # it; the starters are adopted only under the marker.
+      # @return [Boolean] whether this chi web is a restarted one
+      def self.take_restart_env!(env = ENV, detach: Process.method(:detach))
+        restarted = env.delete(RESTARTED_ENV) == "1"
+        adopt_reexec_children!(env: env, detach: detach) if restarted
+        env.delete(ADOPT_PIDS_ENV)
+        restarted
+      end
+
+      # Adopt only the recorded child starters. They may have exited in the
+      # interval between collecting their PIDs and the new process starting.
+      def self.adopt_reexec_children!(env: ENV, detach: Process.method(:detach))
+        pids = env.delete(ADOPT_PIDS_ENV).to_s
+        pids.split(",").reject(&:empty?).each do |pid|
+          child_pid = Integer(pid, 10)
+          begin
+            detach.call(child_pid)
+          rescue Errno::ECHILD
+            nil
+          end
+        end
+      end
+
+      # Turns off the Serve handler a restarted chi web was to adopt, only
+      # when it is still exactly this port's (prepare says adopted); a
+      # foreign one, or none, stays as it is. Never raises: the start's own
+      # error is the one to say.
+      def self.stop_restarted_tunnel(tunnel, port)
+        provider = Tunnel.for(tunnel)
+        plan = provider.prepare(port: port, config_owner: Samagotchi::Config.get("web.proxy.owner"),
+                                config_public_url: Samagotchi::Config.get("web.public_url"),
+                                config_identity_header: Samagotchi::Config.get("web.proxy.identity_header"))
+        tunnel_down(provider, plan) if plan.adopted
+      rescue StandardError => e
+        Samagotchi::Log.warn(:web, "restart_tunnel_left", error: e.class.name, msg: e.message)
       end
 
       # The tunnel's teardown, before any line (a hung-up terminal can't
@@ -230,7 +319,8 @@ module Samagotchi
       # @param on_bound [#call, nil] run once the port is bound, before any
       #   line (the tunnel's #up); what it raises ends the run
       # @param start_dir [String] the folder chi web starts in (App's)
-      # @return [Boolean] false when the port was taken (said so on stderr)
+      # @return [Boolean, :restart] false when the port was taken (said so on stderr);
+      #   :restart when the owner requested an in-place process replacement
       def self.start(port: nil, host: nil, url: nil, open_browser: false, state_dir: nil, manager: nil, markdown: false,
                      view: Config::BY_KEY["web.view"].default, annotate_presets: Config::BY_KEY["web.annotate_presets"].default, hub: nil, lan: nil,
                      editor: Config::BY_KEY["web.editor"].default, token_path: Token.path,
@@ -252,6 +342,25 @@ module Samagotchi
         app = App.new(manager: manager, state_dir: state_dir, markdown: markdown, view: view,
                       annotate_presets: annotate_presets, editor: editor, hub: hub, lan: lan_option, working_set: working_set,
                       public_url: public_url, public_token: public_token, push: push, start_dir: start_dir)
+        webrick = nil
+        restart_mutex = Mutex.new
+        restart_requested = false
+        restart_thread = nil
+        if app.respond_to?(:restart_web=)
+          app.restart_web = lambda do
+            restart_mutex.synchronize do
+              next false if restart_requested
+              next :no_wrapper if reexec_program.to_s.empty?
+
+              restart_requested = true
+              restart_thread = Thread.new do
+                sleep 0.2
+                webrick&.shutdown
+              end
+              true
+            end
+          end
+        end
         Samagotchi::Log.info(:web, "start", url: "http://#{host}:#{port}", version: Samagotchi::VERSION)
         Samagotchi::Log.info(:web, "lan", ip: lan.ip, interface: lan.interface) if lan
         if public_url
@@ -273,7 +382,6 @@ module Samagotchi
         # Said once the port is bound: a second chi web racing for it gets
         # the in-use line instead.
         running_path = Running.path(state_dir: state_dir)
-        webrick = nil
         callback_unfinished = false
         started = lambda do
           callback_unfinished = true
@@ -305,7 +413,7 @@ module Samagotchi
           app.server_running = -> { server.status == :Running }
           listen_lan(server, lan, port) if lan
         end
-        true
+        restart_requested ? :restart : true
       rescue Errno::EADDRINUSE
         warn in_use_message(port)
         false
@@ -322,6 +430,7 @@ module Samagotchi
         update_check&.stop
         hub&.stop
         Samagotchi::Log.info(:web, "stop") if app
+        restart_thread&.join
       end
 
       class LanListenError < StandardError; end

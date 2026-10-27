@@ -162,10 +162,16 @@ module Samagotchi
 
         # What the start lines add: how it is reached and whose login is the
         # owner, and the Tailnet Lock warning.
-        def start_lines(plan)
+        def start_lines(plan, restarted: false)
           source = plan.owner_source == :config ? "web.proxy.owner" : "this machine's Tailscale login"
           via = "         via Tailscale Serve (tailnet only), owner #{plan.public_url.owner} (#{source})"
-          via += "; Serve already forwarded port 443 here, chi web turns it off on exit" if plan.adopted
+          if plan.adopted
+            via += if restarted
+                     "; adopted by the restarted chi web; it turns Serve off on exit"
+                   else
+                     "; Serve already forwarded port 443 here, chi web turns it off on exit"
+                   end
+          end
           lines = [via]
           if plan.lock_off
             lines << "Tailnet Lock is off: a device Tailscale's servers add to your tailnet could reach this page; " \

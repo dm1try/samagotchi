@@ -120,6 +120,7 @@ module Samagotchi
       # A callable the event loops ask whether the server still runs;
       # Server.start points it at WEBrick's status once it has the server.
       attr_writer :server_running
+      attr_writer :restart_web
 
       # @param bridge_wait_timeout [Float] bounded seconds to wait for a
       #   freshly-spawned worker's bridge before answering POST /api/sessions.
@@ -247,6 +248,7 @@ module Samagotchi
         ["GET", %r{\A/api/events\z}, :handle_events, :owner],
         ["POST", %r{\A/api/update\z}, :handle_update, :owner],
         ["POST", %r{\A/api/update/restart_workers\z}, :handle_restart_workers, :owner],
+        ["POST", %r{\A/api/update/restart_web\z}, :handle_restart_web, :owner],
         ["POST", %r{\A/api/render\z}, :handle_render, :owner],
         ["GET", %r{\A/api/sessions/([^/]+)/stream\z}, :handle_stream, :participant],
         ["GET", %r{\A/api/sessions/([^/]+)/review\z}, :handle_review, :participant, :session],
@@ -794,6 +796,31 @@ module Samagotchi
         ])
       ensure
         @update_mutex.synchronize { @update_running = false }
+      end
+
+      # The exec replaces this process: an update's chi update child (its
+      # pipes read here) or a worker restart pass would die mid-way, so
+      # neither may run, and none starts once the restart is asked for.
+      def handle_restart_web(_req)
+        return error_response(503, "restart_unavailable", "chi web cannot restart itself in this process") unless @restart_web
+
+        busy = @update_mutex.synchronize do
+          next true if @update_running
+
+          @update_running = true # held for good once restarting: the exec ends this process
+          false
+        end
+        return error_response(409, "update_running", "a chi update operation is running; restart chi web when it ends") if busy
+
+        case @restart_web.call
+        when true then return json_response(202, { state: "restarting" })
+        when :no_wrapper
+          refusal = error_response(409, "restart_unavailable", "no chi wrapper to restart into (installed with --bindir?); " \
+                                                               "restart chi web in its terminal")
+        else refusal = error_response(409, "restart_requested", "chi web is already restarting")
+        end
+        @update_mutex.synchronize { @update_running = false }
+        refusal
       end
 
       def unauthorized(req)
