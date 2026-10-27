@@ -1,6 +1,6 @@
-/* The selection bubble (annotate_bar.js): Annotate + the presets (web.annotate_presets), small pills with a gap (they
-   wrap on a narrow page). Both pages link it: the owner's (app.js) and the participant page (participant.js). Colours
-   are tokens.css's. */
+/* The selection bubble (annotate_bar.js): Annotate + the presets (web.annotate_presets), Copy link last where the page
+   has one, small pills with a gap (they wrap on a narrow page). Both pages link it: the owner's (app.js) and the
+   participant page (participant.js). Colours are tokens.css's. */
 #annotateBar{position:fixed;z-index:20;display:flex;flex-wrap:wrap;gap:4px;max-width:calc(100vw - 16px)}
 #annotateBar[hidden]{display:none}
 #annotateBar button{font-size:12px;padding:4px 10px;border-radius:999px;box-shadow:0 2px 8px var(--shadow-strong)}
@@ -15,7 +15,7 @@
 #annotateBar.docked{right:8px;justify-content:center}
 @media (pointer:coarse){#annotateBar button{font-size:14px;padding:8px 14px}}
 #annotateBar .annotate-more-list[hidden]{display:none}
-#annotateBar .annotate-preset{background:var(--bg-raised);color:var(--text-2);border:1px solid var(--border-strong);padding:3px 10px;max-width:32ch;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#annotateBar .annotate-preset,#annotateBar .annotate-link{background:var(--bg-raised);color:var(--text-2);border:1px solid var(--border-strong);padding:3px 10px;max-width:32ch;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 /* A claim link's target (claim_link.js): its bubble (or its turn's opening) ringed, the quote itself highlighted. One
    name for both pages; --claim-mark/--claim-ring follow the palette (warn-bright and warn are set per palette). */
 .claim-hit{outline:2px solid var(--claim-ring);outline-offset:3px;border-radius:12px}

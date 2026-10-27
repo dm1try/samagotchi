@@ -26,15 +26,17 @@ module Samagotchi
       # +identity_header+: the header this chi web's auth proxy names the
       # signed-in user in (null without one), for the Invite's email field;
       # +mode+: what a participant invited now gets, "pair" or "review"
-      # (ReviewStart.share_terms), for the panel's words.
-      def handle_participants_list(_req, id = nil)
+      # (ReviewStart.share_terms), for the panel's words; +link_base+: where
+      # a participant's link opens (participant_base), for a claim link
+      # (claim_link.js) the participant's browser opens with its cookie.
+      def handle_participants_list(req, id = nil)
         now = @grants.now
         grants = @grants.list(session_id: id).map { |grant| grant.public_h(now) }
         return json_response(200, { participants: grants }) unless id
 
         terms = ReviewStart.share_terms(Session.load(id, state_dir: default_state_dir), state_dir: default_state_dir)
         json_response(200, { participants: with_spend(id, grants), warning: terms.warning, mode: terms.mode.to_s,
-                             identity_header: @public_url&.identity_header })
+                             identity_header: @public_url&.identity_header, link_base: participant_base(req) })
       rescue Grants::Unwritable => e
         grants_unwritable(e)
       end
@@ -149,10 +151,19 @@ module Samagotchi
           return @public_url.link(@link_codes.issue(kind: :grant, token: token, ttl: ttl), "s=#{id}")
         end
 
+        "#{participant_base(req)}?token=#{token}#s=#{id}"
+      end
+
+      # Where a participant's link opens, no token: web.public_url's origin,
+      # else this chi web's LAN address, else the Host asked
+      # ("http://192.168.1.5:4567/").
+      def participant_base(req)
+        return "#{@public_url.origin}/" if @public_url
+
         host = req.get_header("HTTP_HOST").to_s
         port = host[/:(\d+)\z/, 1] || req.port.to_s
         name = @lan ? @lan[:ip] : host.sub(/:\d*\z/, "")
-        "http://#{name}:#{port}/?token=#{token}#s=#{id}"
+        "http://#{name}:#{port}/"
       end
     end
   end

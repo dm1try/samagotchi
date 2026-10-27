@@ -385,7 +385,8 @@ test("participant page: Annotate quotes the Plan and a comment into the comment 
     messages: [{ role: "user", content: "Is it safe?", author: "p:2", author_name: "Sam" }, { role: "assistant", content: "PONG" }] };
   const { $ } = await openPage(t, { respond: (call) => call.answer(200, review) });
   const bar = document.getElementById("annotateBar");
-  assert.deepEqual([...bar.querySelectorAll("button")].map((b) => b.textContent), ["Annotate", "Agreed", "Why?"]);
+  // No Copy link here (the owner's page has it).
+  assert.deepEqual([...bar.querySelectorAll("button")].filter((b) => !b.hidden).map((b) => b.textContent), ["Annotate", "Agreed", "Why?"]);
   $("comment").value = "First:";
   await select($("planDoc").querySelector("p"));
   assert.equal(bar.hidden, false);

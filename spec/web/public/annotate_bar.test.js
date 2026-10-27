@@ -282,3 +282,28 @@ test("a send pill is disabled while a turn runs unless its command is anytime", 
   page.selectionChange();
   assert.equal(pills(page.bar)[0].disabled, false);
 });
+
+test("Copy link: hidden without a link for the selection; with one, last, titled, and it hands the link over", () => {
+  const plain = fakePage();
+  plain.selectionChange();
+  const linkBtn = plain.bar.el.children.at(-1);
+  assert.equal(linkBtn.className, "annotate-link");
+  assert.equal(linkBtn.hidden, true);
+
+  const links = [];
+  const asked = [];
+  const { bar, quotes, selectionChange } = fakePage({ options: {
+    link: (source, range) => { asked.push([source.kind, range.toString()]); return { url: "http://x/#s=1&t=2", title: "For Alex's browser" }; },
+    onLink: (target) => links.push(target.url),
+  } });
+  selectionChange();
+  const btn = bar.el.children.at(-1);
+  assert.equal(btn.hidden, false);
+  assert.equal(btn.textContent, "Copy link");
+  assert.equal(btn.title, "For Alex's browser");
+  assert.deepEqual(asked, [["answer", "the answer"]]);
+  click(bar.el, btn);
+  assert.deepEqual(links, ["http://x/#s=1&t=2"]);
+  assert.deepEqual(quotes, []);
+  assert.equal(bar.el.hidden, true);
+});

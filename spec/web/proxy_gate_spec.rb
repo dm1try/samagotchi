@@ -641,6 +641,11 @@ RSpec.describe Samagotchi::Web::App, "behind an auth proxy" do
       expect(JSON.parse(body)).to include("identity_header" => identity_header)
     end
 
+    it "says a participant's link opens at the public origin (a claim link's base)" do
+      _, _, body = call("/api/sessions/#{session.id}/participants", headers: proxied(owner, [bearer]))
+      expect(JSON.parse(body)).to include("link_base" => "#{origin}/")
+    end
+
     it "keeps the owner's token out of what a participant reads (a secret of their view)" do
       req = Rack::Request.new(env_for("/", headers: proxied("alex@pod.test", [bearer(issued.token)])))
       req.env[described_class::PRINCIPAL_ENV] = app.send(:principal_for, req)

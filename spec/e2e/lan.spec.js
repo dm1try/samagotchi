@@ -56,7 +56,7 @@ test("a wrong token gets the 401 page, and a browser without the cookie is refus
   await context.close();
 });
 
-test("a review: the owner starts one for a file and invites from the panel, the link joins over the LAN with the Plan, annotates it, a comment (a double Enter) gets one reply and comes back on ↑, the owner applies it", async ({ chi, context, browser, script }) => {
+test("a review: the owner starts one for a file and invites from the panel, the link joins over the LAN with the Plan, annotates it, a comment (a double Enter) gets one reply and comes back on ↑, the owner applies it, and a claim link opens in Alex's browser", async ({ chi, context, browser, script }) => {
   const owner = await context.newPage();
   const errors = [];
   owner.on("pageerror", (e) => errors.push(e.message));
@@ -141,6 +141,30 @@ test("a review: the owner starts one for a file and invites from the panel, the 
   // the proposal quoted, not sent.
   await owner.locator(".review-apply-btn").last().click();
   await expect(owner.locator("#prompt")).toHaveValue(/^Apply this proposal from Alex's review turn \w+, as far as it fits the plan\. [^\n]*\n\n> PONG from the fake model/);
+
+  // A claim link: the owner selects a word of the first answer, Copy link
+  // gives Alex's link to that turn and quote; Alex's browser (its cookie,
+  // no token) opens it with the reply marked and the word highlighted.
+  await owner.evaluate(() => {
+    Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText: async (text) => { window.copiedLink = text; } } });
+    const bubble = document.querySelector("#history .bubble.output");
+    const walker = document.createTreeWalker(bubble, NodeFilter.SHOW_TEXT);
+    let node = walker.nextNode();
+    while (node && !node.data.includes("PONG")) node = walker.nextNode();
+    const range = document.createRange();
+    range.setStart(node, node.data.indexOf("PONG"));
+    range.setEnd(node, node.data.indexOf("PONG") + 4);
+    getSelection().removeAllRanges();
+    getSelection().addRange(range);
+  });
+  await expect(owner.locator("#annotateBar .annotate-link")).toHaveAttribute("title", /for Alex's browser/);
+  await owner.locator("#annotateBar .annotate-link").click();
+  const claimLink = await owner.evaluate(() => window.copiedLink);
+  expect(claimLink).toMatch(/^http:\/\/[^/]+\/#s=[0-9a-f-]+&t=[0-9a-f-]{8}&q=PONG/);
+  await page.goto(claimLink.replace(/^http:\/\/[^/]+/, chi.lanURL));
+  await expect(page.locator("#thread .p-msg.reply .p-bubble").first()).toHaveClass(/claim-hit/);
+  await expect(page.locator("#thread .claim-hit")).toBeInViewport();
+  expect(await page.evaluate(() => CSS.highlights.get("chi-claim")?.size)).toBe(1);
   await guest.close();
   expect(errors, "page errors").toEqual([]);
 });

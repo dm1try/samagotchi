@@ -620,7 +620,7 @@ test("an annotate preset fills the composer with the quote and never sends; a pl
     sel.addRange(range);
   });
   const bar = page.locator("#annotateBar");
-  await expect(bar.locator("button")).toHaveText(["Annotate", "Agreed", "Could you please elaborate?", "E2E check"]);
+  await expect(bar.locator("button")).toHaveText(["Annotate", "Agreed", "Could you please elaborate?", "E2E check", "Copy link"]);
   await bar.getByRole("button", { name: "Agreed" }).click();
   await expect(page.locator("#prompt")).toHaveValue("> PONG from the fake model.\n\nAgreed");
   await expect(bar).toBeHidden();

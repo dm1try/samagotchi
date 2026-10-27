@@ -75,6 +75,12 @@ RSpec.describe Samagotchi::Web::App, "participants routes" do
       expect(info).to include("proxy" => nil)
       expect(call("/api/sessions/#{session.id}/participants").last).to include("identity_header" => nil)
     end
+
+    it "says where a participant's link opens, without a token: the LAN address (a claim link's base)" do
+      _, body = call("/api/sessions/#{session.id}/participants")
+      expect(body["link_base"]).to eq("http://192.168.1.55:4567/")
+      expect(call("/api/participants").last).not_to have_key("link_base")
+    end
   end
 
   describe "POST /api/sessions/:id/participants/:participant/cap" do

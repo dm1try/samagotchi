@@ -473,3 +473,25 @@ test("participants panel: a cleared, negative or too-high cap is refused in the 
   assert.deepEqual(sent, [["s1", "p_0001abcd", 3]]);
   c.done();
 });
+
+test("participants panel: a claim link's target is the list's link base and the active participants' names", async () => {
+  const c = panelControl({ api: { list: async () => ({ participants: [grant(), grant({ id: "p_old", name: "Kim", state: "expired" })],
+                                                       link_base: "http://192.168.1.5:4567/" }) } });
+  assert.equal(c.ctl.claimTarget(), null, "nothing read yet");
+  await c.ctl.load();
+  assert.deepEqual(c.ctl.claimTarget(), { base: "http://192.168.1.5:4567/", names: [grant().name] });
+  c.switchTo("s2");
+  assert.equal(c.ctl.claimTarget(), null, "another session's list");
+  c.done();
+});
+
+test("participants panel: no claim target without a link base (an older chi web) or anyone active", async () => {
+  const older = panelControl();
+  await older.ctl.load();
+  assert.equal(older.ctl.claimTarget(), null);
+  older.done();
+  const ended = panelControl({ api: { list: async () => ({ participants: [grant({ state: "revoked" })], link_base: "http://x/" }) } });
+  await ended.ctl.load();
+  assert.equal(ended.ctl.claimTarget(), null);
+  ended.done();
+});
