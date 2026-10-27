@@ -10,6 +10,7 @@ and commands may change between minor versions. How releases are made:
 ### Fixed
 
 - Remote `chi sessions restart` refusals retain fallback holds and print the remote `chi --remote NAME` stop command.
+- chi web's stream 503 distinguishes an unanswered live worker from a session with no live worker.
 
 ## [0.121.1] - 2026-10-27
 

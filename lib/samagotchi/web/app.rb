@@ -1530,7 +1530,7 @@ module Samagotchi
       end
 
       def stream_open_error(id, outcome)
-        return error_response(503, "not_live", WorkerLink.not_live(id)) if outcome.is_a?(BridgeClient::StreamOpen::Unreachable)
+        return error_response(503, "not_live", WorkerLink.unanswered(id)) if outcome.is_a?(BridgeClient::StreamOpen::Unreachable)
         return error_response(503, "not_live", WorkerLink.not_live(id)) if outcome.reason == :unknown_session
         return error_response(502, "bridge_secret", BridgeSecret.refused(id)) if outcome.reason == :bridge_secret
 

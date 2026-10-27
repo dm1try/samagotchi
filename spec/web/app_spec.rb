@@ -288,7 +288,7 @@ RSpec.describe Samagotchi::Web::App do
       status, _headers, body = app.call(env_for("/api/sessions/s1/stream"))
 
       expect(status).to eq(503)
-      expect(JSON.parse(body.first)).to include("error" => "not_live")
+      expect(JSON.parse(body.first)).to include("error" => "not_live", "detail" => Samagotchi::WorkerLink.unanswered("s1"))
     ensure
       server&.close
     end
