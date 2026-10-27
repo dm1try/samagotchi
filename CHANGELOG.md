@@ -7,6 +7,8 @@ and commands may change between minor versions. How releases are made:
 [docs/releasing.md](docs/releasing.md).
 ## [Unreleased]
 
+## [0.126.0] - 2026-10-27
+
 ### Added
 
 - chi web places each completed Verify verdict on its source claim, links to the checking turn, and sends a phone
@@ -14,6 +16,11 @@ and commands may change between minor versions. How releases are made:
 - **Verify fresh** on an unclear verdict's card (owner or participant): a new agent checks the claim in the session's
   folder with none of its context; its verdict lands on the same card. A participant's runs under their own access
   and spend cap.
+
+### Changed
+
+- A pair participant's page header reads "<name> · pairing" instead of "<name>'s review", and its tools overview's
+  disclosure triangle matches the text's size.
 
 ### Fixed
 
@@ -4756,7 +4763,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.125.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.126.0...HEAD
+[0.126.0]: https://github.com/dm1try/samagotchi/compare/v0.125.0...v0.126.0
 [0.125.0]: https://github.com/dm1try/samagotchi/compare/v0.124.0...v0.125.0
 [0.124.0]: https://github.com/dm1try/samagotchi/compare/v0.123.0...v0.124.0
 [0.123.0]: https://github.com/dm1try/samagotchi/compare/v0.122.0...v0.123.0
