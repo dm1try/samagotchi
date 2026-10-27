@@ -5,7 +5,9 @@
 // directly by chi desktop) manages the login item and exits;
 // `ChiHelper --agents list|send` is the agent terminals' seam (AgentTerminal.swift),
 // `ChiHelper --model-pick` the model chooser's (Models.swift),
-// `ChiHelper --broadcast` the Everyone row's (Broadcast.swift).
+// `ChiHelper --broadcast` the Everyone row's (Broadcast.swift),
+// `ChiHelper --sessions` and `--send-plan` the session rows' and their
+// sends' (Sessions.swift).
 import AppKit
 import ServiceManagement
 
@@ -110,6 +112,12 @@ struct ChiHelperMain {
     }
     if args.count >= 2, args[1] == "--broadcast" {
       exit(broadcastCommand(Array(args.dropFirst(2))))
+    }
+    if args.count >= 2, args[1] == "--sessions" {
+      exit(sessionsCommand(Array(args.dropFirst(2))))
+    }
+    if args.count >= 2, args[1] == "--send-plan" {
+      exit(sendPlanCommand(Array(args.dropFirst(2))))
     }
     let app = NSApplication.shared
     let delegate = AppDelegate()

@@ -301,7 +301,8 @@ to install). It refuses when the folder or the branch already exists.
 
 `SAMAGOTCHI_MACOS_BUILD=1 bundle exec rspec spec/desktop` also compiles the macOS helper (`:macos_build`, needs the
 Command Line Tools) and runs `ChiHelper` against a fake kitty and, when a `tmux` is on PATH, a real one (private
-`-L` servers under a temp `TMUX_TMPDIR`, killed after). Without the variable they are filtered out (CI's runs), and
+`-L` servers under a temp `TMUX_TMPDIR`, killed after), and its `--sessions`, `--send-plan` and `--broadcast` seams
+against a fake chi (a `/bin/sh` script as the launch file's argv). Without the variable they are filtered out (CI's runs), and
 `script/affected-specs` doesn't pick them for a Swift change: run them by hand after editing
 `lib/samagotchi/desktop/macos/`.
 

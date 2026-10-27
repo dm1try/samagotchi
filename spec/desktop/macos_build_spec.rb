@@ -3,6 +3,7 @@
 require "fileutils"
 require "json"
 require "open3"
+require "securerandom"
 require "socket"
 require "tmpdir"
 require "spec_helper"
@@ -479,6 +480,124 @@ RSpec.describe "the desktop helper's Swift sources", :macos_build do
 
       expect(status).to eq(1)
       expect(result["message"]).to start_with("No launch file at #{launch}")
+    end
+  end
+
+  describe "ChiHelper --sessions, the panel's session rows, against a fake chi" do
+    let(:tmp) { Dir.mktmpdir("ss") }
+    let(:launch) { File.join(tmp, "launch.json") }
+    let(:fake) { File.join(tmp, "chi") }
+    let(:ids) { Array.new(9) { SecureRandom.uuid } }
+    let(:dirs) { %w[a b].map { |name| File.join(tmp, name).tap { |d| FileUtils.mkdir_p(d) } } }
+
+    def session(index, cwd: dirs[0], updated: "2026-10-27T10:00:00Z", **extra)
+      { "id" => ids[index], "desc" => "s#{index}", "cwd" => cwd, "busy" => false, "owner" => nil,
+        "updated_at" => updated }.merge(extra.transform_keys(&:to_s))
+    end
+
+    before do
+      # Logs each call's argv on one line; --live answers live.json, any other
+      # list recent.json, as FAKE_CHI_MODE says.
+      File.write(fake, <<~SH)
+        echo "$*" >> "$FAKE_CHI_DIR/calls"
+        case "$*" in
+          *--live*)
+            if [ "$FAKE_CHI_MODE" = live-fails ]; then echo "chi: no state dir" >&2; exit 1; fi
+            cat "$FAKE_CHI_DIR/live.json" ;;
+          *)
+            if [ "$FAKE_CHI_MODE" = recent-fails ]; then exit 1; fi
+            cat "$FAKE_CHI_DIR/recent.json" ;;
+        esac
+      SH
+      File.write(launch, JSON.generate({ "version" => "x", "argv" => ["/bin/sh", fake], "env" => {} }))
+      # In chi's order (created_at asc): the newest updated, with a folder
+      # that exists, is where a new session starts.
+      File.write(File.join(tmp, "live.json"), JSON.generate([
+        session(0, cwd: dirs[0], updated: "2026-10-27T10:00:00Z"),
+        session(1, cwd: dirs[1], updated: "2026-10-27T11:00:00.123Z", busy: true),
+        session(2, cwd: File.join(tmp, "gone"), updated: "2026-10-27T12:00:00Z")
+      ]))
+      # Newest first: a live one, a REPL's, a non-UUID id, then four stopped.
+      File.write(File.join(tmp, "recent.json"), JSON.generate([
+        session(1), session(3, owner: "repl"), session(4).merge("id" => "--flag"),
+        session(5, desc: nil), session(6), session(7), session(8)
+      ]))
+    end
+
+    after { FileUtils.remove_entry(tmp) }
+
+    def sessions(mode: "ok")
+      out, err, status = Open3.capture3({ "FAKE_CHI_DIR" => tmp, "FAKE_CHI_MODE" => mode },
+                                        executable, "--sessions", "--launch", launch)
+      [status.exitstatus.zero? ? JSON.parse(out) : out, err, status.exitstatus]
+    end
+
+    def calls = File.readlines(File.join(tmp, "calls"), chomp: true)
+
+    it "lists the live sessions in chi's order, then up to 3 stopped ones neither live nor a REPL's, newest first" do
+      result, err, status = sessions
+
+      expect([err, status]).to eq(["", 0])
+      expect(result["rows"].map { |r| [r["id"], r["recent"]] })
+        .to eq([[ids[0], false], [ids[1], false], [ids[2], false], [ids[5], true], [ids[6], true], [ids[7], true]])
+      expect(result["rows"][1]).to eq("id" => ids[1], "desc" => "s1", "cwd" => dirs[1], "busy" => true, "recent" => false)
+      expect(result["rows"][3]["desc"]).to be_nil
+      expect(result["new_dir"]).to eq(dirs[1])
+      expect(calls).to eq(["sessions list --live --sort created_at --order asc --scope=all --format json",
+                           "sessions list --limit 20 --scope=all --format json"])
+    end
+
+    it "keeps the live rows when the recent list fails, and fails with chi's stderr when the live one does" do
+      result, = sessions(mode: "recent-fails")
+      expect(result["rows"].map { |r| r["id"] }).to eq(ids.first(3))
+
+      out, err, status = sessions(mode: "live-fails")
+      expect([out, status]).to eq(["", 1])
+      expect(err).to eq("chi sessions list failed (exit 1): chi: no state dir\n\n")
+    end
+  end
+
+  describe "ChiHelper --send-plan, the chi call a send to sessions makes" do
+    let(:ids) { [SecureRandom.uuid, SecureRandom.uuid] }
+    let(:context) { "  \nline one\n" }
+
+    def plan(*args, stdin: context)
+      out, err, status = Open3.capture3(executable, "--send-plan", *args, stdin_data: stdin)
+      expect([err, status.exitstatus]).to eq(["", 0])
+      JSON.parse(out)
+    end
+
+    it "sends a message: -m, an --image per image, the ids last, the context on stdin" do
+      result = plan("message", "--id", ids[0], "--id", ids[1], "--prompt", "  same bug? ",
+                    "--image", "/tmp/a b.png", "--image", "/tmp/c.png")
+
+      expect(result).to eq([{ "command" => "chi send", "stdin" => context,
+                              "args" => ["send", "-m", "same bug?", "--image", "/tmp/a b.png", "--image", "/tmp/c.png", *ids] }])
+    end
+
+    it "sends the context alone as the message, a paste's chi part as a message, and no stdin without context" do
+      expect(plan("message", "--id", ids[0])).to eq([{ "command" => "chi send", "args" => ["send", ids[0]], "stdin" => context }])
+      expect(plan("paste", "--id", ids[0])).to eq(plan("message", "--id", ids[0]))
+      expect(plan("message", "--id", ids[0], "--prompt", "hi", stdin: " \n"))
+        .to eq([{ "command" => "chi send", "args" => ["send", "-m", "hi", ids[0]], "stdin" => nil }])
+    end
+
+    it "notes the message line then the context on stdin, with the trimmed source and no images" do
+      result = plan("note", "--id", ids[0], "--id", ids[1], "--prompt", "look", "--source", " safari ", "--image", "/tmp/a.png")
+
+      expect(result).to eq([{ "command" => "chi note", "args" => ["note", "--source", "safari", *ids],
+                              "stdin" => "look\n\n#{context}" }])
+      expect(plan("note", "--id", ids[0], stdin: "x")).to eq([{ "command" => "chi note", "args" => ["note", ids[0]], "stdin" => "x" }])
+    end
+
+    it "starts a new session in the new row's folder, with --model only for a pick that isn't the default" do
+      dir = Dir.pwd
+      expect(plan("message", "--new", dir, "--id", ids[0], "--prompt", "hi"))
+        .to eq([{ "command" => "chi send", "args" => ["send", "--new", "--dir", dir, "-m", "hi"], "stdin" => context }])
+      expect(plan("message", "--new", dir, "--default", "box:small", "--model", "qwen", "--image", "/tmp/a.png").first["args"])
+        .to eq(["send", "--new", "--dir", dir, "--model", "qwen", "--image", "/tmp/a.png"])
+      expect(plan("message", "--new", dir, "--default", "box:small", "--model", "BOX:small").first["args"])
+        .to eq(["send", "--new", "--dir", dir])
     end
   end
 

@@ -1097,33 +1097,14 @@ final class PanelController: NSObject, NSWindowDelegate {
     var linger = 1.0
   }
 
+  /// Runs the SendPlan's call (Sessions.swift) and words its outcome.
   private func sendToChi(_ kind: SendKind, ids: [String], new: Bool, images: [PanelImage],
                          completion: @escaping (SendOutcome) -> Void) {
-    let prompt = model.trimmedPrompt
-    let command: String
-    var args: [String]
-    let stdin: Data?
-    switch kind {
-    case .message, .paste:
-      // stdin is the quoted context; without -m, chi takes it as the message.
-      command = "chi send"
-      args = new ? ["send", "--new", "--dir", model.newSessionDir] : ["send"]
-      // The row's name verbatim; none for the default.
-      if new, let name = model.modelForSend { args += ["--model", name] }
-      if !prompt.isEmpty { args += ["-m", prompt] }
-      args += images.flatMap { ["--image", $0.url.path] }
-      stdin = model.hasContext ? Data(model.text.utf8) : nil
-    case .note:
-      command = "chi note"
-      args = ["note"]
-      let source = model.source.trimmingCharacters(in: .whitespacesAndNewlines)
-      if !source.isEmpty { args += ["--source", source] }
-      stdin = Data(model.noteText.utf8)
-    }
-    if !new { args += ids }
+    let call = SendPlan.from(model, kind: kind, ids: ids, new: new, images: images).calls[0]
+    let command = call.command
     // Reading, converting and a new worker's start take longer than text.
     let timeout = images.isEmpty ? runner.timeout : 30
-    runner.run(args, stdin: stdin, timeout: timeout) { result in
+    runner.run(call.args, stdin: call.stdin, timeout: timeout) { result in
       switch result {
       case .failure(let error):
         completion(SendOutcome(ok: false, message: error.description))

@@ -134,11 +134,13 @@ final class ChiRunner {
   /// stopped ones, newest first. The live order is by creation so ⌘1…⌘9
   /// stay on their sessions as turns update them; a new one comes last.
   /// A session a chi REPL holds is in neither: it takes no notes or
-  /// messages. A failed second call just leaves "recent" empty.
-  func sessions(recentCount: Int = 3, completion: @escaping (Result<[LiveSession], ChiError>) -> Void) {
-    list(["--live", "--sort", "created_at", "--order", "asc"]) { result in
+  /// messages. A failed second call just leaves "recent" empty. Calls
+  /// back on +queue+ (a headless seam waits on another one).
+  func sessions(recentCount: Int = 3, queue: DispatchQueue = .main,
+                completion: @escaping (Result<[LiveSession], ChiError>) -> Void) {
+    list(["--live", "--sort", "created_at", "--order", "asc"], queue: queue) { result in
       guard case .success(let live) = result else { completion(result); return }
-      self.list(["--limit", "20"]) { recent in
+      self.list(["--limit", "20"], queue: queue) { recent in
         let liveIds = Set(live.map(\.id))
         let stopped = ((try? recent.get()) ?? [])
           .filter { $0.owner == nil && !liveIds.contains($0.id) }
@@ -180,10 +182,11 @@ final class ChiRunner {
     }
   }
 
-  private func list(_ flags: [String], completion: @escaping (Result<[LiveSession], ChiError>) -> Void) {
+  private func list(_ flags: [String], queue: DispatchQueue = .main,
+                    completion: @escaping (Result<[LiveSession], ChiError>) -> Void) {
     // Every project's sessions: the helper isn't in any one project (an
     // older chi ignores the flag).
-    run(["sessions", "list"] + flags + ["--scope=all", "--format", "json"]) { result in
+    run(["sessions", "list"] + flags + ["--scope=all", "--format", "json"], queue: queue) { result in
       switch result {
       case .failure(let error): completion(.failure(error))
       case .success(let r):
