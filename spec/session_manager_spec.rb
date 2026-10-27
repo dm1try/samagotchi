@@ -1336,6 +1336,52 @@ RSpec.describe Samagotchi::SessionManager do
       expect(Process).not_to have_received(:kill)
     end
 
+    it "waits FALLBACK_STOP_WAIT for the TERMed owner, long enough for its recap on leave" do
+      allow(Samagotchi::WorkerLink).to receive(:resolve).and_return(live_link(old_sidecar))
+      allow(client).to receive(:request_exit).and_raise(Errno::ECONNREFUSED)
+      allow(Process).to receive(:kill)
+      allow(described_class).to receive(:wait_for_owner_release).and_return(true)
+      allow(described_class).to receive(:resume_session)
+      allow(Samagotchi::WorkerLink).to receive(:await).and_return(none_link)
+
+      described_class.restart_session(session.id, state_dir: tmpdir, wait: 0)
+
+      expect(described_class).to have_received(:wait_for_owner_release)
+        .with(session.id, timeout: described_class::FALLBACK_STOP_WAIT, state_dir: tmpdir)
+      expect(described_class::FALLBACK_STOP_WAIT).to be >= Samagotchi::SessionManager::STOP_WAIT + 30
+    end
+
+    it "leaves a successor that took the lock while the ask timed out: no TERM, no resume" do
+      successor = Samagotchi::OwnerLock::Owner.new(kind: "worker", pid: 2, started_at: "t2")
+      fresh = old_sidecar.with(port: 4200, started_at: "t2", version: "0.19.0")
+      allow(described_class).to receive(:session_owner).and_return(worker, successor)
+      allow(Samagotchi::WorkerLink).to receive(:resolve).and_return(live_link(old_sidecar))
+      allow(client).to receive(:request_exit).and_raise(Errno::ETIMEDOUT)
+      allow(Process).to receive(:kill)
+      allow(described_class).to receive(:resume_session)
+      allow(Samagotchi::WorkerLink).to receive(:await).and_return(live_link(fresh))
+
+      result = described_class.restart_session(session.id, state_dir: tmpdir, wait: 0.1)
+
+      expect(result.version).to eq("0.19.0")
+      expect(Process).not_to have_received(:kill)
+      expect(described_class).not_to have_received(:resume_session)
+    end
+
+    it "resumes without a TERM when the owner already let go" do
+      allow(described_class).to receive(:session_owner).and_return(worker, nil)
+      allow(Samagotchi::WorkerLink).to receive(:resolve).and_return(live_link(old_sidecar))
+      allow(client).to receive(:request_exit).and_raise(Errno::ECONNREFUSED)
+      allow(Process).to receive(:kill)
+      allow(described_class).to receive(:resume_session)
+      allow(Samagotchi::WorkerLink).to receive(:await).and_return(none_link)
+
+      described_class.restart_session(session.id, state_dir: tmpdir, wait: 0)
+
+      expect(Process).not_to have_received(:kill)
+      expect(described_class).to have_received(:resume_session).with(session.id, state_dir: tmpdir)
+    end
+
     it "reports a failed fallback when the owner does not release, without resuming" do
       allow(Samagotchi::WorkerLink).to receive(:resolve).and_return(live_link(old_sidecar))
       allow(client).to receive(:request_exit).and_raise(Errno::ECONNREFUSED)

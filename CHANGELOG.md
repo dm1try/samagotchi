@@ -14,7 +14,6 @@ and commands may change between minor versions. How releases are made:
 - chi web now opens a session stream before answering: a missing, leaving or unreachable worker gets 503, a Bridge
   refusal gets 502 instead of an empty 200 or SSE frame, and the opened socket closes when the stream ends. Remote
   stream retries distinguish 503 from a 502 `bridge_secret`, and `/stats` reports secret refusals consistently.
-- chi web closes an opened Bridge stream if preparing the SSE response fails before either transport takes ownership.
 - A plugin's `ctx.sessions.fork` reports a child chi won't start as `Samagotchi::Plugin::Sessions::Error` with chi's
   own reason (the session's model is gone from the config, or its toolkit is a `toolkit.kits` kit with an invalid
   `groups:`) instead of handing the bundle the raw `Toolkit::Refused` or `ModelProfile::MissingModel`.

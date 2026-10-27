@@ -382,10 +382,13 @@ The `delegate` tool hands a task to a **child session**: an ordinary chi session
 If `chi sessions restart ID` cannot ask its worker (the Bridge is unreachable
 or refuses its secret, the worker speaks a newer protocol, or its start is
 stuck), chi sends TERM without writing the stop marker, waits up to
-`SessionManager::STOP_WAIT` for the owner lock, and resumes the session. It
-refuses first if disk shows a running turn, pending question or approval,
-queued input, or a running background task started by the session; the
-message directs the user to `chi sessions stop ID`, then any prompt.
+`SessionManager::FALLBACK_STOP_WAIT` (40 s: the worker writes its recap on
+leave) for the owner lock, and resumes the session; a worker that doesn't let
+go in time is reported as "didn't take the restart" and nothing is resumed. A
+worker that took the lock meanwhile (the old one handed over after all) is
+not touched. It refuses first if disk shows a running turn, pending
+question or approval, queued input, or a running background task started by
+the session; the message directs the user to `chi sessions stop ID`, then any prompt.
 Reminders, a running `/btw`, and other in-memory worker state cannot be
 checked and may be lost in this fallback. The web restart route behaves the
 same way.

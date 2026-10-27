@@ -59,6 +59,19 @@ RSpec.describe "chi sessions restart" do
     expect(err).to eq("session #{session.id}: not now: a question or approval waits for an answer\n")
   end
 
+  it "names the session once when the fallback is held or failed" do
+    session = saved_session
+    %i[fallback_held failed].each do |reason|
+      allow(Samagotchi::SessionManager).to receive(:restart_session)
+        .and_raise(Samagotchi::SessionManager::RestartRefused.new(session.id, reason, holds: [:turn_running]))
+
+      err = run_restart(session.id)[1]
+
+      expect(err).not_to start_with("session #{session.id}: ")
+      expect(err.scan(session.id).size).to eq(reason == :fallback_held ? 2 : 1)
+    end
+  end
+
   it "says a session with no worker needs no restart (the real thing, no stubs)" do
     session = saved_session
 

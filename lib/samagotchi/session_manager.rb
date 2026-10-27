@@ -676,6 +676,9 @@ module Samagotchi
     Restarted = Struct.new(:session_id, :from_version, :version, keyword_init: true)
 
     RESTART_WAIT = 10.0
+    # A TERMed worker writes its recap on leave (an LLM call) while it still
+    # holds the lock: STOP_WAIT plus the recap's own wait (SessionContinue::RECAP_WAIT).
+    FALLBACK_STOP_WAIT = 40
 
     # Hand a session to a new worker on the newest chi installed: ask its
     # worker (POST /exit restart: true), which leaves only when nothing would
@@ -736,19 +739,26 @@ module Samagotchi
       raise RestartRefused.new(session_id, :fallback_held, holds: holds) unless holds.empty?
       raise RestartRefused.new(session_id, :failed, version: sidecar&.version) unless (owner&.pid || 0).to_i.positive?
 
-      begin
-        Process.kill("TERM", owner.pid)
-      rescue Errno::ESRCH
-        nil
-      rescue SystemCallError => e
-        Log.warn(:worker, "restart_fallback_failed", sid: session_id, why: why, error: e.class.name, msg: e.message)
-        raise RestartRefused.new(session_id, :failed, version: sidecar&.version)
-      end
-      unless wait_for_owner_release(session_id, timeout: STOP_WAIT, state_dir: state_dir)
-        raise RestartRefused.new(session_id, :failed, version: sidecar&.version)
-      end
+      # The ask may have taken READ_TIMEOUT: TERM only the owner read at the
+      # start; a successor that took the lock meanwhile is awaited, not killed.
+      current = session_owner(session_id, state_dir: state_dir)
+      if current.nil?
+        resume_session(session_id, state_dir: state_dir)
+      elsif current.pid == owner.pid && current.started_at == owner.started_at
+        begin
+          Process.kill("TERM", owner.pid)
+        rescue Errno::ESRCH
+          nil
+        rescue SystemCallError => e
+          Log.warn(:worker, "restart_fallback_failed", sid: session_id, why: why, error: e.class.name, msg: e.message)
+          raise RestartRefused.new(session_id, :failed, version: sidecar&.version)
+        end
+        unless wait_for_owner_release(session_id, timeout: FALLBACK_STOP_WAIT, state_dir: state_dir)
+          raise RestartRefused.new(session_id, :failed, version: sidecar&.version)
+        end
 
-      resume_session(session_id, state_dir: state_dir)
+        resume_session(session_id, state_dir: state_dir)
+      end
       previous_epoch = sidecar&.epoch
       previous_started_at = sidecar&.started_at
       fresh = WorkerLink.await(session_id, session_dir: dir, timeout: wait, unlink: false, interval: 0.1,
