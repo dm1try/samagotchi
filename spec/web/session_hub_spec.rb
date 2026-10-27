@@ -500,8 +500,10 @@ RSpec.describe Samagotchi::Web::SessionHub do
     it "is a `chi` event on the full probe when it changes, and #installed has it" do
       installed.newest = "0.18.1"
       hub.scan
-      expect(events.map { |e| [e.type, e.data] }).to eq([["chi", { version: Samagotchi::VERSION, installed: "0.18.1" }]])
+      expect(events.map { |e| [e.type, e.data] }).to eq([["chi", { version: Samagotchi::VERSION, installed: "0.18.1",
+                                                                   available: nil, update_blocked: nil }]])
       expect(hub.installed).to eq("0.18.1")
+      expect(hub.chi_state).to eq(version: Samagotchi::VERSION, installed: "0.18.1", available: nil, update_blocked: nil)
 
       installed.newest = "0.19.0"
       hub.scan # not a full probe yet: nothing
@@ -529,6 +531,13 @@ RSpec.describe Samagotchi::Web::SessionHub do
       allow(installed).to receive(:newest).and_raise(Errno::EACCES)
       expect { hub.scan }.not_to raise_error
       expect(hub.installed).to be_nil
+    end
+
+    it "emits a complete chi frame when update availability changes" do
+      hub.update_available(available: "99.0.0", blocked: "bundler")
+
+      expect(events.last.data).to eq(version: Samagotchi::VERSION, installed: nil, available: "99.0.0",
+                                     update_blocked: "bundler")
     end
   end
 

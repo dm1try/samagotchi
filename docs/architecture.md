@@ -533,12 +533,23 @@ The snapshot names chi's version: a tab served by another one (its `<body data-v
 reload in a toast, since an open tab keeps its old JS across a `chi web` upgrade. It also names
 `installed`, the newest chi on this machine (`InstalledVersions`: the highest `samagotchi-<v>.gemspec`
 in RubyGems' specification dirs, or a checkout's `version.rb` on disk; looked at again on each full
-probe, every 10 s), and a change is a `chi` frame `{version, installed}`. A newer one than the
-server runs is said in chi web's terminal and on the page: restart chi web (its workers already
-run the newest chi, [Sessions](sessions.md)). `GET /api/info` carries `installed` too, and the
-feature `newest_workers`; next to `cwd` (the folder chi web runs in) it names `start_dir`, the folder it
-starts in (`web.start_dir`, `--start-dir`; `Web::StartDir`), which a second `chi web` given another one
-mentions.
+probe, every 10 s). A `chi` frame and the `GET /api/events` snapshot carry the full state
+`{version, installed, available, update_blocked}`; `/api/info` and the session-command wake response
+carry the same fields. `SessionHub#update_available` publishes the checker result under the hub's
+Monitor, but fetching never holds it.
+
+`Web::UpdateCheck` runs its own thread beside the hub. When `update.notify: on` (the default), its
+first RubyGems check is about 30 seconds after chi web starts, then it checks at `update.check_hours`
+intervals. A stable release is available only after `update.min_age_hours` and when newer than both
+the running and newest installed chi. Its atomic, mode-0600
+`$XDG_STATE_HOME/samagotchi/update_check.json` keeps the check cooldown and versions already
+announced across restarts. `update.notify: off` starts no checker thread and makes no network
+request. `update_blocked` names why the local gem cannot be updated in place (checkout, Bundler, or
+an unwritable gem directory). The page tells the owner to run `chi update`; a newer `installed`
+version than the server itself still means restart chi web (its workers already run the newest chi,
+[Sessions](sessions.md)). `GET /api/info` also names `newest_workers`; next to `cwd` (the folder chi
+web runs in) it names `start_dir`, the folder it starts in (`web.start_dir`, `--start-dir`;
+`Web::StartDir`), which a second `chi web` given another one mentions.
 
 The page's scope is in its URL, and the server picks the default: `?dir=<folder>` is that folder's
 project (the list, the events stream and a new chat follow it), `?scope=all` every session, and a bare

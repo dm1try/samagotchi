@@ -529,6 +529,8 @@ RSpec.describe Samagotchi::Web::App do
       frames = collected.value
       expect(frames.map(&:first)).to eq(%w[snapshot session session_gone])
       expect(frames[0][1]["sessions"].map { |s| s["id"] }).to eq([a.id])
+      expect(frames[0][1]).to include("version" => Samagotchi::VERSION, "installed" => nil, "available" => nil,
+                                      "update_blocked" => nil)
       expect(frames[0][1]["sessions"].first).to include("bridge_up" => false, "owner" => nil)
       expect(frames[1][1]["session"]).to include("id" => b.id)
       expect(frames[2][1]).to eq("id" => a.id)
@@ -582,7 +584,8 @@ RSpec.describe Samagotchi::Web::App do
       hub.stop
 
       expect(collected.value.first)
-        .to eq(["snapshot", { "sessions" => [], "version" => Samagotchi::VERSION, "installed" => nil }])
+        .to eq(["snapshot", { "sessions" => [], "version" => Samagotchi::VERSION, "installed" => nil,
+                              "available" => nil, "update_blocked" => nil }])
     end
 
     it "names the newest installed chi in the snapshot, and sends a `chi` frame when it changes" do
@@ -597,7 +600,8 @@ RSpec.describe Samagotchi::Web::App do
 
       frames = collected.value
       expect(frames.first[1]).to include("installed" => "0.18.0")
-      expect(frames[1]).to eq(["chi", { "version" => Samagotchi::VERSION, "installed" => "99.0.0" }])
+      expect(frames[1]).to eq(["chi", { "version" => Samagotchi::VERSION, "installed" => "99.0.0",
+                                        "available" => nil, "update_blocked" => nil }])
     end
 
     it "ends the connection when its queue overflowed: the reconnect's snapshot is the recovery" do

@@ -76,7 +76,8 @@ RSpec.describe Samagotchi::Web::Server, "with --tunnel tailscale" do
   it "turns Serve on only once the port is bound: a port taken never reaches Serve" do
     allow(Samagotchi::Web::App).to receive(:new).and_return(double("app", "server_running=": nil))
     allow(Samagotchi::Web::SessionHub).to receive(:new)
-      .and_return(instance_double(Samagotchi::Web::SessionHub, start: nil, stop: nil, scan: nil, subscribe: -> {}))
+      .and_return(instance_double(Samagotchi::Web::SessionHub, start: nil, stop: nil, scan: nil,
+                                  update_available: nil, subscribe: -> {}))
     allow(Samagotchi::Web::Token).to receive_messages(load_or_create: nil, read: "T")
     allow(described_class).to receive(:push_runtime).and_return(nil)
     allow(Rackup::Handler::WEBrick).to receive(:run).and_raise(Errno::EADDRINUSE)

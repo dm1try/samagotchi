@@ -865,8 +865,8 @@ module Samagotchi
       end
 
       # What a second `chi web` probes before starting its own server: this
-      # is chi web, and it knows ?dir (features). installed: the newest chi
-      # on this machine (nil until the hub has looked); newest_workers: the
+      # is chi web, and it knows ?dir (features). Its chi version state is
+      # {version, installed, available, update_blocked}; newest_workers: the
       # workers it starts run that one, not this chi web's version;
       # session_commands: the routes chi --remote needs
       # (SessionAccessRoutes::FEATURE); remote_attach: the ones a remote
@@ -880,7 +880,8 @@ module Samagotchi
       def handle_info(req)
         return participant_info unless principal(req).owner?
 
-        json_response(200, { app: "chi-web", version: Samagotchi::VERSION, installed: @hub&.installed, pid: Process.pid,
+        chi_state = @hub&.chi_state || { version: Samagotchi::VERSION, installed: nil, available: nil, update_blocked: nil }
+        json_response(200, { app: "chi-web", **chi_state, pid: Process.pid,
                              cwd: Dir.pwd, start_dir: start_dir, features: INFO_FEATURES, lan: @lan && @lan[:ip],
                              proxy: @public_url && { identity_header: @public_url.identity_header } })
       end
@@ -1799,14 +1800,12 @@ module Samagotchi
           @queue = Bridge::BoundedQueue.new(capacity: capacity)
           @handle, @snapshot = @hub.subscribe(->(event) { @queue.push(event) }, snapshot: true, project_root: project_root)
           # Read after subscribing: a change in between is also a queued event.
-          @installed = @hub.installed
+          @chi_state = @hub.chi_state
         end
 
         def each
-          # version: the page compares it with the one it was served by;
-          # installed: the newest chi on this machine (a later change is a
-          # `chi` event).
-          yield frame(nil, "snapshot", sessions: @snapshot, version: Samagotchi::VERSION, installed: @installed)
+          # The page compares this full chi state with the one it was served by.
+          yield frame(nil, "snapshot", { sessions: @snapshot }.merge(@chi_state))
           last_write = monotonic
           loop do
             event = @queue.pop([@heartbeat, EVENTS_POLL].min)

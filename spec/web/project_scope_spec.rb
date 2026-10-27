@@ -130,7 +130,7 @@ RSpec.describe Samagotchi::Web::App do
       expect(status).to eq(200)
       expect(JSON.parse(body)).to include("app" => "chi-web", "version" => Samagotchi::VERSION, "pid" => Process.pid,
                                           "cwd" => Dir.pwd, "start_dir" => Dir.pwd, "features" => %w[dir newest_workers session_commands remote_attach bound_grants],
-                                          "installed" => Samagotchi::VERSION, "proxy" => nil)
+                                          "installed" => Samagotchi::VERSION, "available" => nil, "update_blocked" => nil, "proxy" => nil)
     end
   end
 

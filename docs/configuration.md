@@ -177,7 +177,8 @@ or `chi web` restart.
 | `log.*` | Process start | Each process holds its configured log sink and level after first use; restart that process. |
 | `history.file` | Next history access | The TUI and web composer resolve its path when they read or append history. |
 | `broadcast.*` | Next `chi broadcast` | Each broadcast invocation reads its targeting and triage settings. |
-| `update.*` | Next `chi update` | The command reads which components to update when it runs. |
+| `update.gem`, `update.bundles`, `update.desktop` | Next `chi update` | The command reads which components to update when it runs. |
+| `update.notify`, `update.check_hours`, `update.min_age_hours` | `chi web` start | The update checker starts with chi web; restart it to apply changes. |
 | `kitty.*`, `tmux.*` | `chi desktop upgrade` or desktop update | These settings are copied into the desktop helper's launch file. |
 | `model.profile`, `reasoning_history` | Not from config.yml | These are CLI/environment settings; `models:` and `hosts:` provide their model- and host-specific forms. |
 
@@ -2049,6 +2050,9 @@ column says so, a `--kebab-name` flag. The maps (`hosts:`, `models:`,
 | `update.gem` | `true` | | `false`: `chi update` never installs a newer gem (`--no-gem` for one run). See [CLI: Updating](cli.md#updating). |
 | `update.bundles` | `true` | | `false`: `chi update` leaves the shipped bundles to `chi bundle upgrade` (`--no-bundles`). |
 | `update.desktop` | `true` | | `false`: `chi update` leaves the desktop helper alone (`--no-desktop`). |
+| `update.notify` | `on` | | `on`: chi web checks RubyGems once a day and shows aged stable releases newer than both this chi and the newest installed chi; `off`: no thread or network check. |
+| `update.check_hours` | `24` | | Hours between RubyGems checks (at least 1). The first check starts about 30 seconds after chi web starts. |
+| `update.min_age_hours` | `24` | | A release must be this old before chi web offers it; `0` disables the age delay. |
 | `kitty.listen_on` | none | | The desktop helper's kitty socket, copied from `kitty.conf`; unset = no kitty targets. See "Desktop helper: agents in kitty". |
 | `kitty.binary` | `/Applications/kitty.app/Contents/MacOS/kitty` | | The kitty the helper runs `kitty @` with. |
 | `kitty.agents` | `claude\|codex\|gemini\|aider\|opencode\|cursor-agent\|amp\|goose` | | Foreground programs whose kitty windows the helper lists, `\|`-separated (a YAML list works too); `*` lists every window. |

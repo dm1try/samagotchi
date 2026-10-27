@@ -17,6 +17,7 @@ require_relative "qr"
 require_relative "running"
 require_relative "start_dir"
 require_relative "session_hub"
+require_relative "update_check"
 require_relative "token"
 require_relative "tunnel"
 require_relative "../config"
@@ -234,7 +235,7 @@ module Samagotchi
                      view: Config::BY_KEY["web.view"].default, annotate_presets: Config::BY_KEY["web.annotate_presets"].default, hub: nil, lan: nil,
                      editor: Config::BY_KEY["web.editor"].default, token_path: Token.path,
                      working_set: Config::BY_KEY["web.working_set"].default, public_url: nil, public_notes: [],
-                     on_bound: nil, start_dir: Dir.pwd)
+                     on_bound: nil, start_dir: Dir.pwd, update_check: nil)
         config_restart_unsubscribe = ConfigFile.watch_restart_settings!(process: :web) do |message|
           Samagotchi::Log.warn(:config, "restart_required", echo: "Warning: config: #{message}")
         end
@@ -243,6 +244,7 @@ module Samagotchi
         url ||= "http://#{url_host(host)}:#{port}/"
 
         hub ||= SessionHub.new(state_dir: state_dir || Session.default_state_dir, manager: manager || SessionManager)
+        update_check ||= UpdateCheck.new(hub: hub)
         Token.load_or_create(token_path) if lan || public_url
         lan_option = { ip: lan.ip, token: Token::Source.new(token_path) } if lan
         public_token = Token::Source.new(token_path) if public_url
@@ -267,6 +269,7 @@ module Samagotchi
           Samagotchi::Log.info(:web, "push", devices: push.store.for_origin(push.origin).size)
         end
         hub.start
+        update_check.start
         # Said once the port is bound: a second chi web racing for it gets
         # the in-use line instead.
         running_path = Running.path(state_dir: state_dir)
@@ -316,6 +319,7 @@ module Samagotchi
         Running.clear(path: running_path) if running_path
         config_restart_unsubscribe&.call
         notifier&.stop
+        update_check&.stop
         hub&.stop
         Samagotchi::Log.info(:web, "stop") if app
       end

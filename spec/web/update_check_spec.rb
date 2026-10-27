@@ -1,0 +1,122 @@
+# frozen_string_literal: true
+
+require "spec_helper"
+require "tmpdir"
+require "json"
+require "samagotchi/web/update_check"
+
+RSpec.describe Samagotchi::Web::UpdateCheck do
+  let(:root) { Dir.mktmpdir("update-check-spec") }
+  let(:state_file) { File.join(root, "samagotchi", "update_check.json") }
+  let(:clock) { [Time.utc(2026, 10, 27, 12)] }
+  let(:hub) { double("hub", update_available: nil) }
+  let(:installed_versions) { double("installed versions", newest: nil) }
+  let(:release_version) { Gem::Version.new(Samagotchi::VERSION).bump.to_s }
+  let(:releases) { [release(release_version)] }
+  let(:fetcher) { -> { releases } }
+
+  after { FileUtils.remove_entry(root) }
+
+  def release(version, age: 48 * 3600, prerelease: false)
+    Samagotchi::GemUpdate::Release.new(version: version, created_at: clock.first - age, prerelease: prerelease)
+  end
+
+  def checker(**options)
+    described_class.new(hub: hub, fetcher: fetcher, clock: -> { clock.first }, state_file: state_file,
+                        gem_spec: Object.new, bundler: false, gem_dir: root,
+                        installed_versions: installed_versions, **options)
+  end
+
+  it "checks only when due, persists the answer with private permissions, and notifies once per version" do
+    update_check = checker
+
+    expect(update_check.check).to be(true)
+    expect(hub).to have_received(:update_available).with(available: release_version, blocked: nil, notify: true).once
+    state = JSON.parse(File.read(state_file))
+    expect(state).to include("available" => release_version, "notified" => [release_version])
+    expect(File.stat(state_file).mode & 0o777).to eq(0o600)
+    expect(update_check.check).to be(false)
+
+    clock[0] += 24 * 3600
+    expect(update_check.check).to be(true)
+    expect(hub).to have_received(:update_available).with(available: release_version, blocked: nil, notify: false).once
+    expect(JSON.parse(File.read(state_file))["notified"]).to eq([release_version])
+  end
+
+  it "chooses only the newest sufficiently old stable release newer than the installed chi" do
+    installed = Gem::Version.new(Samagotchi::VERSION).bump.to_s
+    newest = Gem::Version.new(installed).bump.to_s
+    young = Gem::Version.new(newest).bump.to_s
+    allow(installed_versions).to receive(:newest).and_return(installed)
+    allow(fetcher).to receive(:call).and_return([
+      release(release_version),
+      release(installed),
+      release(newest),
+      release(young, age: 3600),
+      release("#{young}.pre1", prerelease: true)
+    ])
+
+    expect(checker.check).to be(true)
+    expect(hub).to have_received(:update_available).with(available: newest, blocked: nil, notify: true)
+  end
+
+  it "keeps the previous answer and records a failed check without re-notifying" do
+    expect(checker.check).to be(true)
+    clock[0] += 24 * 3600
+    allow(fetcher).to receive(:call).and_raise(IOError, "offline")
+    previous = JSON.parse(File.read(state_file))
+
+    expect(checker.check).to be(false)
+    state = JSON.parse(File.read(state_file))
+    expect(state["available"]).to eq(previous["available"])
+    expect(state["notified"]).to eq(previous["notified"])
+    expect(Time.iso8601(state["checked_at"])).to eq(clock.first)
+  end
+
+  it "publishes the blocked update reasons for checkout, Bundler, and an unwritable gem directory" do
+    cases = [
+      [{ gem_spec: nil }, "checkout"],
+      [{ bundler: true }, "bundler"],
+      [{ gem_dir: File.join(root, "missing") }, "gem_dir_not_writable"]
+    ]
+    cases.each do |settings, expected|
+      hub = double("hub", update_available: nil)
+      described_class.new(hub: hub, fetcher: fetcher, clock: -> { clock.first },
+                          state_file: File.join(root, expected, "update_check.json"),
+                          installed_versions: installed_versions, gem_spec: Object.new, bundler: false,
+                          gem_dir: root, **settings).check
+      expect(hub).to have_received(:update_available).with(available: release_version, blocked: expected, notify: true)
+    end
+  end
+
+  it "does no fetch or publish when notifications are off" do
+    update_check = checker(enabled: false)
+    expect(fetcher).not_to receive(:call)
+
+    expect(update_check.start).to be(update_check)
+    expect(update_check.check).to be(false)
+    expect(hub).not_to have_received(:update_available)
+    expect(File).not_to exist(state_file)
+  end
+
+  it "restores the saved answer without checking before the cooldown expires" do
+    expect(checker.check).to be(true)
+    restored = checker
+    expect(fetcher).not_to receive(:call)
+
+    restored.start
+    thread = restored.instance_variable_get(:@thread)
+    expect(hub).to have_received(:update_available).with(available: release_version, blocked: nil)
+    expect(restored.check).to be(false)
+    restored.stop
+    join!(thread, "restored update-check thread")
+  end
+
+  it "uses the config checks for the minimum supported intervals" do
+    entries = Samagotchi::Config::ENTRIES.to_h { |entry| [entry.key, entry] }
+
+    expect(entries.fetch("update.check_hours").check.call(0)).to eq("at least 1")
+    expect(entries.fetch("update.min_age_hours").check.call(-1)).to eq("at least 0")
+    expect(entries.fetch("update.min_age_hours").check.call(0)).to be_nil
+  end
+end

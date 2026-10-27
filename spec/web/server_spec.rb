@@ -58,6 +58,7 @@ RSpec.describe Samagotchi::Web::Server do
   # chi line's subscribe ignores it), scan as a pass that found nothing.
   let(:hub) do
     instance_double(Samagotchi::Web::SessionHub, start: nil, stop: nil, scan: nil,
+                                                 update_available: nil,
                                                  subscribe: [instance_double(Samagotchi::Web::SessionHub::Subscription, unsubscribe: true), []])
   end
 

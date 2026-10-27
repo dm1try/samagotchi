@@ -290,6 +290,11 @@ module Samagotchi
       Entry.new(key: "update.gem",               yaml_path: %w[update gem],               type: :bool,    default: true,            expose: %i[env config], lifecycle: :next_update),
       Entry.new(key: "update.bundles",           yaml_path: %w[update bundles],           type: :bool,    default: true,            expose: %i[env config], lifecycle: :next_update),
       Entry.new(key: "update.desktop",           yaml_path: %w[update desktop],           type: :bool,    default: true,            expose: %i[env config], lifecycle: :next_update),
+      Entry.new(key: "update.notify",            yaml_path: %w[update notify],            type: :enum,    default: "on",             expose: %i[env config], enum_values: %w[on off], lifecycle: :web_start),
+      Entry.new(key: "update.check_hours",       yaml_path: %w[update check_hours],       type: :integer, default: 24,               expose: %i[env config], lifecycle: :web_start,
+                check: ->(value) { "at least 1" unless value >= 1 }),
+      Entry.new(key: "update.min_age_hours",     yaml_path: %w[update min_age_hours],     type: :integer, default: 24,               expose: %i[env config], lifecycle: :web_start,
+                check: ->(value) { "at least 0" unless value >= 0 }),
       # The desktop helper's kitty targets (Desktop::MacOS.kitty_settings, one of its terminal_settings): listen_on copied from kitty.conf (unset = none),
       # the kitty binary, and the foreground programs listed, "|"-separated (a YAML list works too; "*" = every window).
       Entry.new(key: "kitty.listen_on",          yaml_path: %w[kitty listen_on],          type: :string, default: nil,              expose: %i[env config], lifecycle: :desktop_update),
