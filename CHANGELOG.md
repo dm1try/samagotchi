@@ -9,6 +9,9 @@ and commands may change between minor versions. How releases are made:
 
 ### Fixed
 
+- A plugin's `ctx.sessions.fork` reports a child chi won't start as `Samagotchi::Plugin::Sessions::Error` with chi's
+  own reason (the session's model is gone from the config, or its toolkit is a `toolkit.kits` kit with an invalid
+  `groups:`) instead of handing the bundle the raw `Toolkit::Refused` or `ModelProfile::MissingModel`.
 - A `toolkit.kits` kit whose `groups:` isn't a name or a list (a map such as `{chrome: true}`) no longer loads
   silently with its base's groups: chi, `chi send --new`, chi web and `delegate` refuse a new session on it, naming
   the kit and the reason, and a session already saved on it reaches no tool-index group until config.yml is fixed.

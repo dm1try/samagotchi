@@ -110,6 +110,14 @@ RSpec.describe Samagotchi::Plugin::Sessions do
       expect(ctx_of.call(delegate.id).delegate?).to be(true)
     end
 
+    it "raises Error with chi's reason when the child's toolkit or model is refused" do
+      [[Samagotchi::Toolkit::Refused, "toolkit.kits.typo: groups: must be a name or a list"],
+       [Samagotchi::ModelProfile::MissingModel, "model gone is not in the config"]].each do |klass, reason|
+        allow(Samagotchi::SessionManager).to receive(:spawn_session).and_raise(klass, reason)
+        expect { sessions.fork(messages: []) }.to raise_error(described_class::Error, reason)
+      end
+    end
+
     context "from a scratch session" do
       let(:host) do
         Samagotchi::Plugin::Host.new(session_id: -> { session_id }, cwd: -> { tmpdir }, model_name: -> { "gemma4" },

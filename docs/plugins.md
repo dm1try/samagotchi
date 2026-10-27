@@ -1015,6 +1015,9 @@ ctx.sessions.review(subjects: ["docs/plan.md"], seed: handoff)  # => a review se
     `/title` of its own (see [Session titles](sessions.md#session-titles)).
   - An image a message names is copied into the child. One whose file is
     gone is dropped, with `[image x.png was not copied]` in its message.
+  - A child chi won't start raises `Error` with chi's reason: the session's
+    model is gone from the config, or its toolkit is a config kit with an
+    invalid `groups:` (`toolkit.kits`, `Toolkit.check_new!`).
 - `review(subjects: [], seed: nil, recap_wait: 0)` starts a review session of
   this one, as `chi review --from` does (see [Review sessions](sessions.md#review-sessions)):
   a new session in this session's folder, on its model and setup, seeded with

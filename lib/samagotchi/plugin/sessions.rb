@@ -27,6 +27,11 @@ module Samagotchi
       # A fork, send, read or stop that couldn't be done; the message says why.
       class Error < StandardError; end
 
+      # What starting a session can be refused by, answered as Error with
+      # chi's own message: a model that is gone, a toolkit the config refuses,
+      # a bad argument. #review adds its own: a subject it won't take.
+      REFUSED = [ModelProfile::MissingModel, Toolkit::Refused, ArgumentError].freeze
+
       # @param host [Host] session_id, cwd, model_name and state_dir
       def initialize(host)
         @host = host
@@ -44,7 +49,9 @@ module Samagotchi
       # @param prompt [String, nil] the child's first turn
       # @return [String] the child's id
       # @raise [Error] no session yet, a scratch session (the child would
-      #   outlive it), or too many children running
+      #   outlive it), too many children running, or the model or toolkit the
+      #   child starts on being refused (a config kit with an invalid groups:,
+      #   a model that is gone)
       def fork(messages:, title: nil, prompt: nil)
         parent_id = @host.session_id.call or raise Error, "this session has no id yet"
         raise Error, "a scratch session starts no other sessions: they would outlive it" if @host.scratch&.call
@@ -60,6 +67,8 @@ module Samagotchi
           setup: @host.setup&.call || SessionSetup.new
         )
         child.id
+      rescue *REFUSED => e
+        raise Error, e.message
       end
 
       # A review of this session (ReviewStart.fork, chi review --from): a new
@@ -81,7 +90,7 @@ module Samagotchi
 
         ReviewStart.fork(from: source, subjects: Array(subjects), seed: seed, state_dir: state_dir,
                          recap_wait: recap_wait).id
-      rescue ReviewStart::Refused, ModelProfile::MissingModel, Toolkit::Refused, ArgumentError => e
+      rescue *REFUSED, ReviewStart::Refused => e
         raise Error, e.message
       end
 
