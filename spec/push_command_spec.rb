@@ -141,7 +141,7 @@ RSpec.describe Samagotchi::PushCommand do
       real = ->(_sub) { Samagotchi::Web::Push::Client.new(key: store.vapid_key, contact: "mailto:a@b.c", transport: ->(*) { ok }) }
       code = described_class.new(["test", phone.id], stdout: out, stderr: err, store: store, origin: -> { current }, client: real).run
       expect(code).to eq(1)
-      expect(out.string).to match(/\A#{phone.id}  iPhone · 2026-10-24  failed  \(\d+ ms\): ArgumentError\n\z/)
+      expect(out.string).to match(/\A#{phone.id}  iPhone · 2026-10-24  failed \(\d+ ms\): ArgumentError\n\z/)
       expect(store.find(phone.id).last_error).to eq("ArgumentError")
     end
 

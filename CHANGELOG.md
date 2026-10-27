@@ -64,6 +64,8 @@ and commands may change between minor versions. How releases are made:
   `chi.toolkit(groups:)` (0.121.0), `ctx.ask_model(model:)` (0.80.0) and `ctx.sessions.send(delivery:)` (0.64.0).
 - A remote `chi share` (or `share ls`/`cap`/`revoke`) whose chi web can't read its grants store prints the store's own
   line, as a local one does, instead of "… answered 409 grants_unwritable: …".
+- `chi web push test`'s line for a push that failed before the push service answered reads "failed (12 ms)", not
+  "failed  (12 ms)".
 
 ## [0.121.0] - 2026-10-26
 

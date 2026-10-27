@@ -135,7 +135,7 @@ module Samagotchi
     # route does). @return [Boolean] delivered
     def test(sub)
       result = client_for(sub).deliver(sub, Web::Push::TEST_PAYLOAD, ttl: Web::Push::TEST_TTL, urgency: "high")
-      words = "#{result.status} #{result.code}#{" (#{result.ms} ms)" if result.ms}"
+      words = [result.status, result.code, ("(#{result.ms} ms)" if result.ms)].reject { |part| part.to_s.empty? }.join(" ")
       words += ": #{result.error}" if result.error && !result.ok?
       if result.status == :gone
         @store.remove(sub.id)
