@@ -1377,24 +1377,32 @@ module Samagotchi
         opened = client.open_stream(query: query, last_event_id: req.env["HTTP_LAST_EVENT_ID"])
         return stream_open_error(id, opened) unless opened.is_a?(BridgeClient::StreamOpen::Opened)
 
-        headers = {
-          "Content-Type" => "text/event-stream",
-          "Cache-Control" => "no-cache",
-          "Connection" => "keep-alive",
-          "X-Accel-Buffering" => "no"
-        }
+        handed_off = false
+        begin
+          headers = {
+            "Content-Type" => "text/event-stream",
+            "Cache-Control" => "no-cache",
+            "Connection" => "keep-alive",
+            "X-Accel-Buffering" => "no"
+          }
 
-        # Handlers that buffer enumerable bodies before responding (rackup's
-        # WEBrick does `body.each` to completion) hang forever on an unbounded
-        # SSE body — the browser never even receives the status line. When the
-        # handler supports hijacking, stream frames straight to the socket
-        # instead of returning an enumerable.
-        if req.env["rack.hijack?"]
-          hijack = sse_hijack(id, req, client, opened, filter)
-          return [200, headers.merge("rack.hijack" => hijack), []]
+          # Handlers that buffer enumerable bodies before responding (rackup's
+          # WEBrick does `body.each` to completion) hang forever on an unbounded
+          # SSE body — the browser never even receives the status line. When the
+          # handler supports hijacking, stream frames straight to the socket
+          # instead of returning an enumerable.
+          if req.env["rack.hijack?"]
+            hijack = sse_hijack(id, req, client, opened, filter)
+            handed_off = true
+            return [200, headers.merge("rack.hijack" => hijack), []]
+          end
+
+          body = proxy_stream_body(id, req, client, opened, filter)
+          handed_off = true
+          [200, headers, body]
+        ensure
+          opened.sock.close unless handed_off
         end
-
-        [200, headers, proxy_stream_body(id, req, client, opened, filter)]
       end
 
       # The one ProxyStreamBody both of #handle_stream's transports send:

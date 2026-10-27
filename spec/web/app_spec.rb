@@ -198,6 +198,46 @@ RSpec.describe Samagotchi::Web::App do
       expect(JSON.parse(body.first)).to include("error" => "not_live")
     end
 
+    it "answers a stuck Starting link with BRIDGE_LATE without waiting" do
+      app = build_app(state_dir: Dir.mktmpdir)
+      allow(app).to receive(:worker_link).and_return(Samagotchi::WorkerLink::Starting.new(owner: nil, stuck: true))
+      allow(app).to receive(:await_worker_link).and_call_original
+
+      status, _headers, body = app.call(env_for("/api/sessions/s1/stream"))
+
+      expect(status).to eq(503)
+      expect(JSON.parse(body.first)).to include(
+        "error" => "not_live", "detail" => format(Samagotchi::LaunchMode::BRIDGE_LATE, "s1")
+      )
+      expect(app).not_to have_received(:await_worker_link)
+    end
+
+    it "answers a Skew link with 502 worker_newer and its detail" do
+      sidecar = Samagotchi::WorkerSidecar.new(port: 4100, version: "9.9.9", protocol: 2)
+      link = Samagotchi::WorkerLink::Skew.new(sidecar: sidecar, owner: nil, reason: :protocol)
+      app = build_app(state_dir: Dir.mktmpdir)
+      allow(app).to receive(:worker_link).and_return(link)
+
+      status, _headers, body = app.call(env_for("/api/sessions/s1/stream"))
+
+      expect(status).to eq(502)
+      expect(JSON.parse(body.first)).to include("error" => "worker_newer", "detail" => link.message("s1"))
+    end
+
+    it "answers a refused Bridge error with 502 and the Bridge's detail" do
+      app = build_app(state_dir: Dir.mktmpdir)
+      allow(app).to receive(:worker_link).and_return(link_at(9_999))
+      client = stub_stream_open(app)
+      allow(client).to receive(:open_stream).and_return(
+        Samagotchi::BridgeClient::StreamOpen::Refused.new(reason: :other, detail: "Bridge failed", status: 500)
+      )
+
+      status, _headers, body = app.call(env_for("/api/sessions/s1/stream"))
+
+      expect(status).to eq(502)
+      expect(JSON.parse(body.first)).to include("error" => "bridge_error", "detail" => "Bridge failed")
+    end
+
     it "proxies to the live bridge and forwards the client query string" do
       app = build_app(state_dir: Dir.mktmpdir)
       allow(app).to receive(:worker_link).and_return(link_at(9_999))
@@ -210,10 +250,40 @@ RSpec.describe Samagotchi::Web::App do
       expect(body.instance_variable_get(:@query)).to eq("?from_seq=3")
     end
 
+    it "closes the opened socket if preparing the enumerable body raises" do
+      opened = Samagotchi::BridgeClient::StreamOpen::Opened.new(sock: StringIO.new, status: 200, headers: {})
+      client = instance_double(Samagotchi::BridgeClient, port: 4100, open_stream: opened)
+      app = build_app(state_dir: Dir.mktmpdir)
+      allow(app).to receive(:worker_link).and_return(link_at(9_999))
+      allow(app).to receive(:link_client).and_return(client)
+      allow(app).to receive(:stream_running).and_raise(RuntimeError, "handoff failed")
+
+      status, = app.call(env_for("/api/sessions/s1/stream"))
+
+      expect(status).to eq(500)
+      expect(opened.sock).to be_closed
+    end
+
+    it "closes the opened socket if preparing the hijack raises" do
+      opened = Samagotchi::BridgeClient::StreamOpen::Opened.new(sock: StringIO.new, status: 200, headers: {})
+      client = instance_double(Samagotchi::BridgeClient, port: 4100, open_stream: opened)
+      app = build_app(state_dir: Dir.mktmpdir)
+      allow(app).to receive(:worker_link).and_return(link_at(9_999))
+      allow(app).to receive(:link_client).and_return(client)
+      allow(app).to receive(:stream_running).and_raise(RuntimeError, "handoff failed")
+
+      status, = app.call(env_for("/api/sessions/s1/stream", headers: { "rack.hijack?" => true }))
+
+      expect(status).to eq(500)
+      expect(opened.sock).to be_closed
+    end
+
     it "answers 503 before a status line when the live sidecar's Bridge refuses a connection" do
       server = TCPServer.new("127.0.0.1", 0)
+      port = server.local_address.ip_port
+      server.close
       app = build_app(state_dir: Dir.mktmpdir)
-      allow(app).to receive(:worker_link).and_return(link_at(server.local_address.ip_port))
+      allow(app).to receive(:worker_link).and_return(link_at(port))
 
       status, _headers, body = app.call(env_for("/api/sessions/s1/stream"))
 

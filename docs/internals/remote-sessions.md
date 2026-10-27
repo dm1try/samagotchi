@@ -425,9 +425,9 @@ the closing line reads `stopped` as `unreachable`, the words it always had.
     TUI (`tui:PID` otherwise). `report_unanswered` takes the link's `strategy:` and `via:`.
   - The client the loop and `BridgeClient::EventStream` use: `follow`, `post_turn`, `post_command`, `answer`,
     `dismiss_question`, `dequeue`, `cancel`, `request_exit`, `request_recap`, `session_id`, and for the stream
-    `open_stream(query:, last_event_id:, header_timeout:, attempts:)`, `read_stream` and `worker_key` (a new worker is a client with another key;
-    a Bridge's is its port). `BridgeClient::StreamRequest` writes the stream's GET (host, port, path, extra headers)
-    and reads its headers, for a stream through chi web too.
+    `open_stream(query:, last_event_id:, header_timeout:, attempts:)` and `worker_key` (a new worker is a client with
+    another key; a Bridge's is its port). `EventStream` reads the opened socket; `BridgeClient::StreamRequest`
+    writes the stream's GET (host, port, path, extra headers) and reads its headers, for a stream through chi web too.
   - `RunOptions.parse(argv)` is bin/chi's one run-flag parser (`RunOptions.switches` lists its flags), so a remote
     branch can take the parsed options before bin/chi's local checks; `LaunchMode.attached_conflict` and
     `LaunchMode::SCRATCH_LEFTOVER` / `BRIDGE_LATE` are the words both would print.

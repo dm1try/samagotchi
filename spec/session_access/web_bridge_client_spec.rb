@@ -220,6 +220,28 @@ RSpec.describe Samagotchi::SessionAccess::WebBridgeClient do
       [server.local_address.ip_port, heads]
     end
 
+    def serve_sequence(*replies)
+      server = TCPServer.new("127.0.0.1", 0)
+      heads = Queue.new
+      thread = Thread.new do
+        replies.each do |response|
+          conn = server.accept
+          head = +""
+          head << conn.gets.to_s until head.end_with?("\r\n\r\n")
+          heads << head
+          conn.write(response)
+          conn.read if response.start_with?("HTTP/1.1 200")
+          conn.close
+        end
+      rescue IOError, SystemCallError
+        nil
+      ensure
+        server.close unless server.closed?
+      end
+      thread.report_on_exception = false
+      [server, server.local_address.ip_port, heads, thread]
+    end
+
     after { @cleanup&.call }
 
     def client_at(port, url: "http://127.0.0.1:#{port}")
@@ -282,6 +304,41 @@ RSpec.describe Samagotchi::SessionAccess::WebBridgeClient do
 
       port, = serve("HTTP/1.1 404 Not Found\r\nContent-Length: 2\r\n\r\n{}")
       expect(client_at(port).open_stream).to have_attributes(reason: :unknown_session)
+    end
+
+    it "closes a remote stream refused with 502 bridge_secret" do
+      body = JSON.generate(error: "bridge_secret", detail: Samagotchi::BridgeSecret::REFUSED)
+      response = "HTTP/1.1 502 Bad Gateway\r\nContent-Length: #{body.bytesize}\r\n\r\n#{body}"
+      server, port, heads, thread = serve_sequence(response)
+      client = client_at(port)
+      events = Queue.new
+      stream = client.follow(rediscover: -> { client }, reconnect_delays: [0.01]) { |event| events << event }
+
+      expect(pop!(heads, "the remote stream request")).to include("GET /api/sessions/s1/stream?snapshot=1")
+      expect(pop!(events, "the secret refusal")).to eq("type" => "stream_closed", "reason" => "bridge_secret")
+    ensure
+      stream&.close
+      server&.close unless server&.closed?
+      join!(thread, "the remote stream server") if thread
+    end
+
+    it "announces a remote 503 retry, but resumes only after a 200 stream opens" do
+      body = JSON.generate(error: "not_live")
+      unavailable = "HTTP/1.1 503 Service Unavailable\r\nContent-Length: #{body.bytesize}\r\n\r\n#{body}"
+      opened = "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\n\r\nid: 1-e1\ndata: {\"type\":\"snapshot\"}\n\n"
+      server, port, heads, thread = serve_sequence(unavailable, opened)
+      events = Queue.new
+      stream = client_at(port).follow(reconnect_delays: [0.01]) { |event| events << event }
+
+      expect(pop!(heads, "the first remote stream request")).to include("GET /api/sessions/s1/stream?snapshot=1")
+      expect(pop!(events, "the retry notice")).to eq("type" => "stream_retrying")
+      expect(pop!(heads, "the retried remote stream request")).to include("GET /api/sessions/s1/stream?snapshot=1")
+      expect(pop!(events, "the resumed notice")).to eq("type" => "stream_resumed")
+      expect(pop!(events, "the first frame after resuming")).to eq("type" => "snapshot")
+    ensure
+      stream&.close
+      server&.close unless server&.closed?
+      join!(thread, "the remote stream server") if thread
     end
 
     it "follows with epoch_watch, announce_retries and the 40 s idle timeout" do
