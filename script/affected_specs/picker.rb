@@ -25,6 +25,9 @@ module AffectedSpecs
       specs: %w[spec/docs_configuration_spec.rb], why: "reads docs/configuration.md against Config::ENTRIES" },
     { match: %w[docs/hooks.md lib/samagotchi/tools/builtin_calls.rb],
       specs: %w[spec/docs_hooks_call_fields_spec.rb], why: "reads docs/hooks.md against Tools::BuiltinCalls" },
+    { match: %w[lib/samagotchi/terminal_ui/attached_loop/** lib/samagotchi/terminal_ui/join_replay.rb],
+      specs: %w[spec/terminal_ui/attached_loop*_spec.rb spec/affected_specs/picker_spec.rb],
+      why: "attached-loop snapshot replay, exercised through the attached loop and picker" },
     { match: %w[lib/samagotchi/events.rb lib/samagotchi/web/public/stream_handlers.js lib/samagotchi/web/public/turn_events.js
                 lib/samagotchi/terminal_ui/attached_loop.rb lib/samagotchi/bridge/turn_accumulator.rb],
       specs: %w[spec/events_drift_spec.rb], why: "reads the event handlers' sources against Events" },

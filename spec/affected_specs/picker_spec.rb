@@ -66,6 +66,28 @@ RSpec.describe AffectedSpecs::Picker do
     expect(result.ruby.last.reason).to eq("names AttachedLoop (lib/samagotchi/terminal_ui/attached_loop.rb)")
   end
 
+  it "picks the attached-loop specs and picker spec for extracted loop files" do
+    files.merge!("spec/terminal_ui/attached_loop_link_spec.rb" => "",
+                 "spec/terminal_ui/attached_loop_participants_spec.rb" => "",
+                 "spec/terminal_ui/attached_loop_remote_spec.rb" => "",
+                 "spec/affected_specs/picker_spec.rb" => "")
+    expected = %w[
+      spec/terminal_ui/attached_loop_link_spec.rb
+      spec/terminal_ui/attached_loop_participants_spec.rb
+      spec/terminal_ui/attached_loop_remote_spec.rb
+      spec/terminal_ui/attached_loop_spec.rb
+      spec/affected_specs/picker_spec.rb
+    ]
+
+    ["lib/samagotchi/terminal_ui/attached_loop/join_header.rb",
+     "lib/samagotchi/terminal_ui/join_replay.rb"].each do |changed|
+      result = pick(changed)
+
+      expect(paths(result.ruby)).to eq(expected)
+      expect(result.ruby.map(&:reason)).to all(start_with("rule: "))
+    end
+  end
+
   it "ranks the name matches beside the changed file first, a same-named spec in another folder last" do
     files.merge!("lib/samagotchi/plugin/context.rb" => "", "spec/guardrails/context_spec.rb" => "", "spec/web/context_spec.rb" => "",
                  "spec/samagotchi/plugin/attached_context_spec.rb" => "", "spec/context_note_spec.rb" => "",
