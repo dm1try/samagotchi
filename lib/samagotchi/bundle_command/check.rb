@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require "prism"
 require "rbconfig"
 require "stringio"
 require "tmpdir"
@@ -214,8 +215,9 @@ module Samagotchi
         floor = lower_bound(manifest.requires_chi)
         return unless floor && File.file?(path(manifest.plugin[:file]))
 
-        calls = File.read(path(manifest.plugin[:file])).scan(API_CALL).flat_map { |call| [call, call.split(".").first(2).join(".")] }
-                    .uniq.select { |call| Plugin::Api::SINCE.key?(call) }
+        source = File.read(path(manifest.plugin[:file]))
+        calls = source.scan(API_CALL).flat_map { |call| [call, call.split(".").first(2).join(".")] }
+        calls = (calls + keyword_calls(source)).uniq.select { |call| Plugin::Api::SINCE.key?(call) }
         call = calls.max_by { |c| Gem::Version.new(Plugin::Api::SINCE[c]) } or return
         version = Plugin::Api::SINCE[call]
         return unless Gem::Version.new(version) > floor
@@ -224,6 +226,29 @@ module Samagotchi
             "requires_chi #{manifest.requires_chi.inspect} admits chi #{floor}, but #{manifest.plugin[:file]} uses " \
             "#{call}, which needs chi #{version}", line: line,
                                                                                       fix: "requires_chi: \">= #{version}\"")
+      end
+
+      # Each API call's keywords in +source+, as "chi.toolkit(groups:)": the
+      # call's receiver as written, its name and the keyword (Prism sees
+      # them with or without parens, over lines). Nothing when it doesn't parse.
+      def keyword_calls(source)
+        result = Prism.parse(source)
+        return [] unless result.success?
+
+        found = []
+        nodes = [result.value]
+        while (node = nodes.pop)
+          nodes.concat(node.compact_child_nodes)
+          next unless node.is_a?(Prism::CallNode) && node.receiver && node.arguments
+
+          call = "#{node.receiver.slice}.#{node.name}"
+          node.arguments.arguments.grep(Prism::KeywordHashNode).each do |hash|
+            hash.elements.each do |pair|
+              found << "#{call}(#{pair.key.unescaped}:)" if pair.is_a?(Prism::AssocNode) && pair.key.is_a?(Prism::SymbolNode)
+            end
+          end
+        end
+        found
       end
 
       def lower_bound(requirement)

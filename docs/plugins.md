@@ -598,7 +598,7 @@ tool (full) until it comes back, with a warning at its first turn. See
 [Toolkits](configuration.md#toolkits). `prompt:` needs chi 0.72.0 (an older
 chi refuses the keyword, a load error: a bundle that passes it sets
 `requires_chi: ">= 0.72.0"`). `groups:` needs chi 0.121.0: an older chi refuses that keyword
-too, so a bundle passing it sets `requires_chi: ">= 0.121.0"`.
+too, so a bundle passing it sets `requires_chi: ">= 0.121.0"` (`chi bundle check` warns on a lower one).
 
 ```ruby
 chi.toolkit "review", base: "lean", add: %w[delegate delegate_result]

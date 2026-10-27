@@ -26,10 +26,9 @@ module Samagotchi
       # ctx.ask_model, ctx.notify, ctx.card, ctx.messages…). A member of
       # one (ctx.sessions.children) is listed when it came later; fork, send
       # and read are in v0.2.0. Keys have no "?" (API_CALL drops it). A
-      # keyword added later (ctx.ask_model's model: in 0.80.0,
-      # ctx.sessions.send's delivery: in 0.64.0, chi.toolkit's prompt: in
-      # 0.72.0 and groups: in 0.121.0) has none: API_CALL can't tell whose
-      # keyword it is, so docs/plugins.md says which requires_chi to set.
+      # keyword added later is "call(keyword:)", the call's receiver as the
+      # plugin writes it (Check#keyword_calls: `ctx.sessions.send(…,
+      # delivery:)` is seen, a `sessions = ctx.sessions` alias isn't).
       # Events aren't listed: chi.on takes any symbol and an older chi never
       # fires one it doesn't know (harmless; chi bundle check warns on it),
       # and a manifest hook's events: list (BundleHook) needs the bundle's
@@ -45,7 +44,8 @@ module Samagotchi
         "chi.tool_source" => "0.67.0", "chi.peer_source" => "0.67.0", "ctx.http" => "0.80.0",
         "ctx.cost" => "0.83.0", "ctx.sessions.children" => "0.34.0", "ctx.load_tools" => "0.99.0",
         "ctx.usage" => "0.100.0", "ctx.sessions.stop" => "0.34.0", "ctx.turn_author" => "0.106.0",
-        "ctx.sessions.review" => "0.107.0"
+        "ctx.sessions.review" => "0.107.0", "ctx.sessions.send(delivery:)" => "0.64.0",
+        "chi.toolkit(prompt:)" => "0.72.0", "ctx.ask_model(model:)" => "0.80.0", "chi.toolkit(groups:)" => "0.121.0"
       }.freeze
 
       # @param bundle [String]

@@ -154,6 +154,23 @@ RSpec.describe Samagotchi::BundleCommand::Check do
                                    "(fix: requires_chi: \">= 0.34.0\")"])
   end
 
+  it "requires-chi-floor: a keyword added later (chi.toolkit's prompt: and groups:), with or without parens" do
+    edit("manifest.yml") { |text| text.sub('requires_chi: ">= 0.80.0"', 'requires_chi: ">= 0.66.0"') }
+    edit("plugin.rb") { |text| text.sub("chi.on(", "chi.toolkit \"web\", base: \"lean\",\n                prompt: \"Be brief\"\n    chi.on(") }
+    refresh!
+    expect(findings(:warn)).to eq(["warn requires-chi-floor manifest.yml:7: requires_chi \">= 0.66.0\" admits chi 0.66.0, " \
+                                   "but plugin.rb uses chi.toolkit(prompt:), which needs chi 0.72.0 " \
+                                   "(fix: requires_chi: \">= 0.72.0\")"])
+
+    out.truncate(0)
+    out.rewind
+    edit("plugin.rb") { |text| text.sub("prompt: \"Be brief\"", "groups: %w[chrome]") }
+    refresh!
+    expect(findings(:warn)).to eq(["warn requires-chi-floor manifest.yml:7: requires_chi \">= 0.66.0\" admits chi 0.66.0, " \
+                                   "but plugin.rb uses chi.toolkit(groups:), which needs chi 0.121.0 " \
+                                   "(fix: requires_chi: \">= 0.121.0\")"])
+  end
+
   it "install: a plugin that raises at load names plugin.rb:line" do
     edit("plugin.rb") { |text| text.sub("chi.command(", "raise ArgumentError, \"no word\"\n    chi.command(") }
     refresh!

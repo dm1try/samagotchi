@@ -60,6 +60,8 @@ and commands may change between minor versions. How releases are made:
   with a line, the kit loading without it, instead of matching its stringified pairs.
 - A plugin's `chi.toolkit(groups:)` that isn't a name, a list or `:all` (a map) is a load error ("toolkit NAME: groups
   must be a list of group names or globs"), as a config kit's is refused, instead of matching its stringified pairs.
+- `chi bundle check`'s `requires-chi-floor` sees a keyword added later: `chi.toolkit(prompt:)` (0.72.0),
+  `chi.toolkit(groups:)` (0.121.0), `ctx.ask_model(model:)` (0.80.0) and `ctx.sessions.send(delivery:)` (0.64.0).
 
 ## [0.121.0] - 2026-10-26
 
