@@ -2740,7 +2740,9 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "Ctrl-C and exit at an idle
     allow(client).to receive(:request_exit).and_return(Samagotchi::BridgeClient::Response.new(status: 200, body: '{"status":"exiting"}'))
 
     expect(run_reads("exit")).to eq(:detached)
-    expect(described_class.new(client: client, screen: screen, client_id: "tui:1").run(input: ->(_p, _f) { "EXIT" })).to eq(:detached)
+    inputs = ["EXIT"]
+    expect(described_class.new(client: client, screen: screen, client_id: "tui:1").run(input: ->(_p, _f) { inputs.shift }))
+      .to eq(:detached)
     expect(client).to have_received(:request_exit).twice.with(client_id: "tui:1")
   end
 end
@@ -3051,8 +3053,9 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "/exit and /detach" do
         block.call("type" => "snapshot", "snapshot" => idle)
         stream
       end
+      inputs = ["/exit --delete"]
 
-      loop_ui.run(input: ->(_prompt, _prefill) { "/exit --delete" })
+      loop_ui.run(input: ->(_prompt, _prefill) { inputs.shift })
 
       expect(screen.lines.last).to eq("Detached; the worker is stopping, but session s-1234 was not deleted " \
                                       "(session s-1234's worker is still shutting down): chi sessions delete s-1234")
@@ -3145,8 +3148,9 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "/exit and /detach" do
         block.call("type" => "snapshot", "snapshot" => idle)
         stream
       end
+      inputs = ["/archive"]
 
-      loop_ui.run(input: ->(_prompt, _prefill) { "/archive" })
+      loop_ui.run(input: ->(_prompt, _prefill) { inputs.shift })
 
       expect(screen.lines.last).to eq("Detached; session s-1234 was not archived (a turn is running; wait for it or " \
                                       "cancel it first). Re-attach with: chi --attach s-1234")
