@@ -3,6 +3,7 @@
 require_relative "question_slot"
 require_relative "../turn_flow"
 require_relative "../question_desk"
+require_relative "../steer"
 
 module Samagotchi
   class TerminalUI
@@ -36,6 +37,9 @@ module Samagotchi
         field = ->(key) { pending[key] || pending[key.to_s] }
         approval = field.call(:approval)
         @preview = approval.is_a?(Hash) ? (approval[:preview] || approval["preview"]) : nil
+        # A participant's turn asks (Approval.payload's author:): who, by
+        # name else id, leads the line left in the scrollback.
+        @asker = approval.is_a?(Hash) ? approval_asker(approval) : nil
         @id = field.call(:id).to_s
         @question = field.call(:question).to_s
         # A delegate's approval relayed here: the delegate's own text is the
@@ -149,7 +153,10 @@ module Samagotchi
       # the question and what became of it.
       # @param outcome [String] the answer (#answer_text) or what closed it
       def summary(outcome, paint: ->(text, _code) { text })
-        who = @delegate ? "#{@delegate}: " : ""
+        who = if @delegate then "#{@delegate}: "
+              elsif @asker then "#{@asker}'s turn: "
+              else ""
+              end
         "#{paint.call("#{mark}#{who}#{question.lines.first.to_s.chomp}", approval? ? 33 : 94)} → #{outcome}"
       end
 
@@ -227,6 +234,15 @@ module Samagotchi
         when :abort_with_reason then Answer.new(selected: [options.last], freeform: reason)
         else Answer.new(error: "Answer yes (Enter alone too), no, or no, <reason>.")
         end
+      end
+
+      def approval_asker(approval)
+        get = ->(key) { approval[key] || approval[key.to_s] }
+        author = get.call(:author).to_s
+        return nil if author.empty?
+
+        name = get.call(:author_name).to_s
+        name.empty? ? author.delete_prefix(Steer::PARTICIPANT_PREFIX) : name
       end
 
       def parse_approval(raw)

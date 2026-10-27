@@ -414,7 +414,9 @@ module Samagotchi
         # from config on every ask, and the running turn's cancel controller
         # closes a judgment that is no longer wanted.
         system_one: -> { SystemOne::Client.from_config(host_registry: @host_registry) },
-        cancel_controller: -> { active_cancel_controller }
+        cancel_controller: -> { active_cancel_controller },
+        # A participant's ask names them on the owner's card.
+        author_name: ->(author) { @participants.name_for(author, session: @session) }
       )
     end
     private :build_guardrail_wiring

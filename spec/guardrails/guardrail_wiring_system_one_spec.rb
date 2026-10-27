@@ -91,12 +91,53 @@ RSpec.describe "GuardrailWiring: System 1 on an approval (audit)" do
     expect(log_lines.last["answer"]).to be_nil
   end
 
-  it "judges nothing for a participant's review turn" do
+  it "judges nothing for a participant's turn" do
     w = wiring
     w.begin_turn({ client_id: "review:p_0123abcd", author: "p_0123abcd" })
     verdict = w.request_approval(verdict_for)
     expect(verdict).to be_allow
     expect(File.exist?(log_path)).to be false
+  end
+
+  it "asks the owner about a participant's pair turn call, naming them, once only, never auto-allowed in on mode" do
+    on = S1::Client.new(backend: judge, mode: "on", host: "splash", model: "judge-model")
+    asked = []
+    w = Samagotchi::GuardrailWiring.new(scratch: false, hooks: -> {}, tools: -> {}, session: -> { session },
+                                        model_key: -> {}, cancelled: -> { false },
+                                        ask: lambda { |payload|
+                                          asked << payload
+                                          answer
+                                        },
+                                        system_one: -> { on }, cancel_controller: -> {},
+                                        author_name: ->(author) { "Sam" if author == "p:p_0123abcd" })
+    w.state_dir = state_dir
+    w.interface = :worker
+    expect(Samagotchi::ParticipantMode.of(session)).to eq(:pair)
+    w.begin_turn({ client_id: "review:p_0123abcd", author: "p:p_0123abcd" })
+    expect(on).not_to receive(:ask)
+
+    verdict = w.request_approval(verdict_for(scopes: %w[once session repo rule]))
+
+    expect(asked.size).to eq(1)
+    payload = asked.first
+    expect(payload[:approval]).to include(author: "p:p_0123abcd", author_name: "Sam", scopes: ["once"])
+    expect(payload[:options]).to eq(["Allow once", "Deny"])
+    expect(payload[:header]).to eq("Sam's turn asks: approve tool call?")
+    expect(payload[:question]).to end_with("\n  asked by: Sam's turn (a participant, not you)")
+    expect([verdict.decision, verdict.scope, verdict.decided_by]).to eq([:allow, "once", "user"])
+    expect(File.exist?(log_path)).to be false
+  end
+
+  it "keeps the owner's own asks unnamed with their wider scopes" do
+    asked = []
+    w = wiring(ask: lambda { |payload|
+      asked << payload
+      answer
+    })
+    w.request_approval(verdict_for(scopes: %w[once repo]))
+    expect(asked.first[:approval]).not_to include(:author, :author_name)
+    expect(asked.first[:approval][:scopes]).to eq(%w[once repo])
+    expect(asked.first[:header]).to eq("Approve tool call?")
   end
 
   it "judges nothing when there is no client (mode off), and still asks" do

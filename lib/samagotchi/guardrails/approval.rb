@@ -14,6 +14,14 @@ module Samagotchi
     module Approval
       KIND = "approval"
       HEADER = "Approve tool call?"
+      # A participant's turn's ask (author:): who asks, in the header and as
+      # the question's last line, so a UI that doesn't know the field still
+      # says it.
+      PARTICIPANT_HEADER = "%s's turn asks: approve tool call?"
+      PARTICIPANT_LINE = "  asked by: %s's turn (a participant, not you)"
+      # The only scope a participant's ask offers: no session, repo or rule
+      # approval is made from a participant's call.
+      PARTICIPANT_SCOPES = %w[once].freeze
       DENY = "Deny"
       ONCE = "Allow once"
 
@@ -28,16 +36,24 @@ module Samagotchi
       #   write: the card shows its diff, the question text one change line
       # @param only [Array<String>, nil] offer no scope beyond these (a
       #   scratch session: once, session); "once" when none is left
+      # @param author [String, nil] a participant's author ("p:<id>") when
+      #   their turn asks: it offers once only (PARTICIPANT_SCOPES), and the
+      #   card names them (approval author:, author_name:, the header)
+      # @param author_name [String, nil] their name (participants.json)
       # @return [Hash] open_question fields; its caller adds user_only:
       #   (ParentApprovals.protected_facts? on approval:, a file that
       #   requires this one)
-      def payload(verdict, label: nil, preview: nil, only: nil)
+      def payload(verdict, label: nil, preview: nil, only: nil, author: nil, author_name: nil)
+        asker = asker(author, author_name)
+        only = PARTICIPANT_SCOPES if asker
         scopes = offered_scopes(verdict, only: only)
         targets = verdict.targets
+        question = question_text(verdict, label: label, preview: preview)
+        question = "#{question}\n#{format(PARTICIPANT_LINE, asker)}" if asker
         {
-          question: question_text(verdict, label: label, preview: preview),
+          question: question,
           options: scopes.map { |scope| label(scope, verdict) } + [DENY],
-          header: HEADER,
+          header: asker ? format(PARTICIPANT_HEADER, asker) : HEADER,
           multi_select: false,
           allow_freeform: true,
           effects: effects(scopes),
@@ -63,9 +79,28 @@ module Samagotchi
             source: verdict.source,
             reason: verdict.reason,
             scopes: scopes,
-            preview: preview
+            preview: preview,
+            # A participant's turn asks (nil for the owner's).
+            author: (author.to_s if asker),
+            author_name: (author_name_for(author_name) if asker)
           }.compact
         }
+      end
+
+      # How a participant's ask names them: their cleaned name, else their
+      # id; nil for the owner's turns.
+      def asker(author, author_name)
+        require_relative "../steer"
+        return nil unless Steer.participant_author?(author)
+
+        name = author_name_for(author_name)
+        name || Steer.participant_id(author.to_s)
+      end
+
+      def author_name_for(author_name)
+        require_relative "../participant_name"
+        name = ParticipantName.clean(author_name)
+        name.empty? ? nil : name
       end
 
       # Each option's effect for a parent's answer (ParentPolicy): once

@@ -531,6 +531,18 @@ test("a relayed approval on the parent links its delegate's session", () => {
   assert.equal(row.children[2].textContent, " · push it");
 });
 
+test("a participant's turn's approval names who asks and offers once only", () => {
+  const { cards } = setup();
+  cards.renderQuestion({
+    ...APPROVAL, id: "a5", header: "Sam's turn asks: approve tool call?", options: ["Allow once", "Deny"],
+    approval: { ...APPROVAL.approval, scopes: ["once"], author: "p:p_0123abcd", author_name: "Sam" },
+  });
+  const card = cards.questionCard();
+  const row = card.querySelector(".approval-asker");
+  assert.deepEqual(row.children.map((child) => child.textContent), ["Sam", "'s turn asks (a participant; allow once only)"]);
+  assert.equal(card.querySelector("summary").textContent, "Sam's turn asks: approve tool call?");
+});
+
 // P4: a delegate's hook question relayed to the parent: the same delegate
 // line, and the child's own text under it.
 test("a relayed hook question on the parent links its delegate's session and shows what it asks", () => {

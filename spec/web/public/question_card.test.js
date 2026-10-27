@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { isApproval, approvalView, relayView, resultText, approvalAllowed, answerErrorText, nextCardAction, summaryText, truncate, keepsAskingText, isRecommended, optionText } from "../../../lib/samagotchi/web/public/question_card.js";
+import { isApproval, approvalView, approvalAsker, relayView, resultText, approvalAllowed, answerErrorText, nextCardAction, summaryText, truncate, keepsAskingText, isRecommended, optionText } from "../../../lib/samagotchi/web/public/question_card.js";
 
 const approval = {
   id: "a1",
@@ -25,6 +25,14 @@ test("approvalView shows the command, where and why", () => {
     tool: "execute", what: "git push", isCommand: true,
     where: "/r/app (repo app, branch main)", why: "pushes (rule git-push, config)",
   });
+});
+
+test("approvalAsker names a participant's turn by name, else id; the owner's by nobody", () => {
+  assert.equal(approvalAsker(approval), null);
+  const asked = (fields) => ({ ...approval, approval: { ...approval.approval, ...fields } });
+  assert.equal(approvalAsker(asked({ author: "p:p_0123abcd", author_name: "Sam" })), "Sam");
+  assert.equal(approvalAsker(asked({ author: "p:p_0123abcd" })), "p_0123abcd");
+  assert.equal(approvalView(asked({ author: "p:p_0123abcd", author_name: "Sam" })).asker, "Sam");
 });
 
 test("approvalView names the repository (repo_name), not the worktree's folder", () => {

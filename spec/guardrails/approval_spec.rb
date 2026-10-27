@@ -63,6 +63,23 @@ RSpec.describe Samagotchi::Guardrails::Approval do
       expect(payload).to include(kind: "approval", header: "Approve tool call?", allow_freeform: true, multi_select: false)
     end
 
+    it "names a participant's turn's ask and offers it once only, even in a scratch session; the owner's unnamed" do
+      payload = described_class.payload(ask(scopes: %w[once session repo]), author: "p:p_0123abcd", author_name: "Sam",
+                                                                            only: %w[once session])
+      expect(payload[:options]).to eq(["Allow once", "Deny"])
+      expect(payload[:effects]).to eq(%w[permit deny])
+      expect(payload[:header]).to eq("Sam's turn asks: approve tool call?")
+      expect(payload[:question].lines.last).to eq("  asked by: Sam's turn (a participant, not you)")
+      expect(payload[:approval]).to include(author: "p:p_0123abcd", author_name: "Sam", scopes: ["once"])
+      unnamed = described_class.payload(ask, author: "p:p_0123abcd")
+      expect(unnamed[:header]).to eq("p_0123abcd's turn asks: approve tool call?")
+      expect(unnamed[:approval]).to include(author: "p:p_0123abcd")
+      expect(unnamed[:approval]).not_to have_key(:author_name)
+      owner = described_class.payload(ask, author: "owner")
+      expect(owner[:approval]).not_to include(:author, :author_name)
+      expect(owner[:header]).to eq("Approve tool call?")
+    end
+
     it "shows a plugin tool's arguments when its targets name no command or path, cut" do
       registry = Samagotchi::Tools::Registry.new
       registry.register("mcp_x_echo", schema: { name: "mcp_x_echo" }, handler: ->(*) { "" }, source: "mcp")

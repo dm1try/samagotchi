@@ -45,8 +45,9 @@ module Samagotchi
     # @param system_one [#call] → SystemOne::Client or nil: the judgment client
     #   (nil while `guardrails.system_one.mode` is off or no host is set)
     # @param cancel_controller [#call] → the running turn's CancellationController, nil
+    # @param author_name [#call] (author) → a participant's name (participants.json), nil
     def initialize(scratch:, hooks:, tools:, session:, model_key:, cancelled:, ask:, model_name: -> {},
-                   notify: ->(_message) {}, system_one: -> {}, cancel_controller: -> {})
+                   notify: ->(_message) {}, system_one: -> {}, cancel_controller: -> {}, author_name: ->(_author) {})
       @scratch = scratch
       @hooks_lookup = hooks
       @tools_lookup = tools
@@ -58,6 +59,7 @@ module Samagotchi
       @notify = notify
       @system_one = system_one
       @cancel_controller = cancel_controller
+      @author_name = author_name
       # Bundle name → the rules last loaded from it whole, kept while the
       # installed version needs a newer chi; [name, version] said so once.
       @loaded_bundle_rules = {}
@@ -275,8 +277,12 @@ module Samagotchi
       label = verdict.targets&.label ||
               ToolActivity.plugin_label(acts_as || verdict.call[:name].to_s, registry: @tools_lookup.call)
       # verdict.call is the call that will run (a hook may have replaced it).
+      # A participant's turn's ask names them and offers once only
+      # (Approval.payload's author:), whichever session it is.
+      author = turn_author
       payload = Guardrails::Approval.payload(verdict, label: label, preview: approval_preview(verdict.call),
-                                                      only: (SCRATCH_SCOPES if @scratch))
+                                                      only: (SCRATCH_SCOPES if @scratch), author: author,
+                                                      author_name: (@author_name.call(author) if author))
       # A call on chi's own config, hooks or guardrails is the user's to
       # allow, never a parent agent's (Guardrails::ParentPolicy).
       payload[:user_only] = Guardrails::ParentApprovals.protected_facts?(payload[:approval])
@@ -322,7 +328,8 @@ module Samagotchi
     # System 1's judgment of an ask, written to the log before the user is
     # asked, with the decision it led to: "auto" (it answered for the user),
     # "asked" (on mode, the user decides) or "audit" (audit mode). A
-    # participant's review turn is never judged, and no client (mode off, no
+    # participant's turn (review or pair) is never judged, so never
+    # auto-allowed: its asks go to the owner. No client (mode off, no
     # host) means no line at all. A judgment that fails is logged with p nil,
     # so the failures are in the log too.
     # @return [Hash, nil] {id:, p:, auto:}, nil when nothing was written
