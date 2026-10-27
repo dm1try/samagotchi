@@ -98,7 +98,8 @@ RSpec.describe "a turn's author on the record" do
       expect(analytics["turn_records"].last).to include("author" => grant.author)
       # Stamped before the first request carries it (its header comes from the stamp).
       expect(sent.first.last).to include(author: grant.author, author_name: "Alex", participant_mode: "pair")
-      expect(events.find { |e| e[:type] == :turn_started }).to include(author: grant.author, author_name: "Alex")
+      expect(events.find { |e| e[:type] == :turn_started }).to include(author: grant.author, author_name: "Alex",
+                                                                       participant_mode: "pair")
     end
 
     it "names a participant the sidecar doesn't know by id only (the header says the id)" do

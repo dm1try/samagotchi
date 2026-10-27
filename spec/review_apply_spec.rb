@@ -38,6 +38,17 @@ RSpec.describe Samagotchi::ReviewApply do
     expect { described_class.find(messages.first(2)) }.to raise_error(described_class::Refused, described_class::NO_REVIEW_TURNS)
   end
 
+  it "applies no pair turn: it acted itself; the latest review turn is taken past it" do
+    pair = [{ role: "user", content: "fix it", turn_id: "pair-1", author: "p:p_aa11bb22", author_name: "Alex",
+              participant_mode: "pair" },
+            { role: "model", content: "Fixed." }]
+    expect { described_class.find(messages + pair, "pair-1") }
+      .to raise_error(described_class::Refused, format(described_class::NOT_REVIEW, "pair-1")) { |e| expect(e.code).to eq(:not_review_turn) }
+    expect(described_class.find(messages + pair).turn_id).to eq("rev-1234567")
+    stamped = messages.map { |m| m[:turn_id] == "rev-1234567" ? m.merge("participant_mode" => "review") : m }
+    expect(described_class.find(stamped, "rev-12").turn_id).to eq("rev-1234567")
+  end
+
   it "composes one owner line and the proposal quoted line by line" do
     text = described_class.compose(described_class.find(messages, "rev-1"))
     expect(text).to eq("Apply this proposal from Alex's review turn rev-1234, as far as it fits the plan. It's quoted: a " \

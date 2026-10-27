@@ -2,6 +2,7 @@
 
 require_relative "participant_name"
 require_relative "steer"
+require_relative "participant_mode"
 require_relative "output_formatter"
 
 module Samagotchi
@@ -76,7 +77,7 @@ module Samagotchi
 
     def latest(list)
       list.each_index.reverse_each do |at|
-        next unless opening?(list[at]) && Steer.participant_author?(field(list[at], :author))
+        next unless opening?(list[at]) && review_turn?(list[at])
 
         proposal = proposal_at(list, at, check: false)
         return proposal if proposal
@@ -88,7 +89,7 @@ module Samagotchi
     def proposal_at(list, at, check: true)
       opening = list[at]
       author = field(opening, :author)
-      if check && !Steer.participant_author?(author)
+      if check && !review_turn?(opening)
         raise Refused.new(format(NOT_REVIEW, short(field(opening, :turn_id))), code: :not_review_turn)
       end
 
@@ -97,6 +98,13 @@ module Samagotchi
 
       Proposal.new(turn_id: field(opening, :turn_id).to_s, author: author.to_s,
                    author_name: field(opening, :author_name).to_s, text: text)
+    end
+
+    # Whether the turn +opening+ opens is a participant's review turn: a
+    # participant's, not stamped pair (a pair turn acted itself: there is
+    # nothing to apply). A message from before the stamp is a review's.
+    def review_turn?(opening)
+      Steer.participant_author?(field(opening, :author)) && field(opening, :participant_mode).to_s != ParticipantMode::PAIR.to_s
     end
 
     # The turn's reply: its last model message with visible text, before

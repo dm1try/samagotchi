@@ -3,6 +3,7 @@
 require_relative "../output_formatter"
 require_relative "../steer"
 require_relative "../turn_origin"
+require_relative "../participant_mode"
 
 module Samagotchi
   module Web
@@ -35,6 +36,9 @@ module Samagotchi
 
         def own?(author) = !self.author.nil? && author.to_s == self.author
       end
+
+      # A turn's participant_mode values the view passes on (ParticipantMode).
+      PARTICIPANT_MODES = [ParticipantMode::REVIEW.to_s, ParticipantMode::PAIR.to_s].freeze
 
       # The stream's event types a participant gets, each rebuilt by the
       # method named. Every other type is dropped.
@@ -109,7 +113,7 @@ module Samagotchi
         origin = TurnOrigin.of(field(event, :origin))
         author = field(event, :author) || origin.author
         out = { "type" => "turn_started", **id_fields(event), **time_field(event) }
-        out.merge!(author_fields(author, field(event, :author_name), viewer))
+        out.merge!(author_fields(author, field(event, :author_name), viewer, field(event, :participant_mode)))
         prompt = field(event, :prompt)
         if field(event, :continue)
           out["continue"] = true
@@ -202,7 +206,8 @@ module Samagotchi
         out["content"] = field(message, :content).to_s
         out["turn_id"] = turn_id.to_s if turn_id
         out["merged"] = true if merged
-        out.merge!(author_fields(field(message, :author), field(message, :author_name), viewer))
+        out.merge!(author_fields(field(message, :author), field(message, :author_name), viewer,
+                                 field(message, :participant_mode)))
         images = field(message, :images)
         out["images"] = images.size if images.is_a?(Array) && !images.empty?
         out
@@ -277,12 +282,15 @@ module Samagotchi
       end
 
       # A turn's author as a participant sees it: the participant's id and
-      # name, or none for the owner's; +mine+ for the viewer's own.
-      def author_fields(author, name, viewer)
+      # name, or none for the owner's; +mine+ for the viewer's own; the
+      # turn's +mode+ (its participant_mode stamp: review or pair) when
+      # it has one.
+      def author_fields(author, name, viewer, mode = nil)
         return {} unless Steer.participant_author?(author)
 
         out = { "author" => author.to_s }
         out["author_name"] = name.to_s if name.is_a?(String) && !name.empty?
+        out["participant_mode"] = mode.to_s if PARTICIPANT_MODES.include?(mode.to_s)
         out["mine"] = true if viewer.own?(author)
         out
       end

@@ -191,6 +191,30 @@ test("participants: a participant's queued or started prompt carries their badge
   setParticipantNames([]);
 });
 
+test("participants: a badge drawn while its turn was queued takes the pair mode at turn_started", async () => {
+  const { userBubbleTemplate, elementOf } = await import("../../../lib/samagotchi/web/public/turn_html.js");
+  const { setBadgeMode } = await import("../../../lib/samagotchi/web/public/participant_names.js");
+  setParticipantNames([grant()]);
+  const bubble = elementOf(userBubbleTemplate({ content: "q" }, { author: authorBadge("p:p_0001abcd") }));
+  const badge = bubble.querySelector(".author-badge");
+  assert.equal(badge.textContent, "Alex · review", "a queued prompt's mode isn't known yet: the review words");
+  setBadgeMode(bubble, "pair");
+  assert.equal(badge.textContent, "Alex · pair");
+  assert.match(badge.title, /^A turn from Alex, a participant: it acted with this session's tools/);
+  assert.equal(bubble.dataset.participantMode, "pair");
+  setBadgeMode(bubble, "review");
+  assert.equal(badge.textContent, "Alex · review");
+  setParticipantNames([]);
+});
+
+test("participants: the empty list says what a participant's turn does, by the session's mode", () => {
+  const review = markupOf(panelTemplate([], { now: NOW, sessionId: "s" }));
+  assert.match(review, /their comments become read-only review turns/);
+  const pair = markupOf(panelTemplate([], { now: NOW, sessionId: "s", pair: true }));
+  assert.match(pair, /their turns act with this session's tools under your guardrails, and their asks come to you/);
+  assert.doesNotMatch(pair, /read-only/);
+});
+
 test("participants: a working session's warning comes before the Invite, with Start a review of it; none for a review session", () => {
   const working = markupOf(panelTemplate([], { now: NOW, sessionId: "s", working: "3f9a1c2e is a working session" }));
   assert.match(working, /class="pp-warning pp-working"[^>]*>3f9a1c2e is a working session<button[^>]*data-act="start-review"[^>]*>Start a review of it<\/button>/);

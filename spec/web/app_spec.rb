@@ -984,12 +984,14 @@ RSpec.describe Samagotchi::Web::App do
     it "names a participant's prompt (author, author_name), string-keyed too; the owner's carries no author" do
       messages = [{ "role" => "user", "content" => "is step 3 safe?", "turn_id" => "t1", "author" => "p:p_1", "author_name" => "Alex" },
                   { role: "model", content: "yes" },
-                  { role: "user", content: "thanks", turn_id: "t2", author: "owner" }]
+                  { role: "user", content: "thanks", turn_id: "t2", author: "owner" },
+                  { "role" => "user", "content" => "fix it", "turn_id" => "t3", "author" => "p:p_1", "participant_mode" => "pair" }]
 
       shown = build_app(state_dir: Dir.mktmpdir).send(:messages_for_display, messages)
 
       expect(shown).to eq([{ role: "user", content: "is step 3 safe?", turn_id: "t1", author: "p:p_1", author_name: "Alex" },
-                           { role: "assistant", content: "yes" }, { role: "user", content: "thanks", turn_id: "t2" }])
+                           { role: "assistant", content: "yes" }, { role: "user", content: "thanks", turn_id: "t2" },
+                           { role: "user", content: "fix it", turn_id: "t3", author: "p:p_1", participant_mode: "pair" }])
     end
 
     it "gives a reload's tool parts their ✂ marks from the session's saved edits, string-keyed (a snapshot) too" do

@@ -532,3 +532,23 @@ test("turnHistoryNodes: an old session's turns get their divider from the turn r
   assert.deepEqual([...holder.querySelectorAll(".time-gap")].map((el) => el.textContent), ["── 11:01 · 2 h later ──"]);
   assert.ok(holder.querySelector(".time-gap").nextElementSibling.matches(".bubble.user"));
 });
+
+// A participant's review turn gets Apply under its reply; a pair turn (a
+// working session's) acted itself: its badge says so, and no Apply.
+test("turnHistoryHtml: Apply under a review turn's reply, none under a pair turn; the badge says the mode", () => {
+  const turn = (id, mode) => [
+    { role: "user", content: "q", turn_id: id, author: "p:p_0001abcd", author_name: "Sam", ...(mode ? { participant_mode: mode } : {}) },
+    { role: "assistant", content: "done" },
+  ];
+  const plain = normalizeTiming({});
+  const review = turnHistoryHtml(turn("rev-1", "review"), plain, { thumbs });
+  assert.match(review, /data-apply-turn="rev-1"/);
+  assert.match(review, />Sam · review</);
+  const unstamped = turnHistoryHtml(turn("old-1", null), plain, { thumbs });
+  assert.match(unstamped, /data-apply-turn="old-1"/);
+  const pair = turnHistoryHtml(turn("pair-1", "pair"), plain, { thumbs });
+  assert.doesNotMatch(pair, /review-apply/);
+  assert.match(pair, />Sam · pair</);
+  assert.match(pair, /data-participant-mode="pair"/);
+  assert.match(pair, /title="A turn from Sam, a participant: it acted with this session's tools, its asks came to you"/);
+});

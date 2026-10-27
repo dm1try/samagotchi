@@ -2173,7 +2173,8 @@ module Samagotchi
       turn_started[:cut_after] = steer_cut_after
       # A participant's turn names them (author, author_name) for the UIs'
       # badge; the owner's turn_started stays as it was.
-      turn_started.merge!(author_fields(turn.origin.author, session: session))
+      turn_started.merge!(author_fields(turn.origin.author, session: session),
+                          participant_mode_fields(turn.origin.author, session: session))
       emit_event(turn.on_event, turn.tag(turn_started))
       raise image_error if image_error
 

@@ -5,6 +5,7 @@ import {
   authorSlot, authorColor, authorLabel, toolLine, toolsSummary, refusalText, dequeueText, endedText, cursorSeq, streamURL, reloads, endsLiveTurn,
   liveFrom, applyLive, liveText, AUTHOR_SLOTS, pickSubject, subjectBody, subjectsKey, narrowView,
   retries, retryDelay, PARTICIPANT_PREFIX, participantAuthor, threadGaps, withToolSteps, usageItems, leftText, USAGE_WARN,
+  modeCopy,
 } from "../../../lib/samagotchi/web/public/participant_model.js";
 
 test("participant: a participant's author is the prefix and its id, the server's Steer::PARTICIPANT_PREFIX", () => {
@@ -204,4 +205,13 @@ test("participant: a link's time left, coarse", () => {
   assert.equal(leftText("2026-10-26T12:00:20Z", now), "1 min left");
   assert.equal(leftText("2026-10-26T11:00:00Z", now), "ended");
   assert.equal(leftText("", now), "");
+});
+
+test("modeCopy: a review turn only reads, a pair turn works in the session; unknown or missing is review", () => {
+  assert.match(modeCopy("review").note, /a turn that can only read/);
+  assert.match(modeCopy("pair").note, /your turns use its tools, writes included, under the owner's guardrails/);
+  assert.doesNotMatch(modeCopy("pair").note + modeCopy("pair").hint, /read-only|only read/);
+  assert.equal(modeCopy(undefined), modeCopy("review"));
+  assert.equal(modeCopy("other").tag, "review");
+  assert.equal(modeCopy("pair").tag, "pair");
 });

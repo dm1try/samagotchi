@@ -45,7 +45,7 @@ RSpec.describe Samagotchi::Web::ParticipantView do
                 params: "cat ~/.ssh/id_rsa", call: { name: "execute" }, thinking: "plan", pending_question: { q: 1 },
                 session_id: "s", cost: 1.5, file: "/home/o/x", counts: { total_tokens: 1 }, origin: { client_id: "web:1" } }
       allowed = %w[type event_seq turn_id iteration call_index text tool path status prompt author author_name mine
-                   automatic continue restarted]
+                   participant_mode automatic continue restarted]
       described_class::EVENTS.each_key do |type|
         out = shown(noisy.merge(type: type))
         next if out.nil?
@@ -63,6 +63,11 @@ RSpec.describe Samagotchi::Web::ParticipantView do
                      cut_after: 3, session_id: "s" }))
         .to eq("type" => "turn_started", "turn_id" => "t1", "prompt" => "is step 3 safe?", "author" => "p:p_1",
                "author_name" => "Alex", "mine" => true)
+      expect(shown({ type: :turn_started, prompt: "fix it", turn_id: "t2", author: "p:p_1", participant_mode: "pair",
+                     origin: { client_id: "review:p_1", author: "p:p_1" } }))
+        .to include("author" => "p:p_1", "participant_mode" => "pair")
+      expect(shown({ type: :turn_started, prompt: "x", author: "p:p_1", participant_mode: "<b>", origin: { client_id: "review:p_1" } }))
+        .not_to have_key("participant_mode")
       expect(shown({ type: :turn_started, prompt: "owner's", origin: { client_id: "web:tab" } }))
         .to eq("type" => "turn_started", "prompt" => "owner's")
       expect(shown({ type: :turn_started, prompt: "check the deploy", origin: { client_id: "system:reminder" } }))
@@ -128,14 +133,17 @@ RSpec.describe Samagotchi::Web::ParticipantView do
         { role: "user", content: "also this", merged: true },
         { role: "empty_answer", content: "", retries: 1 },
         { role: "user", content: "is step 3 safe?", turn_id: "t2", author: "p:p_2", author_name: "Sam", images: [{ file: "/a.png" }] },
-        { role: "assistant", content: "Yes.", html: "<p>raw</p>", display_refs: [{ kind: "file", path: "/etc/x" }] }
+        { role: "assistant", content: "Yes.", html: "<p>raw</p>", display_refs: [{ kind: "file", path: "/etc/x" }] },
+        { role: "user", content: "fix it", turn_id: "t3", author: "p:p_2", author_name: "Sam", participant_mode: "pair" }
       ]
       expect(described_class.messages(list, viewer)).to eq([
         { "role" => "user", "content" => "look at docs/plan.md", "turn_id" => "t1" },
         { "role" => "assistant", "content" => "Reading.", "tools" => [{ "tool" => "read", "path" => "docs/plan.md" }, { "tool" => "memory_read" }] },
         { "role" => "user", "content" => "also this", "merged" => true },
         { "role" => "user", "content" => "is step 3 safe?", "turn_id" => "t2", "author" => "p:p_2", "author_name" => "Sam", "images" => 1 },
-        { "role" => "assistant", "content" => "Yes." }
+        { "role" => "assistant", "content" => "Yes." },
+        { "role" => "user", "content" => "fix it", "turn_id" => "t3", "author" => "p:p_2", "author_name" => "Sam",
+          "participant_mode" => "pair" }
       ])
     end
   end
