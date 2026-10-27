@@ -80,6 +80,16 @@ RSpec.describe Samagotchi::Web::App, "a participant's turn" do
       .to eq([{ "participant" => grant.id, "status" => "accepted", "enqueued_id" => "e-1", "chars" => 15 }])
   end
 
+  it "passes a valid verify anchor but silently drops a malformed one" do
+    verify = { turn_id: "123e4567-e89b-12d3-a456-426614174000", quote: "the claim" }
+
+    expect(turn({ prompt: "check", verify: verify }).first).to eq(202)
+    expect(delivered.last[:verify]).to eq(Samagotchi::VerifyAnchor.new(**verify))
+
+    expect(turn({ prompt: "check", verify: { turn_id: "bad", quote: "the claim" } }).first).to eq(202)
+    expect(delivered.last[:verify]).to be_nil
+  end
+
   it "refuses a shell line, a command and images (403 not_permitted), audited, never delivered" do
     ["!ls", "  /toolkit full", "/title mine"].each do |line|
       expect(turn({ prompt: line })).to eq([403, { "error" => "not_permitted", "detail" => Samagotchi::Participants::NOT_PERMITTED }])

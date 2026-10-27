@@ -15,7 +15,8 @@ function failure(code, message = "boom", body = null) {
 
 // +sendTurn+ / +createIdleSession+: the data.js stand-ins (each call logged).
 function harness({ open = "s1", text = "hello", chips = [], state = {}, running = false, pendingPick = null, reviewSubjects = null,
-                   sendTurn = async () => ({ enqueued_id: "e1" }), createIdleSession = async () => ({ id: "new1" }) } = {}) {
+                   verify = null, sendTurn = async () => ({ enqueued_id: "e1" }),
+                   createIdleSession = async () => ({ id: "new1" }) } = {}) {
   const world = { selected: open, state: { owner: "worker", commands: [], firstPreview: "first", ...state }, chips };
   const log = [];
   const calls = [];
@@ -39,6 +40,8 @@ function harness({ open = "s1", text = "hello", chips = [], state = {}, running 
       uploadImage: async (id, _file, name) => { calls.push(["upload", id, name]); return { file: `${name}.png` }; },
       sendTurn: async (...args) => { calls.push(["turn", ...args]); return sendTurn(...args); },
     },
+    verify: () => verify,
+    clearVerify: () => { verify = null; },
     dir: "/proj",
     startPage: {
       pendingPick: () => pendingPick,
@@ -84,7 +87,7 @@ function harness({ open = "s1", text = "hello", chips = [], state = {}, running 
     alert: (text) => log.push(["alert", text]),
   });
   return { send: sendTurnApi.send, world, log, calls, toasts, bubbles, promptEl, button, sentIds, earlyRestores,
-           cleared: () => cleared };
+           cleared: () => cleared, verify: () => verify };
 }
 
 test("a line in a session: the echo, POST /turn with the tab's id, the composer emptied at the ack, the stream followed", async () => {
@@ -98,6 +101,19 @@ test("a line in a session: the echo, POST /turn with the tab's id, the composer 
   assert.equal(h.promptEl.value, "");
   assert.deepEqual(h.log, ["refreshHistory", "follow", "focus"]);
   assert.equal(h.button.disabled, false);
+});
+
+test("a Verify selection's anchor travels with edited text; an ordinary send has no anchor", async () => {
+  const anchor = { turn_id: "123e4567-e89b-12d3-a456-426614174000", quote: "the claim" };
+  const h = harness({ text: "edited verification prompt", verify: anchor });
+  await h.send();
+  assert.deepEqual(h.calls[0], ["turn", "s1", "edited verification prompt",
+    { clientId: "web:t1", images: [], history: true, delivery: null, verify: anchor }]);
+  assert.equal(h.verify(), null);
+
+  const plain = harness();
+  await plain.send();
+  assert.deepEqual(plain.calls[0][3], { clientId: "web:t1", images: [], history: true, delivery: null });
 });
 
 test("the start page: an idle session with the picked model and choices, then the line as a turn in it", async () => {

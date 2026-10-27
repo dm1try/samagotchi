@@ -296,6 +296,21 @@ RSpec.describe Samagotchi::Engine do
       expect(session.messages).to eq(result.conversation)
     end
 
+    it "stamps a verified claim anchor on the opening user message only" do
+      allow(kernel).to receive(:run).and_return(result)
+      session = make_session
+      engine = build_engine(profile: "gemma4")
+      verify = Samagotchi::VerifyAnchor.new(turn_id: "123e4567-e89b-12d3-a456-426614174000", quote: "the claim")
+
+      engine.run_turn(session, "hi", verify: verify)
+      opening = session.messages.find { |message| message[:role] == "user" }
+
+      expect(opening[:verify]).to eq(verify.to_h)
+      session.messages.reject { |message| message[:role] == "user" }.each do |message|
+        expect(message).not_to have_key(:verify)
+      end
+    end
+
     it "emits turn_started, forwards raw kernel events, then turn_completed" do
       events = []
       allow(kernel).to receive(:run) do |_messages, **kwargs|

@@ -598,6 +598,16 @@ RSpec.describe Samagotchi::Bridge do
       ])
     end
 
+    it "keeps a valid verify anchor in the queued input" do
+      start_bridge(input_format: 2)
+      verify = { turn_id: "123e4567-e89b-12d3-a456-426614174000", quote: "the claim" }
+      post_turn(JSON.generate(session_id: @session.id, prompt: "check", verify: verify))
+
+      input_dir = File.join(Samagotchi::Session.session_dir(@session.id, state_dir: state_dir), "input")
+      queued = Dir.glob(File.join(input_dir, "*.json")).map { |file| JSON.parse(File.read(file)) }
+      expect(queued.first["verify"]).to eq("turn_id" => verify[:turn_id], "quote" => verify[:quote])
+    end
+
     it "keeps a turn's no_interrupt (--no-interrupt) in the queued input" do
       start_bridge(input_format: 2)
       post_turn(JSON.generate(session_id: @session.id, prompt: "long", client_id: "tui:1", no_interrupt: true))

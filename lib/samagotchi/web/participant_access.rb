@@ -271,8 +271,10 @@ module Samagotchi
         reason = participant_turn_refusal(grant, prompt, body)
         return participant_turn_refused(grant, prompt, *reason) if reason
 
+        verify = VerifyAnchor.from(body["verify"])
         result = SessionManager.deliver_turn(id, prompt: prompt, client_id: ClientId.review(grant.id),
                                                  delivery: Delivery::QUEUE, author: grant.author,
+                                                 verify: verify,
                                                  pending_limit: grant.queue_limit + 1,
                                                  state_dir: @state_dir, manager: @manager,
                                                  bridge: -> { live_bridge_client(id) })

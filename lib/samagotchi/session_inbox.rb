@@ -10,6 +10,7 @@ require_relative "log"
 require_relative "session"
 require_relative "steer"
 require_relative "turn_origin"
+require_relative "verify_anchor"
 
 module Samagotchi
   # A session directory's file inbox and outbox (see SessionManager for the
@@ -53,7 +54,7 @@ module Samagotchi
     # @param now [Time] the time the file is named by (a spec's clock)
     # @return [String, false] the input file's path, or false
     def self.write_input(session_dir, prompt:, client_id: nil, enqueued_id: nil, no_interrupt: false, images: [],
-                         delivery: nil, author: nil, now: Time.now)
+                         delivery: nil, author: nil, verify: nil, now: Time.now)
       images = Array(images)
       input_dir = File.join(session_dir, INPUT_DIR)
       FileUtils.mkdir_p(input_dir)
@@ -63,7 +64,7 @@ module Samagotchi
                  "no_interrupt" => (no_interrupt ? true : nil),
                  "delivery" => (Delivery.queue?(delivery) ? Delivery::QUEUE : nil),
                  "images" => (images.empty? ? nil : images.map { |image| image.transform_keys(&:to_s) }),
-                 "author" => author }.compact
+                 "author" => author, "verify" => VerifyAnchor.from(verify)&.to_file }.compact
       AtomicFile.write(path, JSON.generate(record))
       path
     rescue StandardError
@@ -228,9 +229,9 @@ module Samagotchi
     # (+no_interrupt+, --no-interrupt), its +images+ ({file:, name:} refs),
     # and its +delivery+ ("queue" or nil; a file without the key is one an
     # older chi wrote, so nil).
-    Input = Data.define(:prompt, :origin, :no_interrupt, :images, :delivery) do
-      def initialize(prompt:, origin: nil, no_interrupt: false, images: [], delivery: nil)
-        super(prompt:, origin: TurnOrigin.of(origin), no_interrupt:, images:, delivery:)
+    Input = Data.define(:prompt, :origin, :no_interrupt, :images, :delivery, :verify) do
+      def initialize(prompt:, origin: nil, no_interrupt: false, images: [], delivery: nil, verify: nil)
+        super(prompt:, origin: TurnOrigin.of(origin), no_interrupt:, images:, delivery:, verify: VerifyAnchor.from(verify))
       end
     end
     # A file that doesn't parse, or isn't a JSON object: no prompt.
@@ -246,7 +247,7 @@ module Samagotchi
       origin = TurnOrigin.from(data.slice("client_id", "enqueued_id", "author"))
       images = Array(data["images"]).select { |image| image.is_a?(Hash) }.map { |image| image.transform_keys(&:to_sym) }
       Input.new(prompt: data["prompt"].to_s, origin: origin, no_interrupt: data["no_interrupt"] == true,
-                images: images, delivery: Delivery.queue?(data["delivery"]) ? Delivery::QUEUE : nil)
+                images: images, delivery: Delivery.queue?(data["delivery"]) ? Delivery::QUEUE : nil, verify: data["verify"])
     rescue JSON::ParserError
       UNREADABLE_INPUT
     end
@@ -278,9 +279,11 @@ module Samagotchi
       true
     end
 
-    # A parsed input file's #waits_for_turn_end?.
+    # A parsed input file's #waits_for_turn_end?. A Verify turn waits too:
+    # merged into a running turn as a steer, its anchor would be lost.
     def self.turn_end_data?(data)
-      Array(data["images"]).any? || Delivery.queue?(data["delivery"]) || Steer.participant_author?(data["author"])
+      Array(data["images"]).any? || Delivery.queue?(data["delivery"]) || Steer.participant_author?(data["author"]) ||
+        data["verify"].is_a?(Hash)
     end
 
     # How the unclaimed input file carrying +enqueued_id+ waits: :turn_end

@@ -2130,6 +2130,25 @@ RSpec.describe Samagotchi::SessionManager do
       expect(input_files).to be_empty
     end
 
+    it "carries a verified claim anchor through the Bridge and input-file fallback" do
+      own("worker")
+      verify = Samagotchi::VerifyAnchor.new(turn_id: "123e4567-e89b-12d3-a456-426614174000", quote: "the claim")
+      bridge = instance_double(Samagotchi::BridgeClient)
+      allow(bridge).to receive(:post_turn).with(prompt: "check", client_id: "web:1", verify: verify).and_return(
+        Samagotchi::BridgeClient::Response.new(status: 202, body: '{"status":"accepted"}')
+      )
+
+      expect(described_class.deliver_turn(session.id, prompt: "check", client_id: "web:1", verify: verify,
+                                                       state_dir: tmpdir, bridge: -> { bridge }).status)
+        .to eq(:accepted)
+
+      allow(bridge).to receive(:post_turn).and_raise(Errno::ECONNREFUSED)
+      described_class.deliver_turn(session.id, prompt: "check", client_id: "web:1", verify: verify,
+                                            state_dir: tmpdir, bridge: -> { bridge })
+      expect(JSON.parse(File.read(input_files.fetch(0)))["verify"])
+        .to eq("turn_id" => verify.turn_id, "quote" => verify.quote)
+    end
+
     it "posts the delivery the message carries, and only when it is not the default" do
       own("worker")
       bridge = instance_double(Samagotchi::BridgeClient)

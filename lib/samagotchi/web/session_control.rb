@@ -196,9 +196,11 @@ module Samagotchi
 
         # no_interrupt: an attached TUI's --no-interrupt (chi --remote --attach).
         # author: the principal's (nil for the owner), never the body's.
+        verify = VerifyAnchor.from(body["verify"])
         result = SessionManager.deliver_turn(id, prompt: prompt.to_s, client_id: client_id, images: images,
                                                  delivery: delivery, no_interrupt: body["no_interrupt"] == true,
                                                  author: principal(req).author,
+                                                 verify: verify,
                                                  state_dir: @state_dir, manager: @manager,
                                                  bridge: -> { live_bridge_client(id) })
         case result.status

@@ -63,6 +63,14 @@ RSpec.describe Samagotchi::SessionInbox do
         .to eq(described_class::Input.new(prompt: "later", origin: { client_id: "cli:send" }, delivery: "queue"))
     end
 
+    it "round-trips a verified claim anchor with the queued prompt" do
+      verify = { turn_id: "123e4567-e89b-12d3-a456-426614174000", quote: "the claim" }
+      path = described_class.write_input(session_dir, prompt: "check this", verify: verify)
+
+      expect(JSON.parse(File.read(path))["verify"]).to eq("turn_id" => verify[:turn_id], "quote" => verify[:quote])
+      expect(described_class.read_input(path).verify).to eq(Samagotchi::VerifyAnchor.new(**verify))
+    end
+
     it "reads an old file that carries no delivery as a step-boundary message" do
       FileUtils.mkdir_p(input_dir)
       old = File.join(input_dir, "20260101000000000000000.json")
@@ -102,6 +110,14 @@ RSpec.describe Samagotchi::SessionInbox do
 
         expect([cut, plain, owner].map { |file| described_class.waits_for_turn_end?(file) }).to eq([true, true, false])
         expect(described_class.waiting_input(session_dir, "e9")).to eq(:turn_end)
+      end
+
+      it "answers true for a Verify line: merged as a steer, it would lose its claim anchor" do
+        verify = { turn_id: "123e4567-e89b-12d3-a456-426614174000", quote: "the claim" }
+        file = described_class.write_input(session_dir, prompt: "check", verify: verify, enqueued_id: "e7")
+
+        expect(described_class.waits_for_turn_end?(file)).to be(true)
+        expect(described_class.waiting_input(session_dir, "e7")).to eq(:turn_end)
       end
 
       it "answers false for a file it cannot read" do

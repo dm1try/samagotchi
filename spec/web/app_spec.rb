@@ -3303,6 +3303,31 @@ RSpec.describe Samagotchi::Web::App do
   end
 
   describe "POST /api/sessions/:id/turn" do
+    it "forwards a valid verify anchor and drops a malformed one" do
+      manager = FakeResponsesManager.new
+      app = build_app(manager: manager, state_dir: Dir.mktmpdir)
+      bridge = instance_double(Samagotchi::BridgeClient)
+      allow(app).to receive(:live_bridge_client).and_return(bridge)
+      verify = { "turn_id" => "123e4567-e89b-12d3-a456-426614174000", "quote" => "the claim" }
+      allow(bridge).to receive(:post_turn).with(prompt: "check", client_id: nil, verify: anything).and_return(
+        Samagotchi::BridgeClient::Response.new(status: 202, body: '{"status":"accepted"}')
+      )
+
+      status, = app.call(env_for("/api/sessions/s1/turn", method: "POST",
+                                                        body: JSON.generate(prompt: "check", verify: verify)))
+      expect(status).to eq(202)
+      expect(bridge).to have_received(:post_turn).with(prompt: "check", client_id: nil,
+                                                       verify: Samagotchi::VerifyAnchor.new(**verify.transform_keys(&:to_sym)))
+
+      allow(bridge).to receive(:post_turn).with(prompt: "check", client_id: nil).and_return(
+        Samagotchi::BridgeClient::Response.new(status: 202, body: '{"status":"accepted"}')
+      )
+      status, = app.call(env_for("/api/sessions/s1/turn", method: "POST",
+                                                        body: '{"prompt":"check","verify":{"turn_id":"bad","quote":"x"}}'))
+      expect(status).to eq(202)
+      expect(bridge).to have_received(:post_turn).with(prompt: "check", client_id: nil)
+    end
+
     it "enqueues through the live bridge, forwarding the client id and returning the bridge's enqueued_id" do
       manager = FakeResponsesManager.new
       app = build_app(manager: manager, state_dir: Dir.mktmpdir)

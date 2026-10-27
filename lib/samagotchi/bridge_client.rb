@@ -2,6 +2,7 @@
 
 require "digest"
 require "json"
+require_relative "verify_anchor"
 require "socket"
 
 require_relative "worker_sidecar"
@@ -182,13 +183,16 @@ module Samagotchi
     #   owner; sent only when given (SessionManager.deliver_turn)
     # @param pending_limit [Integer, nil] with a participant's +author+: how
     #   many of their turns may be running or waiting (429 too_many_turns past it)
-    def post_turn(prompt:, client_id: nil, no_interrupt: false, images: nil, delivery: nil, author: nil, pending_limit: nil)
+    def post_turn(prompt:, client_id: nil, no_interrupt: false, images: nil, delivery: nil, author: nil, pending_limit: nil,
+                  verify: nil)
       body = { session_id: @session_id, prompt: prompt, client_id: client_id }
       body[:no_interrupt] = true if no_interrupt
       body[:author] = author if author
       body[:pending_limit] = pending_limit if author && pending_limit
       body[:images] = images if images && !images.empty?
       body[:delivery] = delivery unless delivery.nil? || Delivery.next_step?(delivery)
+      anchor = VerifyAnchor.from(verify)
+      body[:verify] = anchor.to_file if anchor
       body[:deadline] = deadline
       post("turn", body, read_body: true)
     end

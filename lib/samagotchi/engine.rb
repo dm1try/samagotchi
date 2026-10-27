@@ -15,6 +15,7 @@ require_relative "steer"
 require_relative "turn_note"
 require_relative "turn_endings"
 require_relative "turn_origin"
+require_relative "verify_anchor"
 require_relative "model_profile"
 require_relative "effective_model"
 require_relative "session_setting"
@@ -1589,6 +1590,7 @@ module Samagotchi
       seconds = turn.elapsed
       synchronize_events do
         kept, event = yield(seconds)
+        stamp_verify_anchor(kept, turn)
         replace_session_messages(turn.session, kept) if kept
         emit_working_set(turn.on_event, turn.session, turn.session.messages)
         turn.session.status = Session::STATUS_IDLE
@@ -1601,6 +1603,21 @@ module Samagotchi
       @metrics.persist(state_dir: session_state_dir)
     end
     private :end_turn
+
+    def stamp_verify_anchor(messages, turn)
+      return unless turn.verify && messages.is_a?(Array)
+
+      opening = messages.reverse.find do |message|
+        (message[:role] || message["role"]).to_s == "user" &&
+          (message[:turn_id] || message["turn_id"]).to_s == turn.id
+      end
+      opening ||= messages.reverse.find do |message|
+        (message[:role] || message["role"]).to_s == "user" &&
+          (message[:content] || message["content"]).to_s == turn.prompt.to_s
+      end
+      opening[:verify] = turn.verify.to_h if opening
+    end
+    private :stamp_verify_anchor
 
     def save_quietly(session)
       session.save(state_dir: session_state_dir)
@@ -2011,7 +2028,7 @@ module Samagotchi
     # +wall+: the wall time it started (MessageTime.now, once): the
     # :turn_started event's at and its user message's (and reminders') stamp.
     Turn = Struct.new(:session, :prompt, :continue, :on_event, :controller, :origin, :started_at, :messages, :ended,
-                      :settings, :id, :limit, :resumed, :resume_from, :wall) do
+                      :settings, :id, :limit, :resumed, :resume_from, :wall, :verify) do
       def resumed? = resumed ? true : false
 
       # The turn's boundary events carry the origin only when it names a
@@ -2083,9 +2100,9 @@ module Samagotchi
     # re-raises; a provider error adds error_kind:, retryable:, host: and a
     # one-line summary:.
     def run_turn(session, prompt, on_event: nil, max_iterations: nil, cancel_controller: nil, max_tool_output_chars: nil, pending_input: nil, continue: false,
-                 origin: TurnOrigin::NONE, images: [], id: nil, resumed: false, resume_from: nil)
+                 origin: TurnOrigin::NONE, images: [], id: nil, resumed: false, resume_from: nil, verify: nil)
       turn = begin_turn(session, prompt, on_event: on_event, cancel_controller: cancel_controller, origin: origin,
-                                         continue: continue, id: id)
+                                         continue: continue, id: id, verify: verify)
       if continue
         turn.resumed = resumed
         turn.resume_from = resume_from
@@ -2133,7 +2150,7 @@ module Samagotchi
     # The turn's state before anything can fail it: the session running,
     # the turn flag, its cancel controller and sink. The cross-thread state
     # is set here and cleared in #release_turn only.
-    def begin_turn(session, prompt, on_event:, cancel_controller:, origin:, continue:, id: nil)
+    def begin_turn(session, prompt, on_event:, cancel_controller:, origin:, continue:, id: nil, verify: nil)
       origin = TurnOrigin.of(origin)
       # Track the active session for recap and status snapshot.
       @session = session
@@ -2157,7 +2174,7 @@ module Samagotchi
 
       Turn.new(session: session, prompt: continue ? nil : prompt, continue: continue, on_event: on_event,
                controller: effective_controller, origin: origin, started_at: Process.clock_gettime(Process::CLOCK_MONOTONIC),
-               id: id || SecureRandom.uuid, wall: MessageTime.now)
+               id: id || SecureRandom.uuid, wall: MessageTime.now, verify: VerifyAnchor.from(verify))
     end
     private :begin_turn
 
@@ -2360,6 +2377,7 @@ module Samagotchi
       unless turn.continue
         user_message = { role: "user", content: turn.prompt, turn_id: turn.id, **author_fields(turn.origin.author),
                          **participant_mode_fields(turn.origin.author), MessageTime::KEY => turn.at }
+        user_message[:verify] = turn.verify.to_h if turn.verify
         user_message[:images] = image_refs unless image_refs.empty?
         turn.messages << user_message
         session.last_prompt = turn.prompt

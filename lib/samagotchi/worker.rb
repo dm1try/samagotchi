@@ -688,7 +688,7 @@ module Samagotchi
       @continue_offer.drop(origin)
       @turn_flow.before_prompt_turn
       run_engine_turn(prompt.text, origin: origin, max_iterations: max_iterations(prompt.no_interrupt),
-                                   images: prompt.images) do |result, error|
+                                   images: prompt.images, **(prompt.verify ? { verify: prompt.verify } : {})) do |result, error|
         if error
           # The Engine announced :turn_failed (with the error's one line).
           restore_failed_turn([[prompt.text, origin, prompt.images], *@merged_this_turn], error: error)
