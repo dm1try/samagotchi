@@ -7,26 +7,32 @@ and commands may change between minor versions. How releases are made:
 [docs/releasing.md](docs/releasing.md).
 ## [Unreleased]
 
+## [0.122.0] - 2026-10-27
+
 ### Added
 
-- Toolkit kits accept an optional `description:` for classification, separate from their prompt text.
-- Memory entries named `toolkit_<name>` define kits; project memories override system memories, and `/toolkit` shows
-  their source.
-- An opt-in toolkit suggestion audit asks System 1 which described kit fits a session's first prompt, without changing
-  the session or delaying its turn; `chi toolkit report` grades suggestions against the tools the session used.
+- Toolkit kits accept an optional `description:` (config `toolkit.kits` and `chi.toolkit`): what the kit is for, read
+  by the toolkit suggestion, never sent in a prompt.
+- A memory named `toolkit_<name>` defines a kit (one YAML block with `base`, `add`, `remove`, `groups` and a required
+  `description`); project memories win over system ones, config and bundle kits over both, and `/toolkit` shows the
+  source. chi's memory guide says when to write one.
+- Toolkit suggestion audit (`toolkit.suggest.mode: audit`, off by default): System 1 is asked which described kit fits
+  a new session's first prompt, in the background, without changing the session or delaying its turn; `chi toolkit
+  report` grades the suggestions against the tools each session then used.
 
 ### Fixed
 
-- The model's orphaned-memory hint asks before using a same-named project's memories; it asks the user to confirm
-  before moving them.
-- A participant wait returns 401 revoked if its grant disappears while the wait is in progress.
-- Invalid chi web start folders identify whether they came from `--start-dir` or config; relative config paths use
-  home.
-- Remote note calls refuse a 200 response without a status cleanly; remote worker polling uses its injected sleeper.
-- Remote `chi sessions restart` refusals retain fallback holds and print the remote `chi --remote NAME` stop command.
-- chi web's stream 503 distinguishes an unanswered worker from no live worker, including in remote terminals.
-- `chi sessions restart` refuses a stopped (SIGSTOPped) worker at once with its pid and `kill -CONT PID`, instead of
-  ~70 s of silence before "didn't take the restart".
+- `chi sessions restart` on a stopped (SIGSTOPped, Ctrl-Z) worker refuses at once with its pid and `kill -CONT PID`,
+  instead of ~70 s of silence before "didn't take the restart".
+- `chi --remote NAME sessions restart` refusals keep their reasons (what the worker still has running) and name the
+  remote `chi --remote NAME sessions stop` command.
+- chi web's stream, and a remote terminal, say a running worker "didn't answer" instead of "no live worker".
+- The model's hint about a same-named project's memory folder asks the user first instead of offering an `mv`.
+- A participant's wait answers revoked (401) when their grant disappears mid-wait, not "chi web is stopping".
+- A bad `web.start_dir` says it came from config.yml (not `--start-dir`), and a relative one resolves from home.
+- A remote `chi note` whose reply has no status is a clear refusal instead of a crash.
+
+Update with `chi update`, then restart `chi web` and the session workers (`chi sessions restart`).
 
 ## [0.121.1] - 2026-10-27
 
@@ -4652,7 +4658,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.121.1...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.122.0...HEAD
+[0.122.0]: https://github.com/dm1try/samagotchi/compare/v0.121.1...v0.122.0
 [0.121.1]: https://github.com/dm1try/samagotchi/compare/v0.121.0...v0.121.1
 [0.121.0]: https://github.com/dm1try/samagotchi/compare/v0.120.0...v0.121.0
 [0.120.0]: https://github.com/dm1try/samagotchi/compare/v0.119.0...v0.120.0
