@@ -104,6 +104,9 @@ RSpec.describe Samagotchi::Web::SessionSummary do
       s = session
       s.pending_question = { id: "q1", question: "Which?", header: "Pick" }
       s.last_turn = { "outcome" => "completed", "ended_at" => "t", "seconds" => 11.0, "origin" => "client" }
+      verdicts = [{ anchor: { turn_id: "source", quote: "claim" }, verdict: "confirmed", reason: "supported",
+                    by: nil, check_turn_id: "check", at: "now" }]
+      s.verdicts = verdicts
 
       owner = Samagotchi::OwnerLock::Owner.new(kind: "worker", pid: 1)
 
@@ -111,6 +114,7 @@ RSpec.describe Samagotchi::Web::SessionSummary do
 
       expect(json[:pending_question]).to eq(id: "q1", kind: "question")
       expect(json[:last_turn]).to eq("outcome" => "completed", "ended_at" => "t", "seconds" => 11.0, "origin" => "client")
+      expect(json[:verdicts]).to eq(verdicts)
       s.pending_question = { id: "q2", kind: "approval" }
       expect(described_class.build(s, owner: owner, session_dir: session_dir(s))[:pending_question]).to eq(id: "q2", kind: "approval")
 

@@ -45,7 +45,7 @@ RSpec.describe Samagotchi::Web::ParticipantView do
                 params: "cat ~/.ssh/id_rsa", call: { name: "execute" }, thinking: "plan", pending_question: { q: 1 },
                 session_id: "s", cost: 1.5, file: "/home/o/x", counts: { total_tokens: 1 }, origin: { client_id: "web:1" } }
       allowed = %w[type event_seq turn_id iteration call_index text tool path status prompt author author_name mine
-                   participant_mode automatic continue restarted]
+                   participant_mode automatic continue restarted verdict]
       described_class::EVENTS.each_key do |type|
         out = shown(noisy.merge(type: type))
         next if out.nil?
@@ -116,6 +116,41 @@ RSpec.describe Samagotchi::Web::ParticipantView do
                 session_state_snapshot: { participants: [{ id: "p_2" }], status: "idle" } }
       expect(shown(frame)).to eq("type" => "snapshot")
       expect(shown(frame.merge(type: "reset"))).to eq("type" => "reset")
+    end
+
+    it "allows only the verdict-card fields on a completed turn and redacts its reason" do
+      event = shown({
+        type: "turn_completed", result: { text: "private reply" }, output: "private output",
+        verdict: {
+          anchor: { turn_id: "123e4567-e89b-12d3-a456-426614174000", quote: "claim" },
+          verdict: "refuted", reason: "The owner token OWNERTOKEN123 is exposed.",
+          by: "p:p_2", check_turn_id: "123e4567-e89b-12d3-a456-426614174001", at: "now",
+          extra: "not allowed"
+        }
+      })
+
+      expect(event).to eq(
+        "type" => "turn_completed",
+        "verdict" => {
+          "anchor" => { "turn_id" => "123e4567-e89b-12d3-a456-426614174000", "quote" => "claim" },
+          "verdict" => "refuted", "reason" => "The owner token [redacted] is exposed.",
+          "by" => "p:p_2", "check_turn_id" => "123e4567-e89b-12d3-a456-426614174001"
+        }
+      )
+    end
+
+    it "filters persisted verdict cards through the same narrow allowlist" do
+      records = [{
+        anchor: { turn_id: "123e4567-e89b-12d3-a456-426614174000", quote: "claim" },
+        verdict: "confirmed", reason: "supported", by: "p:p_2",
+        check_turn_id: "123e4567-e89b-12d3-a456-426614174001", at: "now", private: "secret"
+      }]
+
+      expect(described_class.verdicts(records, viewer)).to eq([{
+        "anchor" => { "turn_id" => "123e4567-e89b-12d3-a456-426614174000", "quote" => "claim" },
+        "verdict" => "confirmed", "reason" => "supported", "by" => "p:p_2",
+        "check_turn_id" => "123e4567-e89b-12d3-a456-426614174001"
+      }])
     end
   end
 

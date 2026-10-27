@@ -1,0 +1,8 @@
+.verify-verdict{margin:8px 0 8px 14px;padding:8px 10px;border:1px solid var(--border-strong);border-left:3px solid var(--text-3);border-radius:8px;background:var(--bg-inset);font-size:13px}
+.verify-verdict.confirmed{border-left-color:var(--ok);background:var(--ok-bg)}
+.verify-verdict.refuted{border-left-color:var(--danger);background:var(--danger-bg-dim)}
+.verify-verdict.unclear{border-left-color:var(--warn);background:var(--warn-bg)}
+.verify-verdict-heading{font-weight:600;color:var(--text-bright)}
+.verify-verdict-quote{margin:6px 0;color:var(--text-muted);font-style:italic;white-space:pre-wrap}
+.verify-verdict-reason{margin:4px 0 6px;white-space:pre-wrap;overflow-wrap:anywhere}
+.verify-verdict-link{color:var(--accent)}

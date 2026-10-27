@@ -62,7 +62,7 @@ RSpec.describe Samagotchi::Web::App, "participant review" do
     status, body = review(issued.token)
     expect(status).to eq(200)
     expect(body.keys).to contain_exactly("viewer", "session", "participants", "messages", "current_turn", "waiting_for_owner",
-                                         "queued", "last_event_id", "subjects")
+                                         "queued", "last_event_id", "subjects", "verdicts")
     expect(body["subjects"]).to eq([])
     # Invited without the pair stamp: their turns are review turns.
     expect(body["viewer"]).to include("kind" => "participant", "id" => issued.grant.id, "name" => "Alex",
@@ -75,7 +75,26 @@ RSpec.describe Samagotchi::Web::App, "participant review" do
     expect(body["waiting_for_owner"]).to be(true)
     expect(body["queued"]).to eq("mine" => [{ "enqueued_id" => "e1", "prompt" => "mine" }], "others" => 1)
     expect(body["last_event_id"]).to eq("12-ep")
+    expect(body["verdicts"]).to eq([])
     expect(JSON.generate(body)).not_to include("env?", "CARD", "owner's next", "metrics")
+  end
+
+  it "shows a filtered verdict card to participants without exposing reply metadata" do
+    session.verdicts = [{
+      anchor: { turn_id: "123e4567-e89b-12d3-a456-426614174000", quote: "claim" },
+      verdict: "confirmed", reason: "supported", by: author,
+      check_turn_id: "123e4567-e89b-12d3-a456-426614174001", at: "now", private: "secret"
+    }]
+    session.save(state_dir: state_dir)
+
+    body = review(issued.token).last
+
+    expect(body["verdicts"]).to eq([{
+      "anchor" => { "turn_id" => "123e4567-e89b-12d3-a456-426614174000", "quote" => "claim" },
+      "verdict" => "confirmed", "reason" => "supported", "by" => author,
+      "check_turn_id" => "123e4567-e89b-12d3-a456-426614174001"
+    }])
+    expect(JSON.generate(body)).not_to include("private", "secret", '"at"')
   end
 
   it "hides an automatic turn's prompt by the live worker's record, before analytics.json has it" do

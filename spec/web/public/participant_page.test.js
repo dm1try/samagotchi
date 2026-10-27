@@ -125,6 +125,38 @@ test("participant page: a double Enter or a Send while one is in flight posts th
   assert.match(posts()[1].body, /And step 4/);
 });
 
+test("participant page: a live verdict is placed on its source turn without waiting for the review reload", async (t) => {
+  const verdict = {
+    anchor: { turn_id: "source", quote: "the claim" },
+    verdict: "refuted",
+    reason: "The source says the opposite.",
+    by: "p:alex",
+    check_turn_id: "check",
+  };
+  const review = {
+    ...REVIEW,
+    viewer: { id: "alex", name: "Alex", can_comment: true },
+    participants: [{ id: "alex", name: "Alex", kind: "human" }],
+    messages: [
+      { role: "user", content: "Original claim", turn_id: "source" },
+      { role: "assistant", content: "The claim." },
+      { role: "user", content: "Verify the claim", turn_id: "check" },
+      { role: "assistant", content: "The source disagrees." },
+    ],
+  };
+  const { $, sources } = await openPage(t, { respond: (call) => call.answer(200, review) });
+  assert.equal($("thread").querySelectorAll(".verify-verdict").length, 0);
+
+  sources[0].emit("turn_completed", { verdict });
+  await settle();
+
+  const card = $("thread").querySelector(".verify-verdict");
+  assert.ok(card);
+  assert.match(card.textContent, /❌ refuted · You/);
+  assert.match(card.textContent, /the claim/);
+  assert.match(card.textContent, /The source says the opposite/);
+});
+
 test("participant page: what is typed while a comment is in flight stays in the box after it is accepted", async (t) => {
   const { $, posts } = await openPage(t);
   $("comment").value = "Is step 3 safe?";

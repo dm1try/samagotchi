@@ -73,6 +73,7 @@ module Samagotchi
           current_turn: current,
           waiting_for_owner: waiting,
           queued: review_queue(queued || [], viewer),
+          verdicts: ParticipantView.verdicts(session.verdicts, viewer),
           last_event_id: turn_snapshot && turn_snapshot["event_id"]
         })
       end

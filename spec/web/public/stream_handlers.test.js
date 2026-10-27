@@ -52,6 +52,7 @@ function fakePage({ selected = "s1", running = false, read = null } = {}) {
     llmContextControl: { refresh: rec("llmContextControl.refresh") },
     thinkingControl: { refresh: rec("thinkingControl.refresh") },
     reasoningHistoryControl: { refresh: rec("reasoningHistoryControl.refresh") },
+    placeVerdict: rec("placeVerdict"),
     sentIds: new Set(),
     earlyRestores: new Map(),
     stream: {
@@ -93,6 +94,18 @@ test("every stream event type has its handler", () => {
     "reset", "side_usage", "steer_cut", "tool_call_completed", "tool_call_started", "turn_canceled", "turn_completed",
     "turn_dequeued", "turn_enqueued", "turn_failed", "turn_started", "used_memories_updated", "working_set_updated",
   ]);
+});
+
+test("turn_completed places a recorded verdict after ending the live turn", async () => {
+  const { handlers, page } = fakePage({ running: true });
+  const verdict = {
+    anchor: { turn_id: "source", quote: "claim" }, verdict: "confirmed", reason: "supported",
+    by: null, check_turn_id: "check",
+  };
+
+  await handlers.turn_completed({ type: "turn_completed", verdict });
+
+  assert.deepEqual(page.calls.filter(([name]) => name === "placeVerdict"), [["placeVerdict", verdict]]);
 });
 
 test("participants_changed reads the owner's participants again; with no panel, it is ignored", () => {

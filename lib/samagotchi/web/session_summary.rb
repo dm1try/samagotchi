@@ -108,7 +108,8 @@ module Samagotchi
           # chi REPL's (only a worker shares it).
           pending_question: session.waiting_question(live: !!owner&.worker?),
           pending_card: up ? Bridge::PendingCard.read(session_dir) : nil,
-          last_turn: session.last_turn&.to_file
+          last_turn: session.last_turn&.to_file,
+          verdicts: Array(session.verdicts)
         }
       end
 

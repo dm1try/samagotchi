@@ -17,6 +17,7 @@ test("starts every field empty", () => {
   assert.equal(s.llmContext, null);
   assert.equal(s.served, null);
   assert.equal(s.status, "");
+  assert.deepEqual(s.verdicts, []);
   assert.equal(s.model, "");
   assert.equal(s.dir, "");
   assert.equal(s.firstPreview, "");
@@ -65,6 +66,7 @@ test("sessionStateFrom reads the session's fields, with the empty defaults for m
   assert.deepEqual(st.mutedMemories, []);
   assert.deepEqual(st.promptNotes, []);
   assert.deepEqual(st.commands, []);
+  assert.deepEqual(st.verdicts, []);
   assert.deepEqual(st.timing, normalizeTiming(undefined));
 });
 
@@ -101,6 +103,8 @@ test("sessionStateFrom copies the lists, owner, links and served model", () => {
   assert.equal(st.parentId, "p1");
   assert.equal(st.continues, "c1");
   assert.equal(st.createdAt, "2026-10-17T09:12:00Z");
+  const verdicts = [{ verdict: "confirmed" }];
+  assert.deepEqual(sessionStateFrom(payload({ session: { verdicts } })).verdicts, verdicts);
   assert.deepEqual(st.commands, [{ name: "/x" }]);
 });
 

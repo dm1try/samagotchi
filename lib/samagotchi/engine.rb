@@ -1593,7 +1593,8 @@ module Samagotchi
         kept, event = yield(seconds)
         stamp_verify_anchor(kept, turn)
         replace_session_messages(turn.session, kept) if kept
-        record_verdict(turn, outcome)
+        verdict = record_verdict(turn, outcome)
+        event[:verdict] = verdict if verdict
         emit_working_set(turn.on_event, turn.session, turn.session.messages)
         turn.session.status = Session::STATUS_IDLE
         record_last_turn(turn.session, outcome, seconds, turn.origin, event, limit: exhausted ? turn.limit : nil)
@@ -1627,6 +1628,7 @@ module Samagotchi
       record = { anchor: turn.verify.to_h, verdict: parsed.verdict, reason: parsed.reason,
                  by: turn.origin.author, check_turn_id: turn.id, at: Time.now.iso8601(3) }
       turn.session.verdicts = turn.session.verdicts + [record]
+      record
     end
     private :record_verdict
 

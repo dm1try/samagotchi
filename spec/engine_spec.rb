@@ -333,13 +333,16 @@ RSpec.describe Samagotchi::Engine do
         tool_activity: []
       )
       allow(kernel).to receive(:run).and_return(verified_result)
+      events = []
 
-      engine.run_turn(session, "check", id: check_turn_id, origin: { author: "p:guest" }, verify: verify)
+      engine.run_turn(session, "check", id: check_turn_id, origin: { author: "p:guest" }, verify: verify,
+                                         on_event: proc { |event| events << event })
 
       expect(session.verdicts).to contain_exactly(
         hash_including(anchor: verify.to_h, verdict: "confirmed", reason: "supported by the source",
                        by: "p:guest", check_turn_id: check_turn_id, at: a_kind_of(String))
       )
+      expect(events.find { |event| event[:type] == :turn_completed }[:verdict]).to eq(session.verdicts.first)
     end
 
     it "does not parse verdict text from a regular turn or a verify turn with a non-verdict final line" do

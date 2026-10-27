@@ -4,15 +4,17 @@ require_relative "../output_formatter"
 require_relative "../steer"
 require_relative "../turn_origin"
 require_relative "../participant_mode"
+require_relative "../verify_anchor"
 
 module Samagotchi
   module Web
     # What a participant sees of their session (D5 a): prompts and replies
     # with their authors, one-line tool rows (the tool's name, and a
     # project-relative path for a file tool), turn boundaries, and the
-    # waiting states. Never: tool output or arguments, thinking, context
-    # notes, plugin steers, automatic input, cards, commands, questions'
-    # internals, memories, the working set, cost or timing, host paths.
+    # waiting states. Verdict cards expose only their anchor, verdict,
+    # reason and author. Never: tool output or arguments, thinking, context
+    # notes, plugin steers, automatic input, other cards, commands,
+    # questions' internals, memories, the working set, cost or timing, host paths.
     #
     # Every read a participant reaches goes through here: the stream's
     # events (#event, ParticipantStreamFilter), the review route's
@@ -125,8 +127,34 @@ module Samagotchi
         out
       end
 
-      def turn_ended(event, _viewer)
-        { "type" => field(event, :type).to_s, **id_fields(event) }
+      def turn_ended(event, viewer)
+        out = { "type" => field(event, :type).to_s, **id_fields(event) }
+        verdict = verdict_record(field(event, :verdict), viewer)
+        out["verdict"] = verdict if verdict
+        out
+      end
+
+      def verdicts(records, viewer)
+        Array(records).filter_map { |record| verdict_record(record, viewer) }
+      end
+
+      def verdict_record(raw, viewer)
+        return unless raw.is_a?(Hash)
+
+        anchor = VerifyAnchor.from(field(raw, :anchor))
+        verdict = field(raw, :verdict).to_s
+        reason = field(raw, :reason)
+        check_turn_id = field(raw, :check_turn_id)
+        by = field(raw, :by)
+        return unless anchor && %w[confirmed refuted unclear].include?(verdict) && reason.is_a?(String)
+        return unless check_turn_id.is_a?(String) && !check_turn_id.empty?
+        return unless by.nil? || by.is_a?(String)
+
+        Redact.deep({
+          "anchor" => { "turn_id" => anchor.turn_id, "quote" => anchor.quote },
+          "verdict" => verdict, "reason" => reason, "by" => by,
+          "check_turn_id" => check_turn_id
+        }, viewer)
       end
 
       # The reply's visible text only: never thinking, a tool call's bytes
