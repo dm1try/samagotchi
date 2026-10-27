@@ -421,6 +421,66 @@ fields: a field added to an event later reaches nobody until it is named there.
   after the source turn, name its author, show the reason and quote, and link to the checking turn; a live completion
   adds the card without a reload. The participant view receives only the card fields through its allowlist, with the
   quote and reason redacted by the view's normal rules, never the full reply.
+- **Verify fresh** (`VerifyFresh`, `verdict_fresh.js`). An `unclear` card has a **Verify fresh** button (the owner's
+  page always; a participant's while `can_comment`, i.e. while their grant could run a turn now; never in the owner's
+  participant view). It is `POST /api/sessions/:id/verdicts/:check_turn_id/fresh` (`VerifyFreshRoutes`, `:owner`
+  and `:participant`), which starts a **fresh child**: a delegate child (`spawn_session`, `delegate: true`,
+  `parent_id`) in the session's own folder (no worktree; a folder outside git too), on its model, whose first and only
+  prompt is the claim, quoted, and "Verify this claim against the files here. You have none of the original session's
+  context. End with a line `Verdict: confirmed|refuted|unclear — <one-line reason>`." No parent history. Its first
+  turn is a Verify turn on the same anchor, so its verdict is parsed. Refused: a verdict the session doesn't have (404
+  `not_found`; a fresh verdict itself is never the target, its original is), one that isn't unclear (409
+  `not_unclear`), and, checked together under `verify_fresh.lock`: a fresh check of that verdict still running (409
+  `fresh_running`), a fresh child of the same requester still running (409 `fresh_busy`: one at a time per
+  participant, and one for the owner; each start passes the cap on saved spend, so parallel children would multiply
+  it), and the parent already running `session.max_children` children of any kind (409 `children_full`, so fresh
+  checks never crowd out the owner's own delegates). For a participant also what refuses their turn: their cap (429
+  `cap_reached`, counting their fresh children) and a live worker that predates participants' turns (409
+  `review_unavailable`). A start that involves a participant is audited in the parent's trail (`verify_fresh`:
+  `participant` whose child it is, `asked_by` the clicking participant's id or `owner`, `of`, `status`, the child and
+  mode, or the reason); the answer is `{of, running: true}`, the owner's with `child_id` too.
+  - **Whose child it is.** A verdict a participant's turn recorded (`by: p:<id>`) is checked again **as that
+    participant**, whoever clicks, the owner included: the claim is their text (the quote their Verify turn sent),
+    so it never runs with the owner's power (the owner's rules, System 1's auto-allows). Their grant must still be
+    live in this session, else 409 `author_link_ended` ("Sam's link has ended: …"), and their cap and the worker's
+    features are checked as for their turn (a participant who clicks passes their own checks first). An owner's
+    verdict (`by` none) is checked again as whoever clicks: an owner's child for the owner, the clicking
+    participant's own for a participant.
+  - **The child is its requester's.** Its session file carries `verify_fresh: {author, mode, of, anchor}`
+    (`VerifyFreshOrigin`), saved before its worker starts. `author` is the participant's (`p:<id>`), none for the
+    owner. `mode` is the participant's grant's mode in the parent at that moment (`ParticipantMode.live_for`:
+    `pair` only for a grant stamped to act in a working session whose worker runs pair turns, else `review`). Every
+    turn of a participant's child is theirs, whoever starts it (the owner typing into it, a continue, a reminder):
+    `VerifyFreshOrigin#origin_for` sets the author in `Engine#begin_turn` and in the worker, so their boundary
+    (`GuardrailWiring#turn_mode` reads the saved mode, never a lookup), their System 1 skip, their once-only asks to
+    the owner and the stamps on their messages follow. The child has no `participants.json`: its participant lookups
+    (`Session#participants_source_id`) read the parent's, so a revoke, an expiry or the parent's archive refuses the
+    child's next turn and stops a pair turn mid-turn, as in the parent; their audit lines go to the parent's
+    `participants.jsonl`. A field that doesn't read is `VerifyFreshOrigin::INVALID`: a participant author nobody
+    has, under review, so its turns are refused, never run as the owner's. Its approvals wait on the child for the
+    owner (D2); the owner's page links to it.
+  - **What follows from that.** The owner typing into a participant's child is that participant's turn: charged to
+    their cap and run under their boundary (open an ordinary session to act with the owner's own). A revoke (or an
+    expiry, or the parent's archive) stops a pair-mode child mid-turn, as a pair turn; a review-mode child finishes
+    the turn it is in and is refused at its next turn's start, as a review turn. A continue of the parent archives it
+    (and revokes its grants) and moves a running fresh child to the new link with the other open delegates: the
+    turn it is in still forwards its verdict to the archived link (the parent it started under), which shows it
+    there, and its next turn is refused (its requester's grant isn't on the new link). Nothing reaches the new link's
+    card: fails closed.
+  - **Spend.** The parent's `verify_fresh.jsonl` (one line per child: `child_id`, `of`, `author`, `at`) is the
+    rollup's index: a participant's cap check in chi web (`#participant_saved_spend`), their usage line, and the
+    worker's (`Worker#participant_spend`) add their fresh children's saved spend (`VerifyFresh.children_spend`); a
+    child's worker adds the parent's saved spend and its siblings'. A child's spend counts from its turns' ends, as
+    a turn's does.
+  - **The verdict lands on the card**, never in the parent's conversation: the child's worker writes each verdict
+    its turn recorded into the parent's `fresh_verdicts/<check turn>.json` (`fresh: true`, `of`, `child_id`) after its
+    save, and a fresh child never rings its parent (no delegate report, `ChildRing.ring`). The parent's worker takes
+    them into its `verdicts` between turns (`Worker#absorb_fresh_verdicts`), saves, deletes the files and announces
+    `:verdict_recorded`; chi web shows the ones still waiting (`VerifyFresh.verdicts_of`: the summary, the review
+    data). The card shows "Verifying fresh…" while the child runs (the summary's `verify_fresh` `{of, child_id}`,
+    the review data's `fresh_running`, ids only) and the fresh verdict as a `fresh: ✅ confirmed — …` line on the same
+    card. The participant view passes `fresh` and `of`, never the child's id (a participant can't open it). No push
+    for a fresh verdict yet (`Attention` pushes a verdict at a turn's end).
 - **The comment box** is the owner's composer (`composer_mount.js`, styled by the shared `composer.css`), mounted by
   `participant.js` with a subset on. It has: the height that grows with the text, the grip (drag to resize,
   double-click resets, click or drag down folds it; folded, the grip is the handle on the dock's edge and typing on the
@@ -539,7 +599,8 @@ invited to has none: its files stay byte for byte as they were.
   remembered and audited; or `what: command`, a participant's `/word` or
   `!line` the Bridge or the worker refused), `turn` (chars, `status: accepted` with its enqueued id, or `refused` with
   the reason: `not_permitted`, `too_many_turns`, `cap_reached`, `review_unavailable`, `worker_timeout`), `cap` (a new
-  cap). It goes with the session (retention, delete).
+  cap), `verify_fresh` (`of`, `status`, the child and mode or the reason). A Verify fresh child's participants' lines
+  are its parent's. It goes with the session (retention, delete).
 - **`participants.lock`** (0600, empty): the lock a participant's turn file is counted and written under when no
   worker runs ([Turns](#turns)).
 

@@ -452,6 +452,28 @@ can send out in a URL), plugin and MCP tools, `memory_read` and `context_read`,
 does that the command checks don't read (a script file's body, an interpreter's
 `-e` code). Share a working session only with people you would let type in it.
 
+## A Verify fresh child's boundary
+
+A [Verify fresh](internals/participants.md#what-a-participant-sees) child (a
+delegate child chi web starts for an unclear verdict) runs a participant's
+check under **the boundary that participant has in the parent**. A verdict a
+participant recorded is always checked again as them, even when the owner
+clicks (the claim is their text; their link must still be live), so it never
+runs with the owner's rules or System 1's auto-allows. The mode is decided once,
+at the start, from their grant's mode there (`ParticipantMode.live_for`) and
+saved on the child (`verify_fresh.mode`): `review` keeps every turn of it
+inside `ReviewBoundary` (read only), `pair` inside `PairBoundary`.
+`GuardrailWiring#turn_mode` reads the saved mode and never looks it up again,
+and every turn of the child carries the participant as its author, whoever
+started it, so the boundary can't fall away for a turn the owner typed into it
+or for an author lookup that finds nobody (the child has no
+`participants.json`; revoke and cap read the parent's). It fails closed: a
+`verify_fresh` field that doesn't read is a participant nobody has, under
+review, whose turns are refused. `ChildBoundary` applies on top, as for every
+delegate child, and its asks go to the owner (once only, as a participant's
+do; System 1 skips them). The owner's own fresh child is an ordinary delegate
+child: the owner's turns, `ChildBoundary`.
+
 ## Rules in config.yml
 
 ```yaml

@@ -11,6 +11,9 @@ and commands may change between minor versions. How releases are made:
 
 - chi web places each completed Verify verdict on its source claim, links to the checking turn, and sends a phone
   notification with the verdict and a short reason (including for short turns).
+- **Verify fresh** on an unclear verdict's card (owner or participant): a new agent checks the claim in the session's
+  folder with none of its context; its verdict lands on the same card. A participant's runs under their own access
+  and spend cap.
 
 ### Fixed
 
