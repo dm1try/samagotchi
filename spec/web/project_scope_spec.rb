@@ -98,6 +98,38 @@ RSpec.describe Samagotchi::Web::App do
     end
   end
 
+  describe "GET /api/projects" do
+    it "lists the live projects and marks the current scope and default project" do
+      session_in(repo_a)
+      session_in(repo_b)
+      hub.scan
+
+      page = described_class.new(manager: manager, state_dir: state_dir, bridge_wait_timeout: 0, hub: hub, start_dir: repo_b)
+      dir = File.join(repo_b, "lib").tap { |path| FileUtils.mkdir_p(path) }
+      status, headers, chunks = page.call(Rack::MockRequest.env_for("/api/projects?dir=#{q(dir)}", "HTTP_HOST" => "127.0.0.1"))
+      body = chunks.join
+      rows = JSON.parse(body)
+
+      expect(status).to eq(200)
+      expect(headers["Cache-Control"]).to eq("no-store")
+      expect(rows.map { |row| [row["root"], row["default"], row["current"]] }).to eq([
+        [repo_b, true, true],
+        [repo_a, false, false]
+      ])
+      expect(rows.first).to include("dir" => repo_b, "sessions" => 1, "waiting" => 0)
+    end
+
+    it "answers 503 without a hub and 400 for an invalid dir" do
+      no_hub = described_class.new(manager: manager, state_dir: state_dir, bridge_wait_timeout: 0)
+      status, _, chunks = no_hub.call(Rack::MockRequest.env_for("/api/projects", "HTTP_HOST" => "127.0.0.1"))
+      body = chunks.join
+      expect([status, JSON.parse(body)["error"]]).to eq([503, "no_hub"])
+
+      status, _, body = call("/api/projects?dir=#{q(File.join(@tmp, "gone"))}")
+      expect([status, JSON.parse(body)["error"]]).to eq([400, "invalid_dir"])
+    end
+  end
+
   describe "POST /api/sessions with dir" do
     it "starts the chat in that folder, and in the server's cwd without one" do
       call("/api/sessions", method: "POST", body: JSON.generate(prompt: "hi", dir: repo_a))

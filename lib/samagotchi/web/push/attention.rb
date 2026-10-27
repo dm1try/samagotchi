@@ -118,13 +118,29 @@ module Samagotchi
         # @return [Array<String>]
         def open_keys(by_id)
           by_id.each_value.flat_map do |summary|
-            question = summary[:pending_question]
-            card = summary[:pending_card]
+            question = open_question(summary)
+            card = open_card(summary)
             keys = []
-            keys << key(summary[:id], question[:id]) if question.is_a?(Hash) && question[:id] && !question[:relayed_to]
-            keys << card_key(summary[:id], card[:id]) if card.is_a?(Hash) && card[:id]
+            keys << key(summary[:id], question[:id]) if question
+            keys << card_key(summary[:id], card[:id]) if card
             keys
           end
+        end
+
+        # Whether this summary contributes to the project's waiting count:
+        # the same open question or card #open_keys badges.
+        def waits?(summary) = !!(open_question(summary) || open_card(summary))
+
+        # The summary's unanswered question not relayed elsewhere, or nil.
+        def open_question(summary)
+          question = summary[:pending_question]
+          question if question.is_a?(Hash) && question[:id] && !question[:relayed_to]
+        end
+
+        # The summary's pending card, or nil.
+        def open_card(summary)
+          card = summary[:pending_card]
+          card if card.is_a?(Hash) && card[:id]
         end
 
         def key(session_id, id) = "#{session_id}:#{id}"

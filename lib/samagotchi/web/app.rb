@@ -60,6 +60,7 @@ require_relative "editor"
 require_relative "../message_parts"
 require_relative "../launch_mode"
 require_relative "session_summary"
+require_relative "project_list"
 require_relative "session_access_routes"
 require_relative "principal"
 require_relative "participant_access"
@@ -240,6 +241,7 @@ module Samagotchi
       ROUTES = [
         ["GET", %r{\A/(?:index\.html)?\z}, :serve_index, :participant],
         ["GET", %r{\A/api/sessions\z}, :handle_list, :owner],
+        ["GET", %r{\A/api/projects\z}, :handle_projects, :owner],
         ["POST", %r{\A/api/sessions\z}, :handle_create, :owner],
         ["GET", %r{\A/api/sessions/resolve\z}, :handle_resolve, :participant],
         ["GET", %r{\A/api/sessions/summaries\z}, :handle_summaries, :owner],
@@ -1044,6 +1046,16 @@ module Samagotchi
         body = JSON.generate(page)
         headers["Content-Length"] = body.bytesize.to_s
         [200, headers, [body]]
+      end
+
+      def handle_projects(req)
+        return error_response(503, "no_hub", "this chi web has no session hub") unless @hub
+
+        dir, error = scope_dir(req.params["dir"])
+        return error if error
+
+        current_root = dir && ProjectScope.root_for(dir)
+        json_response(200, ProjectList.build(@hub.snapshot, start_dir: start_dir, current_root: current_root))
       end
 
       # A scope folder from the page: [dir, nil] (dir nil when none was

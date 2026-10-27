@@ -61,6 +61,17 @@ RSpec.describe Samagotchi::Web::Push::Attention do
     end
   end
 
+  describe ".waits?" do
+    it "counts an identified, unrelayed question or card, but not a relayed or id-less one" do
+      expect(described_class.waits?(pending_question: { id: "q" })).to be(true)
+      expect(described_class.waits?(pending_question: { id: "q", relayed_to: "parent" })).to be(false)
+      expect(described_class.waits?(pending_question: {})).to be(false)
+      expect(described_class.waits?(pending_card: { id: "card" })).to be(true)
+      expect(described_class.waits?(pending_card: {})).to be(false)
+      expect(described_class.waits?({})).to be(false)
+    end
+  end
+
   describe ".text" do
     it "is the session's name clipped to 61 and the reason's words, never the question" do
       expect(described_class.text({ title: "fix it", first_preview: "x" }, "approval")).to eq(["fix it", "needs approval"])
