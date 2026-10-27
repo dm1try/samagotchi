@@ -490,7 +490,22 @@ module Samagotchi
         <style>#{PAGE_STYLE}</style></head>
         <body>
         <h1>chi</h1>
-        <p>{sentence}</p>
+        <p id="ended">{sentence}</p>
+        <script>
+          if (/[#&]code=/.test(location.hash)) document.getElementById("ended").hidden = true;
+        </script>
+        <p id="trade" hidden></p>
+        <script type="module">
+          const ended = document.getElementById("ended");
+          import("/token_fragment.js").then(({ tradeFragmentCode }) => tradeFragmentCode({
+            onRefused: (words) => {
+              const line = document.getElementById("trade");
+              line.textContent = words;
+              line.hidden = false;
+              ended.hidden = false;
+            }
+          })).catch(() => { ended.hidden = false; });
+        </script>
         </body></html>
       HTML
       BOUND_PAGE = ENDED_PAGE.sub("<title>chi: review link ended</title>", "<title>chi: review link for another account</title>")

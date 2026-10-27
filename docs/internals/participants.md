@@ -35,7 +35,8 @@ participant** and **one role**, until it expires or is revoked.
   retention, or archived or deleted by a process that didn't revoke, is caught by the gate: a live grant whose session
   file is gone or archived is revoked on sight (`revoked_by: gone | archive`). Unarchiving doesn't restore a grant.
   An ended grant stays in the store for 30 days, so its token answers `token_revoked` / `token_expired` rather than a
-  bare 401; then it goes.
+  bare 401; then it goes. The ended and bound pages also trade a link's `#code=`, so a new invite opens even in a
+  browser still holding an ended grant's cookie.
 - **Store.** `$XDG_STATE_HOME/samagotchi/web-grants/grants.json`, next to `web-token`: the file 0600, in its own 0700
   folder, written whole (`AtomicFile`) under a lock file (`grants.lock`) since chi web and a local `chi share` both
   write it. Its `version` is 1, and 2 once a grant is bound (never lowered); a store above `Grants::MAX_VERSION` is a

@@ -11,6 +11,11 @@ and commands may change between minor versions. How releases are made:
 
 - chi web's header project chip opens a picker to switch projects without starting chi web in each one.
 
+### Fixed
+
+- A new invite link opens in a browser that still holds an ended link's cookie (behind an auth proxy it showed
+  'revoked').
+
 ## [0.126.0] - 2026-10-27
 
 ### Added

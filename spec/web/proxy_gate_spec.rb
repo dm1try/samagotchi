@@ -37,7 +37,10 @@ RSpec.describe Samagotchi::Web::App, "behind an auth proxy" do
       File.write(File.join(dir, "app.js"), "// app")
     end
   end
-  let(:grants) { Samagotchi::Web::Grants.new(Samagotchi::Web::Grants.path(state_dir: state_dir)) }
+  let(:now) { [Time.now] }
+  let(:grants) do
+    Samagotchi::Web::Grants.new(Samagotchi::Web::Grants.path(state_dir: state_dir), clock: -> { now.first })
+  end
   let(:app) do
     described_class.new(state_dir: state_dir, public_dir: public_dir, bridge_wait_timeout: 0, grants: grants,
                         hub: Samagotchi::Web::SessionHub.new(state_dir: state_dir),
@@ -304,6 +307,38 @@ RSpec.describe Samagotchi::Web::App, "behind an auth proxy" do
     end
   end
 
+  describe "a participant's ended page" do
+    def page_with_cookie(token, email: "alex@pod.test")
+      call("/", headers: proxied(email, [["Cookie", "__Host-chi_token=#{token}"]]))
+    end
+
+    def expect_trade_page(body)
+      expect(body).to include('import("/token_fragment.js")')
+      expect(body).to include('if (/[#&]code=/.test(location.hash)) document.getElementById("ended").hidden = true;')
+      expect(body.index("<script>")).to be < body.index('<script type="module">')
+    end
+
+    it "trades links from revoked, expired and bound pages" do
+      revoked = issued
+      Samagotchi::Participants.revoke(grants, session_id: session.id, id: revoked.grant.id, state_dir: state_dir)
+      status, _, body = page_with_cookie(revoked.token)
+      expect(status).to eq(401)
+      expect_trade_page(body)
+
+      expired = Samagotchi::Participants.invite(grants, session_id: session.id, name: "Alex", ttl: 3600, state_dir: state_dir)
+      now[0] += 3601
+      status, _, body = page_with_cookie(expired.token)
+      expect(status).to eq(401)
+      expect_trade_page(body)
+
+      bound = Samagotchi::Participants.invite(grants, session_id: session.id, name: "Alex", identity: "alex@pod.test",
+                                                                         public_url: public_url, state_dir: state_dir)
+      status, _, body = page_with_cookie(bound.token, email: "mallory@pod.test")
+      expect(status).to eq(401)
+      expect_trade_page(body)
+    end
+  end
+
   describe "the fragment trade (POST /api/token: a link's one-time #code=, or a pasted token)" do
     def trade(token, headers: proxied, **) = call("/api/token", method: "POST", body: JSON.generate(token: token),
                                                                   headers: [["Content-Type", "application/json"], *headers], **)
@@ -335,6 +370,22 @@ RSpec.describe Samagotchi::Web::App, "behind an auth proxy" do
       expect(trade_code("chc_#{"x" * 43}").first).to eq(401)
       expired = codes.issue(kind: :owner, ttl: -1)
       expect(trade_code(expired).first).to eq(401)
+    end
+
+    it "replaces an expired cookie with a newly issued grant, then opens the participant page" do
+      dead = Samagotchi::Participants.invite(grants, session_id: session.id, name: "Alex", ttl: 3600, state_dir: state_dir)
+      now[0] += 3601
+      fresh = Samagotchi::Participants.invite(grants, session_id: session.id, name: "Alex", state_dir: state_dir)
+      code = codes.issue(kind: :grant, token: fresh.token, ttl: 600)
+      cookie = ["Cookie", "__Host-chi_token=#{dead.token}"]
+
+      status, headers, = trade_code(code, headers: proxied("alex@pod.test", [cookie]))
+      expect(status).to eq(204)
+      expect(headers["Set-Cookie"]).to start_with("__Host-chi_token=#{fresh.token};")
+
+      status, _, body = call("/", headers: proxied("alex@pod.test", [["Cookie", "__Host-chi_token=#{fresh.token}"]]))
+      expect(status).to eq(200)
+      expect(body).to include("participant page")
     end
 
     # Decision C, the red team's forwarded link: Alex's bound link reaches
