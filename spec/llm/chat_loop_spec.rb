@@ -806,6 +806,24 @@ RSpec.describe Samagotchi::LLM::ChatLoop do
       expect(backend.adapter.requests).to be_empty
     end
 
+    it "asks the kernel's generation guard before before_generation; a guard that cancels starts no generation" do
+      controller = Samagotchi::CancellationController.new
+      order = []
+      registry = Samagotchi::Hooks::Registry.new
+      registry.register(:before_generation) { |_event| order << :hook }
+      allow(fake_kernel).to receive(:hooks).and_return(registry)
+      fake_kernel.generation_guard = lambda {
+        order << :guard
+        controller.cancel!
+      }
+
+      result = run(cancel_controller: controller)
+
+      expect(order.first(2)).to eq(%i[guard hook])
+      expect(result).to be_canceled
+      expect(backend.adapter.requests).to be_empty
+    end
+
     it "gives after_generation a frozen copy of the conversation as sent" do
       registry = Samagotchi::Hooks::Registry.new
       seen = []

@@ -88,6 +88,25 @@ RSpec.describe Samagotchi::KernelLoop do
       expect(events.map { |e| e[:type] }).not_to include(:generation_started)
     end
 
+    it "asks the generation guard before before_generation; a guard that cancels starts no generation" do
+      controller = Samagotchi::CancellationController.new
+      order = []
+      registry = Samagotchi::Hooks::Registry.new
+      registry.register(:before_generation) { |_event| order << :hook }
+      allow(client).to receive(:complete).and_return("never")
+      kernel = described_class.new(client: client, hooks: registry)
+      kernel.generation_guard = lambda {
+        order << :guard
+        controller.cancel!
+      }
+
+      result = kernel.run([{ role: "user", content: "hi" }], cancel_controller: controller)
+
+      expect(order).to eq(%i[guard hook])
+      expect(result).to be_canceled
+      expect(client).not_to have_received(:complete)
+    end
+
     it "keeps image refs on the conversation it returns" do
       ref = { file: "images/0123456789abcdef.png", mime: "image/png", width: 3, height: 2, name: "a.png", source: "user" }
       allow(client).to receive(:complete).and_return("hello")

@@ -147,13 +147,41 @@ RSpec.describe "a participant's author on delivery" do
       expect(pop!(dequeued, "the first refused turn")).to include(enqueued_id: "e1")
       expect(pop!(dequeued, "the second refused turn")).to include(enqueued_id: "e2")
       notice = pop!(notices, "the owner's cap notice")
-      expect(notice[:text]).to eq("Alex reached their $2.00 review cap: their comments are refused until you raise it " \
+      # A working session: its participant's turns are pair turns.
+      expect(notice[:text]).to eq("Alex reached their $2.00 cap: their turns stop and are refused until you raise it " \
                                   "(chi share cap #{session.id[0, 8]} #{grant.id} AMOUNT).")
       expect(notices).to be_empty
       expect(engine).not_to have_received(:run_turn)
       refused = File.readlines(File.join(session_dir, Samagotchi::Participants::LOG)).map { |line| JSON.parse(line) }
                     .select { |line| line["event"] == "turn" }
       expect(refused.map { |line| line.values_at("enqueued_id", "reason") }).to eq([%w[e1 cap_reached], %w[e2 cap_reached]])
+    end
+
+    it "stops a participant's running pair turn at their cap (Engine#participant_cap): the reason, the owner told once" do
+      author = grant.author
+      notices = Queue.new
+      engine.subscribe(observer: ->(event) { notices << event if event[:type] == :hook_notice })
+      spend = 1.0
+      allow(engine.metrics).to receive(:spend).with(author) { spend }
+      reasons = Queue.new
+      allow(engine).to receive(:run_turn) do |*_args, **_opts|
+        check = engine.instance_variable_get(:@participant_cap)
+        reasons << check.call(author).inspect
+        spend = 2.5
+        reasons << check.call(author).inspect
+        reasons << check.call(author).inspect
+        reasons << notices.size
+        result
+      end
+      start_worker
+      Samagotchi::SessionInbox.write_input(session_dir, prompt: "q1", client_id: "review:p", author: author, enqueued_id: "e1")
+
+      expect(pop!(reasons, "under the cap")).to eq("nil")
+      expect(pop!(reasons, "past the cap")).to eq('"Alex reached their $2.00 cap"')
+      expect(pop!(reasons, "past the cap again")).to eq('"Alex reached their $2.00 cap"')
+      expect(pop!(reasons, "the notices so far")).to eq(1)
+      notice = pop!(notices, "the owner's cap notice")
+      expect(notice[:text]).to start_with("Alex reached their $2.00 cap: their turns stop")
     end
 
     # Their chi send --wait (and chi web's participant /wait) reads the

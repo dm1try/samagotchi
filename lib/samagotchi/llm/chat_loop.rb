@@ -389,6 +389,9 @@ module Samagotchi
         nil
       end
 
+      # The kernel's generation guard (KernelLoop#guard_generation).
+      def guard_generation = @kernel.respond_to?(:guard_generation) ? @kernel.guard_generation : nil
+
       # A hook failing must not break the turn (as in ToolRunner).
       def fire_hook(name, event)
         @kernel.hooks&.fire(name, event)
@@ -727,6 +730,7 @@ module Samagotchi
           observe_context(iteration, window)
           # Before the generation starts: a hook that waits (a question)
           # isn't the generation's time, and a Stop there leaves none started.
+          @loop.guard_generation
           @loop.fire_hook(:before_generation, { type: :before_generation, iteration: iteration })
           return [@cancel_controller.reason, "", ""] if @cancel_controller&.cancelled?
 

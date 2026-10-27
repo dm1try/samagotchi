@@ -182,6 +182,18 @@ module Samagotchi
     # The running session (a callable → Session or nil): ToolRunner reads
     # its ParticipantMode for a participant's turn. The Engine sets it.
     attr_accessor :session_lookup
+    # Called before each generation, before the before_generation hook (a
+    # callable, nil: none): the Engine's check that may stop the turn (a
+    # pair turn past its participant's cap, Engine#guard_participant_spend).
+    attr_accessor :generation_guard
+
+    # The generation guard, if any; one that raises never breaks the turn.
+    def guard_generation
+      @generation_guard&.call
+    rescue StandardError => e
+      Log.warn(:turn, "generation_guard_failed", error: "#{e.class}: #{e.message}")
+      nil
+    end
 
     def participant_turn? = @participant_turn&.call == true
     # @return [LLM::TurnSettings] the turn's vision, sampling, thinking and
@@ -429,6 +441,7 @@ module Samagotchi
     def generate(turn, request)
       # Before the generation starts: a hook that waits (a question) isn't
       # the generation's time, and a Stop there leaves none started.
+      guard_generation
       fire_hook(:before_generation, { type: :before_generation, iteration: turn.iteration }) if @hooks
       raise Client::RequestCancelled, turn.cancel_controller.reason if turn.cancel_controller&.cancelled?
 

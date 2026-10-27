@@ -383,6 +383,8 @@ module Samagotchi
       @kernel.guardrail_gate = @guardrail_wiring.gate
       @kernel.participant_turn = -> { Steer.participant_author?(turn_author) }
       @kernel.session_lookup = -> { @session }
+      # A pair turn stops once its participant passed their cap.
+      @kernel.generation_guard = -> { guard_participant_spend }
       # The turn-end warm-up; the kernel asks it for a slot pin per request.
       @prompt_warmup = PromptWarmup.new
       @kernel.warmup = @prompt_warmup
@@ -1398,6 +1400,32 @@ module Samagotchi
     end
 
     def session_state_dir = @session_state_dir || Session.default_state_dir
+
+    # Whether a participant passed their cap, read before each generation
+    # of their pair turn (#guard_participant_spend): author ("p:<id>") →
+    # why the turn stops (the stop's reason), nil while under it. The
+    # Worker sets it (Worker#participant_cap_stop); without one (the REPL)
+    # nothing is checked mid-turn.
+    attr_writer :participant_cap
+
+    # What a stop for a participant's cap is attributed to (HookRoutes#stop_turn).
+    PARTICIPANTS_HOOK = "participants"
+
+    # Before each generation (KernelLoop#generation_guard): a pair turn whose
+    # participant's spend (Engine#metrics: their finished turns, this one's
+    # finished generations, their side requests) passed their cap stops on
+    # the plugins' stop path (cost-cap's, work-cap's), with its notice. The
+    # turn-start check is the Worker's (Worker#participant_refusal); a
+    # review turn only reads, and keeps to it.
+    def guard_participant_spend
+      author = turn_author
+      return if author.nil? || @participant_cap.nil?
+      return unless ParticipantMode.of(@session) == ParticipantMode::PAIR
+
+      reason = @participant_cap.call(author) or return
+      hook_stop_turn(reason, PARTICIPANTS_HOOK)
+    end
+    private :guard_participant_spend
 
     # The running turn's metrics so far, saved as a turn a worker died in
     # would leave them (SessionMetrics#persist's running_turn): a worker's

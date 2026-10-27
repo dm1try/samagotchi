@@ -567,6 +567,8 @@ module Samagotchi
       # The attached TUI and the web answer approvals; with none attached
       # one waits, like ask_user_question.
       engine.interface = :worker
+      # A pair turn stops mid-turn at its participant's cap.
+      engine.participant_cap = ->(author) { participant_cap_stop(author) }
       engine.guardrail_state_dir = @state_dir if @state_dir
       engine.session_state_dir = @state_dir if @state_dir
       engine
@@ -702,28 +704,54 @@ module Samagotchi
       entry = Participants.read(@session_id, state_dir: @state_dir).find { |e| Steer.author_for(e.id) == author }
       return "revoked" unless entry&.active?(Time.now)
 
-      cap = entry.cap.is_a?(Numeric) ? entry.cap.to_f : Web::Grants.default_cap
+      cap = participant_cap(entry)
       return nil if @engine.metrics.spend(author) < cap
 
       cap_notice(author, entry.name, cap)
       "cap_reached"
     end
 
+    # Why a participant's running pair turn stops (Engine#participant_cap,
+    # asked before each of its generations): their cap reached
+    # (#participant_refusal, which gives the owner the cap notice), else nil.
+    def participant_cap_stop(author)
+      return nil unless participant_refusal(author) == "cap_reached"
+
+      entry = Participants.read(@session_id, state_dir: @state_dir).find { |e| Steer.author_for(e.id) == author }
+      format(CAP_STOP, name: participant_label(author, entry&.name), cap: participant_cap(entry))
+    end
+
+    # A participant's cap in dollars: their own, else the config's.
+    def participant_cap(entry) = entry&.cap.is_a?(Numeric) ? entry.cap.to_f : Web::Grants.default_cap
+
+    # A participant's cleaned name, else their id.
+    def participant_label(author, name)
+      who = ParticipantName.clean(name)
+      who.empty? ? Steer.participant_id(author) : who
+    end
+
     # The owner's notice that a participant reached their cap: once per
     # participant and cap (a raised cap that is reached again says so again).
+    # A working session's says turns (a pair turn acts), a review session's
+    # comments.
     def cap_notice(author, name, cap)
       key = [author, cap]
       return if (@cap_noticed ||= Set.new).include?(key)
 
       @cap_noticed << key
       id = Steer.participant_id(author)
-      who = ParticipantName.clean(name)
-      @engine.announce(type: :hook_notice, hook: "participants", level: :warn, between_turns: true,
-                       text: format(CAP_NOTICE, name: who.empty? ? id : who, cap: cap, session: @session_id[0, 8], id: id))
+      text = ParticipantMode.of(@session) == ParticipantMode::PAIR ? PAIR_CAP_NOTICE : CAP_NOTICE
+      @engine.announce(type: :hook_notice, hook: Engine::PARTICIPANTS_HOOK, level: :warn, between_turns: true,
+                       text: format(text, name: participant_label(author, name), cap: cap, session: @session_id[0, 8], id: id))
     end
 
     CAP_NOTICE = "%<name>s reached their $%<cap>.2f review cap: their comments are refused until you raise it " \
                  "(chi share cap %<session>s %<id>s AMOUNT)."
+    PAIR_CAP_NOTICE = "%<name>s reached their $%<cap>.2f cap: their turns stop and are refused until you raise it " \
+                      "(chi share cap %<session>s %<id>s AMOUNT)."
+    # The reason a pair turn stopped at its participant's cap (the turn's
+    # "stopped the turn: …" notice).
+    CAP_STOP = "%<name>s reached their $%<cap>.2f cap"
 
     # A participant's queued turn that may not start (#participant_refusal):
     # taken off the queue (:turn_dequeued, so every UI drops its bubble)
