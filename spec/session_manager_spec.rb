@@ -1502,6 +1502,27 @@ RSpec.describe Samagotchi::SessionManager do
       expect(described_class).not_to have_received(:delete_session)
     end
 
+    it "starts no next worker after a restart a stop landed on, and drops its reminders hand-off" do
+      session = Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp")
+      session.save(state_dir: tmpdir)
+      dir = Samagotchi::Session.session_dir(session.id, state_dir: tmpdir)
+      carry = File.join(dir, Samagotchi::ReminderCarry::FILE)
+      worker = instance_double(Samagotchi::Worker, discard?: false)
+      allow(worker).to receive(:run) do
+        # The stop's marker and its file remove, then the hand-off written as the worker left.
+        Samagotchi::Session.mark_stopped(session.id, state_dir: tmpdir)
+        File.write(carry, "{}")
+        :restart
+      end
+      allow(Samagotchi::Worker).to receive(:new).and_return(worker)
+      allow(described_class).to receive(:resume_session)
+
+      expect(described_class.run_session_loop(session.id, state_dir: tmpdir)).to eq(:restart)
+      expect(described_class).not_to have_received(:resume_session)
+      expect(File.exist?(carry)).to be(false)
+      expect(Samagotchi::Session.stopped_marker?(session.id, state_dir: tmpdir)).to be(true)
+    end
+
     it "starts a new worker after an idle exit when delegate reports wait to wake it, not when they were held back" do
       session = Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp")
       session.save(state_dir: tmpdir)

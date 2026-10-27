@@ -1153,8 +1153,13 @@ module Samagotchi
       # A restart starts its successor here, on the newest chi installed
       # (worker_command), once this one's lock is free.
       # Delegate reports that rang while it left wake one too.
-      if result == :restart ||
-         (%i[idle_exit exit_requested].include?(result) &&
+      if result == :restart && Session.stopped_marker?(session_id, state_dir: sd)
+        # A stop landed as it left: no successor (resume_session would clear
+        # the stop), and the reminders go with it.
+        ReminderCarry.remove(session_dir)
+        Log.info(:worker, "restart_dropped", why: :stopped)
+      elsif result == :restart ||
+            (%i[idle_exit exit_requested].include?(result) &&
           (!SessionInbox.find_new_input_files(session_dir).empty? || worker.wake_due?))
         resume_session(session_id, state_dir: sd)
       elsif worker.discard?

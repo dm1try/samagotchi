@@ -1582,9 +1582,15 @@ module Samagotchi
     # A restart hands the reminders to the next worker (ReminderCarry), while
     # the event log is held: no turn can register or fire one from here. A
     # write that fails keeps this worker up with them rather than losing them.
+    # A session stopped meanwhile drops them (run_session_loop then starts no
+    # successor): nothing is written.
     # @return [Boolean] false when the write failed
     def carry_reminders
-      ReminderCarry.write(@session_dir, session_id: @session_id, store: @engine.reminder_store)
+      if stopped_on_disk?
+        ReminderCarry.remove(@session_dir)
+      else
+        ReminderCarry.write(@session_dir, session_id: @session_id, store: @engine.reminder_store)
+      end
       true
     rescue StandardError => e
       @exit_requested = nil

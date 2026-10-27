@@ -1292,6 +1292,23 @@ RSpec.describe Samagotchi::Worker do
           expect(File.exist?(carry_file)).to be(false)
         end
 
+        it "writes no hand-off when a stop lands between the request and the leave" do
+          engine.reminder_store.register(name: "api_health", description: "check the API", interval_minutes: 20)
+          start_worker(poll_interval: 0.05)
+          policy = @worker.instance_variable_get(:@idle_exit)
+          looks = 0
+          allow(policy).to receive(:hold_for_restart) do
+            looks += 1
+            # The leave's look, under the lock: the stop's marker is down by now.
+            Samagotchi::Session.mark_stopped(session.id, state_dir: tmpdir) if looks == 2
+            nil
+          end
+
+          expect(post_restart.first).to eq(200)
+          expect(join!(@thread, "the worker").value).to eq(:restart)
+          expect(File.exist?(carry_file)).to be(false)
+        end
+
         it "stays up with its reminders when the hand-off can't be written" do
           engine.reminder_store.register(name: "api_health", description: "check the API", interval_minutes: 20)
           allow(Samagotchi::ReminderCarry).to receive(:write).and_raise(Errno::ENOSPC)
