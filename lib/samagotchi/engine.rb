@@ -16,6 +16,7 @@ require_relative "turn_note"
 require_relative "turn_endings"
 require_relative "turn_origin"
 require_relative "verify_anchor"
+require_relative "verdict"
 require_relative "model_profile"
 require_relative "effective_model"
 require_relative "session_setting"
@@ -1592,6 +1593,7 @@ module Samagotchi
         kept, event = yield(seconds)
         stamp_verify_anchor(kept, turn)
         replace_session_messages(turn.session, kept) if kept
+        record_verdict(turn, outcome)
         emit_working_set(turn.on_event, turn.session, turn.session.messages)
         turn.session.status = Session::STATUS_IDLE
         record_last_turn(turn.session, outcome, seconds, turn.origin, event, limit: exhausted ? turn.limit : nil)
@@ -1611,13 +1613,22 @@ module Samagotchi
         (message[:role] || message["role"]).to_s == "user" &&
           (message[:turn_id] || message["turn_id"]).to_s == turn.id
       end
-      opening ||= messages.reverse.find do |message|
-        (message[:role] || message["role"]).to_s == "user" &&
-          (message[:content] || message["content"]).to_s == turn.prompt.to_s
-      end
       opening[:verify] = turn.verify.to_h if opening
     end
     private :stamp_verify_anchor
+
+    def record_verdict(turn, outcome)
+      return unless outcome == "completed" && turn.verify
+
+      answer = AnswerTail.find(turn.session.messages, turn_id: turn.id)
+      parsed = Verdict.parse(answer && (answer[:content] || answer["content"]))
+      return unless parsed
+
+      record = { anchor: turn.verify.to_h, verdict: parsed.verdict, reason: parsed.reason,
+                 by: turn.origin.author, check_turn_id: turn.id, at: Time.now.iso8601(3) }
+      turn.session.verdicts = turn.session.verdicts + [record]
+    end
+    private :record_verdict
 
     def save_quietly(session)
       session.save(state_dir: session_state_dir)

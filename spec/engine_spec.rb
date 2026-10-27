@@ -296,19 +296,79 @@ RSpec.describe Samagotchi::Engine do
       expect(session.messages).to eq(result.conversation)
     end
 
-    it "stamps a verified claim anchor on the opening user message only" do
-      allow(kernel).to receive(:run).and_return(result)
+    it "stamps a verified claim anchor on the opening user message only (matched by turn id, not text)" do
+      turn_id = "123e4567-e89b-12d3-a456-426614174009"
+      allow(kernel).to receive(:run).and_return(
+        Samagotchi::LLM::ModelResult.new(text: "hello back", exhausted: false, pending_tool_calls: false, tool_activity: [],
+                                         conversation: [{ role: "user", content: "hi" },
+                                                        { role: "user", content: "hi", turn_id: turn_id },
+                                                        { role: "model", content: "hello back" }])
+      )
       session = make_session
       engine = build_engine(profile: "gemma4")
       verify = Samagotchi::VerifyAnchor.new(turn_id: "123e4567-e89b-12d3-a456-426614174000", quote: "the claim")
 
-      engine.run_turn(session, "hi", verify: verify)
-      opening = session.messages.find { |message| message[:role] == "user" }
+      engine.run_turn(session, "hi", id: turn_id, verify: verify)
+      earlier, opening = session.messages.select { |message| message[:role] == "user" }
 
+      expect(earlier).not_to have_key(:verify)
       expect(opening[:verify]).to eq(verify.to_h)
       session.messages.reject { |message| message[:role] == "user" }.each do |message|
         expect(message).not_to have_key(:verify)
       end
+    end
+
+    it "records a verdict only for a completed verify turn" do
+      session = make_session
+      engine = build_engine(profile: "gemma4")
+      verify = Samagotchi::VerifyAnchor.new(turn_id: "123e4567-e89b-12d3-a456-426614174000", quote: "the claim")
+      check_turn_id = "123e4567-e89b-12d3-a456-426614174001"
+      answer = "Verdict: CONFIRMED — supported by the source"
+      verified_result = Samagotchi::LLM::ModelResult.new(
+        text: answer,
+        conversation: [{ role: "user", content: "check", turn_id: check_turn_id },
+                       { role: "model", content: answer }],
+        exhausted: false,
+        pending_tool_calls: false,
+        tool_activity: []
+      )
+      allow(kernel).to receive(:run).and_return(verified_result)
+
+      engine.run_turn(session, "check", id: check_turn_id, origin: { author: "p:guest" }, verify: verify)
+
+      expect(session.verdicts).to contain_exactly(
+        hash_including(anchor: verify.to_h, verdict: "confirmed", reason: "supported by the source",
+                       by: "p:guest", check_turn_id: check_turn_id, at: a_kind_of(String))
+      )
+    end
+
+    it "does not parse verdict text from a regular turn or a verify turn with a non-verdict final line" do
+      session = make_session
+      engine = build_engine(profile: "gemma4")
+      verify = Samagotchi::VerifyAnchor.new(turn_id: "123e4567-e89b-12d3-a456-426614174000", quote: "the claim")
+      regular_result = Samagotchi::LLM::ModelResult.new(
+        text: "Verdict: confirmed — looks right",
+        conversation: [{ role: "user", content: "regular", turn_id: "123e4567-e89b-12d3-a456-426614174002" },
+                       { role: "model", content: "Verdict: confirmed — looks right" }],
+        exhausted: false,
+        pending_tool_calls: false,
+        tool_activity: []
+      )
+      allow(kernel).to receive(:run).and_return(regular_result)
+      engine.run_turn(session, "regular", id: "123e4567-e89b-12d3-a456-426614174002")
+
+      malformed_result = Samagotchi::LLM::ModelResult.new(
+        text: "Verdict: confirmed — looks right\nNo final verdict",
+        conversation: [{ role: "user", content: "verify", turn_id: "123e4567-e89b-12d3-a456-426614174003" },
+                       { role: "model", content: "Verdict: confirmed — looks right\nNo final verdict" }],
+        exhausted: false,
+        pending_tool_calls: false,
+        tool_activity: []
+      )
+      allow(kernel).to receive(:run).and_return(malformed_result)
+      engine.run_turn(session, "verify", id: "123e4567-e89b-12d3-a456-426614174003", verify: verify)
+
+      expect(session.verdicts).to be_empty
     end
 
     it "emits turn_started, forwards raw kernel events, then turn_completed" do

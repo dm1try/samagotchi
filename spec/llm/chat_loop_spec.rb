@@ -1906,6 +1906,13 @@ RSpec.describe Samagotchi::LLM::ChatLoop do
       expect(backend.plain([prompt])).to eq([prompt])
       expect(backend.send(:wire_messages, [prompt])).to eq([{ role: "user", content: [{ type: "text", text: "hi" }] }])
     end
+
+    it "keeps a Verify turn's claim anchor on it past later turns, and never sends it" do
+      prompt = { role: "user", content: "hi", turn_id: "t-1", verify: { turn_id: "t-0", quote: "the claim" } }
+
+      expect(backend.plain([prompt])).to eq([prompt])
+      expect(backend.send(:wire_messages, [prompt])).to eq([{ role: "user", content: [{ type: "text", text: "hi" }] }])
+    end
   end
 
   describe "a wake turn's delegate report (its turn's start)" do

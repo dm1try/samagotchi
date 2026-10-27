@@ -134,6 +134,14 @@ module Samagotchi
       @last_turn = LastTurn.from_file(value)
     end
 
+    # Verdict cards recorded by completed Verify turns, in append order.
+    # A missing field stays missing until the first verdict is recorded.
+    def verdicts = @verdicts || []
+
+    def verdicts=(values)
+      @verdicts = values.nil? ? nil : Array(values)
+    end
+
     # The mark of a turn a worker checkpointed and never finished
     # (InterruptedTurn), as loaded; the next worker settles it and sets it
     # to nil. While a turn runs, #turn_checkpoint's marker is saved instead.
@@ -333,7 +341,7 @@ module Samagotchi
                    last_turn: nil, model_typed: nil, delegate: false, llm_context: nil, prompt_notes: [],
                    continues: nil, thinking: nil, reasoning_history: nil, appended_prompt_files: [],
                    toolkit: nil, toolkit_origin: "chosen", settings: nil, interrupted_turn: nil, parent_answers: nil, title: nil,
-                   working_set_pins: [], review: nil)
+                   working_set_pins: [], review: nil, verdicts: nil)
       @id = id
       @metadata_version = metadata_version
       @mode = mode
@@ -370,6 +378,7 @@ module Samagotchi
       self.parent_answers = parent_answers
       self.working_set_pins = working_set_pins
       self.review = review
+      self.verdicts = verdicts
       self.interrupted_turn = interrupted_turn
       @turn_checkpoint = nil
       @archived = false
@@ -539,6 +548,7 @@ module Samagotchi
       "parent_id" => nil,
       "scratch" => false,
       "last_turn" => nil,
+      "verdicts" => nil,
       "delegate" => false,
       "llm_context" => nil,
       "continues" => nil,
@@ -558,7 +568,7 @@ module Samagotchi
 
     # FIELDS a session file has only when set: a session without them saves
     # as it did before they existed.
-    OPTIONAL_FIELDS = %w[review first_turn_id].freeze
+    OPTIONAL_FIELDS = %w[review first_turn_id verdicts].freeze
 
     # A session from a parsed session file. +messages+ false leaves the
     # conversation out (the lists' lightweight summaries).
@@ -712,6 +722,12 @@ module Samagotchi
                 when "last_turn" then @last_turn&.to_file
                 when "working_set_pins" then @working_set_pins.map(&:to_file)
                 when "review" then @review&.to_file
+                when "verdicts"
+                  @verdicts&.map do |record|
+                    scrub_utf8(record.to_h do |key, entry|
+                      [key.to_s, entry.is_a?(Hash) ? stringify_message_keys(entry) : entry]
+                    end)
+                  end
                 when "used_memory_names", "preloaded_memory_names", "muted_memory_names", "appended_prompt_files"
                   Array(instance_variable_get(:"@#{key}"))
                 else instance_variable_get(:"@#{key}")

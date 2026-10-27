@@ -447,6 +447,7 @@ module Samagotchi
           message[:images] = entry[:images] if entry[:images].is_a?(Array) && !entry[:images].empty?
           message[:turn_id] = entry[:turn_id] if entry[:turn_id]
           message[:turn_start] = true if entry[:turn_start] == true
+          message[:verify] = entry[:verify] if entry[:verify].is_a?(Hash)
           message[:thinking] = entry[:thinking] if entry[:thinking].is_a?(String) && !entry[:thinking].empty?
           message[:anthropic_content] = entry[:anthropic_content] if entry[:anthropic_content].is_a?(Array)
           ToolResponse::SAVED_KEYS.each { |key| message[key] = entry[key] if entry[key] }
