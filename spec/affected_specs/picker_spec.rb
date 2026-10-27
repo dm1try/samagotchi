@@ -80,6 +80,7 @@ RSpec.describe AffectedSpecs::Picker do
     ]
 
     ["lib/samagotchi/terminal_ui/attached_loop/join_header.rb",
+     "lib/samagotchi/terminal_ui/attached_loop/exit_commands.rb",
      "lib/samagotchi/terminal_ui/join_replay.rb",
      "lib/samagotchi/terminal_ui/exit_lines.rb"].each do |changed|
       result = pick(changed)
