@@ -100,6 +100,53 @@ RSpec.describe Samagotchi::SessionAccess::Remote do
     end
   end
 
+  describe "malformed remote answers and polling" do
+    it "refuses a successful note response with no status through Remote's error mapper" do
+      access, = scripted([200, {}])
+
+      expect { access.note("s-1", text: "note", source: "cli") }
+        .to raise_error(Samagotchi::SessionAccess::RemoteFailed, %r{\Aremote studio \(http://192\.0\.2\.10:4567\) answered 200\z})
+    end
+
+    it "uses its injected sleeper while waiting for the worker" do
+      now = 0.0
+      sleeps = []
+      access = described_class.new(RemoteBackend.entry, transport: transport,
+                                   sleeper: ->(seconds) { sleeps << seconds; now += seconds },
+                                   clock: -> { now })
+      allow(access).to receive(:owner).and_return(nil)
+
+      expect(access.await_worker("s-1", timeout: 0.25)).to be(false)
+      expect(sleeps).to eq([0.1, 0.1, 0.1])
+    end
+  end
+
+  describe "missing remote context" do
+    let(:target) { Struct.new(:session_id).new("s-1") }
+
+    it "matches the new code and the old chi web's no-source detail" do
+      [{ error: "context_missing", detail: "source missing" },
+       { error: "not_found", detail: "no source nope" }].each do |body|
+        access, = scripted([404, body])
+        expect(access.context_entry(target, "nope")).to be_nil
+
+        access, = scripted([404, body])
+        expect(access.context_remove(target, "nope")).to eq(:missing)
+      end
+    end
+
+    it "matches no_provider by code and retains the old chi web's detail fallback" do
+      url = "https://nope.example/1"
+      expected = "no installed bundle on studio resolves #{url} (chi bundle install github-pr there for GitHub PRs)"
+      [{ error: "no_provider", detail: "provider unavailable" },
+       { error: "not_found", detail: "no installed bundle resolves #{url}" }].each do |body|
+        access, = scripted([422, body])
+        expect { access.context_add_url(target, url, why: nil, hint: nil, added_by: "web") }
+          .to raise_error(Samagotchi::ContextProviders::Invalid, expected)
+      end
+    end
+  end
+
   describe "a bound invite (chi share --identity)" do
     let(:participant) do
       { id: "p_0000beef", session_id: "s", kind: "human", name: "Alex", role: "reviewer", created_at: "x", expires_at: "y",

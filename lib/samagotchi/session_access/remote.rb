@@ -193,7 +193,7 @@ module Samagotchi
           return true if owner(id)&.worker?
           return false if monotonic >= deadline
 
-          sleep(WORKER_POLL)
+          @sleeper.call(WORKER_POLL)
         end
       end
 
@@ -310,7 +310,10 @@ module Samagotchi
         reply = request(:post, "#{session_path(id)}/notes", body: { text: text, source: source })
         json = reply.json.is_a?(Hash) ? reply.json : {}
         case reply.status
-        when 200 then NoteDelivery::Result.new(id: id, status: json["status"].to_sym, queued: json["queued"].to_i)
+        when 200
+          raise_refusal(reply) unless json["status"].is_a?(String)
+
+          NoteDelivery::Result.new(id: id, status: json["status"].to_sym, queued: json["queued"].to_i)
         when 409
           return NoteDelivery::Result.new(id: id, status: :refused, queued: 0) if json["error"] == "owned_by_tui"
 
@@ -470,14 +473,13 @@ module Samagotchi
       def context_add_url(target, url, why:, hint:, added_by:)
         reply = request(:post, "#{session_path(target.session_id)}/context",
                         body: { url: url, why: why, hint: hint, added_by: added_by }.compact)
-        if reply.status == 422
+        if reply.status == 422 && no_provider?(reply)
           require_relative "../context_providers"
-          detail = if reply.error == "no_provider" && reply.json["detail"].to_s.start_with?("no installed bundle resolves")
-                     "no installed bundle on #{name} resolves #{url} (chi bundle install github-pr there for GitHub PRs)"
-                   else
-                     "#{reply.json["detail"]} (on #{name})"
-                   end
+          detail = "no installed bundle on #{name} resolves #{url} (chi bundle install github-pr there for GitHub PRs)"
           raise ContextProviders::Invalid, detail
+        elsif reply.status == 422
+          require_relative "../context_providers"
+          raise ContextProviders::Invalid, "#{reply.json["detail"]} (on #{name})"
         end
         context_added(reply)
         reply.json.fetch("name")
@@ -492,7 +494,7 @@ module Samagotchi
         case reply.status
         when 200 then ContextPush.new(status: :pushed, before: reply.json["before"], revision: reply.json["revision"])
         when 404
-          return ContextPush.new(status: :missing) if reply.error == "not_found"
+          return ContextPush.new(status: :missing) if context_missing?(reply)
 
           raise_refusal(reply)
         when 409 then ContextPush.new(status: :not_push)
@@ -513,7 +515,7 @@ module Samagotchi
       def context_entry(target, name)
         ContextSources.check_name!(name)
         reply = request(:get, "#{session_path(target.session_id)}/context/#{name}", query: { full: 1 })
-        return nil if reply.status == 404 && reply.error == "not_found" && reply.json["detail"].to_s.start_with?("no source")
+        return nil if context_missing?(reply)
 
         raise_refusal(reply) unless reply.status == 200
 
@@ -527,7 +529,7 @@ module Samagotchi
         case reply.status
         when 200 then :removed
         when 409 then reply.error == "project_source" ? :project : raise_refusal(reply)
-        when 404 then reply.json["detail"].to_s.start_with?("no source") ? :missing : raise_refusal(reply)
+        when 404 then context_missing?(reply) ? :missing : raise_refusal(reply)
         else raise_refusal(reply)
         end
       end
@@ -653,6 +655,21 @@ module Samagotchi
       # route's own "no such session".
       def missing_route?(reply)
         reply.status == 404 && reply.error == "not_found" && reply.json["detail"].to_s.start_with?("not found: /")
+      end
+
+      def context_missing?(reply)
+        return false unless reply.status == 404
+        return true if reply.error == "context_missing"
+
+        # Older chi web used not_found for a missing context source.
+        reply.error == "not_found" && reply.json["detail"].to_s.start_with?("no source")
+      end
+
+      def no_provider?(reply)
+        return true if reply.error == "no_provider"
+
+        # Older chi web didn't give this refusal its own error code.
+        reply.json["detail"].to_s.start_with?("no installed bundle resolves")
       end
 
       # Raises what Local's callee raises for this refusal (chi web sends

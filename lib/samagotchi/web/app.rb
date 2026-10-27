@@ -1225,7 +1225,7 @@ module Samagotchi
       # (?full=1: as the list's).
       def handle_context_show(req, id, name)
         session = @session_class.load(id, state_dir: default_state_dir)
-        attached = find_context(session, name) or return error_response(404, "not_found", "no source #{name[0, 40]}")
+        attached = find_context(session, name) or return error_response(404, "context_missing", "no source #{name[0, 40]}")
         own = ContextSources.session_location(id, state_dir: default_state_dir)
         row = context_row(attached, own, own.subscriptions, full: truthy_param?(req.params["full"]))
         json_response(200, row.merge(text: attached.snapshot.text))
@@ -1305,7 +1305,7 @@ module Samagotchi
         return context_remove_own(id, name) if truthy_param?(req.params["own"])
 
         session = @session_class.load(id, state_dir: default_state_dir)
-        attached = find_context(session, name) or return error_response(404, "not_found", "no source #{name[0, 40]}")
+        attached = find_context(session, name) or return error_response(404, "context_missing", "no source #{name[0, 40]}")
         if attached.location.session?
           attached.location.remove(attached.name)
           json_response(200, { status: "detached", name: attached.name })
@@ -1320,10 +1320,10 @@ module Samagotchi
         when :removed then json_response(200, { status: "detached", name: name })
         when :project
           error_response(409, "project_source", ContextCommand.project_source_message(name))
-        else error_response(404, "not_found", "no source #{name[0, 40]}")
+        else error_response(404, "context_missing", "no source #{name[0, 40]}")
         end
       rescue ContextSources::Invalid
-        error_response(404, "not_found", "no source #{name[0, 40]}")
+        error_response(404, "context_missing", "no source #{name[0, 40]}")
       end
 
       def attached_context(session, shadowed: false)

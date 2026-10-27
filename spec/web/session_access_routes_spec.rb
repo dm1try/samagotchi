@@ -349,7 +349,8 @@ RSpec.describe Samagotchi::Web::App, "session access routes" do
       expect(location.snapshot("notes")).to have_attributes(text: "hello", summary: "1 new")
       expect(call("#{path}/notes/push", method: "POST", body: { text: "hello" }).last).to include("changed" => false)
 
-      expect(call("#{path}/nope/push", method: "POST", body: { text: "x" })).to match([404, include("error" => "not_found")])
+      expect(call("#{path}/nope/push", method: "POST", body: { text: "x" }))
+        .to match([404, include("error" => "context_missing")])
       expect(call("#{path}/ci/push", method: "POST", body: { text: "x" }))
         .to eq([409, { "error" => "not_push", "detail" => "ci runs a command, which writes its text: push goes to a --push source" }])
       expect(call("#{path}/notes/push", method: "POST", body: { text: " " })).to match([400, include("error" => "invalid_text")])

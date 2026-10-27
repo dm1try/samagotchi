@@ -449,7 +449,7 @@ module Samagotchi
       # hint}: new text for the session's --push source (chi context push;
       # the fields as a source's JSON output gives them, checked the same
       # way). 200 {status: "pushed", name, before, revision, changed}; 404
-      # not_found (no such source); 409 not_push (a command source); 400
+      # context_missing (no such source); 409 not_push (a command source); 400
       # invalid_text.
       def handle_context_push(req, id, name)
         body = body_hash(req) or return error_response(400, "invalid_json", "invalid JSON body")
@@ -462,13 +462,13 @@ module Samagotchi
         end
         pushed = session_access.context_push(context_target(id), name, fetched)
         case pushed.status
-        when :missing then error_response(404, "not_found", "no source #{name[0, 40]}")
+        when :missing then error_response(404, "context_missing", "no source #{name[0, 40]}")
         when :not_push then error_response(409, "not_push", SessionAccess::ContextPush.not_push_message(name))
         else json_response(200, { status: "pushed", name: name, before: pushed.before, revision: pushed.revision,
                                   changed: pushed.before != pushed.revision })
         end
       rescue ContextSources::Invalid
-        error_response(404, "not_found", "no source #{name[0, 40]}")
+        error_response(404, "context_missing", "no source #{name[0, 40]}")
       end
 
       # The session as chi context's Target (SessionAccess::Local's context

@@ -66,8 +66,14 @@ RSpec.describe Samagotchi::Web::App, "attached context" do
 
     expect(call("/api/sessions/#{session.id}/context/notes")).to match([200, include("text" => "the text", "unread" => true)])
     expect(call("/api/sessions/#{session.id}/context/nope").first).to eq(404)
+    expect(call("/api/sessions/#{session.id}/context/nope"))
+      .to eq([404, { "error" => "context_missing", "detail" => "no source nope" }])
     expect(call("/api/sessions/#{session.id}/context/Bad..Name").first).to eq(404)
     expect(call("/api/sessions/11111111-2222-3333-4444-555555555555/context").first).to eq(404)
+    expect(call("/api/sessions/#{session.id}/context/nope?own=1", method: "DELETE"))
+      .to eq([404, { "error" => "context_missing", "detail" => "no source nope" }])
+    expect(call("/api/sessions/#{session.id}/context/nope/push", method: "POST", body: { text: "new" }))
+      .to eq([404, { "error" => "context_missing", "detail" => "no source nope" }])
   end
 
   describe "POST: a URL through an installed bundle's provider" do
