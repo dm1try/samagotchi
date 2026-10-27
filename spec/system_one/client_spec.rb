@@ -107,6 +107,22 @@ RSpec.describe Samagotchi::SystemOne::Client do
       expect(client.backend).to be_a(Samagotchi::SystemOne::HttpBackend)
     end
 
+    it "overrides only the mode and failure log tag when requested" do
+      write_config({ "mode" => "off", "host" => "splash", "model" => "configured-model", "timeout_ms" => 1500 })
+      host_registry = registry
+      expect(Samagotchi::SystemOne::HttpBackend).to receive(:new).with(
+        host_registry: host_registry, host: "splash", model: "configured-model", timeout_ms: 1500, env: ENV
+      ).and_call_original
+      client = described_class.from_config(host_registry: host_registry, mode: :audit, tag: :toolkit)
+      expect(client).to have_attributes(mode: "audit", host: "splash", model: "configured-model")
+
+      allow(client.backend).to receive(:ask).and_raise(Samagotchi::SystemOne::BackendError, "failed")
+      expect(Samagotchi::Log).to receive(:warn).with(
+        :toolkit, "system_one_failed", hash_including(echo: /\[samagotchi:toolkit\] system one:/, host: "splash")
+      )
+      expect(client.ask(state: "x", questions: { "a" => question("a") })).to be_nil
+    end
+
     it "takes the model a run names over the configured one" do
       write_config({ "mode" => "audit", "host" => "splash", "model" => "configured-model" })
       client = described_class.from_config(host_registry: registry, model: "run-model")

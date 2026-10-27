@@ -25,11 +25,12 @@ module Samagotchi
 
       attr_reader :mode, :host, :model, :backend
 
-      def initialize(backend:, mode: "off", host: nil, model: nil)
+      def initialize(backend:, mode: "off", host: nil, model: nil, tag: :guardrails)
         @backend = backend
         @mode = mode.to_s.strip.downcase
         @host = host
         @model = model
+        @tag = tag.to_sym
       end
 
       # nil when judgment is off (the default) or no host is named, so the
@@ -37,8 +38,8 @@ module Samagotchi
       # config.yml change takes effect on the next ask.
       # @param model [String, nil] a model for this call only (chi guardrails
       #   replay --model), else the configured one
-      def self.from_config(host_registry:, env: ENV, model: nil)
-        mode = Config.get("guardrails.system_one.mode").to_s.strip.downcase
+      def self.from_config(host_registry:, env: ENV, model: nil, mode: nil, tag: :guardrails)
+        mode = (mode.nil? ? Config.get("guardrails.system_one.mode") : mode).to_s.strip.downcase
         return nil unless MODES.include?(mode) && mode != "off"
 
         host = Config.get("guardrails.system_one.host").to_s.strip
@@ -50,7 +51,7 @@ module Samagotchi
 
         new(backend: HttpBackend.new(host_registry: host_registry, host: host, model: model.empty? ? nil : model,
                                      timeout_ms: timeout_ms, env: env),
-            mode: mode, host: host, model: model.empty? ? nil : model)
+            mode: mode, host: host, model: model.empty? ? nil : model, tag: tag)
       end
 
       # @param state [String, Hash, Array] what the question is about, as the
@@ -86,7 +87,7 @@ module Samagotchi
       # One warn, one nil: the ask goes to the user.
       def no_judgment(reason, **fields)
         # Qualified: inside SystemOne, the bare Log is now SystemOne::Log.
-        Samagotchi::Log.warn(:guardrails, "system_one_failed", echo: "[samagotchi:guardrails] system one: #{reason}", host: @host, **fields)
+        Samagotchi::Log.warn(@tag, "system_one_failed", echo: "[samagotchi:#{@tag}] system one: #{reason}", host: @host, **fields)
         nil
       end
     end
