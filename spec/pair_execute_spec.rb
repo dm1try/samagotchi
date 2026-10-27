@@ -1,0 +1,48 @@
+# frozen_string_literal: true
+
+require "spec_helper"
+require "tmpdir"
+require "samagotchi/tools/builtins"
+
+# A participant's turn runs execute without the variables whose names hold
+# a secret, and a command still running at the limit is killed, never handed
+# over as a background task; the owner's turns run as configured.
+RSpec.describe Samagotchi::Tools::Builtins, "a participant's execute" do
+  let(:home) { Dir.mktmpdir("pair-execute-home") }
+
+  around { |example| with_env("HOME" => home, "PAIR_PROBE_API_KEY" => "sk-x", "PAIR_PROBE_PLAIN" => "y") { example.run } }
+  after { FileUtils.rm_rf(home) }
+
+  def kctx(mode)
+    peers = Struct.new(:session_id, :model_ref, :thinking, :reasoning_history).new("s1", "m", nil, nil)
+    Struct.new(:peers, :participant_mode, :cancel_controller, :reminder_store).new(peers, mode, nil, nil)
+  end
+
+  def run_as(mode)
+    seen = nil
+    allow(Samagotchi::Tools::Execute).to receive(:call) { |_command, **opts| seen = opts and "ok" }
+    described_class.registry["execute"].handler.call({ name: "execute", content: "env" }, kctx(mode))
+    seen
+  end
+
+  it "scrubs secret-named variables and kills at the limit in a participant's turn" do
+    opts = run_as(:pair)
+    expect(opts[:on_timeout]).to eq(:kill)
+    expect(opts[:env]).to include("PAIR_PROBE_API_KEY" => nil)
+    expect(opts[:env]).not_to have_key("PAIR_PROBE_PLAIN")
+    expect(run_as(:review)[:on_timeout]).to eq(:kill)
+  end
+
+  it "leaves the owner's turns as they were" do
+    opts = run_as(nil)
+    expect(opts).not_to have_key(:on_timeout)
+    expect(opts[:env]).not_to have_key("PAIR_PROBE_API_KEY")
+  end
+
+  it "runs the command without them, for real" do
+    out = Samagotchi::Tools::Execute.call("printf %s \"$PAIR_PROBE_API_KEY|$PAIR_PROBE_PLAIN\"", cwd: home,
+                                          env: Samagotchi::Guardrails::PairBoundary.scrubbed_env, on_timeout: :kill)
+    expect(out).to include("|y")
+    expect(out).not_to include("sk-x")
+  end
+end

@@ -243,6 +243,14 @@ RSpec.describe "a participant red-teaming a session" do
       expect(engine.due_reminder_names).to eq([])
     end
 
+    it "runs its commands without the owner's secret-named variables" do
+      results = with_env("PAIR_PROBE_API_TOKEN" => "sk-probe", "PAIR_PROBE_PLAIN" => "plain") do
+        participant_turn([["execute", { "command" => "printf %s \"[$PAIR_PROBE_API_TOKEN|$PAIR_PROBE_PLAIN]\"", "cwd" => project }]])
+      end
+      expect(results[0]).to include("[|plain]")
+      expect(results[0]).not_to include("sk-probe")
+    end
+
     it "denies writing chi's files and the home's keys and startup files" do
       hook = File.join(Samagotchi::Hooks::Loader.hooks_dir, "pair_probe.rb")
       targets = [hook, File.join(Samagotchi::Paths.state_dir, "web-token"), File.join(Dir.home, ".ssh", "authorized_keys"),

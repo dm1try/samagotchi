@@ -67,6 +67,10 @@ module Samagotchi
 
       def reminder_store = @kernel.reminder_store
       def peers = @kernel.peers
+
+      # The running participant turn's mode (KernelLoop#participant_mode:
+      # :pair, :review), nil for the owner's turns.
+      def participant_mode = @kernel.participant_mode&.call
       def model_key = @kernel.model_key
 
       # memory_read with the session's mutes applied: a blank name (the index)

@@ -25,6 +25,7 @@ require_relative "delegate_result"
 require_relative "ask_user_question"
 require_relative "forget_outputs"
 require_relative "../guardrails/parent_approvals"
+require_relative "../guardrails/pair_boundary"
 require_relative "../model_profile"
 
 module Samagotchi
@@ -89,7 +90,7 @@ module Samagotchi
         end,
         Execute::NAME => lambda do |call, kctx|
           Execute.call(call[:content], cwd: call[:cwd], cancelled: cancelled_proc(kctx), stop_reason: stop_reason_proc(kctx),
-                                       env: parent_env(kctx))
+                                       **participant_execute(kctx, parent_env(kctx)))
         end,
         RegisterReminder::NAME => lambda do |call, kctx|
           RegisterReminder.call(call[:content], reminder_store: kctx.reminder_store, description: call[:description],
@@ -141,6 +142,18 @@ module Samagotchi
           SESSION_MODEL_ENV => model.empty? ? nil : model,
           SESSION_THINKING_ENV => thinking,
           SESSION_REASONING_HISTORY_ENV => history }.merge(cli_model_unset(env)).merge(xdg_absolute(env))
+      end
+
+      # execute's env: and on_timeout: for the running turn. A participant's
+      # turn runs without the variables whose names hold a secret
+      # (Guardrails::PairBoundary.scrubbed_env), and a command still running
+      # at the limit is killed, never handed over as a background task that
+      # would outlive their turn; the owner's turns as configured.
+      def participant_execute(kctx, env)
+        mode = kctx.respond_to?(:participant_mode) ? kctx.participant_mode : nil
+        return { env: env } unless mode
+
+        { env: env.merge(Guardrails::PairBoundary.scrubbed_env), on_timeout: :kill }
       end
 
       # The XDG dirs set in +env+, made absolute (nothing for an unset one).
