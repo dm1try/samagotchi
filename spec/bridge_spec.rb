@@ -682,6 +682,26 @@ RSpec.describe Samagotchi::Bridge do
         .to include("version" => Samagotchi::VERSION, "features" => Samagotchi::Bridge::FEATURES, "epoch" => @bridge.epoch)
     end
 
+    it "binds its port before it writes the sidecar, so a client that reads the file can connect" do
+      reachable = []
+      allow(Samagotchi::AtomicFile).to receive(:write).and_wrap_original do |original, path, content, **opts|
+        if File.basename(path) == Samagotchi::WorkerSidecar::FILE
+          port = JSON.parse(content)["port"]
+          reachable << [port, begin
+            TCPSocket.new("127.0.0.1", port).close
+            true
+          rescue SystemCallError
+            false
+          end]
+        end
+        original.call(path, content, **opts)
+      end
+
+      start_bridge
+
+      expect(reachable).to eq([[@bridge_port, true]])
+    end
+
     it "writes its process's pid and the sidecar protocol" do
       start_bridge
       sidecar = File.join(Samagotchi::Session.session_dir(@session.id, state_dir: state_dir), "bridge.json")
