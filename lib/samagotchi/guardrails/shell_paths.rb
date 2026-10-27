@@ -41,13 +41,22 @@ module Samagotchi
       # @param tmp_roots [Array<String>] where a .git/hooks part doesn't count
       def touches?(command, dirs:, text:, cwd:, home: Dir.home, env: ENV, tmp_roots: [])
         roots = dirs.compact.map { |dir| ProtectedPaths.real(dir.to_s.chomp("/")) }.reject(&:empty?).uniq
+        any_path?(command, text: text, cwd: cwd, home: home, env: env) { |path| names?(path, roots, tmp_roots) }
+      end
+
+      # Whether a word of +command+ names a path the block holds for (each
+      # word resolved as #touches? resolves it); a word that can't be
+      # resolved, a command with a $(…) or backticks, or one that doesn't
+      # lex, by the text match +text+ instead.
+      # @yieldparam path [String] an absolute path (not resolved for symlinks)
+      def any_path?(command, text:, cwd:, home: Dir.home, env: ENV)
         walk = Walk.new(cwd, home, env)
         tokens = ShellLex.lex(command.to_s)
         code = ShellLex.code_text(command.to_s)
         return true if tokens.any? { |_, value| value.include?(ShellLex::SUBST) } && code.match?(text)
 
         ShellLex.simple_commands(tokens).any? do |words|
-          walk.step(words).any? { |word, path| path ? names?(path, roots, tmp_roots) : word.match?(text) }
+          walk.step(words).any? { |word, path| path ? yield(path) : word.match?(text) }
         end
       rescue ArgumentError, EncodingError
         command.to_s.scrub.match?(text)

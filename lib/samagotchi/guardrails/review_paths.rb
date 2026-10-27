@@ -67,8 +67,20 @@ module Samagotchi
         nil
       end
 
-      private
+      # SECRET when one of +paths+ is on the read denylist (as given or as
+      # it resolves), wherever it is; nil otherwise. A pair turn's check
+      # (PairBoundary): it reads outside the project too, never these.
+      # @param paths [Array<String>] absolute, or relative to the cwd
+      # @return [Symbol, nil]
+      def secret_refusal(paths)
+        paths.each do |path|
+          given = File.expand_path(path)
+          return SECRET if secret?(given) || secret?(ProtectedPaths.real(given))
+        end
+        nil
+      end
 
+      # Whether +path+ (absolute) is on the read denylist.
       def secret?(path)
         dirs = @denied_dirs.compact.map { |dir| File.expand_path(dir) }
         dirs += dirs.map { |dir| ProtectedPaths.real(dir) }
@@ -81,6 +93,8 @@ module Samagotchi
 
         git_config?(parts)
       end
+
+      private
 
       # A config file anywhere under a .git dir (.git/config,
       # .git/modules/<sub>/config, a worktree's config.worktree).
