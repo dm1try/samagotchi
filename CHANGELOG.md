@@ -15,6 +15,8 @@ and commands may change between minor versions. How releases are made:
 
 - A new invite link opens in a browser that still holds an ended link's cookie (behind an auth proxy it showed
   'revoked').
+- A Verify verdict push names an owner's verdict "You" when its author is empty or the owner's mark, not "A
+  participant", on the phone and in the tab alike.
 
 ## [0.126.0] - 2026-10-27
 

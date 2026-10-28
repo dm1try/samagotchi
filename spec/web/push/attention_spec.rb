@@ -112,5 +112,12 @@ RSpec.describe Samagotchi::Web::Push::Attention do
       expect(described_class.text({ last_verdict: verdict.merge(by: nil, by_name: nil) }, "verdict").last)
         .to eq("You: ❌ refuted — contradicted by the source")
     end
+
+    it "says You for an owner's verdict whose by is empty or the owner's mark" do
+      ["", "owner"].each do |by|
+        verdict = { verdict: "confirmed", reason: "matches", by: by }
+        expect(described_class.text({ last_verdict: verdict }, "verdict").last).to eq("You: ✅ confirmed — matches")
+      end
+    end
   end
 end

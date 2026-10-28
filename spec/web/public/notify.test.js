@@ -117,6 +117,11 @@ test("the words: session name and the reason, no question text", () => {
     { reason: "verdict" }).body, "Reviewer: ❌ refuted — contradicted by the source");
   assert.equal(attentionText({ last_verdict: { verdict: "unclear", reason: "x".repeat(140) } }, { reason: "verdict" }).body,
     `You: ❓ unclear — ${"x".repeat(119)}…`);
+  // An owner's verdict: no participant author, whether by is empty or the owner's mark.
+  for (const by of ["", "owner"]) {
+    assert.equal(attentionText({ last_verdict: { verdict: "confirmed", reason: "matches", by } }, { reason: "verdict" }).body,
+      "You: ✅ confirmed — matches");
+  }
   assert.equal(attentionText({ id: "x" }, { reason: "failed" }).title, "chi session");
   // The auto title after a hand title, before the first message (D10).
   assert.equal(attentionText({ ...s, auto_title: "Build fix" }, { reason: "done" }).title, "Build fix");

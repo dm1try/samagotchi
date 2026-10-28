@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative "../../steer"
+
 module Samagotchi
   module Web
     module Push
@@ -167,7 +169,8 @@ module Samagotchi
           result = verdict[:verdict].to_s
           icon = { "confirmed" => "✅", "refuted" => "❌", "unclear" => "❓" }.fetch(result, "")
           by = verdict[:by_name]
-          by = verdict[:by].nil? ? "You" : "A participant" unless present?(by)
+          # An owner's verdict has no participant author (nil, "" or "owner").
+          by = Steer.participant_author?(verdict[:by]) ? "A participant" : "You" unless present?(by)
           reason = clip(verdict[:reason].to_s, 120)
           "#{by}: #{icon} #{result} — #{reason}"
         end
