@@ -116,3 +116,29 @@ test("offers nothing on a confirmed or refuted card, and says why a start was re
   assert.equal(open.querySelector(".verify-fresh-btn").disabled, false);
   win.happyDOM.abort();
 });
+
+test("a start error is kept in the page's errors, so a redraw with fresh cards shows it until the next attempt", async () => {
+  const { win, root } = page();
+  const errors = {};
+  let ok = false;
+  const mk = () => ({
+    verdicts: [], running: [], errors, canStart: true,
+    start: async () => (ok ? { ok: true } : { ok: false, error: "Couldn't start a fresh check." }),
+  });
+  const card = placeVerdictWithFresh(root, unclear, { who: "You" }, mk());
+  card.querySelector(".verify-fresh-btn").click();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(errors["check-1"], "Couldn't start a fresh check.");
+
+  // The participant page drops and re-creates its cards on a redraw.
+  root.querySelector(".verify-verdict").remove();
+  const again = placeVerdictWithFresh(root, unclear, { who: "You" }, mk());
+  assert.equal(again.querySelector(".verify-fresh-error").textContent, "Couldn't start a fresh check.");
+
+  ok = true;
+  again.querySelector(".verify-fresh-btn").click();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(errors["check-1"], undefined);
+  assert.equal(again.querySelector(".verify-fresh-error"), null);
+  win.happyDOM.abort();
+});

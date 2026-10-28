@@ -16,6 +16,8 @@ and commands may change between minor versions. How releases are made:
 
 ### Fixed
 
+- The web's "Couldn't start a fresh check." under a verdict card no longer vanishes at the next redraw (the participant
+  page re-creates its cards on every update): the page keeps it until the next attempt.
 - A `write` or `edit` of a dangling symlink (or a path through one) or of a file with another hard link no longer
   counts as in a tmp dir or in the session's repo: a write there lands outside, so the delegate child's
   `child-boundary` and `path: outside_repo` rules ask for it.
