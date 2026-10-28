@@ -97,8 +97,9 @@ module Samagotchi
             walk.step(words).any? do |_word, path|
               next false unless path
 
-              real = ProtectedPaths.real(path)
-              !ShellPaths.within?(real, real_root) && others.any? { |dir| ShellPaths.within?(real, dir) }
+              ProtectedPaths.reals(path).any? do |real|
+                !ShellPaths.within?(real, real_root) && others.any? { |dir| ShellPaths.within?(real, dir) }
+              end
             end
           end
         end

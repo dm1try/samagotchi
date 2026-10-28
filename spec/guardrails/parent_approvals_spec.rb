@@ -60,6 +60,16 @@ RSpec.describe Samagotchi::Guardrails::ParentApprovals do
                                                   File.join(Samagotchi::Paths.state_dir, "context"))
     end
 
+    it "takes a path's `..` after a symlinked dir from its target: mem/../config.yml is chi's" do
+      outside = Dir.mktmpdir("pa-outside")
+      memories = File.join(config_home, "samagotchi", "memories").tap { |d| FileUtils.mkdir_p(d) }
+      File.symlink(memories, File.join(outside, "mem"))
+      expect(described_class.chi_files?({ paths: [File.join(outside, "mem", "..", "config.yml")] })).to be(true)
+      expect(described_class.chi_files?({ paths: [File.join(outside, "sub", "..", "config.yml")] })).to be(false)
+    ensure
+      FileUtils.rm_rf(outside)
+    end
+
     it "covers a hooks_dir set in config.yml" do
       hooks = Dir.mktmpdir("pa-hooks")
       FileUtils.mkdir_p(File.join(config_home, "samagotchi"))

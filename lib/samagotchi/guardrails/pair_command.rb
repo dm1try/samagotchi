@@ -318,8 +318,7 @@ module Samagotchi
 
       # Whether +path+ is a denied root's folder or one above it.
       def above_denied?(path)
-        real = ProtectedPaths.real(path)
-        @paths.denied_roots.any? { |root| ShellPaths.within?(root, real) }
+        ProtectedPaths.reals(path).any? { |real| @paths.denied_roots.any? { |root| ShellPaths.within?(root, real) } }
       end
 
       # The paths a simple command writes (nil for one it can't resolve), from
@@ -328,9 +327,9 @@ module Samagotchi
         targets = []
         words.each_with_index do |word, i|
           if REDIRECTS.include?(word) && words[i + 1]
-            targets << walk.path(words[i + 1])
+            targets.concat(paths_or_nil(walk, words[i + 1]))
           elsif (target = word[REDIRECT_WORD, 1]) && !word.start_with?("<")
-            targets << walk.path(target)
+            targets.concat(paths_or_nil(walk, target))
           end
         end
         at = program_at(words) or return targets
@@ -338,25 +337,32 @@ module Samagotchi
         args = words[(at + 1)..].reject { |w| REDIRECTS.include?(w) || w.match?(REDIRECT_WORD) }
         plain = args.reject { |arg| arg.start_with?("-") }
         if program == "tee"
-          targets.concat(plain.map { |arg| walk.path(arg) })
+          targets.concat(plain.flat_map { |arg| paths_or_nil(walk, arg) })
         elsif COPIERS.include?(program)
           dir = args[args.index("-t") + 1] if args.include?("-t")
           dir ||= args.find { |arg| arg.start_with?("--target-directory=") }&.split("=", 2)&.last
           dir ||= plain.last if plain.size >= 2
-          targets << walk.path(dir) if dir
+          targets.concat(paths_or_nil(walk, dir)) if dir
         end
         targets
+      end
+
+      # +word+'s paths (ShellPaths::Walk#paths), [nil] for one it can't resolve.
+      def paths_or_nil(walk, word)
+        paths = walk.paths(word)
+        paths.empty? ? [nil] : paths
       end
 
       def outside?(path)
         return true if path.nil?
         return false if DEVICES.include?(path)
 
-        real = ProtectedPaths.real(path)
-        return false if tmp_roots.any? { |tmp| ShellPaths.within?(real, tmp) }
-        return true if @root.empty?
+        ProtectedPaths.reals(path).any? do |real|
+          next false if tmp_roots.any? { |tmp| ShellPaths.within?(real, tmp) }
+          next true if @root.empty?
 
-        !ShellPaths.within?(real, ProtectedPaths.real(@root))
+          !ShellPaths.within?(real, ProtectedPaths.real(@root))
+        end
       end
 
       def tmp_roots = @tmp_roots ||= PairCommand.tmp_roots

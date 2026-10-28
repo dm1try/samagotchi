@@ -77,6 +77,13 @@ RSpec.describe Samagotchi::Guardrails::ChildBoundary do
       expect(verdict_for(name: "read", content: File.join(main, "a.txt"))).to be_allow
     end
 
+    it "asks for a write whose `..` climbs out of a symlinked dir's target" do
+      FileUtils.mkdir_p(File.join(base, "elsewhere", "deep"))
+      File.symlink(File.join(base, "elsewhere", "deep"), File.join(child, "link"))
+      expect(verdict_for(name: "write", path: "link/../x.txt", content: "x")).to be_ask
+      expect(verdict_for(name: "write", path: "sub/../x.txt", content: "x")).to be_allow
+    end
+
     it "asks for a write through a dangling symlink or onto a hard link, in a tmp dir or its folder" do
       tmp = Samagotchi::Guardrails::Outside.tmp_roots.find { |dir| !base.start_with?(File.join(dir, "")) }
       File.symlink(File.join(main, "other.txt"), File.join(child, "dangling"))
@@ -204,6 +211,11 @@ RSpec.describe Samagotchi::Guardrails::ChildBoundary do
         expect(run("cp #{main}/a.txt #{out}/dir/")).to be_ask
         expect(run("cp #{main}/a.txt #{out}")).to be_ask
         expect(run("cp #{main}/a.txt #{out}/b.txt")).to be_allow
+        FileUtils.mkdir_p(File.join(main, "deep"))
+        File.symlink(File.join(main, "deep"), File.join(out, "up"))
+        expect(run("cat #{main}/a.txt > #{out}/up/../x")).to be_ask
+        expect(run("cd #{out}/up && cat #{main}/a.txt > ../x")).to be_ask
+        expect(run("cat #{main}/a.txt > #{out}/sub/../x")).to be_allow
       end
 
       it "keeps asking for links, moves and the operators it can't read" do

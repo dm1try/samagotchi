@@ -60,6 +60,21 @@ RSpec.describe Samagotchi::Guardrails::ReviewBoundary do
     expect(read("keys/id_rsa").reason).to eq(described_class::OUTSIDE)
   end
 
+  # An npm-link style symlink out of the project, then `..` out of its
+  # target: the kernel opens ~/notes.md, File.expand_path says the
+  # project's own notes.md.
+  it "denies a `..` that climbs out of a symlinked dir's target, as the kernel opens it" do
+    FileUtils.mkdir_p([File.join(home, "src", "foo"), File.join(project, "node_modules")])
+    File.write(File.join(home, "notes.md"), "n\n")
+    File.symlink(File.join(home, "src", "foo"), File.join(project, "node_modules", "foo"))
+    expect(read("node_modules/foo/../../notes.md").reason).to eq(described_class::OUTSIDE)
+    paths = Samagotchi::Guardrails::ReviewPaths.new(root: project, denied_dirs: [state, config], home: home)
+    expect(paths.refusal([File.join(project, "node_modules/foo/../../notes.md")])).to eq(:outside)
+    expect(paths.refusal([File.join(project, "node_modules/foo/../../.ssh/id_rsa")])).not_to be_nil
+    File.write(File.join(project, "docs", "notes.md"), "n\n")
+    expect(read("docs/../docs/notes.md")).to be_allow
+  end
+
   it "denies the project's secret files and chi's own dirs inside it" do
     %w[.env .env.local .envrc .env-local .env_production config/.netrc certs/server.pem tls/site.key .aws/credentials
        credentials.json .git-credentials config/credentials.yml.enc .git/config .git/modules/sub/config .npmrc .pypirc

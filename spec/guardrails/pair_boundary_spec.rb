@@ -105,6 +105,19 @@ RSpec.describe Samagotchi::Guardrails::PairBoundary do
     expect(read("keys/id_rsa").reason).to eq(described_class::SECRET)
   end
 
+  it "denies a `..` that climbs out of a symlinked dir's target into a secret, in a call or a command" do
+    FileUtils.mkdir_p([File.join(home, "src", "foo"), File.join(project, "node_modules"), File.join(home, ".config", "gh")])
+    File.write(File.join(home, ".config", "gh", "hosts.yml"), "token\n")
+    File.symlink(File.join(home, "src", "foo"), File.join(project, "node_modules", "foo"))
+    climb = "node_modules/foo/../../.config/gh/hosts.yml"
+    expect(read(climb).reason).to eq(described_class::SECRET)
+    expect(verdict_for({ name: "write", path: climb, content: "x" }).reason).to eq(described_class::SECRET)
+    expect(execute("cat #{climb}").reason).to eq(described_class::SECRET)
+    expect(execute("cd node_modules/foo && cat ../../.config/gh/hosts.yml").reason).to eq(described_class::SECRET)
+    # cd's own `..` is the shell's logical one: back in node_modules.
+    expect(execute("cd node_modules/foo/.. && cat foo/README")).to be_allow
+  end
+
   it "denies a command that names a secret, resolved or by its text" do
     ["cat ~/.ssh/id_rsa", "cat .env", "cd ~ && cat .ssh/id_rsa", "cat #{grants}",
      "cat $HOME/.local/state/samagotchi/web-grants/grants.json", "cat $(echo ~/.ssh/id_rsa)",

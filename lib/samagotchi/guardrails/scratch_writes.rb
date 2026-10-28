@@ -33,7 +33,9 @@ module Samagotchi
         targets = verdict.targets
         return false unless targets && %w[write edit].include?(targets.tool)
 
-        targets.paths.any? { |path| ProtectedPaths.within?(ProtectedPaths.real(path), @memories_dir.call) }
+        targets.paths.flat_map { |path| ProtectedPaths.reals(path) }.any? do |real|
+          ProtectedPaths.within?(real, @memories_dir.call)
+        end
       end
     end
   end

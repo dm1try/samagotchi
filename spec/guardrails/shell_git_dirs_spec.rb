@@ -110,4 +110,16 @@ RSpec.describe Samagotchi::Guardrails::ShellGitDirs do
       expect(dirs(" \n ")).to eq([])
     end
   end
+
+  it "takes -C's `..` after a symlinked dir from its target as well, a cd's logically" do
+    Dir.mktmpdir("git-dirs") do |dir|
+      base = File.realpath(dir)
+      FileUtils.mkdir_p([File.join(base, "wt"), File.join(base, "other", "deep")])
+      File.symlink(File.join(base, "other", "deep"), File.join(base, "wt", "link"))
+      wt = File.join(base, "wt")
+      expect(dirs("git -C link/.. commit -m x", cwd: wt)).to eq([wt, File.join(base, "other")])
+      expect(dirs("cd link/.. && git commit -m x", cwd: wt)).to eq([wt])
+      expect(dirs("git -C sub/.. commit -m x", cwd: wt)).to eq([wt])
+    end
+  end
 end

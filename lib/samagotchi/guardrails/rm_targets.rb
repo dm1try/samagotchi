@@ -61,9 +61,10 @@ module Samagotchi
         return false unless options.any? { |o| o.match?(RECURSIVE) } && options.any? { |o| o.match?(FORCE) }
 
         targets.empty? || targets.any? do |target|
-          path = walk.path(target)
-          real = path && ProtectedPaths.real(path)
-          real.nil? || roots.none? { |tmp| real.start_with?(File.join(tmp, "")) }
+          paths = walk.paths(target)
+          paths.empty? || paths.flat_map { |path| ProtectedPaths.reals(path) }.any? do |real|
+            roots.none? { |tmp| real.start_with?(File.join(tmp, "")) }
+          end
         end
       end
 

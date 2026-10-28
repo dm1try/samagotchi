@@ -66,4 +66,12 @@ RSpec.describe Samagotchi::Guardrails::RmTargets do
     session = File.join(tmp, "sandbox").tap { |d| FileUtils.mkdir_p(d) }
     expect(outside?("rm -rf @T/sibling", session_root: session, cwd: session)).to be(true)
   end
+
+  it "takes a `..` after a symlinked dir from its target, out of the tmp dir" do
+    FileUtils.mkdir_p(File.join(home, "deep"))
+    File.symlink(File.join(home, "deep"), File.join(tmp, "deep-link"))
+    expect(outside?("rm -rf @T/deep-link/../x")).to be(true)
+    expect(outside?("cd @T/deep-link && rm -rf ../x")).to be(true)
+    expect(outside?("rm -rf @T/sub/../x")).to be(false)
+  end
 end

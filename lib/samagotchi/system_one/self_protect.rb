@@ -57,8 +57,9 @@ module Samagotchi
         memories = Guardrails::ProtectedPaths.real(MemoryPaths.system_dir)
         bundles = Guardrails::ProtectedPaths.real(MemoryPaths.bundles_dir)
         paths = Array(fetch(approval, :paths)).map(&:to_s).reject do |path|
-          real = Guardrails::ProtectedPaths.real(path)
-          Guardrails::ProtectedPaths.within?(real, memories) && !Guardrails::ProtectedPaths.within?(real, bundles)
+          Guardrails::ProtectedPaths.reals(path).all? do |real|
+            Guardrails::ProtectedPaths.within?(real, memories) && !Guardrails::ProtectedPaths.within?(real, bundles)
+          end
         end
         command = fetch(approval, :command).to_s
         unless command.match?(CLIMB)

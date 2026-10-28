@@ -43,6 +43,61 @@ RSpec.describe Samagotchi::Guardrails::ProtectedPaths do
     expect(verdict_for(name: "write", path: "sneaky/new.yml", content: "x")).to be_deny
   end
 
+  it "takes a `..` after a symlinked dir from its target: mem/../config.yml is chi's config.yml" do
+    FileUtils.mkdir_p(File.join(config_dir, "memories"))
+    File.symlink(File.join(config_dir, "memories"), File.join(root, "mem"))
+    v = verdict_for(name: "write", path: "mem/../config.yml", content: "x")
+    expect([v.decision, v.rule]).to eq([:ask, "chi-config"])
+    expect(verdict_for(name: "write", path: "mem/../.bundles/b/x", content: "x")).to be_allow
+    expect(verdict_for(name: "write", path: "mem/.bundles/b/x", content: "x")).to be_deny
+  end
+
+  it "follows a dangling symlink to the protected file a write would create, and keeps the link's own place" do
+    FileUtils.mkdir_p(File.join(config_dir, "hooks"))
+    FileUtils.mkdir_p(File.join(config_dir, "memories", ".bundles", "b"))
+    File.symlink(File.join(config_dir, "hooks", "new.rb"), File.join(root, "to-hook"))
+    File.symlink(File.join(config_dir, "memories", ".bundles", "b", "hook.rb"), File.join(root, "to-bundle"))
+    File.symlink(File.join(root, "to-bundle"), File.join(root, "to-to-bundle"))
+    File.symlink(File.join(root, "elsewhere.rb"), File.join(config_dir, "memories", ".bundles", "b", "out.rb"))
+    expect(verdict_for(name: "write", path: "to-hook", content: "x").rule).to eq("chi-hooks")
+    expect(verdict_for(name: "write", path: "to-bundle", content: "x")).to be_deny
+    expect(verdict_for(name: "write", path: "to-to-bundle", content: "x")).to be_deny
+    expect(verdict_for(name: "write", path: "config/memories/.bundles/b/out.rb", content: "x")).to be_deny
+  end
+
+  describe ".expand, .real and .reals" do
+    let(:deep) { File.join(root, "elsewhere", "deep").tap { |d| FileUtils.mkdir_p(d) } }
+
+    before { File.symlink(deep, File.join(root, "link")) }
+
+    it "is File.expand_path for a path with no `..` after a symlinked dir" do
+      ["#{root}/a/../b", "#{root}/link/x/./y", "#{root}//a/b/", "#{root}/missing/../b", "/", "#{root}/.."].each do |path|
+        expect(described_class.expand(path)).to eq(File.expand_path(path)), path
+      end
+      expect(described_class.expand("a/../b", root)).to eq(File.join(root, "b"))
+      expect(described_class.expand("~/x/../y")).to eq(File.expand_path("~/y"))
+    end
+
+    it "climbs a `..` out of a symlinked dir's target, the kernel's way" do
+      expect(described_class.expand("#{root}/link/../x")).to eq(File.join(root, "elsewhere", "x"))
+      expect(described_class.expand("link/../../x", root)).to eq(File.join(root, "x"))
+      expect(described_class.real("#{root}/link/../x")).to eq(File.join(root, "elsewhere", "x"))
+      expect(described_class.reals("#{root}/link/../x")).to eq([File.join(root, "x"), File.join(root, "elsewhere", "x")])
+      expect(described_class.reals("#{root}/link/x")).to eq([File.join(deep, "x")])
+    end
+
+    it "follows dangling symlinks, relative ones and chains, and stops on a loop" do
+      File.symlink("elsewhere/new/../made.txt", File.join(root, "rel"))
+      File.symlink(File.join(root, "rel"), File.join(root, "chain"))
+      expect(described_class.real("#{root}/rel")).to eq(File.join(root, "elsewhere", "made.txt"))
+      expect(described_class.real("#{root}/chain")).to eq(File.join(root, "elsewhere", "made.txt"))
+      expect(described_class.reals("#{root}/chain")).to eq([File.join(root, "chain"), File.join(root, "elsewhere", "made.txt")])
+      File.symlink(File.join(root, "loop-b"), File.join(root, "loop-a"))
+      File.symlink(File.join(root, "loop-a"), File.join(root, "loop-b"))
+      expect(described_class.real("#{root}/loop-a/x")).to be_a(String)
+    end
+  end
+
   it "asks (once or session only) for config.yml and the hooks dir" do
     v = verdict_for(name: "edit", path: "config/config.yml", content: "x")
     expect([v.decision, v.rule, v.scopes]).to eq([:ask, "chi-config", %w[once session]])

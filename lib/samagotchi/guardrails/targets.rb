@@ -23,7 +23,9 @@ module Samagotchi
     # shell command, absolute paths (against Dir.pwd, as the file tools have
     # no cwd:), the directory a command runs in, its repo root, and whether
     # a path leaves the session's repo (Outside: the context cwd's repo
-    # root, the cwd when there is no repo; not the call's own cwd:).
+    # root, the cwd when there is no repo; not the call's own cwd:). A
+    # path whose `..` climbs out of a symlinked dir's target is in #paths
+    # twice: lexically and as the kernel opens it (.absolutes).
     class Targets
       include RedactedInspect # @env: the call's env: may hold a secret
 
@@ -126,9 +128,9 @@ module Samagotchi
           given = call[:cwd].to_s.strip
           cwd = File.expand_path(given, base) unless given.empty?
         when "write", "edit"
-          paths << absolute(call[:path], base)
+          paths.concat(absolutes(call[:path], base))
         when "read"
-          paths << absolute(call[:content], base)
+          paths.concat(absolutes(call[:content], base))
         when "memory_write"
           paths << memory_path(call, model_key)
         else
@@ -136,7 +138,7 @@ module Samagotchi
           command = given[:command]
           given_cwd = given[:cwd].to_s.strip
           cwd = File.expand_path(given_cwd, base) unless given_cwd.empty?
-          paths.concat(given[:paths].map { |path| absolute(path, cwd) })
+          paths.concat(given[:paths].flat_map { |path| absolutes(path, cwd) })
           entry = registry && registry[tool]
           args = given[:args] || call[:args] if entry && !entry.core? && call[:args].is_a?(Hash)
           acts_as = given[:acts_as]
@@ -255,9 +257,16 @@ module Samagotchi
         env.each_key.any? { |key| SHELL_REDEFINING_ENV.include?(key) || key.start_with?(SHELL_REDEFINING_PREFIX) }
       end
 
-      def self.absolute(path, base)
+      # +path+ (a file tool's, as Tools::ToolPath has it) absolute against
+      # +base+: its lexical path (File.expand_path), and the one the kernel
+      # opens when a `..` in it climbs out of a symlinked dir's target
+      # (ProtectedPaths.expand) after it; [] for a blank path. Every check
+      # reads all of #paths, so it judges both.
+      def self.absolutes(path, base)
         path = Tools::ToolPath.normalize(path)
-        path.empty? ? nil : File.expand_path(path, base)
+        return [] if path.empty?
+
+        [File.expand_path(path, base), ProtectedPaths.expand(path, base)].uniq
       end
 
       # The file memory_write would write; nil when the call is invalid.
@@ -426,12 +435,13 @@ module Samagotchi
       # disk MODEL_NOTES_x.md in Samagotchi/Memories is the same file chi
       # loads.
       def self.prompt_memory_path?(path)
-        real = ProtectedPaths.real(path)
-        return false unless File.basename(real).downcase.match?(PROMPT_MEMORY)
+        ProtectedPaths.reals(path).any? do |real|
+          next false unless File.basename(real).downcase.match?(PROMPT_MEMORY)
 
-        dir = File.dirname(real)
-        dir.casecmp?(ProtectedPaths.real(MemoryPaths.system_dir)) ||
-          File.dirname(dir).casecmp?(ProtectedPaths.real(MemoryPaths.projects_dir))
+          dir = File.dirname(real)
+          dir.casecmp?(ProtectedPaths.real(MemoryPaths.system_dir)) ||
+            File.dirname(dir).casecmp?(ProtectedPaths.real(MemoryPaths.projects_dir))
+        end
       rescue StandardError
         false
       end

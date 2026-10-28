@@ -274,7 +274,8 @@ sub-agent](sub-agent.md)) tell them to use `chi answer` only.
 
 ## Protected paths
 
-Built in, for `write`, `edit` and `memory_write` (symlinks resolved):
+Built in, for `write`, `edit` and `memory_write` (symlinks resolved; see
+[How paths resolve](#how-paths-resolve)):
 
 - deny: the approval store's dir, installed bundles (`memories/.bundles/`),
   and [attached context](context.md) sources (`<state dir>/context/`: a
@@ -349,7 +350,9 @@ participant's turn may call only the `review` kit's tools:
   `.pypirc`, ssh keys (`id_rsa`, `id_ed25519`, …), `*.tfstate`,
   `secrets.yml`/`.json`, `.docker/config.json`, `.kube/config` and any config
   under `.git` (a submodule's too). The path is checked as given and as it
-  resolves, so a symlink in the project to `~/.ssh` is `~/.ssh`. A session
+  resolves, so a symlink in the project to `~/.ssh` is `~/.ssh`, and
+  `node_modules/foo/../../.config/gh/hosts.yml` with `foo` a link to `~/src/foo`
+  is `~/.config/gh/hosts.yml` ([How paths resolve](#how-paths-resolve)). A session
   whose folder is the home folder or above it reads nothing.
 - `memory_read` with `scope: project` (a read without a scope would fall back
   to the system memories). The prompt's preloaded memories and the memory
@@ -666,6 +669,29 @@ A path that is or goes through a dangling symlink (a write would create the
 link's target) or a file with another hard link (a write changes the other
 name too) is always outside, in the repo or a tmp folder alike
 (`Outside.resolve`, which the child boundary's tmp writes read as well).
+
+#### How paths resolve
+
+Every path check (protected paths, `outside_repo`, `touches`, `rm`, `memory:
+prompt`, the child, review and pair boundaries, System 1's own-files test)
+resolves paths with `Guardrails::ProtectedPaths`:
+
+- `..` is taken the kernel's way (`.expand`): after a symlinked folder it
+  climbs out of the link's target, so `repo/link/../x` with `link` pointing
+  to `/elsewhere/deep` is `/elsewhere/x`, not `repo/x`;
+- symlinks are resolved on the longest part that exists, and a dangling
+  symlink is followed to the file a write through it would create (`.real`);
+- a check reads the path both ways, the lexical answer (`File.expand_path`,
+  stopping at a dangling link) and where the kernel lands (`.reals`): it
+  refuses, asks or votes when either is protected, outside or a secret, so
+  the kernel's answer only ever adds to the lexical one. A file tool call's
+  paths (`Targets#paths`, what approvals show) list both when they differ.
+
+In a shell command a file argument resolves the same way, against the folder
+the command is in by then; a `cd`'s own destination keeps the shell's logical
+`..` (`cd link/..` is back where it started, as bash has it), while after `cd
+link` a `../x` climbs out of the link's target. git's `-C`, `--git-dir` and
+`--work-tree` (and `GIT_DIR`/`GIT_WORK_TREE`) are counted both ways.
 
 `git: outside_repo` (shell tools only) reads the command for git subcommands
 that change a checkout: `commit`, `add`, `reset`, `checkout`, `switch`,

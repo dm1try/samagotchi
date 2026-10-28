@@ -59,24 +59,30 @@ module Samagotchi
       # The write side of .read_only_but_writes?: the Walk that follows the
       # command's dir and the caller's test for an absolute path it writes.
       Writes = Data.define(:walk, :writable) do
-        # +word+ as an absolute path against the current dir, or nil; nil
-        # for one with a $ or ~ (the shell may expand them from an env
-        # Walk doesn't see, as task_create's env: sets).
-        def path(word) = word.include?("$") || word.start_with?("~") ? nil : walk.path(word)
+        # +word+ as absolute paths against the current dir (ShellPaths::Walk:
+        # its lexical one, and its physical one when they differ, last); []
+        # when it can't be resolved, or has a $ or ~ (the shell may expand
+        # them from an env Walk doesn't see, as task_create's env: sets).
+        def paths(word) = word.include?("$") || word.start_with?("~") ? [] : walk.paths(word)
 
         # Whether a cd or pushd with +args+ lands where Walk says: one
-        # operand (DIR_OPERAND) naming an existing dir. popd never does.
+        # operand (DIR_OPERAND) naming an existing dir every way it
+        # resolves. popd never does.
         def dir_step?(verb, args)
           return false unless verb != "popd" && args.size == 1 && args.first.match?(DIR_OPERAND)
 
-          dir = path(args.first)
-          !dir.nil? && File.directory?(dir)
+          dirs = paths(args.first)
+          !dirs.empty? && dirs.all? { |dir| File.directory?(dir) }
         end
 
         def ok?(path) = path ? writable.call(path) == true : false
 
-        # Whether +word+ names a file the command may write.
-        def file?(word) = ok?(path(word))
+        # Whether +word+ names a file the command may write, every way it
+        # resolves.
+        def file?(word)
+          paths = paths(word)
+          !paths.empty? && paths.all? { |path| ok?(path) }
+        end
       end
 
       # Verbs that only read whatever their options: → nil. The others
@@ -430,10 +436,12 @@ module Samagotchi
         target ||= positional.pop
         return false if positional.empty? || (into && no_target)
 
-        dest = writes.path(target) or return false
-        into ||= !no_target && File.directory?(dest)
-        made = into ? positional.map { |src| File.join(dest, File.basename(src)) } : []
-        [dest, *made].all? { |path| writes.ok?(path) }
+        dests = writes.paths(target)
+        return false if dests.empty?
+
+        into ||= !no_target && File.directory?(dests.last)
+        made = into ? dests.product(positional).map { |dest, src| File.join(dest, File.basename(src)) } : []
+        [*dests, *made].all? { |path| writes.ok?(path) }
       end
 
       TEE_OPTIONS = %w[-a --append -i --ignore-interrupts -p].freeze

@@ -1,16 +1,22 @@
 # frozen_string_literal: true
 
 require_relative "shell_lex"
+require_relative "protected_paths"
 
 module Samagotchi
   module Guardrails
     # Where a shell command runs a git subcommand that changes a checkout
     # (commit, add, reset, …): the directories, or :unknown for one that
-    # can't be read from the text ($VAR, $(…), `cd -`). Pure text: it
-    # follows cd/pushd/popd, ( … ) subshells, git -C/--git-dir/--work-tree
-    # and GIT_DIR/GIT_WORK_TREE. It catches honest mistakes (cd into
-    # another checkout and commit there); sh -c, scripts, aliases and
-    # $(…) bodies get through. Never raises on odd input.
+    # can't be read from the text ($VAR, $(…), `cd -`). Read from the text:
+    # it follows cd/pushd/popd, ( … ) subshells, git -C/--git-dir/--work-tree
+    # and GIT_DIR/GIT_WORK_TREE. A cd keeps the shell's logical `..` (`cd
+    # link/..` is back where it started); git's -C and dir options are
+    # opened the kernel's way, so where a `..` in one climbs out of a
+    # symlinked dir's target, that git counts twice: from the lexical path
+    # and from the physical one (ProtectedPaths.expand, the only look at the
+    # disk). It catches honest mistakes (cd into another checkout and commit
+    # there); sh -c, scripts, aliases and $(…) bodies get through. Never
+    # raises on odd input.
     module ShellGitDirs
       MUTATING = %w[commit add reset checkout switch rebase merge push stash rm mv
                     cherry-pick revert pull restore am].freeze
@@ -88,30 +94,37 @@ module Samagotchi
         end
 
         def git(args, env)
+          @found.concat([false, true].filter_map { |physical| where_git(args.dup, env, physical) })
+        end
+
+        # Where a mutating git runs (a dir or :unknown), nil for another
+        # git; +physical+: its dir options' `..` taken the kernel's way.
+        def where_git(args, env, physical)
+          expand = ->(arg, base) { expand(arg, base, physical: physical) }
           dir = @dir
-          work_tree = env["GIT_WORK_TREE"] && expand(env["GIT_WORK_TREE"], dir)
-          git_dir = env["GIT_DIR"] && expand(env["GIT_DIR"], dir)
+          work_tree = env["GIT_WORK_TREE"] && expand.call(env["GIT_WORK_TREE"], dir)
+          git_dir = env["GIT_DIR"] && expand.call(env["GIT_DIR"], dir)
           sub = nil
           until args.empty?
             arg = args.shift
             case arg
             when *VALUE_OPTIONS
               value = args.shift.to_s
-              dir = expand(value, dir) if arg == "-C"
-              git_dir = expand(value, dir) if arg == "--git-dir"
-              work_tree = expand(value, dir) if arg == "--work-tree"
-            when /\A--git-dir=(.*)\z/m then git_dir = expand(Regexp.last_match(1), dir)
-            when /\A--work-tree=(.*)\z/m then work_tree = expand(Regexp.last_match(1), dir)
+              dir = expand.call(value, dir) if arg == "-C"
+              git_dir = expand.call(value, dir) if arg == "--git-dir"
+              work_tree = expand.call(value, dir) if arg == "--work-tree"
+            when /\A--git-dir=(.*)\z/m then git_dir = expand.call(Regexp.last_match(1), dir)
+            when /\A--work-tree=(.*)\z/m then work_tree = expand.call(Regexp.last_match(1), dir)
             when /\A-/ then next
             else
               sub = arg
               break
             end
           end
-          return unless MUTATING.include?(sub)
-          return if sub == "stash" && STASH_READS.include?(args.first)
+          return nil unless MUTATING.include?(sub)
+          return nil if sub == "stash" && STASH_READS.include?(args.first)
 
-          @found << (work_tree || repo_of(git_dir) || dir || :unknown)
+          work_tree || repo_of(git_dir) || dir || :unknown
         end
 
         def repo_of(git_dir)
@@ -120,17 +133,18 @@ module Samagotchi
           File.basename(git_dir) == ".git" ? File.dirname(git_dir) : git_dir
         end
 
-        # An absolute path for +arg+ against +dir+; nil when it can't be
-        # told from the text (a variable, a substitution, a relative path
+        # An absolute path for +arg+ against +dir+ (`..` lexical, as cd
+        # takes it, or +physical+: ProtectedPaths.expand); nil when it can't
+        # be told from the text (a variable, a substitution, a relative path
         # against an unknown dir).
-        def expand(arg, dir)
+        def expand(arg, dir, physical: false)
           return nil if arg.include?(ShellLex::SUBST)
 
           arg = arg.sub(%r{\A(~|\$HOME|\$\{HOME\})(?=/|\z)}) { @home }
           return nil if arg.include?("$") || arg.start_with?("~")
-          return File.expand_path(arg) if arg.start_with?("/")
+          return nil unless arg.start_with?("/") || dir
 
-          dir && File.expand_path(arg, dir)
+          physical ? ProtectedPaths.expand(arg, dir) : File.expand_path(arg, dir)
         end
       end
     end

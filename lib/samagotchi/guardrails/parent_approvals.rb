@@ -80,7 +80,8 @@ module Samagotchi
 
         dirs = chi_dirs
         paths = Array(fetch(facts, :paths)).map(&:to_s).reject(&:empty?)
-        return true if paths.any? { |path| dirs.any? { |dir| ProtectedPaths.within?(ProtectedPaths.real(path), dir) } }
+        reals = paths.flat_map { |path| ProtectedPaths.reals(path) }
+        return true if reals.any? { |real| dirs.any? { |dir| ProtectedPaths.within?(real, dir) } }
 
         command = fetch(facts, :command).to_s
         return false if command.empty?

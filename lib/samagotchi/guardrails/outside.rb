@@ -25,39 +25,45 @@ module Samagotchi
       # @param path [String] absolute
       # @param root [String] the session's repo root (or cwd)
       def self.outside?(path, root:)
-        real = resolve(path) or return true
+        reals = resolve(path) or return true
         session = ProtectedPaths.real(root)
-        return false if within?(real, session)
-        return false if MemoryBundle::IndexSync.memory_scope(path)
-        return false if tmp_roots.any? { |tmp| within?(real, tmp) && !within?(session, tmp) }
+        reals.any? do |real|
+          next false if within?(real, session)
+          next false if MemoryBundle::IndexSync.memory_scope(path)
+          next false if tmp_roots.any? { |tmp| within?(real, tmp) && !within?(session, tmp) }
 
-        true
+          true
+        end
       end
 
       # Whether a shell command may write +path+ as a tmp file (the child
-      # boundary's tmp writes): it resolves (.resolve) into a tmp dir the
-      # session's root isn't in.
+      # boundary's tmp writes): it resolves (.resolve, every way) into a tmp
+      # dir the session's root isn't in.
       # @param path [String] absolute
       # @param root [String] the session's repo root (or cwd)
       def self.tmp_write?(path, root:)
-        real = resolve(path) or return false
+        reals = resolve(path) or return false
         session = ProtectedPaths.real(root)
-        tmp_roots.any? { |tmp| within?(real, tmp) && !within?(session, tmp) }
+        reals.all? { |real| tmp_roots.any? { |tmp| within?(real, tmp) && !within?(session, tmp) } }
       end
 
-      # +path+ with symlinks resolved (ProtectedPaths.real), or nil when
-      # that doesn't say where a write lands: the path is or goes through a
-      # dangling symlink (ProtectedPaths.real stops at it, and a write
-      # would create its target), or is a file with another hard link (a
-      # write would change that file too). Both outside? and tmp_write?
-      # read it, so neither counts such a path as inside or in tmp.
+      # +path+ resolved (ProtectedPaths.reals: the lexical answer and where
+      # the kernel lands, a `..` after a symlinked dir climbing out of its
+      # target), or nil when that doesn't say where a write lands: the path
+      # is or goes through a dangling symlink (a write would create its
+      # target; ProtectedPaths.real follows it, the lexical answer stops at
+      # it, and either way the link's own place doesn't count as where the
+      # file is), or is a file with another hard link (a write would change
+      # that file too). Both outside? and tmp_write? read it, so neither
+      # counts such a path as inside or in tmp.
       # @param path [String] absolute
+      # @return [Array<String>, nil]
       def self.resolve(path)
-        real = ProtectedPaths.real(path)
-        return nil if Pathname.new(real).ascend.any?(&:symlink?)
-        return nil if File.file?(real) && File.stat(real).nlink > 1
+        reals = ProtectedPaths.reals(path)
+        return nil if reals.any? { |real| Pathname.new(real).ascend.any?(&:symlink?) }
+        return nil if reals.any? { |real| File.file?(real) && File.stat(real).nlink > 1 }
 
-        real
+        reals
       rescue SystemCallError
         nil
       end

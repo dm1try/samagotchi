@@ -86,4 +86,17 @@ RSpec.describe Samagotchi::Guardrails::ShellPaths do
     expect(touches?("echo > samagotchi/config.yml", cwd: nil)).to be(true)
     expect(touches?("echo > other.yml", cwd: nil)).to be(false)
   end
+
+  # bash: `cd link/..` is logical (back where it started), but after
+  # `cd link` a `../x` is opened from the link's target, as a file
+  # argument with link/.. in it is.
+  it "takes a file word's `..` from a symlinked dir's target, a cd's `..` logically" do
+    File.symlink(File.join(config, "memories"), File.join(repo, "mem"))
+    FileUtils.mkdir_p(File.join(config, "memories"))
+    expect(touches?("echo x >> mem/../config.yml")).to be(true)
+    expect(touches?("cd mem; echo x >> ../config.yml")).to be(true)
+    expect(touches?("cd mem/.. && echo x >> config.yml")).to be(false)
+    expect(touches?("cd sub/.. && echo x >> config.yml")).to be(false)
+    expect(touches?("echo x >> sub/../config.yml")).to be(false)
+  end
 end

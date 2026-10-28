@@ -177,4 +177,18 @@ RSpec.describe Samagotchi::Guardrails::ReadOnlyShell do
       expect(["cp x /w/y", "tee /w/a", "ls > /w/o"].map { |c| described_class.read_only?(c) }).to all(be(false))
     end
   end
+
+  it "refuses a write whose `..` climbs out of a symlinked dir's target, though its lexical path is allowed" do
+    Dir.mktmpdir("ro-shell") do |dir|
+      base = File.realpath(dir)
+      FileUtils.mkdir_p([File.join(base, "w"), File.join(base, "out", "deep")])
+      File.symlink(File.join(base, "out", "deep"), File.join(base, "w", "link"))
+      writable = ->(path) { path.start_with?(File.join(base, "w", "")) }
+      check = ->(command) { described_class.read_only_but_writes?(command, cwd: base, home: "/h", env: {}, &writable) }
+      expect(check.call("ls > w/link/../o")).to be(false)
+      expect(check.call("cat x | tee w/link/../o")).to be(false)
+      expect(check.call("cp x w/link/../o")).to be(false)
+      expect(check.call("ls > w/sub/../o")).to be(true)
+    end
+  end
 end

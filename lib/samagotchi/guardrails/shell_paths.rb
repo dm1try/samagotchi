@@ -48,7 +48,8 @@ module Samagotchi
       # word resolved as #touches? resolves it); a word that can't be
       # resolved, a command with a $(…) or backticks, or one that doesn't
       # lex, by the text match +text+ instead.
-      # @yieldparam path [String] an absolute path (not resolved for symlinks)
+      # @yieldparam path [String] an absolute path (not resolved for
+      #   symlinks but for a `..` climbing out of one: Walk)
       def any_path?(command, text:, cwd:, home: Dir.home, env: ENV)
         walk = Walk.new(cwd, home, env)
         tokens = ShellLex.lex(command.to_s)
@@ -63,16 +64,22 @@ module Samagotchi
       end
 
       def names?(path, roots, tmp_roots)
-        real = ProtectedPaths.real(path)
-        return true if roots.any? { |root| within?(real, root) }
+        ProtectedPaths.reals(path).any? do |real|
+          next true if roots.any? { |root| within?(real, root) }
 
-        real.match?(HOOKS_PART) && tmp_roots.none? { |tmp| within?(real, tmp) }
+          real.match?(HOOKS_PART) && tmp_roots.none? { |tmp| within?(real, tmp) }
+        end
       end
 
       def within?(path, root) = path == root || path.start_with?(File.join(root, ""))
 
       # Follows the current dir and gives, per simple command, each word
-      # with its path (nil when it can't be resolved).
+      # with its path (nil when it can't be resolved). The dir follows the
+      # shell's logical cd (`cd link/..` is back where it started); a word
+      # is opened from it the kernel's way, so a `..` after a symlinked dir
+      # climbs out of its target: such a word comes twice, with its lexical
+      # path and its physical one (ProtectedPaths.expand), and a check reads
+      # both.
       class Walk
         include RedactedInspect
 
@@ -96,15 +103,21 @@ module Samagotchi
           end
         end
 
-        # An absolute path for +word+ against the current dir, or nil.
-        def path(word) = resolve(word, @dir)
+        # The absolute paths for +word+ against the current dir (.paths_for),
+        # [] when it can't be resolved.
+        def paths(word) = paths_for(word, @dir)
 
         private
 
         def command(words)
           verb = words.find { |w| !w.match?(/\A[A-Za-z_]\w*=/) }
-          resolved = words.filter_map { |word| candidate(word) }.map { |word| [word, resolve(word, @dir)] }
           cd_args = words.drop_while { |w| w != verb }.drop(1).grep_v(/\A-/)
+          # A cd's destination is the shell's logical path only.
+          logical = %w[cd pushd].include?(verb) ? cd_args.first : nil
+          resolved = words.filter_map { |word| candidate(word) }.flat_map do |word|
+            paths = logical && word == logical ? [resolve(word, @dir)].compact : paths_for(word, @dir)
+            paths.empty? ? [[word, nil]] : paths.map { |path| [word, path] }
+          end
           case verb
           when "cd" then @dir = cd_args.empty? ? @home : resolve(cd_args.first, @dir)
           when "pushd"
@@ -126,7 +139,18 @@ module Samagotchi
           word
         end
 
-        # An absolute path for +word+ against +dir+, or nil.
+        # +word+ as a file argument against +dir+: its lexical path, and its
+        # physical one when a `..` in it climbs out of a symlinked dir's
+        # target (ProtectedPaths.expand); [] when it can't be resolved.
+        def paths_for(word, dir)
+          lexical = resolve(word, dir) or return []
+          return [lexical] unless word.include?("..")
+
+          [lexical, ProtectedPaths.expand(expand(word), dir)].uniq
+        end
+
+        # An absolute path for +word+ against +dir+ with `..` taken
+        # lexically (a cd's destination: the shell's logical cd), or nil.
         def resolve(word, dir)
           return nil if word.include?(ShellLex::SUBST) || word == ShellLex::HEREDOC || word.match?(SCRIPT)
 

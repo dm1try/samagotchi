@@ -273,7 +273,9 @@ queued, as `--turn T` does.
 **The tool calls.** In a review session `Guardrails::ReviewBoundary` denies a participant's turn everything but
 reads of the project ([guardrails](../guardrails.md#a-participants-review-boundary)). In a working session
 `Guardrails::PairBoundary` takes its seat: the owner's checks and rules decide the rest, as for the owner's turns
-([guardrails](../guardrails.md#a-participants-pair-boundary)). Approvals and questions are owner-only: either
+([guardrails](../guardrails.md#a-participants-pair-boundary)). Both judge a path every way it resolves
+(`ProtectedPaths.reals`: a `..` after a symlinked folder climbs out of its target, as the read opens it;
+[guardrails](../guardrails.md#how-paths-resolve)). Approvals and questions are owner-only: either
 boundary denies the model's own question, and `/answer` is an owner route. A pair turn's ask reaches the owner's card
 naming who asks (`approval.author`, `author_name`; `Guardrails::Approval::PARTICIPANT_HEADER`) with Allow once as its
 only scope, and System 1 never judges it (`GuardrailWiring#system_one_judge`). A grant without `--identity` (a LAN

@@ -42,6 +42,18 @@ RSpec.describe "Guardrails::Targets outside the session's repo" do
     expect(targets(name: "write", path: "out/a.txt")).to be_outside_repo
   end
 
+  # The kernel takes link/.. from the link's target: the write lands in
+  # the sibling's parent, File.expand_path says the repo.
+  it "counts a `..` that climbs out of a symlinked dir's target as outside, and keeps both paths" do
+    deep = File.join(@sibling, "deep").tap { |d| FileUtils.mkdir_p(d) }
+    File.symlink(deep, File.join(@repo, "link"))
+    t = targets(name: "write", path: "link/../x")
+    expect(t.paths).to eq([File.join(@repo, "x"), File.join(@sibling, "x")])
+    expect(t).to be_outside_repo
+    expect(targets(name: "write", path: "lib/../x").paths).to eq([File.join(@repo, "x")])
+    expect(targets(name: "write", path: "lib/../x")).not_to be_outside_repo
+  end
+
   it "counts a dangling symlink or a hard link in the repo as outside, a plain file not" do
     File.write(File.join(@sibling, "a.txt"), "a")
     File.write(File.join(@repo, "own.txt"), "a")

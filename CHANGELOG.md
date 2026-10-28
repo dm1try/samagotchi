@@ -25,6 +25,16 @@ and commands may change between minor versions. How releases are made:
   `ENV`, `CDPATH`, `IFS`, an exported `BASH_FUNC_…`, `LD_PRELOAD` or a git config/diff-program variable makes the
   command not read-only.
 
+### Security
+
+- Guardrails take a path's `..` the way the kernel does: after a symlinked folder it climbs out of the link's target.
+  A participant's review turn could read `node_modules/foo/../../.config/gh/hosts.yml` (with `foo` an `npm link` to
+  `~/src/foo`) as a project file while the read opened `~/.config/gh/hosts.yml`; a pair turn's secret check, the
+  protected paths (`mem/../config.yml` with `mem` a link to chi's memories), `outside_repo`, the delegate child's
+  boundary, `touches: chi_dirs` and `rm: outside_tmp` had the same gap. Each now refuses or asks when either reading of
+  the path does, and a write through a dangling symlink to `config.yml`, the hooks or `.bundles/` is asked or denied
+  like the file it creates. A shell `cd link/..` stays the shell's logical one.
+
 ## [0.128.0] - 2026-10-28
 
 ### Changed

@@ -149,8 +149,7 @@ module Samagotchi
 
         paths = targets.paths.to_a.compact
         root = @root.call.to_s
-        paths.any? do |path|
-          real = ProtectedPaths.real(path)
+        paths.flat_map { |path| ProtectedPaths.reals(path) }.any? do |real|
           next false if @tmp_roots.call.any? { |tmp| ShellPaths.within?(real, tmp) }
 
           root.empty? || !ShellPaths.within?(real, ProtectedPaths.real(root))
