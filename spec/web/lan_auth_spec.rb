@@ -8,12 +8,15 @@ require "rack/mock"
 require "samagotchi/web/app"
 require "samagotchi/web/session_hub"
 require "samagotchi/web/token"
+require "samagotchi/web/grants"
+require "samagotchi/web/link_codes"
 require "samagotchi/session"
 
-# chi web on the LAN (web.host: lan): every route answers a phone only
-# with the access token (the chi_token cookie, a Bearer header, or once as
-# ?token= on the page, which trades it for the cookie). A loopback peer
-# (this Mac: the desktop browser, chi's own tools) needs none.
+# chi web on the LAN (web.host: lan): every route answers a phone, and this
+# Mac's loopback too, only with the access token (the chi_token cookie, a
+# Bearer header, or once as ?token= on the page or a link's #code=, which
+# trade it for the cookie). chi's token-less /api/info probe gets its
+# checked fields only.
 RSpec.describe Samagotchi::Web::App, "LAN access token" do
   let(:token) { "t0ken-t0ken-t0ken-t0ken-t0ken-t0ken-t0ken" } # 43 characters, like a real one
   let(:lan_ip) { "192.168.1.55" }
@@ -162,12 +165,64 @@ RSpec.describe Samagotchi::Web::App, "LAN access token" do
     end
   end
 
+  # This machine, on loopback: a pair participant's shell runs here, so
+  # loopback is no longer the owner on the LAN (finding A1).
   describe "a loopback peer" do
-    it "needs no token, on any loopback address" do
+    let(:local) { { host: "127.0.0.1:4567" } }
+
+    it "needs the token too, on any loopback address: the API gets 401 JSON, the page the paste box" do
       %w[127.0.0.1 ::1 ::ffff:127.0.0.1].each do |peer|
-        expect(call("/api/sessions", host: "127.0.0.1:4567", peer: peer).first).to eq(200), peer
-        expect(call("/", host: "127.0.0.1:4567", peer: peer).first).to eq(200), peer
+        status, headers, body = call("/api/sessions", **local, peer: peer)
+        expect([status, JSON.parse(body)]).to eq([401, { "error" => "unauthorized",
+                                                         "detail" => "chi web on the LAN needs its access token, on this machine too" }]), peer
+        expect(headers["Content-Type"]).to start_with("application/json")
+        status, _, body = call("/", **local, peer: peer)
+        expect(status).to eq(401), peer
+        expect(body).to include('name="token"').and include('<form method="get" action="/">')
+        expect(body).not_to include(token)
       end
+    end
+
+    it "is refused on the owner's routes that mint, post and read, and on the static files" do
+      expect(call("/api/sessions/0123456789abcdef/participants", **local, peer: "127.0.0.1", method: "POST").first).to eq(401)
+      expect(call("/api/sessions/0123456789abcdef/turn", **local, peer: "127.0.0.1", method: "POST").first).to eq(401)
+      %w[/api/sessions/0123456789abcdef/output /api/events /api/participants /app.js /index.html].each do |path|
+        expect(call(path, **local, peer: "127.0.0.1").first).to eq(401), path
+      end
+    end
+
+    it "passes with the Bearer header or the cookie" do
+      %w[127.0.0.1 ::1].each do |peer|
+        expect(call("/api/sessions", **local, peer: peer, headers: bearer).first).to eq(200), peer
+        expect(call("/api/sessions", **local, peer: peer, headers: cookie).first).to eq(200), peer
+        expect(call("/", **local, peer: peer, headers: cookie).first).to eq(200), peer
+      end
+    end
+
+    it "gets a 401, not the probe, for /api/info with a wrong token or any cookie" do
+      expect(call("/api/info", **local, peer: "127.0.0.1", headers: bearer("wrong")).first).to eq(401)
+      expect(call("/api/info", **local, peer: "127.0.0.1", headers: cookie("wrong")).first).to eq(401)
+      expect(call("/api/info", **local, peer: "127.0.0.1", headers: { "HTTP_COOKIE" => "other=1" }).first).to eq(401)
+    end
+
+    it "trades the page's ?token= for the cookie" do
+      status, headers, = call("/?dir=/work/repo&token=#{token}", **local, peer: "127.0.0.1")
+      expect([status, headers["Location"]]).to eq([303, "/?dir=/work/repo"])
+      expect(headers["Set-Cookie"]).to eq("chi_token=#{token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=34560000")
+      expect(call("/?token=wrong", **local, peer: "127.0.0.1").first).to eq(401)
+    end
+
+    it "trades a link's one-time owner code (#code=, POST /api/token) for the cookie, once" do
+      code = Samagotchi::Web::LinkCodes.for_grants(Samagotchi::Web::Grants.path(state_dir: state_dir))
+                                       .issue(kind: :owner, ttl: Samagotchi::Web::LinkCodes::OWNER_TTL)
+      trade = lambda do
+        call("/api/token", **local, peer: "127.0.0.1", method: "POST",
+                           headers: { input: JSON.generate(code: code), "CONTENT_TYPE" => "application/json" })
+      end
+      status, headers, = trade.call
+      expect(status).to eq(204)
+      expect(headers["Set-Cookie"]).to eq("chi_token=#{token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=34560000")
+      expect(trade.call.first).to eq(401)
     end
 
     it "is not exempt when it reaches the LAN address (that peer is the LAN IP, not loopback)" do

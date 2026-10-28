@@ -61,8 +61,10 @@ RSpec.describe Samagotchi::Web::App, "Verify fresh" do
       env["REMOTE_ADDR"] = "192.168.1.20"
       env["HTTP_AUTHORIZATION"] = "Bearer #{token}"
     else
+      # The owner, on this machine: the owner's token, loopback too.
       env["HTTP_HOST"] = "127.0.0.1:4567"
       env["REMOTE_ADDR"] = "127.0.0.1"
+      env["HTTP_AUTHORIZATION"] = "Bearer #{owner_token}"
     end
     status, _headers, chunks = app.call(env)
     [status, JSON.parse(chunks.join)]

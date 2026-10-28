@@ -131,6 +131,7 @@ RSpec.describe Samagotchi::Web::App, "a participant's turn" do
                                                                         input: JSON.generate({ prompt: "go", client_id: "web:t", delivery: "cut" }))
     env["HTTP_HOST"] = "127.0.0.1:4567"
     env["REMOTE_ADDR"] = "127.0.0.1"
+    env["HTTP_AUTHORIZATION"] = "Bearer #{owner_token}"
     expect(app.call(env).first).to eq(202)
     expect(delivered.first).to include(client_id: "web:t", delivery: "cut", author: nil)
     expect(Samagotchi::PromptHistory).to have_received(:append).with("go")

@@ -98,19 +98,35 @@ RSpec.describe Samagotchi::Web::App, "participant gate" do
       expect(plain.send(:principal_for, req)&.author).to eq("p:#{issued.grant.id}")
     end
 
-    it "is refused once the grant ended (401), and an ended cookie is cleared so the owner's browser is the owner again" do
+    it "is refused once the grant ended (401); on the LAN the cookie stays, the gate asking this machine too" do
       token
       Samagotchi::Participants.revoke(grants, session_id: session.id, state_dir: state_dir)
       expect(json("/api/info", peer: loopback).last["error"]).to eq("token_revoked")
-      status, headers, = call("/", peer: loopback, bearer: nil, headers: { "HTTP_COOKIE" => "chi_token=#{token}" })
-      expect([status, headers["Set-Cookie"].to_s]).to match([401, a_string_starting_with("chi_token=; ")])
-      expect(call("/", peer: loopback, bearer: nil)[2]).to include("owner page")
+      status, headers, body = call("/", peer: loopback, bearer: nil, headers: { "HTTP_COOKIE" => "chi_token=#{token}" })
+      expect([status, headers["Set-Cookie"]]).to eq([401, nil])
+      expect(body).to include("revoked")
+      expect(call("/", peer: loopback, bearer: nil).first).to eq(401)
     end
 
-    it "is the owner with the owner's token or no token at all, whatever cookie a participant link left" do
+    it "is cleared once the grant ended on a chi web not on the LAN, so the owner's browser is the owner again" do
+      token
+      Samagotchi::Participants.revoke(grants, session_id: session.id, state_dir: state_dir)
+      plain = described_class.new(state_dir: state_dir, public_dir: public_dir, bridge_wait_timeout: 0, grants: grants)
+      env = Rack::MockRequest.env_for("/", "HTTP_COOKIE" => "chi_token=#{token}", "HTTP_HOST" => "127.0.0.1:4567",
+                                           "REMOTE_ADDR" => loopback)
+      status, headers, = plain.call(env)
+      expect([status, headers["Set-Cookie"].to_s]).to match([401, a_string_starting_with("chi_token=; ")])
+      env = Rack::MockRequest.env_for("/", "HTTP_HOST" => "127.0.0.1:4567", "REMOTE_ADDR" => loopback)
+      expect(plain.call(env).last.each.to_a.join).to include("owner page")
+    end
+
+    it "is the owner with the owner's token, whatever cookie a participant link left; with no token at all, nobody" do
       cookie = { "HTTP_COOKIE" => "chi_token=#{token}" }
       expect(json("/api/info", peer: loopback, bearer: owner_token, headers: cookie).last.keys).to include("pid", "cwd")
-      expect(json("/api/info", peer: loopback, bearer: nil).last.keys).to include("pid", "cwd")
+      expect(json("/api/sessions", peer: loopback, bearer: nil).map { |part| part.is_a?(Hash) ? part["error"] : part })
+        .to eq([401, "unauthorized"])
+      # chi's token-less probe: its checked fields only (ProxyGate#probe_info).
+      expect(json("/api/info", peer: loopback, bearer: nil).last.keys).not_to include("cwd")
     end
   end
 
@@ -342,9 +358,9 @@ RSpec.describe Samagotchi::Web::App, "participant gate" do
     end
   end
 
-  it "leaves the owner's requests as they were (loopback, and the owner's token on the LAN)" do
+  it "leaves the owner's requests as they were (the owner's token, on loopback and on the LAN)" do
     token
-    expect(call("/", peer: "127.0.0.1", bearer: nil)[2]).to include("owner page")
+    expect(call("/", peer: "127.0.0.1", bearer: owner_token)[2]).to include("owner page")
     expect(call("/", bearer: owner_token)[2]).to include("owner page")
     expect(json("/api/info", bearer: owner_token).last.keys).to include("pid", "cwd", "lan")
   end

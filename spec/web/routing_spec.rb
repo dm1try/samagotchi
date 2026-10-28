@@ -167,7 +167,7 @@ RSpec.describe Samagotchi::Web::App, "routing" do
   context "in LAN mode" do
     let(:lan) { { ip: "192.168.1.55", token: "t0ken-t0ken-t0ken-t0ken-t0ken-t0ken-t0ken" } }
 
-    it "asks a LAN peer for the token before any route, after the Host and cross-site gates" do
+    it "asks a LAN peer and this machine for the token before any route, after the Host and cross-site gates" do
       phone = { host: "192.168.1.55:4567", peer: "192.168.1.20" }
       status, _headers, body = call("/api/sessions/s1", **phone)
       expect([status, JSON.parse(body)["error"]]).to eq([401, "unauthorized"])
@@ -179,7 +179,9 @@ RSpec.describe Samagotchi::Web::App, "routing" do
 
       authed = { "HTTP_AUTHORIZATION" => "Bearer #{lan[:token]}" }
       expect(JSON.parse(call("/api/sessions/s1", **phone, env: authed)[2])["handler"]).to eq("handle_show")
-      expect(routed("/api/sessions/s1")).to eq(%w[handle_show s1]) # loopback: no token
+      # This machine's loopback: the token too.
+      expect(call("/api/sessions/s1")[0]).to eq(401)
+      expect(JSON.parse(call("/api/sessions/s1", env: authed)[2])["handler"]).to eq("handle_show")
     end
   end
 

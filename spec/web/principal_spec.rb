@@ -89,8 +89,17 @@ RSpec.describe Samagotchi::Web::App, "principals and route permissions" do
   end
 
   describe "#principal_for" do
-    it "is the owner for a loopback peer, with no token" do
-      expect(app.send(:principal_for, request("/api/sessions", peer: "127.0.0.1"))).to eq(Samagotchi::Web::Principal::OWNER)
+    it "is nobody for a loopback peer with no token on the LAN (a pair participant's shell runs here)" do
+      %w[127.0.0.1 ::1 ::ffff:127.0.0.1].each do |peer|
+        expect(app.send(:principal_for, request("/api/sessions", peer: peer))).to be_nil, peer
+      end
+      bearer = request("/api/sessions", peer: "127.0.0.1", headers: { "HTTP_AUTHORIZATION" => "Bearer #{token}" })
+      expect(app.send(:principal_for, bearer)).to be_owner
+    end
+
+    it "is the owner for a loopback peer, with no token, when chi web isn't on the LAN" do
+      plain = described_class.new(state_dir: state_dir, public_dir: public_dir, bridge_wait_timeout: 0)
+      expect(plain.send(:principal_for, request("/api/sessions", peer: "127.0.0.1"))).to eq(Samagotchi::Web::Principal::OWNER)
     end
 
     it "is the owner for any peer when chi web isn't on the LAN" do

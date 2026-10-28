@@ -37,6 +37,8 @@ RSpec.describe Samagotchi::Web::App, "participants routes" do
     env = Rack::MockRequest.env_for(path, **opts, "CONTENT_TYPE" => "application/json")
     env["HTTP_HOST"] = host
     env["REMOTE_ADDR"] = "127.0.0.1"
+    # On the LAN this machine's loopback needs the owner's token too.
+    env["HTTP_AUTHORIZATION"] = "Bearer #{lan[:token]}" if lan
     status, _headers, chunks = app.call(env)
     [status, JSON.parse(chunks.join)]
   end

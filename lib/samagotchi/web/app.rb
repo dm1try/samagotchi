@@ -459,12 +459,14 @@ module Samagotchi
       # The request's Principal, as #route resolved it.
       def principal(req) = req.env.fetch(PRINCIPAL_ENV)
 
-      # LAN mode, a peer that isn't this machine (the peer is the socket's
-      # address, REMOTE_ADDR: never X-Forwarded-For or req.ip, which trust
-      # headers a phone could send): every route needs the access token, as
-      # the chi_token cookie or an Authorization: Bearer header. The page
-      # with ?token= trades it for the cookie and a 303 to itself without
-      # it, so the token doesn't stay in the phone's history.
+      # LAN mode: every route needs the access token, from a phone and from
+      # this machine's loopback too (a pair participant's shell runs here),
+      # as the chi_token cookie or an Authorization: Bearer header; only
+      # GATE_FREE_PATHS and chi's token-less /api/info probe
+      # (ProxyGate#probe_info?) are answered without it. The page with
+      # ?token= (or a link's #code=, POST /api/token) trades it for the
+      # cookie and a 303 to itself without it, so the token doesn't stay in
+      # the browser's history.
       # @return [Array(Principal, nil), Array(nil, Array)] the request's
       #   principal (#principal_for), or the response that refuses it
       def token_gate(req)
@@ -489,9 +491,9 @@ module Samagotchi
       # the access token; a participant for a live grant's token (a chp_
       # one, looked up only when no owner token was given), wherever the
       # request comes from, this machine's loopback too; with neither, the
-      # owner for a peer the gate doesn't ask (no LAN mode, or this
-      # machine's loopback), else nil. An ended or unknown grant's token is
-      # nil anywhere: it never falls back to the owner.
+      # owner only on a chi web that asks no token (loopback only: no LAN
+      # mode, no web.public_url), else nil. An ended or unknown grant's
+      # token is nil anywhere: it never falls back to the owner.
       # @return [Principal, nil]
       # With web.public_url (ProxyGate) every request needs a token, and a
       # proxied one is #proxied_principal's.
@@ -595,11 +597,10 @@ module Samagotchi
         "#{token_cookie_name(req)}=; #{token_cookie_attributes(req).sub(/Max-Age=\d+/, "Max-Age=0")}"
       end
 
-      def token_required?(req)
-        return true if @public_url
-
-        @lan && !LOOPBACK_PEERS.include?(req.get_header("REMOTE_ADDR").to_s)
-      end
+      # Whether the gate asks this request for a token: on a chi web on the
+      # LAN or behind a proxy, every request does, this machine's loopback
+      # too. Only a loopback-only chi web takes loopback as the owner.
+      def token_required?(_req) = !(@public_url || @lan).nil?
 
       # The page opened with ?token= (a gated request, or a grant's token
       # anywhere): its token is traded for the cookie, whatever else the
@@ -903,7 +904,11 @@ module Samagotchi
 
       def unauthorized_detail(req, reason)
         return "chi web behind the proxy: #{reason || "needs its access token"}" if proxied?(req)
-        return "chi web on the LAN needs its access token" unless @public_url
+
+        unless @public_url
+          here = LOOPBACK_PEERS.include?(req.get_header("REMOTE_ADDR").to_s)
+          return "chi web on the LAN needs its access token#{", on this machine too" if here}"
+        end
 
         detail = "chi web with web.public_url needs its access token, on this machine too"
         direct_public?(req) ? "#{detail}; open its public address #{@public_url.origin}/ instead" : detail
