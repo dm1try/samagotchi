@@ -77,6 +77,7 @@ module Samagotchi
       GIT_HOOKS = "a participant's turn can't write git's hooks (.git/hooks): git runs them in the owner's name"
       CHI_WEB = "a participant's turn can't call chi web on this machine: on loopback it answers as the owner " \
                 "(sessions, shares, answers)"
+      VERB = "a participant's turn runs only a program named plainly: no $, $(…) or glob in a command's name"
       UNREADABLE = "a participant's turn runs only commands chi can read: split this command, or write the file " \
                    "with the write tool"
       # A pair turn's execute runs without the environment variables whose

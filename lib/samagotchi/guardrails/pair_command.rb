@@ -99,6 +99,7 @@ module Samagotchi
       # Assignments whose value is a search list, not a path.
       LIST_VARIABLES = %w[PATH].freeze
       GLOB = /[*?\[\]{}]/
+      SHELL_BRACKETS = %w[[ [[ ]] { } ]].freeze
       # How many matches of a glob are checked against the denylist.
       GLOB_LIMIT = 500
       # How deep scripts handed to a shell are read; deeper is UNREADABLE.
@@ -224,10 +225,12 @@ module Samagotchi
       # A simple command's own refusal, by its program and arguments.
       def words_refusal(words)
         at = program_at(words)
+        return PairBoundary::CHI if chi_in_values?(words)
+        return PairBoundary::VERB if at && unplain_program?(words[at])
+
         program = at && File.basename(words[at])
         args = at ? words[(at + 1)..] : []
         return PairBoundary::CHI if program == "chi" && !CHI_ALLOWED.include?(args)
-        return PairBoundary::CHI if chi_in_values?(words)
 
         upto = at ? words[0..at] : words
         return PairBoundary::BACKGROUND if upto.any? { |w| DETACHERS.include?(File.basename(w)) } || detached_session?(program, args)
@@ -235,6 +238,14 @@ module Samagotchi
         return PairBoundary::GIT_CONFIG if program == "git" && git_runs_commands?(args)
 
         nil
+      end
+
+      # A program word the shell expands: a $var, a $(…), a glob (bin/ch?,
+      # ${e}i); the test brackets and braces are words of their own.
+      def unplain_program?(word)
+        return false if SHELL_BRACKETS.include?(word)
+
+        word.include?("$") || word.include?(ShellLex::SUBST) || word.match?(GLOB)
       end
 
       # chi in an assignment's value (FOO=chi, alias x='chi …') or in the

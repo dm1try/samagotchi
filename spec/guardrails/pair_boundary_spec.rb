@@ -425,6 +425,17 @@ RSpec.describe Samagotchi::Guardrails::PairBoundary do
     expect(verdict_for({ name: "task_list", content: "" }, turn_author: nil)).to be_allow
   end
 
+  it "denies a program whose name the shell expands: a $var, a $(…), a glob" do
+    ["bin/ch? sessions list", "e=ch; ${e}i sessions list", "$CMD x", "ruby -e 1 | b?sh"].each do |command|
+      expect(refused(command)).to eq(described_class::VERB), command
+    end
+    expect(refused("$(which ruby) -e 1")).to eq(described_class::UNREADABLE)
+    ["[ -f x ] && ls", "[[ -n x ]] && ls", "f() { ls; }; f", "for f in docs/*.md; do wc -l $f; done",
+     "case $x in a) ls ;; esac"].each do |command|
+      expect(refused(command)).to be_nil, command
+    end
+  end
+
   it "denies ask_user_question with advice to ask in the reply" do
     verdict = verdict_for({ name: "ask_user_question", content: "which?" })
     expect(verdict).to be_deny

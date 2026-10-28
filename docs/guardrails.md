@@ -408,7 +408,10 @@ message:
   each word resolved as `touches: chi_dirs` resolves it; a glob that matches a
   secret or whose fixed part leads into a denied folder (`~/.ss?/id_*`,
   `~/.config/*/config.yml`, `.en?`), a `$var` word whose fixed part does
-  (`~/.ss${d}h`), and a text match for the rest;
+  (`~/.ss${d}h`), and a text match for the rest. A prefix that comes through a
+  variable (`x=~/.s; cat ${x}sh/config`) isn't followed: such a command isn't
+  denied, it asks (its `$var` word and the assignment's path place it outside
+  the project);
 - sweeping a folder that holds secrets: `find`, `tar`, `cp`, `rsync`, `scp`,
   `zip`, `ditto`, `grep`/`rg`/`ag` and the like given home or any folder above
   a denied one, and linking to one (`ln -s ~/.config g`, `ln -s ../.. up`);
@@ -442,6 +445,9 @@ message:
   request without a token is the owner on a LAN chi web
   (`PairBoundary::CHI_WEB`). A Bridge answers only with its secret, which sits
   in chi's state dir;
+- a program whose name the shell expands: a `$var`, a `$(…)` or a glob in a
+  command's name (`bin/ch? …`, `e=ch; ${e}i …`, `$CMD x`), whatever it would
+  turn out to be (`PairBoundary::VERB`);
 - leaving something running: `&` at a command's end, `nohup`, `setsid`,
   `disown`, `screen -d…`, `tmux new -d`, and scheduling it: `crontab`, `at`,
   `batch`;
