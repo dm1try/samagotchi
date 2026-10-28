@@ -533,7 +533,37 @@ RSpec.describe Samagotchi::Web::Server do
         described_class.start(port: 4999, hub: hub, lan: lan, token_path: token_path)
         token = Samagotchi::Web::Token.read(token_path)
 
-        expect { callback.call }.to output(%r{\AChi Web on http://127.0.0.1:4999/ .*\nLAN: http://192.168.1.55:4999/\?token=#{token}   ← .*\nPlain http: .*\nPress Ctrl-C}).to_stdout
+        expect { callback.call }.to output(Regexp.new("\\AChi Web on http://127.0.0.1:4999/ .*\\nLocal: http://127.0.0.1:4999/#code=chc_\\S{43}   ← .*\\n" \
+                                                      "LAN: http://192.168.1.55:4999/\\?token=#{token}   ← .*\\nPlain http: .*\\nPress Ctrl-C")).to_stdout
+      end
+    end
+
+    # This machine's loopback needs the token too (finding A1): the link
+    # printed and opened here carries an owner's one-time code, never the
+    # token, and each is its own.
+    it "print and open this machine's link with an owner's one-time code, each its own" do
+      Dir.mktmpdir do |dir|
+        token_path = File.join(dir, "web-token")
+        lan = Samagotchi::Web::Lan::Choice.new(ip: "192.168.1.55", interface: "en0", others: [], public: false)
+        allow(Samagotchi::Web::App).to receive(:new).and_return(double("app", "server_running=": nil))
+        allow(Rackup::Handler::WEBrick).to receive(:run) { |_app, opts| opts[:StartCallback].call }
+        opened = nil
+        allow(described_class).to receive(:open_url) { |target| opened = target }
+        allow(Thread).to receive(:new).and_yield
+        allow(described_class).to receive(:sleep)
+
+        out = nil
+        expect do
+          described_class.start(port: 4999, url: "http://127.0.0.1:4999/?dir=/r", hub: hub, lan: lan, token_path: token_path,
+                                state_dir: start_state, open_browser: true)
+        end
+          .to output(satisfy { |o| out = o }).to_stdout
+        printed = out[%r{Local: http://127\.0\.0\.1:4999/\?dir=/r#code=(chc_\S+)}, 1]
+        expect(opened).to match(%r{\Ahttp://127\.0\.0\.1:4999/\?dir=/r#code=chc_\S{43}\z})
+        codes = described_class.owner_codes(start_state)
+        expect(codes.redeem(printed)).to eq([:owner, nil])
+        expect(codes.redeem(opened[/#code=(\S+)/, 1])).to eq([:owner, nil])
+        expect(out).not_to include("Local: http://127.0.0.1:4999/?dir=/r?token=")
       end
     end
 
@@ -543,10 +573,16 @@ RSpec.describe Samagotchi::Web::Server do
         allow(Samagotchi::Web::Token).to receive(:path).and_return(File.join(dir, "web-token"))
         allow(described_class).to receive(:probe).and_return({ "app" => "chi-web", "pid" => 42, "lan" => "192.168.1.55" })
 
-        expect { described_class.launch(port: 4567, start_dir: "/", scope: "all") }
+        allow(described_class).to receive(:owner_codes).and_return(double("codes", issue: "chc_C"))
+        allow(described_class).to receive(:open_url)
+
+        expect { described_class.launch(port: 4567, start_dir: "/", scope: "all", open_browser: true) }
           .to output("chi web already runs on port 4567 (pid 42): http://127.0.0.1:4567/?scope=all\n" \
+                     "Local: http://127.0.0.1:4567/?scope=all#code=chc_C   ← opens chi web as you once, within 10 minutes " \
+                     "(chi web again prints a new one; the LAN link works here too)\n" \
                      "LAN: http://192.168.1.55:4567/?token=#{token}   ← anyone with this link can run commands as you\n" \
                      "Plain http: the link and your traffic can be read by anyone on this Wi-Fi.\n").to_stdout
+        expect(described_class).to have_received(:open_url).with("http://127.0.0.1:4567/?scope=all#code=chc_C")
       end
     end
   end

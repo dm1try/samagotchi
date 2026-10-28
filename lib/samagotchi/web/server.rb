@@ -118,11 +118,15 @@ module Samagotchi
           puts "chi web already runs on port #{port} (pid #{found["pid"]}): #{url}"
           other_start = start_given && other_start_line(found["start_dir"], start_dir)
           puts other_start if other_start
-          puts running_lan_lines(found["lan"], port) if found["lan"]
           running_public = public_url || Running.live_public_url(probe: ->(at) { probe(host, at) })
+          # On the LAN this machine's page needs the token too: the link
+          # printed and opened here carries an owner's one-time code.
+          here = found["lan"] && !running_public && Token.read(Token.path) ? local_owner_link(url) : nil
+          puts local_lines(here) if here
+          puts running_lan_lines(found["lan"], port) if found["lan"]
           puts running_public_lines(running_public) if running_public
           puts lan_off_line(setting) if new_token && !found["lan"]
-          open_url(url) if open_browser
+          open_url(here ? local_owner_link(url) : url) if open_browser
           0
         when :other
           warn in_use_message(port)
@@ -388,6 +392,10 @@ module Samagotchi
           on_bound&.call
           record_running(running_path, port, public_url)
           puts "Chi Web on #{url} (public: #{File.expand_path("public", __dir__)})"
+          # On the LAN (no web.public_url) this machine's page needs the
+          # token too: a one-time owner's code in the link instead.
+          local = lan && !public_url
+          puts local_lines(local_owner_link(url, codes: owner_codes(state_dir))) if local
           puts lan_lines(ip: lan.ip, port: port, token: Token.read(token_path), others: lan.others, public: lan.public) if lan
           if public_url
             puts public_lines(public_url, token: Token.read(token_path), codes: owner_codes(state_dir), notes: public_notes)
@@ -395,8 +403,12 @@ module Samagotchi
           puts "Press Ctrl-C to stop."
           $stdout.flush # a log file isn't line-buffered
           if open_browser
-            # With web.public_url the page opens through the proxy.
-            open_target = public_url ? public_url.link(owner_codes(state_dir).issue(kind: :owner, ttl: LinkCodes::OWNER_TTL)) : url
+            # With web.public_url the page opens through the proxy; on the
+            # LAN with a one-time owner's code (#code=, its own).
+            open_target = if public_url then public_url.link(owner_codes(state_dir).issue(kind: :owner, ttl: LinkCodes::OWNER_TTL))
+                          elsif local then local_owner_link(url, codes: owner_codes(state_dir))
+                          else url
+                          end
             Thread.new do
               sleep 0.8
               open_url(open_target)
@@ -516,6 +528,19 @@ module Samagotchi
                  "         (#{who}; on this machine the page opens through the proxy too)", *notes]
         lines.concat(QR.lines(link)) if qr
         lines
+      end
+
+      # This machine's page on the LAN (web.host lan, no web.public_url),
+      # whose loopback needs the token too: +url+ with an owner's one-time
+      # code in its fragment (token_fragment.js trades it for the cookie on
+      # 127.0.0.1), never the token. One code per link.
+      def self.local_owner_link(url, codes: owner_codes)
+        "#{url}#code=#{codes.issue(kind: :owner, ttl: LinkCodes::OWNER_TTL)}"
+      end
+
+      def self.local_lines(link)
+        ["Local: #{link}   ← opens chi web as you once, within #{LinkCodes::OWNER_TTL / 60} minutes " \
+         "(chi web again prints a new one; the LAN link works here too)"]
       end
 
       # The owner's one-time link codes, next to the grants.
