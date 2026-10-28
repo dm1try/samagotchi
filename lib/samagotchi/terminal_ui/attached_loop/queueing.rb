@@ -7,8 +7,8 @@ module Samagotchi
     class AttachedLoop
       # Queue and unqueue handling for the attached loop.
       # Reads @client, @client_id, @first_command_id, @link, @my_queued,
-      # @open_ids, @reader, @screen, @shown_enqueued, @wait_at_eof; writes
-      # @my_queued, @open_ids, @own_empty, @own_failed, @prefilled, @queued_ids,
+      # @own_turns, @reader, @screen, @shown_enqueued, @wait_at_eof; writes
+      # @my_queued, @prefilled, @queued_ids,
       # @shown_enqueued.
       # Calls the loop helpers #author_of, #first_command_flag, #mark_activity,
       # #own?, #prompt_line, #send_prompt, #via, and #worker_down.
@@ -136,14 +136,9 @@ module Samagotchi
         def turn_dequeued(event)
           id = event[:enqueued_id]
           @my_queued.delete(id)
-          if @open_ids.delete?(id)
-            if own?(event[:client_id])
-              @own_empty = true
-              @screen.commit("(removed before it ran)")
-            else
-              @own_failed = true
-              @screen.commit("(your queued message was removed before it ran)")
-            end
+          by_us = own?(event[:client_id])
+          if @own_turns.dequeued(id, by_us: by_us)
+            @screen.commit(by_us ? "(removed before it ran)" : "(your queued message was removed before it ran)")
           elsif @shown_enqueued.delete?(id)
             @screen.commit("(a queued message was removed)")
           end

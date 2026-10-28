@@ -26,6 +26,7 @@ module AffectedSpecs
     { match: %w[docs/hooks.md lib/samagotchi/tools/builtin_calls.rb],
       specs: %w[spec/docs_hooks_call_fields_spec.rb], why: "reads docs/hooks.md against Tools::BuiltinCalls" },
     { match: %w[lib/samagotchi/terminal_ui/attached_loop/** lib/samagotchi/terminal_ui/join_replay.rb
+                lib/samagotchi/terminal_ui/own_turns.rb
                 lib/samagotchi/terminal_ui/exit_lines.rb],
       specs: %w[spec/terminal_ui/attached_loop*_spec.rb spec/affected_specs/picker_spec.rb],
       why: "attached-loop collaborators, exercised through the attached loop and picker" },

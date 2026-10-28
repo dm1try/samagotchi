@@ -14,6 +14,7 @@ require_relative "image_input"
 require_relative "line_reader"
 require_relative "question_prompt"
 require_relative "join_replay"
+require_relative "own_turns"
 require_relative "exit_lines"
 require_relative "attached_loop/exit_commands"
 require_relative "attached_loop/questions"
@@ -152,21 +153,12 @@ module Samagotchi
         @join_replay = JoinReplay.new(screen: @screen, view: @view, link: @link, gaps: @gaps, renderer: @renderer)
         @last_idle_interrupt_at = nil
         @next_input_prefill = nil
-        # Prompts this run sent, by enqueued_id: only those come back into
-        # the input when their turn fails (a replayed event must not).
-        @sent_ids = Set.new
         # This run's prompts queued for after the running turn (their ack
         # said queue), oldest first, until their turn starts or they are
         # removed: /unqueue takes back the newest.
         @my_queued = []
         @wait_at_eof = wait_at_eof
-        # Sent and not ended yet (by enqueued_id), the ones merged into the
-        # running turn, whether the input has ended, and whether one of this
-        # run's prompts failed (wait_at_eof only).
-        @open_ids = Set.new
-        @merged_ids = Set.new
-        @input_ended = false
-        @own_failed = false
+        @own_turns = OwnTurns.new(active: wait_at_eof)
         # A continue offer is pending: the prompt asks for the answer.
         @continue_offer = nil
         # The /exit ask is open: the next line is its answer (#answer_exit_ask).
@@ -225,7 +217,7 @@ module Samagotchi
 
             ended = take_early_lines
             return ended if ended
-            return end_of_input if @input_ended && !own_turns_pending?
+            return end_of_input if @own_turns.input_ended? && !own_turns_pending?
           when :line
             # A pipe is read at once: its lines wait for the joining
             # snapshot, which may bring the question they answer.
@@ -256,7 +248,7 @@ module Samagotchi
           # has nothing left to answer it.
           return unanswered_question(@question_pending) if @question
 
-          @input_ended = true
+          @own_turns.end_input
           return nil
         end
         end_of_input if submit(line) == :detach
@@ -303,7 +295,7 @@ module Samagotchi
           own_turn_ended(event)
         when :prompt_restored then restore_prompt(event)
         # The after_turn hooks are done (their notices came before it).
-        when :answer_display then @display_pending = false
+        when :answer_display then @own_turns.displayed
         when :context_status, :used_memories_updated then @status.take_event(event)
         when :participants_changed then participants_changed(event)
         # Another client's anytime command: its line now, before the cards
@@ -333,7 +325,7 @@ module Samagotchi
           refresh_children if Array(event[:origins]).any? { |origin| report_origin?(origin_of(origin)) }
         when :question_requested
           # Nothing is left to answer it with.
-          return unanswered_question(event[:pending_question]) if @input_ended
+          return unanswered_question(event[:pending_question]) if @own_turns.input_ended?
 
           ask(event[:pending_question])
         when :question_answered then question_answered(event)
@@ -515,7 +507,7 @@ module Samagotchi
       # goes back into the input, as the REPL restores it for a retry.
       def restore_prompt(event)
         origin = origin_of(event[:origin])
-        return unless own?(origin.client_id) && @sent_ids.include?(origin.enqueued_id)
+        return unless own?(origin.client_id) && @own_turns.sent?(origin.enqueued_id)
         # Lines from a pipe: nobody to retry it (the REPL's rule).
         return if @wait_at_eof
 

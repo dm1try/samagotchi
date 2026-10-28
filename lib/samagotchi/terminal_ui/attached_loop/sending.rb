@@ -10,14 +10,12 @@ require_relative "../image_input"
 module Samagotchi
   class TerminalUI
     class AttachedLoop
-      # Bridge sending, first-command launch, and this run's turn ledger.
-      # Reads @as_parent, @client, @client_id, @display_pending, @first_command_id,
-      # @first_command_line, @first_commands, @first_prompt, @input_ended, @link,
-      # @merged_ids, @my_queued, @no_interrupt, @open_ids, @own_empty, @own_failed,
-      # @queued_ids, @reader, @running, @screen, @sent_ids, @status, @wait_at_eof;
-      # writes @display_pending, @first_command_id, @first_command_line,
-      # @first_commands, @first_prompt, @merged_ids, @my_queued, @open_ids,
-      # @own_empty, @own_failed, @queued_ids, @sent_ids.
+      # Bridge sending and first-command launch.
+      # Reads @as_parent, @client, @client_id, @first_command_id, @first_command_line,
+      # @first_commands, @first_prompt, @link, @my_queued, @no_interrupt, @queued_ids,
+      # @reader, @running, @screen, @status, @wait_at_eof;
+      # writes @first_command_id, @first_command_line, @first_commands, @first_prompt,
+      # @my_queued, @queued_ids.
       # Calls the loop helpers #client_id_for, #command_registry, #default_model_name,
       # #detach, #mark_activity, #older_worker_command, #origin_of, #own?, #paint,
       # #persist_recent_history, #prompt_line, #put_back_busy_command, #prefill_confirm,
@@ -33,7 +31,7 @@ module Samagotchi
           if reply.status == 202
             # Input from a pipe ends once its output is in (#command_ran).
             command_id = reply.json&.fetch("command_id", nil)
-            @open_ids << command_id if command_id && @wait_at_eof
+            @own_turns.command_sent(command_id) if command_id
             return
           end
           return @screen.commit(stale_worker("run commands")) if reply.status == 404
@@ -49,7 +47,7 @@ module Samagotchi
         end
 
         def command_ran(event)
-          @open_ids.delete(event[:command_id])
+          @own_turns.command_ran(event[:command_id])
           @queued_ids.delete(event[:command_id])
           unless own?(event[:client_id]) || event[:anytime] || event[:card] || event[:queued]
             @screen.commit(prompt_line(event[:client_id], event[:line]))
@@ -147,8 +145,7 @@ module Samagotchi
           reply = @client.post_turn(**options)
           if reply.status == 202
             enqueued_id = reply.json&.fetch("enqueued_id", nil)
-            @sent_ids << enqueued_id if enqueued_id
-            @open_ids << enqueued_id if enqueued_id && @wait_at_eof
+            @own_turns.sent(enqueued_id) if enqueued_id
             @my_queued << enqueued_id if enqueued_id && reply.json&.fetch("delivery", nil) == Delivery::QUEUE
             note = sent_note(reply.json, delivery: delivery, images: images, running: running, choice: choice)
             @screen.commit(note) if note
@@ -172,21 +169,15 @@ module Samagotchi
         # Whether the input's end must wait: the -p prompt isn't sent yet, a
         # prompt this run sent hasn't had its turn, or its turn's after_turn
         # hooks still run (their notices, source-links' sources:, come next).
-        def own_turns_pending? = !@first_prompt.to_s.strip.empty? || !@open_ids.empty? || @display_pending == true
+        def own_turns_pending? = !@first_prompt.to_s.strip.empty? || @own_turns.pending?
 
         # A turn ended: this run's prompt (and ours merged into it) had its turn.
         def own_turn_ended(event)
-          return unless @wait_at_eof
-
-          id = origin_of(event[:origin]).enqueued_id
-          ours = @open_ids.include?(id) || !@merged_ids.empty?
-          @own_failed = true if ours && event[:type] == :turn_failed
-          @own_empty = true if ours && event[:type] == :turn_completed && event.dig(:turn_summary, :empty_answer)
-          # The worker sends answer_display once its after_turn hooks ran.
-          @display_pending = true if ours && event[:type] == :turn_completed && event[:display_pending]
-          @open_ids.delete(id)
-          @open_ids.subtract(@merged_ids)
-          @merged_ids.clear
+          completed = event[:type] == :turn_completed
+          @own_turns.ended(origin_of(event[:origin]).enqueued_id,
+                           failed: event[:type] == :turn_failed,
+                           empty: completed && event.dig(:turn_summary, :empty_answer),
+                           display_pending: completed && event[:display_pending])
         end
 
         # Ours merged into the running turn: they end with it.
@@ -194,22 +185,20 @@ module Samagotchi
           Array(event[:origins]).each do |value|
             origin = origin_of(value)
             id = origin.enqueued_id
-            @merged_ids << id if own?(origin.client_id) && @open_ids.include?(id)
+            @own_turns.merged(id) if own?(origin.client_id)
           end
           nil
         end
 
         def own_prompt_failed
-          @own_failed = true if @wait_at_eof
+          @own_turns.prompt_failed
           nil
         end
 
         # The input ended and nothing of ours is left to wait for.
         def end_of_input
-          detach("Detached; the session keeps running. Re-attach with: #{via.attach(@client.session_id)}") if @input_ended
-          return :turn_failed if @own_failed
-
-          @own_empty ? :empty_answer : :detached
+          detach("Detached; the session keeps running. Re-attach with: #{via.attach(@client.session_id)}") if @own_turns.input_ended?
+          @own_turns.outcome
         end
 
         # The prompt's `@path` images, stored where the worker reads them
