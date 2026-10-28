@@ -7,6 +7,8 @@ and commands may change between minor versions. How releases are made:
 [docs/releasing.md](docs/releasing.md).
 ## [Unreleased]
 
+## [0.129.0] - 2026-10-28
+
 ### Changed
 
 - A delegate child's read-only command that writes only into a tmp dir (`sqlite3 -readonly -safe ../main/x.db "…" >
@@ -58,8 +60,10 @@ and commands may change between minor versions. How releases are made:
   (`crontab`, `at`, `batch`), run a credential printer (`gh auth token`, `git credential fill`, `gcloud … print-access-token`,
   `op`, `aws configure get`, …) or `ps -E`, read the owner's background tasks (`task_wait`, `task_get`, `task_list`), or
   run a program whose name is a `$var`, a `$(…)` or a glob (`bin/ch? …`).
-- A pair turn's guardrail check no longer cuts a data heredoc's body out of the command it then runs
-  (`ShellLex.code_text` built its result on the caller's string): `cat > docs/x.md <<EOF … EOF` ran with an empty body.
+- A guardrail check no longer cuts a heredoc's body out of the command it then runs (since 0.81.0,
+  `ShellLex.code_text` built its result on the caller's string): with the guardrails bundle's `command:` rules, an
+  owner's `git commit -m "$(cat <<'EOF' … EOF)"` or `git commit -F - <<EOF` could run with an empty message, and a pair
+  turn's `cat > docs/x.md <<EOF … EOF` with an empty body.
 - Guardrails take a path's `..` the way the kernel does: after a symlinked folder it climbs out of the link's target.
   A participant's review turn could read `node_modules/foo/../../.config/gh/hosts.yml` (with `foo` an `npm link` to
   `~/src/foo`) as a project file while the read opened `~/.config/gh/hosts.yml`; a pair turn's secret check, the
@@ -80,6 +84,8 @@ and commands may change between minor versions. How releases are made:
   config.yml` is refused too. A memories command keeps its exemption while its text shows no climb (`..`, `$`,
   backticks, `cd -`) and every word resolves or is data (a `python3 -c` or heredoc body, `echo "- a note"`); a call
   whose `env:` redefines the shell is never auto-allowed.
+
+Update with `chi update`, then restart `chi web` and the session workers (`chi sessions restart`).
 
 ## [0.128.0] - 2026-10-28
 
@@ -4884,7 +4890,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.128.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.129.0...HEAD
+[0.129.0]: https://github.com/dm1try/samagotchi/compare/v0.128.0...v0.129.0
 [0.128.0]: https://github.com/dm1try/samagotchi/compare/v0.127.0...v0.128.0
 [0.127.0]: https://github.com/dm1try/samagotchi/compare/v0.126.0...v0.127.0
 [0.126.0]: https://github.com/dm1try/samagotchi/compare/v0.125.0...v0.126.0
