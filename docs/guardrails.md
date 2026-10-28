@@ -412,9 +412,14 @@ message:
 - sweeping a folder that holds secrets: `find`, `tar`, `cp`, `rsync`, `scp`,
   `zip`, `ditto`, `grep`/`rg`/`ag` and the like given home or any folder above
   a denied one, and linking to one (`ln -s ~/.config g`, `ln -s ../.. up`);
-- the environment and the keychain: `env` or `printenv` alone, `set`,
-  `export`, `declare` or `typeset` that list, `launchctl getenv`, `ps e`,
-  `security`, `/proc/*/environ`. On top of it, a pair turn's `execute` runs
+- the environment, the keychain and stored credentials: `env` or `printenv`
+  alone, `set`, `export`, `declare` or `typeset` that list, `launchctl
+  getenv`, `ps e`/`ps -E`, `security`, `/proc/*/environ`, and the commands
+  that print a credential (`gh auth token`, `git credential fill` and the
+  `git credential-*`/`docker-credential-*` helpers, `gcloud … print-access-token`,
+  `op`, `aws configure get`/`export-credentials`, `az account
+  get-access-token`, `heroku auth:token`, `kubectl config view --raw`;
+  `PairCommand::CREDENTIAL_PRINTERS`). On top of it, a pair turn's `execute` runs
   without every variable whose name matches `KEY|TOKEN|SECRET|PASS|CREDENTIAL|AUTH`
   (`PairBoundary::SECRET_ENV_NAME`, case-insensitive), and a command still
   running at the limit is killed, never handed over as a background task;

@@ -391,6 +391,20 @@ RSpec.describe Samagotchi::Guardrails::PairBoundary do
     expect(described_class.web_ports).to eq([4999, 4800, 4567])
   end
 
+  it "denies the commands that print a stored credential, and ps -E" do
+    ["gh auth token", "printf 'protocol=https\\nhost=github.com\\n' | git credential fill", "git -C . credential fill",
+     "git credential-osxkeychain get", "gcloud auth print-access-token", "gcloud auth application-default print-access-token",
+     "op read op://vault/item/password", "aws configure get aws_secret_access_key", "aws configure export-credentials",
+     "az account get-access-token", "heroku auth:token", "kubectl config view --raw",
+     "docker-credential-osxkeychain get", "ps -E", "ps -Eww", "ps -axE"].each do |command|
+      expect(refused(command)).to eq(described_class::ENVIRONMENT), command
+    end
+    ["gh pr list", "git commit -m 'credential fill docs'", "gcloud config list", "aws s3 ls", "kubectl config view",
+     "ps -ef", "ps aux"].each do |command|
+      expect(refused(command)).to be_nil, command
+    end
+  end
+
   it "denies the owner-voiced tools, any delegate_* tool and every memory_write" do
     (described_class::OWNER_VOICED + %w[cancel_reminder task_stop find_tools delegate_result]).each do |tool|
       verdict = verdict_for({ name: tool, content: "x" })

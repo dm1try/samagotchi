@@ -47,7 +47,24 @@ module Samagotchi
       DETACHERS = %w[nohup setsid disown daemonize crontab at batch].freeze
       # Programs that print the environment or a keychain's secrets, whatever
       # their arguments.
-      ENV_READERS = %w[printenv security].freeze
+      ENV_READERS = %w[printenv security op].freeze
+      # Commands that print a stored credential (a token, a password, a
+      # key), by the program and the words that say so in its arguments.
+      CREDENTIAL_PRINTERS = {
+        "gh" => [%w[auth token]],
+        "git" => [%w[credential], %w[credential-osxkeychain], %w[credential-store], %w[credential-cache],
+                  %w[credential-manager]],
+        "gcloud" => [%w[print-access-token], %w[print-identity-token]],
+        "aws" => [%w[configure get], %w[configure export-credentials], %w[ecr get-login-password],
+                  %w[sts get-session-token]],
+        "az" => [%w[account get-access-token]],
+        "heroku" => [%w[auth:token]],
+        "npm" => [%w[token]],
+        "kubectl" => [%w[config view --raw]],
+        "keyring" => [%w[get]]
+      }.freeze
+      # A credential helper run by itself (docker-credential-osxkeychain get).
+      CREDENTIAL_HELPER = /\A(?:docker-credential-|git-credential-)/
       ENV_TEXT = %r{/proc/[^\s]*/environ}
       # This machine's loopback names (.web_text): localhost and its
       # subdomains, 127.x.y.z, 0.0.0.0, ::1 spelt any way, ::ffff:127.x.
@@ -297,18 +314,29 @@ module Samagotchi
           (program == "tmux" && args.any? { |arg| arg.match?(/\Anew(-session)?\z/) } && args.include?("-d"))
       end
 
-      # printenv, security; set, export, declare and typeset that list
-      # (no assignment); launchctl getenv/export; ps with a BSD e (ps e, eww).
+      # printenv, security, op, a credential printer (CREDENTIAL_PRINTERS)
+      # or helper; set, export, declare and typeset that list (no
+      # assignment); launchctl getenv/export; ps with a BSD e (ps e, eww) or
+      # -E (ps -E, -axE).
       def env_reader?(program, args)
-        return true if ENV_READERS.include?(program)
+        return true if ENV_READERS.include?(program) || program.to_s.match?(CREDENTIAL_HELPER)
+        return true if credential_printer?(program, args)
 
         listing = args.none? { |arg| !arg.start_with?("-", "+") }
         case program
         when "set" then args.empty?
         when "export", "declare", "typeset" then listing
         when "launchctl" then %w[getenv export].include?(args.first)
-        when "ps" then args.any? { |arg| arg.match?(/\A[a-zA-Z]*e[a-zA-Z]*\z/) }
+        when "ps" then args.any? { |arg| arg.match?(/\A[a-zA-Z]*e[a-zA-Z]*\z|\A-[a-zA-Z]*E[a-zA-Z]*\z/) }
         else false
+        end
+      end
+
+      # Whether +args+ hold one of +program+'s CREDENTIAL_PRINTERS words, in
+      # order and next to each other (git -C x credential fill).
+      def credential_printer?(program, args)
+        CREDENTIAL_PRINTERS.fetch(program, []).any? do |words|
+          args.each_cons(words.size).any?(words)
         end
       end
 
