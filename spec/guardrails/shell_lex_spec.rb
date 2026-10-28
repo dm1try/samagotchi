@@ -139,6 +139,15 @@ RSpec.describe Samagotchi::Guardrails::ShellLex do
   end
 
   describe ".code_text" do
+    it "leaves the caller's string as it was: the command that runs keeps its heredoc bodies" do
+      ["cat > a.md <<EOF\nbody\nEOF\n", "git commit -F - <<EOF\nbody\nEOF\n"].each do |given|
+        text = String.new(given)
+        cut = described_class.code_text(text, keep_written: false)
+        expect(cut).not_to include("body")
+        expect(text).to eq(given)
+      end
+    end
+
     # Whether +lines+ appear in +of+ in that order.
     def subsequence?(lines, of)
       rest = of.dup

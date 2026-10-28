@@ -114,7 +114,7 @@ module Samagotchi
           end
           redirected ||= exec_redirect?(tokens, indices, words)
         end
-        cuts.sort_by { |span, _| -span.begin }.each_with_object(+text) do |(span, replacement), out|
+        cuts.sort_by { |span, _| -span.begin }.each_with_object(text.dup) do |(span, replacement), out|
           out[span] = replacement
         end
       rescue ArgumentError, EncodingError
