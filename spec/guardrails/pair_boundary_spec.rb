@@ -16,9 +16,9 @@ RSpec.describe Samagotchi::Guardrails::PairBoundary do
   let(:config) { File.join(home, ".config", "samagotchi") }
   let(:grants) { File.join(state, "web-grants", "grants.json") }
   let(:author) { "p:p_0123abcd" }
-  # The spec's own dirs are all under Dir.tmpdir, which a pair turn writes
-  # into freely: +tmp+ stands in for the tmp dirs.
-  let(:tmp) { File.join(base, "tmp") }
+  # The spec's own dirs are all under Dir.tmpdir, which therefore is no tmp
+  # dir for this project (Outside.tmp_write?): +tmp+ is one that is.
+  let(:tmp) { Samagotchi::Guardrails::Outside.tmp_roots.find { |dir| !base.start_with?(File.join(dir, "")) } }
 
   around { |example| with_env("HOME" => home) { example.run } }
 
@@ -36,7 +36,7 @@ RSpec.describe Samagotchi::Guardrails::PairBoundary do
 
   def boundary(turn_author: author)
     described_class.new(author: -> { turn_author }, root: -> { project }, denied_dirs: -> { [state, config] },
-                        home: -> { home }, tmp_roots: -> { [tmp] })
+                        home: -> { home })
   end
 
   def verdict_for(call, **opts)
@@ -87,7 +87,7 @@ RSpec.describe Samagotchi::Guardrails::PairBoundary do
   it "asks before every write in a session whose folder is the home folder or above it, as review reads nothing there" do
     [home, File.dirname(home)].each do |root|
       at_home = described_class.new(author: -> { author }, root: -> { root }, denied_dirs: -> { [state, config] },
-                                    home: -> { home }, tmp_roots: -> { [] })
+                                    home: -> { home })
       context = Samagotchi::Guardrails::Context.new(cwd: home)
       [{ name: "write", path: File.join(home, ".vimrc"), content: "x" },
        { name: "execute", content: "echo x > ~/.tmux.conf" }].each do |call|
@@ -279,6 +279,56 @@ RSpec.describe Samagotchi::Guardrails::PairBoundary do
     expect(verdict_for({ name: "write", path: File.join(tmp, "x.txt"), content: "x" })).to be_allow
   end
 
+  describe "a command that may write outside the project (fails closed)" do
+    def asks?(command)
+      verdict = execute(command)
+      verdict.ask? && verdict.reason == described_class::OUTSIDE_WRITE && verdict.fresh_ask?
+    end
+
+    it "asks for any writer that names a path outside, not only redirections and copiers" do
+      ["rm -rf ~/other", "sed -i s/a/b/ ~/other/notes.md", "curl -o ~/other/x https://example.com",
+       "dd if=/dev/zero of=~/other/x count=1", "touch ~/other/x", "mkdir ~/other/y", "perl -pi -e 's/a/b/' ~/other/x",
+       "python3 -c \"open('#{home}/other/x', 'w').write('x')\"", "bash -c 'rm -rf ~/other'", "find ~/other -delete",
+       "git -C ~/other commit -m x", "GIT_DIR=../x git commit -m y", "cp docs/plan.md ~/other/"].each do |command|
+        expect(asks?(command)).to be(true), command
+      end
+    end
+
+    it "asks for a command it can't place: a dir it can't tell, a $var, a $(…), xargs" do
+      ["cd .. && make", "cd && make", "cd $X && make", "ls | xargs rm", "rm -rf $DIR", "kill $(cat tmp/pid)",
+       "echo hi > \"$OUT\"", "rm -rf ~/oth*"].each do |command|
+        expect(asks?(command)).to be(true), command
+      end
+    end
+
+    it "lets in-project work run: builds, tests, edits, git and reads anywhere" do
+      ["bundle exec rspec spec/foo_spec.rb && git status", "npm test", "make", "ruby script.rb", "sh ./run.sh",
+       "git commit -am 'fix the thing'", "sed -i '' s/a/b/ docs/plan.md", "rm -rf build", "mkdir -p tmp/x",
+       "rm -f docs/*.o", "cd docs && touch x.md", "find . -name '*.o' -delete", "python3 -c 'print(1)'",
+       "git commit -m \"$(cat <<'EOF'\nfix: x ~/y\nEOF\n)\"", "cat ~/other/notes.md | grep x", "cp ~/other/notes.md docs/",
+       "echo x > #{tmp}/out && cat #{tmp}/out", "PATH=/usr/local/bin:$PATH make"].each do |command|
+        expect(execute(command)).to be_allow, command
+      end
+    end
+
+    it "asks for a tmp path that lands elsewhere: a dangling symlink, a file with another hard link" do
+      dir = Dir.mktmpdir("pair-tmp", tmp)
+      File.symlink(File.join(home, "other", "new.txt"), File.join(dir, "dangle"))
+      File.link(File.join(home, "other", "notes.md"), File.join(dir, "hard"))
+      [File.join(dir, "dangle"), File.join(dir, "hard")].each do |path|
+        expect(verdict_for({ name: "write", path: path, content: "x" })).to be_ask, path
+        expect(asks?("echo hi > #{path}")).to be(true), path
+      end
+    ensure
+      FileUtils.rm_rf(dir) if dir
+    end
+
+    it "asks for a project in a tmp dir that writes to that tmp dir beside it" do
+      expect(asks?("echo x > #{File.join(base, "elsewhere.txt")}")).to be(true)
+      expect(verdict_for({ name: "write", path: File.join(base, "elsewhere.txt"), content: "x" })).to be_ask
+    end
+  end
+
   it "denies the owner-voiced tools, any delegate_* tool and every memory_write" do
     (described_class::OWNER_VOICED + %w[cancel_reminder task_stop find_tools delegate_result]).each do |tool|
       verdict = verdict_for({ name: tool, content: "x" })
@@ -310,7 +360,6 @@ RSpec.describe "GuardrailWiring: a participant's boundary by ParticipantMode" do
 
   # The spec's dirs are under Dir.tmpdir, which a pair turn writes into freely.
   before do
-    allow(Samagotchi::Guardrails::PairCommand).to receive(:tmp_roots).and_return([])
     FileUtils.mkdir_p(File.join(project, "docs"))
   end
 
@@ -406,7 +455,6 @@ RSpec.describe "GuardrailWiring: a Verify fresh child's boundary" do
   let(:anchor) { { "turn_id" => "11111111-2222-3333-4444-555555555555", "quote" => "claim" } }
 
   before do
-    allow(Samagotchi::Guardrails::PairCommand).to receive(:tmp_roots).and_return([])
     FileUtils.mkdir_p(File.join(project, "docs"))
   end
 

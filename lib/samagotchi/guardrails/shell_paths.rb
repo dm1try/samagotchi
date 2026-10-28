@@ -111,6 +111,20 @@ module Samagotchi
           end
         end
 
+        # Every dir the command may be in by now (nil for one it can't tell).
+        def dirs = @dirs.dup
+
+        # The part of +word+ that may be a path: an option's or an
+        # assignment's value, a redirection's target; nil for an option
+        # alone or an operator.
+        def candidate(word)
+          word = word.sub(REDIRECT_PREFIX, "")
+          word = word.split("=", 2).last if word.match?(/\A(--?[\w-]+|[A-Za-z_]\w*)=/)
+          return nil if word.empty? || word == "-" || word.match?(%r{\A-[^/]})
+
+          word
+        end
+
         # The absolute paths for +word+ against every dir the command may be
         # in (.paths_for), [] when it can't be resolved from one of them.
         def paths(word)
@@ -147,17 +161,6 @@ module Samagotchi
             found.empty? ? [nil] : found
           end.uniq
           dirs.size > MAX_DIRS ? [nil] : dirs
-        end
-
-        # The part of +word+ that may be a path: an option's or an
-        # assignment's value, a redirection's target; nil for an option
-        # alone or an operator.
-        def candidate(word)
-          word = word.sub(REDIRECT_PREFIX, "")
-          word = word.split("=", 2).last if word.match?(/\A(--?[\w-]+|[A-Za-z_]\w*)=/)
-          return nil if word.empty? || word == "-" || word.match?(%r{\A-[^/]})
-
-          word
         end
 
         # +word+ as a file argument against +dir+: its lexical path, and its

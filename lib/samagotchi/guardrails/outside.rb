@@ -36,6 +36,18 @@ module Samagotchi
         end
       end
 
+      # Whether +path+ lands in the session's root every way it resolves
+      # (.resolve: never a dangling symlink, nor a file with another hard
+      # link). A pair turn's test for a path its command may name
+      # (PairCommand), with .tmp_write? for the rest.
+      # @param path [String] absolute
+      # @param root [String] the session's project root
+      def self.inside?(path, root:)
+        reals = resolve(path) or return false
+        session = ProtectedPaths.real(root)
+        reals.all? { |real| within?(real, session) }
+      end
+
       # Whether a shell command may write +path+ as a tmp file (the child
       # boundary's tmp writes): it resolves (.resolve, every way) into a tmp
       # dir the session's root isn't in.

@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
-require "tmpdir"
+require_relative "outside"
+require_relative "read_only_shell"
 require_relative "review_paths"
 require_relative "shell_paths"
 require_relative "shell_lex"
@@ -17,10 +18,15 @@ module Samagotchi
     #   a command of its own, one it hands another interpreter (ruby -e,
     #   python <<EOF) by its text. A command it can't read is refused
     #   (UNREADABLE), never let through on a text match;
-    # - #outside_writes?: whether it writes outside the project (a
-    #   redirection's target, tee's files, cp/mv/ln/install/rsync/ditto's
-    #   destination), the tmp dirs and /dev/null aside; a target it can't
-    #   resolve counts as outside.
+    # - #outside_writes?: whether it may change something outside the
+    #   project, failing closed: no unless it only reads
+    #   (ReadOnlyShell.read_only?), or only reads but for writes into the
+    #   project or a tmp dir (ReadOnlyShell.read_only_but_writes?), or
+    #   stays inside the project (#stays_inside?: it runs in the project and
+    #   every path it names, an option's value, a glob's fixed part and the
+    #   paths in a script it hands on among them, lands in the project or a
+    #   tmp dir, Outside.inside? / Outside.tmp_write?). A word it can't
+    #   resolve ($var, $(…), a dir after cd $X) counts as outside.
     # A data heredoc (cat, tee, git commit -F - read it: ShellLex::HEREDOC)
     # is not looked into: it's text being written, not run.
     class PairCommand
@@ -54,28 +60,38 @@ module Samagotchi
       GIT_RUNNING_KEYS = %w[core.fsmonitor core.sshcommand core.hookspath core.pager core.editor].freeze
       GIT_WIDE_SCOPES = %w[--global --system].freeze
       GIT_VALUE_OPTIONS = %w[-C --git-dir --work-tree --namespace --exec-path].freeze
-      # Writers whose last argument (or -t DIR) is the destination.
-      COPIERS = %w[cp mv ln install rsync ditto].freeze
-      REDIRECTS = %w[> >> &> &>> 1> 1>> 2> 2>>].freeze
-      REDIRECT_WORD = /\A\d*(?:&>>?|>>?)(?!&)(.+)\z/
-      DEVICES = %w[/dev/null /dev/stdout /dev/stderr /dev/tty].freeze
+      # Devices a command may name in the project's stead.
+      DEVICES = %w[/dev/null /dev/stdout /dev/stderr /dev/tty /dev/zero /dev/random /dev/urandom].freeze
+      # A path in a script's text (an interpreter's -e/-c, a heredoc): ~, ..
+      # or an absolute path, at the text's start or after a space, quote,
+      # bracket, = or comma.
+      SCRIPT_PATH = %r{(?:\A|(?<=[\s'"(\[=,]))(?:~|\.\.|/[\w.~-])[^\s'"`;,()\]]*}
+      # A $(…) that is only a message's heredoc (git commit -m "$(cat <<EOF …)"),
+      # its body cut by ShellLex.code_text.
+      MESSAGE_SUBST = /\$\(cat <<-?(['"]?)(\w+)\1\n\2\n\)/
+      # Assignments whose value is a search list, not a path.
+      LIST_VARIABLES = %w[PATH].freeze
       GLOB = /[*?\[\]{}]/
       # How many matches of a glob are checked against the denylist.
       GLOB_LIMIT = 500
       # How deep scripts handed to a shell are read; deeper is UNREADABLE.
       MAX_DEPTH = 3
 
-      # The tmp dirs a pair turn writes into freely (neither asked nor
-      # denied): Dir.tmpdir, $TMPDIR, /tmp, /private/tmp.
-      def self.tmp_roots
-        [Dir.tmpdir, ENV.fetch("TMPDIR", nil), "/tmp", "/private/tmp"].compact.reject(&:empty?)
-                                                                      .map { |dir| ProtectedPaths.real(dir) }.uniq
+      # Whether a pair turn may write +path+ (absolute) without asking: it
+      # lands in the project (Outside.inside?) or in a tmp dir the project
+      # isn't in (Outside.tmp_write?), every way it resolves. No project
+      # (+root+ blank): the tmp dirs only.
+      def self.writable?(path, root:, cwd: nil)
+        root = root.to_s
+        return Outside.tmp_write?(path, root: cwd || Dir.pwd) if root.empty?
+
+        Outside.inside?(path, root: root) || Outside.tmp_write?(path, root: root)
       end
 
       # @param paths [ReviewPaths] the denylist
-      # @param root [String, nil] the project root (outside writes)
-      def initialize(text, cwd:, paths:, home:, root: nil, depth: 0, tmp_roots: nil)
-        @tmp_roots = tmp_roots
+      # @param root [String, nil] the project root (outside writes; none:
+      #   every command but a read-only one writes outside)
+      def initialize(text, cwd:, paths:, home:, root: nil, depth: 0)
         @text = text.to_s
         @cwd = cwd
         @paths = paths
@@ -93,10 +109,14 @@ module Samagotchi
         @refusal = PairBoundary::UNREADABLE
       end
 
-      # Whether it writes outside the project (asked about, never denied).
+      # Whether it may write outside the project (asked about, never
+      # denied); true for one it can't read.
       def outside_writes?
-        refusal
-        @targets.to_a.any? { |path| outside?(path) }
+        return @outside_writes if defined?(@outside_writes)
+
+        @outside_writes = !(ReadOnlyShell.read_only?(@text) || writes_inside? || stays_inside?)
+      rescue StandardError
+        @outside_writes = true
       end
 
       private
@@ -112,12 +132,10 @@ module Samagotchi
         return PairBoundary::ENVIRONMENT if code.match?(ENV_TEXT)
         return PairBoundary::SECRET if subst && code.match?(PairBoundary::SECRET_TEXT)
 
-        @targets = []
         walk = ShellPaths::Walk.new(@cwd, @home, ENV)
         ShellLex.simple_commands(tokens).each do |words|
           next walk.step(words) if words.is_a?(Symbol)
 
-          @targets.concat(write_targets(words, walk))
           reason = words_refusal(words) || scripts_refusal(words) || paths_refusal(words, walk.step(words))
           return reason if reason
         end
@@ -158,8 +176,7 @@ module Samagotchi
         program = File.basename(words[at])
         scripts(words, at).each do |script|
           reason = if SHELLS.include?(program) || program == "eval"
-                     PairCommand.new(script, cwd: @cwd, paths: @paths, home: @home, root: @root, depth: @depth + 1,
-                                             tmp_roots: @tmp_roots).refusal
+                     nested(script).refusal
                    elsif INTERPRETERS.include?(program)
                      script_text_refusal(script)
                    end
@@ -321,51 +338,106 @@ module Samagotchi
         ProtectedPaths.reals(path).any? { |real| @paths.denied_roots.any? { |root| ShellPaths.within?(root, real) } }
       end
 
-      # The paths a simple command writes (nil for one it can't resolve), from
-      # the dir it runs in (before a cd in it takes effect).
-      def write_targets(words, walk)
-        targets = []
-        words.each_with_index do |word, i|
-          if REDIRECTS.include?(word) && words[i + 1]
-            targets.concat(paths_or_nil(walk, words[i + 1]))
-          elsif (target = word[REDIRECT_WORD, 1]) && !word.start_with?("<")
-            targets.concat(paths_or_nil(walk, target))
+      def nested(script) = PairCommand.new(script, cwd: @cwd, paths: @paths, home: @home, root: @root,
+                                                   depth: @depth + 1)
+
+      # Whether it only reads but for writes (a > or >> target, cp's
+      # destination, tee's files) into the project or a tmp dir.
+      def writes_inside?
+        ReadOnlyShell.read_only_but_writes?(@text, cwd: @cwd, home: @home, env: ENV) { |path| writable?(path) }
+      end
+
+      # Whether it stays inside the project: every simple command runs in
+      # it, and every path it names lands in it or a tmp dir, a script it
+      # hands on included (a shell's read as a command, another
+      # interpreter's paths by its text). The program's own word is not a
+      # path it writes; a word it can't resolve ($var, a $(…) other than a
+      # message's heredoc, a dir it can't tell) is outside. A script file's
+      # body (ruby x.rb, make) is not read.
+      def stays_inside?
+        return false if @root.empty? || @depth > MAX_DEPTH
+
+        tokens = ShellLex.lex(@text)
+        return false if tokens.any? { |_, value| value.include?(ShellLex::SUBST) } && !substs_messages_only?
+
+        walk = ShellPaths::Walk.new(@cwd, @home, ENV)
+        ShellLex.simple_commands(tokens).all? do |words|
+          next walk.step(words) if words.is_a?(Symbol)
+
+          walk.dirs.all? { |dir| dir && writable?(dir) } && words_inside?(words, walk) &&
+            scripts_inside?(words).tap { walk.step(words) }
+        end
+      end
+
+      # Whether every $(…) is a message's heredoc (its body cut as data).
+      def substs_messages_only?
+        rest = ShellLex.code_text(@text, keep_written: false).gsub(MESSAGE_SUBST, "")
+        !rest.include?("$(") && !rest.include?("`")
+      end
+
+      # Whether each word of a simple command but the program (and the
+      # wrappers before it) lands in the project or a tmp dir.
+      def words_inside?(words, walk)
+        at = program_at(words)
+        # xargs runs its program on paths it reads from its input
+        return false if at && words[0...at].any? { |word| File.basename(word) == "xargs" }
+
+        words.each_with_index.all? do |word, i|
+          next true if at && (i == at || (i < at && WRAPPERS.include?(File.basename(word))))
+          next true if LIST_VARIABLES.any? { |name| word.start_with?("#{name}=") }
+
+          word_inside?(walk, word)
+        end
+      end
+
+      def word_inside?(walk, word)
+        return true if data?(word)
+        return substs_messages_only? if word.include?(ShellLex::SUBST)
+
+        candidate = walk.candidate(word) or return true
+        return text_inside?(walk, candidate) if candidate.match?(ShellPaths::SCRIPT)
+        return glob_inside?(walk, candidate) if candidate.match?(GLOB) && !candidate.include?("$")
+
+        paths = walk.paths(candidate)
+        !paths.empty? && paths.all? { |path| DEVICES.include?(path) || writable?(path) }
+      end
+
+      # A word with spaces or quotes is text (a message, a pattern) unless
+      # it starts like a path.
+      def text_inside?(walk, text)
+        return true unless text.match?(%r{\A(?:~|\.\.|/)})
+
+        expanded = text.sub(%r{\A~(?=/|\z)}, @home)
+        return false if expanded.start_with?("~")
+
+        walk.dirs.all? { |dir| (dir || expanded.start_with?("/")) && writable?(File.expand_path(expanded, dir || "/")) }
+      end
+
+      # A glob by its fixed part (the text before its first glob character).
+      def glob_inside?(walk, word)
+        fixed = word[/\A[^*?\[\]{}]*/]
+        return walk.dirs.all? { |dir| dir && writable?(dir) } if fixed.empty?
+
+        paths = walk.paths(fixed)
+        !paths.empty? && paths.all? { |path| writable?(path) }
+      end
+
+      # The scripts a simple command hands on (#scripts): a shell's as a
+      # command of its own, another interpreter's by the paths in its text.
+      def scripts_inside?(words)
+        limit = program_at(words) || (words.size - 1)
+        at = (0..limit).find { |i| runner?(words[i]) } or return true
+        program = File.basename(words[at])
+        scripts(words, at).all? do |script|
+          if SHELLS.include?(program) || program == "eval"
+            !nested(script).outside_writes?
+          else
+            script.scan(SCRIPT_PATH).all? { |path| writable?(File.expand_path(path.sub(%r{\A~(?=/|\z)}, @home), @cwd || Dir.pwd)) }
           end
         end
-        at = program_at(words) or return targets
-        program = File.basename(words[at])
-        args = words[(at + 1)..].reject { |w| REDIRECTS.include?(w) || w.match?(REDIRECT_WORD) }
-        plain = args.reject { |arg| arg.start_with?("-") }
-        if program == "tee"
-          targets.concat(plain.flat_map { |arg| paths_or_nil(walk, arg) })
-        elsif COPIERS.include?(program)
-          dir = args[args.index("-t") + 1] if args.include?("-t")
-          dir ||= args.find { |arg| arg.start_with?("--target-directory=") }&.split("=", 2)&.last
-          dir ||= plain.last if plain.size >= 2
-          targets.concat(paths_or_nil(walk, dir)) if dir
-        end
-        targets
       end
 
-      # +word+'s paths (ShellPaths::Walk#paths), [nil] for one it can't resolve.
-      def paths_or_nil(walk, word)
-        paths = walk.paths(word)
-        paths.empty? ? [nil] : paths
-      end
-
-      def outside?(path)
-        return true if path.nil?
-        return false if DEVICES.include?(path)
-
-        ProtectedPaths.reals(path).any? do |real|
-          next false if tmp_roots.any? { |tmp| ShellPaths.within?(real, tmp) }
-          next true if @root.empty?
-
-          !ShellPaths.within?(real, ProtectedPaths.real(@root))
-        end
-      end
-
-      def tmp_roots = @tmp_roots ||= PairCommand.tmp_roots
+      def writable?(path) = PairCommand.writable?(path, root: @root, cwd: @cwd)
     end
   end
 end

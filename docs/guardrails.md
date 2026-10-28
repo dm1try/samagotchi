@@ -443,13 +443,35 @@ own, one another interpreter runs (`ruby -e`, `python - <<EOF`) by its text
 `tee`, `git commit -F -`) is not looked into: where it goes is checked. A
 command the checks can't read is refused, never let through on a text match.
 
-And it **asks the owner** before a `write` or `edit` outside the session's
-project root, and before a command that writes there (a redirection's target,
-`tee`'s files, a `cp`/`mv`/`ln`/`install`/`rsync`/`ditto` destination, or a
-target it can't resolve), every time: the ask is fresh (`Verdict#fresh_ask`: no
-stored approval answers it, and no rule lowers it), so it comes even in auto
-mode. The tmp dirs (`Dir.tmpdir`, `$TMPDIR`, `/tmp`, `/private/tmp`) and
-`/dev/null` neither ask nor deny. A session whose folder is the home folder or above it has no project to
+And it **asks the owner** before a `write` or `edit` that may land outside the
+session's project root, and before a command that may write there, every time:
+the ask is fresh (`Verdict#fresh_ask`: no stored approval answers it, and no
+rule lowers it), so it comes even in auto mode. A command fails closed
+(`PairCommand#outside_writes?`): it runs unasked only when it
+
+- only reads (`ReadOnlyShell.read_only?`, wherever it reads), or
+- only reads but for writes it can name (a `>`/`>>` target, `cp`'s
+  destination, `tee`'s files) into the project or a tmp dir
+  (`ReadOnlyShell.read_only_but_writes?`), or
+- stays inside the project: every part of it runs in the project, and every
+  path it names lands in the project or a tmp dir, an option's or an
+  assignment's value (`of=`, `--output=`, `GIT_DIR=`), a glob's fixed part
+  (`~/oth*`), `git -C`'s folder and the paths in a script it hands on (`sh -c`
+  read as a command, `python -c`/`ruby -e`/a heredoc by the paths in its text)
+  among them. The program's own word doesn't count (`/usr/bin/sed`), nor does
+  `PATH=…`, nor a message's heredoc (`git commit -m "$(cat <<'EOF' … EOF)"`).
+
+Anything else asks: `rm -rf ~/x`, `sed -i … ~/x`, `curl -o ~/x`, `dd of=~/x`,
+`touch`/`mkdir` outside, `perl -pi … ~/x`, `cd .. && make`, `cd && make`, and
+whatever the checks can't place: a `$var` (`rm -rf $DIR`, `> "$OUT"`), a `$(…)`,
+`xargs`, a `cd $X`. A path "lands" in the project or a tmp dir every way it
+resolves ([How paths resolve](#how-paths-resolve)) and never through a dangling
+symlink or onto a file with another hard link (`Outside.inside?`,
+`Outside.tmp_write?`, the child boundary's tmp rule): the tmp dirs are
+`Dir.tmpdir`, `/tmp` and `/var/tmp`, except the one the project itself is in.
+`/dev/null` and the like neither ask nor deny. A script file's body (`ruby
+x.rb`, `make`, `sh ./run.sh`) isn't read: it runs as in-project work.
+A session whose folder is the home folder or above it has no project to
 keep the turn in (`ReviewPaths.home_root?`, the review boundary's test): every
 write there asks.
 

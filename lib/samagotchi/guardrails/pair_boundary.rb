@@ -34,9 +34,11 @@ module Samagotchi
     #   - ask_user_question: there is no one on the participant's side to
     #     answer it here; the model asks in its reply instead.
     # And it asks the owner, always (Verdict#fresh_ask: no stored approval
-    # answers it, and the rules can't lower it), before a write, an edit or a
-    # command that writes outside the session's project root (the tmp dirs
-    # aside).
+    # answers it, and the rules can't lower it), before a write or an edit
+    # that may land outside the session's project root, or a command that
+    # may write there (failing closed: PairCommand#outside_writes?); a tmp
+    # dir the project isn't in aside (PairCommand.writable?). No project
+    # (the home folder or above it): every write asks.
     # Everything else goes on to the owner's checks and rules as for the
     # owner's turns.
     class PairBoundary
@@ -95,13 +97,9 @@ module Samagotchi
       # @param root [#call] → String, nil: the session's project root (the
       #   work tree top of its folder); a write outside it asks the owner
       #   (none, or the home folder or above it: every write asks)
-      # @param tmp_roots [#call] → Array<String>: where a write neither asks
-      #   nor is denied (PairCommand.tmp_roots)
-      def initialize(author:, root: -> {}, denied_dirs: -> { ReviewPaths.chi_dirs }, home: -> { Dir.home },
-                     tmp_roots: -> { PairCommand.tmp_roots })
+      def initialize(author:, root: -> {}, denied_dirs: -> { ReviewPaths.chi_dirs }, home: -> { Dir.home })
         @author = author
         @root = root
-        @tmp_roots = tmp_roots
         @denied_dirs = denied_dirs
         @home = home
       end
@@ -141,28 +139,24 @@ module Samagotchi
         nil
       end
 
-      # A write or edit whose path is outside the project root (as given or
-      # as it resolves), or a command that writes there (PairCommand); the
-      # tmp dirs aside.
+      # A write or edit whose path may land outside the project root, or a
+      # command that may write there (PairCommand#outside_writes?); a tmp
+      # dir the project isn't in aside (PairCommand.writable?).
       def outside_write?(verdict)
         targets = verdict.targets
         return false unless targets
         return command(targets, nil).outside_writes? if targets.command
         return false unless WRITE_TOOLS.include?(verdict.call&.dig(:name).to_s)
 
-        paths = targets.paths.to_a.compact
-        root = project_root.to_s
-        paths.flat_map { |path| ProtectedPaths.reals(path) }.any? do |real|
-          next false if @tmp_roots.call.any? { |tmp| ShellPaths.within?(real, tmp) }
-
-          root.empty? || !ShellPaths.within?(real, ProtectedPaths.real(root))
+        targets.paths.to_a.compact.any? do |path|
+          !PairCommand.writable?(File.expand_path(path), root: project_root, cwd: targets.cwd)
         end
       end
 
       def command(targets, paths)
         @command = nil unless @command&.first == targets
         @command ||= [targets, PairCommand.new(targets.command, cwd: targets.cwd, home: home, root: project_root,
-                                                                paths: paths || denylist, tmp_roots: @tmp_roots.call)]
+                                                                paths: paths || denylist)]
         @command.last
       end
 

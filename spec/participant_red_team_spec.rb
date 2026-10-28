@@ -194,7 +194,6 @@ RSpec.describe "a participant red-teaming a session" do
         asked << pending
         { selected: [pending[:options].first], selected_indices: [0] }
       end
-      allow(Samagotchi::Guardrails::PairCommand).to receive(:tmp_roots).and_return([])
     end
 
     def turn(calls, origin:)
