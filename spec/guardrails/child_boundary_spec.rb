@@ -178,8 +178,7 @@ RSpec.describe Samagotchi::Guardrails::ChildBoundary do
          "cd #{main} && false && cd #{tmp} && true; echo x > a.txt"].each do |command|
           expect(run(command)).to be_ask, command
         end
-        # The tmp pass no longer reads $TMPDIR (the call's env: may set it);
-        # the other-checkout check still reads chi's own (found-not-fixed).
+        # The tmp pass doesn't read $TMPDIR (the call's env: may set it).
         call = { name: "task_create", content: "echo x > $TMPDIR/a.txt", env: { "TMPDIR" => main } }
         targets = Samagotchi::Guardrails::Targets.for(call, Samagotchi::Guardrails::Context.new(cwd: child, git: git))
         expect(targets.read_only_but_tmp_writes?(root: child)).to be(false)
@@ -361,6 +360,31 @@ RSpec.describe Samagotchi::Guardrails::ChildBoundary do
       expect(run("cp hook ../.bare/hooks/post-merge", root: linked)).to be_ask
       expect(run("cat ../.bare/config", root: linked)).to be_allow
       expect(verdict_for({ name: "write", path: File.join(main, "a.txt"), content: "x" }, root: linked)).to be_ask
+    end
+  end
+
+  # task_create's env: reaches the command's words: a check resolves them
+  # under chi's env and the call's, and an env: that redefines the shell
+  # makes nothing read-only.
+  describe "the call's env:" do
+    def task(command, env, **call) = verdict_for({ name: "task_create", content: command, env: env, **call })
+
+    it "asks when the env: points a word into another checkout" do
+      expect(task("echo x > $TMPDIR/a.txt", { "TMPDIR" => main })).to be_ask
+      expect(task("echo x > $TMPDIR/a.txt", JSON.generate("TMPDIR" => main))).to be_ask
+      expect(task("touch ~/a.txt", { "HOME" => sibling })).to be_ask
+      expect(task("cd && touch a.txt", { "HOME" => main })).to be_ask
+      expect(task("git commit -m x", { "GIT_DIR" => File.join(main, ".git"), "GIT_WORK_TREE" => main })).to be_ask
+    end
+
+    # A read starting in the main checkout passes only while it is read-only.
+    it "asks for a read whose env: redefines the shell, and not for a harmless env:" do
+      expect(task("cat a.txt", { "BASH_ENV" => "#{main}/evil.sh" }, cwd: main)).to be_ask
+      expect(task("cd ../lib && ls", { "CDPATH" => main }, cwd: main)).to be_ask
+      expect(task("cat a.txt", { "BASH_FUNC_cat%%" => "() { cp a.txt #{main}/; }" }, cwd: main)).to be_ask
+      expect(task("cat a.txt", { "FOO" => "1" }, cwd: main)).to be_allow
+      expect(task("cat a.txt", { "PATH" => "/usr/bin:/bin" }, cwd: main)).to be_allow
+      expect(task("touch a.txt", { "FOO" => "1", "TMPDIR" => child })).to be_allow
     end
   end
 end

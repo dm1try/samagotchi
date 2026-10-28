@@ -27,8 +27,10 @@ module Samagotchi
     #     stash clear, tags, another branch's delete).
     # Paths elsewhere in a command (/usr/bin, ~/.gem) don't count, and
     # read-only commands never ask, nor do ones that only write into a tmp
-    # dir (> / >>, cp's destination, tee; Targets#read_only_but_tmp_writes?). Text heuristics: sh -c bodies, scripts
-    # and $(…) aren't looked into.
+    # dir (> / >>, cp's destination, tee; Targets#read_only_but_tmp_writes?). Paths resolve under chi's env and the
+    # call's env: (Targets#shell_envs), and an env: that redefines the shell
+    # (BASH_ENV, CDPATH, …) makes no command read-only. Text heuristics: sh
+    # -c bodies, scripts and $(…) aren't looked into.
     class ChildBoundary
       RULE = "child-boundary"
       SOURCE = "core"
@@ -77,23 +79,27 @@ module Samagotchi
         return false if targets.read_only? || targets.read_only_but_tmp_writes?(root: root)
         return true if targets.cwd && Outside.outside?(targets.cwd, root: root)
 
-        names_other_checkout?(targets.command, targets.cwd, root)
+        names_other_checkout?(targets, root)
       end
 
-      # Whether a word of +command+ resolves into another checkout of the
-      # repository (and not into root, which may sit inside the main one).
-      def names_other_checkout?(command, cwd, root)
+      # Whether a word of the command resolves into another checkout of the
+      # repository (and not into root, which may sit inside the main one),
+      # under chi's env or the call's env: (Targets#shell_envs).
+      def names_other_checkout?(targets, root)
         real_root = ProtectedPaths.real(root)
         others = [*@worktrees.call, @common_dir.call].compact.map { |dir| ProtectedPaths.real(dir) } - [real_root]
         return false if others.empty?
 
-        walk = ShellPaths::Walk.new(cwd, Dir.home, ENV)
-        ShellLex.simple_commands(ShellLex.lex(command.to_s)).any? do |words|
-          walk.step(words).any? do |_word, path|
-            next false unless path
+        commands = ShellLex.simple_commands(ShellLex.lex(targets.command.to_s))
+        targets.shell_envs.any? do |home, env|
+          walk = ShellPaths::Walk.new(targets.cwd, home, env)
+          commands.any? do |words|
+            walk.step(words).any? do |_word, path|
+              next false unless path
 
-            real = ProtectedPaths.real(path)
-            !ShellPaths.within?(real, real_root) && others.any? { |dir| ShellPaths.within?(real, dir) }
+              real = ProtectedPaths.real(path)
+              !ShellPaths.within?(real, real_root) && others.any? { |dir| ShellPaths.within?(real, dir) }
+            end
           end
         end
       rescue ArgumentError, EncodingError

@@ -191,6 +191,37 @@ RSpec.describe "Guardrails::Targets outside the session's repo" do
     end
   end
 
+  describe "the call's env:" do
+    it "carries task_create's env:, as an object or JSON text; {} for none, a bad one, or another tool" do
+      expect(targets(name: "task_create", content: "ls", env: { TMPDIR: "/x", N: 1 }).env).to eq("TMPDIR" => "/x", "N" => "1")
+      expect(targets(name: "task_create", content: "ls", env: '{"FOO":"1"}').env).to eq("FOO" => "1")
+      expect(targets(name: "task_create", content: "ls", env: "{not json").env).to eq({})
+      expect(targets(name: "task_create", content: "ls").env).to eq({})
+      expect(targets(name: "write", path: "a", env: { "FOO" => "1" }).env).to eq({})
+    end
+
+    it "resolves under chi's env and the call's: either crossing counts" do
+      t = targets(name: "task_create", content: "git commit -m x", env: { "GIT_WORK_TREE" => @sibling })
+      expect(t.git_dirs).to eq([@repo, @sibling])
+      expect(t).to be_git_outside_repo
+      expect(t.shell_envs.size).to eq(2)
+      expect(targets(name: "task_create", content: "ls").shell_envs).to eq([[Dir.home, ENV]])
+      t = targets(name: "task_create", content: "rm -rf $TMPDIR/x", env: { "TMPDIR" => @repo })
+      expect(t).to be_rm_outside_tmp
+    end
+
+    it "makes no command read-only nor tmp-write-only when it redefines the shell" do
+      %w[BASH_ENV ENV CDPATH IFS SHELLOPTS BASHOPTS LD_PRELOAD DYLD_INSERT_LIBRARIES GIT_EXTERNAL_DIFF
+         GIT_CONFIG_COUNT BASH_FUNC_cat%%].each do |name|
+        t = targets(name: "task_create", content: "cat a.txt", env: { name => "x" })
+        expect([t.redefines_shell?, t.read_only?]).to eq([true, false]), name
+        expect(t.read_only_but_tmp_writes?(root: @repo)).to be(false)
+      end
+      t = targets(name: "task_create", content: "cat a.txt", env: { "FOO" => "1", "PATH" => "/usr/bin" })
+      expect([t.redefines_shell?, t.read_only?]).to eq([false, true])
+    end
+  end
+
   describe "#rule_command: what a rule's command: reads" do
     it "leaves out a stdout cat's body, and keeps the raw command for approvals and hooks" do
       command = "cat <<'EOF'\nrake release\nEOF"

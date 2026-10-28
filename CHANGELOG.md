@@ -19,6 +19,11 @@ and commands may change between minor versions. How releases are made:
 - A `write` or `edit` of a dangling symlink (or a path through one) or of a file with another hard link no longer
   counts as in a tmp dir or in the session's repo: a write there lands outside, so the delegate child's
   `child-boundary` and `path: outside_repo` rules ask for it.
+- A `task_create` call's `env:` now counts in the guardrails' path checks: `env: {TMPDIR: <main checkout>}` with
+  `echo x > $TMPDIR/a.txt` (or a `HOME`, `GIT_DIR`, `GIT_WORK_TREE` there) asks as the delegate child's
+  `child-boundary`, and `rm -rf`, chi-dir and `git: outside_repo` checks read it too. An `env:` setting `BASH_ENV`,
+  `ENV`, `CDPATH`, `IFS`, an exported `BASH_FUNC_…`, `LD_PRELOAD` or a git config/diff-program variable makes the
+  command not read-only.
 
 ## [0.128.0] - 2026-10-28
 

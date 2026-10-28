@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require "json"
 require_relative "../tools/tool_path"
 require_relative "../tools/memory"
 require_relative "../tool_declarations"
@@ -14,6 +15,7 @@ require_relative "shell_paths"
 require_relative "rm_targets"
 require_relative "protected_paths"
 require_relative "../memory_paths"
+require_relative "../redacted_inspect"
 
 module Samagotchi
   module Guardrails
@@ -23,6 +25,8 @@ module Samagotchi
     # a path leaves the session's repo (Outside: the context cwd's repo
     # root, the cwd when there is no repo; not the call's own cwd:).
     class Targets
+      include RedactedInspect # @env: the call's env: may hold a secret
+
       SHELL_TOOLS = %w[execute task_create].freeze
       PATH_TOOLS = %w[write edit read memory_write].freeze
 
@@ -30,6 +34,24 @@ module Samagotchi
       CORE_TOOLS = ToolDeclarations::BUILTIN_SCHEMAS.map { |schema| schema[:name] }.freeze
 
       attr_reader :tool, :command, :paths, :cwd, :repo_root
+
+      # @return [Hash{String=>String}] the variables a task_create call's
+      #   env: sets for its command ({} for none, and for every other tool)
+      attr_reader :env
+
+      # Variables that change what a command's words run or where its cd
+      # goes, under every shell chi may use or in the programs it runs: a
+      # startup file (BASH_ENV, ENV), an exported function (BASH_FUNC_…), a
+      # cd search path, word splitting, shell options, a library loaded into
+      # every program, git config or a diff program that runs. A call whose
+      # env: sets one is never read-only (.redefines_shell?). PATH is not
+      # one (the tool's own description suggests it); nor are
+      # PROMPT_COMMAND (interactive shells only) and ZDOTDIR (zsh in sh
+      # emulation reads no rc files).
+      SHELL_REDEFINING_ENV = %w[BASH_ENV ENV CDPATH IFS SHELLOPTS BASHOPTS LD_PRELOAD LD_AUDIT
+                                DYLD_INSERT_LIBRARIES GIT_EXTERNAL_DIFF GIT_CONFIG_PARAMETERS
+                                GIT_CONFIG_COUNT].freeze
+      SHELL_REDEFINING_PREFIX = "BASH_FUNC_"
 
       # @return [String, nil] the call's repository (Context#repo: its
       #   common git dir, shared by its worktrees): what a "this repo"
@@ -96,9 +118,11 @@ module Samagotchi
         args = nil
         acts_as = nil
         label = nil
+        env = {}
         case tool
         when *SHELL_TOOLS
           command = call[:content].to_s
+          env = env_of(call[:env])
           given = call[:cwd].to_s.strip
           cwd = File.expand_path(given, base) unless given.empty?
         when "write", "edit"
@@ -121,7 +145,7 @@ module Samagotchi
         memory_remove = tool == "memory_write" && call[:remove].to_s.strip.downcase == "true"
         memory_overlay = tool == "memory_write" && !memory_remove && call[:current_model_only].to_s.strip.downcase == "true"
         memory = tool == "memory_write" ? memory_facts(call) : nil
-        new(tool: tool, command: command, paths: paths.compact, cwd: cwd, repo_root: context.repo_root(cwd),
+        new(tool: tool, command: command, paths: paths.compact, cwd: cwd, env: env, repo_root: context.repo_root(cwd),
             repo: context.repo(cwd), args: args, acts_as: acts_as, label: label, memory_remove: memory_remove,
             memory_overlay: memory_overlay, memory: memory,
             model_name: model_name, model_key: model_key, session_root: context.repo_root(base) || base,
@@ -214,6 +238,23 @@ module Samagotchi
         ParentApprovals.chi_dirs + [context.hooks_dir(base)].compact
       end
 
+      # A shell call's env: as the tool reads it (an object, or JSON text
+      # for one): {} for none, and for one the tool would refuse (it then
+      # runs nothing).
+      def self.env_of(given)
+        given = JSON.parse(given) if given.is_a?(String) && !given.strip.empty?
+        return {} unless given.is_a?(Hash)
+
+        given.to_h { |key, value| [key.to_s, value.to_s] }.freeze
+      rescue JSON::ParserError
+        {}
+      end
+
+      # Whether +env+ sets a SHELL_REDEFINING_ENV variable.
+      def self.redefines_shell?(env)
+        env.each_key.any? { |key| SHELL_REDEFINING_ENV.include?(key) || key.start_with?(SHELL_REDEFINING_PREFIX) }
+      end
+
       def self.absolute(path, base)
         path = Tools::ToolPath.normalize(path)
         path.empty? ? nil : File.expand_path(path, base)
@@ -245,9 +286,11 @@ module Samagotchi
       end
 
       # @param chi_dirs [#call, nil] → the dirs touches_chi? looks for
-      def initialize(tool:, command:, paths:, cwd:, repo_root:, repo: nil, args: nil, acts_as: nil, label: nil,
-                     model_name: nil, model_key: nil, session_root: nil, chi_dirs: nil, memory_remove: false,
-                     memory_overlay: false, memory: nil)
+      # @param env [Hash{String=>String}] the call's env: (.env_of)
+      def initialize(tool:, command:, paths:, cwd:, repo_root:, env: {}, repo: nil, args: nil, acts_as: nil,
+                     label: nil, model_name: nil, model_key: nil, session_root: nil, chi_dirs: nil,
+                     memory_remove: false, memory_overlay: false, memory: nil)
+        @env = env
         @acts_as = acts_as
         @label = label
         @memory_remove = memory_remove
@@ -267,6 +310,28 @@ module Samagotchi
       end
 
       def shell? = SHELL_TOOLS.include?(@tool)
+
+      # The homes and environments a shell call's words may resolve
+      # against, as [home, env] pairs: chi's own, and when the call's env:
+      # sets anything, that env over chi's (its HOME for ~ and a bare cd).
+      # A check that asks when any pair crosses only ever asks more for an
+      # env: than without one. Not kept (chi's env holds secrets).
+      def shell_envs
+        own = [Dir.home, ENV]
+        return [own] if @env.empty?
+
+        home = @env["HOME"].to_s
+        [own, [home.empty? ? Dir.home : home, ENV.to_h.merge(@env)]]
+      end
+
+      # Whether the call's env: sets a variable that changes what the
+      # command's words run (.redefines_shell?): such a command is never
+      # read-only, nor tmp-write-only.
+      def redefines_shell?
+        return @redefines_shell if defined?(@redefines_shell)
+
+        @redefines_shell = self.class.redefines_shell?(@env)
+      end
 
       # What a rule's command: reads: the shell command with the body of each
       # heredoc its command only reads as data left out (ShellLex.code_text);
@@ -310,25 +375,37 @@ module Samagotchi
       # Where a shell call runs mutating git (ShellGitDirs: dirs, and
       # :unknown for one the text doesn't tell); [] for other tools.
       def git_dirs
-        @git_dirs ||= shell? ? ShellGitDirs.for(@command, cwd: @cwd) : []
+        @git_dirs ||= if shell?
+                        # chi's own GIT_DIR is not the command's concern
+                        shell_envs.each_with_index.flat_map do |(home, _), i|
+                          ShellGitDirs.for(@command, cwd: @cwd, home: home, env: i.zero? ? {} : @env)
+                        end.uniq
+                      else
+                        []
+                      end
       end
 
       # Whether the command only reads (ReadOnlyShell); false without one.
       def read_only?
         return @read_only if defined?(@read_only)
 
-        @read_only = !@command.nil? && ReadOnlyShell.read_only?(@command)
+        @read_only = !@command.nil? && !redefines_shell? && ReadOnlyShell.read_only?(@command)
       end
 
       # Whether the command only reads but for writes into a tmp dir that
       # +root+ isn't in (ReadOnlyShell.read_only_but_writes?,
       # Outside.tmp_write?): its > / >> targets, cp's destination and tee's
       # files, from the call's cwd and any cd before them. The child
-      # boundary's; #read_only? stays what the rules read.
+      # boundary's; #read_only? stays what the rules read. Never for a call
+      # whose env: redefines the shell (#redefines_shell?); the writes must
+      # hold under each of #shell_envs.
       # @param root [String] the folder the writes must stay out of
       def read_only_but_tmp_writes?(root:)
-        !@command.nil? &&
-          ReadOnlyShell.read_only_but_writes?(@command, cwd: @cwd) { |path| Outside.tmp_write?(path, root: root) }
+        !@command.nil? && !redefines_shell? && shell_envs.all? do |home, env|
+          ReadOnlyShell.read_only_but_writes?(@command, cwd: @cwd, home: home, env: env) do |path|
+            Outside.tmp_write?(path, root: root)
+          end
+        end
       end
 
       # A memory file that reaches the system prompt: the identity memory and
@@ -360,25 +437,31 @@ module Samagotchi
       end
 
       # Whether the command names a path in chi's own dirs (ShellPaths:
-      # resolved paths; the text CHI_SHELL_TEXT for a word that can't be
-      # resolved); false without a command.
+      # resolved paths, under any of #shell_envs; the text CHI_SHELL_TEXT
+      # for a word that can't be resolved); false without a command.
       def touches_chi?
         return @touches_chi if defined?(@touches_chi)
 
         @touches_chi = !@command.nil? && begin
           require_relative "parent_approvals"
-          ShellPaths.touches?(@command, dirs: @chi_dirs ? @chi_dirs.call : ParentApprovals.chi_dirs,
-                                        text: ParentApprovals::CHI_SHELL_TEXT, cwd: @cwd, tmp_roots: Outside.tmp_roots)
+          dirs = @chi_dirs ? @chi_dirs.call : ParentApprovals.chi_dirs
+          shell_envs.any? do |home, env|
+            ShellPaths.touches?(@command, dirs: dirs, text: ParentApprovals::CHI_SHELL_TEXT, cwd: @cwd, home: home,
+                                          env: env, tmp_roots: Outside.tmp_roots)
+          end
         end
       end
 
       # Whether an rm -rf in the command reaches outside the tmp dirs
-      # (RmTargets; a tmp dir the session's root is in doesn't count as one).
+      # (RmTargets, under any of #shell_envs; a tmp dir the session's root
+      # is in doesn't count as one).
       def rm_outside_tmp?
         return @rm_outside_tmp if defined?(@rm_outside_tmp)
 
-        @rm_outside_tmp = !@command.nil? &&
-                          RmTargets.outside_tmp?(@command, cwd: @cwd, tmp_roots: Outside.tmp_roots, session_root: @session_root)
+        @rm_outside_tmp = !@command.nil? && shell_envs.any? do |home, env|
+          RmTargets.outside_tmp?(@command, cwd: @cwd, tmp_roots: Outside.tmp_roots, session_root: @session_root,
+                                           home: home, env: env)
+        end
       end
 
       # Whether a shell call runs mutating git outside the session's repo

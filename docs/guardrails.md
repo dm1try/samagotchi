@@ -316,7 +316,8 @@ symlink, a dangling one, a file with another hard link), `cp -l`/`-s`, `mv`,
 call's `env:` may set it), a `popd`, and a `cd`/`pushd` that isn't one existing
 dir spelt `/…`, `.` or `..` joined by `&&` only (it may fail or be skipped and
 leave the shell elsewhere); so does every tmp write when the
-child's folder is itself in that tmp dir. The answer is once or for the child's
+child's folder is itself in that tmp dir. A `task_create` call's paths resolve under chi's env and
+under its own `env:` (its `$TMPDIR`, `$HOME`, `GIT_DIR`, …): either one naming another checkout asks. The answer is once or for the child's
 session only: a repo or rule answer would hold in every worktree, for every
 child, so a stored repo or rule approval doesn't let it through either. Its
 ask goes before the rules, so with the guardrails bundle in strict mode the
@@ -575,7 +576,10 @@ only `run list|view`, `pr list|view|diff|checks`, `issue list|view` and
 `repo view`; `--web`/`-w`, `gh api` and `pr checks --watch` are not read-only.
 `$(…)`, backticks, `$VAR` (other than `$HOME`, `$XDG_*`, `$TMPDIR` and `$PWD`
 at a word's start), an env prefix, `sh -c`, `xargs`, `eval`, `sudo` and the
-like make a command not read-only. It errs towards asking.
+like make a command not read-only, as does a `task_create` `env:` that sets `BASH_ENV`, `ENV`, `CDPATH`, `IFS`,
+`SHELLOPTS`, `BASHOPTS`, `BASH_FUNC_…`, `LD_PRELOAD`, `LD_AUDIT`, `DYLD_INSERT_LIBRARIES`, `GIT_EXTERNAL_DIFF`,
+`GIT_CONFIG_PARAMETERS` or `GIT_CONFIG_COUNT` (they change what its words run; `PATH` doesn't count). It errs
+towards asking.
 
 A tool name may be a glob, so one rule covers a plugin's tools (an MCP server's,
 say): `tool: "mcp_*"` or `tool: ["mcp_{git,gh}_*", web_fetch]` (`*`, `?`, `[…]` and

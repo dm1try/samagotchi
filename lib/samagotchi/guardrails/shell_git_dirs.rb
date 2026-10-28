@@ -22,9 +22,11 @@ module Samagotchi
       # @param command [String] the shell command
       # @param cwd [String] where it starts (the call's cwd:, else the session's)
       # @param home [String] for ~, $HOME, ${HOME} and a bare cd
+      # @param env [Hash{String=>String}] the call's env: (task_create's):
+      #   its GIT_DIR / GIT_WORK_TREE hold for each git unless it sets its own
       # @return [Array<String, Symbol>] absolute dirs and :unknown, unique
-      def self.for(command, cwd:, home: Dir.home)
-        Walk.new(cwd, home).run(ShellLex.simple_commands(ShellLex.lex(command.to_s)))
+      def self.for(command, cwd:, home: Dir.home, env: {})
+        Walk.new(cwd, home, env).run(ShellLex.simple_commands(ShellLex.lex(command.to_s)))
       rescue ArgumentError, EncodingError
         [] # a NUL byte, invalid UTF-8: the shell would refuse it too
       end
@@ -32,9 +34,10 @@ module Samagotchi
       # Follows the current dir through the simple commands and records
       # where each mutating git runs.
       class Walk
-        def initialize(cwd, home)
+        def initialize(cwd, home, env = {})
           @dir = cwd
           @home = home
+          @env = env.slice("GIT_DIR", "GIT_WORK_TREE")
           @subshells = []
           @pushed = []
           @found = []
@@ -54,7 +57,7 @@ module Samagotchi
         private
 
         def simple(words)
-          env = {}
+          env = @env.dup
           while (word = words.first)
             if word.match?(/\A[A-Za-z_]\w*=/)
               key, value = word.split("=", 2)
