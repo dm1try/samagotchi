@@ -26,6 +26,12 @@ and commands may change between minor versions. How releases are made:
 - A participant's pair turn can no longer open a URL or a file in the owner's apps (`open`, `xdg-open`, a browser,
   `osascript`'s `open location`) or listen on a port (`nc -l`, `socat …LISTEN`, `python -m http.server`, `php -S`, a
   static server): a page opened at a port it listens on would catch the owner's chi web cookie.
+- System 1 no longer auto-allows a `write`/`edit` anywhere in chi's state dir (`state/sessions/x.json`), as it already
+  refused a command naming one: a file tool's paths are judged by the same dirs as a command's words.
+- On a disk that folds case (macOS) a write to `<state dir>/CONTEXT/…` before the attached context dir exists is denied
+  as one to it (`chi-context`), and a command naming it touches chi: the protected-path checks compared the typed case.
+- `git -C $XDG_CONFIG_HOME …` (an XDG dir or `$TMPDIR`) counts as the folder it names for `git: outside_repo` and the
+  delegate child's boundary, as a `cd` there already did; it was an unknown folder that never asked.
 
 ## [0.129.0] - 2026-10-28
 

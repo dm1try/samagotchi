@@ -763,7 +763,13 @@ resolved from one isn't resolved), and judged both ways as above; past eight
 folders, or after `cd -`, the folder is unknown. After `cd link` a `../x`
 climbs out of the link's target as well. git's `-C`, `--git-dir` and
 `--work-tree` (and `GIT_DIR`/`GIT_WORK_TREE`) are counted both ways, from each
-folder the command may be in.
+folder the command may be in, with a leading `~`, `$HOME`, XDG dir or `$TMPDIR`
+expanded as a `cd` expands it (`ShellPaths.expand_word`).
+
+On a disk that folds case (macOS), a path is in a protected folder however its
+letters are cased, also where the rest doesn't exist yet (`ProtectedPaths.under?`):
+a write to `<state dir>/CONTEXT/x` is a write to the attached context dir once it
+exists.
 
 `git: outside_repo` (shell tools only) reads the command for git subcommands
 that change a checkout: `commit`, `add`, `reset`, `checkout`, `switch`,
@@ -773,7 +779,8 @@ that change a checkout: `commit`, `add`, `reset`, `checkout`, `switch`,
 and the call's `cwd:`, and matches when one of them runs outside the session's
 repo (the same `outside_repo` as above). `cd /other && git status`, `git -C
 /other log` and `cd /other && bundle exec rspec` don't match. A folder the text
-doesn't tell (`cd $REPO`, `cd "$(…)"`, `cd -`) doesn't either; see Limits.
+doesn't tell (`cd $REPO`, `cd "$(…)"`, `cd -`; a `$XDG_CONFIG_HOME` or
+`$TMPDIR` is told) doesn't either; see Limits.
 
 To switch off single rules (a bundle's, say) without editing its files, list
 them under `disable:`. A plain id switches off every rule with that id; `bundle:id`
@@ -999,9 +1006,10 @@ gate below passes, in this order:
    the same test that makes an ask one only the user may answer
    (`ParentApprovals.chi_files?`): no edit or write whose paths are in chi's
    config dir (config.yml), the hooks dir, the installed bundles dir, the
-   guardrails store (where `approvals.json` and `judgments.jsonl` live) or the
-   attached context dir, and no `execute` or `task_create` command naming any
-   of them (or chi's state dir). A command is checked twice: by its text
+   guardrails store (where `approvals.json` and `judgments.jsonl` live), the
+   attached context dir or anywhere else in chi's state dir (the sessions), and
+   no `execute` or `task_create` command naming any of them: a write's paths and
+   a `cat` of them answer alike (`SelfProtect.chi_dirs`). A command is checked twice: by its text
    (`ParentApprovals::CHI_TEXT`: `$XDG_CONFIG_HOME/samagotchi/config.yml`,
    `~/.config/samagotchi/…`, a `cd ~/.config` then `samagotchi/config.yml`),
    and by its words resolved as `shell-touches-chi` resolves them
