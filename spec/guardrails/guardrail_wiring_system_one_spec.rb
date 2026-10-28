@@ -461,6 +461,31 @@ RSpec.describe "GuardrailWiring: System 1 on an approval (audit)" do
       end
     end
 
+    # A climb out of the memories dir that names no chi file in its text:
+    # SelfProtect resolves the words (ShellPaths::Walk), and a word it can't
+    # resolve takes the memories exemption away.
+    [
+      "git push origin main; cd ~/.config/samagotchi/memories; cd ..; echo 'mode: off' >> config.yml",
+      "git push origin main && cd ~/.config/samagotchi/memories && cd \"${PWD%/*}\" && echo x >> config.yml",
+      "git push origin main && cd ~/.config/samagotchi/memories && cd $(dirname $PWD) && echo x >> config.yml"
+    ].each do |command|
+      it "asks for a command that climbs out of the memories dir: #{command}" do
+        _, verdict, asked, line = run_on({ "rules" => "git-push", "threshold" => 0.8, "min_record" => 5 },
+                                         call: { name: "execute", content: command.gsub("~/.config/samagotchi/memories", Samagotchi::MemoryPaths.system_dir) })
+        expect(asked.size).to eq(1)
+        expect(verdict.decided_by).to eq("user")
+        expect(line["decision"]).to eq("asked")
+      end
+    end
+
+    it "asks for a call whose env: redefines the shell" do
+      _, verdict, asked, line = run_on({ "rules" => "git-push", "threshold" => 0.8, "min_record" => 5 },
+                                       call: { name: "task_create", content: "git push origin main", env: { "BASH_ENV" => "/tmp/rc.sh" } })
+      expect(asked.size).to eq(1)
+      expect(verdict.decided_by).to eq("user")
+      expect(line["decision"]).to eq("asked")
+    end
+
     it "asks when the judgment is under the threshold" do
       _, verdict, asked, line = run_on({ "rules" => "git-push", "threshold" => 0.8, "min_record" => 5 }, p: 0.79)
       expect(asked.size).to eq(1)

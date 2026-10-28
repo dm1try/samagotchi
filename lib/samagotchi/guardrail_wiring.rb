@@ -314,7 +314,7 @@ module Samagotchi
       # one that passes every gate is allowed once without reaching them
       # (docs/guardrails.md, "System 1").
       judgment = begin
-        system_one_judge(payload)
+        system_one_judge(payload, targets: verdict.targets)
       rescue LLM::RequestCancelled
         return turn_stopped(verdict)
       end
@@ -357,7 +357,7 @@ module Samagotchi
     # host) means no line at all. A judgment that fails is logged with p nil,
     # so the failures are in the log too.
     # @return [Hash, nil] {id:, p:, auto:}, nil when nothing was written
-    def system_one_judge(payload)
+    def system_one_judge(payload, targets: nil)
       return nil if Steer.participant_author?(turn_author)
 
       client = @system_one.call
@@ -385,7 +385,7 @@ module Samagotchi
       end
       latency_ms = ((Process.clock_gettime(Process::CLOCK_MONOTONIC) - started) * 1000).round
       p = answers && answers[SystemOne::ApprovalQuestion::ID]&.noul
-      auto = system_one_auto_allow?(client, approval, p, entries)
+      auto = system_one_auto_allow?(client, approval, p, entries, targets: targets)
       decision = system_one_decision(client, auto)
 
       id = log.judgment(session_id: @session_lookup.call&.id,
@@ -417,13 +417,14 @@ module Samagotchi
     # the rule's record. Any one that fails leaves the ask to the user. The
     # entries are the judgment log read once for this ask.
     # @param entries [Array<Hash>] SystemOne::Log#entries
-    def system_one_auto_allow?(client, approval, p, entries)
+    # @param targets [Guardrails::Targets, nil] the call's, for its env:
+    def system_one_auto_allow?(client, approval, p, entries, targets: nil)
       return false unless client.mode == "on"
 
       rule = approval[:rule].to_s
       return false if rule.empty?
       return false unless system_one_rules.include?(rule)
-      return false if SystemOne::SelfProtect.refuse?(approval)
+      return false if SystemOne::SelfProtect.refuse?(approval, targets: targets)
 
       threshold = Config.get("guardrails.system_one.threshold").to_f
       return false if p.nil? || p.to_f < threshold

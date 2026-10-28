@@ -936,12 +936,26 @@ gate below passes, in this order:
    config dir (config.yml), the hooks dir, the installed bundles dir, the
    guardrails store (where `approvals.json` and `judgments.jsonl` live) or the
    attached context dir, and no `execute` or `task_create` command naming any
-   of them, however it spells them (`ParentApprovals::CHI_TEXT`:
-   `$XDG_CONFIG_HOME/samagotchi/config.yml`, `~/.config/samagotchi/…`, a
-   `cd ~/.config` then `samagotchi/config.yml`). The memories dir is
-   deliberately not one of these: reading or appending a memory file can be
-   auto-allowed, unless the command has a `..` segment (`memories/../config.yml`
-   climbs out of it). A protected rule
+   of them (or chi's state dir). A command is checked twice: by its text
+   (`ParentApprovals::CHI_TEXT`: `$XDG_CONFIG_HOME/samagotchi/config.yml`,
+   `~/.config/samagotchi/…`, a `cd ~/.config` then `samagotchi/config.yml`),
+   and by its words resolved as `shell-touches-chi` resolves them
+   (`Guardrails::ShellPaths::Walk`: cd chains, `~`, `$HOME` and the XDG dirs,
+   symlinks, `..`; under the call's `env:` too), so `cd ~/.config; cd
+   samagotchi; cat config.yml` or a symlink into the config dir is refused.
+   A call whose `env:` redefines the shell (`Targets#redefines_shell?`:
+   `BASH_ENV`, `BASH_FUNC_…`, …) is refused whatever it names. The memories
+   dir is deliberately not one of these: reading or appending a memory file
+   can be auto-allowed, by a command none of whose words lands in chi's dirs
+   outside the memories, whose text shows no climb (`SelfProtect::CLIMB`: a
+   `..` segment, any `$` or `$(…)`, backticks, a `~` other than the home one,
+   `cd -`), and whose words the walk can't resolve are only data read while
+   it knew the dir: a script or heredoc body (`python3 -c '…'`, `cat >> x.md
+   <<'EOF'`), a phrase (`echo "- a note"`) or a glob with no `/`. So
+   `cd memories; cd ..`, `cd "${PWD%/*}"`, `cd $(dirname $PWD)` or `cd -`
+   loses the exemption, and the memories text then refuses it. A script body
+   is not looked into beyond its text: an accident guard, not containment.
+   A protected rule
    (`Verdict::PROTECTED_RULES`) may be listed by name and System 1 may answer
    it, but a call that really writes config.yml or the hooks is refused here;
 5. the judgment's `p` is at least `guardrails.system_one.threshold` (0.8);

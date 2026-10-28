@@ -44,6 +44,13 @@ and commands may change between minor versions. How releases are made:
   node_modules/foo/../.. && echo x > .zshrc`) was allowed while it read or wrote outside the project; `touches:
   chi_dirs`, `git: outside_repo` and the delegate child's boundary read the same cd logically only. Later words are
   now resolved and judged against both folders, and `cd -` leaves the folder unknown.
+- System 1 (`on` mode) no longer auto-allows a command that climbs out of chi's memories folder into its config:
+  `cd …/memories; cd ..; echo 'mode: off' >> config.yml`, `cd "${PWD%/*}"` or `cd $(dirname $PWD)` passed its
+  own-files check, since only the text was read. The check now resolves the command's words like
+  `shell-touches-chi` (cd chains, symlinks, `..`, the call's `env:`), so `cd ~/.config; cd samagotchi; cat
+  config.yml` is refused too. A memories command keeps its exemption while its text shows no climb (`..`, `$`,
+  backticks, `cd -`) and every word resolves or is data (a `python3 -c` or heredoc body, `echo "- a note"`); a call
+  whose `env:` redefines the shell is never auto-allowed.
 
 ## [0.128.0] - 2026-10-28
 

@@ -4,6 +4,8 @@ require "samagotchi/hooks/loader"
 require "samagotchi/memory_paths"
 require "samagotchi/paths"
 require "samagotchi/system_one/self_protect"
+require "samagotchi/guardrails/targets"
+require "tmpdir"
 
 # System 1 may never answer for a call that changes chi itself: config.yml,
 # the hooks dir, the installed bundles, the guardrails store (approvals.json,
@@ -49,6 +51,89 @@ RSpec.describe Samagotchi::SystemOne::SelfProtect do
     expect(S.refuse?({ "tool" => "memory_write", "paths" => [memory] })).to be false
     expect(S.refuse?({ "tool" => "execute", "command" => "cat ~/.config/samagotchi/memories/notes.md" })).to be false
     expect(S.refuse?({ "tool" => "edit", "paths" => [File.join(memories_dir, "projects", "a_1234", "index.md")] })).to be false
+  end
+
+  it "refuses a command that climbs out of the memories dir, however it climbs" do
+    memories = memories_dir
+    [
+      "cd #{memories}; cd ..; echo 'mode: off' >> config.yml",
+      "cd #{memories} && cd .. && echo x >> config.yml",
+      "cd #{memories} && echo x >> ../config.yml",
+      "cd #{memories} && cd \"${PWD%/*}\" && echo x >> config.yml",
+      "cd #{memories} && cd ${PWD%/memories} && echo x >> hooks.yml",
+      "cd #{memories} && cd \"$(dirname \"$PWD\")\" && echo x >> config.yml",
+      "cd #{memories} && cd `dirname $PWD` && echo x >> config.yml",
+      "cd #{memories} && cd - && echo x >> config.yml",
+      "cd #{memories} && sh -c 'cd ..; echo x >> config.yml'",
+      "cd #{memories} && echo x >> ../conf*.yml",
+      "git push && cd ~/.config/samagotchi/memories && cd \"${PWD%/*}\" && echo x >> config.yml"
+    ].each do |command|
+      expect(S.refuse?({ "tool" => "execute", "command" => command, "cwd" => Dir.pwd })).to be(true), command
+    end
+  end
+
+  it "refuses a cd chain or a symlink that reaches chi's config without spelling it" do
+    config_dir = Samagotchi::ConfigFile.config_dir
+    parent = File.dirname(config_dir)
+    expect(S.refuse?({ "tool" => "execute", "command" => "cd #{parent}; cd #{File.basename(config_dir)}; cat config.yml",
+                       "cwd" => Dir.pwd })).to be true
+
+    Dir.mktmpdir do |tmp|
+      File.symlink(config_dir, File.join(tmp, "l"))
+      expect(S.refuse?({ "tool" => "execute", "command" => "cat l/config.yml", "cwd" => tmp })).to be true
+      expect(S.refuse?({ "tool" => "execute", "command" => "cat #{tmp}/l/config.yml" })).to be true
+    end
+  end
+
+  it "keeps the memories exemption for a command whose every word resolves into them" do
+    memories = memories_dir
+    expect(S.refuse?({ "tool" => "execute", "command" => "cd #{memories} && cat notes.md", "cwd" => Dir.pwd })).to be false
+    expect(S.refuse?({ "tool" => "execute", "command" => "git push && sed -i '' s/a/b/ ~/.config/samagotchi/memories/x.md",
+                       "cwd" => Dir.pwd })).to be false
+  end
+
+  # The shell memory edits a coordinator's day is made of: a word the walk
+  # can't resolve that is only data (a script body, a heredoc, a phrase)
+  # keeps the exemption while the text shows no climb.
+  it "keeps the exemption for data words: a script body, a heredoc, a phrase" do
+    note = File.join(memories_dir, "x.md")
+    [
+      "python3 -c \"p='#{note}'; s=open(p).read(); open(p, 'w').write(s.replace('old', 'new'))\"",
+      "cat >> #{note} <<'EOF'\n- a note\n- another\nEOF",
+      "echo \"- a note\" >> #{note}",
+      "echo 'mode: on' >> ~/.config/samagotchi/memories/x.md",
+      "cd #{memories_dir} && grep -l notes *.md"
+    ].each do |command|
+      expect(S.refuse?({ "tool" => "execute", "command" => command, "cwd" => Dir.pwd })).to be(false), command
+    end
+  end
+
+  it "still refuses data words that name chi's config, or a word after a cd it can't follow" do
+    config_dir = Samagotchi::ConfigFile.config_dir
+    note = File.join(memories_dir, "x.md")
+    [
+      "python3 -c \"open('#{config_dir}/config.yml', 'a').write('x')  # #{note}\"",
+      "cd #{memories_dir} && cd 'a b' && echo x >> config.yml",
+      "cd #{memories_dir} && cd ~- && echo x >> config.yml",
+      "cd #{memories_dir} && python3 -c \"import os; os.chdir('..'); open('config.yml', 'a')\"",
+      "cat >> #{note} <<EOF\n$(cat #{note})\nEOF"
+    ].each do |command|
+      expect(S.refuse?({ "tool" => "execute", "command" => command, "cwd" => Dir.pwd })).to be(true), command
+    end
+  end
+
+  it "refuses a call whose env: redefines the shell" do
+    targets = Samagotchi::Guardrails::Targets.new(tool: "task_create", command: "git push", paths: [], cwd: Dir.pwd,
+                                                  repo_root: nil, env: { "BASH_ENV" => "/tmp/x.sh" })
+    expect(S.refuse?({ "tool" => "task_create", "command" => "git push" }, targets: targets)).to be true
+  end
+
+  it "resolves the command's words under the call's env: too" do
+    config_dir = Samagotchi::ConfigFile.config_dir
+    targets = Samagotchi::Guardrails::Targets.new(tool: "task_create", command: "cat $XDG_CONFIG_HOME/x", paths: [],
+                                                  cwd: Dir.pwd, repo_root: nil, env: { "XDG_CONFIG_HOME" => config_dir })
+    expect(S.refuse?({ "tool" => "task_create", "command" => "cat $XDG_CONFIG_HOME/x", "cwd" => Dir.pwd },
+                     targets: targets)).to be true
   end
 
   it "allows a call on an ordinary repo file" do
