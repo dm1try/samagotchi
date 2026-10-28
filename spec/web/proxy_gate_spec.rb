@@ -464,6 +464,7 @@ RSpec.describe Samagotchi::Web::App, "behind an auth proxy" do
       _, _, body = call("/", headers: proxied)
       expect(body).to include('<form method="post" action="/api/token">')
       expect(body).not_to include('method="get"')
+      expect(body).to include("Open the Proxied link chi web printed")
       # The public-address page is only for this machine's loopback.
       expect(body).not_to include("public address")
     end

@@ -946,7 +946,7 @@ module Samagotchi
       # the proxy too.
       def self.public_unauthorized_page(page)
         page.sub('<form method="get" action="/">', '<form method="post" action="/api/token">')
-            .sub("Open the link chi web printed in its terminal (LAN, or Proxied behind an\nauth proxy), or scan its QR code.",
+            .sub("Open the link chi web printed in its terminal (Local on this machine, LAN, or\nProxied behind an auth proxy), or scan its QR code.",
                  "Open the Proxied link chi web printed in its terminal (it works once; chi web again prints a new " \
                  "one), or paste the token from its web-token file.")
       end
@@ -966,8 +966,8 @@ module Samagotchi
         </style></head>
         <body>
         <h1>chi web</h1>
-        <p>This page needs chi web's access token. Open the link chi web printed in its terminal (LAN, or Proxied behind an
-        auth proxy), or scan its QR code.</p>
+        <p>This page needs chi web's access token. Open the link chi web printed in its terminal (Local on this machine, LAN, or
+        Proxied behind an auth proxy), or scan its QR code.</p>
         <p id="trade" hidden></p>
         <form method="get" action="/">
           <label for="token">Or paste the token:</label>

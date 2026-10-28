@@ -178,7 +178,7 @@ RSpec.describe Samagotchi::Web::App, "LAN access token" do
         expect(headers["Content-Type"]).to start_with("application/json")
         status, _, body = call("/", **local, peer: peer)
         expect(status).to eq(401), peer
-        expect(body).to include('name="token"').and include('<form method="get" action="/">')
+        expect(body).to include('name="token"').and include('<form method="get" action="/">').and include("Local on this machine")
         expect(body).not_to include(token)
       end
     end
