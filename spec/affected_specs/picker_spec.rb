@@ -67,20 +67,33 @@ RSpec.describe AffectedSpecs::Picker do
   end
 
   it "picks the attached-loop specs and picker spec for extracted loop files" do
-    files.merge!("spec/terminal_ui/attached_loop_link_spec.rb" => "",
+    files.merge!("spec/terminal_ui/attached_loop_composer_spec.rb" => "",
+                 "spec/terminal_ui/attached_loop_exit_commands_spec.rb" => "",
+                 "spec/terminal_ui/attached_loop_join_spec.rb" => "",
+                 "spec/terminal_ui/attached_loop_link_spec.rb" => "",
                  "spec/terminal_ui/attached_loop_participants_spec.rb" => "",
+                 "spec/terminal_ui/attached_loop_pipe_spec.rb" => "",
+                 "spec/terminal_ui/attached_loop_questions_spec.rb" => "",
+                 "spec/terminal_ui/attached_loop_queueing_spec.rb" => "",
                  "spec/terminal_ui/attached_loop_remote_spec.rb" => "",
+                 "spec/terminal_ui/attached_loop_sending_spec.rb" => "",
                  "spec/affected_specs/picker_spec.rb" => "")
     expected = %w[
+      spec/terminal_ui/attached_loop_spec.rb
+      spec/terminal_ui/attached_loop_composer_spec.rb
+      spec/terminal_ui/attached_loop_exit_commands_spec.rb
+      spec/terminal_ui/attached_loop_join_spec.rb
       spec/terminal_ui/attached_loop_link_spec.rb
       spec/terminal_ui/attached_loop_participants_spec.rb
+      spec/terminal_ui/attached_loop_pipe_spec.rb
+      spec/terminal_ui/attached_loop_questions_spec.rb
+      spec/terminal_ui/attached_loop_queueing_spec.rb
       spec/terminal_ui/attached_loop_remote_spec.rb
-      spec/terminal_ui/attached_loop_spec.rb
+      spec/terminal_ui/attached_loop_sending_spec.rb
       spec/affected_specs/picker_spec.rb
     ]
 
     ["lib/samagotchi/terminal_ui/attached_loop/join_header.rb",
-     "lib/samagotchi/terminal_ui/attached_loop/exit_commands.rb",
      "lib/samagotchi/terminal_ui/join_replay.rb",
      "lib/samagotchi/terminal_ui/own_turns.rb",
      "lib/samagotchi/terminal_ui/exit_lines.rb"].each do |changed|
@@ -88,6 +101,21 @@ RSpec.describe AffectedSpecs::Picker do
 
       expect(paths(result.ruby)).to eq(expected)
       expect(result.ruby.map(&:reason)).to all(start_with("rule: "))
+    end
+  end
+
+  it "picks top-level specs named after extracted loop subfolders first" do
+    files.merge!("lib/samagotchi/terminal_ui/attached_loop/queueing.rb" => "",
+                 "lib/samagotchi/terminal_ui/attached_loop/exit_commands.rb" => "",
+                 "spec/terminal_ui/attached_loop_queueing_spec.rb" => "",
+                 "spec/terminal_ui/attached_loop_exit_commands_spec.rb" => "")
+
+    { "lib/samagotchi/terminal_ui/attached_loop/queueing.rb" => "spec/terminal_ui/attached_loop_queueing_spec.rb",
+      "lib/samagotchi/terminal_ui/attached_loop/exit_commands.rb" => "spec/terminal_ui/attached_loop_exit_commands_spec.rb" }.each do |changed, named|
+      result = pick(changed)
+
+      expect(paths(result.ruby).first).to eq(named)
+      expect(result.ruby.first.reason).to eq("named after #{changed}")
     end
   end
 

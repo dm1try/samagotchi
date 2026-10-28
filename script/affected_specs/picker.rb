@@ -28,7 +28,8 @@ module AffectedSpecs
     { match: %w[lib/samagotchi/terminal_ui/attached_loop/** lib/samagotchi/terminal_ui/join_replay.rb
                 lib/samagotchi/terminal_ui/own_turns.rb
                 lib/samagotchi/terminal_ui/exit_lines.rb],
-      specs: %w[spec/terminal_ui/attached_loop*_spec.rb spec/affected_specs/picker_spec.rb],
+      specs: %w[spec/terminal_ui/attached_loop_spec.rb spec/terminal_ui/attached_loop*_spec.rb
+                spec/affected_specs/picker_spec.rb],
       why: "attached-loop collaborators, exercised through the attached loop and picker" },
     { match: %w[lib/samagotchi/events.rb lib/samagotchi/web/public/stream_handlers.js lib/samagotchi/web/public/turn_events.js
                 lib/samagotchi/terminal_ui/attached_loop.rb lib/samagotchi/bridge/turn_accumulator.rb],
@@ -196,6 +197,10 @@ module AffectedSpecs
       parts = name_parts(path)
       rel = parts.join("/")
       candidates = ["spec/#{rel}_spec.rb", "spec/samagotchi/#{rel}_spec.rb", "spec/script/#{parts.last}_spec.rb"]
+      if parts.size >= 3
+        subfolder = (parts[0...-2] + [parts[-2..].join("_")]).join("/")
+        candidates.unshift("spec/#{subfolder}_spec.rb")
+      end
       candidates += parts.each_index.map { |i| "spec/#{parts[i..].join("_")}_spec.rb" }
       candidates.each { |spec| add(spec, "named after #{path}", path) if spec_set.key?(spec) }
     end

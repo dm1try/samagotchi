@@ -12,7 +12,7 @@ module AffectedSpecs
   # `bundle exec rspec $(script/affected-specs)` runs them; the node tests,
   # hints and the "more" line go to stderr.
   class CLI
-    DEFAULT_CAP = 10
+    DEFAULT_CAP = 16
 
     def initialize(argv, out: $stdout, err: $stderr, dir: Dir.pwd)
       @argv = argv.dup

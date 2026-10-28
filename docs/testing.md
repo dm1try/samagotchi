@@ -255,14 +255,15 @@ well formed (unique ids, known keys and labels, a rule that exists in its set).
 ## While you work: affected specs
 
 ```sh
-script/affected-specs                 # the specs for this branch's change, best first, at most 10
+script/affected-specs                 # the specs for this branch's change, best first, at most 16
 bundle exec rspec $(script/affected-specs)
 script/affected-specs --why           # with the reason for each pick; --all: no cap; --run: runs them
 script/affected-specs A..B            # another range (A...B: from their merge-base); a single REV: vs the working tree
 ```
 
 A builder runs these while working, not the full suite: the specs the change touched, the specs named after the
-files it changed (`lib/samagotchi/foo/bar.rb` → `spec/foo/bar_spec.rb`, `bar_*_spec.rb`…), the specs that read
+files it changed (`lib/samagotchi/foo/bar.rb` → `spec/foo/bar_spec.rb`, `bar_*_spec.rb`…;
+`lib/samagotchi/foo/bar/baz.rb` → `spec/foo/bar_baz_spec.rb`), the specs that read
 docs or source as text (its `RULES`: add one when a full run catches what the names missed) and the golden of a changed
 file's layer (any `terminal_ui/*.rb` → `spec/terminal_ui_golden_spec.rb`; `turn_flow.rb` and `turn_note.rb`, whose
 words the REPL prints, pick it by a rule). Changes to `tool_declarations.rb` and `system_prompt.rb` also pick the
