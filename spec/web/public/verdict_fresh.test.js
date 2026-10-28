@@ -87,6 +87,21 @@ test("a participant sees the running check and the fresh verdict without a link,
   win.happyDOM.abort();
 });
 
+test("a missing worker feature shows disabled Verify fresh with the restart hint", () => {
+  const { win, root } = page();
+  const fresh = {
+    verdicts: [unclear], running: [], canStart: false,
+    unavailableReason: "restart this session to use Verify",
+  };
+  const card = placeVerdictWithFresh(root, unclear, { who: "You" }, fresh);
+  const button = card.querySelector(".verify-fresh-btn");
+  assert.equal(button.textContent, "Verify fresh");
+  assert.equal(button.disabled, true);
+  assert.equal(button.title, "restart this session to use Verify");
+  assert.equal(card.querySelector(".verify-fresh-unavailable").textContent, "restart this session to use Verify");
+  win.happyDOM.abort();
+});
+
 test("offers nothing on a confirmed or refuted card, and says why a start was refused", async () => {
   const { win, root } = page();
   const refuted = { ...unclear, verdict: "refuted", check_turn_id: "check-3" };

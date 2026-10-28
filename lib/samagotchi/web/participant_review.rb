@@ -51,7 +51,8 @@ module Samagotchi
       #   current_turn, waiting_for_owner, queued: {mine, others}, last_event_id}
       def handle_review(req, id)
         session = @session_class.load(id, state_dir: default_state_dir)
-        mode = ParticipantMode.live(session, state_dir: default_state_dir).to_s
+        features = ParticipantMode.live_features(session, default_state_dir)
+        mode = ParticipantMode.of(session, features: features).to_s
         viewer = participant_viewer(req, session)
         live = bridge_get_json(id, "snapshot")
         turn_snapshot = live && live["snapshot"]
@@ -67,7 +68,8 @@ module Samagotchi
         status = Session::STATUS_IDLE if status == Session::STATUS_RUNNING && current.nil?
         json_response(200, {
           viewer: review_viewer(req, id, session: session, state: state, queued: queued, viewer: viewer, mode: mode),
-          session: { id: session.id, title: participant_title(session), status: status },
+          session: { id: session.id, title: participant_title(session), status: status,
+                     verify_unavailable: VerifyAnchor.worker_unavailable?(features) },
           subjects: review_subjects(session, viewer),
           participants: participant_names(id).map { |entry| entry.slice(:id, :name, :kind) },
           messages: with_reply_html(ParticipantView.messages(shown, viewer, automatic: automatic)),

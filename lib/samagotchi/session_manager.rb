@@ -1408,6 +1408,7 @@ module Samagotchi
       end
       manager.resume_session(session_id, state_dir: state_dir)
       if (client = bridge.call)
+        return verify_unavailable if verify && !worker_has?(session_dir, VerifyAnchor::FEATURE)
         # A worker from before queueing (no "delivery" feature) ignores the
         # field or refuses it; either way a file would steer the running turn.
         return queue_unavailable if Delivery.queue?(delivery) && !worker_queues?(session_dir)
@@ -1531,6 +1532,10 @@ module Samagotchi
 
     private_class_method def self.review_unavailable
       DeliverResult.new(status: :refused, code: 409, ack: Delivery::REVIEW_UNAVAILABLE)
+    end
+
+    private_class_method def self.verify_unavailable
+      DeliverResult.new(status: :refused, code: 409, ack: VerifyAnchor::UNAVAILABLE)
     end
 
     private_class_method def self.turn_timeout

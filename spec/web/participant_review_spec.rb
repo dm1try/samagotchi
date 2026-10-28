@@ -67,7 +67,8 @@ RSpec.describe Samagotchi::Web::App, "participant review" do
     # Invited without the pair stamp: their turns are review turns.
     expect(body["viewer"]).to include("kind" => "participant", "id" => issued.grant.id, "name" => "Alex",
                                       "mode" => "review", "can_comment" => true)
-    expect(body["session"]).to eq("id" => session.id, "title" => "plan review", "status" => "running")
+    expect(body["session"]).to eq("id" => session.id, "title" => "plan review", "status" => "running",
+                                  "verify_unavailable" => false)
     expect(body["participants"]).to eq([{ "id" => issued.grant.id, "name" => "Alex", "kind" => "human" }])
     expect(body["messages"].map { |m| m["content"] }).to eq(%w[earlier ok])
     expect(body["current_turn"]).to eq("prompt" => "owner's question", "turn_id" => "live-1", "text" => "Let me check",

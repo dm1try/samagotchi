@@ -11,6 +11,7 @@
 .verify-fresh-result{font-weight:600;color:var(--text-bright)}
 .verify-fresh-running{color:var(--text-muted);font-style:italic}
 .verify-fresh-error{color:var(--danger-text)}
+.verify-fresh-unavailable{color:var(--text-muted)}
 .verify-fresh-link{color:var(--accent);font-weight:400}
 .verify-fresh-btn{font:inherit;font-size:12px;font-weight:600;padding:3px 12px;border-radius:8px;cursor:pointer;background:var(--accent-bg);color:var(--accent);border:1px solid var(--accent-border)}
 .verify-fresh-btn:hover{border-color:var(--accent)}

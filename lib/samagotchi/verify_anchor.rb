@@ -25,4 +25,12 @@ module Samagotchi
 
     def to_file = { "turn_id" => turn_id, "quote" => quote }
   end
+
+  VerifyAnchor::FEATURE = "verify"
+  VerifyAnchor::UNAVAILABLE = {
+    "error" => "verify_unavailable",
+    "detail" => "this session's worker predates Verify turns; restart this session to use Verify"
+  }.freeze
+
+  def VerifyAnchor.worker_unavailable?(features) = !features.nil? && !features.include?(VerifyAnchor::FEATURE)
 end

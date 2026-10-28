@@ -2325,6 +2325,20 @@ RSpec.describe Samagotchi::SessionManager do
         expect(posting).to have_received(:post_turn).with(hash_including(author: "p:p_1", delivery: "queue"))
       end
 
+      it "refuses a Verify turn to a worker without the verify feature" do
+        own("worker")
+        write_sidecar(%w[delivery review_turns])
+        bridge = instance_double(Samagotchi::BridgeClient)
+        expect(bridge).not_to receive(:post_turn)
+        verify = Samagotchi::VerifyAnchor.new(turn_id: "123e4567-e89b-12d3-a456-426614174000", quote: "the claim")
+
+        result = described_class.deliver_turn(session.id, prompt: "check", verify: verify, state_dir: tmpdir,
+                                                          bridge: -> { bridge })
+
+        expect(result).to have_attributes(status: :refused, code: 409, ack: Samagotchi::VerifyAnchor::UNAVAILABLE)
+        expect(input_files).to be_empty
+      end
+
       it "counts a participant's waiting files against their pending limit when no worker runs" do
         allow(described_class).to receive(:resume_session)
         2.times do

@@ -316,3 +316,18 @@ test("a {label, text} preset (Verify): its label on the button, its text the tit
   click(bar.el, btn);
   assert.deepEqual(quotes, ["> the answer\n\nCheck it."]);
 });
+
+test("a gated Verify preset is disabled with the restart hint and cannot fill the composer", () => {
+  const { bar, quotes, selectionChange } = fakePage({
+    options: {
+      presets: ["Agreed", { label: "Verify", text: "Check it." }],
+      disabledPreset: (preset) => preset.label === "Verify" ? "restart this session to use Verify" : null,
+    },
+  });
+  selectionChange();
+  const verify = bar.el.children[2];
+  assert.equal(verify.disabled, true);
+  assert.equal(verify.title, "restart this session to use Verify");
+  click(bar.el, verify);
+  assert.deepEqual(quotes, []);
+});

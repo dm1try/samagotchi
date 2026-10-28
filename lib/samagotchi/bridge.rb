@@ -11,6 +11,7 @@ require_relative "atomic_file"
 require_relative "bridge_secret"
 require_relative "delivery"
 require_relative "session_inbox"
+require_relative "verify_anchor"
 
 require_relative "bridge/bounded_queue"
 require_relative "bridge/card_store"
@@ -633,6 +634,7 @@ module Samagotchi
     # turn (Guardrails::PairBoundary); a worker without it runs it as a
     # review turn, and chi web says so (Delivery::PAIR_FEATURE).
     FEATURES = ["restart", "task_stop", "reparent", Delivery::QUEUE_FEATURE, ReplyWait::TURN_IDS_FEATURE,
+                VerifyAnchor::FEATURE,
                 SessionInbox::UNQUEUE_FEATURE, Delivery::REVIEW_FEATURE, Delivery::PAIR_FEATURE].freeze
 
     # The routes, by method and what follows /session/:id/: a handler takes

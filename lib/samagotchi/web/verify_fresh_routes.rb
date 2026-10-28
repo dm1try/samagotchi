@@ -33,14 +33,18 @@ module Samagotchi
       def handle_verify_fresh(req, id, of)
         clicker = principal(req).owner? ? nil : principal(req).grant
         session = @session_class.load(id, state_dir: default_state_dir)
-        if clicker && (refused = participant_cap_refusal(clicker) || fresh_worker_refusal(session))
+        if clicker && (refused = participant_cap_refusal(clicker) || fresh_worker_refusal(session, participant: true))
           return verify_fresh_refused(clicker, of, *refused)
         end
 
         by = Steer.sender_author(field_of(VerifyFresh.original(session.verdicts, of), :by))
         runner = by ? verdict_author_grant(id, by) : clicker
         return author_link_ended(clicker, id, of, by) if by && runner.nil?
-        if runner && runner != clicker && (refused = participant_cap_refusal(runner) || fresh_worker_refusal(session))
+        if runner && runner != clicker && (refused = participant_cap_refusal(runner) ||
+                                                   fresh_worker_refusal(session, participant: true))
+          return verify_fresh_refused(clicker, of, *refused, runner: runner)
+        end
+        if (refused = fresh_worker_refusal(session))
           return verify_fresh_refused(clicker, of, *refused, runner: runner)
         end
 
@@ -76,12 +80,13 @@ module Samagotchi
 
       def field_of(record, key) = record && (record[key] || record[key.to_s])
 
-      # A live worker of the session that predates participants' turns runs
-      # no participant's turn (Delivery::REVIEW_UNAVAILABLE): no fresh
-      # child for one either. nil to go on.
-      def fresh_worker_refusal(session)
+      # A live worker must support VerifyFresh's parent checks. For a
+      # participant's child it must also have the review boundary.
+      def fresh_worker_refusal(session, participant: false)
         features = ParticipantMode.live_features(session, default_state_dir)
-        return nil if features.nil? || features.include?(Delivery::REVIEW_FEATURE)
+        return nil if features.nil?
+        return [409, VerifyAnchor::UNAVAILABLE["error"], VerifyAnchor::UNAVAILABLE["detail"]] if VerifyAnchor.worker_unavailable?(features)
+        return nil unless participant && !features.include?(Delivery::REVIEW_FEATURE)
 
         [409, Delivery::REVIEW_UNAVAILABLE["error"], Delivery::REVIEW_UNAVAILABLE["detail"]]
       end

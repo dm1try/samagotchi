@@ -191,6 +191,41 @@ test("participant page: Verify fresh on an unclear card posts once, says it runs
   assert.equal(card().querySelector(".verify-fresh-running"), null);
 });
 
+test("participant page: a worker without Verify disables the preset and Verify fresh", async (t) => {
+  const review = {
+    ...REVIEW,
+    viewer: { id: "alex", name: "Alex", can_comment: true },
+    session: { id: "s1", title: "Plan", status: "idle", verify_unavailable: true },
+    messages: [
+      { role: "user", content: "Original claim", turn_id: "source" },
+      { role: "assistant", content: "The claim." },
+    ],
+    verdicts: [{
+      anchor: { turn_id: "source", quote: "the claim" }, verdict: "unclear", reason: "Context doesn't say.",
+      by: null, check_turn_id: "check",
+    }],
+  };
+  const { $, posts } = await openPage(t, { respond: (call) => call.answer(200, review) });
+  const text = $("thread").querySelector(".p-bubble");
+  const range = document.createRange();
+  range.selectNodeContents(text);
+  window.getSelection().removeAllRanges();
+  window.getSelection().addRange(range);
+  document.dispatchEvent(new window.Event("selectionchange"));
+  await settle();
+
+  const preset = [...document.querySelectorAll(".annotate-preset")].find((button) => button.textContent === "Verify");
+  assert.equal(preset.disabled, true);
+  assert.equal(preset.title, "restart this session to use Verify");
+  const fresh = $("thread").querySelector(".verify-fresh-btn");
+  assert.equal(fresh.disabled, true);
+  assert.equal(fresh.title, "restart this session to use Verify");
+  assert.equal($("thread").querySelector(".verify-fresh-unavailable").textContent, "restart this session to use Verify");
+  fresh.click();
+  await settle();
+  assert.equal(posts().length, 0);
+});
+
 test("participant page: the header says pairing for a pair grant, review otherwise", async (t) => {
   const pair = { ...REVIEW, viewer: { ...REVIEW.viewer, mode: "pair" } };
   const { $ } = await openPage(t, { respond: (call) => call.answer(200, pair) });

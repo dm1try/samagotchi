@@ -170,15 +170,19 @@ test("sessionStateFrom's title is cut with an ellipsis, also from messages", () 
 // session's payload brings its own back at once, so its stale-worker badge,
 // task-stop button and queue delivery don't wait for a hub event.
 test("sessionStateFrom reads the live worker's version and features", () => {
-  const st = sessionStateFrom(payload({ session: { worker_version: "0.66.0", worker_features: ["delivery", "task_stop"] } }));
+  const st = sessionStateFrom(payload({ session: {
+    worker_version: "0.66.0", worker_features: ["delivery", "task_stop"], bridge_up: true,
+  } }));
   assert.equal(st.workerVersion, "0.66.0");
   assert.deepEqual(st.workerFeatures, ["delivery", "task_stop"]);
+  assert.equal(st.bridgeUp, true);
 });
 
 test("sessionStateFrom: no worker (or a features that is not a list) is null and []", () => {
   const none = sessionStateFrom(payload());
   assert.equal(none.workerVersion, null);
   assert.deepEqual(none.workerFeatures, []);
+  assert.equal(none.bridgeUp, false);
   assert.deepEqual(sessionStateFrom(payload({ session: { worker_features: "delivery" } })).workerFeatures, []);
 });
 

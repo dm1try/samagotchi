@@ -1,12 +1,18 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { VERIFY_PRESET, withVerify } from "../../../lib/samagotchi/web/public/verify_preset.js";
+import { VERIFY_PRESET, verifyWorkerUnavailable, withVerify } from "../../../lib/samagotchi/web/public/verify_preset.js";
 import { presetNote } from "../../../lib/samagotchi/web/public/annotate_presets.js";
 
 test("Verify comes after the configured presets, on its own without any", () => {
   assert.deepEqual(withVerify(["Agreed", "Why?"]), ["Agreed", "Why?", VERIFY_PRESET]);
   assert.deepEqual(withVerify([]), [VERIFY_PRESET]);
   assert.deepEqual(withVerify(undefined), [VERIFY_PRESET]);
+});
+
+test("Verify is unavailable only while a live worker lacks its feature", () => {
+  assert.equal(verifyWorkerUnavailable(["review_turns"], true), true);
+  assert.equal(verifyWorkerUnavailable(["verify"], true), false);
+  assert.equal(verifyWorkerUnavailable([], false), false);
 });
 
 test("Verify's note: the quote, then the ask ending on the verdict line", () => {
