@@ -166,7 +166,44 @@ module Samagotchi
       def self.within?(path, root)
         return false if root.nil? || root.to_s.empty?
 
-        reals(root.to_s.chomp("/")).any? { |dir| path == dir || path.start_with?(File.join(dir, "")) }
+        reals(root.to_s.chomp("/")).any? { |dir| under?(path, dir) }
+      end
+
+      # Whether +path+ is +dir+ or in it (both absolute, resolved): by their
+      # text, or on a disk that folds case (macOS) by their text cased alike.
+      # realpath gives an existing part its on-disk case, but a missing
+      # tail keeps the case it was typed in (<state>/CONTEXT/x before
+      # <state>/context exists), and the kernel will create it in the
+      # folder that later answers to either.
+      def self.under?(path, dir)
+        return true if path == dir || path.start_with?(File.join(dir, ""))
+
+        low = path.downcase
+        low_dir = dir.downcase
+        (low == low_dir || low.start_with?(File.join(low_dir, ""))) && folds_case?(dir)
+      end
+
+      # A dir's disk answer (.folds_case?), asked once per dir.
+      FOLDS = {}
+      FOLDS_MUTEX = Mutex.new
+
+      # Whether the disk +path+'s deepest existing dir is on folds case: that
+      # dir (or the first one above it with a letter in its name) answers to
+      # its name with the case swapped. Asked once per dir.
+      def self.folds_case?(path)
+        probe = path
+        probe = File.dirname(probe) until probe == "/" || File.directory?(probe)
+        probe = File.dirname(probe) until probe == "/" || File.basename(probe).swapcase != File.basename(probe)
+        return false if probe == "/"
+
+        FOLDS_MUTEX.synchronize do
+          FOLDS.fetch(probe) do
+            other = File.join(File.dirname(probe), File.basename(probe).swapcase)
+            FOLDS[probe] = File.exist?(other) && File.identical?(probe, other)
+          end
+        end
+      rescue SystemCallError
+        false
       end
     end
   end

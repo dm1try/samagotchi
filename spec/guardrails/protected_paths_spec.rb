@@ -37,6 +37,19 @@ RSpec.describe Samagotchi::Guardrails::ProtectedPaths do
     expect([v.decision, v.rule, v.source]).to eq([:deny, "chi-context", "core"])
   end
 
+  # realpath gives an existing part its disk case; a missing tail keeps the
+  # typed one, which a folding disk (macOS) creates in the same folder.
+  it "takes a differently cased missing folder as the protected one on a disk that folds case, only there" do
+    FileUtils.mkdir_p(File.join(root, "state"))
+    folds = File.exist?(File.join(root, "STATE"))
+    expect(described_class.folds_case?(File.join(root, "state", "context"))).to eq(folds)
+    v = verdict_for(name: "write", path: "state/CONTEXT/src.yml", content: "{}")
+    expect(v.decision).to eq(folds ? :deny : :allow)
+    expect(described_class.under?(File.join(root, "state", "CONTEXT", "x"), File.join(root, "state", "context"))).to eq(folds)
+    expect(described_class.under?(File.join(root, "state", "contextx"), File.join(root, "state", "context"))).to be(false)
+    expect(described_class.under?("/nowhere-chi/A/b", "/nowhere-chi/a")).to be(false)
+  end
+
   it "follows symlinks: a link into .bundles is denied too" do
     FileUtils.mkdir_p(File.join(config_dir, "memories", ".bundles", "b"))
     File.symlink(File.join(config_dir, "memories", ".bundles", "b"), File.join(root, "sneaky"))

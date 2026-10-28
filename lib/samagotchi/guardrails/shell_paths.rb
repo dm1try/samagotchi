@@ -71,7 +71,9 @@ module Samagotchi
         end
       end
 
-      def within?(path, root) = path == root || path.start_with?(File.join(root, ""))
+      # Whether +path+ is +root+ or in it, cased alike on a disk that folds
+      # case (ProtectedPaths.under?).
+      def within?(path, root) = ProtectedPaths.under?(path, root)
 
       # Follows the current dir and gives, per simple command, each word
       # with its path (nil when it can't be resolved). A word is opened the

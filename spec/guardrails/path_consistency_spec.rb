@@ -106,7 +106,7 @@ module GuardrailsPathConsistency
       case-hooks-dir      @config/HOOKS/h.rb                           y   -  -   outside deny  deny  ask   ask   allow y  deny  y     y  y     @config/hooks/h.rb
       store               @state/guardrails/approvals.json             y   -  -   outside deny  deny  ask   deny  allow y  deny  y     y  y     @state/guardrails/approvals.json
       context             @state/context/src.yml                       y   -  -   outside deny  deny  ask   deny  allow y  deny  y     y  y     @state/context/src.yml
-      case-context-dir    @state/CONTEXT/src.yml                       y   -  -   outside deny  deny  ask   allow allow y  deny  -     y  y     @state/CONTEXT/src.yml
+      case-context-dir    @state/CONTEXT/src.yml                       y   -  -   outside deny  deny  ask   deny  allow y  deny  y     y  y     @state/CONTEXT/src.yml
       state-session       @state/sessions/x.json                       y   -  -   outside deny  deny  ask   allow allow y  deny  -     y  y     @state/sessions/x.json
       ssh-key             ~/.ssh/id_rsa                                y   -  -   outside deny  deny  ask   allow allow -  deny  -     y  -     @home/.ssh/id_rsa
       gh-token            @home/.config/gh/hosts.yml                   y   -  -   outside deny  deny  ask   allow allow -  deny  -     y  -     @home/.config/gh/hosts.yml
@@ -231,11 +231,7 @@ module GuardrailsPathConsistency
 
     # Folding disks only: a case row answers as its CASE_LIKE row (reals
     # aside: a missing tail keeps its typed case), but for these.
-    CASE_EXCEPTIONS = {
-      "case-context-dir" => "BUG: on a disk that folds case a write to state/CONTEXT/ lands in the context sources dir " \
-                            "once it exists, but ProtectedPaths compares the typed case (no chi-context deny), and " \
-                            "touches_chi? and System 1's path test miss it the same way"
-    }.freeze
+    CASE_EXCEPTIONS = {}.freeze
 
     def self.literal?(id) = PATH_ROWS.fetch(id)["path"].include?("$")
 
