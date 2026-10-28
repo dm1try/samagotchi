@@ -122,8 +122,8 @@ export function privateIPv4() {
 }
 
 // @param lan chi web with --web-host lan: env.lanURL is its LAN address
-//   (where the token is asked for; the loopback baseURL isn't) and
-//   env.tokenPath its access token's file
+//   and env.tokenPath its access token's file (asked on the loopback
+//   baseURL too)
 // @param installed the newest chi chi web believes installed
 //   (SAMAGOTCHI_INSTALLED_VERSION; null: what really is)
 // @param proxy chi web behind support/pod_proxy.rb (web.public_url, the
@@ -202,7 +202,9 @@ export async function startEnv({ lan = false, installed = null, proxy = false } 
     env.webLogPath = path.join(root, "web.log");
     const webLog = fs.openSync(env.webLogPath, "a");
     env.tokenPath = path.join(dirs.state, "samagotchi", "web-token");
-    const authHeaders = () => (proxy && fs.existsSync(env.tokenPath)
+    // Behind the proxy and on the LAN, this machine's loopback needs the
+    // token too (but for chi's token-less /api/info probe).
+    const authHeaders = () => ((proxy || lan) && fs.existsSync(env.tokenPath)
       ? { Authorization: `Bearer ${fs.readFileSync(env.tokenPath, "utf8").trim()}` } : {});
     if (proxy) {
       const proxyPort = await freePort();

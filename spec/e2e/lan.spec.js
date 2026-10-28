@@ -1,5 +1,6 @@
 // chi web on the LAN (--web-host lan), reached at this machine's LAN
-// address as a phone would (not loopback, so the access token is asked for).
+// address as a phone would, and on loopback: the access token is asked for
+// on both.
 import fs from "node:fs";
 import { test, expect } from "./support/fixtures.js";
 import { privateIPv4 } from "./support/env.js";
@@ -51,9 +52,42 @@ test("a wrong token gets the 401 page, and a browser without the cookie is refus
   expect(res.status()).toBe(401);
   const api = await context.request.get(`${chi.lanURL}/api/sessions`);
   expect(api.status()).toBe(401);
-  // The loopback address is this machine: no token asked.
-  expect((await context.request.get(`${chi.baseURL}/api/sessions`)).status()).toBe(200);
+  // This machine's loopback too (a pair participant's shell runs here),
+  // but for chi's token-less /api/info probe: its checked fields only.
+  expect((await context.request.get(`${chi.baseURL}/api/sessions`)).status()).toBe(401);
+  const probe = await context.request.get(`${chi.baseURL}/api/info`);
+  expect(probe.status()).toBe(200);
+  expect(Object.keys(await probe.json())).not.toContain("cwd");
   await context.close();
+});
+
+test("this machine's page asks for the token too, and chi web's Local link (a one-time code) gets in", async ({ chi, browser }) => {
+  const context = await browser.newContext();
+  const page = await context.newPage();
+  const errors = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  const refused = await page.goto(`${chi.baseURL}/`);
+  expect(refused.status()).toBe(401);
+  await expect(page.locator("input[name=token]")).toBeVisible();
+
+  // chi web's start line: this machine's link with an owner's one-time code;
+  // the 401 page trades it for the cookie on 127.0.0.1 and loads the page.
+  const link = fs.readFileSync(chi.webLogPath, "utf8").match(/Local: (\S+#code=chc_\S+)/)[1];
+  expect(link.startsWith(`${chi.baseURL}/`)).toBe(true);
+  const started = page.waitForResponse((r) => r.url().endsWith("/api/models") && r.status() === 200);
+  await page.goto(link);
+  await started;
+  await expect(page.locator("#actionBtn")).toHaveText("Start");
+  expect(page.url()).not.toContain("code=");
+  expect((await context.cookies(chi.baseURL)).find((c) => c.name === "chi_token")).toMatchObject({ httpOnly: true });
+  // Used up: the same link again is refused.
+  const again = await browser.newContext();
+  const second = await again.newPage();
+  await second.goto(link);
+  await expect(second.locator("#trade")).toBeVisible();
+  await again.close();
+  await context.close();
+  expect(errors, "page errors").toEqual([]);
 });
 
 test("a review: the owner starts one for a file and invites from the panel, the link joins over the LAN with the Plan, annotates it, a comment (a double Enter) gets one reply and comes back on ↑, the owner applies it, and a claim link opens in Alex's browser", async ({ chi, context, browser, script }) => {
@@ -61,7 +95,10 @@ test("a review: the owner starts one for a file and invites from the panel, the 
   const errors = [];
   owner.on("pageerror", (e) => errors.push(e.message));
   script("plain");
-  await owner.goto(`${chi.baseURL}/`);
+  // The owner on this machine: the token link on loopback sets the cookie.
+  const token = fs.readFileSync(chi.tokenPath, "utf8").trim();
+  await owner.goto(`${chi.baseURL}/?token=${token}`);
+  expect(owner.url()).toBe(`${chi.baseURL}/`);
   // The start page's review chip: the new session is a review of README.md.
   await owner.locator("#reviewNew").click();
   await owner.locator("#reviewNewPopover textarea").fill("README.md");
