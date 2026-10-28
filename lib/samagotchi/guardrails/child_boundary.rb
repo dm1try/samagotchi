@@ -29,7 +29,7 @@ module Samagotchi
     # read-only commands never ask, nor do ones that only write into a tmp
     # dir (> / >>, cp's destination, tee; Targets#read_only_but_tmp_writes?). Paths resolve under chi's env and the
     # call's env: (Targets#shell_envs), and an env: that redefines the shell
-    # (BASH_ENV, CDPATH, …) makes no command read-only. Text heuristics: sh
+    # (BASH_ENV, CDPATH, …) always asks, from its own folder too. Text heuristics: sh
     # -c bodies, scripts and $(…) aren't looked into.
     class ChildBoundary
       RULE = "child-boundary"
@@ -76,6 +76,8 @@ module Samagotchi
       def shell_crosses?(targets, root)
         return true if targets.git_dirs.any? { |dir| dir.is_a?(String) && Outside.outside?(dir, root: root) }
         return :shared if SharedGit.changes?(targets.command, own_branch: @branch.call)
+        # A redefined shell (BASH_ENV, BASH_FUNC_…) runs what no word says.
+        return true if targets.redefines_shell?
         return false if targets.read_only? || targets.read_only_but_tmp_writes?(root: root)
         return true if targets.cwd && Outside.outside?(targets.cwd, root: root)
 

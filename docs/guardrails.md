@@ -318,7 +318,9 @@ call's `env:` may set it), a `popd`, and a `cd`/`pushd` that isn't one existing
 dir spelt `/…`, `.` or `..` joined by `&&` only (it may fail or be skipped and
 leave the shell elsewhere); so does every tmp write when the
 child's folder is itself in that tmp dir. A `task_create` call's paths resolve under chi's env and
-under its own `env:` (its `$TMPDIR`, `$HOME`, `GIT_DIR`, …): either one naming another checkout asks. The answer is once or for the child's
+under its own `env:` (its `$TMPDIR`, `$HOME`, `GIT_DIR`, …): either one naming another checkout asks. An `env:` that
+redefines the shell (`BASH_ENV`, `BASH_FUNC_cat%%`, `CDPATH`, …, as under `skip_read_only` below) always asks, even
+for `cat a.txt` in the child's own folder: what it runs is in no word of the command. The answer is once or for the child's
 session only: a repo or rule answer would hold in every worktree, for every
 child, so a stored repo or rule approval doesn't let it through either. Its
 ask goes before the rules, so with the guardrails bundle in strict mode the

@@ -407,6 +407,15 @@ RSpec.describe Samagotchi::Guardrails::ChildBoundary do
       expect(task("cat a.txt", { "PATH" => "/usr/bin:/bin" }, cwd: main)).to be_allow
       expect(task("touch a.txt", { "FOO" => "1", "TMPDIR" => child })).to be_allow
     end
+
+    # What a redefined shell runs is in no word of the command: even a read
+    # in the child's own folder may write the main checkout.
+    it "asks for any command whose env: redefines the shell, in the child's own folder too" do
+      expect(task("cat a.txt", { "BASH_ENV" => "#{child}/rc.sh" })).to be_ask
+      expect(task("cat a.txt", { "BASH_FUNC_cat%%" => "() { echo x > #{main}/a.txt; }" })).to be_ask
+      expect(task("touch a.txt", { "CDPATH" => main })).to be_ask
+      expect(task("cat a.txt", { "FOO" => "1" })).to be_allow
+    end
   end
 end
 

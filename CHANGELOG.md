@@ -28,6 +28,9 @@ and commands may change between minor versions. How releases are made:
   chi web's "Restart workers" runs) no longer both hear yes: the first one taken decides, and the other is refused
   ("the worker is already leaving as a plain exit"), so a restart no longer reports "restarted" for a worker that
   left with no successor.
+- A delegate child's `task_create` whose `env:` redefines the shell (`BASH_ENV`, an exported `BASH_FUNC_cat%%`,
+  `CDPATH`, …) now asks as `child-boundary` from its own folder too: `cat a.txt` there with a startup file or an
+  exported function that writes the main checkout no longer ran unasked.
 
 ### Security
 
