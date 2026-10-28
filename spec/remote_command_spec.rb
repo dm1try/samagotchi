@@ -85,6 +85,23 @@ RSpec.describe Samagotchi::RemoteCommand do
       end
     end
 
+    # A chi web on the LAN reached on its loopback (an SSH tunnel) answers
+    # chi's token-less probe, and 401s every other route.
+    context "with no token, from a chi web that answers only chi's probe" do
+      let(:reply) do
+        [200, JSON.generate(app: "chi-web", version: Samagotchi::VERSION, pid: 42, features: Samagotchi::Web::App::INFO_FEATURES,
+                            lan: "192.168.1.29", start_dir: "/srv")]
+      end
+
+      it "says it needs the token" do
+        expect(run("add", "studio", "http://127.0.0.1:4567")).to eq(1)
+        expect(err.string).to eq("chi remote add: remote studio (http://127.0.0.1:4567): its chi web needs its access token " \
+                                 "(its LAN link carries it, after ?token=; or its web-token file): " \
+                                 "chi remote add studio http://127.0.0.1:4567 --token-file FILE\n")
+        expect(saved).to be_empty
+      end
+    end
+
     context "with something else on the port" do
       let(:reply) { [200, "<html>"] }
 

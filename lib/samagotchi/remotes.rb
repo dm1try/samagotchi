@@ -25,8 +25,9 @@ module Samagotchi
     NAME = /\A[A-Za-z0-9][A-Za-z0-9_-]{0,39}\z/
 
     # One remote: its +name+, chi web's +url+ (scheme, host and port, no
-    # path) and its access +token+ (nil for a loopback chi web, which needs
-    # none). #inspect leaves the token out.
+    # path) and its access +token+ (nil for a chi web on loopback only, no
+    # LAN mode or proxy: it alone needs none, its loopback reached through
+    # an SSH tunnel). #inspect leaves the token out.
     Entry = Data.define(:name, :url, :token) do
       # The host as an address, an IPv6 one bare (::1, not [::1]).
       def host = URI(url).hostname

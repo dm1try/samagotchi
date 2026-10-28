@@ -122,8 +122,9 @@ module Samagotchi
       0
     end
 
-    # The token from its file or stdin; nil for none (a loopback chi web
-    # needs none), false after the error line.
+    # The token from its file or stdin; nil for none (a chi web on
+    # loopback only, no LAN mode or proxy, needs none), false after the
+    # error line.
     def read_token(options)
       text = if options[:token_file]
                begin
@@ -145,15 +146,24 @@ module Samagotchi
     end
 
     # GET /api/info with the token: the answer, or nil after the line that
-    # says why it can't be used.
+    # says why it can't be used. With no token, a chi web on the LAN or
+    # behind a proxy reached on its loopback (an SSH tunnel) answers chi's
+    # probe (its checked fields, no cwd) and every other route 401: it
+    # needs the token.
     def check(entry)
       reply = @transport.call(entry).call(:get, "/api/info")
       problem = SessionAccess::Remote.info_problem(entry, reply)
       return fail_line(problem.message) if problem
+      return fail_line(token_needed(entry)) unless reply.json.key?("cwd")
 
       reply.json
     rescue SessionAccess::RemoteFailed => e
       fail_line("#{e.message}: start chi web on #{entry.host} with web.host: lan")
+    end
+
+    def token_needed(entry)
+      "#{entry.label}: its chi web needs its access token (its LAN link carries it, after ?token=; or its " \
+        "web-token file): chi remote add #{entry.name} #{entry.url} --token-file FILE"
     end
 
     def lan_words(found, entry)
