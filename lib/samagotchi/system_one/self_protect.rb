@@ -17,10 +17,12 @@ module Samagotchi
     # "System 1"). The memories dir is deliberately not one of them:
     # reading and appending a memory file stays eligible.
     #
-    # A shell command's words are resolved as Guardrails::ShellPaths
-    # resolves them (cd chains, ~, $HOME and the XDG dirs, symlinks, `..`
-    # both ways), under chi's env and the call's env: when the caller hands
-    # its Targets; one landing in chi's dirs outside the memories refuses.
+    # A file tool's paths and a shell command's words are judged against
+    # the same dirs (.chi_dirs: chi's whole state dir among them). The
+    # words are resolved as Guardrails::ShellPaths resolves them (cd
+    # chains, ~, $HOME and the XDG dirs, symlinks, `..` both ways), under
+    # chi's env and the call's env: when the caller hands its Targets; one
+    # landing in chi's dirs outside the memories refuses.
     # The memories text is taken out of the command (the exemption) only
     # when its text shows no climb (CLIMB: a `..`, a `$`, backticks, a `~`
     # other than the home one, `cd -`) and every word either resolved or is
@@ -77,11 +79,26 @@ module Samagotchi
         command = fetch(approval, :command).to_s
         words = command.empty? ? nil : words(command, cwd: fetch(approval, :cwd), targets: targets)
         return true if words&.chi
+        return true if chi_paths?(approval)
         # The test that makes an ask user_only (ParentApprovals#chi_files?:
         # chi's dirs as the command spells them), minus the memories.
         return true if Guardrails::ParentApprovals.chi_files?(beyond_memories(approval, exempt: exempt?(command, words)))
 
         command.match?(DEFAULT_STATE_TEXT)
+      end
+
+      # Whether a path of the approval lands in chi's dirs (#chi_dirs: its
+      # whole state dir too, as a command's words are judged) outside the
+      # memories dir, or in its installed bundles.
+      def chi_paths?(approval)
+        memories = Guardrails::ProtectedPaths.real(MemoryPaths.system_dir)
+        bundles = Guardrails::ProtectedPaths.real(MemoryPaths.bundles_dir)
+        dirs = chi_dirs
+        Array(fetch(approval, :paths)).map(&:to_s).reject(&:empty?).any? do |path|
+          Guardrails::ProtectedPaths.reals(path).any? do |real|
+            dirs.any? { |dir| Guardrails::ProtectedPaths.within?(real, dir) } && !memory?(real, memories, bundles)
+          end
+        end
       end
 
       # The approval's facts without what is in the memories dir (not its

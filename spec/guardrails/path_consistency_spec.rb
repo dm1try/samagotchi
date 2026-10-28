@@ -106,8 +106,8 @@ module GuardrailsPathConsistency
       case-hooks-dir      @config/HOOKS/h.rb                           y   -  -   outside deny  deny  ask   ask   allow y  deny  y     y  y     @config/hooks/h.rb
       store               @state/guardrails/approvals.json             y   -  -   outside deny  deny  ask   deny  allow y  deny  y     y  y     @state/guardrails/approvals.json
       context             @state/context/src.yml                       y   -  -   outside deny  deny  ask   deny  allow y  deny  y     y  y     @state/context/src.yml
-      case-context-dir    @state/CONTEXT/src.yml                       y   -  -   outside deny  deny  ask   allow allow -  deny  -     y  y     @state/CONTEXT/src.yml
-      state-session       @state/sessions/x.json                       y   -  -   outside deny  deny  ask   allow allow -  deny  -     y  y     @state/sessions/x.json
+      case-context-dir    @state/CONTEXT/src.yml                       y   -  -   outside deny  deny  ask   allow allow y  deny  -     y  y     @state/CONTEXT/src.yml
+      state-session       @state/sessions/x.json                       y   -  -   outside deny  deny  ask   allow allow y  deny  -     y  y     @state/sessions/x.json
       ssh-key             ~/.ssh/id_rsa                                y   -  -   outside deny  deny  ask   allow allow -  deny  -     y  -     @home/.ssh/id_rsa
       gh-token            @home/.config/gh/hosts.yml                   y   -  -   outside deny  deny  ask   allow allow -  deny  -     y  -     @home/.config/gh/hosts.yml
     ROWS
@@ -124,7 +124,7 @@ module GuardrailsPathConsistency
       case-config-dir     @home/.config/SAMAGOTCHI/config.yml          y   -  -   outside allow ask   ask   allow allow -  allow -     y  -     @home/.config/SAMAGOTCHI/config.yml
       case-config-file    @config/CONFIG.YML                           y   -  -   outside deny  deny  ask   allow allow y  deny  y     y  y     @config/CONFIG.YML
       case-hooks-dir      @config/HOOKS/h.rb                           y   -  -   outside deny  deny  ask   allow allow y  deny  y     y  y     @config/HOOKS/h.rb
-      case-context-dir    @state/CONTEXT/src.yml                       y   -  -   outside deny  deny  ask   allow allow -  deny  -     y  y     @state/CONTEXT/src.yml
+      case-context-dir    @state/CONTEXT/src.yml                       y   -  -   outside deny  deny  ask   allow allow y  deny  -     y  y     @state/CONTEXT/src.yml
     ROWS
 
     # Shell commands (run from @proj): touch, rm, git (Targets#git_dirs, "?"
@@ -217,8 +217,7 @@ module GuardrailsPathConsistency
       ],
       "System 1 answers a path's write and its cat alike" => [
         ->(a, id) { literal?(id) || a["s1"] == a["s1cat"] },
-        { "state-session" => "BUG: SelfProtect's paths go through ParentApprovals.chi_dirs (state/guardrails and state/context only), its command words through the whole state dir (SelfProtect.chi_dirs)",
-          "case-context-dir" => "BUG: the same as state-session (CONTEXT is in the state dir, not in state/context as typed)" }
+        {}
       ],
       "a cat of chi's files touches chi, and System 1 refuses it but for the memories" => [
         ->(a, id) { literal?(id) || a["touch"] == "-" || a["s1cat"] == "y" || a["scr"] == "deny" },

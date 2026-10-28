@@ -34,6 +34,15 @@ RSpec.describe Samagotchi::SystemOne::SelfProtect do
     expect(S.refuse?({ "tool" => "write", "paths" => [File.join(store_dir, "judgments.jsonl")] })).to be true
   end
 
+  # As a command's words are judged (.chi_dirs): a write's paths and a cat
+  # of them answer alike.
+  it "refuses a path anywhere in chi's state dir (the sessions too), but the memories" do
+    session = File.join(Samagotchi::Paths.state_dir, "sessions", "x.json")
+    expect(S.refuse?({ "tool" => "write", "paths" => [session] })).to be true
+    expect(S.refuse?({ "tool" => "execute", "command" => "cat #{session}" })).to be true
+    expect(S.refuse?({ "tool" => "write", "paths" => [File.join(memories_dir, "notes.md")] })).to be false
+  end
+
   it "refuses a command that names one of those paths" do
     expect(S.refuse?({ "tool" => "execute", "command" => "cat #{store_dir}/judgments.jsonl" })).to be true
     expect(S.refuse?({ "tool" => "task_create", "command" => "sed -i 's/x/y/' #{hooks_dir}/hook.rb" })).to be true
