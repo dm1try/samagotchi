@@ -24,8 +24,11 @@ module Samagotchi
     #     credential files; project secret files) on every file tool's path,
     #     read or written (read, write, edit, a plugin's targets: paths), and
     #     on what a command does (execute, and any call whose targets carry
-    #     a command: PairCommand, which also refuses chi, background jobs,
-    #     the environment, git settings that run commands and home sweeps);
+    #     a command: PairCommand, which also refuses chi and chi web on a
+    #     loopback name, background and scheduled jobs, the environment and
+    #     credential printers, git settings that run commands, home sweeps
+    #     and links to them, and a program named by a $var or a glob); a
+    #     write or edit of git's hooks (GIT_HOOKS);
     #   - owner-voiced tools (OWNER_VOICED, and any delegate_* tool): what
     #     speaks or acts in the owner's name beyond this turn (a delegate, a
     #     reminder, a note to another session, a background task, a
