@@ -1,11 +1,22 @@
 /* The composer (composer_mount.js): the message box, its image chips, grip and fold, its key hint and its toolbar row
    (the image button, Send). Shared by the owner's page (index.html) and the participant page (participant.html);
    linked after tokens.css and before a page's own <style>, so a page's rules of the same weight win. The owner's
-   own parts stay in index.html: the card (#dock), the delivery line, Stop turn, the start page's picker and chips,
+   own parts stay in index.html: the card's placing (#dock), the delivery line's links, Stop turn, the start page's picker and chips,
    the / list, and the 16px text fields for iOS. */
 /* The image button's icon mask (the stroke only shapes the mask; the icon takes currentColor); index.html's phone info
    bar and all view's cards use it too. */
 :root{--icon-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='2' y='2.75' width='12' height='10.5' rx='1.5'/%3E%3Ccircle cx='5.75' cy='6.25' r='1.1'/%3E%3Cpath d='m2.5 12.5 3.75-3.75 2.5 2.5 1.75-1.75 3 3'/%3E%3C/svg%3E")}
+/* The composer card: the glass card both pages' composers sit in (the owner's #dock, the stage view's .dock-card, the
+   participant page's .p-card), with its focus ring; its footer (the owner's info bar, the participant's usage) under
+   a hairline; and the composer's line, the quiet row above the text field (the owner's delivery line, the
+   participant's key hint). A page's own rules only place the card. */
+.composer-card{display:flex;flex-direction:column;border-radius:16px;position:relative;background:var(--glass-bg);-webkit-backdrop-filter:blur(18px) saturate(1.35);backdrop-filter:blur(18px) saturate(1.35);border:1px solid var(--glass-border);box-shadow:inset 0 1px 0 var(--glass-highlight),var(--glass-shadow);transition:border-color .12s ease,box-shadow .12s ease}
+.composer-card:focus-within{border-color:color-mix(in srgb,var(--accent) 70%,transparent);box-shadow:0 0 0 3px var(--accent-ring),var(--glass-shadow)}
+@supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){.composer-card{background:var(--bg-panel)}}
+@media (prefers-reduced-transparency:reduce){.composer-card{background:var(--bg-panel);-webkit-backdrop-filter:none;backdrop-filter:none}}
+body.no-glass .composer-card{background:var(--bg-panel);-webkit-backdrop-filter:none;backdrop-filter:none}
+.composer-card-foot{padding:8px 14px 10px;border-top:1px solid var(--glass-border)}
+.composer-line{flex:1 0 100%;min-width:0;height:20px;padding:0 2px;overflow:hidden;font-size:12px;line-height:18px;color:var(--text-muted);user-select:none}
 #composer{display:flex;flex-direction:column;gap:8px;padding:14px 14px 10px}
 #composer .compose-col{flex:1;display:flex;flex-direction:column;gap:6px;min-width:0}
 #composer.dropping{outline:2px dashed var(--accent);outline-offset:-4px}

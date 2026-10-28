@@ -22,7 +22,7 @@
 html{-webkit-text-size-adjust:100%;text-size-adjust:100%}
 body{font-family: ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;background:radial-gradient(1100px 700px at 8% 0%,color-mix(in srgb,var(--accent) 13%,transparent),transparent 70%),var(--bg);background-attachment:fixed;color:var(--text);height:100vh;display:flex;flex-direction:column}
 /* Glass: the composer card, the strip cards, the all-sessions cards and the question cards (by selector, so app.js is untouched). */
-#dock,.turn-stage,.dock-card,#topStrip .card,#allList .card,.bubble.question,.bubble.plugin-card{background:var(--glass-bg);-webkit-backdrop-filter:blur(18px) saturate(1.35);backdrop-filter:blur(18px) saturate(1.35);border:1px solid var(--glass-border);box-shadow:inset 0 1px 0 var(--glass-highlight),var(--glass-shadow)}
+.turn-stage,#topStrip .card,#allList .card,.bubble.question,.bubble.plugin-card{background:var(--glass-bg);-webkit-backdrop-filter:blur(18px) saturate(1.35);backdrop-filter:blur(18px) saturate(1.35);border:1px solid var(--glass-border);box-shadow:inset 0 1px 0 var(--glass-highlight),var(--glass-shadow)}
 #topStrip .card:hover,#allList .card:hover{background:color-mix(in srgb,var(--bg-hover) 75%,transparent);border-color:var(--card-hover-border)}
 #topStrip .card.active,#allList .card.active{background:color-mix(in srgb,var(--accent-bg) 75%,transparent);border-color:color-mix(in srgb,var(--accent) 35%,transparent)}
 /* A parent whose folded family holds the open session: a quieter mark than .active. */
@@ -30,9 +30,9 @@ body{font-family: ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetic
 /* A session that waits on the user (a question, an approval, a card with actions): the warning colour of its question card, also when active or hovered. */
 #topStrip .card.waiting,#allList .card.waiting{border-color:color-mix(in srgb,var(--warn) 75%,transparent)}
 #topStrip .card.waiting:hover,#allList .card.waiting:hover{border-color:var(--warn)}
-@supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){#dock,.turn-stage,.dock-card,#topStrip .card,#allList .card,#allHead input{background:var(--bg-panel)}.bubble.question{background:color-mix(in srgb,var(--warn) 7%,var(--bg-panel))}.bubble.plugin-card{background:color-mix(in srgb,var(--accent) 6%,var(--bg-panel))}}
-@media (prefers-reduced-transparency:reduce){#dock,.turn-stage,.dock-card,#topStrip .card,#allList .card,#allHead input{background:var(--bg-panel);-webkit-backdrop-filter:none;backdrop-filter:none}.bubble.question{background:color-mix(in srgb,var(--warn) 7%,var(--bg-panel));-webkit-backdrop-filter:none;backdrop-filter:none}.bubble.plugin-card{background:color-mix(in srgb,var(--accent) 6%,var(--bg-panel));-webkit-backdrop-filter:none;backdrop-filter:none}}
-body.no-glass #dock,body.no-glass .turn-stage,body.no-glass .dock-card,body.no-glass #topStrip .card,body.no-glass #allList .card,body.no-glass #allHead input{background:var(--bg-panel);-webkit-backdrop-filter:none;backdrop-filter:none}
+@supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){.turn-stage,#topStrip .card,#allList .card,#allHead input{background:var(--bg-panel)}.bubble.question{background:color-mix(in srgb,var(--warn) 7%,var(--bg-panel))}.bubble.plugin-card{background:color-mix(in srgb,var(--accent) 6%,var(--bg-panel))}}
+@media (prefers-reduced-transparency:reduce){.turn-stage,#topStrip .card,#allList .card,#allHead input{background:var(--bg-panel);-webkit-backdrop-filter:none;backdrop-filter:none}.bubble.question{background:color-mix(in srgb,var(--warn) 7%,var(--bg-panel));-webkit-backdrop-filter:none;backdrop-filter:none}.bubble.plugin-card{background:color-mix(in srgb,var(--accent) 6%,var(--bg-panel));-webkit-backdrop-filter:none;backdrop-filter:none}}
+body.no-glass .turn-stage,body.no-glass #topStrip .card,body.no-glass #allList .card,body.no-glass #allHead input{background:var(--bg-panel);-webkit-backdrop-filter:none;backdrop-filter:none}
 body.no-glass .bubble.question{background:color-mix(in srgb,var(--warn) 7%,var(--bg-panel));-webkit-backdrop-filter:none;backdrop-filter:none}
 body.no-glass .bubble.plugin-card{background:color-mix(in srgb,var(--accent) 6%,var(--bg-panel));-webkit-backdrop-filter:none;backdrop-filter:none}
 button,input,textarea,select{font:inherit}
@@ -566,8 +566,8 @@ button.system-one-wrong:hover:not(:disabled){background:var(--bg-hover);color:va
 .bubble.output.markdown .code-wrap>pre{margin:0}
 .code-wrap>.copy-btn{top:5px;right:5px}
 @media (hover:none){.copy-btn{opacity:.55}}
-/* The dock is the composer card: the text field, a toolbar row, the info bar as its footer. */
-#dock{display:flex;flex-direction:column;flex-shrink:0;margin:0 12px 12px;border-radius:16px;position:relative;transition:border-color .12s ease,box-shadow .12s ease}
+/* The dock is the composer card (composer.css .composer-card): the text field, a toolbar row, the info bar as its footer. */
+#dock{flex-shrink:0;margin:0 12px 12px}
 /* In a session the card floats over the history, so the glass blurs it; the history's bottom padding follows the card (--dock-h, set from dock_reserve.js). */
 /* The session panel lets the page's glow through (the history's own layers go clear), so the card and its footer read as glass over it, not as a flat box on black. */
 body.has-session #center{background:color-mix(in srgb,var(--bg) 35%,transparent);border-color:var(--glass-border);position:relative}
@@ -576,9 +576,8 @@ body.has-session #stage,body.has-session #history{background:transparent}
 body.no-glass.has-session #center{background:var(--bg);border-color:var(--border)}
 body.has-session #dock{position:absolute;left:16px;right:16px;bottom:16px;margin:0;z-index:3}
 body.has-session #history{padding-bottom:calc(var(--dock-h,160px) + 32px)}
-#dock:focus-within{border-color:color-mix(in srgb,var(--accent) 70%,transparent);box-shadow:0 0 0 3px var(--accent-ring),var(--glass-shadow)}
 /* The delivery line (delivery_line.js): a session's row above the text field, always there so the composer never changes height: the key hint while idle; while a turn runs, where a message typed now goes in, then the cut and queue links. One quiet row, ellipsised; a phone gets the short text and chips. */
-#deliveryLine{display:flex;align-items:center;gap:10px;min-width:0;flex:1 0 100%;height:20px;padding:0 2px;overflow:hidden;font-size:12px;line-height:18px;color:var(--text-muted);user-select:none}
+#deliveryLine{display:flex;align-items:center;gap:10px}
 #deliveryLine[hidden]{display:none}
 #deliveryLine .delivery-where{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #deliveryLine .delivery-where.idle{color:var(--text-faint)}
@@ -672,8 +671,6 @@ body.has-session.fresh-link #composer .actions-col .model-pick:not([hidden]){dis
 /* D2: its own glass card above the composer card (as a section of one card the composer's focus ring wrapped the turn too):
    in the stage view #dock is a clear column holding the stage and .dock-card (the composer and its footer, stage_view.js). */
 body.stage-view #dock,body.stage-view #dock:focus-within{background:transparent;border:0;box-shadow:none;-webkit-backdrop-filter:none;backdrop-filter:none;gap:10px}
-.dock-card{display:flex;flex-direction:column;border-radius:16px;position:relative;transition:border-color .12s ease,box-shadow .12s ease}
-.dock-card:focus-within{border-color:color-mix(in srgb,var(--accent) 70%,transparent);box-shadow:0 0 0 3px var(--accent-ring),var(--glass-shadow)}
 /* The live slots' heights (headline, tool row, trail); --ts-live-h is their running height with the two 8 px gaps. */
 .turn-stage{--ts-head-h:42px;--ts-now-h:32px;--ts-trail-h:18px;--ts-live-h:calc(var(--ts-head-h) + var(--ts-now-h) + var(--ts-trail-h) + 16px)}
 .turn-stage{display:flex;flex-direction:column;min-height:0;max-height:var(--stage-max,60vh);border-left:3px solid var(--accent);border-radius:14px;overflow:hidden}
@@ -995,7 +992,7 @@ button.ws-row:hover:not(:disabled){filter:none;background:var(--bg-hover)}
   .ts-trail-item{max-width:24ch}
 }
 @media (prefers-reduced-motion:reduce){.turn-stage.enter,.ts-arrive,.ts-headline.fresh,.ts-tick.running,.ts-mark,.turn-work:not(.done) .activity-status.running::before{animation:none}.turn-stage.leaving,#center.reserve-easing #history{transition:none}}
-#infoBar{display:flex;padding:8px 14px 10px;border-top:1px solid var(--glass-border);background:transparent;border-radius:0 0 16px 16px;color:var(--text-2);gap:10px;align-items:flex-start;flex-wrap:wrap;flex-shrink:0;transition:opacity 280ms ease}
+#infoBar{display:flex;background:transparent;border-radius:0 0 16px 16px;color:var(--text-2);gap:10px;align-items:flex-start;flex-wrap:wrap;flex-shrink:0;transition:opacity 280ms ease}
 #infoBar.visible{display:flex}
 /* The meta row keeps its room: with a plain flex:1 the bar's own buttons (continue, archive, stop session, delete)
    shrink it to a narrow column in a small window and its items wrap into five lines. With a 640px basis they share
@@ -1591,7 +1588,7 @@ a{color:var(--accent)}
       <div id="notice" role="status" hidden></div>
     </div>
     <div id="lightbox" hidden><img alt=""></div>
-    <div id="dock">
+    <div id="dock" class="composer-card">
       <div id="initRow" role="status" aria-live="polite" hidden></div>
       <div id="composeGrip" class="edge-grip" tabindex="0" aria-label="Message box" title="Drag to make the message box taller (double-click resets)"></div>
       <div id="composer" style="position:relative">
@@ -1600,7 +1597,7 @@ a{color:var(--accent)}
           <label class="model-search"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5 14 14" stroke-linecap="round"/></svg><input id="modelSearch" type="text" placeholder="Search models" autocomplete="off" spellcheck="false" role="combobox" aria-label="Search models" aria-autocomplete="list" aria-controls="modelList" aria-expanded="false"></label>
           <div id="modelList" role="listbox" aria-label="Models"></div>
         </div>
-        <div id="deliveryLine" aria-live="off" hidden></div>
+        <div id="deliveryLine" class="composer-line" aria-live="off" hidden></div>
         <div class="compose-col">
           <div id="chips" hidden></div>
           <textarea id="prompt" placeholder="Ask chi anything…" aria-controls="commandList" aria-autocomplete="list" aria-expanded="false"></textarea>
@@ -1619,7 +1616,7 @@ a{color:var(--accent)}
           </div>
         </div>
       </div>
-      <div id="infoBar">
+      <div id="infoBar" class="composer-card-foot">
         <div class="info" id="infoText"></div>
         <div id="contextChips" aria-label="Attached context" hidden></div>
         <button class="ghost" id="infoCancelBtn" title="Cancel the running turn, whoever sent it" style="display:none">Stop turn</button>
