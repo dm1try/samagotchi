@@ -362,7 +362,7 @@ fields: a field added to an event later reaches nobody until it is named there.
   owner's participant view has none. The page draws it as one line in the comment box card's footer
   (`.composer-card-foot`, `usageItems`): "$0.42 of
   $2.00 cap · 1/3 queued · link: 6 d left · model", each with a title in words; warn colours from 80% of the cap, a
-  full queue and a link's last day, "over" at the cap. The key hint is the line above the text field (hidden on a
+  full queue and a link's last day, "over" at the cap. The key hint is the line above the text field, wrapping to at most two (hidden on a
   phone). The usage is cut at the end (the model first); folded, it stays as the card's footer under the grip. It is redrawn at each re-read (a
   turn's end, a queued or taken-back comment), not while a turn streams.
 - **A fork's note.** A review fork (`chi review --from`, `/coordinate review`) starts with a note holding the source's

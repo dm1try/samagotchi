@@ -7,6 +7,10 @@ and commands may change between minor versions. How releases are made:
 [docs/releasing.md](docs/releasing.md).
 ## [Unreleased]
 
+### Fixed
+
+- A participant's key hint wraps to a second line in a narrow comment box instead of being cut after one.
+
 ## [0.127.0] - 2026-10-28
 
 ### Added
