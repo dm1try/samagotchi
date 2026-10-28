@@ -43,8 +43,8 @@ module Samagotchi
       INTERPRETERS = %w[python python3 python2 ruby irb node deno bun perl php lua osascript jshell].freeze
       # Options whose next word is code or a command, for any program.
       CODE_OPTIONS = %w[-c -e -exec --exec -execdir --command --eval -x].freeze
-      # Programs that detach what they start.
-      DETACHERS = %w[nohup setsid disown daemonize].freeze
+      # Programs that detach what they start, or run it later (cron, at).
+      DETACHERS = %w[nohup setsid disown daemonize crontab at batch].freeze
       # Programs that print the environment or a keychain's secrets, whatever
       # their arguments.
       ENV_READERS = %w[printenv security].freeze
@@ -92,6 +92,13 @@ module Samagotchi
         return Outside.tmp_write?(path, root: cwd || Dir.pwd) if root.empty?
 
         Outside.inside?(path, root: root) || Outside.tmp_write?(path, root: root)
+      end
+
+      # Whether +path+ is in a .git/hooks folder, as given or as it resolves
+      # (ShellPaths::HOOKS_PART): git runs what is there.
+      def self.git_hook?(path)
+        path.to_s.match?(ShellPaths::HOOKS_PART) ||
+          (path.to_s.start_with?("/") && ProtectedPaths.reals(path).any? { |real| real.match?(ShellPaths::HOOKS_PART) })
       end
 
       # @param paths [ReviewPaths] the denylist
@@ -152,6 +159,7 @@ module Samagotchi
         return PairBoundary::ENVIRONMENT if code.match?(ENV_TEXT)
         return PairBoundary::SECRET if subst && code.match?(PairBoundary::SECRET_TEXT)
 
+        @read_only = ReadOnlyShell.read_only?(@text)
         walk = ShellPaths::Walk.new(@cwd, @home, ENV)
         ShellLex.simple_commands(tokens).each do |words|
           next walk.step(words) if words.is_a?(Symbol)
@@ -316,6 +324,8 @@ module Samagotchi
       def paths_refusal(words, resolved)
         program_word = (at = program_at(words)) && File.basename(words[at])
         resolved.each do |word, path|
+          return PairBoundary::GIT_HOOKS if !@read_only && PairCommand.git_hook?(path || word)
+
           if path
             return PairBoundary::SECRET if @paths.secret_refusal([path])
             return PairBoundary::HOME_SWEEP if SWEEPERS.include?(program_word) && above_denied?(path)

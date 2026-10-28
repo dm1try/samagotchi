@@ -68,6 +68,7 @@ module Samagotchi
              "approves it"
       GIT_CONFIG = "a participant's turn can't change git's global config or set what makes git run a command " \
                    "(core.hooksPath, core.fsmonitor, core.sshCommand, core.pager, core.editor, ! aliases)"
+      GIT_HOOKS = "a participant's turn can't write git's hooks (.git/hooks): git runs them in the owner's name"
       UNREADABLE = "a participant's turn runs only commands chi can read: split this command, or write the file " \
                    "with the write tool"
       # A pair turn's execute runs without the environment variables whose
@@ -135,6 +136,7 @@ module Samagotchi
 
         paths = denylist
         return SECRET if paths.secret_refusal(targets.paths.compact)
+        return GIT_HOOKS if WRITE_TOOLS.include?(tool) && targets.paths.compact.any? { |path| PairCommand.git_hook?(path) }
         return command(targets, paths).refusal if targets.command
 
         nil

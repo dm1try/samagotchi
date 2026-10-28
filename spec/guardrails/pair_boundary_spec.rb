@@ -346,6 +346,28 @@ RSpec.describe Samagotchi::Guardrails::PairBoundary do
     expect(execute("cp -R docs docs2")).to be_allow
   end
 
+  it "denies writing git's hooks, by a file tool or a command, and leaves reading them" do
+    FileUtils.mkdir_p(File.join(project, ".git", "hooks"))
+    File.symlink(File.join(project, ".git", "hooks"), File.join(project, "h"))
+    [{ name: "write", path: ".git/hooks/pre-commit", content: "#!/bin/sh\nid\n" },
+     { name: "edit", path: File.join(project, ".git", "hooks", "pre-push"), old_str: "a", new_str: "b" },
+     { name: "write", path: "h/post-checkout", content: "x" }].each do |call|
+      expect(verdict_for(call).reason).to eq(described_class::GIT_HOOKS), call[:path]
+    end
+    ["printf '#!/bin/sh\\nid\\n' > .git/hooks/pre-commit && chmod +x .git/hooks/pre-commit",
+     "cp evil .git/hooks/pre-commit", "echo id >> h/pre-commit", "sed -i '' s/a/b/ .git/hooks/pre-push",
+     "mv x ../proj/.git/hooks/"].each do |command|
+      expect(refused(command)).to eq(described_class::GIT_HOOKS), command
+    end
+    ["ls .git/hooks", "cat .git/hooks/pre-commit.sample"].each { |command| expect(execute(command)).to be_allow, command }
+  end
+
+  it "denies scheduling a command for later (crontab, at, batch)" do
+    ["crontab x.cron", "crontab -l", "echo id | at now + 1 minute", "echo id | batch"].each do |command|
+      expect(refused(command)).to eq(described_class::BACKGROUND), command
+    end
+  end
+
   it "denies the owner-voiced tools, any delegate_* tool and every memory_write" do
     (described_class::OWNER_VOICED + %w[cancel_reminder task_stop find_tools delegate_result]).each do |tool|
       verdict = verdict_for({ name: tool, content: "x" })

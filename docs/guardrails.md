@@ -421,13 +421,17 @@ message:
 - git settings that make git run a command (`core.hooksPath`,
   `core.fsmonitor`, `core.sshCommand`, `core.pager`, `core.editor`, a `!`
   alias) by `git config` or `git -c`, and `git config --global`/`--system`;
+  and writing git's hooks: a `write` or `edit` of a path in a `.git/hooks`
+  folder (as given or as it resolves), or a command that isn't read-only and
+  names one (`printf … > .git/hooks/pre-commit`, `cp x .git/hooks/`);
 - running chi, by any wrapper (`bin/chi`, `bundle exec chi`, `ruby … bin/chi`,
   `env … chi`, `watch`, `npx`, `sh -c 'chi …'`, `$(chi …)`), in an assignment's
   value or an alias, a function, after `-exec`/`-c`/`-e`, but `chi --version` and
   `chi --help`: its commands act in the owner's name (shares, caps, sends,
   answers, sessions);
 - leaving something running: `&` at a command's end, `nohup`, `setsid`,
-  `disown`, `screen -d…`, `tmux new -d`;
+  `disown`, `screen -d…`, `tmux new -d`, and scheduling it: `crontab`, `at`,
+  `batch`;
 - owner-voiced tools, which act in the owner's name beyond the turn:
   `delegate` and any `delegate_*` tool, `register_reminder`,
   `cancel_reminder`, `send_note`, `forget_outputs`, `task_create`,
