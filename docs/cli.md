@@ -1249,6 +1249,7 @@ chi web --web-host lan
 
 ```
 Chi Web on http://127.0.0.1:4567/?dir=/Users/me/projects/app (public: …)
+Local: http://127.0.0.1:4567/?dir=/Users/me/projects/app#code=chc_…   ← opens chi web as you once, within 10 minutes (…)
 LAN: http://192.168.1.55:4567/?token=…   ← anyone with this link can run commands as you
 Plain http: the link and your traffic can be read by anyone on this Wi-Fi.
 <the link's QR code>
@@ -1264,13 +1265,20 @@ web app on iOS has cookies of its own: if it opens on "needs chi web's
 access token", paste the token there (the part of the link after
 `token=`), or open the link once in it.
 
-- Every request from another machine needs the token (the cookie, or
-  `Authorization: Bearer <token>` for curl); this Mac (127.0.0.1) needs none.
-  Without it the page says how to get in and the API answers 401.
+- Every request needs the token (the cookie, or `Authorization: Bearer
+  <token>` for curl), this Mac's on 127.0.0.1 too: a participant's pair turn
+  runs commands here. Without it the page says how to get in (with a box to
+  paste the token) and the API answers 401. On this Mac open the `Local:`
+  link (`chi web --open` opens it): its one-time code (10 minutes, once) sets
+  the cookie for 127.0.0.1 without the token in the address; the LAN link
+  works here too. chi's own probe (`GET /api/info` with no token or cookie)
+  gets a few fields (version, pid, features, the LAN address, the start
+  folder), nothing of the sessions.
 - The token lives in `$XDG_STATE_HOME/samagotchi/web-token` (0600).
   `chi web --new-token` replaces it: a running chi web takes the new one at
   once, and every phone has to scan the new QR code.
-- A second `chi web` prints the LAN link and QR code again. A plain
+- A second `chi web` prints the LAN link and QR code again, and a new
+  `Local:` link (`--open` opens it). A plain
   `chi web --web-host lan` while a chi web without LAN access runs asks you
   to stop that one first. `chi self` says whether chi web runs on the LAN.
 - `lan` picks the first private address (10.x, 172.16–31.x, 192.168.x) on an
@@ -1414,10 +1422,11 @@ chi --remote work sessions list
 - Forward only chi web's port, never a worker's: a session's Bridge answers
   only chi's own clients on its machine (they read its secret from the
   session's folder), so a forwarded worker port is of no use.
-- Without `web.public_url` there, a request that arrives through the tunnel
-  looks local and needs no token, so any process here reaching the forwarded
-  port acts as you there. With it set, every request needs the token, which
-  `chi --remote` sends as Bearer.
+- A chi web there with `web.host: lan` or `web.public_url` asks every
+  request for the token, one through the tunnel too (`chi remote add` without
+  `--token-file` says so), and `chi --remote` sends it as Bearer. One on
+  127.0.0.1 only takes a request through the tunnel as local, with no token,
+  so any process here reaching the forwarded port acts as you there.
 - `-L` binds 127.0.0.1 unless you write `-g` or `0.0.0.0:`: don't.
 - Attaching works through the tunnel too (`chi --remote work --attach ab12`),
   plain http, no proxy.

@@ -1662,7 +1662,8 @@ web:
 - It opens the file as it is now, not the agent's copy: after later edits a diff line's number can point elsewhere,
   and a file in a worktree that was removed won't open. The row's diff and output are what the agent saw.
 - Only a viewer on this machine opens the editor: a loopback request, or this machine on its own LAN address
-  (`web.host: lan`, the LAN URL or its QR code opened here). A phone gets the targets that need no editor (an
+  (`web.host: lan`, the LAN URL or its QR code opened here; with `web.host: lan` the loopback page needs the token
+  too: open the `Local:` link chi web prints). A phone gets the targets that need no editor (an
   answer's ref shows its row in the turn; see the refs in [sessions.md](sessions.md)); a row's title stays plain
   text there. An SSH tunnel or a local reverse proxy (`tailscale serve`) looks like loopback unless `web.public_url`
   is set (then a request through it is never this machine's viewer), so without it a remote viewer behind one gets an
@@ -2071,7 +2072,7 @@ column says so, a `--kebab-name` flag. The maps (`hosts:`, `models:`,
 | `execute.on_timeout` | `task` | yes | What happens to a command still running at that limit: `task` keeps it running as a background task (the result names its `task_id`; `task_wait` waits for it, `task_stop` stops it), `kill` stops it (`Error: command timed out after …s`). The `!cmd` bang always kills. See [Background tasks](internals/background-tasks.md). |
 | `execute.description` | `true` | | `execute` offers the model an optional `description` (a few words on what the command does), shown as the tool row's title in `chi web` and in place of the command in the TUI's tool line. `false`: the parameter isn't declared, and rows show the command's first step. |
 | `web.port` | `4567` | `--port` | `chi web`'s port. See [CLI](cli.md). |
-| `web.host` | `127.0.0.1` | yes | `127.0.0.1`, `::1` or `localhost`; `lan` (this machine's private IPv4 address) or one of its IPv4 addresses also opens `chi web` to the network, with an access token (`chi web --new-token` replaces it). Anything else binds `127.0.0.1` with a warning. See [CLI: chi web on your phone](cli.md#chi-web-on-your-phone). |
+| `web.host` | `127.0.0.1` | yes | `127.0.0.1`, `::1` or `localhost`; `lan` (this machine's private IPv4 address) or one of its IPv4 addresses also opens `chi web` to the network, with an access token, asked of this machine's 127.0.0.1 too (its `Local:` link carries a one-time code; `chi web --new-token` replaces the token). Anything else binds `127.0.0.1` with a warning. See [CLI: chi web on your phone](cli.md#chi-web-on-your-phone). |
 | `web.markdown` | `false` | yes | Render answers as Markdown in `chi web`. |
 | `web.view` | `stage` | yes | How `chi web` draws a turn: `stage` (the running turn pinned above the composer) or `turn` (one block per turn in the history). See [CLI](cli.md#web-views). |
 | `web.working_set` | `true` | yes | The stage view's working set: the files, memories and URLs a turn brought into the model's context, in a rail in the stage, a footprint line under each finished turn and a `set N` chip in place of the mem chip; `false` brings the mem chip back. `?working_set=1` or `?working_set=0` on the page URL overrides it for that page load; the turn view ignores it. See [CLI: the working set](cli.md#the-working-set). |

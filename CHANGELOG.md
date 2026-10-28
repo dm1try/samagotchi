@@ -7,6 +7,26 @@ and commands may change between minor versions. How releases are made:
 [docs/releasing.md](docs/releasing.md).
 ## [Unreleased]
 
+### Changed
+
+- `chi web --web-host lan` prints a `Local:` link for this machine with an owner's one-time code (10 minutes, once),
+  and `--open` opens it; a second `chi web` prints a new one. `chi remote add` without a token refuses a chi web that
+  asks for one (through an SSH tunnel to its loopback) instead of saving a remote that would 401.
+
+### Security
+
+- chi web on the LAN (`web.host: lan`) now asks this machine's 127.0.0.1 for its access token too: a token-less
+  loopback request was the owner, so a participant's pair turn could `curl` it (by a decimal IP or a DNS alias past
+  the pair boundary's text check) to mint grants, queue owner turns and read every session. Only chi's token-less
+  `GET /api/info` probe (its version, pid, features, LAN address and start folder) is answered without it. A chi web
+  on 127.0.0.1 only is unchanged. After the upgrade an open 127.0.0.1 tab (and a push link opened in one) lands on
+  the 401 page: open the `Local:` link chi web prints (its one-time code sets the cookie; `chi web --open` opens
+  it), the LAN link, or paste the token. A browser left with an ended participant cookie gets the ended page there
+  instead of becoming the owner again.
+- A participant's pair turn can no longer open a URL or a file in the owner's apps (`open`, `xdg-open`, a browser,
+  `osascript`'s `open location`) or listen on a port (`nc -l`, `socat …LISTEN`, `python -m http.server`, `php -S`, a
+  static server): a page opened at a port it listens on would catch the owner's chi web cookie.
+
 ## [0.129.0] - 2026-10-28
 
 ### Changed

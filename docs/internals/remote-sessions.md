@@ -195,10 +195,11 @@ with a "Machine-local" comment; the rest branch on `@access.remote?` (`SendComma
 
 ## Trust model
 
-- **The token is the owner.** In LAN mode (`web.host: lan`) every non-loopback request needs the `Web::Token` access
-  token, as the `chi_token` cookie or `Authorization: Bearer` (`App#token_gate`). This runs over plain http, which is
-  fine on a home LAN, the same as the phone page. A loopback chi web without LAN mode needs no token
-  (`Remotes::Entry#token` is nil, and no header is sent). Behind an auth proxy (`web.public_url`, experimental) every
+- **The token is the owner.** In LAN mode (`web.host: lan`) every request needs the `Web::Token` access token,
+  loopback too (but chi's token-less `/api/info` probe, `ProxyGate#probe_info?`), as the `chi_token` cookie or
+  `Authorization: Bearer` (`App#token_gate`). This runs over plain http, which is fine on a home LAN, the same as the
+  phone page. A loopback chi web without LAN mode needs no token (`Remotes::Entry#token` is nil, and no header is
+  sent); `chi remote add` with no token refuses one that answers only the probe (no `cwd`: `RemoteCommand#check`). Behind an auth proxy (`web.public_url`, experimental) every
   request needs it, loopback too, and a proxied owner also the configured identity header
   ([configuration.md: Behind an auth proxy](../configuration.md#behind-an-auth-proxy), `Web::ProxyGate`); `chi
   --remote` through such a proxy isn't supported yet (the CLI can't pass its sign-in, and streams need TLS).

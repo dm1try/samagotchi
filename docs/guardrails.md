@@ -441,10 +441,17 @@ message:
   (`localhost` and its subdomains, `127.x`, `0.0.0.0`, `[::1]`, `::ffff:127.x`,
   `0:PORT`) or this machine's host name together with chi web's port (the one
   the running chi web recorded in `web.json`, config's `web.port`, 4567), by
-  `curl`, `wget`, `nc`, `/dev/tcp`, a script's URL or anything else: a loopback
-  request without a token is the owner on a LAN chi web
-  (`PairBoundary::CHI_WEB`). A Bridge answers only with its secret, which sits
-  in chi's state dir;
+  `curl`, `wget`, `nc`, `/dev/tcp`, a script's URL or anything else
+  (`PairBoundary::CHI_WEB`): defense in depth, as a LAN chi web asks loopback
+  for the token too, and a loopback-only one still takes it as the owner. A
+  Bridge answers only with its secret, which sits in chi's state dir;
+- opening a URL or a file in the owner's apps (`open`, `xdg-open`, `gio open`,
+  a browser, `osascript`'s `open location`, a script's `webbrowser`) and
+  listening on a port (`nc -l`, `socat …LISTEN`, `python -m http.server`,
+  `ruby -run -e httpd`, `php -S`, a static server, a script's `listen(`/
+  `HTTPServer`/`createServer`): the owner's browser sends its cookies (chi
+  web's on 127.0.0.1 or the LAN address, kept for every port) to the page
+  it opens (`PairBoundary::OPENER`, `PairBoundary::LISTENER`);
 - a program whose name the shell expands: a `$var`, a `$(…)` or a glob in a
   command's name (`bin/ch? …`, `e=ch; ${e}i …`, `$CMD x`), whatever it would
   turn out to be (`PairBoundary::VERB`);

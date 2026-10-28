@@ -126,7 +126,15 @@ participant** and **one role**, until it expires or is revoked.
 2. A `chp_` token (`Grants.token?`) whose grant is active: a **participant** (`Principal.new(kind: :participant,
    grant:)`), from any peer: loopback and a chi web not on the LAN too. An ended or unknown one is refused
    (below), never the owner.
-3. No `chp_` token from a loopback peer, or on a chi web not on the LAN: the **owner** (unchanged).
+3. No `chp_` token on a chi web on loopback only (no `web.host: lan`, no `web.public_url`): the **owner**. On the LAN
+   this machine's loopback needs the owner's token too (`App#token_required?`; a pair participant's shell runs here,
+   and a token-less `curl 127.0.0.1` was the owner, finding A1); only `GATE_FREE_PATHS` and chi's token-less
+   `GET /api/info` probe (`ProxyGate#probe_info?`: no Authorization, no Cookie, its checked fields and `start_dir`)
+   are answered without it. `chi web` prints and opens a `Local:` link for 127.0.0.1 with an owner's one-time code
+   (`Server.local_owner_link`), the fragment trade sets the cookie there. `PairCommand` still denies a pair command
+   naming chi web on a loopback name (defense in depth), and URL openers and listeners: a page opened in the owner's
+   browser at a port the shell listens on would catch the owner's cookie (one on 127.0.0.1 or the LAN address goes
+   to every port).
 4. Anything else: nil. `#token_gate` answers a bound grant's token without its identity **401 `token_bound`**, an
    ended grant's token **401 `token_revoked`** or **401
    `token_expired`** (the page says the same words as a sentence: "This review link was revoked by the session's
@@ -138,8 +146,9 @@ The `?token=` trade (and `POST /api/token`, with a link's one-time `{code}` or t
 presented, the owner's or the participant's
 (one at a time per browser: a participant link opened in the owner's browser replaces the owner's cookie there, and
 makes that browser the participant, on loopback too). A grant's token is traded on any peer; the owner's only where
-the gate asks for it. On a peer the gate doesn't ask, the 401 for a grant's cookie that no longer works clears the
-cookie, so that browser is the owner's again at its next request.
+the gate asks for it (on the LAN, this machine's loopback too). On a chi web the gate doesn't ask (loopback only), the
+401 for a grant's cookie that no longer works clears the cookie, so that browser is the owner's again at its next
+request; on the LAN that browser gets the ended page and opens the owner's link again.
 
 Then `#route`, for each matching `ROUTES` row:
 
