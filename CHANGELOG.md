@@ -38,6 +38,28 @@ and commands may change between minor versions. How releases are made:
 
 ### Security
 
+- A participant's pair turn (`chi share`, a working session) can no longer call this machine's chi web on a loopback
+  name (`curl -X POST 127.0.0.1:4567/api/sessions/ID/participants`, `localhost`, `[::1]`, `0.0.0.0`, the host name,
+  with chi web's recorded or configured port, by any client or script): a LAN chi web takes a token-less loopback
+  request as the owner's, so the command could mint a grant or queue an owner turn. chi web's own auth is unchanged.
+- A pair turn's "a write outside the project always asks the owner" now fails closed. A command runs unasked only when
+  it only reads, only writes (`>`, `cp`, `tee`) into the project or a tmp dir, or stays inside the project (it runs
+  there and every path it names lands there or in a tmp dir). `rm -rf ~/x`, `sed -i … ~/x`, `curl -o ~/x`,
+  `dd of=~/x`, `touch`/`mkdir` outside, `perl -pi`, `python -c "open('/…', 'w')"`, `cd .. && make`, and a command with
+  a `$var`, a `$(…)` (but a commit message's heredoc), `xargs` or a `cd` it can't follow now ask. A tmp path is one by
+  the delegate child's rule (`/var/tmp` too, not the tmp dir the project is in, never through a dangling symlink or
+  onto a file with another hard link).
+- A pair turn in a session whose folder is the home folder or above it asks before every write (the review boundary
+  already read nothing there).
+- A pair command that makes a link (`ln`, `cp -s`/`-l`, a script's `symlink`) asks the owner, and one linking to home
+  or a folder above a secret is denied: `ln -s ~/.config g && cat g/gh/hosts.yml` passed, as the link didn't exist yet
+  when the paths were judged.
+- A pair turn can no longer write git's hooks (`.git/hooks/*`, by `write`/`edit` or a command), schedule a command
+  (`crontab`, `at`, `batch`), run a credential printer (`gh auth token`, `git credential fill`, `gcloud … print-access-token`,
+  `op`, `aws configure get`, …) or `ps -E`, read the owner's background tasks (`task_wait`, `task_get`, `task_list`), or
+  run a program whose name is a `$var`, a `$(…)` or a glob (`bin/ch? …`).
+- A pair turn's guardrail check no longer cuts a data heredoc's body out of the command it then runs
+  (`ShellLex.code_text` built its result on the caller's string): `cat > docs/x.md <<EOF … EOF` ran with an empty body.
 - Guardrails take a path's `..` the way the kernel does: after a symlinked folder it climbs out of the link's target.
   A participant's review turn could read `node_modules/foo/../../.config/gh/hosts.yml` (with `foo` an `npm link` to
   `~/src/foo`) as a project file while the read opened `~/.config/gh/hosts.yml`; a pair turn's secret check, the

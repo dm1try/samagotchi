@@ -176,8 +176,11 @@ Everything else is `:owner`: `/answer`, `/command`, `/images` (an image a prompt
   to act: the turn only reads (`Guardrails::ReviewBoundary`), and proposes what the owner applies ([Apply](#apply)).
 - **`:pair`**, a working session's participant invited to act: the turn acts with the session's tools under the
   owner's guardrails, its asks go to the owner and offer once only, and `Guardrails::PairBoundary` denies secrets,
-  chi itself, background jobs, the environment, owner-voiced tools and the model's own question, and asks before a
-  write outside the project ([guardrails](../guardrails.md#a-participants-pair-boundary)). No Apply: it acted itself.
+  chi itself and chi web on loopback, background and scheduled jobs, the environment and credential printers, git's
+  hooks, owner-voiced tools and the owner's task outputs, and the model's own question, and asks before a command
+  that makes a link and before a write that may land outside the project, failing closed (a session at or above
+  home has none: every write asks) ([guardrails](../guardrails.md#a-participants-pair-boundary)). No Apply: it
+  acted itself.
 
 `ParticipantMode.of(session, features:)` is the session's: what a participant invited now gets. No session is
 `:review`. A worker names `pair_turns` (`Delivery::PAIR_FEATURE`) when it runs pair turns; one without it runs
