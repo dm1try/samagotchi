@@ -1,5 +1,5 @@
 {
-  "description": "A running turn as the Bridge's snapshot carries it (TurnAccumulator#current_turn) and the live events a joining UI replays it as. One source of truth for the web (turn_events.js snapshotEvents, spec/web/public/turn_events.test.js) and the TUI (TurnAccumulator.replay_events, spec/bridge/turn_accumulator_spec.rb; the join's lines, spec/terminal_ui/attached_loop_spec.rb). The TUI replays only the turn: the queued prompts are its own lines.",
+  "description": "A running turn as the Bridge's snapshot carries it (TurnAccumulator#current_turn) and the live events a joining UI replays it as. One source of truth for the web (turn_events.js snapshotEvents, spec/web/public/turn_events.test.js) and the TUI (TurnAccumulator.replay_events, spec/bridge/turn_accumulator_spec.rb; the join's lines, spec/terminal_ui/attached_loop_join_spec.rb). The TUI replays only the turn: the queued prompts are its own lines.",
   "snapshot": {
     "started_at": "T0",
     "current_turn": {
