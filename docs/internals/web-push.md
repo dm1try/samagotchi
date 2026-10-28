@@ -202,7 +202,10 @@ yet). Results: `:ok` stamps the device's
 `last_ok_at`; `:gone` removes it; `:failed` keeps its code in `last_error` and logs `push_failed`; `:bad_jwt` logs
 one `push_bad_jwt` warning (on chi web's terminal too) and stops all pushes until chi web restarts. Log lines carry
 `device:` (the short id), `code:`, `ms:`, `kind:`: never the endpoint, keys or text. `#stop` drops pending holds and
-joins with a timeout; `Server.start`'s ensure calls it. Specs drive `#pump` with a moved clock
+joins with a timeout; `Server.start`'s ensure calls it. chi web's own restart (`restart_web`, `Server.reexec`) execs
+without either: the shows still in their hold and the retries waiting in `@pending` / `@retries` go with the process,
+unsent and not in `sent.json`. The exec'd chi web's seed brings back only what restart catch-up covers (a question
+still open); a closed-meanwhile or non-question show held then is not pushed. Specs drive `#pump` with a moved clock
 (`start(hub, sender: false)`), and one example runs the real thread with a client that blocks.
 
 ## The routes (`web/push_routes.rb`)
