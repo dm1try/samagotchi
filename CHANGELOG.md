@@ -7,18 +7,28 @@ and commands may change between minor versions. How releases are made:
 [docs/releasing.md](docs/releasing.md).
 ## [Unreleased]
 
+## [0.128.0] - 2026-10-28
+
 ### Changed
 
+- Verify needs a worker that knows Verify turns: on an older worker chi web disables Verify and Verify fresh with
+  "restart this session to use Verify", and refuses anchored turns and fresh checks sent to it.
+- `sqlite3 -readonly -safe …` (only with both flags and read/display options) and `gh`'s reading subcommands
+  (`run`/`pr`/`issue` list and view, `pr diff`/`checks`, `repo view`; never `--web`, `api` or `--watch`) count as
+  read-only shell commands, so they no longer ask.
 - The shared composer card footer has less vertical padding on phones.
 
 ### Fixed
 
+- A Verify turn records a verdict only when its quote is in the reply of the turn it points at; otherwise it runs
+  as a plain turn.
+- A verdict's View check opens the earlier session that holds the check (after a continue), or says the check is
+  no longer on the page, instead of doing nothing.
+- An attached piped prompt that this terminal removed before it ran says so on stderr (still exit 1) instead of
+  "the model gave an empty answer".
 - A participant's key hint wraps to a second line in a narrow comment box instead of being cut after one.
-- Read-only shell classification recognizes safe `sqlite3` reads and `gh`'s read-only subcommands.
-- An attached piped prompt removed before it ran says so on stderr and still exits 1.
-- A Verify turn records a verdict only when its quote is present in the referenced turn's reply.
-- chi web disables Verify on workers that predate Verify turns and refuses anchored turns and fresh checks sent to them.
-- chi web's Verify verdict links open a known earlier session at the check, or report when it isn't on this page.
+
+Update with `chi update`.
 
 ## [0.127.0] - 2026-10-28
 
@@ -4800,7 +4810,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.127.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.128.0...HEAD
+[0.128.0]: https://github.com/dm1try/samagotchi/compare/v0.127.0...v0.128.0
 [0.127.0]: https://github.com/dm1try/samagotchi/compare/v0.126.0...v0.127.0
 [0.126.0]: https://github.com/dm1try/samagotchi/compare/v0.125.0...v0.126.0
 [0.125.0]: https://github.com/dm1try/samagotchi/compare/v0.124.0...v0.125.0
