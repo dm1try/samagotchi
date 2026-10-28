@@ -166,6 +166,25 @@ RSpec.describe Samagotchi::Guardrails::ChildBoundary do
         expect(run("cd #{tmp} | cp #{db} y.db")).to be_ask
       end
 
+      # Each of these wrote main/a.txt with no ask in bash (audit r12 B1):
+      # the shell's dir is not the one ShellPaths::Walk followed.
+      it "asks when the shell's dir may not be the one a cd or pushd named" do
+        ["cd #{main} && cd #{tmp}/child-boundary-no-such-dir; echo x > a.txt",
+         "cd #{main} && pushd -n #{tmp} >/dev/null && echo x > a.txt",
+         "cd #{tmp} && pushd #{main} >/dev/null && popd -n >/dev/null && echo x > a.txt",
+         "pushd #{main} >/dev/null && pushd #{tmp} >/dev/null && pushd +1 >/dev/null && echo x > a.txt",
+         "cd #{main} && cd #{tmp} && cd - >/dev/null && echo x > a.txt",
+         "cd #{main} && true || cd #{tmp} && echo x > a.txt",
+         "cd #{main} && false && cd #{tmp} && true; echo x > a.txt"].each do |command|
+          expect(run(command)).to be_ask, command
+        end
+        # The tmp pass no longer reads $TMPDIR (the call's env: may set it);
+        # the other-checkout check still reads chi's own (found-not-fixed).
+        call = { name: "task_create", content: "echo x > $TMPDIR/a.txt", env: { "TMPDIR" => main } }
+        targets = Samagotchi::Guardrails::Targets.for(call, Samagotchi::Guardrails::Context.new(cwd: child, git: git))
+        expect(targets.read_only_but_tmp_writes?(root: child)).to be(false)
+      end
+
       it "asks for a write into another checkout, beside it or the other way round" do
         expect(run("cp #{out} ../main/x")).to be_ask
         expect(run("cat a.txt > ../main/out")).to be_ask

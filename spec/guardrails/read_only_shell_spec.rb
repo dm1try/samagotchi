@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require "fileutils"
+require "tmpdir"
 require "samagotchi/guardrails/read_only_shell"
 
 # Which shell commands only read (a rule's skip_read_only). Anything it
@@ -111,7 +113,7 @@ RSpec.describe Samagotchi::Guardrails::ReadOnlyShell do
     it "lets reads write a redirect, cp's destination and tee's files where the block says" do
       ["ls > /w/o", "ls >>/w/o", "ls 2>/w/e 1>/w/o", "cat x | tee /w/a -a /w/b", "cp x /w/y", "cp -rp x y /w/d",
        "cp -t /w/d x", "cp -rt/w/d x", "cp --target-directory=/w/d x", "cp --preserve=mode -- x /w/y",
-       "cd /w && cp /p/x y", "cat x > ../w/o", "(cd /x) ; ls > /w/o", "ls", "git log > /w/log"].each do |command|
+       "cat x > ../w/o", "(cd /) ; ls > /w/o", "ls", "git log > /w/log"].each do |command|
         expect(writes?(command)).to be(true), command
       end
     end
@@ -125,6 +127,50 @@ RSpec.describe Samagotchi::Guardrails::ReadOnlyShell do
         expect(writes?(command)).to be(false), command
       end
       expect(writes?("cp x y", cwd: nil)).to be(false)
+    end
+
+    describe "a cd or pushd before a write" do
+      # Writes go under +dir+ (a real dir: a cd's destination must exist).
+      let(:dir) { File.realpath(Dir.mktmpdir("read-only-shell")) }
+
+      after { FileUtils.rm_rf(dir) }
+
+      def into?(command, cwd: "/p", env: {})
+        described_class.read_only_but_writes?(command, cwd: cwd, home: "/h", env: env) do |path|
+          path.start_with?(File.join(dir, ""))
+        end
+      end
+
+      it "follows one that lands for sure: one existing dir, then && only" do
+        ["cd #{dir} && cp /p/x y", "pushd #{dir} && cp /p/x y", "cd / && cd .#{dir} && ls > o", "cd #{dir} && ls | tee o",
+         "(cd #{dir} && ls > o) ; ls > #{dir}/p", "ls; (cd #{dir} && ls > o)", "cd #{dir} >/dev/null && ls > o"].each do |command|
+          expect(into?(command)).to be(true), command
+        end
+        expect(into?("cd .. && ls > o", cwd: File.join(dir, "sub"))).to be(true)
+      end
+
+      it "refuses one the shell may not take as Walk does" do
+        main = "/p"
+        ["cd #{dir}/no-such-dir; cp a b", "cd #{dir} ; ls > o", "cd #{dir}\nls > o", "cd #{dir} || ls > o",
+         "true || cd #{dir} && ls > o", "false && cd #{dir} && ls; cp /p/x y", "(true || cd #{dir} && ls > o)",
+         "cd #{main}; pushd -n #{dir}; cp a b", "pushd -n #{dir} && cp a b", "pushd #{dir} && pushd +1 && cp a b",
+         "pushd #{dir} && popd && cp a b", "pushd #{dir} && popd -n && cp a b", "cd -P #{dir} && ls > o",
+         "cd -- #{dir} && ls > o", "cd - && ls > o", "cd && ls > o", "cd #{dir} #{dir} && ls > o",
+         "pushd && ls > o", "cd ~ && ls > o", "cd ${TMPDIR} && ls > o", "cd $TMPDIR && ls > o",
+         "cd #{File.basename(dir)} && ls > o", "cd #{dir}/../#{File.basename(dir)}x && ls > o",
+         "builtin cd #{dir} && ls > o", "command cd #{dir} && ls > o", "exec cd #{dir}"].each do |command|
+          expect(into?(command, cwd: File.dirname(dir), env: { "CDPATH" => "/p" })).to be(false), command
+        end
+      end
+
+      it "refuses a $ or ~ in a write's target: the call's env may set it" do
+        env = { "TMPDIR" => dir, "HOME" => dir }
+        ["ls > $TMPDIR/o", "ls > ${TMPDIR}/o", "ls >$TMPDIR/o", "ls > '$TMPDIR/o'", "cp x $TMPDIR/o", "cp -t $TMPDIR x",
+         "ls | tee $TMPDIR/o", "ls > ~/o", "cp x ~/o"].each do |command|
+          expect(into?(command, env: env)).to be(false), command
+        end
+        expect(into?("ls > #{dir}/o", env: env)).to be(true)
+      end
     end
 
     it "leaves read_only? as it was: no cp, tee or redirect into a file" do

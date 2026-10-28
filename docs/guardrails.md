@@ -308,11 +308,14 @@ Read-only commands (`git -C ../app log`, `cat ../app/x`) and paths elsewhere
 (`/usr/bin`, `~/.gem`) never ask, nor does a read-only command that writes only
 into a tmp dir (`/tmp`, `/var/tmp`, `$TMPDIR`): its `>` / `>>` targets, `cp`'s
 destination (the last argument, or `-t` / `--target-directory`) and `tee`'s
-files, resolved against its `cwd:` and any `cd` before them, as in
+files, resolved against its `cwd:` and any `cd` or `pushd` before them, as in
 `sqlite3 -readonly -safe ../app/x.db "select 1" > /tmp/rows` or
 `cp ../app/x.db /tmp/x.db`. A target that links back out of the tmp dir (a
 symlink, a dangling one, a file with another hard link), `cp -l`/`-s`, `mv`,
-`&>`, `>|` and `>&file` still ask, and so does every tmp write when the
+`&>`, `>|` and `>&file` still ask, as does a target with a `$` or `~` (the
+call's `env:` may set it), a `popd`, and a `cd`/`pushd` that isn't one existing
+dir spelt `/…`, `.` or `..` joined by `&&` only (it may fail or be skipped and
+leave the shell elsewhere); so does every tmp write when the
 child's folder is itself in that tmp dir. The answer is once or for the child's
 session only: a repo or rule answer would hold in every worktree, for every
 child, so a stored repo or rule approval doesn't let it through either. Its

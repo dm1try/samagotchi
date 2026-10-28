@@ -22,7 +22,13 @@ module Samagotchi
     # .read_only_but_writes? (the child boundary's) also lets through the
     # writes it can name: a > or >> target, cp's destination and tee's
     # files, each resolved against the dir the command is in by then
-    # (ShellPaths::Walk) and accepted by the caller's block.
+    # (ShellPaths::Walk) and accepted by the caller's block. It trusts
+    # Walk's dir only where the shell's can't differ: a cd or pushd takes
+    # one existing dir, spelt /…, . or .. (no option, +N, -, $, ~ or
+    # CDPATH name), and joins beside it are && only (a failed or skipped
+    # cd can't be followed by a command that still runs); popd is never
+    # accepted, nor is a $ or ~ in a write's target (the call's env may
+    # set it).
     module ReadOnlyShell
       # Operators that join read-only commands (no &, no ;;).
       JOINS = ["&&", "||", ";", "|", "|&", "\n", "(", ")"].freeze
@@ -42,12 +48,30 @@ module Samagotchi
       PIPES = ["|", "|&"].freeze
       # Verbs that change the dir ShellPaths::Walk follows.
       DIR_VERBS = %w[cd pushd popd].freeze
+      # The joins a group (or the whole command) holding a cd or pushd may
+      # use in write mode: after any other a command can run in a dir the
+      # cd didn't reach (cd failed, or was skipped by ||).
+      DIR_JOINS = ["&&", "|", "|&"].freeze
+      # A dir verb's operand the shell resolves as Walk does: absolute, or
+      # ./ ../ (CDPATH is not searched for these).
+      DIR_OPERAND = %r{\A(?:/|\.\.?(?:/|\z))}
 
       # The write side of .read_only_but_writes?: the Walk that follows the
       # command's dir and the caller's test for an absolute path it writes.
       Writes = Data.define(:walk, :writable) do
-        # +word+ as an absolute path against the current dir, or nil.
-        def path(word) = walk.path(word)
+        # +word+ as an absolute path against the current dir, or nil; nil
+        # for one with a $ or ~ (the shell may expand them from an env
+        # Walk doesn't see, as task_create's env: sets).
+        def path(word) = word.include?("$") || word.start_with?("~") ? nil : walk.path(word)
+
+        # Whether a cd or pushd with +args+ lands where Walk says: one
+        # operand (DIR_OPERAND) naming an existing dir. popd never does.
+        def dir_step?(verb, args)
+          return false unless verb != "popd" && args.size == 1 && args.first.match?(DIR_OPERAND)
+
+          dir = path(args.first)
+          !dir.nil? && File.directory?(dir)
+        end
 
         def ok?(path) = path ? writable.call(path) == true : false
 
@@ -87,8 +111,9 @@ module Samagotchi
         text = command.to_s
         return false if text.strip.empty?
 
-        commands = split(ShellLex.lex(text), marks: true) or return false
-        return false if commands.none?(Array)
+        tokens = ShellLex.lex(text)
+        commands = split(tokens, marks: true) or return false
+        return false if commands.none?(Array) || !dir_joins_ok?(tokens)
 
         writes = Writes.new(walk: ShellPaths::Walk.new(cwd, home, env), writable: writable)
         commands.all? { |words| words.is_a?(Symbol) ? writes.walk.step(words) : simple_read_only?(words, writes) }
@@ -124,6 +149,28 @@ module Samagotchi
 
       def dir_verb?(words) = words.is_a?(Array) && DIR_VERBS.include?(verb_of(words))
 
+      # Whether each group holding a dir verb itself (the whole command,
+      # or a ( … ): nested ones are their own) joins with DIR_JOINS only.
+      def dir_joins_ok?(tokens)
+        scopes = [[false, false]] # [holds a dir verb, has another join]
+        words = []
+        tokens.each do |kind, value, specials|
+          next words << [value, specials] unless kind == :op
+
+          scopes.last[0] ||= dir_verb?(words)
+          words = []
+          case value
+          when "(" then scopes << [false, false]
+          when ")"
+            dir, other = scopes.pop
+            return false if scopes.empty? || (dir && other)
+          else scopes.last[1] ||= !DIR_JOINS.include?(value)
+          end
+        end
+        scopes.last[0] ||= dir_verb?(words)
+        scopes.none? { |dir, other| dir && other }
+      end
+
       # The first word that is no redirection or its target.
       def verb_of(words)
         target = false
@@ -142,6 +189,8 @@ module Samagotchi
         return false if words.any? { |text, specials| text.include?(ShellLex::SUBST) || !expansion_ok?(text, specials) }
 
         args = strip_redirects(words, writes) or return false
+        return false if writes && DIR_VERBS.include?(args.first) && !writes.dir_step?(args.first, args.drop(1))
+
         writes&.walk&.step(args)
         verb = args.shift
         return false unless verb&.match?(/\A[a-z][\w.-]*\z/)

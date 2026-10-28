@@ -11,7 +11,8 @@ and commands may change between minor versions. How releases are made:
 
 - A delegate child's read-only command that writes only into a tmp dir (`sqlite3 -readonly -safe ../main/x.db "…" >
   /tmp/rows`, `cp ../main/x.db /tmp/`, `… | tee /tmp/f`) no longer asks as a change outside its folder
-  (`child-boundary`); a tmp path that links back into the repository still asks.
+  (`child-boundary`); a tmp path that links back into the repository still asks, as does a target spelt with `$` or
+  `~`, or one after a `cd`/`pushd` the shell may not have taken (anything but one existing dir joined by `&&`).
 
 ### Fixed
 
