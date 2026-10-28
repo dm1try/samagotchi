@@ -179,7 +179,8 @@ module Samagotchi
       #   :failed when the first command (--model) didn't go through, or
       #   (wait_at_eof) :turn_failed when one of this run's prompts failed,
       #   :empty_answer when one ended with no answer, and :unanswered when
-      #   a question came after the input ended
+      #   a question came after the input ended; :removed when this run took
+      #   back its only queued prompt before it ran
       # @param input [#call, nil] prompt -> line (nil = Ctrl-D, raising
       #   Interrupt = Ctrl-C); defaults to Reline
       def run(input: nil)

@@ -174,7 +174,8 @@ agent logic and can be used without any terminal rendering; the UI is a thin lay
   `Screen`. The saved history and cards in a join or resync are rendered by
   `TerminalUI::JoinReplay` with the loop's screen, view, link, gap clock and renderer.
   With input from a pipe (`chi -p X </dev/null`), `TerminalUI::OwnTurns` keeps this
-  run's own prompts until their turns end, and what `#run` returns (chi's exit status).
+  run's own prompts until their turns end; `#run` distinguishes an empty answer from a
+  prompt this terminal removed before it ran (both exit 1), as well as chi's other outcomes.
   Without a capable terminal it falls back to `PlainSurface` (append-only).
 
 #### Using the core

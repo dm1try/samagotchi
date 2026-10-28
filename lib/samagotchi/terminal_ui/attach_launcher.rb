@@ -71,7 +71,8 @@ module Samagotchi
       #   TUI's streams and requests there (#client_id)
       # @return [Symbol] :detached, :closed when the worker went away,
       #   :failed when the --model switch didn't go through, or (input from a
-      #   pipe) :turn_failed / :empty_answer / :unanswered (AttachedLoop#run)
+      #   pipe) :turn_failed / :empty_answer / :removed / :unanswered
+      #   (AttachedLoop#run)
       def run(attach: nil, shared: false, resume: nil, prompt: nil, model: nil, no_interrupt: false, default_input: true,
               memories: [], muted_memories: [], llm_context: {}, thinking: nil, appended_prompt_files: [], toolkit: nil,
               toolkit_flags: [], settings: nil, parent_answers: nil, state_dir: nil, connector: nil)
@@ -146,11 +147,14 @@ module Samagotchi
         err.flush
       end
 
-      # A turn of ours that ended with no answer (input from a pipe): one
-      # line on stderr, as the in-process `chi -p --non-interactive` says
-      # it, so a script doesn't take the silence for an answer (exit 1).
+      # An own turn with no answer, or a prompt removed before it ran
+      # (input from a pipe): one line on stderr, so a script doesn't take
+      # the silence for an answer (exit 1).
       def report_ended(ended, err: $stderr)
-        err.puts(TerminalUI::EMPTY_ANSWER_ERROR) if ended == :empty_answer
+        case ended
+        when :empty_answer then err.puts(TerminalUI::EMPTY_ANSWER_ERROR)
+        when :removed then err.puts("chi: the prompt was removed before it ran")
+        end
       end
 
       # chi's exit status after #run: 0 detached, 3 a question left waiting

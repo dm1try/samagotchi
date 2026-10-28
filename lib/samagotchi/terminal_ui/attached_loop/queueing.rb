@@ -131,8 +131,7 @@ module Samagotchi
 
         # A queued prompt was taken back before it ran (the web's ×, /unqueue
         # in a terminal). One of this run's (wait_at_eof) will have no turn:
-        # it ends the wait, as a failed one does. Another client's shown
-        # line says so.
+        # it ends the wait as :removed. Another client's shown line says so.
         def turn_dequeued(event)
           id = event[:enqueued_id]
           @my_queued.delete(id)

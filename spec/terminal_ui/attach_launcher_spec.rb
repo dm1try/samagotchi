@@ -484,12 +484,13 @@ end
 # Attached `chi -p` from a script whose turn ended with no answer: exit 1
 # and one line on stderr, as the in-process `chi -p --non-interactive`.
 RSpec.describe Samagotchi::TerminalUI::AttachLauncher, ".report_ended" do
-  it "says an empty answer on stderr, and nothing for other endings" do
+  it "says when an answer was empty or a prompt was removed, and nothing for other endings" do
     err = StringIO.new
     described_class.report_ended(:empty_answer, err: err)
+    described_class.report_ended(:removed, err: err)
     described_class.report_ended(:detached, err: err)
 
-    expect(err.string).to eq("chi: the model gave an empty answer\n")
+    expect(err.string).to eq("chi: the model gave an empty answer\nchi: the prompt was removed before it ran\n")
   end
 end
 

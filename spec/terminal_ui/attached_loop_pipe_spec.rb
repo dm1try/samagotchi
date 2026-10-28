@@ -141,13 +141,13 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "input from a pipe" do
     expect(screen.lines).to include("(your queued message was removed before it ran)")
   end
 
-  it "ends :empty_answer (exit 1) with one notice when this terminal removes its own queued prompt" do
+  it "ends :removed (exit 1) with one notice when this terminal removes its own queued prompt" do
     start(body: '{"enqueued_id":"e1","delivery":"queue"}')
     @push.call("type" => "turn_started", "prompt" => "other", "origin" => { "client_id" => "web:2", "enqueued_id" => "w1" })
     expect(@thread.join(0.3)).to be_nil
     @push.call("type" => "turn_dequeued", "enqueued_id" => "e1", "client_id" => "tui:1")
 
-    expect(result).to eq(:empty_answer)
+    expect(result).to eq(:removed)
     expect(screen.lines.count("(removed before it ran)")).to eq(1)
     expect(screen.lines).not_to include("(your queued message was removed before it ran)")
   end

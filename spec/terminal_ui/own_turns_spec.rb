@@ -82,12 +82,21 @@ RSpec.describe Samagotchi::TerminalUI::OwnTurns do
     it "distinguishes our dequeued prompt from another client's" do
       turns.sent("e1")
       expect(turns.dequeued("e1", by_us: true)).to be(true)
-      expect(turns.outcome).to eq(:empty_answer)
+      expect(turns.outcome).to eq(:removed)
 
       turns.sent("e2")
       expect(turns.dequeued("e2", by_us: false)).to be(true)
       expect(turns.outcome).to eq(:turn_failed)
       expect(turns.dequeued("missing", by_us: false)).to be(false)
+    end
+
+    it "keeps a genuine empty answer distinct from a removed prompt" do
+      turns.sent("e1")
+      turns.ended("e1", failed: false, empty: true, display_pending: false)
+      turns.sent("e2")
+      turns.dequeued("e2", by_us: true)
+
+      expect(turns.outcome).to eq(:empty_answer)
     end
   end
 end

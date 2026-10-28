@@ -5,7 +5,7 @@ module Samagotchi
     # This run's own prompts and commands. Sent prompts are always recorded so
     # only this run's failed prompts can return to the input. With pipe input
     # (+active+), this also tracks turns still open, prompts merged into a
-    # running turn, whether input ended, and whether a turn failed, was empty,
+    # running turn, whether input ended, and whether a turn failed, was empty, was removed,
     # or still has an answer display pending. #outcome is what #run returns
     # once those turns finish.
     class OwnTurns
@@ -17,6 +17,7 @@ module Samagotchi
         @input_ended = false
         @failed = false
         @empty = false
+        @removed = false
         @display_pending = false
       end
 
@@ -58,7 +59,7 @@ module Samagotchi
       def dequeued(enqueued_id, by_us:)
         return false unless @open.delete?(enqueued_id)
 
-        by_us ? (@empty = true) : (@failed = true)
+        by_us ? (@removed = true) : (@failed = true)
         true
       end
 
@@ -70,8 +71,10 @@ module Samagotchi
 
       def outcome
         return :turn_failed if @failed
+        return :empty_answer if @empty
+        return :removed if @removed
 
-        @empty ? :empty_answer : :detached
+        :detached
       end
     end
   end
