@@ -84,6 +84,25 @@ RSpec.describe Samagotchi::Guardrails::PairBoundary do
     expect(verdict_for({ name: "write", path: outside, content: "x" }, turn_author: nil)).to be_allow
   end
 
+  it "asks before every write in a session whose folder is the home folder or above it, as review reads nothing there" do
+    [home, File.dirname(home)].each do |root|
+      at_home = described_class.new(author: -> { author }, root: -> { root }, denied_dirs: -> { [state, config] },
+                                    home: -> { home }, tmp_roots: -> { [] })
+      context = Samagotchi::Guardrails::Context.new(cwd: home)
+      [{ name: "write", path: File.join(home, ".vimrc"), content: "x" },
+       { name: "execute", content: "echo x > ~/.tmux.conf" }].each do |call|
+        verdict = Samagotchi::Guardrails::Verdict.new(call: call)
+        verdict.context = context
+        verdict.targets = Samagotchi::Guardrails::Targets.for(call, context)
+        at_home.check(verdict)
+        expect(verdict).to be_ask, "#{root} #{call}"
+        expect([verdict.reason, verdict]).to match([described_class::NO_PROJECT, be_fresh_ask])
+      end
+    end
+    expect(Samagotchi::Guardrails::ReviewPaths.home_root?(home, home)).to be(true)
+    expect(Samagotchi::Guardrails::ReviewPaths.home_root?(project, home)).to be(false)
+  end
+
   it "is off for the owner's turns" do
     expect(read(grants, turn_author: nil)).to be_allow
     expect(execute("cat ~/.ssh/id_rsa", turn_author: "owner")).to be_allow

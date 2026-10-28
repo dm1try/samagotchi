@@ -56,6 +56,8 @@ module Samagotchi
                      "reply what to remember"
       ASK = "a participant's turn can't ask the user: ask in your reply"
       OUTSIDE_WRITE = "a participant's turn writes outside the session's project"
+      NO_PROJECT = "a participant's turn writes, and this session's folder is the home folder or above it (or none): " \
+                   "there is no project to keep it in"
       CHI = "a participant's turn can't run chi: its commands act in the owner's name (sessions, shares, answers)"
       BACKGROUND = "a participant's turn can't leave a command running in the background: it would outlive the turn"
       ENVIRONMENT = "a participant's turn can't read the environment or the keychain: they hold the owner's secrets"
@@ -92,7 +94,7 @@ module Samagotchi
       # @param home [#call] → String, nil
       # @param root [#call] → String, nil: the session's project root (the
       #   work tree top of its folder); a write outside it asks the owner
-      #   (none: every write asks)
+      #   (none, or the home folder or above it: every write asks)
       # @param tmp_roots [#call] → Array<String>: where a write neither asks
       #   nor is denied (PairCommand.tmp_roots)
       def initialize(author:, root: -> {}, denied_dirs: -> { ReviewPaths.chi_dirs }, home: -> { Dir.home },
@@ -113,7 +115,8 @@ module Samagotchi
         end
 
         if outside_write?(verdict)
-          verdict.ask!(OUTSIDE_WRITE, scopes: %w[once], rule: RULE, source: SOURCE, decided_by: "core")
+          reason = project_root ? OUTSIDE_WRITE : NO_PROJECT
+          verdict.ask!(reason, scopes: %w[once], rule: RULE, source: SOURCE, decided_by: "core")
           verdict.fresh_ask = true
         end
         verdict
@@ -148,7 +151,7 @@ module Samagotchi
         return false unless WRITE_TOOLS.include?(verdict.call&.dig(:name).to_s)
 
         paths = targets.paths.to_a.compact
-        root = @root.call.to_s
+        root = project_root.to_s
         paths.flat_map { |path| ProtectedPaths.reals(path) }.any? do |real|
           next false if @tmp_roots.call.any? { |tmp| ShellPaths.within?(real, tmp) }
 
@@ -158,9 +161,16 @@ module Samagotchi
 
       def command(targets, paths)
         @command = nil unless @command&.first == targets
-        @command ||= [targets, PairCommand.new(targets.command, cwd: targets.cwd, home: home, root: @root.call,
+        @command ||= [targets, PairCommand.new(targets.command, cwd: targets.cwd, home: home, root: project_root,
                                                                 paths: paths || denylist, tmp_roots: @tmp_roots.call)]
         @command.last
+      end
+
+      # The session's project root; nil without one, or when it is the home
+      # folder or above it (ReviewPaths.home_root?): then every write asks.
+      def project_root
+        root = @root.call.to_s
+        root.empty? || ReviewPaths.home_root?(root, home) ? nil : root
       end
 
       def denylist = ReviewPaths.new(root: nil, denied_dirs: @denied_dirs.call, home: @home.call)

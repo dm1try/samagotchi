@@ -48,6 +48,17 @@ module Samagotchi
       # chi's state dir and config dir, as Paths has them now.
       def self.chi_dirs = [Paths.state_dir, File.join(Paths.config_home, Paths::APP_DIR)]
 
+      # Whether +root+ is the home folder or a folder above it (symlinks
+      # resolved on both): no project to keep a participant's turn in. A
+      # review turn reads nothing there (#refusal: HOME_ROOT); a pair turn
+      # asks the owner before every write (PairBoundary).
+      # @param root [String] @param home [String, nil]
+      def self.home_root?(root, home)
+        return false if home.to_s.empty? || root.to_s.empty?
+
+        ShellPaths.within?(ProtectedPaths.real(home.to_s), ProtectedPaths.real(root.to_s))
+      end
+
       # @param root [String, nil] the session's project root (the work tree
       #   top of its folder); nil or blank refuses every path
       # @param denied_dirs [Array<String>] chi's own dirs (state, config:
@@ -68,8 +79,9 @@ module Samagotchi
       def refusal(paths)
         return OUTSIDE if paths.empty? || @root.empty?
 
+        return HOME_ROOT if ReviewPaths.home_root?(@root, @home)
+
         real_root = ProtectedPaths.real(@root)
-        return HOME_ROOT if !@home.empty? && ShellPaths.within?(ProtectedPaths.real(@home), real_root)
 
         paths.each do |path|
           given = File.expand_path(path)

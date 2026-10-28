@@ -449,7 +449,9 @@ project root, and before a command that writes there (a redirection's target,
 target it can't resolve), every time: the ask is fresh (`Verdict#fresh_ask`: no
 stored approval answers it, and no rule lowers it), so it comes even in auto
 mode. The tmp dirs (`Dir.tmpdir`, `$TMPDIR`, `/tmp`, `/private/tmp`) and
-`/dev/null` neither ask nor deny.
+`/dev/null` neither ask nor deny. A session whose folder is the home folder or above it has no project to
+keep the turn in (`ReviewPaths.home_root?`, the review boundary's test): every
+write there asks.
 
 A participant's ask names them on the owner's card ("Sam's turn asks: approve
 tool call?", `approval.author`/`author_name`, `approval.asked_by`, the same
