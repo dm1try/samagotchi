@@ -25,7 +25,16 @@ RSpec.describe Samagotchi::Guardrails::ReadOnlyShell do
     "git log --oneline -5", "git -C ../x show HEAD:lib/a.rb", "git diff --stat main", "git status --short",
     "git branch", "git branch -a -v", "git branch --list 'feat/*'", "git branch --merged main", "git stash list",
     "git worktree list", "git --no-pager log -p", "git rev-parse --git-common-dir", "git remote -v", "git tag",
-    "git blame lib/a.rb", "git grep -n foo"
+    "git blame lib/a.rb", "git grep -n foo",
+    # sqlite3 is read-only only with both safety flags; options may follow the database.
+    "sqlite3 -readonly -safe coffee.db 'select 1'",
+    "sqlite3 coffee.db -json -readonly -safe 'select 1'",
+    "sqlite3 -safe -readonly -csv -header coffee.db 'select writefile(\"out\", \"x\")'",
+    "sqlite3 -readonly -safe coffee.db 'vacuum into \"copy.db\"'",
+    "sqlite3 -readonly -safe coffee.db 'select edit(\"file\")'",
+    # gh's explicitly read-only subcommands.
+    "gh run list", "gh run view 123", "gh pr list", "gh pr view 123", "gh pr diff 123", "gh pr checks 123",
+    "gh issue list", "gh issue view 123", "gh repo view"
   ]
 
   not_read_only = [
@@ -50,6 +59,20 @@ RSpec.describe Samagotchi::Guardrails::ReadOnlyShell do
     "git branch new", "git branch -d x", "git branch -m a b", "git branch -D x", "git stash", "git stash drop",
     "git worktree add x", "git remote add o u", "git tag v1", "git reflog expire --all", "git config x y",
     "git", "git checkout x",
+    # sqlite3 needs both safety flags and rejects options and dot commands it cannot prove safe.
+    "sqlite3 -safe coffee.db 'select 1'", "sqlite3 -readonly coffee.db 'select 1'",
+    "sqlite3 -readonly -safe coffee.db 'select 1' -cmd '.shell touch /tmp/x'",
+    "sqlite3 -readonly -safe coffee.db -init startup.sql 'select 1'",
+    "sqlite3 -readonly -safe -A coffee.db 'select 1'", "sqlite3 -readonly -safe -nonce x db 'select 1'",
+    "sqlite3 -readonly -safe -unsafe-testing db 'select 1'", "sqlite3 -readonly -safe -append db 'select 1'",
+    "sqlite3 -readonly -safe -zip db 'select 1'", "sqlite3 -readonly -safe -deserialize db 'select 1'",
+    "sqlite3 -readonly -safe coffee.db '.shell touch /tmp/x'",
+    "sqlite3 -readonly -safe coffee.db '.system touch /tmp/x'",
+    "sqlite3 -readonly -safe coffee.db", "sqlite3 -readonly -safe .hidden.db 'select 1'",
+    # gh allows only its listed reading subcommands, never web or watch modes.
+    "gh pr view 123 --web", "gh --web pr view 123", "gh pr view 123 -w", "gh pr view 123 -cw", "gh pr checks 123 --watch",
+    "gh api repos/owner/repo",
+    "gh pr checkout 123", "gh run rerun 123", "gh issue create",
     # never read-only verbs and prefixes
     "xargs cat", "sh -c 'ls'", "bash -c ls", "eval ls", "source x", ". x", "timeout 5 ls", "sudo ls", "watch ls",
     "env ls", "exec ls", "command ls", "nohup ls", "time ls", "less f", "more f", "vim f", "/bin/ls", "./ls",

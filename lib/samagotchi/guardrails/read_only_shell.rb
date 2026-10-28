@@ -130,6 +130,53 @@ module Samagotchi
       # uniq IN OUT writes OUT.
       def uniq(args) = args.reject { |a| a.start_with?("-") }.size <= 1
 
+      SQLITE_OPTIONS = %w[-readonly -safe -json -csv -header -noheader -line -column -box -list -separator -bail
+                          -batch -noinit].freeze
+
+      # sqlite3 can still write or run programs unless both safety flags are
+      # present. Its options may follow the database name, so check every word.
+      def sqlite3(args)
+        options = []
+        positional = []
+        index = 0
+        while index < args.length
+          arg = args[index]
+          if arg == "-separator"
+            return false if index + 1 == args.length
+
+            index += 2
+          elsif SQLITE_OPTIONS.include?(arg)
+            options << arg
+            index += 1
+          elsif arg.start_with?("-", ".")
+            return false
+          else
+            positional << arg
+            index += 1
+          end
+        end
+
+        options.include?("-readonly") && options.include?("-safe") && positional.size >= 2
+      end
+
+      GH_READS = {
+        "run" => %w[list view],
+        "pr" => %w[list view diff checks],
+        "issue" => %w[list view],
+        "repo" => %w[view]
+      }.freeze
+
+      def gh(args)
+        # -w alone or in a bundle of short flags (-cw) opens a browser.
+        return false if args.any? { |arg| arg.match?(/\A-[a-zA-Z]*w/) || arg.start_with?("--web") }
+
+        group, action = args
+        return false unless GH_READS.fetch(group, []).include?(action)
+        return false if group == "pr" && action == "checks" && args.any? { |arg| arg.start_with?("--watch") }
+
+        true
+      end
+
       SED_FLAGS = /\A-[nErsuz]+\z/
       SED_LONG = %w[--quiet --silent --regexp-extended --separate --unbuffered --null-data --posix --debug
                     --sandbox].freeze
@@ -228,7 +275,7 @@ module Samagotchi
       CHECKS = {
         "rg" => method(:rg), "find" => method(:find), "tree" => method(:tree), "file" => method(:file),
         "sort" => method(:sort), "uniq" => method(:uniq), "sed" => method(:sed), "awk" => method(:awk),
-        "git" => method(:git)
+        "git" => method(:git), "sqlite3" => method(:sqlite3), "gh" => method(:gh)
       }.freeze
 
       # A sed script parsed far enough to tell that it only reads: its

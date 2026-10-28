@@ -557,6 +557,11 @@ every command in it (split at `;`, `&&`, `||`, `|`) is `ls`, `cat`, `head`,
 writes or runs something (`sed -i`, `sed 's/a/b/w f'`, `find -delete`/`-exec`,
 `rg --pre`, `sort -o`, `awk` with `>`/`|`/`system(`, `git -c`, `git diff
 --ext-diff`, …) and no redirection other than to `/dev/null` or another fd.
+`sqlite3` is read-only only with both `-readonly` and `-safe`; options are
+checked even after the database name, and only its read/display options are
+allowed (unknown options and dot-command arguments are rejected). `gh` allows
+only `run list|view`, `pr list|view|diff|checks`, `issue list|view` and
+`repo view`; `--web`/`-w`, `gh api` and `pr checks --watch` are not read-only.
 `$(…)`, backticks, `$VAR` (other than `$HOME`, `$XDG_*`, `$TMPDIR` and `$PWD`
 at a word's start), an env prefix, `sh -c`, `xargs`, `eval`, `sudo` and the
 like make a command not read-only. It errs towards asking.
