@@ -12,15 +12,14 @@ module Samagotchi
     class AttachedLoop
       # Bridge sending and first-command launch.
       # Reads @as_parent, @client, @client_id, @first_command_id, @first_command_line,
-      # @first_commands, @first_prompt, @link, @my_queued, @no_interrupt, @queued_ids,
-      # @reader, @running, @screen, @status, @wait_at_eof;
+      # @first_commands, @first_prompt, @link, @my_queued, @no_interrupt, @own_turns,
+      # @queued_ids, @reader, @running, @screen, @status;
       # writes @first_command_id, @first_command_line, @first_commands, @first_prompt,
       # @my_queued, @queued_ids.
-      # Calls the loop helpers #client_id_for, #command_registry, #default_model_name,
-      # #detach, #mark_activity, #older_worker_command, #origin_of, #own?, #paint,
-      # #persist_recent_history, #prompt_line, #put_back_busy_command, #prefill_confirm,
-      # #queue_needs_newer_worker, #send_command, #send_prompt, #stale_worker,
-      # #steer_cut_note, #too_late?, #via, and #worker_down.
+      # Calls the loop helpers #command_registry, #default_model_name, #detach,
+      # #mark_activity, #older_worker_command, #origin_of, #own?, #paint,
+      # #persist_recent_history, #prompt_line, #queue_needs_newer_worker,
+      # #stale_worker, #steer_cut_note, #too_late?, #via, and #worker_down.
       module Sending
         private
 

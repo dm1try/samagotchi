@@ -69,8 +69,7 @@ module Samagotchi
       attr_reader :client_id
 
       # @return [String, nil] the model the worker's turns run on, as the
-      #   last command said
-      # @return [String, nil] the worker's model
+      #   last snapshot or model change said (the status row's)
       def model_name = @status[:model]
 
       # @return [QuestionPrompt, nil] the question waiting for an answer
