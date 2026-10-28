@@ -105,42 +105,41 @@ main{flex:1;min-height:0;overflow-y:auto;padding:16px 16px 8px}
 .p-tool-one.error{color:var(--danger-text)}
 .p-tag{font-size:11px;padding:0 6px;border-radius:999px;background:var(--bg-raised);color:var(--text-3)}
 .p-waiting{align-self:flex-start;font-size:13px;color:var(--warn-text);background:var(--warn-bg);border:1px solid var(--warn-border);border-radius:999px;padding:3px 12px}
-.p-dock{border-top:1px solid var(--border);background:var(--bg-panel);padding:10px 16px calc(10px + env(safe-area-inset-bottom))}
+/* The dock is the owner's composer card (index.html's #dock): a glass card over the page's bottom edge, holding the
+   comment box and its footer (usage, hint); the queue and errors sit above it. */
+.p-dock{padding:6px 16px calc(16px + env(safe-area-inset-bottom))}
 .p-dock-in{max-width:760px;margin:0 auto;display:flex;flex-direction:column;gap:8px}
 .p-queue{display:flex;flex-direction:column;gap:4px;font-size:13px}
 .p-queued{display:flex;align-items:center;gap:8px;color:var(--text-3)}
 .p-queued span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .p-queue-note{font-size:12.5px;color:var(--text-muted)}
 .p-error{font-size:13px;color:var(--danger-text);background:var(--danger-bg-dim);border-radius:8px;padding:6px 10px}
-/* The comment box: the shared composer (composer.css, composer_mount.js), as the owner's session composer lays it out
-   (participant.js sets body.has-session for a participant: one row, the text field and Send at its bottom right). Its
-   grip straddles the dock's top border; folded, the dock keeps the queue and the grip as the handle. No `/` list,
-   delivery line or model picker here. */
-#composer{background:var(--bg-inset);border:1px solid var(--border-strong);border-radius:12px}
-#composer:focus-within{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-ring)}
-body.has-session #composer{padding:6px 6px 6px 10px}
+/* The comment box: the shared composer in the shared card (composer.css, composer_mount.js), as the owner's session
+   composer lays it out (participant.js sets body.has-session for a participant): the key hint as the composer's line,
+   the text field and Send, the usage as the card's footer. Its grip sits on the card's top edge, as the owner's does;
+   folded, the card keeps its footer under the grip, the owner's info bar's way. No `/` list, delivery choices or model
+   picker here. */
+
 #composer textarea{font:inherit;line-height:1.45;padding:2px 0}
 #composer textarea:disabled{cursor:not-allowed}
 #composer .actions-col #send{height:30px;min-height:30px;line-height:30px;padding:0 16px;font-weight:600}
-.p-dock #composeGrip{margin:-15px 0 5px}
-body.composer-folded .p-hint{display:none}
 /* The participant's own usage (participant_model.js usageItems: the fields their grant's exposure shows), one line
    beside the hint; a phone shows it alone, one line, the end cut. Folded, it goes with the hint. */
-.p-foot{display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 14px;min-width:0}
-.p-foot .p-hint{flex:1 1 320px;min-width:0}
+.p-hint.composer-line{color:var(--text-faint);white-space:nowrap;text-overflow:ellipsis}
+.p-foot{min-width:0}
+.p-foot:has(> .p-usage[hidden]){display:none}
 .p-usage{display:flex;align-items:baseline;min-width:0;max-width:100%;font-size:12px;color:var(--text-muted);font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .p-usage span{flex:0 0 auto}
 .p-usage span+span::before{content:"·";padding:0 6px;color:var(--text-faint)}
 .p-usage span.model{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis}
 .p-usage .warn{color:var(--warn-text)}
 .p-usage .over{color:var(--danger-text);font-weight:600}
-body.composer-folded .p-foot{display:none}
+body.composer-folded .p-foot{border-top-color:transparent}
 button{font:inherit;cursor:pointer;border-radius:8px;border:1px solid var(--border-strong);background:var(--bg-raised);color:var(--text);padding:6px 12px}
 button:hover{background:var(--bg-hover)}
 button.primary{background:var(--primary);border-color:var(--primary);color:var(--on-solid);height:42px;padding:0 18px}
 button.primary:disabled{opacity:.5;cursor:default}
 button.small{font-size:12px;padding:2px 8px}
-.p-hint{font-size:12px;color:var(--text-faint)}
 .p-ended{max-width:30rem;margin:18vh auto 0;padding:0 16px;text-align:center;display:flex;flex-direction:column;gap:10px}
 .p-ended h1{font-size:20px;color:var(--text-bright)}
 .p-ended p{color:var(--text-3)}
@@ -155,8 +154,6 @@ button.small{font-size:12px;padding:2px 8px}
 }
 /* Under 16px iOS Safari zooms the page on focus (and a Home Screen app never zooms back). */
 @media (max-width:600px),(pointer:coarse){#composer textarea{font-size:16px}}
-/* A phone's grip (composer.css: 26 px tall, the pill at 17 px): the pill on the dock's top border. */
-@media (max-width:600px){.p-dock #composeGrip{margin:-29px auto 3px}}
 </style>
 </head>
 <body>
@@ -185,11 +182,13 @@ button.small{font-size:12px;padding:2px 8px}
   <div class="p-thread" id="thread"></div>
 </main>
 <footer class="p-dock" id="dock" hidden>
-  <div id="composeGrip" class="edge-grip" tabindex="0" aria-label="Comment box" title="Drag to make the comment box taller (double-click resets)"></div>
   <div class="p-dock-in">
     <div class="p-queue" id="queue"></div>
     <div class="p-error" id="error" role="alert" hidden></div>
+    <div class="p-card composer-card">
+    <div id="composeGrip" class="edge-grip" tabindex="0" aria-label="Comment box" title="Drag to make the comment box taller (double-click resets)"></div>
     <div id="composer">
+      <div class="p-hint composer-line" id="hint">⏎ sends, ⇧⏎ a new line, ↑ an earlier comment. The model answers in a read-only turn; the owner sees everything.</div>
       <div class="compose-col">
         <div id="chips" hidden></div>
         <textarea id="comment" rows="1" placeholder="Comment or ask" aria-label="Comment or ask"></textarea>
@@ -200,9 +199,9 @@ button.small{font-size:12px;padding:2px 8px}
         <div class="split"><button type="button" class="primary" id="send">Send</button></div>
       </div>
     </div>
-    <div class="p-foot">
+    <div class="p-foot composer-card-foot">
       <div class="p-usage" id="usage" aria-label="Your usage" hidden></div>
-      <div class="p-hint" id="hint">⏎ sends, ⇧⏎ a new line, ↑ an earlier comment. The model answers in a read-only turn; the owner sees everything.</div>
+    </div>
     </div>
   </div>
 </footer>
