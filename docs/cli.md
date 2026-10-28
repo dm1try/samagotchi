@@ -1210,7 +1210,8 @@ pills there (a review turn refuses `/` lines).
 
 After the presets, both pages have a built-in **Verify**: the quote, then
 an ask to check the claim against the code and end on a line `Verdict:
-confirmed|refuted|unclear — <reason>`. On your page a selection in a turn
+confirmed|refuted|unclear — <reason>`. A session whose worker predates Verify (started by an older chi) refuses it (409
+`verify_unavailable`); a participant's page disables Verify and Verify fresh with a hint to restart the session. On your page a selection in a turn
 also offers **Copy link**: a link to that turn and quote for a participant's
 browser (the one their review link was opened in), which opens their page
 scrolled to the quote and highlights it; with no one invited, a link to it

@@ -230,6 +230,15 @@ worker checks their link (`participants.json`: revoked, expired) and their cap a
 dequeued (`:turn_dequeued`) and audited (`revoked`, `cap_reached`) instead of run, so a revoke also stops what they
 had queued; its settled record (`TurnCheckpoint.record_refused`: canceled, `cancel_reason` the reason) ends their
 wait on it at once, which `ParentReport` reads as status `refused`, exit 1.
+
+**The Verify gate.** A worker names `verify` (`VerifyAnchor::FEATURE`, in the Bridge's `FEATURES`) when it understands a
+Verify turn's anchor (`VerifyAnchor`, `{turn_id, quote}`: a UUID and a quote of 1 to 200 characters). A turn carrying an
+anchor, or a Verify fresh check, sent to a connected worker without it is refused 409 `verify_unavailable`
+(`VerifyAnchor::UNAVAILABLE`: "restart this session to use Verify"; `SessionManager` checks `worker_has?` before it
+delivers), since an older worker would run it as a plain prompt. A session with no connected worker is not gated: the
+worker that starts for it is current. The participant page's session summary carries `verify_unavailable`
+(`VerifyAnchor.worker_unavailable?`, from the worker's features; `participant_review.rb`), and the page disables
+Verify and Verify fresh with a "restart this session" hint.
 **The owner's input during a review turn queues.** While a participant's turn runs, the owner's input never merges
 into it, from any client (the web, an attached TUI, `chi send` without `--queue`): the Bridge's `POST /turn` makes it
 `delivery: queue` whatever it asked, so it never steers or cuts (`TurnAccumulator#participant_turn?`, under the event

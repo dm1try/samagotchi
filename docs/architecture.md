@@ -120,7 +120,7 @@ terminal renders the events it gets over the Bridge.
 - Attached (`bin/chi`, `--attach ID`, `--shared [--resume ID]`) → `TerminalUI::AttachLauncher`: no `Engine`
   and no `OwnerLock`; finds or starts the session's worker and runs `TerminalUI::AttachedLoop`
   as a client of its Bridge (`BridgeClient#follow`, `post_turn`, `post_command`, `cancel`, `answer`,
-  `dismiss_question`). The worker runs in the session's `working_directory`, so `!cmd` and
+  `dismiss_question`; opening the SSE connection answers `BridgeClient::StreamOpen::Opened`, `Refused` or `Unreachable`). The worker runs in the session's `working_directory`, so `!cmd` and
   the tools don't depend on where the terminal attached from.
 - `bin/chi web` → builds `Web::Server` (Rack+WEBrick on `127.0.0.1:4567`, `--port`/`SAMAGOTCHI_WEB_PORT`, `--open`;
   `web.host: lan` adds a LAN address, `--new-token` replaces its access token).
@@ -173,6 +173,8 @@ agent logic and can be used without any terminal rendering; the UI is a thin lay
   but `RelineSeam` (prepended to `Reline::LineEditor`) sends its drawing to the
   `Screen`. The saved history and cards in a join or resync are rendered by
   `TerminalUI::JoinReplay` with the loop's screen, view, link, gap clock and renderer.
+  The loop's concerns live in mixins under `terminal_ui/attached_loop/`: `AttachedLoop::Composer`, `Questions`,
+  `Queueing`, `Sending` and `ExitCommands` (the `/exit` ask's reply text is `TerminalUI::ExitLines`).
   With input from a pipe (`chi -p X </dev/null`), `TerminalUI::OwnTurns` keeps this
   run's own prompts until their turns end; `#run` distinguishes an empty answer from a
   prompt this terminal removed before it ran (both exit 1), as well as chi's other outcomes.
@@ -565,7 +567,8 @@ it holds with `update.notify: off`; a child that prints no rows fails with its o
 done install refreshes the hub's installed version (`SessionHub#refresh_installed`) before its `done`.
 Worker restarts target every worker older than the version installed now (refreshed the same way)
 and publish per-session results. Only one of an install, a worker restart pass and a web restart runs
-at a time (409 `update_running`). `POST /api/update/restart_web` (409 `restart_unavailable` without a
+at a time (409 `update_running`). `POST /api/update/restart_workers` (`handle_restart_workers`) starts the worker pass
+by itself. `POST /api/update/restart_web` (409 `restart_unavailable` without a
 chi wrapper to exec) schedules WEBrick shutdown only after its response is sent; after the hub and
 listener stop, `Server` execs the RubyGems chi wrapper with every flag chi web was started with, as
 `RunOptions`' parser recorded them (`RunOptions.web_restart_argv`), but the one-shot `--open` and
@@ -618,7 +621,7 @@ model: [internals/remote-sessions.md](internals/remote-sessions.md).
 |---|---|---|---|---|
 | `GET /api/sessions/resolve?id=` | owner | an id or a unique prefix | 200 `{id}` | 404 `not_found`; 400 `ambiguous_id` with `ids` |
 | `GET /api/sessions/summaries` | owner | `dir` (a folder: its project; none: every project), `cwd`, `live=1`, `archived=1`, `tests=0`, `sort`, `order`, `limit` | 200: the rows `chi sessions list` prints (`SessionManager.session_summaries`: `status`, `live`, `busy`, `owner`, `recap`, `ctx_pct`, `waiting`, `waiting_id`, `title`, `preview`, …) | 400 `invalid_dir`, `invalid_cwd` |
-| `GET /api/projects?dir=` | owner | optional page-scope folder | 200: project rows with counts, roots, default/current marks; no `dir`: no current project | 400 `invalid_dir`; 503 `no_hub` |
+| `GET /api/projects?dir=` | owner | optional page-scope folder | 200: project rows (`Web::ProjectList`: the hub's projects plus the start project) with counts, roots, default/current marks; no `dir`: no current project | 400 `invalid_dir`; 503 `no_hub` |
 | `POST /api/sessions` (more fields) | owner | `toolkit`, `tools`, `no_tools`, `parent_answers`; `client_id` (`cli:send`/`cli:answer`: the first line is checked as chi send checks it); `check_vision: true` (images follow) | 201 adds `model_warning`, `parent_answers_warning` (a level looser than config.yml's, capped) and `first_turn_id` (the id the prompt it starts with gets for its turn; null for an `idle` create) | 400 `invalid_toolkit`, `invalid_parent_answers`, `invalid_continues` (beside `continues`); 403 `parent_answers_refused`, `parent_continue_refused`; 422 `no_vision` |
 | `POST /api/sessions/:id/turn` (more fields) | owner | `client_id` as above; `check_vision: true` with `images` | as before | 403 `parent_answers_refused`, `parent_continue_refused`; 422 `no_vision` |
 | `POST /api/sessions/:id/wait/prepare` | owner | `question_id` (absent: the pending one; `null`: none), `turn`, `created`, `busy` (+ `queue`) | 200 `{session_id, cursor, baseline: {messages, question_id, last_turn}, own_turn, known_turn, running, live, settled, last_turn_id}` (`WaitStart`) | 409 `busy`, `waiting` (`SendCommand::Busy`'s words, and its fields: `question`, `parent_strategy`) |
