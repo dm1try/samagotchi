@@ -29,7 +29,8 @@ module Samagotchi
     #   - owner-voiced tools (OWNER_VOICED, and any delegate_* tool): what
     #     speaks or acts in the owner's name beyond this turn (a delegate, a
     #     reminder, a note to another session, a background task, a
-    #     forgotten output, the session's loaded tools); and memory_write:
+    #     forgotten output, the session's loaded tools); the tools that read
+    #     the owner's background tasks (OWNER_TASK_READERS); and memory_write:
     #     a memory reaches the owner's later sessions;
     #   - ask_user_question: there is no one on the participant's side to
     #     answer it here; the model asks in its reply instead.
@@ -47,6 +48,10 @@ module Samagotchi
       OWNER_VOICED = %w[delegate register_reminder cancel_reminder send_note forget_outputs task_create task_stop
                         find_tools].freeze
       OWNER_VOICED_PREFIX = "delegate_"
+      # The background task tools that read the owner's tasks (a pair turn
+      # starts none: task_create is owner-voiced, and its execute is never
+      # handed over).
+      OWNER_TASK_READERS = %w[task_wait task_get task_list].freeze
       ASK_TOOL = "ask_user_question"
       WRITE_TOOLS = %w[write edit].freeze
 
@@ -54,6 +59,7 @@ module Samagotchi
                "only the owner can do."
       SECRET = "a participant's turn can't read or write secrets or chi's own files"
       OWNER_ONLY = "a participant's turn can't use %s: it acts in the owner's name beyond this turn"
+      OWNER_TASKS = "a participant's turn can't use %s: the background tasks are the owner's, and their output with them"
       MEMORY_WRITE = "a participant's turn writes no memories: they reach the owner's later sessions; say in your " \
                      "reply what to remember"
       ASK = "a participant's turn can't ask the user: ask in your reply"
@@ -151,6 +157,7 @@ module Samagotchi
         tool = call[:name].to_s
         return ASK if tool == ASK_TOOL
         return format(OWNER_ONLY, tool) if OWNER_VOICED.include?(tool) || tool.start_with?(OWNER_VOICED_PREFIX)
+        return format(OWNER_TASKS, tool) if OWNER_TASK_READERS.include?(tool)
         return MEMORY_WRITE if tool == "memory_write"
 
         targets = verdict.targets

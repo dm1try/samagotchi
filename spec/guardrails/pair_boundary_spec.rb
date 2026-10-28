@@ -417,6 +417,14 @@ RSpec.describe Samagotchi::Guardrails::PairBoundary do
     end
   end
 
+  it "denies reading the owner's background tasks" do
+    %w[task_wait task_get task_list].each do |tool|
+      verdict = verdict_for({ name: tool, content: "t1" })
+      expect([verdict.deny?, verdict.reason]).to eq([true, format(described_class::OWNER_TASKS, tool)]), tool
+    end
+    expect(verdict_for({ name: "task_list", content: "" }, turn_author: nil)).to be_allow
+  end
+
   it "denies ask_user_question with advice to ask in the reply" do
     verdict = verdict_for({ name: "ask_user_question", content: "which?" })
     expect(verdict).to be_deny

@@ -449,7 +449,9 @@ message:
   `delegate` and any `delegate_*` tool, `register_reminder`,
   `cancel_reminder`, `send_note`, `forget_outputs`, `task_create`,
   `task_stop`, `find_tools` (it loads tools into the session), and
-  `memory_write` (a memory reaches the owner's later sessions);
+  `memory_write` (a memory reaches the owner's later sessions); and the tools
+  that read the owner's background tasks and their output, `task_wait`,
+  `task_get`, `task_list` (a pair turn starts none);
 - `ask_user_question`, with the advice to ask in the reply: nobody on the
   participant's side answers a card.
 
