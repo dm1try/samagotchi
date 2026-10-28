@@ -121,7 +121,7 @@ module Samagotchi
     # @param owner [OwnerLock::Owner, nil, :read] the lock's holder as the
     #   caller already read it (nil: free); :read reads it here
     # @return [Live, Starting, Leaving, None, Stale, Skew]
-    def resolve(session_dir, unlink:, owner: :read, host: BridgeClient::HOST)
+    def resolve(session_dir, unlink:, owner: :read)
       owner = OwnerLock.owner(session_dir) if owner == :read
       stamp = file_stamp(session_dir)
       sidecar = WorkerSidecar.read(session_dir)
@@ -136,7 +136,7 @@ module Samagotchi
 
     # @return [BridgeClient, nil] a client for the session's Live worker
     def client(session_id, session_dir:, unlink: true, host: BridgeClient::HOST, read_timeout: BridgeClient::READ_TIMEOUT)
-      link = resolve(session_dir, unlink: unlink, host: host)
+      link = resolve(session_dir, unlink: unlink)
       link.live? ? link.client(session_id, host: host, read_timeout: read_timeout) : nil
     end
 
@@ -152,11 +152,11 @@ module Samagotchi
     # @return [Live, Starting, Leaving, None, Stale, Skew] the outcome it
     #   stopped at, else the last one seen
     def await(_session_id, session_dir:, timeout:, unlink: true, interval: BridgeClient::SPAWN_POLL_INTERVAL,
-              until: nil, give_up: nil, host: BridgeClient::HOST)
+              until: nil, give_up: nil)
       wanted = binding.local_variable_get(:until) # a keyword: no plain read
       last = nil
       found = BridgeClient.poll(timeout, interval: interval) do
-        last = resolve(session_dir, unlink: unlink, host: host)
+        last = resolve(session_dir, unlink: unlink)
         last if (last.live? && (wanted.nil? || wanted.call(last))) || give_up&.call(last)
       end
       found || last

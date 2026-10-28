@@ -57,7 +57,7 @@ module Samagotchi
         id = @session_id
         return [:gone, "stopped"] if Session.stopped_marker?(id, state_dir: @state_dir)
 
-        link = WorkerLink.resolve(session_dir, unlink: true, host: @host)
+        link = WorkerLink.resolve(session_dir, unlink: true)
         if link.is_a?(WorkerLink::Skew)
           @failure = link.message(id)
           return [:gone, "worker_newer"]
@@ -79,7 +79,7 @@ module Samagotchi
         candidate = if found&.port == port
                       found
                     else
-                      link = WorkerLink.resolve(session_dir, unlink: true, host: @host)
+                      link = WorkerLink.resolve(session_dir, unlink: true)
                       link.live? && link.port == port ? link.client(@session_id, host: @host) : nil
                     end
         @client = candidate if candidate

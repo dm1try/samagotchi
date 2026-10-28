@@ -1752,7 +1752,7 @@ module Samagotchi
       # @return [WorkerLink::Live, WorkerLink::None, WorkerLink::Stale]
       def worker_link(session_id)
         dir = @session_class.session_dir(session_id, state_dir: default_state_dir)
-        WorkerLink.resolve(dir, unlink: true, host: DEFAULT_HOST)
+        WorkerLink.resolve(dir, unlink: true)
       rescue StandardError
         WorkerLink::None.new
       end

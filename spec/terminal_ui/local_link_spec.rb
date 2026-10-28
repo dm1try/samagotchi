@@ -42,7 +42,7 @@ RSpec.describe Samagotchi::TerminalUI::LocalLink do
 
       expect(link.live_worker).to eq([nil, nil])
       expect(link.live_worker).to eq([found, nil])
-      expect(Samagotchi::WorkerLink).to have_received(:resolve).with(session_dir, unlink: true, host: "127.0.0.1").twice
+      expect(Samagotchi::WorkerLink).to have_received(:resolve).with(session_dir, unlink: true).twice
 
       # The stop marker in the link's state dir.
       allow(Samagotchi::Session).to receive(:stopped_marker?).with(id, state_dir: state_dir).and_return(true)

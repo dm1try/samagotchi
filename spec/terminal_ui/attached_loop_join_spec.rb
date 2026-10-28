@@ -84,7 +84,7 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop do
         .with("s-1234", state_dir: Samagotchi::Session.default_state_dir).and_return(false)
       expect(attached.send(:live_worker)).to eq([found, nil])
       expect(Samagotchi::WorkerLink).to have_received(:resolve)
-        .with(Samagotchi::Session.session_dir("s-1234"), unlink: true, host: "127.0.0.1")
+        .with(Samagotchi::Session.session_dir("s-1234"), unlink: true)
 
       allow(Samagotchi::Session).to receive(:stopped_marker?)
         .with("s-1234", state_dir: Samagotchi::Session.default_state_dir).and_return(true)
