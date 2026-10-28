@@ -7,6 +7,8 @@ and commands may change between minor versions. How releases are made:
 [docs/releasing.md](docs/releasing.md).
 ## [Unreleased]
 
+## [0.127.0] - 2026-10-28
+
 ### Added
 
 - chi web's header project chip opens a picker to switch projects without starting chi web in each one.
@@ -26,6 +28,8 @@ and commands may change between minor versions. How releases are made:
   requester's own (review or pair) when a participant did, instead of the parent session's.
 - A Verify turn that fails fast and comes back into chi web's composer keeps its claim, so sending it again still
   puts a verdict card on the claim.
+
+Update with `chi update`, then restart `chi web` and the session workers (`chi sessions restart`).
 
 ## [0.126.0] - 2026-10-27
 
@@ -4783,7 +4787,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.126.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.127.0...HEAD
+[0.127.0]: https://github.com/dm1try/samagotchi/compare/v0.126.0...v0.127.0
 [0.126.0]: https://github.com/dm1try/samagotchi/compare/v0.125.0...v0.126.0
 [0.125.0]: https://github.com/dm1try/samagotchi/compare/v0.124.0...v0.125.0
 [0.124.0]: https://github.com/dm1try/samagotchi/compare/v0.123.0...v0.124.0
