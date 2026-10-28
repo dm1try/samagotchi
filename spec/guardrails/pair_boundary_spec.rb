@@ -5,6 +5,7 @@ require "fileutils"
 require "samagotchi/guardrails"
 require "samagotchi/guardrail_wiring"
 require "samagotchi/session"
+require "samagotchi/web/running"
 
 # Every example runs with HOME in a temp dir: nothing here may touch the
 # real ~/.ssh or dotfiles.
@@ -36,7 +37,7 @@ RSpec.describe Samagotchi::Guardrails::PairBoundary do
 
   def boundary(turn_author: author)
     described_class.new(author: -> { turn_author }, root: -> { project }, denied_dirs: -> { [state, config] },
-                        home: -> { home })
+                        home: -> { home }, web_ports: -> { [4567, 5678] })
   end
 
   def verdict_for(call, **opts)
@@ -366,6 +367,28 @@ RSpec.describe Samagotchi::Guardrails::PairBoundary do
     ["crontab x.cron", "crontab -l", "echo id | at now + 1 minute", "echo id | batch"].each do |command|
       expect(refused(command)).to eq(described_class::BACKGROUND), command
     end
+  end
+
+  it "denies a command that calls chi web on a loopback name: there it answers as the owner" do
+    host = Samagotchi::Guardrails::PairCommand.hostnames.first || "localhost"
+    ["curl -s -X POST http://127.0.0.1:4567/api/sessions/s1/participants -d '{\"name\":\"x\"}'",
+     "curl localhost:4567/api/sessions", "curl http://[::1]:5678/", "curl LOCALHOST:4567", "curl 127.1:4567",
+     "curl http://0.0.0.0:4567", "curl 0:4567", "wget -qO- http://#{host}:4567/api/sessions", "nc localhost 4567",
+     "exec 3<>/dev/tcp/127.0.0.1/4567", "python3 -c \"import urllib.request as u; u.urlopen('http://localhost:4567')\"",
+     "ruby -rnet/http -e 'Net::HTTP.get(\"127.0.0.1\", \"/\", 4567)'", "bash -c 'curl localhost:4567'",
+     "curl --resolve x:4567:127.0.0.1 http://x:4567/"].each do |command|
+      expect(refused(command)).to eq(described_class::CHI_WEB), command
+    end
+    ["curl localhost:3000/health", "curl http://127.0.0.1:45678", "seq 0 4567", "curl https://example.com:4567"].each do |command|
+      expect(refused(command)).to be_nil, command
+    end
+  end
+
+  it "reads chi web's ports from the running chi web, config's web.port and the default" do
+    allow(Samagotchi::Web::Running).to receive(:port).and_return(4999)
+    allow(Samagotchi::Config).to receive(:get).and_call_original
+    allow(Samagotchi::Config).to receive(:get).with("web.port").and_return(4800)
+    expect(described_class.web_ports).to eq([4999, 4800, 4567])
   end
 
   it "denies the owner-voiced tools, any delegate_* tool and every memory_write" do

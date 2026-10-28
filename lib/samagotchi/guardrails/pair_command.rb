@@ -49,6 +49,10 @@ module Samagotchi
       # their arguments.
       ENV_READERS = %w[printenv security].freeze
       ENV_TEXT = %r{/proc/[^\s]*/environ}
+      # This machine's loopback names (.web_text): localhost and its
+      # subdomains, 127.x.y.z, 0.0.0.0, ::1 spelt any way, ::ffff:127.x.
+      LOOPBACK_HOSTS = [/(?:[\w-]+\.)*localhost\.?/, /127(?:\.\d{1,3}){1,3}/, /0\.0\.0\.0/,
+                        /\[?(?:0{0,4}:){2,7}0{0,3}1\]?/, /\[?::ffff:127(?:\.\d{1,3}){3}\]?/].freeze
       # An interpreter's script that reads the environment or detaches.
       SCRIPT_ENV_TEXT = /\bos\.environ\b|\bgetenv\b|\bprocess\.env\b|\bENV\b|\bprintenv\b|%ENV\b/
       SCRIPT_BACKGROUND_TEXT = /\b(?:nohup|setsid|disown|daemonize|Process\.daemon|detach(?:ed)?)\b/
@@ -101,10 +105,39 @@ module Samagotchi
           (path.to_s.start_with?("/") && ProtectedPaths.reals(path).any? { |real| real.match?(ShellPaths::HOOKS_PART) })
       end
 
+      # A command's text naming chi web's endpoint on this machine: a
+      # loopback name (LOOPBACK_HOSTS) or one of +hostnames+, and one of
+      # +ports+, anywhere in it (a URL's host:port, nc's host port, a
+      # script's ("host", port), /dev/tcp/host/port, curl's --resolve); or
+      # 0:port. nil without a port.
+      # @return [Regexp, nil]
+      def self.web_text(ports, hostnames: [])
+        return nil if ports.empty?
+
+        hosts = (LOOPBACK_HOSTS.map(&:source) + hostnames.map { |name| Regexp.escape(name) }).join("|")
+        port = ports.map { |number| Regexp.escape(number.to_s) }.join("|")
+        Regexp.new("\\A(?=[\\s\\S]*?(?<![\\w.-])(?:#{hosts})(?![\\w-]))(?=[\\s\\S]*?(?<![\\w.])(?:#{port})(?!\\d))|" \
+                   "(?<![\\w.:-])0:(?:#{port})(?!\\d)", Regexp::IGNORECASE)
+      end
+
+      # This machine's own names (Socket.gethostname, with and without
+      # its domain and with .local), lowercased.
+      def self.hostnames
+        require "socket"
+        name = Socket.gethostname.to_s.downcase
+        short = name.split(".").first.to_s
+        [name, short, "#{short}.local"].reject { |host| host.empty? || host == ".local" }.uniq
+      rescue StandardError
+        []
+      end
+
       # @param paths [ReviewPaths] the denylist
       # @param root [String, nil] the project root (outside writes; none:
       #   every command but a read-only one writes outside)
-      def initialize(text, cwd:, paths:, home:, root: nil, depth: 0)
+      # @param web [Regexp, nil] chi web's endpoint in a command's text
+      #   (.web_text)
+      def initialize(text, cwd:, paths:, home:, root: nil, depth: 0, web: nil)
+        @web = web
         @text = text.to_s
         @cwd = cwd
         @paths = paths
@@ -157,6 +190,7 @@ module Samagotchi
         return PairBoundary::CHI if subst && code.match?(CHI_TEXT)
         return PairBoundary::BACKGROUND if tokens.any? { |type, value| type == :op && value == "&" }
         return PairBoundary::ENVIRONMENT if code.match?(ENV_TEXT)
+        return PairBoundary::CHI_WEB if @web && code.match?(@web)
         return PairBoundary::SECRET if subst && code.match?(PairBoundary::SECRET_TEXT)
 
         @read_only = ReadOnlyShell.read_only?(@text)
@@ -383,7 +417,7 @@ module Samagotchi
       end
 
       def nested(script) = PairCommand.new(script, cwd: @cwd, paths: @paths, home: @home, root: @root,
-                                                   depth: @depth + 1)
+                                                   depth: @depth + 1, web: @web)
 
       # Whether it only reads but for writes (a > or >> target, cp's
       # destination, tee's files) into the project or a tmp dir.

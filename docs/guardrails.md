@@ -429,6 +429,14 @@ message:
   value or an alias, a function, after `-exec`/`-c`/`-e`, but `chi --version` and
   `chi --help`: its commands act in the owner's name (shares, caps, sends,
   answers, sessions);
+- calling chi web on this machine: a command whose text names a loopback name
+  (`localhost` and its subdomains, `127.x`, `0.0.0.0`, `[::1]`, `::ffff:127.x`,
+  `0:PORT`) or this machine's host name together with chi web's port (the one
+  the running chi web recorded in `web.json`, config's `web.port`, 4567), by
+  `curl`, `wget`, `nc`, `/dev/tcp`, a script's URL or anything else: a loopback
+  request without a token is the owner on a LAN chi web
+  (`PairBoundary::CHI_WEB`). A Bridge answers only with its secret, which sits
+  in chi's state dir;
 - leaving something running: `&` at a command's end, `nohup`, `setsid`,
   `disown`, `screen -d…`, `tmux new -d`, and scheduling it: `crontab`, `at`,
   `batch`;
@@ -497,7 +505,10 @@ The trust model is a team's (everyone invited is trusted): the boundary is an
 hostile participant; a review session is. A pair turn can still reach, through
 the owner's rules: `web_fetch` (an open egress path: what the turn can read it
 can send out in a URL), plugin and MCP tools, `memory_read` and `context_read`,
-`list_sessions` (the owner's other sessions' titles), and anything a script
+`list_sessions` (the owner's other sessions' titles), chi web by a name the
+check doesn't know (a DNS name or a decimal address for 127.0.0.1, a port
+forward, a port spelt in a variable), where a LAN chi web still takes a
+token-less loopback request as the owner's, and anything a script
 does that the command checks don't read (a script file's body, an interpreter's
 `-e` code). Share a working session only with people you would let type in it.
 

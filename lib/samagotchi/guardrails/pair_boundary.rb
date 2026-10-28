@@ -69,11 +69,29 @@ module Samagotchi
       GIT_CONFIG = "a participant's turn can't change git's global config or set what makes git run a command " \
                    "(core.hooksPath, core.fsmonitor, core.sshCommand, core.pager, core.editor, ! aliases)"
       GIT_HOOKS = "a participant's turn can't write git's hooks (.git/hooks): git runs them in the owner's name"
+      CHI_WEB = "a participant's turn can't call chi web on this machine: on loopback it answers as the owner " \
+                "(sessions, shares, answers)"
       UNREADABLE = "a participant's turn runs only commands chi can read: split this command, or write the file " \
                    "with the write tool"
       # A pair turn's execute runs without the environment variables whose
       # names say they hold a secret (Tools::Builtins, PairBoundary.scrubbed_env).
       SECRET_ENV_NAME = /KEY|TOKEN|SECRET|PASS|CREDENTIAL|AUTH/i
+      # chi web's port when config names none (Config's web.port default).
+      DEFAULT_WEB_PORT = 4567
+
+      # The ports chi web may answer on here: the one the running chi web
+      # recorded (Web::Running), config's web.port, and the default. A
+      # Bridge's port needs no entry: it answers only with its secret, in
+      # the worker's bridge.json under chi's state dir (denied).
+      # @return [Array<Integer>]
+      def self.web_ports
+        require_relative "../config"
+        require_relative "../web/running"
+        configured = Config.get("web.port").to_s.to_i
+        [Web::Running.port, (configured if configured.positive?), DEFAULT_WEB_PORT].compact.uniq
+      rescue StandardError, LoadError
+        [DEFAULT_WEB_PORT]
+      end
 
       # The unsets a pair turn's execute adds to its environment: every
       # variable of +env+ whose name SECRET_ENV_NAME matches.
@@ -100,7 +118,11 @@ module Samagotchi
       # @param root [#call] → String, nil: the session's project root (the
       #   work tree top of its folder); a write outside it asks the owner
       #   (none, or the home folder or above it: every write asks)
-      def initialize(author:, root: -> {}, denied_dirs: -> { ReviewPaths.chi_dirs }, home: -> { Dir.home })
+      # @param web_ports [#call] → Array<Integer>: chi web's ports here
+      #   (.web_ports); a command naming one on a loopback name is denied
+      def initialize(author:, root: -> {}, denied_dirs: -> { ReviewPaths.chi_dirs }, home: -> { Dir.home },
+                     web_ports: -> { PairBoundary.web_ports })
+        @web_ports = web_ports
         @author = author
         @root = root
         @denied_dirs = denied_dirs
@@ -170,7 +192,7 @@ module Samagotchi
       def command(targets, paths)
         @command = nil unless @command&.first == targets
         @command ||= [targets, PairCommand.new(targets.command, cwd: targets.cwd, home: home, root: project_root,
-                                                                paths: paths || denylist)]
+                                                                paths: paths || denylist, web: web_text)]
         @command.last
       end
 
@@ -180,6 +202,8 @@ module Samagotchi
         root = @root.call.to_s
         root.empty? || ReviewPaths.home_root?(root, home) ? nil : root
       end
+
+      def web_text = PairCommand.web_text(@web_ports.call, hostnames: PairCommand.hostnames)
 
       def denylist = ReviewPaths.new(root: nil, denied_dirs: @denied_dirs.call, home: @home.call)
 
