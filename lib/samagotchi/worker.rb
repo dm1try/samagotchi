@@ -697,7 +697,7 @@ module Samagotchi
                                    images: prompt.images, **(prompt.verify ? { verify: prompt.verify } : {})) do |result, error|
         if error
           # The Engine announced :turn_failed (with the error's one line).
-          restore_failed_turn([[prompt.text, origin, prompt.images], *@merged_this_turn], error: error)
+          restore_failed_turn([[prompt.text, origin, prompt.images, prompt.verify], *@merged_this_turn], error: error)
         else
           @continue_offer.after_turn(result, no_interrupt: prompt.no_interrupt)
         end
@@ -1383,8 +1383,10 @@ module Samagotchi
     # or the restored ones, never the one without the other. A turn that
     # got somewhere stays instead (TurnFlow#prompt_turn_failed), with the
     # prompts it took: nothing goes back.
-    # @param prompts [Array<Array(String, TurnOrigin|nil, Array|nil)>] [prompt,
-    #   origin, images] (a web client gets its image chips back)
+    # @param prompts [Array<Array(String, TurnOrigin|nil, Array|nil, VerifyAnchor|nil)>]
+    #   [prompt, origin, images, verify] (a web client gets its image chips
+    #   back, and a Verify turn's claim, so sending it again still records
+    #   a verdict)
     # @param error [Exception, nil] what failed: its one line stays in the
     #   conversation as a turn note
     # Not saved here: run_engine_turn saves after its block.
@@ -1392,9 +1394,10 @@ module Samagotchi
       @engine.synchronize_events do
         next if @turn_flow.prompt_turn_failed(error: error) == :kept
 
-        prompts.each do |prompt, origin, images|
+        prompts.each do |prompt, origin, images, verify|
           restored = { type: :prompt_restored, prompt: prompt, origin: origin.wire }
           restored[:images] = images unless Array(images).empty?
+          restored[:verify] = verify.to_h if verify
           @engine.announce(restored)
         end
       end

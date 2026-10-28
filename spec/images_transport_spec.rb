@@ -173,6 +173,22 @@ RSpec.describe "Images in transport" do
       end
       expect(restored).to include(prompt: "look", images: [wire_ref])
     end
+
+    it "gives a failed Verify turn's claim back with its prompt, so its resend still records a verdict" do
+      events = Queue.new
+      engine.subscribe(observer: ->(event) { events << event })
+      allow(engine).to receive(:run_turn) { raise IOError, "boom" }
+      start_worker
+      anchor = { turn_id: SecureRandom.uuid, quote: "the cache key" }
+      Samagotchi::SessionInbox.write_input(session_dir, prompt: "verify it", verify: anchor, now: next_stamp)
+
+      restored = wait_until do
+        list = []
+        list << events.pop until events.empty?
+        list.find { |e| e[:type] == :prompt_restored }
+      end
+      expect(restored).to include(prompt: "verify it", verify: anchor)
+    end
   end
 
   describe Samagotchi::Bridge::TurnAccumulator do

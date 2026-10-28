@@ -417,7 +417,9 @@ fields: a field added to an event later reaches nobody until it is named there.
   participant's invite link** in their own browser swaps their owner cookie for that grant (the page asks first). A
   continue archives the session and revokes its grants: re-share, and links to the old session stay on it.
 - **Verify verdict cards** (`verdict_card.js`). The built-in Verify preset carries the selected source turn id and quote
-  with the submitted turn, without changing its prompt text. A completed Verify reply whose final non-empty line has
+  with the submitted turn, without changing its prompt text. A Verify turn that fails fast and is rolled back hands
+  the claim back with its prompt (`prompt_restored`'s `verify`), so the owner's resend from the composer is a Verify
+  turn again. A completed Verify reply whose final non-empty line has
   a valid `Verdict: confirmed|refuted|unclear — <reason>` appends a verdict to the session. Both pages place its card
   after the source turn, name its author, show the reason and quote, and link to the checking turn; a live completion
   adds the card without a reload. The participant view receives only the card fields through its allowlist, with the

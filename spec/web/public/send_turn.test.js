@@ -42,6 +42,7 @@ function harness({ open = "s1", text = "hello", chips = [], state = {}, running 
     },
     verify: () => verify,
     clearVerify: () => { verify = null; },
+    restoreVerify: (anchor) => { verify = anchor; },
     dir: "/proj",
     startPage: {
       pendingPick: () => pendingPick,
@@ -203,6 +204,15 @@ test("a turn restored before its ack: its line back in the composer, which opens
   assert.equal(h.promptEl.value, "hello");
   assert.ok(h.log.includes("openForVisit"));
   assert.equal(h.earlyRestores.size, 0);
+});
+
+test("a Verify turn restored before its ack: its claim is armed again with its line", async () => {
+  const anchor = { turn_id: "t-src", quote: "the cache key" };
+  const h = harness({ verify: anchor });
+  h.earlyRestores.set("e1", { origin: { client_id: "web:t1", enqueued_id: "e1" }, prompt: "hello", verify: anchor });
+  await h.send();
+  assert.equal(h.promptEl.value, "hello");
+  assert.deepEqual(h.verify(), anchor);
 });
 
 test("an ack naming a command: the echo goes, the composer is cleared, no prompt bubble stays", async () => {

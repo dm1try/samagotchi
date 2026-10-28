@@ -19,6 +19,8 @@ and commands may change between minor versions. How releases are made:
   participant", on the phone and in the tab alike.
 - A Verify fresh check's system prompt carries no participants line when the owner asked for it, and its
   requester's own (review or pair) when a participant did, instead of the parent session's.
+- A Verify turn that fails fast and comes back into chi web's composer keeps its claim, so sending it again still
+  puts a verdict card on the claim.
 
 ## [0.126.0] - 2026-10-27
 

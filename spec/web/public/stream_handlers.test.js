@@ -53,6 +53,7 @@ function fakePage({ selected = "s1", running = false, read = null } = {}) {
     thinkingControl: { refresh: rec("thinkingControl.refresh") },
     reasoningHistoryControl: { refresh: rec("reasoningHistoryControl.refresh") },
     placeVerdict: rec("placeVerdict"),
+    restoreVerify: rec("restoreVerify"),
     sentIds: new Set(),
     earlyRestores: new Map(),
     stream: {
@@ -275,6 +276,14 @@ test("prompt_restored: this tab's sent prompt refills an empty composer, then th
   assert.equal(liveTurn.failedText, null);
 });
 
+test("prompt_restored: a Verify turn's claim is armed again with its text, for the resend", async () => {
+  const { page, deps, handlers } = fakePage();
+  deps.sentIds.add("e1");
+  const verify = { turn_id: "t-src", quote: "the cache key" };
+  await handlers.prompt_restored({ prompt: "Verify this claim", origin: { client_id: ME, enqueued_id: "e1" }, verify });
+  assert.deepEqual(page.calls.find(([name]) => name === "restoreVerify"), ["restoreVerify", verify]);
+});
+
 test("prompt_restored: a full composer keeps its text", async () => {
   const { page, deps, handlers } = fakePage();
   deps.sentIds.add("e1");
@@ -282,6 +291,7 @@ test("prompt_restored: a full composer keeps its text", async () => {
   await handlers.prompt_restored({ prompt: "again", origin: { client_id: ME, enqueued_id: "e1" } });
   assert.equal(page.composerText, "typing");
   assert.ok(!page.names().includes("composer.refill"));
+  assert.ok(!page.names().includes("restoreVerify"));
 });
 
 test("command_ran: a /model run sets the open session's model and draws its bubble", async () => {
