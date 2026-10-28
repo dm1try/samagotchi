@@ -3,7 +3,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { Window } from "happy-dom";
 import {
-  freshURL, placeVerdictWithFresh, settleRunning,
+  freshURL, placeVerdictWithFresh, redrawFresh, settleRunning,
 } from "../../../lib/samagotchi/web/public/verdict_fresh.js";
 
 function page() {
@@ -140,5 +140,16 @@ test("a start error is kept in the page's errors, so a redraw with fresh cards s
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(errors["check-1"], undefined);
   assert.equal(again.querySelector(".verify-fresh-error"), null);
+  win.happyDOM.abort();
+});
+
+test("redrawFresh follows a gate that flipped: the disabled button becomes startable", () => {
+  const { win, root } = page();
+  const gated = { verdicts: [], running: [], canStart: false, unavailableReason: "restart this session to use Verify" };
+  const card = placeVerdictWithFresh(root, unclear, { who: "You" }, gated);
+  assert.equal(card.querySelector(".verify-fresh-btn").disabled, true);
+  redrawFresh(root, { verdicts: [], running: [], canStart: true, start: async () => ({ ok: true }) });
+  assert.equal(card.querySelector(".verify-fresh-btn").disabled, false);
+  assert.equal(card.querySelector(".verify-fresh-unavailable"), null);
   win.happyDOM.abort();
 });

@@ -16,6 +16,8 @@ and commands may change between minor versions. How releases are made:
 
 ### Fixed
 
+- The owner page's Verify fresh button no longer stays disabled ("restart this session to use Verify") after the
+  session's worker comes back with the `verify` feature: the cards follow the session's update without a reload.
 - The web's "Couldn't start a fresh check." under a verdict card no longer vanishes at the next redraw (the participant
   page re-creates its cards on every update): the page keeps it until the next attempt.
 - A `write` or `edit` of a dangling symlink (or a path through one) or of a file with another hard link no longer
