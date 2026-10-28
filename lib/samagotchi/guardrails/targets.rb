@@ -320,6 +320,17 @@ module Samagotchi
         @read_only = !@command.nil? && ReadOnlyShell.read_only?(@command)
       end
 
+      # Whether the command only reads but for writes into a tmp dir that
+      # +root+ isn't in (ReadOnlyShell.read_only_but_writes?,
+      # Outside.tmp_write?): its > / >> targets, cp's destination and tee's
+      # files, from the call's cwd and any cd before them. The child
+      # boundary's; #read_only? stays what the rules read.
+      # @param root [String] the folder the writes must stay out of
+      def read_only_but_tmp_writes?(root:)
+        !@command.nil? &&
+          ReadOnlyShell.read_only_but_writes?(@command, cwd: @cwd) { |path| Outside.tmp_write?(path, root: root) }
+      end
+
       # A memory file that reaches the system prompt: the identity memory and
       # the model notes (`model_notes_*`), with their overlays.
       PROMPT_MEMORY = /\A(?:identity(?:\..+)?|model_notes_.+)\.md\z/

@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require "pathname"
 require "tmpdir"
 require_relative "protected_paths"
 require_relative "../memory_bundle/index_sync"
@@ -29,6 +30,24 @@ module Samagotchi
         return false if tmp_roots.any? { |tmp| within?(real, tmp) && !within?(session, tmp) }
 
         true
+      end
+
+      # Whether a shell command may write +path+ as a tmp file (the child
+      # boundary's tmp writes): resolved, it is in a tmp dir the session's
+      # root isn't in, and it is neither a dangling symlink (a write would
+      # create its target) nor a file with another hard link (a write would
+      # change that file too).
+      # @param path [String] absolute
+      # @param root [String] the session's repo root (or cwd)
+      def self.tmp_write?(path, root:)
+        real = ProtectedPaths.real(path)
+        session = ProtectedPaths.real(root)
+        return false unless tmp_roots.any? { |tmp| within?(real, tmp) && !within?(session, tmp) }
+        return false if Pathname.new(real).ascend.any?(&:symlink?)
+
+        !(File.file?(real) && File.stat(real).nlink > 1)
+      rescue SystemCallError
+        false
       end
 
       # The tmp dirs that exist, resolved.

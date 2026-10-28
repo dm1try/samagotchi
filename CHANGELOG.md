@@ -7,6 +7,12 @@ and commands may change between minor versions. How releases are made:
 [docs/releasing.md](docs/releasing.md).
 ## [Unreleased]
 
+### Changed
+
+- A delegate child's read-only command that writes only into a tmp dir (`sqlite3 -readonly -safe ../main/x.db "…" >
+  /tmp/rows`, `cp ../main/x.db /tmp/`, `… | tee /tmp/f`) no longer asks as a change outside its folder
+  (`child-boundary`); a tmp path that links back into the repository still asks.
+
 ## [0.128.0] - 2026-10-28
 
 ### Changed

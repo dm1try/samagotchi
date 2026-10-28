@@ -118,6 +118,82 @@ RSpec.describe Samagotchi::Guardrails::ChildBoundary do
       expect(run("cp a.txt /usr/local/share/elsewhere")).to be_allow
     end
 
+    describe "a read that writes only into a tmp dir" do
+      # A tmp dir the child's folder isn't in (the spec repo sits in
+      # Dir.tmpdir, or /tmp on Linux), and the one it is in.
+      let(:tmp) { Samagotchi::Guardrails::Outside.tmp_roots.find { |dir| !base.start_with?(File.join(dir, "")) } }
+      let(:own_tmp) { Samagotchi::Guardrails::Outside.tmp_roots.find { |dir| base.start_with?(File.join(dir, "")) } }
+      let(:out) { File.join(tmp, "child-boundary-#{Process.pid}-#{rand(1 << 30)}") }
+      let(:db) { "#{main}/x.db" }
+
+      before { skip "no tmp dir outside the spec repo" unless tmp }
+      after { FileUtils.rm_rf(out) if tmp }
+
+      it "doesn't ask for a redirect, cp or tee into it" do
+        expect(run("sqlite3 -readonly -safe #{db} 'select 1' > #{out}")).to be_allow
+        expect(run("sqlite3 -readonly -safe #{db} 'select 1' >> #{out}")).to be_allow
+        expect(run("sqlite3 -readonly -safe #{db} 'select 1' 2>#{out}")).to be_allow
+        expect(run("cat #{main}/a.txt | tee -a #{out}")).to be_allow
+        expect(run("cp #{db} #{out}")).to be_allow
+        expect(run("cp -p #{db} ../main/a.txt -t #{tmp}")).to be_allow
+        expect(run("cp --target-directory=#{tmp} #{db}")).to be_allow
+      end
+
+      it "follows the call's cwd and an earlier cd" do
+        expect(run("cd #{tmp} && cp #{db} #{File.basename(out)}")).to be_allow
+        expect(verdict_for({ name: "execute", content: "cat #{main}/a.txt > #{File.basename(out)}", cwd: tmp })).to be_allow
+        expect(run("cd #{main} && cp a.txt b.txt")).to be_ask
+        expect(run("(cd #{tmp}) && cp #{db} ../main/b.txt")).to be_ask
+        expect(run("cd #{tmp} | cp #{db} y.db")).to be_ask
+      end
+
+      it "asks for a write into another checkout, beside it or the other way round" do
+        expect(run("cp #{out} ../main/x")).to be_ask
+        expect(run("cat a.txt > ../main/out")).to be_ask
+        expect(run("cat #{main}/a.txt > #{out} > ../main/out")).to be_ask
+        expect(run("cat #{main}/a.txt | tee #{out} ../main/out")).to be_ask
+        expect(run("cp #{db} #{out} ../main/")).to be_ask
+      end
+
+      it "asks for a tmp path that links into the main checkout" do
+        FileUtils.mkdir_p(out)
+        File.symlink(File.join(main, "a.txt"), File.join(out, "a.txt"))
+        File.symlink(File.join(main, "new.txt"), File.join(out, "dangling"))
+        File.link(File.join(main, "a.txt"), File.join(out, "hard"))
+        File.symlink(main, File.join(out, "dir"))
+        expect(run("cat #{main}/a.txt > #{out}/a.txt")).to be_ask
+        expect(run("cat #{main}/a.txt > #{out}/dangling")).to be_ask
+        expect(run("cat #{main}/a.txt > #{out}/hard")).to be_ask
+        expect(run("cp #{main}/a.txt #{out}/dir/")).to be_ask
+        expect(run("cp #{main}/a.txt #{out}")).to be_ask
+        expect(run("cp #{main}/a.txt #{out}/b.txt")).to be_allow
+      end
+
+      it "keeps asking for links, moves and the operators it can't read" do
+        expect(run("cp -l #{db} #{out}")).to be_ask
+        expect(run("cp -s #{db} #{out}")).to be_ask
+        expect(run("cp --link #{db} #{out}")).to be_ask
+        expect(run("cp --symbolic-link #{db} #{out}")).to be_ask
+        expect(run("mv #{db} #{out}")).to be_ask
+        expect(run("cat #{main}/a.txt &> #{out}")).to be_ask
+        expect(run("cat #{main}/a.txt >| #{out}")).to be_ask
+        expect(run("cat #{main}/a.txt >&#{out}")).to be_ask
+      end
+
+      it "asks for the tmp dir the child's folder is in" do
+        skip "the spec repo isn't in a tmp dir" unless own_tmp
+        expect(run("cat #{main}/a.txt > #{own_tmp}/child-boundary-x")).to be_ask
+        expect(run("cp #{db} #{own_tmp}/child-boundary-x")).to be_ask
+      end
+
+      it "leaves Targets#read_only? as the rules read it" do
+        targets = Samagotchi::Guardrails::Targets.for({ name: "execute", content: "cp #{db} #{out}" },
+                                                      Samagotchi::Guardrails::Context.new(cwd: child, git: git))
+        expect(targets.read_only?).to be(false)
+        expect(targets.read_only_but_tmp_writes?(root: child)).to be(true)
+      end
+    end
+
     it "keeps a heredoc body naming the main checkout as data" do
       command = "cat > notes.md <<'EOF'\ncp x #{main}/y\nEOF"
       expect(run(command)).to be_allow

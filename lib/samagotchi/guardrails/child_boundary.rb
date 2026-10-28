@@ -26,7 +26,8 @@ module Samagotchi
     #     share, from anywhere (SharedGit: config, update-ref, worktree add,
     #     stash clear, tags, another branch's delete).
     # Paths elsewhere in a command (/usr/bin, ~/.gem) don't count, and
-    # read-only commands never ask. Text heuristics: sh -c bodies, scripts
+    # read-only commands never ask, nor do ones that only write into a tmp
+    # dir (> / >>, cp's destination, tee; Targets#read_only_but_tmp_writes?). Text heuristics: sh -c bodies, scripts
     # and $(…) aren't looked into.
     class ChildBoundary
       RULE = "child-boundary"
@@ -73,7 +74,7 @@ module Samagotchi
       def shell_crosses?(targets, root)
         return true if targets.git_dirs.any? { |dir| dir.is_a?(String) && Outside.outside?(dir, root: root) }
         return :shared if SharedGit.changes?(targets.command, own_branch: @branch.call)
-        return false if targets.read_only?
+        return false if targets.read_only? || targets.read_only_but_tmp_writes?(root: root)
         return true if targets.cwd && Outside.outside?(targets.cwd, root: root)
 
         names_other_checkout?(targets.command, targets.cwd, root)

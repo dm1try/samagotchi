@@ -100,4 +100,35 @@ RSpec.describe Samagotchi::Guardrails::ReadOnlyShell do
     expect(described_class.read_only?("ls \0x")).to be(true).or be(false)
     expect(described_class.read_only?("ls \xFF".b.force_encoding("UTF-8"))).to be(false).or be(true)
   end
+
+  # The child boundary's: writes it can name, each path the block accepts
+  # (here: anything under /w), from the dir the command is in by then.
+  describe ".read_only_but_writes?" do
+    def writes?(command, cwd: "/p")
+      described_class.read_only_but_writes?(command, cwd: cwd, home: "/h", env: {}) { |path| path.start_with?("/w/") }
+    end
+
+    it "lets reads write a redirect, cp's destination and tee's files where the block says" do
+      ["ls > /w/o", "ls >>/w/o", "ls 2>/w/e 1>/w/o", "cat x | tee /w/a -a /w/b", "cp x /w/y", "cp -rp x y /w/d",
+       "cp -t /w/d x", "cp -rt/w/d x", "cp --target-directory=/w/d x", "cp --preserve=mode -- x /w/y",
+       "cd /w && cp /p/x y", "cat x > ../w/o", "(cd /x) ; ls > /w/o", "ls", "git log > /w/log"].each do |command|
+        expect(writes?(command)).to be(true), command
+      end
+    end
+
+    it "refuses writes elsewhere, options it doesn't know and what read_only? refuses" do
+      ["ls > o", "ls > /w/o > o", "cat x | tee /w/a b", "tee -", "cp x y", "cp /w/x y", "cp -t /w/d", "cp x",
+       "cp -l x /w/y", "cp -s x /w/y", "cp --link x /w/y", "cp --symbolic-link x /w/y", "cp --parents x /w/d",
+       "cp -b x /w/y", "cp -T -t /w/d x", "mv x /w/y", "ls &> /w/o", "ls >| /w/o", "ls >&/w/o", "ls > $(p)",
+       "cd /w | cp x y", "ls | cd /w && cp x y", "(cd /w) && cp x y", "cd $X && cp x y", "ls > /w/*",
+       "cp x /w/y & ls", "rm /w/y", "ls > /w/o; rake"].each do |command|
+        expect(writes?(command)).to be(false), command
+      end
+      expect(writes?("cp x y", cwd: nil)).to be(false)
+    end
+
+    it "leaves read_only? as it was: no cp, tee or redirect into a file" do
+      expect(["cp x /w/y", "tee /w/a", "ls > /w/o"].map { |c| described_class.read_only?(c) }).to all(be(false))
+    end
+  end
 end
