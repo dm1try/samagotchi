@@ -53,6 +53,7 @@ body.has-session.composer-folded #composeGrip::after{opacity:1;width:48px;margin
    info bar's buttons while folded, the stage card's bottom in the stage view); it reaches 7 px below the edge, the info bar's
    border and padding, so it never covers a button of the bar. */
 @media(max-width:600px){
+  .composer-card-foot{padding-top:4px;padding-bottom:4px}
   #composeGrip{width:96px;height:26px;margin:-19px auto -7px}
   #composeGrip::after{top:17px;opacity:1}
 }

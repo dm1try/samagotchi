@@ -7,6 +7,10 @@ and commands may change between minor versions. How releases are made:
 [docs/releasing.md](docs/releasing.md).
 ## [Unreleased]
 
+### Changed
+
+- The shared composer card footer has less vertical padding on phones.
+
 ### Fixed
 
 - A participant's key hint wraps to a second line in a narrow comment box instead of being cut after one.
