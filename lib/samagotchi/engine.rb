@@ -1620,6 +1620,61 @@ module Samagotchi
     end
     private :stamp_verify_anchor
 
+    def verified_anchor(session, anchor)
+      return unless anchor
+
+      source = verify_anchor_source_session(session, anchor)
+      return unless source
+
+      turn = AnswerTail.turn_slice(Array(source.messages), anchor.turn_id)
+      return reject_verify_anchor(anchor, :turn_missing) unless turn
+
+      reply = turn.reverse.find { |message| AnswerTail.answer?(message) }
+      return reject_verify_anchor(anchor, :reply_missing) unless reply
+
+      quote_text = verify_comparison_text(anchor.quote)
+      answer_text = verify_comparison_text(reply[:content] || reply["content"])
+      return reject_verify_anchor(anchor, :quote_missing) if quote_text.empty? || !answer_text.include?(quote_text)
+
+      anchor
+    end
+    private :verified_anchor
+
+    def verify_anchor_source_session(session, anchor)
+      return session unless session.verify_fresh
+
+      fresh = session.verify_fresh
+      return reject_verify_anchor(anchor, :fresh_anchor_mismatch) unless fresh.anchor == anchor
+      return reject_verify_anchor(anchor, :fresh_parent_missing) unless session.parent_id
+
+      Session.load(session.parent_id, state_dir: session_state_dir)
+    rescue ArgumentError, SystemCallError, IOError => e
+      Log.warn(:turn, "verify_anchor_rejected", turn_id: anchor.turn_id, reason: :source_session_unavailable,
+                                                 error: e.class.name)
+      nil
+    end
+    private :verify_anchor_source_session
+
+    def verify_comparison_text(text)
+      OutputFormatter.strip_markup(text)
+                    .gsub(/!\[([^\]]*)\]\([^)]+\)/, '\1')
+                    .gsub(/\[([^\]]+)\]\([^)]+\)/, '\1')
+                    .gsub(/^[ \t]*(?:\#{1,6}[ \t]+|>[ \t]?|[-+*][ \t]+|\d+[.)][ \t]+)/, "")
+                    .gsub(/(\*\*|__|~~|`+)(.+?)\1/m, '\2')
+                    .gsub(/(?<!\w)\*(\S(?:.*?\S)?)\*(?!\w)/m, '\1')
+                    .gsub(/(?<!\w)_(\S(?:.*?\S)?)_(?!\w)/m, '\1')
+                    .tr("|", " ") # a table row's cells; the page copies them without the pipes
+                    .gsub(/\s+/, " ")
+                    .strip
+    end
+    private :verify_comparison_text
+
+    def reject_verify_anchor(anchor, reason)
+      Log.warn(:turn, "verify_anchor_rejected", turn_id: anchor.turn_id, reason:)
+      nil
+    end
+    private :reject_verify_anchor
+
     def record_verdict(turn, outcome)
       return unless outcome == "completed" && turn.verify
 
@@ -2170,6 +2225,7 @@ module Samagotchi
       # A participant's Verify fresh child: every turn is theirs (their
       # author, boundary and cap), whoever started it.
       origin = session.verify_fresh.origin_for(origin) if session.respond_to?(:verify_fresh) && session.verify_fresh
+      verify = verified_anchor(session, VerifyAnchor.from(verify))
       # Track the active session for recap and status snapshot.
       @session = session
       # status is turn state: running now, idle again before the turn's end

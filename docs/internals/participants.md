@@ -420,7 +420,11 @@ fields: a field added to an event later reaches nobody until it is named there.
 - **Verify verdict cards** (`verdict_card.js`). The built-in Verify preset carries the selected source turn id and quote
   with the submitted turn, without changing its prompt text. A Verify turn that fails fast and is rolled back hands
   the claim back with its prompt (`prompt_restored`'s `verify`), so the owner's resend from the composer is a Verify
-  turn again. A completed Verify reply whose final non-empty line has
+  turn again. Before the Engine stamps the anchor or records a verdict, it checks that the source turn exists and
+  its assistant reply contains the quote. Matching is case-sensitive, collapses whitespace, and strips common
+  Markdown presentation (links, headings, list/blockquote prefixes, emphasis and code delimiters) from both sides;
+  this matches the rendered text the page selects without treating different casing as the same claim. A fresh child
+  checks the same anchor against its parent's history. A completed Verify reply whose final non-empty line has
   a valid `Verdict: confirmed|refuted|unclear — <reason>` appends a verdict to the session. Both pages place its card
   after the source turn, name its author, show the reason and quote, and link to the checking turn; a live completion
   adds the card without a reload. The participant view receives only the card fields through its allowlist, with the

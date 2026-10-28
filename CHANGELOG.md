@@ -16,6 +16,7 @@ and commands may change between minor versions. How releases are made:
 - A participant's key hint wraps to a second line in a narrow comment box instead of being cut after one.
 - Read-only shell classification recognizes safe `sqlite3` reads and `gh`'s read-only subcommands.
 - An attached piped prompt removed before it ran says so on stderr and still exits 1.
+- A Verify turn records a verdict only when its quote is present in the referenced turn's reply.
 
 ## [0.127.0] - 2026-10-28
 

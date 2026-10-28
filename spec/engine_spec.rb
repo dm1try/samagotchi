@@ -269,6 +269,10 @@ RSpec.describe Samagotchi::Engine do
   end
 
   describe "#run_turn" do
+    def seed_verify_source(session, turn_id, answer: "**the claim**")
+      session.messages = [{ role: "user", content: "source turn", turn_id: turn_id }, { role: "model", content: answer }]
+    end
+
     let(:result) do
       Samagotchi::LLM::ModelResult.new(
         text: "hello back",
@@ -305,6 +309,7 @@ RSpec.describe Samagotchi::Engine do
                                                         { role: "model", content: "hello back" }])
       )
       session = make_session
+      seed_verify_source(session, "123e4567-e89b-12d3-a456-426614174000")
       engine = build_engine(profile: "gemma4")
       verify = Samagotchi::VerifyAnchor.new(turn_id: "123e4567-e89b-12d3-a456-426614174000", quote: "the claim")
 
@@ -320,6 +325,7 @@ RSpec.describe Samagotchi::Engine do
 
     it "records a verdict only for a completed verify turn" do
       session = make_session
+      seed_verify_source(session, "123e4567-e89b-12d3-a456-426614174000", answer: "## **the   [claim](https://example.test/claim)**")
       engine = build_engine(profile: "gemma4")
       verify = Samagotchi::VerifyAnchor.new(turn_id: "123e4567-e89b-12d3-a456-426614174000", quote: "the claim")
       check_turn_id = "123e4567-e89b-12d3-a456-426614174001"
@@ -345,9 +351,75 @@ RSpec.describe Samagotchi::Engine do
       expect(events.find { |event| event[:type] == :turn_completed }[:verdict]).to eq(session.verdicts.first)
     end
 
-    it "runs every turn of a participant's Verify fresh child as theirs, whoever started it" do
+    it "matches a quote selected across a table row's cells (the page copies them without the pipes)" do
       session = make_session
+      seed_verify_source(session, "123e4567-e89b-12d3-a456-426614174000",
+                         answer: "| name | value |\n|---|---|\n| cap | $2 per grant |")
+      engine = build_engine(profile: "gemma4")
+      verify = Samagotchi::VerifyAnchor.new(turn_id: "123e4567-e89b-12d3-a456-426614174000", quote: "cap\t$2 per grant")
+      check_turn_id = "123e4567-e89b-12d3-a456-426614174001"
+      answer = "Verdict: confirmed — the grant default"
+      allow(kernel).to receive(:run).and_return(
+        Samagotchi::LLM::ModelResult.new(text: answer,
+                                         conversation: [{ role: "user", content: "check", turn_id: check_turn_id },
+                                                        { role: "model", content: answer }],
+                                         exhausted: false, pending_tool_calls: false, tool_activity: [])
+      )
+
+      engine.run_turn(session, "check", id: check_turn_id, verify: verify)
+
+      expect(session.verdicts.map { |record| record[:verdict] }).to eq(["confirmed"])
+    end
+
+    it "does not stamp or record a verdict when the anchor turn is unknown" do
+      session = make_session
+      seed_verify_source(session, "123e4567-e89b-12d3-a456-426614174009")
+      engine = build_engine(profile: "gemma4")
       verify = Samagotchi::VerifyAnchor.new(turn_id: "123e4567-e89b-12d3-a456-426614174000", quote: "the claim")
+      check_turn_id = "123e4567-e89b-12d3-a456-426614174001"
+      answer = "Verdict: confirmed — supported by the source"
+      allow(kernel).to receive(:run).and_return(
+        Samagotchi::LLM::ModelResult.new(text: answer,
+                                         conversation: [{ role: "user", content: "check", turn_id: check_turn_id },
+                                                        { role: "model", content: answer }],
+                                         exhausted: false, pending_tool_calls: false, tool_activity: [])
+      )
+      expect(Samagotchi::Log).to receive(:warn).with(:turn, "verify_anchor_rejected",
+                                                     turn_id: verify.turn_id, reason: :turn_missing)
+
+      engine.run_turn(session, "check", id: check_turn_id, verify: verify)
+
+      expect(session.verdicts).to be_empty
+      expect(session.messages.find { |message| message[:turn_id] == check_turn_id }).not_to have_key(:verify)
+    end
+
+    it "does not stamp or record a verdict when the quote is absent with case-sensitive matching" do
+      session = make_session
+      seed_verify_source(session, "123e4567-e89b-12d3-a456-426614174000", answer: "**The claim**")
+      engine = build_engine(profile: "gemma4")
+      verify = Samagotchi::VerifyAnchor.new(turn_id: "123e4567-e89b-12d3-a456-426614174000", quote: "the claim")
+      check_turn_id = "123e4567-e89b-12d3-a456-426614174001"
+      answer = "Verdict: confirmed — supported by the source"
+      allow(kernel).to receive(:run).and_return(
+        Samagotchi::LLM::ModelResult.new(text: answer,
+                                         conversation: [{ role: "user", content: "check", turn_id: check_turn_id },
+                                                        { role: "model", content: answer }],
+                                         exhausted: false, pending_tool_calls: false, tool_activity: [])
+      )
+
+      engine.run_turn(session, "check", id: check_turn_id, verify: verify)
+
+      expect(session.verdicts).to be_empty
+      expect(session.messages.find { |message| message[:turn_id] == check_turn_id }).not_to have_key(:verify)
+    end
+
+    it "runs every turn of a participant's Verify fresh child as theirs, whoever started it" do
+      parent = make_session
+      verify = Samagotchi::VerifyAnchor.new(turn_id: "123e4567-e89b-12d3-a456-426614174000", quote: "the claim")
+      seed_verify_source(parent, verify.turn_id)
+      parent.save
+      session = make_session
+      session.parent_id = parent.id
       session.verify_fresh = Samagotchi::VerifyFreshOrigin.new(author: "p:guest", mode: "review", of: "c1", anchor: verify)
       engine = build_engine(profile: "gemma4")
       check_turn_id = "123e4567-e89b-12d3-a456-426614174005"
@@ -383,6 +455,7 @@ RSpec.describe Samagotchi::Engine do
       allow(kernel).to receive(:run).and_return(regular_result)
       engine.run_turn(session, "regular", id: "123e4567-e89b-12d3-a456-426614174002")
 
+      seed_verify_source(session, verify.turn_id)
       malformed_result = Samagotchi::LLM::ModelResult.new(
         text: "Verdict: confirmed — looks right\nNo final verdict",
         conversation: [{ role: "user", content: "verify", turn_id: "123e4567-e89b-12d3-a456-426614174003" },
