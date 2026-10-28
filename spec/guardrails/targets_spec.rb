@@ -42,6 +42,17 @@ RSpec.describe "Guardrails::Targets outside the session's repo" do
     expect(targets(name: "write", path: "out/a.txt")).to be_outside_repo
   end
 
+  it "counts a dangling symlink or a hard link in the repo as outside, a plain file not" do
+    File.write(File.join(@sibling, "a.txt"), "a")
+    File.write(File.join(@repo, "own.txt"), "a")
+    File.symlink(File.join(@sibling, "new.txt"), File.join(@repo, "dangling"))
+    File.link(File.join(@sibling, "a.txt"), File.join(@repo, "hard"))
+    expect(targets(name: "write", path: "dangling")).to be_outside_repo
+    expect(targets(name: "edit", path: "hard")).to be_outside_repo
+    expect(targets(name: "edit", path: "own.txt")).not_to be_outside_repo
+    expect(targets(name: "write", path: "lib/new.rb")).not_to be_outside_repo
+  end
+
   it "compares /tmp and /private/tmp spellings of the same folder as the same" do
     real_tmp = File.realpath("/tmp")
     skip "/tmp is not a symlink here" if real_tmp == "/tmp"
@@ -106,6 +117,21 @@ RSpec.describe "Guardrails::Targets outside the session's repo" do
       allow(Samagotchi::Guardrails::Outside).to receive(:tmp_roots).and_return([other_tmp])
       expect(targets(name: "write", path: File.join(other_tmp, "scratch.txt"))).not_to be_outside_repo
       expect(targets(name: "write", path: File.join(@sibling, "x.txt"))).to be_outside_repo
+    end
+
+    it "counts a dangling symlink or a hard link in a tmp dir as outside, a plain new file not" do
+      other_tmp = File.join(@base, "tmp").tap { |d| FileUtils.mkdir_p(d) }
+      allow(Samagotchi::Guardrails::Outside).to receive(:tmp_roots).and_return([other_tmp])
+      File.write(File.join(@sibling, "a.txt"), "a")
+      File.symlink(File.join(@sibling, "new.txt"), File.join(other_tmp, "dangling"))
+      File.symlink(File.join(@sibling, "gone"), File.join(other_tmp, "gone"))
+      File.link(File.join(@sibling, "a.txt"), File.join(other_tmp, "hard"))
+      expect(targets(name: "write", path: File.join(other_tmp, "dangling"))).to be_outside_repo
+      expect(targets(name: "write", path: File.join(other_tmp, "gone", "sub", "x.txt"))).to be_outside_repo
+      expect(targets(name: "edit", path: File.join(other_tmp, "hard"))).to be_outside_repo
+      expect(targets(name: "write", path: File.join(other_tmp, "new", "plain.txt"))).not_to be_outside_repo
+      expect(Samagotchi::Guardrails::Outside.tmp_write?(File.join(other_tmp, "dangling"), root: @repo)).to be(false)
+      expect(Samagotchi::Guardrails::Outside.tmp_write?(File.join(other_tmp, "plain.txt"), root: @repo)).to be(true)
     end
 
     it "asks for a sibling in the tmp dir the session itself lives in" do

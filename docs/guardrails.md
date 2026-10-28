@@ -655,6 +655,11 @@ one folder; a link in the repo that points elsewhere is outside). Never outside:
 - a tmp folder (`$TMPDIR`, `/tmp`, `/var/tmp`), unless the session's repo is
   itself in that tmp folder: a sandbox there still gets asked about its siblings.
 
+A path that is or goes through a dangling symlink (a write would create the
+link's target) or a file with another hard link (a write changes the other
+name too) is always outside, in the repo or a tmp folder alike
+(`Outside.resolve`, which the child boundary's tmp writes read as well).
+
 `git: outside_repo` (shell tools only) reads the command for git subcommands
 that change a checkout: `commit`, `add`, `reset`, `checkout`, `switch`,
 `rebase`, `merge`, `push`, `stash` (not `stash list`/`show`), `rm`, `mv`,

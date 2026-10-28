@@ -13,6 +13,12 @@ and commands may change between minor versions. How releases are made:
   /tmp/rows`, `cp ../main/x.db /tmp/`, `… | tee /tmp/f`) no longer asks as a change outside its folder
   (`child-boundary`); a tmp path that links back into the repository still asks.
 
+### Fixed
+
+- A `write` or `edit` of a dangling symlink (or a path through one) or of a file with another hard link no longer
+  counts as in a tmp dir or in the session's repo: a write there lands outside, so the delegate child's
+  `child-boundary` and `path: outside_repo` rules ask for it.
+
 ## [0.128.0] - 2026-10-28
 
 ### Changed

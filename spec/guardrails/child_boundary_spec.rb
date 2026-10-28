@@ -77,6 +77,25 @@ RSpec.describe Samagotchi::Guardrails::ChildBoundary do
       expect(verdict_for(name: "read", content: File.join(main, "a.txt"))).to be_allow
     end
 
+    it "asks for a write through a dangling symlink or onto a hard link, in a tmp dir or its folder" do
+      tmp = Samagotchi::Guardrails::Outside.tmp_roots.find { |dir| !base.start_with?(File.join(dir, "")) }
+      File.symlink(File.join(main, "other.txt"), File.join(child, "dangling"))
+      File.link(File.join(main, "a.txt"), File.join(child, "hard"))
+      if tmp
+        box = Dir.mktmpdir("child-boundary-links", tmp)
+        File.symlink(File.join(main, "new.txt"), File.join(box, "dangling"))
+        File.link(File.join(main, "a.txt"), File.join(box, "hard"))
+        expect(verdict_for(name: "write", path: File.join(box, "dangling"), content: "x")).to be_ask
+        expect(verdict_for(name: "edit", path: File.join(box, "hard"), old_string: "a", new_string: "b")).to be_ask
+        expect(verdict_for(name: "write", path: File.join(box, "plain.txt"), content: "x")).to be_allow
+      end
+      expect(verdict_for(name: "write", path: "dangling", content: "x")).to be_ask
+      expect(verdict_for(name: "edit", path: "hard", old_string: "a", new_string: "b")).to be_ask
+      expect(verdict_for(name: "edit", path: "a.txt", old_string: "a", new_string: "b")).to be_allow
+    ensure
+      FileUtils.rm_rf(box) if box
+    end
+
     it "takes the root from the child's folder while the process sits in the main checkout (cwd_gone)" do
       expect(verdict_for({ name: "write", path: File.join(main, "a.txt"), content: "x" }, cwd: main)).to be_ask
       expect(verdict_for({ name: "write", path: File.join(child, "a.txt"), content: "x" }, cwd: main)).to be_allow
