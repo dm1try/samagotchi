@@ -631,7 +631,9 @@ fixture loads and saves unchanged, `spec/turn_author_record_spec.rb`).
   worker's Engine at each turn's start), the system prompt's volatile tail opens with "Participants: people other
   than the owner review this session. …" (`SystemPrompt::PARTICIPANTS_LINE`), or in a working session with
   `PAIR_PARTICIPANTS_LINE`, which names the pair header (and the review one, for turns stamped before). It comes
-  when the first joins and goes when the last leaves or expires.
+  when the first joins and goes when the last leaves or expires. A Verify fresh child reads its parent's
+  `participants.json` but has one participant at most: its requester, under their saved mode while their grant is
+  active; the owner's child has no line (`SessionParticipants#prompt_mode`).
 - **Records.** `last_turn.author`, the analytics turn record's `author`, `turn_enqueued`'s `author`, and the
   Bridge's queued rows. `turn_started` carries `author`, `author_name` and `participant_mode` on a participant's turn
   (the owner's carries none), and so does the Bridge's turn snapshot and its replay. The owner's history

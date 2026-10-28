@@ -17,6 +17,8 @@ and commands may change between minor versions. How releases are made:
   'revoked').
 - A Verify verdict push names an owner's verdict "You" when its author is empty or the owner's mark, not "A
   participant", on the phone and in the tab alike.
+- A Verify fresh check's system prompt carries no participants line when the owner asked for it, and its
+  requester's own (review or pair) when a participant did, instead of the parent session's.
 
 ## [0.126.0] - 2026-10-27
 

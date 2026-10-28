@@ -118,6 +118,36 @@ RSpec.describe "the system prompt's participants line" do
       expect(prompts.last).not_to include(line)
     end
 
+    describe "a Verify fresh child (it reads its parent's participants)" do
+      let(:anchor) { { turn_id: SecureRandom.uuid, quote: "the cache key is per user" } }
+
+      def child_of(author, mode)
+        origin = Samagotchi::VerifyFreshOrigin.new(author: author, mode: mode, of: SecureRandom.uuid,
+                                                   anchor: Samagotchi::VerifyAnchor.from(anchor))
+        Samagotchi::Session.new_session(mode: "assist", model_name: "Gemma-4B-it", working_directory: Dir.pwd,
+                                        parent_id: session.id, delegate: true).tap do |child|
+          child.verify_fresh = origin
+          child.save(state_dir: state_dir)
+        end
+      end
+
+      before do
+        @alex = Samagotchi::Participants.invite(grants, session_id: session.id, name: "Alex", mode: "pair",
+                                                        state_dir: state_dir).grant
+      end
+
+      it "gives the owner's child no line, whoever is in the parent" do
+        engine.run_turn(child_of(nil, nil), "go", origin: { client_id: "web:o" })
+        expect(prompts.last).not_to include("Participants:")
+      end
+
+      it "gives a participant's child its requester's saved mode while their grant is active" do
+        engine.run_turn(child_of("p:#{@alex.id}", "review"), "go", origin: { client_id: "web:o" })
+        expect(prompts.last).to include("#{Samagotchi::SystemPrompt::PARTICIPANTS_LINE}\n")
+        expect(prompts.last).not_to include(line)
+      end
+    end
+
     it "leaves an owner session's prompt alone: no line, no rebuild" do
       builder = engine.instance_variable_get(:@prompt_builder)
       allow(builder).to receive(:reset!).and_call_original

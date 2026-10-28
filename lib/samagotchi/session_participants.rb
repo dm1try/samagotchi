@@ -54,15 +54,28 @@ module Samagotchi
     # The system prompt's participants line while anyone is in it (#active?
     # as of the last #refresh!): ParticipantMode::PAIR when +session+ is a
     # working session and an active participant was invited to act, else
-    # ParticipantMode::REVIEW; nil with nobody active.
+    # ParticipantMode::REVIEW; nil with nobody active. A Verify fresh
+    # child reads its parent's sidecar but has one participant at most, its
+    # requester: their saved mode while their grant is active, nil for the
+    # owner's child (no participant ever writes in it).
     def prompt_mode(session)
       active = @entries.select { |entry| entry.active?(@clock.call) }
       return nil if active.empty?
+
+      fresh = session.respond_to?(:verify_fresh) && session.verify_fresh
+      return fresh_prompt_mode(fresh, active) if fresh
 
       active.any? { |entry| ParticipantMode.for_turn(session, entry) == ParticipantMode::PAIR } ? ParticipantMode::PAIR : ParticipantMode::REVIEW
     end
 
     private
+
+    def fresh_prompt_mode(fresh, active)
+      return nil unless fresh.participant?
+
+      id = Steer.participant_id(fresh.author)
+      active.any? { |entry| entry.id == id } ? fresh.turn_mode : nil
+    end
 
     def source_id(session)
       return nil unless session
