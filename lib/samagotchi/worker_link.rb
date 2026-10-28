@@ -189,7 +189,15 @@ module Samagotchi
     def unowned(session_dir, sidecar, owner, stamp, unlink)
       return None.new(owner: owner) unless sidecar
 
-      unlink_unchanged(session_dir, stamp) if unlink
+      if unlink
+        # A worker that took the lock and wrote its sidecar since the lock
+        # was read (before the stamp): its fresh file is the one stamped, so
+        # read the lock again just before the unlink, and take that worker.
+        fresh = OwnerLock.owner(session_dir)
+        return resolve(session_dir, unlink: false, owner: fresh) if fresh&.worker?
+
+        unlink_unchanged(session_dir, stamp)
+      end
       Stale.new(sidecar: sidecar, reason: :lock_free, owner: owner)
     end
     private_class_method :unowned

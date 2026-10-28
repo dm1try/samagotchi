@@ -511,7 +511,8 @@ for client discovery, with the Bridge's secret (see above).
 reading `bridge.json` or probing a port itself: `WorkerLink.resolve(session_dir, unlink:, owner:)` answers a typed
 outcome. The rule is the owner lock plus the sidecar's `pid`; there is no port probe (a port can be reused by another
 session's Bridge, a free lock is the kernel's proof the worker died). In order: no lock holder, or a chi REPL's: a
-sidecar is `Stale(:lock_free)` (removed with `unlink: true`, only if it is still the file that was read), else `None`;
+sidecar is `Stale(:lock_free)` (removed with `unlink: true`, only if it is still the file that was read and the lock,
+read again just before, is still free: a worker that took it meanwhile is resolved as that worker), else `None`;
 a holder with no kind yet: `Starting`; a leaving worker: `Leaving` (marked before its Bridge stops, on every way out:
 `Worker#teardown` marks it too, with `TEARDOWN_LEAVE_WAIT`); a worker whose sidecar names no port or another
 pid than the holder's (a worker that has not written its own yet): `Starting`, `stuck` once it has held the lock

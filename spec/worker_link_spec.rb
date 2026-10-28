@@ -139,6 +139,26 @@ RSpec.describe Samagotchi::WorkerLink do
       expect(Samagotchi::WorkerSidecar.read(dir)).to have_attributes(epoch: "new")
     end
 
+    it "keeps the sidecar of a worker that took the lock and wrote it after the lock was read" do
+      held = nil
+      reads = 0
+      allow(Samagotchi::OwnerLock).to receive(:owner).and_wrap_original do |original, *args|
+        original.call(*args).tap do
+          reads += 1
+          next unless reads == 1
+
+          # The worker starts right after resolve's first look at the lock.
+          held = Samagotchi::OwnerLock.acquire(dir, kind: "worker", wait: 1.0)
+          Samagotchi::WorkerSidecar.new(port: 4242, pid: Process.pid, protocol: 1).write(dir)
+        end
+      end
+
+      expect(described_class.resolve(dir, unlink: true)).to be_a(described_class::Live)
+      expect(File.exist?(path)).to be(true)
+    ensure
+      held&.release
+    end
+
     it "is None for a broken sidecar" do
       ["{", "[1]"].each do |body|
         File.write(path, body)
