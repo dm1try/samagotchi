@@ -2,7 +2,10 @@ import "./dom_shim.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { Window } from "happy-dom";
-import { placeVerdict, nameVerdictCards } from "../../../lib/samagotchi/web/public/verdict_card.js";
+import {
+  CHECK_NOT_ON_PAGE, nameVerdictCards, ownerCheckHash, placeVerdict,
+} from "../../../lib/samagotchi/web/public/verdict_card.js";
+import { claimFromHash } from "../../../lib/samagotchi/web/public/claim_link.js";
 
 test("places a verdict on its source turn and links to the checking turn", () => {
   const win = new Window();
@@ -63,4 +66,43 @@ test("does not place a verdict without a source turn", () => {
     anchor: { turn_id: "missing", quote: "claim" }, verdict: "unclear", reason: "No source.", check_turn_id: "check",
   }, { who: "You" }), null);
   win.happyDOM.abort();
+});
+
+test("View check reports a missing turn to its caller", () => {
+  const win = new Window();
+  const root = win.document.createElement("main");
+  const source = win.document.createElement("div");
+  source.dataset.turnId = "source-turn";
+  root.append(source);
+  const record = {
+    anchor: { turn_id: "source-turn", quote: "the claim" },
+    verdict: "refuted",
+    reason: "The source disagrees.",
+    check_turn_id: "check-turn",
+  };
+  let missing = null;
+
+  const card = placeVerdict(root, record, { onMissingCheck: (value) => { missing = value; } });
+  const event = new win.MouseEvent("click", { bubbles: true, cancelable: true });
+  card.querySelector("a").dispatchEvent(event);
+
+  assert.equal(event.defaultPrevented, true);
+  assert.equal(missing, record);
+  assert.equal(CHECK_NOT_ON_PAGE, "That check is no longer on this page.");
+  win.happyDOM.abort();
+});
+
+test("an owner check link targets another known session that contains its verdict", () => {
+  const checkTurnId = "a1b2c3d4-0000";
+  const hash = ownerCheckHash([
+    { id: "current", verdicts: [{ check_turn_id: checkTurnId }] },
+    { id: "continued", verdicts: [{ check_turn_id: checkTurnId }] },
+  ], "current", checkTurnId);
+
+  assert.equal(hash, "#/s/continued?t=a1b2c3d4");
+  assert.deepEqual(claimFromHash(hash), {
+    sessionId: "continued", turn: "a1b2c3d4", q: "", p: "",
+  });
+  assert.equal(ownerCheckHash([{ id: "current", verdicts: [{ check_turn_id: "check-turn" }] }],
+    "current", "check-turn"), null);
 });

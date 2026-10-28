@@ -157,6 +157,26 @@ test("participant page: a live verdict is placed on its source turn without wait
   assert.match(card.textContent, /The source says the opposite/);
 });
 
+test("participant page: View check reports when its turn is not in this review", async (t) => {
+  const verdict = {
+    anchor: { turn_id: "source", quote: "the claim" },
+    verdict: "refuted",
+    reason: "The source disagrees.",
+    check_turn_id: "missing-check",
+  };
+  const review = {
+    ...REVIEW,
+    messages: [{ role: "user", content: "Original claim", turn_id: "source" }],
+    verdicts: [verdict],
+  };
+  const { $ } = await openPage(t, { respond: (call) => call.answer(200, review) });
+
+  $("thread").querySelector(".verify-verdict-link").click();
+
+  assert.equal($("claimNote").hidden, false);
+  assert.equal($("claimNote").textContent, "That check is no longer on this page.");
+});
+
 test("participant page: Verify fresh on an unclear card posts once, says it runs, and the fresh verdict lands there", async (t) => {
   const unclear = {
     anchor: { turn_id: "source", quote: "the claim" }, verdict: "unclear", reason: "Context doesn't say.",

@@ -18,6 +18,7 @@ and commands may change between minor versions. How releases are made:
 - An attached piped prompt removed before it ran says so on stderr and still exits 1.
 - A Verify turn records a verdict only when its quote is present in the referenced turn's reply.
 - chi web disables Verify on workers that predate Verify turns and refuses anchored turns and fresh checks sent to them.
+- chi web's Verify verdict links open a known earlier session at the check, or report when it isn't on this page.
 
 ## [0.127.0] - 2026-10-28
 
