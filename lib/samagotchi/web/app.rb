@@ -118,6 +118,9 @@ module Samagotchi
       # Seconds GET /api/models waits for the hosts' lists before answering
       # with what it has (the listing goes on and fills the registry's cache).
       MODELS_WAIT_TIMEOUT = 4.0
+      # The one refusal for an update operation (an install, a workers
+      # restart, a chi web restart) asked while another one runs: 409 update_running.
+      UPDATE_RUNNING = "a chi update operation is already running; try again when it ends"
       EVENTS_POLL = 1.0
 
       # A callable the event loops ask whether the server still runs;
@@ -702,7 +705,7 @@ module Samagotchi
             false
           end
         end
-        return error_response(409, "update_running", "an update is already running") if already_running
+        return error_response(409, "update_running", UPDATE_RUNNING) if already_running
 
         @hub.publish_update(state: "running", rows: [], operation: "install", version: version)
         Thread.new { perform_update(version) }
@@ -774,7 +777,7 @@ module Samagotchi
             false
           end
         end
-        return error_response(409, "update_running", "a chi update operation is already running") if already_running
+        return error_response(409, "update_running", UPDATE_RUNNING) if already_running
 
         @hub.publish_update(state: "running", rows: [], operation: "workers")
         Thread.new { perform_worker_restarts }
@@ -834,7 +837,7 @@ module Samagotchi
           @update_running = true # held for good once restarting: the exec ends this process
           false
         end
-        return error_response(409, "update_running", "a chi update operation is running; restart chi web when it ends") if busy
+        return error_response(409, "update_running", UPDATE_RUNNING) if busy
 
         case @restart_web.call
         when true then return json_response(202, { state: "restarting" })
@@ -1741,7 +1744,7 @@ module Samagotchi
       def stream_open_error(id, outcome)
         return error_response(503, "not_live", WorkerLink.unanswered(id)) if outcome.is_a?(BridgeClient::StreamOpen::Unreachable)
         return error_response(503, "not_live", WorkerLink.not_live(id)) if outcome.reason == :unknown_session
-        return error_response(502, "bridge_secret", BridgeSecret.refused(id)) if outcome.reason == :bridge_secret
+        return error_response(502, BridgeSecret::ERROR, BridgeSecret.refused(id)) if outcome.reason == :bridge_secret
 
         error_response(502, "bridge_error", outcome.detail || "the session's worker answered #{outcome.status}")
       end

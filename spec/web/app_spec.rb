@@ -559,7 +559,7 @@ RSpec.describe Samagotchi::Web::App do
 
         expect(update_post(app, "99.0.0").first).to eq(202)
         started.pop
-        expect(update_post(app, "99.0.0")).to eq([409, { "error" => "update_running", "detail" => "an update is already running" }])
+        expect(update_post(app, "99.0.0")).to eq([409, { "error" => "update_running", "detail" => described_class::UPDATE_RUNNING }])
       ensure
         finish << true
         wait_for("the web update to finish") { hub.update_state&.dig(:state) == "done" }
@@ -721,14 +721,14 @@ RSpec.describe Samagotchi::Web::App do
         expect(app.call(env_for("/api/update", method: "POST", body: JSON.generate(version: "99.0.0"))).first).to eq(202)
         started.pop
         status, _headers, response = app.call(env_for("/api/update/restart_web", method: "POST"))
-        expect([status, JSON.parse(response.first)["error"]]).to eq([409, "update_running"])
+        expect([status, JSON.parse(response.first)]).to eq([409, { "error" => "update_running", "detail" => described_class::UPDATE_RUNNING }])
         expect(restart).not_to have_received(:call)
 
         finish << true
         wait_for("the update to finish") { hub.update_state&.dig(:state) == "done" }
         expect(app.call(env_for("/api/update/restart_web", method: "POST")).first).to eq(202)
         status, _headers, response = app.call(env_for("/api/update/restart_workers", method: "POST"))
-        expect([status, JSON.parse(response.first)["error"]]).to eq([409, "update_running"])
+        expect([status, JSON.parse(response.first)]).to eq([409, { "error" => "update_running", "detail" => described_class::UPDATE_RUNNING }])
       ensure
         finish << true
       end
