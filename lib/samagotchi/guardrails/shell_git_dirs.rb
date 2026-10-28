@@ -2,6 +2,7 @@
 
 require_relative "shell_lex"
 require_relative "protected_paths"
+require_relative "shell_paths"
 
 module Samagotchi
   module Guardrails
@@ -15,7 +16,9 @@ module Samagotchi
     # may land at either (the shell's logical cd chdirs to the physical
     # path when the logical one doesn't exist, and always with -P), so the
     # walk keeps every dir the command may be in, and git's -C and dir
-    # options are opened the kernel's way; such a git counts from each. It
+    # options are opened the kernel's way; such a git counts from each. A
+    # leading ~, $HOME, XDG dir or $TMPDIR is expanded as ShellPaths::Walk
+    # expands it (ShellPaths.expand_word). It
     # catches honest mistakes (cd into another checkout and commit
     # there); sh -c, scripts, aliases and $(…) bodies get through. Never
     # raises on odd input.
@@ -32,9 +35,11 @@ module Samagotchi
       # @param home [String] for ~, $HOME, ${HOME} and a bare cd
       # @param env [Hash{String=>String}] the call's env: (task_create's):
       #   its GIT_DIR / GIT_WORK_TREE hold for each git unless it sets its own
+      # @param vars [Hash{String=>String}] the shell's variables a word's
+      #   $XDG_* / $TMPDIR expand from (ENV, with the call's env: over it)
       # @return [Array<String, Symbol>] absolute dirs and :unknown, unique
-      def self.for(command, cwd:, home: Dir.home, env: {})
-        Walk.new(cwd, home, env).run(ShellLex.simple_commands(ShellLex.lex(command.to_s)))
+      def self.for(command, cwd:, home: Dir.home, env: {}, vars: ENV)
+        Walk.new(cwd, home, env, vars).run(ShellLex.simple_commands(ShellLex.lex(command.to_s)))
       rescue ArgumentError, EncodingError
         [] # a NUL byte, invalid UTF-8: the shell would refuse it too
       end
@@ -45,9 +50,10 @@ module Samagotchi
         # More dirs than this after a cd: the dir is unknown.
         MAX_DIRS = 8
 
-        def initialize(cwd, home, env = {})
+        def initialize(cwd, home, env = {}, vars = ENV)
           @dirs = [cwd]
           @home = home
+          @vars = vars
           @env = env.slice("GIT_DIR", "GIT_WORK_TREE")
           @subshells = []
           @pushed = []
@@ -150,13 +156,12 @@ module Samagotchi
 
         # An absolute path for +arg+ against +dir+ (`..` lexical, or
         # +physical+: ProtectedPaths.expand); nil when it can't
-        # be told from the text (a variable, a substitution, a relative path
-        # against an unknown dir).
+        # be told from the text (a variable but those ShellPaths.expand_word
+        # expands, a substitution, a relative path against an unknown dir).
         def expand(arg, dir, physical: false)
           return nil if arg.include?(ShellLex::SUBST)
 
-          arg = arg.sub(%r{\A(~|\$HOME|\$\{HOME\})(?=/|\z)}) { @home }
-          return nil if arg.include?("$") || arg.start_with?("~")
+          arg = ShellPaths.expand_word(arg, home: @home, env: @vars) or return nil
           return nil unless arg.start_with?("/") || dir
 
           physical ? ProtectedPaths.expand(arg, dir) : File.expand_path(arg, dir)

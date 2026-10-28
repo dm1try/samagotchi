@@ -185,22 +185,27 @@ module Samagotchi
           dir && File.expand_path(word, dir)
         end
 
-        def expand(word)
-          word = word.sub(%r{\A~(?=/|\z)}) { @home }
-          word = word.sub(EXPANSION) { value(Regexp.last_match(1) || Regexp.last_match(2)) || "$" }
-          return nil if word.include?("$") || word.start_with?("~")
+        def expand(word) = ShellPaths.expand_word(word, home: @home, env: @env)
+      end
 
-          word
-        end
+      # +word+ with a leading ~, $HOME/${HOME}, an XDG dir or $TMPDIR
+      # expanded (+env+'s value, an unset XDG dir its default under +home+);
+      # nil when a $ or ~ is left. ShellGitDirs expands the same way.
+      def expand_word(word, home:, env:)
+        word = word.sub(%r{\A~(?=/|\z)}) { home }
+        word = word.sub(EXPANSION) { variable(Regexp.last_match(1) || Regexp.last_match(2), home, env) || "$" }
+        return nil if word.include?("$") || word.start_with?("~")
 
-        def value(name)
-          return @home if name == "HOME"
+        word
+      end
 
-          set = @env[name].to_s
-          return set unless set.empty?
+      def variable(name, home, env)
+        return home if name == "HOME"
 
-          XDG_DEFAULTS[name] && File.join(@home, XDG_DEFAULTS[name])
-        end
+        set = env[name].to_s
+        return set unless set.empty?
+
+        XDG_DEFAULTS[name] && File.join(home, XDG_DEFAULTS[name])
       end
     end
   end

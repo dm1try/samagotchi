@@ -79,6 +79,15 @@ RSpec.describe Samagotchi::Guardrails::ShellGitDirs do
     expect(dirs("git commit -m x", cwd: "/p/main")).to eq(["/p/main"])
   end
 
+  # As ShellPaths::Walk expands them (ShellPaths.expand_word).
+  it "expands the XDG dirs (their defaults under home when unset) and $TMPDIR from the shell's variables" do
+    vars = { "XDG_CONFIG_HOME" => "/cfg", "TMPDIR" => "/tmp/t" }
+    expect(described_class.for("git -C $XDG_CONFIG_HOME commit -m x", cwd: "/p/wt", home: "/home/u", vars: vars)).to eq(["/cfg"])
+    expect(described_class.for("cd ${TMPDIR}/x && git add .", cwd: "/p/wt", home: "/home/u", vars: vars)).to eq(["/tmp/t/x"])
+    expect(described_class.for("git -C $XDG_STATE_HOME/s add .", cwd: "/p/wt", home: "/home/u", vars: {})).to eq(["/home/u/.local/state/s"])
+    expect(described_class.for("git -C $OTHER add .", cwd: "/p/wt", home: "/home/u", vars: vars)).to eq([:unknown])
+  end
+
   it "resolves an absolute -C or cd after an unknown dir" do
     expect(dirs("cd $X && git -C /p/main add . && cd /p/other && git add .")).to eq(["/p/main", "/p/other"])
     expect(dirs("cd $X && git -C rel add .")).to eq([:unknown])

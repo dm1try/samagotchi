@@ -132,33 +132,33 @@ module GuardrailsPathConsistency
     # (SelfProtect.refuse?), rotmp (Targets#read_only_but_tmp_writes?, root
     # @proj), then the command.
     COMMANDS = <<~ROWS
-      # id                touch rm git     pair  child s1 rotmp command
-      tilde               y     -  -       deny  allow y  y     cat ~/.config/samagotchi/config.yml
-      dollar-home         y     -  -       deny  allow y  y     cat $HOME/.config/samagotchi/config.yml
-      slashes             y     -  -       deny  allow y  y     cat ~/.config//samagotchi/./config.yml
-      cd-chain            y     -  -       deny  allow y  -     cd ~/.config; cd samagotchi; cat config.yml
-      pushd               y     -  -       deny  allow y  -     pushd ~/.config/samagotchi && cat config.yml
-      subshell            y     -  -       deny  allow y  -     (cd ~/.config/samagotchi && cat config.yml) && cat lib/a.rb
-      cd-link-climb       -     -  -       deny  allow -  -     cd node_modules/foo && cat ../../.config/gh/hosts.yml
-      cd-memory-climb     y     -  -       deny  allow y  -     cd mem && cat ../config.yml
-      cd-link-dotdot      -     -  -       ask   allow -  -     cd node_modules/foo/.. && echo x > y.txt
-      cd-tmp-secret       -     -  -       deny  allow -  y     cd /tmp && cat ~/.ssh/id_rsa
-      tmp-write           -     -  -       allow allow -  y     echo x > @tmp/out.txt
-      tmpdir-write        -     -  -       allow allow -  -     echo x > $TMPDIR/out.txt
-      sibling-write       -     -  -       ask   ask   -  -     echo x > ../proj-wt/lib/a.rb
-      dangling-write      -     -  -       ask   allow -  -     echo x > dangling
-      link-climb-write    -     -  -       ask   allow -  -     echo x > node_modules/foo/../x.txt
-      git-hook-write      y     -  -       deny  allow -  -     echo x > .git/hooks/pre-commit
-      memory-append       y     -  -       deny  allow -  -     echo x >> ~/.config/samagotchi/memories/notes.md
-      rm-tmpdir           -     -  -       allow allow -  -     rm -rf $TMPDIR/junk
-      rm-project          -     y  -       allow allow -  -     rm -rf lib/old
-      rm-sibling          -     y  -       ask   ask   -  -     rm -rf ../proj-wt/tmp
-      git-here            -     -  @proj   allow allow -  -     git commit -m x
-      git-cd-sibling      -     -  @wt     ask   ask   -  -     cd ../proj-wt && git commit -m x
-      git-C-relative      -     -  @wt     ask   ask   -  -     git -C ../proj-wt commit -m x
-      git-C-tilde         -     -  @wt     ask   ask   -  -     git -C ~/work/proj-wt commit -m x
-      git-C-dollar-home   -     -  @wt     ask   ask   -  -     git -C $HOME/work/proj-wt commit -m x
-      git-C-xdg           -     -  ?       ask   allow -  -     git -C $XDG_CONFIG_HOME commit -m x
+      # id                touch rm git           pair  child s1 rotmp command
+      tilde               y     -  -             deny  allow y  y     cat ~/.config/samagotchi/config.yml
+      dollar-home         y     -  -             deny  allow y  y     cat $HOME/.config/samagotchi/config.yml
+      slashes             y     -  -             deny  allow y  y     cat ~/.config//samagotchi/./config.yml
+      cd-chain            y     -  -             deny  allow y  -     cd ~/.config; cd samagotchi; cat config.yml
+      pushd               y     -  -             deny  allow y  -     pushd ~/.config/samagotchi && cat config.yml
+      subshell            y     -  -             deny  allow y  -     (cd ~/.config/samagotchi && cat config.yml) && cat lib/a.rb
+      cd-link-climb       -     -  -             deny  allow -  -     cd node_modules/foo && cat ../../.config/gh/hosts.yml
+      cd-memory-climb     y     -  -             deny  allow y  -     cd mem && cat ../config.yml
+      cd-link-dotdot      -     -  -             ask   allow -  -     cd node_modules/foo/.. && echo x > y.txt
+      cd-tmp-secret       -     -  -             deny  allow -  y     cd /tmp && cat ~/.ssh/id_rsa
+      tmp-write           -     -  -             allow allow -  y     echo x > @tmp/out.txt
+      tmpdir-write        -     -  -             allow allow -  -     echo x > $TMPDIR/out.txt
+      sibling-write       -     -  -             ask   ask   -  -     echo x > ../proj-wt/lib/a.rb
+      dangling-write      -     -  -             ask   allow -  -     echo x > dangling
+      link-climb-write    -     -  -             ask   allow -  -     echo x > node_modules/foo/../x.txt
+      git-hook-write      y     -  -             deny  allow -  -     echo x > .git/hooks/pre-commit
+      memory-append       y     -  -             deny  allow -  -     echo x >> ~/.config/samagotchi/memories/notes.md
+      rm-tmpdir           -     -  -             allow allow -  -     rm -rf $TMPDIR/junk
+      rm-project          -     y  -             allow allow -  -     rm -rf lib/old
+      rm-sibling          -     y  -             ask   ask   -  -     rm -rf ../proj-wt/tmp
+      git-here            -     -  @proj         allow allow -  -     git commit -m x
+      git-cd-sibling      -     -  @wt           ask   ask   -  -     cd ../proj-wt && git commit -m x
+      git-C-relative      -     -  @wt           ask   ask   -  -     git -C ../proj-wt commit -m x
+      git-C-tilde         -     -  @wt           ask   ask   -  -     git -C ~/work/proj-wt commit -m x
+      git-C-dollar-home   -     -  @wt           ask   ask   -  -     git -C $HOME/work/proj-wt commit -m x
+      git-C-xdg           -     -  @home/.config ask   ask   -  -     git -C $XDG_CONFIG_HOME commit -m x
     ROWS
 
     def self.rows(text, columns)
@@ -447,9 +447,7 @@ module GuardrailsPathConsistency
       end
     end
 
-    it "holds once fixed: git -C $XDG_CONFIG_HOME is resolved as the cd walk resolves it (ShellPaths::Walk)" do
-      pending "BUG: ShellGitDirs expands only ~, $HOME and ${HOME} (an $XDG_* dir is :unknown, so it doesn't count " \
-              "as outside); ShellPaths::Walk expands $XDG_* and $TMPDIR"
+    it "holds: git -C $XDG_CONFIG_HOME is resolved as the cd walk resolves it (ShellPaths.expand_word)" do
       expect(@xdg_git_dirs).to eq([File.dirname(dir("config"))])
     end
   end

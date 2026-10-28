@@ -386,8 +386,8 @@ module Samagotchi
       def git_dirs
         @git_dirs ||= if shell?
                         # chi's own GIT_DIR is not the command's concern
-                        shell_envs.each_with_index.flat_map do |(home, _), i|
-                          ShellGitDirs.for(@command, cwd: @cwd, home: home, env: i.zero? ? {} : @env)
+                        shell_envs.each_with_index.flat_map do |(home, vars), i|
+                          ShellGitDirs.for(@command, cwd: @cwd, home: home, env: i.zero? ? {} : @env, vars: vars)
                         end.uniq
                       else
                         []
