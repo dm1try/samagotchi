@@ -124,13 +124,15 @@ module Samagotchi
         participant_principal(req, grant_tokens, identity: identity, proxied: true)
       end
 
-      # chi's own probe of a chi web behind a proxy (InfoProbe: a second chi
-      # web, chi share, chi update) sends no token: GET /api/info from this
+      # chi's own probe of a chi web that asks this machine for its token
+      # (behind a proxy, or on the LAN: InfoProbe from a second chi web, chi
+      # share, chi update, chi self) sends no token: GET /api/info from this
       # machine, not through the proxy, with no token at all, gets the
-      # fields it checks (nothing secret), so no probe ever hands the token
-      # to whatever listens on the port.
+      # fields it checks (nothing secret: its start folder is a path on this
+      # machine), so no probe ever hands the token to whatever listens on
+      # the port. Any token or cookie makes it an ordinary request.
       def probe_info?(req)
-        return false unless @public_url && req.get? && req.path_info == "/api/info"
+        return false unless (@public_url || @lan) && req.get? && req.path_info == "/api/info"
         return false unless App::LOOPBACK_PEERS.include?(req.get_header("REMOTE_ADDR").to_s) && !proxied?(req)
 
         req.get_header("HTTP_AUTHORIZATION").nil? && req.get_header("HTTP_COOKIE").nil?
@@ -138,7 +140,7 @@ module Samagotchi
 
       def probe_info
         json_response(200, { app: "chi-web", version: Samagotchi::VERSION, pid: Process.pid, features: App::INFO_FEATURES,
-                             lan: @lan && @lan[:ip] })
+                             lan: @lan && @lan[:ip], start_dir: start_dir })
       end
 
       def proxy_refuse(req, reason)

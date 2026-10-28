@@ -53,6 +53,7 @@ RSpec.describe Samagotchi::Web::App, "LAN access token" do
   end
 
   def cookie(value = token) = { "HTTP_COOKIE" => "other=1; chi_token=#{value}" }
+  def bearer(value = token) = { "HTTP_AUTHORIZATION" => "Bearer #{value}" }
 
   describe "a LAN peer without the token" do
     it "gets a 401 JSON for the API" do
@@ -176,6 +177,16 @@ RSpec.describe Samagotchi::Web::App, "LAN access token" do
     it "sees the LAN address in /api/info" do
       _, _, body = call("/api/info", host: "127.0.0.1:4567", peer: "127.0.0.1")
       expect(JSON.parse(body)["lan"]).to eq(lan_ip)
+    end
+
+    # InfoProbe (a second chi web, chi share, chi update) sends no token:
+    # the fields it checks, nothing else (ProxyGate#probe_info).
+    it "gets chi's token-less probe of /api/info with its checked fields only" do
+      status, _, body = call("/api/info", host: "127.0.0.1:4567", peer: "127.0.0.1")
+      expect(status).to eq(200)
+      expect(JSON.parse(body).keys).to contain_exactly("app", "version", "pid", "features", "lan", "start_dir")
+      expect(JSON.parse(call("/api/info", host: "127.0.0.1:4567", peer: "127.0.0.1", headers: bearer)[2]).keys)
+        .to include("cwd")
     end
   end
 

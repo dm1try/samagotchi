@@ -266,7 +266,7 @@ RSpec.describe Samagotchi::Web::App, "behind an auth proxy" do
     it "answers chi's token-less probe of /api/info with its checked fields only" do
       status, _, body = local("/api/info")
       expect(status).to eq(200)
-      expect(JSON.parse(body).keys).to contain_exactly("app", "version", "pid", "features", "lan")
+      expect(JSON.parse(body).keys).to contain_exactly("app", "version", "pid", "features", "lan", "start_dir")
       expect(JSON.parse(local("/api/info", headers: [bearer]).last).keys).to include("cwd")
       expect(local("/api/info", headers: [%w[Cookie x=1]]).first).to eq(401)
       expect(call("/api/info", headers: proxied).first).to eq(401)
