@@ -212,6 +212,23 @@ RSpec.describe Samagotchi::Web::App do
       expect(app).not_to have_received(:await_worker_link)
     end
 
+    # The real WorkerLink.await (only its resolve stubbed): a worker
+    # restarting is Starting until its new Bridge's sidecar, and the
+    # stream waits for it rather than answering a reconnect at once.
+    it "waits for a Starting worker's Bridge and streams from it" do
+      app = build_app(state_dir: Dir.mktmpdir, bridge_wait_timeout: 1)
+      allow(app).to receive(:worker_link).and_return(Samagotchi::WorkerLink::Starting.new(owner: nil))
+      allow(Samagotchi::WorkerLink).to receive(:resolve).and_call_original
+      allow(Samagotchi::WorkerLink).to receive(:resolve).with(anything, unlink: true).and_return(link_at(9_999))
+      stub_stream_open(app)
+
+      status, headers, = app.call(env_for("/api/sessions/s1/stream"))
+
+      expect(status).to eq(200)
+      expect(headers["Content-Type"]).to eq("text/event-stream")
+      expect(Samagotchi::WorkerLink).to have_received(:resolve).with(anything, unlink: true)
+    end
+
     it "answers a Skew link with 502 worker_newer and its detail" do
       sidecar = Samagotchi::WorkerSidecar.new(port: 4100, version: "9.9.9", protocol: 2)
       link = Samagotchi::WorkerLink::Skew.new(sidecar: sidecar, owner: nil, reason: :protocol)

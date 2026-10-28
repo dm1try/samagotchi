@@ -1724,8 +1724,7 @@ module Samagotchi
                            outcome.is_a?(WorkerLink::Leaving) || outcome.is_a?(WorkerLink::Stale) ||
                              outcome.is_a?(WorkerLink::Skew) ||
                              (outcome.is_a?(WorkerLink::Starting) && outcome.stuck)
-                         end,
-                         host: DEFAULT_HOST)
+                         end)
       end
 
       def stream_link_error(id, link)
