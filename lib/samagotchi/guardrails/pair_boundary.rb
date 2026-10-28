@@ -25,7 +25,9 @@ module Samagotchi
     #     read or written (read, write, edit, a plugin's targets: paths), and
     #     on what a command does (execute, and any call whose targets carry
     #     a command: PairCommand, which also refuses chi and chi web on a
-    #     loopback name, background and scheduled jobs, the environment and
+    #     loopback name, URL openers (open, xdg-open, a browser) and
+    #     listeners (nc -l, socat …LISTEN, a static HTTP server), background
+    #     and scheduled jobs, the environment and
     #     credential printers, git settings that run commands, home sweeps
     #     and links to them, and a program named by a $var or a glob); a
     #     write or edit of git's hooks (GIT_HOOKS);
@@ -78,8 +80,17 @@ module Samagotchi
       GIT_CONFIG = "a participant's turn can't change git's global config or set what makes git run a command " \
                    "(core.hooksPath, core.fsmonitor, core.sshCommand, core.pager, core.editor, ! aliases)"
       GIT_HOOKS = "a participant's turn can't write git's hooks (.git/hooks): git runs them in the owner's name"
-      CHI_WEB = "a participant's turn can't call chi web on this machine: on loopback it answers as the owner " \
-                "(sessions, shares, answers)"
+      # chi web on loopback asks the owner's token too (Web::App#token_gate,
+      # LAN mode); this text check stays as defense in depth: a loopback-only
+      # chi web still answers loopback as the owner.
+      CHI_WEB = "a participant's turn can't call chi web on this machine: it is the owner's (sessions, shares, answers)"
+      # A page opened in the owner's browser carries the owner's cookies
+      # (chi web's on 127.0.0.1 or the LAN address among them) to whatever
+      # it points at; a port listening here could catch them.
+      OPENER = "a participant's turn can't open a URL or a file in the owner's apps: a browser sends that page the " \
+               "owner's cookies"
+      LISTENER = "a participant's turn can't listen on a port: what it serves on this machine could catch the " \
+                 "owner's browser cookies"
       VERB = "a participant's turn runs only a program named plainly: no $, $(…) or glob in a command's name"
       UNREADABLE = "a participant's turn runs only commands chi can read: split this command, or write the file " \
                    "with the write tool"

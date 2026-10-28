@@ -369,7 +369,7 @@ RSpec.describe Samagotchi::Guardrails::PairBoundary do
     end
   end
 
-  it "denies a command that calls chi web on a loopback name: there it answers as the owner" do
+  it "denies a command that calls chi web on a loopback name (defense in depth: the gate asks loopback too)" do
     host = Samagotchi::Guardrails::PairCommand.hostnames.first || "localhost"
     ["curl -s -X POST http://127.0.0.1:4567/api/sessions/s1/participants -d '{\"name\":\"x\"}'",
      "curl localhost:4567/api/sessions", "curl http://[::1]:5678/", "curl LOCALHOST:4567", "curl 127.1:4567",
@@ -380,6 +380,35 @@ RSpec.describe Samagotchi::Guardrails::PairBoundary do
       expect(refused(command)).to eq(described_class::CHI_WEB), command
     end
     ["curl localhost:3000/health", "curl http://127.0.0.1:45678", "seq 0 4567", "curl https://example.com:4567"].each do |command|
+      expect(refused(command)).to be_nil, command
+    end
+  end
+
+  # A pair shell could open a page in the owner's browser pointed at a port
+  # it listens on, and catch the owner's chi web cookie (127.0.0.1 or the
+  # LAN address's: a cookie isn't kept per port). Both halves are denied.
+  it "denies opening a URL or a file in the owner's apps" do
+    ["open http://127.0.0.1:9999/", "open -a Safari http://example.com", "/usr/bin/open x.html", "command open .",
+     "xdg-open http://localhost:9999", "gio open http://x", "sensible-browser http://x", "wslview http://x",
+     "env FOO=1 google-chrome http://x", "firefox http://x", "osascript -e 'open location \"http://127.0.0.1:9999\"'",
+     "python3 -c 'import webbrowser; webbrowser.open(\"http://x\")'", "bash -c 'open http://x'"].each do |command|
+      expect(refused(command)).to eq(described_class::OPENER), command
+    end
+    ["git log --oneline", "cat open.txt", "grep -rn open lib", "gio info x"].each do |command|
+      expect(refused(command)).to be_nil, command
+    end
+  end
+
+  it "denies listening on a port" do
+    ["nc -l 9999", "nc -lk 9999", "nc -nlvp 9999", "ncat --listen 9999", "netcat -l -p 9999",
+     "socat TCP-LISTEN:9999,fork -", "socat tcp4-listen:9999 STDOUT", "python3 -m http.server 9999",
+     "python -m SimpleHTTPServer", "timeout 10 python3 -m http.server", "ruby -run -e httpd . -p 9999",
+     "php -S 127.0.0.1:9999", "busybox httpd -f -p 9999", "npx http-server -p 9999",
+     "python3 -c 'import http.server as h; h.test()'", "node -e 'require(\"http\").createServer(f).listen(9999)'",
+     "ruby -e 'require \"socket\"; TCPServer.new(9999)'", "bash -c 'nc -l 9999'"].each do |command|
+      expect(refused(command)).to eq(described_class::LISTENER), command
+    end
+    ["nc -zv example.com 22", "python3 -m pytest", "php -v", "socat -V", "ruby -e 'puts 1'"].each do |command|
       expect(refused(command)).to be_nil, command
     end
   end

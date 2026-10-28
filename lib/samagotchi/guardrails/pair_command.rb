@@ -11,7 +11,8 @@ module Samagotchi
     # One shell command of a participant's pair turn, read the way
     # PairBoundary needs it (the refusal words are PairBoundary's):
     # - #refusal: why it may not run, nil when it may: chi, something left
-    #   running, the environment or the keychain, git settings that run
+    #   running, a URL opener or a listener (OPENERS, LISTENERS: the owner's
+    #   browser cookies), the environment or the keychain, git settings that run
     #   commands, a folder sweep, a secret (a path a word resolves to, a glob
     #   or a $var whose fixed part leads into one, SECRET_TEXT for the
     #   rest); a script it hands a shell (sh -c, eval, a heredoc) is read as
@@ -66,6 +67,24 @@ module Samagotchi
       # A credential helper run by itself (docker-credential-osxkeychain get).
       CREDENTIAL_HELPER = /\A(?:docker-credential-|git-credential-)/
       ENV_TEXT = %r{/proc/[^\s]*/environ}
+      # Programs that open a URL or a file in the owner's apps (a browser
+      # sends the owner's cookies with it), whatever their arguments; gio
+      # with its open verb.
+      OPENERS = %w[open xdg-open gnome-open kde-open kde-open5 kfmclient exo-open wslview sensible-browser
+                   x-www-browser www-browser google-chrome google-chrome-stable chromium chromium-browser
+                   firefox safari msedge microsoft-edge brave-browser].freeze
+      # Programs that listen on a port whatever their arguments (static
+      # HTTP servers), and the netcats, which listen with -l.
+      LISTENERS = %w[http-server live-server httpd lighttpd nginx caddy miniserve darkhttpd webfsd].freeze
+      NETCATS = %w[nc ncat netcat].freeze
+      NC_LISTEN = /\A-[a-zA-Z0-9]*l|\A--listen\z/
+      # An interpreter's flags or arguments that serve a port (python -m
+      # http.server, ruby -run -e httpd, php -S, busybox httpd).
+      SERVE_MODULES = %w[http.server SimpleHTTPServer CGIHTTPServer socketserver].freeze
+      # An interpreter's script that opens a URL in the owner's apps, or
+      # listens on a port.
+      SCRIPT_OPENER_TEXT = /\bwebbrowser\b|\bopen location\b|openExternal|xdg-open|\bopen\s+["']?https?:/
+      SCRIPT_LISTEN_TEXT = /\blisten\s*\(|\bhttp\.server\b|\bserve_forever\b|HTTPServer|TCPServer|socketserver|createServer|WEBrick|\bhttpd\b/
       # This machine's loopback names (.web_text): localhost and its
       # subdomains, 127.x.y.z, 0.0.0.0, ::1 spelt any way, ::ffff:127.x.
       LOOPBACK_HOSTS = [/(?:[\w-]+\.)*localhost\.?/, /127(?:\.\d{1,3}){1,3}/, /0\.0\.0\.0/,
@@ -236,8 +255,32 @@ module Samagotchi
         return PairBoundary::BACKGROUND if upto.any? { |w| DETACHERS.include?(File.basename(w)) } || detached_session?(program, args)
         return PairBoundary::ENVIRONMENT if env_reader?(program, args) || bare_env?(words)
         return PairBoundary::GIT_CONFIG if program == "git" && git_runs_commands?(args)
+        return PairBoundary::OPENER if opener?(program, args)
+        return PairBoundary::LISTENER if listener?(program, args)
 
         nil
+      end
+
+      # open, xdg-open, a browser, gio open; osascript's open location is
+      # its script's (#script_text_refusal).
+      def opener?(program, args)
+        OPENERS.include?(program.to_s.downcase) || (program == "gio" && args.first == "open")
+      end
+
+      # nc -l, socat with a …LISTEN address, a static HTTP server, an
+      # interpreter serving a module (python -m http.server), ruby's un
+      # httpd (ruby -run -e httpd, ruby being a wrapper word: the args are
+      # the whole command's), php -S, busybox httpd.
+      def listener?(program, args)
+        name = program.to_s
+        return true if LISTENERS.include?(name)
+        return true if NETCATS.include?(name) && args.any? { |arg| arg.match?(NC_LISTEN) }
+        return true if name == "socat" && args.any? { |arg| arg.match?(/LISTEN/i) }
+        return true if name.start_with?("php") && args.include?("-S")
+        return true if name == "busybox" && args.first == "httpd"
+        return true if args.each_cons(2).any? { |flag, value| flag == "-m" && SERVE_MODULES.include?(value) }
+
+        false
       end
 
       # A program word the shell expands: a $var, a $(…), a glob (bin/ch?,
@@ -297,6 +340,8 @@ module Samagotchi
         return PairBoundary::SECRET if script.match?(PairBoundary::SECRET_TEXT)
         return PairBoundary::ENVIRONMENT if script.match?(SCRIPT_ENV_TEXT) || script.match?(ENV_TEXT)
         return PairBoundary::BACKGROUND if script.match?(SCRIPT_BACKGROUND_TEXT)
+        return PairBoundary::OPENER if script.match?(SCRIPT_OPENER_TEXT)
+        return PairBoundary::LISTENER if script.match?(SCRIPT_LISTEN_TEXT)
 
         nil
       end
