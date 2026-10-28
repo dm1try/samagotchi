@@ -127,6 +127,7 @@ test("participants: names and badges for the owner's bubbles", () => {
   assert.equal(participantName("p:p_0001abcd"), "Alex");
   assert.equal(authorBadge("owner"), null);
   assert.equal(authorBadge(null), null);
+  assert.equal(authorBadge("not-a-participant"), null);
   assert.deepEqual(Object.keys(authorBadge("p:p_0001abcd")), ["author", "name", "color"]);
   assert.equal(authorBadge("p:p_0001abcd").name, "Alex");
   assert.equal(authorBadge("p:p_0001abcd", "Alexandra").name, "Alexandra");

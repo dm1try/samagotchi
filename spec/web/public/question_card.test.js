@@ -32,6 +32,7 @@ test("approvalAsker names a participant's turn by name, else id; the owner's by 
   const asked = (fields) => ({ ...approval, approval: { ...approval.approval, ...fields } });
   assert.equal(approvalAsker(asked({ author: "p:p_0123abcd", author_name: "Sam" })), "Sam");
   assert.equal(approvalAsker(asked({ author: "p:p_0123abcd" })), "p_0123abcd");
+  assert.equal(approvalAsker(asked({ author: "reviewer" })), "reviewer");
   assert.equal(approvalView(asked({ author: "p:p_0123abcd", author_name: "Sam" })).asker, "Sam");
 });
 

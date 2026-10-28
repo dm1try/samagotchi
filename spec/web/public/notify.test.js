@@ -118,7 +118,7 @@ test("the words: session name and the reason, no question text", () => {
   assert.equal(attentionText({ last_verdict: { verdict: "unclear", reason: "x".repeat(140) } }, { reason: "verdict" }).body,
     `You: ❓ unclear — ${"x".repeat(119)}…`);
   // An owner's verdict: no participant author, whether by is empty or the owner's mark.
-  for (const by of ["", "owner"]) {
+  for (const by of ["", null, undefined, "owner", "ownerish"]) {
     assert.equal(attentionText({ last_verdict: { verdict: "confirmed", reason: "matches", by } }, { reason: "verdict" }).body,
       "You: ✅ confirmed — matches");
   }

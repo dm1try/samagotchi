@@ -248,6 +248,18 @@ test("turn_started draws the turn: prompt ops, running, the turn view, the timin
   assert.equal(started.promptBubble, "bubble");
 });
 
+test("turn_started marks only p:-prefixed authors as participant turns", () => {
+  const participant = fakePage();
+  participant.handlers.turn_started({ type: "turn_started", turn_id: "t1", author: "p:reviewer" });
+  assert.equal(participant.liveTurn.participantTurn, true);
+  assert.deepEqual(participant.liveTurn.review, { turn_id: "t1", author: "p:reviewer", author_name: undefined });
+
+  const owner = fakePage();
+  owner.handlers.turn_started({ type: "turn_started", turn_id: "t2", author: "ownerish" });
+  assert.equal(owner.liveTurn.participantTurn, false);
+  assert.equal(owner.liveTurn.review, null);
+});
+
 test("turn_failed keeps a rolled-back turn's line for its prompt_restored", () => {
   const { handlers, liveTurn } = fakePage();
   handlers.turn_failed({ error: "boom" });

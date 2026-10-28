@@ -4,7 +4,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import {
   authorSlot, authorColor, authorLabel, toolLine, refusalText, dequeueText, endedText, cursorSeq, streamURL, reloads, endsLiveTurn,
   liveFrom, applyLive, liveText, AUTHOR_SLOTS, pickSubject, subjectBody, subjectsKey, narrowView,
-  retries, retryDelay, PARTICIPANT_PREFIX, participantAuthor, threadGaps, withToolSteps, usageItems, leftText, USAGE_WARN,
+  retries, retryDelay, PARTICIPANT_PREFIX, participantAuthor, isParticipantAuthor, threadGaps, withToolSteps, usageItems, leftText, USAGE_WARN,
   modeCopy,
 } from "../../../lib/samagotchi/web/public/participant_model.js";
 
@@ -12,6 +12,11 @@ test("participant: a participant's author is the prefix and its id, the server's
   assert.equal(participantAuthor("p_1"), "p:p_1");
   const steer = readFileSync(new URL("../../../lib/samagotchi/steer.rb", import.meta.url), "utf8");
   assert.equal(steer.match(/PARTICIPANT_PREFIX = "([^"]*)"/)[1], PARTICIPANT_PREFIX);
+});
+
+test("participant: only p:-prefixed authors are participants; missing and other authors are the owner", () => {
+  assert.equal(isParticipantAuthor("p:reviewer"), true);
+  for (const author of ["", null, undefined, "owner", "ownerish", "reviewer", 1]) assert.equal(isParticipantAuthor(author), false);
 });
 
 test("participant: no other web script spells the author prefix by hand", () => {
@@ -28,6 +33,7 @@ test("participant: an author's colour slot is stable per id and in range; the ow
     assert.ok(slot >= 1 && slot <= AUTHOR_SLOTS, `${id}: ${slot}`);
   }
   assert.equal(authorColor(undefined), "var(--author-owner)");
+  assert.equal(authorColor("owner"), "var(--author-owner)");
   assert.match(authorColor("p:p_1"), /^var\(--author-[1-6]\)$/);
 });
 
@@ -35,6 +41,8 @@ test("participant: who wrote it: you, a participant's name, automatic, or the ow
   assert.equal(authorLabel({ mine: true, author: "p:p_1", author_name: "Alex" }), "You");
   assert.equal(authorLabel({ author: "p:p_2", author_name: "Sam" }), "Sam");
   assert.equal(authorLabel({ author: "p:p_2" }), "A participant");
+  assert.equal(authorLabel({ author: "owner" }), "Owner");
+  assert.equal(authorLabel({ author: "ownerish" }), "Owner");
   assert.equal(authorLabel({ automatic: true }), "Automatic");
   assert.equal(authorLabel({}), "Owner");
 });
