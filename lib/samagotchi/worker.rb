@@ -168,6 +168,10 @@ module Samagotchi
       @loop_started = false
       @left_loop = false
       @signal_mutex = Mutex.new
+      # The exit being taken or taken (:exit, :delete, :restart), claimed
+      # under its own lock before #exit_request's slow stop-all (#claim_exit).
+      @exit_claim = nil
+      @exit_claim_mutex = Mutex.new
       @grace_expired = false
       # The running turn has ended (its end event) and its after_turn hooks
       # run: a signal's grace waits for them (#signalled).
@@ -1583,41 +1587,89 @@ module Samagotchi
     def exit_request(client_id, delete: false, restart: false, stop: false, ask: true)
       # The Bridge serves before the idle-exit policy exists.
       return WorkerIdleExit::Hold.new(reason: :starting) unless @idle_exit
-      # One exit is already taken: the first one decides how the worker
+
+      kind = if restart then :restart
+             elsif delete then :delete
+             else :exit
+             end
+      # One exit at a time, and the first one taken decides how the worker
       # leaves (a later stop-all can't turn a restart, whose reminders go to
-      # the next worker, into a plain exit). Held at the leave, it is
-      # forgotten and the next request counts again.
-      return nil if @exit_requested
+      # the next worker, into a plain exit): claimed before the slow
+      # stop-all, so a request of another kind meanwhile is refused (409),
+      # not told it went through. Held at the leave, it is forgotten and the
+      # next request counts again.
+      refused = claim_exit(kind)
+      return refused.value if refused
 
-      if restart
-        hold = @idle_exit.hold_for_restart
-        return WorkerIdleExit::Hold.new(reason: hold) if hold
-      else
-        # /exit names the tasks it waits for (D3), from the one look that found them.
-        # The ask covers the delegate children too, but only for a plain /exit: an
-        # exit that deletes the session, or one a UI won't ask about, ignores them.
-        hold = @idle_exit.request_hold(requester: client_id, hint: TASK_STOP_HINT, ask: ask && !delete)
-        if hold
-          # A hold the user can't stop here: no ask, today's refusal.
-          return hold unless hold.ask?
-          # The ask's 409: the list, for the terminal to ask with.
-          return hold unless stop
-
-          @stopped_holds = @hold_stop.stop_all
-          # An unstoppable hold may have arrived while stopping (a child stopped
-          # here is no longer counted).
-          recheck = @idle_exit.request_hold(requester: client_id, hint: TASK_STOP_HINT)
-          return recheck if recheck
-        end
+      hold = exit_hold(client_id, kind: kind, stop: stop, ask: ask)
+      if hold
+        forget_exit
+        return hold
       end
 
       @stopped_holds = nil unless stop
-      @exit_requested = true
       @exit_requested_by = client_id
-      @exit_deletes = delete && !restart
-      @exit_restart = restart
+      @exit_deletes = kind == :delete
+      @exit_restart = kind == :restart
+      @exit_requested = true
       @waker.wake
       nil
+    rescue StandardError
+      # A look or a stop that raised lets the claim go (the Bridge answers 500).
+      forget_exit unless @exit_requested
+      raise
+    end
+
+    # One answer for an exit request that doesn't get the claim, boxed so a
+    # nil (accepted) is told apart from "claimed".
+    ExitRefused = Data.define(:value)
+
+    # @return [ExitRefused, nil] nil when this request now holds the claim;
+    #   else its answer: nil (accepted: an exit of the same kind is already
+    #   taken) or WorkerIdleExit.leaving (one of another kind is, or is still
+    #   being taken)
+    def claim_exit(kind)
+      @exit_claim_mutex.synchronize do
+        next ExitRefused.new(value: nil) if @exit_claim == kind && @exit_requested
+        next ExitRefused.new(value: WorkerIdleExit.leaving(@exit_claim)) if @exit_claim
+
+        @exit_claim = kind
+        nil
+      end
+    end
+
+    # The taken exit is let go: held at the leave, or its hand-off failed.
+    def forget_exit
+      @exit_claim_mutex.synchronize do
+        @exit_requested = nil
+        @exit_restart = false
+        @exit_claim = nil
+      end
+    end
+
+    # What keeps the worker up for this request, nil when nothing does; a
+    # stop request stops what the user can stop first (#exit_request).
+    # @return [WorkerIdleExit::Hold, nil]
+    def exit_hold(client_id, kind:, stop:, ask:)
+      if kind == :restart
+        hold = @idle_exit.hold_for_restart
+        return hold && WorkerIdleExit::Hold.new(reason: hold)
+      end
+
+      # /exit names the tasks it waits for (D3), from the one look that found them.
+      # The ask covers the delegate children too, but only for a plain /exit: an
+      # exit that deletes the session, or one a UI won't ask about, ignores them.
+      hold = @idle_exit.request_hold(requester: client_id, hint: TASK_STOP_HINT, ask: ask && kind != :delete)
+      return nil unless hold
+      # A hold the user can't stop here: no ask, today's refusal.
+      return hold unless hold.ask?
+      # The ask's 409: the list, for the terminal to ask with.
+      return hold unless stop
+
+      @stopped_holds = @hold_stop.stop_all
+      # An unstoppable hold may have arrived while stopping (a child stopped
+      # here is no longer counted).
+      @idle_exit.request_hold(requester: client_id, hint: TASK_STOP_HINT)
     end
 
     # #leave_idle for an exit a client asked for: check again with the event
@@ -1636,8 +1688,7 @@ module Samagotchi
                    @idle_exit.hold_for_request(requester: @exit_requested_by, streams: false)
                  end
           if hold
-            @exit_requested = nil
-            @exit_restart = false
+            forget_exit
             Log.info(:worker, "exit_held", reason: hold)
             next false
           end
@@ -1666,8 +1717,7 @@ module Samagotchi
       end
       true
     rescue StandardError => e
-      @exit_requested = nil
-      @exit_restart = false
+      forget_exit
       Log.warn(:worker, "reminders_carry_failed", error: e.class.name, msg: e.message)
       false
     end

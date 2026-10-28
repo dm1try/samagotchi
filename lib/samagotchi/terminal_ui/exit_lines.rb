@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "../tools/task_record"
+require_relative "../worker_idle_exit"
 
 module Samagotchi
   class TerminalUI
@@ -23,7 +24,7 @@ module Samagotchi
         "reminders" => "reminders are set", "starting" => "the worker is still starting",
         "background_tasks" => "background tasks it started are still running",
         "delegates" => "delegates of this session are still running"
-      }.freeze
+      }.merge(WorkerIdleExit::LEAVING_WORDS.transform_keys(&:to_s)).freeze
       # How to end a background task that holds the worker up (an older
       # worker's 409 has no hint of its own).
       TASK_STOP_HINT = "stop one with the web's stop-task button or by asking for task_stop"

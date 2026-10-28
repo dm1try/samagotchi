@@ -1315,15 +1315,18 @@ RSpec.describe Samagotchi::Worker do
           policy = @worker.instance_variable_get(:@idle_exit)
           worker = @worker
           looks = 0
+          later = nil
           allow(policy).to receive(:hold_for_restart) do
             looks += 1
             # A stop-all that came in after the restart was taken, before the leave.
-            worker.send(:exit_request, "tui:1", stop: true) if looks == 2
+            later = worker.send(:exit_request, "tui:1", stop: true) if looks == 2
             nil
           end
 
           expect(post_restart.first).to eq(200)
           expect(join!(@thread, "the worker").value).to eq(:restart)
+          # Refused (the Bridge's 409), not told it will exit.
+          expect(later).to eq(Samagotchi::WorkerIdleExit.leaving(:restart))
           expect(engine.reminder_store.reminders.keys).to eq(["api_health"])
           expect(JSON.parse(File.read(carry_file))["reminders"].map { |r| r["name"] }).to eq(["api_health"])
         end
@@ -1384,6 +1387,54 @@ RSpec.describe Samagotchi::Worker do
           loop_rounds
           expect(@thread).to be_alive # held at the second look, as it left
         end
+      end
+
+      it "claims an exit before its stop-all: a restart asked meanwhile is refused, and the worker leaves as the exit" do
+        start_worker(poll_interval: 0.05)
+        worker = @worker
+        policy = worker.instance_variable_get(:@idle_exit)
+        ask = Samagotchi::WorkerIdleExit::Hold.new(
+          reason: :reminders, holds: [Samagotchi::WorkerIdleExit::StoppableHold.new(kind: :reminders, items: [])]
+        )
+        looks = 0
+        allow(policy).to receive(:request_hold).and_wrap_original do |original, **kw|
+          looks += 1
+          looks == 1 ? ask : original.call(**kw)
+        end
+        entered = Queue.new
+        release = Queue.new
+        allow(worker.hold_stop).to receive(:stop_all) do
+          entered << true
+          release.pop
+          Samagotchi::HoldStop::Stopped.new(reminders: [], tasks: [], delegates: [])
+        end
+
+        plain = Thread.new { worker.send(:exit_request, "tui:1", stop: true) }
+        pop!(entered, "the plain exit's stop-all")
+        expect(worker.send(:exit_request, "web:1", restart: true)).to eq(Samagotchi::WorkerIdleExit.leaving(:exit))
+        release << true
+
+        expect(join!(plain, "the plain exit").value).to be_nil
+        expect(join!(@thread, "the worker").value).to eq(:exit_requested)
+      end
+
+      it "takes a second exit of the kind already taken as accepted" do
+        start_worker(poll_interval: 0.05)
+        worker = @worker
+        leaving = Queue.new
+        release = Queue.new
+        allow(worker).to receive(:leave_on_request).and_wrap_original do |original|
+          leaving << true
+          release.pop
+          original.call
+        end
+
+        expect(worker.send(:exit_request, "tui:1")).to be_nil
+        pop!(leaving, "the leave")
+        expect(worker.send(:exit_request, "tui:2")).to be_nil
+        expect(worker.send(:exit_request, "web:1", delete: true)).to eq(Samagotchi::WorkerIdleExit.leaving(:exit))
+        release << true
+        expect(join!(@thread, "the worker").value).to eq(:exit_requested)
       end
 
       it "answers :starting before the idle-exit policy exists" do

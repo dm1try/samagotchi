@@ -24,6 +24,10 @@ and commands may change between minor versions. How releases are made:
   `child-boundary`, and `rm -rf`, chi-dir and `git: outside_repo` checks read it too. An `env:` setting `BASH_ENV`,
   `ENV`, `CDPATH`, `IFS`, an exported `BASH_FUNC_…`, `LD_PRELOAD` or a git config/diff-program variable makes the
   command not read-only.
+- An exit and a restart asked of one worker at once (an attached terminal's `/exit` with "stop them and exit" while
+  chi web's "Restart workers" runs) no longer both hear yes: the first one taken decides, and the other is refused
+  ("the worker is already leaving as a plain exit"), so a restart no longer reports "restarted" for a worker that
+  left with no successor.
 
 ### Security
 

@@ -39,6 +39,23 @@ module Samagotchi
       def ask? = !holds.empty?
     end
 
+    # The 409 reason for an exit request when another client's exit, of
+    # another kind, is already taken (Worker#exit_request): the first one
+    # decides how the worker leaves, so a restart asked after a plain /exit
+    # is refused rather than told "restarting".
+    LEAVING = { exit: :leaving_exit, delete: :leaving_delete, restart: :leaving_restart }.freeze
+    # What each of those says, for every client's refusal line
+    # (TerminalUI::ExitLines, SessionManager::RestartRefused).
+    LEAVING_WORDS = {
+      leaving_exit: "the worker is already leaving as a plain exit",
+      leaving_delete: "the worker is already leaving as an exit that deletes the session",
+      leaving_restart: "the worker is already leaving as a restart"
+    }.freeze
+
+    # @param kind [Symbol] the exit already taken (:exit, :delete or :restart)
+    # @return [Hold] the refusal for a request of another kind
+    def self.leaving(kind) = Hold.new(reason: LEAVING.fetch(kind))
+
     # One kind of hold the exit ask offers to stop: +kind+ (:reminders,
     # :background_tasks or :delegates) and its +items+ (#HoldItem). The 409's
     # +holds+ is this in JSON: `{kind:, items: [{id:, label:, detail:}]}`.

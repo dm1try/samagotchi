@@ -378,7 +378,10 @@ process that already owns the `Engine`); every worker starts it, and it exposes:
   the event log held (`WorkerIdleExit#hold_for_request`): `200 {status: "exiting"}` and it leaves
   like an idle exit, or `409 {status: "held", reason:}` with `turn_running`, `input_queued`,
   `continue_offered`, `client_connected` (a stream not named by the asker), `reminders`,
-  `background_tasks` (with `tasks: [{id, command}]`: the running tasks a finish wake watches) or `starting`.
+  `background_tasks` (with `tasks: [{id, command}]`: the running tasks a finish wake watches), `starting`, or
+  `leaving_exit` / `leaving_delete` / `leaving_restart` when another client's exit of another kind is already taken
+  (`Worker#claim_exit`, claimed before a stop-all; the words are `WorkerIdleExit::LEAVING_WORDS`). A second exit of
+  the kind already taken is answered `200` as that one.
 - `GET  /session/:id/state` — `session_state_snapshot` (JSON).
 - `GET  /session/:id/stats` — `Engine#stats_snapshot` for attached `/stats`: the metrics, with the context window and prompt profile asked from the server before the first turn.
 - `GET  /session/:id/snapshot` — the snapshot frame's content as one request (the web server renders

@@ -27,6 +27,7 @@ require_relative "process_group"
 require_relative "bridge_client"
 require_relative "worker_sidecar"
 require_relative "worker_link"
+require_relative "worker_idle_exit"
 require_relative "worker_signals"
 require_relative "chi_invocation"
 require_relative "log"
@@ -676,7 +677,7 @@ module Samagotchi
         command_running: "a /btw (or another command) is still running",
         relays_open: "a delegate's approval relayed here is open or just answered",
         background_tasks: "background tasks it started are still running"
-      }.freeze
+      }.merge(WorkerIdleExit::LEAVING_WORDS).freeze
 
       # What the CLI and the web say.
       def self.words(session_id, reason, version = nil, holds = [], pid: nil, via: ChiInvocation::HERE)

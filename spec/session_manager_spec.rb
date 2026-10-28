@@ -1354,6 +1354,17 @@ RSpec.describe Samagotchi::SessionManager do
         }
     end
 
+    it "is refused, not reported restarted, when the worker already leaves as a plain exit" do
+      allow(Samagotchi::WorkerLink).to receive(:resolve).and_return(live_link(old_sidecar))
+      allow(client).to receive(:request_exit).and_return(response(409, status: "held", reason: "leaving_exit"))
+      expect(Process).not_to receive(:kill)
+
+      expect { described_class.restart_session(session.id, state_dir: tmpdir) }
+        .to raise_error(described_class::RestartRefused, "not now: the worker is already leaving as a plain exit") { |e|
+          expect(e.reason).to eq(:leaving_exit)
+        }
+    end
+
     it "refuses the fallback when disk shows a running turn, question, queued input or running task" do
       allow(Samagotchi::WorkerLink).to receive(:resolve).and_return(live_link(old_sidecar))
       allow(client).to receive(:request_exit).and_raise(Errno::ECONNREFUSED)
