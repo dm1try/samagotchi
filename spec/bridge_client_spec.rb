@@ -24,6 +24,12 @@ RSpec.describe Samagotchi::BridgeClient do
     "HTTP/1.1 #{status}\r\nContent-Type: application/json\r\nContent-Length: #{body.bytesize}\r\nConnection: close\r\n\r\n#{body}"
   end
 
+  it "carries the features of the sidecar it was made from, none without one" do
+    sidecar = Samagotchi::WorkerSidecar.new(port: 4100, features: %w[delivery review_turns])
+    expect(described_class.for_sidecar("s1", sidecar).features).to eq(%w[delivery review_turns])
+    expect(described_class.new(session_id: "s1", port: 4100, secret: nil).features).to eq([])
+  end
+
   describe "the Bridge's secret" do
     include WorkerFixtures
 

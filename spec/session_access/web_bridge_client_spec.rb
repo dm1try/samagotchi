@@ -27,7 +27,7 @@ RSpec.describe Samagotchi::SessionAccess::WebBridgeClient do
     end
   end
   let(:client) { remote.attach_client(session.id, worker: { "epoch" => "e1", "started_at" => "t" }) }
-  let(:bridge) { instance_double(Samagotchi::BridgeClient) }
+  let(:bridge) { instance_double(Samagotchi::BridgeClient, features: [Samagotchi::Delivery::QUEUE_FEATURE]) }
 
   before do
     allow(Samagotchi::SessionManager).to receive(:resume_session)

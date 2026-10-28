@@ -88,7 +88,8 @@ module Samagotchi
     def self.for_sidecar(session_id, sidecar, host: HOST, read_timeout: READ_TIMEOUT)
       return nil unless sidecar
 
-      new(session_id: session_id, port: sidecar.port, secret: sidecar.secret, host: host, read_timeout: read_timeout)
+      new(session_id: session_id, port: sidecar.port, secret: sidecar.secret, host: host, read_timeout: read_timeout,
+          features: sidecar.features)
     end
 
     # How often a wait for a new worker's Bridge looks: a missing sidecar is
@@ -111,6 +112,9 @@ module Samagotchi
     end
 
     attr_reader :session_id, :port, :host
+    # @return [Array<String>] what the worker's sidecar named (WorkerSidecar#features)
+    #   as this client was made from it; empty for one made without a sidecar
+    attr_reader :features
 
     # Which worker this client talks to, for EventStream: a rediscovered
     # client with another key is a new worker. A Bridge's port, and a
@@ -122,7 +126,9 @@ module Samagotchi
     #   with every request (nil: a worker from before secrets, which asks for
     #   none); from the worker's sidecar (.for_sidecar), never typed
     # @param read_timeout [Numeric] see READ_TIMEOUT
-    def initialize(session_id:, port:, secret:, host: HOST, read_timeout: READ_TIMEOUT)
+    # @param features [Array<String>] the sidecar's (#features)
+    def initialize(session_id:, port:, secret:, host: HOST, read_timeout: READ_TIMEOUT, features: [])
+      @features = Array(features).freeze
       @session_id = session_id
       @port = port
       @secret = secret

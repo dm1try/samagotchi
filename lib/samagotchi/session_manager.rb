@@ -1409,12 +1409,12 @@ module Samagotchi
       end
       manager.resume_session(session_id, state_dir: state_dir)
       if (client = bridge.call)
-        return verify_unavailable if verify && !worker_has?(session_dir, VerifyAnchor::FEATURE)
+        return verify_unavailable if verify && !worker_has?(client, VerifyAnchor::FEATURE)
         # A worker from before queueing (no "delivery" feature) ignores the
         # field or refuses it; either way a file would steer the running turn.
-        return queue_unavailable if Delivery.queue?(delivery) && !worker_queues?(session_dir)
+        return queue_unavailable if Delivery.queue?(delivery) && !worker_has?(client, Delivery::QUEUE_FEATURE)
         # A participant's turn only to a worker with the review boundary.
-        return review_unavailable if Steer.participant_author?(author) && !worker_has?(session_dir, Delivery::REVIEW_FEATURE)
+        return review_unavailable if Steer.participant_author?(author) && !worker_has?(client, Delivery::REVIEW_FEATURE)
 
         begin
           options = { prompt: prompt, client_id: client_id }
@@ -1491,17 +1491,10 @@ module Samagotchi
                         ack: { "status" => "accepted", "enqueued_id" => enqueued_id, "session_id" => session_id })
     end
 
-    # Whether the session's live worker runs delivery: queue (its sidecar
-    # names the feature). No sidecar to read (the client came from a stand-in,
-    # or it went between the wait and here): true, the post finds out.
-    private_class_method def self.worker_queues?(session_dir) = worker_has?(session_dir, Delivery::QUEUE_FEATURE)
-
-    # Whether the session's live worker names +feature+ in its sidecar; no
-    # sidecar to read: true, as for #worker_queues?.
-    private_class_method def self.worker_has?(session_dir, feature)
-      sidecar = WorkerSidecar.read(session_dir)
-      sidecar.nil? || sidecar.features.include?(feature)
-    end
+    # Whether the worker +client+ talks to names +feature+: the features of
+    # the sidecar the client was made from (the Live link WorkerLink.await
+    # found), not a second read of bridge.json.
+    private_class_method def self.worker_has?(client, feature) = client.features.include?(feature)
 
     # The unclaimed input files +author+ wrote.
     PARTICIPANT_QUEUE_LOCK = "participants.lock"

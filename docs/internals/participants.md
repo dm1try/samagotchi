@@ -235,7 +235,7 @@ wait on it at once, which `ParentReport` reads as status `refused`, exit 1.
 Verify turn's anchor (`VerifyAnchor`, `{turn_id, quote}`: a UUID and a quote of 1 to 200 characters). A turn carrying an
 anchor, or a Verify fresh check, sent to a connected worker without it is refused 409 `verify_unavailable`
 (`VerifyAnchor::UNAVAILABLE`: "restart this session to use Verify"; `SessionManager` checks `worker_has?` before it
-delivers), since an older worker would run it as a plain prompt. A session with no connected worker is not gated: the
+delivers, on the features of the sidecar its client was made from), since an older worker would run it as a plain prompt. A session with no connected worker is not gated: the
 worker that starts for it is current. The participant page's session summary carries `verify_unavailable`
 (`VerifyAnchor.worker_unavailable?`, from the worker's features; `participant_review.rb`), and the page disables
 Verify and Verify fresh with a "restart this session" hint.

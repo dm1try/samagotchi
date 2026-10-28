@@ -3306,7 +3306,7 @@ RSpec.describe Samagotchi::Web::App do
     it "forwards a valid verify anchor and drops a malformed one" do
       manager = FakeResponsesManager.new
       app = build_app(manager: manager, state_dir: Dir.mktmpdir)
-      bridge = instance_double(Samagotchi::BridgeClient)
+      bridge = instance_double(Samagotchi::BridgeClient, features: Samagotchi::Bridge::FEATURES)
       allow(app).to receive(:live_bridge_client).and_return(bridge)
       verify = { "turn_id" => "123e4567-e89b-12d3-a456-426614174000", "quote" => "the claim" }
       allow(bridge).to receive(:post_turn).with(prompt: "check", client_id: nil, verify: anything).and_return(
@@ -3331,7 +3331,7 @@ RSpec.describe Samagotchi::Web::App do
     it "enqueues through the live bridge, forwarding the client id and returning the bridge's enqueued_id" do
       manager = FakeResponsesManager.new
       app = build_app(manager: manager, state_dir: Dir.mktmpdir)
-      bridge = instance_double(Samagotchi::BridgeClient)
+      bridge = instance_double(Samagotchi::BridgeClient, features: Samagotchi::Bridge::FEATURES)
       allow(app).to receive(:live_bridge_client).with("s1").and_return(bridge)
       allow(bridge).to receive(:post_turn).with(prompt: "hi", client_id: "web:tab-1").and_return(
         Samagotchi::BridgeClient::Response.new(status: 202, body: '{"status":"accepted","enqueued_id":"e-bridge","session_id":"s1"}')
@@ -3348,7 +3348,7 @@ RSpec.describe Samagotchi::Web::App do
     it "falls back to the input file when the bridge closes before the post" do
       manager = FakeResponsesManager.new
       app = build_app(manager: manager, state_dir: Dir.mktmpdir)
-      bridge = instance_double(Samagotchi::BridgeClient)
+      bridge = instance_double(Samagotchi::BridgeClient, features: Samagotchi::Bridge::FEATURES)
       allow(app).to receive(:live_bridge_client).and_return(bridge)
       allow(bridge).to receive(:post_turn).and_raise(Errno::ECONNREFUSED)
       expect(manager).to receive(:write_turn_input).and_return(true)
@@ -3362,7 +3362,7 @@ RSpec.describe Samagotchi::Web::App do
     it "answers 504 and queues no file when the bridge times out" do
       manager = FakeResponsesManager.new
       app = build_app(manager: manager, state_dir: Dir.mktmpdir)
-      bridge = instance_double(Samagotchi::BridgeClient)
+      bridge = instance_double(Samagotchi::BridgeClient, features: Samagotchi::Bridge::FEATURES)
       allow(app).to receive(:live_bridge_client).and_return(bridge)
       allow(bridge).to receive(:post_turn).and_raise(Errno::ETIMEDOUT)
       expect(manager).not_to receive(:write_turn_input)
@@ -3391,7 +3391,7 @@ RSpec.describe Samagotchi::Web::App do
     it "forwards the body's delivery to the bridge, and writes it into the fallback file" do
       manager = FakeResponsesManager.new
       app = build_app(manager: manager, state_dir: Dir.mktmpdir)
-      bridge = instance_double(Samagotchi::BridgeClient)
+      bridge = instance_double(Samagotchi::BridgeClient, features: Samagotchi::Bridge::FEATURES)
       allow(app).to receive(:live_bridge_client).and_return(bridge)
       allow(bridge).to receive(:post_turn)
         .with(prompt: "later", client_id: "web:tab-1", delivery: "cut")
@@ -3413,7 +3413,7 @@ RSpec.describe Samagotchi::Web::App do
     it "forwards a queue delivery to the bridge" do
       manager = FakeResponsesManager.new
       app = build_app(manager: manager, state_dir: Dir.mktmpdir)
-      bridge = instance_double(Samagotchi::BridgeClient)
+      bridge = instance_double(Samagotchi::BridgeClient, features: Samagotchi::Bridge::FEATURES)
       allow(app).to receive(:live_bridge_client).and_return(bridge)
       allow(bridge).to receive(:post_turn)
         .with(prompt: "later", client_id: "web:tab-1", delivery: "queue")
@@ -3431,7 +3431,7 @@ RSpec.describe Samagotchi::Web::App do
     it "answers an old worker's refusal of a queue with its code and detail, writing no file" do
       manager = FakeResponsesManager.new
       app = build_app(manager: manager, state_dir: Dir.mktmpdir)
-      bridge = instance_double(Samagotchi::BridgeClient)
+      bridge = instance_double(Samagotchi::BridgeClient, features: Samagotchi::Bridge::FEATURES)
       allow(app).to receive(:live_bridge_client).and_return(bridge)
       allow(bridge).to receive(:post_turn).and_return(
         Samagotchi::BridgeClient::Response.new(status: 400, body: '{"error":"delivery_unavailable","detail":"not yet"}')

@@ -54,7 +54,7 @@ RSpec.describe "a turn's author" do
       end
     end
     let(:session_dir) { Samagotchi::Session.session_dir(session.id, state_dir: state_dir) }
-    let(:bridge) { instance_double(Samagotchi::BridgeClient) }
+    let(:bridge) { instance_double(Samagotchi::BridgeClient, features: Samagotchi::Bridge::FEATURES) }
     let(:accepted) { Samagotchi::BridgeClient::Response.new(status: 202, body: '{"status":"accepted"}') }
 
     before { @lock = Samagotchi::OwnerLock.acquire(session_dir, kind: "worker") }

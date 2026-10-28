@@ -5,6 +5,7 @@ require "spec_helper"
 require "samagotchi/worker_link"
 require "samagotchi/engine"
 require "samagotchi/session_manager"
+require "samagotchi/bridge"
 require "samagotchi/reminder_store"
 require_relative "support/worker_links"
 
@@ -1262,8 +1263,8 @@ RSpec.describe Samagotchi::SessionManager do
     before do
       allow(described_class).to receive(:session_owner).and_return(worker)
       # The worker's secret goes with its port, from the same sidecar.
-      allow(Samagotchi::BridgeClient).to receive(:new).with(session_id: session.id, port: 4100, secret: "5e" * 32,
-                                                            host: "127.0.0.1", read_timeout: 30).and_return(client)
+      allow(Samagotchi::BridgeClient).to receive(:new).with(hash_including(session_id: session.id, port: 4100, secret: "5e" * 32,
+                                                                           host: "127.0.0.1", read_timeout: 30)).and_return(client)
     end
 
     it "asks the worker for a restart and waits for its successor's Bridge" do
@@ -2104,7 +2105,7 @@ RSpec.describe Samagotchi::SessionManager do
     it "resumes and delivers to the new worker after a kill -9 left a sidecar naming another Bridge's port" do
       other = TCPServer.new("127.0.0.1", 0)
       Samagotchi::WorkerSidecar.new(port: other.local_address.ip_port, pid: Process.pid + 1).write(session_dir)
-      bridge = instance_double(Samagotchi::BridgeClient)
+      bridge = instance_double(Samagotchi::BridgeClient, features: Samagotchi::Bridge::FEATURES)
       reached = []
       allow(Samagotchi::BridgeClient).to receive(:for_sidecar) { |_id, sidecar, **| (reached << sidecar.port) && bridge }
       allow(bridge).to receive(:post_turn).and_return(
@@ -2129,7 +2130,7 @@ RSpec.describe Samagotchi::SessionManager do
 
     it "posts through a live Bridge and writes no file" do
       own("worker")
-      bridge = instance_double(Samagotchi::BridgeClient)
+      bridge = instance_double(Samagotchi::BridgeClient, features: Samagotchi::Bridge::FEATURES)
       allow(bridge).to receive(:post_turn).with(prompt: "hi", client_id: "cli:send").and_return(
         Samagotchi::BridgeClient::Response.new(status: 202, body: '{"status":"accepted","enqueued_id":"e1","session_id":"s"}')
       )
@@ -2144,7 +2145,7 @@ RSpec.describe Samagotchi::SessionManager do
     it "carries a verified claim anchor through the Bridge and input-file fallback" do
       own("worker")
       verify = Samagotchi::VerifyAnchor.new(turn_id: "123e4567-e89b-12d3-a456-426614174000", quote: "the claim")
-      bridge = instance_double(Samagotchi::BridgeClient)
+      bridge = instance_double(Samagotchi::BridgeClient, features: Samagotchi::Bridge::FEATURES)
       allow(bridge).to receive(:post_turn).with(prompt: "check", client_id: "web:1", verify: verify).and_return(
         Samagotchi::BridgeClient::Response.new(status: 202, body: '{"status":"accepted"}')
       )
@@ -2162,7 +2163,7 @@ RSpec.describe Samagotchi::SessionManager do
 
     it "posts the delivery the message carries, and only when it is not the default" do
       own("worker")
-      bridge = instance_double(Samagotchi::BridgeClient)
+      bridge = instance_double(Samagotchi::BridgeClient, features: Samagotchi::Bridge::FEATURES)
       allow(bridge).to receive(:post_turn)
         .with(prompt: "later", client_id: "cli:send", delivery: "queue")
         .and_return(Samagotchi::BridgeClient::Response.new(status: 202, body: '{"status":"accepted"}'))
@@ -2180,7 +2181,7 @@ RSpec.describe Samagotchi::SessionManager do
 
     it "carries no_interrupt to the Bridge and into the fallback file, and only when it is set" do
       own("worker")
-      bridge = instance_double(Samagotchi::BridgeClient)
+      bridge = instance_double(Samagotchi::BridgeClient, features: Samagotchi::Bridge::FEATURES)
       allow(bridge).to receive(:post_turn)
         .with(prompt: "long", client_id: "tui:1", no_interrupt: true)
         .and_return(Samagotchi::BridgeClient::Response.new(status: 202, body: '{"status":"accepted"}'))
@@ -2200,7 +2201,7 @@ RSpec.describe Samagotchi::SessionManager do
 
     it "writes the delivery into the fallback file (queue only)" do
       own("worker")
-      bridge = instance_double(Samagotchi::BridgeClient)
+      bridge = instance_double(Samagotchi::BridgeClient, features: Samagotchi::Bridge::FEATURES)
       allow(bridge).to receive(:post_turn).and_raise(Errno::ECONNREFUSED)
 
       described_class.deliver_turn(session.id, prompt: "later", client_id: "cli:send", delivery: "queue",
@@ -2213,7 +2214,7 @@ RSpec.describe Samagotchi::SessionManager do
 
     it "falls back to the input file when the Bridge refuses the connection" do
       own("worker")
-      bridge = instance_double(Samagotchi::BridgeClient)
+      bridge = instance_double(Samagotchi::BridgeClient, features: Samagotchi::Bridge::FEATURES)
       allow(bridge).to receive(:post_turn).and_raise(Errno::ECONNREFUSED)
 
       result = described_class.deliver_turn(session.id, prompt: "hi", client_id: "cli:send", state_dir: tmpdir, bridge: -> { bridge })
@@ -2242,7 +2243,7 @@ RSpec.describe Samagotchi::SessionManager do
     # would run it after all.
     it "reports a timeout and queues nothing when the Bridge dropped the turn as past its deadline" do
       own("worker")
-      bridge = instance_double(Samagotchi::BridgeClient)
+      bridge = instance_double(Samagotchi::BridgeClient, features: Samagotchi::Bridge::FEATURES)
       reply = Samagotchi::BridgeClient::Response.new(status: 408, body: '{"error":"deadline_passed"}')
       allow(bridge).to receive(:post_turn).and_return(reply)
 
@@ -2257,7 +2258,7 @@ RSpec.describe Samagotchi::SessionManager do
     # is a refusal; the 408 deadline_passed above stays a timeout.
     it "refuses on any 4xx the Bridge answers with an error, writing no file" do
       own("worker")
-      bridge = instance_double(Samagotchi::BridgeClient)
+      bridge = instance_double(Samagotchi::BridgeClient, features: Samagotchi::Bridge::FEATURES)
       reply = Samagotchi::BridgeClient::Response.new(status: 400, body: '{"error":"delivery_unavailable","detail":"old"}')
       allow(bridge).to receive(:post_turn).and_return(reply)
 
@@ -2270,7 +2271,7 @@ RSpec.describe Samagotchi::SessionManager do
 
     it "keeps the file fallback for a 5xx" do
       own("worker")
-      bridge = instance_double(Samagotchi::BridgeClient)
+      bridge = instance_double(Samagotchi::BridgeClient, features: Samagotchi::Bridge::FEATURES)
       allow(bridge).to receive(:post_turn).and_return(
         Samagotchi::BridgeClient::Response.new(status: 500, body: '{"error":"internal"}')
       )
@@ -2285,7 +2286,7 @@ RSpec.describe Samagotchi::SessionManager do
     # goes in as a file, its delivery with it.
     it "keeps the file fallback for a 413 too_large, a queue's delivery kept in the file" do
       own("worker")
-      bridge = instance_double(Samagotchi::BridgeClient)
+      bridge = instance_double(Samagotchi::BridgeClient, features: Samagotchi::Bridge::FEATURES)
       allow(bridge).to receive(:post_turn).and_return(
         Samagotchi::BridgeClient::Response.new(status: 413, body: '{"error":"too_large","detail":"over"}')
       )
@@ -2300,14 +2301,12 @@ RSpec.describe Samagotchi::SessionManager do
     end
 
     describe "a queue to a live worker, by its sidecar's features" do
-      def write_sidecar(features)
-        Samagotchi::WorkerSidecar.new(port: 1, session_id: session.id, features: features).write(session_dir)
-      end
+      # A client made from a sidecar naming +features+ (WorkerLink::Live#client).
+      def client_naming(features) = instance_double(Samagotchi::BridgeClient, features: features)
 
       it "refuses it without posting when the worker doesn't name the delivery feature (it would steer)" do
         own("worker")
-        write_sidecar(%w[restart task_stop reparent])
-        bridge = instance_double(Samagotchi::BridgeClient)
+        bridge = client_naming(%w[restart task_stop reparent])
         expect(bridge).not_to receive(:post_turn)
 
         result = described_class.deliver_turn(session.id, prompt: "later", delivery: "queue", state_dir: tmpdir,
@@ -2320,16 +2319,14 @@ RSpec.describe Samagotchi::SessionManager do
 
       it "refuses a participant's turn to a worker without the review boundary (review_turns), and posts it to one with" do
         own("worker")
-        write_sidecar(%w[delivery])
-        bridge = instance_double(Samagotchi::BridgeClient)
+        bridge = client_naming(%w[delivery])
         expect(bridge).not_to receive(:post_turn)
         result = described_class.deliver_turn(session.id, prompt: "q", delivery: "queue", author: "p:p_1", state_dir: tmpdir,
                                                           bridge: -> { bridge })
         expect(result).to have_attributes(status: :refused, code: 409, ack: Samagotchi::Delivery::REVIEW_UNAVAILABLE)
         expect(input_files).to be_empty
 
-        write_sidecar(%w[delivery review_turns])
-        posting = instance_double(Samagotchi::BridgeClient)
+        posting = client_naming(%w[delivery review_turns])
         allow(posting).to receive(:post_turn).and_return(Samagotchi::BridgeClient::Response.new(status: 202, body: '{"status":"accepted"}'))
         expect(described_class.deliver_turn(session.id, prompt: "q", delivery: "queue", author: "p:p_1", state_dir: tmpdir,
                                                         bridge: -> { posting }).status).to eq(:accepted)
@@ -2338,8 +2335,7 @@ RSpec.describe Samagotchi::SessionManager do
 
       it "refuses a Verify turn to a worker without the verify feature" do
         own("worker")
-        write_sidecar(%w[delivery review_turns])
-        bridge = instance_double(Samagotchi::BridgeClient)
+        bridge = client_naming(%w[delivery review_turns])
         expect(bridge).not_to receive(:post_turn)
         verify = Samagotchi::VerifyAnchor.new(turn_id: "123e4567-e89b-12d3-a456-426614174000", quote: "the claim")
 
@@ -2405,18 +2401,18 @@ RSpec.describe Samagotchi::SessionManager do
 
       it "posts it when the worker names the feature; a next_step or cut posts either way" do
         own("worker")
-        write_sidecar(%w[restart])
-        bridge = instance_double(Samagotchi::BridgeClient)
-        allow(bridge).to receive(:post_turn).and_return(
-          Samagotchi::BridgeClient::Response.new(status: 202, body: '{"status":"accepted"}')
-        )
+        accepted = Samagotchi::BridgeClient::Response.new(status: 202, body: '{"status":"accepted"}')
+        bridge = client_naming(%w[restart])
+        allow(bridge).to receive(:post_turn).and_return(accepted)
         expect(described_class.deliver_turn(session.id, prompt: "now", delivery: "cut", state_dir: tmpdir,
                                                         bridge: -> { bridge }).status).to eq(:accepted)
 
-        write_sidecar(%w[restart delivery])
+        queuing = client_naming(%w[restart delivery])
+        allow(queuing).to receive(:post_turn).and_return(accepted)
         expect(described_class.deliver_turn(session.id, prompt: "later", delivery: "queue", state_dir: tmpdir,
-                                                        bridge: -> { bridge }).status).to eq(:accepted)
-        expect(bridge).to have_received(:post_turn).twice
+                                                        bridge: -> { queuing }).status).to eq(:accepted)
+        expect(bridge).to have_received(:post_turn).once
+        expect(queuing).to have_received(:post_turn).once
       end
     end
 
