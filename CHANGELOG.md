@@ -11,6 +11,11 @@ and commands may change between minor versions. How releases are made:
 
 - chi web's header project chip opens a picker to switch projects without starting chi web in each one.
 
+### Changed
+
+- A participant's comment box sits in the same glass card as the owner's composer: the key hint above the text field,
+  their usage as the card's footer and the grip on its top edge; folded, the card keeps the usage line.
+
 ### Fixed
 
 - A new invite link opens in a browser that still holds an ended link's cookie (behind an auth proxy it showed

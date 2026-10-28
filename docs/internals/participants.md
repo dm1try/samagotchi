@@ -359,10 +359,11 @@ fields: a field added to an event later reaches nobody until it is named there.
   reads. `queued` counts their own queued turns on the worker; `model` is the session's model as its host is sent it
   (the alias applied, no host name), live else saved, redacted. Every source reads the grant's own author: another
   participant's spend, the owner's and the session's totals never reach them (the red-team spec checks the body). The
-  owner's participant view has none. The page draws it as one line under the comment box (`usageItems`): "$0.42 of
+  owner's participant view has none. The page draws it as one line in the comment box card's footer
+  (`.composer-card-foot`, `usageItems`): "$0.42 of
   $2.00 cap · 1/3 queued · link: 6 d left · model", each with a title in words; warn colours from 80% of the cap, a
-  full queue and a link's last day, "over" at the cap. On a phone it is the only line under the box (the hint is
-  hidden there), cut at the end (the model first); folded, it goes with the hint. It is redrawn at each re-read (a
+  full queue and a link's last day, "over" at the cap. The key hint is the line above the text field (hidden on a
+  phone). The usage is cut at the end (the model first); folded, it stays as the card's footer under the grip. It is redrawn at each re-read (a
   turn's end, a queued or taken-back comment), not while a turn streams.
 - **A fork's note.** A review fork (`chi review --from`, `/coordinate review`) starts with a note holding the source's
   recap and, from the coordinator, its handoff's body: a participant's review turn reads it like the rest of the
@@ -486,7 +487,7 @@ fields: a field added to an event later reaches nobody until it is named there.
     for a fresh verdict yet (`Attention` pushes a verdict at a turn's end).
 - **The comment box** is the owner's composer (`composer_mount.js`, styled by the shared `composer.css`), mounted by
   `participant.js` with a subset on. It has: the height that grows with the text, the grip (drag to resize,
-  double-click resets, click or drag down folds it; folded, the grip is the handle on the dock's edge and typing on the
+  double-click resets, click or drag down folds it; folded, the grip is the handle on the card's top edge and typing on the
   page opens it; Annotate opens it for the visit), the one-row layout of the owner's session composer (Send at its
   bottom right; a phone keeps it one row), and ↑/↓ over the participant's own comments: the ones the server took from
   this browser, in localStorage under `chi_review_history:<grant id>` (`review_history.js`; the grant id is the review
