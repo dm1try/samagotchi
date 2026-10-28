@@ -63,7 +63,9 @@ module Samagotchi
       CHI = "a participant's turn can't run chi: its commands act in the owner's name (sessions, shares, answers)"
       BACKGROUND = "a participant's turn can't leave a command running in the background: it would outlive the turn"
       ENVIRONMENT = "a participant's turn can't read the environment or the keychain: they hold the owner's secrets"
-      HOME_SWEEP = "a participant's turn can't search or copy a folder that holds secrets or chi's own files"
+      HOME_SWEEP = "a participant's turn can't search, copy or link a folder that holds secrets or chi's own files"
+      LINK = "a participant's turn makes a link: a path through it can lead out of the project, so the owner " \
+             "approves it"
       GIT_CONFIG = "a participant's turn can't change git's global config or set what makes git run a command " \
                    "(core.hooksPath, core.fsmonitor, core.sshCommand, core.pager, core.editor, ! aliases)"
       UNREADABLE = "a participant's turn runs only commands chi can read: split this command, or write the file " \
@@ -112,8 +114,7 @@ module Samagotchi
           return verdict.deny!(reason, rule: RULE, source: SOURCE, decided_by: "core", advice: ADVICE)
         end
 
-        if outside_write?(verdict)
-          reason = project_root ? OUTSIDE_WRITE : NO_PROJECT
+        if (reason = ask_reason(verdict))
           verdict.ask!(reason, scopes: %w[once], rule: RULE, source: SOURCE, decided_by: "core")
           verdict.fresh_ask = true
         end
@@ -137,6 +138,17 @@ module Samagotchi
         return command(targets, paths).refusal if targets.command
 
         nil
+      end
+
+      # Why the owner is asked (fresh, once): a command that makes a link
+      # (LINK), a write that may land outside the project (OUTSIDE_WRITE, or
+      # NO_PROJECT without one); nil when nothing asks.
+      def ask_reason(verdict)
+        targets = verdict.targets
+        return LINK if targets&.command && command(targets, nil).links?
+        return nil unless outside_write?(verdict)
+
+        project_root ? OUTSIDE_WRITE : NO_PROJECT
       end
 
       # A write or edit whose path may land outside the project root, or a

@@ -329,6 +329,23 @@ RSpec.describe Samagotchi::Guardrails::PairBoundary do
     end
   end
 
+  it "asks before a command makes a link, and denies a link to a folder above a secret" do
+    FileUtils.mkdir_p(File.join(home, ".config", "gh"))
+    File.write(File.join(home, ".config", "gh", "hosts.yml"), "token\n")
+    ["ln -s ~/.config g && cat g/gh/hosts.yml", "ln -s ../.. up && cat up/x", "ln -s ~ h"].each do |command|
+      expect(refused(command)).to eq(described_class::HOME_SWEEP), command
+    end
+    ["ln -s .. up && cat up/x", "ln docs/plan.md docs/b.md", "cp -s docs/plan.md x", "cp -Rl docs d2",
+     "cp --symbolic-link docs/plan.md x", "link docs/plan.md x", "bash -c 'ln -s .. up'",
+     "find . -name x -exec ln -s {} y \\;", "python3 -c \"import os; os.symlink('..', 'up')\"",
+     "ruby -e 'File.symlink(\"..\", \"up\")'"].each do |command|
+      verdict = execute(command)
+      expect([verdict.ask?, verdict.reason, verdict.scopes]).to eq([true, described_class::LINK, ["once"]]), command
+      expect(verdict).to be_fresh_ask
+    end
+    expect(execute("cp -R docs docs2")).to be_allow
+  end
+
   it "denies the owner-voiced tools, any delegate_* tool and every memory_write" do
     (described_class::OWNER_VOICED + %w[cancel_reminder task_stop find_tools delegate_result]).each do |tool|
       verdict = verdict_for({ name: tool, content: "x" })

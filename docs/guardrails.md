@@ -411,7 +411,7 @@ message:
   (`~/.ss${d}h`), and a text match for the rest;
 - sweeping a folder that holds secrets: `find`, `tar`, `cp`, `rsync`, `scp`,
   `zip`, `ditto`, `grep`/`rg`/`ag` and the like given home or any folder above
-  a denied one;
+  a denied one, and linking to one (`ln -s ~/.config g`, `ln -s ../.. up`);
 - the environment and the keychain: `env` or `printenv` alone, `set`,
   `export`, `declare` or `typeset` that list, `launchctl getenv`, `ps e`,
   `security`, `/proc/*/environ`. On top of it, a pair turn's `execute` runs
@@ -471,6 +471,10 @@ symlink or onto a file with another hard link (`Outside.inside?`,
 `Dir.tmpdir`, `/tmp` and `/var/tmp`, except the one the project itself is in.
 `/dev/null` and the like neither ask nor deny. A script file's body (`ruby
 x.rb`, `make`, `sh ./run.sh`) isn't read: it runs as in-project work.
+A command that makes a link asks too, wherever it points (`ln`, `link`, `cp
+-s`/`-l`, `sh -c 'ln …'`, an interpreter's `symlink`/`link(`): a path through
+a link the same command makes is judged before the link exists, so `ln -s ..
+up && cat up/…` can't be read for what it reaches.
 A session whose folder is the home folder or above it has no project to
 keep the turn in (`ReviewPaths.home_root?`, the review boundary's test): every
 write there asks.

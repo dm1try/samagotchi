@@ -54,7 +54,13 @@ module Samagotchi
       SCRIPT_BACKGROUND_TEXT = /\b(?:nohup|setsid|disown|daemonize|Process\.daemon|detach(?:ed)?)\b/
       # Programs that read a folder's whole tree: given home (or any folder
       # above a denied one) they reach the secrets in it.
-      SWEEPERS = %w[find tar cp rsync scp zip 7z cpio grep egrep fgrep rg ag ack fd ditto].freeze
+      # A link to such a folder reaches them too (ln, link).
+      SWEEPERS = %w[find tar cp rsync scp zip 7z cpio grep egrep fgrep rg ag ack fd ditto ln link].freeze
+      # Programs that make a link (and cp's options that do).
+      LINKERS = %w[ln link mklink].freeze
+      CP_LINK_OPTION = /\A-[a-zA-Z]*[sl]|\A--(?:symbolic-)?link\z/
+      # An interpreter's script that makes a link.
+      SCRIPT_LINK_TEXT = /symlink|\blink\(|\bln\s|\bmklink\b|FileUtils\.ln|hardlink/i
       # git settings that make git run a command (or show one), and git
       # config's scopes beyond the repository.
       GIT_RUNNING_KEYS = %w[core.fsmonitor core.sshcommand core.hookspath core.pager core.editor].freeze
@@ -107,6 +113,20 @@ module Samagotchi
         @refusal = read
       rescue StandardError
         @refusal = PairBoundary::UNREADABLE
+      end
+
+      # Whether it makes a link (ln, link, cp -s/-l, a script's symlink): a
+      # path through a link it makes now is judged before the link exists,
+      # so the owner approves it (asked about; a link to a folder above a
+      # secret is refused: SWEEPERS). True for one it can't read.
+      def links?
+        return @links if defined?(@links)
+
+        @links = @depth > MAX_DEPTH || ShellLex.simple_commands(ShellLex.lex(@text)).any? do |words|
+          words.is_a?(Array) && link_command?(words)
+        end
+      rescue StandardError
+        @links = true
       end
 
       # Whether it may write outside the project (asked about, never
@@ -336,6 +356,20 @@ module Samagotchi
       # Whether +path+ is a denied root's folder or one above it.
       def above_denied?(path)
         ProtectedPaths.reals(path).any? { |real| @paths.denied_roots.any? { |root| ShellPaths.within?(root, real) } }
+      end
+
+      def link_command?(words)
+        at = program_at(words)
+        program = at && File.basename(words[at])
+        return true if LINKERS.include?(program)
+        return true if program == "cp" && words[(at + 1)..].any? { |arg| arg.match?(CP_LINK_OPTION) }
+        return true if words.each_cons(2).any? { |option, word| CODE_OPTIONS.include?(option) && LINKERS.include?(File.basename(word)) }
+
+        runner = (0..(at || (words.size - 1))).find { |i| runner?(words[i]) } or return false
+        name = File.basename(words[runner])
+        scripts(words, runner).any? do |script|
+          SHELLS.include?(name) || name == "eval" ? nested(script).links? : script.match?(SCRIPT_LINK_TEXT)
+        end
       end
 
       def nested(script) = PairCommand.new(script, cwd: @cwd, paths: @paths, home: @home, root: @root,
