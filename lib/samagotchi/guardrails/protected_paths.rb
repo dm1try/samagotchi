@@ -63,7 +63,7 @@ module Samagotchi
       # not back to the link's parent as File.expand_path has it). It
       # differs from File.expand_path only for such a climb; the parts
       # after the last `..` are kept as given (symlinks not resolved).
-      # A shell's cd keeps the logical `..` (ShellPaths::Walk); a file
+      # A shell's cd may land at either (ShellPaths::Walk keeps both); a file
       # argument and a tool's path go through this.
       # @param path [String]
       # @param base [String, nil] for a relative path (Dir.pwd when nil)

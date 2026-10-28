@@ -74,17 +74,25 @@ module Samagotchi
       def within?(path, root) = path == root || path.start_with?(File.join(root, ""))
 
       # Follows the current dir and gives, per simple command, each word
-      # with its path (nil when it can't be resolved). The dir follows the
-      # shell's logical cd (`cd link/..` is back where it started); a word
-      # is opened from it the kernel's way, so a `..` after a symlinked dir
-      # climbs out of its target: such a word comes twice, with its lexical
-      # path and its physical one (ProtectedPaths.expand), and a check reads
-      # both.
+      # with its path (nil when it can't be resolved). A word is opened the
+      # kernel's way, so a `..` after a symlinked dir climbs out of its
+      # target: such a word comes twice, with its lexical path and its
+      # physical one (ProtectedPaths.expand), and a check reads both. A cd
+      # or pushd to such a word may land at either (the shell's logical cd
+      # chdirs to the physical path when the logical one doesn't exist, and
+      # always with -P, set -P or zsh's chase_links/chase_dots), so the walk
+      # keeps every dir the command may be in by then and resolves later
+      # words against each (a word not resolvable from one of them isn't
+      # resolved). A symlink without a `..` lands at the same file either
+      # way.
       class Walk
         include RedactedInspect
 
+        # More dirs than this after a cd: the dir is unknown.
+        MAX_DIRS = 8
+
         def initialize(cwd, home, env)
-          @dir = cwd
+          @dirs = [cwd]
           @home = home
           @env = env
           @subshells = []
@@ -95,37 +103,50 @@ module Samagotchi
         # @return [Array<[String, String|nil]>]
         def step(words)
           case words
-          when :open then @subshells << @dir
+          when :open then @subshells << @dirs
                           []
-          when :close then @dir = @subshells.pop || @dir
+          when :close then @dirs = @subshells.pop || @dirs
                            []
           else command(words)
           end
         end
 
-        # The absolute paths for +word+ against the current dir (.paths_for),
-        # [] when it can't be resolved.
-        def paths(word) = paths_for(word, @dir)
+        # The absolute paths for +word+ against every dir the command may be
+        # in (.paths_for), [] when it can't be resolved from one of them.
+        def paths(word)
+          found = @dirs.map { |dir| paths_for(word, dir) }
+          found.any?(&:empty?) ? [] : found.flatten.uniq
+        end
 
         private
 
         def command(words)
           verb = words.find { |w| !w.match?(/\A[A-Za-z_]\w*=/) }
-          cd_args = words.drop_while { |w| w != verb }.drop(1).grep_v(/\A-/)
-          # A cd's destination is the shell's logical path only.
-          logical = %w[cd pushd].include?(verb) ? cd_args.first : nil
+          cd_args = words.drop_while { |w| w != verb }.drop(1).grep_v(/\A-./)
           resolved = words.filter_map { |word| candidate(word) }.flat_map do |word|
-            paths = logical && word == logical ? [resolve(word, @dir)].compact : paths_for(word, @dir)
+            paths = paths(word)
             paths.empty? ? [[word, nil]] : paths.map { |path| [word, path] }
           end
           case verb
-          when "cd" then @dir = cd_args.empty? ? @home : resolve(cd_args.first, @dir)
+          when "cd" then @dirs = cd_args.empty? ? [@home] : dirs_after(cd_args.first)
           when "pushd"
-            @pushed << @dir
-            @dir = cd_args.first && resolve(cd_args.first, @dir)
-          when "popd" then @dir = @pushed.pop unless @pushed.empty?
+            @pushed << @dirs
+            @dirs = cd_args.first ? dirs_after(cd_args.first) : [nil]
+          when "popd" then @dirs = @pushed.pop unless @pushed.empty?
           end
           resolved
+        end
+
+        # Every dir a cd to +word+ may land at, from each current one (nil
+        # for one it can't tell: `cd -` among them); [nil] past MAX_DIRS.
+        def dirs_after(word)
+          return [nil] if word == "-"
+
+          dirs = @dirs.flat_map do |dir|
+            found = paths_for(word, dir)
+            found.empty? ? [nil] : found
+          end.uniq
+          dirs.size > MAX_DIRS ? [nil] : dirs
         end
 
         # The part of +word+ that may be a path: an option's or an
@@ -150,7 +171,7 @@ module Samagotchi
         end
 
         # An absolute path for +word+ against +dir+ with `..` taken
-        # lexically (a cd's destination: the shell's logical cd), or nil.
+        # lexically, or nil.
         def resolve(word, dir)
           return nil if word.include?(ShellLex::SUBST) || word == ShellLex::HEREDOC || word.match?(SCRIPT)
 

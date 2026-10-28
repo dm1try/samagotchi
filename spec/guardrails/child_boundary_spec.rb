@@ -123,6 +123,15 @@ RSpec.describe Samagotchi::Guardrails::ChildBoundary do
       expect(run("git commit -am x")).to be_allow
     end
 
+    # zsh's and bash's cd go physical where the logical dir doesn't exist.
+    it "asks for mutating git after a cd whose `..` may climb out of a symlinked dir's target" do
+      FileUtils.mkdir_p(File.join(main, "deep"))
+      File.symlink(File.join(main, "deep"), File.join(child, "link"))
+      expect(run("cd link/.. && git commit -am x")).to be_ask
+      expect(run("cd -P link/.. && git add .")).to be_ask
+      expect(run("cd sub/.. && git commit -am x")).to be_allow
+    end
+
     it "doesn't ask for read-only git there" do
       expect(run("git -C #{main} log --oneline -3")).to be_allow
       expect(run("git -C ../main status")).to be_allow

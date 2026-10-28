@@ -87,16 +87,25 @@ RSpec.describe Samagotchi::Guardrails::ShellPaths do
     expect(touches?("echo > other.yml", cwd: nil)).to be(false)
   end
 
-  # bash: `cd link/..` is logical (back where it started), but after
-  # `cd link` a `../x` is opened from the link's target, as a file
-  # argument with link/.. in it is.
-  it "takes a file word's `..` from a symlinked dir's target, a cd's `..` logically" do
+  # After `cd link` a `../x` is opened from the link's target, as a file
+  # argument with link/.. in it is. `cd link/..` is logical when that dir
+  # exists, but zsh and bash chdir to the physical one when it doesn't, and
+  # cd -P, set -P and chase_links always do: both count.
+  it "takes a `..` from a symlinked dir's target as well, in a file word or a cd" do
     File.symlink(File.join(config, "memories"), File.join(repo, "mem"))
     FileUtils.mkdir_p(File.join(config, "memories"))
     expect(touches?("echo x >> mem/../config.yml")).to be(true)
     expect(touches?("cd mem; echo x >> ../config.yml")).to be(true)
-    expect(touches?("cd mem/.. && echo x >> config.yml")).to be(false)
+    expect(touches?("cd mem/.. && echo x >> config.yml")).to be(true)
+    expect(touches?("cd -P mem/.. && echo x >> config.yml")).to be(true)
+    expect(touches?("cd mem && cd .. && echo x >> config.yml")).to be(true)
+    expect(touches?("set -o physical; cd mem/.. && echo x >> config.yml")).to be(true)
     expect(touches?("cd sub/.. && echo x >> config.yml")).to be(false)
     expect(touches?("echo x >> sub/../config.yml")).to be(false)
+  end
+
+  it "takes `cd -`'s dir as unknown" do
+    expect(touches?("cd ~/.config && cd #{tmp} && cd - && echo x > samagotchi/config.yml")).to be(true)
+    expect(touches?("cd #{tmp} && cd - && echo x > other.yml")).to be(false)
   end
 end

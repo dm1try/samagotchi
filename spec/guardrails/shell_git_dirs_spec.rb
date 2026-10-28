@@ -111,14 +111,19 @@ RSpec.describe Samagotchi::Guardrails::ShellGitDirs do
     end
   end
 
-  it "takes -C's `..` after a symlinked dir from its target as well, a cd's logically" do
+  it "takes a -C's or a cd's `..` after a symlinked dir from its target as well" do
     Dir.mktmpdir("git-dirs") do |dir|
       base = File.realpath(dir)
       FileUtils.mkdir_p([File.join(base, "wt"), File.join(base, "other", "deep")])
       File.symlink(File.join(base, "other", "deep"), File.join(base, "wt", "link"))
       wt = File.join(base, "wt")
       expect(dirs("git -C link/.. commit -m x", cwd: wt)).to eq([wt, File.join(base, "other")])
-      expect(dirs("cd link/.. && git commit -m x", cwd: wt)).to eq([wt])
+      # The shell's cd goes physical when the logical dir doesn't exist, or with -P.
+      expect(dirs("cd link/.. && git commit -m x", cwd: wt)).to eq([wt, File.join(base, "other")])
+      expect(dirs("cd -P link/../.. && git commit -m x", cwd: wt)).to eq([base])
+      expect(dirs("cd link && cd .. && git -C x commit", cwd: wt)).to eq([File.join(wt, "x"), File.join(base, "other", "x")])
+      expect(dirs("cd link/../x && git commit", cwd: wt)).to eq([File.join(wt, "x"), File.join(base, "other", "x")])
+      expect(dirs("cd sub/.. && git commit -m x", cwd: wt)).to eq([wt])
       expect(dirs("git -C sub/.. commit -m x", cwd: wt)).to eq([wt])
     end
   end

@@ -37,7 +37,13 @@ and commands may change between minor versions. How releases are made:
   protected paths (`mem/../config.yml` with `mem` a link to chi's memories), `outside_repo`, the delegate child's
   boundary, `touches: chi_dirs` and `rm: outside_tmp` had the same gap. Each now refuses or asks when either reading of
   the path does, and a write through a dangling symlink to `config.yml`, the hooks or `.bundles/` is asked or denied
-  like the file it creates. A shell `cd link/..` stays the shell's logical one.
+  like the file it creates.
+- A shell `cd` or `pushd` whose `..` climbs out of a symlinked folder's target now counts as landing in either folder:
+  zsh (chi's shell on macOS) and bash chdir to the physical one when the logical one doesn't exist, and `cd -P`
+  always does. A pair turn's `cd node_modules/foo/../../.config/gh && cat hosts.yml` (or `cd -P
+  node_modules/foo/../.. && echo x > .zshrc`) was allowed while it read or wrote outside the project; `touches:
+  chi_dirs`, `git: outside_repo` and the delegate child's boundary read the same cd logically only. Later words are
+  now resolved and judged against both folders, and `cd -` leaves the folder unknown.
 
 ## [0.128.0] - 2026-10-28
 

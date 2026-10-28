@@ -114,7 +114,13 @@ RSpec.describe Samagotchi::Guardrails::PairBoundary do
     expect(verdict_for({ name: "write", path: climb, content: "x" }).reason).to eq(described_class::SECRET)
     expect(execute("cat #{climb}").reason).to eq(described_class::SECRET)
     expect(execute("cd node_modules/foo && cat ../../.config/gh/hosts.yml").reason).to eq(described_class::SECRET)
-    # cd's own `..` is the shell's logical one: back in node_modules.
+    # zsh's and bash's cd go physical where the logical dir doesn't exist,
+    # and always with -P: either dir counts.
+    expect(execute("cd node_modules/foo/../../.config/gh && cat hosts.yml").reason).to eq(described_class::SECRET)
+    expect(execute("cd -P node_modules/foo/../.. && cat .config/gh/hosts.yml").reason).to eq(described_class::SECRET)
+    expect(execute("pushd node_modules/foo/../../.config/gh && cat hosts.yml").reason).to eq(described_class::SECRET)
+    expect(execute("cd node_modules/foo/../../.config/gh && echo x > hosts.yml").reason).to eq(described_class::SECRET)
+    # It stays inside either way.
     expect(execute("cd node_modules/foo/.. && cat foo/README")).to be_allow
   end
 

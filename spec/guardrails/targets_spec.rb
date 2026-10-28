@@ -178,6 +178,23 @@ RSpec.describe "Guardrails::Targets outside the session's repo" do
     expect(targets(name: "write", path: "a.txt").to_h).to include(outside_repo: false, repo_root: @repo)
   end
 
+  # zsh's and bash's cd chdir to the physical dir when the logical one
+  # doesn't exist (and always with -P): with repo/link -> sibling/deep,
+  # cd link/../x may be in @sibling/x.
+  it "counts a cd's `..` out of a symlinked dir's target both ways, for touches_chi? and git_outside_repo?" do
+    deep = File.join(@sibling, "deep").tap { |d| FileUtils.mkdir_p(d) }
+    File.symlink(deep, File.join(@repo, "link"))
+    chi = File.join(@sibling, "chi").tap { |d| FileUtils.mkdir_p(d) }
+    allow(Samagotchi::Guardrails::ParentApprovals).to receive(:chi_dirs).and_return([chi])
+    expect(targets(name: "execute", content: "cd link/../chi && echo x > config.yml")).to be_touches_chi
+    expect(targets(name: "execute", content: "cd -P link/.. && echo x > chi/config.yml")).to be_touches_chi
+    expect(targets(name: "execute", content: "cd lib/../chi && echo x > config.yml")).not_to be_touches_chi
+    t = targets(name: "execute", content: "cd link/../other && git commit -m x")
+    expect(t.git_dirs).to eq([File.join(@repo, "other"), File.join(@sibling, "other")])
+    expect(t).to be_git_outside_repo
+    expect(targets(name: "execute", content: "cd lib/.. && git commit -m x")).not_to be_git_outside_repo
+  end
+
   describe "git_dirs and git_outside_repo?" do
     it "reads a shell call's mutating git dirs, from its cwd:" do
       t = targets(name: "execute", content: "git add . && git -C #{@sibling} commit -m x")

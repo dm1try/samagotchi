@@ -688,10 +688,17 @@ resolves paths with `Guardrails::ProtectedPaths`:
   paths (`Targets#paths`, what approvals show) list both when they differ.
 
 In a shell command a file argument resolves the same way, against the folder
-the command is in by then; a `cd`'s own destination keeps the shell's logical
-`..` (`cd link/..` is back where it started, as bash has it), while after `cd
-link` a `../x` climbs out of the link's target. git's `-C`, `--git-dir` and
-`--work-tree` (and `GIT_DIR`/`GIT_WORK_TREE`) are counted both ways.
+the command is in by then. A `cd` or `pushd` to such a path may land either
+way: `cd link/..` is back where it started only while that logical folder
+exists (zsh, which chi's shell is on macOS, and bash chdir to the physical one
+when it doesn't), and `cd -P`, `set -P` and zsh's `chase_links`/`chase_dots`
+always take the physical one. So after it the command counts as in both
+folders: each later word is resolved against each (a word that can't be
+resolved from one isn't resolved), and judged both ways as above; past eight
+folders, or after `cd -`, the folder is unknown. After `cd link` a `../x`
+climbs out of the link's target as well. git's `-C`, `--git-dir` and
+`--work-tree` (and `GIT_DIR`/`GIT_WORK_TREE`) are counted both ways, from each
+folder the command may be in.
 
 `git: outside_repo` (shell tools only) reads the command for git subcommands
 that change a checkout: `commit`, `add`, `reset`, `checkout`, `switch`,

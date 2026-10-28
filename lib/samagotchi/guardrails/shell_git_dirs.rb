@@ -9,12 +9,14 @@ module Samagotchi
     # (commit, add, reset, …): the directories, or :unknown for one that
     # can't be read from the text ($VAR, $(…), `cd -`). Read from the text:
     # it follows cd/pushd/popd, ( … ) subshells, git -C/--git-dir/--work-tree
-    # and GIT_DIR/GIT_WORK_TREE. A cd keeps the shell's logical `..` (`cd
-    # link/..` is back where it started); git's -C and dir options are
-    # opened the kernel's way, so where a `..` in one climbs out of a
-    # symlinked dir's target, that git counts twice: from the lexical path
-    # and from the physical one (ProtectedPaths.expand, the only look at the
-    # disk). It catches honest mistakes (cd into another checkout and commit
+    # and GIT_DIR/GIT_WORK_TREE. Where a `..` climbs out of a symlinked
+    # dir's target, its lexical path and its physical one
+    # (ProtectedPaths.expand, the only look at the disk) both count: a cd
+    # may land at either (the shell's logical cd chdirs to the physical
+    # path when the logical one doesn't exist, and always with -P), so the
+    # walk keeps every dir the command may be in, and git's -C and dir
+    # options are opened the kernel's way; such a git counts from each. It
+    # catches honest mistakes (cd into another checkout and commit
     # there); sh -c, scripts, aliases and $(…) bodies get through. Never
     # raises on odd input.
     module ShellGitDirs
@@ -40,8 +42,11 @@ module Samagotchi
       # Follows the current dir through the simple commands and records
       # where each mutating git runs.
       class Walk
+        # More dirs than this after a cd: the dir is unknown.
+        MAX_DIRS = 8
+
         def initialize(cwd, home, env = {})
-          @dir = cwd
+          @dirs = [cwd]
           @home = home
           @env = env.slice("GIT_DIR", "GIT_WORK_TREE")
           @subshells = []
@@ -52,8 +57,8 @@ module Samagotchi
         def run(commands)
           commands.each do |words|
             case words
-            when :open then @subshells << @dir
-            when :close then @dir = @subshells.pop || @dir
+            when :open then @subshells << @dirs
+            when :close then @dirs = @subshells.pop || @dirs
             else simple(words.dup)
             end
           end
@@ -78,30 +83,40 @@ module Samagotchi
           case verb
           when "cd" then cd(args)
           when "pushd"
-            @pushed << @dir
-            @dir = args.first ? expand(args.first, @dir) : nil
-          when "popd" then @dir = @pushed.pop unless @pushed.empty?
+            @pushed << @dirs
+            @dirs = args.first ? dirs_after(args.first) : [nil]
+          when "popd" then @dirs = @pushed.pop unless @pushed.empty?
           else git(args, env) if verb == "git" || verb.end_with?("/git")
           end
         end
 
         def cd(args)
           target = args.reject { |a| %w[-P -L -e -@].include?(a) }.first
-          @dir = if target.nil? then @home
-                 elsif target == "-" then nil
-                 else expand(target, @dir)
-                 end
+          @dirs = if target.nil? then [@home]
+                  elsif target == "-" then [nil]
+                  else dirs_after(target)
+                  end
+        end
+
+        # Every dir a cd to +target+ may land at from each current one: its
+        # lexical path and its physical one (nil for one it can't tell);
+        # [nil] past MAX_DIRS.
+        def dirs_after(target)
+          dirs = @dirs.flat_map { |dir| [false, true].map { |physical| expand(target, dir, physical: physical) } }.uniq
+          dirs.size > MAX_DIRS ? [nil] : dirs
         end
 
         def git(args, env)
-          @found.concat([false, true].filter_map { |physical| where_git(args.dup, env, physical) })
+          @found.concat(@dirs.product([false, true]).filter_map do |dir, physical|
+            where_git(args.dup, env, dir, physical)
+          end)
         end
 
-        # Where a mutating git runs (a dir or :unknown), nil for another
-        # git; +physical+: its dir options' `..` taken the kernel's way.
-        def where_git(args, env, physical)
+        # Where a mutating git run from +dir+ runs (a dir or :unknown), nil
+        # for another git; +physical+: its dir options' `..` taken the
+        # kernel's way.
+        def where_git(args, env, dir, physical)
           expand = ->(arg, base) { expand(arg, base, physical: physical) }
-          dir = @dir
           work_tree = env["GIT_WORK_TREE"] && expand.call(env["GIT_WORK_TREE"], dir)
           git_dir = env["GIT_DIR"] && expand.call(env["GIT_DIR"], dir)
           sub = nil
@@ -133,8 +148,8 @@ module Samagotchi
           File.basename(git_dir) == ".git" ? File.dirname(git_dir) : git_dir
         end
 
-        # An absolute path for +arg+ against +dir+ (`..` lexical, as cd
-        # takes it, or +physical+: ProtectedPaths.expand); nil when it can't
+        # An absolute path for +arg+ against +dir+ (`..` lexical, or
+        # +physical+: ProtectedPaths.expand); nil when it can't
         # be told from the text (a variable, a substitution, a relative path
         # against an unknown dir).
         def expand(arg, dir, physical: false)
