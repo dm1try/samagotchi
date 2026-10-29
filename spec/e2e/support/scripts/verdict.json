@@ -1,0 +1,6 @@
+{
+  "delay": 0.02,
+  "iterations": [
+    {"text": "The answer does say PONG.\n\nVerdict: confirmed — the first answer says PONG"}
+  ]
+}

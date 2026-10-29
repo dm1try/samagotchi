@@ -95,7 +95,7 @@ test("this machine's page asks for the token too, and chi web's Local link (a on
   expect(errors, "page errors").toEqual([]);
 });
 
-test("a review: the owner starts one for a file and invites from the panel, the link joins over the LAN with the Plan, annotates it, a comment (a double Enter) gets one reply and comes back on ↑, the owner applies it, and a claim link opens in Alex's browser", async ({ chi, context, browser, script }) => {
+test("a review: the owner starts one for a file and invites from the panel, the link joins over the LAN with the Plan, annotates it, a comment (a double Enter) gets one reply and comes back on ↑, the owner applies it, and a claim link opens in Alex's browser, where Verify on it gets a verdict card", async ({ chi, context, browser, script }) => {
   const owner = await context.newPage();
   const errors = [];
   owner.on("pageerror", (e) => errors.push(e.message));
@@ -207,6 +207,28 @@ test("a review: the owner starts one for a file and invites from the panel, the 
   await expect(page.locator("#thread .p-msg.reply .p-bubble").first()).toHaveClass(/claim-hit/);
   await expect(page.locator("#thread .claim-hit")).toBeInViewport();
   expect(await page.evaluate(() => CSS.highlights.get("chi-claim")?.size)).toBe(1);
+
+  // Verify from a reply: Alex selects the claim in the first answer, Verify
+  // sends it with that turn's anchor, and the verdict's card lands after it.
+  script("verdict");
+  await page.locator("#comment").fill("");
+  await page.evaluate(() => {
+    const bubble = document.querySelector("#thread .p-msg.reply .p-bubble");
+    const walker = document.createTreeWalker(bubble, NodeFilter.SHOW_TEXT);
+    let node = walker.nextNode();
+    while (node && !node.data.includes("PONG")) node = walker.nextNode();
+    const range = document.createRange();
+    range.setStart(node, node.data.indexOf("PONG"));
+    range.setEnd(node, node.data.indexOf("PONG") + 4);
+    getSelection().removeAllRanges();
+    getSelection().addRange(range);
+  });
+  await page.locator("#annotateBar .annotate-preset", { hasText: "Verify" }).click();
+  await page.locator("#send").click();
+  const card = page.locator("#thread .verify-verdict");
+  await expect(card).toHaveClass(/confirmed/);
+  await expect(card.locator(".verify-verdict-quote")).toHaveText("PONG");
+  expect(await card.evaluate((node) => node.previousElementSibling === document.querySelector("#thread .p-msg.reply"))).toBe(true);
   await guest.close();
   expect(errors, "page errors").toEqual([]);
 });

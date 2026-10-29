@@ -538,6 +538,46 @@ test("participant page: Annotate quotes the Plan and a comment into the comment 
   assert.equal(bar.hidden, true);
 });
 
+test("participant page: Verify on a claim in a reply or a mid-turn line sends its turn's id and the quote; none from the Plan", async (t) => {
+  const review = { ...REVIEW, subjects: [{ path: "docs/plan.md", text: "Step 3", html: "<p>Step 3</p>" }],
+    messages: [
+      { role: "user", content: "First", turn_id: "turn-1" },
+      { role: "assistant", content: "Old answer" },
+      { role: "user", content: "Is the cache keyed?", turn_id: "turn-2" },
+      { role: "assistant", content: "Looking.", tools: [{ tool: "read", path: "keys.rb" }] },
+      { role: "user", content: "also the TTL", merged: true },
+      { role: "assistant", content: "The cache is keyed by path" },
+    ] };
+  const { $, posts } = await openPage(t, { respond: (call) => call.answer(200, review) });
+  const bar = document.getElementById("annotateBar");
+  const verify = () => [...bar.querySelectorAll(".annotate-preset")].find((button) => button.textContent === "Verify").click();
+  const send = async () => {
+    $("send").click();
+    await settle();
+    const post = posts().at(-1);
+    post.answer(202, { status: "accepted" });
+    await settle();
+    return JSON.parse(post.body).verify;
+  };
+
+  const replies = $("thread").querySelectorAll(".p-msg.reply .p-bubble");
+  await select(replies[replies.length - 1]);
+  verify();
+  assert.deepEqual(await send(), { turn_id: "turn-2", quote: "The cache is keyed by path" });
+
+  await select($("thread").querySelector(".p-msg.user:not([data-turn-id]) .p-bubble"));
+  verify();
+  assert.deepEqual(await send(), { turn_id: "turn-2", quote: "also the TTL" });
+
+  await select(replies[0]);
+  verify();
+  assert.deepEqual(await send(), { turn_id: "turn-1", quote: "Old answer" });
+
+  await select($("planDoc").querySelector("p"));
+  verify();
+  assert.equal(await send(), undefined);
+});
+
 test("participant page: no Annotate while the participant can't comment", async (t) => {
   const review = { ...REVIEW, viewer: { name: "Alex", can_comment: false, cap_reached: true } };
   const { $ } = await openPage(t, { respond: (call) => call.answer(200, review) });
