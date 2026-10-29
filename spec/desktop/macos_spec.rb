@@ -68,6 +68,20 @@ RSpec.describe Samagotchi::Desktop::MacOS do
 
   after { FileUtils.remove_entry(tmp) }
 
+  describe ".path_dirs / .baked_path" do
+    it "keeps only unique absolute PATH entries, in order" do
+      path = "/a/bin::bin:./x:.:~/bin:/b/bin:/a/bin"
+      expect(described_class.path_dirs("PATH" => path)).to eq(%w[/a/bin /b/bin])
+      expect(described_class.baked_path("PATH" => path)).to eq("/a/bin:/b/bin")
+    end
+
+    it "has no baked PATH when no absolute entries are set" do
+      expect(described_class.baked_path({})).to be_nil
+      expect(described_class.baked_path("PATH" => "")).to be_nil
+      expect(described_class.baked_path("PATH" => "rel:.:")).to be_nil
+    end
+  end
+
   describe "#launch_config" do
     it "runs this chi's bin/chi with the absolute ruby and the version" do
       config = macos.launch_config
@@ -92,6 +106,18 @@ RSpec.describe Samagotchi::Desktop::MacOS do
                  "SAMAGOTCHI_ENV" => "test", "OPENROUTER_API_KEY" => "k", "LANG" => "C",
                  "BUNDLE_GEMFILE" => "/x/Gemfile", "XDG_DATA_HOME" => "/d")
       expect(macos.launch_config["env"]).to eq("LANG" => "en_US.UTF-8", "XDG_STATE_HOME" => "/s", "GEM_HOME" => "/g")
+    end
+
+    it "bakes a filtered PATH without adding tokens or runtime settings" do
+      env.merge!("PATH" => "/a/bin::rel:/b/bin:/a/bin", "GITHUB_TOKEN" => "secret", "SAMAGOTCHI_ENV" => "test")
+      baked = macos.launch_config["env"]
+      expect(baked).to include("PATH" => "/a/bin:/b/bin")
+      expect(baked.keys).not_to include("GITHUB_TOKEN", "SAMAGOTCHI_ENV")
+    end
+
+    it "leaves PATH out when it has no absolute entries" do
+      env["PATH"] = "rel:."
+      expect(macos.launch_config["env"]).not_to have_key("PATH")
     end
 
     # launchd starts the helper in /, where a relative dir means /rel.
@@ -388,6 +414,68 @@ RSpec.describe Samagotchi::Desktop::MacOS do
       expect(newer.status).to include(stale: false, app_version: "9.9.9")
     end
 
+    it "fills a missing PATH on refresh, keeping the installed env without rebuilding" do
+      installed = helper(env: env.merge("PATH" => "/a", "XDG_STATE_HOME" => "/installed/state"))
+      installed.install
+      launch = JSON.parse(File.read(launch_file))
+      launch["env"].delete("PATH")
+      File.write(launch_file, JSON.generate(launch))
+      refresher = helper(env: env.merge("PATH" => "/a"))
+      expect(refresher.launch_outdated?).to be(true)
+
+      runner.calls.clear
+      refresher.refresh_launch_file
+
+      expect(JSON.parse(File.read(launch_file))["env"]).to include("PATH" => "/a", "XDG_STATE_HOME" => "/installed/state")
+      expect(refresher.launch_outdated?).to be(false)
+      expect(runner.calls).to be_empty
+    end
+
+    it "keeps an existing PATH on refresh, even when this shell's PATH differs" do
+      helper(env: env.merge("PATH" => "/a")).install
+      different = helper(env: env.merge("PATH" => "/b"))
+      expect(different.launch_outdated?).to be(false)
+
+      newer = helper(version: "9.9.10", env: env.merge("PATH" => "/b"))
+      newer.refresh_launch_file
+      expect(JSON.parse(File.read(launch_file))["env"]["PATH"]).to eq("/a")
+
+      without_path = helper(version: "9.9.10", env: env)
+      expect(without_path.launch_outdated?).to be(false)
+      without_path.refresh_launch_file
+      expect(JSON.parse(File.read(launch_file))["env"]["PATH"]).to eq("/a")
+    end
+
+    it "does not mark a PATH-less shell outdated, including when the file has no PATH" do
+      helper(env: env.merge("PATH" => "/a")).install
+      expect(helper(env: env).launch_outdated?).to be(false)
+
+      launch = JSON.parse(File.read(launch_file))
+      launch["env"].delete("PATH")
+      File.write(launch_file, JSON.generate(launch))
+      expect(helper(env: env).launch_outdated?).to be(false)
+    end
+
+    it "lets install --force and a regular upgrade bake this shell's PATH" do
+      helper(env: env.merge("PATH" => "/a")).install
+      helper(env: env.merge("PATH" => "/b")).install(force: true)
+      expect(JSON.parse(File.read(launch_file))["env"]["PATH"]).to eq("/b")
+
+      helper(env: env.merge("PATH" => "/a")).install(force: true)
+      helper(env: env.merge("PATH" => "/b")).upgrade
+      expect(JSON.parse(File.read(launch_file))["env"]["PATH"]).to eq("/b")
+    end
+
+    it "can keep the old PATH on upgrade, or fill it when the old file has none" do
+      helper(env: env.merge("PATH" => "/a")).install
+      helper(env: env.merge("PATH" => "/b")).upgrade(keep_path: true)
+      expect(JSON.parse(File.read(launch_file))["env"]["PATH"]).to eq("/a")
+
+      helper(env: env).install(force: true)
+      helper(env: env.merge("PATH" => "/b")).upgrade(keep_path: true)
+      expect(JSON.parse(File.read(launch_file))["env"]["PATH"]).to eq("/b")
+    end
+
     it "is stale when a Swift source changed, the launch file has no digest, or its ruby is gone" do
       helper.install
       File.write(File.join(sources_dir, "Panel.swift"), "// panel v2")
@@ -604,6 +692,22 @@ RSpec.describe Samagotchi::Desktop::MacOS do
         expect(settings("tmux.enabled" => true, "tmux.binary" => "/opt/homebrew/bin/tmux")["binary"]).to eq("/opt/homebrew/bin/tmux")
       end
 
+      it "skips relative PATH entries when resolving tmux" do
+        relative = File.join(tmp, "relative")
+        absolute = File.join(tmp, "absolute")
+        [relative, absolute].each do |dir|
+          FileUtils.mkdir_p(dir)
+          tmux_path = File.join(dir, "tmux")
+          File.write(tmux_path, "#!/bin/sh\n")
+          File.chmod(0o755, tmux_path)
+        end
+
+        Dir.chdir(tmp) do
+          expect(settings({ "tmux.enabled" => true }, "PATH" => "relative:#{absolute}")["binary"])
+            .to eq(File.join(absolute, "tmux"))
+        end
+      end
+
       it "puts the socket dir in an existing TMUX_TMPDIR, else in /tmp, as tmux does" do
         uid = Process.uid
         expect(settings("tmux.enabled" => true)["socket_dir"]).to eq("/tmp/tmux-#{uid}")
@@ -709,8 +813,15 @@ RSpec.describe Samagotchi::Desktop::MacOS do
       expect(status).to include(installed: true, app_version: "9.9.9", chi_version: "9.9.10",
                                 launch_argv: ["/opt/ruby/bin/ruby", File.join(source_dir, "bin", "chi")],
                                 launch_ok: false, baked_dirs: { "XDG_STATE_HOME" => "/state" },
+                                baked_path: nil,
                                 service: true, running: true, login: "enabled",
                                 hotkey: { "keys" => "⌃⌥⌘N", "registered" => true })
+    end
+
+    it "reports the launch file's baked PATH" do
+      env["PATH"] = "/a:/b"
+      macos.install
+      expect(macos.status[:baked_path]).to eq("/a:/b")
     end
 
     it "says the launch file still works when its ruby and bin/chi exist" do

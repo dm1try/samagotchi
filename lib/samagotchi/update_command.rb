@@ -252,7 +252,7 @@ module Samagotchi
       row.from = helper.app_version
       if helper.stale?
         row.to = VERSION
-        done(row, :update, @dry_run ? "rebuilds and restarts it" : "restarted") { helper.upgrade { nil } }
+        done(row, :update, @dry_run ? "rebuilds and restarts it" : "restarted") { helper.upgrade(keep_path: true) { nil } }
       elsif helper.launch_outdated?
         helper.refresh_launch_file unless @dry_run
         up_to_date(row).tap { |r| r.status += @dry_run ? " (would refresh the launch file)" : " (launch file refreshed)" }

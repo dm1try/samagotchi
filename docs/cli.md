@@ -291,7 +291,9 @@ done
   profiles](memory.md#bundle-profiles-core-and-dev).
 - **The desktop helper** (macOS) is rebuilt and restarted only when its Swift
   sources changed (or the Ruby it runs moved); otherwise only its launch file
-  is refreshed. See [Desktop helper](desktop.md).
+  is refreshed (a new chi or other terminal settings; a PATH only when it has
+  none: `chi desktop install --force` changes it, and `chi desktop upgrade`
+  bakes this shell's PATH). See [Desktop helper](desktop.md).
 - **Running processes** are reported, never stopped. A live worker keeps its
   chi until it is restarted: `chi sessions restart ID` (one from before
   restarts: `chi sessions stop ID`, and the next prompt starts it on the new

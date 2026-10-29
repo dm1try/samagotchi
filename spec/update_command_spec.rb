@@ -367,7 +367,7 @@ RSpec.describe Samagotchi::UpdateCommand do
 
     it "rebuilds a stale helper, but not in a dry run" do
       allow(helper).to receive(:stale?).and_return(true)
-      expect(helper).to receive(:upgrade).once
+      expect(helper).to receive(:upgrade).with(keep_path: true).once
       run("--dry-run")
       expect(line("Chi Helper")).to match(/0\.0\.9\s+#{Regexp.escape(Samagotchi::VERSION)}\s+would update \(rebuilds and restarts it\)\z/)
       run

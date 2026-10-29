@@ -82,7 +82,7 @@ RSpec.describe Samagotchi::DesktopCommand do
 
   it "upgrade upgrades, and warns" do
     allow(macos).to receive(:warnings).and_return(["from a linked git worktree"])
-    expect(macos).to receive(:upgrade).and_yield("installed X")
+    expect(macos).to receive(:upgrade).with(no_args).and_yield("installed X")
     expect(run("upgrade")).to eq(0)
     expect(out.string).to include("installed X")
     expect(err.string).to include("warning: from a linked git worktree")
@@ -120,12 +120,14 @@ RSpec.describe Samagotchi::DesktopCommand do
       allow(macos).to receive(:status).and_return(
         installed: true, app_path: "/A/Chi Helper.app", chi_version: "0.1.19", app_version: "0.1.19",
         launch_argv: ["/r/ruby", "/c/bin/chi"], launch_ok: true, baked_dirs: { "XDG_STATE_HOME" => "/s" },
+        baked_path: "/opt/homebrew/bin:/usr/bin",
         service: true, running: true, login: "enabled", hotkey: { "keys" => "⌃⌥⌘N", "registered" => true }
       )
       run("status")
       expect(out.string).to include("0.1.19 (matches chi)", "/r/ruby /c/bin/chi (ok)", "XDG_STATE_HOME=/s",
                                     "registered", "running", "⌃⌥⌘N (clipboard)")
       expect(out.string).to match(/^at login\s+on$/)
+      expect(out.string).to match(%r{^PATH\s+/opt/homebrew/bin:/usr/bin$})
       expect(out.string).not_to include("host keys")
     end
 
@@ -151,6 +153,7 @@ RSpec.describe Samagotchi::DesktopCommand do
       run("status")
       expect(out.string).to include("0.1.19 (chi is 0.1.20: chi update)",
                                     "(missing: chi update)", "(defaults)",
+                                    "(none: macOS's default; chi update fills it, chi desktop install --force changes it)",
                                     "not registered", "not running", "⌃⌥⌘N taken by another app",
                                     "off (chi desktop install --force --login)")
     end
@@ -164,7 +167,7 @@ RSpec.describe Samagotchi::DesktopCommand do
     )
     run("status")
     expect(out.string).to include("0.1.19 (up to date: chi 0.1.20 changed nothing in it)")
-    expect(out.string).not_to include("chi update")
+    expect(out.string).not_to include("(missing: chi update)")
   end
 
   it "is reachable from bin/chi" do

@@ -194,7 +194,8 @@ grant:
 
    `tmux.agents` picks the programs listed (kitty.agents' default; `"*"` lists every pane), `tmux.binary` the tmux
    to run (default: the `tmux` on your shell's PATH when the launch file is written, e.g. `/opt/homebrew/bin/tmux`;
-   the helper itself has no PATH). See [Configuration](configuration.md#desktop-helper-agents-in-kitty-and-tmux).
+   the helper itself keeps macOS's default PATH, and tmux is resolved when the file is written). See
+   [Configuration](configuration.md#desktop-helper-agents-in-kitty-and-tmux).
 2. Run `chi update` (or `chi desktop upgrade`), and again after every edit of `tmux:`. With no tmux found they say
    "tmux.enabled but no tmux found on PATH: set tmux.binary", and the panel "tmux not found…".
 
@@ -267,7 +268,7 @@ rewrites `launch.json`, which the app reads at each send, so the app keeps its o
 | `chi desktop install [--force] [--login]` | builds, installs and starts it; `--force` replaces an existing copy |
 | `chi desktop upgrade` | rebuilds it for this chi and restarts it, keeping the login setting (always; `chi update` does it only when needed) |
 | `chi desktop uninstall` | quits it and removes the app, its login item, launch file and settings |
-| `chi desktop status` | version against chi's, how it runs chi, state dirs, Service, hotkey, process, login item, host keys |
+| `chi desktop status` | version against chi's, how it runs chi, state dirs, PATH, Service, hotkey, process, login item, host keys |
 
 `chi self` has a `desktop` line: `0.1.x (matches)`, `0.1.w (up to date for chi 0.1.x)` (an older build whose sources
 haven't changed), `0.1.w (chi is 0.1.x: chi update)` (a rebuild is due) or `not installed`. `chi desktop status`
@@ -283,12 +284,18 @@ exports. So `install` writes `~/Library/Application Support/Chi Helper/launch.js
 - only these variables, and only when they are set: `XDG_CONFIG_HOME`, `XDG_STATE_HOME`, `GEM_HOME`, `GEM_PATH`,
   `RUBYLIB` (a relative `XDG_*` dir made absolute from the install's current folder: the helper starts in `/`).
   No tokens and no `SAMAGOTCHI_*` settings go in;
+- `PATH`: the shell's PATH when the file is written, with only absolute folders, in order, each once. The helper's
+  chi, the sessions it starts and their `execute` commands can find the tools your terminal finds (mise, Homebrew,
+  `codex`, `node`);
 - the settings the panel needs from config.yml, as chi read them then: the `kitty:` section (when
   `kitty.listen_on` is set), the `tmux:` section (when `tmux.enabled`: the tmux binary and the socket dir resolved
   then, and the agents) and `broadcast_timeout` (`broadcast.triage_deadline` + 10 s).
 
-The file freezes the install shell's values. If you install with a temporary `XDG_STATE_HOME`, the helper keeps
-using it. `status` prints the baked dirs.
+The file freezes the install shell's values, including PATH. If you install with a temporary `XDG_STATE_HOME`, the
+helper keeps using it. `chi update` fills in a PATH only when the file has none (as in a launch file written before
+this change); it never changes an existing baked PATH. To change it (for example, after a mise upgrade changes the
+versioned folders on PATH), run `chi desktop install --force` or `chi desktop upgrade` from the shell whose PATH
+you want. `status` prints the baked state dirs and PATH.
 
 **Host API keys** don't go in the launch file either: with the variable a host's `api_key_env:` names unset, chi
 reads the key from the login Keychain (service `chi`, account the variable's name; see
@@ -333,6 +340,9 @@ broadcast` says the note may be partly delivered.
 
 - **"chi not found at …, run `chi desktop upgrade`"**: the Ruby or checkout in `launch.json` moved (a Ruby upgrade,
   a removed worktree). Run `chi desktop upgrade` (or `chi update`) from the chi you use now.
+- **A session started from the panel can't find a tool (`codex`, `node`):** `chi desktop status` shows the PATH it
+  gets. With none, run `chi update`; to change it, run `chi desktop install --force` from your terminal. Then
+  restart that session (`chi sessions restart ID`).
 - **No "Send to chi" in the Services menu:** check `chi desktop status` (service). Try
   `/System/Library/CoreServices/pbs -update`, start the app again, or log out and back in. It must be ticked in
   System Settings → Keyboard → Keyboard Shortcuts… → Services → Text.

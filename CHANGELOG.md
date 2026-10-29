@@ -7,6 +7,14 @@ and commands may change between minor versions. How releases are made:
 [docs/releasing.md](docs/releasing.md).
 ## [Unreleased]
 
+### Fixed
+
+- Sessions started from the desktop helper find the tools your terminal finds (mise, Homebrew, `codex`):
+  `chi desktop install` writes your shell's PATH into the helper's launch file, `chi update` adds it to a
+  launch file that has none (it never changes a baked one; `chi desktop install --force` does), and
+  `chi desktop status` shows it. Run `chi update` once from your terminal, then restart the sessions the
+  panel started.
+
 ### Security
 
 - On the LAN (`web.host: lan`), the cookie chi web sets for this machine's 127.0.0.1 no longer holds the access

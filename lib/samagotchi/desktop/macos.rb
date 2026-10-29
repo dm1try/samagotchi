@@ -41,9 +41,11 @@ module Samagotchi
       BUILD_NAME = ".chi-helper-build"
       OLD_NAME = ".chi-helper-old"
       # Apps started by launchd get a bare env (no shell rc files), so the
-      # launch file carries what chi needs to find its gems and state. Only
-      # these, and only when set: no tokens, no runtime knobs.
+      # launch file carries what chi needs to find its gems, state and tools.
+      # Only these, and only when set: no tokens, no runtime knobs.
       ENV_ALLOWLIST = %w[XDG_CONFIG_HOME XDG_STATE_HOME GEM_HOME GEM_PATH RUBYLIB].freeze
+      # PATH is separately filtered to absolute dirs and frozen when written,
+      # so the helper's chi, workers and execute can find the shell's tools.
       # Without it Ruby reads stdin as US-ASCII and non-ASCII notes break.
       LANG = "en_US.UTF-8"
       # chi broadcast's default triage deadline, and the helper's seconds on
@@ -53,6 +55,17 @@ module Samagotchi
       # The agent terminals the helper pastes into (AgentTerminal.swift):
       # one launch-file section each, in this order.
       TERMINALS = %w[kitty tmux].freeze
+
+      # PATH dirs the helper can use from launchd's / working directory:
+      # keep absolute entries only, in order, once each.
+      def self.path_dirs(env)
+        env["PATH"].to_s.split(File::PATH_SEPARATOR).select { _1.start_with?("/") }.uniq
+      end
+
+      def self.baked_path(env)
+        dirs = path_dirs(env)
+        dirs.empty? ? nil : dirs.join(File::PATH_SEPARATOR)
+      end
 
       # Runs a command without a shell; [output, success].
       class Runner
@@ -76,7 +89,8 @@ module Samagotchi
 
       # The tmux: settings, or nil while tmux.enabled is off. The binary is
       # tmux.binary, else the tmux on +env+'s PATH ("" when there is none:
-      # see #warnings); the socket dir is where tmux puts `-L` sockets
+      # only absolute dirs are usable from launchd; see #warnings); the socket
+      # dir is where tmux puts `-L` sockets
       # ($TMUX_TMPDIR when it is a directory, else /tmp, then tmux-<uid>).
       # Both are frozen at bake time, like the rest of the launch file.
       def self.tmux_settings(get = Config.method(:get), env: ENV)
@@ -91,8 +105,7 @@ module Samagotchi
       end
 
       def self.path_tmux(env)
-        env["PATH"].to_s.split(File::PATH_SEPARATOR).reject(&:empty?).map { File.join(_1, "tmux") }
-                   .find { File.file?(_1) && File.executable?(_1) }.to_s
+        path_dirs(env).map { File.join(_1, "tmux") }.find { File.file?(_1) && File.executable?(_1) }.to_s
       end
 
       # Each switched-on terminal's settings by name ("kitty" => …).
@@ -148,10 +161,14 @@ module Samagotchi
       # `gem cleanup`), else this checkout's bin/chi. A section per terminal
       # switched on (TERMINALS order); the broadcast timeout when given.
       # The XDG dirs go in absolute (Paths): launchd starts the app in /,
-      # where a relative one would mean /<dir>.
+      # where a relative one would mean /<dir>. PATH is filtered to absolute,
+      # deduplicated dirs so chi, its workers and execute find shell tools;
+      # it is frozen at bake time.
       def launch_config
         env = { "LANG" => LANG }
         ENV_ALLOWLIST.each { |name| env[name] = @env[name] unless @env[name].to_s.empty? }
+        path = self.class.baked_path(@env)
+        env["PATH"] = path if path
         env.merge!(Paths.absolute_xdg(env: env, set: :key))
         config = { "version" => @version, "argv" => [@ruby, @chi_path], "env" => env, "sources_sha" => sources_sha }
         TERMINALS.each { |name| config[name] = @terminals[name] if @terminals[name] }
@@ -179,21 +196,28 @@ module Samagotchi
       end
 
       # The launch file names another chi version or path than this one, or
-      # other terminal settings or broadcast timeout: refresh_launch_file
-      # fixes that without a rebuild.
+      # other terminal settings, broadcast timeout or a missing bakeable PATH:
+      # refresh_launch_file fixes that without a rebuild. A different baked
+      # PATH is intentional and changes only with desktop install --force.
       def launch_outdated?
         launch = read_launch
         launch["version"] != @version || Array(launch["argv"]) != launch_config["argv"] ||
           TERMINALS.map { launch[_1] } != TERMINALS.map { @terminals[_1] } ||
-          launch["broadcast_timeout"] != @broadcast_timeout
+          launch["broadcast_timeout"] != @broadcast_timeout || path_missing?(launch)
       end
 
       # Rewrite the launch file for this chi and its settings, keeping
-      # the env it was installed with. The app reads it at each send: no restart.
+      # the env it was installed with; a PATH only when it has none (changing
+      # it takes chi desktop install --force or chi desktop upgrade). The app
+      # reads it at each send.
       def refresh_launch_file
         config = launch_config
-        env = read_launch["env"]
-        config["env"] = env if env.is_a?(Hash)
+        old_env = read_launch["env"]
+        if old_env.is_a?(Hash)
+          config["env"] = old_env
+          path = self.class.baked_path(@env)
+          config["env"]["PATH"] = path if config["env"]["PATH"].to_s.empty? && path
+        end
         write_launch_file(config)
       end
 
@@ -242,7 +266,7 @@ module Samagotchi
 
       # @yield [String] progress lines
       # @param login [Boolean] also start the app at login
-      def install(force: false, login: false, &progress)
+      def install(force: false, login: false, keep_path: false, &progress)
         raise Error, "already installed (#{app_version}); use chi desktop upgrade" if installed? && !force
 
         toolchain!
@@ -250,7 +274,7 @@ module Samagotchi
         progress&.call("building #{APP_NAME} #{@version} (can take a few minutes)…")
         built = build_app
         swap_in(built)
-        write_launch_file
+        write_launch_file(keep_path: keep_path)
         register_app
         self.login = true if login
         progress&.call("installed #{app_path}")
@@ -258,9 +282,9 @@ module Samagotchi
       end
 
       # Keeps the login item as it was.
-      def upgrade(&)
+      def upgrade(keep_path: false, &)
         was_login = installed? && login == "enabled"
-        install(force: true, login: was_login, &)
+        install(force: true, login: was_login, keep_path: keep_path, &)
       end
 
       # SMAppService status as the app reports it ("enabled",
@@ -313,6 +337,7 @@ module Samagotchi
           launch_ok: launch_ok?(launch),
           stale: stale?,
           baked_dirs: env.select { |name, _| name.start_with?("XDG_") },
+          baked_path: env["PATH"],
           service: dump.include?(BUNDLE_ID),
           running: running,
           host_keys: host_keys
@@ -393,12 +418,24 @@ module Samagotchi
         {}
       end
 
+      def path_missing?(launch)
+        return false unless self.class.baked_path(@env)
+
+        env = launch["env"]
+        !env.is_a?(Hash) || env["PATH"].to_s.empty?
+      end
+
       def launch_ok?(launch)
         argv = Array(launch["argv"])
         !argv.empty? && argv.all? { |path| File.exist?(path) }
       end
 
-      def write_launch_file(config = launch_config)
+      def write_launch_file(config = launch_config, keep_path: false)
+        if keep_path
+          old_env = read_launch["env"]
+          old_path = old_env["PATH"] if old_env.is_a?(Hash)
+          config["env"]["PATH"] = old_path unless old_path.to_s.empty?
+        end
         FileUtils.mkdir_p(@support_dir)
         AtomicFile.write(launch_path, JSON.pretty_generate(config) + "\n")
       end

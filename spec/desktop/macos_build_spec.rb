@@ -503,6 +503,7 @@ RSpec.describe "the desktop helper's Swift sources", :macos_build do
       # NAME-recent.json, unless NAME.mode says it hangs or is refused.
       File.write(fake, <<~SH)
         echo "$*" >> "$FAKE_CHI_DIR/calls"
+        echo "$PATH" >> "$FAKE_CHI_DIR/path"
         echo "${CHI_REMOTE-unset}" >> "$FAKE_CHI_DIR/env"
         if [ "$1" = remote ]; then
           [ -f "$FAKE_CHI_DIR/remotes.json" ] || { echo "chi: unknown command remote" >&2; exit 2; }
@@ -562,6 +563,18 @@ RSpec.describe "the desktop helper's Swift sources", :macos_build do
 
     # The local calls, in their order (`remote ls` runs beside them).
     def local_calls = calls.reject { |c| c.start_with?("remote ", "--remote ") }
+
+    it "runs chi with the launch file's PATH over the helper's environment" do
+      baked_path = "#{tmp}/baked:/usr/bin:/bin"
+      config = JSON.parse(File.read(launch))
+      config["env"] = { "PATH" => baked_path }
+      File.write(launch, JSON.generate(config))
+
+      _, err, status = sessions(env: { "PATH" => "/usr/bin:/bin" })
+
+      expect([err, status]).to eq(["", 0])
+      expect(File.readlines(File.join(tmp, "path"), chomp: true).uniq).to eq([baked_path])
+    end
 
     it "lists the live sessions in chi's order, then up to 3 stopped ones neither live nor a REPL's, newest first" do
       result, err, status = sessions

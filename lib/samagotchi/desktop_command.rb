@@ -120,9 +120,10 @@ module Samagotchi
       launch = s[:launch_argv].empty? ? "(none)" : s[:launch_argv].join(" ")
       launch += s[:launch_ok] ? " (ok)" : " (missing: chi update)"
       dirs = s[:baked_dirs].empty? ? "(defaults)" : s[:baked_dirs].map { |name, value| "#{name}=#{value}" }.join(" ")
+      path = path_row(s[:baked_path])
       service = s[:service] ? "registered" : "not registered (try chi desktop upgrade, or log out and back in)"
       running = s[:running] ? "running" : "not running (open -g \"#{s[:app_path]}\")"
-      rows = [["Chi Helper", version], ["app", s[:app_path]], ["runs chi", launch], ["state dirs", dirs],
+      rows = [["Chi Helper", version], ["app", s[:app_path]], ["runs chi", launch], ["state dirs", dirs], ["PATH", path],
               ["service", service], ["hotkey", hotkey(s[:hotkey])], ["process", running], ["at login", login(s[:login])]]
       rows << ["host keys", host_keys(s[:host_keys])] unless Array(s[:host_keys]).empty?
       @stdout.puts(format_rows(rows))
@@ -151,6 +152,10 @@ module Samagotchi
       when nil then "unknown"
       else "off (chi desktop install --force --login)"
       end
+    end
+
+    def path_row(path)
+      path.to_s.empty? ? "(none: macOS's default; chi update fills it, chi desktop install --force changes it)" : path
     end
 
     def format_rows(rows)
