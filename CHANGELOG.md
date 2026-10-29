@@ -24,6 +24,9 @@ and commands may change between minor versions. How releases are made:
 - Web: Verify is offered only on a finished turn's final answer, on your page and a participant's: the one place a
   verdict card can come from. Selecting an earlier reply, a step, a message, a line added mid-turn or a turn still
   running no longer offers a Verify that silently ran as a plain comment; the bar keeps its other actions there.
+- Web: on a participant's page, a turn a delegate's report or a context note woke opens as "An automatic turn"
+  (still without the report or note). Its answer read as one more reply of the turn before: Verify was offered on
+  it and refused, and hidden on that turn's real final answer.
 
 ## [0.130.1] - 2026-10-29
 

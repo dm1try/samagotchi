@@ -375,7 +375,10 @@ fields: a field added to an event later reaches nobody until it is named there.
   so the owner's `!` line and its output, a delegate's report (a wake turn's too), and the notes chi adds (a declined
   Continue) never show. A turn no person sent (its record's `automatic`, `SessionMetrics`: a task's or a plugin's,
   read from analytics.json and the live worker's records; the running turn's by its start; a delegate child's first
-  turn, its parent's task) shows as an automatic turn without its prompt, as the stream does. A raw loop's saved
+  turn, its parent's task) shows as an automatic turn without its prompt, as the stream does; so does a wake turn's
+  start (`.wake_start`: the delegate report or the context note a wake turn opens with is dropped, its `turn_id` and
+  `at` kept), so its answer is never read as one more reply of the turn before (Verify, verdict cards and claim
+  links group by `[data-turn-id]`). A raw loop's saved
   reply is cut before the display reads it (`.visible_raw`): what came before a bare `</think>` and everything from
   an unclosed thought or tool call on, which the display would only untag. Each
   prompt carries its author and an image count; replies their text and their step's tool rows. Notes, steers and
@@ -431,7 +434,8 @@ fields: a field added to an event later reaches nobody until it is named there.
   It is offered only where the Engine will take the claim (`verify_target.js`, the bar's `offeredPreset`): a
   selection in the final answer of an ended turn, the last answer bubble (the owner's `.bubble.output` that isn't a
   delegate report's reply; a participant's last `.p-msg.reply > .p-bubble`) between the turn's opening
-  (`[data-turn-id]`) and the next one (or, on the owner's page, a context note: a wake turn opens with one).
+  (`[data-turn-id]`) and the next one (or, on the owner's page, a context note: a wake turn opens with one; a
+  participant's page gets a wake turn's opening as an automatic turn).
   Anywhere else (an earlier reply, a step, a prompt, a line merged mid-turn, the Plan, the running turn) the button
   is hidden and the bar keeps its other actions.
 - **Deep links to a claim** (`claim_link.js`). The owner selects text in a turn's answer, step or own message and

@@ -576,13 +576,15 @@ RSpec.describe "a participant red-teaming a session" do
       review = JSON.parse(body)
       expect(review["messages"].map { |m| [m["role"], m["content"]] }).to eq([
         ["user", "deploy it, key [redacted]"], ["assistant", ""], ["assistant", "Deployed; notes in docs/notes.md"],
-        ["assistant", "The child finished."], ["user", ""], ["assistant", "Noted the task."],
+        ["user", ""], ["assistant", "The child finished."], ["user", ""], ["assistant", "Noted the task."],
         ["user", "is step 3 safe?"], ["assistant", "Yes."]
       ])
       expect(review["messages"][1]["tools"]).to eq([{ "tool" => "execute" }, { "tool" => "read", "path" => ".env" },
                                                     { "tool" => "memory_read" }])
-      expect(review["messages"][4]).to eq("role" => "user", "content" => "", "automatic" => true, "turn_id" => "tt")
-      expect(review["messages"][6]).to include("author_name" => "Mallory", "mine" => true)
+      # The wake turn's report: its turn's start only, no text.
+      expect(review["messages"][3]).to eq("role" => "user", "content" => "", "automatic" => true, "turn_id" => "tw")
+      expect(review["messages"][5]).to eq("role" => "user", "content" => "", "automatic" => true, "turn_id" => "tt")
+      expect(review["messages"][7]).to include("author_name" => "Mallory", "mine" => true)
       ["sk-ant", "id_rsa", ".ssh", "KEYBYTES", "ENV-SECRET", "MEMORY-TEXT", "launch", "THINKING", "PLUGIN-STEER", "DELEGATE-REPORT", "shot.png", "SHELL-OUTPUT", "cat .env", "WAKE-REPORT", "0badc0de", "DECLINED-NOTE", "TASK-WAKE-PROMPT"].each do |leak|
         expect(body).not_to include(leak), leak
       end

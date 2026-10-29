@@ -201,6 +201,30 @@ RSpec.describe Samagotchi::Web::ParticipantView do
     end
   end
 
+  describe ".messages, a wake turn" do
+    it "keeps its start as an automatic turn with no text, so its answer is never the turn before's" do
+      list = [
+        { role: "user", content: "look", turn_id: "t1" },
+        { role: "assistant", content: "Looked." },
+        { role: "user", content: "CHILD REPORT body", source: "delegate_report", turn_id: "t2", at: "2026-10-29T10:00:00Z" },
+        { role: "assistant", content: "The child is done." },
+        { role: "note", content: "DEPLOY FROZEN", label: "slack", turn_start: true, turn_id: "t3" },
+        { role: "assistant", content: "Noted the freeze." },
+        # A note that starts no turn, a merged report: dropped as before.
+        { role: "note", content: "plain note", label: "slack" },
+        { role: "user", content: "late report", merged: true, source: "delegate_report" }
+      ]
+      expect(described_class.messages(list, viewer)).to eq([
+        { "role" => "user", "content" => "look", "turn_id" => "t1" },
+        { "role" => "assistant", "content" => "Looked." },
+        { "role" => "user", "at" => "2026-10-29T10:00:00Z", "content" => "", "automatic" => true, "turn_id" => "t2" },
+        { "role" => "assistant", "content" => "The child is done." },
+        { "role" => "user", "content" => "", "automatic" => true, "turn_id" => "t3" },
+        { "role" => "assistant", "content" => "Noted the freeze." }
+      ])
+    end
+  end
+
   describe "wall times" do
     it "keeps a prompt's, a reply's and a turn start's `at` (the page's hover and gap dividers), and nothing else of a time" do
       at = "2026-10-24T14:32:05.000+02:00"

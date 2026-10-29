@@ -586,6 +586,43 @@ test("participant page: Verify only in a turn's final reply, sending its turn's 
   }
 });
 
+test("participant page: a wake turn opens as an automatic turn: Verify and verdict cards keep to their own turn", async (t) => {
+  const verdict = { anchor: { turn_id: "turn-1", quote: "The cache is keyed" }, verdict: "confirmed", reason: "keys.rb",
+    by: null, check_turn_id: "check" };
+  // A wake turn's start (a delegate report, a context note) as the server gives it: no text.
+  const review = { ...REVIEW, verdicts: [verdict],
+    messages: [
+      { role: "user", content: "Is the cache keyed?", turn_id: "turn-1" },
+      { role: "assistant", content: "The cache is keyed" },
+      { role: "user", content: "", automatic: true, turn_id: "wake-1" },
+      { role: "assistant", content: "The child finished" },
+    ] };
+  const { $, posts } = await openPage(t, { respond: (call) => call.answer(200, review) });
+  const thread = $("thread");
+  const opening = thread.querySelector('.p-msg.user[data-turn-id="wake-1"]');
+  assert.equal(opening.querySelector(".p-bubble").textContent, "An automatic turn");
+  assert.equal(opening.querySelector(".p-who").textContent, "Automatic");
+  // The card sits after the answer it quotes, before the wake turn.
+  assert.ok(thread.querySelector(".verify-verdict").nextElementSibling === opening);
+
+  const bar = document.getElementById("annotateBar");
+  const verifyButton = () => [...bar.querySelectorAll(".annotate-preset")].find((button) => button.textContent === "Verify");
+  const sent = async (node) => {
+    await select(node);
+    assert.equal(verifyButton().hidden, false);
+    verifyButton().click();
+    $("send").click();
+    await settle();
+    const post = posts().at(-1);
+    post.answer(202, { status: "accepted" });
+    await settle();
+    return JSON.parse(post.body).verify;
+  };
+  const replies = thread.querySelectorAll(".p-msg.reply .p-bubble");
+  assert.deepEqual(await sent(replies[0]), { turn_id: "turn-1", quote: "The cache is keyed" });
+  assert.deepEqual(await sent(replies[1]), { turn_id: "wake-1", quote: "The child finished" });
+});
+
 test("participant page: no Verify on a reply while its turn still runs (the newest turn's when its id isn't known)", async (t) => {
   const review = { ...REVIEW, session: { ...REVIEW.session, status: "running" },
     messages: [

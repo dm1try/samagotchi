@@ -211,7 +211,8 @@ module Samagotchi
       # @return [Array<Hash>] {role: "user", content, turn_id, author,
       #   author_name, mine, automatic, images, at} and {role: "assistant",
       #   content, tools: [{tool, path}], at}; no notes, steers, automatic
-      #   input or empty-answer markers. html is added by the caller, from
+      #   input or empty-answer markers, but a wake turn's start as an
+      #   automatic turn (#wake_start). html is added by the caller, from
       #   this (redacted) content.
       def messages(shown, viewer, automatic: [])
         Array(shown).filter_map do |message|
@@ -220,6 +221,7 @@ module Samagotchi
           out = case field(message, :role).to_s
                 when "user" then user_message(message, viewer, automatic)
                 when "assistant" then assistant_message(message, viewer)
+                when "note" then wake_start(message)
                 end
           out && Redact.deep(out, viewer)
         end
@@ -228,15 +230,15 @@ module Samagotchi
       # A user message a participant sees: a turn's prompt (it has the
       # turn's id) or a person's line merged into a turn. Every other user
       # message is dropped: the owner's `!` line and its output, a
-      # delegate's report (a wake turn's input), the notes chi adds (a
-      # Continue the owner declined). Any message from a source that isn't a
-      # person's is dropped whatever it is.
+      # delegate's report (a wake turn's input: only its turn's start is
+      # kept, #wake_start), the notes chi adds (a Continue the owner
+      # declined). Any other message from a source that isn't a person's is
+      # dropped whatever it is.
       def user_message(message, viewer, automatic = [])
         source = field(message, :source).to_s
-        return nil unless PERSON_SOURCES.include?(source)
-
         turn_id = field(message, :turn_id)
         merged = field(message, :merged)
+        return (turn_id && !merged ? wake_start(message) : nil) unless PERSON_SOURCES.include?(source)
         return nil unless turn_id || merged
 
         out = { "role" => "user", **time_field(message) }
@@ -252,6 +254,20 @@ module Samagotchi
         images = field(message, :images)
         out["images"] = images.size if images.is_a?(Array) && !images.empty?
         out
+      end
+
+      # A wake turn's start (its prompt a delegate's report or a context
+      # note, MessageDisplay's turn_start note): the turn's boundary only,
+      # as an automatic turn with no text, so its answer is never read as
+      # one more reply of the turn before (Verify, verdict cards, claim
+      # links group by these). Nothing of the report or the note. nil for
+      # a message that starts no turn.
+      def wake_start(message)
+        turn_id = field(message, :turn_id)
+        return nil if turn_id.to_s.empty?
+        return nil if field(message, :role).to_s == "note" && field(message, :turn_start) != true
+
+        { "role" => "user", **time_field(message), "content" => "", "automatic" => true, "turn_id" => turn_id.to_s }
       end
 
       def assistant_message(message, viewer)

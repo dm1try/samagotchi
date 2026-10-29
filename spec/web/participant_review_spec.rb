@@ -105,6 +105,28 @@ RSpec.describe Samagotchi::Web::App, "participant review" do
     expect(body["messages"].first).to eq("role" => "user", "content" => "", "automatic" => true, "turn_id" => "t0")
   end
 
+  it "opens a wake turn with its boundary, never the delegate report's or the context note's text" do
+    snapshot["snapshot"]["current_turn"] = nil
+    snapshot["snapshot"]["messages"] = [
+      { "role" => "user", "content" => "earlier", "turn_id" => "t0" }, { "role" => "model", "content" => "ok" },
+      { "role" => "user", "kind" => "input", "source" => "delegate_report", "turn_start" => true, "turn_id" => "t1",
+        "content" => "CHILD REPORT" },
+      { "role" => "model", "content" => "child done" },
+      Samagotchi::ContextNote.message(note_id: "n1", text: "DEPLOY FROZEN", source: "slack", turn_start: true,
+                                      turn_id: "t2").transform_keys(&:to_s),
+      { "role" => "model", "content" => "noted" }
+    ]
+    body = review(issued.token).last
+    expect(body["messages"].map { |m| m.slice("role", "content", "automatic", "turn_id") }).to eq([
+      { "role" => "user", "content" => "earlier", "turn_id" => "t0" }, { "role" => "assistant", "content" => "ok" },
+      { "role" => "user", "content" => "", "automatic" => true, "turn_id" => "t1" },
+      { "role" => "assistant", "content" => "child done" },
+      { "role" => "user", "content" => "", "automatic" => true, "turn_id" => "t2" },
+      { "role" => "assistant", "content" => "noted" }
+    ])
+    expect(JSON.generate(body)).not_to include("CHILD REPORT", "DEPLOY FROZEN", "slack")
+  end
+
   it "is waiting for the owner while a Continue offer stands between turns" do
     snapshot["snapshot"]["current_turn"] = nil
     snapshot["snapshot"]["continue_offer"] = { "context" => "step limit" }
