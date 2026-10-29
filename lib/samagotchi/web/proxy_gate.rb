@@ -74,6 +74,12 @@ module Samagotchi
         return true if @public_url.host?(env["HTTP_HOST"])
         return true if @public_url.identity_env && env.key?(@public_url.identity_env)
 
+        proxy_trace?(env)
+      end
+
+      # Whether a request carries a proxy's trace (ProxyTrace: X-Forwarded-*,
+      # Forwarded, X-Real-IP, a known identity header).
+      def proxy_trace?(env)
         names = env[RAW_NAMES_ENV] || env.keys.filter_map { |key| ProxyTrace.env_name(key) }
         names.any? { |name| ProxyTrace.header?(name) }
       end

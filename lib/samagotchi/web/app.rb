@@ -531,9 +531,12 @@ module Samagotchi
 
       # A loopback peer of a LAN chi web, whose owner cookie holds the
       # loopback value. With web.public_url, #direct_public? takes the
-      # Bearer only, and LAN mode has no proxy.
+      # Bearer only. A request with a proxy's trace (one the user forwards
+      # to loopback by hand) is the LAN's: a leaked loopback value must not
+      # work from off this machine through it.
       def loopback_cookie_peer?(req)
-        !@lan.nil? && @public_url.nil? && LOOPBACK_PEERS.include?(req.get_header("REMOTE_ADDR").to_s)
+        !@lan.nil? && @public_url.nil? && LOOPBACK_PEERS.include?(req.get_header("REMOTE_ADDR").to_s) &&
+          !proxy_trace?(req.env)
       end
 
       # What a trade sets as the owner's cookie.

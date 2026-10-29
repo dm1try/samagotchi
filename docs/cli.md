@@ -1274,8 +1274,8 @@ access token", paste the token there (the part of the link after
   works here too. The cookie for 127.0.0.1 holds a value derived from the
   token, not the token: the browser sends it to a server on any other local
   port too (a dev server that logs headers), and that server can't use it
-  from the network, as Bearer, or as the token; `chi web --new-token` ends
-  it. The LAN address's cookie (your phone's, or this Mac's when it opens
+  from the network (unless something forwards it to this machine's
+  loopback), as Bearer, or as the token; `chi web --new-token` ends it. The LAN address's cookie (your phone's, or this Mac's when it opens
   the LAN link) is the token itself. chi's own probe (`GET /api/info` with no token or cookie)
   gets a few fields (version, pid, features, the LAN address, the start
   folder), nothing of the sessions.

@@ -140,7 +140,7 @@ participant** and **one role**, until it expires or is revoked.
    (`Server.local_owner_link`), the fragment trade sets the cookie there. `PairCommand` still denies a pair command
    naming chi web on a loopback name (defense in depth), and URL openers and listeners: a page opened in the owner's
    browser at a port the shell listens on would catch the owner's cookie (one on 127.0.0.1 or the LAN address goes
-   to every port: on 127.0.0.1 it holds the loopback value of rule 1, usable only as that cookie on this machine; on
+   to every port: on 127.0.0.1 it holds the loopback value of rule 1, usable only as that cookie from a loopback peer with no proxy trace (anything that can reach loopback, such as an `ssh -L` user or code running as the owner, can still replay it); on
    the LAN address it is the token, a known gap, as a cookie there is replayable from any LAN device anyway). A
    server on another local port can also answer `Set-Cookie: chi_token=…` and overwrite the owner's cookie (cookie
    tossing: it logs the owner out, or swaps in a grant's token; visible, nothing leaks; not fixed).

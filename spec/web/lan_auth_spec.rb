@@ -205,6 +205,12 @@ RSpec.describe Samagotchi::Web::App, "LAN access token" do
       end
     end
 
+    it "refuses the loopback cookie on a request a proxy forwarded to loopback" do
+      [{ "HTTP_X_FORWARDED_FOR" => "100.64.0.9" }, { "HTTP_TAILSCALE_USER_LOGIN" => "evil@example.com" }].each do |trace|
+        expect(call("/api/sessions", **local, peer: "127.0.0.1", headers: owner_cookie.merge(trace)).first).to eq(401), trace.keys.first
+      end
+    end
+
     it "gets the owner's /api/info, not the probe, with the loopback cookie" do
       status, _, body = call("/api/info", **local, peer: "127.0.0.1", headers: owner_cookie)
       expect(status).to eq(200)
