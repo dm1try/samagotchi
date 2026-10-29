@@ -7,6 +7,8 @@ and commands may change between minor versions. How releases are made:
 [docs/releasing.md](docs/releasing.md).
 ## [Unreleased]
 
+## [0.131.0] - 2026-10-29
+
 ### Changed
 
 - Cache: confirmations for prompt-cache changes estimate the reread size when known and warn that Anthropic drops
@@ -30,6 +32,8 @@ and commands may change between minor versions. How releases are made:
 - Web: Verify on a claim that names a file in the session's folder or your home folder (or holds a key) records its
   verdict: the pages quote such a path relative, or with `~`, and the check compared it against the answer's full
   path, so it ran as a plain comment with no card.
+
+Update with `chi update`, then restart `chi web` and the session workers (`chi sessions restart`).
 
 ## [0.130.1] - 2026-10-29
 
@@ -4988,7 +4992,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.130.1...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.131.0...HEAD
+[0.131.0]: https://github.com/dm1try/samagotchi/compare/v0.130.1...v0.131.0
 [0.130.1]: https://github.com/dm1try/samagotchi/compare/v0.130.0...v0.130.1
 [0.130.0]: https://github.com/dm1try/samagotchi/compare/v0.129.0...v0.130.0
 [0.129.0]: https://github.com/dm1try/samagotchi/compare/v0.128.0...v0.129.0
