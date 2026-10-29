@@ -32,6 +32,16 @@ and commands may change between minor versions. How releases are made:
   as one to it (`chi-context`), and a command naming it touches chi: the protected-path checks compared the typed case.
 - `git -C $XDG_CONFIG_HOME …` (an XDG dir or `$TMPDIR`) counts as the folder it names for `git: outside_repo` and the
   delegate child's boundary, as a `cd` there already did; it was an unknown folder that never asked.
+- A guardrail rule's `path:` glob also matches the path as it resolves: `write hl/pre-commit` with `hl` a symlink to
+  `.git/hooks` is denied by `git-hooks-write` (a relative glob is read from the repo root as it resolves, `/tmp` being
+  `/private/tmp` on macOS). Rules only ask or deny, so this only adds votes.
+- A participant's pair turn can no longer glob or `$var` its way into a secret through an XDG dir: `ls
+  $XDG_CONFIG_HOME/samago*` is denied like `ls ~/.config/samago*`. After `$TMPDIR` only what lands in a denied folder
+  counts, so `ls $TMPDIR/*` stays allowed when chi's state dir is in tmp (isolated test runs).
+- A `hooks.hooks_dir` configured outside chi's config dir is one of chi's dirs for participants too: neither a review
+  nor a pair turn reads it (the owner's own checks already counted it).
+- `outside_repo` and `rm: outside_tmp` compare a path with an existing root in any case on a disk that folds case,
+  as the protected-path checks do; a session root that doesn't exist yet keeps the case it was typed in.
 
 ## [0.129.0] - 2026-10-28
 
