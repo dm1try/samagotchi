@@ -39,7 +39,7 @@ module Samagotchi
         return true if tokens.any? { |_, value| value.include?(ShellLex::SUBST) } && code.match?(/\brm\b/)
 
         session = PathResolve.real(session_root.to_s)
-        roots = tmp_roots.reject { |tmp| PathResolve.under?(session, tmp) }
+        roots = PathResolve.tmp_roots(session: session, roots: tmp_roots)
         walk = ShellPaths::Walk.new(cwd, home, env)
         ShellLex.simple_commands(tokens).any? do |words|
           wide = words.is_a?(Array) && words.any?(&RM_WORD) && wide?(words, walk, roots)

@@ -1,7 +1,6 @@
 # frozen_string_literal: true
 
 require "pathname"
-require "tmpdir"
 require_relative "path_resolve"
 require_relative "../memory_bundle/index_sync"
 
@@ -20,17 +19,18 @@ module Samagotchi
     # A path whose landing place resolving can't tell (.resolve: a dangling
     # symlink, a file with another hard link) is always outside.
     module Outside
-      TMP_DIRS = %w[/tmp /var/tmp].freeze
+      TMP_DIRS = PathResolve::TMP_DIRS
 
       # @param path [String] absolute
       # @param root [String] the session's repo root (or cwd)
       def self.outside?(path, root:)
         reals = resolve(path) or return true
         session = PathResolve.real(root)
+        tmp = nil
         reals.any? do |real|
           next false if within?(real, session)
           next false if MemoryBundle::IndexSync.memory_scope(path)
-          next false if tmp_roots.any? { |tmp| within?(real, tmp) && !within?(session, tmp) }
+          next false if (tmp ||= session_tmp_roots(session)).any? { |dir| within?(real, dir) }
 
           true
         end
@@ -56,7 +56,8 @@ module Samagotchi
       def self.tmp_write?(path, root:)
         reals = resolve(path) or return false
         session = PathResolve.real(root)
-        reals.all? { |real| tmp_roots.any? { |tmp| within?(real, tmp) && !within?(session, tmp) } }
+        tmp = session_tmp_roots(session)
+        reals.all? { |real| tmp.any? { |dir| within?(real, dir) } }
       end
 
       # +path+ resolved (PathResolve.reals: the lexical answer and where
@@ -80,14 +81,11 @@ module Samagotchi
         nil
       end
 
-      # The tmp dirs that exist, resolved.
-      def self.tmp_roots
-        [Dir.tmpdir, *TMP_DIRS].filter_map do |dir|
-          File.realpath(dir) if File.directory?(dir)
-        rescue SystemCallError
-          nil
-        end.uniq
-      end
+      # The tmp dirs that exist, resolved (PathResolve.tmp_roots).
+      def self.tmp_roots = PathResolve.tmp_roots
+
+      # The tmp dirs +session+ (resolved) isn't in (PathResolve.tmp_roots).
+      def self.session_tmp_roots(session) = PathResolve.tmp_roots(session: session, roots: tmp_roots)
 
       # Whether +path+ is +root+ or in it, by their text (exact case;
       # PathResolve.under?).

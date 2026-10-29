@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require "tmpdir"
+
 module Samagotchi
   module Guardrails
     # The guardrails' path primitives: how a path is expanded, resolved and
@@ -12,6 +14,9 @@ module Samagotchi
       # How many symlinks .real follows on a path that doesn't exist
       # (about the kernel's own ELOOP limit).
       MAX_LINKS = 40
+
+      # The tmp dirs besides Dir.tmpdir (.tmp_roots).
+      TMP_DIRS = %w[/tmp /var/tmp].freeze
 
       # A dir's disk answer (.folds_case?), asked once per dir.
       FOLDS = {}
@@ -148,6 +153,21 @@ module Samagotchi
         return false unless fold
 
         path.downcase.start_with?(File.join(dir.downcase, "")) && folds_case?(dir)
+      end
+
+      # The tmp dirs that exist (Dir.tmpdir, /tmp, /var/tmp), resolved; read
+      # each time (specs and a call's env: change TMPDIR). With +session+
+      # (a resolved session root) only those it isn't in, by their text
+      # (exact case): a session rooted in tmp gets no tmp dir of its own.
+      # @param roots [Array<String>, nil] the tmp dirs to filter (these by
+      #   default)
+      def tmp_roots(session: nil, roots: nil)
+        roots ||= [Dir.tmpdir, *TMP_DIRS].filter_map do |dir|
+          File.realpath(dir) if File.directory?(dir)
+        rescue SystemCallError
+          nil
+        end.uniq
+        session ? roots.reject { |tmp| under?(session, tmp, fold: false) } : roots
       end
 
       # Whether the disk +path+'s deepest existing dir is on folds case: that

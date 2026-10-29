@@ -57,6 +57,16 @@ RSpec.describe Samagotchi::Guardrails::PathResolve do
     expect(described_class.strictly_under?(File.join(root, "DIR"), dir)).to be(false)
   end
 
+  it "lists the tmp dirs that exist, resolved, and with a session only those it isn't in, in exact case" do
+    roots = described_class.tmp_roots
+    expect(roots).to include(File.realpath(Dir.tmpdir), File.realpath("/tmp"))
+    tmp = File.realpath("/tmp")
+    expect(described_class.tmp_roots(session: File.join(tmp, "sess"))).not_to include(tmp)
+    expect(described_class.tmp_roots(session: File.join(tmp.swapcase, "sess"))).to include(tmp)
+    expect(described_class.tmp_roots(session: "/elsewhere/x", roots: %w[/a /b])).to eq(%w[/a /b])
+    expect(described_class.tmp_roots(session: "/a/x", roots: %w[/a /b])).to eq(%w[/b])
+  end
+
   it "resolves the root for .within?: a path in a symlinked root's target is within it" do
     expect(described_class.within?(File.join(root, "elsewhere", "deep", "a"), File.join(root, "link"))).to be(true)
     expect(described_class.within?(File.join(root, "a"), nil)).to be(false)
