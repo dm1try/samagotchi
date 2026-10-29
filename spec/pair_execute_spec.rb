@@ -33,6 +33,26 @@ RSpec.describe Samagotchi::Tools::Builtins, "a participant's execute" do
     expect(run_as(:review)[:on_timeout]).to eq(:kill)
   end
 
+  describe "the session's project env (ProjectEnv)" do
+    before { Samagotchi::ProjectEnv.install!(Samagotchi::ProjectEnv::NONE.with(env: { "PATH" => "/project/bin:/usr/bin:/bin", "PROJECT_PROBE" => "a", "GEM_HOME" => nil }.freeze)) }
+    after { Samagotchi::ProjectEnv.reset! }
+
+    it "reaches the owner's execute and task_create, never a participant's execute" do
+      expect(run_as(nil)[:env]).to include("PROJECT_PROBE" => "a", "PATH" => "/project/bin:/usr/bin:/bin", "GEM_HOME" => nil)
+      pair_env = run_as(:pair)[:env]
+      expect(pair_env.keys).not_to include("PROJECT_PROBE", "PATH", "GEM_HOME")
+      marker = described_class.task_marker_env(kctx(nil), { "PROJECT_PROBE" => "mine" })
+      expect(marker).to include("PATH" => "/project/bin:/usr/bin:/bin")
+      expect(marker).not_to have_key("PROJECT_PROBE")
+      expect(described_class.task_marker_env(kctx(:pair), nil).keys).not_to include("PATH", "PROJECT_PROBE")
+    end
+
+    it "is what an owner's command sees, for real" do
+      out = Samagotchi::Tools::Execute.call("printf %s \"$PROJECT_PROBE\"", cwd: home, env: described_class.project_env(kctx(nil)))
+      expect(out).to include("a")
+    end
+  end
+
   it "leaves the owner's turns as they were" do
     opts = run_as(nil)
     expect(opts).not_to have_key(:on_timeout)
