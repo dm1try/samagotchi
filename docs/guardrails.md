@@ -739,7 +739,7 @@ name too) is always outside, in the repo or a tmp folder alike
 
 Every path check (protected paths, `outside_repo`, `touches`, `rm`, `memory:
 prompt`, the child, review and pair boundaries, System 1's own-files test)
-resolves paths with `Guardrails::ProtectedPaths`:
+resolves paths with `Guardrails::PathResolve` (the map below):
 
 - `..` is taken the kernel's way (`.expand`): after a symlinked folder it
   climbs out of the link's target, so `repo/link/../x` with `link` pointing
@@ -764,12 +764,28 @@ folders, or after `cd -`, the folder is unknown. After `cd link` a `../x`
 climbs out of the link's target as well. git's `-C`, `--git-dir` and
 `--work-tree` (and `GIT_DIR`/`GIT_WORK_TREE`) are counted both ways, from each
 folder the command may be in, with a leading `~`, `$HOME`, XDG dir or `$TMPDIR`
-expanded as a `cd` expands it (`ShellPaths.expand_word`).
+expanded as a `cd` expands it (`PathResolve.expand_word`).
 
 On a disk that folds case (macOS), a path is in a protected folder however its
-letters are cased, also where the rest doesn't exist yet (`ProtectedPaths.under?`):
+letters are cased, also where the rest doesn't exist yet (`PathResolve.under?`):
 a write to `<state dir>/CONTEXT/x` is a write to the attached context dir once it
 exists.
+
+For whoever changes these checks, one shared helper per primitive, each surface
+keeping its own predicate (`spec/guardrails/path_consistency_spec.rb` pins what
+every surface answers for the same paths):
+
+| Primitive | Where | Used by |
+|---|---|---|
+| expand (`..` the kernel's way), real, lexical_real, reals | `PathResolve` (`ProtectedPaths` keeps the old names) | every surface |
+| in a dir: `under?` (case-folded on a folding disk; `fold: false` exact), `strictly_under?`, `within?` (root resolved too) | `PathResolve` | `under?`: ShellPaths, ReviewPaths, PairCommand, ChildBoundary, SelfProtect's words; `under?(fold: false)`: `Outside.within?`; `strictly_under?(fold: false)`: RmTargets; `within?`: ProtectedPaths, ScratchWrites, ParentApprovals, SelfProtect's paths |
+| tmp dirs and "not one the session is in" | `PathResolve.tmp_roots(session:)` (exact case) | Outside (`Outside.tmp_roots` is the list it and Targets read), RmTargets; `touches_chi?` takes all of them |
+| a shell word's `~`, `$HOME`, XDG dirs, `$TMPDIR` | `PathResolve.expand_word` | ShellPaths::Walk, ShellGitDirs; PairCommand has its own `~`/`$HOME` (`expand_tilde`) |
+| chi's dirs | `ChiDirs.protected` / `.touches` / `.self_protect` / `.review` | ParentApprovals, Targets, SelfProtect, ReviewPaths (`ProtectedPaths` and `ScratchWrites` get theirs from the wiring) |
+
+Left apart on purpose: `Targets.prompt_memory_path?` compares in any case on
+every disk, `PairCommand#leads_into_denied?` matches a partial name (`~/.ss`),
+and each surface resolves its root its own way.
 
 `git: outside_repo` (shell tools only) reads the command for git subcommands
 that change a checkout: `commit`, `add`, `reset`, `checkout`, `switch`,
