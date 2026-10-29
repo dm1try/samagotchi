@@ -33,7 +33,15 @@ RSpec.describe Samagotchi::SessionCommands, "/llm-context" do
      { role: "tool_response", content: "[read]\n#{body}", tool_call_id: id, tool_ids: [tool_id] }]
   end
 
-  def run(line) = commands.run(line)
+  def run(line, confirm: true) = commands.run(line, confirm: confirm)
+
+  # A session whose second read has an applied stale stub.
+  def with_stale_stub
+    session.messages = [{ role: "user", content: "go" }, *chat_read("c1", "t1"), *chat_read("c2", "t2")]
+    edit = Samagotchi::LLMContextEdit.new(id: "t1", kind: :stale, note: "lib/cart.rb: superseded", by: "chi",
+                                          staged_at: "x", applied_at: "x")
+    Samagotchi::LLMContextEdit.store(session.messages[2], edit)
+  end
 
   it "shows what the next turn runs under and where each value came from" do
     result = run("/llm-context")
@@ -96,18 +104,78 @@ RSpec.describe Samagotchi::SessionCommands, "/llm-context" do
   end
 
   it "says a layer turned off sends its stubs whole again, and that nothing changed when nothing did" do
-    session.messages = [{ role: "user", content: "go" }, *chat_read("c1", "t1"), *chat_read("c2", "t2")]
-    edit = Samagotchi::LLMContextEdit.new(id: "t1", kind: :stale, note: "lib/cart.rb: superseded", by: "chi",
-                                          staged_at: "x", applied_at: "x")
-    Samagotchi::LLMContextEdit.store(session.messages[2], edit)
+    with_stale_stub
 
     expect(run("/llm-context strategy stale").output).to include("(no change to what the next turn runs under)")
-    expect(run("/llm-context strategy stale,forget").output).to include("forget_outputs joins")
-    expect(run("/llm-context strategy stale").output)
+    expect(run("/llm-context strategy stale,forget --yes").output).to include("forget_outputs joins")
+    expect(run("/llm-context strategy stale --yes").output)
       .to include("forget_outputs leaves the tool list", "Its past forget_outputs calls and their results stay in the history.")
-    expect(run("/llm-context strategy none").output)
+    expect(run("/llm-context strategy none --yes").output)
       .to include("stale's 1 stub goes out whole again (a cache break from the first; the originals stay in the session, " \
                   "and turning stale back on brings the stubs back).")
+  end
+
+  # CacheConfirm: once the session has a model reply, a change that
+  # restarts the prompt cache asks a person first; --yes applies it.
+  describe "the confirm step" do
+    before { with_stale_stub }
+
+    def expect_asked(result, line)
+      expect([result.status, result.changed, result.confirm&.line]).to eq([:ok, [], line])
+      expect(result.output).to start_with("llm context: stale (models: qwen3-14b)")
+      expect(result.output).to include("This change restarts the prompt cache:")
+      expect(result.output).to end_with("Nothing changed yet: send `#{line}` to apply.")
+      expect(session.llm_context).to be_nil
+      expect(saved).to be_empty
+    end
+
+    it "asks before forget goes on or off (a full break), naming the size it rereads" do
+      allow(engine).to receive(:cache_restart_tokens).and_return(30_000)
+      result = run("/llm-context strategy stale,forget")
+
+      expect_asked(result, "/llm-context strategy stale,forget --yes")
+      expect(result.output).to include("forget_outputs joins the tool list",
+                                       "The next request reads the whole conversation again (about 30k tokens).")
+
+      session.llm_context = Samagotchi::LLMContextOverride.new(strategy: %i[stale forget])
+      off = run("/llm-context reset")
+      expect([off.confirm&.line, off.changed]).to eq(["/llm-context reset --yes", []])
+      expect(off.output).to include("forget_outputs leaves the tool list")
+    end
+
+    it "asks before a layer with applied stubs goes off (they go out whole again)" do
+      result = run("/llm-context strategy none")
+
+      expect_asked(result, "/llm-context strategy none --yes")
+      expect(result.output).to include("stale's 1 stub goes out whole again")
+    end
+
+    it "applies with --yes or -y, anywhere, reset --yes too, or for a sender that can't answer" do
+      expect(run("/llm-context --yes strategy none").changed).to eq([:llm_context])
+      expect(session.llm_context).to eq(Samagotchi::LLMContextOverride.new(strategy: []))
+      expect(run("/llm-context reset --yes").changed).to eq([:llm_context])
+      expect(session.llm_context).to be_nil
+      expect(run("/llm-context strategy stale,forget -y").changed).to eq([:llm_context])
+      expect(run("/llm-context reset", confirm: false).changed).to eq([:llm_context])
+      expect(session.llm_context).to be_nil
+    end
+
+    it "doesn't ask where nothing breaks now: stale on, the apply rule (next_request too), the budget, no reply yet" do
+      session.messages.reject! { |entry| entry[:role] == "model" }
+      expect(run("/llm-context strategy none").confirm).to be_nil
+      with_stale_stub
+      expect(run("/llm-context strategy stale").confirm).to be_nil
+      expect(run("/llm-context apply next_request").confirm).to be_nil
+      expect(run("/llm-context budget 64k").confirm).to be_nil
+      expect(session.llm_context).to eq(Samagotchi::LLMContextOverride.new(strategy: [:stale], apply: :next_request,
+                                                                           budget_tokens: 64_000))
+    end
+
+    it "refuses a bad line before asking" do
+      result = run("/llm-context strategy stale,summarize")
+
+      expect([result.status, result.confirm]).to eq([:error, nil])
+    end
   end
 
   it "refuses a line that isn't one, changing nothing" do

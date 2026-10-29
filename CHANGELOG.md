@@ -24,6 +24,10 @@ and commands may change between minor versions. How releases are made:
   new model has no cache of the conversation): the reply names the size it rereads and the line that applies it,
   flags and all (`/model qwen --default --yes`); `--yes` (or `-y`) applies at once, and a typo is an error before any
   question. `chi send`, delegates and `chi --model` on an attached or resumed session apply at once.
+- `/llm-context` asks the same way before the two changes that break the prompt cache now: `forget` turned on or off,
+  and a layer with applied stubs turned off (`/llm-context reset --yes` applies too). Turning `stale` on, the apply
+  rule and the budget don't ask; the web's `llm ctx` chip and `chi --llm-context` on an attached or resumed session
+  apply at once.
 
 ## [0.131.0] - 2026-10-29
 

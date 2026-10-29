@@ -364,8 +364,8 @@ RSpec.describe Samagotchi::TerminalUI::AttachLauncher, ".run" do
     described_class.run(attach: "s2", llm_context: { apply: "turn_end" })
     described_class.run(shared: true, llm_context: words)
 
-    expect(commands).to eq([["/model qwen_moe --yes", "/llm-context strategy stale,forget budget 64k"],
-                            "/llm-context apply turn_end", nil])
+    expect(commands).to eq([["/model qwen_moe --yes", "/llm-context strategy stale,forget budget 64k --yes"],
+                            "/llm-context apply turn_end --yes", nil])
     expect(described_class).to have_received(:connect)
       .with(attach: nil, shared: true, resume: nil, model: nil, memories: [], muted_memories: [], llm_context: words, thinking: nil, appended_prompt_files: [], toolkit: nil, toolkit_flags: [], settings: nil, parent_answers: nil,
             state_dir: Samagotchi::Session.default_state_dir)
@@ -390,7 +390,7 @@ RSpec.describe Samagotchi::TerminalUI::AttachLauncher, "--thinking" do
     described_class.run(shared: true, thinking: "high")
 
     # --yes: the flag is the user's choice, so a costly change doesn't ask (and the launch doesn't wait on it).
-    expect(commands).to eq([["/model qwen_moe --yes", "/llm-context apply turn_end", "/thinking low --yes"], "/thinking default --yes", nil])
+    expect(commands).to eq([["/model qwen_moe --yes", "/llm-context apply turn_end --yes", "/thinking low --yes"], "/thinking default --yes", nil])
     expect(described_class).to have_received(:connect)
       .with(attach: nil, shared: true, resume: nil, model: nil, memories: [], muted_memories: [], llm_context: {}, thinking: "high", appended_prompt_files: [], toolkit: nil, toolkit_flags: [], settings: nil, parent_answers: nil,
             state_dir: Samagotchi::Session.default_state_dir)

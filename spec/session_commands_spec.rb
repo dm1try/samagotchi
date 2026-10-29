@@ -864,7 +864,10 @@ RSpec.describe Samagotchi::SessionCommands do
 
       commands.run("/llm-context")
       expect(announced).to be_empty
+      # Turning forget on asks first here (the session has a reply): nothing goes out until it applies.
       commands.run("/llm-context strategy stale forget")
+      expect(announced).to be_empty
+      commands.run("/llm-context strategy stale forget --yes")
       expect(announced).to eq([%i[stale forget]])
     end
 

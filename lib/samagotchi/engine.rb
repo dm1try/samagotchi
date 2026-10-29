@@ -1315,7 +1315,7 @@ module Samagotchi
     # the saved context's status: SessionModelSettings' (resolved on every
     # read); these forward.
     def saved_context_status(context, model: :current) = @model_settings.saved_context_status(context, model: model)
-    def llm_context_explained = @model_settings.llm_context_explained
+    def llm_context_explained(own: :session) = @model_settings.llm_context_explained(own: own)
     def llm_context_summary = @model_settings.llm_context_summary
     def llm_context_override = @model_settings.llm_context_override
     def chat_model? = @model_settings.chat_model?

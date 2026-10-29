@@ -79,19 +79,19 @@ test("a strategy the list has no option for (forget alone, forget,stale) is show
   assert.equal(formOf({ ...own, own: { strategy: ["forget", "stale"] } }).field("strategy").value, "stale,forget");
 });
 
-test("Set sends only the fields the user changed, so a value it left alone is never unset", () => {
+test("Set sends only the fields the user changed, so a value it left alone is never unset, with --yes (the form states the cost)", () => {
   const initial = ownValues({ own: { strategy: ["forget"], budget_tokens: 64000 } });
-  assert.equal(commandLine({ strategy: "forget", apply: "turn_end", budget: "64000" }, initial), "/llm-context apply turn_end");
-  assert.equal(commandLine({ strategy: "forget", apply: "default", budget: "" }, initial), "/llm-context budget default");
+  assert.equal(commandLine({ strategy: "forget", apply: "turn_end", budget: "64000" }, initial), "/llm-context apply turn_end --yes");
+  assert.equal(commandLine({ strategy: "forget", apply: "default", budget: "" }, initial), "/llm-context budget default --yes");
   assert.equal(commandLine({ ...initial }, initial), null);
 });
 
 test("the command sets every field, default for the ones left to the model; all default is a reset", () => {
   assert.equal(commandLine({ strategy: "stale,forget", apply: "turn_end", budget: " 64k " }),
-               "/llm-context strategy stale,forget apply turn_end budget 64k");
+               "/llm-context strategy stale,forget apply turn_end budget 64k --yes");
   assert.equal(commandLine({ strategy: "none", apply: "default", budget: "" }),
-               "/llm-context strategy none apply default budget default");
-  assert.equal(commandLine({}), "/llm-context reset");
+               "/llm-context strategy none apply default budget default --yes");
+  assert.equal(commandLine({}), "/llm-context reset --yes");
 });
 
 // The start page's chip (kind "new session"): the picked model's values, and a
@@ -184,12 +184,12 @@ test("a click on the chip opens the form at the session's values; a Set runs onl
   assert.equal(c.field("budget").value, "64000");
   c.type("apply", "turn_end");
   c.submit();
-  assert.deepEqual(c.ran, ["/llm-context apply turn_end"]);
+  assert.deepEqual(c.ran, ["/llm-context apply turn_end --yes"]);
   assert.equal(c.ctl.open, false);
   assert.equal(c.pop.querySelector("form"), null);
   c.chip.click();
   c.pop.querySelector("[data-act=reset]").click();
-  assert.deepEqual(c.ran, ["/llm-context apply turn_end", "/llm-context reset"]);
+  assert.deepEqual(c.ran, ["/llm-context apply turn_end --yes", "/llm-context reset --yes"]);
   c.done();
 });
 
@@ -208,7 +208,7 @@ test("a refresh keeps what the user typed and picked; the Now: line follows; ano
   assert.equal(c.field("budget").value, "32k");
   assert.equal(c.field("strategy").value, "stale,forget");
   c.submit();
-  assert.deepEqual(c.ran, ["/llm-context strategy stale,forget budget 32k"]);
+  assert.deepEqual(c.ran, ["/llm-context strategy stale,forget budget 32k --yes"]);
   c.chip.click();
   id = "s2";
   c.ctl.refresh();

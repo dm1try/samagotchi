@@ -55,7 +55,8 @@ module Samagotchi
     COMMAND_WORDS = { strategy: "strategy", apply: "apply", budget_tokens: "budget" }.freeze
 
     # The /llm-context line that sets +words+ (field => value as typed,
-    # checked by .update first): what a flag on an existing session runs.
+    # checked by .update first): what a flag on an existing session runs,
+    # with --yes (typing the flag is the choice: no confirm step).
     # @return [String]
     def self.command_line(words)
       parts = words.map do |field, word|
@@ -63,7 +64,7 @@ module Samagotchi
         word = parse_strategy(word).then { |layers| layers.empty? ? "none" : layers.join(",") } if field == :strategy && !word.casecmp?(DEFAULT_WORD)
         "#{COMMAND_WORDS.fetch(field)} #{word}"
       end
-      [COMMAND, *parts].join(" ")
+      [COMMAND, *parts, "--yes"].join(" ")
     end
 
     # A session file's "llm_context" (or an override already): nil when

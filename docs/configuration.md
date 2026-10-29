@@ -833,9 +833,10 @@ models:
 
 ## Changes that restart the prompt cache
 
-`/model`, `/thinking`, `/reasoning-history` and `/toolkit` ask before a change that makes the server read the
-conversation again: a switch to another model (a plain name, `--default`, `--alias N`, `clear`; the new model has no
-cache of the conversation), Gemma's thinking switch, a remote chat host's thinking fields ("Thinking"), a change to or
+`/model`, `/llm-context`, `/thinking`, `/reasoning-history` and `/toolkit` ask before a change that makes the server
+read the conversation again: a switch to another model (a plain name, `--default`, `--alias N`, `clear`; the new model
+has no cache of the conversation), `forget` turned on or off and a layer with applied stubs turned off ("LLM context:
+a session's own strategy"), Gemma's thinking switch, a remote chat host's thinking fields ("Thinking"), a change to or
 from `all` once an earlier reply has thinking ("Reasoning history"), and any change to the declared tools, which start
 every request ("Toolkits"). They ask only when what the next turn runs under really changes (`/model` naming the model
 it already runs, by its resolved ref, doesn't ask) and the session has a model reply. A `/model` name is checked
@@ -852,9 +853,9 @@ first: an unknown host or a bad alias is an error at once, not a question.
   the button is gone after a reload.
 - Only a person at a web tab or a chi TUI is asked. `chi send ID "/thinking low"`,
   `chi -p "/thinking low" --non-interactive`, lines piped into the REPL, a delegate, a plugin and a card's action
-  apply directly, since nobody would see the question; so do the start flags (`chi --thinking` and `chi --model` on a
-  resumed or attached session send `/thinking LEVEL --yes` and `/model NAME --yes`). A plain `chi -p` opens the
-  REPL, which asks.
+  apply directly, since nobody would see the question; so do the start flags (`chi --thinking`, `--model` and
+  `--llm-context` on a resumed or attached session send `/thinking LEVEL --yes`, `/model NAME --yes` and
+  `/llm-context … --yes`). A plain `chi -p` opens the REPL, which asks.
 
 ## Llama HTTP Timeouts
 
@@ -1645,6 +1646,12 @@ its own). The first target is a long session such as a day-long coordinator, whe
   and their results stay in the history.
 - **Switching a layer off:** its stubs go out whole again from the next request (a cache break from the first). The
   session keeps the originals and the edits, so turning the layer back on brings the same stubs back.
+- **Asks first:** once the session has a model reply, `/llm-context` from a web tab or a TUI asks before the two that
+  break the cache now: `forget` on or off, and a layer with applied stubs turned off (the reply names the
+  `/llm-context … --yes` line; "Changes that restart the prompt cache"). Turning `stale` on, the apply rule and the
+  budget don't ask: they only decide when a batch goes in, and each batch's break comes as designed (`next_request`
+  with staged edits pending moves a break the old rule makes by the end of the next turn anyway). The chip's Set and
+  `--llm-context` on an attached or resumed session send `--yes`.
 - **Where to see it:** `/llm-context` (each value and where it came from: `the session`, `models: <key>`,
   `hosts entry '<name>'`, `llm_context.*`), `/stats` (`llm context:`), the turn log (an `llm_context` record per
   turn that runs a layer or whose session set its strategy) and the web's chip. A woken worker's status line counts

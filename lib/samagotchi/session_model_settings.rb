@@ -61,9 +61,12 @@ module Samagotchi
 
     # #turn_llm_context with where each value came from
     # (LLMContextStrategy.explain), nil when it can't be resolved.
+    # @param own [LLMContextOverride, nil] the session's own values to
+    #   resolve with (the ones a change would set: /llm-context's confirm)
     # @return [LLMContextStrategy::Explained, nil]
-    def llm_context_explained
-      model_setting(nil) { |model| model.llm_context_explained(llm_context_session_args) }
+    def llm_context_explained(own: :session)
+      args = own == :session ? llm_context_session_args : own&.resolve_args || {}
+      model_setting(nil) { |model| model.llm_context_explained(args) }
     end
 
     # #llm_context_explained's summary (Explained#summary), nil when it

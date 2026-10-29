@@ -62,7 +62,7 @@ module Samagotchi
 
     # Commands that may ask before a change that restarts the prompt cache
     # (CacheConfirm): #run passes them its confirm flag.
-    CONFIRMING = %i[model thinking reasoning_history toolkit].freeze
+    CONFIRMING = %i[model llm_context thinking reasoning_history toolkit].freeze
 
     # @!attribute status [Symbol] :ok, or :error when the line was refused
     # @!attribute output [String, nil] what to tell the user
@@ -600,13 +600,13 @@ module Samagotchi
 
     # /llm-context (LLMContextCommand); :llm_context in changed when it set
     # the session's values.
-    def llm_context(text)
-      output, changed = LLMContextCommand.new(engine: @engine, save: ->(session) { save_setup(session) })
-                                         .run(text.delete_prefix(LLM_CONTEXT_COMMAND))
+    def llm_context(text, confirm: true)
+      output, changed, ask = LLMContextCommand.new(engine: @engine, save: ->(session) { save_setup(session) })
+                                              .run(text.delete_prefix(LLM_CONTEXT_COMMAND), confirm: confirm)
       # What the model has of each item is the next turn's strategy's: the
       # working set goes out again (sent only when it differs).
       @engine.announce_working_set if changed
-      reply(output, changed: changed ? [:llm_context] : [])
+      reply(output, changed: changed ? [:llm_context] : [], confirm: ask)
     rescue ArgumentError => e
       reply(e.message, status: :error)
     end

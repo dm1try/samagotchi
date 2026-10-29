@@ -689,11 +689,14 @@ saved with the session and applies from the next turn's start; the reply says
 what it costs: `forget` on or off re-reads the whole prompt once, `stale` turned
 on stages the reads already superseded as one batch under the apply rule, and a
 layer turned off sends its stubs whole again (turning it back on brings them
-back). `/llm-context` alone answers mid-turn too; a change sent while a turn runs
+back). Once the session has a model reply, the two that break the cache now
+(`forget` on or off, a layer with applied stubs turned off) ask first and name
+the `--yes` line that applies them; `/llm-context reset --yes` works too.
+`/llm-context` alone answers mid-turn too; a change sent while a turn runs
 waits for the turn's end (see *Typing during a turn*). `/stats` shows
 the same values on its `llm context:` line. The web's info bar shows them as the
 `llm ctx` chip (`llm ctx stale,forget · session`), whose popover sets them
-through `/llm-context`. See "LLM context: a session's own strategy" in
+through `/llm-context … --yes` (its form says what a change costs). See "LLM context: a session's own strategy" in
 [configuration.md](configuration.md).
 
 `/working-set` lists the session's working set as the model has it (see [The
@@ -801,7 +804,7 @@ mid-turn too, and the lists, cards, top bar and tab show it in place of the firs
 message; a continue's next link keeps it. In the web, `✎` next to the session's
 title (its strip card, or the top bar) does it. See [Session titles](sessions.md#session-titles).
 
-A `/model`, `/thinking`, `/reasoning-history` or `/toolkit` change that restarts the prompt cache
+A `/model`, `/llm-context`, `/thinking`, `/reasoning-history` or `/toolkit` change that restarts the prompt cache
 asks first: the reply says what it costs, changes nothing, and names the line
 that applies it (`/thinking low --yes`, `/model qwen --default --yes`). `--yes` (or `-y`) applies it at once.
 The terminal puts that line in the next input (Enter applies it); the web's

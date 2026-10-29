@@ -4,6 +4,7 @@ require_relative "llm_context_override"
 require_relative "llm_context_strategy"
 require_relative "llm_context_edit"
 require_relative "llm_context_stale"
+require_relative "cache_confirm"
 
 module Samagotchi
   # /llm-context, the session's own LLM context values
@@ -18,7 +19,9 @@ module Samagotchi
   # system prompt (a full cache break); stale turned on stages the reads
   # already superseded as one batch under the apply rule; a layer turned
   # off sends its stubs whole again (the originals stay in the session, so
-  # turning it back on brings them back).
+  # turning it back on brings them back). The two that restart the prompt
+  # cache (forget on or off, stubs sent whole again) ask first
+  # (CacheConfirm, #cache_cost); --yes (or -y) applies them.
   class LLMContextCommand
     NAME = LLMContextOverride::COMMAND
     USAGE = "usage: #{NAME} [strategy <none|stale,forget|default>] [apply <payoff|next_request|turn_end|default>] " \
@@ -33,20 +36,49 @@ module Samagotchi
       @save = save
     end
 
-    # @param args [String] what follows /llm-context
-    # @return [Array(String, Boolean)] the reply and whether the values changed
+    # @param args [String] what follows /llm-context (--yes anywhere)
+    # @param confirm [Boolean] ask before a change that restarts the prompt
+    #   cache (CacheConfirm, #cache_cost); false applies it at once (chi
+    #   send, a delegate, a start flag)
+    # @return [Array(String, Boolean, CacheConfirm::Confirm|nil)] the reply,
+    #   whether the values changed, and the confirm it asks for (nothing
+    #   changed then)
     # @raise [ArgumentError] a line that isn't one (its message and USAGE)
-    def run(args)
-      args = args.to_s.strip
-      return [listing(@engine.llm_context_explained), false] if args.empty?
+    def run(args, confirm: true)
+      # Before #words: it refuses --yes, and "reset --yes" isn't RESET.
+      args, yes = CacheConfirm.split(args, downcase: false)
+      return [listing(@engine.llm_context_explained), false, nil] if args.empty?
 
       session = @engine.session or raise ArgumentError, "no session yet"
       before = @engine.llm_context_explained
       updated = args.casecmp?(RESET) ? LLMContextOverride.new : LLMContextOverride.update(@engine.llm_context_override, words(args))
+      ask = confirm && !yes ? ask(session, before, updated, args) : nil
+      return ask if ask
+
       @engine.llm_context_override = updated
       @save.call(session)
       after = @engine.llm_context_explained
-      [[listing(after), *notes(session, before&.resolved, after&.resolved)].join("\n"), true]
+      [[listing(after), *notes(session, before&.resolved, after&.resolved)].join("\n"), true, nil]
+    end
+
+    # What a change from +before+ to +after+ (Resolved) costs the prompt
+    # cache, nil for nothing worth asking about: forget on or off changes
+    # the tool list and the system prompt (:full); a layer turned off while
+    # it has applied stubs sends them whole again (:history). Stale turned
+    # on only stages a batch under the apply rule (its break comes later,
+    # as designed), and the apply rule and budget only decide when a break
+    # comes: a switch to next_request with staged edits pending applies
+    # them at the next request, a break the old rule makes by the end of
+    # the next turn anyway.
+    # @return [Symbol, nil]
+    def cache_cost(session, before, after)
+      return nil unless before && after
+
+      was = before.active_layers
+      now = after.active_layers
+      return :full if was.include?(:forget) != now.include?(:forget)
+
+      :history if (was - now).any? { |layer| applied_count(session.messages, layer).positive? }
     end
 
     # The values, where each came from, and what the session sets itself.
@@ -65,6 +97,20 @@ module Samagotchi
     end
 
     private
+
+    # The reply that asks before a costly change (CacheConfirm), nil when
+    # it needn't.
+    def ask(session, before, updated, args)
+      would = @engine.llm_context_explained(own: updated)
+      was = before&.resolved
+      now = would&.resolved
+      cost = cache_cost(session, was, now)
+      step = CacheConfirm.ask(line: "#{NAME} #{args}", cost: cost, changed: !cost.nil?, engine: @engine)
+      return nil unless step
+
+      costs = notes(session, was, now).drop(1).reject { |note| note.start_with?("stale:") }
+      [[listing(before), "This change restarts the prompt cache:", *costs, step.text].join("\n"), false, step]
+    end
 
     # "strategy stale stale forget apply turn_end budget 64k" as fields
     # and their words; a strategy takes the words up to the next field.
