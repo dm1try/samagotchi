@@ -9,6 +9,7 @@ require "rbconfig"
 require_relative "../atomic_file"
 require_relative "../version"
 require_relative "../self_report"
+require_relative "../chi_home"
 require_relative "../installed_gem"
 require_relative "../config"
 require_relative "../host_keys"
@@ -41,9 +42,14 @@ module Samagotchi
       BUILD_NAME = ".chi-helper-build"
       OLD_NAME = ".chi-helper-old"
       # Apps started by launchd get a bare env (no shell rc files), so the
-      # launch file carries what chi needs to find its gems, state and tools.
-      # Only these, and only when set: no tokens, no runtime knobs.
-      ENV_ALLOWLIST = %w[XDG_CONFIG_HOME XDG_STATE_HOME GEM_HOME GEM_PATH RUBYLIB].freeze
+      # launch file carries what chi needs to find its state and tools.
+      # Only these, and only when set: no tokens, no runtime knobs. No
+      # GEM_HOME/GEM_PATH/RUBYLIB: chi finds its gems through the argv (the
+      # chi home's boot, or the wrapper), and those would reach every tool
+      # its sessions run (a project's `bundle exec`).
+      ENV_ALLOWLIST = %w[XDG_CONFIG_HOME XDG_STATE_HOME].freeze
+      # What older launch files carried and a refresh drops (#refresh_launch_file).
+      DROPPED_ENV = %w[GEM_HOME GEM_PATH RUBYLIB].freeze
       # PATH is separately filtered to absolute dirs and frozen when written,
       # so the helper's chi, workers and execute can find the shell's tools.
       # Without it Ruby reads stdin as US-ASCII and non-ASCII notes break.
@@ -131,7 +137,7 @@ module Samagotchi
       def initialize(app_dir: nil, support_dir: nil, env: ENV, runner: Runner.new,
                      source_dir: SelfReport::SOURCE_DIR, ruby: RbConfig.ruby, version: VERSION,
                      arch: nil, sources_dir: SOURCES_DIR, register: true, chi_path: nil, terminals: {},
-                     broadcast_timeout: nil)
+                     broadcast_timeout: nil, chi_home: ChiHome.current(gem_spec: InstalledGem.spec(source_dir)))
         home = env["HOME"] || Dir.home
         @app_dir = app_dir || File.join(home, "Applications")
         @support_dir = support_dir || File.join(home, "Library", "Application Support", APP_NAME)
@@ -146,6 +152,7 @@ module Samagotchi
         @register = register
         @terminals = terminals
         @broadcast_timeout = broadcast_timeout
+        @chi_home = chi_home
       end
 
       def app_path = File.join(@app_dir, "#{APP_NAME}.app")
@@ -155,10 +162,12 @@ module Samagotchi
       def executable_path = File.join(app_path, "Contents", "MacOS", EXECUTABLE)
       def installed? = File.directory?(app_path)
 
-      # What the helper runs: absolute ruby + chi (no shims, which need the
-      # shell's PATH), and the allowlisted env. chi is an installed gem's
-      # RubyGems wrapper (it activates the gem and outlives upgrades and
-      # `gem cleanup`), else this checkout's bin/chi. A section per terminal
+      # What the helper runs: the chi home's boot (ChiHome: its ruby, its gem
+      # path in the -e string, then "--" and the helper's args) when there
+      # is one; else absolute ruby + chi (no shims, which need the shell's
+      # PATH). chi is an installed gem's RubyGems wrapper (it activates the
+      # gem and outlives upgrades and `gem cleanup`), else this checkout's
+      # bin/chi. And the allowlisted env. A section per terminal
       # switched on (TERMINALS order); the broadcast timeout when given.
       # The XDG dirs go in absolute (Paths): launchd starts the app in /,
       # where a relative one would mean /<dir>. PATH is filtered to absolute,
@@ -170,10 +179,14 @@ module Samagotchi
         path = self.class.baked_path(@env)
         env["PATH"] = path if path
         env.merge!(Paths.absolute_xdg(env: env, set: :key))
-        config = { "version" => @version, "argv" => [@ruby, @chi_path], "env" => env, "sources_sha" => sources_sha }
+        config = { "version" => @version, "argv" => launch_argv, "env" => env, "sources_sha" => sources_sha }
         TERMINALS.each { |name| config[name] = @terminals[name] if @terminals[name] }
         config["broadcast_timeout"] = @broadcast_timeout if @broadcast_timeout
         config
+      end
+
+      def launch_argv
+        @chi_home ? @chi_home.boot_argv(run: ChiHome::CHI_BOOT) + ["--"] : [@ruby, @chi_path]
       end
 
       # A digest of what a build compiles: the Swift sources and the
@@ -209,10 +222,11 @@ module Samagotchi
 
       # Why chi update can't keep the launch file's ruby or chi: one of them
       # is gone. nil when it runs, or has no usable argv (a refresh writes
-      # this chi's then).
+      # this chi's then). Only the absolute paths in it count (a boot
+      # string, "-e" and "--" are not paths), as ChiRunner.swift checks.
       def launch_problem
         argv = usable_argv(read_launch)
-        missing = Array(argv).reject { |path| File.exist?(path) }
+        missing = launch_paths(argv).reject { |path| File.exist?(path) }
         return nil if missing.empty?
 
         "chi not found at #{missing.join(", ")}: run chi desktop install --force from the shell whose chi it should run"
@@ -232,7 +246,10 @@ module Samagotchi
       # Rewrite the launch file for this chi and its settings, keeping
       # its argv and the env it was installed with; a PATH only when it has
       # none (changing them takes chi desktop install --force or upgrade). A
-      # newer version stays. The app reads it at each send.
+      # newer version stays. The app reads it at each send. The kept env
+      # loses what ENV_ALLOWLIST no longer takes (DROPPED_ENV): RUBYLIB
+      # always; GEM_HOME/GEM_PATH once the argv boots the chi home (an old
+      # [ruby, wrapper] argv may find its gem only through them).
       def refresh_launch_file
         config = launch_config
         old = read_launch
@@ -240,7 +257,8 @@ module Samagotchi
         config["version"] = old["version"] unless older_version?(old["version"])
         old_env = old["env"]
         if old_env.is_a?(Hash)
-          config["env"] = old_env
+          dropped = home_boot?(config["argv"]) ? DROPPED_ENV : DROPPED_ENV - %w[GEM_HOME GEM_PATH]
+          config["env"] = old_env.except(*dropped)
           path = self.class.baked_path(@env)
           config["env"]["PATH"] = path if config["env"]["PATH"].to_s.empty? && path
         end
@@ -466,10 +484,18 @@ module Samagotchi
         !env.is_a?(Hash) || env["PATH"].to_s.empty?
       end
 
+      # A launch file whose argv runs: each absolute path in it exists.
       def launch_ok?(launch)
         argv = Array(launch["argv"])
-        !argv.empty? && argv.all? { |path| File.exist?(path) }
+        !argv.empty? && launch_paths(argv).all? { |path| File.exist?(path) }
       end
+
+      # The argv entries that are paths (absolute): a boot's "-e", its
+      # string and "--" are not.
+      def launch_paths(argv) = Array(argv).select { |arg| arg.is_a?(String) && arg.start_with?("/") }
+
+      # An argv in the chi home's boot form ([ruby, "-e", boot, "--"]).
+      def home_boot?(argv) = argv.is_a?(Array) && argv[1] == "-e"
 
       def write_launch_file(config = launch_config, keep_launch: false)
         if keep_launch
@@ -478,6 +504,8 @@ module Samagotchi
           old_env = old["env"]
           old_path = old_env["PATH"] if old_env.is_a?(Hash)
           config["env"]["PATH"] = old_path unless old_path.to_s.empty?
+          # A kept [ruby, wrapper] argv keeps the GEM_* its gem was found through.
+          config["env"].merge!(old_env.slice("GEM_HOME", "GEM_PATH")) if old_env.is_a?(Hash) && !home_boot?(config["argv"])
         end
         FileUtils.mkdir_p(@support_dir)
         AtomicFile.write(launch_path, JSON.pretty_generate(config) + "\n")

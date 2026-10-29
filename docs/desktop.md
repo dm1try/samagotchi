@@ -257,7 +257,9 @@ don't break it. From a checkout it runs **that** checkout's `bin/chi`; installin
 warning, because the helper stops working once that worktree is removed. After switching between a checkout and a
 gem install, run `chi desktop upgrade` from the one you now use.
 
-The helper runs the Ruby and chi of **the shell you installed from**, and only `chi desktop install --force` and
+With a [chi home](configuration.md#the-chi-home), `chi desktop install` and `upgrade` make the helper boot the home
+(its Ruby, the newest chi in its gems) whatever shell you run them from. Without one, the helper runs the Ruby and
+chi of **the shell you installed from**, and only `chi desktop install --force` and
 `chi desktop upgrade` change that: they pick the Ruby and chi of the shell you run them in. `chi update` never
 repoints it, so running it from a project with another Ruby (or an older chi) leaves the helper where it was. If
 the Ruby or chi the helper runs is gone (a Ruby upgrade, a removed worktree), `chi update` fails the helper's row
@@ -286,12 +288,19 @@ says the same.
 Apps started by macOS get a bare environment: no shell rc files, so no rbenv/chruby/mise/asdf and none of your
 exports. So `install` writes `~/Library/Application Support/Chi Helper/launch.json` with:
 
-- the absolute path of the Ruby running chi and of chi itself (the gem's wrapper, or a checkout's `bin/chi`), as of
-  the last `chi desktop install` or `upgrade` (`chi update` keeps them);
+- what to run, as of the last `chi desktop install` or `upgrade` (`chi update` keeps it): with a
+  [chi home](configuration.md#the-chi-home), the home's boot, `["<home ruby>", "-e", "Gem.paths = {…}; gem
+  'samagotchi', '>= 0.a'; load Gem.bin_path('samagotchi', 'chi')", "--"]` (the helper appends its own arguments
+  after `--`); without one, the absolute path of the Ruby running chi and of chi itself (the gem's wrapper, or a
+  checkout's `bin/chi`). The helper and `chi update` check only the absolute paths in it;
 - `LANG=en_US.UTF-8`;
-- only these variables, and only when they are set: `XDG_CONFIG_HOME`, `XDG_STATE_HOME`, `GEM_HOME`, `GEM_PATH`,
-  `RUBYLIB` (a relative `XDG_*` dir made absolute from the install's current folder: the helper starts in `/`).
-  No tokens and no `SAMAGOTCHI_*` settings go in;
+- only these variables, and only when they are set: `XDG_CONFIG_HOME`, `XDG_STATE_HOME` (a relative one made
+  absolute from the install's current folder: the helper starts in `/`). No tokens and no `SAMAGOTCHI_*` settings
+  go in, and no `GEM_HOME`, `GEM_PATH` or `RUBYLIB`: chi finds its gems through what it runs, and those would reach
+  every command the helper's sessions run (a project's `bundle exec` on the wrong gems). A launch file from an
+  older chi loses `RUBYLIB` at the next `chi update`, and `GEM_HOME`/`GEM_PATH` once it boots the chi home (an older
+  `[ruby, chi]` launch keeps them: its chi may be found only through them; `chi desktop upgrade` moves it to the
+  home);
 - `PATH`: the shell's PATH when the file is written, with only absolute folders, in order, each once. The helper's
   chi, the sessions it starts and their `execute` commands can find the tools your terminal finds (mise, Homebrew,
   `codex`, `node`);

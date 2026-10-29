@@ -304,7 +304,9 @@ done
   sources changed; otherwise only its launch file is refreshed (a newer chi or
   other terminal settings). It keeps the Ruby, chi and PATH the helper runs (a
   PATH is filled in only when the file has none): `chi desktop install --force`
-  and `chi desktop upgrade` bake this shell's. A helper whose Ruby or chi is gone
+  and `chi desktop upgrade` bake this shell's (the chi home's boot, when there
+  is one). A refresh drops `RUBYLIB` from the launch file, and `GEM_HOME`/`GEM_PATH`
+  once it boots the chi home. A helper whose Ruby or chi is gone
   is reported as failed, naming `chi desktop install --force`. See
   [Desktop helper](desktop.md).
 - **Running processes** are reported, never stopped. A live worker keeps its
