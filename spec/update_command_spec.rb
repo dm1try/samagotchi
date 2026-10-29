@@ -358,11 +358,36 @@ RSpec.describe Samagotchi::UpdateCommand do
       let(:chi_home) { double("ChiHome", current: nil) }
 
       it "records the first one and says so (never in a dry run)" do
-        expect(chi_home).to receive(:record_first!).with(gem_spec: gem_spec, launch_path: nil).once.and_return(recorded)
+        expect(chi_home).to receive(:record_first!).with(gem_spec: gem_spec, launch_path: nil, bundler: false).once
+                                                   .and_return(recorded)
         run("--no-gem", "--no-desktop", "--no-bundles")
         expect(out.string.lines.first).to eq("chi home set to #{RbConfig.ruby} (chi home set to change)\n")
 
         run("--dry-run", "--no-gem", "--no-desktop", "--no-bundles")
+      end
+
+      # Only once this chi's own checks passed: a refused run records nothing.
+      it "records nothing for a --to this chi refuses, or under Bundler" do
+        expect(chi_home).not_to receive(:record_first!)
+        expect(run("--to", Samagotchi::VERSION)).to eq(1)
+      end
+
+      context "under Bundler" do
+        let(:bundler) { true }
+
+        it "records nothing" do
+          expect(chi_home).not_to receive(:record_first!)
+          run("--no-gem", "--no-desktop", "--no-bundles")
+        end
+      end
+
+      it "execs the recorded home's chi when it is on another Ruby" do
+        other = recorded.with(ruby: "/helper/bin/ruby", gem_home: "/hg", gem_path: "/hg")
+        allow(chi_home).to receive(:record_first!).and_return(other)
+        run("--no-desktop")
+        expect(out.string.lines).to eq(["chi home set to /helper/bin/ruby (chi home set to change)\n",
+                                        "updating the chi home (/helper/bin/ruby)\n"])
+        expect(execs.size).to eq(1)
       end
     end
   end

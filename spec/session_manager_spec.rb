@@ -1067,6 +1067,17 @@ RSpec.describe Samagotchi::SessionManager do
           expect(RubyVM::InstructionSequence.compile(command[2])).to be_a(RubyVM::InstructionSequence)
         end
 
+        it "warns once when the home's newest chi is older than the spawner's, and still boots the home" do
+          Samagotchi::ChiHome.reset_warnings!
+          allow(Samagotchi::Log).to receive(:warn)
+          newer = Gem::Specification.new { |s| s.name = "samagotchi"; s.version = "11.0.0" }
+          2.times { expect(described_class.worker_command("abc", state_dir: "/s", gem_spec: newer, home: home).first).to eq("/home/bin/ruby") }
+          expect(Samagotchi::Log).to have_received(:warn)
+            .with(:config, "home_older_than_spawner", home: "10.0.0", spawner: "11.0.0").once
+          described_class.worker_command("abc", state_dir: "/s", gem_spec: spec, home: home)
+          expect(Samagotchi::Log).to have_received(:warn).once
+        end
+
         it "falls back to the home's newest when the spawner's version isn't in the home" do
           other = Gem::Specification.new { |s| s.name = "samagotchi"; s.version = "8.0.0" }
           command = described_class.worker_command("abc", state_dir: "/s", gem_spec: other, home: home)

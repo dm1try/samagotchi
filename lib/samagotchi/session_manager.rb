@@ -1281,6 +1281,10 @@ module Samagotchi
     # load chi (a broken install) logs HOME_BOOT_FAILED and exits: never a
     # silent spawn timeout.
     private_class_method def self.home_worker_command(session_id, state_dir:, gem_spec:, home:)
+      newest = home.newest_version
+      if newest && newest < Gem::Version.new(gem_spec.version.to_s)
+        ChiHome.warn_once(:older_than_spawner, home: newest.to_s, spawner: gem_spec.version.to_s)
+      end
       fallback = ChiHome.fallback_version(home, gem_spec)
       activate = if fallback
                    "begin; gem 'samagotchi', '>= 0.a'; rescue LoadError => e; " \

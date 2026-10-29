@@ -237,6 +237,21 @@ RSpec.describe Samagotchi::Web::Server do
       ]])
     end
 
+    # The restart argv has this chi's flags, which an older one may not know.
+    it "passes over a home whose newest chi is older than this one, to the wrapper, and logs it" do
+      Dir.mktmpdir do |gems|
+        FileUtils.mkdir_p(File.join(gems, "specifications"))
+        File.write(File.join(gems, "specifications", "samagotchi-0.0.1.gemspec"), "")
+        home = Samagotchi::ChiHome::Record.new(ruby: "/home/bin/ruby", gem_home: gems, gem_path: gems, mise: nil,
+                                               set_at: "t", set_by_version: "1")
+        allow(Samagotchi::InstalledGem).to receive_messages(spec: double("installed gem"), wrapper: "/gem/bin/chi")
+        allow(Samagotchi::Log).to receive(:warn)
+        expect(described_class.reexec_command(["web"], home: home)).to eq([RbConfig.ruby, "/gem/bin/chi", "web"])
+        expect(Samagotchi::Log).to have_received(:warn)
+          .with(:web, "restart_home_older", home: "0.0.1", version: Samagotchi::VERSION)
+      end
+    end
+
     it "keeps this Ruby and the wrapper without a home, and has nothing to exec without either" do
       allow(Samagotchi::InstalledGem).to receive_messages(spec: double("installed gem"), wrapper: "/gem/bin/chi")
       expect(described_class.reexec_command(["web"], home: nil)).to eq([RbConfig.ruby, "/gem/bin/chi", "web"])

@@ -114,8 +114,8 @@ module Samagotchi
 
       # The home's chi decides the rest (--to's floor included); never from
       # a checkout (ChiHome.current is nil there).
-      @run_home = @gem_spec && home_for(options)
-      return to_home(options) if @run_home && !@in_home && !options[:gem_from] && !@run_home.running_here?
+      @run_home = @gem_spec && @home.current(gem_spec: @gem_spec)
+      return to_home(options) if away_from_home?(options)
 
       if options[:to] && !options[:gem_from] && Gem::Version.new(options[:to]) <= Gem::Version.new(VERSION)
         @stderr.puts("chi update: #{options[:to]} is not newer than the running chi (#{VERSION})")
@@ -127,6 +127,10 @@ module Samagotchi
                      "git pull, or chi bundle upgrade NAME for one bundle")
         return 1
       end
+
+      # No home yet: the first record, once this chi's own checks passed.
+      @run_home ||= record_home(options)
+      return to_home(options) if away_from_home?(options)
 
       @gem_update = @gem_update_given ||
                     GemUpdate.new(gem_bin: ChiHome.gem_bin(@run_home), install_env: ChiHome.install_env(@run_home))
@@ -147,14 +151,17 @@ module Samagotchi
 
     def command_name = "chi update"
 
-    # The chi home this update is for (ChiHome.current); without one, the
-    # first record (ChiHome.record_first!: the helper's Ruby, else this
-    # one), said once. Not in a dry run, nor in a run another chi exec'd.
-    def home_for(options)
-      home = @home.current(gem_spec: @gem_spec)
-      return home if home || options[:dry_run] || @in_home || options[:gem_from]
+    # Whether this run is on another Ruby than the chi home's, and not one
+    # another chi exec'd or handed over to.
+    def away_from_home?(options) = @run_home && !@in_home && !options[:gem_from] && !@run_home.running_here?
 
-      recorded = @home.record_first!(gem_spec: @gem_spec, launch_path: helper_launch_path)
+    # The first chi home (ChiHome.record_first!: the helper's Ruby or this
+    # one, whichever has the newer chi), said once. Not in a dry run, a run
+    # another chi exec'd or handed over to, nor under Bundler.
+    def record_home(options)
+      return nil if options[:dry_run] || @in_home || options[:gem_from] || @bundler
+
+      recorded = @home.record_first!(gem_spec: @gem_spec, launch_path: helper_launch_path, bundler: false)
       notice(options, "chi home set to #{recorded.ruby} (chi home set to change)") if recorded
       recorded
     end

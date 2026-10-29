@@ -234,19 +234,25 @@ module Samagotchi
     end
 
     # The first record, once, from an installed chi (chi bootstrap, chi
-    # update): the macOS helper's ruby when its launch file names one that
-    # has samagotchi (the Ruby it already runs), else this chi's. Never
-    # over an existing home.json, never from a checkout, never a Ruby
-    # without samagotchi.
+    # update): of the macOS helper's ruby (when its launch file names one
+    # whose newest chi is at least this one: the Ruby it already runs) and
+    # this chi's, the one with the newest chi; the helper's on a tie.
+    # Never over an existing home.json, never from a checkout or under
+    # Bundler, never a Ruby without samagotchi.
     # @param launch_path [String, nil] the helper's launch.json
+    # @param bundler [Boolean, nil] running under Bundler (nil: found out)
     # @return [Record, nil] the home written, nil when none was
     def record_first!(gem_spec: InstalledGem.spec, launch_path: nil, path: self.path, env: ENV,
-                      runner: method(:capture))
+                      runner: method(:capture), bundler: nil)
       return nil unless gem_spec
+      return nil if bundler.nil? ? under_bundler?(env) : bundler
       return nil if File.exist?(path)
 
-      home = [helper_home(launch_path, env: env, runner: runner), from_running(env: env)]
-             .compact.find { |candidate| problem(candidate).nil? }
+      own = Gem::Version.new(VERSION)
+      helper = helper_home(launch_path, env: env, runner: runner)
+      helper = nil if helper && (helper.newest_version.nil? || helper.newest_version < own)
+      home = [helper, from_running(env: env)].compact.select { |candidate| problem(candidate).nil? }
+                                             .max_by(&:newest_version)
       home && write!(home, path: path)
     rescue SystemCallError => e
       Log.warn(:config, "home_record_failed", error: e.class.name, msg: e.message)
@@ -267,6 +273,10 @@ module Samagotchi
     rescue JSON::ParserError, SystemCallError
       nil
     end
+
+    # The test UpdateCommand's @bundler makes: a first record from a
+    # `bundle exec` would name the bundle's gems.
+    def under_bundler?(env = ENV) = !!(defined?(::Bundler) || !env["BUNDLE_GEMFILE"].to_s.empty?)
 
     # mise's absolute path: on +env+'s PATH, else in MISE_DIRS; nil without.
     def find_mise(env: ENV)

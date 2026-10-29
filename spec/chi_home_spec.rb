@@ -208,14 +208,30 @@ RSpec.describe Samagotchi::ChiHome do
 
     before { allow(described_class).to receive(:from_running).and_return(home) }
 
-    def record! = described_class.record_first!(gem_spec: gem_spec, launch_path: launch_path, path: path, env: {},
-                                                runner: runner)
+    def record!(bundler: false) = described_class.record_first!(gem_spec: gem_spec, launch_path: launch_path, path: path,
+                                                                env: {}, runner: runner, bundler: bundler)
 
-    it "records the helper's ruby when its launch file names one that has samagotchi, with its GEM_*" do
-      File.write(launch_path, JSON.generate("argv" => [helper_ruby, "/x/bin/chi"], "env" => { "GEM_HOME" => "/hg" }))
+    def helper_launch(env = {}) = File.write(launch_path, JSON.generate("argv" => [helper_ruby, "/x/bin/chi"], "env" => env))
+
+    it "records the helper's ruby when its launch file names one that has a chi at least this one, with its GEM_*" do
+      helper_launch("GEM_HOME" => "/hg")
       expect(record!).to have_attributes(ruby: File.realpath(helper_ruby), gem_home: helper_gems)
       expect(probes.first.first).to include("GEM_HOME" => "/hg")
       expect(described_class.read(path: path).ruby).to eq(File.realpath(helper_ruby))
+    end
+
+    it "records the candidate with the newest chi: this chi's Ruby when it has a newer one than the helper's" do
+      add_gemspec(gems, "samagotchi", "1000.0.0")
+      helper_launch
+      expect(record!).to eq(home)
+    end
+
+    it "passes over a helper whose newest chi is older than this one" do
+      FileUtils.rm_rf(File.join(helper_gems, "specifications"))
+      add_gemspec(helper_gems, "samagotchi", "0.0.1")
+      add_gemspec(gems, "samagotchi", "0.0.0") # this chi's Ruby has an even older one: still not the helper's
+      helper_launch
+      expect(record!).to eq(home)
     end
 
     it "records this chi's Ruby without a usable helper" do
@@ -229,17 +245,20 @@ RSpec.describe Samagotchi::ChiHome do
 
       FileUtils.rm(path)
       FileUtils.rm_rf(File.join(helper_gems, "specifications"))
-      File.write(launch_path, JSON.generate("argv" => [helper_ruby, "/x/bin/chi"]))
+      helper_launch
       expect(record!).to eq(home)
     end
 
-    it "never overwrites a home.json, records nothing from a checkout or without samagotchi" do
+    it "never overwrites a home.json, records nothing from a checkout, under Bundler or without samagotchi" do
       write_home(home.with(set_by_version: "0.1.0"))
       expect(record!).to be_nil
       expect(described_class.read(path: path).set_by_version).to eq("0.1.0")
 
       FileUtils.rm(path)
-      expect(described_class.record_first!(gem_spec: nil, path: path, env: {}, runner: runner)).to be_nil
+      expect(described_class.record_first!(gem_spec: nil, path: path, env: {}, runner: runner, bundler: false)).to be_nil
+      expect(record!(bundler: true)).to be_nil
+      # This suite runs under Bundler: found out by default.
+      expect(described_class.record_first!(gem_spec: gem_spec, path: path, env: {}, runner: runner)).to be_nil
       expect(File.exist?(path)).to be(false)
 
       allow(described_class).to receive(:from_running).and_return(home.with(gem_path: tmp, gem_home: tmp))

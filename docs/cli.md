@@ -262,9 +262,10 @@ done
   update` started on another Ruby first says `updating the chi home (<ruby>)`
   and runs the home's chi update instead (the version check, `--to` and the
   rows are the home's); chi web's **Update** runs the home's too. Without
-  one, the first `chi update` (not `--dry-run`) records one: the desktop
-  helper's Ruby when its launch file names one that has samagotchi, else the
-  Ruby it runs on, and says `chi home set to <ruby> (chi home set to change)`.
+  one, the first `chi update` (not `--dry-run`, not under Bundler, and only
+  once its own checks passed) records one: of the desktop helper's Ruby and
+  the Ruby it runs on, the one with the newer chi, and says `chi home set to
+  <ruby> (chi home set to change)`.
 - **The gem.** It asks rubygems.org for the newest samagotchi (5 s timeout)
   and, when that's newer, runs `gem install samagotchi` with the gem command
   of the chi home's Ruby, into the home's gems (`GEM_HOME`/`GEM_PATH` set to

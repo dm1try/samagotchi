@@ -239,9 +239,15 @@ module Samagotchi
       # A restart's argv: with a chi home, its boot (ChiHome::CHI_BOOT: the
       # newest chi in the home; a bare wrapper would activate the newest in
       # whatever GEM_* the env has, off the home); else this Ruby and
-      # #reexec_program. nil when there is neither.
+      # #reexec_program. A home whose newest chi is older than this one is
+      # passed over (logged): the restart argv has this chi's flags, which
+      # an older one may not know. nil when there is nothing to exec.
       # @return [Array<String>, nil]
       def self.reexec_command(argv, home: ChiHome.current)
+        if home && home.newest_version && home.newest_version < Gem::Version.new(Samagotchi::VERSION)
+          Samagotchi::Log.warn(:web, "restart_home_older", home: home.newest_version.to_s, version: Samagotchi::VERSION)
+          home = nil
+        end
         return home.boot_argv(run: ChiHome::CHI_BOOT) + ["--", *argv] if home
 
         program = reexec_program

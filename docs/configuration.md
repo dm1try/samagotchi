@@ -1374,8 +1374,9 @@ launches it. It is recorded in `~/.config/samagotchi/home.json` (`$XDG_CONFIG_HO
 - **Setting it.** `chi home set` records the Ruby your `chi` runs on and its gem path (a chruby shell's
   `GEM_HOME`/`GEM_PATH` are part of it: that is where its chi lives); `chi home set --ruby PATH` records another
   Ruby with its own gem dirs. Either needs samagotchi installed there (`gem install samagotchi` with that Ruby
-  first). Without a home.json, the first `chi bootstrap` or `chi update` records one, once: the desktop helper's Ruby
-  when its launch file names one that has samagotchi, else the Ruby chi runs on. Nothing else ever overwrites it.
+  first). Without a home.json, the first `chi bootstrap` or `chi update` records one, once (from an installed chi,
+  never under `bundle exec`): of the desktop helper's Ruby (when its newest chi is at least the one running) and the
+  Ruby chi runs on, the one with the newer chi. Nothing else ever overwrites it.
   `chi home` shows it; `chi home doctor` checks it (see [CLI](cli.md#commands)).
 - **What follows it.** Every session worker (whoever starts or wakes it: a terminal, `chi send`, chi web, a
   delegating session, a restart), chi web's restart and its **Update** button, `chi update` (from another Ruby it
@@ -1389,6 +1390,9 @@ launches it. It is recorded in `~/.config/samagotchi/home.json` (`$XDG_CONFIG_HO
   per process (`home_unusable`, `home_invalid`). After a Ruby upgrade: `gem install samagotchi` with the new Ruby,
   then `chi home set` from it. A source checkout (`bin/chi`, `bundle exec`) never uses the home: a worktree's
   `bin/chi` starts its own code.
+- **A home with an older chi than the one launching**: workers still boot the home (the log says so once,
+  `home_older_than_spawner`), but chi web's restart runs the newest chi it knows outside the home instead
+  (`restart_home_older`): its flags may be ones the older chi doesn't know.
 - **A home that still fails at boot** (a broken install): the worker writes one `boot_failed` line to the debug log
   (`log.file`) and exits, rather than leave the spawner waiting.
 - Each machine has its own home (a remote's is that machine's).
