@@ -57,6 +57,17 @@ module Samagotchi
       false
     end
 
+    # Why the shim isn't +home+'s (chi home doctor), or nil: nil too
+    # without one (the first worker start writes it).
+    # @return [String, nil]
+    def problem(home, dir: self.dir)
+      file = path(dir: dir)
+      return nil if !File.exist?(file) || current?(file, content(home))
+
+      "the chi script tools run (#{Paths.tilde(file)}) boots another chi than the home: " \
+        "the next worker start rewrites it (chi sessions restart ID for a running session)"
+    end
+
     def current?(file, want)
       File.file?(file) && File.executable?(file) && File.read(file) == want
     rescue SystemCallError

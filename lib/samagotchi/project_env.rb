@@ -6,6 +6,9 @@ require_relative "chi_home"
 require_relative "chi_shim"
 require_relative "config"
 require_relative "log"
+require_relative "log_line"
+require_relative "log_path"
+require_relative "paths"
 
 module Samagotchi
   # Tools follow the project: a spawned worker computes its session folder's
@@ -73,6 +76,23 @@ module Samagotchi
     NONE = Overlay.new(env: {}.freeze, applied: false, reason: "none", ruby: nil)
 
     class Failed < StandardError; end
+
+    # chi home doctor's row when session.project_env is mise and no mise is found.
+    NO_MISE = "project env: no mise found (home.json's, PATH, /opt/homebrew/bin, /usr/local/bin, ~/.local/bin): " \
+              "tools run in the env of whoever starts the worker; install mise, or set session.project_env: off"
+    # How much of the debug log's end chi home doctor reads for #last_warning.
+    LOG_TAIL_BYTES = 4 * 1024 * 1024
+
+    # A worker's `project_env` warning from the debug log (#last_warning).
+    Warning = Data.define(:ts, :sid, :dir, :reason, :error) do
+      # chi home doctor's row: what failed and what to run.
+      def message
+        detail = error.to_s.start_with?("#{reason}:") ? error : [reason, error].compact.reject(&:empty?).join(": ")
+        fix = error.to_s.include?("mise trust") || error.to_s.include?("not trusted") ? "mise trust in #{dir}" : "fix that"
+        restart = sid ? "chi sessions restart #{sid}" : "chi sessions restart ID"
+        "the last worker in #{dir} (#{ts}) got no project env (#{detail}): #{fix}, then #{restart}"
+      end
+    end
 
     @current = NONE
 
@@ -294,6 +314,41 @@ module Samagotchi
       ChiHome.read(path: ChiHome.path(env: env))&.mise
     rescue ChiHome::Invalid
       nil
+    end
+
+    # The newest worker record in the debug log for one of the folders
+    # +dirs+ (a folder and the ones above it in its project), when it is a
+    # `project_env` warning (an untrusted mise.toml, a timeout); nil when
+    # the newest is `project_env_applied`, there is none, or the log can't
+    # be read. Reads the log's last LOG_TAIL_BYTES only.
+    # @return [Warning, nil]
+    def last_warning(dirs, log_path: LogPath.resolve)
+      return nil unless log_path && File.file?(log_path)
+
+      want = Array(dirs).map { |dir| ChiHome.real(dir) }
+      newest = {}
+      each_tail_record(log_path) do |record|
+        next unless record.tag == "worker" && %w[project_env project_env_applied].include?(record.event)
+
+        dir = record.fields["dir"]
+        newest[ChiHome.real(dir)] = record if dir && want.include?(ChiHome.real(dir))
+      end
+      found = newest.values.select { |record| record.event == "project_env" }.max_by(&:ts)
+      return nil unless found
+
+      Warning.new(ts: found.ts, sid: found.sid, dir: Paths.tilde(found.fields["dir"]),
+                  reason: found.fields["reason"], error: found.fields["error"])
+    rescue SystemCallError
+      nil
+    end
+
+    def each_tail_record(log_path, &)
+      File.open(log_path, "rb") do |io|
+        size = io.size
+        io.seek([size - LOG_TAIL_BYTES, 0].max)
+        io.gets if size > LOG_TAIL_BYTES # a torn first line
+        LogLine.each_record(io, &)
+      end
     end
 
     def configured_mode

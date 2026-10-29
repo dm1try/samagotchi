@@ -65,4 +65,13 @@ RSpec.describe Samagotchi::ChiShim do
     expect(described_class.ensure!(home, dir: File.join(tmp, "file", "bin"))).to be(false)
     expect(Samagotchi::Log).to have_received(:warn).with(:worker, "chi_shim_failed", hash_including(path: anything))
   end
+
+  it "names a shim that isn't the home's for chi home doctor; nothing when it is, or when there is none" do
+    expect(described_class.problem(home, dir: dir)).to be_nil
+    FileUtils.mkdir_p(dir)
+    File.write(File.join(dir, "chi"), "#!/bin/sh\nexec /old\n")
+    expect(described_class.problem(home, dir: dir)).to include("boots another chi than the home", "next worker start")
+    described_class.ensure!(home, dir: dir)
+    expect(described_class.problem(home, dir: dir)).to be_nil
+  end
 end

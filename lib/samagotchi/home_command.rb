@@ -2,6 +2,7 @@
 
 require "rbconfig"
 require_relative "chi_home"
+require_relative "home_doctor"
 require_relative "cli/command"
 require_relative "cli/exit"
 require_relative "cli/flags"
@@ -12,7 +13,7 @@ require_relative "version"
 module Samagotchi
   # `chi home`: the chi home (ChiHome), the Ruby every chi launch boots.
   # Shows it, sets it (`chi home set [--ruby PATH]`), and checks it
-  # (`chi home doctor`: for now whether its Ruby is there and has chi).
+  # (`chi home doctor`, HomeDoctor's rows).
   class HomeCommand
     include CLI::Command
 
@@ -23,7 +24,9 @@ module Samagotchi
                           GEM_HOME/GEM_PATH are part of it)
         set --ruby PATH   record that Ruby (its own gem dirs) as the home; it must have samagotchi
                           (gem install samagotchi with it first)
-        doctor            check the home: its Ruby is there and has samagotchi
+        doctor            check the home (its Ruby is there and has samagotchi) and what should
+                          follow it: this chi, the desktop helper, sessions, the tools' chi script,
+                          this project's Gemfile.lock, mise and the last worker's project env
         Every chi launch (workers, chi web's restart and Update, the macOS helper's next
         chi desktop install or upgrade) boots the home's Ruby with the home's gems. Saved in
         #{Paths.tilde(ChiHome.path)}.
@@ -38,8 +41,9 @@ module Samagotchi
 
     # @param path [String] home.json
     # @param probe [#call] (ruby) → ChiHome::Record or nil (ChiHome.probe)
+    # @param doctor [#call] (home) → HomeDoctor
     def initialize(argv, stdout: $stdout, stderr: $stderr, path: ChiHome.path, gem_spec: InstalledGem.spec,
-                   env: ENV, probe: nil)
+                   env: ENV, probe: nil, doctor: nil)
       @argv = argv.dup
       @stdout = stdout
       @stderr = stderr
@@ -47,6 +51,9 @@ module Samagotchi
       @gem_spec = gem_spec
       @env = env
       @probe = probe || ->(ruby) { ChiHome.probe(ruby, env: env) }
+      @doctor = doctor || lambda { |home|
+        HomeDoctor.new(home: home, env: env, gem_spec: gem_spec, helper: HomeDoctor.default_helper(env: env))
+      }
     end
 
     # @return [Integer] 0, 1 (no usable home, a refusal), 2 usage
@@ -127,23 +134,12 @@ module Samagotchi
       home
     end
 
-    # P2c adds rows (running chi vs the home, the helper's argv, sessions,
-    # the project env); for now the home's own.
+    # The home's rows and what should follow it (HomeDoctor); exit 1 when
+    # one fails.
     def run_doctor
-      home = ChiHome.read(path: @path)
-      unless home
-        @stdout.puts("ok    no chi home: each launch uses the Ruby that starts it (chi home set to record one)")
-        return CLI::Exit::OK
-      end
-
-      if (problem = ChiHome.problem(home))
-        @stdout.puts("fail  #{problem}: after a Ruby upgrade, gem install samagotchi with the new Ruby, then " \
-                     "chi home set from it (chi home set --ruby PATH); until then launches use the Ruby that starts them")
-        return CLI::Exit::FAILED
-      end
-
-      @stdout.puts("ok    chi home #{home.ruby} runs chi #{home.newest_version}")
-      CLI::Exit::OK
+      rows = @doctor.call(ChiHome.read(path: @path)).rows
+      rows.each { |row| @stdout.puts(row.to_s) }
+      rows.any? { |row| row.status == :fail } ? CLI::Exit::FAILED : CLI::Exit::OK
     end
   end
 end

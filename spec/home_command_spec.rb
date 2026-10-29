@@ -28,6 +28,15 @@ RSpec.describe Samagotchi::HomeCommand do
                                     set_at: "2026-10-29T00:00:00Z", set_by_version: "1.2.3")
   end
   let(:probe) { ->(_ruby) { home } }
+  # The doctor's rows past the home's are HomeDoctor's (home_doctor_spec):
+  # here a doctor without the helper, sessions, a project or mise.
+  let(:doctor) do
+    lambda do |record|
+      Samagotchi::HomeDoctor.new(home: record, env: { "SAMAGOTCHI_MISE_CLI" => File.join(tmp, "no-mise") },
+                                 cwd: tmp, gem_spec: nil, helper: nil, sessions: -> { [] },
+                                 shim_dir: File.join(tmp, "bin"), log_path: nil)
+    end
+  end
 
   before do
     Samagotchi::ChiHome.reset_warnings!
@@ -39,7 +48,8 @@ RSpec.describe Samagotchi::HomeCommand do
   def run(*argv, gem_spec: nil)
     out.truncate(0)
     out.rewind
-    described_class.new(argv, stdout: out, stderr: err, path: path, gem_spec: gem_spec, env: {}, probe: probe).run
+    described_class.new(argv, stdout: out, stderr: err, path: path, gem_spec: gem_spec, env: {}, probe: probe,
+                              doctor: doctor).run
   end
 
   it "says there is none" do
@@ -114,7 +124,7 @@ RSpec.describe Samagotchi::HomeCommand do
       expect(run("doctor")).to eq(0)
       Samagotchi::ChiHome.write!(home, path: path)
       expect(run("doctor")).to eq(0)
-      expect(out.string).to eq("ok    chi home #{ruby} runs chi 1.2.3\n")
+      expect(out.string.lines.first).to eq("ok    chi home #{ruby} runs chi 1.2.3\n")
     end
 
     it "fails on a home whose ruby is gone or has no samagotchi, saying what to do" do

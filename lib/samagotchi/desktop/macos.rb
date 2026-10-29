@@ -233,6 +233,32 @@ module Samagotchi
         argv && argv_problem(argv)
       end
 
+      # Why the launch file doesn't boot +home+ (chi home doctor), or nil:
+      # it runs [ruby, chi] (installed before the home), boots another Ruby
+      # or gem path (the home was set since), or bakes GEM_HOME/GEM_PATH
+      # under the home's boot. Each fixed by chi desktop upgrade. nil without
+      # a launch file.
+      # @param home [ChiHome::Record]
+      # @return [String, nil]
+      def home_problem(home)
+        launch = read_launch
+        argv = usable_argv(launch)
+        return nil unless argv
+
+        unless home_boot?(argv)
+          return "the desktop helper runs #{argv.first(2).join(" ")}, not the chi home's boot: chi desktop upgrade"
+        end
+        unless ChiHome.real(argv[0]) == ChiHome.real(home.ruby) && argv[2].to_s.start_with?("#{home.prelude};")
+          return "the desktop helper boots the chi home as it was (#{argv[0]}), not as it is now: chi desktop upgrade"
+        end
+
+        env = launch["env"]
+        baked = env.is_a?(Hash) ? GEM_ENV.select { |key| env.key?(key) } : []
+        return nil if baked.empty?
+
+        "the desktop helper's launch file sets #{baked.join(", ")} for its sessions' tools: chi desktop upgrade"
+      end
+
       # The chi version the launch file names, nil without one.
       def launch_version = read_launch["version"]
 

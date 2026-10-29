@@ -1229,7 +1229,7 @@ module Samagotchi
       session = Session.summary_from_file(Session.session_file(session_id, state_dir: state_dir))
       dir = session&.working_directory.to_s
       overlay = ProjectEnv.install!(ProjectEnv.compute(dir))
-      Log.info(:worker, "project_env_applied", ruby: overlay.ruby) if overlay.applied
+      Log.info(:worker, "project_env_applied", dir: dir, ruby: overlay.ruby) if overlay.applied
     rescue StandardError => e
       Log.warn(:worker, "project_env", reason: "error", error: e.class.name, msg: e.message)
     end

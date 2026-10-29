@@ -152,6 +152,38 @@ RSpec.describe Samagotchi::Desktop::MacOS do
     end
   end
 
+  describe "#home_problem" do
+    let(:home) do
+      Samagotchi::ChiHome::Record.new(ruby: "/home/ruby", gem_home: "/home/gems", gem_path: "/home/gems",
+                                      mise: nil, set_at: "t", set_by_version: "9.9.9")
+    end
+
+    def launch(argv, env = {})
+      FileUtils.mkdir_p(support_dir)
+      File.write(launch_file, JSON.generate("version" => "9.9.9", "argv" => argv, "env" => env))
+    end
+
+    it "is nil without a launch file and for one that boots the home as it is" do
+      expect(macos.home_problem(home)).to be_nil
+      launch(home.boot_argv(run: Samagotchi::ChiHome::CHI_BOOT) + ["--"], "LANG" => "en_US.UTF-8")
+      expect(macos.home_problem(home)).to be_nil
+    end
+
+    it "says chi desktop upgrade for a [ruby, chi] argv, another home's boot, or baked GEM_*" do
+      launch(["/opt/ruby/bin/ruby", "/opt/ruby/bin/chi"], "GEM_HOME" => "/g")
+      expect(macos.home_problem(home))
+        .to eq("the desktop helper runs /opt/ruby/bin/ruby /opt/ruby/bin/chi, not the chi home's boot: chi desktop upgrade")
+
+      launch(home.with(gem_path: "/old/gems").boot_argv(run: Samagotchi::ChiHome::CHI_BOOT) + ["--"])
+      expect(macos.home_problem(home)).to eq("the desktop helper boots the chi home as it was (/home/ruby), " \
+                                             "not as it is now: chi desktop upgrade")
+
+      launch(home.boot_argv(run: Samagotchi::ChiHome::CHI_BOOT) + ["--"], "GEM_HOME" => "/g", "GEM_PATH" => "/g")
+      expect(macos.home_problem(home)).to eq("the desktop helper's launch file sets GEM_HOME, GEM_PATH for its " \
+                                             "sessions' tools: chi desktop upgrade")
+    end
+  end
+
   describe "#warnings" do
     it "says nothing for a main checkout" do
       expect(macos.warnings).to eq([])
