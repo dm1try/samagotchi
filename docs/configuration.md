@@ -1133,6 +1133,10 @@ never asks for a cut, nor does a queued one (`/queue TEXT`, `chi send --queue`, 
 thinking is lost. A generation that has streamed visible text or a tool call is never cut, and a plugin's steer
 (`ctx.steer`, `ctx.sessions.send`) never cuts.
 
+A message that would go in at the next step (any but a queued one, one with images or a participant's) also ends a
+`task_wait` the model is blocked in, within half a second: the task keeps running, the model is told a message waits,
+reads it at once and decides whether to wait again. A plugin's steer and a delegate child's report don't end one.
+
 The wait resolves per model, in this order: env `SAMAGOTCHI_STEER_CUT_AFTER`, then
 `models.<key>.steer_cut_after`, `hosts.<name>.steer_cut_after`, `steer.cut_after` in config.yml, then 20. `0` means
 never cut (a slow local thinker is left alone); a bad value warns and is ignored, like the other keys here.

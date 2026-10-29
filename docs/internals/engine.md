@@ -16,13 +16,14 @@ Engine#run_turn → backend.complete(...) → KernelLoop#run (native) or ChatLoo
 
 ```
 Engine#run_turn(session, prompt, on_event:, max_iterations:, cancel_controller:, max_tool_output_chars:,
-                pending_input:, continue:, origin:, images:, id:, resumed:, resume_from:)
+                pending_input:, continue:, origin:, images:, id:, resumed:, resume_from:, input_waiting:)
   │
-  ├── begin_turn(session, prompt, on_event:, cancel_controller:, origin:, continue:, id:)
+  ├── begin_turn(session, prompt, on_event:, cancel_controller:, origin:, continue:, id:, input_waiting:)
   │     # (then, on a continue, turn.resumed = resumed (a step-limit Continue) and
   │     #  turn.resume_from = resume_from (its run's start; nil: it starts cold))
   │     # @session = session, session.status = RUNNING, used memories absorbed,
-  │     # TurnState#begin!(controller:, sink:) (a new CancellationController when none is given),
+  │     # TurnState#begin!(controller:, sink:, input_waiting:) (a new CancellationController when none
+  │     # is given; input_waiting: the caller's peek, Engine#input_waiting?, which task_wait polls),
   │     # a recap in flight invalidated, GuardrailWiring#begin_turn(origin)
   │     # Returns a Turn {session, prompt (nil on a continue), continue, on_event, controller,
   │     #                 origin, started_at, id (the caller's id:, else a new uuid), resumed, resume_from,

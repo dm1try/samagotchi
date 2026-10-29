@@ -9,6 +9,11 @@ and commands may change between minor versions. How releases are made:
 
 ### Changed
 
+- A message you send while the model is blocked in `task_wait` ends the wait within half a second instead of
+  waiting for the task: the task keeps running, the result says `wait_result: message_waiting`, and the model reads
+  your message at once and decides whether to wait again. A queued message, a plugin's steer and a delegate child's
+  report don't end it. A worker started before the upgrade keeps the old behaviour until it is restarted.
+
 - `chi web --web-host lan` prints a `Local:` link for this machine with an owner's one-time code (10 minutes, once),
   and `--open` opens it; a second `chi web` prints a new one. `chi remote add` without a token refuses a chi web that
   asks for one (through an SSH tunnel to its loopback) instead of saving a remote that would 401.
