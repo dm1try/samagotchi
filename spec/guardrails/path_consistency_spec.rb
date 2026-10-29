@@ -23,6 +23,7 @@ require "samagotchi/system_one/self_protect"
 #              dangling         -> @home/elsewhere/new.txt (missing)
 #              hard.txt         a hard link of @home/outside.txt
 #              mem              -> @config/memories
+#              hl               -> .git/hooks
 #   @wt      @home/work/proj-wt, a sibling checkout (git worktree of @proj)
 #   @config  chi's config dir: config.yml, hooks/, memories/notes.md,
 #            memories/.bundles/x/rules.yml
@@ -30,6 +31,8 @@ require "samagotchi/system_one/self_protect"
 #   @tmp     a tmp dir the project isn't in (TMPDIR), resolved
 #   @mktmp   the same dir as Dir.mktmpdir spelt it (/tmp, not /private/tmp)
 #   @vartmp  a dir in /var/tmp, resolved
+#   @tmproot the tmp dir @tmp is in, resolved (one @base isn't in)
+#   @tmpsess @tmp/sess, a session rooted in tmp (ROOTS), beside @tmp/other
 #   @home also holds .ssh/id_rsa, .config/gh/hosts.yml (secrets), src/foo.
 #
 # PATHS: one row per path as a file tool gets it (relative to @proj), the
@@ -45,6 +48,11 @@ require "samagotchi/system_one/self_protect"
 #   touch       Targets#touches_chi? of `cat PATH`
 #   rm          Targets#rm_outside_tmp? of `rm -rf PATH`
 #   s1cat       SelfProtect.refuse? on the command `cat PATH`
+#   rule        the guardrails bundle's git-hooks-write path: glob
+#               (Rules::Rule#matches?) on the write
+#   mprompt     Targets#prompt_memory? of the write (a rule's memory: prompt)
+#   parent      ParentApprovals.chi_files? on the write's paths (an ask only
+#               the user may answer)
 #   reals       ProtectedPaths.reals of each Targets#paths entry, joined
 # A path with a `$` is literal to a file tool (Tools::ToolPath expands only
 # ~): its shell columns see the expanded one, so the file-vs-shell
@@ -60,56 +68,57 @@ module GuardrailsPathConsistency
     G = Samagotchi::Guardrails
     S1 = Samagotchi::SystemOne::SelfProtect
 
-    PATH_COLUMNS = %w[out in tmp review read write child prot scr s1 cat touch rm s1cat reals].freeze
+    PATH_COLUMNS = %w[out in tmp review read write child prot scr s1 cat touch rm s1cat rule mprompt parent reals].freeze
 
     PATHS = <<~ROWS
-      # id                path                                         out in tmp review  read  write child prot  scr   s1 cat   touch rm s1cat reals
-      plain               lib/a.rb                                     -   y  -   ok      allow allow allow allow allow -  allow -     y  -     @proj/lib/a.rb
-      absolute            @proj/lib/a.rb                               -   y  -   ok      allow allow allow allow allow -  allow -     y  -     @proj/lib/a.rb
-      dot-slash           ./lib/a.rb                                   -   y  -   ok      allow allow allow allow allow -  allow -     y  -     @proj/lib/a.rb
-      double-slash        @proj//lib/a.rb                              -   y  -   ok      allow allow allow allow allow -  allow -     y  -     @proj/lib/a.rb
-      trailing-slash      lib/                                         -   y  -   ok      allow allow allow allow allow -  allow -     y  -     @proj/lib
-      dotdot-lexical      lib/../README.md                             -   y  -   ok      allow allow allow allow allow -  allow -     y  -     @proj/README.md
-      missing-tail        lib/new.rb                                   -   y  -   ok      allow allow allow allow allow -  allow -     y  -     @proj/lib/new.rb
-      case-tail           LIB/New.rb                                   -   y  -   ok      allow allow allow allow allow -  allow -     y  -     @proj/lib/New.rb
-      dollar-home-literal $HOME/.config/samagotchi/config.yml          -   y  -   ok      allow allow allow allow allow -  deny  y     y  y     @proj/$HOME/.config/samagotchi/config.yml
-      dollar-tmp-literal  $TMPDIR/out.txt                              -   y  -   ok      allow allow allow allow allow -  allow -     -  -     @proj/$TMPDIR/out.txt
-      project-secret      .env                                         -   y  -   secret  deny  deny  allow allow allow -  deny  -     y  -     @proj/.env
-      git-config          .git/config                                  -   y  -   secret  deny  deny  allow allow allow -  deny  -     y  -     @proj/.git/config
-      case-git-dir        .GIT/config                                  -   y  -   secret  deny  deny  allow allow allow -  deny  -     y  -     @proj/.git/config
-      git-hook            .git/hooks/pre-commit                        -   y  -   ok      allow deny  allow allow allow -  allow y     y  -     @proj/.git/hooks/pre-commit
-      link-out            node_modules/foo/index.js                    y   -  -   outside allow ask   ask   allow allow -  allow -     y  -     @home/src/foo/index.js
-      link-climb          node_modules/foo/../x.txt                    y   -  -   outside allow ask   ask   allow allow -  allow -     y  -     @proj/node_modules/x.txt,@home/src/x.txt
-      link-climb-secret   node_modules/foo/../../.config/gh/hosts.yml  y   -  -   outside deny  deny  ask   allow allow -  deny  -     y  -     @proj/.config/gh/hosts.yml,@home/.config/gh/hosts.yml
-      dangling            dangling                                     y   -  -   outside allow ask   ask   allow allow -  allow -     y  -     @proj/dangling,@home/elsewhere/new.txt
-      hard-link           hard.txt                                     y   -  -   ok      allow ask   ask   allow allow -  allow -     y  -     @proj/hard.txt
-      sibling-checkout    ../proj-wt/lib/a.rb                          y   -  -   outside allow ask   ask   allow allow -  allow -     y  -     @wt/lib/a.rb
-      home-file           @home/outside.txt                            y   -  -   outside allow ask   ask   allow allow -  allow -     y  -     @home/outside.txt
-      home-dir            ~                                            y   -  -   outside allow ask   ask   allow allow -  allow -     y  -     @home
-      tmp-file            @tmp/out.txt                                 -   -  y   outside allow allow allow allow allow -  allow -     -  -     @tmp/out.txt
-      tmp-as-made         @mktmp/out.txt                               -   -  y   outside allow allow allow allow allow -  allow -     -  -     @tmp/out.txt
-      var-tmp             @vartmp/out.txt                              -   -  y   outside allow allow allow allow allow -  allow -     -  -     @vartmp/out.txt
-      tmp-dir             @tmp                                         -   -  y   outside allow allow allow allow allow -  allow -     -  -     @tmp
-      memory-via-link     mem/notes.md                                 -   -  -   outside deny  deny  allow allow deny  -  deny  y     y  -     @config/memories/notes.md
-      memory              @config/memories/notes.md                    -   -  -   outside deny  deny  allow allow deny  -  deny  y     y  -     @config/memories/notes.md
-      memory-prompt-case  @config/memories/IDENTITY.md                 -   -  -   outside deny  deny  allow allow deny  -  deny  y     y  -     @config/memories/IDENTITY.md
-      bundle              @config/memories/.bundles/x/rules.yml        y   -  -   outside deny  deny  ask   deny  deny  y  deny  y     y  y     @config/memories/.bundles/x/rules.yml
-      link-climb-config   mem/../config.yml                            y   -  -   outside deny  deny  ask   ask   allow y  deny  y     y  y     @proj/config.yml,@config/config.yml
-      config              @config/config.yml                           y   -  -   outside deny  deny  ask   ask   allow y  deny  y     y  y     @config/config.yml
-      config-tilde        ~/.config/samagotchi/config.yml              y   -  -   outside deny  deny  ask   ask   allow y  deny  y     y  y     @config/config.yml
-      config-double-slash @config//config.yml                          y   -  -   outside deny  deny  ask   ask   allow y  deny  y     y  y     @config/config.yml
-      config-dot-slash    @config/./config.yml                         y   -  -   outside deny  deny  ask   ask   allow y  deny  y     y  y     @config/config.yml
-      case-config-dir     @home/.config/SAMAGOTCHI/config.yml          y   -  -   outside deny  deny  ask   ask   allow y  deny  y     y  y     @config/config.yml
-      case-config-file    @config/CONFIG.YML                           y   -  -   outside deny  deny  ask   ask   allow y  deny  y     y  y     @config/config.yml
-      hooks-dir           @config/hooks/                               y   -  -   outside deny  deny  ask   ask   allow y  deny  y     y  y     @config/hooks
-      hook                @config/hooks/h.rb                           y   -  -   outside deny  deny  ask   ask   allow y  deny  y     y  y     @config/hooks/h.rb
-      case-hooks-dir      @config/HOOKS/h.rb                           y   -  -   outside deny  deny  ask   ask   allow y  deny  y     y  y     @config/hooks/h.rb
-      store               @state/guardrails/approvals.json             y   -  -   outside deny  deny  ask   deny  allow y  deny  y     y  y     @state/guardrails/approvals.json
-      context             @state/context/src.yml                       y   -  -   outside deny  deny  ask   deny  allow y  deny  y     y  y     @state/context/src.yml
-      case-context-dir    @state/CONTEXT/src.yml                       y   -  -   outside deny  deny  ask   deny  allow y  deny  y     y  y     @state/CONTEXT/src.yml
-      state-session       @state/sessions/x.json                       y   -  -   outside deny  deny  ask   allow allow y  deny  -     y  y     @state/sessions/x.json
-      ssh-key             ~/.ssh/id_rsa                                y   -  -   outside deny  deny  ask   allow allow -  deny  -     y  -     @home/.ssh/id_rsa
-      gh-token            @home/.config/gh/hosts.yml                   y   -  -   outside deny  deny  ask   allow allow -  deny  -     y  -     @home/.config/gh/hosts.yml
+      # id                path                                         out in tmp review  read  write child prot  scr   s1 cat   touch rm s1cat rule mprompt parent reals
+      plain               lib/a.rb                                     -   y  -   ok      allow allow allow allow allow -  allow -     y  -     -    -       -      @proj/lib/a.rb
+      absolute            @proj/lib/a.rb                               -   y  -   ok      allow allow allow allow allow -  allow -     y  -     -    -       -      @proj/lib/a.rb
+      dot-slash           ./lib/a.rb                                   -   y  -   ok      allow allow allow allow allow -  allow -     y  -     -    -       -      @proj/lib/a.rb
+      double-slash        @proj//lib/a.rb                              -   y  -   ok      allow allow allow allow allow -  allow -     y  -     -    -       -      @proj/lib/a.rb
+      trailing-slash      lib/                                         -   y  -   ok      allow allow allow allow allow -  allow -     y  -     -    -       -      @proj/lib
+      dotdot-lexical      lib/../README.md                             -   y  -   ok      allow allow allow allow allow -  allow -     y  -     -    -       -      @proj/README.md
+      missing-tail        lib/new.rb                                   -   y  -   ok      allow allow allow allow allow -  allow -     y  -     -    -       -      @proj/lib/new.rb
+      case-tail           LIB/New.rb                                   -   y  -   ok      allow allow allow allow allow -  allow -     y  -     -    -       -      @proj/lib/New.rb
+      dollar-home-literal $HOME/.config/samagotchi/config.yml          -   y  -   ok      allow allow allow allow allow -  deny  y     y  y     -    -       -      @proj/$HOME/.config/samagotchi/config.yml
+      dollar-tmp-literal  $TMPDIR/out.txt                              -   y  -   ok      allow allow allow allow allow -  allow -     -  -     -    -       -      @proj/$TMPDIR/out.txt
+      project-secret      .env                                         -   y  -   secret  deny  deny  allow allow allow -  deny  -     y  -     -    -       -      @proj/.env
+      git-config          .git/config                                  -   y  -   secret  deny  deny  allow allow allow -  deny  -     y  -     -    -       -      @proj/.git/config
+      case-git-dir        .GIT/config                                  -   y  -   secret  deny  deny  allow allow allow -  deny  -     y  -     -    -       -      @proj/.git/config
+      git-hook            .git/hooks/pre-commit                        -   y  -   ok      allow deny  allow allow allow -  allow y     y  -     y    -       -      @proj/.git/hooks/pre-commit
+      hooks-link          hl/pre-commit                                -   y  -   ok      allow deny  allow allow allow -  allow y     y  -     -    -       -      @proj/.git/hooks/pre-commit
+      link-out            node_modules/foo/index.js                    y   -  -   outside allow ask   ask   allow allow -  allow -     y  -     -    -       -      @home/src/foo/index.js
+      link-climb          node_modules/foo/../x.txt                    y   -  -   outside allow ask   ask   allow allow -  allow -     y  -     -    -       -      @proj/node_modules/x.txt,@home/src/x.txt
+      link-climb-secret   node_modules/foo/../../.config/gh/hosts.yml  y   -  -   outside deny  deny  ask   allow allow -  deny  -     y  -     -    -       -      @proj/.config/gh/hosts.yml,@home/.config/gh/hosts.yml
+      dangling            dangling                                     y   -  -   outside allow ask   ask   allow allow -  allow -     y  -     -    -       -      @proj/dangling,@home/elsewhere/new.txt
+      hard-link           hard.txt                                     y   -  -   ok      allow ask   ask   allow allow -  allow -     y  -     -    -       -      @proj/hard.txt
+      sibling-checkout    ../proj-wt/lib/a.rb                          y   -  -   outside allow ask   ask   allow allow -  allow -     y  -     -    -       -      @wt/lib/a.rb
+      home-file           @home/outside.txt                            y   -  -   outside allow ask   ask   allow allow -  allow -     y  -     -    -       -      @home/outside.txt
+      home-dir            ~                                            y   -  -   outside allow ask   ask   allow allow -  allow -     y  -     -    -       -      @home
+      tmp-file            @tmp/out.txt                                 -   -  y   outside allow allow allow allow allow -  allow -     -  -     -    -       -      @tmp/out.txt
+      tmp-as-made         @mktmp/out.txt                               -   -  y   outside allow allow allow allow allow -  allow -     -  -     -    -       -      @tmp/out.txt
+      var-tmp             @vartmp/out.txt                              -   -  y   outside allow allow allow allow allow -  allow -     -  -     -    -       -      @vartmp/out.txt
+      tmp-dir             @tmp                                         -   -  y   outside allow allow allow allow allow -  allow -     -  -     -    -       -      @tmp
+      memory-via-link     mem/notes.md                                 -   -  -   outside deny  deny  allow allow deny  -  deny  y     y  -     -    -       y      @config/memories/notes.md
+      memory              @config/memories/notes.md                    -   -  -   outside deny  deny  allow allow deny  -  deny  y     y  -     -    -       y      @config/memories/notes.md
+      memory-prompt-case  @config/memories/IDENTITY.md                 -   -  -   outside deny  deny  allow allow deny  -  deny  y     y  -     -    y       y      @config/memories/IDENTITY.md
+      bundle              @config/memories/.bundles/x/rules.yml        y   -  -   outside deny  deny  ask   deny  deny  y  deny  y     y  y     -    -       y      @config/memories/.bundles/x/rules.yml
+      link-climb-config   mem/../config.yml                            y   -  -   outside deny  deny  ask   ask   allow y  deny  y     y  y     -    -       y      @proj/config.yml,@config/config.yml
+      config              @config/config.yml                           y   -  -   outside deny  deny  ask   ask   allow y  deny  y     y  y     -    -       y      @config/config.yml
+      config-tilde        ~/.config/samagotchi/config.yml              y   -  -   outside deny  deny  ask   ask   allow y  deny  y     y  y     -    -       y      @config/config.yml
+      config-double-slash @config//config.yml                          y   -  -   outside deny  deny  ask   ask   allow y  deny  y     y  y     -    -       y      @config/config.yml
+      config-dot-slash    @config/./config.yml                         y   -  -   outside deny  deny  ask   ask   allow y  deny  y     y  y     -    -       y      @config/config.yml
+      case-config-dir     @home/.config/SAMAGOTCHI/config.yml          y   -  -   outside deny  deny  ask   ask   allow y  deny  y     y  y     -    -       y      @config/config.yml
+      case-config-file    @config/CONFIG.YML                           y   -  -   outside deny  deny  ask   ask   allow y  deny  y     y  y     -    -       y      @config/config.yml
+      hooks-dir           @config/hooks/                               y   -  -   outside deny  deny  ask   ask   allow y  deny  y     y  y     -    -       y      @config/hooks
+      hook                @config/hooks/h.rb                           y   -  -   outside deny  deny  ask   ask   allow y  deny  y     y  y     -    -       y      @config/hooks/h.rb
+      case-hooks-dir      @config/HOOKS/h.rb                           y   -  -   outside deny  deny  ask   ask   allow y  deny  y     y  y     -    -       y      @config/hooks/h.rb
+      store               @state/guardrails/approvals.json             y   -  -   outside deny  deny  ask   deny  allow y  deny  y     y  y     -    -       y      @state/guardrails/approvals.json
+      context             @state/context/src.yml                       y   -  -   outside deny  deny  ask   deny  allow y  deny  y     y  y     -    -       y      @state/context/src.yml
+      case-context-dir    @state/CONTEXT/src.yml                       y   -  -   outside deny  deny  ask   deny  allow y  deny  y     y  y     -    -       y      @state/CONTEXT/src.yml
+      state-session       @state/sessions/x.json                       y   -  -   outside deny  deny  ask   allow allow y  deny  -     y  y     -    -       -      @state/sessions/x.json
+      ssh-key             ~/.ssh/id_rsa                                y   -  -   outside deny  deny  ask   allow allow -  deny  -     y  -     -    -       -      @home/.ssh/id_rsa
+      gh-token            @home/.config/gh/hosts.yml                   y   -  -   outside deny  deny  ask   allow allow -  deny  -     y  -     -    -       -      @home/.config/gh/hosts.yml
     ROWS
 
     # A case row's plain spelling: on a disk that folds case both name one
@@ -119,12 +128,12 @@ module GuardrailsPathConsistency
 
     # The case rows on a case-sensitive disk: another, missing file.
     EXACT_DISK = <<~ROWS
-      case-tail           LIB/New.rb                                   -   y  -   ok      allow allow allow allow allow -  allow -     y  -     @proj/LIB/New.rb
-      case-git-dir        .GIT/config                                  -   y  -   secret  deny  deny  allow allow allow -  deny  -     y  -     @proj/.GIT/config
-      case-config-dir     @home/.config/SAMAGOTCHI/config.yml          y   -  -   outside allow ask   ask   allow allow -  allow -     y  -     @home/.config/SAMAGOTCHI/config.yml
-      case-config-file    @config/CONFIG.YML                           y   -  -   outside deny  deny  ask   allow allow y  deny  y     y  y     @config/CONFIG.YML
-      case-hooks-dir      @config/HOOKS/h.rb                           y   -  -   outside deny  deny  ask   allow allow y  deny  y     y  y     @config/HOOKS/h.rb
-      case-context-dir    @state/CONTEXT/src.yml                       y   -  -   outside deny  deny  ask   allow allow y  deny  -     y  y     @state/CONTEXT/src.yml
+      case-tail           LIB/New.rb                                   -   y  -   ok      allow allow allow allow allow -  allow -     y  -     -    -       -      @proj/LIB/New.rb
+      case-git-dir        .GIT/config                                  -   y  -   secret  deny  deny  allow allow allow -  deny  -     y  -     -    -       -      @proj/.GIT/config
+      case-config-dir     @home/.config/SAMAGOTCHI/config.yml          y   -  -   outside allow ask   ask   allow allow -  allow -     y  -     -    -       -      @home/.config/SAMAGOTCHI/config.yml
+      case-config-file    @config/CONFIG.YML                           y   -  -   outside deny  deny  ask   allow allow y  deny  y     y  y     -    -       y      @config/CONFIG.YML
+      case-hooks-dir      @config/HOOKS/h.rb                           y   -  -   outside deny  deny  ask   allow allow y  deny  y     y  y     -    -       y      @config/HOOKS/h.rb
+      case-context-dir    @state/CONTEXT/src.yml                       y   -  -   outside deny  deny  ask   allow allow y  deny  -     y  y     -    -       -      @state/CONTEXT/src.yml
     ROWS
 
     # Shell commands (run from @proj): touch, rm, git (Targets#git_dirs, "?"
@@ -159,7 +168,80 @@ module GuardrailsPathConsistency
       git-C-tilde         -     -  @wt           ask   ask   -  -     git -C ~/work/proj-wt commit -m x
       git-C-dollar-home   -     -  @wt           ask   ask   -  -     git -C $HOME/work/proj-wt commit -m x
       git-C-xdg           -     -  @home/.config ask   ask   -  -     git -C $XDG_CONFIG_HOME commit -m x
+      braced-home         y     -  -             deny  allow y  y     cat ${HOME}/.config/samagotchi/config.yml
+      braced-home-write   y     -  -             deny  allow y  -     echo x > ${HOME}/.config/samagotchi/hooks/h.rb
+      xdg-cat             y     -  -             deny  allow y  y     cat $XDG_CONFIG_HOME/samagotchi/config.yml
+      xdg-write           y     -  -             deny  allow y  -     echo x > $XDG_CONFIG_HOME/samagotchi/config.yml
+      xdg-state-cat       y     -  -             deny  allow y  y     cat $XDG_STATE_HOME/samagotchi/guardrails/approvals.json
+      glob-secret         -     -  -             deny  allow -  y     cat ~/.ssh/*
+      var-glob-secret     -     -  -             deny  allow -  y     cat $HOME/.ss*
+      xdg-glob-secret     -     -  -             allow allow -  y     ls $XDG_CONFIG_HOME/g*
+      script-tilde        -     -  -             ask   allow -  -     ruby -e 'File.write("~/out.txt", "x")'
+      text-tilde          -     -  -             ask   allow -  -     cp lib/a.rb "~/my notes.txt"
     ROWS
+
+    # COMMANDS rows with chi's XDG dirs unset (their defaults under @home
+    # are the same dirs).
+    UNSET_XDG = <<~ROWS
+      # id                touch rm git           pair  child s1 rotmp command
+      unset-xdg-cat       y     -  -             deny  allow y  y     cat $XDG_CONFIG_HOME/samagotchi/config.yml
+      unset-xdg-state     y     -  -             deny  allow y  y     cat $XDG_STATE_HOME/samagotchi/guardrails/approvals.json
+      unset-xdg-git       -     -  @home/.config ask   ask   -  -     git -C $XDG_CONFIG_HOME commit -m x
+    ROWS
+
+    # COMMANDS rows with a call env: (Targets#shell_envs: chi's own env and
+    # the call's both count), its JSON after the id.
+    ENV_COMMANDS = <<~ROWS
+      # id                env                              touch rm git pair  child s1 rotmp command
+      env-home            {"HOME":"@proj"}                 y     -  -   deny  allow y  y     cat ~/.config/samagotchi/config.yml
+      env-home-climb      {"HOME":"@home/work"}            y     -  -   allow allow y  y     cat ~/../.config/samagotchi/config.yml
+      env-xdg-state       {"XDG_STATE_HOME":"@proj"}       y     -  -   deny  allow y  y     cat $XDG_STATE_HOME/samagotchi/guardrails/approvals.json
+      env-home-rm         {"HOME":"@tmp"}                  -     y  -   ask   allow -  -     rm -rf ~/junk
+    ROWS
+
+    # A path judged for a session rooted at +root+ (ROOTS): out/in/tmp
+    # Outside on each Targets#paths entry (any / all / all), rotmp
+    # Targets#read_only_but_tmp_writes? of `echo x > PATH`, rm
+    # #rm_outside_tmp? of `rm -rf PATH`, touch #touches_chi? of `cat PATH`,
+    # each from a Context in +root+.
+    ROOT_COLUMNS = %w[out in tmp rotmp rm touch].freeze
+
+    ROOTS = <<~ROWS
+      # id                root                path                                  out in tmp rotmp rm touch
+      tmp-session-own     @tmpsess            @tmpsess/x.txt                        -   y  -   -     y  -
+      tmp-session-sibling @tmpsess            @tmp/other/x.txt                      y   -  -   -     y  -
+      tmp-session-hooks   @tmpsess            @tmp/other/.git/hooks/pre-commit      y   -  -   -     y  -
+      tmp-hooks           @proj               @tmp/r/.git/hooks/pre-commit          -   -  y   y     -  -
+      tmp-root            @proj               @tmproot                              -   -  y   y     y  -
+      missing-root-case   @home/work/NEWPROJ  @home/work/newproj/x.rb               y   -  -   -     y  -
+    ROWS
+
+    # ReviewPaths.home_root?(ROOT, @home); the case row's answer on a
+    # case-sensitive disk is the second cell.
+    HOME_ROOTS = <<~ROWS
+      # id                root                answer exact
+      home                @home               y      y
+      home-slash          @home/              y      y
+      above-home          @home/..            y      y
+      disk-root           /                   y      y
+      project             @proj               -      -
+      home-case           @base/HOME          y      -
+    ROWS
+
+    # A hooks dir configured (config.yml hooks.hooks_dir) outside the config
+    # dir, @home/chi-hooks: what each surface answers for @home/chi-hooks/h.rb
+    # (read/cat PairBoundary, secret ReviewPaths#secret?, touch, parent, s1,
+    # s1cat as in PATHS).
+    HOOKS_OUT = { "read" => "allow", "cat" => "allow", "secret" => "-", "touch" => "y", "parent" => "y", "s1" => "y",
+                  "s1cat" => "y" }.freeze
+
+    # Rows whose answer a decided change (the path-primitives plan's P2)
+    # will change, or a decision keeps: "kept: …" with the question.
+    NOTES = {
+      "xdg-glob-secret" => "kept: P2 Q2: PairCommand#unresolved_secret? expands only ~ and $HOME, so the glob's fixed part is empty",
+      "missing-root-case" => "kept: P2 Q3: Outside compares a session root that doesn't exist in exact case; fold only once it exists",
+      "hooks-out" => "kept: P2 Q4: ReviewPaths.chi_dirs is the state and config dir, not a hooks dir configured elsewhere"
+    }.freeze
 
     def self.rows(text, columns)
       text.lines.map(&:strip).reject { |line| line.empty? || line.start_with?("#") }.to_h do |line|
@@ -178,9 +260,33 @@ module GuardrailsPathConsistency
       end
     end
 
+    def self.env_commands(text)
+      text.lines.map(&:strip).reject { |line| line.empty? || line.start_with?("#") }.to_h do |line|
+        id, env, *cells = line.split(/\s+/, 9)
+        [id, { "env" => env, **commands("#{id} #{cells.join(" ")}").fetch(id) }]
+      end
+    end
+
+    def self.roots(text)
+      text.lines.map(&:strip).reject { |line| line.empty? || line.start_with?("#") }.to_h do |line|
+        id, root, path, *cells = line.split
+        raise "#{id}: #{cells.size} cells, not #{ROOT_COLUMNS.size}" unless cells.size == ROOT_COLUMNS.size
+
+        [id, { "root" => root, "path" => path, **ROOT_COLUMNS.zip(cells).to_h }]
+      end
+    end
+
     PATH_ROWS = rows(PATHS, PATH_COLUMNS)
     EXACT_ROWS = rows(EXACT_DISK, PATH_COLUMNS)
     COMMAND_ROWS = commands(COMMANDS)
+    UNSET_XDG_ROWS = commands(UNSET_XDG)
+    ENV_ROWS = env_commands(ENV_COMMANDS)
+    ROOT_ROWS = roots(ROOTS)
+    HOME_ROOT_ROWS = rows(HOME_ROOTS, %w[answer exact])
+
+    # The guardrails bundle's git-hooks-write rule (its rules.yml).
+    HOOKS_RULE = G::Rules.parse([{ "id" => "git-hooks-write", "tool" => %w[write edit], "path" => "**/.git/hooks/**",
+                                   "verdict" => "deny", "reason" => "git hooks run code" }], source: "spec").first
 
     # Invariants between the surfaces, over PATH_ROWS' answers (+a+, +id+).
     # Each lists the rows it doesn't hold for: "kept: …" on purpose, "BUG: …" a
@@ -221,11 +327,16 @@ module GuardrailsPathConsistency
       ],
       "a cat of chi's files touches chi, and System 1 refuses it but for the memories" => [
         ->(a, id) { literal?(id) || a["touch"] == "-" || a["s1cat"] == "y" || a["scr"] == "deny" },
-        { "git-hook" => "kept: touches_chi? counts the repo's .git/hooks, System 1 only chi's own files" }
+        { "git-hook" => "kept: touches_chi? counts the repo's .git/hooks, System 1 only chi's own files",
+          "hooks-link" => "kept: touches_chi? counts the repo's .git/hooks, System 1 only chi's own files" }
       ],
       "a memory file ScratchWrites denies touches chi and is a secret to a pair turn" => [
         ->(a) { a["scr"] == "allow" || (a["touch"] == "y" && a["read"] == "deny" && a["cat"] == "deny") },
         {}
+      ],
+      "a write that lands in a .git/hooks dir matches the git-hooks-write rule's path: glob" => [
+        ->(a) { a["rule"] == "y" || a["reals"].split(",").none? { |real| real.match?(G::ShellPaths::HOOKS_PART) } },
+        { "hooks-link" => "kept: P2 Q1: a rule's path: glob matches Targets#paths, not the paths as they resolve" }
       ]
     }.freeze
 
@@ -248,7 +359,9 @@ module GuardrailsPathConsistency
       home = File.join(@base, "home")
       @dirs = { "home" => home, "proj" => File.join(home, "work", "proj"), "wt" => File.join(home, "work", "proj-wt"),
                 "config" => File.join(home, ".config", "samagotchi"), "state" => File.join(home, ".local", "state", "samagotchi"),
-                "tmp" => File.realpath(@mktmp), "mktmp" => @mktmp, "vartmp" => @vartmp }
+                "tmp" => File.realpath(@mktmp), "mktmp" => @mktmp, "vartmp" => @vartmp, "base" => @base,
+                "tmproot" => tmp_root }
+      @dirs["tmpsess"] = File.join(dir("tmp"), "sess")
       build_fixture
       @folds = File.exist?(File.join(@base, "HOME"))
       @git = G::GitInfo.new
@@ -258,6 +371,13 @@ module GuardrailsPathConsistency
         @cd_answers = PATH_ROWS.to_h { |id, row| [id, cd_answers(expand(row["path"]))] }
         @command_answers = COMMAND_ROWS.to_h { |id, row| [id, command_answers(row["command"])] }
         @xdg_git_dirs = targets({ name: "execute", content: "git -C $XDG_CONFIG_HOME commit -m x" }).git_dirs
+        @env_answers = ENV_ROWS.to_h { |id, row| [id, command_answers(row["command"], env: row["env"])] }
+        @root_answers = ROOT_ROWS.to_h { |id, row| [id, root_answers(expand(row["root"]), expand(row["path"]))] }
+        @home_roots = HOME_ROOT_ROWS.to_h { |id, row| [id, yn(G::ReviewPaths.home_root?(expand(row["path"]), dir("home")))] }
+        @hooks_out = hooks_out_answers
+      end
+      with_env("HOME" => home, "XDG_CONFIG_HOME" => nil, "XDG_STATE_HOME" => nil, "TMPDIR" => dir("tmp")) do
+        @unset_answers = UNSET_XDG_ROWS.to_h { |id, row| [id, command_answers(row["command"])] }
       end
     end
 
@@ -292,12 +412,14 @@ module GuardrailsPathConsistency
       File.symlink(File.join(home, "elsewhere", "new.txt"), File.join(proj, "dangling"))
       File.link(File.join(home, "outside.txt"), File.join(proj, "hard.txt"))
       File.symlink(memories, File.join(proj, "mem"))
+      File.symlink(File.join(proj, ".git", "hooks"), File.join(proj, "hl"))
+      FileUtils.mkdir_p([dir("tmpsess"), File.join(dir("tmp"), "other")])
     end
 
     # --- the surfaces, as the wiring builds them for a session in @proj ------
 
-    def context = G::Context.new(cwd: dir("proj"), git: @git)
-    def targets(call) = G::Targets.for(call, context)
+    def context(root = dir("proj")) = G::Context.new(cwd: root, git: @git)
+    def targets(call, root = dir("proj")) = G::Targets.for(call, context(root))
 
     def label(check, call)
       verdict = G::Verdict.new(call: call)
@@ -355,6 +477,8 @@ module GuardrailsPathConsistency
         "cat" => label(pair, cat), "touch" => yn(targets(cat).touches_chi?),
         "rm" => yn(targets({ name: "execute", content: "rm -rf #{path}" }).rm_outside_tmp?),
         "s1cat" => yn(s1_command(cat[:content], cat)),
+        "rule" => yn(HOOKS_RULE.matches?(targets(write))), "mprompt" => yn(targets(write).prompt_memory?),
+        "parent" => yn(G::ParentApprovals.chi_files?({ paths: paths })),
         "reals" => paths.flat_map { |p| G::ProtectedPaths.reals(p) }.uniq.map { |p| tokens(p) }.join(",")
       }
     end
@@ -366,14 +490,48 @@ module GuardrailsPathConsistency
       { "cat" => label(pair, call), "touch" => yn(targets(call).touches_chi?), "s1cat" => yn(s1_command(command, call)) }
     end
 
-    # The COMMANDS cells for +command+ (unexpanded).
-    def command_answers(command)
+    # The COMMANDS cells for +command+ (unexpanded), with the call's +env+
+    # (JSON, unexpanded) when given.
+    def command_answers(command, env: nil)
       call = { name: "execute", content: expand(command) }
+      call[:env] = expand(env) if env
       t = targets(call)
       git = t.git_dirs.map { |d| d == :unknown ? "?" : tokens(d.to_s) }
       { "touch" => yn(t.touches_chi?), "rm" => yn(t.rm_outside_tmp?), "git" => git.empty? ? "-" : git.join(","),
         "pair" => label(pair, call), "child" => label(child, call), "s1" => yn(s1_command(call[:content], call)),
         "rotmp" => yn(t.read_only_but_tmp_writes?(root: dir("proj"))), "command" => command }
+    end
+
+    # The ROOT_COLUMNS cells for +path+ in a session rooted at +root+ (both
+    # expanded).
+    def root_answers(root, path)
+      paths = G::Targets.absolutes(path, root)
+      {
+        "out" => yn(paths.any? { |p| G::Outside.outside?(p, root: root) }),
+        "in" => yn(paths.all? { |p| G::Outside.inside?(p, root: root) }),
+        "tmp" => yn(paths.all? { |p| G::Outside.tmp_write?(p, root: root) }),
+        "rotmp" => yn(targets({ name: "execute", content: "echo x > #{path}" }, root).read_only_but_tmp_writes?(root: root)),
+        "rm" => yn(targets({ name: "execute", content: "rm -rf #{path}" }, root).rm_outside_tmp?),
+        "touch" => yn(targets({ name: "execute", content: "cat #{path}" }, root).touches_chi?)
+      }
+    end
+
+    # HOOKS_OUT's cells: config.yml points hooks.hooks_dir at @home/chi-hooks
+    # for these, then is put back.
+    def hooks_out_answers
+      config = File.join(dir("config"), "config.yml")
+      hooks = File.join(dir("home"), "chi-hooks")
+      FileUtils.mkdir_p(hooks)
+      path = File.join(hooks, "h.rb")
+      File.write(path, "h\n")
+      File.write(config, "hooks:\n  hooks_dir: #{hooks}\n")
+      cat = { name: "execute", content: "cat #{path}" }
+      { "read" => label(pair, { name: "read", content: path }), "cat" => label(pair, cat),
+        "secret" => yn(G::ReviewPaths.new(root: dir("proj"), home: dir("home")).secret?(path)),
+        "touch" => yn(targets(cat).touches_chi?), "parent" => yn(G::ParentApprovals.chi_files?({ paths: [path] })),
+        "s1" => yn(S1.refuse?({ "tool" => "write", "paths" => [path] })), "s1cat" => yn(s1_command(cat[:content], cat)) }
+    ensure
+      File.write(config, "{}\n")
     end
 
     def expected(id) = (!@folds && EXACT_ROWS[id]) || PATH_ROWS.fetch(id)
@@ -444,6 +602,32 @@ module GuardrailsPathConsistency
 
     it "holds: git -C $XDG_CONFIG_HOME is resolved as the cd walk resolves it (ShellPaths.expand_word)" do
       expect(@xdg_git_dirs).to eq([File.dirname(dir("config"))])
+    end
+
+    it "lists notes only for rows the tables have" do
+      ids = [PATH_ROWS, COMMAND_ROWS, UNSET_XDG_ROWS, ENV_ROWS, ROOT_ROWS, HOME_ROOT_ROWS].flat_map(&:keys) + ["hooks-out"]
+      expect(ids).to include(*NOTES.keys)
+      expect(NOTES.values).to all(start_with("kept: "))
+    end
+
+    it "answers every command with chi's XDG dirs unset as the table says (their defaults)" do
+      UNSET_XDG_ROWS.each { |id, row| expect(@unset_answers.fetch(id)).to eq(row), id }
+    end
+
+    it "answers every command with a call env: as the table says" do
+      ENV_ROWS.each { |id, row| expect(@env_answers.fetch(id)).to eq(row.except("env")), id }
+    end
+
+    it "answers every path for its session root as the table says" do
+      ROOT_ROWS.each { |id, row| expect(@root_answers.fetch(id)).to eq(row.except("root", "path")), id }
+    end
+
+    it "answers ReviewPaths.home_root? as the table says" do
+      HOME_ROOT_ROWS.each { |id, row| expect(@home_roots.fetch(id)).to eq(row[@folds ? "answer" : "exact"]), id }
+    end
+
+    it "answers a hooks dir configured outside the config dir as HOOKS_OUT says" do
+      expect(@hooks_out).to eq(HOOKS_OUT)
     end
   end
 end
