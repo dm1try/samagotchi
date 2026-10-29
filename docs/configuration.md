@@ -1399,6 +1399,30 @@ launches it. It is recorded in `~/.config/samagotchi/home.json` (`$XDG_CONFIG_HO
   (`log.file`) and exits, rather than leave the spawner waiting.
 - Each machine has its own home (a remote's is that machine's).
 
+### Checking it: chi home doctor
+
+`chi home doctor` prints one row per check, `ok`, `warn` or `fail`, each with what to run; it exits 1 when a row
+fails (a launch can't boot what it should), 0 otherwise. Run it in a project folder to check that project too.
+
+| Row | When | What to run |
+|---|---|---|
+| the home | `fail`: its Ruby is gone (a Ruby upgrade) or has no samagotchi | `gem install samagotchi` with the new Ruby, then `chi home set` from it |
+| this chi | `warn`: the chi you ran is another Ruby's, or another version, than the home's (`ok` for a source checkout, which starts its own code) | `chi home set` to make this one the home, or run the home's |
+| the desktop helper | `fail`: its launch file's Ruby or chi is gone; `warn`: it runs `[ruby, chi]` (installed before the home), boots the home as it was before a `chi home set`, or sets `GEM_HOME`/`GEM_PATH` | `chi desktop install --force` / `chi desktop upgrade` |
+| sessions | `warn`: sessions last saved by a newer chi than the home's (their workers run without what it added) | `chi update` |
+| the tools' `chi` | `warn`: `$XDG_STATE_HOME/samagotchi/bin/chi` boots another chi than the home | the next worker start rewrites it (`chi sessions restart ID` for a running session) |
+| this project's Gemfile.lock | `warn`: the nearest Gemfile.lock up to the git root bundles samagotchi (`bundle exec chi` isn't supported) | `bundle remove samagotchi` there; run chi itself |
+| mise | `ok` with the mise found; without one, `warn` when `session.project_env: mise` is set explicitly (`ok` for the default) | install mise, or `session.project_env: off` |
+| the last worker here | `warn`: the newest worker record for this folder in the debug log is a `project_env` warning (an untrusted mise.toml, a timeout) | `mise trust` there (or fix what it says), then `chi sessions restart ID` |
+
+The rows after the home's first one need a home that can boot chi; the last three are checked with or without one.
+
+**The notice.** An installed chi run by a person at a terminal (stdin and stderr TTYs) on another Ruby, or another
+version, than the home's prints one dim line on stderr, at most once a day: `chi 0.131.0 on /x/bin/ruby; the chi home
+is /y/bin/ruby (chi 0.132.0) (chi home doctor)`. Never inside a session's tools, for `--json`, `--format json`,
+`--non-interactive`, `--version`, `--help`, `chi home`, `chi update` or `chi self`, from a source checkout, or in a
+test run (`SAMAGOTCHI_ENV`, `RACK_ENV`, `CI`). The day is stamped in `$XDG_STATE_HOME/samagotchi/home_noticed`.
+
 ## Project specific description
 
 If an AGENTS.md file is present in the project root, samagotchi injects its

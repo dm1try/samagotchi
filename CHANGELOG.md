@@ -21,6 +21,12 @@ and commands may change between minor versions. How releases are made:
   mise's config (the owner's next worker start runs it), ask the owner; `.envrc` and mise's local files are secrets,
   as `.env` is.
 - Bundles: mcp 0.7.3 starts its servers in the session's project env.
+- `chi home doctor` checks what should follow the chi home, one row each with `ok`/`warn`/`fail` and the command to
+  run: the chi you ran, the desktop helper's launch file (`chi desktop upgrade`), sessions saved by a newer chi than
+  the home's, the tools' `chi` script, a Gemfile.lock in this project that bundles samagotchi, mise, and the last
+  worker's `project_env` warning in this folder (e.g. `mise trust`). See docs/configuration.md (Checking it).
+- A chi run at a terminal on another Ruby than the chi home's says so in one dim line, at most once a day
+  (`chi X on <ruby>; the chi home is <ruby> (chi Y) (chi home doctor)`).
 
 ## [0.132.0] - 2026-10-29
 

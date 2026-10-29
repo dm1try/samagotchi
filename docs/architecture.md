@@ -184,6 +184,12 @@ returns `DYLD_*`/`LD_*`/`RUBYOPT`/`RUBYLIB`/`RUBYGEMS_*`/`BUNDLE*` only as unset
 worker's env. Specs never reach a real mise: `SAMAGOTCHI_MISE_CLI` (only that path when set) points at a missing
 file. User side: [sessions.md](sessions.md#project-env).
 
+**Checking it.** `chi home doctor` (`HomeDoctor`) reads home.json and what should follow it, each condition's text
+from its owner: `ChiHome.problem`, `HomeNotice.mismatch` (also the once-a-day notice `bin/chi` prints at a TTY on
+another Ruby), `Desktop::MacOS#launch_problem` / `#home_problem`, `ChiShim.problem`, `ProjectEnv::NO_MISE` and
+`ProjectEnv.last_warning` (the newest `project_env` / `project_env_applied` record for the folder, from the debug
+log's last 4 MB). Rows: [configuration.md](configuration.md#checking-it-chi-home-doctor).
+
 ## Session retention & ordering
 
 - **Files:** `~/.local/state/samagotchi/sessions/<uuid>.json` + `<uuid>/input|output|owner.lock|bridge.json` (XDG-aware), and the `<uuid>/stopped` and `<uuid>/archived` marker files.

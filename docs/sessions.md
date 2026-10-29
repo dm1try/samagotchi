@@ -412,7 +412,8 @@ mise.toml pins Ruby 3.4 gets that `ruby`, `gem` and `bundle` in its tools while 
   goes first on the tools' PATH); a session without a folder (`none (no_dir)`); no `mise` (looked up as home.json's `mise`, then PATH, then
   `/opt/homebrew/bin`, `/usr/local/bin`, `~/.local/bin`); the session's folder is gone (the worker runs elsewhere).
   A `mise env` that fails (an untrusted mise.toml: run `mise trust` there; a pinned Ruby not installed), takes over
-  5 s or doesn't answer JSON changes nothing and leaves one `project_env` warning in the debug log.
+  5 s or doesn't answer JSON changes nothing and leaves one `project_env` warning in the debug log; `chi home doctor`
+  run in that folder shows it, with the fix, until a later worker there applies the env.
 - `chi self` run in a tool shows what the worker computed (`project env`: `mise (ruby PATH)` or `none (why)`) and the
   chi home (`home`).
 - The REPL modes (`--no-shared`, `--non-interactive`, `--verbose`) run no worker: their tools keep the shell's env.

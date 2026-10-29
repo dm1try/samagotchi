@@ -300,7 +300,8 @@ exports. So `install` writes `~/Library/Application Support/Chi Helper/launch.js
   whose chi may be found only through them, as under chruby): the home's boot sets its gem path itself, and they
   would reach every command the helper's sessions run (a project's `bundle exec` on the wrong gems). A launch file
   from an older chi loses `RUBYLIB` at the next `chi update`, and `GEM_HOME`/`GEM_PATH` once it boots the chi home
-  (`chi desktop upgrade` moves it to the home);
+  (`chi desktop upgrade` moves it to the home). `chi home doctor` flags a helper that isn't on the home: a
+  `[ruby, chi]` argv, a boot of the home as it was before a `chi home set`, or `GEM_HOME`/`GEM_PATH` in its env;
 - `PATH`: the shell's PATH when the file is written, with only absolute folders, in order, each once. The helper's
   chi, the sessions it starts and their `execute` commands can find the tools your terminal finds (mise, Homebrew,
   `codex`, `node`);
