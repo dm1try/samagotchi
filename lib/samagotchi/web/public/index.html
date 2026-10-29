@@ -1145,6 +1145,20 @@ body.has-session.composer-folded #infoBar{border-top-color:transparent}
 .start-settings.sheet{border-radius:14px;padding:14px 16px}
 @media(max-width:400px){.ss-row{flex-direction:column;gap:4px}.ss-label{flex:none;line-height:1.4}.ss-more,.ss-ctx-form{margin-left:0}}
 @media(pointer:coarse){.ss-seg button{height:36px;min-height:36px;line-height:34px;padding:0 12px;font-size:13px}.ss-link,.ss-back{min-height:36px}.ss-label{line-height:36px}}
+/* The start page's 🧰 list (start_toolkit.js): a row per kit (a check, its name, a muted detail), the checked one accent; a bottom sheet on a phone. */
+.start-toolkit{gap:8px}
+.start-toolkit .ctx-pop-head strong{font-family:inherit}
+.st-rows{display:flex;flex-direction:column;gap:2px;margin:0 -6px}
+.st-row{display:flex;align-items:baseline;gap:8px;width:100%;min-height:30px;padding:5px 8px 5px 6px;border:1px solid transparent;border-radius:8px;background:transparent;color:var(--text-2);font-size:13px;text-align:left}
+.st-row:hover{filter:none;color:var(--text);background:var(--bg-hover)}
+.st-row[aria-pressed="true"]{color:var(--accent);background:var(--accent-bg);border-color:var(--accent-border)}
+.st-row:focus-visible{outline:2px solid var(--accent);outline-offset:-1px}
+.st-check{flex:0 0 14px;text-align:center}
+.st-name{flex:none;font-weight:600}
+.st-detail{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text-muted);font-size:12px}
+.start-toolkit.sheet{border-radius:14px;padding:14px 16px}
+.start-toolkit.sheet .st-detail{white-space:normal}
+@media(pointer:coarse){.st-row{min-height:40px;align-items:center}}
 .rs-form{display:flex;flex-direction:column;gap:6px;margin-top:6px}
 .rs-form textarea{width:100%;resize:vertical;min-height:52px;font-family:ui-monospace,monospace;font-size:12px;color:var(--text);background:var(--bg-inset);border:1px solid var(--border-strong);border-radius:6px;padding:6px 8px}
 .rs-form textarea:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-ring)}
@@ -1633,8 +1647,10 @@ a{color:var(--accent)}
           <button type="button" id="thinkingNew" class="llmctx-new think-new" aria-haspopup="dialog" hidden></button>
           <button type="button" id="llmContextNew" class="llmctx-new" aria-haspopup="dialog" hidden></button>
           <button type="button" id="reviewNew" class="llmctx-new review-new" aria-haspopup="dialog" hidden></button>
+          <button type="button" id="toolkitNew" class="llmctx-new toolkit-new" aria-haspopup="dialog" hidden></button>
           <button id="cancelBtn" title="Cancel the running turn, whoever sent it" style="display:none">Stop turn</button>
           <button type="button" id="settingsNew" class="icon-btn settings-btn" title="Session settings" aria-label="Session settings" aria-haspopup="dialog" hidden></button>
+          <button type="button" id="toolkitBtn" class="icon-btn toolkit-btn" title="Toolkit" aria-label="Toolkit" aria-haspopup="dialog" hidden></button>
           <button type="button" id="attachBtn" class="attach-btn" title="Add images (or paste or drop them here)" aria-label="Add images" hidden></button>
           <input type="file" id="attachInput" accept="image/*" multiple hidden>
           <div class="split">

@@ -24,6 +24,7 @@ const PAYLOAD = {
     { name: "qwen", id: "qwen", thinking: THINKING, llm_context: LLM_CONTEXT },
     { name: "openrouter:vendor/model:Q4", host: "openrouter", id: "vendor/model:Q4" },
   ],
+  toolkits: { default: "full", suggest: "on", kits: [{ name: "full" }, { name: "lean" }] },
 };
 
 // A fresh chain link's state (chains.js freshLink): it continues one, no turn yet.
@@ -43,7 +44,8 @@ function page(t, { listModels = async () => PAYLOAD, stored = null, run = async 
   document.body.innerHTML = `<div id="center"><div id="composer"><div id="modelPanel" hidden><input id="modelSearch"
     ><div id="modelList"></div></div><button id="modelPick" hidden><span class="model-pick-name"></span></button
     ><button id="thinkingNew" hidden></button><button id="llmContextNew" hidden></button
-    >${review ? `<button id="reviewNew" hidden></button>` : ""}<button id="settingsNew" hidden></button></div></div>`;
+    >${review ? `<button id="reviewNew" hidden></button>` : ""}<button id="toolkitNew" hidden></button><button id="settingsNew" hidden></button
+    ><button id="toolkitBtn" hidden></button></div></div>`;
   const $ = (sel) => document.querySelector(sel);
   const world = { selected: null, state: {}, running: false, sessions: [] };
   const toasts = [];
@@ -53,7 +55,7 @@ function page(t, { listModels = async () => PAYLOAD, stored = null, run = async 
   const startPage = createStartPage({
     pickEl: $("#modelPick"), panelEl: $("#modelPanel"), searchEl: $("#modelSearch"), listEl: $("#modelList"),
     composerEl: $("#composer"), centerEl: $("#center"), settingsEl: $("#settingsNew"), llmContextEl: $("#llmContextNew"),
-    thinkingEl: $("#thinkingNew"), reviewEl: $("#reviewNew"),
+    thinkingEl: $("#thinkingNew"), reviewEl: $("#reviewNew"), toolkitBtnEl: $("#toolkitBtn"), toolkitEl: $("#toolkitNew"),
     selected: () => world.selected,
     state: () => world.state,
     running: () => world.running,
@@ -75,6 +77,10 @@ function page(t, { listModels = async () => PAYLOAD, stored = null, run = async 
     button: $("#modelPick"), name: () => $(".model-pick-name").textContent,
     llmChip: $("#llmContextNew"), thinkChip: $("#thinkingNew"), reviewChip: $("#reviewNew"), gear: $("#settingsNew"),
     panel: () => document.getElementById("startSettingsPopover"),
+    kitBtn: $("#toolkitBtn"), kitChip: $("#toolkitNew"),
+    kitList: () => document.getElementById("startToolkitPopover"),
+    // A click on the 🧰 list's row for +value+.
+    kit: (value) => document.querySelector(`#startToolkitPopover [data-act="kit:${value}"]`).click(),
     // A click on the panel's button whose data-act is +act+.
     act: (act) => document.querySelector(`#startSettingsPopover [data-act="${act}"]`).click(),
   };
@@ -232,7 +238,8 @@ test("a command_ran while the pick is in flight: its ack syncs the button then",
 test("the new session's choices: sent with the create, then cleared; opening a session drops them", async (t) => {
   const p = page(t, { stored: "qwen" });
   await p.startPage.loadModels();
-  assert.deepEqual(p.startPage.newChoices(), { llm_context: undefined, thinking: undefined, review: undefined });
+  assert.deepEqual(p.startPage.newChoices(), { llm_context: undefined, thinking: undefined, review: undefined,
+                                               toolkit: undefined });
   p.gear.click();
   p.act("think:high");
   // A pick applies at once, the panel stays open, the focus stays in it.
@@ -334,4 +341,62 @@ test("without the models list ⚙ holds the review files only; without those eit
   const bare = page(t, { listModels: failing, review: false });
   await bare.startPage.loadModels();
   assert.equal(bare.gear.hidden, true);
+});
+
+test("🧰: a kit picked is sent with the create, its chip and dot show; cleared after, dropped on opening a session", async (t) => {
+  const p = page(t);
+  assert.equal(p.kitBtn.hidden, true); // until the list is in
+  await p.startPage.loadModels();
+  assert.equal(p.kitBtn.hidden, false);
+  assert.equal(p.kitChip.hidden, true);
+  assert.equal(p.kitBtn.getAttribute("aria-label"), "Toolkit");
+  p.kitBtn.click();
+  assert.equal(document.activeElement.dataset.act, "kit:auto"); // Auto, checked
+  p.kit("lean");
+  assert.equal(p.kitList().hidden, true); // a pick closes it
+  assert.ok(document.activeElement === p.kitBtn);
+  assert.equal(p.startPage.newChoices().toolkit, "lean");
+  assert.equal(p.kitChip.hidden, false);
+  assert.equal(p.kitChip.textContent, "tools: lean");
+  assert.equal(p.kitBtn.classList.contains("set"), true);
+  assert.equal(p.kitBtn.getAttribute("aria-label"), "Toolkit: lean");
+  assert.equal(p.focused(), 0);
+  // The chip opens the list again; Auto sends nothing.
+  p.kitChip.click();
+  assert.equal(p.kitList().hidden, false);
+  p.kit("auto");
+  assert.equal(p.startPage.newChoices().toolkit, undefined);
+  assert.equal(p.kitChip.hidden, true);
+  p.kitBtn.click();
+  p.kit("full");
+  p.startPage.clearChoices();
+  assert.equal(p.startPage.newChoices().toolkit, undefined);
+  assert.equal(p.kitBtn.classList.contains("set"), false);
+  p.kitBtn.click();
+  p.kit("lean");
+  p.kitBtn.click();
+  p.world.selected = "s1";
+  p.startPage.dropChoices();
+  assert.equal(p.startPage.newChoices().toolkit, undefined);
+  assert.equal(p.kitList().hidden, true);
+});
+
+test("🧰 is hidden without the payload's toolkits; Start's refusal of a picked kit opens the list with its words", async (t) => {
+  const failing = async () => { throw Object.assign(new Error("boom"), { status: 500 }); };
+  const down = page(t, { listModels: failing });
+  await down.startPage.loadModels();
+  assert.equal(down.kitBtn.hidden, true);
+  const old = page(t, { listModels: async () => ({ ...PAYLOAD, toolkits: undefined }) });
+  await old.startPage.loadModels();
+  assert.equal(old.kitBtn.hidden, true);
+  assert.equal(old.startPage.toolkitRefused("broken"), false);
+  const p = page(t);
+  await p.startPage.loadModels();
+  assert.equal(p.startPage.toolkitRefused("broken default"), false); // nothing picked: config's default, the alert
+  p.kitBtn.click();
+  p.kit("lean");
+  assert.equal(p.startPage.toolkitRefused("toolkit.kits.lean: bad groups"), true);
+  assert.equal(p.kitList().hidden, false);
+  assert.equal(p.kitList().querySelector(".ctx-pop-error").textContent, "toolkit.kits.lean: bad groups");
+  assert.equal(p.startPage.newChoices().toolkit, "lean"); // a failed create keeps it
 });

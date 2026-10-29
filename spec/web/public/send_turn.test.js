@@ -15,7 +15,7 @@ function failure(code, message = "boom", body = null) {
 
 // +sendTurn+ / +createIdleSession+: the data.js stand-ins (each call logged).
 function harness({ open = "s1", text = "hello", chips = [], state = {}, running = false, pendingPick = null, reviewSubjects = null,
-                   verify = null, sendTurn = async () => ({ enqueued_id: "e1" }),
+                   verify = null, toolkitPicked = false, sendTurn = async () => ({ enqueued_id: "e1" }),
                    createIdleSession = async () => ({ id: "new1" }) } = {}) {
   const world = { selected: open, state: { owner: "worker", commands: [], firstPreview: "first", ...state }, chips };
   const log = [];
@@ -51,6 +51,7 @@ function harness({ open = "s1", text = "hello", chips = [], state = {}, running 
       clearChoices: () => log.push("clearChoices"),
       ...(reviewSubjects ? { reviewSubjects: () => reviewSubjects,
                              reviewRefused: (message) => { log.push(["reviewRefused", message]); return true; } } : {}),
+      toolkitRefused: (message) => { log.push(["toolkitRefused", message]); return toolkitPicked; },
     },
     takeDelivery: () => null,
     composer: {
@@ -141,6 +142,16 @@ test("the start page: a refused review file is said in the review form, not an a
     await h.send();
     assert.deepEqual(h.log, [["reviewRefused", ".env can't be a review subject"]], text);
   }
+});
+
+test("the start page: a refused kit is said in the 🧰 list when one was picked, else an alert (config's default)", async () => {
+  const refusal = Object.assign(new Error("toolkit.kits.web: bad groups"), { code: "toolkit_refused" });
+  const picked = harness({ open: null, toolkitPicked: true, createIdleSession: async () => { throw refusal; } });
+  await picked.send();
+  assert.deepEqual(picked.log, [["toolkitRefused", "toolkit.kits.web: bad groups"]]);
+  const none = harness({ open: null, createIdleSession: async () => { throw refusal; } });
+  await none.send();
+  assert.deepEqual(none.log, [["toolkitRefused", "toolkit.kits.web: bad groups"], ["alert", "toolkit.kits.web: bad groups"]]);
 });
 
 test("the start page's own reply is a notice; nothing is made or sent", async () => {

@@ -1297,7 +1297,7 @@ test("the info bar: copy chi --attach copies the full id, delete removes the ses
   await expect(page.locator("#actionBtn")).toHaveText("Start");
 });
 
-test("the start page's ⚙ panel starts the new session under the thinking and strategy picked; they are not kept for the next one", async ({ page, script }) => {
+test("the start page's ⚙ panel and 🧰 list start the new session under the thinking, strategy and kit picked; they are not kept for the next one", async ({ page, script }) => {
   script("plain");
   const gear = page.locator("#settingsNew");
   const chip = page.locator("#llmContextNew");
@@ -1324,19 +1324,33 @@ test("the start page's ⚙ panel starts the new session under the thinking and s
   await page.keyboard.press("Escape");
   await expect(pop).toBeHidden();
   await expect(gear).toBeFocused();
+  // 🧰: without toolkit.suggest on no Auto row, the default checked; a pick closes the list.
+  const kits = page.locator("#toolkitBtn");
+  const kitList = page.locator("#startToolkitPopover");
+  await kits.click();
+  await expect(kitList.locator(".st-row[aria-pressed=true]")).toContainText("full");
+  await expect(kitList.locator(".st-row[aria-pressed=true]")).toBeFocused();
+  await page.keyboard.press("ArrowDown");
+  await page.keyboard.press("Enter");
+  await expect(kitList).toBeHidden();
+  await expect(kits).toBeFocused();
+  await expect(page.locator("#toolkitNew")).toHaveText("tools: lean");
   const created = page.waitForRequest((r) => r.url().endsWith("/api/sessions") && r.method() === "POST");
 
   await send(page, "Say pong");
-  expect((await created).postDataJSON()).toMatchObject({ thinking: "low", llm_context: { strategy: "stale" } });
+  expect((await created).postDataJSON()).toMatchObject({ thinking: "low", llm_context: { strategy: "stale" },
+                                                         toolkit: "lean" });
   await turnEnded(page, 1);
   await expect(chip).toBeHidden();
   await expect(gear).toBeHidden();
+  await expect(kits).toBeHidden();
   await expect(page.locator("#infoBar .llmctx-chip")).toHaveText("llm ctx stale · session");
   await expect(page.locator("#infoBar .think-chip")).toHaveText("think low · session");
 
   await page.locator("#newBtn").click();
   await expect(gear).toBeVisible();
   await expect(chip).toBeHidden();
+  await expect(page.locator("#toolkitNew")).toBeHidden();
   await expect(page).not.toHaveURL(/#\/s\//);
 
   // Opening a session drops a choice made for a new session.

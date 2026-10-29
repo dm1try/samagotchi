@@ -27,6 +27,11 @@ and commands may change between minor versions. How releases are made:
   worker's `project_env` warning in this folder (e.g. `mise trust`). See docs/configuration.md (Checking it).
 - A chi run at a terminal on another Ruby than the chi home's says so in one dim line, at most once a day
   (`chi X on <ruby>; the chi home is <ruby> (chi Y) (chi home doctor)`).
+- Web start page: a 🧰 beside ⚙ picks the new session's toolkit. **Auto** (the default, nothing sent) leaves the
+  first message to `toolkit.suggest.mode: on`'s suggestion when one can come, else `toolkit.default`; a picked kit is
+  sent (no suggestion then) and shows as a `tools: lean` chip (a dot on a phone). The list holds the built-in and
+  config kits a new session can start on; `GET /api/models` lists them as `toolkits`. A kit Start refuses is said in
+  the list. See docs/configuration.md (Toolkits).
 
 ### Changed
 

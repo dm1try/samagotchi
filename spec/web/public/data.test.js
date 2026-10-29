@@ -178,6 +178,18 @@ test("createIdleSession sends thinking only when the start page's think chip set
   assert.deepEqual(bodies, [{ idle: true, thinking: "low" }, { idle: true }]);
 });
 
+test("createIdleSession sends toolkit only when the start page's 🧰 list picked one, never as a fetch option", async () => {
+  const calls = [];
+  const fetchImpl = (_path, opts) => {
+    calls.push(opts);
+    return Promise.resolve(okResponse({ id: "new" }));
+  };
+  await createIdleSession({ toolkit: "lean", fetchImpl });
+  await createIdleSession({ toolkit: undefined, fetchImpl });
+  assert.deepEqual(calls.map((o) => JSON.parse(o.body)), [{ idle: true, toolkit: "lean" }, { idle: true }]);
+  assert.equal(calls[0].toolkit, undefined);
+});
+
 test("createIdleSession sends the model and the preview in the body when given, not when blank", async () => {
   const bodies = [];
   const fetchImpl = (_path, opts) => {

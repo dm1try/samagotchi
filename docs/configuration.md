@@ -1574,6 +1574,18 @@ toolkit:
   `full`. A continue and a fork keep the toolkit name. `/toolkit` shows and changes it. The kit's tools, prompt
   text and group selectors are part of its definition, not the session file: edits reach a saved name at its next
   worker start.
+- **A new web chat: 🧰.** The start page's 🧰 (beside ⚙; a bottom sheet on a phone) picks the new session's toolkit.
+  **Auto**, checked by default, sends nothing: the session is on `toolkit.default` with `toolkit_origin: default`, so
+  with `toolkit.suggest.mode: on` its first message may switch it to a suggested kit. Auto is listed only when that
+  can happen as far as chi web can tell (on mode, a `guardrails.system_one.host`, two described config kits); bundle
+  and memory kits can add candidates it doesn't see. A kit picked is sent as `POST /api/sessions`'s `toolkit` and
+  saved as `chosen`: no suggestion, the default kit included (its row says `default`); without Auto, the default's
+  row is the one checked and sends nothing. The list holds the built-ins and config kits a new session can start
+  on: not `review`, `child` or a kit named `undecided`, not a kit whose `groups:` refuses a new session, and not one
+  that doesn't resolve in chi web (a base that is a bundle kit); bundle and memory kits load in the worker, so pick
+  them with `/toolkit`. The configured default is always listed. A pick closes the list and shows a `tools: lean`
+  chip on the row (a dot on 🧰 on a phone); it is for that create only, never remembered. A review session is
+  always `chosen`: with review files set the list says it starts on the default unless you pick a kit.
 - **Left out: reachable or removed.** A built-in missing from a kit's base list (`lean` has no `delegate`; a
   `kits:` entry on `base: lean` or `child` inherits that) is left out softly: it is **reachable**. `find_tools` searches it as group `chi` (`chi/delegate`, with its inputSchema) beside
   the MCP servers' tools, and `call_tool(tool: "chi/delegate", args: {…})` runs it as `delegate` itself, through the
