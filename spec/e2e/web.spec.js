@@ -1411,8 +1411,8 @@ test("the info bar's llm ctx chip sets the session's own strategy through its wo
   await expect(page.locator("#infoBar .llmctx-chip")).toHaveText("llm ctx none");
 
   // A strategy the list has no option for (forget alone, typed): the form shows it, and a Set that changes
-  // only the apply rule leaves it.
-  await page.locator("#prompt").fill("/llm-context strategy forget");
+  // only the apply rule leaves it. Typed with --yes: turning forget on restarts the cache, so it asks otherwise.
+  await page.locator("#prompt").fill("/llm-context strategy forget --yes");
   await page.locator("#actionBtn").click();
   await expect(page.locator("#infoBar .llmctx-chip")).toHaveText("llm ctx forget · session");
   await page.locator("#infoBar .llmctx-chip").click();
@@ -1704,7 +1704,8 @@ test("/model X sent mid-turn shows queued, survives a reload, and applies once t
   script("mid_turn_command");
   await send(page, "Take a moment");
   await expect(page.locator("#cancelBtn")).toBeVisible();
-  await page.locator("#prompt").fill("/model fake-other");
+  // --yes: a switch on a session with a model reply asks first (it restarts the prompt cache).
+  await page.locator("#prompt").fill("/model fake-other --yes");
   await page.locator("#actionBtn").click();
   const bubble = page.locator(`${H()} .bubble.command`).filter({ hasText: "/model fake-other" });
   await expect(bubble).toHaveCount(1);
