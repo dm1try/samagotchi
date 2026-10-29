@@ -445,9 +445,11 @@ module Samagotchi
         "trap #{Shellwords.escape(write)} EXIT\n#{command}\n"
       end
 
+      # chi's own Ruby/Bundler setup, kept out of a command's environment
+      # (execute and task_create both spawn with it): run under `bundle
+      # exec`, chi would otherwise hand a project's `ruby -e` or
+      # `bundle exec` its Gemfile (RUBYOPT=-rbundler/setup, BUNDLE_GEMFILE).
       def sanitized_spawn_env
-        # Running from temporary directories can inherit Bundler-specific env
-        # (for example RUBYOPT=-rbundler/setup) that breaks plain `ruby -e`.
         {
           "RUBYOPT" => sanitized_rubyopt,
           "RUBYLIB" => nil,

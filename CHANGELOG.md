@@ -21,6 +21,9 @@ and commands may change between minor versions. How releases are made:
   keeps the session's fields it doesn't know instead of dropping them, and the session file names the chi that saved
   it last (`written_by`; a worker woken on a file a newer chi saved logs `newer_writer`). This works from this release
   on: chi 0.130.0 and older still drop them, so update the chi in every Ruby you run it from.
+- `execute` (and a user's `!cmd`) no longer hands a project's commands chi's own Bundler setup: run under
+  `bundle exec`, chi passed on `RUBYOPT=-rbundler/setup` and its `BUNDLE_GEMFILE`, so `ruby -e` or `bundle exec`
+  in another project loaded chi's Gemfile. It now scrubs them the way `task_create` always has.
 
 ### Security
 

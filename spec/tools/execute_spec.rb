@@ -18,7 +18,7 @@ RSpec.describe Samagotchi::Tools::Execute do
       "SAMAGOTCHI_CONTEXT_WINDOW_TOKENS" => ENV["SAMAGOTCHI_CONTEXT_WINDOW_TOKENS"],
       "SAMAGOTCHI_CONTEXT_CHARS_PER_TOKEN" => ENV["SAMAGOTCHI_CONTEXT_CHARS_PER_TOKEN"],
       "SAMAGOTCHI_EXECUTE_TELEMETRY_THRESHOLD_PCT" => ENV["SAMAGOTCHI_EXECUTE_TELEMETRY_THRESHOLD_PCT"]
-    }
+    }.merge(Samagotchi::Tools::TaskRuntime::SANITIZED_ENV_KEYS.to_h { |key| [key, ENV[key]] })
 
     example.run
   ensure
@@ -111,6 +111,19 @@ RSpec.describe Samagotchi::Tools::Execute do
         expect(bare).to include("done")
         expect(bare).not_to include("stale:model")
       end
+    end
+
+    # The same scrub as task_create (TaskRuntime.sanitized_spawn_env): chi run
+    # under `bundle exec` doesn't hand a project's command its Gemfile.
+    it "keeps chi's Bundler setup out of the command, and other RUBYOPT flags in" do
+      ENV.update("RUBYOPT" => "-W0 -rbundler/setup", "BUNDLE_GEMFILE" => "/chi/Gemfile",
+                 "BUNDLE_BIN_PATH" => "/chi/bundle", "RUBYLIB" => "/chi/lib")
+
+      result = described_class.call('printf %s "$RUBYOPT|$BUNDLE_GEMFILE|$BUNDLE_BIN_PATH|$RUBYLIB"')
+      own = described_class.call('printf %s "$BUNDLE_GEMFILE"', env: { "BUNDLE_GEMFILE" => "/own/Gemfile" })
+
+      expect(result).to include("-W0|||")
+      expect(own).to include("/own/Gemfile")
     end
 
     it "captures stdout and reports exit 0" do
