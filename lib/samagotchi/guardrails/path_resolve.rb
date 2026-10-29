@@ -200,8 +200,11 @@ module Samagotchi
 
       # Whether the disk +path+'s deepest existing dir is on folds case: that
       # dir (or the first one above it with a letter in its name) answers to
-      # its name with the case swapped. Asked once per dir.
+      # its name with the case swapped. Asked once per dir. A relative or
+      # blank path has no disk to ask: false.
       def folds_case?(path)
+        return false unless path.to_s.start_with?("/")
+
         probe = path
         probe = File.dirname(probe) until probe == "/" || File.directory?(probe)
         probe = File.dirname(probe) until probe == "/" || File.basename(probe).swapcase != File.basename(probe)

@@ -23,10 +23,7 @@ RSpec.describe Samagotchi::Guardrails::PathResolve do
   it "answers as ProtectedPaths' old names do (they delegate here)" do
     paths = %W[#{root}/link/../x #{root}/dangling #{root}/dir/new.rb ~/x/../y #{root}/DIR/a]
     paths.each do |path|
-      # folds_case? takes an absolute path only (a relative one never
-      # reaches "/").
-      names = path.start_with?("/") ? %i[expand real lexical_real reals folds_case?] : %i[expand real lexical_real reals]
-      names.each do |name|
+      %i[expand real lexical_real reals folds_case?].each do |name|
         expect(Samagotchi::Guardrails::ProtectedPaths.public_send(name, path)).to eq(described_class.public_send(name, path)), "#{name} #{path}"
       end
       expect(Samagotchi::Guardrails::ProtectedPaths.within?(path, root)).to eq(described_class.within?(path, root)), path
@@ -44,6 +41,12 @@ RSpec.describe Samagotchi::Guardrails::PathResolve do
     expect(described_class.under?(File.join(root, "dir"), File.join(root, "dir"))).to be(true)
     expect(described_class.under?(File.join(root, "dirx"), File.join(root, "dir"))).to be(false)
     expect(described_class.under?(File.join(root, "DIR", "a"), File.join(root, "dir"))).to eq(folds)
+  end
+
+  it "answers folds_case? false for a relative or blank path (no disk to ask)" do
+    expect(described_class.folds_case?("nope")).to be(false)
+    expect(described_class.folds_case?("")).to be(false)
+    expect(described_class.folds_case?("~/x/../y")).to be(false)
   end
 
   it "compares by text alone with fold: false, and strictly_under? leaves the dir itself out" do
