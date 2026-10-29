@@ -18,7 +18,7 @@ module Samagotchi
     # walk keeps every dir the command may be in, and git's -C and dir
     # options are opened the kernel's way; such a git counts from each. A
     # leading ~, $HOME, XDG dir or $TMPDIR is expanded as ShellPaths::Walk
-    # expands it (ShellPaths.expand_word). It
+    # expands it (PathResolve.expand_word). It
     # catches honest mistakes (cd into another checkout and commit
     # there); sh -c, scripts, aliases and $(…) bodies get through. Never
     # raises on odd input.
@@ -156,12 +156,12 @@ module Samagotchi
 
         # An absolute path for +arg+ against +dir+ (`..` lexical, or
         # +physical+: PathResolve.expand); nil when it can't
-        # be told from the text (a variable but those ShellPaths.expand_word
+        # be told from the text (a variable but those PathResolve.expand_word
         # expands, a substitution, a relative path against an unknown dir).
         def expand(arg, dir, physical: false)
           return nil if arg.include?(ShellLex::SUBST)
 
-          arg = ShellPaths.expand_word(arg, home: @home, env: @vars) or return nil
+          arg = PathResolve.expand_word(arg, home: @home, env: @vars) or return nil
           return nil unless arg.start_with?("/") || dir
 
           physical ? PathResolve.expand(arg, dir) : File.expand_path(arg, dir)

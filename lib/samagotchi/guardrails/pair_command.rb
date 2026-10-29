@@ -464,7 +464,7 @@ module Samagotchi
       def unresolved_secret?(word)
         return false if word.include?("\0") || word.match?(ShellPaths::SCRIPT)
 
-        expanded = word.sub(%r{\A~(?=/|\z)}, @home).sub(/\A\$(?:\{HOME\}|HOME\b)/, @home)
+        expanded = expand_tilde(word).sub(/\A\$(?:\{HOME\}|HOME\b)/, @home)
         fixed = expanded[/\A[^*?\[\]{}$]*/]
         dir = @cwd || Dir.pwd
         if !expanded.include?("$") && expanded.match?(GLOB)
@@ -570,7 +570,7 @@ module Samagotchi
       def text_inside?(walk, text)
         return true unless text.match?(%r{\A(?:~|\.\.|/)})
 
-        expanded = text.sub(%r{\A~(?=/|\z)}, @home)
+        expanded = expand_tilde(text)
         return false if expanded.start_with?("~")
 
         walk.dirs.all? { |dir| (dir || expanded.start_with?("/")) && writable?(File.expand_path(expanded, dir || "/")) }
@@ -595,12 +595,15 @@ module Samagotchi
           if SHELLS.include?(program) || program == "eval"
             !nested(script).outside_writes?
           else
-            script.scan(SCRIPT_PATH).all? { |path| writable?(File.expand_path(path.sub(%r{\A~(?=/|\z)}, @home), @cwd || Dir.pwd)) }
+            script.scan(SCRIPT_PATH).all? { |path| writable?(File.expand_path(expand_tilde(path), @cwd || Dir.pwd)) }
           end
         end
       end
 
       def writable?(path) = PairCommand.writable?(path, root: @root, cwd: @cwd)
+
+      # +text+ with a leading ~ (alone or before a /) as the home folder.
+      def expand_tilde(text) = text.sub(%r{\A~(?=/|\z)}, @home)
     end
   end
 end

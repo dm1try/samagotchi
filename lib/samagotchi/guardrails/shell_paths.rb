@@ -24,11 +24,10 @@ module Samagotchi
       SCRIPT = /[\s;&|<>()'"`]/
       GLOB = /[*?\[\]{}]/
       HOOKS_PART = %r{(?:\A|/)\.git/hooks(?:/|\z)}
-      # $HOME, ${HOME} and the XDG dirs at a word's start.
-      EXPANSION = /\A\$(?:\{(HOME|XDG_[A-Z_]+|TMPDIR)\}|(HOME|XDG_[A-Z_]+|TMPDIR)\b)/
+      # $HOME, ${HOME} and the XDG dirs at a word's start (PathResolve's).
+      EXPANSION = PathResolve::EXPANSION
       # Where XDG dirs default when unset.
-      XDG_DEFAULTS = { "XDG_CONFIG_HOME" => ".config", "XDG_STATE_HOME" => ".local/state",
-                       "XDG_DATA_HOME" => ".local/share", "XDG_CACHE_HOME" => ".cache" }.freeze
+      XDG_DEFAULTS = PathResolve::XDG_DEFAULTS
       # A redirection's operator at a word's start (>>file, 2>file, <file).
       REDIRECT_PREFIX = /\A\d*(?:&>>?|>>?&?|<)/
 
@@ -187,28 +186,11 @@ module Samagotchi
           dir && File.expand_path(word, dir)
         end
 
-        def expand(word) = ShellPaths.expand_word(word, home: @home, env: @env)
+        def expand(word) = PathResolve.expand_word(word, home: @home, env: @env)
       end
 
-      # +word+ with a leading ~, $HOME/${HOME}, an XDG dir or $TMPDIR
-      # expanded (+env+'s value, an unset XDG dir its default under +home+);
-      # nil when a $ or ~ is left. ShellGitDirs expands the same way.
-      def expand_word(word, home:, env:)
-        word = word.sub(%r{\A~(?=/|\z)}) { home }
-        word = word.sub(EXPANSION) { variable(Regexp.last_match(1) || Regexp.last_match(2), home, env) || "$" }
-        return nil if word.include?("$") || word.start_with?("~")
-
-        word
-      end
-
-      def variable(name, home, env)
-        return home if name == "HOME"
-
-        set = env[name].to_s
-        return set unless set.empty?
-
-        XDG_DEFAULTS[name] && File.join(home, XDG_DEFAULTS[name])
-      end
+      # PathResolve.expand_word, as this module has long named it.
+      def expand_word(word, home:, env:) = PathResolve.expand_word(word, home: home, env: env)
     end
   end
 end

@@ -67,6 +67,18 @@ RSpec.describe Samagotchi::Guardrails::PathResolve do
     expect(described_class.tmp_roots(session: "/a/x", roots: %w[/a /b])).to eq(%w[/b])
   end
 
+  it "expands a shell word's leading ~, $HOME, ${HOME}, an XDG dir (its default when unset) and $TMPDIR" do
+    env = { "XDG_STATE_HOME" => "/st", "TMPDIR" => "/t" }
+    expect(described_class.expand_word("~/a", home: "/h", env: env)).to eq("/h/a")
+    expect(described_class.expand_word("${HOME}/a", home: "/h", env: env)).to eq("/h/a")
+    expect(described_class.expand_word("$XDG_STATE_HOME/a", home: "/h", env: env)).to eq("/st/a")
+    expect(described_class.expand_word("$XDG_CONFIG_HOME/a", home: "/h", env: env)).to eq("/h/.config/a")
+    expect(described_class.expand_word("$TMPDIR/a", home: "/h", env: env)).to eq("/t/a")
+    expect(described_class.expand_word("$OTHER/a", home: "/h", env: env)).to be_nil
+    expect(described_class.expand_word("~user/a", home: "/h", env: env)).to be_nil
+    expect(Samagotchi::Guardrails::ShellPaths.expand_word("~/a", home: "/h", env: env)).to eq("/h/a")
+  end
+
   it "resolves the root for .within?: a path in a symlinked root's target is within it" do
     expect(described_class.within?(File.join(root, "elsewhere", "deep", "a"), File.join(root, "link"))).to be(true)
     expect(described_class.within?(File.join(root, "a"), nil)).to be(false)
