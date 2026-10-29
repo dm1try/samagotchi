@@ -238,14 +238,13 @@ module GuardrailsPathConsistency
     # dir, @home/chi-hooks: what each surface answers for @home/chi-hooks/h.rb
     # (read/cat PairBoundary, secret ReviewPaths#secret?, touch, parent, s1,
     # s1cat as in PATHS).
-    HOOKS_OUT = { "read" => "allow", "cat" => "allow", "secret" => "-", "touch" => "y", "parent" => "y", "s1" => "y",
+    HOOKS_OUT = { "read" => "deny", "cat" => "deny", "secret" => "y", "touch" => "y", "parent" => "y", "s1" => "y",
                   "s1cat" => "y" }.freeze
 
     # Rows whose answer a decided change (the path-primitives plan's P2)
     # will change, or a decision keeps: "kept: …" with the question.
     NOTES = {
-      "missing-root-case" => "kept: P2 Q3: Outside compares a session root that doesn't exist in exact case; it folds only once it exists",
-      "hooks-out" => "kept: P2 Q4: ReviewPaths.chi_dirs is the state and config dir, not a hooks dir configured elsewhere"
+      "missing-root-case" => "kept: P2 Q3: Outside compares a session root that doesn't exist in exact case; it folds only once it exists"
     }.freeze
 
     def self.rows(text, columns)
@@ -611,7 +610,7 @@ module GuardrailsPathConsistency
     end
 
     it "lists notes only for rows the tables have" do
-      ids = [PATH_ROWS, COMMAND_ROWS, UNSET_XDG_ROWS, ENV_ROWS, ROOT_ROWS, HOME_ROOT_ROWS].flat_map(&:keys) + ["hooks-out"]
+      ids = [PATH_ROWS, COMMAND_ROWS, UNSET_XDG_ROWS, ENV_ROWS, ROOT_ROWS, HOME_ROOT_ROWS].flat_map(&:keys)
       expect(ids).to include(*NOTES.keys)
       expect(NOTES.values).to all(start_with("kept: "))
     end

@@ -18,8 +18,9 @@ module Samagotchi
     #                  rule's touches: chi_dirs (Targets#touches_chi?)
     #   .self_protect  .protected and the whole state dir, resolved: what
     #                  System 1 never answers for (SelfProtect)
-    #   .review        the state dir and the config dir: what a participant's
-    #                  turn never reads (ReviewPaths)
+    #   .review        the state dir, the config dir and a hooks dir
+    #                  configured outside it: what a participant's turn never
+    #                  reads (ReviewPaths)
     # ProtectedPaths' deny/ask lists and ScratchWrites' memories dir are
     # built by the wiring from the same places.
     module ChiDirs
@@ -49,8 +50,15 @@ module Samagotchi
           .map { |dir| PathResolve.real(dir.to_s.chomp("/")) }.reject(&:empty?).uniq
       end
 
-      # chi's state dir and config dir, as Paths has them now.
-      def review = [Paths.state_dir, File.join(Paths.config_home, Paths::APP_DIR)]
+      # chi's state dir and config dir, as Paths has them now, and the hooks
+      # dir when config.yml puts it outside the config dir (hooks run as the
+      # owner: a participant reads none of them).
+      def review
+        config = File.join(Paths.config_home, Paths::APP_DIR)
+        hooks = begin Hooks::Loader.hooks_dir rescue nil end
+        hooks = nil if hooks.to_s.empty? || PathResolve.reals(hooks).any? { |real| PathResolve.within?(real, config) }
+        [Paths.state_dir, config, hooks].compact
+      end
     end
   end
 end

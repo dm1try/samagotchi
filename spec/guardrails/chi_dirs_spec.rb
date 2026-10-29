@@ -19,6 +19,19 @@ RSpec.describe Samagotchi::Guardrails::ChiDirs do
     expect(described_class.review).to eq([state, File.join(Samagotchi::Paths.config_home, "samagotchi")])
   end
 
+  it "adds a hooks dir configured outside the config dir for review" do
+    Dir.mktmpdir("chi-dirs") do |dir|
+      with_config_home(File.join(dir, "config")) do
+        config = File.join(dir, "config", "samagotchi")
+        hooks = File.join(dir, "hooks")
+        File.write(File.join(config, "config.yml"), "hooks:\n  hooks_dir: #{hooks}\n")
+        expect(described_class.review).to eq([state, config, hooks])
+        File.write(File.join(config, "config.yml"), "hooks:\n  hooks_dir: #{File.join(config, "my-hooks")}\n")
+        expect(described_class.review).to eq([state, config])
+      end
+    end
+  end
+
   it "adds the session repo's hooks dir for touches" do
     context = Samagotchi::Guardrails::Context.new(cwd: Dir.pwd)
     allow(context).to receive(:hooks_dir).with("/repo").and_return("/repo/.git/hooks")

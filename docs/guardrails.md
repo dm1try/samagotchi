@@ -346,7 +346,8 @@ participant's turn may call only the `review` kit's tools:
 
 - `read`, under the session's project root (the work tree top of its folder)
   and never a secret: chi's state and config dirs (sessions, the grants, the
-  web token, memories and their `.bundles`, `config.yml`, hooks), `~/.ssh`,
+  web token, memories and their `.bundles`, `config.yml`, hooks, and a
+  `hooks.hooks_dir` configured outside the config dir), `~/.ssh`,
   `~/.gnupg`, `~/.aws`, and the project's `.env*`, `.netrc`, `*.pem`, `*.key`,
   `*.p12`, anything named `credentials` (`.git-credentials` too), `.npmrc`,
   `.pypirc`, ssh keys (`id_rsa`, `id_ed25519`, …), `*.tfstate`,

@@ -46,7 +46,8 @@ module Samagotchi
       SECRET = :secret
       HOME_ROOT = :home_root
 
-      # chi's state dir and config dir, as Paths has them now (ChiDirs.review).
+      # chi's state dir, config dir and a hooks dir configured outside it
+      # (ChiDirs.review).
       def self.chi_dirs = ChiDirs.review
 
       # Whether +root+ is the home folder or a folder above it (symlinks
