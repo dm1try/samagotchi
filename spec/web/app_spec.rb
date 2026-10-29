@@ -2967,8 +2967,8 @@ RSpec.describe Samagotchi::Web::App do
     it "answers the default alone with a warning when the registry fails" do
       payload = models_payload(FakeModelRegistry.new(RuntimeError.new("no config")))
 
-      expect(payload).to eq("default" => "Gemma-4B-it", "models" => [{ "name" => "Gemma-4B-it", "host" => nil, "id" => "Gemma-4B-it" }],
-                            "warning" => "no config")
+      expect(payload.except("toolkits")).to eq("default" => "Gemma-4B-it", "warning" => "no config",
+                                               "models" => [{ "name" => "Gemma-4B-it", "host" => nil, "id" => "Gemma-4B-it" }])
     end
 
     it "does not wait past its deadline: a slow listing answers the last cached lists, or the default alone" do
@@ -2984,6 +2984,70 @@ RSpec.describe Samagotchi::Web::App do
                                      cached: { "default" => { models: [model_info("Gemma-4B-it"), model_info("old")], error: nil } })
       payload = models_payload(cached, models_wait_timeout: 0.05)
       expect(payload["models"].map { |m| m["name"] }).to eq(%w[Gemma-4B-it old])
+    end
+
+    describe "toolkits (the start page's picker)" do
+      let(:registry) { FakeModelRegistry.new({ "default" => { models: [model_info("Gemma-4B-it")], error: nil } }) }
+
+      def stub_toolkit_config(kits: nil, default: nil, suggest: nil, system_one_host: nil)
+        allow(Samagotchi::Toolkit).to receive(:config_kits).and_return(kits)
+        allow(Samagotchi::Config).to receive(:get).and_call_original
+        allow(Samagotchi::Config).to receive(:get).with("toolkit.default").and_return(default)
+        allow(Samagotchi::Config).to receive(:get).with("toolkit.suggest.mode").and_return(suggest)
+        allow(Samagotchi::Config).to receive(:get).with("guardrails.system_one.host").and_return(system_one_host)
+      end
+
+      it "lists the built-ins and config kits a new session can start on, with their descriptions" do
+        stub_toolkit_config(kits: {
+          "web" => { "base" => "lean", "add" => ["web_search"], "description" => "browsing the web" },
+          "plain" => { "base" => "lean" },
+          "undecided" => { "base" => "lean" },
+          "on_bundle" => { "base" => "bundle_kit" },
+          "broken" => { "base" => "lean", "groups" => 3 }
+        })
+
+        toolkits = models_payload(registry)["toolkits"]
+
+        expect(toolkits).to eq("default" => "full", "suggest" => "off",
+                               "kits" => [{ "name" => "full" }, { "name" => "lean" },
+                                          { "name" => "web", "description" => "browsing the web" }, { "name" => "plain" }])
+      end
+
+      it "always lists the configured default, first when chi web can't resolve it (a bundle kit)" do
+        stub_toolkit_config(default: "bundle_kit")
+
+        toolkits = models_payload(registry)["toolkits"]
+
+        expect(toolkits["default"]).to eq("bundle_kit")
+        expect(toolkits["kits"].map { |k| k["name"] }).to eq(%w[bundle_kit full lean])
+      end
+
+      it "says suggest on only with on mode, a System 1 host and two described candidates" do
+        described = { "web" => { "base" => "lean", "description" => "the web" },
+                      "docs" => { "base" => "lean", "description" => "writing docs" } }
+        cases = [
+          [{ kits: described, suggest: "on", system_one_host: "s1" }, "on"],
+          [{ kits: described, suggest: "on" }, "off"],
+          [{ kits: described.slice("web"), suggest: "on", system_one_host: "s1" }, "off"],
+          [{ kits: described, suggest: "audit", system_one_host: "s1" }, "audit"],
+          [{ kits: described }, "off"]
+        ]
+
+        cases.each do |config, expected|
+          stub_toolkit_config(**config)
+          expect(models_payload(registry)["toolkits"]["suggest"]).to eq(expected), config.inspect
+        end
+      end
+
+      it "leaves toolkits out when they can't be read, never a 500" do
+        stub_toolkit_config
+        allow(Samagotchi::Toolkit).to receive(:kits).and_raise(RuntimeError, "boom")
+
+        payload = models_payload(registry)
+
+        expect(payload).not_to have_key("toolkits")
+        expect(payload["models"].map { |m| m["name"] }).to eq(%w[Gemma-4B-it])
+      end
     end
   end
 

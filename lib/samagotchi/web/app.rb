@@ -48,6 +48,8 @@ require_relative "../context_sources"
 require_relative "../context_providers"
 require_relative "../recap_store"
 require_relative "../toolkit"
+require_relative "../toolkit_suggest"
+require_relative "../system_one/client"
 require_relative "../turn_flow"
 require_relative "../session_chain"
 require_relative "../session_access"
@@ -1219,7 +1221,55 @@ module Samagotchi
         add_sampling(models, registry)
         payload = { default: default, models: models }
         payload[:warning] = warnings.join("; ") unless warnings.empty?
+        toolkits = toolkits_listing(registry)
+        payload[:toolkits] = toolkits if toolkits
         json_response(200, payload)
+      end
+
+      # Kits the web never offers: the participants' boundary, a delegate
+      # child's, and ToolkitSuggest's defer sentinel.
+      PICKER_HIDDEN_KITS = [Toolkit::REVIEW, Toolkit::CHILD, "undecided"].freeze
+
+      # The start page's toolkit picker: {default:, suggest:, kits: [{name,
+      # description?}]}. Built-in and config kits only (a bundle's load in
+      # the worker), less PICKER_HIDDEN_KITS and any kit a new session would
+      # refuse (Toolkit.check_new!) or that doesn't resolve (a base that is a
+      # bundle kit); the configured default always listed, first when it
+      # isn't one of them. +suggest+: "on" only when the worker would ask
+      # (toolkit.suggest.mode on, a System 1 host, at least 2 described
+      # candidates), else the mode ("audit") or "off". nil when it can't be
+      # read: the picker stays hidden.
+      def toolkits_listing(registry)
+        default = Toolkit.configured.name
+        config = Toolkit.config_kits
+        kits = Toolkit.kits(config: config)
+        listed = kits.values.filter_map do |kit|
+          next if PICKER_HIDDEN_KITS.include?(kit.name) || !ToolkitSuggest.resolves?(kit.name, kits)
+          next unless new_session_kit?(kit.name, config)
+
+          kit.description.to_s.empty? ? { name: kit.name } : { name: kit.name, description: kit.description }
+        end
+        listed.unshift({ name: default }) if listed.none? { |kit| kit[:name] == default }
+        { default: default, suggest: toolkit_suggest_mode(registry, kits, default), kits: listed }
+      rescue StandardError => e
+        Log.warn(:web, "toolkits_listing_failed", error: e.class.name, msg: e.message)
+        nil
+      end
+
+      def new_session_kit?(name, config)
+        Toolkit.check_new!(Toolkit.new(name: name), config: config)
+        true
+      rescue Toolkit::Refused
+        false
+      end
+
+      def toolkit_suggest_mode(registry, kits, default)
+        mode = Config.get("toolkit.suggest.mode").to_s.strip.downcase
+        return mode == "audit" ? "audit" : "off" unless mode == "on"
+        return "off" if ToolkitSuggest.candidates(kits, default_name: default).size < 2
+        return "off" unless SystemOne::Client.from_config(host_registry: registry, mode: "on", tag: :toolkit)
+
+        "on"
       end
 
       # Each model's configured sampling as /model words it ("temperature=0.6
