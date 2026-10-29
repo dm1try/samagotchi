@@ -118,7 +118,7 @@ module Samagotchi
                   "#{s[:app_version] || "?"} (up to date: chi #{s[:chi_version]} changed nothing in it)"
                 end
       launch = s[:launch_argv].empty? ? "(none)" : s[:launch_argv].join(" ")
-      launch += s[:launch_ok] ? " (ok)" : " (missing: chi update)"
+      launch += s[:launch_ok] ? " (ok)" : " (missing: chi desktop install --force)"
       dirs = s[:baked_dirs].empty? ? "(defaults)" : s[:baked_dirs].map { |name, value| "#{name}=#{value}" }.join(" ")
       path = path_row(s[:baked_path])
       service = s[:service] ? "registered" : "not registered (try chi desktop upgrade, or log out and back in)"

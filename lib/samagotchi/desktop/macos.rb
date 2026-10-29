@@ -195,24 +195,39 @@ module Samagotchi
         launch["sources_sha"] != sources_sha || !launch_ok?(launch)
       end
 
-      # The launch file names another chi version or path than this one, or
+      # The launch file names an older chi version than this one (or none), or
       # other terminal settings, broadcast timeout or a missing bakeable PATH:
-      # refresh_launch_file fixes that without a rebuild. A different baked
-      # PATH is intentional and changes only with desktop install --force.
+      # refresh_launch_file fixes that without a rebuild. A different argv or
+      # baked PATH, or a newer version, is intentional: the ruby, chi and PATH
+      # the helper runs change only with chi desktop install --force or upgrade.
       def launch_outdated?
         launch = read_launch
-        launch["version"] != @version || Array(launch["argv"]) != launch_config["argv"] ||
+        older_version?(launch["version"]) ||
           TERMINALS.map { launch[_1] } != TERMINALS.map { @terminals[_1] } ||
           launch["broadcast_timeout"] != @broadcast_timeout || path_missing?(launch)
       end
 
+      # Why chi update can't keep the launch file's ruby or chi: one of them
+      # is gone. nil when it runs, or has no usable argv (a refresh writes
+      # this chi's then).
+      def launch_problem
+        argv = usable_argv(read_launch)
+        missing = Array(argv).reject { |path| File.exist?(path) }
+        return nil if missing.empty?
+
+        "chi not found at #{missing.join(", ")}: run chi desktop install --force from the shell whose chi it should run"
+      end
+
       # Rewrite the launch file for this chi and its settings, keeping
-      # the env it was installed with; a PATH only when it has none (changing
-      # it takes chi desktop install --force or chi desktop upgrade). The app
-      # reads it at each send.
+      # its argv and the env it was installed with; a PATH only when it has
+      # none (changing them takes chi desktop install --force or upgrade). A
+      # newer version stays. The app reads it at each send.
       def refresh_launch_file
         config = launch_config
-        old_env = read_launch["env"]
+        old = read_launch
+        config["argv"] = usable_argv(old) || config["argv"]
+        config["version"] = old["version"] unless older_version?(old["version"])
+        old_env = old["env"]
         if old_env.is_a?(Hash)
           config["env"] = old_env
           path = self.class.baked_path(@env)
@@ -266,7 +281,9 @@ module Samagotchi
 
       # @yield [String] progress lines
       # @param login [Boolean] also start the app at login
-      def install(force: false, login: false, keep_path: false, &progress)
+      # @param keep_launch [Boolean] keep the launch file's ruby, chi and PATH
+      #   (chi update's rebuild) instead of baking this shell's
+      def install(force: false, login: false, keep_launch: false, &progress)
         raise Error, "already installed (#{app_version}); use chi desktop upgrade" if installed? && !force
 
         toolchain!
@@ -274,7 +291,7 @@ module Samagotchi
         progress&.call("building #{APP_NAME} #{@version} (can take a few minutes)…")
         built = build_app
         swap_in(built)
-        write_launch_file(keep_path: keep_path)
+        write_launch_file(keep_launch: keep_launch)
         register_app
         self.login = true if login
         progress&.call("installed #{app_path}")
@@ -282,9 +299,9 @@ module Samagotchi
       end
 
       # Keeps the login item as it was.
-      def upgrade(keep_path: false, &)
+      def upgrade(keep_launch: false, &)
         was_login = installed? && login == "enabled"
-        install(force: true, login: was_login, keep_path: keep_path, &)
+        install(force: true, login: was_login, keep_launch: keep_launch, &)
       end
 
       # SMAppService status as the app reports it ("enabled",
@@ -418,6 +435,19 @@ module Samagotchi
         {}
       end
 
+      # This chi is newer than the version the launch file names; a missing or
+      # unreadable version counts as older.
+      def older_version?(version)
+        Gem::Version.new(@version) > Gem::Version.new(version.to_s)
+      rescue ArgumentError
+        true
+      end
+
+      def usable_argv(launch)
+        argv = launch["argv"]
+        argv if argv.is_a?(Array) && !argv.empty? && argv.all? { |path| path.is_a?(String) && !path.empty? }
+      end
+
       def path_missing?(launch)
         return false unless self.class.baked_path(@env)
 
@@ -430,9 +460,11 @@ module Samagotchi
         !argv.empty? && argv.all? { |path| File.exist?(path) }
       end
 
-      def write_launch_file(config = launch_config, keep_path: false)
-        if keep_path
-          old_env = read_launch["env"]
+      def write_launch_file(config = launch_config, keep_launch: false)
+        if keep_launch
+          old = read_launch
+          config["argv"] = usable_argv(old) || config["argv"]
+          old_env = old["env"]
           old_path = old_env["PATH"] if old_env.is_a?(Hash)
           config["env"]["PATH"] = old_path unless old_path.to_s.empty?
         end

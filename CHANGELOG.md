@@ -14,6 +14,9 @@ and commands may change between minor versions. How releases are made:
   launch file that has none (it never changes a baked one; `chi desktop install --force` does), and
   `chi desktop status` shows it. Run `chi update` once from your terminal, then restart the sessions the
   panel started.
+- `chi update` no longer repoints the desktop helper at the Ruby or chi it runs from, nor refreshes the launch file
+  from an older chi: only `chi desktop install --force` and `chi desktop upgrade` pick the current shell's Ruby,
+  chi and PATH. When the helper's Ruby or chi is gone, `chi update` says so and names that command.
 
 ### Security
 

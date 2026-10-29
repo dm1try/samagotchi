@@ -152,7 +152,7 @@ RSpec.describe Samagotchi::DesktopCommand do
       )
       run("status")
       expect(out.string).to include("0.1.19 (chi is 0.1.20: chi update)",
-                                    "(missing: chi update)", "(defaults)",
+                                    "(missing: chi desktop install --force)", "(defaults)",
                                     "(none: macOS's default; chi update fills it, chi desktop install --force changes it)",
                                     "not registered", "not running", "⌃⌥⌘N taken by another app",
                                     "off (chi desktop install --force --login)")
@@ -167,7 +167,7 @@ RSpec.describe Samagotchi::DesktopCommand do
     )
     run("status")
     expect(out.string).to include("0.1.19 (up to date: chi 0.1.20 changed nothing in it)")
-    expect(out.string).not_to include("(missing: chi update)")
+    expect(out.string).not_to include("(missing: chi desktop install --force)")
   end
 
   it "is reachable from bin/chi" do

@@ -346,7 +346,7 @@ RSpec.describe Samagotchi::UpdateCommand do
     let(:supported) { true }
     let(:helper) do
       instance_double(Samagotchi::Desktop::MacOS, installed?: true, app_version: "0.0.9", stale?: false,
-                                                  launch_outdated?: false, terminal_warnings: [])
+                                                  launch_outdated?: false, launch_problem: nil, terminal_warnings: [])
     end
 
     it "adds the terminals' warnings to the row, rebuilt or not" do
@@ -367,7 +367,7 @@ RSpec.describe Samagotchi::UpdateCommand do
 
     it "rebuilds a stale helper, but not in a dry run" do
       allow(helper).to receive(:stale?).and_return(true)
-      expect(helper).to receive(:upgrade).with(keep_path: true).once
+      expect(helper).to receive(:upgrade).with(keep_launch: true).once
       run("--dry-run")
       expect(line("Chi Helper")).to match(/0\.0\.9\s+#{Regexp.escape(Samagotchi::VERSION)}\s+would update \(rebuilds and restarts it\)\z/)
       run
@@ -382,6 +382,16 @@ RSpec.describe Samagotchi::UpdateCommand do
       expect(line("Chi Helper")).to end_with("up to date (would refresh the launch file)")
       run
       expect(line("Chi Helper")).to end_with("up to date (launch file refreshed)")
+    end
+
+    it "fails the row, without a rebuild or refresh, when the helper's kept ruby or chi is gone" do
+      msg = "chi not found at /gone/ruby: run chi desktop install --force from the shell whose chi it should run"
+      allow(helper).to receive(:launch_problem).and_return(msg)
+      allow(helper).to receive(:stale?).and_return(true)
+      expect(helper).not_to receive(:upgrade)
+      expect(helper).not_to receive(:refresh_launch_file)
+      expect(run).to eq(1)
+      expect(line("Chi Helper")).to end_with("failed (#{msg})")
     end
 
     it "skips it with --no-desktop" do

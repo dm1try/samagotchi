@@ -257,9 +257,16 @@ don't break it. From a checkout it runs **that** checkout's `bin/chi`; installin
 warning, because the helper stops working once that worktree is removed. After switching between a checkout and a
 gem install, run `chi desktop upgrade` from the one you now use.
 
+The helper runs the Ruby and chi of **the shell you installed from**, and only `chi desktop install --force` and
+`chi desktop upgrade` change that: they pick the Ruby and chi of the shell you run them in. `chi update` never
+repoints it, so running it from a project with another Ruby (or an older chi) leaves the helper where it was. If
+the Ruby or chi the helper runs is gone (a Ruby upgrade, a removed worktree), `chi update` fails the helper's row
+with "chi not found at …: run chi desktop install --force from the shell whose chi it should run".
+
 `chi update` keeps it current: it rebuilds and restarts the helper only when its Swift sources changed since the
-build (`launch.json` records their digest) or the Ruby it runs moved. A new chi that left the sources alone only
-rewrites `launch.json`, which the app reads at each send, so the app keeps its older version number and that's fine.
+build (`launch.json` records their digest), keeping the Ruby, chi and PATH it runs. A newer chi that left the
+sources alone only rewrites `launch.json` (its version and settings), which the app reads at each send, so the app
+keeps its older version number and that's fine. An older chi than the one that wrote the file changes nothing.
 
 ## Commands
 
@@ -279,7 +286,8 @@ says the same.
 Apps started by macOS get a bare environment: no shell rc files, so no rbenv/chruby/mise/asdf and none of your
 exports. So `install` writes `~/Library/Application Support/Chi Helper/launch.json` with:
 
-- the absolute path of the Ruby running chi and of chi itself (the gem's wrapper, or a checkout's `bin/chi`);
+- the absolute path of the Ruby running chi and of chi itself (the gem's wrapper, or a checkout's `bin/chi`), as of
+  the last `chi desktop install` or `upgrade` (`chi update` keeps them);
 - `LANG=en_US.UTF-8`;
 - only these variables, and only when they are set: `XDG_CONFIG_HOME`, `XDG_STATE_HOME`, `GEM_HOME`, `GEM_PATH`,
   `RUBYLIB` (a relative `XDG_*` dir made absolute from the install's current folder: the helper starts in `/`).
@@ -338,8 +346,9 @@ broadcast` says the note may be partly delivered.
 
 ## Troubleshooting
 
-- **"chi not found at …, run `chi desktop upgrade`"**: the Ruby or checkout in `launch.json` moved (a Ruby upgrade,
-  a removed worktree). Run `chi desktop upgrade` (or `chi update`) from the chi you use now.
+- **"chi not found at …"**: the Ruby or checkout in `launch.json` moved (a Ruby upgrade, a removed worktree).
+  `chi update` won't repoint it: run `chi desktop install --force` (or `chi desktop upgrade`) from the shell whose
+  chi the helper should run.
 - **A session started from the panel can't find a tool (`codex`, `node`):** `chi desktop status` shows the PATH it
   gets. With none, run `chi update`; to change it, run `chi desktop install --force` from your terminal. Then
   restart that session (`chi sessions restart ID`).

@@ -250,9 +250,13 @@ module Samagotchi
       return row.tap { |r| r.status = "not installed" } unless helper.installed?
 
       row.from = helper.app_version
+      if (problem = helper.launch_problem)
+        return failed(row, problem)
+      end
+
       if helper.stale?
         row.to = VERSION
-        done(row, :update, @dry_run ? "rebuilds and restarts it" : "restarted") { helper.upgrade(keep_path: true) { nil } }
+        done(row, :update, @dry_run ? "rebuilds and restarts it" : "restarted") { helper.upgrade(keep_launch: true) { nil } }
       elsif helper.launch_outdated?
         helper.refresh_launch_file unless @dry_run
         up_to_date(row).tap { |r| r.status += @dry_run ? " (would refresh the launch file)" : " (launch file refreshed)" }

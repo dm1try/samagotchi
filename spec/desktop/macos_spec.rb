@@ -389,10 +389,13 @@ RSpec.describe Samagotchi::Desktop::MacOS do
       File.write(File.join(source_dir, "bin", "chi"), "")
     end
 
-    def helper(version: "9.9.9", env: self.env)
+    def helper(version: "9.9.9", env: self.env, ruby: File.join(tmp, "ruby"))
       described_class.new(app_dir: app_dir, support_dir: support_dir, env: env, runner: runner, source_dir: source_dir,
-                          ruby: File.join(tmp, "ruby"), version: version, arch: "arm64", sources_dir: sources_dir)
+                          ruby: ruby, version: version, arch: "arm64", sources_dir: sources_dir)
     end
+
+    def launch_json = JSON.parse(File.read(launch_file))
+    def edit_launch(&) = File.write(launch_file, JSON.generate(launch_json.tap(&)))
 
     it "records the sources' digest; a new version with the same sources isn't stale, only its launch file is outdated" do
       helper.install
@@ -468,12 +471,94 @@ RSpec.describe Samagotchi::Desktop::MacOS do
 
     it "can keep the old PATH on upgrade, or fill it when the old file has none" do
       helper(env: env.merge("PATH" => "/a")).install
-      helper(env: env.merge("PATH" => "/b")).upgrade(keep_path: true)
+      helper(env: env.merge("PATH" => "/b")).upgrade(keep_launch: true)
       expect(JSON.parse(File.read(launch_file))["env"]["PATH"]).to eq("/a")
 
       helper(env: env).install(force: true)
-      helper(env: env.merge("PATH" => "/b")).upgrade(keep_path: true)
+      helper(env: env.merge("PATH" => "/b")).upgrade(keep_launch: true)
       expect(JSON.parse(File.read(launch_file))["env"]["PATH"]).to eq("/b")
+    end
+
+    describe "the ruby and chi the helper runs" do
+      let(:other_ruby) { File.join(tmp, "other-ruby").tap { |f| File.write(f, "") } }
+      let(:argv) { [File.join(tmp, "ruby"), File.join(source_dir, "bin", "chi")] }
+
+      before { helper.install }
+
+      it "isn't outdated for another ruby, and a refresh keeps the file's argv" do
+        other = helper(ruby: other_ruby)
+        expect(other.launch_outdated?).to be(false)
+        edit_launch { |l| l["broadcast_timeout"] = 1.0 }
+        other.refresh_launch_file
+        expect(launch_json["argv"]).to eq(argv)
+      end
+
+      it "leaves a file written by a newer chi alone, and refreshes one that names an older chi, keeping its argv" do
+        edit_launch { |l| l["version"] = "9.9.10" }
+        expect(helper.launch_outdated?).to be(false)
+
+        edit_launch { |l| l["version"] = "9.9.8" }
+        newer = helper(ruby: other_ruby)
+        expect(newer.launch_outdated?).to be(true)
+        newer.refresh_launch_file
+        expect(launch_json).to include("version" => "9.9.9", "argv" => argv)
+      end
+
+      it "counts a missing or unreadable version as outdated" do
+        edit_launch { |l| l.delete("version") }
+        expect(helper.launch_outdated?).to be(true)
+        edit_launch { |l| l["version"] = "not a version" }
+        expect(helper.launch_outdated?).to be(true)
+      end
+
+      it "keeps a newer version when another setting makes a refresh from an older chi" do
+        edit_launch { |l| l["version"] = "9.9.10" }
+        older = described_class.new(app_dir: app_dir, support_dir: support_dir, env: env, runner: runner,
+                                    source_dir: source_dir, ruby: other_ruby, version: "9.9.9", arch: "arm64",
+                                    sources_dir: sources_dir, broadcast_timeout: 5.0)
+        expect(older.launch_outdated?).to be(true)
+        older.refresh_launch_file
+        expect(launch_json).to include("version" => "9.9.10", "argv" => argv, "broadcast_timeout" => 5.0)
+      end
+
+      it "writes this chi's argv when the file has none" do
+        edit_launch { |l| l.delete("argv") }
+        helper(ruby: other_ruby).refresh_launch_file
+        expect(launch_json["argv"]).to eq([other_ruby, File.join(source_dir, "bin", "chi")])
+        edit_launch { |l| l["argv"] = [] }
+        helper.refresh_launch_file
+        expect(launch_json["argv"]).to eq(argv)
+      end
+
+      it "upgrade(keep_launch: true) keeps argv and PATH; install --force and upgrade bake this shell's" do
+        edit_launch { |l| l["env"]["PATH"] = "/a" }
+        kept = helper(ruby: other_ruby, env: env.merge("PATH" => "/b"))
+        kept.upgrade(keep_launch: true)
+        expect(launch_json).to include("argv" => argv)
+        expect(launch_json["env"]["PATH"]).to eq("/a")
+
+        kept.upgrade
+        expect(launch_json["argv"]).to eq([other_ruby, File.join(source_dir, "bin", "chi")])
+        expect(launch_json["env"]["PATH"]).to eq("/b")
+
+        helper.install(force: true)
+        expect(launch_json["argv"]).to eq(argv)
+      end
+
+      it "upgrade(keep_launch: true) writes this chi's argv when the file has none" do
+        edit_launch { |l| l.delete("argv") }
+        helper(ruby: other_ruby).upgrade(keep_launch: true)
+        expect(launch_json["argv"]).to eq([other_ruby, File.join(source_dir, "bin", "chi")])
+      end
+
+      it "names a missing ruby or chi in launch_problem, and nothing otherwise" do
+        expect(helper.launch_problem).to be_nil
+        edit_launch { |l| l["argv"] = ["/gone/ruby", File.join(source_dir, "bin", "chi")] }
+        expect(helper.launch_problem).to eq("chi not found at /gone/ruby: run chi desktop install --force " \
+                                            "from the shell whose chi it should run")
+        edit_launch { |l| l["argv"] = [] }
+        expect(helper.launch_problem).to be_nil
+      end
     end
 
     it "is stale when a Swift source changed, the launch file has no digest, or its ruby is gone" do
