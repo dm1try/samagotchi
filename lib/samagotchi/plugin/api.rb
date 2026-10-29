@@ -46,9 +46,9 @@ module Samagotchi
         "ctx.cost" => "0.83.0", "ctx.sessions.children" => "0.34.0", "ctx.load_tools" => "0.99.0",
         "ctx.usage" => "0.100.0", "ctx.sessions.stop" => "0.34.0", "ctx.turn_author" => "0.106.0",
         "ctx.sessions.review" => "0.107.0", "ctx.sessions.send(delivery:)" => "0.64.0",
-        "chi.toolkit(prompt:)" => "0.72.0", "ctx.ask_model(model:)" => "0.80.0", "chi.toolkit(groups:)" => "0.121.0"
-        # Unreleased (their release's version goes here, docs/releasing.md):
-        # "chi.prompt_section", "chi.prompt_changed", "ctx.cache_confirm", "ctx.model_names".
+        "chi.toolkit(prompt:)" => "0.72.0", "ctx.ask_model(model:)" => "0.80.0", "chi.toolkit(groups:)" => "0.121.0",
+        "chi.prompt_section" => "0.132.0", "chi.prompt_changed" => "0.132.0", "ctx.cache_confirm" => "0.132.0",
+        "ctx.model_names" => "0.132.0"
       }.freeze
 
       # @param bundle [String]

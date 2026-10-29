@@ -164,7 +164,7 @@ then runs again with `--yes` in `args` (drop it from your words). Outside a comm
 own thread) it is always nil. A plain String or nil return is unchanged.
 
 A command that asks must not be `anytime: true`: the REPL shows only an anytime command's text, so its Apply would
-be lost. Needs a chi newer than 0.130.1.
+be lost. Needs chi 0.132.0.
 
 ```ruby
 chi.command "/tone", "show or set this session's tone" do |args, ctx|
@@ -657,8 +657,8 @@ restarts the prompt cache for the whole conversation, so a command that changes 
 ([Commands that ask](#commands-that-ask-ctxcache_confirm)) and calls `chi.prompt_changed!` only once it applies.
 Keep `chi` from `register` for that (`@chi = chi`). `/stats` names the sections the prompt holds
 (`prompt sections: tone (tone)`). The test kit runs them as a build does (`bundle.prompt_text`,
-`bundle.prompt_sections`) and counts `chi.prompt_changed!` (`bundle.prompt_changes`). Needs a chi newer than
-0.130.1: a bundle using it sets `requires_chi`.
+`bundle.prompt_sections`) and counts `chi.prompt_changed!` (`bundle.prompt_changes`). Needs chi
+0.132.0: a bundle using it sets `requires_chi`.
 
 ```ruby
 def register(chi)
@@ -824,7 +824,7 @@ full label, `plugin.rb (bundle my-bundle)`.
 | `ctx.fork?` | whether the session is a fork (`ctx.sessions.fork`): it has a parent but isn't a delegate child, and started from a conversation, so its first prompt isn't its first user message |
 | `ctx.model` | the model the session runs on now: its resolved ref (`host:id`), right after `/model` too |
 | `ctx.model_key` | that model's memory overlay key (`<name>.<key>.md`, what `memory_write current_model_only` writes) |
-| `ctx.model_names` | the names chi's own per-model config looks that model up under (a `models:` map in config.yml): as typed (an alias), the alias's target, the resolved ref, without the host, the bare id; deduped, most specific first, frozen (`[]` when it doesn't resolve). Match a map of yours over them downcased, first hit, as chi does. Needs a chi newer than 0.130.1 |
+| `ctx.model_names` | the names chi's own per-model config looks that model up under (a `models:` map in config.yml): as typed (an alias), the alias's target, the resolved ref, without the host, the bare id; deduped, most specific first, frozen (`[]` when it doesn't resolve). Match a map of yours over them downcased, first hit, as chi does. Needs chi 0.132.0 |
 | `ctx.cost` | the session's spend so far, read now, as a frozen value: `total` (USD, reported + estimated, side requests included; 0.0 before any), `reported` (by providers, `usage.cost`), `estimated` (from `hosts.<name>.models` prices; a generation is one or the other, never both), `side` (recap, `/btw`, `ask_model`: their share of `total`) and `known?` (false while generations or side requests ran but none was reported or priced, so a limit on it can't be enforced; a session with some priced generations reads known, the unpriced ones counting 0). It includes the running turn's finished generations and what earlier workers of the session spent. Use its methods, not its class. Needs chi 0.83.0 |
 | `ctx.usage` | the session's work so far, read now, as a frozen value: `turns` (finished ones and the running one), `tool_calls` and `tool_calls_by_tool` (every call, running ones included; canonical names: an alias counts under its tool, a `call_tool` call under the inner tool), `steps` (the loop rounds that dispatched tools, `/stats`' iterations) and `active_ms` (`active_minutes` too): work time, the generations' time plus the finished tool calls' time, never the waits between them (a question, an approval, the user's answer to `ask_user_question`), with `tool_ms_by_tool` its tool part by tool, so a waiting tool's time (`task_wait`) can be left out. Its counts are the ones `/stats` and `chi sessions stats` show, earlier workers' included. Use its methods, not its class. Needs chi 0.100.0 (guard it with `ctx.respond_to?(:usage)`) |
 | `ctx.turn_author` | who wrote the running turn when it isn't the session's owner: a participant's `"p:<id>"` (`chi share`); nil for the owner's turns and between turns. Every hook event of such a turn carries the same as `author:`. The handler runs with the owner's power whatever the author ([hooks](hooks.md#participants-turns)). Needs chi 0.105.0 (guard it with `ctx.respond_to?(:turn_author)`) |
@@ -849,7 +849,7 @@ full label, `plugin.rb (bundle my-bundle)`.
 | `ctx.use_toolkit(name)` | put the session on toolkit `name` (yours from `chi.toolkit`, or chi's): saved, applied at the next turn's start and announced (`toolkit> toolkit: NAME from the next turn's start`, the web's tools chip follows). Only before the session's first model reply and outside a turn (the declared tools start every request, and a plugin doesn't ask first); otherwise it returns false and changes nothing: tell the user to run `/toolkit NAME`. An unknown name raises ArgumentError. Needs chi 0.66.0 |
 | `ctx.load_tools(names)` | load tools the session reaches but doesn't declare, so the model calls them by name: built-ins (`"delegate"`, `"chi/delegate"`), MCP tools (`"mcp_fs_read"`, `"fs/read"`). Returns the names it staged (the wire names); a declared tool, one loaded before, a removed or unknown one is skipped (an unknown one logged), so calling it every turn is fine. From a `before_turn` hook it loads for that turn; anywhere else (mid-turn too) from the next turn's start. Call it from a hook: before the session's first turn its toolkit isn't applied yet and nothing resolves. **A hint, not access**: the tools keep their guardrails and approvals, and only a host that takes tool changes (`api: anthropic`, not Fireworks) gets one, as a system message after the user's (`[tools loaded: delegate (your-bundle)]` in the session, a notice line live); elsewhere nothing is sent or saved, and the tools stay reachable with `call_tool`. A hook may switch the model after you call it, so the return value can't promise delivery. Raises ArgumentError for anything but an Array. Needs chi 0.99.0 |
 | `ctx.context` | attach outside text to this session and list it: see [Attached context](#attached-context-ctxcontext) |
-| `ctx.cache_confirm(line, changed:)` | inside a command: nil to apply a prompt-cache-restarting change now, or a confirm to return as `[text, confirm]`: see [Commands that ask](#commands-that-ask-ctxcache_confirm). Needs a chi newer than 0.130.1 |
+| `ctx.cache_confirm(line, changed:)` | inside a command: nil to apply a prompt-cache-restarting change now, or a confirm to return as `[text, confirm]`: see [Commands that ask](#commands-that-ask-ctxcache_confirm). Needs chi 0.132.0 |
 
 The Engine itself is never handed to a plugin.
 

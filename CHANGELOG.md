@@ -7,6 +7,8 @@ and commands may change between minor versions. How releases are made:
 [docs/releasing.md](docs/releasing.md).
 ## [Unreleased]
 
+## [0.132.0] - 2026-10-29
+
 ### Added
 
 - `chi home`, `chi home set [--ruby PATH]`, `chi home doctor`: the chi home, the one Ruby and gem path every chi
@@ -42,6 +44,9 @@ and commands may change between minor versions. How releases are made:
   and a layer with applied stubs turned off (`/llm-context reset --yes` applies too). Turning `stale` on, the apply
   rule and the budget don't ask; the web's `llm ctx` chip and `chi --llm-context` on an attached or resumed session
   apply at once.
+
+Update with `chi update`, then restart `chi web` and the session workers (`chi sessions restart`): a new TUI's
+`--model X` on a worker from before this release switches it to the model "X --yes".
 
 ## [0.131.0] - 2026-10-29
 
@@ -5032,7 +5037,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.131.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.132.0...HEAD
+[0.132.0]: https://github.com/dm1try/samagotchi/compare/v0.131.0...v0.132.0
 [0.131.0]: https://github.com/dm1try/samagotchi/compare/v0.130.1...v0.131.0
 [0.130.1]: https://github.com/dm1try/samagotchi/compare/v0.130.0...v0.130.1
 [0.130.0]: https://github.com/dm1try/samagotchi/compare/v0.129.0...v0.130.0
