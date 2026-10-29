@@ -35,6 +35,14 @@ if ENV.key?("SAMAGOTCHI_WEB_RESTARTED") || ENV.key?("SAMAGOTCHI_WEB_ADOPT_PIDS")
   web_restarted = Samagotchi::Web::Server.take_restart_env!
 end
 
+# A person's chi at a terminal on another Ruby than the chi home's: one dim
+# line a day saying so (HomeNotice: never in a worker's tools, a script or
+# machine output).
+unless web_restarted
+  require "samagotchi/home_notice"
+  Samagotchi::HomeNotice.show
+end
+
 # `chi self`: print version, source dir, config/memory/session paths, model and
 # bundles (read-only, offline) — lets the agent find its own code and state.
 if ARGV[0] == "self"
