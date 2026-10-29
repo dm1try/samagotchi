@@ -106,3 +106,117 @@ test("an owner check link targets another known session that contains its verdic
   assert.equal(ownerCheckHash([{ id: "current", verdicts: [{ check_turn_id: "check-turn" }] }],
     "current", "check-turn"), null);
 });
+
+// A turn as the owner's page draws it: the prompt, a steps block, the
+// answer and its timing line, a gap divider, the next turn.
+function ownerTurn(win, { answer = "Done: the claim holds in /proj/keys.rb.", step = "the claim, maybe" } = {}) {
+  const doc = win.document;
+  const root = doc.createElement("main");
+  const make = (cls, text = "") => {
+    const element = doc.createElement("div");
+    element.className = cls;
+    element.textContent = text;
+    return element;
+  };
+  const prompt = make("bubble user");
+  prompt.dataset.turnId = "source-turn";
+  prompt.append(make("user-message", "Is the claim right?"));
+  const block = doc.createElement("details");
+  block.className = "turn-steps";
+  block.append(make("gen-text", step));
+  const output = make("bubble output", answer);
+  const timing = make("turn-timing", "turn 1 · 4s");
+  const gap = make("time-gap", "2 hours later");
+  const next = make("bubble user", "next");
+  next.dataset.turnId = "next-turn";
+  root.append(prompt, block, output, timing, gap, next);
+  return { root, prompt, block, output, timing, gap, next };
+}
+
+const OWNER_ROOTS = ".bubble.output, .bubble.user .user-message, .gen-text";
+
+function verdictOn(quote, checkTurnId = "check-turn") {
+  return {
+    anchor: { turn_id: "source-turn", quote }, verdict: "unclear", reason: "Can't tell.", check_turn_id: checkTurnId,
+  };
+}
+
+test("places the card after the answer that holds the quote, cards on one answer in order, once each", () => {
+  const win = new Window();
+  const { root, output, timing } = ownerTurn(win);
+
+  const first = placeVerdict(root, verdictOn("the claim holds"), { roots: OWNER_ROOTS });
+  const second = placeVerdict(root, verdictOn("the claim", "check-2"), { roots: OWNER_ROOTS });
+
+  assert.equal(output.nextElementSibling, first);
+  assert.equal(first.nextElementSibling, second);
+  assert.equal(second.nextElementSibling, timing);
+  assert.equal(placeVerdict(root, verdictOn("the claim holds"), { roots: OWNER_ROOTS }), first);
+  assert.equal(root.querySelectorAll(".verify-verdict").length, 2);
+  win.happyDOM.abort();
+});
+
+test("reads the quote as the page does (the session's folder relative)", () => {
+  const win = new Window();
+  const { root, output } = ownerTurn(win);
+
+  const card = placeVerdict(root, verdictOn("holds in keys.rb"), { roots: OWNER_ROOTS, opts: { cwd: "/proj" } });
+
+  assert.equal(output.nextElementSibling, card);
+  win.happyDOM.abort();
+});
+
+test("a quote only in a step goes after the turn's steps block", () => {
+  const win = new Window();
+  const { root, block } = ownerTurn(win, { answer: "Something else." });
+
+  const card = placeVerdict(root, verdictOn("the claim, maybe"), { roots: OWNER_ROOTS });
+
+  assert.equal(block.nextElementSibling, card);
+  win.happyDOM.abort();
+});
+
+test("a quote not found goes at the turn's end, before a gap divider, never above the turn", () => {
+  const win = new Window();
+  const { root, timing, gap } = ownerTurn(win);
+
+  const card = placeVerdict(root, verdictOn("not on the page"), { roots: OWNER_ROOTS });
+
+  assert.equal(timing.nextElementSibling, card);
+  assert.equal(card.nextElementSibling, gap);
+  win.happyDOM.abort();
+});
+
+test("participant page: after the reply that quotes it, not the prompt that says the same, and again after a redraw", () => {
+  const win = new Window();
+  const doc = win.document;
+  const thread = doc.createElement("section");
+  const message = (cls, text, turnId = null) => {
+    const node = doc.createElement("div");
+    node.className = `p-msg ${cls}`;
+    if (turnId) node.dataset.turnId = turnId;
+    const bubble = doc.createElement("div");
+    bubble.className = "p-bubble";
+    bubble.textContent = text;
+    node.append(bubble);
+    return node;
+  };
+  const nodes = [
+    message("user", "Check: the claim holds", "source-turn"),
+    message("reply", "Yes, the claim holds."),
+    message("user", "Thanks", "next-turn"),
+  ];
+  thread.append(...nodes);
+  const roots = ".p-msg > .p-bubble";
+
+  const card = placeVerdict(thread, verdictOn("the claim holds"), { roots });
+  assert.equal(nodes[1].nextElementSibling, card);
+
+  // A redraw (participant.js syncChildren) drops the card; placed again, it
+  // lands in the same place, once.
+  thread.replaceChildren(...nodes);
+  const again = placeVerdict(thread, verdictOn("the claim holds"), { roots });
+  assert.equal(nodes[1].nextElementSibling, again);
+  assert.equal(thread.querySelectorAll(".verify-verdict").length, 1);
+  win.happyDOM.abort();
+});

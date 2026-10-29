@@ -7,6 +7,12 @@ and commands may change between minor versions. How releases are made:
 [docs/releasing.md](docs/releasing.md).
 ## [Unreleased]
 
+### Fixed
+
+- Web: a Verify verdict card sits right after the answer it quotes, on your page and a participant's, instead of
+  under the turn's prompt, screens above the claim in a long turn. A quote the page can't find yet puts the card at
+  the turn's end.
+
 ## [0.130.1] - 2026-10-29
 
 ### Fixed

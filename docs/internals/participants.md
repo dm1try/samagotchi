@@ -459,8 +459,9 @@ fields: a field added to an event later reaches nobody until it is named there.
   this matches the rendered text the page selects without treating different casing as the same claim. A fresh child
   checks the same anchor against its parent's history. A completed Verify reply whose final non-empty line has
   a valid `Verdict: confirmed|refuted|unclear — <reason>` appends a verdict to the session. Both pages place its card
-  after the source turn, name its author, show the reason and quote, and link to the checking turn; a live completion
-  adds the card without a reload. The participant view receives only the card fields through its allowlist, with the
+  in the source turn, right after the bubble that holds the quote (the answer's, matched as a claim link reads the
+  page; a quote not found yet goes at the turn's end), name its author, show the reason and quote, and link to the
+  checking turn; a live completion adds the card without a reload. The participant view receives only the card fields through its allowlist, with the
   quote and reason redacted by the view's normal rules, never the full reply.
 - **Verify fresh** (`VerifyFresh`, `verdict_fresh.js`). An `unclear` card has a **Verify fresh** button (the owner's
   page always; a participant's while `can_comment`, i.e. while their grant could run a turn now; never in the owner's
