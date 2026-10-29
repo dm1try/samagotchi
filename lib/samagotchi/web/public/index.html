@@ -607,6 +607,10 @@ body.has-session #history{padding-bottom:calc(var(--dock-h,160px) + 32px)}
 #lightbox img{max-width:96vw;max-height:94vh;border-radius:6px}
 /* The model picker (the start page, and a fresh chain link: start_page.js syncModelPick): reads as a label, "host:model ▾", left of Start; a button under a drawn caret that opens a searchable list (model_picker.js). Its name ellipsizes within max-width. */
 #composer .actions-col .model-pick{order:0;position:relative;display:inline-block;max-width:min(50%,380px);height:28px;min-height:28px;padding:0 22px 0 8px;border-radius:8px;overflow:hidden;background:transparent;color:var(--text-muted);font-size:12px;line-height:28px;text-align:left;text-overflow:ellipsis;transition:background .12s ease,color .12s ease}
+/* The start page's row stays one row (Start never wraps): the model name gives way, the chips keep their whole text (on a phone, below, they ellipsize too). Scoped off the session composer and a fresh link's button. */
+body:not(.has-session) #composer .actions-col{flex-wrap:nowrap}
+body:not(.has-session) #composer .actions-col .model-pick{flex:0 1 auto;min-width:0}
+body:not(.has-session) #composer .actions-col .llmctx-new{flex-shrink:0}
 #composer .actions-col .model-pick:hover,#composer .actions-col .model-pick[aria-expanded="true"]{filter:none;background:color-mix(in srgb,var(--bg-hover) 75%,transparent);color:var(--text-2)}
 #composer .actions-col .model-pick[hidden],body.has-session #composer .actions-col .model-pick{display:none}
 .model-pick-name{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -623,8 +627,8 @@ body.has-session.fresh-link #composer .actions-col .model-pick:not([hidden]){dis
 #composer .actions-col .llmctx-new[hidden],body.has-session #composer .actions-col .llmctx-new{display:none}
 /* The new session's thinking chip, after it: shorter text, so a smaller share of the row. */
 #composer .actions-col .think-new{max-width:min(25%,140px)}
-/* Phones (the key hint is gone there): the chips keep their whole text and the row wraps, Start staying right (its margin-left:auto) on the last line; only a model name wider than the row ellipsizes. */
-@media(max-width:600px){#composer .actions-col .model-pick{flex:0 1 auto;min-width:0;max-width:100%}#composer .actions-col .llmctx-new,#composer .actions-col .think-new{flex:0 0 auto;max-width:100%}}
+/* Phones (the key hint is gone there): still one row, with tighter gaps. The model name gives way first (20x the chips' shrink weight) down to a few characters (min-width), then the chips ellipsize too. */
+@media(max-width:600px){#composer .actions-col .model-pick{flex:0 1 auto;min-width:0;max-width:100%}body:not(.has-session) #composer .actions-col{gap:4px}body:not(.has-session) #composer .actions-col .model-pick{flex-shrink:20;min-width:min(84px,20vw)}body:not(.has-session) #composer .actions-col .llmctx-new{flex-shrink:1;max-width:100%}}
 /* The model search: opaque like #commandList (a list over the conversation
    must stay readable), above the composer, or below it (.down) when the
    start page leaves no room above, or over the composer (.over) when

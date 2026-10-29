@@ -22,6 +22,8 @@ and commands may change between minor versions. How releases are made:
 
 ### Changed
 
+- Web: the start page's composer row stays one row at any width: a long model name ellipsizes instead of pushing
+  Start to a second row.
 - Cache: confirmations for prompt-cache changes estimate the reread size when known and warn that Anthropic drops
   preserved thinking after a full-prefix change.
 
