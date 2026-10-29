@@ -7,6 +7,8 @@ and commands may change between minor versions. How releases are made:
 [docs/releasing.md](docs/releasing.md).
 ## [Unreleased]
 
+## [0.130.1] - 2026-10-29
+
 ### Fixed
 
 - Sessions started from the desktop helper find the tools your terminal finds (mise, Homebrew, `codex`):
@@ -33,6 +35,8 @@ and commands may change between minor versions. How releases are made:
   An open 127.0.0.1 tab lands on the 401 page once: open the `Local:` link. If you ran a participant's pair turns
   with dev servers on 0.130.0, run `chi web --new-token`. The LAN address's cookie (your phone's) still holds the
   token.
+
+Update with `chi update`, then restart `chi web` and the session workers (`chi sessions restart`).
 
 ## [0.130.0] - 2026-10-29
 
@@ -4960,7 +4964,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.130.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.130.1...HEAD
+[0.130.1]: https://github.com/dm1try/samagotchi/compare/v0.130.0...v0.130.1
 [0.130.0]: https://github.com/dm1try/samagotchi/compare/v0.129.0...v0.130.0
 [0.129.0]: https://github.com/dm1try/samagotchi/compare/v0.128.0...v0.129.0
 [0.128.0]: https://github.com/dm1try/samagotchi/compare/v0.127.0...v0.128.0
