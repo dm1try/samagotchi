@@ -1,5 +1,5 @@
 {
-  "_comment": "ParticipantView::Redact.text (participant_view_spec.rb) and claim_link.js normalizeClaim (claim_link.test.js) read each input the same: keep the JS patterns in step with the Ruby ones. Inputs are single-spaced (the JS side also collapses whitespace).",
+  "_comment": "ParticipantView::Redact.text (participant_view_spec.rb) and claim_link.js normalizeClaim (claim_link.test.js) read each input the same: keep the JS patterns in step with the Ruby ones. Engine#verify_quote_in? accepts a Verify quote in this shown form, so a quote the owner's page builds with claimOpts() is one the Engine takes. Inputs are single-spaced (the JS side also collapses whitespace).",
   "home": "/home/o",
   "cwd": "/home/o/proj",
   "cases": [

@@ -27,6 +27,9 @@ and commands may change between minor versions. How releases are made:
 - Web: on a participant's page, a turn a delegate's report or a context note woke opens as "An automatic turn"
   (still without the report or note). Its answer read as one more reply of the turn before: Verify was offered on
   it and refused, and hidden on that turn's real final answer.
+- Web: Verify on a claim that names a file in the session's folder or your home folder (or holds a key) records its
+  verdict: the pages quote such a path relative, or with `~`, and the check compared it against the answer's full
+  path, so it ran as a plain comment with no card.
 
 ## [0.130.1] - 2026-10-29
 

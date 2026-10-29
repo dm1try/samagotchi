@@ -16,6 +16,7 @@ require_relative "turn_note"
 require_relative "turn_endings"
 require_relative "turn_origin"
 require_relative "verify_anchor"
+require_relative "web/participant_view"
 require_relative "verdict"
 require_relative "model_profile"
 require_relative "effective_model"
@@ -1659,12 +1660,27 @@ module Samagotchi
       return reject_verify_anchor(anchor, :reply_missing) unless reply
 
       quote_text = verify_comparison_text(anchor.quote)
-      answer_text = verify_comparison_text(reply[:content] || reply["content"])
-      return reject_verify_anchor(anchor, :quote_missing) if quote_text.empty? || !answer_text.include?(quote_text)
+      quoted = !quote_text.empty? && verify_quote_in?(quote_text, (reply[:content] || reply["content"]).to_s, source)
+      return reject_verify_anchor(anchor, :quote_missing) unless quoted
 
       anchor
     end
     private :verified_anchor
+
+    # Whether +quote_text+ is in +answer+ as the model wrote it, or as the
+    # pages show it: a page quotes its own text, which reads the session's
+    # folder relative, the home folder as ~ and a secret shape as
+    # [redacted] (a participant's page gets it so, ParticipantView::Redact;
+    # the owner's page rewrites its quote the same way, claim_link.js
+    # normalizeClaim, so claim links match both pages). +source+ is the
+    # session whose folder that is.
+    def verify_quote_in?(quote_text, answer, source)
+      return true if verify_comparison_text(answer).include?(quote_text)
+
+      viewer = Web::ParticipantView::Viewer.new(cwd: source.working_directory)
+      verify_comparison_text(Web::ParticipantView::Redact.text(answer, viewer)).include?(quote_text)
+    end
+    private :verify_quote_in?
 
     def verify_anchor_source_session(session, anchor)
       return session unless session.verify_fresh

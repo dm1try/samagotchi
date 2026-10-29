@@ -371,6 +371,34 @@ RSpec.describe Samagotchi::Engine do
       expect(session.verdicts.map { |record| record[:verdict] }).to eq(["confirmed"])
     end
 
+    it "matches a quote as the pages show the answer: the session's folder relative, home as ~, a secret redacted" do
+      session = make_session
+      session.working_directory = File.join(Dir.home, "proj")
+      engine = build_engine(profile: "gemma4")
+      check_turn_id = "123e4567-e89b-12d3-a456-426614174001"
+      answer = "Verdict: confirmed — read it"
+      allow(kernel).to receive(:run) do
+        Samagotchi::LLM::ModelResult.new(text: answer,
+                                         conversation: [{ role: "user", content: "check", turn_id: check_turn_id },
+                                                        { role: "model", content: answer }],
+                                         exhausted: false, pending_tool_calls: false, tool_activity: [])
+      end
+      source = "The cache lives in `#{Dir.home}/proj/lib/cache.rb`, notes in #{Dir.home}/notes/a.md, " \
+               "key sk-ant-abcdefghijklmnopqrstu."
+      quotes = ["The cache lives in lib/cache.rb, notes in ~/notes/a.md",
+                "notes in ~/notes/a.md, key [redacted].",
+                "The cache lives in #{Dir.home}/proj/lib/cache.rb"]
+      quotes.each do |quote|
+        seed_verify_source(session, "123e4567-e89b-12d3-a456-426614174000", answer: source)
+        session.verdicts = []
+        verify = Samagotchi::VerifyAnchor.new(turn_id: "123e4567-e89b-12d3-a456-426614174000", quote: quote)
+
+        engine.run_turn(session, "check", id: check_turn_id, verify: verify)
+
+        expect(session.verdicts.map { |record| record[:anchor] }).to eq([verify.to_h]), quote
+      end
+    end
+
     it "does not stamp or record a verdict when the anchor turn is unknown" do
       session = make_session
       seed_verify_source(session, "123e4567-e89b-12d3-a456-426614174009")
