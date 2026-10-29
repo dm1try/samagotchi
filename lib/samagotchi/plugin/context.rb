@@ -61,11 +61,13 @@ module Samagotchi
     # +usage+ its work now (SessionMetrics::Usage).
     # +cache_confirm+ takes (line, changed) and returns a
     # CacheConfirm::Confirm when the change must ask first (CacheConfirm.ask
-    # with cost :full), else nil.
+    # with cost :full), else nil. +model_names+ returns the names the
+    # session's model is looked up under (EffectiveModel#names).
     Host = Struct.new(:session_id, :cwd, :messages, :messages_partial, :notify, :ask_user, :cancelled, :card,
                       :ask_model, :model_name, :model_key, :state_dir, :scratch, :setup, :prompt_files,
                       :steer, :stop_turn, :stop_generation, :frontend, :toolkit, :declared_tools, :use_toolkit, :load_tools,
-                      :cancel_controller, :cost, :usage, :turn_author, :cache_confirm, keyword_init: true)
+                      :cancel_controller, :cost, :usage, :turn_author, :cache_confirm, :model_names,
+                      keyword_init: true)
 
     # ctx.ask_model failed: the model couldn't be reached, timed out, or
     # sent nothing usable. The message says why, for the user.
@@ -167,6 +169,14 @@ module Samagotchi
       #   (`<name>.<key>.md`, ModelOverlay.key_for), as memory_write
       #   current_model_only names it
       def model_key = @host.model_key&.call
+
+      # The names the session's model is looked up under now, as chi's own
+      # per-model config is (models: maps, ConfigFile.model_setting): as
+      # typed (an alias), the alias's target, the resolved ref ("host:id"),
+      # without the host, the bare id the host serves; deduped, first the
+      # most specific. Compare them downcased, first hit, as chi does.
+      # @return [Array<String>] frozen; [] when the model doesn't resolve
+      def model_names = Array(@host.model_names&.call).map(&:to_s).freeze
 
       # @return [SessionMetrics::Cost] the session's spend so far, read now:
       #   #total, #reported, #estimated, #side (Float USD) and #known?

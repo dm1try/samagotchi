@@ -15,6 +15,8 @@ and commands may change between minor versions. How releases are made:
 - Plugins: a command can ask before a change that restarts the prompt cache, as `/thinking` does:
   `ctx.cache_confirm(line, changed:)` gives a confirm for a person at a web tab or a TUI once the session has a
   model reply, and the command returns `[text, confirm]` (the TUI prefills the `--yes` line, the web shows Apply).
+- Plugins: `ctx.model_names` lists the names chi looks the session's model up under (alias, target, ref, bare id),
+  so a bundle can match a per-model map the way config.yml's `models:` settings are matched.
 
 ## [0.131.0] - 2026-10-29
 

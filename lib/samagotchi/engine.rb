@@ -3192,6 +3192,12 @@ module Samagotchi
         },
         model_name: -> { effective_model_ref },
         model_key: -> { @model_binding.model_key },
+        # The names a models: map looks the model up under; [] when it doesn't resolve.
+        model_names: lambda do
+          effective_model.names
+        rescue StandardError
+          []
+        end,
         state_dir: -> { session_state_dir },
         scratch: -> { @scratch },
         setup: -> { SessionSetup.of(@session) },

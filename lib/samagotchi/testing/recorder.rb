@@ -46,7 +46,9 @@ module Samagotchi
         turn_author: nil,
         # ctx.cache_confirm: whether the session has a model reply (a cache
         # to restart), and the context size its confirm names (nil: none).
-        history: false, context_tokens: nil
+        history: false, context_tokens: nil,
+        # ctx.model_names: nil gives model_name and its id without the host.
+        model_names: nil
       }.freeze
 
       attr_reader :notices, :cards, :steers, :stops, :questions, :model_requests, :toolkit_uses, :tool_loads, :answers,

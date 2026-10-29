@@ -46,6 +46,7 @@ module Samagotchi
           },
           model_name: -> { recorder[:model_name] },
           model_key: -> { recorder[:model_key] },
+          model_names: -> { recorder[:model_names] || model_names(recorder[:model_name]) },
           state_dir: -> { recorder[:state_dir] || Session.default_state_dir },
           scratch: -> { recorder[:scratch] },
           setup: -> { recorder[:setup] },
@@ -67,6 +68,13 @@ module Samagotchi
                              engine: CacheEngine.new(recorder[:history], recorder[:context_tokens]))
           }
         )
+      end
+
+      # ctx.model_names for a model ref when the test sets none: the ref,
+      # then its id without the host ("test:model" → test:model, model).
+      def model_names(ref)
+        ref = ref.to_s
+        [ref, ref.split(":", 2).last].reject(&:empty?).uniq
       end
 
       # The parts a test may give bundle.set(cost: {...}).

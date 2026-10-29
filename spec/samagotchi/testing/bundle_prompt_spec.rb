@@ -78,4 +78,13 @@ RSpec.describe Samagotchi::Testing::Bundle, "prompt sections" do
     expect(bundle.command("/tone teaching --yes", confirm: true)).to eq("tone: teaching")
     expect(bundle.command("/tone concise")).to eq("tone: concise")
   end
+
+  it "gives ctx.model_names from the session's model, or as the test sets them" do
+    bundle = load_plugin("class Plugin\n  def initialize(_settings) = nil\n  def register(chi) = nil\nend\n")
+    ctx = Samagotchi::Plugin::Context.new(bundle: "tone", label: "l", settings: {}, host: Samagotchi::Testing::Host.build(bundle.recorder))
+
+    expect(ctx.model_names).to eq(%w[test:model model])
+    bundle.set(model_names: %w[tiny box:gemma gemma])
+    expect(ctx.model_names).to eq(%w[tiny box:gemma gemma])
+  end
 end
