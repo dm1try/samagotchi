@@ -30,13 +30,16 @@ module Samagotchi
                              .netrc .npmrc .pypirc .claude.json .zsh_history .bash_history .history .python_history
                              .node_repl_history .psql_history .mysql_history .irb_history .lesshst
                              .local/share/fish/fish_history].freeze
-      # Project files that hold secrets, by a path part's name: .env*,
-      # netrc, keys and certificates, anything named credentials, package
+      # Project files that hold secrets, by a path part's name: .env* (.envrc
+      # too), mise's local files (mise.local.toml, .mise.dev.local.toml), netrc, keys and certificates, anything named credentials, package
       # registry tokens (.npmrc, .pypirc), ssh keys, terraform state, a
       # secrets file; and a git config (.git/config, a submodule's
       # .git/modules/x/config), checked apart.
-      SECRET_FILE = /\A(?:\.env.*|[._]netrc|.*\.(?:pem|key|p12|pfx|tfstate(?:\.backup)?)|.*credentials.*|
+      SECRET_FILE = /\A(?:\.env.*|\.?mise(?:\.[\w-]+)?\.local\.toml|[._]netrc|.*\.(?:pem|key|p12|pfx|tfstate(?:\.backup)?)|.*credentials.*|
                        \.npmrc|\.pypirc|\.git-credentials|id_(?:rsa|dsa|ecdsa|ed25519)(?:\.pub)?|secrets?\.(?:ya?ml|json))\z/xi
+      # mise's local config in its config dirs (.config/mise/config.local.toml,
+      # config.<env>.local.toml; mise/ and .mise/ too): by the path's end.
+      SECRET_PATH = %r{(?:\A|/)(?:\.config/mise|\.?mise)/config(?:\.[\w-]+)?\.local\.toml\z}i
       # The .docker/config.json kind: a dot dir's config holding tokens.
       SECRET_DIR_FILES = { ".docker" => "config.json", ".kube" => "config" }.freeze
       GIT_DIR = ".git"
@@ -124,7 +127,7 @@ module Samagotchi
         return true if denied_roots.any? { |root| PathResolve.under?(path, root) }
 
         parts = path.split(File::SEPARATOR)
-        return true if parts.any? { |part| SECRET_FILE.match?(part) }
+        return true if parts.any? { |part| SECRET_FILE.match?(part) } || path.match?(SECRET_PATH)
         return true if parts.each_cons(2).any? { |dir, file| SECRET_DIR_FILES[dir.downcase] == file.downcase }
 
         git_config?(parts)

@@ -120,6 +120,61 @@ RSpec.describe Samagotchi::Guardrails::PairBoundary do
     end
   end
 
+  it "denies reading the project's local env files (.envrc, mise.local.toml and their kin), leaves mise.toml" do
+    %w[.envrc mise.local.toml .mise.local.toml mise.dev.local.toml .mise.dev.local.toml config/mise.local.toml]
+      .each do |path|
+        expect(read(path).reason).to eq(described_class::SECRET), path
+        expect(refused("cat #{path}")).to eq(described_class::SECRET), path
+      end
+    %w[mise.toml .mise.toml mise.dev.toml].each do |path|
+      expect(read(path)).to be_allow, path
+      expect(refused("cat #{path}")).to be_nil, path
+    end
+  end
+
+  it "asks the owner before a command runs mise or direnv (they load the project's env files)" do
+    ["mise env", "mise exec -- env", "/opt/homebrew/bin/mise x -- ruby -v", "direnv exec . env", "FOO=1 direnv export bash",
+     "sh -c 'mise env --json'", "timeout 5 mise ls", "find . -name x -exec mise env \\;"].each do |command|
+      verdict = execute(command)
+      expect([verdict.ask?, verdict.reason, verdict.scopes]).to eq([true, described_class::ENV_LOADER, ["once"]]), command
+      expect(verdict).to be_fresh_ask
+    end
+    ["cat mise.toml", "ls ~/.local/share/mise", "echo mise"].each do |command|
+      expect(execute(command)).not_to be_ask, command
+    end
+  end
+
+  it "denies reading mise's local config in its config dirs" do
+    %w[.config/mise/config.local.toml .config/mise/config.dev.local.toml mise/config.local.toml
+       .mise/config.local.toml].each do |path|
+      expect(read(path).reason).to eq(described_class::SECRET), path
+      expect(refused("cat #{path}")).to eq(described_class::SECRET), path
+    end
+    expect(read(".config/mise/config.toml")).to be_allow
+  end
+
+  it "asks the owner before a write to mise's config (the next worker start runs it), never for a read" do
+    FileUtils.mkdir_p(File.join(project, ".config", "mise"))
+    [{ name: "write", path: "mise.toml", content: "[env]\n" },
+     { name: "write", path: ".mise.toml", content: "x" },
+     { name: "write", path: "mise.dev.toml", content: "x" },
+     { name: "edit", path: File.join(project, ".config", "mise.toml"), old_str: "a", new_str: "b" },
+     { name: "write", path: ".config/mise/conf.d/x.toml", content: "x" },
+     { name: "write", path: "mise/config.toml", content: "x" },
+     { name: "write", path: ".mise/config.dev.toml", content: "x" }].each do |call|
+      verdict = verdict_for(call)
+      expect([verdict.ask?, verdict.reason, verdict.scopes]).to eq([true, described_class::MISE_CONFIG, ["once"]]), call[:path]
+      expect(verdict).to be_fresh_ask
+    end
+    ["echo '[env]' > mise.toml", "printf x >> .mise.toml", "sed -i '' s/a/b/ mise.toml", "cp evil.toml mise.toml",
+     "bash -c 'echo x > .config/mise/config.toml'", "python3 -c \"open('mise.toml', 'w').write('x')\""].each do |command|
+      expect(execute(command).reason).to eq(described_class::MISE_CONFIG), command
+    end
+    expect(read("mise.toml")).to be_allow
+    ["cat mise.toml", "grep ruby .mise.toml"].each { |command| expect(execute(command)).not_to be_ask, command }
+    expect(verdict_for({ name: "write", path: "docs/mise.md", content: "x" })).not_to be_ask
+  end
+
   it "denies a symlink that leads to a secret" do
     File.symlink(File.join(home, ".ssh"), File.join(project, "keys"))
     expect(read("keys/id_rsa").reason).to eq(described_class::SECRET)

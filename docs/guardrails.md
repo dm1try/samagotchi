@@ -429,8 +429,13 @@ message:
   get-access-token`, `heroku auth:token`, `kubectl config view --raw`;
   `PairCommand::CREDENTIAL_PRINTERS`). On top of it, a pair turn's `execute` runs
   without every variable whose name matches `KEY|TOKEN|SECRET|PASS|CREDENTIAL|AUTH`
-  (`PairBoundary::SECRET_ENV_NAME`, case-insensitive) and every variable the
-  session's project env set but PATH ([Project env](sessions.md#project-env)), and a command still
+  (`PairBoundary::SECRET_ENV_NAME`, case-insensitive) and without the session's
+  project env ([Project env](sessions.md#project-env)); a command that runs
+  `mise` or `direnv` asks the owner (`ENV_LOADER`: they load the project's env
+  files, and `.envrc`, `mise.local.toml` and its kin are secrets like `.env`),
+  and so does a write (by a file tool or a command) to mise's config
+  (`MISE_CONFIG`: the owner's next worker start runs its `[env]`);
+  and a command still
   running at the limit is killed, never handed over as a background task;
 - git settings that make git run a command (`core.hooksPath`,
   `core.fsmonitor`, `core.sshCommand`, `core.pager`, `core.editor`, a `!`

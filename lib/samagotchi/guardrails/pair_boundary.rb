@@ -79,6 +79,10 @@ module Samagotchi
              "approves it"
       GIT_CONFIG = "a participant's turn can't change git's global config or set what makes git run a command " \
                    "(core.hooksPath, core.fsmonitor, core.sshCommand, core.pager, core.editor, ! aliases)"
+      ENV_LOADER = "a participant's turn runs mise or direnv: they load the project's env files (a mise.local.toml, " \
+                   "an .envrc), which may hold the owner's secrets, so the owner approves it"
+      MISE_CONFIG = "a participant's turn changes mise's config: the owner's next worker start runs it (its [env] " \
+                    "can run commands), so the owner approves it"
       GIT_HOOKS = "a participant's turn can't write git's hooks (.git/hooks): git runs them in the owner's name"
       # chi web on loopback asks the owner's token too (Web::App#token_gate,
       # LAN mode); this text check stays as defense in depth: a loopback-only
@@ -127,7 +131,8 @@ module Samagotchi
         ParentApprovals::CHI_TEXT,
         %r{\.local/state/samagotchi|web-grants|grants\.json|web-token},
         %r{(?:\A|[\s/'"=])\.(?:ssh|gnupg|aws|kube|docker)(?![\w.-])},
-        %r{(?:\A|[\s/'"=])(?:\.env(?:\.[\w.-]*)?|[._]netrc|\.npmrc|\.pypirc|\.git-credentials)(?![\w-])},
+        %r{(?:\A|[\s/'"=])(?:\.env(?:\.[\w.-]*)?|\.envrc|\.?mise(?:\.[\w-]+)?\.local\.toml|(?:\.config/mise|\.?mise)/config(?:\.[\w-]+)?\.local\.toml|[._]netrc|\.npmrc|\.pypirc|
+           \.git-credentials)(?![\w-])}x,
         /\bid_(?:rsa|dsa|ecdsa|ed25519)\b|credentials|\.(?:pem|p12|pfx|tfstate)\b/
       )
 
@@ -187,14 +192,28 @@ module Samagotchi
       end
 
       # Why the owner is asked (fresh, once): a command that makes a link
-      # (LINK), a write that may land outside the project (OUTSIDE_WRITE, or
+      # (LINK), one that runs mise or direnv (ENV_LOADER), a write to mise's
+      # config (MISE_CONFIG), a write that may land outside the project (OUTSIDE_WRITE, or
       # NO_PROJECT without one); nil when nothing asks.
       def ask_reason(verdict)
         targets = verdict.targets
         return LINK if targets&.command && command(targets, nil).links?
+        return ENV_LOADER if targets&.command && command(targets, nil).loads_env?
+        return MISE_CONFIG if mise_config_write?(verdict)
         return nil unless outside_write?(verdict)
 
         project_root ? OUTSIDE_WRITE : NO_PROJECT
+      end
+
+      # A write or edit of a mise config file (PairCommand.mise_config?), or a
+      # command that writes or names one (PairCommand#mise_config_write?).
+      def mise_config_write?(verdict)
+        targets = verdict.targets
+        return false unless targets
+        return command(targets, nil).mise_config_write? if targets.command
+        return false unless WRITE_TOOLS.include?(verdict.call&.dig(:name).to_s)
+
+        targets.paths.to_a.compact.any? { |path| PairCommand.mise_config?(File.expand_path(path, targets.cwd || Dir.pwd)) }
       end
 
       # A write or edit whose path may land outside the project root, or a

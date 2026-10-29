@@ -52,6 +52,9 @@ module Samagotchi
       ENV_READERS = %w[printenv security op].freeze
       # Commands that print a stored credential (a token, a password, a
       # key), by the program and the words that say so in its arguments.
+      # Programs that load a project's env files (PairBoundary::ENV_LOADER).
+      ENV_LOADERS = %w[mise direnv].freeze
+      ENV_LOADER_TEXT = %r{(?<![\w./-])(?:mise|direnv)(?![\w./-])}
       CREDENTIAL_PRINTERS = {
         "gh" => [%w[auth token]],
         "git" => [%w[credential], %w[credential-osxkeychain], %w[credential-store], %w[credential-cache],
@@ -139,6 +142,20 @@ module Samagotchi
         Outside.inside?(path, root: root) || Outside.tmp_write?(path, root: root)
       end
 
+      # mise's config files (mise.toml, .mise.toml, mise.<env>.toml, .config/mise.toml,
+      # anything under .config/mise/, mise/ or .mise/ config*.toml): mise runs
+      # their [env] at the next worker start (ProjectEnv).
+      MISE_CONFIG_PATH = %r{(?:\A|/)(?:\.?mise(?:\.[^/]+)?\.toml|\.config/mise\.toml|\.config/mise/.+|
+                             \.?mise/config[^/]*\.toml)\z}x
+      MISE_CONFIG_TEXT = %r{(?<![\w-])(?:\.?mise(?:\.[\w.-]+)?\.toml|\.config/mise|\.?mise/config[\w.-]*\.toml)}
+
+      # Whether +path+ is one of mise's config files (MISE_CONFIG_PATH), as
+      # given or as it resolves.
+      def self.mise_config?(path)
+        path.to_s.match?(MISE_CONFIG_PATH) ||
+          (path.to_s.start_with?("/") && PathResolve.reals(path).any? { |real| real.match?(MISE_CONFIG_PATH) })
+      end
+
       # Whether +path+ is in a .git/hooks folder, as given or as it resolves
       # (ShellPaths::HOOKS_PART): git runs what is there.
       def self.git_hook?(path)
@@ -193,6 +210,7 @@ module Samagotchi
 
         @refusal = read
       rescue StandardError
+        @mise_config = true
         @refusal = PairBoundary::UNREADABLE
       end
 
@@ -208,6 +226,28 @@ module Samagotchi
         end
       rescue StandardError
         @links = true
+      end
+
+      # Whether it runs mise or direnv (ENV_LOADERS): they load the
+      # project's env files (a mise.local.toml, an .envrc), which hold the
+      # owner's secrets, into what the command prints; the owner approves
+      # it. True for one it can't read.
+      def loads_env?
+        return @loads_env if defined?(@loads_env)
+
+        @loads_env = @depth > MAX_DEPTH || ShellLex.simple_commands(ShellLex.lex(@text)).any? do |words|
+          words.is_a?(Array) && env_loader_command?(words)
+        end
+      rescue StandardError
+        @loads_env = true
+      end
+
+      # Whether it writes (or, not only reading, names) a mise config file
+      # (.mise_config?), a script it hands on included: the owner approves
+      # it. True for one it can't read.
+      def mise_config_write?
+        refusal
+        @mise_config ||= false
       end
 
       # Whether it may write outside the project (asked about, never
@@ -313,8 +353,10 @@ module Samagotchi
         program = File.basename(words[at])
         scripts(words, at).each do |script|
           reason = if SHELLS.include?(program) || program == "eval"
-                     nested(script).refusal
+                     inner = nested(script)
+                     inner.refusal.tap { @mise_config = true if inner.mise_config_write? }
                    elsif INTERPRETERS.include?(program)
+                     @mise_config = true if script.match?(MISE_CONFIG_TEXT)
                      script_text_refusal(script)
                    end
           return reason if reason
@@ -448,6 +490,8 @@ module Samagotchi
         resolved.each do |word, path|
           return PairBoundary::GIT_HOOKS if !@read_only && PairCommand.git_hook?(path || word)
 
+          @mise_config = true if !@read_only && PairCommand.mise_config?(path || word)
+
           if path
             return PairBoundary::SECRET if @paths.secret_refusal([path])
             return PairBoundary::HOME_SWEEP if SWEEPERS.include?(program_word) && above_denied?(path)
@@ -509,6 +553,18 @@ module Samagotchi
         name = File.basename(words[runner])
         scripts(words, runner).any? do |script|
           SHELLS.include?(name) || name == "eval" ? nested(script).links? : script.match?(SCRIPT_LINK_TEXT)
+        end
+      end
+
+      def env_loader_command?(words)
+        at = program_at(words)
+        return true if at && ENV_LOADERS.include?(File.basename(words[at]))
+        return true if words.each_cons(2).any? { |option, word| CODE_OPTIONS.include?(option) && ENV_LOADERS.include?(File.basename(word)) }
+
+        runner = (0..(at || (words.size - 1))).find { |i| runner?(words[i]) } or return false
+        name = File.basename(words[runner])
+        scripts(words, runner).any? do |script|
+          SHELLS.include?(name) || name == "eval" ? nested(script).loads_env? : script.match?(ENV_LOADER_TEXT)
         end
       end
 

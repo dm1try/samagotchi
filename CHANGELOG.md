@@ -23,8 +23,9 @@ and commands may change between minor versions. How releases are made:
   mise.toml edit needs `chi sessions restart`; a `mise env` that fails (an untrusted mise.toml) changes nothing and
   logs one `project_env` warning. A session started from a tool for another folder never gets this one's env.
   `chi self` shows `home` and `project env`.
-- Pair turns: their tools run without the project env; a command that runs `mise` or `direnv` asks the owner, and
-  `.envrc`, `mise.local.toml` and `mise.*.local.toml` (dotted too) are secrets, as `.env` is.
+- Pair turns: their `execute` runs without the project env; a command that runs `mise` or `direnv`, and a write to
+  mise's config (the owner's next worker start runs it), ask the owner; `.envrc` and mise's local files are secrets,
+  as `.env` is.
 - Bundles: mcp 0.7.3 starts its servers in the session's project env.
   See docs/sessions.md (Project env).
 - Bundles: model-notes 0.2.0 ships `model_notes_tone` (`models: *`): every model answers first, in plain words, without
