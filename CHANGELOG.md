@@ -32,8 +32,8 @@ and commands may change between minor versions. How releases are made:
   (`updating the chi home (<ruby>)`) and installs into its gems; a worker whose home can't load chi logs one
   `boot_failed` line instead of a silent spawn timeout. Without a home every launch is as before.
 - Desktop helper: `chi desktop install` and `upgrade` make it boot the chi home when there is one, and its launch
-  file no longer carries `GEM_HOME`, `GEM_PATH` or `RUBYLIB` (they reached every command its sessions ran). `chi
-  update` drops `RUBYLIB` from an existing one, and `GEM_HOME`/`GEM_PATH` once it boots the home.
+  file no longer carries `RUBYLIB`, nor `GEM_HOME`/`GEM_PATH` when it boots the home (they reached every command its
+  sessions ran). `chi update` drops `RUBYLIB` from an existing one, and `GEM_HOME`/`GEM_PATH` once it boots the home.
 - `/model` asks before switching to another model once the session has a model reply, from a web tab or a TUI (the
   new model has no cache of the conversation): the reply names the size it rereads and the line that applies it,
   flags and all (`/model qwen --default --yes`); `--yes` (or `-y`) applies at once, and a typo is an error before any

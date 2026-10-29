@@ -101,12 +101,13 @@ RSpec.describe Samagotchi::Desktop::MacOS do
       expect(macos.launch_config["argv"]).to eq(["/opt/ruby/bin/ruby", File.join(base, "bin", "chi")])
     end
 
-    # No GEM_HOME/GEM_PATH/RUBYLIB: they would reach every tool the helper's sessions run.
+    # Never RUBYLIB; GEM_HOME/GEM_PATH only for a [ruby, chi] argv (its wrapper may need them).
     it "copies only the allowlisted variables that are set, and always LANG" do
       env.merge!("XDG_STATE_HOME" => "/s", "XDG_CONFIG_HOME" => "/c", "GEM_HOME" => "/g", "GEM_PATH" => "/g:/h",
                  "RUBYLIB" => "/l", "GITHUB_TOKEN" => "secret", "SAMAGOTCHI_ENV" => "test", "OPENROUTER_API_KEY" => "k",
                  "LANG" => "C", "BUNDLE_GEMFILE" => "/x/Gemfile", "XDG_DATA_HOME" => "/d")
-      expect(macos.launch_config["env"]).to eq("LANG" => "en_US.UTF-8", "XDG_STATE_HOME" => "/s", "XDG_CONFIG_HOME" => "/c")
+      expect(macos.launch_config["env"]).to eq("LANG" => "en_US.UTF-8", "XDG_STATE_HOME" => "/s", "XDG_CONFIG_HOME" => "/c",
+                                               "GEM_HOME" => "/g", "GEM_PATH" => "/g:/h")
     end
 
     it "bakes a filtered PATH without adding tokens or runtime settings" do
@@ -139,7 +140,8 @@ RSpec.describe Samagotchi::Desktop::MacOS do
     it "boots the chi home when there is one: its ruby, its gem path in the -e string, then --" do
       home = Samagotchi::ChiHome::Record.new(ruby: "/home/ruby", gem_home: "/home/gems", gem_path: "/home/gems",
                                              mise: nil, set_at: "t", set_by_version: "9.9.9")
-      helper = described_class.new(app_dir: app_dir, support_dir: support_dir, env: env.merge("GEM_HOME" => "/g"),
+      helper = described_class.new(app_dir: app_dir, support_dir: support_dir,
+                                   env: env.merge("GEM_HOME" => "/g", "GEM_PATH" => "/g", "RUBYLIB" => "/l"),
                                    runner: runner, source_dir: source_dir, ruby: "/opt/ruby/bin/ruby", version: "9.9.9",
                                    arch: "arm64", sources_dir: sources_dir, chi_home: home)
       config = helper.launch_config
@@ -624,7 +626,26 @@ RSpec.describe Samagotchi::Desktop::MacOS do
         expect(launch_json["argv"]).to eq(argv)
         expect(launch_json["env"]).to include("GEM_HOME" => "/g", "GEM_PATH" => "/g")
 
+        # Without a usable home the argv stays [ruby, chi], and so does its GEM_*: this shell's (none here).
         helper.upgrade
+        expect(launch_json["argv"]).to eq(argv)
+        expect(launch_json["env"].keys).not_to include("GEM_HOME", "GEM_PATH", "RUBYLIB")
+        helper(env: env.merge("GEM_HOME" => "/shell")).upgrade
+        expect(launch_json["env"]).to include("GEM_HOME" => "/shell")
+      end
+
+      it "moves to the home's boot on upgrade, without GEM_*; keep_launch over a home boot takes none either" do
+        home = Samagotchi::ChiHome::Record.new(ruby: File.join(tmp, "ruby"), gem_home: "/hg", gem_path: "/hg", mise: nil,
+                                               set_at: "t", set_by_version: "9.9.9")
+        homed = described_class.new(app_dir: app_dir, support_dir: support_dir, env: env.merge("GEM_HOME" => "/shell"),
+                                    runner: runner, source_dir: source_dir, ruby: File.join(tmp, "ruby"), version: "9.9.9",
+                                    arch: "arm64", sources_dir: sources_dir, chi_home: home)
+        homed.upgrade
+        expect(launch_json["argv"][1]).to eq("-e")
+        expect(launch_json["env"].keys).not_to include("GEM_HOME", "GEM_PATH")
+
+        helper(env: env.merge("GEM_HOME" => "/shell")).upgrade(keep_launch: true)
+        expect(launch_json["argv"][1]).to eq("-e")
         expect(launch_json["env"].keys).not_to include("GEM_HOME", "GEM_PATH")
       end
     end

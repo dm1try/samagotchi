@@ -44,10 +44,12 @@ module Samagotchi
       # Apps started by launchd get a bare env (no shell rc files), so the
       # launch file carries what chi needs to find its state and tools.
       # Only these, and only when set: no tokens, no runtime knobs. No
-      # GEM_HOME/GEM_PATH/RUBYLIB: chi finds its gems through the argv (the
-      # chi home's boot, or the wrapper), and those would reach every tool
-      # its sessions run (a project's `bundle exec`).
+      # RUBYLIB, and GEM_HOME/GEM_PATH (GEM_ENV) only for a [ruby, chi]
+      # argv, whose wrapper may find its gem only through them (a chruby
+      # GEM_HOME): the chi home's boot sets its gem path itself, and they
+      # would reach every tool its sessions run (a project's `bundle exec`).
       ENV_ALLOWLIST = %w[XDG_CONFIG_HOME XDG_STATE_HOME].freeze
+      GEM_ENV = %w[GEM_HOME GEM_PATH].freeze
       # What older launch files carried and a refresh drops (#refresh_launch_file).
       DROPPED_ENV = %w[GEM_HOME GEM_PATH RUBYLIB].freeze
       # PATH is separately filtered to absolute dirs and frozen when written,
@@ -175,11 +177,13 @@ module Samagotchi
       # it is frozen at bake time.
       def launch_config
         env = { "LANG" => LANG }
-        ENV_ALLOWLIST.each { |name| env[name] = @env[name] unless @env[name].to_s.empty? }
+        argv = launch_argv
+        names = home_boot?(argv) ? ENV_ALLOWLIST : ENV_ALLOWLIST + GEM_ENV
+        names.each { |name| env[name] = @env[name] unless @env[name].to_s.empty? }
         path = self.class.baked_path(@env)
         env["PATH"] = path if path
         env.merge!(Paths.absolute_xdg(env: env, set: :key))
-        config = { "version" => @version, "argv" => launch_argv, "env" => env, "sources_sha" => sources_sha }
+        config = { "version" => @version, "argv" => argv, "env" => env, "sources_sha" => sources_sha }
         TERMINALS.each { |name| config[name] = @terminals[name] if @terminals[name] }
         config["broadcast_timeout"] = @broadcast_timeout if @broadcast_timeout
         config
@@ -257,7 +261,7 @@ module Samagotchi
         config["version"] = old["version"] unless older_version?(old["version"])
         old_env = old["env"]
         if old_env.is_a?(Hash)
-          dropped = home_boot?(config["argv"]) ? DROPPED_ENV : DROPPED_ENV - %w[GEM_HOME GEM_PATH]
+          dropped = home_boot?(config["argv"]) ? DROPPED_ENV : DROPPED_ENV - GEM_ENV
           config["env"] = old_env.except(*dropped)
           path = self.class.baked_path(@env)
           config["env"]["PATH"] = path if config["env"]["PATH"].to_s.empty? && path
@@ -504,8 +508,13 @@ module Samagotchi
           old_env = old["env"]
           old_path = old_env["PATH"] if old_env.is_a?(Hash)
           config["env"]["PATH"] = old_path unless old_path.to_s.empty?
-          # A kept [ruby, wrapper] argv keeps the GEM_* its gem was found through.
-          config["env"].merge!(old_env.slice("GEM_HOME", "GEM_PATH")) if old_env.is_a?(Hash) && !home_boot?(config["argv"])
+          # A kept [ruby, wrapper] argv keeps the GEM_* its gem was found
+          # through; a kept home boot takes none.
+          if home_boot?(config["argv"])
+            config["env"] = config["env"].except(*GEM_ENV)
+          elsif old_env.is_a?(Hash)
+            config["env"].merge!(old_env.slice(*GEM_ENV))
+          end
         end
         FileUtils.mkdir_p(@support_dir)
         AtomicFile.write(launch_path, JSON.pretty_generate(config) + "\n")

@@ -296,11 +296,11 @@ exports. So `install` writes `~/Library/Application Support/Chi Helper/launch.js
 - `LANG=en_US.UTF-8`;
 - only these variables, and only when they are set: `XDG_CONFIG_HOME`, `XDG_STATE_HOME` (a relative one made
   absolute from the install's current folder: the helper starts in `/`). No tokens and no `SAMAGOTCHI_*` settings
-  go in, and no `GEM_HOME`, `GEM_PATH` or `RUBYLIB`: chi finds its gems through what it runs, and those would reach
-  every command the helper's sessions run (a project's `bundle exec` on the wrong gems). A launch file from an
-  older chi loses `RUBYLIB` at the next `chi update`, and `GEM_HOME`/`GEM_PATH` once it boots the chi home (an older
-  `[ruby, chi]` launch keeps them: its chi may be found only through them; `chi desktop upgrade` moves it to the
-  home);
+  go in, and never `RUBYLIB`. `GEM_HOME` and `GEM_PATH` go in only without a chi home (a `[ruby, chi]` launch,
+  whose chi may be found only through them, as under chruby): the home's boot sets its gem path itself, and they
+  would reach every command the helper's sessions run (a project's `bundle exec` on the wrong gems). A launch file
+  from an older chi loses `RUBYLIB` at the next `chi update`, and `GEM_HOME`/`GEM_PATH` once it boots the chi home
+  (`chi desktop upgrade` moves it to the home);
 - `PATH`: the shell's PATH when the file is written, with only absolute folders, in order, each once. The helper's
   chi, the sessions it starts and their `execute` commands can find the tools your terminal finds (mise, Homebrew,
   `codex`, `node`);
