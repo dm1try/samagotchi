@@ -66,8 +66,9 @@ test("lands a fresh verdict on its original's card and ends the running check", 
   assert.equal(root.querySelectorAll(".verify-verdict").length, 1);
   assert.equal(card.querySelector(".verify-fresh-result").textContent, "fresh: ✅ confirmed — keys.rb hashes it · open its session");
   assert.equal(card.querySelector(".verify-fresh-running"), null);
-  // Still unclear on its own: another fresh check may follow.
-  assert.ok(card.querySelector(".verify-fresh-btn"));
+  // Still unclear on its own: another fresh check may follow, and the
+  // button says it is another one.
+  assert.equal(card.querySelector(".verify-fresh-btn").textContent, "Verify fresh again");
   win.happyDOM.abort();
 });
 

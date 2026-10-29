@@ -521,7 +521,9 @@ fields: a field added to an event later reaches nobody until it is named there.
     `:verdict_recorded`; chi web shows the ones still waiting (`VerifyFresh.verdicts_of`: the summary, the review
     data). The card shows "Verifying fresh…" while the child runs (the summary's `verify_fresh` `{of, child_id}`,
     the review data's `fresh_running`, ids only) and the fresh verdict as a `fresh: ✅ confirmed — …` line on the same
-    card. The participant view passes `fresh` and `of`, never the child's id (a participant can't open it). No push
+    card. The original stays unclear, so the button stays, as **Verify fresh again**: each press is another paid
+    child (a participant's against their cap). The participant view passes `fresh` and `of`, never the child's id (a
+    participant can't open it). No push
     for a fresh verdict yet (`Attention` pushes a verdict at a turn's end).
 - **The comment box** is the owner's composer (`composer_mount.js`, styled by the shared `composer.css`), mounted by
   `participant.js` with a subset on. It has: the height that grows with the text, the grip (drag to resize,

@@ -12,6 +12,8 @@ and commands may change between minor versions. How releases are made:
 - Web: a Verify verdict card sits right after the answer it quotes, on your page and a participant's, instead of
   under the turn's prompt, screens above the claim in a long turn. A quote the page can't find yet puts the card at
   the turn's end.
+- Web: after a fresh verdict lands on an unclear card, its button reads **Verify fresh again**: each press starts
+  another paid check (a participant's counts against their cap).
 
 ## [0.130.1] - 2026-10-29
 
