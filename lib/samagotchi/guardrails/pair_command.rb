@@ -109,6 +109,9 @@ module Samagotchi
       GIT_VALUE_OPTIONS = %w[-C --git-dir --work-tree --namespace --exec-path].freeze
       # Devices a command may name in the project's stead.
       DEVICES = %w[/dev/null /dev/stdout /dev/stderr /dev/tty /dev/zero /dev/random /dev/urandom].freeze
+      # A word that starts with $TMPDIR or ${TMPDIR}.
+      TMPDIR_WORD = /\A\$(?:\{TMPDIR\}|TMPDIR\b)/
+
       # A path in a script's text (an interpreter's -e/-c, a heredoc): ~, ..
       # or an absolute path, at the text's start or after a space, quote,
       # bracket, = or comma.
@@ -459,12 +462,16 @@ module Samagotchi
 
       # A word Walk can't resolve: a glob checked by what it matches and by
       # its fixed part, a $var by its fixed part (the text before the first
-      # glob character or $, with ~ and $HOME expanded). A script body
-      # (spaces, quotes), a data heredoc or a $(…) is left to the other checks.
+      # glob character or $, with a leading ~, $HOME, XDG dir or $TMPDIR
+      # expanded: PathResolve.expand_head). After $TMPDIR the fixed part
+      # counts only inside a denied root, not as the start of one's name: an
+      # isolated run keeps its state dir in tmp, and `ls $TMPDIR/*` is no
+      # reach for it. A script body (spaces, quotes), a data heredoc or a
+      # $(…) is left to the other checks.
       def unresolved_secret?(word)
         return false if word.include?("\0") || word.match?(ShellPaths::SCRIPT)
 
-        expanded = expand_tilde(word).sub(/\A\$(?:\{HOME\}|HOME\b)/, @home)
+        expanded = PathResolve.expand_head(word, home: @home, env: ENV)
         fixed = expanded[/\A[^*?\[\]{}$]*/]
         dir = @cwd || Dir.pwd
         if !expanded.include?("$") && expanded.match?(GLOB)
@@ -473,8 +480,12 @@ module Samagotchi
         end
         return false if fixed.empty?
 
-        leads_into_denied?(File.expand_path(fixed, dir))
+        prefix = File.expand_path(fixed, dir)
+        word.match?(TMPDIR_WORD) ? inside_denied?(prefix) : leads_into_denied?(prefix)
       end
+
+      # Whether a path's text is a denied root or inside one.
+      def inside_denied?(path) = @paths.denied_roots.any? { |root| PathResolve.under?(path, root) }
 
       # Whether a path's text is the start of a denied root's (its parent,
       # or part of its name: ~/.ss) or inside one.

@@ -198,6 +198,22 @@ RSpec.describe Samagotchi::Guardrails::PairBoundary do
     end
   end
 
+  # The shared expander's (PathResolve.expand_word) XDG dirs, their
+  # defaults when unset, and $TMPDIR: this spec's state dir is in tmp, as an
+  # isolated test run's is, so $TMPDIR counts for what lands in a denied
+  # root, not for the start of one's name.
+  it "denies a glob or a $var after an XDG dir or $TMPDIR that leads into a secret, by its matches" do
+    with_env("XDG_CONFIG_HOME" => File.join(home, ".config"), "XDG_STATE_HOME" => nil, "TMPDIR" => base) do
+      ["ls $XDG_CONFIG_HOME/samago*", "cat ${XDG_CONFIG_HOME}/samagotchi/$X", "ls $XDG_STATE_HOME/samagotchi/web-g*",
+       "ls $TMPDIR/home/.local/state/samagotchi/web-g*", "cat $TMPDIR/home/.local/state/samagotchi/$X"].each do |command|
+        expect(refused(command)).to eq(described_class::SECRET), command
+      end
+      ["ls $TMPDIR/*", "cat $TMPDIR/ho$X", "ls $XDG_CONFIG_HOME/oth*"].each do |command|
+        expect(refused(command)).to be_nil, command
+      end
+    end
+  end
+
   describe "a command with a heredoc, a script or a value" do
     it "reads the rest of a command after a data heredoc, and a heredoc handed to a shell or interpreter" do
       File.write(File.join(home, "notes"), "x")

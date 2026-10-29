@@ -408,7 +408,11 @@ message:
   each word resolved as `touches: chi_dirs` resolves it; a glob that matches a
   secret or whose fixed part leads into a denied folder (`~/.ss?/id_*`,
   `~/.config/*/config.yml`, `.en?`), a `$var` word whose fixed part does
-  (`~/.ss${d}h`), and a text match for the rest. A prefix that comes through a
+  (`~/.ss${d}h`), with a leading `~`, `$HOME`, XDG dir (its default when
+  unset) or `$TMPDIR` expanded (`ls $XDG_CONFIG_HOME/samago*`); after `$TMPDIR`
+  the fixed part counts only inside a denied folder, not as the start of one's
+  name (an isolated run's state dir is in tmp: `ls $TMPDIR/*` isn't denied);
+  and a text match for the rest. A prefix that comes through a
   variable (`x=~/.s; cat ${x}sh/config`) isn't followed: such a command isn't
   denied, it asks (its `$var` word and the assignment's path place it outside
   the project);

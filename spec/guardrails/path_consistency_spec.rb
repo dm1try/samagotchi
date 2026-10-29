@@ -175,7 +175,7 @@ module GuardrailsPathConsistency
       xdg-state-cat       y     -  -             deny  allow y  y     cat $XDG_STATE_HOME/samagotchi/guardrails/approvals.json
       glob-secret         -     -  -             deny  allow -  y     cat ~/.ssh/*
       var-glob-secret     -     -  -             deny  allow -  y     cat $HOME/.ss*
-      xdg-glob-secret     -     -  -             allow allow -  y     ls $XDG_CONFIG_HOME/g*
+      xdg-glob-secret     -     -  -             deny  allow -  y     ls $XDG_CONFIG_HOME/g*
       script-tilde        -     -  -             ask   allow -  -     ruby -e 'File.write("~/out.txt", "x")'
       text-tilde          -     -  -             ask   allow -  -     cp lib/a.rb "~/my notes.txt"
     ROWS
@@ -238,7 +238,6 @@ module GuardrailsPathConsistency
     # Rows whose answer a decided change (the path-primitives plan's P2)
     # will change, or a decision keeps: "kept: …" with the question.
     NOTES = {
-      "xdg-glob-secret" => "kept: P2 Q2: PairCommand#unresolved_secret? expands only ~ and $HOME, so the glob's fixed part is empty",
       "missing-root-case" => "kept: P2 Q3: Outside compares a session root that doesn't exist in exact case; fold only once it exists",
       "hooks-out" => "kept: P2 Q4: ReviewPaths.chi_dirs is the state and config dir, not a hooks dir configured elsewhere"
     }.freeze

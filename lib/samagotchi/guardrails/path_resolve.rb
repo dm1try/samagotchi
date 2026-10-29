@@ -181,11 +181,18 @@ module Samagotchi
       # nil when a $ or ~ is left. ShellPaths::Walk (cd and file words) and
       # ShellGitDirs (git -C and the like) expand this way.
       def expand_word(word, home:, env:)
-        word = word.sub(%r{\A~(?=/|\z)}) { home }
-        word = word.sub(EXPANSION) { variable(Regexp.last_match(1) || Regexp.last_match(2), home, env) || "$" }
+        word = expand_head(word, home: home, env: env)
         return nil if word.include?("$") || word.start_with?("~")
 
         word
+      end
+
+      # +word+ with its leading ~, $HOME/${HOME}, XDG dir or $TMPDIR
+      # expanded as .expand_word does, the rest kept as it is ($ and globs
+      # included); an unset variable without a default leaves a "$".
+      def expand_head(word, home:, env:)
+        word = word.sub(%r{\A~(?=/|\z)}) { home }
+        word.sub(EXPANSION) { variable(Regexp.last_match(1) || Regexp.last_match(2), home, env) || "$" }
       end
 
       def variable(name, home, env)
