@@ -12,6 +12,9 @@ and commands may change between minor versions. How releases are made:
 - Plugins: `chi.prompt_section(name) { |ctx| … }` adds a bundle's text to the system prompt's stable part (after the
   toolkit's prompt, before the memory indexes), and `chi.prompt_changed!` builds the prompt again at the next turn.
   A section that fails keeps its last good text; `/stats` names the sections (`prompt sections:`).
+- Plugins: a command can ask before a change that restarts the prompt cache, as `/thinking` does:
+  `ctx.cache_confirm(line, changed:)` gives a confirm for a person at a web tab or a TUI once the session has a
+  model reply, and the command returns `[text, confirm]` (the TUI prefills the `--yes` line, the web shows Apply).
 
 ## [0.131.0] - 2026-10-29
 

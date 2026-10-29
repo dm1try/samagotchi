@@ -43,7 +43,10 @@ module Samagotchi
         # callable giving one.
         usage: nil,
         # ctx.turn_author and the hooks' author: (a participant's "p:<id>"), nil for the owner.
-        turn_author: nil
+        turn_author: nil,
+        # ctx.cache_confirm: whether the session has a model reply (a cache
+        # to restart), and the context size its confirm names (nil: none).
+        history: false, context_tokens: nil
       }.freeze
 
       attr_reader :notices, :cards, :steers, :stops, :questions, :model_requests, :toolkit_uses, :tool_loads, :answers,

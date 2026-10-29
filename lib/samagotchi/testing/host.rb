@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "../cancellation_controller"
+require_relative "../cache_confirm"
 require_relative "../plugin/context"
 require_relative "../session_metrics/cost"
 require_relative "../session_metrics/usage"
@@ -12,6 +13,14 @@ module Samagotchi
     # with every member set, its values read from the Recorder at each call
     # and its actions landing in it.
     module Host
+      # What CacheConfirm.ask reads of an Engine, from the Recorder's
+      # history: and context_tokens:.
+      CacheEngine = Struct.new(:history, :tokens) do
+        def history? = history ? true : false
+        def cache_restart_tokens = tokens
+        def cache_restart_anthropic? = false
+      end
+
       module_function
 
       # @param recorder [Recorder]
@@ -52,7 +61,11 @@ module Samagotchi
           cancel_controller: ->(handler: false) { recorder[:cancelled] ? stopped : nil },
           cost: -> { cost(recorder[:cost]) },
           usage: -> { usage(recorder[:usage]) },
-          turn_author: -> { recorder[:turn_author] }
+          turn_author: -> { recorder[:turn_author] },
+          cache_confirm: lambda { |line, changed|
+            CacheConfirm.ask(line: line, cost: :full, changed: changed,
+                             engine: CacheEngine.new(recorder[:history], recorder[:context_tokens]))
+          }
         )
       end
 

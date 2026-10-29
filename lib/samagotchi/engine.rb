@@ -3202,7 +3202,9 @@ module Samagotchi
         frontend: -> { interface },
         cost: -> { @metrics.cost },
         usage: -> { @metrics.usage },
-        turn_author: -> { turn_author }
+        turn_author: -> { turn_author },
+        # A plugin's prompt section is in the stable part: a full re-read.
+        cache_confirm: ->(line, changed) { CacheConfirm.ask(line: line, cost: :full, changed: changed, engine: self) }
       )
     end
 

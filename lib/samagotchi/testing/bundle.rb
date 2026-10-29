@@ -265,12 +265,16 @@ module Samagotchi
       # Run a command line ("/name args") as chi does: the first matching
       # command, given the text after its name. Returns the handler's value
       # (a raise propagates: chi would show it as an error result).
-      def command(line)
+      # @param confirm [Boolean] sent by a person at a web tab or a TUI, who
+      #   can answer ctx.cache_confirm (false: chi send, a delegate); a line
+      #   with --yes never asks, as in chi
+      def command(line, confirm: false)
         entry = commands.lookup(line)
         raise ArgumentError, "no command matches #{line.inspect}" unless entry
         raise ArgumentError, "#{entry.name} is chi's own command, not the bundle's" if entry.source == "core"
 
-        failing { entry.handler.call(line.to_s.strip.delete_prefix(entry.name).strip) }
+        args = line.to_s.strip.delete_prefix(entry.name).strip
+        failing { CacheConfirm.asking(confirm && !CacheConfirm.split(args).last) { entry.handler.call(args) } }
       end
 
       # Call a registered tool as chi's dispatch does: its handler gets the

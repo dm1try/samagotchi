@@ -150,6 +150,34 @@ chi.command "/hello-slow", "greet after 2 s, even mid-turn", anytime: true do |a
 end
 ```
 
+#### Commands that ask: `ctx.cache_confirm`
+
+A command whose change restarts the model server's prompt cache (one that changes the text of a
+[prompt section](#chiprompt_sectionname--ctx---and-chiprompt_changed)) asks first, as `/thinking` and `/toolkit` do:
+`ctx.cache_confirm(line, changed:)` returns nil when it may apply now, or a confirm to return with the command's
+text, `[text, confirm]`, changing nothing. `line` is the command line that applies it (without `--yes`), `changed:`
+whether your text would change. chi decides the rest: it asks only a person at a web tab or a TUI (never `chi send`,
+a delegate or `chi -p`), only once the session has a model reply, never for a line with `--yes` (or `-y`), and
+writes the confirm's text (the conversation's size to read again; on an `api: anthropic` host, that preserved
+thinking is dropped). The TUI prefills `line --yes`, the web shows an Apply button that sends it, and the command
+then runs again with `--yes` in `args` (drop it from your words). Outside a command (a hook, an init task, your
+own thread) it is always nil. A plain String or nil return is unchanged.
+
+A command that asks must not be `anytime: true`: the REPL shows only an anytime command's text, so its Apply would
+be lost. Needs a chi newer than 0.130.1.
+
+```ruby
+chi.command "/tone", "show or set this session's tone" do |args, ctx|
+  word = (args.split - %w[--yes -y]).join(" ")
+  ask = ctx.cache_confirm("/tone #{word}", changed: word != current_tone)
+  next ["Switching to #{word} restarts the prompt cache.", ask] if ask
+
+  save_tone(word)
+  @chi.prompt_changed!
+  "tone: #{word} from the next turn"
+end
+```
+
 #### `/help`
 
 `/help` (itself an anytime command) lists every command the session knows:
@@ -625,7 +653,8 @@ section is left out. A deliberate nil removes it.
 
 `chi.prompt_changed!` says your section would give other text now (the user picked another setting): the prompt is
 built again at its next build, the next turn's start (a running turn keeps the prompt it started with). That
-restarts the prompt cache for the whole conversation, so call it only once a change applies.
+restarts the prompt cache for the whole conversation, so a command that changes it asks first
+([Commands that ask](#commands-that-ask-ctxcache_confirm)) and calls `chi.prompt_changed!` only once it applies.
 Keep `chi` from `register` for that (`@chi = chi`). `/stats` names the sections the prompt holds
 (`prompt sections: tone (tone)`). The test kit runs them as a build does (`bundle.prompt_text`,
 `bundle.prompt_sections`) and counts `chi.prompt_changed!` (`bundle.prompt_changes`). Needs a chi newer than
@@ -819,6 +848,7 @@ full label, `plugin.rb (bundle my-bundle)`.
 | `ctx.use_toolkit(name)` | put the session on toolkit `name` (yours from `chi.toolkit`, or chi's): saved, applied at the next turn's start and announced (`toolkit> toolkit: NAME from the next turn's start`, the web's tools chip follows). Only before the session's first model reply and outside a turn (the declared tools start every request, and a plugin doesn't ask first); otherwise it returns false and changes nothing: tell the user to run `/toolkit NAME`. An unknown name raises ArgumentError. Needs chi 0.66.0 |
 | `ctx.load_tools(names)` | load tools the session reaches but doesn't declare, so the model calls them by name: built-ins (`"delegate"`, `"chi/delegate"`), MCP tools (`"mcp_fs_read"`, `"fs/read"`). Returns the names it staged (the wire names); a declared tool, one loaded before, a removed or unknown one is skipped (an unknown one logged), so calling it every turn is fine. From a `before_turn` hook it loads for that turn; anywhere else (mid-turn too) from the next turn's start. Call it from a hook: before the session's first turn its toolkit isn't applied yet and nothing resolves. **A hint, not access**: the tools keep their guardrails and approvals, and only a host that takes tool changes (`api: anthropic`, not Fireworks) gets one, as a system message after the user's (`[tools loaded: delegate (your-bundle)]` in the session, a notice line live); elsewhere nothing is sent or saved, and the tools stay reachable with `call_tool`. A hook may switch the model after you call it, so the return value can't promise delivery. Raises ArgumentError for anything but an Array. Needs chi 0.99.0 |
 | `ctx.context` | attach outside text to this session and list it: see [Attached context](#attached-context-ctxcontext) |
+| `ctx.cache_confirm(line, changed:)` | inside a command: nil to apply a prompt-cache-restarting change now, or a confirm to return as `[text, confirm]`: see [Commands that ask](#commands-that-ask-ctxcache_confirm). Needs a chi newer than 0.130.1 |
 
 The Engine itself is never handed to a plugin.
 
@@ -1242,6 +1272,9 @@ bundle.fire(:after_turn, status: "completed")            # → the event, after 
 bundle.question_asked("Fix JIRA-1?", question: { question: "Go?" })   # → the refs, as chi's seams fire it
 event = bundle.before_tool_call_event({ name: "read", path: "a.txt" }, params: "read a.txt")
 bundle.command("/mine stop")                             # → what the command returned
+bundle.command("/tone x", confirm: true)                 # sent from a web tab or a TUI: ctx.cache_confirm may ask
+bundle.set(history: true, context_tokens: 900)           # a model reply to restart (ctx.cache_confirm), its size
+bundle.prompt_text                                       # the prompt sections' text, as a build runs them
 bundle.tool("my_tool", path: "a.txt")                    # → the text the model reads
 verdict = bundle.tool_call({ name: "execute", content: "rm -rf /" })
 verdict.deny?                                            # a real Guardrails::Verdict (votes: verdict.votes)

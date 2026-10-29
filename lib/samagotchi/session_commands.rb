@@ -5,6 +5,7 @@ require_relative "model_profile"
 require_relative "served_model"
 require_relative "prompt_note"
 require_relative "turn_flow"
+require_relative "cache_confirm"
 require_relative "tools/execute"
 require_relative "tools/builtins"
 require_relative "tools/context_read"
@@ -302,7 +303,7 @@ module Samagotchi
       text = line.to_s.strip
       entry = @registry.lookup(text)
       return nil unless entry&.handler
-      return run_bundle_command(entry, text) unless entry.source == "core"
+      return run_bundle_command(entry, text, confirm: confirm) unless entry.source == "core"
 
       # Only commands that may ask take the flag.
       return send(entry.id, text, confirm: confirm) if CONFIRMING.include?(entry.id)
@@ -355,14 +356,30 @@ module Samagotchi
     # The resolved ref (what the session stores and --alias/--default write).
     def model_name = @engine.effective_model_ref
 
-    # A bundle plugin's command: its handler gets the text after the name;
-    # what it returns is the output (nil: nothing to show), and a raise is
-    # an error result.
-    def run_bundle_command(entry, text)
-      output = entry.handler.call(text.delete_prefix(entry.name).strip)
-      reply(output.nil? ? nil : output.to_s)
+    # A bundle plugin's command: its handler gets the text after the name
+    # (--yes kept); what it returns is the output (nil: nothing to show),
+    # or [output, CacheConfirm::Confirm or nil] for a change that asks
+    # first (ctx.cache_confirm), and a raise is an error result. The
+    # sender's +confirm+ (false once the line has --yes) reaches
+    # ctx.cache_confirm through the thread (CacheConfirm.asking).
+    def run_bundle_command(entry, text, confirm: false)
+      args = text.delete_prefix(entry.name).strip
+      _, yes = CacheConfirm.split(args)
+      output, ask = bundle_reply(CacheConfirm.asking(confirm && !yes) { entry.handler.call(args) })
+      reply(output, confirm: ask)
     rescue StandardError => e
       reply("#{entry.name}: #{e.class}: #{e.message}", status: :error)
+    end
+
+    # A plugin command's return value as [output, confirm]: a String (or
+    # anything, shown as text) or nil, or [text, Confirm/nil].
+    def bundle_reply(value)
+      if value.is_a?(Array) && value.size == 2 && (value[1].nil? || value[1].is_a?(CacheConfirm::Confirm))
+        text, ask = value
+        return [text.nil? ? nil : text.to_s, ask]
+      end
+
+      [value.nil? ? nil : value.to_s, nil]
     end
 
     def help_group(entry)

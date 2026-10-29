@@ -12,6 +12,9 @@ module Samagotchi
     # The costs worth asking about (Thinking.cache_cost,
     # ReasoningHistory.cache_cost); :tail and nil are not.
     COSTLY = %i[full provider history].freeze
+    # Thread.current key: whether the plugin command running on this
+    # thread may ask (#asking).
+    ASKING = :samagotchi_cache_confirm_asking
 
     # The line that applies a change, and the question the reply ends with.
     Confirm = Data.define(:line, :text) do
@@ -41,6 +44,21 @@ module Samagotchi
     def needed?(cost:, history:, changed:)
       changed && history && COSTLY.include?(cost)
     end
+
+    # Run +block+ as a plugin command whose sender can answer a confirm
+    # (+flag+: SessionCommands#run's confirm, false once the line has
+    # --yes): Plugin::Context#cache_confirm asks only inside it, on this
+    # thread. Nests; threads the block starts don't inherit it.
+    def asking(flag)
+      previous = Thread.current[ASKING]
+      Thread.current[ASKING] = flag ? true : false
+      yield
+    ensure
+      Thread.current[ASKING] = previous
+    end
+
+    # Whether the plugin command on this thread may ask (#asking).
+    def asking? = Thread.current[ASKING] == true
 
     # Whether a cache-changing command should ask, and its reply line.
     # Kept independent of any UI so commands and plugins can share it.

@@ -8,6 +8,7 @@ require_relative "../session_metrics/usage"
 require_relative "../guardrails/context"
 require_relative "../hook_question"
 require_relative "../idle_client"
+require_relative "../cache_confirm"
 require_relative "service"
 require_relative "side_question"
 
@@ -58,10 +59,13 @@ module Samagotchi
     # plugin handler: +handler+) until the turn has ended.
     # +cost+ returns the session's spend now (SessionMetrics::Cost),
     # +usage+ its work now (SessionMetrics::Usage).
+    # +cache_confirm+ takes (line, changed) and returns a
+    # CacheConfirm::Confirm when the change must ask first (CacheConfirm.ask
+    # with cost :full), else nil.
     Host = Struct.new(:session_id, :cwd, :messages, :messages_partial, :notify, :ask_user, :cancelled, :card,
                       :ask_model, :model_name, :model_key, :state_dir, :scratch, :setup, :prompt_files,
                       :steer, :stop_turn, :stop_generation, :frontend, :toolkit, :declared_tools, :use_toolkit, :load_tools,
-                      :cancel_controller, :cost, :usage, :turn_author, keyword_init: true)
+                      :cancel_controller, :cost, :usage, :turn_author, :cache_confirm, keyword_init: true)
 
     # ctx.ask_model failed: the model couldn't be reached, timed out, or
     # sent nothing usable. The message says why, for the user.
@@ -213,6 +217,25 @@ module Samagotchi
         raise ArgumentError, "load_tools takes an Array of tool names" unless names.is_a?(Array)
 
         Array(@host.load_tools&.call(names.map(&:to_s), @bundle))
+      end
+
+      # Whether a change the plugin's command is about to make (its prompt
+      # section's text: chi.prompt_changed!) must ask first. nil: apply it
+      # now (nothing changes, no model reply yet, a sender no one answers
+      # for: chi send, a delegate, chi -p, the line had --yes, or not
+      # inside a command). Else a CacheConfirm::Confirm: change nothing and
+      # return [text, confirm] from the command, so the TUI prefills the
+      # line and the web shows Apply (it sends +line+ with --yes). The cost
+      # is a full re-read (the section is in the system prompt's stable
+      # part); the text says how big and, on api: anthropic, that preserved
+      # thinking is dropped.
+      # @param line [String] the command line that applies it, without --yes
+      # @param changed [Boolean] whether the section's text would change
+      # @return [CacheConfirm::Confirm, nil]
+      def cache_confirm(line, changed:)
+        return nil unless CacheConfirm.asking?
+
+        @host.cache_confirm&.call(line.to_s, changed ? true : false)
       end
 
       # Whether the session is a `chi scratch` one (deleted when it ends).
