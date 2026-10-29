@@ -7,6 +7,15 @@ and commands may change between minor versions. How releases are made:
 [docs/releasing.md](docs/releasing.md).
 ## [Unreleased]
 
+### Security
+
+- On the LAN (`web.host: lan`), the cookie chi web sets for this machine's 127.0.0.1 no longer holds the access
+  token: a server on another local port gets every 127.0.0.1 cookie, so a dev server that logs headers caught the
+  token. It now holds a value that works only as that cookie on this machine and ends with `chi web --new-token`.
+  An open 127.0.0.1 tab lands on the 401 page once: open the `Local:` link. If you ran a participant's pair turns
+  with dev servers on 0.130.0, run `chi web --new-token`. The LAN address's cookie (your phone's) still holds the
+  token.
+
 ## [0.130.0] - 2026-10-29
 
 ### Changed

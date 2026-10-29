@@ -1271,7 +1271,12 @@ access token", paste the token there (the part of the link after
   paste the token) and the API answers 401. On this Mac open the `Local:`
   link (`chi web --open` opens it): its one-time code (10 minutes, once) sets
   the cookie for 127.0.0.1 without the token in the address; the LAN link
-  works here too. chi's own probe (`GET /api/info` with no token or cookie)
+  works here too. The cookie for 127.0.0.1 holds a value derived from the
+  token, not the token: the browser sends it to a server on any other local
+  port too (a dev server that logs headers), and that server can't use it
+  from the network, as Bearer, or as the token; `chi web --new-token` ends
+  it. The LAN address's cookie (your phone's, or this Mac's when it opens
+  the LAN link) is the token itself. chi's own probe (`GET /api/info` with no token or cookie)
   gets a few fields (version, pid, features, the LAN address, the start
   folder), nothing of the sessions.
 - The token lives in `$XDG_STATE_HOME/samagotchi/web-token` (0600).

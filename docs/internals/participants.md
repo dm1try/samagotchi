@@ -122,7 +122,13 @@ participant** and **one role**, until it expires or is revoked.
    the detail (only the requester's own identity). Unproxied, every request needs a token too (no "loopback is the
    owner"): rule 3 doesn't apply.
 1. The owner's token (Bearer, then the cookie; `?token=` on the page's trade): the **owner**. Checked first, so the
-   owner's requests never touch the grants store (measured: no change to an owner route's time).
+   owner's requests never touch the grants store (measured: no change to an owner route's time). On a LAN chi web
+   (no `web.public_url`) a loopback peer's owner cookie is `Token.loopback_cookie` instead (`chl_`, an HMAC of a
+   label keyed by the token, `App#loopback_cookie_peer?` / `#loopback_cookie`): it stands for the token only as that
+   cookie from a loopback peer, never as Bearer, a trade or from the LAN address, and `chi web --new-token` ends it.
+   The token itself as a loopback cookie (set by 0.130.0) is refused, and its 401 clears it (`#refused_token`). The
+   token as Bearer on loopback is the owner as before (SSH tunnels, `chi --remote` over `ssh -L`, curl, the e2e
+   harness).
 2. A `chp_` token (`Grants.token?`) whose grant is active: a **participant** (`Principal.new(kind: :participant,
    grant:)`), from any peer: loopback and a chi web not on the LAN too. An ended or unknown one is refused
    (below), never the owner.
@@ -134,7 +140,10 @@ participant** and **one role**, until it expires or is revoked.
    (`Server.local_owner_link`), the fragment trade sets the cookie there. `PairCommand` still denies a pair command
    naming chi web on a loopback name (defense in depth), and URL openers and listeners: a page opened in the owner's
    browser at a port the shell listens on would catch the owner's cookie (one on 127.0.0.1 or the LAN address goes
-   to every port).
+   to every port: on 127.0.0.1 it holds the loopback value of rule 1, usable only as that cookie on this machine; on
+   the LAN address it is the token, a known gap, as a cookie there is replayable from any LAN device anyway). A
+   server on another local port can also answer `Set-Cookie: chi_token=…` and overwrite the owner's cookie (cookie
+   tossing: it logs the owner out, or swaps in a grant's token; visible, nothing leaks; not fixed).
 4. Anything else: nil. `#token_gate` answers a bound grant's token without its identity **401 `token_bound`**, an
    ended grant's token **401 `token_revoked`** or **401
    `token_expired`** (the page says the same words as a sentence: "This review link was revoked by the session's
@@ -143,7 +152,8 @@ participant** and **one role**, until it expires or is revoked.
 
 The `?token=` trade (and `POST /api/token`, with a link's one-time `{code}` or the 401 page's pasted `{token}`; with
 `web.public_url` only through the proxy, as a direct request takes Bearer only) sets the `chi_token` cookie (`__Host-chi_token`, Secure, on a proxied request) to the token that was
-presented, the owner's or the participant's
+presented, the owner's or the participant's (the owner's loopback value instead, on a LAN chi web's loopback peer,
+`App#owner_cookie_value`)
 (one at a time per browser: a participant link opened in the owner's browser replaces the owner's cookie there, and
 makes that browser the participant, on loopback too). A grant's token is traded on any peer; the owner's only where
 the gate asks for it (on the LAN, this machine's loopback too). On a chi web the gate doesn't ask (loopback only), the
