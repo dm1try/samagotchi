@@ -728,6 +728,9 @@ module Samagotchi
         # The files whose text is in the prompt (SystemPrompt#prompt_files).
         files = prompt_files_text(snapshot[:prompt_files])
         lines << "prompt files:     #{files}" if files
+        # The plugins' prompt sections it holds (chi.prompt_section): name (bundle).
+        sections = Array(snapshot[:prompt_sections]).map { |item| "#{item[:name]} (#{item[:bundle]})" }
+        lines << "prompt sections:  #{sections.join(", ")}" unless sections.empty?
         # The toolkit's prompt text (Engine#stats_snapshot's kit_prompt).
         if (kit = snapshot[:kit_prompt])
           lines << "kit prompt:       #{kit[:kit]} (~#{kit[:tokens]} tokens)"

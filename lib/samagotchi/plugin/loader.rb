@@ -20,9 +20,12 @@ module Samagotchi
     # +init+ adds a chi.init task (Engine#add_init_task); +toolkits+ is the
     # Engine's list of the plugins' toolkits (chi.toolkit: Toolkit::Kit);
     # +tool_index+ the Engine's Tools::ToolIndex (chi.tool_source);
-    # +peer_sources+ the Engine's PeerSources (chi.peer_source).
+    # +peer_sources+ the Engine's PeerSources (chi.peer_source);
+    # +prompt_sections+ the Engine's PromptSections (chi.prompt_section),
+    # +prompt_changed+ rebuilds its system prompts (chi.prompt_changed!).
     Registries = Struct.new(:commands, :tools, :hooks, :context_for, :tools_changed, :services, :stage_tools, :init,
-                            :toolkits, :tool_index, :peer_sources, keyword_init: true)
+                            :toolkits, :tool_index, :peer_sources, :prompt_sections, :prompt_changed,
+                            keyword_init: true)
 
     # Loads installed bundles' plugins (manifest plugin: {file:, sha256:})
     # into an Engine's registries (docs/plugins.md).

@@ -40,6 +40,7 @@ right-hand column happens.
 │   AGENTS.md (root → cwd)                                                 │  (picked up by a new
 │   appended files (append_system_prompt:, --append-system-prompt)         │  process or a rebuild)
 │   kit prompt (per toolkit: its kit's prompt: text, only when it has one) │
+│   plugin prompt sections (chi.prompt_section, by (bundle, name))         │  chi.prompt_changed!
 │   project + system memory indexes                                        │
 │                ◄── remote Claude / Messages: cache_control breakpoint #1 │
 ├──────────────────────────────────────────────────────────────────────────┤
@@ -65,8 +66,8 @@ right-hand column happens.
 - The system prompt is built **once per key** and kept (`SystemPrompt#build`, keyed by `[chat, thinking, layers]`:
   the loop, the thinking level, the turn's LLM context layers; a `/thinking` change builds under another key). All
   of them are dropped only on `@prompt_builder.reset!`: a model switch (`Engine#switch_model!`), a plugin's
-  `tools_changed!`, a profile change, or a toolkit change (`Engine#apply_toolkit!`). A per-turn rebuild would break
-  everything below it.
+  `tools_changed!` or `prompt_changed!` (`Engine#prompt_changed!`), a profile change, or a toolkit change
+  (`Engine#apply_toolkit!`). A per-turn rebuild would break everything below it.
 - The tools layer is shared **per toolkit** (configuration.md, "Toolkits"): sessions on the same toolkit share it,
   and a chain's links keep theirs. A session's toolkit is saved when it is created and never resolved again from
   config. A change (`/toolkit`, `ctx.use_toolkit`) is applied only at a turn's start (`Engine#apply_toolkit!`,
@@ -88,6 +89,15 @@ right-hand column happens.
   sessions on the kit share it; a memory write (the indexes after it) doesn't move it. It is part of the
   `Toolkit::Resolved` the Registry holds, so a switch that changes only the text is a toolkit change
   (`apply_toolkit!` → `reset!`). `full` and kits without one send the bytes they sent before.
+- A plugin's prompt sections (`chi.prompt_section`, `Plugin::PromptSections`) sit after the kit prompt and before
+  the memory indexes (`SystemPrompt#plugin_prompt_section`), sorted by (bundle, name), each
+  `From <bundle> (<name>):\n<text>`; with none (every block nil) the bytes are what they were before. A block runs
+  only inside a build, never per request, so its text changes the prompt only at a rebuild: `/model` (a block
+  reading `ctx.model` re-resolves for free) or the plugin's `chi.prompt_changed!`, which its command calls only
+  after asking (`ctx.cache_confirm`, rule 6); a running turn keeps the prompt it started with (`turn_messages` puts
+  it in the turn's messages once). A block that raises, returns a non-String or text over 2000 characters keeps
+  the section's last good text for the session: a skip on a transient error would break the cache twice (and on
+  Claude 5.x cost the preserved thinking each time).
 - find_tools' description is a function of the toolkit and the source groups **at load**: `ToolIndex#declare`
   snapshots source group names and description lines (name, summary, callable count). `ToolIndex#refresh!` (from
   `ToolkitBinding#apply!`) filters that snapshot by the new toolkit and rebuilds the `chi` line from the built-ins
@@ -221,7 +231,9 @@ is prefilled once. The native and the chat loop use the same plan.
 3. **Deterministic order.** Tools, memory lists and anything else that's rendered from a hash or a set needs a
    fixed sort. Plugin tools are sorted by (bundle, name) whatever order their plugins finished starting in
    (R5a).
-4. **Don't rebuild the system prompt per turn.** Rebuild only when its content really changed (`reset!`).
+4. **Don't rebuild the system prompt per turn.** Rebuild only when its content really changed (`reset!`). A
+   plugin's prompt section is the same text for the same inputs, and its `chi.prompt_changed!` is called only when
+   its text changed.
 5. **Measure.** Every generation logs `prompt=`, `cached=` and, where the provider reports it, `cache_write=`
    on its `generation_completed` log line. `/stats` shows "cached N (P%)" and "cache writes". A change that
    drops `cached=` on the second fresh session is a regression. Update the prompt snapshot fixtures with
@@ -236,7 +248,9 @@ is prefilled once. The native and the chat loop use the same plan.
    the whole conversation for `:full` / `:provider`, or up to the first changed reply for `:history`; it omits the
    estimate when no count is known. On `api: anthropic`, a `:full` / `:provider` change also warns that preserved
    thinking in replies is dropped from then on. A new setting with a cost (a `/model` across templates,
-   `/llm-context` turning forget on) adds its classifier and goes through the same step.
+   `/llm-context` turning forget on) adds its classifier and goes through the same step. A plugin command asks
+   through `ctx.cache_confirm(line, changed:)` (cost `:full`: its prompt section is in the stable part), with the
+   sender's flag `SessionCommands#run` gives it (`CacheConfirm.asking`), and returns `[text, confirm]`.
 7. **No wall-clock time rendered at wire time.** A history entry's `at` (`MessageTime::KEY`, when it happened) is
    display-only: no wire format reads it, and a guard spec checks that `ChatLoop#wire_messages` and
    `Prompt.format_with_images` give the same bytes with and without it (`spec/message_time_history_spec.rb`). A

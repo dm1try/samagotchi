@@ -607,6 +607,37 @@ chi.toolkit "coding", base: "child", prompt: "- Be concise in your responses"
 chi.toolkit "web", base: "lean", groups: %w[chrome db*]
 ```
 
+### `chi.prompt_section(name) { |ctx| … }` and `chi.prompt_changed!`
+
+Text the session's system prompt carries, from a plugin: the block gets the Context and returns a String (at most
+2000 characters, stripped) or nil for no section. Each goes into the prompt's stable part right after the
+toolkit's prompt text and before the memory indexes, as `From <bundle> (<name>):` and the text, sorted by
+(bundle, name). With no section (every block nil, or no plugin uses it) the prompt is exactly what it was without.
+`name` is `a-z`, `0-9`, `_` and `-` (at most 32), once per bundle.
+
+The block runs when the prompt is built: a session's first turn, after `/model` (so `ctx.model` and
+`ctx.model_key` are the new model's), after `chi.prompt_changed!` or a tools change. Never per request, and on
+whatever thread builds, so keep it quick and thread-safe (no I/O beyond reading a small file). **Same inputs, same
+text**: anything that differs (a time, a random pick, a count) breaks the model server's prompt cache at the next
+build. A block that raises, returns something other than a String or nil, or text over the limit keeps that
+section's last good text for the session (one warn in the debug log, `prompt_section_failed`); with none yet the
+section is left out. A deliberate nil removes it.
+
+`chi.prompt_changed!` says your section would give other text now (the user picked another setting): the prompt is
+built again at its next build, the next turn's start (a running turn keeps the prompt it started with). That
+restarts the prompt cache for the whole conversation, so call it only once a change applies.
+Keep `chi` from `register` for that (`@chi = chi`). `/stats` names the sections the prompt holds
+(`prompt sections: tone (tone)`). The test kit runs them as a build does (`bundle.prompt_text`,
+`bundle.prompt_sections`) and counts `chi.prompt_changed!` (`bundle.prompt_changes`). Needs a chi newer than
+0.130.1: a bundle using it sets `requires_chi`.
+
+```ruby
+def register(chi)
+  @chi = chi
+  chi.prompt_section("tone") { |ctx| preset_text(ctx.model_key) }   # nil: no section
+end
+```
+
 ### `chi.tool_source(call:, acts_as:, label:, wait:, prefix:)`
 
 Tools the model reaches through a search instead of declaring them one by

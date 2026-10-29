@@ -319,6 +319,9 @@ module Samagotchi
       # The context sources the peer bundles declare as a peer agent's
       # answers (chi.peer_source); the worker's ContextAbsorber asks it.
       @peer_sources = PeerSources.new
+      # The system-prompt text plugins add (chi.prompt_section), run when
+      # the prompt is built (#build_system_prompt's sections:).
+      @prompt_sections = Plugin::PromptSections.new
       load_plugins if load
       # Registered from what the sources published while they loaded, and
       # with no plugins too: a toolkit's left-out built-ins are reachable
@@ -527,7 +530,8 @@ module Samagotchi
                        thinking: -> { turn_thinking }, model: -> { model_identity },
                        model_notes: -> { model_notes }, memories: memories,
                        muted_memory_names: @muted_memory_names, appended_files: appended_prompt_files,
-                       participants: -> { @participants_line })
+                       participants: -> { @participants_line },
+                       sections: -> { @prompt_sections ? @prompt_sections.render(@session&.id) : [] })
     end
     private :build_system_prompt
 
@@ -2827,7 +2831,9 @@ module Samagotchi
         },
         toolkits: @toolkit_binding.plugin_kits,
         tool_index: @tool_index,
-        peer_sources: @peer_sources
+        peer_sources: @peer_sources,
+        prompt_sections: @prompt_sections,
+        prompt_changed: -> { prompt_changed! }
       )
       # What plugins show while they load (an MCP server that didn't
       # start) waits for the first turn, beside the load warnings: no UI
@@ -3144,8 +3150,18 @@ module Samagotchi
     # The tools changed (a plugin's chi.tools_changed!): the system prompts,
     # which declare them, are built again on the next turn.
     def tools_changed!
+      prompt_changed!
+    end
+
+    # A plugin's prompt section would give other text now
+    # (chi.prompt_changed!): the system prompts are built again at their
+    # next build (the next turn's start; a running turn keeps the prompt it
+    # started with). One cache restart: the plugin's command asked first
+    # (Plugin::Context#cache_confirm).
+    def prompt_changed!
       @prompt_builder&.reset!
     end
+    public :prompt_changed!
 
     # What a Plugin::Context reads and calls: the session now, and the
     # hook runtime's notify and ask_user.

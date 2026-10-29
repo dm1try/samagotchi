@@ -11,7 +11,7 @@ module Samagotchi
     # The real Plugin::Api, also recording each declaration in order
     # (#declarations), for a spec of what #register declares as written.
     class RecordingApi < Plugin::Api
-      DECLARATIONS = %i[command annotation tool on service init toolkit tool_source peer_source].freeze
+      DECLARATIONS = %i[command annotation tool on service init toolkit tool_source peer_source prompt_section].freeze
 
       # @return [Array<Declaration>]
       def declarations = (@declarations ||= [])

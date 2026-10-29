@@ -7,6 +7,12 @@ and commands may change between minor versions. How releases are made:
 [docs/releasing.md](docs/releasing.md).
 ## [Unreleased]
 
+### Added
+
+- Plugins: `chi.prompt_section(name) { |ctx| … }` adds a bundle's text to the system prompt's stable part (after the
+  toolkit's prompt, before the memory indexes), and `chi.prompt_changed!` builds the prompt again at the next turn.
+  A section that fails keeps its last good text; `/stats` names the sections (`prompt sections:`).
+
 ## [0.131.0] - 2026-10-29
 
 ### Changed

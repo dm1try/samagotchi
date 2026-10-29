@@ -133,8 +133,9 @@ append-only within a process, so what changes the prefix is:
 1. **A system-prompt rebuild** (`SystemPrompt#build` is cached per process and key; `SystemPrompt#reset!` drops it):
    a new process (`--resume`, a respawn after `session.idle_exit_minutes`, a crash) after a memory index line, an
    AGENTS.md, an appended file, a model note or a bundle memory changed; `/model` (the tail's `Model:` line, its
-   overlays and notes); `/thinking` (another key); a toolkit or profile change; a plugin's `tools_changed!`; the
-   session's first participant joining or last leaving (the tail's participants line, participants.md).
+   overlays and notes); `/thinking` (another key); a toolkit or profile change; a plugin's `tools_changed!` or
+   `prompt_changed!` (its prompt section's text, plugins.md); the session's first participant joining or last
+   leaving (the tail's participants line, participants.md).
 2. **A tool set change**: the same triggers, plus MCP lines that differ on a respawn.
 3. **History edits by design**: the `llm_context` `stale`/`forget` stubs, and the image cut moving a batch.
 

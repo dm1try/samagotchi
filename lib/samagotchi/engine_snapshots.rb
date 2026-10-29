@@ -62,6 +62,8 @@ module Samagotchi
     # price_host: the effective model's host, whose hosts.<name>.models
     # prices the cost estimate names. kit_prompt: the next turn's kit
     # prompt text ({kit:, tokens:}), only when its toolkit has one.
+    # prompt_sections: the plugins' sections the built prompt holds, only
+    # when it holds some.
     # settings: the session's own settings ({"recap.enabled" => false}),
     # only when it has some.
     # @return [Hash] @metrics.snapshot, filled in
@@ -78,6 +80,9 @@ module Samagotchi
                                 price_host: model.host_name)
       kit_prompt = kit_prompt_stats
       snapshot = snapshot.merge(kit_prompt: kit_prompt) if kit_prompt
+      # The plugins' prompt sections the built prompt holds ({bundle:, name:}).
+      sections = prompt_builder.prompt_sections.map(&:to_stats)
+      snapshot = snapshot.merge(prompt_sections: sections) unless sections.empty?
       # Each participant's spend under their name (participants.json's).
       if (spend = snapshot[:spend_by_author])
         named = spend.to_h { |author, row| [author, row.merge(name: participants.name_for(author, session: session))] }

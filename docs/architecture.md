@@ -227,7 +227,8 @@ The system prompt (`SystemPrompt#build`, assembled in `#system_prompt_with_index
 base prompt, then the toolkit's "Not loaded in this session" line (only when the toolkit
 leaves tools out), rg guidance, the identity, the model notes, the preloaded memories,
 AGENTS.md (root → cwd), the appended files (`--append-system-prompt`), the toolkit's
-kit prompt (a kit's `prompt:` text, only when it has one), the memory
+kit prompt (a kit's `prompt:` text, only when it has one), the plugins' prompt
+sections (`chi.prompt_section`, only when a plugin gives text), the memory
 indexes, and last **the model** (`Model: this session runs on <ref> (host …; model key …)` and a line telling
 the model to answer "which model are you" from it, not from training), the working
 directory and the session id and log (Gemma's native tool declarations still follow).

@@ -832,10 +832,10 @@ answer is stripped from prefill + response, so the reasoning never lands in it).
    persistent.
 5. **A stable system prompt for the cache.** `SystemPrompt#build` caches the prompt per Engine, keyed by
    `[chat, thinking, layers]` (chat/native, the thinking level, the turn's LLM context layers), and is reset
-   only on a model switch, a tools change, a profile change or a toolkit change (`Engine#apply_toolkit!`). The
-   stable part (base prompt, the toolkit's not-loaded line, rg guidance, identity, model notes, preloaded memories,
-   AGENTS.md, appended files, the toolkit's kit prompt, memory indexes) comes before the volatile tail (model,
-   working directory, session).
+   only on a model switch, a tools change, a plugin's `prompt_changed!` (`Engine#prompt_changed!`), a profile
+   change or a toolkit change (`Engine#apply_toolkit!`). The stable part (base prompt, the toolkit's not-loaded line,
+   rg guidance, identity, model notes, preloaded memories, AGENTS.md, appended files, the toolkit's kit prompt, the
+   plugins' prompt sections, memory indexes) comes before the volatile tail (model, working directory, session).
    prompt-caching.md covers this in detail.
 
 ## Key files

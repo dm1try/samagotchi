@@ -7,6 +7,7 @@ require_relative "../commands/registry"
 require_relative "service"
 require_relative "tool_result"
 require_relative "tool_spec"
+require_relative "prompt_sections"
 
 module Samagotchi
   module Plugin
@@ -46,6 +47,8 @@ module Samagotchi
         "ctx.usage" => "0.100.0", "ctx.sessions.stop" => "0.34.0", "ctx.turn_author" => "0.106.0",
         "ctx.sessions.review" => "0.107.0", "ctx.sessions.send(delivery:)" => "0.64.0",
         "chi.toolkit(prompt:)" => "0.72.0", "ctx.ask_model(model:)" => "0.80.0", "chi.toolkit(groups:)" => "0.121.0"
+        # Unreleased (their release's version goes here, docs/releasing.md):
+        # "chi.prompt_section", "chi.prompt_changed", "ctx.cache_confirm", "ctx.model_names".
       }.freeze
 
       # @param bundle [String]
@@ -65,6 +68,7 @@ module Samagotchi
         @services = []
         @inits = []
         @toolkits = []
+        @prompt_sections = []
         @peer_sources = []
         @tool_source = nil
         @committed = false
@@ -279,6 +283,42 @@ module Samagotchi
         nil
       end
 
+      # Text this session's system prompt carries (docs/plugins.md, Prompt
+      # sections): the block gets the Context and returns a String (at most
+      # PromptSections::MAX characters) or nil for none. It runs when the
+      # prompt is built (a session's first turn, after /model or a
+      # #prompt_changed!), never per request, on whatever thread builds:
+      # keep it quick (no I/O beyond reading a small file) and give the same
+      # text for the same inputs. A raise, a non-String or text over the
+      # limit keeps the section's last good text (one warn).
+      # @param name [String] a-z, 0-9, _ and -; unique in the bundle
+      def prompt_section(name, &block)
+        raise ArgumentError, "prompt_section #{name.inspect} needs a block" unless block
+
+        name = name.to_s
+        unless name.match?(PromptSections::NAME)
+          raise ArgumentError, "prompt section name #{name.inspect} must be a-z, 0-9, _ and - (at most 32)"
+        end
+        raise ArgumentError, "this chi has no prompt sections (plugins: false)" unless @registries.prompt_sections
+        if @prompt_sections.any? { |item| item[:name] == name } || @registries.prompt_sections.registered?(@bundle, name)
+          raise ArgumentError, "prompt section #{name} is registered twice"
+        end
+
+        @prompt_sections << { name: name, block: block }
+        nil
+      end
+
+      # Say this session's prompt sections would now give other text (a
+      # setting the plugin keeps changed): the system prompt is built again
+      # at its next build (the next turn's start; a running turn keeps the
+      # prompt it started with). That restarts the model server's prompt
+      # cache, so a command that changes a section asks first
+      # (Context#cache_confirm) and calls this only once it applies.
+      def prompt_changed!
+        @registries.prompt_changed&.call
+        nil
+      end
+
       # Publish tools into the session's tool index instead of declaring
       # them one by one (docs/plugins.md, "Publishing tools to the index"):
       # the model searches them with find_tools and calls one with
@@ -393,6 +433,9 @@ module Samagotchi
           end
         end
         @registries.toolkits&.concat(@toolkits)
+        @prompt_sections.each do |item|
+          @registries.prompt_sections.add(bundle: @bundle, name: item[:name], context: context, &item[:block])
+        end
         @registries.tool_index.add(@tool_source) if @tool_source
         @peer_sources.each { |item| @registries.peer_sources.declare(item[:name], label: item[:label], bundle: @bundle) }
         @committed = true
@@ -401,6 +444,7 @@ module Samagotchi
       # @return [Hash] how many of each it registered (for the log)
       def counts = { commands: @commands.size, annotations: @annotations.size, tools: @tools.size, hooks: @hooks.size,
                      services: @services.size, inits: @inits.size, toolkits: @toolkits.size,
+                     prompt_sections: @prompt_sections.size,
                      tool_sources: @tool_source ? 1 : 0, peer_sources: @peer_sources.size }
 
       # Each annotation's command is one #command staged.

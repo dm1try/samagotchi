@@ -101,7 +101,7 @@ module Samagotchi
           Plugin::Registries.new(
             commands: SessionCommands.register_builtins(Commands::Registry.new), tools: Tools::Builtins.registry,
             services: Plugin::Services.new, stage_tools: ->(*) {}, toolkits: [], tool_index: Tools::ToolIndex.new,
-            peer_sources: PeerSources.new, **fields
+            peer_sources: PeerSources.new, prompt_sections: Plugin::PromptSections.new, **fields
           )
         end
       end
@@ -138,6 +138,9 @@ module Samagotchi
       attr_reader :errors
       # @return [Integer] how often chi was told the tools changed
       attr_reader :tools_changes
+      # @return [Integer] how often chi was told the prompt sections changed
+      #   (chi.prompt_changed!)
+      attr_reader :prompt_changes
 
       def initialize(dir, settings: {}, host: {}, session_settings: {}, sandbox: nil)
         @dir = File.expand_path(dir)
@@ -163,6 +166,7 @@ module Samagotchi
         @errors = []
         @lenient = false
         @tools_changes = 0
+        @prompt_changes = 0
         @contexts = {}
         @registries = build_registries
       end
@@ -324,6 +328,16 @@ module Samagotchi
       # @return [PeerSources]
       def peer_sources = @registries.peer_sources
 
+      # The prompt sections as chi's next prompt build runs them, for the
+      # session now (its id: a failure keeps that session's last good text).
+      # @return [Array<Plugin::PromptSections::Built>]
+      def prompt_sections = @registries.prompt_sections.render(@recorder[:session_id])
+
+      # The text they add to the system prompt, as chi puts it there; nil
+      # with none.
+      # @return [String, nil]
+      def prompt_text = Plugin::PromptSections.text(prompt_sections)
+
       # The bundle's own command entries.
       def bundle_commands = commands.entries.select { |entry| entry.source == @name }
       # The bundle's own tool entries.
@@ -401,6 +415,7 @@ module Samagotchi
                                                    env: ENV, sessions: @sessions, http_transport: @http)
           },
           tools_changed: -> { @tools_changes += 1 },
+          prompt_changed: -> { @prompt_changes += 1 },
           stage_tools: ->(_bundle, specs, context) { @staged_tools << StagedTools.new(specs: specs, context: context) },
           init: lambda { |_bundle, label, plugin_label, provides_tools:, quiet:, timeout:, failed: nil, &block|
             @inits << Init.new(label: label, plugin_label: plugin_label, provides_tools: provides_tools, quiet: quiet,

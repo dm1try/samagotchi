@@ -14,6 +14,7 @@ require_relative "memory_bundle/index_size"
 require_relative "thinking"
 require_relative "prompt_files"
 require_relative "participant_mode"
+require_relative "plugin/prompt_sections"
 
 module Samagotchi
   # The system prompt an Engine gives its model: the base prompt (tool
@@ -57,9 +58,12 @@ module Samagotchi
     # @param participants [#call] → ParticipantMode::PAIR / REVIEW while the
     #   session has participants (SessionParticipants#prompt_mode; true reads
     #   as review), nil or false with none (the #participants_section line)
+    # @param sections [#call] → Array<Plugin::PromptSections::Built>, the
+    #   plugins' prompt sections (chi.prompt_section) run for this build
     def initialize(profile:, tools:, session:, thinking:, model: -> {}, model_notes: -> { [] }, memories: [],
-                   muted_memory_names: [], appended_files: [], participants: -> { false })
+                   muted_memory_names: [], appended_files: [], participants: -> { false }, sections: -> { [] })
       @profile_lookup = profile
+      @sections_lookup = sections
       @participants_lookup = participants
       @model_lookup = model
       @model_notes_lookup = model_notes
@@ -97,19 +101,23 @@ module Samagotchi
       @index_sizes ||= {}
       @notes_loaded ||= {}
       @files_loaded ||= {}
+      @sections_loaded ||= {}
       unless @built.key?(key)
         @section_notes = nil
         @section_files = []
+        @section_plugins = []
         @built[key] = system_prompt_with_index(
           assist_system_prompt(chat: chat, layers: layers), chat: chat, thinking: thinking, layers: layers
         )
         @index_sizes[key] = @measured_index
         @notes_loaded[key] = @section_notes || []
         @files_loaded[key] = @section_files.freeze
+        @sections_loaded[key] = @section_plugins.freeze
       end
       @memory_index = @index_sizes[key]
       @prompt_notes = @notes_loaded[key]
       @prompt_files = @files_loaded[key]
+      @prompt_sections = @sections_loaded[key]
       @built[key]
     end
 
@@ -135,6 +143,12 @@ module Samagotchi
     # @return [Array<String>]
     def prompt_files = @prompt_files || []
 
+    # The plugins' prompt sections the prompt #build returned last holds
+    # (Plugin::PromptSections::Built, prompt order), [] before a build and
+    # after #reset!.
+    # @return [Array<Plugin::PromptSections::Built>]
+    def prompt_sections = @prompt_sections || []
+
     # Drops the built prompts: the next #build reads the profile, tools,
     # indexes and memories again (a model or profile switch, changed tools).
     def reset!
@@ -144,6 +158,8 @@ module Samagotchi
       @prompt_notes = nil
       @files_loaded = nil
       @prompt_files = nil
+      @sections_loaded = nil
+      @prompt_sections = nil
       @stable_lengths = nil
     end
 
@@ -298,7 +314,8 @@ module Samagotchi
     # prefix): what every session shares first, what changes least before
     # what changes more, and the per-session lines last. The global parts
     # (identity, preloads) come before the project's AGENTS.md, the
-    # toolkit's prompt text after the appended files, the memory indexes (a
+    # toolkit's prompt text after the appended files, then the plugins'
+    # prompt sections, the memory indexes (a
     # memory write changes them) after all of them; the model, the location
     # and the session close the prompt (Gemma's tool declarations still
     # follow them).
@@ -311,7 +328,7 @@ module Samagotchi
         "System memories:\n#{indexes[:system]}"
       ].join("\n\n")
       stable = [thinking_token + base, not_loaded_line(layers), rg_guidance, system_identity_section, model_notes_section, explicit_memory_section,
-                project_specific_description, appended_section, kit_prompt_section, memory_sections]
+                project_specific_description, appended_section, kit_prompt_section, plugin_prompt_section, memory_sections]
       stable_text = stable.compact.join("\n")
       volatile = [participants_section, current_model, project_location, current_session].compact
       return with_tail_declarations(stable_text, chat: chat, layers: layers) if volatile.empty?
@@ -360,6 +377,20 @@ module Samagotchi
     def kit_prompt_section
       registry = @tools_lookup.call
       registry.respond_to?(:toolkit) ? registry.toolkit&.prompt : nil
+    end
+
+    # The plugins' prompt sections (chi.prompt_section), right after the
+    # kit prompt and before the memory indexes: a plugin's text depends on
+    # its settings and the model, not on a memory write. Each is
+    # "From <bundle> (<name>):\n<text>", sorted by (bundle, name)
+    # (Plugin::PromptSections). nil with none: the prompt is what it was
+    # before prompt sections.
+    def plugin_prompt_section
+      built = Array(@sections_lookup.call)
+      @section_plugins = built
+      Plugin::PromptSections.text(built)
+    rescue StandardError
+      nil
     end
 
     def with_tail_declarations(prompt, chat:, layers:)
