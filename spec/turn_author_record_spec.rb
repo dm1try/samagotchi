@@ -35,6 +35,7 @@ RSpec.describe "a turn's author on the record" do
       expect(JSON.parse(saved)["toolkit_origin"]).to eq("chosen")
       without_new_fields = lambda do |text|
         text.sub(/"updated_at": "[^"]*"/, '"updated_at": ""').sub("  \"toolkit_origin\": \"chosen\",\n", "")
+            .sub(/  "written_by": "[^"]*",\n/, "")
       end
       expect(without_new_fields.call(saved)).to eq(without_new_fields.call(File.read(fixture)))
     end

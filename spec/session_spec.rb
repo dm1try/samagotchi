@@ -144,6 +144,25 @@ RSpec.describe Samagotchi::Session do
         expect(described_class.load(id, state_dir: tmpdir).extra_fields.keys).to eq(["that_key"])
       end
 
+      it "writes written_by as this chi's version and reads the one in the file" do
+        id, path = write_file("written_by" => "999.0.0")
+        loaded = described_class.load(id, state_dir: tmpdir)
+        expect(loaded).to have_attributes(written_by: "999.0.0", newer_writer?: true)
+        loaded.save(state_dir: tmpdir)
+        data = JSON.parse(File.read(path))
+        expect(data.keys.first(2)).to eq(%w[metadata_version written_by])
+        expect(data["written_by"]).to eq(Samagotchi::VERSION)
+        expect(described_class.load(id, state_dir: tmpdir)).to have_attributes(written_by: Samagotchi::VERSION,
+                                                                               newer_writer?: false)
+
+        File.write(path, JSON.generate(data.except("written_by")))
+        expect(described_class.load(id, state_dir: tmpdir)).to have_attributes(written_by: nil, newer_writer?: false)
+        File.write(path, JSON.generate(data.merge("written_by" => "garbage")))
+        expect(described_class.load(id, state_dir: tmpdir).newer_writer?).to be(false)
+        File.write(path, JSON.generate(data.merge("future_flag" => false)))
+        expect(described_class.load(id, state_dir: tmpdir).newer_writer?).to be(true)
+      end
+
       # The documented limit (the FIELDS comment, docs/sessions.md): value
       # objects write their own members only.
       it "keeps unknown keys at the top level only" do

@@ -14,6 +14,7 @@ require_relative "session_setup"
 require_relative "prompt_note"
 require_relative "working_set_pin"
 require_relative "session_review"
+require_relative "version"
 
 require_relative "paths"
 require_relative "project_scope"
@@ -356,8 +357,12 @@ module Samagotchi
     # FIELDS as they were. Never read by this chi.
     attr_reader :extra_fields
 
+    # The chi version that last saved the loaded file (#to_h writes this
+    # chi's VERSION); nil for a file from 0.130.0 or older.
+    attr_reader :written_by
+
     def initialize(id:, mode:, model_name:, working_directory:, messages:, created_at:, updated_at:,
-                   metadata_version: METADATA_VERSION, status: STATUS_IDLE, last_prompt: "",
+                   metadata_version: METADATA_VERSION, written_by: nil, status: STATUS_IDLE, last_prompt: "",
                    first_preview: "", first_turn_id: nil, test_run: false, pending_question: nil,
                    used_memory_names: [], project_root: nil,
                    preloaded_memory_names: [], muted_memory_names: [], parent_id: nil, scratch: false,
@@ -367,6 +372,7 @@ module Samagotchi
                    working_set_pins: [], review: nil, verdicts: nil, verify_fresh: nil, extra_fields: {})
       @id = id
       @metadata_version = metadata_version
+      @written_by = written_by
       @mode = mode
       @model_name = model_name
       @model_typed = model_typed
@@ -409,6 +415,18 @@ module Samagotchi
       @archived = false
       # #save's lock: one snapshot-and-write at a time (see #save).
       @save_lock = Mutex.new
+    end
+
+    # Whether a chi newer than this one saved the loaded file: its
+    # written_by is a later version, or it has keys this chi doesn't know
+    # (a hand-edited or future file). The worker logs it (newer_writer).
+    def newer_writer?
+      return true unless @extra_fields.empty?
+
+      # correct?(nil) is true (a 0 version): a file without the field is no newer.
+      return false unless @written_by.is_a?(String) && Gem::Version.correct?(@written_by)
+
+      Gem::Version.new(@written_by) > Gem::Version.new(VERSION)
     end
 
     # A `delegate` child: its turns report to its parent (ChildReports). A
@@ -566,6 +584,7 @@ module Samagotchi
     # key was ever removed).
     FIELDS = {
       "metadata_version" => 1,
+      "written_by" => nil,
       "id" => REQUIRED,
       "mode" => REQUIRED,
       "model_name" => REQUIRED,
@@ -754,6 +773,7 @@ module Samagotchi
                   (checkpoint ? checkpoint[:messages] : @messages).map { |msg| scrub_utf8(stringify_message_keys(msg)) }
                 when "interrupted_turn" then (checkpoint ? checkpoint[:marker] : @interrupted_turn)&.to_file
                 when "pending_question" then @pending_question && scrub_utf8(@pending_question.to_file)
+                when "written_by" then VERSION
                 when "test_run" then !!@test_run
                 when "delegate" then @delegate
                 when "llm_context" then llm_context_file

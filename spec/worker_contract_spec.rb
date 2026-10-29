@@ -67,6 +67,11 @@ RSpec.describe "Cross-version worker contract" do
     end
   end
 
+  # A later chi reads written_by to tell which chi saved the file last.
+  it "names the chi that saved a session file in written_by" do
+    expect(Samagotchi::Session::FIELDS.keys).to include("written_by")
+  end
+
   # A continue moves a live delegate only when its worker reads parent.json
   # (ChildMove asks the sidecar for "reparent").
   it "keeps the parent.json override and names it in the sidecar's features" do

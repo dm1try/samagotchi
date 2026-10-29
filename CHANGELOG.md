@@ -18,8 +18,9 @@ and commands may change between minor versions. How releases are made:
   from an older chi: only `chi desktop install --force` and `chi desktop upgrade` pick the current shell's Ruby,
   chi and PATH. When the helper's Ruby or chi is gone, `chi update` says so and names that command.
 - An older chi that saves a session a newer chi wrote (waking it from a project whose Ruby has an older chi, say)
-  keeps the session's fields it doesn't know instead of dropping them. This works from this release on: chi 0.130.0
-  and older still drop them, so update the chi in every Ruby you run it from.
+  keeps the session's fields it doesn't know instead of dropping them, and the session file names the chi that saved
+  it last (`written_by`; a worker woken on a file a newer chi saved logs `newer_writer`). This works from this release
+  on: chi 0.130.0 and older still drop them, so update the chi in every Ruby you run it from.
 
 ### Security
 

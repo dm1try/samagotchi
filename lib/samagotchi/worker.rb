@@ -251,6 +251,13 @@ module Samagotchi
       ChildMove.clear_starting(@session_id, state_dir: @state_dir)
       ChildMove.adopt(@session_id, state_dir: @state_dir)
       @session = Session.load(@session_id, state_dir: @state_dir)
+      # A newer chi saved it: this worker keeps the fields it doesn't know
+      # but runs the session without them (docs/sessions.md).
+      if @session.newer_writer?
+        unknown = @session.extra_fields.keys.join(",")
+        Log.warn(:worker, "newer_writer", sid: @session_id, version: VERSION, written_by: @session.written_by,
+                                          unknown_fields: (unknown unless unknown.empty?))
+      end
       drop_dead_question
       # The running turn, on disk at its iteration boundaries.
       @checkpoint = TurnCheckpoint.new(session: @session, state_dir: @state_dir)

@@ -622,6 +622,33 @@ RSpec.describe Samagotchi::Worker do
       expect(Samagotchi::Session.load(session.id, state_dir: tmpdir).status).to eq("error")
     end
 
+    describe "a session file a newer chi saved" do
+      def newer_writer_records(log)
+        File.open(log) { |io| Samagotchi::LogLine.each_record(io).select { |r| r.event == "newer_writer" } }
+      end
+
+      def start_on(written_by)
+        path = Samagotchi::Session.session_file(session.id, state_dir: tmpdir)
+        File.write(path, JSON.generate(JSON.parse(File.read(path)).merge("written_by" => written_by)))
+        log = File.join(tmpdir, "chi.log")
+        Samagotchi::Log.configure(path: log)
+        start_worker
+        log
+      end
+
+      it "logs newer_writer once as the worker starts" do
+        records = newer_writer_records(start_on("999.0.0"))
+        expect(records.size).to eq(1)
+        expect(records.first.to_h).to include(level: "WARN", tag: "worker")
+        expect(records.first.fields).to include("written_by" => "999.0.0", "version" => Samagotchi::VERSION)
+      end
+
+      it "logs nothing for a file this chi's version saved" do
+        log = start_on(Samagotchi::VERSION)
+        expect(File.exist?(log) ? newer_writer_records(log) : []).to be_empty
+      end
+    end
+
     it "still exits on a stop marked on disk" do
       start_worker(poll_interval: 0.05)
 
