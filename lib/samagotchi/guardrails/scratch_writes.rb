@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require_relative "path_resolve"
 require_relative "protected_paths"
 require_relative "../memory_paths"
 
@@ -33,8 +34,8 @@ module Samagotchi
         targets = verdict.targets
         return false unless targets && %w[write edit].include?(targets.tool)
 
-        targets.paths.flat_map { |path| ProtectedPaths.reals(path) }.any? do |real|
-          ProtectedPaths.within?(real, @memories_dir.call)
+        targets.paths.flat_map { |path| PathResolve.reals(path) }.any? do |real|
+          PathResolve.within?(real, @memories_dir.call)
         end
       end
     end

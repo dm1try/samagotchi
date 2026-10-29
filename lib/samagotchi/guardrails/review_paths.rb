@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-require_relative "protected_paths"
+require_relative "path_resolve"
 require_relative "shell_paths"
 require_relative "../paths"
 
@@ -11,7 +11,7 @@ module Samagotchi
     # (chi's state and config dirs, home secret dirs, project secret files),
     # checked on the path as given and as it resolves (a symlink in the
     # project to ~/.ssh is ~/.ssh; a `..` after a symlinked dir climbs out
-    # of its target, as the kernel opens it: ProtectedPaths.reals).
+    # of its target, as the kernel opens it: PathResolve.reals).
     # ReviewBoundary asks it for every read of a participant's turn; a
     # review session's subjects (chi review, the participant page's Plan)
     # go through the same check.
@@ -56,7 +56,7 @@ module Samagotchi
       def self.home_root?(root, home)
         return false if home.to_s.empty? || root.to_s.empty?
 
-        ShellPaths.within?(ProtectedPaths.real(home.to_s), ProtectedPaths.real(root.to_s))
+        ShellPaths.within?(PathResolve.real(home.to_s), PathResolve.real(root.to_s))
       end
 
       # @param root [String, nil] the session's project root (the work tree
@@ -81,11 +81,11 @@ module Samagotchi
 
         return HOME_ROOT if ReviewPaths.home_root?(@root, @home)
 
-        real_root = ProtectedPaths.real(@root)
+        real_root = PathResolve.real(@root)
 
         paths.each do |path|
           given = File.expand_path(path)
-          reals = ProtectedPaths.reals(path)
+          reals = PathResolve.reals(path)
           return OUTSIDE unless reals.all? { |real| ShellPaths.within?(real, real_root) }
           return SECRET if secret?(given) || reals.any? { |real| secret?(real) }
         end
@@ -100,7 +100,7 @@ module Samagotchi
       def secret_refusal(paths)
         paths.each do |path|
           given = File.expand_path(path)
-          return SECRET if secret?(given) || ProtectedPaths.reals(path).any? { |real| secret?(real) }
+          return SECRET if secret?(given) || PathResolve.reals(path).any? { |real| secret?(real) }
         end
         nil
       end
@@ -113,7 +113,7 @@ module Samagotchi
         @denied_roots ||= begin
           roots = @denied_dirs.compact.map { |dir| File.expand_path(dir) }
           roots += (HOME_SECRET_DIRS + HOME_SECRET_FILES).map { |name| File.join(@home, name) } unless @home.empty?
-          (roots + roots.map { |root| ProtectedPaths.real(root) }).uniq
+          (roots + roots.map { |root| PathResolve.real(root) }).uniq
         end
       end
 

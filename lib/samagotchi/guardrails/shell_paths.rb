@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "shell_lex"
-require_relative "protected_paths"
+require_relative "path_resolve"
 require_relative "../redacted_inspect"
 
 module Samagotchi
@@ -40,7 +40,7 @@ module Samagotchi
       # @param cwd [String, nil] where the command starts
       # @param tmp_roots [Array<String>] where a .git/hooks part doesn't count
       def touches?(command, dirs:, text:, cwd:, home: Dir.home, env: ENV, tmp_roots: [])
-        roots = dirs.compact.map { |dir| ProtectedPaths.real(dir.to_s.chomp("/")) }.reject(&:empty?).uniq
+        roots = dirs.compact.map { |dir| PathResolve.real(dir.to_s.chomp("/")) }.reject(&:empty?).uniq
         any_path?(command, text: text, cwd: cwd, home: home, env: env) { |path| names?(path, roots, tmp_roots) }
       end
 
@@ -64,7 +64,7 @@ module Samagotchi
       end
 
       def names?(path, roots, tmp_roots)
-        ProtectedPaths.reals(path).any? do |real|
+        PathResolve.reals(path).any? do |real|
           next true if roots.any? { |root| within?(real, root) }
 
           real.match?(HOOKS_PART) && tmp_roots.none? { |tmp| within?(real, tmp) }
@@ -72,14 +72,14 @@ module Samagotchi
       end
 
       # Whether +path+ is +root+ or in it, cased alike on a disk that folds
-      # case (ProtectedPaths.under?).
-      def within?(path, root) = ProtectedPaths.under?(path, root)
+      # case (PathResolve.under?).
+      def within?(path, root) = PathResolve.under?(path, root)
 
       # Follows the current dir and gives, per simple command, each word
       # with its path (nil when it can't be resolved). A word is opened the
       # kernel's way, so a `..` after a symlinked dir climbs out of its
       # target: such a word comes twice, with its lexical path and its
-      # physical one (ProtectedPaths.expand), and a check reads both. A cd
+      # physical one (PathResolve.expand), and a check reads both. A cd
       # or pushd to such a word may land at either (the shell's logical cd
       # chdirs to the physical path when the logical one doesn't exist, and
       # always with -P, set -P or zsh's chase_links/chase_dots), so the walk
@@ -167,12 +167,12 @@ module Samagotchi
 
         # +word+ as a file argument against +dir+: its lexical path, and its
         # physical one when a `..` in it climbs out of a symlinked dir's
-        # target (ProtectedPaths.expand); [] when it can't be resolved.
+        # target (PathResolve.expand); [] when it can't be resolved.
         def paths_for(word, dir)
           lexical = resolve(word, dir) or return []
           return [lexical] unless word.include?("..")
 
-          [lexical, ProtectedPaths.expand(expand(word), dir)].uniq
+          [lexical, PathResolve.expand(expand(word), dir)].uniq
         end
 
         # An absolute path for +word+ against +dir+ with `..` taken

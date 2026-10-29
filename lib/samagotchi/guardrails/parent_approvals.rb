@@ -6,6 +6,7 @@ require_relative "../memory_paths"
 require_relative "../hooks/loader"
 require_relative "approval"
 require_relative "verdict"
+require_relative "path_resolve"
 require_relative "protected_paths"
 
 module Samagotchi
@@ -80,13 +81,13 @@ module Samagotchi
 
         dirs = chi_dirs
         paths = Array(fetch(facts, :paths)).map(&:to_s).reject(&:empty?)
-        reals = paths.flat_map { |path| ProtectedPaths.reals(path) }
-        return true if reals.any? { |real| dirs.any? { |dir| ProtectedPaths.within?(real, dir) } }
+        reals = paths.flat_map { |path| PathResolve.reals(path) }
+        return true if reals.any? { |real| dirs.any? { |dir| PathResolve.within?(real, dir) } }
 
         command = fetch(facts, :command).to_s
         return false if command.empty?
 
-        command.match?(CHI_TEXT) || dirs.any? { |dir| command.include?(dir) || command.include?(ProtectedPaths.real(dir)) }
+        command.match?(CHI_TEXT) || dirs.any? { |dir| command.include?(dir) || command.include?(PathResolve.real(dir)) }
       end
 
       # chi's config dir, the hooks dir, the approval store's dir and the

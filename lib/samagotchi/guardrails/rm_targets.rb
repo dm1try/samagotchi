@@ -2,7 +2,7 @@
 
 require_relative "shell_lex"
 require_relative "shell_paths"
-require_relative "protected_paths"
+require_relative "path_resolve"
 
 module Samagotchi
   module Guardrails
@@ -38,7 +38,7 @@ module Samagotchi
         code = ShellLex.code_text(command.to_s)
         return true if tokens.any? { |_, value| value.include?(ShellLex::SUBST) } && code.match?(/\brm\b/)
 
-        session = ProtectedPaths.real(session_root.to_s)
+        session = PathResolve.real(session_root.to_s)
         roots = tmp_roots.reject { |tmp| ShellPaths.within?(session, tmp) }
         walk = ShellPaths::Walk.new(cwd, home, env)
         ShellLex.simple_commands(tokens).any? do |words|
@@ -62,7 +62,7 @@ module Samagotchi
 
         targets.empty? || targets.any? do |target|
           paths = walk.paths(target)
-          paths.empty? || paths.flat_map { |path| ProtectedPaths.reals(path) }.any? do |real|
+          paths.empty? || paths.flat_map { |path| PathResolve.reals(path) }.any? do |real|
             roots.none? { |tmp| real.start_with?(File.join(tmp, "")) }
           end
         end

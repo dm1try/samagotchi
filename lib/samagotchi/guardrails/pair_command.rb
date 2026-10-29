@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "outside"
+require_relative "path_resolve"
 require_relative "read_only_shell"
 require_relative "review_paths"
 require_relative "shell_paths"
@@ -139,7 +140,7 @@ module Samagotchi
       # (ShellPaths::HOOKS_PART): git runs what is there.
       def self.git_hook?(path)
         path.to_s.match?(ShellPaths::HOOKS_PART) ||
-          (path.to_s.start_with?("/") && ProtectedPaths.reals(path).any? { |real| real.match?(ShellPaths::HOOKS_PART) })
+          (path.to_s.start_with?("/") && PathResolve.reals(path).any? { |real| real.match?(ShellPaths::HOOKS_PART) })
       end
 
       # A command's text naming chi web's endpoint on this machine: a
@@ -483,7 +484,7 @@ module Samagotchi
 
       # Whether +path+ is a denied root's folder or one above it.
       def above_denied?(path)
-        ProtectedPaths.reals(path).any? { |real| @paths.denied_roots.any? { |root| ShellPaths.within?(root, real) } }
+        PathResolve.reals(path).any? { |real| @paths.denied_roots.any? { |root| ShellPaths.within?(root, real) } }
       end
 
       def link_command?(words)

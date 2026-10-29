@@ -2,7 +2,7 @@
 
 require "pathname"
 require "tmpdir"
-require_relative "protected_paths"
+require_relative "path_resolve"
 require_relative "../memory_bundle/index_sync"
 
 module Samagotchi
@@ -26,7 +26,7 @@ module Samagotchi
       # @param root [String] the session's repo root (or cwd)
       def self.outside?(path, root:)
         reals = resolve(path) or return true
-        session = ProtectedPaths.real(root)
+        session = PathResolve.real(root)
         reals.any? do |real|
           next false if within?(real, session)
           next false if MemoryBundle::IndexSync.memory_scope(path)
@@ -44,7 +44,7 @@ module Samagotchi
       # @param root [String] the session's project root
       def self.inside?(path, root:)
         reals = resolve(path) or return false
-        session = ProtectedPaths.real(root)
+        session = PathResolve.real(root)
         reals.all? { |real| within?(real, session) }
       end
 
@@ -55,15 +55,15 @@ module Samagotchi
       # @param root [String] the session's repo root (or cwd)
       def self.tmp_write?(path, root:)
         reals = resolve(path) or return false
-        session = ProtectedPaths.real(root)
+        session = PathResolve.real(root)
         reals.all? { |real| tmp_roots.any? { |tmp| within?(real, tmp) && !within?(session, tmp) } }
       end
 
-      # +path+ resolved (ProtectedPaths.reals: the lexical answer and where
+      # +path+ resolved (PathResolve.reals: the lexical answer and where
       # the kernel lands, a `..` after a symlinked dir climbing out of its
       # target), or nil when that doesn't say where a write lands: the path
       # is or goes through a dangling symlink (a write would create its
-      # target; ProtectedPaths.real follows it, the lexical answer stops at
+      # target; PathResolve.real follows it, the lexical answer stops at
       # it, and either way the link's own place doesn't count as where the
       # file is), or is a file with another hard link (a write would change
       # that file too). Both outside? and tmp_write? read it, so neither
@@ -71,7 +71,7 @@ module Samagotchi
       # @param path [String] absolute
       # @return [Array<String>, nil]
       def self.resolve(path)
-        reals = ProtectedPaths.reals(path)
+        reals = PathResolve.reals(path)
         return nil if reals.any? { |real| Pathname.new(real).ascend.any?(&:symlink?) }
         return nil if reals.any? { |real| File.file?(real) && File.stat(real).nlink > 1 }
 

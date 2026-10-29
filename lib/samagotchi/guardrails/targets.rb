@@ -13,7 +13,7 @@ require_relative "shell_lex"
 require_relative "read_only_shell"
 require_relative "shell_paths"
 require_relative "rm_targets"
-require_relative "protected_paths"
+require_relative "path_resolve"
 require_relative "../memory_paths"
 require_relative "../redacted_inspect"
 
@@ -260,13 +260,13 @@ module Samagotchi
       # +path+ (a file tool's, as Tools::ToolPath has it) absolute against
       # +base+: its lexical path (File.expand_path), and the one the kernel
       # opens when a `..` in it climbs out of a symlinked dir's target
-      # (ProtectedPaths.expand) after it; [] for a blank path. Every check
+      # (PathResolve.expand) after it; [] for a blank path. Every check
       # reads all of #paths, so it judges both.
       def self.absolutes(path, base)
         path = Tools::ToolPath.normalize(path)
         return [] if path.empty?
 
-        [File.expand_path(path, base), ProtectedPaths.expand(path, base)].uniq
+        [File.expand_path(path, base), PathResolve.expand(path, base)].uniq
       end
 
       # The file memory_write would write; nil when the call is invalid.
@@ -435,12 +435,12 @@ module Samagotchi
       # disk MODEL_NOTES_x.md in Samagotchi/Memories is the same file chi
       # loads.
       def self.prompt_memory_path?(path)
-        ProtectedPaths.reals(path).any? do |real|
+        PathResolve.reals(path).any? do |real|
           next false unless File.basename(real).downcase.match?(PROMPT_MEMORY)
 
           dir = File.dirname(real)
-          dir.casecmp?(ProtectedPaths.real(MemoryPaths.system_dir)) ||
-            File.dirname(dir).casecmp?(ProtectedPaths.real(MemoryPaths.projects_dir))
+          dir.casecmp?(PathResolve.real(MemoryPaths.system_dir)) ||
+            File.dirname(dir).casecmp?(PathResolve.real(MemoryPaths.projects_dir))
         end
       rescue StandardError
         false

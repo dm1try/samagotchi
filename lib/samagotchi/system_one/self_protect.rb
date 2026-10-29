@@ -3,7 +3,7 @@
 require_relative "../config"
 require_relative "../memory_paths"
 require_relative "../paths"
-require_relative "../guardrails/protected_paths"
+require_relative "../guardrails/path_resolve"
 require_relative "../guardrails/parent_approvals"
 require_relative "../guardrails/shell_lex"
 require_relative "../guardrails/shell_paths"
@@ -91,12 +91,12 @@ module Samagotchi
       # whole state dir too, as a command's words are judged) outside the
       # memories dir, or in its installed bundles.
       def chi_paths?(approval)
-        memories = Guardrails::ProtectedPaths.real(MemoryPaths.system_dir)
-        bundles = Guardrails::ProtectedPaths.real(MemoryPaths.bundles_dir)
+        memories = Guardrails::PathResolve.real(MemoryPaths.system_dir)
+        bundles = Guardrails::PathResolve.real(MemoryPaths.bundles_dir)
         dirs = chi_dirs
         Array(fetch(approval, :paths)).map(&:to_s).reject(&:empty?).any? do |path|
-          Guardrails::ProtectedPaths.reals(path).any? do |real|
-            dirs.any? { |dir| Guardrails::ProtectedPaths.within?(real, dir) } && !memory?(real, memories, bundles)
+          Guardrails::PathResolve.reals(path).any? do |real|
+            dirs.any? { |dir| Guardrails::PathResolve.within?(real, dir) } && !memory?(real, memories, bundles)
           end
         end
       end
@@ -105,10 +105,10 @@ module Samagotchi
       # installed bundles): the paths under it, and its spellings in the
       # command when +exempt+ (.exempt?).
       def beyond_memories(approval, exempt:)
-        memories = Guardrails::ProtectedPaths.real(MemoryPaths.system_dir)
-        bundles = Guardrails::ProtectedPaths.real(MemoryPaths.bundles_dir)
+        memories = Guardrails::PathResolve.real(MemoryPaths.system_dir)
+        bundles = Guardrails::PathResolve.real(MemoryPaths.bundles_dir)
         paths = Array(fetch(approval, :paths)).map(&:to_s).reject do |path|
-          Guardrails::ProtectedPaths.reals(path).all? { |real| memory?(real, memories, bundles) }
+          Guardrails::PathResolve.reals(path).all? { |real| memory?(real, memories, bundles) }
         end
         command = fetch(approval, :command).to_s
         command = command.gsub(memories_text) { |text| text.include?("/.bundles") ? text : "" } if exempt
@@ -124,8 +124,8 @@ module Samagotchi
       # The command's words resolved (ShellPaths::Walk) from +cwd+ (else
       # this process's dir) under each of the call's shell envs: Words.
       def words(command, cwd:, targets:)
-        memories = Guardrails::ProtectedPaths.real(MemoryPaths.system_dir)
-        bundles = Guardrails::ProtectedPaths.real(MemoryPaths.bundles_dir)
+        memories = Guardrails::PathResolve.real(MemoryPaths.system_dir)
+        bundles = Guardrails::PathResolve.real(MemoryPaths.bundles_dir)
         dirs = chi_dirs
         tokens = Guardrails::ShellLex.lex(command)
         plain = !Guardrails::ShellLex.unterminated?(command) &&
@@ -141,7 +141,7 @@ module Samagotchi
             walk.step(simple).each do |word, path|
               next plain &&= known && data?(word) unless path
 
-              chi ||= Guardrails::ProtectedPaths.reals(path).any? do |real|
+              chi ||= Guardrails::PathResolve.reals(path).any? do |real|
                 dirs.any? { |dir| Guardrails::ShellPaths.within?(real, dir) } && !memory?(real, memories, bundles)
               end
             end
@@ -168,12 +168,12 @@ module Samagotchi
       # (DEFAULT_STATE_TEXT's), resolved.
       def chi_dirs
         [*Guardrails::ParentApprovals.chi_dirs, Paths.state_dir]
-          .map { |dir| Guardrails::ProtectedPaths.real(dir.to_s.chomp("/")) }.reject(&:empty?).uniq
+          .map { |dir| Guardrails::PathResolve.real(dir.to_s.chomp("/")) }.reject(&:empty?).uniq
       end
 
       # Whether +real+ is in the memories dir and not in its installed bundles.
       def memory?(real, memories, bundles)
-        Guardrails::ProtectedPaths.within?(real, memories) && !Guardrails::ProtectedPaths.within?(real, bundles)
+        Guardrails::PathResolve.within?(real, memories) && !Guardrails::PathResolve.within?(real, bundles)
       end
 
       # The memories dir as a command spells it: the default
@@ -181,7 +181,7 @@ module Samagotchi
       # rest of that shell word.
       def memories_text
         dir = ConfigFile.config_dir
-        prefixes = [".config/samagotchi", dir, Guardrails::ProtectedPaths.real(dir)]
+        prefixes = [".config/samagotchi", dir, Guardrails::PathResolve.real(dir)]
                    .map { |prefix| Regexp.escape(prefix.to_s.chomp("/")) }.uniq
         word = WORD_END.sub("[", "[^")
         Regexp.new("(?:#{prefixes.join("|")})/memories(?=/|#{WORD_END}|\\z)(?:/#{word}*)?")

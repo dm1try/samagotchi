@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "outside"
-require_relative "protected_paths"
+require_relative "path_resolve"
 require_relative "shell_lex"
 require_relative "shell_paths"
 require_relative "shared_git"
@@ -88,8 +88,8 @@ module Samagotchi
       # repository (and not into root, which may sit inside the main one),
       # under chi's env or the call's env: (Targets#shell_envs).
       def names_other_checkout?(targets, root)
-        real_root = ProtectedPaths.real(root)
-        others = [*@worktrees.call, @common_dir.call].compact.map { |dir| ProtectedPaths.real(dir) } - [real_root]
+        real_root = PathResolve.real(root)
+        others = [*@worktrees.call, @common_dir.call].compact.map { |dir| PathResolve.real(dir) } - [real_root]
         return false if others.empty?
 
         commands = ShellLex.simple_commands(ShellLex.lex(targets.command.to_s))
@@ -99,7 +99,7 @@ module Samagotchi
             walk.step(words).any? do |_word, path|
               next false unless path
 
-              ProtectedPaths.reals(path).any? do |real|
+              PathResolve.reals(path).any? do |real|
                 !ShellPaths.within?(real, real_root) && others.any? { |dir| ShellPaths.within?(real, dir) }
               end
             end

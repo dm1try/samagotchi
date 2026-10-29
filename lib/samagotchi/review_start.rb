@@ -6,6 +6,7 @@ require_relative "session_setup"
 require_relative "session_chain"
 require_relative "recap_store"
 require_relative "guardrails/context"
+require_relative "guardrails/path_resolve"
 require_relative "guardrails/review_paths"
 require_relative "participant_mode"
 
@@ -185,8 +186,8 @@ module Samagotchi
                            "only reads."
 
     def relative(full, root)
-      real_root = Guardrails::ProtectedPaths.real(root)
-      real = Guardrails::ProtectedPaths.real(full)
+      real_root = Guardrails::PathResolve.real(root)
+      real = Guardrails::PathResolve.real(full)
       real.delete_prefix(File.join(real_root, ""))
     end
   end

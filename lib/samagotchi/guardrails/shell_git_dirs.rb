@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "shell_lex"
-require_relative "protected_paths"
+require_relative "path_resolve"
 require_relative "shell_paths"
 
 module Samagotchi
@@ -12,7 +12,7 @@ module Samagotchi
     # it follows cd/pushd/popd, ( … ) subshells, git -C/--git-dir/--work-tree
     # and GIT_DIR/GIT_WORK_TREE. Where a `..` climbs out of a symlinked
     # dir's target, its lexical path and its physical one
-    # (ProtectedPaths.expand, the only look at the disk) both count: a cd
+    # (PathResolve.expand, the only look at the disk) both count: a cd
     # may land at either (the shell's logical cd chdirs to the physical
     # path when the logical one doesn't exist, and always with -P), so the
     # walk keeps every dir the command may be in, and git's -C and dir
@@ -155,7 +155,7 @@ module Samagotchi
         end
 
         # An absolute path for +arg+ against +dir+ (`..` lexical, or
-        # +physical+: ProtectedPaths.expand); nil when it can't
+        # +physical+: PathResolve.expand); nil when it can't
         # be told from the text (a variable but those ShellPaths.expand_word
         # expands, a substitution, a relative path against an unknown dir).
         def expand(arg, dir, physical: false)
@@ -164,7 +164,7 @@ module Samagotchi
           arg = ShellPaths.expand_word(arg, home: @home, env: @vars) or return nil
           return nil unless arg.start_with?("/") || dir
 
-          physical ? ProtectedPaths.expand(arg, dir) : File.expand_path(arg, dir)
+          physical ? PathResolve.expand(arg, dir) : File.expand_path(arg, dir)
         end
       end
     end
