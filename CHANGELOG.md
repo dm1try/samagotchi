@@ -7,6 +7,8 @@ and commands may change between minor versions. How releases are made:
 [docs/releasing.md](docs/releasing.md).
 ## [Unreleased]
 
+## [0.130.0] - 2026-10-29
+
 ### Changed
 
 - A message you send while the model is blocked in `task_wait` ends the wait within half a second instead of
@@ -4931,7 +4933,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.129.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.130.0...HEAD
+[0.130.0]: https://github.com/dm1try/samagotchi/compare/v0.129.0...v0.130.0
 [0.129.0]: https://github.com/dm1try/samagotchi/compare/v0.128.0...v0.129.0
 [0.128.0]: https://github.com/dm1try/samagotchi/compare/v0.127.0...v0.128.0
 [0.127.0]: https://github.com/dm1try/samagotchi/compare/v0.126.0...v0.127.0
