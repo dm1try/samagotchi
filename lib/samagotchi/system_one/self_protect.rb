@@ -3,6 +3,7 @@
 require_relative "../config"
 require_relative "../memory_paths"
 require_relative "../paths"
+require_relative "../guardrails/chi_dirs"
 require_relative "../guardrails/path_resolve"
 require_relative "../guardrails/parent_approvals"
 require_relative "../guardrails/shell_lex"
@@ -165,11 +166,8 @@ module Samagotchi
       end
 
       # chi's own dirs (ParentApprovals.chi_dirs) and its whole state dir
-      # (DEFAULT_STATE_TEXT's), resolved.
-      def chi_dirs
-        [*Guardrails::ParentApprovals.chi_dirs, Paths.state_dir]
-          .map { |dir| Guardrails::PathResolve.real(dir.to_s.chomp("/")) }.reject(&:empty?).uniq
-      end
+      # (DEFAULT_STATE_TEXT's), resolved (Guardrails::ChiDirs.self_protect).
+      def chi_dirs = Guardrails::ChiDirs.self_protect
 
       # Whether +real+ is in the memories dir and not in its installed bundles.
       def memory?(real, memories, bundles)

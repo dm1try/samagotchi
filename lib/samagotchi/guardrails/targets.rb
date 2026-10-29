@@ -13,6 +13,7 @@ require_relative "shell_lex"
 require_relative "read_only_shell"
 require_relative "shell_paths"
 require_relative "rm_targets"
+require_relative "chi_dirs"
 require_relative "path_resolve"
 require_relative "../memory_paths"
 require_relative "../redacted_inspect"
@@ -234,11 +235,8 @@ module Samagotchi
       end
 
       # chi's own dirs (ParentApprovals.chi_dirs) and the session repo's
-      # git hooks dir.
-      def self.chi_dirs(context, base)
-        require_relative "parent_approvals"
-        ParentApprovals.chi_dirs + [context.hooks_dir(base)].compact
-      end
+      # git hooks dir (ChiDirs.touches).
+      def self.chi_dirs(context, base) = ChiDirs.touches(context, base)
 
       # A shell call's env: as the tool reads it (an object, or JSON text
       # for one): {} for none, and for one the tool would refuse (it then

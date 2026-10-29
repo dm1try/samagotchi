@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require_relative "chi_dirs"
 require_relative "path_resolve"
 require_relative "shell_paths"
 require_relative "../paths"
@@ -45,8 +46,8 @@ module Samagotchi
       SECRET = :secret
       HOME_ROOT = :home_root
 
-      # chi's state dir and config dir, as Paths has them now.
-      def self.chi_dirs = [Paths.state_dir, File.join(Paths.config_home, Paths::APP_DIR)]
+      # chi's state dir and config dir, as Paths has them now (ChiDirs.review).
+      def self.chi_dirs = ChiDirs.review
 
       # Whether +root+ is the home folder or a folder above it (symlinks
       # resolved on both): no project to keep a participant's turn in. A

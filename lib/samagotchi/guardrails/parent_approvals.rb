@@ -6,6 +6,7 @@ require_relative "../memory_paths"
 require_relative "../hooks/loader"
 require_relative "approval"
 require_relative "verdict"
+require_relative "chi_dirs"
 require_relative "path_resolve"
 require_relative "protected_paths"
 
@@ -90,14 +91,9 @@ module Samagotchi
         command.match?(CHI_TEXT) || dirs.any? { |dir| command.include?(dir) || command.include?(PathResolve.real(dir)) }
       end
 
-      # chi's config dir, the hooks dir, the approval store's dir and the
-      # installed bundles' dir.
-      def chi_dirs
-        hooks = begin Hooks::Loader.hooks_dir rescue nil end
-        bundles = begin MemoryPaths.bundles_dir rescue nil end
-        [ConfigFile.config_dir, hooks, File.join(Paths.state_dir, "guardrails"), bundles, File.join(Paths.state_dir, "context")]
-          .compact.map { |dir| dir.to_s.chomp("/") }.reject(&:empty?).uniq
-      end
+      # chi's config dir, the hooks dir, the approval store's dir, the
+      # installed bundles' dir and attached context (ChiDirs.protected).
+      def chi_dirs = ChiDirs.protected
 
       # An approval: its kind says so, or it carries approval facts.
       def approval?(pending)
