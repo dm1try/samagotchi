@@ -1,7 +1,7 @@
 // The start page's model picker glue (start_page.js), in happy-dom over the
-// real picker and chips: the models' load, a fresh link's picker and its
-// /model, the new session's own choices. The picker's list is
-// model_picker.test.js', the chips' forms llm_context_chip/thinking_chip's.
+// real picker and ⚙ panel: the models' load, a fresh link's picker and its
+// /model, the new session's own choices and their override chips. The
+// picker's list is model_picker.test.js', the panel's rows start_settings'.
 import "./dom_shim.js";
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -31,7 +31,7 @@ const freshLinkState = (model = "fake") => ({ continues: "prev", model, timing: 
 
 // +t+: the test, whose end takes the page away (the chips' popovers are on
 // the shared document's body: the files after this one look theirs up by id).
-function page(t, { listModels = async () => PAYLOAD, stored = null, run = async () => true } = {}) {
+function page(t, { listModels = async () => PAYLOAD, stored = null, run = async () => true, review = true } = {}) {
   t.after(() => {
     document.body.innerHTML = "";
     document.body.className = "";
@@ -42,7 +42,8 @@ function page(t, { listModels = async () => PAYLOAD, stored = null, run = async 
   document.body.className = "";
   document.body.innerHTML = `<div id="center"><div id="composer"><div id="modelPanel" hidden><input id="modelSearch"
     ><div id="modelList"></div></div><button id="modelPick" hidden><span class="model-pick-name"></span></button
-    ><button id="llmContextNew" hidden></button><button id="thinkingNew" hidden></button></div></div>`;
+    ><button id="thinkingNew" hidden></button><button id="llmContextNew" hidden></button
+    >${review ? `<button id="reviewNew" hidden></button>` : ""}<button id="settingsNew" hidden></button></div></div>`;
   const $ = (sel) => document.querySelector(sel);
   const world = { selected: null, state: {}, running: false, sessions: [] };
   const toasts = [];
@@ -51,7 +52,8 @@ function page(t, { listModels = async () => PAYLOAD, stored = null, run = async 
   const win = new EventTarget();
   const startPage = createStartPage({
     pickEl: $("#modelPick"), panelEl: $("#modelPanel"), searchEl: $("#modelSearch"), listEl: $("#modelList"),
-    composerEl: $("#composer"), centerEl: $("#center"), llmContextEl: $("#llmContextNew"), thinkingEl: $("#thinkingNew"),
+    composerEl: $("#composer"), centerEl: $("#center"), settingsEl: $("#settingsNew"), llmContextEl: $("#llmContextNew"),
+    thinkingEl: $("#thinkingNew"), reviewEl: $("#reviewNew"),
     selected: () => world.selected,
     state: () => world.state,
     running: () => world.running,
@@ -71,11 +73,14 @@ function page(t, { listModels = async () => PAYLOAD, stored = null, run = async 
   return {
     startPage, world, toasts, ran, win, pick, focused: () => focused,
     button: $("#modelPick"), name: () => $(".model-pick-name").textContent,
-    llmChip: $("#llmContextNew"), thinkChip: $("#thinkingNew"),
+    llmChip: $("#llmContextNew"), thinkChip: $("#thinkingNew"), reviewChip: $("#reviewNew"), gear: $("#settingsNew"),
+    panel: () => document.getElementById("startSettingsPopover"),
+    // A click on the panel's button whose data-act is +act+.
+    act: (act) => document.querySelector(`#startSettingsPopover [data-act="${act}"]`).click(),
   };
 }
 
-test("loadModels: the button shows with the stored choice, its chips follow the picked model's values", async (t) => {
+test("loadModels: the button shows with the stored choice; ⚙'s rows follow the picked model's values", async (t) => {
   const p = page(t, { stored: "qwen" });
   assert.equal(p.button.hidden, true);
   assert.equal(p.startPage.chosenModel(), undefined); // the server's default while the list is not in
@@ -85,15 +90,21 @@ test("loadModels: the button shows with the stored choice, its chips follow the 
   assert.equal(p.button.title, `${START_PICK_TITLE} · qwen`);
   assert.equal(p.button.getAttribute("aria-label"), "Model for the new session: qwen");
   assert.equal(p.startPage.chosenModel(), "qwen");
-  assert.equal(p.thinkChip.hidden, false);
-  assert.equal(p.thinkChip.textContent, "think off");
-  assert.equal(p.llmChip.hidden, false);
-  assert.match(p.llmChip.textContent, /^llm ctx stale/);
-  // A model without values hides the chips.
-  p.pick("fake");
-  assert.equal(p.startPage.chosenModel(), "fake");
+  // Nothing set: no override chip, ⚙ plain.
   assert.equal(p.thinkChip.hidden, true);
   assert.equal(p.llmChip.hidden, true);
+  assert.equal(p.gear.hidden, false);
+  assert.equal(p.gear.classList.contains("set"), false);
+  p.gear.click();
+  const pressed = () => [...p.panel().querySelectorAll("[aria-pressed=true]")].map((b) => b.textContent);
+  assert.deepEqual(pressed(), ["default (off)", "default (stale)"]);
+  // A model without values hides the rows (the picker's click closed the panel).
+  p.pick("fake");
+  assert.equal(p.startPage.chosenModel(), "fake");
+  assert.equal(p.panel().hidden, true);
+  p.gear.click();
+  assert.deepEqual(pressed(), []);
+  assert.ok(p.panel().querySelector("[data-act=review]"));
   assert.deepEqual(p.ran, []);
   assert.equal(p.focused(), 1);
 });
@@ -222,23 +233,105 @@ test("the new session's choices: sent with the create, then cleared; opening a s
   const p = page(t, { stored: "qwen" });
   await p.startPage.loadModels();
   assert.deepEqual(p.startPage.newChoices(), { llm_context: undefined, thinking: undefined, review: undefined });
-  // The thinking chip's form, on the start page: a level for the next session.
-  const choose = (level) => {
-    p.thinkChip.click();
-    const pop = document.getElementById("thinkingNewPopover");
-    pop.querySelector("select").value = level;
-    pop.querySelector("form").dispatchEvent(new window.Event("submit", { bubbles: true, cancelable: true }));
-  };
-  choose("high");
+  p.gear.click();
+  p.act("think:high");
+  // A pick applies at once, the panel stays open, the focus stays in it.
+  assert.equal(p.panel().hidden, false);
+  assert.equal(p.focused(), 0);
   assert.equal(p.startPage.newChoices().thinking, "high");
-  assert.equal(p.thinkChip.textContent, "think high · new session");
-  assert.equal(p.focused(), 1);
+  assert.equal(p.thinkChip.hidden, false);
+  assert.equal(p.thinkChip.textContent, "think high");
+  p.act("ctx:stale,forget");
+  assert.deepEqual(p.startPage.newChoices().llm_context, { strategy: "stale,forget" });
+  assert.equal(p.llmChip.textContent, "ctx stale,forget");
+  assert.equal(p.gear.classList.contains("set"), true);
+  assert.equal(p.gear.getAttribute("aria-label"), "Session settings: think high, ctx stale,forget");
   p.startPage.clearChoices();
   assert.equal(p.startPage.newChoices().thinking, undefined);
-  assert.equal(p.thinkChip.textContent, "think off");
-  choose("low");
+  assert.equal(p.startPage.newChoices().llm_context, undefined);
+  assert.equal(p.thinkChip.hidden, true);
+  assert.equal(p.gear.classList.contains("set"), false);
+  assert.equal(p.gear.getAttribute("aria-label"), "Session settings");
+  p.act("think:low");
   p.world.selected = "s1";
   p.startPage.dropChoices();
   assert.equal(p.startPage.newChoices().thinking, undefined);
-  assert.equal(p.thinkChip.hidden, true); // in a session the start page's chips hide
+  assert.equal(p.panel().hidden, true);
+  assert.equal(p.thinkChip.hidden, true);
+});
+
+test("an override chip opens the panel (the review chip on its view); focus goes back to ⚙ on Esc", async (t) => {
+  const p = page(t, { stored: "qwen" });
+  await p.startPage.loadModels();
+  p.gear.click();
+  p.act("think:medium");
+  p.gear.click(); // a second click closes
+  assert.equal(p.panel().hidden, true);
+  p.thinkChip.click();
+  assert.equal(p.panel().hidden, false);
+  assert.equal(document.activeElement.textContent, "medium");
+  document.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Escape" }));
+  assert.equal(p.panel().hidden, true);
+  assert.ok(document.activeElement === p.gear);
+  // The review row: its view, Set returns to the settings with the files chosen.
+  p.gear.click();
+  p.act("review");
+  const form = p.panel().querySelector("form.rs-form");
+  form.elements.subjects.value = "docs/plan.md, README.md";
+  form.dispatchEvent(new window.Event("submit", { bubbles: true, cancelable: true }));
+  assert.deepEqual(p.startPage.reviewSubjects(), ["docs/plan.md", "README.md"]);
+  assert.equal(p.panel().querySelector("form.rs-form"), null);
+  assert.equal(p.reviewChip.hidden, false);
+  assert.equal(p.reviewChip.textContent, "review: plan.md +1");
+  p.act("close");
+  p.reviewChip.click();
+  assert.ok(p.panel().querySelector("form.rs-form"));
+  assert.ok(document.activeElement === p.panel().querySelector("textarea"));
+});
+
+test("Start's refusal of the review files opens the panel's review view with the server's words", async (t) => {
+  const p = page(t);
+  await p.startPage.loadModels();
+  assert.equal(p.startPage.reviewRefused("nope"), false); // no files set: the caller's alert
+  p.gear.click();
+  p.act("review");
+  const form = p.panel().querySelector("form.rs-form");
+  form.elements.subjects.value = ".env";
+  form.dispatchEvent(new window.Event("submit", { bubbles: true, cancelable: true }));
+  p.act("close");
+  assert.equal(p.startPage.reviewRefused(".env can't be a review subject: it may hold secrets"), true);
+  assert.equal(p.panel().hidden, false);
+  assert.equal(p.panel().querySelector(".ctx-pop-error").textContent, ".env can't be a review subject: it may hold secrets");
+  assert.equal(p.panel().querySelector("textarea").value, ".env");
+});
+
+test("a choice the picked model can't show stays: its chip says it is sent anyway, and it is sent", async (t) => {
+  const p = page(t, { stored: "qwen" });
+  await p.startPage.loadModels();
+  p.gear.click();
+  p.act("think:high");
+  p.pick("fake");
+  assert.equal(p.startPage.newChoices().thinking, "high");
+  assert.equal(p.thinkChip.hidden, false);
+  assert.match(p.thinkChip.title, /the picked model has no thinking setting; it is sent anyway/);
+  assert.equal(p.gear.classList.contains("set"), true);
+  // The panel has no Thinking row then, but says so and can clear it.
+  p.thinkChip.click();
+  assert.match(p.panel().querySelector(".ss-anyway").textContent, /Thinking high: the picked model has no thinking setting/);
+  p.act("think-clear");
+  assert.equal(p.startPage.newChoices().thinking, undefined);
+  assert.equal(p.thinkChip.hidden, true);
+});
+
+test("without the models list ⚙ holds the review files only; without those either it is hidden", async (t) => {
+  const failing = async () => { throw Object.assign(new Error("boom"), { status: 500 }); };
+  const p = page(t, { listModels: failing });
+  await p.startPage.loadModels();
+  assert.equal(p.gear.hidden, false);
+  p.gear.click();
+  assert.equal(p.panel().querySelector(".ss-row"), null);
+  assert.ok(p.panel().querySelector("[data-act=review]"));
+  const bare = page(t, { listModels: failing, review: false });
+  await bare.startPage.loadModels();
+  assert.equal(bare.gear.hidden, true);
 });

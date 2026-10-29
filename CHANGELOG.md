@@ -28,6 +28,15 @@ and commands may change between minor versions. How releases are made:
 - A chi run at a terminal on another Ruby than the chi home's says so in one dim line, at most once a day
   (`chi X on <ruby>; the chi home is <ruby> (chi Y) (chi home doctor)`).
 
+### Changed
+
+- Web start page: thinking, LLM context and review files move into one ⚙ panel beside the model picker (a bottom
+  sheet on a phone): each a row of segments that applies at once, the first one the picked model's own
+  (`default (high)`), the context's apply rule and budget under **Apply and budget ▸**, and **Review files…** as a
+  view of its own. Only what is set shows on the row, as accent chips (`think high`, `ctx stale`,
+  `review: README.md`) that open the panel; on a phone ⚙ carries a dot instead. Still for the next new session
+  only. See docs/configuration.md (A new web chat).
+
 ## [0.132.0] - 2026-10-29
 
 ### Added

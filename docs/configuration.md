@@ -656,7 +656,7 @@ models:
     came from);
   - `chi --thinking LEVEL` on a run that starts or resumes a session (the REPL, `-p`, `--resume`, an attached one);
   - `chi send --new --thinking LEVEL`;
-  - the web's `think` chip, in the session bar and on the start page (`POST /api/sessions` takes `"thinking": "low"`;
+  - the web's `think` chip in the session bar, and the start page's ⚙ panel (`POST /api/sessions` takes `"thinking": "low"`;
     anything that isn't a level answers `400 invalid_thinking`).
 - `chi web --thinking LEVEL` is the default for the sessions its workers run, below a session's own. A session started
   with only the env (`SAMAGOTCHI_THINKING_LEVEL=low chi send --new …`) loses the level when a worker without that env
@@ -1693,14 +1693,18 @@ its own). The first target is a long session such as a day-long coordinator, whe
 - **Set it** at start with `chi --llm-context stale,forget --llm-context-apply turn_end --llm-context-budget 64k`
   (the same flags on `chi send --new`), in the session with `/llm-context strategy … apply … budget …`
   (docs/cli.md, "Session commands"), or from the web's `llm ctx` chip in the info bar.
-- **A new web chat:** the start page's `llm ctx` chip, beside the model picker, shows the picked model's values
-  and follows a model pick. Its form (titled "new session") sets a choice for that one chat: the chip reads
-  `llm ctx stale · new session` in the accent colour, and the create sends it as `POST /api/sessions`'s
-  `llm_context` (`{"strategy": "stale,forget", "apply": "turn_end", "budget": "64k"}`, each a word as
-  `/llm-context` takes it, `default` for unset; anything else answers `400 invalid_llm_context` and starts
-  nothing), so the session file holds it before the first turn runs. It is not remembered: it resets after a
-  create, on a reload and when you open a session (a failed create keeps it), and an untouched chip sends nothing
-  (the model's values apply, as without the chip).
+- **A new web chat:** the start page's ⚙ panel (beside the model picker; a bottom sheet on a phone) holds the new
+  session's rarely used settings, each a row of segments that applies at once: **Thinking** and **Context** (the
+  strategy; **Apply and budget ▸** opens the other two fields, with their own Set), the first segment following the
+  picked model (`default (high)`), and **Review files…** (docs/sessions.md, Review sessions). A row the picked model
+  has no values for is hidden. What is set shows on the row as an accent chip (`think high`, `ctx stale`,
+  `review: README.md`) that opens the panel; on a phone ⚙ carries a dot and its label names them. The create sends
+  the context choice as `POST /api/sessions`'s `llm_context` (`{"strategy": "stale,forget", "apply": "turn_end",
+  "budget": "64k"}`, each a word as `/llm-context` takes it, `default` for unset; anything else answers
+  `400 invalid_llm_context` and starts nothing), so the session file holds it before the first turn runs. Nothing
+  is remembered: the choices reset after a create, on a reload and when you open a session (a failed create keeps
+  them); a choice made before picking a model without that row stays (its chip says it is sent anyway), and nothing
+  set sends nothing (the model's values apply).
 - **Values:** `none` and a budget of `off` are values the session sets on purpose (they win over the model's);
   `default` (or `/llm-context reset` for all three) unsets one, back to following the model. A budget is 4k to
   10M tokens (`4000`–`10000000`, or `4k`–`10000k`). The layers are kept in chi's order (`stale`, then `forget`).

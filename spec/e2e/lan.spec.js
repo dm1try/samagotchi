@@ -104,10 +104,13 @@ test("a review: the owner starts one for a file and invites from the panel, the 
   const token = fs.readFileSync(chi.tokenPath, "utf8").trim();
   await owner.goto(`${chi.baseURL}/?token=${token}`);
   expect(owner.url()).toBe(`${chi.baseURL}/`);
-  // The start page's review chip: the new session is a review of README.md.
-  await owner.locator("#reviewNew").click();
-  await owner.locator("#reviewNewPopover textarea").fill("README.md");
-  await owner.locator("#reviewNewPopover button[type=submit]").click();
+  // The start page's ⚙ panel, Review files…: the new session is a review of README.md.
+  await owner.locator("#settingsNew").click();
+  await owner.locator("#startSettingsPopover").getByRole("button", { name: "Review files…" }).click();
+  await owner.locator("#startSettingsPopover textarea").fill("README.md");
+  await owner.locator("#startSettingsPopover button[type=submit]").click();
+  await expect(owner.locator("#startSettingsPopover .ss-review-set")).toHaveText("Review: README.md");
+  await owner.keyboard.press("Escape");
   await expect(owner.locator("#reviewNew")).toHaveText("review: README.md");
   await owner.locator("#prompt").fill("Say pong");
   await owner.locator("#actionBtn").click();

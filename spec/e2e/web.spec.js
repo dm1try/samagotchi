@@ -1297,59 +1297,57 @@ test("the info bar: copy chi --attach copies the full id, delete removes the ses
   await expect(page.locator("#actionBtn")).toHaveText("Start");
 });
 
-test("the start page's llm ctx chip starts the new session under the strategy picked; it is not kept for the next one", async ({ page, script }) => {
+test("the start page's ⚙ panel starts the new session under the thinking and strategy picked; they are not kept for the next one", async ({ page, script }) => {
   script("plain");
+  const gear = page.locator("#settingsNew");
   const chip = page.locator("#llmContextNew");
-  await expect(chip).toHaveText("llm ctx none");
-  await expect(chip).not.toHaveClass(/\bown\b/);
-  await chip.click();
-  const pop = page.locator("#llmContextNewPopover");
-  await expect(pop.locator(".ctx-pop-kind")).toHaveText("new session");
-  await expect(pop.locator(".llmctx-now")).toContainText("Now: none (llm_context.strategy)");
-  // A budget chi wouldn't take is said in the form; an edit clears it.
+  const think = page.locator("#thinkingNew");
+  await expect(gear).toBeVisible();
+  await expect(chip).toBeHidden();
+  await expect(think).toBeHidden();
+  await gear.click();
+  const pop = page.locator("#startSettingsPopover");
+  await expect(pop.locator(".ss-seg [aria-pressed=true]").first()).toBeFocused();
+  // A budget chi wouldn't take is said under the fields; an edit clears it.
+  await pop.getByRole("button", { name: /Apply and budget/ }).click();
   await pop.locator('input[name="budget"]').fill("12");
   await pop.locator(".llmctx-set").click();
-  await expect(pop.locator(".llmctx-error")).toContainText("A budget is a number of tokens");
+  await expect(pop.locator(".ss-ctx-form .ctx-pop-error")).toContainText("A budget is a number of tokens");
   await pop.locator('input[name="budget"]').fill("");
-  await expect(pop.locator(".llmctx-error")).toBeHidden();
-  await pop.locator('select[name="strategy"]').selectOption("stale");
-  await pop.locator(".llmctx-set").click();
+  await expect(pop.locator(".ss-ctx-form .ctx-pop-error")).toBeHidden();
+  // A pick applies at once; the panel stays open.
+  await pop.getByRole("group", { name: "Context" }).getByRole("button", { name: "stale", exact: true }).click();
+  await pop.getByRole("group", { name: "Thinking" }).getByRole("button", { name: "low", exact: true }).click();
+  await expect(pop).toBeVisible();
+  await expect(chip).toHaveText("ctx stale");
+  await expect(think).toHaveText("think low");
+  await page.keyboard.press("Escape");
   await expect(pop).toBeHidden();
-  await expect(chip).toHaveText("llm ctx stale · new session");
-  await expect(chip).toHaveClass(/\bown\b/);
-  // The think chip beside it: the same mechanism, a level for the new session.
-  const think = page.locator("#thinkingNew");
-  await expect(think).toHaveText("think default");
-  await think.click();
-  await page.locator("#thinkingNewPopover select[name=\"level\"]").selectOption("low");
-  await page.locator("#thinkingNewPopover .llmctx-set").click();
-  await expect(think).toHaveText("think low · new session");
+  await expect(gear).toBeFocused();
   const created = page.waitForRequest((r) => r.url().endsWith("/api/sessions") && r.method() === "POST");
 
   await send(page, "Say pong");
   expect((await created).postDataJSON()).toMatchObject({ thinking: "low", llm_context: { strategy: "stale" } });
   await turnEnded(page, 1);
   await expect(chip).toBeHidden();
-  await expect(think).toBeHidden();
+  await expect(gear).toBeHidden();
   await expect(page.locator("#infoBar .llmctx-chip")).toHaveText("llm ctx stale · session");
   await expect(page.locator("#infoBar .think-chip")).toHaveText("think low · session");
 
   await page.locator("#newBtn").click();
-  await expect(chip).toHaveText("llm ctx none");
+  await expect(gear).toBeVisible();
+  await expect(chip).toBeHidden();
   await expect(page).not.toHaveURL(/#\/s\//);
-  await page.reload();
-  await expect(chip).toHaveText("llm ctx none");
-  await expect(chip).not.toHaveClass(/\bown\b/);
 
   // Opening a session drops a choice made for a new session.
-  await chip.click();
-  await pop.locator('select[name="strategy"]').selectOption("stale");
-  await pop.locator(".llmctx-set").click();
-  await expect(chip).toHaveText("llm ctx stale · new session");
+  await gear.click();
+  await pop.getByRole("group", { name: "Context" }).getByRole("button", { name: "stale", exact: true }).click();
+  await expect(chip).toHaveText("ctx stale");
   await page.locator("#topStrip .card[data-id]").first().click();
   await expect(page).toHaveURL(/#\/s\//);
+  await expect(pop).toBeHidden();
   await page.locator("#newBtn").click();
-  await expect(chip).toHaveText("llm ctx none");
+  await expect(chip).toBeHidden();
 });
 
 // The confirm step before a change that restarts the prompt cache (CacheConfirm), one mechanism for /thinking and
