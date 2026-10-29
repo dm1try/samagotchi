@@ -6,13 +6,15 @@ require "open3"
 require "rbconfig"
 require "rubygems/package"
 require "time"
+require_relative "chi_home"
 require_relative "version"
 require_relative "redacted_inspect"
 
 module Samagotchi
   # The gem part of `chi update`: the newest samagotchi on rubygems, and a
-  # `gem install` of it through this Ruby's own gem command (the real
-  # interpreter's bindir, not a shim: the same under mise, rbenv and asdf).
+  # `gem install` of it through the chi home's gem command, else this
+  # Ruby's own (the real interpreter's bindir, not a shim: the same under
+  # mise, rbenv and asdf).
   #
   # SAMAGOTCHI_UPDATE_GEM_FILE=<path to a .gem> (hidden, for smokes) makes that
   # file the newest version and installs it instead.
@@ -32,26 +34,31 @@ module Samagotchi
     Latest = Struct.new(:version, :source, keyword_init: true)
     Release = Data.define(:version, :created_at, :prerelease)
 
-    # Runs a command without a shell; [output, success].
+    # Runs a command without a shell; [output, success]. +env+ is merged
+    # into the inherited one (nil unsets a key).
     class Runner
-      def run(argv)
-        output, status = Open3.capture2e(*argv)
+      def run(argv, env: {})
+        output, status = Open3.capture2e(env, *argv)
         [output, status.success?]
       rescue SystemCallError => e
         [e.message, false]
       end
     end
 
-    # This Ruby's own gem command (chi bootstrap installs commonmarker with
-    # it too).
-    def self.gem_bin = File.join(RbConfig::CONFIG["bindir"], "gem")
+    # The gem command an install runs: the chi home's (ChiHome.gem_bin),
+    # else this Ruby's own (chi bootstrap installs commonmarker with it too).
+    def self.gem_bin = ChiHome.gem_bin
 
     # @param fetcher [#call, nil] → the latest.json body (specs)
-    def initialize(env: ENV, fetcher: nil, runner: Runner.new, gem_bin: GemUpdate.gem_bin)
+    # @param install_env [Hash] the install child's env on top of this
+    #   process's (ChiHome.install_env: into the home's gems)
+    def initialize(env: ENV, fetcher: nil, runner: Runner.new, gem_bin: GemUpdate.gem_bin,
+                   install_env: ChiHome.install_env)
       @env = env
       @fetcher = fetcher || method(:fetch)
       @runner = runner
       @gem_bin = gem_bin
+      @install_env = install_env
     end
 
     # @return [Latest]
@@ -104,7 +111,9 @@ module Samagotchi
 
     # @return [Array(String, Boolean)] gem's output, success
     def install(latest)
-      @runner.run(install_argv(latest))
+      return @runner.run(install_argv(latest)) if @install_env.empty?
+
+      @runner.run(install_argv(latest), env: @install_env)
     end
 
     private

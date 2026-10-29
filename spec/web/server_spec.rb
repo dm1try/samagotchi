@@ -179,6 +179,27 @@ RSpec.describe Samagotchi::Web::Server do
     expect(server).not_to have_received(:shutdown)
   end
 
+  it "restarts without a wrapper when a chi home boots it" do
+    app = double("app")
+    allow(app).to receive(:server_running=)
+    restart = nil
+    allow(app).to receive(:restart_web=) { |callback| restart = callback }
+    allow(Samagotchi::Web::App).to receive(:new).and_return(app)
+    allow(Samagotchi::InstalledGem).to receive_messages(spec: double("installed gem"), wrapper: nil)
+    allow(Samagotchi::ChiHome).to receive(:current).and_return(
+      Samagotchi::ChiHome::Record.new(ruby: "/home/bin/ruby", gem_home: "/hg", gem_path: "/hg", mise: nil, set_at: "t",
+                                      set_by_version: "1")
+    )
+    server = double("webrick", status: :Running, listeners: [])
+    allow(server).to receive(:shutdown)
+    allow(Rackup::Handler::WEBrick).to receive(:run) do |_served, _options, &block|
+      block.call(server)
+      expect(restart.call).to be(true)
+    end
+
+    expect(described_class.start(port: 4998, hub: hub)).to eq(:restart)
+  end
+
   describe ".reexec" do
     it "execs the installed wrapper with canonical argv and starter PIDs to adopt" do
       calls = []
@@ -195,6 +216,32 @@ RSpec.describe Samagotchi::Web::Server do
           described_class::ADOPT_PIDS_ENV => "123,456" },
         [RbConfig.ruby, "/gem/bin/chi", "web", "--port", "4998"]
       ]])
+    end
+
+    # A bare wrapper would activate the newest chi wherever GEM_* point: off the home.
+    it "execs the chi home's boot when there is one, the argv after --, the same env" do
+      home = Samagotchi::ChiHome::Record.new(ruby: "/home/bin/ruby", gem_home: "/hg", gem_path: "/hg", mise: nil,
+                                             set_at: "t", set_by_version: "1")
+      allow(Samagotchi::ChiHome).to receive(:current).and_return(home)
+      allow(Samagotchi::InstalledGem).to receive_messages(spec: double("installed gem"), wrapper: nil)
+      allow(Samagotchi::ChildEnv).to receive(:unbundled).and_return({})
+      allow(Samagotchi::SessionManager).to receive(:live_spawn_pids).and_return([7])
+      calls = []
+      runner = ->(env, *argv) { calls << [env, argv]; :exec_called }
+
+      expect(described_class.reexec(["web", "--port", "4998"], exec: runner)).to eq(:exec_called)
+      expect(calls).to eq([[
+        { described_class::RESTARTED_ENV => "1", described_class::ADOPT_PIDS_ENV => "7" },
+        ["/home/bin/ruby", "-e",
+         "#{home.prelude}; gem 'samagotchi', '>= 0.a'; load Gem.bin_path('samagotchi', 'chi')", "--", "web", "--port", "4998"]
+      ]])
+    end
+
+    it "keeps this Ruby and the wrapper without a home, and has nothing to exec without either" do
+      allow(Samagotchi::InstalledGem).to receive_messages(spec: double("installed gem"), wrapper: "/gem/bin/chi")
+      expect(described_class.reexec_command(["web"], home: nil)).to eq([RbConfig.ruby, "/gem/bin/chi", "web"])
+      allow(Samagotchi::InstalledGem).to receive(:wrapper).and_return(nil)
+      expect(described_class.reexec_command(["web"], home: nil)).to be_nil
     end
 
     it "turns the tunnel off and returns failure when exec fails" do

@@ -25,6 +25,11 @@ and commands may change between minor versions. How releases are made:
 
 ### Changed
 
+- With a chi home, every session worker (whoever starts or wakes it), chi web's restart and Update, `chi update`
+  and `chi bootstrap`'s commonmarker install run on it: the home's Ruby with its gem path set inside Ruby, never in
+  an env, so session tools keep the spawner's GEM_HOME/GEM_PATH. `chi update` from another Ruby runs the home's
+  (`updating the chi home (<ruby>)`) and installs into its gems; a worker whose home can't load chi logs one
+  `boot_failed` line instead of a silent spawn timeout. Without a home every launch is as before.
 - `/model` asks before switching to another model once the session has a model reply, from a web tab or a TUI (the
   new model has no cache of the conversation): the reply names the size it rereads and the line that applies it,
   flags and all (`/model qwen --default --yes`); `--yes` (or `-y`) applies at once, and a typo is an error before any

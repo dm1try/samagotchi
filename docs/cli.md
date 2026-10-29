@@ -258,11 +258,21 @@ done
   [configuration](configuration.md#all-settings)). If the gem can't be updated
   in place, the notice gives the blocker and its command instead.
 
+- **The chi home.** With a [chi home](configuration.md#the-chi-home), a `chi
+  update` started on another Ruby first says `updating the chi home (<ruby>)`
+  and runs the home's chi update instead (the version check, `--to` and the
+  rows are the home's); chi web's **Update** runs the home's too. Without
+  one, the first `chi update` (not `--dry-run`) records one: the desktop
+  helper's Ruby when its launch file names one that has samagotchi, else the
+  Ruby it runs on, and says `chi home set to <ruby> (chi home set to change)`.
 - **The gem.** It asks rubygems.org for the newest samagotchi (5 s timeout)
   and, when that's newer, runs `gem install samagotchi` with the gem command
-  of the Ruby chi runs on (the real one, not a mise/rbenv/asdf shim; a chi
-  installed under another Ruby is a separate install it doesn't touch). Then it
-  hands over to the new chi, which does the rest and prints the table. Old
+  of the chi home's Ruby, into the home's gems (`GEM_HOME`/`GEM_PATH` set to
+  the home's for that one command, and `mise`'s folder on its PATH when the
+  home names one, for mise's reshim plugin); without a home, the Ruby chi runs
+  on (the real one, not a mise/rbenv/asdf shim; a chi installed under another
+  Ruby is a separate install it doesn't touch). Then it hands over to the new
+  chi, which does the rest and prints the table. Old
   versions stay installed: running workers and an old `chi web` still load
   files from them, so a `gem cleanup` while they run breaks them (a
   `LoadError`, missing web assets); restart them first. A chi web, an

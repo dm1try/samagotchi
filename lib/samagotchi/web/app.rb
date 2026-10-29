@@ -78,6 +78,7 @@ require_relative "proxy_gate"
 require_relative "../log"
 require_relative "../paths"
 require_relative "../redacted_inspect"
+require_relative "../chi_home"
 require_relative "../child_env"
 require_relative "../installed_gem"
 require_relative "../live_versions"
@@ -759,8 +760,17 @@ module Samagotchi
         error_response(503, "update_start_failed", "couldn't start chi update")
       end
 
+      # The chi update child: with a chi home, the home's chi (its gem dirs
+      # are what new workers activate); else this Ruby and the wrapper.
+      def update_argv(version, home: ChiHome.current)
+        args = ["update", "--to", version, "--no-desktop", "--json"]
+        return home.boot_argv(run: ChiHome::CHI_BOOT) + ["--", *args] if home
+
+        [RbConfig.ruby, InstalledGem.wrapper, *args]
+      end
+
       def perform_update(version)
-        argv = [RbConfig.ruby, InstalledGem.wrapper, "update", "--to", version, "--no-desktop", "--json"]
+        argv = update_argv(version)
         said = nil
         output, success = @update_runner.call(argv, env: ChildEnv.unbundled,
                                               progress: lambda { |line|

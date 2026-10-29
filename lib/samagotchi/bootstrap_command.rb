@@ -5,7 +5,9 @@ require_relative "config"
 require_relative "model_profile"
 require_relative "host_registry"
 require_relative "host_keys"
+require_relative "chi_home"
 require_relative "gem_update"
+require_relative "installed_gem"
 require_relative "bootstrap/probe"
 require_relative "bootstrap/config_writer"
 require_relative "bootstrap/bundles"
@@ -87,8 +89,10 @@ module Samagotchi
     #   the process ENV points, not +env+)
     # @param gem_runner [#run] runs `gem install commonmarker` (GemUpdate::Runner)
     # @param gem_present [#call, nil] → whether commonmarker is installed
+    # @param home [#current, #record_first!] the chi home (ChiHome)
     def initialize(argv, stdin: $stdin, stdout: $stdout, stderr: $stderr, env: ENV, probe: nil, config_path: nil,
-                   platform: RbConfig::CONFIG["host_os"], bundles: nil, gem_runner: GemUpdate::Runner.new, gem_present: nil)
+                   platform: RbConfig::CONFIG["host_os"], bundles: nil, gem_runner: GemUpdate::Runner.new, gem_present: nil,
+                   gem_spec: InstalledGem.spec, home: ChiHome)
       @argv = argv.dup
       @stdin = stdin
       @stdout = stdout
@@ -99,8 +103,14 @@ module Samagotchi
       @platform = platform
       @bundles = bundles || Bootstrap::Bundles.new
       @gem_runner = gem_runner
-      # Installed, without loading its native extension into this process.
-      @gem_present = gem_present || -> { Gem::Specification.find_all_by_name(MARKDOWN_GEM).any? }
+      @gem_spec = gem_spec
+      @home = home
+      # Installed (in the chi home's gems when there is one: chi web runs
+      # there), without loading its native extension into this process.
+      @gem_present = gem_present || lambda {
+        home = @home.current(gem_spec: @gem_spec)
+        home ? home.gem?(MARKDOWN_GEM) : Gem::Specification.find_all_by_name(MARKDOWN_GEM).any?
+      }
     end
 
     # @return [Integer] 0 written (or already there), 1 failed (a failed
@@ -371,6 +381,7 @@ module Samagotchi
     # each. Then Markdown in chi web (#offer_markdown). 1 when a bundle
     # failed; the Markdown step never changes it.
     def install_bundles(dry_run: false)
+      record_home unless dry_run
       ok = system_bundle_line(@bundles.sync_system(dry_run: dry_run), dry_run)
       ok = install_profile(CORE, dry_run) && ok
       unless dry_run || !tty? || (members = dev_to_install).empty?
@@ -409,13 +420,31 @@ module Samagotchi
       false
     end
 
-    # true when commonmarker is there or `gem install` (this Ruby's own gem
-    # command) put it there; else one line with gem's last word on it.
+    # The first chi home (ChiHome.record_first!: the helper's Ruby, else
+    # this one), one line; nothing when one is recorded already.
+    def record_home
+      recorded = @home.record_first!(gem_spec: @gem_spec, launch_path: helper_launch_path)
+      @stdout.puts("chi home: #{recorded.ruby} (chi home set to change)") if recorded
+    end
+
+    def helper_launch_path
+      return nil unless @platform.to_s.include?("darwin")
+
+      require_relative "desktop/macos"
+      Desktop::MacOS.new(env: @env, register: false).launch_path
+    end
+
+    # true when commonmarker is there or `gem install` (the chi home's gem
+    # command, else this Ruby's own) put it there; else one line with gem's
+    # last word on it.
     def install_markdown_gem
       return true if @gem_present.call
 
       @stdout.puts("#{MARKDOWN_GEM}: installing…")
-      output, ok = @gem_runner.run([GemUpdate.gem_bin, "install", MARKDOWN_GEM, "--no-document"])
+      home = @home.current(gem_spec: @gem_spec)
+      argv = [ChiHome.gem_bin(home), "install", MARKDOWN_GEM, "--no-document"]
+      env = ChiHome.install_env(home, env: @env)
+      output, ok = env.empty? ? @gem_runner.run(argv) : @gem_runner.run(argv, env: env)
       return true if ok
 
       last = output.to_s.lines.map(&:strip).reject(&:empty?).last || "no output"

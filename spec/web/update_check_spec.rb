@@ -106,6 +106,16 @@ RSpec.describe Samagotchi::Web::UpdateCheck do
     end
   end
 
+  it "checks the chi home's gem dir for writability when there is one" do
+    spec = Object.new
+    home = Samagotchi::ChiHome::Record.new(ruby: "/r", gem_home: File.join(root, "missing"), gem_path: root, mise: nil,
+                                           set_at: "t", set_by_version: "1")
+    allow(Samagotchi::ChiHome).to receive(:current).with(gem_spec: spec).and_return(home)
+    expect(described_class.blocked_reason(gem_spec: spec, bundler: false)).to eq("gem_dir_not_writable")
+    allow(Samagotchi::ChiHome).to receive(:current).with(gem_spec: spec).and_return(home.with(gem_home: root))
+    expect(described_class.blocked_reason(gem_spec: spec, bundler: false)).to be_nil
+  end
+
   it "does no fetch or publish when notifications are off" do
     update_check = checker(enabled: false)
     expect(fetcher).not_to receive(:call)

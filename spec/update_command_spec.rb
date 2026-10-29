@@ -35,6 +35,8 @@ RSpec.describe Samagotchi::UpdateCommand do
   let(:gem_update) { Samagotchi::GemUpdate.new(env: {}, fetcher: fetcher, runner: gem_runner, gem_bin: "/rb/bin/gem") }
   let(:execs) { [] }
   let(:bundler) { false }
+  # No chi home unless a spec gives one; never a first record from the suite's Ruby.
+  let(:chi_home) { double("ChiHome", current: nil, record_first!: nil) }
 
   around { |example| with_config_home(File.join(tmp, "config")) { example.run } }
 
@@ -48,7 +50,7 @@ RSpec.describe Samagotchi::UpdateCommand do
     out.rewind
     described_class.new(argv, stdout: out, stderr: err, gem_spec: gem_spec, platform: ->(register:) { helper },
                               supported: supported, state_dir: state_dir, web: web, gem_update: gem_update,
-                              exec: ->(argv) { execs << argv }, bundler: bundler).run
+                              exec: ->(argv) { execs << argv }, bundler: bundler, home: chi_home).run
   end
 
   # btw as an older gem shipped it, installed from there.
@@ -291,6 +293,78 @@ RSpec.describe Samagotchi::UpdateCommand do
         expect(line("chi (gem)")).to end_with("skipped (under Bundler: bundle update samagotchi)")
       end
     end
+
+    context "with a chi home" do
+      # This process's Ruby and gem dir: it runs on the home (Record#running_here?).
+      let(:home) do
+        Samagotchi::ChiHome::Record.new(ruby: RbConfig.ruby, gem_home: Gem.dir, gem_path: Gem.dir, mise: nil,
+                                        set_at: "t", set_by_version: "1")
+      end
+      let(:chi_home) { double("ChiHome", current: home, record_first!: nil) }
+      let(:boot) { home.boot_argv(run: Samagotchi::ChiHome::CHI_BOOT) }
+
+      context "from another Ruby" do
+        let(:home) do
+          Samagotchi::ChiHome::Record.new(ruby: "/home/bin/ruby", gem_home: "/hg", gem_path: "/hg", mise: nil,
+                                          set_at: "t", set_by_version: "1")
+        end
+
+        it "execs the home's chi update once, with this run's args, saying so" do
+          expect(gem_runner).not_to receive(:run)
+          expect(run("--to", newer, "--no-desktop")).to eq(0)
+          expect(out.string).to eq("updating the chi home (/home/bin/ruby)\n")
+          expect(execs).to eq([[{ described_class::IN_HOME_ENV => "1" }, *boot, "--", "update", "--to", newer,
+                                "--no-desktop"]])
+        end
+
+        # The home's chi decides --to's floor: it may be newer than this one.
+        it "hands even a --to this chi wouldn't take to the home, and the notice to stderr with --json" do
+          run("--to", Samagotchi::VERSION, "--json")
+          expect(err.string).to eq("updating the chi home (/home/bin/ruby)\n")
+          expect(execs.first.last(4)).to eq(["update", "--to", Samagotchi::VERSION, "--json"])
+        end
+
+        it "doesn't exec again in the run it exec'd, and takes the marker out of the env" do
+          env = { described_class::IN_HOME_ENV => "1" }
+          described_class.new(%w[--no-gem --no-desktop], stdout: out, stderr: err, gem_spec: gem_spec, supported: false,
+                                                          state_dir: state_dir, web: web, exec: ->(argv) { execs << argv },
+                                                          bundler: false, home: chi_home, env: env).run
+          expect(execs).to be_empty
+          expect(env).to be_empty
+          expect(line("chi (gem)")).to end_with("skipped (--no-gem)")
+        end
+      end
+
+      it "installs with the home's gem into the home's gems and hands over to the home's chi" do
+        installer = double("runner")
+        expect(installer).to receive(:run)
+          .with([home.gem_bin, "install", "samagotchi", "--no-document", "-v", newer],
+                env: { "GEM_HOME" => Gem.dir, "GEM_PATH" => Gem.dir })
+          .and_return(["Successfully installed\n", true])
+        allow(Samagotchi::GemUpdate::Runner).to receive(:new).and_return(installer)
+        described_class.new(["--no-desktop", "--to", newer], stdout: out, stderr: err, gem_spec: gem_spec, supported: false,
+                                                                state_dir: state_dir, web: web, exec: ->(argv) { execs << argv },
+                                                                bundler: false, home: chi_home).run
+        expect(execs).to eq([boot + ["--", "update", "--no-gem", "--gem-from", Samagotchi::VERSION, "--to", newer,
+                                     "--no-desktop"]])
+      end
+    end
+
+    context "without a chi home yet" do
+      let(:recorded) do
+        Samagotchi::ChiHome::Record.new(ruby: RbConfig.ruby, gem_home: Gem.dir, gem_path: Gem.dir, mise: nil,
+                                        set_at: "t", set_by_version: "1")
+      end
+      let(:chi_home) { double("ChiHome", current: nil) }
+
+      it "records the first one and says so (never in a dry run)" do
+        expect(chi_home).to receive(:record_first!).with(gem_spec: gem_spec, launch_path: nil).once.and_return(recorded)
+        run("--no-gem", "--no-desktop", "--no-bundles")
+        expect(out.string.lines.first).to eq("chi home set to #{RbConfig.ruby} (chi home set to change)\n")
+
+        run("--dry-run", "--no-gem", "--no-desktop", "--no-bundles")
+      end
+    end
   end
 
   describe Samagotchi::GemUpdate do
@@ -330,6 +404,17 @@ RSpec.describe Samagotchi::UpdateCommand do
       expect(release.version).to eq("9.0.0.pre2")
       expect(release.prerelease).to be(true)
       expect(release.created_at).to eq(File.mtime(gem_file))
+    end
+
+    it "runs the install with the chi home's env on top of this process's" do
+      runner = double("runner")
+      latest = described_class::Latest.new(version: "9.0.0", source: "samagotchi")
+      expect(runner).to receive(:run).with(["/h/bin/gem", "install", "samagotchi", "--no-document", "-v", "9.0.0"],
+                                           env: { "GEM_HOME" => "/hg" }).and_return(["ok", true])
+      described_class.new(env: {}, runner: runner, gem_bin: "/h/bin/gem", install_env: { "GEM_HOME" => "/hg" }).install(latest)
+
+      output, ok = described_class::Runner.new.run([RbConfig.ruby, "-e", "print ENV['CHI_X'].inspect"], env: { "CHI_X" => "1" })
+      expect([output, ok]).to eq(['"1"', true])
     end
 
     it "reads its file from a variable that isn't a config key's env form" do

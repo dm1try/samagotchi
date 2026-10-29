@@ -2,6 +2,7 @@
 
 require_relative "cli/command"
 require_relative "cli/flags"
+require_relative "chi_home"
 require_relative "config"
 require_relative "desktop"
 require_relative "gem_update"
@@ -57,6 +58,10 @@ module Samagotchi
       # Hidden: the old version, passed by the chi that installed this one.
       f.value "--gem-from"
     end
+    # "1" in a chi update another chi exec'd into the chi home (#to_home):
+    # it doesn't exec again. An env marker, not a flag: the home's chi may
+    # be older than the one exec'ing it, and refuse a flag it doesn't know.
+    IN_HOME_ENV = "SAMAGOTCHI_UPDATE_IN_HOME"
     # The switches the newer gem's update gets again (hand_over).
     HANDED_OVER = { "--no-gem" => :no_gem, "--no-bundles" => :no_bundles, "--no-desktop" => :no_desktop,
                     "--no-register" => :no_register, "--to" => :to, "--json" => :json }.freeze
@@ -73,11 +78,16 @@ module Samagotchi
     # @param platform [#call] register: → a Desktop::MacOS-like object
     # @param exec [#call] argv → replaces this process (the new chi's update)
     # @param bundler [Boolean] running under Bundler (bundle exec)
+    # @param home [#current, #record_first!] the chi home (ChiHome)
+    # @param env [Hash] IN_HOME_ENV is taken out of it
     def initialize(argv, stdout: $stdout, stderr: $stderr, gem_spec: InstalledGem.spec,
                    shipped_dir: MemoryBundle::SourceNormalizer::SHIPPED_DIR, platform: nil,
                    supported: Desktop.supported?, state_dir: Session.default_state_dir, web: nil,
-                   gem_update: GemUpdate.new, exec: nil, bundler: nil)
-      @gem_update = gem_update
+                   gem_update: nil, exec: nil, bundler: nil, home: ChiHome, env: ENV)
+      @home = home
+      @in_home = env.delete(IN_HOME_ENV) == "1"
+      # Built after the home is known: its install env goes into the home.
+      @gem_update_given = gem_update
       @exec = exec || ->(argv) { Kernel.exec(*argv) }
       @bundler = bundler.nil? ? (defined?(::Bundler) || !ENV["BUNDLE_GEMFILE"].to_s.empty?) : bundler
       @argv = argv.dup
@@ -102,6 +112,11 @@ module Samagotchi
       end
       return usage_error("invalid version #{options[:to]}") if options[:to] && !Gem::Version.correct?(options[:to])
 
+      # The home's chi decides the rest (--to's floor included); never from
+      # a checkout (ChiHome.current is nil there).
+      @run_home = @gem_spec && home_for(options)
+      return to_home(options) if @run_home && !@in_home && !options[:gem_from] && !@run_home.running_here?
+
       if options[:to] && !options[:gem_from] && Gem::Version.new(options[:to]) <= Gem::Version.new(VERSION)
         @stderr.puts("chi update: #{options[:to]} is not newer than the running chi (#{VERSION})")
         return 1
@@ -113,6 +128,8 @@ module Samagotchi
         return 1
       end
 
+      @gem_update = @gem_update_given ||
+                    GemUpdate.new(gem_bin: ChiHome.gem_bin(@run_home), install_env: ChiHome.install_env(@run_home))
       @dry_run = options[:dry_run]
       gem = gem_row(options)
       rows = [gem, system_bundle_row, *bundle_rows(options), desktop_row(options), *live_rows].compact
@@ -129,6 +146,39 @@ module Samagotchi
     private
 
     def command_name = "chi update"
+
+    # The chi home this update is for (ChiHome.current); without one, the
+    # first record (ChiHome.record_first!: the helper's Ruby, else this
+    # one), said once. Not in a dry run, nor in a run another chi exec'd.
+    def home_for(options)
+      home = @home.current(gem_spec: @gem_spec)
+      return home if home || options[:dry_run] || @in_home || options[:gem_from]
+
+      recorded = @home.record_first!(gem_spec: @gem_spec, launch_path: helper_launch_path)
+      notice(options, "chi home set to #{recorded.ruby} (chi home set to change)") if recorded
+      recorded
+    end
+
+    # A chi on another Ruby than the home's updates the home: exec its chi
+    # (newer?, --to and the bundle rows are then the home's), once
+    # (IN_HOME_ENV).
+    def to_home(options)
+      notice(options, "updating the chi home (#{@run_home.ruby})")
+      @stdout.flush
+      @exec.call([{ IN_HOME_ENV => "1" }, *@run_home.boot_argv(run: ChiHome::CHI_BOOT), "--", "update", *@argv])
+      0 # only when exec is a spec's stand-in
+    end
+
+    def notice(options, text) = (options[:json] ? @stderr : @stdout).puts(text)
+
+    def helper_launch_path
+      return nil unless @supported
+
+      helper = @platform.call(register: false)
+      helper.respond_to?(:launch_path) ? helper.launch_path : nil
+    rescue StandardError
+      nil
+    end
 
     # @return [Hash, Integer] the options, or the usage error's exit status
     #   (every error reads "unknown option", a --gem-from without its value too)
@@ -181,16 +231,17 @@ module Samagotchi
       hand_over(options, row)
     end
 
-    # exec the wrapper, which activates the newest installed samagotchi.
-    # Without one (installed with --bindir), this version syncs.
+    # exec the newest installed samagotchi: the chi home's boot, else the
+    # wrapper. Without either (installed with --bindir), this version syncs.
     def hand_over(options, row)
-      wrapper = InstalledGem.wrapper(@gem_spec)
-      return done(row, :update, "run chi update again to sync with it") unless wrapper
+      wrapper = InstalledGem.wrapper(@gem_spec) unless @run_home
+      return done(row, :update, "run chi update again to sync with it") unless @run_home || wrapper
 
       passed = options[:to] ? ["--to", options[:to]] : []
       passed += HANDED_OVER.except("--to").select { |_, key| options[key] }.keys
+      args = ["update", "--no-gem", "--gem-from", VERSION, *passed]
       @stdout.flush
-      @exec.call([RbConfig.ruby, wrapper, "update", "--no-gem", "--gem-from", VERSION, *passed])
+      @exec.call(@run_home ? @run_home.boot_argv(run: ChiHome::CHI_BOOT) + ["--", *args] : [RbConfig.ruby, wrapper, *args])
       done(row, :update) # only when exec is a spec's stand-in
     end
 

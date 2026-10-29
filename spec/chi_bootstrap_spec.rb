@@ -480,22 +480,26 @@ RSpec.describe "chi bootstrap" do
     # No real `gem install` here: +gem_runner+ answers [output, success]
     # and records its argv in gem_runs; commonmarker counts as installed
     # unless +gem_present+ says otherwise.
-    def run_command(input, *args, extra_env: {}, bundles: nil, gem_present: true, gem_runner: nil)
+    def run_command(input, *args, extra_env: {}, bundles: nil, gem_present: true, gem_runner: nil, home: Samagotchi::ChiHome)
       out = StringIO.new
       err = StringIO.new
       command = Samagotchi::BootstrapCommand.new(args, stdin: tty.new(input), stdout: out, stderr: err,
                                                        env: extra_env, config_path: config, bundles: bundles,
-                                                       gem_present: -> { gem_present }, gem_runner: gem_runner || fake_gem(["", true]))
+                                                       gem_present: -> { gem_present }, gem_runner: gem_runner || fake_gem(["", true]),
+                                                       home: home)
       [command.run, out.string, err.string]
     end
 
     def gem_runs = @gem_runs ||= []
+    def gem_envs = @gem_envs ||= []
 
     def fake_gem(answer)
       runs = gem_runs
+      envs = gem_envs
       Class.new do
-        define_method(:run) do |argv|
+        define_method(:run) do |argv, env: {}|
           runs << argv
+          envs << env
           answer
         end
       end.new
@@ -636,6 +640,32 @@ RSpec.describe "chi bootstrap" do
         expect(gem_runs).to eq([[Samagotchi::GemUpdate.gem_bin, "install", "commonmarker", "--no-document"]])
         expect(out).to include("commonmarker: installing…\nweb: markdown on (config.yml)\n")
         expect(written.dig("web", "markdown")).to be(true)
+      end
+
+      it "installs commonmarker into the chi home with its gem command, and records a first home once" do
+        record = Samagotchi::ChiHome::Record.new(ruby: "/home/bin/ruby", gem_home: "/hg", gem_path: "/hg", mise: nil,
+                                                 set_at: "t", set_by_version: "1")
+        chi_home = double("ChiHome", current: record)
+        expect(chi_home).to receive(:record_first!).once.and_return(record)
+
+        code, out, = markdown("y\n", gem_present: false, home: chi_home)
+
+        expect(code).to eq(0)
+        expect(gem_runs).to eq([["/home/bin/gem", "install", "commonmarker", "--no-document"]])
+        expect(gem_envs).to eq([{ "GEM_HOME" => "/hg", "GEM_PATH" => "/hg" }])
+        expect(out).to include("chi home: /home/bin/ruby (chi home set to change)\n")
+      end
+
+      it "looks for commonmarker in the chi home's gems" do
+        dir = File.join(home, "home-gems", "specifications")
+        FileUtils.mkdir_p(dir)
+        record = Samagotchi::ChiHome::Record.new(ruby: "/home/bin/ruby", gem_home: File.dirname(dir),
+                                                 gem_path: File.dirname(dir), mise: nil, set_at: "t", set_by_version: "1")
+        command = Samagotchi::BootstrapCommand.new([], home: double("ChiHome", current: record))
+        present = command.instance_variable_get(:@gem_present)
+        expect(present.call).to be(false)
+        File.write(File.join(dir, "commonmarker-2.0.0.gemspec"), "")
+        expect(present.call).to be(true)
       end
 
       it "writes nothing when the install fails, says why in one line and keeps the exit code" do

@@ -22,6 +22,7 @@ require_relative "update_check"
 require_relative "token"
 require_relative "tunnel"
 require_relative "../config"
+require_relative "../chi_home"
 require_relative "../child_env"
 require_relative "../installed_gem"
 require_relative "../paths"
@@ -219,25 +220,37 @@ module Samagotchi
       # No line before the exec: one on a hung-up terminal raises EIO, and
       # the restart would end in a dead chi web; the log says it.
       def self.reexec(argv, provider: nil, plan: nil, exec: nil)
-        program = reexec_program
-        raise ArgumentError, "RubyGems chi wrapper not found" if program.to_s.empty?
+        command = reexec_command(argv)
+        raise ArgumentError, "RubyGems chi wrapper not found" unless command
 
         env = ChildEnv.unbundled.merge(
           RESTARTED_ENV => "1",
           ADOPT_PIDS_ENV => SessionManager.live_spawn_pids.join(",")
         )
-        Samagotchi::Log.info(:web, "restart", program: program)
+        Samagotchi::Log.info(:web, "restart", program: command[1] == "-e" ? "home:#{command[0]}" : command[1])
         runner = exec || ->(environment, *args) { Kernel.exec(environment, *args) }
-        runner.call(env, RbConfig.ruby, program, *argv)
+        runner.call(env, *command)
       rescue SystemCallError, ArgumentError => e
         tunnel_down(provider, plan) if provider && plan
         warn "Error: couldn't restart chi web: #{e.message}"
         1
       end
 
-      # What a restart execs: the installed gem's wrapper (it activates the
-      # newest installed chi), this bin/chi in a checkout; nil for a gem
-      # installed without one (--bindir).
+      # A restart's argv: with a chi home, its boot (ChiHome::CHI_BOOT: the
+      # newest chi in the home; a bare wrapper would activate the newest in
+      # whatever GEM_* the env has, off the home); else this Ruby and
+      # #reexec_program. nil when there is neither.
+      # @return [Array<String>, nil]
+      def self.reexec_command(argv, home: ChiHome.current)
+        return home.boot_argv(run: ChiHome::CHI_BOOT) + ["--", *argv] if home
+
+        program = reexec_program
+        program.to_s.empty? ? nil : [RbConfig.ruby, program, *argv]
+      end
+
+      # What a restart execs without a chi home: the installed gem's wrapper
+      # (it activates the newest installed chi), this bin/chi in a checkout;
+      # nil for a gem installed without one (--bindir).
       def self.reexec_program
         gem_spec = InstalledGem.spec
         gem_spec ? InstalledGem.wrapper(gem_spec) : $PROGRAM_NAME
@@ -354,7 +367,7 @@ module Samagotchi
           app.restart_web = lambda do
             restart_mutex.synchronize do
               next false if restart_requested
-              next :no_wrapper if reexec_program.to_s.empty?
+              next :no_wrapper unless reexec_command([])
 
               restart_requested = true
               restart_thread = Thread.new do

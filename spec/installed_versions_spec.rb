@@ -29,6 +29,20 @@ RSpec.describe Samagotchi::InstalledVersions do
       expect(detector.newest).to eq("0.18.10")
     end
 
+    # What new workers activate: the "installed; restart" notice must count the same install.
+    it "reads the chi home's specification dirs by default when there is one" do
+      touch(specs_a, "samagotchi-0.20.0.gemspec")
+      home = Samagotchi::ChiHome::Record.new(ruby: "/r", gem_home: File.dirname(specs_a), gem_path: File.dirname(specs_a),
+                                             mise: nil, set_at: "t", set_by_version: "1")
+      allow(Samagotchi::ChiHome).to receive(:current).with(gem_spec: gem_spec).and_return(home)
+      expect(described_class.new(env: env, gem_spec: gem_spec).newest).to eq("0.20.0")
+
+      allow(Samagotchi::ChiHome).to receive(:current).with(gem_spec: gem_spec).and_return(nil)
+      allow(Gem::Specification).to receive(:dirs).and_return([specs_b])
+      touch(specs_b, "samagotchi-0.19.0.gemspec")
+      expect(described_class.new(env: env, gem_spec: gem_spec).newest).to eq("0.19.0")
+    end
+
     it "counts prereleases, as the `>= 0.a` a new worker activates does" do
       touch(specs_a, "samagotchi-0.18.1.gemspec")
       touch(specs_a, "samagotchi-0.19.0.pre1.gemspec")

@@ -564,6 +564,24 @@ RSpec.describe Samagotchi::Web::App do
         expect(events.last.data[:rows]).to eq([{ "component" => "chi (gem)", "status" => "updated", "kept" => [] }])
       end
 
+      it "runs the chi home's chi for the update when there is one" do
+        calls = Queue.new
+        home = Samagotchi::ChiHome::Record.new(ruby: "/home/bin/ruby", gem_home: "/hg", gem_path: "/hg", mise: nil,
+                                               set_at: "t", set_by_version: "1")
+        allow(Samagotchi::ChiHome).to receive(:current).and_return(home)
+        allow(Samagotchi::ChildEnv).to receive(:unbundled).and_return({})
+        runner = lambda do |argv, env:, progress:|
+          calls << argv
+          ["[]", true]
+        end
+        app = update_app(update_runner: runner)
+
+        expect(update_post(app, "99.0.0").first).to eq(202)
+        wait_for("the web update result") { hub.update_state&.dig(:state) == "done" }
+        expect(calls.pop).to eq(home.boot_argv(run: Samagotchi::ChiHome::CHI_BOOT) +
+                                ["--", "update", "--to", "99.0.0", "--no-desktop", "--json"])
+      end
+
       it "refuses a second update while one is running" do
         started = Queue.new
         finish = Queue.new

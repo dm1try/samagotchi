@@ -1042,6 +1042,69 @@ RSpec.describe Samagotchi::SessionManager do
                                "begin; gem 'samagotchi', '>= 0.a'; rescue LoadError => e; " \
                                "ENV['SAMAGOTCHI_BOOT_FALLBACK'] = e.message; gem 'samagotchi', '= 9.9.9'; end; #{boot}"])
       end
+
+      describe "with a chi home" do
+        let(:home_dir) { Dir.mktmpdir("worker-home") }
+        let(:home) do
+          FileUtils.mkdir_p(File.join(home_dir, "specifications"))
+          %w[9.9.9 10.0.0].each { |v| File.write(File.join(home_dir, "specifications", "samagotchi-#{v}.gemspec"), "") }
+          Samagotchi::ChiHome::Record.new(ruby: "/home/bin/ruby", gem_home: home_dir, gem_path: home_dir, mise: nil,
+                                          set_at: "t", set_by_version: "9.9.9")
+        end
+        let(:spec) { Gem::Specification.new { |s| s.name = "samagotchi"; s.version = "9.9.9" } }
+
+        after { FileUtils.remove_entry(home_dir) }
+
+        it "boots the home's ruby with its Gem.paths, the newest chi there, the spawner's version as the fallback" do
+          command = described_class.worker_command("abc", state_dir: "/s", gem_spec: spec, home: home)
+          expect(command[0, 2]).to eq(["/home/bin/ruby", "-e"])
+          expect(command.size).to eq(3)
+          expect(command[2]).to start_with("#{home.prelude}; begin; begin; gem 'samagotchi', '>= 0.a'; rescue LoadError => e; " \
+                                           "ENV['SAMAGOTCHI_BOOT_FALLBACK'] = e.message; gem 'samagotchi', '= 9.9.9'; end; " \
+                                           "require 'samagotchi/session_manager'; rescue LoadError, StandardError => e; ")
+          expect(command[2]).to include("sid=abc boot_failed")
+          expect(command[2]).to end_with("exit 1; end; Samagotchi::SessionManager.run_session_loop('abc', state_dir: \"/s\")")
+          expect(RubyVM::InstructionSequence.compile(command[2])).to be_a(RubyVM::InstructionSequence)
+        end
+
+        it "falls back to the home's newest when the spawner's version isn't in the home" do
+          other = Gem::Specification.new { |s| s.name = "samagotchi"; s.version = "8.0.0" }
+          command = described_class.worker_command("abc", state_dir: "/s", gem_spec: other, home: home)
+          expect(command[2]).to include("gem 'samagotchi', '= 10.0.0'")
+        end
+
+        it "keeps the -I lib boot in a checkout" do
+          expect(described_class.worker_command("abc", state_dir: "/s", gem_spec: nil, home: home))
+            .to eq([RbConfig.ruby, "-I", File.expand_path("../lib", __dir__), "-e", boot])
+        end
+
+        it "reads home.json at spawn time (none in the suite's config: today's boot)" do
+          expect(described_class.worker_command("abc", state_dir: "/s", gem_spec: spec).first).to eq(RbConfig.ruby)
+          Dir.mktmpdir do |config|
+            with_config_home(config) do
+              Samagotchi::ChiHome.write!(home.with(ruby: RbConfig.ruby))
+              expect(described_class.worker_command("abc", state_dir: "/s", gem_spec: spec)[2]).to start_with("Gem.paths = ")
+            end
+          end
+        end
+
+        # A home whose chi can't load (a broken install): one line in the spawner's log, not a silent timeout.
+        it "logs one line to SAMAGOTCHI_LOG_FILE and exits 1 when chi doesn't load in the home" do
+          broken = home.with(ruby: RbConfig.ruby)
+          FileUtils.rm_rf(File.join(home_dir, "specifications"))
+          FileUtils.mkdir_p(File.join(home_dir, "specifications"))
+          command = described_class.worker_command("abc", state_dir: "/s", gem_spec: spec,
+                                                   home: broken)
+          log = File.join(home_dir, "chi.log")
+          # Outside this suite's bundle (RUBYOPT=-rbundler/setup would hand it this checkout), as a gem-mode spawn is.
+          _out, status = Bundler.with_unbundled_env { Open3.capture2e({ "SAMAGOTCHI_LOG_FILE" => log }, *command) }
+          expect(status.exitstatus).to eq(1)
+          line = File.read(log)
+          expect(line.lines.size).to eq(1)
+          expect(line.chomp).to match(Samagotchi::LogLine::HEADER)
+          expect(line).to include("ERROR worker", "sid=abc boot_failed", "Could not find 'samagotchi'")
+        end
+      end
     end
 
     it "starts the worker in its own process group, so a Ctrl-C on `chi web` does not reach it" do

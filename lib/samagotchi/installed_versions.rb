@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require_relative "chi_home"
 require_relative "installed_gem"
 require_relative "version"
 require_relative "redacted_inspect"
@@ -8,8 +9,9 @@ module Samagotchi
   # The newest chi on this machine, which a long-lived process (chi web, an
   # attaching TUI) compares with its own VERSION to say "chi X is installed;
   # restart". Run from an installed gem: the highest samagotchi-<v>.gemspec
-  # in RubyGems' specification dirs, matching the `>= 0.a` a new worker
-  # activates (prereleases count). Run from a source checkout: the VERSION
+  # in RubyGems' specification dirs (the chi home's when there is one,
+  # ChiHome), matching the `>= 0.a` a new worker activates (prereleases
+  # count). Run from a source checkout: the VERSION
   # in lib/samagotchi/version.rb on disk now (a `git pull` moves it).
   #
   # Cheap enough to poll: each dir is listed again only when its mtime
@@ -30,7 +32,7 @@ module Samagotchi
     #   runs from (nil: a source checkout)
     # @param dirs [#call] → the specification dirs to list
     # @param version_file [String] a checkout's version.rb
-    def initialize(env: ENV, gem_spec: InstalledGem.spec, dirs: -> { Gem::Specification.dirs },
+    def initialize(env: ENV, gem_spec: InstalledGem.spec, dirs: -> { ChiHome.spec_dirs(gem_spec: gem_spec) },
                    version_file: File.join(InstalledGem::ROOT, "lib", "samagotchi", "version.rb"))
       @env = env
       @gem_spec = gem_spec

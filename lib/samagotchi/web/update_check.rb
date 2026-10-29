@@ -4,6 +4,7 @@ require "fileutils"
 require "json"
 require "time"
 require_relative "../atomic_file"
+require_relative "../chi_home"
 require_relative "../config"
 require_relative "../gem_update"
 require_relative "../installed_gem"
@@ -27,7 +28,7 @@ module Samagotchi
                      min_age_hours: Config.get("update.min_age_hours"),
                      fetcher: -> { GemUpdate.new.releases }, clock: -> { Time.now },
                      state_file: File.join(Paths.state_dir, "update_check.json"),
-                     gem_spec: InstalledGem.spec, bundler: nil, gem_dir: Gem.dir,
+                     gem_spec: InstalledGem.spec, bundler: nil, gem_dir: ChiHome.gem_dir(gem_spec: gem_spec),
                      installed_versions: InstalledVersions.new)
         @hub = hub
         @enabled = enabled
@@ -97,7 +98,7 @@ module Samagotchi
       # one answer), or nil: a source checkout, a Bundler run, a gem dir it
       # can't write.
       # @return [String, nil]
-      def self.blocked_reason(gem_spec: InstalledGem.spec, bundler: nil, gem_dir: Gem.dir)
+      def self.blocked_reason(gem_spec: InstalledGem.spec, bundler: nil, gem_dir: ChiHome.gem_dir(gem_spec: gem_spec))
         bundler = defined?(::Bundler) || !ENV["BUNDLE_GEMFILE"].to_s.empty? if bundler.nil?
         return "checkout" unless gem_spec
         return "bundler" if bundler
