@@ -23,7 +23,7 @@ module Samagotchi
       # ParentPolicy's user_only); System 1 may, only if the user lists the
       # rule by name in guardrails.system_one.rules, and never for the
       # chi-answer/chi-broadcast ones (SystemOne::SelfProtect::NEVER_AUTO).
-      PROTECTED_RULES = %w[chi-config chi-hooks shell-touches-chi chi-context-cmd chi-broadcast prompt-memory-write
+      PROTECTED_RULES = %w[chi-config chi-home chi-hooks shell-touches-chi chi-context-cmd chi-broadcast prompt-memory-write
                            model-overlay-write chi-answer-piped chi-answer-http].freeze
       SCOPES = %w[once session repo rule].freeze
       DO_NOT_RETRY = "Do not retry it or reach the same result another way; ask the user how to proceed."

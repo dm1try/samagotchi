@@ -12,7 +12,8 @@ RSpec.describe Samagotchi::Guardrails::ProtectedPaths do
                         bundles_dir: File.join(config_dir, "memories", ".bundles"),
                         config_path: File.join(config_dir, "config.yml"),
                         hooks_dir: File.join(config_dir, "hooks"),
-                        context_dir: File.join(root, "state", "context"))
+                        context_dir: File.join(root, "state", "context"),
+                        home_path: File.join(config_dir, "home.json"))
   end
   let(:context) { Samagotchi::Guardrails::Context.new(cwd: root) }
 
@@ -115,6 +116,13 @@ RSpec.describe Samagotchi::Guardrails::ProtectedPaths do
     v = verdict_for(name: "edit", path: "config/config.yml", content: "x")
     expect([v.decision, v.rule, v.scopes]).to eq([:ask, "chi-config", %w[once session]])
     expect(verdict_for(name: "write", path: "config/hooks/new.rb", content: "x").rule).to eq("chi-hooks")
+  end
+
+  # home.json names the Ruby every chi launch boots (ChiHome).
+  it "asks (once or session only) for the chi home's home.json" do
+    v = verdict_for(name: "write", path: "config/home.json", content: "{}")
+    expect([v.decision, v.rule, v.scopes]).to eq([:ask, "chi-home", %w[once session]])
+    expect(verdict_for(name: "edit", path: "config/home.json", content: "x").rule).to eq("chi-home")
   end
 
   it "denies a memory_write that lands in .bundles" do

@@ -4,7 +4,7 @@ Every tool call the model makes passes one check before it runs, in both
 loops (native and chat hosts). The verdict is **allow**, **ask** or
 **deny**; the strictest vote wins, and a deny can't be undone by a later
 voter. Of two asks the first one names the rule, except a rule only the
-user may allow (`chi-config`, `chi-hooks`, `shell-touches-chi`,
+user may allow (`chi-config`, `chi-home`, `chi-hooks`, `shell-touches-chi`,
 `chi-context-cmd`, `chi-broadcast`): it takes over, and only the scopes both asks offer
 are offered.
 
@@ -215,7 +215,7 @@ rules off: `guardrails: {disable: [write-outside-repo, git-outside-repo]}`.
 
 Whatever the setting, a parent can't allow a call on chi's own files: a
 `write`, `edit` or `execute` on the config dir (config.yml, installed bundles'
-rules), the hooks dir or the approval store, by its rule (`chi-config`,
+rules), the hooks dir or the approval store, by its rule (`chi-config`, `chi-home`,
 `chi-hooks`, `shell-touches-chi`), its paths or its command. "Allow once" on a
 config.yml rewrite would allow everything from then on, so those questions are
 the user's alone (`user_only`): `chi answer` and the worker refuse the allow
@@ -280,7 +280,7 @@ Built in, for `write`, `edit` and `memory_write` (symlinks resolved; see
 - deny: the approval store's dir, installed bundles (`memories/.bundles/`),
   and [attached context](context.md) sources (`<state dir>/context/`: a
   source's command runs later, outside the gate; `chi context` changes them);
-- ask (once or for the session): `config.yml` and the plain hooks dir.
+- ask (once or for the session): `config.yml`, `home.json` (the [chi home](configuration.md#the-chi-home): the Ruby every chi launch boots) and the plain hooks dir.
 
 `execute` can still reach them; the guardrails bundle asks about shell
 commands that name them.

@@ -419,6 +419,17 @@ RSpec.describe "GuardrailWiring: System 1 on an approval (audit)" do
       expect(verdict.judgment).to be_nil
     end
 
+    it "asks for a write to the chi home's home.json (the wiring's chi-home rule), though the rule is listed" do
+      w, verdict, asked, = run_on({ "rules" => "chi-home", "threshold" => 0.8, "min_record" => 5 },
+                                  rule: "chi-home", call: { name: "write", path: Samagotchi::ChiHome.path, content: "{}" })
+      expect(asked.size).to eq(1)
+      expect(verdict.decided_by).to eq("user")
+      core = Samagotchi::Guardrails::Verdict.new(call: { name: "write", path: Samagotchi::ChiHome.path, content: "{}" })
+      core.context = Samagotchi::Guardrails::Context.new(cwd: Dir.pwd)
+      core.targets = Samagotchi::Guardrails::Targets.for(core.call, core.context)
+      expect(w.send(:protected_paths).check(core).rule).to eq("chi-home")
+    end
+
     it "lets a memory file through: the memories dir is not one of chi's control files" do
       path = File.join(Samagotchi::MemoryPaths.system_dir, "notes.md")
       _, verdict, asked, line = run_on({ "rules" => "memory-write", "threshold" => 0.8, "min_record" => 5 },
