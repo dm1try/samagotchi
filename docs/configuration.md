@@ -838,7 +838,10 @@ Gemma's thinking switch, a remote chat host's thinking fields ("Thinking"), a ch
 reply has thinking ("Reasoning history"), and any change to the declared tools, which start every request
 ("Toolkits"). They ask only when what the next turn runs under really changes and the session has a model reply.
 
-- The reply says what it costs and changes nothing yet: `Nothing changed yet: send /thinking low --yes to apply.`
+- The reply says what it costs and changes nothing yet. When known, it estimates the reread size: the whole
+  conversation for full-prefix changes, or from the first changed reply for reasoning history. On `api: anthropic`,
+  a full-prefix change also says preserved thinking in replies is dropped from then on.
+- `Nothing changed yet: send /thinking low --yes to apply.` names the line that applies it.
 - `--yes` (or `-y`, anywhere after the command) applies it at once.
 - The terminal (the REPL and an attached TUI) puts the `--yes` line in the next input: Enter applies it.
 - The web's reply bubble has an **Apply (restarts the cache)** button. The session bar's chips are already an explicit

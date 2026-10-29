@@ -81,9 +81,10 @@ module Samagotchi
       return nil unless before && would
 
       cost = spec.cache_cost.call(@engine, before.level, would.level)
-      return nil unless CacheConfirm.needed?(cost: cost, history: @engine.history?, changed: would.level != before.level)
+      step = CacheConfirm.ask(line: "#{spec.name} #{word}", cost: cost, changed: would.level != before.level,
+                              engine: @engine)
+      return nil unless step
 
-      step = CacheConfirm.confirm(spec.name, word)
       [[listing(before), "Switching to #{would.level} restarts the prompt cache: #{spec.cost_notes[cost]}", step.text].join("\n"),
        false, step]
     end

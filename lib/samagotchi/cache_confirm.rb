@@ -1,9 +1,8 @@
 # frozen_string_literal: true
 
 module Samagotchi
-  # The confirm step before a session setting change that restarts the
-  # prompt cache (/thinking, /reasoning-history): such a change, sent
-  # without --yes from a person at a web tab or a chi TUI, changes nothing
+  # The confirm step before a command that restarts the prompt cache: sent
+  # without --yes by a person at a web tab or a chi TUI, it changes nothing
   # and replies with what it costs and the line that applies it. Two steps,
   # no stored state: the reply carries a Confirm (SessionCommands::Result,
   # the worker's command_ran), the TUI prefills its line, the web draws an
@@ -43,12 +42,33 @@ module Samagotchi
       changed && history && COSTLY.include?(cost)
     end
 
-    # The Confirm for +name+ set to +word+: the line with --yes, and the
-    # question naming it.
-    # @return [Confirm]
-    def confirm(name, word)
-      line = "#{name} #{word} --yes"
-      Confirm.new(line: line, text: "Nothing changed yet: send `#{line}` to apply.")
+    # Whether a cache-changing command should ask, and its reply line.
+    # Kept independent of any UI so commands and plugins can share it.
+    # @param line [String] the full command line without --yes
+    # @param cost [Symbol, nil] the change's cache cost
+    # @param changed [Boolean] whether the effective setting changes
+    # @param engine [Engine] supplies history, used tokens and model host
+    # @return [Confirm, nil]
+    def ask(line:, cost:, changed:, engine:)
+      return nil unless needed?(cost: cost, history: engine.history?, changed: changed)
+
+      apply_line = "#{line.to_s.strip} --yes"
+      notes = []
+      tokens = engine.cache_restart_tokens
+      if tokens
+        size = tokens >= 1000 ? "#{format("%.1f", tokens / 1000.0).delete_suffix(".0")}k" : tokens.to_s
+        notes << case cost
+                 when :full, :provider
+                   "The next request reads the whole conversation again (about #{size} tokens)."
+                 when :history
+                   "The next request reads again from the first changed reply (up to about #{size} tokens)."
+                 end
+      end
+      if %i[full provider].include?(cost) && engine.cache_restart_anthropic?
+        notes << "On an `api: anthropic` host, preserved thinking in replies is dropped from then on."
+      end
+      notes << "Nothing changed yet: send `#{apply_line}` to apply."
+      Confirm.new(line: apply_line, text: notes.compact.join("\n"))
     end
   end
 end

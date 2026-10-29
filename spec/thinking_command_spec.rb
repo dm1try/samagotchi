@@ -25,6 +25,8 @@ RSpec.describe Samagotchi::ThinkingCommand do
       def thinking_cache_cost = cache_cost
 
       def history? = !!replied
+      def cache_restart_tokens = nil
+      def cache_restart_anthropic? = false
     end
   end
   let(:session) { Samagotchi::Session.new_session(mode: "assist", model_name: "m", working_directory: Dir.pwd) }

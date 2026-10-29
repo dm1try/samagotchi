@@ -54,8 +54,8 @@ module Samagotchi
       end
 
       cost = Toolkit.cache_cost(before.prompt_key, after.prompt_key)
-      if confirm && !yes && CacheConfirm.needed?(cost: cost, history: @engine.history?, changed: !cost.nil?)
-        step = CacheConfirm.confirm(NAME, words)
+      step = CacheConfirm.ask(line: "#{NAME} #{words}", cost: cost, changed: true, engine: @engine) if confirm && !yes
+      if step
         return [[change_line(before, after), reread_line(before, after), step.text].join("\n"), false, step]
       end
 

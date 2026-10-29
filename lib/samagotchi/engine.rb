@@ -1352,6 +1352,19 @@ module Samagotchi
       Array(@session&.messages).any? { |entry| entry[:role].to_s == "model" }
     end
 
+    # The latest known context size used by a request, for a cache-restart
+    # confirmation; nil before any request reports a count.
+    # @return [Integer, nil]
+    def cache_restart_tokens
+      used = @metrics.snapshot.dig(:context, :used_tokens)
+      used if used.is_a?(Integer)
+    end
+
+    # Whether a cache restart can invalidate preserved thinking blocks.
+    def cache_restart_anthropic?
+      effective_model.entry&.api.to_s == "anthropic"
+    end
+
     # What a thinking level change costs the effective model's prompt
     # cache (Thinking.cache_cost): :full, :provider or :tail.
     # @return [Symbol]

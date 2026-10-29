@@ -7,6 +7,11 @@ and commands may change between minor versions. How releases are made:
 [docs/releasing.md](docs/releasing.md).
 ## [Unreleased]
 
+### Changed
+
+- Cache: confirmations for prompt-cache changes estimate the reread size when known and warn that Anthropic drops
+  preserved thinking after a full-prefix change.
+
 ### Fixed
 
 - Web: a Verify verdict card sits right after the answer it quotes, on your page and a participant's, instead of

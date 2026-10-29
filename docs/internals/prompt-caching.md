@@ -232,8 +232,11 @@ is prefilled once. The native and the chat loop use the same plan.
    classifier: `Thinking.cache_cost` (`:full` for Gemma, `:provider` for a remote chat host, `:tail` otherwise) and
    `ReasoningHistory.cache_cost` (`:history` for a change to or from `all` once an earlier reply has thinking).
    `CacheConfirm.needed?` asks only for `:full`, `:provider` and `:history`, when the effective level changes and
-   the session has a model reply. A new setting with a cost (a `/model` across templates, `/llm-context` turning
-   forget on) adds its classifier and goes through the same step.
+   the session has a model reply. The confirmation estimates the reread size from the latest known context count:
+   the whole conversation for `:full` / `:provider`, or up to the first changed reply for `:history`; it omits the
+   estimate when no count is known. On `api: anthropic`, a `:full` / `:provider` change also warns that preserved
+   thinking in replies is dropped from then on. A new setting with a cost (a `/model` across templates,
+   `/llm-context` turning forget on) adds its classifier and goes through the same step.
 7. **No wall-clock time rendered at wire time.** A history entry's `at` (`MessageTime::KEY`, when it happened) is
    display-only: no wire format reads it, and a guard spec checks that `ChatLoop#wire_messages` and
    `Prompt.format_with_images` give the same bytes with and without it (`spec/message_time_history_spec.rb`). A

@@ -12,7 +12,7 @@ RSpec.describe Samagotchi::LevelSettingCommand do
   # model's, a cost the spec sets.
   let(:engine_class) do
     Class.new do
-      attr_accessor :session, :cost, :replied
+      attr_accessor :session, :cost, :replied, :api
 
       def history? = !!replied
       def chat_model? = true
@@ -31,6 +31,8 @@ RSpec.describe Samagotchi::LevelSettingCommand do
 
       def thinking_explained(own: thinking_override) = explained(own, :medium)
       def reasoning_history_explained(native: false, own: reasoning_history_override) = native && explained(own, :turn)
+      def cache_restart_tokens = nil
+      def cache_restart_anthropic? = false
 
       def explained(own, model_level)
         Samagotchi::SettingExplained.new(level: own || model_level, source: own ? "session" : "models: m", own: own)

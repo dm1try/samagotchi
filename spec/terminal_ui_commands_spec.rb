@@ -276,7 +276,7 @@ RSpec.describe Samagotchi::TerminalUI do
     end
 
     it "puts a change's --yes line in the next input when it asks first (CacheConfirm)" do
-      confirm = Samagotchi::CacheConfirm.confirm("/thinking", "low")
+      confirm = Samagotchi::CacheConfirm::Confirm.new(line: "/thinking low --yes", text: "asks")
       result = Samagotchi::SessionCommands::Result.new(status: :ok, output: "asks", changed: [], confirm: confirm)
       allow(agent).to receive_messages(queue_input_prefill: nil, piped_input?: false)
       agent.send(:show_command_result, result)
@@ -291,7 +291,7 @@ RSpec.describe Samagotchi::TerminalUI do
       expect(commands).to receive(:run).with("/thinking high", hash_including(confirm: false)).and_return(applied)
       agent.send(:run_input_line, nil, "/thinking high")
 
-      asked = applied.dup.tap { |r| r.confirm = Samagotchi::CacheConfirm.confirm("/thinking", "high") }
+      asked = applied.dup.tap { |r| r.confirm = Samagotchi::CacheConfirm::Confirm.new(line: "/thinking high --yes", text: "asks") }
       agent.send(:show_command_result, asked)
       expect(agent).not_to have_received(:queue_input_prefill)
     end

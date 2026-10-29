@@ -59,7 +59,7 @@ module Samagotchi
     # /help's note per listed mid_turn (the web's command list says the same).
     MID_TURN_NOTES = { "anytime" => "mid-turn too", "depends" => "show: mid-turn too" }.freeze
 
-    # The commands that ask before a change that restarts the prompt cache
+    # Commands that may ask before a change that restarts the prompt cache
     # (CacheConfirm): #run passes them its confirm flag.
     CONFIRMING = %i[thinking reasoning_history toolkit].freeze
 
@@ -287,8 +287,8 @@ module Samagotchi
     # How help and errors name an entry (the shell's "!" is "!<cmd>").
     def self.display_name(entry) = entry.name == SHELL_BANG_PREFIX ? "#{SHELL_BANG_PREFIX}<cmd>" : entry.name
 
-    # @param confirm [Boolean] a costly /thinking or /reasoning-history
-    #   change asks first (CacheConfirm): true for a person at a web tab or
+    # @param confirm [Boolean] a costly setting change asks first
+    #   (CacheConfirm): true for a person at a web tab or
     #   a TUI; false applies it at once (chi send, a delegate, a plugin,
     #   chi -p)
     # @param as_parent [Boolean] a parent agent sent it (client cli:answer):
@@ -304,7 +304,7 @@ module Samagotchi
       return nil unless entry&.handler
       return run_bundle_command(entry, text) unless entry.source == "core"
 
-      # The two that may ask take the flag; the rest never ask.
+      # Only commands that may ask take the flag.
       return send(entry.id, text, confirm: confirm) if CONFIRMING.include?(entry.id)
       # Who sent it goes to its handler per call, never through an ivar:
       # an anytime command runs on another thread against this instance.

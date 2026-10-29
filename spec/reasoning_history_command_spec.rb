@@ -13,6 +13,8 @@ RSpec.describe Samagotchi::ReasoningHistoryCommand do
       attr_accessor :session, :model_level, :chat, :cost_for, :replied
 
       def history? = !!replied
+      def cache_restart_tokens = nil
+      def cache_restart_anthropic? = false
 
       def reasoning_history_cache_cost(from, to) = cost_for&.call(from, to)
 
