@@ -86,7 +86,7 @@ module GuardrailsPathConsistency
       git-config          .git/config                                  -   y  -   secret  deny  deny  allow allow allow -  deny  -     y  -     -    -       -      @proj/.git/config
       case-git-dir        .GIT/config                                  -   y  -   secret  deny  deny  allow allow allow -  deny  -     y  -     -    -       -      @proj/.git/config
       git-hook            .git/hooks/pre-commit                        -   y  -   ok      allow deny  allow allow allow -  allow y     y  -     y    -       -      @proj/.git/hooks/pre-commit
-      hooks-link          hl/pre-commit                                -   y  -   ok      allow deny  allow allow allow -  allow y     y  -     -    -       -      @proj/.git/hooks/pre-commit
+      hooks-link          hl/pre-commit                                -   y  -   ok      allow deny  allow allow allow -  allow y     y  -     y    -       -      @proj/.git/hooks/pre-commit
       link-out            node_modules/foo/index.js                    y   -  -   outside allow ask   ask   allow allow -  allow -     y  -     -    -       -      @home/src/foo/index.js
       link-climb          node_modules/foo/../x.txt                    y   -  -   outside allow ask   ask   allow allow -  allow -     y  -     -    -       -      @proj/node_modules/x.txt,@home/src/x.txt
       link-climb-secret   node_modules/foo/../../.config/gh/hosts.yml  y   -  -   outside deny  deny  ask   allow allow -  deny  -     y  -     -    -       -      @proj/.config/gh/hosts.yml,@home/.config/gh/hosts.yml
@@ -336,7 +336,7 @@ module GuardrailsPathConsistency
       ],
       "a write that lands in a .git/hooks dir matches the git-hooks-write rule's path: glob" => [
         ->(a) { a["rule"] == "y" || a["reals"].split(",").none? { |real| real.match?(G::ShellPaths::HOOKS_PART) } },
-        { "hooks-link" => "kept: P2 Q1: a rule's path: glob matches Targets#paths, not the paths as they resolve" }
+        {}
       ]
     }.freeze
 

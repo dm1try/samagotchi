@@ -712,8 +712,14 @@ the toolkit removes stays refused before the gate.
 ```
 
 All the fields a rule gives must match. Absolute and `**/` globs match the
-resolved path; other globs match the path relative to the repo root. Paths
-resolve the way the tools resolve them (against the cwd; `~` expanded).
+absolute path; other globs match the path relative to the repo root. A glob
+matches the path as the call gives it (against the cwd, `~` expanded) and as it
+resolves (symlinks, `..` the kernel's way: see How paths resolve), a relative
+glob then from the repo root as it resolves (`/tmp` is `/private/tmp` on
+macOS): `write hl/pre-commit` with `hl` a link to `.git/hooks` matches
+`**/.git/hooks/**`. Rules only ask or deny, so the resolved path only ever adds
+a vote; were a verdict ever to let a call through, a symlink into its glob
+would not count.
 
 `outside_repo` is measured from the session's repo: the git work tree its
 folder is in (a linked worktree is its own), or the folder itself outside a

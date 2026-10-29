@@ -16,9 +16,12 @@ module Samagotchi
     #   command: a Ruby regex on a shell tool's command, the body of a
     #            heredoc its command only reads as data left out
     #            (Targets#rule_command, ShellLex.code_text)
-    #   path:    "outside_repo", or a glob on the resolved paths (absolute
-    #            or "**/…" globs match the absolute path; others the path
-    #            relative to the repo root, the cwd outside one)
+    #   path:    "outside_repo", or a glob on the paths (absolute or "**/…"
+    #            globs match the absolute path; others the path relative
+    #            to the repo root, the cwd outside one): as typed
+    #            (Targets#paths) and, for an ask or deny, as they resolve
+    #            (PathResolve.reals, relative to the root as it resolves),
+    #            so a symlink into .git/hooks doesn't slip past a hooks rule
     #   git:     "outside_repo": a shell call runs a mutating git
     #            subcommand outside the session's repo (ShellGitDirs)
     #   models:  "small" (Guardrails::ModelSize, guardrails.small_models),
@@ -102,11 +105,26 @@ module Samagotchi
 
           base = targets.repo_root || targets.cwd
           glob = path.start_with?("~") ? File.expand_path(path) : path
+          absolute = glob.start_with?("/", "**")
+          real_base = nil
           targets.paths.any? do |p|
-            candidate = glob.start_with?("/", "**") ? p : relative(p, base)
-            candidate && File.fnmatch(glob, candidate, GLOB_FLAGS)
+            forms = [[p, base]]
+            # A resolved match only adds an ask or a deny; were a verdict
+            # ever to let a call through, a symlink into its glob must not.
+            if resolved_match?
+              real_base ||= PathResolve.real(base)
+              forms += PathResolve.reals(p).map { |real| [real, real_base] }
+            end
+            forms.any? do |form, from|
+              candidate = absolute ? form : relative(form, from)
+              candidate && File.fnmatch(glob, candidate, GLOB_FLAGS)
+            end
           end
         end
+
+        # Whether a path: glob also matches the paths as they resolve: for
+        # an ask or a deny only.
+        def resolved_match? = VERDICTS.include?(verdict.to_s)
 
         def relative(path, base)
           prefix = File.join(base, "")

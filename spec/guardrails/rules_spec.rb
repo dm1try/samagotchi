@@ -264,6 +264,30 @@ RSpec.describe Samagotchi::Guardrails::Rules do
       expect(verdict_for({ name: "write", path: "other/config/app.yml", content: "" }, rel)).to be_allow
     end
 
+    it "matches a path glob on the path as typed and, for its ask or deny, as it resolves" do
+      FileUtils.mkdir_p(File.join(repo, ".git", "hooks"))
+      File.symlink(File.join(repo, ".git", "hooks"), File.join(repo, "hl"))
+      hooks = rules({ id: "git-hooks", tool: %w[write edit], path: "**/.git/hooks/**", verdict: "deny" })
+      expect(verdict_for({ name: "write", path: "hl/pre-commit", content: "" }, hooks)).to be_deny
+      expect(verdict_for({ name: "write", path: "hl2/pre-commit", content: "" }, hooks)).to be_allow
+    end
+
+    # A relative glob against the resolved path is taken from the base as it
+    # resolves too (/tmp is /private/tmp on macOS).
+    it "matches a relative glob on the resolved path from the resolved base" do
+      dir = Dir.mktmpdir("guard-rules-tmp", "/tmp")
+      FileUtils.mkdir_p(File.join(dir, "config"))
+      File.symlink(File.join(dir, "config"), File.join(dir, "cfg"))
+      tmp_context = Samagotchi::Guardrails::Context.new(cwd: dir)
+      rel = rules({ id: "cfg", path: "config/*.yml", verdict: "ask" })
+      v = Samagotchi::Guardrails::Verdict.new(call: { name: "write", path: "cfg/app.yml", content: "" })
+      v.context = tmp_context
+      v.targets = Samagotchi::Guardrails::Targets.for(v.call, tmp_context)
+      expect(rel.check(v)).to be_ask
+    ensure
+      FileUtils.rm_rf(dir) if dir
+    end
+
     it "matches path rules on the read tool's path (the secrets rules from guardrails-extra-rules.yml)" do
       dotenv = rules({ id: "read-dotenv", tool: %w[read], path: "**/.env*", verdict: "ask" })
       expect(verdict_for({ name: "read", content: ".env" }, dotenv)).to be_ask
