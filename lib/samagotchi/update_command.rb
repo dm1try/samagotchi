@@ -254,6 +254,10 @@ module Samagotchi
         return failed(row, problem)
       end
 
+      if helper.launch_newer?
+        return up_to_date(row).tap { |r| r.status += " (kept: chi #{helper.launch_version} set it up; this chi is older)" }
+      end
+
       if helper.stale?
         row.to = VERSION
         done(row, :update, @dry_run ? "rebuilds and restarts it" : "restarted") { helper.upgrade(keep_launch: true) { nil } }

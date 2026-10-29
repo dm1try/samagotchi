@@ -346,7 +346,8 @@ RSpec.describe Samagotchi::UpdateCommand do
     let(:supported) { true }
     let(:helper) do
       instance_double(Samagotchi::Desktop::MacOS, installed?: true, app_version: "0.0.9", stale?: false,
-                                                  launch_outdated?: false, launch_problem: nil, terminal_warnings: [])
+                                                  launch_outdated?: false, launch_problem: nil, launch_newer?: false,
+                                                  terminal_warnings: [])
     end
 
     it "adds the terminals' warnings to the row, rebuilt or not" do
@@ -392,6 +393,14 @@ RSpec.describe Samagotchi::UpdateCommand do
       expect(helper).not_to receive(:refresh_launch_file)
       expect(run).to eq(1)
       expect(line("Chi Helper")).to end_with("failed (#{msg})")
+    end
+
+    it "keeps a helper a newer chi set up: an older chi neither rebuilds nor refreshes it" do
+      allow(helper).to receive_messages(launch_newer?: true, launch_version: "9.9.9", stale?: true, launch_outdated?: true)
+      expect(helper).not_to receive(:upgrade)
+      expect(helper).not_to receive(:refresh_launch_file)
+      expect(run).to eq(0)
+      expect(line("Chi Helper")).to end_with("up to date (kept: chi 9.9.9 set it up; this chi is older)")
     end
 
     it "skips it with --no-desktop" do

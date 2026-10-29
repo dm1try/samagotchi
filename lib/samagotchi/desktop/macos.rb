@@ -218,6 +218,17 @@ module Samagotchi
         "chi not found at #{missing.join(", ")}: run chi desktop install --force from the shell whose chi it should run"
       end
 
+      # The chi version the launch file names, nil without one.
+      def launch_version = read_launch["version"]
+
+      # The launch file names a newer chi than this one: an older chi's
+      # chi update keeps the helper as it is (no rebuild from older sources).
+      def launch_newer?
+        Gem::Version.new(launch_version.to_s) > Gem::Version.new(@version)
+      rescue ArgumentError
+        false
+      end
+
       # Rewrite the launch file for this chi and its settings, keeping
       # its argv and the env it was installed with; a PATH only when it has
       # none (changing them takes chi desktop install --force or upgrade). A

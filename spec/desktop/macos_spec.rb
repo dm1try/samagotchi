@@ -417,6 +417,16 @@ RSpec.describe Samagotchi::Desktop::MacOS do
       expect(newer.status).to include(stale: false, app_version: "9.9.9")
     end
 
+    it "knows when the launch file names a newer chi than this one" do
+      helper.install
+      expect(helper.launch_version).to eq("9.9.9")
+      expect(helper.launch_newer?).to be(false)
+      expect(helper(version: "9.9.8").launch_newer?).to be(true)
+      expect(helper(version: "9.9.10").launch_newer?).to be(false)
+      edit_launch { |l| l.delete("version") }
+      expect(helper(version: "9.9.8").launch_newer?).to be(false)
+    end
+
     it "fills a missing PATH on refresh, keeping the installed env without rebuilding" do
       installed = helper(env: env.merge("PATH" => "/a", "XDG_STATE_HOME" => "/installed/state"))
       installed.install
