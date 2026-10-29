@@ -214,6 +214,12 @@ module GuardrailsPathConsistency
       tmp-hooks           @proj               @tmp/r/.git/hooks/pre-commit          -   -  y   y     -  -
       tmp-root            @proj               @tmproot                              -   -  y   y     y  -
       missing-root-case   @home/work/NEWPROJ  @home/work/newproj/x.rb               y   -  -   -     y  -
+      root-case           @home/work/PROJ     @proj/lib/a.rb                        -   y  -   -     y  -
+    ROWS
+
+    # The ROOTS rows on a case-sensitive disk: another, missing root.
+    EXACT_ROOTS = <<~ROWS
+      root-case           @home/work/PROJ     @proj/lib/a.rb                        y   -  -   -     y  -
     ROWS
 
     # ReviewPaths.home_root?(ROOT, @home); the case row's answer on a
@@ -238,7 +244,7 @@ module GuardrailsPathConsistency
     # Rows whose answer a decided change (the path-primitives plan's P2)
     # will change, or a decision keeps: "kept: …" with the question.
     NOTES = {
-      "missing-root-case" => "kept: P2 Q3: Outside compares a session root that doesn't exist in exact case; fold only once it exists",
+      "missing-root-case" => "kept: P2 Q3: Outside compares a session root that doesn't exist in exact case; it folds only once it exists",
       "hooks-out" => "kept: P2 Q4: ReviewPaths.chi_dirs is the state and config dir, not a hooks dir configured elsewhere"
     }.freeze
 
@@ -281,6 +287,7 @@ module GuardrailsPathConsistency
     UNSET_XDG_ROWS = commands(UNSET_XDG)
     ENV_ROWS = env_commands(ENV_COMMANDS)
     ROOT_ROWS = roots(ROOTS)
+    EXACT_ROOT_ROWS = roots(EXACT_ROOTS)
     HOME_ROOT_ROWS = rows(HOME_ROOTS, %w[answer exact])
 
     # The guardrails bundle's git-hooks-write rule (its rules.yml).
@@ -618,7 +625,10 @@ module GuardrailsPathConsistency
     end
 
     it "answers every path for its session root as the table says" do
-      ROOT_ROWS.each { |id, row| expect(@root_answers.fetch(id)).to eq(row.except("root", "path")), id }
+      ROOT_ROWS.each do |id, row|
+        row = EXACT_ROOT_ROWS.fetch(id, row) unless @folds
+        expect(@root_answers.fetch(id)).to eq(row.except("root", "path")), id
+      end
     end
 
     it "answers ReviewPaths.home_root? as the table says" do

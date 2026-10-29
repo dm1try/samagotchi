@@ -63,7 +63,7 @@ module Samagotchi
         targets.empty? || targets.any? do |target|
           paths = walk.paths(target)
           paths.empty? || paths.flat_map { |path| PathResolve.reals(path) }.any? do |real|
-            roots.none? { |tmp| PathResolve.strictly_under?(real, tmp, fold: false) }
+            roots.none? { |tmp| PathResolve.strictly_under?(real, tmp, fold: File.exist?(tmp)) }
           end
         end
       end

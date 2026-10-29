@@ -87,9 +87,11 @@ module Samagotchi
       # The tmp dirs +session+ (resolved) isn't in (PathResolve.tmp_roots).
       def self.session_tmp_roots(session) = PathResolve.tmp_roots(session: session, roots: tmp_roots)
 
-      # Whether +path+ is +root+ or in it, by their text (exact case;
-      # PathResolve.under?).
-      def self.within?(path, root) = PathResolve.under?(path, root, fold: false)
+      # Whether +path+ is +root+ or in it (PathResolve.under?): cased alike
+      # on a disk that folds case when +root+ exists (resolved, it has its
+      # on-disk case), by their exact text when it doesn't (a missing root
+      # keeps the case it was typed in).
+      def self.within?(path, root) = PathResolve.under?(path, root, fold: File.exist?(root))
     end
   end
 end

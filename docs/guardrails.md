@@ -788,7 +788,7 @@ every surface answers for the same paths):
 | Primitive | Where | Used by |
 |---|---|---|
 | expand (`..` the kernel's way), real, lexical_real, reals | `PathResolve` (`ProtectedPaths` keeps the old names) | every surface |
-| in a dir: `under?` (case-folded on a folding disk; `fold: false` exact), `strictly_under?`, `within?` (root resolved too) | `PathResolve` | `under?`: ShellPaths, ReviewPaths, PairCommand, ChildBoundary, SelfProtect's words; `under?(fold: false)`: `Outside.within?`; `strictly_under?(fold: false)`: RmTargets; `within?`: ProtectedPaths, ScratchWrites, ParentApprovals, SelfProtect's paths |
+| in a dir: `under?` (case-folded on a folding disk; `fold: false` exact), `strictly_under?`, `within?` (root resolved too) | `PathResolve` | `under?`: ShellPaths, ReviewPaths, PairCommand, ChildBoundary, SelfProtect's words; `Outside.within?` and RmTargets' `strictly_under?` fold only when the dir exists (a missing session root keeps the case it was typed in); `within?`: ProtectedPaths, ScratchWrites, ParentApprovals, SelfProtect's paths |
 | tmp dirs and "not one the session is in" | `PathResolve.tmp_roots(session:)` (exact case) | Outside (`Outside.tmp_roots` is the list it and Targets read), RmTargets; `touches_chi?` takes all of them |
 | a shell word's `~`, `$HOME`, XDG dirs, `$TMPDIR` | `PathResolve.expand_word` | ShellPaths::Walk, ShellGitDirs; PairCommand has its own `~`/`$HOME` (`expand_tilde`) |
 | chi's dirs | `ChiDirs.protected` / `.touches` / `.self_protect` / `.review` | ParentApprovals, Targets, SelfProtect, ReviewPaths (`ProtectedPaths` and `ScratchWrites` get theirs from the wiring) |

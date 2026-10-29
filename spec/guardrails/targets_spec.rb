@@ -25,6 +25,15 @@ RSpec.describe "Guardrails::Targets outside the session's repo" do
     Samagotchi::Guardrails::Targets.for(call || fields, ctx, registry: registry)
   end
 
+  # realpath gives an existing root its on-disk case; a root that doesn't
+  # exist yet keeps the case it was typed in, so only an existing one folds.
+  it "compares a path with an existing root cased alike on a disk that folds case, a missing one exactly" do
+    folds = File.exist?(@repo.upcase)
+    expect(Samagotchi::Guardrails::Outside.within?(File.join(@base, "REPO", "x"), @repo)).to eq(folds)
+    expect(Samagotchi::Guardrails::Outside.within?(File.join(@base, "new", "x"), File.join(@base, "NEW"))).to be(false)
+    expect(Samagotchi::Guardrails::Outside.within?(File.join(@repo, "x"), @repo)).to be(true)
+  end
+
   it "is the session's repo root" do
     sub = File.join(@repo, "lib").tap { |d| FileUtils.mkdir_p(d) }
     t = targets({ name: "write", path: "../spec/a_spec.rb" }, Samagotchi::Guardrails::Context.new(cwd: sub))
