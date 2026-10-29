@@ -1143,8 +1143,10 @@ RSpec.describe Samagotchi::Web::App do
       let(:token) { "t0ken-t0ken-t0ken-t0ken-t0ken-t0ken-t0ken" }
       let(:lan) { { ip: "192.168.1.55", token: token } }
 
+      # The owner's cookie: on a loopback peer, the loopback value.
       def viewer(app, peer, path: "/api/sessions/s1", host: "127.0.0.1")
-        env = env_for(path, headers: { "HTTP_COOKIE" => "chi_token=#{token}" })
+        value = Samagotchi::Web::App::LOOPBACK_PEERS.include?(peer) ? Samagotchi::Web::Token.loopback_cookie(token) : token
+        env = env_for(path, headers: { "HTTP_COOKIE" => "chi_token=#{value}" })
         env["HTTP_HOST"] = host
         env["REMOTE_ADDR"] = peer
         JSON.parse(app.call(env)[2].first).slice("capabilities", "editor_url")

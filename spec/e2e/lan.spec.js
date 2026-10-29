@@ -79,7 +79,12 @@ test("this machine's page asks for the token too, and chi web's Local link (a on
   await started;
   await expect(page.locator("#actionBtn")).toHaveText("Start");
   expect(page.url()).not.toContain("code=");
-  expect((await context.cookies(chi.baseURL)).find((c) => c.name === "chi_token")).toMatchObject({ httpOnly: true });
+  // The 127.0.0.1 cookie rides to every local port: it holds the loopback
+  // value, never the token.
+  const cookie = (await context.cookies(chi.baseURL)).find((c) => c.name === "chi_token");
+  expect(cookie).toMatchObject({ httpOnly: true });
+  expect(cookie.value).toMatch(/^chl_/);
+  expect(cookie.value).not.toBe(fs.readFileSync(chi.tokenPath, "utf8").trim());
   // Used up: the same link again is refused.
   const again = await browser.newContext();
   const second = await again.newPage();

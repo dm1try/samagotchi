@@ -15,7 +15,8 @@ require "samagotchi/session"
 # chi web on the LAN (web.host: lan): every route answers a phone, and this
 # Mac's loopback too, only with the access token (the chi_token cookie, a
 # Bearer header, or once as ?token= on the page or a link's #code=, which
-# trade it for the cookie). chi's token-less /api/info probe gets its
+# trade it for the cookie; on loopback the cookie holds the loopback value,
+# Token.loopback_cookie). chi's token-less /api/info probe gets its
 # checked fields only.
 RSpec.describe Samagotchi::Web::App, "LAN access token" do
   let(:token) { "t0ken-t0ken-t0ken-t0ken-t0ken-t0ken-t0ken" } # 43 characters, like a real one
@@ -169,6 +170,11 @@ RSpec.describe Samagotchi::Web::App, "LAN access token" do
   # loopback is no longer the owner on the LAN (finding A1).
   describe "a loopback peer" do
     let(:local) { { host: "127.0.0.1:4567" } }
+    # The owner's cookie for 127.0.0.1: never the token, as a server on any
+    # other local port is sent it too.
+    let(:loopback_value) { Samagotchi::Web::Token.loopback_cookie(token) }
+    let(:owner_cookie) { cookie(loopback_value) }
+    let(:cookie_line) { "chi_token=#{loopback_value}; HttpOnly; SameSite=Lax; Path=/; Max-Age=34560000" }
 
     it "needs the token too, on any loopback address: the API gets 401 JSON, the page the paste box" do
       %w[127.0.0.1 ::1 ::ffff:127.0.0.1].each do |peer|
@@ -191,11 +197,57 @@ RSpec.describe Samagotchi::Web::App, "LAN access token" do
       end
     end
 
-    it "passes with the Bearer header or the cookie" do
-      %w[127.0.0.1 ::1].each do |peer|
+    it "passes with the token as Bearer, or the loopback value as the cookie" do
+      %w[127.0.0.1 ::1 ::ffff:127.0.0.1].each do |peer|
         expect(call("/api/sessions", **local, peer: peer, headers: bearer).first).to eq(200), peer
-        expect(call("/api/sessions", **local, peer: peer, headers: cookie).first).to eq(200), peer
-        expect(call("/", **local, peer: peer, headers: cookie).first).to eq(200), peer
+        expect(call("/api/sessions", **local, peer: peer, headers: owner_cookie).first).to eq(200), peer
+        expect(call("/", **local, peer: peer, headers: owner_cookie).first).to eq(200), peer
+      end
+    end
+
+    it "gets the owner's /api/info, not the probe, with the loopback cookie" do
+      status, _, body = call("/api/info", **local, peer: "127.0.0.1", headers: owner_cookie)
+      expect(status).to eq(200)
+      expect(JSON.parse(body).keys).to include("cwd")
+    end
+
+    it "refuses the token as the cookie (a 0.130.0 one) and clears it, so it stops riding to other ports" do
+      %w[/api/sessions /].each do |path|
+        status, headers, = call(path, **local, peer: "127.0.0.1", headers: cookie)
+        expect([status, headers["Set-Cookie"]])
+          .to eq([401, "chi_token=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0"]), path
+      end
+      expect(call("/api/sessions", **local, peer: "127.0.0.1", headers: cookie("wrong"))[1]["Set-Cookie"]).to be_nil
+    end
+
+    it "takes the loopback value only as this machine's cookie: not as Bearer, a trade, or from the LAN" do
+      expect(call("/api/sessions", **local, peer: "127.0.0.1", headers: bearer(loopback_value)).first).to eq(401)
+      expect(call("/?token=#{loopback_value}", **local, peer: "127.0.0.1").first).to eq(401)
+      form = { input: "token=#{loopback_value}", "CONTENT_TYPE" => "application/x-www-form-urlencoded" }
+      expect(call("/api/token", **local, peer: "127.0.0.1", method: "POST", headers: form).first).to eq(401)
+      [phone, lan_ip].each do |peer|
+        expect(call("/api/sessions", peer: peer, headers: owner_cookie).first).to eq(401), peer
+        expect(call("/api/sessions", peer: peer, headers: bearer(loopback_value)).first).to eq(401), peer
+      end
+    end
+
+    it "ends the loopback cookie when the token is rotated (a Token::Source)" do
+      Dir.mktmpdir do |dir|
+        path = File.join(dir, "web-token")
+        old = Samagotchi::Web::Token.loopback_cookie(Samagotchi::Web::Token.load_or_create(path))
+        app = described_class.new(manager: manager, state_dir: state_dir, public_dir: public_dir,
+                                  lan: { ip: lan_ip, token: Samagotchi::Web::Token::Source.new(path) })
+        request = lambda do |value|
+          env = Rack::MockRequest.env_for("/api/info", "HTTP_COOKIE" => "chi_token=#{value}")
+          env["HTTP_HOST"] = "127.0.0.1:4567"
+          env["REMOTE_ADDR"] = "127.0.0.1"
+          app.call(env).first
+        end
+        expect(request.call(old)).to eq(200)
+
+        new = Samagotchi::Web::Token.loopback_cookie(Samagotchi::Web::Token.rotate(path))
+        expect(request.call(old)).to eq(401)
+        expect(request.call(new)).to eq(200)
       end
     end
 
@@ -205,11 +257,25 @@ RSpec.describe Samagotchi::Web::App, "LAN access token" do
       expect(call("/api/info", **local, peer: "127.0.0.1", headers: { "HTTP_COOKIE" => "other=1" }).first).to eq(401)
     end
 
-    it "trades the page's ?token= for the cookie" do
+    it "trades the page's ?token= for the loopback cookie, never the token" do
       status, headers, = call("/?dir=/work/repo&token=#{token}", **local, peer: "127.0.0.1")
       expect([status, headers["Location"]]).to eq([303, "/?dir=/work/repo"])
-      expect(headers["Set-Cookie"]).to eq("chi_token=#{token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=34560000")
+      expect(headers["Set-Cookie"]).to eq(cookie_line)
+      expect(headers["Set-Cookie"]).not_to include(token)
       expect(call("/?token=wrong", **local, peer: "127.0.0.1").first).to eq(401)
+    end
+
+    it "trades the paste box's token for the loopback cookie" do
+      form = { input: "token=#{token}", "CONTENT_TYPE" => "application/x-www-form-urlencoded" }
+      status, headers, = call("/api/token", **local, peer: "127.0.0.1", method: "POST", headers: form)
+      expect([status, headers["Set-Cookie"]]).to eq([303, cookie_line])
+    end
+
+    it "keeps the token as the cookie a LAN peer's trades set (the phone's, decision D4)" do
+      form = { input: "token=#{token}", "CONTENT_TYPE" => "application/x-www-form-urlencoded" }
+      expect(call("/api/token", peer: lan_ip, method: "POST", headers: form)[1]["Set-Cookie"])
+        .to start_with("chi_token=#{token};")
+      expect(call("/?token=#{token}", peer: lan_ip)[1]["Set-Cookie"]).to start_with("chi_token=#{token};")
     end
 
     it "trades a link's one-time owner code (#code=, POST /api/token) for the cookie, once" do
@@ -221,7 +287,7 @@ RSpec.describe Samagotchi::Web::App, "LAN access token" do
       end
       status, headers, = trade.call
       expect(status).to eq(204)
-      expect(headers["Set-Cookie"]).to eq("chi_token=#{token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=34560000")
+      expect(headers["Set-Cookie"]).to eq(cookie_line)
       expect(trade.call.first).to eq(401)
     end
 

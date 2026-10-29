@@ -5,6 +5,8 @@ require "tmpdir"
 require "fileutils"
 
 require "samagotchi/web/token"
+require "samagotchi/web/grants"
+require "samagotchi/web/link_codes"
 
 RSpec.describe Samagotchi::Web::Token do
   let(:root) { Dir.mktmpdir("web-token") }
@@ -46,6 +48,26 @@ RSpec.describe Samagotchi::Web::Token do
     expect(new.size).to eq(43)
     expect(described_class.read(path)).to eq(new)
     expect(File.stat(path).mode & 0o777).to eq(0o600)
+  end
+
+  describe ".loopback_cookie" do
+    let(:token) { "t0ken-t0ken-t0ken-t0ken-t0ken-t0ken-t0ken" }
+
+    it "is a chl_ value derived from the token: the same each time, not the token, not a grant's or a code's" do
+      value = described_class.loopback_cookie(token)
+
+      expect(value).to match(/\Achl_[A-Za-z0-9_-]{43}\z/)
+      expect(described_class.loopback_cookie(token)).to eq(value)
+      expect(value).not_to include(token)
+      expect(Samagotchi::Web::Grants.token?(value)).to be(false)
+      expect(Samagotchi::Web::LinkCodes.code?(value)).to be(false)
+    end
+
+    it "changes with the token, and is nil without one" do
+      expect(described_class.loopback_cookie("#{token}x")).not_to eq(described_class.loopback_cookie(token))
+      expect(described_class.loopback_cookie(nil)).to be_nil
+      expect(described_class.loopback_cookie("")).to be_nil
+    end
   end
 
   describe Samagotchi::Web::Token::Source do

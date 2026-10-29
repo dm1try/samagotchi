@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "participant_view"
+require_relative "token"
 require_relative "participant_stream_filter"
 require_relative "participant_exposure"
 require_relative "../session_metrics"
@@ -39,10 +40,16 @@ module Samagotchi
 
       # Who reads: the participant (their author), or the owner through the
       # participant view (nobody's own). The session's folder places tool
-      # paths; the owner's token is never shown.
+      # paths; the owner's token is never shown, nor (LAN) its loopback
+      # cookie value.
       def participant_viewer(req, session)
         author = principal(req).owner? ? nil : principal(req).grant.author
-        ParticipantView::Viewer.new(author: author, cwd: session.working_directory, secrets: [(@lan || @public_url) && current_token].compact)
+        ParticipantView::Viewer.new(author: author, cwd: session.working_directory, secrets: owner_secrets)
+      end
+
+      def owner_secrets
+        token = (@lan || @public_url) && current_token
+        [token, @lan && Token.loopback_cookie(token)].compact
       end
 
       # GET /api/sessions/:id/review: the participant page's data, always

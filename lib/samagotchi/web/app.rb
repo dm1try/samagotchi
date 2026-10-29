@@ -55,6 +55,7 @@ require_relative "../review_start"
 require_relative "../parent_answers_command"
 require_relative "../guardrails/parent_policy"
 require_relative "markdown_renderer"
+require_relative "token"
 require_relative "capabilities"
 require_relative "editor"
 require_relative "../message_parts"
@@ -431,6 +432,10 @@ module Samagotchi
       end
 
       TOKEN_COOKIE = "chi_token"
+      # The owner's cookie holds the token, but on the LAN a loopback
+      # peer's holds Token.loopback_cookie (#owner_cookie_value): a cookie
+      # for 127.0.0.1 goes to every server on any of its ports (a dev
+      # server that logs headers), and that value works nowhere else.
       # 400 days, the longest a browser keeps a cookie (Chrome's cap). No
       # Secure: the LAN page is plain http. Lax, not Strict: a token link
       # opened from another site (a web messenger) makes its 303 chain
@@ -473,10 +478,10 @@ module Samagotchi
         principal = principal_for(req)
         return [nil, refused_token(req)] if principal.nil?
 
-        # The cookie gets the token that was presented: the owner's, or the
-        # participant's grant's.
+        # The cookie gets the participant's grant's token, or the owner's
+        # cookie value (the loopback one on the LAN's 127.0.0.1).
         if token_trade?(req)
-          token = req.env[GRANT_TOKEN_ENV] || current_token
+          token = req.env[GRANT_TOKEN_ENV] || owner_cookie_value(req)
           return [nil, token_redirect(req, token)] unless fragment_trade?(req)
           return [nil, form_trade_redirect(req, token)] if form_post?(req)
 
@@ -492,7 +497,9 @@ module Samagotchi
       # one, looked up only when no owner token was given), wherever the
       # request comes from, this machine's loopback too; with neither, the
       # owner only on a chi web that asks no token (loopback only: no LAN
-      # mode, no web.public_url), else nil. An ended or unknown grant's
+      # mode, no web.public_url), else nil. The owner's cookie on the LAN's
+      # loopback is the loopback value (#loopback_cookie: it stands for the
+      # token in +given+). An ended or unknown grant's
       # token is nil anywhere: it never falls back to the owner.
       # @return [Principal, nil]
       # With web.public_url (ProxyGate) every request needs a token, and a
@@ -512,12 +519,36 @@ module Samagotchi
       # through the proxy (curl, chi's own callers) presents the Bearer
       # header only: no cookie, and no trade that would set one. A cookie for
       # 127.0.0.1 goes to every server on any of its ports. A LAN peer
-      # (web.host lan) keeps the LAN's token link and cookie.
+      # (web.host lan) keeps the LAN's token link and cookie; a loopback
+      # peer of a LAN chi web reads its cookie through #loopback_cookie.
       def presented_tokens(req)
         return [traded_token(req)] if token_trade?(req)
         return [bearer_token(req)] if direct_public?(req)
 
-        [bearer_token(req), req.cookies[token_cookie_name(req)]]
+        cookie = req.cookies[token_cookie_name(req)]
+        [bearer_token(req), loopback_cookie_peer?(req) ? loopback_cookie(cookie) : cookie]
+      end
+
+      # A loopback peer of a LAN chi web, whose owner cookie holds the
+      # loopback value. With web.public_url, #direct_public? takes the
+      # Bearer only, and LAN mode has no proxy.
+      def loopback_cookie_peer?(req)
+        !@lan.nil? && @public_url.nil? && LOOPBACK_PEERS.include?(req.get_header("REMOTE_ADDR").to_s)
+      end
+
+      # What a trade sets as the owner's cookie.
+      def owner_cookie_value(req)
+        loopback_cookie_peer?(req) ? Token.loopback_cookie(current_token) : current_token
+      end
+
+      # A loopback peer's cookie: the loopback value stands for the owner's
+      # token, a grant's chp_ token is itself, and anything else, the token
+      # itself included (a 0.130.0 cookie, #refused_token clears it), is
+      # nothing.
+      def loopback_cookie(value)
+        return current_token if token_match?(value, Token.loopback_cookie(current_token))
+
+        Grants.token?(value) ? value : nil
       end
 
       def direct_public?(req)
@@ -622,10 +653,15 @@ module Samagotchi
       # The 401 for a request #principal_for refused: an ended grant's, else
       # unauthorized. On a peer the gate doesn't ask, a grant's cookie that
       # no longer works is cleared too, so the browser it was left in (the
-      # owner's, who opened a participant link) is the owner's again.
+      # owner's, who opened a participant link) is the owner's again. A
+      # LAN chi web's loopback peer whose cookie is the token itself (set
+      # before the loopback value) has it cleared, so it stops riding to
+      # the other local ports.
       def refused_token(req)
         response = grant_bound_response(req) || grant_ended_response(req) || unauthorized(req)
-        return response if token_required?(req) || !Grants.token?(req.cookies[token_cookie_name(req)])
+        cookie = req.cookies[token_cookie_name(req)]
+        stale = loopback_cookie_peer?(req) && token_match?(cookie, current_token)
+        return response unless stale || (!token_required?(req) && Grants.token?(cookie))
 
         status, headers, body = response
         [status, headers.merge("Set-Cookie" => cleared_token_cookie(req)), body]

@@ -181,6 +181,16 @@ RSpec.describe Samagotchi::Web::App, "participant review" do
     expect(JSON.generate(body)).not_to include("env?", "CARD")
   end
 
+  # A dev server that logs request headers may print the owner's
+  # 127.0.0.1 cookie (the loopback value) into a tool's output.
+  it "never shows the owner's token or its loopback cookie value to a participant" do
+    loopback = Samagotchi::Web::Token.loopback_cookie(owner_token)
+    snapshot["snapshot"]["current_turn"]["parts"] << { "kind" => "text", "text" => "seen #{loopback} and #{owner_token}" }
+    _status, body = review(issued.token)
+    expect(body.dig("current_turn", "text")).to include("seen")
+    expect(JSON.generate(body)).not_to include(loopback, owner_token)
+  end
+
   it "names a participant invited to act pair, and review again while an older worker holds the session" do
     pair = Samagotchi::Participants.invite(grants, session_id: session.id, name: "Sam", mode: "pair", state_dir: state_dir)
     _status, body = review(pair.token)

@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "fileutils"
+require "openssl"
 require "securerandom"
 require_relative "../atomic_file"
 
@@ -14,11 +15,15 @@ module Samagotchi
     # can read, $XDG_STATE_HOME/samagotchi/web-token (0600). It is made on
     # the first LAN start and kept, so a phone's bookmark survives
     # restarts; `chi web --new-token` replaces it. A loopback-only chi web
-    # never reads it.
+    # never reads it. The owner's cookie for this machine's 127.0.0.1
+    # holds #loopback_cookie, never the token: a server on any other local
+    # port is sent that cookie too.
     module Token
       FILE = "web-token"
       # 32 random bytes: 43 URL-safe characters.
       BYTES = 32
+      LOOPBACK_PREFIX = "chl_"
+      LOOPBACK_LABEL = "chi web loopback cookie v1"
 
       module_function
 
@@ -47,6 +52,20 @@ module Samagotchi
 
       def generate
         SecureRandom.urlsafe_base64(BYTES)
+      end
+
+      # The owner's 127.0.0.1 cookie on the LAN: an HMAC of a label keyed
+      # by +token+, so a leaked one gives nothing about the token, and
+      # rotating the token ends it. The gate takes it only as that cookie,
+      # from an unproxied loopback peer (App#loopback_cookie_peer?).
+      # @return [String, nil] "chl_" and 43 URL-safe characters; nil
+      #   without a token
+      def loopback_cookie(token)
+        return nil if token.nil? || token.empty?
+
+        # URL-safe base64 without padding (pack: base64 isn't a default gem).
+        digest = OpenSSL::HMAC.digest("SHA256", token, LOOPBACK_LABEL)
+        LOOPBACK_PREFIX + [digest].pack("m0").tr("+/", "-_").delete("=")
       end
 
       # Written whole under a temporary name, then renamed over +path+: a
