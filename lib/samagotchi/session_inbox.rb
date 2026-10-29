@@ -289,6 +289,23 @@ module Samagotchi
         data["verify"].is_a?(Hash)
     end
 
+    # Whether a message waits that a running turn's next boundary merges and
+    # that a person (or chi send, or a delegating parent) sent: an unclaimed
+    # input file not held for the turn's end (#turn_end_data?), with a
+    # prompt, from a sender that may cut (Steer.cuts?). A running task_wait
+    # ends on it (Worker#input_waiting?). It only peeks: nothing is claimed;
+    # a file the drain or a dequeue claims meanwhile (ENOENT) or one that
+    # doesn't parse is skipped.
+    def self.steer_waiting?(session_dir)
+      find_new_input_files(session_dir).any? do |file|
+        data = JSON.parse(File.read(file))
+        data.is_a?(Hash) && !turn_end_data?(data) && !data["prompt"].to_s.strip.empty? &&
+          Steer.cuts?(Steer.source_for_client(data["client_id"]))
+      rescue JSON::ParserError, SystemCallError
+        false
+      end
+    end
+
     # How the unclaimed input file carrying +enqueued_id+ waits: :turn_end
     # (a queue or an image message: it runs as a turn of its own, never
     # merged, #waits_for_turn_end?), :merges (a running turn's drain may

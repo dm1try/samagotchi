@@ -129,6 +129,49 @@ RSpec.describe Samagotchi::SessionInbox do
       end
     end
 
+    describe ".steer_waiting?" do
+      def waiting_after(**fields)
+        described_class.write_input(session_dir, **fields)
+        described_class.steer_waiting?(session_dir)
+      end
+
+      it "answers true for a person's next-step line: the web's, a TUI's, chi send's and a delegating parent's" do
+        %w[web:1 tui:42 cli:send delegate:abc].each do |client_id|
+          FileUtils.rm_rf(input_dir)
+          expect(waiting_after(prompt: "hi", client_id: client_id)).to be(true), client_id
+        end
+        FileUtils.rm_rf(input_dir)
+        expect(waiting_after(prompt: "now", delivery: Samagotchi::Delivery::CUT)).to be(true)
+      end
+
+      it "answers false for a line held for the turn's end, an empty one, or a plugin's" do
+        expect(waiting_after(prompt: "later", delivery: Samagotchi::Delivery::QUEUE)).to be(false)
+        expect(waiting_after(prompt: "look", images: [{ file: "a.png", name: "a" }])).to be(false)
+        expect(waiting_after(prompt: "hi", author: "p:p_1")).to be(false)
+        expect(waiting_after(prompt: "nudge", client_id: Samagotchi::ClientId::PLUGIN)).to be(false)
+        expect(waiting_after(prompt: " \n", client_id: "web:1")).to be(false)
+      end
+
+      it "answers false for an empty inbox, an unreadable file and one claimed meanwhile" do
+        expect(described_class.steer_waiting?(session_dir)).to be(false)
+        FileUtils.mkdir_p(input_dir)
+        File.write(File.join(input_dir, "20260101000000000000001.json"), "not json")
+        expect(described_class.steer_waiting?(session_dir)).to be(false)
+
+        vanished = described_class.write_input(session_dir, prompt: "hi")
+        allow(File).to receive(:read).and_call_original
+        allow(File).to receive(:read).with(vanished).and_raise(Errno::ENOENT)
+        expect(described_class.steer_waiting?(session_dir)).to be(false)
+      end
+
+      it "only peeks: the file stays for the drain" do
+        file = described_class.write_input(session_dir, prompt: "hi")
+
+        2.times { expect(described_class.steer_waiting?(session_dir)).to be(true) }
+        expect(described_class.find_new_input_files(session_dir)).to eq([file])
+      end
+    end
+
     describe "pruning the per-input tombstones (.prune_removed, TurnCheckpoint.prune_settled)" do
       def tombstone(subdir, id, age:)
         dir = File.join(input_dir, subdir)
