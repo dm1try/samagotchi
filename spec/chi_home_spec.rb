@@ -92,6 +92,22 @@ RSpec.describe Samagotchi::ChiHome do
     end
   end
 
+  describe "Record.from_h" do
+    let(:valid) { home.to_h }
+
+    it "takes home.json's fields, mise absolute or null" do
+      expect(described_class::Record.from_h(valid)).to eq(home)
+      expect(described_class::Record.from_h(valid.merge("mise" => "/opt/homebrew/bin/mise")).mise).to eq("/opt/homebrew/bin/mise")
+    end
+
+    it "refuses a relative or missing ruby, gem_home, gem_path entry or mise" do
+      [{ "ruby" => "ruby" }, { "ruby" => nil }, { "gem_home" => "gems" }, { "gem_path" => "/a:rel" },
+       { "gem_path" => "" }, { "mise" => "mise" }, { "mise" => 3 }].each do |bad|
+        expect { described_class::Record.from_h(valid.merge(bad)) }.to raise_error(described_class::Invalid), bad.inspect
+      end
+    end
+  end
+
   describe "Record" do
     it "lists the samagotchi versions across its gem path, newest last" do
       other = File.join(tmp, "user-gems").tap { |d| add_gemspec(d, "samagotchi", "1.10.0") }
@@ -168,16 +184,20 @@ RSpec.describe Samagotchi::ChiHome do
       expect(calls.last.first).not_to have_key("PATH")
     end
 
-    it "is nil when the Ruby fails or doesn't answer JSON" do
+    it "is nil when the Ruby fails, doesn't answer JSON, or answers what home.json may not hold" do
       expect(described_class.probe(ruby, env: {}, runner: ->(*) { ["boom", false] })).to be_nil
       expect(described_class.probe(ruby, env: {}, runner: ->(*) { ["not json", true] })).to be_nil
+      expect(described_class.probe(ruby, env: {}, runner: ->(*) { ["[]", true] })).to be_nil
+      relative = JSON.generate("ruby" => ruby, "gem_home" => "gems", "gem_path" => "gems")
+      expect(described_class.probe(ruby, env: {}, runner: ->(*) { [relative, true] })).to be_nil
     end
   end
 
   describe ".record_first!" do
     let(:launch_path) { File.join(tmp, "launch.json") }
     let(:helper_ruby) { File.join(tmp, "helper-ruby", "bin", "ruby").tap { |f| make_executable(f) } }
-    let(:helper_gems) { File.join(tmp, "helper-gems").tap { |d| add_gemspec(d, "samagotchi", "1.0.0") } }
+    # The helper's chi is at least this one (999.0.0): a first record never moves launches to an older chi.
+    let(:helper_gems) { File.join(tmp, "helper-gems").tap { |d| add_gemspec(d, "samagotchi", "999.0.0") } }
     let(:probes) { [] }
     let(:runner) do
       lambda do |env, argv|

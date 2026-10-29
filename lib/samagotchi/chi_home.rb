@@ -45,6 +45,9 @@ module Samagotchi
     # home.json's fields. +gem_path+ is what `Gem.paths=` takes (dirs joined
     # by File::PATH_SEPARATOR); +mise+ an absolute path or nil.
     Record = Data.define(:ruby, :gem_home, :gem_path, :mise, :set_at, :set_by_version) do
+      # home.json's (or a probe's) fields, checked: ruby, gem_home and every
+      # gem_path entry absolute paths, mise an absolute path or nil.
+      # @raise [Invalid]
       def self.from_h(hash)
         fields = members.to_h { |key| [key, hash[key.to_s]] }
         %i[ruby gem_home gem_path].each do |key|
@@ -52,6 +55,13 @@ module Samagotchi
           raise Invalid, "#{key} is missing" unless value.is_a?(String) && !value.empty?
         end
         raise Invalid, "ruby is not an absolute path" unless fields[:ruby].start_with?("/")
+        raise Invalid, "gem_home is not an absolute path" unless fields[:gem_home].start_with?("/")
+
+        dirs = fields[:gem_path].split(File::PATH_SEPARATOR)
+        raise Invalid, "gem_path has a relative entry" unless dirs.all? { |dir| dir.start_with?("/") }
+
+        mise = fields[:mise]
+        raise Invalid, "mise is not an absolute path" unless mise.nil? || (mise.is_a?(String) && mise.start_with?("/"))
 
         new(**fields)
       end
@@ -207,9 +217,12 @@ module Samagotchi
       return nil unless ok
 
       data = JSON.parse(output.to_s.lines.last.to_s)
-      Record.new(ruby: real(data["ruby"]), gem_home: data["gem_home"], gem_path: data["gem_path"],
-                 mise: find_mise(env: env), set_at: Time.now.utc.iso8601, set_by_version: VERSION)
-    rescue JSON::ParserError, TypeError
+      return nil unless data.is_a?(Hash)
+
+      Record.from_h(data.merge("ruby" => data["ruby"].is_a?(String) ? real(data["ruby"]) : data["ruby"],
+                               "mise" => find_mise(env: env), "set_at" => Time.now.utc.iso8601,
+                               "set_by_version" => VERSION))
+    rescue JSON::ParserError, TypeError, Invalid
       nil
     end
 
