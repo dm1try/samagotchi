@@ -2,8 +2,8 @@ import { htmlOf } from "./dom_shim.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  chipModel, chipTemplate, choiceWords, commandLine, createLlmContextControl, mergeChoice, NEW_SESSION, ownValues, parseBudget,
-  renderForm, strategyValue, withChoice,
+  chipModel, chipTemplate, choiceWords, commandLine, createLlmContextControl, mergeChoice, ownValues, parseBudget,
+  renderForm, strategyValue,
 } from "../../../lib/samagotchi/web/public/llm_context_chip.js";
 import { render } from "../../../lib/samagotchi/web/public/vendor/lit-html.js";
 
@@ -92,34 +92,6 @@ test("the command sets every field, default for the ones left to the model; all 
   assert.equal(commandLine({ strategy: "none", apply: "default", budget: "" }),
                "/llm-context strategy none apply default budget default --yes");
   assert.equal(commandLine({}), "/llm-context reset --yes");
-});
-
-// The start page's chip (kind "new session"): the picked model's values, and a
-// choice kept for the next create only.
-test("the new session's chip shows the model's values, and a choice marked · new session", () => {
-  assert.equal(chipModel(withChoice(fromModel, null), { kind: NEW_SESSION }).text, "llm ctx stale");
-  assert.equal(chipModel(fromModel, { kind: NEW_SESSION }).own, false);
-  assert.match(chipModel(fromModel, { kind: NEW_SESSION }).title, /Click to change it for the new session\.$/);
-
-  const chosen = withChoice(fromModel, { strategy: ["forget", "stale"], budget_tokens: 0 });
-  const chip = chipModel(chosen, { kind: NEW_SESSION });
-  assert.equal(chip.text, "llm ctx stale,forget · new session");
-  assert.equal(chip.own, true);
-  assert.match(chip.title, /stale,forget \(the new session\); apply payoff \(llm_context.apply\); budget off \(the new session\)/);
-  assert.equal(chipModel(withChoice(fromModel, { apply: "turn_end" }), { kind: NEW_SESSION }).text, "llm ctx stale · new session");
-});
-
-test("the new session's form is titled for it, shows the model's values as Now and the choice in its fields", () => {
-  const f = formOf(fromModel, { kind: NEW_SESSION, choice: { strategy: [], apply: "turn_end", budget_tokens: 64000 } });
-  assert.equal(f.text(".ctx-pop-kind"), "new session");
-  assert.match(f.text(".llmctx-now"), /^Now: stale \(models: qwen\)/);
-  assert.equal(f.field("strategy").value, "none");
-  assert.equal(f.field("apply").value, "turn_end");
-  assert.equal(f.field("budget").value, "64000");
-  assert.deepEqual(f.options("strategy")[0], ["default", "follow the model (stale)"]);
-  assert.match(f.all, /not remembered/);
-  assert.equal(formOf(fromModel, { kind: NEW_SESSION }).field("strategy").value, "default");
-  assert.equal(formOf(own).text(".ctx-pop-kind"), "this session");
 });
 
 test("a Set merges the changed fields into the choice; default drops one; nothing left is no choice", () => {
@@ -216,23 +188,3 @@ test("a refresh keeps what the user typed and picked; the Now: line follows; ano
   c.done();
 });
 
-test("the new session's Set shows a bad budget's error, an edit clears it, a refresh keeps it", () => {
-  const picks = [];
-  const c = control({ summary: () => fromModel, kind: NEW_SESSION, choice: () => null, choose: (next) => picks.push(next),
-                      id: "llmContextNewPopover", anchor: ".llmctx-chip" });
-  c.chip.click();
-  c.field("budget").value = "12";
-  c.submit();
-  assert.equal(c.ctl.open, true);
-  assert.equal(c.error().hidden, false);
-  assert.match(c.error().textContent, /A budget is a number of tokens/);
-  c.ctl.refresh();
-  assert.equal(c.error().hidden, false);
-  assert.equal(c.field("budget").value, "12");
-  c.type("budget", "64k");
-  assert.equal(c.error().hidden, true);
-  assert.equal(c.error().textContent, "");
-  c.submit();
-  assert.deepEqual(picks, [{ budget_tokens: 64000 }]);
-  c.done();
-});

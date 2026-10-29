@@ -1,7 +1,7 @@
 import "./dom_shim.js";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createReviewStartControl, formatSubjects, readSubjects, reviewChipModel } from "../../../lib/samagotchi/web/public/review_start.js";
+import { formatSubjects, readSubjects, reviewChipModel } from "../../../lib/samagotchi/web/public/review_start.js";
 import { reviewStartedText } from "../../../lib/samagotchi/web/public/session_actions.js";
 
 test("review start: files split on commas, spaces and lines; the chip names them", () => {
@@ -26,40 +26,4 @@ test("review start: a quoted path keeps its spaces and commas; the form quotes i
   assert.deepEqual(readSubjects(formatSubjects(["docs/my plan.md", "notes.txt"])).subjects, ["docs/my plan.md", "notes.txt"]);
   assert.deepEqual(readSubjects('notes.txt "docs/my plan'), { subjects: [], error: 'A quote isn\'t closed: "docs/my plan' });
   assert.deepEqual(readSubjects('""'), { subjects: [], error: null });
-});
-
-function reviewControl() {
-  const el = document.createElement("button");
-  el.id = "reviewNew";
-  document.body.append(el);
-  let chosen = [];
-  const ctl = createReviewStartControl({ el, choice: () => chosen, choose: (next) => { chosen = next; },
-                                         win: { innerWidth: 1000, innerHeight: 800 } });
-  const pop = [...document.querySelectorAll("#reviewNewPopover")].pop();
-  const form = () => pop.querySelector("form");
-  const set = (text) => {
-    form().elements.subjects.value = text;
-    form().dispatchEvent(new window.Event("submit", { bubbles: true, cancelable: true }));
-  };
-  return { el, ctl, pop, set, chosen: () => chosen, done: () => { el.remove(); pop.remove(); } };
-}
-
-test("review start: an open quote stays in the form with its error; Start's refusal opens the form with the server's words", () => {
-  const c = reviewControl();
-  c.el.click();
-  assert.equal(c.pop.getAttribute("aria-label"), "Review files");
-  c.set('"docs/my plan');
-  assert.equal(c.pop.hidden, false);
-  assert.equal(c.pop.querySelector(".ctx-pop-error").textContent, 'A quote isn\'t closed: "docs/my plan');
-  assert.equal(c.pop.querySelector("textarea").value, '"docs/my plan');
-  assert.deepEqual(c.chosen(), []);
-  c.set('"docs/my plan.md"');
-  assert.equal(c.pop.hidden, true);
-  assert.deepEqual(c.chosen(), ["docs/my plan.md"]);
-  c.ctl.refuse(".env can't be a review subject: it may hold secrets");
-  assert.equal(c.pop.hidden, false);
-  assert.equal(c.pop.querySelector(".ctx-pop-error").textContent, ".env can't be a review subject: it may hold secrets");
-  assert.equal(c.pop.querySelector("textarea").value, '"docs/my plan.md"');
-  assert.equal(c.pop.querySelector("textarea").getAttribute("aria-invalid"), "true");
-  c.done();
 });

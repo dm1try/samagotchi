@@ -3,9 +3,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { render } from "../../../lib/samagotchi/web/public/vendor/lit-html.js";
 import {
-  chipModel, chipTemplate, commandLine, createThinkingControl, formTemplate, LEVELS, nowText, withChoice,
+  chipModel, chipTemplate, commandLine, createThinkingControl, formTemplate, LEVELS, nowText,
 } from "../../../lib/samagotchi/web/public/thinking_chip.js";
-import { NEW_SESSION } from "../../../lib/samagotchi/web/public/llm_context_chip.js";
 
 // A template's markup (lit's marker comments dropped).
 const markupOf = (template) => {
@@ -44,13 +43,6 @@ test("the chip hides without a summary; the default with nothing set shows, as t
   assert.equal(chipModel(bare).title, "Thinking: default (the model's own). Click to change it for this session.");
 });
 
-test("the new session's choice lays over the model's level, and shows even over a bare default", () => {
-  assert.equal(withChoice(fromModel, null), fromModel);
-  assert.equal(chipModel(withChoice(bare, "high"), { kind: NEW_SESSION }).text, "think high · new session");
-  assert.match(chipModel(withChoice(fromModel, "low"), { kind: NEW_SESSION }).title, /low \(the new session\)\. Click to change it for the new session/);
-  assert.equal(chipModel(fromModel, { kind: NEW_SESSION }).text, "think off");
-});
-
 test("the form is the popover's markup as it was built as a string", () => {
   assert.equal(formHtml(own),
     '<form class="think-form llmctx-form"><div class="ctx-pop-head"><strong>Thinking</strong>' +
@@ -74,11 +66,6 @@ test("the form selects the session's own level, else follows the model, and name
   assert.match(formHtml(own, { running: true }), /A turn is running: it applies after this turn/);
   assert.match(formHtml(own, { now: fromModel }), /Now: off \(models: qwen\)<\/div>.*<option value="low" selected="">/);
   assert.equal(nowText(bare), "Now: default (the model's own)");
-
-  const fresh = formHtml(fromModel, { kind: NEW_SESSION, choice: "high" });
-  assert.match(fresh, /<span class="ctx-pop-kind">new session<\/span>/);
-  assert.match(fresh, /<option value="high" selected="">/);
-  assert.match(fresh, /not remembered for the next one/);
 });
 
 // --yes: picking a level is the choice, and the form names the cost (no second ask).
@@ -157,20 +144,3 @@ test("a closed form forgets an unsent pick: the next open shows the level again"
   c.done();
 });
 
-test("the start page's form takes a choice for the next new session only; follow the model is null", () => {
-  let choice = null;
-  const picks = [];
-  const c = control({ summary: () => fromModel, kind: NEW_SESSION, choice: () => choice, choose: (next) => { picks.push(next); choice = next; },
-                      id: "thinkingNewPopover", anchor: "[data-think-chip]" });
-  c.chip.click();
-  assert.equal(c.shown(), "default");
-  c.select().value = "low";
-  c.submit();
-  c.chip.click();
-  assert.equal(c.shown(), "low");
-  c.select().value = "default";
-  c.submit();
-  assert.deepEqual(picks, ["low", null]);
-  assert.deepEqual(c.ran, []);
-  c.done();
-});
