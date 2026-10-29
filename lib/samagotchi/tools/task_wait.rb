@@ -14,13 +14,23 @@ module Samagotchi
       # A handed-over execute keeps stderr in a log of its own: at most this
       # many of its last lines follow the output tail.
       STDERR_TAIL_LINES_MAX = 10
+      # The note of a wait a waiting message ended (wait_result:
+      # message_waiting); %<id>s is the task's id. "The user" whoever sent
+      # it: the merged message itself names its sender.
+      MESSAGE_WAITING_NOTE = [
+        "note: a message from the user is waiting; the task is STILL RUNNING.",
+        "  Read the message first. To keep waiting after it: task_wait %<id>s. If it is no longer needed: task_stop %<id>s."
+      ].join("\n").freeze
 
       def self.name = NAME
 
       # @param cancelled [#call] true once the user stopped the turn: the
       #   wait returns then, and the task keeps running
+      # @param message_waiting [#call] true once a person's message waits for
+      #   the turn's next boundary (Engine#input_waiting?): the wait returns
+      #   then, so the model reads it, and the task keeps running
       def self.call(task_id, timeout: TIMEOUT_DEFAULT, tail_lines: TAIL_LINES_DEFAULT, done_pattern: nil,
-                    cancelled: -> { false })
+                    cancelled: -> { false }, message_waiting: -> { false })
         timeout = TIMEOUT_DEFAULT if blank?(timeout)
         tail_lines = TAIL_LINES_DEFAULT if blank?(tail_lines)
         timeout = timeout.to_i
@@ -48,6 +58,7 @@ module Samagotchi
           end
 
           return cancelled_response(task_id, tail_lines, started) if cancelled.call
+          return message_waiting_response(task_id, tail_lines, started) if message_waiting.call
 
           break if monotonic_time > deadline
 
@@ -79,6 +90,20 @@ module Samagotchi
                                 extra: note)
       end
       private_class_method :cancelled_response
+
+      # A message waits: the wait ends so the model reads it at the next
+      # boundary. A task that finished meanwhile gives its finished result,
+      # as after a Stop.
+      def self.message_waiting_response(task_id, tail_lines, started)
+        record, error = TaskRuntime.get_record(task_id)
+        return error if error
+        return finished_response(record, tail_lines) unless record.running?
+
+        note = [format(MESSAGE_WAITING_NOTE, id: task_id), "waited: #{(monotonic_time - started).round}s"]
+        format_response(record, wait_result: "message_waiting", output_tail: output_tail(record, tail_lines),
+                                tail_lines: tail_lines, extra: note)
+      end
+      private_class_method :message_waiting_response
 
       # A finished task's text, as task_wait gives it: its status lines and
       # always the log's last lines (a test run's summary, an error), then a

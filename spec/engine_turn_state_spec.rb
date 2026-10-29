@@ -74,6 +74,43 @@ RSpec.describe Samagotchi::Engine, "turn state" do
     end
   end
 
+  describe "#input_waiting? (run_turn's input_waiting: probe)" do
+    it "asks the probe inside the turn and is false outside it and for a turn given none" do
+      waiting = true
+      seen = []
+      allow(kernel).to receive(:run) do
+        seen << Samagotchi::Engine::PeerView.new(engine).input_waiting? # what a tool sees
+        waiting = false
+        seen << engine.input_waiting?
+        kernel_result
+      end
+
+      expect(engine.input_waiting?).to be(false)
+      engine.run_turn(session, "hi", input_waiting: -> { waiting })
+      waiting = true
+
+      expect(seen).to eq([true, false])
+      expect(engine.input_waiting?).to be(false)
+      engine.run_turn(session, "again")
+      expect(seen.last(2)).to eq([false, false])
+    end
+
+    it "is false when the probe raises, warned once a turn" do
+      allow(Samagotchi::Log).to receive(:warn).and_call_original
+      seen = []
+      allow(kernel).to receive(:run) do
+        2.times { seen << engine.input_waiting? }
+        kernel_result
+      end
+      probe = -> { raise Errno::EACCES, "input" }
+
+      2.times { engine.run_turn(session, "hi", input_waiting: probe) }
+
+      expect(seen).to eq([false] * 4)
+      expect(Samagotchi::Log).to have_received(:warn).with(:turn, "input_waiting_failed", error: "Errno::EACCES", msg: a_string_including("input")).twice
+    end
+  end
+
   it "record_activity advances activity_seq at the turn's release" do
     allow(kernel).to receive(:run) { kernel_result }
     before_seq = engine.activity_seq

@@ -221,7 +221,7 @@ module Samagotchi
       },
       {
         name: "task_wait",
-        description: "Wait for a background task to finish. Polls every 0.5s until completion, a log pattern matches, or timeout. Timed-out waits include a bounded output tail.",
+        description: "Wait for a background task to finish. Polls every 0.5s until completion, a log pattern matches, a message from the user arrives, or timeout. Timed-out waits include a bounded output tail.",
         parameters: {
           type: "object",
           properties: {

@@ -86,7 +86,8 @@ module Samagotchi
         end,
         TaskWait::NAME => lambda do |call, kctx|
           TaskWait.call(call[:content], timeout: call[:timeout], tail_lines: call[:tail_lines],
-                                        done_pattern: call[:done_pattern], cancelled: cancelled_proc(kctx))
+                                        done_pattern: call[:done_pattern], cancelled: cancelled_proc(kctx),
+                                        message_waiting: input_waiting_proc(kctx))
         end,
         Execute::NAME => lambda do |call, kctx|
           Execute.call(call[:content], cwd: call[:cwd], cancelled: cancelled_proc(kctx), stop_reason: stop_reason_proc(kctx),
@@ -186,6 +187,14 @@ module Samagotchi
       def cancelled_proc(kctx)
         peers = kctx.peers
         -> { !!peers&.cancelled? }
+      end
+
+      # A person's message waits for the turn's next boundary
+      # (Engine#input_waiting?, through its PeerView): a task_wait returns on
+      # it. A kernel whose peers can't tell: never.
+      def input_waiting_proc(kctx)
+        peers = kctx.peers
+        -> { peers.respond_to?(:input_waiting?) && !!peers.input_waiting? }
       end
 
       # The running turn's stop reason (:signal, :manual, …), nil without one.

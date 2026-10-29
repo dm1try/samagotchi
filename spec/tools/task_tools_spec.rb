@@ -656,6 +656,75 @@ RSpec.describe "task tools" do
       expect(result).not_to include("wait_result")
     end
 
+    describe "a message waiting (message_waiting:)" do
+      it "returns within a poll and leaves the task running" do
+        create_result = Samagotchi::Tools::TaskCreate.call("echo before; sleep 30")
+        task_id = extract_field(create_result, "task_id")
+        started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+        waiting = -> { Process.clock_gettime(Process::CLOCK_MONOTONIC) - started > 0.2 }
+
+        result = described_class.call(task_id, timeout: 300, message_waiting: waiting)
+
+        expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < 5 # not the 300 s timeout
+        expect(result).to include("status: running").and include("wait_result: message_waiting")
+        expect(result).to include(format(described_class::MESSAGE_WAITING_NOTE, id: task_id))
+        expect(result).to include("note: a message from the user is waiting; the task is STILL RUNNING.")
+        expect(result).to include("task_wait #{task_id}").and include("task_stop #{task_id}")
+        expect(result).to match(/^waited: \d+s$/)
+        expect(result).to include("output_tail:\nbefore")
+        expect(Samagotchi::Tools::TaskRuntime.get_record(task_id).first.status).to eq("running")
+      ensure
+        Samagotchi::Tools::TaskStop.call(task_id) if task_id
+      end
+
+      it "gives the finished result when the task ended before the message was seen" do
+        task_id = extract_field(Samagotchi::Tools::TaskCreate.call("true"), "task_id")
+        wait_for("task #{task_id} to end", timeout: 10) { Samagotchi::Tools::TaskRuntime.get_record(task_id).first.status != "running" }
+
+        result = described_class.call(task_id, message_waiting: -> { true })
+
+        expect(result).to include("status: completed")
+        expect(result).not_to include("wait_result")
+      end
+
+      it "loses to a Stop and to a matched pattern in the same poll" do
+        create_result = Samagotchi::Tools::TaskCreate.call("echo Done!; sleep 30")
+        task_id = extract_field(create_result, "task_id")
+        output_path = extract_field(create_result, "output_path")
+        wait_for("the task to print", timeout: 10, interval: 0.05) { File.read(output_path).include?("Done!") }
+
+        stopped = described_class.call(task_id, cancelled: -> { true }, message_waiting: -> { true })
+        matched = described_class.call(task_id, done_pattern: "Done!", message_waiting: -> { true })
+
+        expect(stopped).to include("wait_result: canceled")
+        expect(matched).to include("wait_result: pattern_matched")
+      ensure
+        Samagotchi::Tools::TaskStop.call(task_id) if task_id
+      end
+
+      it "waits as before without it" do
+        task_id = extract_field(Samagotchi::Tools::TaskCreate.call("sleep 30"), "task_id")
+
+        expect(described_class.call(task_id, timeout: 0)).to include("wait_result: timeout")
+      ensure
+        Samagotchi::Tools::TaskStop.call(task_id) if task_id
+      end
+
+      it "is seen through the kernel's peers in the built-in handler, never when they can't tell" do
+        task_id = extract_field(Samagotchi::Tools::TaskCreate.call("sleep 30"), "task_id")
+        handler = Samagotchi::Tools::Builtins::HANDLERS.fetch("task_wait")
+        telling = Struct.new(:peers).new(Struct.new(:cancelled?, :input_waiting?).new(false, true))
+        mute = Struct.new(:peers).new(Struct.new(:cancelled?).new(false))
+        plain = Struct.new(:peers).new(Samagotchi::Tools::Peers.new(cancelled: false))
+
+        expect(handler.call({ content: task_id }, telling)).to include("wait_result: message_waiting")
+        expect(handler.call({ content: task_id, timeout: 0 }, mute)).to include("wait_result: timeout")
+        expect(handler.call({ content: task_id, timeout: 0 }, plain)).to include("wait_result: timeout")
+      ensure
+        Samagotchi::Tools::TaskStop.call(task_id) if task_id
+      end
+    end
+
     it "returns an error for an unknown task id" do
       result = described_class.call("does-not-exist")
       expect(result).to include("Error: task not found")

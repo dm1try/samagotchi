@@ -5,7 +5,8 @@ require "monitor"
 module Samagotchi
   # A session's turn as other threads see it: whether one runs, its cancel
   # controller and event sink, the plugin steers waiting for its next
-  # boundary, and the activity clock the idle jobs read.
+  # boundary, whether a person's message waits for it (its caller's
+  # input_waiting: probe), and the activity clock the idle jobs read.
   #
   # The turn thread writes it (Engine#begin_turn, #release_turn); the idle
   # scheduler, the bridge's request threads, plugin threads and the UIs
@@ -24,6 +25,8 @@ module Samagotchi
       @sink = nil
       @thread = nil
       @ended = false
+      @input_waiting = nil
+      @input_waiting_warned = false
       @steers = []
       @carried_steers = []
     end
@@ -67,20 +70,24 @@ module Samagotchi
     end
 
     # A turn begins, on the calling thread (the turn's own): running, with
-    # its controller and sink, in one step.
-    def begin!(controller:, sink:)
+    # its controller, sink and input_waiting probe, in one step.
+    # @param input_waiting [#call, nil] true while a person's message waits
+    #   for the turn's next boundary (Engine#input_waiting?); nil: never
+    def begin!(controller:, sink:, input_waiting: nil)
       @lock.synchronize do
         @running = true
         @controller = controller
         @sink = sink
         @thread = Thread.current
         @ended = false
+        @input_waiting = input_waiting
+        @input_waiting_warned = false
         @steers.concat(@carried_steers)
         @carried_steers = []
       end
     end
 
-    # The turn is over: not running, no controller, sink or steers.
+    # The turn is over: not running, no controller, sink, probe or steers.
     # @return [Array<Hash>] the steers it never took ({text:, source:})
     def finish!
       @lock.synchronize do
@@ -89,6 +96,7 @@ module Samagotchi
         @sink = nil
         @thread = nil
         @ended = false
+        @input_waiting = nil
         @steers.tap { @steers = [] }
       end
     end
@@ -116,6 +124,17 @@ module Samagotchi
 
         handler || @thread.equal?(Thread.current) ? @controller : nil
       end
+    end
+
+    # @return [#call, nil] the running turn's input_waiting probe (called
+    #   outside the lock), nil outside a turn or for a turn given none
+    def input_waiting
+      @lock.synchronize { @running ? @input_waiting : nil }
+    end
+
+    # A probe failed: true the first time in a turn (warn then), false after.
+    def input_waiting_failed!
+      @lock.synchronize { !@input_waiting_warned.tap { @input_waiting_warned = true } }
     end
 
     # Cancel the running turn, if any (outside the lock).

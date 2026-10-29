@@ -664,6 +664,19 @@ module Samagotchi
       @turn_state.controller
     end
 
+    # Whether a message a person sent waits for the running turn's next
+    # boundary (run_turn's input_waiting: probe): a task_wait returns on it
+    # (PeerView#input_waiting?). False outside a turn, for a turn given no
+    # probe, and when the probe raises (warned once a turn; the tool never
+    # fails for it).
+    def input_waiting?
+      probe = @turn_state.input_waiting
+      !!probe&.call
+    rescue StandardError => e
+      Log.warn(:turn, "input_waiting_failed", error: e.class.name, msg: e.message) if @turn_state.input_waiting_failed!
+      false
+    end
+
     # Cancel the currently running turn, if any.
     # @param reason [Symbol] cancellation reason
     # @return [Boolean] whether a cancellation was triggered
@@ -2132,6 +2145,9 @@ module Samagotchi
     # @param pending_input [#call, nil] optional drain proc returning
     #   Array<String> of steering messages queued while the turn runs; drained
     #   by the agentic loop at iteration boundaries (see KernelLoop#run).
+    # @param input_waiting [#call, nil] optional probe: true while a message
+    #   a person sent waits for the next boundary (it peeks, never drains);
+    #   a running task_wait returns on it (#input_waiting?). nil: never.
     # @param continue [Boolean] resume the conversation without appending a
     #   user prompt (continue after the iteration limit, reminder turns);
     #   +prompt+ is ignored and :turn_started carries `continue: true`
@@ -2170,9 +2186,9 @@ module Samagotchi
     # re-raises; a provider error adds error_kind:, retryable:, host: and a
     # one-line summary:.
     def run_turn(session, prompt, on_event: nil, max_iterations: nil, cancel_controller: nil, max_tool_output_chars: nil, pending_input: nil, continue: false,
-                 origin: TurnOrigin::NONE, images: [], id: nil, resumed: false, resume_from: nil, verify: nil)
+                 origin: TurnOrigin::NONE, images: [], id: nil, resumed: false, resume_from: nil, verify: nil, input_waiting: nil)
       turn = begin_turn(session, prompt, on_event: on_event, cancel_controller: cancel_controller, origin: origin,
-                                         continue: continue, id: id, verify: verify)
+                                         continue: continue, id: id, verify: verify, input_waiting: input_waiting)
       if continue
         turn.resumed = resumed
         turn.resume_from = resume_from
@@ -2220,7 +2236,7 @@ module Samagotchi
     # The turn's state before anything can fail it: the session running,
     # the turn flag, its cancel controller and sink. The cross-thread state
     # is set here and cleared in #release_turn only.
-    def begin_turn(session, prompt, on_event:, cancel_controller:, origin:, continue:, id: nil, verify: nil)
+    def begin_turn(session, prompt, on_event:, cancel_controller:, origin:, continue:, id: nil, verify: nil, input_waiting: nil)
       origin = TurnOrigin.of(origin)
       # A participant's Verify fresh child: every turn is theirs (their
       # author, boundary and cap), whoever started it.
@@ -2240,7 +2256,7 @@ module Samagotchi
       # invalidated recap) while the model is working. A hook's notice goes
       # where the turn's events go (the REPL renders only its sink; a
       # worker's observers carry it to the bridge).
-      @turn_state.begin!(controller: effective_controller, sink: on_event)
+      @turn_state.begin!(controller: effective_controller, sink: on_event, input_waiting: input_waiting)
       # Drop a recap already in flight: the turn makes it stale.
       @recap&.invalidate!
       # The gate's context: who queued this turn, and git asked afresh.

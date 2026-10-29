@@ -23,6 +23,10 @@ module Samagotchi
       def cancelled?
         cancelled.respond_to?(:call) ? !!cancelled.call : !!cancelled
       end
+
+      # A person's message waits for the turn's next boundary: never here
+      # (Engine::PeerView asks the running turn).
+      def input_waiting? = false
     end
   end
 end

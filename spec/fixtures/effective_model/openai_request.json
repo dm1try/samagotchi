@@ -57,7 +57,7 @@
       "delegate_result",
       "ask_user_question"
     ],
-    "digest": "sha256:beb92d0a9c21645f7cca3ece04b23dc9c4d5956eed2dde1828f14a8d271274c0"
+    "digest": "sha256:e0e0393094f23ec2ccc58eceb4ebd022a69dfc1106f31fa909ab0211cda247fd"
   },
   "tool_choice": "auto",
   "chat_template_kwargs": {

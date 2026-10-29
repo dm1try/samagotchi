@@ -67,9 +67,10 @@ RSpec.describe Samagotchi::TaskWatch do
       expect(watch.ids).to eq(%w[t3 t4 t5])
     end
 
-    it "keeps a task a wait timed out on or a Stop cut short" do
+    it "keeps a task a wait timed out on, a Stop cut short or a waiting message ended early" do
       watch.observe(waited("t1", status: "running", wait_result: "timeout"))
       watch.observe(waited("t2", status: "running", wait_result: "canceled"))
+      watch.observe(waited("t3", status: "running", wait_result: "message_waiting"))
 
       expect(watch.ids).to eq(%w[t1 t2 t3 t4 t5])
     end
