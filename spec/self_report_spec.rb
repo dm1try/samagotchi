@@ -52,6 +52,42 @@ RSpec.describe Samagotchi::SelfReport do
     expect(field("source")).to eq("#{root} (#{described_class.install_kind(root)})")
   end
 
+  describe "the chi home and project env rows" do
+    let(:home_path) { File.join(config_home, "samagotchi", "home.json") }
+    let(:gems) { File.join(tmp, "gems") }
+
+    def write_home(ruby)
+      FileUtils.mkdir_p(File.join(gems, "specifications"))
+      File.write(File.join(gems, "specifications", "samagotchi-9.9.9.gemspec"), "")
+      Samagotchi::ChiHome.write!(Samagotchi::ChiHome::Record.new(ruby: ruby, gem_home: gems, gem_path: gems, mise: nil,
+                                                                 set_at: "t", set_by_version: "9.9.9"), path: home_path)
+    end
+
+    it "says none without home.json" do
+      expect(field("home")).to eq("none (chi home set records one)")
+    end
+
+    it "names the home's ruby and newest chi, and whether this chi runs on it" do
+      write_home(RbConfig.ruby)
+      expect(field("home")).to eq("#{RbConfig.ruby} (chi 9.9.9); this chi is a source checkout")
+      allow(Samagotchi::InstalledGem).to receive(:spec).and_return(Gem::Specification.new { |s| s.name = "samagotchi" })
+      expect(field("home")).to eq("#{RbConfig.ruby} (chi 9.9.9); this chi runs on #{RbConfig.ruby}")
+    end
+
+    it "says why a recorded home can't be used" do
+      write_home(File.join(tmp, "gone", "ruby"))
+      expect(field("home")).to eq("#{File.join(tmp, "gone", "ruby")} (unusable: home ruby missing: #{File.join(tmp, "gone", "ruby")})")
+    end
+
+    it "reads the project env from the worker's marker" do
+      expect(field("project env")).to eq("- (not run by a session's worker)")
+      env["SAMAGOTCHI_PROJECT_ENV"] = "mise:/p/bin/ruby"
+      expect(field("project env")).to eq("mise (ruby /p/bin/ruby)")
+      env["SAMAGOTCHI_PROJECT_ENV"] = "none:mise_failed"
+      expect(field("project env")).to eq("none (mise_failed)")
+    end
+  end
+
   it "resolves config and sessions from the XDG env it is given" do
     write_config("default:\n  model: spec-model\n")
     expect(field("config")).to eq(File.join(config_home, "samagotchi", "config.yml"))

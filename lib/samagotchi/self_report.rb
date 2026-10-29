@@ -24,6 +24,8 @@ require_relative "memory_bundle/index_size"
 require_relative "desktop"
 require_relative "live_versions"
 require_relative "web/lan"
+require_relative "chi_home"
+require_relative "project_env"
 
 module Samagotchi
   # `chi self`: where this chi lives and what it is configured to use.
@@ -50,6 +52,8 @@ module Samagotchi
       [
         ["version", "#{VERSION} (ruby #{RUBY_VERSION})"],
         ["source", "#{SOURCE_DIR} (#{install_kind})"],
+        ["home", home_summary(env)],
+        ["project env", project_env_summary(env)],
         ["config", with_presence(ConfigFile.global_path(env: env))],
         ["hooks dir", hooks_dir(env)],
         ["memories", Tools::MemoryRead.memories_dir("system", env: env)],
@@ -412,6 +416,35 @@ module Samagotchi
       return "#{version} (matches)" if version == VERSION
 
       helper.stale? ? "#{version} (chi is #{VERSION}: chi update)" : "#{version} (up to date for chi #{VERSION})"
+    end
+
+    # The chi home (home.json): its ruby and newest chi, and whether this
+    # chi (the one answering) runs on it.
+    def home_summary(env)
+      home = ChiHome.read(path: ChiHome.path(env: env))
+      return "none (chi home set records one)" unless home
+
+      problem = ChiHome.problem(home)
+      return "#{home.ruby} (unusable: #{problem})" if problem
+
+      label = "#{home.ruby} (chi #{home.newest_version})"
+      return "#{label}; this chi is a source checkout" unless InstalledGem.spec
+      return label if home.running_here?
+
+      "#{label}; this chi runs on #{RbConfig.ruby}"
+    rescue ChiHome::Invalid => e
+      "(invalid: #{e.message})"
+    end
+
+    # What this session's worker took from the project (ProjectEnv's marker,
+    # exported to the tools it runs): "mise (ruby PATH)" or "none (why)".
+    def project_env_summary(env)
+      kind, detail = env[ProjectEnv::MARKER_ENV].to_s.split(":", 2)
+      case kind
+      when "mise" then "mise (ruby #{detail})"
+      when "none" then "none (#{detail})"
+      else "- (not run by a session's worker)"
+      end
     end
 
     # "samagotchi-system 0.1.5 (shipped 0.1.5), other 1.0.0"
