@@ -25,6 +25,20 @@ RSpec.describe "Guardrails::Targets outside the session's repo" do
     Samagotchi::Guardrails::Targets.for(call || fields, ctx, registry: registry)
   end
 
+  describe "#real_forms" do
+    it "resolves each path once per Targets instance" do
+      path = File.join(@repo, "a.txt")
+      expected = Samagotchi::Guardrails::PathResolve.reals(path)
+      t = targets(name: "write", path: "a.txt")
+
+      expect(Samagotchi::Guardrails::PathResolve).to receive(:reals).with(path).once.and_call_original
+
+      forms = t.real_forms(path)
+      expect(t.real_forms(path)).to equal(forms)
+      expect(forms).to eq(expected)
+    end
+  end
+
   # realpath gives an existing root its on-disk case; a root that doesn't
   # exist yet keeps the case it was typed in, so only an existing one folds.
   it "compares a path with an existing root cased alike on a disk that folds case, a missing one exactly" do

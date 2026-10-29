@@ -379,6 +379,19 @@ module Samagotchi
         @paths.any? { |p| Outside.outside?(p, root: @session_root) }
       end
 
+      # The resolved forms used by rules' path: globs, once per target path.
+      def real_forms(path)
+        @real_forms ||= {}
+        @real_forms[path] ||= PathResolve.reals(path)
+      end
+
+      # The resolved base used by rules' path: globs.
+      def real_rule_base
+        return @real_rule_base if defined?(@real_rule_base)
+
+        @real_rule_base = PathResolve.real(@repo_root || @cwd)
+      end
+
       # Where a shell call runs mutating git (ShellGitDirs: dirs, and
       # :unknown for one the text doesn't tell); [] for other tools.
       def git_dirs

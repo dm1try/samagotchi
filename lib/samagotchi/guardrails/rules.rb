@@ -112,8 +112,8 @@ module Samagotchi
             # A resolved match only adds an ask or a deny; were a verdict
             # ever to let a call through, a symlink into its glob must not.
             if resolved_match?
-              real_base ||= PathResolve.real(base)
-              forms += PathResolve.reals(p).map { |real| [real, real_base] }
+              real_base ||= targets.real_rule_base
+              forms += targets.real_forms(p).map { |real| [real, real_base] }
             end
             forms.any? do |form, from|
               candidate = absolute ? form : relative(form, from)

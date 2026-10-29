@@ -272,6 +272,21 @@ RSpec.describe Samagotchi::Guardrails::Rules do
       expect(verdict_for({ name: "write", path: "hl2/pre-commit", content: "" }, hooks)).to be_allow
     end
 
+    it "resolves each target path once across multiple path rules" do
+      paths = %w[a.txt b.txt c.txt].map { |path| File.join(repo, path) }
+      targets = Samagotchi::Guardrails::Targets.new(tool: "write", command: nil, paths: paths, cwd: repo, repo_root: repo)
+      verdict = Samagotchi::Guardrails::Verdict.new(call: { name: "write" })
+      verdict.targets = targets
+      set = rules({ id: "dotenv", path: "**/.env*", verdict: "ask" },
+                  { id: "hooks", path: "**/.git/hooks/**", verdict: "deny" })
+
+      paths.each do |path|
+        expect(Samagotchi::Guardrails::PathResolve).to receive(:reals).with(path).once.and_call_original
+      end
+
+      expect(set.check(verdict)).to be_allow
+    end
+
     # A relative glob against the resolved path is taken from the base as it
     # resolves too (/tmp is /private/tmp on macOS).
     it "matches a relative glob on the resolved path from the resolved base" do
