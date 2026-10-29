@@ -24,6 +24,8 @@ and commands may change between minor versions. How releases are made:
 
 - Web: the start page's composer row stays one row at any width: a long model name ellipsizes instead of pushing
   Start to a second row.
+- Web: the start page's model button shows a short name (`openrouter · deepseek-v4.1-flash`: no org prefix, the tag
+  kept, the host only when it isn't the default); its tooltip and label keep the full name.
 - Cache: confirmations for prompt-cache changes estimate the reread size when known and warn that Anthropic drops
   preserved thinking after a full-prefix change.
 

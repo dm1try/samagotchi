@@ -32,7 +32,7 @@ test("the storage key is stable", () => {
 });
 
 import {
-  modelRows, groupRows, matchModels, RECENT_KEY, pushRecent, recentRows, rowNote, rowTitle,
+  modelRows, groupRows, matchModels, RECENT_KEY, pushRecent, recentRows, rowNote, rowTitle, shortName,
 } from "../../../lib/samagotchi/web/public/model_pick.js";
 
 const orPayload = {
@@ -61,6 +61,30 @@ test("modelRows gives name, host, id and whether the row is the default host's",
   });
   assert.deepEqual(modelRows(null), []);
   assert.deepEqual(modelRows({ models: [{ name: "" }, { name: "a", host: "h", id: "a" }] }).map((r) => r.name), ["a"]);
+});
+
+test("shortName drops an org prefix, keeps the tag and names non-default hosts", () => {
+  const rows = [
+    { name: "openrouter:vendor/model:Q4_K_M", host: "openrouter", id: "vendor/model:Q4_K_M", isDefaultHost: false },
+    { name: "vendor/model:Q4_K_M", host: "", id: "vendor/model:Q4_K_M", isDefaultHost: true },
+  ];
+  assert.equal(shortName(rows[0], rows), "openrouter · model:Q4_K_M");
+  assert.equal(shortName(rows[1], rows), "model:Q4_K_M");
+});
+
+test("shortName keeps a host-prefixed fallback and uses full names when short names clash", () => {
+  const clash = [
+    { name: "openrouter:vendor-a/model", host: "openrouter", id: "vendor-a/model", isDefaultHost: false },
+    { name: "openrouter:vendor-b/model", host: "openrouter", id: "vendor-b/model", isDefaultHost: false },
+  ];
+  assert.equal(shortName(clash[0], clash), "openrouter:vendor-a/model");
+  assert.equal(shortName(clash[1], clash), "openrouter:vendor-b/model");
+
+  const fallback = { name: "openrouter:vendor/model:Q4", host: "", id: "openrouter:vendor/model:Q4", isDefaultHost: true };
+  assert.equal(shortName(fallback, [fallback]), "openrouter · model:Q4");
+  assert.equal(shortName(fallback, [fallback, {
+    name: "openrouter:other/model:Q4", host: "openrouter", id: "other/model:Q4", isDefaultHost: false,
+  }]), fallback.name);
 });
 
 test("modelRows carries a model's configured sampling", () => {

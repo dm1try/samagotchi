@@ -46,7 +46,7 @@ function picker({ payload = PAYLOAD, stored = null, recent = [], remember } = {}
 test("setModels preselects the stored name while it is offered, else the default; nothing offered keeps the button", () => {
   let p = picker({ stored: "box:alpha" });
   assert.equal(p.ctl.chosen(), "box:alpha");
-  assert.equal(p.button.textContent, "box:alpha");
+  assert.equal(p.button.textContent, "box · alpha");
   assert.equal(p.ctl.chosenRow().host, "box");
   p = picker({ stored: "gone:x" });
   assert.equal(p.ctl.chosen(), "fake");
@@ -180,7 +180,7 @@ test("a press outside closes; the button toggles it", () => {
 test("show puts a name on the button and stores nothing; a name that isn't a row still shows, no row chosen", () => {
   const p = picker({ recent: ["other"] });
   p.ctl.show("box:alpha");
-  assert.equal(p.button.textContent, "box:alpha");
+  assert.equal(p.button.textContent, "box · alpha");
   assert.equal(p.ctl.chosenRow().host, "box");
   p.ctl.show("openrouter:vendor/model");
   assert.equal(p.button.textContent, "openrouter:vendor/model");
@@ -196,7 +196,7 @@ test("a pick with remember false runs onPick and stores neither the choice nor R
   p.type("alpha");
   p.key("Enter");
   assert.deepEqual(p.picks, ["box:alpha"]);
-  assert.equal(p.button.textContent, "box:alpha");
+  assert.equal(p.button.textContent, "box · alpha");
   assert.equal(localStorage.getItem(MODEL_KEY), null);
   assert.equal(localStorage.getItem(RECENT_KEY), JSON.stringify(["other"]));
 });

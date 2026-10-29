@@ -708,7 +708,7 @@ test("the model picker searches: 'deepseek4.1 fla' picks the flash with ⏎, Rec
   await expect(options.first().locator("mark")).toHaveText(["deepseek", "4.1", "fla"]);
   await search.press("Enter");
   await expect(panel).toBeHidden();
-  await expect(button).toHaveText("openrouter:deepseek/deepseek-v4.1-flash");
+  await expect(button).toHaveText("openrouter · deepseek-v4.1-flash");
   await expect(page.locator("#prompt")).toBeFocused();
 
   await button.click();
@@ -1060,7 +1060,7 @@ async function continueAndCheck(page, first, kid) {
   await page.locator("#newBtn").click();
   await expect(pick).toBeVisible();
   await expect(pick).toHaveText("fake-script");
-  await expect(pick).toHaveAttribute("aria-label", "Model for the new session");
+  await expect(pick).toHaveAttribute("aria-label", "Model for the new session: fake-script");
   expect(await page.evaluate(() => [localStorage.getItem("chi_model"), localStorage.getItem("chi_model_recent")])).toEqual(stored);
   // A panel open on the start page closes when a session (not a fresh link) opens without a click
   // outside it (a hash change: back, a link), and stays closed back here.

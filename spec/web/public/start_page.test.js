@@ -22,6 +22,7 @@ const PAYLOAD = {
   models: [
     { name: "fake", id: "fake" },
     { name: "qwen", id: "qwen", thinking: THINKING, llm_context: LLM_CONTEXT },
+    { name: "openrouter:vendor/model:Q4", host: "openrouter", id: "vendor/model:Q4" },
   ],
 };
 
@@ -81,8 +82,8 @@ test("loadModels: the button shows with the stored choice, its chips follow the 
   await p.startPage.loadModels();
   assert.equal(p.button.hidden, false);
   assert.equal(p.name(), "qwen");
-  assert.equal(p.button.title, START_PICK_TITLE);
-  assert.equal(p.button.getAttribute("aria-label"), "Model for the new session");
+  assert.equal(p.button.title, `${START_PICK_TITLE} · qwen`);
+  assert.equal(p.button.getAttribute("aria-label"), "Model for the new session: qwen");
   assert.equal(p.startPage.chosenModel(), "qwen");
   assert.equal(p.thinkChip.hidden, false);
   assert.equal(p.thinkChip.textContent, "think off");
@@ -100,10 +101,27 @@ test("loadModels: the button shows with the stored choice, its chips follow the 
 test("loadModels: a host's warning goes into the tooltip; an empty list leaves the button hidden", async (t) => {
   const p = page(t, { listModels: async () => ({ ...PAYLOAD, warning: "box: down" }) });
   await p.startPage.loadModels();
-  assert.equal(p.button.title, `${START_PICK_TITLE} · box: down`);
+  assert.equal(p.button.title, `${START_PICK_TITLE} · box: down · fake`);
   const empty = page(t, { listModels: async () => ({ models: [] }) });
   await empty.startPage.loadModels();
   assert.equal(empty.button.hidden, true);
+});
+
+test("start-page model labels keep the full model name in their title and accessible name", async (t) => {
+  const fullName = "openrouter:vendor/model:Q4";
+  const p = page(t);
+  await p.startPage.loadModels();
+  p.pick("vendor/model:Q4");
+  assert.equal(p.startPage.chosenModel(), fullName);
+  assert.equal(p.name(), "openrouter · model:Q4");
+  assert.equal(p.button.title, `${START_PICK_TITLE} · ${fullName}`);
+  assert.equal(p.button.getAttribute("aria-label"), `Model for the new session: ${fullName}`);
+  p.startPage.syncModelPick();
+  assert.equal(p.button.title, `${START_PICK_TITLE} · ${fullName}`);
+  p.startPage.restoreStartPick();
+  assert.equal(p.name(), "openrouter · model:Q4");
+  assert.equal(p.button.title, `${START_PICK_TITLE} · ${fullName}`);
+  assert.equal(p.button.getAttribute("aria-label"), `Model for the new session: ${fullName}`);
 });
 
 test("loadModels: a failed list is a toast on the start page, none in a session or while the page unloads", async (t) => {
