@@ -7,6 +7,21 @@ and commands may change between minor versions. How releases are made:
 [docs/releasing.md](docs/releasing.md).
 ## [Unreleased]
 
+### Added
+
+- Sessions follow their project: a session's worker reads its folder's `mise env` once at start, and `execute`,
+  tasks, `!cmd`, MCP servers and context sources run in it, getting the project's Ruby (and node, …) whoever started
+  the worker (`session.project_env: mise`, the default; `off` skips mise). chi's own process keeps its
+  env (its keys, proxies and config never come from a project). The starter's GEM_HOME/GEM_PATH are dropped when the
+  Ruby changes. `chi` inside those tools stays the chi home's (a `chi` script in `$XDG_STATE_HOME/samagotchi/bin`). A
+  mise.toml edit needs `chi sessions restart`; a `mise env` that fails (an untrusted mise.toml) changes nothing and
+  logs one `project_env` warning. A session started from a tool for another folder never gets this one's env.
+  `chi self` shows `home` and `project env`. See docs/sessions.md (Project env).
+- Pair turns: their `execute` runs without the project env; a command that runs `mise` or `direnv`, and a write to
+  mise's config (the owner's next worker start runs it), ask the owner; `.envrc` and mise's local files are secrets,
+  as `.env` is.
+- Bundles: mcp 0.7.3 starts its servers in the session's project env.
+
 ## [0.132.0] - 2026-10-29
 
 ### Added
@@ -15,19 +30,6 @@ and commands may change between minor versions. How releases are made:
   launch boots (`~/.config/samagotchi/home.json`). The first `chi bootstrap` or `chi update` records it once (the
   desktop helper's Ruby when it has samagotchi, else chi's own); see docs/configuration.md (The chi home). A
   write or edit of home.json asks, as config.yml does (rule `chi-home`, the user's alone).
-- Sessions follow their project: a session's worker reads its folder's `mise env` once at start, and `execute`,
-  tasks, `!cmd`, MCP servers and context sources run in it, getting the project's Ruby (and node, …) whoever started
-  the worker (`session.project_env: mise`, the default; `off` keeps the starter's env). chi's own process keeps its
-  env (its keys, proxies and config never come from a project). The starter's GEM_HOME/GEM_PATH are dropped when the
-  Ruby changes. `chi` inside those tools stays the chi home's (a `chi` script in `$XDG_STATE_HOME/samagotchi/bin`). A
-  mise.toml edit needs `chi sessions restart`; a `mise env` that fails (an untrusted mise.toml) changes nothing and
-  logs one `project_env` warning. A session started from a tool for another folder never gets this one's env.
-  `chi self` shows `home` and `project env`.
-- Pair turns: their `execute` runs without the project env; a command that runs `mise` or `direnv`, and a write to
-  mise's config (the owner's next worker start runs it), ask the owner; `.envrc` and mise's local files are secrets,
-  as `.env` is.
-- Bundles: mcp 0.7.3 starts its servers in the session's project env.
-  See docs/sessions.md (Project env).
 - Bundles: model-notes 0.2.0 ships `model_notes_tone` (`models: *`): every model answers first, in plain words, without
   preambles or closing offers. Off with `chi --mute model_notes_tone`; your own note of that name wins.
 - Plugins: `chi.prompt_section(name) { |ctx| … }` adds a bundle's text to the system prompt's stable part (after the
@@ -43,7 +45,7 @@ and commands may change between minor versions. How releases are made:
 
 - With a chi home, every session worker (whoever starts or wakes it), chi web's restart and Update, `chi update`
   and `chi bootstrap`'s commonmarker install run on it: the home's Ruby with its gem path set inside Ruby, never in
-  an env, so session tools keep their own GEM_HOME/GEM_PATH. `chi update` from another Ruby runs the home's
+  an env, so session tools keep the spawner's GEM_HOME/GEM_PATH. `chi update` from another Ruby runs the home's
   (`updating the chi home (<ruby>)`) and installs into its gems; a worker whose home can't load chi logs one
   `boot_failed` line instead of a silent spawn timeout. Without a home every launch is as before.
 - Desktop helper: `chi desktop install` and `upgrade` make it boot the chi home when there is one, and its launch
