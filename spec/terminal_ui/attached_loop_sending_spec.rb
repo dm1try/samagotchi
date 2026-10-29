@@ -309,16 +309,19 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "launch flags" do
   def ran(status, output) = { "type" => "command_ran", "command_id" => "c1", "client_id" => "tui:1", "line" => "/model fast",
                               "status" => status, "output" => output, "changed" => [], "model_name" => "m" }
 
+  # The launcher sends --model as "/model X --yes" (no confirm step): its
+  # applied reply ends the launch's command.
   it "switches the model first, then sends the first prompt" do
     allow(client).to receive(:post_command).and_return(Samagotchi::BridgeClient::Response.new(status: 202, body: '{"command_id":"c1"}'))
     allow(client).to receive(:post_turn).and_return(ack)
-    attached = described_class.new(client: client, screen: screen, client_id: "tui:1", first_prompt: "hi", first_command: "/model fast")
+    attached = described_class.new(client: client, screen: screen, client_id: "tui:1", first_prompt: "hi",
+                                   first_command: "/model fast --yes")
 
     attached.handle_event(joined)
     expect(client).not_to have_received(:post_turn)
     attached.handle_event(ran("ok", "runtime model set to fast (profile=qwen36)"))
 
-    expect(client).to have_received(:post_command).with(line: "/model fast", client_id: "tui:1")
+    expect(client).to have_received(:post_command).with(line: "/model fast --yes", client_id: "tui:1")
     expect(client).to have_received(:post_turn).with(prompt: "hi", client_id: "tui:1")
   end
 

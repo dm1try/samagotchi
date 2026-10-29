@@ -87,9 +87,10 @@ module Samagotchi
                            toolkit_flags: toolkit_flags, settings: settings, parent_answers: parent_answers)
                  end
         commands = []
-        commands << "/model #{model}" if model && (attach || resume)
+        # --yes on /model and /thinking: typing the flag is the choice (no
+        # confirm step); its applied reply ends the launch's command.
+        commands << "/model #{model} --yes" if model && (attach || resume)
         commands << LLMContextOverride.command_line(llm_context) if (attach || resume) && !llm_context.empty?
-        # --yes: typing the flag is the choice (no confirm step).
         commands << "#{ThinkingCommand::NAME} #{thinking} --yes" if (attach || resume) && thinking
         first_command = commands.size > 1 ? commands : commands.first
         surface = open_surface

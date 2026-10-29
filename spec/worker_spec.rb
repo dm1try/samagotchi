@@ -2271,7 +2271,8 @@ RSpec.describe Samagotchi::Worker do
           post_turn("slow")
           expect(next_turn&.first).to eq("slow")
 
-          command_id = JSON.parse(post_command("/model Qwen3-14B").body)["command_id"]
+          # --yes: the session has a reply by then, so a TUI's plain /model would ask (CacheConfirm).
+          command_id = JSON.parse(post_command("/model Qwen3-14B --yes").body)["command_id"]
           release << true
 
           done = ran(command_id)

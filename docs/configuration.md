@@ -833,10 +833,13 @@ models:
 
 ## Changes that restart the prompt cache
 
-`/thinking`, `/reasoning-history` and `/toolkit` ask before a change that makes the server read the conversation again:
-Gemma's thinking switch, a remote chat host's thinking fields ("Thinking"), a change to or from `all` once an earlier
-reply has thinking ("Reasoning history"), and any change to the declared tools, which start every request
-("Toolkits"). They ask only when what the next turn runs under really changes and the session has a model reply.
+`/model`, `/thinking`, `/reasoning-history` and `/toolkit` ask before a change that makes the server read the
+conversation again: a switch to another model (a plain name, `--default`, `--alias N`, `clear`; the new model has no
+cache of the conversation), Gemma's thinking switch, a remote chat host's thinking fields ("Thinking"), a change to or
+from `all` once an earlier reply has thinking ("Reasoning history"), and any change to the declared tools, which start
+every request ("Toolkits"). They ask only when what the next turn runs under really changes (`/model` naming the model
+it already runs, by its resolved ref, doesn't ask) and the session has a model reply. A `/model` name is checked
+first: an unknown host or a bad alias is an error at once, not a question.
 
 - The reply says what it costs and changes nothing yet. When known, it estimates the reread size: the whole
   conversation for full-prefix changes, or from the first changed reply for reasoning history. On `api: anthropic`,
@@ -849,8 +852,9 @@ reply has thinking ("Reasoning history"), and any change to the declared tools, 
   the button is gone after a reload.
 - Only a person at a web tab or a chi TUI is asked. `chi send ID "/thinking low"`,
   `chi -p "/thinking low" --non-interactive`, lines piped into the REPL, a delegate, a plugin and a card's action
-  apply directly, since nobody would see the question; so do the start flags (`chi --thinking` on a resumed or
-  attached session sends `/thinking LEVEL --yes`). A plain `chi -p` opens the REPL, which asks.
+  apply directly, since nobody would see the question; so do the start flags (`chi --thinking` and `chi --model` on a
+  resumed or attached session send `/thinking LEVEL --yes` and `/model NAME --yes`). A plain `chi -p` opens the
+  REPL, which asks.
 
 ## Llama HTTP Timeouts
 

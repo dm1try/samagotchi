@@ -242,13 +242,16 @@ is prefilled once. The native and the chat loop use the same plan.
    the conversation again asks a person at a web tab or a TUI first (`CacheConfirm`: the reply carries the
    `--yes` line, `SessionCommands::Result#confirm` and the `command_ran` event's `confirm`). Each setting has a
    classifier: `Thinking.cache_cost` (`:full` for Gemma, `:provider` for a remote chat host, `:tail` otherwise) and
-   `ReasoningHistory.cache_cost` (`:history` for a change to or from `all` once an earlier reply has thinking).
+   `ReasoningHistory.cache_cost` (`:history` for a change to or from `all` once an earlier reply has thinking),
+   `/model` (`SessionCommands#model_ask`: `:full` for any other resolved ref, `Engine#model_switch_ref` checking
+   the name first, so a typo errors instead of asking; every switching branch, `--default`, `--alias`, `clear`).
    `CacheConfirm.needed?` asks only for `:full`, `:provider` and `:history`, when the effective level changes and
    the session has a model reply. The confirmation estimates the reread size from the latest known context count:
    the whole conversation for `:full` / `:provider`, or up to the first changed reply for `:history`; it omits the
    estimate when no count is known. On `api: anthropic`, a `:full` / `:provider` change also warns that preserved
-   thinking in replies is dropped from then on. A new setting with a cost (a `/model` across templates,
-   `/llm-context` turning forget on) adds its classifier and goes through the same step. A plugin command asks
+   thinking in replies is dropped from then on. A new setting with a cost adds its classifier and goes through
+   the same step. A launch flag (`chi --model`, `--thinking` on an attached or resumed session) sends its line with
+   `--yes`: typing the flag is the choice. A plugin command asks
    through `ctx.cache_confirm(line, changed:)` (cost `:full`: its prompt section is in the stable part), with the
    sender's flag `SessionCommands#run` gives it (`CacheConfirm.asking`), and returns `[text, confirm]`.
 7. **No wall-clock time rendered at wire time.** A history entry's `at` (`MessageTime::KEY`, when it happened) is

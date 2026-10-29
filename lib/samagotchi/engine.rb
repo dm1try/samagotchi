@@ -836,6 +836,13 @@ module Samagotchi
       @host_registry.model_ref(name).ref
     end
 
+    # The ref #switch_model! would switch +model_name+ to, checked the way it
+    # checks one (UnknownHost, MissingModel), without switching.
+    # @return [String]
+    def model_switch_ref(model_name)
+      model_ref_for(ModelProfile.check_host!(ModelProfile.required_model_name(model_name), hosts: @host_registry.entries))
+    end
+
     # Writes the effective model to +session+: the resolved ref, and the
     # name as typed when that differs (model_typed: an alias, for the
     # models: lookup after a resume).

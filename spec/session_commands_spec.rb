@@ -364,6 +364,80 @@ RSpec.describe Samagotchi::SessionCommands do
       expect(result.output).to eq("invalid alias: alias name must not contain '/'")
       expect(engine.effective_model_name).to eq("beta:Qwen3-14B")
     end
+
+    # CacheConfirm: once the session has a model reply, a switch to another
+    # model asks a person first (cost :full); --yes applies it.
+    describe "the confirm step once the session has a reply" do
+      before { session.messages << { role: "model", content: "hi" } }
+
+      def expect_asked(result, line)
+        expect(result.status).to eq(:ok)
+        expect(result.changed).to eq([])
+        expect(result.confirm.line).to eq(line)
+        expect(result.output).to start_with("runtime model: beta:Qwen3-14B\nSwitching to ")
+        expect(result.output).to end_with("Nothing changed yet: send `#{line}` to apply.")
+        expect(engine.effective_model_name).to eq("beta:Qwen3-14B")
+        expect(saved).to eq([])
+      end
+
+      it "asks before a plain switch, changing nothing, and keeps the name's case" do
+        result = commands.run("/model chat:Some/Model")
+
+        expect_asked(result, "/model chat:Some/Model --yes")
+        expect(result.output).to include("Switching to chat:Some/Model restarts the prompt cache")
+      end
+
+      it "asks before --default, --alias and clear, repeating the line's flags" do
+        allow(Samagotchi::ConfigFile).to receive(:write_default_model!)
+        allow(Samagotchi::ConfigFile).to receive(:write_model_alias!)
+
+        expect_asked(commands.run("/model alpha:gemma-small --default"), "/model alpha:gemma-small --default --yes")
+        expect_asked(commands.run("/model alpha:gemma-small --alias gemma --default"),
+                     "/model alpha:gemma-small --alias gemma --default --yes")
+        expect_asked(commands.run("/model clear"), "/model clear --yes")
+        expect(Samagotchi::ConfigFile).not_to have_received(:write_default_model!)
+        expect(Samagotchi::ConfigFile).not_to have_received(:write_model_alias!)
+      end
+
+      it "applies with --yes or -y, anywhere" do
+        result = commands.run("/model --yes alpha:gemma-small")
+
+        expect([result.changed, result.confirm]).to eq([[:model], nil])
+        expect(engine.effective_model_name).to eq("alpha:gemma-small")
+        expect(commands.run("/model beta:Qwen3-14B -y").changed).to eq([:model])
+        expect(engine.effective_model_name).to eq("beta:Qwen3-14B")
+      end
+
+      it "applies at once for a sender that can't answer (chi send, a delegate)" do
+        result = commands.run("/model alpha:gemma-small", confirm: false)
+
+        expect([result.changed, result.confirm]).to eq([[:model], nil])
+        expect(engine.effective_model_name).to eq("alpha:gemma-small")
+      end
+
+      it "doesn't ask for the model it already runs (the resolved ref), nor before the first reply" do
+        expect(commands.run("/model beta:Qwen3-14B").confirm).to be_nil
+        session.messages.pop
+        expect(commands.run("/model alpha:gemma-small").confirm).to be_nil
+        expect(engine.effective_model_name).to eq("alpha:gemma-small")
+      end
+
+      it "errors on a typo at once instead of asking" do
+        unknown = commands.run("/model nosuch:org/model")
+        bad_alias = commands.run("/model alpha:gemma-small --alias bad/name")
+
+        expect([unknown.status, unknown.confirm]).to eq([:error, nil])
+        expect(unknown.output).to start_with("unknown host 'nosuch'")
+        expect([bad_alias.output, bad_alias.confirm]).to eq(["invalid alias: alias name must not contain '/'", nil])
+      end
+
+      it "names the size it rereads when known" do
+        allow(engine).to receive(:cache_restart_tokens).and_return(12_400)
+
+        expect(commands.run("/model alpha:gemma-small").output)
+          .to include("The next request reads the whole conversation again (about 12.4k tokens).")
+      end
+    end
   end
 
   it "lists every host's models with /models" do

@@ -62,7 +62,7 @@ module Samagotchi
 
     # Commands that may ask before a change that restarts the prompt cache
     # (CacheConfirm): #run passes them its confirm flag.
-    CONFIRMING = %i[thinking reasoning_history toolkit].freeze
+    CONFIRMING = %i[model thinking reasoning_history toolkit].freeze
 
     # @!attribute status [Symbol] :ok, or :error when the line was refused
     # @!attribute output [String, nil] what to tell the user
@@ -689,16 +689,23 @@ module Samagotchi
       @save.call(session)
     end
 
-    def model(text)
-      output, switched = model_command(text)
-      reply(output, changed: switched ? [:model] : [])
+    # /model; a switch to another model asks first (CacheConfirm, cost
+    # :full: the new model has no cache of the conversation), --yes applies.
+    def model(text, confirm: true)
+      suffix, yes = CacheConfirm.split(text.delete_prefix(MODEL_COMMAND), downcase: false)
+      output, switched, ask = model_command("#{MODEL_COMMAND} #{suffix}", confirm: confirm && !yes)
+      reply(output, changed: switched ? [:model] : [], confirm: ask)
     rescue ModelProfile::MissingModel => e
       # A model qualified with an unknown host: nothing switched.
       reply(e.message, status: :error)
     end
 
-    # @return [Array(String, Boolean)] the message, and whether the model changed
-    def model_command(input)
+    # @param input [String] the /model line, --yes taken out
+    # @param confirm [Boolean] a switch to another model asks first
+    # @return [Array(String, Boolean, CacheConfirm::Confirm|nil)] the message,
+    #   whether the model changed, and the confirm it asks for (nothing
+    #   changed then)
+    def model_command(input, confirm: false)
       suffix = input.delete_prefix(MODEL_COMMAND).strip
       if suffix.empty?
         return ["runtime model: #{model_name}#{model_note}#{served_note}#{sampling_note}#{steer_cut_after_note}#{thinking_note}#{reasoning_history_note}#{notes_note}", false] if @default_model.nil? || model_name == @engine.model_ref_for(@default_model)
@@ -752,6 +759,9 @@ module Samagotchi
         invalid = ConfigFile.model_alias_error(alias_name, arg)
         return ["invalid alias: #{invalid}", false] if invalid
 
+        ask = confirm && model_ask(arg, input)
+        return ask if ask
+
         switch_model(arg, persist_default: persist_default)
 
         begin
@@ -773,9 +783,15 @@ module Samagotchi
           return ["--default cannot be combined with clear/default/none/off", false] if persist_default
           raise ModelProfile::MissingModel, "no default model is configured (set default.model in config.yml, or /model <name> --default)" if @default_model.nil?
 
+          ask = confirm && model_ask(@default_model, input)
+          return ask if ask
+
           switch_model(@default_model)
           return ["runtime model reset to #{model_name}#{model_note}#{thinking_note}#{reasoning_history_note}#{notes_note}", true]
         end
+
+        ask = confirm && model_ask(arg, input)
+        return ask if ask
 
         switch_model(arg, persist_default: persist_default)
         if persist_default
@@ -784,6 +800,20 @@ module Samagotchi
           ["runtime model set to #{model_name}#{model_note}#{thinking_note}#{reasoning_history_note}#{notes_note}", true]
         end
       end
+    end
+
+    # The reply that asks before switching to +name+ (CacheConfirm), nil
+    # when it needn't: the name is checked first (a typo errors at once,
+    # MissingModel), and its resolved ref against the current one (the same
+    # model costs nothing; any other restarts the whole cache).
+    # @param line [String] the /model line as typed (its flags too), --yes taken out
+    def model_ask(name, line)
+      ref = @engine.model_switch_ref(name)
+      step = CacheConfirm.ask(line: line, cost: :full, changed: ref != model_name, engine: @engine)
+      return nil unless step
+
+      ["runtime model: #{model_name}\nSwitching to #{ref} restarts the prompt cache: the new model has no cache of " \
+       "this conversation.\n#{step.text}", false, step]
     end
 
     # Engine owns the switch (alias resolution, profile, kernel, client and

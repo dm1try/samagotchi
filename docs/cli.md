@@ -801,9 +801,9 @@ mid-turn too, and the lists, cards, top bar and tab show it in place of the firs
 message; a continue's next link keeps it. In the web, `✎` next to the session's
 title (its strip card, or the top bar) does it. See [Session titles](sessions.md#session-titles).
 
-A `/thinking`, `/reasoning-history` or `/toolkit` change that restarts the prompt cache
+A `/model`, `/thinking`, `/reasoning-history` or `/toolkit` change that restarts the prompt cache
 asks first: the reply says what it costs, changes nothing, and names the line
-that applies it (`/thinking low --yes`). `--yes` (or `-y`) applies it at once.
+that applies it (`/thinking low --yes`, `/model qwen --default --yes`). `--yes` (or `-y`) applies it at once.
 The terminal puts that line in the next input (Enter applies it); the web's
 reply has an Apply button. `chi send ID "/thinking low"`,
 `chi -p "/thinking low" --non-interactive` and lines piped into the REPL apply
@@ -1596,6 +1596,10 @@ In interactive assist mode, you can switch the request model without restarting:
 - `/model <name> --alias <alias>`: create alias for current effective model (alias value may be bare or `host:model`).
 - `/model`: show the effective model (and default when diverged: `runtime model: <effective> (default: <default>, profile=<name>, <source>)`, e.g. `profile=qwen36, server (chat_template)`). When the session's prompt carries model notes the line ends with `; notes: model_notes_deepseek (system, 612 chars)`; a switch's `runtime model set to …` names the new model's ([Memory](memory.md#model-notes)).
 - `/model clear` (or `default`/`none`/`off`): clear the session override, reverting to the configured default.
+- Once the session has a model reply, a switch to another model asks first from a web tab or a TUI (the new model
+  has no cache of the conversation): the reply names the line with `--yes` that applies it, flags and all
+  (`/model qwen --alias q --yes`); `--yes` (or `-y`) applies at once. A typo (an unknown host, a bad alias) is an
+  error before any question. See "Changes that restart the prompt cache" in [configuration.md](configuration.md).
 - `/guardrails`: the guardrail rules (by source), what failed to load, your stored approvals, and System 1's
   recent auto-allows; `/guardrails revoke N` removes approval N and `/guardrails wrong [N]` flags an auto-allow
   this session should have been asked about (see [Guardrails](guardrails.md)).
