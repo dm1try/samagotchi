@@ -5,6 +5,7 @@ require_relative "context_sources"
 require_relative "context_providers"
 require_relative "log"
 require_relative "process_group"
+require_relative "project_env"
 
 module Samagotchi
   # Runs an attached context source's command once and records the result
@@ -108,8 +109,9 @@ module Samagotchi
 
     def env_for(location, name)
       previous = location.snapshot_path(name)
-      { "SAMAGOTCHI_CONTEXT_NAME" => name,
-        "SAMAGOTCHI_CONTEXT_PREVIOUS" => File.exist?(previous) ? previous : nil }
+      # The session's project env (ProjectEnv) under the source's own keys.
+      ProjectEnv.tools_env.merge("SAMAGOTCHI_CONTEXT_NAME" => name,
+                                 "SAMAGOTCHI_CONTEXT_PREVIOUS" => File.exist?(previous) ? previous : nil)
     end
 
     # @return [Run]

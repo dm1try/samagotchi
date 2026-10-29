@@ -70,6 +70,7 @@ model_aliases:
 session:
   shared: true
   # idle_exit_minutes: 30   # an unused worker exits after this (0 = never)
+  # project_env: mise      # a worker's tools get its folder's `mise env` (off: the starter's env)
   # keep_empty: false       # true keeps sessions nothing happened in (default: deleted when left)
   # max_children: 4         # running sessions one session may have delegated at a time (the delegate tool)
   # delegate_reports: wake  # a child's reply reaches its parent by itself: wake (an idle parent runs a turn), queue, off
@@ -171,7 +172,7 @@ or `chi web` restart.
 | `hooks`, `bundles` | Worker start | Hooks, plugins and their bundle settings load with the engine. |
 | `recap.*` | Worker start | The engine builds its recap job at start, and again when it binds a session with its own `recap.enabled` or `recap.sentences` (`--set`, see "Per-session settings") and when `/recap on\|off\|default` changes the session's own value. |
 | `session.shared` | Next `chi` invocation | It selects attached-worker or in-process mode for that invocation. |
-| `session.idle_exit_minutes`, `session.keep_empty`, `session.max_children`, `session.delegate_reports`, `session.task_wakes`, `session.max_wakes` | Worker start or next matching lifecycle decision | Existing workers keep their idle-exit timer; the other values are read for the next corresponding decision. |
+| `session.idle_exit_minutes`, `session.project_env`, `session.keep_empty`, `session.max_children`, `session.delegate_reports`, `session.task_wakes`, `session.max_wakes` | Worker start or next matching lifecycle decision | Existing workers keep their idle-exit timer and project env; the other values are read for the next corresponding decision. |
 | `session.retention_*`, `session.max_count`, `session.keep_status`, `session.sweep_interval_hours` | Next retention sweep | `chi web` sweeps on its configured schedule and on `GET /api/sessions`; `chi sessions prune` uses the values for that invocation. The sweep interval is checked on the next hub tick. |
 | `web.*` except `web.participants.*` | `chi web` start | Restart `chi web` to change its bind address, port or page settings. |
 | `log.*` | Process start | Each process holds its configured log sink and level after first use; restart that process. |
@@ -1383,8 +1384,9 @@ launches it. It is recorded in `~/.config/samagotchi/home.json` (`$XDG_CONFIG_HO
   runs the home's `chi update`, and installs into the home's gems with the home's `gem`), `chi bootstrap`'s
   commonmarker install, chi web's "installed; restart" notice and the macOS helper after its next `chi desktop
   install` or `upgrade`. The boot sets the home's gem path inside Ruby (`Gem.paths`), never in an environment
-  variable: the commands a session runs (`execute`, tasks, `!cmd`, MCP servers) keep the GEM_HOME/GEM_PATH of whoever
-  started the worker, or none. How: [How chi launches itself](architecture.md#how-chi-launches-itself).
+  variable: the commands a session runs (`execute`, tasks, `!cmd`, MCP servers) follow the session's project (its
+  `mise env`, [Project env](sessions.md#project-env)), and their `chi` is the home's. How:
+  [How chi launches itself](architecture.md#how-chi-launches-itself).
 - **No home, or one that can't boot chi** (its Ruby gone after a Ruby upgrade, samagotchi uninstalled there, a
   home.json that isn't JSON): each launch uses the Ruby that starts it, as without a home, and the log says why once
   per process (`home_unusable`, `home_invalid`). After a Ruby upgrade: `gem install samagotchi` with the new Ruby,
@@ -2042,6 +2044,7 @@ column says so, a `--kebab-name` flag. The maps (`hosts:`, `models:`,
 | `broadcast.threshold` | `0.5` | | The P(yes) a recipient needs, when the triage host gives logprobs; a plain yes or no is 1 or 0. |
 | `session.shared` | `true` | | Plain `chi` runs its session in a worker and attaches; `--no-shared` per run. |
 | `session.idle_exit_minutes` | `30` | yes | An unused worker exits after this; `0` = never. |
+| `session.project_env` | `mise` | | The commands a session's worker runs follow its project: `mise` runs them in the session folder's `mise env`, read once at worker start (`chi sessions restart` picks up a mise.toml edit); `off` doesn't ask mise: the tools keep the env of whoever started the worker (with a chi home, the home's `chi` still goes first on their PATH). See [Project env](sessions.md#project-env). |
 | `session.keep_empty` | `false` | | Keep sessions nothing happened in. |
 | `session.max_children` | `4` | | Running delegated sessions one session may have. |
 | `session.delegate_reports` | `wake` | | When a delegate child ends a turn, its reply reaches the parent: `wake` runs an idle parent's turn for it, `queue` waits for the parent's next turn, `off` leaves it to `delegate_result`. |

@@ -364,6 +364,59 @@ otherwise; `settings` beside `continues` is refused). A respawned or woken worke
 delegate child starts without (a bundle has its own setting for children, such as cost-cap's `child:`), so its recap
 follows config.yml. `/stats` names them on a `settings:` line, and `chi sessions stats --format json` as `settings`.
 
+## Project env
+
+The commands a session's worker starts for the session (`execute`, tasks, `!cmd`, MCP servers, context sources)
+follow the session's project, not whoever started the worker (a terminal on another Ruby, chi web, the macOS helper
+under launchd). At start a worker runs `mise env -C <session folder> --json` once (`ProjectEnv`,
+`session.project_env: mise`, the default) and merges the answer into the env of those commands: a project whose
+mise.toml pins Ruby 3.4 gets that `ruby`, `gem` and `bundle` in its tools while chi itself runs on the
+[chi home](configuration.md#the-chi-home).
+
+- **Tools only.** The worker's own process keeps the env it was started with: chi's model calls and API keys, its
+  proxies, config, dirs, hooks and plugins never see the project's `[env]` (a mise.toml that sets
+  `ANTHROPIC_API_KEY` or `https_proxy` changes only what its tools see). Hooks run with the worker's env, not the
+  project's. A `chi` a tool runs (`chi -p`, `chi models`, `chi send`) takes the worker's values back first thing, so
+  it too runs on your keys and proxies, not the project's.
+- **Once per worker.** A mise.toml edit (or a `mise use` in a tool) reaches the session at its next worker:
+  `chi sessions restart ID` (or the web's restart) picks it up.
+- **GEM_HOME/GEM_PATH.** The starter's are dropped from the tools' env when the project's `ruby` is another one (they
+  belong to the starter's Ruby), unless mise sets its own; kept when the Ruby stays the same.
+- **Never what a `chi` in a tool reads.** The tools' env never takes `HOME`, any `XDG_*`, any `SAMAGOTCHI_*`,
+  `CHI_REMOTE`, `RACK_ENV` or `CI` from the project (a `chi` run there would read another config or state dir, or
+  send its session commands to another machine): they are dropped
+  and the debug log names them once (`project_env_reserved`). `mise env` runs without `MISE_YES` (it would trust an
+  untrusted mise.toml for you) and `CI`; your `MISE_TRUSTED_CONFIG_PATHS` stays.
+- **Only this session.** A worker started from this one (a restart, a delegate child) starts on the worker's own
+  env. One started from a tool (`chi send --new --dir other/project`) too: the tools' env carries the worker's values
+  (`SAMAGOTCHI_PROJECT_ENV_ORIG`) and that `chi` takes them back, so project A's PATH, `[env]` values, GEM_* and
+  library paths never reach a session in B.
+- **Context sources** run in the project env of the worker that fetches them: the same source can read differently
+  from another session's worker (or a REPL, which has none).
+- **Pair turns** (a participant's, see [Participants](internals/participants.md)) run their `execute` without the
+  project env. MCP servers are the session's, started once in the project env, so a pair turn's MCP calls do use
+  it. A participant's command that runs `mise` or `direnv`, and any write to mise's config (`mise.toml`,
+  `.mise.toml`, `mise.<env>.toml`, `.config/mise.toml`, `.config/mise/…`, `mise/` or `.mise/config*.toml`: your
+  next worker start runs it, and its `[env]` can run commands), asks you first. `.envrc` and mise's local files
+  (`mise.local.toml`, `mise.<env>.local.toml`, dotted or not, and `config.local.toml` / `config.<env>.local.toml` in
+  `.config/mise/`, `mise/`, `.mise/`) are secrets to them, as `.env` is.
+- **What tools still drop**: every `execute`, task and `!cmd` takes no `RUBYOPT`, `RUBYLIB`, `BUNDLE_GEMFILE`,
+  `BUNDLE_BIN_PATH` or `BUNDLER_VERSION` from the project's mise env: it runs without `RUBYLIB` and Bundler's
+  variables, and with the worker's own `RUBYOPT`, Bundler's part removed (`TaskRuntime`).
+- **`chi` in a tool** stays the home's: with a chi home the tools' PATH starts with `$XDG_STATE_HOME/samagotchi/bin`,
+  a dir holding only a `chi` script that boots the home (rewritten at each worker start when the home changed; it
+  unsets `RUBYOPT`, `RUBYLIB`, `RUBYGEMS_GEMDEPS`, `GEMRC` and `BUNDLE*` before it runs, so a `bundle exec` around it
+  doesn't load the project's gems into chi; and `LD_PRELOAD`, `LD_LIBRARY_PATH` and their `DYLD_*` kin). The project's `ruby`, `gem` and `bundle` stay the project's; `bin/chi`, a
+  checkout path or `bundle exec chi` stay themselves. Without a home there is no script and no PATH change.
+- **When it does nothing**: `session.project_env: off` (mise isn't asked; with a chi home the `chi` script still
+  goes first on the tools' PATH); a session without a folder (`none (no_dir)`); no `mise` (looked up as home.json's `mise`, then PATH, then
+  `/opt/homebrew/bin`, `/usr/local/bin`, `~/.local/bin`); the session's folder is gone (the worker runs elsewhere).
+  A `mise env` that fails (an untrusted mise.toml: run `mise trust` there; a pinned Ruby not installed), takes over
+  5 s or doesn't answer JSON changes nothing and leaves one `project_env` warning in the debug log.
+- `chi self` run in a tool shows what the worker computed (`project env`: `mise (ruby PATH)` or `none (why)`) and the
+  chi home (`home`).
+- The REPL modes (`--no-shared`, `--non-interactive`, `--verbose`) run no worker: their tools keep the shell's env.
+
 ## Delegating
 
 The `delegate` tool hands a task to a **child session**: an ordinary chi session in a worker of its own, started in the parent's `working_directory` with the task, verbatim, as its first user message, on the parent's model unless the call names one (`model:` takes a name or an alias, resolved as `--model` is; an unknown host comes back as the tool's `Error:` line; an id the host's saved model list doesn't have starts the child with a `Warning: host 'h' doesn't list model 'x' (did you mean: …?)` line in the result). Children run in parallel and only their **final reply** comes back to the parent: the child's newest `output/<timestamp>.txt` file, which the worker writes at the end of each turn that produced visible text, cut head-and-tail above 64 KB (`DelegateWait.cut`); a reply longer than `max_tool_output_chars` keeps its start and its end (the conclusion), with a gap line naming that `output/` file, where the whole reply is (`ToolOutputCut`'s `:head_tail_ref`; see [Tool output guardrails](internals/tool-guardrails.md#the-runners-cut-max_tool_output_chars)). Nothing of the child's trace enters the parent's context. Nothing is hidden: a child shows in `chi sessions list` (`↳ <parent>`), the web (folded into its parent's card on the strip and in all sessions, whose `▸ N delegates` chip lists the delegates at any depth, see Web UI above; a card of its own with a `↳` chip when its parent isn't listed; `delegated by` in its info bar; the parent's info bar carries a `⑂ N` chip counting its delegates, with how many run, wait, are done, failed, stopped or idle in the tooltip and the waiting ones named in the attention colour; a click opens all sessions), the terminal's status row (a parent's `⑂ 2 running · 1 waiting`, see [Status Line](cli.md#status-line)) and the `list_sessions` tool (`child`; the parent shows as `parent` in the child's own list); the user can `chi --attach <child id>` and steer it mid-run, and `chi send` and `send_note` reach it like any session.

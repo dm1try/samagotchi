@@ -8,6 +8,14 @@ $LOAD_PATH.unshift(File.expand_path("../lib", __dir__))
 require "samagotchi/utf8_default"
 Samagotchi::Utf8Default.apply!
 
+# A chi a session's tool runs: back to that worker's own env before anything
+# reads config (its API keys and proxies, not the project's mise env), and
+# the workers it starts never take the project's (docs/sessions.md, Project env).
+if ENV.key?("SAMAGOTCHI_PROJECT_ENV_ORIG")
+  require "samagotchi/project_env"
+  Samagotchi::ProjectEnv.take_orig!
+end
+
 require "samagotchi/config"
 
 begin

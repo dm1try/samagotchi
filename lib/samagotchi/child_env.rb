@@ -2,6 +2,7 @@
 
 require_relative "installed_gem"
 require_relative "installed_versions"
+require_relative "project_env"
 
 module Samagotchi
   # What a chi process another chi starts must not take from its spawner's
@@ -23,11 +24,12 @@ module Samagotchi
     module_function
 
     # The keys of +env+ a child chi must not inherit: the guardrails
-    # settings, the session markers and a smoke's fake "newest installed"
-    # (InstalledVersions::ENV_KEY, for the spawner's notices only).
+    # settings, the session markers, a smoke's fake "newest installed"
+    # (InstalledVersions::ENV_KEY, for the spawner's notices only) and the
+    # worker's project env marker and record (a child worker applies its own).
     # @return [Array<String>]
     def spawner_keys(env = ENV)
-      env.each_key.select { |key| key.start_with?(GUARDRAILS_PREFIX) } + SESSION_MARKERS + [InstalledVersions::ENV_KEY]
+      env.each_key.select { |key| key.start_with?(GUARDRAILS_PREFIX) } + SESSION_MARKERS + [InstalledVersions::ENV_KEY, ProjectEnv::MARKER_ENV, ProjectEnv::ORIG_ENV]
     end
 
     # #spawner_keys mapped to nil: Process.spawn unsets a key mapped to nil.

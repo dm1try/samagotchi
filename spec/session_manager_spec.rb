@@ -1588,6 +1588,55 @@ RSpec.describe Samagotchi::SessionManager do
       expect(described_class).not_to have_received(:delete_session)
     end
 
+    it "computes the project env only in a spawned worker, never in an in-process loop" do
+      session = Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp")
+      session.save(state_dir: tmpdir)
+      allow(Samagotchi::Worker).to receive(:new).and_return(instance_double(Samagotchi::Worker, run: :stopped))
+      allow(Samagotchi::ProjectEnv).to receive(:compute)
+      expect { described_class.run_session_loop(session.id, state_dir: tmpdir) }.to raise_error(SystemExit)
+      expect(Samagotchi::ProjectEnv).not_to have_received(:compute)
+    end
+
+    it "starts a worker from a worker on its own env: the tools' project env never goes along" do
+      session = Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp")
+      overlay = Samagotchi::ProjectEnv::NONE.with(env: { "PATH" => "/project/bin", "DATABASE_URL" => "a",
+                                                         "SAMAGOTCHI_PROJECT_ENV_ORIG" => "{}" }.freeze)
+      Samagotchi::ProjectEnv.install!(overlay)
+      env = described_class.send(:spawn_options, session)[:env]
+      expect(env.keys).not_to include("PATH", "DATABASE_URL")
+    ensure
+      Samagotchi::ProjectEnv.reset!
+    end
+
+    it "keeps a tool's project env record and marker from the worker it starts (bin/chi took the record's values)" do
+      session = Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp")
+      with_env("SAMAGOTCHI_PROJECT_ENV_ORIG" => JSON.generate("PATH" => "/spawner/bin"),
+               "SAMAGOTCHI_PROJECT_ENV" => "mise:/a/ruby") do
+        env = described_class.send(:spawn_options, session)[:env]
+        expect(env).to include("SAMAGOTCHI_PROJECT_ENV_ORIG" => nil, "SAMAGOTCHI_PROJECT_ENV" => nil)
+        expect(env).not_to have_key("PATH")
+      end
+    end
+
+    it "gives the project env the session's folder, and never fails the worker over it" do
+      session = Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp/proj")
+      session.save(state_dir: tmpdir)
+      overlay = Samagotchi::ProjectEnv::NONE.with(reason: "no_mise")
+      allow(Samagotchi::ProjectEnv).to receive(:compute).and_return(overlay)
+      before_env = ENV.to_h
+      described_class.send(:apply_project_env, session.id, state_dir: tmpdir)
+      expect(Samagotchi::ProjectEnv).to have_received(:compute).with("/tmp/proj")
+      expect(Samagotchi::ProjectEnv.current).to eq(overlay)
+      expect(ENV.to_h).to eq(before_env)
+      Samagotchi::ProjectEnv.reset!
+
+      allow(Samagotchi::Log).to receive(:warn)
+      allow(Samagotchi::ProjectEnv).to receive(:compute).and_raise(ArgumentError, "boom")
+      expect { described_class.send(:apply_project_env, session.id, state_dir: tmpdir) }.not_to raise_error
+      expect(Samagotchi::Log).to have_received(:warn)
+        .with(:worker, "project_env", reason: "error", error: "ArgumentError", msg: "boom")
+    end
+
     it "starts no next worker after a restart a stop landed on, and drops its reminders hand-off" do
       session = Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp")
       session.save(state_dir: tmpdir)

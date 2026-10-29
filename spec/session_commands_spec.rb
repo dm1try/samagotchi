@@ -604,6 +604,15 @@ RSpec.describe Samagotchi::SessionCommands do
       expect(saved).to be_empty
     end
 
+    it "runs in the session's project env (ProjectEnv), as the model's execute does" do
+      Samagotchi::ProjectEnv.install!(Samagotchi::ProjectEnv::NONE.with(env: { "PROJECT_PROBE" => "a" }.freeze))
+      allow(Samagotchi::Tools::Execute).to receive(:call).and_return("ok\n")
+      commands.run("!echo hi")
+      expect(Samagotchi::Tools::Execute).to have_received(:call).with("echo hi", env: { "PROJECT_PROBE" => "a" }, on_timeout: :kill)
+    ensure
+      Samagotchi::ProjectEnv.reset!
+    end
+
     # A worker started with --model X has it in its env marked as the CLI's
     # (SessionManager.spawn_options); a chi run from here must not take it
     # for its default.

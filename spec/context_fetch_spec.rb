@@ -44,6 +44,14 @@ RSpec.describe Samagotchi::ContextFetch do
     expect(fetch(attached).snapshot.text).to start_with("src #{loc.snapshot_path("src")} ")
   end
 
+  it "runs the source in the session's project env (ProjectEnv), under its own keys" do
+    Samagotchi::ProjectEnv.install!(Samagotchi::ProjectEnv::NONE.with(env: { "PROJECT_PROBE" => "a", "SAMAGOTCHI_CONTEXT_NAME" => "x" }.freeze))
+    attached = source(%(echo "$PROJECT_PROBE $SAMAGOTCHI_CONTEXT_NAME"))
+    expect(fetch(attached).snapshot.text).to eq("a src\n")
+  ensure
+    Samagotchi::ProjectEnv.reset!
+  end
+
   it "records a failure with the exit status and stderr's last line, keeping the last good text" do
     marker = File.join(work, "fail")
     attached = source(%(if [ -e fail ]; then echo first >&2; echo "gh: not logged in" >&2; exit 4; fi; echo good))

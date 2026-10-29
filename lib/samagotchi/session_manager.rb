@@ -34,6 +34,7 @@ require_relative "chi_invocation"
 require_relative "log"
 require_relative "log_path"
 require_relative "paths"
+require_relative "project_env"
 require_relative "model_profile"
 require_relative "installed_gem"
 require_relative "installed_versions"
@@ -257,6 +258,8 @@ module Samagotchi
       else
         Log.warn(:worker, "cwd_gone", sid: session.id, dir: dir, cwd: Dir.pwd)
       end
+      # (A chi a session's tool runs took that session's project env out at
+      # its start: bin/chi, ProjectEnv.take_orig!.)
       child_env = {}
       # A worker gets no CLI args: --model, --thinking, --log-level and the
       # other flags this chi was started with.
@@ -1128,6 +1131,9 @@ module Samagotchi
       fallback = ENV.delete(BOOT_FALLBACK_ENV)
       Log.info(:worker, "start", cwd: Dir.pwd, version: VERSION)
       Log.warn(:worker, "boot_fallback", version: VERSION, error: fallback) if fallback
+      # Tools follow the project (its `mise env`, computed once per worker;
+      # this process's ENV is left as it is); never in a loop run in-process.
+      apply_project_env(session_id, state_dir: sd) if spawned
       # A spawned worker stops its turn on TERM/HUP/INT and saves it; a
       # loop run in-process (specs) traps nothing.
       signals = spawned ? WorkerSignals.new.install! : WorkerSignals::NONE
@@ -1214,6 +1220,18 @@ module Samagotchi
       Log.info(:worker, "discarded_empty", sid: session_id)
     rescue DeleteRefused, OwnedByTUI, ArgumentError, SystemCallError => e
       Log.info(:worker, "kept_session", sid: session_id, error: e.class.name, msg: e.message)
+    end
+
+    # The tools' ProjectEnv for the session's folder (its working_directory;
+    # spawn_options chdirs there unless it is gone), installed for this
+    # process's tool spawns. Never fatal: a worker without it still runs.
+    private_class_method def self.apply_project_env(session_id, state_dir:)
+      session = Session.summary_from_file(Session.session_file(session_id, state_dir: state_dir))
+      dir = session&.working_directory.to_s
+      overlay = ProjectEnv.install!(ProjectEnv.compute(dir))
+      Log.info(:worker, "project_env_applied", ruby: overlay.ruby) if overlay.applied
+    rescue StandardError => e
+      Log.warn(:worker, "project_env", reason: "error", error: e.class.name, msg: e.message)
     end
 
     def self.config_idle_exit_minutes

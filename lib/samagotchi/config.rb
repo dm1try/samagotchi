@@ -138,6 +138,8 @@ module Samagotchi
       Entry.new(key: "session.keep_status",           yaml_path: %w[session keep_status],           type: :string, default: "", expose: %i[env config cli], lifecycle: :next_retention_sweep),
       Entry.new(key: "session.sweep_interval_hours",  yaml_path: %w[session sweep_interval_hours],  type: :integer, default: 24,   expose: %i[env config cli], lifecycle: :next_retention_sweep),
       Entry.new(key: "session.idle_exit_minutes",     yaml_path: %w[session idle_exit_minutes],     type: :float,   default: 30.0, expose: %i[env config cli], lifecycle: :worker_start),
+      # Tools follow the project: a worker applies its folder's `mise env` at start (ProjectEnv); off keeps the spawner's env.
+      Entry.new(key: "session.project_env",           yaml_path: %w[session project_env],           type: :enum,    default: "mise", expose: %i[env config], enum_values: %w[mise off], lifecycle: :worker_start),
       # Plain `chi` runs like `chi --shared` (bin/chi, LaunchMode); false, or --no-shared per run, keeps the plain REPL. No CLI flag: that would duplicate --shared.
       Entry.new(key: "session.shared",                yaml_path: %w[session shared],                type: :bool,    default: true,  expose: %i[env config], lifecycle: :next_invocation),
       # false: a session nothing happened in is deleted when it is left (SessionManager.discardable?).

@@ -3,6 +3,7 @@
 require_relative "registry"
 require_relative "../tool_declarations"
 require_relative "../paths"
+require_relative "../project_env"
 require_relative "execute"
 require_relative "read"
 require_relative "write"
@@ -91,7 +92,7 @@ module Samagotchi
         end,
         Execute::NAME => lambda do |call, kctx|
           Execute.call(call[:content], cwd: call[:cwd], cancelled: cancelled_proc(kctx), stop_reason: stop_reason_proc(kctx),
-                                       **participant_execute(kctx, parent_env(kctx)))
+                                       **participant_execute(kctx, project_env(kctx).merge(parent_env(kctx))))
         end,
         RegisterReminder::NAME => lambda do |call, kctx|
           RegisterReminder.call(call[:content], reminder_store: kctx.reminder_store, description: call[:description],
@@ -145,6 +146,16 @@ module Samagotchi
           SESSION_REASONING_HISTORY_ENV => history }.merge(cli_model_unset(env)).merge(xdg_absolute(env))
       end
 
+      # The session's project env (ProjectEnv.current: the worker's mise env,
+      # the chi shim first on PATH) for the commands the owner's turns run;
+      # less what every tool runs without (TaskRuntime::SANITIZED_ENV_KEYS).
+      # A participant's turn gets none of it: a project's [env] may load its
+      # .env files.
+      def project_env(kctx)
+        mode = kctx.respond_to?(:participant_mode) ? kctx.participant_mode : nil
+        mode ? {} : ProjectEnv.tools_env
+      end
+
       # execute's env: and on_timeout: for the running turn. A participant's
       # turn runs without the variables whose names hold a secret
       # (Guardrails::PairBoundary.scrubbed_env), and a command still running
@@ -179,7 +190,7 @@ module Samagotchi
       # markers are reserved, the model's env can't set them).
       def task_marker_env(kctx, env)
         given = env.is_a?(Hash) ? env.keys.map(&:to_s) : []
-        parent_env(kctx).reject { |key, _| given.include?(key) }
+        project_env(kctx).merge(parent_env(kctx)).reject { |key, _| given.include?(key) }
       end
 
       # Stop flips the turn's controller, seen through the Engine's PeerView

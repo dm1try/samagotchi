@@ -101,6 +101,12 @@ at_exit { FileUtils.rm_rf(SPEC_XDG_STATE_HOME) }
 SPEC_TAILSCALE_CLI = File.join(SPEC_XDG_STATE_HOME, "no-real-tailscale")
 ENV["SAMAGOTCHI_TAILSCALE_CLI"] = SPEC_TAILSCALE_CLI
 
+# And a spawned worker's project env (ProjectEnv) never asks the developer's
+# mise: the mise it runs is this missing file (no project env), unless a
+# spec points it at a fake one.
+SPEC_MISE_CLI = File.join(SPEC_XDG_STATE_HOME, "no-real-mise")
+ENV["SAMAGOTCHI_MISE_CLI"] = SPEC_MISE_CLI
+
 # And keep the peer bundles (claude-peer, codex-peer) off the developer's
 # Claude Code and Codex config folders: their status card and install-skill
 # read (and --yes writes) <dir>/skills/chi-peer/SKILL.md. Empty dirs, as the

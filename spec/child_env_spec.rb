@@ -8,9 +8,10 @@ RSpec.describe Samagotchi::ChildEnv do
       "SAMAGOTCHI_INSTALLED_VERSION" => "9.9.9", "SAMAGOTCHI_DEFAULT_MODEL" => "kept", "PATH" => "/bin" }
   end
 
-  it "lists the spawner's guardrails settings, session markers and fake installed version" do
+  it "lists the spawner's guardrails settings, session markers, fake installed version and project env marker" do
     expect(described_class.spawner_keys(env)).to include("SAMAGOTCHI_GUARDRAILS_RULES", "SAMAGOTCHI_PARENT_SESSION",
-                                                         "SAMAGOTCHI_SESSION_MODEL", "SAMAGOTCHI_INSTALLED_VERSION")
+                                                         "SAMAGOTCHI_SESSION_MODEL", "SAMAGOTCHI_INSTALLED_VERSION",
+                                                         "SAMAGOTCHI_PROJECT_ENV")
     expect(described_class.spawner_keys(env)).not_to include("SAMAGOTCHI_DEFAULT_MODEL", "PATH")
   end
 

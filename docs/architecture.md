@@ -158,10 +158,31 @@ home's Ruby is gone, when no `samagotchi-*.gemspec` is under its gem path, and f
 | `Desktop::MacOS#launch_config` | argv `CHI_BOOT + ["--"]`; `launch_ok?` / `launch_problem` check only absolute argv entries | `[ruby, wrapper or bin/chi]` |
 | `InstalledVersions`, `Web::UpdateCheck` | the home's specification dirs and gem dir | the running process's |
 
-Unchanged: `ContextProviders`' `{ruby}` (`RbConfig.ruby`: the home's ruby inside a home worker), `chi bundle
+Unchanged: `ContextProviders`' `{ruby}` (`RbConfig.ruby`: the home's ruby inside a home worker; it runs under the
+project env below, so a `mise env` that sets GEM_HOME reaches it), `chi bundle
 try/test/check` (`-I LIB_DIR`), hooks (in-process). The worker's boot string, `run_session_loop(id, state_dir:)` and
 `SAMAGOTCHI_BOOT_FALLBACK` stay the cross-version contract (`spec/worker_contract_spec.rb`): the home only adds the
 prelude in front. An older chi that wakes a session doesn't read home.json and starts its worker as before.
+
+**The tools a worker runs** follow the project, not the boot, and only they do: a spawned worker
+(`WORKER_PROCESS_ENV`; never an in-process loop) calls `ProjectEnv.compute` in `run_session_loop`, after the owner
+lock and before `Worker.new`, and installs the result (`ProjectEnv.install!`; a frozen `ProjectEnv::Overlay`,
+`{key => value or nil}`). Its ENV is never written: chi's own process (LLM calls, `HostKeys`, Net::HTTP proxies,
+Config, Paths, hooks, plugins) keeps the spawner's env. The overlay is the session folder's `mise env -C DIR --json`
+(mise's `__MISE_*`/`MISE_SHELL` unset; the spawner's GEM_HOME/GEM_PATH unset when the first `ruby` on PATH changes,
+unless mise sets them; never `HOME`, `XDG_*`, `SAMAGOTCHI_*`, `CHI_REMOTE`, `RACK_ENV`, `CI`), `ChiShim`'s dir
+(`$XDG_STATE_HOME/samagotchi/bin`, only a `chi` that execs `Record#boot_argv(run: CHI_BOOT)`) first on PATH when there
+is a home, `SAMAGOTCHI_PROJECT_ENV` (`mise:<ruby>` or `none:<reason>`, for `chi self`) and
+`SAMAGOTCHI_PROJECT_ENV_ORIG` (the worker's own value of each key it changes). It is merged into: `execute` and
+`task_create` for the owner's turns (`Builtins.project_env`, less `TaskRuntime::SANITIZED_ENV_KEYS`; never a
+participant's turn), `!cmd` (`SessionCommands#shell`), context sources (`ContextFetch`) and MCP servers (the mcp
+bundle's `server_env`). A worker started from the worker inherits its clean ENV. A `chi` a tool runs (through the shim or not, a fresh
+process with the tools' env) takes the worker's values back from the record in `bin/chi`, before anything reads
+config (`ProjectEnv.take_orig!`): its own API keys and proxies, and the env of any worker it starts, are the
+worker's (`ChildEnv` still drops the record and marker for a child). `restore_env` never returns a reserved key and
+returns `DYLD_*`/`LD_*`/`RUBYOPT`/`RUBYLIB`/`RUBYGEMS_*`/`BUNDLE*` only as unsets. Hooks run in-process, with the
+worker's env. Specs never reach a real mise: `SAMAGOTCHI_MISE_CLI` (only that path when set) points at a missing
+file. User side: [sessions.md](sessions.md#project-env).
 
 ## Session retention & ordering
 
