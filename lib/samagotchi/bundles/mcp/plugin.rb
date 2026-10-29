@@ -107,7 +107,7 @@ class Plugin
       @next_id = 0
       @dead = nil
       @closing = false
-      @stdin, @stdout, @stderr, @wait = Open3.popen3(env.to_h { |k, v| [k.to_s, v.to_s] }, *command,
+      @stdin, @stdout, @stderr, @wait = Open3.popen3(env.to_h { |k, v| [k.to_s, v&.to_s] }, *command,
                                                      chdir: cwd, pgroup: true)
       @pid = @wait.pid
       start_watchdog
@@ -433,7 +433,7 @@ class Plugin
   def spawn(server, ctx)
     cancelled = -> { ctx.cancelled? }
     client = server.client = Client.new(
-      server.command, env: server.env, cwd: server.cwd,
+      server.command, env: server_env(server), cwd: server.cwd,
                       log: ->(event, **fields) { ctx.log.debug("mcp_#{event}", server: server.name, **fields) },
                       on_exit: ->(reason) { exited(server, reason, ctx) },
                       on_notification: lambda { |method, _params|
@@ -452,6 +452,13 @@ class Plugin
     save_cache(server, ctx) if changed
     index(server, ctx)
     client
+  end
+
+  # A server's env: the session's project env (the worker's mise env, on a
+  # chi that has it: Samagotchi::ProjectEnv) under the server's own keys.
+  def server_env(server)
+    project = defined?(Samagotchi::ProjectEnv) ? Samagotchi::ProjectEnv.current.env : {}
+    project.merge(server.env)
   end
 
   # The first sentence of initialize's instructions (at most
@@ -494,7 +501,7 @@ class Plugin
       return nil unless lock.flock(File::LOCK_EX | File::LOCK_NB)
 
       cancelled = -> { ctx.cancelled? }
-      client = Client.new(server.command, env: server.env, cwd: server.cwd,
+      client = Client.new(server.command, env: server_env(server), cwd: server.cwd,
                                           log: ->(event, **fields) { ctx.log.debug("mcp_#{event}", server: server.name, **fields) })
       begin
         initialized = client.request("initialize", { protocolVersion: PROTOCOL_VERSION, capabilities: {},

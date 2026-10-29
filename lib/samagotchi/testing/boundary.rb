@@ -101,7 +101,9 @@ module Samagotchi
           "Samagotchi::ProcessGroup.stop" => "stops a server's process group: needs a ctx process API",
           'require "samagotchi/token_usage"' => "for CHARS_PER_TOKEN",
           "Samagotchi::TokenUsage::CHARS_PER_TOKEN" => "estimates a tool's tokens: could be a stable constant",
-          'require "samagotchi/tool_declarations"' => "loaded for Api.tool_spec's schemas"
+          'require "samagotchi/tool_declarations"' => "loaded for Api.tool_spec's schemas",
+          "Samagotchi::ProjectEnv" => "checks the worker has a project env (an older chi doesn't)",
+          "Samagotchi::ProjectEnv.current" => "starts a server in the session's project env: needs a ctx tools-env API"
         },
         "slow-commands" => {
           'require "samagotchi/guardrails/shell_lex"' => "for ShellLex",

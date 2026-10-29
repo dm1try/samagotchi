@@ -63,6 +63,17 @@ RSpec.describe "The mcp bundle" do
 
     def names(text) = text.scan(%r{^(fake/\S+)(?: \(bad schema\))?: }).flatten
 
+    context "with the session's project env (ProjectEnv)" do
+      let(:fake) { { "command" => MCP_FAKE_COMMAND } }
+
+      before { Samagotchi::ProjectEnv.install!(Samagotchi::ProjectEnv::NONE.with(env: { "FAKE_MCP_TOOLS" => tools_file }.freeze)) }
+      after { Samagotchi::ProjectEnv.reset! }
+
+      it "starts the server in it" do
+        expect(names(find("screenshot"))).to include("fake/take_screenshot")
+      end
+    end
+
     it "answers the best matches, each with its name, description and inputSchema" do
       text = find("screenshot")
       expect(text).to start_with("Call one with call_tool(tool: \"<group>/<tool>\", args: {…}).\n\n" \
