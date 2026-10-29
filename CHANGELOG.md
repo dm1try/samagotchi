@@ -16,6 +16,9 @@ and commands may change between minor versions. How releases are made:
   the claim was sent without its turn, so the check ran as a plain comment.
 - Web: after a fresh verdict lands on an unclear card, its button reads **Verify fresh again**: each press starts
   another paid check (a participant's counts against their cap).
+- Web: Verify is offered only on a finished turn's final answer, on your page and a participant's: the one place a
+  verdict card can come from. Selecting an earlier reply, a step, a message, a line added mid-turn or a turn still
+  running no longer offers a Verify that silently ran as a plain comment; the bar keeps its other actions there.
 
 ## [0.130.1] - 2026-10-29
 

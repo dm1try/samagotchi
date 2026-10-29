@@ -331,3 +331,30 @@ test("a gated Verify preset is disabled with the restart hint and cannot fill th
   click(bar.el, verify);
   assert.deepEqual(quotes, []);
 });
+
+test("a preset the selection doesn't offer (Verify outside a turn's final answer) is hidden, not disabled, and fills nothing", () => {
+  const seen = [];
+  const state = { offered: false };
+  const { bar, quotes, selectionChange } = fakePage({
+    options: {
+      presets: ["Agreed", { label: "Verify", text: "Check it." }],
+      offeredPreset: (preset, source, range) => {
+        seen.push([typeof preset === "string" ? preset : preset.label, source.kind, typeof range.toString]);
+        return preset.label !== "Verify" || state.offered;
+      },
+    },
+  });
+  selectionChange();
+  const [agreed, verify] = [bar.el.children[1], bar.el.children[2]];
+  assert.deepEqual(seen, [["Agreed", "answer", "function"], ["Verify", "answer", "function"]]);
+  assert.deepEqual([agreed.hidden, verify.hidden, verify.disabled], [false, true, false]);
+  click(bar.el, verify);
+  assert.deepEqual(quotes, []);
+  assert.equal(bar.el.hidden, false, "the bar stays for its other actions");
+  // Offered on the next selection: shown again.
+  state.offered = true;
+  selectionChange();
+  assert.equal(verify.hidden, false);
+  click(bar.el, verify);
+  assert.deepEqual(quotes, ["> the answer\n\nCheck it."]);
+});

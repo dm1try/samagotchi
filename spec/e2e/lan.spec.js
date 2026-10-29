@@ -212,6 +212,15 @@ test("a review: the owner starts one for a file and invites from the panel, the 
   // sends it with that turn's anchor, and the verdict's card lands after it.
   script("verdict");
   await page.locator("#comment").fill("");
+  // Alex's own comment holds no claim the server takes: the bar, no Verify.
+  await page.evaluate(() => {
+    const range = document.createRange();
+    range.selectNodeContents(document.querySelector("#thread .p-msg.user.mine .p-bubble"));
+    getSelection().removeAllRanges();
+    getSelection().addRange(range);
+  });
+  await expect(page.locator("#annotateBar .annotate-main")).toBeVisible();
+  await expect(page.locator("#annotateBar .annotate-preset", { hasText: "Verify" })).toBeHidden();
   await page.evaluate(() => {
     const bubble = document.querySelector("#thread .p-msg.reply .p-bubble");
     const walker = document.createTreeWalker(bubble, NodeFilter.SHOW_TEXT);

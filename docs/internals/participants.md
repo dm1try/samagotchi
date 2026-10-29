@@ -428,6 +428,12 @@ fields: a field added to an event later reaches nobody until it is named there.
   After the presets comes the built-in **Verify** (`verify_preset.js`, on the owner's page too): the quote, then
   "Verify this claim against the code. If this session's context doesn't settle it, say so. End with a line
   `Verdict: confirmed|refuted|unclear — <one-line reason>`." It fills the box like any preset and never sends.
+  It is offered only where the Engine will take the claim (`verify_target.js`, the bar's `offeredPreset`): a
+  selection in the final answer of an ended turn, the last answer bubble (the owner's `.bubble.output` that isn't a
+  delegate report's reply; a participant's last `.p-msg.reply > .p-bubble`) between the turn's opening
+  (`[data-turn-id]`) and the next one (or, on the owner's page, a context note: a wake turn opens with one).
+  Anywhere else (an earlier reply, a step, a prompt, a line merged mid-turn, the Plan, the running turn) the button
+  is hidden and the bar keeps its other actions.
 - **Deep links to a claim** (`claim_link.js`). The owner selects text in a turn's answer, step or own message and
   Annotate's **Copy link** copies `<base>/#s=<id>&t=<turn8>&q=<quote>&p=<prefix>`: `base` the participants list's
   `link_base` (`ParticipantsAdmin#participant_base`: `web.public_url`'s origin, else the LAN address, else the Host),
@@ -454,7 +460,7 @@ fields: a field added to an event later reaches nobody until it is named there.
   with the submitted turn, without changing its prompt text. A Verify turn that fails fast and is rolled back hands
   the claim back with its prompt (`prompt_restored`'s `verify`), so the owner's resend from the composer is a Verify
   turn again. Before the Engine stamps the anchor or records a verdict, it checks that the source turn exists and
-  its assistant reply contains the quote. Matching is case-sensitive, collapses whitespace, and strips common
+  its final assistant reply (`AnswerTail`: the turn's last assistant message with text) contains the quote. Matching is case-sensitive, collapses whitespace, and strips common
   Markdown presentation (links, headings, list/blockquote prefixes, emphasis and code delimiters) from both sides;
   this matches the rendered text the page selects without treating different casing as the same claim. A fresh child
   checks the same anchor against its parent's history. A completed Verify reply whose final non-empty line has

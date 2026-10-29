@@ -538,7 +538,7 @@ test("participant page: Annotate quotes the Plan and a comment into the comment 
   assert.equal(bar.hidden, true);
 });
 
-test("participant page: Verify on a claim in a reply or a mid-turn line sends its turn's id and the quote; none from the Plan", async (t) => {
+test("participant page: Verify only in a turn's final reply, sending its turn's id and the quote", async (t) => {
   const review = { ...REVIEW, subjects: [{ path: "docs/plan.md", text: "Step 3", html: "<p>Step 3</p>" }],
     messages: [
       { role: "user", content: "First", turn_id: "turn-1" },
@@ -550,7 +550,7 @@ test("participant page: Verify on a claim in a reply or a mid-turn line sends it
     ] };
   const { $, posts } = await openPage(t, { respond: (call) => call.answer(200, review) });
   const bar = document.getElementById("annotateBar");
-  const verify = () => [...bar.querySelectorAll(".annotate-preset")].find((button) => button.textContent === "Verify").click();
+  const verifyButton = () => [...bar.querySelectorAll(".annotate-preset")].find((button) => button.textContent === "Verify");
   const send = async () => {
     $("send").click();
     await settle();
@@ -562,20 +562,43 @@ test("participant page: Verify on a claim in a reply or a mid-turn line sends it
 
   const replies = $("thread").querySelectorAll(".p-msg.reply .p-bubble");
   await select(replies[replies.length - 1]);
-  verify();
+  assert.equal(verifyButton().hidden, false);
+  verifyButton().click();
   assert.deepEqual(await send(), { turn_id: "turn-2", quote: "The cache is keyed by path" });
 
-  await select($("thread").querySelector(".p-msg.user:not([data-turn-id]) .p-bubble"));
-  verify();
-  assert.deepEqual(await send(), { turn_id: "turn-2", quote: "also the TTL" });
-
   await select(replies[0]);
-  verify();
+  assert.equal(verifyButton().hidden, false);
+  verifyButton().click();
   assert.deepEqual(await send(), { turn_id: "turn-1", quote: "Old answer" });
 
-  await select($("planDoc").querySelector("p"));
-  verify();
-  assert.equal(await send(), undefined);
+  // Where the server records no card: the bar keeps its other actions, no Verify.
+  const nowhere = [
+    ["an earlier reply before a later step", replies[1]],
+    ["a line merged mid-turn", $("thread").querySelector(".p-msg.user:not([data-turn-id]) .p-bubble")],
+    ["a prompt", $("thread").querySelector(".p-msg.user[data-turn-id] .p-bubble")],
+    ["the Plan", $("planDoc").querySelector("p")],
+  ];
+  for (const [where, node] of nowhere) {
+    await select(node);
+    assert.equal(bar.hidden, false, where);
+    assert.equal(verifyButton().hidden, true, where);
+    assert.equal(bar.querySelector(".annotate-main").hidden, false, where);
+  }
+});
+
+test("participant page: no Verify on a reply while its turn still runs (the newest turn's when its id isn't known)", async (t) => {
+  const review = { ...REVIEW, session: { ...REVIEW.session, status: "running" },
+    messages: [
+      { role: "user", content: "First", turn_id: "turn-1" },
+      { role: "assistant", content: "Old answer" },
+    ],
+    current_turn: { prompt: "Next", turn_id: "turn-1", text: "", tools: [] } };
+  const { $ } = await openPage(t, { respond: (call) => call.answer(200, review) });
+  const bar = document.getElementById("annotateBar");
+  const verifyButton = () => [...bar.querySelectorAll(".annotate-preset")].find((button) => button.textContent === "Verify");
+  await select($("thread").querySelector(".p-msg.reply .p-bubble"));
+  assert.equal(bar.hidden, false);
+  assert.equal(verifyButton().hidden, true);
 });
 
 test("participant page: no Annotate while the participant can't comment", async (t) => {
