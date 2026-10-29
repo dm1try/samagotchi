@@ -1061,7 +1061,7 @@ RSpec.describe Samagotchi::SessionManager do
           expect(command.size).to eq(3)
           expect(command[2]).to start_with("#{home.prelude}; begin; begin; gem 'samagotchi', '>= 0.a'; rescue LoadError => e; " \
                                            "ENV['SAMAGOTCHI_BOOT_FALLBACK'] = e.message; gem 'samagotchi', '= 9.9.9'; end; " \
-                                           "require 'samagotchi/session_manager'; rescue LoadError, StandardError => e; ")
+                                           "require 'samagotchi/session_manager'; rescue ScriptError, StandardError => e; ")
           expect(command[2]).to include("sid=abc boot_failed")
           expect(command[2]).to end_with("exit 1; end; Samagotchi::SessionManager.run_session_loop('abc', state_dir: \"/s\")")
           expect(RubyVM::InstructionSequence.compile(command[2])).to be_a(RubyVM::InstructionSequence)

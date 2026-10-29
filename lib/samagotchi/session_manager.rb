@@ -1257,7 +1257,7 @@ module Samagotchi
     # log file (SAMAGOTCHI_LOG_FILE, set by spawn_options), LogLine's shape,
     # then exit. Single-quoted: the #{} run in the worker. SID is replaced.
     # rubocop:disable-next Lint/InterpolationCheck -- the worker interpolates these, not this process
-    HOME_BOOT_FAILED = 'rescue LoadError, StandardError => e; f = ENV["SAMAGOTCHI_LOG_FILE"].to_s; begin; ' \
+    HOME_BOOT_FAILED = 'rescue ScriptError, StandardError => e; f = ENV["SAMAGOTCHI_LOG_FILE"].to_s; begin; ' \
                        'File.open(f, "a") { |io| io.puts(Time.now.utc.strftime("%Y-%m-%dT%H:%M:%S.%LZ") + ' \
                        '" ERROR worker pid=#{Process.pid} sid=SID boot_failed ruby=#{RbConfig.ruby.inspect} error=" + ' \
                        "e.message.lines.first.to_s.strip.inspect) } unless f.empty?; rescue SystemCallError; end; exit 1"
