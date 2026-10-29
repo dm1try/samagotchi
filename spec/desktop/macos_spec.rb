@@ -586,6 +586,31 @@ RSpec.describe Samagotchi::Desktop::MacOS do
         expect(helper.launch_problem).to be_nil
       end
 
+      it "needs an absolute ruby and strings only" do
+        edit_launch { |l| l["argv"] = ["ruby", File.join(source_dir, "bin", "chi")] }
+        expect(helper.launch_problem).to start_with("the launch file's ruby ruby isn't an absolute path")
+        expect(helper.stale?).to be(true)
+        edit_launch { |l| l["argv"] = [File.join(tmp, "ruby"), 3] }
+        expect(helper.stale?).to be(true)
+        expect(helper.launch_problem).to be_nil # a refresh writes this chi's argv
+      end
+
+      it "names the chi home's problem when the argv boots a home that can't run chi" do
+        Dir.mktmpdir do |config|
+          with_config_home(config) do
+            empty = File.join(tmp, "empty-gems").tap { |d| FileUtils.mkdir_p(d) }
+            File.chmod(0o755, File.join(tmp, "ruby"))
+            home = Samagotchi::ChiHome::Record.new(ruby: File.join(tmp, "ruby"), gem_home: empty, gem_path: empty, mise: nil,
+                                                   set_at: "t", set_by_version: "9.9.9")
+            Samagotchi::ChiHome.write!(home)
+            edit_launch { |l| l["argv"] = [File.join(tmp, "ruby"), "-e", "Gem.paths = {}; gem 'samagotchi'", "--"] }
+            expect(helper.launch_problem).to eq("the chi home it boots can't run chi (no samagotchi in the home's gems " \
+                                                "(#{empty})): chi home doctor")
+            expect(helper.stale?).to be(true)
+          end
+        end
+      end
+
       # As ChiRunner.swift checks: "-e", the boot string and "--" are not paths.
       it "checks only the absolute paths of a chi home boot argv" do
         boot = [File.join(tmp, "ruby"), "-e", "Gem.paths = {}; gem 'samagotchi'", "--"]

@@ -230,10 +230,7 @@ module Samagotchi
       # string, "-e" and "--" are not paths), as ChiRunner.swift checks.
       def launch_problem
         argv = usable_argv(read_launch)
-        missing = launch_paths(argv).reject { |path| File.exist?(path) }
-        return nil if missing.empty?
-
-        "chi not found at #{missing.join(", ")}: run chi desktop install --force from the shell whose chi it should run"
+        argv && argv_problem(argv)
       end
 
       # The chi version the launch file names, nil without one.
@@ -488,10 +485,32 @@ module Samagotchi
         !env.is_a?(Hash) || env["PATH"].to_s.empty?
       end
 
-      # A launch file whose argv runs: each absolute path in it exists.
+      # A launch file whose argv runs (#argv_problem finds nothing).
       def launch_ok?(launch)
-        argv = Array(launch["argv"])
-        !argv.empty? && launch_paths(argv).all? { |path| File.exist?(path) }
+        argv = usable_argv(launch)
+        !argv.nil? && argv_problem(argv).nil?
+      end
+
+      # Why a launch argv (strings) can't run chi, or nil: its ruby isn't an
+      # absolute path, an absolute path in it is gone, or it boots the chi
+      # home (home.json's ruby) and the home can't boot chi
+      # (ChiHome.problem).
+      def argv_problem(argv)
+        return "the launch file's ruby #{argv[0]} isn't an absolute path: run chi desktop install --force" unless argv[0].start_with?("/")
+
+        missing = launch_paths(argv).reject { |path| File.exist?(path) }
+        unless missing.empty?
+          return "chi not found at #{missing.join(", ")}: run chi desktop install --force from the shell whose chi it should run"
+        end
+        return nil unless home_boot?(argv)
+
+        home = begin
+          ChiHome.read
+        rescue ChiHome::Invalid
+          nil
+        end
+        why = home && ChiHome.real(home.ruby) == ChiHome.real(argv[0]) && ChiHome.problem(home)
+        why ? "the chi home it boots can't run chi (#{why}): chi home doctor" : nil
       end
 
       # The argv entries that are paths (absolute): a boot's "-e", its
