@@ -26,7 +26,7 @@ module Samagotchi
       # bin/chi subcommands that act on this machine: never sessions. chi
       # remote (this machine's list of remotes) runs here under a remote too
       # (Dispatch); the others are refused there.
-      MACHINE = %w[bootstrap update models desktop memory bundle guardrails toolkit remote].freeze
+      MACHINE = %w[bootstrap update models desktop memory bundle guardrails toolkit remote home].freeze
 
       # "command", "command sub" or either with a flag (its long name) →
       # SUPPORTED or LOCAL_ONLY. A LOCAL_ONLY command or subcommand lists

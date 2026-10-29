@@ -66,7 +66,10 @@ In REPL mode `TerminalUI#run` is the single dispatch for the REPL, `-p`/`--promp
 - Also (docs/cli.md): `chi web --start-dir DIR` (config `web.start_dir`: the project chi web's page opens on),
   `chi web push ls|rm|test` (this machine's Web Push devices, `PushCommand`), `chi guardrails replay`
   (`GuardrailsCommand`: seeds System 1's record from the approvals already answered), and
-  `chi toolkit report [--days N]` (`ToolkitReportCommand`: grades audit suggestions against session tool calls).
+  `chi toolkit report [--days N]` (`ToolkitReportCommand`: grades audit suggestions against session tool calls),
+  and `chi home [set [--ruby PATH] | doctor]` (`HomeCommand`; `ChiHome`, home.json: the Ruby every chi launch boots,
+  through `Record#boot_argv`'s `Gem.paths` prelude, never GEM_* in an env; docs/architecture.md "How chi launches
+  itself").
 - `--attach ID`: attach to a session's worker (waking one if it has exited);
   `--shared`/`--no-shared` override `session.shared` for this run.
 - `--remote NAME` (or `CHI_REMOTE`) before `--attach ID`, `--resume ID` or `-p` (attached only): the TUI on that

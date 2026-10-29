@@ -133,6 +133,36 @@ terminal renders the events it gets over the Bridge.
 - In REPL mode `TerminalUI` builds the `Engine` in process (`-p` and `--non-interactive` too);
   otherwise the session's `Worker` (`lib/samagotchi/worker.rb`, spawned by `SessionManager`) builds it.
 
+## How chi launches itself
+
+chi starts chi in several places, and each must land on the same install whoever starts it (a terminal on another
+Ruby, chi web, the macOS helper under launchd). The **chi home** (`ChiHome`, `chi_home.rb`; recorded in
+`$XDG_CONFIG_HOME/samagotchi/home.json` by `chi home set`, or once by `chi bootstrap` / `chi update`:
+[configuration.md](configuration.md#the-chi-home)) names that install: a Ruby and its gem path.
+
+**One mechanism.** `ChiHome::Record#boot_argv(run:)` is `[home ruby, "-e", "Gem.paths = {'GEM_HOME' => …,
+'GEM_PATH' => …}; <run>"]`: the gem path goes into the boot string, never into an environment, so the tools a worker
+runs keep the spawner's GEM_HOME/GEM_PATH (or none), and a stray one in the spawner's env can't move chi off the
+home. `ChiHome::CHI_BOOT` (`gem 'samagotchi', '>= 0.a'; load Gem.bin_path('samagotchi', 'chi')`) plus `"--"` and
+the arguments runs the home's newest `chi`. Each site asks `ChiHome.current` at launch time; it is nil (and the site
+keeps its own argv, as before the home) without home.json, for one that isn't its shape (warned once), when the
+home's Ruby is gone, when no `samagotchi-*.gemspec` is under its gem path, and from a source checkout.
+
+| Site | With a home | Without |
+|---|---|---|
+| `SessionManager.worker_command`: every worker (attach, `chi send`, chi web, delegate and Verify-fresh children, `resume_session`, `:restart`) | the home's ruby, `Gem.paths`, `>= 0.a` with the fallback pin (`ChiHome.fallback_version`: the spawner's version when the home has it, else the home's newest); a chi that still can't load writes one `boot_failed` line to `SAMAGOTCHI_LOG_FILE` and exits 1 | `RbConfig.ruby -e` with `>= 0.a` (a checkout: `-I lib`) |
+| `Web::Server.reexec_command` (chi web's restart) | `CHI_BOOT -- web …`; the `:no_wrapper` refusal never applies | `[RbConfig.ruby, wrapper, …]` (`$PROGRAM_NAME` in a checkout) |
+| `Web::App#update_argv` (the **Update** button's child) | `CHI_BOOT -- update --to V --no-desktop --json` | `[RbConfig.ruby, wrapper, update, …]` |
+| `UpdateCommand` | on another Ruby than the home (`Record#running_here?`): exec `CHI_BOOT -- update …` once (`SAMAGOTCHI_UPDATE_IN_HOME=1`: an older home chi ignores it); the install (`GemUpdate`) runs `ChiHome.gem_bin` with `ChiHome.install_env` (the home's GEM_HOME/GEM_PATH for that child, `mise`'s dir on PATH); the hand-over execs `CHI_BOOT -- update --no-gem --gem-from …` | this Ruby's `gem`, the wrapper |
+| `BootstrapCommand` (commonmarker) | `ChiHome.gem_bin` + `install_env`; installed? = in the home's specifications | this Ruby's `gem` |
+| `Desktop::MacOS#launch_config` | argv `CHI_BOOT + ["--"]`; `launch_ok?` / `launch_problem` check only absolute argv entries | `[ruby, wrapper or bin/chi]` |
+| `InstalledVersions`, `Web::UpdateCheck` | the home's specification dirs and gem dir | the running process's |
+
+Unchanged: `ContextProviders`' `{ruby}` (`RbConfig.ruby`: the home's ruby inside a home worker), `chi bundle
+try/test/check` (`-I LIB_DIR`), hooks (in-process). The worker's boot string, `run_session_loop(id, state_dir:)` and
+`SAMAGOTCHI_BOOT_FALLBACK` stay the cross-version contract (`spec/worker_contract_spec.rb`): the home only adds the
+prelude in front. An older chi that wakes a session doesn't read home.json and starts its worker as before.
+
 ## Session retention & ordering
 
 - **Files:** `~/.local/state/samagotchi/sessions/<uuid>.json` + `<uuid>/input|output|owner.lock|bridge.json` (XDG-aware), and the `<uuid>/stopped` and `<uuid>/archived` marker files.

@@ -9,6 +9,9 @@ and commands may change between minor versions. How releases are made:
 
 ### Added
 
+- `chi home`, `chi home set [--ruby PATH]`, `chi home doctor`: the chi home, the one Ruby and gem path every chi
+  launch boots (`~/.config/samagotchi/home.json`). The first `chi bootstrap` or `chi update` records it once (the
+  desktop helper's Ruby when it has samagotchi, else chi's own); see docs/configuration.md (The chi home).
 - Bundles: model-notes 0.2.0 ships `model_notes_tone` (`models: *`): every model answers first, in plain words, without
   preambles or closing offers. Off with `chi --mute model_notes_tone`; your own note of that name wins.
 - Plugins: `chi.prompt_section(name) { |ctx| … }` adds a bundle's text to the system prompt's stable part (after the

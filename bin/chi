@@ -82,7 +82,9 @@ SUBCOMMANDS = {
   # audit suggestions for which toolkit fits a session's first prompt
   "toolkit" => ["samagotchi/toolkit_report_command", "ToolkitReportCommand"],
   # other machines' chi web, for chi --remote NAME (add, ls, rm)
-  "remote" => ["samagotchi/remote_command", "RemoteCommand"]
+  "remote" => ["samagotchi/remote_command", "RemoteCommand"],
+  # the chi home: the Ruby every chi launch boots (set, doctor)
+  "home" => ["samagotchi/home_command", "HomeCommand"]
 }.freeze
 # chi --remote NAME <command> (or CHI_REMOTE=NAME): the session commands
 # against another machine's chi web; what runs here only is refused (exit 2).

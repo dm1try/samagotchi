@@ -1352,6 +1352,47 @@ The helper reads these from its launch file: after editing them run
 (`$TMUX_TMPDIR/tmux-<uid>`, else `/tmp/tmux-<uid>`) are resolved then and
 frozen in it. See [Desktop helper](desktop.md#agents-in-kitty-and-tmux).
 
+## The chi home
+
+With several Rubies on one machine (mise, rbenv, chruby; a project that pins its own), whichever Ruby started chi
+used to decide which chi ran: a terminal in a project on Ruby 3.4 woke its session's worker on that Ruby's chi (an
+older one, or none), chi web's restart could fall off onto another install, and the macOS helper ran the Ruby of the
+shell it was installed from. The **chi home** is the one Ruby, and its gem path, every chi launch boots, whoever
+launches it. It is recorded in `~/.config/samagotchi/home.json` (`$XDG_CONFIG_HOME` is honoured):
+
+```json
+{
+  "ruby": "/Users/me/.local/share/mise/installs/ruby/4.0.7/bin/ruby",
+  "gem_home": "/Users/me/.local/share/mise/installs/ruby/4.0.7/lib/ruby/gems/4.0.0",
+  "gem_path": "/Users/me/.gem/ruby/4.0.0:/Users/me/.local/share/mise/installs/ruby/4.0.7/lib/ruby/gems/4.0.0",
+  "mise": "/opt/homebrew/bin/mise",
+  "set_at": "2026-10-29T21:00:00Z",
+  "set_by_version": "0.132.0"
+}
+```
+
+- **Setting it.** `chi home set` records the Ruby your `chi` runs on and its gem path (a chruby shell's
+  `GEM_HOME`/`GEM_PATH` are part of it: that is where its chi lives); `chi home set --ruby PATH` records another
+  Ruby with its own gem dirs. Either needs samagotchi installed there (`gem install samagotchi` with that Ruby
+  first). Without a home.json, the first `chi bootstrap` or `chi update` records one, once: the desktop helper's Ruby
+  when its launch file names one that has samagotchi, else the Ruby chi runs on. Nothing else ever overwrites it.
+  `chi home` shows it; `chi home doctor` checks it (see [CLI](cli.md#commands)).
+- **What follows it.** Every session worker (whoever starts or wakes it: a terminal, `chi send`, chi web, a
+  delegating session, a restart), chi web's restart and its **Update** button, `chi update` (from another Ruby it
+  runs the home's `chi update`, and installs into the home's gems with the home's `gem`), `chi bootstrap`'s
+  commonmarker install, chi web's "installed; restart" notice and the macOS helper after its next `chi desktop
+  install` or `upgrade`. The boot sets the home's gem path inside Ruby (`Gem.paths`), never in an environment
+  variable: the commands a session runs (`execute`, tasks, `!cmd`, MCP servers) keep the GEM_HOME/GEM_PATH of whoever
+  started the worker, or none. How: [How chi launches itself](architecture.md#how-chi-launches-itself).
+- **No home, or one that can't boot chi** (its Ruby gone after a Ruby upgrade, samagotchi uninstalled there, a
+  home.json that isn't JSON): each launch uses the Ruby that starts it, as without a home, and the log says why once
+  per process (`home_unusable`, `home_invalid`). After a Ruby upgrade: `gem install samagotchi` with the new Ruby,
+  then `chi home set` from it. A source checkout (`bin/chi`, `bundle exec`) never uses the home: a worktree's
+  `bin/chi` starts its own code.
+- **A home that still fails at boot** (a broken install): the worker writes one `boot_failed` line to the debug log
+  (`log.file`) and exits, rather than leave the spawner waiting.
+- Each machine has its own home (a remote's is that machine's).
+
 ## Project specific description
 
 If an AGENTS.md file is present in the project root, samagotchi injects its
