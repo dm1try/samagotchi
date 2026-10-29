@@ -100,7 +100,7 @@ module Samagotchi
               next false unless path
 
               PathResolve.reals(path).any? do |real|
-                !ShellPaths.within?(real, real_root) && others.any? { |dir| ShellPaths.within?(real, dir) }
+                !PathResolve.under?(real, real_root) && others.any? { |dir| PathResolve.under?(real, dir) }
               end
             end
           end

@@ -65,9 +65,9 @@ module Samagotchi
 
       def names?(path, roots, tmp_roots)
         PathResolve.reals(path).any? do |real|
-          next true if roots.any? { |root| within?(real, root) }
+          next true if roots.any? { |root| PathResolve.under?(real, root) }
 
-          real.match?(HOOKS_PART) && tmp_roots.none? { |tmp| within?(real, tmp) }
+          real.match?(HOOKS_PART) && tmp_roots.none? { |tmp| PathResolve.under?(real, tmp) }
         end
       end
 

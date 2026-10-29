@@ -56,7 +56,7 @@ module Samagotchi
       def self.home_root?(root, home)
         return false if home.to_s.empty? || root.to_s.empty?
 
-        ShellPaths.within?(PathResolve.real(home.to_s), PathResolve.real(root.to_s))
+        PathResolve.under?(PathResolve.real(home.to_s), PathResolve.real(root.to_s))
       end
 
       # @param root [String, nil] the session's project root (the work tree
@@ -86,7 +86,7 @@ module Samagotchi
         paths.each do |path|
           given = File.expand_path(path)
           reals = PathResolve.reals(path)
-          return OUTSIDE unless reals.all? { |real| ShellPaths.within?(real, real_root) }
+          return OUTSIDE unless reals.all? { |real| PathResolve.under?(real, real_root) }
           return SECRET if secret?(given) || reals.any? { |real| secret?(real) }
         end
         nil
@@ -119,7 +119,7 @@ module Samagotchi
 
       # Whether +path+ (absolute) is on the read denylist.
       def secret?(path)
-        return true if denied_roots.any? { |root| ShellPaths.within?(path, root) }
+        return true if denied_roots.any? { |root| PathResolve.under?(path, root) }
 
         parts = path.split(File::SEPARATOR)
         return true if parts.any? { |part| SECRET_FILE.match?(part) }

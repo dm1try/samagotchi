@@ -39,7 +39,7 @@ module Samagotchi
         return true if tokens.any? { |_, value| value.include?(ShellLex::SUBST) } && code.match?(/\brm\b/)
 
         session = PathResolve.real(session_root.to_s)
-        roots = tmp_roots.reject { |tmp| ShellPaths.within?(session, tmp) }
+        roots = tmp_roots.reject { |tmp| PathResolve.under?(session, tmp) }
         walk = ShellPaths::Walk.new(cwd, home, env)
         ShellLex.simple_commands(tokens).any? do |words|
           wide = words.is_a?(Array) && words.any?(&RM_WORD) && wide?(words, walk, roots)
@@ -63,7 +63,7 @@ module Samagotchi
         targets.empty? || targets.any? do |target|
           paths = walk.paths(target)
           paths.empty? || paths.flat_map { |path| PathResolve.reals(path) }.any? do |real|
-            roots.none? { |tmp| real.start_with?(File.join(tmp, "")) }
+            roots.none? { |tmp| PathResolve.strictly_under?(real, tmp, fold: false) }
           end
         end
       end

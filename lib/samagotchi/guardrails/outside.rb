@@ -89,7 +89,9 @@ module Samagotchi
         end.uniq
       end
 
-      def self.within?(path, root) = path == root || path.start_with?(File.join(root, ""))
+      # Whether +path+ is +root+ or in it, by their text (exact case;
+      # PathResolve.under?).
+      def self.within?(path, root) = PathResolve.under?(path, root, fold: false)
     end
   end
 end

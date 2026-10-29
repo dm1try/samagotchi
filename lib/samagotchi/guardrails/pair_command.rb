@@ -479,12 +479,12 @@ module Samagotchi
       # Whether a path's text is the start of a denied root's (its parent,
       # or part of its name: ~/.ss) or inside one.
       def leads_into_denied?(prefix)
-        @paths.denied_roots.any? { |root| root.start_with?(prefix) || ShellPaths.within?(prefix, root) }
+        @paths.denied_roots.any? { |root| root.start_with?(prefix) || PathResolve.under?(prefix, root) }
       end
 
       # Whether +path+ is a denied root's folder or one above it.
       def above_denied?(path)
-        PathResolve.reals(path).any? { |real| @paths.denied_roots.any? { |root| ShellPaths.within?(root, real) } }
+        PathResolve.reals(path).any? { |real| @paths.denied_roots.any? { |root| PathResolve.under?(root, real) } }
       end
 
       def link_command?(words)

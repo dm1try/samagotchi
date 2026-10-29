@@ -131,13 +131,23 @@ module Samagotchi
       # realpath gives an existing part its on-disk case, but a missing
       # tail keeps the case it was typed in (<state>/CONTEXT/x before
       # <state>/context exists), and the kernel will create it in the
-      # folder that later answers to either.
-      def under?(path, dir)
+      # folder that later answers to either. With +fold+ false, by their
+      # text alone.
+      def under?(path, dir, fold: true)
         return true if path == dir || path.start_with?(File.join(dir, ""))
+        return false unless fold
 
         low = path.downcase
         low_dir = dir.downcase
         (low == low_dir || low.start_with?(File.join(low_dir, ""))) && folds_case?(dir)
+      end
+
+      # Whether +path+ is in +dir+, not +dir+ itself (.under?'s terms).
+      def strictly_under?(path, dir, fold: true)
+        return true if path.start_with?(File.join(dir, ""))
+        return false unless fold
+
+        path.downcase.start_with?(File.join(dir.downcase, "")) && folds_case?(dir)
       end
 
       # Whether the disk +path+'s deepest existing dir is on folds case: that

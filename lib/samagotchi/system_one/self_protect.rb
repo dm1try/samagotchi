@@ -142,7 +142,7 @@ module Samagotchi
               next plain &&= known && data?(word) unless path
 
               chi ||= Guardrails::PathResolve.reals(path).any? do |real|
-                dirs.any? { |dir| Guardrails::ShellPaths.within?(real, dir) } && !memory?(real, memories, bundles)
+                dirs.any? { |dir| Guardrails::PathResolve.under?(real, dir) } && !memory?(real, memories, bundles)
               end
             end
           end

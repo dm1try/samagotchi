@@ -46,6 +46,17 @@ RSpec.describe Samagotchi::Guardrails::PathResolve do
     expect(described_class.under?(File.join(root, "DIR", "a"), File.join(root, "dir"))).to eq(folds)
   end
 
+  it "compares by text alone with fold: false, and strictly_under? leaves the dir itself out" do
+    dir = File.join(root, "dir")
+    expect(described_class.under?(File.join(root, "DIR", "a"), dir, fold: false)).to be(false)
+    expect(described_class.under?(dir, dir, fold: false)).to be(true)
+    expect(described_class.strictly_under?(dir, dir)).to be(false)
+    expect(described_class.strictly_under?(File.join(dir, "a"), dir, fold: false)).to be(true)
+    expect(described_class.strictly_under?(File.join(root, "DIR", "a"), dir)).to eq(folds)
+    expect(described_class.strictly_under?(File.join(root, "DIR", "a"), dir, fold: false)).to be(false)
+    expect(described_class.strictly_under?(File.join(root, "DIR"), dir)).to be(false)
+  end
+
   it "resolves the root for .within?: a path in a symlinked root's target is within it" do
     expect(described_class.within?(File.join(root, "elsewhere", "deep", "a"), File.join(root, "link"))).to be(true)
     expect(described_class.within?(File.join(root, "a"), nil)).to be(false)
