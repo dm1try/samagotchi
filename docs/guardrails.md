@@ -1030,13 +1030,15 @@ gate below passes, in this order:
    are never auto-allowed, even when listed
    (`SystemOne::SelfProtect::NEVER_AUTO`);
 4. the call does not change chi itself (`SystemOne::SelfProtect.refuse?`), by
-   the same test that makes an ask one only the user may answer
-   (`ParentApprovals.chi_files?`): no edit or write whose paths are in chi's
+   its own set of chi's dirs (`Guardrails::ChiDirs.self_protect`: the dirs whose
+   asks only the user may answer, `ParentApprovals.chi_files?`, plus the whole
+   state dir), wider than that test: no edit or write whose paths are in chi's
    config dir (config.yml), the hooks dir, the installed bundles dir, the
    guardrails store (where `approvals.json` and `judgments.jsonl` live), the
    attached context dir or anywhere else in chi's state dir (the sessions), and
    no `execute` or `task_create` command naming any of them: a write's paths and
-   a `cat` of them answer alike (`SelfProtect.chi_dirs`). A command is checked twice: by its text
+   a `cat` of them answer alike (`SelfProtect.chi_dirs`). `chi_files?` itself
+   still applies on top (its text match, the command spelling a dir). A command is checked twice: by its text
    (`ParentApprovals::CHI_TEXT`: `$XDG_CONFIG_HOME/samagotchi/config.yml`,
    `~/.config/samagotchi/…`, a `cd ~/.config` then `samagotchi/config.yml`),
    and by its words resolved as `shell-touches-chi` resolves them
