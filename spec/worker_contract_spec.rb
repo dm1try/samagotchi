@@ -42,12 +42,29 @@ RSpec.describe "Cross-version worker contract" do
     end
   end
 
-  # continues: an older chi's worker keeps only the FIELDS it knows when it
-  # saves, so a field once written must stay one.
+  # continues: a chi up to 0.130.0 keeps only the FIELDS it knows when it
+  # saves (a newer one keeps the rest, Session#extra_fields), so a field once
+  # written must stay one.
   it "keeps the session.json fields ReplyWait, DelegateWait and session chains read, and the stop marker" do
     expect(Samagotchi::Session::FIELDS.keys)
       .to include("status", "last_prompt", "pending_question", "last_turn", "messages", "parent_id", "continues")
     expect(Samagotchi::Session::STOPPED_FILE).to eq("stopped")
+  end
+
+  # A newer chi's fields survive this one waking or saving the session (the
+  # full round-trip: spec/session_spec.rb).
+  it "keeps the session.json keys it doesn't know when it saves (from the release after 0.130.0)" do
+    Dir.mktmpdir do |dir|
+      id = "11111111-2222-3333-4444-555555555555"
+      path = File.join(dir, "#{id}.json")
+      File.write(path, JSON.generate("id" => id, "mode" => "assist", "model_name" => "m", "working_directory" => dir,
+                                     "created_at" => "2026-01-01T00:00:00Z", "updated_at" => "2026-01-01T00:00:00Z",
+                                     "future_field" => { "a" => 1 }))
+      session = Samagotchi::Session.load(id, state_dir: dir)
+      session.last_prompt = "hi"
+      session.save(state_dir: dir)
+      expect(JSON.parse(File.read(path))).to include("future_field" => { "a" => 1 }, "last_prompt" => "hi")
+    end
   end
 
   # A continue moves a live delegate only when its worker reads parent.json

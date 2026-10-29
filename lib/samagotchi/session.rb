@@ -351,6 +351,11 @@ module Samagotchi
     # saved.
     attr_accessor :opener
 
+    # The top-level keys of the session file this chi doesn't know (a newer
+    # chi's fields), frozen, string keys: #to_h writes them back after the
+    # FIELDS as they were. Never read by this chi.
+    attr_reader :extra_fields
+
     def initialize(id:, mode:, model_name:, working_directory:, messages:, created_at:, updated_at:,
                    metadata_version: METADATA_VERSION, status: STATUS_IDLE, last_prompt: "",
                    first_preview: "", first_turn_id: nil, test_run: false, pending_question: nil,
@@ -359,7 +364,7 @@ module Samagotchi
                    last_turn: nil, model_typed: nil, delegate: false, llm_context: nil, prompt_notes: [],
                    continues: nil, thinking: nil, reasoning_history: nil, appended_prompt_files: [],
                    toolkit: nil, toolkit_origin: "chosen", settings: nil, interrupted_turn: nil, parent_answers: nil, title: nil,
-                   working_set_pins: [], review: nil, verdicts: nil, verify_fresh: nil)
+                   working_set_pins: [], review: nil, verdicts: nil, verify_fresh: nil, extra_fields: {})
       @id = id
       @metadata_version = metadata_version
       @mode = mode
@@ -399,6 +404,7 @@ module Samagotchi
       self.verdicts = verdicts
       self.verify_fresh = verify_fresh
       self.interrupted_turn = interrupted_turn
+      @extra_fields = extra_fields.to_h { |key, value| [key.to_s, value] }.freeze
       @turn_checkpoint = nil
       @archived = false
       # #save's lock: one snapshot-and-write at a time (see #save).
@@ -543,6 +549,21 @@ module Samagotchi
     # the way (symbols in memory, strings on disk); last_turn, prompt_notes
     # and pending_question are value objects in memory (LastTurn,
     # PromptNote, PendingQuestion).
+    #
+    # A new field: a chi older than it (from the release after 0.130.0)
+    # keeps the key as it was (#extra_fields) but doesn't honour it, and the
+    # next newer chi reads it again. So it must be safe to come back
+    # unchanged after an older chi ran turns on the session: static data, or
+    # append-only data the older chi never appends to (review, verify_fresh,
+    # first_turn_id, verdicts); a cursor into messages, which an older chi
+    # would have moved, needs a check against what it points at. Only
+    # top-level keys are kept: the value objects (SessionReview,
+    # VerifyFreshOrigin, Toolkit, LastTurn, PendingQuestion, InterruptedTurn,
+    # PromptNote, WorkingSetPin, LLMContextOverride) write their own members
+    # only, so an older chi still drops a new sub-key of one of them; add a
+    # top-level field when an older chi must keep it. A removed key would
+    # stay an extra forever: leave it out of the extras in .from_h then (no
+    # key was ever removed).
     FIELDS = {
       "metadata_version" => 1,
       "id" => REQUIRED,
@@ -599,6 +620,7 @@ module Samagotchi
       end
       attrs[:settings] = SessionConfig::Settings.new(core: attrs.delete(:config_settings), bundles: attrs.delete(:bundle_settings))
       attrs[:messages] = messages ? Array(attrs[:messages]).map { |msg| symbolize_message_keys(msg) } : []
+      attrs[:extra_fields] = data.reject { |key, _| FIELDS.key?(key) }
       new(**attrs)
     end
 
@@ -720,8 +742,10 @@ module Samagotchi
       self
     end
 
-    # The session as #save writes it (FIELDS, in their order); a running
-    # turn's checkpoint (#turn_checkpoint) in place of its messages.
+    # The session as #save writes it: FIELDS, in their order, then the keys
+    # this chi doesn't know (#extra_fields, in the file's order; a FIELDS key
+    # wins); a running turn's checkpoint (#turn_checkpoint) in place of its
+    # messages.
     def to_h
       checkpoint = checkpointed
       FIELDS.keys.to_h do |key|
@@ -755,6 +779,7 @@ module Samagotchi
                 end
         [key, value]
       end.reject { |key, value| value.nil? && OPTIONAL_FIELDS.include?(key) }
+        .merge(@extra_fields.reject { |key, _| FIELDS.key?(key) })
     end
 
     # The running turn's checkpoint, while the turn runs (#turn_checkpoint).

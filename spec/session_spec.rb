@@ -92,6 +92,67 @@ RSpec.describe Samagotchi::Session do
       expect(described_class.load(session.id, state_dir: tmpdir).to_h).to eq(data)
     end
 
+    describe "the keys this chi doesn't know (a newer chi's fields)" do
+      def write_file(extra)
+        session = described_class.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp")
+        session.messages << { role: "user", content: "hi" }
+        session.save(state_dir: tmpdir)
+        path = File.join(tmpdir, "#{session.id}.json")
+        File.write(path, JSON.generate(JSON.parse(File.read(path)).merge(extra)))
+        [session.id, path]
+      end
+
+      let(:extras) { { "future_obj" => { "a" => [1, { "b" => nil }] }, "future_flag" => false } }
+
+      it "keeps the top-level keys it doesn't know through load, a change and save, after the FIELDS" do
+        id, path = write_file(extras)
+        loaded = described_class.load(id, state_dir: tmpdir)
+        expect(loaded.extra_fields).to eq(extras)
+        expect(loaded.extra_fields).to be_frozen
+        loaded.last_prompt = "next"
+        loaded.title = "Named"
+        loaded.save(state_dir: tmpdir)
+
+        data = JSON.parse(File.read(path))
+        expect(data.keys).to eq(described_class::FIELDS.keys - described_class::OPTIONAL_FIELDS + %w[future_obj future_flag])
+        expect(data.slice("future_obj", "future_flag")).to eq(extras)
+        expect(data.values_at("last_prompt", "title")).to eq(%w[next Named])
+      end
+
+      it "keeps them through a running turn's checkpoint save" do
+        id, path = write_file(extras)
+        loaded = described_class.load(id, state_dir: tmpdir)
+        loaded.status = described_class::STATUS_RUNNING
+        loaded.turn_checkpoint = { messages: loaded.messages + [{ role: "user", content: "task" }],
+                                   marker: Samagotchi::InterruptedTurn.new(id: "t1", iteration: 1) }
+        loaded.save(state_dir: tmpdir)
+
+        data = JSON.parse(File.read(path))
+        expect(data["messages"].map { |m| m["content"] }).to eq(%w[hi task])
+        expect(data.slice("future_obj", "future_flag")).to eq(extras)
+      end
+
+      it "reads them in the summaries too" do
+        _, path = write_file(extras)
+        expect(described_class.summary_from_file(path).extra_fields).to eq(extras)
+      end
+
+      it "a new session, and a FIELDS key, are never extras" do
+        expect(described_class.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp").extra_fields)
+          .to eq({})
+        id, = write_file("status" => "idle", "that_key" => 1)
+        expect(described_class.load(id, state_dir: tmpdir).extra_fields.keys).to eq(["that_key"])
+      end
+
+      # The documented limit (the FIELDS comment, docs/sessions.md): value
+      # objects write their own members only.
+      it "keeps unknown keys at the top level only" do
+        id, path = write_file("review" => { "subjects" => ["a.md"], "from" => nil, "future_nested" => true })
+        described_class.load(id, state_dir: tmpdir).save(state_dir: tmpdir)
+        expect(JSON.parse(File.read(path))["review"]).to eq("subjects" => ["a.md"])
+      end
+    end
+
     it "fills a file's missing optional fields from FIELDS and refuses one without a required field" do
       data = { "id" => "abc", "mode" => "assist", "model_name" => "m", "working_directory" => "/tmp",
                "created_at" => "2026-01-01T00:00:00Z", "updated_at" => "2026-01-01T00:00:00Z" }
