@@ -1245,7 +1245,8 @@ module Samagotchi
         # status, its rings and every save from here on say so.
         @session.parent_id = Session.parent_override(@session_id, state_dir: @state_dir) || @session.parent_id
         save_session
-        result = @engine.run_turn(@session, prompt, pending_input: pending_input_drain, **turn_args)
+        result = @engine.run_turn(@session, prompt, pending_input: pending_input_drain, input_waiting: method(:input_waiting?),
+                                                    **turn_args)
       rescue StandardError => e
         error = e
         # Still running: no turn of the Engine's ended (it never began).
@@ -1466,6 +1467,13 @@ module Samagotchi
         @engine.checkpoint_metrics if @checkpoint.boundary(@engine.live_conversation, merging: lines, turn_id: @turn_id)
         lines
       end
+    end
+
+    # Whether a person's message waits that the next boundary merges
+    # (SessionInbox.steer_waiting?): a running task_wait ends on it. Never
+    # in a participant's turn, whose drain merges none.
+    def input_waiting?
+      !@participant_turn && SessionInbox.steer_waiting?(@session_dir)
     end
 
     # A participant's author fields (Engine#author_fields), {} for the owner.

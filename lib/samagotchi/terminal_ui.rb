@@ -716,6 +716,8 @@ module Samagotchi
           max_iterations: max_iterations,
           cancel_controller: cancellation_controller,
           pending_input: method(:drain_steering),
+          # A steering line waits (#steer_line): a running task_wait ends for it.
+          input_waiting: -> { !@pending_input_queue.empty? },
           continue: continue,
           images: images,
           resumed: resumed,

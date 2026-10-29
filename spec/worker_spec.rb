@@ -500,6 +500,29 @@ RSpec.describe Samagotchi::Worker do
         expect(conversation).to eq([{ role: "user", kind: "input", source: "chi_send", content: "line 0", at: message_at }])
       end
 
+      it "gives the turn an input_waiting: probe that peeks at a next-step line, true until the drain merges it" do
+        seen = Queue.new
+        allow(engine).to receive(:run_turn) do |_session, prompt, **kwargs|
+          if prompt == "task"
+            probe = kwargs[:input_waiting]
+            before = probe.call
+            Samagotchi::SessionInbox.write_input(session_dir, prompt: "later", client_id: "web:x", delivery: "queue", now: next_stamp)
+            queued_only = probe.call
+            file = Samagotchi::SessionInbox.write_input(session_dir, prompt: "hi", client_id: "cli:send", now: next_stamp)
+            waiting = probe.call
+            still_there = File.exist?(file)
+            merged = kwargs[:pending_input].call.map(&:text)
+            seen << [before, queued_only, waiting, still_there, merged, probe.call]
+          end
+          turns << [prompt, mono]
+          result
+        end
+        start_worker(poll_interval: 0.02)
+        Samagotchi::SessionManager.write_turn_input(session.id, prompt: "task", client_id: "web:x", state_dir: tmpdir)
+
+        expect(pop!(seen, "the turn's probes")).to eq([false, false, true, true, ["hi"], false])
+      end
+
       it "skips a queued line without stopping at it: a later line merges, the queued one runs after as its own turn" do
         merged = Queue.new
         allow(engine).to receive(:run_turn) do |_session, prompt, **kwargs|

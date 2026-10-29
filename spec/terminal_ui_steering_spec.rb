@@ -39,6 +39,24 @@ RSpec.describe Samagotchi::TerminalUI, "steering" do
     expect(repl_input.pop(timeout: 0)).to be_nil
   end
 
+  it "gives the turn an input_waiting: probe that is true while a steering line waits, not a /queue one" do
+    seen = []
+    allow(engine).to receive(:run_turn) do |*, pending_input:, input_waiting:, **|
+      seen << input_waiting.call
+      repl_input << [:line, "/queue after this"]
+      seen << input_waiting.call
+      repl_input << [:line, "look at the log"]
+      seen << input_waiting.call
+      pending_input.call
+      seen << input_waiting.call
+      result
+    end
+
+    agent.run_engine_turn(session, "go")
+
+    expect(seen).to eq([false, false, true, false])
+  end
+
   it "pushes a plain line during the turn and does not cut; /cut cuts, /queue waits for the end" do
     allow(engine).to receive(:cut_for_steer).and_return(:now)
     leftover = nil
