@@ -35,3 +35,17 @@ bundle itself.
   The dates and tasks differ, so this is a hint, not an A/B: an A/B is the same kind of task with the note on and
   muted (`chi send --new --mute model_notes_deepseek`). The shipped text is shorter than the one measured (795
   characters against 1,519) and keeps its habits.
+
+## model_notes_tone
+
+- **models:** `*`: every model. It stacks on a family's note (`spec/model_ids.yml` `expected_overlaps`).
+- **Origin, 2026-10-29:** chi's prompt has no style guidance, so each model talks in its own voice and answers run
+  long. A `/tone` bundle (presets, a session command) was built and parked; the user chose the lighter way, a model
+  note, with the gentlest text: only the anti-padding part of the concise preset ("leave out what went as expected"
+  was dropped: it can hide useful confirmations).
+- **Approved:** the text as shipped, by the user, 2026-10-29 (after the check below); ships in model-notes (the `dev`
+  profile) first, `core` later only after more evidence (other model families, a week of the user's own use).
+- **Evidence:** a with/without check on the local Qwen3.8 Flash Next (Splash), 5 tasks (4 questions about this repo,
+  1 small code edit), one run each, `chi --non-interactive` with isolated state: answers 12.5k → 10.1k characters
+  (−19%), 4 of 5 shorter; openings more direct, closing summaries gone; nothing a task needed was lost (dropped: one
+  worked glob example, one aside about the model's own fixed mistake). N=1 per task: a direction, not a measurement.

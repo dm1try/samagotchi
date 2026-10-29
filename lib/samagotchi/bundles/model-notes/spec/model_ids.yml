@@ -10,35 +10,41 @@
 # negative row ([]) is how a glob that grew too wide shows up.
 rows:
   # DeepSeek V4 / V4.1: one id per model, whichever provider is pinned.
-  - { id: deepseek/deepseek-v4.1-flash, small: false, notes: [model_notes_deepseek] }
-  - { id: deepseek/deepseek-v4-flash, small: false, notes: [model_notes_deepseek] }
-  - { id: deepseek/deepseek-v4.1-flash-1017, small: false, notes: [model_notes_deepseek] }
-  - { id: unsloth/DeepSeek-V4-Flash-GGUF:Q4_K_M, small: false, notes: [model_notes_deepseek] }
-  - { id: mlx-community/DeepSeek-V4-Flash-4bit, small: false, notes: [model_notes_deepseek] }
+  - { id: deepseek/deepseek-v4.1-flash, small: false, notes: [model_notes_deepseek, model_notes_tone] }
+  - { id: deepseek/deepseek-v4-flash, small: false, notes: [model_notes_deepseek, model_notes_tone] }
+  - { id: deepseek/deepseek-v4.1-flash-1017, small: false, notes: [model_notes_deepseek, model_notes_tone] }
+  - { id: unsloth/DeepSeek-V4-Flash-GGUF:Q4_K_M, small: false, notes: [model_notes_deepseek, model_notes_tone] }
+  - { id: mlx-community/DeepSeek-V4-Flash-4bit, small: false, notes: [model_notes_deepseek, model_notes_tone] }
   # Other DeepSeek models: the note was measured on V4 only.
-  - { id: deepseek-ai/DeepSeek-R1-Distill-Qwen-32B, small: true, notes: [] }
-  - { id: deepseek/deepseek-chat, small: false, notes: [] }
-  - { id: deepseek/deepseek-r1, small: false, notes: [] }
+  - { id: deepseek-ai/DeepSeek-R1-Distill-Qwen-32B, small: true, notes: [model_notes_tone] }
+  - { id: deepseek/deepseek-chat, small: false, notes: [model_notes_tone] }
+  - { id: deepseek/deepseek-r1, small: false, notes: [model_notes_tone] }
   # Mistral: no note shipped (its local one predates the bash -> execute alias).
-  - { id: mistralai/mistral-large-4-0, small: false, notes: [] }
-  - { id: mistralai/ministral-8b, small: true, notes: [] }
+  - { id: mistralai/mistral-large-4-0, small: false, notes: [model_notes_tone] }
+  - { id: mistralai/ministral-8b, small: true, notes: [model_notes_tone] }
   # Qwen 3.6 35B-A3B (OpenRouter, MLX, Splash, llama.cpp).
-  - { id: qwen/qwen3.6-35b-a3b, small: true, notes: [] }
-  - { id: mlx-community/Qwen3.6-35B-A3B-4bit, small: true, notes: [] }
-  - { id: incoai/Qwen3.6-35B-A3B-Splash, small: true, notes: [] }
-  - { id: unsloth/Qwen3.6-35B-A3B-GGUF:Q4_K_M, small: true, notes: [] }
+  - { id: qwen/qwen3.6-35b-a3b, small: true, notes: [model_notes_tone] }
+  - { id: mlx-community/Qwen3.6-35B-A3B-4bit, small: true, notes: [model_notes_tone] }
+  - { id: incoai/Qwen3.6-35B-A3B-Splash, small: true, notes: [model_notes_tone] }
+  - { id: unsloth/Qwen3.6-35B-A3B-GGUF:Q4_K_M, small: true, notes: [model_notes_tone] }
   # Qwen 3.8 27B.
-  - { id: mlx-community/Qwen3.8-27B-4bit, small: true, notes: [] }
-  - { id: incoai/Qwen3.8-27B-Splash, small: true, notes: [] }
-  - { id: ISTA-DASLab/Qwen3.8-27B-GSQ-RCO-GGUF:MTP, small: true, notes: [] }
+  - { id: mlx-community/Qwen3.8-27B-4bit, small: true, notes: [model_notes_tone] }
+  - { id: incoai/Qwen3.8-27B-Splash, small: true, notes: [model_notes_tone] }
+  - { id: ISTA-DASLab/Qwen3.8-27B-GSQ-RCO-GGUF:MTP, small: true, notes: [model_notes_tone] }
   # Ornith, Gemma.
-  - { id: ornith-ai/Ornith-1.5-35B-A3B-GGUF:Q4_K_M, small: true, notes: [] }
-  - { id: gemma-4-26b-a4b-it-4bit, small: true, notes: [] }
+  - { id: ornith-ai/Ornith-1.5-35B-A3B-GGUF:Q4_K_M, small: true, notes: [model_notes_tone] }
+  - { id: gemma-4-26b-a4b-it-4bit, small: true, notes: [model_notes_tone] }
   # Claude (the claude host's ids, and OpenRouter's).
-  - { id: claude-opus-5-5, small: false, notes: [] }
-  - { id: claude-sonnet-5-5, small: false, notes: [] }
-  - { id: anthropic/claude-sonnet-5.5, small: false, notes: [] }
+  - { id: claude-opus-5-5, small: false, notes: [model_notes_tone] }
+  - { id: claude-sonnet-5-5, small: false, notes: [model_notes_tone] }
+  - { id: anthropic/claude-sonnet-5.5, small: false, notes: [model_notes_tone] }
 
 # Ids that load more than one note, each with the names: by design only (a
-# `small` note on top of a family's, say). None while one note ships.
-expected_overlaps: {}
+# `small` note on top of a family's, say). model_notes_tone (models: *) stacks
+# on every family note.
+expected_overlaps:
+  deepseek/deepseek-v4.1-flash: [model_notes_deepseek, model_notes_tone]
+  deepseek/deepseek-v4-flash: [model_notes_deepseek, model_notes_tone]
+  deepseek/deepseek-v4.1-flash-1017: [model_notes_deepseek, model_notes_tone]
+  unsloth/DeepSeek-V4-Flash-GGUF:Q4_K_M: [model_notes_deepseek, model_notes_tone]
+  mlx-community/DeepSeek-V4-Flash-4bit: [model_notes_deepseek, model_notes_tone]

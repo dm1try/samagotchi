@@ -164,9 +164,23 @@ Working habits for this model:
   longest run without an edit and the Continues and steers each needed; run a
   note on and muted for the same kind of task. See
   [testing.md](testing.md) ("The model notes report").
+- **A note for every model**: `models: *` matches any id, so one note sets a
+  house style for all of them. The model-notes bundle ships one,
+  `model_notes_tone`:
+
+  ```markdown
+  models: *
+  How to write answers:
+  - Answer first, in plain words. Skip preambles, restating the question and closing offers. Use a list only for steps or several parallel items.
+  ```
+
+  It stacks with a family's note. Off for one session: `chi --mute
+  model_notes_tone` (at launch); everywhere: `chi memory rm model_notes_tone
+  --scope system`, or keep your own text under that name (yours wins).
 - **Shipped notes: the model-notes bundle.** `chi bundle install model-notes`
-  (or the `dev` profile) installs reviewed notes into the system scope; for
-  now `model_notes_deepseek` (`models: *deepseek-v4*`). Each note's provenance
+  (or the `dev` profile) installs reviewed notes into the system scope:
+  `model_notes_deepseek` (`models: *deepseek-v4*`) and `model_notes_tone`
+  (`models: *`, concise answers for every model). Each note's provenance
   and evidence is in the bundle's `notes/README.md`, and its spec pins which
   model ids load which note ([Plugins](plugins.md#the-model-notes-bundle)).
   - **Your own note of the same name wins.** The install skips a

@@ -2576,11 +2576,12 @@ gem.
 `chi bundle install model-notes` (or the `dev` profile) installs reviewed
 [model notes](memory.md#model-notes) into the system scope: working habits
 for one model family, loaded into the prompt only for the models a note's
-`models:` line names. It has no plugin or hook. It ships one note:
+`models:` line names. It has no plugin or hook. It ships two notes:
 
 | note | models | for |
 |---|---|---|
 | `model_notes_deepseek` | `*deepseek-v4*` | DeepSeek V4 / V4.1: explore briefly then act, commit one item at a time, stop digging, `memory_read` for memories, file tools rather than heredocs that guardrail rules ask about |
+| `model_notes_tone` | `*` | every model: answer first, in plain words; no preambles, restated questions or closing offers; lists only for steps or parallel items |
 
 - **Reviewed before it ships.** A note is generic (no repo or machine facts),
   says nothing the harness already does (a tool's description, an alias),

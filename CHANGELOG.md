@@ -9,6 +9,8 @@ and commands may change between minor versions. How releases are made:
 
 ### Added
 
+- Bundles: model-notes 0.2.0 ships `model_notes_tone` (`models: *`): every model answers first, in plain words, without
+  preambles or closing offers. Off with `chi --mute model_notes_tone`; your own note of that name wins.
 - Plugins: `chi.prompt_section(name) { |ctx| … }` adds a bundle's text to the system prompt's stable part (after the
   toolkit's prompt, before the memory indexes), and `chi.prompt_changed!` builds the prompt again at the next turn.
   A section that fails keeps its last good text; `/stats` names the sections (`prompt sections:`).
