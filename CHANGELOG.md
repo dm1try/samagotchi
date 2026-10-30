@@ -10,6 +10,8 @@ and commands may change between minor versions. How releases are made:
 ### Fixed
 
 - Web: the start page's ⚙ and 🧰 buttons say whether their panel is open (`aria-expanded`) to screen readers.
+- Web: "default" on the ⚙ panel's Context row now clears a set apply rule and budget too: the chip read "ctx apply
+  payoff · budget 64000" while the row showed default, and the new session got them.
 - Web: on a touch screen a tapped row or link in the ⚙ and 🧰 panels (and the ⚙ and 🧰 buttons) no longer keeps its
   hover tint.
 - Web: a sheet's and a popover's × is a 36 px tap target on a touch screen (it was 22x16 px).

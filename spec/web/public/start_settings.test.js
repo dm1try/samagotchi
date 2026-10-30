@@ -136,6 +136,21 @@ test("Apply and budget: a disclosure, open when the choice has them; a bad budge
   assert.equal(p.pop.querySelector(".sset-ctx-form").elements.budget.value, "64000");
 });
 
+// "default" on the Context row follows the model for all of it: a set apply
+// rule and budget go too, so the pressed segment, the chip and the request
+// (no llm_context) agree.
+test("Context's default clears the apply rule and the budget too; the fields show the model's again", (t) => {
+  const p = panel(t, { choice: { llmContext: { strategy: ["stale"], apply: "turn_end", budget_tokens: 64000 } } });
+  p.button.click();
+  assert.ok(p.pop.querySelector(".sset-ctx-form"));
+  p.act("ctx:default");
+  assert.equal(p.state.llmContext, null);
+  assert.equal(p.pop.querySelector('[data-act="ctx:default"]').getAttribute("aria-pressed"), "true");
+  const form = p.pop.querySelector(".sset-ctx-form");
+  assert.equal(form.elements.budget.value, "");
+  assert.equal(form.querySelector("option[selected]").value, "default");
+});
+
 test("the review view: ‹ back, an open quote's error, Set returns with the files, No review clears them", (t) => {
   const p = panel(t);
   p.button.click();
