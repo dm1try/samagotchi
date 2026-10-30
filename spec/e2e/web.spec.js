@@ -1164,9 +1164,19 @@ test("a parent's delegates fold into its card: one strip card with a popover, in
     const popBox = await pop.boundingBox();
     expect(popBox.y).toBeGreaterThanOrEqual(chipBox.y + chipBox.height);
     expect(Math.abs(popBox.x - cardBox.x)).toBeLessThan(2);
+    // A modal dialog as every popover (chip_popover.js modalDialog): Tab from the
+    // chip goes into it (it sits at the end of body), Shift+Tab before its first
+    // stop wraps to its last; Esc gives the chip its focus back.
+    await expect(pop).toHaveAttribute("aria-modal", "true");
+    await page.keyboard.press("Tab");
+    await expect(pop.locator(".fr-open").first()).toBeFocused();
+    await page.keyboard.press("Shift+Tab");
+    expect(await pop.evaluate((el) => el.contains(document.activeElement))).toBe(true);
+    await expect(pop.locator(".fr-open").first()).not.toBeFocused();
     await page.keyboard.press("Escape");
     await expect(pop).toBeHidden();
     await expect(stripChip).toHaveAttribute("aria-expanded", "false");
+    await expect(stripChip).toBeFocused();
     await stripChip.click();
     await expect(pop).toBeVisible();
     await page.locator("#prompt").click();

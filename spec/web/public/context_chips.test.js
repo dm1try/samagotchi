@@ -283,3 +283,34 @@ test("a failed view text or detach says what failed and why in a toast", async (
   assert.deepEqual(c.toasts, ["Can't read pr-1: no source pr-1"]);
   c.done();
 });
+
+test("the popover behaves as every popover: a modal dialog named for its chip, the chip's aria-expanded, Tab goes in, Esc and × give the chip its focus back", async () => {
+  const c = chipsControl({ list: async () => ({ sources: [row(), row({ name: "ci" })], can_add_url: true }) });
+  await c.ctl.load("s1");
+  const tab = () => {
+    const e = new window.KeyboardEvent("keydown", { key: "Tab", bubbles: true, cancelable: true });
+    document.activeElement.dispatchEvent(e);
+    return e.defaultPrevented;
+  };
+  const chip = c.el.querySelector('[data-name="ci"]');
+  assert.equal(chip.getAttribute("aria-expanded"), "false");
+  chip.focus();
+  chip.click();
+  assert.deepEqual([c.pop.getAttribute("role"), c.pop.getAttribute("aria-modal"), c.pop.getAttribute("aria-label")], ["dialog", "true", "ci"]);
+  assert.equal(chip.getAttribute("aria-expanded"), "true");
+  assert.equal(tab(), true); // from the chip into the popover
+  assert.ok(c.pop.contains(document.activeElement));
+  document.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Escape" }));
+  assert.equal(c.pop.hidden, true);
+  assert.equal(chip.getAttribute("aria-expanded"), "false");
+  same(document.activeElement, chip, "focus back");
+  // The "+ URL" form: its × gives the focus (in the form) back to its chip.
+  const add = c.el.querySelector(".ctx-add");
+  add.click();
+  assert.equal(add.getAttribute("aria-expanded"), "true");
+  assert.equal(c.pop.getAttribute("aria-label"), "Attach a URL");
+  c.pop.querySelector('[data-act="close"]').click();
+  same(document.activeElement, add, "focus back to + URL");
+  assert.equal(tab(), false); // closed: the page's own Tab
+  c.done();
+});

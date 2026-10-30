@@ -166,24 +166,28 @@ test("a sheet popover is a bottom sheet in a narrow window, a popover at its chi
   s.done();
 });
 
-test("expands: every opener's aria-expanded follows the popover; off by default", () => {
+test("the opener clicked and the anchor carry aria-expanded while it is open, the other openers don't", () => {
   const other = document.createElement("button");
   other.className = "my-rail";
   document.body.append(other);
-  const s = shell({ expands: true, openers: ".my-chip, .my-rail" });
+  const s = shell({ openers: ".my-chip, .my-rail" });
+  const states = () => [s.chip.getAttribute("aria-expanded"), other.getAttribute("aria-expanded")];
+  assert.deepEqual(states(), [null, null]);
   s.chip.click();
-  assert.deepEqual([s.chip.getAttribute("aria-expanded"), other.getAttribute("aria-expanded")], ["true", "true"]);
+  assert.deepEqual(states(), ["true", null]);
   s.ctl.close();
+  assert.deepEqual(states(), ["false", null]);
   s.ctl.open(other);
-  assert.deepEqual([s.chip.getAttribute("aria-expanded"), other.getAttribute("aria-expanded")], ["true", "true"]);
+  assert.deepEqual(states(), ["false", "true"]);
   document.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Escape" }));
-  assert.deepEqual([s.chip.getAttribute("aria-expanded"), other.getAttribute("aria-expanded")], ["false", "false"]);
+  assert.deepEqual(states(), ["false", "false"]);
+  // At the chip, from the other opener (the start page's override chips): both.
+  s.ctl.open(s.chip, { from: other });
+  assert.deepEqual(states(), ["true", "true"]);
+  s.ctl.close();
+  assert.deepEqual(states(), ["false", "false"]);
   s.done();
   other.remove();
-  const plain = shell();
-  plain.chip.click();
-  assert.equal(plain.chip.getAttribute("aria-expanded"), null);
-  plain.done();
 });
 
 test("open(anchor, {from}): placed at the anchor, focus goes back to +from+, or the anchor once +from+ is hidden", () => {
@@ -203,14 +207,15 @@ test("open(anchor, {from}): placed at the anchor, focus goes back to +from+, or 
   other.remove();
 });
 
-test("modal: aria-modal, Tab and Shift+Tab wrap inside, a Tab from outside goes in; off by default", () => {
+test("every popover is modal: aria-modal, Tab and Shift+Tab wrap inside, a Tab from outside goes in", () => {
   const tab = (shiftKey = false) => {
     const e = new window.KeyboardEvent("keydown", { key: "Tab", shiftKey, bubbles: true, cancelable: true });
     document.activeElement.dispatchEvent(e);
     return e.defaultPrevented;
   };
-  const s = shell({ modal: true });
-  assert.equal(s.ctl.pop.getAttribute("aria-modal"), "true");
+  const s = shell({ label: "Mine" });
+  assert.deepEqual([s.ctl.pop.getAttribute("role"), s.ctl.pop.getAttribute("aria-modal"), s.ctl.pop.getAttribute("aria-label")],
+    ["dialog", "true", "Mine"]);
   s.chip.click();
   const [x, other, set] = s.ctl.pop.querySelectorAll("button");
   set.focus();
@@ -220,19 +225,13 @@ test("modal: aria-modal, Tab and Shift+Tab wrap inside, a Tab from outside goes 
   assert.ok(document.activeElement === set);
   other.focus();
   assert.equal(tab(), false); // the browser moves it
-  s.chip.focus(); // outside (a redraw dropped it)
+  s.chip.focus(); // outside (the opener kept it, or a redraw dropped it)
   assert.equal(tab(), true);
   assert.ok(document.activeElement === x);
   s.ctl.close();
   s.chip.focus();
   assert.equal(tab(), false); // closed: the page's own Tab
   s.done();
-  const plain = shell();
-  assert.equal(plain.ctl.pop.getAttribute("aria-modal"), null);
-  plain.chip.click();
-  plain.ctl.pop.querySelector("[type=submit]").focus();
-  assert.equal(tab(), false);
-  plain.done();
 });
 
 test("an open one is placed again on a resize: a sheet follows the window (and a visual viewport a keyboard shortened)", () => {

@@ -426,7 +426,8 @@ test("a link inserted before the focused row of an open chain popover: the focus
   const body = document.createElement("div");
   document.body.append(body);
   const chip = { setAttribute() {}, getBoundingClientRect: () => ({ left: 0, top: 0, bottom: 10, width: 10 }), closest: () => null };
-  const pop = createFamilyPop({ id: "chainPopSpec", doc: { body, createElement: (t) => document.createElement(t) }, win: { innerWidth: 1000 },
+  const pop = createFamilyPop({ id: "chainPopSpec", doc: { body, createElement: (t) => document.createElement(t),
+                                addEventListener: (...a) => document.addEventListener(...a), get activeElement() { return document.activeElement; } }, win: { innerWidth: 1000 },
                                 rowsFor: () => chainRowsTemplate(f), anchorFor: () => chip, onPick() {} });
   pop.open("d4");
   body.querySelector('.chain-row[data-id="d2"] .fr-open').focus();

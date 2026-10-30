@@ -82,6 +82,7 @@ function fakeEl({ rect = null, card = null } = {}) {
   const attrs = new Map();
   return {
     focused: 0,
+    isConnected: true,
     setAttribute: (k, v) => attrs.set(k, String(v)),
     getAttribute: (k) => attrs.get(k) ?? null,
     contains(other) { return other === this; },
@@ -97,7 +98,9 @@ const styleOf = (el) => ({ top: el.style.top, left: el.style.left, width: el.sty
 function setupPop({ vw = 1440, rows = { p: rowsOf("rows p") }, id } = {}) {
   const body = document.createElement("div");
   document.body.append(body);
-  const doc = { body, createElement: (tag) => document.createElement(tag) };
+  // The shim's document's keys (the popover's Tab) and focus, its own body.
+  const doc = { body, createElement: (tag) => document.createElement(tag), addEventListener: (...a) => document.addEventListener(...a),
+                get activeElement() { return document.activeElement; } };
   const card = fakeEl({ rect: { left: 100, top: 20, bottom: 120, width: 360 } });
   const chips = { p: fakeEl({ rect: { left: 180, top: 90, bottom: 108, width: 120 }, card }), q: fakeEl({ rect: { left: 500, top: 90, bottom: 108, width: 120 }, card }) };
   const page = { picked: [], closes: 0, rows, chips };
@@ -156,6 +159,31 @@ test("familyPop: Esc closes it (and stops there, the chip focused), other keys a
   assert.equal(pop.onKeydown(esc), true);
   assert.ok(esc.stopped > 0);
   assert.equal(pop.isOpen(), false);
+  assert.equal(page.chips.p.focused, 1);
+});
+
+test("familyPop is a modal dialog as every popover: Tab wraps in its rows, a Tab from outside goes in; focus in it goes back to the chip", () => {
+  const { pop, page, el } = setupPop({ rows: { p: rowsOf(html`<button class="fr-open">a</button><button class="fr-open">b</button>`) } });
+  const tab = (shiftKey = false) => {
+    const e = new window.KeyboardEvent("keydown", { key: "Tab", shiftKey, bubbles: true, cancelable: true });
+    document.dispatchEvent(e);
+    return e.defaultPrevented;
+  };
+  pop.open("p");
+  assert.deepEqual([el().getAttribute("role"), el().getAttribute("aria-modal"), el().getAttribute("aria-label")], ["dialog", "true", "Delegates"]);
+  const [a, b] = el().querySelectorAll(".fr-open");
+  document.body.focus();
+  assert.equal(tab(), true);
+  same(document.activeElement, a, "a Tab from outside");
+  assert.equal(tab(true), true);
+  same(document.activeElement, b, "Shift+Tab before the first");
+  assert.equal(tab(), true);
+  same(document.activeElement, a, "Tab past the last");
+  pop.onPointerDown({ target: document.createElement("div") });
+  assert.equal(page.chips.p.focused, 1);
+  assert.equal(tab(), false); // closed: the page's own Tab
+  pop.open("p");
+  pop.onPointerDown({ target: document.createElement("div") }); // the focus wasn't in it: stays where it is
   assert.equal(page.chips.p.focused, 1);
 });
 
