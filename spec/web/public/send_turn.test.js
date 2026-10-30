@@ -16,7 +16,7 @@ function failure(code, message = "boom", body = null) {
 
 // +sendTurn+ / +createIdleSession+: the data.js stand-ins (each call logged).
 function harness({ open = "s1", text = "hello", chips = [], state = {}, running = false, pendingPick = null, reviewSubjects = null,
-                   verify = null, toolkitPicked = false, sendTurn = async () => ({ enqueued_id: "e1" }),
+                   verify = null, revise = null, toolkitPicked = false, sendTurn = async () => ({ enqueued_id: "e1" }),
                    createIdleSession = async () => ({ id: "new1" }) } = {}) {
   // world.state reads the page's session store; setting it is a session
   // switch (forgetSession's replaceCurrent).
@@ -54,6 +54,9 @@ function harness({ open = "s1", text = "hello", chips = [], state = {}, running 
     verify: () => verify,
     clearVerify: () => { verify = null; },
     restoreVerify: (anchor) => { verify = anchor; },
+    revise: () => revise,
+    clearRevise: () => { revise = null; },
+    restoreRevise: (anchor) => { revise = anchor; },
     dir: "/proj",
     startPage: {
       pendingPick: () => pendingPick,
@@ -98,7 +101,7 @@ function harness({ open = "s1", text = "hello", chips = [], state = {}, running 
     alert: (text) => log.push(["alert", text]),
   });
   return { send: sendTurnApi.send, world, log, calls, toasts, bubbles, promptEl, button, sentIds, earlyRestores,
-           cleared: () => cleared, verify: () => verify };
+           cleared: () => cleared, verify: () => verify, revise: () => revise };
 }
 
 test("a line in a session: the echo, POST /turn with the tab's id, the composer emptied at the ack, the stream followed", async () => {
@@ -125,6 +128,36 @@ test("a Verify selection's anchor travels with edited text; an ordinary send has
   const plain = harness();
   await plain.send();
   assert.deepEqual(plain.calls[0][3], { clientId: "web:t1", images: [], history: true, delivery: null });
+});
+
+test("an armed Revise: POST /turn carries revises {turn_id} only, it lets go at the ack; a Verify's echo is marked", async () => {
+  const h = harness({ text: "shorter", revise: { turn_id: "t-v1", label: "The ticket" } });
+  await h.send();
+  assert.deepEqual(h.calls[0][3], { clientId: "web:t1", images: [], history: true, delivery: null, revises: { turn_id: "t-v1" } });
+  assert.equal(h.revise(), null);
+  assert.equal(h.bubbles[0].el.dataset.verify, undefined);
+  const checked = harness({ verify: { turn_id: "t-src", quote: "q" } });
+  await checked.send();
+  assert.equal(checked.bubbles[0].el.dataset.verify, "1");
+});
+
+test("a refused Revise (409 revise_unavailable): its words in the history, the text and the chip kept", async () => {
+  const detail = "this session's worker predates Revise turns; restart this session to use Revise";
+  const h = harness({ revise: { turn_id: "t-v1", label: "x" },
+                      sendTurn: async () => { throw failure("revise_unavailable", "refused", { error: "revise_unavailable", detail }); } });
+  await h.send();
+  assert.deepEqual(h.log.find((entry) => entry[0] === "commandBubble"), ["commandBubble", { label: null, line: "hello", text: detail, failed: true }]);
+  assert.equal(h.promptEl.value, "hello");
+  assert.deepEqual(h.revise(), { turn_id: "t-v1", label: "x" });
+  assert.equal(h.toasts.length, 0);
+});
+
+test("a Revise turn restored before its ack: its draft is armed again with its line", async () => {
+  const h = harness({ revise: { turn_id: "t-v1", label: "x" } });
+  h.earlyRestores.set("e1", { origin: { client_id: "web:t1", enqueued_id: "e1" }, prompt: "hello", revises: { turn_id: "t-v1" } });
+  await h.send();
+  assert.equal(h.promptEl.value, "hello");
+  assert.deepEqual(h.revise(), { turn_id: "t-v1" });
 });
 
 test("the start page: an idle session with the picked model and choices, then the line as a turn in it", async () => {

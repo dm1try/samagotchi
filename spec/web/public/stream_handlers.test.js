@@ -62,6 +62,7 @@ function fakePage({ selected = "s1", running = false, read = null } = {}) {
     contextChips: { refresh: rec("contextChips.refresh") },
     placeVerdict: rec("placeVerdict"),
     restoreVerify: rec("restoreVerify"),
+    restoreRevise: rec("restoreRevise"),
     sentIds: new Set(),
     earlyRestores: new Map(),
     stream: {
@@ -122,6 +123,19 @@ test("turn_completed places a recorded verdict after ending the live turn", asyn
   await handlers.turn_completed({ type: "turn_completed", verdict });
 
   assert.deepEqual(page.calls.filter(([name]) => name === "placeVerdict"), [["placeVerdict", verdict]]);
+});
+
+test("turn_completed with revises stamps its prompt (data-revises; the running turn's id: the event names none), as a reload draws it", async () => {
+  const { deps, liveTurn } = fakePage({ running: true });
+  liveTurn.timing.turnId = "t2";
+  const mine = document.createElement("div");
+  mine.dataset.turnId = "t2";
+  const other = document.createElement("div");
+  other.dataset.turnId = "t1";
+  deps.findInTurnRoots = () => [other, mine];
+  await createStreamHandlers(deps).turn_completed({ type: "turn_completed", revises: { turn_id: "t1" } });
+  assert.equal(mine.dataset.revises, "t1");
+  assert.equal(other.dataset.revises, undefined);
 });
 
 test("verdict_recorded places a Verify fresh child's verdict on its card", () => {
@@ -308,6 +322,18 @@ test("prompt_restored: a Verify turn's claim is armed again with its text, for t
   const verify = { turn_id: "t-src", quote: "the cache key" };
   await handlers.prompt_restored({ prompt: "Verify this claim", origin: { client_id: ME, enqueued_id: "e1" }, verify });
   assert.deepEqual(page.calls.find(([name]) => name === "restoreVerify"), ["restoreVerify", verify]);
+});
+
+test("prompt_restored: a Revise turn's draft is armed again with its text; not into a full composer", async () => {
+  const { page, deps, handlers } = fakePage();
+  deps.sentIds.add("e1");
+  await handlers.prompt_restored({ prompt: "shorter", origin: { client_id: ME, enqueued_id: "e1" }, revises: { turn_id: "t1" } });
+  assert.deepEqual(page.calls.find(([name]) => name === "restoreRevise"), ["restoreRevise", { turn_id: "t1" }]);
+  const full = fakePage();
+  full.deps.sentIds.add("e1");
+  full.page.composerText = "typing";
+  await full.handlers.prompt_restored({ prompt: "shorter", origin: { client_id: ME, enqueued_id: "e1" }, revises: { turn_id: "t1" } });
+  assert.ok(!full.page.names().includes("restoreRevise"));
 });
 
 test("prompt_restored: a full composer keeps its text", async () => {

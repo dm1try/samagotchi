@@ -71,6 +71,37 @@ main{flex:1;display:flex;flex-direction:column;gap:16px;padding:16px;overflow:au
 .answer-fold-label{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text-2);font-size:13px}
 .answer-fold-label:empty{display:none}
 .answer-fold-size{flex:none;white-space:nowrap;font-variant-numeric:tabular-nums}
+/* Revise stacks (revise_stack.js): a superseded version folds to its stub; the Revise row under a final answer
+   (zero height: its button sits on the bubble's bottom edge, clear of the copy button, shown on hover) and a stack
+   top's version chip. */
+.stack-hidden,.time-gap.stack-gap{display:none!important}
+.stack-stub{display:flex;align-items:baseline;gap:8px;align-self:stretch;max-width:100%;min-width:0;margin:0;padding:4px 10px;font:inherit;font-size:12px;line-height:1.4;color:var(--text-muted);text-align:left;cursor:pointer;user-select:none;background:transparent;border:1px dashed var(--border-strong);border-radius:8px;transition:background .12s ease}
+.stack-stub:hover{background:var(--bg-panel)}
+.stack-stub:focus-visible{outline:2px solid var(--accent-ring);outline-offset:1px}
+.stack-stub::before{content:"▸";color:var(--accent);flex:none}
+.stack-stub.open::before{content:"▾"}
+.stack-stub.open{border-style:solid;border-color:transparent;border-left:3px solid var(--border-strong);border-radius:6px}
+.stack-stub-text{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.stack-stub-gap{flex:none;margin-left:auto;color:var(--time-gap);white-space:nowrap;font-variant-numeric:tabular-nums}
+.revise-row{position:relative;height:0;margin-top:-12px;display:flex;justify-content:flex-end;align-items:center;gap:8px}
+.revise-row.stacked{height:auto;margin-top:-6px;justify-content:flex-start}
+.revise-btn{min-height:0;height:22px;padding:0 8px;border-radius:6px;font-size:11px;line-height:20px;background:var(--bg-raised);border:1px solid var(--border-strong);color:var(--text-muted);cursor:pointer;opacity:0;transition:opacity .12s ease,color .12s ease}
+.revise-row:not(.stacked) .revise-btn{position:absolute;right:14px;top:-10px;z-index:1;height:20px;line-height:18px}
+.revise-btn:hover:not(:disabled){color:var(--text-bright);filter:none}
+.revise-btn:disabled{cursor:default}
+.revise-btn.armed,.revise-btn.armed:hover:not(:disabled){opacity:1;color:var(--on-solid);background:var(--accent-strong);border-color:var(--accent-strong)}
+.bubble.output:hover+.revise-row .revise-btn,.revise-row:hover .revise-btn,.revise-row.stacked .revise-btn,.revise-btn:focus-visible{opacity:1}
+@media (hover:none){.revise-btn{opacity:.55}}
+.stack-versions{position:relative;font-size:12px;color:var(--text-muted)}
+.stack-versions>summary{list-style:none;cursor:pointer;padding:1px 8px;border-radius:999px;border:1px solid var(--accent-border);background:var(--accent-bg);color:var(--text-2);white-space:nowrap;font-variant-numeric:tabular-nums}
+.stack-versions>summary::-webkit-details-marker{display:none}
+.stack-versions>summary::after{content:"\00a0▾";color:var(--accent)}
+.stack-versions[open]>summary::after{content:"\00a0▴"}
+.stack-versions-list{position:absolute;z-index:5;top:calc(100% + 4px);left:0;display:flex;flex-direction:column;min-width:240px;max-width:min(520px,calc(100vw - 32px));padding:4px;border-radius:8px;border:1px solid var(--border-strong);background:var(--bg-raised);box-shadow:var(--toast-shadow)}
+.stack-version{display:block;min-height:0;padding:4px 8px;border:0;border-radius:6px;background:transparent;color:var(--text-2);font:inherit;font-size:12px;text-align:left;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer}
+.stack-version:hover:not(:disabled){background:var(--bg-hover);filter:none}
+.stack-version.current{color:var(--text-muted);cursor:default}
+.stack-version-n{font-weight:600;color:var(--accent);font-variant-numeric:tabular-nums}
 /* A gap divider (time_gaps.js): one centred dim line where a quiet stretch passed, never wrapped (a phone at 360 px keeps it on one line). Not a .bubble. */
 .time-gap{align-self:stretch;text-align:center;color:var(--time-gap);font-size:12px;line-height:1.4;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin:2px 0;user-select:none}
 .turn-timing{margin-top:8px;color:var(--text-muted);font-size:11px;font-variant-numeric:tabular-nums}
@@ -1654,6 +1685,7 @@ a{color:var(--accent)}
         </div>
         <div id="deliveryLine" class="composer-line" aria-live="off" hidden></div>
         <div class="compose-col">
+          <div id="reviseChip" hidden></div>
           <div id="chips" hidden></div>
           <textarea id="prompt" placeholder="Ask chi anything…" aria-controls="commandList" aria-autocomplete="list" aria-expanded="false"></textarea>
         </div>

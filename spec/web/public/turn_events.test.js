@@ -207,6 +207,14 @@ test("restoreAction never refills a prompt this page didn't send (a replay after
   assert.deepEqual(restoreAction(initial, opts), { refill: null, own: false, label: null });
 });
 
+test("restoreAction: a Revise turn's draft comes back with its refill only", () => {
+  const event = { type: "prompt_restored", prompt: "shorter", origin: { client_id: ME, enqueued_id: "e1" }, revises: { turn_id: "t1" } };
+  const sentIds = new Set(["e1"]);
+  assert.deepEqual(restoreAction(event, { myId: ME, sentIds, composerEmpty: true }),
+    { refill: "shorter", own: true, label: null, revises: { turn_id: "t1" } });
+  assert.deepEqual(restoreAction(event, { myId: ME, sentIds, composerEmpty: false }), { refill: null, own: true, label: null });
+});
+
 import { keepEarlyRestore, restoreOnAck, dropEarlyRestores, restoreInto, composerAfterAck } from "../../../lib/samagotchi/web/public/restore.js";
 import { appendQuote, quoteBlock } from "../../../lib/samagotchi/web/public/annotations.js";
 import { turnText } from "../../../lib/samagotchi/web/public/images.js";

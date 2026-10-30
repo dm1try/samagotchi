@@ -62,6 +62,31 @@ test("a prompt from the start page streams an answer and the turn ends", { tag: 
   expect(await page.evaluate(() => window.streamed.size)).toBeGreaterThan(1);
   await expect(answer(page)).toHaveClass(/markdown/);
   await expect(answer(page)).not.toHaveClass(/streaming/);
+  // Revise (revise_stack.js): the answer's Revise arms the composer's chip;
+  // the next message rewrites it, and once that turn completed (the server's
+  // stamp) the first version folds to a stub and the new answer has the
+  // version chip, live and after a reload.
+  await answer(page).hover();
+  await page.locator("#history .revise-btn").click();
+  await expect(page.locator("#reviseChip .revise-chip")).toContainText("Revising: PONG from the fake model.");
+  await send(page, "Shorter");
+  await expect(page.locator("#reviseChip")).toBeHidden();
+  await turnEnded(page, 2);
+  const stacked = async () => {
+    const stub = page.locator("#history .stack-stub");
+    await expect(stub).toHaveCount(1);
+    await expect(stub).toContainText(/^v1 · “PONG from the fake model\. .*” · 1 line — superseded by v2/);
+    await expect(page.locator("#history .bubble.output:visible")).toHaveCount(1);
+    await expect(page.locator("#history .bubble.user:visible")).toHaveText(["Shorter"]);
+    await expect(page.locator("#history .stack-versions > summary")).toHaveText("v2 · 1 earlier");
+  };
+  await stacked();
+  await page.reload();
+  await turnEnded(page, 2);
+  await stacked();
+  // Unfolded from its stub: the first version is back in place.
+  await page.locator("#history .stack-stub").click();
+  await expect(page.locator("#history .bubble.output:visible")).toHaveCount(2);
 });
 
 test("a multi-step turn shows its steps, tool rows and the markdown answer", { tag: "@turn" }, async ({ page, script }) => {
@@ -190,8 +215,8 @@ test("a reload mid-turn and after it keeps the retry row, the answered card and 
   expect(await rows("#history")).toEqual(expected);
   // In the turn's order: the steered line and the card after its steps
   // (the stage view's working set footprint right under them), before its
-  // answer and its one timing line.
-  const order = await page.locator("#history > *").evaluateAll((els) => els.map((e) =>
+  // answer and its one timing line (the answer's Revise row aside).
+  const order = await page.locator("#history > :not(.revise-row)").evaluateAll((els) => els.map((e) =>
     e.matches(".bubble.user.steered") ? "steered" : e.matches(".bubble.user") ? "user" : e.matches(".turn-work") ? "block"
       : e.matches(".bubble.question") ? "card" : e.matches(".bubble.output") ? "answer" : e.matches(".turn-timing") ? "timing" : e.className));
   const foot = view === "stage" ? ["ws-foot"] : [];

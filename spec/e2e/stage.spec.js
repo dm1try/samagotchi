@@ -295,8 +295,9 @@ test("a question card sits in the stage (also after a reload mid-turn), and the 
   expect(await shiftSum(page, { from: leaveAt })).toBeLessThan(0.01);
   expect(await snaps(page, { from: leaveAt })).toEqual([]);
   expect((await shiftSources(page, { from: submitAt })).filter((n) => TOP_BAR.test(n))).toEqual([]);
-  // Their classes without the arrival animation's (gone when it ends).
-  const kinds = await page.locator("#history > *").evaluateAll((els) => els.map((el) =>
+  // Their classes without the arrival animation's (gone when it ends), and
+  // without the answer's Revise row (revise_stack.js).
+  const kinds = await page.locator("#history > :not(.revise-row)").evaluateAll((els) => els.map((el) =>
     [...el.classList].filter((c) => c !== "ts-arrive").slice(0, 2).join(" ")));
   expect(kinds).toEqual(["bubble user", "turn-work done", "ws-foot", "bubble question", "bubble output", "turn-timing"]);
   // The asking step's text in the history keeps the ref (live, at the turn's end).
@@ -363,7 +364,7 @@ test("a long reply that asks gets the question room: read from its start, a pill
   expect(Math.abs((await card.boundingBox()).y - cardTop)).toBeLessThanOrEqual(2);
   await page.mouse.move(0, 0);
   await handedOff(page, 1);
-  const kinds = await page.locator("#history > *").evaluateAll((els) => els.map((el) =>
+  const kinds = await page.locator("#history > :not(.revise-row)").evaluateAll((els) => els.map((el) =>
     [...el.classList].filter((c) => c !== "ts-arrive").slice(0, 2).join(" ")));
   expect(kinds).toEqual(["bubble user", "turn-work done", "ws-foot", "bubble question", "bubble output", "turn-timing"]);
 });
