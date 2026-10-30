@@ -121,6 +121,9 @@ for (const sameEl of [true, false]) {
 test("a sheet's place: the window's width less 8 px edges, at its bottom, at most 60 % high (or the share asked)", () => {
   assert.deepEqual(sheetPlace({ innerWidth: 390, innerHeight: 844 }), { left: 8, bottom: 8, width: 374, maxHeight: 506 });
   assert.equal(sheetPlace({ innerWidth: 390, innerHeight: 670 }, { share: SHEET_TALL }).maxHeight, 570);
+  // A keyboard over the page: on the visual viewport, sized to it.
+  assert.deepEqual(sheetPlace({ innerWidth: 390, innerHeight: 844 }, { viewport: { height: 500, offsetTop: 0 } }),
+    { left: 8, bottom: 352, width: 374, maxHeight: 300 });
 });
 
 test("open(anchor) from another opener: summary gets the anchor; a click on an opener isn't outside; Esc and × give focus back", () => {
@@ -230,6 +233,31 @@ test("modal: aria-modal, Tab and Shift+Tab wrap inside, a Tab from outside goes 
   plain.ctl.pop.querySelector("[type=submit]").focus();
   assert.equal(tab(), false);
   plain.done();
+});
+
+test("an open one is placed again on a resize: a sheet follows the window (and a visual viewport a keyboard shortened)", () => {
+  const listeners = {};
+  const vvListeners = {};
+  const viewport = { height: 800, offsetTop: 0, addEventListener: (type, fn) => { vvListeners[type] = fn; } };
+  const win = { innerWidth: 390, innerHeight: 800, visualViewport: viewport, addEventListener: (type, fn) => { listeners[type] = fn; } };
+  const s = shell({ sheet: true, win });
+  s.chip.click();
+  assert.equal(s.ctl.pop.style.maxHeight, "480px");
+  win.innerHeight = 420;
+  viewport.height = 420;
+  listeners.resize();
+  assert.deepEqual([s.ctl.pop.style.maxHeight, s.ctl.pop.style.bottom], ["252px", "8px"]);
+  win.innerHeight = 800; // a keyboard over the page: the layout viewport stays, the visual one shrinks
+  viewport.height = 500;
+  vvListeners.resize();
+  assert.deepEqual([s.ctl.pop.style.maxHeight, s.ctl.pop.style.bottom], ["300px", "308px"]);
+  viewport.height = 800;
+  win.innerWidth = 900;
+  listeners.resize();
+  assert.equal(s.ctl.pop.classList.contains("sheet"), false);
+  s.ctl.close();
+  listeners.resize(); // closed: nothing to place
+  s.done();
 });
 
 // An act that redraws its own button away (the participants panel's Cap,

@@ -10,6 +10,8 @@ and commands may change between minor versions. How releases are made:
 ### Fixed
 
 - Web: the start page's ⚙ and 🧰 buttons say whether their panel is open (`aria-expanded`) to screen readers.
+- Web: an open sheet or popover is placed again when the window resizes (a rotation, a phone's keyboard): its header
+  no longer ends up above the screen, and a sheet turns back into a popover on a wide window.
 - Web: on a phone the ⚙ panel's sheet may take 85 % of the screen, so with "Apply and budget" open its closing note is
   no longer cut off at the bottom edge.
 - Web: the ⚙ and 🧰 panels keep the keyboard focus while open (Tab wraps inside, `aria-modal`), their override chips
