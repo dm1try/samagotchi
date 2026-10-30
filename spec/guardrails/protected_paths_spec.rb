@@ -13,7 +13,8 @@ RSpec.describe Samagotchi::Guardrails::ProtectedPaths do
                         config_path: File.join(config_dir, "config.yml"),
                         hooks_dir: File.join(config_dir, "hooks"),
                         context_dir: File.join(root, "state", "context"),
-                        home_path: File.join(config_dir, "home.json"))
+                        home_path: File.join(config_dir, "home.json"),
+                        shim_path: File.join(root, "state", "bin", "chi"))
   end
   let(:context) { Samagotchi::Guardrails::Context.new(cwd: root) }
 
@@ -123,6 +124,14 @@ RSpec.describe Samagotchi::Guardrails::ProtectedPaths do
     v = verdict_for(name: "write", path: "config/home.json", content: "{}")
     expect([v.decision, v.rule, v.scopes]).to eq([:ask, "chi-home", %w[once session]])
     expect(verdict_for(name: "edit", path: "config/home.json", content: "x").rule).to eq("chi-home")
+  end
+
+  # The chi shim is the `chi` every tool's chi runs (ChiShim).
+  it "asks (once or session only) for the chi shim, a protected rule" do
+    v = verdict_for(name: "write", path: "state/bin/chi", content: "#!/bin/sh")
+    expect([v.decision, v.rule, v.scopes]).to eq([:ask, "chi-shim", %w[once session]])
+    expect(Samagotchi::Guardrails::Verdict.protected_rule?("chi-shim")).to be(true)
+    expect(verdict_for(name: "write", path: "state/bin/other", content: "x").decision).not_to eq(:ask)
   end
 
   it "denies a memory_write that lands in .bundles" do

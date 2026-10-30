@@ -15,7 +15,8 @@ module Samagotchi
     #         command runs later, outside the gate; chi context writes
     #         it); nothing legitimate writes there through the file tools.
     #   ask (once / session): config.yml, home.json (the chi home: the
-    #         Ruby every chi launch boots) and the plain hooks dir. The
+    #         Ruby every chi launch boots), the chi shim (ChiShim: the
+    #         `chi` every tool runs) and the plain hooks dir. The
     #         system bundle's config protocol edits config.yml with
     #         write/edit, so this keeps the user in the loop without
     #         breaking it.
@@ -31,7 +32,8 @@ module Samagotchi
       # @param hooks_dir [String] the plain hooks dir
       # @param context_dir [String, nil] <state dir>/context (ContextSources.root)
       # @param home_path [String, nil] home.json (ChiHome.path)
-      def initialize(store_dir:, bundles_dir:, config_path:, hooks_dir:, context_dir: nil, home_path: nil)
+      # @param shim_path [String, nil] the chi shim (ChiShim.path)
+      def initialize(store_dir:, bundles_dir:, config_path:, hooks_dir:, context_dir: nil, home_path: nil, shim_path: nil)
         @deny = [
           ["guardrail-store", store_dir, "the approval store belongs to the user"],
           ["installed-bundles", bundles_dir, "installed bundles (hooks, rules, manifests) are changed by chi bundle install"],
@@ -40,6 +42,7 @@ module Samagotchi
         @ask = [
           ["chi-config", config_path, "changes chi's config.yml"],
           ["chi-home", home_path, "changes the Ruby every chi launch boots"],
+          ["chi-shim", shim_path, "changes the chi every tool's chi runs"],
           ["chi-hooks", hooks_dir, "changes chi's hooks"]
         ].select { |_, root, _| root }
       end

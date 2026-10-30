@@ -266,13 +266,15 @@ module Samagotchi
         require_relative "memory_bundle/provenance"
         require_relative "context_sources"
         require_relative "chi_home"
+        require_relative "chi_shim"
         Guardrails::ProtectedPaths.new(
           store_dir: File.dirname(@approvals.path),
           bundles_dir: MemoryBundle::Provenance.bundles_dir,
           config_path: Samagotchi::ConfigFile.global_path,
           hooks_dir: Hooks::Loader.hooks_dir,
           context_dir: ContextSources.root,
-          home_path: ChiHome.path
+          home_path: ChiHome.path,
+          shim_path: ChiShim.path
         )
       end
     end
