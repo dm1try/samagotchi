@@ -87,6 +87,7 @@ test("open: focus on the checked row; ↑/↓ move between rows; a pick closes t
   const l = list(t, { choice: "lean" });
   l.button.click();
   assert.equal(l.pop.hidden, false);
+  assert.equal(l.button.getAttribute("aria-expanded"), "true");
   assert.equal(l.pop.getAttribute("aria-label"), "Toolkit");
   assert.ok(document.activeElement === l.row("lean"));
   l.key("ArrowDown");
@@ -100,6 +101,7 @@ test("open: focus on the checked row; ↑/↓ move between rows; a pick closes t
   l.row(AUTO).click();
   assert.equal(l.state.choice, null);
   assert.equal(l.pop.hidden, true);
+  assert.equal(l.button.getAttribute("aria-expanded"), "false");
   assert.ok(document.activeElement === l.button);
   l.button.click();
   l.row("full").click();

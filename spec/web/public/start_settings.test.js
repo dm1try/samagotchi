@@ -167,8 +167,11 @@ test("a closed panel opens on the main view again; refuse opens the review view 
   const p = panel(t, { choice: { review: ["x.md"] } });
   p.ctl.open("review");
   assert.ok(p.pop.querySelector("textarea"));
+  assert.equal(p.button.getAttribute("aria-expanded"), "true");
   p.act("close");
+  assert.equal(p.button.getAttribute("aria-expanded"), "false");
   p.button.click();
+  assert.equal(p.button.getAttribute("aria-expanded"), "true");
   assert.equal(p.pop.querySelector("textarea"), null);
   p.ctl.refuse("x.md: no such file");
   assert.equal(p.pop.querySelector(".ctx-pop-error").textContent, "x.md: no such file");

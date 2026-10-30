@@ -7,6 +7,10 @@ and commands may change between minor versions. How releases are made:
 [docs/releasing.md](docs/releasing.md).
 ## [Unreleased]
 
+### Fixed
+
+- Web: the start page's ⚙ and 🧰 buttons say whether their panel is open (`aria-expanded`) to screen readers.
+
 ## [0.133.0] - 2026-10-30
 
 ### Added

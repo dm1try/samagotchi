@@ -162,6 +162,26 @@ test("a sheet popover is a bottom sheet in a narrow window, a popover at its chi
   s.done();
 });
 
+test("expands: the opener's aria-expanded follows the popover; another opener takes it over; off by default", () => {
+  const other = document.createElement("button");
+  other.className = "my-rail";
+  document.body.append(other);
+  const s = shell({ expands: true, openers: ".my-chip, .my-rail" });
+  s.chip.click();
+  assert.equal(s.chip.getAttribute("aria-expanded"), "true");
+  s.ctl.open(other);
+  assert.equal(s.chip.getAttribute("aria-expanded"), "false");
+  assert.equal(other.getAttribute("aria-expanded"), "true");
+  document.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Escape" }));
+  assert.equal(other.getAttribute("aria-expanded"), "false");
+  s.done();
+  other.remove();
+  const plain = shell();
+  plain.chip.click();
+  assert.equal(plain.chip.getAttribute("aria-expanded"), null);
+  plain.done();
+});
+
 // An act that redraws its own button away (the participants panel's Cap,
 // swapped for its field) is a click inside, not outside: it stays open.
 test("a click on a button the act redraws away doesn't close it", () => {
