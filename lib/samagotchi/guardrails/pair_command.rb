@@ -9,6 +9,10 @@ require_relative "shell_lex"
 
 module Samagotchi
   module Guardrails
+    # Read only by a pair turn's outside-write check: kept off the load
+    # path of everything that requires PairCommand (the testing kit's budget).
+    autoload :ImplicitWriters, File.expand_path("implicit_writers", __dir__)
+
     # One shell command of a participant's pair turn, read the way
     # PairBoundary needs it (the refusal words are PairBoundary's):
     # - #refusal: why it may not run, nil when it may: chi, something left
@@ -45,6 +49,11 @@ module Samagotchi
       INTERPRETERS = %w[python python3 python2 ruby irb node deno bun perl php lua osascript jshell].freeze
       # Options whose next word is code or a command, for any program.
       CODE_OPTIONS = %w[-c -e -exec --exec -execdir --command --eval -x].freeze
+      # A shell's or interpreter's options whose next word is a value, not
+      # its script (#stdin_script?).
+      RUNNER_VALUE_OPTIONS = %w[-o +o -O +O -W -X -I -r --require --import --loader -C].freeze
+      # A redirection of stdin (< file, 0<file), not a heredoc's <<.
+      STDIN_REDIRECT = /\A0?<(?!<)/
       # Programs that detach what they start, or run it later (cron, at).
       DETACHERS = %w[nohup setsid disown daemonize crontab at batch].freeze
       # Programs that print the environment or a keychain's secrets, whatever
@@ -654,8 +663,58 @@ module Samagotchi
           next walk.step(words) if words.is_a?(Symbol)
 
           walk.dirs.all? { |dir| dir && writable?(dir) } && words_inside?(words, walk) &&
-            scripts_inside?(words).tap { walk.step(words) }
+            !implicit_outside?(words, walk) && !stdin_script?(words) && scripts_inside?(words).tap { walk.step(words) }
         end
+      end
+
+      # A program that writes to its own place outside with no word naming
+      # it (ImplicitWriters: npm -g, gem install, brew, defaults write, …),
+      # python -m's module as the program.
+      def implicit_outside?(words, walk)
+        at = program_at(words) or return false
+        program = words[at]
+        args = words[(at + 1)..]
+        local = project_program?(walk, program)
+        if INTERPRETERS.include?(File.basename(program)) && (module_at = args.index("-m")) && args[module_at + 1]
+          program = args[module_at + 1]
+          args = args[(module_at + 2)..]
+        end
+        ImplicitWriters.outside?(program, args, local: local)
+      end
+
+      # Whether a program's word is a path into the project (.venv/bin/pip).
+      def project_program?(walk, word)
+        return false unless word.include?("/")
+
+        paths = walk.paths(word)
+        !paths.empty? && paths.all? { |path| Outside.inside?(path, root: @root) }
+      end
+
+      # Whether a shell or interpreter reads its script from stdin (a pipe,
+      # < file, -s, -, or no script at all): chi can't see what it runs, so
+      # it may write anywhere. A -c/-e script, a heredoc or here-string (read
+      # as scripts are: #scripts), a module (-m) or a script file it names
+      # is not stdin's.
+      def stdin_script?(words)
+        limit = program_at(words) || (words.size - 1)
+        at = (0..limit).find { |i| runner?(words[i]) } or return false
+        return false if File.basename(words[at]) == "eval"
+
+        rest = words[(at + 1)..]
+        return false if rest.any? { |word| word.start_with?("<<") }
+
+        skip = false
+        rest.each do |word|
+          next skip = false if skip
+          return true if word == "-" || word == "-s" || word.match?(STDIN_REDIRECT)
+          return false if (CODE_OPTIONS + %w[-m]).include?(word)
+          # a redirection's operator alone: its target is the next word
+          next skip = word.sub(ShellPaths::REDIRECT_PREFIX, "").empty? if word.match?(ShellPaths::REDIRECT_PREFIX)
+          next skip = RUNNER_VALUE_OPTIONS.include?(word) if word.start_with?("-", "+")
+
+          return false
+        end
+        true
       end
 
       # Whether every $(…) is a message's heredoc (its body cut as data).

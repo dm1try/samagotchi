@@ -42,6 +42,10 @@ and commands may change between minor versions. How releases are made:
   filter, diff or merge driver, a credential or gpg helper, askpass, a pager or sequence editor, what a remote runs,
   an include, by `git config`, `git -c` or `git --config-env`, in any case), nor write a submodule's hooks
   (`.git/modules/*/hooks`). Reading git's config (`git config --get`, `-l`) is no longer refused.
+- Pair turns: a command that writes outside the project with no word naming where now asks you like any other
+  outside write: global installs (`npm -g`, `pip install`, `gem install`, `brew`, `cargo`/`go install`, `pipx`,
+  `uv tool`), user config (`npm config set` writes `~/.npmrc`, `gh config set`), `defaults write`, `launchctl`; and
+  so does a shell or interpreter reading its script from stdin (`… | sh`, `curl … | bash`, `sh < run.sh`).
 
 ## [0.133.0] - 2026-10-30
 

@@ -517,7 +517,20 @@ rule lowers it), so it comes even in auto mode. A command fails closed
   (`~/oth*`), `git -C`'s folder and the paths in a script it hands on (`sh -c`
   read as a command, `python -c`/`ruby -e`/a heredoc by the paths in its text)
   among them. The program's own word doesn't count (`/usr/bin/sed`), nor does
-  `PATH=…`, nor a message's heredoc (`git commit -m "$(cat <<'EOF' … EOF)"`).
+  `PATH=…`, nor a message's heredoc (`git commit -m "$(cat <<'EOF' … EOF)"`);
+  and it runs no program that writes to its own place outside with no word
+  naming it (`Guardrails::ImplicitWriters`: `npm`/`pnpm`/`bun` `-g` and
+  `npm config set`/`login` (`~/.npmrc`), `yarn global`, `pip install`/`pip
+  config` (with or without `--user`: its site-packages is wherever its Python
+  is; a project venv's `.venv/bin/pip` and `-t`/`--target`/`--prefix` don't
+  count), `gem install`, `brew` but its reading verbs, `defaults write`,
+  `cargo install`, `go install`/`go env -w`, `pipx`, `uv tool`/`uv python
+  install`, `gh auth`/`config set`/`extension install`, `launchctl` but its
+  reading verbs; a project install such as `npm install` or `bundle install`
+  and build caches don't count), and no shell or interpreter that reads its
+  script from stdin (`… | sh`, `curl … | bash`, `sh < run.sh`, `bash -s`,
+  `python3 -`): chi can't see that script. A script file it names
+  (`sh run.sh`, `ruby x.rb`) is not read.
 
 Anything else asks: `rm -rf ~/x`, `sed -i … ~/x`, `curl -o ~/x`, `dd of=~/x`,
 `touch`/`mkdir` outside, `perl -pi … ~/x`, `cd .. && make`, `cd && make`, and
