@@ -12,6 +12,9 @@ RSpec.describe Samagotchi::Guardrails::ReviewBoundary do
   let(:state) { File.join(home, ".local", "state", "samagotchi") }
   let(:config) { File.join(home, ".config", "samagotchi") }
   let(:author) { "p:p_0123abcd" }
+  # One GitInfo per example, as the wiring keeps one per turn: a new one per
+  # check would run `git rev-parse` again for every verdict.
+  let(:git) { Samagotchi::Guardrails::GitInfo.new }
 
   before do
     FileUtils.mkdir_p([File.join(project, "docs"), File.join(project, ".git"), File.join(home, ".ssh"), state, config])
@@ -27,7 +30,7 @@ RSpec.describe Samagotchi::Guardrails::ReviewBoundary do
   end
 
   def verdict_for(call, **opts)
-    context = Samagotchi::Guardrails::Context.new(cwd: project)
+    context = Samagotchi::Guardrails::Context.new(cwd: project, git: git)
     verdict = Samagotchi::Guardrails::Verdict.new(call: call)
     verdict.context = context
     verdict.targets = Samagotchi::Guardrails::Targets.for(call, context)
@@ -87,7 +90,7 @@ RSpec.describe Samagotchi::Guardrails::ReviewBoundary do
     FileUtils.mkdir_p(inside)
     checker = described_class.new(author: -> { author }, root: -> { project }, denied_dirs: -> { [inside] }, home: -> { home })
     verdict = Samagotchi::Guardrails::Verdict.new(call: { name: "read", content: File.join(inside, "web-token") })
-    verdict.targets = Samagotchi::Guardrails::Targets.for(verdict.call, Samagotchi::Guardrails::Context.new(cwd: project))
+    verdict.targets = Samagotchi::Guardrails::Targets.for(verdict.call, Samagotchi::Guardrails::Context.new(cwd: project, git: git))
     expect(checker.check(verdict).reason).to eq(described_class::SECRET)
   end
 
@@ -133,7 +136,7 @@ RSpec.describe Samagotchi::Guardrails::ReviewBoundary do
       expect(wiring.checks.index(wiring.review_boundary)).to eq(1)
       wiring.begin_turn({ client_id: "review:p_0123abcd", author: author })
       verdict = Samagotchi::Guardrails::Verdict.new(call: { name: "write", path: "docs/plan.md", content: "x" })
-      verdict.targets = Samagotchi::Guardrails::Targets.for(verdict.call, Samagotchi::Guardrails::Context.new(cwd: project))
+      verdict.targets = Samagotchi::Guardrails::Targets.for(verdict.call, Samagotchi::Guardrails::Context.new(cwd: project, git: git))
       expect(wiring.review_boundary.check(verdict)).to be_deny
       wiring.begin_turn({ client_id: "web:tab" })
       verdict = Samagotchi::Guardrails::Verdict.new(call: { name: "write", path: "docs/plan.md", content: "x" })

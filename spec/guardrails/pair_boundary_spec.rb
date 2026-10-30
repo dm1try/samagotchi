@@ -17,6 +17,9 @@ RSpec.describe Samagotchi::Guardrails::PairBoundary do
   let(:config) { File.join(home, ".config", "samagotchi") }
   let(:grants) { File.join(state, "web-grants", "grants.json") }
   let(:author) { "p:p_0123abcd" }
+  # One GitInfo per example, as the wiring keeps one per turn: a new one per
+  # check would run `git rev-parse` again for every verdict.
+  let(:git) { Samagotchi::Guardrails::GitInfo.new }
   # The spec's own dirs are all under Dir.tmpdir, which therefore is no tmp
   # dir for this project (Outside.tmp_write?): +tmp+ is one that is.
   let(:tmp) { Samagotchi::Guardrails::Outside.tmp_roots.find { |dir| !base.start_with?(File.join(dir, "")) } }
@@ -41,7 +44,7 @@ RSpec.describe Samagotchi::Guardrails::PairBoundary do
   end
 
   def verdict_for(call, **opts)
-    context = Samagotchi::Guardrails::Context.new(cwd: project)
+    context = Samagotchi::Guardrails::Context.new(cwd: project, git: git)
     verdict = Samagotchi::Guardrails::Verdict.new(call: call)
     verdict.context = context
     verdict.targets = Samagotchi::Guardrails::Targets.for(call, context)
@@ -89,7 +92,7 @@ RSpec.describe Samagotchi::Guardrails::PairBoundary do
     [home, File.dirname(home)].each do |root|
       at_home = described_class.new(author: -> { author }, root: -> { root }, denied_dirs: -> { [state, config] },
                                     home: -> { home })
-      context = Samagotchi::Guardrails::Context.new(cwd: home)
+      context = Samagotchi::Guardrails::Context.new(cwd: home, git: git)
       [{ name: "write", path: File.join(home, ".vimrc"), content: "x" },
        { name: "execute", content: "echo x > ~/.tmux.conf" }].each do |call|
         verdict = Samagotchi::Guardrails::Verdict.new(call: call)
