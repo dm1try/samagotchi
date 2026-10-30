@@ -353,6 +353,20 @@ test("command_ran: /llm-context and /thinking refresh their chips", async () => 
   assert.deepEqual(page.current.thinking, { level: "low" });
   assert.ok(page.names().includes("llmContextControl.refresh"));
   assert.ok(page.names().includes("thinkingControl.refresh"));
+  // One patch: the bar redraws once, after the chips' popovers (the store's ORDER).
+  assert.deepEqual(page.names().filter((n) => n !== "addCommandBubble" && n !== "commandBubble"),
+                   ["llmContextControl.refresh", "thinkingControl.refresh", "updateInfoBar"]);
+});
+
+test("an unchanged value redraws nothing: a chunk with the same %, a /toolkit already set", async () => {
+  const { page, handlers } = fakePage();
+  const usage = { counts: { total_tokens: 120, context_window_tokens: 1000 } };
+  handlers.generation_chunk({ text: "a", thinking: "", ...usage });
+  handlers.generation_chunk({ text: "b", thinking: "", ...usage });
+  assert.equal(page.names().filter((n) => n === "updateInfoBar").length, 1);
+  handlers.hook_notice({ toolkit: "lean", line: "x" });
+  handlers.hook_notice({ toolkit: "lean", line: "y" });
+  assert.equal(page.names().filter((n) => n === "updateInfoBar").length, 2);
 });
 
 test("command_ran: /reasoning-history refreshes its chip, and a null (a native host after /model) hides it", async () => {
