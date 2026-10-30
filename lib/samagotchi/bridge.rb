@@ -1108,6 +1108,10 @@ module Samagotchi
         pending_limit = fetched(parsed, "pending_limit")
         pending_limit = nil unless pending_limit.is_a?(Integer) && pending_limit.positive?
       end
+      # A Verify or Revise turn is a turn of its own too (the worker holds
+      # it for the turn's end, SessionInbox.turn_end_data?): never a cut,
+      # and the ack and :turn_enqueued say it queues behind a running turn.
+      delivery = Delivery::QUEUE unless anchors.empty?
 
       # A session command sent as a message (chi send -m "/model x", chi -p,
       # a UI whose command list lags) runs as the command, as typed in a

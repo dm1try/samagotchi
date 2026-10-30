@@ -141,6 +141,18 @@ test("an armed Revise: POST /turn carries revises {turn_id} only, it lets go at 
   assert.equal(checked.bubbles[0].el.dataset.verify, "1");
 });
 
+test("a Revise or a Verify into a running turn: its echo says it queues (the worker holds it for the turn's end)", async () => {
+  const revise = harness({ running: true, revise: { turn_id: "t-v1", label: "x" } });
+  await revise.send();
+  assert.equal(revise.bubbles[0].opts.delivery, "queue");
+  const verify = harness({ running: true, verify: { turn_id: "t-src", quote: "q" } });
+  await verify.send();
+  assert.equal(verify.bubbles[0].opts.delivery, "queue");
+  const plain = harness({ running: true });
+  await plain.send();
+  assert.equal(plain.bubbles[0].opts.delivery, "next_step");
+});
+
 test("a refused Revise (409 revise_unavailable): its words in the history, the text and the chip kept", async () => {
   const detail = "this session's worker predates Revise turns; restart this session to use Revise";
   const h = harness({ revise: { turn_id: "t-v1", label: "x" },

@@ -1491,6 +1491,22 @@ RSpec.describe Samagotchi::Bridge do
           expect(snapshot["queued"]).to contain_exactly(include("prompt" => "later", "delivery" => "queue"))
         end
 
+        it "is what a Verify or Revise turn gets whatever it asked: never a cut, and queue while a turn runs" do
+          start_bridge
+          running_turn!
+          announced = []
+          @engine.subscribe(observer: ->(event) { announced << event if event[:type] == :turn_enqueued })
+          allow(@engine).to receive(:cut_for_steer).and_return(:now)
+          revises = { turn_id: "123e4567-e89b-12d3-a456-426614174000" }
+
+          _, resp = post_turn(JSON.generate(session_id: @session.id, prompt: "shorter", delivery: "cut", revises: revises))
+
+          expect(resp).to include("delivery" => "queue")
+          expect(resp).not_to have_key("cut")
+          expect(@engine).not_to have_received(:cut_for_steer)
+          expect(announced.last).to include(delivery: "queue", prompt: "shorter")
+        end
+
         it "acks next_step to an idle worker (the file runs as the next turn), with no delivery on turn_enqueued" do
           start_bridge
           announced = []
