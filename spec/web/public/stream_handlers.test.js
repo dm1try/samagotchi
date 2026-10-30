@@ -136,6 +136,20 @@ test("turn_completed with revises stamps its prompt (data-revises; the running t
   assert.equal(other.dataset.revises, undefined);
 });
 
+test("turn_completed of a Verify turn marks its prompt (data-verify), by the event's turn_id, verdict or not", async () => {
+  const { deps, liveTurn } = fakePage({ running: true });
+  liveTurn.timing.turnId = "stale";
+  const mine = document.createElement("div");
+  mine.dataset.turnId = "t2";
+  const other = document.createElement("div");
+  other.dataset.turnId = "stale";
+  deps.findInTurnRoots = () => [other, mine];
+  await createStreamHandlers(deps).turn_completed({ type: "turn_completed", turn_id: "t2", verify: true });
+  assert.equal(mine.dataset.verify, "1");
+  assert.equal(other.dataset.verify, undefined);
+  assert.equal(mine.dataset.revises, undefined);
+});
+
 test("verdict_recorded places a Verify fresh child's verdict on its card", () => {
   const { handlers, page } = fakePage();
   const verdict = { verdict: "confirmed", fresh: true, of: "check", check_turn_id: "fresh-check" };

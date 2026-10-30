@@ -313,8 +313,13 @@ RSpec.describe Samagotchi::Engine do
       engine = build_engine(profile: "gemma4")
       verify = Samagotchi::VerifyAnchor.new(turn_id: "123e4567-e89b-12d3-a456-426614174000", quote: "the claim")
 
-      engine.run_turn(session, "hi", id: turn_id, verify: verify)
+      ended = nil
+      engine.run_turn(session, "hi", id: turn_id, verify: verify,
+                                     on_event: ->(e) { ended = e if e[:type] == :turn_completed })
       earlier, opening = session.messages.select { |message| message[:role] == "user" }
+
+      # The end event says so too (a live page's data-verify), as it names the turn.
+      expect(ended).to include(turn_id: turn_id, verify: true)
 
       expect(earlier).not_to have_key(:verify)
       expect(opening[:verify]).to eq(verify.to_h)
@@ -493,10 +498,13 @@ RSpec.describe Samagotchi::Engine do
       expect(Samagotchi::Log).to receive(:warn).with(:turn, "verify_anchor_rejected",
                                                      turn_id: verify.turn_id, reason: :turn_missing)
 
-      engine.run_turn(session, "check", id: check_turn_id, verify: verify)
+      ended = nil
+      engine.run_turn(session, "check", id: check_turn_id, verify: verify,
+                                        on_event: ->(e) { ended = e if e[:type] == :turn_completed })
 
       expect(session.verdicts).to be_empty
       expect(session.messages.find { |message| message[:turn_id] == check_turn_id }).not_to have_key(:verify)
+      expect(ended).not_to have_key(:verify)
     end
 
     it "does not stamp or record a verdict when the quote is absent with case-sensitive matching" do

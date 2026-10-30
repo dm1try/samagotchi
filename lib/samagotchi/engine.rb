@@ -1628,12 +1628,15 @@ module Samagotchi
     # after it). The disk writes come after the step: every emitter waits
     # for the event lock. +exhausted:+ the turn ran out of iterations
     # (its limit goes in last_turn). The end event names its turn
-    # (`turn_id:`, as :turn_started does).
+    # (`turn_id:`, as :turn_started does) and, for a Verify turn,
+    # `verify: true` (its opening's stamp: a page watching it live offers
+    # no Revise on its answer, verdict or not, as a reload does).
     def end_turn(turn, outcome, save: false, exhausted: false)
       seconds = turn.elapsed
       synchronize_events do
         kept, event = yield(seconds)
         event[:turn_id] = turn.id
+        event[:verify] = true if turn.verify
         revises = stamp_opening(kept, turn, outcome)
         replace_session_messages(turn.session, kept) if kept
         verdict = record_verdict(turn, outcome)
