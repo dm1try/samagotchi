@@ -333,6 +333,27 @@ RSpec.describe Samagotchi::Guardrails::PairBoundary do
       expect(refused("sh -c 'printenv'")).to eq(described_class::ENVIRONMENT)
     end
 
+    # sh -c -- S and bash -c -x S run S; so do an interpreter's clusters
+    # holding its code letter (ruby -we, perl -le, node -pe, python3 -Ic).
+    it "reads the script after a shell's -c and its options, and an interpreter's code in a cluster" do
+      ["sh -c -- 'chi x'", "bash -c -x 'chi x'", "bash -o pipefail -c 'chi x'", "bash -ce 'chi x'",
+       "ruby -we 'system(\"chi x\")'", "perl -le 'system(\"chi x\")'", "perl -l0e 'system(\"chi x\")'",
+       "node -pe 'require(\"child_process\").execSync(\"chi x\")'",
+       "node --eval='require(\"child_process\").execSync(\"chi x\")'",
+       "python3 -Ic \"import os; os.system('chi x')\"", "python3 -c'import os; os.system(\"chi x\")'"].each do |command|
+        expect(refused(command)).to eq(described_class::CHI), command
+      end
+      expect(refused("sh -c -- 'git config core.fsmonitor id'")).to eq(described_class::GIT_CONFIG)
+      expect(refused("bash -c -x 'nohup sleep 9'")).to eq(described_class::BACKGROUND)
+      expect(refused("python3 -Ic 'import os; print(os.environ)'")).to eq(described_class::ENVIRONMENT)
+      ["sh -c -- 'touch ~/other/x'", "bash -c -x 'touch ~/other/x'",
+       "python3 -Ic \"open('#{home}/other/x', 'w')\""].each do |command|
+        verdict = execute(command)
+        expect([verdict.ask?, verdict.reason]).to eq([true, described_class::OUTSIDE_WRITE]), command
+      end
+      ["bash -c -x 'ls docs'", "ruby -we 'puts 1'"].each { |command| expect(execute(command)).to be_allow, command }
+    end
+
     it "denies the environment listers, and leaves their setting forms" do
       ["set", "export", "export -p", "declare -x", "typeset", "launchctl getenv HOME", "ps eww", "ps auxe"].each do |command|
         expect(refused(command)).to eq(described_class::ENVIRONMENT), command

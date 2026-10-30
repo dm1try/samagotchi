@@ -57,6 +57,15 @@ module Samagotchi
                      "node" => %w[-e -p --eval --print], "bun" => %w[-e -p --eval --print], "perl" => %w[-e -E],
                      "php" => %w[-r], "lua" => %w[-e], "osascript" => %w[-e], "Rscript" => %w[-e],
                      "tclsh" => [], "wish" => [], "deno" => [], "jshell" => [] }.freeze
+      # How an interpreter's short-option cluster reads (ruby -we, perl -le,
+      # python3 -Ic), by its name's start: the letters whose value is the
+      # rest of the word (ruby -rset: no code), and those that take digits
+      # (perl -l0e). Any other letter is a flag; the code letter's code is
+      # the rest of the word, or the next word (.cluster_code_at).
+      CLUSTER_VALUES = { "python" => %w[mWX], "pypy" => %w[mWX], "ruby" => %w[CEFiIrx 0W],
+                         "perl" => %w[CdDFiImMx 0l], "node" => %w[r], "bun" => %w[r], "lua" => %w[l] }.freeze
+      # A shell's options whose next word is their value, not its script.
+      SHELL_VALUE_OPTIONS = %w[-o +o -O +O].freeze
       # Options whose next word is code or a command, for any program.
       CODE_OPTIONS = %w[-c -e -exec --exec -execdir --command --eval -x].freeze
       # A shell's or interpreter's options whose next word is a value, not
@@ -286,11 +295,87 @@ module Samagotchi
         CODE_FLAGS.find { |start, _| name.start_with?(start) }&.last || %w[-c -e]
       end
 
-      # Whether +word+ is +name+'s code option: one of .code_flags, or a
-      # shell's flag cluster ending in c (-ec, -xc).
+      # Whether +word+ is +name+'s code option: one of .code_flags, a long
+      # one with its code after = (node --eval=…), or a short-option
+      # cluster holding its code letter (.cluster_code_at: sh -ec, bash -cx,
+      # ruby -we, perl -le, node -pe, python3 -Ic).
       def self.code_flag?(name, word)
-        code_flags(name).include?(word) || (SHELLS.include?(name) && word.match?(/\A-[a-zA-Z]*c\z/))
+        flags = code_flags(name)
+        flags.include?(word) || !long_code(name, word).nil? || !cluster_code_at(name, word).nil?
       end
+
+      # The code a long code option carries after = (--eval=…), nil for
+      # another word.
+      def self.long_code(name, word)
+        flag = code_flags(name).find { |option| option.start_with?("--") && word.start_with?("#{option}=") }
+        flag && word.delete_prefix("#{flag}=")
+      end
+
+      # Where +word+, a short-option cluster, holds +name+'s code letter
+      # (a shell's c, python's c, ruby's e, node's e and p…): its index, the
+      # letters before it read as CLUSTER_VALUES says; nil when it holds
+      # none, or a letter before it takes the rest as its value.
+      def self.cluster_code_at(name, word)
+        return nil unless word.match?(/\A-[A-Za-z0-9]/)
+
+        letters = code_flags(name).filter_map { |flag| flag[1] if flag.match?(/\A-[A-Za-z]\z/) }.join
+        return nil if letters.empty?
+
+        rest, digits = SHELLS.include?(name) ? ["", ""] : cluster_values(name)
+        i = 1
+        while i < word.size
+          char = word[i]
+          return i if letters.include?(char)
+          return nil if rest.include?(char)
+
+          i += 1
+          if digits.include?(char) then i += 1 while word[i]&.match?(/\d/)
+          elsif !char.match?(/[A-Za-z]/) then return nil
+          end
+        end
+        nil
+      end
+
+      def self.cluster_values(name)
+        values = CLUSTER_VALUES.find { |start, _| name.start_with?(start) }&.last || []
+        [values[0].to_s, values[1].to_s]
+      end
+      private_class_method :cluster_values
+
+      # The scripts +name+ (a shell or an interpreter, not eval) is handed
+      # in +rest+, the words after it: a shell's is the first word that
+      # isn't an option after its -c cluster (sh -c -- S, bash -c -x S, its
+      # -o's value skipped); an interpreter's is each code option's (one of
+      # .code_flags, a long one's after =, a cluster's rest and the next
+      # word: both are read when the rest isn't empty).
+      def self.code_scripts(name, rest)
+        return shell_scripts(rest) if SHELLS.include?(name)
+
+        found = []
+        rest.each_with_index do |word, i|
+          next unless code_flag?(name, word)
+
+          if (code = long_code(name, word)) then found << code
+          elsif (at = cluster_code_at(name, word)) && at + 1 < word.size then found << word[(at + 1)..]
+          end
+          found << rest[i + 1] if rest[i + 1] && long_code(name, word).nil?
+        end
+        found
+      end
+
+      def self.shell_scripts(rest)
+        start = rest.index { |word| cluster_code_at("sh", word) } or return []
+        i = start + 1
+        while i < rest.size
+          word = rest[i]
+          return rest[i + 1] ? [rest[i + 1]] : [] if word == "--"
+          return [word] unless word.start_with?("-", "+")
+
+          i += SHELL_VALUE_OPTIONS.include?(word) ? 2 : 1
+        end
+        []
+      end
+      private_class_method :shell_scripts
 
       # Where a simple command's shell or interpreter (.runner?) gets its
       # script: nil without one; :inline for its code option's script
@@ -560,13 +645,13 @@ module Samagotchi
       def scripts(words, at)
         name = File.basename(words[at])
         found = []
-        found << words[(at + 1)..].join(" ") if File.basename(words[at]) == "eval"
+        found << words[(at + 1)..].join(" ") if name == "eval"
         words.each_with_index do |word, i|
           next if i.zero? || word == ShellLex::HEREDOC
 
-          previous = words[i - 1]
-          found << word if previous.start_with?("<<") || (i > at && PairCommand.code_flag?(name, previous))
+          found << word if words[i - 1].start_with?("<<")
         end
+        found.concat(PairCommand.code_scripts(name, words[(at + 1)..])) unless name == "eval"
         found
       end
 

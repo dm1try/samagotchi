@@ -550,9 +550,13 @@ rule lowers it), so it comes even in auto mode. A command fails closed
   on the receiving end of a pipe whatever its options (`… | sh`, `| bash -x`,
   `| sh -e`, `| python3 -c 'exec(input())'`), `< file`, `bash -s`, `python3 -`,
   or with no script at all: chi can't see that script. A shell's `-e`, `-x`
-  and `-o …` are flags, only `-c` (or a cluster ending in it, `-ec`) hands it
-  a script; an interpreter's own code flag does (`python -c`, `ruby -e`,
-  `node -e`/`-p`, `perl -e`/`-E`, `php -r`). A script file it names (`sh
+  and `-o …` are flags, only `-c` (or a cluster holding it, `-ec`, `-cx`)
+  hands it a script: the first word after its options (`sh -c -- S`, `bash -c
+  -x S`); an interpreter's own code flag does (`python -c`, `ruby -e`,
+  `node -e`/`-p`/`--eval=`, `perl -e`/`-E`, `php -r`), alone or in a cluster
+  (`ruby -we`, `perl -le`, `node -pe`, `python3 -Ic`, `python3 -c'…'`;
+  `PairCommand.cluster_code_at`: a letter that takes the rest of the word,
+  `ruby -rset`, holds no code). A script file it names (`sh
   run.sh`, `ruby x.rb`) is not read.
 
   Accepted gaps (an accident guard for a trusted team): a script file the turn
