@@ -76,7 +76,10 @@ Engine#run_turn(session, prompt, on_event:, max_iterations:, cancel_controller:,
   │     #   messages, goes IDLE, records last_turn (enqueued_id: the turn's input, from its origin;
   │     #   a continue turn's origin carries its offer turn's, ContinueOffer#run_continue_turn),
   │     #   and :turn_completed {result, turn_summary, display_pending} or :turn_canceled
-  │     #   {cancellation_reason, cancelled_by, duration_ms} is emitted
+  │     #   {cancellation_reason, cancelled_by, duration_ms} is emitted; before the replace,
+  │     #   stamp_opening puts a Verify turn's `verify` and a completed Revise turn's `revises`
+  │     #   (re-targeted to its stack's top) on the opening message, metadata never sent, and
+  │     #   :turn_completed carries `verdict` / `revises` when there are
   │     # then the :after_turn hook (status, messages, present: the AnswerDisplay presenter,
   │     #   refs: the AnswerRefs adder)
   │     # store_answer_display (one replace of the answer: `display` and/or `display_refs`;
@@ -545,7 +548,7 @@ Turn events (the main ones; `Events` in `events.rb` keeps the shared sets):
 | `:working_set_updated` | after `:generation_started` (the running turn's conversation, the turn's strategy) and once in `end_turn` before the end event (the kept messages), only when the set differs from the last one emitted for the session and is not empty, except one empty event when the last one had items (a rollback emptied the set): a tool-free turn emits none (`Engine#emit_working_set`); between turns `Engine#announce_working_set` announces it under the next turn's strategy (after a `/working-set` op, held behind the command's `command_ran`) | `{items: [{kind, key, state (live\|stale\|forgotten\|dropped), tokens, ops, count, first_id, pinned, has_drop}], at, adds?: [{kind, key, label}]}` (`WorkingSet`, internals/working-set.md; `adds` while the user's adds are pending) |
 | `:hook_notice` | a hook's or plugin's notify during a turn | `{hook, text, level}` (announced with `between_turns: true` outside a turn) |
 | `:guardrail_warning` | a guardrails line during a turn | `{message}` |
-| `:turn_completed` | normal end | Engine event `{result, turn_summary, display_pending}`; the Bridge's SSE frame omits `result` (answer remains in `turn_summary.output`) |
+| `:turn_completed` | normal end | Engine event `{result, turn_summary, display_pending}`, plus `verdict` (a Verify turn's recorded verdict) and `revises` (a Revise turn's stamp, `{turn_id}`) when there are; the Bridge's SSE frame omits `result` (answer remains in `turn_summary.output`) |
 | `:turn_canceled` | Stop, hook stop, Ctrl-C | `{cancellation_reason, cancelled_by?, duration_ms}` |
 | `:turn_failed` | an error | `{error_class, message, duration_ms, error_kind?, retryable?, host?, summary?}` |
 | `:answer_display` | after the after_turn hooks (observers only, not the sink) | `{display, refs?}` (display a string, or nil; refs the count of the answer's refs, only when a hook attached some) |

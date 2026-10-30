@@ -323,6 +323,84 @@ RSpec.describe Samagotchi::Engine do
       end
     end
 
+    describe "a Revise turn's stamp" do
+      let(:v1) { "123e4567-e89b-12d3-a456-426614174010" }
+      let(:v2) { "123e4567-e89b-12d3-a456-426614174011" }
+      let(:v3) { "123e4567-e89b-12d3-a456-426614174012" }
+      let(:history) { [{ role: "user", content: "write the ticket", turn_id: v1 }, { role: "model", content: "PROJ-1: a long draft" }] }
+
+      def run_revise(engine, session, revises:, answer: "PROJ-1: shorter", events: [])
+        conversation = session.messages + [{ role: "user", content: "shorter", turn_id: v3 }, { role: "model", content: answer }]
+        allow(kernel).to receive(:run).and_return(
+          Samagotchi::LLM::ModelResult.new(text: answer, conversation: conversation, exhausted: false,
+                                           pending_tool_calls: false, tool_activity: [])
+        )
+        engine.run_turn(session, "shorter", id: v3, revises: Samagotchi::ReviseAnchor.new(turn_id: revises),
+                                            on_event: proc { |event| events << event })
+      end
+
+      def opening(session, turn_id) = session.messages.find { |message| message[:turn_id] == turn_id }
+
+      it "is stamped on the opening prompt of a completed turn with an answer, and carried by :turn_completed" do
+        session = make_session
+        session.messages = history.dup
+        events = []
+
+        run_revise(build_engine(profile: "gemma4"), session, revises: v1, events: events)
+
+        expect(opening(session, v3)[:revises]).to eq(turn_id: v1)
+        expect(opening(session, v1)).not_to have_key(:revises)
+        expect(events.find { |event| event[:type] == :turn_completed }[:revises]).to eq(turn_id: v1)
+      end
+
+      it "is not stamped on a turn that ended with no answer" do
+        session = make_session
+        session.messages = history.dup
+        events = []
+
+        run_revise(build_engine(profile: "gemma4"), session, revises: v1, answer: "", events: events)
+
+        expect(opening(session, v3)).not_to have_key(:revises)
+        expect(events.find { |event| event[:type] == :turn_completed }).not_to have_key(:revises)
+      end
+
+      it "is not stamped on a failed turn" do
+        session = make_session
+        session.messages = history.dup
+        allow(kernel).to receive(:run).and_raise(IOError, "boom")
+
+        expect do
+          build_engine(profile: "gemma4").run_turn(session, "shorter", id: v3,
+                                                                       revises: Samagotchi::ReviseAnchor.new(turn_id: v1))
+        end.to raise_error(IOError)
+
+        expect(session.messages.select { |message| message.key?(:revises) }).to be_empty
+      end
+
+      it "re-targets a draft a stamped turn already revised to its stack's top" do
+        session = make_session
+        session.messages = history + [{ role: "user", content: "cut it", turn_id: v2, revises: { turn_id: v1 } },
+                                      { role: "model", content: "PROJ-1: cut" }]
+        events = []
+
+        run_revise(build_engine(profile: "gemma4"), session, revises: v1, events: events)
+
+        expect(opening(session, v3)[:revises]).to eq(turn_id: v2)
+        expect(events.find { |event| event[:type] == :turn_completed }[:revises]).to eq(turn_id: v2)
+      end
+
+      it "is not stamped when no prompt carries the draft's turn (a stale page, a rolled-back turn)" do
+        session = make_session
+        session.messages = history.dup
+        gone = "123e4567-e89b-12d3-a456-426614174099"
+        expect(Samagotchi::Log).to receive(:warn).with(:turn, "revise_anchor_rejected", turn_id: gone, reason: :turn_missing)
+
+        run_revise(build_engine(profile: "gemma4"), session, revises: gone)
+
+        expect(opening(session, v3)).not_to have_key(:revises)
+      end
+    end
+
     it "records a verdict only for a completed verify turn" do
       session = make_session
       seed_verify_source(session, "123e4567-e89b-12d3-a456-426614174000", answer: "## **the   [claim](https://example.test/claim)**")

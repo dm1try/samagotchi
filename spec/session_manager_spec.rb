@@ -2261,20 +2261,40 @@ RSpec.describe Samagotchi::SessionManager do
     it "carries a verified claim anchor through the Bridge and input-file fallback" do
       own("worker")
       verify = Samagotchi::VerifyAnchor.new(turn_id: "123e4567-e89b-12d3-a456-426614174000", quote: "the claim")
+      anchors = Samagotchi::TurnAnchors.new(verify: verify)
       bridge = instance_double(Samagotchi::BridgeClient, features: Samagotchi::Bridge::FEATURES)
-      allow(bridge).to receive(:post_turn).with(prompt: "check", client_id: "web:1", verify: verify).and_return(
+      allow(bridge).to receive(:post_turn).with(prompt: "check", client_id: "web:1", anchors: anchors).and_return(
         Samagotchi::BridgeClient::Response.new(status: 202, body: '{"status":"accepted"}')
       )
 
-      expect(described_class.deliver_turn(session.id, prompt: "check", client_id: "web:1", verify: verify,
+      expect(described_class.deliver_turn(session.id, prompt: "check", client_id: "web:1", anchors: anchors,
                                                        state_dir: tmpdir, bridge: -> { bridge }).status)
         .to eq(:accepted)
 
       allow(bridge).to receive(:post_turn).and_raise(Errno::ECONNREFUSED)
-      described_class.deliver_turn(session.id, prompt: "check", client_id: "web:1", verify: verify,
+      described_class.deliver_turn(session.id, prompt: "check", client_id: "web:1", anchors: anchors,
                                             state_dir: tmpdir, bridge: -> { bridge })
       expect(JSON.parse(File.read(input_files.fetch(0)))["verify"])
         .to eq("turn_id" => verify.turn_id, "quote" => verify.quote)
+    end
+
+    it "carries a Revise turn's draft through the Bridge and input-file fallback" do
+      own("worker")
+      anchors = Samagotchi::TurnAnchors.new(revises: { turn_id: "123e4567-e89b-12d3-a456-426614174000" })
+      bridge = instance_double(Samagotchi::BridgeClient, features: Samagotchi::Bridge::FEATURES)
+      allow(bridge).to receive(:post_turn).with(prompt: "shorter", client_id: "web:1", anchors: anchors).and_return(
+        Samagotchi::BridgeClient::Response.new(status: 202, body: '{"status":"accepted"}')
+      )
+
+      expect(described_class.deliver_turn(session.id, prompt: "shorter", client_id: "web:1", anchors: anchors,
+                                                       state_dir: tmpdir, bridge: -> { bridge }).status)
+        .to eq(:accepted)
+
+      allow(bridge).to receive(:post_turn).and_raise(Errno::ECONNREFUSED)
+      described_class.deliver_turn(session.id, prompt: "shorter", client_id: "web:1", anchors: anchors,
+                                            state_dir: tmpdir, bridge: -> { bridge })
+      expect(JSON.parse(File.read(input_files.fetch(0)))["revises"])
+        .to eq("turn_id" => "123e4567-e89b-12d3-a456-426614174000")
     end
 
     it "posts the delivery the message carries, and only when it is not the default" do
@@ -2455,10 +2475,22 @@ RSpec.describe Samagotchi::SessionManager do
         expect(bridge).not_to receive(:post_turn)
         verify = Samagotchi::VerifyAnchor.new(turn_id: "123e4567-e89b-12d3-a456-426614174000", quote: "the claim")
 
-        result = described_class.deliver_turn(session.id, prompt: "check", verify: verify, state_dir: tmpdir,
+        result = described_class.deliver_turn(session.id, prompt: "check", anchors: { verify: verify }, state_dir: tmpdir,
                                                           bridge: -> { bridge })
 
         expect(result).to have_attributes(status: :refused, code: 409, ack: Samagotchi::VerifyAnchor::UNAVAILABLE)
+        expect(input_files).to be_empty
+      end
+
+      it "refuses a Revise turn to a worker without the revise feature" do
+        own("worker")
+        bridge = client_naming(%w[delivery review_turns verify])
+        expect(bridge).not_to receive(:post_turn)
+
+        result = described_class.deliver_turn(session.id, prompt: "shorter", state_dir: tmpdir, bridge: -> { bridge },
+                                                          anchors: { revises: { turn_id: "123e4567-e89b-12d3-a456-426614174000" } })
+
+        expect(result).to have_attributes(status: :refused, code: 409, ack: Samagotchi::ReviseAnchor::UNAVAILABLE)
         expect(input_files).to be_empty
       end
 

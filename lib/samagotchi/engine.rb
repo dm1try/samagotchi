@@ -15,6 +15,7 @@ require_relative "steer"
 require_relative "turn_note"
 require_relative "turn_endings"
 require_relative "turn_origin"
+require_relative "revise_anchor"
 require_relative "verify_anchor"
 require_relative "web/participant_view"
 require_relative "verdict"
@@ -1631,10 +1632,11 @@ module Samagotchi
       seconds = turn.elapsed
       synchronize_events do
         kept, event = yield(seconds)
-        stamp_verify_anchor(kept, turn)
+        revises = stamp_opening(kept, turn, outcome)
         replace_session_messages(turn.session, kept) if kept
         verdict = record_verdict(turn, outcome)
         event[:verdict] = verdict if verdict
+        event[:revises] = revises.to_h if revises
         emit_working_set(turn.on_event, turn.session, turn.session.messages)
         turn.session.status = Session::STATUS_IDLE
         record_last_turn(turn.session, outcome, seconds, turn.origin, event, limit: exhausted ? turn.limit : nil)
@@ -1647,16 +1649,63 @@ module Samagotchi
     end
     private :end_turn
 
-    def stamp_verify_anchor(messages, turn)
-      return unless turn.verify && messages.is_a?(Array)
+    # The turn's anchors, stamped on its opening message (the prompt, or a
+    # wake turn's note) in the messages it keeps: display metadata, never
+    # in the prompt (LLM::ChatLoop#plain keeps them, no wire sends them).
+    # A Verify turn's claim however it ended; a Revise turn's draft only
+    # once it completed with an answer (#revision_target). Returns the
+    # stamped ReviseAnchor (the end event's revises), or nil.
+    def stamp_opening(messages, turn, outcome)
+      return unless messages.is_a?(Array)
+
+      revises = revision_target(messages, turn, outcome)
+      fields = { verify: turn.verify&.to_h, revises: revises&.to_h }.compact
+      return if fields.empty?
 
       opening = messages.reverse.find do |message|
-        (message[:role] || message["role"]).to_s == "user" &&
-          (message[:turn_id] || message["turn_id"]).to_s == turn.id
+        Steer.turn_prompt?(message) && (message[:turn_id] || message["turn_id"]).to_s == turn.id
       end
-      opening[:verify] = turn.verify.to_h if opening
+      return unless opening
+
+      opening.merge!(fields)
+      revises
     end
-    private :stamp_verify_anchor
+    private :stamp_opening
+
+    # The turn a Revise turn revised (D6: "this turn revised that one"):
+    # only a completed turn with an answer (AnswerTail) has revised
+    # anything. A draft no prompt in the messages carries is no target (a
+    # stale page, a rolled-back turn); one a stamped turn already revised
+    # is re-targeted to its stack's top, the newest version, which the
+    # person meant ("this draft").
+    def revision_target(messages, turn, outcome)
+      return unless turn.revises && outcome == "completed"
+
+      slice = AnswerTail.turn_slice(messages, turn.id)
+      return unless slice&.any? { |message| AnswerTail.answer?(message) }
+
+      target = turn.revises.turn_id
+      seen = [turn.id]
+      until seen.include?(target)
+        return reject_revise_anchor(turn.revises, :turn_missing) unless AnswerTail.turn_slice(messages, target)
+
+        seen << target
+        newer = messages.reverse.find do |message|
+          Steer.turn_prompt?(message) && ReviseAnchor.from(message[:revises] || message["revises"])&.turn_id == target
+        end
+        return ReviseAnchor.new(turn_id: target) unless newer
+
+        target = (newer[:turn_id] || newer["turn_id"]).to_s
+      end
+      reject_revise_anchor(turn.revises, :cycle)
+    end
+    private :revision_target
+
+    def reject_revise_anchor(anchor, reason)
+      Log.warn(:turn, "revise_anchor_rejected", turn_id: anchor.turn_id, reason:)
+      nil
+    end
+    private :reject_revise_anchor
 
     def verified_anchor(session, anchor)
       return unless anchor
@@ -2150,8 +2199,9 @@ module Samagotchi
     # Continue that starts cold (after a model change).
     # +wall+: the wall time it started (MessageTime.now, once): the
     # :turn_started event's at and its user message's (and reminders') stamp.
+    # +verify+, +revises+: a Verify turn's claim, a Revise turn's draft.
     Turn = Struct.new(:session, :prompt, :continue, :on_event, :controller, :origin, :started_at, :messages, :ended,
-                      :settings, :id, :limit, :resumed, :resume_from, :wall, :verify) do
+                      :settings, :id, :limit, :resumed, :resume_from, :wall, :verify, :revises) do
       def resumed? = resumed ? true : false
 
       # The turn's boundary events carry the origin only when it names a
@@ -2215,6 +2265,9 @@ module Samagotchi
     # @param id [String, nil] the turn's id (a new uuid when nil): a caller
     #   that put the turn's first message in the session already (a context
     #   wake's note) names it with this id
+    # @param verify [VerifyAnchor, nil] a Verify turn's claim (its verdict)
+    # @param revises [ReviseAnchor, nil] a Revise turn's draft: stamped on
+    #   the prompt at the turn's end, metadata only (#stamp_opening)
     #
     # An Interrupt (SIGINT) cancels the turn: what it got to is kept in the
     # session as after a Stop (the prompt, the loop's finished tool
@@ -2226,9 +2279,11 @@ module Samagotchi
     # re-raises; a provider error adds error_kind:, retryable:, host: and a
     # one-line summary:.
     def run_turn(session, prompt, on_event: nil, max_iterations: nil, cancel_controller: nil, max_tool_output_chars: nil, pending_input: nil, continue: false,
-                 origin: TurnOrigin::NONE, images: [], id: nil, resumed: false, resume_from: nil, verify: nil, input_waiting: nil)
+                 origin: TurnOrigin::NONE, images: [], id: nil, resumed: false, resume_from: nil, verify: nil, revises: nil,
+                 input_waiting: nil)
       turn = begin_turn(session, prompt, on_event: on_event, cancel_controller: cancel_controller, origin: origin,
-                                         continue: continue, id: id, verify: verify, input_waiting: input_waiting)
+                                         continue: continue, id: id, verify: verify, revises: revises,
+                                         input_waiting: input_waiting)
       if continue
         turn.resumed = resumed
         turn.resume_from = resume_from
@@ -2276,7 +2331,8 @@ module Samagotchi
     # The turn's state before anything can fail it: the session running,
     # the turn flag, its cancel controller and sink. The cross-thread state
     # is set here and cleared in #release_turn only.
-    def begin_turn(session, prompt, on_event:, cancel_controller:, origin:, continue:, id: nil, verify: nil, input_waiting: nil)
+    def begin_turn(session, prompt, on_event:, cancel_controller:, origin:, continue:, id: nil, verify: nil, revises: nil,
+                   input_waiting: nil)
       origin = TurnOrigin.of(origin)
       # A participant's Verify fresh child: every turn is theirs (their
       # author, boundary and cap), whoever started it.
@@ -2304,7 +2360,8 @@ module Samagotchi
 
       Turn.new(session: session, prompt: continue ? nil : prompt, continue: continue, on_event: on_event,
                controller: effective_controller, origin: origin, started_at: Process.clock_gettime(Process::CLOCK_MONOTONIC),
-               id: id || SecureRandom.uuid, wall: MessageTime.now, verify: VerifyAnchor.from(verify))
+               id: id || SecureRandom.uuid, wall: MessageTime.now, verify: VerifyAnchor.from(verify),
+               revises: ReviseAnchor.from(revises))
     end
     private :begin_turn
 

@@ -1250,6 +1250,21 @@ RSpec.describe Samagotchi::Web::App do
         .to eq([{ role: "note", content: "Updated: pr-1.", label: "context pr-1", at: message_at, turn_start: true, turn_id: "T2" }])
     end
 
+    it "passes a turn opening's Revise stamp (prompt or wake note), string-keyed too; never a malformed one or a merged line's" do
+      v1 = "123e4567-e89b-12d3-a456-426614174000"
+      note = Samagotchi::ContextNote.message(note_id: "ctx-pr-1-2-ab", text: "Updated: pr-1.", source: "context pr-1",
+                                             context_source: "pr-1", turn_start: true, turn_id: "T4")
+      messages = [{ role: "user", content: "write it", turn_id: "T1" },
+                  { "role" => "user", "content" => "shorter", "turn_id" => "T2", "revises" => { "turn_id" => v1 } },
+                  { role: "user", content: "again", turn_id: "T3", revises: { turn_id: "T1" } },
+                  note.merge(revises: { turn_id: v1 })]
+
+      shown = build_app(state_dir: Dir.mktmpdir).send(:messages_for_display, messages)
+
+      expect(shown.map { |item| [item[:turn_id], item[:revises]] })
+        .to eq([["T1", nil], ["T2", { turn_id: v1 }], ["T3", nil], ["T4", { turn_id: v1 }]])
+    end
+
     it "shows a plugin's steer as role steer with its source and the step that answered it, never as a prompt" do
       messages = [{ role: "user", content: "look" },
                   { role: "model", content: "", tool_calls: [{ id: "c1", name: "read" }] },
@@ -3410,7 +3425,7 @@ RSpec.describe Samagotchi::Web::App do
       bridge = instance_double(Samagotchi::BridgeClient, features: Samagotchi::Bridge::FEATURES)
       allow(app).to receive(:live_bridge_client).and_return(bridge)
       verify = { "turn_id" => "123e4567-e89b-12d3-a456-426614174000", "quote" => "the claim" }
-      allow(bridge).to receive(:post_turn).with(prompt: "check", client_id: nil, verify: anything).and_return(
+      allow(bridge).to receive(:post_turn).with(prompt: "check", client_id: nil, anchors: anything).and_return(
         Samagotchi::BridgeClient::Response.new(status: 202, body: '{"status":"accepted"}')
       )
 
@@ -3418,7 +3433,7 @@ RSpec.describe Samagotchi::Web::App do
                                                         body: JSON.generate(prompt: "check", verify: verify)))
       expect(status).to eq(202)
       expect(bridge).to have_received(:post_turn).with(prompt: "check", client_id: nil,
-                                                       verify: Samagotchi::VerifyAnchor.new(**verify.transform_keys(&:to_sym)))
+                                                       anchors: Samagotchi::TurnAnchors.new(verify: verify))
 
       allow(bridge).to receive(:post_turn).with(prompt: "check", client_id: nil).and_return(
         Samagotchi::BridgeClient::Response.new(status: 202, body: '{"status":"accepted"}')
@@ -3427,6 +3442,26 @@ RSpec.describe Samagotchi::Web::App do
                                                         body: '{"prompt":"check","verify":{"turn_id":"bad","quote":"x"}}'))
       expect(status).to eq(202)
       expect(bridge).to have_received(:post_turn).with(prompt: "check", client_id: nil)
+    end
+
+    it "forwards a valid Revise draft and drops a malformed one" do
+      manager = FakeResponsesManager.new
+      app = build_app(manager: manager, state_dir: Dir.mktmpdir)
+      bridge = instance_double(Samagotchi::BridgeClient, features: Samagotchi::Bridge::FEATURES)
+      allow(app).to receive(:live_bridge_client).and_return(bridge)
+      allow(bridge).to receive(:post_turn).and_return(Samagotchi::BridgeClient::Response.new(status: 202, body: '{"status":"accepted"}'))
+      revises = { "turn_id" => "123e4567-e89b-12d3-a456-426614174000" }
+
+      status, = app.call(env_for("/api/sessions/s1/turn", method: "POST",
+                                                        body: JSON.generate(prompt: "shorter", revises: revises)))
+      expect(status).to eq(202)
+      expect(bridge).to have_received(:post_turn).with(prompt: "shorter", client_id: nil,
+                                                       anchors: Samagotchi::TurnAnchors.new(revises: revises))
+
+      status, = app.call(env_for("/api/sessions/s1/turn", method: "POST",
+                                                        body: '{"prompt":"again","revises":{"turn_id":"v1"}}'))
+      expect(status).to eq(202)
+      expect(bridge).to have_received(:post_turn).with(prompt: "again", client_id: nil)
     end
 
     it "enqueues through the live bridge, forwarding the client id and returning the bridge's enqueued_id" do

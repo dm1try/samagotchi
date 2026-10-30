@@ -429,8 +429,8 @@ module Samagotchi
       # The shape the engine persists: role and content (parts stay an
       # Array), plus a model turn's tool_calls and thinking (the host's
       # reasoning, sent back as #wire_messages says), a result's tool_call_id, the image
-      # refs of a user message or a tool result, a prompt's turn_id (Engine,
-      # never sent) and a wake turn's report's turn_start (Steer, never sent), and a plugin tool result's tool_params and tool_labels
+      # refs of a user message or a tool result, a prompt's turn_id and its
+      # Verify/Revise anchors (Engine, never sent) and a wake turn's report's turn_start (Steer, never sent), and a plugin tool result's tool_params and tool_labels
       # (the live row's params line and label, never sent back), an
       # edit/write result's tool_diffs (never sent), an empty-answer
       # note's marker (TurnNote.empty, never sent), and an answer's display
@@ -448,6 +448,7 @@ module Samagotchi
           message[:turn_id] = entry[:turn_id] if entry[:turn_id]
           message[:turn_start] = true if entry[:turn_start] == true
           message[:verify] = entry[:verify] if entry[:verify].is_a?(Hash)
+          message[:revises] = entry[:revises] if entry[:revises].is_a?(Hash)
           message[:thinking] = entry[:thinking] if entry[:thinking].is_a?(String) && !entry[:thinking].empty?
           message[:anthropic_content] = entry[:anthropic_content] if entry[:anthropic_content].is_a?(Array)
           ToolResponse::SAVED_KEYS.each { |key| message[key] = entry[key] if entry[key] }

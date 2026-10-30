@@ -84,10 +84,18 @@ RSpec.describe Samagotchi::Web::App, "a participant's turn" do
     verify = { turn_id: "123e4567-e89b-12d3-a456-426614174000", quote: "the claim" }
 
     expect(turn({ prompt: "check", verify: verify }).first).to eq(202)
-    expect(delivered.last[:verify]).to eq(Samagotchi::VerifyAnchor.new(**verify))
+    expect(delivered.last[:anchors].verify).to eq(Samagotchi::VerifyAnchor.new(**verify))
 
     expect(turn({ prompt: "check", verify: { turn_id: "bad", quote: "the claim" } }).first).to eq(202)
-    expect(delivered.last[:verify]).to be_nil
+    expect(delivered.last[:anchors]).to be_empty
+  end
+
+  it "drops a Revise draft from a participant's body (only the owner stacks), keeping their Verify claim" do
+    verify = { turn_id: "123e4567-e89b-12d3-a456-426614174000", quote: "the claim" }
+    revises = { turn_id: "123e4567-e89b-12d3-a456-426614174001" }
+
+    expect(turn({ prompt: "shorter", verify: verify, revises: revises }).first).to eq(202)
+    expect(delivered.last[:anchors]).to eq(Samagotchi::TurnAnchors.new(verify: verify))
   end
 
   it "refuses a shell line, a command and images (403 not_permitted), audited, never delivered" do

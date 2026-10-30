@@ -678,7 +678,7 @@ module Samagotchi
       @initial_turn = true
       fresh = @session.verify_fresh
       run_prompt(WorkerInbound::Prompt.new(text: prompt, origin: TurnOrigin.new(enqueued_id: @session.first_turn_id),
-                                           verify: fresh&.anchor))
+                                           anchors: { verify: fresh&.anchor }))
     ensure
       @initial_turn = false
     end
@@ -705,10 +705,10 @@ module Samagotchi
       @continue_offer.drop(origin)
       @turn_flow.before_prompt_turn
       run_engine_turn(prompt.text, origin: origin, max_iterations: max_iterations(prompt.no_interrupt),
-                                   images: prompt.images, **(prompt.verify ? { verify: prompt.verify } : {})) do |result, error|
+                                   images: prompt.images, **prompt.anchors.kwargs) do |result, error|
         if error
           # The Engine announced :turn_failed (with the error's one line).
-          restore_failed_turn([[prompt.text, origin, prompt.images, prompt.verify], *@merged_this_turn], error: error)
+          restore_failed_turn([[prompt.text, origin, prompt.images, prompt.anchors], *@merged_this_turn], error: error)
         else
           @continue_offer.after_turn(result, no_interrupt: prompt.no_interrupt)
         end
@@ -1395,10 +1395,10 @@ module Samagotchi
     # or the restored ones, never the one without the other. A turn that
     # got somewhere stays instead (TurnFlow#prompt_turn_failed), with the
     # prompts it took: nothing goes back.
-    # @param prompts [Array<Array(String, TurnOrigin|nil, Array|nil, VerifyAnchor|nil)>]
-    #   [prompt, origin, images, verify] (a web client gets its image chips
-    #   back, and a Verify turn's claim, so sending it again still records
-    #   a verdict)
+    # @param prompts [Array<Array(String, TurnOrigin|nil, Array|nil, TurnAnchors|nil)>]
+    #   [prompt, origin, images, anchors] (a web client gets its image chips
+    #   back, a Verify turn's claim, so sending it again still records a
+    #   verdict, and a Revise turn's draft, so it still stacks)
     # @param error [Exception, nil] what failed: its one line stays in the
     #   conversation as a turn note
     # Not saved here: run_engine_turn saves after its block.
@@ -1406,10 +1406,10 @@ module Samagotchi
       @engine.synchronize_events do
         next if @turn_flow.prompt_turn_failed(error: error) == :kept
 
-        prompts.each do |prompt, origin, images, verify|
+        prompts.each do |prompt, origin, images, anchors|
           restored = { type: :prompt_restored, prompt: prompt, origin: origin.wire }
           restored[:images] = images unless Array(images).empty?
-          restored[:verify] = verify.to_h if verify
+          restored.merge!(anchors.to_h) if anchors
           @engine.announce(restored)
         end
       end

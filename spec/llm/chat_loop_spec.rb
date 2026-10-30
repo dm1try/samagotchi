@@ -1913,6 +1913,20 @@ RSpec.describe Samagotchi::LLM::ChatLoop do
       expect(backend.plain([prompt])).to eq([prompt])
       expect(backend.send(:wire_messages, [prompt])).to eq([{ role: "user", content: [{ type: "text", text: "hi" }] }])
     end
+
+    # Prompt-cache: a Revise stamp is metadata, so the request's bytes are
+    # those of the same history without it, on both loops.
+    it "keeps a Revise turn's stamp on it past later turns, and sends the same request as without it" do
+      answer = { role: "model", content: "draft" }
+      stamped = [{ role: "user", content: "shorter", turn_id: "t-1", revises: { turn_id: "t-0" } }, answer]
+      plain = [stamped.first.except(:revises), answer]
+
+      expect(backend.plain(stamped)).to eq(stamped)
+      expect(JSON.generate(backend.send(:wire_messages, stamped))).to eq(JSON.generate(backend.send(:wire_messages, plain)))
+      profile = Samagotchi::ModelProfile.qwen36
+      expect(Samagotchi::Prompt.format_with_images(stamped, profile: profile))
+        .to eq(Samagotchi::Prompt.format_with_images(plain, profile: profile))
+    end
   end
 
   describe "a wake turn's delegate report (its turn's start)" do

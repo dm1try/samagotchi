@@ -12,8 +12,10 @@ require_relative "steer"
 require_relative "turn_origin"
 
 module Samagotchi
-  # Loaded on first use (a Verify turn's input): keeps the bundle test kit's
-  # load budget (spec/samagotchi/testing/sandbox_spec.rb).
+  # Loaded on first use (any turn's input, a Verify or a Revise turn's
+  # anchor): keeps the bundle test kit's load budget
+  # (spec/samagotchi/testing/sandbox_spec.rb).
+  autoload :TurnAnchors, File.expand_path("turn_anchors", __dir__)
   autoload :VerifyAnchor, File.expand_path("verify_anchor", __dir__)
 
   # A session directory's file inbox and outbox (see SessionManager for the
@@ -54,10 +56,12 @@ module Samagotchi
     # @param author [String, nil] who wrote the message when it isn't the
     #   session's owner (Web::Principal#author); nil, the owner's, is never
     #   written, so an owner's file is as it always was
+    # @param anchors [TurnAnchors, Hash, nil] a Verify turn's claim, a Revise
+    #   turn's draft (TurnAnchors#to_file's keys; none: none written)
     # @param now [Time] the time the file is named by (a spec's clock)
     # @return [String, false] the input file's path, or false
     def self.write_input(session_dir, prompt:, client_id: nil, enqueued_id: nil, no_interrupt: false, images: [],
-                         delivery: nil, author: nil, verify: nil, now: Time.now)
+                         delivery: nil, author: nil, anchors: nil, now: Time.now)
       images = Array(images)
       input_dir = File.join(session_dir, INPUT_DIR)
       FileUtils.mkdir_p(input_dir)
@@ -67,7 +71,8 @@ module Samagotchi
                  "no_interrupt" => (no_interrupt ? true : nil),
                  "delivery" => (Delivery.queue?(delivery) ? Delivery::QUEUE : nil),
                  "images" => (images.empty? ? nil : images.map { |image| image.transform_keys(&:to_s) }),
-                 "author" => author, "verify" => VerifyAnchor.from(verify)&.to_file }.compact
+                 "author" => author }.compact
+      record.merge!(TurnAnchors.from(anchors).to_file) if anchors
       AtomicFile.write(path, JSON.generate(record))
       path
     rescue StandardError
@@ -231,10 +236,12 @@ module Samagotchi
     # no sender), whether its turn runs with the raised iteration limit
     # (+no_interrupt+, --no-interrupt), its +images+ ({file:, name:} refs),
     # and its +delivery+ ("queue" or nil; a file without the key is one an
-    # older chi wrote, so nil).
-    Input = Data.define(:prompt, :origin, :no_interrupt, :images, :delivery, :verify) do
-      def initialize(prompt:, origin: nil, no_interrupt: false, images: [], delivery: nil, verify: nil)
-        super(prompt:, origin: TurnOrigin.of(origin), no_interrupt:, images:, delivery:, verify: verify && VerifyAnchor.from(verify))
+    # older chi wrote, so nil), and its +anchors+ (TurnAnchors, nil when it
+    # names none: TurnAnchors loads on first use, not with UNREADABLE_INPUT).
+    Input = Data.define(:prompt, :origin, :no_interrupt, :images, :delivery, :anchors) do
+      def initialize(prompt:, origin: nil, no_interrupt: false, images: [], delivery: nil, anchors: nil)
+        anchors &&= TurnAnchors.from(anchors)
+        super(prompt:, origin: TurnOrigin.of(origin), no_interrupt:, images:, delivery:, anchors: anchors && anchors.empty? ? nil : anchors)
       end
     end
     # A file that doesn't parse, or isn't a JSON object: no prompt.
@@ -250,7 +257,7 @@ module Samagotchi
       origin = TurnOrigin.from(data.slice("client_id", "enqueued_id", "author"))
       images = Array(data["images"]).select { |image| image.is_a?(Hash) }.map { |image| image.transform_keys(&:to_sym) }
       Input.new(prompt: data["prompt"].to_s, origin: origin, no_interrupt: data["no_interrupt"] == true,
-                images: images, delivery: Delivery.queue?(data["delivery"]) ? Delivery::QUEUE : nil, verify: data["verify"])
+                images: images, delivery: Delivery.queue?(data["delivery"]) ? Delivery::QUEUE : nil, anchors: data)
     rescue JSON::ParserError
       UNREADABLE_INPUT
     end
@@ -282,11 +289,12 @@ module Samagotchi
       true
     end
 
-    # A parsed input file's #waits_for_turn_end?. A Verify turn waits too:
-    # merged into a running turn as a steer, its anchor would be lost.
+    # A parsed input file's #waits_for_turn_end?. A Verify or a Revise turn
+    # waits too: merged into a running turn as a steer, its anchor would be
+    # lost.
     def self.turn_end_data?(data)
       Array(data["images"]).any? || Delivery.queue?(data["delivery"]) || Steer.participant_author?(data["author"]) ||
-        data["verify"].is_a?(Hash)
+        TurnAnchors.named_in?(data)
     end
 
     # Whether a message waits that a running turn's next boundary merges and

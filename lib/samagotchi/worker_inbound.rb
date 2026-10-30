@@ -39,10 +39,11 @@ module Samagotchi
     # +no_interrupt+: an offer its turn makes keeps it for its continue
     # turn; +images+: its image refs ({file:, name:}); +delivery+: the wire
     # value the sender asked for ("queue", or nil for the default
-    # next_step); +origin+: a TurnOrigin (a Hash is read as one).
-    Prompt = Data.define(:text, :origin, :no_interrupt, :images, :delivery, :verify) do
-      def initialize(text:, origin: nil, no_interrupt: false, images: [], delivery: nil, verify: nil)
-        super(text:, origin: TurnOrigin.of(origin), no_interrupt:, images:, delivery:, verify: VerifyAnchor.from(verify))
+    # next_step); +origin+: a TurnOrigin (a Hash is read as one); +anchors+:
+    # a Verify turn's claim, a Revise turn's draft (TurnAnchors).
+    Prompt = Data.define(:text, :origin, :no_interrupt, :images, :delivery, :anchors) do
+      def initialize(text:, origin: nil, no_interrupt: false, images: [], delivery: nil, anchors: nil)
+        super(text:, origin: TurnOrigin.of(origin), no_interrupt:, images:, delivery:, anchors: TurnAnchors.from(anchors))
       end
     end
 
@@ -215,7 +216,7 @@ module Samagotchi
         return if input.images.empty? && queue_as_command(input.prompt, input.origin, File.basename(input_file))
 
         yield Prompt.new(text: input.prompt, origin: input.origin, no_interrupt: input.no_interrupt, images: input.images,
-                         delivery: input.delivery, verify: input.verify)
+                         delivery: input.delivery, anchors: input.anchors)
       ensure
         FileUtils.rm_f(claimed_file)
       end

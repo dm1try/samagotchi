@@ -65,10 +65,26 @@ RSpec.describe Samagotchi::SessionInbox do
 
     it "round-trips a verified claim anchor with the queued prompt" do
       verify = { turn_id: "123e4567-e89b-12d3-a456-426614174000", quote: "the claim" }
-      path = described_class.write_input(session_dir, prompt: "check this", verify: verify)
+      path = described_class.write_input(session_dir, prompt: "check this", anchors: { verify: verify })
 
       expect(JSON.parse(File.read(path))["verify"]).to eq("turn_id" => verify[:turn_id], "quote" => verify[:quote])
-      expect(described_class.read_input(path).verify).to eq(Samagotchi::VerifyAnchor.new(**verify))
+      expect(described_class.read_input(path).anchors.verify).to eq(Samagotchi::VerifyAnchor.new(**verify))
+    end
+
+    it "round-trips a Revise turn's draft with the queued prompt" do
+      revises = { turn_id: "123e4567-e89b-12d3-a456-426614174000" }
+      path = described_class.write_input(session_dir, prompt: "shorter", anchors: { revises: revises })
+
+      expect(JSON.parse(File.read(path))).to include("revises" => { "turn_id" => revises[:turn_id] })
+      expect(JSON.parse(File.read(path))).not_to have_key("verify")
+      expect(described_class.read_input(path).anchors).to eq(Samagotchi::TurnAnchors.new(revises: revises))
+    end
+
+    it "reads a file that names no anchor with none" do
+      path = described_class.write_input(session_dir, prompt: "plain", anchors: { revises: { turn_id: "bad" } })
+
+      expect(JSON.parse(File.read(path))).not_to have_key("revises")
+      expect(described_class.read_input(path).anchors).to be_nil
     end
 
     it "reads an old file that carries no delivery as a step-boundary message" do
@@ -114,10 +130,18 @@ RSpec.describe Samagotchi::SessionInbox do
 
       it "answers true for a Verify line: merged as a steer, it would lose its claim anchor" do
         verify = { turn_id: "123e4567-e89b-12d3-a456-426614174000", quote: "the claim" }
-        file = described_class.write_input(session_dir, prompt: "check", verify: verify, enqueued_id: "e7")
+        file = described_class.write_input(session_dir, prompt: "check", anchors: { verify: verify }, enqueued_id: "e7")
 
         expect(described_class.waits_for_turn_end?(file)).to be(true)
         expect(described_class.waiting_input(session_dir, "e7")).to eq(:turn_end)
+      end
+
+      it "answers true for a Revise line: merged as a steer, it would lose the draft it revises" do
+        revises = { turn_id: "123e4567-e89b-12d3-a456-426614174000" }
+        file = described_class.write_input(session_dir, prompt: "shorter", anchors: { revises: revises }, enqueued_id: "e8")
+
+        expect(described_class.waits_for_turn_end?(file)).to be(true)
+        expect(described_class.waiting_input(session_dir, "e8")).to eq(:turn_end)
       end
 
       it "answers false for a file it cannot read" do

@@ -11,7 +11,7 @@ require_relative "atomic_file"
 require_relative "bridge_secret"
 require_relative "delivery"
 require_relative "session_inbox"
-require_relative "verify_anchor"
+require_relative "turn_anchors"
 
 require_relative "bridge/bounded_queue"
 require_relative "bridge/card_store"
@@ -634,7 +634,7 @@ module Samagotchi
     # turn (Guardrails::PairBoundary); a worker without it runs it as a
     # review turn, and chi web says so (Delivery::PAIR_FEATURE).
     FEATURES = ["restart", "task_stop", "reparent", Delivery::QUEUE_FEATURE, ReplyWait::TURN_IDS_FEATURE,
-                VerifyAnchor::FEATURE,
+                VerifyAnchor::FEATURE, ReviseAnchor::FEATURE,
                 SessionInbox::UNQUEUE_FEATURE, Delivery::REVIEW_FEATURE, Delivery::PAIR_FEATURE].freeze
 
     # The routes, by method and what follows /session/:id/: a handler takes
@@ -1073,7 +1073,10 @@ module Samagotchi
       # request's principal; the Bridge is loopback and trusts its caller).
       author = fetched(parsed, "author")
       author = nil unless author.is_a?(String) && !author.empty?
-      verify = VerifyAnchor.from(fetched(parsed, "verify"))
+      # A Verify turn's claim, a Revise turn's draft; a participant can't
+      # Revise (chi web drops it first, this is the worker's own layer).
+      anchors = TurnAnchors.from(parsed)
+      anchors = anchors.without_revises if Steer.participant_author?(author)
       if sid.to_s.strip.empty? || prompt.to_s.strip.empty?
         return [{ "Allow" => "POST" }, 400,
                 { error: "missing_fields", detail: "session_id and prompt are required" }]
@@ -1135,7 +1138,7 @@ module Samagotchi
         delivery = Delivery::QUEUE if @accumulator.participant_turn?
         queued_behind_turn = Delivery.queue?(delivery) && !@accumulator.current_turn.nil?
         enqueue_turn(prompt: prompt, client_id: client_id, enqueued_id: enqueued_id,
-                     no_interrupt: no_interrupt, images: images, delivery: delivery, author: author, verify: verify).tap do |ok|
+                     no_interrupt: no_interrupt, images: images, delivery: delivery, author: author, anchors: anchors).tap do |ok|
           next unless ok
 
           enqueued_event = { type: :turn_enqueued, enqueued_id: enqueued_id, client_id: client_id, prompt: prompt.to_s }
@@ -1299,9 +1302,11 @@ module Samagotchi
 
     # Write a turn into this session's input dir, reusing the file IPC the
     # worker polls. Never calls run_turn across the boundary.
-    def enqueue_turn(prompt:, client_id: nil, enqueued_id: nil, no_interrupt: false, images: [], delivery: nil, author: nil, verify: nil)
+    def enqueue_turn(prompt:, client_id: nil, enqueued_id: nil, no_interrupt: false, images: [], delivery: nil, author: nil,
+                     anchors: nil)
       SessionInbox.write_input(session_dir, prompt: prompt, client_id: client_id, enqueued_id: enqueued_id,
-                                            no_interrupt: no_interrupt, images: images, delivery: delivery, author: author, verify: verify)
+                                            no_interrupt: no_interrupt, images: images, delivery: delivery, author: author,
+                                            anchors: anchors)
     end
 
     # ── HTTP plumbing ────────────────────────────────────────────────────────

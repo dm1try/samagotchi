@@ -608,6 +608,18 @@ RSpec.describe Samagotchi::Bridge do
       expect(queued.first["verify"]).to eq("turn_id" => verify[:turn_id], "quote" => verify[:quote])
     end
 
+    it "keeps a valid Revise draft in the queued input, and drops a malformed one" do
+      start_bridge(input_format: 2)
+      revises = { turn_id: "123e4567-e89b-12d3-a456-426614174000" }
+      post_turn(JSON.generate(session_id: @session.id, prompt: "shorter", revises: revises))
+      post_turn(JSON.generate(session_id: @session.id, prompt: "again", revises: { turn_id: "v1" }))
+
+      input_dir = File.join(Samagotchi::Session.session_dir(@session.id, state_dir: state_dir), "input")
+      queued = Dir.glob(File.join(input_dir, "*.json")).map { |file| JSON.parse(File.read(file)) }
+      expect(queued.map { |input| [input["prompt"], input["revises"]] })
+        .to contain_exactly(["shorter", { "turn_id" => revises[:turn_id] }], ["again", nil])
+    end
+
     it "keeps a turn's no_interrupt (--no-interrupt) in the queued input" do
       start_bridge(input_format: 2)
       post_turn(JSON.generate(session_id: @session.id, prompt: "long", client_id: "tui:1", no_interrupt: true))
@@ -687,7 +699,7 @@ RSpec.describe Samagotchi::Bridge do
     it "writes a discoverable port sidecar on start, with the chi version it runs, its features and its epoch" do
       start_bridge
       expect(@bridge_port).to be > 0
-      expect(Samagotchi::Bridge::FEATURES).to include(Samagotchi::VerifyAnchor::FEATURE)
+      expect(Samagotchi::Bridge::FEATURES).to include(Samagotchi::VerifyAnchor::FEATURE, Samagotchi::ReviseAnchor::FEATURE)
       sidecar = File.join(Samagotchi::Session.session_dir(@session.id, state_dir: state_dir), "bridge.json")
       expect(JSON.parse(File.read(sidecar)))
         .to include("version" => Samagotchi::VERSION, "features" => Samagotchi::Bridge::FEATURES, "epoch" => @bridge.epoch)

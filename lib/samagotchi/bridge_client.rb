@@ -14,8 +14,10 @@ require_relative "bridge_client/event_stream"
 require_relative "bridge_client/stream_request"
 
 module Samagotchi
-  # Loaded on first use (a Verify turn): keeps the bundle test kit's load
-  # budget (spec/samagotchi/testing/sandbox_spec.rb).
+  # Loaded on first use (any turn's input, a Verify or a Revise turn's
+  # anchor): keeps the bundle test kit's load budget
+  # (spec/samagotchi/testing/sandbox_spec.rb).
+  autoload :TurnAnchors, File.expand_path("turn_anchors", __dir__)
   autoload :VerifyAnchor, File.expand_path("verify_anchor", __dir__)
 
   # Client side of a session worker's Bridge: the 127.0.0.1 HTTP + SSE server
@@ -192,16 +194,17 @@ module Samagotchi
     #   owner; sent only when given (SessionManager.deliver_turn)
     # @param pending_limit [Integer, nil] with a participant's +author+: how
     #   many of their turns may be running or waiting (429 too_many_turns past it)
+    # @param anchors [TurnAnchors, Hash, nil] a Verify turn's claim, a Revise
+    #   turn's draft: their own body keys ("verify", "revises")
     def post_turn(prompt:, client_id: nil, no_interrupt: false, images: nil, delivery: nil, author: nil, pending_limit: nil,
-                  verify: nil)
+                  anchors: nil)
       body = { session_id: @session_id, prompt: prompt, client_id: client_id }
       body[:no_interrupt] = true if no_interrupt
       body[:author] = author if author
       body[:pending_limit] = pending_limit if author && pending_limit
       body[:images] = images if images && !images.empty?
       body[:delivery] = delivery unless delivery.nil? || Delivery.next_step?(delivery)
-      anchor = VerifyAnchor.from(verify)
-      body[:verify] = anchor.to_file if anchor
+      body.merge!(TurnAnchors.from(anchors).to_file) if anchors
       body[:deadline] = deadline
       post("turn", body, read_body: true)
     end

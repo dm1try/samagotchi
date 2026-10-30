@@ -434,6 +434,18 @@ RSpec.describe "a participant's author on delivery" do
       expect(of_type(:turn_enqueued).map { |event| event[:prompt] }).to eq(%w[q0 q1 k mine])
     end
 
+    it "drops a participant's Revise draft (only the owner stacks), keeps their Verify claim and the owner's draft" do
+      verify = { turn_id: "123e4567-e89b-12d3-a456-426614174000", quote: "the claim" }
+      revises = { turn_id: "123e4567-e89b-12d3-a456-426614174001" }
+      @client.post_turn(prompt: "theirs", client_id: "review:p_1", author: "p:p_1", anchors: { verify: verify, revises: revises })
+      @client.post_turn(prompt: "mine", client_id: "web:o", anchors: { revises: revises })
+
+      theirs, mine = Dir[File.join(session_dir, Samagotchi::SessionInbox::INPUT_DIR, "*")].sort.map { |file| read_file(file) }
+      expect(theirs).to include("verify" => verify.transform_keys(&:to_s))
+      expect(theirs).not_to have_key("revises")
+      expect(mine).to include("revises" => revises.transform_keys(&:to_s))
+    end
+
     it "queues a participant's message as its own turn whatever its delivery asks, and never cuts" do
       reply = @client.post_turn(prompt: "theirs", client_id: "review:p_1", author: "p:p_1", delivery: "cut")
       expect(reply.status).to eq(202)

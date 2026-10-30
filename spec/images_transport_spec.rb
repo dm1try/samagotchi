@@ -180,14 +180,46 @@ RSpec.describe "Images in transport" do
       allow(engine).to receive(:run_turn) { raise IOError, "boom" }
       start_worker
       anchor = { turn_id: SecureRandom.uuid, quote: "the cache key" }
-      Samagotchi::SessionInbox.write_input(session_dir, prompt: "verify it", verify: anchor, now: next_stamp)
+      Samagotchi::SessionInbox.write_input(session_dir, prompt: "verify it", anchors: { verify: anchor }, now: next_stamp)
 
       restored = wait_until do
         list = []
         list << events.pop until events.empty?
         list.find { |e| e[:type] == :prompt_restored }
       end
-      expect(restored).to include(prompt: "verify it", verify: anchor)
+      # The wire the page reads (restore.js: event.verify), unchanged.
+      expect(restored[:verify]).to eq(anchor)
+      expect(restored).not_to have_key(:revises)
+    end
+
+    it "runs a Revise input file's turn with its draft (Engine#run_turn's revises:)" do
+      anchors = Queue.new
+      allow(engine).to receive(:run_turn) do |*_args, **kwargs|
+        anchors << [kwargs[:revises], kwargs.key?(:verify)]
+        raise IOError, "stop here"
+      end
+      start_worker
+      anchor = { turn_id: SecureRandom.uuid }
+      Samagotchi::SessionInbox.write_input(session_dir, prompt: "shorter", anchors: { revises: anchor }, now: next_stamp)
+
+      expect(wait_until { anchors.empty? ? nil : anchors.pop }).to eq([Samagotchi::ReviseAnchor.new(**anchor), false])
+    end
+
+    it "gives a failed Revise turn's draft back with its prompt, so its resend still stacks" do
+      events = Queue.new
+      engine.subscribe(observer: ->(event) { events << event })
+      allow(engine).to receive(:run_turn) { raise IOError, "boom" }
+      start_worker
+      anchor = { turn_id: SecureRandom.uuid }
+      Samagotchi::SessionInbox.write_input(session_dir, prompt: "shorter", anchors: { revises: anchor }, now: next_stamp)
+
+      restored = wait_until do
+        list = []
+        list << events.pop until events.empty?
+        list.find { |e| e[:type] == :prompt_restored }
+      end
+      expect(restored).to include(prompt: "shorter", revises: anchor)
+      expect(restored).not_to have_key(:verify)
     end
   end
 
