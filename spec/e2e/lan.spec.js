@@ -109,7 +109,7 @@ test("a review: the owner starts one for a file and invites from the panel, the 
   await owner.locator("#startSettingsPopover").getByRole("button", { name: "Review files…" }).click();
   await owner.locator("#startSettingsPopover textarea").fill("README.md");
   await owner.locator("#startSettingsPopover button[type=submit]").click();
-  await expect(owner.locator("#startSettingsPopover .ss-review-set")).toHaveText("Review: README.md");
+  await expect(owner.locator("#startSettingsPopover .sset-review-set")).toHaveText("Review: README.md");
   await owner.keyboard.press("Escape");
   await expect(owner.locator("#reviewNew")).toHaveText("review: README.md");
   await owner.locator("#prompt").fill("Say pong");

@@ -56,11 +56,11 @@ test("override chips: only what is set, sent anyway when the model has no row fo
 test("the panel: rows hidden without the model's values, a choice left over said and clearable, the note", () => {
   const markup = markupOf(panelTemplate({ thinking: { summary: null, choice: "high" }, llmContext: { summary: null, choice: null },
                                           review: [] }));
-  assert.doesNotMatch(markup, /ss-row/);
+  assert.doesNotMatch(markup, /sset-row/);
   assert.match(markup, /Thinking high: the picked model has no thinking setting; it is sent anyway\./);
   assert.match(markup, /data-act="think-clear"/);
   assert.match(markup, /Review files…/);
-  assert.doesNotMatch(markup, /ss-rule/); // no rows above the review: no rule
+  assert.doesNotMatch(markup, /sset-rule/); // no rows above the review: no rule
   assert.match(markup, /For this new session only\./);
   const noReview = markupOf(panelTemplate({ thinking: { summary: THINKING, choice: null },
                                             llmContext: { summary: LLM_CONTEXT, choice: null } }));
@@ -110,32 +110,30 @@ test("a pick applies at once and keeps the panel open; default unsets it", (t) =
 test("Apply and budget: a disclosure, open when the choice has them; a bad budget's error, an edit clears it", (t) => {
   const p = panel(t);
   p.button.click();
-  assert.equal(p.pop.querySelector(".ss-ctx-form"), null);
-  // Its own class: the stop sheet's .ss-more (its "+N more") is another thing.
-  assert.ok(p.pop.querySelector(".ss-ctx-more [data-act=ctx-more]"));
-  assert.equal(p.pop.querySelector(".ss-more"), null);
+  assert.equal(p.pop.querySelector(".sset-ctx-form"), null);
+  assert.ok(p.pop.querySelector(".sset-ctx-more [data-act=ctx-more]"));
   p.act("ctx-more");
-  const form = p.pop.querySelector(".ss-ctx-form");
+  const form = p.pop.querySelector(".sset-ctx-form");
   assert.equal(p.pop.querySelector('[data-act="ctx-more"]').getAttribute("aria-expanded"), "true");
   assert.equal(form.querySelector("option[selected]").textContent, "default (payoff)");
   form.elements.budget.value = "12";
-  p.submit(".ss-ctx-form");
-  const error = () => p.pop.querySelector(".ss-ctx-form .ctx-pop-error");
+  p.submit(".sset-ctx-form");
+  const error = () => p.pop.querySelector(".sset-ctx-form .ctx-pop-error");
   assert.equal(error().hidden, false);
   assert.match(error().textContent, /A budget is a number of tokens/);
   assert.equal(p.state.llmContext, null);
   form.elements.budget.value = "64k";
   form.elements.budget.dispatchEvent(new window.Event("input", { bubbles: true }));
   assert.equal(error().hidden, true);
-  p.submit(".ss-ctx-form");
+  p.submit(".sset-ctx-form");
   assert.deepEqual(p.state.llmContext, { budget_tokens: 64000 });
   // A strategy pick keeps the budget.
   p.act("ctx:stale");
   assert.deepEqual(p.state.llmContext, { budget_tokens: 64000, strategy: ["stale"] });
   p.act("close");
   p.button.click();
-  assert.ok(p.pop.querySelector(".ss-ctx-form")); // open: the choice has a budget
-  assert.equal(p.pop.querySelector(".ss-ctx-form").elements.budget.value, "64000");
+  assert.ok(p.pop.querySelector(".sset-ctx-form")); // open: the choice has a budget
+  assert.equal(p.pop.querySelector(".sset-ctx-form").elements.budget.value, "64000");
 });
 
 test("the review view: ‹ back, an open quote's error, Set returns with the files, No review clears them", (t) => {
@@ -153,13 +151,13 @@ test("the review view: ‹ back, an open quote's error, Set returns with the fil
   p.pop.querySelector("textarea").value = '"docs/my plan.md"';
   p.submit("form.rs-form");
   assert.deepEqual(p.state.review, ["docs/my plan.md"]);
-  assert.match(p.pop.querySelector(".ss-review-set").textContent, /Review: my plan\.md/);
+  assert.match(p.pop.querySelector(".sset-review-set").textContent, /Review: my plan\.md/);
   assert.ok(document.activeElement === p.pop.querySelector('[data-act="review"]')); // Edit
   p.act("review");
   assert.equal(p.pop.querySelector("textarea").value, '"docs/my plan.md"');
   p.act("clear"); // No review
   assert.deepEqual(p.state.review, []);
-  assert.ok(p.pop.querySelector(".ss-row"));
+  assert.ok(p.pop.querySelector(".sset-row"));
   p.state.review = ["a.md"];
   p.ctl.refresh();
   p.act("review-clear");
@@ -179,4 +177,13 @@ test("a closed panel opens on the main view again; refuse opens the review view 
   p.ctl.refuse("x.md: no such file");
   assert.equal(p.pop.querySelector(".ctx-pop-error").textContent, "x.md: no such file");
   assert.equal(p.pop.querySelector("textarea").getAttribute("aria-invalid"), "true");
+});
+
+test("every class and id the panel draws has its own sset- prefix (the stop sheet's is ss-)", (t) => {
+  const p = panel(t);
+  p.button.click();
+  p.act("ctx-more");
+  const names = [...p.pop.querySelectorAll("*")].flatMap((node) => [...node.classList, node.id].filter(Boolean));
+  assert.ok(names.some((name) => name.startsWith("sset-")));
+  assert.deepEqual(names.filter((name) => name.startsWith("ss-")), []);
 });

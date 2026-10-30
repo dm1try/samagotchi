@@ -324,7 +324,7 @@ test("a choice the picked model can't show stays: its chip says it is sent anywa
   assert.equal(p.gear.classList.contains("set"), true);
   // The panel has no Thinking row then, but says so and can clear it.
   p.thinkChip.click();
-  assert.match(p.panel().querySelector(".ss-anyway").textContent, /Thinking high: the picked model has no thinking setting/);
+  assert.match(p.panel().querySelector(".sset-anyway").textContent, /Thinking high: the picked model has no thinking setting/);
   p.act("think-clear");
   assert.equal(p.startPage.newChoices().thinking, undefined);
   assert.equal(p.thinkChip.hidden, true);
@@ -336,7 +336,7 @@ test("without the models list ⚙ holds the review files only; without those eit
   await p.startPage.loadModels();
   assert.equal(p.gear.hidden, false);
   p.gear.click();
-  assert.equal(p.panel().querySelector(".ss-row"), null);
+  assert.equal(p.panel().querySelector(".sset-row"), null);
   assert.ok(p.panel().querySelector("[data-act=review]"));
   const bare = page(t, { listModels: failing, review: false });
   await bare.startPage.loadModels();

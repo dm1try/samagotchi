@@ -1307,14 +1307,14 @@ test("the start page's ⚙ panel and 🧰 list start the new session under the t
   await expect(think).toBeHidden();
   await gear.click();
   const pop = page.locator("#startSettingsPopover");
-  await expect(pop.locator(".ss-seg [aria-pressed=true]").first()).toBeFocused();
+  await expect(pop.locator(".sset-seg [aria-pressed=true]").first()).toBeFocused();
   // A budget chi wouldn't take is said under the fields; an edit clears it.
   await pop.getByRole("button", { name: /Apply and budget/ }).click();
   await pop.locator('input[name="budget"]').fill("12");
   await pop.locator(".llmctx-set").click();
-  await expect(pop.locator(".ss-ctx-form .ctx-pop-error")).toContainText("A budget is a number of tokens");
+  await expect(pop.locator(".sset-ctx-form .ctx-pop-error")).toContainText("A budget is a number of tokens");
   await pop.locator('input[name="budget"]').fill("");
-  await expect(pop.locator(".ss-ctx-form .ctx-pop-error")).toBeHidden();
+  await expect(pop.locator(".sset-ctx-form .ctx-pop-error")).toBeHidden();
   // A pick applies at once; the panel stays open.
   await pop.getByRole("group", { name: "Context" }).getByRole("button", { name: "stale", exact: true }).click();
   await pop.getByRole("group", { name: "Thinking" }).getByRole("button", { name: "low", exact: true }).click();
