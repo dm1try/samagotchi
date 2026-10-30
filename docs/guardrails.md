@@ -731,6 +731,11 @@ checked even after the database name, and only its read/display options are
 allowed (unknown options and dot-command arguments are rejected). `gh` allows
 only `run list|view`, `pr list|view|diff|checks`, `issue list|view` and
 `repo view`; `--web`/`-w`, `gh api` and `pr checks --watch` are not read-only.
+`test` and `[ … ]` (with its closing `]`) are read-only as one check, optionally after `!`: a file or string
+test (`-e`, `-f`, `-d`, `-s`, `-r`, `-w`, `-x`, `-L`, `-h`, `-b`, `-c`, `-p`, `-S`, `-g`, `-u`, `-k`, `-O`, `-G`,
+`-n`, `-z` with one operand) or a comparison (`=`, `==`, `!=`, `-eq`, `-ne`, `-lt`, `-le`, `-gt`, `-ge`), so
+`test -f x && cat x` and `[ -d dir ] && ls dir` only read; `-a`/`-o`, `( … )`, any other operator or a missing
+operand, and `[[ … ]]` are not.
 `$(…)`, backticks, `$VAR` (other than `$HOME`, `$XDG_*`, `$TMPDIR` and `$PWD`
 at a word's start), an env prefix, `sh -c`, `xargs`, `eval`, `sudo` and the
 like make a command not read-only, as does a `task_create` `env:` that sets `BASH_ENV`, `ENV`, `CDPATH`, `IFS`,

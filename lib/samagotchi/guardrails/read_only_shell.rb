@@ -17,7 +17,9 @@ module Samagotchi
     # sh -c, eval, timeout, …), a background &, a $ expansion other than
     # $HOME / the XDG dirs / $TMPDIR / $PWD at a word's start, a brace
     # expansion, a < or << redirection, a path to a verb (/bin/ls), and
-    # less/more/vim (they run commands) are all not read-only.
+    # less/more/vim (they run commands) are all not read-only. test and
+    # [ … ] read only as one file or string check (.test_expr): `[[` and
+    # anything else they can do are not.
     #
     # .read_only_but_writes? (the child boundary's) also lets through the
     # writes it can name: a > or >> target, cp's destination and tee's
@@ -231,6 +233,7 @@ module Samagotchi
 
         writes&.walk&.step(args)
         verb = args.shift
+        return args.last == "]" && test_expr(args[0...-1]) if verb == "["
         return false unless verb&.match?(/\A[a-z][\w.-]*\z/)
         return true if PLAIN.include?(verb)
         return WRITE_CHECKS[verb].call(args, writes) if writes && WRITE_CHECKS[verb]
@@ -275,6 +278,25 @@ module Samagotchi
       def short_has?(arg, char) = arg.match?(/\A-[^-]/) && arg.include?(char)
 
       def rg(args) = args.none? { |a| a.start_with?("--pre") }
+
+      # test's checks that only look: a file's type, mode or size, a string
+      # being empty or not.
+      TEST_UNARY = %w[-e -f -d -s -r -w -x -L -h -b -c -p -S -g -u -k -O -G -n -z].freeze
+      # Comparisons of two strings or integers.
+      TEST_BINARY = %w[= == != -eq -ne -lt -le -gt -ge].freeze
+
+      # test's (and [ … ]'s, without the ]) expression when it is one check:
+      # an optional !, then a unary TEST_UNARY with its operand or a
+      # TEST_BINARY between two. Any other shape (-a/-o, ( ), -v, one bare
+      # word, a missing operand) is not read-only.
+      def test_expr(args)
+        args = args.drop(1) if args.first == "!"
+        case args.size
+        when 2 then TEST_UNARY.include?(args[0])
+        when 3 then TEST_BINARY.include?(args[1])
+        else false
+        end
+      end
 
       FIND_ACTIONS = %w[-delete -exec -execdir -ok -okdir -fprint -fprint0 -fprintf -fls].freeze
 
@@ -490,7 +512,7 @@ module Samagotchi
       CHECKS = {
         "rg" => method(:rg), "find" => method(:find), "tree" => method(:tree), "file" => method(:file),
         "sort" => method(:sort), "uniq" => method(:uniq), "sed" => method(:sed), "awk" => method(:awk),
-        "git" => method(:git), "sqlite3" => method(:sqlite3), "gh" => method(:gh)
+        "git" => method(:git), "sqlite3" => method(:sqlite3), "gh" => method(:gh), "test" => method(:test_expr)
       }.freeze
 
       # A sed script parsed far enough to tell that it only reads: its

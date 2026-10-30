@@ -36,7 +36,10 @@ RSpec.describe Samagotchi::Guardrails::ReadOnlyShell do
     "sqlite3 -readonly -safe coffee.db 'select edit(\"file\")'",
     # gh's explicitly read-only subcommands.
     "gh run list", "gh run view 123", "gh pr list", "gh pr view 123", "gh pr diff 123", "gh pr checks 123",
-    "gh issue list", "gh issue view 123", "gh repo view"
+    "gh issue list", "gh issue view 123", "gh repo view",
+    # test and [ … ]: one file or string check
+    "test -f x && cat x", "[ -d dir ] && ls dir", "[ ! -e x ] || ls", "test -s x", "[ -L link ]", "test -n abc",
+    "[ a = b ]", "test a != b", "[ 1 -lt 2 ] && echo yes", "test 3 -ge 2", "[ -x bin/chi ] 2>/dev/null"
   ]
 
   not_read_only = [
@@ -82,6 +85,10 @@ RSpec.describe Samagotchi::Guardrails::ReadOnlyShell do
     # substitutions and expansions
     "ls $(rm -rf /)", "ls `id`", "cat \"$(rm x)\"", "cat \"`rm x`\"", "find . $IFS-delete", "find . {-delete,}",
     "find . $'\\x2ddelete'", "ls $X", "ls ${X}", "ls $HOME$X", "ls ~/{a,b}", "ls ;; ls",
+    # test and [ … ] beyond one check, or with a write or substitution inside
+    "[[ -f x ]]", "[ -f x", "[ -f x ] ]", "test -f", "test x", "[ ]", "test", "[ -f x -a -d y ]", "[ -f x -o -d y ]",
+    "test -v X", "[ ( -f x ) ]", "[ x -nt y ]", "[ -f $(rm x) ]", "test -f `id`", "[ -f x ] > out", "test -f x > out",
+    "[ -f x ] && rm x", "[ \"$X\" = y ]",
     # empty
     "", "   "
   ]
