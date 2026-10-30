@@ -82,9 +82,11 @@ module Samagotchi
                          "perl" => %w[CDFiImMx 0l], "node" => %w[r], "bun" => %w[r], "lua" => %w[l] }.freeze
       # More value letters, told only for where a script comes from
       # (.script_source: php -dr x.php and osascript -le x run the file x, so
-      # SelfProtect counts it unseen); a pair turn still reads the word after
-      # them as code too (an over-read: more refusals, never fewer).
-      SOURCE_CLUSTER_VALUES = CLUSTER_VALUES.merge("php" => %w[cdfz], "osascript" => %w[ls]).freeze
+      # SelfProtect counts it unseen; perl -d… runs .perldb from the dir it
+      # is in); a pair turn still reads the word after them as code too (an
+      # over-read: more refusals, never fewer).
+      SOURCE_CLUSTER_VALUES = CLUSTER_VALUES.merge("php" => %w[cdfz], "osascript" => %w[ls],
+                                                   "perl" => %w[CdDFiImMx 0l]).freeze
       # A shell's options whose next word is their value, not its script.
       SHELL_VALUE_OPTIONS = %w[-o +o -O +O].freeze
       # fish's long options that take a command (the next word, or after =),
