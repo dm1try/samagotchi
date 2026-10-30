@@ -386,7 +386,8 @@ mise.toml pins Ruby 3.4 gets that `ruby`, `gem` and `bundle` in its tools while 
   belong to the starter's Ruby), unless mise sets its own; kept when the Ruby stays the same.
 - **Never what a `chi` in a tool reads.** The tools' env never takes `HOME`, any `XDG_*`, any `SAMAGOTCHI_*`,
   `CHI_REMOTE`, `RACK_ENV` or `CI` from the project (a `chi` run there would read another config or state dir, or
-  send its session commands to another machine): they are dropped
+  send its session commands to another machine), nor `TMPDIR` (the guardrails judge a tool's `$TMPDIR/x` and its
+  tmp dirs by the worker's own `TMPDIR`, so the tools run on that one): they are dropped
   and the debug log names them once (`project_env_reserved`). `mise env` runs without `MISE_YES` (it would trust an
   untrusted mise.toml for you) and `CI`; your `MISE_TRUSTED_CONFIG_PATHS` stays.
 - **Only this session.** A worker started from this one (a restart, a delegate child) starts on the worker's own

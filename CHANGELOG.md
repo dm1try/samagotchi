@@ -7,6 +7,11 @@ and commands may change between minor versions. How releases are made:
 [docs/releasing.md](docs/releasing.md).
 ## [Unreleased]
 
+### Fixed
+
+- A project's mise.toml can no longer set `TMPDIR` for the session's tools: the guardrails judge `$TMPDIR` paths
+  by chi's own, so a write there could have been taken for a tmp write while it landed in the project.
+
 ## [0.139.0] - 2026-10-30
 
 ### Added

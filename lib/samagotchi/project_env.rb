@@ -50,8 +50,10 @@ module Samagotchi
     # Keys the tools' overlay never sets: a `chi` a tool runs (the shim's)
     # reads its config, state and log dirs, its settings and the machine its
     # session commands go to (CHI_REMOTE) from them, and the test-run flags.
-    # Dropped, with one warning.
-    RESERVED_KEYS = %w[HOME RACK_ENV CI CHI_REMOTE].freeze
+    # And TMPDIR: the guardrails judge a tool's `$TMPDIR/x` and its tmp dirs
+    # (Guardrails::PathResolve.tmp_roots) by the worker's own TMPDIR, so the
+    # tools must run on that one too. Dropped, with one warning.
+    RESERVED_KEYS = %w[HOME TMPDIR RACK_ENV CI CHI_REMOTE].freeze
     RESERVED_PREFIXES = %w[XDG_ SAMAGOTCHI_].freeze
     # Never set from an ORIG_ENV record (a tool can write it), only unset:
     # loader and Bundler variables.

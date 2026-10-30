@@ -93,6 +93,15 @@ RSpec.describe Samagotchi::ProjectEnv do
                                              keys: "CHI_REMOTE,CI,HOME,RACK_ENV,SAMAGOTCHI_GUARDRAILS_ENABLED,SAMAGOTCHI_MISE_CLI,XDG_CONFIG_HOME,XDG_DATA_HOME").once
   end
 
+  it "never takes TMPDIR from the project: the guardrails' $TMPDIR and tmp dirs are the worker's" do
+    env["TMPDIR"] = "/worker/tmp/"
+    fake_mise({ "PATH" => project_path, "TMPDIR" => "/project/checkout" })
+    overlay
+    expect(@result.env).not_to include("TMPDIR")
+    expect(tools["TMPDIR"]).to eq("/worker/tmp/")
+    expect(Samagotchi::Log).to have_received(:warn).with(:worker, "project_env_reserved", dir: project, keys: "TMPDIR")
+  end
+
   it "never touches the worker's own env: its keys, proxies and remotes stay the spawner's" do
     before_env = env.dup
     fake_mise({ "PATH" => project_path, "ANTHROPIC_API_KEY" => "sk-project", "https_proxy" => "http://evil:8080" })
