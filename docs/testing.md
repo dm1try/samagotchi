@@ -186,6 +186,7 @@ any other file requires it, so a spec file run alone still finds its requires. E
 | `env.rb` | *helper*: `with_env` sets ENV for a block and puts it back (nil unsets) |
 | `failing_saves.rb` | shared context "failing session saves": `Session#save` raising ENOSPC while `saves_fail`, and the worker's `save_failed` records |
 | `fake_chat_adapter.rb` | `FakeChatAdapter`: an `LLM::OpenAIChat` stand-in answering `#chat` with queued steps, recording each request |
+| `fake_chi_context.rb` | `FakeChiContext`: a fake `chi context add/show/push/rm/ls` for the peer bundles' `scripts/pair` variants, logging each call |
 | `fake_executables.rb` | `FakeExecutables`: fake commands (`gh`, `git`) for a spec's PATH, symlinks to one launcher (macOS's first-exec check is paid once) |
 | `fake_provider_server.rb` | `FakeProviderServer`: an in-process HTTP provider replaying spec/fixtures/providers, recording requests |
 | `fake_tailscale.rb` | A fake `tailscale` for `Web::Tunnel::Tailscale` (status, serve, lock from JSON files; argv.log) |
