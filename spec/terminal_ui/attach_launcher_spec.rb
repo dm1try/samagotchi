@@ -264,7 +264,7 @@ RSpec.describe Samagotchi::TerminalUI::AttachLauncher do
       allow(Samagotchi::WorkerLink).to receive(:await).and_return(none_link)
 
       expect { connect(shared: true) }
-        .to raise_error(described_class::Error, "the worker for session #{session.id} did not start its Bridge in time")
+        .to raise_error(described_class::Error, "the worker for session #{session.id} did not start its Bridge in time (chi home doctor shows a worker that failed to boot)")
     end
   end
 end

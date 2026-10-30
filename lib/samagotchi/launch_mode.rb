@@ -17,8 +17,11 @@ module Samagotchi
     # into a kept one.
     SCRATCH_LEFTOVER = "that's a leftover scratch session; it is deleted at the next sweep (chi sessions clean)"
     # A worker spawned or resumed for an attach whose Bridge never came (%s:
-    # the session id).
-    BRIDGE_LATE = "the worker for session %s did not start its Bridge in time"
+    # the session id). A worker whose chi home couldn't load chi logs
+    # SessionManager::HOME_BOOT_FAILED and exits: HomeDoctor's boot row says
+    # what and what to run, so the text names chi home doctor.
+    BRIDGE_LATE = "the worker for session %s did not start its Bridge in time " \
+                  "(chi home doctor shows a worker that failed to boot)"
     # An attach (or a resume) that found the session's worker leaving, its
     # Bridge closed and its recap on leave still being written: it waits for
     # the worker to let go (OwnerLock.await_release), then starts a new one.

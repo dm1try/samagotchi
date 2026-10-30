@@ -14,6 +14,8 @@ and commands may change between minor versions. How releases are made:
 - MCP servers (mcp 0.7.4) and context sources start like `execute`'s commands: without chi's own Bundler setup
   (`RUBYOPT=-rbundler/setup`, `BUNDLE_GEMFILE`) or the project's `RUBYOPT`/`RUBYLIB`/Bundler variables, so a
   chi run from a checkout no longer hands them its Gemfile. Update with `chi update`.
+- A worker that never starts its Bridge (`chi --attach`, the web's wake) now points at `chi home doctor`, which names
+  a worker that failed to boot the chi home's chi.
 
 ## [0.139.0] - 2026-10-30
 

@@ -1402,7 +1402,9 @@ launches it. It is recorded in `~/.config/samagotchi/home.json` (`$XDG_CONFIG_HO
   `home_older_than_spawner`), but chi web's restart runs the newest chi it knows outside the home instead
   (`restart_home_older`): its flags may be ones the older chi doesn't know.
 - **A home that still fails at boot** (a broken install): the worker writes one `boot_failed` line to the debug log
-  (`log.file`) and exits, rather than leave the spawner waiting; `chi home doctor` reports the newest one.
+  (`log.file`) and exits, rather than leave the spawner waiting; `chi home doctor` reports the newest one, and an
+  attach whose worker never starts its Bridge says so ("… did not start its Bridge in time (chi home doctor shows a
+  worker that failed to boot)").
 - Each machine has its own home (a remote's is that machine's).
 
 ### Checking it: chi home doctor

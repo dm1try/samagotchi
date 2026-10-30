@@ -691,7 +691,7 @@ RSpec.describe Samagotchi::Web::App, "session access routes" do
       allow(Samagotchi::SessionManager).to receive(:resume_session)
       allow(Samagotchi::WorkerLink).to receive(:await).and_return(none_link)
 
-      late = "the worker for session #{session.id} did not start its Bridge in time"
+      late = "the worker for session #{session.id} did not start its Bridge in time (chi home doctor shows a worker that failed to boot)"
       expect(wake(session, { wait: 0.5 }))
         .to eq([504, { "error" => "worker_timeout", "detail" => late, "message" => late, "session_id" => session.id }])
       expect(Samagotchi::WorkerLink).to have_received(:await).with(session.id, session_dir: dir_of(session), timeout: 0.5)
