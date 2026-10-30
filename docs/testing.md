@@ -23,8 +23,10 @@ style pass: add a rule only for a bug class it would have caught. It runs in abo
 `rake release:check`; `rake lint` stays RuboCop alone (CI's rubocop job has no node). A name that is also a browser
 global (`name`, `status`, `open`…) passes even when its import is gone: give an export such a name only with care.
 It also checks `spec/e2e/` for one thing, the Playwright twin of `Samagotchi/SpecSleep`: no `page.waitForTimeout`.
-Wait for the state (a locator's `expect`, `data-phase`, an animation's end through `waitForFunction`); a pause that
-is the behaviour (a pointer's dwell) carries `// eslint-disable-line no-restricted-syntax -- why`. And in the six
+Wait for the state (a locator's `expect`, `data-phase`, an animation's end through `waitForFunction`); time the page
+keeps (a pointer's dwell, a hold) runs on Playwright's `page.clock` (`install`, then `pauseAt` and `runFor`: the
+stage's hand-off dwell in stage.spec.js); a pause that is the behaviour outside the page (a slow post held in a
+route) carries `// eslint-disable-line no-restricted-syntax -- why`. And in the six
 modules that hold the owner page's session state, one more: no write into `current`, `store.current` or `state()`
 in place (`samagotchi/session-writes`; the store is the write path, see internals/web-frontend.md, The session store).
 
@@ -91,7 +93,10 @@ Each level owns its own share; a detail is asserted once, at the lowest level th
   per example, as the wiring keeps one per turn.
 - **e2e** is for real-browser behaviour (layout, focus, reload, two tabs), one happy path per Ruby↔web mechanism and
   a few journeys. Before adding a test, extend an existing journey's step; a variant goes to node, a Ruby↔web shape
-  variant to a shared fixture (`spec/fixtures/composer_routes.json`).
+  variant to a shared fixture (`spec/fixtures/composer_routes.json`). A journey names its stages with `test.step`
+  (the report names the one that failed: web.spec.js's notifications). The `lan` project's chi web is on the LAN only
+  when the machine has a private IPv4: without one its LAN tests skip and the participant review journey runs on
+  loopback.
 
 ## Waiting and time
 
