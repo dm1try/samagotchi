@@ -19,7 +19,7 @@ page. A factory dep a new version stops passing is the same hazard the other way
 out of `send_turn.js`, `session_actions.js` and `lists_view.js`); a page loaded before keeps all its old modules
 until a reload, so the risk is a mixed cache, not an open tab. `answer_fold.js`, `details_motion.js`,
 `turn_range.js`, `history_reveal.js`, `latest.js`, `session_payload.js`, `method_api.js`, `session_store.js`,
-`session_fields.js`, `feature_gates.js`, `revise_stack.js` and `shell_command.js` are new modules for that reason.
+`session_fields.js`, `feature_gates.js`, `revise_stack.js`, `shell_command.js` and `stale_params.js` are new modules for that reason.
 
 ## Two pages, two models
 
