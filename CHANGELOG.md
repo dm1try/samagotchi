@@ -17,6 +17,8 @@ and commands may change between minor versions. How releases are made:
 - Web: opening another session clears the previous one's init row, markdown tip and card actions at once; they no
   longer stayed when the open failed.
 - Web: a canceled turn's timing shows in the info bar right away, not at the next unrelated redraw.
+- Web: the info bar follows a terminal taking the open session (its Continue and Stop, the title's ✎) at once, not at
+  the hub's next event.
 - Web: a sign-in that lapsed behind an auth proxy is reported (the sign-in prompt) by the notification bell and the
   push devices list too.
 - Pair turns: a program is judged by its name in any case, as macOS's disk runs it: `GIT config …`, `CHI share`,

@@ -87,7 +87,7 @@ function harness({ open = "s1", text = "hello", chips = [], state = {}, running 
     addCreatedSession: (created) => log.push(`created ${created.id}`),
     select: async (id) => { log.push(`select ${id}`); world.selected = id; world.state = { owner: null, commands: [] }; },
     showNotice: (text) => log.push(["notice", text]),
-    updateInfoBar: () => {},
+    updateInfoBar: () => log.push("infoBar"),
     updateComposerMode: () => log.push("composerMode"),
     followWokenWorker: () => log.push("follow"),
     refreshHistory: () => log.push("refreshHistory"),
@@ -250,6 +250,7 @@ test("errors: a terminal took the session; elsewhere it is a toast", async () =>
   assert.equal(h.earlyRestores.size, 0);
   assert.equal(h.world.state.owner, "tui");
   assert.ok(h.log.includes("composerMode"));
+  assert.ok(h.log.includes("infoBar"), "the bar follows the owner too (its continue and stop, the title's ✎)");
   assert.equal(h.button.disabled, true);
   assert.equal(h.promptEl.value, "hello");
   let away;
