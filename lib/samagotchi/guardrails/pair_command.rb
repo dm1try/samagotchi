@@ -186,9 +186,16 @@ module Samagotchi
       # Variables whose value is a command a program runs through a shell
       # (git's diff driver, editor, pager, ssh, proxy, askpass; the editors
       # and pagers others run): read as an sh -c script, wherever the
-      # assignment stands (a prefix, export's, env's).
+      # assignment stands (a prefix, export's, env's); bash's PROMPT_COMMAND.
       COMMAND_ENV = %w[GIT_EXTERNAL_DIFF GIT_EDITOR EDITOR VISUAL GIT_SEQUENCE_EDITOR GIT_SSH_COMMAND GIT_SSH
-                       GIT_PROXY_COMMAND GIT_PAGER PAGER MANPAGER GIT_ASKPASS SSH_ASKPASS].freeze
+                       GIT_PROXY_COMMAND GIT_PAGER PAGER MANPAGER GIT_ASKPASS SSH_ASKPASS PROMPT_COMMAND].freeze
+      # A $(…) or backticks left as text in an assigned value (quoted: one
+      # that runs now is a SUBST): a shell expands it later, where the value
+      # is used (PS4 under bash -x, PS0/PS1, a prompt), so the value is read
+      # as a script too. Only a real assignment's: a prefix, a command of
+      # assignments, or ASSIGNERS' words (not grep 'X=$(…)').
+      DEFERRED_SUBST = /\$\(|`/
+      ASSIGNERS = %w[export declare typeset readonly local env].freeze
       # Devices a command may name in the project's stead.
       DEVICES = %w[/dev/null /dev/stdout /dev/stderr /dev/tty /dev/zero /dev/random /dev/urandom].freeze
       # A word that starts with $TMPDIR or ${TMPDIR}.
@@ -864,11 +871,16 @@ module Samagotchi
       end
 
       # The commands a simple command's assignments hand a program
-      # (COMMAND_ENV: GIT_EDITOR='…' git commit, export GIT_PAGER=…).
+      # (COMMAND_ENV: GIT_EDITOR='…' git commit, export GIT_PAGER=…), and an
+      # assigned value holding a $(…) as text (DEFERRED_SUBST: PS4='$(…)').
       def env_commands(words)
-        words.filter_map do |word|
+        at = program_at(words)
+        assigns = at.nil? || ASSIGNERS.include?(ShellLex.program_name(words[at]))
+        words.each_with_index.filter_map do |word, i|
           name, value = word.match(/\A([A-Za-z_]\w*)=(.+)\z/m)&.captures
-          value if COMMAND_ENV.include?(name)
+          next unless name
+
+          value if COMMAND_ENV.include?(name) || (value.match?(DEFERRED_SUBST) && (assigns || i < at))
         end
       end
 

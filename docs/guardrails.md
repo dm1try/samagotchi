@@ -521,8 +521,11 @@ own, one another interpreter runs (`ruby -e`, `python - <<EOF`) by its text
 variable a program runs through a shell (`PairCommand::COMMAND_ENV`:
 `GIT_EDITOR`, `GIT_SEQUENCE_EDITOR`, `EDITOR`, `VISUAL`, `GIT_EXTERNAL_DIFF`,
 `GIT_SSH_COMMAND`, `GIT_SSH`, `GIT_PROXY_COMMAND`, `GIT_PAGER`, `PAGER`,
-`MANPAGER`, `GIT_ASKPASS`, `SSH_ASKPASS`), as a prefix, `env`'s or `export`'s:
-read as `sh -c` would run it, for the refusals and for an outside write. A heredoc written as data (`cat`,
+`MANPAGER`, `GIT_ASKPASS`, `SSH_ASKPASS`, bash's `PROMPT_COMMAND`), as a prefix,
+`env`'s or `export`'s: read as `sh -c` would run it, for the refusals and for
+an outside write. So is any assigned value that keeps a `$(…)` or backticks as
+text (`PS4='$(…)' bash -x`, `PS0`, `PS1`: the shell expands it later), a
+prefix's, a bare assignment's or `export`'s (not `grep 'X=$(…)'`). A heredoc written as data (`cat`,
 `tee`, `git commit -F -`) is not looked into: where it goes is checked. A
 command the checks can't read is refused, never let through on a text match.
 A program is told by its name in any case, on every disk (`GIT config`, `Chi

@@ -486,6 +486,23 @@ RSpec.describe Samagotchi::Guardrails::PairBoundary do
       end
     end
 
+    # bash runs PROMPT_COMMAND, and expands a $(…) kept as text in PS4 (under
+    # -x), PS0 or PS1 when it prints them: a value holding one is a script.
+    it "reads PROMPT_COMMAND, and an assigned value holding a $(…) or backticks as text, as a command" do
+      expect(refused("export PROMPT_COMMAND='git config core.fsmonitor id'")).to eq(described_class::GIT_CONFIG)
+      expect(refused("PS1='$(chi share x)' bash -i")).to eq(described_class::CHI)
+      ["PS4='$(git config core.fsmonitor id)' bash -xc true", "PS4='`touch ~/x`' bash -xc true",
+       "env PS4='$(touch ~/x)' bash -xc true", "PS4='$(touch ~/x)'; set -x; true",
+       "export PS0='$(touch ~/x)'"].each do |command|
+        expect(execute(command)).to be_deny, command
+      end
+      verdict = execute("PROMPT_COMMAND='touch ~/x' bash -i")
+      expect([verdict.ask?, verdict.reason]).to eq([true, described_class::OUTSIDE_WRITE])
+      ["PS4='+ ' bash -xc 'echo hi'", "grep -n 'VERSION=$(cat' Makefile", "echo 'X=`id`'"].each do |command|
+        expect(execute(command)).to be_allow, command
+      end
+    end
+
     it "denies writing a submodule's hooks, as the repository's own" do
       [{ name: "write", path: ".git/modules/sub/hooks/pre-commit", content: "x" },
        { name: "write", path: ".git/modules/a/modules/b/hooks/post-checkout", content: "x" }].each do |call|
