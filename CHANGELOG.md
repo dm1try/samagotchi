@@ -7,6 +7,14 @@ and commands may change between minor versions. How releases are made:
 [docs/releasing.md](docs/releasing.md).
 ## [Unreleased]
 
+## [0.134.0] - 2026-10-30
+
+### Added
+
+- Web: a long answer (over ~25 lines or ~2,000 characters) gets a fold row above it: one click folds it to its first
+  line and its length, another opens it. Your folds are kept per browser across reloads; a jump into a folded answer
+  (a claim link, the working set, "View check") opens it.
+
 ### Fixed
 
 - Web: the start page's ⚙ and 🧰 buttons say whether their panel is open (`aria-expanded`) to screen readers.
@@ -58,6 +66,12 @@ and commands may change between minor versions. How releases are made:
 - Guardrails: a `task_create` whose `env:` points git at another config (`GIT_CONFIG_GLOBAL`, `GIT_CONFIG_SYSTEM`,
   `GIT_CONFIG_KEY_n`/`VALUE_n`) is no longer read-only, and a pair turn's command that sets one is denied like
   `git -c`.
+- Pair turns: more spellings that hid a git config write or a command are caught: a git global option that takes a
+  value (`--attr-source`, `--shallow-file`, one git adds later), `git-config` and the other dashed builtins, a script
+  after a shell's options (`sh -c -- S`, `bash -c -x S`) or in an option cluster (`ruby -we`, `perl -le`, `node -pe`,
+  `python3 -Ic`), and a command handed through an environment variable (`GIT_EDITOR`, `GIT_SSH_COMMAND`,
+  `GIT_EXTERNAL_DIFF`, `GIT_PAGER`, `EDITOR`, …). `git maintenance register/start`, `git lfs install` and
+  `scalar register` now ask you.
 
 ## [0.133.0] - 2026-10-30
 
@@ -5129,7 +5143,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.133.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.134.0...HEAD
+[0.134.0]: https://github.com/dm1try/samagotchi/compare/v0.133.0...v0.134.0
 [0.133.0]: https://github.com/dm1try/samagotchi/compare/v0.132.0...v0.133.0
 [0.132.0]: https://github.com/dm1try/samagotchi/compare/v0.131.0...v0.132.0
 [0.131.0]: https://github.com/dm1try/samagotchi/compare/v0.130.1...v0.131.0
