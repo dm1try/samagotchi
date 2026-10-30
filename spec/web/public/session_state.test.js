@@ -27,6 +27,17 @@ test("starts every field empty", () => {
   assert.deepEqual(s.mutedMemories, []);
   assert.deepEqual(s.timing, normalizeTiming());
   assert.equal(s.turnStarted, false);
+  assert.equal(s.thinking, null);
+});
+
+test("every field a payload sets starts in the empty state", () => {
+  const st = sessionStateFrom({
+    session: { status: "idle", model_name: "m" },
+    timing: { context: { window_tokens: 1000, window_source: "server", prompt_tokens: 10 } },
+    commands: [],
+  });
+  const empty = emptySessionState();
+  for (const key of Object.keys(st)) assert.ok(key in empty, `${key} is missing from emptySessionState`);
 });
 
 test("each call is a fresh object: one session's writes never reach the next", () => {
