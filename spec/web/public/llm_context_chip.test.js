@@ -59,7 +59,6 @@ test("the form starts from the session's own values, default for the unset ones"
   assert.equal(f.field("budget").value, "64000");
   assert.match(f.text(".llmctx-now"), /^Now: stale,forget \(the session\)/);
   assert.equal(f.form.querySelector("[disabled]"), null);
-  assert.equal(f.form.querySelector(".llmctx-error").hidden, true);
   assert.doesNotMatch(f.all, /A turn is running/);
   // Mid-turn a Set is queued for after the turn (it applies at the next turn's start anyway).
   const mid = formOf(own, { running: true });
@@ -144,8 +143,7 @@ function control(opts) {
     field(name).value = value;
     field(name).dispatchEvent(new window.Event("input", { bubbles: true }));
   };
-  const error = () => pop.querySelector(".llmctx-error");
-  return { ctl, pop, chip, ran, submit, field, type, error, done: () => { el.remove(); pop.remove(); } };
+  return { ctl, pop, chip, ran, submit, field, type, done: () => { el.remove(); pop.remove(); } };
 }
 
 test("a click on the chip opens the form at the session's values; a Set runs only the changed fields", () => {
