@@ -362,8 +362,10 @@ module Samagotchi
 
       # The options whose next word is +name+'s code (CODE_FLAGS); fish's
       # --command too.
-      def self.code_flags(name)
-        return %w[-c --command] if name == "fish"
+      # With +source+ (.script_source) fish's --command is left out: what its
+      # script runs (a sourced file) SelfProtect can't see, as on a file.
+      def self.code_flags(name, source: false)
+        return source ? %w[-c] : %w[-c --command] if name == "fish"
         return %w[-c] if SHELLS.include?(name)
 
         CODE_FLAGS.find { |start, _| name.start_with?(start) }&.last || %w[-c -e]
@@ -374,14 +376,15 @@ module Samagotchi
       # cluster holding its code letter (.cluster_code_at: sh -ec, bash -cx,
       # ruby -we, perl -le, node -pe, python3 -Ic).
       def self.code_flag?(name, word, source: false)
-        flags = code_flags(name)
-        flags.include?(word) || !long_code(name, word).nil? || !cluster_code_at(name, word, source: source).nil?
+        flags = code_flags(name, source: source)
+        flags.include?(word) || !long_code(name, word, source: source).nil? ||
+          !cluster_code_at(name, word, source: source).nil?
       end
 
       # The code a long code option carries after = (--eval=…), nil for
       # another word.
-      def self.long_code(name, word)
-        flag = code_flags(name).find { |option| option.start_with?("--") && word.start_with?("#{option}=") }
+      def self.long_code(name, word, source: false)
+        flag = code_flags(name, source: source).find { |option| option.start_with?("--") && word.start_with?("#{option}=") }
         flag && word.delete_prefix("#{flag}=")
       end
 
@@ -393,7 +396,7 @@ module Samagotchi
       def self.cluster_code_at(name, word, source: false)
         return nil unless word.match?(/\A-[A-Za-z0-9]/)
 
-        letters = code_flags(name).filter_map { |flag| flag[1] if flag.match?(/\A-[A-Za-z]\z/) }.join
+        letters = code_flags(name, source: source).filter_map { |flag| flag[1] if flag.match?(/\A-[A-Za-z]\z/) }.join
         return nil if letters.empty?
 
         rest, digits = if SHELLS.include?(name)

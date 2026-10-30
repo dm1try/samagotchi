@@ -164,7 +164,9 @@ RSpec.describe Samagotchi::SystemOne::SelfProtect do
       %(git push && cd #{mem} && php -dr /tmp/climb.php), %(git push && cd #{mem} && osascript -le /tmp/climb.scpt),
       %(git push && cd #{mem} && julia /tmp/climb.jl),
       # perl's debugger runs .perldb from the dir it is in
-      %(git push && cd #{mem} && perl -de 0)
+      %(git push && cd #{mem} && perl -de 0),
+      # fish's --command may source a file, as a script file it names
+      %(git push && cd #{mem} && fish --command 'source /tmp/climb.fish')
     ].each do |command|
       facts = { "rule" => "git-push", "tool" => "execute", "command" => command, "cwd" => Dir.pwd }
       expect(S.refuse?(facts)).to be(true), command
