@@ -3,9 +3,6 @@
 module Samagotchi
   # A claim selected in an earlier turn, carried only by a Verify turn.
   VerifyAnchor = Data.define(:turn_id, :quote) do
-    UUID = /\A[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\z/i
-    QUOTE_MAX = 200
-
     def self.from(value)
       return value if value.is_a?(self)
       return nil unless value.is_a?(Hash)
@@ -15,8 +12,8 @@ module Samagotchi
 
       turn_id = fields["turn_id"]
       quote = fields["quote"]
-      return nil unless turn_id.is_a?(String) && UUID.match?(turn_id)
-      return nil unless quote.is_a?(String) && quote.length.between?(1, QUOTE_MAX) && !quote.strip.empty?
+      return nil unless turn_id.is_a?(String) && self::UUID.match?(turn_id)
+      return nil unless quote.is_a?(String) && quote.length.between?(1, self::QUOTE_MAX) && !quote.strip.empty?
 
       new(turn_id:, quote:)
     end
@@ -26,6 +23,9 @@ module Samagotchi
     def to_file = { "turn_id" => turn_id, "quote" => quote }
   end
 
+  # The shape of the turn id an anchor names (ReviseAnchor's too).
+  VerifyAnchor::UUID = /\A[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\z/i
+  VerifyAnchor::QUOTE_MAX = 200
   VerifyAnchor::FEATURE = "verify"
   VerifyAnchor::UNAVAILABLE = {
     "error" => "verify_unavailable",
