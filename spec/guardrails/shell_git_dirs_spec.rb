@@ -27,6 +27,7 @@ RSpec.describe Samagotchi::Guardrails::ShellGitDirs do
     "cd && git add ." => ["/home/u"],
     "cd .. && git commit -m x" => ["/p"],
     "git -C /p -C main commit" => ["/p/main"],
+    "git --attr-source HEAD -C /p/main commit" => ["/p/main"],
     "/usr/bin/git -C /p/main push" => ["/p/main"],
     "if cd /p/main; then git commit -m x; fi" => ["/p/main"],
     "env GIT_DIR=/p/main/.git git commit -m x" => ["/p/main"],

@@ -370,7 +370,11 @@ RSpec.describe Samagotchi::Guardrails::PairBoundary do
        # git run another way
        "echo id | xargs git config core.fsmonitor", "find . -maxdepth 0 -exec git config core.fsmonitor id \\;",
        "alias g=git; g config core.fsmonitor id", "python3 -c 'import subprocess; subprocess.run([\"git\",\"config\",\"x.y\",\"z\"])'",
-       "ruby -e 'system(\"git -c core.fsmonitor=id status\")'", "git submodule foreach 'git config core.fsmonitor id'"].each do |command|
+       "ruby -e 'system(\"git -c core.fsmonitor=id status\")'", "git submodule foreach 'git config core.fsmonitor id'",
+       # behind a global option that takes a value, or one the list doesn't know
+       "git --attr-source HEAD config core.fsmonitor id", "git --shallow-file x config hook.x.command id",
+       "git --attr-source HEAD -c core.fsmonitor=id status", "git --shallow-file x clone -c core.fsmonitor=id . y",
+       "git --frobnicate x config core.pager id", "git --exec-path config core.fsmonitor id"].each do |command|
         expect(refused(command)).to eq(described_class::GIT_CONFIG), command
       end
       ["git config --get core.editor", "git config --get core.fsmonitor id", "git config --get-all core.fsmonitor",
@@ -378,7 +382,8 @@ RSpec.describe Samagotchi::Guardrails::PairBoundary do
        "git config --get-regexp '^filter'", "git config --show-origin --get user.name", "git config core.fsmonitor",
        "git config --type=bool --get core.bare", "git config --default x --get core.fsmonitor",
        "git config -z --list", "git config --get-urlmatch http.x https://e.x", "git status",
-       "git clone https://e.x/r docs/r", "git submodule update --checkout"].each do |command|
+       "git clone https://e.x/r docs/r", "git submodule update --checkout", "git --attr-source HEAD log",
+       "git --no-pager -C . status", "git --shallow-file x --git-dir .git log"].each do |command|
         expect(refused(command)).to be_nil, command
       end
     end
@@ -389,7 +394,8 @@ RSpec.describe Samagotchi::Guardrails::PairBoundary do
       expect(refused("git rebase --exec 'chi send x' HEAD~1")).to eq(described_class::CHI)
       ["git rebase -x 'touch ~/x' HEAD~1", "git bisect run touch ~/x", "git filter-branch --tree-filter 'touch ~/x'",
        "git fetch --upload-pack='touch ~/x' origin", "git clone 'ext::sh -c touch% ~/x' y",
-       "git difftool --extcmd='touch ~/x'"].each do |command|
+       "git difftool --extcmd='touch ~/x'", "git --attr-source HEAD submodule foreach 'touch ~/x'",
+       "git --frobnicate x rebase -x 'touch ~/x' HEAD~1"].each do |command|
         verdict = execute(command)
         expect([verdict.ask?, verdict.reason]).to eq([true, described_class::OUTSIDE_WRITE]), command
       end
@@ -400,7 +406,7 @@ RSpec.describe Samagotchi::Guardrails::PairBoundary do
     # set core.hooksPath.
     it "denies installing git hooks: a template, GIT_TEMPLATE_DIR, the hook installers" do
       ["git init --template=/tmp/t", "git init --template /tmp/t .", "git clone --template=/tmp/t . y",
-       "git init --templ=/tmp/t", "pre-commit install", "npx husky init", "husky", "lefthook install",
+       "git init --templ=/tmp/t", "git --attr-source HEAD init --template=/tmp/t", "pre-commit install", "npx husky init", "husky", "lefthook install",
        "npx simple-git-hooks", "overcommit --install"].each do |command|
         expect(refused(command)).to eq(described_class::GIT_HOOKS), command
       end

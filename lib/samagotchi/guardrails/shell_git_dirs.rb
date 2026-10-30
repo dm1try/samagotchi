@@ -28,7 +28,7 @@ module Samagotchi
       STASH_READS = %w[list show].freeze
       PREFIXES = %w[command builtin exec time nohup env ! { if then else elif do while until].freeze
       # git global options that take the next word as their value.
-      VALUE_OPTIONS = %w[-C -c --git-dir --work-tree --namespace].freeze
+      VALUE_OPTIONS = %w[-C -c --git-dir --work-tree --namespace --attr-source --shallow-file].freeze
       # The variables that hand git config of their own (another global or
       # system file, settings as -c gives them) or a template (an init's
       # hooks): what they set may run a command (Targets::SHELL_REDEFINING_ENV,

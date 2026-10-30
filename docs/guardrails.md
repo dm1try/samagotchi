@@ -457,7 +457,9 @@ message:
   a clone's, init's or submodule's `-c`/`--config`, an assignment of
   `GIT_CONFIG_*` or `GIT_TEMPLATE_DIR`, `git` under an alias, `git config` after
   `xargs` or in `find -exec`, and an interpreter's script naming `git config`
-  or `git -c`. A command git runs now from its text (`git submodule foreach`,
+  or `git -c`, behind any of git's own options (`--attr-source X`,
+  `--shallow-file X`; one chi doesn't know is read both with and without the
+  next word as its value, `PairCommand.git_command_starts`). A command git runs now from its text (`git submodule foreach`,
   `rebase --exec`, `bisect run`, a `filter-branch` filter, `--upload-pack`,
   `--receive-pack`, `--extcmd`, an `ext::` URL) is read as a command of its
   own and asks as an outside write. A `.gitattributes` write isn't asked

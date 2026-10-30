@@ -159,7 +159,15 @@ module Samagotchi
       # arguments that do it (nil: any).
       HOOK_INSTALLERS = { "pre-commit" => %w[install], "husky" => nil, "lefthook" => %w[install add],
                           "simple-git-hooks" => nil, "overcommit" => %w[--install], "git-hooks" => %w[install] }.freeze
-      GIT_VALUE_OPTIONS = %w[-C --git-dir --work-tree --namespace --exec-path].freeze
+      # git's own options before its subcommand: the flags, and those whose
+      # value may be the next word. Any other option (one git knows and this
+      # list doesn't: --exec-path alone, a newer one) may or may not take
+      # the next word, and both readings are judged (.git_command_starts):
+      # an unknown option never hides the config, -c or template after it.
+      GIT_FLAG_OPTIONS = %w[-p --paginate -P --no-pager --no-replace-objects --no-lazy-fetch --no-optional-locks
+                            --no-advice --bare --literal-pathspecs --glob-pathspecs --noglob-pathspecs
+                            --icase-pathspecs -v --version -h --help --html-path --man-path --info-path].freeze
+      GIT_VALUE_OPTIONS = %w[-C --git-dir --work-tree --namespace --attr-source --shallow-file].freeze
       # Devices a command may name in the project's stead.
       DEVICES = %w[/dev/null /dev/stdout /dev/stderr /dev/tty /dev/zero /dev/random /dev/urandom].freeze
       # A word that starts with $TMPDIR or ${TMPDIR}.
@@ -233,6 +241,32 @@ module Samagotchi
         !previous.nil? && previous.match?(/\A-[IrCen]\z/)
       end
       private_class_method :skipped?
+
+      # Where git's subcommand may start in its +args+ (indices): past its
+      # own options (GIT_FLAG_OPTIONS, GIT_VALUE_OPTIONS and their value,
+      # an option=value), every reading of an option it doesn't know (with
+      # its next word as a value and without). :config_option among them
+      # when one of those options is a -c or --config-env.
+      def self.git_command_starts(args)
+        starts = []
+        todo = [0]
+        seen = {}
+        until todo.empty?
+          i = todo.shift
+          next if seen[i]
+
+          seen[i] = true
+          word = args[i]
+          next starts << i if word.nil? || !word.start_with?("-")
+          next starts << :config_option if word.start_with?("-c", "--config-env")
+
+          if GIT_FLAG_OPTIONS.include?(word) || word.include?("=") then todo << (i + 1)
+          elsif GIT_VALUE_OPTIONS.include?(word) then todo << (i + 2)
+          else todo.push(i + 1, i + 2)
+          end
+        end
+        starts
+      end
 
       # A shell, another interpreter or eval: what runs a script it is given.
       def self.runner?(word)
@@ -596,15 +630,17 @@ module Samagotchi
       # set, a clone's, init's or submodule's -c/--config: GIT_CONFIG) or a
       # template (--template: its hooks, GIT_HOOKS); nil for the rest.
       def git_refusal(args, appended: false)
-        i = 0
-        while i < args.size && args[i].start_with?("-")
-          word = args[i]
-          return PairBoundary::GIT_CONFIG if word.start_with?("-c", "--config-env")
+        starts = PairCommand.git_command_starts(args)
+        return PairBoundary::GIT_CONFIG if starts.include?(:config_option)
 
-          i += GIT_VALUE_OPTIONS.include?(word) ? 2 : 1
+        starts.each do |i|
+          reason = git_command_refusal_at(args[i], args[(i + 1)..] || [], appended: appended)
+          return reason if reason
         end
-        command = args[i]
-        rest = args[(i + 1)..] || []
+        nil
+      end
+
+      def git_command_refusal_at(command, rest, appended:)
         return (!appended && git_config_read?(rest) ? nil : PairBoundary::GIT_CONFIG) if command == "config"
         return nil unless GIT_SEEDING.include?(command)
         return PairBoundary::GIT_CONFIG if rest.any? { |arg| arg.match?(GIT_SEED_CONFIG) }
@@ -652,10 +688,12 @@ module Samagotchi
       # submodule foreach's, a rebase --exec's, a filter's, an --upload-pack,
       # an ext:: URL…; GIT_COMMAND_OPTIONS): read as commands of their own.
       def git_commands(args)
-        i = 0
-        i += GIT_VALUE_OPTIONS.include?(args[i]) ? 2 : 1 while i < args.size && args[i].start_with?("-")
-        command = args[i]
-        rest = args[(i + 1)..] || []
+        PairCommand.git_command_starts(args).grep(Integer).flat_map do |i|
+          git_commands_at(args[i], args[(i + 1)..] || [])
+        end
+      end
+
+      def git_commands_at(command, rest)
         found = rest.filter_map { |arg| arg.delete_prefix("ext::") if arg.start_with?("ext::") }
         found << rest.drop_while { |arg| arg != "foreach" }.drop(1).reject { |arg| arg.start_with?("-") }.join(" ") if
           command == "submodule" && rest.include?("foreach")
