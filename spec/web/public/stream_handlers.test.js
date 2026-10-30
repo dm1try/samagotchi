@@ -29,9 +29,13 @@ function fakePage({ selected = "s1", running = false, read = null } = {}) {
     capabilities: {},
     guess: false,
     composerText: "",
+    // The switch's own redraws are the page's (forgetSession), not a
+    // handler's: not recorded.
     open(id, fields = {}) {
       page.selected = id;
+      const before = calls.length;
       page.current = { model: "other", ctxWindow: 1000, llmContext: null, timing: { tokens: null, turnRecords: [] }, ...fields };
+      calls.splice(before);
     },
     names: () => calls.map((c) => c[0]),
   };
@@ -56,9 +60,6 @@ function fakePage({ selected = "s1", running = false, read = null } = {}) {
     shownTexts: { turnStarted: rec("shownTexts.turnStarted") },
     questionCards: new Proxy({}, { get: (_, name) => rec(`questionCards.${String(name)}`) }),
     contextChips: { refresh: rec("contextChips.refresh") },
-    llmContextControl: { refresh: rec("llmContextControl.refresh") },
-    thinkingControl: { refresh: rec("thinkingControl.refresh") },
-    reasoningHistoryControl: { refresh: rec("reasoningHistoryControl.refresh") },
     placeVerdict: rec("placeVerdict"),
     restoreVerify: rec("restoreVerify"),
     sentIds: new Set(),
@@ -84,10 +85,16 @@ function fakePage({ selected = "s1", running = false, read = null } = {}) {
     resync: rec("resync", async () => {}),
   };
   for (const name of [
-    "updateInfoBar", "showSteers", "markRecapStale", "setTurnRunning", "setLiveStatus", "endTurnView", "appendChunk",
+    "showSteers", "markRecapStale", "setTurnRunning", "setLiveStatus", "endTurnView", "appendChunk",
     "applyFinalMarkdown", "refreshTimingFromSession", "makeUserBubble", "addEndBubble", "addCommandBubble", "addNoteBubble",
     "setUsedMemories", "showRecap", "showGuardrailWarning", "showHookNotice", "onInitEvent", "upsertCard", "refreshCardBodies",
   ]) deps[name] = rec(name);
+  // The page's redraws, registered as app.js registers them, recorded under
+  // the names the page called them by.
+  store.on("infoBar", rec("updateInfoBar"));
+  store.on("llmContextChip", rec("llmContextControl.refresh"));
+  store.on("thinkingChip", rec("thinkingControl.refresh"));
+  store.on("reasoningChip", rec("reasoningHistoryControl.refresh"));
   return { page, deps, handlers: createStreamHandlers(deps), liveTurn };
 }
 

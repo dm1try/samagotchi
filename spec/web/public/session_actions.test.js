@@ -29,6 +29,9 @@ function harness({ list = [{ id: "s1aaaaaaaa" }], open = "s1aaaaaaaa", api = {},
     calls.push([name, ...args]);
     return (api[name] || fallback)(...args);
   };
+  // The bar's redraw, registered as app.js registers it (a touch for the
+  // continue and review in-flight sets).
+  store.on("infoBar", () => log.push(`infoBar ${[...actions.continuing].join(",")}`));
   const actions = createSessionActions({
     selected: () => world.selected,
     store,
@@ -50,7 +53,6 @@ function harness({ list = [{ id: "s1aaaaaaaa" }], open = "s1aaaaaaaa", api = {},
     select: async (id) => { log.push(`select ${id}`); world.selected = id; },
     clearSelection: () => { log.push("clearSelection"); world.selected = null; },
     showNotice: (text) => log.push(`notice ${text}`),
-    updateInfoBar: () => log.push(`infoBar ${[...actions.continuing].join(",")}`),
     toast: (text, action = null, options = {}) => toasts.push({ text, action, options }),
     addCreatedSession: (created) => log.push(`created ${created.id}`),
     fillOpener: (created, continuedId) => { log.push(`opener ${created.id} from ${continuedId}`); return displaced; },
@@ -69,7 +71,8 @@ test("confirmDelete: after a confirm the list drops it, and the open session goe
   await h.actions.confirmDelete("s1aaaaaaaa");
   assert.deepEqual(h.calls, [["deleteSession", "s1aaaaaaaa"]]);
   assert.deepEqual(h.world.sessions.map((s) => s.id), ["s2bbbbbbbb"]);
-  assert.deepEqual(h.log, ["clearSelection", "render"]);
+  // The store's list redraws the lists (here a plain list: setSessions).
+  assert.deepEqual(h.log, ["clearSelection"]);
 });
 
 test("confirmDelete: a terminal's session is refused before the confirm; no confirm, no request", async () => {
@@ -108,7 +111,8 @@ test("stopSelected: the stream's end is a stop while the request runs; the open 
   release({});
   await stopping;
   assert.equal(h.world.state.status, "stopped");
-  assert.deepEqual(h.log, ["closeLiveStream", "workerGone s1aaaaaaaa stopping=s1aaaaaaaa", "refresh"]);
+  // The status redraws the bar (the store); workerGone (the page's) the rest.
+  assert.deepEqual(h.log, ["closeLiveStream", "infoBar ", "workerGone s1aaaaaaaa stopping=s1aaaaaaaa", "refresh"]);
   assert.equal(h.actions.stoppingId(), null);
 });
 
@@ -263,7 +267,7 @@ test("archiveOne: archiving a tree that holds the open session is a stop for its
   const h = harness({ list, api: { archiveSession: async () => ({ archived: ["parent", "s1aaaaaaaa"], stopped: ["s1aaaaaaaa"] }) } });
   const answer = await h.actions.archiveOne("parent", true);
   assert.equal(answer.ok, true);
-  assert.deepEqual(h.log, ["closeLiveStream", "workerGone s1aaaaaaaa stopping=s1aaaaaaaa"]);
+  assert.deepEqual(h.log, ["closeLiveStream", "infoBar ", "workerGone s1aaaaaaaa stopping=s1aaaaaaaa"]);
   assert.equal(h.actions.stoppingId(), null);
   const failed = harness({ api: { unarchiveSession: async () => { throw failure(404); } } });
   const refused = await failed.actions.archiveOne("s1aaaaaaaa", false);

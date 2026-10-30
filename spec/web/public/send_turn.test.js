@@ -35,6 +35,9 @@ function harness({ open = "s1", text = "hello", chips = [], state = {}, running 
   const button = { disabled: false };
   const sentIds = new Set();
   const earlyRestores = new Map();
+  // The page's redraws, registered as app.js registers them.
+  store.on("composer", () => log.push("composerMode"));
+  store.on("infoBar", () => log.push("infoBar"));
   let cleared = 0;
   const sendTurnApi = createSendTurn({
     session: () => world.selected,
@@ -87,8 +90,6 @@ function harness({ open = "s1", text = "hello", chips = [], state = {}, running 
     addCreatedSession: (created) => log.push(`created ${created.id}`),
     select: async (id) => { log.push(`select ${id}`); world.selected = id; world.state = { owner: null, commands: [] }; },
     showNotice: (text) => log.push(["notice", text]),
-    updateInfoBar: () => log.push("infoBar"),
-    updateComposerMode: () => log.push("composerMode"),
     followWokenWorker: () => log.push("follow"),
     refreshHistory: () => log.push("refreshHistory"),
     leaveGoneSession: (id, why) => log.push(`gone ${id} ${why}`),
