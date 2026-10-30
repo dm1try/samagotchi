@@ -159,7 +159,10 @@ RSpec.describe Samagotchi::SystemOne::SelfProtect do
       %(git push && cd #{mem} && deno run /tmp/climb.ts), %(git push && cd #{mem} && npm run x),
       # in any case: a case-insensitive disk runs MAKE as make (ShellLex.program_name)
       %(git push && cd #{mem} && MAKE), %(git push && cd #{mem} && RUBY /tmp/climb.rb),
-      %(git push && cd #{mem} && Bash /tmp/climb.sh)
+      %(git push && cd #{mem} && Bash /tmp/climb.sh),
+      # a value letter before the code letter's place: php -d's, osascript -l's (a file follows)
+      %(git push && cd #{mem} && php -dr /tmp/climb.php), %(git push && cd #{mem} && osascript -le /tmp/climb.scpt),
+      %(git push && cd #{mem} && julia /tmp/climb.jl)
     ].each do |command|
       facts = { "rule" => "git-push", "tool" => "execute", "command" => command, "cwd" => Dir.pwd }
       expect(S.refuse?(facts)).to be(true), command

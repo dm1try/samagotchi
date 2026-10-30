@@ -340,7 +340,10 @@ RSpec.describe Samagotchi::Guardrails::PairBoundary do
        "ruby -we 'system(\"chi x\")'", "perl -le 'system(\"chi x\")'", "perl -l0e 'system(\"chi x\")'",
        "node -pe 'require(\"child_process\").execSync(\"chi x\")'",
        "node --eval='require(\"child_process\").execSync(\"chi x\")'",
-       "python3 -Ic \"import os; os.system('chi x')\"", "python3 -c'import os; os.system(\"chi x\")'"].each do |command|
+       "python3 -Ic \"import os; os.system('chi x')\"", "python3 -c'import os; os.system(\"chi x\")'",
+       "php -B 'system(\"chi x\");'", "php -R 'system(\"chi x\");'", "php -E 'system(\"chi x\");'",
+       "perl -de 'system(\"chi x\")'", "jruby -e 'system(\"chi x\")'", "raku -e 'shell \"chi x\"'",
+       "julia -e 'run(`chi x`)'", "osascript -le 'do shell script \"chi x\"'", "php -dr 'system(\"chi x\");'"].each do |command|
         expect(refused(command)).to eq(described_class::CHI), command
       end
       expect(refused("sh -c -- 'git config core.fsmonitor id'")).to eq(described_class::GIT_CONFIG)

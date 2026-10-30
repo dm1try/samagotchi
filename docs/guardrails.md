@@ -586,7 +586,7 @@ rule lowers it), so it comes even in auto mode. A command fails closed
   hands it a script: the first word after its options (`sh -c -- S`, `bash -c
   -x S`), and fish's `--command S` (`--command=S`) or `-C`/`--init-command S`,
   a command it runs first; an interpreter's own code flag does (`python -c`, `ruby -e`,
-  `node -e`/`-p`/`--eval=`, `perl -e`/`-E`, `php -r`), alone or in a cluster
+  `node -e`/`-p`/`--eval=`, `perl -e`/`-E`, `php -r`/`-B`/`-R`/`-E`, `jruby`/`raku`/`julia -e`), alone or in a cluster
   (`ruby -we`, `perl -le`, `node -pe`, `python3 -Ic`, `python3 -c'…'`;
   `PairCommand.cluster_code_at`: a letter that takes the rest of the word,
   `ruby -rset`, holds no code). A script file it names (`sh
@@ -595,9 +595,11 @@ rule lowers it), so it comes even in auto mode. A command fails closed
   Accepted gaps (an accident guard for a trusted team): a script file the turn
   wrote and then runs; inline scripts read only by their text for paths
   (`find … -exec sh -c '…'`, `flock … sh -c`, `awk 'BEGIN{system(…)}'`,
-  `deno eval`); a `GIT_CONFIG_*` set by `printf -v` or `read` and exported
-  (it affects that command only); a variable outside `COMMAND_ENV` whose
-  value a program runs (`LESSOPEN`, a tool's own `*_EDITOR`); `npx -y`,
+  `deno eval`); a `GIT_CONFIG_*` or a `COMMAND_ENV` variable set by `printf -v`
+  or `read` and exported (`printf -v GIT_PAGER …; export GIT_PAGER; git log`);
+  a variable outside `COMMAND_ENV` whose value a program runs (`LESSOPEN`,
+  `BROWSER`, a tool's own `*_EDITOR`; `GIT_EXEC_PATH` runs only a file the
+  turn wrote); an interpreter no list names (as `awk`); `npx -y`,
   `npm exec`, `pnpm dlx`, `uvx`: they fetch into a cache, which doesn't count,
   and run the package (judged as the program) as in-project work; a wrapper's
   value option no list names (`uv run --with x git …` reads `x` as the program;

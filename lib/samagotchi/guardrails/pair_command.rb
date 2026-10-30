@@ -64,20 +64,27 @@ module Samagotchi
       # name in any version's spelling (python3.12, pypy3, ruby3.3, perl5.36).
       INTERPRETER = /\A(?:python\d*(?:\.\d+)?|pypy\d*(?:\.\d+)?|ruby\d*(?:\.\d+)?|irb|node(?:js)?|deno|bun|
                       perl\d*(?:\.\d+)*|php\d*(?:\.\d+)?|lua(?:jit|\d*(?:\.\d+)?)|osascript|jshell|rscript|
-                      tclsh\d*(?:\.\d+)?|wish)\z/x
+                      tclsh\d*(?:\.\d+)?|wish|jruby|raku|julia)\z/x
       # The options whose next word is an interpreter's code, by its name's
       # start (a shell's is -c only: its -e and -x are flags); others: -c, -e.
       CODE_FLAGS = { "python" => %w[-c], "pypy" => %w[-c], "ruby" => %w[-e], "irb" => %w[-e],
                      "node" => %w[-e -p --eval --print], "bun" => %w[-e -p --eval --print], "perl" => %w[-e -E],
-                     "php" => %w[-r], "lua" => %w[-e], "osascript" => %w[-e], "rscript" => %w[-e],
+                     "php" => %w[-r -B -R -E], "lua" => %w[-e], "osascript" => %w[-e], "rscript" => %w[-e],
+                     "jruby" => %w[-e], "raku" => %w[-e], "julia" => %w[-e],
                      "tclsh" => [], "wish" => [], "deno" => [], "jshell" => [] }.freeze
       # How an interpreter's short-option cluster reads (ruby -we, perl -le,
       # python3 -Ic), by its name's start: the letters whose value is the
       # rest of the word (ruby -rset: no code), and those that take digits
       # (perl -l0e). Any other letter is a flag; the code letter's code is
       # the rest of the word, or the next word (.cluster_code_at).
+      # perl's -d takes only :Module (perl -de: -d -e).
       CLUSTER_VALUES = { "python" => %w[mWX], "pypy" => %w[mWX], "ruby" => %w[CEFiIrx 0W],
-                         "perl" => %w[CdDFiImMx 0l], "node" => %w[r], "bun" => %w[r], "lua" => %w[l] }.freeze
+                         "perl" => %w[CDFiImMx 0l], "node" => %w[r], "bun" => %w[r], "lua" => %w[l] }.freeze
+      # More value letters, told only for where a script comes from
+      # (.script_source: php -dr x.php and osascript -le x run the file x, so
+      # SelfProtect counts it unseen); a pair turn still reads the word after
+      # them as code too (an over-read: more refusals, never fewer).
+      SOURCE_CLUSTER_VALUES = CLUSTER_VALUES.merge("php" => %w[cdfz], "osascript" => %w[ls]).freeze
       # A shell's options whose next word is their value, not its script.
       SHELL_VALUE_OPTIONS = %w[-o +o -O +O].freeze
       # fish's options that take a command (the next word, or after = for a
@@ -362,9 +369,9 @@ module Samagotchi
       # one with its code after = (node --eval=…), or a short-option
       # cluster holding its code letter (.cluster_code_at: sh -ec, bash -cx,
       # ruby -we, perl -le, node -pe, python3 -Ic).
-      def self.code_flag?(name, word)
+      def self.code_flag?(name, word, source: false)
         flags = code_flags(name)
-        flags.include?(word) || !long_code(name, word).nil? || !cluster_code_at(name, word).nil?
+        flags.include?(word) || !long_code(name, word).nil? || !cluster_code_at(name, word, source: source).nil?
       end
 
       # The code a long code option carries after = (--eval=…), nil for
@@ -376,15 +383,20 @@ module Samagotchi
 
       # Where +word+, a short-option cluster, holds +name+'s code letter
       # (a shell's c, python's c, ruby's e, node's e and p…): its index, the
-      # letters before it read as CLUSTER_VALUES says; nil when it holds
-      # none, or a letter before it takes the rest as its value.
-      def self.cluster_code_at(name, word)
+      # letters before it read as CLUSTER_VALUES says (SOURCE_CLUSTER_VALUES
+      # with +source+); nil when it holds none, or a letter before it takes
+      # the rest as its value.
+      def self.cluster_code_at(name, word, source: false)
         return nil unless word.match?(/\A-[A-Za-z0-9]/)
 
         letters = code_flags(name).filter_map { |flag| flag[1] if flag.match?(/\A-[A-Za-z]\z/) }.join
         return nil if letters.empty?
 
-        rest, digits = SHELLS.include?(name) ? ["", ""] : cluster_values(name)
+        rest, digits = if SHELLS.include?(name)
+                         ["", ""]
+                       else
+                         cluster_values(name, source ? SOURCE_CLUSTER_VALUES : CLUSTER_VALUES)
+                       end
         i = 1
         while i < word.size
           char = word[i]
@@ -399,8 +411,8 @@ module Samagotchi
         nil
       end
 
-      def self.cluster_values(name)
-        values = CLUSTER_VALUES.find { |start, _| name.start_with?(start) }&.last || []
+      def self.cluster_values(name, table)
+        values = table.find { |start, _| name.start_with?(start) }&.last || []
         [values[0].to_s, values[1].to_s]
       end
       private_class_method :cluster_values
@@ -481,7 +493,7 @@ module Samagotchi
         rest.each do |word|
           next skip = false if skip
           return :stdin if ["-", "-s"].include?(word) || (SHELLS.include?(name) && word.match?(/\A-[a-zA-Z]*s[a-zA-Z]*\z/))
-          return :inline if code_flag?(name, word)
+          return :inline if code_flag?(name, word, source: true)
           return :file if word == "-m" || word.match?(/\A-m\w/)
           # a redirection's operator alone: its target is the next word
           next skip = word.sub(ShellPaths::REDIRECT_PREFIX, "").empty? if word.match?(ShellPaths::REDIRECT_PREFIX)
