@@ -525,6 +525,10 @@ variable a program runs through a shell (`PairCommand::COMMAND_ENV`:
 read as `sh -c` would run it, for the refusals and for an outside write. A heredoc written as data (`cat`,
 `tee`, `git commit -F -`) is not looked into: where it goes is checked. A
 command the checks can't read is refused, never let through on a text match.
+A program is told by its name in any case, on every disk (`GIT config`, `Chi
+share`, `/bin/SH -c`, `NOHUP`: a disk that folds case, macOS's default, runs
+them as git, chi, sh, nohup; `ShellLex.program_name`), and so is chi or git
+config in a script's text.
 
 And it **asks the owner** before a `write` or `edit` that may land outside the
 session's project root, and before a command that may write there, every time:
@@ -883,6 +887,7 @@ every surface answers for the same paths):
 | in a dir: `under?` (case-folded on a folding disk; `fold: false` exact), `strictly_under?`, `within?` (root resolved too) | `PathResolve` | `under?`: ShellPaths, ReviewPaths, PairCommand, ChildBoundary, SelfProtect's words; `Outside.within?` and RmTargets' `strictly_under?` fold only when the dir exists (a missing session root keeps the case it was typed in); `within?`: ProtectedPaths, ScratchWrites, ParentApprovals, SelfProtect's paths |
 | tmp dirs and "not one the session is in" | `PathResolve.tmp_roots(session:)` (exact case) | Outside (`Outside.tmp_roots` is the list it and Targets read), RmTargets; `touches_chi?` takes all of them |
 | a shell word's `~`, `$HOME`, XDG dirs, `$TMPDIR` | `PathResolve.expand_word` | ShellPaths::Walk, ShellGitDirs; PairCommand has its own `~`/`$HOME` (`expand_tilde`) |
+| a program word's name: basename, case-folded on every disk (`GIT`, `/bin/SH`, `ſh`) | `ShellLex.program_name` / `.program?` | PairCommand, ImplicitWriters, SelfProtect's file runners, ShellGitDirs, SharedGit |
 | chi's dirs | `ChiDirs.protected` / `.touches` / `.self_protect` / `.review` | ParentApprovals, Targets, SelfProtect, ReviewPaths (`ProtectedPaths` and `ScratchWrites` get theirs from the wiring) |
 
 Left apart on purpose: `Targets.prompt_memory_path?` compares in any case on

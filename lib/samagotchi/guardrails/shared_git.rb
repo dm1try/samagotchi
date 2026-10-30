@@ -52,7 +52,7 @@ module Samagotchi
       def git_call(words)
         words = words.drop_while { |w| w.match?(/\A[A-Za-z_]\w*=/) || ShellGitDirs::PREFIXES.include?(w) }
         verb = words.first
-        return nil unless verb == "git" || verb.to_s.end_with?("/git")
+        return nil unless ShellLex.program?(verb, "git")
 
         args = words.drop(1).grep_v(ShellLex::REDIRECT)
         until args.empty?

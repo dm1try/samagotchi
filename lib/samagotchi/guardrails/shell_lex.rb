@@ -39,6 +39,23 @@ module Samagotchi
         Lexer.new(text).tokens
       end
 
+      # A program word's name as the guardrails compare it: its basename,
+      # case-folded (GIT, Git, /usr/bin/SH, ſh → git, sh), since a
+      # case-insensitive file system (macOS's default) runs `GIT` as git.
+      # Every check that tells a program by its name goes through this
+      # (PairCommand, ImplicitWriters, SelfProtect, ShellGitDirs, SharedGit).
+      # A word with a NUL (a SUBST) raises, as File.basename does.
+      def self.program_name(word)
+        name = File.basename(word.to_s)
+        name.valid_encoding? ? name.downcase(:fold) : name
+      end
+
+      # Whether +word+ runs the program +name+ (.program_name), false for a
+      # word with a NUL.
+      def self.program?(word, name)
+        !word.to_s.include?("\0") && program_name(word) == name
+      end
+
       # Whether +text+ ends inside a quote, a $(…) or a heredoc: its tokens
       # are a best guess.
       def self.unterminated?(text)

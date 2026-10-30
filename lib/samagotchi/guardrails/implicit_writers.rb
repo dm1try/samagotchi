@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative "shell_lex"
+
 module Samagotchi
   module Guardrails
     # Programs that write outside the folder they run in with no word of
@@ -89,9 +91,9 @@ module Samagotchi
 
       module_function
 
-      # The table's name for +program+ (a word's basename).
+      # The table's name for +program+ (its word's ShellLex.program_name).
       def name(program)
-        base = File.basename(program.to_s)
+        base = ShellLex.program_name(program)
         ALIASES.each { |pattern, to| return to if base.match?(pattern) }
         base
       end

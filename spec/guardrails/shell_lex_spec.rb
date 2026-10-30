@@ -26,6 +26,15 @@ RSpec.describe Samagotchi::Guardrails::ShellLex do
       expect(commands(text)).to eq(expected)
     end
   end
+
+  it "names a program as a case-insensitive disk runs it (.program_name, .program?)" do
+    expect(%w[GIT /usr/bin/Git ſh SH python3 Rscript].map { |word| described_class.program_name(word) })
+      .to eq(%w[git git sh sh python3 rscript])
+    expect(described_class.program?("/opt/homebrew/bin/GIT", "git")).to be(true)
+    expect(described_class.program?("x#{subst}", "git")).to be(false)
+    expect(described_class.program_name("\xff".b)).to eq("\xff".b)
+  end
+
   describe "substitutions" do
     it "ends at the ) that closes it, not at one inside a quoted string" do
       expect(commands('echo "$(echo ")" rm x)"')).to eq([["echo", subst]])

@@ -213,7 +213,7 @@ module Samagotchi
         simple.each_with_index.any? do |word, i|
           next false if word.include?("\0")
 
-          verbs = FILE_RUNNERS.find { |pattern, _| File.basename(word).match?(pattern) }&.last
+          verbs = FILE_RUNNERS.find { |pattern, _| Guardrails::ShellLex.program_name(word).match?(pattern) }&.last
           verbs && (verbs.empty? || simple[(i + 1)..].intersect?(verbs))
         end
       end

@@ -97,7 +97,7 @@ module Samagotchi
             @pushed << @dirs
             @dirs = args.first ? dirs_after(args.first) : [nil]
           when "popd" then @dirs = @pushed.pop unless @pushed.empty?
-          else git(args, env) if verb == "git" || verb.end_with?("/git")
+          else git(args, env) if ShellLex.program?(verb, "git")
           end
         end
 

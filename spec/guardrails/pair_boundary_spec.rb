@@ -734,6 +734,36 @@ RSpec.describe Samagotchi::Guardrails::PairBoundary do
     end
   end
 
+  # A case-insensitive disk (macOS's default) runs GIT as git and CHI as
+  # chi: ShellLex.program_name. Judged by the words alone, whatever the
+  # host's file system.
+  it "judges a program by its name in any case, as a case-insensitive disk runs it" do
+    { "CHI sessions list" => described_class::CHI, "/usr/local/bin/Chi share abc" => described_class::CHI,
+      "GIT config core.fsmonitor id" => described_class::GIT_CONFIG,
+      "Git -c core.fsmonitor=id status" => described_class::GIT_CONFIG,
+      "GIT-Config core.fsmonitor id" => described_class::GIT_CONFIG,
+      "Bash -c 'git config core.fsmonitor id'" => described_class::GIT_CONFIG,
+      "ſh -c 'git config core.fsmonitor id'" => described_class::GIT_CONFIG,
+      "SUDO GIT config core.fsmonitor id" => described_class::GIT_CONFIG,
+      "GIT_EDITOR='GIT config core.fsmonitor id' git commit" => described_class::GIT_CONFIG,
+      "RUBY -e 'system(\"GIT config core.fsmonitor id\")'" => described_class::GIT_CONFIG,
+      "NOHUP sleep 100" => described_class::BACKGROUND, "CRONTAB /tmp/c" => described_class::BACKGROUND,
+      "python3 -c 'import os; os.system(\"NOHUP sleep 1\")'" => described_class::BACKGROUND,
+      "PRINTENV" => described_class::ENVIRONMENT, "Security find-generic-password -s x -w" => described_class::ENVIRONMENT,
+      "Pre-commit install" => described_class::GIT_HOOKS }.each do |command, reason|
+      expect(refused(command)).to eq(reason), command
+    end
+    ["SH -c 'touch ~/x'", "Python3 -c 'import os; os.system(\"touch ~/x\")'", "NPM install -g x",
+     "GIT submodule foreach 'touch ~/x'"].each do |command|
+      verdict = execute(command)
+      expect([verdict.ask?, verdict.reason]).to eq([true, described_class::OUTSIDE_WRITE]), command
+    end
+    expect(execute("MISE use -g x").reason).to eq(described_class::ENV_LOADER)
+    ["git -C . log", "python3 -c 'import subprocess; subprocess.run([\"git\", \"-C\", \".\", \"log\"])'"].each do |command|
+      expect(refused(command)).to be_nil, command
+    end
+  end
+
   it "denies ask_user_question with advice to ask in the reply" do
     verdict = verdict_for({ name: "ask_user_question", content: "which?" })
     expect(verdict).to be_deny

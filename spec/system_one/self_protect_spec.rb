@@ -156,7 +156,10 @@ RSpec.describe Samagotchi::SystemOne::SelfProtect do
       %(git push && cd #{mem} && python3.12 /tmp/climb.py), %(git push && cd #{mem} && pypy3 /tmp/climb.py),
       %(git push && cd #{mem} && Rscript /tmp/climb.R), %(git push && cd #{mem} && tclsh /tmp/climb.tcl),
       %(git push && cd #{mem} && awk -f /tmp/climb.awk), %(git push && cd #{mem} && make -f /tmp/climb.mk),
-      %(git push && cd #{mem} && deno run /tmp/climb.ts), %(git push && cd #{mem} && npm run x)
+      %(git push && cd #{mem} && deno run /tmp/climb.ts), %(git push && cd #{mem} && npm run x),
+      # in any case: a case-insensitive disk runs MAKE as make (ShellLex.program_name)
+      %(git push && cd #{mem} && MAKE), %(git push && cd #{mem} && RUBY /tmp/climb.rb),
+      %(git push && cd #{mem} && Bash /tmp/climb.sh)
     ].each do |command|
       facts = { "rule" => "git-push", "tool" => "execute", "command" => command, "cwd" => Dir.pwd }
       expect(S.refuse?(facts)).to be(true), command

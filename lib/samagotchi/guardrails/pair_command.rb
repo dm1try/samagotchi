@@ -43,19 +43,20 @@ module Samagotchi
                     { ! then do else elif if while until].freeze
       # chi's own invocations a pair turn may run: they print and exit.
       CHI_ALLOWED = [%w[--version], %w[--help]].freeze
-      # chi named in a script, a value or an argument.
-      CHI_TEXT = %r{(?:\A|[\s;&|(`'"=])(?:[^\s;&|(`'"=]*/)?chi(?=\s|\z|[;&|)`'"])}
+      # chi named in a script, a value or an argument, in any case (CHI runs
+      # chi on a case-insensitive disk: ShellLex.program_name).
+      CHI_TEXT = %r{(?:\A|[\s;&|(`'"=])(?:[^\s;&|(`'"=]*/)?chi(?=\s|\z|[;&|)`'"])}i
       SHELLS = %w[sh bash zsh dash fish ksh].freeze
       # Other interpreters a script can be handed to (-e/-c, a heredoc), by
       # name in any version's spelling (python3.12, pypy3, ruby3.3, perl5.36).
       INTERPRETER = /\A(?:python\d*(?:\.\d+)?|pypy\d*(?:\.\d+)?|ruby\d*(?:\.\d+)?|irb|node(?:js)?|deno|bun|
-                      perl\d*(?:\.\d+)*|php\d*(?:\.\d+)?|lua(?:jit|\d*(?:\.\d+)?)|osascript|jshell|Rscript|
+                      perl\d*(?:\.\d+)*|php\d*(?:\.\d+)?|lua(?:jit|\d*(?:\.\d+)?)|osascript|jshell|rscript|
                       tclsh\d*(?:\.\d+)?|wish)\z/x
       # The options whose next word is an interpreter's code, by its name's
       # start (a shell's is -c only: its -e and -x are flags); others: -c, -e.
       CODE_FLAGS = { "python" => %w[-c], "pypy" => %w[-c], "ruby" => %w[-e], "irb" => %w[-e],
                      "node" => %w[-e -p --eval --print], "bun" => %w[-e -p --eval --print], "perl" => %w[-e -E],
-                     "php" => %w[-r], "lua" => %w[-e], "osascript" => %w[-e], "Rscript" => %w[-e],
+                     "php" => %w[-r], "lua" => %w[-e], "osascript" => %w[-e], "rscript" => %w[-e],
                      "tclsh" => [], "wish" => [], "deno" => [], "jshell" => [] }.freeze
       # How an interpreter's short-option cluster reads (ruby -we, perl -le,
       # python3 -Ic), by its name's start: the letters whose value is the
@@ -82,7 +83,7 @@ module Samagotchi
       # key), by the program and the words that say so in its arguments.
       # Programs that load a project's env files (PairBoundary::ENV_LOADER).
       ENV_LOADERS = %w[mise direnv].freeze
-      ENV_LOADER_TEXT = %r{(?<![\w./-])(?:mise|direnv)(?![\w./-])}
+      ENV_LOADER_TEXT = %r{(?<![\w./-])(?:mise|direnv)(?![\w./-])}i
       CREDENTIAL_PRINTERS = {
         "gh" => [%w[auth token]],
         "git" => [%w[credential], %w[credential-osxkeychain], %w[credential-store], %w[credential-cache],
@@ -122,11 +123,12 @@ module Samagotchi
       LOOPBACK_HOSTS = [/(?:[\w-]+\.)*localhost\.?/, /127(?:\.\d{1,3}){1,3}/, /0\.0\.0\.0/,
                         /\[?(?:0{0,4}:){2,7}0{0,3}1\]?/, /\[?::ffff:127(?:\.\d{1,3}){3}\]?/].freeze
       # An interpreter's script that reads the environment or detaches.
-      SCRIPT_ENV_TEXT = /\bos\.environ\b|\bgetenv\b|\bprocess\.env\b|\bENV\b|\bprintenv\b|%ENV\b/
+      SCRIPT_ENV_TEXT = /\bos\.environ\b|\bgetenv\b|\bprocess\.env\b|\bENV\b|(?i:\bprintenv\b)|%ENV\b/
       # An interpreter's script that runs git config or git -c (by its text:
-      # the script isn't parsed).
-      SCRIPT_GIT_CONFIG_TEXT = /\bgit\b[^\n]{0,40}?(?:\bconfig\b|["'\s]-c\b|--config-env|--template)/
-      SCRIPT_BACKGROUND_TEXT = /\b(?:nohup|setsid|disown|daemonize|Process\.daemon|detach(?:ed)?)\b/
+      # the script isn't parsed); git and the words in any case (GIT config),
+      # -c as it is (git -C dir sets nothing).
+      SCRIPT_GIT_CONFIG_TEXT = /(?i:\bgit\b)[^\n]{0,40}?(?:(?i:\bconfig\b)|["'\s]-c\b|(?i:--config-env|--template))/
+      SCRIPT_BACKGROUND_TEXT = /\b(?:(?i:nohup|setsid|disown|daemonize)|Process\.daemon|detach(?:ed)?)\b/
       # Programs that read a folder's whole tree: given home (or any folder
       # above a denied one) they reach the secrets in it.
       # A link to such a folder reaches them too (ln, link).
@@ -250,7 +252,7 @@ module Samagotchi
       def self.skipped?(words, at)
         word = words[at]
         return true if word.match?(/\A[A-Za-z_]\w*=/) || word.start_with?("-") || word.match?(/\A\d+[smhd]?\z/)
-        return true if WRAPPERS.include?(File.basename(word))
+        return true if WRAPPERS.include?(ShellLex.program_name(word))
 
         previous = at.positive? ? words[at - 1] : nil
         !previous.nil? && previous.match?(/\A-[IrCen]\z/)
@@ -295,7 +297,7 @@ module Samagotchi
       def self.runner?(word)
         return false if word.include?("\0")
 
-        name = File.basename(word)
+        name = ShellLex.program_name(word)
         SHELLS.include?(name) || interpreter?(name) || name == "eval"
       end
 
@@ -402,7 +404,7 @@ module Samagotchi
       def self.script_source(words, piped: false)
         limit = program_at(words) || (words.size - 1)
         at = (0..limit).find { |i| runner?(words[i]) } or return nil
-        name = File.basename(words[at])
+        name = ShellLex.program_name(words[at])
         return :inline if name == "eval"
         return :stdin if piped
 
@@ -557,12 +559,12 @@ module Samagotchi
         return PairBoundary::CHI if chi_in_values?(words)
         return PairBoundary::VERB if at && unplain_program?(words[at])
 
-        program = at && File.basename(words[at])
+        program = at && ShellLex.program_name(words[at])
         args = at ? words[(at + 1)..] : []
         return PairBoundary::CHI if program == "chi" && !CHI_ALLOWED.include?(args)
 
         upto = at ? words[0..at] : words
-        return PairBoundary::BACKGROUND if upto.any? { |w| DETACHERS.include?(File.basename(w)) } || detached_session?(program, args)
+        return PairBoundary::BACKGROUND if upto.any? { |w| DETACHERS.include?(ShellLex.program_name(w)) } || detached_session?(program, args)
         return PairBoundary::ENVIRONMENT if env_reader?(program, args) || bare_env?(words)
 
         program, args = PairCommand.git_form(program, args)
@@ -575,7 +577,7 @@ module Samagotchi
 
         if program == "git"
           # xargs adds words of its input: a git config it runs may write
-          xargs = words[0...at].any? { |word| File.basename(word) == "xargs" }
+          xargs = words[0...at].any? { |word| ShellLex.program_name(word) == "xargs" }
           reason = git_refusal(args, appended: xargs) || git_command_refusal(args)
           return reason if reason
         end
@@ -648,7 +650,7 @@ module Samagotchi
       def scripts_refusal(words)
         limit = program_at(words) || (words.size - 1)
         at = (0..limit).find { |i| runner?(words[i]) } or return nil
-        program = File.basename(words[at])
+        program = ShellLex.program_name(words[at])
         scripts(words, at).each do |script|
           reason = if SHELLS.include?(program) || program == "eval"
                      inner = nested(script)
@@ -665,7 +667,7 @@ module Samagotchi
       def runner?(word) = PairCommand.runner?(word)
 
       def scripts(words, at)
-        name = File.basename(words[at])
+        name = ShellLex.program_name(words[at])
         found = []
         found << words[(at + 1)..].join(" ") if name == "eval"
         words.each_with_index do |word, i|
@@ -727,7 +729,7 @@ module Samagotchi
       def bare_env?(words)
         assignment = ->(word) { word.start_with?("-") || word.match?(/\A[A-Za-z_]\w*=/) }
         at = words.index { |word| !assignment.call(word) }
-        return false unless at && File.basename(words[at]) == "env"
+        return false unless at && ShellLex.program_name(words[at]) == "env"
 
         words[(at + 1)..].all?(&assignment)
       end
@@ -827,7 +829,7 @@ module Samagotchi
       # alias g=git (or a function's body naming git), then `g config …`:
       # git under another name; an alias naming git is refused.
       def git_alias?(program, args)
-        program == "alias" && args.any? { |arg| arg.match?(%r{=['"]?(?:\S*/)?git(?:\s|['"]?\z)}) }
+        program == "alias" && args.any? { |arg| arg.match?(%r{=['"]?(?:\S*/)?git(?:\s|['"]?\z)}i) }
       end
 
       # An assignment (a prefix, export's, env's) of a variable that hands
@@ -859,7 +861,7 @@ module Samagotchi
       def hook_installer?(words)
         at = program_at(words) or return false
         (0..at).any? do |i|
-          name = File.basename(words[i])
+          name = ShellLex.program_name(words[i])
           next false unless HOOK_INSTALLERS.key?(name)
 
           verbs = HOOK_INSTALLERS[name]
@@ -872,7 +874,7 @@ module Samagotchi
       # denied dir; a $var word whose fixed part does; a sweeper given a
       # folder above a denied one; SECRET_TEXT for a word it can't read.
       def paths_refusal(words, resolved)
-        program_word = (at = program_at(words)) && File.basename(words[at])
+        program_word = (at = program_at(words)) && ShellLex.program_name(words[at])
         resolved.each do |word, path|
           return PairBoundary::GIT_HOOKS if !@read_only && PairCommand.git_hook?(path || word)
 
@@ -930,13 +932,13 @@ module Samagotchi
 
       def link_command?(words)
         at = program_at(words)
-        program = at && File.basename(words[at])
+        program = at && ShellLex.program_name(words[at])
         return true if LINKERS.include?(program)
         return true if program == "cp" && words[(at + 1)..].any? { |arg| arg.match?(CP_LINK_OPTION) }
-        return true if words.each_cons(2).any? { |option, word| CODE_OPTIONS.include?(option) && LINKERS.include?(File.basename(word)) }
+        return true if words.each_cons(2).any? { |option, word| CODE_OPTIONS.include?(option) && LINKERS.include?(ShellLex.program_name(word)) }
 
         runner = (0..(at || (words.size - 1))).find { |i| runner?(words[i]) } or return false
-        name = File.basename(words[runner])
+        name = ShellLex.program_name(words[runner])
         scripts(words, runner).any? do |script|
           SHELLS.include?(name) || name == "eval" ? nested(script).links? : script.match?(SCRIPT_LINK_TEXT)
         end
@@ -944,11 +946,11 @@ module Samagotchi
 
       def env_loader_command?(words)
         at = program_at(words)
-        return true if at && ENV_LOADERS.include?(File.basename(words[at]))
-        return true if words.each_cons(2).any? { |option, word| CODE_OPTIONS.include?(option) && ENV_LOADERS.include?(File.basename(word)) }
+        return true if at && ENV_LOADERS.include?(ShellLex.program_name(words[at]))
+        return true if words.each_cons(2).any? { |option, word| CODE_OPTIONS.include?(option) && ENV_LOADERS.include?(ShellLex.program_name(word)) }
 
         runner = (0..(at || (words.size - 1))).find { |i| runner?(words[i]) } or return false
-        name = File.basename(words[runner])
+        name = ShellLex.program_name(words[runner])
         scripts(words, runner).any? do |script|
           SHELLS.include?(name) || name == "eval" ? nested(script).loads_env? : script.match?(ENV_LOADER_TEXT)
         end
@@ -999,7 +1001,7 @@ module Samagotchi
           program = words[i]
           args = words[(i + 1)..]
           local = project_program?(walk, program)
-          if PairCommand.interpreter?(File.basename(program)) && (module_args = module_run(args))
+          if PairCommand.interpreter?(ShellLex.program_name(program)) && (module_args = module_run(args))
             program, args = module_args
           end
           ImplicitWriters.outside?(program, args, local: local, assigned: assigned)
@@ -1020,7 +1022,7 @@ module Samagotchi
       # (.git_commands): where it writes isn't placed, so it asks.
       def git_hands_command?(words)
         at = program_at(words) or return false
-        program, args = PairCommand.git_form(File.basename(words[at]), words[(at + 1)..])
+        program, args = PairCommand.git_form(ShellLex.program_name(words[at]), words[(at + 1)..])
         program == "git" && !git_commands(args).empty?
       end
 
@@ -1043,10 +1045,10 @@ module Samagotchi
       def words_inside?(words, walk)
         at = program_at(words)
         # xargs runs its program on paths it reads from its input
-        return false if at && words[0...at].any? { |word| File.basename(word) == "xargs" }
+        return false if at && words[0...at].any? { |word| ShellLex.program_name(word) == "xargs" }
 
         words.each_with_index.all? do |word, i|
-          next true if at && (i == at || (i < at && WRAPPERS.include?(File.basename(word))))
+          next true if at && (i == at || (i < at && WRAPPERS.include?(ShellLex.program_name(word))))
           next true if LIST_VARIABLES.any? { |name| word.start_with?("#{name}=") }
 
           word_inside?(walk, word)
@@ -1090,7 +1092,7 @@ module Samagotchi
       def scripts_inside?(words)
         limit = program_at(words) || (words.size - 1)
         at = (0..limit).find { |i| runner?(words[i]) } or return true
-        program = File.basename(words[at])
+        program = ShellLex.program_name(words[at])
         scripts(words, at).all? do |script|
           if SHELLS.include?(program) || program == "eval"
             !nested(script).outside_writes?
