@@ -7,6 +7,14 @@ and commands may change between minor versions. How releases are made:
 [docs/releasing.md](docs/releasing.md).
 ## [Unreleased]
 
+### Changed
+
+- Web: collapsibles keep their shape. A steps block, a thinking block, the recap and a long answer's fold are the
+  same box open or closed (the bar, the border, the width); a click changes the height, animated unless the system
+  prefers reduced motion. A closed answer fold is its box's one line, "▸ first line · N lines"; open, the row is the
+  box's top edge, "▾ N lines", and no longer repeats the answer's first line above the answer (a delegate report's
+  likewise, in the report's tint).
+
 ## [0.136.0] - 2026-10-30
 
 ### Changed

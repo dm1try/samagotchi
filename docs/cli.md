@@ -1026,8 +1026,9 @@ copies its Markdown source, not the rendered text; a code block copies just
 its code; a prompt copies the text as you typed it.
 
 A long answer (over 25 lines or 2,000 characters of its text) can be folded
-by hand: a slim "▾ N lines" row sits just above it once its turn has ended.
-Click it and the answer folds to one row, "▸ its first line · N lines" (the
+by hand: a "▾ N lines" row is its top edge once its turn has ended. Click
+it and the answer closes to one line in its own box,
+"▸ its first line · N lines" (the
 first line of what a hook presented in its place, else its first heading,
 else its first line); click again to unfold. A delegate report's reply
 folds the same way. Folding is this browser's choice, kept per session in

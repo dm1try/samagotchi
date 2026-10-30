@@ -57,24 +57,25 @@ main{flex:1;display:flex;flex-direction:column;gap:16px;padding:16px;overflow:au
 /* A generation opens its answer bubble empty: hidden until text streams (the thinking box shows progress meanwhile). */
 .bubble.output.streaming:empty{display:none}
 /* The answer's pop: the promoted bubble is held at the narration box's height (inline max-height, scrolled to its tail) until the rendered markdown lands, then grows to its content while the content fades in; both classes go 400 ms later. */
-/* A long answer folded by hand (answer_fold.js): the row is the bubble's sibling just before it, styled as a closed turn's steps, reading the answer's first line and size; folded, the bubble is hidden; unfolded, the row is the bubble's header. */
+/* A long answer folded by hand (answer_fold.js): the row is the bubble's sibling just before it, in the bubble's own shape. Folded, the row is the answer's box closed ("▸ first line · N lines") and the bubble is hidden; unfolded, the row is that box's top edge ("▾ N lines") and the bubble its rest, the two one block. The shape never changes; a click changes the height (details_motion.js). */
 /* Folded: the bubble hidden, an answer or a delegate report (#history's: outranks .bubble.user's display). */
 #history>.bubble.folded{display:none}
-.answer-fold{display:flex;align-items:baseline;gap:0;align-self:flex-start;max-width:100%;min-width:0;margin:0;padding:3px 10px;font:inherit;font-size:12px;font-weight:500;line-height:1.4;color:var(--text-muted);text-align:left;cursor:pointer;user-select:none;background:transparent;border:1px solid transparent;border-left:3px solid var(--accent-strong);border-radius:6px;transition:background .12s ease}
-.answer-fold:hover{background:var(--bg-panel)}
+.answer-fold{display:flex;align-items:baseline;gap:0;align-self:stretch;max-width:100%;min-width:0;margin:0;padding:12px 14px;font:inherit;font-size:13px;font-weight:600;line-height:1.5;color:var(--text-muted);text-align:left;cursor:pointer;user-select:none;background:var(--bg-panel);border:1px solid var(--border);border-left:3px solid var(--accent-strong);border-radius:12px}
+.answer-fold:hover .answer-fold-size{color:var(--text-2)}
 .answer-fold:focus-visible{outline:2px solid var(--accent-ring);outline-offset:1px}
 .answer-fold::before{content:"▾\00a0";color:var(--accent);flex:none}
 .answer-fold.folded::before{content:"▸\00a0"}
-/* Open: the bubble's header, flush on top of it (-12px: #history's gap), its bar running on into the bubble's. */
-.answer-fold:not(.folded){margin-bottom:-12px;border-bottom-left-radius:0}
-/* A delegate report's row: where the report sits (right, the user accent; dashed when merged mid-turn). Open, the row and
-   the report share one width, so the row's bar runs on into the report's. */
-.answer-fold.report{align-self:flex-end;max-width:85%;border-left-color:var(--accent)}
+/* Open: the box's top edge (-12px: #history's gap), the bubble under it its rest. */
+.answer-fold:not(.folded){margin-bottom:-12px;padding-bottom:0;border-bottom:0;border-bottom-left-radius:0;border-bottom-right-radius:0}
+.answer-fold:not(.folded)+.bubble{border-top:0;border-top-left-radius:0;border-top-right-radius:0;padding-top:8px}
+/* A delegate report's row: the report's box (right, its tint, the user accent; dashed when merged mid-turn), closed or
+   its top edge. */
+.answer-fold.report{align-self:flex-end;width:85%;background:var(--accent-bg);border-left-color:var(--accent)}
 .answer-fold.report.steered{border-left-style:dashed}
-.answer-fold.report:not(.folded),.answer-fold.report:not(.folded)+.bubble.user{width:85%}
+.answer-fold.report:not(.folded)+.bubble.user{width:85%}
 .answer-fold-label{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text-2);font-size:13px}
 .answer-fold-label:empty{display:none}
-.answer-fold-size{flex:none;white-space:nowrap;font-variant-numeric:tabular-nums}
+.answer-fold-size{flex:none;white-space:nowrap;font-variant-numeric:tabular-nums;transition:color .12s ease}
 /* Revise stacks (revise_stack.js): a superseded version folds to its stub; the Revise row under a final answer
    (zero height: its button sits on the bubble's bottom edge, clear of the copy button, shown on hover) and a stack
    top's version chip. */
@@ -320,11 +321,10 @@ button.system-one-wrong:hover:not(:disabled){background:var(--bg-hover);color:va
   .activity-row>.activity-command{margin-left:0}
 }
 .bubble.thinking{border-left:3px solid var(--think);background:color-mix(in srgb,var(--think) 6%,var(--bg-panel));padding:8px 12px}
-.bubble.thinking:not([open]),.bubble.activity:not([open]){padding:3px 10px;background:transparent;border-color:transparent;align-self:flex-start;border-radius:6px;transition:background .12s ease}
-.bubble.thinking:not([open]){border-left-color:var(--think)}
+.bubble.activity:not([open]){padding:3px 10px;background:transparent;border-color:transparent;align-self:flex-start;border-radius:6px;transition:background .12s ease}
 .bubble.activity:not([open]){border-left-color:var(--accent)}
-.bubble.thinking:not([open]):hover,.bubble.activity:not([open]):hover{background:var(--bg-panel)}
-.bubble.thinking:not([open])>summary,.bubble.activity:not([open])>summary{font-size:12px;font-weight:500}
+.bubble.activity:not([open]):hover{background:var(--bg-panel)}
+.bubble.activity:not([open])>summary{font-size:12px;font-weight:500}
 .bubble.thinking>summary{cursor:pointer;color:var(--text-muted);font-size:13px;font-weight:600;font-style:italic;user-select:none;list-style:none}
 .bubble.thinking>summary::-webkit-details-marker{display:none}
 .bubble.thinking>summary::before{content:"▸ ";color:var(--think)}
@@ -336,9 +336,7 @@ button.system-one-wrong:hover:not(:disabled){background:var(--bg-hover);color:va
 .turn-work>summary::-webkit-details-marker{display:none}
 .turn-work>summary::before{content:"▸ ";color:var(--accent)}
 .turn-work[open]>summary::before{content:"▾ "}
-.turn-work:not([open]){padding:3px 10px;background:transparent;border-color:transparent;border-left-color:var(--accent);align-self:flex-start;border-radius:6px;transition:background .12s ease}
-.turn-work:not([open]):hover{background:var(--bg-panel)}
-.turn-work:not([open])>summary{font-size:12px;font-weight:500}
+/* Closed, a block keeps its box (the bar, the border, the width): a click changes its height only (details_motion.js); thinking and the recap the same. */
 /* A step's body (thinking, narration, rows, cards) sits --step-indent right of its summary, so the thinking
    chevron and the row marks share one column under the step's own chevron. The summary takes it back with a
    negative margin: a child's own margin shorthand can't undo the padding. */

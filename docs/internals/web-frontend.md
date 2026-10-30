@@ -17,7 +17,7 @@ on an existing module, imported by a new version of another, then finds the old 
 page. A factory dep a new version stops passing is the same hazard the other way round: the store's redraws took
 `updateInfoBar` and the chip controls out of `stream_handlers.js`'s deps (and `updateInfoBar`/`updateComposerMode`
 out of `send_turn.js`, `session_actions.js` and `lists_view.js`); a page loaded before keeps all its old modules
-until a reload, so the risk is a mixed cache, not an open tab. `answer_fold.js`,
+until a reload, so the risk is a mixed cache, not an open tab. `answer_fold.js`, `details_motion.js`,
 `turn_range.js`, `history_reveal.js`, `latest.js`, `session_payload.js`, `method_api.js`, `session_store.js`,
 `session_fields.js`, `feature_gates.js`, `revise_stack.js` and `shell_command.js` are new modules for that reason.
 

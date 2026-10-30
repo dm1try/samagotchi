@@ -46,10 +46,11 @@ test("foldLabel: the first heading, else the first text line, as plain words; a 
   assert.ok(long.length <= 160 && long.endsWith("…"));
 });
 
-test("foldRowText: the label and ' · N lines', folded or not", () => {
+test("foldRowText: folded the label and ' · N lines', unfolded the size only (a report's own label too)", () => {
   const text = `# Title\n${lines(30)}`;
   assert.deepEqual(foldRowText(text), { label: "Title", size: "\u00a0\u00b7 31 lines" });
-  assert.deepEqual(foldRowText(text, { folded: false }), { label: "Title", size: " · 31 lines" });
+  assert.deepEqual(foldRowText(text, { folded: false }), { label: "", size: "31 lines" });
+  assert.deepEqual(foldRowText(text, { folded: false, label: "delegate report · Title" }), { label: "", size: "31 lines" });
   assert.deepEqual(foldRowText("only\n"), { label: "only", size: "\u00a0\u00b7 1 line" });
 });
 
@@ -102,10 +103,12 @@ test("sweepAnswerFolds: an unscoped list sweeps every missing session; a project
   clearFolds();
 });
 
-function page({ session = "s1" } = {}) {
+// +motion+: whether a click animates (off: the fold lands at once, as a
+// viewer who prefers no motion sees it).
+function page({ session = "s1", motion = () => false } = {}) {
   const history = document.createElement("div");
   document.body.append(history);
-  const fold = installAnswerFold({ historyEl: history, sessionId: () => session, projectRoot: () => "/p" });
+  const fold = installAnswerFold({ historyEl: history, sessionId: () => session, projectRoot: () => "/p", motion });
   return { history, fold };
 }
 
@@ -131,7 +134,7 @@ test("the page: a long completed answer gets a row just before it; a short, runn
   assert.equal(rows.length, 1);
   assert.ok(long.previousElementSibling === rows[0]);
   assert.equal(rows[0].getAttribute("aria-expanded"), "true");
-  assert.equal(rows[0].textContent, "The ticket\u00a0\u00b7 41 lines");
+  assert.equal(rows[0].textContent, "41 lines");
   history.remove();
 });
 
@@ -268,6 +271,7 @@ test("the page: a long report folds by default (a report row, the label); a clic
   row.click();
   assert.ok(!merged.classList.contains("folded"));
   assert.equal(row.title, "Fold the report");
+  assert.equal(row.textContent, "44 lines");
   assert.deepEqual(readOpened("s1"), ["T1:input:4"]);
   assert.deepEqual(readFolded("s1"), []);
   first.history.remove();
