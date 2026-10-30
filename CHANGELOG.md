@@ -10,6 +10,7 @@ and commands may change between minor versions. How releases are made:
 ### Fixed
 
 - Web: the start page's ⚙ and 🧰 buttons say whether their panel is open (`aria-expanded`) to screen readers.
+- Web: the Stop sheet's "+N more" no longer sits 74 px to the right (it shared a class with the ⚙ panel's row).
 
 ## [0.133.0] - 2026-10-30
 

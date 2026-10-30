@@ -111,6 +111,9 @@ test("Apply and budget: a disclosure, open when the choice has them; a bad budge
   const p = panel(t);
   p.button.click();
   assert.equal(p.pop.querySelector(".ss-ctx-form"), null);
+  // Its own class: the stop sheet's .ss-more (its "+N more") is another thing.
+  assert.ok(p.pop.querySelector(".ss-ctx-more [data-act=ctx-more]"));
+  assert.equal(p.pop.querySelector(".ss-more"), null);
   p.act("ctx-more");
   const form = p.pop.querySelector(".ss-ctx-form");
   assert.equal(p.pop.querySelector('[data-act="ctx-more"]').getAttribute("aria-expanded"), "true");
