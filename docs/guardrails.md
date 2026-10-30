@@ -525,7 +525,18 @@ variable a program runs through a shell (`PairCommand::COMMAND_ENV`:
 `env`'s or `export`'s: read as `sh -c` would run it, for the refusals and for
 an outside write. So is any assigned value that keeps a `$(…)` or backticks as
 text (`PS4='$(…)' bash -x`, `PS0`, `PS1`: the shell expands it later), a
-prefix's, a bare assignment's or `export`'s (not `grep 'X=$(…)'`). A heredoc written as data (`cat`,
+prefix's, a bare assignment's or `export`'s (not `grep 'X=$(…)'`).
+The program is found behind the wrappers (`env`, `sudo`, `timeout`, `xargs`,
+`nice`, `exec`, `command`, `builtin`, `xcrun`, `arch`, `script`'s file, `npx`,
+`bunx`, `uvx`, and two-word ones: `uv`/`poetry`/`pdm`/`hatch`/`pipx run`,
+`pnpm`/`yarn exec`/`dlx`, `npm exec`/`x`, `bun x`, `mise exec`/`x`) and their
+value options (`env -u X`, `sudo -u root`, `timeout -s KILL 5`). A command line
+a program takes as text is read as a command: `env -S S`, `script -c S`, ssh's
+(scp's, sftp's) `-o ProxyCommand=S` (`LocalCommand`, `KnownHostsCommand`: they
+run here), `hyperfine`'s arguments, `parallel`'s and `watch`'s. And as a net for
+a runner no list knows, a later word that names git is read as git from there
+(`some-runner git config k v`, `some-runner 'git config k v'`; a read stays a
+read), except in a command that only reads (`rg 'git config'`). A heredoc written as data (`cat`,
 `tee`, `git commit -F -`) is not looked into: where it goes is checked. A
 command the checks can't read is refused, never let through on a text match.
 A program is told by its name in any case, on every disk (`GIT config`, `Chi
@@ -587,7 +598,9 @@ rule lowers it), so it comes even in auto mode. A command fails closed
   (it affects that command only); a variable outside `COMMAND_ENV` whose
   value a program runs (`LESSOPEN`, a tool's own `*_EDITOR`); `npx -y`,
   `npm exec`, `pnpm dlx`, `uvx`: they fetch into a cache, which doesn't count,
-  and run the package as in-project work.
+  and run the package (judged as the program) as in-project work; a wrapper's
+  value option no list names (`uv run --with x git …` reads `x` as the program;
+  the git net still reads the git after it); chi under a runner no list knows.
 
 Anything else asks: `rm -rf ~/x`, `sed -i … ~/x`, `curl -o ~/x`, `dd of=~/x`,
 `touch`/`mkdir` outside, `perl -pi … ~/x`, `cd .. && make`, `cd && make`, and

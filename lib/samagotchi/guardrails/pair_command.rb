@@ -39,8 +39,21 @@ module Samagotchi
     class PairCommand
       # What runs a command on another's behalf, and the shell's keywords
       # before a command: skipped to find the program.
-      WRAPPERS = %w[env exec command nohup time sudo nice xargs setsid timeout stdbuf caffeinate bundle ruby watch npx
-                    { ! then do else elif if while until].freeze
+      WRAPPERS = %w[env exec command builtin nohup time sudo nice xargs setsid timeout stdbuf caffeinate bundle ruby
+                    watch npx bunx uvx xcrun arch script { ! then do else elif if while until].freeze
+      # Wrappers by two words: the program after `uv run`, `pnpm exec` …
+      SUBCOMMAND_WRAPPERS = { "uv" => %w[run], "poetry" => %w[run], "pdm" => %w[run], "hatch" => %w[run],
+                              "pipx" => %w[run], "pnpm" => %w[exec dlx], "yarn" => %w[exec dlx], "npm" => %w[exec x],
+                              "bun" => %w[x], "mise" => %w[exec x] }.freeze
+      # A wrapper's options whose value is the next word (.program_at): not
+      # the program (env -u X git, sudo -u root git, timeout -s KILL 5 git).
+      WRAPPER_VALUES = { "env" => %w[-u --unset -C --chdir -P -S --split-string], "exec" => %w[-a],
+                         "sudo" => %w[-u -g -h -p -C -D -R -T -U -r -t --user --group --host --prompt --chdir],
+                         "timeout" => %w[-s --signal -k --kill-after], "nice" => %w[--adjustment],
+                         "xargs" => %w[-L -P -s -d -E -a --max-args --max-procs --delimiter --arg-file],
+                         "stdbuf" => %w[-i -o --input --output --error], "caffeinate" => %w[-t -w],
+                         "watch" => %w[--interval], "arch" => %w[-arch -d], "xcrun" => %w[-sdk --sdk --toolchain],
+                         "script" => %w[-F -t -T -B -I -O -c --command] }.freeze
       # chi's own invocations a pair turn may run: they print and exit.
       CHI_ALLOWED = [%w[--version], %w[--help]].freeze
       # chi named in a script, a value or an argument, in any case (CHI runs
@@ -196,6 +209,12 @@ module Samagotchi
       # assignments, or ASSIGNERS' words (not grep 'X=$(…)').
       DEFERRED_SUBST = /\$\(|`/
       ASSIGNERS = %w[export declare typeset readonly local env].freeze
+      # How many later words naming git the net reads (#later_git_refusal).
+      NET_GITS = 16
+      # Runners whose arguments are command lines they run through a shell.
+      TEXT_RUNNERS = %w[hyperfine parallel watch].freeze
+      # An ssh -o option that runs a command on this machine, and its value.
+      SSH_COMMAND_OPTION = /\A\s*(?:ProxyCommand|LocalCommand|KnownHostsCommand)\s*[=\s]\s*(.+)\z/im
       # Devices a command may name in the project's stead.
       DEVICES = %w[/dev/null /dev/stdout /dev/stderr /dev/tty /dev/zero /dev/random /dev/urandom].freeze
       # A word that starts with $TMPDIR or ${TMPDIR}.
@@ -254,21 +273,36 @@ module Samagotchi
       # Where the program is in +words+: past assignments, wrappers, shell
       # keywords and their options (and an option's value: ruby -I lib,
       # timeout 10).
+      # A wrapper's options whose value is the next word (WRAPPER_VALUES, and
+      # -I/-r/-C/-e/-n for any), a two-word wrapper (uv run, pnpm exec:
+      # SUBCOMMAND_WRAPPERS), and script's typescript file before its command.
       def self.program_at(words)
         at = 0
-        at += 1 while at < words.size && skipped?(words, at)
+        wrapper = nil
+        file = false
+        while at < words.size
+          word = words[at]
+          if word.match?(/\A[A-Za-z_]\w*=/) || word.match?(/\A\d+[smhd]?\z/) then at += 1
+          elsif word.start_with?("-") then at += option_width(wrapper, word)
+          elsif wrapper == "script" && !file
+            at += 1
+            file = true
+          else
+            name = ShellLex.program_name(word)
+            if SUBCOMMAND_WRAPPERS.fetch(name, []).include?(words[at + 1]) then at += 2
+            elsif WRAPPERS.include?(name) then at += 1
+            else break
+            end
+            wrapper = name
+          end
+        end
         at < words.size ? at : nil
       end
 
-      def self.skipped?(words, at)
-        word = words[at]
-        return true if word.match?(/\A[A-Za-z_]\w*=/) || word.start_with?("-") || word.match?(/\A\d+[smhd]?\z/)
-        return true if WRAPPERS.include?(ShellLex.program_name(word))
-
-        previous = at.positive? ? words[at - 1] : nil
-        !previous.nil? && previous.match?(/\A-[IrCen]\z/)
+      def self.option_width(wrapper, word)
+        WRAPPER_VALUES.fetch(wrapper, []).include?(word) || word.match?(/\A-[IrCen]\z/) ? 2 : 1
       end
-      private_class_method :skipped?
+      private_class_method :option_width
 
       # Where git's subcommand may start in its +args+ (indices): past its
       # own options (GIT_FLAG_OPTIONS, GIT_VALUE_OPTIONS and their value,
@@ -550,7 +584,7 @@ module Samagotchi
       def outside_writes?
         return @outside_writes if defined?(@outside_writes)
 
-        @outside_writes = env_command_outside? ||
+        @outside_writes = handed_command_outside? ||
                           !(ReadOnlyShell.read_only?(@text) || writes_inside? || stays_inside?)
       rescue StandardError
         @outside_writes = true
@@ -601,7 +635,7 @@ module Samagotchi
         program, args = PairCommand.git_form(program, args)
         return PairBoundary::GIT_CONFIG if git_config_env?(words) || git_alias?(program, args)
 
-        env_commands(words).each do |script|
+        handed_commands(words).each do |script|
           reason = nested(script).refusal
           return reason if reason
         end
@@ -610,6 +644,9 @@ module Samagotchi
           # xargs adds words of its input: a git config it runs may write
           xargs = words[0...at].any? { |word| ShellLex.program_name(word) == "xargs" }
           reason = git_refusal(args, appended: xargs) || git_command_refusal(args)
+          return reason if reason
+        elsif at && !@read_only
+          reason = later_git_refusal(words[(at + 1)..])
           return reason if reason
         end
         return PairBoundary::GIT_HOOKS if hook_installer?(words)
@@ -756,13 +793,16 @@ module Samagotchi
         end
       end
 
-      # env with no command after it prints the environment.
+      # env with no command after it prints the environment, wherever it
+      # stands among the wrappers (sudo env, mise exec -- env, env -u X);
+      # env -S S runs S (#text_commands), but env followed by options and
+      # assignments only still counts (env -S 'X=1 git log' too).
       def bare_env?(words)
         assignment = ->(word) { word.start_with?("-") || word.match?(/\A[A-Za-z_]\w*=/) }
         at = words.index { |word| !assignment.call(word) }
-        return false unless at && ShellLex.program_name(words[at]) == "env"
+        return true if at && ShellLex.program?(words[at], "env") && words[(at + 1)..].all?(&assignment)
 
-        words[(at + 1)..].all?(&assignment)
+        program_at(words).nil? && words.any? { |word| ShellLex.program?(word, "env") } && text_commands(words).empty?
       end
 
       # Why a git command is refused: a config write (anything but a read
@@ -884,11 +924,98 @@ module Samagotchi
         end
       end
 
-      # Whether a command an assignment hands a program (#env_commands)
-      # may write outside, read as a command of its own.
-      def env_command_outside?
+      # The commands a simple command hands on as text, read as commands of
+      # their own: its assignments' (#env_commands) and the wrappers' and
+      # runners' that take a command line (#text_commands).
+      def handed_commands(words) = env_commands(words) + text_commands(words)
+
+      # The command lines the wrappers and the program take as text: env -S
+      # S, script -c S, ssh's (scp's, sftp's) -o ProxyCommand=S (and
+      # LocalCommand, KnownHostsCommand: run here), and the runners that run
+      # their arguments as command lines (TEXT_RUNNERS: hyperfine, parallel,
+      # watch).
+      def text_commands(words)
+        upto = program_at(words) || (words.size - 1)
+        (0..upto).flat_map do |i|
+          next [] if words[i].include?("\0")
+
+          name = ShellLex.program_name(words[i])
+          rest = words[(i + 1)..]
+          case name
+          when "env" then option_values(rest, %w[-S --split-string], cluster: "S")
+          when "script" then option_values(rest, %w[-c --command])
+          when "ssh", "scp", "sftp" then ssh_commands(rest)
+          when *TEXT_RUNNERS then text_runner_commands(name, rest)
+          else []
+          end
+        end
+      end
+
+      # The values of +options+ among the options at +rest+'s start (the next
+      # word, after = for a long one, the rest of a -S… word for +cluster+).
+      def option_values(rest, options, cluster: nil)
+        found = []
+        rest.each_with_index do |word, i|
+          break unless word.start_with?("-")
+
+          option, value = word.split("=", 2)
+          if options.include?(word) then found << rest[i + 1]
+          elsif option.start_with?("--") && options.include?(option) then found << value
+          elsif cluster && word.match?(/\A-#{cluster}./) then found << word[2..]
+          end
+        end
+        found.compact
+      end
+
+      # ssh's -o options that run a command on this machine.
+      def ssh_commands(rest)
+        rest.each_with_index.filter_map do |word, i|
+          option = if word == "-o" then rest[i + 1].to_s
+                   elsif word.start_with?("-o") then word[2..]
+                   end
+          option.to_s[SSH_COMMAND_OPTION, 1]
+        end
+      end
+
+      # hyperfine's arguments, each a command line (its options' values
+      # too: harmless as commands); parallel's and watch's words before
+      # parallel's ::: as one command line.
+      def text_runner_commands(name, rest)
+        words = rest.take_while { |word| !word.start_with?(":::") }.reject { |word| word.start_with?("-") }
+        return words if name == "hyperfine"
+
+        words.empty? ? [] : [words.join(" ")]
+      end
+
+      # A fail-closed net for a runner no table knows (a wrapper's option
+      # read wrong, a package runner): a later word naming git is read as
+      # git from there, and a later command line starting with git as a
+      # command (git config's reads stay reads). Not for a command that only
+      # reads (rg 'git config').
+      # More than NET_GITS such words is no command chi reads (UNREADABLE):
+      # each is read through the rest of the words.
+      def later_git_refusal(args)
+        gits = 0
+        args.each_with_index do |word, i|
+          next if word.include?("\0")
+
+          program, rest = PairCommand.git_form(ShellLex.program_name(word), args[(i + 1)..])
+          return PairBoundary::UNREADABLE if program == "git" && (gits += 1) > NET_GITS
+
+          reason = if program == "git" then git_refusal(rest) || git_command_refusal(rest)
+                   elsif word.match?(/\s/) && ShellLex.program?(word.strip.split(/\s+/).first, "git")
+                     nested(word).refusal
+                   end
+          return reason if reason
+        end
+        nil
+      end
+
+      # Whether a command a simple command hands on (#handed_commands) may
+      # write outside, read as a command of its own.
+      def handed_command_outside?
         ShellLex.simple_commands(ShellLex.lex(@text)).any? do |words|
-          words.is_a?(Array) && env_commands(words).any? { |script| nested(script).outside_writes? }
+          words.is_a?(Array) && handed_commands(words).any? { |script| nested(script).outside_writes? }
         end
       end
 
@@ -982,7 +1109,8 @@ module Samagotchi
 
       def env_loader_command?(words)
         at = program_at(words)
-        return true if at && ENV_LOADERS.include?(ShellLex.program_name(words[at]))
+        # wherever it stands among the wrappers too (mise exec -- env)
+        return true if words[0..at].any? { |word| ENV_LOADERS.any? { |name| ShellLex.program?(word, name) } }
         return true if words.each_cons(2).any? { |option, word| CODE_OPTIONS.include?(option) && ENV_LOADERS.include?(ShellLex.program_name(word)) }
 
         runner = (0..(at || (words.size - 1))).find { |i| runner?(words[i]) } or return false

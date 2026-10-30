@@ -133,7 +133,7 @@ RSpec.describe Samagotchi::Guardrails::PairBoundary do
   end
 
   it "asks the owner before a command runs mise or direnv (they load the project's env files)" do
-    ["mise env", "mise exec -- env", "/opt/homebrew/bin/mise x -- ruby -v", "direnv exec . env", "FOO=1 direnv export bash",
+    ["mise env", "mise exec -- make", "/opt/homebrew/bin/mise x -- ruby -v", "direnv exec . env", "FOO=1 direnv export bash",
      "sh -c 'mise env --json'", "timeout 5 mise ls", "find . -name x -exec mise env \\;",
      # mise's own writes of its config, which name no file (mise.toml, ~/.config/mise/config.toml)
      "mise use node@20", "mise use -g node@20", "mise set FOO=1", "mise trust"].each do |command|
@@ -258,7 +258,7 @@ RSpec.describe Samagotchi::Guardrails::PairBoundary do
 
   it "denies reading the environment or the keychain" do
     ["env", "env -0", "printenv", "printenv HOME", "security find-generic-password -s chi -w", "cat /proc/1/environ",
-     "X=1 env"].each do |command|
+     "X=1 env", "sudo env", "env -u X", "mise exec -- env"].each do |command|
       expect(refused(command)).to eq(described_class::ENVIRONMENT), command
     end
     expect(refused("env RAILS_ENV=test bundle exec rspec")).to be_nil
@@ -368,6 +368,37 @@ RSpec.describe Samagotchi::Guardrails::PairBoundary do
         expect([verdict.ask?, verdict.reason]).to eq([true, described_class::OUTSIDE_WRITE]), command
       end
       ["fish -c 'git status'", "fish --command 'ls docs'"].each { |command| expect(execute(command)).to be_allow, command }
+    end
+
+    # The program behind more wrappers (their value options skipped, two-word
+    # ones, script's file), the command lines some take as text, and a net
+    # for a runner none of them knows: a later word naming git is read as git.
+    it "finds the program behind more runners, reads the command lines they take, and nets an unknown one's git" do
+      ["xcrun git config core.fsmonitor id", "arch -arm64 git -c core.fsmonitor=id status",
+       "arch -arch arm64 git config core.fsmonitor id", "script -q /dev/null git config core.fsmonitor id",
+       "uv run git config core.fsmonitor id", "poetry run git config core.fsmonitor id",
+       "pnpm exec git config core.fsmonitor id", "yarn exec git config core.fsmonitor id",
+       "bunx git config core.fsmonitor id", "env -u X git config core.fsmonitor id",
+       "builtin command git config core.fsmonitor id", "timeout -s KILL 5 git config core.fsmonitor id",
+       "sudo -u root git config core.fsmonitor id", "env -S 'git config core.fsmonitor id'",
+       "ENV --split-string 'git config core.fsmonitor id'", "script -q -c 'git config core.fsmonitor id' /dev/null",
+       "hyperfine 'git config core.fsmonitor id'", "parallel git config ::: core.fsmonitor",
+       "ssh -oProxyCommand='git config core.fsmonitor id' host", "some-runner git config core.fsmonitor id",
+       "some-runner GIT -c core.fsmonitor=id status", "some-runner 'git config core.fsmonitor id'"].each do |command|
+        expect(refused(command)).to eq(described_class::GIT_CONFIG), command
+      end
+      ["hyperfine 'touch ~/other/x'", "parallel 'touch ~/other/{}' ::: a", "env -S 'sh -c -- \"touch ~/other/x\"'",
+       "ssh -o ProxyCommand='touch ~/other/x' host",
+       "GIT_SSH_COMMAND=\"ssh -o ProxyCommand='touch ~/other/x'\" git fetch"].each do |command|
+        verdict = execute(command)
+        expect([verdict.ask?, verdict.reason]).to eq([true, described_class::OUTSIDE_WRITE]), command
+      end
+      ["xcrun git config user.name", "uv run pytest", "pnpm exec eslint .", "hyperfine 'git status'",
+       "watch -n 1 'git status --short'", "env -C docs ls", "ssh -o ProxyCommand=none host ls",
+       "docker compose exec app git config user.name", "gh pr create --title 'git config: fix' --body x",
+       "rg 'git config core.fsmonitor id' docs"].each do |command|
+        expect(execute(command)).to be_allow, command
+      end
     end
 
     it "denies the environment listers, and leaves their setting forms" do
