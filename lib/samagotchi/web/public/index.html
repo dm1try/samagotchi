@@ -664,7 +664,7 @@ body.has-session #history{padding-bottom:calc(var(--dock-h,160px) + 32px)}
 body:not(.has-session) #composer .actions-col{flex-wrap:nowrap}
 body:not(.has-session) #composer .actions-col .model-pick{flex:0 100000 auto;min-width:min(84px,20vw)}
 body:not(.has-session) #composer .actions-col .llmctx-new{flex:0 1 auto;min-width:40px}
-#composer .actions-col .model-pick:hover,#composer .actions-col .model-pick[aria-expanded="true"]{filter:none;background:color-mix(in srgb,var(--bg-hover) 75%,transparent);color:var(--text-2)}
+#composer .actions-col .model-pick:hover{filter:none}#composer .actions-col .model-pick[aria-expanded="true"]{background:color-mix(in srgb,var(--bg-hover) 75%,transparent);color:var(--text-2)}@media(hover:hover){#composer .actions-col .model-pick:hover{background:color-mix(in srgb,var(--bg-hover) 75%,transparent);color:var(--text-2)}}
 #composer .actions-col .model-pick[hidden],body.has-session #composer .actions-col .model-pick{display:none}
 .model-pick-name{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #composer .actions-col .model-pick.unavailable .model-pick-name{color:var(--text-faint)}
@@ -675,7 +675,7 @@ body.has-session.fresh-link #composer .actions-col .model-pick:not([hidden]){dis
 @media(max-width:600px){body.has-session.fresh-link #composer .actions-col .model-pick:not([hidden]){max-width:100px}}
 /* The new session's override chips (start_page.js: what the ⚙ panel has set, only then), right of the key hint next to ⚙: accent; a click opens the panel. A phone has ⚙'s dot instead (below). */
 #composer .actions-col .llmctx-new{order:1;flex:0 1 auto;min-width:0;max-width:min(30%,220px);height:24px;min-height:24px;line-height:22px;padding:0 6px;border-radius:6px;border:1px solid var(--accent-border);background:transparent;color:var(--accent);font-size:11px;font-weight:400;overflow:hidden;text-overflow:ellipsis}
-#composer .actions-col .llmctx-new:hover{filter:none;color:var(--accent);background:var(--accent-bg)}
+#composer .actions-col .llmctx-new:hover{filter:none}#composer .actions-col .llmctx-new[aria-expanded="true"]{color:var(--accent);background:var(--accent-bg)}@media(hover:hover){#composer .actions-col .llmctx-new:hover{color:var(--accent);background:var(--accent-bg)}}
 #composer .actions-col .llmctx-new[hidden],body.has-session #composer .actions-col .llmctx-new{display:none}
 /* Phones (the key hint is gone there): still one row, with tighter gaps; the override chips go (⚙'s dot and label say what is set). */
 @media(max-width:600px){#composer .actions-col .model-pick{flex:0 1 auto;min-width:0;max-width:100%}body:not(.has-session) #composer .actions-col{gap:4px}body:not(.has-session) #composer .actions-col .model-pick{flex-shrink:20;min-width:min(84px,20vw)}#composer .actions-col .llmctx-new{display:none}}
@@ -885,7 +885,7 @@ body.stage-view .turn-stage{position:absolute;left:0;right:0;bottom:100%;margin-
 body.working-set .turn-stage{container-type:inline-size}
 body.working-set .ts-live{position:relative;padding-right:264px}
 .ts-ws{--ws-line:18px;position:absolute;top:0;right:0;bottom:0;width:248px;box-sizing:border-box;padding:0 4px 0 12px;border-left:1px solid var(--ws-rule);border-radius:0 6px 6px 0;display:flex;flex-direction:column;overflow:hidden;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;line-height:var(--ws-line);color:var(--text-2);cursor:pointer}
-.ts-ws:hover{background:var(--bg-hover)}
+@media(hover:hover){.ts-ws:hover{background:var(--bg-hover)}}
 .ts-ws:focus-visible{outline:2px solid var(--accent-ring);outline-offset:1px}
 .ws-head{flex:none;display:flex;align-items:center;gap:6px;min-width:0;height:var(--ws-line);font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;font-size:11px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--ws-muted);white-space:nowrap}
 .ws-count{margin-right:auto;font-weight:400;letter-spacing:0;color:var(--ws-faint);font-variant-numeric:tabular-nums}
@@ -952,7 +952,7 @@ body.working-set .turn-stage.waiting .ts-live{min-height:calc(var(--ts-live-h) +
 body.working-set .turn-stage.held-wait:not(.waiting) .ts-live{min-height:max(calc(var(--ts-live-h) + var(--ws-row-h,0px)),var(--live-held,0px))}
 /* A finished turn's footprint, under its closed block (working_set_view.js): one faint line; a click opens its list. */
 .ws-foot{display:block;width:fit-content;max-width:calc(100% - 13px);box-sizing:border-box;margin:-4px 0 0 13px;padding:0 6px;border-radius:6px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11.5px;line-height:18px;color:var(--text-faint);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer}
-.ws-foot:hover{color:var(--text-muted);background:var(--bg-hover)}
+@media(hover:hover){.ws-foot:hover{color:var(--text-muted);background:var(--bg-hover)}}
 .ws-foot:focus-visible{outline:2px solid var(--accent-ring);outline-offset:1px}
 .ws-foot .w{font-family:ui-sans-serif,system-ui,sans-serif}
 .ws-foot .sep{color:var(--border-strong)}
@@ -964,25 +964,25 @@ body.working-set .turn-stage.held-wait:not(.waiting) .ts-live{min-height:max(cal
 .ws-step{display:inline-block;padding:0 4px;border:0;border-radius:4px;background:var(--badge-bg);font-family:ui-sans-serif,system-ui,sans-serif;font-size:10.5px;line-height:14px;font-weight:400;color:var(--ws-faint);font-variant-numeric:tabular-nums;vertical-align:1px}
 .ws-step.p{color:var(--think-text)}
 button.ws-step{cursor:pointer}
-button.ws-step:hover:not(:disabled){filter:none;background:var(--accent-bg);color:var(--accent)}
+button.ws-step:hover:not(:disabled){filter:none}@media(hover:hover){button.ws-step:hover:not(:disabled){background:var(--accent-bg);color:var(--accent)}}
 /* The expanded view (a chip popover; a bottom sheet on a phone). */
 .ws-popover{gap:0}
 .ws-popover .ctx-pop-head{align-items:center;flex-wrap:wrap;margin-bottom:4px}
 .ws-scope{display:inline-flex;gap:2px}
 .ws-scope button{padding:1px 8px;border:1px solid transparent;border-radius:999px;background:transparent;color:var(--text-muted);font-size:11px;line-height:16px}
 .ws-scope button.on{color:var(--text-2);border-color:var(--border-strong);background:var(--bg-raised)}
-.ws-scope button:hover:not(:disabled){filter:none;color:var(--text)}
+.ws-scope button:hover:not(:disabled){filter:none}@media(hover:hover){.ws-scope button:hover:not(:disabled){color:var(--text)}}
 .ws-popover .ctx-pop-meta{margin-top:6px;color:var(--ws-muted)}
 .ws-popover .ws-hint{margin-top:10px;color:var(--ws-faint)}
 .ws-row{display:flex;align-items:center;gap:8px;width:100%;min-width:0;height:28px;box-sizing:border-box;padding:0 6px;border:0;border-radius:6px;background:transparent;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12.5px;line-height:28px;color:var(--text-2);text-align:left}
-.ws-row:hover{background:var(--bg-hover)}
-button.ws-row:hover:not(:disabled){filter:none;background:var(--bg-hover)}
+@media(hover:hover){.ws-row:hover{background:var(--bg-hover)}}
+button.ws-row:hover:not(:disabled){filter:none}@media(hover:hover){button.ws-row:hover:not(:disabled){background:var(--bg-hover)}}
 .ws-row .k{flex:none;width:12px;text-align:center;color:var(--ws-faint)}
 .ws-row.memory .k{color:var(--think-text)}
 .ws-row.url .k{color:var(--accent)}
 .ws-row .t{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:inherit}
 .ws-row a.t{text-decoration:none}
-.ws-row a.t:hover{text-decoration:underline}
+@media(hover:hover){.ws-row a.t:hover{text-decoration:underline}}
 .ws-row .e{flex:none;color:var(--accent);font-weight:600}
 .ws-row .n{flex:none;color:var(--ws-faint)}
 .ws-row .st{flex:0 4 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-left:auto;font-family:ui-sans-serif,system-ui,sans-serif;font-size:11px;color:var(--ws-faint)}
@@ -999,12 +999,12 @@ button.ws-row:hover:not(:disabled){filter:none;background:var(--bg-hover)}
 .ws-row:hover .ws-act,.ws-row:focus-within .ws-act,.ws-ghead:hover .ws-act,.ws-ghead:focus-within .ws-act,.ws-row.pending .ws-act{opacity:1}
 @media (hover:none){.ws-act{opacity:1}}
 .ws-act-b{flex:none;padding:0 6px;border:1px solid var(--ws-act-border);border-radius:4px;background:transparent;font-family:ui-sans-serif,system-ui,sans-serif;font-size:11px;font-weight:400;line-height:16px;color:var(--ws-muted);cursor:pointer}
-.ws-act-b:hover:not(:disabled){filter:none;color:var(--accent);border-color:var(--accent);background:var(--accent-bg)}
+.ws-act-b:hover:not(:disabled){filter:none}@media(hover:hover){.ws-act-b:hover:not(:disabled){color:var(--accent);border-color:var(--accent);background:var(--accent-bg)}}
 .ws-act-b:disabled{opacity:.5;cursor:default}
 .ws-ghead{display:flex;align-items:center;gap:4px}
 .ws-ghead>.ws-group-head{flex:1;min-width:0}
 .ws-row.pending{border:1px dashed var(--warn-border);background:var(--warn-bg)}
-.ws-row.pending:hover{background:var(--warn-bg)}
+@media(hover:hover){.ws-row.pending:hover{background:var(--warn-bg)}}
 /* A pending row: its pill and undo take the tokens' and the step tag's room, so the name stays readable. */
 .ws-row.pending .tk,.ws-row.pending .ws-step{display:none}
 .ws-pend{flex:none;padding:0 6px;border:1px solid var(--warn-border);border-radius:999px;background:var(--warn-bg);color:var(--warn-text);font-family:ui-sans-serif,system-ui,sans-serif;font-size:10.5px;line-height:15px;white-space:nowrap}
@@ -1033,7 +1033,7 @@ button.ws-row:hover:not(:disabled){filter:none;background:var(--bg-hover)}
 .ws-popover.sheet .ws-add .ws-act-b{line-height:32px;padding:0 14px;font-size:12.5px;border-radius:6px}
 /* The session bar's chip, in the mem chip's place: a dot (the accent: changed since its list was last opened) and the count. */
 #infoBar .meta .ws-chip{display:inline-flex;align-items:center;gap:5px;padding:2px 7px;border:1px solid transparent;cursor:pointer;font-family:inherit;font-weight:400;white-space:nowrap;font-variant-numeric:tabular-nums}
-#infoBar .meta .ws-chip:hover:not(:disabled){filter:none;color:var(--text);border-color:var(--accent-border);background:var(--accent-bg)}
+#infoBar .meta .ws-chip:hover:not(:disabled){filter:none}#infoBar .meta .ws-chip[aria-expanded="true"]{color:var(--text);border-color:var(--accent-border);background:var(--accent-bg)}@media(hover:hover){#infoBar .meta .ws-chip:hover:not(:disabled){color:var(--text);border-color:var(--accent-border);background:var(--accent-bg)}}
 .ws-dot{width:6px;height:6px;border-radius:50%;background:var(--text-faint);opacity:.6}
 #infoBar .meta .ws-chip.empty{color:var(--text-muted);background:transparent;border-color:var(--border)}
 .ws-chip.changed .ws-dot{background:var(--accent);opacity:1;box-shadow:0 0 0 2px var(--accent-ring)}
@@ -1099,7 +1099,7 @@ button.ws-row:hover:not(:disabled){filter:none;background:var(--bg-hover)}
 #infoBar .meta .worker-restart:disabled{opacity:.7;cursor:default}
 #infoBar button{padding:4px 12px;border-radius:8px;font-size:12px;font-weight:600}
 #infoBar #infoStopBtn{background:var(--bg-raised);color:var(--warn-text);border:1px solid var(--border-strong)}
-#infoBar #infoStopBtn:hover{background:var(--warn-bg);border-color:var(--warn-border)}
+@media(hover:hover){#infoBar #infoStopBtn:hover{background:var(--warn-bg);border-color:var(--warn-border)}}
 #infoBar #infoArchiveBtn{background:transparent;color:var(--text-muted);border:1px solid var(--border-strong)}
 #infoBar #infoArchiveBtn:hover{color:var(--text);background:var(--bg-hover)}
 #infoBar #infoDeleteBtn{background:transparent;color:var(--text-muted);border:1px solid transparent}
@@ -1112,7 +1112,7 @@ body.has-session.composer-folded #infoBar{border-top-color:transparent}
 #infoBar #infoCancelBtn:hover:not(:disabled){color:var(--on-solid);background:var(--danger-bg);border-color:var(--danger-bg)}
 /* The ⚙ chip (settings_chip.js): a model-like chip that opens the session's settings panel; accent when the session set its own (capped like the model chip in the min-width:601px rule above, the full text in its tooltip; a phone shows ⚙ with a dot). */
 #infoBar .meta .settings-chip{position:relative;padding:2px 6px;border-radius:6px;font-size:11px;font-weight:400;border:1px solid transparent;cursor:pointer;font-family:inherit;white-space:nowrap}
-#infoBar .meta .settings-chip:hover{color:var(--text);border-color:var(--accent-border);background:var(--accent-bg)}
+#infoBar .meta .settings-chip[aria-expanded="true"]{color:var(--text);border-color:var(--accent-border);background:var(--accent-bg)}@media(hover:hover){#infoBar .meta .settings-chip:hover{color:var(--text);border-color:var(--accent-border);background:var(--accent-bg)}}
 #infoBar .meta .settings-chip.own{color:var(--accent);border-color:var(--accent-border)}
 /* A chip's icon (⚙ here, the start page's own SVG from composer.css): the glyph stays the text, the mask draws it. */
 #infoBar .meta :is(.settings-chip,.tools-chip){display:inline-flex;align-items:center;gap:4px}
@@ -1137,7 +1137,7 @@ body.has-session.composer-folded #infoBar{border-top-color:transparent}
 .ctx-add-input{width:100%;box-sizing:border-box;padding:6px 8px;border-radius:7px;border:1px solid var(--border-strong);background:var(--bg-inset);color:var(--text);font:inherit;font-size:13px;line-height:1.4}
 .ctx-add-input:focus{outline:none;border-color:var(--accent-border)}
 #infoBar .ctx-chip{display:inline-flex;align-items:center;gap:5px;padding:2px 9px;border-radius:999px;font:600 11px/1.5 ui-monospace,monospace;background:color-mix(in srgb,var(--bg-hover) 55%,transparent);color:var(--text-3);border:1px solid var(--border-strong);white-space:nowrap}
-#infoBar .ctx-chip:hover,#infoBar .ctx-chip.open{color:var(--text);border-color:var(--accent-border);background:var(--accent-bg)}
+#infoBar .ctx-chip.open{color:var(--text);border-color:var(--accent-border);background:var(--accent-bg)}@media(hover:hover){#infoBar .ctx-chip:hover{color:var(--text);border-color:var(--accent-border);background:var(--accent-bg)}}
 #infoBar .ctx-chip.empty{color:var(--text-faint);border-style:dashed}
 #infoBar .ctx-chip.error{color:var(--danger-text);border-color:color-mix(in srgb,var(--danger) 55%,transparent);background:var(--danger-bg-dim)}
 .ctx-dot{width:7px;height:7px;border-radius:50%;background:var(--accent);box-shadow:0 0 0 2px var(--accent-ring)}
@@ -1145,7 +1145,7 @@ body.has-session.composer-folded #infoBar{border-top-color:transparent}
 .ctx-popover[hidden]{display:none}
 /* The participants chip (info bar) and its panel (participants_panel.js). */
 #infoBar .meta .participants-chip{display:inline-flex;align-items:center;gap:5px;padding:2px 7px;border:1px solid transparent;cursor:pointer;font-family:inherit;font-weight:400;white-space:nowrap}
-#infoBar .meta .participants-chip:hover{color:var(--text);border-color:var(--accent-border);background:var(--accent-bg)}
+#infoBar .meta .participants-chip[aria-expanded="true"]{color:var(--text);border-color:var(--accent-border);background:var(--accent-bg)}@media(hover:hover){#infoBar .meta .participants-chip:hover{color:var(--text);border-color:var(--accent-border);background:var(--accent-bg)}}
 #infoBar .meta .participants-chip.none{color:var(--text-muted);background:transparent;border-color:var(--border)}
 #infoBar .meta .participants-chip.none .pc-dot{display:none}
 .participants-chip .pc-dot{width:7px;height:7px;border-radius:50%;background:var(--text-faint)}
@@ -1164,7 +1164,7 @@ body.has-session.composer-folded #infoBar{border-top-color:transparent}
 .pp-capped{color:var(--warn-text);font-weight:600}
 .pp-actions{grid-column:2;grid-row:1/3;display:flex;align-items:center;gap:4px}
 .pp-actions button,.pp-invite button,.pp-link button,.pp-foot button{padding:3px 9px;border-radius:6px;font-size:12px;background:var(--bg-raised);color:var(--text-2);border:1px solid var(--border-strong);cursor:pointer}
-.pp-actions button:hover,.pp-invite button:hover,.pp-link button:hover,.pp-foot button:hover{color:var(--text-hover)}
+@media(hover:hover){.pp-actions button:hover,.pp-invite button:hover,.pp-link button:hover,.pp-foot button:hover{color:var(--text-hover)}}
 .pp-actions .pp-revoke{color:var(--danger-text)}
 .pp-cap-form{display:flex;gap:4px}
 .pp-cap-form input{width:58px}
@@ -1206,8 +1206,8 @@ body.has-session.composer-folded #infoBar{border-top-color:transparent}
 .sset-back{margin:0 2px 0 -6px;padding:0 6px;border:0;border-radius:5px;background:transparent;color:var(--text-muted);font-size:18px;line-height:1}
 .sset-back:hover{filter:none}
 .start-settings.sheet{border-radius:14px;padding:14px 16px}
-/* Tints only where a pointer hovers: on a touch screen a tapped control would keep it (the ⚙/🧰 panels' rows and links;
-   older popovers' :hover rules aren't gated yet). */
+/* Tints only where a pointer hovers: on a touch screen a tapped control would keep it. Every popover's (chip_popover.js)
+   controls and its opener's :hover tint sit in @media(hover:hover); an open opener shows it by aria-expanded instead. */
 @media(hover:hover){.sset-seg button:hover{color:var(--text);border-color:var(--accent-border)}.sset-link:hover{background:var(--accent-bg)}.sset-back:hover{color:var(--text);background:var(--bg-hover)}.st-row:hover{color:var(--text);background:var(--bg-hover)}}
 @media(max-width:400px){.sset-row{flex-direction:column;gap:4px}.sset-label{flex:none;line-height:1.4}.sset-ctx-more,.sset-ctx-form{margin-left:0}}
 @media(pointer:coarse){.sset-seg button{height:36px;min-height:36px;line-height:34px;padding:0 12px;font-size:13px}.sset-link,.sset-back{min-height:36px}.sset-label{line-height:36px}}
@@ -1235,7 +1235,7 @@ body.has-session.composer-folded #infoBar{border-top-color:transparent}
 .participants-popover.sheet .pp-qr{display:none}
 .pp-foot{display:flex;align-items:center;gap:8px;justify-content:flex-end;padding-top:4px}
 .pp-view{font-size:12px;color:var(--accent);text-decoration:none}
-.pp-view:hover{text-decoration:underline}
+@media(hover:hover){.pp-view:hover{text-decoration:underline}}
 /* The Home Screen app's notifications sheet (push_devices.js): the bell opens it; a bottom sheet on a phone. */
 .push-devices .ctx-pop-head strong{font-family:inherit}
 .push-devices.sheet{border-radius:14px;padding:14px 16px;font-size:14px}
@@ -1249,7 +1249,7 @@ body.has-session.composer-folded #infoBar{border-top-color:transparent}
 .pd-error{color:var(--danger-text)}
 .pd-done{grid-column:1/3;display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:4px;padding-top:6px;border-top:1px solid var(--border);font-size:12px;color:var(--text-3)}
 .pd-remove{padding:3px 10px;border-radius:7px;font-size:12px;background:var(--bg-raised);color:var(--danger-text);border:1px solid var(--border-strong);cursor:pointer}
-.pd-remove:hover{color:var(--text-hover)}
+@media(hover:hover){.pd-remove:hover{color:var(--text-hover)}}
 .pd-switch{appearance:none;-webkit-appearance:none;position:relative;flex-shrink:0;width:34px;height:20px;margin:0;border-radius:999px;background:var(--bg-raised);border:1px solid var(--border-strong);cursor:pointer;transition:background .15s}
 .pd-switch::after{content:"";position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:var(--text-muted);transition:transform .15s,background .15s}
 .pd-switch:checked{background:var(--accent-strong);border-color:var(--accent-strong)}
@@ -1277,9 +1277,9 @@ body.has-session.composer-folded #infoBar{border-top-color:transparent}
 .ss-note,.ss-more{font-size:11.5px;color:var(--text-muted)}
 .ss-acts{display:flex;gap:8px;flex-wrap:wrap}
 .ss-acts button{padding:8px 12px;border-radius:8px;font-size:13px;cursor:pointer;border:1px solid var(--border-strong);background:var(--bg-raised);color:var(--text-2)}
-.ss-acts button:hover{background:var(--bg-hover);color:var(--text-hover)}
+@media(hover:hover){.ss-acts button:hover{background:var(--bg-hover);color:var(--text-hover)}}
 .ss-stop-all{background:var(--warn-bg);border-color:var(--warn-border);color:var(--warn-text)}
-.ss-stop-all:hover{background:var(--warn-border);color:var(--text-hover)}
+@media(hover:hover){.ss-stop-all:hover{background:var(--warn-border);color:var(--text-hover)}}
 .ss-cancel{background:transparent}
 .stop-sheet.sheet .ss-acts button{flex:1 1 auto;font-size:14px;padding:10px 12px}
 .ss-foot{font-size:11.5px;color:var(--text-muted);margin-top:6px}
@@ -1304,7 +1304,7 @@ body.has-session.composer-folded #infoBar{border-top-color:transparent}
 @media(max-width:600px){#updateSheet{position:fixed;inset:auto 8px 8px;width:auto;max-width:none;max-height:min(80dvh,calc(100dvh - 16px));margin:0}}
 .ctx-pop-kind{font-size:11px;color:var(--text-muted)}
 .ctx-pop-close{margin-left:auto;padding:0 6px;border:none;background:transparent;color:var(--text-muted);font-size:16px;line-height:1}
-.ctx-pop-close:hover{color:var(--text)}
+@media(hover:hover){.ctx-pop-close:hover{color:var(--text)}}
 /* A finger's × (the other sheet controls are 36-40 px): the negative margins keep the head's height. */
 @media(pointer:coarse){.ctx-pop-close{min-width:36px;min-height:36px;margin:-10px -10px -10px auto;font-size:18px}}
 .ctx-pop-why{color:var(--text)}
@@ -1315,9 +1315,9 @@ body.has-session.composer-folded #infoBar{border-top-color:transparent}
 .ctx-pop-text{margin:0;max-height:240px;overflow:auto;padding:8px;border-radius:8px;background:var(--bg-inset);font:12px/1.45 ui-monospace,monospace;white-space:pre-wrap;word-break:break-word;color:var(--text-2)}
 .ctx-pop-actions{display:flex;gap:8px;justify-content:flex-end}
 .ctx-pop-actions button{padding:3px 10px;border-radius:7px;font-size:12px;font-weight:600;background:var(--bg-raised);color:var(--text-2);border:1px solid var(--border-strong)}
-.ctx-pop-actions button:hover{color:var(--text-hover)}
+@media(hover:hover){.ctx-pop-actions button:hover{color:var(--text-hover)}}
 .ctx-pop-actions .ctx-pop-detach{color:var(--text-muted);background:transparent}
-.ctx-pop-actions .ctx-pop-detach:hover{color:var(--danger-text);border-color:color-mix(in srgb,var(--danger) 55%,transparent)}
+@media(hover:hover){.ctx-pop-actions .ctx-pop-detach:hover{color:var(--danger-text);border-color:color-mix(in srgb,var(--danger) 55%,transparent)}}
 /* Phones: the footer is one line; its meta scrolls sideways (all of it stays reachable). */
 @media(max-width:600px){
   #infoBar{flex-wrap:nowrap;align-items:center;gap:6px;padding:6px 10px 8px}
@@ -1390,7 +1390,7 @@ body.has-session #newBtn .brand-new{display:inline}
 .project-picker .ctx-pop-head strong{font-family:inherit}
 .project-list{display:flex;flex-direction:column;gap:6px;margin:2px 0;padding:0}
 .project-row{display:flex;align-items:center;gap:12px;padding:8px 10px;border:1px solid transparent;border-radius:9px;background:var(--bg-inset);color:var(--text);text-decoration:none}
-.project-row:hover{background:var(--bg-hover);color:var(--text-hover)}
+@media(hover:hover){.project-row:hover{background:var(--bg-hover);color:var(--text-hover)}}
 .project-row:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .project-row[aria-current="page"]{border-color:var(--accent-border);background:var(--accent-bg)}
 .project-main{display:flex;flex:1;align-items:center;gap:7px;min-width:0;flex-wrap:wrap}
@@ -1452,7 +1452,7 @@ body.has-session #scope .scope-where{display:none}
 }
 #notifyBtn{margin-left:auto;flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;padding:0;min-height:0;background:transparent;border:1px solid transparent;border-radius:999px;color:var(--text-muted)}
 #notifyBtn[hidden]{display:none}
-#notifyBtn:hover{color:var(--text-2);border-color:var(--border)}
+@media(hover:hover){#notifyBtn:hover{color:var(--text-2);border-color:var(--border)}}
 #notifyBtn svg{fill:none;stroke:currentColor;stroke-width:1.3;stroke-linejoin:round;stroke-linecap:round}
 #notifyBtn .slash{display:none}
 #notifyBtn[data-state="on"]{color:var(--accent)}
@@ -1473,7 +1473,7 @@ body.no-glass :is(#familyPop,#chainPop){background:var(--bg-panel);-webkit-backd
 /* A chain's chip (chains.js): the card is the latest link of a session chain; a click lists the other links in a popover. */
 .card .meta:has(.chain-chip){flex-wrap:wrap;row-gap:4px}
 .card .chain-chip{font-family:ui-monospace,monospace;font-size:11px;line-height:1.4;white-space:nowrap;flex-shrink:0;padding:1px 7px;border-radius:999px;border:1px solid var(--accent-border);background:var(--accent-tint);color:var(--accent);cursor:pointer}
-.card .chain-chip:hover:not(:disabled){filter:none;border-color:var(--accent);background:var(--accent-bg)}
+.card .chain-chip:hover:not(:disabled){filter:none}@media(hover:hover){.card .chain-chip:hover:not(:disabled){border-color:var(--accent);background:var(--accent-bg)}}
 .card .chain-chip[aria-expanded="true"]{background:var(--accent-bg);border-color:var(--accent)}
 .card .chain-chip.waiting{color:var(--warn-text);background:var(--warn-bg);border-color:var(--warn-border)}
 .chain-chip .cc-arrow{display:inline-block;margin-right:4px}
@@ -1496,9 +1496,9 @@ body.no-glass :is(#familyPop,#chainPop){background:var(--bg-panel);-webkit-backd
 /* A card with a family chip lets its meta row wrap: the chip goes to a line of its own when the card is narrow. */
 .card .meta:has(.family-chip){flex-wrap:wrap;row-gap:4px}
 .card .family-chip{font-family:ui-monospace,monospace;font-size:11px;line-height:1.4;white-space:nowrap;flex-shrink:0;padding:1px 7px;border-radius:999px;border:1px solid var(--border-strong);background:transparent;color:var(--text-3);cursor:pointer}
-.card .family-chip:hover:not(:disabled){filter:none;color:var(--accent);border-color:var(--accent-border);background:var(--accent-bg)}
+.card .family-chip:hover:not(:disabled){filter:none}@media(hover:hover){.card .family-chip:hover:not(:disabled){color:var(--accent);border-color:var(--accent-border);background:var(--accent-bg)}}
 .card .family-chip.waiting{color:var(--warn-text);background:var(--warn-bg);border-color:var(--warn-border)}
-.card .family-chip.waiting:hover:not(:disabled){color:var(--warn-bright);border-color:var(--warn);background:var(--warn-bg)}
+@media(hover:hover){.card .family-chip.waiting:hover:not(:disabled){color:var(--warn-bright);border-color:var(--warn);background:var(--warn-bg)}}
 .family-chip .fc-arrow{display:inline-block;margin-right:4px;transition:transform .15s ease}
 .family-chip[aria-expanded="true"] .fc-arrow{transform:rotate(90deg)}
 .family-chip .live-dot{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--ok);margin-right:3px;vertical-align:1px}
@@ -1506,7 +1506,7 @@ body.no-glass :is(#familyPop,#chainPop){background:var(--bg-panel);-webkit-backd
 /* The family's list: one compact row per delegate, indented per depth. */
 .family-rows{display:flex;flex-direction:column;gap:1px;border-top:1px solid var(--border);margin:2px -6px 0;padding-top:4px;cursor:default}
 .family-row{display:flex;align-items:center;border-radius:6px;padding-left:calc((var(--depth,1) - 1) * 14px)}
-.family-row:hover{background:var(--bg-hover)}
+@media(hover:hover){.family-row:hover{background:var(--bg-hover)}}
 .family-row .fr-open{flex:1;min-width:0;display:flex;align-items:center;gap:6px;padding:6px;background:transparent;color:var(--text-2);border-radius:6px;font-size:12px;line-height:1.3;text-align:left}
 .family-row .fr-open:hover:not(:disabled){filter:none}
 .family-row .fr-preview{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}

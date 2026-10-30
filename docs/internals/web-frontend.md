@@ -19,7 +19,7 @@ page. A factory dep a new version stops passing is the same hazard the other way
 out of `send_turn.js`, `session_actions.js` and `lists_view.js`); a page loaded before keeps all its old modules
 until a reload, so the risk is a mixed cache, not an open tab. `answer_fold.js`, `details_motion.js`,
 `turn_range.js`, `history_reveal.js`, `latest.js`, `session_payload.js`, `method_api.js`, `session_store.js`,
-`session_fields.js`, `feature_gates.js`, `revise_stack.js`, `shell_command.js` and `stale_params.js` are new modules for that reason.
+`session_fields.js`, `feature_gates.js`, `revise_stack.js`, `shell_command.js`, `stale_params.js` and `popover_modal.js` are new modules for that reason.
 
 ## Two pages, two models
 
@@ -198,8 +198,13 @@ Three, for one job. Pick by what the piece is:
 
 Listeners: every factory is a page-lifetime singleton, so `addEventListener` without a remove is fine; a per-render
 listener lands on a fresh node. A popover goes through `chip_popover.js createChipPopover` (its own outside-click,
-Esc, placement and resize); `context_chips.js`, `model_picker.js`, `ref_menu.js`, `command_list.js` and the lists'
-families/chains popovers still hand-roll theirs.
+Esc, placement and resize); `context_chips.js` and the lists' families/chains popovers (`families_view.js
+createFamilyPop`) still place their own. Every popover behaves the same (`popover_modal.js`): a modal dialog
+(`modalDialog`: `aria-modal`, Tab wraps inside it), the opener's `aria-expanded` (a lit-drawn chip writes
+`aria-expanded="false"` statically; the shell flips it), Esc closes it and focus goes back to the opener
+(`focusBack`), and its `:hover` tints (the opener's too) sit in `@media(hover:hover)`, so a tap on a phone leaves
+none behind. `model_picker.js`, `command_list.js` (listboxes: the focus stays in the input), `ref_menu.js` (a menu)
+and `update_sheet.js` (a native modal `<dialog>`) aren't popovers in that sense.
 
 ## Stale answers
 
