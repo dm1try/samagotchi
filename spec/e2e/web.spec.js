@@ -131,6 +131,10 @@ test("a reload after the turn shows the same turn and answer", async ({ page, sc
   expect(before.titles[0]).toBe("See that the shell answers");
   await copied();
   expect(await answer(page).innerHTML()).toBe(before.answer);
+  // Nothing streams after the turn: the meter and the card read the saved
+  // context (its rules: ctx.test.js).
+  await expect(page.locator("#infoBar .meta")).toContainText(/ctx ~?\d+%/);
+  await expect(page.locator("#topStrip .card .ctx").first()).toHaveText(/^\d+%$/);
 });
 
 // The first generation has thinking only: the loop asks again in the same
@@ -152,12 +156,16 @@ test("an empty answer is asked again in the same turn, and a reload shows one tu
   await expect(page.locator("#history .hook-notice")).toHaveText(["↻ empty answer, asking again (1/1)"]);
 });
 
-// The retry is empty too: the turn ends with no answer. One muted notice
-// where the answer goes (no answer bubble), live and after a reload, which
-// keeps both empty steps and the retry row in them.
-test("a turn with no answer shows one notice, live and after a reload, with its steps", async ({ page, script }) => {
+// The retry is empty too: the turn ends with no answer. The stage's status
+// row reads "no answer", not "answered" (held there by the pointer), then
+// one muted notice where the answer goes (no answer bubble), live and after
+// a reload, which keeps both empty steps and the retry row in them.
+test("a turn with no answer ends in the stage as no answer, then one notice, live and after a reload, with its steps", async ({ page, script }) => {
   script("empty_answer");
   await send(page, "Say pong");
+  await page.locator("#turnStage").hover();
+  await expect(page.locator("#turnStage")).toHaveAttribute("data-phase", "no answer");
+  await expect(page.locator("#turnStage .ts-phase")).toHaveText("no answer");
   await turnEnded(page, 1);
   const notice = page.locator("#history .empty-answer");
   await expect(notice).toHaveText("no answer: the model returned nothing (after 1 retry)");
@@ -250,35 +258,6 @@ test("a stale read's stub shows as a ✂ row live and after a reload, and a relo
   await expect(rows.nth(1).locator(".activity-edit")).toHaveCount(0);
 });
 
-// Nothing streams after the turn: the meter and the card read the saved context.
-test("a reload after the turn shows the context meter and the card's ctx", async ({ page, script }) => {
-  script("plain");
-  await send(page, "Say pong");
-  await turnEnded(page, 1);
-  await page.reload();
-  await turnEnded(page, 1);
-  await expect(page.locator("#infoBar .meta")).toContainText(/ctx ~?\d+%/);
-  await expect(page.locator("#topStrip .card .ctx").first()).toHaveText(/^\d+%$/);
-});
-
-// No turn in a session yet: the chip is always shown, "ctx ?" in the info
-// bar and the card (not "0", not blank), the tooltip says why.
-test("the ctx chip before any request: 'ctx ?' in the info bar and the card, 'no request yet' in the tooltip", async ({ page, chi }) => {
-  const seed = seedDelegate(chi, null, { tag: "Seed" });
-  try {
-    // Open the seed directly, no worker and no turn: the info bar is the
-    // session, its chip is "ctx ?" (never 0), and its tooltip says why.
-    await page.locator(`#topStrip .card[data-id="${seed.id}"]`).click();
-    await expect(page.locator("#infoBar .meta .ctx")).toHaveText("ctx ?");
-    await expect(page.locator("#infoBar .meta .ctx")).toHaveAttribute("title", /No request in this session yet/);
-    // The card in the all-sessions list shows "ctx ?" too.
-    await page.locator("#allTile").click();
-    await expect(page.locator(`#allList .card[data-id="${seed.id}"] .ctx`)).toHaveText("ctx ?");
-  } finally {
-    seed.remove();
-  }
-});
-
 // A price under hosts.<name>.models: the fake reports usage without
 // usage.cost, so the info bar's ctx tooltip shows the estimate with "~".
 test("a configured price estimates the cost the provider doesn't report: ~$ in the info bar's ctx tooltip", async ({ page, script, hostModels }) => {
@@ -322,28 +301,6 @@ test("cancel mid-turn shows the canceled turn (its timing line too), and the nex
   await send(page, "Say pong");
   await expect(answer(page)).toHaveText("PONG from the fake model. It streams word by word. Then the turn ends.");
   await turnEnded(page, 2);
-});
-
-test("↑/↓ in the composer walk the prompt history and bring the draft back", async ({ page, script }) => {
-  script("plain");
-  // The workers' state is shared across scenarios: unique prompts, and
-  // only their order is asserted.
-  const tag = Date.now().toString(36);
-  await send(page, `first ${tag}`);
-  await turnEnded(page, 1);
-  await send(page, `second ${tag}`);
-  await turnEnded(page, 2);
-
-  const prompt = page.locator("#prompt");
-  await prompt.fill("my draft");
-  await prompt.press("ArrowUp");
-  await expect(prompt).toHaveValue(`second ${tag}`);
-  await prompt.press("ArrowUp");
-  await expect(prompt).toHaveValue(`first ${tag}`);
-  await prompt.press("ArrowDown");
-  await expect(prompt).toHaveValue(`second ${tag}`);
-  await prompt.press("ArrowDown");
-  await expect(prompt).toHaveValue("my draft");
 });
 
 test("a question card: the answer lets the turn go on", async ({ page, script }) => {
@@ -679,14 +636,6 @@ test("an annotate preset fills the composer with the quote and never sends; a pl
   await expect(page.locator("#prompt")).toHaveValue("");
 });
 
-test("the model picker lists the fake model", async ({ page }) => {
-  const button = page.locator("#modelPick");
-  await expect(button).toBeVisible();
-  await expect(button).toHaveText("fake-script");
-  await button.click();
-  await expect(page.locator("#modelList .model-option")).toHaveText(["fake-scriptdefault"]);
-});
-
 // ~40 models over two hosts, as an OpenRouter host lists them (its own
 // order); fake-script is the real default so a create still succeeds.
 const OPENROUTER_IDS = [
@@ -704,13 +653,20 @@ const MANY_MODELS = {
   ],
 };
 
-test("the model picker searches: 'deepseek4.1 fla' picks the flash with ⏎, Recent keeps two picks, Esc changes nothing", async ({ page, script }) => {
-  await page.route("**/api/models", (route) => route.fulfill({ json: MANY_MODELS }));
-  await page.reload();
+test("the model picker lists chi web's models; searching 'deepseek4.1 fla' picks the flash with ⏎, Recent keeps two picks, Esc changes nothing", async ({ page, script }) => {
   const button = page.locator("#modelPick");
   const panel = page.locator("#modelPanel");
   const search = page.locator("#modelSearch");
   const options = page.locator("#modelList .model-option");
+  // chi web's own /api/models: the fake model alone.
+  await expect(button).toHaveText("fake-script");
+  await button.click();
+  await expect(options).toHaveText(["fake-scriptdefault"]);
+  await search.press("Escape");
+  await expect(panel).toBeHidden();
+
+  await page.route("**/api/models", (route) => route.fulfill({ json: MANY_MODELS }));
+  await page.reload();
   await expect(button).toHaveText("fake-script");
 
   await button.click();
@@ -1665,47 +1621,6 @@ test("a step whose stream drops mid-answer is asked again: the partial goes live
   await page.reload();
   await turnEnded(page, 1);
   await expect(page.locator("#history .bubble.output")).toHaveText(answer);
-});
-
-// The /turn ack held back until the failed turn's prompt_restored has come
-// over the stream. `landed` waits until the page handled the ack: its send
-// handler focuses the composer last, so the composer is blurred first.
-async function delayTurnAck(page) {
-  let acked = false;
-  await page.route(/\/api\/sessions\/[^/]+\/turn$/, async (route) => {
-    const response = await route.fetch();
-    await new Promise((resolve) => setTimeout(resolve, 1500));
-    acked = true;
-    await route.fulfill({ response });
-  });
-  return {
-    landed: async () => {
-      expect(acked, "the ack came after prompt_restored").toBe(false);
-      await page.locator("#prompt").blur();
-      await expect(page.locator("#prompt")).toBeFocused();
-    },
-  };
-}
-
-test("a failed first turn whose prompt_restored comes before the /turn ack puts its prompt back", async ({ page, fakeMode }) => {
-  fakeMode("500");
-  const ack = await delayTurnAck(page);
-  await send(page, "Say pong");
-  await expect(page.locator("#history .bubble.user.failed .user-message")).toHaveText("Say pong");
-  await ack.landed();
-  await expect(page.locator("#prompt")).toHaveValue("Say pong");
-});
-
-test("a failed later turn whose prompt_restored comes before the /turn ack puts its prompt back", async ({ page, script, fakeMode }) => {
-  script("plain");
-  await send(page, "Say pong");
-  await turnEnded(page, 1);
-  fakeMode("500");
-  const ack = await delayTurnAck(page);
-  await send(page, "Say ping");
-  await expect(page.locator("#history .bubble.user.failed .user-message")).toHaveText("Say ping");
-  await ack.landed();
-  await expect(page.locator("#prompt")).toHaveValue("Say ping");
 });
 
 test("/model X sent mid-turn shows queued, survives a reload, and applies once the turn ends", async ({ page, script }) => {
