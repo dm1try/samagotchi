@@ -13,6 +13,7 @@ and commands may change between minor versions. How releases are made:
   the next turn's steps and "turn N" timing a second time.
 - Web: on a phone, a labelled line in the history (a delegate report, a tui line, a participant's) puts its label
   above the text instead of squeezing the text into a narrow column beside it.
+- Web: a session's recap is the page's last line again: the last turn's check-in notice no longer lands under it.
 
 ## [0.135.0] - 2026-10-30
 

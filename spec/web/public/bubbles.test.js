@@ -221,3 +221,19 @@ test("a recap's label carries when it was written, a stale one too; a gap's divi
   bubbles.showRecap("older", 1, created);
   assert.equal(historyEl.querySelector(".bubble.recap").nextElementSibling, gap);
 });
+
+test("a recap shown after the snapshot's cards (the load's order): last after the end's notice; a stale one above a prompt's divider and its cards", () => {
+  const { historyEl, bubbles } = harness();
+  bubbles.makeUserBubble("one");
+  const second = bubbles.makeUserBubble("two");
+  const gap = bubbles.addTimeGap("── 14:32 · 47 min later ──", { before: second });
+  // placeSnapshotCards: a card at the second prompt, one at the end.
+  bubbles.showHookNotice({ line: "check-in: kept going" }, { before: second });
+  bubbles.showHookNotice({ line: "check-in: the turn ended" });
+  bubbles.showRecap("fresh");
+  assert.ok(historyEl.lastElementChild.matches(".bubble.recap"));
+  bubbles.showRecap("older", 1);
+  const kinds = [".bubble.user", ".bubble.recap", ".time-gap", ".bubble.hook-notice", ".bubble.user", ".bubble.hook-notice"];
+  assert.deepEqual([...historyEl.children].map((el, i) => el.matches(kinds[i])), kinds.map(() => true));
+  assert.equal(historyEl.querySelector(".bubble.recap").nextElementSibling, gap);
+});
