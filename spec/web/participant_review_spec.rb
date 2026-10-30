@@ -127,6 +127,21 @@ RSpec.describe Samagotchi::Web::App, "participant review" do
     expect(JSON.generate(body)).not_to include("CHILD REPORT", "DEPLOY FROZEN", "slack")
   end
 
+  it "renders markdown only for the replies it sends, from their redacted text: never the dropped report's" do
+    renderer = instance_double(Samagotchi::Web::MarkdownRenderer, available?: true)
+    allow(renderer).to receive(:render) { |text| "<p>#{text}</p>" }
+    app.instance_variable_set(:@markdown_renderer, renderer)
+    snapshot["snapshot"]["current_turn"] = nil
+    snapshot["snapshot"]["messages"] = [
+      { "role" => "user", "kind" => "input", "source" => "delegate_report", "turn_start" => true, "turn_id" => "t1",
+        "content" => "## CHILD REPORT" },
+      { "role" => "model", "content" => "child done" }
+    ]
+    body = review(issued.token).last
+    expect(renderer).to have_received(:render).once.with("child done")
+    expect(body["messages"].map { |m| m["html"] }).to eq([nil, "<p>child done</p>"])
+  end
+
   it "is waiting for the owner while a Continue offer stands between turns" do
     snapshot["snapshot"]["current_turn"] = nil
     snapshot["snapshot"]["continue_offer"] = { "context" => "step limit" }

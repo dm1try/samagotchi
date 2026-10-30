@@ -65,7 +65,8 @@ module Samagotchi
         turn_snapshot = live && live["snapshot"]
         state = live && live["session_state_snapshot"]
         raw = live_or_saved(turn_snapshot, "messages") { session.messages }
-        shown = messages_for_display(visible_replies(raw), parts: true, cwd: session.working_directory)
+        # No html here: ParticipantView drops a report and the owner's html; with_reply_html renders the redacted replies.
+        shown = messages_for_display(visible_replies(raw), parts: true, cwd: session.working_directory, markdown: false)
         current = turn_snapshot && ParticipantView.current_turn(turn_snapshot["current_turn"], viewer)
         automatic = automatic_turn_ids(id, session, shown, current, state)
         waiting = !!(current&.dig("waiting_for_owner") || turn_snapshot&.dig("continue_offer") ||

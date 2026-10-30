@@ -87,7 +87,10 @@ module Samagotchi
       #   show but that (a text-less step) is kept with empty content
       # @param cwd [String, nil] the session's working directory (the parts'
       #   tool titles are relative to it)
-      def messages_for_display(msgs, parts: false, cwd: nil)
+      # @param markdown [Boolean] false: no html for a delegate report or an
+      #   answer (the participant review drops both and renders its replies
+      #   from their redacted text, ParticipantReview#with_reply_html)
+      def messages_for_display(msgs, parts: false, cwd: nil, markdown: true)
         filtered = []
         list = Array(msgs)
         # The outputs' ✂ marks (LLM context edits), by id, for the parts.
@@ -145,7 +148,7 @@ module Samagotchi
             # A delegate report is the child's markdown: rendered as an
             # answer is (its copy source stays the text). Another user line
             # stays plain.
-            if source == Samagotchi::Steer::DELEGATE_REPORT && @markdown_renderer.available?
+            if markdown && source == Samagotchi::Steer::DELEGATE_REPORT && @markdown_renderer.available?
               message[:html] = @markdown_renderer.render(report_markdown(stripped))
             end
           end
@@ -177,7 +180,7 @@ module Samagotchi
             shown = display.is_a?(String) ? Samagotchi::OutputFormatter.strip_markup(display) : ""
             message[:display] = shown unless shown.strip.empty?
             rendered = message[:display] || stripped
-            message[:html] = @markdown_renderer.render(rendered) if !rendered.empty? && @markdown_renderer.available?
+            message[:html] = @markdown_renderer.render(rendered) if markdown && !rendered.empty? && @markdown_renderer.available?
             # The refs after_turn hooks attached (AnswerRefs), checked again:
             # a stored file is never trusted. Never raises.
             refs = Samagotchi::AnswerRefs.for_display(m[:display_refs] || m["display_refs"], cwd: cwd)
