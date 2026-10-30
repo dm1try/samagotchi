@@ -7,6 +7,13 @@ and commands may change between minor versions. How releases are made:
 [docs/releasing.md](docs/releasing.md).
 ## [Unreleased]
 
+### Added
+
+- Web: Revise on a finished answer: your next message rewrites it, and once that turn completes the earlier version
+  folds in place to one stub row ("v1 · its first line · N lines — superseded by v2", a click unfolds it); the newest
+  answer's "v2 · 1 earlier ▾" chip lists the versions by their prompts. Stacks show on every owner's page, live and
+  after a reload.
+
 ### Changed
 
 - Guardrails: a file or string check (`test -f x`, `[ -d dir ]`, `[ "$a" = b ]`) counts as read-only, so
