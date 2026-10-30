@@ -214,3 +214,14 @@ test("a redraw that throws doesn't stop the others; its error comes after", () =
   assert.deepEqual(ran, ["infoBar"]);
   assert.equal(store.current.owner, "tui");
 });
+
+test("setStatus turnEnd while a turn runs: the newer turn's running stays, no redraw (D3)", () => {
+  const store = createSessionStore({ initial: { status: "running" }, fields: { status: { redraws: ["infoBar"] } } });
+  const ran = recording(store);
+  assert.equal(store.setStatus("idle", "turnEnd", { running: true }), false);
+  assert.equal(store.current.status, "running");
+  assert.deepEqual(ran, []);
+  store.setStatus("idle", "turnEnd", { running: false });
+  assert.equal(store.current.status, "idle");
+  assert.deepEqual(ran, ["infoBar"]);
+});

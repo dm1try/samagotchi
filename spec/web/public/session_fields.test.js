@@ -58,7 +58,7 @@ test("fieldsFromCard: exactly the owner and the worker, never the status", () =>
                    { owner: null, workerVersion: null, workerFeatures: [], bridgeUp: false });
 });
 
-test("statusWrite: today's rule per source", () => {
+test("statusWrite: the rule per source", () => {
   assert.deepEqual(statusWrite("payload"), { apply: true, card: null });
   assert.deepEqual(statusWrite("payload", { streaming: true }), { apply: true, card: null });
   assert.deepEqual(statusWrite("hub", { streaming: false }), { apply: true, card: null });
@@ -66,6 +66,11 @@ test("statusWrite: today's rule per source", () => {
   assert.deepEqual(statusWrite("stream"), { apply: true, card: withLiveStatus });
   assert.deepEqual(statusWrite("turnEnd"), { apply: true, card: null });
   assert.deepEqual(statusWrite("turnEnd", { streaming: true }), { apply: true, card: null });
+  // D3: a re-read that lands after the next turn started doesn't write its "idle" over "running".
+  assert.deepEqual(statusWrite("turnEnd", { running: true }), { apply: false, card: null });
+  assert.deepEqual(statusWrite("turnEnd", { running: false }), { apply: true, card: null });
+  assert.deepEqual(statusWrite("payload", { running: true }), { apply: true, card: null });
+  assert.deepEqual(statusWrite("stream", { running: true }), { apply: true, card: withLiveStatus });
   assert.deepEqual(statusWrite("stop"), { apply: true, card: null });
   assert.throws(() => statusWrite("elsewhere"), /no source elsewhere/);
 });

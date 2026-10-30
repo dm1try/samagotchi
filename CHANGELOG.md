@@ -21,6 +21,8 @@ and commands may change between minor versions. How releases are made:
   the hub's next event.
 - Web: Verify fresh on a verdict's card says it's unavailable as soon as the open session's worker goes, not at the
   hub's next event.
+- Web: a turn's end no longer shows the session idle while the next queued turn already runs (its late re-read wrote
+  the stored "idle" over "running").
 - Web: a sign-in that lapsed behind an auth proxy is reported (the sign-in prompt) by the notification bell and the
   push devices list too.
 - Pair turns: a program is judged by its name in any case, as macOS's disk runs it: `GIT config …`, `CHI share`,
