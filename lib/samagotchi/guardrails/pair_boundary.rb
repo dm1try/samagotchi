@@ -135,7 +135,7 @@ module Samagotchi
         ParentApprovals::CHI_TEXT,
         %r{\.local/state/samagotchi|web-grants|grants\.json|web-token},
         %r{(?:\A|[\s/'"=])\.(?:ssh|gnupg|aws|kube|docker)(?![\w.-])},
-        %r{(?:\A|[\s/'"=])(?:\.env(?:\.[\w.-]*)?|\.envrc|\.?mise(?:\.[\w-]+)?\.local\.toml|(?:\.config/mise|\.?mise)/config(?:\.[\w-]+)?\.local\.toml|[._]netrc|\.npmrc|\.pypirc|
+        %r{(?:\A|[\s/'"=])(?:\.env(?:\.[\w.-]*)?|\.envrc|#{MisePaths::LOCAL_FILE}|#{MisePaths::LOCAL_DIR_FILE}|[._]netrc|\.npmrc|\.pypirc|
            \.git-credentials)(?![\w-])}x,
         /\bid_(?:rsa|dsa|ecdsa|ed25519)\b|credentials|\.(?:pem|p12|pfx|tfstate)\b/
       )
@@ -211,7 +211,7 @@ module Samagotchi
         project_root ? OUTSIDE_WRITE : NO_PROJECT
       end
 
-      # A write or edit of a mise config file (PairCommand.mise_config?), or a
+      # A write or edit of a mise config file (MisePaths.config?), or a
       # command that writes or names one (PairCommand#mise_config_write?).
       def mise_config_write?(verdict)
         targets = verdict.targets
@@ -219,7 +219,7 @@ module Samagotchi
         return command(targets, nil).mise_config_write? if targets.command
         return false unless WRITE_TOOLS.include?(verdict.call&.dig(:name).to_s)
 
-        targets.paths.to_a.compact.any? { |path| PairCommand.mise_config?(File.expand_path(path, targets.cwd || Dir.pwd)) }
+        targets.paths.to_a.compact.any? { |path| MisePaths.config?(File.expand_path(path, targets.cwd || Dir.pwd)) }
       end
 
       # A write or edit whose path may land outside the project root, or a

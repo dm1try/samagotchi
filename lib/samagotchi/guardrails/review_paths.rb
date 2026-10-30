@@ -7,6 +7,36 @@ require_relative "../paths"
 
 module Samagotchi
   module Guardrails
+    # mise's file names, in one place for the boundaries that judge them:
+    # its local files hold secrets (ReviewPaths' SECRET_FILE / SECRET_PATH,
+    # PairBoundary's SECRET_TEXT) and its config runs at the owner's next
+    # worker start (PairCommand's mise config writes, ProjectEnv). Kept in
+    # this file: the testing kit loads it already (its file budget).
+    module MisePaths
+      # A local file's name: mise.local.toml, .mise.dev.local.toml (a
+      # Regexp source, to be embedded under the embedding pattern's flags).
+      LOCAL_FILE = '\.?mise(?:\.[\w-]+)?\.local\.toml'
+      # A local file in mise's config dirs: .config/mise/config.local.toml,
+      # config.<env>.local.toml; mise/ and .mise/ too (a Regexp source).
+      LOCAL_DIR_FILE = '(?:\.config/mise|\.?mise)/config(?:\.[\w-]+)?\.local\.toml'
+
+      # mise's config files, by a path's end: mise.toml, .mise.toml,
+      # mise.<env>.toml, .config/mise.toml, anything under .config/mise/,
+      # mise/ or .mise/ config*.toml, and the .tool-versions it reads too.
+      CONFIG_PATH = %r{(?:\A|/)(?:\.?mise(?:\.[^/]+)?\.toml|\.config/mise\.toml|\.config/mise/.+|
+                       \.?mise/config[^/]*\.toml|\.tool-versions)\z}x
+      # The same files named in a command's or script's text.
+      CONFIG_TEXT = %r{(?<![\w-])(?:\.?mise(?:\.[\w.-]+)?\.toml|\.config/mise|\.?mise/config[\w.-]*\.toml|
+                      \.tool-versions(?![\w.-]))}x
+
+      # Whether +path+ is one of mise's config files (CONFIG_PATH), as
+      # given or as it resolves.
+      def self.config?(path)
+        path.to_s.match?(CONFIG_PATH) ||
+          (path.to_s.start_with?("/") && PathResolve.reals(path).any? { |real| real.match?(CONFIG_PATH) })
+      end
+    end
+
     # What a participant may read (the shared-sessions plan's §2): a file
     # under the session's project root that isn't on the read denylist
     # (chi's state and config dirs, home secret dirs, project secret files),
@@ -35,11 +65,11 @@ module Samagotchi
       # registry tokens (.npmrc, .pypirc), ssh keys, terraform state, a
       # secrets file; and a git config (.git/config, a submodule's
       # .git/modules/x/config), checked apart.
-      SECRET_FILE = /\A(?:\.env.*|\.?mise(?:\.[\w-]+)?\.local\.toml|[._]netrc|.*\.(?:pem|key|p12|pfx|tfstate(?:\.backup)?)|.*credentials.*|
+      SECRET_FILE = /\A(?:\.env.*|#{MisePaths::LOCAL_FILE}|[._]netrc|.*\.(?:pem|key|p12|pfx|tfstate(?:\.backup)?)|.*credentials.*|
                        \.npmrc|\.pypirc|\.git-credentials|id_(?:rsa|dsa|ecdsa|ed25519)(?:\.pub)?|secrets?\.(?:ya?ml|json))\z/xi
       # mise's local config in its config dirs (.config/mise/config.local.toml,
       # config.<env>.local.toml; mise/ and .mise/ too): by the path's end.
-      SECRET_PATH = %r{(?:\A|/)(?:\.config/mise|\.?mise)/config(?:\.[\w-]+)?\.local\.toml\z}i
+      SECRET_PATH = %r{(?:\A|/)#{MisePaths::LOCAL_DIR_FILE}\z}i
       # The .docker/config.json kind: a dot dir's config holding tokens.
       SECRET_DIR_FILES = { ".docker" => "config.json", ".kube" => "config" }.freeze
       GIT_DIR = ".git"

@@ -273,22 +273,6 @@ module Samagotchi
         Outside.inside?(path, root: root) || Outside.tmp_write?(path, root: root)
       end
 
-      # mise's config files (mise.toml, .mise.toml, mise.<env>.toml, .config/mise.toml,
-      # anything under .config/mise/, mise/ or .mise/ config*.toml, and the
-      # .tool-versions it reads too): mise runs their [env] at the next worker
-      # start (ProjectEnv), and installs the tools they pin.
-      MISE_CONFIG_PATH = %r{(?:\A|/)(?:\.?mise(?:\.[^/]+)?\.toml|\.config/mise\.toml|\.config/mise/.+|
-                             \.?mise/config[^/]*\.toml|\.tool-versions)\z}x
-      MISE_CONFIG_TEXT = %r{(?<![\w-])(?:\.?mise(?:\.[\w.-]+)?\.toml|\.config/mise|\.?mise/config[\w.-]*\.toml|
-                            \.tool-versions(?![\w.-]))}x
-
-      # Whether +path+ is one of mise's config files (MISE_CONFIG_PATH), as
-      # given or as it resolves.
-      def self.mise_config?(path)
-        path.to_s.match?(MISE_CONFIG_PATH) ||
-          (path.to_s.start_with?("/") && PathResolve.reals(path).any? { |real| real.match?(MISE_CONFIG_PATH) })
-      end
-
       # Whether +path+ is in a .git/hooks folder, as given or as it resolves
       # (ShellPaths::HOOKS_PART): git runs what is there.
       def self.git_hook?(path)
@@ -624,7 +608,7 @@ module Samagotchi
       end
 
       # Whether it writes (or, not only reading, names) a mise config file
-      # (.mise_config?), a script it hands on included: the owner approves
+      # (MisePaths.config?), a script it hands on included: the owner approves
       # it. True for one it can't read.
       def mise_config_write?
         refusal
@@ -780,7 +764,7 @@ module Samagotchi
           reason = if SHELLS.include?(program) || program == "eval"
                      nested_refusal(script)
                    elsif PairCommand.interpreter?(program)
-                     @mise_config = true if script.match?(MISE_CONFIG_TEXT)
+                     @mise_config = true if script.match?(MisePaths::CONFIG_TEXT)
                      script_text_refusal(script)
                    end
           return reason if reason
@@ -1184,7 +1168,7 @@ module Samagotchi
         resolved.each do |word, path|
           return PairBoundary::GIT_HOOKS if !@read_only && PairCommand.git_hook?(path || word)
 
-          @mise_config = true if !@read_only && PairCommand.mise_config?(path || word)
+          @mise_config = true if !@read_only && MisePaths.config?(path || word)
 
           if path
             return PairBoundary::SECRET if @paths.secret_refusal([path])
