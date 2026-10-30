@@ -1439,89 +1439,102 @@ async function withNotificationStub(page) {
 
 const notes = (page) => page.evaluate(() => window.__notes);
 
-test("the bell asks for permission once and stays on across a reload", async ({ page }) => {
+// One tab, behind, through the bell, a question and a check-in card. The
+// variants are the node tests': the badge's rules (the bell off still
+// counts, an answered question leaves it, visible clears it) in
+// notifications.test.js, the attention kinds and their closing in
+// notify.test.js.
+test("notifications in one tab: the bell, a question behind (notified, badged, cleared in front, none after a reload), a check-in behind (resolved elsewhere drops the badge)", async ({ page, script }) => {
   await withNotificationStub(page);
   const bell = page.locator("#notifyBtn");
-  await expect(bell).toHaveAttribute("data-state", "off");
-  await bell.click();
-  await expect(bell).toHaveAttribute("data-state", "on");
-  await expect(bell).toHaveAttribute("aria-pressed", "true");
-  await page.reload();
-  await expect(bell).toHaveAttribute("data-state", "on");
-  await bell.click();
-  await expect(bell).toHaveAttribute("data-state", "off");
-  await page.reload();
-  await expect(bell).toHaveAttribute("data-state", "off");
-});
+  const id = () => page.url().match(/#\/s\/([0-9a-f-]+)$/)[1];
 
-test("a question in a background tab: one notification and a title badge; in front it clears; a reload shows none", async ({ page, script }) => {
-  await withNotificationStub(page);
-  await page.locator("#notifyBtn").click();
-  await expect(page.locator("#notifyBtn")).toHaveAttribute("data-state", "on");
+  await test.step("the bell asks for permission once and stays on across a reload", async () => {
+    await expect(bell).toHaveAttribute("data-state", "off");
+    await bell.click();
+    await expect(bell).toHaveAttribute("data-state", "on");
+    await expect(bell).toHaveAttribute("aria-pressed", "true");
+    await page.reload();
+    await expect(bell).toHaveAttribute("data-state", "on");
+  });
 
-  script("question");
-  await send(page, "Read a file of my choice");
-  const card = page.locator(`${H} .bubble.question`);
-  await expect(card.locator(".question-text")).toHaveText("Which file should I read?");
-  await expect.poll(() => notes(page)).toEqual([
-    expect.objectContaining({ title: "Read a file of my choice", body: "needs an answer", tag: expect.stringMatching(/:/) }),
-  ]);
-  await expect(page).toHaveTitle(/^\(1\) .+ · Chi/);
+  await test.step("a question behind: one notification and a title badge; visible (before focus, Safari's order) clears it; a reload shows none", async () => {
+    script("question");
+    await send(page, "Read a file of my choice");
+    const card = page.locator(`${H} .bubble.question`);
+    await expect(card.locator(".question-text")).toHaveText("Which file should I read?");
+    await expect.poll(() => notes(page)).toEqual([
+      expect.objectContaining({ title: "Read a file of my choice", body: "needs an answer", tag: expect.stringMatching(/:/) }),
+    ]);
+    await expect(page).toHaveTitle(/^\(1\) .+ · Chi/);
+    await page.evaluate(() => window.__showTab());
+    await expect(page).not.toHaveTitle(/^\(/);
 
-  // A reload with the question still open: old state, no notification.
-  await page.reload();
-  await expect(card.locator(".question-text")).toHaveText("Which file should I read?");
-  await expect(page.locator("#topStrip .card").first()).toBeVisible();
-  await expect(page).not.toHaveTitle(/^\(/);
-  expect(await notes(page)).toEqual([]);
+    // A reload (behind again) with the question still open: old state, no
+    // notification, no badge.
+    await page.reload();
+    await expect(card.locator(".question-text")).toHaveText("Which file should I read?");
+    await expect(page.locator("#topStrip .card").first()).toBeVisible();
+    await expect(page).not.toHaveTitle(/^\(/);
+    expect(await notes(page)).toEqual([]);
 
-  // Back in front: nothing counts, and the badge is gone.
-  await page.evaluate(() => window.__setFront(true));
-  await card.locator(".question-option", { hasText: "README.md" }).click();
-  await card.locator(".question-submit").click();
-  await turnEnded(page, 1);
-  expect(await notes(page)).toEqual([]);
-  await expect(page).not.toHaveTitle(/^\(/);
-});
+    // In front: answering counts nothing.
+    await page.evaluate(() => window.__setFront(true));
+    await card.locator(".question-option", { hasText: "README.md" }).click();
+    await card.locator(".question-submit").click();
+    await turnEnded(page, 1);
+    expect(await notes(page)).toEqual([]);
+    await expect(page).not.toHaveTitle(/^\(/);
+  });
 
-test("the title badge counts while behind and clears when the tab comes to the front", async ({ page, script }) => {
-  await withNotificationStub(page);
-  script("question");
-  await send(page, "Read a file of my choice");
-  const card = page.locator(`${H} .bubble.question`);
-  await expect(page).toHaveTitle(/^\(1\) .+ · Chi/);
-  // No bell: the badge still counts, and no notification is shown.
-  expect(await notes(page)).toEqual([]);
-  await page.evaluate(() => window.__setFront(true));
-  await expect(page).not.toHaveTitle(/^\(/);
-  await card.locator(".question-option", { hasText: "README.md" }).click();
-  await card.locator(".question-submit").click();
-  await turnEnded(page, 1);
-});
+  await test.step("a check-in card behind: one 'needs you' notification; resolved from another client, the badge drops while the turn runs", async () => {
+    await page.evaluate(() => window.__setFront(false));
+    script("check_in");
+    await send(page, "Look through the README");
+    const card = page.locator(`${HC} > .plugin-card`).filter({ hasText: "3 tool calls, no answer yet" });
+    await expect(card).toBeVisible();
+    await expect.poll(() => notes(page)).toEqual([
+      expect.objectContaining({ body: "needs you", tag: expect.stringMatching(/:card:check-in-/) }),
+    ]);
+    await expect(page).toHaveTitle(/^\(1\) .+ · Chi/);
+    const res = await page.request.post(new URL(`/api/sessions/${id()}/command`, page.url()).href, { data: { line: "/checkin later" } });
+    expect(res.ok()).toBe(true);
+    await expect(page.locator(`${H} .plugin-card .card-action`)).toHaveCount(0);
+    await expect(page).not.toHaveTitle(/^\(/);
+    await expect(page.locator("#cancelBtn")).toBeVisible();
+    await turnEnded(page, 2);
+    expect(await notes(page)).toHaveLength(1);
+  });
 
-test("the title badge clears when the tab turns visible before it has focus (Safari's order)", async ({ page, script }) => {
-  await withNotificationStub(page);
-  script("question");
-  await send(page, "Read a file of my choice");
-  const card = page.locator(`${H} .bubble.question`);
-  await expect(page).toHaveTitle(/^\(1\) .+ · Chi/);
-  await page.evaluate(() => window.__showTab());
-  await expect(page).not.toHaveTitle(/^\(/);
-  await page.evaluate(() => window.__setFront(true));
-  await card.locator(".question-option", { hasText: "README.md" }).click();
-  await card.locator(".question-submit").click();
-  await turnEnded(page, 1);
+  await test.step("the bell off stays off across a reload", async () => {
+    await bell.click();
+    await expect(bell).toHaveAttribute("data-state", "off");
+    await page.reload();
+    await expect(bell).toHaveAttribute("data-state", "off");
+  });
 });
 
 // Two chi tabs: the one in front tells the other (BroadcastChannel), which
-// then neither notifies nor badges; alone behind, it would.
+// then neither notifies nor badges; alone behind, it would. The tab behind
+// records each "seen" word after its own handler took it (its channel
+// wrapped): from then on its hold for that key can't deliver (notify.js
+// createNotifyGate marks the key seen; the hold's timing is notify.test.js').
 test("two tabs: one in front, the one behind shows no notification and no badge", async ({ page, script }) => {
   await withNotificationStub(page);
   const behind = await page.context().newPage();
   await behind.goto(page.url());
   await behind.addInitScript(() => {
     window.__heard = [];
-    new BroadcastChannel("chi-notify").onmessage = (e) => window.__heard.push(...(e.data?.keys || []));
+    const Native = window.BroadcastChannel;
+    window.BroadcastChannel = class extends Native {
+      set onmessage(handler) {
+        super.onmessage = (e) => {
+          handler(e);
+          if (e.data?.type === "seen") window.__heard.push(...(e.data.keys || []));
+        };
+      }
+      get onmessage() { return super.onmessage; }
+    };
   });
   await withNotificationStub(behind);
   await behind.locator("#notifyBtn").click();
@@ -1532,32 +1545,17 @@ test("two tabs: one in front, the one behind shows no notification and no badge"
   await send(page, "Read a file of my choice");
   const card = page.locator(`${H} .bubble.question`);
   await expect(card.locator(".question-text")).toHaveText("Which file should I read?");
-  // The front tab's word reaches the tab behind (a listener of the test's
-  // own on the channel); past its hold, it has neither notified nor badged.
+  // The front tab's word has reached the tab behind's gate: no notification
+  // and no badge there, now or after the question closes.
   const qid = await card.getAttribute("data-qid");
   await expect.poll(() => behind.evaluate(() => window.__heard)).toContainEqual(expect.stringContaining(qid));
-  await behind.waitForTimeout(600); // eslint-disable-line no-restricted-syntax -- past the 300 ms notify hold: an absence only its time shows
   expect(await notes(behind)).toEqual([]);
   await expect(behind).not.toHaveTitle(/^\(/);
   await card.locator(".question-option", { hasText: "README.md" }).click();
   await card.locator(".question-submit").click();
   await turnEnded(page, 1);
+  expect(await notes(behind)).toEqual([]);
   await behind.close();
-});
-
-test("the title badge drops a question answered from another client", async ({ page, script }) => {
-  await withNotificationStub(page);
-  script("question");
-  await send(page, "Read a file of my choice");
-  const card = page.locator(`${H} .bubble.question`);
-  await expect(page).toHaveTitle(/^\(1\) .+ · Chi/);
-  // Another client answers; this tab stays behind.
-  const id = page.url().match(/#\/s\/([0-9a-f-]+)$/)[1];
-  const qid = await card.getAttribute("data-qid");
-  const res = await page.request.post(new URL(`/api/sessions/${id}/answer`, page.url()).href, { data: { id: qid, selected: ["README.md"] } });
-  expect(res.ok()).toBe(true);
-  await turnEnded(page, 1);
-  await expect(page).not.toHaveTitle(/^\(/);
 });
 
 test("a first turn that fails shows its prompt and why, once live and again after a reload", async ({ page, fakeMode }) => {
@@ -1905,33 +1903,6 @@ test("a path:line in the answer links to the PR's line", async ({ page, script }
   const output = page.locator("#history .bubble.output").last();
   await expect(output.locator(`a[href="https://github.com/acme/app/pull/42/files#${diff}R28"] code`)).toHaveText("lib/foo.rb:28");
   await expect(output.locator('a[href="https://github.com/acme/app/blob/e2ehead/lib/foo.rb#L100"]')).toHaveText("lib/foo.rb:100");
-});
-
-// A check-in card asks the user as a question does: a tab behind shows one
-// "needs you" notification and a badge; resolving the card (here from
-// another client, the tab untouched) drops the badge while the turn runs.
-test("check-in in a background tab: one 'needs you' notification; the card resolved drops the badge", async ({ page, script }) => {
-  await withNotificationStub(page);
-  await page.locator("#notifyBtn").click();
-  await expect(page.locator("#notifyBtn")).toHaveAttribute("data-state", "on");
-
-  script("check_in");
-  await send(page, "Look through the README");
-  const card = page.locator(`${HC} > .plugin-card`).filter({ hasText: "3 tool calls, no answer yet" });
-  await expect(card).toBeVisible();
-  await expect.poll(() => notes(page)).toEqual([
-    expect.objectContaining({ title: "Look through the README", body: "needs you", tag: expect.stringMatching(/:card:check-in-/) }),
-  ]);
-  await expect(page).toHaveTitle(/^\(1\) .+ · Chi/);
-
-  const id = page.url().match(/#\/s\/([0-9a-f-]+)$/)[1];
-  const res = await page.request.post(new URL(`/api/sessions/${id}/command`, page.url()).href, { data: { line: "/checkin later" } });
-  expect(res.ok()).toBe(true);
-  await expect(page.locator(`${H} .plugin-card .card-action`)).toHaveCount(0);
-  await expect(page).not.toHaveTitle(/^\(/);
-  await expect(page.locator("#cancelBtn")).toBeVisible();
-  await turnEnded(page, 1);
-  expect(await notes(page)).toHaveLength(1);
 });
 
 // A 1×1 PNG: an image prompt runs as its own next turn (steering merges
