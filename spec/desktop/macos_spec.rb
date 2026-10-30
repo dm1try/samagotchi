@@ -627,19 +627,32 @@ RSpec.describe Samagotchi::Desktop::MacOS do
         expect(helper.launch_problem).to be_nil # a refresh writes this chi's argv
       end
 
+      # home.json is the one the helper's chi reads: the launch file's
+      # XDG_CONFIG_HOME, else the helper env's ~/.config.
       it "names the chi home's problem when the argv boots a home that can't run chi" do
+        empty = File.join(tmp, "empty-gems").tap { |d| FileUtils.mkdir_p(d) }
+        File.chmod(0o755, File.join(tmp, "ruby"))
+        home = Samagotchi::ChiHome::Record.new(ruby: File.join(tmp, "ruby"), gem_home: empty, gem_path: empty, mise: nil,
+                                               set_at: "t", set_by_version: "9.9.9")
+        Samagotchi::ChiHome.write!(home, path: File.join(tmp, ".config", "samagotchi", "home.json"))
+        edit_launch { |l| l["argv"] = [File.join(tmp, "ruby"), "-e", "Gem.paths = {}; gem 'samagotchi'", "--"] }
+        expect(helper.launch_problem).to eq("the chi home it boots can't run chi (no samagotchi in the home's gems " \
+                                            "(#{empty})): chi home doctor")
+        expect(helper.stale?).to be(true)
+      end
+
+      it "reads the chi home from the config dir the launch file bakes, not this process's" do
         Dir.mktmpdir do |config|
-          with_config_home(config) do
-            empty = File.join(tmp, "empty-gems").tap { |d| FileUtils.mkdir_p(d) }
-            File.chmod(0o755, File.join(tmp, "ruby"))
-            home = Samagotchi::ChiHome::Record.new(ruby: File.join(tmp, "ruby"), gem_home: empty, gem_path: empty, mise: nil,
-                                                   set_at: "t", set_by_version: "9.9.9")
-            Samagotchi::ChiHome.write!(home)
-            edit_launch { |l| l["argv"] = [File.join(tmp, "ruby"), "-e", "Gem.paths = {}; gem 'samagotchi'", "--"] }
-            expect(helper.launch_problem).to eq("the chi home it boots can't run chi (no samagotchi in the home's gems " \
-                                                "(#{empty})): chi home doctor")
-            expect(helper.stale?).to be(true)
-          end
+          empty = File.join(tmp, "empty-gems").tap { |d| FileUtils.mkdir_p(d) }
+          File.chmod(0o755, File.join(tmp, "ruby"))
+          home = Samagotchi::ChiHome::Record.new(ruby: File.join(tmp, "ruby"), gem_home: empty, gem_path: empty, mise: nil,
+                                                 set_at: "t", set_by_version: "9.9.9")
+          Samagotchi::ChiHome.write!(home, path: File.join(config, "samagotchi", "home.json"))
+          edit_launch { |l| l["argv"] = [File.join(tmp, "ruby"), "-e", "Gem.paths = {}; gem 'samagotchi'", "--"] }
+          with_config_home(config) { expect(helper.launch_problem).to be_nil }
+
+          edit_launch { |l| l["env"] = (l["env"] || {}).merge("XDG_CONFIG_HOME" => config) }
+          expect(helper.launch_problem).to start_with("the chi home it boots can't run chi")
         end
       end
 

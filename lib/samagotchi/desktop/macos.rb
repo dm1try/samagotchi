@@ -535,7 +535,8 @@ module Samagotchi
       # Why a launch argv (strings) can't run chi, or nil: its ruby isn't an
       # absolute path, an absolute path in it is gone, or it boots the chi
       # home (home.json's ruby) and the home can't boot chi
-      # (ChiHome.problem).
+      # (ChiHome.problem). home.json is the one the helper's chi reads
+      # (#launch_config_home), not this process's.
       def argv_problem(argv)
         return "the launch file's ruby #{argv[0]} isn't an absolute path: run chi desktop install --force" unless argv[0].start_with?("/")
 
@@ -546,7 +547,7 @@ module Samagotchi
         return nil unless home_boot?(argv)
 
         home = begin
-          ChiHome.read
+          ChiHome.read(path: ChiHome.path(env: { "XDG_CONFIG_HOME" => launch_config_home }))
         rescue ChiHome::Invalid
           nil
         end
