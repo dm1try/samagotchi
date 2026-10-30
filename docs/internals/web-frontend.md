@@ -10,6 +10,10 @@ only library. Pure modules (`*_model.js`, `session_state.js`, `sessions_list.js`
 and have `node --test` specs under `spec/web/public/` (happy-dom for the DOM ones); the pages as a whole are covered
 by `npm run e2e` (`spec/e2e/`). `app.js` has no unit spec.
 
+**`app.js` has a size cap**: `npm run lint` fails past `max-lines` in `eslint.config.js` (counted as `wc -l` counts,
+a little over its size today). A new feature goes into a module of its own, wired from `app.js` in a few lines; a
+refactor that shrinks `app.js` ratchets the cap down with it. Never raise it: extract instead.
+
 **New exports go in new modules.** The static JS is served at unversioned URLs. Today every load revalidates
 (app.rb `serve_static` sends `Cache-Control: no-cache` with a content ETag, and `sw.js` has no fetch handler), but an
 open tab still holds the modules it loaded, and a proxy that ignores `no-cache` can serve an old one: a new export

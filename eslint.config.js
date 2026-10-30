@@ -3,7 +3,7 @@
 // variable left unused. In the e2e specs, the unused one too, and the
 // timing rule: a fixed pause (page.waitForTimeout) instead of a wait for the
 // state, the twin of the Samagotchi/SpecSleep cop. And the session store's one write path (a
-// write into the open session's state in place). `npm run lint`; see
+// write into the open session's state in place), and app.js's size cap. `npm run lint`; see
 // docs/testing.md.
 import globals from "globals";
 
@@ -53,6 +53,16 @@ export default [
         message: "The open session's state is written through the store (store.update, setStatus, replaceCurrent), " +
           "so its redraws follow: see session_fields.js.",
       }))],
+    },
+  },
+  {
+    // app.js's size cap, counted as `wc -l` counts (blank lines and comments too). The cap is ratcheted down when a
+    // refactor shrinks app.js, and new features go into their own module: never raise it, extract instead
+    // (docs/internals/web-frontend.md).
+    name: "samagotchi/app-size",
+    files: ["lib/samagotchi/web/public/app.js"],
+    rules: {
+      "max-lines": ["error", { max: 2250, skipBlankLines: false, skipComments: false }],
     },
   },
   {
