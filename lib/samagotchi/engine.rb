@@ -3044,6 +3044,15 @@ module Samagotchi
       return if pending.nil?
 
       outcome, judged = pending.wait(turn.controller)
+      if outcome == :timeout
+        # The session starts on its default without a word otherwise: a
+        # slow System 1 host (a local one) is the usual cause.
+        timeout_ms = SystemOne::Client.configured_timeout_ms
+        Log.warn(:toolkit, "toolkit_suggest_timeout", session_id: turn.session.id, timeout_ms: timeout_ms,
+                                                      reason: "System 1 gave no answer within guardrails.system_one.timeout_ms")
+        @toolkit_binding.fell_back(turn.session, "System 1 took over #{timeout_ms} ms")
+        return
+      end
       unless outcome == :answered
         Log.info(:toolkit, "toolkit_suggest_#{outcome}", session_id: turn.session.id)
         return
@@ -3070,6 +3079,10 @@ module Samagotchi
                                                                             deferred: ToolkitSuggest.model_reply?(session.messages))
         switched ? "suggested" : "chosen"
       when "defer" then "defer"
+      when "no_judgment"
+        # System 1 failed (its own warn) or answered nothing usable.
+        @toolkit_binding.fell_back(session, "System 1 gave no answer")
+        "default"
       else "default"
       end
     end

@@ -169,10 +169,13 @@ RSpec.describe Samagotchi::Engine, "toolkit suggestion on mode" do
     expect([sess.toolkit.name, sess.toolkit_origin]).to eq(%w[full default])
     expect(declared.first).to eq(full_tools)
     expect(log_lines.last).to include("would" => "no_judgment", "did" => "default")
+    expect(notices.map { |e| [e[:level], e[:text]] })
+      .to eq([[:warn, "toolkit: full (no suggestion: System 1 gave no answer) · /toolkit to change"]])
   end
 
-  it "waits at most System 1's timeout, then runs the default; the late answer is logged as timeout" do
+  it "waits at most System 1's timeout, then runs the default (a warn, a notice); the late answer is logged as timeout" do
     allow(Samagotchi::SystemOne::Client).to receive(:configured_timeout_ms).and_return(100)
+    allow(Samagotchi::Log).to receive(:warn).and_call_original
     release = Queue.new
     answers << -> { release.pop && pick("kit:web", 0.9) }
     sess = session
@@ -184,6 +187,10 @@ RSpec.describe Samagotchi::Engine, "toolkit suggestion on mode" do
     expect(waited).to be < 2.0
     expect(declared.first).to eq(full_tools)
     expect([sess.toolkit.name, sess.toolkit_origin]).to eq(%w[full default])
+    expect(Samagotchi::Log).to have_received(:warn)
+      .with(:toolkit, "toolkit_suggest_timeout", hash_including(session_id: sess.id, timeout_ms: 100)).once
+    expect(notices.map { |e| [e[:level], e[:text]] })
+      .to eq([[:warn, "toolkit: full (no suggestion: System 1 took over 100 ms) · /toolkit to change"]])
     release << true
     join!(engine.instance_variable_get(:@toolkit_audit_thread), "the toolkit ask")
     expect(log_lines.last).to include("would" => "suggested", "did" => "timeout")

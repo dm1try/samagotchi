@@ -1530,7 +1530,9 @@ toolkit:
   suggested`, and the turn's first request declares it; the notice reads
   `toolkit: web (suggested, p=0.71) · /toolkit to change`. Anything else (the default, a low-confidence or unknown
   pick, `undecided`, no answer, a failing System 1, which warns once as `[samagotchi:toolkit]`) keeps the default
-  kit. A Stop during the wait (or before it, even with the answer in) ends the turn before its first request, and
+  kit. No answer in time or none at all says so in a warn notice, `toolkit: full (no suggestion: System 1 took over
+  5000 ms) · /toolkit to change` (or `System 1 gave no answer`), and a timeout logs a `toolkit_suggest_timeout`
+  warning: a slow System 1 host wants a larger `guardrails.system_one.timeout_ms`. A Stop during the wait (or before it, even with the answer in) ends the turn before its first request, and
   nothing switches. After an `undecided`, a later prompt within the defer limits may switch the session; that notice
   says `from this turn`, and that request re-reads the whole prompt (system prompt, tools and conversation, which
   the defer limits keep small) without `/toolkit`'s cache confirmation. `/toolkit` or `ctx.use_toolkit` marks the

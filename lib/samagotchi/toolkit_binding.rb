@@ -155,6 +155,22 @@ module Samagotchi
       true
     end
 
+    # On mode's ask gave the turn no suggestion to judge (Engine
+    # #settle_toolkit_suggestion: a timeout, no answer): say, as a warn
+    # notice, that +session+ runs its default (not once a toolkit was
+    # chosen meanwhile). +why+ is fallback_notice's.
+    def fell_back(session, why)
+      return if session.nil? || session.toolkit_origin != "default"
+
+      @notify.call(self.class.fallback_notice(Toolkit.of(session.toolkit).name, why), :warn, "toolkit", extra: {})
+    end
+
+    # "toolkit: full (no suggestion: System 1 took over 5000 ms) · /toolkit
+    # to change"; +why+ follows "no suggestion: ".
+    def self.fallback_notice(name, why)
+      "toolkit: #{name} (no suggestion: #{why}) · /toolkit to change"
+    end
+
     # "toolkit: smoke (suggested, p=0.71) · /toolkit to change"; a
     # deferred switch says "from this turn".
     def self.suggestion_notice(name, confidence, deferred:)
