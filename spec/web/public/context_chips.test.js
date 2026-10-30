@@ -2,7 +2,7 @@ import { htmlOf } from "./dom_shim.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  addFormTemplate, ageText, chipModel, chipsTemplate, createContextChips, hintUrl, popoverTemplate,
+  ageText, chipModel, chipsTemplate, createContextChips, hintUrl, popoverTemplate,
 } from "../../../lib/samagotchi/web/public/context_chips.js";
 import { render } from "../../../lib/samagotchi/web/public/vendor/lit-html.js";
 
@@ -84,75 +84,33 @@ test("popoverTemplate: why, a link for a URL hint, summary, age, error; detach o
   assert.equal(read.querySelector('[data-act="view"]'), null);
 });
 
-test("chipsTemplate: a + URL chip last when a bundle's provider can attach one", () => {
-  const el = drawn(chipsTemplate(chipModel([row()], NOW), { addUrl: true }));
-  const add = el.lastElementChild;
-  assert.deepEqual([add.className, add.dataset.act, add.textContent, add.getAttribute("aria-haspopup")],
-                   ["ctx-chip ctx-add", "add", "+ URL", "dialog"]);
-  assert.match(add.title, /Attach a URL/);
-  assert.equal(drawn(chipsTemplate(chipModel([row()], NOW))).querySelector(".ctx-add"), null);
-  assert.equal(drawn(chipsTemplate([], { addUrl: true })).querySelectorAll(".ctx-chip").length, 1);
-  assert.match(markupOf(chipsTemplate([], { addUrl: true, addOpen: true })), /class="ctx-chip ctx-add open"/);
-});
-
-test("addFormTemplate: a URL field, an optional why, Attach; an error line when the last try failed", () => {
-  const el = drawn(addFormTemplate());
-  const form = el.querySelector("form.ctx-add-form");
-  assert.equal(form.querySelector("strong").textContent, "Attach a URL");
-  assert.equal(form.elements.url.type, "url");
-  assert.equal(form.elements.url.required, true);
-  assert.ok(form.elements.why);
-  assert.equal(form.querySelector('button[type="submit"]').textContent, "Attach");
-  assert.equal(form.querySelector('button[type="submit"]').disabled, false);
-  assert.equal(form.querySelector(".ctx-pop-error"), null);
-  const failed = drawn(addFormTemplate({ error: "no installed bundle resolves it", busy: true }));
-  assert.equal(failed.querySelector(".ctx-pop-error").textContent, "no installed bundle resolves it");
-  assert.equal(failed.querySelector(".ctx-pop-error").getAttribute("role"), "alert");
-  assert.equal(failed.querySelector('button[type="submit"]').disabled, true);
+// The web attaches nothing itself: no "+ URL" chip, whatever the server
+// says it could attach (can_add_url), and no chips row without a source.
+test("no + URL chip: the row shows the sources only, and is hidden without one even when a provider could attach", async () => {
+  const c = chipsControl({ list: async () => ({ sources: [], can_add_url: true }) });
+  await c.ctl.load("s1");
+  assert.equal(c.el.hidden, true);
+  assert.equal(c.el.querySelectorAll(".ctx-chip").length, 0);
+  c.done();
+  const d = chipsControl({ list: async () => ({ sources: [row()], can_add_url: true }) });
+  await d.ctl.load("s1");
+  assert.equal(d.el.hidden, false);
+  assert.deepEqual([...d.el.querySelectorAll(".ctx-chip")].map((chip) => chip.dataset.name), ["pr-1"]);
+  d.done();
 });
 
 // The chips on the shim's document: +el+ in the body, a stub api and
 // window (no timers: the minute's tick is a spec's own call).
-function chipsControl({ list, add = async () => ({ name: "pr-9" }), show = async () => ({ text: "the text" }), size = {} }) {
+function chipsControl({ list, show = async () => ({ text: "the text" }), size = {} }) {
   const el = document.createElement("div");
   document.body.append(el);
   const toasts = [];
   const win = { innerWidth: 1000, innerHeight: 800, ...size, addEventListener() {}, setInterval() {}, confirm: () => true };
-  const ctl = createContextChips({ el, api: { list, add, show, detach: async () => {} }, toast: (t) => toasts.push(t), win });
+  const ctl = createContextChips({ el, api: { list, show, detach: async () => {} }, toast: (t) => toasts.push(t), win });
   const pop = document.getElementById("contextPopover");
   const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
   return { ctl, el, pop, toasts, settle, done: () => { el.remove(); pop.remove(); } };
 }
-
-test("a failed attach keeps the form: the typed URL and why stay in the same fields, the URL has focus, Attach works again", async () => {
-  let fail = true;
-  const c = chipsControl({ list: async () => ({ sources: [], can_add_url: true }),
-                           add: async () => { if (fail) throw new Error("no installed bundle resolves it"); return { name: "pr-9" }; } });
-  await c.ctl.load("s1");
-  c.el.querySelector(".ctx-add").click();
-  const form = c.pop.querySelector("form");
-  const url = form.elements.url;
-  const why = form.elements.why;
-  same(document.activeElement, url, "focus");
-  url.value = "https://x/1";
-  why.value = "review it";
-  form.dispatchEvent(new window.Event("submit", { bubbles: true, cancelable: true }));
-  await c.settle();
-  assert.equal(c.pop.querySelector(".ctx-pop-error").textContent, "no installed bundle resolves it");
-  same(c.pop.querySelector("form").elements.url, url, "url field");
-  assert.equal(url.value, "https://x/1");
-  same(c.pop.querySelector("form").elements.why, why, "why field");
-  assert.equal(why.value, "review it");
-  same(document.activeElement, url, "focus");
-  assert.equal(c.pop.querySelector(".ctx-add-submit").disabled, false);
-  assert.match(c.el.querySelector(".ctx-add").className, /\bopen\b/);
-  fail = false;
-  form.dispatchEvent(new window.Event("submit", { bubbles: true, cancelable: true }));
-  await c.settle();
-  assert.equal(c.pop.hidden, true);
-  assert.deepEqual(c.toasts, ["Attached pr-9: the agent gets a note before your next message"]);
-  c.done();
-});
 
 test("a refresh redraws the chips in place: a focused chip keeps its node and focus, the open one stays marked", async () => {
   let sources = [row(), row({ name: "ci" })];
@@ -225,12 +183,12 @@ test("the context popover and a session-bar chip's popover close each other", as
     id: "levelPop", className: "ctx-popover", width: 300, el: bar, anchor: ".level-chip",
     summary: () => ({}), win: { innerWidth: 1000, innerHeight: 800 }, show: () => {}, onSubmit: () => {},
   });
-  c.el.querySelector(".ctx-add").click();
+  c.el.querySelector('[data-name="pr-1"]').click();
   assert.equal(c.pop.hidden, false);
   bar.querySelector(".level-chip").click();
   assert.equal(level.isOpen(), true);
   assert.equal(c.pop.hidden, true);
-  c.el.querySelector(".ctx-add").click();
+  c.el.querySelector('[data-name="pr-1"]').click();
   assert.equal(c.pop.hidden, false);
   assert.equal(level.isOpen(), false);
   bar.remove();
@@ -304,13 +262,14 @@ test("the popover behaves as every popover: a modal dialog named for its chip, t
   assert.equal(c.pop.hidden, true);
   assert.equal(chip.getAttribute("aria-expanded"), "false");
   same(document.activeElement, chip, "focus back");
-  // The "+ URL" form: its × gives the focus (in the form) back to its chip.
-  const add = c.el.querySelector(".ctx-add");
-  add.click();
-  assert.equal(add.getAttribute("aria-expanded"), "true");
-  assert.equal(c.pop.getAttribute("aria-label"), "Attach a URL");
+  // Its ×, with the focus in the popover, gives the focus back to its chip.
+  const other = c.el.querySelector('[data-name="pr-1"]');
+  other.click();
+  assert.equal(other.getAttribute("aria-expanded"), "true");
+  assert.equal(c.pop.getAttribute("aria-label"), "pr-1");
+  c.pop.querySelector('[data-act="close"]').focus();
   c.pop.querySelector('[data-act="close"]').click();
-  same(document.activeElement, add, "focus back to + URL");
+  same(document.activeElement, other, "focus back to pr-1");
   assert.equal(tab(), false); // closed: the page's own Tab
   c.done();
 });
