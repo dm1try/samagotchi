@@ -1037,6 +1037,28 @@ the keys of sessions gone from the list are dropped when the list loads);
 other viewers and the participant page are not affected. A jump into a
 folded answer (a claim link, say) unfolds it for that page load.
 
+**Revise** rewrites an answer and stacks the versions. A finished turn's
+final answer has a Revise button on its bottom edge (on hover; always shown
+on a touch screen), unless it's a Verify turn's answer, a canceled or failed
+turn's partial answer, or an earlier version in a stack. Revise arms the
+composer with a chip, "Revising: ‹its first line› ✕"; your next message (say
+"cut it shorter") is sent as a Revise of that answer. ✕, emptying the box or
+opening another session lets go of it. When the Revise turn completes with an
+answer, the earlier version folds where it was into one stub row,
+"▸ v1 · “its first line” · 84 lines — superseded by v2": its prompt, its
+steps and its answer, all behind it (a warn card, a verdict card and the
+recap stay on view). Click the stub to unfold that version in place (kept per
+browser, with the folded answers); a time divider between two folded stubs
+moves into the later stub. The newest version has a chip, "v3 · 2 earlier ▾",
+listing every version by its prompt; pick one to jump to its stub. Revise
+again on the newest version adds to the stack. Stacks are session data (the
+stamp is on the Revise prompt, see [sessions.md](sessions.md), Revise
+stacks): every owner's page shows them, live and after a reload; the
+participant page doesn't draw them yet. A session whose worker predates
+Revise (started by an older chi) disables the button and shows the chip as
+"Revise: restart this session to use Revise"; a message sent then is a plain
+one. A Revise turn that fails comes back into the composer with its chip.
+
 ### Web views
 
 `web.view` picks how the page draws a turn: `stage` (the default: the

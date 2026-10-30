@@ -19,7 +19,7 @@ page. A factory dep a new version stops passing is the same hazard the other way
 out of `send_turn.js`, `session_actions.js` and `lists_view.js`); a page loaded before keeps all its old modules
 until a reload, so the risk is a mixed cache, not an open tab. `answer_fold.js`,
 `turn_range.js`, `history_reveal.js`, `latest.js`, `session_payload.js`, `method_api.js`, `session_store.js`,
-`session_fields.js` and `feature_gates.js` are new modules for that reason.
+`session_fields.js`, `feature_gates.js` and `revise_stack.js` are new modules for that reason.
 
 ## Two pages, two models
 
@@ -46,7 +46,7 @@ change.
 | **`store.current`** (`session_state.js`: `emptySessionState` / `sessionStateFrom`; per field: `session_fields.js FIELDS`) | the open session's fields, about 40 (info bar, chips, verdicts, timing, worker, stream cursor) | `store.update` / `setStatus` from app.js, `stream_handlers.js`, `send_turn.js` (`firstPreview`, `owner`), `session_actions.js` (`status`); `forgetSession`'s `replaceCurrent`. Two writers in place, on purpose (D8 in `FIELDS`): live_timing.js's `activeTurn`, verdict_fresh.js's running list | the store runs the field's redraws (`FIELDS[key].redraws`) |
 | **`store.sessions`** (the hub's projection) | every card | `store.update({sessions})` from app.js: `openSessionEvents` (`applySessionEvent`), `refresh` (the list fallback), `addCreatedSession`, `applyView` (re-sorted), `replaceSelectedCard` (`setLiveStatus` through `setStatus`, `readTurnEnd`, `setUsedMemories`), the stream's close (`withoutWorker`); `session_actions.js` (`setSessions`) | the store: `lists` and `infoBar`. **Always a new array**; an entry is replaced, never changed in place. `followSelectedSession` copies the open one's owner and worker (`fieldsFromCard`) and, when not streaming, its status (`setStatus(…, "hub")`) into `store.current` |
 | **Factory closures**: the `create*` factories (popovers, panels, views) | each component's own state: open-for, busy, error, its own fetched list | the factory | an `onChange` hook back into app.js, or a getter the factory reads at draw time |
-| **The history DOM** | the conversation as drawn: which turn a bubble belongs to (`data-turn-id`, `data-answer-turn`), kept command bubbles, which texts were shown, unnamed badges, folded answers (`.folded`) | `bubbles.js`, `cards_place.js`, `question_cards.js`, `turn_view.js`/`stage_view.js`, `answer_fold.js` | read back as state: `turn_range.js turnElements` (one walker for a turn's elements), `keptCommandBubbles`, `seedSeenFromDom`, `nameUnnamedBadges`/`nameVerdictCards`, `answer_fold.js` (its observer decorates every path that fills `#history`), `history_reveal.js revealInHistory` (the one way a jump unfolds what hides its target) |
+| **The history DOM** | the conversation as drawn: which turn a bubble belongs to (`data-turn-id`, `data-answer-turn`), kept command bubbles, which texts were shown, unnamed badges, folded answers (`.folded`), Revise stamps (`data-revises` on a prompt; a Verify turn's `data-verify`) and the stacks' folded versions (`.stack-hidden`, `.stack-stub.open`) | `bubbles.js`, `cards_place.js`, `question_cards.js`, `turn_view.js`/`stage_view.js`, `answer_fold.js`, `revise_stack.js`, `stream_handlers.js` (a live `turn_completed`'s `revises` onto its prompt) | read back as state: `turn_range.js turnElements` (one walker for a turn's elements), `keptCommandBubbles`, `seedSeenFromDom`, `nameUnnamedBadges`/`nameVerdictCards`, `answer_fold.js` and `revise_stack.js` (their observers decorate every path that fills `#history`; the stacks are `stacks()` of the stamps, read again on each change, never a store field), `history_reveal.js revealInHistory` (the one way a jump unfolds what hides its target) |
 | **localStorage** (`storage.js` `readStored`/`writeStored`, guarded) | per-browser choices only | the module that owns the choice | read at start (see Storage keys) |
 | **SSE** | see Streams | the server | owner page: events go into the DOM directly; participant page: an event marks the data stale |
 
@@ -145,8 +145,10 @@ A page action the open session's worker must support (its sidecar features and a
 when a field it reads changes (`workerFeatures`, `bridgeUp`), and a gate's `redraw` only when its answer flipped: a
 restart's hub event that brings the feature enables it, the worker going (`workerGone`'s `bridgeUp = false`) says
 it's unavailable. `forgetSession` and `renderSessionView` draw the history with the answer already, so they `prime()`
-the gates in the batch of their write, and nothing fires. Today one gate: `verify` (Verify fresh on a verdict's
-card, `redrawFresh`). A new action that needs a worker feature is one more entry.
+the gates in the batch of their write, and nothing fires. Today two gates: `verify` (Verify fresh on a verdict's
+card, `redrawFresh`) and `revise` (the answers' Revise buttons and the composer's Revising chip, `redrawRevise`).
+Both refuse only a live worker without the feature: a worker that isn't up is woken by the send as a new one, which
+has it. A new action that needs a worker feature is one more entry.
 
 ### Exceptions
 
@@ -176,9 +178,11 @@ The redraws, by their store names:
 - `featureGates`: the gates above.
 
 `forgetSession()` is the one reset: `select` and `clearSelection` both call it, so anything per-session that isn't
-in `store.current` (capabilities, the markdown warning and tip, the init row, the Verify claim, the turn view) is
-cleared there, and the feature gates are primed for the empty session. A new per-session holder (an armed composer
-anchor like the Verify claim) goes into it.
+in `store.current` (capabilities, the markdown warning and tip, the init row, the Verify claim, the armed Revise,
+the turn view) is cleared there, and the feature gates are primed for the empty session. A new per-session holder
+(an armed composer anchor like the Verify claim or the Revise) goes into it. The armed Revise
+(`pendingReviseAnchor`) is set only through `setReviseAnchor`, which redraws its chip and the Revise buttons (a
+redraw only it feeds, not a store field).
 
 ## Render idioms
 
@@ -251,7 +255,7 @@ reach another device or the server.
 | `chi_markdown_tip_dismissed` | `markdown_tip.js` | the markdown tip dismissed |
 | `chi_update_available_shown` | app.js | update notices already shown |
 | `chi_notify`, `chi_push_device` | `notifications.js` (an injected storage) | the bell's state, this device's push id |
-| `chi_answer_fold:<session>` | `answer_fold.js` | the answers folded by hand (swept with the session list) |
+| `chi_answer_fold:<session>` | `answer_fold.js`, `revise_stack.js` | the answers folded by hand, and the Revise stubs unfolded by hand (`stub:<turn id>`) (swept with the session list) |
 | `chi_review_history:<grant>`, `chi_review_history_session:<session>` | `review_history.js` (participant page) | a participant's composer history |
 
 sessionStorage: `chi_client_id` (`turn_events.js`: this tab's client id, kept over a reload mid-turn) and
