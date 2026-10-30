@@ -4,7 +4,7 @@ import "./dom_shim.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { turnElements } from "../../../lib/samagotchi/web/public/turn_range.js";
-import { turnHistoryNodes } from "../../../lib/samagotchi/web/public/turn_view.js";
+import { turnHistoryNodes } from "../../../lib/samagotchi/web/public/turn_block.js";
 import { normalizeTiming } from "../../../lib/samagotchi/web/public/timing.js";
 
 const thumbs = () => "";

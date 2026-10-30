@@ -5,7 +5,7 @@ import { newActivity, addStarted, addCompleted, toolName } from "../../../lib/sa
 import { tallyText } from "../../../lib/samagotchi/web/public/tally.js";
 import { genLabel } from "../../../lib/samagotchi/web/public/turn_model.js";
 import { snapshotEvents } from "../../../lib/samagotchi/web/public/turn_events.js";
-import { turnHistoryNodes } from "../../../lib/samagotchi/web/public/turn_view.js";
+import { turnHistoryNodes } from "../../../lib/samagotchi/web/public/turn_block.js";
 import { normalizeTiming } from "../../../lib/samagotchi/web/public/timing.js";
 
 const turnHistoryHtml = (...args) => htmlOf(turnHistoryNodes(...args));

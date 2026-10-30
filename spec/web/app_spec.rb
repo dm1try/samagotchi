@@ -3105,7 +3105,7 @@ RSpec.describe Samagotchi::Web::App do
     # ETag keeps an unchanged asset a bodyless 304.
     it "serves assets with no-cache and a content ETag, 304 when it still matches" do
       app = build_app
-      %w[/assets/app.js /assets/turn_view.js].each do |path|
+      %w[/assets/app.js /assets/turn_block.js].each do |path|
         status, headers, body = app.call(env_for(path))
         expect(status).to eq(200)
         expect(headers["Cache-Control"]).to eq("no-cache")
@@ -3118,7 +3118,7 @@ RSpec.describe Samagotchi::Web::App do
         expect(app.call(env_for(path, headers: { "HTTP_IF_NONE_MATCH" => %(W/#{etag}, "x") }))[0]).to eq(304)
         expect(app.call(env_for(path, headers: { "HTTP_IF_NONE_MATCH" => '"stale"' }))[0]).to eq(200)
       end
-      expect(app.call(env_for("/assets/app.js"))[1]["ETag"]).not_to eq(app.call(env_for("/assets/turn_view.js"))[1]["ETag"])
+      expect(app.call(env_for("/assets/app.js"))[1]["ETag"]).not_to eq(app.call(env_for("/assets/turn_block.js"))[1]["ETag"])
     end
 
     it "tells the page the chi version it was served by" do

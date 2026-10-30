@@ -3,7 +3,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { createWorkingSet, footprintNode, groupItems, stampHistory, stampRows } from "../../../lib/samagotchi/web/public/working_set_view.js";
 import { itemsOfTurn } from "../../../lib/samagotchi/web/public/working_set.js";
-import { turnHistoryNodes } from "../../../lib/samagotchi/web/public/turn_view.js";
+import { turnHistoryNodes } from "../../../lib/samagotchi/web/public/turn_block.js";
 import { normalizeTiming, turnGroups } from "../../../lib/samagotchi/web/public/timing.js";
 import { infoBarHtml, renderInfoBar, workingSetChipTemplate } from "../../../lib/samagotchi/web/public/info_bar.js";
 import { handOffOrder } from "../../../lib/samagotchi/web/public/stage_model.js";

@@ -274,7 +274,7 @@ test("cancelLineText: the live line and the one a re-render draws from the turn 
 });
 
 // Live, a canceled turn's partial text stays in the block unless the turn
-// was one step with no tools (turn_view.js turnEnded); a reload agrees.
+// was one step with no tools (turn_block.js turnEnded); a reload agrees.
 const CANCELED = normalizeTiming({
   turn_records: [{ id: "T1", status: "canceled", cancellation_reason: "user", duration_ms: 12000 }],
   tool_records: [{ id: "T1:1:1", turn_id: "T1", iteration: 1, call_index: 1, tool: "execute", status: "ok", duration_ms: 7 }],

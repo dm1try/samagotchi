@@ -1,4 +1,4 @@
-// A DOM for the specs that render with lit-html (turn_view.js): happy-dom's
+// A DOM for the specs that render with lit-html (turn_block.js): happy-dom's
 // window as the globals lit reads at import (document) and render time.
 // Dev-only; import it first, before the module under test.
 import { Window } from "happy-dom";

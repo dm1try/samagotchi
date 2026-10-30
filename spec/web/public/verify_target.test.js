@@ -5,7 +5,7 @@ import "./dom_shim.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { OWNER_FINAL, PARTICIPANT_FINAL, verifyTurnOf } from "../../../lib/samagotchi/web/public/verify_target.js";
-import { turnHistoryNodes } from "../../../lib/samagotchi/web/public/turn_view.js";
+import { turnHistoryNodes } from "../../../lib/samagotchi/web/public/turn_block.js";
 import { normalizeTiming } from "../../../lib/samagotchi/web/public/timing.js";
 
 const thumbs = () => "";

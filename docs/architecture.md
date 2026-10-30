@@ -535,16 +535,16 @@ The page's frequent reads of `GET /api/sessions/:id` stay light too:
   (`turn_model.js` `questionRefs`) before the card draws, so the stage's asking slot (`stage_slots.js`
   `drawAsking(text, refs)`) pairs them on its raw draw and again after its markdown swap; the card pairs its
   question text and its kept reply (`question_cards.js`); the step's closed `.gen-text` takes them
-  (`turn_view.js`; on a reload its `data-answer-at`, the message's `display_refs`) and `linkTextRefs` pairs it at
+  (`turn_block.js`; on a reload its `data-answer-at`, the message's `display_refs`) and `linkTextRefs` pairs it at
   the turn's end and after a reload. A closed step's text is markdown too with `web.markdown` on: a reload's
-  from its message's `html` (`turn_view.js` `textTemplate`), a live turn's from `POST /api/render` on its step's
+  from its message's `html` (`turn_block.js` `textTemplate`), a live turn's from `POST /api/render` on its step's
   first open after the turn's end (`markdown_place.js` `renderStepTexts`, which pairs its refs again after the
   swap); the text as written stays on it as `data-copy-source` (`stepText`, a reloaded card's kept reply). A file ref outside the
   session's folder is dropped, as a reload drops it: the folder `/tail` names, else (an older worker) the hub's
   session list entry's, else (refs to check, no hub entry) the session file's; with no folder known at all, every
   file ref is dropped rather than shown unchecked.
   A plugin tool's row refs (`refs`, `RowRefs`) ride its tool events and, on a reload, its part (saved as
-  `tool_refs`); `turn_view.js` binds them to the row's title (`refs.js bindRowRefs`: the first on the title,
+  `tool_refs`); `turn_block.js` binds them to the row's title (`refs.js bindRowRefs`: the first on the title,
   the others in its menu).
 - `?timing=1`: the whole timing (`analytics.json` merged with the worker's `/state`) and
   `turn_count`, when the page's merge came up short.

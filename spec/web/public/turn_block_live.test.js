@@ -1,7 +1,7 @@
 import { htmlOf, markupOf } from "./dom_shim.js";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createTurnView, stepTemplate } from "../../../lib/samagotchi/web/public/turn_view.js";
+import { createTurnBlock, stepTemplate } from "../../../lib/samagotchi/web/public/turn_block.js";
 import { toolRowTemplate } from "../../../lib/samagotchi/web/public/turn_html.js";
 import { render } from "../../../lib/samagotchi/web/public/vendor/lit-html.js";
 import { answerRefsOf } from "../../../lib/samagotchi/web/public/answer_refs.js";
@@ -9,7 +9,7 @@ import { answerRefsOf } from "../../../lib/samagotchi/web/public/answer_refs.js"
 // A live turn view on a detached history, no hold (no layout under node).
 function liveView() {
   const historyEl = document.createElement("div");
-  const view = createTurnView({
+  const view = createTurnBlock({
     historyEl,
     appendToHistory: (el) => historyEl.appendChild(el),
     isNearBottom: () => false,
@@ -39,7 +39,7 @@ function stepOne(view) {
   view.toolCompleted({ iteration: 1, call_index: 1, tool: "read", status: "ok", output: "[read]\nok" });
 }
 
-test("createTurnView: a closed live step is the reload's markup for the same gen", () => {
+test("createTurnBlock: a closed live step is the reload's markup for the same gen", () => {
   const { view } = liveView();
   stepOne(view);
   view.generationStarted({ iteration: 2 });
@@ -51,7 +51,7 @@ test("createTurnView: a closed live step is the reload's markup for the same gen
   assert.match(live, /<details class="thinking"><summary>thinking<\/summary><div class="thinking-body">First a plan\. Then a check\.<\/div><\/details><div class="gen-text">Let me check\.<\/div>/);
 });
 
-test("createTurnView: a live step is open, 'step N', its narration streaming; no empty narration element without text", () => {
+test("createTurnBlock: a live step is open, 'step N', its narration streaming; no empty narration element without text", () => {
   const { view } = liveView();
   view.turnStarted({});
   view.generationStarted({ iteration: 1 });
@@ -65,7 +65,7 @@ test("createTurnView: a live step is open, 'step N', its narration streaming; no
   assert.deepEqual([...el.querySelectorAll(".gen-text.streaming .narration .sentence")].map((s) => s.textContent), ["One."]);
 });
 
-test("createTurnView: a thinking-only step closes unwrapped (one 'thinking'); with text or tools it keeps its wrap", () => {
+test("createTurnBlock: a thinking-only step closes unwrapped (one 'thinking'); with text or tools it keeps its wrap", () => {
   const { view } = liveView();
   view.turnStarted({});
   view.generationStarted({ iteration: 1 });
@@ -84,7 +84,7 @@ test("createTurnView: a thinking-only step closes unwrapped (one 'thinking'); wi
   assert.ok(other.step(0).thinkingWrap, "a step with text and a call keeps its wrap");
 });
 
-test("createTurnView: a hand-opened thinking wrap stays open across re-renders and the step's close", () => {
+test("createTurnBlock: a hand-opened thinking wrap stays open across re-renders and the step's close", () => {
   const { view } = liveView();
   view.turnStarted({});
   view.generationStarted({ iteration: 1 });
@@ -106,7 +106,7 @@ test("createTurnView: a hand-opened thinking wrap stays open across re-renders a
   assert.equal(view.step(1).thinkingWrap.open, false);
 });
 
-test("createTurnView: the thinking streams into one text node (a selection in it survives)", () => {
+test("createTurnBlock: the thinking streams into one text node (a selection in it survives)", () => {
   const { view } = liveView();
   view.turnStarted({});
   view.generationStarted({ iteration: 1 });
@@ -121,7 +121,7 @@ test("createTurnView: the thinking streams into one text node (a selection in it
 });
 
 // P3 (c2): a finished turn's block is its outline, the same live as on a
-// reload (turn_view.js outlineBlock on turn_model.js outlineRuns).
+// reload (turn_block.js outlineBlock on turn_model.js outlineRuns).
 function narratedTurn(view, { newest = false } = {}) {
   stepOne(view);
   view.generationStarted({ iteration: 2 });
@@ -145,7 +145,7 @@ function narratedTurn(view, { newest = false } = {}) {
   return view.current().blockEl;
 }
 
-test("createTurnView: a completed turn's answer bubble carries its turn id (data-answer-turn), as a reload's; a canceled one's partial text doesn't", () => {
+test("createTurnBlock: a completed turn's answer bubble carries its turn id (data-answer-turn), as a reload's; a canceled one's partial text doesn't", () => {
   const ended = (kind) => {
     const { view, historyEl } = liveView();
     view.turnStarted({ prompt: "p" });
@@ -164,7 +164,7 @@ test("createTurnView: a completed turn's answer bubble carries its turn id (data
 const outlineOf = (block) => [...block.children].filter((el) => !el.matches("summary")).map((el) =>
   el.matches(".outline-fold") ? `fold ${el.textContent}` : `${el.className} ${el.querySelector(":scope > summary").textContent.split(" · ")[0]}`);
 
-test("createTurnView: a finished turn with narrated steps stays open as its outline, tool-only steps folded", () => {
+test("createTurnBlock: a finished turn with narrated steps stays open as its outline, tool-only steps folded", () => {
   const { view } = liveView();
   const block = narratedTurn(view);
   assert.equal(block.open, true);
@@ -181,9 +181,9 @@ test("createTurnView: a finished turn with narrated steps stays open as its outl
   assert.equal(block.querySelectorAll(".gen.folded.unfolded").length, 0);
 });
 
-test("createTurnView: newest first while it ran (the stage's cloud), the outline is still chronological", () => {
+test("createTurnBlock: newest first while it ran (the stage's cloud), the outline is still chronological", () => {
   const historyEl = document.createElement("div");
-  const view = createTurnView({ historyEl, appendToHistory: (el) => historyEl.appendChild(el), isNearBottom: () => false,
+  const view = createTurnBlock({ historyEl, appendToHistory: (el) => historyEl.appendChild(el), isNearBottom: () => false,
     sawText: () => {}, sessionId: () => "s1", useHold: false, newestFirst: true });
   const block = narratedTurn(view, { newest: true });
   assert.deepEqual(outlineOf(block), [
@@ -191,7 +191,7 @@ test("createTurnView: newest first while it ran (the stage's cloud), the outline
   ]);
 });
 
-test("createTurnView: a finished turn whose steps said nothing closes as before (no outline)", () => {
+test("createTurnBlock: a finished turn whose steps said nothing closes as before (no outline)", () => {
   const { view } = liveView();
   view.turnStarted({ prompt: "p" });
   view.generationStarted({ iteration: 1 });
@@ -208,7 +208,7 @@ test("createTurnView: a finished turn whose steps said nothing closes as before 
   assert.equal(blockEl.querySelectorAll(".outline-fold").length, 0);
 });
 
-test("createTurnView: a ref's reveal (show in turn) on a row in a folded step unfolds its run", () => {
+test("createTurnBlock: a ref's reveal (show in turn) on a row in a folded step unfolds its run", () => {
   const { view } = liveView();
   const block = narratedTurn(view);
   const row = block.querySelector(".gen.folded .activity-row");
@@ -233,7 +233,7 @@ function editedRow(view) {
   return done;
 }
 
-test("createTurnView: a live row drawn again keeps its elements, the raw command and the diff the user opened", () => {
+test("createTurnBlock: a live row drawn again keeps its elements, the raw command and the diff the user opened", () => {
   const { view } = liveView();
   const done = editedRow(view);
   const row = view.step(0).el.querySelector(".activity-row");
@@ -251,7 +251,7 @@ test("createTurnView: a live row drawn again keeps its elements, the raw command
   assert.equal(row.querySelector(".activity-duration").textContent, "1.5s");
 });
 
-test("createTurnView: a live row is the reloaded row's markup", () => {
+test("createTurnBlock: a live row is the reloaded row's markup", () => {
   const { view } = liveView();
   editedRow(view);
   const { turn } = view.current();
@@ -259,10 +259,10 @@ test("createTurnView: a live row is the reloaded row's markup", () => {
   assert.equal(htmlOf(view.step(0).el.querySelector(".activity-row")), markupOf(toolRowTemplate(row)));
 });
 
-test("createTurnView: a running task_wait's row has its stop-task button after its title, the same one across redraws, gone once done", () => {
+test("createTurnBlock: a running task_wait's row has its stop-task button after its title, the same one across redraws, gone once done", () => {
   const historyEl = document.createElement("div");
   const taskStop = { target: (row) => (row.status === "running" && row.tool === "task_wait" ? "t1" : null), busy: () => false, stop: () => Promise.resolve() };
-  const view = createTurnView({ historyEl, appendToHistory: (el) => historyEl.appendChild(el), isNearBottom: () => false, sawText: () => {},
+  const view = createTurnBlock({ historyEl, appendToHistory: (el) => historyEl.appendChild(el), isNearBottom: () => false, sawText: () => {},
     sessionId: () => "s1", useHold: false, taskStop });
   view.turnStarted({ prompt: "p" });
   view.generationStarted({ iteration: 1 });
@@ -277,7 +277,7 @@ test("createTurnView: a running task_wait's row has its stop-task button after i
   assert.ok(row.querySelector(".task-stop") === null);
 });
 
-test("createTurnView: a question's refs on the asking step go on its closed text (once), none on the others", () => {
+test("createTurnBlock: a question's refs on the asking step go on its closed text (once), none on the others", () => {
   const refs = [{ match: "DEMO-123", kind: "issue", target: { id: "DEMO-123" }, actions: [] }];
   const { view } = liveView();
   view.turnStarted({ prompt: "p" });

@@ -1634,7 +1634,7 @@ test("a first turn that fails shows its prompt and why, once live and again afte
 
 // A turn that fails after a tool step keeps it (turn_failed's kept_steps):
 // no prompt goes back, and its failure line is drawn again after a reload
-// from the turn record (SessionMetrics' failure; turn_view.js failedLineHtml).
+// from the turn record (SessionMetrics' failure; turn_block.js failedLineHtml).
 test("a turn that fails after a tool step keeps its step and its failure line, live and after a reload", async ({ page, script }) => {
   script("failed_after_steps");
   await send(page, "Check the shell");

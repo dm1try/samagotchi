@@ -43,7 +43,7 @@ paths (replace them with placeholders), no PATH tools (the suite pins `rg` as fo
 that sets PATH to test the lookup is tagged `:real_rg`), no Ruby-version-dependent `inspect` (a Hash's or an
 exception's text changes between Ruby versions: write the string yourself).
 
-The web specs run in plain node. One that loads lit-html, itself or through a module it imports (`turn_view.js`,
+The web specs run in plain node. One that loads lit-html, itself or through a module it imports (`turn_block.js`,
 `turn_html.js`, `card.js`, `copy.js`, `images.js`, `scope.js`, `command_view.js`, `diff_view.js`, `read_view.js`,
 `question_cards.js`, `stream_handlers.js`, `stage_view.js`, `bubbles.js`, `cards_place.js`, the chips, `info_bar.js`, `info_bar_model.js`, `lists_view.js`, `context_chips.js`, `families_view.js`,
 `chains.js`, `working_set_view.js`, `working_set_rail.js`, `unqueue.js`, `toasts.js`, `notice_links.js`, `start_page.js`, `start_settings.js`, `start_toolkit.js`, `session_actions.js`, `send_turn.js`, `composer_mount.js`, `dock_reserve.js`,

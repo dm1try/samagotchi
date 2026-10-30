@@ -1,7 +1,7 @@
 import { htmlOf, markupOf } from "./dom_shim.js";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { stepText, turnHistoryNodes } from "../../../lib/samagotchi/web/public/turn_view.js";
+import { stepText, turnHistoryNodes } from "../../../lib/samagotchi/web/public/turn_block.js";
 import { answerRefsOf } from "../../../lib/samagotchi/web/public/answer_refs.js";
 import { normalizeTiming } from "../../../lib/samagotchi/web/public/timing.js";
 import { failedTurnText } from "../../../lib/samagotchi/web/public/format.js";

@@ -1068,7 +1068,7 @@ RSpec.describe Samagotchi::SessionMetrics do
   end
 
   # The web's reload draws the failure line the live turn_failed did
-  # (turn_view.js failedLineHtml, format.js failedTurnText).
+  # (turn_block.js failedLineHtml, format.js failedTurnText).
   it "keeps what a failed turn's line says on its record: the summary, else the message and class; the kept steps" do
     feed([
       { type: :turn_started, session_id: "sess-f", prompt: "x" },

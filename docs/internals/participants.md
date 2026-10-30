@@ -583,7 +583,7 @@ message's `author_name`, `turn_started`'s, or the panel's list (`participant_nam
 A review turn proposes; the owner applies (D4, §3 Apply-as-quote). A pair turn acted itself: no Apply under it
 (`ReviewApply.review_turn?`: a participant's opening message not stamped `pair`; the route answers it
 `not_review_turn`, and its "latest" skips it). Under each participant's review turn that has a
-reply, the owner's page shows **Apply** (`review_apply.js`; drawn by the history render, `turn_view.js`, and at a live
+reply, the owner's page shows **Apply** (`review_apply.js`; drawn by the history render, `turn_block.js`, and at a live
 turn's end from its `turn_started`'s turn id and author, in the stage while the stage holds the turn; a full-width
 button on a phone). It reads `GET …/apply?turn=T` and puts the answer in the composer, after whatever is typed there,
 never sent: the owner reads it, edits it, sends it or not. While the composer holds it (`deliveryControl.hold()`,

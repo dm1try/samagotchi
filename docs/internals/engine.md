@@ -333,7 +333,7 @@ One iteration with tool calls:
   stored under the real path; at most `RowRefs::MAX_REFS` and `MAX_BYTES`). `ToolRowFields.for` can't build it (no plugins on a reload), so the run carries it
   as `refs:`, saved with the result as `tool_refs` (`ToolResponse::SAVED_KEYS`, never sent), and
   `MessageParts#tool_part` reads it back through `RowRefs.for_display` (checked again). The page binds them to the
-  row's title (`refs.js bindRowRefs`, from `turn_view.js` live and on a reload): the first ref on it, the rest in its
+  row's title (`refs.js bindRowRefs`, from `turn_block.js` live and on a reload): the first ref on it, the rest in its
   menu.
 - Settles an ask verdict after `:tool_call_started`, so a UI shows the tool line and then the approval.
 - Dispatches through `KernelLoop#dispatch_tool_call`, or writes the denial text. Unknown tools are answered in
