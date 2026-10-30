@@ -95,6 +95,10 @@ RSpec.describe Samagotchi::Web::Push::Notifier do
                                     update_blocked: blocked, update_notice: true }))
   end
 
+  def notice(kind, version = "0.19.0", **notes)
+    notifier.call(hub_event(type: "chi_notice", seq: 3, data: { kind: kind, version: version, **notes }))
+  end
+
   def advance(seconds)
     clock[0] += seconds
     notifier.pump
@@ -120,6 +124,65 @@ RSpec.describe Samagotchi::Web::Push::Notifier do
                                 url: "/", badge: 0, open: [] }]
       ])
       expect(store.sent_keys.keys).to eq(["chi:update:0.19.0"])
+    end
+
+    it "sends no 'available' push when update.auto: install will install it (the result is what the phone hears)" do
+      notifier.call(hub_event(type: "chi", seq: 2, data: { version: Samagotchi::VERSION, installed: nil, available: "0.19.0",
+                                                           update_blocked: nil, auto: "install", update_notice: true }))
+      advance(3)
+      expect(client.calls).to be_empty
+
+      # An install that can't run by itself is still the owner's to do: told as before.
+      notifier.call(hub_event(type: "chi", seq: 2, data: { version: Samagotchi::VERSION, installed: nil, available: "0.19.0",
+                                                           update_blocked: "bundler", auto: "install", update_notice: true }))
+      advance(3)
+      expect(client.calls.size).to eq(1)
+    end
+
+    it "pushes an automatic install's failure once, with its reason, a 24-hour TTL and normal urgency" do
+      notice("failed", detail: "failed (gem install exited 1)")
+      notice("failed", detail: "failed (gem install exited 1)")
+      advance(3)
+
+      expect(client.calls.map { |call| call.values_at(:ttl, :urgency, :payload) }).to eq([
+        [24 * 3600, "normal", { v: 1, kind: "show", tag: "chi:update_failed:0.19.0", title: "chi 0.19.0 didn't install",
+                                body: "failed (gem install exited 1). Open chi web for details.", url: "/", badge: 0, open: [] }]
+      ])
+      expect(store.sent_keys.keys).to eq(["chi:update_failed:0.19.0"])
+    end
+
+    it "says a failure that left the gem installed as a problem, not as a missing install" do
+      notice("failed", detail: "failed (bundles)", installed: true)
+      advance(3)
+
+      expect(client.calls.map { |call| call[:payload][:title] }).to eq(["chi 0.19.0 installed with a problem"])
+    end
+
+    it "pushes an automatic install's result with the files whose edits were kept" do
+      notice("installed", kept: 2)
+      advance(3)
+
+      expect(client.calls.map { |call| call[:payload].values_at(:tag, :title, :body) }).to eq([
+        ["chi:installed:0.19.0", "chi 0.19.0 is installed",
+         "chi web and its sessions switch over when you restart them. Kept your edits in 2 files."]
+      ])
+    end
+
+    it "counts automatic update notices against the cap and skips them while a page is in front" do
+      presence.report("desk", true)
+      notice("failed", detail: "x")
+      advance(3)
+
+      expect(client.calls).to be_empty
+      expect(store.sent_keys.keys).to eq(["chi:update_failed:0.19.0"])
+    end
+
+    it "ignores an automatic update notice of a kind it doesn't know, or with no version" do
+      notice("bogus")
+      notice("failed", nil)
+      advance(3)
+
+      expect(client.calls).to be_empty
     end
 
     it "sends a blocked install to the page for its own command instead of chi update" do

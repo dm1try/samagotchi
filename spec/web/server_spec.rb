@@ -122,6 +122,40 @@ RSpec.describe Samagotchi::Web::Server do
     FileUtils.remove_entry(dir)
   end
 
+  it "starts the automatic update with the checker and stops it first, over the app's own update operations" do
+    ops = double("ops")
+    app = double("app", update_ops: ops)
+    allow(Samagotchi::Web::App).to receive(:new).and_return(app)
+    allow(Rackup::Handler::WEBrick).to receive(:run)
+    calls = []
+    update_check = double("update check")
+    allow(update_check).to receive(:start) { calls << :check_start }
+    allow(update_check).to receive(:stop) { calls << :check_stop }
+    auto_update = double("auto update")
+    allow(auto_update).to receive(:start) { calls << :auto_start }
+    allow(auto_update).to receive(:stop) { calls << :auto_stop }
+    allow(Samagotchi::Web::AutoUpdate).to receive(:new).and_return(auto_update)
+
+    described_class.start(port: 4998, hub: hub, update_check: update_check)
+
+    expect(Samagotchi::Web::AutoUpdate).to have_received(:new).with(hub: hub, ops: ops, check: update_check)
+    expect(calls).to eq(%i[check_start auto_start auto_stop check_stop])
+  end
+
+  it "takes an injected automatic update as it is" do
+    app = double("app", update_ops: double("ops"))
+    allow(Samagotchi::Web::App).to receive(:new).and_return(app)
+    allow(Rackup::Handler::WEBrick).to receive(:run)
+    allow(Samagotchi::Web::AutoUpdate).to receive(:new)
+    auto_update = double("auto update", start: nil, stop: nil)
+
+    described_class.start(port: 4998, hub: hub, auto_update: auto_update)
+
+    expect(Samagotchi::Web::AutoUpdate).not_to have_received(:new)
+    expect(auto_update).to have_received(:start)
+    expect(auto_update).to have_received(:stop)
+  end
+
   it "builds a hub over the app's state dir, hands it to the app, and points the app's shutdown check at WEBrick" do
     state_dir = Dir.mktmpdir
     webrick = double("webrick", status: :Running)

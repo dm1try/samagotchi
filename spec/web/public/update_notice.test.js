@@ -54,6 +54,25 @@ test("versionNotice: an available chi offers an in-page update and links to that
   });
 });
 
+test("versionNotice: with update.auto: install an available chi says it installs by itself, with no Update button", () => {
+  assert.deepEqual(versionNotice({ loaded: "0.18.1", served: "0.18.1", available: "0.19.0", auto: "install" }), {
+    key: "available:0.19.0",
+    text: "chi 0.19.0 is available (you run 0.18.1); it installs by itself once no turn is running.",
+    releaseUrl: "https://rubygems.org/gems/samagotchi/versions/0.19.0",
+    reload: false,
+  });
+  // A blocked install can't run by itself: the command to run comes as before.
+  const blocked = versionNotice({ loaded: "0.18.1", served: "0.18.1", available: "0.19.0", updateBlocked: "bundler", auto: "install" });
+  assert.equal(blocked.command, "bundle update samagotchi");
+  assert.equal(versionNotice({ loaded: "0.18.1", served: "0.18.1", available: "0.19.0", auto: "off" }).updateVersion, "0.19.0");
+});
+
+test("mergeVersionState keeps the auto setting from a frame that names it, and ignores a frame that doesn't", () => {
+  assert.equal(mergeVersionState({}, { version: "0.18.1", auto: "install" }).auto, "install");
+  assert.equal(mergeVersionState({ auto: "install" }, { version: "0.18.1" }).auto, "install");
+  assert.equal(mergeVersionState({ auto: "install" }, { auto: "bogus" }).auto, "off");
+});
+
 test("mergeVersionState retains installed when a partial chi frame omits it", () => {
   const current = { served: "0.18.1", installed: "0.19.0", available: null, updateBlocked: null };
   assert.deepEqual(mergeVersionState(current, { version: "0.18.1" }), current);

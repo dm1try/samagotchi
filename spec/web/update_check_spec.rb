@@ -139,11 +139,85 @@ RSpec.describe Samagotchi::Web::UpdateCheck do
     join!(thread, "restored update-check thread")
   end
 
+  it "with update.auto: install checks though update.notify is off, and tells the page nothing of it" do
+    update_check = checker(enabled: false, auto: true)
+
+    expect(update_check.check).to be(true)
+    expect(update_check.available).to eq(release_version)
+    expect(hub).to have_received(:update_available).with(available: nil, blocked: nil, notify: false)
+    expect(JSON.parse(File.read(state_file))).to include("available" => release_version, "notified" => [])
+
+    update_check.start
+    expect(hub).to have_received(:update_available).with(available: nil, blocked: nil)
+    update_check.stop
+  end
+
+  it "runs neither for the page nor for AutoUpdate with notify off and auto off" do
+    update_check = checker(enabled: false, auto: false)
+
+    expect(update_check.check).to be(false)
+    expect(update_check.available).to be_nil
+  end
+
+  it "stops reporting a release as available once it is installed" do
+    update_check = checker
+    update_check.check
+    allow(installed_versions).to receive(:newest).and_return(release_version)
+
+    expect(update_check.available).to be_nil
+  end
+
+  describe "AutoUpdate's record" do
+    it "is saved privately, survives a restart and a later check, and holds the versions given up on" do
+      update_check = checker
+      expect(update_check.auto_state).to be_nil
+      expect(update_check.auto_failed?(release_version)).to be(false)
+
+      update_check.save_auto({ version: release_version, from: "0.1.0", phase: "failed", kept: [] }, failed: release_version)
+      update_check.save_auto({ version: release_version, from: "0.1.0", phase: "failed", kept: [] }, failed: release_version)
+
+      expect(File.stat(state_file).mode & 0o777).to eq(0o600)
+      expect(JSON.parse(File.read(state_file))).to include("auto_failed" => [release_version],
+                                                           "auto" => include("version" => release_version, "phase" => "failed"))
+      restored = checker
+      expect(restored.auto_state).to include(version: release_version, phase: "failed")
+      expect(restored.auto_failed?(release_version)).to be(true)
+
+      expect(restored.check).to be(true)
+      expect(restored.auto_state).to include(phase: "failed")
+      expect(restored.auto_failed?(release_version)).to be(true)
+    end
+
+    it "is cleared by saving nil, and a failed version stays failed" do
+      update_check = checker
+      update_check.save_auto({ version: "0.1.0", phase: "done" }, failed: "0.0.9")
+      update_check.save_auto(nil)
+
+      expect(update_check.auto_state).to be_nil
+      expect(update_check.auto_failed?("0.0.9")).to be(true)
+    end
+
+    it "loads a state file written before it existed" do
+      FileUtils.mkdir_p(File.dirname(state_file))
+      File.write(state_file, JSON.generate(checked_at: clock.first.iso8601, available: release_version, notified: []))
+
+      expect(checker.auto_state).to be_nil
+    end
+  end
+
   it "uses the config checks for the minimum supported intervals" do
     entries = Samagotchi::Config::ENTRIES.to_h { |entry| [entry.key, entry] }
 
     expect(entries.fetch("update.check_hours").check.call(0)).to eq("at least 1")
     expect(entries.fetch("update.min_age_hours").check.call(-1)).to eq("at least 0")
     expect(entries.fetch("update.min_age_hours").check.call(0)).to be_nil
+  end
+
+  it "declares update.auto (off by default) and update.restart (idle by default) as web-start enums" do
+    auto = Samagotchi::Config::BY_KEY.fetch("update.auto")
+    restart = Samagotchi::Config::BY_KEY.fetch("update.restart")
+
+    expect([auto.default, auto.enum_values, auto.lifecycle]).to eq(["off", %w[off install], :web_start])
+    expect([restart.default, restart.enum_values, restart.lifecycle]).to eq(["idle", %w[idle never], :web_start])
   end
 end

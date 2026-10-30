@@ -48,6 +48,27 @@ module Samagotchi
         EVENT_TTL = 600
         # A newly available chi is useful for a day while the phone is away.
         UPDATE_TTL = 24 * 3600
+        # The kinds of AutoUpdate's notices: [key kind, title, body] from the version and the notice's notes.
+        AUTO_NOTICES = {
+          "installed" => lambda do |version, notes|
+            ["installed", "chi #{version} is installed",
+             "chi web and its sessions switch over when you restart them.#{kept_words(notes[:kept])}"]
+          end,
+          "failed" => lambda do |version, notes|
+            ["update_failed", notes[:installed] ? "chi #{version} installed with a problem" : "chi #{version} didn't install",
+             "#{notes[:detail] || "chi update failed"}. Open chi web for details."]
+          end
+        }.freeze
+
+        # " Kept your edits in 2 files." ("" for none).
+        def self.kept_words(count)
+          if count.to_i.positive?
+            " Kept your edits in #{count} #{count == 1 ? "file" : "files"}."
+          else
+            ""
+          end
+        end
+
         # A show carries +open+ only while its JSON stays this small: one
         # aes128gcm record leaves 3993 bytes of plaintext under Web Push's
         # 4096 (86 header, 1 delimiter, 16 tag). Longer, it goes without
@@ -191,19 +212,40 @@ module Samagotchi
             @queue << Close.new(keys: keys) unless keys.empty?
           when "chi"
             notice_update(event)
+          when "chi_notice"
+            notice_auto_update(event)
           end
         end
 
         def notice_update(event)
           return unless event.data[:update_notice]
+          # With update.auto: install (and an install that can run) the page says it will install on its own,
+          # and the result is what the phone hears: no "available" first.
+          return if event.data[:auto] == "install" && !event.data[:update_blocked]
 
           version = event.data[:available]
-          return unless version.is_a?(String) && !version.empty? && !@updates_seen[version]
+          return unless version.is_a?(String) && !version.empty?
 
-          @updates_seen[version] = true
-          attention = Attention::Event.new(reason: "update", session_id: nil, key: "chi:update:#{version}", hold: nil)
-          @queue << Show.new(attention: attention, title: "chi #{version} is available",
-                             body: update_body(event.data[:update_blocked]), at: @now.call, url: "/")
+          enqueue_update("chi:update:#{version}", "chi #{version} is available", update_body(event.data[:update_blocked]))
+        end
+
+        # AutoUpdate's word (SessionHub#publish_notice): installed, updated or failed.
+        def notice_auto_update(event)
+          data = event.data
+          version = data[:version]
+          return unless version.is_a?(String) && !version.empty?
+
+          kind, title, body = AUTO_NOTICES.fetch(data[:kind], nil)&.call(version, data)
+          enqueue_update("chi:#{kind}:#{version}", title, body) if kind
+        end
+
+        # Once per key in this process (AutoUpdate keeps its own record across restarts).
+        def enqueue_update(key, title, body)
+          return if @updates_seen[key]
+
+          @updates_seen[key] = true
+          attention = Attention::Event.new(reason: "update", session_id: nil, key: key, hold: nil)
+          @queue << Show.new(attention: attention, title: title, body: body, at: @now.call, url: "/")
         end
 
         # A blocked install (a checkout, Bundler, an unwritable gem dir) names its own command on the page.

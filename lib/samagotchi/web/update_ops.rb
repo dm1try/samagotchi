@@ -62,35 +62,35 @@ module Samagotchi
       #   `{state:, rows:}` instead of :started
       # @return [Symbol, Hash] :started, :busy (another operation runs) or
       #   :start_failed (no thread); with wait: the result
-      def install(version, wait: false)
+      def install(version, wait: false, auto: false)
         return :busy unless claim
 
-        @hub.publish_update(state: "running", rows: [], operation: "install", version: version)
-        thread = Thread.new { perform_install(version) }
+        @hub.publish_update(state: "running", rows: [], operation: "install", version: version, auto: auto)
+        thread = Thread.new { perform_install(version, auto) }
         wait ? thread.value : :started
       rescue ThreadError => e
         release
         Log.warn(:web, "update_start_failed", error: e.class.name, msg: e.message)
         @hub&.publish_update(state: "failed", rows: [
           { "component" => "chi update", "status" => "failed (couldn't start update)", "failed" => true, "kept" => [] }
-        ], operation: "install")
+        ], operation: "install", auto: auto)
         :start_failed
       end
 
       # Restarts every stale worker (the worker refuses atomically when busy).
       # @return [Symbol, Hash] as #install
-      def restart_workers(wait: false)
+      def restart_workers(wait: false, auto: false)
         return :busy unless claim
 
-        @hub.publish_update(state: "running", rows: [], operation: "workers")
-        thread = Thread.new { perform_worker_restarts }
+        @hub.publish_update(state: "running", rows: [], operation: "workers", auto: auto)
+        thread = Thread.new { perform_worker_restarts(auto) }
         wait ? thread.value : :started
       rescue ThreadError => e
         release
         Log.warn(:web, "worker_restart_start_failed", error: e.class.name, msg: e.message)
         @hub&.publish_update(state: "failed", rows: [
           { "state" => "failed", "reason" => "couldn't start worker restarts" }
-        ], operation: "workers")
+        ], operation: "workers", auto: auto)
         :start_failed
       end
 
@@ -142,14 +142,14 @@ module Samagotchi
         @mutex.synchronize { @running = false }
       end
 
-      def perform_install(version)
+      def perform_install(version, auto)
         argv = update_argv(version)
         said = nil
         output, success = @runner.call(argv, env: ChildEnv.unbundled,
                                              progress: lambda { |line|
                                                said = line unless line.strip.empty?
                                                @hub.publish_update(state: "running", rows: [], progress: line,
-                                                                   operation: "install", version: version)
+                                                                   operation: "install", version: version, auto: auto)
                                              })
         rows = update_rows(output)
         # No rows (a usage error, a refusal): what the child said is the reason.
@@ -158,13 +158,13 @@ module Samagotchi
         # The installed version as of now (the hub's own look is up to a probe interval old), before "done".
         @hub.refresh_installed if success
         state = success ? "done" : "failed"
-        @hub.publish_update(state: state, rows: rows, operation: "install", version: version)
+        @hub.publish_update(state: state, rows: rows, operation: "install", version: version, auto: auto)
         { state: state, rows: rows }
       rescue StandardError => e
         Log.exception(:web, "update_failed", e)
         rows = [{ "component" => "chi update", "status" => "failed (#{e.message.lines.first.to_s.strip})",
                   "failed" => true, "kept" => [] }]
-        @hub.publish_update(state: "failed", rows: rows, operation: "install", version: version)
+        @hub.publish_update(state: "failed", rows: rows, operation: "install", version: version, auto: auto)
         { state: "failed", rows: rows }
       ensure
         release
@@ -190,7 +190,7 @@ module Samagotchi
 
       def default_state_dir = @state_dir || Session.default_state_dir
 
-      def perform_worker_restarts
+      def perform_worker_restarts(auto)
         # Installed now: the hub's own look is up to a full probe old (nil right after chi web started).
         target = @hub.refresh_installed || VERSION
         rows = []
@@ -211,15 +211,15 @@ module Samagotchi
             { "session_id" => worker.session_id, "state" => "failed", "reason" => e.class.name, "detail" => e.message }
           end
           rows << row
-          @hub.publish_update(state: "running", rows: rows.dup, operation: "workers")
+          @hub.publish_update(state: "running", rows: rows.dup, operation: "workers", auto: auto)
         end
         state = rows.any? { |row| row["state"] == "failed" } ? "failed" : "done"
-        @hub.publish_update(state: state, rows: rows, operation: "workers")
+        @hub.publish_update(state: state, rows: rows, operation: "workers", auto: auto)
         { state: state, rows: rows }
       rescue StandardError => e
         Log.exception(:web, "worker_restart_failed", e)
         rows = [{ "state" => "failed", "reason" => e.class.name, "detail" => e.message }]
-        @hub.publish_update(state: "failed", rows: rows, operation: "workers")
+        @hub.publish_update(state: "failed", rows: rows, operation: "workers", auto: auto)
         { state: "failed", rows: rows }
       ensure
         release

@@ -179,7 +179,7 @@ or `chi web` restart.
 | `history.file` | Next history access | The TUI and web composer resolve its path when they read or append history. |
 | `broadcast.*` | Next `chi broadcast` | Each broadcast invocation reads its targeting and triage settings. |
 | `update.gem`, `update.bundles`, `update.desktop` | Next `chi update` | The command reads which components to update when it runs. |
-| `update.notify`, `update.check_hours`, `update.min_age_hours` | `chi web` start | The update checker starts with chi web; restart it to apply changes. |
+| `update.notify`, `update.check_hours`, `update.min_age_hours`, `update.auto`, `update.restart` | `chi web` start | The update checker starts with chi web; restart it to apply changes. |
 | `kitty.*`, `tmux.*` | `chi desktop upgrade` or desktop update | These settings are copied into the desktop helper's launch file. |
 | `model.profile`, `reasoning_history` | Not from config.yml | These are CLI/environment settings; `models:` and `hosts:` provide their model- and host-specific forms. |
 
@@ -2170,6 +2170,8 @@ column says so, a `--kebab-name` flag. The maps (`hosts:`, `models:`,
 | `update.bundles` | `true` | | `false`: `chi update` leaves the shipped bundles to `chi bundle upgrade` (`--no-bundles`). |
 | `update.desktop` | `true` | | `false`: `chi update` leaves the desktop helper alone (`--no-desktop`). |
 | `update.notify` | `on` | | `on`: chi web checks RubyGems once a day and shows aged stable releases newer than both this chi and the newest installed chi; `off`: no thread or network check. |
+| `update.auto` | `off` | | `install`: chi web installs the release its checker found (aged by `update.min_age_hours`) once no turn runs in any session, and pushes how it went to the phone; the check then runs even with `update.notify: off` (which only silences the page's and the phone's "available"). `off`: notice only. |
+| `update.restart` | `idle` | | With `update.auto: install`, what follows the install: `idle` restarts idle workers and chi web onto it, `never` leaves that to you. |
 | `update.check_hours` | `24` | | Hours between RubyGems checks (at least 1). The first check starts about 30 seconds after chi web starts. |
 | `update.min_age_hours` | `24` | | A release must be this old before chi web offers it; `0` disables the age delay. |
 | `kitty.listen_on` | none | | The desktop helper's kitty socket, copied from `kitty.conf`; unset = no kitty targets. See "Desktop helper: agents in kitty". |

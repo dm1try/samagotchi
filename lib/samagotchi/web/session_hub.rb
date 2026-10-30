@@ -8,6 +8,7 @@ require_relative "../session"
 require_relative "../session_manager"
 require_relative "../bridge_client"
 require_relative "../worker_link"
+require_relative "../config"
 require_relative "../log"
 require_relative "../installed_versions"
 require_relative "../version"
@@ -73,9 +74,12 @@ module Samagotchi
       #   or a stand-in
       # @param now [#call] a monotonic clock in seconds (specs drive it)
       # @param installed_versions [#newest] what is installed (InstalledVersions)
+      # @param update_auto [String] update.auto, said in the chi state (the page's wording)
       def initialize(state_dir:, manager: SessionManager, now: nil, scan_interval: SCAN_INTERVAL,
-                     full_probe_interval: FULL_PROBE_INTERVAL, installed_versions: InstalledVersions.new)
+                     full_probe_interval: FULL_PROBE_INTERVAL, installed_versions: InstalledVersions.new,
+                     update_auto: Config.get("update.auto"))
         @state_dir = state_dir
+        @update_auto = update_auto
         @installed_versions = installed_versions
         @installed = nil
         @available = nil
@@ -156,7 +160,8 @@ module Samagotchi
       # The complete chi version state used by event snapshots and info routes.
       def chi_state
         @monitor.synchronize do
-          { version: VERSION, installed: @installed, available: @available, update_blocked: @update_blocked }
+          { version: VERSION, installed: @installed, available: @available, update_blocked: @update_blocked,
+            auto: @update_auto }
         end
       end
 
@@ -174,9 +179,10 @@ module Samagotchi
 
       # Publish the owner-triggered update's progress or result for current
       # tabs, and retain the latest state for a reconnect's snapshot.
-      def publish_update(state:, rows:, progress: nil, operation: nil, version: nil)
+      def publish_update(state:, rows:, progress: nil, operation: nil, version: nil, auto: false)
         @monitor.synchronize do
           @update_state = { state: state, rows: rows }
+          @update_state[:auto] = true if auto
           @update_state[:operation] = operation unless operation.nil?
           @update_state[:version] = version unless version.nil?
           @update_state[:progress] = progress unless progress.nil?
@@ -187,6 +193,17 @@ module Samagotchi
 
       def update_state
         @monitor.synchronize { @update_state&.dup }
+      end
+
+      # What the automatic update (AutoUpdate) has to tell the owner's phone:
+      # a `chi_notice` event for the Push::Notifier, not for the page (the
+      # `chi_update` frames are the page's), and not kept for a snapshot.
+      # @param kind [String] installed, updated or failed
+      # @param version [String] the release it is about
+      # @param notes [Hash] detail:, kept: (a count), restarted:, left:
+      def publish_notice(kind:, version:, **notes)
+        @monitor.synchronize { emit("chi_notice", { kind: kind, version: version, **notes }) }
+        nil
       end
 
       # Rescan one session now (its file, its folder, its owner), for the

@@ -32,6 +32,18 @@ test("the install sheet shows component rows and calls out kept edits", () => {
   assert.deepEqual([...kept.querySelectorAll("li")].map((file) => file.textContent), ["config.yml", "memories/notes.md"]);
 });
 
+test("an automatic run's sheet says so in its title", () => {
+  const title = (model) => {
+    const div = document.createElement("div");
+    div.innerHTML = markupOf(updateSheetTemplate(model));
+    return div.querySelector("h2").textContent;
+  };
+  assert.equal(title({ operation: "install", version: "99.0.0", state: "running", auto: true, rows: [] }),
+    "Update chi to 99.0.0 (automatic)");
+  assert.equal(title({ operation: "workers", state: "running", auto: true, rows: [] }), "Restart workers (automatic)");
+  assert.equal(title({ operation: "install", version: "99.0.0", state: "running", rows: [] }), "Update chi to 99.0.0");
+});
+
 test("the sheet follows update events and its operations call the owner APIs", async (t) => {
   const el = dialog();
   t.after(() => el.remove());

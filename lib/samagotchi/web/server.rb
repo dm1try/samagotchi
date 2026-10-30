@@ -19,6 +19,7 @@ require_relative "running"
 require_relative "start_dir"
 require_relative "session_hub"
 require_relative "update_check"
+require_relative "auto_update"
 require_relative "token"
 require_relative "tunnel"
 require_relative "../config"
@@ -342,13 +343,15 @@ module Samagotchi
       # @param on_bound [#call, nil] run once the port is bound, before any
       #   line (the tunnel's #up); what it raises ends the run
       # @param start_dir [String] the folder chi web starts in (App's)
+      # @param update_check [UpdateCheck, nil] the RubyGems checker (nil: built from config)
+      # @param auto_update [AutoUpdate, nil] update.auto: install's thread (nil: built from config)
       # @return [Boolean, :restart] false when the port was taken (said so on stderr);
       #   :restart when the owner requested an in-place process replacement
       def self.start(port: nil, host: nil, url: nil, open_browser: false, state_dir: nil, manager: nil, markdown: false,
                      annotate_presets: Config::BY_KEY["web.annotate_presets"].default, hub: nil, lan: nil,
                      editor: Config::BY_KEY["web.editor"].default, token_path: Token.path,
                      working_set: Config::BY_KEY["web.working_set"].default, public_url: nil, public_notes: [],
-                     on_bound: nil, start_dir: Dir.pwd, update_check: nil)
+                     on_bound: nil, start_dir: Dir.pwd, update_check: nil, auto_update: nil)
         config_restart_unsubscribe = ConfigFile.watch_restart_settings!(process: :web) do |message|
           Samagotchi::Log.warn(:config, "restart_required", echo: "Warning: config: #{message}")
         end
@@ -365,6 +368,8 @@ module Samagotchi
         app = App.new(manager: manager, state_dir: state_dir, markdown: markdown,
                       annotate_presets: annotate_presets, editor: editor, hub: hub, lan: lan_option, working_set: working_set,
                       public_url: public_url, public_token: public_token, push: push, start_dir: start_dir)
+        # update.auto: install; a stand-in app (a spec's) has no operations to run.
+        auto_update ||= AutoUpdate.new(hub: hub, ops: app.update_ops, check: update_check) if app.respond_to?(:update_ops)
         webrick = nil
         restart_mutex = Mutex.new
         restart_requested = false
@@ -402,6 +407,7 @@ module Samagotchi
         end
         hub.start
         update_check.start
+        auto_update&.start
         # Said once the port is bound: a second chi web racing for it gets
         # the in-use line instead.
         running_path = Running.path(state_dir: state_dir)
@@ -458,6 +464,7 @@ module Samagotchi
         Running.clear(path: running_path) if running_path
         config_restart_unsubscribe&.call
         notifier&.stop
+        auto_update&.stop
         update_check&.stop
         hub&.stop
         Samagotchi::Log.info(:web, "stop") if app

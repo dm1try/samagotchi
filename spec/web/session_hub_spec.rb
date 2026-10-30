@@ -501,9 +501,9 @@ RSpec.describe Samagotchi::Web::SessionHub do
       installed.newest = "0.18.1"
       hub.scan
       expect(events.map { |e| [e.type, e.data] }).to eq([["chi", { version: Samagotchi::VERSION, installed: "0.18.1",
-                                                                   available: nil, update_blocked: nil }]])
+                                                                   available: nil, update_blocked: nil, auto: "off" }]])
       expect(hub.installed).to eq("0.18.1")
-      expect(hub.chi_state).to eq(version: Samagotchi::VERSION, installed: "0.18.1", available: nil, update_blocked: nil)
+      expect(hub.chi_state).to eq(version: Samagotchi::VERSION, installed: "0.18.1", available: nil, update_blocked: nil, auto: "off")
 
       installed.newest = "0.19.0"
       hub.scan # not a full probe yet: nothing
@@ -537,7 +537,7 @@ RSpec.describe Samagotchi::Web::SessionHub do
       hub.update_available(available: "99.0.0", blocked: "bundler")
 
       expect(events.last.data).to eq(version: Samagotchi::VERSION, installed: nil, available: "99.0.0",
-                                     update_blocked: "bundler")
+                                     update_blocked: "bundler", auto: "off")
     end
 
     it "publishes chi update progress and keeps the latest state for event snapshots" do
@@ -548,6 +548,28 @@ RSpec.describe Samagotchi::Web::SessionHub do
       expect(events.last.type).to eq("chi_update")
       expect(events.last.data).to eq(data)
       expect(hub.update_state).to eq(data)
+    end
+
+    it "marks an automatic run's frames, and only those" do
+      hub.publish_update(state: "running", rows: [], operation: "install", version: "99.0.0", auto: true)
+      expect(events.last.data).to eq(state: "running", rows: [], operation: "install", version: "99.0.0", auto: true)
+      expect(hub.update_state).to include(auto: true)
+
+      hub.publish_update(state: "done", rows: [], operation: "install", version: "99.0.0")
+      expect(events.last.data).not_to include(:auto)
+    end
+
+    it "publishes an automatic update's notice as its own event, not kept for a snapshot" do
+      hub.publish_update(state: "done", rows: [], operation: "install")
+      hub.publish_notice(kind: "failed", version: "99.0.0", detail: "boom")
+
+      expect(events.last.type).to eq("chi_notice")
+      expect(events.last.data).to eq(kind: "failed", version: "99.0.0", detail: "boom")
+      expect(hub.update_state).to eq(state: "done", rows: [], operation: "install")
+    end
+
+    it "names update.auto in the chi state" do
+      expect(described_class.new(state_dir: state_dir, update_auto: "install").chi_state).to include(auto: "install")
     end
 
     it "retains the update operation and target version for a new tab's snapshot" do

@@ -293,6 +293,10 @@ module Samagotchi
       Entry.new(key: "update.bundles",           yaml_path: %w[update bundles],           type: :bool,    default: true,            expose: %i[env config], lifecycle: :next_update),
       Entry.new(key: "update.desktop",           yaml_path: %w[update desktop],           type: :bool,    default: true,            expose: %i[env config], lifecycle: :next_update),
       Entry.new(key: "update.notify",            yaml_path: %w[update notify],            type: :enum,    default: "on",             expose: %i[env config], enum_values: %w[on off], lifecycle: :web_start),
+      # Unattended installs (chi web, Web::AutoUpdate): install: the release the checker found, once no turn runs anywhere;
+      # update.restart then says whether idle workers and chi web restart onto it (idle) or it waits for the owner (never).
+      Entry.new(key: "update.auto",              yaml_path: %w[update auto],              type: :enum,    default: "off",            expose: %i[env config], enum_values: %w[off install], lifecycle: :web_start),
+      Entry.new(key: "update.restart",           yaml_path: %w[update restart],           type: :enum,    default: "idle",           expose: %i[env config], enum_values: %w[idle never], lifecycle: :web_start),
       Entry.new(key: "update.check_hours",       yaml_path: %w[update check_hours],       type: :integer, default: 24,               expose: %i[env config], lifecycle: :web_start,
                 check: ->(value) { "at least 1" unless value >= 1 }),
       Entry.new(key: "update.min_age_hours",     yaml_path: %w[update min_age_hours],     type: :integer, default: 24,               expose: %i[env config], lifecycle: :web_start,
