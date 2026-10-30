@@ -11,6 +11,11 @@ module Samagotchi
       DEFAULT_TELEMETRY_THRESHOLD_PCT = 80.0
       DEFAULT_CHARS_PER_TOKEN = 4.0
 
+      # A large output's head and tail (UTF-8 safe) with the byte counts the
+      # truncated-preview result lines report.
+      PreviewParts = Data.define(:head, :tail, :head_bytes, :tail_bytes, :returned_preview_bytes,
+                                 :omitted_bytes, :total_bytes)
+
       module_function
 
       # The config setting +key+ (read.*, execute.*, context.*) when positive, else +default+.
@@ -41,6 +46,7 @@ module Samagotchi
              .encode(Encoding::UTF_8, invalid: :replace, undef: :replace, replace: "?")
       end
 
+      # @return [PreviewParts]
       def head_tail_from_file(path:, file_size:, preview_bytes:)
         half = [preview_bytes / 2, 1].max
         head = File.binread(path, half, 0)
@@ -50,6 +56,7 @@ module Samagotchi
         build_preview_parts(head: head, tail: tail, total_bytes: file_size)
       end
 
+      # @return [PreviewParts]
       def head_tail_from_string(content:, preview_bytes:)
         half = [preview_bytes / 2, 1].max
         head = content.byteslice(0, half) || ""
@@ -78,7 +85,7 @@ module Samagotchi
         tail_bytes = tail.bytesize
         omitted_bytes = [total_bytes - (head_bytes + tail_bytes), 0].max
 
-        {
+        PreviewParts.new(
           head: safe_utf8(head),
           tail: safe_utf8(tail),
           head_bytes: head_bytes,
@@ -86,7 +93,7 @@ module Samagotchi
           returned_preview_bytes: head_bytes + tail_bytes,
           omitted_bytes: omitted_bytes,
           total_bytes: total_bytes
-        }
+        )
       end
       private_class_method :build_preview_parts
     end

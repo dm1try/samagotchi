@@ -81,10 +81,10 @@ module Samagotchi
 
         preview_block = [
           "[TRUNCATED_PREVIEW_HEAD]",
-          preview[:head],
-          "[... omitted #{preview[:omitted_bytes]} bytes ...]",
+          preview.head,
+          "[... omitted #{preview.omitted_bytes} bytes ...]",
           "[TRUNCATED_PREVIEW_TAIL]",
-          preview[:tail]
+          preview.tail
         ].join("\n")
 
         metadata_lines = [
@@ -92,8 +92,8 @@ module Samagotchi
           "path=#{path}",
           "preview_strategy=head_tail",
           "file_bytes=#{file_size}",
-          "returned_preview_bytes=#{preview[:returned_preview_bytes]}",
-          "omitted_bytes=#{preview[:omitted_bytes]}"
+          "returned_preview_bytes=#{preview.returned_preview_bytes}",
+          "omitted_bytes=#{preview.omitted_bytes}"
         ]
 
         telemetry = telemetry_lines_for(preview_block)

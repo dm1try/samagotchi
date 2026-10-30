@@ -337,13 +337,13 @@ module Samagotchi
           "truncated=true",
           "preview_strategy=head_tail",
           "reply_bytes=#{text.bytesize}",
-          "returned_preview_bytes=#{preview[:returned_preview_bytes]}",
-          "omitted_bytes=#{preview[:omitted_bytes]}",
+          "returned_preview_bytes=#{preview.returned_preview_bytes}",
+          "omitted_bytes=#{preview.omitted_bytes}",
           "[TRUNCATED_PREVIEW_HEAD]",
-          preview[:head],
-          "[... omitted #{preview[:omitted_bytes]} bytes ...]",
+          preview.head,
+          "[... omitted #{preview.omitted_bytes} bytes ...]",
           "[TRUNCATED_PREVIEW_TAIL]",
-          preview[:tail]
+          preview.tail
         ].join("\n")
       end
     end

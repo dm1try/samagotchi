@@ -469,13 +469,13 @@ module Samagotchi
           "truncated=true",
           "preview_strategy=head_tail",
           "#{label}_bytes=#{bytes}",
-          "returned_preview_bytes=#{preview[:returned_preview_bytes]}",
-          "omitted_bytes=#{preview[:omitted_bytes]}",
+          "returned_preview_bytes=#{preview.returned_preview_bytes}",
+          "omitted_bytes=#{preview.omitted_bytes}",
           "[TRUNCATED_PREVIEW_HEAD]",
-          preview[:head],
-          "[... omitted #{preview[:omitted_bytes]} bytes ...]",
+          preview.head,
+          "[... omitted #{preview.omitted_bytes} bytes ...]",
           "[TRUNCATED_PREVIEW_TAIL]",
-          preview[:tail]
+          preview.tail
         ].join("\n")
       end
 
@@ -492,7 +492,7 @@ module Samagotchi
       # A big log: its size, and the head and tail read by seek, which
       # output_block shows as it shows a long string's.
       class LogPreview
-        attr_reader :bytesize, :preview
+        attr_reader :bytesize, :preview # Integer, OutputGuardrails::PreviewParts
 
         def initialize(bytesize, preview)
           @bytesize = bytesize
