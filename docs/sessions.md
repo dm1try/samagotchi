@@ -404,7 +404,7 @@ mise.toml pins Ruby 3.4 gets that `ruby`, `gem` and `bundle` in its tools while 
   included, asks you first; a read-only mention (`find . -name mise.toml`) doesn't. `.envrc` and mise's local files
   (`mise.local.toml`, `mise.<env>.local.toml`, dotted or not, and `config.local.toml` / `config.<env>.local.toml` in
   `.config/mise/`, `mise/`, `.mise/`) are secrets to them, as `.env` is.
-- **What tools still drop**: every `execute`, task and `!cmd` takes no `RUBYOPT`, `RUBYLIB`, `BUNDLE_GEMFILE`,
+- **What tools still drop**: every `execute`, task, `!cmd`, context source and MCP server takes no `RUBYOPT`, `RUBYLIB`, `BUNDLE_GEMFILE`,
   `BUNDLE_BIN_PATH` or `BUNDLER_VERSION` from the project's mise env: it runs without `RUBYLIB` and Bundler's
   variables, and with the worker's own `RUBYOPT`, Bundler's part removed (`TaskRuntime`).
 - **`chi` in a tool** stays the home's: with a chi home the tools' PATH starts with `$XDG_STATE_HOME/samagotchi/bin`,

@@ -454,10 +454,15 @@ class Plugin
     client
   end
 
-  # A server's env: the session's project env (the worker's mise env, on a
-  # chi that has it: Samagotchi::ProjectEnv) under the server's own keys.
+  # A server's env: the session's project env as execute's commands get it
+  # (the worker's mise env without chi's own Ruby and Bundler setup, on a
+  # chi that has it: Samagotchi::ProjectEnv.spawn_env) under the server's
+  # own keys. An older chi has only the overlay, or none.
   def server_env(server)
-    project = defined?(Samagotchi::ProjectEnv) ? Samagotchi::ProjectEnv.current.env : {}
+    project = if !defined?(Samagotchi::ProjectEnv) then {}
+              elsif Samagotchi::ProjectEnv.respond_to?(:spawn_env) then Samagotchi::ProjectEnv.spawn_env
+              else Samagotchi::ProjectEnv.current.env
+              end
     project.merge(server.env)
   end
 

@@ -74,6 +74,36 @@ RSpec.describe "The mcp bundle" do
       end
     end
 
+    context "with chi's own Bundler setup and a project env that sets Ruby's loader variables" do
+      let(:env_dump) { File.join(tmpdir, "server.env") }
+      # The server's env as it starts, then the usual fake server.
+      let(:fake) { { "command" => ["/bin/sh", "-c", "/usr/bin/env > #{env_dump}; exec \"$@\"", "sh", *MCP_FAKE_COMMAND] } }
+
+      around do |example|
+        saved = ENV.to_h.slice("RUBYOPT", "BUNDLE_GEMFILE")
+        ENV["RUBYOPT"] = "-rbundler/setup -W0"
+        ENV["BUNDLE_GEMFILE"] = "/chi/checkout/Gemfile"
+        example.run
+      ensure
+        %w[RUBYOPT BUNDLE_GEMFILE].each { |key| saved.key?(key) ? ENV[key] = saved[key] : ENV.delete(key) }
+      end
+
+      before do
+        project = { "FAKE_MCP_TOOLS" => tools_file, "RUBYOPT" => "-rproject", "RUBYLIB" => "/project/lib",
+                    "BUNDLE_GEMFILE" => "/project/Gemfile" }
+        Samagotchi::ProjectEnv.install!(Samagotchi::ProjectEnv::NONE.with(env: project.freeze))
+      end
+
+      after { Samagotchi::ProjectEnv.reset! }
+
+      it "starts the server as execute runs a command: the project env without either (ProjectEnv.spawn_env)" do
+        expect(names(find("screenshot"))).to include("fake/take_screenshot")
+        started = File.readlines(env_dump, chomp: true).to_h { |line| line.split("=", 2) }
+        expect(started["RUBYOPT"]).to eq("-W0")
+        expect(started).not_to include("RUBYLIB", "BUNDLE_GEMFILE")
+      end
+    end
+
     it "answers the best matches, each with its name, description and inputSchema" do
       text = find("screenshot")
       expect(text).to start_with("Call one with call_tool(tool: \"<group>/<tool>\", args: {…}).\n\n" \

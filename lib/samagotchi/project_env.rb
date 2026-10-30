@@ -114,6 +114,18 @@ module Samagotchi
     # @return [Hash{String=>String, nil}]
     def tools_env = current.env.except(*TOOLS_DROP)
 
+    # The whole env change for a command chi starts for the session outside
+    # execute (MCP servers, context sources): what execute spawns over
+    # (Tools::TaskRuntime.sanitized_spawn_env: chi's own RUBYOPT without
+    # bundler/setup, no RUBYLIB or Bundler variables), then #tools_env. One
+    # env for every command, so a worker run from a checkout under `bundle
+    # exec` hands none of them its Gemfile.
+    # @return [Hash{String=>String, nil}]
+    def spawn_env
+      require_relative "tools/task_runtime" # lazily: bin/chi loads this file for #take_orig!
+      Tools::TaskRuntime.sanitized_spawn_env.merge(tools_env)
+    end
+
     # Specs: back to NONE.
     def reset! = @current = NONE
 

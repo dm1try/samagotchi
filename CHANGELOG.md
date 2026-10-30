@@ -11,6 +11,9 @@ and commands may change between minor versions. How releases are made:
 
 - A project's mise.toml can no longer set `TMPDIR` for the session's tools: the guardrails judge `$TMPDIR` paths
   by chi's own, so a write there could have been taken for a tmp write while it landed in the project.
+- MCP servers (mcp 0.7.4) and context sources start like `execute`'s commands: without chi's own Bundler setup
+  (`RUBYOPT=-rbundler/setup`, `BUNDLE_GEMFILE`) or the project's `RUBYOPT`/`RUBYLIB`/Bundler variables, so a
+  chi run from a checkout no longer hands them its Gemfile. Update with `chi update`.
 
 ## [0.139.0] - 2026-10-30
 

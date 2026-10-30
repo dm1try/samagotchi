@@ -109,8 +109,8 @@ module Samagotchi
 
     def env_for(location, name)
       previous = location.snapshot_path(name)
-      # The session's project env (ProjectEnv) under the source's own keys.
-      ProjectEnv.tools_env.merge("SAMAGOTCHI_CONTEXT_NAME" => name,
+      # The session's project env (ProjectEnv.spawn_env) under the source's own keys.
+      ProjectEnv.spawn_env.merge("SAMAGOTCHI_CONTEXT_NAME" => name,
                                  "SAMAGOTCHI_CONTEXT_PREVIOUS" => File.exist?(previous) ? previous : nil)
     end
 

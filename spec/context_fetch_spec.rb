@@ -52,6 +52,19 @@ RSpec.describe Samagotchi::ContextFetch do
     Samagotchi::ProjectEnv.reset!
   end
 
+  it "runs it as execute runs a command: without chi's own Bundler setup or the project's (ProjectEnv.spawn_env)" do
+    saved = ENV.to_h.slice("RUBYOPT", "BUNDLE_GEMFILE")
+    ENV["RUBYOPT"] = "-rbundler/setup -W0"
+    ENV["BUNDLE_GEMFILE"] = "/chi/checkout/Gemfile"
+    Samagotchi::ProjectEnv.install!(Samagotchi::ProjectEnv::NONE.with(env: { "RUBYOPT" => "-rproject",
+                                                                             "BUNDLE_GEMFILE" => "/project/Gemfile" }.freeze))
+    attached = source(%(echo "$RUBYOPT|${BUNDLE_GEMFILE:-none}"))
+    expect(fetch(attached).snapshot.text).to eq("-W0|none\n")
+  ensure
+    Samagotchi::ProjectEnv.reset!
+    %w[RUBYOPT BUNDLE_GEMFILE].each { |key| saved.key?(key) ? ENV[key] = saved[key] : ENV.delete(key) }
+  end
+
   it "records a failure with the exit status and stderr's last line, keeping the last good text" do
     marker = File.join(work, "fail")
     attached = source(%(if [ -e fail ]; then echo first >&2; echo "gh: not logged in" >&2; exit 4; fi; echo good))

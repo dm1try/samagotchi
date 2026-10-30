@@ -103,7 +103,9 @@ module Samagotchi
           "Samagotchi::TokenUsage::CHARS_PER_TOKEN" => "estimates a tool's tokens: could be a stable constant",
           'require "samagotchi/tool_declarations"' => "loaded for Api.tool_spec's schemas",
           "Samagotchi::ProjectEnv" => "checks the worker has a project env (an older chi doesn't)",
-          "Samagotchi::ProjectEnv.current" => "starts a server in the session's project env: needs a ctx tools-env API"
+          "Samagotchi::ProjectEnv.current" => "starts a server in the session's project env: needs a ctx tools-env API",
+          "Samagotchi::ProjectEnv.respond_to?" => "checks the worker has ProjectEnv.spawn_env (an older chi doesn't)",
+          "Samagotchi::ProjectEnv.spawn_env" => "starts a server in the session's project env: needs a ctx tools-env API"
         },
         "slow-commands" => {
           'require "samagotchi/guardrails/shell_lex"' => "for ShellLex",
