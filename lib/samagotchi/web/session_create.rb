@@ -69,7 +69,7 @@ module Samagotchi
         return error if error
 
         # llm_context: the session's own LLM context values before its first
-        # turn (the start page's llm ctx chip; chi --llm-context), read
+        # turn (the start page's ⚙ panel; chi --llm-context), read
         # before anything spawns so a bad one spawns nothing.
         llm_context, error = request_llm_context(body["llm_context"])
         return error if error

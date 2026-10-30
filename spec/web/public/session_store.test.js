@@ -18,7 +18,7 @@ function recording(store) {
 const FIELDS = {
   owner: { redraws: ["composer", "infoBar"] },
   ctxPct: { redraws: ["infoBar"] },
-  llmContext: { redraws: ["llmContextChip", "workingSetStrategy", "infoBar"] },
+  llmContext: { redraws: ["settingsPanel", "workingSetStrategy", "infoBar"] },
   streamSeq: { redraws: [] },
 };
 
@@ -68,7 +68,7 @@ test("a write redraws once, at once, in ORDER", () => {
   const store = createSessionStore({ initial: { owner: null, llmContext: null }, fields: FIELDS });
   const ran = recording(store);
   store.update({ current: { owner: "worker", llmContext: { strategy: "forget" } } });
-  assert.deepEqual(ran, ["llmContextChip", "workingSetStrategy", "composer", "infoBar"]);
+  assert.deepEqual(ran, ["settingsPanel", "workingSetStrategy", "composer", "infoBar"]);
 });
 
 test("an unchanged value, or a field that redraws nothing, runs no redraw", () => {

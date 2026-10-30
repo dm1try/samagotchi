@@ -1289,7 +1289,7 @@ module Samagotchi
         nil
       end
 
-      # The LLM context +model+ starts under (the start page's llm ctx chip);
+      # The LLM context +model+ starts under (the start page's ⚙ panel);
       # one that can't be read leaves this model without, not the others.
       def add_llm_context(model, target, names, settings)
         model[:llm_context] = LLMContextStrategy.explain(target, names: names, models: settings).summary(nil)
@@ -1298,7 +1298,7 @@ module Samagotchi
       end
 
       # The thinking level +model+ starts at, with where it came from (the
-      # start page's think chip; SettingExplained#summary, no session).
+      # start page's ⚙ panel; SettingExplained#summary, no session).
       def add_thinking(model, target, names, settings)
         model[:thinking] = Thinking.explain(target, names: names, models: settings).summary
       rescue StandardError
@@ -1473,7 +1473,7 @@ module Samagotchi
       # set when it seeds a session's and when the expanded view opens (a
       # file changed while the session sat idle). A live worker's snapshot
       # messages are the truth, as #handle_show's, else the file's; the
-      # strategy is the session's llm ctx chip's, the folder its working
+      # strategy is the session's llm_context summary's, the folder its working
       # directory. running: a turn runs. The snapshot's messages lag it, so
       # the answer is then the turn's last :working_set_updated (the
       # snapshot's working_set, TurnAccumulator#working_set); before the
@@ -1506,7 +1506,7 @@ module Samagotchi
         { items: set["items"], at: set["at"] }
       end
 
-      # The strategy an llm ctx chip names ("none", "stale,forget"), as
+      # The strategy an llm_context summary names ("none", "stale,forget"), as
       # LLMContextView takes it; none when there is no chip.
       def working_set_strategy(llm_context)
         named = llm_context.is_a?(Hash) ? (llm_context[:strategy] || llm_context["strategy"]).to_s : ""

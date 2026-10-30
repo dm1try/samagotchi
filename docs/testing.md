@@ -54,8 +54,8 @@ never shipped; lit reads `document` as it loads). The shim's `markupOf(template)
 `htmlOf(nodes)` and `canon(html)` compare markup without lit's marker comments; the DOM writes text with only `&`, `<`, `>`
 escaped (a `"` in text stays `"`) and an attribute with `&` and `"` escaped. happy-dom 20 picks the wrong option of a `<select>` whose options lit inserted with
 `?selected`: read the option marked `selected` (`option[selected]`), not `select.value`; the browser follows the mark.
-A select bound with `.value` instead reads right in both, but lit sets it before the options exist on a first render:
-`llm_context_chip.js`'s `renderForm` draws twice then. Assert a kept node with `assert.ok(a === b)`: a failing
+A select bound with `.value` instead reads right in both, but lit sets it before the options exist on a first render
+(draw the options alone first, then the value). Assert a kept node with `assert.ok(a === b)`: a failing
 `assert.equal` on two DOM nodes inspects the whole DOM (huge output, can stall the run).
 
 `npm test` runs every file in one process (`--test-isolation=none`; CI and local runs use Node 24): the files share

@@ -93,9 +93,7 @@ function fakePage({ selected = "s1", running = false, read = null } = {}) {
   // The page's redraws, registered as app.js registers them, recorded under
   // the names the page called them by.
   store.on("infoBar", rec("updateInfoBar"));
-  store.on("llmContextChip", rec("llmContextControl.refresh"));
-  store.on("thinkingChip", rec("thinkingControl.refresh"));
-  store.on("reasoningChip", rec("reasoningHistoryControl.refresh"));
+  store.on("settingsPanel", rec("settingsControl.refresh"));
   return { page, deps, handlers: createStreamHandlers(deps), liveTurn };
 }
 
@@ -372,16 +370,14 @@ test("command_ran: this tab's busy command comes back into an empty composer, no
   assert.equal(ran.page.composerText, "");
 });
 
-test("command_ran: /llm-context and /thinking refresh their chips", async () => {
+test("command_ran: /llm-context and /thinking refresh the ⚙ panel, once", async () => {
   const { page, handlers } = fakePage();
   await handlers.command_ran({ line: "/thinking low", llm_context: { strategy: "stale" }, thinking: { level: "low" } });
   assert.deepEqual(page.current.llmContext, { strategy: "stale" });
   assert.deepEqual(page.current.thinking, { level: "low" });
-  assert.ok(page.names().includes("llmContextControl.refresh"));
-  assert.ok(page.names().includes("thinkingControl.refresh"));
-  // One patch: the bar redraws once, after the chips' popovers (the store's ORDER).
+  // One patch: the panel and the bar redraw once each, the panel first (the store's ORDER).
   assert.deepEqual(page.names().filter((n) => n !== "addCommandBubble" && n !== "commandBubble"),
-                   ["llmContextControl.refresh", "thinkingControl.refresh", "updateInfoBar"]);
+                   ["settingsControl.refresh", "updateInfoBar"]);
 });
 
 test("an unchanged value redraws nothing: a chunk with the same %, a /toolkit already set", async () => {
@@ -395,11 +391,11 @@ test("an unchanged value redraws nothing: a chunk with the same %, a /toolkit al
   assert.equal(page.names().filter((n) => n === "updateInfoBar").length, 2);
 });
 
-test("command_ran: /reasoning-history refreshes its chip, and a null (a native host after /model) hides it", async () => {
+test("command_ran: /reasoning-history refreshes the ⚙ panel, and a null (a native host after /model) hides it", async () => {
   const { page, handlers } = fakePage();
   await handlers.command_ran({ line: "/reasoning-history all", reasoning_history: { level: "all", source: "session", own: "all" } });
   assert.deepEqual(page.current.reasoningHistory, { level: "all", source: "session", own: "all" });
-  assert.ok(page.names().includes("reasoningHistoryControl.refresh"));
+  assert.ok(page.names().includes("settingsControl.refresh"));
   await handlers.command_ran({ line: "/model box:gemma", model_name: "box:gemma", reasoning_history: null });
   assert.equal(page.current.reasoningHistory, null);
   const { page: other, handlers: plain } = fakePage();

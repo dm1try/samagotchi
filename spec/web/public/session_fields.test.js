@@ -31,6 +31,15 @@ test("every entry redraws only names the store runs, and says who writes it", ()
   }
 });
 
+// The ⚙ panel (settings_chip.js) redraws on each of its three summaries;
+// the working set's pin rule still reads the LLM context's.
+test("the session's settings redraw the ⚙ panel and the bar", () => {
+  assert.deepEqual(FIELDS.thinking.redraws, ["settingsPanel", "infoBar"]);
+  assert.deepEqual(FIELDS.reasoningHistory.redraws, ["settingsPanel", "infoBar"]);
+  assert.deepEqual(FIELDS.llmContext.redraws, ["settingsPanel", "workingSetStrategy", "infoBar"]);
+  assert.ok(ORDER.includes("settingsPanel"));
+});
+
 test("the payload sources agree with sessionStateFrom on a full payload", () => {
   const all = sessionStateFrom(FULL);
   for (const [key, entry] of Object.entries(FIELDS)) {

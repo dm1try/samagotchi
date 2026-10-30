@@ -656,7 +656,7 @@ models:
     came from);
   - `chi --thinking LEVEL` on a run that starts or resumes a session (the REPL, `-p`, `--resume`, an attached one);
   - `chi send --new --thinking LEVEL`;
-  - the web's `think` chip in the session bar, and the start page's ⚙ panel (`POST /api/sessions` takes `"thinking": "low"`;
+  - the web's ⚙ panel in the session bar (its Thinking row), and the start page's ⚙ panel (`POST /api/sessions` takes `"thinking": "low"`;
     anything that isn't a level answers `400 invalid_thinking`).
 - `chi web --thinking LEVEL` is the default for the sessions its workers run, below a session's own. A session started
   with only the env (`SAMAGOTCHI_THINKING_LEVEL=low chi send --new …`) loses the level when a worker without that env
@@ -809,7 +809,7 @@ models:
   (its file's `"reasoning_history"`), so a `--resume`, a respawned worker, a continue and `/model` keep it; a plugin's
   fork copies it, a delegate child starts without it. Set it with `/reasoning-history LEVEL` in the session
   (`/reasoning-history default` unsets it, `/reasoning-history` alone shows the level and where it came from) or the
-  web's `reasoning` chip in the session bar (shown on chat hosts only). There is no start flag: a fresh session runs
+  web's ⚙ panel in the session bar (its Reasoning row, shown on chat hosts only). There is no start flag: a fresh session runs
   the command before its first turn at no cost. A change takes effect at the next turn's start; sent while a turn runs
   it waits for its end.
 - What a change costs the prompt cache (`/reasoning-history` says so, and asks first when it costs: "Changes that
@@ -1708,7 +1708,7 @@ its own). The first target is a long session such as a day-long coordinator, whe
 
 - **Set it** at start with `chi --llm-context stale,forget --llm-context-apply turn_end --llm-context-budget 64k`
   (the same flags on `chi send --new`), in the session with `/llm-context strategy … apply … budget …`
-  (docs/cli.md, "Session commands"), or from the web's `llm ctx` chip in the info bar.
+  (docs/cli.md, "Session commands"), or from the Context row of the web's ⚙ panel in the session bar.
 - **A new web chat:** the start page's ⚙ panel (beside the model picker; a bottom sheet on a phone) holds the new
   session's rarely used settings, each a row of segments that applies at once: **Thinking** and **Context** (the
   strategy; **Apply and budget ▸** opens the other two fields, with their own Set), the first segment following the

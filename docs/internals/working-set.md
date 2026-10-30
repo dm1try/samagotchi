@@ -123,7 +123,7 @@ the Bridge (`ClientEvent.project`) passes it on unchanged, and the attached TUI 
 
 **The route.** `GET /api/sessions/:id/working_set` (`Web::App#handle_working_set`) answers the snapshot's `to_h`
 and `running`. With a live worker it builds from the worker's snapshot messages (as `handle_show` (`Web::SessionShow`) reads them, keys
-symbolized) and the worker's llm ctx chip. Without one it builds from the session file and its saved chip
+symbolized) and the worker's `llm_context` summary. Without one it builds from the session file and its saved chip
 (`SessionSetting::LLM_CONTEXT`). The folder is the session's `working_directory`. `running` is true when the
 snapshot has a turn in progress (`current_turn`).
 
@@ -260,7 +260,7 @@ with whitespace is quoted (`quoteWord`), and `steerWords` reads a line as the wo
 is in `STATES`: struck like forgotten, and a group is `dropped` when all its members are.
 `overlay` carries the server's `pinned` and `has_drop` (as `hasDrop`; `undroppable`): a forgotten item holding a
 drop offers only `undrop`, a live one `drop` and `undrop`, and neither offers `pin` (the worker asks for the undrop
-first). A row offers `pin` only when the strategy the session's `llm ctx` chip names
+first). A row offers `pin` only when the strategy the session's `llm_context` summary names (the ⚙ chip's context value)
 has forget (`working_set.js forgetOn`, `pinnable`: not a muted, dropped or preloaded-only item). A `command_ran` that carries
 `llm_context` redraws the open list (`strategyChanged`), so its pins come and go with the strategy at once. A pinned row shows
 `📌` and `unpin` under any strategy (its drop is greyed, `dropRefusal`: "pinned by the user: unpin it first", the

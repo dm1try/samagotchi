@@ -151,8 +151,8 @@ module Samagotchi
         else
           session_json = session_json.merge(saved_served_model(session, persisted))
         end
-        # The per-session settings' chips (the info bar's llm ctx, think,
-        # reasoning and tools): the worker's, else worked out here from the
+        # The per-session settings' chips (the info bar's ⚙ chip: llm ctx, think
+        # and reasoning; the tools chip): the worker's, else worked out here from the
         # session file (SessionSetting#snapshot_value, #saved_summary).
         SessionSetting::ALL.each do |setting|
           chip = setting.snapshot_value(snapshot) { setting.saved_summary(session, registry: host_registry) }

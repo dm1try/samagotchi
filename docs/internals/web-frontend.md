@@ -88,16 +88,16 @@ A changed value (`!==`) marks its field's redraws; `sessions` marks `lists` and 
 the chain's ← → links, the children chip, the archived button, the card's title, the fresh link's picker); `selected`
 marks `paintActive`, `composer` and `infoBar`; `touch(name)` marks one redraw for an input the store doesn't hold
 (the clock, versions, the stream, `liveTurn.running`). They run synchronously, once each, at the end of the outermost
-`batch()` (at once for a bare write), in one `ORDER`: `lists`, `paintActive`, the chip popovers (`llmContextChip`,
-`thinkingChip`, `reasoningChip`, `workingSetStrategy`), `featureGates`, `composer`, `infoBar`. `lists` comes before
+`batch()` (at once for a bare write), in one `ORDER`: `lists`, `paintActive`, the open panels (`settingsPanel`,
+`workingSetStrategy`), `featureGates`, `composer`, `infoBar`. `lists` comes before
 the bar because `updateSessionTitle` reads the strip's active card; `composer` before the bar as `setTurnRunning`
 runs them. Not a rAF (a background tab runs none, and the title badge tests run there; the e2e per-frame checks would
 see the composer move a frame late) and not a microtask (code that reads the page right after a write would see it
 stale).
 
 **The redraws are registered, not called.** app.js registers each name once (`store.on`, at the bottom, once every
-piece a redraw calls exists): `lists` → `lists.render()`, `paintActive` → `lists.paintActive()`, the chips →
-`xControl.refresh()`, `workingSetStrategy` → `workingSet.strategyChanged()`, `featureGates` (below), `composer` →
+piece a redraw calls exists): `lists` → `lists.render()`, `paintActive` → `lists.paintActive()`, `settingsPanel` →
+`settingsControl.refresh()`, `workingSetStrategy` → `workingSet.strategyChanged()`, `featureGates` (below), `composer` →
 `updateComposerMode()`, `infoBar` → `updateInfoBar()`. A writer writes and stops there: no `updateInfoBar()` after
 a store write. A value written unchanged redraws nothing (a chunk with the same ctx %).
 
@@ -171,8 +171,9 @@ The redraws, by their store names:
   runs on most writes and every clock tick.
 - `composer` (`updateComposerMode()`): the composer's placeholder, buttons and delivery line (selected, running,
   owner).
-- `llmContextChip`, `thinkingChip`, `reasoningChip` (`xControl.refresh()`): an info-bar chip's **open popover** (the
-  chip itself is drawn by the bar); `workingSetStrategy`: the working set's open list.
+- `settingsPanel` (`settingsControl.refresh()`): the ⚙ chip's **open panel** (`settings_chip.js`; the chip itself is
+  drawn by the bar), on `thinking`, `reasoningHistory` and `llmContext`; `workingSetStrategy`: the working set's open
+  list.
 - `lists` / `paintActive` (`lists.render()` / `lists.paintActive()`): the strip and the all view from
   `store.sessions`.
 - `featureGates`: the gates above.

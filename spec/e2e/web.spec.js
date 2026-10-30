@@ -1350,8 +1350,8 @@ test("the start page's ⚙ panel and 🧰 list start the new session under the t
   await expect(chip).toBeHidden();
   await expect(gear).toBeHidden();
   await expect(kits).toBeHidden();
-  await expect(page.locator("#infoBar .llmctx-chip")).toHaveText("llm ctx stale · session");
-  await expect(page.locator("#infoBar .think-chip")).toHaveText("think low · session");
+  await expect(page.locator("#infoBar .settings-chip")).toHaveText("⚙ think low · ctx stale");
+  await expect(page.locator("#infoBar .settings-chip")).toHaveClass(/\bown\b/);
 
   await page.locator("#newBtn").click();
   await expect(gear).toBeVisible();
@@ -1373,12 +1373,12 @@ test("the start page's ⚙ panel and 🧰 list start the new session under the t
 // The confirm step before a change that restarts the prompt cache (CacheConfirm), one mechanism for /thinking and
 // /reasoning-history: the reply asks, its Apply button sends the --yes line. The e2e host is a local chat host and
 // plain.json's reply has thinking, so a change to all rewrites the earlier reply (ReasoningHistory.cache_cost).
-test("a costly /reasoning-history asks first; the reply's Apply sends it, and the chip follows", async ({ page, script }) => {
+test("a costly /reasoning-history asks first; the reply's Apply sends it, and the ⚙ chip follows", async ({ page, script }) => {
   script("plain");
   await send(page, "Say pong");
   await turnEnded(page, 1);
-  const chip = page.locator("#infoBar [data-rh-chip]");
-  await expect(chip).toHaveText("reasoning turn");
+  const chip = page.locator("#infoBar .settings-chip");
+  await expect(chip).toHaveText("⚙");
 
   await page.locator("#prompt").fill("/reasoning-history all");
   await page.locator("#actionBtn").click();
@@ -1387,59 +1387,70 @@ test("a costly /reasoning-history asks first; the reply's Apply sends it, and th
   await expect(asked).toContainText("Nothing changed yet: send `/reasoning-history all --yes` to apply.");
   const apply = asked.locator("[data-confirm-line]");
   await expect(apply).toHaveText("Apply (restarts the cache)");
-  await expect(chip).toHaveText("reasoning turn");
+  await expect(chip).toHaveText("⚙");
 
   await apply.click();
   await expect(apply).toBeDisabled();
-  await expect(chip).toHaveText("reasoning all · session");
+  await expect(chip).toHaveText("⚙ reasoning all");
   await expect(page.locator("#history .bubble.command").last()).toContainText("reasoning history: all (session)");
   await page.reload();
-  await expect(page.locator("#infoBar [data-rh-chip]")).toHaveText("reasoning all · session");
+  await expect(page.locator("#infoBar .settings-chip")).toHaveText("⚙ reasoning all");
+  // The ⚙ panel's Reasoning history row (a chat host's): the own level pressed, default plain.
+  await page.locator("#infoBar .settings-chip").click();
+  const rh = page.locator("#settingsPopover").getByRole("group", { name: "Reasoning" });
+  await expect(rh.locator("[aria-pressed=true]")).toHaveText("all");
+  await rh.getByRole("button", { name: "default", exact: true }).click();
+  await expect(page.locator("#infoBar .settings-chip")).toHaveText("⚙");
+  await expect(rh.locator("[aria-pressed=true]")).toHaveText(/^default \(/);
 });
 
-test("the info bar's llm ctx chip sets the session's own strategy through its worker, and a reload keeps it", async ({ page, script }) => {
+test("the info bar's ⚙ panel sets the session's own settings through its worker, a tap its field alone, and a reload keeps them", async ({ page, script }) => {
   script("plain");
   await send(page, "Say pong");
   await turnEnded(page, 1);
-  const chip = page.locator("#infoBar .llmctx-chip");
-  await expect(chip).toHaveText("llm ctx none");
+  const chip = page.locator("#infoBar .settings-chip");
+  await expect(chip).toHaveText("⚙");
   await expect(chip).not.toHaveClass(/\bown\b/);
 
   await chip.click();
-  const pop = page.locator("#llmContextPopover");
+  const pop = page.locator("#settingsPopover");
   await expect(pop).toBeVisible();
-  await expect(pop.locator(".llmctx-now")).toContainText("Now: none (llm_context.strategy)");
-  await pop.locator('select[name="strategy"]').selectOption("stale,forget");
-  await pop.locator('select[name="apply"]').selectOption("turn_end");
-  await pop.locator('input[name="budget"]').fill("64k");
-  await pop.locator(".llmctx-set").click();
-  await expect(pop).toBeHidden();
-
-  // The reply shows as a command bubble, and the chip follows the command_ran.
-  await expect(page.locator("#history .bubble.command").last()).toContainText("forget_outputs joins the tool list");
-  await expect(chip).toHaveText("llm ctx stale,forget · session");
+  const ctx = pop.getByRole("group", { name: "Context" });
+  await expect(ctx.locator("[aria-pressed=true]")).toHaveText("default (none)");
+  // A tap runs its command at once (its reply in the conversation); the panel stays open, and the
+  // pressed segment and the chip follow the reply.
+  await pop.getByRole("group", { name: "Thinking" }).getByRole("button", { name: "low", exact: true }).click();
+  await expect(page.locator("#history .bubble.command").last()).toContainText("thinking: low (session)");
+  await expect(chip).toHaveText("⚙ think low");
   await expect(chip).toHaveClass(/\bown\b/);
-  await page.reload();
-  await expect(page.locator("#infoBar .llmctx-chip")).toHaveText("llm ctx stale,forget · session");
+  await expect(pop).toBeVisible();
+  await expect(pop.getByRole("group", { name: "Thinking" }).locator("[aria-pressed=true]")).toHaveText("low");
+  await ctx.getByRole("button", { name: "stale + forget", exact: true }).click();
+  await expect(page.locator("#history .bubble.command").last()).toContainText("forget_outputs joins the tool list");
+  await expect(chip).toHaveText("⚙ think low · ctx stale,forget");
+  await expect(ctx.locator("[aria-pressed=true]")).toHaveText("stale + forget");
+  await expect(ctx.getByRole("button", { name: "default", exact: true })).toBeVisible();
 
-  await page.locator("#infoBar .llmctx-chip").click();
-  await expect(pop.locator('select[name="strategy"]')).toHaveValue("stale,forget");
-  await expect(pop.locator('input[name="budget"]')).toHaveValue("64000");
-  await pop.locator('[data-act="reset"]').click();
-  await expect(page.locator("#infoBar .llmctx-chip")).toHaveText("llm ctx none");
-
-  // A strategy the list has no option for (forget alone, typed): the form shows it, and a Set that changes
-  // only the apply rule leaves it. Typed with --yes: turning forget on restarts the cache, so it asks otherwise.
-  await page.locator("#prompt").fill("/llm-context strategy forget --yes");
-  await page.locator("#actionBtn").click();
-  await expect(page.locator("#infoBar .llmctx-chip")).toHaveText("llm ctx forget · session");
-  await page.locator("#infoBar .llmctx-chip").click();
-  await expect(pop.locator('select[name="strategy"]')).toHaveValue("forget");
+  // The disclosure's Set sends the apply rule alone: the session's own strategy stays (D2).
+  await pop.getByRole("button", { name: /Apply and budget/ }).click();
   await pop.locator('select[name="apply"]').selectOption("turn_end");
   await pop.locator(".llmctx-set").click();
   await expect(page.locator("#history .bubble.command").last()).toContainText("/llm-context apply turn_end");
-  await expect(page.locator("#history .bubble.command").last()).toContainText("this session's own: strategy forget; apply turn_end");
-  await expect(page.locator("#infoBar .llmctx-chip")).toHaveText("llm ctx forget · session");
+  await expect(page.locator("#history .bubble.command").last()).toContainText("this session's own: strategy stale, forget; apply turn_end");
+  await expect(chip).toHaveText("⚙ think low · ctx stale,forget · apply turn_end");
+  await page.keyboard.press("Escape");
+  await expect(pop).toBeHidden();
+  await page.reload();
+  await expect(page.locator("#infoBar .settings-chip")).toHaveText("⚙ think low · ctx stale,forget · apply turn_end");
+
+  // A strategy tap keeps the own apply rule; the Context row's default resets all three.
+  await page.locator("#infoBar .settings-chip").click();
+  await ctx.getByRole("button", { name: "stale", exact: true }).click();
+  await expect(page.locator("#history .bubble.command").last()).toContainText("this session's own: strategy stale; apply turn_end");
+  await expect(page.locator("#infoBar .settings-chip")).toHaveText("⚙ think low · ctx stale · apply turn_end");
+  await ctx.getByRole("button", { name: "default", exact: true }).click();
+  await expect(page.locator("#infoBar .settings-chip")).toHaveText("⚙ think low");
+  await expect(ctx.locator("[aria-pressed=true]")).toHaveText("default (none)");
 });
 
 // Notifications: the tab says whether it is in front through a stubbed

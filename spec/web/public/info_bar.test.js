@@ -10,7 +10,7 @@ const ID = "0123456789abcdef";
 // A bar with only what every open session has.
 const bare = {
   id: ID, status: "idle", model: { text: "qwen", title: "qwen", mismatch: false },
-  chain: { prev: null, next: null }, parent: null, kids: null, llmContext: null, thinking: null, reasoningHistory: null, toolkit: null, notes: null,
+  chain: { prev: null, next: null }, parent: null, kids: null, settings: null, toolkit: null, notes: null,
   memories: [], dir: "/p", ctx: { text: "ctx ?", tip: "no request yet" }, speed: null, clock: "", worker: null,
 };
 
@@ -54,10 +54,12 @@ test("infoBarHtml: every part, in the bar's order", () => {
     chain: { prev: { id: "aaaaaaaa1", date: "10-09", stamp: "2026-10-09 14:32", preview: "first", archived: true }, next: { id: "bbbbbbbb2", date: "", preview: "" } },
     parent: { id: "pppppppp9", title: "Delegated by pppppppp" },
     kids: { text: "2 delegates", title: "2 delegates", waitingText: "1 waiting" },
-    llmContext: { strategy: "stale", strategy_source: "session", strategy_where: "the session", apply: "payoff",
-                  apply_where: "llm_context.apply", budget_where: "llm_context.budget_tokens" },
-    thinking: { level: "low", source: "session", own: "low" },
-    reasoningHistory: { level: "all", source: "session", own: "all" },
+    settings: {
+      llmContext: { strategy: "stale", strategy_source: "session", strategy_where: "the session", apply: "payoff",
+                    apply_where: "llm_context.apply", budget_where: "llm_context.budget_tokens", own: { strategy: ["stale"] } },
+      thinking: { level: "low", source: "session", own: "low" },
+      reasoningHistory: { level: "all", source: "session", own: "all" },
+    },
     toolkit: { name: "lean", label: "lean", left_out: ["delegate"] },
     notes: { text: "notes 1", title: "deepseek" },
     memories: ["a", "b"],
@@ -69,8 +71,8 @@ test("infoBarHtml: every part, in the bar's order", () => {
   render(infoBarHtml(full), div);
   const classes = [...div.querySelector(".meta").children].map((el) => el.className);
   assert.deepEqual(classes, [
-    "id", "status running", "model served-mismatch", "model chain-link", "model chain-link", "model parent",
-    "model children-chip waiting", "model think-chip own", "model rh-chip own", "model llmctx-chip own", "model tools-chip", "model notes-chip", "model mem-chip",
+    "id", "status running", "model served-mismatch", "model settings-chip own", "model chain-link", "model chain-link", "model parent",
+    "model children-chip waiting", "model tools-chip", "model notes-chip", "model mem-chip",
     "dir", "model ctx", "model speed", "model session-time", "worker-badge",
   ]);
   assert.equal(div.querySelector(".id").textContent, "01234567");
@@ -82,7 +84,10 @@ test("infoBarHtml: every part, in the bar's order", () => {
   assert.equal(div.querySelector(".parent").textContent, "delegated by pppppppp");
   assert.equal(div.querySelector(".children-chip").textContent, "2 delegates · 1 waiting");
   assert.equal(div.querySelector(".children-chip").title, "2 delegates (all sessions)");
-  assert.ok(div.querySelector(".think-chip").hasAttribute("data-think-chip"));
+  const gear = div.querySelector(".settings-chip");
+  assert.ok(gear.hasAttribute("data-settings-chip"));
+  assert.equal(gear.textContent, "⚙ think low · reasoning all · ctx stale");
+  assert.match(gear.title, /^Thinking: low \(this session\)\. Reasoning history: all \(this session\)\. LLM context: stale \(the session\)/);
   assert.equal(div.querySelector(".mem-chip").textContent, "mem 2");
   assert.equal(div.querySelector(".session-time").textContent, "session 5s");
   const restart = div.querySelector(".worker-restart");
@@ -128,4 +133,17 @@ test("infoBarHtml: the tools chip follows the bar's own toolkit, so a switch to 
   // Another session opened (app.js resets its state to emptySessionState: toolkit null).
   render(infoBarHtml({ ...bare, id: "fedcba9876543210", toolkit: emptySessionState().toolkit }), div);
   assert.equal(div.querySelector(".tools-chip"), null);
+});
+
+test("infoBarHtml: the ⚙ chip reads ⚙ alone while the session follows the model; no summaries, no chip", () => {
+  const div = document.createElement("div");
+  const follows = { thinking: { level: "high", source: "models: qwen", own: null }, reasoningHistory: null, llmContext: null };
+  render(infoBarHtml({ ...bare, settings: follows }), div);
+  const gear = div.querySelector(".settings-chip");
+  assert.equal(gear.className, "model settings-chip");
+  assert.equal(gear.textContent, "⚙");
+  assert.equal(gear.getAttribute("aria-label"), "Session settings");
+  assert.equal(gear.previousElementSibling.className, "model");
+  render(infoBarHtml({ ...bare, settings: { thinking: null, reasoningHistory: null, llmContext: null } }), div);
+  assert.equal(div.querySelector(".settings-chip"), null);
 });

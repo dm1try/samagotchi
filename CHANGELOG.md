@@ -17,6 +17,8 @@ and commands may change between minor versions. How releases are made:
 - Web: a delegate report in a reloaded history renders as markdown (headings, lists, code), as answers do; Copy
   still copies its text. A report that arrives live shows as plain text until the next reload.
 - Web: the session bar's id copies itself on click; the copy chi --attach button is gone.
+- Web: the session bar's think, reasoning and llm ctx chips are one ⚙ chip whose panel is the start page's:
+  segments, a pick applies at once; the chip names only what the session set.
 
 ### Fixed
 

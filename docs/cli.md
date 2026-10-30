@@ -707,9 +707,9 @@ back). Once the session has a model reply, the two that break the cache now
 the `--yes` line that applies them; `/llm-context reset --yes` works too.
 `/llm-context` alone answers mid-turn too; a change sent while a turn runs
 waits for the turn's end (see *Typing during a turn*). `/stats` shows
-the same values on its `llm context:` line. The web's info bar shows them as the
-`llm ctx` chip (`llm ctx stale,forget · session`), whose popover sets them
-through `/llm-context … --yes` (its form says what a change costs). See "LLM context: a session's own strategy" in
+the same values on its `llm context:` line. The web's session bar names the
+session's own in its ⚙ chip (`⚙ ctx stale,forget`), whose panel sets them
+through `/llm-context … --yes`, one field a tap (its note says what a change costs). See "LLM context: a session's own strategy" in
 [configuration.md](configuration.md).
 
 `/working-set` lists the session's working set as the model has it (see [The
@@ -777,7 +777,7 @@ comes first; `/reasoning-history default` unsets it. It is saved and carried as
 or from `all` once an earlier reply has thinking rewrites the earlier replies;
 `drop` ↔ `turn` costs nothing. Under `turn` a step-limit Continue keeps the
 reasoning of the turn it continues. `/stats` shows it on its `reasoning history:`
-line, the web as the `reasoning` chip. See "Reasoning history" in
+line, the web in the session bar's ⚙ panel (`⚙ reasoning all` once the session set its own). See "Reasoning history" in
 [configuration.md](configuration.md).
 
 `/toolkit` lists the tools the next turn declares (each with its estimated

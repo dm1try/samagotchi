@@ -1107,12 +1107,15 @@ body.has-session.composer-folded #initRow{display:none}
 body.has-session.composer-folded #infoBar{border-top-color:transparent}
 #infoBar #infoCancelBtn{background:var(--bg-raised);color:var(--danger-text);border:1px solid color-mix(in srgb,var(--danger) 55%,transparent)}
 #infoBar #infoCancelBtn:hover:not(:disabled){color:var(--on-solid);background:var(--danger-bg);border-color:var(--danger-bg)}
-/* The LLM context and thinking chips (llm_context_chip.js, thinking_chip.js): model-like chips that open their popovers; accent when the session set its own. */
-#infoBar .meta .llmctx-chip,#infoBar .meta .think-chip,#infoBar .meta .rh-chip{padding:2px 6px;border-radius:6px;font-size:11px;font-weight:400;border:1px solid transparent;cursor:pointer;font-family:inherit;white-space:nowrap}
-#infoBar .meta .llmctx-chip:hover,#infoBar .meta .think-chip:hover,#infoBar .meta .rh-chip:hover{color:var(--text);border-color:var(--accent-border);background:var(--accent-bg)}
-#infoBar .meta .llmctx-chip.own,#infoBar .meta .think-chip.own,#infoBar .meta .rh-chip.own{color:var(--accent);border-color:var(--accent-border)}
-.llmctx-form{display:flex;flex-direction:column;gap:8px;margin:0}
-.llmctx-form .ctx-pop-head strong{font-family:inherit}
+/* The ⚙ chip (settings_chip.js): a model-like chip that opens the session's settings panel; accent when the session set its own (capped like the model chip in the min-width:601px rule above, the full text in its tooltip; a phone shows ⚙ with a dot). */
+#infoBar .meta .settings-chip{position:relative;padding:2px 6px;border-radius:6px;font-size:11px;font-weight:400;border:1px solid transparent;cursor:pointer;font-family:inherit;white-space:nowrap}
+#infoBar .meta .settings-chip:hover{color:var(--text);border-color:var(--accent-border);background:var(--accent-bg)}
+#infoBar .meta .settings-chip.own{color:var(--accent);border-color:var(--accent-border)}
+/* A chip's icon (⚙ here, the start page's own SVG from composer.css): the glyph stays the text, the mask draws it. */
+#infoBar .meta .settings-chip{display:inline-flex;align-items:center;gap:4px}
+#infoBar .meta .settings-chip .sc-own{min-width:0;overflow:hidden;text-overflow:ellipsis}
+#infoBar .meta .chip-icon{flex:none;width:12px;height:12px;font-size:0;background:currentColor;-webkit-mask:var(--icon) center/contain no-repeat;mask:var(--icon) center/contain no-repeat}
+#infoBar .meta .sc-gear{--icon:var(--icon-settings)}
 .llmctx-field{display:flex;align-items:center;gap:8px}
 .llmctx-field>span{flex:0 0 58px;font-size:12px;color:var(--text-muted)}
 .llmctx-field select,.llmctx-field input{flex:1;min-width:0;box-sizing:border-box;padding:5px 8px;border-radius:7px;border:1px solid var(--border-strong);background:var(--bg-inset);color:var(--text);font:inherit;font-size:13px;line-height:1.4}
@@ -1120,8 +1123,6 @@ body.has-session.composer-folded #infoBar{border-top-color:transparent}
 /* A select's closed box and caret: forms.css (.select-wrap); here the wrapper takes the field's width. */
 .llmctx-field>.select-wrap{flex:1}
 .llmctx-field input::placeholder{color:var(--text-faint);opacity:1}
-.llmctx-form .llmctx-set{background:var(--accent-bg);color:var(--accent);border-color:var(--accent-border)}
-.llmctx-form .llmctx-set:disabled{opacity:.6;cursor:default}
 /* Attached context (context_chips.js): a row of its own under the meta; not the composer's #chips/.chip. */
 #contextChips{order:5;flex-basis:100%;display:flex;flex-wrap:wrap;gap:6px;align-items:center;min-width:0}
 #contextChips[hidden]{display:none}
@@ -1321,6 +1322,10 @@ body.has-session.composer-folded #infoBar{border-top-color:transparent}
   #infoBar .meta>*{flex-shrink:0}
   #infoBar .meta .id{order:-2}
   #infoBar .meta .status{order:-1}
+  /* ⚙ alone, the start page's dot when the session set its own (its values in the tooltip and accessible name). */
+  #infoBar .meta .settings-chip .sc-own{display:none}
+  #infoBar .meta .settings-chip.own{padding-right:10px}
+  #infoBar .meta .settings-chip.own::after{content:"";position:absolute;top:3px;right:3px;width:5px;height:5px;border-radius:50%;background:var(--accent)}
   /* The memory chip right after the status (same order, later in the DOM): the meta scrolls, and only its start is in sight. */
   #infoBar .meta .mem-chip,#infoBar .meta .ws-chip{order:-1}
   /* A parent's children chip too: its waiting part is what to see. */

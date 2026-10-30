@@ -1,30 +1,9 @@
-import { htmlOf } from "./dom_shim.js";
+import "./dom_shim.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  chipModel, chipTemplate, choiceWords, commandLine, createLlmContextControl, mergeChoice, ownValues, parseBudget,
-  renderForm, strategyValue,
+  BUDGET_ERROR, choiceWords, commandLine, mergeChoice, ownValues, parseBudget, strategyValue,
 } from "../../../lib/samagotchi/web/public/llm_context_chip.js";
-import { render } from "../../../lib/samagotchi/web/public/vendor/lit-html.js";
-
-// A template's markup (lit's marker comments dropped).
-const markupOf = (template) => {
-  const frag = document.createDocumentFragment();
-  render(template, frag);
-  return htmlOf(frag);
-};
-
-// The form as the popover draws it: its fields' values, the options'
-// values and labels, and the lines' text.
-const formOf = (summary, opts) => {
-  const div = document.createElement("div");
-  renderForm(div, summary, opts);
-  const form = div.querySelector("form");
-  const field = (name) => form.elements[name];
-  const options = (name) => [...field(name).options].map((o) => [o.value, o.textContent]);
-  const text = (sel) => form.querySelector(sel).textContent;
-  return { form, field, options, text, all: form.textContent };
-};
 
 const fromModel = {
   strategy: "stale", strategy_source: "model_setting", strategy_where: "models: qwen",
@@ -37,45 +16,16 @@ const own = {
   own: { strategy: ["stale", "forget"], budget_tokens: 64000 },
 };
 
-test("the chip names the strategy, and the session when it set its own", () => {
-  assert.equal(chipModel(fromModel).text, "llm ctx stale");
-  assert.equal(chipModel(fromModel).own, false);
-  assert.match(chipModel(fromModel).title, /stale \(models: qwen\); apply payoff \(llm_context.apply\); budget off/);
-  assert.equal(chipModel(own).text, "llm ctx stale,forget · session");
-  assert.equal(chipModel(null), null);
-  assert.equal(markupOf(chipTemplate(null)), "");
-  assert.match(markupOf(chipTemplate(own)), /class="model llmctx-chip own"/);
-});
-
-test("the form starts from the session's own values, default for the unset ones", () => {
+test("the session's own values as the panel reads them, default for the unset ones", () => {
   assert.deepEqual(ownValues(fromModel), { strategy: "default", apply: "default", budget: "" });
   assert.deepEqual(ownValues(own), { strategy: "stale,forget", apply: "default", budget: "64000" });
   assert.deepEqual(ownValues({ own: { strategy: [], budget_tokens: 0 } }), { strategy: "none", apply: "default", budget: "off" });
-
-  const f = formOf(own);
-  assert.equal(f.field("strategy").value, "stale,forget");
-  assert.equal(f.field("apply").value, "default");
-  assert.deepEqual(f.options("apply")[0], ["default", "follow the model (payoff)"]);
-  assert.equal(f.field("budget").value, "64000");
-  assert.match(f.text(".llmctx-now"), /^Now: stale,forget \(the session\)/);
-  assert.equal(f.form.querySelector("[disabled]"), null);
-  assert.doesNotMatch(f.all, /A turn is running/);
-  // Mid-turn a Set is queued for after the turn (it applies at the next turn's start anyway).
-  const mid = formOf(own, { running: true });
-  assert.equal(mid.form.querySelector("[disabled]"), null);
-  assert.match(mid.all, /A turn is running: it applies after this turn\./);
 });
 
-test("a strategy the list has no option for (forget alone, forget,stale) is shown as the session's own, in chi's order", () => {
+test("a strategy is one value in chi's order (stale before forget); none for no layers", () => {
   assert.equal(strategyValue(["forget", "stale"]), "stale,forget");
   assert.equal(strategyValue([]), "none");
-  const forgetOnly = { ...own, strategy: "forget", own: { strategy: ["forget"] } };
-  assert.deepEqual(ownValues(forgetOnly), { strategy: "forget", apply: "default", budget: "" });
-  const f = formOf(forgetOnly);
-  assert.equal(f.field("strategy").value, "forget");
-  assert.deepEqual(f.options("strategy").map(([value]) => value), ["default", "none", "stale", "stale,forget", "forget"]);
-  assert.deepEqual(f.options("strategy")[0], ["default", "follow the model"]);
-  assert.equal(formOf({ ...own, own: { strategy: ["forget", "stale"] } }).field("strategy").value, "stale,forget");
+  assert.deepEqual(ownValues({ own: { strategy: ["forget"] } }), { strategy: "forget", apply: "default", budget: "" });
 });
 
 test("Set sends only the fields the user changed, so a value it left alone is never unset, with --yes (the form states the cost)", () => {
@@ -104,7 +54,7 @@ test("a Set merges the changed fields into the choice; default drops one; nothin
   assert.equal(mergeChoice(first, { strategy: "default", apply: "default", budget: "" }, opened), null);
   assert.deepEqual(mergeChoice(null, { strategy: "none", apply: "default", budget: "off" }, blank), { strategy: [], budget_tokens: 0 });
   assert.equal(mergeChoice(null, blank, blank), null);
-  assert.throws(() => mergeChoice(null, { ...blank, budget: "12" }, blank), /A budget is a number of tokens/);
+  assert.throws(() => mergeChoice(null, { ...blank, budget: "12" }, blank), { message: BUDGET_ERROR });
 });
 
 test("the choice goes to POST /api/sessions as /llm-context words; none goes as nothing", () => {
@@ -125,64 +75,3 @@ test("a budget reads as chi reads one: tokens, k, off; out of range is none", ()
   assert.equal(parseBudget("3999"), null);
   assert.equal(parseBudget("lots"), null);
 });
-
-// A control on the shim's document: the chip inside +el+, a stub window
-// for the popover's place.
-function control(opts) {
-  const el = document.createElement("div");
-  el.innerHTML = '<button class="llmctx-chip">llm ctx</button>';
-  document.body.append(el);
-  const ran = [];
-  const win = { innerWidth: 1000, innerHeight: 800 };
-  const ctl = createLlmContextControl({ el, run: (line) => ran.push(line), win, ...opts });
-  const pop = document.getElementById(opts.id || "llmContextPopover");
-  const chip = el.querySelector(".llmctx-chip");
-  const submit = () => pop.querySelector("form").dispatchEvent(new window.Event("submit", { bubbles: true, cancelable: true }));
-  const field = (name) => pop.querySelector("form").elements[name];
-  const type = (name, value) => {
-    field(name).value = value;
-    field(name).dispatchEvent(new window.Event("input", { bubbles: true }));
-  };
-  return { ctl, pop, chip, ran, submit, field, type, done: () => { el.remove(); pop.remove(); } };
-}
-
-test("a click on the chip opens the form at the session's values; a Set runs only the changed fields", () => {
-  const c = control({ summary: () => own, session: () => "s1" });
-  c.chip.click();
-  assert.equal(c.ctl.open, true);
-  assert.equal(c.field("strategy").value, "stale,forget");
-  assert.equal(c.field("budget").value, "64000");
-  c.type("apply", "turn_end");
-  c.submit();
-  assert.deepEqual(c.ran, ["/llm-context apply turn_end --yes"]);
-  assert.equal(c.ctl.open, false);
-  assert.equal(c.pop.querySelector("form"), null);
-  c.chip.click();
-  c.pop.querySelector("[data-act=reset]").click();
-  assert.deepEqual(c.ran, ["/llm-context apply turn_end --yes", "/llm-context reset --yes"]);
-  c.done();
-});
-
-test("a refresh keeps what the user typed and picked; the Now: line follows; another session closes it", () => {
-  let data = fromModel;
-  let id = "s1";
-  const c = control({ summary: () => data, session: () => id });
-  c.chip.click();
-  const now = c.pop.querySelector(".llmctx-now");
-  c.type("budget", "32k");
-  c.type("strategy", "stale,forget");
-  data = own;
-  c.ctl.refresh();
-  assert.ok(c.pop.querySelector(".llmctx-now") === now, "the Now: line is the same node");
-  assert.match(now.textContent, /^Now: stale,forget \(the session\)/);
-  assert.equal(c.field("budget").value, "32k");
-  assert.equal(c.field("strategy").value, "stale,forget");
-  c.submit();
-  assert.deepEqual(c.ran, ["/llm-context strategy stale,forget budget 32k --yes"]);
-  c.chip.click();
-  id = "s2";
-  c.ctl.refresh();
-  assert.equal(c.ctl.open, false);
-  c.done();
-});
-
