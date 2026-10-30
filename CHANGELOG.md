@@ -7,6 +7,11 @@ and commands may change between minor versions. How releases are made:
 [docs/releasing.md](docs/releasing.md).
 ## [Unreleased]
 
+### Changed
+
+- Guardrails: a file or string check (`test -f x`, `[ -d dir ]`, `[ "$a" = b ]`) counts as read-only, so
+  `test -f x && cat x` no longer asks where `cat x` alone wouldn't.
+
 ## [0.134.0] - 2026-10-30
 
 ### Added
