@@ -7,6 +7,8 @@ and commands may change between minor versions. How releases are made:
 [docs/releasing.md](docs/releasing.md).
 ## [Unreleased]
 
+## [0.133.0] - 2026-10-30
+
 ### Added
 
 - Sessions follow their project: a session's worker reads its folder's `mise env` once at start, and `execute`,
@@ -41,6 +43,9 @@ and commands may change between minor versions. How releases are made:
   view of its own. Only what is set shows on the row, as accent chips (`think high`, `ctx stale`,
   `review: README.md`) that open the panel; on a phone ⚙ carries a dot instead. Still for the next new session
   only. See docs/configuration.md (A new web chat).
+
+Update with `chi update` (mcp 0.7.3), then restart `chi web` and the session workers (`chi sessions restart`). If
+you use the desktop helper, run `chi desktop upgrade` once; `chi home doctor` says what else to do.
 
 ## [0.132.0] - 2026-10-29
 
@@ -5072,7 +5077,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.132.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.133.0...HEAD
+[0.133.0]: https://github.com/dm1try/samagotchi/compare/v0.132.0...v0.133.0
 [0.132.0]: https://github.com/dm1try/samagotchi/compare/v0.131.0...v0.132.0
 [0.131.0]: https://github.com/dm1try/samagotchi/compare/v0.130.1...v0.131.0
 [0.130.1]: https://github.com/dm1try/samagotchi/compare/v0.130.0...v0.130.1
