@@ -1132,7 +1132,8 @@ test("all sessions: select mode archives a Shift-click range and one more pick i
   await page.locator("#filter").fill("Bulk archive pong");
   const cards = page.locator("#allList .card[data-id]");
   // Idle first: a running turn is refused (busy).
-  for (const id of ids) await expect(page.locator(`#allList .card[data-id="${id}"] .status.idle`)).toBeVisible({ timeout: 15_000 });
+  // (A card's status is the last word of its tooltip: cards have no status dot.)
+  for (const id of ids) await expect(page.locator(`#allList .card[data-id="${id}"]`)).toHaveAttribute("title", / · idle( · mem: .*)?$/, { timeout: 15_000 });
   await expect(cards).toHaveCount(3);
 
   await page.locator("#selectBtn").click();
@@ -1277,16 +1278,25 @@ test("a parent's delegates fold into its card: one strip card with a popover, in
     // A delegate that waits on the user opens its family and marks the parent.
     waitingFam = await seedFamily(chi, { tag: "Waits", waiting: true });
     await page.locator("#allTile").click();
-    const waitingCard = page.locator(`#allList .card[data-id="${waitingFam.parent}"]`);
     // The list now starts under the top bar, where the tile was: move the pointer off it, or the order
     // drawn under it holds (lists_view.js listOrder) and the waiting family seeded just now lands last.
     await page.mouse.move(2, 700);
+    const waitingCard = page.locator(`#allList .card[data-id="${waitingFam.parent}"]`);
     await expect(waitingCard).toHaveClass(/\bwaiting\b/);
-    await expect(waitingCard.locator(".family-chip.waiting")).toContainText("2 delegates · 1 live · 1 waiting");
-    await expect(waitingCard.locator(".family-chip")).toHaveAttribute("aria-expanded", "true");
+    // Open (a member waits), the chip is just the count: the rows carry the marks, no status dots.
+    const waitingChip = waitingCard.locator(".family-chip");
+    await expect(waitingChip).toHaveAttribute("aria-expanded", "true");
+    await expect(waitingChip).toHaveText("▸2 delegates");
     await expect(waitingCard.locator(`.family-row[data-id="${waitingFam.children[1]}"] .attn`)).toHaveText("question");
+    await expect(waitingCard.locator(".dot")).toHaveCount(0);
     // Waiting families sort first.
     await expect(page.locator("#allList .card[data-id]").first()).toHaveAttribute("data-id", waitingFam.parent);
+    // Folded, it carries the counts.
+    await waitingChip.click();
+    await expect(waitingChip).toHaveAttribute("aria-expanded", "false");
+    await expect(waitingCard.locator(".family-chip.waiting")).toContainText("2 delegates · 1 live · 1 waiting");
+    await waitingChip.click();
+    await expect(waitingChip).toHaveAttribute("aria-expanded", "true");
     // In the strip too: the waiting family's card first, warn chip, its popover row says what for.
     // The pressed sessions pill (the strip shown) goes back to the chat.
     await expect(page.locator("#stripStatus")).toHaveAttribute("aria-pressed", "true");

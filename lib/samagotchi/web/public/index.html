@@ -1642,7 +1642,7 @@ body.all-view #allHead{display:flex}
 @keyframes skeleton-pulse{0%,100%{opacity:1}50%{opacity:.55}}
 @keyframes fadeIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:translateY(0)}}
 /* Only a card new to its list fades in (lists_view.js enteringCards: every draw makes new nodes);
-   --enter-delay carries a fade on across a redraw, --pulse-delay keeps a dot's pulse in phase. */
+   --enter-delay carries a fade on across a redraw. */
 #topStrip:not(.loading) .card.entering, #allList .card.entering{animation:fadeIn .28s ease var(--enter-delay,0s)}
 @media (prefers-reduced-motion:reduce){.card.entering{animation:none}}
 .card{padding:12px;border-radius:10px;background:var(--bg-panel);border:1px solid var(--border);cursor:pointer;display:flex;flex-direction:column;gap:6px;min-height:72px}
@@ -1671,21 +1671,14 @@ body.all-view #allHead{display:flex}
 #topStrip .card.active .card-rename{display:block}
 .card .time{font-variant-numeric:tabular-nums;white-space:nowrap}
 .card .ctx{font-variant-numeric:tabular-nums;white-space:nowrap;color:var(--text-3)}
-#topStrip .card .preview{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-#allList .card .preview{white-space:normal;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;line-clamp:2;overflow:hidden;word-break:break-word;line-height:1.4}
+/* An untitled session's title line: "Untitled", muted (its first message is the preview line under it). */
+.card .preview.untitled{color:var(--text-muted)}
 .card .recap{font-size:12px;line-height:1.4;color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin:-2px 0 2px}
 .card .meta{font-size:11px;color:var(--text-muted);display:flex;gap:6px;align-items:center}
-/* A card's status is a dot (its word is the tooltip); the .status.* pills below are the info bar's. */
-.card .dot,.family-row .dot{display:inline-block;width:8px;height:8px;border-radius:50%;flex-shrink:0;background:var(--text-muted)}
-.card .dot.running,.family-row .dot.running{background:var(--ok);animation:dot-pulse 1.6s ease-in-out var(--pulse-delay,0s) infinite}
-.card .dot.idle,.family-row .dot.idle{background:var(--text-muted)}
-.card .dot.stopped,.family-row .dot.stopped{background:transparent;border:1px solid var(--text-faint)}
-.card .dot.completed,.family-row .dot.completed{background:var(--accent)}
-.card .dot.error,.family-row .dot.error{background:var(--danger)}
-@keyframes dot-pulse{0%,100%{box-shadow:0 0 0 0 color-mix(in srgb,var(--ok) 55%,transparent)}50%{box-shadow:0 0 0 4px color-mix(in srgb,var(--ok) 0%,transparent)}}
-.card .dot.waiting,.family-row .dot.waiting{background:var(--warn);animation:attn-pulse 1.6s ease-in-out var(--pulse-delay,0s) infinite}
-@keyframes attn-pulse{0%,100%{box-shadow:0 0 0 0 color-mix(in srgb,var(--warn) 60%,transparent)}50%{box-shadow:0 0 0 4px color-mix(in srgb,var(--warn) 0%,transparent)}}
-@media (prefers-reduced-motion:reduce){.card .dot.running,.card .dot.waiting,.family-row .dot.running,.family-row .dot.waiting{animation:none}}
+/* No status dots on cards or rows: one mark per state. A waiting card has its outline and its chip; an errored one says so in
+   the danger colour; idle, completed and stopped are unmarked (the time says the rest). The .status.* pills below are the
+   info bar's. */
+.card .error-badge,.family-row .error-badge{font-size:11px;font-weight:600;padding:1px 7px;border-radius:999px;white-space:nowrap;flex-shrink:0;background:var(--danger-bg-dim);color:var(--danger-text);border:1px solid color-mix(in srgb,var(--danger) 45%,transparent)}
 .card .attn,.family-row .attn,.project-picker .attn{font-size:11px;font-weight:600;padding:1px 7px;border-radius:999px;white-space:nowrap;flex-shrink:0;background:var(--warn-bg);color:var(--warn-text);border:1px solid var(--warn-border)}
 .card .stopped-badge,.family-row .stopped-badge{font-size:11px;font-weight:600;padding:1px 7px;border-radius:999px;white-space:nowrap;flex-shrink:0;background:var(--warn);color:var(--bg)}
 .status.running{background:var(--ok-bg);color:var(--ok-text)}
@@ -1710,6 +1703,13 @@ a{color:var(--accent)}
 }
 </style>
 </head>
+<body>
+<main>
+  <div id="topBar">
+    <button type="button" id="newBtn" class="brand" title="New session"><span class="brand-name">chi</span><span class="brand-new">+<span class="brand-new-word"> new session</span></span></button>
+    <div id="scope" hidden></div>
+    <button type="button" class="strip-toggle" id="stripStatus" title="All sessions, with search"><span class="pill-count">sessions</span></button>
+    <span id="sessionTitleRow" hidden><span id="sessionTitle"></span><button type="button" id="titleRenameBtn" class="title-rename" title="Rename this session" aria-label="Rename this session" hidden>✎</button></span>
     <div id="allHead">
       <input id="filter" type="search" placeholder="Search preview, id or status" aria-label="Search sessions" autocomplete="off">
       <span class="count" id="count"></span>
@@ -1723,13 +1723,6 @@ a{color:var(--accent)}
         <button class="ghost" id="selectDoneBtn" title="Leave select mode (Esc)">Done</button>
       </div>
     </div>
-<body>
-<main>
-  <div id="topBar">
-    <button type="button" id="newBtn" class="brand" title="New session"><span class="brand-name">chi</span><span class="brand-new">+<span class="brand-new-word"> new session</span></span></button>
-    <div id="scope" hidden></div>
-    <button type="button" class="strip-toggle" id="stripStatus" title="All sessions, with search"><span class="pill-count">sessions</span></button>
-    <span id="sessionTitleRow" hidden><span id="sessionTitle"></span><button type="button" id="titleRenameBtn" class="title-rename" title="Rename this session" aria-label="Rename this session" hidden>✎</button></span>
     <button type="button" id="notifyBtn" aria-label="Notifications" aria-pressed="false" hidden><svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path class="bell" d="M8 1.75a4 4 0 0 0-4 4v2.6L2.75 10.6v.9h10.5v-.9L12 8.35v-2.6a4 4 0 0 0-4-4Z"/><path class="clapper" d="M6.5 13a1.5 1.5 0 0 0 3 0"/><path class="slash" d="M2.5 2.5l11 11"/></svg></button>
   </div>
   <section id="topStrip" aria-label="Latest sessions" class="loading"><div class="card skeleton"><div class="line long"></div><div class="meta"><span class="line tiny" style="display:inline-block"></span></div></div><div class="card skeleton"><div class="line long"></div><div class="meta"><span class="line tiny" style="display:inline-block"></span></div></div><div class="card skeleton"><div class="line long"></div><div class="meta"><span class="line tiny" style="display:inline-block"></span></div></div></section>
@@ -1781,7 +1774,6 @@ a{color:var(--accent)}
         <button class="ghost" id="infoCancelBtn" title="Cancel the running turn, whoever sent it" style="display:none">Stop turn</button>
         <button class="ghost" id="infoContinueBtn" title="Continue: start the next link of this session's chain from its recap (this one is archived)" style="display:none">continue →</button>
         <button class="ghost" id="infoArchiveBtn" title="Archive: hide from the lists, keep for good" style="display:none">archive</button>
-    <div id="allPath" hidden>Stored in <code></code></div>
         <button class="ghost" id="infoStopBtn" title="Stop session (terminate worker)" style="display:none">stop session</button>
         <button class="ghost" id="infoDeleteBtn" title="Delete session (for good)" style="display:none">delete</button>
       </div>
@@ -1789,6 +1781,7 @@ a{color:var(--accent)}
   </section>
   <section id="allView" aria-label="All sessions">
     <div id="allList"></div>
+    <div id="allPath" hidden>Stored in <code></code></div>
   </section>
 </main>
 <dialog id="updateSheet" aria-labelledby="updateSheetTitle"></dialog>

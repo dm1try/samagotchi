@@ -180,6 +180,10 @@ test("chainRowsTemplate lists the other links newest first: #N, date, recap's fi
   // No recap: its preview.
   assert.match(html, /<span class="fr-preview">d1 work<\/span>/);
   assert.equal((html.match(/archived-badge/g) || []).length, 2);
+  // No status dot (the status is in the row's tooltip); an errored link says so.
+  assert.doesNotMatch(html, /class="status|dot/);
+  const [e] = foldChains(families([d3]), [d3, { ...d2, status: "error" }]);
+  assert.match(chainRowsHtml(e), /<span class="error-badge" title="error">error<\/span>/);
   // Escaped.
   const [g] = foldChains(families([d3]), [d3, { ...d2, recap: "<b>x</b>" }]);
   assert.match(chainRowsHtml(g), /&lt;b&gt;x&lt;\/b&gt;/);

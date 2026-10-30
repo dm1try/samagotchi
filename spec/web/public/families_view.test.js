@@ -26,7 +26,11 @@ test("familyChipTemplate: a button with the count, live and waiting; its open st
   assert.match(html, /<span class="live-dot" aria-hidden="true"><\/span>1 live/);
   assert.match(html, /<span class="fc-waiting">1 waiting<\/span>/);
   assert.match(html, /title="2 delegates: 1 running · 1 waiting"/);
-  assert.match(familyChipHtml(fam, { open: true }), /aria-expanded="true"/);
+  // Open: just the count (the rows carry the marks).
+  const open = familyChipHtml(fam, { open: true });
+  assert.match(open, /^<button type="button" class="family-chip" aria-expanded="true"/);
+  assert.match(open, /<span class="fc-arrow" aria-hidden="true">▸<\/span>2 delegates<\/button>$/);
+  assert.doesNotMatch(open, /live|fc-waiting/);
   const quiet = familyChipHtml(family(del("c1", "p")), { open: false });
   assert.match(quiet, /class="family-chip"/);
   assert.doesNotMatch(quiet, /live|fc-waiting/);
@@ -34,7 +38,7 @@ test("familyChipTemplate: a button with the count, live and waiting; its open st
   assert.equal(familyChipHtml({ head: { id: "x" }, members: [] }, { open: false }), "");
 });
 
-test("familyRowsTemplate: one row per member, indented by depth, escaped, with its dot, time and badges", () => {
+test("familyRowsTemplate: one row per member, indented by depth, escaped, with its time and badges, no status dot", () => {
   const fam = family(
     del("c1", "p", { first_preview: "<b>fix</b> it", owner: "worker", status: "running" }),
     del("g1", "c1", { first_preview: "grand", pending_question: { id: "q", kind: "approval", relayed_to: "c1" } }),
@@ -46,8 +50,8 @@ test("familyRowsTemplate: one row per member, indented by depth, escaped, with i
   assert.match(html, /data-id="g1" style="--depth:2"/);
   assert.match(html, /&lt;b&gt;fix&lt;\/b&gt; it/);
   assert.doesNotMatch(html, /<b>fix/);
-  assert.match(html, /status dot running/);
-  assert.match(html, /status dot idle waiting/);
+  assert.doesNotMatch(html, /class="status|dot/);
+  assert.match(html, /title="c1 · running"/);
   assert.match(html, /2 min ago/);
   assert.match(html, /<span class="owner worker"/);
   // A relayed approval in its own parent's family: the plain kind.
@@ -55,6 +59,18 @@ test("familyRowsTemplate: one row per member, indented by depth, escaped, with i
   assert.doesNotMatch(html, /in parent/);
   // No archive buttons unless asked (the strip's popover, select mode).
   assert.doesNotMatch(html, /card-arch/);
+});
+
+test("familyRowsTemplate: a waiting row drops its live badge; an errored one wears an error badge", () => {
+  const fam = family(
+    del("c1", "p", { owner: "worker", pending_question: { id: "q", kind: "question" } }),
+    del("c2", "p", { status: "error" }),
+  );
+  const html = familyRowsHtml(fam, { now: NOW });
+  const row = (id) => html.match(new RegExp(`data-id="${id}"[\\s\\S]*?</div>`))[0];
+  assert.match(row("c1"), /class="attn attn-question"/);
+  assert.doesNotMatch(row("c1"), /class="owner/);
+  assert.match(row("c2"), /<span class="error-badge" title="error">error<\/span>/);
 });
 
 test("familyRowsTemplate: active, match / dim (a search), archive buttons and the archived badge", () => {
@@ -248,7 +264,7 @@ test("an open family popover drawn again with a row's status changed keeps that 
   same(el().querySelector('.family-row[data-id="c1"]'), row, "row");
   same(row.querySelector(".fr-open"), open, "row button");
   same(document.activeElement, open, "focus");
-  assert.match(row.querySelector(".status").className, /status dot idle/);
+  assert.match(open.title, /c1 · idle/);
   assert.equal(row.querySelector(".owner"), null);
 });
 
@@ -284,47 +300,4 @@ test("a member inserted before the focused row (a grandchild, depth first): the 
   fam = family(del("c1", "p"), del("g1", "c1"));
   pop.refresh();
   assert.equal(document.activeElement?.closest?.(".family-row"), null);
-});
-
-// ── syncPulses: the dots' pulse on the timeline's clock ─────────────────────
-import { syncPulses } from "../../../lib/samagotchi/web/public/families_view.js";
-
-test("syncPulses puts every dot's animation on start time 0, leaves synced ones and dot-less nodes alone", () => {
-  const sets = [];
-  const anim = (startTime) => {
-    let t = startTime;
-    return { get startTime() { return t; }, set startTime(v) { sets.push(v); t = v; } };
-  };
-  const fresh = anim(null); // a pulse just started (a new node, a status flip)
-  const late = anim(5230.5); // one started mid-way
-  const synced = anim(0);
-  const root = { querySelectorAll: (sel) => (sel === ".dot" ? [
-    { getAnimations: () => [fresh, late] },
-    { getAnimations: () => [synced] },
-    { getAnimations: () => [] },
-    {}, // no Web Animations (an old engine): nothing to do
-  ] : []) };
-  syncPulses(root);
-  assert.equal(fresh.startTime, 0);
-  assert.equal(late.startTime, 0);
-  assert.deepEqual(sets, [0, 0]);
-});
-
-test("familyPop syncs its dots' pulse on every draw", () => {
-  const dot = (cls) => html`<span class=${`status dot ${cls}`}></span>`;
-  const { pop, page, el } = setupPop({ rows: { p: rowsOf(dot("waiting")) } });
-  const seen = [];
-  const orig = HTMLElement.prototype.getAnimations;
-  HTMLElement.prototype.getAnimations = function () { seen.push(this.className); return []; };
-  try {
-    pop.open("p");
-    page.rows.p = rowsOf(dot("running"));
-    pop.refresh();
-  } finally {
-    if (orig) HTMLElement.prototype.getAnimations = orig;
-    else delete HTMLElement.prototype.getAnimations;
-  }
-  assert.deepEqual(seen, ["status dot waiting", "status dot running"]);
-  pop.close();
-  assert.equal(el().textContent, "");
 });
