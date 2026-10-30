@@ -187,6 +187,24 @@ test("a quote not found goes at the turn's end, before a gap divider, never abov
   win.happyDOM.abort();
 });
 
+test("a context note ends the source turn: a wake turn's answer after it never takes the card", () => {
+  const win = new Window();
+  const { root, timing, gap } = ownerTurn(win, { answer: "Something else." });
+  const note = win.document.createElement("div");
+  note.className = "bubble note";
+  note.textContent = "note from c1";
+  const wake = win.document.createElement("div");
+  wake.className = "bubble output";
+  wake.textContent = "Woken: the claim holds after all.";
+  gap.before(note, wake);
+
+  const card = placeVerdict(root, verdictOn("the claim holds"), { roots: OWNER_ROOTS });
+
+  assert.ok(timing.nextElementSibling === card);
+  assert.ok(card.nextElementSibling === note);
+  win.happyDOM.abort();
+});
+
 test("participant page: after the reply that quotes it, not the prompt that says the same, and again after a redraw", () => {
   const win = new Window();
   const doc = win.document;
