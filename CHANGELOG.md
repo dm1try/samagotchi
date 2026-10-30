@@ -12,6 +12,14 @@ and commands may change between minor versions. How releases are made:
 - Guardrails: a file or string check (`test -f x`, `[ -d dir ]`, `[ "$a" = b ]`) counts as read-only, so
   `test -f x && cat x` no longer asks where `cat x` alone wouldn't.
 
+### Fixed
+
+- Web: opening another session clears the previous one's init row, markdown tip and card actions at once; they no
+  longer stayed when the open failed.
+- Web: a canceled turn's timing shows in the info bar right away, not at the next unrelated redraw.
+- Web: a sign-in that lapsed behind an auth proxy is reported (the sign-in prompt) by the notification bell and the
+  push devices list too.
+
 ## [0.134.0] - 2026-10-30
 
 ### Added
