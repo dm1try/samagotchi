@@ -112,10 +112,28 @@ test("the stage keeps one height while a multi-step turn runs; nothing moves the
   expect(await shiftSum(page, { where: "history" })).toBeLessThan(0.01);
   await page.locator("#history .turn-work").last().locator(".outline-fold").first().click();
   await expect(page.locator("#history .turn-work").last().locator(":scope > .gen:visible")).toHaveCount(5);
+  // The long answers have a fold row each (answer_fold.js); the first one
+  // folded by hand stays folded across the reload, its row in its place.
+  const answers = page.locator("#history .bubble.output");
+  const rows = page.locator("#history .answer-fold");
+  await expect(rows).toHaveCount(2);
+  await expect(rows.first()).toHaveAttribute("aria-expanded", "true");
+  await rows.first().click();
+  await expect(answers.first()).toBeHidden();
+  await expect(rows.first()).toHaveAttribute("aria-expanded", "false");
+  await expect(rows.first()).toContainText(/\u00a0· \d+ lines$/);
+  const folded = await rows.first().textContent();
   await page.reload();
   await outline();
   // Nor does a reload drawing the old turns' outlines open.
   expect(await shiftSum(page, { where: "history" })).toBeLessThan(0.01);
+  await expect(rows).toHaveCount(2);
+  await expect(answers.first()).toBeHidden();
+  await expect(rows.first()).toHaveText(folded);
+  await expect(answers.last()).toBeVisible();
+  // Unfolded from its row: the answer is back.
+  await rows.first().click();
+  await expect(answers.first()).toBeVisible();
 });
 
 test("the hand-off waits while the pointer is over the stage, runs about 1.5 s after it leaves; an own send hands off at once", async ({ page, script }) => {

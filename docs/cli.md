@@ -1026,6 +1026,17 @@ touch screen), and so does each code block of a rendered answer. An answer
 copies its Markdown source, not the rendered text; a code block copies just
 its code; a prompt copies the text as you typed it.
 
+A long answer (over 25 lines or 2,000 characters of its text) can be folded
+by hand: a slim "▾ N lines" row sits just above it once its turn has ended.
+Click it and the answer folds to one row, "▸ its first line · N lines" (the
+first line of what a hook presented in its place, else its first heading,
+else its first line); click again to unfold. A delegate report's reply
+folds the same way. Folding is this browser's choice, kept per session in
+localStorage (`chi_answer_fold:<session id>`, the last 200 folded answers;
+the keys of sessions gone from the list are dropped when the list loads);
+other viewers and the participant page are not affected. A jump into a
+folded answer (a claim link, say) unfolds it for that page load.
+
 ### Web views
 
 `web.view` picks how the page draws a turn: `stage` (the default: the

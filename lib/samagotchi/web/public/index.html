@@ -60,6 +60,17 @@ main{flex:1;display:flex;flex-direction:column;gap:16px;padding:16px;overflow:au
 .bubble.output.boxed{overflow:hidden;transition:max-height 360ms ease}
 .bubble.output.revealing>:not(.copy-btn){animation:fadeIn 240ms ease}
 @media (prefers-reduced-motion:reduce){.bubble.output.boxed{transition:none}.bubble.output.revealing>:not(.copy-btn){animation:none}}
+/* A long answer folded by hand (answer_fold.js): the row is the bubble's sibling just before it, styled as a closed turn's steps; folded, the bubble is hidden and the row reads its first line and size; unfolded, a slim "▾ N lines" header close above it. */
+.bubble.output.folded{display:none}
+.answer-fold{display:flex;align-items:baseline;gap:0;align-self:flex-start;max-width:100%;min-width:0;margin:0;padding:3px 10px;font:inherit;font-size:12px;font-weight:500;line-height:1.4;color:var(--text-muted);text-align:left;cursor:pointer;user-select:none;background:transparent;border:1px solid transparent;border-left:3px solid var(--accent-strong);border-radius:6px;transition:background .12s ease}
+.answer-fold:hover{background:var(--bg-panel)}
+.answer-fold:focus-visible{outline:2px solid var(--accent-ring);outline-offset:1px}
+.answer-fold::before{content:"▾\00a0";color:var(--accent);flex:none}
+.answer-fold.folded::before{content:"▸\00a0"}
+.answer-fold:not(.folded){margin-bottom:-8px;padding-top:1px;padding-bottom:1px;border-left-color:transparent}
+.answer-fold-label{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text-2);font-size:13px}
+.answer-fold-label:empty{display:none}
+.answer-fold-size{flex:none;white-space:nowrap;font-variant-numeric:tabular-nums}
 /* A gap divider (time_gaps.js): one centred dim line where a quiet stretch passed, never wrapped (a phone at 360 px keeps it on one line). Not a .bubble. */
 .time-gap{align-self:stretch;text-align:center;color:var(--time-gap);font-size:12px;line-height:1.4;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin:2px 0;user-select:none}
 .turn-timing{margin-top:8px;color:var(--text-muted);font-size:11px;font-variant-numeric:tabular-nums}
