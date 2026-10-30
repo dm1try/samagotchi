@@ -110,11 +110,11 @@ main{flex:1;display:flex;flex-direction:column;gap:16px;padding:16px;overflow:au
 .time-gap{align-self:stretch;text-align:center;color:var(--time-gap);font-size:12px;line-height:1.4;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin:2px 0;user-select:none}
 .turn-timing{margin-top:8px;color:var(--text-muted);font-size:11px;font-variant-numeric:tabular-nums}
 .turn-timing.live{color:var(--accent)}
-.bubble.output.markdown{white-space:normal}
-.bubble.output.markdown pre{overflow:auto;padding:10px;border-radius:8px;background:var(--bg-inset)}
-.bubble.output.markdown code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.88em}
-.bubble.output.markdown :not(pre)>code{background:var(--bg-inset);border:1px solid var(--border);border-radius:4px;padding:1px 5px;color:var(--text)}
-.bubble.output.markdown pre{font-size:13px;line-height:1.45;border:1px solid var(--border)}
+.bubble.output.markdown,.bubble.user>.user-message.markdown{white-space:normal}
+.bubble.output.markdown pre,.bubble.user>.user-message.markdown pre{overflow:auto;padding:10px;border-radius:8px;background:var(--bg-inset)}
+.bubble.output.markdown code,.bubble.user>.user-message.markdown code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.88em}
+.bubble.output.markdown :not(pre)>code,.bubble.user>.user-message.markdown :not(pre)>code{background:var(--bg-inset);border:1px solid var(--border);border-radius:4px;padding:1px 5px;color:var(--text)}
+.bubble.output.markdown pre,.bubble.user>.user-message.markdown pre{font-size:13px;line-height:1.45;border:1px solid var(--border)}
 /* Code highlighting (markdown_renderer.rb): syntect scope classes, hl-prefixed, coloured from the palette's --code-* tokens. More classes win over fewer (a function name is also "entity"). */
 .syntax-highlighting{color:var(--code-text)}
 .syntax-highlighting .hl-keyword,.syntax-highlighting .hl-storage{color:var(--code-keyword)}
@@ -127,24 +127,24 @@ main{flex:1;display:flex;flex-direction:column;gap:16px;padding:16px;overflow:au
 .syntax-highlighting .hl-markup.hl-inserted{color:var(--diff-add-text)}
 .syntax-highlighting .hl-markup.hl-deleted{color:var(--diff-del-text)}
 .syntax-highlighting .hl-invalid{color:var(--danger-text)}
-.bubble.output.markdown h1,.bubble.output.markdown h2,.bubble.output.markdown h3,.bubble.output.markdown h4,.bubble.output.markdown h5,.bubble.output.markdown h6{font-weight:600;line-height:1.3;margin:18px 0 8px;color:var(--text-bright)}
-.bubble.output.markdown h1{font-size:19px}
-.bubble.output.markdown h2{font-size:17px}
-.bubble.output.markdown h3{font-size:15.5px}
-.bubble.output.markdown h4,.bubble.output.markdown h5,.bubble.output.markdown h6{font-size:15px;color:var(--text-2)}
-.bubble.output.markdown h1:first-child,.bubble.output.markdown h2:first-child,.bubble.output.markdown h3:first-child,.bubble.output.markdown>.copy-btn:first-child+:is(h1,h2,h3){margin-top:2px}
-.bubble.output.markdown strong{color:var(--text-bright)}
-.bubble.output.markdown hr{border:0;border-top:1px solid var(--border);margin:14px 0}
-.bubble.output.markdown img{max-width:100%}
-.bubble.output.markdown p,.bubble.output.markdown ul,.bubble.output.markdown ol,.bubble.output.markdown blockquote,.bubble.output.markdown table,.bubble.output.markdown pre{margin:0 0 12px}
-.bubble.output.markdown p:last-child,.bubble.output.markdown ul:last-child,.bubble.output.markdown ol:last-child,.bubble.output.markdown blockquote:last-child,.bubble.output.markdown table:last-child,.bubble.output.markdown pre:last-child{margin-bottom:0}
-.bubble.output.markdown ul,.bubble.output.markdown ol{padding-left:1.5em}
-.bubble.output.markdown li+li{margin-top:4px}
-.bubble.output.markdown li>ul,.bubble.output.markdown li>ol{margin:4px 0 0}
-.bubble.output.markdown blockquote{border-left:3px solid var(--border-strong);padding-left:12px;color:var(--text-muted)}
-.bubble.output.markdown table{border-collapse:collapse;display:block;max-width:100%;overflow:auto}
-.bubble.output.markdown th,.bubble.output.markdown td{border:1px solid var(--border-strong);padding:5px 8px;font-size:14px}
-.bubble.output.markdown th{background:var(--bg-inset);font-weight:600}
+.bubble.output.markdown h1,.bubble.output.markdown h2,.bubble.output.markdown h3,.bubble.output.markdown h4,.bubble.output.markdown h5,.bubble.output.markdown h6,.bubble.user>.user-message.markdown h1,.bubble.user>.user-message.markdown h2,.bubble.user>.user-message.markdown h3,.bubble.user>.user-message.markdown h4,.bubble.user>.user-message.markdown h5,.bubble.user>.user-message.markdown h6{font-weight:600;line-height:1.3;margin:18px 0 8px;color:var(--text-bright)}
+.bubble.output.markdown h1,.bubble.user>.user-message.markdown h1{font-size:19px}
+.bubble.output.markdown h2,.bubble.user>.user-message.markdown h2{font-size:17px}
+.bubble.output.markdown h3,.bubble.user>.user-message.markdown h3{font-size:15.5px}
+.bubble.output.markdown h4,.bubble.output.markdown h5,.bubble.output.markdown h6,.bubble.user>.user-message.markdown h4,.bubble.user>.user-message.markdown h5,.bubble.user>.user-message.markdown h6{font-size:15px;color:var(--text-2)}
+.bubble.output.markdown h1:first-child,.bubble.output.markdown h2:first-child,.bubble.output.markdown h3:first-child,.bubble.output.markdown>.copy-btn:first-child+:is(h1,h2,h3),.bubble.user>.user-message.markdown h1:first-child,.bubble.user>.user-message.markdown h2:first-child,.bubble.user>.user-message.markdown h3:first-child,.bubble.user>.user-message.markdown>.copy-btn:first-child+:is(h1,h2,h3){margin-top:2px}
+.bubble.output.markdown strong,.bubble.user>.user-message.markdown strong{color:var(--text-bright)}
+.bubble.output.markdown hr,.bubble.user>.user-message.markdown hr{border:0;border-top:1px solid var(--border);margin:14px 0}
+.bubble.output.markdown img,.bubble.user>.user-message.markdown img{max-width:100%}
+.bubble.output.markdown p,.bubble.output.markdown ul,.bubble.output.markdown ol,.bubble.output.markdown blockquote,.bubble.output.markdown table,.bubble.output.markdown pre,.bubble.user>.user-message.markdown p,.bubble.user>.user-message.markdown ul,.bubble.user>.user-message.markdown ol,.bubble.user>.user-message.markdown blockquote,.bubble.user>.user-message.markdown table,.bubble.user>.user-message.markdown pre{margin:0 0 12px}
+.bubble.output.markdown p:last-child,.bubble.output.markdown ul:last-child,.bubble.output.markdown ol:last-child,.bubble.output.markdown blockquote:last-child,.bubble.output.markdown table:last-child,.bubble.output.markdown pre:last-child,.bubble.user>.user-message.markdown p:last-child,.bubble.user>.user-message.markdown ul:last-child,.bubble.user>.user-message.markdown ol:last-child,.bubble.user>.user-message.markdown blockquote:last-child,.bubble.user>.user-message.markdown table:last-child,.bubble.user>.user-message.markdown pre:last-child{margin-bottom:0}
+.bubble.output.markdown ul,.bubble.output.markdown ol,.bubble.user>.user-message.markdown ul,.bubble.user>.user-message.markdown ol{padding-left:1.5em}
+.bubble.output.markdown li+li,.bubble.user>.user-message.markdown li+li{margin-top:4px}
+.bubble.output.markdown li>ul,.bubble.output.markdown li>ol,.bubble.user>.user-message.markdown li>ul,.bubble.user>.user-message.markdown li>ol{margin:4px 0 0}
+.bubble.output.markdown blockquote,.bubble.user>.user-message.markdown blockquote{border-left:3px solid var(--border-strong);padding-left:12px;color:var(--text-muted)}
+.bubble.output.markdown table,.bubble.user>.user-message.markdown table{border-collapse:collapse;display:block;max-width:100%;overflow:auto}
+.bubble.output.markdown th,.bubble.output.markdown td,.bubble.user>.user-message.markdown th,.bubble.user>.user-message.markdown td{border:1px solid var(--border-strong);padding:5px 8px;font-size:14px}
+.bubble.output.markdown th,.bubble.user>.user-message.markdown th{background:var(--bg-inset);font-weight:600}
 /* Plugins' slow setup (chi.init, init_row.js): a quiet line per task over the composer. */
 #initRow{display:flex;flex-direction:column;gap:2px;padding:6px 12px 2px;font-size:12px;line-height:1.4;color:var(--text-3)}
 #initRow[hidden]{display:none}
@@ -194,6 +194,11 @@ main{flex:1;display:flex;flex-direction:column;gap:16px;padding:16px;overflow:au
   .review-apply-note{border-left:0;padding-left:0;text-align:center}
 }
 .bubble.user .user-message{flex:1;min-width:0}
+/* A delegate report in the history (long, markdown): its label and badge on a row of their own above it at any width,
+   not centred beside a tall body. */
+#history>.bubble.user[data-source="delegate_report"]{flex-wrap:wrap}
+#history>.bubble.user[data-source="delegate_report"] :is(.origin-label,.state-badge){order:0}
+#history>.bubble.user[data-source="delegate_report"] .user-message{order:1;flex-basis:100%}
 .bubble.user blockquote{border-left:3px solid var(--border-strong);padding-left:10px;color:var(--text-3);margin:2px 0 6px}
 .bubble.user blockquote:last-child{margin-bottom:0}
 .bubble.tool{border-left:3px solid var(--ok);background:var(--bg-panel);font-size:13px;color:var(--text-2)}
@@ -613,7 +618,7 @@ button.system-one-wrong:hover:not(:disabled){background:var(--bg-hover);color:va
 .bubble.user>.copy-btn:hover{background:var(--bg-raised);border-color:var(--border-strong)}
 .code-wrap{position:relative;margin:0 0 12px}
 .code-wrap:last-child{margin-bottom:0}
-.bubble.output.markdown .code-wrap>pre{margin:0}
+.bubble.output.markdown .code-wrap>pre,.bubble.user>.user-message.markdown .code-wrap>pre{margin:0}
 .code-wrap>.copy-btn{top:5px;right:5px}
 @media (hover:none){.copy-btn{opacity:.55}}
 /* The dock is the composer card (composer.css .composer-card): the text field, a toolbar row, the info bar as its footer. */

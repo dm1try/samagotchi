@@ -14,6 +14,8 @@ and commands may change between minor versions. How releases are made:
 - Web: a long delegate report folds to one row, "delegate report · its first heading · N lines", where the report
   sits; a click opens it and this browser remembers that. A report merged into a running turn gets its row on the
   next reload.
+- Web: a delegate report in a reloaded history renders as markdown (headings, lists, code), as answers do; Copy
+  still copies its text. A report that arrives live shows as plain text until the next reload.
 
 ### Fixed
 

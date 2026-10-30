@@ -1366,6 +1366,27 @@ RSpec.describe Samagotchi::Web::App do
                            { role: "user", content: "sent", at: message_at, merged: true, step: 2, source: "chi_send" }])
     end
 
+    it "renders a delegate report's markdown when the renderer is on, never another user line's" do
+      text = "session: c1\nstatus: answered\n---\n## Rebase result\n\n- **done**"
+      report = Samagotchi::Steer::Line.new(text: text, source: "delegate_report", mark: { turn_start: true, turn_id: "T2" })
+      messages = [{ role: "user", content: "look **here**", turn_id: "T1" }, { role: "model", content: "ok" },
+                  *Samagotchi::Steer.merge([report]).messages, { role: "model", content: "the child found it" },
+                  *Samagotchi::Steer.merge([Samagotchi::Steer::Line.new(text: "**sent**", source: "chi_send")]).messages]
+
+      on = build_app(state_dir: Dir.mktmpdir, markdown: true)
+      skip "no markdown renderer here" unless on.instance_variable_get(:@markdown_renderer).available?
+      users = on.send(:messages_for_display, messages).select { |m| m[:role] == "user" }
+
+      expect(users.map { |m| m.key?(:html) }).to eq([false, true, false])
+      expect(users[1][:content]).to eq(text)
+      expect(users[1][:html]).to include("<h2", "Rebase result", "<strong>done</strong>", "<hr")
+      # The header is a paragraph of its own, the "---" a rule (not its heading's underline).
+      expect(users[1][:html].scan("<h2").size).to eq(1)
+      expect(users[1][:html]).to match(%r{<p>session: c1<br\s*/?>\s*status: answered</p>})
+      off = build_app(state_dir: Dir.mktmpdir).send(:messages_for_display, messages)
+      expect(off.select { |m| m[:role] == "user" }.map { |m| m.key?(:html) }).to eq([false, false, false])
+    end
+
     it "includes last_event_seq = nil when no bridge is live" do
       manager = FakeResponsesManager.new(responses: %w[one two three])
       app = build_app(manager: manager, state_dir: Dir.mktmpdir)

@@ -29,8 +29,18 @@ module Samagotchi
       # A POST /api/render body may be this big: a decision message is a few
       # KB, and the cap bounds the work a page can ask for.
       MAX_RENDER_BYTES = 64 * 1024
+      # A delegate report's leading "session: <id>" / "status: <s>" lines
+      # (Tools::DelegateWait.result).
+      REPORT_HEADER = /\A((?:(?:session|status): [^\n]*\n)+)/
 
       private
+
+      # A delegate report's text as the markdown it renders from: its header
+      # lines one to a line and a paragraph of their own, so a "---" after
+      # them is a rule, not a heading's underline.
+      def report_markdown(text)
+        text.sub(REPORT_HEADER) { "#{Regexp.last_match(1).lines.map(&:chomp).join("  \n")}\n\n" }
+      end
 
       # The recap saved with the session and how many user turns came since:
       # a live worker's (it counts against its Engine's messages), else
@@ -132,6 +142,12 @@ module Samagotchi
             message.merge!(merged: true, step: steer_step(list, index)) unless Samagotchi::Steer.turn_prompt?(m)
             source = (m[:source] || m["source"]).to_s
             message[:source] = source unless source.empty?
+            # A delegate report is the child's markdown: rendered as an
+            # answer is (its copy source stays the text). Another user line
+            # stays plain.
+            if source == Samagotchi::Steer::DELEGATE_REPORT && @markdown_renderer.available?
+              message[:html] = @markdown_renderer.render(report_markdown(stripped))
+            end
           end
           # The turn it started (Engine): the page pairs it with that turn's
           # record by this, not by its place.

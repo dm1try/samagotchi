@@ -260,6 +260,18 @@ test("userBubbleTemplate: a line's delivery is its data-delivery, and its badge'
   assert.doesNotMatch(userBubbleHtml({ content: "x" }, { state: "queued" }), /data-delivery/);
 });
 
+test("userBubbleTemplate: a delegate report's source and line key; its server html renders as markdown, the copy source stays the text", () => {
+  const text = "session: c1\nstatus: answered\n---\n## Done\n> quoted";
+  const out = userBubbleHtml({ content: text, source: "delegate_report", html: "<h2>Done</h2><blockquote><p>quoted</p></blockquote>" },
+    { label: "delegate report", state: "steered", lineKey: "T1:input:3" });
+  assert.match(out, /data-source="delegate_report" data-line-key="T1:input:3">/);
+  assert.match(out, /<div class="user-message markdown"><h2>Done<\/h2><blockquote><p>quoted<\/p><\/blockquote><\/div>/);
+  assert.match(out, /data-copy-source="session: c1\nstatus: answered\n---\n## Done\n> quoted"/);
+  // Without html (a live report, another user line): the plain body.
+  assert.match(userBubbleHtml({ content: "## Done", source: "delegate_report" }), /<div class="user-message">## Done<\/div>/);
+  assert.doesNotMatch(userBubbleHtml({ content: "x" }), /data-source|data-line-key/);
+});
+
 import { EXIT_LINE, inlineOutput, tailMode } from "../../../lib/samagotchi/web/public/turn_html.js";
 import { readFileSync } from "node:fs";
 
