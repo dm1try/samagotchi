@@ -28,9 +28,9 @@ module Samagotchi
         session = PathResolve.real(root)
         tmp = nil
         reals.any? do |real|
-          next false if within?(real, session)
+          next false if under_folding_existing?(real, session)
           next false if MemoryBundle::IndexSync.memory_scope(path)
-          next false if (tmp ||= session_tmp_roots(session)).any? { |dir| within?(real, dir) }
+          next false if (tmp ||= session_tmp_roots(session)).any? { |dir| under_folding_existing?(real, dir) }
 
           true
         end
@@ -45,7 +45,7 @@ module Samagotchi
       def self.inside?(path, root:)
         reals = resolve(path) or return false
         session = PathResolve.real(root)
-        reals.all? { |real| within?(real, session) }
+        reals.all? { |real| under_folding_existing?(real, session) }
       end
 
       # Whether a shell command may write +path+ as a tmp file (the child
@@ -57,7 +57,7 @@ module Samagotchi
         reals = resolve(path) or return false
         session = PathResolve.real(root)
         tmp = session_tmp_roots(session)
-        reals.all? { |real| tmp.any? { |dir| within?(real, dir) } }
+        reals.all? { |real| tmp.any? { |dir| under_folding_existing?(real, dir) } }
       end
 
       # +path+ resolved (PathResolve.reals: the lexical answer and where
@@ -91,7 +91,7 @@ module Samagotchi
       # on a disk that folds case when +root+ exists (resolved, it has its
       # on-disk case), by their exact text when it doesn't (a missing root
       # keeps the case it was typed in).
-      def self.within?(path, root) = PathResolve.under?(path, root, fold: File.exist?(root))
+      def self.under_folding_existing?(path, root) = PathResolve.under?(path, root, fold: File.exist?(root))
     end
   end
 end

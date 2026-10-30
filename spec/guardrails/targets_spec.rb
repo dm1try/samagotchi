@@ -43,9 +43,9 @@ RSpec.describe "Guardrails::Targets outside the session's repo" do
   # exist yet keeps the case it was typed in, so only an existing one folds.
   it "compares a path with an existing root cased alike on a disk that folds case, a missing one exactly" do
     folds = File.exist?(@repo.upcase)
-    expect(Samagotchi::Guardrails::Outside.within?(File.join(@base, "REPO", "x"), @repo)).to eq(folds)
-    expect(Samagotchi::Guardrails::Outside.within?(File.join(@base, "new", "x"), File.join(@base, "NEW"))).to be(false)
-    expect(Samagotchi::Guardrails::Outside.within?(File.join(@repo, "x"), @repo)).to be(true)
+    expect(Samagotchi::Guardrails::Outside.under_folding_existing?(File.join(@base, "REPO", "x"), @repo)).to eq(folds)
+    expect(Samagotchi::Guardrails::Outside.under_folding_existing?(File.join(@base, "new", "x"), File.join(@base, "NEW"))).to be(false)
+    expect(Samagotchi::Guardrails::Outside.under_folding_existing?(File.join(@repo, "x"), @repo)).to be(true)
   end
 
   it "is the session's repo root" do
