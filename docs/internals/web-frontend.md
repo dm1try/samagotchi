@@ -10,16 +10,19 @@ only library. Pure modules (`*_model.js`, `session_state.js`, `sessions_list.js`
 and have `node --test` specs under `spec/web/public/` (happy-dom for the DOM ones); the pages as a whole are covered
 by `npm run e2e` (`spec/e2e/`). `app.js` has no unit spec.
 
-**New exports go in new modules.** The static JS is served at unversioned URLs and cached: a new export on an
-existing module, imported by a new version of another, finds the cached old module without it and blanks the page.
-`answer_fold.js`, `turn_range.js`, `history_reveal.js`, `latest.js`, `session_payload.js` and `method_api.js` are
-new modules for that reason.
+**New exports go in new modules.** The static JS is served at unversioned URLs. Today every load revalidates
+(app.rb `serve_static` sends `Cache-Control: no-cache` with a content ETag, and `sw.js` has no fetch handler), but an
+open tab still holds the modules it loaded, and a proxy that ignores `no-cache` can serve an old one: a new export
+on an existing module, imported by a new version of another, then finds the old module without it and blanks the
+page. A factory dep a new version stops passing is the same hazard the other way round. `answer_fold.js`,
+`turn_range.js`, `history_reveal.js`, `latest.js`, `session_payload.js`, `method_api.js`, `session_store.js` and
+`session_fields.js` are new modules for that reason.
 
 ## Two pages, two models
 
 | Page | Entry | Model |
 |---|---|---|
-| **Owner page**: the start page and a session page | `index.html` → `app.js` | **Render once, then patch.** A session's open (`select` → `resync` → `renderSessionView`) draws the history from `GET /api/sessions/:id`; from then on each stream event changes the DOM in place (`stream_handlers.js`). The DOM *is* the log. The start page is the same app with `selected = null`. |
+| **Owner page**: the start page and a session page | `index.html` → `app.js` | **Render once, then patch.** A session's open (`select` → `resync` → `renderSessionView`) draws the history from `GET /api/sessions/:id`; from then on each stream event changes the DOM in place (`stream_handlers.js`). The DOM *is* the log. The start page is the same app with `store.selected` null. |
 | **Participant page**: a review or pair link | `participant.html` → `participant.js` | **Re-read at a turn boundary, then a keyed redraw.** It reads `GET …/review`, draws it, and streams; an event that ends or changes a turn (`reloads`) marks the data stale and the page reads it again. `drawnMessages` keeps a message's node while its signature is unchanged; a small `live` overlay (`participant_model.js applyLive`) draws the running turn on top. |
 
 The participant page is **deliberately separate**: it shares leaf modules with the owner page (the annotate bar,
@@ -35,60 +38,112 @@ change.
 
 | Holder | What | Who writes | How a change reaches the screen |
 |---|---|---|---|
-| **app.js module scope**: 22 top-level `let`s (`selected`, `current`, `allSessions`, `streamControl`, `eventsControl`, `pageCapabilities`/`pageEditorUrl`, `pendingVerifyAnchor`, `pendingClaim`, `resyncsInFlight`/`resyncAgain`, `resyncAttempts`, `scopeError`…) | the open session's id and the page's mode | app.js only; other modules get getters (`selected: () => selected`, `state: () => current`) and hooks | nothing reacts: the writer calls the redraw itself |
-| **`current`** (`session_state.js`: `emptySessionState` / `sessionStateFrom`) | the open session's fields, about 40 (info bar, chips, verdicts, timing, worker, stream cursor) | app.js, `stream_handlers.js` (through `state()`), `send_turn.js` (`firstPreview`, `owner`), `session_actions.js` (`status`) | the writer calls the field's redraw (the table below) |
-| **`allSessions`** (the hub's projection) | every card | app.js: `openSessionEvents` (`applySessionEvent`), `refresh` (the list fallback), `addCreatedSession`, `replaceSelectedCard` (`setLiveStatus`, `readTurnEnd`, `setUsedMemories`), the stream's close (`withoutWorker`); `session_actions.js` (`setSessions`) | `lists.render()`. An entry is **replaced, never changed in place**. `followSelectedSession` copies the open one's owner, worker and (when not streaming) status into `current` |
+| **The session store** (`session_store.js`; app.js `store`) | `store.selected` (the open session's id), `store.current` and `store.sessions` (below) | through the store only (see The session store); other modules get getters (`selected: () => store.selected`, `state: () => store.current`) or the store itself (`stream_handlers.js`, `send_turn.js`, `session_actions.js`) | the writer still calls the redraw itself (the store's redraws aren't registered yet) |
+| **app.js module scope**: about 20 top-level `let`s (`streamControl`, `eventsControl`, `pageCapabilities`/`pageEditorUrl`, `pendingVerifyAnchor`, `pendingClaim`, `resyncsInFlight`/`resyncAgain`, `resyncAttempts`, `scopeError`…) | the page's mode and its streams | app.js only; other modules get getters and hooks | nothing reacts: the writer calls the redraw itself |
+| **`store.current`** (`session_state.js`: `emptySessionState` / `sessionStateFrom`; per field: `session_fields.js FIELDS`) | the open session's fields, about 40 (info bar, chips, verdicts, timing, worker, stream cursor) | `store.update` / `setStatus` from app.js, `stream_handlers.js`, `send_turn.js` (`firstPreview`, `owner`), `session_actions.js` (`status`); `forgetSession`'s `replaceCurrent`. Two writers in place, on purpose (D8 in `FIELDS`): live_timing.js's `activeTurn`, verdict_fresh.js's running list | the writer calls the field's redraw (`FIELDS[key].redraws` names it) |
+| **`store.sessions`** (the hub's projection) | every card | `store.update({sessions})` from app.js: `openSessionEvents` (`applySessionEvent`), `refresh` (the list fallback), `addCreatedSession`, `applyView` (re-sorted), `replaceSelectedCard` (`setLiveStatus` through `setStatus`, `readTurnEnd`, `setUsedMemories`), the stream's close (`withoutWorker`); `session_actions.js` (`setSessions`) | `lists.render()`. **Always a new array**; an entry is replaced, never changed in place. `followSelectedSession` copies the open one's owner and worker (`fieldsFromCard`) and, when not streaming, its status (`setStatus(…, "hub")`) into `store.current` |
 | **Factory closures**: the `create*` factories (popovers, panels, views) | each component's own state: open-for, busy, error, its own fetched list | the factory | an `onChange` hook back into app.js, or a getter the factory reads at draw time |
 | **The history DOM** | the conversation as drawn: which turn a bubble belongs to (`data-turn-id`, `data-answer-turn`), kept command bubbles, which texts were shown, unnamed badges, folded answers (`.folded`) | `bubbles.js`, `cards_place.js`, `question_cards.js`, `turn_view.js`/`stage_view.js`, `answer_fold.js` | read back as state: `turn_range.js turnElements` (one walker for a turn's elements), `keptCommandBubbles`, `seedSeenFromDom`, `nameUnnamedBadges`/`nameVerdictCards`, `answer_fold.js` (its observer decorates every path that fills `#history`), `history_reveal.js revealInHistory` (the one way a jump unfolds what hides its target) |
 | **localStorage** (`storage.js` `readStored`/`writeStored`, guarded) | per-browser choices only | the module that owns the choice | read at start (see Storage keys) |
 | **SSE** | see Streams | the server | owner page: events go into the DOM directly; participant page: an event marks the data stale |
 
 The start page's own choices (the model, the ⚙ panel, the 🧰 list) live in `start_page.js`'s closure, never in
-`current`. A fresh chain link's picker reads both.
+`store.current`. A fresh chain link's picker reads both.
 
-## Writes and their redraws
+## The session store
 
-Nothing subscribes to `current`: **whoever writes `current.X` calls X's redraw.** This table is the checklist for
-a new field or a new writer (and the list a store would take over).
+`session_store.js` holds the open session's state; `session_fields.js` says what each field is. **Every write goes
+through the store**, never `current.X = …`:
 
-| Field(s) | Writers | Redraw after the write |
-|---|---|---|
-| (a whole new object) | `forgetSession` (select, clearSelection) | everything: `updateInfoBar()`, `updateComposerMode()` |
-| every payload field | `renderSessionView` (`Object.assign(current, sessionStateFrom(data))`) | `llmContextControl`/`thinkingControl`/`reasoningHistoryControl.refresh()`, then `updateInfoBar()`, `updateComposerMode()` at its end |
-| `status` | `followSelectedSession` (hub, only while not streaming), `setLiveStatus` (stream), `readTurnEnd` and the turn_canceled re-read (`applySessionPayload`), `session_actions.js stoppedWorker`, the payload | `updateInfoBar()`; `lists.render()` when the card changed too. Six writers, order decides: the hardest field to change safely |
-| `owner` | `followSelectedSession`, the stream's close (`worker` → null), `send_turn.js` and `composerCommands.ownedByTui` (`owned_by_tui` → `"tui"`) | `updateInfoBar()` and `updateComposerMode()` (a terminal's session turns the composer off) |
-| `workerVersion`, `workerFeatures`, `bridgeUp` | `followSelectedSession`, the stream's close (`bridgeUp`) | `updateInfoBar()`; a flip of the Verify gate also `redrawFresh(historyEl, verifyFreshState())` |
-| `usedMemories`, `promptNotes` | `setUsedMemories` (stream), `readTurnEnd` | `updateInfoBar()`; `usedMemories` also replaces the card → `lists.render()` |
-| `timing` (and `timing.tokens`, `.modelSegments`, `.side`) | `mergeTurnTiming` (`readTurnEnd`, the turn_canceled re-read), `stream_handlers.js` (`generation_completed`, `side_usage`) | `updateInfoBar()` |
-| `ctxPct`, `ctxWindow`, `ctxWindowSource`, `ctxUnknownAfterSwitch` | `stream_handlers.js` (`generation_chunk`, `generation_started`, `context_status`) | `updateInfoBar()` |
-| `model`, `served` | `stream_handlers.js` (`command_ran` of /model, `generation_completed`) | `updateInfoBar()`; a new model also `syncModelPick()` |
-| `llmContext` | `command_ran` | `updateInfoBar()`, `llmContextControl.refresh()`, `workingSet.strategyChanged()` |
-| `thinking` | `command_ran` | `updateInfoBar()`, `thinkingControl.refresh()` |
-| `reasoningHistory` | `command_ran` | `updateInfoBar()`, `reasoningHistoryControl.refresh()` |
-| `toolkit` | `command_ran`, `hook_notice` (`ctx.use_toolkit`) | `updateInfoBar()` |
-| `firstPreview` | `send_turn.js` (the first prompt) | `updateInfoBar()` (it calls `updateSessionTitle()`) |
-| `verdicts`, `verifyFresh` | `placeVerdict` | the card itself (`placeVerdictWithFresh`) |
-| `turnStarted` | `setTurnRunning` | `updateComposerMode()`, `updateInfoBar()` (in `setTurnRunning`) |
-| `attachCopiedAt` | the info bar's copy button | `updateInfoBar()` |
-| `streamSeq`, `streamFromGuess` | `resync`, `followWokenWorker`, `startStream`, the stream's `takeGuess` | none (not drawn) |
+- `store.update({selected?, current?: {field: value}, sessions?})`: `current`'s fields are written into the same
+  object (it is replaced only by a session switch); `sessions` is always a new array (one changed in place isn't
+  seen).
+- `store.setStatus(value, source, {streaming})`: the one way `status` changes (below).
+- `store.replaceCurrent(state)`: `forgetSession` only; always a new object, so a stale async writer still holding the
+  old one writes there alone.
+- `store.batch(fn)`, `store.touch(name)`, `store.on(name, fn)`: the redraws (below).
 
-The redraws:
-- `updateInfoBar()` (≈45 call sites): the session bar's buttons and info line (`info_bar_model.js sessionBar` →
+The ESLint block `samagotchi/session-writes` (eslint.config.js) enforces it in the six modules that hold the state
+(app.js, `stream_handlers.js`, `send_turn.js`, `session_actions.js`, `start_page.js`, `working_set_view.js`): an
+assignment, `++`, `delete` or `Object.assign` into `current`, `store.current` or `state()` is an error
+(`spec/web/public/lint_session_writes.test.js` runs it on a sample). An alias (`const st = state(); st.x = …`) isn't
+caught: don't write through one.
+
+**Read `store.current` fresh after every await.** A `const cur = store.current` held across an await pins the object
+from before it, which a session switch (`forgetSession`) may have replaced: app.js's `readTurnEnd`,
+`mergeTurnTiming`, `resync` and `refreshTimingFromSession` read it again after each await. Keep `store.sessions`
+reads fresh too.
+
+### Fields and their redraws
+
+`session_fields.js FIELDS` has one entry per `emptySessionState` key: its payload source (a partial re-read takes a
+field only when the payload carries it: `session_payload.js` reads its sources from here), its hub card source
+(`fieldsFromCard`: owner, workerVersion, workerFeatures, bridgeUp; never status), its redraws (store `ORDER` names)
+and its writers. A new field starts in `emptySessionState` and gets an entry (its spec checks both).
+
+A changed value (`!==`) marks its field's redraws; `sessions` marks `lists` and `infoBar` (the bar reads the list:
+the chain's ← → links, the children chip, the archived button, the card's title, the fresh link's picker); `selected`
+marks `paintActive`, `composer` and `infoBar`; `touch(name)` marks one redraw for an input the store doesn't hold
+(the clock, versions, the stream, `liveTurn.running`). They run synchronously, once each, at the end of the outermost
+`batch()` (at once for a bare write), in one `ORDER`: `lists`, `paintActive`, the chip popovers (`llmContextChip`,
+`thinkingChip`, `reasoningChip`, `workingSetStrategy`), `featureGates`, `composer`, `infoBar`. `lists` comes before
+the bar because `updateSessionTitle` reads the strip's active card; `composer` before the bar as `setTurnRunning`
+runs them. Not a rAF (a background tab runs none, and the title badge tests run there; the e2e per-frame checks would
+see the composer move a frame late) and not a microtask (code that reads the page right after a write would see it
+stale).
+
+**Nothing is registered yet**: every writer still calls its redraw by hand (`updateInfoBar()`, `lists.render()`, a
+chip's `refresh()`…), and the store only writes. Registering the redraws and deleting the manual calls is the next
+step.
+
+`batch(fn)`:
+- `fn` is synchronous: one that returns a promise is refused (`console.error`, the redraws run at once). Batch an
+  async function's synchronous parts only, never across an await.
+- The redraws run in `finally`, also when `fn` throws (the page shows what was written), then `fn`'s error is
+  rethrown; a redraw error meanwhile goes to `console.error`. A throw never leaves the store inside a batch.
+- During a flush, a write, a touch or a batch's end only enqueues: the next pass runs it, after the current pass's
+  `ORDER`. Passes stop at 3 (`console.error` names the redraw). A redraw that throws doesn't stop the others; its
+  error is thrown after the flush.
+
+### `status`
+
+Six writers, each with its rule, all through `setStatus(value, source)` (`session_fields.js statusWrite`):
+
+| source | writer | applies | the open session's card |
+|---|---|---|---|
+| `payload` | `renderSessionView` | always | left alone |
+| `hub` | `followSelectedSession` | only while the stream isn't live | left alone (the card came from the hub) |
+| `stream` | `setLiveStatus` (`turn_*`, `workerGone`'s idle) | always | `withLiveStatus`: status, owner, `updated_at` |
+| `turnEnd` | `readTurnEnd`, the turn_canceled re-read (`refreshTimingFromSession`) | when the payload carries one (the caller skips it otherwise) | left alone: `readTurnEnd` writes its card itself after its timing merge, with `used_memory_names` |
+| `stop` | `session_actions.js stoppedWorker` | always | left alone (`workerGone`'s `withoutWorker` changes it) |
+
+`setStatus` answers whether it replaced the card (the caller then calls `lists.render()`).
+
+### Exceptions
+
+- **Writers in place (D8)**, named in `FIELDS`: live_timing.js sets `timing().activeTurn` (the running turn's own
+  clock; `mergeTurnTiming` keeps it), and verdict_fresh.js `startFresh` pushes onto `fresh.running`, which is
+  `store.current.verifyFresh`.
+- **Events, not state (D9)**: these stay direct calls next to their write: a `/model`'s picker sync
+  (`syncModelPick`), the working set's `commandRan`/`strategyChanged`, the context chips on a note, the participants
+  reload, a verdict's `redrawFresh` on a Verify gate flip.
+
+A partial re-read of the open session (a `?tail`/`?recent` read) goes through **`applySessionPayload(data,
+{fields})`** in app.js (`session_payload.js sessionFieldsFrom`): the named fields read as a full load reads them, a
+field whose source the payload doesn't carry left alone; its status goes through `setStatus(…, "turnEnd")`. Then
+call the redraw. Never copy payload keys into `store.current` by hand.
+
+The redraws today:
+- `updateInfoBar()` (about 45 call sites): the session bar's buttons and info line (`info_bar_model.js sessionBar` →
   `info_bar.js`), the annotate bar, the fold controls, `updateSessionTitle()` and the fresh link's picker. Cheap;
   call it rather than skip it.
 - `updateComposerMode()`: the composer's placeholder, buttons and delivery line (selected, running, owner).
 - `xControl.refresh()`: an info-bar chip's **open popover** (the chip itself is drawn by `updateInfoBar`).
-- `lists.render()` / `lists.paintActive()`: the strip and the all view from `allSessions`.
-
-A partial re-read of the open session (a `?tail`/`?recent` read) goes through **`applySessionPayload(data,
-{fields})`** in app.js (`session_payload.js sessionFieldsFrom`): the named fields read as a full load reads them,
-a field whose source the payload doesn't carry left alone. Then call the redraw. Never copy payload keys into
-`current` by hand. A new `current` field starts in `emptySessionState` (the spec checks that every field
-`sessionStateFrom` sets is there).
+- `lists.render()` / `lists.paintActive()`: the strip and the all view from `store.sessions`.
 
 `forgetSession()` is the one reset: `select` and `clearSelection` both call it, so anything per-session that isn't
-in `current` (capabilities, the markdown warning and tip, the init row, the Verify claim, the turn view) is cleared
-there. A new per-session holder goes into it.
+in `store.current` (capabilities, the markdown warning and tip, the init row, the Verify claim, the turn view) is
+cleared there. A new per-session holder goes into it.
 
 ## Render idioms
 
@@ -111,7 +166,7 @@ The page switches sessions, reopens a popover or asks again while a fetch is out
 dropped. **`latest.js`** is the guard:
 
 - `stillOn(get, at = get())`: `() => true` while `get()` is still `at`. For a one-off read about the open session
-  (`const still = stillOn(openId); … await …; if (!still()) return;`). app.js has `openId = () => selected`.
+  (`const still = stillOn(openId); … await …; if (!still()) return;`). app.js has `openId = () => store.selected`.
 - `createLatest(get)`: `begin()` gives a guard that also goes stale when a newer ask begins; `drop()` makes every
   ask out stale (a close, a reset). For a list that is re-read.
 
@@ -138,7 +193,7 @@ uses `latest.js`.
 |---|---|---|
 | The hub, `GET /api/events` (`data.js openEvents`) | app.js `openSessionEvents` (scoped by `?dir`) | `snapshot` then `session` / `session_gone` → `applySessionEvent` → `allSessions`; EventSource reconnects itself (a fresh snapshot); `onClosed` (a proxy sign-in on reconnect): probe, reopen after `EVENTS_REOPEN_MS` |
 | A second hub stream, unscoped | `notifications.js` (`allEvents`) on a project's page | the Home Screen app's device tidy-up across projects |
-| The open session, `GET /api/sessions/:id/stream?from_seq=` (`data.js openStream`) | app.js `startStream` from `current.streamSeq` | events → `stream_handlers.js`. It closes itself on an error; the page resyncs (`resync`: a fresh render and a new stream from its cursor), once at once when it had opened, else after `STREAM_RETRY_MS` |
+| The open session, `GET /api/sessions/:id/stream?from_seq=` (`data.js openStream`) | app.js `startStream` from `store.current.streamSeq` | events → `stream_handlers.js`. It closes itself on an error; the page resyncs (`resync`: a fresh render and a new stream from its cursor), once at once when it had opened, else after `STREAM_RETRY_MS` |
 | The participant stream | `participant.js connect` | listens for `STREAM_EVENTS`, which is `Web::ParticipantView::EVENTS` (checked by `spec/web/participant_view_spec.rb`); reopened from fresh data when CLOSED |
 
 A new event type for the owner page is a handler in `stream_handlers.js` (the participant view spec makes it decide
