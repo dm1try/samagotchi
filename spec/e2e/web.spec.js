@@ -802,7 +802,10 @@ test("archive hides a session from the strip, include archived finds it, unarchi
   await page.locator("#stripStatus").click();
   await expect(page.locator("#filter")).toBeVisible();
   await expect(page).toHaveURL(/#\/sessions$/);
+  // There the pill stays, pressed: the view's own button.
+  await expect(page.locator("#stripStatus")).toHaveAttribute("aria-pressed", "true");
   await page.keyboard.press("Escape");
+  await expect(page.locator("#stripStatus")).toHaveAttribute("aria-pressed", "false");
   await expect(page.locator("#filter")).toBeHidden();
   await page.locator("#stripGrip").click();
   await expect(stripCard).toBeVisible();
@@ -945,7 +948,8 @@ test("archive hides a session from the strip, include archived finds it, unarchi
   await page.locator("#allTile").click();
   const listed = page.locator(`#allList .card[data-id="${id}"]`);
   await expect(listed).toHaveCount(0);
-  await page.locator("#includeArchived").check();
+  await page.locator("#includeArchived").click();
+  await expect(page.locator("#includeArchived")).toHaveAttribute("aria-pressed", "true");
   await expect(listed).toHaveClass(/archived/);
   await expect(listed.locator(".archived-badge")).toHaveText("archived");
   await listed.click();
@@ -1239,7 +1243,7 @@ test("a parent's delegates fold into its card: one strip card with a popover, in
 
     await expect(rows).toHaveCount(0);
     for (const id of fam.children) await expect(page.locator(`#allList .card[data-id="${id}"]`)).toHaveCount(0);
-    await expect(page.locator("#count")).toHaveText(/^\d+ \(\+\d+ delegates\)$/);
+    await expect(page.locator("#count")).toHaveText(/^\d+ · \d+ delegates$/);
 
     await chip.click();
     await expect(chip).toHaveAttribute("aria-expanded", "true");
@@ -1274,6 +1278,9 @@ test("a parent's delegates fold into its card: one strip card with a popover, in
     waitingFam = await seedFamily(chi, { tag: "Waits", waiting: true });
     await page.locator("#allTile").click();
     const waitingCard = page.locator(`#allList .card[data-id="${waitingFam.parent}"]`);
+    // The list now starts under the top bar, where the tile was: move the pointer off it, or the order
+    // drawn under it holds (lists_view.js listOrder) and the waiting family seeded just now lands last.
+    await page.mouse.move(2, 700);
     await expect(waitingCard).toHaveClass(/\bwaiting\b/);
     await expect(waitingCard.locator(".family-chip.waiting")).toContainText("2 delegates · 1 live · 1 waiting");
     await expect(waitingCard.locator(".family-chip")).toHaveAttribute("aria-expanded", "true");
@@ -1281,7 +1288,10 @@ test("a parent's delegates fold into its card: one strip card with a popover, in
     // Waiting families sort first.
     await expect(page.locator("#allList .card[data-id]").first()).toHaveAttribute("data-id", waitingFam.parent);
     // In the strip too: the waiting family's card first, warn chip, its popover row says what for.
-    await page.locator("#allBack").click();
+    // The pressed sessions pill (the strip shown) goes back to the chat.
+    await expect(page.locator("#stripStatus")).toHaveAttribute("aria-pressed", "true");
+    await page.locator("#stripStatus").click();
+    await expect(page).not.toHaveURL(/#\/sessions$/);
     const waitingStrip = page.locator(`#topStrip .card[data-id="${waitingFam.parent}"]`);
     await expect(page.locator("#topStrip .card[data-id]").first()).toHaveAttribute("data-id", waitingFam.parent);
     await expect(waitingStrip).toHaveClass(/\bwaiting\b/);

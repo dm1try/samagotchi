@@ -78,9 +78,10 @@ test("matchesFilter: title, first preview, ids, status and the waiting words", (
 // ── Counts ───────────────────────────────────────────────────────────────
 
 test("allCountText: the total with its delegates, or shown / total under a search", () => {
-  assert.equal(allCountText(14, 14, 7), "14 (+7 delegates)");
-  assert.equal(allCountText(2, 2, 1), "2 (+1 delegate)");
+  assert.equal(allCountText(14, 14, 7), "14 · 7 delegates");
+  assert.equal(allCountText(2, 2, 1), "2 · 1 delegate");
   assert.equal(allCountText(3, 3, 0), "3");
+  assert.equal(allCountText(0, 0, 0), "0");
   assert.equal(allCountText(3, 14, 7), "3 / 14");
 });
 

@@ -1421,6 +1421,8 @@ body.has-session #newBtn .brand-new{display:inline}
 body.has-session #scope .scope-where{display:none}
 /* A phone has no room for both; the hidden strip's pill (count, live) wins. */
 @media(max-width:600px){body.strip-hidden #scope .scope-where{display:none}}
+/* The all view's header takes the bar's right end: where a new session starts is the start page's line, not this view's. */
+body.all-view #scope .scope-where{display:none}
 /* A phone's top bar stays one row: "chi +" (the rest of "+ new session" goes),
    tighter gaps, nothing wraps, and the "← project" link cuts with an
    ellipsis before the pill does. */
@@ -1551,7 +1553,12 @@ body.no-glass :is(#familyPop,#chainPop){background:var(--bg-panel);-webkit-backd
   #stripStatus{min-height:30px;padding:4px 12px;font-size:12px}
 }
 body.strip-hidden #stripStatus{display:block}
-body.strip-hidden #topStrip, body.all-view #stripStatus{display:none}
+body.strip-hidden #topStrip{display:none}
+/* In the all view the pill is the view's own button, pressed (app.js applyView), whatever the strip's state: a click goes
+   back to the chat (lists_view.js), as Esc does. */
+body.all-view #stripStatus{display:block}
+.strip-toggle[aria-pressed="true"]{color:var(--accent);background:var(--accent-bg);border-color:var(--accent-border)}
+.strip-toggle[aria-pressed="true"]:hover{color:var(--accent);border-color:var(--accent)}
 /* The strip's grip (strip_grip.js, app.js): the handle on the edge between the
    strip and the chat, the composer's twin (the shared .edge-grip look, its own
    10 px box). Its box is centred on #center's top edge: main's 16 px gap stands
@@ -1582,18 +1589,27 @@ body.all-view #stripGrip{display:none}
 #allView{display:none;flex:1;min-height:0;flex-direction:column;gap:12px}
 body.all-view #allView{display:flex}
 body.all-view #center, body.all-view #topStrip{display:none}
-#allHead{display:flex;gap:8px;align-items:center}
+/* All sessions' header sits in the top bar (before the bell, at its right end), shown in the all view alone: the search as a
+   pill at chip height, the count, the archived toggle, Select. Its own auto margin pushes it right; the bell drops its own
+   there (two auto margins would split the space). */
+#allHead{display:none;margin-left:auto;gap:8px;align-items:center;min-width:0;flex-wrap:nowrap;justify-content:flex-end}
+body.all-view #allHead{display:flex}
+@media(min-width:601px){body.all-view #notifyBtn{margin-left:0}}
 /* The search field is glass too (no shadow: it is a field, not a card); the focus ring below replaces the highlight. */
-#allHead input{flex:1;min-width:0;background:var(--glass-bg);-webkit-backdrop-filter:blur(18px) saturate(1.35);backdrop-filter:blur(18px) saturate(1.35);border:1px solid var(--glass-border);box-shadow:inset 0 1px 0 var(--glass-highlight);color:var(--text);padding:8px 10px;border-radius:8px}
+#allHead input{flex:0 1 240px;width:240px;min-width:90px;box-sizing:border-box;height:24px;background:var(--glass-bg);-webkit-backdrop-filter:blur(18px) saturate(1.35);backdrop-filter:blur(18px) saturate(1.35);border:1px solid var(--glass-border);box-shadow:inset 0 1px 0 var(--glass-highlight);color:var(--text);padding:2px 11px;border-radius:999px;font-size:12px}
+#allHead input::placeholder{color:var(--text-faint)}
 #allHead input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-ring)}
-#allPath{font-size:11px;color:var(--text-muted);margin-top:-4px;word-break:break-all}
+/* Where the sessions are stored: a faint footer line under the list. */
+#allPath{position:relative;font-size:11px;color:var(--text-faint);margin-top:-32px;word-break:break-all}
 #allPath[hidden]{display:none}
-#allPath code{font-family:ui-monospace,monospace;background:var(--bg-hover);padding:1px 4px;border-radius:4px}
+#allPath code{font-family:ui-monospace,monospace;background:transparent;padding:0}
 #allHead .count{font-size:11px;color:var(--text-muted);white-space:nowrap;font-variant-numeric:tabular-nums}
-#allHead #selectBtn{padding:6px 10px;font-size:12px}
+#allHead #selectBtn{padding:3px 8px;min-height:0;font-size:12px;background:transparent;color:var(--text-muted)}
+#allHead #selectBtn:hover{filter:none;color:var(--text-2)}
+#includeArchived{white-space:nowrap}
 #selectBar{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
 #selectBar[hidden],#selectBtn[hidden],#selectBar [hidden]{display:none}
-#selectBar button{padding:6px 10px;font-size:12px;white-space:nowrap}
+#selectBar button{padding:3px 9px;min-height:0;font-size:12px;white-space:nowrap}
 #selectBar button:disabled{opacity:.5;cursor:default}
 #selectCount{font-size:12px;color:var(--text-2);white-space:nowrap;font-variant-numeric:tabular-nums;margin-right:2px}
 /* Select mode: a checkbox at the card's top left; a pick wears its own outline (.active is the open session's). */
@@ -1601,8 +1617,8 @@ body.all-view #center, body.all-view #topStrip{display:none}
 #allList .card-pick{position:absolute;top:13px;left:13px;width:16px;height:16px;margin:0;accent-color:var(--pick-border);cursor:pointer}
 #allList .card.picked,#allList .card.picked:hover{border-color:var(--pick-border);box-shadow:inset 0 0 0 1px var(--pick-border),var(--glass-shadow);background:color-mix(in srgb,var(--pick-border) 9%,var(--glass-bg))}
 .card .skip-reason{font-size:11px;line-height:1.35;color:var(--warn-text);display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;line-clamp:2;overflow:hidden;word-break:break-word}
-@media(max-width:600px){#allHead{flex-wrap:wrap}#allHead input#filter{flex-basis:140px}#allView.selecting #allHead .count{display:none}#selectBar{flex-basis:100%;order:5}#selectCount{flex-basis:100%}#allList .card-pick{width:20px;height:20px;top:12px;left:11px}}
-#allHead .include-archived{display:flex;align-items:center;gap:4px;font-size:12px;color:var(--text-muted);white-space:nowrap;cursor:pointer;user-select:none}
+/* A phone: the header is its own row under the bar (the chips stay in the first), the search as wide as it can be. */
+@media(max-width:600px){#allHead{flex-basis:100%;order:20;margin-left:0;justify-content:flex-start}#allHead input#filter{flex:1 1 0;width:auto;min-width:0;height:30px;font-size:16px}#allHead.selecting{flex-wrap:wrap}#allHead.selecting .count{display:none}#selectBar{flex-basis:100%;order:5}#selectCount{flex-basis:100%}#allList .card-pick{width:20px;height:20px;top:12px;left:11px}}
 .card.archived{opacity:.6}
 .card.archived:hover{opacity:.85}
 .card .archived-badge,.family-row .archived-badge{font-size:10px;padding:1px 6px;border-radius:6px;border:1px solid var(--border-strong);color:var(--text-muted)}
@@ -1615,8 +1631,10 @@ body.all-view #center, body.all-view #topStrip{display:none}
 #toast .toast-close{background:transparent;border:0;color:var(--text-muted);cursor:pointer;padding:2px 4px;margin-left:-6px}
 #toast .toast-close:hover{color:var(--text)}
 /* Each row is as tall as its tallest card. An `auto` row in a grid that overflows its
-   height has no free space to grow into, so it collapses to each card's min-height. */
-#allList{flex:1;min-height:0;overflow:auto;display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px;align-content:start;grid-auto-rows:max-content;padding:2px}
+   height has no free space to grow into, so it collapses to each card's min-height.
+   As tall as its cards (it shrinks and scrolls past the view's height), so the storage line follows them; its bottom
+   padding lets the cards' shadows fade out instead of ending in a hard edge, the storage line drawn over it (#allPath). */
+#allList{flex:0 1 auto;min-height:0;overflow:auto;display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px;align-content:start;grid-auto-rows:max-content;padding:2px 2px 26px}
 .card.skeleton{pointer-events:none;border-style:dashed;opacity:.9;animation:skeleton-pulse 1.2s ease-in-out infinite}
 .card.skeleton .line{height:10px;background:var(--bg-raised);border-radius:6px}
 .card.skeleton .line.long{width:78%}
@@ -1692,6 +1710,19 @@ a{color:var(--accent)}
 }
 </style>
 </head>
+    <div id="allHead">
+      <input id="filter" type="search" placeholder="Search preview, id or status" aria-label="Search sessions" autocomplete="off">
+      <span class="count" id="count"></span>
+      <button type="button" class="strip-toggle" id="includeArchived" aria-pressed="false" title="Show archived sessions too">archived</button>
+      <button class="ghost" id="selectBtn" title="Pick sessions to archive several at once">Select</button>
+      <div id="selectBar" role="toolbar" aria-label="Selected sessions" hidden>
+        <span id="selectCount" aria-live="polite"></span>
+        <button class="ghost" id="selectAllBtn" title="Pick every session the search shows">Select all shown</button>
+        <button id="batchArchiveBtn" title="Archive the picked sessions that are shown (their delegates too)">Archive 0</button>
+        <button class="ghost" id="batchUnarchiveBtn" title="Unarchive the picked archived sessions that are shown" hidden>Unarchive 0</button>
+        <button class="ghost" id="selectDoneBtn" title="Leave select mode (Esc)">Done</button>
+      </div>
+    </div>
 <body>
 <main>
   <div id="topBar">
@@ -1750,27 +1781,13 @@ a{color:var(--accent)}
         <button class="ghost" id="infoCancelBtn" title="Cancel the running turn, whoever sent it" style="display:none">Stop turn</button>
         <button class="ghost" id="infoContinueBtn" title="Continue: start the next link of this session's chain from its recap (this one is archived)" style="display:none">continue →</button>
         <button class="ghost" id="infoArchiveBtn" title="Archive: hide from the lists, keep for good" style="display:none">archive</button>
+    <div id="allPath" hidden>Stored in <code></code></div>
         <button class="ghost" id="infoStopBtn" title="Stop session (terminate worker)" style="display:none">stop session</button>
         <button class="ghost" id="infoDeleteBtn" title="Delete session (for good)" style="display:none">delete</button>
       </div>
     </div>
   </section>
   <section id="allView" aria-label="All sessions">
-    <div id="allHead">
-      <button class="ghost" id="allBack" title="Back to the chat (Esc)">← Back</button>
-      <input id="filter" type="search" placeholder="Search… (preview / id / status)" autocomplete="off">
-      <label class="include-archived" title="Show archived sessions too"><input id="includeArchived" type="checkbox"> include archived</label>
-      <span class="count" id="count"></span>
-      <button class="ghost" id="selectBtn" title="Pick sessions to archive several at once">Select</button>
-      <div id="selectBar" role="toolbar" aria-label="Selected sessions" hidden>
-        <span id="selectCount" aria-live="polite"></span>
-        <button class="ghost" id="selectAllBtn" title="Pick every session the search shows">Select all shown</button>
-        <button id="batchArchiveBtn" title="Archive the picked sessions that are shown (their delegates too)">Archive 0</button>
-        <button class="ghost" id="batchUnarchiveBtn" title="Unarchive the picked archived sessions that are shown" hidden>Unarchive 0</button>
-        <button class="ghost" id="selectDoneBtn" title="Leave select mode (Esc)">Done</button>
-      </div>
-    </div>
-    <div id="allPath" hidden>Stored in <code></code></div>
     <div id="allList"></div>
   </section>
 </main>

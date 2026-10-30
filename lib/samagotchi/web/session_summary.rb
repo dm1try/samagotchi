@@ -94,7 +94,7 @@ module Samagotchi
           memory_index: saved&.memory_index,
           # Its side requests, apart from the tokens (the tooltip's own line).
           side: saved&.side,
-          # Hidden from the strip and the list unless "include archived".
+          # Hidden from the strip and the list unless the all view's "archived" toggle is on.
           archived: ArchiveStore.archived?(session_dir),
           project_root: session.project_root(cache: root_cache),
           # A worker is reachable: WorkerLink answers Live (the lock held by
