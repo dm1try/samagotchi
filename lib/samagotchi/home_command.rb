@@ -3,6 +3,7 @@
 require "rbconfig"
 require_relative "chi_home"
 require_relative "home_doctor"
+require_relative "home_notice"
 require_relative "cli/command"
 require_relative "cli/exit"
 require_relative "cli/flags"
@@ -103,7 +104,7 @@ module Samagotchi
       list
     end
 
-    def running_home?(home) = @gem_spec && home.running_here? && home.newest_version.to_s == VERSION
+    def running_home?(home) = @gem_spec && HomeNotice.home?(home)
 
     def running_ruby = "#{RbConfig.ruby}#{" (a checkout)" unless @gem_spec}"
 

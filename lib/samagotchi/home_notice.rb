@@ -48,11 +48,18 @@ module Samagotchi
       nil
     end
 
+    # Whether this chi is +home+'s: it runs on the home's Ruby and gems and
+    # is its newest chi. The one rule for "not the home's chi" (this line,
+    # chi home doctor, chi home's "running" row, chi self's home row).
+    def home?(home, ruby: RbConfig.ruby, gem_dir: Gem.dir, version: VERSION)
+      home.running_here?(ruby: ruby, gem_dir: gem_dir) && home.newest_version.to_s == version
+    end
+
     # This chi isn't the home's: the text, also chi home doctor's row; nil
     # when this process runs on +home+ (or there is none).
     # @return [String, nil]
     def mismatch(home, ruby: RbConfig.ruby, gem_dir: Gem.dir, version: VERSION)
-      return nil if home.nil? || (home.running_here?(ruby: ruby, gem_dir: gem_dir) && home.newest_version.to_s == version)
+      return nil if home.nil? || home?(home, ruby: ruby, gem_dir: gem_dir, version: version)
 
       where = ruby
       # The same Ruby on other gems (a chruby GEM_HOME): name them both.

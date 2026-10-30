@@ -74,6 +74,15 @@ RSpec.describe Samagotchi::SelfReport do
       expect(field("home")).to eq("#{RbConfig.ruby} (chi 9.9.9); this chi runs on #{RbConfig.ruby}")
     end
 
+    it "says when this chi runs on the home's Ruby and gems but isn't the home's newest chi" do
+      allow(Samagotchi::InstalledGem).to receive(:spec).and_return(Gem::Specification.new { |s| s.name = "samagotchi" })
+      write_home(RbConfig.ruby)
+      # The home's gem dir is this process's (running_here?); its newest chi 9.9.9 is in gem_path.
+      home = Samagotchi::ChiHome.read(path: home_path)
+      Samagotchi::ChiHome.write!(home.with(gem_home: Gem.dir), path: home_path)
+      expect(field("home")).to eq("#{RbConfig.ruby} (chi 9.9.9); this chi is #{Samagotchi::VERSION}")
+    end
+
     it "says why a recorded home can't be used" do
       write_home(File.join(tmp, "gone", "ruby"))
       expect(field("home")).to eq("#{File.join(tmp, "gone", "ruby")} (unusable: home ruby missing: #{File.join(tmp, "gone", "ruby")})")

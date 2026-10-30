@@ -25,6 +25,7 @@ require_relative "desktop"
 require_relative "live_versions"
 require_relative "web/lan"
 require_relative "chi_home"
+require_relative "home_notice"
 require_relative "project_env"
 
 module Samagotchi
@@ -429,7 +430,8 @@ module Samagotchi
 
       label = "#{home.ruby} (chi #{home.newest_version})"
       return "#{label}; this chi is a source checkout" unless InstalledGem.spec
-      return label if home.running_here?
+      return label if HomeNotice.home?(home)
+      return "#{label}; this chi is #{VERSION}" if home.running_here?
 
       "#{label}; this chi runs on #{RbConfig.ruby}"
     rescue ChiHome::Invalid => e
