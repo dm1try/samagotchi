@@ -10,6 +10,8 @@ and commands may change between minor versions. How releases are made:
 ### Fixed
 
 - Web: the start page's ⚙ and 🧰 buttons say whether their panel is open (`aria-expanded`) to screen readers.
+- Web: on a touch screen a tapped row or link in the ⚙ and 🧰 panels (and the ⚙ and 🧰 buttons) no longer keeps its
+  hover tint.
 - Web: a sheet's and a popover's × is a 36 px tap target on a touch screen (it was 22x16 px).
 - Web: the Stop sheet's "+N more" no longer sits 74 px to the right (it shared a class with the ⚙ panel's row).
 - Pair turns: a read-only mention of mise's config (`find . -name mise.toml && make`) no longer asks the owner; a

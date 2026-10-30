@@ -1128,12 +1128,12 @@ body.has-session.composer-folded #infoBar{border-top-color:transparent}
 .sset-label{flex:0 0 64px;font-size:12px;line-height:26px;color:var(--text-muted)}
 .sset-seg{flex:1;min-width:0;display:flex;flex-wrap:wrap;gap:4px}
 .sset-seg button{height:26px;min-height:26px;padding:0 9px;border:1px solid var(--border-strong);border-radius:7px;background:transparent;color:var(--text-2);font-size:12px;line-height:24px;white-space:nowrap}
-.sset-seg button:hover{filter:none;color:var(--text);border-color:var(--accent-border)}
+.sset-seg button:hover{filter:none}
 .sset-seg button[aria-pressed="true"]{background:var(--accent-bg);color:var(--accent);border-color:var(--accent-border)}
 .sset-seg button:focus-visible,.sset-link:focus-visible,.sset-back:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
 .sset-ctx-more{margin:-4px 0 0 74px}
 .sset-link{padding:2px 4px;border:0;border-radius:5px;background:transparent;color:var(--accent);font-size:12px}
-.sset-link:hover{filter:none;background:var(--accent-bg)}
+.sset-link:hover{filter:none}
 .sset-ctx-form{display:flex;flex-direction:column;gap:8px;margin:0 0 0 74px}
 .sset-anyway{display:flex;align-items:baseline;flex-wrap:wrap;gap:4px}
 .sset-rule{width:100%;margin:0;border:0;border-top:1px solid var(--border)}
@@ -1141,8 +1141,11 @@ body.has-session.composer-folded #infoBar{border-top-color:transparent}
 .sset-review>.sset-link:first-child{margin-left:-4px}
 .sset-review-set{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text);font-size:12.5px}
 .sset-back{margin:0 2px 0 -6px;padding:0 6px;border:0;border-radius:5px;background:transparent;color:var(--text-muted);font-size:18px;line-height:1}
-.sset-back:hover{filter:none;color:var(--text);background:var(--bg-hover)}
+.sset-back:hover{filter:none}
 .start-settings.sheet{border-radius:14px;padding:14px 16px}
+/* Tints only where a pointer hovers: on a touch screen a tapped control would keep it (the ⚙/🧰 panels' rows and links;
+   older popovers' :hover rules aren't gated yet). */
+@media(hover:hover){.sset-seg button:hover{color:var(--text);border-color:var(--accent-border)}.sset-link:hover{background:var(--accent-bg)}.sset-back:hover{color:var(--text);background:var(--bg-hover)}.st-row:hover{color:var(--text);background:var(--bg-hover)}}
 @media(max-width:400px){.sset-row{flex-direction:column;gap:4px}.sset-label{flex:none;line-height:1.4}.sset-ctx-more,.sset-ctx-form{margin-left:0}}
 @media(pointer:coarse){.sset-seg button{height:36px;min-height:36px;line-height:34px;padding:0 12px;font-size:13px}.sset-link,.sset-back{min-height:36px}.sset-label{line-height:36px}}
 /* The start page's 🧰 list (start_toolkit.js): a row per kit (a check, its name, a muted detail), the checked one accent; a bottom sheet on a phone. */
@@ -1150,7 +1153,7 @@ body.has-session.composer-folded #infoBar{border-top-color:transparent}
 .start-toolkit .ctx-pop-head strong{font-family:inherit}
 .st-rows{display:flex;flex-direction:column;gap:2px;margin:0 -6px}
 .st-row{display:flex;align-items:baseline;gap:8px;width:100%;min-height:30px;padding:5px 8px 5px 6px;border:1px solid transparent;border-radius:8px;background:transparent;color:var(--text-2);font-size:13px;text-align:left}
-.st-row:hover{filter:none;color:var(--text);background:var(--bg-hover)}
+.st-row:hover{filter:none}
 .st-row[aria-pressed="true"]{color:var(--accent);background:var(--accent-bg);border-color:var(--accent-border)}
 .st-row:focus-visible{outline:2px solid var(--accent);outline-offset:-1px}
 .st-check{flex:0 0 14px;text-align:center}

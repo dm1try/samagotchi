@@ -77,7 +77,9 @@ body.has-session.composer-folded #composeGrip::after{opacity:1;width:48px;margin
    .set: something under it is set, an accent dot on a phone (the override chips say it on a wider row). */
 #composer .actions-col .icon-btn{order:2;position:relative;flex:none;width:28px;padding:0;border:1px solid transparent;border-radius:8px;background:transparent;color:var(--text-muted)}
 #composer .actions-col .icon-btn::before{content:"";display:block;width:16px;height:16px;margin:auto;background:currentColor;-webkit-mask:var(--icon) center/contain no-repeat;mask:var(--icon) center/contain no-repeat}
-#composer .actions-col .icon-btn:hover,#composer .actions-col .icon-btn[aria-expanded="true"]{filter:none;color:var(--text);background:color-mix(in srgb,var(--bg-hover) 75%,transparent)}
+#composer .actions-col .icon-btn:hover{filter:none}
+#composer .actions-col .icon-btn[aria-expanded="true"]{color:var(--text);background:color-mix(in srgb,var(--bg-hover) 75%,transparent)}
+@media(hover:hover){#composer .actions-col .icon-btn:hover{color:var(--text);background:color-mix(in srgb,var(--bg-hover) 75%,transparent)}}
 #composer .actions-col .icon-btn[hidden],body.has-session #composer .actions-col .icon-btn{display:none}
 #composer .actions-col .settings-btn{--icon:var(--icon-settings)}
 #composer .actions-col .toolkit-btn{--icon:var(--icon-toolkit)}
