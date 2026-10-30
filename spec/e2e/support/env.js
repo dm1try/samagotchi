@@ -108,7 +108,8 @@ async function settle(check, timeoutMs) {
 
 // This machine's private IPv4 address (RFC 1918) on an interface that is
 // up, as chi web's `lan` looks for one; null when there is none (a CI
-// runner may have only a public one): the LAN scenario is skipped then.
+// runner may have only a public one): the lan project's chi web is then on
+// loopback only, its LAN tests skip (playwright.config.js).
 export function privateIPv4() {
   const skipped = /^(utun|bridge|docker|vboxnet|vmnet|llw)/;
   for (const [name, addrs] of Object.entries(os.networkInterfaces())) {

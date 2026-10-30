@@ -9,6 +9,7 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig, devices } from "@playwright/test";
+import { privateIPv4 } from "./support/env.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 
@@ -34,7 +35,9 @@ export default defineConfig({
   projects: [
     { name: "chromium", testIgnore: ["lan.spec.js", "proxy.spec.js"] },
     // chi web --web-host lan, reached at the LAN address: the access token.
-    { name: "lan", testMatch: "lan.spec.js", use: { lan: true } },
+    // On a machine without a private IPv4, chi web on loopback only: the
+    // LAN tests skip and the review journey runs on loopback (lan.spec.js).
+    { name: "lan", testMatch: "lan.spec.js", use: { lan: !!privateIPv4() } },
     // chi web behind an auth proxy (support/pod_proxy.rb, web.public_url).
     { name: "proxy", testMatch: "proxy.spec.js", use: { authProxy: true, ignoreHTTPSErrors: true } },
   ],

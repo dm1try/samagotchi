@@ -1,13 +1,14 @@
 // chi web on the LAN (--web-host lan), reached at this machine's LAN
 // address as a phone would, and on loopback: the access token is asked for
-// on both.
+// on both. Without a private IPv4 the project's chi web is on loopback only
+// (playwright.config.js): the LAN tests skip, the review journey runs there.
 import fs from "node:fs";
 import { test, expect } from "./support/fixtures.js";
-import { privateIPv4 } from "./support/env.js";
 
-test.skip(!privateIPv4(), "no private IPv4 address on this machine");
+const NO_LAN = "no private IPv4 address on this machine";
 
 test("the LAN page asks for the token, the token link gets in, a turn streams and a reload stays in", async ({ chi, context, script }) => {
+  test.skip(!chi.lanURL, NO_LAN);
   const page = await context.newPage();
   const errors = [];
   page.on("pageerror", (e) => errors.push(e.message));
@@ -46,6 +47,7 @@ test("the LAN page asks for the token, the token link gets in, a turn streams an
 });
 
 test("a wrong token gets the 401 page, and a browser without the cookie is refused the API", async ({ chi, browser }) => {
+  test.skip(!chi.lanURL, NO_LAN);
   const context = await browser.newContext();
   const page = await context.newPage();
   const res = await page.goto(`${chi.lanURL}/?token=wrong`);
@@ -62,6 +64,7 @@ test("a wrong token gets the 401 page, and a browser without the cookie is refus
 });
 
 test("this machine's page asks for the token too, and chi web's Local link (a one-time code) gets in", async ({ chi, browser }) => {
+  test.skip(!chi.lanURL, NO_LAN);
   const context = await browser.newContext();
   const page = await context.newPage();
   const errors = [];
@@ -95,15 +98,24 @@ test("this machine's page asks for the token too, and chi web's Local link (a on
   expect(errors, "page errors").toEqual([]);
 });
 
-test("a review: the owner starts one for a file and invites from the panel, the link joins over the LAN with the Plan, annotates it, a comment (a double Enter) gets one reply and comes back on ↑, the owner applies it, and a claim link opens in Alex's browser, where Verify on it gets a verdict card", async ({ chi, context, browser, script }) => {
+test("a review: the owner starts one for a file and invites from the panel, the link joins (over the LAN when there is one) with the Plan, annotates it, a comment (a double Enter) gets one reply and comes back on ↑, the owner applies it, and a claim link opens in Alex's browser, where Verify on it gets a verdict card", async ({ chi, context, browser, script }) => {
   const owner = await context.newPage();
   const errors = [];
   owner.on("pageerror", (e) => errors.push(e.message));
   script("plain");
-  // The owner on this machine: the token link on loopback sets the cookie.
-  const token = fs.readFileSync(chi.tokenPath, "utf8").trim();
-  await owner.goto(`${chi.baseURL}/?token=${token}`);
-  expect(owner.url()).toBe(`${chi.baseURL}/`);
+  // Alex's browser reaches chi web at the LAN address, as a phone would; on
+  // a machine without one, at loopback (a grant's token is a participant
+  // from any peer: docs/internals/participants.md, The gate).
+  const guestURL = chi.lanURL || chi.baseURL;
+  if (chi.lanURL) {
+    // The owner on this machine: the token link on loopback sets the cookie.
+    const token = fs.readFileSync(chi.tokenPath, "utf8").trim();
+    await owner.goto(`${chi.baseURL}/?token=${token}`);
+    expect(owner.url()).toBe(`${chi.baseURL}/`);
+  } else {
+    // A chi web on loopback only: this machine's browser is the owner.
+    await owner.goto(`${chi.baseURL}/`);
+  }
   // The start page's ⚙ panel, Review files…: the new session is a review of README.md.
   await owner.locator("#settingsNew").click();
   await owner.locator("#startSettingsPopover").getByRole("button", { name: "Review files…" }).click();
@@ -129,11 +141,11 @@ test("a review: the owner starts one for a file and invites from the panel, the 
   await expect(owner.locator("#participantsPopover .pp-warning")).toHaveCount(0);
   await expect(chip).toHaveText("1 participant");
 
-  // Another browser on the LAN address: the participant page, no owner page.
+  // Another browser (on the LAN address): the participant page, no owner page.
   const guest = await browser.newContext();
   const page = await guest.newPage();
   page.on("pageerror", (e) => errors.push(e.message));
-  await page.goto(link.replace(/^http:\/\/[^/]+/, chi.lanURL));
+  await page.goto(link.replace(/^http:\/\/[^/]+/, guestURL));
   await expect(page.locator("#title")).toContainText("Alex's review");
   // The Plan beside the thread: the subject's rendered markdown.
   await expect(page.locator("#planPath")).toHaveText("README.md");
@@ -206,7 +218,7 @@ test("a review: the owner starts one for a file and invites from the panel, the 
   await owner.locator("#annotateBar .annotate-link").click();
   const claimLink = await owner.evaluate(() => window.copiedLink);
   expect(claimLink).toMatch(/^http:\/\/[^/]+\/#s=[0-9a-f-]+&t=[0-9a-f-]{8}&q=PONG/);
-  await page.goto(claimLink.replace(/^http:\/\/[^/]+/, chi.lanURL));
+  await page.goto(claimLink.replace(/^http:\/\/[^/]+/, guestURL));
   await expect(page.locator("#thread .p-msg.reply .p-bubble").first()).toHaveClass(/claim-hit/);
   await expect(page.locator("#thread .claim-hit")).toBeInViewport();
   expect(await page.evaluate(() => CSS.highlights.get("chi-claim")?.size)).toBe(1);
