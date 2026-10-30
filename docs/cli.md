@@ -1023,7 +1023,9 @@ hides it for that browser (`chi_markdown_tip_dismissed` in localStorage).
 Every prompt and answer has a copy button (on hover; always shown, dimmed, on a
 touch screen), and so does each code block of a rendered answer. An answer
 copies its Markdown source, not the rendered text; a code block copies just
-its code; a prompt copies the text as you typed it.
+its code; a prompt copies the text as you typed it. On a phone or a touch
+screen a code block's button sits in a strip above its first line, clear of
+the code.
 
 A long answer (over 25 lines or 2,000 characters of its text) can be folded
 by hand: a "▾ N lines" row is its top edge once its turn has ended. Click

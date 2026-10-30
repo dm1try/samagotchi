@@ -630,6 +630,8 @@ button.system-one-wrong:hover:not(:disabled){background:var(--bg-hover);color:va
 .bubble.output.markdown .code-wrap>pre,.bubble.user>.user-message.markdown .code-wrap>pre{margin:0}
 .code-wrap>.copy-btn{top:5px;right:5px}
 @media (hover:none){.copy-btn{opacity:.55}}
+/* Where the code button always shows (touch) or a phone's narrow block, the code starts under it: a strip above the first line holds the button (a line as wide as the block, or one that scrolls, would run under it). */
+@media (max-width:600px),(hover:none){.bubble.output.markdown .code-wrap>pre,.bubble.user>.user-message.markdown .code-wrap>pre{padding-top:32px}}
 /* The dock is the composer card (composer.css .composer-card): the text field, a toolbar row, the info bar as its footer. */
 #dock{flex-shrink:0;margin:0 12px 12px}
 /* In a session the card floats over the history, so the glass blurs it; the history's bottom padding follows the card (--dock-h, set from dock_reserve.js). */
