@@ -3,6 +3,7 @@
 require_relative "../config"
 require_relative "../memory_paths"
 require_relative "../paths"
+require_relative "../guardrails/approval"
 require_relative "../guardrails/chi_dirs"
 require_relative "../guardrails/path_resolve"
 require_relative "../guardrails/pair_command"
@@ -86,20 +87,21 @@ module Samagotchi
 
       module_function
 
-      # @param approval [Hash, nil] the ask's approval facts (rule, tool,
-      #   paths, command, cwd)
+      # @param approval [Guardrails::ApprovalFacts, Hash, nil] the ask's
+      #   approval facts (rule, tool, paths, command, cwd), as built or saved
       # @param targets [Guardrails::Targets, nil] the call's targets, for its
       #   env: (Targets#shell_envs, #redefines_shell?)
       # @return [Boolean] whether System 1 must not answer this ask
       def refuse?(approval, targets: nil)
-        return false unless approval.is_a?(Hash)
-        return true if NEVER_AUTO.include?(fetch(approval, :rule).to_s)
+        approval = Guardrails::ApprovalFacts.from_h(approval)
+        return false if approval.nil?
+        return true if NEVER_AUTO.include?(approval.rule.to_s)
         # An env: that redefines the shell (BASH_ENV, BASH_FUNC_…) runs what
         # no word of the command says.
         return true if targets&.redefines_shell?
 
-        command = fetch(approval, :command).to_s
-        words = command.empty? ? nil : words(command, cwd: fetch(approval, :cwd), targets: targets)
+        command = approval.command.to_s
+        words = command.empty? ? nil : words(command, cwd: approval.cwd, targets: targets)
         return true if words&.chi
         return true if chi_paths?(approval)
         # The test that makes an ask user_only (ParentApprovals#chi_files?:
@@ -116,7 +118,7 @@ module Samagotchi
         memories = Guardrails::PathResolve.real(MemoryPaths.system_dir)
         bundles = Guardrails::PathResolve.real(MemoryPaths.bundles_dir)
         dirs = chi_dirs
-        Array(fetch(approval, :paths)).map(&:to_s).reject(&:empty?).any? do |path|
+        Array(approval.paths).map(&:to_s).reject(&:empty?).any? do |path|
           Guardrails::PathResolve.reals(path).any? do |real|
             dirs.any? { |dir| Guardrails::PathResolve.within?(real, dir) } && !memory?(real, memories, bundles)
           end
@@ -129,12 +131,12 @@ module Samagotchi
       def beyond_memories(approval, exempt:)
         memories = Guardrails::PathResolve.real(MemoryPaths.system_dir)
         bundles = Guardrails::PathResolve.real(MemoryPaths.bundles_dir)
-        paths = Array(fetch(approval, :paths)).map(&:to_s).reject do |path|
+        paths = Array(approval.paths).map(&:to_s).reject do |path|
           Guardrails::PathResolve.reals(path).all? { |real| memory?(real, memories, bundles) }
         end
-        command = fetch(approval, :command).to_s
+        command = approval.command.to_s
         command = command.gsub(memories_text) { |text| text.include?("/.bundles") ? text : "" } if exempt
-        { paths: paths, command: command }
+        approval.with(paths: paths, command: command)
       end
 
       # Whether the command's memories text may be taken out: no command,
@@ -239,10 +241,6 @@ module Samagotchi
                    .map { |prefix| Regexp.escape(prefix.to_s.chomp("/")) }.uniq
         word = WORD_END.sub("[", "[^")
         Regexp.new("(?:#{prefixes.join("|")})/memories(?=/|#{WORD_END}|\\z)(?:/#{word}*)?")
-      end
-
-      def fetch(hash, key)
-        hash.key?(key) ? hash[key] : hash[key.to_s]
       end
     end
   end

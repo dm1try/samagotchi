@@ -192,7 +192,7 @@ module Samagotchi
       # of a relay), else its hook; an approval's call (#what_text).
       # @param question [PendingQuestion] the child's
       def what(question)
-        return what_text(symbolized(question.approval)) unless question.kind.to_s == HOOK_KIND
+        return what_text(Guardrails::ApprovalFacts.from_h(question.approval)) unless question.kind.to_s == HOOK_KIND
 
         inner = symbolized(question.relay, nil)
         header = (inner ? inner[:header] : question.header).to_s
@@ -204,11 +204,12 @@ module Samagotchi
       end
 
       # execute: git push origin main
+      # @param facts [Guardrails::ApprovalFacts, nil] the saved card's
       def what_text(facts)
-        facts = {} unless facts.is_a?(Hash)
-        tool = facts[:label] || facts[:tool] || "tool"
-        what = facts[:command] || Array(facts[:paths]).join(", ")
-        what = facts[:args].to_s if what.to_s.empty?
+        facts ||= Guardrails::ApprovalFacts.new
+        tool = facts.label || facts.tool || "tool"
+        what = facts.command || Array(facts.paths).join(", ")
+        what = facts.args.to_s if what.to_s.empty?
         what.to_s.empty? ? tool.to_s : "#{tool}: #{what}"
       end
 

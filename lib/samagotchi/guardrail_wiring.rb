@@ -330,9 +330,10 @@ module Samagotchi
         return verdict
       end
 
-      answer = @ask.call(payload)
+      # The card and the session file carry the facts as the hash they were.
+      answer = @ask.call(payload.merge(approval: payload[:approval].to_h))
       system_one_label(judgment, answer, payload)
-      Guardrails::Approval.settle(verdict, answer, payload[:approval][:scopes])
+      Guardrails::Approval.settle(verdict, answer, payload[:approval].scopes)
     end
 
     private
@@ -391,9 +392,9 @@ module Samagotchi
       decision = system_one_decision(client, auto)
 
       id = log.judgment(session_id: @session_lookup.call&.id,
-                        rule: approval[:rule], source: approval[:source], tool: approval[:tool],
+                        rule: approval.rule, source: approval.source, tool: approval.tool,
                         **SystemOne::ApprovalQuestion.call_fields(approval),
-                        repo_name: approval[:repo_name],
+                        repo_name: approval.repo_name,
                         p: p, threshold: Config.get("guardrails.system_one.threshold"), model: client.model,
                         latency_ms: latency_ms, decision: decision, origin: "live")
       # A judgment the log cannot hold is no judgment: the user is asked.
@@ -418,12 +419,13 @@ module Samagotchi
     # user opted in, the never-list and chi's own files, the probability, and
     # the rule's record. Any one that fails leaves the ask to the user. The
     # entries are the judgment log read once for this ask.
+    # @param approval [Guardrails::ApprovalFacts] the ask's facts
     # @param entries [Array<Hash>] SystemOne::Log#entries
     # @param targets [Guardrails::Targets, nil] the call's, for its env:
     def system_one_auto_allow?(client, approval, p, entries, targets: nil)
       return false unless client.mode == "on"
 
-      rule = approval[:rule].to_s
+      rule = approval.rule.to_s
       return false if rule.empty?
       return false unless system_one_rules.include?(rule)
       return false if SystemOne::SelfProtect.refuse?(approval, targets: targets)
@@ -456,7 +458,7 @@ module Samagotchi
       id = judgment && judgment[:id]
       return nil if id.nil?
 
-      scopes = Array(payload[:approval][:scopes])
+      scopes = Array(payload[:approval].scopes)
       if !answer.is_a?(Samagotchi::QuestionAnswer)
         label = "none"
       elsif answer.parent_agent?

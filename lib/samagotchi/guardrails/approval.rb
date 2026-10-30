@@ -6,6 +6,41 @@ require_relative "../question_answer"
 
 module Samagotchi
   module Guardrails
+    # An ask's facts, as Approval.payload builds them (its approval:) and
+    # the question card shows them: the tool (tool, acts_as, label), what
+    # it acts on (command, paths, args, memory), where (cwd, repo_root,
+    # repo_name, branch), who asked and why (rule, source, reason), the
+    # offered scopes, an edit's preview (EditPreview.for) and, for a
+    # participant's turn, who asks (author, author_name, asked_by).
+    #
+    # In this process it is passed as this value; it crosses to the UIs and
+    # the session file (PendingQuestion's approval) as #to_h, the hash it
+    # always was: symbol keys, in member order, unset fields left out. A
+    # saved or sent one (string or symbol keys, missing fields, a key we
+    # don't know dropped) comes back through .from_h. memory and preview
+    # stay as given (string keys inside after a load).
+    ApprovalFacts = Data.define(:tool, :acts_as, :label, :command, :paths, :args, :memory, :cwd, :repo_root,
+                                :repo_name, :branch, :rule, :source, :reason, :scopes, :preview, :author,
+                                :author_name, :asked_by) do
+      def initialize(**fields)
+        super(**members.to_h { |m| [m, nil] }, **fields)
+      end
+
+      # @param raw [ApprovalFacts, Hash, nil] facts as built, saved or sent
+      # @return [ApprovalFacts, nil] nil for anything that is not facts
+      def self.from_h(raw)
+        return raw if raw.is_a?(ApprovalFacts)
+        return nil unless raw.is_a?(Hash)
+
+        new(**members.to_h { |m| [m, raw.key?(m) ? raw[m] : raw[m.to_s]] })
+      end
+
+      # The card's and the session file's shape: symbol keys, in member
+      # order, unset fields left out.
+      # @return [Hash{Symbol => Object}]
+      def to_h = super.compact
+    end
+
     # An ask as a question for the user (Engine#open_question), and the
     # answer back as a verdict. The question text is plain and complete, so
     # a UI that doesn't know approvals still shows everything; `approval:`
@@ -42,9 +77,10 @@ module Samagotchi
       #   their turn asks: it offers once only (PARTICIPANT_SCOPES), and the
       #   card names them (approval author:, author_name:, the header)
       # @param author_name [String, nil] their name (participants.json)
-      # @return [Hash] open_question fields; its caller adds user_only:
-      #   (ParentApprovals.protected_facts? on approval:, a file that
-      #   requires this one)
+      # @return [Hash] open_question fields, with approval: an ApprovalFacts
+      #   (its caller hands open_question approval.to_h); the caller adds
+      #   user_only: (ParentApprovals.protected_facts? on approval:, a file
+      #   that requires this one)
       def payload(verdict, label: nil, preview: nil, only: nil, author: nil, author_name: nil)
         asker = asker(author, author_name)
         only = PARTICIPANT_SCOPES if asker
@@ -60,7 +96,7 @@ module Samagotchi
           allow_freeform: true,
           effects: effects(scopes),
           kind: KIND,
-          approval: {
+          approval: ApprovalFacts.new(
             tool: targets&.tool || verdict.call[:name].to_s,
             # The tool the call acts as (an MCP tool behind call_tool).
             acts_as: targets&.acts_as,
@@ -86,7 +122,7 @@ module Samagotchi
             author: (author.to_s if asker),
             author_name: (author_name_for(author_name) if asker),
             asked_by: (format(ASKED_BY, asker) if asker)
-          }.compact
+          )
         }
       end
 

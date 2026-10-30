@@ -43,6 +43,12 @@ RSpec.describe "The guardrails bundle's rules" do
 
   def shell(command) = verdict_for({ name: "execute", content: command })
 
+  # The ask's card as GuardrailWiring opens it: the facts as their hash.
+  def pending_of(verdict)
+    payload = Samagotchi::Guardrails::Approval.payload(verdict)
+    Samagotchi::PendingQuestion.new(**payload, approval: payload[:approval].to_h)
+  end
+
   caught = {
     "git-push" => ["git push", "git push origin main", "git -C ../x push --force", "cd a && git push -u origin b"],
     "git-reset-hard" => ["git reset --hard", "git reset --hard HEAD~1"],
@@ -142,7 +148,7 @@ RSpec.describe "The guardrails bundle's rules" do
   it "asks before every memory removal, once at a time (a parent may allow it); a write or a description change runs" do
     v = verdict_for({ name: "memory_write", path: "handoff_x", scope: "project", remove: true })
     expect([v.decision, v.rule, v.scopes]).to eq([:ask, "memory-remove", %w[once]])
-    pending = Samagotchi::PendingQuestion.new(**Samagotchi::Guardrails::Approval.payload(v))
+    pending = pending_of(v)
     expect(Samagotchi::Guardrails::ParentPolicy.refusal(pending, [0], strategy: once)).to be_nil
     expect(verdict_for({ name: "memory_write", path: "handoff_x", scope: "project", content: "x" })).to be_allow
     expect(verdict_for({ name: "memory_write", path: "handoff_x", scope: "project", description: "DONE" })).to be_allow
@@ -219,7 +225,7 @@ RSpec.describe "The guardrails bundle's rules" do
     ["printf '3\\n' | chi --attach abc", "curl -s -X POST http://127.0.0.1:4567/session/abc/answer -d '{}'"].each do |command|
       v = shell(command)
       expect(%w[chi-answer-piped chi-answer-http]).to include(v.rule), command
-      pending = Samagotchi::PendingQuestion.new(**Samagotchi::Guardrails::Approval.payload(v))
+      pending = pending_of(v)
       expect(Samagotchi::Guardrails::ParentPolicy.refusal(pending, [0], strategy: once)).to eq(:user_only), command
     end
   end
@@ -227,7 +233,7 @@ RSpec.describe "The guardrails bundle's rules" do
   it "asks for chi broadcast once at a time, and a parent may not allow it" do
     v = shell("chi broadcast -m 'payments API is down'")
     expect([v.decision, v.rule, v.scopes]).to eq([:ask, "chi-broadcast", %w[once]])
-    pending = Samagotchi::PendingQuestion.new(**Samagotchi::Guardrails::Approval.payload(v))
+    pending = pending_of(v)
     expect(Samagotchi::Guardrails::ParentPolicy.refusal(pending, [0], strategy: once)).to eq(:user_only)
   end
 
@@ -240,7 +246,7 @@ RSpec.describe "The guardrails bundle's rules" do
     end
 
     it "is offered once only, and a parent may not allow it" do
-      pending = Samagotchi::PendingQuestion.new(**Samagotchi::Guardrails::Approval.payload(shell(command)))
+      pending = pending_of(shell(command))
       expect(pending.approval[:scopes]).to eq(%w[once])
       expect(Samagotchi::Guardrails::ParentPolicy.refusal(pending, [0], strategy: once)).to eq(:user_only)
     end

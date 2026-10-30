@@ -30,7 +30,7 @@ RSpec.describe Samagotchi::Guardrails::Approval do
 
     it "puts the preview in approval[:preview] and one change line in the question" do
       payload = described_class.payload(ask, preview: diff)
-      expect(payload[:approval][:preview]).to eq(diff)
+      expect(payload[:approval].to_h[:preview]).to eq(diff)
       expect(payload[:question].lines.last).to eq("  change: +3 \u22121")
       expect(payload[:question]).not_to include("@@")
     end
@@ -46,7 +46,7 @@ RSpec.describe Samagotchi::Guardrails::Approval do
 
     it "leaves a call without a preview as it was" do
       payload = described_class.payload(ask)
-      expect(payload[:approval]).not_to have_key(:preview)
+      expect(payload[:approval].to_h).not_to have_key(:preview)
       expect(payload[:question]).not_to include("change:")
     end
   end
@@ -70,14 +70,14 @@ RSpec.describe Samagotchi::Guardrails::Approval do
       expect(payload[:effects]).to eq(%w[permit deny])
       expect(payload[:header]).to eq("Sam's turn asks: approve tool call?")
       expect(payload[:question].lines.last).to eq("  asked by: Sam's turn (a participant, not you); Allow once only")
-      expect(payload[:approval]).to include(author: "p:p_0123abcd", author_name: "Sam", scopes: ["once"],
-                                            asked_by: format(described_class::ASKED_BY, "Sam"))
+      expect(payload[:approval].to_h).to include(author: "p:p_0123abcd", author_name: "Sam", scopes: ["once"],
+                                                 asked_by: format(described_class::ASKED_BY, "Sam"))
       unnamed = described_class.payload(ask, author: "p:p_0123abcd")
       expect(unnamed[:header]).to eq("p_0123abcd's turn asks: approve tool call?")
-      expect(unnamed[:approval]).to include(author: "p:p_0123abcd")
-      expect(unnamed[:approval]).not_to have_key(:author_name)
+      expect(unnamed[:approval].to_h).to include(author: "p:p_0123abcd")
+      expect(unnamed[:approval].to_h).not_to have_key(:author_name)
       owner = described_class.payload(ask, author: "owner")
-      expect(owner[:approval]).not_to include(:author, :author_name)
+      expect(owner[:approval].to_h).not_to include(:author, :author_name)
       expect(owner[:header]).to eq("Approve tool call?")
     end
 
@@ -103,10 +103,10 @@ RSpec.describe Samagotchi::Guardrails::Approval do
       v.ask!("an MCP tool", rule: "mcp-ask", source: "config")
       v.context = context
       v.targets = Samagotchi::Guardrails::Targets.for(c, context, registry: registry)
-      expect(described_class.payload(v)[:approval][:args]).to eq("message=\"hello there\" n=3")
+      expect(described_class.payload(v)[:approval].to_h[:args]).to eq("message=\"hello there\" n=3")
       v.targets = Samagotchi::Guardrails::Targets.for(c.merge(args: {}), context, registry: registry)
-      expect(described_class.payload(v)[:approval]).not_to have_key(:args)
-      expect(described_class.payload(ask)[:approval]).not_to have_key(:args)
+      expect(described_class.payload(v)[:approval].to_h).not_to have_key(:args)
+      expect(described_class.payload(ask)[:approval].to_h).not_to have_key(:args)
     end
 
     it "asks about a call that acts as another tool by its label, else its name, with the inner args" do
@@ -120,7 +120,7 @@ RSpec.describe Samagotchi::Guardrails::Approval do
       v.targets = Samagotchi::Guardrails::Targets.for(c, context, registry: registry)
       payload = described_class.payload(v, label: "github: x")
       expect(payload[:question].lines.first).to eq("github: x: owner=me\n")
-      expect(payload[:approval]).to include(tool: "call_tool", acts_as: "mcp_github_x", label: "github: x", args: "owner=me")
+      expect(payload[:approval].to_h).to include(tool: "call_tool", acts_as: "mcp_github_x", label: "github: x", args: "owner=me")
       expect(described_class.payload(v)[:question].lines.first).to eq("mcp_github_x: owner=me\n")
     end
 
@@ -134,8 +134,8 @@ RSpec.describe Samagotchi::Guardrails::Approval do
       v.targets = Samagotchi::Guardrails::Targets.for(c, context, registry: registry)
       payload = described_class.payload(v, label: "x: echo")
       expect(payload[:question].lines.first).to eq("x: echo: message=hi\n")
-      expect(payload[:approval]).to include(tool: "mcp_x_echo", label: "x: echo")
-      expect(described_class.payload(v)[:approval]).not_to have_key(:label)
+      expect(payload[:approval].to_h).to include(tool: "mcp_x_echo", label: "x: echo")
+      expect(described_class.payload(v)[:approval].to_h).not_to have_key(:label)
     end
 
     it "names the repo and branch, and carries the structured approval" do
@@ -145,10 +145,10 @@ RSpec.describe Samagotchi::Guardrails::Approval do
       payload = described_class.payload(ask(scopes: %w[once repo]))
       expect(payload[:question]).to include("  in #{dir} (repo #{File.basename(dir)}, branch main)")
       expect(payload[:options]).to eq(["Allow once", "Allow this call in this repo (#{File.basename(dir)})", "Deny"])
-      expect(payload[:approval]).to eq(tool: "execute", command: "git push origin main", cwd: dir, repo_root: dir,
-                                       repo_name: File.basename(dir), branch: "main", rule: "git-push",
-                                       source: "bundle guardrails", reason: "git push publishes commits",
-                                       scopes: %w[once repo])
+      expect(payload[:approval].to_h).to eq(tool: "execute", command: "git push origin main", cwd: dir, repo_root: dir,
+                                            repo_name: File.basename(dir), branch: "main", rule: "git-push",
+                                            source: "bundle guardrails", reason: "git push publishes commits",
+                                            scopes: %w[once repo])
     end
 
     it "names the repository, not the worktree, in a linked worktree" do
@@ -166,15 +166,15 @@ RSpec.describe Samagotchi::Guardrails::Approval do
       expect(payload[:question]).to include("  in #{worktree} (repo #{repo}, branch feat)")
       expect(payload[:options]).to eq(["Allow once", "Allow this call in this repo (#{repo})",
                                        "Allow rule git-push in this repo (#{repo})", "Deny"])
-      expect(payload[:approval]).to include(repo_root: worktree, repo_name: repo)
+      expect(payload[:approval].to_h).to include(repo_root: worktree, repo_name: repo)
     end
 
     it "lists paths for a file tool, and offers no rule scope without a rule" do
       payload = described_class.payload(ask(rule: nil, source: nil, c: { name: "write", path: "a.txt", content: "x" }))
       expect(payload[:question]).to start_with("write: #{dir}/a.txt\n")
       expect(payload[:question]).to end_with("(hook)")
-      expect(payload[:approval][:paths]).to eq(["#{dir}/a.txt"])
-      expect(payload[:approval][:scopes]).to eq(%w[once session repo])
+      expect(payload[:approval].to_h[:paths]).to eq(["#{dir}/a.txt"])
+      expect(payload[:approval].to_h[:scopes]).to eq(%w[once session repo])
     end
 
     it "keeps wire tokens in a command verbatim" do
@@ -189,13 +189,13 @@ RSpec.describe Samagotchi::Guardrails::Approval do
     end
 
     def memory_facts(call, rule: "memory-remove")
-      described_class.payload(ask(c: call, rule: rule))[:approval][:memory]
+      described_class.payload(ask(c: call, rule: rule))[:approval].to_h[:memory]
     end
 
     it "names the entry and its scope, and says nothing for another tool" do
       with_config_home(dir) do
         expect(memory_facts(memory_call, rule: "memory-write")).to eq({ name: "notes", scope: "system" })
-        expect(described_class.payload(ask)[:approval]).not_to have_key(:memory)
+        expect(described_class.payload(ask)[:approval].to_h).not_to have_key(:memory)
         expect(memory_facts({ name: "memory_write", path: "h", scope: "team" })).to be_nil
       end
     end

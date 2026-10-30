@@ -54,6 +54,11 @@ changed: `diff +3 −1` under the row on the web (closed, it survives a
 reload) and ` +3 −1` at the end of the terminal's tool line. The model never
 sees these diffs.
 
+The card also carries the ask's facts as `approval:` (tool, command or paths, where, rule, scopes, preview…):
+`Guardrails::Approval.payload` builds them as a `Guardrails::ApprovalFacts` value, which System 1 and the parent
+checks read in the worker; the card and the session file get its `to_h`, the same hash every UI reads, and a saved
+card comes back through `ApprovalFacts.from_h` (string or symbol keys, missing fields nil).
+
 Who answers:
 
 - REPL (`chi --no-shared`, with or without `-p`): at the `? ` prompt.

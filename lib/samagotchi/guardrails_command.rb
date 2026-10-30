@@ -7,6 +7,7 @@ require_relative "cli/exit"
 require_relative "cli/flags"
 require_relative "config"
 require_relative "bridge/card_store"
+require_relative "guardrails/approval"
 require_relative "guardrails/approvals"
 require_relative "guardrails/parent_policy"
 require_relative "host_registry"
@@ -71,7 +72,7 @@ module Samagotchi
     }.freeze
 
     # One ask a replay judges: the card's question id, the session it came
-    # from, its approval as the card saved it, the label its answer gives,
+    # from, its approval as the card saved it (Guardrails::ApprovalFacts), the label its answer gives,
     # and when the user was asked.
     Ask = Data.define(:question_id, :session_id, :approval, :label, :asked_at)
 
@@ -208,17 +209,19 @@ module Samagotchi
 
       pending = entry[:pending_question]
       return :no_approval unless pending.is_a?(Hash) && pending[:approval].is_a?(Hash)
+
       # A participant's turn's ask is never System 1's to judge, live or here
       # (GuardrailWiring#system_one_judge): no record of it is the user's
       # rule-level decision (it offered once only).
-      return :participant if pending[:approval][:author]
+      approval = Guardrails::ApprovalFacts.from_h(pending[:approval])
+      return :participant if approval.author
 
       question_id = pending[:id].to_s
       return :no_question_id if question_id.empty?
 
       origin = judged.question_ids[question_id]
       return origin == "replay" ? :already_replayed : :judged_live if origin
-      return :judged_live if judged.take_live(session_id, pending[:approval])
+      return :judged_live if judged.take_live(session_id, approval)
 
       answer = entry[:answer]
       label = if entry[:cancelled]
@@ -230,15 +233,15 @@ module Samagotchi
                 # label only where the parent could have allowed: a parent
                 # that was not allowed to permit says nothing about the user
                 # (docs/guardrails.md, "System 1").
-                return :answered_by_parent unless label_for(answer, pending[:approval][:scopes]) == "deny"
+                return :answered_by_parent unless label_for(answer, approval.scopes) == "deny"
                 return :parent_cannot_allow unless parent_may_permit?(pending, session_id, sessions_dir)
 
                 "deny"
               else
-                label_for(answer, pending[:approval][:scopes])
+                label_for(answer, approval.scopes)
               end
 
-      Ask.new(question_id: question_id, session_id: session_id, approval: pending[:approval],
+      Ask.new(question_id: question_id, session_id: session_id, approval: approval,
               label: label, asked_at: pending[:created_at])
     end
 
@@ -298,15 +301,15 @@ module Samagotchi
       p = answers && answers[SystemOne::ApprovalQuestion::ID]&.noul
 
       unless @dry_run
-        id = log.judgment(session_id: ask.session_id, rule: ask.approval[:rule], source: ask.approval[:source],
-                          tool: ask.approval[:tool], **SystemOne::ApprovalQuestion.call_fields(ask.approval),
-                          repo_name: ask.approval[:repo_name], p: p, threshold: threshold, model: client.model,
+        id = log.judgment(session_id: ask.session_id, rule: ask.approval.rule, source: ask.approval.source,
+                          tool: ask.approval.tool, **SystemOne::ApprovalQuestion.call_fields(ask.approval),
+                          repo_name: ask.approval.repo_name, p: p, threshold: threshold, model: client.model,
                           latency_ms: latency_ms, decision: "replay", origin: "replay",
                           question_id: ask.question_id, asked_at: ask.asked_at)
         log.label(id, ask.label)
       end
 
-      { rule: ask.approval[:rule].to_s, label: ask.label, p: p, session: ask.session_id }
+      { rule: ask.approval.rule.to_s, label: ask.label, p: p, session: ask.session_id }
     end
 
     # The session's title, as the ask's state carries it; nil when there is

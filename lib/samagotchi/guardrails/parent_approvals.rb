@@ -63,13 +63,15 @@ module Samagotchi
 
       # #protected? on an approval's facts (Approval.payload's approval:),
       # at ask time.
+      # @param facts [ApprovalFacts, Hash, nil] as built, or as saved
       def protected_facts?(facts)
-        return false unless facts.is_a?(Hash)
-        return true if PROTECTED_RULES.include?(fetch(facts, :rule).to_s)
-        return true if fetch(facts, :source).to_s == ProtectedPaths::SOURCE
+        facts = ApprovalFacts.from_h(facts)
+        return false if facts.nil?
+        return true if PROTECTED_RULES.include?(facts.rule.to_s)
+        return true if facts.source.to_s == ProtectedPaths::SOURCE
         # A memory's file sits in the config dir, but removing one is the
         # memory-remove rule's ask, which a parent may answer.
-        return false if fetch(facts, :rule).to_s == MEMORY_REMOVE_RULE
+        return false if facts.rule.to_s == MEMORY_REMOVE_RULE
 
         chi_files?(facts)
       end
@@ -77,15 +79,17 @@ module Samagotchi
       # Whether an approval's paths or command name chi's own dirs (#chi_dirs)
       # or CHI_TEXT, whatever its rule: the part of #protected_facts? that
       # System 1's SystemOne::SelfProtect shares.
+      # @param facts [ApprovalFacts, Hash, nil] as built, or as saved
       def chi_files?(facts)
-        return false unless facts.is_a?(Hash)
+        facts = ApprovalFacts.from_h(facts)
+        return false if facts.nil?
 
         dirs = chi_dirs
-        paths = Array(fetch(facts, :paths)).map(&:to_s).reject(&:empty?)
+        paths = Array(facts.paths).map(&:to_s).reject(&:empty?)
         reals = paths.flat_map { |path| PathResolve.reals(path) }
         return true if reals.any? { |real| dirs.any? { |dir| PathResolve.within?(real, dir) } }
 
-        command = fetch(facts, :command).to_s
+        command = facts.command.to_s
         return false if command.empty?
 
         command.match?(CHI_TEXT) || dirs.any? { |dir| command.include?(dir) || command.include?(PathResolve.real(dir)) }
@@ -103,8 +107,7 @@ module Samagotchi
       # The offered scopes, in option order, or nil when they are missing,
       # empty, not strings, or leave no option after them for Deny.
       def scopes(pending)
-        facts = pending.approval
-        scopes = facts.is_a?(Hash) ? fetch(facts, :scopes) : nil
+        scopes = ApprovalFacts.from_h(pending.approval)&.scopes
         return nil unless scopes.is_a?(Array) && !scopes.empty? && scopes.all?(String)
         return nil unless scopes.size < options(pending).size
 
@@ -112,12 +115,6 @@ module Samagotchi
       end
 
       def options(pending) = Array(pending.options)
-
-      def fetch(hash, key)
-        return nil unless hash.is_a?(Hash)
-
-        hash.key?(key) ? hash[key] : hash[key.to_s]
-      end
     end
   end
 end

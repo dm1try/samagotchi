@@ -2,6 +2,7 @@
 
 require "digest"
 
+require_relative "../guardrails/approval"
 require_relative "question"
 require_relative "similar"
 
@@ -35,29 +36,31 @@ module Samagotchi
         Question.new(id: ID, type: "noul", instructions: INSTRUCTIONS)
       end
 
-      # @param approval [Hash] payload[:approval]: the ask the user is shown
+      # @param approval [Guardrails::ApprovalFacts, Hash] payload[:approval]:
+      #   the ask the user is shown (a saved card's hash too)
       # @param session_title [String, nil] the session's title, when it has one
       # @param entries [Array<Hash>] SystemOne::Log#entries: the judgments the
       #   user has answered so far, read once per ask and shared with the
       #   record gate (GuardrailWiring#system_one_judge)
       # @return [Hash] the state, with the fields the ask didn't give left out
       def self.state(approval, session_title: nil, entries: nil)
+        approval = Guardrails::ApprovalFacts.from_h(approval)
         {
-          "rule" => approval[:rule],
-          "source" => approval[:source],
-          "reason" => approval[:reason],
-          "tool" => approval[:tool],
-          "command" => cut(approval[:command]),
-          "paths" => Array(approval[:paths]).map { |path| cut(path) },
-          "change" => change_text(approval[:preview]),
-          "cwd" => approval[:cwd],
-          "repo_name" => approval[:repo_name],
-          "branch" => approval[:branch],
+          "rule" => approval.rule,
+          "source" => approval.source,
+          "reason" => approval.reason,
+          "tool" => approval.tool,
+          "command" => cut(approval.command),
+          "paths" => Array(approval.paths).map { |path| cut(path) },
+          "change" => change_text(approval.preview),
+          "cwd" => approval.cwd,
+          "repo_name" => approval.repo_name,
+          "branch" => approval.branch,
           "session" => session_title,
           # Which memory entry the ask is about, when it is a memory ask.
-          "memory" => memory_facts(approval[:memory]),
+          "memory" => memory_facts(approval.memory),
           # The asks this one looks like, and what the user did about them.
-          "examples" => Similar.select(entries: entries, rule: approval[:rule], repo_name: approval[:repo_name],
+          "examples" => Similar.select(entries: entries, rule: approval.rule, repo_name: approval.repo_name,
                                        call_text: call_text(approval))
         }.reject do |_key, value|
           value.nil? || (value.is_a?(String) && value.strip.empty?) ||
@@ -67,14 +70,16 @@ module Samagotchi
 
       # What the call is, whole: the command, the paths, or a plugin tool's
       # arguments.
+      # @param approval [Guardrails::ApprovalFacts, Hash] as built or saved
       def self.call_text(approval)
-        command = approval[:command]
+        approval = Guardrails::ApprovalFacts.from_h(approval)
+        command = approval.command
         return command.to_s if command && !command.to_s.empty?
 
-        paths = Array(approval[:paths])
+        paths = Array(approval.paths)
         return paths.join("\n") unless paths.empty?
 
-        approval[:args].to_s
+        approval.args.to_s
       end
 
       # The judgment log's two fields for the call: what it was, cut to
