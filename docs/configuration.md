@@ -2038,6 +2038,9 @@ there; the new subscription replaces the dead one.
   approval, which its parent may relay instead); one push each. A delegated child's failed or finished turn is its
   parent's to report. **Done turns** (10 s or longer, or one nobody started: a delegate's report, a context change, a
   finished task) are **off** by default, per device: the **Long turns done** switch in the devices sheet turns them on.
+- **Updates**: a new chi release ("chi X is available", once per version) and, with
+  [`update.auto: install`](#unattended-updates-updateauto), how the automatic update went ("chi updated to X", "chi X
+  didn't install", …): kept 24 h for an offline phone, `normal` urgency, never the file names.
 - **Quiet while you look**: nothing is pushed while any chi web page (a tab on the Mac, or the app) is in front and
   was touched in the last 2 minutes; what came meanwhile is never pushed later (the page has it). A page left in
   front untouched stops quieting the phone after about 2 minutes.
@@ -2056,6 +2059,49 @@ there; the new subscription replaces the dead one.
 - The app keeps its own cookie (iOS copies Safari's when it is added, 400 days): `chi web --new-token` logs it out
   (it shows the "needs chi web's access token" page; paste the token there). Pushes keep coming meanwhile.
 - chi web not running: no pushes (Serve answers 502; a tap couldn't open the page anyway).
+
+## Unattended updates (`update.auto`)
+
+By default chi web only tells you a release is out (`update.notify`, [CLI: Updating](cli.md#updating)). With
+`update.auto: install` in `config.yml` it also installs the release its checker found, aged by `update.min_age_hours`
+(24 h by default, so a release is never installed the day it ships), and goes on to `update.restart`:
+
+```yaml
+update:
+  auto: install     # off (default): a notice only
+  restart: idle     # idle (default): restart workers and chi web onto it; never: install only
+```
+
+Both are read when chi web starts (restart it to apply a change). What it does, in order:
+
+1. **Waits for a quiet moment.** The install starts when no turn runs and no question waits for an answer in any
+   session (checked every 5 minutes), no other update operation runs (the **Update** button, a restart) and the
+   install isn't blocked (a source checkout, Bundler, a RubyGems directory chi can't write: those stay a notice, with
+   the command to run). `chi update` also merges the shipped bundles that live sessions read, hence "no turn anywhere".
+2. **Installs** exactly the release the notice named, as the **Update** button does (the system bundle and shipped
+   bundles are merged three ways; files you edited are kept and counted in the push). The page's sticky toast says
+   "Automatic chi update in progress" and its sheet shows the rows. A failed install is tried **once per version**:
+   it pushes the failed row's reason and stays quiet until a newer release (or you, with the button) tries again.
+3. **Restarts** (`update.restart: idle`). Stale workers first, only those whose session is idle and untouched for
+   10 minutes (so nobody who is about to type loses their worker), and each worker still refuses by itself when
+   something holds it ([sessions](sessions.md)); the ones left are tried again for a day, then wait for their own
+   idle exit or the session's **Restart**. Then chi web itself, once no turn runs anywhere: it first runs the
+   restart's own command with `--version` (20 s at most) and restarts only if the newest chi answers with the
+   release's version; otherwise chi web stays up and the phone hears "chi X is installed; chi web didn't restart".
+   The restart is the **Restart chi web** one: same port, same token, same Tailscale Serve handler, the open page's
+   streams reconnect in a few seconds and a Reload toast follows. It doesn't wait for a page in front: the page isn't
+   reloaded by itself, so a draft in the composer stays. A **Send** or **Allow** pressed in those few seconds fails
+   with its error and leaves the text in the composer: press it again.
+4. **Says so.** The restarted chi web pushes "chi updated to X" ("chi web and 3 sessions restarted; 1 restarts when
+   idle. Kept your edits in 2 files."). With `update.restart: never` the push is "chi X is installed" and chi web and
+   the workers move over when you restart them (the page's toast offers it). The push needs the phone set up
+   ([Phone notifications](#phone-notifications-web-push)); without it the page's toasts and
+   `$XDG_STATE_HOME/samagotchi/update_check.json` (`auto`) are the record.
+
+There is no watchdog: chi web restarts into the newest chi it just proved can start, and nothing brings an old one
+back by itself. To roll back, install the older gem with `gem install samagotchi -v X` and restart chi web
+(`chi update --to` refuses a version that isn't newer than the running chi). The desktop helper isn't rebuilt (that
+stays a manual `chi update`).
 
 ## All settings
 
@@ -2170,8 +2216,8 @@ column says so, a `--kebab-name` flag. The maps (`hosts:`, `models:`,
 | `update.bundles` | `true` | | `false`: `chi update` leaves the shipped bundles to `chi bundle upgrade` (`--no-bundles`). |
 | `update.desktop` | `true` | | `false`: `chi update` leaves the desktop helper alone (`--no-desktop`). |
 | `update.notify` | `on` | | `on`: chi web checks RubyGems once a day and shows aged stable releases newer than both this chi and the newest installed chi; `off`: no thread or network check. |
-| `update.auto` | `off` | | `install`: chi web installs the release its checker found (aged by `update.min_age_hours`) once no turn runs in any session, and pushes how it went to the phone; the check then runs even with `update.notify: off` (which only silences the page's and the phone's "available"). `off`: notice only. |
-| `update.restart` | `idle` | | With `update.auto: install`, what follows the install: `idle` restarts idle workers and chi web onto it, `never` leaves that to you. |
+| `update.auto` | `off` | | `install`: chi web installs the release its checker found (aged by `update.min_age_hours`) once no turn runs and no question waits in any session, as the **Update** button would (shipped bundles merged, your edits kept and reported), then pushes how it went; `update.restart` says what follows. An install that fails is tried once per version (a newer release, or the **Update** button, tries again). The check runs even with `update.notify: off` (which then only silences the page's and the phone's "available"). An install that can't run here (a checkout, Bundler, an unwritable gem dir) stays a notice. `off`: notice only. See [Unattended updates](#unattended-updates-updateauto). |
+| `update.restart` | `idle` | | With `update.auto: install`: `idle` restarts the stale workers whose session is idle and untouched for 10 minutes, then chi web itself, once no turn runs anywhere and the newest chi has answered `chi --version`; it pushes "chi updated to X". `never`: the install only (the page's toast offers the restarts, workers also exit on their own when idle). |
 | `update.check_hours` | `24` | | Hours between RubyGems checks (at least 1). The first check starts about 30 seconds after chi web starts. |
 | `update.min_age_hours` | `24` | | A release must be this old before chi web offers it; `0` disables the age delay. |
 | `kitty.listen_on` | none | | The desktop helper's kitty socket, copied from `kitty.conf`; unset = no kitty targets. See "Desktop helper: agents in kitty". |

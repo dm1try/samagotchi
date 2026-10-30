@@ -606,22 +606,29 @@ reload in a toast, since an open tab keeps its old JS across a `chi web` upgrade
 `installed`, the newest chi on this machine (`InstalledVersions`: the highest `samagotchi-<v>.gemspec`
 in RubyGems' specification dirs, or a checkout's `version.rb` on disk; looked at again on each full
 probe, every 10 s). A `chi` frame and the `GET /api/events` snapshot carry the full state
-`{version, installed, available, update_blocked}`; `/api/info` and the session-command wake response
-carry the same fields. `SessionHub#update_available` publishes the checker result under the hub's
+`{version, installed, available, update_blocked, auto}` (`auto`: `update.auto`, `off` or `install`, which the page's
+"available" wording follows); `/api/info` and the session-command wake response carry the same fields. `SessionHub#update_available` publishes the checker result under the hub's
 Monitor, but fetching never holds it.
 
-`Web::UpdateCheck` runs its own thread beside the hub. When `update.notify: on` (the default), its
+`Web::UpdateCheck` runs its own thread beside the hub. When `update.notify: on` (the default) or
+`update.auto: install` (then with `notify: off` the hub's `available` stays nil: nothing is shown or pushed, only
+AutoUpdate reads `UpdateCheck#available`), its
 first RubyGems check is about 30 seconds after chi web starts, then it checks at `update.check_hours`
 intervals. A stable release is available only after `update.min_age_hours` and when newer than both
 the running and newest installed chi. Its atomic, mode-0600
 `$XDG_STATE_HOME/samagotchi/update_check.json` keeps the check cooldown and versions already
-announced across restarts. `update.notify: off` starts no checker thread and makes no network
-request. `update_blocked` names why the local gem cannot be updated in place (checkout, Bundler, or
+announced across restarts, and AutoUpdate's record (`auto`, `auto_failed`; `save_auto`). `update.notify: off`
+with `update.auto: off` starts no checker thread and makes no network request. `update_blocked` names why the local gem cannot be updated in place (checkout, Bundler, or
 an unwritable gem directory). The page tells the owner to run `chi update`; a newer `installed`
 version than the server itself still means restart chi web (its workers already run the newest chi,
 [Sessions](sessions.md)). `GET /api/info` also names `newest_workers`; next to `cwd` (the folder chi
 web runs in) it names `start_dir`, the folder it starts in (`web.start_dir`, `--start-dir`;
 `Web::StartDir`), which a second `chi web` given another one mentions.
+
+The three update operations live in `Web::UpdateOps` (`web/update_ops.rb`), which `App`'s routes ask for
+(`handle_update`, `handle_restart_workers` and `handle_restart_web` only validate, ask and map `:started` /
+`:busy` / a refusal to 202 / 409 / 503) and `Web::AutoUpdate` asks for too; the one-at-a-time rule is its mutex.
+`Server.start` hands `app.update_ops` to AutoUpdate and sets its restart lambda through `App#restart_web=`.
 
 The owner's update routes publish progress and results as `chi_update` events with an
 `operation` (`install` or `workers`), `state`, and `rows`; install events also name the target
@@ -632,7 +639,7 @@ it holds with `update.notify: off`; a child that prints no rows fails with its o
 done install refreshes the hub's installed version (`SessionHub#refresh_installed`) before its `done`.
 Worker restarts target every worker older than the version installed now (refreshed the same way)
 and publish per-session results. Only one of an install, a worker restart pass and a web restart runs
-at a time (409 `update_running`). `POST /api/update/restart_workers` (`handle_restart_workers`) starts the worker pass
+at a time (409 `update_running`). `POST /api/update/restart_workers` starts the worker pass
 by itself. `POST /api/update/restart_web` (409 `restart_unavailable` without a
 chi wrapper to exec) schedules WEBrick shutdown only after its response is sent; after the hub and
 listener stop, `Server` execs the RubyGems chi wrapper with every flag chi web was started with, as
@@ -641,6 +648,24 @@ listener stop, `Server` execs the RubyGems chi wrapper with every flag chi web w
 `Server.take_restart_env!`) skips the first-run update hint, adopts live worker-starter PIDs (workers
 themselves are detached), and adopts an exact Tailscale Serve handler. A failed exec, or a restarted
 chi web that doesn't start for any reason, turns off only that exact adopted handler.
+
+`Web::AutoUpdate` (`web/auto_update.rb`; its own thread, started and stopped by `Server.start` beside the checker)
+is `update.auto: install`. Every 5 minutes (the first step 60 s after start) it looks at `UpdateCheck#available`
+and installs it through `UpdateOps#install(wait: true, auto: true)` when the install isn't blocked, no operation
+runs, no hub summary has `status: running` or a `pending_question`, and the version isn't in `auto_failed` or
+already in the `auto` record (one automatic try per version). Its frames carry `auto: true` (the page: "Automatic
+chi update in progress", "(automatic)" in the sheet's title). Its record is `update_check.json`'s `auto`:
+`{version, from, at, kept, phase: installed|workers|web|done|failed, workers: {restarted, left}, detail, pushed}`.
+With `update.restart: never` the run ends at the install (`chi_notice` `installed`). With `idle` it goes on
+(`phase` `installed` → `workers` → `web` → `done`): `UpdateOps#restart_workers(select:)` over the stale workers whose
+summary is idle with no question and `updated_at` at least 10 minutes old (`QUIET`; the others are `skipped` rows;
+the worker's own atomic refusal still applies), the left ones retried each step for 24 h (`RETRY_FOR`); then, with no
+turn running, `Server.restart_preflight` (the restart's command with `--version`, 20 s, killed on a timeout; it must
+print a chi at least the release) and, if it passes, the record's `phase: web` is written **before**
+`UpdateOps#restart_web`. A failed preflight, or a refused restart, publishes `restart_failed` and ends the run
+(`failed`). The restarted chi web's AutoUpdate (first step after 5 s) finds `phase: web`, checks it runs the
+release, counts the workers once more and publishes `updated`, then `done`. Results reach the phone as `chi_notice`
+hub events (`SessionHub#publish_notice`), see [internals/web-push.md](internals/web-push.md).
 
 The page's scope is in its URL, and the server picks the default: `?dir=<folder>` is that folder's
 project (the list, the events stream and a new chat follow it), `?scope=all` every session, and a bare
@@ -862,6 +887,7 @@ A map of the parts the overview above doesn't name (paths under `lib/samagotchi/
 | Review sessions | `review_start.rb` (`ReviewStart`), `session_review.rb` (`SessionReview`, the session's `review` field), `review_command.rb` (`ReviewCommand`, `chi review`), `review_apply.rb` (`ReviewApply`) | A session made to be shared: idle, its subjects project files checked by `Guardrails::ReviewPaths`, a fork of a working session from its recap (`--from`); Apply quotes a participant's review turn into the owner's composer ([sessions.md](sessions.md#review-sessions), [internals/participants.md](internals/participants.md)). |
 | chi web's routes | `web/app.rb` (`Web::App`: the gate, `ROUTES`, the shared helpers), `web/message_display.rb` (`Web::MessageDisplay`: saved messages and cards as display items, `POST /api/render`), `web/session_show.rb` (`Web::SessionShow`: `GET /api/sessions/:id` with its `cards`, `tail` and `timing` re-reads, `GET …/output`, the timing payload), `web/session_create.rb` (`Web::SessionCreate`: `POST /api/sessions`, a continue, a review fork), `web/session_control.rb` (`Web::SessionControl`: answer, command, turn and images, cancel, stop, restart, archive, delete), `web/push_routes.rb` (`Web::PushRoutes`: `/api/push`, its subscriptions, prefs, test and presence) | The handlers `App`'s `ROUTES` name, in the file that holds their kind; each mixin is included in `App` and reads its helpers and ivars, so `app.send(:handle_show, …)` and the specs that stub `App` methods work as before. |
 | Web Push | `web/push.rb` (`Web::Push`: `Runtime`, `preflight!`, the `web.push.*` settings), `web/push/crypto.rb` (`Push::Crypto`: RFC 8291 aes128gcm, RFC 8292 VAPID), `web/push/store.rb` (`Push::Store`, `Store::Sub`: `web-push/vapid.pem`, `subscriptions.json`), `web/push/client.rb` (`Push::Client`, `Client::Result`), `web/push/attention.rb` (`Push::Attention`: notify.js's rules in Ruby, shared cases in `spec/fixtures/attention_cases.json`), `web/push/presence.rb` (`Push::Presence`: the pages' "in front" reports), `web/push/notifier.rb` (`Push::Notifier`, a hub subscriber with a sender thread), `web/push_routes.rb` (`Web::PushRoutes`), `web/private_files.rb` (`Web::PrivateFiles`, shared with the grants), `public/sw.js`, `public/push.js`, `public/manifest.webmanifest` | chi web pushes what the tab notifies for (approvals, questions, step-limit questions, cards, failed turns; done turns to a device that asks) to the owner's Home Screen app over an https public URL: the Notifier turns the hub's new attentions into show pushes after a hold, unless a chi web page is in front, at most 30 an hour, with one retry and a restart catch-up (`sent.json`) (each carries the keys still open, and the badge; no close push: every push shows a notification); the bell (`notifications.js`) subscribes the device, and the service worker and the page close the answered ones. See [internals/web-push.md](internals/web-push.md). |
+| chi web's updates | `web/update_check.rb` (`Web::UpdateCheck`), `web/update_ops.rb` (`Web::UpdateOps`), `web/auto_update.rb` (`Web::AutoUpdate`) | The RubyGems checker and its `update_check.json`; the install, worker-restart and chi-web-restart operations (one at a time) the owner's routes and AutoUpdate share; `update.auto: install`'s thread (install when no turn runs, then idle workers and chi web). See [configuration](configuration.md#unattended-updates-updateauto). |
 | Behind an auth proxy | `web/public_url.rb` (`Web::PublicUrl`: `web.public_url`, `web.proxy.identity_header`, `web.proxy.owner`), `web/proxy_gate.rb` (`Web::ProxyGate`, mixed into App; `RawHeaderNames`, prepended to WEBrick's request by `Web::Server`), `web/link_codes.rb` (`Web::LinkCodes`: the links' one-time codes), `proxy_trace.rb` (`ProxyTrace`), `web/public/token_fragment.js`, `web/public/auth_lost.js`, `web/tunnel.rb` + `web/tunnel/tailscale.rb` (`Web::Tunnel`, `Web::Tunnel::Tailscale`: `chi web --tunnel tailscale`, Tailscale Serve set for one run and the PublicUrl it makes) | Experimental: chi web behind an auth proxy. Every request needs the token; a proxied one's owner also needs the identity header (one clean value under one name); the `__Host-` cookie, an absolute `Location` from the public URL, https links with a one-time code in the fragment; the page's lost-sign-in banner. Bridges refuse proxy traces ([configuration.md](configuration.md#behind-an-auth-proxy)). |
 | Participants | `participants.rb` (`Participants`, the `participants.json` sidecar), `share_command.rb` (`ShareCommand`, `chi share`), `session_participants.rb`, `participants_watch.rb`, `web/grants.rb` (`Web::Grants`), `web/principal.rb` (`Web::Principal`), `web/participant_access.rb` (`Web::ParticipantAccess`: the participant's gate and routes), `web/participants_admin.rb` (`Web::ParticipantsAdmin`: the owner's invite, list, revoke, cap and Apply routes), `web/participant_review.rb` + `web/participant_view.rb` (`Web::ParticipantReview`, `Web::ParticipantView`), `web/participant_stream_filter.rb`, `guardrails/review_boundary.rb` + `guardrails/review_paths.rb` | The people or agents an owner invites to review one session through chi web: their grants and gate, what they read, their read-only review turns ([internals/participants.md](internals/participants.md), [guardrails.md](guardrails.md)). |
 | Analytics | `analytics_file.rb` (`AnalyticsFile`), `session_metrics/totals.rb` (`SessionMetrics::Totals`), `session_metrics/model_segment.rb` (`SessionMetrics::ModelSegment`) | A session's `analytics.json` (`SessionMetrics#persist`); the sums over its turn records (`Totals`: tokens, cost, speeds, kept as running counters) and their split per model after a `/model` switch (`ModelSegment`: a run of turns on one model, the `model_segments` rows); `session_metrics/cost.rb` (`SessionMetrics::Cost`): the spend `ctx.cost` reads; `session_metrics/usage.rb` (`SessionMetrics::Usage`): the work `ctx.usage` reads. `session_metrics/side_totals.rb` (`SessionMetrics::SideTotals`) and `side_usage.rb` (`SideUsage`): the side requests' sums, apart from the turns'. |

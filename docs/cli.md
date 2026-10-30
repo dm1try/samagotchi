@@ -256,6 +256,10 @@ done
   `update.min_age_hours` tune the interval and release age (see
   [configuration](configuration.md#all-settings)). If the gem can't be updated
   in place, the notice gives the blocker and its command instead.
+  With `update.auto: install` chi web installs the release by itself once no
+  turn runs anywhere, then restarts idle workers and itself (`update.restart`),
+  and the notice reads "installs by itself" with no **Update** button; see
+  [Unattended updates](configuration.md#unattended-updates-updateauto).
 
 - **The chi home.** With a [chi home](configuration.md#the-chi-home), a `chi
   update` started on another Ruby first says `updating the chi home (<ruby>)`

@@ -169,6 +169,26 @@ each `session` / `session_gone` event into a `Show` (with its text) or a `Close`
 Queue. A `chi` event marked `update_notice` becomes a `chi:update:<version>` show for the bare page; the checker
 sets that marker only for a newly selected version not already in its persistent `notified` list. It uses the same
 Presence skip and hourly CAP as session shows, and the 24-hour TTL lets an offline phone receive it later.
+With `update.auto: install` (and an install that is not blocked) that marker is ignored: the page says the release
+installs by itself, and the phone hears the result instead.
+
+**The automatic update's shows.** `Web::AutoUpdate` says how a run went with `SessionHub#publish_notice`, a
+`chi_notice` hub event (`{kind, version, …notes}`): not a `chi_update` frame, which is the page's (it would repeat
+in a reconnect's snapshot and toast), and not kept. The Notifier turns it into a show with reason `update` (24 h TTL,
+`Urgency: normal`, counted in CAP, skipped with the key marked handled while a page is in front, shown for the bare
+page `/`), once per key in its process (`@updates_seen`; AutoUpdate's own record in `update_check.json` keeps a run
+from saying it twice across restarts). The key's `chi:` prefix keeps sw.js from treating it as a waiting key:
+
+| `kind` | key | title / body |
+|---|---|---|
+| `installed` (`update.restart: never`) | `chi:installed:<X>` | "chi X is installed" / "chi web and its sessions switch over when you restart them." + kept edits |
+| `failed` | `chi:update_failed:<X>` | "chi X didn't install" (or "installed with a problem" when the gem row was fine) / the first failed row's status, "Open chi web for details." |
+| `updated` | `chi:updated:<X>` | "chi updated to X" / "chi web and 3 sessions restarted; 1 restarts when idle." + kept edits |
+| `restart_failed` | `chi:restart_failed:<X>` | "chi X is installed; chi web didn't restart" / why (a failed `--version` preflight, no wrapper), "Restart chi web in its terminal." |
+
+`updated` is sent by the **restarted** chi web (its AutoUpdate finds the run at `phase: web`): the exec ends the
+old process, and `Notifier#stop` does not flush the shows still in their hold, so a push queued just before it would
+be lost. Sending from the new process also proves it came up.
 
 **Seeding**: `Notifier#start(hub)` subscribes with `snapshot: true` and takes the summaries as the seed, so what is
 open already never pushes. The hub's projection is empty before its first scan, so `Server.start` runs `hub.scan`
