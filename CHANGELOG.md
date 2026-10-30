@@ -7,6 +7,11 @@ and commands may change between minor versions. How releases are made:
 [docs/releasing.md](docs/releasing.md).
 ## [Unreleased]
 
+### Changed
+
+- Web: an unfolded long answer's fold row is the answer's header: it keeps the first line and size, and its bar runs
+  on into the answer's. The recap's ▸/▾ matches the steps' and thinking's in place of the browser's triangle.
+
 ### Fixed
 
 - Web: a `!cmd`'s output in a reloaded history is its command bubble alone: it no longer opens a turn that showed

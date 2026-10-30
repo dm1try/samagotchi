@@ -46,10 +46,10 @@ test("foldLabel: the first heading, else the first text line, as plain words; a 
   assert.ok(long.length <= 160 && long.endsWith("…"));
 });
 
-test("foldRowText: folded the label and ' · N lines', unfolded the size only", () => {
+test("foldRowText: the label and ' · N lines', folded or not", () => {
   const text = `# Title\n${lines(30)}`;
   assert.deepEqual(foldRowText(text), { label: "Title", size: "\u00a0\u00b7 31 lines" });
-  assert.deepEqual(foldRowText(text, { folded: false }), { label: "", size: "31 lines" });
+  assert.deepEqual(foldRowText(text, { folded: false }), { label: "Title", size: " · 31 lines" });
   assert.deepEqual(foldRowText("only\n"), { label: "only", size: "\u00a0\u00b7 1 line" });
 });
 
@@ -131,7 +131,7 @@ test("the page: a long completed answer gets a row just before it; a short, runn
   assert.equal(rows.length, 1);
   assert.ok(long.previousElementSibling === rows[0]);
   assert.equal(rows[0].getAttribute("aria-expanded"), "true");
-  assert.equal(rows[0].textContent, "41 lines");
+  assert.equal(rows[0].textContent, "The ticket\u00a0\u00b7 41 lines");
   history.remove();
 });
 

@@ -57,14 +57,15 @@ main{flex:1;display:flex;flex-direction:column;gap:16px;padding:16px;overflow:au
 /* A generation opens its answer bubble empty: hidden until text streams (the thinking box shows progress meanwhile). */
 .bubble.output.streaming:empty{display:none}
 /* The answer's pop: the promoted bubble is held at the narration box's height (inline max-height, scrolled to its tail) until the rendered markdown lands, then grows to its content while the content fades in; both classes go 400 ms later. */
-/* A long answer folded by hand (answer_fold.js): the row is the bubble's sibling just before it, styled as a closed turn's steps; folded, the bubble is hidden and the row reads its first line and size; unfolded, a slim "▾ N lines" header close above it. */
+/* A long answer folded by hand (answer_fold.js): the row is the bubble's sibling just before it, styled as a closed turn's steps, reading the answer's first line and size; folded, the bubble is hidden; unfolded, the row is the bubble's header. */
 .bubble.output.folded{display:none}
 .answer-fold{display:flex;align-items:baseline;gap:0;align-self:flex-start;max-width:100%;min-width:0;margin:0;padding:3px 10px;font:inherit;font-size:12px;font-weight:500;line-height:1.4;color:var(--text-muted);text-align:left;cursor:pointer;user-select:none;background:transparent;border:1px solid transparent;border-left:3px solid var(--accent-strong);border-radius:6px;transition:background .12s ease}
 .answer-fold:hover{background:var(--bg-panel)}
 .answer-fold:focus-visible{outline:2px solid var(--accent-ring);outline-offset:1px}
 .answer-fold::before{content:"▾\00a0";color:var(--accent);flex:none}
 .answer-fold.folded::before{content:"▸\00a0"}
-.answer-fold:not(.folded){margin-bottom:-8px;padding-top:1px;padding-bottom:1px;border-left-color:transparent}
+/* Open: the bubble's header, flush on top of it (-12px: #history's gap), its bar running on into the bubble's. */
+.answer-fold:not(.folded){margin-bottom:-12px;border-bottom-left-radius:0}
 .answer-fold-label{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text-2);font-size:13px}
 .answer-fold-label:empty{display:none}
 .answer-fold-size{flex:none;white-space:nowrap;font-variant-numeric:tabular-nums}
@@ -194,7 +195,11 @@ main{flex:1;display:flex;flex-direction:column;gap:16px;padding:16px;overflow:au
 /* A stop someone chose (a cancel, the session's stop): the ■ STOPPED rows' colours, not an error's. */
 .bubble.cancel.stopped{border-left-color:var(--warn);background:color-mix(in srgb,var(--warn) 8%,var(--bg-panel));color:var(--warn-text)}
 .bubble.recap{border-left:3px solid var(--think-text);background:color-mix(in srgb,var(--think) 6%,var(--bg-panel));font-size:13px}
-.bubble.recap summary{cursor:pointer;color:var(--think-text);font-size:12px}
+.bubble.recap summary{cursor:pointer;color:var(--think-text);font-size:12px;list-style:none}
+/* The fold glyph every collapsible in the history draws (steps, thinking, the answer fold), not the native triangle. */
+.bubble.recap summary::-webkit-details-marker{display:none}
+.bubble.recap summary::before{content:"▸ ";color:var(--think-text)}
+.bubble.recap[open] summary::before{content:"▾ "}
 .bubble.recap .recap-body{white-space:pre-wrap;margin-top:6px}
 .bubble.recap.stale{opacity:.7;border-left-style:dashed}
 .activity-body{margin-top:6px}
