@@ -50,6 +50,8 @@ Configuration (config.yml `execute.*` keys and CLI flags too, as for `read`):
 - `SAMAGOTCHI_EXECUTE_TIMEOUT_SEC` (`execute.timeout_sec`, default `120`): what a command still running then gets is `execute.on_timeout`.
 - `SAMAGOTCHI_EXECUTE_ON_TIMEOUT` (`execute.on_timeout`, default `task`): `task` hands the command over as a background task, not killed; the result starts `Still running at the 120s limit: moved to a background task, not killed.` (`Execute::HANDED_OVER`), then its `task_id:` and the tails of stdout and stderr so far, and `task_wait` waits for it. `kill` stops it and answers `Error: command timed out after …s` (`Execute::TIMEOUT_PREFIX`) with the hint to use `task_create`. The `!cmd` bang always kills. See [Background tasks](background-tasks.md).
 
+The env a command runs in (the session's project env, `ProjectEnv.tools_env`, then the Ruby/Bundler scrub and chi's markers) is the same for `execute`, `task_create`, `!cmd` and context sources: see [Background tasks](background-tasks.md).
+
 Implementation note:
 
 - Shared logic lives in `lib/samagotchi/tools/output_guardrails.rb` and is used by `read` and `execute`, and by `edit` (its env switches) and `delegate_wait` (the head+tail preview of a child's long reply).
