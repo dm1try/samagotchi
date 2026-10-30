@@ -1,7 +1,5 @@
-// The stage view (web.view: stage) on its own: the running turn pinned above
-// the composer with fixed live slots, cards in it, and the hand-off into the
-// history. The default view: the chromium project runs it, the turn project
-// doesn't.
+// The stage on its own: the running turn pinned above the composer with
+// fixed live slots, cards in it, and the hand-off into the history.
 import fs from "node:fs";
 import path from "node:path";
 import { test, expect } from "./support/fixtures.js";

@@ -3,9 +3,7 @@
 // fake model's script, `fakeMode(mode)` makes it answer otherwise (an error;
 // back to the script after the test), `configExtra(yaml)` adds a test's own
 // settings, `projectFile(name, text)` a file of its own in the project, and
-// `page` opens chi web's start page
-// (the default view, stage; ?view=turn in the turn project: the `view`
-// option). The lan project's
+// `page` opens chi web's start page. The lan project's
 // chi web also listens on the LAN address (the `lan` option).
 import fs from "node:fs";
 import path from "node:path";
@@ -13,7 +11,6 @@ import { test as base, expect } from "@playwright/test";
 import { startEnv, stopEnv, useConfigExtra, useHostModels, useMode, useScript, useTurnLimit } from "./env.js";
 
 export const test = base.extend({
-  view: ["stage", { option: true }],
   // The stage view's working set (web.working_set, on by default; false:
   // ?working_set=0, the mem chip's page).
   workingSet: [true, { option: true }],
@@ -88,11 +85,10 @@ export const test = base.extend({
     }
   },
 
-  page: async ({ page, chi, view, workingSet }, use) => {
+  page: async ({ page, chi, workingSet }, use) => {
     const errors = [];
     page.on("pageerror", (e) => errors.push(e.message));
-    const params = [view === "turn" ? "view=turn" : "", workingSet ? "" : "working_set=0"].filter(Boolean).join("&");
-    await page.goto(chi.baseURL + (params ? `/?${params}` : "/"));
+    await page.goto(chi.baseURL + (workingSet ? "/" : "/?working_set=0"));
     await use(page);
     expect(errors, "page errors").toEqual([]);
   },

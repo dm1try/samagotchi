@@ -141,7 +141,7 @@ export const snaps = (page, { from = 0, to = 1e12, keys = null } = {}) => page.e
 // clock (window.stageMarks), taken in the change's own task (a mutation
 // observer), so a shift it causes comes after its mark. stageMarks() reads
 // them; momentAt() finds the first mark at or after +from+ that +test+
-// accepts. No stage (the turn view): no marks.
+// accepts. No stage: no marks.
 export const watchStage = (page) => page.evaluate(() => {
   window.stageObserver?.disconnect();
   window.stageMarks = [];

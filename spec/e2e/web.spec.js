@@ -4,18 +4,16 @@ import { test, expect } from "./support/fixtures.js";
 import { PROMPT_LINE_PX } from "../../lib/samagotchi/web/public/composer_size.js";
 import { expectNoHorizontalOverflow } from "./support/layout.js";
 import { APPROVAL_COMMAND, EDIT_ASK_FILE, seedDelegate, seedFamily, useModelNote } from "./support/env.js";
-import { momentAt, pageNow, shiftSources, shiftSum, snaps, stageMarks, startSnaps, watchShifts, watchStage } from "./support/shifts.js";
+import { momentAt, pageNow, shiftSum, snaps, stageMarks, startSnaps, watchShifts, watchStage } from "./support/shifts.js";
 
-// The stage view (the default; the turn project runs @turn scenarios again
-// on ?view=turn): a running turn's rows are in #turnStage until the hand-off
-// moves them into #history. H() is where a live row can be; HC() the
+// The stage: a running turn's rows are in #turnStage until the hand-off
+// moves them into #history. H is where a live row can be; HC the
 // containers a card sits directly in.
-const stage = () => test.info().project.use.view !== "turn";
-const H = () => (stage() ? ":is(#history, #turnStage)" : "#history");
-// The live timing line: "turn N running · …" in the history, "turn N · …" in
-// the stage's status row (which already says the turn runs).
-const LIVE_LINE = (n) => new RegExp(`^turn ${n}${stage() ? "" : " running"} · `);
-const HC = () => (stage() ? ":is(#history, #turnStage .ts-extras, #turnStage .ts-tail, #turnStage .ts-queued)" : "#history");
+const H = ":is(#history, #turnStage)";
+// The live timing line: "turn N · …" in the stage's status row (which
+// already says the turn runs).
+const LIVE_LINE = (n) => new RegExp(`^turn ${n} · `);
+const HC = ":is(#history, #turnStage .ts-extras, #turnStage .ts-tail, #turnStage .ts-queued)";
 
 // Types into the composer and sends (Start on the start page, Send in a session).
 async function send(page, prompt) {
@@ -23,14 +21,14 @@ async function send(page, prompt) {
   await page.locator("#actionBtn").click();
   // Contains, not equals: a fast failure adds its "failed" badge to the
   // bubble's text before this check runs.
-  await expect(page.locator(`${H()} .bubble.user`).last()).toContainText(prompt);
+  await expect(page.locator(`${H} .bubble.user`).last()).toContainText(prompt);
 }
 
 // The turn is over: its timing line is final, Cancel is gone, Send is enabled.
-// In the stage view: handed off into the history too (the pointer leaves
-// the stage first: a click in it holds the hand-off, as it would a reader).
+// Handed off into the history too (the pointer leaves the stage first: a
+// click in it holds the hand-off, as it would a reader).
 async function turnEnded(page, turns) {
-  if (stage()) await page.mouse.move(0, 0);
+  await page.mouse.move(0, 0);
   await expect(page.locator("#history .turn-timing:not(.live)")).toHaveCount(turns);
   await expect(page.locator("#cancelBtn")).toBeHidden();
   await expect(page.locator("#actionBtn")).toHaveText("Send");
@@ -38,9 +36,9 @@ async function turnEnded(page, turns) {
   await expect(page.locator("#prompt")).toBeEditable();
 }
 
-const answer = (page) => page.locator(`${H()} .bubble.output`).last();
+const answer = (page) => page.locator(`${H} .bubble.output`).last();
 
-test("a prompt from the start page streams an answer and the turn ends", { tag: "@turn" }, async ({ page, script }) => {
+test("a prompt from the start page streams an answer and the turn ends", async ({ page, script }) => {
   script("plain");
   await expect(page.locator("#actionBtn")).toHaveText("Start");
   // Records each text a live (.streaming) element shows the answer with,
@@ -89,7 +87,7 @@ test("a prompt from the start page streams an answer and the turn ends", { tag: 
   await expect(page.locator("#history .bubble.output:visible")).toHaveCount(2);
 });
 
-test("a multi-step turn shows its steps, tool rows and the markdown answer", { tag: "@turn" }, async ({ page, script }) => {
+test("a multi-step turn shows its steps, tool rows and the markdown answer", async ({ page, script }) => {
   script("turn");
   await send(page, "Check the shell and the README");
   await turnEnded(page, 1);
@@ -109,7 +107,7 @@ test("a multi-step turn shows its steps, tool rows and the markdown answer", { t
   await expect(answer(page)).toBeVisible();
 });
 
-test("a reload after the turn shows the same turn and answer", { tag: "@turn" }, async ({ page, script }) => {
+test("a reload after the turn shows the same turn and answer", async ({ page, script }) => {
   script("turn");
   await send(page, "Check the shell and the README");
   await turnEnded(page, 1);
@@ -139,7 +137,7 @@ test("a reload after the turn shows the same turn and answer", { tag: "@turn" },
 // turn, the empty step says so, and a reload shows one turn with the answer
 // and the asking-again row (the empty step isn't saved: a row before the
 // answer).
-test("an empty answer is asked again in the same turn, and a reload shows one turn with its retry row", { tag: "@turn" }, async ({ page, script }) => {
+test("an empty answer is asked again in the same turn, and a reload shows one turn with its retry row", async ({ page, script }) => {
   script("empty_retry");
   await send(page, "Say pong");
   await expect(answer(page)).toHaveText("PONG after the retry.");
@@ -157,7 +155,7 @@ test("an empty answer is asked again in the same turn, and a reload shows one tu
 // The retry is empty too: the turn ends with no answer. One muted notice
 // where the answer goes (no answer bubble), live and after a reload, which
 // keeps both empty steps and the retry row in them.
-test("a turn with no answer shows one notice, live and after a reload, with its steps", { tag: "@turn" }, async ({ page, script }) => {
+test("a turn with no answer shows one notice, live and after a reload, with its steps", async ({ page, script }) => {
   script("empty_answer");
   await send(page, "Say pong");
   await turnEnded(page, 1);
@@ -177,19 +175,19 @@ test("a turn with no answer shows one notice, live and after a reload, with its 
 // A turn's own rows come back where they were, on a mid-turn join and after
 // the turn: the empty answer's retry row, the answered question card, and
 // a line sent while the turn ran (the steered bubble, not a turn of its own).
-test("a reload mid-turn and after it keeps the retry row, the answered card and the steered line in the turn", { tag: "@turn" }, async ({ page, script, view }) => {
+test("a reload mid-turn and after it keeps the retry row, the answered card and the steered line in the turn", async ({ page, script }) => {
   script("reload_rows");
   await send(page, "Read a file of my choice");
-  const card = page.locator(`${H()} .bubble.question`);
+  const card = page.locator(`${H} .bubble.question`);
   await expect(card).toHaveCount(1);
   await card.locator(".question-option input").first().check();
   await card.locator(".question-submit").click();
-  await expect(page.locator(`${H()} .bubble.question.answered`)).toHaveCount(1);
+  await expect(page.locator(`${H} .bubble.question.answered`)).toHaveCount(1);
   // Sent while the read holds: merged into this turn after it.
   await page.locator("#prompt").fill("mind the typos");
   await page.locator("#actionBtn").click();
-  await expect(page.locator(`${H()} .bubble.user.steered`)).toHaveCount(1);
-  await expect(page.locator(`${H()} .activity-row`).filter({ hasText: "README.md" }).last().locator(".activity-status.ok")).toHaveCount(1);
+  await expect(page.locator(`${H} .bubble.user.steered`)).toHaveCount(1);
+  await expect(page.locator(`${H} .activity-row`).filter({ hasText: "README.md" }).last().locator(".activity-status.ok")).toHaveCount(1);
 
   const rows = async (where) => ({
     retry: await page.locator(`${where} .hook-notice`).allTextContents(),
@@ -205,8 +203,8 @@ test("a reload mid-turn and after it keeps the retry row, the answered card and 
   };
   // The last step holds: join the running turn.
   await page.reload();
-  await expect(page.locator(`${H()} .bubble.question.answered`)).toHaveCount(1);
-  expect(await rows(H())).toEqual(expected);
+  await expect(page.locator(`${H} .bubble.question.answered`)).toHaveCount(1);
+  expect(await rows(H)).toEqual(expected);
   await expect(page.locator("#cancelBtn")).toBeVisible();
   await turnEnded(page, 1);
   expect(await rows("#history")).toEqual(expected);
@@ -214,13 +212,12 @@ test("a reload mid-turn and after it keeps the retry row, the answered card and 
   await turnEnded(page, 1);
   expect(await rows("#history")).toEqual(expected);
   // In the turn's order: the steered line and the card after its steps
-  // (the stage view's working set footprint right under them), before its
+  // (the working set's footprint right under them), before its
   // answer and its one timing line (the answer's Revise row aside).
   const order = await page.locator("#history > :not(.revise-row)").evaluateAll((els) => els.map((e) =>
     e.matches(".bubble.user.steered") ? "steered" : e.matches(".bubble.user") ? "user" : e.matches(".turn-work") ? "block"
       : e.matches(".bubble.question") ? "card" : e.matches(".bubble.output") ? "answer" : e.matches(".turn-timing") ? "timing" : e.className));
-  const foot = view === "stage" ? ["ws-foot"] : [];
-  expect(order).toEqual(["user", "block", ...foot, "card", "steered", "answer", "timing"]);
+  expect(order).toEqual(["user", "block", "ws-foot", "card", "steered", "answer", "timing"]);
 });
 
 // LLM context edits (llm_context.strategy stale, apply next_request): the
@@ -235,7 +232,7 @@ test("a stale read's stub shows as a ✂ row live and after a reload, and a relo
   await send(page, "Read the notes twice");
   const LINE = /^✂ stubbed 1 stale read · frees ~\d+ tokens$/;
   // The answer holds: the row is in, before it.
-  const live = page.locator(`${H()} .hook-notice.llm-context`);
+  const live = page.locator(`${H} .hook-notice.llm-context`);
   await expect(live).toHaveCount(1);
   await expect(live).toHaveText(LINE);
   await expect(live).toHaveAttribute("title", /^Stubbed as stale:\n {2}t1 read e2e-notes\.txt — e2e-notes\.txt: superseded by a later read\n/);
@@ -311,15 +308,15 @@ test("a session whose prompt carried a model note names it in the info bar", asy
   }
 });
 
-test("cancel mid-turn shows the canceled turn (its timing line too), and the next send works", { tag: "@turn" }, async ({ page, script }) => {
+test("cancel mid-turn shows the canceled turn (its timing line too), and the next send works", async ({ page, script }) => {
   script("hold");
   await send(page, "Take your time");
   await expect(page.locator("#cancelBtn")).toBeVisible();
   await page.locator("#cancelBtn").click();
-  await expect(page.locator(`${H()} .bubble.cancel`)).toContainText("canceled");
+  await expect(page.locator(`${H} .bubble.cancel`)).toContainText("canceled");
   await expect(page.locator("#cancelBtn")).toBeHidden();
   // The timing line says so live, as a reload has it.
-  await expect(page.locator(`${H()} .turn-timing`).first()).toHaveText(/^turn 1 · .+ · canceled$/);
+  await expect(page.locator(`${H} .turn-timing`).first()).toHaveText(/^turn 1 · .+ · canceled$/);
 
   script("plain");
   await send(page, "Say pong");
@@ -349,10 +346,10 @@ test("↑/↓ in the composer walk the prompt history and bring the draft back",
   await expect(prompt).toHaveValue("my draft");
 });
 
-test("a question card: the answer lets the turn go on", { tag: "@turn" }, async ({ page, script }) => {
+test("a question card: the answer lets the turn go on", async ({ page, script }) => {
   script("question");
   await send(page, "Read a file of my choice");
-  const card = page.locator(`${H()} .bubble.question`);
+  const card = page.locator(`${H} .bubble.question`);
   await expect(card.locator(".question-text")).toHaveText("Which file should I read?");
   // Its session card says it waits on the user (the hub's pending_question) until answered.
   await expect(page.locator("#topStrip .card.waiting .attn")).toHaveText("question");
@@ -400,7 +397,7 @@ test("a turn at its step limit asks to continue: the card survives a reload, Con
   script("step_limit");
   turnLimit(3);
   await send(page, "Do a long task");
-  const card = page.locator(`${HC()} .bubble.question.step-limit`);
+  const card = page.locator(`${HC} .bubble.question.step-limit`);
   await expect(card.locator(".question-text")).toContainText("The turn ran out of iterations (3 steps) before it answered. Continue it?");
   await expect(card.locator(".question-choice")).toHaveText(["Continue", "Stop"]);
   await expect(card.locator(".question-dismiss")).toHaveCount(0);
@@ -414,41 +411,38 @@ test("a turn at its step limit asks to continue: the card survives a reload, Con
 
   await card.locator(".continue-yes").click();
   await expect(answer(page)).toHaveText("Finished after the continue: STEP-LIMIT-DONE");
-  await expect(page.locator(`${H()} .bubble.question.step-limit .question-result`)).toHaveText("Continued");
+  await expect(page.locator(`${H} .bubble.question.step-limit .question-result`)).toHaveText("Continued");
   await expect(page.locator("#topStrip .card.waiting")).toHaveCount(0);
 });
 
-test("an approval card: allowing it runs the tool", { tag: "@turn" }, async ({ page, script }) => {
+test("an approval card: allowing it runs the tool", async ({ page, script }) => {
   script("approval");
   await watchShifts(page);
   await watchStage(page);
   await startSnaps(page);
   await send(page, "Run the command that needs approval");
-  const card = page.locator(`${H()} .bubble.question.approval`);
+  const card = page.locator(`${H} .bubble.question.approval`);
   await expect(card.locator(".approval-what")).toHaveText(APPROVAL_COMMAND);
   await expect(card.locator(".approval-why")).toContainText("e2e-ask");
-  const cardAt = await pageNow(page);
   // The stage shows the reply that asked for it above the card.
-  if (stage()) await expect(page.locator("#turnStage .ts-asking")).toHaveText("Running the command that needs approval.");
-  if (stage()) {
-    // The plain flip: the first words stream as the answer, then the tool
-    // starts; the stage holds its height and nothing in it moves. (The
-    // composer card settles into a new session's layout meanwhile.)
-    const marks = await stageMarks(page);
-    const shownAt = momentAt(marks, (m) => !m.hidden);
-    // (A fast stream can start the tool in the first words' frame.)
-    const plainAt = momentAt(marks, (m) => /\bplain\b/.test(m.cls)) ?? shownAt;
-    const waitingAt = momentAt(marks, (m) => /\bwaiting\b/.test(m.cls));
-    expect(plainAt).toBeLessThan(waitingAt);
-    expect(await shiftSum(page, { from: plainAt, to: waitingAt, where: "stage", withInput: true })).toBeLessThan(0.01);
-    // The card's arrival grows the stage once, with a short ease: read once
-    // that window has passed and the growth is over, so the answer below
-    // comes after it (a starved page can still be growing when the card
-    // shows, and the growth would count as the answer's shift).
-    await page.waitForFunction((until) => performance.now() >= until && document.querySelector("#turnStage").getAnimations().length === 0, waitingAt + 600);
-    expect(await shiftSum(page, { from: waitingAt, to: waitingAt + 600, withInput: true })).toBeLessThan(0.15);
-    expect(await snaps(page, { from: waitingAt, to: waitingAt + 600 })).toEqual([]);
-  }
+  await expect(page.locator("#turnStage .ts-asking")).toHaveText("Running the command that needs approval.");
+  // The plain flip: the first words stream as the answer, then the tool
+  // starts; the stage holds its height and nothing in it moves. (The
+  // composer card settles into a new session's layout meanwhile.)
+  const marks = await stageMarks(page);
+  const shownAt = momentAt(marks, (m) => !m.hidden);
+  // (A fast stream can start the tool in the first words' frame.)
+  const plainAt = momentAt(marks, (m) => /\bplain\b/.test(m.cls)) ?? shownAt;
+  const waitingAt = momentAt(marks, (m) => /\bwaiting\b/.test(m.cls));
+  expect(plainAt).toBeLessThan(waitingAt);
+  expect(await shiftSum(page, { from: plainAt, to: waitingAt, where: "stage", withInput: true })).toBeLessThan(0.01);
+  // The card's arrival grows the stage once, with a short ease: read once
+  // that window has passed and the growth is over, so the answer below
+  // comes after it (a starved page can still be growing when the card
+  // shows, and the growth would count as the answer's shift).
+  await page.waitForFunction((until) => performance.now() >= until && document.querySelector("#turnStage").getAnimations().length === 0, waitingAt + 600);
+  expect(await shiftSum(page, { from: waitingAt, to: waitingAt + 600, withInput: true })).toBeLessThan(0.15);
+  expect(await snaps(page, { from: waitingAt, to: waitingAt + 600 })).toEqual([]);
   // Answered from the keyboard: the card took the focus from the empty
   // composer; pick the first option and press Enter.
   const first = card.locator(".question-option input").first();
@@ -458,24 +452,18 @@ test("an approval card: allowing it runs the tool", { tag: "@turn" }, async ({ p
   await first.press("Enter");
   await expect(card.locator(".question-result")).toContainText("Allow");
   await expect(answer(page)).toHaveText("The approved command ran.");
-  if (stage()) {
-    // The answer: the stage keeps its height and nothing in it shifts. This
-    // card is taller than its room (its options in sight, its top scrolled
-    // out), so it can't keep its top: its line comes into the stage's view
-    // (the focus may scroll the stage to it). The question test has a card
-    // that keeps it.
-    const endAt = momentAt(await stageMarks(page), (m) => /\bended\b/.test(m.cls), answerAt);
-    expect(await shiftSum(page, { from: answerAt, to: endAt, withInput: true })).toBeLessThan(0.01);
-    expect(await snaps(page, { from: answerAt, to: endAt, keys: ["status", "chip", "composer"] })).toEqual([]);
-    const line = await card.locator("summary").boundingBox();
-    const view = await page.locator("#turnStage .ts-scroll").boundingBox();
-    expect(line.y).toBeGreaterThanOrEqual(view.y);
-    expect(line.y + line.height).toBeLessThanOrEqual(view.y + view.height);
-  } else {
-    // The turn view: the history flows and follows; the composer and the
-    // top bar never move.
-    expect((await shiftSources(page, { from: cardAt })).filter((n) => /#dock|dock-card|#topBar|section#center$/.test(n))).toEqual([]);
-  }
+  // The answer: the stage keeps its height and nothing in it shifts. This
+  // card is taller than its room (its options in sight, its top scrolled
+  // out), so it can't keep its top: its line comes into the stage's view
+  // (the focus may scroll the stage to it). The question test has a card
+  // that keeps it.
+  const endAt = momentAt(await stageMarks(page), (m) => /\bended\b/.test(m.cls), answerAt);
+  expect(await shiftSum(page, { from: answerAt, to: endAt, withInput: true })).toBeLessThan(0.01);
+  expect(await snaps(page, { from: answerAt, to: endAt, keys: ["status", "chip", "composer"] })).toEqual([]);
+  const line = await card.locator("summary").boundingBox();
+  const view = await page.locator("#turnStage .ts-scroll").boundingBox();
+  expect(line.y).toBeGreaterThanOrEqual(view.y);
+  expect(line.y + line.height).toBeLessThanOrEqual(view.y + view.height);
   await turnEnded(page, 1);
   const row = page.locator("#history .activity-row").filter({ hasText: "execute" });
   await expect(row.locator(".activity-status")).toHaveAttribute("aria-label", "done");
@@ -488,7 +476,7 @@ test("an approval card: allowing it runs the tool", { tag: "@turn" }, async ({ p
 test("a delegate's approval is answered on the parent's page", async ({ page, script }) => {
   script("delegate_relay");
   await send(page, "Delegate the command that needs approval");
-  const card = page.locator(`${H()} .bubble.question.approval`);
+  const card = page.locator(`${H} .bubble.question.approval`);
   await expect(card.locator(".approval-delegate")).toContainText("E2E_CHILD_TASK");
   await expect(card.locator(".approval-what")).toHaveText(APPROVAL_COMMAND);
   await expect(card.locator("summary")).toContainText("Approve delegate");
@@ -509,10 +497,10 @@ test("a delegate's approval is answered on the parent's page", async ({ page, sc
   await expect(childRow.locator(".activity-output")).toContainText("E2E_APPROVED");
 });
 
-test("an edit's approval card shows its diff; the row keeps the change after a reload", { tag: "@turn" }, async ({ page, script }) => {
+test("an edit's approval card shows its diff; the row keeps the change after a reload", async ({ page, script }) => {
   script("edit");
   await send(page, "Make the font bigger");
-  const card = page.locator(`${H()} .bubble.question.approval`);
+  const card = page.locator(`${H} .bubble.question.approval`);
   await expect(card.locator(".approval-what")).toContainText(EDIT_ASK_FILE);
   await expect(card.locator(".approval-diff .diff-del")).toHaveText("-font_size 12");
   await expect(card.locator(".approval-diff .diff-add")).toHaveText("+font_size 14");
@@ -546,7 +534,7 @@ test("an edit's approval card shows its diff; the row keeps the change after a r
 // the file in the editor (web.editor's default, vscode; this page is a
 // loopback viewer); the answer's ref's menu shows the row in the turn. The window.__chiRefOpen seam records the URL instead
 // of opening it; refs.js checks for it at click time.
-test("an edit's approval card, then its row's title and diff lines, open the file in the editor; the answer's ref shows its row; live and after a reload", { tag: "@turn" }, async ({ page, script }) => {
+test("an edit's approval card, then its row's title and diff lines, open the file in the editor; the answer's ref shows its row; live and after a reload", async ({ page, script }) => {
   const recordOpens = () => page.evaluate(() => {
     window.__refOpened = [];
     window.__chiRefOpen = (url) => window.__refOpened.push(url);
@@ -555,7 +543,7 @@ test("an edit's approval card, then its row's title and diff lines, open the fil
   const url = (line) => new RegExp(`^vscode://file/.+/${EDIT_ASK_FILE.replace(".", "\\.")}:${line}$`);
   script("edit");
   await send(page, "Make the font bigger");
-  const card = page.locator(`${HC()} .bubble.question.approval`);
+  const card = page.locator(`${HC} .bubble.question.approval`);
   // Before approving: the card's path opens the current file at the dry
   // run's first change, a diff line at its own.
   await recordOpens();
@@ -570,7 +558,7 @@ test("an edit's approval card, then its row's title and diff lines, open the fil
   await turnEnded(page, 1);
   await expect(page.locator("body")).toHaveClass(/\bhas-editor\b/);
 
-  const editRow = () => page.locator(`${H()} .activity-row`).filter({ has: page.locator(".activity-tool", { hasText: /^edit$/ }) });
+  const editRow = () => page.locator(`${H} .activity-row`).filter({ has: page.locator(".activity-tool", { hasText: /^edit$/ }) });
   const check = async () => {
     await recordOpens();
     const title = editRow().locator(".activity-params.ref");
@@ -583,7 +571,7 @@ test("an edit's approval card, then its row's title and diff lines, open the fil
     await diff.locator(".diff-ctx").filter({ hasText: "theme dark" }).click();
     // The answer's `path:line` and the step's bare path name the touched
     // file (ref_scan.js): refs too.
-    await expect(page.locator(`${H()} details.gen .gen-text .ref`)).toHaveText(EDIT_ASK_FILE);
+    await expect(page.locator(`${H} details.gen .gen-text .ref`)).toHaveText(EDIT_ASK_FILE);
     await answer(page).locator(".ref").click();
     expect(await opened()).toEqual([expect.stringMatching(url(1)), expect.stringMatching(url(1)), expect.stringMatching(url(2)), expect.stringMatching(url(1))]);
     // The ref's menu (its ▾): "Show in turn" opens the steps and the
@@ -668,7 +656,7 @@ test("an annotate preset fills the composer with the quote and never sends; a pl
   await bar.getByRole("button", { name: "Annotate" }).click();
   await expect(page.locator("#prompt")).toHaveValue("> PONG from the fake model.\n\n");
   await page.locator("#actionBtn").click();
-  await expect(page.locator(`${H()} .bubble.user`).last()).toHaveAttribute("data-user-content", "> PONG from the fake model.");
+  await expect(page.locator(`${H} .bubble.user`).last()).toHaveAttribute("data-user-content", "> PONG from the fake model.");
   await turnEnded(page, 2);
   await expect(page.locator("#prompt")).toHaveValue("");
 
@@ -687,11 +675,11 @@ test("an annotate preset fills the composer with the quote and never sends; a pl
   await expect(page.locator("#prompt")).toBeFocused();
   await page.keyboard.type("why?");
   await page.locator("#actionBtn").click();
-  await expect(page.locator(`${H()} .bubble.command .command-output`).last()).toHaveText("checked: quote\n> PONG\n\nwhy?");
+  await expect(page.locator(`${H} .bubble.command .command-output`).last()).toHaveText("checked: quote\n> PONG\n\nwhy?");
   await expect(page.locator("#prompt")).toHaveValue("");
 });
 
-test("the model picker lists the fake model", { tag: "@turn" }, async ({ page }) => {
+test("the model picker lists the fake model", async ({ page }) => {
   const button = page.locator("#modelPick");
   await expect(button).toBeVisible();
   await expect(button).toHaveText("fake-script");
@@ -716,7 +704,7 @@ const MANY_MODELS = {
   ],
 };
 
-test("the model picker searches: 'deepseek4.1 fla' picks the flash with ⏎, Recent keeps two picks, Esc changes nothing", { tag: "@turn" }, async ({ page, script }) => {
+test("the model picker searches: 'deepseek4.1 fla' picks the flash with ⏎, Recent keeps two picks, Esc changes nothing", async ({ page, script }) => {
   await page.route("**/api/models", (route) => route.fulfill({ json: MANY_MODELS }));
   await page.reload();
   const button = page.locator("#modelPick");
@@ -1001,7 +989,7 @@ async function continueAndCheck(page, first, kid) {
   const second = page.url().match(/#\/s\/([0-9a-f-]+)$/)[1];
   // Filled, not sent: no turn ran in the new link.
   await expect(page.locator("#prompt")).toHaveValue("Continue where we left off.");
-  await expect(page.locator(`${H()} .bubble.user`)).toHaveCount(0);
+  await expect(page.locator(`${H} .bubble.user`)).toHaveCount(0);
   await expect(page.locator("#actionBtn")).toHaveText("Send");
   await expect(page.locator("#toast")).toContainText(`Continued ${first.slice(0, 8)} in ${second.slice(0, 8)}`);
   await expect(page.locator("#toast")).toContainText("1 open delegate moved");
@@ -1018,7 +1006,7 @@ async function continueAndCheck(page, first, kid) {
   await page.locator("#modelSearch").press("Enter");
   await expect(pick).toHaveText("fake-b");
   await expect(infoModel).toContainText("fake-b");
-  await expect(page.locator(`${H()} .bubble`).filter({ hasText: "/model fake-b" })).toHaveCount(1);
+  await expect(page.locator(`${H} .bubble`).filter({ hasText: "/model fake-b" })).toHaveCount(1);
   expect(await page.evaluate(() => [localStorage.getItem("chi_model"), localStorage.getItem("chi_model_recent")])).toEqual(stored);
   await expect(page.locator("#prompt")).toHaveValue("Continue where we left off.");
   await expect(page.locator("#prompt")).toBeFocused();
@@ -1072,14 +1060,14 @@ async function continueAndCheck(page, first, kid) {
   await page.locator("#infoContinueBtn").click();
   await expect(page).not.toHaveURL(new RegExp(`#/s/${second}$`));
   await expect(page.locator("#prompt")).toHaveValue(CHAIN_OPENER);
-  await expect(page.locator(`${H()} .bubble.user`)).toHaveCount(0);
+  await expect(page.locator(`${H} .bubble.user`)).toHaveCount(0);
   // Sent, the link's title (the tab, the top bar) is still its chain's, as its card's,
   // after a reload too (its snapshot's first user message is the opener now).
   await page.locator("#actionBtn").click();
   await turnEnded(page, 1);
   await expect(page).toHaveTitle(/^Chain day one · Chi/);
   await page.reload();
-  await expect(page.locator(`${H()} .bubble.user`)).toHaveCount(1);
+  await expect(page.locator(`${H} .bubble.user`)).toHaveCount(1);
   await expect(page).toHaveTitle(/^Chain day one · Chi/);
   // The start page: its own remembered model came back.
   await page.locator("#newBtn").click();
@@ -1517,7 +1505,7 @@ test("a question in a background tab: one notification and a title badge; in fro
 
   script("question");
   await send(page, "Read a file of my choice");
-  const card = page.locator(`${H()} .bubble.question`);
+  const card = page.locator(`${H} .bubble.question`);
   await expect(card.locator(".question-text")).toHaveText("Which file should I read?");
   await expect.poll(() => notes(page)).toEqual([
     expect.objectContaining({ title: "Read a file of my choice", body: "needs an answer", tag: expect.stringMatching(/:/) }),
@@ -1544,7 +1532,7 @@ test("the title badge counts while behind and clears when the tab comes to the f
   await withNotificationStub(page);
   script("question");
   await send(page, "Read a file of my choice");
-  const card = page.locator(`${H()} .bubble.question`);
+  const card = page.locator(`${H} .bubble.question`);
   await expect(page).toHaveTitle(/^\(1\) .+ · Chi/);
   // No bell: the badge still counts, and no notification is shown.
   expect(await notes(page)).toEqual([]);
@@ -1559,7 +1547,7 @@ test("the title badge clears when the tab turns visible before it has focus (Saf
   await withNotificationStub(page);
   script("question");
   await send(page, "Read a file of my choice");
-  const card = page.locator(`${H()} .bubble.question`);
+  const card = page.locator(`${H} .bubble.question`);
   await expect(page).toHaveTitle(/^\(1\) .+ · Chi/);
   await page.evaluate(() => window.__showTab());
   await expect(page).not.toHaveTitle(/^\(/);
@@ -1586,7 +1574,7 @@ test("two tabs: one in front, the one behind shows no notification and no badge"
 
   script("question");
   await send(page, "Read a file of my choice");
-  const card = page.locator(`${H()} .bubble.question`);
+  const card = page.locator(`${H} .bubble.question`);
   await expect(card.locator(".question-text")).toHaveText("Which file should I read?");
   // The front tab's word reaches the tab behind (a listener of the test's
   // own on the channel); past its hold, it has neither notified nor badged.
@@ -1605,7 +1593,7 @@ test("the title badge drops a question answered from another client", async ({ p
   await withNotificationStub(page);
   script("question");
   await send(page, "Read a file of my choice");
-  const card = page.locator(`${H()} .bubble.question`);
+  const card = page.locator(`${H} .bubble.question`);
   await expect(page).toHaveTitle(/^\(1\) .+ · Chi/);
   // Another client answers; this tab stays behind.
   const id = page.url().match(/#\/s\/([0-9a-f-]+)$/)[1];
@@ -1737,20 +1725,20 @@ test("/archive and /exit typed in the composer get a local reply, not a worker e
   await expect(page.locator("#infoArchiveBtn")).toHaveText("archive");
 });
 
-test("/model X sent mid-turn shows queued, survives a reload, and applies once the turn ends", { tag: "@turn" }, async ({ page, script }) => {
+test("/model X sent mid-turn shows queued, survives a reload, and applies once the turn ends", async ({ page, script }) => {
   script("mid_turn_command");
   await send(page, "Take a moment");
   await expect(page.locator("#cancelBtn")).toBeVisible();
   // --yes: a switch on a session with a model reply asks first (it restarts the prompt cache).
   await page.locator("#prompt").fill("/model fake-other --yes");
   await page.locator("#actionBtn").click();
-  const bubble = page.locator(`${H()} .bubble.command`).filter({ hasText: "/model fake-other" });
+  const bubble = page.locator(`${H} .bubble.command`).filter({ hasText: "/model fake-other" });
   await expect(bubble).toHaveCount(1);
   await expect(bubble).toHaveClass(/queued/);
   await expect(bubble.locator(".command-output")).toHaveText("queued: runs after this turn");
   // Below the running turn's card, not among its rows (the stage's queued slot).
   const queuedSlot = page.locator("#turnStage .ts-queued .bubble.command");
-  if (stage()) await expect(queuedSlot).toHaveCount(1);
+  await expect(queuedSlot).toHaveCount(1);
   // The session's model in the info bar (not the new session's picker).
   const model = page.locator("#infoText .meta .status + .model");
   await expect(model).toHaveText(/^fake-script/);
@@ -1759,7 +1747,7 @@ test("/model X sent mid-turn shows queued, survives a reload, and applies once t
   await expect(page.locator("#cancelBtn")).toBeVisible();
   await expect(bubble).toHaveCount(1);
   await expect(bubble).toHaveClass(/queued/);
-  if (stage()) await expect(queuedSlot).toHaveCount(1);
+  await expect(queuedSlot).toHaveCount(1);
 
   await expect(answer(page)).toHaveText("Done after a while.", { timeout: 15_000 });
   await turnEnded(page, 1);
@@ -1795,10 +1783,10 @@ test("/modle typed in the composer gets the hint, not a turn", async ({ page, sc
 // check-in (after: 3 in the e2e config): the card comes up in the running
 // step after the 3rd call; Nudge puts its message into the turn as a nudge
 // row of that step, and the model's next step answers it.
-test("check-in: the card mid-turn, Nudge makes a nudge row before the answer, live and after a reload", { tag: "@turn" }, async ({ page, script }) => {
+test("check-in: the card mid-turn, Nudge makes a nudge row before the answer, live and after a reload", async ({ page, script }) => {
   script("check_in");
   await send(page, "Look through the README");
-  const card = page.locator(`${HC()} > .plugin-card`).filter({ hasText: "3 tool calls, no answer yet" });
+  const card = page.locator(`${HC} > .plugin-card`).filter({ hasText: "3 tool calls, no answer yet" });
   await expect(card).toBeVisible();
   // Its session card waits on the plugin card: a "needs you" pill (its kind,
   // "card", once made the badge a session card: a 72 px circle).
@@ -1809,14 +1797,12 @@ test("check-in: the card mid-turn, Nudge makes a nudge row before the answer, li
   // The step that answers it shows it (open, live), before the answer (in
   // the stage: in its cloud, which the chip opens; the nudge flashes in the
   // trail meanwhile, so it is seen with the cloud closed).
-  const row = page.locator(`${H()} .steer-row`);
+  const row = page.locator(`${H} .steer-row`);
   await expect(row.locator("summary")).toHaveText("check-in nudged the model");
-  if (stage()) {
-    const flashed = page.locator("#turnStage .ts-trail-item.steer");
-    await expect(flashed).toHaveText("↪ check-in nudged the model");
-    await expect(flashed).toBeVisible();
-    await page.locator("#turnStage .ts-chip-label").click();
-  }
+  const flashed = page.locator("#turnStage .ts-trail-item.steer");
+  await expect(flashed).toHaveText("↪ check-in nudged the model");
+  await expect(flashed).toBeVisible();
+  await page.locator("#turnStage .ts-chip-label").click();
   await expect(row).toBeVisible();
   await turnEnded(page, 1);
   await expect(answer(page)).toHaveText("Found so far: the README is an e2e project file. Nothing is left.");
@@ -1838,28 +1824,25 @@ test("check-in: the card mid-turn, Nudge makes a nudge row before the answer, li
 // a 3-sentence cycle (it would stream for ~11 s); loop-guard cuts it with a
 // warn notice, the loop asks again (held 3 s), and the retry answers. The
 // stage flashes the warn notice while the turn runs, both rows are in the
-// DOM (inside the closed cloud); the turn view has them in the cut
-// generation's step, closed once the retry's step opens.
-test("thinking loop: loop-guard cuts it, asks again, answers", { tag: "@turn" }, async ({ page, script }) => {
+// DOM (inside the closed cloud); after the hand-off the block has them in
+// the cut generation's step.
+test("thinking loop: loop-guard cuts it, asks again, answers", async ({ page, script }) => {
   script("thinking_loop");
   await send(page, "How many r letters are in strawberry?");
-  const rows = page.locator(`${H()} .hook-notice`);
+  const rows = page.locator(`${H} .hook-notice`);
   const cut = rows.filter({ hasText: "thinking repeats itself" });
   const again = rows.filter({ hasText: "↻ cut by loop-guard, asking again (1/1)" });
-  if (stage()) {
-    await expect(page.locator("#turnStage .ts-trail")).toContainText("thinking repeats itself");
-  } else {
-    // Both rows are the cut generation's: its step closes as the retry's opens.
-    const steps = page.locator(`${H()} .turn-work .gen`);
-    await expect(steps).toHaveCount(2);
-    await expect(steps.first().locator(".hook-notice")).toHaveCount(2);
-  }
+  await expect(page.locator("#turnStage .ts-trail")).toContainText("thinking repeats itself");
   await expect(cut).toHaveCount(1);
   await expect(again).toHaveCount(1);
   await expect(cut).toContainText("(\"Wait, the count of the letter r in the word might be three,…\", 3 sentences ×3");
   await expect(page.locator("#cancelBtn")).toBeVisible();
   await expect(answer(page)).toHaveText("PONG after the cut.");
   await turnEnded(page, 1);
+  // Handed off: both rows are the cut generation's, the block's first step.
+  const steps = page.locator("#history .turn-work .gen");
+  await expect(steps).toHaveCount(2);
+  await expect(steps.first().locator(".hook-notice")).toHaveCount(2);
   // Well before the loop's own end (~11 s of streaming, then the 3 s hold):
   // the cut turn takes ~5 s. Timed by the worker (the turn's own seconds),
   // not from the test's start, which adds the worker's spawn and tipped a
@@ -1878,22 +1861,16 @@ test("thinking loop: loop-guard cuts it, asks again, answers", { tag: "@turn" },
 // step's read) stays in sight when that step closes mid-turn: it leaves the
 // collapsing step for the block, and after the turn ends it is under the
 // block, where a reload puts it, also once the session is stopped.
-test("a warn card stays in sight when its step closes mid-turn", { tag: "@turn" }, async ({ page, script }) => {
+test("a warn card stays in sight when its step closes mid-turn", async ({ page, script }) => {
   script("warn_card");
   await send(page, "Read the flagged file");
-  const card = page.locator(`${H()} .plugin-card.warn`).filter({ hasText: "e2e warn card" });
+  const card = page.locator(`${H} .plugin-card.warn`).filter({ hasText: "e2e warn card" });
   await expect(card).toHaveCount(1);
   // The next step started: the card's step is closed, the turn still runs
   // (the last step holds 4 s before it answers). In the stage the card sits
   // in the extras, not in its step inside the closed cloud.
-  if (stage()) {
-    await expect(page.locator("#turnStage .ts-trail")).toContainText("read README.md");
-    await expect(page.locator("#turnStage .ts-extras > .plugin-card.warn")).toHaveCount(1);
-  } else {
-    const steps = page.locator(`${H()} .turn-work .gen`);
-    await expect(steps.nth(1).locator(".activity-row")).toHaveCount(1);
-    await expect(steps.first()).not.toHaveAttribute("open", "");
-  }
+  await expect(page.locator("#turnStage .ts-trail")).toContainText("read README.md");
+  await expect(page.locator("#turnStage .ts-extras > .plugin-card.warn")).toHaveCount(1);
   await expect(card).toBeVisible({ timeout: 1000 });
   // Still running: Cancel is up, no final timing line yet.
   await expect(page.locator("#cancelBtn")).toBeVisible({ timeout: 1000 });
@@ -1901,6 +1878,10 @@ test("a warn card stays in sight when its step closes mid-turn", { tag: "@turn" 
   await turnEnded(page, 1);
   await expect(card).toBeVisible();
   await expect(page.locator("#history > .plugin-card.warn")).toHaveCount(1);
+  // Handed off: the block's steps, the card's step closed, the next one's read in it.
+  const steps = page.locator("#history .turn-work .gen");
+  await expect(steps.nth(1).locator(".activity-row")).toHaveCount(1);
+  await expect(steps.first()).not.toHaveAttribute("open", "");
   // The worker saved it with the session: stopped, a reload still shows it.
   page.once("dialog", (dialog) => dialog.accept());
   const stopped = page.waitForResponse((res) => /\/stop$/.test(res.url()) && res.request().method() === "POST");
@@ -1947,7 +1928,7 @@ test("stop asks about the background task still running: the sheet, then Stop al
 // page renders (web.markdown on): it is never drawn, not even for a moment
 // in the stage, and a reload doesn't bring it back. A plain notice next to
 // it shows.
-test("a notice that stands in for the rendered answer isn't shown, live or after a reload", { tag: "@turn" }, async ({ page, script }) => {
+test("a notice that stands in for the rendered answer isn't shown, live or after a reload", async ({ page, script }) => {
   await page.evaluate(() => {
     window.fallbackSeen = false;
     new MutationObserver(() => {
@@ -1976,7 +1957,7 @@ test("a notice that stands in for the rendered answer isn't shown, live or after
 // pairing may land with the answer_display re-read, after the turn ends.
 // Its e2e_ticket row's refs (chi.tool refs:, D8): the title opens the
 // first's action, its menu adds the second's, named, its URL on hover.
-test("an answer's plugin refs pair with its link and text, a tool row's with its title and menu; actions open in a new tab; live and after a reload", { tag: "@turn" }, async ({ page, script }) => {
+test("an answer's plugin refs pair with its link and text, a tool row's with its title and menu; actions open in a new tab; live and after a reload", async ({ page, script }) => {
   const recordOpens = () => page.evaluate(() => {
     window.__opened = [];
     window.open = (...args) => { window.__opened.push(args); return null; };
@@ -2032,7 +2013,7 @@ test("an answer's plugin refs pair with its link and text, a tool row's with its
 // The PR's data is fetched off the turn, from its start: the scripted
 // answer waits for the fake gh's files call (hold_until) and 1 s more, so it
 // comes after the fetch however loaded the machine is.
-test("a path:line in the answer links to the PR's line", { tag: "@turn" }, async ({ page, script }) => {
+test("a path:line in the answer links to the PR's line", async ({ page, script }) => {
   script("pr_line_links");
   await send(page, "Review https://github.com/acme/app/pull/42");
   await turnEnded(page, 1);
@@ -2053,7 +2034,7 @@ test("check-in in a background tab: one 'needs you' notification; the card resol
 
   script("check_in");
   await send(page, "Look through the README");
-  const card = page.locator(`${HC()} > .plugin-card`).filter({ hasText: "3 tool calls, no answer yet" });
+  const card = page.locator(`${HC} > .plugin-card`).filter({ hasText: "3 tool calls, no answer yet" });
   await expect(card).toBeVisible();
   await expect.poll(() => notes(page)).toEqual([
     expect.objectContaining({ title: "Look through the README", body: "needs you", tag: expect.stringMatching(/:card:check-in-/) }),
@@ -2063,7 +2044,7 @@ test("check-in in a background tab: one 'needs you' notification; the card resol
   const id = page.url().match(/#\/s\/([0-9a-f-]+)$/)[1];
   const res = await page.request.post(new URL(`/api/sessions/${id}/command`, page.url()).href, { data: { line: "/checkin later" } });
   expect(res.ok()).toBe(true);
-  await expect(page.locator(`${H()} .plugin-card .card-action`)).toHaveCount(0);
+  await expect(page.locator(`${H} .plugin-card .card-action`)).toHaveCount(0);
   await expect(page).not.toHaveTitle(/^\(/);
   await expect(page.locator("#cancelBtn")).toBeVisible();
   await turnEnded(page, 1);
@@ -2089,7 +2070,7 @@ test("the image button: picked images are chips, a non-image stays out with a to
   await page.locator("#chips .chip-remove").first().click();
   await expect(page.locator("#chips .chip-name")).toHaveText(["two.png"]);
   await send(page, "Say pong");
-  await expect(page.locator(`${H()} .bubble.user`).last().locator("img.thumb")).toHaveCount(1);
+  await expect(page.locator(`${H} .bubble.user`).last().locator("img.thumb")).toHaveCount(1);
   await expect(answer(page)).toHaveText("PONG from the fake model. It streams word by word. Then the turn ends.");
   await turnEnded(page, 1);
   await expect(page.locator("#chips")).toBeHidden();
@@ -2100,7 +2081,7 @@ test("the image button: picked images are chips, a non-image stays out with a to
 // draws the same two lines. B followed A at once: no gap divider; a reload
 // whose turn A happened 40 minutes earlier (its stamps and record moved
 // back) draws one, above B's prompt.
-test("a queued turn keeps its own live timing line when the turn before it re-reads late", { tag: "@turn" }, async ({ page, script }) => {
+test("a queued turn keeps its own live timing line when the turn before it re-reads late", async ({ page, script }) => {
   script("queued");
   let release;
   const released = new Promise((resolve) => { release = resolve; });
@@ -2112,7 +2093,7 @@ test("a queued turn keeps its own live timing line when the turn before it re-re
     await route.fulfill({ response });
   });
   await send(page, "Say first");
-  await expect(page.locator(`${H()} .turn-timing.live`)).toHaveText(LIVE_LINE(1));
+  await expect(page.locator(`${H} .turn-timing.live`)).toHaveText(LIVE_LINE(1));
   // B: an image dropped into the composer, sent while A runs.
   await page.evaluate((b64) => {
     const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
@@ -2123,13 +2104,13 @@ test("a queued turn keeps its own live timing line when the turn before it re-re
   await expect(page.locator("#chips .chip")).toHaveCount(1);
   await send(page, "QUEUED-B what is in this image?");
   // B started (its live line is there, A's finished) while A's re-read is held.
-  const lines = page.locator(`${H()} .turn-timing`);
-  const live = page.locator(`${H()} .turn-timing.live`);
+  const lines = page.locator(`${H} .turn-timing`);
+  const live = page.locator(`${H} .turn-timing.live`);
   await expect(lines).toHaveCount(2);
   await expect(live).toHaveCount(1);
   release();
   // A's re-read landed: its answer is the rendered markdown.
-  await expect(page.locator(`${H()} .bubble.output strong`)).toHaveText("bold");
+  await expect(page.locator(`${H} .bubble.output strong`)).toHaveText("bold");
   await expect(live).toHaveCount(1);
   await expect(live).toHaveText(LIVE_LINE(2));
   await expect(lines.first()).toHaveText(/^turn 1 · /);
@@ -2137,7 +2118,7 @@ test("a queued turn keeps its own live timing line when the turn before it re-re
   await expect.poll(() => live.textContent(), { timeout: 3000 }).not.toBe(before);
   await expect(live).toHaveText(LIVE_LINE(2));
   // B ends: its own line, final.
-  await expect(page.locator(`${H()} .bubble.output`).last()).toHaveText("Second answer, from the queued turn.", { timeout: 15_000 });
+  await expect(page.locator(`${H} .bubble.output`).last()).toHaveText("Second answer, from the queued turn.", { timeout: 15_000 });
   await turnEnded(page, 2);
   const final = await page.locator("#history .turn-timing").allTextContents();
   expect(final).toHaveLength(2);
