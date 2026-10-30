@@ -134,6 +134,20 @@ test("the session clock while a turn runs; ctx and speed from the timing's token
   assert.deepEqual(bar.speed, { text: SPEED_NONE, tip: "Decode speed of the last generation: none yet", empty: true });
 });
 
+test("a session with no turn yet: the clock is the placeholder, not 0ms; a running first turn ticks from 0", () => {
+  const base = (timing, running) => infoBarModel({ id: ID, state: { ...emptySessionState(), timing: { ...emptySessionState().timing, ...timing } },
+                                                  sessions: [], chain: { prev: null, next: null }, cardTitle: title, badge: null,
+                                                  restarting: false, running });
+  // The server's duration of a session nobody has turned in yet: 0.
+  assert.equal(base({ sessionDurationMs: 0 }, false).clock, "");
+  assert.equal(base({ sessionDurationMs: null }, false).clock, "");
+  // Its first turn running: the clock ticks, from 0 up.
+  assert.match(base({ startedAt: new Date().toISOString(), sessionDurationMs: 0 }, true).clock, /^\d+(\.\d+)?(ms|s)$/);
+  assert.equal(base({ startedAt: new Date(Date.now() - 15000).toISOString() }, true).clock, "15s");
+  // A duration of its own, idle: still shown.
+  assert.equal(base({ sessionDurationMs: 42000 }, false).clock, "42s");
+});
+
 test("the speed chip takes the last generation's speed, no longer empty", () => {
   const state = { ...emptySessionState(), timing: { ...emptySessionState().timing, tokens: { last_decode_tps: 42.4, avg_decode_tps: 40 } } };
   const bar = infoBarModel({ id: ID, state, sessions: [], chain: { prev: null, next: null }, cardTitle: title, badge: null,
