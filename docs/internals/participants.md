@@ -195,8 +195,8 @@ Everything else is `:owner`: `/answer`, `/command`, `/images` (an image a prompt
   to act: the turn only reads (`Guardrails::ReviewBoundary`), and proposes what the owner applies ([Apply](#apply)).
 - **`:pair`**, a working session's participant invited to act: the turn acts with the session's tools under the
   owner's guardrails, its asks go to the owner and offer once only, and `Guardrails::PairBoundary` denies secrets,
-  chi itself and chi web on loopback, background and scheduled jobs, the environment and credential printers, git's
-  hooks, owner-voiced tools and the owner's task outputs, and the model's own question, and asks before a command
+  chi itself and chi web on loopback, background and scheduled jobs, the environment and credential printers, git
+  config writes (reads only) and git's hooks, owner-voiced tools and the owner's task outputs, and the model's own question, and asks before a command
   that makes a link and before a write that may land outside the project, failing closed (a global install or a
   user config write that names no path, `Guardrails::ImplicitWriters`, and a script read from stdin count; a
   session at or above home has none: every write asks) ([guardrails](../guardrails.md#a-participants-pair-boundary)).

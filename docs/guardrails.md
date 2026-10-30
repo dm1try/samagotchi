@@ -444,23 +444,31 @@ message:
   `cp -r dir/. .`, isn't asked about: the owner's next restart runs it);
   and a command still
   running at the limit is killed, never handed over as a background task;
-- git settings that make git run a command later, by key family in any case
-  (`PairCommand::GIT_RUNNING_KEYS`: `core.hooksPath`, `core.fsmonitor`,
-  `core.sshCommand`, `core.askPass`, `core.pager`/`pager.*`, `core.editor`,
-  `sequence.editor`, `filter.*.clean`/`smudge`/`process`, `diff.*.textconv`/
-  `command`, `diff.external`, `merge.*.driver`, `credential.helper` and
-  `credential.*.helper`, `gpg.program`/`gpg.*.program`,
-  `remote.*.uploadpack`/`receivepack`, `include.path`/`includeIf.*.path`,
-  `protocol.*.allow`, `difftool`/`mergetool`/`trailer` commands, a `!` alias or
-  submodule update) by `git config` (any file, `git config set …` too),
-  `git -c` or `git --config-env`, and `git config --global`/`--system`/`--edit`;
-  reading one (`--get`, `-l`, `git config get`) stays allowed. A
-  `.gitattributes` write isn't asked about: it only selects a driver, and
-  defining one is what's denied;
+- git config writes, whatever the key (any may make git run a command later
+  in the owner's name: hooks, `core.fsmonitor`, a filter, diff or merge
+  driver, a credential or gpg helper, `hook.<name>.command`, an include): a
+  pair turn's `git config` only reads, parsed strictly
+  (`PairCommand#git_config_read?`: `--get`, `--get-all`, `--get-regexp`,
+  `--get-urlmatch`, `--get-color(bool)`, `-l`/`--list`, `get`, `list` or a lone
+  key, with `--show-origin`, `--show-scope`, `--name-only`, `-z`, `--type=…`,
+  `--default`, `--file F` and the like, every word accounted for; any other
+  option, an abbreviation git would take (`--glob`, `--comm`), a short form
+  (`-t`) or a word too many is a write). Denied too: `git -c`, `--config-env`,
+  a clone's, init's or submodule's `-c`/`--config`, an assignment of
+  `GIT_CONFIG_*` or `GIT_TEMPLATE_DIR`, `git` under an alias, `git config` after
+  `xargs` or in `find -exec`, and an interpreter's script naming `git config`
+  or `git -c`. A command git runs now from its text (`git submodule foreach`,
+  `rebase --exec`, `bisect run`, a `filter-branch` filter, `--upload-pack`,
+  `--receive-pack`, `--extcmd`, an `ext::` URL) is read as a command of its
+  own and asks as an outside write. A `.gitattributes` write isn't asked
+  about: it only selects a driver, and defining one is what's denied;
   and writing git's hooks: a `write` or `edit` of a path in a `.git/hooks`
   folder, a submodule's `.git/modules/<name>/hooks` too (as given or as it
   resolves), or a command whose part that names one isn't read-only
-  (`printf … > .git/hooks/pre-commit`, `cp x .git/hooks/`);
+  (`printf … > .git/hooks/pre-commit`, `cp x .git/hooks/`), and installing
+  them: `git init`/`clone --template`, and the hook installers
+  (`PairCommand::HOOK_INSTALLERS`: `pre-commit install`, `husky`, `lefthook
+  install`, `simple-git-hooks`, `overcommit --install`);
 - running chi, by any wrapper (`bin/chi`, `bundle exec chi`, `ruby … bin/chi`,
   `env … chi`, `watch`, `npx`, `sh -c 'chi …'`, `$(chi …)`), in an assignment's
   value or an alias, a function, after `-exec`/`-c`/`-e`, but `chi --version` and
@@ -522,18 +530,34 @@ rule lowers it), so it comes even in auto mode. A command fails closed
   among them. The program's own word doesn't count (`/usr/bin/sed`), nor does
   `PATH=…`, nor a message's heredoc (`git commit -m "$(cat <<'EOF' … EOF)"`);
   and it runs no program that writes to its own place outside with no word
-  naming it (`Guardrails::ImplicitWriters`: `npm`/`pnpm`/`bun` `-g` and
+  naming it (`Guardrails::ImplicitWriters`, examples rather than a closed
+  set: `npm`/`pnpm`/`bun`/`deno` global in any spelling (`-g`, `--global=true`,
+  `--location global`, `npm_config_global=true`), `npm`/`yarn`/`bun link`,
   `npm config set`/`login` (`~/.npmrc`), `yarn global`, `pip install`/`pip
-  config` (with or without `--user`: its site-packages is wherever its Python
-  is; a project venv's `.venv/bin/pip` and `-t`/`--target`/`--prefix` don't
-  count), `gem install`, `brew` but its reading verbs, `defaults write`,
-  `cargo install`, `go install`/`go env -w`, `pipx`, `uv tool`/`uv python
-  install`, `gh auth`/`config set`/`extension install`, `launchctl` but its
-  reading verbs; a project install such as `npm install` or `bundle install`
-  and build caches don't count), and no shell or interpreter that reads its
-  script from stdin (`… | sh`, `curl … | bash`, `sh < run.sh`, `bash -s`,
-  `python3 -`): chi can't see that script. A script file it names
-  (`sh run.sh`, `ruby x.rb`) is not read.
+  config` by any interpreter (`python3.12 -m pip`, `pypy3 -mpip`; with or
+  without `--user`: its site-packages is wherever its Python is; a project
+  venv's `.venv/bin/pip` and `-t`/`--target`/`--prefix` don't count), `uv pip
+  install --system`, `gem install`, `bundle config set` without `--local`,
+  `brew` but its reading verbs, `defaults write`, `cargo install`, `go
+  install`/`go env -w`, `pipx`, `uv tool`/`uv python install`, `dotnet tool
+  install -g`, `corepack enable`, `rustup`/`pyenv`/`rbenv`/`asdf`/`volta`/`nvm`
+  installs and globals, `code --install-extension`, `gh auth`/`config
+  set`/`extension install`, `launchctl` but its reading verbs; a project
+  install such as `npm install` or `bundle install` and build caches don't
+  count), and no shell or interpreter that reads its script from stdin: one
+  on the receiving end of a pipe whatever its options (`… | sh`, `| bash -x`,
+  `| sh -e`, `| python3 -c 'exec(input())'`), `< file`, `bash -s`, `python3 -`,
+  or with no script at all: chi can't see that script. A shell's `-e`, `-x`
+  and `-o …` are flags, only `-c` (or a cluster ending in it, `-ec`) hands it
+  a script; an interpreter's own code flag does (`python -c`, `ruby -e`,
+  `node -e`/`-p`, `perl -e`/`-E`, `php -r`). A script file it names (`sh
+  run.sh`, `ruby x.rb`) is not read.
+
+  Accepted gaps (an accident guard for a trusted team): a script file the turn
+  wrote and then runs; inline scripts read only by their text for paths
+  (`find … -exec sh -c '…'`, `flock … sh -c`, `awk 'BEGIN{system(…)}'`,
+  `deno eval`); a `GIT_CONFIG_*` set by `printf -v` or `read` and exported
+  (it affects that command only).
 
 Anything else asks: `rm -rf ~/x`, `sed -i … ~/x`, `curl -o ~/x`, `dd of=~/x`,
 `touch`/`mkdir` outside, `perl -pi … ~/x`, `cd .. && make`, `cd && make`, and
@@ -1100,9 +1124,17 @@ gate below passes, in this order:
    (`SelfProtect::SCRIPT_CLIMB`: `os.pardir`, `dirname`, `chdir`, `Dir.pwd`,
    `Path.parent`, `rindex`, a slice from the end), and one chi can't see: a
    script file (`cd memories && python3 x.py`) or stdin (`… | python3`,
-   `sh < f`). A heredoc only written (`cat >> x.md <<'EOF'`) is data whatever
-   it says. A script body is not looked into beyond its text: an accident
-   guard, not containment (a script can build a path some other way).
+   `sh < f`, any interpreter or shell a pipe feeds, `| sh -x` too), by any
+   version's name (`python3.12`, `pypy3`, `Rscript`, `tclsh`), or a program
+   that runs a file (`SelfProtect::FILE_RUNNERS`: `make`, `rake`, `awk -f`,
+   `deno run`, `npm run`). A heredoc only written (`cat >> x.md <<'EOF'`) is
+   data whatever it says. A script body is not looked into beyond its text:
+   an accident guard, not containment (a script can build a path some other
+   way: `p.replace("memories", "config.yml")`, `p[0:len(p)-8]`, `.sub`,
+   `.slice` aren't caught). The price is some harmless commands the user now
+   answers: `python3 scripts/lint.py <memories>/notes.md`, `cat notes.md |
+   python3 -c …` from the memories folder, a climb word written as data by a
+   script (`File.write(".../notes.md", "dirname")`).
    A protected rule
    (`Verdict::PROTECTED_RULES`) may be listed by name and System 1 may answer
    it, but a call that really writes config.yml or the hooks is refused here;

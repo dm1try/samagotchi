@@ -46,8 +46,17 @@ module Samagotchi
       # chi named in a script, a value or an argument.
       CHI_TEXT = %r{(?:\A|[\s;&|(`'"=])(?:[^\s;&|(`'"=]*/)?chi(?=\s|\z|[;&|)`'"])}
       SHELLS = %w[sh bash zsh dash fish ksh].freeze
-      # Other interpreters a script can be handed to (-e/-c, a heredoc).
-      INTERPRETERS = %w[python python3 python2 ruby irb node deno bun perl php lua osascript jshell].freeze
+      # Other interpreters a script can be handed to (-e/-c, a heredoc), by
+      # name in any version's spelling (python3.12, pypy3, ruby3.3, perl5.36).
+      INTERPRETER = /\A(?:python\d*(?:\.\d+)?|pypy\d*(?:\.\d+)?|ruby\d*(?:\.\d+)?|irb|node(?:js)?|deno|bun|
+                      perl\d*(?:\.\d+)*|php\d*(?:\.\d+)?|lua(?:jit|\d*(?:\.\d+)?)|osascript|jshell|Rscript|
+                      tclsh\d*(?:\.\d+)?|wish)\z/x
+      # The options whose next word is an interpreter's code, by its name's
+      # start (a shell's is -c only: its -e and -x are flags); others: -c, -e.
+      CODE_FLAGS = { "python" => %w[-c], "pypy" => %w[-c], "ruby" => %w[-e], "irb" => %w[-e],
+                     "node" => %w[-e -p --eval --print], "bun" => %w[-e -p --eval --print], "perl" => %w[-e -E],
+                     "php" => %w[-r], "lua" => %w[-e], "osascript" => %w[-e], "Rscript" => %w[-e],
+                     "tclsh" => [], "wish" => [], "deno" => [], "jshell" => [] }.freeze
       # Options whose next word is code or a command, for any program.
       CODE_OPTIONS = %w[-c -e -exec --exec -execdir --command --eval -x].freeze
       # A shell's or interpreter's options whose next word is a value, not
@@ -105,6 +114,9 @@ module Samagotchi
                         /\[?(?:0{0,4}:){2,7}0{0,3}1\]?/, /\[?::ffff:127(?:\.\d{1,3}){3}\]?/].freeze
       # An interpreter's script that reads the environment or detaches.
       SCRIPT_ENV_TEXT = /\bos\.environ\b|\bgetenv\b|\bprocess\.env\b|\bENV\b|\bprintenv\b|%ENV\b/
+      # An interpreter's script that runs git config or git -c (by its text:
+      # the script isn't parsed).
+      SCRIPT_GIT_CONFIG_TEXT = /\bgit\b[^\n]{0,40}?(?:\bconfig\b|["'\s]-c\b|--config-env|--template)/
       SCRIPT_BACKGROUND_TEXT = /\b(?:nohup|setsid|disown|daemonize|Process\.daemon|detach(?:ed)?)\b/
       # Programs that read a folder's whole tree: given home (or any folder
       # above a denied one) they reach the secrets in it.
@@ -115,33 +127,38 @@ module Samagotchi
       CP_LINK_OPTION = /\A-[a-zA-Z]*[sl]|\A--(?:symbolic-)?link\z/
       # An interpreter's script that makes a link.
       SCRIPT_LINK_TEXT = /symlink|\blink\(|\bln\s|\bmklink\b|FileUtils\.ln|hardlink/i
-      # git settings that make git run a command later (or show one), by
-      # key family: matched on the key lowercased (git folds a section's and
-      # a key's case; a subsection, the middle part, is any). A driver
-      # (filter, diff, merge), a helper (credential, gpg, askpass, ssh), a
-      # pager or editor, what a remote runs, a config it includes, the
-      # protocols git may run (ext::), a tool's command.
-      GIT_RUNNING_KEYS = [
-        /\Acore\.(?:fsmonitor|sshcommand|hookspath|pager|editor|askpass|gitproxy|alternaterefscommand)\z/,
-        /\Asequence\.editor\z/, /\Apager\./, /\Afilter\..+\.(?:clean|smudge|process)\z/,
-        /\Adiff\.(?:.+\.(?:textconv|command)|external)\z/, /\Amerge\..+\.driver\z/, /\Acredential\.(?:.+\.)?helper\z/,
-        /\Agpg\.(?:.+\.)?program\z/, /\Aremote\..+\.(?:uploadpack|receivepack)\z/, /\Ainclude\.path\z/,
-        /\Aincludeif\..+\.path\z/, /\Aprotocol\.(?:.+\.)?allow\z/, /\A(?:difftool|mergetool)\..+\.(?:cmd|path)\z/,
-        /\Atrailer\..+\.(?:command|cmd)\z/, /\Aweb\.browser\z/, /\Abrowser\..+\.(?:cmd|path)\z/,
-        /\Asendemail\.(?:smtpserver|tocmd|cccmd|sendmailcmd)\z/, /\Auploadpack\.packobjectshook\z/,
-        /\Ainit\.templatedir\z/
-      ].freeze
-      # Settings that run a command when their value starts with "!".
-      GIT_BANG_KEYS = [/\Aalias\./, /\Asubmodule\..+\.update\z/].freeze
-      # git config's scopes beyond the repository; its options that take a
-      # value (the next word), that only read, that open an editor; its
-      # subcommands that only read, and those that write a key named next.
-      GIT_WIDE_SCOPES = %w[--global --system].freeze
-      GIT_CONFIG_VALUE_OPTIONS = %w[-f --file --blob --type --default --comment --value --url].freeze
-      GIT_CONFIG_READ_OPTION = /\A(?:--get(?:-[a-z]+)?|-l|--list)\z/
-      GIT_CONFIG_EDIT = %w[-e --edit edit].freeze
+      # A pair turn writes no git config at all (any key may run a command
+      # later in the owner's name: hooks, fsmonitor, a driver, a helper, an
+      # include): only reads, parsed strictly. git config's read actions,
+      # the flags and value options a read may carry (exact spellings: git
+      # takes a long option's unique prefix too, and such a word counts as
+      # a write here), and its read subcommands.
+      GIT_CONFIG_READ_ACTIONS = %w[--get --get-all --get-regexp --get-urlmatch --get-color --get-colorbool -l
+                                   --list].freeze
+      GIT_CONFIG_READ_FLAGS = %w[--show-origin --show-scope --name-only -z --null --includes --no-includes --local
+                                 --worktree --all --regexp --fixed-value --bool --int --bool-or-int --path
+                                 --expiry-date --no-type].freeze
+      GIT_CONFIG_READ_VALUES = %w[-f --file --blob --type --default --value --url].freeze
       GIT_CONFIG_READS = %w[get list].freeze
-      GIT_CONFIG_WRITES = %w[set unset rename-section remove-section].freeze
+      GIT_CONFIG_WRITES = %w[set unset rename-section remove-section edit].freeze
+      # How many words a read action takes after it (a key, a value pattern…).
+      GIT_CONFIG_READ_ARITY = { "--get-urlmatch" => 2..2, "-l" => 0..0, "--list" => 0..0, "get" => 1..1,
+                                "list" => 0..0 }.freeze
+      # A clone's, an init's or a submodule's -c/--config (the new repository's
+      # config) or --template (its hooks), in any prefix git takes.
+      GIT_SEEDING = %w[clone init submodule].freeze
+      GIT_SEED_CONFIG = /\A(?:-c.*|--c(?:o(?:n(?:f(?:i(?:g)?)?)?)?)?(?:=.*)?)\z/
+      GIT_SEED_TEMPLATE = /\A--t(?:e(?:m(?:p(?:l(?:a(?:t(?:e)?)?)?)?)?)?)?(?:=.*)?\z/
+      # git's options whose value is a command it runs now (filter-branch's
+      # filters, rebase --exec, difftool --extcmd, --upload-pack, …), and the
+      # subcommands whose -x / -u is one.
+      GIT_COMMAND_OPTIONS = %w[--exec --upload-pack --receive-pack --extcmd --tree-filter --index-filter --msg-filter
+                               --env-filter --commit-filter --parent-filter --tag-name-filter].freeze
+      GIT_COMMAND_SHORT = %w[rebase difftool clone fetch ls-remote pull].freeze
+      # Programs that install git hooks (or set core.hooksPath), by the
+      # arguments that do it (nil: any).
+      HOOK_INSTALLERS = { "pre-commit" => %w[install], "husky" => nil, "lefthook" => %w[install add],
+                          "simple-git-hooks" => nil, "overcommit" => %w[--install], "git-hooks" => %w[install] }.freeze
       GIT_VALUE_OPTIONS = %w[-C --git-dir --work-tree --namespace --exec-path].freeze
       # Devices a command may name in the project's stead.
       DEVICES = %w[/dev/null /dev/stdout /dev/stderr /dev/tty /dev/zero /dev/random /dev/urandom].freeze
@@ -222,27 +239,50 @@ module Samagotchi
         return false if word.include?("\0")
 
         name = File.basename(word)
-        SHELLS.include?(name) || INTERPRETERS.include?(name) || name == "eval"
+        SHELLS.include?(name) || interpreter?(name) || name == "eval"
+      end
+
+      # Whether +name+ (a word's basename) is an interpreter's (INTERPRETER).
+      def self.interpreter?(name) = name.to_s.match?(INTERPRETER)
+
+      # The options whose next word is +name+'s code (CODE_FLAGS).
+      def self.code_flags(name)
+        return %w[-c] if SHELLS.include?(name)
+
+        CODE_FLAGS.find { |start, _| name.start_with?(start) }&.last || %w[-c -e]
+      end
+
+      # Whether +word+ is +name+'s code option: one of .code_flags, or a
+      # shell's flag cluster ending in c (-ec, -xc).
+      def self.code_flag?(name, word)
+        code_flags(name).include?(word) || (SHELLS.include?(name) && word.match?(/\A-[a-zA-Z]*c\z/))
       end
 
       # Where a simple command's shell or interpreter (.runner?) gets its
-      # script: nil without one; :inline for a -c/-e script, eval's words, a
-      # heredoc or here-string (#scripts reads them) or a module (-m); :file
-      # for a script file it names (not read); :stdin for a pipe, < file,
-      # -s, - or no script at all.
-      def self.script_source(words)
+      # script: nil without one; :inline for its code option's script
+      # (.code_flag?: a shell's -c, python's -c, node's -e/-p…), eval's
+      # words, a heredoc or here-string (#scripts reads them); :file for a
+      # script file or a module (-m) it names (not read); :stdin when it
+      # reads a pipe (+piped+, whatever its options: a -c script may read
+      # stdin too, exec(input())), a < file, -s, -, or no script at all.
+      # Other flags (a shell's -e, -x, -o x; python's -x) are flags.
+      def self.script_source(words, piped: false)
         limit = program_at(words) || (words.size - 1)
         at = (0..limit).find { |i| runner?(words[i]) } or return nil
-        return :inline if File.basename(words[at]) == "eval"
+        name = File.basename(words[at])
+        return :inline if name == "eval"
+        return :stdin if piped
 
         rest = words[(at + 1)..]
         return :inline if rest.any? { |word| word.start_with?("<<") }
+        return :stdin if rest.any? { |word| word.match?(STDIN_REDIRECT) }
 
         skip = false
         rest.each do |word|
           next skip = false if skip
-          return :stdin if word == "-" || word == "-s" || word.match?(STDIN_REDIRECT)
-          return :inline if CODE_OPTIONS.include?(word) || word == "-m"
+          return :stdin if ["-", "-s"].include?(word) || (SHELLS.include?(name) && word.match?(/\A-[a-zA-Z]*s[a-zA-Z]*\z/))
+          return :inline if code_flag?(name, word)
+          return :file if word == "-m" || word.match?(/\A-m\w/)
           # a redirection's operator alone: its target is the next word
           next skip = word.sub(ShellPaths::REDIRECT_PREFIX, "").empty? if word.match?(ShellPaths::REDIRECT_PREFIX)
           next skip = RUNNER_VALUE_OPTIONS.include?(word) if word.start_with?("-", "+")
@@ -390,11 +430,36 @@ module Samagotchi
         upto = at ? words[0..at] : words
         return PairBoundary::BACKGROUND if upto.any? { |w| DETACHERS.include?(File.basename(w)) } || detached_session?(program, args)
         return PairBoundary::ENVIRONMENT if env_reader?(program, args) || bare_env?(words)
-        return PairBoundary::GIT_CONFIG if (program == "git" && git_runs_commands?(args)) || git_config_env?(words)
+        return PairBoundary::GIT_CONFIG if git_config_env?(words) || git_alias?(program, args)
+
+        if program == "git"
+          # xargs adds words of its input: a git config it runs may write
+          xargs = words[0...at].any? { |word| File.basename(word) == "xargs" }
+          reason = git_refusal(args, appended: xargs) || git_command_refusal(args)
+          return reason if reason
+        end
+        return PairBoundary::GIT_HOOKS if hook_installer?(words)
         return PairBoundary::OPENER if opener?(program, args)
         return PairBoundary::LISTENER if listener?(program, args)
 
+        exec_commands(args).each do |command|
+          reason = words_refusal(command)
+          return reason if reason
+        end
         nil
+      end
+
+      # The commands find runs (-exec, -execdir, -ok, -okdir … ; or +):
+      # judged as commands of their own.
+      def exec_commands(args)
+        found = []
+        args.each_with_index do |arg, at|
+          next unless %w[-exec -execdir -ok -okdir].include?(arg)
+
+          command = args[(at + 1)..].take_while { |word| !%w[; \\; +].include?(word) }
+          found << command unless command.empty?
+        end
+        found
       end
 
       # open, xdg-open, a browser, gio open; osascript's open location is
@@ -447,7 +512,7 @@ module Samagotchi
           reason = if SHELLS.include?(program) || program == "eval"
                      inner = nested(script)
                      inner.refusal.tap { @mise_config = true if inner.mise_config_write? }
-                   elsif INTERPRETERS.include?(program)
+                   elsif PairCommand.interpreter?(program)
                      @mise_config = true if script.match?(MISE_CONFIG_TEXT)
                      script_text_refusal(script)
                    end
@@ -459,13 +524,14 @@ module Samagotchi
       def runner?(word) = PairCommand.runner?(word)
 
       def scripts(words, at)
+        name = File.basename(words[at])
         found = []
         found << words[(at + 1)..].join(" ") if File.basename(words[at]) == "eval"
         words.each_with_index do |word, i|
           next if i.zero? || word == ShellLex::HEREDOC
 
           previous = words[i - 1]
-          found << word if previous.start_with?("<<") || (i > at && %w[-c -e].include?(previous))
+          found << word if previous.start_with?("<<") || (i > at && PairCommand.code_flag?(name, previous))
         end
         found
       end
@@ -477,6 +543,7 @@ module Samagotchi
         return PairBoundary::BACKGROUND if script.match?(SCRIPT_BACKGROUND_TEXT)
         return PairBoundary::OPENER if script.match?(SCRIPT_OPENER_TEXT)
         return PairBoundary::LISTENER if script.match?(SCRIPT_LISTEN_TEXT)
+        return PairBoundary::GIT_CONFIG if script.match?(SCRIPT_GIT_CONFIG_TEXT)
 
         nil
       end
@@ -524,72 +591,118 @@ module Samagotchi
         words[(at + 1)..].all?(&assignment)
       end
 
-      # git config beyond the repository (--global, --system), its editor,
-      # or a setting that runs a command (GIT_RUNNING_KEYS, a "!" alias or
-      # submodule update: GIT_BANG_KEYS), set with git config (any file:
-      # one it includes later runs it too), git -c or git --config-env.
-      # A read (--get, -l, get, list) never is.
-      def git_runs_commands?(args)
+      # Why a git command is refused: a config write (anything but a read
+      # .git_config_read? holds for, git -c and --config-env whatever they
+      # set, a clone's, init's or submodule's -c/--config: GIT_CONFIG) or a
+      # template (--template: its hooks, GIT_HOOKS); nil for the rest.
+      def git_refusal(args, appended: false)
         i = 0
         while i < args.size && args[i].start_with?("-")
           word = args[i]
-          if ["-c", "--config-env"].include?(word)
-            return true if running_setting?(*args[i + 1].to_s.split("=", 2), unknown: word == "--config-env")
+          return PairBoundary::GIT_CONFIG if word.start_with?("-c", "--config-env")
 
-            i += 2
-          elsif word.start_with?("--config-env=")
-            return true if running_setting?(word.delete_prefix("--config-env=").split("=", 2).first, nil, unknown: true)
-
-            i += 1
-          elsif GIT_VALUE_OPTIONS.include?(word)
-            i += 2
-          else
-            i += 1
-          end
+          i += GIT_VALUE_OPTIONS.include?(word) ? 2 : 1
         end
-        return false unless args[i] == "config"
+        command = args[i]
+        rest = args[(i + 1)..] || []
+        return (!appended && git_config_read?(rest) ? nil : PairBoundary::GIT_CONFIG) if command == "config"
+        return nil unless GIT_SEEDING.include?(command)
+        return PairBoundary::GIT_CONFIG if rest.any? { |arg| arg.match?(GIT_SEED_CONFIG) }
 
-        git_config_runs?(args[(i + 1)..])
+        rest.any? { |arg| arg.match?(GIT_SEED_TEMPLATE) } ? PairBoundary::GIT_HOOKS : nil
       end
 
-      def git_config_runs?(rest)
-        return true if rest.any? { |arg| GIT_WIDE_SCOPES.include?(arg) || GIT_CONFIG_EDIT.include?(arg) }
-        return false if rest.any? { |arg| arg.match?(GIT_CONFIG_READ_OPTION) }
-
-        positional = git_config_positionals(rest)
-        return false if GIT_CONFIG_READS.include?(positional.first)
-
-        positional.shift if GIT_CONFIG_WRITES.include?(positional.first)
-        running_setting?(positional[0], positional[1])
-      end
-
-      # git config's words but its options and their values.
-      def git_config_positionals(rest)
-        found = []
+      # Whether git config's arguments (+rest+) only read, every word
+      # accounted for: a read action or subcommand (GIT_CONFIG_READ_ACTIONS,
+      # GIT_CONFIG_READS) or a lone key, the flags and value options a read
+      # may carry (exact spellings), and as many words as the action takes.
+      # Anything else (an unknown or abbreviated option, a value option at
+      # the end, a word too many) is a write.
+      def git_config_read?(rest)
+        actions = []
+        positional = []
         skip = false
         rest.each do |arg|
           next skip = false if skip
-          next skip = GIT_CONFIG_VALUE_OPTIONS.include?(arg) if arg.start_with?("-")
 
-          found << arg
+          if arg.start_with?("-") && arg != "-"
+            if GIT_CONFIG_READ_ACTIONS.include?(arg) then actions << arg
+            elsif GIT_CONFIG_READ_VALUES.include?(arg) then skip = true
+            elsif !GIT_CONFIG_READ_FLAGS.include?(arg) && !GIT_CONFIG_READ_VALUES.include?(arg[/\A[^=]+(?==)/])
+              return false
+            end
+          else
+            positional << arg
+          end
+        end
+        return false if skip
+
+        if GIT_CONFIG_READS.include?(positional.first)
+          return false unless actions.empty?
+
+          actions << positional.shift
+        end
+        return positional.size == 1 && !GIT_CONFIG_WRITES.include?(positional.first) if actions.empty?
+        return false unless actions.size == 1
+
+        GIT_CONFIG_READ_ARITY.fetch(actions.first, 1..2).cover?(positional.size)
+      end
+
+      # The commands a git command runs now, handed to it as text (a
+      # submodule foreach's, a rebase --exec's, a filter's, an --upload-pack,
+      # an ext:: URL…; GIT_COMMAND_OPTIONS): read as commands of their own.
+      def git_commands(args)
+        i = 0
+        i += GIT_VALUE_OPTIONS.include?(args[i]) ? 2 : 1 while i < args.size && args[i].start_with?("-")
+        command = args[i]
+        rest = args[(i + 1)..] || []
+        found = rest.filter_map { |arg| arg.delete_prefix("ext::") if arg.start_with?("ext::") }
+        found << rest.drop_while { |arg| arg != "foreach" }.drop(1).reject { |arg| arg.start_with?("-") }.join(" ") if
+          command == "submodule" && rest.include?("foreach")
+        found << rest.drop_while { |arg| arg != "run" }.drop(1).join(" ") if command == "bisect" && rest.include?("run")
+        rest.each_with_index do |arg, at|
+          name, value = arg.split("=", 2)
+          next unless GIT_COMMAND_OPTIONS.include?(name) || (%w[-x -u].include?(name) && GIT_COMMAND_SHORT.include?(command))
+
+          found << (value || rest[at + 1].to_s)
         end
         found
       end
 
+      # A command a git command runs now (.git_commands), refused as its
+      # own command would be.
+      def git_command_refusal(args)
+        git_commands(args).each do |script|
+          reason = nested(script).refusal
+          return reason if reason
+        end
+        nil
+      end
+
+      # alias g=git (or a function's body naming git), then `g config …`:
+      # git under another name; an alias naming git is refused.
+      def git_alias?(program, args)
+        program == "alias" && args.any? { |arg| arg.match?(%r{=['"]?(?:\S*/)?git(?:\s|['"]?\z)}) }
+      end
+
       # An assignment (a prefix, export's, env's) of a variable that hands
-      # git config of its own (ShellGitDirs::CONFIG_ENV): what it sets may
-      # run a command, as git -c's may.
+      # git config or a template of its own (ShellGitDirs::CONFIG_ENV): what
+      # it sets may run a command, as git -c's may.
       def git_config_env?(words)
         words.any? { |word| word[/\A([A-Za-z_]\w*)=/, 1].to_s.match?(ShellGitDirs::CONFIG_ENV) }
       end
 
-      # +unknown+: the value isn't in the command (--config-env names a
-      # variable): a "!" key counts as running.
-      def running_setting?(key, value, unknown: false)
-        key = key.to_s.downcase
-        return true if GIT_RUNNING_KEYS.any? { |pattern| key.match?(pattern) }
+      # A hook installer (HOOK_INSTALLERS: pre-commit install, husky,
+      # lefthook install…), wherever it stands among the wrappers (npx husky).
+      def hook_installer?(words)
+        at = program_at(words) or return false
+        (0..at).any? do |i|
+          name = File.basename(words[i])
+          next false unless HOOK_INSTALLERS.key?(name)
 
-        GIT_BANG_KEYS.any? { |pattern| key.match?(pattern) } && (unknown || value.to_s.lstrip.start_with?("!"))
+          verbs = HOOK_INSTALLERS[name]
+          verbs.nil? || words[(i + 1)..].intersect?(verbs)
+        end
       end
 
       # The secrets a simple command's words reach: a resolved path on the
@@ -702,27 +815,50 @@ module Samagotchi
         return false if tokens.any? { |_, value| value.include?(ShellLex::SUBST) } && !substs_messages_only?
 
         walk = ShellPaths::Walk.new(@cwd, @home, ENV)
+        piped = ShellLex.piped_flags(tokens)
         ShellLex.simple_commands(tokens).all? do |words|
           next walk.step(words) if words.is_a?(Symbol)
 
+          stdin = PairCommand.script_source(words, piped: piped.shift) == :stdin || git_hands_command?(words)
           walk.dirs.all? { |dir| dir && writable?(dir) } && words_inside?(words, walk) &&
-            !implicit_outside?(words, walk) && !stdin_script?(words) && scripts_inside?(words).tap { walk.step(words) }
+            !implicit_outside?(words, walk) && !stdin && scripts_inside?(words).tap { walk.step(words) }
         end
       end
 
       # A program that writes to its own place outside with no word naming
       # it (ImplicitWriters: npm -g, gem install, brew, defaults write, …),
-      # python -m's module as the program.
+      # wherever it stands among the wrappers (sudo npm, bundle config),
+      # python -m's module as the program, under the assignments before it
+      # (npm_config_global=true).
       def implicit_outside?(words, walk)
         at = program_at(words) or return false
-        program = words[at]
-        args = words[(at + 1)..]
-        local = project_program?(walk, program)
-        if INTERPRETERS.include?(File.basename(program)) && (module_at = args.index("-m")) && args[module_at + 1]
-          program = args[module_at + 1]
-          args = args[(module_at + 2)..]
+        assigned = words[0...at].filter_map { |word| word.split("=", 2) if word.match?(/\A[A-Za-z_]\w*=/) }.to_h
+        (0..at).any? do |i|
+          program = words[i]
+          args = words[(i + 1)..]
+          local = project_program?(walk, program)
+          if PairCommand.interpreter?(File.basename(program)) && (module_args = module_run(args))
+            program, args = module_args
+          end
+          ImplicitWriters.outside?(program, args, local: local, assigned: assigned)
         end
-        ImplicitWriters.outside?(program, args, local: local)
+      end
+
+      # An interpreter's -m module and the words after it ([name, args]):
+      # -m pip, -mpip; nil without one.
+      def module_run(args)
+        args.each_with_index do |arg, i|
+          return [args[i + 1], args[(i + 2)..]] if arg == "-m" && args[i + 1]
+          return [arg.delete_prefix("-m"), args[(i + 1)..]] if arg.match?(/\A-m\w/)
+        end
+        nil
+      end
+
+      # Whether a git command runs a command now that it is handed as text
+      # (.git_commands): where it writes isn't placed, so it asks.
+      def git_hands_command?(words)
+        at = program_at(words) or return false
+        File.basename(words[at]) == "git" && !git_commands(words[(at + 1)..]).empty?
       end
 
       # Whether a program's word is a path into the project (.venv/bin/pip).
@@ -732,11 +868,6 @@ module Samagotchi
         paths = walk.paths(word)
         !paths.empty? && paths.all? { |path| Outside.inside?(path, root: @root) }
       end
-
-      # Whether a shell or interpreter reads its script from stdin
-      # (.script_source): chi can't see what it runs, so it may write
-      # anywhere.
-      def stdin_script?(words) = PairCommand.script_source(words) == :stdin
 
       # Whether every $(…) is a message's heredoc (its body cut as data).
       def substs_messages_only?

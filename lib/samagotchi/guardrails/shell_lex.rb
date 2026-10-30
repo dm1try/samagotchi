@@ -63,6 +63,29 @@ module Samagotchi
         commands.reject { |c| c.is_a?(Array) && c.empty? }
       end
 
+      # For each word list .simple_commands gives (its :open / :close
+      # markers left out), whether it reads a pipe: a | or |& comes before
+      # it, a ( between them included (`x | (sh)`).
+      # @return [Array<Boolean>]
+      def self.piped_flags(tokens)
+        flags = []
+        words = 0
+        pending = false
+        piped = false
+        tokens.each do |kind, value|
+          if kind == :op
+            flags << piped if words.positive?
+            words = 0
+            pending = %w[| |&].include?(value) || (value == "(" && pending)
+          else
+            piped = pending if words.zero?
+            words += 1
+          end
+        end
+        flags << piped if words.positive?
+        flags
+      end
+
       # Whether an ( or { group is still open at token +at+: a pipe after
       # the group's ) or } takes what the group prints. The counters never go
       # below 0 (a case pattern's "x)" closes nothing); ((…)) arithmetic and

@@ -28,7 +28,7 @@ module Samagotchi
     #     loopback name, URL openers (open, xdg-open, a browser) and
     #     listeners (nc -l, socat …LISTEN, a static HTTP server), background
     #     and scheduled jobs, the environment and
-    #     credential printers, git settings that run commands, home sweeps
+    #     credential printers, git config writes (reads only), home sweeps
     #     and links to them, and a program named by a $var or a glob); a
     #     write or edit of git's hooks (GIT_HOOKS);
     #   - owner-voiced tools (OWNER_VOICED, and any delegate_* tool): what
@@ -77,15 +77,15 @@ module Samagotchi
       HOME_SWEEP = "a participant's turn can't search, copy or link a folder that holds secrets or chi's own files"
       LINK = "a participant's turn makes a link: a path through it can lead out of the project, so the owner " \
              "approves it"
-      GIT_CONFIG = "a participant's turn can't change git's global config or set what makes git run a command " \
-                   "(hooks, fsmonitor, a filter, diff or merge driver, a credential or gpg helper, askpass, ssh, a " \
-                   "pager or editor, an include, ! aliases)"
+      GIT_CONFIG = "a participant's turn writes no git config (git config but its reads, git -c, --config-env, a " \
+                   "clone's or init's -c/--config, GIT_CONFIG_* and GIT_TEMPLATE_DIR): settings can make git run a " \
+                   "command in the owner's name"
       ENV_LOADER = "a participant's turn runs mise or direnv: they load the project's env files (a mise.local.toml, " \
                    "an .envrc), which may hold the owner's secrets, so the owner approves it"
       MISE_CONFIG = "a participant's turn changes mise's config: the owner's next worker start runs it (its [env] " \
                     "can run commands), so the owner approves it"
-      GIT_HOOKS = "a participant's turn can't write git's hooks (.git/hooks, .git/modules/*/hooks): git runs them in " \
-                  "the owner's name"
+      GIT_HOOKS = "a participant's turn can't write or install git's hooks (.git/hooks, .git/modules/*/hooks, a " \
+                  "template, pre-commit install, husky): git runs them in the owner's name"
       # chi web on loopback asks the owner's token too (Web::App#token_gate,
       # LAN mode); this text check stays as defense in depth: a loopback-only
       # chi web still answers loopback as the owner.

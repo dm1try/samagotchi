@@ -38,17 +38,23 @@ and commands may change between minor versions. How releases are made:
   since the home was set, unless a worker started after it), with what to run.
 - Toolkit suggestions (`toolkit.suggest.mode: on`): a suggestion that times out or gets no answer from System 1 now
   says so in a notice (the session runs its default kit) and a timeout logs a warning, instead of falling back silently.
-- Pair turns: a participant can no longer set a git setting that makes git run a command later in your name (a
-  filter, diff or merge driver, a credential or gpg helper, askpass, a pager or sequence editor, what a remote runs,
-  an include, by `git config`, `git -c` or `git --config-env`, in any case), nor write a submodule's hooks
-  (`.git/modules/*/hooks`). Reading git's config (`git config --get`, `-l`) is no longer refused.
+- Pair turns: a participant can no longer write git's config at all, so no setting makes git run a command later in
+  your name (a hook, a filter or driver, a helper, an include): `git config` only reads, parsed strictly (an unknown or
+  abbreviated option counts as a write), and `git -c`, `--config-env`, a clone's `-c`/`--config`, `--template` and
+  `GIT_TEMPLATE_DIR` are denied, as are a submodule's hooks (`.git/modules/*/hooks`) and the hook installers
+  (`pre-commit install`, `husky`, `lefthook install`). A command git runs from its text (`rebase --exec`,
+  `submodule foreach`) is checked like any command. Reading git's config (`git config --get`, `-l`) is no longer
+  refused.
 - Pair turns: a command that writes outside the project with no word naming where now asks you like any other
   outside write: global installs (`npm -g`, `pip install`, `gem install`, `brew`, `cargo`/`go install`, `pipx`,
   `uv tool`), user config (`npm config set` writes `~/.npmrc`, `gh config set`), `defaults write`, `launchctl`; and
-  so does a shell or interpreter reading its script from stdin (`… | sh`, `curl … | bash`, `sh < run.sh`).
+  so does a shell or interpreter reading its script from stdin (`… | sh`, `| bash -x`, `curl … | bash`,
+  `sh < run.sh`). Global installs are recognised in any spelling (`npm i --location global`, `python3.12 -m pip`,
+  `npm_config_global=true`, `npm link`), with more tools (`deno`, `dotnet tool`, `corepack`, `bundle config set`).
 - System 1 no longer auto-allows a command that names the memories folder and then climbs out of it by a script's
   own calls (`python3 -c '…os.chdir(os.pardir)…'`, `ruby -e '…File.dirname(Dir.pwd)…'`) or runs a script it can't
-  see (a file, stdin): it could write `config.yml`. You decide those; plain memory edits stay eligible.
+  see (a file, stdin, `| sh -x`, `python3.12 x.py`, `make`, `awk -f`): it could write `config.yml`. You decide
+  those; plain memory edits stay eligible.
 - Guardrails: a `task_create` whose `env:` points git at another config (`GIT_CONFIG_GLOBAL`, `GIT_CONFIG_SYSTEM`,
   `GIT_CONFIG_KEY_n`/`VALUE_n`) is no longer read-only, and a pair turn's command that sets one is denied like
   `git -c`.

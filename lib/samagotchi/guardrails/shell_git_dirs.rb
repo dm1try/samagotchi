@@ -30,10 +30,10 @@ module Samagotchi
       # git global options that take the next word as their value.
       VALUE_OPTIONS = %w[-C -c --git-dir --work-tree --namespace].freeze
       # The variables that hand git config of their own (another global or
-      # system file, settings as -c gives them): what they set may run a
-      # command (Targets::SHELL_REDEFINING_ENV, PairCommand's refusal).
-      # GIT_CONFIG_NOSYSTEM only turns one off.
-      CONFIG_ENV = /\AGIT_CONFIG(?:_GLOBAL|_SYSTEM|_PARAMETERS|_COUNT|_KEY_\d+|_VALUE_\d+)?\z/
+      # system file, settings as -c gives them) or a template (an init's
+      # hooks): what they set may run a command (Targets::SHELL_REDEFINING_ENV,
+      # PairCommand's refusal). GIT_CONFIG_NOSYSTEM only turns one off.
+      CONFIG_ENV = /\A(?:GIT_CONFIG(?:_GLOBAL|_SYSTEM|_PARAMETERS|_COUNT|_KEY_\d+|_VALUE_\d+)?|GIT_TEMPLATE_DIR)\z/
 
       # @param command [String] the shell command
       # @param cwd [String] where it starts (the call's cwd:, else the session's)
