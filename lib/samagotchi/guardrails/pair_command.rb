@@ -105,10 +105,33 @@ module Samagotchi
       CP_LINK_OPTION = /\A-[a-zA-Z]*[sl]|\A--(?:symbolic-)?link\z/
       # An interpreter's script that makes a link.
       SCRIPT_LINK_TEXT = /symlink|\blink\(|\bln\s|\bmklink\b|FileUtils\.ln|hardlink/i
-      # git settings that make git run a command (or show one), and git
-      # config's scopes beyond the repository.
-      GIT_RUNNING_KEYS = %w[core.fsmonitor core.sshcommand core.hookspath core.pager core.editor].freeze
+      # git settings that make git run a command later (or show one), by
+      # key family: matched on the key lowercased (git folds a section's and
+      # a key's case; a subsection, the middle part, is any). A driver
+      # (filter, diff, merge), a helper (credential, gpg, askpass, ssh), a
+      # pager or editor, what a remote runs, a config it includes, the
+      # protocols git may run (ext::), a tool's command.
+      GIT_RUNNING_KEYS = [
+        /\Acore\.(?:fsmonitor|sshcommand|hookspath|pager|editor|askpass|gitproxy|alternaterefscommand)\z/,
+        /\Asequence\.editor\z/, /\Apager\./, /\Afilter\..+\.(?:clean|smudge|process)\z/,
+        /\Adiff\.(?:.+\.(?:textconv|command)|external)\z/, /\Amerge\..+\.driver\z/, /\Acredential\.(?:.+\.)?helper\z/,
+        /\Agpg\.(?:.+\.)?program\z/, /\Aremote\..+\.(?:uploadpack|receivepack)\z/, /\Ainclude\.path\z/,
+        /\Aincludeif\..+\.path\z/, /\Aprotocol\.(?:.+\.)?allow\z/, /\A(?:difftool|mergetool)\..+\.(?:cmd|path)\z/,
+        /\Atrailer\..+\.(?:command|cmd)\z/, /\Aweb\.browser\z/, /\Abrowser\..+\.(?:cmd|path)\z/,
+        /\Asendemail\.(?:smtpserver|tocmd|cccmd|sendmailcmd)\z/, /\Auploadpack\.packobjectshook\z/,
+        /\Ainit\.templatedir\z/
+      ].freeze
+      # Settings that run a command when their value starts with "!".
+      GIT_BANG_KEYS = [/\Aalias\./, /\Asubmodule\..+\.update\z/].freeze
+      # git config's scopes beyond the repository; its options that take a
+      # value (the next word), that only read, that open an editor; its
+      # subcommands that only read, and those that write a key named next.
       GIT_WIDE_SCOPES = %w[--global --system].freeze
+      GIT_CONFIG_VALUE_OPTIONS = %w[-f --file --blob --type --default --comment --value --url].freeze
+      GIT_CONFIG_READ_OPTION = /\A(?:--get(?:-[a-z]+)?|-l|--list)\z/
+      GIT_CONFIG_EDIT = %w[-e --edit edit].freeze
+      GIT_CONFIG_READS = %w[get list].freeze
+      GIT_CONFIG_WRITES = %w[set unset rename-section remove-section].freeze
       GIT_VALUE_OPTIONS = %w[-C --git-dir --work-tree --namespace --exec-path].freeze
       # Devices a command may name in the project's stead.
       DEVICES = %w[/dev/null /dev/stdout /dev/stderr /dev/tty /dev/zero /dev/random /dev/urandom].freeze
@@ -456,17 +479,24 @@ module Samagotchi
         words[(at + 1)..].all?(&assignment)
       end
 
-      # git config beyond the repository (--global, --system), or a setting
-      # that runs a command (core.hooksPath, core.fsmonitor, core.sshCommand,
-      # core.pager, core.editor, a "!" alias), set with git config or git -c.
+      # git config beyond the repository (--global, --system), its editor,
+      # or a setting that runs a command (GIT_RUNNING_KEYS, a "!" alias or
+      # submodule update: GIT_BANG_KEYS), set with git config (any file:
+      # one it includes later runs it too), git -c or git --config-env.
+      # A read (--get, -l, get, list) never is.
       def git_runs_commands?(args)
         i = 0
         while i < args.size && args[i].start_with?("-")
-          if args[i] == "-c"
-            return true if running_setting?(*args[i + 1].to_s.split("=", 2))
+          word = args[i]
+          if ["-c", "--config-env"].include?(word)
+            return true if running_setting?(*args[i + 1].to_s.split("=", 2), unknown: word == "--config-env")
 
             i += 2
-          elsif GIT_VALUE_OPTIONS.include?(args[i])
+          elsif word.start_with?("--config-env=")
+            return true if running_setting?(word.delete_prefix("--config-env=").split("=", 2).first, nil, unknown: true)
+
+            i += 1
+          elsif GIT_VALUE_OPTIONS.include?(word)
             i += 2
           else
             i += 1
@@ -474,16 +504,40 @@ module Samagotchi
         end
         return false unless args[i] == "config"
 
-        rest = args[(i + 1)..]
-        return true if rest.any? { |arg| GIT_WIDE_SCOPES.include?(arg) }
-
-        key, value = rest.reject { |arg| arg.start_with?("-") }
-        running_setting?(key, value)
+        git_config_runs?(args[(i + 1)..])
       end
 
-      def running_setting?(key, value)
+      def git_config_runs?(rest)
+        return true if rest.any? { |arg| GIT_WIDE_SCOPES.include?(arg) || GIT_CONFIG_EDIT.include?(arg) }
+        return false if rest.any? { |arg| arg.match?(GIT_CONFIG_READ_OPTION) }
+
+        positional = git_config_positionals(rest)
+        return false if GIT_CONFIG_READS.include?(positional.first)
+
+        positional.shift if GIT_CONFIG_WRITES.include?(positional.first)
+        running_setting?(positional[0], positional[1])
+      end
+
+      # git config's words but its options and their values.
+      def git_config_positionals(rest)
+        found = []
+        skip = false
+        rest.each do |arg|
+          next skip = false if skip
+          next skip = GIT_CONFIG_VALUE_OPTIONS.include?(arg) if arg.start_with?("-")
+
+          found << arg
+        end
+        found
+      end
+
+      # +unknown+: the value isn't in the command (--config-env names a
+      # variable): a "!" key counts as running.
+      def running_setting?(key, value, unknown: false)
         key = key.to_s.downcase
-        GIT_RUNNING_KEYS.include?(key) || (key.start_with?("alias.") && value.to_s.lstrip.start_with?("!"))
+        return true if GIT_RUNNING_KEYS.any? { |pattern| key.match?(pattern) }
+
+        GIT_BANG_KEYS.any? { |pattern| key.match?(pattern) } && (unknown || value.to_s.lstrip.start_with?("!"))
       end
 
       # The secrets a simple command's words reach: a resolved path on the

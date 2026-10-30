@@ -11,7 +11,8 @@ module Samagotchi
     # command is in by then (cd, pushd/popd and ( … ) followed as in
     # ShellGitDirs), with ~, $HOME and the XDG dirs expanded and symlinks
     # resolved. A word names a dir when it is in it. Any path with a
-    # .git/hooks part counts too, outside the tmp dirs.
+    # .git/hooks part (a submodule's .git/modules/<name>/hooks too) counts
+    # too, outside the tmp dirs.
     #
     # A word it can't resolve (another $VAR, $(…), a glob, a relative path
     # after cd $X) or one that reads as a script (sh -c '…', ruby -e '…':
@@ -23,7 +24,7 @@ module Samagotchi
       # A word that is a script rather than a path.
       SCRIPT = /[\s;&|<>()'"`]/
       GLOB = /[*?\[\]{}]/
-      HOOKS_PART = %r{(?:\A|/)\.git/hooks(?:/|\z)}
+      HOOKS_PART = %r{(?:\A|/)\.git/(?:modules/.+/)?hooks(?:/|\z)}
       # $HOME, ${HOME} and the XDG dirs at a word's start (PathResolve's).
       EXPANSION = PathResolve::EXPANSION
       # Where XDG dirs default when unset.

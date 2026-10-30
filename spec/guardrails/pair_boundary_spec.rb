@@ -351,6 +351,41 @@ RSpec.describe Samagotchi::Guardrails::PairBoundary do
       end
     end
 
+    # The drivers and helpers git runs later in the owner's name, by key
+    # family and any case (git's sections and keys fold case).
+    it "denies every git setting family that runs a command, however it is set, and leaves reading them" do
+      ["git config filter.x.clean 'id > /tmp/pwn'", "git config filter.x.smudge id", "git config filter.x.process id",
+       "git config diff.x.textconv id", "git config diff.x.command id", "git config diff.external id",
+       "git config merge.x.driver id", "git config credential.helper '!id'", "git config credential.helper store",
+       "git config credential.https://e.x.helper ./x.sh", "git config gpg.program ./x.sh",
+       "git config gpg.ssh.program ./x.sh", "git config core.askPass ./x.sh", "git config core.sshCommand ./x",
+       "git config sequence.editor ./x.sh", "git config pager.log ./x.sh", "git config core.gitProxy ./x.sh",
+       "git config remote.origin.uploadpack ./x.sh", "git config remote.origin.receivepack ./x.sh",
+       "git config include.path ../x.cfg", "git config includeIf.gitdir:~/.path ./x.cfg",
+       "git config protocol.ext.allow always", "git config difftool.x.cmd ./x.sh", "git config mergetool.x.cmd ./x.sh",
+       "git config submodule.x.update '!id'", "git config trailer.x.command ./x.sh",
+       "git config --add Filter.X.Smudge id", "git config set filter.x.clean id", "git config --replace-all GPG.Program x",
+       "git config -f other.cfg filter.x.clean id", "git config --file=other.cfg diff.x.textconv id",
+       "git -c filter.x.clean=id status", "git -c Diff.X.TextConv=id diff", "git --config-env=core.fsmonitor=FOO status",
+       "git --config-env core.pager=FOO log", "git config -e", "git config edit"].each do |command|
+        expect(refused(command)).to eq(described_class::GIT_CONFIG), command
+      end
+      ["git config --get core.editor", "git config get filter.x.clean", "git config -l", "git config --list",
+       "git config --get-regexp '^filter'", "git config user.email x@y.z", "git config pull.rebase true",
+       "git -c merge.conflictStyle=zdiff3 merge x", "git config diff.x.funcname '^sub'"].each do |command|
+        expect(refused(command)).to be_nil, command
+      end
+    end
+
+    it "denies writing a submodule's hooks, as the repository's own" do
+      [{ name: "write", path: ".git/modules/sub/hooks/pre-commit", content: "x" },
+       { name: "write", path: ".git/modules/a/modules/b/hooks/post-checkout", content: "x" }].each do |call|
+        expect(verdict_for(call).reason).to eq(described_class::GIT_HOOKS), call[:path]
+      end
+      expect(refused("echo id > .git/modules/sub/hooks/post-checkout")).to eq(described_class::GIT_HOOKS)
+      expect(execute("ls .git/modules/sub/hooks")).to be_allow
+    end
+
     it "denies writing the shell's and git's config, launch agents and ~/.local/bin, and sweeping with ditto" do
       ["echo x > ~/.config/fish/conf.d/x.fish", "cp evil ~/Library/LaunchAgents/x.plist", "ln -s x ~/.local/bin/git",
        "echo x >> ~/.config/git/config"].each do |command|

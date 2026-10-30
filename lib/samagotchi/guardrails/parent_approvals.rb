@@ -42,7 +42,7 @@ module Samagotchi
       MEMORY_REMOVE_RULE = "memory-remove"
       # The guardrails bundle's shell-touches-chi, for a word it can't
       # resolve to a path (Guardrails::ShellPaths): CHI_TEXT and .git/hooks.
-      CHI_SHELL_TEXT = Regexp.union(CHI_TEXT, %r{\.git/hooks})
+      CHI_SHELL_TEXT = Regexp.union(CHI_TEXT, %r{\.git/(?:modules/\S+/)?hooks})
 
       module_function
 

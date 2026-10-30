@@ -38,6 +38,10 @@ and commands may change between minor versions. How releases are made:
   since the home was set, unless a worker started after it), with what to run.
 - Toolkit suggestions (`toolkit.suggest.mode: on`): a suggestion that times out or gets no answer from System 1 now
   says so in a notice (the session runs its default kit) and a timeout logs a warning, instead of falling back silently.
+- Pair turns: a participant can no longer set a git setting that makes git run a command later in your name (a
+  filter, diff or merge driver, a credential or gpg helper, askpass, a pager or sequence editor, what a remote runs,
+  an include, by `git config`, `git -c` or `git --config-env`, in any case), nor write a submodule's hooks
+  (`.git/modules/*/hooks`). Reading git's config (`git config --get`, `-l`) is no longer refused.
 
 ## [0.133.0] - 2026-10-30
 

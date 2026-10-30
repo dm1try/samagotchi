@@ -441,12 +441,23 @@ message:
   list split at `;`, `&&`, `||` and newlines outside `( … )`);
   and a command still
   running at the limit is killed, never handed over as a background task;
-- git settings that make git run a command (`core.hooksPath`,
-  `core.fsmonitor`, `core.sshCommand`, `core.pager`, `core.editor`, a `!`
-  alias) by `git config` or `git -c`, and `git config --global`/`--system`;
+- git settings that make git run a command later, by key family in any case
+  (`PairCommand::GIT_RUNNING_KEYS`: `core.hooksPath`, `core.fsmonitor`,
+  `core.sshCommand`, `core.askPass`, `core.pager`/`pager.*`, `core.editor`,
+  `sequence.editor`, `filter.*.clean`/`smudge`/`process`, `diff.*.textconv`/
+  `command`, `diff.external`, `merge.*.driver`, `credential.helper` and
+  `credential.*.helper`, `gpg.program`/`gpg.*.program`,
+  `remote.*.uploadpack`/`receivepack`, `include.path`/`includeIf.*.path`,
+  `protocol.*.allow`, `difftool`/`mergetool`/`trailer` commands, a `!` alias or
+  submodule update) by `git config` (any file, `git config set …` too),
+  `git -c` or `git --config-env`, and `git config --global`/`--system`/`--edit`;
+  reading one (`--get`, `-l`, `git config get`) stays allowed. A
+  `.gitattributes` write isn't asked about: it only selects a driver, and
+  defining one is what's denied;
   and writing git's hooks: a `write` or `edit` of a path in a `.git/hooks`
-  folder (as given or as it resolves), or a command whose part that names one
-  isn't read-only (`printf … > .git/hooks/pre-commit`, `cp x .git/hooks/`);
+  folder, a submodule's `.git/modules/<name>/hooks` too (as given or as it
+  resolves), or a command whose part that names one isn't read-only
+  (`printf … > .git/hooks/pre-commit`, `cp x .git/hooks/`);
 - running chi, by any wrapper (`bin/chi`, `bundle exec chi`, `ruby … bin/chi`,
   `env … chi`, `watch`, `npx`, `sh -c 'chi …'`, `$(chi …)`), in an assignment's
   value or an alias, a function, after `-exec`/`-c`/`-e`, but `chi --version` and
@@ -633,7 +644,8 @@ repo is in count as outside.
 `touches: chi_dirs` (shell tools) matches a command that names a path in chi's
 own folders: the config folder (`config.yml`, `memories/`), the hooks folder,
 the approval store, installed bundles (`memories/.bundles`), the session repo's
-git hooks (`core.hooksPath` honoured) or any `.git/hooks` outside a tmp folder.
+git hooks (`core.hooksPath` honoured) or any `.git/hooks` (a submodule's `.git/modules/<name>/hooks` too)
+outside a tmp folder.
 Each word is read as a path against the folder the command is in by then
 (`cd`, `pushd`/`popd` and `( … )` followed), with `~`, `$HOME` and
 `$XDG_CONFIG_HOME`/`$XDG_STATE_HOME` expanded and symlinks resolved. So

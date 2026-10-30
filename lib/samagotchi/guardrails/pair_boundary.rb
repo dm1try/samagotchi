@@ -78,12 +78,14 @@ module Samagotchi
       LINK = "a participant's turn makes a link: a path through it can lead out of the project, so the owner " \
              "approves it"
       GIT_CONFIG = "a participant's turn can't change git's global config or set what makes git run a command " \
-                   "(core.hooksPath, core.fsmonitor, core.sshCommand, core.pager, core.editor, ! aliases)"
+                   "(hooks, fsmonitor, a filter, diff or merge driver, a credential or gpg helper, askpass, ssh, a " \
+                   "pager or editor, an include, ! aliases)"
       ENV_LOADER = "a participant's turn runs mise or direnv: they load the project's env files (a mise.local.toml, " \
                    "an .envrc), which may hold the owner's secrets, so the owner approves it"
       MISE_CONFIG = "a participant's turn changes mise's config: the owner's next worker start runs it (its [env] " \
                     "can run commands), so the owner approves it"
-      GIT_HOOKS = "a participant's turn can't write git's hooks (.git/hooks): git runs them in the owner's name"
+      GIT_HOOKS = "a participant's turn can't write git's hooks (.git/hooks, .git/modules/*/hooks): git runs them in " \
+                  "the owner's name"
       # chi web on loopback asks the owner's token too (Web::App#token_gate,
       # LAN mode); this text check stays as defense in depth: a loopback-only
       # chi web still answers loopback as the owner.
