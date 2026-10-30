@@ -78,12 +78,14 @@ module Samagotchi
       end
 
       # Restarts every stale worker (the worker refuses atomically when busy).
+      # @param select [#call, nil] asked of each stale worker (a
+      #   LiveVersions::Worker): false leaves it, as a `skipped` row
       # @return [Symbol, Hash] as #install
-      def restart_workers(wait: false, auto: false)
+      def restart_workers(wait: false, auto: false, select: nil)
         return :busy unless claim
 
         @hub.publish_update(state: "running", rows: [], operation: "workers", auto: auto)
-        thread = Thread.new { perform_worker_restarts(auto) }
+        thread = Thread.new { perform_worker_restarts(auto, select) }
         wait ? thread.value : :started
       rescue ThreadError => e
         release
@@ -188,28 +190,37 @@ module Samagotchi
         end
       end
 
+      # One worker's restart as its row.
+      def restart_one(worker)
+        restarted = @manager.restart_session(worker.session_id, state_dir: @state_dir, client_id: ClientId::WEB_RESTART)
+        @hub.touch(worker.session_id)
+        { "session_id" => restarted.session_id, "state" => "restarted", "from_version" => restarted.from_version,
+          "version" => restarted.version }
+      rescue SessionManager::RestartRefused => e
+        # detail: the refusal's own words (RestartRefused.words), the reason code for clients.
+        { "session_id" => worker.session_id, "state" => "refused", "reason" => e.reason.to_s,
+          "detail" => e.message, "holds" => e.holds.map(&:to_s) }
+      rescue SessionManager::OwnedByTUI => e
+        { "session_id" => worker.session_id, "state" => "owned_by_tui", "detail" => e.message }
+      rescue StandardError => e
+        Log.exception(:web, "worker_restart_failed", e, sid: worker.session_id)
+        { "session_id" => worker.session_id, "state" => "failed", "reason" => e.class.name, "detail" => e.message }
+      end
+
+      # A worker the caller's +select+ left: still on the old chi, to restart when it is idle.
+      def skipped(worker)
+        { "session_id" => worker.session_id, "state" => "skipped", "reason" => "not_idle",
+          "detail" => "not idle for long enough: it restarts when it is idle" }
+      end
+
       def default_state_dir = @state_dir || Session.default_state_dir
 
-      def perform_worker_restarts(auto)
+      def perform_worker_restarts(auto, select)
         # Installed now: the hub's own look is up to a full probe old (nil right after chi web started).
         target = @hub.refresh_installed || VERSION
         rows = []
         LiveVersions.stale_workers(target, state_dir: default_state_dir).each do |worker|
-          row = begin
-            restarted = @manager.restart_session(worker.session_id, state_dir: @state_dir, client_id: ClientId::WEB_RESTART)
-            @hub.touch(worker.session_id)
-            { "session_id" => restarted.session_id, "state" => "restarted", "from_version" => restarted.from_version,
-              "version" => restarted.version }
-          rescue SessionManager::RestartRefused => e
-            # detail: the refusal's own words (RestartRefused.words), the reason code for clients.
-            { "session_id" => worker.session_id, "state" => "refused", "reason" => e.reason.to_s,
-              "detail" => e.message, "holds" => e.holds.map(&:to_s) }
-          rescue SessionManager::OwnedByTUI => e
-            { "session_id" => worker.session_id, "state" => "owned_by_tui", "detail" => e.message }
-          rescue StandardError => e
-            Log.exception(:web, "worker_restart_failed", e, sid: worker.session_id)
-            { "session_id" => worker.session_id, "state" => "failed", "reason" => e.class.name, "detail" => e.message }
-          end
+          row = select && !select.call(worker) ? skipped(worker) : restart_one(worker)
           rows << row
           @hub.publish_update(state: "running", rows: rows.dup, operation: "workers", auto: auto)
         end

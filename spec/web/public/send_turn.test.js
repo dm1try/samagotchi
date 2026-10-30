@@ -9,6 +9,7 @@ import assert from "node:assert/strict";
 import { createSendTurn } from "../../../lib/samagotchi/web/public/send_turn.js";
 import { routeComposerLine } from "../../../lib/samagotchi/web/public/composer.js";
 import { createSessionStore } from "../../../lib/samagotchi/web/public/session_store.js";
+import { sendTurn as sendTurnRequest } from "../../../lib/samagotchi/web/public/data.js";
 
 function failure(code, message = "boom", body = null) {
   return Object.assign(new Error(message), { status: 409, code, body });
@@ -344,6 +345,43 @@ test("errors: anything else is a sticky toast; the line stays in the composer", 
   assert.equal(h.toasts.length, 1);
   assert.match(h.toasts[0].text, /server down/);
   assert.equal(h.promptEl.value, "hello");
+});
+
+// An unattended update restarts chi web under an open page: for a few seconds a request fails (the connection
+// is refused, or a proxy answers its bare 502). The page keeps its draft; a Send then must fail where the owner
+// sees it, with the text still in the composer so the same Send works once chi web is back.
+test("a Send while chi web restarts fails visibly (a refused connection, a proxy's 502) and keeps the text; the retry works", async () => {
+  for (const down of [
+    () => Promise.reject(new TypeError("Failed to fetch")),
+    () => Promise.resolve({ ok: false, status: 502, statusText: "Bad Gateway", redirected: false, type: "basic",
+                            headers: { get: () => "text/plain" }, json: async () => { throw new SyntaxError("not json"); } }),
+  ]) {
+    let up = false;
+    const fetchImpl = async (path) => {
+      if (!up) return down();
+      assert.match(path, /\/api\/sessions\/s1\/turn$/);
+      return { ok: true, status: 202, redirected: false, headers: { get: () => "application/json" },
+               json: async () => ({ enqueued_id: "e1" }) };
+    };
+    const h = harness({ text: "keep me", sendTurn: (id, prompt, opts) => sendTurnRequest(id, prompt, { ...opts, fetchImpl }) });
+
+    await h.send();
+
+    assert.equal(h.toasts.length, 1, "one visible error");
+    assert.equal(h.toasts[0].options.sticky, true);
+    assert.match(h.toasts[0].text, /^Can't send: (Failed to fetch|Bad Gateway \(502\))$/);
+    assert.equal(h.promptEl.value, "keep me", "the composer keeps the text");
+    assert.equal(h.bubbles[0].el.isConnected, false, "the echo of a line that never went is gone");
+    assert.equal(h.button.disabled, false, "Send can be pressed again");
+    assert.equal(h.cleared(), 0);
+    assert.equal(h.log.includes("follow"), false);
+
+    up = true; // chi web is back
+    await h.send();
+    assert.equal(h.toasts.length, 1, "no second error");
+    assert.equal(h.promptEl.value, "", "the retried line went, and the composer let go of it");
+    assert.deepEqual(h.log.filter((entry) => entry === "follow"), ["follow"]);
+  }
 });
 
 test("into a running turn the echo says its delivery; a line with images waits for the turn's end", async () => {

@@ -111,6 +111,23 @@ RSpec.describe Samagotchi::Web::UpdateOps do
       expect(frames).to all(include(operation: "workers", auto: true))
     end
 
+    it "leaves a worker its select refuses as a skipped row, without asking the worker to restart" do
+      workers = %w[go stay].map do |id|
+        Samagotchi::LiveVersions::Worker.new(session_id: id, version: "0.122.0", restart: true)
+      end
+      allow(Samagotchi::LiveVersions).to receive(:stale_workers).and_return(workers)
+      allow(hub).to receive(:touch)
+      allow(manager).to receive(:restart_session).with("go", state_dir: state_dir, client_id: Samagotchi::ClientId::WEB_RESTART)
+        .and_return(Samagotchi::SessionManager::Restarted.new(session_id: "go", from_version: "0.122.0", version: "99.0.0"))
+
+      result = ops.restart_workers(wait: true, select: ->(worker) { worker.session_id == "go" })
+
+      expect(result[:state]).to eq("done")
+      expect(result[:rows].map { |row| row.values_at("session_id", "state") }).to eq([%w[go restarted], %w[stay skipped]])
+      expect(result[:rows].last).to include("reason" => "not_idle")
+      expect(manager).not_to have_received(:restart_session).with("stay", any_args)
+    end
+
     it "answers :start_failed when no thread starts" do
       allow(Thread).to receive(:new).and_raise(ThreadError)
 

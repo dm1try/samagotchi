@@ -168,6 +168,36 @@ RSpec.describe Samagotchi::Web::Push::Notifier do
       ])
     end
 
+    it "pushes 'chi updated' with what restarted and what waits, and the kept edits" do
+      notice("updated", restarted: 3, left: 1, kept: 2)
+      advance(3)
+
+      expect(client.calls.map { |call| call[:payload].values_at(:tag, :title, :body) }).to eq([
+        ["chi:updated:0.19.0", "chi updated to 0.19.0",
+         "chi web and 3 sessions restarted; 1 restarts when idle. Kept your edits in 2 files."]
+      ])
+    end
+
+    it "words 'chi updated' for no sessions, one session and several left" do
+      notice("updated", "0.19.1", restarted: 0, left: 0, kept: 0)
+      notice("updated", "0.19.2", restarted: 1, left: 2, kept: 1)
+      advance(3)
+
+      expect(client.calls.map { |call| call[:payload][:body] }).to contain_exactly(
+        "chi web restarted.", "chi web and 1 session restarted; 2 restart when idle. Kept your edits in 1 file."
+      )
+    end
+
+    it "pushes that chi web didn't restart, with why and what to do" do
+      notice("restart_failed", detail: "the new chi said \"boom\", not 0.19.0")
+      advance(3)
+
+      expect(client.calls.map { |call| call[:payload].values_at(:tag, :title, :body) }).to eq([
+        ["chi:restart_failed:0.19.0", "chi 0.19.0 is installed; chi web didn't restart",
+         "the new chi said \"boom\", not 0.19.0. Restart chi web in its terminal."]
+      ])
+    end
+
     it "counts automatic update notices against the cap and skips them while a page is in front" do
       presence.report("desk", true)
       notice("failed", detail: "x")

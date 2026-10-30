@@ -138,7 +138,8 @@ RSpec.describe Samagotchi::Web::Server do
 
     described_class.start(port: 4998, hub: hub, update_check: update_check)
 
-    expect(Samagotchi::Web::AutoUpdate).to have_received(:new).with(hub: hub, ops: ops, check: update_check)
+    expect(Samagotchi::Web::AutoUpdate).to have_received(:new).with(hub: hub, ops: ops, check: update_check,
+                                                                    preflight: described_class.method(:restart_preflight))
     expect(calls).to eq(%i[check_start auto_start auto_stop check_stop])
   end
 
@@ -232,6 +233,52 @@ RSpec.describe Samagotchi::Web::Server do
     end
 
     expect(described_class.start(port: 4998, hub: hub)).to eq(:restart)
+  end
+
+  describe ".restart_preflight" do
+    let(:command) { ["/ruby", "/installed/bin/chi", "--version"] }
+
+    before { allow(described_class).to receive(:reexec_command).with(["--version"]).and_return(command) }
+
+    def preflight(output, version = "0.139.0")
+      ran = []
+      runner = lambda do |cmd, env, timeout|
+        ran << [cmd, timeout, env]
+        output.is_a?(Exception) ? raise(output) : output
+      end
+      [described_class.restart_preflight(version, runner: runner), ran]
+    end
+
+    it "passes when the command the restart would exec prints the release's version or a newer one, outside Bundler" do
+      problem, ran = preflight("chi 0.139.0\n")
+
+      expect(problem).to be_nil
+      expect(ran.first.first(2)).to eq([command, described_class::PREFLIGHT_TIMEOUT])
+      expect(ran.first.last).to eq(Samagotchi::ChildEnv.unbundled)
+      expect(preflight("chi 0.140.1\n").first).to be_nil
+    end
+
+    it "fails with what the command said when it is not the release" do
+      expect(preflight("chi 0.138.0\n").first).to eq('the new chi said "chi 0.138.0", not 0.139.0')
+      expect(preflight("boom: cannot load such file\n").first).to include('"boom: cannot load such file"')
+      expect(preflight("").first).to include("not 0.139.0")
+    end
+
+    it "fails, with the error, when the command does not start or takes too long" do
+      expect(preflight(Errno::ENOENT.new("ruby")).first).to include("didn't start").and include("ENOENT")
+      expect(preflight(Timeout::Error.new("took more than 20 s")).first).to include("took more than 20 s")
+    end
+
+    it "fails when there is nothing to exec" do
+      allow(described_class).to receive(:reexec_command).with(["--version"]).and_return(nil)
+
+      expect(described_class.restart_preflight("0.139.0")).to eq("there is no chi to restart into")
+    end
+
+    it "runs the real command and kills one that outlasts its timeout" do
+      expect(described_class.run_preflight([RbConfig.ruby, "-e", "puts 'chi 1.2.3'"], {}, 20)).to eq("chi 1.2.3\n")
+      expect { described_class.run_preflight([RbConfig.ruby, "-e", "sleep 30"], {}, 0.2) }.to raise_error(Timeout::Error)
+    end
   end
 
   describe ".reexec" do

@@ -1,9 +1,11 @@
 # frozen_string_literal: true
 
 require "json"
+require "open3"
 require "rack"
 require "rackup/handler/webrick"
 require "rbconfig"
+require "timeout"
 require "uri"
 require "webrick"
 
@@ -73,6 +75,8 @@ module Samagotchi
       PROBE_TIMEOUT = 0.3
       RESTARTED_ENV = "SAMAGOTCHI_WEB_RESTARTED"
       ADOPT_PIDS_ENV = "SAMAGOTCHI_WEB_ADOPT_PIDS"
+      # How long AutoUpdate's pre-restart `chi --version` may take.
+      PREFLIGHT_TIMEOUT = 20
 
       # The raw header names next to Rack's env (ProxyGate's identity check):
       # chi web is the only WEBrick server chi runs.
@@ -255,6 +259,39 @@ module Samagotchi
         program.to_s.empty? ? nil : [RbConfig.ruby, program, *argv]
       end
 
+      # Before an unattended restart (AutoUpdate): the command a restart would
+      # exec, run with --version, must print a chi at least +version+, so a
+      # broken install leaves chi web up instead of dead.
+      # @param version [String] the release installed
+      # @param timeout [Numeric] seconds the command may take
+      # @param runner [#call, nil] `(command, env, timeout) → String` its output (a spec's seam)
+      # @return [String, nil] nil when it starts, else why not
+      def self.restart_preflight(version, timeout: PREFLIGHT_TIMEOUT, runner: nil)
+        command = reexec_command(["--version"])
+        return "there is no chi to restart into" unless command
+
+        output = (runner || method(:run_preflight)).call(command, ChildEnv.unbundled, timeout).to_s
+        said = output[/\bchi (\S+)/, 1]
+        return nil if said && Gem::Version.correct?(said) && Gem::Version.new(said) >= Gem::Version.new(version)
+
+        "the new chi said #{output.strip.lines.first.to_s.strip[0, 120].inspect}, not #{version}"
+      rescue StandardError => e
+        "the new chi didn't start (#{e.class}: #{e.message.lines.first.to_s.strip[0, 120]})"
+      end
+
+      # The preflight's command, killed when it takes longer than +timeout+.
+      def self.run_preflight(command, env, timeout)
+        Open3.popen2e(env, *command) do |stdin, out, wait_thread|
+          stdin.close
+          reader = Thread.new { out.read }
+          unless wait_thread.join(timeout)
+            Process.kill("KILL", wait_thread.pid)
+            raise Timeout::Error, "took more than #{timeout} s"
+          end
+          reader.value
+        end
+      end
+
       # What a restart execs without a chi home: the installed gem's wrapper
       # (it activates the newest installed chi), this bin/chi in a checkout;
       # nil for a gem installed without one (--bindir).
@@ -369,7 +406,7 @@ module Samagotchi
                       annotate_presets: annotate_presets, editor: editor, hub: hub, lan: lan_option, working_set: working_set,
                       public_url: public_url, public_token: public_token, push: push, start_dir: start_dir)
         # update.auto: install; a stand-in app (a spec's) has no operations to run.
-        auto_update ||= AutoUpdate.new(hub: hub, ops: app.update_ops, check: update_check) if app.respond_to?(:update_ops)
+        auto_update ||= AutoUpdate.new(hub: hub, ops: app.update_ops, check: update_check, preflight: method(:restart_preflight)) if app.respond_to?(:update_ops)
         webrick = nil
         restart_mutex = Mutex.new
         restart_requested = false

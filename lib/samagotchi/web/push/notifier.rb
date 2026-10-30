@@ -54,11 +54,30 @@ module Samagotchi
             ["installed", "chi #{version} is installed",
              "chi web and its sessions switch over when you restart them.#{kept_words(notes[:kept])}"]
           end,
+          "updated" => lambda do |version, notes|
+            ["updated", "chi updated to #{version}", "#{restarted_words(notes[:restarted], notes[:left])}#{kept_words(notes[:kept])}"]
+          end,
+          "restart_failed" => lambda do |version, notes|
+            ["restart_failed", "chi #{version} is installed; chi web didn't restart",
+             "#{notes[:detail] || "chi web didn't restart"}. Restart chi web in its terminal."]
+          end,
           "failed" => lambda do |version, notes|
             ["update_failed", notes[:installed] ? "chi #{version} installed with a problem" : "chi #{version} didn't install",
              "#{notes[:detail] || "chi update failed"}. Open chi web for details."]
           end
         }.freeze
+
+        # "chi web and 3 sessions restarted; 1 restarts when idle."
+        def self.restarted_words(restarted, left)
+          sessions = restarted.to_i
+          words = if sessions.positive?
+                    "chi web and #{sessions} #{sessions == 1 ? "session" : "sessions"} restarted"
+                  else
+                    "chi web restarted"
+                  end
+          words += "; #{left} #{left == 1 ? "restarts" : "restart"} when idle" if left.to_i.positive?
+          "#{words}."
+        end
 
         # " Kept your edits in 2 files." ("" for none).
         def self.kept_words(count)
@@ -229,7 +248,7 @@ module Samagotchi
           enqueue_update("chi:update:#{version}", "chi #{version} is available", update_body(event.data[:update_blocked]))
         end
 
-        # AutoUpdate's word (SessionHub#publish_notice): installed, updated or failed.
+        # AutoUpdate's word (SessionHub#publish_notice): installed, updated, restart_failed or failed.
         def notice_auto_update(event)
           data = event.data
           version = data[:version]
