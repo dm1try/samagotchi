@@ -1625,8 +1625,9 @@ body.all-view #allHead{display:flex}
 #allList .card-pick{position:absolute;top:13px;left:13px;width:16px;height:16px;margin:0;accent-color:var(--pick-border);cursor:pointer}
 #allList .card.picked,#allList .card.picked:hover{border-color:var(--pick-border);box-shadow:inset 0 0 0 1px var(--pick-border),var(--glass-shadow);background:color-mix(in srgb,var(--pick-border) 9%,var(--glass-bg))}
 .card .skip-reason{font-size:11px;line-height:1.35;color:var(--warn-text);display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;line-clamp:2;overflow:hidden;word-break:break-word}
-/* A phone: the header is its own row under the bar (the chips stay in the first), the search as wide as it can be. */
-@media(max-width:600px){#allHead{flex-basis:100%;order:20;margin-left:0;justify-content:flex-start}#allHead input#filter{flex:1 1 0;width:auto;min-width:0;height:30px;font-size:16px}#allHead.selecting{flex-wrap:wrap}#allHead.selecting .count{display:none}#selectBar{flex-basis:100%;order:5}#selectCount{flex-basis:100%}#allList .card-pick{width:20px;height:20px;top:12px;left:11px}}
+/* A phone: the header is its own row under the bar (the chips stay in the first) and wraps inside it: the search
+   takes the whole first line, so its placeholder reads, and the count, the archived toggle and Select the line under it. */
+@media(max-width:600px){#allHead{flex-basis:100%;order:20;margin-left:0;justify-content:flex-start;flex-wrap:wrap;row-gap:6px}#allHead input#filter{flex:1 1 100%;width:auto;min-width:0;height:30px;font-size:16px}#allHead.selecting .count{display:none}#selectBar{flex-basis:100%;order:5}#selectCount{flex-basis:100%}#allList .card-pick{width:20px;height:20px;top:12px;left:11px}}
 .card.archived{opacity:.6}
 .card.archived:hover{opacity:.85}
 .card .archived-badge,.family-row .archived-badge{font-size:10px;padding:1px 6px;border-radius:6px;border:1px solid var(--border-strong);color:var(--text-muted)}
