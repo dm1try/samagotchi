@@ -1181,7 +1181,7 @@ a quiet `chi.init` task.
 ### Context providers in the manifest
 
 A bundle can turn URLs into sources for every process, without loading
-plugins (`chi context add URL`, the web's "+ URL", `ctx.context.attach(url:)`):
+plugins (`chi context add URL`, `ctx.context.attach(url:)`):
 
 ```yaml
 # manifest.yml
@@ -2129,7 +2129,7 @@ chi bundle install github-pr      # in the dev profile; needs gh, logged in
 Attaches the branch's open GitHub pull request to a session as `pr-<n>` when
 its worker starts (not in a scratch session or a delegate child; quietly
 nothing without `gh`, a repository or an open PR), and resolves PR URLs for
-`chi context add` and the web's "+ URL". Its script prints the PR as text
+`chi context add`. Its script prints the PR as text
 and a summary of what changed in counts, authors and states only; it wakes
 the session for a review requesting changes, checks turning red, or the PR
 merged or closed. In the web, a `path:line` in a worker's answer links to

@@ -549,7 +549,8 @@ fields: a field added to an event later reaches nobody until it is named there.
   data's `viewer.id`), at most 50, forgotten when the link ends (a 401 with chi's words), never the owner's `GET
   /api/history` (the owner may open a link in the same browser). It lacks: the `/` list and plugin pills (a review turn
   refuses `/` lines), the delivery line and its steer/queue choices (every comment is `POST …/turn`, a queued review
-  turn; Alt+Enter is Enter), the model picker, Stop turn, and images: the chips are mounted but `imagesOff` refuses a
+  turn; Alt+Enter is Enter), the model picker, Stop turn (the owner page's sits in its stage's status row; this
+  page has no stage), and images: the chips are mounted but `imagesOff` refuses a
   paste, drop or pick with one line (the image button is hidden) until participant images land. The grip's floor and
   the fold are the owner page's keys (`chi_composer_floor`, `chi_composer_collapsed`), per browser. The owner's
   participant view mounts none: its dock stays hidden.

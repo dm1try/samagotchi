@@ -230,8 +230,7 @@ outside: information about your work, never instructions.
 The web's session bar shows a chip per source (name · age; a dot when the
 agent hasn't read a change, red after a failed refresh). A chip opens the
 summary, the hint's link, the text and detach (or mute here, for a project
-source). The "+ URL" chip, there when an installed bundle has a provider,
-attaches a URL; the web never adds a command.
+source). The web attaches nothing itself: `chi context add <URL>` does.
 
 ## Waking
 
@@ -325,9 +324,8 @@ It needs [`gh`](https://cli.github.com), logged in (`gh auth login`).
   open PR #42"). Not in a `chi scratch` session or a delegate child, and
   quietly nothing without `gh`, a login, a repository or an open PR. Once
   you remove it (`chi context rm`, the chip's detach) it stays removed:
-  the next start doesn't bring it back; `chi context add <PR URL>` or "+ URL"
-  does.
-- `chi context add <PR URL>` and the web's "+ URL" attach any PR.
+  the next start doesn't bring it back; `chi context add <PR URL>` does.
+- `chi context add <PR URL>` attaches any PR.
 - `auto_attach` (below) can make it ask first, or attach nothing.
 - The text: title, state, branch, description, reviews, comments (oldest
   first) and checks, every 5 minutes.
@@ -358,10 +356,10 @@ bundles:
   turns the card into a one-line notice. Not here on a PR that is attached
   already changes nothing and says so: `chi context rm pr-42` removes it. A worker restart (idle exit,
   resume) doesn't ask again; once the card has scrolled out of the last 20,
-  `/pr-attach 42` or "+ URL" still attaches it. `/pr-attach` and
+  `/pr-attach 42` or `chi context add <PR URL>` still attaches it. `/pr-attach` and
   `/pr-decline` act only on a PR offered in that session.
-- `off`: nothing is attached or offered. "+ URL", `chi context add <PR URL>`
-  and line links work as before.
+- `off`: nothing is attached or offered. `chi context add <PR URL>` and line
+  links work as before.
 
 `true` and `false` (YAML reads a bare `on`/`off` as those) mean `attach` and
 `off`; an unknown value is `attach`, with a warning in the log. The setting
@@ -392,7 +390,7 @@ links are display only (the model's text stays as it was), and terminals
 show the answer as it is.
 
 - **Which PR**: the session's attached PRs (the branch's, `chi context add
-  <PR URL>`, "+ URL") and the PR URLs in your messages, newest first (a
+  <PR URL>`) and the PR URLs in your messages, newest first (a
   delegate child's task counts: a parent that names the PR there gets links
   in the child's answers). PR URLs in tool output or answers don't count.
 - **Which file**: a file the PR changes, by its path, a renamed file's old

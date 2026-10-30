@@ -1563,8 +1563,8 @@ chi share revoke --all          # every link to every session
   far as it fits the plan. It's quoted: …` and the reply quoted line by line. Read it, edit it, send it: the
   participant's text reaches the model as a quote under your line, never as your instruction. Don't send "do what
   Alex said" instead: that hands their words your tools.
-- **Your side of it.** In the session bar, the participants chip (`invite` while nobody has a link, then `2
-  participants`, with a green dot while one is on their page) opens the panel: each participant's state, last visit,
+- **Your side of it.** In the session bar, the participants chip (`participants · invite` while nobody has a link,
+  then `2 participants`, with a green dot while one is on their page) opens the panel: each participant's state, last visit,
   spend against their cap, turns and expiry, with **Cap** and **Revoke** (revoking ends their page and stream and
   drops their queued comments). **Invite** takes a name, person or agent, the expiry and a cap, and shows the link
   once, with Copy, Share (a phone's share sheet) and its QR code. **Participant view ↗** opens their page for this
