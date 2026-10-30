@@ -391,6 +391,28 @@ test("the stage folds to its status row, and stays folded across a reload", asyn
   await expect(page.locator("#history .bubble.cancel")).toContainText("canceled");
 });
 
+// A reload that learns the session runs a turn but gets none to draw (a
+// payload without current_turn): the stage shows its status row alone, and
+// its Stop turn cancels the turn.
+test("a running turn the reload gets no current_turn for keeps Stop turn in the stage's status row", async ({ page, script }) => {
+  script("hold");
+  await send(page, "Take your time");
+  await expect(stageEl(page).locator(".ts-cancel")).toBeVisible();
+  const id = page.url().match(/#\/s\/([^/?]+)$/)[1];
+  await page.route((url) => url.pathname === `/api/sessions/${id}` && url.search === "?parts=1", async (route) => {
+    const res = await route.fetch();
+    const body = await res.json();
+    delete body.current_turn;
+    await route.fulfill({ response: res, json: body });
+  });
+  await page.reload();
+  await expect(stageEl(page)).toHaveClass(/\bbare\b/);
+  await expect(stageEl(page).locator(".ts-phase")).toHaveText("running");
+  await stageEl(page).locator(".ts-cancel").click();
+  await expect(stageEl(page)).toBeHidden();
+  await expect(page.locator("#actionBtn")).toHaveText("Send");
+});
+
 test("check-in's card waits for the user in the stage; after Nudge the turn stays in the stage until it ends, then hands off", async ({ page, script }) => {
   script("check_in");
   await send(page, "Look through the README");

@@ -244,6 +244,38 @@ test("Stop turn: in the status row before the fold while the turn runs, disabled
   assert.equal(stop.hidden, true);
 });
 
+// A join that knows the session runs a turn but has none to draw (no
+// current_turn): the stage shows its status row alone, with Stop turn.
+test("Stop turn: a running turn the stage holds none of gets the status row alone, with Stop turn; its end, a reset or a real turn take it back", async () => {
+  let calls = 0;
+  const { view } = page({ onCancel: async () => { calls += 1; } });
+  const stop = $(view, ".ts-cancel");
+  view.runningWithoutTurn(true);
+  assert.equal(view.root.hidden, false);
+  assert.ok(view.root.classList.contains("bare"));
+  assert.equal($(view, ".ts-phase").textContent, "running");
+  assert.equal(stop.hidden, false);
+  stop.click();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.equal(calls, 1);
+  view.runningWithoutTurn(false);
+  assert.equal(view.root.hidden, true);
+  assert.equal(view.root.classList.contains("bare"), false);
+  // A real turn takes over the row; the bare call changes nothing then.
+  view.runningWithoutTurn(true);
+  view.turnStarted({});
+  assert.equal(view.root.classList.contains("bare"), false);
+  view.runningWithoutTurn(true);
+  assert.equal(view.root.classList.contains("bare"), false);
+  view.runningWithoutTurn(false);
+  assert.equal(view.root.hidden, false, "the held turn's stage stays");
+  view.reset();
+  view.runningWithoutTurn(true);
+  view.reset();
+  assert.equal(view.root.hidden, true);
+  assert.equal(view.root.classList.contains("bare"), false);
+});
+
 test("Stop turn: none without an onCancel", () => {
   const { view } = page();
   view.turnStarted({});

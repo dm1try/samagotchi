@@ -779,6 +779,9 @@ body.stage-view .turn-stage{position:absolute;left:0;right:0;bottom:100%;margin-
 .ts-cancel[hidden]{display:none}
 @media(hover:hover){.ts-cancel:hover:not(:disabled){filter:none;background:var(--danger-bg-dim)}}
 .ts-cancel:not([hidden])+.ts-fold{margin-left:0}
+/* A running turn the stage has nothing of (stage_view.js runningWithoutTurn): its status row alone, Stop turn in it. */
+.turn-stage.bare :is(.ts-scroll,.ts-foot,.ts-queued,.ts-fold){display:none}
+.turn-stage.bare .ts-status{padding-bottom:8px}
 .ts-fold{margin-left:auto;flex:none;width:28px;height:24px;padding:0;border-radius:6px;background:transparent;color:var(--text-muted);font-size:14px}
 .ts-fold:hover:not(:disabled){filter:none;background:var(--bg-hover);color:var(--text)}
 .ts-scroll{position:relative;flex:1 1 auto;min-height:0;overflow:auto;overflow-anchor:none;display:flex;flex-direction:column;gap:8px;padding:8px 14px 10px;scrollbar-width:thin}
@@ -1068,6 +1071,7 @@ button.ws-row:hover:not(:disabled){filter:none}@media(hover:hover){button.ws-row
   .ts-foot{padding:0 10px 10px}
   .ts-queued{padding:8px 10px 10px}
   .ts-defer{display:none}
+  .ts-cancel{padding:1px 8px}
   .ts-trail-item{max-width:24ch}
 }
 @media (prefers-reduced-motion:reduce){.turn-stage.enter,.ts-arrive,.ts-headline.fresh,.ts-tick.running,.ts-mark,.turn-work:not(.done) .activity-status.running::before{animation:none}.turn-stage.leaving,#center.reserve-easing #history{transition:none}}
