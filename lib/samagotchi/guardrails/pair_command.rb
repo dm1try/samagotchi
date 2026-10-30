@@ -53,7 +53,13 @@ module Samagotchi
                          "xargs" => %w[-L -P -s -d -E -a --max-args --max-procs --delimiter --arg-file],
                          "stdbuf" => %w[-i -o --input --output --error], "caffeinate" => %w[-t -w],
                          "watch" => %w[--interval], "arch" => %w[-arch -d], "xcrun" => %w[-sdk --sdk --toolchain],
-                         "script" => %w[-F -t -T -B -I -O -c --command] }.freeze
+                         "script" => %w[-t -T -B -I -O -c --command], "npx" => %w[-c --call -p --package],
+                         "npm" => %w[-c --call -p --package -w --workspace] }.freeze
+      # A wrapper's flags the generic -I/-r/-C/-e/-n rule would read as
+      # taking a value (xcrun -r is --run, sudo -n non-interactive; macOS's
+      # script -F is a flag too: not in WRAPPER_VALUES).
+      WRAPPER_FLAGS = { "xcrun" => %w[-r -n -l -v -f -k], "sudo" => %w[-n -E -H -i -s -k -b -P -S -A -e -l -v -K -B],
+                        "env" => %w[-i -0 -v] }.freeze
       # chi's own invocations a pair turn may run: they print and exit.
       CHI_ALLOWED = [%w[--version], %w[--help]].freeze
       # chi named in a script, a value or an argument, in any case (CHI runs
@@ -218,12 +224,21 @@ module Samagotchi
       # is used (PS4 under bash -x, PS0/PS1, a prompt), so the value is read
       # as a script too. Only a real assignment's: a prefix, a command of
       # assignments, or ASSIGNERS' words (not grep 'X=$(…)').
-      DEFERRED_SUBST = /\$\(|`/
+      DEFERRED_SUBST = /\$\(|`|\$\{[\s|]|\\(?:x24|044|x60|140)/
+      # A deferred value's escapes ($'\x24(…)') and the parts that open or
+      # close what it runs, cut into separators to read the commands inside.
+      DEFERRED_ESCAPES = /\\(?:x24|044|x60|140)/
+      DEFERRED_PARTS = /\$\(|\$\{(?=[\s|])|`|\)|\}/
       ASSIGNERS = %w[export declare typeset readonly local env].freeze
-      # How many later words naming git the net reads (#later_git_refusal).
+      # How many words naming git or chi the net reads (#net_hit?).
       NET_GITS = 16
-      # Runners whose arguments are command lines they run through a shell.
+      # Runners whose arguments are command lines they run through a shell,
+      # and every program #text_commands reads a command line of.
       TEXT_RUNNERS = %w[hyperfine parallel watch].freeze
+      TEXT_TAKERS = (TEXT_RUNNERS + %w[env script npx npm rsync ssh scp sftp]).freeze
+      # chi's commands, for the net (#net_hit?): chi cp'd or listed isn't run.
+      CHI_COMMANDS = %w[sessions note broadcast context send answer share review bootstrap update models desktop
+                        memory bundle guardrails toolkit remote home web self].freeze
       # An ssh -o option that runs a command on this machine, and its value.
       SSH_COMMAND_OPTION = /\A\s*(?:ProxyCommand|LocalCommand|KnownHostsCommand)\s*[=\s]\s*(.+)\z/im
       # Devices a command may name in the project's stead.
@@ -311,9 +326,10 @@ module Samagotchi
       end
 
       def self.option_width(wrapper, word)
+        return 1 if WRAPPER_FLAGS.fetch(wrapper, []).include?(word)
+
         WRAPPER_VALUES.fetch(wrapper, []).include?(word) || word.match?(/\A-[IrCen]\z/) ? 2 : 1
       end
-      private_class_method :option_width
 
       # Where git's subcommand may start in its +args+ (indices): past its
       # own options (GIT_FLAG_OPTIONS, GIT_VALUE_OPTIONS and their value,
@@ -565,7 +581,18 @@ module Samagotchi
         @refusal = read
       rescue StandardError
         @mise_config = true
+        @net = true
         @refusal = PairBoundary::UNREADABLE
+      end
+
+      # Whether the owner approves it for what chi can't read for sure
+      # (PairBoundary::NET): git or chi behind a program no list knows
+      # (#net_hit?), or a $(…) kept in an assigned value that the shell
+      # expands later (#deferred_values), a script it hands on included.
+      # True for one it can't read.
+      def net_ask?
+        refusal
+        @net ||= false
       end
 
       # Whether it makes a link (ln, link, cp -s/-l, a script's symlink): a
@@ -661,18 +688,23 @@ module Samagotchi
         return PairBoundary::GIT_CONFIG if git_config_env?(words) || git_alias?(program, args)
 
         handed_commands(words).each do |script|
-          reason = nested(script).refusal
+          reason = nested_refusal(script)
           return reason if reason
         end
+        reason = deferred_refusal(words)
+        return reason if reason
 
         if program == "git"
           # xargs adds words of its input: a git config it runs may write
           xargs = words[0...at].any? { |word| ShellLex.program_name(word) == "xargs" }
           reason = git_refusal(args, appended: xargs) || git_command_refusal(args)
           return reason if reason
-        elsif at && !@read_only
-          reason = later_git_refusal(words[(at + 1)..])
-          return reason if reason
+        end
+        unless @read_only
+          net = net_hit?(words, at, program == "git")
+          return PairBoundary::UNREADABLE if net == :too_many
+
+          @net ||= net
         end
         return PairBoundary::GIT_HOOKS if hook_installer?(words)
         return PairBoundary::OPENER if opener?(program, args)
@@ -746,8 +778,7 @@ module Samagotchi
         program = ShellLex.program_name(words[at])
         scripts(words, at).each do |script|
           reason = if SHELLS.include?(program) || program == "eval"
-                     inner = nested(script)
-                     inner.refusal.tap { @mise_config = true if inner.mise_config_write? }
+                     nested_refusal(script)
                    elsif PairCommand.interpreter?(program)
                      @mise_config = true if script.match?(MISE_CONFIG_TEXT)
                      script_text_refusal(script)
@@ -827,7 +858,20 @@ module Samagotchi
         at = words.index { |word| !assignment.call(word) }
         return true if at && ShellLex.program?(words[at], "env") && words[(at + 1)..].all?(&assignment)
 
-        program_at(words).nil? && words.any? { |word| ShellLex.program?(word, "env") } && text_commands(words).empty?
+        return false unless program_at(words).nil? && text_commands(words).empty?
+
+        # the last env, followed by its options and assignments only: no program
+        # (a wrapper that is a program of its own counts: env X=1 ruby -e …)
+        at = words.rindex { |word| ShellLex.program?(word, "env") } or return false
+        i = at + 1
+        while i < words.size
+          word = words[i]
+          if word.match?(/\A[A-Za-z_]\w*=/) then i += 1
+          elsif word.start_with?("-") then i += PairCommand.option_width("env", word)
+          else return false
+          end
+        end
+        true
       end
 
       # Why a git command is refused: a config write (anything but a read
@@ -916,7 +960,7 @@ module Samagotchi
       # own command would be.
       def git_command_refusal(args)
         git_commands(args).each do |script|
-          reason = nested(script).refusal
+          reason = nested_refusal(script)
           return reason if reason
         end
         nil
@@ -936,16 +980,49 @@ module Samagotchi
       end
 
       # The commands a simple command's assignments hand a program
-      # (COMMAND_ENV: GIT_EDITOR='…' git commit, export GIT_PAGER=…), and an
-      # assigned value holding a $(…) as text (DEFERRED_SUBST: PS4='$(…)').
+      # (COMMAND_ENV: GIT_EDITOR='…' git commit, export GIT_PAGER=…).
       def env_commands(words)
+        words.filter_map do |word|
+          name, value = word.match(/\A([A-Za-z_]\w*)=(.+)\z/m)&.captures
+          value if COMMAND_ENV.include?(name)
+        end
+      end
+
+      # The values a real assignment gives (a prefix, a command of
+      # assignments, ASSIGNERS' words) that keep a $(…), ${ …; } or
+      # backticks as text (DEFERRED_SUBST, $'\x24(…)' too): the shell expands
+      # them later (PS4 under bash -x, PS0/PS1, a prompt).
+      def deferred_values(words)
         at = program_at(words)
         assigns = at.nil? || ASSIGNERS.include?(ShellLex.program_name(words[at]))
         words.each_with_index.filter_map do |word, i|
           name, value = word.match(/\A([A-Za-z_]\w*)=(.+)\z/m)&.captures
-          next unless name
+          value if name && !COMMAND_ENV.include?(name) && value.match?(DEFERRED_SUBST) && (assigns || i < at)
+        end
+      end
 
-          value if COMMAND_ENV.include?(name) || (value.match?(DEFERRED_SUBST) && (assigns || i < at))
+      # A deferred value (#deferred_values) read as the commands its $(…)
+      # would run (DEFERRED_PARTS cut into separators): refused for what that
+      # read finds (git config, chi, a secret…), else the owner approves it
+      # (#net_ask?): a value the shell expands later is no command chi can
+      # read for sure.
+      def deferred_refusal(words)
+        deferred_values(words).each do |value|
+          @net = true
+          script = value.sub(/\A\$(?=\\)/, "").gsub(DEFERRED_ESCAPES) { |escape| escape.end_with?("4") ? "$" : "`" }
+          reason = nested_refusal(script.gsub(DEFERRED_PARTS, " ; "))
+          return reason if reason && ![PairBoundary::UNREADABLE, PairBoundary::VERB].include?(reason)
+        end
+        nil
+      end
+
+      # A nested command's refusal (#nested), what it asks (#net_ask?,
+      # #mise_config_write?) carried to this one.
+      def nested_refusal(script)
+        inner = nested(script)
+        inner.refusal.tap do
+          @mise_config = true if inner.mise_config_write?
+          @net = true if inner.net_ask?
         end
       end
 
@@ -965,13 +1042,17 @@ module Samagotchi
           next [] if words[i].include?("\0")
 
           name = ShellLex.program_name(words[i])
+          next [] unless TEXT_TAKERS.include?(name)
+
           rest = words[(i + 1)..]
           case name
           when "env" then option_values(rest, %w[-S --split-string], cluster: "S")
           when "script" then option_values(rest, %w[-c --command])
+          when "npx" then option_values(rest, %w[-c --call])
+          when "npm" then %w[exec x].include?(rest.first) ? option_values(rest.drop(1), %w[-c --call]) : []
+          when "rsync" then rsync_commands(rest)
           when "ssh", "scp", "sftp" then ssh_commands(rest)
-          when *TEXT_RUNNERS then text_runner_commands(name, rest)
-          else []
+          else text_runner_commands(name, rest)
           end
         end
       end
@@ -986,10 +1067,24 @@ module Samagotchi
           option, value = word.split("=", 2)
           if options.include?(word) then found << rest[i + 1]
           elsif option.start_with?("--") && options.include?(option) then found << value
-          elsif cluster && word.match?(/\A-#{cluster}./) then found << word[2..]
+          elsif cluster && !word.start_with?("--") && (at = word.index(cluster, 1))
+            tail = word[(at + 1)..]
+            found << (tail.empty? ? rest[i + 1] : tail)
           end
         end
         found.compact
+      end
+
+      # rsync's remote shell (-e S, a cluster ending in it -avze S, --rsh=S):
+      # it runs here.
+      def rsync_commands(rest)
+        rest.each_with_index.filter_map do |word, i|
+          if word.start_with?("--rsh=") then word.delete_prefix("--rsh=")
+          elsif word == "--rsh" then rest[i + 1]
+          elsif (cluster = word[/\A-[A-Za-z]*?e(.*)\z/m, 1]) && !word.start_with?("--")
+            cluster.empty? ? rest[i + 1] : cluster
+          end
+        end
       end
 
       # ssh's -o options that run a command on this machine.
@@ -1013,27 +1108,50 @@ module Samagotchi
       end
 
       # A fail-closed net for a runner no table knows (a wrapper's option
-      # read wrong, a package runner): a later word naming git is read as
-      # git from there, and a later command line starting with git as a
-      # command (git config's reads stay reads). Not for a command that only
-      # reads (rg 'git config').
-      # More than NET_GITS such words is no command chi reads (UNREADABLE):
-      # each is read through the rest of the words.
-      def later_git_refusal(args)
+      # read wrong, a package runner): any word but the program's (a
+      # wrapper's or an option's value too) that names git is read as git
+      # from there, one naming chi with a chi command after it (CHI_COMMANDS)
+      # counts, and a command line starting with git or chi (the program
+      # word too) is read as a command. A hit asks the owner (#net_ask?),
+      # never refuses: chi can't tell such a word runs. A git command
+      # (+git+) is read as git; only the words before it are netted.
+      # More than NET_GITS such words is :too_many (UNREADABLE): each is
+      # read through the rest of the words.
+      def net_hit?(words, at, git)
         gits = 0
-        args.each_with_index do |word, i|
-          next if word.include?("\0")
+        last = git ? at - 1 : words.size - 1
+        (0..last).any? do |i|
+          word = words[i]
+          next false if word.include?("\0")
 
-          program, rest = PairCommand.git_form(ShellLex.program_name(word), args[(i + 1)..])
-          return PairBoundary::UNREADABLE if program == "git" && (gits += 1) > NET_GITS
+          if word.match?(/\s/)
+            head = word.strip.split(/\s+/).first.to_s
+            next false unless ShellLex.program?(head, "git") || ShellLex.program?(head, "chi")
+            return :too_many if (gits += 1) > NET_GITS
 
-          reason = if program == "git" then git_refusal(rest) || git_command_refusal(rest)
-                   elsif word.match?(/\s/) && ShellLex.program?(word.strip.split(/\s+/).first, "git")
-                     nested(word).refusal
-                   end
-          return reason if reason
+            next !nested_refusal(word).nil?
+          end
+          next false if i == at
+
+          program, = PairCommand.git_form(ShellLex.program_name(word), [])
+          if program == "git"
+            return :too_many if (gits += 1) > NET_GITS
+
+            _, rest = PairCommand.git_form(ShellLex.program_name(word), words[(i + 1)..])
+            !(git_refusal(rest) || git_command_refusal(rest)).nil?
+          else
+            program == "chi" && chi_call?(words[i + 1])
+          end
         end
-        nil
+      end
+
+      # Whether the word after a chi word makes a chi call: a chi command
+      # (CHI_COMMANDS) or an option but --version/--help (chi -p "…").
+      def chi_call?(first)
+        return false if first.nil?
+        return !CHI_ALLOWED.flatten.include?(first) if first.start_with?("-")
+
+        CHI_COMMANDS.include?(first)
       end
 
       # Whether a command a simple command hands on (#handed_commands) may

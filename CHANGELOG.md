@@ -25,8 +25,9 @@ and commands may change between minor versions. How releases are made:
   `-C`/`--init-command S`, `PROMPT_COMMAND` and a `$(…)` kept in a value bash expands later (`PS4='$(…)' bash -x`),
   the program behind `xcrun`, `arch`, `script`, `builtin`, `uv run`, `pnpm exec`, `bunx` and a wrapper's value option
   (`env -u X`, `sudo -u root`), the command lines `env -S`, `ssh -o ProxyCommand=`, `hyperfine` and `parallel` run,
-  `php -B/-R/-E`, `perl -de`, `jruby`/`raku`/`julia -e`; and a git config write behind any other runner is refused
-  (`some-runner git config …`). `git add maintenance start` no longer asks you; `git lfs update` does.
+  `php -B/-R/-E`, `perl -de`, `jruby`/`raku`/`julia -e`. git or chi behind a program chi doesn't know
+  (`some-runner git config …`, `chronic chi share x`) and a `$(…)` kept in a value now ask you (refused when what it
+  runs reads as git config or chi). `git add maintenance start` no longer asks you; `git lfs update` does.
 
 ## [0.134.0] - 2026-10-30
 

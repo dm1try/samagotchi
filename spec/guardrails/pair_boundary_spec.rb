@@ -377,7 +377,8 @@ RSpec.describe Samagotchi::Guardrails::PairBoundary do
 
     # The program behind more wrappers (their value options skipped, two-word
     # ones, script's file), the command lines some take as text, and a net
-    # for a runner none of them knows: a later word naming git is read as git.
+    # for a runner none of them knows: a word naming git is read as git, one
+    # naming chi before a chi command counts, and a hit asks the owner.
     it "finds the program behind more runners, reads the command lines they take, and nets an unknown one's git" do
       ["xcrun git config core.fsmonitor id", "arch -arm64 git -c core.fsmonitor=id status",
        "arch -arch arm64 git config core.fsmonitor id", "script -q /dev/null git config core.fsmonitor id",
@@ -388,9 +389,19 @@ RSpec.describe Samagotchi::Guardrails::PairBoundary do
        "sudo -u root git config core.fsmonitor id", "env -S 'git config core.fsmonitor id'",
        "ENV --split-string 'git config core.fsmonitor id'", "script -q -c 'git config core.fsmonitor id' /dev/null",
        "hyperfine 'git config core.fsmonitor id'", "parallel git config ::: core.fsmonitor",
-       "ssh -oProxyCommand='git config core.fsmonitor id' host", "some-runner git config core.fsmonitor id",
-       "some-runner GIT -c core.fsmonitor=id status", "some-runner 'git config core.fsmonitor id'"].each do |command|
+       "ssh -oProxyCommand='git config core.fsmonitor id' host", "script -F /dev/null git config core.fsmonitor id",
+       "xcrun -r git config core.fsmonitor id", "sudo -n git config core.fsmonitor id",
+       "npx -c 'git config core.fsmonitor id'", "npm exec --call='git config core.fsmonitor id'",
+       "env -vS 'git config core.fsmonitor id'",
+       "rsync -e 'sh -c \"git config core.fsmonitor id\"' a host:b"].each do |command|
         expect(refused(command)).to eq(described_class::GIT_CONFIG), command
+      end
+      ["some-runner git config core.fsmonitor id", "some-runner GIT -c core.fsmonitor=id status",
+       "some-runner 'git config core.fsmonitor id'", "nice -n git config core.fsmonitor id",
+       "env -C git config core.fsmonitor id", "chronic chi share x", "foo --x chi sessions stop abc",
+       "foo 'chi share x'", "make git-config", "gh pr create --title 'git config reads fixed' --body x"].each do |command|
+        verdict = execute(command)
+        expect([verdict.ask?, verdict.reason, verdict.fresh_ask?]).to eq([true, described_class::NET, true]), command
       end
       ["hyperfine 'touch ~/other/x'", "parallel 'touch ~/other/{}' ::: a", "env -S 'sh -c -- \"touch ~/other/x\"'",
        "ssh -o ProxyCommand='touch ~/other/x' host",
@@ -401,7 +412,8 @@ RSpec.describe Samagotchi::Guardrails::PairBoundary do
       ["xcrun git config user.name", "uv run pytest", "pnpm exec eslint .", "hyperfine 'git status'",
        "watch -n 1 'git status --short'", "env -C docs ls", "ssh -o ProxyCommand=none host ls",
        "docker compose exec app git config user.name", "gh pr create --title 'git config: fix' --body x",
-       "rg 'git config core.fsmonitor id' docs"].each do |command|
+       "rg 'git config core.fsmonitor id' docs", "cp bin/chi /tmp/x", "env RUBYOPT=-W0 ruby -e 'puts 1'",
+       "env NODE_ENV=test npx --version", "rsync -avz -e ssh docs host:b"].each do |command|
         expect(execute(command)).to be_allow, command
       end
     end
@@ -527,10 +539,16 @@ RSpec.describe Samagotchi::Guardrails::PairBoundary do
     it "reads PROMPT_COMMAND, and an assigned value holding a $(…) or backticks as text, as a command" do
       expect(refused("export PROMPT_COMMAND='git config core.fsmonitor id'")).to eq(described_class::GIT_CONFIG)
       expect(refused("PS1='$(chi share x)' bash -i")).to eq(described_class::CHI)
-      ["PS4='$(git config core.fsmonitor id)' bash -xc true", "PS4='`touch ~/x`' bash -xc true",
-       "env PS4='$(touch ~/x)' bash -xc true", "PS4='$(touch ~/x)'; set -x; true",
-       "export PS0='$(touch ~/x)'"].each do |command|
-        expect(execute(command)).to be_deny, command
+      # refused for what the value's $(…) runs, else asked: the shell expands it later
+      ["PS4='$(git config core.fsmonitor id)' bash -xc true", "PS4='`git config core.fsmonitor id`' bash -xc true",
+       "PS4=$'\\x24(git config core.fsmonitor id)' bash -xc true"].each do |command|
+        expect(refused(command)).to eq(described_class::GIT_CONFIG), command
+      end
+      ["env PS4='$(touch ~/x)' bash -xc true", "PS4='$(touch ~/x)'; set -x; true", "export PS0='$(touch ~/x)'",
+       "PS4='${ touch ~/x; }' bash -xc true", "export PS4=$'\\x24(touch ~/x)'; bash -xc true",
+       "PS4='+ $(date) ' bash -xc true", "CFLAGS='$(BASE) -O2' make"].each do |command|
+        verdict = execute(command)
+        expect([verdict.ask?, verdict.reason]).to eq([true, described_class::NET]), command
       end
       verdict = execute("PROMPT_COMMAND='touch ~/x' bash -i")
       expect([verdict.ask?, verdict.reason]).to eq([true, described_class::OUTSIDE_WRITE])

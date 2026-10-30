@@ -97,6 +97,8 @@ module Samagotchi
                "owner's cookies"
       LISTENER = "a participant's turn can't listen on a port: what it serves on this machine could catch the " \
                  "owner's browser cookies"
+      NET = "a participant's turn runs a command chi can't read for sure (git or chi behind a program it doesn't " \
+            "know, or a $(…) kept in a value the shell expands later), so the owner approves it"
       VERB = "a participant's turn runs only a program named plainly: no $, $(…) or glob in a command's name"
       UNREADABLE = "a participant's turn runs only commands chi can read: split this command, or write the file " \
                    "with the write tool"
@@ -195,13 +197,15 @@ module Samagotchi
 
       # Why the owner is asked (fresh, once): a command that makes a link
       # (LINK), one that runs mise or direnv (ENV_LOADER), a write to mise's
-      # config (MISE_CONFIG), a write that may land outside the project (OUTSIDE_WRITE, or
+      # config (MISE_CONFIG), a command chi can't read for sure (NET:
+      # PairCommand#net_ask?), a write that may land outside the project (OUTSIDE_WRITE, or
       # NO_PROJECT without one); nil when nothing asks.
       def ask_reason(verdict)
         targets = verdict.targets
         return LINK if targets&.command && command(targets, nil).links?
         return ENV_LOADER if targets&.command && command(targets, nil).loads_env?
         return MISE_CONFIG if mise_config_write?(verdict)
+        return NET if targets&.command && command(targets, nil).net_ask?
         return nil unless outside_write?(verdict)
 
         project_root ? OUTSIDE_WRITE : NO_PROJECT
