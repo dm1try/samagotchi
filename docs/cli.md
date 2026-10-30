@@ -1033,8 +1033,10 @@ it and the answer closes to one line in its own box,
 "▸ its first line · N lines" (the
 first line of what a hook presented in its place, else its first heading,
 else its first line); click again to unfold. A delegate report's reply
-folds the same way. Folding is this browser's choice, kept per session in
-localStorage (`chi_answer_fold:<session id>`, the last 200 folded answers;
+folds the same way, and so does a long prompt you sent (over the same
+threshold; its folded row shows its first line as typed). A delegate
+report itself starts folded. Folding is this browser's choice, kept per session in
+localStorage (`chi_answer_fold:<session id>`, the last 200 folded answers and prompts;
 the keys of sessions gone from the list are dropped when the list loads);
 other viewers and the participant page are not affected. A jump into a
 folded answer (a claim link, say) unfolds it for that page load.

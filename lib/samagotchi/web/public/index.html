@@ -69,10 +69,10 @@ main{flex:1;display:flex;flex-direction:column;gap:16px;padding:16px;overflow:au
 .answer-fold:not(.folded){margin-bottom:-12px;padding-bottom:0;border-bottom:0;border-bottom-left-radius:0;border-bottom-right-radius:0}
 .answer-fold:not(.folded)+.bubble{border-top:0;border-top-left-radius:0;border-top-right-radius:0;padding-top:8px}
 /* A delegate report's row: the report's box (right, its tint, the user accent; dashed when merged mid-turn), closed or
-   its top edge. */
-.answer-fold.report{align-self:flex-end;width:85%;background:var(--accent-bg);border-left-color:var(--accent)}
+   its top edge; a long prompt's (answer_fold.js PROMPTS, open by default) the same box. */
+.answer-fold:is(.report,.prompt){align-self:flex-end;width:85%;background:var(--accent-bg);border-left-color:var(--accent)}
 .answer-fold.report.steered{border-left-style:dashed}
-.answer-fold.report:not(.folded)+.bubble.user{width:85%}
+.answer-fold:is(.report,.prompt):not(.folded)+.bubble.user{width:85%;align-items:flex-start}
 .answer-fold-label{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text-2);font-size:13px}
 .answer-fold-label:empty{display:none}
 .answer-fold-size{flex:none;white-space:nowrap;font-variant-numeric:tabular-nums;transition:color .12s ease}

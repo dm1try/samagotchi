@@ -288,6 +288,72 @@ test("the page: a long report folds by default (a report row, the label); a clic
   clearFolds();
 });
 
+function prompt(text, { turn = "T5", source = null } = {}) {
+  const el = document.createElement("div");
+  el.className = "bubble user";
+  if (turn) el.dataset.turnId = turn;
+  if (source) el.dataset.source = source;
+  el.setAttribute("data-copy-source", text);
+  const msg = document.createElement("div");
+  msg.className = "user-message";
+  msg.textContent = text;
+  el.append(msg);
+  return el;
+}
+
+test("answerKey: a prompt's is its turn's :prompt; a queued one (no turn id) has none", () => {
+  assert.equal(answerKey(prompt("x", { turn: "T5" })), "T5:prompt");
+  assert.equal(answerKey(prompt("x", { turn: null })), null);
+});
+
+test("the page: a long prompt gets an open row (the answers' threshold); a click folds it (saved with the answers), a reload keeps it", async () => {
+  clearFolds();
+  const first = page();
+  const long = prompt(`Please review this:\n## Not the label\n${lines(40)}`);
+  const short = prompt("short", { turn: "T6" });
+  const atLimit = prompt(lines(FOLD_LINES), { turn: "T7" });
+  first.history.append(long, short, atLimit);
+  await tick();
+  assert.equal(first.history.querySelectorAll(".answer-fold").length, 1);
+  const row = long.previousElementSibling;
+  assert.ok(row.matches(".answer-fold.prompt:not(.folded):not(.report)"));
+  assert.ok(!long.classList.contains("folded"), "open by default");
+  assert.equal(row.title, "Fold the message");
+  assert.equal(row.textContent, "42 lines");
+  row.click();
+  assert.ok(long.classList.contains("folded"));
+  assert.equal(row.title, "Show the message");
+  assert.equal(row.textContent, "Please review this: · 42 lines", "its first line, not a heading under it");
+  assert.deepEqual(readFolded("s1"), ["T5:prompt"]);
+  assert.deepEqual(readOpened("s1"), []);
+  first.history.remove();
+
+  const again = page();
+  const reloaded = prompt(`Please review this:\n## Not the label\n${lines(40)}`);
+  again.history.append(reloaded);
+  await tick();
+  assert.ok(reloaded.classList.contains("folded"));
+  reloaded.previousElementSibling.click();
+  assert.deepEqual(readFolded("s1"), []);
+  again.history.remove();
+  clearFolds();
+});
+
+test("the page: a live prompt gets its row when its turn starts (its key); a sourced user line other than a report gets none", async () => {
+  clearFolds();
+  const { history } = page();
+  const live = prompt(lines(40), { turn: null });
+  const other = prompt(lines(40), { turn: "T8", source: "broadcast" });
+  history.append(live, other);
+  await tick();
+  assert.equal(history.querySelectorAll(".answer-fold").length, 0);
+  live.dataset.turnId = "T9";
+  await tick();
+  assert.ok(live.previousElementSibling.matches(".answer-fold.prompt"));
+  assert.equal(history.querySelectorAll(".answer-fold").length, 1);
+  history.remove();
+});
+
 test("the page: something placed before a report that opens its turn goes above its row; a jump into a folded report unfolds it", async () => {
   clearFolds();
   const { history } = page();
