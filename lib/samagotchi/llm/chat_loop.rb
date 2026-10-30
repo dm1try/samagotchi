@@ -707,7 +707,7 @@ module Samagotchi
         end
 
         # The host's reasoning, kept on the model message as +thinking+ for
-        # the web turn view's reload (the whole of it, as the live view
+        # the web turn block's reload (the whole of it, as the live block
         # shows), and sent back to the model as ChatLoop#wire_messages says
         # (reasoning_history). A wire that sends its blocks back keeps them
         # as +anthropic_content+ (ChatResponse#provider_content: string

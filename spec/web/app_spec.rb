@@ -2193,7 +2193,7 @@ RSpec.describe Samagotchi::Web::App do
       end
     end
 
-    describe "?parts=1 (the turn view's reload: what each step did)" do
+    describe "?parts=1 (the turn block's reload: what each step did)" do
       let(:live) do
         { "snapshot" => { "messages" => [
           { "role" => "system", "content" => "sys" },

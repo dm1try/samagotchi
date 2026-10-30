@@ -1510,7 +1510,7 @@ RSpec.describe Samagotchi::LLM::ChatLoop do
   end
 
   # api: openai hosts stream the reasoning apart from the text. It is saved
-  # on the model message for the web turn view's reload, and sent back as
+  # on the model message for the web turn block's reload, and sent back as
   # reasoning_content as the turn's reasoning_history level says.
   describe "the model's reasoning" do
     let(:earlier_turn) do

@@ -1,6 +1,6 @@
 // Feeds stream events into a turn_model turn the way turn_block.js does
 // (its turnStarted/generationStarted/chunk/... call the same model
-// functions); null for the types the turn view doesn't take.
+// functions); null for the types the turn block doesn't take.
 import * as model from "../../../lib/samagotchi/web/public/turn_model.js";
 
 export function applyEvent(turn, event) {

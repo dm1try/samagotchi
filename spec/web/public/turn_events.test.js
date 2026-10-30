@@ -505,8 +505,8 @@ test("workerGoneText ends a running turn whose worker went away, and only a runn
 });
 
 // The stream dropped: an open one with no stop says nothing about the worker,
-// so the turn view waits for the re-read instead of flashing "canceled".
-test("streamDropEnd ends the turn view now only for a stop or a stream that never opened", () => {
+// so the running turn's DOM waits for the re-read instead of flashing "canceled".
+test("streamDropEnd ends the running turn now only for a stop or a stream that never opened", () => {
   assert.deepEqual(streamDropEnd({ turnRunning: false, stopped: true, opened: true }), { endNow: false, endText: null });
   assert.deepEqual(streamDropEnd({ turnRunning: true, opened: true }), {
     endNow: false, endText: "\u2715 canceled (worker exited)",

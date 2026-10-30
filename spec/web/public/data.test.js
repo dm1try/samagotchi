@@ -237,7 +237,7 @@ test("getSession({ tail: true }) asks for the lighter end-of-turn answer, never 
   assert.deepEqual(calls[0], ["/api/sessions/abc?tail=1", false]);
 });
 
-test("getSession({ parts: true }) asks for what each saved step did (the turn view's reload), never passing parts to fetch", async () => {
+test("getSession({ parts: true }) asks for what each saved step did (the turn block's reload), never passing parts to fetch", async () => {
   const calls = [];
   const fetchImpl = (path, opts) => {
     calls.push([String(path), "parts" in opts]);

@@ -71,7 +71,7 @@ module Samagotchi
 
       # @param msgs [Array<Hash>] a session's messages; symbol keys from disk,
       #   string keys from a Bridge snapshot
-      # @param parts [Boolean] the turn view's reload (?parts=1): each
+      # @param parts [Boolean] the turn block's reload (?parts=1): each
       #   assistant message also carries what it did (MessageParts: thinking,
       #   tool calls with params and output), and a message with nothing to
       #   show but that (a text-less step) is kept with empty content

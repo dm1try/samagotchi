@@ -1101,7 +1101,7 @@ question or its own approval keeps that reply (a delegate's relayed
 approval, a hook's question and the step limit don't): two muted lines
 under its `question → answer` line, the whole text when you open the card,
 in both views and after a reload. The chip at the stage's bottom edge, `N steps · M tool
-calls` with one tick per call, opens the turn view's block right above it (newest step first
+calls` with one tick per call, opens the turn block right above it (newest step first
 while it runs; a tick opens its step). Below the chip, past a dashed rule, wait the
 messages queued for after the turn and the commands queued for its end; they go into
 the history after the turn's answer. `▾` folds the stage to its status

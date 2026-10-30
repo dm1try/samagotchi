@@ -166,7 +166,7 @@ test("working_set_updated goes to the working set; with it off (none), it is ign
   assert.deepEqual(got, [{ items: [{ kind: "file", key: "/a", state: "stale" }], at: 4 }]);
 });
 
-test("a chunk goes to the turn view; its ctx lands on the session open at that moment", () => {
+test("a chunk goes to the turn block; its ctx lands on the session open at that moment", () => {
   const { page, handlers } = fakePage();
   const first = page.current;
   handlers.generation_chunk({ text: "hi", thinking: "", counts: { total_tokens: 120, context_window_tokens: 1000 } });
@@ -264,7 +264,7 @@ test("turn_started on a guessed stream that replays a drawn turn restarts the st
   assert.equal(page.guess, false);
 });
 
-test("turn_started draws the turn: prompt ops, running, the turn view, the timing line", () => {
+test("turn_started draws the turn: prompt ops, running, the turn block, the timing line", () => {
   const { page, handlers } = fakePage();
   page.guess = true; // a guess, but a new turn: drawn as any other
   handlers.turn_started({ type: "turn_started", turn_id: "t9", started_at: 5 });
@@ -297,7 +297,7 @@ test("turn_failed keeps a rolled-back turn's line for its prompt_restored", () =
 });
 
 // A continue turn's origin carries its offer turn's enqueued_id (the
-// original prompt's bubble key). Its failure ends the turn view only: no
+// original prompt's bubble key). Its failure ends the running turn's DOM only: no
 // prompt_restored follows a continue turn, so no failed bubble reuses the key.
 test("turn_failed of a continue turn (origin with the offer turn's enqueued_id) draws no user bubble", () => {
   const { page, handlers } = fakePage();

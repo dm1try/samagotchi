@@ -709,7 +709,7 @@ body.has-session.fresh-link #composer .actions-col .model-pick:not([hidden]){dis
 @media(max-width:600px){#commandList{left:6px;width:calc(100% - 12px)}#commandList .command-option{flex-wrap:wrap;row-gap:0;padding:8px 10px}#commandList .command-desc{flex-basis:100%;order:3}}
 /* The stage view (web.view: stage, stage_view.js): the running turn as the dock card's top section, pinned above the composer.
    Fixed slots (status row, prompt line, a two-line headline, the tool row, a one-line trail) never change height while the
-   turn runs; cards and rows that arrive meanwhile go in their own capped scroller (extras); the cloud is the turn view's
+   turn runs; cards and rows that arrive meanwhile go in their own capped scroller (extras); the cloud is the turn
    block behind a chip of ticks. --stage-max (stage_view.js fitCap) keeps it inside the session panel. */
 /* D2: its own glass card above the composer card (as a section of one card the composer's focus ring wrapped the turn too):
    in the stage view #dock is a clear column holding the stage and .dock-card (the composer and its footer, stage_view.js). */
@@ -822,7 +822,7 @@ body.stage-view .turn-stage{position:absolute;left:0;right:0;bottom:100%;margin-
 .ts-answer{display:flex;flex-direction:column;gap:8px}
 .ts-answer>.bubble.output{border-left:0;background:transparent;border:0;padding:0}
 .ts-answer>.bubble.output>.copy-btn{top:0;right:0}
-/* The cloud: one chip (steps, calls, a tick per call), the turn view's block behind it. */
+/* The cloud: one chip (steps, calls, a tick per call), the turn block behind it. */
 /* The footer: the chip at the stage's bottom edge (the cloud's steps open above it, the scroller's last slot). */
 .ts-foot{position:relative;flex:none;padding:0 14px 10px}
 /* The question room's jump pill (stage_view.js drawPill): at the scroller's bottom edge, above the chip, while the waiting

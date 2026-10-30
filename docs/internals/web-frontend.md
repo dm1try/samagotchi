@@ -179,7 +179,7 @@ The redraws, by their store names:
 
 `forgetSession()` is the one reset: `select` and `clearSelection` both call it, so anything per-session that isn't
 in `store.current` (capabilities, the markdown warning and tip, the init row, the Verify claim, the armed Revise,
-the turn view) is cleared there, and the feature gates are primed for the empty session. A new per-session holder
+the running turn's DOM) is cleared there, and the feature gates are primed for the empty session. A new per-session holder
 (an armed composer anchor like the Verify claim or the Revise) goes into it. The armed Revise
 (`pendingReviseAnchor`) is set only through `setReviseAnchor`, which redraws its chip and the Revise buttons (a
 redraw only it feeds, not a store field).

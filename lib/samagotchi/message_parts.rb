@@ -13,7 +13,7 @@ require_relative "row_refs"
 require_relative "tool_output_cut"
 
 module Samagotchi
-  # What a saved assistant message did, for a turn view's reload: its
+  # What a saved assistant message did, for the web turn block's reload: its
   # thinking and its tool calls (name, the params line the live row shows,
   # the output from the tool_response messages after it). Two storage
   # shapes, best effort:
