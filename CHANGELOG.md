@@ -11,6 +11,8 @@ and commands may change between minor versions. How releases are made:
 
 - Web: a `!cmd`'s output in a reloaded history is its command bubble alone: it no longer opens a turn that showed
   the next turn's steps and "turn N" timing a second time.
+- Web: on a phone, a labelled line in the history (a delegate report, a tui line, a participant's) puts its label
+  above the text instead of squeezing the text into a narrow column beside it.
 
 ## [0.135.0] - 2026-10-30
 

@@ -1021,9 +1021,12 @@ button.ws-row:hover:not(:disabled){filter:none;background:var(--bg-hover)}
 @media(max-width:600px){body.working-set .ts-live{padding-right:0;--ws-row-h:0px}.ts-ws{display:none}}
 @media (prefers-reduced-motion:reduce){.ws-item,.ws-more,.ws-ring .fill{transition:none}.ws-item.enter,.ws-tick.fresh{animation:none}}
 @media(max-width:600px){
-  .bubble.user.queued[data-delivery="queue"]{flex-wrap:wrap}
-  .bubble.user.queued[data-delivery="queue"] .origin-label,.bubble.user.queued[data-delivery="queue"] .state-badge{order:0}
-  .bubble.user.queued[data-delivery="queue"] .user-message{order:1;flex-basis:100%}
+  /* A line that wraps: its label and badge on one row, its text full width under them. A queued line, and in the
+     history a labelled one (a delegate report, tui, a participant's), which beside its label read a word a line.
+     Not the stage's prompt or extras: one line there. */
+  :is(.bubble.user.queued[data-delivery="queue"],#history>.bubble.user:has(>.origin-label)){flex-wrap:wrap}
+  :is(.bubble.user.queued[data-delivery="queue"],#history>.bubble.user:has(>.origin-label)) :is(.origin-label,.state-badge){order:0}
+  :is(.bubble.user.queued[data-delivery="queue"],#history>.bubble.user:has(>.origin-label)) .user-message{order:1;flex-basis:100%}
   .ts-status{padding-left:10px}
   .ts-scroll{padding:8px 10px 10px}
   .ts-foot{padding:0 10px 10px}
