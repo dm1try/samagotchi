@@ -50,11 +50,11 @@ module Samagotchi
           .map { |dir| PathResolve.real(dir.to_s.chomp("/")) }.reject(&:empty?).uniq
       end
 
-      # chi's state dir and config dir, as Paths has them now, and the hooks
+      # chi's state dir and config dir (as .protected finds it), and the hooks
       # dir when config.yml puts it outside the config dir (hooks run as the
       # owner: a participant reads none of them).
       def review
-        config = File.join(Paths.config_home, Paths::APP_DIR)
+        config = ConfigFile.config_dir
         hooks = begin Hooks::Loader.hooks_dir rescue nil end
         hooks = nil if hooks.to_s.empty? || PathResolve.reals(hooks).any? { |real| PathResolve.within?(real, config) }
         [Paths.state_dir, config, hooks].compact
