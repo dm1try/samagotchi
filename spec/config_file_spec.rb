@@ -44,18 +44,10 @@ RSpec.describe Samagotchi::ConfigFile do
         expect(described_class.snapshot(file_data: {}, env: {}, cli_overrides: {}).fetch("web.markdown")).to be(false)
       end
 
-      it "defaults the web view to stage; turn from the file, env or cli; chat is gone (a warning, then the default)" do
-        expect(described_class.snapshot(file_data: {}, env: {}, cli_overrides: {}).fetch("web.view")).to eq("stage")
-        expect(described_class.resolve("web.view", file_data: { "web" => { "view" => "turn" } }, env: {})).to eq("turn")
-        expect(described_class.resolve("web.view", file_data: {}, env: { "SAMAGOTCHI_WEB_VIEW" => "turn" })).to eq("turn")
-        expect(described_class.resolve("web.view", file_data: {}, env: {}, cli_overrides: { "web.view" => "turn" })).to eq("turn")
-        expect do
-          expect(described_class.resolve("web.view", file_data: { "web" => { "view" => "chat" } }, env: {})).to eq("stage")
-        end.to output(/invalid value for web\.view: "chat" \(allowed: stage, turn\) — using default/).to_stderr
-        entry = described_class.find_by_key("web.view")
-        expect(entry.cli_flag).to eq("--web-view")
-        expect(entry.enum_values).to eq(%w[stage turn])
+      it "has no web view setting: web.view in config.yml is an unknown key (the setting was removed)" do
+        expect(described_class.find_by_key("web.view")).to be_nil
         expect(described_class.find_by_key("web.turn_view")).to be_nil
+        expect(described_class.snapshot(file_data: {}, env: {}, cli_overrides: {})).not_to have_key("web.view")
       end
 
       it "reads an unquoted on/off as the word for an enum that has it; a bool for one without still warns" do
@@ -357,6 +349,17 @@ RSpec.describe Samagotchi::ConfigFile do
           "Warning: config: unknown key 'default.modle' (did you mean 'default.model'?)\n" \
           "Warning: config: unknown key 'bogus'\n"
         ).to_stderr
+      end
+    end
+
+    it "warns about a web.view (a removed setting), and reads the rest of the file" do
+      Dir.mktmpdir("samagotchi-config") do |dir|
+        FileUtils.mkdir_p(File.join(dir, "samagotchi"))
+        File.write(File.join(dir, "samagotchi", "config.yml"), "web: {view: turn, port: 4321}\n")
+        ENV["XDG_CONFIG_HOME"] = dir
+
+        expect { described_class.load! }.to output("Warning: config: unknown key 'web.view'\n").to_stderr
+        expect(Samagotchi::Config.get("web.port")).to eq(4321)
       end
     end
 

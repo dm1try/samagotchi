@@ -330,8 +330,6 @@ module Samagotchi
       Entry.new(key: "web.port",                 yaml_path: %w[web port],                 type: :integer, default: 4567,            expose: %i[env config cli], lifecycle: :web_start),
       Entry.new(key: "web.host",                 yaml_path: %w[web host],                 type: :string, default: "127.0.0.1",     expose: %i[env config cli], lifecycle: :web_start),
       Entry.new(key: "web.markdown",             yaml_path: %w[web markdown],             type: :bool,    default: false,           expose: %i[env config cli], lifecycle: :web_start),
-      # The page's view of a turn: stage (the running turn pinned above the composer) or turn (one block of generations, the live one at the bottom); ?view= overrides it per page load.
-      Entry.new(key: "web.view",                 yaml_path: %w[web view],                 type: :enum,    default: "stage",        expose: %i[env config cli], enum_values: %w[stage turn], lifecycle: :web_start),
       # The stage view's working set (files, memories and URLs the turn brought into context): a rail in the stage, a
       # footprint under each finished turn and a "set N" chip in place of the mem chip; ?working_set=1|0 overrides it per page load.
       Entry.new(key: "web.working_set",          yaml_path: %w[web working_set],          type: :bool,    default: true,            expose: %i[env config cli], lifecycle: :web_start),

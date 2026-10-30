@@ -234,7 +234,7 @@ if options[:dir]
   exit 2
 end
 
-# `chi web`: its flags (--port, --open, --web-view…) went through the parser above.
+# `chi web`: its flags (--port, --open…) went through the parser above.
 options[:web] = true if web
 
 # The first interactive start of a new installed chi says what `chi update` would update.
@@ -253,9 +253,8 @@ if options[:web]
   port = options[:web_port] || Samagotchi::Config.get("web.port")
   markdown = options[:web_markdown]
   markdown = Samagotchi::Config.get("web.markdown") if markdown.nil?
-  view = Samagotchi::Config.get("web.view")
   exit Samagotchi::Web::Server.launch(port: port, scope: options[:scope] || "project", open_browser: options[:web_open],
-                                      markdown: markdown, view: view, new_token: options[:new_token], tunnel: options[:tunnel],
+                                      markdown: markdown, new_token: options[:new_token], tunnel: options[:tunnel],
                                       working_set: Samagotchi::Config.get("web.working_set"),
                                       annotate_presets: Samagotchi::Config.get("web.annotate_presets"),
                                       editor: Samagotchi::Config.get("web.editor"),

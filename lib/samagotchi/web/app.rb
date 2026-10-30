@@ -134,8 +134,6 @@ module Samagotchi
 
       # @param bridge_wait_timeout [Float] bounded seconds to wait for a
       #   freshly-spawned worker's bridge before answering POST /api/sessions.
-      # @param view ["stage", "turn"] the page's view of a turn (web.view);
-      #   ?view=stage|turn overrides it for one page load
       # @param working_set [Boolean] the stage view's working set
       #   (web.working_set); ?working_set=1|0 overrides it for one page load
       # @param annotate_presets [String, Array] the quick replies next to
@@ -168,7 +166,7 @@ module Samagotchi
       # @param start_dir [String] the folder chi web starts in (StartDir):
       #   where a new session without a dir starts (nil: the cwd)
       def initialize(manager: nil, session_class: nil, state_dir: nil, public_dir: nil,
-                     bridge_wait_timeout: BRIDGE_WAIT_TIMEOUT, markdown: false, view: Config::BY_KEY["web.view"].default, hub: nil,
+                     bridge_wait_timeout: BRIDGE_WAIT_TIMEOUT, markdown: false, hub: nil,
                      annotate_presets: Config::BY_KEY["web.annotate_presets"].default,
                      editor: Config::BY_KEY["web.editor"].default,
                      events_heartbeat: EVENTS_HEARTBEAT, events_queue: EVENTS_QUEUE,
@@ -188,7 +186,6 @@ module Samagotchi
         @public_dir = public_dir || File.expand_path("public", __dir__)
         @bridge_wait_timeout = bridge_wait_timeout
         @markdown_renderer = MarkdownRenderer.new(enabled: markdown)
-        @view = view
         @working_set = working_set
         @annotate_presets = annotate_presets.is_a?(Array) ? annotate_presets.join("|") : annotate_presets.to_s
         @editor_url = Editor.template(editor)
@@ -2015,8 +2012,7 @@ module Samagotchi
         # The owner's home: a claim link's quote reads it "~", as the
         # participant page shows it (claim_link.js).
         attrs["home"] = Dir.home
-        attrs["view"] = view_name(req.params["view"])
-        # Only when on: the page reads its presence (the turn view ignores it).
+        # Only when on: the page reads its presence.
         attrs["working-set"] = "1" if working_set?(req.params["working_set"])
         attrs.merge!(annotate_presets_data)
         dir, = scope_dir(req.params["dir"])
@@ -2058,14 +2054,6 @@ module Samagotchi
 
         dir = File.expand_path(start_dir)
         File.directory?(dir) && ProjectScope.root_for(dir) ? dir : nil
-      end
-
-      VIEWS = Config::BY_KEY["web.view"].enum_values
-
-      # The view for this page load: ?view=stage|turn wins, anything
-      # else leaves the config's choice (web.view).
-      def view_name(param)
-        VIEWS.include?(param) ? param : @view
       end
 
       # The working set for this page load: ?working_set=1|0 wins, anything

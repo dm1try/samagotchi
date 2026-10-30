@@ -39,8 +39,8 @@ RSpec.describe "chi web arguments" do
       .to eq(["", "Error: --start-dir /nope/gone: no such folder\n", 1])
   end
 
-  it "refuses an unknown --web-view value after web" do
-    expect(fork_chi("web", "--web-view", "bogus")).to eq(["", "Error: invalid argument: --web-view bogus (see chi --help)\n", 1])
-    expect(fork_chi("web", "--web-view=bogus")).to eq(["", "Error: invalid argument: --web-view=bogus (see chi --help)\n", 1])
+  it "refuses --web-view (removed with its view), both spellings" do
+    expect(fork_chi("web", "--web-view", "turn")).to eq(["", "Error: invalid option: --web-view (see chi --help)\n", 1])
+    expect(fork_chi("web", "--web-view=turn")).to eq(["", "Error: invalid option: --web-view=turn (see chi --help)\n", 1])
   end
 end

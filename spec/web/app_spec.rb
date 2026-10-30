@@ -93,8 +93,7 @@ RSpec.describe Samagotchi::Web::App do
 
   # bridge_wait_timeout: 0 — no real worker is spawned in these specs, so the
   # create handler must not wait for a bridge sidecar.
-  # view: nil leaves the app's own default (the turn view).
-  def build_app(manager: nil, state_dir: nil, markdown: false, view: nil, session_class: StubSessionLoader, **extra)
+  def build_app(manager: nil, state_dir: nil, markdown: false, session_class: StubSessionLoader, **extra)
     manager ||= FakeResponsesManager.new
     described_class.new(
       manager: manager,
@@ -102,7 +101,6 @@ RSpec.describe Samagotchi::Web::App do
       session_class: session_class,
       bridge_wait_timeout: 0,
       markdown: markdown,
-      **(view.nil? ? {} : { view: view }),
       **extra
     )
   end
@@ -3135,22 +3133,15 @@ RSpec.describe Samagotchi::Web::App do
       expect(body.first).not_to include(".local/state")
     end
 
-    # The stage view is the default; web.view picks turn; ?view=stage|turn
-    # overrides it for one page load, anything else (the chat view's
-    # ?view=chat too) is ignored.
-    it "tells the page its view: stage by default, the config's, or ?view= for one page load" do
-      page = ->(path, **opts) { build_app(**opts).call(env_for(path))[2].first }
+    # The stage is the page's only view: no data-view on its body, and an old
+    # ?view=turn link opens the same page.
+    it "tells the page no view: the stage is the only one, ?view= is ignored" do
+      app = build_app
+      page = ->(path) { app.call(env_for(path))[2].first }
 
-      expect(page.call("/")).to include(' data-view="stage"')
-      %w[stage turn].each do |view|
-        expect(page.call("/", view: view)).to include(%( data-view="#{view}"))
-        expect(page.call("/?view=#{view}")).to include(%( data-view="#{view}"))
-        expect(page.call("/?view=#{view}", view: "turn")).to include(%( data-view="#{view}"))
-      end
-      expect(page.call("/?view=nope")).to include(' data-view="stage"')
-      expect(page.call("/?view=chat")).to include(' data-view="stage"')
-      expect(page.call("/?view=chat", view: "turn")).to include(' data-view="turn"')
-      expect(page.call("/")).not_to include("data-turn-view")
+      expect(page.call("/")).not_to include("data-view")
+      expect(page.call("/?view=turn")).not_to include("data-view")
+      expect(page.call("/?view=turn")).to eq(page.call("/"))
     end
 
     # web.working_set (on by default) turns the stage's working set on;

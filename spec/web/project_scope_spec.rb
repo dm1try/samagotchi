@@ -216,7 +216,7 @@ RSpec.describe Samagotchi::Web::App do
       expect(body).not_to include("data-back-name")
 
       lib = File.join(repo_a, "lib").tap { |dir| FileUtils.mkdir_p(dir) }
-      expect(scoped_call(lib, "/?view=turn")).to include(%(data-project-name="alpha"), %(data-scope-dir="#{lib}"))
+      expect(scoped_call(lib, "/")).to include(%(data-project-name="alpha"), %(data-scope-dir="#{lib}"))
     end
 
     it "is every session without ?dir when the start folder is in no repo or gone" do

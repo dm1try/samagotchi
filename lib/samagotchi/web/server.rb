@@ -92,7 +92,7 @@ module Samagotchi
       #   on while the server runs
       # @return [Integer] the exit status
       def self.launch(port: nil, host: nil, scope: "project", start_dir: nil, open_browser: false, markdown: false,
-                      view: Config::BY_KEY["web.view"].default, annotate_presets: Config::BY_KEY["web.annotate_presets"].default,
+                      annotate_presets: Config::BY_KEY["web.annotate_presets"].default,
                       editor: Config::BY_KEY["web.editor"].default, new_token: false,
                       working_set: Config::BY_KEY["web.working_set"].default, tunnel: nil, start_dir_from: :flag,
                       restarted: false, restart_argv: ["web"], exec: nil)
@@ -152,7 +152,7 @@ module Samagotchi
           # would refuse, or a key store others can read, stops it here,
           # before any tunnel goes up.
           Push.preflight!(public_url)
-          options = { port: port, host: host, url: url, open_browser: open_browser, markdown: markdown, view: view,
+          options = { port: port, host: host, url: url, open_browser: open_browser, markdown: markdown,
                       annotate_presets: annotate_presets, editor: editor, lan: lan, working_set: working_set,
                       public_url: public_url, start_dir: start_dir }
           started = if plan
@@ -345,7 +345,7 @@ module Samagotchi
       # @return [Boolean, :restart] false when the port was taken (said so on stderr);
       #   :restart when the owner requested an in-place process replacement
       def self.start(port: nil, host: nil, url: nil, open_browser: false, state_dir: nil, manager: nil, markdown: false,
-                     view: Config::BY_KEY["web.view"].default, annotate_presets: Config::BY_KEY["web.annotate_presets"].default, hub: nil, lan: nil,
+                     annotate_presets: Config::BY_KEY["web.annotate_presets"].default, hub: nil, lan: nil,
                      editor: Config::BY_KEY["web.editor"].default, token_path: Token.path,
                      working_set: Config::BY_KEY["web.working_set"].default, public_url: nil, public_notes: [],
                      on_bound: nil, start_dir: Dir.pwd, update_check: nil)
@@ -362,7 +362,7 @@ module Samagotchi
         lan_option = { ip: lan.ip, token: Token::Source.new(token_path) } if lan
         public_token = Token::Source.new(token_path) if public_url
         push = push_runtime(public_url, state_dir)
-        app = App.new(manager: manager, state_dir: state_dir, markdown: markdown, view: view,
+        app = App.new(manager: manager, state_dir: state_dir, markdown: markdown,
                       annotate_presets: annotate_presets, editor: editor, hub: hub, lan: lan_option, working_set: working_set,
                       public_url: public_url, public_token: public_token, push: push, start_dir: start_dir)
         webrick = nil
