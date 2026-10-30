@@ -104,10 +104,11 @@ a store write. A value written unchanged redraws nothing (a chunk with the same 
 An input the store doesn't hold calls `store.touch(name)` where it changes: `infoBar` for the clock (liveTurn's
 `onTick`), the versions (`noticeVersions`), `restartingIds`, the stream (`startStream`, `workerGone`), the working
 set's and the participants' `onChange`, the continue and review in-flight sets
-(`session_actions.js`); `composer` and `infoBar` for `liveTurn.running` (`setTurnRunning`) and at the end of
-`renderSessionView` (a whole view drawn). Left as they are, on purpose: the `narrowScreen` listener calls
-`updateComposerMode()` (the bar doesn't read it), `applyStripHidden`/`applyView` call `updateSessionTitle()`, and
-`closeStream`/`stream.restart` set `streamControl = null` without a redraw (a resync or a workerGone follows).
+(`session_actions.js`); `composer` and `infoBar` for `liveTurn.running` (`setTurnRunning`, with `settingsPanel`:
+the open ⚙ panel's running-turn note) and at the end of `renderSessionView` (a whole view drawn). Left as they are,
+on purpose: the `narrowScreen` listener calls `updateComposerMode()` (the bar doesn't read it),
+`applyStripHidden`/`applyView` call `updateSessionTitle()`, and `closeStream`/`stream.restart` set
+`streamControl = null` without a redraw (a resync or a workerGone follows).
 
 A function that writes more than once batches its synchronous part, so each redraw runs once: `select` (before its
 `await resync()`), `clearSelection`, the hub's `snapshot` and `session` events, `workerGone`, `setTurnRunning`,

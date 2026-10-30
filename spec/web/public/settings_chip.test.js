@@ -186,6 +186,24 @@ test("the disclosure opens with an own apply or budget; its Set runs the changed
   c.done();
 });
 
+test("an open panel's running note follows the turn: a turn starting or ending redraws it (the disclosure stays open)", () => {
+  const state = { summaries: { thinking: null, reasoningHistory: null, llmContext: CTX_OWN }, running: false };
+  const c = control(state);
+  c.chip().click();
+  assert.doesNotMatch(c.pop.textContent, /A turn is running/);
+  assert.ok(c.pop.querySelector(".sset-ctx-form"));
+  // setTurnRunning touches the store's settingsPanel redraw: refresh().
+  state.running = true;
+  c.ctl.refresh();
+  assert.match(c.pop.textContent, /A turn is running: it applies after this turn\./);
+  assert.ok(c.pop.querySelector(".sset-ctx-form"));
+  state.running = false;
+  c.ctl.refresh();
+  assert.doesNotMatch(c.pop.textContent, /A turn is running/);
+  assert.match(c.pop.textContent, /From the next turn's start\./);
+  c.done();
+});
+
 test("another session's refresh closes the panel; no summaries opens nothing", () => {
   const state = { summaries: { thinking: THINK_MODEL, reasoningHistory: null, llmContext: null } };
   const c = control(state);
