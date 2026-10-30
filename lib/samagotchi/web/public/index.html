@@ -1467,7 +1467,11 @@ body.all-view #scope .scope-where{display:none}
   .title-rename{font-size:12px;line-height:18px}
   #scope,#stripStatus{flex:1 1 0;min-width:0;max-width:max-content}
   #stripStatus{flex-grow:1000;overflow:hidden;text-overflow:ellipsis}
-  #scope .scope-name{flex-shrink:1;min-width:0}
+  /* A session page: the chip gives way to the pill. The start page has the "new session in …" path beside the chip:
+     there the chip keeps its words and the path is what cuts. */
+  body.has-session #scope .scope-name{flex-shrink:1;min-width:0}
+  body:not(.has-session) #scope .scope-name,body:not(.has-session) #scope .scope-back{flex-shrink:0}
+  body:not(.has-session) #scope .scope-where{flex:1 1 auto;min-width:0}
   #stripStatus:has(.live,.waiting) .pill-count{display:none}
 }
 #notifyBtn{margin-left:auto;flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;padding:0;min-height:0;background:transparent;border:1px solid transparent;border-radius:999px;color:var(--text-muted)}
