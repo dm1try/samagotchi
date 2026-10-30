@@ -33,6 +33,13 @@ RSpec.describe Samagotchi::Web::ParticipantView do
       expect(described_class::EVENTS.keys & described_class::DROPPED).to eq([])
     end
 
+    it "is the list the participant page listens for, no more, no fewer" do
+      page = File.read(File.expand_path("../../lib/samagotchi/web/public/participant.js", __dir__))
+      list = page[/^const STREAM_EVENTS = \[(.*?)\];/m, 1]
+      expect(list).not_to be_nil
+      expect(list.scan(/"([a-z_]+)"/).flatten.sort).to eq(described_class::EVENTS.keys.sort)
+    end
+
     it "drops every DROPPED type and an unknown one, whatever they carry" do
       (described_class::DROPPED + ["brand_new_event"]).each do |type|
         expect(shown({ type: type, event_seq: 3, output: "secret", text: "x" })).to be_nil, type
