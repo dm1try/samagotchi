@@ -23,13 +23,13 @@ html{-webkit-text-size-adjust:100%;text-size-adjust:100%}
 body{font-family: ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;background:radial-gradient(1100px 700px at 8% 0%,color-mix(in srgb,var(--accent) 13%,transparent),transparent 70%),var(--bg);background-attachment:fixed;color:var(--text);height:100vh;display:flex;flex-direction:column}
 /* Glass: the composer card, the strip cards, the all-sessions cards and the question cards (by selector, so app.js is untouched). */
 .turn-stage,#topStrip .card,#allList .card,.bubble.question,.bubble.plugin-card{background:var(--glass-bg);-webkit-backdrop-filter:blur(18px) saturate(1.35);backdrop-filter:blur(18px) saturate(1.35);border:1px solid var(--glass-border);box-shadow:inset 0 1px 0 var(--glass-highlight),var(--glass-shadow)}
-#topStrip .card:hover,#allList .card:hover{background:color-mix(in srgb,var(--bg-hover) 75%,transparent);border-color:var(--card-hover-border)}
+@media(hover:hover){#topStrip .card:hover,#allList .card:hover{background:color-mix(in srgb,var(--bg-hover) 75%,transparent);border-color:var(--card-hover-border)}}
 #topStrip .card.active,#allList .card.active{background:color-mix(in srgb,var(--accent-bg) 75%,transparent);border-color:color-mix(in srgb,var(--accent) 35%,transparent)}
 /* A parent whose folded family holds the open session: a quieter mark than .active. */
 #topStrip .card.contains-active,#allList .card.contains-active{border-color:color-mix(in srgb,var(--accent) 22%,transparent)}
 /* A session that waits on the user (a question, an approval, a card with actions): the warning colour of its question card, also when active or hovered. */
 #topStrip .card.waiting,#allList .card.waiting{border-color:color-mix(in srgb,var(--warn) 75%,transparent)}
-#topStrip .card.waiting:hover,#allList .card.waiting:hover{border-color:var(--warn)}
+@media(hover:hover){#topStrip .card.waiting:hover,#allList .card.waiting:hover{border-color:var(--warn)}}
 @supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){.turn-stage,#topStrip .card,#allList .card,#allHead input{background:var(--bg-panel)}.bubble.question{background:color-mix(in srgb,var(--warn) 7%,var(--bg-panel))}.bubble.plugin-card{background:color-mix(in srgb,var(--accent) 6%,var(--bg-panel))}}
 @media (prefers-reduced-transparency:reduce){.turn-stage,#topStrip .card,#allList .card,#allHead input{background:var(--bg-panel);-webkit-backdrop-filter:none;backdrop-filter:none}.bubble.question{background:color-mix(in srgb,var(--warn) 7%,var(--bg-panel));-webkit-backdrop-filter:none;backdrop-filter:none}.bubble.plugin-card{background:color-mix(in srgb,var(--accent) 6%,var(--bg-panel));-webkit-backdrop-filter:none;backdrop-filter:none}}
 body.no-glass .turn-stage,body.no-glass #topStrip .card,body.no-glass #allList .card,body.no-glass #allHead input{background:var(--bg-panel);-webkit-backdrop-filter:none;backdrop-filter:none}
@@ -37,7 +37,8 @@ body.no-glass .bubble.question{background:color-mix(in srgb,var(--warn) 7%,var(-
 body.no-glass .bubble.plugin-card{background:color-mix(in srgb,var(--accent) 6%,var(--bg-panel));-webkit-backdrop-filter:none;backdrop-filter:none}
 button,input,textarea,select{font:inherit}
 button{background:var(--primary);border:0;color:var(--on-solid);padding:8px 12px;border-radius:8px;cursor:pointer;transition:filter .12s ease,background .12s ease}
-button:hover:not(:disabled){filter:brightness(1.12)}
+/* Hover tints only where a pointer hovers: a tap on a phone leaves none behind (popover_modal.js's popovers likewise). */
+@media(hover:hover){button:hover:not(:disabled){filter:brightness(1.12)}}
 button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 button.ghost{background:var(--bg-raised);color:var(--text-2)}
 button:disabled{opacity:.5;cursor:not-allowed}
@@ -80,7 +81,7 @@ main{flex:1;display:flex;flex-direction:column;gap:16px;padding:16px;overflow:au
    top's version chip. */
 .stack-hidden,.time-gap.stack-gap{display:none!important}
 .stack-stub{display:flex;align-items:baseline;gap:8px;align-self:stretch;max-width:100%;min-width:0;margin:0;padding:4px 10px;font:inherit;font-size:12px;line-height:1.4;color:var(--text-muted);text-align:left;cursor:pointer;user-select:none;background:transparent;border:1px dashed var(--border-strong);border-radius:8px;transition:background .12s ease}
-.stack-stub:hover{background:var(--bg-panel)}
+@media(hover:hover){.stack-stub:hover{background:var(--bg-panel)}}
 .stack-stub:focus-visible{outline:2px solid var(--accent-ring);outline-offset:1px}
 .stack-stub::before{content:"▸";color:var(--accent);flex:none}
 .stack-stub.open::before{content:"▾"}
@@ -103,7 +104,7 @@ main{flex:1;display:flex;flex-direction:column;gap:16px;padding:16px;overflow:au
 .stack-versions[open]>summary::after{content:"\00a0▴"}
 .stack-versions-list{position:absolute;z-index:5;top:calc(100% + 4px);left:0;display:flex;flex-direction:column;min-width:240px;max-width:min(520px,calc(100vw - 32px));padding:4px;border-radius:8px;border:1px solid var(--border-strong);background:var(--bg-raised);box-shadow:var(--toast-shadow)}
 .stack-version{display:block;min-height:0;padding:4px 8px;border:0;border-radius:6px;background:transparent;color:var(--text-2);font:inherit;font-size:12px;text-align:left;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer}
-.stack-version:hover:not(:disabled){background:var(--bg-hover);filter:none}
+@media(hover:hover){.stack-version:hover:not(:disabled){background:var(--bg-hover);filter:none}}
 .stack-version.current{color:var(--text-muted);cursor:default}
 .stack-version-n{font-weight:600;color:var(--accent);font-variant-numeric:tabular-nums}
 /* The ‹ N/M › switcher (revise_switch.js): an earlier version's answer read in the top one's place; its copy dashed, the top hidden. */
@@ -173,7 +174,7 @@ main{flex:1;display:flex;flex-direction:column;gap:16px;padding:16px;overflow:au
 .markdown-tip[hidden]{display:none}
 .markdown-tip-text{flex:1;min-width:0}
 .markdown-tip-close{flex:none;width:18px;height:18px;padding:0;border:0;border-radius:4px;background:transparent;color:var(--text-muted);font-size:14px;line-height:1;cursor:pointer}
-.markdown-tip-close:hover{background:var(--bg-hover);color:var(--text)}
+@media(hover:hover){.markdown-tip-close:hover{background:var(--bg-hover);color:var(--text)}}
 .bubble.user{border-left:3px solid var(--accent);background:var(--accent-bg);align-self:flex-end;max-width:85%;margin-left:auto;display:flex;align-items:center;justify-content:space-between;gap:10px}
 .bubble.user.queued{border-left-style:dashed;opacity:.8}
 .bubble.user.steered{border-left-style:dashed;border-left-color:var(--accent);opacity:.9}
@@ -187,7 +188,7 @@ main{flex:1;display:flex;flex-direction:column;gap:16px;padding:16px;overflow:au
 .bubble.user .state-badge button.unqueue{position:relative;display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;margin:0 -3px 0 0;padding:0;border:0;border-radius:50%;background:transparent;color:var(--text-muted);font-size:14px;line-height:1;cursor:pointer}
 .bubble.user .state-badge button.unqueue::before{content:"\00d7"}
 .bubble.user .state-badge button.unqueue::after{content:"";position:absolute;inset:-8px}
-.bubble.user .state-badge button.unqueue:hover:not(:disabled){background:var(--danger-bg-dim);color:var(--danger-text);filter:none}
+@media(hover:hover){.bubble.user .state-badge button.unqueue:hover:not(:disabled){background:var(--danger-bg-dim);color:var(--danger-text);filter:none}}
 .bubble.user:not([data-enqueued-id]) .state-badge button.unqueue{display:none}
 .bubble.user .origin-label{font-size:11px;color:var(--text-3);text-transform:uppercase;letter-spacing:.04em;flex-shrink:0}
 /* A participant's prompt: their name in their colour (tokens.css --author-N), and a rule of it on the bubble. */
@@ -196,7 +197,7 @@ main{flex:1;display:flex;flex-direction:column;gap:16px;padding:16px;overflow:au
 /* Apply (review_apply.js) under a participant's review turn's reply. */
 .review-apply{display:flex;align-items:center;gap:10px;margin:6px 0 4px}
 .review-apply-btn{font:inherit;font-size:13px;font-weight:600;padding:5px 16px;border-radius:8px;cursor:pointer;background:var(--accent-bg);color:var(--accent);border:1px solid var(--accent-border)}
-.review-apply-btn:hover{border-color:var(--accent)}
+@media(hover:hover){.review-apply-btn:hover{border-color:var(--accent)}}
 .review-apply-btn:disabled{opacity:.6;cursor:default}
 .review-apply-note{font-size:12px;color:var(--text-muted);border-left:3px solid var(--author-color);padding-left:8px}
 @media (max-width:600px){
@@ -249,13 +250,13 @@ main{flex:1;display:flex;flex-direction:column;gap:16px;padding:16px;overflow:au
 /* The stop-task button on a running task_wait (task_stop.js): a small ghost
    button in the danger colours, at the row's end and in the stage's now slot. */
 button.task-stop{flex:none;margin-left:auto;padding:1px 8px;border:1px solid color-mix(in srgb,var(--danger) 45%,transparent);border-radius:6px;background:transparent;color:var(--danger-text);font-size:11.5px;line-height:18px;white-space:nowrap}
-button.task-stop:hover:not(:disabled){background:var(--danger-bg-dim);filter:none}
+@media(hover:hover){button.task-stop:hover:not(:disabled){background:var(--danger-bg-dim);filter:none}}
 .ts-now button.task-stop{align-self:center}
 .activity-params{color:var(--text-muted);overflow-wrap:anywhere}
 .activity-alias{color:var(--text-faint);white-space:nowrap}
 .activity-auto{color:var(--accent);font-size:11px;white-space:nowrap;cursor:help}
 button.system-one-wrong,.system-one-wrong.marked{flex:none;padding:1px 6px;border:1px solid var(--border-strong);border-radius:6px;background:transparent;color:var(--text-muted);font-size:10px;line-height:16px;white-space:nowrap}
-button.system-one-wrong:hover:not(:disabled){background:var(--bg-hover);color:var(--text)}
+@media(hover:hover){button.system-one-wrong:hover:not(:disabled){background:var(--bg-hover);color:var(--text)}}
 .system-one-wrong.marked{border-color:var(--accent-border);color:var(--text-3)}
 .activity-row.guardrail-wrong .activity-auto{color:var(--text-muted)}
 .activity-duration{color:var(--text-faint);font-size:11px;font-variant-numeric:tabular-nums;white-space:nowrap}
@@ -333,7 +334,7 @@ button.system-one-wrong:hover:not(:disabled){background:var(--bg-hover);color:va
 .bubble.thinking{border-left:3px solid var(--think);background:color-mix(in srgb,var(--think) 6%,var(--bg-panel));padding:8px 12px}
 .bubble.activity:not([open]){padding:3px 10px;background:transparent;border-color:transparent;align-self:flex-start;border-radius:6px;transition:background .12s ease}
 .bubble.activity:not([open]){border-left-color:var(--accent)}
-.bubble.activity:not([open]):hover{background:var(--bg-panel)}
+@media(hover:hover){.bubble.activity:not([open]):hover{background:var(--bg-panel)}}
 .bubble.activity:not([open])>summary{font-size:12px;font-weight:500}
 .bubble.thinking>summary{cursor:pointer;color:var(--text-muted);font-size:13px;font-weight:600;font-style:italic;user-select:none;list-style:none}
 .bubble.thinking>summary::-webkit-details-marker{display:none}
@@ -409,7 +410,7 @@ button.system-one-wrong:hover:not(:disabled){background:var(--bg-hover);color:va
    (which apply whether open or not) recolour it once resolved. */
 .bubble.question:not([open]){padding:3px 10px;background:transparent;border-color:transparent;box-shadow:none;-webkit-backdrop-filter:none;backdrop-filter:none;align-self:flex-start;border-radius:6px;transition:background .12s ease}
 .bubble.question:not([open]){border-left-color:var(--warn)}
-.bubble.question:not([open]):hover{background:var(--bg-panel)}
+@media(hover:hover){.bubble.question:not([open]):hover{background:var(--bg-panel)}}
 .bubble.question:not([open])>summary{font-size:12px;font-weight:500}
 .bubble.question>summary{cursor:pointer;color:var(--text-muted);font-size:13px;font-weight:600;user-select:none;list-style:none}
 .bubble.question>summary::-webkit-details-marker{display:none}
@@ -467,7 +468,7 @@ button.system-one-wrong:hover:not(:disabled){background:var(--bg-hover);color:va
 .command-line{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--text-3)}
 .command-output{margin:6px 0 0;white-space:pre-wrap;font-size:12px;color:var(--text-2)}
 .bubble.command .command-confirm{margin-top:8px;padding:3px 10px;border-radius:6px;font:inherit;font-size:12px;cursor:pointer;background:var(--accent-bg);color:var(--accent);border:1px solid var(--accent-border)}
-.bubble.command .command-confirm:hover:not(:disabled){border-color:var(--accent)}
+@media(hover:hover){.bubble.command .command-confirm:hover:not(:disabled){border-color:var(--accent)}}
 .bubble.command .command-confirm:disabled{opacity:.55;cursor:default}
 .bubble.continue{border-left:3px solid var(--accent);background:var(--bg-panel);padding:10px 12px}
 .bubble.continue.resolved{border-left-color:var(--text-muted);opacity:.8}
@@ -487,7 +488,7 @@ button.system-one-wrong:hover:not(:disabled){background:var(--bg-hover);color:va
 .question-text{font-size:14px;color:var(--text);margin-bottom:8px;white-space:pre-wrap}
 .question-options{display:flex;flex-direction:column;gap:4px;margin-bottom:8px}
 .question-option{display:flex;gap:8px;align-items:center;font-size:13px;color:var(--text-2);padding:6px 8px;border:1px solid var(--border);border-radius:8px;cursor:pointer}
-.question-option:hover{background:var(--bg-hover)}
+@media(hover:hover){.question-option:hover{background:var(--bg-hover)}}
 .question-option.selected{border-color:var(--ok);color:var(--text)}
 .question-option input{margin:0;accent-color:var(--warn)}
 /* The model's recommended option (a label ending in "(Recommended)"): an accent row and a small tag. */
@@ -509,7 +510,7 @@ button.system-one-wrong:hover:not(:disabled){background:var(--bg-hover);color:va
 .bubble.question.approval{border-left-color:var(--warn);background:color-mix(in srgb,var(--warn) 7%,var(--glass-bg))}
 .bubble.question.approval.answered:not(.denied){border-left-color:var(--ok)}
 .bubble.question.approval:not([open]){background:transparent}
-.bubble.question.approval:not([open]):hover{background:var(--bg-panel)}
+@media(hover:hover){.bubble.question.approval:not([open]):hover{background:var(--bg-panel)}}
 .bubble.question.answered>summary::before{color:var(--ok)}
 .bubble.question.cancelled>summary::before{color:var(--text-muted)}
 .bubble.question.approval.answered.denied>summary::before{color:var(--danger)}
@@ -588,7 +589,7 @@ button.system-one-wrong:hover:not(:disabled){background:var(--bg-hover);color:va
 .bubble.plugin-card.card-updated{box-shadow:inset 0 1px 0 var(--glass-highlight),0 0 0 1px var(--accent-ring),var(--glass-shadow)}
 /* A notice card (card.js isNoticeCard): a one-line row like a resolved question, "▸ check-in: Nudged …"; opened, the line wraps and the card's glass comes back. */
 .bubble.plugin-card.notice:not([open]){padding:3px 10px;background:transparent;border-color:transparent;border-left-color:var(--accent);box-shadow:none;-webkit-backdrop-filter:none;backdrop-filter:none;align-self:flex-start;max-width:100%;border-radius:6px;transition:background .12s ease}
-.bubble.plugin-card.notice:not([open]):hover{background:var(--bg-panel)}
+@media(hover:hover){.bubble.plugin-card.notice:not([open]):hover{background:var(--bg-panel)}}
 .bubble.plugin-card.notice>summary{cursor:pointer;color:var(--text-muted);font-size:12px;font-weight:500;user-select:none;list-style:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .bubble.plugin-card.notice>summary::-webkit-details-marker{display:none}
 .bubble.plugin-card.notice>summary::before{content:"▸ ";color:var(--accent)}
@@ -623,7 +624,7 @@ button.system-one-wrong:hover:not(:disabled){background:var(--bg-hover);color:va
 .copy-btn[data-copied] svg{display:none}
 .copy-btn[data-copied]::after{content:"copied \2713";padding:0 2px}
 .bubble.user>.copy-btn{right:calc(100% + 4px);top:4px;background:transparent;border-color:transparent}
-.bubble.user>.copy-btn:hover{background:var(--bg-raised);border-color:var(--border-strong)}
+@media(hover:hover){.bubble.user>.copy-btn:hover{background:var(--bg-raised);border-color:var(--border-strong)}}
 .code-wrap{position:relative;margin:0 0 12px}
 .code-wrap:last-child{margin-bottom:0}
 .bubble.output.markdown .code-wrap>pre,.bubble.user>.user-message.markdown .code-wrap>pre{margin:0}
@@ -783,7 +784,7 @@ body.stage-view .turn-stage{position:absolute;left:0;right:0;bottom:100%;margin-
 .turn-stage.bare :is(.ts-scroll,.ts-foot,.ts-queued,.ts-fold){display:none}
 .turn-stage.bare .ts-status{padding-bottom:8px}
 .ts-fold{margin-left:auto;flex:none;width:28px;height:24px;padding:0;border-radius:6px;background:transparent;color:var(--text-muted);font-size:14px}
-.ts-fold:hover:not(:disabled){filter:none;background:var(--bg-hover);color:var(--text)}
+@media(hover:hover){.ts-fold:hover:not(:disabled){filter:none;background:var(--bg-hover);color:var(--text)}}
 .ts-scroll{position:relative;flex:1 1 auto;min-height:0;overflow:auto;overflow-anchor:none;display:flex;flex-direction:column;gap:8px;padding:8px 14px 10px;scrollbar-width:thin}
 .ts-scroll[hidden],.ts-scroll>[hidden]{display:none}
 /* Flex column children with overflow:hidden would shrink to nothing. */
@@ -801,7 +802,7 @@ body.stage-view .turn-stage{position:absolute;left:0;right:0;bottom:100%;margin-
 /* The live slots: fixed heights (two headline lines, one tool row, one trail line). */
 .ts-live{display:flex;flex-direction:column;gap:8px}
 .ts-headline{height:var(--ts-head-h);font-size:14px;line-height:21px;color:var(--narr);overflow:hidden;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;line-clamp:2;cursor:pointer;border-radius:6px}
-.ts-headline:hover{background:var(--bg-hover)}
+@media(hover:hover){.ts-headline:hover{background:var(--bg-hover)}}
 .ts-headline:not(.thinking)::before{content:"\203A";color:var(--accent);font-weight:700;margin-right:7px}
 .ts-headline.thinking{font-size:13.5px;font-style:italic;color:var(--text-muted)}
 .ts-think-tag{font-style:normal;font-size:12.5px;color:var(--think-text);margin-right:6px}
@@ -864,14 +865,14 @@ body.stage-view .turn-stage{position:absolute;left:0;right:0;bottom:100%;margin-
 /* The question room's jump pill (stage_view.js drawPill): at the scroller's bottom edge, above the chip, while the waiting
    card is out of the stage's view; absolute, so the frame never counts it. */
 .ts-room-pill{position:absolute;bottom:100%;right:14px;margin-bottom:6px;padding:4px 11px;border:1px solid var(--warn-border);border-radius:999px;background:var(--warn-bg);color:var(--warn-text);font-size:12.5px;font-weight:600;line-height:1.4;white-space:nowrap;box-shadow:0 2px 8px var(--shadow-strong);animation:ts-fade .2s ease}
-.ts-room-pill:hover:not(:disabled){filter:none;color:var(--warn-bright);border-color:var(--warn);background:var(--warn-bg)}
+@media(hover:hover){.ts-room-pill:hover:not(:disabled){filter:none;color:var(--warn-bright);border-color:var(--warn);background:var(--warn-bg)}}
 .ts-room-pill[hidden]{display:none}
 /* Below the turn's card: the lines queued for after it (each a turn of its own), apart from the turn by a dashed rule. */
 .ts-queued{flex:none;display:flex;flex-direction:column;gap:6px;padding:8px 14px 10px;border-top:1px dashed var(--border-strong);max-height:calc(var(--stage-max,60vh) * .3);overflow:auto;scrollbar-width:thin}
 .ts-queued:empty{display:none}
 .ts-foot[hidden],.turn-stage.collapsed .ts-foot{display:none}
 .ts-chip{display:flex;align-items:center;gap:10px;flex-wrap:nowrap;width:100%;padding:6px 10px;border:1px solid var(--border);border-radius:9px;background:transparent;color:var(--text-muted);text-align:left}
-.ts-chip:hover:not(:disabled){filter:none;background:var(--bg-hover)}
+@media(hover:hover){.ts-chip:hover:not(:disabled){filter:none;background:var(--bg-hover)}}
 .ts-chip-label{font-size:12.5px;font-weight:600;white-space:nowrap;font-variant-numeric:tabular-nums}
 .ts-chip-label::before{content:"\25B8  ";color:var(--accent)}
 .ts-foot.open .ts-chip-label::before{content:"\25BE  "}
@@ -911,7 +912,7 @@ body.working-set .ts-live{position:relative;padding-right:264px}
 .ws-count{margin-right:auto;font-weight:400;letter-spacing:0;color:var(--ws-faint);font-variant-numeric:tabular-nums}
 .ws-tick{display:none}
 .ws-fold{flex:none;width:18px;height:18px;padding:0;border:0;border-radius:4px;background:transparent;color:var(--text-muted);font-size:12px;line-height:18px;opacity:0;transition:opacity .15s}
-.ws-fold:hover:not(:disabled){filter:none;background:var(--bg-raised);color:var(--text)}
+@media(hover:hover){.ws-fold:hover:not(:disabled){filter:none;background:var(--bg-raised);color:var(--text)}}
 .ts-ws:hover .ws-fold,.ts-ws:focus-within .ws-fold,.ts-ws.collapsed .ws-fold{opacity:1}
 @media (hover:none){.ws-fold{opacity:1}}
 .ws-ring{flex:none;width:14px;height:14px}
@@ -1085,7 +1086,7 @@ button.ws-row:hover:not(:disabled){filter:none}@media(hover:hover){button.ws-row
 #infoBar .meta{font-size:11px;display:flex;gap:8px;flex-wrap:wrap;align-items:center}
 /* The id is a button (a click copies the full id, app.js): its own padding and no button look, the #infoBar button rule aside. */
 #infoBar .meta .id{padding:2px 6px;border-radius:6px;border:1px solid transparent;background:transparent;cursor:pointer;font-family:ui-monospace,monospace;font-weight:700;font-size:12px;color:var(--accent)}
-#infoBar .meta .id:hover:not(:disabled){filter:none;border-color:var(--accent-border);background:var(--accent-bg)}
+@media(hover:hover){#infoBar .meta .id:hover:not(:disabled){filter:none;border-color:var(--accent-border);background:var(--accent-bg)}}
 #infoBar .meta .status{font-size:11px;padding:2px 6px;border-radius:999px}
 /* The status word takes the widest word's room (running, stopped; idle and error are narrower), so a turn's idle ↔ running doesn't move the rest of the line. */
 #infoBar .meta .status{display:inline-grid;justify-items:center}
@@ -1122,15 +1123,15 @@ button.ws-row:hover:not(:disabled){filter:none}@media(hover:hover){button.ws-row
 #infoBar .meta .worker-badge{display:inline-flex;align-items:center;gap:6px;font-size:11px;padding:2px 2px 2px 6px;border-radius:6px;background:var(--warn-bg);color:var(--warn-bright);border:1px solid var(--warn-border);white-space:nowrap}
 #infoBar .meta .worker-badge:not(:has(button)){padding-right:6px}
 #infoBar .meta .worker-restart{padding:1px 8px;border-radius:5px;font-size:11px;font-weight:600;background:var(--bg-raised);color:var(--warn-bright);border:1px solid var(--warn-border)}
-#infoBar .meta .worker-restart:hover:not(:disabled){background:var(--warn-border);color:var(--on-warn)}
+@media(hover:hover){#infoBar .meta .worker-restart:hover:not(:disabled){background:var(--warn-border);color:var(--on-warn)}}
 #infoBar .meta .worker-restart:disabled{opacity:.7;cursor:default}
 #infoBar button{padding:4px 12px;border-radius:8px;font-size:12px;font-weight:600}
 #infoBar #infoStopBtn{background:var(--bg-raised);color:var(--warn-text);border:1px solid var(--border-strong)}
 @media(hover:hover){#infoBar #infoStopBtn:hover{background:var(--warn-bg);border-color:var(--warn-border)}}
 #infoBar #infoArchiveBtn{background:transparent;color:var(--text-muted);border:1px solid var(--border-strong)}
-#infoBar #infoArchiveBtn:hover{color:var(--text);background:var(--bg-hover)}
+@media(hover:hover){#infoBar #infoArchiveBtn:hover{color:var(--text);background:var(--bg-hover)}}
 #infoBar #infoDeleteBtn{background:transparent;color:var(--text-muted);border:1px solid transparent}
-#infoBar #infoDeleteBtn:hover{color:var(--on-solid);background:var(--danger-bg);border-color:var(--danger-bg)}
+@media(hover:hover){#infoBar #infoDeleteBtn:hover{color:var(--on-solid);background:var(--danger-bg);border-color:var(--danger-bg)}}
 /* The composer folded away (composer_grip.js, composer.css): the info bar is the page's bottom edge; the plugins' setup row folds with it. */
 body.has-session.composer-folded #initRow{display:none}
 body.has-session.composer-folded #infoBar{border-top-color:transparent}
@@ -1448,7 +1449,7 @@ body.all-view #scope .scope-where{display:none}
 #sessionTitle{flex:0 1 auto;min-width:0;font-size:13px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 /* The title's ✎ (the top bar's and the active strip card's): quiet, the text's colour on hover. */
 .title-rename,.card-rename{flex-shrink:0;min-height:0;padding:0 5px;border:1px solid transparent;border-radius:6px;background:transparent;color:var(--text-muted);font-size:13px;line-height:20px;cursor:pointer}
-.title-rename:hover,.card-rename:hover{color:var(--text);background:var(--bg-hover)}
+@media(hover:hover){.title-rename:hover,.card-rename:hover{color:var(--text);background:var(--bg-hover)}}
 .title-rename[hidden]{display:none}
 /* The rename input (session_rename.js): fixed over the title row it renames, at the end of body (the strip draws its cards
    anew on every session event); above the selection bar (20), under the popovers (40). */
@@ -1509,7 +1510,7 @@ body.no-glass :is(#familyPop,#chainPop){background:var(--bg-panel);-webkit-backd
 .chain-rows:has(.cr-date.timed) .cr-date{min-width:16ch}
 /* The session page's links to the previous and the next link of its chain. */
 #infoBar .meta a.chain-link{text-decoration:none;font-family:ui-monospace,monospace;white-space:nowrap;color:var(--accent)}
-#infoBar .meta a.chain-link:hover{background:var(--accent-bg)}
+@media(hover:hover){#infoBar .meta a.chain-link:hover{background:var(--accent-bg)}}
 /* continue → is a plain ghost like archive; on an archived session, where it is the thing to do, the accent (app.js updateInfoBar). */
 #infoBar #infoContinueBtn{background:transparent;color:var(--text-muted);border:1px solid var(--border-strong)}
 #infoBar #infoContinueBtn:hover:not(:disabled){color:var(--text);background:var(--bg-hover)}
