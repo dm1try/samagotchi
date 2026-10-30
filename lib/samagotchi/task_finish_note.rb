@@ -21,24 +21,27 @@ module Samagotchi
 
     # @param record [Tools::TaskRecord] the finished task
     # @param limit_sec [Integer, nil] the limit an execute handed it over at
+    # @param early_sec [Integer, nil] the seconds an execute had run when a
+    #   message from the user handed it over before its limit
     # @param wake [Boolean] the wake variant
     # @param cap [Integer] max_tool_output_chars: task_wait's text is cut to
     #   it as ToolRunner cuts the tool's result
     # @return [Hash] the note (ContextNote.message's keys)
-    def note(record, limit_sec:, wake:, cap:, turn_id: nil, now: Time.now)
+    def note(record, limit_sec:, wake:, cap:, early_sec: nil, turn_id: nil, now: Time.now)
       note = { note_id: "task-#{record.id}", source: "task #{short_id(record.id)}", header: ContextNote::TASK_HEADER,
-               text: text(record, limit_sec: limit_sec, wake: wake, cap: cap), created_at: now.iso8601 }
+               text: text(record, limit_sec: limit_sec, early_sec: early_sec, wake: wake, cap: cap), created_at: now.iso8601 }
       wake ? note.merge(turn_start: true, turn_id: turn_id) : note
     end
 
-    def text(record, limit_sec:, wake:, cap:)
-      [headline(record, limit_sec), "command: #{record.command}", body(record, cap), (WAKE_TEXT if wake)].compact.join("\n")
+    def text(record, limit_sec:, wake:, cap:, early_sec: nil)
+      [headline(record, limit_sec, early_sec), "command: #{record.command}", body(record, cap), (WAKE_TEXT if wake)].compact.join("\n")
     end
 
-    def headline(record, limit_sec)
+    def headline(record, limit_sec, early_sec = nil)
       seconds = duration(record)
       outcome = record.exit_code.nil? ? record.status.to_s : "exit #{record.exit_code}"
       handed = " (handed over by execute at its #{limit_sec}s limit)" if limit_sec
+      handed ||= " (handed over by execute after #{early_sec}s: a message from the user was waiting)" if early_sec
       "Background task #{short_id(record.id)} finished: #{outcome}#{" after #{duration_text(seconds)}" if seconds}#{handed}."
     end
 

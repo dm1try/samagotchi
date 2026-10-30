@@ -68,16 +68,34 @@ module Samagotchi
       # record is gone or is older than RETENTION_DAYS.
       ORPHAN_AGE_SEC = 24 * 3600
       RETENTION_DAYS = 14
-      # The first words of a command still running at the limit and handed
-      # over as a task (handed_over_line). TaskRuntime.handed_over_id, the
-      # web's task_stop.js and the slow-commands bundle match on them.
+      # The first words of a command still running and handed over as a
+      # task (handed_over_line at the limit, early_handed_over_line for a
+      # message). TaskRuntime.handed_over_id, the web's task_stop.js and the
+      # slow-commands bundle match on them; the bundle reads only the limit's
+      # form, "at the 120s limit".
       HANDED_OVER = "Still running at the"
+      # What follows HANDED_OVER on the first line, as regexp source: "120s
+      # limit:" (the limit) or "4s mark:" (a message from the user ended the
+      # wait early). Every matcher of the line builds on it.
+      HANDED_OVER_AFTER = "(?:\\d+s limit|\\d+s mark):"
+      # A message from the user waiting for the turn hands a command over
+      # early, but never before it has run this long: a short command ends
+      # on its own first, and its result is the better answer.
+      EARLY_HAND_OVER_FLOOR_SEC = 3
 
       def self.name        = NAME
 
       # A hand-over result's first line; its "task_id: …" line follows it.
       def self.handed_over_line(limit_sec)
         "#{HANDED_OVER} #{Integer(limit_sec)}s limit: moved to a background task, not killed."
+      end
+
+      # A hand-over result's first line when a message from the user is
+      # waiting (the command ran +elapsed_sec+ seconds); its "task_id: …"
+      # line follows it.
+      def self.early_handed_over_line(elapsed_sec)
+        "#{HANDED_OVER} #{Integer(elapsed_sec)}s mark: a message from the user is waiting, " \
+          "so the command moved to a background task, not killed."
       end
 
       # @param cancelled [#call] true once the user stopped the turn: the
@@ -91,7 +109,13 @@ module Samagotchi
       #   may set those keys (task_create refuses them from the model)
       # @param on_timeout [Symbol, String, nil] :task or :kill (ON_TIMEOUT);
       #   nil reads execute.on_timeout
-      def self.call(command, cwd: nil, cancelled: -> { false }, stop_reason: -> {}, env: nil, on_timeout: nil)
+      # @param message_waiting [#call] true once a person's message waits for
+      #   the turn's next step (Engine#input_waiting?): in :task mode, after
+      #   EARLY_HAND_OVER_FLOOR_SEC, the command is handed over as a task at
+      #   once, not at the limit. Never read in :kill mode, which never
+      #   hands a command over.
+      def self.call(command, cwd: nil, cancelled: -> { false }, stop_reason: -> {}, env: nil, on_timeout: nil,
+                    message_waiting: -> { false })
         return not_run(stop_reason) if cancelled.call
 
         command = command.strip
@@ -101,7 +125,8 @@ module Samagotchi
         sweep_leftovers_once
         timeout_sec = timeout_seconds
         stdout, stderr, status, held_open = run_command(command, timeout_sec: timeout_sec, cwd: resolved_cwd, cancelled: cancelled,
-                                                                 env: env, on_timeout: on_timeout_mode(on_timeout))
+                                                                 env: env, on_timeout: on_timeout_mode(on_timeout),
+                                                                 message_waiting: message_waiting)
 
         stdout_block = output_block("stdout", stdout)
         stderr_block = output_block("stderr", stderr)
@@ -162,12 +187,14 @@ module Samagotchi
       # group reading the terminal would stop on SIGTTIN. The shell is
       # detached at once; the waiter it returns reaps it, also after a
       # hand-over, so it never stays a zombie.
-      def self.run_command(command, timeout_sec:, cwd:, cancelled: -> { false }, env: nil, on_timeout: :task)
+      def self.run_command(command, timeout_sec:, cwd:, cancelled: -> { false }, env: nil, on_timeout: :task,
+                           message_waiting: -> { false })
         status = nil
         timed_out = false
         was_cancelled = false
         aborted = false
         handed_over = false
+        early_tried = false
         held_open = false
         started_at = Time.now
         started = monotonic_time
@@ -201,6 +228,19 @@ module Samagotchi
             elsif monotonic_time > deadline
               timed_out = true
               break
+            elsif !early_tried && on_timeout == :task && monotonic_time - started >= EARLY_HAND_OVER_FLOOR_SEC &&
+                  message_waiting.call
+              # One try: a command that can't be adopted goes on to its limit.
+              early_tried = true
+              task = TaskRecord.running(id: id, command: command, cwd: cwd, pid: pid, started_at: started_at.utc.iso8601,
+                                        output_path: logs[0], stderr_path: logs[1], exit_code_path: exit_code_path)
+              text = hand_over(task, waiter: wait_thr, timeout_sec: timeout_sec, dir: dir,
+                                     early_sec: monotonic_time - started)
+              if text
+                handed_over = true
+                Log.info(:turn, "execute_handed_over", id: id, after_sec: (monotonic_time - started).round, early: true)
+                raise HandedOver, text
+              end
             end
           end
           # Ended right at the deadline: finished, not timed out.
@@ -345,8 +385,10 @@ module Samagotchi
       # (+dir+); a back-pointer in that dir names the record for the sweep. nil when it can't be adopted (the caller
       # then kills it as in :kill mode) or when it ended meanwhile (the
       # caller then reads it as finished).
+      # @param early_sec [Numeric, nil] set when a message from the user ended
+      #   the wait before the limit: the seconds the command had run
       # @return [String, nil] the HANDED_OVER result
-      def self.hand_over(task, waiter:, timeout_sec:, dir:)
+      def self.hand_over(task, waiter:, timeout_sec:, dir:, early_sec: nil)
         return nil unless waiter.alive?
 
         record, error = TaskRuntime.adopt(task)
@@ -356,8 +398,8 @@ module Samagotchi
         TaskRuntime.record_exit_status(waiter, record.exit_code_path, task_id: record.id)
         # Ended between the deadline and the adopt: the record says how.
         TaskRuntime.get_record(record.id) unless waiter.alive?
-        lines = [handed_over_line(timeout_sec), "task_id: #{record.id}",
-                 "Wait for it with task_wait (it may take minutes); task_stop stops it."]
+        lines = [early_sec ? early_handed_over_line(early_sec) : handed_over_line(timeout_sec), "task_id: #{record.id}",
+                 "#{"Read the message first. " if early_sec}Wait for it with task_wait (it may take minutes); task_stop stops it."]
         { "stdout" => record.output_path, "stderr" => record.stderr_path }.each do |label, path|
           tail = TaskRuntime.output_tail_lines(path, HAND_OVER_TAIL_LINES)
           lines << "#{label} (so far, tail):\n#{tail.chomp}" unless tail.empty?

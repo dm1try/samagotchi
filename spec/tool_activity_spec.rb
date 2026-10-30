@@ -214,6 +214,14 @@ RSpec.describe Samagotchi::ToolActivity do
       expect(described_class.tool_activity_status("#{handed}\xFF", "execute")).to eq("ok")
       expect(Samagotchi::Tools::TaskRuntime.handed_over_id("#{handed}\xFF")).to eq("20261010120000-1a2b3c4d")
     end
+
+    it "calls an execute handed over early (a message from the user waiting) ok too" do
+      early = "#{Samagotchi::Tools::Execute.early_handed_over_line(4)}\ntask_id: 20261010120000-1a2b3c4d\n" \
+              "Read the message first. Wait for it with task_wait (it may take minutes); task_stop stops it.\nstdout (so far, tail):\nexit: 1"
+      expect(described_class.tool_activity_status(early, "execute", command: "grep -r x .; sleep 300")).to eq("ok")
+      expect(described_class.tool_activity_event("execute", { name: "execute", content: "sleep 300" }, early)).to include(status: "ok")
+      expect(described_class.tool_activity_status("stdout:\n#{early}", "execute")).to eq("error")
+    end
   end
 
   describe ".no_match?" do

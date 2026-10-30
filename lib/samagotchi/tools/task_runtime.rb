@@ -269,7 +269,7 @@ module Samagotchi
       end
 
       def handed_over_pattern
-        @handed_over_pattern ||= /\A#{RAN_AS_LINE}(?:\[#{Execute::NAME}\]\n)?#{Regexp.escape(Execute::HANDED_OVER)} \d+s limit:[^\n]*\ntask_id: (\S+)/
+        @handed_over_pattern ||= /\A#{RAN_AS_LINE}(?:\[#{Execute::NAME}\]\n)?#{Regexp.escape(Execute::HANDED_OVER)} #{Execute::HANDED_OVER_AFTER}[^\n]*\ntask_id: (\S+)/
       end
 
       # A task id as task_create makes them: no path parts.

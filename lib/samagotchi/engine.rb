@@ -671,7 +671,8 @@ module Samagotchi
     end
 
     # Whether a message a person sent waits for the running turn's next
-    # boundary (run_turn's input_waiting: probe): a task_wait returns on it
+    # boundary (run_turn's input_waiting: probe): a task_wait or delegate wait
+    # returns on it, an execute hands its command over early
     # (PeerView#input_waiting?). False outside a turn, for a turn given no
     # probe, and when the probe raises (warned once a turn; the tool never
     # fails for it).
@@ -2242,7 +2243,8 @@ module Samagotchi
     #   by the agentic loop at iteration boundaries (see KernelLoop#run).
     # @param input_waiting [#call, nil] optional probe: true while a message
     #   a person sent waits for the next boundary (it peeks, never drains);
-    #   a running task_wait returns on it (#input_waiting?). nil: never.
+    #   a running task_wait or delegate wait returns on it, a running execute
+    #   hands its command over (#input_waiting?). nil: never.
     # @param continue [Boolean] resume the conversation without appending a
     #   user prompt (continue after the iteration limit, reminder turns);
     #   +prompt+ is ignored and :turn_started carries `continue: true`

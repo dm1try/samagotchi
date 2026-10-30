@@ -19,12 +19,14 @@ module Samagotchi
   # and anytime commands run on threads of their own.
   class TaskWatch
     # A watched task: +limit_sec+, the limit an execute handed it over at
-    # (nil for task_create's); +note_only+, the user stopped the turn that
+    # (nil for task_create's); +early_sec+, the seconds an execute had run
+    # when a message from the user handed it over early (nil otherwise);
+    # +note_only+, the user stopped the turn that
     # started or waited on it (M5): its finish is a plain note, no wake;
     # +failures+, how often its note couldn't be written (#put_back) or the
     # look for it failed (#look_failed).
-    Entry = Data.define(:id, :limit_sec, :note_only, :failures) do
-      def initialize(id:, limit_sec: nil, note_only: false, failures: 0) = super
+    Entry = Data.define(:id, :limit_sec, :early_sec, :note_only, :failures) do
+      def initialize(id:, limit_sec: nil, early_sec: nil, note_only: false, failures: 0) = super
     end
 
     # A task whose note or look failed this often still gets tried at each
@@ -41,6 +43,7 @@ module Samagotchi
     TASK_LINE = /\A#{Tools::TaskRuntime::RAN_AS_LINE}(?:\[task_(?:wait|get|stop)\]\n)?task_id: (\S+)/
     LOOK_TOOLS = %w[task_wait task_get task_stop].freeze
     HANDED_OVER_LIMIT = /#{Regexp.escape(Tools::Execute::HANDED_OVER)} (\d+)s limit/
+    HANDED_OVER_EARLY = /#{Regexp.escape(Tools::Execute::HANDED_OVER)} (\d+)s mark/
 
     MODE_KEY = "session.task_wakes"
     MODES = %w[wake queue off].freeze
@@ -75,16 +78,18 @@ module Samagotchi
       output = event[:output].to_s
       output = output.scrub unless output.valid_encoding?
       if (id = Tools::TaskRuntime.created_id(tool, output))
-        add(id, limit_sec: tool == Tools::Execute::NAME ? output[HANDED_OVER_LIMIT, 1]&.to_i : nil)
+        executed = tool == Tools::Execute::NAME
+        add(id, limit_sec: executed ? output[HANDED_OVER_LIMIT, 1]&.to_i : nil,
+                early_sec: executed ? output[HANDED_OVER_EARLY, 1]&.to_i : nil)
       elsif LOOK_TOOLS.include?(tool) && (id = output[TASK_LINE, 1])
         touched(id)
         remove(id) if seen?(tool, output)
       end
     end
 
-    def add(id, limit_sec: nil)
+    def add(id, limit_sec: nil, early_sec: nil)
       @mutex.synchronize do
-        @entries[id] = Entry.new(id: id, limit_sec: limit_sec)
+        @entries[id] = Entry.new(id: id, limit_sec: limit_sec, early_sec: early_sec)
         @turn_ids << id
       end
     end

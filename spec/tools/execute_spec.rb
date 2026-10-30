@@ -777,6 +777,145 @@ RSpec.describe Samagotchi::Tools::Execute do
         expect(running?("sleep 31.64")).to be(false)
       end
 
+      # A message from the user waiting for the turn (message_waiting:) hands
+      # the command over before the limit, once it has run the floor.
+      describe "early, when a message from the user is waiting (message_waiting:)" do
+        let(:probes) { [] }
+        let(:waiting) { [true] }
+        let(:probe) { -> { (probes << true) && waiting[0] } }
+
+        before { stub_const("Samagotchi::Tools::Execute::EARLY_HAND_OVER_FLOOR_SEC", 0.3) }
+
+        it "moves the command to a task well before the limit, saying why, and the task runs on" do
+          command = "echo before; #{until_touched("go")}; echo done"
+          started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+
+          result = described_class.call(command, message_waiting: probe)
+          took = Process.clock_gettime(Process::CLOCK_MONOTONIC) - started
+          id = task_id(result)
+
+          expect(took).to be < time_bound(5, below: described_class::TIMEOUT_SEC)
+          expect(result).to match(/\AStill running at the \d+s mark: a message from the user is waiting, so the command moved to a background task, not killed\.\ntask_id: #{id}\n/)
+          expect(result).to include("Read the message first. Wait for it with task_wait (it may take minutes); task_stop stops it.\n" \
+                                    "stdout (so far, tail):\nbefore")
+          expect(result).not_to include("limit")
+          expect(Samagotchi::Tools::TaskRuntime.handed_over_id("[execute]\n#{result}")).to eq(id)
+          expect(Samagotchi::Tools::TaskRuntime.created_id("execute", result)).to eq(id)
+          record, = Samagotchi::Tools::TaskRuntime.get_record(id)
+          expect(record).to have_attributes(status: "running", command: command, handed_over_by: "execute")
+
+          FileUtils.touch("go")
+          expect(Samagotchi::Tools::TaskWait.call(id, timeout: 10)).to include("status: completed", "exit_code: 0")
+        end
+
+        it "words the first line from the seconds the command ran" do
+          expect(described_class.early_handed_over_line(4.6))
+            .to eq("Still running at the 4s mark: a message from the user is waiting, so the command moved to a background task, not killed.")
+          expect(described_class.early_handed_over_line(4)).to match(/\A#{Regexp.escape(described_class::HANDED_OVER)} #{described_class::HANDED_OVER_AFTER}/)
+          expect(described_class.handed_over_line(120)).to match(/\A#{Regexp.escape(described_class::HANDED_OVER)} #{described_class::HANDED_OVER_AFTER}/)
+        end
+
+        it "logs it as an early hand-over" do
+          lines = []
+          allow(Samagotchi::Log).to receive(:info).and_wrap_original do |original, tag, event, **fields|
+            lines << [tag, event, fields.keys] if event.start_with?("execute_")
+            original.call(tag, event, **fields)
+          end
+
+          id = task_id(described_class.call("sleep 3", message_waiting: probe))
+
+          expect(lines).to eq([[:turn, "execute_handed_over", %i[id after_sec early]]])
+          expect(id).not_to be_nil
+        end
+
+        it "doesn't look at the message, nor hand over, before the floor: a command that ends first is just its result" do
+          stub_const("Samagotchi::Tools::Execute::EARLY_HAND_OVER_FLOOR_SEC", 5)
+
+          expect(described_class.call("echo quick; sleep 0.5", message_waiting: probe)).to eq("stdout:\nquick\n\nexit: 0")
+          expect(probes).to eq([])
+          expect(Samagotchi::Tools::TaskRuntime.list_records).to eq([])
+        end
+
+        it "keeps running to its end with no message waiting, looking each slice once past the floor" do
+          waiting[0] = false
+
+          expect(described_class.call("sleep 0.6; echo done", message_waiting: probe)).to eq("stdout:\ndone\n\nexit: 0")
+          expect(probes).not_to be_empty
+        end
+
+        it "still hands over at the limit when no message waits" do
+          short_limit(0.8)
+          waiting[0] = false
+
+          result = described_class.call(until_touched("go"), message_waiting: probe)
+
+          expect(result).to start_with(described_class.handed_over_line(0.8))
+          FileUtils.touch("go")
+          Samagotchi::Tools::TaskWait.call(task_id(result), timeout: 10)
+        end
+
+        it "never under on_timeout: kill (a pair turn, the !cmd bang): the command isn't handed over, nor is the message read" do
+          result = described_class.call("sleep 1; echo done", on_timeout: :kill, message_waiting: probe)
+
+          expect(result).to eq("stdout:\ndone\n\nexit: 0")
+          expect(probes).to eq([])
+          expect(Samagotchi::Tools::TaskRuntime.list_records).to eq([])
+        end
+
+        it "kills at the limit under on_timeout: kill, whatever message waits" do
+          short_limit(0.8)
+
+          expect(described_class.call("sleep 31.65", on_timeout: :kill, message_waiting: probe))
+            .to start_with("Error: command timed out after 0.8s")
+          expect(probes).to eq([])
+        end
+
+        it "never under execute.on_timeout: kill in the config either" do
+          ENV["SAMAGOTCHI_EXECUTE_ON_TIMEOUT"] = "kill"
+
+          expect(described_class.call("sleep 1; echo done", message_waiting: probe)).to eq("stdout:\ndone\n\nexit: 0")
+          expect(probes).to eq([])
+        ensure
+          ENV.delete("SAMAGOTCHI_EXECUTE_ON_TIMEOUT")
+        end
+
+        it "lets a command that can't be adopted run on to its limit (it is not killed early)" do
+          allow(Samagotchi::Tools::TaskRuntime).to receive(:adopt).and_return([nil, "Error: disk full"])
+
+          expect(described_class.call("sleep 1; echo done", message_waiting: probe)).to eq("stdout:\ndone\n\nexit: 0")
+          expect(Samagotchi::Tools::TaskRuntime).to have_received(:adopt).once
+        end
+
+        it "lets the user's Stop win" do
+          result = described_class.call("sleep 31.66", cancelled: -> { true }, message_waiting: probe)
+
+          expect(result).to eq(described_class::NOT_RUN_ON_STOP)
+          expect(probes).to eq([])
+        end
+
+        it "reads a command that ended before the hand-over as finished" do
+          allow(described_class).to receive(:hand_over).and_wrap_original do |original, task, **args|
+            FileUtils.touch("go")
+            join!(args[:waiter], "the command's waiter")
+            original.call(task, **args)
+          end
+
+          expect(described_class.call("echo hi; #{until_touched("go")}", message_waiting: probe)).to eq("stdout:\nhi\n\nexit: 0")
+          expect(Samagotchi::Tools::TaskRuntime.list_records).to eq([])
+        end
+
+        it "is seen through the kernel's peers in the built-in handler, never when they can't tell" do
+          require "samagotchi/tools/builtins"
+          handler = Samagotchi::Tools::Builtins::HANDLERS.fetch("execute")
+          telling = Struct.new(:peers).new(Struct.new(:cancelled?, :input_waiting?).new(false, true))
+          mute = Struct.new(:peers).new(Struct.new(:cancelled?).new(false))
+
+          result = handler.call({ content: "sleep 1; echo done" }, telling)
+          expect(result).to include("Still running at the").and include("s mark: a message from the user is waiting")
+          expect(handler.call({ content: "sleep 0.6; echo done" }, mute)).to include("done")
+        end
+      end
+
       def running?(pattern) = !wait_until(timeout: 2, interval: 0.05) { !system("pgrep", "-f", pattern, out: File::NULL) }
     end
 

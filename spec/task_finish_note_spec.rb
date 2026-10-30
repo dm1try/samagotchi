@@ -40,6 +40,15 @@ RSpec.describe Samagotchi::TaskFinishNote do
     expect(message[:content]).to start_with("[TASK FINISHED from task 3f9a2c1d, 14:20]\nBackground task")
   end
 
+  it "says a message from the user handed the task over early, with the seconds the command had run" do
+    note = described_class.note(record, limit_sec: nil, early_sec: 4, wake: true, turn_id: "t1", cap: 10_000, now: now)
+
+    expect(note[:text]).to start_with(
+      "Background task 3f9a2c1d finished: exit 0 after 6m12s (handed over by execute after 4s: a message from the user was waiting).\n"
+    )
+    expect(described_class.note(record, limit_sec: nil, wake: false, cap: 10_000, now: now)[:text]).not_to include("handed over")
+  end
+
   it "has a plain variant without the turn start or the ask (queue mode, a spent budget, a note-only task)" do
     note = described_class.note(record, limit_sec: nil, wake: false, cap: 10_000, now: now)
 

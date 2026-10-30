@@ -9,7 +9,8 @@ module Samagotchi
     # is the running turn's cancel, for a tool that waits (delegate_result):
     # the controller is set from another thread and a tool gets no other
     # way to see it. input_waiting? is whether a person's message waits for
-    # the running turn's next boundary (task_wait returns on it).
+    # the running turn's next boundary (task_wait and the delegate tools' waits
+    # return on it, execute hands its command over early).
     PeerView = Struct.new(:engine) do
       def session_id = engine.session&.id
       def cwd = engine.session&.working_directory

@@ -92,6 +92,7 @@ module Samagotchi
         end,
         Execute::NAME => lambda do |call, kctx|
           Execute.call(call[:content], cwd: call[:cwd], cancelled: cancelled_proc(kctx), stop_reason: stop_reason_proc(kctx),
+                                       message_waiting: input_waiting_proc(kctx),
                                        **participant_execute(kctx, project_env(kctx).merge(parent_env(kctx))))
         end,
         RegisterReminder::NAME => lambda do |call, kctx|
@@ -202,7 +203,7 @@ module Samagotchi
 
       # A person's message waits for the turn's next boundary
       # (Engine#input_waiting?, through its PeerView): a task_wait returns on
-      # it. A kernel whose peers can't tell: never.
+      # it, an execute hands its command over early. A kernel whose peers can't tell: never.
       def input_waiting_proc(kctx)
         peers = kctx.peers
         -> { peers.respond_to?(:input_waiting?) && !!peers.input_waiting? }

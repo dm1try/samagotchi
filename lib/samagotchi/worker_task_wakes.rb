@@ -129,7 +129,7 @@ module Samagotchi
     end
 
     def note(entry, record, wake:, turn_id: nil)
-      TaskFinishNote.note(record, limit_sec: entry.limit_sec, wake: wake, turn_id: turn_id,
+      TaskFinishNote.note(record, limit_sec: entry.limit_sec, early_sec: entry.early_sec, wake: wake, turn_id: turn_id,
                                   cap: KernelLoop.resolve_output_char_cap(nil))
     end
 

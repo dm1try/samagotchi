@@ -796,12 +796,23 @@ RSpec.describe "task tools" do
       js = File.read(File.expand_path("../../lib/samagotchi/web/public/task_stop.js", __dir__))
       twin = js[%r{^const HANDED_OVER = /(.+)/;$}, 1]
 
-      expect(twin).to include("#{Samagotchi::Tools::Execute::HANDED_OVER} \\d+s limit:")
+      expect(twin).to include("#{Samagotchi::Tools::Execute::HANDED_OVER} \\d+s (?:limit|mark):")
       expect(Samagotchi::Tools::Execute.handed_over_line(120.0)).to start_with("Still running at the 120s limit:")
+      expect(Samagotchi::Tools::Execute.early_handed_over_line(4)).to start_with("Still running at the 4s mark:")
       # JS's leading ^ (no m flag) is Ruby's \A.
       ruby_twin = Regexp.new("\\A#{twin.delete_prefix("^")}")
       expect(ruby_twin.match("ran as: execute command=x\n[execute]\n#{handed_over}")&.[](1)).to eq(id)
       expect(ruby_twin.match("[execute]\nstdout:\n#{handed_over}")).to be_nil
+      early = handed_over.sub(Samagotchi::Tools::Execute.handed_over_line(120), Samagotchi::Tools::Execute.early_handed_over_line(4))
+      expect(ruby_twin.match("[execute]\n#{early}")&.[](1)).to eq(id)
+    end
+
+    it "counts an execute handed over early (a message from the user was waiting) as a task it started" do
+      early = handed_over.sub(Samagotchi::Tools::Execute.handed_over_line(120), Samagotchi::Tools::Execute.early_handed_over_line(4))
+      messages = [{ role: "tool_response", content: "[execute]\n#{early}" }]
+
+      expect(runtime.created_ids_in(messages)).to eq([id])
+      expect(runtime.created_id("execute", "stdout:\n#{early}")).to be_nil
     end
 
     it "reads a UI row's output with or without the lead, per tool" do

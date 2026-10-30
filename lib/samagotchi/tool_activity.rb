@@ -264,8 +264,8 @@ module Samagotchi
       "ok"
     end
 
-    # An execute still running at its limit, handed over as a task
-    # (Tools::Execute::HANDED_OVER).
+    # An execute still running at its limit (or when a message from the user
+    # waited), handed over as a task (Tools::Execute::HANDED_OVER).
     def handed_over?(tool_name, text)
       return false unless tool_name == Tools::Execute::NAME && text.to_s.start_with?(Tools::Execute::HANDED_OVER)
 
@@ -273,7 +273,7 @@ module Samagotchi
       text.to_s.each_line.first.to_s.scrub.match?(HANDED_OVER_START)
     end
 
-    HANDED_OVER_START = /\A#{Regexp.escape(Tools::Execute::HANDED_OVER)} \d+s limit:/
+    HANDED_OVER_START = /\A#{Regexp.escape(Tools::Execute::HANDED_OVER)} #{Tools::Execute::HANDED_OVER_AFTER}/
 
     def execute_failed?(text)
       code = execute_exit_code(text)

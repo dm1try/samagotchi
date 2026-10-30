@@ -19,6 +19,10 @@ RSpec.describe Samagotchi::TaskWatch do
     completed("execute", "#{lead}#{Samagotchi::Tools::Execute.handed_over_line(limit)}\ntask_id: #{id}\nstdout_tail:\n")
   end
 
+  def handed_over_early(id, after: 4)
+    completed("execute", "#{Samagotchi::Tools::Execute.early_handed_over_line(after)}\ntask_id: #{id}\nstdout_tail:\n")
+  end
+
   def waited(id, status:, wait_result: nil, lead: "")
     lines = ["#{lead}task_id: #{id}", "status: #{status}", "exit_code: 0", "stop_reason: ", "output_path: x"]
     lines << "wait_result: #{wait_result}" if wait_result
@@ -33,6 +37,14 @@ RSpec.describe Samagotchi::TaskWatch do
       expect(watch.ids).to eq(%w[aaa bbb])
       expect(entry("aaa").limit_sec).to be_nil
       expect(entry("bbb").limit_sec).to eq(5)
+    end
+
+    it "watches an execute handed over early by a waiting message, with the seconds it had run and no limit" do
+      watch.observe(handed_over_early("eee", after: 4))
+
+      expect(watch.ids).to eq(%w[eee])
+      expect(entry("eee")).to have_attributes(limit_sec: nil, early_sec: 4)
+      expect(entry("eee")).to eq(Samagotchi::TaskWatch::Entry.new(id: "eee", early_sec: 4))
     end
 
     it "reads past the [tool] lead and a gate-corrected call's ran-as line" do

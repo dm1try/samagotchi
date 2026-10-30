@@ -40,6 +40,15 @@ test("taskCommand: a task from an earlier turn, by its task_wait row's title wit
 const handedOver = (id) => `Still running at the 120s limit: moved to a background task, not killed.\ntask_id: ${id}\n`
   + "Wait for it with task_wait (it may take minutes); task_stop stops it.";
 
+test("handedOverId: an early hand-over (a message from the user was waiting) counts too, at the start only", () => {
+  const early = `Still running at the 4s mark: a message from the user is waiting, so the command moved to a background task, not killed.\ntask_id: ${ID}\n`
+    + "Read the message first. Wait for it with task_wait (it may take minutes); task_stop stops it.";
+  assert.equal(handedOverId(early), ID);
+  assert.equal(handedOverId(`[execute]\n${early}`), ID);
+  assert.equal(handedOverId(`[execute]\nstdout:\n${early}`), null);
+  assert.equal(handedOverId(`Still running at the 4s limitless: x\ntask_id: ${ID}`), null);
+});
+
 test("handedOverId: only after an execute's hand-over line at the start", () => {
   assert.equal(handedOverId(handedOver(ID)), ID);
   assert.equal(handedOverId(`[execute]\n${handedOver(ID)}`), ID);
