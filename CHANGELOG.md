@@ -7,6 +7,8 @@ and commands may change between minor versions. How releases are made:
 [docs/releasing.md](docs/releasing.md).
 ## [Unreleased]
 
+## [0.135.0] - 2026-10-30
+
 ### Added
 
 - Web: Revise on a finished answer: your next message rewrites it, and once that turn completes the earlier version
@@ -48,6 +50,9 @@ and commands may change between minor versions. How releases are made:
   `php -B/-R/-E`, `perl -de`, `jruby`/`raku`/`julia -e`. git or chi behind a program chi doesn't know
   (`some-runner git config …`, `chronic chi share x`) and a `$(…)` kept in a value now ask you (refused when what it
   runs reads as git config or chi). `git add maintenance start` no longer asks you; `git lfs update` does.
+
+Update with `chi update`, then restart `chi web` (without `--web-view`) and the session workers (`chi sessions
+restart`). `chi home doctor` says what else to do.
 
 ## [0.134.0] - 2026-10-30
 
@@ -5185,7 +5190,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.134.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.135.0...HEAD
+[0.135.0]: https://github.com/dm1try/samagotchi/compare/v0.134.0...v0.135.0
 [0.134.0]: https://github.com/dm1try/samagotchi/compare/v0.133.0...v0.134.0
 [0.133.0]: https://github.com/dm1try/samagotchi/compare/v0.132.0...v0.133.0
 [0.132.0]: https://github.com/dm1try/samagotchi/compare/v0.131.0...v0.132.0
