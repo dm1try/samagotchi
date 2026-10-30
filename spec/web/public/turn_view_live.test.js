@@ -145,6 +145,21 @@ function narratedTurn(view, { newest = false } = {}) {
   return view.current().blockEl;
 }
 
+test("createTurnView: a completed turn's answer bubble carries its turn id (data-answer-turn), as a reload's; a canceled one's partial text doesn't", () => {
+  const ended = (kind) => {
+    const { view, historyEl } = liveView();
+    view.turnStarted({ prompt: "p" });
+    view.generationStarted({ iteration: 1 });
+    view.chunk({ text: "Done.", iteration: 1 });
+    view.flush();
+    view.generationCompleted();
+    view.turnEnded({ kind, turnId: "T9" });
+    return historyEl.querySelector(".bubble.output");
+  };
+  assert.equal(ended("completed").dataset.answerTurn, "T9");
+  assert.equal(ended("canceled").dataset.answerTurn, undefined);
+});
+
 // The block's children as the outline reads: a step's class and head, a fold's text.
 const outlineOf = (block) => [...block.children].filter((el) => !el.matches("summary")).map((el) =>
   el.matches(".outline-fold") ? `fold ${el.textContent}` : `${el.className} ${el.querySelector(":scope > summary").textContent.split(" · ")[0]}`);

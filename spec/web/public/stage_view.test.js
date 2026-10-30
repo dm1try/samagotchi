@@ -53,6 +53,22 @@ function endedTurn(view) {
   return prompt;
 }
 
+test("the answer's turn key (data-answer-turn) arrives in the history with the hand-off", () => {
+  const { historyEl, view } = page();
+  const prompt = document.createElement("div");
+  prompt.className = "bubble user";
+  view.turnStarted({ promptBubble: prompt });
+  view.generationStarted({ iteration: 1 });
+  view.chunk({ iteration: 1, text: "Done." });
+  view.generationCompleted();
+  view.turnEnded({ kind: "completed", turnId: "T7" });
+  view.answerReady();
+  view.handOff({ immediate: true });
+  const answer = historyEl.querySelector(".bubble.output");
+  assert.equal(answer?.textContent, "Done.");
+  assert.equal(answer.dataset.answerTurn, "T7");
+});
+
 test("a row placed while the finished turn slides away lands after the turn, not above it", () => {
   const { historyEl, view, append } = page();
   const prompt = endedTurn(view);

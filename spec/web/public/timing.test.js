@@ -120,6 +120,9 @@ test("turnGroups: a context wake turn's note (turn_start) opens its turn, paired
   const groups = turnGroups(items, TIMING);
   assert.deepEqual(groups.map((g) => [g.kind, g.user ?? g.i, g.answer]), [["turn", 0, 1], ["note", 2, undefined], ["turn", 3, 4]]);
   assert.equal(groups[2].record, TIMING.turnRecords[1]);
+  // The opening's turn id is the group's (its answer's key); a prompt saved
+  // without one leaves the group without.
+  assert.deepEqual(groups.map((g) => g.turnId), [undefined, undefined, "T2"]);
   assert.deepEqual(timedTurnIndexes(items), [null, 0, null, null, 1]);
 });
 

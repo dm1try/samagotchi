@@ -355,7 +355,7 @@ test("turnHistoryHtml: a task_wait titled by its task's command shows it, its id
   assert.match(html, /<span class="activity-tool">task_wait<\/span><span class="activity-params" title="id=&quot;t1&quot; timeout=&quot;600&quot;">bundle exec rspec · up to 600s<\/span>/);
 });
 
-test("turnHistoryHtml: a context wake turn starts with its note (turn_start): the note bubble, then its own answer and timing", () => {
+test("turnHistoryHtml: a context wake turn starts with its note (turn_start): the note bubble, then its own answer (keyed by its turn) and timing", () => {
   const items = [
     { role: "user", content: "p" },
     { role: "assistant", content: "PONG" },
@@ -367,7 +367,24 @@ test("turnHistoryHtml: a context wake turn starts with its note (turn_start): th
     '<div class="bubble user" data-copy-source="p"><div class="user-message">p</div></div>' +
     '<div class="bubble output">PONG</div><div class="turn-timing">turn 1 · 0.5s</div>' +
     '<div class="bubble note"><div class="note-line">note from context pr-1</div><div class="note-text">Updated: pr-1.</div></div>' +
-    '<div class="bubble output">Bob asked for changes.</div><div class="turn-timing">turn 2 · 2.0s</div>');
+    '<div class="bubble output" data-answer-turn="T2">Bob asked for changes.</div><div class="turn-timing">turn 2 · 2.0s</div>');
+});
+
+test("turnHistoryNodes: a turn's answer carries its turn id (data-answer-turn); a report reply, an answer before any prompt and a prompt saved without an id don't", () => {
+  const items = [
+    { role: "assistant", content: "hello" },
+    { role: "user", content: "p", turn_id: "T1" },
+    { role: "user", content: "session: c1", source: "delegate_report", merged: true, step: 1 },
+    { role: "assistant", content: "The report says done." },
+    { role: "user", content: "next", merged: true, step: 2 },
+    { role: "assistant", content: "Final." },
+    { role: "user", content: "old" },
+    { role: "assistant", content: "Old answer." },
+  ];
+  const records = normalizeTiming({ turn_records: [{ id: "T1", duration_ms: 5 }, { id: "T0", duration_ms: 5 }] });
+  const keys = [...turnHistoryNodes(items, records, { thumbs }).querySelectorAll(".bubble.output")]
+    .map((el) => [el.textContent, el.dataset.answerTurn ?? null]);
+  assert.deepEqual(keys, [["hello", null], ["The report says done.", null], ["Final.", "T1"], ["Old answer.", null]]);
 });
 
 test("turnHistoryHtml: a failed turn whose steps stayed ends with the live failure line, after its timing; its texts stay steps", () => {
