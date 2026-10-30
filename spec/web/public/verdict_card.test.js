@@ -68,6 +68,27 @@ test("does not place a verdict without a source turn", () => {
   win.happyDOM.abort();
 });
 
+test("View check unfolds what hides the checking turn before it scrolls there", () => {
+  const win = new Window();
+  const root = win.document.createElement("main");
+  const source = win.document.createElement("div");
+  source.dataset.turnId = "source-turn";
+  const fold = win.document.createElement("details");
+  const check = win.document.createElement("div");
+  check.dataset.turnId = "check-turn";
+  check.scrollIntoView = () => { check.scrolled = fold.open; };
+  fold.append(check);
+  root.append(source, fold);
+  const record = {
+    anchor: { turn_id: "source-turn", quote: "the claim" }, verdict: "confirmed", reason: "Yes.", check_turn_id: "check-turn",
+  };
+
+  placeVerdict(root, record).querySelector("a").dispatchEvent(new win.MouseEvent("click", { bubbles: true, cancelable: true }));
+
+  assert.equal(check.scrolled, true);
+  win.happyDOM.abort();
+});
+
 test("View check reports a missing turn to its caller", () => {
   const win = new Window();
   const root = win.document.createElement("main");
