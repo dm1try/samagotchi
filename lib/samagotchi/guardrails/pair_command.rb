@@ -197,6 +197,60 @@ module Samagotchi
           (path.to_s.start_with?("/") && PathResolve.reals(path).any? { |real| real.match?(ShellPaths::HOOKS_PART) })
       end
 
+      # Where the program is in +words+: past assignments, wrappers, shell
+      # keywords and their options (and an option's value: ruby -I lib,
+      # timeout 10).
+      def self.program_at(words)
+        at = 0
+        at += 1 while at < words.size && skipped?(words, at)
+        at < words.size ? at : nil
+      end
+
+      def self.skipped?(words, at)
+        word = words[at]
+        return true if word.match?(/\A[A-Za-z_]\w*=/) || word.start_with?("-") || word.match?(/\A\d+[smhd]?\z/)
+        return true if WRAPPERS.include?(File.basename(word))
+
+        previous = at.positive? ? words[at - 1] : nil
+        !previous.nil? && previous.match?(/\A-[IrCen]\z/)
+      end
+      private_class_method :skipped?
+
+      # A shell, another interpreter or eval: what runs a script it is given.
+      def self.runner?(word)
+        return false if word.include?("\0")
+
+        name = File.basename(word)
+        SHELLS.include?(name) || INTERPRETERS.include?(name) || name == "eval"
+      end
+
+      # Where a simple command's shell or interpreter (.runner?) gets its
+      # script: nil without one; :inline for a -c/-e script, eval's words, a
+      # heredoc or here-string (#scripts reads them) or a module (-m); :file
+      # for a script file it names (not read); :stdin for a pipe, < file,
+      # -s, - or no script at all.
+      def self.script_source(words)
+        limit = program_at(words) || (words.size - 1)
+        at = (0..limit).find { |i| runner?(words[i]) } or return nil
+        return :inline if File.basename(words[at]) == "eval"
+
+        rest = words[(at + 1)..]
+        return :inline if rest.any? { |word| word.start_with?("<<") }
+
+        skip = false
+        rest.each do |word|
+          next skip = false if skip
+          return :stdin if word == "-" || word == "-s" || word.match?(STDIN_REDIRECT)
+          return :inline if CODE_OPTIONS.include?(word) || word == "-m"
+          # a redirection's operator alone: its target is the next word
+          next skip = word.sub(ShellPaths::REDIRECT_PREFIX, "").empty? if word.match?(ShellPaths::REDIRECT_PREFIX)
+          next skip = RUNNER_VALUE_OPTIONS.include?(word) if word.start_with?("-", "+")
+
+          return :file
+        end
+        :stdin
+      end
+
       # A command's text naming chi web's endpoint on this machine: a
       # loopback name (LOOPBACK_HOSTS) or one of +hostnames+, and one of
       # +ports+, anywhere in it (a URL's host:port, nc's host port, a
@@ -401,10 +455,7 @@ module Samagotchi
         nil
       end
 
-      def runner?(word)
-        name = File.basename(word)
-        SHELLS.include?(name) || INTERPRETERS.include?(name) || name == "eval"
-      end
+      def runner?(word) = PairCommand.runner?(word)
 
       def scripts(words, at)
         found = []
@@ -429,23 +480,7 @@ module Samagotchi
         nil
       end
 
-      # Where the program is in +words+: past assignments, wrappers, shell
-      # keywords and their options (and an option's value: ruby -I lib,
-      # timeout 10).
-      def program_at(words)
-        at = 0
-        at += 1 while at < words.size && skipped?(words, at)
-        at < words.size ? at : nil
-      end
-
-      def skipped?(words, at)
-        word = words[at]
-        return true if word.match?(/\A[A-Za-z_]\w*=/) || word.start_with?("-") || word.match?(/\A\d+[smhd]?\z/)
-        return true if WRAPPERS.include?(File.basename(word))
-
-        previous = at.positive? ? words[at - 1] : nil
-        !previous.nil? && previous.match?(/\A-[IrCen]\z/)
-      end
+      def program_at(words) = PairCommand.program_at(words)
 
       # screen -d…, tmux new -d: a session left running.
       def detached_session?(program, args)
@@ -690,32 +725,10 @@ module Samagotchi
         !paths.empty? && paths.all? { |path| Outside.inside?(path, root: @root) }
       end
 
-      # Whether a shell or interpreter reads its script from stdin (a pipe,
-      # < file, -s, -, or no script at all): chi can't see what it runs, so
-      # it may write anywhere. A -c/-e script, a heredoc or here-string (read
-      # as scripts are: #scripts), a module (-m) or a script file it names
-      # is not stdin's.
-      def stdin_script?(words)
-        limit = program_at(words) || (words.size - 1)
-        at = (0..limit).find { |i| runner?(words[i]) } or return false
-        return false if File.basename(words[at]) == "eval"
-
-        rest = words[(at + 1)..]
-        return false if rest.any? { |word| word.start_with?("<<") }
-
-        skip = false
-        rest.each do |word|
-          next skip = false if skip
-          return true if word == "-" || word == "-s" || word.match?(STDIN_REDIRECT)
-          return false if (CODE_OPTIONS + %w[-m]).include?(word)
-          # a redirection's operator alone: its target is the next word
-          next skip = word.sub(ShellPaths::REDIRECT_PREFIX, "").empty? if word.match?(ShellPaths::REDIRECT_PREFIX)
-          next skip = RUNNER_VALUE_OPTIONS.include?(word) if word.start_with?("-", "+")
-
-          return false
-        end
-        true
-      end
+      # Whether a shell or interpreter reads its script from stdin
+      # (.script_source): chi can't see what it runs, so it may write
+      # anywhere.
+      def stdin_script?(words) = PairCommand.script_source(words) == :stdin
 
       # Whether every $(…) is a message's heredoc (its body cut as data).
       def substs_messages_only?

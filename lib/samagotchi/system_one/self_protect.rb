@@ -5,6 +5,7 @@ require_relative "../memory_paths"
 require_relative "../paths"
 require_relative "../guardrails/chi_dirs"
 require_relative "../guardrails/path_resolve"
+require_relative "../guardrails/pair_command"
 require_relative "../guardrails/parent_approvals"
 require_relative "../guardrails/shell_lex"
 require_relative "../guardrails/shell_paths"
@@ -31,7 +32,12 @@ module Samagotchi
     # `/`) read while the dir was known. A word the walk can't follow
     # otherwise (`${PWD%/*}`, `$(dirname $PWD)`, `cd -`) may climb out of the
     # memories dir without saying so, so its memories text stays in and the
-    # text check refuses it.
+    # text check refuses it. So does a script an interpreter or shell runs
+    # that climbs by its own calls (SCRIPT_CLIMB: os.pardir, dirname,
+    # chdir, Dir.pwd, Path.parent, rindex, a slice from the end), and one
+    # chi can't see: a script file it names, or stdin
+    # (Guardrails::PairCommand.script_source). A heredoc or phrase that is
+    # only written (cat >> note <<EOF) is data whatever it says.
     #
     # Pure: it only reads the paths as this process's environment names them,
     # and answers on the approval's own facts (Guardrails::Approval.payload's
@@ -56,6 +62,16 @@ module Samagotchi
       CLIMB = Regexp.union(
         /(?<![\w.])\.\.(?![\w.])/, /[$`]/, %r{(?:\A|[\s=:'"(])~(?![/\s'";&|)]|\z)},
         /(?:\A|[\s;&|(])(?:cd|pushd)\s+-(?=[\s;&|)]|\z)/
+      )
+
+      # An interpreter's own calls that climb out of a dir or cut a path
+      # from its end, as a script body may spell them without `..` or `$`
+      # (an accident guard, not a parser: a script can always build a path
+      # some other way).
+      SCRIPT_CLIMB = Regexp.union(
+        /\b(?:pardir|dirname|parents?|chdir|getcwd|cwd|pwd|abspath|realpath|normpath|expand_path|absolute_path|
+           resolve|rsplit|rpartition|rindex|rfind|lastIndexOf)\b/x,
+        /\b(?:os\.path|File)\.split\b/, /\[[^\]\[]*:\s*-/
       )
 
       # What resolving a command's words found: whether one lands in chi's
@@ -139,8 +155,10 @@ module Samagotchi
           commands.each do |simple|
             # A cd the walk couldn't follow: no later word is data.
             known = !simple.is_a?(Array) || !walk.paths(".").empty?
+            runs = simple.is_a?(Array) && runs_script?(simple)
+            plain &&= !unseen_script?(simple)
             walk.step(simple).each do |word, path|
-              next plain &&= known && data?(word) unless path
+              next plain &&= known && data?(word) && !(runs && climbs?(word)) unless path
 
               chi ||= Guardrails::PathResolve.reals(path).any? do |real|
                 dirs.any? { |dir| Guardrails::PathResolve.under?(real, dir) } && !memory?(real, memories, bundles)
@@ -163,6 +181,25 @@ module Samagotchi
         return true if word.match?(Guardrails::ShellPaths::SCRIPT)
 
         word.match?(Guardrails::ShellPaths::GLOB) && !word.include?("/")
+      end
+
+      # Whether a simple command hands a script to a shell or interpreter
+      # (one anywhere in it, find -execdir's too) or has a code option.
+      def runs_script?(simple)
+        simple.any? do |word|
+          Guardrails::PairCommand.runner?(word) || Guardrails::PairCommand::CODE_OPTIONS.include?(word)
+        end
+      end
+
+      # Whether a simple command's shell or interpreter runs a script chi
+      # can't see: a file it names, or stdin.
+      def unseen_script?(simple)
+        simple.is_a?(Array) && %i[file stdin].include?(Guardrails::PairCommand.script_source(simple))
+      end
+
+      # Whether a script word, its memories text aside, climbs (SCRIPT_CLIMB).
+      def climbs?(word)
+        word.match?(Guardrails::ShellPaths::SCRIPT) && word.gsub(memories_text, "").match?(SCRIPT_CLIMB)
       end
 
       # chi's own dirs (ParentApprovals.chi_dirs) and its whole state dir

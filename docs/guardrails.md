@@ -1090,8 +1090,14 @@ gate below passes, in this order:
    it knew the dir: a script or heredoc body (`python3 -c '…'`, `cat >> x.md
    <<'EOF'`), a phrase (`echo "- a note"`) or a glob with no `/`. So
    `cd memories; cd ..`, `cd "${PWD%/*}"`, `cd $(dirname $PWD)` or `cd -`
-   loses the exemption, and the memories text then refuses it. A script body
-   is not looked into beyond its text: an accident guard, not containment.
+   loses the exemption, and the memories text then refuses it. So does a
+   script a shell or interpreter runs that climbs by its own calls
+   (`SelfProtect::SCRIPT_CLIMB`: `os.pardir`, `dirname`, `chdir`, `Dir.pwd`,
+   `Path.parent`, `rindex`, a slice from the end), and one chi can't see: a
+   script file (`cd memories && python3 x.py`) or stdin (`… | python3`,
+   `sh < f`). A heredoc only written (`cat >> x.md <<'EOF'`) is data whatever
+   it says. A script body is not looked into beyond its text: an accident
+   guard, not containment (a script can build a path some other way).
    A protected rule
    (`Verdict::PROTECTED_RULES`) may be listed by name and System 1 may answer
    it, but a call that really writes config.yml or the hooks is refused here;

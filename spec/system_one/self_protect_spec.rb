@@ -131,6 +131,29 @@ RSpec.describe Samagotchi::SystemOne::SelfProtect do
     end
   end
 
+  # An interpreter climbs by its own calls, with no `..`, `$` or backticks in
+  # the text: its script keeps the memories text in when it can climb, and
+  # one chi can't see (a file, stdin) always does.
+  it "refuses an interpreter's script that climbs out of the memories dir by its own calls, or one it can't see" do
+    mem = memories_dir
+    note = File.join(mem, "x.md")
+    [
+      %(git push && python3 -c 'import os; os.chdir("#{mem}"); os.chdir(os.pardir); open("config.yml","a").write("x")'),
+      %(git push && python3 -c 'import os; p="#{mem}"; open(os.path.dirname(p)+"/config.yml","a").write("x")'),
+      %(git push && ruby -e 'Dir.chdir("#{mem}"); Dir.chdir(File.dirname(Dir.pwd)); File.write("config.yml", "x")'),
+      %(git push && cd #{mem} && python3 -c 'import os; os.chdir(os.pardir); open("config.yml","a")'),
+      %(git push && cd #{mem} && node -e 'process.chdir(require("path").resolve(process.cwd(), "x", "..."))'),
+      %(git push && python3 -c 'from pathlib import Path; (Path("#{note}").parent.parent / "config.yml").write_text("x")'),
+      %(git push && python3 -c 'p="#{note}"; open(p[:p.rindex("/memories")] + "/config.yml", "a")'),
+      %(git push && cd #{mem} && python3 /tmp/climb.py),
+      %(git push && cd #{mem} && echo 'import os' | python3),
+      %(git push && cd #{mem} && sh < /tmp/climb.sh)
+    ].each do |command|
+      facts = { "rule" => "git-push", "tool" => "execute", "command" => command, "cwd" => Dir.pwd }
+      expect(S.refuse?(facts)).to be(true), command
+    end
+  end
+
   it "refuses a call whose env: redefines the shell" do
     targets = Samagotchi::Guardrails::Targets.new(tool: "task_create", command: "git push", paths: [], cwd: Dir.pwd,
                                                   repo_root: nil, env: { "BASH_ENV" => "/tmp/x.sh" })

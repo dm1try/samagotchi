@@ -46,6 +46,9 @@ and commands may change between minor versions. How releases are made:
   outside write: global installs (`npm -g`, `pip install`, `gem install`, `brew`, `cargo`/`go install`, `pipx`,
   `uv tool`), user config (`npm config set` writes `~/.npmrc`, `gh config set`), `defaults write`, `launchctl`; and
   so does a shell or interpreter reading its script from stdin (`… | sh`, `curl … | bash`, `sh < run.sh`).
+- System 1 no longer auto-allows a command that names the memories folder and then climbs out of it by a script's
+  own calls (`python3 -c '…os.chdir(os.pardir)…'`, `ruby -e '…File.dirname(Dir.pwd)…'`) or runs a script it can't
+  see (a file, stdin): it could write `config.yml`. You decide those; plain memory edits stay eligible.
 
 ## [0.133.0] - 2026-10-30
 
