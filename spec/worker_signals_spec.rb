@@ -9,8 +9,8 @@ RSpec.describe Samagotchi::WorkerSignals do
     calls = Queue.new
     signals.on_signal { |name, count| calls << [name, count, Thread.current] }
 
-    signals.fire("TERM").join(1)
-    signals.fire("INT").join(1)
+    join!(signals.fire("TERM"), "the TERM handler")
+    join!(signals.fire("INT"), "the INT handler")
 
     expect(signals.signal).to eq("TERM")
     expect(signals.count).to eq(2)

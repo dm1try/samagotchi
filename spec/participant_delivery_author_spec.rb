@@ -69,7 +69,7 @@ RSpec.describe "a participant's author on delivery" do
 
     after do
       @thread&.kill
-      @thread&.join(2)
+      join!(@thread, "the worker thread") if @thread
     end
 
     def start_worker

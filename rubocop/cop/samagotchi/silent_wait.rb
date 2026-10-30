@@ -33,13 +33,36 @@ module RuboCop
       #   # good
       #   pop!(queue, "the redraw", timeout: 2)
       #   status = Timeout.timeout(10) { Process.wait2(pid) } # timeout-ok: a hang guard: the child exits by itself
+      #
+      # A statement `thread.join(N)` (a number, the one shape Array#join
+      # never takes) is a silent wait too: its N isn't scaled by
+      # SPEC_TIME_SCALE, and at the deadline it returns nil, which a
+      # statement drops, leaving the thread running into teardown. That
+      # includes the last line of an each block, whose value each drops.
+      # A join whose nil is fine carries "# wait-ok: why".
+      #
+      #   # bad
+      #   thread.join(2)
+      #   threads.each { |t| t.join(5) }
+      #
+      #   # good
+      #   join!(thread, "the watcher")
+      #   expect(thread.join(0.1)).to be_nil # its value is checked
       class SilentWait < Base
         MSG = "Use wait_for(what) { … }: a timeout then names what it waited for."
         MSG_TIMEOUT = "A Timeout.timeout names nothing when it fires: wait with wait_for(what), pop! or join!. " \
                       "A hang guard around a call that returns by itself carries \"# timeout-ok: why\"."
         TAG = /#\s*wait-ok:\s*\S/
         TIMEOUT_TAG = /#\s*timeout-ok:\s*\S/
+        MSG_JOIN = "A statement join(N) drops its nil at an unscaled deadline: join!(thread, what) waits scaled " \
+                   "and names what it waited for."
         EXAMPLE_BLOCKS = %i[it specify example before after around].to_set.freeze
+        # Blocks whose body value the call drops.
+        EACH_BLOCKS = %i[each each_value each_with_index reverse_each].to_set.freeze
+        RESTRICT_ON_SEND = %i[join].freeze
+
+        # @!method numeric_join?(node)
+        def_node_matcher :numeric_join?, "({send csend} !nil? :join {int float})"
 
         # @!method wait_until_block?(node)
         def_node_matcher :wait_until_block?, "(any_block (send {nil? (const {nil? cbase} :SpecWaiting)} :wait_until ...) ...)"
@@ -64,7 +87,30 @@ module RuboCop
         alias on_numblock on_block
         alias on_itblock on_block
 
+        def on_send(node)
+          return unless numeric_join?(node)
+          return unless silent_join?(node)
+          return if tagged?(node.first_line)
+
+          add_offense(node, message: MSG_JOIN)
+        end
+        alias on_csend on_send
+
         private
+
+        def silent_join?(node)
+          return true unless node.value_used?
+          return true if last_in_example?(node)
+
+          last_in_each?(node)
+        end
+
+        def last_in_each?(node)
+          current = node
+          current = current.parent while current.parent && passes_value_on?(current.parent, current)
+          container = current.parent
+          container&.any_block_type? && EACH_BLOCKS.include?(container.method_name) && container.body.equal?(current)
+        end
 
         def silent?(node)
           return true unless node.value_used?

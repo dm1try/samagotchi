@@ -58,7 +58,7 @@ class SSEClient
   def stop
     @done = true
     @socket&.close
-    @reader&.join(0.5)
+    @reader&.join(0.5) # wait-ok: best effort, the reader is killed below if still alive
     @reader&.kill if @reader&.alive?
   rescue StandardError
     nil
@@ -391,7 +391,7 @@ RSpec.describe Samagotchi::Bridge do
 
       io.write_sleep = 0
       writer_thread.kill
-      writer_thread.join(0.5) rescue nil
+      writer_thread.join(0.5) rescue nil # wait-ok: killed above, best effort
     end
   end
 
@@ -1863,7 +1863,7 @@ RSpec.describe Samagotchi::Bridge do
       expect(status).to eq(200)
       expect(resp).to include("status" => "answered", "session_id" => @session.id)
       expect(resp["answer"]).to eq("id" => qid, "selected" => ["Dogs"], "freeform" => nil, "selected_indices" => [1])
-      thread.join(2)
+      join!(thread, "the question")
     end
 
     it "answers 409 Conflict when the question is no longer pending (another client won)" do
@@ -1897,7 +1897,7 @@ RSpec.describe Samagotchi::Bridge do
 
       status, = post_answer(JSON.generate(id: qid, selected: ["Allow this call for the session"]))
       expect(status).to eq(200)
-      thread.join(2)
+      join!(thread, "the question")
       expect(result[:answer].to_h).to include(selected_indices: [1])
     end
 
@@ -2372,7 +2372,7 @@ RSpec.describe Samagotchi::Bridge do
         tool_result
       end
 
-      after { @turn&.join(2) }
+      after { join!(@turn, "the asking turn") if @turn }
 
       it "dismisses the question it names: the tool returns and every UI is told" do
         start_bridge

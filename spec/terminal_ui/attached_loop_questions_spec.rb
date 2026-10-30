@@ -389,7 +389,7 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "answering the continue off
     wait_for("the question prompt") { prompts.last == "? " }
 
     ["no, too slow", "", "/model", nil].each { |line| typed << line }
-    thread.join(2)
+    join!(thread, "the attached loop")
 
     # A command at the offer ran without echo: its line shows as typed.
     expect(screen.lines).to include("? /model")
@@ -410,7 +410,7 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "answering the continue off
     wait_for("the question prompt") { prompts.last == "? " }
 
     ["", "no", nil].each { |line| typed << line }
-    thread.join(2)
+    join!(thread, "the attached loop")
 
     expect(client).to have_received(:post_command).with(line: "/continue", client_id: "cli:answer")
     expect(client).to have_received(:post_command).with(line: "/continue no", client_id: "tui:1")

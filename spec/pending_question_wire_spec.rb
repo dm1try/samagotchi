@@ -53,7 +53,7 @@ RSpec.describe "the pending question on the wire and on disk" do
     expect(saved_record["relayed_to"]).to eq("parent_id" => "p-1", "parent_short" => "p-1", "relay_id" => "r-1")
 
     desk.cancel("user", id: id)
-    thread.join(2)
+    join!(thread, "the question")
     expect(saved_record).to be_nil
   end
 

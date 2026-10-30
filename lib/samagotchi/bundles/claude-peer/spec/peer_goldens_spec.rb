@@ -220,7 +220,7 @@ RSpec.describe "Peer bundle goldens", :bundle do
       yield
       wait_for("a message on the inbox socket", timeout: 10) { received.size.positive? || !thread.alive? }
       server.close
-      thread.join(2)
+      join!(thread, "the inbox listener")
       File.unlink(socket)
       Array.new(received.size) { received.pop }
     end

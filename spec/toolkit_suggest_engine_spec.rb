@@ -79,7 +79,7 @@ RSpec.describe Samagotchi::Engine do
     allow(Samagotchi::SystemOne::Client).to receive(:from_config).and_return(system_one)
 
     start(engine)
-    engine.instance_variable_get(:@toolkit_audit_thread).join(5)
+    join!(engine.instance_variable_get(:@toolkit_audit_thread), "the toolkit audit")
     line = JSON.parse(File.readlines(File.join(dir, Samagotchi::ToolkitSuggest::FILE)).last)
 
     expect(line["kits"].keys).to contain_exactly("full", "web", "coding")

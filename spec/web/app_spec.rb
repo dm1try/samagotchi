@@ -4164,7 +4164,7 @@ RSpec.describe Samagotchi::Web::App do
         env_for("/api/sessions/s1/answer", method: "POST", body: '{"id":"q-9","selected":["Cats"],"freeform":"meow"}')
       )
       server.close
-      accept_thread.join(1)
+      join!(accept_thread, "the fake Bridge")
 
       expect(status).to eq(200)
       expect(JSON.parse(body.first)).to include("status" => "answered", "id" => "q-9")
@@ -4192,7 +4192,7 @@ RSpec.describe Samagotchi::Web::App do
         env_for("/api/sessions/s1/answer", method: "POST", body: '{"id":"q-7","selected":["Dogs"]}')
       )
       server.close
-      accept_thread.join(1)
+      join!(accept_thread, "the fake Bridge")
 
       expect(status).to eq(409)
       expect(JSON.parse(body.first)).to include("error" => "question_not_pending", "detail" => "question already answered")
@@ -4217,7 +4217,7 @@ RSpec.describe Samagotchi::Web::App do
         env_for("/api/sessions/s1/answer", method: "POST", body: '{"id":"q-7","selected":["Dogs"]}')
       )
       server.close
-      accept_thread.join(1)
+      join!(accept_thread, "the fake Bridge")
 
       expect(status).to eq(502)
       expect(JSON.parse(body.first)).to include("error" => "bridge_secret", "detail" => Samagotchi::BridgeSecret.refused("s1"))
@@ -4244,7 +4244,7 @@ RSpec.describe Samagotchi::Web::App do
         env_for("/api/sessions/s1/answer", method: "POST", body: '{"id":"q-5","selected":["A"]}')
       )
       server.close
-      accept_thread.join(1)
+      join!(accept_thread, "the fake Bridge")
 
       expect(status).to eq(502)
       expect(JSON.parse(body.first)).to include("error" => "bridge_error", "detail" => "the question desk raised")
@@ -4285,7 +4285,7 @@ RSpec.describe Samagotchi::Web::App do
       server, thread, received = serve_bridge_once("200 OK", '{"status":"dismissed","id":"q-3"}')
 
       status, resp = dismiss(app_with_bridge(server.local_address.ip_port))
-      thread.join(1)
+      join!(thread, "the fake Bridge")
       server.close
 
       expect(status).to eq(200)
@@ -4297,7 +4297,7 @@ RSpec.describe Samagotchi::Web::App do
       server, thread, = serve_bridge_once("409 Conflict", '{"error":"question_not_pending","detail":"no pending question q-3"}')
 
       status, resp = dismiss(app_with_bridge(server.local_address.ip_port))
-      thread.join(1)
+      join!(thread, "the fake Bridge")
       server.close
 
       expect(status).to eq(409)
@@ -4308,7 +4308,7 @@ RSpec.describe Samagotchi::Web::App do
       server, thread, = serve_bridge_once("404 Not Found", '{"error":"not_found"}')
 
       status, resp = dismiss(app_with_bridge(server.local_address.ip_port))
-      thread.join(1)
+      join!(thread, "the fake Bridge")
       server.close
 
       expect(status).to eq(501)
@@ -4345,7 +4345,7 @@ RSpec.describe Samagotchi::Web::App do
       server, thread, received = serve_bridge_once("202 Accepted", '{"status":"accepted","command_id":"c1","session_id":"s1"}')
 
       status, resp = command(app_with_bridge(server.local_address.ip_port, manager: manager))
-      thread.join(1)
+      join!(thread, "the fake Bridge")
       server.close
 
       expect(status).to eq(202)
@@ -4363,7 +4363,7 @@ RSpec.describe Samagotchi::Web::App do
       server, thread, = serve_bridge_once("400 Bad Request", '{"error":"unknown_command","detail":"not a session command: /nope"}')
 
       status, resp = command(app_with_bridge(server.local_address.ip_port), '{"line":"/nope"}')
-      thread.join(1)
+      join!(thread, "the fake Bridge")
       server.close
 
       expect(status).to eq(400)
@@ -4379,7 +4379,7 @@ RSpec.describe Samagotchi::Web::App do
       server, thread, = serve_bridge_once("400 Bad Request", JSON.generate(error: "unknown_command", detail: detail))
 
       status, resp = command(app_with_bridge(server.local_address.ip_port), '{"line":"/llm-context strategy stale"}')
-      thread.join(1)
+      join!(thread, "the fake Bridge")
       server.close
 
       expect(status).to eq(501)
@@ -4393,7 +4393,7 @@ RSpec.describe Samagotchi::Web::App do
       server, thread, = serve_bridge_once("404 Not Found", '{"error":"not_found"}')
 
       status, resp = command(app_with_bridge(server.local_address.ip_port))
-      thread.join(1)
+      join!(thread, "the fake Bridge")
       server.close
 
       expect(status).to eq(501)

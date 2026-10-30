@@ -486,7 +486,7 @@ RSpec.describe "The sample-plugin bundle (Plugin::Api and Plugin::Context)" do
         .to eq(bundle: "slow-setup", label: "Indexing the repo", provides_tools: true, quiet: false, timeout: 7.0, state: :pending)
       expect(engine.plugin_failures.message).to include("init needs a label")
       engine.start_init_tasks!
-      task.thread.join(2)
+      join!(task.thread, "the init task")
       expect(finished.map { |e| e[:summary] }).to eq(["indexed for slow-setup"])
     end
   end

@@ -47,7 +47,7 @@ RSpec.describe "steering a running turn (chi send)" do
 
   after do
     @thread&.kill
-    @thread&.join(2)
+    join!(@thread, "the worker thread") if @thread
     @lock&.release
     FileUtils.rm_rf(tmpdir)
     server&.stop

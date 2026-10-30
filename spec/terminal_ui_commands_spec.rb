@@ -543,7 +543,7 @@ RSpec.describe Samagotchi::TerminalUI do
       engine.start_init_tasks!
       wait_for("y's init task to fail") { engine.instance_variable_get(:@plugin_tasks).tasks.last.state == :failed }
       gate << "x ready, 3 tools"
-      engine.instance_variable_get(:@plugin_tasks).tasks.each { |task| task.thread.join(2) }
+      engine.instance_variable_get(:@plugin_tasks).tasks.each { |task| join!(task.thread, "the init task") }
       expect(lines).to be_empty
       agent.between_turns.flush_cards
       expect(lines).to contain_exactly("┌ y didn't start · mcp", "│ gone", "└", "mcp> ✓ x ready, 3 tools")

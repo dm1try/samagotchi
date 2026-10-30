@@ -41,7 +41,7 @@ RSpec.describe Samagotchi::QuestionDesk do
     it "closes the question with the reason the watch returns, announced as a cancel" do
       calls = 0
       thread, box, id = open_in_background(watch: -> { (calls += 1) >= 3 ? "child_gone" : nil })
-      thread.join(2)
+      join!(thread, "the question")
 
       expect(box[:answer]).to eq(error: "cancelled", reason: "child_gone", id: id)
       expect(events.last).to eq(type: :question_cancelled, id: id, reason: "child_gone")
@@ -57,7 +57,7 @@ RSpec.describe Samagotchi::QuestionDesk do
       thread, box, id = open_in_background(watch: -> { calls += 1; nil })
       wait_for("watch to run twice", timeout: 5) { calls >= 2 }
       desk.answer(id: id, selected: ["Yes"])
-      thread.join(2)
+      join!(thread, "the question")
       elapsed = SpecWaiting.mono - started_at
 
       expect(box[:answer].to_h).to include(selected: ["Yes"])
@@ -75,7 +75,7 @@ RSpec.describe Samagotchi::QuestionDesk do
       wait_for("the question pending") { desk.pending }
       desk.answer(id: desk.pending.id, selected: ["No"])
       gate << :go
-      thread.join(2)
+      join!(thread, "the question")
 
       expect(box[:answer].to_h).to include(selected: ["No"], selected_indices: [1])
       expect(events.map { |e| e[:type] }).not_to include(:question_cancelled)
@@ -86,7 +86,7 @@ RSpec.describe Samagotchi::QuestionDesk do
       thread, box, id = open_in_background(watch: -> { calls += 1; raise "boom" })
       wait_for("the raising watch to run twice") { calls >= 2 }
       desk.answer(id: id, selected: ["Yes"])
-      thread.join(2)
+      join!(thread, "the question")
       expect(box[:answer].to_h).to include(selected: ["Yes"])
     end
 
@@ -95,7 +95,7 @@ RSpec.describe Samagotchi::QuestionDesk do
       controller[0] = ctrl
       thread, box, id = open_in_background
       ctrl.cancel!(:user)
-      thread.join(2)
+      join!(thread, "the question")
       expect(box[:answer]).to eq(error: "cancelled", reason: "user", id: id)
     end
   end
@@ -117,7 +117,7 @@ RSpec.describe Samagotchi::QuestionDesk do
         .to raise_error(Samagotchi::QuestionDesk::Refused)
 
       desk.answer(id: id, selected: ["Deny"], client_id: "relay:ab12cd34", parent_agent: true)
-      thread.join(2)
+      join!(thread, "the question")
       expect(box[:answer].to_h).to include(selected: ["Deny"], by: "parent_agent")
       # A parent agent's answer doesn't bring the session back to the lists.
       expect(inputs).to be_empty
@@ -129,7 +129,7 @@ RSpec.describe Samagotchi::QuestionDesk do
         .to raise_error(Samagotchi::QuestionDesk::Refused)
 
       answer = desk.answer(id: id, selected: ["Allow once"], client_id: "relay:ab12cd34", parent_agent: false)
-      thread.join(2)
+      join!(thread, "the question")
       expect(answer.to_h).to eq(id: id, selected: ["Allow once"], freeform: nil, selected_indices: [0])
       expect(inputs).to eq([session.id])
     end
@@ -143,7 +143,7 @@ RSpec.describe Samagotchi::QuestionDesk do
         .to raise_error(Samagotchi::QuestionDesk::Refused) { |e| expect(e.reason).to eq(:permit) }
 
       desk.answer(id: id, selected: ["Deny"], client_id: "cli:answer")
-      thread.join(2)
+      join!(thread, "the question")
       expect(box[:answer].to_h).to include(selected: ["Deny"])
     end
 
@@ -157,7 +157,7 @@ RSpec.describe Samagotchi::QuestionDesk do
       expect { desk.answer(id: id, selected: ["Allow once"], client_id: "cli:answer") }
         .to raise_error(Samagotchi::QuestionDesk::Refused) { |e| expect(e.reason).to eq(:permit) }
       desk.answer(id: id, selected: ["Deny"], client_id: "cli:answer")
-      thread.join(2)
+      join!(thread, "the question")
     end
 
     it "keeps config.yml's level when the session's is looser (the ceiling)" do
@@ -167,7 +167,7 @@ RSpec.describe Samagotchi::QuestionDesk do
       expect { desk.answer(id: id, selected: ["Allow once"], client_id: "cli:answer") }
         .to raise_error(Samagotchi::QuestionDesk::Refused) { |e| expect(e.reason).to eq(:permit) }
       desk.answer(id: id, selected: ["Deny"], client_id: "cli:answer")
-      thread.join(2)
+      join!(thread, "the question")
     end
   end
 
@@ -228,7 +228,7 @@ RSpec.describe Samagotchi::QuestionDesk do
       id = desk.pending.id
 
       answer = desk.answer(id: id, selected: ["Yes"], client_id: "cli:answer")
-      thread.join(2)
+      join!(thread, "the question")
 
       expect(answer.by).to eq("parent_agent")
       expect(box[:result]).to eq(%({"id":"#{id}","selected":["Yes"],"freeform":null,"selected_indices":[0]}))
@@ -287,7 +287,7 @@ RSpec.describe Samagotchi::QuestionDesk do
       expect(events.last).to eq(type: :question_relay, id: id, relayed_to: nil, reason: "parent_gone")
 
       desk.answer(id: id, selected: ["Yes"])
-      thread.join(2)
+      join!(thread, "the question")
     end
 
     it "does nothing for a question that isn't the one pending, or is answered" do
@@ -295,7 +295,7 @@ RSpec.describe Samagotchi::QuestionDesk do
       expect(desk.annotate("other", relayed_to: { relay_id: "r" })).to be(false)
       desk.answer(id: id, selected: ["Yes"])
       expect(desk.annotate(id, relayed_to: { relay_id: "r" })).to be(false)
-      thread.join(2)
+      join!(thread, "the question")
       expect(events.map { |e| e[:type] }).not_to include(:question_relay)
     end
   end
@@ -412,7 +412,7 @@ RSpec.describe Samagotchi::QuestionDesk do
       expect(reposts).to be_empty
 
       desk.answer(id: other, selected: ["Yes"])
-      thread.join(2)
+      join!(thread, "the question")
       expect(box[:answer].to_h).to include(selected: ["Yes"])
       expect(reposts).to eq([nil])
     end
@@ -421,7 +421,7 @@ RSpec.describe Samagotchi::QuestionDesk do
       desk.post(continue_fields, on_answer: on_answer)
       thread, _box, other = open_in_background
       desk.answer(id: other, selected: ["No"])
-      thread.join(2)
+      join!(thread, "the question")
 
       expect(desk.pending).to have_attributes(kind: "continue", status: "pending")
       desk.answer(id: desk.pending.id, selected: ["Continue"], client_id: "tui:1")
@@ -434,7 +434,7 @@ RSpec.describe Samagotchi::QuestionDesk do
       expect(desk.pending).to have_attributes(id: other)
 
       desk.answer(id: other, selected: ["Yes"])
-      thread.join(2)
+      join!(thread, "the question")
       expect(desk.pending).to have_attributes(kind: "continue")
     end
 
@@ -443,7 +443,7 @@ RSpec.describe Samagotchi::QuestionDesk do
       thread, _box, other = open_in_background
       desk.withdraw("dropped")
       desk.answer(id: other, selected: ["Yes"])
-      thread.join(2)
+      join!(thread, "the question")
 
       expect(desk.pending).to be_nil
     end

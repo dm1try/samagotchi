@@ -62,7 +62,7 @@ RSpec.describe Samagotchi::Worker, "Verify fresh" do
 
   after do
     @thread&.kill
-    @thread&.join(2)
+    join!(@thread, "the worker thread") if @thread
     FileUtils.rm_rf(tmpdir)
   end
 

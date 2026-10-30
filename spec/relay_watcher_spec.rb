@@ -26,7 +26,7 @@ RSpec.describe Samagotchi::RelayWatcher do
     expect(engine).not_to have_received(:annotate_question)
 
     up[0] = false
-    thread.join(1)
+    join!(thread, "the relay watcher")
     expect(thread).not_to be_alive
     expect(engine).to have_received(:annotate_question).with("q1", relayed_to: nil, reason: "parent_gone").once
   end
@@ -34,12 +34,12 @@ RSpec.describe Samagotchi::RelayWatcher do
   it "stops without touching anything once the question is answered or another relay's" do
     thread = start(-> { true })
     pending[0] = Samagotchi::PendingQuestion.new(id: "q1", relayed_to: { relay_id: "r2" })
-    thread.join(1)
+    join!(thread, "the relay watcher")
     expect(thread).not_to be_alive
 
     pending[0] = nil
     thread = start(-> { false })
-    thread.join(1)
+    join!(thread, "the relay watcher")
     expect(thread).not_to be_alive
     expect(engine).not_to have_received(:annotate_question)
   end

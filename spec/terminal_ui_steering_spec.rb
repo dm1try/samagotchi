@@ -216,7 +216,7 @@ RSpec.describe Samagotchi::TerminalUI, "steering" do
       allow(engine).to receive(:run_turn) do
         repl_input << [:line, "/side q"]
         thread = started.pop
-        thread.join(2)
+        join!(thread, "the anytime command")
         lines_mid_turn = surface.lines.dup
         result
       end
@@ -261,7 +261,7 @@ RSpec.describe Samagotchi::TerminalUI, "steering" do
       allow(engine).to receive(:turn_running?).and_return(true)
       allow(engine).to receive(:run_turn) do
         repl_input << [:line, "/side q"]
-        started.pop.join(2)
+        join!(started.pop, "the anytime command")
         lines_mid_turn = surface.lines.flat_map { |line| line.split("\n") }
         result
       end
@@ -278,7 +278,7 @@ RSpec.describe Samagotchi::TerminalUI, "steering" do
       allow(engine).to receive(:turn_running?).and_return(false)
 
       agent.send(:start_anytime_command, "/side")
-      thread.join(2)
+      join!(thread, "the anytime command")
       expect(surface.lines).not_to include("\nmodel> later")
       agent.between_turns.flush_cards
 

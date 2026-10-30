@@ -68,7 +68,7 @@ RSpec.describe "The claude-peer plugin", :bundle do
   def received_lines(**args)
     server, thread, received = listen
     result = send_part(**args)
-    thread.join(5)
+    join!(thread, "the inbox listener")
     server.close
     File.unlink(socket)
     [result, received.empty? ? nil : received.pop.lines]
@@ -197,7 +197,7 @@ RSpec.describe "The claude-peer plugin", :bundle do
     def sent_content(args)
       server, thread, received = listen
       result = run(args)
-      thread.join(5)
+      join!(thread, "the inbox listener")
       server.close
       File.unlink(socket)
       [result, received.empty? ? nil : JSON.parse(received.pop).dig("message", "content")]

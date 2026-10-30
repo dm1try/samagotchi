@@ -100,7 +100,7 @@ RSpec.describe "The hook runtime through the Engine" do
       expect(pending).to have_attributes(kind: "hook", hook: "turn hook", header: "known-names", question: "which?",
                                          options: %w[a b], multi_select: false, allow_freeform: false)
       engine.answer_question(id: pending.id, selected: ["b"])
-      thread.join(2)
+      join!(thread, "the turn")
 
       expect(result).to eq(selected: ["b"], freeform: nil, selected_indices: [1])
     end
@@ -113,7 +113,7 @@ RSpec.describe "The hook runtime through the Engine" do
       thread = Thread.new { engine.run_turn(session, "hi") }
       pending = wait_for_question(engine)
       engine.cancel_question("dismissed", id: pending.id)
-      thread.join(2)
+      join!(thread, "the turn")
 
       expect(result).to be_nil
     end
@@ -148,7 +148,7 @@ RSpec.describe "The hook runtime through the Engine" do
           expect(e.detail).to include("may not pick Continue here (guardrails.parent_answers: hard)", "--option Stop")
         }
       engine.answer_question(id: pending.id, selected: ["Stop"], client_id: parent)
-      thread.join(2)
+      join!(thread, "the turn")
 
       expect(result).to eq(selected: ["Stop"], freeform: nil, selected_indices: [1])
     end

@@ -129,8 +129,8 @@ Every example also runs under a 120 s limit (`spec_helper`'s `around`; `integrat
 limit, `0` turns it off (a debugger session). The limit is not scaled.
 
 **The cops.** `Samagotchi/SpecSleep` (an untagged `sleep` in a spec) and `Samagotchi/SilentWait` (a `wait_until`
-whose value is dropped, an example's last line included, `expect(wait_until { … }).to be(true)`, or an untagged
-`Timeout.timeout`) live in `rubocop/` and run in `rake lint`, so CI fails on them. RSpec counts `wait_for`,
+whose value is dropped, an example's last line included, `expect(wait_until { … }).to be(true)`, an untagged
+`Timeout.timeout`, or a statement `thread.join(N)`, whose N is unscaled and whose nil is dropped: use `join!`) live in `rubocop/` and run in `rake lint`, so CI fails on them. RSpec counts `wait_for`,
 `eventually`, `join!` and `pop!` as an example's expectation (`RSpec/NoExpectationExample`), so a wait can be an
 example's last line. What the cops can't see, `script/affected-specs` hints at (`timing:`, below).
 

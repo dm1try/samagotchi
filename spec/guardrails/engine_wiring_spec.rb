@@ -61,7 +61,7 @@ RSpec.describe "Engine guardrail wiring" do
       # Tagged for a parent's answer (ParentPolicy): once permits, repo permits wide.
       expect(pending).to have_attributes(effects: %w[permit permit_wide deny], user_only: false)
       engine.answer_question(id: pending.id, selected: [pending.options[1]])
-      thread.join(2)
+      join!(thread, "the approval")
       expect([result.decision, result.scope]).to eq([:allow, "repo"])
     end
 
@@ -75,7 +75,7 @@ RSpec.describe "Engine guardrail wiring" do
       wait_for("the pending question", interval: 0.005) { engine.pending_question }
       expect(engine.pending_question).to have_attributes(effects: %w[permit deny], user_only: true)
       engine.cancel_question("user")
-      thread.join(2)
+      join!(thread, "the approval")
     end
 
     it "asks about a plugin tool by its label, as its row shows it" do
@@ -92,7 +92,7 @@ RSpec.describe "Engine guardrail wiring" do
       expect(pending.approval).to include(tool: "mcp_x_echo", label: "x: echo")
       expect(pending.question.lines.first).to start_with("x: echo: ")
       engine.cancel_question("dismissed", id: pending.id)
-      thread.join(2)
+      join!(thread, "the approval")
     end
 
     it "asks about a call that acts as another tool by that tool's label" do
@@ -112,7 +112,7 @@ RSpec.describe "Engine guardrail wiring" do
       expect(pending.approval).to include(tool: "call_tool", acts_as: "mcp_x_echo", label: "x: echo")
       expect(pending.question.lines.first).to eq("x: echo: m=hi\n")
       engine.cancel_question("dismissed", id: pending.id)
-      thread.join(2)
+      join!(thread, "the approval")
     end
 
     it "asks by the label: a plugin tool's targets: gives, over the registered one; one that isn't a short line is ignored" do
@@ -132,7 +132,7 @@ RSpec.describe "Engine guardrail wiring" do
         wait_for("the pending question", interval: 0.005) { engine.pending_question }
         pending = engine.pending_question
         engine.cancel_question("dismissed", id: pending.id)
-        thread.join(2)
+        join!(thread, "the approval")
         [pending.approval[:label], v.targets.label]
       end
       expect(asked.call("  github: x ")).to eq(["github: x", "github: x"])
@@ -149,7 +149,7 @@ RSpec.describe "Engine guardrail wiring" do
       thread = Thread.new { result = engine.request_approval(asking(engine)) }
       wait_for("the pending question", interval: 0.005) { engine.pending_question }
       engine.cancel_question("dismissed", id: engine.pending_question.id)
-      thread.join(2)
+      join!(thread, "the approval")
       expect(result.deny_text).to include("The approval was cancelled.")
     end
 
@@ -170,7 +170,7 @@ RSpec.describe "Engine guardrail wiring" do
         pending = engine.pending_question
         yield pending if block_given?
         engine.cancel_question("dismissed", id: pending.id)
-        thread.join(2)
+        join!(thread, "the approval")
         pending
       end
 

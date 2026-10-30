@@ -67,7 +67,7 @@ RSpec.describe "ctx.http and the turn's Stop" do
     started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
 
     expect(engine.cancel_current_turn!(:manual)).to be(true)
-    turn.join(10)
+    join!(turn, "the cancelled turn", timeout: 10)
 
     expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < 5
     expect(outcome.pop(timeout: 1)).to eq(:tool_cancelled)

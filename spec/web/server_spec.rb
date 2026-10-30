@@ -738,7 +738,7 @@ RSpec.describe Samagotchi::Web::Server do
       end
       expect(described_class.probe("127.0.0.1", server.addr[1])).to eq(:other)
     ensure
-      thread&.join(1)
+      join!(thread, "the fake server") if thread
       server&.close
     end
 

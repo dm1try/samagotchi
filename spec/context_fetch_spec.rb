@@ -104,7 +104,7 @@ RSpec.describe Samagotchi::ContextFetch do
     thread = Thread.new { fetch(attached) }
     wait_for("the child's pid file") { File.size?(child_file) }
 
-    thread.kill.join(5)
+    join!(thread.kill, "the killed fetch")
 
     expect(alive?(File.read(sh_file).to_i)).to be(false)
     wait_for("the child to be stopped") { !alive?(File.read(child_file).to_i) }
@@ -194,7 +194,7 @@ RSpec.describe Samagotchi::ContextFetch do
       source(readd) if readd
       yield if block_given?
       FileUtils.touch(gate)
-      thread.join(10)
+      join!(thread, "the fetch", timeout: 10)
       outcome
     end
 

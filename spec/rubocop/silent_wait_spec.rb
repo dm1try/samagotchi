@@ -119,4 +119,44 @@ RSpec.describe RuboCop::Cop::Samagotchi::SilentWait do
              ^^^^^^^^^^^^^^^^^^^^^^ #{message}
     RUBY
   end
+
+  describe "a statement join(N)" do
+    let(:join_message) { described_class::MSG_JOIN }
+
+    it "flags a join with a number whose value is dropped, an example's last line, or an each block's" do
+      expect_offense(<<~RUBY)
+        it "joins" do
+          thread.join(2)
+          ^^^^^^^^^^^^^^ #{join_message}
+          expect(box[:answer]).to be_done
+          @thread&.join(0.5)
+          ^^^^^^^^^^^^^^^^^^ #{join_message}
+        end
+        after { @turn.join(1) }
+                ^^^^^^^^^^^^^ #{join_message}
+        threads.each { |t| t.join(5) }
+                           ^^^^^^^^^ #{join_message}
+      RUBY
+    end
+
+    it "allows a join whose value is used, a join without a deadline, Array#join and join!" do
+      expect_no_offenses(<<~RUBY)
+        expect(thread.join(0.1)).to be_nil
+        thread.join(2) || raise("stuck")
+        done = thread.join(1)
+        def finish = thread.join(2)
+        thread.join
+        lines.join(",")
+        parts.join(separator)
+        join!(thread, "the question")
+        threads.map { |t| t.join(5) }
+      RUBY
+    end
+
+    it "allows a best-effort join tagged wait-ok" do
+      expect_no_offenses(<<~RUBY)
+        reader.join(0.5) # wait-ok: killed below if still alive
+      RUBY
+    end
+  end
 end

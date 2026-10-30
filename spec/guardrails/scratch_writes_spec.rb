@@ -104,7 +104,7 @@ RSpec.describe "Engine: a scratch session's approvals" do
       offered = pending.approval[:scopes]
       engine.answer_question(id: pending.id, selected: [pending.options[offered.index(scope)]])
     end
-    thread.join(2)
+    join!(thread, "the approval")
     [verdict, offered]
   end
 

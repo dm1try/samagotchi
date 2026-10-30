@@ -723,7 +723,7 @@ RSpec.describe Samagotchi::Tools::Execute do
         short_limit
         allow(described_class).to receive(:hand_over).and_wrap_original do |original, task, **args|
           FileUtils.touch("go")
-          args[:waiter].join(5)
+          join!(args[:waiter], "the command's waiter")
           original.call(task, **args)
         end
 

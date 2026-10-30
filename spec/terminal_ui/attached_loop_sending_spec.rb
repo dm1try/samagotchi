@@ -29,7 +29,7 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "a failed turn's prompt" do
 
   after do
     typed << nil
-    @thread.join(2)
+    join!(@thread, "the attached loop")
   end
 
   def fail_turn(enqueued_id)
