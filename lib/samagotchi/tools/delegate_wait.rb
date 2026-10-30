@@ -63,6 +63,7 @@ module Samagotchi
         sd = peers.state_dir || Session.default_state_dir
         key = [peers.session_id, child_id]
         cancelled = -> { peers.cancelled? }
+        message_waiting = -> { peers.respond_to?(:input_waiting?) && !!peers.input_waiting? }
         relay = peers.respond_to?(:relay) ? peers.relay : nil
         reports = reports_mode(peers)
         others = relay && others_for(peers.session_id, child_id, relay, sd)
@@ -80,7 +81,7 @@ module Samagotchi
           wait = ReplyWait.call(child_id, state_dir: sd, cursor: cursor.reply_file, timeout: [left, 0].max,
                                           poll_interval: poll_interval, cancelled: cancelled, baseline: baseline,
                                           owner_grace: owner_grace, interject: others && -> { others.poll },
-                                          turn: cursor.turn)
+                                          turn: cursor.turn, message_waiting: message_waiting)
           left -= monotonic - started
           unless wait.status == :waiting_for_answer &&
                  DelegateRelay.relayable?(relay, wait.question, strategy: Guardrails::ParentPolicy.for_session(wait.session),
@@ -91,7 +92,9 @@ module Samagotchi
               file = movement.cursor.report_claim&.file || wait.file
               return already_reported_result(child_id, file, state_dir: sd)
             end
-            return already_reported_result(child_id, report_claim.file, state_dir: sd) if report_claim && wait.status == :timeout
+            if report_claim && %i[timeout message_waiting].include?(wait.status)
+              return already_reported_result(child_id, report_claim.file, state_dir: sd)
+            end
 
             text = with_outcomes(finish(wait, child_id, timeout: timeout, reports: reports), outcomes)
             return RefText.wrap(text, reply_path(child_id, wait, state_dir: sd))
@@ -156,6 +159,22 @@ module Samagotchi
         end
 
         result(child_id, "running", "wait canceled; the child keeps running; chi brings its reply as a delegate report")
+      end
+
+      # A person's message waits for this turn's next step (ReplyWait's
+      # :message_waiting, Engine#input_waiting?): the wait ends with no reply
+      # yet and the child untouched, as a cancel does. The cursor didn't
+      # move, so the reply still comes (a delegate report, or the next
+      # delegate_result).
+      def message_waiting_result(child_id, reports: "off")
+        head = "no reply yet: a message from the user is waiting; the child keeps running. Read the message first."
+        if reports == "off"
+          return result(child_id, "running", "#{head} delegate_result #{child_id} waits again; chi --attach #{child_id} shows it.")
+        end
+
+        result(child_id, "running",
+               "#{head} chi brings its reply as a delegate report; delegate_result #{child_id} waits again only if " \
+               "this turn needs it.")
       end
 
       def monotonic = Process.clock_gettime(Process::CLOCK_MONOTONIC)
@@ -230,6 +249,8 @@ module Samagotchi
           result(child_id, status, waiting_text(child_id, wait.question, report: report, reports: reports, strategy: strategy))
         when :canceled
           canceled_result(child_id, reports: reports)
+        when :message_waiting
+          message_waiting_result(child_id, reports: reports)
         when :no_reply
           result(child_id, status, "#{no_reply_text(wait, child_id, strategy: strategy)}; its session shows what happened")
         when :worker_gone

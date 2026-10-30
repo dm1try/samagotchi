@@ -181,6 +181,49 @@ RSpec.describe Samagotchi::ReplyWait do
     expect(wait(cancelled: -> { flag[0] }).status).to eq(:canceled)
   end
 
+  describe "a message waiting for the caller's turn (message_waiting:)" do
+    let(:flag) { [false] }
+
+    it "ends the wait at once with :message_waiting, and the session untouched" do
+      result = wait(message_waiting: -> { true })
+      expect(result.status).to eq(:message_waiting)
+      expect(Samagotchi::Session.load(session.id, state_dir: tmpdir).status).to eq("running")
+    end
+
+    it "ends a wait that began before the message, within a poll, though the deadline is far" do
+      flag = [false]
+      later { flag[0] = true }
+      expect(wait(timeout: 30, message_waiting: -> { flag[0] }).status).to eq(:message_waiting)
+    end
+
+    it "is nothing by default" do
+      expect(wait(timeout: 0).status).to eq(:timeout)
+    end
+
+    it "lets an arrived reply win" do
+      write_reply("the reply")
+      expect(wait(message_waiting: -> { true })).to have_attributes(status: :done, text: "the reply")
+    end
+
+    it "lets a cancel win" do
+      expect(wait(cancelled: -> { true }, message_waiting: -> { true }).status).to eq(:canceled)
+    end
+
+    it "lets a failed worker and a question win" do
+      set(status: "error", last_prompt: "boom")
+      expect(wait(message_waiting: -> { true }).status).to eq(:error)
+
+      set(status: "running", pending_question: { id: "q1", question: "Which?" }, last_prompt: "x")
+      own_by_worker
+      expect(wait(message_waiting: -> { true }).status).to eq(:waiting_for_answer)
+    end
+
+    it "lets a gone worker (past its grace) win over a message that comes later" do
+      later(0.3) { flag[0] = true }
+      expect(wait(owner_grace: 0.05, message_waiting: -> { flag[0] }).status).to eq(:worker_gone)
+    end
+  end
+
   it "times out, and waits with no limit on nil" do
     expect(wait(timeout: 0).status).to eq(:timeout)
 

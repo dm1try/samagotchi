@@ -726,6 +726,86 @@ RSpec.describe "delegate tools" do
       expect(Samagotchi::Session.load(child.id, state_dir: tmpdir).status).to eq("running")
     end
 
+    describe "a message from the user waiting for this turn (Peers#input_waiting?)" do
+      let(:message) { [false] }
+      let(:asking) do
+        peers.dup.tap do |p|
+          p.define_singleton_method(:input_waiting?) { message_flag[0] }
+          flag = message
+          p.define_singleton_method(:message_flag) { flag }
+        end
+      end
+
+      def waited(timeout: 5) = described_class.call(child.id, peers: asking, timeout: timeout)
+
+      it "ends the wait with no reply yet, the child untouched, within a poll" do
+        child
+        later { message[0] = true }
+
+        started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+        expect(waited(timeout: 30)).to eq("session: #{child.id}\nstatus: running\nno reply yet: a message from the user is waiting; " \
+                                          "the child keeps running. Read the message first. delegate_result #{child.id} waits " \
+                                          "again; chi --attach #{child.id} shows it.")
+        expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < time_bound(5, below: 30)
+        expect(Samagotchi::Session.load(child.id, state_dir: tmpdir).status).to eq("running")
+        expect(Samagotchi::Tools::DelegateCursors.get(parent.id, child.id, state_dir: tmpdir).baseline).to be_nil
+      end
+
+      it "says a delegate report brings the reply to a parent that gets them" do
+        allow(Samagotchi::Config).to receive(:get).with("session.delegate_reports").and_return("wake")
+        asking.relay = Object.new
+        message[0] = true
+
+        expect(waited).to eq("session: #{child.id}\nstatus: running\nno reply yet: a message from the user is waiting; the child " \
+                             "keeps running. Read the message first. chi brings its reply as a delegate report; delegate_result " \
+                             "#{child.id} waits again only if this turn needs it.")
+      end
+
+      it "lets an arrived reply, a question and a cancel win, and a crashed child too" do
+        message[0] = true
+        write_reply(child, "the reply")
+        expect(waited).to end_with("status: answered\n---\nthe reply")
+
+        set_status(child, "running", pending_question: { id: "q1", kind: "approval", question: "Run rm?" })
+        expect(waited).to include("status: question")
+
+        cancelled[0] = true
+        set_status(child, "running", pending_question: nil)
+        expect(waited).to include("wait canceled; the child keeps running")
+        cancelled[0] = false
+
+        set_status(child, "error")
+        expect(waited).to include("status: error")
+      end
+
+      it "doesn't move the cursor: the reply it didn't wait for still comes" do
+        message[0] = true
+        expect(waited).to include("a message from the user is waiting")
+        message[0] = false
+        write_reply(child, "late reply")
+        expect(waited).to end_with("status: answered\n---\nlate reply")
+      end
+
+      it "returns what a reserved report (report_claim) says, as a timeout does" do
+        claim = Samagotchi::Tools::ReportClaim.new(id: "c1", file: nil, cursor: Samagotchi::Tools::DelegateCursor.empty)
+        Samagotchi::Tools::DelegateCursors.update(parent.id, child.id, state_dir: tmpdir) { |c| c.with(report_claim: claim) }
+        expect(described_class.call(child.id, peers: peers, timeout: 0))
+          .to eq("session: #{child.id}\nstatus: reported\nThe child's latest status was already reported to this session.")
+
+        message[0] = true
+        expect(waited).to eq("session: #{child.id}\nstatus: reported\nThe child's latest status was already reported to this session.")
+      end
+
+      it "is nothing for peers that can't tell (the plain Struct without input_waiting?)" do
+        plain = Struct.new(:session_id, :cwd, :state_dir, :cancelled, keyword_init: true) do
+          def cancelled? = false
+        end.new(
+          session_id: parent.id, cwd: "/work/app", state_dir: tmpdir, cancelled: -> { false }
+        )
+        expect(described_class.call(child.id, peers: plain, timeout: 0)).to include("no reply yet after 0 s")
+      end
+    end
+
     it "returns a crashed or stopped child at once" do
       set_status(child, "error")
       s = Samagotchi::Session.load(child.id, state_dir: tmpdir)

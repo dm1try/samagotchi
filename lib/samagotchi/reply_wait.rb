@@ -27,7 +27,8 @@ module Samagotchi
     TURN_IDS_FEATURE = "turn_ids"
 
     # @!attribute status [Symbol] :done, :waiting_for_answer, :no_reply,
-    #   :error, :stopped, :canceled, :timeout or :worker_gone
+    #   :error, :stopped, :canceled, :message_waiting, :timeout or
+    #   :worker_gone
     # @!attribute text [String, nil] the reply (:done) or the worker's error
     #   (:error)
     # @!attribute file [String, nil] the reply's filename, the next cursor
@@ -159,14 +160,19 @@ module Samagotchi
     # @param running_look [RunningLook, nil] the running turn an earlier
     #   call of the same wait saw (its :timeout result's running_look): its
     #   settle ends this call too, as if this call had seen it running
+    # @param message_waiting [#call] true once a person's message waits for
+    #   the caller's turn (Engine#input_waiting?): ends the wait early
+    #   (:message_waiting) when nothing else has, after a cancel, before the
+    #   deadline. The session waited for is never touched.
     # @return [Result]
     # @raise [ArgumentError] no such session
     def call(id, state_dir:, cursor:, timeout: nil, poll_interval: POLL_INTERVAL, cancelled: -> { false },
              baseline: nil, owner_grace: nil, interject: nil, turn: nil, queued: false, ended_before: false,
-             running_look: nil)
+             running_look: nil, message_waiting: -> { false })
       Poll.new(id, state_dir: state_dir, cursor: cursor, timeout: timeout, poll_interval: poll_interval,
                    cancelled: cancelled, baseline: baseline, owner_grace: owner_grace, interject: interject, turn: turn,
-                   queued: queued, ended_before: ended_before, running_look: running_look).run
+                   queued: queued, ended_before: ended_before, running_look: running_look,
+                   message_waiting: message_waiting).run
     end
 
     # The session as it was before a message went in (call's baseline:):

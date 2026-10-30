@@ -223,6 +223,31 @@ RSpec.describe Samagotchi::Tools::DelegateWait, "approval relay" do
     expect(Samagotchi::Session.load(child.id, state_dir: tmpdir).pending_question.id).to eq("q1")
   end
 
+  it "keeps the relayed outcome line when a message from the user ends the wait after the approval (the child keeps running)" do
+    message = [false]
+    peers.define_singleton_method(:input_waiting?) { message[0] }
+    update(child, pending_question: approval)
+    user_answers("Allow once", 0)
+    client.on_answered = lambda do
+      update(child, pending_question: nil)
+      message[0] = true
+    end
+
+    expect(wait).to eq("session: #{child.id}\nstatus: running\n" \
+                       "approval relayed to your user: execute: git push → allowed once\n" \
+                       "no reply yet: a message from the user is waiting; the child keeps running. Read the message first. " \
+                       "chi brings its reply as a delegate report; delegate_result #{child.id} waits again only if this turn needs it.")
+  end
+
+  it "doesn't end a wait on a message while the child's approval is still to relay: the user's card comes first" do
+    peers.define_singleton_method(:input_waiting?) { true }
+    update(child, pending_question: approval)
+    user_answers("Allow once", 0)
+    client.on_answered = -> { finish_child }
+
+    expect(wait).to include("approval relayed to your user: execute: git push → allowed once\n---\npushed")
+  end
+
   it "closes the relay on the desk when the relay fails before it settles, so none stays open" do
     update(child, pending_question: approval)
     relay.answer = ->(_f, _w) { raise IOError, "question flow broke" }

@@ -414,7 +414,7 @@ You are chi. Use tools when needed.
   },
   {
     "name": "delegate_result",
-    "description": "Wait for a delegated child session's next reply, only when this turn can't go on without it: the child named, or this session's newest running child (name the child when a delegate report is about it). After delegate with wait false you don't need this: chi brings each child's reply by itself as a delegate report, also when you are idle, so end your turn or keep working instead of waiting here. A delegate report already carries the reply: don't call this for it. Returns early if the child waits for a question the user must answer. A tool call the child needs approved goes to your user while this waits; the result says how it was answered.",
+    "description": "Wait for a delegated child session's next reply, only when this turn can't go on without it: the child named, or this session's newest running child (name the child when a delegate report is about it). After delegate with wait false you don't need this: chi brings each child's reply by itself as a delegate report, also when you are idle, so end your turn or keep working instead of waiting here. A delegate report already carries the reply: don't call this for it. Returns early if the child waits for a question the user must answer, or a message from the user arrives (the child keeps running). A tool call the child needs approved goes to your user while this waits; the result says how it was answered.",
     "parameters": {
       "type": "object",
       "properties": {

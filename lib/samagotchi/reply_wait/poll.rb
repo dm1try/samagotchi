@@ -16,12 +16,13 @@ module Samagotchi
     # them. ReplyWait.call's parameters say what each means.
     class Poll
       def initialize(id, state_dir:, cursor:, timeout:, poll_interval:, cancelled:, baseline:, owner_grace:, interject:,
-                     turn:, queued:, ended_before:, running_look: nil)
+                     turn:, queued:, ended_before:, running_look: nil, message_waiting: -> { false })
         @id = id
         @state_dir = state_dir
         @cursor = cursor
         @poll_interval = poll_interval
         @cancelled = cancelled
+        @message_waiting = message_waiting
         @baseline = baseline
         @owner_grace = owner_grace
         @interject = interject
@@ -80,7 +81,7 @@ module Samagotchi
         follow_merge(session)
         reply(session) || settled_turn(session) || status_end(session) || question(session) || held(session) || canceled ||
           ended_before_reply(session) || ended_before_turn(session) || turn_end(session) || owner_gone(session) ||
-          timed_out
+          message_waiting || timed_out
       end
 
       def look_at_input
@@ -188,6 +189,12 @@ module Samagotchi
       end
 
       def canceled = @cancelled.call ? Result.new(status: :canceled) : nil
+
+      # A person's message waits for the caller's turn (call's
+      # message_waiting:): after every outcome the child can arrive at (a
+      # reply, a question, an end, a gone worker) and a cancel, before the
+      # deadline. The child isn't touched.
+      def message_waiting = @message_waiting.call ? Result.new(status: :message_waiting) : nil
 
       # The turn that ended before this wait (ended_before: chi send --wait
       # with no message, on a session that went idle in the gap between
