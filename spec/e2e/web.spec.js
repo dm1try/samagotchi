@@ -573,8 +573,8 @@ test("an edit's approval card, then its row's title and diff lines, open the fil
 // into the composer and sends nothing. The selection is set with a Range
 // (a mouse drag is the same selectionchange, less exact). A plugin's pill
 // (e2e-annotation's chi.annotation) fills its command line and the quote;
-// Send runs that command with the note.
-test("an annotate preset fills the composer with the quote and never sends; a plugin's pill prepares its command", async ({ page, script }) => {
+// Send runs that command with the note. Verify, last, runs its check.
+test("an annotate preset fills the composer with the quote and never sends; a plugin's pill prepares its command; Verify on an answer gets a verdict card", async ({ page, script }) => {
   script("plain");
   await send(page, "Say pong");
   await turnEnded(page, 1);
@@ -634,6 +634,43 @@ test("an annotate preset fills the composer with the quote and never sends; a pl
   await page.locator("#actionBtn").click();
   await expect(page.locator(`${H} .bubble.command .command-output`).last()).toHaveText("checked: quote\n> PONG\n\nwhy?");
   await expect(page.locator("#prompt")).toHaveValue("");
+
+  // The built-in Verify (verify_preset.js) on the first answer: the quote and
+  // the ask in the composer, unsent; Send runs the check with that turn's
+  // anchor, and its verdict's card ("You") lands after the checked turn,
+  // live and after a reload. Its variants: verdict_card, verify_* and
+  // send_turn's node tests.
+  script("verdict");
+  await page.evaluate(() => {
+    const text = document.querySelector("#history .bubble.output p").firstChild;
+    const range = document.createRange();
+    range.setStart(text, 0);
+    range.setEnd(text, "PONG".length);
+    const sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(range);
+  });
+  await bar.getByRole("button", { name: "Verify" }).click();
+  await expect(page.locator("#prompt")).toHaveValue(/^> PONG\n\nVerify this claim against the code\./);
+  await expect(page.locator(`${H} .bubble.user`)).toHaveCount(2);
+  await page.locator("#actionBtn").click();
+  await turnEnded(page, 3);
+  const verdict = async () => {
+    const card = page.locator("#history .verify-verdict");
+    await expect(card).toHaveCount(1);
+    await expect(card).toHaveClass(/confirmed/);
+    await expect(card.locator(".verify-verdict-who")).toHaveText("You");
+    await expect(card.locator(".verify-verdict-quote")).toHaveText("PONG");
+    // After the first turn, before the second's prompt.
+    expect(await card.evaluate((node) => {
+      const second = document.querySelectorAll("#history .bubble.user")[1];
+      return !!(node.compareDocumentPosition(second) & Node.DOCUMENT_POSITION_FOLLOWING);
+    })).toBe(true);
+  };
+  await verdict();
+  await page.reload();
+  await turnEnded(page, 3);
+  await verdict();
 });
 
 // ~40 models over two hosts, as an OpenRouter host lists them (its own
