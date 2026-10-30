@@ -205,6 +205,27 @@ test("the start page's own reply is a notice; nothing is made or sent", async ()
   assert.equal(h.cleared(), 1);
 });
 
+// In a session the page's own reply (a terminal's /archive, /exit; a typo's
+// hint) is a command bubble with the line: nothing goes to the worker.
+test("in a session the page's own reply is a command bubble: /archive's words, /modle's hint; nothing is sent", async () => {
+  const commands = [{ name: "/model" }, { name: "/recap" }];
+  for (const [text, reply] of [["/archive", /^\/archive: use the archive button in the session bar$/],
+    ["/exit", /^\/exit: close the tab to leave/], ["/modle", /^Unknown command \/modle\. Did you mean \/model\?/]]) {
+    const h = harness({ text, state: { commands } });
+    await h.send();
+    assert.deepEqual(h.calls, [], text);
+    assert.equal(h.bubbles.length, 0, text);
+    const bubble = h.log.find((entry) => entry[0] === "commandBubble");
+    assert.equal(bubble[1].line, text);
+    assert.match(bubble[1].text, reply);
+    assert.equal(h.cleared(), 1, text);
+  }
+  // /recap off is the worker's: a command, not a reply.
+  const recap = harness({ text: "/recap off", state: { commands } });
+  await recap.send();
+  assert.deepEqual(recap.log, [["command", "/recap off"]]);
+});
+
 test("a fresh link's pick in flight goes first; a terminal's session sends nothing", async () => {
   let release;
   const pick = new Promise((resolve) => { release = resolve; });

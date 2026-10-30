@@ -1708,23 +1708,6 @@ test("a failed later turn whose prompt_restored comes before the /turn ack puts 
   await expect(page.locator("#prompt")).toHaveValue("Say ping");
 });
 
-test("/archive and /exit typed in the composer get a local reply, not a worker error; /recap off goes to the worker", async ({ page, script }) => {
-  script("plain");
-  await send(page, "Say pong");
-  await turnEnded(page, 1);
-  for (const [line, reply] of [["/archive", /^\/archive: use the archive button/], ["/exit", /^\/exit: /],
-    ["/recap off", /^recap: off \(this session; /]]) {
-    await page.locator("#prompt").fill(line);
-    await page.locator("#actionBtn").click();
-    const bubble = page.locator("#history .bubble.command").last();
-    await expect(bubble.locator(".command-line")).toHaveText(line);
-    await expect(bubble.locator(".command-output")).toHaveText(reply);
-    await expect(bubble).not.toHaveClass(/failed/);
-    await expect(page.locator("#prompt")).toHaveValue("");
-  }
-  await expect(page.locator("#infoArchiveBtn")).toHaveText("archive");
-});
-
 test("/model X sent mid-turn shows queued, survives a reload, and applies once the turn ends", async ({ page, script }) => {
   script("mid_turn_command");
   await send(page, "Take a moment");
@@ -1763,21 +1746,6 @@ test("/model X sent mid-turn shows queued, survives a reload, and applies once t
   }, sel);
   await expect.poll(() => after("#history .bubble.output")).toBe(true);
   await expect.poll(() => after("#history .turn-timing:not(.live)")).toBe(true);
-});
-
-test("/modle typed in the composer gets the hint, not a turn", async ({ page, script }) => {
-  script("plain");
-  await send(page, "Say pong");
-  await turnEnded(page, 1);
-  await page.locator("#prompt").fill("/modle");
-  await page.locator("#actionBtn").click();
-  const bubble = page.locator("#history .bubble.command").last();
-  await expect(bubble.locator(".command-line")).toHaveText("/modle");
-  await expect(bubble.locator(".command-output"))
-    .toHaveText("Unknown command /modle. Did you mean /model? /help lists the commands.");
-  await expect(page.locator("#prompt")).toHaveValue("");
-  // No turn ran: the one turn's timing line is still the only one.
-  await expect(page.locator("#history .turn-timing:not(.live)")).toHaveCount(1);
 });
 
 // check-in (after: 3 in the e2e config): the card comes up in the running
