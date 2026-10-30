@@ -7,6 +7,34 @@ and commands may change between minor versions. How releases are made:
 [docs/releasing.md](docs/releasing.md).
 ## [Unreleased]
 
+## [0.138.0] - 2026-10-30
+
+### Changed
+
+- Web: All sessions' header is the top bar: the sessions pill shows pressed in the all view and takes you back (Esc
+  too); the search is a pill, "archived" a toggle chip, the count reads "4 · 5 delegates", the storage path a footer
+  under the list.
+- Web: session cards show one mark per state and no status dots: a waiting card a warn outline and "question", an
+  error a red badge, "live" only when not waiting; titles one line; an untitled session reads "Untitled" over its
+  first message.
+- Web: Stop turn is a button in the running turn's status row (the composer's and the bar's Stop buttons are gone);
+  after a reload that knows only that a turn runs, the stage shows that row alone.
+- Web: the session bar reads in three groups (setup, relations, telemetry) with hairlines between, on one line on
+  a desktop; the parent chip reads "↑ id", the clock "7m 52s"; continue is a plain button unless archived.
+- Web: the start composer keeps model, ⚙ and 🧰 left and 🖼 and Start right; the keyboard hint shows under the
+  placeholder only while the box is focused and empty.
+- Web: the "+ URL" chip is gone (`chi context` still attaches URLs).
+- Web: on a phone a tap no longer leaves a hover tint on a card, a bar button, a question option or a fold.
+
+### Fixed
+
+- Web: on a phone the sessions search takes a whole line, so its placeholder reads; the start page keeps the
+  project chip's words.
+- Web: a session with no turn yet shows no clock, not "0ms".
+- Web: the cards' shadow is no longer cut into a band at the sessions list's edges (light theme).
+
+Update with `chi update`, then restart `chi web`.
+
 ## [0.137.0] - 2026-10-30
 
 ### Changed
@@ -5257,7 +5285,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.137.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.138.0...HEAD
+[0.138.0]: https://github.com/dm1try/samagotchi/compare/v0.137.0...v0.138.0
 [0.137.0]: https://github.com/dm1try/samagotchi/compare/v0.136.1...v0.137.0
 [0.136.1]: https://github.com/dm1try/samagotchi/compare/v0.136.0...v0.136.1
 [0.136.0]: https://github.com/dm1try/samagotchi/compare/v0.135.0...v0.136.0
