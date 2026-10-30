@@ -105,7 +105,7 @@ test("a newer chi installed: the notice restarts chi web, once, and not again af
   expect(errors, "page errors").toEqual([]);
 });
 
-// The running turn sits in the stage (the default view), then moves into
+// The running turn sits in the stage, then moves into
 // the history.
 const H = ":is(#history, #turnStage)";
 

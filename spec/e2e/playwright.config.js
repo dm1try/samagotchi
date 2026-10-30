@@ -30,8 +30,8 @@ export default defineConfig({
     ...devices["Desktop Chrome"],
     trace: "retain-on-failure",
   },
-  // chromium runs every scenario on the page's stage (the running turn in
-  // #turnStage, then handed off into #history).
+  // chromium: every scenario but the LAN's and the proxy's (a running turn
+  // is in #turnStage, then handed off into #history).
   projects: [
     { name: "chromium", testIgnore: ["lan.spec.js", "proxy.spec.js"] },
     // chi web --web-host lan, reached at the LAN address: the access token.

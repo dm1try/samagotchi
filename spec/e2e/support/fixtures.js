@@ -11,7 +11,7 @@ import { test as base, expect } from "@playwright/test";
 import { startEnv, stopEnv, useConfigExtra, useHostModels, useMode, useScript, useTurnLimit } from "./env.js";
 
 export const test = base.extend({
-  // The stage view's working set (web.working_set, on by default; false:
+  // The stage's working set (web.working_set, on by default; false:
   // ?working_set=0, the mem chip's page).
   workingSet: [true, { option: true }],
   // The lan project: chi web --web-host lan (lan.spec.js).

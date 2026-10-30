@@ -37,7 +37,7 @@ test.describe("on the LAN", () => {
     await page.locator("#prompt").fill("Say pong");
     await page.locator("#actionBtn").click();
     await expect(page).toHaveURL(/#\/s\/[0-9a-f-]+$/);
-    // The stage view hands the turn off into the history once the pointer
+    // The stage hands the turn off into the history once the pointer
     // is away from it.
     await page.mouse.move(0, 0);
     const answer = page.locator("#history .bubble.output").last();
