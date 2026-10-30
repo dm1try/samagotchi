@@ -395,7 +395,10 @@ RSpec.describe Samagotchi::Guardrails::PairBoundary do
        # behind a global option that takes a value, or one the list doesn't know
        "git --attr-source HEAD config core.fsmonitor id", "git --shallow-file x config hook.x.command id",
        "git --attr-source HEAD -c core.fsmonitor=id status", "git --shallow-file x clone -c core.fsmonitor=id . y",
-       "git --frobnicate x config core.pager id", "git --exec-path config core.fsmonitor id"].each do |command|
+       "git --frobnicate x config core.pager id", "git --exec-path config core.fsmonitor id",
+       # a builtin by its dashed name
+       "git-config core.fsmonitor id", "/usr/libexec/git-core/git-config core.fsmonitor id",
+       "PATH=/usr/libexec/git-core:$PATH git-config hook.x.command id", "git-clone -c core.fsmonitor=id . y"].each do |command|
         expect(refused(command)).to eq(described_class::GIT_CONFIG), command
       end
       ["git config --get core.editor", "git config --get core.fsmonitor id", "git config --get-all core.fsmonitor",
@@ -404,7 +407,7 @@ RSpec.describe Samagotchi::Guardrails::PairBoundary do
        "git config --type=bool --get core.bare", "git config --default x --get core.fsmonitor",
        "git config -z --list", "git config --get-urlmatch http.x https://e.x", "git status",
        "git clone https://e.x/r docs/r", "git submodule update --checkout", "git --attr-source HEAD log",
-       "git --no-pager -C . status", "git --shallow-file x --git-dir .git log"].each do |command|
+       "git --no-pager -C . status", "git --shallow-file x --git-dir .git log", "git-config user.name"].each do |command|
         expect(refused(command)).to be_nil, command
       end
     end
@@ -413,10 +416,11 @@ RSpec.describe Samagotchi::Guardrails::PairBoundary do
     it "reads the commands git runs now (rebase --exec, submodule foreach, filters, --upload-pack, ext::)" do
       expect(refused("git submodule foreach 'cat ~/.ssh/id_rsa'")).to eq(described_class::SECRET)
       expect(refused("git rebase --exec 'chi send x' HEAD~1")).to eq(described_class::CHI)
+      expect(refused("git-submodule foreach 'chi send x'")).to eq(described_class::CHI)
       ["git rebase -x 'touch ~/x' HEAD~1", "git bisect run touch ~/x", "git filter-branch --tree-filter 'touch ~/x'",
        "git fetch --upload-pack='touch ~/x' origin", "git clone 'ext::sh -c touch% ~/x' y",
        "git difftool --extcmd='touch ~/x'", "git --attr-source HEAD submodule foreach 'touch ~/x'",
-       "git --frobnicate x rebase -x 'touch ~/x' HEAD~1"].each do |command|
+       "git --frobnicate x rebase -x 'touch ~/x' HEAD~1", "git-submodule foreach 'touch ~/x'"].each do |command|
         verdict = execute(command)
         expect([verdict.ask?, verdict.reason]).to eq([true, described_class::OUTSIDE_WRITE]), command
       end

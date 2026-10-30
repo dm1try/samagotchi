@@ -277,6 +277,14 @@ module Samagotchi
         starts
       end
 
+      # A git builtin by its dashed name (git-config, …/git-core/git-submodule,
+      # a +program+ word's basename) as git runs it: ["git", [sub, *args]];
+      # any other program as it is.
+      def self.git_form(program, args)
+        sub = program.to_s[/\Agit-([a-z][\w-]*)\z/, 1]
+        sub ? ["git", [sub, *args]] : [program, args]
+      end
+
       # A shell, another interpreter or eval: what runs a script it is given.
       def self.runner?(word)
         return false if word.include?("\0")
@@ -549,6 +557,8 @@ module Samagotchi
         upto = at ? words[0..at] : words
         return PairBoundary::BACKGROUND if upto.any? { |w| DETACHERS.include?(File.basename(w)) } || detached_session?(program, args)
         return PairBoundary::ENVIRONMENT if env_reader?(program, args) || bare_env?(words)
+
+        program, args = PairCommand.git_form(program, args)
         return PairBoundary::GIT_CONFIG if git_config_env?(words) || git_alias?(program, args)
 
         if program == "git"
@@ -981,7 +991,8 @@ module Samagotchi
       # (.git_commands): where it writes isn't placed, so it asks.
       def git_hands_command?(words)
         at = program_at(words) or return false
-        File.basename(words[at]) == "git" && !git_commands(words[(at + 1)..]).empty?
+        program, args = PairCommand.git_form(File.basename(words[at]), words[(at + 1)..])
+        program == "git" && !git_commands(args).empty?
       end
 
       # Whether a program's word is a path into the project (.venv/bin/pip).
