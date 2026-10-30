@@ -208,6 +208,19 @@ RSpec.describe Samagotchi::Web::ParticipantView do
     end
   end
 
+  describe ".messages, a Revise stamp" do
+    it "passes the turn a prompt revised (the page could draw stacks); never a malformed one" do
+      v1 = "123e4567-e89b-12d3-a456-426614174000"
+      list = [
+        { role: "user", content: "write it", turn_id: v1 },
+        { role: "user", content: "shorter", turn_id: "t2", revises: { turn_id: v1 } },
+        { role: "user", content: "again", turn_id: "t3", revises: { turn_id: "t2" } }
+      ]
+      expect(described_class.messages(list, viewer).map { |message| message["revises"] })
+        .to eq([nil, { "turn_id" => v1 }, nil])
+    end
+  end
+
   describe ".messages, a wake turn" do
     it "keeps its start as an automatic turn with no text, so its answer is never the turn before's" do
       list = [

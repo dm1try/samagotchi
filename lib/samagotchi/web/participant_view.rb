@@ -4,6 +4,7 @@ require_relative "../output_formatter"
 require_relative "../steer"
 require_relative "../turn_origin"
 require_relative "../participant_mode"
+require_relative "../revise_anchor"
 require_relative "../verify_anchor"
 
 module Samagotchi
@@ -249,6 +250,9 @@ module Samagotchi
         out["content"] = field(message, :content).to_s
         out["turn_id"] = turn_id.to_s if turn_id
         out["merged"] = true if merged
+        # The turn it revised (a Revise stack; the page doesn't draw it yet).
+        revises = ReviseAnchor.from(field(message, :revises))
+        out["revises"] = revises.to_file if revises && turn_id && !merged
         out.merge!(author_fields(field(message, :author), field(message, :author_name), viewer,
                                  field(message, :participant_mode)))
         images = field(message, :images)

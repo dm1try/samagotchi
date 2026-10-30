@@ -10,6 +10,7 @@ require_relative "../message_time"
 require_relative "../output_formatter"
 require_relative "../recap_store"
 require_relative "../ref"
+require_relative "../revise_anchor"
 require_relative "../steer"
 require_relative "../turn_note"
 require_relative "../bridge/card_store"
@@ -91,6 +92,7 @@ module Samagotchi
             if Samagotchi::Steer.turn_prompt?(m)
               note[:turn_start] = true
               note[:turn_id] = (m[:turn_id] || m["turn_id"]).to_s
+              note.merge!(revises_of(m))
             end
             filtered << note
             next
@@ -135,6 +137,8 @@ module Samagotchi
           # record by this, not by its place.
           turn_id = m[:turn_id] || m["turn_id"]
           message[:turn_id] = turn_id.to_s if norm_role == "user" && turn_id
+          # The turn it revised (a Revise stack, Engine#stamp_opening).
+          message.merge!(revises_of(m)) if norm_role == "user" && turn_id && !message[:merged]
           # A participant's message names them (the page's author badge).
           if norm_role == "user"
             message.merge!(Samagotchi::Steer.author_fields(m[:author] || m["author"], m[:author_name] || m["author_name"]))
@@ -164,6 +168,13 @@ module Samagotchi
         filtered
       rescue StandardError
         []
+      end
+
+      # A turn opening's Revise stamp as {revises: {turn_id:}}, checked again
+      # (a stored file is never trusted), or nothing.
+      def revises_of(message)
+        anchor = Samagotchi::ReviseAnchor.from(message[:revises] || message["revises"])
+        anchor ? { revises: anchor.to_h } : {}
       end
 
       # The entry's wall time (MessageTime: the page's hover and gap
