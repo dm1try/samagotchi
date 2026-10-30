@@ -2,7 +2,7 @@ import { htmlOf } from "./dom_shim.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { render } from "../../../lib/samagotchi/web/public/vendor/lit-html.js";
-import { chipModel, commandLine, createLevelControl, formTemplate } from "../../../lib/samagotchi/web/public/level_chip.js";
+import { chipModel, commandLine, createLevelControl, formTemplate, segments } from "../../../lib/samagotchi/web/public/level_chip.js";
 
 // A setting of its own: the factory knows nothing of thinking.
 const cfg = {
@@ -31,6 +31,15 @@ test("a config's form lists its levels after follow the model, with its classes 
   assert.match(html, /<div class="ctx-pop-meta col-now">Now: blue \(the model's own\)<\/div>/);
   assert.match(html, /<option value="default" selected="">follow the model \(blue\)<\/option><option value="red">red<\/option><option value="blue">blue<\/option>/);
   assert.match(html, /<div class="ctx-pop-meta">Soon\.<\/div>/);
+});
+
+test("a config's segments: follow the model first (its level in brackets), then its levels; the choice pressed", () => {
+  const labels = (segs) => segs.map((s) => `${s.label}${s.pressed ? "*" : ""}`);
+  assert.deepEqual(labels(segments(cfg, { level: "blue" }, null)), ["default (blue)*", "red", "blue"]);
+  assert.deepEqual(labels(segments(cfg, { level: "blue" }, "red")), ["default (blue)", "red*", "blue"]);
+  assert.deepEqual(segments(cfg, { level: "blue" }, null)[0], { value: "default", label: "default (blue)", title: "Follow the model (blue)", pressed: true });
+  assert.equal(segments(cfg, { level: "default" }, null)[0].label, "default");
+  assert.equal(segments(cfg, null, "red"), null);
 });
 
 test("a Set's line is the config's command with --yes", () => {
