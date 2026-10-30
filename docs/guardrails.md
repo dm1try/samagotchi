@@ -585,7 +585,8 @@ rule lowers it), so it comes even in auto mode. A command fails closed
   and `-o …` are flags, only `-c` (or a cluster holding it, `-ec`, `-cx`)
   hands it a script: the first word after its options (`sh -c -- S`, `bash -c
   -x S`), and fish's `--command S` (`--command=S`) or `-C`/`--init-command S`,
-  a command it runs first; an interpreter's own code flag does (`python -c`, `ruby -e`,
+  a command it runs first (also attached, `-C'S'`, in a cluster, `-lC S`, and
+  by a prefix fish takes, `--comm`, `--init`); an interpreter's own code flag does (`python -c`, `ruby -e`,
   `node -e`/`-p`/`--eval=`, `perl -e`/`-E`, `php -r`/`-B`/`-R`/`-E`, `jruby`/`raku`/`julia -e`), alone or in a cluster
   (`ruby -we`, `perl -le`, `node -pe`, `python3 -Ic`, `python3 -c'…'`;
   `PairCommand.cluster_code_at`: a letter that takes the rest of the word,

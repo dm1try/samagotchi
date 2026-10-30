@@ -362,11 +362,13 @@ RSpec.describe Samagotchi::Guardrails::PairBoundary do
     it "reads fish's --command and --init-command / -C, in the space and = forms" do
       ["fish --command 'git config core.fsmonitor id'", "fish --command='git config core.fsmonitor id'",
        "fish -C 'git config core.fsmonitor id'", "fish --init-command 'git config core.fsmonitor id'",
-       "FISH --init-command='git config core.fsmonitor id' -c true"].each do |command|
+       "FISH --init-command='git config core.fsmonitor id' -c true", "fish -C'git config core.fsmonitor id' -c true",
+       "fish --comm 'cd .; git config core.fsmonitor id'"].each do |command|
         expect(refused(command)).to eq(described_class::GIT_CONFIG), command
       end
       expect(refused("fish --command 'chi share x'")).to eq(described_class::CHI)
-      ["fish --command 'touch ~/other/x'", "fish -C 'touch ~/other/x'"].each do |command|
+      ["fish --command 'touch ~/other/x'", "fish -C 'touch ~/other/x'", "fish -lC 'touch ~/other/x' -c true",
+       "fish --init 'touch ~/other/x' -c true"].each do |command|
         verdict = execute(command)
         expect([verdict.ask?, verdict.reason]).to eq([true, described_class::OUTSIDE_WRITE]), command
       end

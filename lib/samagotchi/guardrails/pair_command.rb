@@ -87,10 +87,12 @@ module Samagotchi
       SOURCE_CLUSTER_VALUES = CLUSTER_VALUES.merge("php" => %w[cdfz], "osascript" => %w[ls]).freeze
       # A shell's options whose next word is their value, not its script.
       SHELL_VALUE_OPTIONS = %w[-o +o -O +O].freeze
-      # fish's options that take a command (the next word, or after = for a
-      # long one): its script (--command) or one run before it (-C,
-      # --init-command; not where its script comes from: .script_source).
-      FISH_COMMAND_OPTIONS = %w[--command -C --init-command].freeze
+      # fish's long options that take a command (the next word, or after =),
+      # with the shortest prefix fish's getopt may take for each (--comm,
+      # --init): its script (--command) or one run before it (--init-command,
+      # and -C anywhere in a cluster, its value attached or the next word;
+      # not where its script comes from: .script_source).
+      FISH_COMMAND_OPTIONS = { "--command" => 3, "--init-command" => 4 }.freeze
       # Options whose next word is code or a command, for any program.
       CODE_OPTIONS = %w[-c -e -exec --exec -execdir --command --init-command --eval -x].freeze
       # A shell's or interpreter's options whose next word is a value, not
@@ -440,22 +442,28 @@ module Samagotchi
 
       # A shell's scripts: the one after its -c cluster (.shell_script_after),
       # and fish's commands given by an option that takes one (FISH_COMMAND_OPTIONS:
-      # --command S, --command=S, -C S, --init-command=S).
+      # --command S, --comm=S, --init S, -C S, -C'S', -lC S).
       def self.shell_scripts(name, rest)
-        found = []
-        if name == "fish"
-          rest.each_with_index do |word, i|
-            option, value = word.split("=", 2)
-            next unless FISH_COMMAND_OPTIONS.include?(option) && (option.start_with?("--") || value.nil?)
-
-            found << (value || rest[i + 1])
-          end
-        end
+        found = name == "fish" ? fish_commands(rest) : []
         start = rest.index { |word| cluster_code_at(name, word) }
         found.concat(shell_script_after(rest, start)) if start
         found.compact
       end
       private_class_method :shell_scripts
+
+      def self.fish_commands(rest)
+        rest.each_with_index.filter_map do |word, i|
+          option, value = word.split("=", 2)
+          if option.start_with?("--")
+            long = FISH_COMMAND_OPTIONS.any? { |full, min| option.size >= min && full.start_with?(option) }
+            value || rest[i + 1] if long
+          elsif (at = word.index("C")) && word.match?(/\A-[A-Za-z]*C/)
+            tail = word[(at + 1)..]
+            tail.empty? ? rest[i + 1] : tail
+          end
+        end
+      end
+      private_class_method :fish_commands
 
       def self.shell_script_after(rest, start)
         i = start + 1
