@@ -87,6 +87,12 @@ function page(turns, deps = {}) {
       if (opts.revises) opening.dataset.revises = opts.revises;
       if (opts.verify) opening.dataset.verify = "1";
     }
+    // A delegate report's fold row heads its opening (answer_fold.js).
+    if (opts.head) {
+      const head = document.createElement("button");
+      head.className = "answer-fold report folded";
+      history.append(head);
+    }
     const work = document.createElement("details");
     work.className = "turn-work done";
     const answer = document.createElement("div");
@@ -115,6 +121,17 @@ test("historyTurns: a turn's elements up to the next opening or note; a wake tur
   const { history } = page([["t1", "a"], ["w1", "b", { wake: true }], ["t2", "c"]]);
   const turns = historyTurns(history);
   assert.deepEqual(turns.map((t) => [t.id, t.wake, t.els.length]), [["t1", false, 3], ["w1", true, 3], ["t2", false, 3]]);
+  history.remove();
+});
+
+test("the page: a superseded turn a report opened folds with its report's fold row, the stub above the row", () => {
+  const { history } = page([["v1", "first"], ["v2", "second", { revises: "v1", head: true }], ["v3", "third", { revises: "v2" }]]);
+  const turns = historyTurns(history);
+  assert.deepEqual(turns.map((t) => [t.id, t.els.length]), [["v1", 3], ["v2", 3], ["v3", 3]], "the row is no element of the turn before");
+  const row = history.querySelector(".answer-fold");
+  const stub = history.querySelector('.stack-stub[data-stack-stub="v2"]');
+  assert.ok(stub.nextElementSibling === row && row.nextElementSibling === prompt(history, "v2"));
+  assert.ok(!visible(row));
   history.remove();
 });
 

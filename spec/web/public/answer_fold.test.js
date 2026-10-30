@@ -208,3 +208,100 @@ test("turnAnswerEl: a card placed before a turn's answer goes before its fold ro
   row.remove();
   assert.ok(turnAnswerEl([prompt, answer]) === answer);
 });
+
+// ---- Delegate reports (folded by default) ----
+
+const { answerKey, readOpened, reportLabel, writeOpened } = await import("../../../lib/samagotchi/web/public/answer_fold.js");
+const { elementOf, userBubbleTemplate } = await import("../../../lib/samagotchi/web/public/turn_html.js");
+
+const REPORT = `session: 6f2ec1d6-41b0-4c50-8fd8-83a43e56d0d9\nstatus: answered\n---\n## Rebase result\n${lines(40)}`;
+
+// A report's bubble as the reload draws it: merged (its line key, steered)
+// or opening its wake turn (its turn id).
+function report(text = REPORT, { lineKey = null, turnId = null } = {}) {
+  return elementOf(userBubbleTemplate({ content: text, source: "delegate_report", turn_id: turnId }, {
+    label: "delegate report", state: lineKey ? "steered" : null, lineKey,
+  }));
+}
+
+test("reportLabel: the origin label and the first heading or line after the session/status/--- header", () => {
+  assert.equal(reportLabel(REPORT, "delegate report"), "delegate report · Rebase result");
+  assert.equal(reportLabel("session: x\nstatus: question\nThe child asks: which branch?", "delegate report"),
+               "delegate report · The child asks: which branch?");
+  assert.equal(reportLabel("session: x\nstatus: answered\n---\n", ""), "");
+});
+
+test("answerKey: a merged report's line key, a wake turn's report its turn id and :prompt; an answer's stays its own", () => {
+  assert.equal(answerKey(report(REPORT, { lineKey: "T1:input:4" })), "T1:input:4");
+  assert.equal(answerKey(report(REPORT, { turnId: "T2" })), "T2:prompt");
+  assert.equal(answerKey(report(REPORT)), null);
+  assert.equal(answerKey(bubble("x", { turn: "T2" })), "T2");
+});
+
+test("writeOpened / readOpened: kept beside the folded answers; an entry before `open` reads as none; one with only `open` is kept", () => {
+  clearFolds();
+  localStorage.setItem(`${FOLD_PREFIX}s1`, JSON.stringify({ root: "/p", turns: ["t1"] }));
+  assert.deepEqual(readOpened("s1"), []);
+  writeOpened("s1", "T1:prompt", true, { root: "/p" });
+  assert.deepEqual(readFolded("s1"), ["t1"]);
+  assert.deepEqual(readOpened("s1"), ["T1:prompt"]);
+  writeFold("s1", "t1", false, { root: "/p" });
+  assert.deepEqual(JSON.parse(localStorage.getItem(`${FOLD_PREFIX}s1`)), { root: "/p", turns: [], open: ["T1:prompt"] });
+  writeOpened("s1", "T1:prompt", false);
+  assert.equal(localStorage.getItem(`${FOLD_PREFIX}s1`), null);
+  clearFolds();
+});
+
+test("the page: a long report folds by default (a report row, the label); a click unfolds it, kept in `open`, a reload keeps it open", async () => {
+  clearFolds();
+  const first = page();
+  const merged = report(REPORT, { lineKey: "T1:input:4" });
+  const short = report("session: x\nstatus: answered\n---\nDone.", { lineKey: "T1:input:9" });
+  first.history.append(merged, short);
+  await tick();
+  const row = merged.previousElementSibling;
+  assert.equal(first.history.querySelectorAll(".answer-fold").length, 1);
+  assert.ok(merged.classList.contains("folded"));
+  assert.ok(row.matches(".answer-fold.report.steered.folded"));
+  assert.equal(row.title, "Show the report");
+  assert.equal(row.textContent, "delegate report · Rebase result · 44 lines");
+  row.click();
+  assert.ok(!merged.classList.contains("folded"));
+  assert.equal(row.title, "Fold the report");
+  assert.deepEqual(readOpened("s1"), ["T1:input:4"]);
+  assert.deepEqual(readFolded("s1"), []);
+  first.history.remove();
+
+  const again = page();
+  const reloaded = report(REPORT, { lineKey: "T1:input:4" });
+  const wake = report(REPORT, { turnId: "T2" });
+  again.history.append(reloaded, wake);
+  await tick();
+  assert.ok(!reloaded.classList.contains("folded"));
+  assert.ok(wake.classList.contains("folded"));
+  assert.ok(!wake.previousElementSibling.classList.contains("steered"));
+  again.history.remove();
+  clearFolds();
+});
+
+test("the page: something placed before a report that opens its turn goes above its row; a jump into a folded report unfolds it", async () => {
+  clearFolds();
+  const { history } = page();
+  const wake = report(REPORT, { turnId: "T2" });
+  history.append(wake);
+  await tick();
+  const row = wake.previousElementSibling;
+  const card = document.createElement("div");
+  card.className = "bubble plugin-card";
+  history.insertBefore(card, wake);
+  await tick();
+  assert.ok(card.nextElementSibling === row && row.nextElementSibling === wake);
+  const line = wake.querySelector(".user-message");
+  revealInHistory(line);
+  await tick();
+  assert.ok(!wake.classList.contains("folded"));
+  assert.equal(row.getAttribute("aria-expanded"), "true");
+  assert.deepEqual(readOpened("s1"), [], "a jump's unfold isn't saved");
+  history.remove();
+  clearFolds();
+});

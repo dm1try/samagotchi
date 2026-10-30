@@ -58,7 +58,8 @@ main{flex:1;display:flex;flex-direction:column;gap:16px;padding:16px;overflow:au
 .bubble.output.streaming:empty{display:none}
 /* The answer's pop: the promoted bubble is held at the narration box's height (inline max-height, scrolled to its tail) until the rendered markdown lands, then grows to its content while the content fades in; both classes go 400 ms later. */
 /* A long answer folded by hand (answer_fold.js): the row is the bubble's sibling just before it, styled as a closed turn's steps, reading the answer's first line and size; folded, the bubble is hidden; unfolded, the row is the bubble's header. */
-.bubble.output.folded{display:none}
+/* Folded: the bubble hidden, an answer or a delegate report (#history's: outranks .bubble.user's display). */
+#history>.bubble.folded{display:none}
 .answer-fold{display:flex;align-items:baseline;gap:0;align-self:flex-start;max-width:100%;min-width:0;margin:0;padding:3px 10px;font:inherit;font-size:12px;font-weight:500;line-height:1.4;color:var(--text-muted);text-align:left;cursor:pointer;user-select:none;background:transparent;border:1px solid transparent;border-left:3px solid var(--accent-strong);border-radius:6px;transition:background .12s ease}
 .answer-fold:hover{background:var(--bg-panel)}
 .answer-fold:focus-visible{outline:2px solid var(--accent-ring);outline-offset:1px}
@@ -66,6 +67,11 @@ main{flex:1;display:flex;flex-direction:column;gap:16px;padding:16px;overflow:au
 .answer-fold.folded::before{content:"▸\00a0"}
 /* Open: the bubble's header, flush on top of it (-12px: #history's gap), its bar running on into the bubble's. */
 .answer-fold:not(.folded){margin-bottom:-12px;border-bottom-left-radius:0}
+/* A delegate report's row: where the report sits (right, the user accent; dashed when merged mid-turn). Open, the row and
+   the report share one width, so the row's bar runs on into the report's. */
+.answer-fold.report{align-self:flex-end;max-width:85%;border-left-color:var(--accent)}
+.answer-fold.report.steered{border-left-style:dashed}
+.answer-fold.report:not(.folded),.answer-fold.report:not(.folded)+.bubble.user{width:85%}
 .answer-fold-label{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text-2);font-size:13px}
 .answer-fold-label:empty{display:none}
 .answer-fold-size{flex:none;white-space:nowrap;font-variant-numeric:tabular-nums}

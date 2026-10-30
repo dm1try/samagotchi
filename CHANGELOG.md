@@ -11,6 +11,9 @@ and commands may change between minor versions. How releases are made:
 
 - Web: an unfolded long answer's fold row is the answer's header: it keeps the first line and size, and its bar runs
   on into the answer's. The recap's ▸/▾ matches the steps' and thinking's in place of the browser's triangle.
+- Web: a long delegate report folds to one row, "delegate report · its first heading · N lines", where the report
+  sits; a click opens it and this browser remembers that. A report merged into a running turn gets its row on the
+  next reload.
 
 ### Fixed
 

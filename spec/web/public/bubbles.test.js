@@ -145,6 +145,25 @@ test("a merge steers its bubble; one with no bubble draws the merged text", () =
   assert.equal(turnPromptBubbles(historyEl).length, 0);
 });
 
+test("a delegate report's live bubble carries its source; one that opens a wake turn carries that turn's id, a merged one none", () => {
+  const { bubbles, historyEl } = harness();
+  const reportMerge = { type: "input_merged", origins: [{ client_id: "child:3f2a1c9e" }] };
+  bubbles.applyPromptOps({ type: "turn_started", continue: true, turn_id: "W1", origin: { client_id: "child:3f2a1c9e" } });
+  bubbles.applyPromptOps(reportMerge);
+  bubbles.applyPromptOps({ type: "pending_input_merged", content: "session: c1\nstatus: answered" });
+  const wake = historyEl.lastElementChild;
+  assert.equal(wake.dataset.source, "delegate_report");
+  assert.equal(wake.dataset.turnId, "W1");
+  assert.ok(!wake.classList.contains("steered"));
+  bubbles.applyPromptOps(reportMerge);
+  bubbles.applyPromptOps({ type: "pending_input_merged", content: "session: c2\nstatus: answered" });
+  const merged = historyEl.lastElementChild;
+  assert.equal(merged.dataset.source, "delegate_report");
+  assert.ok(merged.classList.contains("steered"));
+  assert.equal(merged.dataset.turnId, undefined);
+  assert.equal(merged.dataset.lineKey, undefined);
+});
+
 test("an output chunk shows once, follows only a reader at the end", () => {
   const { historyEl, bubbles, shownTexts } = harness({ near: false });
   historyEl.append(hintEl("No output yet."));

@@ -213,6 +213,12 @@ test("turnHistoryHtml: a delegate report keeps its label on reload: a wake turn'
   assert.match(html, /^<div class="bubble user"[^>]*><span class="origin-label">delegate report<\/span><div class="user-message">session: c1<\/div>/);
   assert.match(html, /<div class="bubble user steered"[^>]*><span class="origin-label">delegate report<\/span><div class="user-message">session: c2/);
   assert.equal((html.match(/origin-label/g) || []).length, 2);
+  // Their source and fold keys (answer_fold.js): the wake turn's by its turn id, the merged one by its place.
+  assert.match(html, /^<div class="bubble user"[^>]*data-turn-id="T1"[^>]*data-source="delegate_report">/);
+  assert.match(html, /<div class="bubble user steered"[^>]*data-source="delegate_report" data-line-key="T2:input:2">/);
+  // A merged line that isn't a report has no line key.
+  const plain = turnHistoryHtml([items[2], items[3], { role: "user", content: "also", merged: true, step: 2 }], normalizeTiming({}), { thumbs });
+  assert.doesNotMatch(plain, /data-line-key/);
 });
 
 test("turnHistoryHtml: the text that answered a delegate report mid-turn stays visible after its bubble, unless it is the answer", () => {
