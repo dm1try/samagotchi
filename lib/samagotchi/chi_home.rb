@@ -42,6 +42,15 @@ module Samagotchi
     class Invalid < StandardError
     end
 
+    # A record of this process under Bundler (`bundle exec chi home set`)
+    # would name the bundle's Ruby and gems as the home every launch boots.
+    class UnderBundler < StandardError
+      def initialize(msg = "under Bundler (bundle exec) this chi's gem path is the bundle's, not a chi home: " \
+                           "run chi itself, or name another Ruby with --ruby")
+        super
+      end
+    end
+
     # home.json's fields. +gem_path+ is what `Gem.paths=` takes (dirs joined
     # by File::PATH_SEPARATOR); +mise+ an absolute path or nil.
     Record = Data.define(:ruby, :gem_home, :gem_path, :mise, :set_at, :set_by_version) do
@@ -274,8 +283,9 @@ module Samagotchi
       nil
     end
 
-    # The test UpdateCommand's @bundler makes: a first record from a
-    # `bundle exec` would name the bundle's gems.
+    # Whether this process runs under Bundler (`bundle exec`), where a
+    # record of it would name the bundle's gems: record_first!, chi home
+    # set (UnderBundler) and chi update's @bundler.
     def under_bundler?(env = ENV) = !!(defined?(::Bundler) || !env["BUNDLE_GEMFILE"].to_s.empty?)
 
     # mise's absolute path: on +env+'s PATH, else in MISE_DIRS; nil without.

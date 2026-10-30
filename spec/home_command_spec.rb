@@ -49,7 +49,7 @@ RSpec.describe Samagotchi::HomeCommand do
     out.truncate(0)
     out.rewind
     described_class.new(argv, stdout: out, stderr: err, path: path, gem_spec: gem_spec, env: {}, probe: probe,
-                              doctor: doctor).run
+                              doctor: doctor, bundler: false).run
   end
 
   it "says there is none" do
@@ -93,7 +93,7 @@ RSpec.describe Samagotchi::HomeCommand do
       other = File.join(tmp, "other-ruby").tap { |f| File.write(f, "") && File.chmod(0o755, f) }
       seen = []
       command = described_class.new(["set", "--ruby", other], stdout: out, stderr: err, path: path, env: {},
-                                                               probe: ->(r) { seen << r; home })
+                                                               probe: ->(r) { seen << r; home }, bundler: false)
       expect(command.run).to eq(0)
       expect(seen).to eq([other])
       expect(Samagotchi::ChiHome.read(path: path)).to eq(home)
@@ -108,9 +108,23 @@ RSpec.describe Samagotchi::HomeCommand do
       expect(err.string).to include("chi home set: no Ruby at #{File.join(tmp, "nope")}")
 
       expect(described_class.new(["set", "--ruby", ruby], stdout: out, stderr: err, path: path, env: {},
-                                                           probe: ->(_) {}).run).to eq(1)
+                                                           probe: ->(_) {}, bundler: false).run).to eq(1)
       expect(err.string).to include("didn't answer as a Ruby")
       expect(File.exist?(path)).to be(false)
+    end
+
+    it "refuses to record this chi under Bundler (the bundle's gem path), but records another Ruby, probed outside it" do
+      allow(Samagotchi::ChiHome).to receive(:from_running).and_return(home)
+      under = lambda do |*argv, probe: self.probe|
+        described_class.new(argv, stdout: out, stderr: err, path: path, env: {}, probe: probe, bundler: true).run
+      end
+      expect(under.call("set")).to eq(1)
+      expect(under.call("set", "--ruby", RbConfig.ruby)).to eq(1)
+      expect(err.string.lines).to eq(["chi home set: #{Samagotchi::ChiHome::UnderBundler.new.message}\n"] * 2)
+      expect(File.exist?(path)).to be(false)
+
+      expect(under.call("set", "--ruby", ruby)).to eq(0)
+      expect(Samagotchi::ChiHome.read(path: path)).to eq(home)
     end
 
     it "refuses arguments and unknown options (usage, exit 2)" do

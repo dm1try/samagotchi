@@ -42,14 +42,16 @@ module Samagotchi
     # @param path [String] home.json
     # @param probe [#call] (ruby) → ChiHome::Record or nil (ChiHome.probe)
     # @param doctor [#call] (home) → HomeDoctor
+    # @param bundler [Boolean, nil] running under Bundler (nil: found out)
     def initialize(argv, stdout: $stdout, stderr: $stderr, path: ChiHome.path, gem_spec: InstalledGem.spec,
-                   env: ENV, probe: nil, doctor: nil)
+                   env: ENV, probe: nil, doctor: nil, bundler: nil)
       @argv = argv.dup
       @stdout = stdout
       @stderr = stderr
       @path = path
       @gem_spec = gem_spec
       @env = env
+      @bundler = bundler.nil? ? ChiHome.under_bundler?(env) : bundler
       @probe = probe || ->(ruby) { ChiHome.probe(ruby, env: env) }
       @doctor = doctor || lambda { |home|
         HomeDoctor.new(home: home, env: env, gem_spec: gem_spec, helper: HomeDoctor.default_helper(env: env))
@@ -69,6 +71,9 @@ module Samagotchi
       end
     rescue ChiHome::Invalid => e
       error_line("#{command_name}: #{e.message} (chi home set rewrites it)")
+      CLI::Exit::FAILED
+    rescue ChiHome::UnderBundler => e
+      error_line("#{command_name}: #{e.message}")
       CLI::Exit::FAILED
     end
 
@@ -103,7 +108,7 @@ module Samagotchi
     def running_ruby = "#{RbConfig.ruby}#{" (a checkout)" unless @gem_spec}"
 
     def run_set(options)
-      home = options[:ruby] ? probed(options[:ruby]) : ChiHome.from_running(env: @env)
+      home = options[:ruby] ? probed(options[:ruby]) : running_record
       return CLI::Exit::FAILED unless home
 
       if (problem = ChiHome.problem(home))
@@ -127,11 +132,20 @@ module Samagotchi
         error_line("#{command_name}: no Ruby at #{ruby}")
         return nil
       end
-      return ChiHome.from_running(env: @env) if ChiHome.real(path) == ChiHome.real(RbConfig.ruby)
+      return running_record if ChiHome.real(path) == ChiHome.real(RbConfig.ruby)
 
       home = @probe.call(path)
       error_line("#{command_name}: #{ruby} didn't answer as a Ruby") unless home
       home
+    end
+
+    # This process's Ruby and gem path, never under Bundler (the bundle's
+    # gems). Another Ruby is probed with Bundler's variables unset.
+    # @raise [ChiHome::UnderBundler]
+    def running_record
+      raise ChiHome::UnderBundler if @bundler
+
+      ChiHome.from_running(env: @env)
     end
 
     # The home's rows and what should follow it (HomeDoctor); exit 1 when

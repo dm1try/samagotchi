@@ -1375,7 +1375,8 @@ launches it. It is recorded in `~/.config/samagotchi/home.json` (`$XDG_CONFIG_HO
 - **Setting it.** `chi home set` records the Ruby your `chi` runs on and its gem path (a chruby shell's
   `GEM_HOME`/`GEM_PATH` are part of it: that is where its chi lives); `chi home set --ruby PATH` records another
   Ruby with its own gem dirs. Either needs samagotchi installed there (`gem install samagotchi` with that Ruby
-  first). Without a home.json, the first `chi bootstrap` or `chi update` records one, once (from an installed chi,
+  first). Under `bundle exec`, `chi home set` refuses to record its own Ruby (the bundle's gem path is no home);
+  `--ruby` another Ruby still works. Without a home.json, the first `chi bootstrap` or `chi update` records one, once (from an installed chi,
   never under `bundle exec`): of the desktop helper's Ruby (when its newest chi is at least the one running) and the
   Ruby chi runs on, the one with the newer chi. Nothing else ever overwrites it.
   `chi home` shows it; `chi home doctor` checks it (see [CLI](cli.md#commands)).
