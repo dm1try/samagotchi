@@ -63,9 +63,10 @@ module Samagotchi
         "gh" => [[%w[auth], %w[login logout refresh setup-git switch]], [%w[config], %w[set]],
                  [%w[extension extensions ext], %w[install upgrade remove]], [%w[alias], %w[set delete import]]],
         # the global config and a launchd/cron schedule; git lfs's global filters
-        "git" => [[%w[maintenance], %w[register start unregister stop]], [%w[lfs], %w[install uninstall]]],
+        # (git's first group is its subcommand: .git_outside?)
+        "git" => [[%w[maintenance], %w[register start unregister stop]], [%w[lfs], %w[install uninstall update]]],
         "git-maintenance" => [[%w[register start unregister stop]]],
-        "git-lfs" => [[%w[install uninstall]]],
+        "git-lfs" => [[%w[install uninstall update]]],
         "scalar" => [[%w[register unregister clone reconfigure delete]]]
       }.freeze
       # program => the verbs (its first argument) that only read: every
@@ -110,11 +111,23 @@ module Samagotchi
         return bundle_config_outside?(args) if program == "bundle" && args.first == "config"
 
         entries = BY_VERB[program] or return false
+        return git_outside?(entries, args, assigned) if program == "git"
         return false unless entries.any? { |groups| groups.all? { |group| group?(group, args, assigned) } }
         return true unless LOCAL_INSTALLERS.include?(program)
         return true if args.include?("--user")
 
         !(local || args.any? { |arg| arg.match?(PLACE_OPTIONS) })
+      end
+
+      # git's entries match from its subcommand on (PairCommand.git_command_starts:
+      # git -C . maintenance start), the first group holding the subcommand,
+      # not its words anywhere (git add maintenance start, git commit -m lfs -m install).
+      def git_outside?(entries, args, assigned)
+        PairCommand.git_command_starts(args).grep(Integer).any? do |i|
+          entries.any? do |first, *rest|
+            first.include?(args[i]) && rest.all? { |group| group?(group, args[(i + 1)..], assigned) }
+          end
+        end
       end
 
       def group?(group, args, assigned)

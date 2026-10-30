@@ -633,7 +633,8 @@ RSpec.describe Samagotchi::Guardrails::PairBoundary do
        "deno install -g x", "dotnet tool install -g x", "corepack enable", "bundle config set --global path x",
        "bundle config set path x", "bundle install --system", "rustup default nightly", "pyenv global 3.12",
        "code --install-extension x", "git maintenance start", "git maintenance register", "git lfs install",
-       "git-lfs install", "scalar register"].each do |command|
+       "git-lfs install", "scalar register", "git -C . maintenance start", "git lfs update --force",
+       "GIT maintenance start"].each do |command|
         expect(asks?(command)).to be(true), command
       end
       ["npm install", "npm ci", "npm config get registry", "npm ls -g", "bundle install", "gem list", "brew list",
@@ -641,7 +642,9 @@ RSpec.describe Samagotchi::Guardrails::PairBoundary do
        ".venv/bin/python -m pip install x", "pip download x -d tmp", "pip install -t vendor x", "launchctl list",
        "defaults read com.apple.dock", "npm install --global=false x", "uv pip install x", "deno install",
        "bundle config set --local path vendor", "bundle config list", "rustup show", "python3 -m pytest",
-       "git maintenance run", "git lfs ls-files", "git lfs pull"].each do |command|
+       "git maintenance run", "git lfs ls-files", "git lfs pull",
+       # git's words count from its subcommand, not anywhere
+       "git add maintenance start", "git commit -m maintenance -m start", "git commit -m lfs -m install"].each do |command|
         expect(execute(command)).to be_allow, command
       end
     end
