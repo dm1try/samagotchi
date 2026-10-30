@@ -201,4 +201,39 @@ RSpec.describe Samagotchi::HomeDoctor do
       expect(lines(nil).join).not_to include("the last worker")
     end
   end
+
+  describe "the last worker boot" do
+    # The worker's own line (SessionManager::HOME_BOOT_FAILED), as it writes it.
+    def boot_failed(at)
+      File.write(log_path, "#{at} ERROR worker pid=7 sid=abcd1234 boot_failed ruby=#{ruby.inspect} " \
+                           "error=\"cannot load such file -- samagotchi/session_manager\"\n", mode: "a")
+    end
+
+    def started(at)
+      record = Samagotchi::LogLine::Record.new(ts: at, level: "INFO", tag: "worker", pid: 8, sid: "abcd1234",
+                                               event: "start", fields: { cwd: project, version: "1.2.3" }, payload: nil)
+      File.write(log_path, Samagotchi::LogLine.format(record), mode: "a")
+    end
+
+    def boot_rows = lines.grep(/failed to boot/)
+
+    it "fails when the newest worker boot since the home was set failed, saying what to run" do
+      boot_failed("2026-10-30T09:00:00.000Z")
+      expect(boot_rows).to eq([
+        "fail  the last worker (2026-10-30T09:00:00.000Z, session abcd1234) failed to boot the home's chi on " \
+        "#{ruby}: cannot load such file -- samagotchi/session_manager: gem install samagotchi with #{ruby} " \
+        "(or chi home set another Ruby), then chi sessions restart abcd1234"
+      ])
+    end
+
+    it "is quiet once a worker started after it, or for a failure before the home was set" do
+      boot_failed("2026-10-30T09:00:00.000Z")
+      started(Time.utc(2026, 10, 30, 9, 5))
+      expect(boot_rows).to be_empty
+
+      File.write(log_path, "")
+      boot_failed("2026-10-28T09:00:00.000Z")
+      expect(boot_rows).to be_empty
+    end
+  end
 end

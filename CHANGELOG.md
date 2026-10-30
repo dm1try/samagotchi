@@ -23,6 +23,8 @@ and commands may change between minor versions. How releases are made:
   bundle instead of loading the bundle into it (which failed noisily).
 - `chi self`'s home row says when this chi runs on the home's Ruby and gems but isn't the home's newest chi (`this chi
   is X`), as the terminal line and `chi home doctor` do.
+- `chi home doctor` reports a worker that couldn't boot the chi home's chi (the debug log's newest `boot_failed` line
+  since the home was set, unless a worker started after it), with what to run.
 - Toolkit suggestions (`toolkit.suggest.mode: on`): a suggestion that times out or gets no answer from System 1 now
   says so in a notice (the session runs its default kit) and a timeout logs a warning, instead of falling back silently.
 

@@ -104,6 +104,18 @@ module Samagotchi
       line.start_with?(INDENT)
     end
 
+    # Yields each Record in the last +bytes+ of the log at +path+ (a torn
+    # first line skipped): chi home doctor's readers.
+    # @raise [SystemCallError]
+    def each_tail_record(path, bytes:, &)
+      File.open(path, "rb") do |io|
+        size = io.size
+        io.seek([size - bytes, 0].max)
+        io.gets if size > bytes
+        each_record(io, &)
+      end
+    end
+
     # Yields each Record of a log (payload lines joined onto theirs). Lines
     # that are neither (an older format, a torn write) go to on_invalid.
     def each_record(io, on_invalid: nil)

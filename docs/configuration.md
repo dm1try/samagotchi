@@ -1397,7 +1397,7 @@ launches it. It is recorded in `~/.config/samagotchi/home.json` (`$XDG_CONFIG_HO
   `home_older_than_spawner`), but chi web's restart runs the newest chi it knows outside the home instead
   (`restart_home_older`): its flags may be ones the older chi doesn't know.
 - **A home that still fails at boot** (a broken install): the worker writes one `boot_failed` line to the debug log
-  (`log.file`) and exits, rather than leave the spawner waiting.
+  (`log.file`) and exits, rather than leave the spawner waiting; `chi home doctor` reports the newest one.
 - Each machine has its own home (a remote's is that machine's).
 
 ### Checking it: chi home doctor
@@ -1409,6 +1409,7 @@ fails (a launch can't boot what it should), 0 otherwise. Run it in a project fol
 |---|---|---|
 | the home | `fail`: its Ruby is gone (a Ruby upgrade) or has no samagotchi | `gem install samagotchi` with the new Ruby, then `chi home set` from it |
 | this chi | `warn`: the chi you ran is another Ruby's, or another version, than the home's (`ok` for a source checkout, which starts its own code) | `chi home set` to make this one the home, or run the home's |
+| the last worker boot | `fail`: the newest worker boot in the debug log since the home was set is a `boot_failed` line (the home's Ruby couldn't load chi), not a worker's `start`; nothing without a log file | `gem install samagotchi` with the home's Ruby (or `chi home set` another), then `chi sessions restart ID` |
 | the desktop helper (when installed, and its chi reads this chi's config dir: none with `XDG_CONFIG_HOME` elsewhere) | `fail`: its launch file's Ruby or chi is gone; `warn`: it runs `[ruby, chi]` (installed before the home), boots the home as it was before a `chi home set`, or sets `GEM_HOME`/`GEM_PATH` | `chi desktop install --force` / `chi desktop upgrade` |
 | sessions | `warn`: sessions last saved by a newer chi than the home's (their workers run without what it added) | `chi update` |
 | the tools' `chi` | `warn`: `$XDG_STATE_HOME/samagotchi/bin/chi` boots another chi than the home | the next worker start rewrites it (`chi sessions restart ID` for a running session) |

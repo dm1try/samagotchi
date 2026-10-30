@@ -80,7 +80,8 @@ module Samagotchi
     # chi home doctor's row when session.project_env is mise and no mise is found.
     NO_MISE = "project env: no mise found (home.json's, PATH, /opt/homebrew/bin, /usr/local/bin, ~/.local/bin): " \
               "tools run in the env of whoever starts the worker; install mise, or set session.project_env: off"
-    # How much of the debug log's end chi home doctor reads for #last_warning.
+    # How much of the debug log's end chi home doctor reads (#last_warning,
+    # HomeDoctor's boot row).
     LOG_TAIL_BYTES = 4 * 1024 * 1024
 
     # A worker's `project_env` warning from the debug log (#last_warning).
@@ -327,7 +328,7 @@ module Samagotchi
 
       want = Array(dirs).map { |dir| ChiHome.real(dir) }
       newest = {}
-      each_tail_record(log_path) do |record|
+      LogLine.each_tail_record(log_path, bytes: LOG_TAIL_BYTES) do |record|
         next unless record.tag == "worker" && %w[project_env project_env_applied].include?(record.event)
 
         dir = record.fields["dir"]
@@ -340,15 +341,6 @@ module Samagotchi
                   reason: found.fields["reason"], error: found.fields["error"])
     rescue SystemCallError
       nil
-    end
-
-    def each_tail_record(log_path, &)
-      File.open(log_path, "rb") do |io|
-        size = io.size
-        io.seek([size - LOG_TAIL_BYTES, 0].max)
-        io.gets if size > LOG_TAIL_BYTES # a torn first line
-        LogLine.each_record(io, &)
-      end
     end
 
     def configured_mode

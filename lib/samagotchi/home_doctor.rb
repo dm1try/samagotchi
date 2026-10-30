@@ -7,6 +7,7 @@ require_relative "config"
 require_relative "desktop"
 require_relative "home_notice"
 require_relative "installed_gem"
+require_relative "log_line"
 require_relative "log_path"
 require_relative "paths"
 require_relative "project_env"
@@ -51,7 +52,7 @@ module Samagotchi
     def rows
       list = [home_row]
       if @home && !ChiHome.problem(@home)
-        list.concat([running_row, helper_row, sessions_row, shim_row].compact)
+        list.concat([running_row, boot_row, helper_row, sessions_row, shim_row].compact)
       end
       list.concat([gemfile_row, mise_row, project_env_row].compact)
     end
@@ -90,6 +91,35 @@ module Samagotchi
 
       text = HomeNotice.mismatch(@home, ruby: @ruby, gem_dir: @gem_dir)
       text && warn_row("#{text}: launches boot the home; chi home set makes this chi the home")
+    end
+
+    # The newest worker boot in the debug log since the home was set, when
+    # it is SessionManager::HOME_BOOT_FAILED's line (the home's Ruby
+    # couldn't load chi) rather than a worker's `start`. Without a log
+    # file (log.file off) there is no line to read.
+    def boot_row
+      failed = last_boot_failure
+      return nil unless failed
+
+      ruby = failed.fields["ruby"] || @home.ruby
+      fail_row("the last worker (#{failed.ts}, session #{failed.sid}) failed to boot the home's chi on #{ruby}: " \
+               "#{failed.fields["error"]}: gem install samagotchi with #{ruby} (or chi home set another Ruby), " \
+               "then chi sessions restart #{failed.sid}")
+    end
+
+    def last_boot_failure
+      return nil unless @log_path && File.file?(@log_path)
+
+      since = Time.iso8601(@home.set_at.to_s)
+      newest = nil
+      LogLine.each_tail_record(@log_path, bytes: ProjectEnv::LOG_TAIL_BYTES) do |record|
+        next unless record.tag == "worker" && %w[start boot_failed].include?(record.event)
+
+        newest = record if Time.iso8601(record.ts) >= since
+      end
+      newest if newest&.event == "boot_failed"
+    rescue SystemCallError, ArgumentError
+      nil
     end
 
     def helper_row

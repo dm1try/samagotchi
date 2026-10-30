@@ -26,8 +26,9 @@ module Samagotchi
         set --ruby PATH   record that Ruby (its own gem dirs) as the home; it must have samagotchi
                           (gem install samagotchi with it first)
         doctor            check the home (its Ruby is there and has samagotchi) and what should
-                          follow it: this chi, the desktop helper, sessions, the tools' chi script,
-                          this project's Gemfile.lock, mise and the last worker's project env
+                          follow it: this chi, the last worker boot, the desktop helper, sessions,
+                          the tools' chi script, this project's Gemfile.lock, mise and the last
+                          worker's project env
         Every chi launch (workers, chi web's restart and Update, the macOS helper's next
         chi desktop install or upgrade) boots the home's Ruby with the home's gems. Saved in
         #{Paths.tilde(ChiHome.path)}.
