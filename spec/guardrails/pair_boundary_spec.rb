@@ -354,6 +354,22 @@ RSpec.describe Samagotchi::Guardrails::PairBoundary do
       ["bash -c -x 'ls docs'", "ruby -we 'puts 1'"].each { |command| expect(execute(command)).to be_allow, command }
     end
 
+    # fish takes its command as an option's value: --command S, and -C /
+    # --init-command S runs S before the rest.
+    it "reads fish's --command and --init-command / -C, in the space and = forms" do
+      ["fish --command 'git config core.fsmonitor id'", "fish --command='git config core.fsmonitor id'",
+       "fish -C 'git config core.fsmonitor id'", "fish --init-command 'git config core.fsmonitor id'",
+       "FISH --init-command='git config core.fsmonitor id' -c true"].each do |command|
+        expect(refused(command)).to eq(described_class::GIT_CONFIG), command
+      end
+      expect(refused("fish --command 'chi share x'")).to eq(described_class::CHI)
+      ["fish --command 'touch ~/other/x'", "fish -C 'touch ~/other/x'"].each do |command|
+        verdict = execute(command)
+        expect([verdict.ask?, verdict.reason]).to eq([true, described_class::OUTSIDE_WRITE]), command
+      end
+      ["fish -c 'git status'", "fish --command 'ls docs'"].each { |command| expect(execute(command)).to be_allow, command }
+    end
+
     it "denies the environment listers, and leaves their setting forms" do
       ["set", "export", "export -p", "declare -x", "typeset", "launchctl getenv HOME", "ps eww", "ps auxe"].each do |command|
         expect(refused(command)).to eq(described_class::ENVIRONMENT), command

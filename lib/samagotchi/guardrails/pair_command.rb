@@ -67,8 +67,12 @@ module Samagotchi
                          "perl" => %w[CdDFiImMx 0l], "node" => %w[r], "bun" => %w[r], "lua" => %w[l] }.freeze
       # A shell's options whose next word is their value, not its script.
       SHELL_VALUE_OPTIONS = %w[-o +o -O +O].freeze
+      # fish's options that take a command (the next word, or after = for a
+      # long one): its script (--command) or one run before it (-C,
+      # --init-command; not where its script comes from: .script_source).
+      FISH_COMMAND_OPTIONS = %w[--command -C --init-command].freeze
       # Options whose next word is code or a command, for any program.
-      CODE_OPTIONS = %w[-c -e -exec --exec -execdir --command --eval -x].freeze
+      CODE_OPTIONS = %w[-c -e -exec --exec -execdir --command --init-command --eval -x].freeze
       # A shell's or interpreter's options whose next word is a value, not
       # its script (#stdin_script?).
       RUNNER_VALUE_OPTIONS = %w[-o +o -O +O -W -X -I -r --require --import --loader -C].freeze
@@ -304,8 +308,10 @@ module Samagotchi
       # Whether +name+ (a word's basename) is an interpreter's (INTERPRETER).
       def self.interpreter?(name) = name.to_s.match?(INTERPRETER)
 
-      # The options whose next word is +name+'s code (CODE_FLAGS).
+      # The options whose next word is +name+'s code (CODE_FLAGS); fish's
+      # --command too.
       def self.code_flags(name)
+        return %w[-c --command] if name == "fish"
         return %w[-c] if SHELLS.include?(name)
 
         CODE_FLAGS.find { |start, _| name.start_with?(start) }&.last || %w[-c -e]
@@ -365,7 +371,7 @@ module Samagotchi
       # .code_flags, a long one's after =, a cluster's rest and the next
       # word: both are read when the rest isn't empty).
       def self.code_scripts(name, rest)
-        return shell_scripts(rest) if SHELLS.include?(name)
+        return shell_scripts(name, rest) if SHELLS.include?(name)
 
         found = []
         rest.each_with_index do |word, i|
@@ -379,8 +385,26 @@ module Samagotchi
         found
       end
 
-      def self.shell_scripts(rest)
-        start = rest.index { |word| cluster_code_at("sh", word) } or return []
+      # A shell's scripts: the one after its -c cluster (.shell_script_after),
+      # and fish's commands given by an option that takes one (FISH_COMMAND_OPTIONS:
+      # --command S, --command=S, -C S, --init-command=S).
+      def self.shell_scripts(name, rest)
+        found = []
+        if name == "fish"
+          rest.each_with_index do |word, i|
+            option, value = word.split("=", 2)
+            next unless FISH_COMMAND_OPTIONS.include?(option) && (option.start_with?("--") || value.nil?)
+
+            found << (value || rest[i + 1])
+          end
+        end
+        start = rest.index { |word| cluster_code_at(name, word) }
+        found.concat(shell_script_after(rest, start)) if start
+        found.compact
+      end
+      private_class_method :shell_scripts
+
+      def self.shell_script_after(rest, start)
         i = start + 1
         while i < rest.size
           word = rest[i]
@@ -391,7 +415,7 @@ module Samagotchi
         end
         []
       end
-      private_class_method :shell_scripts
+      private_class_method :shell_script_after
 
       # Where a simple command's shell or interpreter (.runner?) gets its
       # script: nil without one; :inline for its code option's script
