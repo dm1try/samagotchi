@@ -7,6 +7,33 @@ and commands may change between minor versions. How releases are made:
 [docs/releasing.md](docs/releasing.md).
 ## [Unreleased]
 
+## [0.137.0] - 2026-10-30
+
+### Changed
+
+- Web: a Revise stack's top answer has a ‹ N/M › switcher that shows an earlier version in its place (view only;
+  Copy copies the version shown; a reload shows the latest).
+- Web: a long prompt folds like a long answer (same threshold, open by default; this browser remembers the fold).
+- Web: every popover behaves like the ⚙ panel: a modal dialog (Tab stays in it, Esc gives focus back to its chip),
+  and on a phone a tap no longer leaves a hover tint.
+- Web: a delegate report's code blocks get copy buttons, like an answer's. On a phone or touch screen a code
+  block's copy button sits in a strip above the first line, not over it.
+- Web: a phone's session bar shows ⚙ on first view, right after the status.
+- Web: the open ⚙ panel's running-turn note follows a turn starting or ending.
+- Web: a markdown delegate report in the running turn's stage reads as one plain row.
+- A Verify or Revise sent during a running turn always queues behind it (it no longer cuts the model's thinking
+  for a line that waits anyway); the page says it queues.
+- Guardrails: a write to the chi shim asks, and only you can allow it, like home.json. A pair turn's plugin tool
+  call that names no command or path asks the owner.
+
+### Fixed
+
+- Web: other viewers of a Verify turn no longer see a Revise offer on its answer until they reload.
+- Web: a stale `?view=` (the removed turn view's) leaves the address bar.
+- Desktop: the helper checks the chi home the helper's chi actually reads.
+
+Update with `chi update`, then restart `chi web`.
+
 ## [0.136.1] - 2026-10-30
 
 ### Changed
@@ -5230,7 +5257,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.136.1...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.137.0...HEAD
+[0.137.0]: https://github.com/dm1try/samagotchi/compare/v0.136.1...v0.137.0
 [0.136.1]: https://github.com/dm1try/samagotchi/compare/v0.136.0...v0.136.1
 [0.136.0]: https://github.com/dm1try/samagotchi/compare/v0.135.0...v0.136.0
 [0.135.0]: https://github.com/dm1try/samagotchi/compare/v0.134.0...v0.135.0
