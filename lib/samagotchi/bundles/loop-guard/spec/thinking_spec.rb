@@ -173,7 +173,7 @@ RSpec.describe "The loop-guard thinking watch", :bundle do
       # Generous bounds: shared CI runners (and parallel spec processes)
       # stall for tens of ms; a real regression is an order of magnitude
       # (a batch costs ~1-2 ms on a quiet machine).
-      expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < 2.0
+      expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < time_bound(2.0)
       expect(slowest).to be < 0.25
     end
 

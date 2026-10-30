@@ -123,7 +123,7 @@ RSpec.describe Samagotchi::HostKeys::Keychain do
     allow(Samagotchi::Log).to receive(:warn)
     started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
     expect(keychain("echo sk-late; exec sleep 30", timeout: 0.3).read("BOX_KEY")).to be_nil
-    expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < 5
+    expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < time_bound(5, below: 30)
     expect(Samagotchi::Log).to have_received(:warn).with(:config, "keychain_timeout", name: "BOX_KEY", seconds: 0.3)
   end
 
@@ -143,7 +143,7 @@ RSpec.describe Samagotchi::HostKeys::Keychain do
 
     started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
     expect(reader.read("BOX_KEY")).to be_nil
-    expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < 2
+    expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < time_bound(2, below: 30)
     expect(Samagotchi::Log).to have_received(:warn).with(:config, "keychain_timeout", name: "BOX_KEY", seconds: 0.3)
 
     File.open(fifo, "w", &:close) # the spawn returns now, past the deadline

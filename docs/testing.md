@@ -95,6 +95,9 @@ run, CI) and too long on a fast one. The contract a new spec follows:
 4. **"Nothing happens" is shown by counting passes** (the worker's loop rounds, spec/support/worker_loop_rounds.rb;
    a class's ticks), not by a pause.
 5. **A wall-clock bound** only as "not the full N s", with at least 5× headroom measured on the slow (x86) laptop.
+   Write it `be < time_bound(3, below: 5)`: the bound scaled like a helper's deadline, and kept under the unscaled
+   deadline it tells apart from (here a 5 s read timeout), so the check still fails on the full wait at any scale. A
+   cost bound with nothing to tell apart from ("no quadratic blow-up") takes no `below:`.
 
 The helpers are the bundle test kit's (`Samagotchi::Testing::Waiting`, [plugins.md](plugins.md#testing-a-bundle-experimental)),
 so core and bundle specs share one copy; `SpecWaiting` (spec/support/waiting.rb) includes them in every example
@@ -107,6 +110,7 @@ group and also answers them as module calls (`SpecWaiting.pop!`, for a stubbed l
   same deadline and message. A gate a stubbed lib thread waits on takes `timeout: 30`: it only ends a hang.
 - `wait_until(timeout:) { … }` returns the block's last value (falsy at the deadline): for a value the example
   checks after, or a `wait-ok` wait.
+- `time_bound(seconds, below: nil)`: a wall-clock upper bound, scaled and kept under `below:` (rule 5).
 - `eventually(timeout: 5) { expect(…) }` (spec only) retries until the expectations hold, then re-raises the last
   failure prefixed `still failing after 5 s:`, so the matcher's own expected/got is in the message.
 

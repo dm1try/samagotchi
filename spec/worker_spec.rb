@@ -58,7 +58,7 @@ RSpec.describe Samagotchi::Worker do
       started = mono
       waker.wake
       expect(woken.value).to be(true)
-      expect(mono - started).to be < 5
+      expect(mono - started).to be < time_bound(5, below: 10)
     end
   end
 
@@ -272,7 +272,7 @@ RSpec.describe Samagotchi::Worker do
 
       prompt, started_at = next_turn
       expect(prompt).to eq("PING")
-      expect(started_at - posted_at).to be < 5
+      expect(started_at - posted_at).to be < time_bound(5, below: 60)
     end
 
     it "picks up an input file written without a wake on the fallback tick" do
@@ -293,7 +293,7 @@ RSpec.describe Samagotchi::Worker do
       prompt, started_at, kwargs = next_turn
       expect(prompt).to be_nil
       expect(kwargs).to include(continue: true, origin: Samagotchi::TurnOrigin.new(client_id: "system:reminder"))
-      expect(started_at - called_at).to be < 5
+      expect(started_at - called_at).to be < time_bound(5, below: 60)
       expect(Dir.children(File.join(session_dir, Samagotchi::SessionInbox::INPUT_DIR))).to be_empty
       expect(engine.due_reminder_names).to be_empty
     end
@@ -603,7 +603,7 @@ RSpec.describe Samagotchi::Worker do
       expect(prompt).to eq("two")
       # Well under the 5 s poll: the queued turn starts on release, not on the
       # next poll (0.3 s flaked on a loaded CI runner at 0.3007 s).
-      expect(started_at - released_at).to be < 2.0
+      expect(started_at - released_at).to be < time_bound(2.0, below: 5)
     end
 
     it "logs what ended it when a turn's input fails past its own handling (then marks the session)" do

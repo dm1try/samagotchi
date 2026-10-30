@@ -815,7 +815,7 @@ RSpec.describe Samagotchi::IdleRecap do
       started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
       3.times { idle.tick }
       # not blocked on the summarizer, which holds on the gate until the example releases it
-      expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < 2
+      expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < time_bound(2)
       expect(idle).to be_in_flight
       called.pop
       expect(blocked_client).to have_received(:summarize).once
@@ -1177,7 +1177,7 @@ RSpec.describe Samagotchi::IdleRecap do
       started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
       expect(idle.write_now).to be_nil
       # the 0.2 s timeout, not the stuck summarizer, which holds on the gate until released
-      expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < 2
+      expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < time_bound(2)
       expect(store.saved).to be_nil
       expect(idle).not_to be_in_flight
       gate.push(:go)

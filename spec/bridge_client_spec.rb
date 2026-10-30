@@ -270,7 +270,7 @@ RSpec.describe Samagotchi::BridgeClient do
       started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
       expect { client.post_turn(prompt: "hi") }.to raise_error(Errno::ETIMEDOUT)
       expect { client.cancel(reason: "x") }.to raise_error(SystemCallError)
-      expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < 3
+      expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < time_bound(3)
     end
 
     it "gives up on a reply whose body never ends" do
@@ -425,7 +425,7 @@ RSpec.describe Samagotchi::BridgeClient do
 
     started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
     expect { client.connect_stream(timeout: 0.2) }.to raise_error(Errno::ETIMEDOUT)
-    expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < 1.5
+    expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < time_bound(1.5)
   ensure
     peer&.kill
     server&.close
@@ -463,7 +463,7 @@ RSpec.describe Samagotchi::BridgeClient do
       started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
       expect { client.relay(action: "closed", relay_id: "r", question_id: "q", read_timeout: 0.2) }
         .to raise_error(Errno::ETIMEDOUT)
-      expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < 5 # not the full 30 s
+      expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < time_bound(5, below: 30) # not the full 30 s
     ensure
       hold&.kill
       server&.close

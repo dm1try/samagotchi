@@ -89,7 +89,7 @@ RSpec.describe Samagotchi::BridgeClient::EventStream do
 
       started = Time.now
       @stream.close
-      expect(Time.now - started).to be < 0.5 # not the full 1 s join
+      expect(Time.now - started).to be < time_bound(0.5, below: 1) # not the full 1 s join
       expect(@stream).not_to be_alive
       expect(events.map { |e| e["type"] }).not_to include("stream_closed")
     end

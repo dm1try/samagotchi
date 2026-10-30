@@ -134,7 +134,7 @@ RSpec.describe "Plugin init tasks" do
     expect(engine.await_init_tasks(controller)).to be(true)
     join!(canceller, "the Ctrl-C thread")
     # not the task's 5 s timeout: the cancel ended the wait
-    expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < 4
+    expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < time_bound(4, below: 5)
     expect(passes[0]).to be >= 2
     expect(tasks.first.state).to eq(:running)
     expect(tasks.first.cancelled?).to be(false)
@@ -163,7 +163,7 @@ RSpec.describe "Plugin init tasks" do
     started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
     engine.run_turn(session, "hi", on_event: ->(_e) {})
     # not the task's 5 s timeout: its gate stays shut until the example ends
-    expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < 3
+    expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < time_bound(3, below: 5)
   end
 
   it "shows a failure as finished (not ok) and a warn card a late UI still gets; the turn goes on without its tools" do
@@ -241,7 +241,7 @@ RSpec.describe "Plugin init tasks" do
     started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
     engine.shutdown
     # not Engine::SHUTDOWN_JOIN_SECONDS (3 s): the task saw the cancel and ended
-    expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < 2
+    expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < time_bound(2, below: Samagotchi::Engine::SHUTDOWN_JOIN_SECONDS)
     expect(pop!(stopped, "the init task to see the cancel")).to eq(:cancelled)
     expect(events(:plugin_init_finished) + events(:card)).to be_empty
     engine.start_init_tasks!

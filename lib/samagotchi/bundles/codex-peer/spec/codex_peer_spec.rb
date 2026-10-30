@@ -177,7 +177,7 @@ RSpec.describe "The codex-peer plugin", :bundle do
       started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
       result = send_part(kind: "validate", title: "t", text: "x")
 
-      expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < 5
+      expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < time_bound(5, below: 30)
       expect(result).to eq("Error: Codex didn't take the message in 0.3 s (codex queue was stopped): try again, " \
                            "or pair again from Codex")
       sleeper = File.read(pid_file).to_i
@@ -195,7 +195,7 @@ RSpec.describe "The codex-peer plugin", :bundle do
       result = send_part(kind: "validate", title: "t", text: "x")
 
       # not the child's 4 s: the queue is stopped after its 0.3 s
-      expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < 3
+      expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < time_bound(3, below: 4)
       expect(result).to eq("Error: codex queue exited but left a process holding its output (stopped after 0.3 s): " \
                            "the message may already be queued, check Codex before sending again")
       sleeper = File.read(pid_file).to_i

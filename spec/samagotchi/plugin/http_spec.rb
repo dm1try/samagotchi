@@ -187,7 +187,7 @@ RSpec.describe Samagotchi::Plugin::Http do
 
       started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
       expect { http.get(url, timeout: 0.3) }.to raise_error(Samagotchi::Plugin::HttpError, /timed out/)
-      expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < 3
+      expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < time_bound(3)
     end
 
     it "maps a malformed response to HttpError, with no raw Net:: error escaping" do
@@ -252,7 +252,7 @@ RSpec.describe Samagotchi::Plugin::Http do
 
       started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
       expect { http.get(url, timeout: 30, cancel: cancel) }.to raise_error(Samagotchi::Plugin::HttpCancelled, /cancelled/)
-      expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < 5
+      expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < time_bound(5, below: 30)
     ensure
       # Bounded, but no raise here: it would hide the example's own failure.
       canceller&.join(5)

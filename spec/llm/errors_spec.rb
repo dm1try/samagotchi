@@ -274,7 +274,7 @@ RSpec.describe Samagotchi::LLM::ProviderError do
 
         # ~0.3 s alone; the bound catches a quadratic match (seconds), not a
         # loaded runner (0.5 s failed under parallel_rspec -n 8).
-        expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < 2.0
+        expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < time_bound(2.0)
         [quoted, bare].each { |error| expect(error.summary).not_to include("did you mean") }
         expect(listed.hint.scan("' or '").size).to eq(2)
       end

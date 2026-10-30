@@ -112,7 +112,7 @@ RSpec.describe "The mcp bundle's client" do
     started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
     client.close
     expect(alive?(pid)).to be(false)
-    expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < 5
+    expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < time_bound(5, below: 30)
   end
 
   it "leaves nothing in the server's process group after close (its watchdog goes too)" do

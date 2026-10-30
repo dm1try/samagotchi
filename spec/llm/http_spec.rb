@@ -84,7 +84,7 @@ RSpec.describe Samagotchi::LLM::HTTP do
           expect(error.summary)
             .to eq("can't reach host main at 127.0.0.1:#{port} (connection refused) — is the server running?")
         }
-      expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < 2
+      expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < time_bound(2)
       expect(errors.map(&:class)).to eq([Errno::ECONNREFUSED])
     end
 
@@ -128,7 +128,7 @@ RSpec.describe Samagotchi::LLM::HTTP do
                                         "try again later or pick another model (/model)")
           }
         # not the keep-alives' 2 s and the 5 s read timeout after them: the limit ended it
-        expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < 4
+        expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < time_bound(4, below: 7)
         expect(server.requests.size).to eq(1)
         expect(sleeps).to be_empty
       end
@@ -194,7 +194,7 @@ RSpec.describe Samagotchi::LLM::HTTP do
           end
         end.to raise_error(Samagotchi::LLM::RequestCancelled) { |error| expect(error.reason).to eq(:ctrl_c) }
 
-        expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < 2
+        expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < time_bound(2)
         expect(lines.first).to eq("data: 1")
         expect(server.requests.size).to eq(1)
       end
@@ -660,7 +660,7 @@ RSpec.describe Samagotchi::LLM::HTTP do
           .to raise_error(Samagotchi::LLM::RequestCancelled) { |error| expect(error.reason).to eq(:user) }
         join!(canceller, "the cancelling thread")
         # not the 5 s read timeout: the cancel closed the socket
-        expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < 3
+        expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < time_bound(3, below: 5)
       end
 
       it "does not send a request that is already cancelled" do

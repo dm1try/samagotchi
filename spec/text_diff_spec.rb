@@ -100,8 +100,8 @@ RSpec.describe Samagotchi::TextDiff do
     before = numbered(1..5000)
     rewrite = (1..5000).map { |i| "other #{i}\n" }.join
     dense = before.lines.each_with_index.map { |l, i| (i % 3).zero? ? "x#{i}\n" : l }.join
-    expect(elapsed { diff(before, rewrite) }).to be < 0.5
-    expect(elapsed { diff(before, dense) }).to be < 1.5 # ~0.25 s on a laptop
+    expect(elapsed { diff(before, rewrite) }).to be < time_bound(0.5)
+    expect(elapsed { diff(before, dense) }).to be < time_bound(1.5) # ~0.25 s on a laptop
   end
 
   it "rebuilds the after text from its edit script (random edits)" do

@@ -707,7 +707,7 @@ RSpec.describe Samagotchi::BundleCommand::Try::Sandbox do
           descendant_pid = Integer(File.read(pid_file))
           expect(result.exit_status).to eq(0)
           expect(result.stdout).to include("child started")
-          expect(elapsed).to be < 4
+          expect(elapsed).to be < time_bound(4, below: 5)
           wait_for("the descendant to be gone", timeout: 2) { process_gone?(descendant_pid) }
         end
       end

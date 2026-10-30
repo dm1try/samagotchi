@@ -251,7 +251,7 @@ RSpec.describe Samagotchi::Web::App, "session access routes" do
       status, body = wait(session, { cursor: nil, timeout: 0.2, owner_grace: 5 })
 
       expect([status, body["status"]]).to eq([200, "timeout"])
-      expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < 2
+      expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < time_bound(2, below: 5)
       expect(body["running_look"]).to be_nil # no checkpoint mark: no turn to settle
 
       # One with its mark: the next slice gets it back (SessionAccess::Remote#wait_reply).

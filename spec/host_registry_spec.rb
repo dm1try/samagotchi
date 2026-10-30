@@ -300,7 +300,7 @@ RSpec.describe Samagotchi::HostRegistry do
       results = registry.list_all_models(wait: 0.1)
 
       # not the stalled host's time: it answers only once released, after the example
-      expect(mono - started).to be < 2
+      expect(mono - started).to be < time_bound(2)
       expect(results["default"][:models].map(&:id)).to eq(["fast-model"])
       expect(results["slow"]).to include(models: [], error: "no answer in 0.1 s")
     end

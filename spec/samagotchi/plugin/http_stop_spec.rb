@@ -69,7 +69,7 @@ RSpec.describe "ctx.http and the turn's Stop" do
     expect(engine.cancel_current_turn!(:manual)).to be(true)
     join!(turn, "the cancelled turn", timeout: 10)
 
-    expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < 5
+    expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < time_bound(5, below: 60)
     expect(outcome.pop(timeout: 1)).to eq(:tool_cancelled)
     expect(outcome.pop(timeout: 5)).to eq([:hook, "after-ok"])
     expect(events.map { |e| e[:type] }).to include(:turn_canceled)

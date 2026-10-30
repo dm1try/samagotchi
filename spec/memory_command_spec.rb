@@ -96,7 +96,7 @@ RSpec.describe Samagotchi::MemoryCommand do
       rows = JSON.parse(out.string)
       expect(rows.size).to eq(2000)
       expect(rows.find { |row| row["name"] == "m2" }["overlays"]).to eq(%w[k-2])
-      expect(elapsed).to be < 1.5
+      expect(elapsed).to be < time_bound(1.5)
     end
 
     it "lists one scope with --scope, as JSON with --format json, and says when there are none" do

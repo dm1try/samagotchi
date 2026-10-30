@@ -1310,7 +1310,8 @@ bundle.shutdown
   value, or raises `Samagotchi::Testing::Waiting::TimedOut` ("timed out after 5 s waiting for <what>", plus
   `; last saw: <value>` from the `seen:` callable). `join!(thread, what)` and `pop!(queue, what)` are
   `Thread#join` and `Queue#pop` with that deadline and message; `wait_until { }` returns the block's last value
-  instead of raising, for a wait whose timeout is fine; `process_gone?(pid)`. Every deadline is multiplied by
+  instead of raising, for a wait whose timeout is fine; `process_gone?(pid)`; `time_bound(seconds, below: nil)`, a
+  wall-clock upper bound scaled the same way and kept under `below:` (the unscaled deadline it tells apart from). Every deadline is multiplied by
   `SPEC_TIME_SCALE` (default 1, at least 1; chi's CI sets 2), so a slow runner gets headroom.
 - **Model notes:** `sandbox.model_notes_for(model_id, small: nil, cwd: nil)` lists the model notes chi would load
   into the prompt for a bare model id (`deepseek/deepseek-v4.1-flash`, no host prefix), from the sandbox's

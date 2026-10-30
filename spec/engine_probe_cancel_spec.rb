@@ -73,7 +73,7 @@ RSpec.describe Samagotchi::Engine, "#run_turn with a hung /props" do
     engine.run_turn(session, "hi", on_event: on_event, cancel_controller: controller)
 
     expect(events.map { |e| e[:type] }).to include(:turn_canceled)
-    expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - stopped_at).to be < 3 # not the probe's 5 s read timeout
+    expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - stopped_at).to be < time_bound(3, below: 5) # not the probe's 5 s read timeout
     expect(Samagotchi::Client.probe_cancel).to be_nil
   end
 end

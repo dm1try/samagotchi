@@ -208,7 +208,7 @@ RSpec.describe Samagotchi::WorkerLink do
       link = described_class.await("s1", session_dir: dir, timeout: 5, interval: 0.001, unlink: false,
                                          give_up: ->(outcome) { !outcome.worker_owned? })
       expect(link).to have_attributes(live?: false, worker_owned?: false)
-      expect(Time.now - started).to be < 4
+      expect(Time.now - started).to be < time_bound(4, below: 5)
     end
 
     it "returns the first Live for which until holds" do

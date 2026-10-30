@@ -76,7 +76,7 @@ RSpec.describe Samagotchi::ContextFetch do
     outcome = fetch(attached, timeout: 0.5)
 
     expect(outcome.error).to eq("timed out after 1 s")
-    expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < 5
+    expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < time_bound(5, below: 30)
     child = File.read(pid_file).to_i
     wait_for("the orphan to be stopped") { !alive?(child) }
   end
@@ -132,7 +132,7 @@ RSpec.describe Samagotchi::ContextFetch do
     outcome = fetch(attached, timeout: 0.3)
 
     expect(outcome.error).to eq("timed out after 0 s")
-    expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < 3
+    expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < time_bound(3, below: 30)
     wait_for("the TERM-ignoring child to be killed") { !alive?(File.read(pid_file).to_i) }
   end
 

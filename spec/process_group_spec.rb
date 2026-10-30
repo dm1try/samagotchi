@@ -80,7 +80,7 @@ RSpec.describe Samagotchi::ProcessGroup do
       gone = -> { status ||= Process.wait2(pid, Process::WNOHANG)&.last }
 
       expect(described_class.stop(pid, grace: 2, poll: 0.01, stopped: gone)).to be(true)
-      expect(described_class.monotonic - started).to be < 1.5
+      expect(described_class.monotonic - started).to be < time_bound(1.5, below: 2)
       expect(status&.exitstatus).to eq(3)
     ensure
       reap(pid) unless status

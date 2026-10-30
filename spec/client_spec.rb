@@ -969,7 +969,7 @@ RSpec.describe Samagotchi::Client do
 
       expect(client.server_props(model: "m").status).to eq(:cancelled)
       join!(canceller, "the cancelling thread")
-      expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < 3 # not the 5 s read timeout
+      expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < time_bound(3, below: 5) # not the 5 s read timeout
 
       described_class.swap_probe_cancel(previous)
       stub_const("#{described_class}::CONTEXT_WINDOW_PROBE_READ_TIMEOUT", 0.2)

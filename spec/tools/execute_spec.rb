@@ -345,7 +345,7 @@ RSpec.describe Samagotchi::Tools::Execute do
         started = now
         result = described_class.call("echo before; touch #{@ready}; sleep 31.71", cancelled: once_ready)
 
-        expect(now - started).to be < 5
+        expect(now - started).to be < time_bound(5, below: 30)
         # The seconds are wall-clock (0 locally, 1 on a slow runner): the shape only.
         expect(result).to match(/\AError: command stopped by the user after \d+s \(killed; rerun it if still needed\)\n/)
         expect(result).to include("stdout:\nbefore")
@@ -397,7 +397,7 @@ RSpec.describe Samagotchi::Tools::Execute do
         interrupt = -> { File.exist?(@ready) ? raise(Interrupt) : false }
 
         expect { described_class.call("touch #{@ready}; sleep 31.72", cancelled: interrupt) }.to raise_error(Interrupt)
-        expect(now - started).to be < 5
+        expect(now - started).to be < time_bound(5, below: 30)
         expect(running?("sleep 31.72")).to be(false)
       end
 
@@ -415,7 +415,7 @@ RSpec.describe Samagotchi::Tools::Execute do
         started = now
         result = described_class.call("trap '' TERM; touch #{@ready}; sleep 31.74; echo never", cancelled: once_ready)
 
-        expect(now - started).to be < 3
+        expect(now - started).to be < time_bound(3, below: 30)
         expect(result).to start_with("Error: command stopped by the user")
         expect(running?("sleep 31.74")).to be(false)
       end
@@ -501,7 +501,7 @@ RSpec.describe Samagotchi::Tools::Execute do
         started = now
         result = described_class.call("sleep 30.82 & echo pid=$!; echo hi", cancelled: -> { now - started > 0.3 })
 
-        expect(now - started).to be < 5
+        expect(now - started).to be < time_bound(5, below: 30)
         expect(result).to match(/\AError: command stopped by the user after \d+s/)
         expect(result).to include("hi")
         expect(alive?(pid_from(result))).to be(false)
@@ -513,7 +513,7 @@ RSpec.describe Samagotchi::Tools::Execute do
         started = now
         result = described_class.call("sleep 30.83 & echo pid=$!")
 
-        expect(now - started).to be < 5
+        expect(now - started).to be < time_bound(5, below: 30)
         expect(result).to start_with("Error: command timed out after 0.5s\n")
         expect(alive?(pid_from(result))).to be(false)
       end

@@ -147,7 +147,7 @@ RSpec.describe "delegate reports" do
         started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
 
         expect(described_class.await_wakes(0.1)).to eq(1)
-        expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < 1
+        expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < time_bound(1)
       ensure
         gate << true
       end

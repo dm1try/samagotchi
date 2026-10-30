@@ -35,7 +35,7 @@ RSpec.describe "Engine#shutdown" do
     thread = engine.spawn_anytime { gate.pop }
     started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
     engine.shutdown(join_timeout: 0.2)
-    expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < 1
+    expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < time_bound(1)
     expect(drained).to eq(["stop a"])
     expect(thread).to be_alive
     gate << true

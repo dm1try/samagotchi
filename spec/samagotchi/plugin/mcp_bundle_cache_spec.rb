@@ -175,7 +175,7 @@ RSpec.describe "The mcp bundle" do
       started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
       expect(mcp("echo", { "text" => "x" })).to eq("Error: initialize was cancelled")
       # not the 30 s startup_timeout: the cancel ended the start
-      expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < 10
+      expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < time_bound(10, below: 30)
       File.write(mode_file, "")
       cancel = -> { false }
       expect(mcp("echo", { "text" => "again" })).to eq("echo: again")
@@ -232,7 +232,7 @@ RSpec.describe "The mcp bundle" do
           expect(mcp("echo", { "text" => "x" })).to start_with("Error: MCP server fake didn't start: ")
           started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
           expect(mcp("add", { "a" => 1, "b" => 2 })).to start_with("Error: MCP server fake didn't start: ")
-          expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < 0.5
+          expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < time_bound(0.5)
           expect(spawned).to eq(2)
           expect(notices.map { |n| n[:text] }).to contain_exactly(
             a_string_starting_with("MCP server fake didn't start: ").and(ending_with("its calls fail until chi restarts"))

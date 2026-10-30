@@ -201,7 +201,7 @@ RSpec.describe Samagotchi::ProjectEnv do
       fake_mise(script: "#!/bin/sh\necho $$ > #{seen}.pid\nexec sleep 30\n")
       started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
       expect(overlay(timeout: 0.3).reason).to eq("mise_timeout")
-      expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < 5
+      expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < time_bound(5, below: 30)
       expect_untouched("mise_timeout")
       pid = File.read("#{seen}.pid").to_i
       expect { Process.kill(0, pid) }.to raise_error(Errno::ESRCH)

@@ -81,6 +81,18 @@ RSpec.describe Samagotchi::Testing::Waiting do
     end
   end
 
+  describe "#time_bound" do
+    it "scales the bound, kept under the unscaled deadline it tells apart from" do
+      scale(1.0)
+      expect(time_bound(1.5)).to eq(1.5)
+      expect(time_bound(1.8, below: 2)).to eq(1.8)
+      scale(2.0)
+      expect(time_bound(1.5)).to eq(3.0)
+      expect(time_bound(5, below: 30)).to eq(10.0)
+      expect(time_bound(1.8, below: 2)).to eq(2)
+    end
+  end
+
   describe "the message" do
     it "is one format for every helper: 5 s, or the scaled deadline with its parts" do
       expect(described_class.timed_out_message("x", 5, scale: 1.0)).to eq("timed out after 5 s waiting for x")

@@ -134,7 +134,7 @@ RSpec.describe "A cut generation" do
       result = run_turn(sink)
 
       expect(answer_of(result)).to eq("PONG")
-      expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < 3
+      expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < time_bound(3)
       expect(completions.size).to eq(2)
       expect(last_input(completions[1])).to eq(nudge[:content])
       expect(completions[1].body).not_to include("check the file again")

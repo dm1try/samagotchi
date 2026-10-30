@@ -262,7 +262,7 @@ RSpec.describe Samagotchi::Broadcast::Triage do
       verdicts = described_class.judge_all("x", cards, new_backend: gated_backend({ "b" => Queue.new }, running, peak),
                                                        parallel: 2, deadline: 0.3)
 
-      expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < 2
+      expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < time_bound(2)
       expect(verdicts.transform_values(&:reason)).to eq("a" => "model: no", "b" => "unchecked: triage deadline",
                                                         "c" => "model: no", "d" => "model: no", "e" => "model: no")
       expect(verdicts.fetch("b")).to be_unchecked
@@ -279,7 +279,7 @@ RSpec.describe Samagotchi::Broadcast::Triage do
       verdicts = described_class.judge_all("x", %w[a b c d].map { |id| card(id) }, new_backend: ->(_) { stuck },
                                                                                    parallel: 4, deadline: 0.1)
 
-      expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < 0.8
+      expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < time_bound(0.8, below: 1.2)
       expect(verdicts.values.map(&:reason).uniq).to eq(["unchecked: triage deadline"])
     end
 
@@ -288,7 +288,7 @@ RSpec.describe Samagotchi::Broadcast::Triage do
       verdicts = described_class.judge_all("x", [card("a"), card("b"), card("c")], new_backend: ->(_) { raise KeyError, "no key" },
                                                                                    parallel: 2, deadline: 5)
 
-      expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < 1
+      expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < time_bound(1, below: 5)
       expect(verdicts.values.map(&:reason).uniq).to eq(["unchecked: triage failed (KeyError)"])
     end
 

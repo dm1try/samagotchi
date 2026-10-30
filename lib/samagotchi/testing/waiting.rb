@@ -108,6 +108,19 @@ module Samagotchi
         value
       end
 
+      # A wall-clock upper bound for "this didn't take the full wait"
+      # (expect(elapsed).to be < time_bound(3, below: 5)): +seconds+ scaled,
+      # so a slow runner gets the headroom a helper's deadline gets, and kept
+      # under +below+, the unscaled deadline (a lib timeout, a hung child's
+      # sleep) the bound tells apart from, so the check still fails on the
+      # full wait whatever SPEC_TIME_SCALE is. A bound with nothing to tell
+      # apart from (a cost: "no quadratic blow-up") takes no +below+.
+      # @return [Float]
+      def time_bound(seconds, below: nil)
+        bound = Waiting.scaled(seconds)
+        below ? [bound, below].min : bound
+      end
+
       # Whether no process +pid+ is left (a killed grandchild is reaped a
       # moment later: wait_for("pid gone") { process_gone?(pid) }). One that
       # isn't ours to signal is still there (ProcessGroup.alive?).

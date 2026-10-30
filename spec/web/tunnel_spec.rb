@@ -44,7 +44,7 @@ RSpec.describe Samagotchi::Web::Tunnel do
       started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
       expect { runner.call(["/bin/sh", "-c", "echo visit https://login.example; exec sleep 30"], timeout: 0.5) }
         .to raise_error(described_class::Timeout) { |e| expect(e.output).to include("visit https://login.example") }
-      expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < 5
+      expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < time_bound(5, below: 30)
     end
   end
 end

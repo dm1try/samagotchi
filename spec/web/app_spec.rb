@@ -2976,7 +2976,7 @@ RSpec.describe Samagotchi::Web::App do
       started = mono
       payload = models_payload(slow, models_wait_timeout: 0.05)
 
-      expect(mono - started).to be < 1.5 # not the full 3 s listing
+      expect(mono - started).to be < time_bound(1.5, below: 3) # not the full 3 s listing
       expect(payload["models"].map { |m| m["name"] }).to eq(%w[Gemma-4B-it])
       expect(payload["warning"]).to eq("the hosts are still listing their models")
 
@@ -3297,7 +3297,7 @@ RSpec.describe Samagotchi::Web::App do
         started = mono
 
         join!(reader, "the proxy")
-        expect(mono - started).to be < 2.5 # a STREAM_POLL (0.5 s) or so, not a hang
+        expect(mono - started).to be < time_bound(2.5) # a STREAM_POLL (0.5 s) or so, not a hang
         expect(conn.wait_readable(5)).to be_truthy
         expect(conn.read_nonblock(1, exception: false)).to be_nil # EOF: the proxy closed its end
       ensure

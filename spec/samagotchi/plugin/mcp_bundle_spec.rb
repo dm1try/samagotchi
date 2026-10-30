@@ -274,7 +274,7 @@ RSpec.describe "The mcp bundle" do
           started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
           expect(mcp("nope", server: "quick")).to start_with("Error: no tool quick/nope.")
           # not the starting server's 10 s startup_timeout: the miss doesn't wait for it
-          expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < 3
+          expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < time_bound(3, below: 10)
           expect(find("", "fake")).to include("fake (starting, try again)")
           expect(start_gated_server_during { mcp("echo", { "text" => "waited" }) }).to eq("echo: waited")
         end
@@ -475,12 +475,12 @@ RSpec.describe "The mcp bundle" do
       started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
       built = Samagotchi::Engine.new(client: client)
       # not the hung server's 2 s startup_timeout: the start doesn't wait for the servers
-      expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < 1.8
+      expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < time_bound(1.8, below: 2)
       built.shutdown
       started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
       engine
       # Side by side: one startup_timeout (the hung one's), not one each.
-      expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < 3.5
+      expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < time_bound(3.5, below: 4)
       cards = load_events.select { |e| e[:type] == :card }
       expect(cards.map { |c| [c[:title], c[:body], c[:level]] }).to contain_exactly(
         ["gone didn't start",

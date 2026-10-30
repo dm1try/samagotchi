@@ -245,7 +245,7 @@ RSpec.describe Samagotchi::Tools::DelegateWait, "approval relay" do
     end
     started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
     expect(wait(timeout: 30)).to include("status: no_answer\napproval relayed to your user: execute: git push → denied\n")
-    expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < 5
+    expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < time_bound(5, below: 30)
   end
 
   it "ends the wait for a turn that ended with no reply while the answer was being posted" do
@@ -259,7 +259,7 @@ RSpec.describe Samagotchi::Tools::DelegateWait, "approval relay" do
     end
     started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
     expect(wait(timeout: 3)).to include("status: no_answer\napproval relayed to your user: execute: git push → denied\n")
-    expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < 2
+    expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < time_bound(2, below: 3)
   end
 
   it "doesn't count the time the card was open against the timeout" do

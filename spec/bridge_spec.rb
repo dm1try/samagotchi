@@ -387,7 +387,7 @@ RSpec.describe Samagotchi::Bridge do
       # The enqueue path must stay non-blocking even though the writer thread
       # is blocked on the slow socket: 500 blocking writes would take 10 s.
       expect(io.buffer).to include("text/event-stream")
-      expect(elapsed).to be < 4.0
+      expect(elapsed).to be < time_bound(4.0, below: 10)
 
       io.write_sleep = 0
       writer_thread.kill
@@ -805,7 +805,7 @@ RSpec.describe Samagotchi::Bridge do
         started = mono
         @bridge.stop
 
-        expect(mono - started).to be < 5 # not the full 30 s grace
+        expect(mono - started).to be < time_bound(5, below: 30) # not the full 30 s grace
         # No reply: the client reads an empty answer or a reset, never a 202.
         reply = begin
           post.value
@@ -827,7 +827,7 @@ RSpec.describe Samagotchi::Bridge do
         started = mono
         @bridge.stop
         # Not the request grace nor the stream. Wide for a loaded CI runner.
-        expect(mono - started).to be < 10
+        expect(mono - started).to be < time_bound(10, below: 30)
       end
 
       # Closing the listen socket doesn't cut the acceptor's IO.select short

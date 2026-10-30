@@ -620,7 +620,7 @@ RSpec.describe "task tools" do
 
       result = described_class.call(task_id, cancelled: cancelled)
 
-      expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < 5 # not the task's 30 s
+      expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < time_bound(5, below: 30) # not the task's 30 s
       expect(result).to include("status: running")
       expect(result).to include("wait_result: canceled")
       expect(result).to include("STILL RUNNING")
@@ -665,7 +665,7 @@ RSpec.describe "task tools" do
 
         result = described_class.call(task_id, timeout: 300, message_waiting: waiting)
 
-        expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < 5 # not the 300 s timeout
+        expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < time_bound(5, below: 300) # not the 300 s timeout
         expect(result).to include("status: running").and include("wait_result: message_waiting")
         expect(result).to include(format(described_class::MESSAGE_WAITING_NOTE, id: task_id))
         expect(result).to include("note: a message from the user is waiting; the task is STILL RUNNING.")

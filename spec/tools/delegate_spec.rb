@@ -918,7 +918,7 @@ RSpec.describe "delegate tools" do
         started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
         out = Timeout.timeout(3) { described_class.call(session: child.id, peers: peers, timeout: timeout) } # timeout-ok: a hang guard: a zero timeout returns at once
         expect(out).to include("status: running\nno reply yet after 0 s")
-        expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < 1
+        expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < time_bound(1)
       end
       write_reply(child, "its reply")
       expect(described_class.call(session: child.id, peers: peers, timeout: 0)).to eq("session: #{child.id}\nstatus: answered\n---\nits reply")

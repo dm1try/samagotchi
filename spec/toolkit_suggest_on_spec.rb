@@ -184,7 +184,7 @@ RSpec.describe Samagotchi::Engine, "toolkit suggestion on mode" do
     turn(sess)
     waited = Process.clock_gettime(Process::CLOCK_MONOTONIC) - started
 
-    expect(waited).to be < 2.0
+    expect(waited).to be < time_bound(2.0)
     expect(declared.first).to eq(full_tools)
     expect([sess.toolkit.name, sess.toolkit_origin]).to eq(%w[full default])
     expect(Samagotchi::Log).to have_received(:warn)

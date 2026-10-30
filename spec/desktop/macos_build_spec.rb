@@ -457,7 +457,7 @@ RSpec.describe "the desktop helper's Swift sources", :macos_build do
       started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
       result, status = broadcast("note", mode: "slow")
 
-      expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < 4
+      expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < time_bound(4)
       expect(status).to eq(1)
       expect(result).to eq("ok" => false, "timeout" => 1,
                            "message" => "chi broadcast took over 1 s and was stopped; " \
@@ -659,7 +659,7 @@ RSpec.describe "the desktop helper's Swift sources", :macos_build do
         result, err, status = sessions
 
         # Two sequential 4 s calls would take 8 s.
-        expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < 7
+        expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < time_bound(7, below: 8)
         expect([err, status]).to eq(["", 0])
         expect(result["rows"].size).to eq(6)
         expect(result["remotes"].map { |r| [r["name"], r["error"], ids_of(r["rows"])] })

@@ -97,7 +97,7 @@ RSpec.describe Samagotchi::TerminalUI::LiveRegion do
       # reply either way, then stop soon after instead of running out its
       # whole (here 5 s) wait.
       expect(closed_at).to be >= written_at
-      expect(closed_at - written_at).to be < 2.0
+      expect(closed_at - written_at).to be < time_bound(2.0, below: 5)
       expect(Samagotchi::TerminalUI::RelineSeam.unanswered_query_at).to be_nil
     end
   end

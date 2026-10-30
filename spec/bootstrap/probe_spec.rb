@@ -100,7 +100,7 @@ RSpec.describe Samagotchi::Bootstrap::Probe do
       result = probe.classify(closed)
 
       expect(result).to have_attributes(kind: :unreachable, reason: "connection refused")
-      expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < 1
+      expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < time_bound(1)
     end
 
     it "moves on to the next candidate only when one refuses" do

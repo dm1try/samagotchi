@@ -113,7 +113,7 @@ RSpec.describe Samagotchi::SessionManager do
         started = SpecWaiting.mono
 
         expect(described_class.stop_session(session.id, state_dir: tmpdir, wait: 5)).to be true
-        expect(SpecWaiting.mono - started).to be < 2.5
+        expect(SpecWaiting.mono - started).to be < time_bound(2.5, below: 5)
         expect(Process.wait2(@owner_pid).last.termsig).to eq(Signal.list["TERM"])
         @owner_pid = nil
       end
@@ -165,7 +165,7 @@ RSpec.describe Samagotchi::SessionManager do
         described_class.stop_session(session.id, state_dir: tmpdir, wait: 5)
 
         # Not the 3 s cancel wait (STOP_CANCEL_WAIT), nor the 5 s one for the owner.
-        expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < 2.5
+        expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < time_bound(2.5, below: described_class::STOP_CANCEL_WAIT)
         expect(Samagotchi::Session.load(session.id, state_dir: tmpdir).status).to eq(Samagotchi::Session::STATUS_STOPPED)
       end
     end
