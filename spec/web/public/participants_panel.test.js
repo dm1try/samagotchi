@@ -46,8 +46,8 @@ test("participants: a row says here now, spend of cap, turns, expiry; a reached 
 
 test("participants: the chip invites with nobody, else counts the active ones with a dot while one is here", () => {
   assert.equal(chipModel(null, NOW), null);
-  assert.equal(chipModel([], NOW).text, "invite");
-  assert.equal(chipModel([grant({ state: "revoked" })], NOW).text, "invite");
+  assert.equal(chipModel([], NOW).text, "participants · invite");
+  assert.equal(chipModel([grant({ state: "revoked" })], NOW).text, "participants · invite");
   const two = chipModel([grant(), grant({ id: "p_2", name: "Sam", last_used_at: null })], NOW);
   assert.deepEqual([two.text, two.count, two.present], ["2 participants", 2, true]);
   assert.match(two.title, /Alex, Sam \(here now: Alex\)/);

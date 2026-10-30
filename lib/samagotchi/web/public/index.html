@@ -1092,16 +1092,22 @@ button.ws-row:hover:not(:disabled){filter:none}@media(hover:hover){button.ws-row
 #infoBar .meta .dir{font-family:ui-monospace,monospace;font-size:11px;color:var(--text-muted);max-width:48ch;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;direction:rtl;text-align:left}
 /* The footer sits on the card's glass: its chips are tinted, not solid, so the glass reads through them. */
 #infoBar .meta .model{font-size:11px;padding:2px 6px;border-radius:6px;background:color-mix(in srgb,var(--bg-hover) 55%,transparent);color:var(--text-3)}
-/* Where the meta row wraps (above the phone's one scrolling line) the two long items give way so it stays two lines: the
-   folder takes at most a third of the row and a chip at most 30%, cut with "…", their full text in the title. */
+/* The meta's three groups (info_bar.js): setup | relations | telemetry, a hairline between two. */
+#infoBar .meta .bar-group{display:flex;gap:8px;align-items:center;min-width:0;flex:none}
+#infoBar .meta .bar-sep{flex:none;width:1px;height:14px;background:var(--border-strong)}
+/* Above the phone's one scrolling line the meta is one line too: the telemetry takes the room left and its folder gives
+   way first (it already loses its start); a chip is capped, cut with "…", their full text in the title. */
 @media(min-width:601px){
-  #infoBar .meta .dir{max-width:min(48ch,32%)}
-  #infoBar .meta .model{max-width:min(40ch,30%);min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  #infoBar .meta{flex-wrap:nowrap}
+  #infoBar .meta .bar-group.telemetry{flex:1 1 0}
+  #infoBar .meta .telemetry>*{flex:none}
+  #infoBar .meta .telemetry>.dir{flex:0 1 auto;max-width:48ch}
+  #infoBar .meta .model{max-width:40ch;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 }
 /* The plain chips (spans, links) and the status take the button chips' 1px border, transparent and outside their tint, so every chip is one height: a chip wrapping onto a row of plain ones doesn't grow it. */
 #infoBar .meta :is(span,a).model,#infoBar .meta .status{border:1px solid transparent;background-clip:padding-box}
-/* The chips a running turn rewrites (the session clock each second, the last generation's speed, ctx): tabular digits in a reserved width, so a tick ("9.5s" → "10s" → "1m 00s") or a new number doesn't widen the line and wrap a chip onto a new row. The speed and the clock show from the session's start, a muted placeholder until there is a number. */
-:root{--info-clock-w:14ch;--info-speed-w:9ch;--info-ctx-w:7ch}
+/* The chips a running turn rewrites (the session clock each second, the last generation's speed, ctx): tabular digits in a reserved width, so a tick ("9.5s" → "10s" → "1m 00s") or a new number doesn't widen the line and move the chips after it. The speed and the clock show from the session's start, a muted placeholder until there is a number. */
+:root{--info-clock-w:8ch;--info-speed-w:9ch;--info-ctx-w:7ch}
 #infoBar .meta :is(.session-time,.speed,.ctx){font-variant-numeric:tabular-nums;white-space:nowrap;text-align:center}
 #infoBar .meta .session-time{min-width:var(--info-clock-w)}
 #infoBar .meta .speed{min-width:var(--info-speed-w)}
@@ -1337,7 +1343,10 @@ body.has-session.composer-folded #infoBar{border-top-color:transparent}
   #infoBar{flex-wrap:nowrap;align-items:center;gap:6px;padding:6px 10px 8px}
   #infoBar .meta{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;white-space:nowrap}
   #infoBar .meta::-webkit-scrollbar{display:none}
-  #infoBar .meta>*{flex-shrink:0}
+  #infoBar .meta>*,#infoBar .meta .bar-group>*{flex-shrink:0}
+  /* One scrolling run, as before the groups: their chips are the meta's (the orders below reach across them). */
+  #infoBar .meta .bar-group{display:contents}
+  #infoBar .meta .bar-sep{display:none}
   #infoBar .meta .id{order:-2}
   #infoBar .meta .status{order:-1}
   /* ⚙ alone, the start page's dot when the session set its own (its values in the tooltip and accessible name). */
@@ -1501,8 +1510,11 @@ body.no-glass :is(#familyPop,#chainPop){background:var(--bg-panel);-webkit-backd
 /* The session page's links to the previous and the next link of its chain. */
 #infoBar .meta a.chain-link{text-decoration:none;font-family:ui-monospace,monospace;white-space:nowrap;color:var(--accent)}
 #infoBar .meta a.chain-link:hover{background:var(--accent-bg)}
-#infoBar #infoContinueBtn{color:var(--accent);border:1px solid var(--accent-border)}
-#infoBar #infoContinueBtn:hover:not(:disabled){background:var(--accent-bg)}
+/* continue → is a plain ghost like archive; on an archived session, where it is the thing to do, the accent (app.js updateInfoBar). */
+#infoBar #infoContinueBtn{background:transparent;color:var(--text-muted);border:1px solid var(--border-strong)}
+#infoBar #infoContinueBtn:hover:not(:disabled){color:var(--text);background:var(--bg-hover)}
+#infoBar #infoContinueBtn.accent{background:var(--bg-raised);color:var(--accent);border-color:var(--accent-border)}
+#infoBar #infoContinueBtn.accent:hover:not(:disabled){background:var(--accent-bg)}
 #infoBar #infoContinueBtn:disabled{opacity:.7;cursor:progress}
 /* A continue refused for open delegates: the toast names them, each a link. */
 #toast .continue-refused ul{margin:4px 0 0;padding-left:18px}

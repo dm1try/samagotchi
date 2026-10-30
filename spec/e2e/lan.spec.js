@@ -138,7 +138,7 @@ test("a review: the owner starts one for a file and invites from the panel, the 
   await expect(owner.locator("#history .bubble.output").last()).toHaveText(/PONG/);
 
   const chip = owner.locator("#infoText .participants-chip");
-  await expect(chip).toHaveText("invite");
+  await expect(chip).toHaveText("participants · invite");
   await chip.click();
   await owner.locator("#participantsPopover input[name=name]").fill("Alex");
   await owner.locator("#participantsPopover .pp-invite-btn").click();

@@ -128,7 +128,7 @@ test("the session clock while a turn runs; ctx and speed from the timing's token
   };
   const bar = infoBarModel({ id: ID, state, sessions: [], chain: { prev: null, next: null }, cardTitle: title, badge: null,
                              restarting: false, running: true });
-  assert.match(bar.clock, /^session /);
+  assert.match(bar.clock, /^\d+(\.\d+)?s$/);
   assert.equal(typeof bar.ctx.text, "string");
   // No generation yet: the speed chip's placeholder (it shows from the start).
   assert.deepEqual(bar.speed, { text: SPEED_NONE, tip: "Decode speed of the last generation: none yet", empty: true });

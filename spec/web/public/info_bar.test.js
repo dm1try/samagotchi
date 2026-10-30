@@ -20,12 +20,14 @@ const markupOf = (template) => {
   return htmlOf(frag);
 };
 
+// No relations: the setup and the telemetry, one hairline between them.
 test("infoBarHtml: a bare session's line, as the string builder wrote it", () => {
   assert.equal(markupOf(infoBarHtml(bare)), canon(
-    `<div class="meta"><button type="button" class="id" title="Session id ${ID}: click to copy it">01234567</button>` +
-    `<span class="status idle"><span>idle</span></span><span class="model" title="qwen">qwen</span>` +
+    `<div class="meta"><span class="bar-group setup"><button type="button" class="id" title="Session id ${ID}: click to copy it">01234567</button>` +
+    `<span class="status idle"><span>idle</span></span><span class="model" title="qwen">qwen</span></span>` +
+    `<span class="bar-sep" aria-hidden="true"></span><span class="bar-group telemetry">` +
     `<span class="dir" title="/p"><bdi>/p</bdi></span><span class="model ctx" title="no request yet">ctx ?</span>` +
-    `<span class="model session-time empty" title="This session's time: no turn yet">session –</span></div>`,
+    `<span class="model session-time empty" title="This session's time: no turn yet">–</span></span></div>`,
   ));
 });
 
@@ -40,12 +42,12 @@ test("infoBarHtml: the clock and the speed show as placeholders before their num
   assert.equal(speed.className, "model speed empty");
   assert.equal(clock.className, "model session-time empty");
   assert.equal(clock.textContent, CLOCK_NONE);
-  renderInfoBar(el, { ...bare, speed: { text: "42 tok/s", tip: "last", empty: false }, clock: "session 9.5s" });
+  renderInfoBar(el, { ...bare, speed: { text: "42 tok/s", tip: "last", empty: false }, clock: "9.5s" });
   assert.equal(el.querySelector(".speed"), speed);
   assert.equal(el.querySelector(".session-time"), clock);
   assert.equal(speed.className, "model speed");
   assert.equal(clock.className, "model session-time");
-  assert.equal(`${speed.textContent} ${clock.textContent}`, "42 tok/s session 9.5s");
+  assert.equal(`${speed.textContent} ${clock.textContent}`, "42 tok/s 9.5s");
 });
 
 test("infoBarHtml: every part, in the bar's order", () => {
@@ -64,16 +66,18 @@ test("infoBarHtml: every part, in the bar's order", () => {
     notes: { text: "notes 1", title: "deepseek" },
     memories: ["a", "b"],
     speed: { text: "30 t/s", tip: "Decode speed of the last generation" },
-    clock: "session 5s",
+    clock: "5s",
     worker: { badge: { text: "chi 0.53", title: "older", restart: true }, busy: true },
   };
   const div = document.createElement("div");
   render(infoBarHtml(full), div);
-  const classes = [...div.querySelector(".meta").children].map((el) => el.className);
-  assert.deepEqual(classes, [
-    "id", "status running", "model served-mismatch", "model settings-chip own", "model tools-chip", "model chain-link", "model chain-link",
-    "model parent", "model children-chip waiting", "model notes-chip", "model mem-chip",
-    "dir", "model ctx", "model speed", "model session-time", "worker-badge",
+  const parts = [...div.querySelector(".meta").children].map((el) => [el.className, [...el.children].map((kid) => kid.className)]);
+  assert.deepEqual(parts, [
+    ["bar-group setup", ["id", "status running", "model served-mismatch", "model settings-chip own", "model tools-chip", "model notes-chip", "model mem-chip"]],
+    ["bar-sep", []],
+    ["bar-group relations", ["model chain-link", "model chain-link", "model parent", "model children-chip waiting"]],
+    ["bar-sep", []],
+    ["bar-group telemetry", ["dir", "model ctx", "model speed", "model session-time", "worker-badge"]],
   ]);
   assert.equal(div.querySelector(".id").textContent, "01234567");
   const [prev, next] = div.querySelectorAll(".chain-link");
@@ -81,7 +85,9 @@ test("infoBarHtml: every part, in the bar's order", () => {
   assert.equal(prev.title, "The previous link of this chain: aaaaaaaa · 2026-10-09 14:32 · first (archived)");
   assert.equal(prev.getAttribute("href"), "#/s/aaaaaaaa1");
   assert.equal(next.textContent, "bbbbbbbb →");
-  assert.equal(div.querySelector(".parent").textContent, "delegated by pppppppp");
+  // The parent: an up arrow and its short id; the title says "delegated by".
+  assert.equal(div.querySelector(".parent").textContent, "↑ pppppppp");
+  assert.equal(div.querySelector(".parent").title, "Delegated by pppppppp");
   assert.equal(div.querySelector(".children-chip").textContent, "2 delegates · 1 waiting");
   assert.equal(div.querySelector(".children-chip").title, "2 delegates (all sessions)");
   const gear = div.querySelector(".settings-chip");
@@ -89,7 +95,7 @@ test("infoBarHtml: every part, in the bar's order", () => {
   assert.equal(gear.textContent, "⚙ think low · reasoning all · ctx stale");
   assert.match(gear.title, /^Thinking: low \(this session\)\. Reasoning history: all \(this session\)\. LLM context: stale \(the session\)/);
   assert.equal(div.querySelector(".mem-chip").textContent, "mem 2");
-  assert.equal(div.querySelector(".session-time").textContent, "session 5s");
+  assert.equal(div.querySelector(".session-time").textContent, "5s");
   const restart = div.querySelector(".worker-restart");
   assert.equal(restart.textContent, "restarting…");
   assert.equal(restart.disabled, true);
@@ -97,13 +103,27 @@ test("infoBarHtml: every part, in the bar's order", () => {
 
 test("renderInfoBar: a clock tick rewrites the clock's text alone; the bar's nodes stay", () => {
   const el = document.createElement("div");
-  renderInfoBar(el, { ...bare, clock: "session 1s" });
+  renderInfoBar(el, { ...bare, clock: "1s" });
   const id = el.querySelector(".id");
   const clock = el.querySelector(".session-time");
-  renderInfoBar(el, { ...bare, clock: "session 2s" });
+  renderInfoBar(el, { ...bare, clock: "2s" });
   assert.equal(el.querySelector(".id"), id);
   assert.equal(el.querySelector(".session-time"), clock);
-  assert.equal(clock.textContent, "session 2s");
+  assert.equal(clock.textContent, "2s");
+});
+
+// The relations come and go (a participant invited, a chain's next link)
+// without a redraw of the other groups: the clock keeps its node.
+test("renderInfoBar: the relations group (and its hairline) only with a relation; the other groups keep their nodes", () => {
+  const el = document.createElement("div");
+  renderInfoBar(el, bare);
+  assert.equal(el.querySelector(".relations"), null);
+  assert.equal(el.querySelectorAll(".bar-sep").length, 1);
+  const clock = el.querySelector(".session-time");
+  renderInfoBar(el, { ...bare, participants: { text: "participants · invite", count: 0, present: false, title: "Invite" } });
+  assert.equal(el.querySelector(".relations .participants-chip").textContent, "participants · invite");
+  assert.equal(el.querySelectorAll(".bar-sep").length, 2);
+  assert.ok(el.querySelector(".session-time") === clock);
 });
 
 test("renderInfoBar: the memories in the tooltip; no session, no bar", () => {
