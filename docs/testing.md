@@ -184,6 +184,7 @@ any other file requires it, so a spec file run alone still finds its requires. E
 | `fake_provider_server.rb` | `FakeProviderServer`: an in-process HTTP provider replaying spec/fixtures/providers, recording requests |
 | `fake_tailscale.rb` | A fake `tailscale` for `Web::Tunnel::Tailscale` (status, serve, lock from JSON files; argv.log) |
 | `git_repo.rb` | *helper*: `git_repo`, a temp folder with `git init`, removed after the example |
+| `lock_holder.rb` | *helper*: `spawn_lock_holder(session_dir)`, a stand-in worker process holding a session's owner lock, which says so on a pipe |
 | `integration_server.rb` | *helper*: the live model server `:integration` examples use, from `SAMAGOTCHI_INTEGRATION_*` ([Integration specs](#integration-specs)) |
 | `mcp_bundle.rb` | The shipped mcp bundle's path and the fake MCP server its specs start (`MCP_FAKE_COMMAND`, no RubyGems) |
 | `no_console.rb` | Loaded first (`ruby -r`) by spawned bin/chi children: `IO.console` is nil, so output never wraps at a terminal's width |

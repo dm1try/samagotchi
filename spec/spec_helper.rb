@@ -25,6 +25,7 @@ require_relative "support/waiting"
 require_relative "support/stamps"
 require_relative "support/env"
 require_relative "support/git_repo"
+require_relative "support/lock_holder"
 require_relative "support/chi_cli"
 # Reads SAMAGOTCHI_INTEGRATION_* now, before the clear below.
 require_relative "support/integration_server"
@@ -160,6 +161,7 @@ RSpec.configure do |config|
   config.include SpecEnv
   config.include ChiCli
   config.include SpecGitRepo
+  config.include SpecLockHolder
   config.warnings = true
   config.order = :random
   Kernel.srand config.seed

@@ -46,27 +46,22 @@ RSpec.describe "chi sessions restart" do
                        .tap { |s| s.save(state_dir: Samagotchi::Session.default_state_dir) }
   end
 
+  # A worker that holds the session's lock and publishes a sidecar whose
+  # port nothing listens on (spec/support/lock_holder.rb).
   def spawn_unreachable_worker(session)
     dir = Samagotchi::Session.session_dir(session.id, state_dir: state_dir)
     listener = TCPServer.new("127.0.0.1", 0)
     port = listener.local_address.ip_port
     listener.close
-    script = <<~RUBY
-      require "samagotchi/owner_lock"
-      require "samagotchi/worker_sidecar"
-      require "samagotchi/worker_link"
-      session_dir, session_id, port = ARGV
-      Samagotchi::OwnerLock.acquire(session_dir, kind: "worker") or abort "owner lock unavailable"
+    sidecar = <<~RUBY
+      session_id, port = ARGV[1], ARGV[2]
       Samagotchi::WorkerSidecar.new(port: port.to_i, session_id: session_id, pid: Process.pid,
                                     protocol: Samagotchi::WorkerLink::PROTOCOL, epoch: "old",
-                                    started_at: "old", version: "0.18.1", features: ["restart"]).write(session_dir)
-      sleep 60
+                                    started_at: "old", version: "0.18.1", features: ["restart"]).write(ARGV[0])
     RUBY
-    @unreachable_pid = Process.spawn(RbConfig.ruby, "-I", File.expand_path("../lib", __dir__), "-e", script,
-                                     dir, session.id, port.to_s, out: File::NULL, err: File::NULL)
-    wait_for("the unreachable worker to publish its sidecar") do
-      Samagotchi::WorkerLink.resolve(dir, unlink: false).live?
-    end
+    @unreachable_pid = spawn_lock_holder(dir, requires: %w[samagotchi/worker_sidecar samagotchi/worker_link],
+                                              args: [session.id, port.to_s], holding: sidecar, sleep_for: 60)
+    expect(Samagotchi::WorkerLink.resolve(dir, unlink: false)).to be_live
   end
 
   around { |example| with_env(env) { example.run } }

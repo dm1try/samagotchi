@@ -45,17 +45,10 @@ RSpec.describe Samagotchi::SessionManager do
   end
 
   # A stand-in worker: another process holding the owner lock (needs the
-  # example group's session and session_dir).
+  # example group's session and session_dir; spec/support/lock_holder.rb).
   def spawn_owner(ignore_term: false)
-    lib = File.expand_path("../lib", __dir__)
-    script = <<~RUBY
-      require "samagotchi/owner_lock"
-      trap("TERM") {} if #{ignore_term}
-      lock = Samagotchi::OwnerLock.acquire(ARGV[0], kind: "worker")
-      sleep 30
-    RUBY
-    @owner_pid = Process.spawn(RbConfig.ruby, "-I", lib, "-e", script, session_dir)
-    wait_for("the owner to take the lock") { described_class.session_owner(session.id, state_dir: tmpdir) }
+    @owner_pid = spawn_lock_holder(session_dir, ignore_term: ignore_term)
+    expect(described_class.session_owner(session.id, state_dir: tmpdir)&.pid).to eq(@owner_pid)
   end
 
   describe ".list_sessions" do
