@@ -1050,7 +1050,11 @@ steps and its answer, all behind it (a warn card, a verdict card and the
 recap stay on view). Click the stub to unfold that version in place (kept per
 browser, with the folded answers); a time divider between two folded stubs
 moves into the later stub. The newest version has a chip, "v3 · 2 earlier ▾",
-listing every version by its prompt; pick one to jump to its stub. Revise
+listing every version by its prompt; pick one to jump to its stub. Before
+that chip, a "‹ 3/3 ›" switcher reads an earlier version's answer in the
+newest one's place (its left edge dashed while it shows; Copy copies the
+version on view); › back to the newest. Switching only changes what this
+page shows, and a reload shows the newest again. Revise
 again on the newest version adds to the stack. Stacks are session data (the
 stamp is on the Revise prompt, see [sessions.md](sessions.md), Revise
 stacks): every owner's page shows them, live and after a reload; the

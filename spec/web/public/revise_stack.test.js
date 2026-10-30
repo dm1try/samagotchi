@@ -295,3 +295,73 @@ test("the page: a re-render drops the old stubs and rows and draws the new histo
   assert.equal(history.querySelectorAll(".revise-row").length, 1);
   history.remove();
 });
+
+test("the switcher's words and steps: N/M, its spoken label, kept within the stack", async () => {
+  const { stepVersion, switchText, switcherTemplate } = await import("../../../lib/samagotchi/web/public/revise_switch.js");
+  assert.deepEqual(switchText(1, 3), { text: "2/3", label: "version 2 of 3" });
+  assert.equal(stepVersion(2, 3, -1), 1);
+  assert.equal(stepVersion(0, 3, -1), 0);
+  assert.equal(stepVersion(2, 3, 1), 2);
+  const markup = markupOf(switcherTemplate("v3", 0, 3));
+  assert.match(markup, /aria-label="Previous version"[^>]*aria-disabled="true"/);
+  assert.match(markup, /aria-label="Next version"[^>]*aria-disabled="false"/);
+  assert.match(markup, /version 1 of 3/);
+});
+
+test("the page: the switcher shows an earlier version's answer in the top's place, view only; Copy copies it", async () => {
+  clearFolds();
+  const { history, control } = page([
+    ["v1", "first answer"], ["v2", "second answer", { revises: "v1" }], ["v3", "third answer", { revises: "v2" }],
+  ]);
+  const row = () => answer(history, "v3").nextElementSibling;
+  const counter = () => row().querySelector(".stack-switch-n [aria-hidden]").textContent;
+  const prev = () => row().querySelector('[data-stack-step="-1"]');
+  const next = () => row().querySelector('[data-stack-step="1"]');
+  assert.equal(counter(), "3/3", "the latest by default");
+  assert.equal(next().getAttribute("aria-disabled"), "true");
+  assert.equal(history.querySelectorAll(".stack-view").length, 0);
+  prev().click();
+  assert.equal(counter(), "2/3");
+  const view = history.querySelector(".stack-view");
+  assert.ok(view, "a copy of v2's answer");
+  assert.equal(view.textContent, "second answer");
+  assert.equal(view.dataset.copySource, "second answer", "Copy copies the version on view");
+  assert.ok(!view.hasAttribute("data-answer-turn"), "no answer key: no fold row, no Revise row of its own");
+  assert.ok(view.nextElementSibling === answer(history, "v3"), "in the top's place");
+  assert.ok(answer(history, "v3").classList.contains("stack-swapped"), "the top hides");
+  assert.ok(!visible(answer(history, "v2")), "the superseded turn stays folded");
+  assert.equal(historyTurns(history).find((t) => t.id === "v3").answer, answer(history, "v3"), "the top stays the turn's answer");
+  prev().click();
+  assert.equal(counter(), "1/3");
+  assert.equal(history.querySelector(".stack-view").textContent, "first answer");
+  assert.equal(history.querySelectorAll(".stack-view").length, 1);
+  assert.equal(prev().getAttribute("aria-disabled"), "true");
+  prev().click();
+  assert.equal(counter(), "1/3", "no step past v1");
+  control.decorate();
+  assert.equal(history.querySelector(".stack-view").textContent, "first answer", "a redraw keeps the version on view");
+  next().click();
+  next().click();
+  assert.equal(counter(), "3/3");
+  assert.equal(history.querySelectorAll(".stack-view").length, 0);
+  assert.ok(!answer(history, "v3").classList.contains("stack-swapped"));
+  assert.deepEqual(readFolded("s1"), [], "nothing stored");
+  history.remove();
+});
+
+test("the page: a switched stack hides the top's fold row too; a new Revise on top shows the latest", async () => {
+  clearFolds();
+  const { history } = page([["v1", "first"], ["v2", "second", { revises: "v1" }], ["v3", "third"]]);
+  const fold = document.createElement("button");
+  fold.className = "answer-fold";
+  answer(history, "v2").before(fold);
+  answer(history, "v2").nextElementSibling.querySelector('[data-stack-step="-1"]').click();
+  assert.ok(fold.classList.contains("stack-swapped"));
+  assert.ok(history.querySelector(".stack-view").nextElementSibling === fold, "before the top's fold row");
+  prompt(history, "v3").dataset.revises = "v2";
+  await tick();
+  assert.equal(history.querySelectorAll(".stack-view").length, 0, "v3 is the top now, on view");
+  assert.ok(!fold.classList.contains("stack-swapped"));
+  assert.equal(answer(history, "v3").nextElementSibling.querySelector(".stack-switch-n [aria-hidden]").textContent, "3/3");
+  history.remove();
+});

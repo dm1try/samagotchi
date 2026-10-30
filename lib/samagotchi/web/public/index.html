@@ -107,6 +107,17 @@ main{flex:1;display:flex;flex-direction:column;gap:16px;padding:16px;overflow:au
 .stack-version:hover:not(:disabled){background:var(--bg-hover);filter:none}
 .stack-version.current{color:var(--text-muted);cursor:default}
 .stack-version-n{font-weight:600;color:var(--accent);font-variant-numeric:tabular-nums}
+/* The ‹ N/M › switcher (revise_switch.js): an earlier version's answer read in the top one's place; its copy dashed, the top hidden. */
+.stack-switch{display:inline-flex;align-items:center;gap:2px;font-size:12px;color:var(--text-2);font-variant-numeric:tabular-nums}
+.stack-switch-btn{min-height:0;height:22px;min-width:24px;padding:0 6px;border-radius:6px;border:1px solid var(--border-strong);background:var(--bg-raised);color:var(--text-2);font:inherit;font-size:14px;line-height:20px;cursor:pointer}
+.stack-switch-btn:hover:not([aria-disabled="true"]){color:var(--text-bright);filter:none}
+.stack-switch-btn:focus-visible{outline:2px solid var(--accent-ring);outline-offset:1px}
+.stack-switch-btn[aria-disabled="true"]{opacity:.4;cursor:default}
+.stack-switch-n{min-width:2.6em;text-align:center}
+.stack-switch-sr{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+@media (pointer:coarse){.stack-switch-btn{height:30px;min-width:34px;line-height:28px}}
+.bubble.output.stack-view{border-left-style:dashed}
+.stack-swapped{display:none!important}
 /* A gap divider (time_gaps.js): one centred dim line where a quiet stretch passed, never wrapped (a phone at 360 px keeps it on one line). Not a .bubble. */
 .time-gap{align-self:stretch;text-align:center;color:var(--time-gap);font-size:12px;line-height:1.4;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin:2px 0;user-select:none}
 .turn-timing{margin-top:8px;color:var(--text-muted);font-size:11px;font-variant-numeric:tabular-nums}

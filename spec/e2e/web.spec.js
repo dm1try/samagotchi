@@ -82,6 +82,19 @@ test("a prompt from the start page streams an answer and the turn ends", async (
   await page.reload();
   await turnEnded(page, 2);
   await stacked();
+  // The ‹ › switcher (revise_switch.js): v1's answer read in the top's
+  // place (the keyboard's Enter), its copy dashed; › back to the latest.
+  const switcher = page.locator("#history .stack-switch");
+  await expect(switcher.locator(".stack-switch-sr")).toHaveText("version 2 of 2");
+  await switcher.getByRole("button", { name: "Previous version" }).focus();
+  await page.keyboard.press("Enter");
+  await expect(switcher.locator(".stack-switch-sr")).toHaveText("version 1 of 2");
+  await expect(page.locator("#history .bubble.output:visible")).toHaveCount(1);
+  await expect(page.locator("#history .bubble.output.stack-view")).toBeVisible();
+  await expect(page.locator("#history .bubble.output.stack-view")).toHaveAttribute("data-copy-source", /^PONG from the fake model\./);
+  await switcher.getByRole("button", { name: "Next version" }).click();
+  await expect(page.locator("#history .stack-view")).toHaveCount(0);
+  await expect(switcher.locator(".stack-switch-sr")).toHaveText("version 2 of 2");
   // Unfolded from its stub: the first version is back in place.
   await page.locator("#history .stack-stub").click();
   await expect(page.locator("#history .bubble.output:visible")).toHaveCount(2);
