@@ -1059,9 +1059,9 @@ button.ws-row:hover:not(:disabled){filter:none;background:var(--bg-hover)}
    meta keeps the width. */
 #infoBar .info{flex:1 1 640px;min-width:0;font-size:13px;line-height:1.4;word-break:break-word;display:flex;flex-direction:column;gap:2px}
 #infoBar .meta{font-size:11px;display:flex;gap:8px;flex-wrap:wrap;align-items:center}
-#infoBar .meta .id{font-family:ui-monospace,monospace;font-weight:700;font-size:12px;color:var(--accent)}
-#infoBar .meta .copy-attach{padding:2px 8px;border-radius:6px;font-size:11px;font-weight:600;background:var(--bg-raised);color:var(--text-2);border:1px solid var(--border-strong)}
-#infoBar .meta .copy-attach:hover{color:var(--text-hover);border-color:var(--border-strong)}
+/* The id is a button (a click copies the full id, app.js): its own padding and no button look, the #infoBar button rule aside. */
+#infoBar .meta .id{padding:2px 6px;border-radius:6px;border:1px solid transparent;background:transparent;cursor:pointer;font-family:ui-monospace,monospace;font-weight:700;font-size:12px;color:var(--accent)}
+#infoBar .meta .id:hover:not(:disabled){filter:none;border-color:var(--accent-border);background:var(--accent-bg)}
 #infoBar .meta .status{font-size:11px;padding:2px 6px;border-radius:999px}
 /* The status word takes the widest word's room (running, stopped; idle and error are narrower), so a turn's idle ↔ running doesn't move the rest of the line. */
 #infoBar .meta .status{display:inline-grid;justify-items:center}
@@ -1316,8 +1316,6 @@ body.has-session.composer-folded #infoBar{border-top-color:transparent}
 /* Phones: the footer is one line; its meta scrolls sideways (all of it stays reachable). */
 @media(max-width:600px){
   #infoBar{flex-wrap:nowrap;align-items:center;gap:6px;padding:6px 10px 8px}
-  /* No terminal on a phone to attach from. */
-  #infoBar .meta .copy-attach{display:none}
   #infoBar .meta{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;white-space:nowrap}
   #infoBar .meta::-webkit-scrollbar{display:none}
   #infoBar .meta>*{flex-shrink:0}

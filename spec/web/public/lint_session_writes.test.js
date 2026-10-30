@@ -28,7 +28,7 @@ test("every in-place write of the session's state is flagged", () => {
     "state().timing.side = side;",
     "store.current.owner = 'tui';",
     "store.current.timing.side = side;",
-    "current.attachCopiedAt += 1;",
+    "current.ctxPct += 1;",
     "current.count++;",
     "delete current.owner;",
     "Object.assign(current, fields);",

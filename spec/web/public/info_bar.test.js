@@ -9,7 +9,7 @@ const ID = "0123456789abcdef";
 
 // A bar with only what every open session has.
 const bare = {
-  id: ID, copied: false, status: "idle", model: { text: "qwen", title: "qwen", mismatch: false },
+  id: ID, status: "idle", model: { text: "qwen", title: "qwen", mismatch: false },
   chain: { prev: null, next: null }, parent: null, kids: null, llmContext: null, thinking: null, reasoningHistory: null, toolkit: null, notes: null,
   memories: [], dir: "/p", ctx: { text: "ctx ?", tip: "no request yet" }, speed: null, clock: "", worker: null,
 };
@@ -22,8 +22,7 @@ const markupOf = (template) => {
 
 test("infoBarHtml: a bare session's line, as the string builder wrote it", () => {
   assert.equal(markupOf(infoBarHtml(bare)), canon(
-    `<div class="meta"><span class="id" title="${ID}">01234567</span>` +
-    `<button type="button" class="copy-attach" title="Copy &quot;chi --attach ${ID}&quot; to attach a terminal">copy chi --attach</button>` +
+    `<div class="meta"><button type="button" class="id" title="Session id ${ID}: click to copy it">01234567</button>` +
     `<span class="status idle"><span>idle</span></span><span class="model" title="qwen">qwen</span>` +
     `<span class="dir" title="/p"><bdi>/p</bdi></span><span class="model ctx" title="no request yet">ctx ?</span>` +
     `<span class="model session-time empty" title="This session's time: no turn yet">session –</span></div>`,
@@ -51,7 +50,7 @@ test("infoBarHtml: the clock and the speed show as placeholders before their num
 
 test("infoBarHtml: every part, in the bar's order", () => {
   const full = {
-    ...bare, copied: true, status: "running", model: { text: "qwen", title: "served other", mismatch: true },
+    ...bare, status: "running", model: { text: "qwen", title: "served other", mismatch: true },
     chain: { prev: { id: "aaaaaaaa1", date: "10-09", stamp: "2026-10-09 14:32", preview: "first", archived: true }, next: { id: "bbbbbbbb2", date: "", preview: "" } },
     parent: { id: "pppppppp9", title: "Delegated by pppppppp" },
     kids: { text: "2 delegates", title: "2 delegates", waitingText: "1 waiting" },
@@ -70,11 +69,11 @@ test("infoBarHtml: every part, in the bar's order", () => {
   render(infoBarHtml(full), div);
   const classes = [...div.querySelector(".meta").children].map((el) => el.className);
   assert.deepEqual(classes, [
-    "id", "copy-attach", "status running", "model served-mismatch", "model chain-link", "model chain-link", "model parent",
+    "id", "status running", "model served-mismatch", "model chain-link", "model chain-link", "model parent",
     "model children-chip waiting", "model think-chip own", "model rh-chip own", "model llmctx-chip own", "model tools-chip", "model notes-chip", "model mem-chip",
     "dir", "model ctx", "model speed", "model session-time", "worker-badge",
   ]);
-  assert.equal(div.querySelector(".copy-attach").textContent, "copied ✓");
+  assert.equal(div.querySelector(".id").textContent, "01234567");
   const [prev, next] = div.querySelectorAll(".chain-link");
   assert.equal(prev.textContent, "← 10-09");
   assert.equal(prev.title, "The previous link of this chain: aaaaaaaa · 2026-10-09 14:32 · first (archived)");
@@ -94,10 +93,10 @@ test("infoBarHtml: every part, in the bar's order", () => {
 test("renderInfoBar: a clock tick rewrites the clock's text alone; the bar's nodes stay", () => {
   const el = document.createElement("div");
   renderInfoBar(el, { ...bare, clock: "session 1s" });
-  const copy = el.querySelector(".copy-attach");
+  const id = el.querySelector(".id");
   const clock = el.querySelector(".session-time");
   renderInfoBar(el, { ...bare, clock: "session 2s" });
-  assert.equal(el.querySelector(".copy-attach"), copy);
+  assert.equal(el.querySelector(".id"), id);
   assert.equal(el.querySelector(".session-time"), clock);
   assert.equal(clock.textContent, "session 2s");
 });

@@ -16,6 +16,7 @@ and commands may change between minor versions. How releases are made:
   next reload.
 - Web: a delegate report in a reloaded history renders as markdown (headings, lists, code), as answers do; Copy
   still copies its text. A report that arrives live shows as plain text until the next reload.
+- Web: the session bar's id copies itself on click; the copy chi --attach button is gone.
 
 ### Fixed
 

@@ -1271,7 +1271,7 @@ test("a parent's delegates fold into its card: one strip card with a popover, in
   }
 });
 
-test("the info bar: copy chi --attach copies the full id, delete removes the session after the confirm", async ({ page, script }) => {
+test("the info bar: a click on the id copies the full id, delete removes the session after the confirm", async ({ page, script }) => {
   script("plain");
   await send(page, "Say pong");
   await turnEnded(page, 1);
@@ -1279,17 +1279,17 @@ test("the info bar: copy chi --attach copies the full id, delete removes the ses
   const stripCard = page.locator(`#topStrip .card[data-id="${id}"]`);
   await expect(stripCard).toBeVisible();
 
-  // What the button hands the clipboard (headless Chromium's own clipboard
+  // What the id hands the clipboard (headless Chromium's own clipboard
   // needs a permission grant and focus).
   await page.evaluate(() => {
     window.__copied = [];
     navigator.clipboard.writeText = async (text) => { window.__copied.push(text); };
   });
-  const copy = page.locator("#infoBar .copy-attach");
-  await expect(copy).toHaveText("copy chi --attach");
-  await copy.click();
-  await expect(copy).toHaveText("copied ✓");
-  expect(await page.evaluate(() => window.__copied)).toEqual([`chi --attach ${id}`]);
+  const idChip = page.locator("#infoBar .id");
+  await expect(idChip).toHaveText(id.slice(0, 8));
+  await idChip.click();
+  await expect(page.locator("#toast")).toContainText("Session id copied");
+  expect(await page.evaluate(() => window.__copied)).toEqual([id]);
 
   let confirmText = null;
   page.once("dialog", (dialog) => { confirmText = dialog.message(); dialog.accept(); });

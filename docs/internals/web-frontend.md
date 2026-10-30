@@ -103,7 +103,7 @@ a store write. A value written unchanged redraws nothing (a chunk with the same 
 
 An input the store doesn't hold calls `store.touch(name)` where it changes: `infoBar` for the clock (liveTurn's
 `onTick`), the versions (`noticeVersions`), `restartingIds`, the stream (`startStream`, `workerGone`), the working
-set's and the participants' `onChange`, the copy-attach timer, the continue and review in-flight sets
+set's and the participants' `onChange`, the continue and review in-flight sets
 (`session_actions.js`); `composer` and `infoBar` for `liveTurn.running` (`setTurnRunning`) and at the end of
 `renderSessionView` (a whole view drawn). Left as they are, on purpose: the `narrowScreen` listener calls
 `updateComposerMode()` (the bar doesn't read it), `applyStripHidden`/`applyView` call `updateSessionTitle()`, and

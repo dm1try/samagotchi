@@ -13,7 +13,7 @@ function args(over = {}) {
   return {
     id: ID, state: { ...emptySessionState(), status: "idle", model: "qwen", dir: "/p" }, sessions: [{ id: ID }],
     versions: { served: "1.0.0", installed: null }, cardTitle: title, continuing: new Set(), restarting: new Set(),
-    streaming: false, running: false, now: 10_000, ...over,
+    streaming: false, running: false, ...over,
   };
 }
 
@@ -35,14 +35,7 @@ test("a session's line: id, status, model, folder, no chain, parent or delegates
   assert.equal(bar.kids, null);
   assert.equal(bar.worker, null);
   assert.equal(bar.clock, "");
-  assert.equal(bar.copied, false);
   assert.deepEqual([buttons.continue.shown, buttons.delete.shown, buttons.archive.shown, buttons.stop.shown], [true, true, true, false]);
-});
-
-test("copied for 2 s after the copy", () => {
-  const state = { ...emptySessionState(), attachCopiedAt: 9_000 };
-  assert.equal(sessionBar(args({ state })).bar.copied, true);
-  assert.equal(sessionBar(args({ state, now: 11_000 })).bar.copied, false);
 });
 
 test("a chain link: ← its previous, → its next (no continue then); the links' titles are the lists'", () => {
@@ -134,7 +127,7 @@ test("the session clock while a turn runs; ctx and speed from the timing's token
     timing: { ...emptySessionState().timing, activeTurn: { started_at: new Date(Date.now() - 5000).toISOString() } },
   };
   const bar = infoBarModel({ id: ID, state, sessions: [], chain: { prev: null, next: null }, cardTitle: title, badge: null,
-                             restarting: false, running: true, now: Date.now() });
+                             restarting: false, running: true });
   assert.match(bar.clock, /^session /);
   assert.equal(typeof bar.ctx.text, "string");
   // No generation yet: the speed chip's placeholder (it shows from the start).
@@ -144,7 +137,7 @@ test("the session clock while a turn runs; ctx and speed from the timing's token
 test("the speed chip takes the last generation's speed, no longer empty", () => {
   const state = { ...emptySessionState(), timing: { ...emptySessionState().timing, tokens: { last_decode_tps: 42.4, avg_decode_tps: 40 } } };
   const bar = infoBarModel({ id: ID, state, sessions: [], chain: { prev: null, next: null }, cardTitle: title, badge: null,
-                             restarting: false, running: false, now: Date.now() });
+                             restarting: false, running: false });
   assert.equal(bar.speed.text, "42 tok/s");
   assert.equal(bar.speed.empty, false);
   assert.match(bar.speed.tip, /session average 40 tok\/s$/);
@@ -155,8 +148,7 @@ test("the ctx tooltip carries the side requests line from the timing's side bloc
   const side = { requests: 2, prompt_sum: 9100, completion_sum: 210, by_kind: { recap: { requests: 2 } } };
   const timing = { ...emptySessionState().timing, tokens: { prompt_sum: 500, completion_sum: 100 }, side };
   const bar = infoBarModel({ id: ID, state: { ...emptySessionState(), timing, ctxPct: 50, ctxWindow: 1000 }, sessions: [],
-                             chain: { prev: null, next: null }, cardTitle: title, badge: null, restarting: false, running: false,
-                             now: Date.now() });
+                             chain: { prev: null, next: null }, cardTitle: title, badge: null, restarting: false, running: false, });
   assert.ok(bar.ctx.tip.includes("\nside requests: 2 (recap) · 9.1k in / 210 out\n"), bar.ctx.tip);
 });
 
@@ -166,7 +158,7 @@ test("the ctx tooltip says the window is unknown, until the next request right a
   const timing = { ...emptySessionState().timing, tokens: { prompt_sum: 500, completion_sum: 100 } };
   const model = (fields) => infoBarModel({ id: ID, state: { ...emptySessionState(), timing, ...fields }, sessions: [],
                                            chain: { prev: null, next: null }, cardTitle: title, badge: null,
-                                           restarting: false, running: false, now: Date.now() });
+                                           restarting: false, running: false });
   assert.match(model({}).ctx.tip, /^Context window unknown\n/);
   assert.match(model({ ctxUnknownAfterSwitch: true }).ctx.tip, /^Context window unknown until the next request\n/);
   assert.equal(model({ ctxUnknownAfterSwitch: true }).ctx.text, "ctx ?");
