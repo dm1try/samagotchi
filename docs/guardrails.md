@@ -512,7 +512,12 @@ message:
 A script a command hands on is read too (`Guardrails::PairCommand`): one a
 shell runs (`sh -c`, `eval`, a heredoc or here-string) as a command of its
 own, one another interpreter runs (`ruby -e`, `python - <<EOF`) by its text
-(chi, secrets, the environment, detaching). A heredoc written as data (`cat`,
+(chi, secrets, the environment, detaching). So is a command handed through a
+variable a program runs through a shell (`PairCommand::COMMAND_ENV`:
+`GIT_EDITOR`, `GIT_SEQUENCE_EDITOR`, `EDITOR`, `VISUAL`, `GIT_EXTERNAL_DIFF`,
+`GIT_SSH_COMMAND`, `GIT_SSH`, `GIT_PROXY_COMMAND`, `GIT_PAGER`, `PAGER`,
+`MANPAGER`, `GIT_ASKPASS`, `SSH_ASKPASS`), as a prefix, `env`'s or `export`'s:
+read as `sh -c` would run it, for the refusals and for an outside write. A heredoc written as data (`cat`,
 `tee`, `git commit -F -`) is not looked into: where it goes is checked. A
 command the checks can't read is refused, never let through on a text match.
 
@@ -565,7 +570,10 @@ rule lowers it), so it comes even in auto mode. A command fails closed
   wrote and then runs; inline scripts read only by their text for paths
   (`find … -exec sh -c '…'`, `flock … sh -c`, `awk 'BEGIN{system(…)}'`,
   `deno eval`); a `GIT_CONFIG_*` set by `printf -v` or `read` and exported
-  (it affects that command only).
+  (it affects that command only); a variable outside `COMMAND_ENV` whose
+  value a program runs (`LESSOPEN`, a tool's own `*_EDITOR`); `npx -y`,
+  `npm exec`, `pnpm dlx`, `uvx`: they fetch into a cache, which doesn't count,
+  and run the package as in-project work.
 
 Anything else asks: `rm -rf ~/x`, `sed -i … ~/x`, `curl -o ~/x`, `dd of=~/x`,
 `touch`/`mkdir` outside, `perl -pi … ~/x`, `cd .. && make`, `cd && make`, and

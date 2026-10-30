@@ -453,6 +453,23 @@ RSpec.describe Samagotchi::Guardrails::PairBoundary do
       end
     end
 
+    # git (or another program) runs these variables' values through a
+    # shell: each is read as an sh -c script.
+    it "reads a command handed through the environment (GIT_EDITOR, GIT_SSH_COMMAND, GIT_PAGER …) as a command" do
+      expect(refused("GIT_EDITOR='git config core.fsmonitor id' git commit")).to eq(described_class::GIT_CONFIG)
+      expect(refused("VISUAL='chi send x' git commit")).to eq(described_class::CHI)
+      expect(refused("export GIT_PAGER='printenv'; git log")).to eq(described_class::ENVIRONMENT)
+      ["GIT_EXTERNAL_DIFF='touch ~/x' git diff", "GIT_SSH_COMMAND='touch ~/x' git fetch origin",
+       "export GIT_PAGER='touch ~/x'; git log", "env GIT_SEQUENCE_EDITOR='touch ~/x' git rebase -i HEAD~1",
+       "bash -c \"EDITOR='touch ~/x' git commit\""].each do |command|
+        verdict = execute(command)
+        expect([verdict.ask?, verdict.reason]).to eq([true, described_class::OUTSIDE_WRITE]), command
+      end
+      ["GIT_PAGER=cat git log", "GIT_PAGER='less -R' git log", "EDITOR=vim git commit"].each do |command|
+        expect(execute(command)).to be_allow, command
+      end
+    end
+
     it "denies writing a submodule's hooks, as the repository's own" do
       [{ name: "write", path: ".git/modules/sub/hooks/pre-commit", content: "x" },
        { name: "write", path: ".git/modules/a/modules/b/hooks/post-checkout", content: "x" }].each do |call|

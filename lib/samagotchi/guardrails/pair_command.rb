@@ -177,6 +177,12 @@ module Samagotchi
                             --no-advice --bare --literal-pathspecs --glob-pathspecs --noglob-pathspecs
                             --icase-pathspecs -v --version -h --help --html-path --man-path --info-path].freeze
       GIT_VALUE_OPTIONS = %w[-C --git-dir --work-tree --namespace --attr-source --shallow-file].freeze
+      # Variables whose value is a command a program runs through a shell
+      # (git's diff driver, editor, pager, ssh, proxy, askpass; the editors
+      # and pagers others run): read as an sh -c script, wherever the
+      # assignment stands (a prefix, export's, env's).
+      COMMAND_ENV = %w[GIT_EXTERNAL_DIFF GIT_EDITOR EDITOR VISUAL GIT_SEQUENCE_EDITOR GIT_SSH_COMMAND GIT_SSH
+                       GIT_PROXY_COMMAND GIT_PAGER PAGER MANPAGER GIT_ASKPASS SSH_ASKPASS].freeze
       # Devices a command may name in the project's stead.
       DEVICES = %w[/dev/null /dev/stdout /dev/stderr /dev/tty /dev/zero /dev/random /dev/urandom].freeze
       # A word that starts with $TMPDIR or ${TMPDIR}.
@@ -511,7 +517,8 @@ module Samagotchi
       def outside_writes?
         return @outside_writes if defined?(@outside_writes)
 
-        @outside_writes = !(ReadOnlyShell.read_only?(@text) || writes_inside? || stays_inside?)
+        @outside_writes = env_command_outside? ||
+                          !(ReadOnlyShell.read_only?(@text) || writes_inside? || stays_inside?)
       rescue StandardError
         @outside_writes = true
       end
@@ -560,6 +567,11 @@ module Samagotchi
 
         program, args = PairCommand.git_form(program, args)
         return PairBoundary::GIT_CONFIG if git_config_env?(words) || git_alias?(program, args)
+
+        env_commands(words).each do |script|
+          reason = nested(script).refusal
+          return reason if reason
+        end
 
         if program == "git"
           # xargs adds words of its input: a git config it runs may write
@@ -823,6 +835,23 @@ module Samagotchi
       # it sets may run a command, as git -c's may.
       def git_config_env?(words)
         words.any? { |word| word[/\A([A-Za-z_]\w*)=/, 1].to_s.match?(ShellGitDirs::CONFIG_ENV) }
+      end
+
+      # The commands a simple command's assignments hand a program
+      # (COMMAND_ENV: GIT_EDITOR='…' git commit, export GIT_PAGER=…).
+      def env_commands(words)
+        words.filter_map do |word|
+          name, value = word.match(/\A([A-Za-z_]\w*)=(.+)\z/m)&.captures
+          value if COMMAND_ENV.include?(name)
+        end
+      end
+
+      # Whether a command an assignment hands a program (#env_commands)
+      # may write outside, read as a command of its own.
+      def env_command_outside?
+        ShellLex.simple_commands(ShellLex.lex(@text)).any? do |words|
+          words.is_a?(Array) && env_commands(words).any? { |script| nested(script).outside_writes? }
+        end
       end
 
       # A hook installer (HOOK_INSTALLERS: pre-commit install, husky,
