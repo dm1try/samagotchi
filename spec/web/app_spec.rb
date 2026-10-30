@@ -1648,6 +1648,28 @@ RSpec.describe Samagotchi::Web::App do
       expect(payload["session"]).to include("reasoning_history" => nil)
     end
 
+    # The 🧰 chip: a session on config's default kit shows 🧰 alone; the
+    # toolkit summary alone can't say it (nil on full, lean on a lean default).
+    it "names config's toolkit.default beside the session's toolkit, full when unset, with or without a worker" do
+      state_dir = Dir.mktmpdir
+      session = Samagotchi::Session.new_session(mode: "assist", model_name: "qwen", working_directory: "/tmp")
+      session.toolkit = Samagotchi::Toolkit.new(name: "lean")
+      session.save(state_dir: state_dir)
+      app = build_app(manager: FakeResponsesManager.new, state_dir: state_dir, session_class: Samagotchi::Session)
+      allow(Samagotchi::Config).to receive(:get).and_call_original
+      allow(Samagotchi::Config).to receive(:get).with("toolkit.default").and_return(nil)
+
+      payload = JSON.parse(app.call(env_for("/api/sessions/#{session.id}"))[2].first)
+      expect(payload["session"]).to include("toolkit_default" => "full", "toolkit" => { "name" => "lean", "label" => "lean" })
+
+      allow(Samagotchi::Config).to receive(:get).with("toolkit.default").and_return("lean")
+      live = { "snapshot" => { "messages" => [], "event_seq" => 3 },
+               "session_state_snapshot" => { "status" => "idle", "event_seq" => 3, "toolkit" => { "name" => "lean" } } }
+      allow(app).to receive(:bridge_get_json).with(session.id, "snapshot").and_return(live)
+      payload = JSON.parse(app.call(env_for("/api/sessions/#{session.id}"))[2].first)
+      expect(payload["session"]).to include("toolkit_default" => "lean", "toolkit" => { "name" => "lean" })
+    end
+
     it "names the session's toolkit unless it is full: the live worker's, else the name its file saved" do
       state_dir = Dir.mktmpdir
       session = Samagotchi::Session.new_session(mode: "assist", model_name: "m", working_directory: "/tmp")

@@ -1352,6 +1352,8 @@ test("the start page's ⚙ panel and 🧰 list start the new session under the t
   await expect(kits).toBeHidden();
   await expect(page.locator("#infoBar .settings-chip")).toHaveText("⚙ think low · ctx stale");
   await expect(page.locator("#infoBar .settings-chip")).toHaveClass(/\bown\b/);
+  // 🧰 after ⚙: the session's kit, not the default one (GET /api/sessions/:id's toolkit_default).
+  await expect(page.locator("#infoBar .settings-chip + .tools-chip")).toHaveText("🧰 lean");
 
   await page.locator("#newBtn").click();
   await expect(gear).toBeVisible();
@@ -1411,6 +1413,9 @@ test("the info bar's ⚙ panel sets the session's own settings through its worke
   const chip = page.locator("#infoBar .settings-chip");
   await expect(chip).toHaveText("⚙");
   await expect(chip).not.toHaveClass(/\bown\b/);
+  // On the default kit (full here), 🧰 alone; its tooltip names the kit.
+  await expect(page.locator("#infoBar .tools-chip")).toHaveText("🧰");
+  await expect(page.locator("#infoBar .tools-chip")).toHaveAttribute("title", /^Toolkit: full \(the default\)/);
 
   await chip.click();
   const pop = page.locator("#settingsPopover");

@@ -1112,10 +1112,11 @@ body.has-session.composer-folded #infoBar{border-top-color:transparent}
 #infoBar .meta .settings-chip:hover{color:var(--text);border-color:var(--accent-border);background:var(--accent-bg)}
 #infoBar .meta .settings-chip.own{color:var(--accent);border-color:var(--accent-border)}
 /* A chip's icon (⚙ here, the start page's own SVG from composer.css): the glyph stays the text, the mask draws it. */
-#infoBar .meta .settings-chip{display:inline-flex;align-items:center;gap:4px}
+#infoBar .meta :is(.settings-chip,.tools-chip){display:inline-flex;align-items:center;gap:4px}
 #infoBar .meta .settings-chip .sc-own{min-width:0;overflow:hidden;text-overflow:ellipsis}
 #infoBar .meta .chip-icon{flex:none;width:12px;height:12px;font-size:0;background:currentColor;-webkit-mask:var(--icon) center/contain no-repeat;mask:var(--icon) center/contain no-repeat}
 #infoBar .meta .sc-gear{--icon:var(--icon-settings)}
+#infoBar .meta .tc-kit{--icon:var(--icon-toolkit)}
 .llmctx-field{display:flex;align-items:center;gap:8px}
 .llmctx-field>span{flex:0 0 58px;font-size:12px;color:var(--text-muted)}
 .llmctx-field select,.llmctx-field input{flex:1;min-width:0;box-sizing:border-box;padding:5px 8px;border-radius:7px;border:1px solid var(--border-strong);background:var(--bg-inset);color:var(--text);font:inherit;font-size:13px;line-height:1.4}

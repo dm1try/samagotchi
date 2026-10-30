@@ -19,6 +19,8 @@ and commands may change between minor versions. How releases are made:
 - Web: the session bar's id copies itself on click; the copy chi --attach button is gone.
 - Web: the session bar's think, reasoning and llm ctx chips are one ⚙ chip whose panel is the start page's:
   segments, a pick applies at once; the chip names only what the session set.
+- Web: the session bar's tools chip is a 🧰 chip after ⚙: 🧰 alone while the session is on the configured default
+  kit (its tooltip names it), "🧰 lean" on another.
 
 ### Fixed
 

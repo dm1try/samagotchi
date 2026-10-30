@@ -849,8 +849,8 @@ first: an unknown host or a bad alias is an error at once, not a question.
 - `Nothing changed yet: send /thinking low --yes to apply.` names the line that applies it.
 - `--yes` (or `-y`, anywhere after the command) applies it at once.
 - The terminal (the REPL and an attached TUI) puts the `--yes` line in the next input: Enter applies it.
-- The web's reply bubble has an **Apply (restarts the cache)** button. The session bar's chips are already an explicit
-  choice: their Set sends the `--yes` line, and their form says what a change costs. Command bubbles are page-only, so
+- The web's reply bubble has an **Apply (restarts the cache)** button. The session bar's ⚙ panel is already an
+  explicit choice: a tap sends the `--yes` line, and its note says what a change costs. Command bubbles are page-only, so
   the button is gone after a reload.
 - Only a person at a web tab or a chi TUI is asked. `chi send ID "/thinking low"`,
   `chi -p "/thinking low" --non-interactive`, lines piped into the REPL, a delegate, a plugin and a card's action
@@ -1570,12 +1570,15 @@ toolkit:
   cache; `full` and every kit without a prompt send the bytes they sent before. Keep it to a line or two that
   fits the kit's work (the coordinator bundle's `coding`: be concise): one that isn't text or is over 2000
   characters is left out with a warning, and long text belongs in `append_system_prompt:`. `/toolkit` shows it
-  (`prompt: …`), `/stats` its kit and size (`kit prompt:`), the web's tools chip in its tooltip.
+  (`prompt: …`), `/stats` its kit and size (`kit prompt:`), the web's 🧰 chip in its tooltip.
 - **Saved at creation, definitions resolve at worker start.** A session stores its toolkit as named
   (`"toolkit": {"name": "lean", "add": [], "remove": []}`) when it is created: `toolkit.default`, `toolkit.child`
   for a delegate child (or the kit its `delegate` call names), or `chi --toolkit NAME` / `--tool` / `--no-tool` ([cli](cli.md)). Changing `toolkit.default`
   doesn't move existing sessions, not even when their worker is woken again; a session from before toolkits is on
-  `full`. A continue and a fork keep the toolkit name. `/toolkit` shows and changes it. The kit's tools, prompt
+  `full`. A continue and a fork keep the toolkit name. `/toolkit` shows and changes it. The web's session bar
+  shows it as the 🧰 chip after ⚙: `🧰` alone while the session is on `toolkit.default` (its tooltip names the kit,
+  "full (the default)"), `🧰 lean` on another kit (`GET /api/sessions/:id`'s `session.toolkit` against
+  `session.toolkit_default`, the default as chi web reads it now); it has no picker, `/toolkit` changes it. The kit's tools, prompt
   text and group selectors are part of its definition, not the session file: edits reach a saved name at its next
   worker start.
 - **A new web chat: 🧰.** The start page's 🧰 (beside ⚙; a bottom sheet on a phone) picks the new session's toolkit.

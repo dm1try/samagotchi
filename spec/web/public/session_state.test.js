@@ -9,6 +9,7 @@ test("starts every field empty", () => {
   assert.equal(s.continues, null);
   assert.equal(s.createdAt, null);
   assert.equal(s.toolkit, null);
+  assert.equal(s.toolkitDefault, null);
   assert.equal(s.owner, null);
   assert.equal(s.ctxPct, null);
   assert.equal(s.ctxWindow, null);
@@ -96,7 +97,7 @@ test("sessionStateFrom copies the lists, owner, links and served model", () => {
       served_model: "srv", served_model_for: "m",
       used_memory_names: ["a"], preloaded_memory_names: ["b"], muted_memory_names: ["c"],
       prompt_notes: notes, llm_context: { strategy: "none" }, thinking: { level: "high" }, reasoning_history: { level: "drop" },
-      toolkit: { name: "lean", label: "lean" }, parent_id: "p1", continues: "c1",
+      toolkit: { name: "lean", label: "lean" }, toolkit_default: "lean", parent_id: "p1", continues: "c1",
       created_at: "2026-10-17T09:12:00Z",
     },
     commands: [{ name: "/x" }],
@@ -111,6 +112,7 @@ test("sessionStateFrom copies the lists, owner, links and served model", () => {
   assert.deepEqual(st.thinking, { level: "high" });
   assert.deepEqual(st.reasoningHistory, { level: "drop" });
   assert.deepEqual(st.toolkit, { name: "lean", label: "lean" });
+  assert.equal(st.toolkitDefault, "lean");
   assert.equal(st.parentId, "p1");
   assert.equal(st.continues, "c1");
   assert.equal(st.createdAt, "2026-10-17T09:12:00Z");

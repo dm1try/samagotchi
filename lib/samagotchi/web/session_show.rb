@@ -13,6 +13,7 @@ require_relative "../session_commands"
 require_relative "../session_metrics"
 require_relative "../session_setting"
 require_relative "../system_one/log"
+require_relative "../toolkit"
 
 module Samagotchi
   module Web
@@ -158,7 +159,9 @@ module Samagotchi
           chip = setting.snapshot_value(snapshot) { setting.saved_summary(session, registry: host_registry) }
           session_json = session_json.merge(setting.key => chip)
         end
-        session_json
+        # The 🧰 chip reads the session's toolkit against config's default:
+        # on it, the chip is 🧰 alone (a toolkit summary is nil on full only).
+        session_json.merge(toolkit_default: Toolkit.configured.name)
       end
 
       # ?cards=1: the page's re-read when a card arrives, for its rendered

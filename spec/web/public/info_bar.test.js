@@ -60,7 +60,7 @@ test("infoBarHtml: every part, in the bar's order", () => {
       thinking: { level: "low", source: "session", own: "low" },
       reasoningHistory: { level: "all", source: "session", own: "all" },
     },
-    toolkit: { name: "lean", label: "lean", left_out: ["delegate"] },
+    toolkit: { summary: { name: "lean", label: "lean", left_out: ["delegate"] }, defaultKit: "full" },
     notes: { text: "notes 1", title: "deepseek" },
     memories: ["a", "b"],
     speed: { text: "30 t/s", tip: "Decode speed of the last generation" },
@@ -71,8 +71,8 @@ test("infoBarHtml: every part, in the bar's order", () => {
   render(infoBarHtml(full), div);
   const classes = [...div.querySelector(".meta").children].map((el) => el.className);
   assert.deepEqual(classes, [
-    "id", "status running", "model served-mismatch", "model settings-chip own", "model chain-link", "model chain-link", "model parent",
-    "model children-chip waiting", "model tools-chip", "model notes-chip", "model mem-chip",
+    "id", "status running", "model served-mismatch", "model settings-chip own", "model tools-chip", "model chain-link", "model chain-link",
+    "model parent", "model children-chip waiting", "model notes-chip", "model mem-chip",
     "dir", "model ctx", "model speed", "model session-time", "worker-badge",
   ]);
   assert.equal(div.querySelector(".id").textContent, "01234567");
@@ -126,13 +126,15 @@ test("chainLinkTemplate: the short id when the link has no date", () => {
   assert.match(markupOf(chainLinkTemplate({ id: "cccccccc3", date: "10-10" }, NEXT, "Next")), />10-10 →</);
 });
 
-test("infoBarHtml: the tools chip follows the bar's own toolkit, so a switch to a full session drops it", () => {
+test("infoBarHtml: the 🧰 chip follows the bar's own toolkit, so a switch to a full session shows 🧰 alone", () => {
   const div = document.createElement("div");
-  render(infoBarHtml({ ...bare, toolkit: { name: "lean", label: "lean +delegate" } }), div);
-  assert.equal(div.querySelector(".tools-chip").textContent, "tools lean +delegate");
+  render(infoBarHtml({ ...bare, toolkit: { summary: { name: "lean", label: "lean +delegate" }, defaultKit: "full" } }), div);
+  assert.equal(div.querySelector(".tools-chip").textContent, "🧰 lean +delegate");
   // Another session opened (app.js resets its state to emptySessionState: toolkit null).
-  render(infoBarHtml({ ...bare, id: "fedcba9876543210", toolkit: emptySessionState().toolkit }), div);
-  assert.equal(div.querySelector(".tools-chip"), null);
+  const reset = emptySessionState();
+  render(infoBarHtml({ ...bare, id: "fedcba9876543210", toolkit: { summary: reset.toolkit, defaultKit: reset.toolkitDefault } }), div);
+  assert.equal(div.querySelector(".tools-chip").textContent, "🧰");
+  assert.match(div.querySelector(".tools-chip").title, /^Toolkit: full \(the default\), every tool is declared\./);
 });
 
 test("infoBarHtml: the ⚙ chip reads ⚙ alone while the session follows the model; no summaries, no chip", () => {
