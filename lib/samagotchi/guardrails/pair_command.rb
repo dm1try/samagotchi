@@ -4,6 +4,7 @@ require_relative "outside"
 require_relative "path_resolve"
 require_relative "read_only_shell"
 require_relative "review_paths"
+require_relative "shell_git_dirs"
 require_relative "shell_paths"
 require_relative "shell_lex"
 
@@ -389,7 +390,7 @@ module Samagotchi
         upto = at ? words[0..at] : words
         return PairBoundary::BACKGROUND if upto.any? { |w| DETACHERS.include?(File.basename(w)) } || detached_session?(program, args)
         return PairBoundary::ENVIRONMENT if env_reader?(program, args) || bare_env?(words)
-        return PairBoundary::GIT_CONFIG if program == "git" && git_runs_commands?(args)
+        return PairBoundary::GIT_CONFIG if (program == "git" && git_runs_commands?(args)) || git_config_env?(words)
         return PairBoundary::OPENER if opener?(program, args)
         return PairBoundary::LISTENER if listener?(program, args)
 
@@ -573,6 +574,13 @@ module Samagotchi
           found << arg
         end
         found
+      end
+
+      # An assignment (a prefix, export's, env's) of a variable that hands
+      # git config of its own (ShellGitDirs::CONFIG_ENV): what it sets may
+      # run a command, as git -c's may.
+      def git_config_env?(words)
+        words.any? { |word| word[/\A([A-Za-z_]\w*)=/, 1].to_s.match?(ShellGitDirs::CONFIG_ENV) }
       end
 
       # +unknown+: the value isn't in the command (--config-env names a

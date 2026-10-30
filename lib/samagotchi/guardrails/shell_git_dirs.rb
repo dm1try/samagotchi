@@ -29,6 +29,11 @@ module Samagotchi
       PREFIXES = %w[command builtin exec time nohup env ! { if then else elif do while until].freeze
       # git global options that take the next word as their value.
       VALUE_OPTIONS = %w[-C -c --git-dir --work-tree --namespace].freeze
+      # The variables that hand git config of their own (another global or
+      # system file, settings as -c gives them): what they set may run a
+      # command (Targets::SHELL_REDEFINING_ENV, PairCommand's refusal).
+      # GIT_CONFIG_NOSYSTEM only turns one off.
+      CONFIG_ENV = /\AGIT_CONFIG(?:_GLOBAL|_SYSTEM|_PARAMETERS|_COUNT|_KEY_\d+|_VALUE_\d+)?\z/
 
       # @param command [String] the shell command
       # @param cwd [String] where it starts (the call's cwd:, else the session's)

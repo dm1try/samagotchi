@@ -264,12 +264,14 @@ RSpec.describe "Guardrails::Targets outside the session's repo" do
 
     it "makes no command read-only nor tmp-write-only when it redefines the shell" do
       %w[BASH_ENV ENV CDPATH IFS SHELLOPTS BASHOPTS LD_PRELOAD DYLD_INSERT_LIBRARIES GIT_EXTERNAL_DIFF
-         GIT_CONFIG_COUNT BASH_FUNC_cat%%].each do |name|
+         GIT_CONFIG_COUNT GIT_CONFIG_GLOBAL GIT_CONFIG_SYSTEM GIT_CONFIG GIT_CONFIG_KEY_0 GIT_CONFIG_VALUE_0
+         BASH_FUNC_cat%%].each do |name|
         t = targets(name: "task_create", content: "cat a.txt", env: { name => "x" })
         expect([t.redefines_shell?, t.read_only?]).to eq([true, false]), name
         expect(t.read_only_but_tmp_writes?(root: @repo)).to be(false)
       end
-      t = targets(name: "task_create", content: "cat a.txt", env: { "FOO" => "1", "PATH" => "/usr/bin" })
+      t = targets(name: "task_create", content: "cat a.txt", env: { "FOO" => "1", "PATH" => "/usr/bin",
+                                                                    "GIT_CONFIG_NOSYSTEM" => "1" })
       expect([t.redefines_shell?, t.read_only?]).to eq([false, true])
     end
   end

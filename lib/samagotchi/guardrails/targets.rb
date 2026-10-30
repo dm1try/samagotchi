@@ -46,7 +46,8 @@ module Samagotchi
       # goes, under every shell chi may use or in the programs it runs: a
       # startup file (BASH_ENV, ENV), an exported function (BASH_FUNC_…), a
       # cd search path, word splitting, shell options, a library loaded into
-      # every program, git config or a diff program that runs. A call whose
+      # every program, git config or a diff program that runs (and the rest
+      # of git's config variables: ShellGitDirs::CONFIG_ENV). A call whose
       # env: sets one is never read-only (.redefines_shell?). PATH is not
       # one (the tool's own description suggests it); nor are
       # PROMPT_COMMAND (interactive shells only) and ZDOTDIR (zsh in sh
@@ -250,9 +251,13 @@ module Samagotchi
         {}
       end
 
-      # Whether +env+ sets a SHELL_REDEFINING_ENV variable.
+      # Whether +env+ sets a SHELL_REDEFINING_ENV variable (or a git config
+      # one: ShellGitDirs::CONFIG_ENV).
       def self.redefines_shell?(env)
-        env.each_key.any? { |key| SHELL_REDEFINING_ENV.include?(key) || key.start_with?(SHELL_REDEFINING_PREFIX) }
+        env.each_key.any? do |key|
+          SHELL_REDEFINING_ENV.include?(key) || key.start_with?(SHELL_REDEFINING_PREFIX) ||
+            key.match?(ShellGitDirs::CONFIG_ENV)
+        end
       end
 
       # +path+ (a file tool's, as Tools::ToolPath has it) absolute against

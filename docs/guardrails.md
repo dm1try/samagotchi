@@ -686,7 +686,9 @@ only `run list|view`, `pr list|view|diff|checks`, `issue list|view` and
 at a word's start), an env prefix, `sh -c`, `xargs`, `eval`, `sudo` and the
 like make a command not read-only, as does a `task_create` `env:` that sets `BASH_ENV`, `ENV`, `CDPATH`, `IFS`,
 `SHELLOPTS`, `BASHOPTS`, `BASH_FUNC_…`, `LD_PRELOAD`, `LD_AUDIT`, `DYLD_INSERT_LIBRARIES`, `GIT_EXTERNAL_DIFF`,
-`GIT_CONFIG_PARAMETERS` or `GIT_CONFIG_COUNT` (they change what its words run; `PATH` doesn't count). It errs
+or a git config variable (`GIT_CONFIG`, `GIT_CONFIG_GLOBAL`, `GIT_CONFIG_SYSTEM`, `GIT_CONFIG_PARAMETERS`,
+`GIT_CONFIG_COUNT`, `GIT_CONFIG_KEY_n`/`VALUE_n`: `ShellGitDirs::CONFIG_ENV`) (they change what its words run; `PATH`
+doesn't count; a pair turn's command that assigns a git config variable is denied like `git -c`). It errs
 towards asking.
 
 A tool name may be a glob, so one rule covers a plugin's tools (an MCP server's,

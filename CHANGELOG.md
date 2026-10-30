@@ -49,6 +49,9 @@ and commands may change between minor versions. How releases are made:
 - System 1 no longer auto-allows a command that names the memories folder and then climbs out of it by a script's
   own calls (`python3 -c '…os.chdir(os.pardir)…'`, `ruby -e '…File.dirname(Dir.pwd)…'`) or runs a script it can't
   see (a file, stdin): it could write `config.yml`. You decide those; plain memory edits stay eligible.
+- Guardrails: a `task_create` whose `env:` points git at another config (`GIT_CONFIG_GLOBAL`, `GIT_CONFIG_SYSTEM`,
+  `GIT_CONFIG_KEY_n`/`VALUE_n`) is no longer read-only, and a pair turn's command that sets one is denied like
+  `git -c`.
 
 ## [0.133.0] - 2026-10-30
 

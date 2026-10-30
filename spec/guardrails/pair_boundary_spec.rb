@@ -377,6 +377,18 @@ RSpec.describe Samagotchi::Guardrails::PairBoundary do
       end
     end
 
+    it "denies pointing git at another config through the environment (GIT_CONFIG_GLOBAL, _PARAMETERS, _KEY_n …)" do
+      ["GIT_CONFIG_GLOBAL=./x.cfg git status", "GIT_CONFIG_SYSTEM=x git log", "GIT_CONFIG=x git status",
+       "export GIT_CONFIG_PARAMETERS=\"'core.fsmonitor=id'\"; git status",
+       "env GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=core.fsmonitor GIT_CONFIG_VALUE_0=id git status",
+       "bash -c 'GIT_CONFIG_GLOBAL=x git fetch'"].each do |command|
+        expect(refused(command)).to eq(described_class::GIT_CONFIG), command
+      end
+      ["GIT_CONFIG_NOSYSTEM=1 git status", "GIT_PAGER=cat git log", "echo GIT_CONFIG_GLOBAL"].each do |command|
+        expect(refused(command)).to be_nil, command
+      end
+    end
+
     it "denies writing a submodule's hooks, as the repository's own" do
       [{ name: "write", path: ".git/modules/sub/hooks/pre-commit", content: "x" },
        { name: "write", path: ".git/modules/a/modules/b/hooks/post-checkout", content: "x" }].each do |call|
