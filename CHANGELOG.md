@@ -19,6 +19,14 @@ and commands may change between minor versions. How releases are made:
 - Web: a canceled turn's timing shows in the info bar right away, not at the next unrelated redraw.
 - Web: a sign-in that lapsed behind an auth proxy is reported (the sign-in prompt) by the notification bell and the
   push devices list too.
+- Pair turns: a program is judged by its name in any case, as macOS's disk runs it: `GIT config …`, `CHI share`,
+  `NOHUP`, `PRINTENV` or `Bash -c` are refused like their lower-case names (System 1's memories exemption reads
+  `MAKE` or `RUBY x.rb` the same way). More spellings that hid a command are caught: fish's `--command S` and
+  `-C`/`--init-command S`, `PROMPT_COMMAND` and a `$(…)` kept in a value bash expands later (`PS4='$(…)' bash -x`),
+  the program behind `xcrun`, `arch`, `script`, `builtin`, `uv run`, `pnpm exec`, `bunx` and a wrapper's value option
+  (`env -u X`, `sudo -u root`), the command lines `env -S`, `ssh -o ProxyCommand=`, `hyperfine` and `parallel` run,
+  `php -B/-R/-E`, `perl -de`, `jruby`/`raku`/`julia -e`; and a git config write behind any other runner is refused
+  (`some-runner git config …`). `git add maintenance start` no longer asks you; `git lfs update` does.
 
 ## [0.134.0] - 2026-10-30
 
