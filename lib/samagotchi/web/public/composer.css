@@ -1,7 +1,7 @@
 /* The composer (composer_mount.js): the message box, its image chips, grip and fold, its key hint and its toolbar row
    (the image button, Send). Shared by the owner's page (index.html) and the participant page (participant.html);
    linked after tokens.css and before a page's own <style>, so a page's rules of the same weight win. The owner's
-   own parts stay in index.html: the card's placing (#dock), the delivery line's links, Stop turn, the start page's picker and chips,
+   own parts stay in index.html: the card's placing (#dock), the delivery line's links, the start page's picker and chips,
    the / list, and the 16px text fields for iOS. */
 /* The image button's icon mask (the stroke only shapes the mask; the icon takes currentColor); index.html's phone info
    bar and all view's cards use it too. */
@@ -18,7 +18,7 @@ body.no-glass .composer-card{background:var(--bg-panel);-webkit-backdrop-filter:
 .composer-card-foot{padding:8px 14px 10px;border-top:1px solid var(--glass-border)}
 .composer-line{flex:1 0 100%;min-width:0;height:20px;padding:0 2px;overflow:hidden;font-size:12px;line-height:18px;color:var(--text-muted);user-select:none}
 #composer{display:flex;flex-direction:column;gap:8px;padding:14px 14px 10px}
-#composer .compose-col{flex:1;display:flex;flex-direction:column;gap:6px;min-width:0}
+#composer .compose-col{position:relative;flex:1;display:flex;flex-direction:column;gap:6px;min-width:0}
 #composer.dropping{outline:2px dashed var(--accent);outline-offset:-4px}
 /* In a session the composer is a row: the line's row wraps above the text field and the buttons. */
 body.has-session #composer{flex-wrap:wrap;row-gap:6px}
@@ -66,24 +66,28 @@ body.has-session.composer-folded #composeGrip::after{opacity:1;width:48px;margin
   #composeGrip::after{top:17px;opacity:1}
 }
 #composer textarea::placeholder{color:var(--text-faint)}
-/* Key hint: its line is always reserved, so focusing never shifts the layout. */
-#composeHint{order:1;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:11px;line-height:14px;color:var(--text-faint);padding-left:2px;opacity:0;transition:opacity .12s ease;user-select:none}
-#composer:focus-within #composeHint:not(:empty){opacity:1}
+/* Key hint (the start page's): a second faint line under the placeholder, inside the text box (over it, out of the
+   flow: it never moves the layout), only while the box is focused and empty; typing hides it. Not over image chips. */
+#composeHint{position:absolute;left:2px;right:2px;top:calc(2px + 1.45em * 15 / 11);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:11px;line-height:14px;color:var(--text-faint);opacity:0;transition:opacity .12s ease;pointer-events:none;user-select:none}
+#composer:focus-within #prompt:placeholder-shown ~ #composeHint:not(:empty){opacity:1}
+#composer #chips:not([hidden]) ~ #composeHint{display:none}
 #composer textarea:focus{outline:none}
-/* The toolbar row: model picker · hint · Cancel · Send (the JS display toggles decide what shows). */
+/* The toolbar row, two clusters: the new session's setup (model picker · ⚙ · 🧰 · the override chips) on the left, what
+   is sent (🖼 · Start / Send) on the right; the image button's auto margin is the gap (Send's own when it is hidden). */
 #composer .actions-col{display:flex;flex-direction:row;flex-wrap:wrap;align-items:center;gap:8px}
 #composer .actions-col button{white-space:nowrap;font-size:12px;padding:0 12px;height:28px;min-height:28px;line-height:28px}
-#composer .actions-col .split{order:3;display:flex;gap:4px;margin-left:auto}
+#composer .actions-col .split{order:4;display:flex;gap:4px;margin-left:auto}
+#composer .actions-col .attach-btn:not([hidden]) ~ .split{margin-left:0}
 #composer #actionBtn{min-width:64px;font-weight:600}
 /* The image button (app.js: a click opens #attachInput, the hidden file picker; a phone's offers the camera and the photo library):
    an icon just left of Start / Send, quiet like the model picker; hidden in a session a terminal owns, and on a phone while a turn runs. */
-#composer .actions-col .attach-btn{order:2;flex:none;width:28px;padding:0;border:1px solid transparent;border-radius:8px;background:transparent;color:var(--text-muted)}
+#composer .actions-col .attach-btn{order:3;margin-left:auto;flex:none;width:28px;padding:0;border:1px solid transparent;border-radius:8px;background:transparent;color:var(--text-muted)}
 #composer .actions-col .attach-btn::before{content:"";display:block;width:16px;height:16px;margin:auto;background:currentColor;-webkit-mask:var(--icon-image) center/contain no-repeat;mask:var(--icon-image) center/contain no-repeat}
 #composer .actions-col .attach-btn:hover{filter:none;color:var(--text);background:color-mix(in srgb,var(--bg-hover) 75%,transparent)}
 #composer .actions-col .attach-btn[hidden]{display:none}
-/* An icon button on the row (the start page's ⚙ and 🧰, start_settings.js and start_toolkit.js): quiet like the image button, its icon a mask in --icon; before it (order 2, earlier in the markup).
+/* An icon button on the row (the start page's ⚙ and 🧰, start_settings.js and start_toolkit.js): quiet like the image button, its icon a mask in --icon; right after the model picker (order 1), before the override chips they set (order 2).
    .set: something under it is set, an accent dot on a phone (the override chips say it on a wider row). */
-#composer .actions-col .icon-btn{order:2;position:relative;flex:none;width:28px;padding:0;border:1px solid transparent;border-radius:8px;background:transparent;color:var(--text-muted)}
+#composer .actions-col .icon-btn{order:1;position:relative;flex:none;width:28px;padding:0;border:1px solid transparent;border-radius:8px;background:transparent;color:var(--text-muted)}
 #composer .actions-col .icon-btn::before{content:"";display:block;width:16px;height:16px;margin:auto;background:currentColor;-webkit-mask:var(--icon) center/contain no-repeat;mask:var(--icon) center/contain no-repeat}
 #composer .actions-col .icon-btn:hover{filter:none}
 #composer .actions-col .icon-btn[aria-expanded="true"]{color:var(--text);background:color-mix(in srgb,var(--bg-hover) 75%,transparent)}
@@ -94,7 +98,7 @@ body.has-session.composer-folded #composeGrip::after{opacity:1;width:48px;margin
 @media(max-width:600px){#composer .actions-col .icon-btn.set{color:var(--accent)}#composer .actions-col .icon-btn.set::after{content:"";position:absolute;top:3px;right:3px;width:6px;height:6px;border-radius:50%;background:var(--accent)}}
 @media(pointer:coarse){#composer .actions-col .icon-btn{width:36px;height:36px;min-height:36px}}
 /* In a session the composer is one row: the text field (one line, growing with its text; fitPrompt sets its height)
-   and Cancel · Send at its bottom right. The key hint is in the placeholder there, so its row goes. */
+   and 🖼 · Send at its bottom right. The key hint is in the placeholder there, so the hint line goes. */
 body.has-session #composer{flex-direction:row;align-items:flex-end;padding:10px}
 body.has-session #composer textarea{min-height:0}
 body.has-session #composeHint{display:none}
