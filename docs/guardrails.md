@@ -497,7 +497,10 @@ message:
   `ruby -run -e httpd`, `php -S`, a static server, a script's `listen(`/
   `HTTPServer`/`createServer`): the owner's browser sends its cookies (chi
   web's on 127.0.0.1 or the LAN address, kept for every port) to the page
-  it opens (`PairBoundary::OPENER`, `PairBoundary::LISTENER`);
+  it opens (`PairBoundary::OPENER`, `PairBoundary::LISTENER`). The list
+  names generic servers only: a project's dev server (`npm run dev`, `npx
+  vite`, `bundle exec rails server`) runs and listens until the execute's
+  limit kills it (above);
 - a program whose name the shell expands: a `$var`, a `$(…)` or a glob in a
   command's name (`bin/ch? …`, `e=ch; ${e}i …`, `$CMD x`), whatever it would
   turn out to be (`PairBoundary::VERB`);
