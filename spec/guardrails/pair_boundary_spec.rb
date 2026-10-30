@@ -415,7 +415,7 @@ RSpec.describe Samagotchi::Guardrails::PairBoundary do
       ["xcrun git config user.name", "uv run pytest", "pnpm exec eslint .", "hyperfine 'git status'",
        "watch -n 1 'git status --short'", "env -C docs ls", "ssh -o ProxyCommand=none host ls",
        "docker compose exec app git config user.name", "gh pr create --title 'git config: fix' --body x",
-       "rg 'git config core.fsmonitor id' docs", "cp bin/chi /tmp/x", "env RUBYOPT=-W0 ruby -e 'puts 1'",
+       "rg 'git config core.fsmonitor id' docs", "cp bin/chi build/chi", "env RUBYOPT=-W0 ruby -e 'puts 1'",
        "env NODE_ENV=test npx --version", "rsync -avz -e ssh docs host:b"].each do |command|
         expect(execute(command)).to be_allow, command
       end
