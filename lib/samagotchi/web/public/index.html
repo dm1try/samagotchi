@@ -1331,6 +1331,8 @@ body.has-session.composer-folded #infoBar{border-top-color:transparent}
   #infoBar .meta .children-chip{order:-1}
   /* A chain's ← → links too: the way to the other days. */
   #infoBar .meta .chain-link{order:-1}
+  /* ⚙ too (an icon here): after the model chip a long model name would push it out of sight. */
+  #infoBar .meta .settings-chip{order:-1}
   /* The chips get a second line of their own (only when there are some), scrolling sideways. */
   #infoBar:has(#contextChips:not([hidden])){flex-wrap:wrap;row-gap:4px}
   #contextChips{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none}
