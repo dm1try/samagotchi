@@ -147,7 +147,16 @@ RSpec.describe Samagotchi::SystemOne::SelfProtect do
       %(git push && python3 -c 'p="#{note}"; open(p[:p.rindex("/memories")] + "/config.yml", "a")'),
       %(git push && cd #{mem} && python3 /tmp/climb.py),
       %(git push && cd #{mem} && echo 'import os' | python3),
-      %(git push && cd #{mem} && sh < /tmp/climb.sh)
+      %(git push && cd #{mem} && sh < /tmp/climb.sh),
+      # a shell's -e/-x and python's -x are flags: the pipe is the script
+      %(git push && cd #{mem} && echo Y2QgLi4= | base64 -d | sh -x),
+      %(git push && cd #{mem} && echo 'import os' | python3 -x),
+      %(git push && cd #{mem} && echo 'x' | python3 -c 'exec(input())'),
+      # an interpreter in any version's name, and the programs that run a file
+      %(git push && cd #{mem} && python3.12 /tmp/climb.py), %(git push && cd #{mem} && pypy3 /tmp/climb.py),
+      %(git push && cd #{mem} && Rscript /tmp/climb.R), %(git push && cd #{mem} && tclsh /tmp/climb.tcl),
+      %(git push && cd #{mem} && awk -f /tmp/climb.awk), %(git push && cd #{mem} && make -f /tmp/climb.mk),
+      %(git push && cd #{mem} && deno run /tmp/climb.ts), %(git push && cd #{mem} && npm run x)
     ].each do |command|
       facts = { "rule" => "git-push", "tool" => "execute", "command" => command, "cwd" => Dir.pwd }
       expect(S.refuse?(facts)).to be(true), command

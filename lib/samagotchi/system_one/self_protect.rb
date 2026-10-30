@@ -74,6 +74,11 @@ module Samagotchi
         /\b(?:os\.path|File)\.split\b/, /\[[^\]\[]*:\s*-/
       )
 
+      # Programs that run a script file (theirs or the dir's) by the words
+      # that make them do it ([]: any call): unseen, like a shell's file.
+      FILE_RUNNERS = { /\Ag?make\z/ => [], /\Arake\z/ => [], /\A[gmn]?awk\z/ => %w[-f], /\Adeno\z/ => %w[run task],
+                       /\A(?:npm|yarn|pnpm|bun)\z/ => %w[run run-script test start exec x] }.freeze
+
       # What resolving a command's words found: whether one lands in chi's
       # dirs (outside the memories dir, or in its installed bundles), and
       # whether every word resolved or is data (#plain).
@@ -149,14 +154,16 @@ module Samagotchi
                 tokens.none? { |_, value| value.include?(Guardrails::ShellLex::SUBST) }
         chi = false
         commands = Guardrails::ShellLex.simple_commands(tokens)
+        pipes = Guardrails::ShellLex.piped_flags(tokens)
         envs = targets ? targets.shell_envs : [[Dir.home, ENV]]
         envs.each do |home, env|
+          piped = pipes.dup
           walk = Guardrails::ShellPaths::Walk.new(cwd.to_s.empty? ? Dir.pwd : cwd.to_s, home, env)
           commands.each do |simple|
             # A cd the walk couldn't follow: no later word is data.
             known = !simple.is_a?(Array) || !walk.paths(".").empty?
             runs = simple.is_a?(Array) && runs_script?(simple)
-            plain &&= !unseen_script?(simple)
+            plain &&= !unseen_script?(simple, piped: simple.is_a?(Array) && piped.shift)
             walk.step(simple).each do |word, path|
               next plain &&= known && data?(word) && !(runs && climbs?(word)) unless path
 
@@ -191,10 +198,22 @@ module Samagotchi
         end
       end
 
-      # Whether a simple command's shell or interpreter runs a script chi
-      # can't see: a file it names, or stdin.
-      def unseen_script?(simple)
-        simple.is_a?(Array) && %i[file stdin].include?(Guardrails::PairCommand.script_source(simple))
+      # Whether a simple command runs a script chi can't see: its shell or
+      # interpreter (any version's name: python3.12, pypy3, Rscript, tclsh)
+      # runs a file or stdin, a pipe into it included whatever its options
+      # (Guardrails::PairCommand.script_source), or another program runs a
+      # file of the dir it is in (FILE_RUNNERS: make, awk -f, deno run,
+      # npm run).
+      def unseen_script?(simple, piped: false)
+        return false unless simple.is_a?(Array)
+        return true if %i[file stdin].include?(Guardrails::PairCommand.script_source(simple, piped: piped))
+
+        simple.each_with_index.any? do |word, i|
+          next false if word.include?("\0")
+
+          verbs = FILE_RUNNERS.find { |pattern, _| File.basename(word).match?(pattern) }&.last
+          verbs && (verbs.empty? || simple[(i + 1)..].intersect?(verbs))
+        end
       end
 
       # Whether a script word, its memories text aside, climbs (SCRIPT_CLIMB).
