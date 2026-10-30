@@ -143,11 +143,13 @@ module Samagotchi
       end
 
       # mise's config files (mise.toml, .mise.toml, mise.<env>.toml, .config/mise.toml,
-      # anything under .config/mise/, mise/ or .mise/ config*.toml): mise runs
-      # their [env] at the next worker start (ProjectEnv).
+      # anything under .config/mise/, mise/ or .mise/ config*.toml, and the
+      # .tool-versions it reads too): mise runs their [env] at the next worker
+      # start (ProjectEnv), and installs the tools they pin.
       MISE_CONFIG_PATH = %r{(?:\A|/)(?:\.?mise(?:\.[^/]+)?\.toml|\.config/mise\.toml|\.config/mise/.+|
-                             \.?mise/config[^/]*\.toml)\z}x
-      MISE_CONFIG_TEXT = %r{(?<![\w-])(?:\.?mise(?:\.[\w.-]+)?\.toml|\.config/mise|\.?mise/config[\w.-]*\.toml)}
+                             \.?mise/config[^/]*\.toml|\.tool-versions)\z}x
+      MISE_CONFIG_TEXT = %r{(?<![\w-])(?:\.?mise(?:\.[\w.-]+)?\.toml|\.config/mise|\.?mise/config[\w.-]*\.toml|
+                            \.tool-versions(?![\w.-]))}x
 
       # Whether +path+ is one of mise's config files (MISE_CONFIG_PATH), as
       # given or as it resolves.
@@ -274,11 +276,14 @@ module Samagotchi
         return PairBoundary::CHI_WEB if @web && code.match?(@web)
         return PairBoundary::SECRET if subst && code.match?(PairBoundary::SECRET_TEXT)
 
-        @read_only = ReadOnlyShell.read_only?(@text)
+        read_only = ReadOnlyShell.read_only_parts(tokens)
         walk = ShellPaths::Walk.new(@cwd, @home, ENV)
         ShellLex.simple_commands(tokens).each do |words|
           next walk.step(words) if words.is_a?(Symbol)
 
+          # A path the command names counts as written (mise's config, git's
+          # hooks) unless the part of it holding this command only reads.
+          @read_only = read_only.shift
           reason = words_refusal(words) || scripts_refusal(words) || paths_refusal(words, walk.step(words))
           return reason if reason
         end

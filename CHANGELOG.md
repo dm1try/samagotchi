@@ -11,6 +11,8 @@ and commands may change between minor versions. How releases are made:
 
 - Web: the start page's ⚙ and 🧰 buttons say whether their panel is open (`aria-expanded`) to screen readers.
 - Web: the Stop sheet's "+N more" no longer sits 74 px to the right (it shared a class with the ⚙ panel's row).
+- Pair turns: a read-only mention of mise's config (`find . -name mise.toml && make`) no longer asks the owner; a
+  delete, move or write of it still does, and `.tool-versions` (mise reads it too) is covered the same way.
 
 ## [0.133.0] - 2026-10-30
 

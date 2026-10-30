@@ -396,8 +396,9 @@ mise.toml pins Ruby 3.4 gets that `ruby`, `gem` and `bundle` in its tools while 
 - **Pair turns** (a participant's, see [Participants](internals/participants.md)) run their `execute` without the
   project env. MCP servers are the session's, started once in the project env, so a pair turn's MCP calls do use
   it. A participant's command that runs `mise` or `direnv`, and any write to mise's config (`mise.toml`,
-  `.mise.toml`, `mise.<env>.toml`, `.config/mise.toml`, `.config/mise/…`, `mise/` or `.mise/config*.toml`: your
-  next worker start runs it, and its `[env]` can run commands), asks you first. `.envrc` and mise's local files
+  `.mise.toml`, `mise.<env>.toml`, `.config/mise.toml`, `.config/mise/…`, `mise/` or `.mise/config*.toml`, and
+  `.tool-versions`: your next worker start runs it, and its `[env]` can run commands), a delete or move of one
+  included, asks you first; a read-only mention (`find . -name mise.toml`) doesn't. `.envrc` and mise's local files
   (`mise.local.toml`, `mise.<env>.local.toml`, dotted or not, and `config.local.toml` / `config.<env>.local.toml` in
   `.config/mise/`, `mise/`, `.mise/`) are secrets to them, as `.env` is.
 - **What tools still drop**: every `execute`, task and `!cmd` takes no `RUBYOPT`, `RUBYLIB`, `BUNDLE_GEMFILE`,

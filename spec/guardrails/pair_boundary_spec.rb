@@ -175,6 +175,30 @@ RSpec.describe Samagotchi::Guardrails::PairBoundary do
     expect(verdict_for({ name: "write", path: "docs/mise.md", content: "x" })).not_to be_ask
   end
 
+  it "asks for a command naming mise's config only where that part of it may write (a read-only part never asks)" do
+    ["find . -name mise.toml", "find . -name mise.toml -o -name .tool-versions && bundle exec rspec",
+     "ls mise.toml .tool-versions; make build", "cd docs && find . -name 'mise*.toml' 2>/dev/null | head; npm test",
+     "cat .tool-versions"].each do |command|
+      expect(execute(command)).not_to be_ask, command
+    end
+    ["rm mise.toml", "rm -f .tool-versions", "mv mise.toml old.toml", "find . -name mise.toml -delete",
+     "find . -name mise.toml | xargs rm", "(find . -name mise.toml) | xargs rm", "make build && rm mise.toml",
+     "echo 'ruby 3.4' > .tool-versions", "sed -i '' s/3.3/3.4/ .tool-versions"].each do |command|
+      expect(execute(command).reason).to eq(described_class::MISE_CONFIG), command
+    end
+  end
+
+  it "asks the owner before a write to .tool-versions (mise reads it too), never for a read" do
+    FileUtils.mkdir_p(File.join(project, "sub"))
+    [{ name: "write", path: ".tool-versions", content: "ruby 3.4\n" },
+     { name: "edit", path: File.join(project, "sub", ".tool-versions"), old_str: "a", new_str: "b" }].each do |call|
+      verdict = verdict_for(call)
+      expect([verdict.ask?, verdict.reason, verdict.scopes]).to eq([true, described_class::MISE_CONFIG, ["once"]]), call[:path]
+    end
+    expect(read(".tool-versions")).to be_allow
+    expect(verdict_for({ name: "write", path: "docs/tool-versions.md", content: "x" })).not_to be_ask
+  end
+
   it "denies a symlink that leads to a secret" do
     File.symlink(File.join(home, ".ssh"), File.join(project, "keys"))
     expect(read("keys/id_rsa").reason).to eq(described_class::SECRET)

@@ -105,6 +105,17 @@ RSpec.describe Samagotchi::Guardrails::ReadOnlyShell do
 
   # The child boundary's: writes it can name, each path the block accepts
   # (here: anything under /w), from the dir the command is in by then.
+  describe ".read_only_parts" do
+    def parts(text) = described_class.read_only_parts(Samagotchi::Guardrails::ShellLex.lex(text))
+
+    it "says per simple command whether its part of the list (split at ;, &&, ||, newlines) only reads" do
+      expect(parts("ls x && rm y; cat z\nmake")).to eq([true, false, true, false])
+      expect(parts("find . -name x | xargs rm")).to eq([false, false])
+      expect(parts("(find . -name x) | xargs rm && ls")).to eq([false, false, true])
+      expect(parts("cd a && (ls; rm b)")).to eq([true, false, false])
+    end
+  end
+
   describe ".read_only_but_writes?" do
     def writes?(command, cwd: "/p")
       described_class.read_only_but_writes?(command, cwd: cwd, home: "/h", env: {}) { |path| path.start_with?("/w/") }

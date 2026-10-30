@@ -433,16 +433,20 @@ message:
   project env ([Project env](sessions.md#project-env)); a command that runs
   `mise` or `direnv` asks the owner (`ENV_LOADER`: they load the project's env
   files, and `.envrc`, `mise.local.toml` and its kin are secrets like `.env`),
-  and so does a write (by a file tool or a command) to mise's config
-  (`MISE_CONFIG`: the owner's next worker start runs its `[env]`);
+  and so does a write (by a file tool or a command) to mise's config, its
+  `.tool-versions` included (`MISE_CONFIG`: the owner's next worker start runs
+  its `[env]` and installs what it pins; a command asks when a part of it that
+  names one may write: `rm`, `mv`, `find … -delete` and `find … | xargs rm`
+  do, a read-only part such as `find . -name mise.toml && make` doesn't, the
+  list split at `;`, `&&`, `||` and newlines outside `( … )`);
   and a command still
   running at the limit is killed, never handed over as a background task;
 - git settings that make git run a command (`core.hooksPath`,
   `core.fsmonitor`, `core.sshCommand`, `core.pager`, `core.editor`, a `!`
   alias) by `git config` or `git -c`, and `git config --global`/`--system`;
   and writing git's hooks: a `write` or `edit` of a path in a `.git/hooks`
-  folder (as given or as it resolves), or a command that isn't read-only and
-  names one (`printf … > .git/hooks/pre-commit`, `cp x .git/hooks/`);
+  folder (as given or as it resolves), or a command whose part that names one
+  isn't read-only (`printf … > .git/hooks/pre-commit`, `cp x .git/hooks/`);
 - running chi, by any wrapper (`bin/chi`, `bundle exec chi`, `ruby … bin/chi`,
   `env … chi`, `watch`, `npx`, `sh -c 'chi …'`, `$(chi …)`), in an assignment's
   value or an alias, a function, after `-exec`/`-c`/`-e`, but `chi --version` and

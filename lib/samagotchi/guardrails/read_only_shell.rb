@@ -98,10 +98,42 @@ module Samagotchi
         text = command.to_s
         return false if text.strip.empty?
 
-        commands = split(ShellLex.lex(text)) or return false
-        !commands.empty? && commands.all? { |words| simple_read_only?(words) }
+        tokens_read_only?(ShellLex.lex(text))
       rescue ArgumentError, EncodingError
         false
+      end
+
+      def tokens_read_only?(tokens)
+        commands = split(tokens) or return false
+        !commands.empty? && commands.all? { |words| simple_read_only?(words) }
+      end
+
+      # Operators that end a part of a list (.read_only_parts) outside ( … ).
+      PART_ENDS = ["&&", "||", ";", "\n"].freeze
+
+      # Per simple command of +tokens+ (ShellLex.lex's; the word lists of
+      # ShellLex.simple_commands, in order), whether the part of the list it
+      # is in only reads: the list split at ;, &&, || and newlines outside
+      # ( … ). A pipe or a group keeps its commands in one part, so
+      # `find . -name x | xargs rm` reads as one part that writes.
+      # @return [Array<Boolean>]
+      def read_only_parts(tokens)
+        parts = [[]]
+        depth = 0
+        tokens.each do |token|
+          kind, value = token
+          depth += 1 if kind == :op && value == "("
+          depth -= 1 if kind == :op && value == ")" && depth.positive?
+          next parts << [] if kind == :op && depth.zero? && PART_ENDS.include?(value)
+
+          parts.last << token
+        end
+        parts.flat_map do |part|
+          read_only = tokens_read_only?(part)
+          ShellLex.simple_commands(part).grep(Array).map { read_only }
+        end
+      rescue ArgumentError, EncodingError
+        ShellLex.simple_commands(tokens).grep(Array).map { false }
       end
 
       # Whether the command only reads but for writes whose resolved paths
