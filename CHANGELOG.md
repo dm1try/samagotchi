@@ -7,6 +7,8 @@ and commands may change between minor versions. How releases are made:
 [docs/releasing.md](docs/releasing.md).
 ## [Unreleased]
 
+## [0.136.0] - 2026-10-30
+
 ### Changed
 
 - Web: an unfolded long answer's fold row is the answer's header: it keeps the first line and size, and its bar runs
@@ -29,6 +31,9 @@ and commands may change between minor versions. How releases are made:
 - Web: on a phone, a labelled line in the history (a delegate report, a tui line, a participant's) puts its label
   above the text instead of squeezing the text into a narrow column beside it.
 - Web: a session's recap is the page's last line again: the last turn's check-in notice no longer lands under it.
+
+Update with `chi update`, then restart `chi web` and the session workers (`chi sessions restart`). `chi home doctor`
+says what else to do.
 
 ## [0.135.0] - 2026-10-30
 
@@ -5213,7 +5218,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.135.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.136.0...HEAD
+[0.136.0]: https://github.com/dm1try/samagotchi/compare/v0.135.0...v0.136.0
 [0.135.0]: https://github.com/dm1try/samagotchi/compare/v0.134.0...v0.135.0
 [0.134.0]: https://github.com/dm1try/samagotchi/compare/v0.133.0...v0.134.0
 [0.133.0]: https://github.com/dm1try/samagotchi/compare/v0.132.0...v0.133.0
