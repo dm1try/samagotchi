@@ -19,6 +19,13 @@ and commands may change between minor versions. How releases are made:
 - Guardrails: a file or string check (`test -f x`, `[ -d dir ]`, `[ "$a" = b ]`) counts as read-only, so
   `test -f x && cat x` no longer asks where `cat x` alone wouldn't.
 
+### Removed
+
+- Web: the turn view (`web.view: turn`, `chi web --web-view`, `SAMAGOTCHI_WEB_VIEW`, `?view=`): the stage is the only
+  view; finished turns still show as blocks of steps in the history. A config.yml that still sets `web.view` warns
+  about an unknown key; a chi web started with `--web-view` doesn't come back from an Update restart (start it again
+  without the flag).
+
 ### Fixed
 
 - Web: opening another session clears the previous one's init row, markdown tip and card actions at once; they no

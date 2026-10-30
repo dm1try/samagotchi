@@ -17,7 +17,6 @@
 - `chi web --tunnel tailscale` — the Web UI over https on your tailnet, for your phone anywhere: Tailscale Serve (never Funnel) on this machine's `<machine>.<tailnet>.ts.net` name for this run, the owner your Tailscale login, turned off on exit (see [Tailscale Serve](configuration.md#tailscale-serve-your-tailnet)); `--tunnel` without `web` exits 2
 - `chi web push ls [--format json]`, `chi web push rm ID`, `chi web push test [ID]` — the phones chi web pushes to (see [Phone notifications](configuration.md#phone-notifications-web-push)): list them (short id, label, origin, added, last delivery, done turns, last error; `stale` for one made on another public URL than chi web's now: never sent to), remove one, or send a test notification to ID or to every device not stale. chi web need not run; nothing printed holds a device's push address or keys. A usage error exits 2; a store others can read, a corrupt one, an unknown device or a failed test push exit 1. This machine only: `chi --remote X web push` exits 2
 - `chi web --web-markdown` — opt in to sanitized Markdown rendering for completed assistant messages, the stage's asking text and a resolved question card's reply
-- `chi web --web-view turn` — draw turns with the turn view (each turn as one block of steps, the running one at the bottom of the history) instead of the default stage view (the running turn pinned above the composer); `?view=stage|turn` on the page URL overrides it (see [Web views](#web-views))
 - `chi web --no-web-working-set` — turns the stage view's working set off (on by default; `--web-working-set` turns a config's `web.working_set: false` back on): what each turn brought into the model's context, in the stage and under each finished turn; `?working_set=1|0` on the page URL overrides it (see [The working set](#the-working-set))
 - `chi sessions list|stop|restart|archive|unarchive|delete|prune|clean|stats` — manage persisted sessions; `list` shows this git project's, `list --scope=all` every one, a delegated session with `↳ <parent>`, `list --archived` the archived ones too (see [Sessions](sessions.md)). `stats ID` prints a session's cost, tokens and progress, and its own settings (`--set`; a `settings:` line), from a live worker's `GET stats`, else its saved `analytics.json` (`--format json` one object, with `settings`), without running a model turn. A usage error (an unknown subcommand or flag, a flag missing its value, `stop`, `restart` or `delete` with no ids, a bad `list --format` or `--scope`, a `--days`, `--keep` or `--limit` that isn't a whole number) exits 2; an unknown or refused session exits 1
 - `chi note [--source NAME] [-m TEXT] (ID|PREFIX)... | --all` — add a context note (TEXT or stdin) to sessions: background the model sees on its next turn; it starts no turn (see [Sessions: Context notes](sessions.md#context-notes))
@@ -1059,29 +1058,9 @@ Revise (started by an older chi) disables the button and shows the chip as
 "Revise: restart this session to use Revise"; a message sent then is a plain
 one. A Revise turn that fails comes back into the composer with its chip.
 
-### Web views
+### How the page draws a turn
 
-`web.view` picks how the page draws a turn: `stage` (the default: the
-running turn pinned above the composer, below) or `turn` (each turn as one
-block of steps in the history, the running one at the bottom, below).
-
-```sh
-chi web --web-view turn      # stage is the default
-```
-
-The setting also supports `SAMAGOTCHI_WEB_VIEW=turn` or the global config:
-
-```yaml
-web:
-  view: turn
-```
-
-`?view=stage` or `?view=turn` on the page URL picks the view for that page
-load, whatever the config says; the parameter is dropped when you switch
-between the project and all-sessions views. The terminal UIs are not
-affected.
-
-**The stage view** pins the running turn above the composer, in its own
+**The stage** pins the running turn above the composer, in its own
 card, so it stays on screen without scrolling: a status row (what it is
 doing, the step, the elapsed time), your prompt on one line, the newest
 narration sentence (else the newest thinking one, in italics; click it for
@@ -1100,7 +1079,7 @@ stage's bottom edge takes you to it. Once answered, the model's
 question or its own approval keeps that reply (a delegate's relayed
 approval, a hook's question and the step limit don't): two muted lines
 under its `question → answer` line, the whole text when you open the card,
-in both views and after a reload. The chip at the stage's bottom edge, `N steps · M tool
+live and after a reload. The chip at the stage's bottom edge, `N steps · M tool
 calls` with one tick per call, opens the turn block right above it (newest step first
 while it runs; a tick opens its step). Below the chip, past a dashed rule, wait the
 messages queued for after the turn and the commands queued for its end; they go into
@@ -1116,10 +1095,11 @@ message moves it at once. The history is never scrolled while a turn runs, and o
 follows the hand-off if you were at its end. The `/` command list opens
 over the stage's lower edge.
 
-**The turn view** shows a turn as *one block* where the work
-happens. The running
-generation is the live part at the bottom (its thinking, its narration, its
-tool rows), the earlier ones stack above it collapsed to one line each
+**The turn block** shows a turn's work as *one block*: in the stage's cloud
+while the turn runs (newest step first), in the history after the hand-off
+and on a reload. The running
+generation is the live part on top (its thinking, its narration, its
+tool rows), the earlier ones below it collapsed to one line each
 (their narration's first line, else their first call's title such as
 `edit lib/a.rb`, and a call count), expandable for inspection. A tool row
 says what the call did: a file's path relative to the session's folder, a
@@ -1138,8 +1118,8 @@ first line, so a mid-turn note reads without a click), and each run of steps
 that only called tools or thought sits behind one `· N steps` line that
 shows them; old turns open the same way after a reload. A turn whose steps
 said nothing collapses the block to its summary (`3 steps
-· 8 tool calls · execute ×7 · read ×1`). Either way the answer expands from
-the box into a normal bubble under it (Markdown, annotate). A plain answer
+· 8 tool calls · execute ×7 · read ×1`). Either way the answer is a normal
+bubble under the block (Markdown, annotate). A plain answer
 without tools ends exactly as it does today. Rows the code collapses stay
 as you toggled them. A reloaded session shows the same block
 from the saved messages (each step's thinking, narration, tool parameters
@@ -1152,7 +1132,10 @@ steps saved before that have none, so they show no thinking. An `edit` or
 made (up to 120 lines or 8 KB), live and after a reload (see
 [Guardrails](guardrails.md#ask) for the diff an approval shows first).
 
-**When things happened**, in both views and on a participant's review page: where 10 minutes or
+`web.view`, `chi web --web-view`, `SAMAGOTCHI_WEB_VIEW` and `?view=` were removed with the turn view (the
+stage is the only view; a config.yml that still sets `web.view:` warns about an unknown key).
+
+**When things happened**, on the owner's page and on a participant's review page: where 10 minutes or
 more of quiet passed between the end of one activity and the start of the next (a turn, a context
 note, a reminder), the history has one dim centred line, `── 14:32 · 47 min later ──`; the date is
 added when the day changed or the turn wasn't today (`── Sat 24 Oct 09:10 · 13 h later ──`).
@@ -1169,7 +1152,7 @@ it read, edited or wrote, the memories it read or wrote and the URLs it
 fetched. It is on by default; `web.working_set: false` (or `chi web
 --no-web-working-set`, `SAMAGOTCHI_WEB_WORKING_SET=false`; `?working_set=0` on
 the page URL for one page load, `?working_set=1` back on) turns it off, and the
-session bar shows the `mem N` chip again. The turn view ignores it.
+session bar shows the `mem N` chip again.
 
 - **The rail**, on the right of the stage's live slots: the running turn's set
   in four lines, folded as it grows (files under one folder become
