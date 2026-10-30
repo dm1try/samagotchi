@@ -134,21 +134,34 @@ test("the stage keeps one height while a multi-step turn runs; nothing moves the
   await expect(answers.first()).toBeVisible();
 });
 
+// The page's clock is Playwright's: it runs as a real one until the stage
+// holds the ended turn, then stands still and moves only by runFor, so
+// the dwell and the 1.5 s after leaving are the page's time, not the
+// runner's (the rule's edges: stage_model.test.js handOffDue).
 test("the hand-off waits while the pointer is over the stage, runs about 1.5 s after it leaves; an own send hands off at once", async ({ page, script }) => {
+  await page.clock.install();
+  await page.reload();
   script("turn");
   await send(page, "Check the shell and the README");
   await stageEl(page).hover();
   await expect(stageEl(page)).toHaveAttribute("data-phase", "answered");
-  await page.waitForTimeout(5000); // eslint-disable-line no-restricted-syntax -- the dwell is the behaviour
+  // The in-use watch ticks over the ended turn: then the clock stops.
+  await expect(stageEl(page)).toHaveClass(/\bended\b.*\bin-use\b|\bin-use\b.*\bended\b/);
+  await page.clock.pauseAt(await page.evaluate(() => Date.now() + 1));
+  await page.clock.runFor(5000);
   await expect(stageEl(page)).toBeVisible();
   await expect(stageEl(page).locator(".ts-defer")).toBeVisible();
   await handedOff(page, 0);
+  // Left: still held 1.3 s on, the hand-off (its slide, then the history)
+  // has begun by 1.8 s.
   await page.mouse.move(0, 0);
-  const left = Date.now();
+  await page.clock.runFor(1300);
+  await expect(stageEl(page)).not.toHaveClass(/\bleaving\b/);
+  await handedOff(page, 0);
+  await page.clock.runFor(500);
+  await expect(stageEl(page)).toHaveClass(/\bleaving\b/);
+  await page.clock.resume();
   await handedOff(page, 1);
-  const waited = Date.now() - left;
-  expect(waited).toBeGreaterThan(1200);
-  expect(waited).toBeLessThan(3500);
   await expect(stageEl(page)).toBeHidden();
 
   // Answered and hovered again: sending moves it at once.
