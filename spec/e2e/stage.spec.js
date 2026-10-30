@@ -147,7 +147,10 @@ test("the hand-off waits while the pointer is over the stage, runs about 1.5 s a
   await expect(stageEl(page)).toHaveAttribute("data-phase", "answered");
   // The in-use watch ticks over the ended turn: then the clock stops.
   await expect(stageEl(page)).toHaveClass(/\bended\b.*\bin-use\b|\bin-use\b.*\bended\b/);
-  await page.clock.pauseAt(await page.evaluate(() => Date.now() + 1));
+  // A margin, not +1: the clock still runs until pauseAt lands, and on a
+  // loaded runner +1 ms is already past ("Cannot fast-forward to the
+  // past"). The pointer holds the turn meanwhile, so the margin is free.
+  await page.clock.pauseAt(await page.evaluate(() => Date.now() + 500));
   await page.clock.runFor(5000);
   await expect(stageEl(page)).toBeVisible();
   await expect(stageEl(page).locator(".ts-defer")).toBeVisible();
