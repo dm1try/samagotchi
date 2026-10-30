@@ -7,6 +7,24 @@ and commands may change between minor versions. How releases are made:
 [docs/releasing.md](docs/releasing.md).
 ## [Unreleased]
 
+## [0.139.0] - 2026-10-30
+
+### Added
+
+- Unattended updates (opt-in): `update.auto: install` makes chi web install a new release by itself once no turn runs
+  and no question waits anywhere (one try per release). With `update.restart: idle` (the default) it then restarts
+  workers whose sessions have been idle for 10 minutes, then chi web itself after checking the new chi starts; the
+  phone gets "chi updated to X", or a push saying what failed. See docs/configuration.md (Unattended updates).
+
+### Changed
+
+- A message you send while a turn waits on a delegate (`delegate_result`, `delegate` with wait) ends that wait; the
+  child keeps running and its reply still comes.
+- A message you send while `execute` runs a command hands the command over as a background task after 3 seconds,
+  instead of at its 120 s limit (never in pair turns or `!cmd`).
+
+Update with `chi update`.
+
 ## [0.138.0] - 2026-10-30
 
 ### Changed
@@ -5285,7 +5303,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.138.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.139.0...HEAD
+[0.139.0]: https://github.com/dm1try/samagotchi/compare/v0.138.0...v0.139.0
 [0.138.0]: https://github.com/dm1try/samagotchi/compare/v0.137.0...v0.138.0
 [0.137.0]: https://github.com/dm1try/samagotchi/compare/v0.136.1...v0.137.0
 [0.136.1]: https://github.com/dm1try/samagotchi/compare/v0.136.0...v0.136.1
