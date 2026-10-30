@@ -269,6 +269,14 @@ module Samagotchi
         dir.to_s.empty? ? File.join(@env["HOME"] || Dir.home, ".config") : dir
       end
 
+      # Whether the helper's chi reads this chi's config dir (home.json,
+      # config.yml): false for a run with XDG_CONFIG_HOME elsewhere (a spec,
+      # a smoke run), whose home and bundles the helper never sees, though
+      # its launch file sits under the real ~/Library.
+      def reads_this_config?
+        File.expand_path(launch_config_home) == Paths.config_home(env: @env)
+      end
+
       # The chi version the launch file names, nil without one.
       def launch_version = read_launch["version"]
 

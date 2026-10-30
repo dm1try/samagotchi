@@ -2,6 +2,7 @@
 
 require "spec_helper"
 require "stringio"
+require "json"
 require "tmpdir"
 require "yaml"
 require "samagotchi/update_hint"
@@ -52,6 +53,32 @@ RSpec.describe Samagotchi::UpdateHint do
     allow(helper).to receive(:stale?).and_return(true)
     expect(show).to eq("chi 9.0.0: the desktop helper can be updated: chi update")
     expect(described_class.show(io: io, env: env, version: "9.0.1", helper: nil, shipped_dir: shipped)).to be_nil
+  end
+
+  describe ".default_helper" do
+    let(:launch) { File.join(tmp, "Library", "Application Support", Samagotchi::Desktop::MacOS::APP_NAME, "launch.json") }
+    let(:helper_env) { { "HOME" => tmp, "XDG_CONFIG_HOME" => File.join(tmp, "config") } }
+
+    before { allow(Samagotchi::Desktop).to receive(:supported?).and_return(true) }
+
+    def write_launch(baked)
+      FileUtils.mkdir_p(File.dirname(launch))
+      File.write(launch, JSON.generate({ "argv" => %w[ruby chi], "env" => baked }))
+    end
+
+    it "is the helper whose chi reads this chi's config dir, so an isolated run never hints about another's" do
+      write_launch({ "XDG_CONFIG_HOME" => File.join(tmp, "config") })
+      expect(described_class.default_helper(helper_env)&.launch_path).to eq(launch)
+
+      write_launch({ "XDG_CONFIG_HOME" => File.join(tmp, "elsewhere") })
+      expect(described_class.default_helper(helper_env)).to be_nil
+      write_launch({})
+      expect(described_class.default_helper(helper_env)).to be_nil
+      # No launch file yet: its chi reads ~/.config, the default.
+      FileUtils.rm_f(launch)
+      with_env("HOME" => tmp) { expect(described_class.default_helper({ "HOME" => tmp })).not_to be_nil }
+      expect(described_class.default_helper(helper_env)).to be_nil
+    end
   end
 
   it "is for a person at a terminal running an installed chi" do

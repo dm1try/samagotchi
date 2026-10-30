@@ -15,6 +15,8 @@ and commands may change between minor versions. How releases are made:
   delete, move or write of it still does, and `.tool-versions` (mise reads it too) is covered the same way.
 - `chi home doctor` checks the desktop helper only when the helper's chi reads this chi's config dir: a run with
   `XDG_CONFIG_HOME` elsewhere no longer reports the installed helper against a home it never boots.
+- The new-version hint ("… the desktop helper can be updated: chi update") follows the same rule: a run with
+  `XDG_CONFIG_HOME` elsewhere no longer hints about the installed helper.
 - Toolkit suggestions (`toolkit.suggest.mode: on`): a suggestion that times out or gets no answer from System 1 now
   says so in a notice (the session runs its default kit) and a timeout logs a warning, instead of falling back silently.
 

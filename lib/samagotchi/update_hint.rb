@@ -52,8 +52,13 @@ module Samagotchi
       "chi #{version}: #{parts.join(" and ")} can be updated: chi update"
     end
 
+    # The helper whose chi reads this chi's config dir: an isolated run
+    # (XDG_CONFIG_HOME elsewhere) never hints about the real one.
     def default_helper(env)
-      Desktop.supported? ? Desktop::MacOS.new(env: env) : nil
+      return nil unless Desktop.supported?
+
+      helper = Desktop::MacOS.new(env: env, register: false)
+      helper.reads_this_config? ? helper : nil
     end
   end
 end
