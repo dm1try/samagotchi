@@ -10,6 +10,8 @@ and commands may change between minor versions. How releases are made:
 ### Fixed
 
 - Web: the start page's ⚙ and 🧰 buttons say whether their panel is open (`aria-expanded`) to screen readers.
+- Web: the ⚙ and 🧰 panels keep the keyboard focus while open (Tab wraps inside, `aria-modal`), their override chips
+  say whether the panel is open (`aria-expanded`), and Esc or × gives focus back to the chip that opened it.
 - Web: "default" on the ⚙ panel's Context row now clears a set apply rule and budget too: the chip read "ctx apply
   payoff · budget 64000" while the row showed default, and the new session got them.
 - Web: on a touch screen a tapped row or link in the ⚙ and 🧰 panels (and the ⚙ and 🧰 buttons) no longer keeps its

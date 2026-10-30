@@ -267,7 +267,7 @@ test("the new session's choices: sent with the create, then cleared; opening a s
   assert.equal(p.thinkChip.hidden, true);
 });
 
-test("an override chip opens the panel (the review chip on its view); focus goes back to ⚙ on Esc", async (t) => {
+test("an override chip opens the panel (the review chip on its view), expanded; focus goes back to the chip on Esc", async (t) => {
   const p = page(t, { stored: "qwen" });
   await p.startPage.loadModels();
   p.gear.click();
@@ -276,9 +276,17 @@ test("an override chip opens the panel (the review chip on its view); focus goes
   assert.equal(p.panel().hidden, true);
   p.thinkChip.click();
   assert.equal(p.panel().hidden, false);
+  assert.deepEqual([p.thinkChip.getAttribute("aria-expanded"), p.gear.getAttribute("aria-expanded")], ["true", "true"]);
   assert.equal(document.activeElement.textContent, "medium");
   document.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Escape" }));
   assert.equal(p.panel().hidden, true);
+  assert.deepEqual([p.thinkChip.getAttribute("aria-expanded"), p.gear.getAttribute("aria-expanded")], ["false", "false"]);
+  assert.ok(document.activeElement === p.thinkChip);
+  // A chip cleared meanwhile (hidden): focus goes to ⚙.
+  p.thinkChip.click();
+  p.act("think:default");
+  assert.equal(p.thinkChip.hidden, true);
+  document.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Escape" }));
   assert.ok(document.activeElement === p.gear);
   // The review row: its view, Set returns to the settings with the files chosen.
   p.gear.click();
@@ -364,9 +372,15 @@ test("🧰: a kit picked is sent with the create, its chip and dot show; cleared
   // The chip opens the list again; Auto sends nothing.
   p.kitChip.click();
   assert.equal(p.kitList().hidden, false);
+  assert.equal(p.kitChip.getAttribute("aria-expanded"), "true");
+  document.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Escape" }));
+  assert.ok(document.activeElement === p.kitChip); // back to the opener clicked
+  assert.equal(p.kitChip.getAttribute("aria-expanded"), "false");
+  p.kitChip.click();
   p.kit("auto");
   assert.equal(p.startPage.newChoices().toolkit, undefined);
   assert.equal(p.kitChip.hidden, true);
+  assert.ok(document.activeElement === p.kitBtn); // the chip went: 🧰
   p.kitBtn.click();
   p.kit("full");
   p.startPage.clearChoices();

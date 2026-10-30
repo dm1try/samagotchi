@@ -92,6 +92,7 @@ test("a pick applies at once and keeps the panel open; default unsets it", (t) =
   const p = panel(t);
   p.button.click();
   assert.equal(p.pop.getAttribute("aria-label"), "Session settings");
+  assert.equal(p.pop.getAttribute("aria-modal"), "true"); // Tab stays in it (chip_popover's modal)
   assert.ok(document.activeElement === p.pop.querySelector("[aria-pressed=true]")); // the first row's pressed segment
   p.act("think:low");
   assert.equal(p.state.thinking, "low");

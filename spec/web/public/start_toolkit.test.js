@@ -89,6 +89,7 @@ test("open: focus on the checked row; ↑/↓ move between rows; a pick closes t
   assert.equal(l.pop.hidden, false);
   assert.equal(l.button.getAttribute("aria-expanded"), "true");
   assert.equal(l.pop.getAttribute("aria-label"), "Toolkit");
+  assert.equal(l.pop.getAttribute("aria-modal"), "true");
   assert.ok(document.activeElement === l.row("lean"));
   l.key("ArrowDown");
   assert.ok(document.activeElement === l.row("web"));
