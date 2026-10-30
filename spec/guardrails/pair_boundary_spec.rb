@@ -134,7 +134,9 @@ RSpec.describe Samagotchi::Guardrails::PairBoundary do
 
   it "asks the owner before a command runs mise or direnv (they load the project's env files)" do
     ["mise env", "mise exec -- env", "/opt/homebrew/bin/mise x -- ruby -v", "direnv exec . env", "FOO=1 direnv export bash",
-     "sh -c 'mise env --json'", "timeout 5 mise ls", "find . -name x -exec mise env \\;"].each do |command|
+     "sh -c 'mise env --json'", "timeout 5 mise ls", "find . -name x -exec mise env \\;",
+     # mise's own writes of its config, which name no file (mise.toml, ~/.config/mise/config.toml)
+     "mise use node@20", "mise use -g node@20", "mise set FOO=1", "mise trust"].each do |command|
       verdict = execute(command)
       expect([verdict.ask?, verdict.reason, verdict.scopes]).to eq([true, described_class::ENV_LOADER, ["once"]]), command
       expect(verdict).to be_fresh_ask

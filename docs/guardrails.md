@@ -438,7 +438,10 @@ message:
   its `[env]` and installs what it pins; a command asks when a part of it that
   names one may write: `rm`, `mv`, `find … -delete` and `find … | xargs rm`
   do, a read-only part such as `find . -name mise.toml && make` doesn't, the
-  list split at `;`, `&&`, `||` and newlines outside `( … )`);
+  list split at `;`, `&&`, `||` and newlines outside `( … )`; mise's own
+  writes, `mise use`/`mise set`, ask as runs of mise; a config that changes
+  without being named, by `git checkout`, `git stash pop`, `tar x`, `patch` or
+  `cp -r dir/. .`, isn't asked about: the owner's next restart runs it);
   and a command still
   running at the limit is killed, never handed over as a background task;
 - git settings that make git run a command later, by key family in any case
