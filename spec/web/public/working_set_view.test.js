@@ -35,7 +35,7 @@ test("turnHistoryNodes with the working set: blocks and rows stamped with ordina
   assert.equal(foot.dataset.wsTurn, "0");
   assert.equal(foot.textContent.replace(/\s+/g, " ").trim(), "touched a.rb · ◆ style s1 · b.rb");
   assert.equal(foot.querySelector(".ws-step").dataset.at, "0.0.1");
-  // The turn view (and the flag off): no stamps, no footprint.
+  // The flag off: no stamps, no footprint.
   const plain = document.createElement("div");
   plain.append(turnHistoryNodes(items, timing, { thumbs }));
   assert.equal(plain.querySelectorAll(".ws-foot, [data-turn], [data-at]").length, 0);

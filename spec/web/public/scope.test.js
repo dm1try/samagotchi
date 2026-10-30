@@ -23,13 +23,6 @@ test("projectScopeHref: back to a folder's project view, keeping the hash", () =
   assert.equal(projectScopeHref("/a&b", ""), "/?dir=/a%26b");
 });
 
-test("the scope links keep the page's ?view= and drop its other params", () => {
-  assert.equal(allScopeHref("#/s/abc", null, "?view=turn"), "/?scope=all&view=turn#/s/abc");
-  assert.equal(allScopeHref("", "/u/proj", "?dir=/u/proj&view=stage"), "/?scope=all&from=/u/proj&view=stage");
-  assert.equal(projectScopeHref("/u/proj", "#/sessions", "?from=/x&view=turn"), "/?dir=/u/proj&view=turn#/sessions");
-  assert.equal(projectScopeHref("/u/proj", "", "?from=/x"), "/?dir=/u/proj");
-});
-
 test("cardFolder shows a folder only where the scope doesn't make it obvious", () => {
   assert.equal(cardFolder("/u/p/samagotchi", null), "samagotchi");
   assert.equal(cardFolder("/u/p/samagotchi/", "samagotchi"), "");
@@ -38,20 +31,20 @@ test("cardFolder shows a folder only where the scope doesn't make it obvious", (
 });
 
 test("scopeTemplate: a project's name and its all link; a folder not found; all projects with the way back and where a new session starts, escaped", () => {
-  const where = () => ({ hash: "#/s/abc", search: "?view=turn" });
+  const where = () => ({ hash: "#/s/abc" });
   assert.equal(markupOf(scopeTemplate({ dir: "/p/chi", projectName: "chi", projectDir: "/p/chi" }, { where })),
     '<button id="scopePick" class="scope-name" type="button" aria-haspopup="dialog" title="Sessions of /p/chi">chi</button>' +
-    '<a class="scope-all" href="/?scope=all&amp;from=/p/chi&amp;view=turn#/s/abc" title="Sessions of every project">all</a>');
+    '<a class="scope-all" href="/?scope=all&amp;from=/p/chi#/s/abc" title="Sessions of every project">all</a>');
   assert.match(markupOf(scopeTemplate({ dir: "/nope" }, { error: "no <such> folder", where })),
     /^<button id="scopePick" class="scope-name error" type="button" aria-haspopup="dialog" title="no <such> folder">folder not found<\/button><a class="scope-all"/);
   assert.equal(markupOf(scopeTemplate({ serverDir: "/srv/<x>", backDir: "/p/chi", backName: "chi" }, { where })),
     '<button id="scopePick" class="scope-name" type="button" aria-haspopup="dialog" title="Sessions of every project">all projects</button>' +
-    '<a class="scope-all scope-back" href="/?dir=/p/chi&amp;view=turn#/s/abc" title="Sessions of chi only">← chi</a>' +
+    '<a class="scope-all scope-back" href="/?dir=/p/chi#/s/abc" title="Sessions of chi only">← chi</a>' +
     '<span class="scope-where" title="New sessions start in /srv/<x>">new session in<span class="path"><bdi>/srv/&lt;x&gt;</bdi></span></span>');
 });
 
 test("scopeTemplate: a link clicked takes the hash the page has then; drawn again, the chip keeps its elements and one listener", () => {
-  let at = { hash: "", search: "" };
+  let at = { hash: "" };
   const where = () => at;
   const el = document.createElement("div");
   const scope = { dir: "/p/chi", projectName: "chi", projectDir: "/p/chi" };
@@ -61,7 +54,7 @@ test("scopeTemplate: a link clicked takes the hash the page has then; drawn agai
   render(scopeTemplate(scope, { where }), el);
   assert.ok(el.querySelector("#scopePick") === button);
   assert.ok(el.querySelector(".scope-all") === link);
-  at = { hash: "#/sessions", search: "" };
+  at = { hash: "#/sessions" };
   let hrefs = 0;
   link.addEventListener("click", () => { hrefs += 1; });
   link.dispatchEvent(new window.Event("click", { cancelable: true }));

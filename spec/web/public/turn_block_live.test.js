@@ -8,14 +8,13 @@ import { answerRefsOf } from "../../../lib/samagotchi/web/public/answer_refs.js"
 
 // A live turn block on the stage's seams (stage_view.js): the block in a
 // host (the cloud), the answer in its own slot (a plain turn's block goes),
-// newest step first; no hold (no layout under node).
+// newest step first.
 function liveBlock(opts = {}) {
   const historyEl = document.createElement("div");
   const host = document.createElement("div");
   const answer = document.createElement("div");
   const turnBlock = createTurnBlock({
     historyEl,
-    appendToHistory: (el) => historyEl.appendChild(el),
     isNearBottom: () => false,
     follow: () => {},
     sawText: () => {},
@@ -25,8 +24,6 @@ function liveBlock(opts = {}) {
       if (plain) blockEl.remove();
       answer.append(...pieces);
     },
-    useHold: false,
-    newestFirst: true,
     ...opts,
   });
   return { turnBlock, host, answer };

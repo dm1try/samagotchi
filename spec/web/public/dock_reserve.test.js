@@ -19,21 +19,22 @@ function boxed(el, box) {
   el.getBoundingClientRect = () => ({ top: box.top, height: box.height, bottom: box.top + box.height, left: 0, right: 0, width: 0 });
 }
 
-// +stage+: false for the turn view (no stage). +atEnd+: the reader is at the
+// The stage starts hidden. +atEnd+: the reader is at the
 // history's end.
-function setup({ stage = true, dockH = 144, stageH = 250, atEnd = true, inSession = true, viewportH = 860 } = {}) {
+function setup({ dockH = 144, stageH = 250, atEnd = true, inSession = true, viewportH = 860 } = {}) {
   const win = new Window({ innerHeight: viewportH, innerWidth: 1280 });
   const doc = win.document;
   if (inSession) doc.body.classList.add("has-session");
   const centerEl = doc.createElement("div");
   const historyEl = doc.createElement("div");
   const dockEl = doc.createElement("div");
-  const stageEl = stage ? doc.createElement("section") : null;
+  const stageEl = doc.createElement("section");
   const toastEl = doc.createElement("div");
   const modelPanelEl = doc.createElement("div");
   modelPanelEl.hidden = true;
   centerEl.append(historyEl, dockEl);
-  if (stageEl) { stageEl.hidden = true; dockEl.prepend(stageEl); }
+  stageEl.hidden = true;
+  dockEl.prepend(stageEl);
   doc.body.append(centerEl, toastEl, modelPanelEl);
   sized(dockEl, { offsetHeight: dockH });
   boxed(dockEl, { top: viewportH - dockH, height: dockH });
@@ -57,7 +58,7 @@ function setup({ stage = true, dockH = 144, stageH = 250, atEnd = true, inSessio
 }
 
 test("the reserve is the composer card's height; a reader at the end jumps with it", () => {
-  const { reserve, dockVar, historyEl, eases } = setup({ stage: false });
+  const { reserve, dockVar, historyEl, eases } = setup();
   reserve.updateReserve();
   assert.equal(dockVar(), "144px");
   assert.equal(historyEl.scrollTop, 2000);
@@ -110,7 +111,7 @@ test("a reader scrolled up is left where they are", () => {
 });
 
 test("an eased follow running counts as at the end, and the card's change leaves it to the ease", () => {
-  const { reserve, dockVar, historyEl, eases } = setup({ stage: false, atEnd: false });
+  const { reserve, dockVar, historyEl, eases } = setup({ atEnd: false });
   historyEl.scrollTop = 120;
   historyEl.dataset.following = "";
   reserve.updateReserve();
@@ -120,7 +121,7 @@ test("an eased follow running counts as at the end, and the card's change leaves
 });
 
 test("an unchanged reserve moves nothing", () => {
-  const { reserve, historyEl } = setup({ stage: false });
+  const { reserve, historyEl } = setup();
   reserve.updateReserve();
   historyEl.scrollTop = 500;
   reserve.updateReserve();
@@ -157,7 +158,7 @@ test("the toast sits 12 px above the card, or above the showing stage and the op
 });
 
 test("the reserve's update places the toast too", () => {
-  const { reserve, toastVar } = setup({ stage: false });
+  const { reserve, toastVar } = setup();
   reserve.updateReserve();
   assert.equal(toastVar(), `${144 + 12}px`);
 });

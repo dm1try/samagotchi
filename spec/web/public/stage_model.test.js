@@ -187,7 +187,7 @@ test("placeFor: the stage's extras while a turn is live, else the history; the r
 
 test("placeFor: a line queued for after the turn goes after the running turn (the stage's queued slot), not into it", () => {
   assert.equal(placeFor({ live: true, handingOff: false, kind: "queued" }), "queued");
-  // No turn in the stage (the turn view, or between turns): the history's end, after the turn.
+  // No turn in the stage (between turns): the history's end, after the turn.
   assert.equal(placeFor({ live: false, handingOff: false, kind: "queued" }), "history");
   assert.equal(placeFor({ live: true, handingOff: true, kind: "queued" }), "history");
 });

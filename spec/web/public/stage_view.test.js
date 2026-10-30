@@ -27,7 +27,6 @@ function page({ taskStop = null, renderMarkdown } = {}) {
   const historyEl = document.getElementById("history");
   const view = createStageView({
     historyEl,
-    appendToHistory: (el) => historyEl.appendChild(el),
     isNearBottom: () => false,
     sawText: () => false,
     sessionId: () => "s1",
@@ -675,7 +674,8 @@ function heldLive(view, { waiting, running }) {
   const live = $(view, ".ts-live");
   Object.defineProperty(live, "offsetHeight", { configurable: true, get: () => {
     if (live.style.minHeight) return Math.max(running, parseFloat(live.style.minHeight));
-    return view.root.classList.contains("held-wait") ? waiting : running;
+    const held = view.root.classList.contains("held-wait");
+    return held ? waiting : running;
   } });
   return live;
 }

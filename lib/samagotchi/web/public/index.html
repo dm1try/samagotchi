@@ -57,9 +57,6 @@ main{flex:1;display:flex;flex-direction:column;gap:16px;padding:16px;overflow:au
 /* A generation opens its answer bubble empty: hidden until text streams (the thinking box shows progress meanwhile). */
 .bubble.output.streaming:empty{display:none}
 /* The answer's pop: the promoted bubble is held at the narration box's height (inline max-height, scrolled to its tail) until the rendered markdown lands, then grows to its content while the content fades in; both classes go 400 ms later. */
-.bubble.output.boxed{overflow:hidden;transition:max-height 360ms ease}
-.bubble.output.revealing>:not(.copy-btn){animation:fadeIn 240ms ease}
-@media (prefers-reduced-motion:reduce){.bubble.output.boxed{transition:none}.bubble.output.revealing>:not(.copy-btn){animation:none}}
 /* A long answer folded by hand (answer_fold.js): the row is the bubble's sibling just before it, styled as a closed turn's steps; folded, the bubble is hidden and the row reads its first line and size; unfolded, a slim "▾ N lines" header close above it. */
 .bubble.output.folded{display:none}
 .answer-fold{display:flex;align-items:baseline;gap:0;align-self:flex-start;max-width:100%;min-width:0;margin:0;padding:3px 10px;font:inherit;font-size:12px;font-weight:500;line-height:1.4;color:var(--text-muted);text-align:left;cursor:pointer;user-select:none;background:transparent;border:1px solid transparent;border-left:3px solid var(--accent-strong);border-radius:6px;transition:background .12s ease}
@@ -317,7 +314,7 @@ button.system-one-wrong:hover:not(:disabled){background:var(--bg-hover);color:va
 .bubble.thinking>summary::before{content:"▸ ";color:var(--think)}
 .bubble.thinking[open]>summary::before{content:"▾ "}
 .thinking-body{margin-top:6px;font-size:13px;color:var(--text-3);white-space:pre-wrap;word-break:break-word;font-style:italic;max-height:240px;overflow:auto}
-/* Turn view (web.view: turn, and inside the stage): one block per turn, its steps as collapsed rows, the live one open at the bottom. */
+/* The turn block (the stage's cloud, the history): one block per turn, its steps as collapsed rows, the live one open on top. */
 .turn-work{border:1px solid var(--border);border-left:3px solid var(--accent);border-radius:12px;background:var(--bg-panel);padding:8px 12px;font-size:14px}
 .turn-work>summary{cursor:pointer;color:var(--text-muted);font-size:13px;font-weight:600;user-select:none;list-style:none}
 .turn-work>summary::-webkit-details-marker{display:none}
@@ -707,7 +704,7 @@ body.has-session.fresh-link #composer .actions-col .model-pick:not([hidden]){dis
 #commandList .command-desc{flex:1;min-width:0;font-size:13px;color:var(--text-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #commandList .command-note{font-size:11px;color:var(--text-faint);white-space:nowrap}
 @media(max-width:600px){#commandList{left:6px;width:calc(100% - 12px)}#commandList .command-option{flex-wrap:wrap;row-gap:0;padding:8px 10px}#commandList .command-desc{flex-basis:100%;order:3}}
-/* The stage view (web.view: stage, stage_view.js): the running turn as the dock card's top section, pinned above the composer.
+/* The stage (stage_view.js): the running turn as the dock card's top section, pinned above the composer.
    Fixed slots (status row, prompt line, a two-line headline, the tool row, a one-line trail) never change height while the
    turn runs; cards and rows that arrive meanwhile go in their own capped scroller (extras); the cloud is the turn
    block behind a chip of ticks. --stage-max (stage_view.js fitCap) keeps it inside the session panel. */

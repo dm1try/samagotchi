@@ -80,7 +80,7 @@ function harness({ open = "s1", text = "hello", chips = [], state = {}, running 
       noteDraft: (id) => log.push(`noteDraft ${id}`),
     },
     historyEl,
-    turnDom: {},
+    turnDom: { handOff: () => {}, holds: () => false },
     makeUserBubble: (prompt, opts) => {
       const el = document.createElement("div");
       if (opts.delivery) el.dataset.delivery = opts.delivery;

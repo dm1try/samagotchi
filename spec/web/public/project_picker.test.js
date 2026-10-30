@@ -15,25 +15,25 @@ const other = {
   default: false, current: false,
 };
 
-test("the project picker preserves row order and marks current/default rows with view-only links", () => {
+test("the project picker preserves row order and marks current/default rows with plain links", () => {
   const host = document.createElement("div");
   render(pickerTemplate({
-    rows: [current, other], search: "?dir=/ignored&view=turn", currentDir: current.dir,
+    rows: [current, other], currentDir: current.dir,
   }), host);
   const rows = [...host.querySelectorAll(".project-row:not(.project-all)")];
 
   assert.deepEqual(rows.map((row) => row.querySelector(".project-name").textContent), ["samagotchi", "coffee_assistant"]);
-  assert.equal(rows[0].getAttribute("href"), "/?view=turn");
+  assert.equal(rows[0].getAttribute("href"), "/");
   assert.equal(rows[0].getAttribute("aria-current"), "page");
   assert.match(rows[0].textContent, /default/);
   assert.match(rows[0].textContent, /1 waiting/);
   assert.match(rows[0].textContent, /2 sessions/);
   assert.match(rows[0].textContent, /~\/samagotchi/);
-  assert.equal(rows[1].getAttribute("href"), "/?dir=/work/coffee_assistant&view=turn");
+  assert.equal(rows[1].getAttribute("href"), "/?dir=/work/coffee_assistant");
   assert.equal(rows[1].getAttribute("aria-current"), null);
   assert.match(rows[1].textContent, /3 sessions/);
   assert.equal(host.querySelector("#projectAll").getAttribute("href"),
-    "/?scope=all&from=/home/me/samagotchi/lib&view=turn");
+    "/?scope=all&from=/home/me/samagotchi/lib");
   // The all row's caption is a label, not a path: no .project-root (the monospace path style).
   assert.equal(host.querySelector("#projectAll .project-root"), null);
   assert.equal(host.querySelector("#projectAll .project-hint").textContent, "Every session");
@@ -41,20 +41,20 @@ test("the project picker preserves row order and marks current/default rows with
 
 test("the All projects row is current in the all view and has no hash", () => {
   const host = document.createElement("div");
-  render(pickerTemplate({ rows: [other], search: "?view=stage", allCurrent: true }), host);
+  render(pickerTemplate({ rows: [other], allCurrent: true }), host);
 
   const all = host.querySelector("#projectAll");
-  assert.equal(all.getAttribute("href"), "/?scope=all&view=stage");
+  assert.equal(all.getAttribute("href"), "/?scope=all");
   assert.equal(all.getAttribute("aria-current"), "page");
 });
 
 function openPicker({ scope = { dir: "/home/me/samagotchi/lib" }, api = async () => [current, other],
-                      scopeError = () => null, search = "?view=turn", width = 1000 } = {}) {
+                      scopeError = () => null, width = 1000 } = {}) {
   const el = document.createElement("div");
   el.innerHTML = '<button id="scopePick" type="button">scope</button>';
   document.body.append(el);
   const picker = createProjectPicker({
-    el, scope, scopeError, api, where: () => ({ search }), doc: document,
+    el, scope, scopeError, api, doc: document,
     win: { innerWidth: width, innerHeight: 800 },
   });
   return { el, picker, button: el.querySelector("#scopePick"), done: () => { picker.pop.remove(); el.remove(); } };
@@ -85,7 +85,7 @@ test("a failed request shows one error line and keeps the All projects escape ro
   assert.equal(s.picker.pop.querySelectorAll('[role="alert"]').length, 1);
   assert.match(s.picker.pop.querySelector('[role="alert"]').textContent, /Can't read projects: offline/);
   assert.equal(s.picker.pop.querySelectorAll(".project-row:not(.project-all)").length, 0);
-  assert.equal(s.picker.pop.querySelector("#projectAll").getAttribute("href"), "/?scope=all&view=turn");
+  assert.equal(s.picker.pop.querySelector("#projectAll").getAttribute("href"), "/?scope=all");
   s.done();
 });
 

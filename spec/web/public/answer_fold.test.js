@@ -118,7 +118,7 @@ function bubble(text, { turn = "turn-1", cls = "" } = {}) {
   return el;
 }
 
-test("the page: a long completed answer gets a row just before it; a short, running, held or keyless one none", async () => {
+test("the page: a long completed answer gets a row just before it; a short, running or keyless one none", async () => {
   clearFolds();
   const { history } = page();
   const long = bubble(`# The ticket\n${lines(40)}`);
@@ -132,14 +132,6 @@ test("the page: a long completed answer gets a row just before it; a short, runn
   assert.ok(long.previousElementSibling === rows[0]);
   assert.equal(rows[0].getAttribute("aria-expanded"), "true");
   assert.equal(rows[0].textContent, "41 lines");
-  // The held answer pop ends: its row comes then.
-  const held = bubble(lines(30), { turn: "turn-4", cls: " boxed" });
-  history.append(held);
-  await tick();
-  assert.equal(held.previousElementSibling.className, "bubble output");
-  held.classList.remove("boxed");
-  await tick();
-  assert.ok(held.previousElementSibling.matches(".answer-fold"));
   history.remove();
 });
 
