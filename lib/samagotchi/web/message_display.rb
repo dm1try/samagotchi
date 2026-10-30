@@ -137,8 +137,13 @@ module Samagotchi
           # record by this, not by its place.
           turn_id = m[:turn_id] || m["turn_id"]
           message[:turn_id] = turn_id.to_s if norm_role == "user" && turn_id
-          # The turn it revised (a Revise stack, Engine#stamp_opening).
-          message.merge!(revises_of(m)) if norm_role == "user" && turn_id && !message[:merged]
+          # The turn it revised (a Revise stack, Engine#stamp_opening), and
+          # whether it was a Verify turn (the page offers no Revise on its
+          # answer).
+          if norm_role == "user" && turn_id && !message[:merged]
+            message.merge!(revises_of(m))
+            message[:verify] = true if Samagotchi::VerifyAnchor.from(m[:verify] || m["verify"])
+          end
           # A participant's message names them (the page's author badge).
           if norm_role == "user"
             message.merge!(Samagotchi::Steer.author_fields(m[:author] || m["author"], m[:author_name] || m["author_name"]))

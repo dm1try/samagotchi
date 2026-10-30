@@ -135,6 +135,10 @@ module Samagotchi
         out = { "type" => field(event, :type).to_s, **id_fields(event) }
         verdict = verdict_record(field(event, :verdict), viewer)
         out["verdict"] = verdict if verdict
+        # The turn a completed Revise turn revised (as on its prompt; the
+        # page doesn't draw stacks yet).
+        revises = ReviseAnchor.from(field(event, :revises))
+        out["revises"] = revises.to_file if revises
         out
       end
 

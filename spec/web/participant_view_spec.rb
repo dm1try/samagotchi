@@ -146,6 +146,14 @@ RSpec.describe Samagotchi::Web::ParticipantView do
       )
     end
 
+    it "passes a completed Revise turn's revises stamp, never a malformed one" do
+      v1 = "123e4567-e89b-12d3-a456-426614174000"
+      expect(shown({ type: "turn_completed", turn_id: "t2", revises: { turn_id: v1 } }))
+        .to eq("type" => "turn_completed", "turn_id" => "t2", "revises" => { "turn_id" => v1 })
+      expect(shown({ type: "turn_completed", turn_id: "t3", revises: { turn_id: "t2" } }))
+        .to eq("type" => "turn_completed", "turn_id" => "t3")
+    end
+
     it "filters persisted verdict cards through the same narrow allowlist" do
       records = [{
         anchor: { turn_id: "123e4567-e89b-12d3-a456-426614174000", quote: "claim" },

@@ -1265,6 +1265,17 @@ RSpec.describe Samagotchi::Web::App do
         .to eq([["T1", nil], ["T2", { turn_id: v1 }], ["T3", nil], ["T4", { turn_id: v1 }]])
     end
 
+    it "marks a Verify turn's prompt (verify: true: the page offers no Revise on its answer); never a malformed claim's" do
+      claim = { turn_id: "123e4567-e89b-12d3-a456-426614174000", quote: "the claim" }
+      messages = [{ role: "user", content: "check it", turn_id: "T1", verify: claim },
+                  { role: "user", content: "bad", turn_id: "T2", verify: { turn_id: "x" } },
+                  { role: "user", content: "plain", turn_id: "T3" }]
+
+      shown = build_app(state_dir: Dir.mktmpdir).send(:messages_for_display, messages)
+
+      expect(shown.map { |item| item[:verify] }).to eq([true, nil, nil])
+    end
+
     it "shows a plugin's steer as role steer with its source and the step that answered it, never as a prompt" do
       messages = [{ role: "user", content: "look" },
                   { role: "model", content: "", tool_calls: [{ id: "c1", name: "read" }] },
