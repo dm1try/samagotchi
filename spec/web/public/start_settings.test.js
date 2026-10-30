@@ -69,7 +69,7 @@ test("the panel: rows hidden without the model's values, a choice left over said
 });
 
 // A panel in happy-dom over plain state, ⚙ on the body.
-function panel(t, { thinkingSummary = THINKING, llmSummary = LLM_CONTEXT, choice = {} } = {}) {
+function panel(t, { thinkingSummary = THINKING, llmSummary = LLM_CONTEXT, choice = {}, win = { innerWidth: 1000, innerHeight: 800 } } = {}) {
   const button = document.createElement("button");
   button.id = "gearTest";
   document.body.append(button);
@@ -79,7 +79,7 @@ function panel(t, { thinkingSummary = THINKING, llmSummary = LLM_CONTEXT, choice
     thinking: { summary: () => thinkingSummary, choice: () => state.thinking, choose: (next) => { state.thinking = next; } },
     llmContext: { summary: () => llmSummary, choice: () => state.llmContext, choose: (next) => { state.llmContext = next; } },
     review: { choice: () => state.review, choose: (next) => { state.review = next; } },
-    win: { innerWidth: 1000, innerHeight: 800 },
+    win,
   });
   const pop = [...document.querySelectorAll("#startSettingsPopover")].pop();
   t.after(() => { button.remove(); pop.remove(); });
@@ -202,4 +202,12 @@ test("every class and id the panel draws has its own sset- prefix (the stop shee
   const names = [...p.pop.querySelectorAll("*")].flatMap((node) => [...node.classList, node.id].filter(Boolean));
   assert.ok(names.some((name) => name.startsWith("sset-")));
   assert.deepEqual(names.filter((name) => name.startsWith("ss-")), []);
+});
+
+// With Apply and budget open the panel is ~500 px: a 60 % sheet cut its note.
+test("on a phone the panel is a sheet up to 85 % of the window high", (t) => {
+  const p = panel(t, { win: { innerWidth: 390, innerHeight: 670 } });
+  p.button.click();
+  assert.equal(p.pop.classList.contains("sheet"), true);
+  assert.equal(p.pop.style.maxHeight, "570px");
 });

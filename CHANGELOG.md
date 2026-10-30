@@ -10,6 +10,8 @@ and commands may change between minor versions. How releases are made:
 ### Fixed
 
 - Web: the start page's ⚙ and 🧰 buttons say whether their panel is open (`aria-expanded`) to screen readers.
+- Web: on a phone the ⚙ panel's sheet may take 85 % of the screen, so with "Apply and budget" open its closing note is
+  no longer cut off at the bottom edge.
 - Web: the ⚙ and 🧰 panels keep the keyboard focus while open (Tab wraps inside, `aria-modal`), their override chips
   say whether the panel is open (`aria-expanded`), and Esc or × gives focus back to the chip that opened it.
 - Web: "default" on the ⚙ panel's Context row now clears a set apply rule and budget too: the chip read "ctx apply

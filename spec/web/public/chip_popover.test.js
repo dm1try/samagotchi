@@ -1,7 +1,7 @@
 import "./dom_shim.js";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createChipPopover, popoverPlace, sheetPlace } from "../../../lib/samagotchi/web/public/chip_popover.js";
+import { createChipPopover, popoverPlace, SHEET_TALL, sheetPlace } from "../../../lib/samagotchi/web/public/chip_popover.js";
 import { html, render } from "../../../lib/samagotchi/web/public/vendor/lit-html.js";
 
 test("the popover opens above the chip, below it when the room above is short, capped to the room it has", () => {
@@ -118,8 +118,9 @@ for (const sameEl of [true, false]) {
   });
 }
 
-test("a sheet's place: the window's width less 8 px edges, at its bottom, at most 60 % high", () => {
+test("a sheet's place: the window's width less 8 px edges, at its bottom, at most 60 % high (or the share asked)", () => {
   assert.deepEqual(sheetPlace({ innerWidth: 390, innerHeight: 844 }), { left: 8, bottom: 8, width: 374, maxHeight: 506 });
+  assert.equal(sheetPlace({ innerWidth: 390, innerHeight: 670 }, { share: SHEET_TALL }).maxHeight, 570);
 });
 
 test("open(anchor) from another opener: summary gets the anchor; a click on an opener isn't outside; Esc and × give focus back", () => {
