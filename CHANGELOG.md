@@ -7,6 +7,8 @@ and commands may change between minor versions. How releases are made:
 [docs/releasing.md](docs/releasing.md).
 ## [Unreleased]
 
+## [0.136.1] - 2026-10-30
+
 ### Changed
 
 - Web: collapsibles keep their shape. A steps block, a thinking block, the recap and a long answer's fold are the
@@ -14,6 +16,8 @@ and commands may change between minor versions. How releases are made:
   prefers reduced motion. A closed answer fold is its box's one line, "▸ first line · N lines"; open, the row is the
   box's top edge, "▾ N lines", and no longer repeats the answer's first line above the answer (a delegate report's
   likewise, in the report's tint).
+
+Update with `chi update`, then restart `chi web`. `chi home doctor` says what else to do.
 
 ## [0.136.0] - 2026-10-30
 
@@ -5226,7 +5230,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.136.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.136.1...HEAD
+[0.136.1]: https://github.com/dm1try/samagotchi/compare/v0.136.0...v0.136.1
 [0.136.0]: https://github.com/dm1try/samagotchi/compare/v0.135.0...v0.136.0
 [0.135.0]: https://github.com/dm1try/samagotchi/compare/v0.134.0...v0.135.0
 [0.134.0]: https://github.com/dm1try/samagotchi/compare/v0.133.0...v0.134.0
