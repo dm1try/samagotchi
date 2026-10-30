@@ -568,14 +568,16 @@ RSpec.describe Samagotchi::Guardrails::PairBoundary do
        "python3 -I -m pip install x", "/usr/bin/python3 -m pip install x", "uv pip install --system x",
        "deno install -g x", "dotnet tool install -g x", "corepack enable", "bundle config set --global path x",
        "bundle config set path x", "bundle install --system", "rustup default nightly", "pyenv global 3.12",
-       "code --install-extension x"].each do |command|
+       "code --install-extension x", "git maintenance start", "git maintenance register", "git lfs install",
+       "git-lfs install", "scalar register"].each do |command|
         expect(asks?(command)).to be(true), command
       end
       ["npm install", "npm ci", "npm config get registry", "npm ls -g", "bundle install", "gem list", "brew list",
        "brew info jq", "pipx list", "go build ./...", "cargo build", "uv sync", ".venv/bin/pip install requests",
        ".venv/bin/python -m pip install x", "pip download x -d tmp", "pip install -t vendor x", "launchctl list",
        "defaults read com.apple.dock", "npm install --global=false x", "uv pip install x", "deno install",
-       "bundle config set --local path vendor", "bundle config list", "rustup show", "python3 -m pytest"].each do |command|
+       "bundle config set --local path vendor", "bundle config list", "rustup show", "python3 -m pytest",
+       "git maintenance run", "git lfs ls-files", "git lfs pull"].each do |command|
         expect(execute(command)).to be_allow, command
       end
     end

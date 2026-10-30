@@ -6,10 +6,11 @@ module Samagotchi
     # the command naming where: a global install (npm -g, gem install, brew,
     # cargo/go install, pipx, uv tool), a user config file (npm config set
     # writes ~/.npmrc, gh config set ~/.config/gh, bundle config set), the
-    # system's defaults, a launchd job, a tool manager's global version. A
-    # pair turn's "a write outside the project always asks" counts them as
-    # outside writes (PairCommand#outside_writes?). The table holds
-    # examples, not a closed set: a program it doesn't know runs unasked.
+    # system's defaults, a launchd job, a tool manager's global version, git
+    # maintenance's schedule and git lfs's global filters. A pair turn's "a
+    # write outside the project always asks" counts them as outside writes
+    # (PairCommand#outside_writes?). The table holds examples, not a closed
+    # set: a program it doesn't know runs unasked.
     #
     # pip counts with or without --user: it writes into its interpreter's
     # site-packages, which no word names and which a plain `pip` (the
@@ -58,7 +59,12 @@ module Samagotchi
         "nvm" => [[%w[install uninstall alias unalias]]],
         "code" => [[%w[--install-extension --uninstall-extension]]],
         "gh" => [[%w[auth], %w[login logout refresh setup-git switch]], [%w[config], %w[set]],
-                 [%w[extension extensions ext], %w[install upgrade remove]], [%w[alias], %w[set delete import]]]
+                 [%w[extension extensions ext], %w[install upgrade remove]], [%w[alias], %w[set delete import]]],
+        # the global config and a launchd/cron schedule; git lfs's global filters
+        "git" => [[%w[maintenance], %w[register start unregister stop]], [%w[lfs], %w[install uninstall]]],
+        "git-maintenance" => [[%w[register start unregister stop]]],
+        "git-lfs" => [[%w[install uninstall]]],
+        "scalar" => [[%w[register unregister clone reconfigure delete]]]
       }.freeze
       # program => the verbs (its first argument) that only read: every
       # other one writes outside.

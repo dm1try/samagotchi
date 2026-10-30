@@ -551,7 +551,8 @@ rule lowers it), so it comes even in auto mode. A command fails closed
   install`/`go env -w`, `pipx`, `uv tool`/`uv python install`, `dotnet tool
   install -g`, `corepack enable`, `rustup`/`pyenv`/`rbenv`/`asdf`/`volta`/`nvm`
   installs and globals, `code --install-extension`, `gh auth`/`config
-  set`/`extension install`, `launchctl` but its reading verbs; a project
+  set`/`extension install`, `launchctl` but its reading verbs, `git maintenance register`/`start`, `git
+  lfs install`, `scalar register`/`clone`; a project
   install such as `npm install` or `bundle install` and build caches don't
   count), and no shell or interpreter that reads its script from stdin: one
   on the receiving end of a pipe whatever its options (`… | sh`, `| bash -x`,
