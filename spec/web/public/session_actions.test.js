@@ -5,6 +5,7 @@ import "./dom_shim.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createSessionActions } from "../../../lib/samagotchi/web/public/session_actions.js";
+import { createSessionStore } from "../../../lib/samagotchi/web/public/session_store.js";
 
 function failure(status, code = null, message = "boom", body = null) {
   return Object.assign(new Error(message), { status, code, body });
@@ -16,7 +17,9 @@ function failure(status, code = null, message = "boom", body = null) {
 // stop_sheet.js' sheet (the default opens when there is something, as it does).
 function harness({ list = [{ id: "s1aaaaaaaa" }], open = "s1aaaaaaaa", api = {}, confirms = true, eventsLive = true,
                   displaced = null, holds = [], sheet = null } = {}) {
-  const world = { selected: open, sessions: list, state: { status: "running" } };
+  // world.state reads the page's session store (Stop writes its status there).
+  const store = createSessionStore({ initial: { status: "running" } });
+  const world = { selected: open, sessions: list, get state() { return store.current; } };
   const log = [];
   const calls = [];
   const toasts = [];
@@ -28,7 +31,7 @@ function harness({ list = [{ id: "s1aaaaaaaa" }], open = "s1aaaaaaaa", api = {},
   };
   const actions = createSessionActions({
     selected: () => world.selected,
-    state: () => world.state,
+    store,
     sessions: () => world.sessions,
     setSessions: (next) => { world.sessions = next; },
     api: {

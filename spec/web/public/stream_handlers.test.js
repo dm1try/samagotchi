@@ -3,6 +3,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { createStreamHandlers } from "../../../lib/samagotchi/web/public/stream_handlers.js";
 import { createGapClock } from "../../../lib/samagotchi/web/public/time_gaps.js";
+import { createSessionStore } from "../../../lib/samagotchi/web/public/session_store.js";
 
 const ME = "tab-me";
 
@@ -15,10 +16,16 @@ function fakePage({ selected = "s1", running = false, read = null } = {}) {
     calls.push([name, ...args]);
     return typeof ret === "function" ? ret(...args) : ret;
   };
+  // The page's session store; page.current reads it, and setting it is a
+  // session switch (forgetSession's replaceCurrent).
+  const store = createSessionStore({
+    initial: { model: "qwen", ctxWindow: 1000, llmContext: null, timing: { tokens: null, turnRecords: [] } },
+  });
   const page = {
     calls,
     selected,
-    current: { model: "qwen", ctxWindow: 1000, llmContext: null, timing: { tokens: null, turnRecords: [] } },
+    get current() { return store.current; },
+    set current(fields) { store.replaceCurrent(fields); },
     capabilities: {},
     guess: false,
     composerText: "",
@@ -40,7 +47,7 @@ function fakePage({ selected = "s1", running = false, read = null } = {}) {
   };
   const deps = {
     selected: () => page.selected,
-    state: () => page.current,
+    store,
     clientId: ME,
     capabilities: () => page.capabilities,
     historyEl,

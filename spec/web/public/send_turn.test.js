@@ -8,6 +8,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { createSendTurn } from "../../../lib/samagotchi/web/public/send_turn.js";
 import { routeComposerLine } from "../../../lib/samagotchi/web/public/composer.js";
+import { createSessionStore } from "../../../lib/samagotchi/web/public/session_store.js";
 
 function failure(code, message = "boom", body = null) {
   return Object.assign(new Error(message), { status: 409, code, body });
@@ -17,7 +18,14 @@ function failure(code, message = "boom", body = null) {
 function harness({ open = "s1", text = "hello", chips = [], state = {}, running = false, pendingPick = null, reviewSubjects = null,
                    verify = null, toolkitPicked = false, sendTurn = async () => ({ enqueued_id: "e1" }),
                    createIdleSession = async () => ({ id: "new1" }) } = {}) {
-  const world = { selected: open, state: { owner: "worker", commands: [], firstPreview: "first", ...state }, chips };
+  // world.state reads the page's session store; setting it is a session
+  // switch (forgetSession's replaceCurrent).
+  const store = createSessionStore({ initial: { owner: "worker", commands: [], firstPreview: "first", ...state } });
+  const world = {
+    selected: open, chips,
+    get state() { return store.current; },
+    set state(fields) { store.replaceCurrent(fields); },
+  };
   const log = [];
   const calls = [];
   const toasts = [];
@@ -30,7 +38,7 @@ function harness({ open = "s1", text = "hello", chips = [], state = {}, running 
   let cleared = 0;
   const sendTurnApi = createSendTurn({
     session: () => world.selected,
-    state: () => world.state,
+    store,
     running: () => running,
     clientId: "web:t1",
     sentIds,
