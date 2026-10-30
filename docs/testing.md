@@ -22,7 +22,7 @@ with two rules only, `no-undef` (a name used but never imported or declared: a d
 style pass: add a rule only for a bug class it would have caught. It runs in about 2 s, in CI's `npm test` job and in
 `rake release:check`; `rake lint` stays RuboCop alone (CI's rubocop job has no node). A name that is also a browser
 global (`name`, `status`, `open`…) passes even when its import is gone: give an export such a name only with care.
-It also checks `spec/e2e/` for one thing, the Playwright twin of `Samagotchi/SpecSleep`: no `page.waitForTimeout`.
+It also checks `spec/e2e/` for two things: `no-unused-vars`, and the Playwright twin of `Samagotchi/SpecSleep`: no `page.waitForTimeout`.
 Wait for the state (a locator's `expect`, `data-phase`, an animation's end through `waitForFunction`); time the page
 keeps (a pointer's dwell, a hold) runs on Playwright's `page.clock` (`install`, then `pauseAt` and `runFor`: the
 stage's hand-off dwell in stage.spec.js); a pause that is the behaviour outside the page (a slow post held in a
