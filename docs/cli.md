@@ -585,7 +585,7 @@ list --archived` shows them too, marked `[archived]` (`archived: true` in
 `--format json`); `chi sessions unarchive ID...` brings them back, and so does
 a message you send to one (the web, an attached terminal, `chi send`), but not
 a delegate's follow-up or a reminder. The web archives from the info bar
-(`archive`, before `stop`); "include archived" by the all-sessions search
+(`archive`, before `stop`); the `archived` toggle by the all-sessions search
 finds archived sessions. `/archive` in a terminal leaves the session and
 archives it (an empty session is discarded instead; `chi scratch` refuses
 it). See
