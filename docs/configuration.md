@@ -1408,7 +1408,7 @@ fails (a launch can't boot what it should), 0 otherwise. Run it in a project fol
 |---|---|---|
 | the home | `fail`: its Ruby is gone (a Ruby upgrade) or has no samagotchi | `gem install samagotchi` with the new Ruby, then `chi home set` from it |
 | this chi | `warn`: the chi you ran is another Ruby's, or another version, than the home's (`ok` for a source checkout, which starts its own code) | `chi home set` to make this one the home, or run the home's |
-| the desktop helper | `fail`: its launch file's Ruby or chi is gone; `warn`: it runs `[ruby, chi]` (installed before the home), boots the home as it was before a `chi home set`, or sets `GEM_HOME`/`GEM_PATH` | `chi desktop install --force` / `chi desktop upgrade` |
+| the desktop helper (when installed, and its chi reads this chi's config dir: none with `XDG_CONFIG_HOME` elsewhere) | `fail`: its launch file's Ruby or chi is gone; `warn`: it runs `[ruby, chi]` (installed before the home), boots the home as it was before a `chi home set`, or sets `GEM_HOME`/`GEM_PATH` | `chi desktop install --force` / `chi desktop upgrade` |
 | sessions | `warn`: sessions last saved by a newer chi than the home's (their workers run without what it added) | `chi update` |
 | the tools' `chi` | `warn`: `$XDG_STATE_HOME/samagotchi/bin/chi` boots another chi than the home | the next worker start rewrites it (`chi sessions restart ID` for a running session) |
 | this project's Gemfile.lock | `warn`: the nearest Gemfile.lock up to the git root bundles samagotchi (`bundle exec chi` isn't supported) | `bundle remove samagotchi` there; run chi itself |

@@ -13,6 +13,8 @@ and commands may change between minor versions. How releases are made:
 - Web: the Stop sheet's "+N more" no longer sits 74 px to the right (it shared a class with the ⚙ panel's row).
 - Pair turns: a read-only mention of mise's config (`find . -name mise.toml && make`) no longer asks the owner; a
   delete, move or write of it still does, and `.tool-versions` (mise reads it too) is covered the same way.
+- `chi home doctor` checks the desktop helper only when the helper's chi reads this chi's config dir: a run with
+  `XDG_CONFIG_HOME` elsewhere no longer reports the installed helper against a home it never boots.
 
 ## [0.133.0] - 2026-10-30
 

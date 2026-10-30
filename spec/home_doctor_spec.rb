@@ -96,6 +96,31 @@ RSpec.describe Samagotchi::HomeDoctor do
     end
   end
 
+  describe ".default_helper" do
+    let(:launch) { File.join(tmp, "Library", "Application Support", Samagotchi::Desktop::MacOS::APP_NAME, "launch.json") }
+    let(:env) { { "HOME" => tmp, "XDG_CONFIG_HOME" => File.join(tmp, "config") } }
+
+    before { allow(Samagotchi::Desktop).to receive(:supported?).and_return(true) }
+
+    def write_launch(baked)
+      FileUtils.mkdir_p(File.dirname(launch))
+      File.write(launch, JSON.generate({ "argv" => [ruby, "chi"], "env" => baked }))
+    end
+
+    it "is the installed helper whose chi reads this chi's config dir (home.json's), else none" do
+      expect(described_class.default_helper(env: env)).to be_nil
+
+      write_launch({ "XDG_CONFIG_HOME" => File.join(tmp, "config") })
+      expect(described_class.default_helper(env: env)&.launch_path).to eq(launch)
+
+      write_launch({ "XDG_CONFIG_HOME" => File.join(tmp, "elsewhere") })
+      expect(described_class.default_helper(env: env)).to be_nil
+      write_launch({})
+      expect(described_class.default_helper(env: env)).to be_nil
+      with_env("HOME" => tmp) { expect(described_class.default_helper(env: { "HOME" => tmp })&.launch_path).to eq(launch) }
+    end
+  end
+
   context "with sessions saved by a newer chi" do
     let(:sessions) do
       %w[1.2.3 1.3.0 1.4.0 junk].map { |v| instance_double(Samagotchi::Session, written_by: v) } +

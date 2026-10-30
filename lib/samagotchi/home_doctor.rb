@@ -57,12 +57,16 @@ module Samagotchi
     end
 
     # The desktop helper chi home doctor checks: this machine's, when it
-    # is installed.
+    # is installed and its chi reads this chi's config dir (home.json's):
+    # a run with XDG_CONFIG_HOME elsewhere (a spec, a smoke run) has a home
+    # the helper never boots.
     def self.default_helper(env: ENV)
       return nil unless Desktop.supported?
 
       helper = Desktop::MacOS.new(env: env, register: false)
-      File.file?(helper.launch_path) ? helper : nil
+      return nil unless File.file?(helper.launch_path)
+
+      File.expand_path(helper.launch_config_home) == Paths.config_home(env: env) ? helper : nil
     end
 
     private

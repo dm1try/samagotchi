@@ -259,6 +259,16 @@ module Samagotchi
         "the desktop helper's launch file sets #{baked.join(", ")} for its sessions' tools: chi desktop upgrade"
       end
 
+      # The config dir the helper's chi reads (its home.json, config.yml):
+      # the launch file's XDG_CONFIG_HOME when baked, else ~/.config.
+      # @return [String]
+      def launch_config_home
+        baked = read_launch["env"]
+        dir = baked["XDG_CONFIG_HOME"] if baked.is_a?(Hash)
+        # Spelled out: Paths.config_home's ~ is this process's HOME, not @env's.
+        dir.to_s.empty? ? File.join(@env["HOME"] || Dir.home, ".config") : dir
+      end
+
       # The chi version the launch file names, nil without one.
       def launch_version = read_launch["version"]
 
@@ -316,10 +326,7 @@ module Samagotchi
       # reads: the launch file's XDG_CONFIG_HOME when baked; disabled hosts
       # are left out. @return [Array<Hash>] name:, hosts:, state:
       def host_keys
-        baked = read_launch["env"]
-        dir = baked["XDG_CONFIG_HOME"] if baked.is_a?(Hash)
-        # Spelled out: Paths.config_home's ~ is this process's HOME, not @env's.
-        config_env = { "XDG_CONFIG_HOME" => dir.to_s.empty? ? File.join(@env["HOME"] || Dir.home, ".config") : dir }
+        config_env = { "XDG_CONFIG_HOME" => launch_config_home }
         hosts = ConfigFile.hosts_config(env: config_env).values.select(&:api_key_env).group_by(&:api_key_env)
         hosts.map do |name, entries|
           state = if HostKeys.from_keychain(name, env: @env) then :keychain
