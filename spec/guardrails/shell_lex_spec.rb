@@ -32,6 +32,7 @@ RSpec.describe Samagotchi::Guardrails::ShellLex do
       .to eq(%w[git git sh sh python3 rscript])
     expect(described_class.program?("/opt/homebrew/bin/GIT", "git")).to be(true)
     expect(described_class.program?("x#{subst}", "git")).to be(false)
+    expect(described_class.program?("#{subst}/GIT", "git")).to be(true)
     expect(described_class.program_name("\xff".b)).to eq("\xff".b)
   end
 

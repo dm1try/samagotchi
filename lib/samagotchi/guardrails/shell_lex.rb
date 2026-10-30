@@ -50,10 +50,15 @@ module Samagotchi
         name.valid_encoding? ? name.downcase(:fold) : name
       end
 
-      # Whether +word+ runs the program +name+ (.program_name), false for a
-      # word with a NUL.
+      # Whether +word+ runs the program +name+ (.program_name). A word with a
+      # NUL (a SUBST: "$(dirname $(which git))/git") by what follows its last
+      # `/`, folded the same way: no `/`, no name.
       def self.program?(word, name)
-        !word.to_s.include?("\0") && program_name(word) == name
+        word = word.to_s
+        return program_name(word) == name unless word.include?("\0")
+
+        last = word[%r{/([^/]*)\z}, 1] or return false
+        (last.valid_encoding? ? last.downcase(:fold) : last) == name
       end
 
       # Whether +text+ ends inside a quote, a $(…) or a heredoc: its tokens

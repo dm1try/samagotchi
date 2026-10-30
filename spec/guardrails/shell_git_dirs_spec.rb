@@ -103,6 +103,8 @@ RSpec.describe Samagotchi::Guardrails::ShellGitDirs do
     it "treats nested $(…) as one opaque word" do
       expect(dirs("cd $(dirname $(pwd)) && git add .")).to eq([:unknown])
       expect(dirs("echo $(cd /p/main && git commit) && git add .")).to eq(["/p/wt"])
+      # a git named by a path after a $(…), in any case
+      expect(dirs("\"$(dirname $(which git))/GIT\" -C /p/main commit -m x")).to eq(["/p/main"])
     end
 
     it "keeps backslash escapes and quoted spaces in a word" do
