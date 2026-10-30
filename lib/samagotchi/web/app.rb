@@ -4,8 +4,6 @@ require "cgi/escape" # CGI.escapeHTML; Ruby 4.0 ships only cgi/escape
 require "digest"
 require "fileutils"
 require "json"
-require "open3"
-require "rbconfig"
 require "rubygems/version"
 require "time"
 require "uri"
@@ -76,6 +74,7 @@ require_relative "session_control"
 require_relative "verify_fresh_routes"
 require_relative "push_routes"
 require_relative "update_check"
+require_relative "update_ops"
 require_relative "proxy_gate"
 require_relative "../log"
 require_relative "../paths"
@@ -130,7 +129,13 @@ module Samagotchi
       # A callable the event loops ask whether the server still runs;
       # Server.start points it at WEBrick's status once it has the server.
       attr_writer :server_running
-      attr_writer :restart_web
+      # The update operations the routes ask for (Server.start hands the same to AutoUpdate).
+      attr_reader :update_ops
+
+      # Set by Server.start: how chi web restarts itself (UpdateOps#restart_web=).
+      def restart_web=(restarter)
+        @update_ops.restart_web = restarter
+      end
 
       # @param bridge_wait_timeout [Float] bounded seconds to wait for a
       #   freshly-spawned worker's bridge before answering POST /api/sessions.
@@ -165,6 +170,8 @@ module Samagotchi
       #   nil: off (no https public_url, or web.push.enabled false)
       # @param start_dir [String] the folder chi web starts in (StartDir):
       #   where a new session without a dir starts (nil: the cwd)
+      # @param update_ops [UpdateOps, nil] the update operations (nil: built
+      #   from +update_runner+ and +update_blocked+, the specs' seams)
       def initialize(manager: nil, session_class: nil, state_dir: nil, public_dir: nil,
                      bridge_wait_timeout: BRIDGE_WAIT_TIMEOUT, markdown: false, hub: nil,
                      annotate_presets: Config::BY_KEY["web.annotate_presets"].default,
@@ -173,7 +180,7 @@ module Samagotchi
                      registry: nil, models_wait_timeout: MODELS_WAIT_TIMEOUT, lan: nil,
                      working_set: Config::BY_KEY["web.working_set"].default, wait_poll_interval: ReplyWait::POLL_INTERVAL,
                      grants: nil, public_url: nil, public_token: nil, push: nil, start_dir: nil, update_runner: nil,
-                     update_blocked: nil)
+                     update_blocked: nil, update_ops: nil)
         @start_dir = start_dir
         @manager = manager || SessionManager
         @registry = registry
@@ -198,10 +205,8 @@ module Samagotchi
         @refused_logged = {}
         @wait_poll_interval = wait_poll_interval
         @push = push
-        @update_mutex = Mutex.new
-        @update_running = false
-        @update_runner = update_runner || method(:run_update_command)
-        @update_blocked = update_blocked || -> { UpdateCheck.blocked_reason }
+        @update_ops = update_ops || UpdateOps.new(hub: hub, manager: @manager, state_dir: state_dir,
+                                                  runner: update_runner, blocked: update_blocked)
         init_participant_access(grants, state_dir)
         init_proxy_gate(public_url, public_token)
       end
@@ -734,169 +739,36 @@ module Samagotchi
         end
 
         # Found out here, not from the hub: UpdateCheck (off with update.notify: off) is what tells it.
-        blocked = @update_blocked.call
+        blocked = @update_ops.blocked_reason
         return json_response(409, { error: "update_blocked", reason: blocked }) if blocked
 
-        already_running = @update_mutex.synchronize do
-          if @update_running
-            true
-          else
-            @update_running = true
-            false
-          end
-        end
-        return error_response(409, "update_running", UPDATE_RUNNING) if already_running
-
-        @hub.publish_update(state: "running", rows: [], operation: "install", version: version)
-        Thread.new { perform_update(version) }
-        json_response(202, { state: "running", version: version })
-      rescue ThreadError => e
-        @update_mutex.synchronize { @update_running = false }
-        Log.warn(:web, "update_start_failed", error: e.class.name, msg: e.message)
-        @hub&.publish_update(state: "failed", rows: [
-          { "component" => "chi update", "status" => "failed (couldn't start update)", "failed" => true, "kept" => [] }
-        ], operation: "install")
-        error_response(503, "update_start_failed", "couldn't start chi update")
-      end
-
-      # The chi update child: with a chi home, the home's chi (its gem dirs
-      # are what new workers activate); else this Ruby and the wrapper.
-      def update_argv(version, home: ChiHome.current)
-        args = ["update", "--to", version, "--no-desktop", "--json"]
-        return home.boot_argv(run: ChiHome::CHI_BOOT) + ["--", *args] if home
-
-        [RbConfig.ruby, InstalledGem.wrapper, *args]
-      end
-
-      def perform_update(version)
-        argv = update_argv(version)
-        said = nil
-        output, success = @update_runner.call(argv, env: ChildEnv.unbundled,
-                                              progress: lambda { |line|
-                                                said = line unless line.strip.empty?
-                                                @hub.publish_update(state: "running", rows: [], progress: line,
-                                                                    operation: "install", version: version)
-                                              })
-        rows = update_rows(output)
-        # No rows (a usage error, a refusal): what the child said is the reason.
-        raise UpdateFailed, said || output.lines.map(&:strip).find { |line| !line.empty? } || "chi update printed no rows" unless rows
-
-        # The installed version as of now (the hub's own look is up to a probe interval old), before "done".
-        @hub.refresh_installed if success
-        @hub.publish_update(state: success ? "done" : "failed", rows: rows, operation: "install", version: version)
-      rescue StandardError => e
-        Log.exception(:web, "update_failed", e)
-        @hub.publish_update(state: "failed", rows: [
-          { "component" => "chi update", "status" => "failed (#{e.message.lines.first.to_s.strip})",
-            "failed" => true, "kept" => [] }
-        ], operation: "install", version: version)
-      ensure
-        @update_mutex.synchronize { @update_running = false }
-      end
-
-      # chi update's own words when it printed no rows.
-      class UpdateFailed < StandardError; end
-
-      # chi update --json's rows, or nil when it printed none.
-      def update_rows(output)
-        rows = JSON.parse(output)
-        rows if rows.is_a?(Array) && rows.all?(Hash)
-      rescue JSON::ParserError
-        nil
-      end
-
-      def run_update_command(argv, env:, progress:)
-        Open3.popen3(env, *argv) do |stdin, stdout, stderr, wait_thread|
-          stdin.close
-          stderr_thread = Thread.new { stderr.each_line { |line| progress.call(line.chomp) } }
-          output = stdout.read
-          stderr_thread.value
-          [output, wait_thread.value.success?]
+        case @update_ops.install(version)
+        when :busy then error_response(409, "update_running", UPDATE_RUNNING)
+        when :start_failed then error_response(503, "update_start_failed", "couldn't start chi update")
+        else json_response(202, { state: "running", version: version })
         end
       end
 
       def handle_restart_workers(_req)
         return error_response(503, "no_hub", "this chi web has no session hub") unless @hub
 
-        already_running = @update_mutex.synchronize do
-          if @update_running
-            true
-          else
-            @update_running = true
-            false
-          end
+        case @update_ops.restart_workers
+        when :busy then error_response(409, "update_running", UPDATE_RUNNING)
+        when :start_failed then error_response(503, "restart_start_failed", "couldn't start worker restarts")
+        else json_response(202, { state: "running" })
         end
-        return error_response(409, "update_running", UPDATE_RUNNING) if already_running
-
-        @hub.publish_update(state: "running", rows: [], operation: "workers")
-        Thread.new { perform_worker_restarts }
-        json_response(202, { state: "running" })
-      rescue ThreadError => e
-        @update_mutex.synchronize { @update_running = false }
-        Log.warn(:web, "worker_restart_start_failed", error: e.class.name, msg: e.message)
-        @hub&.publish_update(state: "failed", rows: [
-          { "state" => "failed", "reason" => "couldn't start worker restarts" }
-        ], operation: "workers")
-        error_response(503, "restart_start_failed", "couldn't start worker restarts")
       end
 
-      def perform_worker_restarts
-        # Installed now: the hub's own look is up to a full probe old (nil right after chi web started).
-        target = @hub.refresh_installed || VERSION
-        rows = []
-        LiveVersions.stale_workers(target, state_dir: default_state_dir).each do |worker|
-          row = begin
-            restarted = @manager.restart_session(worker.session_id, state_dir: @state_dir, client_id: ClientId::WEB_RESTART)
-            @hub.touch(worker.session_id)
-            { "session_id" => restarted.session_id, "state" => "restarted", "from_version" => restarted.from_version,
-              "version" => restarted.version }
-          rescue SessionManager::RestartRefused => e
-            # detail: the refusal's own words (RestartRefused.words), the reason code for clients.
-            { "session_id" => worker.session_id, "state" => "refused", "reason" => e.reason.to_s,
-              "detail" => e.message, "holds" => e.holds.map(&:to_s) }
-          rescue SessionManager::OwnedByTUI => e
-            { "session_id" => worker.session_id, "state" => "owned_by_tui", "detail" => e.message }
-          rescue StandardError => e
-            Log.exception(:web, "worker_restart_failed", e, sid: worker.session_id)
-            { "session_id" => worker.session_id, "state" => "failed", "reason" => e.class.name, "detail" => e.message }
-          end
-          rows << row
-          @hub.publish_update(state: "running", rows: rows.dup, operation: "workers")
-        end
-        state = rows.any? { |row| row["state"] == "failed" } ? "failed" : "done"
-        @hub.publish_update(state: state, rows: rows, operation: "workers")
-      rescue StandardError => e
-        Log.exception(:web, "worker_restart_failed", e)
-        @hub.publish_update(state: "failed", rows: [
-          { "state" => "failed", "reason" => e.class.name, "detail" => e.message }
-        ], operation: "workers")
-      ensure
-        @update_mutex.synchronize { @update_running = false }
-      end
-
-      # The exec replaces this process: an update's chi update child (its
-      # pipes read here) or a worker restart pass would die mid-way, so
-      # neither may run, and none starts once the restart is asked for.
       def handle_restart_web(_req)
-        return error_response(503, "restart_unavailable", "chi web cannot restart itself in this process") unless @restart_web
-
-        busy = @update_mutex.synchronize do
-          next true if @update_running
-
-          @update_running = true # held for good once restarting: the exec ends this process
-          false
-        end
-        return error_response(409, "update_running", UPDATE_RUNNING) if busy
-
-        case @restart_web.call
-        when true then return json_response(202, { state: "restarting" })
+        case @update_ops.restart_web
+        when :unavailable then error_response(503, "restart_unavailable", "chi web cannot restart itself in this process")
+        when :busy then error_response(409, "update_running", UPDATE_RUNNING)
+        when :started then json_response(202, { state: "restarting" })
         when :no_wrapper
-          refusal = error_response(409, "restart_unavailable", "no chi wrapper to restart into (installed with --bindir?); " \
-                                                               "restart chi web in its terminal")
-        else refusal = error_response(409, "restart_requested", "chi web is already restarting")
+          error_response(409, "restart_unavailable", "no chi wrapper to restart into (installed with --bindir?); " \
+                                                     "restart chi web in its terminal")
+        else error_response(409, "restart_requested", "chi web is already restarting")
         end
-        @update_mutex.synchronize { @update_running = false }
-        refusal
       end
 
       def unauthorized(req)
