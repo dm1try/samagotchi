@@ -462,7 +462,7 @@ of UIs at once: the Web UI and attached terminals (`chi`, `--resume`,
 `--attach`). They all see the same turns as they happen, and any of them can send
 a prompt, also while a turn runs (it merges into that turn as steering: the model
 is told it is a steer and who sent it). Steering waits for the model's next step
-and cuts nothing; a `task_wait` the model is blocked in ends early for it (the task keeps running). `/cut TEXT` in a terminal or the web composer (or `chi send --cut`) asks for a cut:
+and cuts nothing; a `task_wait` or `delegate_result` the model is blocked in ends early for it (the task or child keeps running), and a running `execute` command moves to a background task once it has run 3 s. `/cut TEXT` in a terminal or the web composer (or `chi send --cut`) asks for a cut:
 once the model has streamed only thinking for `steer.cut_after` seconds (per host/model: `steer_cut_after`; default
 20), now or while your message waits, that generation is cut and the step starts again with your message, marked
 `↪ cut in for your message` (see

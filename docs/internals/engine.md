@@ -23,7 +23,8 @@ Engine#run_turn(session, prompt, on_event:, max_iterations:, cancel_controller:,
   │     #  turn.resume_from = resume_from (its run's start; nil: it starts cold))
   │     # @session = session, session.status = RUNNING, used memories absorbed,
   │     # TurnState#begin!(controller:, sink:, input_waiting:) (a new CancellationController when none
-  │     # is given; input_waiting: the caller's peek, Engine#input_waiting?, which task_wait polls),
+  │     # is given; input_waiting: the caller's peek, Engine#input_waiting?, which task_wait,
+  │     # delegate_result's wait and execute's early hand-over poll),
   │     # a recap in flight invalidated, GuardrailWiring#begin_turn(origin)
   │     # Returns a Turn {session, prompt (nil on a continue), continue, on_event, controller,
   │     #                 origin, started_at, id (the caller's id:, else a new uuid), resumed, resume_from,

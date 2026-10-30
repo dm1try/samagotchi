@@ -1143,8 +1143,13 @@ thinking is lost. A generation that has streamed visible text or a tool call is 
 (`ctx.steer`, `ctx.sessions.send`) never cuts.
 
 A message that would go in at the next step (any but a queued one, one with images or a participant's) also ends a
-`task_wait` the model is blocked in, within half a second: the task keeps running, the model is told a message waits,
-reads it at once and decides whether to wait again. A plugin's steer and a delegate child's report don't end one.
+`task_wait` or a `delegate_result` (and `delegate`'s own wait) the model is blocked in, within half a second: the task
+or the child keeps running, the model is told a message waits, reads it at once and decides whether to wait again. It
+also moves a running `execute` command to a background task early, once the command has run 3 seconds (a command that
+ends sooner just returns its result): the result says `Still running at the 4s mark: a message from the user is
+waiting …` and names the `task_id`, and `task_wait` waits for it as for any hand-over. With `execute.on_timeout:
+kill`, in a participant's pair turn and for the `!cmd` bang an `execute` is never handed over early (they kill at the
+limit). A plugin's steer and a delegate child's report don't end any of them.
 
 The wait resolves per model, in this order: env `SAMAGOTCHI_STEER_CUT_AFTER`, then
 `models.<key>.steer_cut_after`, `hosts.<name>.steer_cut_after`, `steer.cut_after` in config.yml, then 20. `0` means
@@ -2182,7 +2187,7 @@ column says so, a `--kebab-name` flag. The maps (`hosts:`, `models:`,
 | `execute.telemetry_threshold_pct` | `80` | yes | |
 | `execute.cut_head_chars` | `1000` | yes | An `execute` result over `max_tool_output_chars` keeps at most this many characters of its start (and never more than a quarter of the cap); its end gets the rest. |
 | `execute.timeout_sec` | `120` | yes | Seconds one `execute` command may run before `execute.on_timeout` applies. |
-| `execute.on_timeout` | `task` | yes | What happens to a command still running at that limit: `task` keeps it running as a background task (the result names its `task_id`; `task_wait` waits for it, `task_stop` stops it), `kill` stops it (`Error: command timed out after …s`). The `!cmd` bang always kills. See [Background tasks](internals/background-tasks.md). |
+| `execute.on_timeout` | `task` | yes | What happens to a command still running at that limit: `task` keeps it running as a background task (the result names its `task_id`; `task_wait` waits for it, `task_stop` stops it; also early, after 3 s, when a message from the user waits for the turn), `kill` stops it (and never hands over early) (`Error: command timed out after …s`). The `!cmd` bang always kills. See [Background tasks](internals/background-tasks.md). |
 | `execute.description` | `true` | | `execute` offers the model an optional `description` (a few words on what the command does), shown as the tool row's title in `chi web` and in place of the command in the TUI's tool line. `false`: the parameter isn't declared, and rows show the command's first step. |
 | `web.port` | `4567` | `--port` | `chi web`'s port. See [CLI](cli.md). |
 | `web.host` | `127.0.0.1` | yes | `127.0.0.1`, `::1` or `localhost`; `lan` (this machine's private IPv4 address) or one of its IPv4 addresses also opens `chi web` to the network, with an access token, asked of this machine's 127.0.0.1 too (its `Local:` link carries a one-time code; `chi web --new-token` replaces the token). Anything else binds `127.0.0.1` with a warning. See [CLI: chi web on your phone](cli.md#chi-web-on-your-phone). |
