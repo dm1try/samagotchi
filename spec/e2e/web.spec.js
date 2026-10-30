@@ -30,7 +30,7 @@ async function send(page, prompt) {
 async function turnEnded(page, turns) {
   await page.mouse.move(0, 0);
   await expect(page.locator("#history .turn-timing:not(.live)")).toHaveCount(turns);
-  await expect(page.locator("#cancelBtn")).toBeHidden();
+  await expect(page.locator("#turnStage .ts-cancel")).toBeHidden();
   await expect(page.locator("#actionBtn")).toHaveText("Send");
   await expect(page.locator("#actionBtn")).toBeEnabled();
   await expect(page.locator("#prompt")).toBeEditable();
@@ -226,7 +226,7 @@ test("a reload mid-turn and after it keeps the retry row, the answered card and 
   await page.reload();
   await expect(page.locator(`${H} .bubble.question.answered`)).toHaveCount(1);
   expect(await rows(H)).toEqual(expected);
-  await expect(page.locator("#cancelBtn")).toBeVisible();
+  await expect(page.locator("#turnStage .ts-cancel")).toBeVisible();
   await turnEnded(page, 1);
   expect(await rows("#history")).toEqual(expected);
   await page.reload();
@@ -303,10 +303,10 @@ test("a session whose prompt carried a model note names it in the info bar", asy
 test("cancel mid-turn shows the canceled turn (its timing line too), and the next send works", async ({ page, script }) => {
   script("hold");
   await send(page, "Take your time");
-  await expect(page.locator("#cancelBtn")).toBeVisible();
-  await page.locator("#cancelBtn").click();
+  await expect(page.locator("#turnStage .ts-cancel")).toBeVisible();
+  await page.locator("#turnStage .ts-cancel").click();
   await expect(page.locator(`${H} .bubble.cancel`)).toContainText("canceled");
-  await expect(page.locator("#cancelBtn")).toBeHidden();
+  await expect(page.locator("#turnStage .ts-cancel")).toBeHidden();
   // The timing line says so live, as a reload has it.
   await expect(page.locator(`${H} .turn-timing`).first()).toHaveText(/^turn 1 · .+ · canceled$/);
 
@@ -1597,7 +1597,7 @@ test("notifications in one tab: the bell, a question behind (notified, badged, c
     expect(res.ok()).toBe(true);
     await expect(page.locator(`${H} .plugin-card .card-action`)).toHaveCount(0);
     await expect(page).not.toHaveTitle(/^\(/);
-    await expect(page.locator("#cancelBtn")).toBeVisible();
+    await expect(page.locator("#turnStage .ts-cancel")).toBeVisible();
     await turnEnded(page, 2);
     expect(await notes(page)).toHaveLength(1);
   });
@@ -1720,7 +1720,7 @@ test("a step whose stream drops mid-answer is asked again: the partial goes live
 test("/model X sent mid-turn shows queued, survives a reload, and applies once the turn ends", async ({ page, script }) => {
   script("mid_turn_command");
   await send(page, "Take a moment");
-  await expect(page.locator("#cancelBtn")).toBeVisible();
+  await expect(page.locator("#turnStage .ts-cancel")).toBeVisible();
   // --yes: a switch on a session with a model reply asks first (it restarts the prompt cache).
   await page.locator("#prompt").fill("/model fake-other --yes");
   await page.locator("#actionBtn").click();
@@ -1736,7 +1736,7 @@ test("/model X sent mid-turn shows queued, survives a reload, and applies once t
   await expect(model).toHaveText(/^fake-script/);
 
   await page.reload();
-  await expect(page.locator("#cancelBtn")).toBeVisible();
+  await expect(page.locator("#turnStage .ts-cancel")).toBeVisible();
   await expect(bubble).toHaveCount(1);
   await expect(bubble).toHaveClass(/queued/);
   await expect(queuedSlot).toHaveCount(1);
@@ -1813,7 +1813,7 @@ test("thinking loop: loop-guard cuts it, asks again, answers", async ({ page, sc
   await expect(cut).toHaveCount(1);
   await expect(again).toHaveCount(1);
   await expect(cut).toContainText("(\"Wait, the count of the letter r in the word might be three,…\", 3 sentences ×3");
-  await expect(page.locator("#cancelBtn")).toBeVisible();
+  await expect(page.locator("#turnStage .ts-cancel")).toBeVisible();
   await expect(answer(page)).toHaveText("PONG after the cut.");
   await turnEnded(page, 1);
   // Handed off: both rows are the cut generation's, the block's first step.
@@ -1849,8 +1849,8 @@ test("a warn card stays in sight when its step closes mid-turn", async ({ page, 
   await expect(page.locator("#turnStage .ts-trail")).toContainText("read README.md");
   await expect(page.locator("#turnStage .ts-extras > .plugin-card.warn")).toHaveCount(1);
   await expect(card).toBeVisible({ timeout: 1000 });
-  // Still running: Cancel is up, no final timing line yet.
-  await expect(page.locator("#cancelBtn")).toBeVisible({ timeout: 1000 });
+  // Still running: Stop turn is up, no final timing line yet.
+  await expect(page.locator("#turnStage .ts-cancel")).toBeVisible({ timeout: 1000 });
   await expect(page.locator("#history .turn-timing:not(.live)")).toHaveCount(0);
   await turnEnded(page, 1);
   await expect(card).toBeVisible();

@@ -380,10 +380,12 @@ test("the stage folds to its status row, and stays folded across a reload", asyn
   await page.reload();
   await expect(stageEl(page)).toBeVisible();
   await expect(stageEl(page)).toHaveClass(/collapsed/);
-  await stageEl(page).locator(".ts-status").click();
+  // Folded, the row keeps Stop turn in reach.
+  await expect(stageEl(page).locator(".ts-cancel")).toBeVisible();
+  await stageEl(page).locator(".ts-phase").click();
   await expect(stageEl(page)).not.toHaveClass(/collapsed/);
   expect(await page.evaluate(() => localStorage.getItem("chi_stage_collapsed"))).toBe("0");
-  await page.locator("#cancelBtn").click();
+  await stageEl(page).locator(".ts-cancel").click();
   await page.mouse.move(0, 0);
   await handedOff(page, 1);
   await expect(page.locator("#history .bubble.cancel")).toContainText("canceled");

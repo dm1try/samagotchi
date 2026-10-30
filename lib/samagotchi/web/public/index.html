@@ -46,7 +46,6 @@ main{flex:1;display:flex;flex-direction:column;gap:16px;padding:16px;overflow:au
 #topStrip:empty{display:grid}
 #center{flex:1;display:flex;flex-direction:column;min-height:45vh;background:var(--bg-panel);border:1px solid var(--border);border-radius:12px;overflow:hidden}
 #stage{flex:1;display:flex;flex-direction:column;position:relative;min-height:160px;background:var(--bg);overflow:hidden}
-#composer #cancelBtn{order:2;background:var(--danger-bg)}
 #history{flex:1;overflow:auto;padding:16px max(16px,calc((100% - 960px)/2));display:flex;flex-direction:column;gap:12px;background:var(--bg);min-height:160px}
 /* No child shrinks to fit: a held (overflow:hidden) answer bubble would, clipped under the dock with nothing to scroll. */
 #history>*{flex-shrink:0}
@@ -775,6 +774,11 @@ body.stage-view .turn-stage{position:absolute;left:0;right:0;bottom:100%;margin-
 .ts-mini{min-width:0;overflow:hidden;text-overflow:ellipsis;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--text-2)}
 .ts-defer{color:var(--text-faint);font-style:italic;opacity:0;transition:opacity .2s}
 .turn-stage.ended.in-use .ts-defer{opacity:1}
+/* Stop turn (stage_view.js): a ghost in the danger colour at the row's right edge, beside the fold; the fold keeps the edge when it is hidden. */
+.ts-cancel{margin-left:auto;flex:none;padding:1px 10px;border:1px solid color-mix(in srgb,var(--danger) 45%,transparent);border-radius:6px;background:transparent;color:var(--danger-text);font-size:11.5px;font-weight:600;line-height:20px;white-space:nowrap}
+.ts-cancel[hidden]{display:none}
+@media(hover:hover){.ts-cancel:hover:not(:disabled){filter:none;background:var(--danger-bg-dim)}}
+.ts-cancel:not([hidden])+.ts-fold{margin-left:0}
 .ts-fold{margin-left:auto;flex:none;width:28px;height:24px;padding:0;border-radius:6px;background:transparent;color:var(--text-muted);font-size:14px}
 .ts-fold:hover:not(:disabled){filter:none;background:var(--bg-hover);color:var(--text)}
 .ts-scroll{position:relative;flex:1 1 auto;min-height:0;overflow:auto;overflow-anchor:none;display:flex;flex-direction:column;gap:8px;padding:8px 14px 10px;scrollbar-width:thin}
@@ -1117,12 +1121,9 @@ button.ws-row:hover:not(:disabled){filter:none}@media(hover:hover){button.ws-row
 #infoBar #infoArchiveBtn:hover{color:var(--text);background:var(--bg-hover)}
 #infoBar #infoDeleteBtn{background:transparent;color:var(--text-muted);border:1px solid transparent}
 #infoBar #infoDeleteBtn:hover{color:var(--on-solid);background:var(--danger-bg);border-color:var(--danger-bg)}
-/* The composer folded away (composer_grip.js, composer.css): the info bar is the page's bottom edge; the plugins' setup row folds with it.
-   Stop turn comes into the bar while folded and a turn runs. */
+/* The composer folded away (composer_grip.js, composer.css): the info bar is the page's bottom edge; the plugins' setup row folds with it. */
 body.has-session.composer-folded #initRow{display:none}
 body.has-session.composer-folded #infoBar{border-top-color:transparent}
-#infoBar #infoCancelBtn{background:var(--bg-raised);color:var(--danger-text);border:1px solid color-mix(in srgb,var(--danger) 55%,transparent)}
-#infoBar #infoCancelBtn:hover:not(:disabled){color:var(--on-solid);background:var(--danger-bg);border-color:var(--danger-bg)}
 /* The ⚙ chip (settings_chip.js): a model-like chip that opens the session's settings panel; accent when the session set its own (capped like the model chip in the min-width:601px rule above, the full text in its tooltip; a phone shows ⚙ with a dot). */
 #infoBar .meta .settings-chip{position:relative;padding:2px 6px;border-radius:6px;font-size:11px;font-weight:400;border:1px solid transparent;cursor:pointer;font-family:inherit;white-space:nowrap}
 #infoBar .meta .settings-chip[aria-expanded="true"]{color:var(--text);border-color:var(--accent-border);background:var(--accent-bg)}@media(hover:hover){#infoBar .meta .settings-chip:hover{color:var(--text);border-color:var(--accent-border);background:var(--accent-bg)}}
@@ -1365,7 +1366,6 @@ body.has-session.composer-folded #infoBar{border-top-color:transparent}
   #infoBar #infoArchiveBtn{--icon:var(--icon-archive)}
   #infoBar #infoArchiveBtn.archived{--icon:var(--icon-unarchive)}
   #infoBar #infoContinueBtn{--icon:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 8h9M8.5 4.5 12 8l-3.5 3.5'/%3E%3C/svg%3E")}
-  #infoBar #infoCancelBtn{--icon:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='4' y='4' width='8' height='8' rx='1.5'/%3E%3C/svg%3E")}
   #infoBar #infoStopBtn{--icon:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M8 2v5.5M4.6 4.4a5 5 0 1 0 6.8 0'/%3E%3C/svg%3E")}
   #infoBar #infoDeleteBtn{--icon:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M2.5 4.5h11M6 4.5V2.75h4V4.5M4 4.5l.7 8.6a1 1 0 0 0 1 .9h4.6a1 1 0 0 0 1-.9l.7-8.6M6.75 7.25v4.5M9.25 7.25v4.5'/%3E%3C/svg%3E")}
 }
@@ -1758,7 +1758,6 @@ a{color:var(--accent)}
           <button type="button" id="llmContextNew" class="llmctx-new" aria-haspopup="dialog" aria-expanded="false" hidden></button>
           <button type="button" id="reviewNew" class="llmctx-new review-new" aria-haspopup="dialog" aria-expanded="false" hidden></button>
           <button type="button" id="toolkitNew" class="llmctx-new toolkit-new" aria-haspopup="dialog" aria-expanded="false" hidden></button>
-          <button id="cancelBtn" title="Cancel the running turn, whoever sent it" style="display:none">Stop turn</button>
           <button type="button" id="settingsNew" class="icon-btn settings-btn" title="Session settings" aria-label="Session settings" aria-haspopup="dialog" aria-expanded="false" hidden></button>
           <button type="button" id="toolkitBtn" class="icon-btn toolkit-btn" title="Toolkit" aria-label="Toolkit" aria-haspopup="dialog" aria-expanded="false" hidden></button>
           <button type="button" id="attachBtn" class="attach-btn" title="Add images (or paste or drop them here)" aria-label="Add images" hidden></button>
@@ -1771,7 +1770,6 @@ a{color:var(--accent)}
       <div id="infoBar" class="composer-card-foot">
         <div class="info" id="infoText"></div>
         <div id="contextChips" aria-label="Attached context" hidden></div>
-        <button class="ghost" id="infoCancelBtn" title="Cancel the running turn, whoever sent it" style="display:none">Stop turn</button>
         <button class="ghost" id="infoContinueBtn" title="Continue: start the next link of this session's chain from its recap (this one is archived)" style="display:none">continue →</button>
         <button class="ghost" id="infoArchiveBtn" title="Archive: hide from the lists, keep for good" style="display:none">archive</button>
         <button class="ghost" id="infoStopBtn" title="Stop session (terminate worker)" style="display:none">stop session</button>

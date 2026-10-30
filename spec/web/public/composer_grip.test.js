@@ -28,7 +28,6 @@ function setup({ session = "s1", saved = null } = {}) {
   const grip = createComposerGrip({
     composeGrip,
     promptEl,
-    infoCancelBtn: el("button", "infoCancelBtn"),
     infoBarEl: el("div", "infoBar"),
     session: () => state.session,
     fitPrompt: () => { state.fits += 1; },
@@ -37,7 +36,6 @@ function setup({ session = "s1", saved = null } = {}) {
     setFloor: (px) => { state.floor = px; },
     draft: () => !!promptEl.value.trim(),
     waiting: () => false,
-    turnRunning: () => false,
     allViewOpen: () => false,
     lightboxOpen: () => false,
     imageFiles: () => [],
