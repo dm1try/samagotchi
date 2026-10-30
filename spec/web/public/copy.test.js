@@ -1,7 +1,7 @@
 import "./dom_shim.js";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { bubbleCopyText, codeText, copySource, showsAnswer, visibleText } from "../../../lib/samagotchi/web/public/copy.js";
+import { bubbleCopyText, codeText, copySource, installCopy, showsAnswer, visibleText } from "../../../lib/samagotchi/web/public/copy.js";
 
 // Just enough of an Element for the copy rules: children, classes, a
 // selector test by class names, attributes.
@@ -83,4 +83,20 @@ test("showsAnswer: the streamed bubble by its text, a rendered one by its kept s
   assert.equal(showsAnswer(rendered, message, norm), true);
   assert.equal(showsAnswer(presented, message, norm), true);
   assert.equal(showsAnswer(other, message, norm), false);
+});
+
+test("installCopy: code blocks get a copy button in answers and delegate reports, not in a typed prompt", () => {
+  const history = document.createElement("div");
+  history.innerHTML = '<div class="bubble output"><pre><code>a</code></pre></div>'
+    + '<div class="bubble user" data-source="delegate_report"><div class="user-message"><pre><code>b</code></pre></div></div>'
+    + '<div class="bubble user"><div class="user-message"><pre><code>c</code></pre></div></div>';
+  document.body.appendChild(history);
+  const had = globalThis.MutationObserver;
+  globalThis.MutationObserver = had || class { observe() {} };
+  try { installCopy(history); } finally { globalThis.MutationObserver = had; }
+  const [answer, report, prompt] = history.querySelectorAll(".bubble");
+  assert.ok(answer.querySelector(".code-wrap > .copy-code"));
+  assert.ok(report.querySelector(".code-wrap > .copy-code"));
+  assert.equal(prompt.querySelector(".copy-code"), null);
+  history.remove();
 });
