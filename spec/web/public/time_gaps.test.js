@@ -45,6 +45,20 @@ test("groupGaps: a divider where 10+ quiet minutes passed between groups, none d
   assert.equal(lastActivity([], []), null);
 });
 
+test("groupTimes / groupGaps: a `!cmd`'s record is its own group (its index); saved with no time, the gap is measured across it", () => {
+  const items = [
+    { role: "user", content: "one", at: localIso(9, 0) }, { role: "assistant", content: "a", at: localIso(9, 1) },
+    { role: "user", content: "!(ls)\nx" },
+    { role: "user", content: "two", at: localIso(10, 0) },
+  ];
+  const groups = turnGroups(items, normalizeTiming({}));
+  assert.deepEqual(groups.map((g) => g.kind), ["turn", "command", "turn"]);
+  assert.deepEqual(groupTimes(groups[1], items), { start: null, end: null });
+  const stamped = items.map((m, i) => (i === 2 ? { ...m, at: localIso(9, 30) } : m));
+  assert.deepEqual(groupTimes(groups[1], stamped), { start: ms(9, 30), end: ms(9, 30) });
+  assert.deepEqual(groupGaps(groups, items, NOW), [null, null, "── 10:00 · 59 min later ──"]);
+});
+
 test("createGapClock: a divider when activity starts after a quiet stretch; ends move the clock; no seed, none", () => {
   let now = ms(9, 0);
   const clock = createGapClock(() => now);

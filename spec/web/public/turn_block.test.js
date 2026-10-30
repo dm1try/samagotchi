@@ -58,6 +58,23 @@ test("turnHistoryHtml: a `!cmd`'s saved user message renders as its command bubb
   assert.match(plain, /^<div class="bubble user"/);
 });
 
+test("turnHistoryHtml: a `!cmd`'s record between two prompts is its bubble alone: no steps, no timing; the next turn's shows once", () => {
+  const items = [
+    { role: "user", content: "one", turn_id: "T1" }, { role: "assistant", content: "1" },
+    { role: "user", content: "!(basket open)\nstderr: x" },
+    { role: "user", content: "two", turn_id: "T2" }, { role: "assistant", content: "2" },
+  ];
+  const twoTurns = normalizeTiming({
+    turn_records: [{ id: "T1", status: "completed", duration_ms: 1000 }, { id: "T2", status: "completed", duration_ms: 13000 }],
+    tool_records: [{ id: "T2:1:1", turn_id: "T2", iteration: 1, call_index: 1, tool: "execute", status: "ok", duration_ms: 7 }],
+  });
+  const out = turnHistoryNodes(items, twoTurns, { thumbs });
+  const kids = [...out.children].map((el) => el.className);
+  assert.deepEqual(kids, ["bubble user", "bubble output", "turn-timing", "bubble command", "bubble user", "turn-work done", "bubble output", "turn-timing"]);
+  assert.deepEqual([...out.querySelectorAll(".turn-timing")].map((el) => el.textContent), ["turn 1 · 1.0s", "turn 2 · 13s"]);
+  assert.equal(out.querySelectorAll(".turn-work").length, 1);
+});
+
 test("turnHistoryHtml: a turn canceled before any answer keeps its timing under the prompt, after its steps", () => {
   const items = [{ role: "user", content: "p" }];
   const canceled = normalizeTiming({

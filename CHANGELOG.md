@@ -7,6 +7,11 @@ and commands may change between minor versions. How releases are made:
 [docs/releasing.md](docs/releasing.md).
 ## [Unreleased]
 
+### Fixed
+
+- Web: a `!cmd`'s output in a reloaded history is its command bubble alone: it no longer opens a turn that showed
+  the next turn's steps and "turn N" timing a second time.
+
 ## [0.135.0] - 2026-10-30
 
 ### Added

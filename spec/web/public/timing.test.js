@@ -339,6 +339,24 @@ test("turnGroups: a line merged into the running turn stays in that turn (merged
   assert.deepEqual(groups.map((g) => [g.turnIndex, g.user, g.merged, g.answer, g.record?.id]), [[0, 0, [2], 3, "T1"], [1, 4, undefined, 5, "T2"]]);
 });
 
+test("turnGroups: a `!cmd`'s record between two prompts is a command group: two turns, the second's record once, turn indexes 0 and 1", () => {
+  const timing = normalizeTiming({ turn_records: [{ id: "A", duration_ms: 1 }, { id: "B", duration_ms: 2 }] });
+  const items = [
+    { role: "user", content: "one" }, { role: "assistant", content: "1" },
+    { role: "user", content: "!(basket open)\nstderr: x" },
+    { role: "user", content: "two" }, { role: "assistant", content: "2" },
+  ];
+  // Saved before turn ids: the by-place fallback pairs the prompts, not the record.
+  const groups = turnGroups(items, timing);
+  assert.deepEqual(groups.map((g) => [g.kind, g.turnIndex, g.record?.id, g.i]), [
+    ["turn", 0, "A", undefined], ["command", undefined, undefined, 2], ["turn", 1, "B", undefined],
+  ]);
+  assert.deepEqual(timedTurnIndexes(items), [null, 0, null, null, 1]);
+  // A prompt with its turn id is a prompt whatever its text.
+  const prompt = [{ role: "user", content: "!(x)\ny", turn_id: "A" }];
+  assert.equal(turnGroups(prompt, timing)[0].kind, "turn");
+});
+
 test("turnGroups: a prompt with its turn_id pairs with that record, so a failed turn's record (its prompt went back) shifts nothing", () => {
   const timing = normalizeTiming({ turn_records: [
     { id: "A", status: "completed", duration_ms: 1000 },
