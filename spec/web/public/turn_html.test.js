@@ -185,8 +185,9 @@ test("answerBubbleTemplate only uses explicitly rendered assistant HTML, set who
   assert.equal(answerBubbleHtml({ role: "assistant", content: "**safe**", html: "<strong>safe</strong>" }, { at: 3 }),
     '<div class="bubble output markdown" data-answer-at="3" data-copy-source="**safe**"><strong>safe</strong></div>');
   assert.equal(answerBubbleHtml({ role: "assistant", content: "<img>" }), '<div class="bubble output">&lt;img&gt;</div>');
-  assert.equal(answerBubbleHtml({ role: "assistant", content: "a", display: "[a](u)", html: "<p>a</p>" }, { cls: " report-reply" }),
-    '<div class="bubble output report-reply markdown" data-copy-source="[a](u)"><p>a</p></div>');
+  // A hook's display in the answer's place is marked (answer_fold.js's label); a report reply's own key.
+  assert.equal(answerBubbleHtml({ role: "assistant", content: "a", display: "[a](u)", html: "<p>a</p>" }, { cls: " report-reply", replyKey: "t1:report:2" }),
+    '<div class="bubble output report-reply markdown" data-reply-key="t1:report:2" data-answer-display="1" data-copy-source="[a](u)"><p>a</p></div>');
   // The bubble's nodes as the live turn end leaves them: no comment inside.
   const el = elementOf(answerBubbleTemplate({ role: "assistant", content: "x", html: "<p>x</p>" }));
   assert.equal(el.innerHTML, "<p>x</p>");

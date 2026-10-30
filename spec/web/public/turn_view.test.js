@@ -213,6 +213,9 @@ test("turnHistoryHtml: the text that answered a delegate report mid-turn stays v
   const html = turnHistoryHtml(items, normalizeTiming({ turn_records: [{ id: "T1", duration_ms: 5 }, { id: "T2", duration_ms: 5 }] }), { thumbs });
   assert.match(html, /session: c1<\/div><span class="state-badge">steered<\/span><\/div><div class="bubble output report-reply"[^>]*>The delegate found the bug\. Back to the rename\.<\/div><div class="bubble output[^"]*"[^>]*>Renamed\./);
   assert.equal((html.match(/report-reply/g) || []).length, 1);
+  // Its own fold key (answer_fold.js): the turn's id and the report's place after the opening.
+  assert.match(html, /class="bubble output report-reply"[^>]*data-reply-key="T1:report:2"/);
+  assert.doesNotMatch(html, /report-reply"[^>]*data-answer-turn/);
 });
 
 test("turnHistoryHtml: a steer in a turn with no block is a bubble after the prompt", () => {
