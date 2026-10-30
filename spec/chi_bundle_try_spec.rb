@@ -168,19 +168,31 @@ RSpec.describe Samagotchi::BundleCommand::Try::Sandbox do
 
   it "stops the delegate workers and tasks a run left in the sandbox, and nothing that isn't running" do
     pids = []
+    ready = nil
     Dir.mktmpdir do |dir|
       sandbox = described_class.new(bundle_at(File.join(dir, "source")))
       # A delegate's worker: its own session and group, holding its session's lock.
       session_dir = File.join(sandbox.state_home, Samagotchi::Session::STATE_SUBDIR, "delegate-1")
       lib = File.expand_path("../lib", __dir__)
-      worker = Process.spawn(RbConfig.ruby, "-I", lib, "-rsamagotchi/owner_lock", "-e",
-                             "Samagotchi::OwnerLock.acquire(#{session_dir.inspect}, kind: 'worker'); sleep 30",
-                             pgroup: true)
+      # The worker says "locked" on a pipe once it holds the lock, or exits
+      # saying why it couldn't: no polling OwnerLock.owner while it boots (each
+      # look takes a shared flock its acquire must retry past, and a missed
+      # lock left it asleep for the whole wait), and no Bundler in its boot
+      # (it needs only the stdlib).
+      ready, ready_writer = IO.pipe
+      script = "Samagotchi::OwnerLock.acquire(ARGV[0], kind: 'worker') or abort('owner lock unavailable'); " \
+               "puts 'locked'; $stdout.flush; sleep 30"
+      worker = Process.spawn({ "RUBYOPT" => nil }, RbConfig.ruby, "-I", lib, "-rsamagotchi/owner_lock", "-e", script,
+                             session_dir, out: ready_writer, pgroup: true)
+      ready_writer.close
       Process.detach(worker)
       pids << worker
-      wait_for("the worker's lock", timeout: 10) do
-        Samagotchi::OwnerLock.owner(session_dir)&.pid == worker
+      said = wait_for("the worker to say it holds its lock", timeout: 10,
+                      seen: -> { process_gone?(worker) ? "worker exited" : "worker running" }) do
+        ready.wait_readable(0) && (ready.gets || "(exited)")
       end
+      expect(said).to eq("locked\n")
+      expect(Samagotchi::OwnerLock.owner(session_dir)&.pid).to eq(worker)
       # A task the turn started, by its record.
       task = Process.spawn("sleep", "30", pgroup: true)
       Process.detach(task)
@@ -208,6 +220,7 @@ RSpec.describe Samagotchi::BundleCommand::Try::Sandbox do
       sandbox.cleanup
     end
   ensure
+    ready&.close
     pids.each { |pid| Process.kill("KILL", pid) unless process_gone?(pid) }
   end
 
