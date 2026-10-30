@@ -3,6 +3,7 @@
 require_relative "cli/command"
 require_relative "cli/flags"
 require_relative "chi_home"
+require_relative "child_env"
 require_relative "config"
 require_relative "desktop"
 require_relative "gem_update"
@@ -89,7 +90,7 @@ module Samagotchi
       # Built after the home is known: its install env goes into the home.
       @gem_update_given = gem_update
       @exec = exec || ->(argv) { Kernel.exec(*argv) }
-      @bundler = bundler.nil? ? (defined?(::Bundler) || !ENV["BUNDLE_GEMFILE"].to_s.empty?) : bundler
+      @bundler = bundler.nil? ? ChiHome.under_bundler? : bundler
       @argv = argv.dup
       @stdout = stdout
       @stderr = stderr
@@ -168,11 +169,14 @@ module Samagotchi
 
     # A chi on another Ruby than the home's updates the home: exec its chi
     # (newer?, --to and the bundle rows are then the home's), once
-    # (IN_HOME_ENV).
+    # (IN_HOME_ENV), outside a `bundle exec`'s bundle (ChildEnv.unbundled,
+    # as worker spawns and chi web's restart boot it). hand_over never runs
+    # under Bundler: the gem row skips there.
     def to_home(options)
       notice(options, "updating the chi home (#{@run_home.ruby})")
       @stdout.flush
-      @exec.call([{ IN_HOME_ENV => "1" }, *@run_home.boot_argv(run: ChiHome::CHI_BOOT), "--", "update", *@argv])
+      @exec.call([ChildEnv.unbundled.merge(IN_HOME_ENV => "1"), *@run_home.boot_argv(run: ChiHome::CHI_BOOT), "--",
+                  "update", *@argv])
       0 # only when exec is a spec's stand-in
     end
 

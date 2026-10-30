@@ -19,6 +19,8 @@ and commands may change between minor versions. How releases are made:
   `XDG_CONFIG_HOME` elsewhere no longer hints about the installed helper.
 - `chi home set` under `bundle exec` refuses to record its own Ruby, whose gem path is the bundle's, instead of making
   it the home every launch boots (`--ruby` another Ruby still works).
+- `chi update` under `bundle exec`, run on another Ruby than the chi home's, hands over to the home's chi outside the
+  bundle instead of loading the bundle into it (which failed noisily).
 - Toolkit suggestions (`toolkit.suggest.mode: on`): a suggestion that times out or gets no answer from System 1 now
   says so in a notice (the session runs its default kit) and a timeout logs a warning, instead of falling back silently.
 

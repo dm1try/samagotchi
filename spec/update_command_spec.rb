@@ -317,6 +317,20 @@ RSpec.describe Samagotchi::UpdateCommand do
                                 "--no-desktop"]])
         end
 
+        context "under Bundler" do
+          let(:bundler) { true }
+
+          # The home is a chi of its own: Bundler's RUBYOPT/BUNDLE_GEMFILE
+          # would load this bundle into it (worker spawns and chi web's
+          # restart unbundle the same way).
+          it "execs the home's chi update outside the bundle" do
+            allow(Samagotchi::ChildEnv).to receive(:unbundled).and_return({ "RUBYOPT" => nil, "BUNDLE_GEMFILE" => nil })
+            expect(run("--no-desktop")).to eq(0)
+            expect(execs).to eq([[{ "RUBYOPT" => nil, "BUNDLE_GEMFILE" => nil, described_class::IN_HOME_ENV => "1" },
+                                  *boot, "--", "update", "--no-desktop"]])
+          end
+        end
+
         # The home's chi decides --to's floor: it may be newer than this one.
         it "hands even a --to this chi wouldn't take to the home, and the notice to stderr with --json" do
           run("--to", Samagotchi::VERSION, "--json")
