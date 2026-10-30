@@ -6,6 +6,7 @@ require "samagotchi/guardrails"
 require "samagotchi/guardrail_wiring"
 require "samagotchi/session"
 require "samagotchi/web/running"
+require "samagotchi/tools/builtins"
 
 # Every example runs with HOME in a temp dir: nothing here may touch the
 # real ~/.ssh or dotfiles.
@@ -52,6 +53,27 @@ RSpec.describe Samagotchi::Guardrails::PairBoundary do
   end
 
   def read(path, **opts) = verdict_for({ name: "read", content: path }, **opts)
+
+  it "asks the owner (fresh, once) for a plugin tool whose targets name no command or path" do
+    registry = Samagotchi::Tools::Builtins.registry.tap do |r|
+      r.register("browse", schema: {}, handler: ->(*) { "" }, source: "browser")
+      r.register("save_note", schema: {}, handler: ->(*) { "" }, source: "notes",
+                              targets: ->(call) { { paths: [call[:args]["path"]] } })
+    end
+    context = Samagotchi::Guardrails::Context.new(cwd: project, git: git)
+    check = lambda do |call, **opts|
+      verdict = Samagotchi::Guardrails::Verdict.new(call: call)
+      verdict.context = context
+      verdict.targets = Samagotchi::Guardrails::Targets.for(call, context, registry: registry)
+      boundary(**opts).check(verdict)
+    end
+    verdict = check.call({ name: "browse", args: { "url" => "http://127.0.0.1:4567/" } })
+    expect([verdict.ask?, verdict.reason, verdict.scopes]).to eq([true, described_class::UNTARGETED, ["once"]])
+    expect(check.call({ name: "browse", args: {} }, turn_author: nil)).to be_allow
+    expect(check.call({ name: "save_note", args: { "path" => "docs/n.md" } })).to be_allow
+    expect(check.call({ name: "memory_read", args: { "name" => "x" } })).to be_allow
+  end
+
   def execute(command, **opts) = verdict_for({ name: "execute", content: command }, **opts)
 
   it "leaves a pair turn's reads, commands and writes to the owner's checks" do

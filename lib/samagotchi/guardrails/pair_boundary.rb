@@ -100,6 +100,10 @@ module Samagotchi
       NET = "a participant's turn runs a command chi can't read for sure (git or chi behind a program it doesn't " \
             "know, or a $(…) kept in a value the shell expands later), so the owner approves it"
       VERB = "a participant's turn runs only a program named plainly: no $, $(…) or glob in a command's name"
+      # A plugin or MCP tool whose targets: name no command or path (a
+      # browser MCP's navigate, say): nothing here can tell what it reaches.
+      UNTARGETED = "a participant's turn calls a plugin tool chi can't see the targets of (no command or path), " \
+                   "so the owner approves it"
       UNREADABLE = "a participant's turn runs only commands chi can read: split this command, or write the file " \
                    "with the write tool"
       # A pair turn's execute runs without the environment variables whose
@@ -199,9 +203,12 @@ module Samagotchi
       # (LINK), one that runs mise or direnv (ENV_LOADER), a write to mise's
       # config (MISE_CONFIG), a command chi can't read for sure (NET:
       # PairCommand#net_ask?), a write that may land outside the project (OUTSIDE_WRITE, or
-      # NO_PROJECT without one); nil when nothing asks.
+      # NO_PROJECT without one), a plugin tool's call that names no command
+      # or path (UNTARGETED: Targets#args is set for plugin tools only); nil
+      # when nothing asks.
       def ask_reason(verdict)
         targets = verdict.targets
+        return UNTARGETED if targets&.args && !targets.command && targets.paths.compact.empty?
         return LINK if targets&.command && command(targets, nil).links?
         return ENV_LOADER if targets&.command && command(targets, nil).loads_env?
         return MISE_CONFIG if mise_config_write?(verdict)

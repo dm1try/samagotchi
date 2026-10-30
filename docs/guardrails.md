@@ -555,6 +555,10 @@ share`, `/bin/SH -c`, `NOHUP`: a disk that folds case, macOS's default, runs
 them as git, chi, sh, nohup; `ShellLex.program_name`), and so is chi or git
 config in a script's text.
 
+It asks the owner, fresh and once, before a plugin or MCP tool's call whose
+`targets:` name no command or path (`PairBoundary::UNTARGETED`: a browser
+MCP's navigate, say), since nothing here can tell what it reaches.
+
 And it **asks the owner** before a `write` or `edit` that may land outside the
 session's project root, and before a command that may write there, every time:
 the ask is fresh (`Verdict#fresh_ask`: no stored approval answers it, and no
