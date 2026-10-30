@@ -453,7 +453,8 @@ RSpec.describe Samagotchi::Engine, "#run_turn as the TUI seam" do
       expect(session.messages.map { |m| m[:role] }).to eq(%w[system user system])
       expect(session.messages[-2][:content]).to eq("hi")
       expect(session.messages.last[:content]).to include("cancelled (ctrl-c)")
-      expect(events.last).to match(type: :turn_canceled, cancellation_reason: :ctrl_c, duration_ms: kind_of(Integer))
+      expect(events.last).to match(type: :turn_canceled, turn_id: kind_of(String), cancellation_reason: :ctrl_c,
+                                   duration_ms: kind_of(Integer))
       expect(engine.turn_running?).to be(false)
       expect(engine.metrics.snapshot[:cancellations]).to eq(1)
     end
@@ -487,7 +488,7 @@ RSpec.describe Samagotchi::Engine, "#run_turn as the TUI seam" do
 
     expect { engine.run_turn(session, "hi", on_event: ->(e) { events << e }) }.to raise_error(RuntimeError)
 
-    expect(events.last.keys).to contain_exactly(:type, :error_class, :message, :duration_ms)
+    expect(events.last.keys).to contain_exactly(:type, :turn_id, :error_class, :message, :duration_ms)
   end
 
   describe "a failed turn" do

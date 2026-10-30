@@ -258,10 +258,10 @@ higher-level events so UIs get clean turn boundaries without inferring them:
 - `:turn_started` — `{ session_id:, prompt:, turn_id:, cut_after: }` (`cut_after`: the seconds a cut waits for this
   model's thinking, `0` = never; plus `continue: true` for a continue turn, `resumed: true` for a step-limit Continue,
   `images:` with the prompt's image refs)
-- `:turn_completed` — `{ result:, turn_summary:, display_pending: }` (`result`: the final
+- `:turn_completed` — `{ turn_id:, result:, turn_summary:, display_pending: }` (`result`: the final
   `LLM::ModelResult`; Engine event (clients get it without `result`); `display_pending`: `after_turn` hooks may still
   present the answer)
-- `:turn_canceled` — `{ cancellation_reason:, cancelled_by:, duration_ms: }` (`cancelled_by`: the bundle or hook label that
+- `:turn_canceled` — `{ turn_id:, cancellation_reason:, cancelled_by:, duration_ms: }` (`cancelled_by`: the bundle or hook label that
   stopped it, for `cancellation_reason: :hook`; else nil)
 
 These are the Engine's raw events. The worker's SSE projection omits `call` from

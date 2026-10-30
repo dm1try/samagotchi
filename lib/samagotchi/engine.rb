@@ -1627,11 +1627,13 @@ module Samagotchi
     # event]. +save:+ also saves the session (a failed turn: a worker exits
     # after it). The disk writes come after the step: every emitter waits
     # for the event lock. +exhausted:+ the turn ran out of iterations
-    # (its limit goes in last_turn).
+    # (its limit goes in last_turn). The end event names its turn
+    # (`turn_id:`, as :turn_started does).
     def end_turn(turn, outcome, save: false, exhausted: false)
       seconds = turn.elapsed
       synchronize_events do
         kept, event = yield(seconds)
+        event[:turn_id] = turn.id
         revises = stamp_opening(kept, turn, outcome)
         replace_session_messages(turn.session, kept) if kept
         verdict = record_verdict(turn, outcome)

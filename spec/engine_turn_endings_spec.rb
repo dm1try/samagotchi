@@ -144,6 +144,23 @@ RSpec.describe Samagotchi::Engine, "#run_turn endings" do
     expect(session.last_turn.to_file.keys).not_to include("exhausted", "limit")
   end
 
+  it "1c. every end event names its turn, as its turn_started did" do
+    ends = []
+    engine.subscribe(observer: ->(e) { ends << e if %i[turn_started turn_completed turn_canceled turn_failed].include?(e[:type]) })
+    native { |messages, **| kernel_result(messages + [reply("done")]) }
+    run(after_turn: false)
+    native { |messages, **| kernel_result(messages, text: "", canceled: true, cancellation_reason: :user) }
+    run(after_turn: false)
+    native { |_messages, **| raise Samagotchi::LLM::RateLimited.new("fw: HTTP 429", host: "fw", status: 429) }
+    run(after_turn: false)
+
+    expect(ends.map { |e| e[:type] }).to eq(%i[turn_started turn_completed turn_started turn_canceled turn_started turn_failed])
+    ends.each_slice(2) do |started, ended|
+      expect(started[:turn_id]).to be_a(String)
+      expect(ended[:turn_id]).to eq(started[:turn_id])
+    end
+  end
+
   it "2. native empty: TurnNote.empty with its marker, the nudge dropped, no made-up answer" do
     native { |messages, **| kernel_result(messages + [nudge], text: "", empty_retries: 1) }
     summary = nil

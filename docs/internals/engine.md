@@ -548,9 +548,9 @@ Turn events (the main ones; `Events` in `events.rb` keeps the shared sets):
 | `:working_set_updated` | after `:generation_started` (the running turn's conversation, the turn's strategy) and once in `end_turn` before the end event (the kept messages), only when the set differs from the last one emitted for the session and is not empty, except one empty event when the last one had items (a rollback emptied the set): a tool-free turn emits none (`Engine#emit_working_set`); between turns `Engine#announce_working_set` announces it under the next turn's strategy (after a `/working-set` op, held behind the command's `command_ran`) | `{items: [{kind, key, state (live\|stale\|forgotten\|dropped), tokens, ops, count, first_id, pinned, has_drop}], at, adds?: [{kind, key, label}]}` (`WorkingSet`, internals/working-set.md; `adds` while the user's adds are pending) |
 | `:hook_notice` | a hook's or plugin's notify during a turn | `{hook, text, level}` (announced with `between_turns: true` outside a turn) |
 | `:guardrail_warning` | a guardrails line during a turn | `{message}` |
-| `:turn_completed` | normal end | Engine event `{result, turn_summary, display_pending}`, plus `verdict` (a Verify turn's recorded verdict) and `revises` (a Revise turn's stamp, `{turn_id}`) when there are; the Bridge's SSE frame omits `result` (answer remains in `turn_summary.output`) |
-| `:turn_canceled` | Stop, hook stop, Ctrl-C | `{cancellation_reason, cancelled_by?, duration_ms}` |
-| `:turn_failed` | an error | `{error_class, message, duration_ms, error_kind?, retryable?, host?, summary?}` |
+| `:turn_completed` | normal end | Engine event `{turn_id, result, turn_summary, display_pending}`, plus `verdict` (a Verify turn's recorded verdict) and `revises` (a Revise turn's stamp, `{turn_id}`) when there are; the Bridge's SSE frame omits `result` (answer remains in `turn_summary.output`) |
+| `:turn_canceled` | Stop, hook stop, Ctrl-C | `{turn_id, cancellation_reason, cancelled_by?, duration_ms}` |
+| `:turn_failed` | an error | `{turn_id, error_class, message, duration_ms, error_kind?, retryable?, host?, summary?}` |
 | `:answer_display` | after the after_turn hooks (observers only, not the sink) | `{display, refs?}` (display a string, or nil; refs the count of the answer's refs, only when a hook attached some) |
 
 A turn's origin is a `TurnOrigin` (`lib/samagotchi/turn_origin.rb`, a `Data.define` of `client_id`, `enqueued_id`
