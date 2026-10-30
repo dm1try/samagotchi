@@ -41,6 +41,14 @@ RSpec.describe Samagotchi::Hooks::Loader do
     expect(event[:seen]).to eq([1, 2])
   end
 
+  it "keeps one instance per [path, settings] across loads until reset_cache!" do
+    write_hook("cached_probe.rb", "class CachedProbe; def call(e); end; end")
+    first = described_class.load_plugin(hooks_dir, "cached_probe.rb")
+    expect(described_class.load_plugin(hooks_dir, "cached_probe.rb")).to be(first)
+    described_class.reset_cache!
+    expect(described_class.load_plugin(hooks_dir, "cached_probe.rb")).not_to be(first)
+  end
+
   it "gives a hook with no settings: an empty hash, and builds a bare class without one" do
     write_hook("empty_probe.rb", "class EmptyProbe; def initialize(s); @s = s; end; def call(e); e[:settings] = @s; end; end")
     write_hook("bare_probe.rb", "class BareProbe; def call(e); e[:bare] = true; end; end")

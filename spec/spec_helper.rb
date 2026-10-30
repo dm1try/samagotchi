@@ -173,6 +173,9 @@ RSpec.configure do |config|
   # A spawned-mode run_session_loop installs the process-wide project env
   # (ProjectEnv.install!); later examples must start from NONE.
   config.after { Samagotchi::ProjectEnv.reset! if defined?(Samagotchi::ProjectEnv) }
+  # Hooks::Loader caches plugin instances per [path, settings] for the
+  # process: an example loading a path an earlier one loaded must get its own.
+  config.after { Samagotchi::Hooks::Loader.reset_cache! if defined?(Samagotchi::Hooks::Loader) }
 
   # Never let a spec block on the developer's real terminal. Unstubbed Reline
   # reads behave like EOF (Ctrl-D); specs that need input stub their own values.

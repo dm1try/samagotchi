@@ -165,6 +165,11 @@ module Samagotchi
         end
       end
 
+      # Forgets the cached plugin instances (load_plugin builds new ones;
+      # Ruby's require cache keeps their classes). For tests: the cache is
+      # process-wide.
+      def self.reset_cache! = @plugin_cache = nil
+
       # The plugin's #call under the entry's error policy: a required
       # before_tool_call hook that raises denies the call; otherwise
       # on_error: log warns and skip is silent.
