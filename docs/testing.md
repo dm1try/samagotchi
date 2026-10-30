@@ -71,6 +71,28 @@ either router adds its row there; a row where a UI differs on purpose (or a foun
 `repl` override and a `note`. The Ruby side runs each row with every core command (a new one fails its
 `CORE_ROUTES` check until listed there); a row's names that core lacks stand for plugin commands.
 
+## Levels
+
+Each level owns its own share; a detail is asserted once, at the lowest level that has it.
+
+| Level | Ruby | Web | Owns |
+|---|---|---|---|
+| Unit | a class, its collaborators stubbed or passed in | `npm test` (node; happy-dom for lit) | the details and the variants: a message's text, each refusal, the edge cases |
+| Functional | a component through its real seams in one process (an Engine on `test_kernel`, a real Bridge, `Web::App` on Rack) | chi web's routes (`spec/web/`, Rack) | the component's happy path and its main negative paths, and the payload it hands the next layer |
+| Process / e2e | a real `bin/chi`, worker or script (`run_chi`, a spawned process) | Playwright (`npm run e2e`) | one run per mechanism (the wiring a lower level can't see: a require, a spawn, a real browser), and a few whole journeys |
+
+- **The variants are the units'.** A higher-level spec says which mechanism it is the one test of and where its
+  variants live (`remote_attach_stream_spec.rb`, `steer_delivery_e2e_spec.rb`, `terminal_ui/attached_loop_bridge_spec.rb`).
+- **One real chi per mechanism** (spec/support/chi_cli.rb): a file keeps one `run_chi` per mechanism and forks the
+  rest (`fork_chi`). A script that runs chi (a bundle's `scripts/pair`) likewise: its mechanism on real chi, its
+  variants on a fake one (`FakeChiContext`).
+- **A spec that spawns per assertion gets a seam.** A unit spec that starts a process for every check (a `git`, a
+  Ruby boot) passes the collaborator in or fakes it: a guardrails `Context` takes `git:`, so give it one `GitInfo`
+  per example, as the wiring keeps one per turn.
+- **e2e** is for real-browser behaviour (layout, focus, reload, two tabs), one happy path per Ruby↔web mechanism and
+  a few journeys. Before adding a test, extend an existing journey's step; a variant goes to node, a Ruby↔web shape
+  variant to a shared fixture (`spec/fixtures/composer_routes.json`).
+
 ## Waiting and time
 
 A spec waits *for* something and never sleeps to wait: a fixed pause is too short on a loaded runner (a parallel
