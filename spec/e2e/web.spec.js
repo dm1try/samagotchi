@@ -587,7 +587,7 @@ test("an edit's approval card, then its row's title and diff lines, open the fil
 // (a mouse drag is the same selectionchange, less exact). A plugin's pill
 // (e2e-annotation's chi.annotation) fills its command line and the quote;
 // Send runs that command with the note. Verify, last, runs its check.
-test("an annotate preset fills the composer with the quote and never sends; a plugin's pill prepares its command; Verify on an answer gets a verdict card", async ({ page, script }) => {
+test("an annotate preset fills the composer with the quote and never sends; a plugin's pill prepares its command; Verify on an answer gets a verdict card, and a Revise of that answer stacks it under the card", async ({ page, script }) => {
   script("plain");
   await send(page, "Say pong");
   await turnEnded(page, 1);
@@ -684,6 +684,36 @@ test("an annotate preset fills the composer with the quote and never sends; a pl
   await page.reload();
   await turnEnded(page, 3);
   await verdict();
+
+  // A Revise of the checked answer: the Verify turn's answer has no Revise
+  // (app.js's verifyTurn reads the session's verdicts); the revised first
+  // turn folds to its stub, the verdict card stays on view, and the new
+  // answer is the stack's top with its version chip, live and after a
+  // reload. The stack's own variants: revise_stack.test.js.
+  const [, quoteTurnId, verifyTurnId] = await page.locator("#history .bubble.user").evaluateAll((els) => els.map((el) => el.dataset.turnId));
+  expect(verifyTurnId).toBeTruthy();
+  await expect(page.locator("#history .revise-btn")).toHaveCount(2);
+  await expect(page.locator(`#history .revise-btn[data-revise="${verifyTurnId}"]`)).toHaveCount(0);
+  script("plain");
+  const first = page.locator("#history .bubble.output").first();
+  await first.hover();
+  await page.locator("#history .revise-btn").first().click();
+  await expect(page.locator("#reviseChip .revise-chip")).toContainText("Revising: PONG from the fake model.");
+  await send(page, "Shorter");
+  await turnEnded(page, 4);
+  const stacked = async () => {
+    await expect(page.locator("#history .stack-stub")).toHaveCount(1);
+    await expect(page.locator("#history .stack-stub")).toContainText(/^v1 · “PONG from the fake model\. .*” · 1 line — superseded by v2/);
+    await expect(page.locator("#history .bubble.user:visible").first()).toHaveAttribute("data-turn-id", quoteTurnId);
+    await expect(page.locator("#history .verify-verdict")).toBeVisible();
+    await expect(page.locator("#history .stack-versions > summary")).toHaveText("v2 · 1 earlier");
+    await expect(page.locator("#history .bubble.output:visible").last()).toHaveText("PONG from the fake model. It streams word by word. Then the turn ends.");
+    await expect(page.locator("#history .revise-row.stacked")).toHaveCount(1);
+  };
+  await stacked();
+  await page.reload();
+  await turnEnded(page, 4);
+  await stacked();
 });
 
 // ~40 models over two hosts, as an OpenRouter host lists them (its own
