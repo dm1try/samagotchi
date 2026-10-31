@@ -1092,7 +1092,8 @@ default; [context.md, The judge](context.md#the-judge)): two `noul`
 questions per proposed candidate, "Is this session's work about the
 candidate?" and "Has the user stated a task yet?", on the same host and
 model, gated by its own mode alone. It logs to `context_candidates.jsonl`
-with the `context` tag. Unlike the toolkit's audit it doesn't skip a shared
+with the `context` tag; in on mode `ContextCandidateChoice` acts on the
+answer (attach, card, or nothing). Unlike the toolkit's audit it doesn't skip a shared
 local host: it asks after the turn ends there. Both side judgments run
 through `SideJudgments` (one ask in flight per kind, a failure is one warn,
 shutdown waits up to a second).

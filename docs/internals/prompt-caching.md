@@ -85,8 +85,8 @@ right-hand column happens.
   (there is little cached on a session's first turn), so on mode asks only there, skips the deferred path, and
   sends no worker warm-up.
 - The candidate judge (`context.candidates.mode`, `ContextJudge`) adds nothing to the model's request: its asks
-  go to System 1 only, and nothing it answers enters the history (attaching, a later slice, goes through the
-  between-turn note delivery). On a shared local server it asks after the turn's last request, not skipped: a
+  go to System 1 only, and nothing it answers enters the running turn's history: on mode's attach writes only the
+  session's context folder, and its note comes with the between-turn delivery (`ContextAbsorber`), never mid-turn. On a shared local server it asks after the turn's last request, not skipped: a
   completed turn starts the asks right before its turn-end warm-up, and the warm-up waits for them
   (`PromptWarmup#start`'s `after:`, `AFTER_SECONDS` at most), so it re-warms the prefix the asks evicted and the
   next turn prefills only its own message. A turn that ended otherwise (a Stop, a failure: no warm-up) starts them

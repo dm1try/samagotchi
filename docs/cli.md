@@ -902,7 +902,8 @@ REPL alike:
   `cutting in…`, then `steered`. A phone shows the short form (`↳ after this
   thinking · 0:42`) with `cut in` and `queue` chips.
 - Commands answer, wait or are refused, by what they do:
-  - At once, beside the turn: `/stats`, `/recap` (and `/recap on|off|default`), `/help`, `/context`, a
+  - At once, beside the turn: `/stats`, `/recap` (and `/recap on|off|default`), `/help`, `/context` (and
+    `/context attach|decline NAME`: a candidate's note still waits for the next turn), a
     plugin's anytime command (`/btw`), and the commands that only show
     something: `/models` (with a filter too), and `/model`, `/llm-context`,
     `/thinking`, `/reasoning-history` and `/guardrails` alone.

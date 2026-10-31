@@ -1761,7 +1761,8 @@ its own). The first target is a long session such as a day-long coordinator, whe
 ## The candidate judge
 
 `context.candidates.mode: audit` asks System 1 whether a session's work is about each candidate a bundle proposed
-(see [The judge](context.md#the-judge)); it uses `guardrails.system_one.host` and `.model`, but its own mode: System
+(see [The judge](context.md#the-judge)); `on` also acts on the answer: attaches at `threshold`, a card from
+`offer_threshold` ([On mode](context.md#on-mode)). It uses `guardrails.system_one.host` and `.model`, but its own mode: System
 1's `mode` (approvals) can stay `off`. Jev, the hosted judgment model, is served through OpenRouter
 (`/api/v1/systemone`), so OpenRouter can be the System 1 host:
 
@@ -2217,9 +2218,9 @@ column says so, a `--kebab-name` flag. The maps (`hosts:`, `models:`,
 | `context.every_seconds` | `300` | | How often an attached context source's command runs when it has no `--every` (seconds, at least 30). See [Attached context](context.md). |
 | `context.wake` | `true` | yes | A source whose update says `wake: true` may start a turn in a live, idle session (one per source per 10 minutes, a peer source up to `context.peer_turns` in a row, within `session.max_wakes`); so may a session's pushed source's first push. `false`: updates wait as notes for the next turn. See [Waking](context.md#waking). |
 | `context.peer_turns` | `3` | yes | Wake turns in a row a peer agent's answers may start (a peer bundle's outbox source, such as `codex-outbox`), with no message typed in the web or a TUI in between (`chi send` doesn't count); within `session.max_wakes`. Then answers wait as notes, and the UIs hear it once. An answer whose summary ends its verdicts with `VERDICT OK` wakes once to close the round, counted toward `session.max_wakes` only. `0`: a peer source wakes like any other. See [Waking](context.md#waking). |
-| `context.candidates.mode` | `off` | | The candidate judge: `off` (the default: no conversation text goes to a System 1 host), `audit` (asks System 1 whether the session's work is about each proposed candidate and logs it in `context_candidates.jsonl`; attaches nothing), `on` (for now the same as `audit`). Its host and model are `guardrails.system_one.host` / `.model`. config.yml only. See [The judge](context.md#the-judge). |
-| `context.candidates.threshold` | `0.8` | | The probability at which the judge would attach a candidate (a judged line's `would: attach`). config.yml only. |
-| `context.candidates.offer_threshold` | `0.6` | | The probability from which the judge would offer one (`would: offer`, below `threshold`). config.yml only. |
+| `context.candidates.mode` | `off` | | The candidate judge: `off` (the default: no conversation text goes to a System 1 host), `audit` (asks System 1 whether the session's work is about each proposed candidate and logs it in `context_candidates.jsonl`; attaches nothing), `on` (the same asks, acted on: attached at `threshold`, a card from `offer_threshold`; see [On mode](context.md#on-mode)). Its host and model are `guardrails.system_one.host` / `.model`. config.yml only. See [The judge](context.md#the-judge). |
+| `context.candidates.threshold` | `0.8` | | The probability at which the judge attaches a candidate in on mode (a judged line's `would: attach`). config.yml only. |
+| `context.candidates.offer_threshold` | `0.6` | | The probability from which on mode shows the candidate's card, once (`would: offer`, below `threshold`). config.yml only. |
 | `context.candidates.reask_after_turns` | `3` | | Owner prompts after a judged ask before the judge's one re-ask of that candidate. config.yml only. |
 | `toolkit.default` | `full` | | The toolkit a new session is stored on: the tools its prompts declare (`full`, `lean`, `child`, one of `toolkit.kits` or a bundle's). `chi --toolkit` picks one per session. See "Toolkits". |
 | `toolkit.child` | `full` | | A delegate child's toolkit, unless its `delegate` call names one (`toolkit:`). See "Toolkits". |

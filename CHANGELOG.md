@@ -16,6 +16,11 @@ and commands may change between minor versions. How releases are made:
   whether the session's work is about each proposed candidate, and the answers go to `context_candidates.jsonl`;
   nothing is attached. `chi context report [--days N]` counts them against what you attached or declined. Jev
   through OpenRouter works as the System 1 host. See docs/context.md (The judge).
+- The candidate judge's on mode (`context.candidates.mode: on`): a candidate judged at `threshold` (0.8) or above
+  is attached quietly (its note comes before your next turn, never mid-turn; removing it declines it), one from
+  `offer_threshold` (0.6) gets a card once (Attach / Not here), lower ones stay proposed. `/context attach NAME` and
+  `/context decline NAME` choose a candidate yourself; `chi context report` counts the judge's attaches you removed
+  later. See docs/context.md (On mode).
 
 ### Changed
 

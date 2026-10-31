@@ -51,7 +51,9 @@ Engine#run_turn(session, prompt, on_event:, max_iterations:, cancel_controller:,
   │     #   Pending#cancel_controller; a Stop after a timeout doesn't), and on a candidate picked ≥ threshold
   │     #   ToolkitBinding#suggest sets the session's toolkit, origin suggested, saved, with the notice;
   │     #   then start_context_judge (owner turns only: ContextCandidatesLog#look, and unless
-  │     #   context.candidates.mode is off, ContextJudge's asks on SideJudgments' :context kind; on a shared
+  │     #   context.candidates.mode is off, ContextJudge's asks on SideJudgments' :context kind, each answer to
+  │     #   ContextCandidateChoice#after_judged (on mode: attach to the session's folder, or a card held while a
+  │     #   turn runs and shown from run_turn's ensure, show_context_cards_after_turn); on a shared
   │     #   local System 1 host they wait for the turn's end: started before warm_up_next_turn, whose warm-up
   │     #   waits for them, or from run_turn's ensure; docs/context.md, The judge);
   │     #   then the session's toolkit (apply_toolkit!: Registry#toolkit, ToolIndex#refresh! for find_tools'

@@ -341,8 +341,9 @@ is attached at once (its note comes with your next turn).
 
 A candidate's state is never stored: it is *attached* while a source of its
 name (or its URL) is, *declined* once you removed that source from the
-session (it isn't proposed or attached again), else *proposed*. `chi context
-ls` and `/context` list them under the sources:
+session or answered its card "Not here" (it isn't proposed, judged or
+attached again), else *proposed*. `chi context ls` and `/context` list them
+under the sources:
 
 ```
 $ chi context ls
@@ -350,6 +351,13 @@ no attached context
 candidates (attached when the session's owner mentions one):
   pr-412  proposed  #412 Fix the login redirect
 ```
+
+You can also choose yourself: `/context attach NAME` attaches a proposed
+candidate (its why: "you attached it"), `/context decline NAME` declines it.
+Both are the session owner's (a participant can't send a `/` line, and a
+review session refuses them); an unknown name, or one attached or declined
+already, is an error that says so. They are what the judge's card's buttons
+run (see [On mode](#on-mode)).
 
 Forks and continues start without candidates: the bundle proposes again in
 the new session.
@@ -360,8 +368,8 @@ A mention is the only thing that attaches a candidate by itself. With
 `context.candidates.mode: audit` chi also asks [System 1](guardrails.md#system-1-experimental)
 about each proposed candidate — "Is this session's work about the
 candidate?" — and logs the answer, so you can see how it would do before
-anything depends on it. It attaches nothing (`on` reads as `audit` for now).
-The default is `off`: no conversation text goes to a System 1 host unless you
+anything depends on it; `audit` attaches nothing. With `on` the answer acts
+([On mode](#on-mode)). The default is `off`: no conversation text goes to a System 1 host unless you
 turn this on, whatever `guardrails.system_one` says. The host and model are
 `guardrails.system_one.host` / `.model` (Jev through OpenRouter: see
 [The candidate judge](configuration.md#the-candidate-judge)).
@@ -369,9 +377,9 @@ turn this on, whatever `guardrails.system_one` says. The host and model are
 ```yaml
 context:
   candidates:
-    mode: audit            # off (default) | audit | on (= audit for now)
-    threshold: 0.8         # would attach at or above this
-    offer_threshold: 0.6   # would offer from this, below threshold
+    mode: audit            # off (default) | audit | on
+    threshold: 0.8         # on: attach at or above this
+    offer_threshold: 0.6   # on: a card from this, below threshold
     reask_after_turns: 3   # owner prompts before the one re-ask
 ```
 
@@ -398,6 +406,30 @@ What it asks, and when:
   waits for those asks and restores the cached prompt they pushed out. One
   session's asks run one batch at a time.
 
+### On mode
+
+With `context.candidates.mode: on` the judge's answer acts:
+
+- **p ≥ `threshold` (0.8): attached quietly.** The source goes into the
+  session's own folder, its why "it looks related to your task" (the agent
+  never sees a probability), and it shows as a chip like any attached source.
+  Its note reaches the agent only at the next between-turn delivery: an
+  answer that comes while your turn runs waits for that turn to end, so the
+  running turn's history, cached prompt and reasoning stay as they were.
+  Removing it — the chip's ×, or `chi context rm NAME` — declines it: it is
+  never proposed or judged again in that session.
+- **`offer_threshold` (0.6) ≤ p < `threshold`: one card**, from `context`,
+  with the candidate's title and two buttons: **Attach** (`/context attach
+  NAME`) and **Not here** (`/context decline NAME`). The card shows once per
+  candidate, also across a worker restart (a `carded` line in the log
+  remembers it), and never inside a running turn: an answer that comes
+  mid-turn shows its card when the turn ends. In the terminal the card lists
+  the two commands to type. Answering it replaces the card with what
+  happened; a later re-ask at or above the threshold attaches it and closes
+  the card.
+- **Below `offer_threshold`: nothing.** The candidate stays proposed (a
+  mention still attaches it).
+
 ### The log and the report
 
 Everything about candidates goes to `context_candidates.jsonl` in the state
@@ -405,8 +437,11 @@ folder (0600, local; written in every mode, `off` too, since nothing in it
 leaves the machine): `proposed`, `mentioned`, `judged` (the probability `p`,
 the task-stated probability `task_p`, `stated`, `would`: attach / offer /
 none at the thresholds then, with your prompts cut to 200 characters),
-`attached` / `declined` / `detached` (what you did, seen at your next turn's
-start) and `withdrawn`.
+`judge_attached` (on mode's attach, with `p`), `carded` (on mode's card, with
+`p`), `attached` / `declined` with `by: "command"` (`/context attach|decline`,
+the card's buttons), `attached` / `declined` / `detached` with `by: "user"`
+(what you did otherwise, seen at your next turn's start; removing a source
+declines it) and `withdrawn`.
 
 `chi context report [--days N]` counts it, with no prompts in the output
 (this machine only):
@@ -415,6 +450,7 @@ start) and `withdrawn`.
 $ chi context report
 chi context report: the last 14 days, 12 sessions (mode audit)
   candidates: proposed 14 · mentioned 3 · attached by you 1 · declined 2 · detached 0 · withdrawn 0
+  on mode: judge attached 0 · you removed 0 of them later · carded 0 · /context attach 0 · /context decline 0 (the card's buttons)
   judge: 19 asks · judged 15 · no task yet 4 · 11 candidates judged
   would attach (each candidate's latest judged ask):
     ≥ 0.5  5
@@ -424,6 +460,9 @@ chi context report: the last 14 days, 12 sessions (mode audit)
     ≥ 0.9  1
   against your own choice (6 judged candidates you attached, mentioned or declined), at 0.8: agree 5 · would attach what you declined 0 · would miss what you attached 1
 ```
+
+The on mode line's "you removed N of them later" is the judge's false
+positives: sources it attached that you then took off.
 
 ## GitHub PRs: the github-pr bundle
 
