@@ -820,6 +820,7 @@ full label, `plugin.rb (bundle my-bundle)`.
 | `ctx.repo_root` | the git checkout holding `cwd`, or nil |
 | `ctx.scratch?` | whether the session is a `chi scratch` one (deleted when it ends) |
 | `ctx.delegate?` | whether the session is a delegate child: a task another session handed over |
+| `ctx.review?` | whether the session is a review session (`chi review`): one its participants read, not the owner's working session |
 | `ctx.frontend` | what runs the session, read now: `:repl` (the REPL, `-p` without `--non-interactive`), `:one_shot` (`-p --non-interactive`: one turn, then exit) or `:worker` (a session worker: the web, an attached TUI). Only a worker's answers reach the web while it runs; a REPL's show there once the session is opened. Until the host sets it (while the plugins load, inside `Engine.new`) it reads `:one_shot`, so read it in hooks and init tasks, not in `register` |
 | `ctx.fork?` | whether the session is a fork (`ctx.sessions.fork`): it has a parent but isn't a delegate child, and started from a conversation, so its first prompt isn't its first user message |
 | `ctx.model` | the model the session runs on now: its resolved ref (`host:id`), right after `/model` too |
@@ -1135,6 +1136,7 @@ ctx.context.list  # => [{name:, scope:, why:, hint:, fetched_at:, error:, provid
 ctx.context.decline(url: "https://github.com/acme/app/pull/42")    # => "pr-42"
 ctx.context.propose(url: "https://github.com/acme/app/pull/42", title: "#42 Make the thing", mentions: ["#42", "feat/x"])
 ctx.context.candidates  # => [#<data Candidate name="pr-42", url="https://…", title="#42 Make the thing", …>]
+ctx.context.withdraw("pr-42")  # => true
 ```
 
 [Attached context](context.md) for the session the plugin runs in: chi runs
@@ -1158,14 +1160,25 @@ gets a note when its text changes.
   attached (`chi context rm` removes it).
 - `propose(url:, title:, name: nil, describe: nil, mentions: [])` or
   `propose(name:, cmd:, title:, describe: nil, mentions: [])` records a
-  candidate: a source proposed for this session, not attached. `title` is
-  what a person reads, `describe` more of it, `mentions` the words a prompt
-  names it by. A candidate of that name stays as first proposed (a worker
-  restart proposing again changes nothing), and one the user removed from
-  the session (its name or its URL) isn't proposed: nil. `candidates` lists
-  them (`ContextSources::Candidate`: `name`, `url`, `cmd`, `title`,
-  `describe`, `mentions`, `proposed_by`, `at`), by name. Neither an attach
-  nor a decline removes a candidate; deleting the session does.
+  [candidate](context.md#candidates): a source proposed for this session,
+  not attached. chi attaches it when the session's owner mentions one of its
+  `mentions` in a prompt (the matching rules are in context.md), with the
+  why "you mentioned …". `title` is what a person reads (no probabilities or
+  place facts: "#42 Make the thing"), `describe` more of it. A candidate of
+  that name stays as first proposed (a worker restart proposing again
+  changes nothing). Nothing is proposed (nil) in a review session, for a
+  source attached already (its name or its URL, at any scope), or for one
+  the user removed from the session. A new candidate that an owner prompt
+  already in the session mentions is attached at once: an init task's
+  proposal usually lands while the first turn runs, and that turn's prompt
+  still counts (its note comes with the next turn).
+- `candidates` lists them (`ContextSources::Candidate`: `name`, `url`,
+  `cmd`, `title`, `describe`, `mentions`, `proposed_by`, `at`), by name.
+  Whether one is attached or declined is never stored on it: `chi context
+  ls` and `/context` derive it from the session's sources and declined
+  markers. `withdraw(name)` takes a candidate back (true when there was
+  one); a source attached from it stays attached. Neither an attach nor a
+  decline removes a candidate; deleting the session does.
 - The source is the session's (not the project's), marked
   `added_by: plugin:<bundle>`. It is plugin code, so it isn't asked about as
   the agent's `chi context add --cmd` is.
@@ -1179,7 +1192,7 @@ gets a note when its text changes.
   `Samagotchi::Plugin::AttachedContext::Error` with the reason (no session
   yet, no provider for the URL, a bad name).
 
-The [github-pr bundle](#the-github-pr-bundle) attaches the branch's PR from
+The [github-pr bundle](#the-github-pr-bundle) proposes the branch's PR from
 a quiet `chi.init` task.
 
 ### Context providers in the manifest
@@ -2130,18 +2143,19 @@ bundles:
 chi bundle install github-pr      # in the dev profile; needs gh, logged in
 ```
 
-Attaches the branch's open GitHub pull request to a session as `pr-<n>` when
-its worker starts (not in a scratch session or a delegate child; quietly
-nothing without `gh`, a repository or an open PR), and resolves PR URLs for
-`chi context add`. Its script prints the PR as text
+Proposes the branch's open GitHub pull request to a session as a candidate
+`pr-<n>` when its worker starts (not in a scratch session; quietly nothing
+without `gh`, a repository or an open PR): it is attached once you mention it
+(`#N`, the branch or its URL; [Candidates](context.md#candidates)). It resolves
+PR URLs for `chi context add`. Its script prints the PR as text
 and a summary of what changed in counts, authors and states only; it wakes
 the session for a review requesting changes, checks turning red, or the PR
 merged or closed. In the web, a `path:line` in a worker's answer links to
 that line of the session's PR ([Line links](context.md#line-links); `line_links:
 always` for the REPL and `chi -p` too), and its ref menu offers the file
-here and a "PR diff" action (`event[:refs]`). `auto_attach:
-offer` asks with a card first (`/pr-attach N`, `/pr-decline N`), `off`
-attaches nothing ([Attach, offer or off](context.md#attach-offer-or-off)).
+here and a "PR diff" action (`event[:refs]`). `auto_attach: attach` attaches
+it at once (the old default), `off` does nothing ([Propose, attach or
+off](context.md#propose-attach-or-off)).
 See [Attached context](context.md#github-prs-the-github-pr-bundle).
 
 ## The coordinator bundle

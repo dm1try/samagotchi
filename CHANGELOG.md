@@ -7,6 +7,20 @@ and commands may change between minor versions. How releases are made:
 [docs/releasing.md](docs/releasing.md).
 ## [Unreleased]
 
+### Added
+
+- Candidates for attached context: a bundle proposes a source (`ctx.context.propose`, `candidates`, `withdraw`),
+  and chi attaches it when the session's owner mentions it; `chi context ls` and `/context` list them with their
+  state (proposed, attached, declined). See docs/context.md (Candidates).
+
+### Changed
+
+- github-pr no longer attaches the branch's PR by itself: mention it (#N, the branch, the URL), or set
+  `auto_attach: attach` for the old behaviour. It proposes the PR as a candidate when the worker starts (a delegate
+  child too), and a prompt of yours that names it attaches it before that turn runs, its note in that turn.
+  `auto_attach: offer` (the card with Attach and Not here, `/pr-attach`, `/pr-decline`) is gone and reads as
+  `propose`, as does an unknown value. (github-pr 0.6.0)
+
 ## [0.139.1] - 2026-10-31
 
 ### Fixed

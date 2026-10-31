@@ -105,7 +105,9 @@ and `-`, up to 40 characters, starting with a letter or digit
 (`subscriptions` is taken).
 
 In a session, `/context` lists what is attached (as `context_read` does
-with no name).
+with no name), then the session's [candidates](#candidates). `chi context ls`
+lists them too (`--format json`: rows with `"candidate": true` and their
+`status`), from another machine's chi web as well.
 
 ## Recipes
 
@@ -311,6 +313,47 @@ lower.) Every other source keeps the line above. `context.peer_turns: 0` turns
 the loop off: a peer source then wakes like any other. `context_read` names a
 peer source in its header (`Peer: your peer agent Codex's answers …`).
 
+## Candidates
+
+A bundle can **propose** a source instead of attaching it
+([`ctx.context.propose`](plugins.md#attached-context-ctxcontext)): a
+candidate, with a title and the words that name it (its *mentions*). Nothing
+reaches the agent until you name it in one of your own prompts; then chi
+attaches it before that turn runs, gives it one first fetch (up to 10
+seconds), and the turn starts with its attached note, whose why names what
+you wrote ("Why: you mentioned #412"). A source whose first text takes longer
+gets its note with a later turn.
+
+How a mention counts:
+
+- whole words, any case;
+- `#N` only for N of 10 or more, or right after "PR" or "pull" ("PR #4");
+- a branch name only when it is at least 6 characters and holds a `/`, `-`
+  or `_` (`feat/login`, not `web`);
+- a URL exactly as proposed (`…/pull/42/files` is another URL);
+- nothing inside a fenced code block: a pasted log's `#412` isn't you asking.
+
+Only the session's owner counts: a participant's message, a steer, a note or
+a reminder never attaches anything, and a review session gets no candidates.
+A bundle usually proposes from an init task that finishes while your first
+turn runs; when it does, the prompts you already wrote count too, and a hit
+is attached at once (its note comes with your next turn).
+
+A candidate's state is never stored: it is *attached* while a source of its
+name (or its URL) is, *declined* once you removed that source from the
+session (it isn't proposed or attached again), else *proposed*. `chi context
+ls` and `/context` list them under the sources:
+
+```
+$ chi context ls
+no attached context
+candidates (attached when the session's owner mentions one):
+  pr-412  proposed  #412 Fix the login redirect
+```
+
+Forks and continues start without candidates: the bundle proposes again in
+the new session.
+
 ## GitHub PRs: the github-pr bundle
 
 ```sh
@@ -320,13 +363,19 @@ chi bundle install github-pr      # or the dev profile: chi bundle install dev
 It needs [`gh`](https://cli.github.com), logged in (`gh auth login`).
 
 - When a session's worker starts on a branch with an open pull request, the
-  bundle attaches it as `pr-<number>` (a session source: "branch feat/x has
-  open PR #42"). Not in a `chi scratch` session or a delegate child, and
-  quietly nothing without `gh`, a login, a repository or an open PR. Once
-  you remove it (`chi context rm`, the chip's detach) it stays removed:
-  the next start doesn't bring it back; `chi context add <PR URL>` does.
+  bundle proposes it as a [candidate](#candidates) `pr-<number>`, titled
+  "#42 <the PR's title>": nothing reaches the agent until you mention it
+  in a prompt (`#42`, the branch's name, or the PR's URL). Then it is
+  attached in that same turn ("Why: you mentioned #42"). Not in a `chi
+  scratch` session or a review session, and quietly nothing without `gh`, a
+  login, a repository or an open PR. A delegate child gets the proposal too
+  (its task may name the PR). At a turn's start more than 5 minutes after
+  its last look, the bundle looks again, beside the turn (a branch switched
+  mid-session). Once you remove an attached PR (`chi context rm`, the chip's
+  detach) it stays removed: it isn't proposed or attached again; `chi context
+  add <PR URL>` brings it back.
 - `chi context add <PR URL>` attaches any PR.
-- `auto_attach` (below) can make it ask first, or attach nothing.
+- `auto_attach` (below) can make it attach the PR at once, or do nothing.
 - The text: title, state, branch, description, reviews, comments (oldest
   first) and checks, every 5 minutes.
 - The summary says what changed in **counts, authors and states only**
@@ -336,50 +385,28 @@ It needs [`gh`](https://cli.github.com), logged in (`gh auth login`).
 - It wakes for a review requesting changes, checks turning red, and the PR
   merged or closed. Comments alone never wake.
 
-### Attach, offer or off
+### Propose, attach or off
 
 ```yaml
 bundles:
   github-pr:
-    auto_attach: offer   # attach (the default) | offer | off
+    auto_attach: propose   # propose (the default) | attach | off
 ```
 
-- `attach`: the branch's open PR is attached when the worker starts, as
-  above.
-- `offer`: nothing is attached; a card asks instead, once per session per
-  PR: **PR #42 for branch feat/x**, the PR's title and "Not attached: the
-  agent gets nothing until you attach it.", with **Attach** and **Not
-  here**. The terminal shows them as `→ /pr-attach 42` and
-  `→ /pr-decline 42`, to type. Attach attaches it as auto-attach would
-  (even after Not here: a click is your choice); Not here marks it removed
-  from the session, so `attach` mode won't attach it there either. Either
-  turns the card into a one-line notice. Not here on a PR that is attached
-  already changes nothing and says so: `chi context rm pr-42` removes it. A worker restart (idle exit,
-  resume) doesn't ask again; once the card has scrolled out of the last 20,
-  `/pr-attach 42` or `chi context add <PR URL>` still attaches it. `/pr-attach` and
-  `/pr-decline` act only on a PR offered in that session.
-- `off`: nothing is attached or offered. `chi context add <PR URL>` and line
-  links work as before.
+- `propose`: the branch's open PR is a candidate, attached when you mention
+  it, as above.
+- `attach`: it is attached when the worker starts, mention or not (the
+  default before candidates; not in a delegate child).
+- `off`: nothing is proposed or attached. `chi context add <PR URL>` and
+  line links work as before.
 
 `true` and `false` (YAML reads a bare `on`/`off` as those) mean `attach` and
-`off`; an unknown value is `attach`, with a warning in the log. The setting
-is read when a worker starts.
+`off`. `offer`, which once posted a card with Attach and Not here, now reads
+as `propose`, and so does an unknown value, each with a warning in the log.
+The setting is read when the bundle looks.
 
-A web chat is created with its first message, so in `offer` mode the card
-arrives while that first turn runs: the first answer comes without the PR,
-and Attach delivers it before the next turn. An offered PR that isn't
-attached gets no line links (unless your message names its URL).
-
-In `offer` mode the bundle keeps a local log,
-`$XDG_STATE_HOME/samagotchi/plugins/github-pr/offers.ndjson`, to find out
-later when an offer is wanted: one JSON line per event, `offered` (session,
-project root, working directory, branch, PR URL, main checkout or worktree,
-model), `attached` and `declined` (with the seconds since the offer), and
-`first_prompt` (the first 160 characters of every session's first message,
-offered or not; a fork's first after the conversation it started from, once;
-not scratch sessions or delegate children). Over 1 MiB it is
-renamed to `offers.ndjson.1` (one old file is kept). Only you can read it
-(0600), and nothing leaves your machine.
+A proposed PR that isn't attached gets no line links (unless your message
+names its URL).
 
 ### Line links
 
@@ -468,7 +495,7 @@ sessions/<id>/<name>.json, …snapshot.json     a session's own
 sessions/<id>/subscriptions.json              what the session has seen and read (its worker writes it)
 sessions/<id>/muted/<name>                    a project source this session mutes
 sessions/<id>/declined/<name>                 a source you removed (its hint inside): auto-attach skips it
-sessions/<id>/candidates/<name>.json          a source a plugin proposed here, not attached (ctx.context.propose)
+sessions/<id>/candidates/<name>.json          a source a plugin proposed here ({url or cmd, title, describe, mentions, proposed_by, at}; no status)
 ```
 
 Deleting a session deletes its folder. A source and its snapshot go with
