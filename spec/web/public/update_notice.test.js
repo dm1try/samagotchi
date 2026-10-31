@@ -67,6 +67,30 @@ test("versionNotice: with update.auto: install an available chi says it installs
   assert.equal(versionNotice({ loaded: "0.18.1", served: "0.18.1", available: "0.19.0", auto: "off" }).updateVersion, "0.19.0");
 });
 
+test("versionNotice: an automatic install that restarts by itself offers no Restart toast for its version", () => {
+  const base = { loaded: "0.18.1", served: "0.18.1", installed: "0.19.0", available: "0.19.0", auto: "install" };
+  assert.equal(versionNotice({ ...base, restart: "idle", autoInstall: "0.19.0" }), null);
+  // update.restart: never, an install from the button or a terminal, or another version: the toast offers the restarts.
+  assert.equal(versionNotice({ ...base, restart: "never", autoInstall: "0.19.0" }).key, "installed:0.19.0");
+  assert.equal(versionNotice({ ...base, restart: "idle", autoInstall: null }).key, "installed:0.19.0");
+  assert.equal(versionNotice({ ...base, restart: "idle", autoInstall: "0.18.9" }).key, "installed:0.19.0");
+  assert.equal(versionNotice({ ...base, auto: "off", restart: "idle", autoInstall: "0.19.0" }).key, "installed:0.19.0");
+});
+
+test("mergeVersionState keeps the restart setting and the automatic install a chi_update state names", () => {
+  assert.equal(mergeVersionState({}, { restart: "never" }).restart, "never");
+  assert.equal(mergeVersionState({ restart: "never" }, { version: "0.18.1" }).restart, "never");
+  const running = { operation: "install", version: "0.19.0", state: "running", auto: true };
+  assert.equal(mergeVersionState({}, { chi_update: running }).autoInstall, "0.19.0");
+  assert.equal(mergeVersionState({}, { chi_update: { ...running, state: "done" } }).autoInstall, "0.19.0");
+  // A failed run, or the Update button's install, isn't one that restarts by itself.
+  assert.equal(mergeVersionState({ autoInstall: "0.19.0" }, { chi_update: { ...running, state: "failed" } }).autoInstall, null);
+  assert.equal(mergeVersionState({ autoInstall: "0.19.0" }, { chi_update: { ...running, auto: undefined } }).autoInstall, null);
+  // A worker restart's state leaves it as it was.
+  assert.equal(mergeVersionState({ autoInstall: "0.19.0" }, { chi_update: { operation: "workers", state: "done" } }).autoInstall,
+    "0.19.0");
+});
+
 test("mergeVersionState keeps the auto setting from a frame that names it, and ignores a frame that doesn't", () => {
   assert.equal(mergeVersionState({}, { version: "0.18.1", auto: "install" }).auto, "install");
   assert.equal(mergeVersionState({ auto: "install" }, { version: "0.18.1" }).auto, "install");

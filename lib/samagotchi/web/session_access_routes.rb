@@ -274,7 +274,7 @@ module Samagotchi
                              model_name: session_access.show(id).model_name,
                              default_model: ModelProfile.default_model_name,
                              parent_strategy: strategy_json(session_access.parent_strategy(id)),
-                             **(@hub&.chi_state || { version: VERSION, installed: nil, available: nil, update_blocked: nil, auto: "off" }) })
+                             **(@hub&.chi_state || { version: VERSION, installed: nil, available: nil, update_blocked: nil, auto: "off", restart: "idle" }) })
       rescue SessionManager::OwnedByTUI => e
         owned_by_tui(e)
       rescue SessionAccess::Refused => e

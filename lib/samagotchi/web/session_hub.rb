@@ -75,11 +75,14 @@ module Samagotchi
       # @param now [#call] a monotonic clock in seconds (specs drive it)
       # @param installed_versions [#newest] what is installed (InstalledVersions)
       # @param update_auto [String] update.auto, said in the chi state (the page's wording)
+      # @param update_restart [String] update.restart, said beside it (whether
+      #   an automatic install's run restarts by itself: no Restart toast)
       def initialize(state_dir:, manager: SessionManager, now: nil, scan_interval: SCAN_INTERVAL,
                      full_probe_interval: FULL_PROBE_INTERVAL, installed_versions: InstalledVersions.new,
-                     update_auto: Config.get("update.auto"))
+                     update_auto: Config.get("update.auto"), update_restart: Config.get("update.restart"))
         @state_dir = state_dir
         @update_auto = update_auto
+        @update_restart = update_restart
         @installed_versions = installed_versions
         @installed = nil
         @available = nil
@@ -161,7 +164,7 @@ module Samagotchi
       def chi_state
         @monitor.synchronize do
           { version: VERSION, installed: @installed, available: @available, update_blocked: @update_blocked,
-            auto: @update_auto }
+            auto: @update_auto, restart: @update_restart }
         end
       end
 

@@ -501,9 +501,11 @@ RSpec.describe Samagotchi::Web::SessionHub do
       installed.newest = "0.18.1"
       hub.scan
       expect(events.map { |e| [e.type, e.data] }).to eq([["chi", { version: Samagotchi::VERSION, installed: "0.18.1",
-                                                                   available: nil, update_blocked: nil, auto: "off" }]])
+                                                                   available: nil, update_blocked: nil, auto: "off",
+                                                                   restart: "idle" }]])
       expect(hub.installed).to eq("0.18.1")
-      expect(hub.chi_state).to eq(version: Samagotchi::VERSION, installed: "0.18.1", available: nil, update_blocked: nil, auto: "off")
+      expect(hub.chi_state).to eq(version: Samagotchi::VERSION, installed: "0.18.1", available: nil, update_blocked: nil, auto: "off",
+                                  restart: "idle")
 
       installed.newest = "0.19.0"
       hub.scan # not a full probe yet: nothing
@@ -537,7 +539,7 @@ RSpec.describe Samagotchi::Web::SessionHub do
       hub.update_available(available: "99.0.0", blocked: "bundler")
 
       expect(events.last.data).to eq(version: Samagotchi::VERSION, installed: nil, available: "99.0.0",
-                                     update_blocked: "bundler", auto: "off")
+                                     update_blocked: "bundler", auto: "off", restart: "idle")
     end
 
     it "publishes chi update progress and keeps the latest state for event snapshots" do
@@ -568,8 +570,9 @@ RSpec.describe Samagotchi::Web::SessionHub do
       expect(hub.update_state).to eq(state: "done", rows: [], operation: "install")
     end
 
-    it "names update.auto in the chi state" do
+    it "names update.auto and update.restart in the chi state" do
       expect(described_class.new(state_dir: state_dir, update_auto: "install").chi_state).to include(auto: "install")
+      expect(described_class.new(state_dir: state_dir, update_restart: "never").chi_state).to include(restart: "never")
     end
 
     it "retains the update operation and target version for a new tab's snapshot" do

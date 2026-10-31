@@ -2082,7 +2082,8 @@ Both are read when chi web starts (restart it to apply a change). What it does, 
    the command to run). `chi update` also merges the shipped bundles that live sessions read, hence "no turn anywhere".
 2. **Installs** exactly the release the notice named, as the **Update** button does (the system bundle and shipped
    bundles are merged three ways; files you edited are kept and counted in the push). The page's sticky toast says
-   "Automatic chi update in progress" and its sheet shows the rows. A failed install is tried **once per version**:
+   "Automatic chi update in progress" and its sheet shows the rows; with `update.restart: idle` no "installed"
+   toast with **Restart** buttons follows (the run restarts by itself). A failed install is tried **once per version**:
    it pushes the failed row's reason and stays quiet until a newer release (or you, with the button) tries again.
 3. **Restarts** (`update.restart: idle`). Stale workers first, only those whose session is idle and untouched for
    10 minutes (so nobody who is about to type loses their worker), and each worker still refuses by itself when

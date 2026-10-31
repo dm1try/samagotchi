@@ -606,8 +606,9 @@ reload in a toast, since an open tab keeps its old JS across a `chi web` upgrade
 `installed`, the newest chi on this machine (`InstalledVersions`: the highest `samagotchi-<v>.gemspec`
 in RubyGems' specification dirs, or a checkout's `version.rb` on disk; looked at again on each full
 probe, every 10 s). A `chi` frame and the `GET /api/events` snapshot carry the full state
-`{version, installed, available, update_blocked, auto}` (`auto`: `update.auto`, `off` or `install`, which the page's
-"available" wording follows); `/api/info` and the session-command wake response carry the same fields. `SessionHub#update_available` publishes the checker result under the hub's
+`{version, installed, available, update_blocked, auto, restart}` (`auto`: `update.auto`, `off` or `install`, which the page's
+"available" wording follows; `restart`: `update.restart`, with which the page offers no Restart toast for the
+version an automatic install's frames name unless it is `never` or the run failed: that run restarts by itself); `/api/info` and the session-command wake response carry the same fields. `SessionHub#update_available` publishes the checker result under the hub's
 Monitor, but fetching never holds it.
 
 `Web::UpdateCheck` runs its own thread beside the hub. When `update.notify: on` (the default) or

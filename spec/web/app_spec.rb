@@ -862,7 +862,8 @@ RSpec.describe Samagotchi::Web::App do
 
       expect(collected.value.first)
         .to eq(["snapshot", { "sessions" => [], "version" => Samagotchi::VERSION, "installed" => nil,
-                              "available" => nil, "update_blocked" => nil, "auto" => "off" }])
+                              "available" => nil, "update_blocked" => nil, "auto" => "off",
+                              "restart" => "idle" }])
     end
 
     it "names the newest installed chi in the snapshot, and sends a `chi` frame when it changes" do
@@ -878,7 +879,8 @@ RSpec.describe Samagotchi::Web::App do
       frames = collected.value
       expect(frames.first[1]).to include("installed" => "0.18.0")
       expect(frames[1]).to eq(["chi", { "version" => Samagotchi::VERSION, "installed" => "99.0.0",
-                                        "available" => nil, "update_blocked" => nil, "auto" => "off" }])
+                                        "available" => nil, "update_blocked" => nil, "auto" => "off",
+                                        "restart" => "idle" }])
     end
 
     it "ends the connection when its queue overflowed: the reconnect's snapshot is the recovery" do

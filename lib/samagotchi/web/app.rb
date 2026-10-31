@@ -1016,7 +1016,7 @@ module Samagotchi
       def handle_info(req)
         return participant_info unless principal(req).owner?
 
-        chi_state = @hub&.chi_state || { version: Samagotchi::VERSION, installed: nil, available: nil, update_blocked: nil, auto: "off" }
+        chi_state = @hub&.chi_state || { version: Samagotchi::VERSION, installed: nil, available: nil, update_blocked: nil, auto: "off", restart: "idle" }
         json_response(200, { app: "chi-web", **chi_state, pid: Process.pid,
                              cwd: Dir.pwd, start_dir: start_dir, features: INFO_FEATURES, lan: @lan && @lan[:ip],
                              proxy: @public_url && { identity_header: @public_url.identity_header } })
