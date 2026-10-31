@@ -197,6 +197,33 @@ RSpec.describe Samagotchi::Web::UpdateCheck do
       expect(update_check.auto_failed?("0.0.9")).to be(true)
     end
 
+    it "is read and saved without waiting for a fetch in progress, and the check's answer keeps that save" do
+      fetching = Queue.new
+      release_fetch = Queue.new
+      update_check = checker(fetcher: lambda {
+        fetching << true
+        release_fetch.pop
+        releases
+      })
+      check = Thread.new { update_check.check }
+      begin
+        pop!(fetching, "the fetch to start")
+
+        read = Thread.new do
+          update_check.save_auto({ version: release_version, phase: "installed" }, failed: "0.0.9")
+          [update_check.auto_state, update_check.auto_failed?("0.0.9")]
+        end
+        join!(read, "the state's read and save during the fetch")
+        expect(read.value).to eq([{ version: release_version, phase: "installed" }, true])
+      ensure
+        release_fetch << true
+        join!(check, "the check")
+      end
+      expect(check.value).to be(true)
+      expect(JSON.parse(File.read(state_file))).to include("available" => release_version, "auto_failed" => ["0.0.9"],
+                                                           "auto" => include("phase" => "installed"))
+    end
+
     it "loads a state file written before it existed" do
       FileUtils.mkdir_p(File.dirname(state_file))
       File.write(state_file, JSON.generate(checked_at: clock.first.iso8601, available: release_version, notified: []))

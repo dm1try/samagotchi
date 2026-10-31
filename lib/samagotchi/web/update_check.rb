@@ -53,7 +53,11 @@ module Samagotchi
         @installed_versions = installed_versions
         @state = load_state
         @blocked = blocked_reason
+        # One check at a time (its fetch takes up to ~10 s); @state_lock
+        # only guards the state's reads and writes, so reading the state
+        # never waits for a fetch.
         @checking = Mutex.new
+        @state_lock = Mutex.new
         @wakeup = Queue.new
         @thread = nil
         @stopped = false
@@ -89,11 +93,13 @@ module Samagotchi
 
           releases = @fetcher.call
           available = available_release(releases, now)&.version
-          notified = @state[:notified]
-          notify = @notify && available && !notified.include?(available)
-          next_state = @state.merge(checked_at: now.iso8601, available: available,
-                                    notified: notify ? (notified + [available]) : notified)
-          persist(next_state)
+          notify = @state_lock.synchronize do
+            notified = @state[:notified]
+            fresh = @notify && available && !notified.include?(available)
+            persist(@state.merge(checked_at: now.iso8601, available: available,
+                                 notified: fresh ? (notified + [available]) : notified))
+            fresh
+          end
           @hub.update_available(available: @notify ? available : nil, blocked: @blocked, notify: !!notify)
           @failed = false
           true
@@ -115,19 +121,19 @@ module Samagotchi
       # kept:, workers:, pushed:, detail:} (symbol keys), nil when none.
       # @return [Hash, nil]
       def auto_state
-        @checking.synchronize { @state[:auto]&.dup }
+        @state_lock.synchronize { @state[:auto]&.dup }
       end
 
       # Whether AutoUpdate already tried +version+ and failed (one automatic
       # try per version).
       def auto_failed?(version)
-        @checking.synchronize { @state[:auto_failed].include?(version) }
+        @state_lock.synchronize { @state[:auto_failed].include?(version) }
       end
 
       # Saves AutoUpdate's record (nil clears it); +failed+ adds a version to
       # the ones it gave up on.
       def save_auto(auto, failed: nil)
-        @checking.synchronize do
+        @state_lock.synchronize do
           failed_list = failed && !@state[:auto_failed].include?(failed) ? @state[:auto_failed] + [failed] : @state[:auto_failed]
           persist(@state.merge(auto: auto, auto_failed: failed_list))
         end
