@@ -31,12 +31,15 @@ module Samagotchi
       # session (its name, or its URL) isn't attached again (#declined?)
       # until the user adds it again, or +force+: the user's own explicit
       # choice (a click), which clears the declined marker (by the name,
-      # and by the URL).
+      # and by the URL). +movable+: whether a continue or a fork takes it
+      # to the new session (nil: the default, a command source moves;
+      # ContextSources::Source#movable?).
       # @return [String, nil] the source's name; nil when declined
       # @raise [Error]
-      def attach(url: nil, name: nil, cmd: nil, why: nil, hint: nil, every_seconds: nil, force: false)
+      def attach(url: nil, name: nil, cmd: nil, why: nil, hint: nil, every_seconds: nil, force: false, movable: nil)
         own = own_location!
         source = url ? from_url(url, name: name, why: why) : from_cmd(name: name, cmd: cmd, why: why, hint: hint, every_seconds: every_seconds)
+        source = source.with(movable: movable ? true : false) unless movable.nil?
         if force
           own.undecline(source.name, hint: url && source.hint)
         elsif own.declined?(source.name) || (url && own.declined_hints.include?(source.hint))

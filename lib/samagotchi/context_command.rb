@@ -25,12 +25,14 @@ module Samagotchi
 
     USAGE = <<~TEXT
       Usage: chi context <add|push|ls|show|refresh|rm|mute|unmute|report> [options] [TARGET]
-        add NAME (--cmd CMD | --push) [--every SECONDS] [--why TEXT] [--hint TEXT] TARGET
-        add URL [--why TEXT] [--hint TEXT] TARGET   a URL an installed bundle's provider knows (github-pr: a PR)
+        add NAME (--cmd CMD | --push) [--every SECONDS] [--why TEXT] [--hint TEXT] [--[no-]movable] TARGET
+        add URL [--why TEXT] [--hint TEXT] [--[no-]movable] TARGET   a URL an installed bundle's provider knows (github-pr: a PR)
               a source: CMD prints its text (plain, or JSON {"text", "summary", "wake", "hint"});
               --push: text comes from chi context push. --every: how often CMD runs
               (seconds, at least 30; default context.every_seconds). --why: why it's attached;
               --hint: one line, often its URL. NAME: a-z, 0-9 and -, up to 40.
+              --movable / --no-movable: whether a continue or a fork takes it to the new
+              session (default: a --cmd or URL source moves, a --push one stays).
         push NAME [-m TEXT] [TARGET]        new text for a --push source (stdin without -m; text or JSON)
         ls [TARGET] [--format json]         the sources, their age and state; a session's candidates
         show NAME [--json] [TARGET]         the text (--json: the source and its snapshot)
@@ -52,6 +54,8 @@ module Samagotchi
         f.value "--every"
         f.value "--why"
         f.value "--hint"
+        f.switch "--movable"
+        f.switch "--no-movable", key: :movable, set: false
         f.switch "--project"
       end,
       "push" => CLI::Flags.new(help: HELP_WORDS) do |f|
@@ -142,13 +146,25 @@ module Samagotchi
         name: name, cmd: options[:cmd], every_seconds: ContextSources.check_every!(options[:every]),
         why: ContextSources.one_line(options[:why], ContextSources::LINE_MAX_CHARS),
         hint: ContextSources.one_line(options[:hint], ContextSources::LINE_MAX_CHARS),
-        scope: nil, added_by: added_by, created_at: Time.now.utc.iso8601
+        scope: nil, added_by: added_by, created_at: Time.now.utc.iso8601, movable: options[:movable]
       )
       each_target(options, args) do |target|
-        @access.context_add(target, source)
+        add_to(target, source)
         @stdout.puts("#{target.label}  attached #{name}")
         true
       end
+    end
+
+    # Attaches +source+ to +target+; a movable flag an older chi web
+    # dropped (its answer has no movable) is a warning: the source is
+    # attached with the default.
+    def add_to(target, source)
+      warn_movable_dropped(target, source.name) if @access.context_add(target, source).movable_dropped
+    end
+
+    def warn_movable_dropped(target, name)
+      error_line("#{command_name}: warning: the remote's chi web is too old for --movable/--no-movable: " \
+                 "#{name} on #{target.label} has the default (update chi there)")
     end
 
     # A URL through the installed bundles' providers (ContextProviders):
@@ -167,10 +183,11 @@ module Samagotchi
         name: resolved.name, cmd: resolved.cmd, every_seconds: resolved.every_seconds,
         why: ContextSources.one_line(options[:why] || resolved.why, ContextSources::LINE_MAX_CHARS),
         hint: ContextSources.one_line(options[:hint] || resolved.hint, ContextSources::LINE_MAX_CHARS),
-        scope: nil, added_by: added_by, created_at: Time.now.utc.iso8601, provider: resolved.bundle
+        scope: nil, added_by: added_by, created_at: Time.now.utc.iso8601, provider: resolved.bundle,
+        movable: options[:movable]
       )
       each_target(options, args) do |target|
-        @access.context_add(target, source)
+        add_to(target, source)
         @stdout.puts("#{target.label}  attached #{source.name}")
         true
       end
@@ -183,8 +200,9 @@ module Samagotchi
       why = ContextSources.one_line(options[:why], ContextSources::LINE_MAX_CHARS)
       hint = ContextSources.one_line(options[:hint], ContextSources::LINE_MAX_CHARS)
       each_target(options, args) do |target|
-        name = @access.context_add_url(target, url, why: why, hint: hint, added_by: added_by)
-        @stdout.puts("#{target.label}  attached #{name}")
+        added = @access.context_add_url(target, url, why: why, hint: hint, added_by: added_by, movable: options[:movable])
+        warn_movable_dropped(target, added.name) if added.movable_dropped
+        @stdout.puts("#{target.label}  attached #{added.name}")
         true
       end
     rescue ContextProviders::Invalid => e
@@ -452,7 +470,8 @@ module Samagotchi
         "cmd" => source.cmd, "every_seconds" => source.every_seconds, "why" => source.why, "hint" => source.hint,
         "added_by" => source.added_by, "created_at" => source.created_at, "fetched_at" => snapshot.fetched_at,
         "revision" => snapshot.revision, "summary" => snapshot.summary, "error" => snapshot.error,
-        "muted" => entry.muted, "shadowed" => entry.shadowed, "unread" => entry.unread }.compact
+        "muted" => entry.muted, "shadowed" => entry.shadowed, "unread" => entry.unread,
+        "movable" => (source.movable? if source.scope == "session") }.compact
     end
 
     def print_rows(rows, labels:)
@@ -465,6 +484,7 @@ module Samagotchi
                 else
                   "ok"
                 end
+        state = "#{state} · stays" if r["movable"] == false
         [*(labels ? [r["target"]] : []), r["name"], r["scope"], kind, age(r["fetched_at"]), state, r["why"].to_s]
       end
       widths = lines.transpose.map { |column| column.map(&:length).max }

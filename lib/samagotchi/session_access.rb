@@ -258,6 +258,13 @@ module Samagotchi
     # "declined".
     ContextCandidate = Data.define(:candidate, :status)
 
+    # chi context add's outcome: the source's +name+, and
+    # +movable_dropped+ when a movable flag was given and the remote's chi
+    # web didn't keep it (its answer has no movable: older than the flag).
+    ContextAdded = Data.define(:name, :movable_dropped) do
+      def initialize(name:, movable_dropped: false) = super
+    end
+
     # chi context push's outcome: :pushed (+before+ the revision it had,
     # +revision+ the new one), :missing (no such source) or :not_push (a
     # command source, whose text is its command's).

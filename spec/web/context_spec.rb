@@ -97,7 +97,7 @@ RSpec.describe Samagotchi::Web::App, "attached context" do
       status, body = call("/api/sessions/#{session.id}/context", method: "POST",
                                                                   body: { url: " https://example.com/pull/9 ", why: "review" })
 
-      expect([status, body]).to eq([201, { "status" => "attached", "name" => "pr-9" }])
+      expect([status, body]).to eq([201, { "status" => "attached", "name" => "pr-9", "movable" => true }])
       expect(own.source("pr-9")).to have_attributes(provider: "prs", added_by: "web", why: "review",
                                                     hint: "https://example.com/pull/9", scope: "session")
     end

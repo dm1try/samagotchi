@@ -90,6 +90,19 @@ RSpec.describe Samagotchi::ContextCommand do
         expect(err.string).to include("give session ids (or unique prefixes)#{", or --project" if backend == :local}")
       end
 
+      it "stores --movable / --no-movable on either kind; without them the source has none (derived)" do
+        a = make
+
+        expect(run("add", "ci", "--cmd", "./ci.sh", "--no-movable", a.id)).to eq(0), err.string
+        expect(run("add", "notes", "--push", "--movable", a.id)).to eq(0), err.string
+        expect(run("add", "pr-1", "--cmd", "x", a.id)).to eq(0), err.string
+
+        expect(own(a).source("ci")).to have_attributes(movable: false, movable?: false)
+        expect(own(a).source("notes")).to have_attributes(movable: true, movable?: true)
+        expect(own(a).source("pr-1")).to have_attributes(movable: nil, movable?: true)
+        expect(err.string).to be_empty
+      end
+
       it "takes one of --cmd and --push, --every only for --cmd and at least 30" do
         a = make
         expect(run("add", "x", a.id)).to eq(2)
@@ -236,7 +249,7 @@ RSpec.describe Samagotchi::ContextCommand do
 
         expect(run("ls", a.id, clock: -> { pushed + 0.9 })).to eq(0), err.string
         expect(out.string.lines.map(&:split)).to eq([
-          %w[pr-1 session push 0s ago ok mine],
+          %w[pr-1 session push 0s ago ok · stays mine],
           %w[ci project cmd every default - muted build status],
           %w[pr-1 project push - shadowed]
         ])
@@ -280,6 +293,21 @@ RSpec.describe Samagotchi::ContextCommand do
           hash_including("name" => "pr-412", "status" => "proposed", "title" => "#412 Fix login", "mentions" => ["#412"],
                          "proposed_by" => "plugin:spec", "session_id" => a.id)
         ])
+      end
+
+      it "marks a session's source that stays (· stays), and gives the derived movable as JSON" do
+        a = make
+        run("add", "ci", "--cmd", "./ci.sh", a.id)
+        run("add", "notes", "--push", a.id)
+        reset_out
+
+        run("ls", a.id)
+        expect(out.string.lines.map(&:split)).to eq([%w[ci session cmd every default - no text yet],
+                                                     %w[notes session push - no text yet · stays]])
+        reset_out
+
+        run("ls", a.id, "--format", "json")
+        expect(JSON.parse(out.string).to_h { [_1["name"], _1["movable"]] }).to eq("ci" => true, "notes" => false)
       end
 
       it "says when there is nothing attached" do
@@ -363,5 +391,17 @@ RSpec.describe Samagotchi::ContextCommand do
         expect(run("mute", "ours")).to eq(2)
       end
     end
+  end
+
+  it "warns when the remote's chi web dropped --movable (an older one), and the source is attached" do
+    a = make
+    access = Samagotchi::SessionAccess::Local.new(state_dir: state_dir)
+    allow(access).to receive(:context_add).and_return(Samagotchi::SessionAccess::ContextAdded.new(name: "ci", movable_dropped: true))
+    code = described_class.new(["add", "ci", "--cmd", "x", "--no-movable", a.id], stdout: out, stderr: err,
+                                                                                  state_dir: state_dir, env: env, cwd: repo, access: access).run
+
+    expect(code).to eq(0)
+    expect(err.string).to include("chi context add: warning: the remote's chi web is too old for --movable/--no-movable: " \
+                                  "ci on #{a.id[0, 8]} has the default (update chi there)")
   end
 end

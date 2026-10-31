@@ -57,6 +57,14 @@ RSpec.describe Samagotchi::Plugin::AttachedContext do
     expect(own.source("date").cmd).to eq("date")
   end
 
+  it "passes movable: through (nil: none, the default)" do
+    ctx.context.attach(name: "date", cmd: "date", movable: false)
+    ctx.context.attach(name: "ci", cmd: "ci")
+
+    expect(own.source("date")).to have_attributes(movable: false, movable?: false)
+    expect(own.source("ci")).to have_attributes(movable: nil, movable?: true)
+  end
+
   it "doesn't attach again what was removed from the session (by its name or its URL), until an explicit add" do
     install_provider
     ctx.context.attach(url: "https://example.com/pull/4", name: "pr-4")

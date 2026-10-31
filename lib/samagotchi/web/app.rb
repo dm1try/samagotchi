@@ -1428,13 +1428,18 @@ module Samagotchi
       # +url+ (the page's only kind). As chi context add: {name, push: true,
       # why, hint}, a source chi context push fills, or {name, cmd, every,
       # why, hint}, a command chi runs every so often. added_by: "cli" or
-      # "agent" (chi context's), else "web". 201 {status: "attached", name};
-      # 400 invalid_json or invalid_source (a bad name or every), 422
-      # not_a_url or no_provider, 409 exists.
+      # "agent" (chi context's), else "web". movable (any kind; optional):
+      # whether a continue or a fork takes it (Source#movable?). 201
+      # {status: "attached", name, movable: the source's, derived when not
+      # given}; 400 invalid_json or invalid_source (a bad name, every or
+      # movable), 422 not_a_url or no_provider, 409 exists.
       def handle_context_add(req, id)
         session = @session_class.load(id, state_dir: default_state_dir)
         body = parse_json(request_body(req))
         return error_response(400, "invalid_json", CONTEXT_ADD_BODIES) unless body.is_a?(Hash)
+        unless [nil, true, false].include?(body["movable"])
+          return error_response(400, "invalid_source", "movable is true or false")
+        end
         return context_add_named(id, body) if body.key?("name")
         return error_response(400, "invalid_json", CONTEXT_ADD_BODIES) unless body["url"].is_a?(String)
 
@@ -1445,8 +1450,8 @@ module Samagotchi
         return error_response(422, "no_provider", "no installed bundle resolves #{url[0, 200]}") unless resolved
 
         own = ContextSources.session_location(session.id, state_dir: default_state_dir)
-        own.add(web_source(resolved, body, own.scope))
-        json_response(201, { status: "attached", name: resolved.name })
+        source = own.add(web_source(resolved, body, own.scope))
+        json_response(201, { status: "attached", name: resolved.name, movable: source.movable? })
       rescue ContextProviders::Invalid => e
         error_response(422, "no_provider", e.message)
       rescue ContextSources::Invalid => e
@@ -1469,12 +1474,13 @@ module Samagotchi
           ContextSources.check_name!(name)
           ContextSources::Source.new(name: name, cmd: cmd, every_seconds: ContextSources.check_every!(every),
                                      why: context_line(body["why"]), hint: context_line(body["hint"]), scope: nil,
-                                     added_by: context_added_by(body), created_at: Time.now.utc.iso8601)
+                                     added_by: context_added_by(body), created_at: Time.now.utc.iso8601,
+                                     movable: body["movable"])
         rescue ContextSources::Invalid => e
           return error_response(400, "invalid_source", e.message)
         end
         session_access.context_add(context_target(id), source)
-        json_response(201, { status: "attached", name: name })
+        json_response(201, { status: "attached", name: name, movable: source.movable? })
       end
 
       def context_line(value) = ContextSources.one_line(value.is_a?(String) ? value : nil, ContextSources::LINE_MAX_CHARS)
@@ -1485,7 +1491,7 @@ module Samagotchi
                                    why: context_line(body["why"]) || resolved.why,
                                    hint: context_line(body["hint"]) || resolved.hint, scope: scope,
                                    added_by: context_added_by(body), created_at: Time.now.utc.iso8601,
-                                   provider: resolved.bundle)
+                                   provider: resolved.bundle, movable: body["movable"])
       end
 
       # DELETE /api/sessions/:id/context/:name: the session's own source is

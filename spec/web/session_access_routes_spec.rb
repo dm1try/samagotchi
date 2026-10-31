@@ -321,11 +321,24 @@ RSpec.describe Samagotchi::Web::App, "session access routes" do
 
     it "attaches a --push source and a --cmd one, as chi context add (added_by from the body)" do
       expect(call(path, method: "POST", body: { name: "notes", push: true, why: "the notes", hint: "x", added_by: "cli" }))
-        .to eq([201, { "status" => "attached", "name" => "notes" }])
+        .to eq([201, { "status" => "attached", "name" => "notes", "movable" => false }])
       expect(call(path, method: "POST", body: { name: "ci", cmd: "echo hi", every: 60, added_by: "agent" }).first).to eq(201)
 
       expect(location.source("notes")).to have_attributes(cmd: nil, why: "the notes", hint: "x", added_by: "cli", scope: "session")
       expect(location.source("ci")).to have_attributes(cmd: "echo hi", every_seconds: 60, added_by: "agent")
+    end
+
+    it "takes movable from the body on either kind and echoes the source's (derived when not given); refuses a non-boolean" do
+      expect(call(path, method: "POST", body: { name: "notes", push: true, movable: true }))
+        .to eq([201, { "status" => "attached", "name" => "notes", "movable" => true }])
+      expect(call(path, method: "POST", body: { name: "ci", cmd: "echo hi", movable: false }).last).to include("movable" => false)
+      expect(call(path, method: "POST", body: { name: "pr", cmd: "echo hi" }).last).to include("movable" => true)
+      expect(call(path, method: "POST", body: { name: "x", push: true, movable: "yes" }))
+        .to eq([400, { "error" => "invalid_source", "detail" => "movable is true or false" }])
+
+      expect(location.source("notes").movable).to be(true)
+      expect(location.source("ci").movable).to be(false)
+      expect(location.source("pr").movable).to be_nil
     end
 
     it "refuses a bad body, a bad name, every on a push source, too short an every, an empty cmd and a name taken" do

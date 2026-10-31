@@ -135,6 +135,24 @@ RSpec.describe Samagotchi::SessionAccess::Remote do
       end
     end
 
+    it "sends movable, and says it was dropped when an older chi web's 201 doesn't echo it" do
+      source = Samagotchi::ContextSources::Source.new(name: "ci", cmd: "x", every_seconds: nil, why: nil, hint: nil,
+                                                      scope: nil, added_by: "cli", created_at: nil, movable: false)
+      access, calls = scripted([201, { status: "attached", name: "ci" }])
+      expect(access.context_add(target, source)).to eq(Samagotchi::SessionAccess::ContextAdded.new(name: "ci", movable_dropped: true))
+      expect(calls.last.last[:body]).to include(movable: false)
+
+      access, = scripted([201, { status: "attached", name: "ci", movable: false }])
+      expect(access.context_add(target, source).movable_dropped).to be(false)
+
+      access, = scripted([201, { status: "attached", name: "ci" }])
+      expect(access.context_add(target, source.with(movable: nil)).movable_dropped).to be(false)
+
+      access, = scripted([201, { status: "attached", name: "pr-1" }])
+      expect(access.context_add_url(target, "https://x/1", why: nil, hint: nil, added_by: "cli", movable: true))
+        .to eq(Samagotchi::SessionAccess::ContextAdded.new(name: "pr-1", movable_dropped: true))
+    end
+
     it "matches no_provider by code and retains the old chi web's detail fallback" do
       url = "https://nope.example/1"
       expected = "no installed bundle on studio resolves #{url} (chi bundle install github-pr there for GitHub PRs)"

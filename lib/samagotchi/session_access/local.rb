@@ -285,10 +285,11 @@ module Samagotchi
       # project's when session_id is nil).
 
       # Attaches +source+ to the target's own sources.
+      # @return [ContextAdded]
       def context_add(target, source)
         location = context_location(target)
         location.add(source.with(scope: location.scope))
-        nil
+        ContextAdded.new(name: source.name)
       end
 
       # New text for the target's --push source +name+.

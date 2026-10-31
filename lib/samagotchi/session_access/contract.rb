@@ -78,6 +78,8 @@ module Samagotchi
         "context add --every" => SUPPORTED,
         "context add --why" => SUPPORTED,
         "context add --hint" => SUPPORTED,
+        "context add --movable" => SUPPORTED,
+        "context add --no-movable" => SUPPORTED,
         "context add --project" => LOCAL_ONLY,
         "context push" => SUPPORTED,
         "context push --message" => SUPPORTED,

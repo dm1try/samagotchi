@@ -459,21 +459,23 @@ module Samagotchi
 
       # --- context (a session's own sources: a project's are local only)
 
+      # @return [ContextAdded]
       # @raise [ContextSources::Invalid] refused (a name taken, a bad one)
       def context_add(target, source)
-        body = { name: source.name, why: source.why, hint: source.hint, added_by: source.added_by }
+        body = { name: source.name, why: source.why, hint: source.hint, added_by: source.added_by, movable: source.movable }
         source.push? ? body[:push] = true : body.merge!(cmd: source.cmd, every: source.every_seconds)
-        context_added(request(:post, "#{session_path(target.session_id)}/context", body: body.compact))
-        nil
+        reply = request(:post, "#{session_path(target.session_id)}/context", body: body.compact)
+        context_added(reply)
+        ContextAdded.new(name: source.name, movable_dropped: movable_dropped?(reply, source.movable))
       end
 
       # A URL through the remote's installed bundles' providers (chi web's
       # {url} body: the page's own).
-      # @return [String] the source's name
+      # @return [ContextAdded] the source's name
       # @raise [ContextProviders::Invalid] no bundle there resolves it
-      def context_add_url(target, url, why:, hint:, added_by:)
+      def context_add_url(target, url, why:, hint:, added_by:, movable: nil)
         reply = request(:post, "#{session_path(target.session_id)}/context",
-                        body: { url: url, why: why, hint: hint, added_by: added_by }.compact)
+                        body: { url: url, why: why, hint: hint, added_by: added_by, movable: movable }.compact)
         if reply.status == 422 && no_provider?(reply)
           require_relative "../context_providers"
           detail = "no installed bundle on #{name} resolves #{url} (chi bundle install github-pr there for GitHub PRs)"
@@ -483,8 +485,12 @@ module Samagotchi
           raise ContextProviders::Invalid, "#{reply.json["detail"]} (on #{name})"
         end
         context_added(reply)
-        reply.json.fetch("name")
+        ContextAdded.new(name: reply.json.fetch("name"), movable_dropped: movable_dropped?(reply, movable))
       end
+
+      # A movable flag sent that the 201 doesn't echo: an older chi web
+      # dropped it.
+      def movable_dropped?(reply, movable) = !movable.nil? && !reply.json.key?("movable")
 
       # @param fetched [ContextSources::Fetched]
       # @return [ContextPush]
