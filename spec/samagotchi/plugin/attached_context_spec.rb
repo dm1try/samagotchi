@@ -193,6 +193,35 @@ RSpec.describe Samagotchi::Plugin::AttachedContext do
 
       expect(own.sources).to eq([])
     end
+
+    it "hands a candidate none of them mentions to the judge, and a mentioned one not, logging each" do
+      install_provider
+      proposed = []
+      host.candidate_proposed = ->(candidate) { proposed << candidate.name }
+      ctx.context.propose(url: "https://example.com/pull/5", title: "#5 Other", mentions: ["#5"])
+      ctx.context.propose(url: "https://example.com/pull/4", title: "#4 Fix", mentions: ["#4"])
+
+      expect(proposed).to eq(["pr-5"])
+      lines = log_lines.map { |line| line.values_at("kind", "name") }
+      expect(lines).to eq([%w[proposed pr-5], %w[proposed pr-4], %w[mentioned pr-4]])
+      expect(log_lines.last).to include("mention" => "#4", "session_id" => session_id)
+    end
+  end
+
+  def log_lines
+    path = Samagotchi::ContextCandidatesLog.path(state_dir)
+    File.exist?(path) ? File.readlines(path).map { |line| JSON.parse(line) } : []
+  end
+
+  it "logs a proposal once (with its title and plugin) and a withdrawal" do
+    ctx.context.propose(name: "ci", cmd: "date", title: "CI")
+    ctx.context.propose(name: "ci", cmd: "date", title: "CI again")
+    ctx.context.withdraw("ci")
+    ctx.context.withdraw("ci")
+
+    expect(log_lines.map { |line| line["kind"] }).to eq(%w[proposed withdrawn])
+    expect(log_lines.first).to include("title" => "CI", "by" => "plugin:prs", "name" => "ci")
+    expect(File.stat(Samagotchi::ContextCandidatesLog.path(state_dir)).mode & 0o777).to eq(0o600)
   end
 
   it "withdraws a candidate, never detaching its source" do

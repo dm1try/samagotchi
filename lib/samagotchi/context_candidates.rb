@@ -2,6 +2,7 @@
 
 require "time"
 require_relative "context_absorber"
+require_relative "context_candidates_log"
 require_relative "context_fetch"
 require_relative "context_providers"
 require_relative "context_sources"
@@ -134,12 +135,15 @@ module Samagotchi
     end
 
     # Attaches +hit+'s candidate to the session's own folder, its why naming
-    # the mention. A source of its name there already stays.
+    # the mention (a mentioned line in ContextCandidatesLog, in +state_dir+'s
+    # log). A source of its name there already stays.
     # @return [String, nil] the name, nil when it couldn't be attached
-    def attach(hit, own:)
+    def attach(hit, own:, state_dir: nil)
       candidate = hit.candidate
       own.add(source_for(candidate, why: "you mentioned #{hit.mention}"))
       Log.info(:context, "candidate_attached", name: candidate.name, trigger: "mention")
+      ContextCandidatesLog.event("mentioned", session_id: own.key, name: candidate.name, state_dir: state_dir,
+                                              mention: hit.mention)
       candidate.name
     rescue ContextSources::Invalid, ContextProviders::Invalid => e
       return candidate.name if own.source(candidate.name)
@@ -188,7 +192,7 @@ module Samagotchi
       # (the REPL's plugins never see a running turn's prompt).
       texts = owner_texts(session.messages) + (prompt.is_a?(String) ? [prompt] : [])
       found = hits(texts, proposed(session.id, project_root: session.project_root, state_dir: state_dir))
-      names = found.filter_map { |hit| attach(hit, own: own) }
+      names = found.filter_map { |hit| attach(hit, own: own, state_dir: state_dir) }
       first_fetch(own, unfetched(own, names), cwd: session.working_directory, seconds: seconds, cancelled: cancelled)
       names
     rescue StandardError => e
@@ -217,10 +221,10 @@ module Samagotchi
     # attached now when one of them mentions it; the session's next turn
     # delivers its note.
     # @return [String, nil] the name attached
-    def after_propose(candidate, own:, messages:)
+    def after_propose(candidate, own:, messages:, state_dir: nil)
       hit = hits(owner_texts(messages), [candidate]).first or return nil
 
-      attach(hit, own: own)
+      attach(hit, own: own, state_dir: state_dir)
     end
 
     # The session sources from candidates (+names+, and any other

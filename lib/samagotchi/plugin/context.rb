@@ -63,11 +63,13 @@ module Samagotchi
     # CacheConfirm::Confirm when the change must ask first (CacheConfirm.ask
     # with cost :full), else nil. +model_names+ returns the names the
     # session's model is looked up under (EffectiveModel#names).
+    # +candidate_proposed+ takes (candidate): a late proposal no owner
+    # prompt mentions, for the candidate judge (Engine#judge_late_candidates).
     Host = Struct.new(:session_id, :cwd, :messages, :messages_partial, :notify, :ask_user, :cancelled, :card,
                       :ask_model, :model_name, :model_key, :state_dir, :scratch, :setup, :prompt_files,
                       :steer, :stop_turn, :stop_generation, :frontend, :toolkit, :declared_tools, :use_toolkit, :load_tools,
                       :cancel_controller, :cost, :usage, :turn_author, :cache_confirm, :model_names,
-                      keyword_init: true)
+                      :candidate_proposed, keyword_init: true)
 
     # ctx.ask_model failed: the model couldn't be reached, timed out, or
     # sent nothing usable. The message says why, for the user.

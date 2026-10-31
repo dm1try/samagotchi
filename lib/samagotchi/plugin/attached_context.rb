@@ -2,6 +2,7 @@
 
 require "time"
 require_relative "../context_candidates"
+require_relative "../context_candidates_log"
 require_relative "../context_sources"
 require_relative "../context_providers"
 require_relative "../session"
@@ -99,7 +100,11 @@ module Samagotchi
         return nil if session&.review? || attached?(candidate, session)
 
         recorded = own.add_candidate(candidate)
-        late_match(recorded, own) if recorded.equal?(candidate)
+        if recorded.equal?(candidate)
+          ContextCandidatesLog.event("proposed", session_id: own.key, name: candidate.name, state_dir: state_dir,
+                                                 title: candidate.title, by: candidate.proposed_by)
+          late_match(recorded, own)
+        end
         recorded
       rescue ContextSources::Invalid, ContextProviders::Invalid => e
         raise Error, e.message
@@ -116,7 +121,11 @@ module Samagotchi
       # it stays attached (chi context rm removes that).
       # @return [Boolean] whether there was one
       def withdraw(name)
-        location&.remove_candidate(name) || false
+        own = location or return false
+        return false unless own.remove_candidate(name)
+
+        ContextCandidatesLog.event("withdrawn", session_id: own.key, name: name, state_dir: state_dir)
+        true
       rescue ContextSources::Invalid
         false
       end
@@ -175,10 +184,14 @@ module Samagotchi
                       .any? { |a| a.name == candidate.name || (candidate.url && a.source.hint == candidate.url) }
       end
 
-      # A late proposal: the owner's prompts so far may name it already.
+      # A late proposal: the owner's prompts so far may name it already;
+      # one that none names goes to the candidate judge (the Engine's
+      # #judge_late_candidates, when the host has one).
       def late_match(candidate, own)
         messages = @host.messages&.call or return
-        ContextCandidates.after_propose(candidate, own: own, messages: messages)
+        return if ContextCandidates.after_propose(candidate, own: own, messages: messages, state_dir: state_dir)
+
+        @host.candidate_proposed&.call(candidate)
       rescue StandardError => e
         Samagotchi::Log.warn(:context, "candidate_late_match_failed", name: candidate.name, error: e.class.name)
       end

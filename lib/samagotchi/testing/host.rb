@@ -66,7 +66,10 @@ module Samagotchi
           cache_confirm: lambda { |line, changed|
             CacheConfirm.ask(line: line, cost: :full, changed: changed,
                              engine: CacheEngine.new(recorder[:history], recorder[:context_tokens]))
-          }
+          },
+          # The candidate judge isn't the bundle's to test: a late proposal
+          # goes nowhere.
+          candidate_proposed: ->(_candidate) {}
         )
       end
 
