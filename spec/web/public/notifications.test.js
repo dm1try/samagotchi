@@ -23,6 +23,8 @@ function fakePage({ front = false, permission = "granted", wanted = true, notifi
   const button = {
     hidden: false, dataset: {}, title: "",
     setAttribute(k, v) { attrs[k] = v; },
+    removeAttribute(k) { delete attrs[k]; },
+    hasAttribute(k) { return k in attrs; },
     addEventListener: on("button"),
   };
   const store = new Map(wanted ? [[NOTIFY_KEY, "1"]] : []);
@@ -196,7 +198,12 @@ function fakeApp({ enabled = true, subscribed = false, known = subscribed, permi
     isSecureContext: true, location: { hash: "" }, PushManager: function PushManager() {},
     matchMedia: () => ({ matches: true }), focus() {}, addEventListener: on("win"),
   };
-  const button = { hidden: false, dataset: {}, title: "", setAttribute() {}, addEventListener: on("button") };
+  const attrs = {};
+  const button = {
+    hidden: false, dataset: {}, title: "", attrs,
+    setAttribute(k, v) { attrs[k] = v; }, removeAttribute(k) { delete attrs[k]; }, hasAttribute(k) { return k in attrs; },
+    addEventListener: on("button"),
+  };
   const shown = [];
   function NotificationApi(title, opts) { shown.push({ title, opts }); this.close = () => {}; }
   NotificationApi.permission = permission;
@@ -637,6 +644,9 @@ test("in the app the bell opens the notifications sheet; its switch is the bell'
   assert.equal(app.sheet.hooks.state(), "on");
   await app.tap();
   assert.equal(app.sheet.toggles, 1);
+  assert.equal(app.button.attrs["aria-pressed"], undefined, "a popover opener: aria-expanded, not aria-pressed");
+  assert.equal(app.button.attrs["aria-haspopup"], "dialog");
+  assert.equal(app.button.attrs["aria-expanded"], "false", "the sheet's shell sets it while open");
   assert.equal(app.button.dataset.state, "off");
   assert.equal(app.sheet.hooks.state(), "off");
   assert.equal(app.kept.has(PUSH_DEVICE_KEY), false, "this device's Remove forgets its id");
@@ -648,4 +658,6 @@ test("in a tab (no push) no sheet is made and the bell toggles the in-tab choice
   await app.tap();
   assert.equal(app.sheet.hooks, null);
   assert.equal(app.sheet.toggles, 0);
+  assert.equal(app.button.attrs["aria-pressed"], "false", "a toggle: aria-pressed only");
+  assert.equal(app.button.attrs["aria-expanded"], undefined);
 });
