@@ -176,7 +176,8 @@ stopped on, which the agent answers with `chi answer`. See
 `chi context` attaches outside text that keeps changing to a session: a
 command chi runs every few minutes, text you push, or a URL. With the
 `github-pr` bundle (in `dev`; needs `gh`) a session on a branch with an open
-pull request gets it attached by itself. The agent gets a short note when it
+pull request gets it proposed, and attached once you mention it (#N, the branch
+or its URL). The agent gets a short note when it
 changes (a summary of what changed, never the comments' words) and reads the
 text with `context_read` when your request is about it; a review requesting
 changes, red checks or a merge can start a turn in a live, idle session that
