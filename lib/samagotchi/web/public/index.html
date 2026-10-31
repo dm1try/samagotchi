@@ -61,7 +61,7 @@ main{flex:1;display:flex;flex-direction:column;gap:16px;padding:16px;overflow:au
 /* Folded: the bubble hidden, an answer or a delegate report (#history's: outranks .bubble.user's display). */
 #history>.bubble.folded{display:none}
 .answer-fold{display:flex;align-items:baseline;gap:0;align-self:stretch;max-width:100%;min-width:0;margin:0;padding:12px 14px;font:inherit;font-size:13px;font-weight:600;line-height:1.5;color:var(--text-muted);text-align:left;cursor:pointer;user-select:none;background:var(--bg-panel);border:1px solid var(--border);border-left:3px solid var(--accent-strong);border-radius:12px}
-.answer-fold:hover .answer-fold-size{color:var(--text-2)}
+@media(hover:hover){.answer-fold:hover .answer-fold-size{color:var(--text-2)}}
 .answer-fold:focus-visible{outline:2px solid var(--accent-ring);outline-offset:1px}
 .answer-fold::before{content:"▾\00a0";color:var(--accent);flex:none}
 .answer-fold.folded::before{content:"▸\00a0"}
@@ -92,7 +92,7 @@ main{flex:1;display:flex;flex-direction:column;gap:16px;padding:16px;overflow:au
 .revise-row.stacked{height:auto;margin-top:-6px;justify-content:flex-start}
 .revise-btn{min-height:0;height:22px;padding:0 8px;border-radius:6px;font-size:11px;line-height:20px;background:var(--bg-raised);border:1px solid var(--border-strong);color:var(--text-muted);cursor:pointer;opacity:0;transition:opacity .12s ease,color .12s ease}
 .revise-row:not(.stacked) .revise-btn{position:absolute;right:14px;top:-10px;z-index:1;height:20px;line-height:18px}
-.revise-btn:hover:not(:disabled){color:var(--text-bright);filter:none}
+.revise-btn:hover:not(:disabled){filter:none}@media(hover:hover){.revise-btn:hover:not(:disabled){color:var(--text-bright)}}
 .revise-btn:disabled{cursor:default}
 .revise-btn.armed,.revise-btn.armed:hover:not(:disabled){opacity:1;color:var(--on-solid);background:var(--accent-strong);border-color:var(--accent-strong)}
 .bubble.output:hover+.revise-row .revise-btn,.revise-row:hover .revise-btn,.revise-row.stacked .revise-btn,.revise-btn:focus-visible{opacity:1}
@@ -110,7 +110,7 @@ main{flex:1;display:flex;flex-direction:column;gap:16px;padding:16px;overflow:au
 /* The ‹ N/M › switcher (revise_switch.js): an earlier version's answer read in the top one's place; its copy dashed, the top hidden. */
 .stack-switch{display:inline-flex;align-items:center;gap:2px;font-size:12px;color:var(--text-2);font-variant-numeric:tabular-nums}
 .stack-switch-btn{min-height:0;height:22px;min-width:24px;padding:0 6px;border-radius:6px;border:1px solid var(--border-strong);background:var(--bg-raised);color:var(--text-2);font:inherit;font-size:14px;line-height:20px;cursor:pointer}
-.stack-switch-btn:hover:not([aria-disabled="true"]){color:var(--text-bright);filter:none}
+.stack-switch-btn:hover:not([aria-disabled="true"]){filter:none}@media(hover:hover){.stack-switch-btn:hover:not([aria-disabled="true"]){color:var(--text-bright)}}
 .stack-switch-btn:focus-visible{outline:2px solid var(--accent-ring);outline-offset:1px}
 .stack-switch-btn[aria-disabled="true"]{opacity:.4;cursor:default}
 .stack-switch-n{min-width:2.6em;text-align:center}
@@ -277,12 +277,12 @@ button.system-one-wrong,.system-one-wrong.marked{flex:none;padding:1px 6px;borde
 /* A reloaded row's ✂ mark (an LLM context edit on its output), one line above the output. */
 .activity-edit{flex:1 1 100%;min-width:0;margin:2px 0 0 var(--row-gutter);font-size:12px;color:var(--text-3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:help}
 .activity-diff>summary{cursor:pointer;font-size:12px;color:var(--text-muted);width:max-content;font-variant-numeric:tabular-nums}
-.activity-diff>summary:hover{color:var(--text-2)}
+@media(hover:hover){.activity-diff>summary:hover{color:var(--text-2)}}
 .activity-diff[open]>summary{margin-bottom:4px}
 /* A read of the file as-is: its numbered lines, closed under the preview (read_view.js); open, they stand for it. */
 .activity-read{flex:1 1 100%;min-width:0;margin:2px 0 2px var(--row-gutter)}
 .activity-read>summary{cursor:pointer;font-size:12px;color:var(--text-muted);width:max-content;font-variant-numeric:tabular-nums}
-.activity-read>summary:hover{color:var(--text-2)}
+@media(hover:hover){.activity-read>summary:hover{color:var(--text-2)}}
 .activity-read[open]>summary{margin-bottom:4px}
 .activity-row:has(>.activity-read[open])>.activity-output{display:none}
 .read-lines{margin:0;padding:4px 0;background:var(--bg-inset);border:1px solid var(--border);border-radius:6px;font-size:12px;line-height:1.45;overflow:auto;max-height:420px}
@@ -305,7 +305,7 @@ button.system-one-wrong,.system-one-wrong.marked{flex:none;padding:1px 6px;borde
 .has-steps .activity-command-cwd{flex:1 1 auto;min-width:0;margin:0;overflow-wrap:anywhere}
 .activity-command-cwd>.activity-command-sep{font-family:inherit;color:var(--text-faint)}
 .activity-command-raw{flex:none;display:inline-flex;align-items:center;height:18px;padding:0 7px;border:1px solid var(--border-strong);border-radius:9px;font-size:11px;color:var(--text-muted);cursor:pointer;user-select:none;-webkit-user-select:none}
-.activity-command-raw:hover{color:var(--text-2)}
+@media(hover:hover){.activity-command-raw:hover{color:var(--text-2)}}
 .activity-command-raw input{position:absolute;opacity:0;width:0;height:0;margin:0}
 .activity-command-raw:has(input:focus-visible){outline:2px solid var(--accent);outline-offset:1px}
 .activity-command-raw:has(input:checked){color:var(--accent);border-color:var(--accent-border);background:var(--accent-tint)}
@@ -618,7 +618,7 @@ button.system-one-wrong,.system-one-wrong.marked{flex:none;padding:1px 6px;borde
 .bubble.output,.bubble.user{position:relative}
 .copy-btn{position:absolute;top:6px;right:6px;z-index:1;display:inline-flex;align-items:center;justify-content:center;height:24px;min-width:24px;padding:0 5px;border-radius:6px;background:var(--bg-raised);border:1px solid var(--border-strong);color:var(--text-muted);font-size:11px;line-height:1;white-space:nowrap;user-select:none;-webkit-user-select:none;opacity:0;transition:opacity .12s ease,color .12s ease}
 .copy-btn svg{display:block}
-.copy-btn:hover:not(:disabled){filter:none;color:var(--text-bright)}
+.copy-btn:hover:not(:disabled){filter:none}@media(hover:hover){.copy-btn:hover:not(:disabled){color:var(--text-bright)}}
 .bubble:hover>.copy-btn,.code-wrap:hover>.copy-btn,.copy-btn:focus-visible,.copy-btn[data-copied]{opacity:1}
 .copy-btn[data-copied],.copy-btn[data-copied]:hover:not(:disabled){color:var(--ok-text)}
 .copy-btn[data-copied] svg{display:none}

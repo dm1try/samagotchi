@@ -31,7 +31,7 @@ body.has-session #composer{flex-wrap:wrap;row-gap:6px}
 .revise-chip.refused{border-color:var(--warn-border);background:var(--warn-bg);color:var(--warn-text)}
 .revise-chip-text{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .revise-chip-clear{flex:none;display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;min-height:0;padding:0;border:0;border-radius:999px;background:transparent;color:var(--text-muted);font-size:11px;cursor:pointer}
-.revise-chip-clear:hover{background:var(--bg-raised);color:var(--text-bright);filter:none}
+.revise-chip-clear:hover{filter:none}@media(hover:hover){.revise-chip-clear:hover{background:var(--bg-raised);color:var(--text-bright)}}
 .chip{display:inline-flex;align-items:center;gap:6px;background:var(--accent-bg);border:1px solid var(--border-strong);border-radius:8px;padding:3px 4px 3px 3px;font-size:12px;max-width:220px}
 .chip img{width:32px;height:32px;object-fit:cover;border-radius:5px}
 .chip .chip-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
