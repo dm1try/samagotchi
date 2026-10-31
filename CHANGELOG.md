@@ -7,6 +7,8 @@ and commands may change between minor versions. How releases are made:
 [docs/releasing.md](docs/releasing.md).
 ## [Unreleased]
 
+## [0.141.0] - 2026-10-31
+
 ### Added
 
 - Movable context: a continue (`chi send --new --continues`, the web's Continue →) and a bundle's fork take the
@@ -19,6 +21,8 @@ and commands may change between minor versions. How releases are made:
   one, so the peer pairs again then (claude-peer 0.4.6, codex-peer 0.3.5: install the chi-peer skill again with
   `/claude install-skill` or `/codex install-skill`). Bundles get `ctx.continues` and `ctx.context.left_behind`. See
   docs/context.md (Peers and a continue).
+
+Update with `chi update` (claude-peer 0.4.6, codex-peer 0.3.5).
 
 ## [0.140.0] - 2026-10-31
 
@@ -5375,7 +5379,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.140.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.141.0...HEAD
+[0.141.0]: https://github.com/dm1try/samagotchi/compare/v0.140.0...v0.141.0
 [0.140.0]: https://github.com/dm1try/samagotchi/compare/v0.139.1...v0.140.0
 [0.139.1]: https://github.com/dm1try/samagotchi/compare/v0.139.0...v0.139.1
 [0.139.0]: https://github.com/dm1try/samagotchi/compare/v0.138.0...v0.139.0
