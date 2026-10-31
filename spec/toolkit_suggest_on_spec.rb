@@ -381,7 +381,7 @@ RSpec.describe Samagotchi::Engine, "toolkit suggestion on mode" do
 
   context "when System 1 shares the model's local single-slot host (M2)" do
     before do
-      allow(engine).to receive(:toolkit_judge_shares_local_host?).and_return(true)
+      allow(engine).to receive(:system_one_shares_local_host?).and_return(true)
       allow(Samagotchi::Log).to receive(:info).and_call_original
     end
 

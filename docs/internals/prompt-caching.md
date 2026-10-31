@@ -80,7 +80,7 @@ right-hand column happens.
   `toolkit.suggest.defer_turns` / `defer_tokens`) is engine-side, so `/toolkit`'s CacheConfirm doesn't apply: it
   changes the declared tools at the front of the request, and the server re-reads **system prompt + tools +
   conversation** on that turn. The defer bound keeps that conversation small; its notice says "from this turn".
-  When System 1 runs on the model's own single-slot local server (`Engine#toolkit_judge_shares_local_host?`), any
+  When System 1 runs on the model's own single-slot local server (`Engine#system_one_shares_local_host?`), any
   ask takes the slot and evicts its cached prefix: a first-turn ask costs that cache even when nothing switches
   (there is little cached on a session's first turn), so on mode asks only there, skips the deferred path, and
   sends no worker warm-up.

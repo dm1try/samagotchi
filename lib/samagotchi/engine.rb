@@ -3043,7 +3043,7 @@ module Samagotchi
       # with the turn's prefill, and any ask evicts the session's cached
       # prefix: on mode asks only on a first turn there (nothing is cached
       # yet worth keeping), never on the deferred path.
-      if (!joined || ToolkitSuggest.model_reply?(session.messages)) && toolkit_judge_shares_local_host?(client.host)
+      if (!joined || ToolkitSuggest.model_reply?(session.messages)) && system_one_shares_local_host?(client.host)
         Log.info(:toolkit, "toolkit_suggest_shared_host_skipped", session_id: session.id, host: client.host)
         return
       end
@@ -3166,7 +3166,7 @@ module Samagotchi
       return unless client
       # D7: on the model's own single-slot server it would evict the
       # session's cached prefix for a question that may never come.
-      return if toolkit_judge_shares_local_host?(client.host)
+      return if system_one_shares_local_host?(client.host)
 
       project = File.basename(session.project_root.to_s)
       @toolkit_warmup_thread = Thread.new do
@@ -3194,7 +3194,7 @@ module Samagotchi
     # D7: System 1's host is the session's model server, and a local one
     # (a single-slot Splash or llama.cpp): the same name, or two hosts:
     # entries for one server root (scheme, host, port).
-    def toolkit_judge_shares_local_host?(judge_name)
+    def system_one_shares_local_host?(judge_name)
       model_host, = @host_registry.host_for_model(effective_model_name)
       return false if model_host.nil? || model_host.remote?
       return true if judge_name.to_s.strip.casecmp?(model_host.name.to_s)
@@ -3202,7 +3202,7 @@ module Samagotchi
       judge = @host_registry.find_entry(judge_name)
       !judge.nil? && judge.root_url.downcase == model_host.root_url.downcase
     end
-    private :toolkit_judge_shares_local_host?
+    private :system_one_shares_local_host?
 
     # The session's toolkit (see #initialize for when).
     def build_toolkit_binding
