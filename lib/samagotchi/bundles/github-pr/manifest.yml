@@ -4,8 +4,7 @@ version: 0.6.0
 scope: system
 description: Proposes the branch's open GitHub pull request to a session, attached once you mention it (#N, the branch or its URL), and attaches any PR URL with chi context add or the web's "+ URL"; the agent gets a note when reviews, comments, checks or its state change; in the web, a path:line in an answer links to that line of the PR; the auto_attach setting can attach the PR at once instead, or do nothing
 trust_level: reviewed
-requires_chi: ">= 0.61.0"
-requires_chi_next: ctx.context.propose, candidates and ctx.review
+requires_chi: ">= 0.140.0"
 needs:
 - command: gh
   why: reads the pull request

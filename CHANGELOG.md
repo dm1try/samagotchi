@@ -7,6 +7,8 @@ and commands may change between minor versions. How releases are made:
 [docs/releasing.md](docs/releasing.md).
 ## [Unreleased]
 
+## [0.140.0] - 2026-10-31
+
 ### Added
 
 - Candidates for attached context: a bundle proposes a source (`ctx.context.propose`, `candidates`, `withdraw`),
@@ -38,6 +40,8 @@ and commands may change between minor versions. How releases are made:
   and a preflight that ends after the stop no longer restarts chi web.
 - An automatic install with `update.restart: idle` no longer offers the "installed" toast's Restart buttons (a
   failed run, `restart: never` or a manual install still do).
+
+Update with `chi update` (the dev profile 0.7.4).
 
 ## [0.139.1] - 2026-10-31
 
@@ -5358,7 +5362,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.139.1...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.140.0...HEAD
+[0.140.0]: https://github.com/dm1try/samagotchi/compare/v0.139.1...v0.140.0
 [0.139.1]: https://github.com/dm1try/samagotchi/compare/v0.139.0...v0.139.1
 [0.139.0]: https://github.com/dm1try/samagotchi/compare/v0.138.0...v0.139.0
 [0.138.0]: https://github.com/dm1try/samagotchi/compare/v0.137.0...v0.138.0
