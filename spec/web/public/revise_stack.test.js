@@ -45,6 +45,8 @@ test("the words: a stub, the version chip, the composer's chip and its refusal",
     "v1 · “PROJ-123: Retry” · 84 lines — superseded by v3");
   assert.equal(stubText({ version: 2, label: "", lines: 1, top: 3 }), "v2 · 1 line — superseded by v3");
   assert.equal(versionChipText(3), "v3 · 2 earlier");
+  assert.equal(versionChipText(3, 2), "v3 · 2 earlier");
+  assert.equal(versionChipText(3, 0), "v1 of 3", "an earlier version on view");
   assert.equal(reviseChipText("The ticket"), "Revising: The ticket");
   assert.equal(reviseChipText("x", { unavailable: true }), `Revise: ${REVISE_UNAVAILABLE}`);
   assert.equal(markupOf(reviseChipTemplate(null)), "");
@@ -315,13 +317,16 @@ test("the page: the switcher shows an earlier version's answer in the top's plac
   ]);
   const row = () => answer(history, "v3").nextElementSibling;
   const counter = () => row().querySelector(".stack-switch-n [aria-hidden]").textContent;
+  const chip = () => row().querySelector(".stack-versions > summary").textContent;
   const prev = () => row().querySelector('[data-stack-step="-1"]');
   const next = () => row().querySelector('[data-stack-step="1"]');
   assert.equal(counter(), "3/3", "the latest by default");
   assert.equal(next().getAttribute("aria-disabled"), "true");
   assert.equal(history.querySelectorAll(".stack-view").length, 0);
+  assert.equal(chip(), "v3 · 2 earlier");
   prev().click();
   assert.equal(counter(), "2/3");
+  assert.equal(chip(), "v2 of 3", "the chip names the version on view");
   const view = history.querySelector(".stack-view");
   assert.ok(view, "a copy of v2's answer");
   assert.equal(view.textContent, "second answer");
@@ -343,6 +348,7 @@ test("the page: the switcher shows an earlier version's answer in the top's plac
   next().click();
   next().click();
   assert.equal(counter(), "3/3");
+  assert.equal(chip(), "v3 · 2 earlier");
   assert.equal(history.querySelectorAll(".stack-view").length, 0);
   assert.ok(!answer(history, "v3").classList.contains("stack-swapped"));
   assert.deepEqual(readFolded("s1"), [], "nothing stored");
