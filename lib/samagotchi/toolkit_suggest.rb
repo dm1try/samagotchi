@@ -4,8 +4,7 @@ require "json"
 
 require_relative "cancellation_controller"
 require_relative "log"
-require_relative "message_time"
-require_relative "steer"
+require_relative "owner_prompt"
 require_relative "system_one/question"
 require_relative "toolkit"
 
@@ -73,8 +72,7 @@ module Samagotchi
     # path, when the session already has a model reply.
     def self.eligible?(session:, prompt:, author:, candidate_count:, last_suggestion:, defer_turns:, defer_tokens:)
       return false unless session&.toolkit_origin == "default"
-      return false if session.delegate? || session.review?
-      return false if Steer.participant_author?(author)
+      return false if session.delegate? || !OwnerPrompt.turn?(session: session, author: author)
       return false unless prompt.is_a?(String) && !prompt.strip.empty?
       return false if value(candidate_count).to_i < 2
 
@@ -95,19 +93,6 @@ module Samagotchi
     end
 
     def self.turn_number(messages) = user_prompt_count(Array(messages)) + 1
-
-    # The owner's own prompt: a user line the Engine kept for a turn (it
-    # carries the turn's id), or TurnCheckpoint's line for a turn killed
-    # before its first boundary (stamped, no id). A !command's output, a
-    # declined continue's reason and KernelLoop's recovery prompt are
-    # neither; steers, notes and reminders carry their kind.
-    def self.owner_prompt?(message)
-      field(message, :role).to_s == "user" &&
-        !Steer.participant_author?(field(message, :author)) &&
-        !%w[input steer note reminder].include?(field(message, :kind).to_s) &&
-        !field(message, :preserve_literals) &&
-        !(field(message, :turn_id) || field(message, MessageTime::KEY)).nil?
-    end
 
     # The prior logged suggestion for this session; the log, not process
     # memory, keeps a deferred choice alive across a worker respawn.
@@ -360,7 +345,7 @@ module Samagotchi
 
       def user_prompt_count(messages)
         prompts = messages.filter_map do |message|
-          next unless owner_prompt?(message)
+          next unless OwnerPrompt.message?(message)
 
           field(message, :turn_id) || message.object_id
         end

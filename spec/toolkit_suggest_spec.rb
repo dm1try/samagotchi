@@ -52,21 +52,9 @@ RSpec.describe Samagotchi::ToolkitSuggest do
     expect(names).to contain_exactly("web", "coding")
   end
 
-  describe ".owner_prompt?" do
-    it "counts the Engine's prompt line and TurnCheckpoint's stamped one" do
-      expect(described_class.owner_prompt?({ role: "user", turn_id: "t1", content: "go" })).to be(true)
-      expect(described_class.owner_prompt?({ role: "user", content: "go", at: "2026-10-27T10:00:00.000+00:00" }))
-        .to be(true)
-    end
-
-    it "doesn't count a !command's output, a declined continue's reason or the Qwen recovery prompt" do
-      expect(described_class.owner_prompt?({ role: "user", content: "!(ls)\na b" })).to be(false)
-      expect(described_class.owner_prompt?({ role: "user", content: "The user chose not to continue: …" })).to be(false)
-      expect(described_class.owner_prompt?({ role: "user", content: "Finish the call", preserve_literals: true }))
-        .to be(false)
-      messages = [{ role: "user", turn_id: "t1", content: "go" }, { role: "user", content: "!(ls)\nout" }]
-      expect(described_class.turn_number(messages)).to eq(2)
-    end
+  it "counts turns by the owner's prompts (OwnerPrompt.message?)" do
+    messages = [{ role: "user", turn_id: "t1", content: "go" }, { role: "user", content: "!(ls)\nout" }]
+    expect(described_class.turn_number(messages)).to eq(2)
   end
 
   describe ".eligible?" do

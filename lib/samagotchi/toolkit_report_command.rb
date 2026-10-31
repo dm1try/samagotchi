@@ -11,6 +11,7 @@ require_relative "session"
 require_relative "system_one/log"
 require_relative "toolkit"
 require_relative "tool_response"
+require_relative "owner_prompt"
 require_relative "toolkit_suggest"
 
 module Samagotchi
@@ -165,7 +166,7 @@ module Samagotchi
       Array(messages).each do |message|
         case field(message, :role).to_s
         when "user"
-          if ToolkitSuggest.owner_prompt?(message)
+          if OwnerPrompt.message?(message)
             number += 1
             current = number
             uses[current]
