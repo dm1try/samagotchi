@@ -41,6 +41,7 @@ require_relative "../config"
 require_relative "../output_formatter"
 require_relative "../image_store"
 require_relative "../message_time"
+require_relative "../context_candidates"
 require_relative "../context_note"
 require_relative "../context_sources"
 require_relative "../context_providers"
@@ -1396,14 +1397,20 @@ module Samagotchi
       # (chi context ls from another machine, SessionAccess::Remote): each
       # source as it was added too, its command included (#context_row), and
       # a project's source a session's own of its name shadows, marked
-      # shadowed.
+      # shadowed, and the session's candidates with their status.
       def handle_context_list(req, id)
         session = @session_class.load(id, state_dir: default_state_dir)
         own = ContextSources.session_location(id, state_dir: default_state_dir)
         subs = own.subscriptions
         full = truthy_param?(req.params["full"])
         rows = attached_context(session, shadowed: full).map { |attached| context_row(attached, own, subs, full: full) }
-        json_response(200, { session_id: id, sources: rows, can_add_url: ContextProviders.any? })
+        body = { session_id: id, sources: rows, can_add_url: ContextProviders.any? }
+        # The candidates too, for chi context ls (no UI shows them yet).
+        if full
+          body[:candidates] = ContextCandidates.with_status(id, project_root: session.project_root, state_dir: default_state_dir)
+                                               .map { |candidate, status| candidate.to_h.merge("name" => candidate.name, "status" => status) }
+        end
+        json_response(200, body)
       end
 
       # GET /api/sessions/:id/context/:name: one source with its text

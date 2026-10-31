@@ -913,6 +913,17 @@ RSpec.describe Samagotchi::SessionCommands do
       expect(commands.run("/context").output).to eq("Attached context (1):\n- notes; why: spec; no text yet")
       expect(engine.command_registry.lookup("/context").anytime).to be(true)
     end
+
+    it "lists the session's candidates after it, and answers an argument with its usage" do
+      own = Samagotchi::ContextSources.session_location(engine.session.id, state_dir: state_dir)
+      own.add_candidate(Samagotchi::ContextSources::Candidate.new(name: "pr-412", url: nil, cmd: "printf x", title: "#412 Fix",
+                                                                  describe: nil, mentions: [], proposed_by: nil, at: nil))
+
+      expect(commands.run("/context").output).to eq("No attached context in this session.\n\n" \
+                                                    "Candidates (attached when a prompt of yours mentions one):\n" \
+                                                    "- pr-412 · proposed · #412 Fix")
+      expect(commands.run("/context attach pr-412")).to have_attributes(status: :error, output: "usage: /context")
+    end
   end
 
   describe "/guardrails" do

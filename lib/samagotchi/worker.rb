@@ -36,6 +36,7 @@ require_relative "child_reports"
 require_relative "verify_fresh"
 require_relative "child_move"
 require_relative "context_absorber"
+require_relative "context_candidates"
 require_relative "context_poller"
 require_relative "task_watch"
 require_relative "tools/task_runtime"
@@ -697,6 +698,10 @@ module Samagotchi
         return refuse_participant_turn(origin, reason)
       end
 
+      # A candidate the prompt mentions is attached and fetched first, so
+      # the absorb below brings its note into this turn.
+      ContextCandidates.before_turn(session: @session, prompt: prompt.text, author: origin.author, state_dir: @state_dir,
+                                    cancelled: -> { stopped_on_disk? })
       # A first turn sees the context attached before it, and any turn the
       # background tasks that finished since the last look.
       absorb_context(before_turn: true)

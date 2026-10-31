@@ -11,6 +11,7 @@ require_relative "model_profile"
 require_relative "turn_note"
 require_relative "turn_checkpoint"
 require_relative "config"
+require_relative "context_candidates"
 require_relative "context_note"
 require_relative "cancellation_controller"
 require_relative "llm/errors"
@@ -339,6 +340,7 @@ module Samagotchi
         # Retry lines and hook notices on stderr; stdout gets the answer below.
         sink = OneShotSink.new
         save_before_first_turn(session)
+        attach_mentioned_context(session, one_shot_prompt)
         max_iterations = IterationLimit.for(no_interrupt: true)
         begin
           result = @engine.run_turn(
@@ -708,6 +710,7 @@ module Samagotchi
       # A prompt the user typed brings an archived session back to the lists.
       ArchiveStore.user_input(session.id, state_dir: Session.default_state_dir) if prompt && !continue
       save_before_first_turn(session)
+      attach_mentioned_context(session, prompt) if prompt && !continue
       with_steering do
         @engine.run_turn(
           session,
@@ -1012,6 +1015,18 @@ module Samagotchi
     # "Session not found" otherwise). Later turns find it saved already.
     def save_before_first_turn(session)
       session.save unless Session.exist?(session.id)
+    end
+
+    # A candidate the prompt mentions (ContextCandidates) is attached and
+    # fetched, and its note added before the turn, as a worker does. Ctrl-C
+    # stops the wait, not the turn.
+    def attach_mentioned_context(session, prompt)
+      ContextCandidates.before_turn(session: session, prompt: prompt, author: nil, state_dir: Session.default_state_dir)
+      ContextCandidates.deliver_notes(@engine, session, state_dir: Session.default_state_dir)
+    rescue Interrupt
+      nil
+    rescue StandardError => e
+      Log.warn(:context, "candidates_repl_failed", error: e.class.name, msg: e.message.to_s[0, 200])
     end
 
     # A !cmd shows its own output; everything else is the model> line. A

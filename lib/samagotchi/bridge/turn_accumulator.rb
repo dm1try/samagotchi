@@ -77,7 +77,9 @@ module Samagotchi
       # The turn in progress as conversation messages, for a plugin's
       # ctx.messages mid-turn (plan O1): its prompt (with its images), the
       # model's text so far, and the lines merged into it, in order. Tool
-      # calls and thinking are left out.
+      # calls and thinking are left out. The prompt carries the turn's id,
+      # as the saved one will (OwnerPrompt.message?: a late candidate
+      # proposal matches the running turn's prompt too).
       # @return [Array<Hash>] [] with no turn running
       def current_messages
         @mutex.synchronize { @turn ? self.class.messages_of(@turn) : [] }
@@ -94,6 +96,7 @@ module Samagotchi
         end
         unless turn[:prompt].nil?
           prompt = { role: "user", content: turn[:prompt].to_s, **author_of(turn) }
+          prompt[:turn_id] = turn[:turn_id] if turn[:turn_id]
           prompt[:images] = turn[:images] if turn[:images]
           messages << prompt
         end

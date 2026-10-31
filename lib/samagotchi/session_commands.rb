@@ -8,6 +8,7 @@ require_relative "turn_flow"
 require_relative "cache_confirm"
 require_relative "tools/execute"
 require_relative "tools/builtins"
+require_relative "context_candidates"
 require_relative "tools/context_read"
 require_relative "tools/peers"
 require_relative "commands/registry"
@@ -99,8 +100,10 @@ module Samagotchi
         guardrails(text.delete_prefix(GUARDRAILS_COMMAND).strip)
       end
       # It only reads the store: mid-turn too.
-      registry.register(CONTEXT_COMMAND, "list the attached context (chi context)", anytime: true,
-                                                                                   match: ->(text) { text.casecmp?(CONTEXT_COMMAND) }) do |_text|
+      registry.register(CONTEXT_COMMAND, "list the attached context and its candidates (chi context)", anytime: true,
+                                                                                                      match: ->(text) { text.match?(%r{\A/context(?:\s+.*)?\z}i) }) do |text|
+        next reply("usage: #{CONTEXT_COMMAND}", status: :error) unless text.strip.casecmp?(CONTEXT_COMMAND)
+
         reply(context_listing)
       end
       registry.register(MODEL_COMMAND, "show or switch the model", mid_turn: show_mid_turn(MODEL_COMMAND),
@@ -434,7 +437,9 @@ module Samagotchi
       return "no session yet" unless session
 
       peers = Tools::Peers.new(session_id: session.id, cwd: session.working_directory, state_dir: @engine.peer_state_dir)
-      Tools::ContextRead.call("", peers: peers)
+      listing = Tools::ContextRead.call("", peers: peers)
+      candidates = ContextCandidates.listing(session.id, project_root: session.project_root, state_dir: @engine.peer_state_dir)
+      candidates ? "#{listing}\n\n#{candidates}" : listing
     end
 
     def guardrails(args)

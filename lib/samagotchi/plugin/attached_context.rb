@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "time"
+require_relative "../context_candidates"
 require_relative "../context_sources"
 require_relative "../context_providers"
 require_relative "../session"
@@ -80,17 +81,26 @@ module Samagotchi
       # (through an installed bundle's provider; +name+ replaces the
       # provider's) or +name+ and +cmd+. +title+ is what a person (or a
       # judge) reads, +describe+ more of it, +mentions+ the words an owner
-      # prompt names it by. Idempotent by name: a candidate of that name
-      # stays as first proposed. One the user removed from the session (its
-      # name, or its URL) isn't proposed.
-      # @return [ContextSources::Candidate, nil] nil when declined
+      # prompt names it by (ContextCandidates.mention_in). Idempotent by
+      # name: a candidate of that name stays as first proposed. Nothing is
+      # proposed in a review session, for a source attached already (by its
+      # name or URL, at any scope) or for one the user removed from the
+      # session (its name, or its URL). A new candidate an owner prompt
+      # already in the session mentions is attached at once (its note comes
+      # with the next turn).
+      # @return [ContextSources::Candidate, nil] nil when nothing was proposed
       # @raise [Error]
       def propose(title:, url: nil, name: nil, cmd: nil, describe: nil, mentions: [])
         own = own_location!
         candidate = new_candidate(url: url, name: name, cmd: cmd, title: title, describe: describe, mentions: mentions)
         return nil if own.declined?(candidate.name) || (url && own.declined_hints.include?(candidate.url))
 
-        own.add_candidate(candidate)
+        session = saved_session
+        return nil if session&.review? || attached?(candidate, session)
+
+        recorded = own.add_candidate(candidate)
+        late_match(recorded, own) if recorded.equal?(candidate)
+        recorded
       rescue ContextSources::Invalid, ContextProviders::Invalid => e
         raise Error, e.message
       end
@@ -100,6 +110,15 @@ module Samagotchi
       # @return [Array<ContextSources::Candidate>]
       def candidates
         location&.candidates || []
+      end
+
+      # Takes back this session's candidate +name+. A source attached from
+      # it stays attached (chi context rm removes that).
+      # @return [Boolean] whether there was one
+      def withdraw(name)
+        location&.remove_candidate(name) || false
+      rescue ContextSources::Invalid
+        false
       end
 
       # This session's sources (its own, then its project's); none before
@@ -143,6 +162,26 @@ module Samagotchi
       end
 
       def own_location! = location || raise(Error, "this session has no id yet")
+
+      # The session's saved file, nil before it has one.
+      def saved_session
+        id = @host.session_id.call
+        id && Session.exist?(id, state_dir: state_dir) ? Session.load(id, state_dir: state_dir) : nil
+      end
+
+      def attached?(candidate, session)
+        ContextSources.attached(session&.id || @host.session_id.call, project_root: session&.project_root,
+                                                                      state_dir: state_dir, shadowed: true)
+                      .any? { |a| a.name == candidate.name || (candidate.url && a.source.hint == candidate.url) }
+      end
+
+      # A late proposal: the owner's prompts so far may name it already.
+      def late_match(candidate, own)
+        messages = @host.messages&.call or return
+        ContextCandidates.after_propose(candidate, own: own, messages: messages)
+      rescue StandardError => e
+        Samagotchi::Log.warn(:context, "candidate_late_match_failed", name: candidate.name, error: e.class.name)
+      end
 
       def location
         id = @host.session_id.call

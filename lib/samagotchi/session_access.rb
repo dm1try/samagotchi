@@ -250,6 +250,11 @@ module Samagotchi
       def initialize(source:, snapshot:, muted: nil, shadowed: nil, unread: nil) = super
     end
 
+    # A session's candidate source (ContextSources::Candidate) and its
+    # derived status (ContextCandidates.status): "proposed", "attached" or
+    # "declined".
+    ContextCandidate = Data.define(:candidate, :status)
+
     # chi context push's outcome: :pushed (+before+ the revision it had,
     # +revision+ the new one), :missing (no such source) or :not_push (a
     # command source, whose text is its command's).

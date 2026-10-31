@@ -136,6 +136,34 @@ RSpec.describe Samagotchi::Worker, "attached context" do
     end
   end
 
+  describe "a candidate the prompt mentions (ContextCandidates)" do
+    def propose(name, cmd, mentions)
+      own.add_candidate(Samagotchi::ContextSources::Candidate.new(name: name, url: nil, cmd: cmd, title: "the #{name}",
+                                                                  describe: nil, mentions: mentions,
+                                                                  proposed_by: "plugin:spec", at: nil))
+    end
+
+    it "attaches it and fetches it first, so its note, naming the mention, reaches that same turn" do
+      propose("ci-x", "sleep 0.3; printf 'ci is green'", ["feat/foo-bar"])
+      start_worker
+
+      Samagotchi::SessionManager.write_turn_input(session.id, prompt: "look at feat/foo-bar please", state_dir: state_dir)
+
+      expect(pop!(turns, "the mentioning turn")).to eq(["look at feat/foo-bar please", ["ci-x"]])
+      expect(own.source("ci-x")).to have_attributes(why: "you mentioned feat/foo-bar", title: "the ci-x", added_by: "plugin:spec")
+      expect(saved_context_notes.last[:content]).to include("Attached: ci-x. Why: you mentioned feat/foo-bar.")
+    end
+
+    it "attaches nothing for a prompt that doesn't mention it" do
+      propose("ci-x", "printf 'ci is green'", ["feat/foo-bar"])
+      start_worker
+
+      Samagotchi::SessionManager.write_turn_input(session.id, prompt: "something else", state_dir: state_dir)
+      expect(pop!(turns, "the first turn")).to eq(["something else", []])
+      expect(own.source("ci-x")).to be_nil
+    end
+  end
+
   it "doesn't preview a session by an attached context note" do
     start_worker
     attach("notes", "first")

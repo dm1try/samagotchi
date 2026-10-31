@@ -31,7 +31,7 @@ module Samagotchi
               (seconds, at least 30; default context.every_seconds). --why: why it's attached;
               --hint: one line, often its URL. NAME: a-z, 0-9 and -, up to 40.
         push NAME [-m TEXT] [TARGET]        new text for a --push source (stdin without -m; text or JSON)
-        ls [TARGET] [--format json]         the sources, their age and state
+        ls [TARGET] [--format json]         the sources, their age and state; a session's candidates
         show NAME [--json] [TARGET]         the text (--json: the source and its snapshot)
         refresh NAME [TARGET]               run NAME's command now, here (a live worker absorbs the result)
         rm NAME TARGET                      detach a source
@@ -217,14 +217,32 @@ module Samagotchi
 
       targets = targets(options, args) or return CLI::Exit::FAILED
       rows = targets.flat_map { |target| @access.context_entries(target).map { |entry| row(target, entry) } }
+      candidates = targets.flat_map { |target| @access.context_candidates(target).map { |entry| candidate_row(target, entry) } }
       if format == "json"
-        @stdout.puts(JSON.pretty_generate(rows))
-      elsif rows.empty?
-        @stdout.puts("no attached context")
+        @stdout.puts(JSON.pretty_generate(rows + candidates))
       else
-        print_rows(rows, labels: targets.size > 1)
+        rows.empty? ? @stdout.puts("no attached context") : print_rows(rows, labels: targets.size > 1)
+        print_candidates(candidates, labels: targets.size > 1)
       end
       0
+    end
+
+    # A candidate's line of ls (its --format json object, marked candidate).
+    # @param entry [SessionAccess::ContextCandidate]
+    def candidate_row(target, entry)
+      candidate = entry.candidate
+      { "target" => target.label, "session_id" => target.session_id, "candidate" => true, "name" => candidate.name,
+        "status" => entry.status, "title" => candidate.title, "url" => candidate.url, "cmd" => candidate.cmd,
+        "mentions" => candidate.mentions, "proposed_by" => candidate.proposed_by, "at" => candidate.at }.compact
+    end
+
+    def print_candidates(rows, labels:)
+      return if rows.empty?
+
+      @stdout.puts("candidates (attached when the session's owner mentions one):")
+      lines = rows.map { |r| [*(labels ? [r["target"]] : []), r["name"], r["status"], r["title"].to_s] }
+      widths = lines.transpose.map { |column| column.map(&:length).max }
+      lines.each { |line| @stdout.puts("  #{line.zip(widths).map { |cell, w| cell.ljust(w) }.join("  ").rstrip}") }
     end
 
     def run_show(options, args)

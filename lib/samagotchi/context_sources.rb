@@ -51,20 +51,23 @@ module Samagotchi
     # A source's definition. +cmd+ nil: pushed only (chi context push).
     # +provider+: the bundle whose context provider made it (a URL), whose
     # folder its cmd's {bundle_dir} names (ContextProviders.command_for).
-    Source = Data.define(:name, :cmd, :every_seconds, :why, :hint, :scope, :added_by, :created_at, :provider) do
-      def initialize(name:, cmd:, every_seconds:, why:, hint:, scope:, added_by:, created_at:, provider: nil) = super
+    # +title+: what a person reads it as (a candidate's, when one was
+    # attached; nil for most).
+    Source = Data.define(:name, :cmd, :every_seconds, :why, :hint, :scope, :added_by, :created_at, :provider, :title) do
+      def initialize(name:, cmd:, every_seconds:, why:, hint:, scope:, added_by:, created_at:, provider: nil, title: nil) = super
 
       def push? = cmd.nil?
 
       def to_h
         { "name" => name, "cmd" => cmd, "every_seconds" => every_seconds, "why" => why, "hint" => hint,
-          "scope" => scope, "added_by" => added_by, "created_at" => created_at, "provider" => provider }.compact
+          "scope" => scope, "added_by" => added_by, "created_at" => created_at, "provider" => provider,
+          "title" => title }.compact
       end
 
       def self.from_h(data)
         new(name: data["name"].to_s, cmd: data["cmd"], every_seconds: data["every_seconds"]&.to_i,
             why: data["why"], hint: data["hint"], scope: data["scope"].to_s, added_by: data["added_by"],
-            created_at: data["created_at"], provider: data["provider"])
+            created_at: data["created_at"], provider: data["provider"], title: data["title"])
       end
     end
 
@@ -325,6 +328,15 @@ module Samagotchi
       def candidate(name)
         data = ContextSources.read_json(candidate_path(name))
         data ? Candidate.from_h(name, data) : nil
+      end
+
+      # Removes the candidate +name+ (an attached source of its name stays).
+      # @return [Boolean] whether there was one
+      def remove_candidate(name)
+        path = candidate_path(name)
+        existed = File.exist?(path)
+        FileUtils.rm_f(path)
+        existed
       end
 
       # @return [Array<Candidate>] by name

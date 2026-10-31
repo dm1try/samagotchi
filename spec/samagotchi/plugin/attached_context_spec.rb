@@ -160,6 +160,52 @@ RSpec.describe Samagotchi::Plugin::AttachedContext do
     expect { ctx.context.propose(name: "x", cmd: "date", title: " ") }.to raise_error(described_class::Error, "give title:")
   end
 
+  it "proposes nothing in a review session, or for a source attached already (by name or URL, any scope)" do
+    install_provider
+    ctx.context.attach(url: "https://example.com/pull/7")
+    expect(ctx.context.propose(url: "https://example.com/pull/7", title: "#7")).to be_nil
+    expect(ctx.context.propose(url: "https://example.com/pull/7", name: "other", title: "#7")).to be_nil
+
+    session.review = { "subjects" => ["a.md"] }
+    session.save(state_dir: state_dir)
+    expect(ctx.context.propose(url: "https://example.com/pull/8", title: "#8")).to be_nil
+    expect(ctx.context.candidates).to eq([])
+  end
+
+  context "with the owner's prompts in the session already (a late proposal)" do
+    let(:messages) { [{ role: "user", turn_id: "t1", content: "please review PR #4" }] }
+    let(:host) do
+      Samagotchi::Plugin::Host.new(session_id: -> { session_id }, cwd: -> { tmpdir }, state_dir: -> { state_dir },
+                                   messages: -> { messages })
+    end
+
+    it "attaches a new candidate one of them mentions, its why naming the mention" do
+      install_provider
+      ctx.context.propose(url: "https://example.com/pull/4", title: "#4 Fix", mentions: ["#4"])
+
+      expect(own.source("pr-4")).to have_attributes(why: "you mentioned #4", title: "#4 Fix", provider: "prs",
+                                                    hint: "https://example.com/pull/4", added_by: "plugin:prs")
+    end
+
+    it "attaches nothing they don't mention" do
+      install_provider
+      ctx.context.propose(url: "https://example.com/pull/5", title: "#5 Other", mentions: ["#5"])
+
+      expect(own.sources).to eq([])
+    end
+  end
+
+  it "withdraws a candidate, never detaching its source" do
+    ctx.context.propose(name: "ci", cmd: "date", title: "CI")
+    ctx.context.attach(name: "ci", cmd: "date")
+
+    expect(ctx.context.withdraw("ci")).to be(true)
+    expect(ctx.context.withdraw("ci")).to be(false)
+    expect(ctx.context.withdraw("Bad Name")).to be(false)
+    expect(ctx.context.candidates).to eq([])
+    expect(own.source("ci")).not_to be_nil
+  end
+
   it "lists the session's sources" do
     ctx.context.attach(name: "date", cmd: "date", why: "the time")
     expect(ctx.context.list).to eq([{ name: "date", scope: "session", why: "the time", hint: nil, fetched_at: nil,

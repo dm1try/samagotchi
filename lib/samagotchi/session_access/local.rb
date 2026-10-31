@@ -10,6 +10,7 @@ require_relative "../owner_lock"
 require_relative "../parent_report"
 require_relative "../note_delivery"
 require_relative "../image_store"
+require_relative "../context_candidates"
 require_relative "../context_sources"
 require_relative "../send_command/busy"
 require_relative "../chi_invocation"
@@ -320,6 +321,15 @@ module Samagotchi
           ContextEntry.new(source: a.source, snapshot: snapshot, muted: own.muted?(a.name), shadowed: a.shadowed,
                            unread: snapshot.text? && read != snapshot.revision)
         end
+      end
+
+      # A session's candidates with their status; none for a project.
+      # @return [Array<ContextCandidate>]
+      def context_candidates(target)
+        return [] if target.project?
+
+        ContextCandidates.with_status(target.session_id, project_root: target.project_root, state_dir: @state_dir)
+                         .map { |candidate, status| ContextCandidate.new(candidate: candidate, status: status) }
       end
 
       # The source +name+ as the target sees it, with its snapshot.

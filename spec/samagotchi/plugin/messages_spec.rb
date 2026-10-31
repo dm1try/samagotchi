@@ -5,6 +5,7 @@ require "samagotchi/engine"
 require "samagotchi/kernel_loop"
 require "samagotchi/session"
 require "samagotchi/bridge"
+require "samagotchi/owner_prompt"
 require "samagotchi/plugin/context"
 require "support/thinking_off"
 require "support/test_kernel"
@@ -84,6 +85,13 @@ RSpec.describe "ctx.messages" do
         { role: "user", content: "also this" },
         { role: "model", content: "Sure." }
       ])
+    end
+
+    it "gives the prompt the turn's id, as the saved one has (an owner prompt to OwnerPrompt)" do
+      messages = Samagotchi::Bridge::TurnAccumulator.messages_of({ prompt: "go", turn_id: "t1", parts: [] })
+
+      expect(messages).to eq([{ role: "user", content: "go", turn_id: "t1" }])
+      expect(Samagotchi::OwnerPrompt.message?(messages.first)).to be(true)
     end
 
     it "has no prompt message for a continue turn" do

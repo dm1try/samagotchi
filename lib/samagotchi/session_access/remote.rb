@@ -511,6 +511,20 @@ module Samagotchi
         Array(reply.json["sources"]).map { |row| context_entry_of(row) }
       end
 
+      # The session's candidates (chi web's list, ?full=1); none from a
+      # chi web before them.
+      # @return [Array<ContextCandidate>]
+      def context_candidates(target)
+        reply = request(:get, "#{session_path(target.session_id)}/context", query: { full: 1 })
+        raise_refusal(reply) unless reply.status == 200
+
+        Array(reply.json["candidates"]).filter_map do |row|
+          next unless row.is_a?(Hash) && row["name"].is_a?(String)
+
+          ContextCandidate.new(candidate: ContextSources::Candidate.from_h(row["name"], row), status: row["status"].to_s)
+        end
+      end
+
       # @return [ContextEntry, nil]
       def context_entry(target, name)
         ContextSources.check_name!(name)

@@ -254,6 +254,34 @@ RSpec.describe Samagotchi::ContextCommand do
                                "revision" => Samagotchi::ContextSources.revision_of("text"))
       end
 
+      it "lists a session's candidates under the sources, with their derived status, and as JSON rows" do
+        a = make
+        candidate = lambda do |name, title|
+          own(a).add_candidate(Samagotchi::ContextSources::Candidate.new(name: name, url: nil, cmd: "printf x", title: title,
+                                                                         describe: nil, mentions: ["#412"],
+                                                                         proposed_by: "plugin:spec", at: nil))
+        end
+        candidate.call("pr-412", "#412 Fix login")
+        candidate.call("ci", "CI status")
+        run("add", "ci", "--push", a.id)
+        reset_out
+
+        expect(run("ls", a.id)).to eq(0), err.string
+        expect(out.string.lines.drop(1).map(&:split)).to eq([
+          %w[candidates (attached when the session's owner mentions one):],
+          %w[ci attached CI status],
+          %w[pr-412 proposed #412 Fix login]
+        ])
+        reset_out
+
+        run("ls", a.id, "--format", "json")
+        expect(JSON.parse(out.string).select { _1["candidate"] }).to match([
+          hash_including("name" => "ci", "status" => "attached"),
+          hash_including("name" => "pr-412", "status" => "proposed", "title" => "#412 Fix login", "mentions" => ["#412"],
+                         "proposed_by" => "plugin:spec", "session_id" => a.id)
+        ])
+      end
+
       it "says when there is nothing attached" do
         a = make
         expect(run("ls", a.id)).to eq(0)
