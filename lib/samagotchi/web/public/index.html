@@ -847,8 +847,9 @@ body.stage-view .turn-stage{position:absolute;left:0;right:0;bottom:100%;margin-
 .ts-extras>.bubble.user>.copy-btn{display:none}
 .ts-extras>.bubble.user .user-message{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;line-clamp:2;overflow:hidden;white-space:normal}
 /* A line's markdown (a delegate report's) reads as a plain row in the clamped rows: its blocks run inline at the
-   row's own size, a space between them, rules and copy buttons gone. The prompt line shown whole keeps it. */
-:is(.ts-extras>.bubble.user,.ts-prompt:not(.full)>.bubble.user)>.user-message.markdown :is(p,h1,h2,h3,h4,h5,h6,ul,ol,li,blockquote,pre,table,thead,tbody,tr,th,td,.code-wrap){display:inline;margin:0;padding:0;border:0;border-radius:0;background:transparent;font-size:inherit;font-weight:inherit;line-height:inherit;color:inherit;white-space:normal}
+   row's own size, font and baseline (a pre's monospace or a cell's middle alignment would make the line box taller), a
+   space between them, rules and copy buttons gone. The prompt line shown whole keeps it. */
+:is(.ts-extras>.bubble.user,.ts-prompt:not(.full)>.bubble.user)>.user-message.markdown :is(p,h1,h2,h3,h4,h5,h6,ul,ol,li,blockquote,pre,table,thead,tbody,tr,th,td,.code-wrap){display:inline;margin:0;padding:0;border:0;border-radius:0;background:transparent;font-family:inherit;font-size:inherit;font-weight:inherit;line-height:inherit;color:inherit;white-space:normal;vertical-align:baseline}
 :is(.ts-extras>.bubble.user,.ts-prompt:not(.full)>.bubble.user)>.user-message.markdown :is(p,h1,h2,h3,h4,h5,h6,li,blockquote,pre,td,th)::after{content:" "}
 :is(.ts-extras>.bubble.user,.ts-prompt:not(.full)>.bubble.user)>.user-message.markdown :is(hr,img,.copy-btn){display:none}
 /* Inside the dock's own blur a second backdrop-filter sees nothing: the cards are opaque here (as #commandList is). */
