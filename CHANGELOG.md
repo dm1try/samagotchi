@@ -7,15 +7,28 @@ and commands may change between minor versions. How releases are made:
 [docs/releasing.md](docs/releasing.md).
 ## [Unreleased]
 
+## [0.139.1] - 2026-10-31
+
 ### Fixed
 
 - A project's mise.toml can no longer set `TMPDIR` for the session's tools: the guardrails judge `$TMPDIR` paths
   by chi's own, so a write there could have been taken for a tmp write while it landed in the project.
 - MCP servers (mcp 0.7.4) and context sources start like `execute`'s commands: without chi's own Bundler setup
   (`RUBYOPT=-rbundler/setup`, `BUNDLE_GEMFILE`) or the project's `RUBYOPT`/`RUBYLIB`/Bundler variables, so a
-  chi run from a checkout no longer hands them its Gemfile. Update with `chi update`.
+  chi run from a checkout no longer hands them its Gemfile.
 - A worker that never starts its Bridge (`chi --attach`, the web's wake) now points at `chi home doctor`, which names
   a worker that failed to boot the chi home's chi.
+- The system bundle's self-knowledge names `execute`'s early hand-over to a task (a message for the turn), not only
+  its time limit.
+- Web: a Revise stack's version chip names the version you are looking at ("v1 of 3"), and an earlier version you
+  switched to has no Copy link (it linked the newest turn with the earlier version's quote).
+- Web: the bell is one control in each place: a toggle in a browser tab, the notifications sheet's opener in the
+  Home Screen app.
+- Web: a markdown report in the stage's one-line rows is exactly a plain row's height.
+- Web: on a phone, Revise, the stack switcher, Copy, the composer's Revise ✕, a fold's size and the activity
+  summaries no longer stay tinted after a tap.
+
+Update with `chi update` (system, mcp 0.7.4).
 
 ## [0.139.0] - 2026-10-30
 
@@ -5313,7 +5326,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.139.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.139.1...HEAD
+[0.139.1]: https://github.com/dm1try/samagotchi/compare/v0.139.0...v0.139.1
 [0.139.0]: https://github.com/dm1try/samagotchi/compare/v0.138.0...v0.139.0
 [0.138.0]: https://github.com/dm1try/samagotchi/compare/v0.137.0...v0.138.0
 [0.137.0]: https://github.com/dm1try/samagotchi/compare/v0.136.1...v0.137.0
