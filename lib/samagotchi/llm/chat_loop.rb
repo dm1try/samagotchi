@@ -14,6 +14,7 @@ require_relative "stream_drops"
 require_relative "../kernel_loop"
 require_relative "../answer_display"
 require_relative "../answer_refs"
+require_relative "../cut"
 require_relative "../cut_policy"
 require_relative "../context_status"
 require_relative "../context_window"
@@ -763,7 +764,7 @@ module Samagotchi
           rescue RequestCancelled
             raise unless generation_controller&.cancelled? && !@cancel_controller.cancelled?
 
-            return cut_response(iteration, thought, generation_controller.detail || {})
+            return cut_response(iteration, thought, generation_controller.detail || Cut.new)
           end
           dropped = settle_thinking_drop(iteration, response.thinking_drop)
           record_context_status(response.usage, window)
@@ -820,7 +821,7 @@ module Samagotchi
         # stream never sent its last chunk).
         def cut_response(iteration, thought, cut)
           emit(type: :generation_completed, iteration: iteration, content_length: 0, thinking_chars: thought.length,
-               requested_model: @model_name, finish_reason: "stopped", stopped_by: cut[:by], stop_reason: cut[:reason])
+               requested_model: @model_name, finish_reason: "stopped", stopped_by: cut.by, stop_reason: cut.reason)
           response = ChatResponse.new(text: "", reasoning: thought, tool_calls: [], usage: nil, finish_reason: "stopped",
                                       cut: cut)
           [response, nil]

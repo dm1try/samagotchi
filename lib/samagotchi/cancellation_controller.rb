@@ -20,8 +20,8 @@ module Samagotchi
       @generation = nil
     end
 
-    # @param detail [Object, nil] what the canceller says about it (a cut
-    #   generation's {by:, reason:})
+    # @param detail [Object, nil] what the canceller says about it (the Cut
+    #   of a cut generation, or a turn stopped by a hook)
     def cancel!(reason = :manual, detail = nil)
       listeners = []
       @mutex.synchronize do
@@ -54,11 +54,11 @@ module Samagotchi
       @mutex.synchronize { @detail }
     end
 
-    # Who stopped it when a hook did: the detail's +by+ (the bundle, or the
+    # Who stopped it when a hook did: the Cut's +by+ (the bundle, or the
     # hook's label); nil for any other cancel.
     def stopped_by
       reason, detail = @mutex.synchronize { [@reason, @detail] }
-      by = detail[:by].to_s if reason == :hook && detail.is_a?(Hash)
+      by = detail.by.to_s if reason == :hook && detail.respond_to?(:by)
       by unless by.nil? || by.empty?
     end
 

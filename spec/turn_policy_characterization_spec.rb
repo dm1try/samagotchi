@@ -21,9 +21,9 @@ require_relative "support/fake_chat_adapter"
 # (the B2 plan's table rows, "A9" for the context ones), so fixing one is an
 # edited cell here.
 RSpec.describe "Turn policy characterization" do
-  cut = { by: "loop-guard", reason: "its thinking kept repeating itself" }.freeze
-  # Engine#cut_for_steer's detail, for a [:steer_cut] step (the user's message).
-  steer_cut = { by: "steer", steer: true, source: "", reason: "a new message" }.freeze
+  cut = Samagotchi::Cut.hook(by: "loop-guard", reason: "its thinking kept repeating itself")
+  # Engine#cut_for_steer's Cut, for a [:steer_cut] step (the user's message).
+  steer_cut = Samagotchi::Cut.steer("")
 
   # Streams like Client#complete: content chunks, then the last payload
   # (llama.cpp's /completion shape) with the finish reason the transport
@@ -123,7 +123,7 @@ RSpec.describe "Turn policy characterization" do
 
   # A [:steer_cut, { source: "chi_send" }] step: the steer's own source.
   define_method(:steer_detail) do |options|
-    options[:source] ? steer_cut.merge(source: options[:source]) : steer_cut
+    options[:source] ? Samagotchi::Cut.steer(options[:source]) : steer_cut
   end
 
   # ── the run ──────────────────────────────────────────────────────────────

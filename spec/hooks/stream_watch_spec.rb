@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "samagotchi/hooks"
+require "samagotchi/cut"
 require "samagotchi/cancellation_controller"
 require "samagotchi/log"
 require "fileutils"
@@ -100,7 +101,7 @@ RSpec.describe Samagotchi::Hooks::StreamWatch do
     controller.generation do
       watch.started(1)
       watch.feed(thinking: "x" * 2000, text: "")
-      controller.cancel_generation!(:hook, { by: "b", reason: "r" })
+      controller.cancel_generation!(:hook, Samagotchi::Cut.hook(by: "b", reason: "r"))
       watch.feed(thinking: "x" * 5000, text: "")
     end
 

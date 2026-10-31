@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "spec_helper"
+require "samagotchi/cut"
 require "samagotchi/turn_note"
 
 RSpec.describe Samagotchi::TurnNote do
@@ -126,9 +127,10 @@ RSpec.describe Samagotchi::TurnNote do
   end
 
   it "names the hook that stopped the turn and why, as far as known" do
-    expect(described_class.cancelled(:hook, seconds: 30, stopped_by: { by: "loop-guard", reason: "repeating  itself" })[:content])
+    expect(described_class.cancelled(:hook, seconds: 30,
+                                    stopped_by: Samagotchi::Cut.hook(by: "loop-guard", reason: "repeating  itself"))[:content])
       .to eq("[SYSTEM: the previous turn was cancelled (hook loop-guard: repeating itself) after 30s; no answer had been shown.]")
-    expect(described_class.cancelled(:hook, stopped_by: { by: "check-in", reason: "" })[:content])
+    expect(described_class.cancelled(:hook, stopped_by: Samagotchi::Cut.hook(by: "check-in", reason: ""))[:content])
       .to start_with("[SYSTEM: the previous turn was cancelled (hook check-in);")
     expect(described_class.cancelled(:hook, stopped_by: nil)[:content]).to start_with("[SYSTEM: the previous turn was cancelled (hook);")
   end

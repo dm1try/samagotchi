@@ -8,7 +8,7 @@ RSpec.describe Samagotchi::CutPolicy do
   let(:controller) { Samagotchi::CancellationController.new }
   let(:events) { [] }
   let(:conversation) { [{ role: "user", content: "hi" }] }
-  let(:cut) { { by: "loop-guard", reason: "its thinking kept repeating itself" } }
+  let(:cut) { Samagotchi::Cut.hook(by: "loop-guard", reason: "its thinking kept repeating itself") }
 
   def decide(budget:, cut: self.cut, injected: false)
     described_class.decide(cut: cut, cancel_controller: controller, empty_retry: budget, conversation: conversation,
@@ -20,7 +20,7 @@ RSpec.describe Samagotchi::CutPolicy do
     controller.cancel!(:user)
     injections = 0
 
-    outcome = described_class.decide(cut: cut.merge(steer: true), cancel_controller: controller,
+    outcome = described_class.decide(cut: cut.with(steer: true), cancel_controller: controller,
                                      empty_retry: Samagotchi::EmptyAnswerRetry.new(limit: 1), conversation: conversation,
                                      iteration: 2, emit: ->(event) { events << event }, inject: -> { injections += 1 },
                                      finish_reason: "stopped", thinking_chars: 7)
@@ -39,7 +39,7 @@ RSpec.describe Samagotchi::CutPolicy do
   it "goes on as is after a steer's cut with nothing queued, under its :steer_cut row" do
     retry_budget = Samagotchi::EmptyAnswerRetry.new(limit: 0)
 
-    expect(decide(cut: { by: "steer", steer: true, source: "chi_send" }, budget: retry_budget)).to be_again
+    expect(decide(cut: Samagotchi::Cut.steer("chi_send"), budget: retry_budget)).to be_again
     expect(events).to eq([{ type: :steer_cut, iteration: 2, source: "chi_send" }])
     expect([retry_budget.attempts, conversation.size, controller.cancelled?]).to eq([0, 1, false])
   end

@@ -215,7 +215,7 @@ RSpec.describe Samagotchi::Engine, "#steer" do
       [nil, "chi_send", "parent_agent"].each do |source|
         answer, detail = cut_during(source)
         expect(answer).to eq(:now)
-        expect(detail).to eq(by: "steer", steer: true, source: source.to_s, reason: "a new message")
+        expect(detail).to eq(Samagotchi::Cut.steer(source.to_s))
       end
     end
 
@@ -279,7 +279,7 @@ RSpec.describe Samagotchi::Engine, "#steer" do
   # steer.cut_after waits (WaitingSteer) and cuts once the thinking passes it.
   describe "a message that came too early to cut" do
     let(:now) { [1000.0] }
-    let(:steer_cut) { ->(source) { { by: "steer", steer: true, source: source, reason: "a new message" } } }
+    let(:steer_cut) { ->(source) { Samagotchi::Cut.steer(source) } }
 
     before { allow(engine).to receive(:monotonic_now) { now.first } }
 

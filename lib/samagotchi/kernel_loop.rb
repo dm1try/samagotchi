@@ -13,6 +13,7 @@ require_relative "client"
 require_relative "llm/errors"
 require_relative "log"
 require_relative "empty_answer_retry"
+require_relative "cut"
 require_relative "cut_policy"
 require_relative "thinking"
 require_relative "hooks"
@@ -327,8 +328,9 @@ module Samagotchi
     # One request: the prompt and its images as sent, the images' token
     # estimate, and the window it was measured against.
     Request = Struct.new(:prompt, :images, :image_tokens, :window, :prefill, keyword_init: true)
-    # One generation: the response (nil when cut), the cut's detail, this
-    # generation's own server counts, the model the server named, the
+    # One generation: the response (nil when cut), the Cut that stopped it
+    # (an empty one when nothing said why), this generation's own server
+    # counts, the model the server named, the
     # thinking it streamed, and why it stopped (llama.cpp's finish
     # reason, Client.finish_reason_from; nil when not named),
     # and its prompt-cache counts (the largest seen: they come cumulative),
@@ -472,7 +474,7 @@ module Samagotchi
       rescue Client::RequestCancelled
         raise unless cut?(generation_controller, turn.cancel_controller)
 
-        generation.cut = generation_controller.detail || {}
+        generation.cut = generation_controller.detail || Cut.new
         nil
       end
       generation.cut ? cut_generation(turn, generation, buffer_mark) : completed_generation(turn, request, generation)
@@ -634,8 +636,8 @@ module Samagotchi
       turn.buffer.slice!(buffer_mark..)
       emit(turn, type: :generation_completed, iteration: turn.iteration, content_length: 0,
                  thinking_chars: generation.streamed_thinking, served_model: generation.served_model,
-                 requested_model: turn.model_name, finish_reason: "stopped", stopped_by: generation.cut[:by],
-                 stop_reason: generation.cut[:reason])
+                 requested_model: turn.model_name, finish_reason: "stopped", stopped_by: generation.cut.by,
+                 stop_reason: generation.cut.reason)
     end
 
     def completed_generation(turn, request, generation)
@@ -668,7 +670,7 @@ module Samagotchi
       raise Client::RequestCancelled, turn.cancel_controller.reason if outcome.stopped?
       return :next if outcome.again?
 
-      emit(turn, type: :generation_cancelled, iteration: turn.iteration, reason: :hook, stopped_by: cut[:by])
+      emit(turn, type: :generation_cancelled, iteration: turn.iteration, reason: :hook, stopped_by: cut.by)
       cancelled_result(turn.conversation, tool_activity: turn.tool_activity, reason: :hook, partial_assistant_text: "")
     end
 

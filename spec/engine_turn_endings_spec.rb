@@ -232,7 +232,7 @@ RSpec.describe Samagotchi::Engine, "#run_turn endings" do
   it "5. cancelled result (Stop): a note saying who stopped it, after_turn status canceled" do
     controller = Samagotchi::CancellationController.new
     native do |messages, **|
-      controller.cancel!(:hook, { by: "loop-guard", reason: "looping" })
+      controller.cancel!(:hook, Samagotchi::Cut.hook(by: "loop-guard", reason: "looping"))
       kernel_result(messages, text: "", canceled: true, cancellation_reason: :hook)
     end
     canceled = nil

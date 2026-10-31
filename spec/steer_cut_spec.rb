@@ -25,7 +25,7 @@ RSpec.describe Samagotchi::SteerCut do
     end
   end
 
-  def steer_detail(source) = { by: "steer", steer: true, source: source, reason: "a new message" }
+  def steer_detail(source) = Samagotchi::Cut.steer(source)
 
   it "cuts a generation thinking for steer.cut_after (25 s by default), reading the clock it was given" do
     answer = nil

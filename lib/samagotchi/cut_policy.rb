@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require_relative "cut"
 require_relative "turn_note"
 
 module Samagotchi
@@ -30,7 +31,7 @@ module Samagotchi
 
     module_function
 
-    # +cut+: the cut's detail (the stop_generation payload). +emit+ takes an
+    # +cut+: the Cut (what stop_generation passed). +emit+ takes an
     # event Hash; +inject+ puts queued input in (true when there was any).
     # +finish_reason+ and +thinking_chars+: the cut generation's, for the
     # retry's row.
@@ -40,13 +41,13 @@ module Samagotchi
       return STOPPED if cancel_controller.cancelled?
 
       # The row under the cut step, above the message it was cut for.
-      emit.call({ type: :steer_cut, iteration: iteration, source: cut[:source].to_s }) if cut[:steer]
-      return AGAIN if inject.call || cut[:steer]
+      emit.call({ type: :steer_cut, iteration: iteration, source: cut.source.to_s }) if cut.steer
+      return AGAIN if inject.call || cut.steer
 
       if empty_retry.left?
-        empty_retry.nudge!(conversation, TurnNote.cut_retry(cut[:by], cut[:reason]),
+        empty_retry.nudge!(conversation, TurnNote.cut_retry(cut.by, cut.reason),
                            emit: emit, iteration: iteration, finish_reason: finish_reason,
-                           thinking_chars: thinking_chars, stopped_by: cut[:by])
+                           thinking_chars: thinking_chars, stopped_by: cut.by)
         return AGAIN
       end
       empty_retry.drop_nudge!(conversation)

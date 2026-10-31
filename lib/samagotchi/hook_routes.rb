@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require_relative "cut"
 require_relative "event_routes"
 require_relative "hooks"
 require_relative "log"
@@ -104,7 +105,7 @@ module Samagotchi
       return false unless ctrl && !ctrl.cancelled?
 
       notify("stopped the turn: #{reason}", :warn, hook)
-      ctrl.cancel!(:hook, { by: source(hook), reason: reason.to_s })
+      ctrl.cancel!(:hook, Cut.hook(by: source(hook), reason: reason.to_s))
     end
 
     # Cut the streaming generation (reason :hook); the turn goes on and asks
@@ -115,7 +116,7 @@ module Samagotchi
       ctrl = @cancel_controller.call
       return false unless ctrl
 
-      ctrl.cancel_generation!(:hook, { by: source(hook), reason: reason.to_s })
+      ctrl.cancel_generation!(:hook, Cut.hook(by: source(hook), reason: reason.to_s))
     end
 
     private

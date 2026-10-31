@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "config"
+require_relative "cut"
 require_relative "log"
 require_relative "steer"
 require_relative "generation_phase"
@@ -131,7 +132,7 @@ module Samagotchi
 
     def cut!(ctrl, source, waited: false)
       age = @phase.age
-      cut = ctrl.cancel_generation!(:steer, { by: "steer", steer: true, source: source, reason: "a new message" })
+      cut = ctrl.cancel_generation!(:steer, Cut.steer(source))
       if cut
         @waiting.clear!
         fields = { source: source, age: age&.round(1) }

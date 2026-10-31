@@ -26,7 +26,7 @@ module Samagotchi
     # +provider+ is the provider that served it (the body's `provider`,
     # OpenRouter's routing name); nil when the server says nothing.
     # +cut+ is set on the empty response the chat loop makes for a
-    # generation a plugin cut (stop_generation): {by:, reason:}.
+    # generation a plugin cut (stop_generation): the Cut.
     # +top_logprobs+: the first answer token's likeliest alternatives
     # (TokenLogprob) when the request asked for logprobs and the server
     # sent them (a non-streamed answer only); [] otherwise.

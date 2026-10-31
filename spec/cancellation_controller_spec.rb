@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "spec_helper"
+require "samagotchi/cut"
 require "samagotchi/cancellation_controller"
 require "samagotchi/client"
 
@@ -60,11 +61,11 @@ RSpec.describe Samagotchi::CancellationController do
 
     it "cancels only the child with #cancel_generation!, with its detail" do
       controller.generation do |gen|
-        expect(controller.cancel_generation!(:hook, { by: "loop-guard", reason: "loops" })).to be(true)
+        expect(controller.cancel_generation!(:hook, Samagotchi::Cut.hook(by: "loop-guard", reason: "loops"))).to be(true)
         expect(controller.cancel_generation!(:hook)).to be(false)
         expect(gen).to be_cancelled
         expect(gen.reason).to eq(:hook)
-        expect(gen.detail).to eq({ by: "loop-guard", reason: "loops" })
+        expect(gen.detail).to eq(Samagotchi::Cut.hook(by: "loop-guard", reason: "loops"))
         expect(controller).not_to be_cancelled
       end
     end
@@ -94,9 +95,10 @@ RSpec.describe Samagotchi::CancellationController do
   end
 
   it "names who stopped it only when a hook did and said so" do
-    expect(described_class.new.tap { |c| c.cancel!(:hook, { by: "loop-guard", reason: "loops" }) }.stopped_by).to eq("loop-guard")
-    expect(described_class.new.tap { |c| c.cancel!(:hook, { reason: "loops" }) }.stopped_by).to be_nil
-    expect(described_class.new.tap { |c| c.cancel!(:user, { by: "x" }) }.stopped_by).to be_nil
+    expect(described_class.new.tap { |c| c.cancel!(:hook, Samagotchi::Cut.hook(by: "loop-guard", reason: "loops")) }.stopped_by)
+      .to eq("loop-guard")
+    expect(described_class.new.tap { |c| c.cancel!(:hook, Samagotchi::Cut.hook(reason: "loops")) }.stopped_by).to be_nil
+    expect(described_class.new.tap { |c| c.cancel!(:user, Samagotchi::Cut.hook(by: "x")) }.stopped_by).to be_nil
     expect(described_class.new.stopped_by).to be_nil
   end
 

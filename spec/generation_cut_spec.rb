@@ -22,11 +22,11 @@ RSpec.describe "A cut generation" do
   let(:server) { FakeProviderServer.start }
   let(:controller) { Samagotchi::CancellationController.new }
   let(:events) { [] }
-  let(:cut) { { by: "loop-guard", reason: "its thinking kept repeating itself" } }
+  let(:cut) { Samagotchi::Cut.hook(by: "loop-guard", reason: "its thinking kept repeating itself") }
   let(:nudge) { Samagotchi::TurnNote.cut_retry("loop-guard", "its thinking kept repeating itself") }
   let(:loop_sentence) { "I should check the file again to be sure. " }
   # A steer's cut (Engine#cut_for_steer): no nudge, no attempt spent.
-  let(:steer_cut) { { by: "steer", steer: true, source: "", reason: "a new message" } }
+  let(:steer_cut) { Samagotchi::Cut.steer("") }
 
   after { server.stop }
 
@@ -161,7 +161,7 @@ RSpec.describe "A cut generation" do
       expect(result.conversation).to eq([{ role: "user", content: "hi" }])
       expect(completions.size).to eq(1)
       expect(controller.reason).to eq(:hook)
-      expect(controller.detail).to include(by: "loop-guard")
+      expect(controller.detail.by).to eq("loop-guard")
       expect(of_type(:generation_cancelled).last).to include(reason: :hook, stopped_by: "loop-guard")
     end
 
