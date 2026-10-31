@@ -7,6 +7,14 @@ and commands may change between minor versions. How releases are made:
 [docs/releasing.md](docs/releasing.md).
 ## [Unreleased]
 
+### Added
+
+- Movable context: a continue (`chi send --new --continues`, the web's Continue →) and a bundle's fork take the
+  session's attached context with them, with a note in the new session naming what moved and what stayed. A command
+  source moves, a pushed one stays; `chi context add --movable / --no-movable` (and `ctx.context.attach(movable:)`)
+  say it outright, and `chi context ls` marks one that stays. A push into a continued session is refused with the
+  next link's id. See docs/context.md (Movable context).
+
 ## [0.140.0] - 2026-10-31
 
 ### Added

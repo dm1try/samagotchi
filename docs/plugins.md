@@ -1079,6 +1079,8 @@ ctx.sessions.review(subjects: ["docs/plan.md"], seed: handoff)  # => a review se
     `/title` of its own (see [Session titles](sessions.md#session-titles)).
   - An image a message names is copied into the child. One whose file is
     gone is dropped, with `[image x.png was not copied]` in its message.
+  - This session's movable attached context goes too, with a note naming it
+    (see [Movable context](context.md#movable-context)).
   - A child chi won't start raises `Error` with chi's reason: the session's
     model is gone from the config, or its toolkit is a config kit with an
     invalid `groups:` (`toolkit.kits`, `Toolkit.check_new!`).
@@ -1152,7 +1154,9 @@ gets a note when its text changes.
   user adds it (`ctx.context.declined?(name, url: nil)` says so, by the
   name or by the URL). `force: true` is for the user's own explicit choice
   (a click on the plugin's card): it attaches anyway and clears the
-  declined marker, by the name and by the URL.
+  declined marker, by the name and by the URL. `movable: true|false` says
+  whether a continue or a fork takes the source to the new session (by
+  default a command source does; see [Movable context](context.md#movable-context)).
 - `decline(url:)` or `decline(name:)` marks the source declined in this
   session, as the user's removal does: `attach` skips it from then on. With
   `url:`, the name and hint come from the bundle's provider (`name:`

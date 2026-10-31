@@ -132,7 +132,10 @@ the session commands*. Keep that table in step with `SessionAccessRoutes`.
   server's `ack`, which `SendCommand` prints as `<id>  refused: <detail>` (`refused_word`, `REMOTE_REFUSALS`), exit 1.
   A per-method mapping covers the rest (`Remote#deliver_turn`, `#note`, `#context_push`, `#context_remove`,
   `#bridge_reply` for answer/dismiss: chi web's 503 `not_live` or 404 `not_found` → nil, i.e. no worker; 504 → the
-  Bridge's 408; 501 → its 404). Anything unmapped becomes `RemoteFailed` "remote NAME (URL) answered STATUS code:
+  Bridge's 408; 501 → its 404). `#context_push` maps 409 to `:not_push` and 410 `context_continued` (a continued
+  session, its `next_id`) to `:continued`: a new refusal there gets a status and code of its own, as an older client
+  reads every 409 as `not_push` and `continued` as a continue's refusal. `#context_add` sends `movable` and reports it
+  dropped when the 201 doesn't echo it (an older chi web; `chi context add` warns). Anything unmapped becomes `RemoteFailed` "remote NAME (URL) answered STATUS code:
   message".
 - **Transport.** `HTTPTransport#call` turns socket errors into `RemoteFailed` "remote studio (http://…): connection
   refused" (also: no answer within 5 s, a read or write timeout, can't find host, host unreachable, TLS, a broken

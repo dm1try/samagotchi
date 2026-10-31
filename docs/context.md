@@ -89,8 +89,8 @@ web) without touching the other sessions.
 ## The commands
 
 ```
-chi context add NAME (--cmd CMD | --push) [--every SECONDS] [--why TEXT] [--hint TEXT] TARGET
-chi context add URL [--why TEXT] [--hint TEXT] TARGET   a URL an installed bundle's provider knows
+chi context add NAME (--cmd CMD | --push) [--every SECONDS] [--why TEXT] [--hint TEXT] [--[no-]movable] TARGET
+chi context add URL [--why TEXT] [--hint TEXT] [--[no-]movable] TARGET   a URL an installed bundle's provider knows
 chi context push NAME [-m TEXT] [TARGET]         new text for a --push source (stdin without -m)
 chi context ls [TARGET] [--format json]
 chi context show NAME [--json] [TARGET]
@@ -313,6 +313,49 @@ lower.) Every other source keeps the line above. `context.peer_turns: 0` turns
 the loop off: a peer source then wakes like any other. `context_read` names a
 peer source in its header (`Peer: your peer agent Codex's answers …`).
 
+## Movable context
+
+A session's own sources go with it to the next session of its work: the next
+link of a [chain](sessions.md#session-chains) (`chi send --new --continues`,
+the web's Continue →) and a bundle's fork
+([`ctx.sessions.fork`](plugins.md#other-sessions-ctxsessions)). A topic switch goes
+to a fresh session with its own context, never through a continue.
+
+Each source says whether it moves:
+
+- **A command source moves** (`--cmd`, a URL's source): chi runs its command
+  itself, in the new session too.
+- **A pushed source stays** (`--push`): its writer (`pbpaste | chi context
+  push notes <id>`, a peer agent) holds the old session's id.
+- `chi context add … --movable` / `--no-movable` (either kind) says it
+  outright: `--movable` on a pushed source means its writer finds the new id
+  itself. A bundle passes `movable:` to `ctx.context.attach`.
+
+What moves is copied before the new session's worker starts: the source, its
+last text (so its first note quotes it without waiting for a fetch, and its
+interval holds), and the session's choices: every removed (declined) and
+muted marker. Candidates don't move. The new link gets the usual *Attached*
+note for each source; a fork starts where its seed's notes left off, so a
+source that changed since gets an *Updated* note. A second chi note, after
+the chain's, names what moved and what stayed:
+
+> Context moved with this session: pr-412, ci. Left with 3f2a9c1e: notes (pushed).
+
+`chi send --new --continues` and the web's Continue toast say the same in a
+few words, and `chi context ls` marks a session's source that stays
+(`· stays`; `--format json` has the derived `movable`). Project sources are
+shared already, and a review fork (`chi review --from`) and a delegate take none.
+
+A push into a continued session is refused, nothing written, with the next
+link's id (`chi context push` exits 1; chi web answers 410
+`context_continued`):
+
+```
+chi context push: 3f2a9c1e was continued as 7b1d…: notes stays with the session it was attached to; attach it to 7b1d… (or pair again with 7b1d…) and push there
+```
+
+An archived session that nobody continued takes pushes as before.
+
 ## Candidates
 
 A bundle can **propose** a source instead of attaching it
@@ -359,8 +402,8 @@ review session refuses them); an unknown name, or one attached or declined
 already, is an error that says so. They are what the judge's card's buttons
 run (see [On mode](#on-mode)).
 
-Forks and continues start without candidates: the bundle proposes again in
-the new session.
+Forks and continues take no candidates: the bundle proposes again in the
+new session (see [Movable context](#movable-context) for the sources).
 
 ### The judge
 
