@@ -181,7 +181,8 @@ module Samagotchi
         json = reply.json
         Created.new(id: json.fetch("id"), model_warning: json["model_warning"], continues: json["continues"],
                     moved_children: json["moved"] || [], parent_answers_warning: json["parent_answers_warning"],
-                    first_turn_id: json["first_turn_id"])
+                    first_turn_id: json["first_turn_id"],
+                    moved_context: ContextSources::Moved.from_h(json["moved_context"]))
       end
 
       # Whether a just-created session's worker came up within +timeout+

@@ -393,7 +393,170 @@ module Samagotchi
       end
     end
 
+    # A source a move left behind (ContextSources.move): its +name+ and
+    # +why+, :pushed (derived: its writer holds the old id) or :not_movable
+    # (its movable: false).
+    Stayed = Data.define(:name, :why) do
+      def label = why == :pushed ? "pushed" : "not movable"
+    end
+
+    # What ContextSources.move did: the names it took to the new session
+    # (+moved+) and the sources it left (+stayed+, Stayed).
+    Moved = Data.define(:moved, :stayed) do
+      def self.none = new(moved: [], stayed: [])
+
+      def empty? = moved.empty? && stayed.empty?
+
+      # The new session's note (one sentence each, no instructions); nil
+      # when nothing moved or stayed.
+      # @param from [String] the session the sources came from
+      def note_text(from)
+        return nil if empty?
+
+        lines = []
+        lines << "Context moved with this session: #{moved.join(", ")}." unless moved.empty?
+        unless stayed.empty?
+          lines << "Left with #{from.to_s[0, 8]}: #{stayed.map { |s| "#{s.name} (#{s.label})" }.join(", ")}."
+        end
+        lines.join(" ")
+      end
+
+      # A UI's few words (chi send --new --continues); nil for nothing.
+      def words
+        parts = []
+        parts << "context moved: #{moved.join(", ")}" unless moved.empty?
+        parts << "context stayed: #{stayed.map(&:name).join(", ")}" unless stayed.empty?
+        parts.empty? ? nil : parts.join("; ")
+      end
+
+      # chi web's continue answer (moved_context).
+      def to_h = { "moved" => moved, "stayed" => stayed.map { |s| { "name" => s.name, "why" => s.label } } }
+
+      # @param data [Hash, nil] #to_h's; nil (an older chi web): nil
+      def self.from_h(data)
+        return nil unless data.is_a?(Hash)
+
+        stayed = Array(data["stayed"]).filter_map do |row|
+          next unless row.is_a?(Hash)
+
+          Stayed.new(name: row["name"].to_s, why: row["why"] == "pushed" ? :pushed : :not_movable)
+        end
+        new(moved: Array(data["moved"]).map(&:to_s), stayed: stayed)
+      end
+    end
+
     module_function
+
+    # Takes the movable sources of session +from+'s own location
+    # (Source#movable?) to session +to+, the new link of a continue or a
+    # plugin fork (+mode+ :continue or :fork), before +to+'s worker starts:
+    # each one's source and snapshot (a plain read: writes are AtomicFile
+    # renames; never Location#locked, which a fetch holds for its whole
+    # command), every declined/ and muted/ marker (the user's choices),
+    # and a subscription per source moved. A continue's says nothing seen
+    # (the new link's first absorb gives the Attached note) at the
+    # snapshot's serial (an old wake doesn't wake it). A fork's is what
+    # its +seed+ (the fork's messages) last had: the newest note about the
+    # source (its note_id, ContextAbsorber#text_note_id), else as a
+    # continue's. Never candidates/, lock files, or a source +to+ has
+    # already (it wins).
+    # @param seed [Array<Hash>] a fork's messages
+    # @return [Moved]
+    def move(from:, to:, mode:, state_dir:, seed: nil)
+      raise ArgumentError, "mode is :continue or :fork, not #{mode.inspect}" unless %i[continue fork].include?(mode)
+
+      source_loc = session_location(from, state_dir: state_dir)
+      target = session_location(to, state_dir: state_dir)
+      return Moved.none unless Dir.exist?(source_loc.dir)
+
+      moved = []
+      stayed = []
+      subs = {}
+      source_loc.sources.each do |source|
+        unless source.movable?
+          stayed << Stayed.new(name: source.name, why: source.movable.nil? ? :pushed : :not_movable)
+          next
+        end
+        next if File.exist?(target.source_path(source.name))
+
+        snapshot = copy_source(source, from: source_loc, to: target) or next
+        subs[source.name] = moved_subscription(source.name, snapshot, mode == :fork ? seed : nil)
+        moved << source.name
+      end
+      [DECLINED_DIR, MUTED_DIR].each { |folder| copy_markers(source_loc.dir, target.dir, folder) }
+      target.write_subscriptions(target.subscriptions.merge(subs)) unless subs.empty?
+      Moved.new(moved: moved, stayed: stayed)
+    end
+
+    # The source's file and its snapshot's (when it has one), as they are.
+    # @return [Snapshot, nil] the snapshot copied (Snapshot.empty: none);
+    #   nil when the source went meanwhile (nothing copied)
+    def copy_source(source, from:, to:)
+      source_raw = File.read(from.source_path(source.name))
+      snapshot_path = from.snapshot_path(source.name)
+      snapshot_raw = File.file?(snapshot_path) ? File.read(snapshot_path) : nil
+      FileUtils.mkdir_p(to.dir)
+      AtomicFile.write(to.snapshot_path(source.name), snapshot_raw) if snapshot_raw
+      AtomicFile.write(to.source_path(source.name), source_raw)
+      data = snapshot_raw && read_json_text(snapshot_raw)
+      data ? Snapshot.from_h(data) : Snapshot.empty
+    rescue SystemCallError
+      nil
+    end
+
+    def read_json_text(raw)
+      data = JSON.parse(raw)
+      data.is_a?(Hash) ? data : nil
+    rescue JSON::ParserError
+      nil
+    end
+
+    def copy_markers(from_dir, to_dir, folder)
+      source = File.join(from_dir, folder)
+      return unless Dir.exist?(source)
+
+      Dir.children(source).each do |name|
+        next unless name.match?(NAME_RE)
+
+        path = File.join(to_dir, folder, name)
+        next if File.exist?(path)
+
+        FileUtils.mkdir_p(File.dirname(path))
+        AtomicFile.write(path, File.read(File.join(source, name)))
+      rescue SystemCallError
+        next
+      end
+    end
+
+    # A moved source's subscription in the new session (#move).
+    def moved_subscription(name, snapshot, seed)
+      blank = Subscription.blank(name).with(seen_serial: snapshot.serial)
+      held = seed && seed_note(name, seed)
+      return blank unless held
+
+      serial, prefix = held
+      same = snapshot.serial == serial && snapshot.revision.to_s.start_with?(prefix)
+      # A partial revision differs from every full one: an Updated note follows.
+      Subscription.blank(name).with(seen: same ? snapshot.revision : prefix, seen_serial: serial)
+    end
+
+    # The serial and revision prefix of the newest text note about +name+
+    # in +messages+ (ContextAbsorber's note_id, ctx-<name>-<serial>-<rev12>).
+    # @return [Array(Integer, String), nil]
+    def seed_note(name, messages)
+      pattern = /\Actx-#{Regexp.escape(name)}-(\d+)-(\h{12})\z/
+      Array(messages).reverse_each do |message|
+        next unless message.is_a?(Hash)
+
+        context_source = message.key?(:context_source) ? message[:context_source] : message["context_source"]
+        next unless context_source == name
+
+        note_id = (message.key?(:note_id) ? message[:note_id] : message["note_id"]).to_s
+        match = pattern.match(note_id) or next
+        return [match[1].to_i, match[2]]
+      end
+      nil
+    end
 
     # <state dir>/context; +state_dir+ is the sessions dir (Session.default_state_dir).
     def root(state_dir: nil)

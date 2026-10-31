@@ -213,6 +213,21 @@ RSpec.describe Samagotchi::SendCommand, "--new" do
       expect(out.string).to eq("#{links.first.id}  started (continues #{previous.id[0, 8]}; 1 delegate moved)\n")
     end
 
+    it "says what attached context moved to the new link and what stayed" do
+      own = Samagotchi::ContextSources.session_location(previous.id, state_dir: tmpdir)
+      own.add(Samagotchi::ContextSources::Source.new(name: "ci", cmd: "x", every_seconds: nil, why: nil, hint: nil,
+                                                     scope: nil, added_by: "cli", created_at: nil))
+      own.add(Samagotchi::ContextSources::Source.new(name: "notes", cmd: nil, every_seconds: nil, why: nil, hint: nil,
+                                                     scope: nil, added_by: "cli", created_at: nil))
+
+      expect(run("--new", "--continues", previous.id, "-m", "start the day")).to eq(0), err.string
+
+      expect(out.string).to eq("#{links.first.id}  started (continues #{previous.id[0, 8]}; context moved: ci; " \
+                               "context stayed: notes)\n")
+    ensure
+      [previous.id, *links.map(&:id)].each { |id| Samagotchi::ContextSources.remove_session(id, state_dir: tmpdir) }
+    end
+
     it "starts it idle with no message, and takes last:ID for the chain's latest link" do
       expect(run("--new", "--continues", previous.id)).to eq(0), err.string
       second = links.first

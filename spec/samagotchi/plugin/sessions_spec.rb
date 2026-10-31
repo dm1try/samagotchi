@@ -85,6 +85,27 @@ RSpec.describe Samagotchi::Plugin::Sessions do
                                        settings: Samagotchi::SessionConfig::Settings.new(core: { "recap.enabled" => false }, bundles: { "cost-cap" => { "cap" => 0.5 } }))
     end
 
+    it "takes this session's movable attached context, as the seed last had it, with a note" do
+      state = File.join(tmpdir, "state", "sessions")
+      host.state_dir = -> { state }
+      parent.save(state_dir: state)
+      own = Samagotchi::ContextSources.session_location(parent.id, state_dir: state)
+      own.add(Samagotchi::ContextSources::Source.new(name: "pr-1", cmd: "x", every_seconds: nil, why: nil, hint: nil,
+                                                     scope: nil, added_by: "cli", created_at: nil))
+      snap = own.record_text("pr-1", Samagotchi::ContextSources::Fetched.new(text: "t", summary: nil, wake: false, hint: nil))
+      seed = [{ role: "system", kind: "note", context_source: "pr-1", note_id: "ctx-pr-1-1-#{snap.revision[0, 12]}",
+                content: "[CONTEXT NOTE]" }, { role: "user", content: "q" }]
+
+      id = sessions.fork(messages: seed)
+
+      forked = Samagotchi::ContextSources.session_location(id, state_dir: state)
+      expect(forked.sources.map(&:name)).to eq(["pr-1"])
+      expect(forked.subscription("pr-1")).to have_attributes(seen: snap.revision, seen_serial: 1)
+      notes = Samagotchi::SessionInbox.find_new_note_files(Samagotchi::Session.session_dir(id, state_dir: state))
+                                      .map { |f| Samagotchi::SessionInbox.read_note(f)[:text] }
+      expect(notes).to eq(["Context moved with this session: pr-1."])
+    end
+
     it "runs a prompt as the child's first turn, within session.max_children" do
       allow(Samagotchi::Tools::Delegate).to receive(:max_children).and_return(1)
       allow(Samagotchi::Tools::Delegate).to receive(:running_children).and_return([])

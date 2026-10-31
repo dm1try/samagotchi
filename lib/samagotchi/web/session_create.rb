@@ -180,6 +180,7 @@ module Samagotchi
         json_response(201, session_to_json(session).merge(bridge_port: port, moved: moved,
                                                           model_warning: session.model_warning,
                                                           opener: session.opener,
+                                                          moved_context: session.moved_context&.to_h,
                                                           first_turn_id: session.first_turn_id))
       end
 

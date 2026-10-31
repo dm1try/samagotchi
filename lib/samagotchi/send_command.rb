@@ -571,7 +571,9 @@ module Samagotchi
       return "" unless session.continues
 
       moved = Array(session.moved_children).size
-      " (continues #{session.continues[0, 8]}#{"; #{moved} delegate#{"s" if moved != 1} moved" if moved.positive?})"
+      context = session.moved_context&.words
+      " (continues #{session.continues[0, 8]}#{"; #{moved} delegate#{"s" if moved != 1} moved" if moved.positive?}" \
+        "#{"; #{context}" if context})"
     end
 
     # One existing session, then its next reply. The cursor and baseline

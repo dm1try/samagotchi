@@ -260,6 +260,14 @@ test("continueRefusal: open delegates are named with their preview and state", (
   assert.match(openChildrenHtml("d3", r.children.slice(0, 1), (id) => id), /1 open delegate can't move to the next link\. Do what it says, or wait for it/);
 });
 
+test("continuedText: the attached context that moved and stayed (none from an older chi web)", () => {
+  const created = { id: "e4e4e4e4-y", moved: [], moved_context: { moved: ["pr-412", "ci"], stayed: [{ name: "notes", why: "pushed" }] } };
+  assert.equal(continuedText("d3d3d3d3-x", created),
+    "Continued d3d3d3d3 in e4e4e4e4; d3d3d3d3 is archived; context moved: pr-412, ci; context stayed with d3d3d3d3: notes");
+  assert.equal(continuedText("d3d3d3d3-x", { id: "e4e4e4e4-y", moved_context: { moved: [], stayed: [] } }),
+    "Continued d3d3d3d3 in e4e4e4e4; d3d3d3d3 is archived");
+});
+
 test("continuedText: the new link, the archive, and the delegates that moved", () => {
   assert.equal(continuedText("d3d3d3d3-x", { id: "e4e4e4e4-y", moved: [] }), "Continued d3d3d3d3 in e4e4e4e4; d3d3d3d3 is archived");
   assert.equal(continuedText("d3d3d3d3-x", { id: "e4e4e4e4-y", moved: ["a"] }),

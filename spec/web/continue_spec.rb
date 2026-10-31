@@ -188,6 +188,21 @@ RSpec.describe Samagotchi::Web::App, "POST /api/sessions continues" do
   it "answers moved: [] when nothing moved" do
     status, body = create(continues: previous_link.id, idle: true)
     expect([status, body["moved"]]).to eq([201, []])
+    expect(body["moved_context"]).to eq("moved" => [], "stayed" => [])
+  end
+
+  it "answers the attached context that moved and stayed (moved_context)" do
+    previous = previous_link
+    own = Samagotchi::ContextSources.session_location(previous.id, state_dir: state_dir)
+    own.add(Samagotchi::ContextSources::Source.new(name: "ci", cmd: "x", every_seconds: nil, why: nil, hint: nil,
+                                                   scope: nil, added_by: "cli", created_at: nil))
+    own.add(Samagotchi::ContextSources::Source.new(name: "notes", cmd: nil, every_seconds: nil, why: nil, hint: nil,
+                                                   scope: nil, added_by: "cli", created_at: nil))
+
+    status, body = create(continues: previous.id, idle: true)
+
+    expect(status).to eq(201), body.inspect
+    expect(body["moved_context"]).to eq("moved" => ["ci"], "stayed" => [{ "name" => "notes", "why" => "pushed" }])
   end
 
   it "answers 409 open_children naming a delegate still open that can't move (a chi REPL holds it)" do

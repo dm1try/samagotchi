@@ -6,6 +6,7 @@ require_relative "session_setup"
 require_relative "session_inbox"
 require_relative "session_chain"
 require_relative "child_move"
+require_relative "context_move"
 require_relative "archive_store"
 require_relative "recap_store"
 require_relative "bridge_client"
@@ -76,7 +77,8 @@ module Samagotchi
     # running, a prompt queued or the step-limit question refuse; an idle
     # worker is stopped), so a refusal starts nothing. Its open delegates
     # (running, waiting, live, an unreported reply, at any depth below them)
-    # move to the new link instead (ChildMove): their reports reach it.
+    # move to the new link instead (ChildMove): their reports reach it. So
+    # does its movable attached context (ContextMove).
     # Before that its live worker is asked for a recap and given up to
     # +recap_wait+ seconds to write it.
     # One continue of a session at a time (a lock in its folder): a double
@@ -87,7 +89,8 @@ module Samagotchi
     # @param preview [String, nil] what the lists show before the first turn;
     #   by default the prompt, else the previous link's preview
     # @return [Session] the new link (#model_warning as spawn_session's,
-    #   #moved_children: the delegates it took over, #opener:
+    #   #moved_children: the delegates it took over, #moved_context: the
+    #   attached context it took (ContextMove), #opener:
     #   SessionChain.opener_for the previous link)
     # @raise [ArgumentError] no such session (Session::AmbiguousId for a prefix of several)
     # @raise [Refused] continued already, delegates open that can't
@@ -199,9 +202,12 @@ module Samagotchi
       recap = RecapStore.read(Session.session_dir(previous.id, state_dir: state_dir))
       start = prompt.to_s.strip.empty? ? nil : prompt
       preview = previous.first_preview if preview.to_s.strip.empty? && start.nil?
+      moved_context = nil
       before_spawn = lambda do |link|
         ChildMove.mark_starting(link.id, state_dir: state_dir)
         ChildMove.apply(move, from: previous.id, to: link.id, state_dir: state_dir)
+        # Its movable context too, with a note saying what moved and stayed.
+        moved_context = ContextMove.call(from: previous.id, to: link.id, mode: :continue, state_dir: state_dir)
       end
       link = SessionManager.spawn_session(
         prompt: start, preview: preview, title: previous.title, working_directory: previous.working_directory,
@@ -210,6 +216,7 @@ module Samagotchi
         note_source: SessionChain::NOTE_SOURCE, state_dir: state_dir, before_spawn: before_spawn
       )
       link.moved_children = move
+      link.moved_context = moved_context
       link.opener = SessionChain.opener_for(previous)
       # The fallback's warning first: spawn_session set its own.
       warnings = [choice.warning, link.model_warning].compact

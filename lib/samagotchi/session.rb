@@ -347,6 +347,10 @@ module Samagotchi
     # SessionManager.continue_session sets it); not saved.
     attr_accessor :moved_children
 
+    # The attached context a continue took to this new link
+    # (ContextSources::Moved; SessionContinue sets it); not saved.
+    attr_accessor :moved_context
+
     # The text web `continue →` prefills in this new link
     # (SessionChain.opener_for; SessionManager.continue_session sets it); not
     # saved.

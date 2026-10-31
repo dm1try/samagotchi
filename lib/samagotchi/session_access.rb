@@ -173,9 +173,12 @@ module Samagotchi
     # over, the server's word on a --parent-answers looser than its
     # config.yml's (capped), and the id the prompt it started with gets for
     # its first turn (nil for one created idle).
-    Created = Data.define(:id, :model_warning, :continues, :moved_children, :parent_answers_warning, :first_turn_id) do
+    # +moved_context+: the attached context a continue took
+    # (ContextSources::Moved; nil from an older chi web).
+    Created = Data.define(:id, :model_warning, :continues, :moved_children, :parent_answers_warning, :first_turn_id,
+                          :moved_context) do
       def initialize(id:, model_warning: nil, continues: nil, moved_children: [], parent_answers_warning: nil,
-                     first_turn_id: nil) = super
+                     first_turn_id: nil, moved_context: nil) = super
     end
 
     # A session's worker as an attach finds it (Local#worker, chi web's GET

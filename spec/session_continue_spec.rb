@@ -169,6 +169,50 @@ RSpec.describe Samagotchi::SessionContinue, ".run" do
     expect(archived?(link.id)).to be(false)
   end
 
+  describe "moving the attached context to the new link" do
+    let(:previous) { make }
+    let(:ids) { [] }
+
+    after { ids.each { |id| Samagotchi::ContextSources.remove_session(id, state_dir: tmpdir) } }
+
+    def location(id) = Samagotchi::ContextSources.session_location(id, state_dir: tmpdir)
+
+    def fetched(text) = Samagotchi::ContextSources::Fetched.new(text: text, summary: nil, wake: false, hint: nil)
+
+    def notes_of(id)
+      Samagotchi::SessionInbox.find_new_note_files(dir_of(id)).map { |f| Samagotchi::SessionInbox.read_note(f) }
+    end
+
+    it "moves a command source, leaves a pushed one, and writes a second note after the chain's" do
+      ids << previous.id
+      old = location(previous.id)
+      old.add(Samagotchi::ContextSources::Source.new(name: "ci", cmd: "echo ok", every_seconds: nil, why: nil,
+                                                     hint: nil, scope: nil, added_by: "cli", created_at: nil))
+      old.record_text("ci", fetched("green"))
+      old.add(Samagotchi::ContextSources::Source.new(name: "notes", cmd: nil, every_seconds: nil, why: nil, hint: nil,
+                                                     scope: nil, added_by: "cli", created_at: nil))
+
+      link = continue(previous.id)
+      ids << link.id
+
+      expect(location(link.id).sources.map(&:name)).to eq(["ci"])
+      expect(location(link.id).snapshot("ci").text).to eq("green")
+      expect(link.moved_context).to have_attributes(moved: ["ci"])
+      expect(link.moved_context.stayed.map(&:name)).to eq(["notes"])
+      notes = notes_of(link.id)
+      expect(notes.map { |n| n[:source] }).to eq([Samagotchi::SessionChain::NOTE_SOURCE, Samagotchi::ContextMove::NOTE_SOURCE])
+      expect(notes.last[:text])
+        .to eq("Context moved with this session: ci. Left with #{previous.id[0, 8]}: notes (pushed).")
+    end
+
+    it "writes no second note when there is no context" do
+      link = continue(previous.id)
+
+      expect(notes_of(link.id).size).to eq(1)
+      expect(link.moved_context).to eq(Samagotchi::ContextSources::Moved.none)
+    end
+  end
+
   describe "moving the open delegates to the new link" do
     def cursors(id) = Samagotchi::Tools::DelegateCursors.read(id, state_dir: tmpdir)
     def rings(id) = Samagotchi::SessionInbox.find_ring_files(dir_of(id))

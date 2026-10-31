@@ -7,6 +7,7 @@ require_relative "../worker_link"
 require_relative "../bridge/turn_accumulator"
 require_relative "../tools/delegate"
 require_relative "../children_status"
+require_relative "../context_move"
 require_relative "../review_start"
 require_relative "../model_profile"
 
@@ -42,7 +43,8 @@ module Samagotchi
       # runs it as its first turn, and counts against session.max_children.
       # It keeps this session's own setup (SessionSetup: its llm_context values).
       # Each image a message names is copied into the child, or dropped with
-      # a note in its message when its file is gone.
+      # a note in its message when its file is gone. This session's movable
+      # attached context goes too (ContextMove), with a note naming it.
       # @param messages [Array<Hash>] the child's conversation to start with
       # @param title [String, nil] what the lists show for it (the prompt, or
       #   the first user message, by default)
@@ -60,11 +62,16 @@ module Samagotchi
         prompt = prompt.to_s.strip.empty? ? nil : prompt.to_s
         check_children(parent_id, state_dir) if prompt
 
+        # The fork takes this session's movable attached context, its
+        # subscriptions as its seed last had them.
+        before_spawn = lambda do |forked|
+          ContextMove.call(from: parent_id, to: forked.id, mode: :fork, seed: forked.messages, state_dir: state_dir)
+        end
         child = SessionManager.spawn_session(
           prompt: prompt, working_directory: @host.cwd.call || Dir.pwd, model_name: @host.model_name&.call,
           parent_id: parent_id, messages: Array(messages).map { |message| unfrozen(message) }, preview: title,
           images_from: Session.session_dir(parent_id, state_dir: state_dir), state_dir: state_dir,
-          setup: @host.setup&.call || SessionSetup.new
+          setup: @host.setup&.call || SessionSetup.new, before_spawn: before_spawn
         )
         child.id
       rescue *REFUSED => e

@@ -202,6 +202,110 @@ RSpec.describe Samagotchi::ContextSources do
     end
   end
 
+  describe ".move" do
+    let(:to_id) { "99999999-2222-3333-4444-555555555555" }
+    let(:from) { described_class.session_location(session_id, state_dir: state_dir) }
+    let(:to) { described_class.session_location(to_id, state_dir: state_dir) }
+
+    def move(mode: :continue, seed: nil)
+      described_class.move(from: session_id, to: to_id, mode: mode, seed: seed, state_dir: state_dir)
+    end
+
+    it "moves command sources with their snapshots, leaves pushed ones, and says why" do
+      from.add(source("pr-1", cmd: "gh pr view 1"))
+      from.record_text("pr-1", fetched("PR body"))
+      from.add(source("notes"))
+      from.add(source("ci", cmd: "x").with(movable: false))
+      from.add(source("feed").with(movable: true))
+
+      moved = move
+
+      expect(moved.moved).to eq(%w[feed pr-1])
+      expect(moved.stayed.map { |s| [s.name, s.why] }).to eq([%w[ci not_movable], %w[notes pushed]].map { |n, w| [n, w.to_sym] })
+      expect(to.sources.map(&:name)).to eq(%w[feed pr-1])
+      expect(to.source("pr-1")).to have_attributes(cmd: "gh pr view 1", scope: "session")
+      expect(to.snapshot("pr-1")).to eq(from.snapshot("pr-1"))
+      expect(from.sources.map(&:name)).to eq(%w[ci feed notes pr-1])
+      expect(moved.note_text(session_id))
+        .to eq("Context moved with this session: feed, pr-1. Left with 11111111: ci (not movable), notes (pushed).")
+    end
+
+    it "copies the declined and muted markers, never candidates or locks" do
+      from.add(source("pr-1", cmd: "x"))
+      from.decline("old", "https://x/old")
+      from.mute("project-src")
+      FileUtils.touch(from.lock_path("pr-1"))
+      from.add_candidate(described_class::Candidate.new(name: "c", url: "https://y", cmd: nil, title: "C", describe: nil,
+                                                        mentions: [], proposed_by: nil, at: nil))
+
+      move
+
+      expect(to.declined?("old")).to be(true)
+      expect(to.declined_hints).to eq(["https://x/old"])
+      expect(to.muted?("project-src")).to be(true)
+      expect(to.candidates).to eq([])
+      expect(File.exist?(to.lock_path("pr-1"))).to be(false)
+    end
+
+    it "leaves a source the target has already (the target wins)" do
+      from.add(source("pr-1", cmd: "from's"))
+      to.add(source("pr-1", cmd: "to's"))
+
+      expect(move.moved).to eq([])
+      expect(to.source("pr-1").cmd).to eq("to's")
+    end
+
+    it "is nothing (no note) for a session with no context" do
+      moved = move
+      expect(moved).to eq(described_class::Moved.none)
+      expect(moved.note_text(session_id)).to be_nil
+      expect(Dir.exist?(to.dir)).to be(false)
+    end
+
+    it "gives a continue's link nothing seen at the snapshot's serial: an Attached note, and an old wake doesn't wake it" do
+      from.add(source("feed").with(movable: true))
+      from.record_text("feed", fetched("one", wake: true))
+      from.record_text("feed", fetched("two"))
+      from.update_subscription("feed") { |sub| sub.with(seen: "x", seen_serial: 1, read: "x") }
+
+      move
+
+      sub = to.subscription("feed")
+      expect(sub).to have_attributes(seen: nil, seen_serial: 2, read: nil)
+      expect(to.snapshot("feed").wake_serial.to_i > sub.seen_serial).to be(false)
+    end
+
+    it "gives a fork what its seed last had: the newest note about the source, never the parent's subscription" do
+      from.add(source("pr-1", cmd: "x"))
+      first = from.record_text("pr-1", fetched("one"))
+      from.record_text("pr-1", fetched("two"))
+      from.update_subscription("pr-1") { |sub| sub.with(seen: from.snapshot("pr-1").revision, seen_serial: 2) }
+      seed = [{ role: "system", kind: "note", context_source: "pr-1", note_id: "ctx-pr-1-error-1" },
+              { "role" => "system", "kind" => "note", "context_source" => "pr-1",
+                "note_id" => "ctx-pr-1-1-#{first.revision[0, 12]}" },
+              { role: "user", content: "hi" }]
+
+      move(mode: :fork, seed: seed)
+
+      sub = to.subscription("pr-1")
+      expect(sub).to have_attributes(seen: first.revision[0, 12], seen_serial: 1)
+      expect(sub.seen).not_to eq(to.snapshot("pr-1").revision)
+    end
+
+    it "marks a fork's source seen when its seed's newest note is the snapshot's revision; no note: as a continue" do
+      from.add(source("pr-1", cmd: "x"))
+      from.add(source("ci", cmd: "y"))
+      snap = from.record_text("pr-1", fetched("one"))
+      from.record_text("ci", fetched("ci"))
+      seed = [{ role: "system", context_source: "pr-1", note_id: "ctx-pr-1-1-#{snap.revision[0, 12]}" }]
+
+      move(mode: :fork, seed: seed)
+
+      expect(to.subscription("pr-1")).to have_attributes(seen: snap.revision, seen_serial: 1)
+      expect(to.subscription("ci")).to have_attributes(seen: nil, seen_serial: 1)
+    end
+  end
+
   it ".project_cwd: the root when it is a checkout (.git a dir or a file), else the fallback" do
     checkout = File.join(tmpdir, "app").tap { |d| FileUtils.mkdir_p(File.join(d, ".git")) }
     linked = File.join(tmpdir, "wt").tap { |d| FileUtils.mkdir_p(d) && File.write(File.join(d, ".git"), "gitdir: x\n") }
