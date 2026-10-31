@@ -46,6 +46,10 @@ require_relative "llm/turn_settings"
 require_relative "session"
 require_relative "toolkit_binding"
 require_relative "participant_mode"
+require_relative "context_candidates"
+require_relative "context_candidates_log"
+require_relative "context_judge"
+require_relative "owner_prompt"
 require_relative "side_judgments"
 require_relative "toolkit_suggest"
 require_relative "tool_loads"
@@ -164,6 +168,8 @@ module Samagotchi
       @chat_backend = nil
       @chat_backend_mutex = Mutex.new
       @side_judgments = SideJudgments.new
+      @context_judge_after_turn = nil
+      @context_judge_on_noted = false
       @toolkit_warmup_thread = nil
       @host_registry = host_registry || HostRegistry.new
       # A model given here (a worker's session model) is the one it runs,
@@ -2333,6 +2339,7 @@ module Samagotchi
         raise
       ensure
         release_turn(probe_cancel_before)
+        run_context_judge_after_turn
       end
     end
 
@@ -2433,6 +2440,9 @@ module Samagotchi
       # On mode: the suggested kit, before anything is declared (a Stop
       # during the wait is caught by the check below).
       settle_toolkit_suggestion(turn, toolkit_suggestion)
+      # The candidate judge (audit): its asks run beside the turn on a
+      # remote System 1 host, after it on the model's own local one.
+      start_context_judge(turn)
       apply_toolkit!(session, turn.on_event)
       refresh_participants!(session)
       # A Stop during the waits above: the turn ends here,
@@ -3204,6 +3214,121 @@ module Samagotchi
     end
     private :system_one_shares_local_host?
 
+    # The candidate judge (ContextJudge) at an owner turn's start, after
+    # the toolkit's ask settled: the session's candidates' status changes
+    # are logged (ContextCandidatesLog#look) and, unless
+    # context.candidates.mode is off, the proposed candidates due an ask
+    # are asked about the owner's prompts so far, this one included. Never
+    # a participant's turn, a review session or a Continue (no new prompt).
+    def start_context_judge(turn)
+      session = turn.session
+      return unless turn.prompt.is_a?(String) && OwnerPrompt.turn?(session: session, author: turn.origin.author)
+
+      context_judge_pass(session, ContextCandidates.owner_texts(session.messages) + [turn.prompt], phase: "turn")
+    end
+    private :start_context_judge
+
+    # A late proposal no owner prompt mentions (Plugin::Host
+    # #candidate_proposed: github-pr's init task runs beside the first
+    # turn): judged on the owner's prompts so far, the running turn's too.
+    def judge_late_candidates
+      session = @session
+      return if session.nil? || session.review?
+
+      texts = ContextCandidates.owner_texts(plugin_messages)
+      context_judge_pass(session, texts, phase: "late") unless texts.empty?
+    end
+    private :judge_late_candidates
+
+    # One look at +session+'s candidates; the asks go to SideJudgments'
+    # :context kind, one thread asking each due candidate in turn. On the
+    # model's own local server (#system_one_shares_local_host?) the asks
+    # wait for the running turn's end (#run_context_judge_after_turn),
+    # never competing with its prefill; any other host is asked now.
+    def context_judge_pass(session, texts, phase:)
+      return if session.id.nil? || session.scratch
+
+      rows = ContextCandidates.with_status(session.id, project_root: session.project_root, state_dir: session_state_dir)
+      return if rows.empty?
+
+      log = ContextCandidatesLog.log_for(session_state_dir)
+      records = ContextCandidatesLog.records_for(log, session.id)
+      ContextCandidatesLog.look(log, session.id, rows, records) if phase == "turn"
+      settings = ContextJudge::Settings.from_config
+      return if settings.mode == "off"
+
+      note_context_judge_on(settings.mode)
+      jobs = ContextJudge.jobs(rows, records, session_id: session.id, texts: texts, settings: settings, phase: phase,
+                                              parent_attached: context_parent_attached(session))
+      return if jobs.empty?
+
+      client = SystemOne::Client.from_config(host_registry: @host_registry, mode: "on", tag: :context)
+      return unless client
+
+      ask = -> { start_context_asks(client, jobs, log, settings) }
+      if turn_running? && system_one_shares_local_host?(client.host)
+        Log.info(:context, "context_judge_after_turn", session_id: session.id, host: client.host)
+        @context_judge_after_turn = ask
+      else
+        ask.call
+      end
+    rescue StandardError => e
+      ContextJudge.warn(e)
+    end
+    private :context_judge_pass
+
+    def start_context_asks(client, jobs, log, settings)
+      if @side_judgments.in_flight?(:context)
+        Log.info(:context, "context_judge_in_flight_skipped", session_id: jobs.first.session_id)
+        return
+      end
+
+      @side_judgments.start(:context, warn: ContextJudge.method(:warn)) do
+        jobs.each { |job| ContextJudge.ask(client: client, job: job, log: log, settings: settings) }
+      end
+    end
+    private :start_context_asks
+
+    # The asks a shared local host kept for the turn's end (#run_turn's
+    # ensure, after release_turn: the server is idle).
+    def run_context_judge_after_turn
+      ask = @context_judge_after_turn or return
+      @context_judge_after_turn = nil
+      ask.call
+    rescue StandardError => e
+      ContextJudge.warn(e)
+    end
+    private :run_context_judge_after_turn
+
+    # In this slice on mode attaches nothing yet: it asks and logs as audit
+    # does, and says so once.
+    def note_context_judge_on(mode)
+      return if mode != "on" || @context_judge_on_noted
+
+      @context_judge_on_noted = true
+      Log.info(:context, "context_judge_on_is_audit", reason: "on mode's attaching isn't built yet: asks and logs only")
+    end
+    private :note_context_judge_on
+
+    # A delegate child's parent's sources, by title (else name): the
+    # judge's started_from. nil for any other session (a chi send --new
+    # session has no parent; a fork isn't a delegate).
+    def context_parent_attached(session)
+      return nil unless session.delegate? && session.parent_id
+
+      parent_root = if Session.exist?(session.parent_id, state_dir: session_state_dir)
+                      Session.load(session.parent_id, state_dir: session_state_dir).project_root
+                    else
+                      session.project_root
+                    end
+      ContextSources.attached(session.parent_id, project_root: parent_root, state_dir: session_state_dir)
+                    .map { |attached| attached.source.title || attached.name }
+    rescue StandardError => e
+      Log.warn(:context, "context_parent_attached_failed", error: e.class.name, msg: e.message.to_s[0, 200])
+      []
+    end
+    private :context_parent_attached
+
     # The session's toolkit (see #initialize for when).
     def build_toolkit_binding
       ToolkitBinding.new(
@@ -3282,7 +3407,8 @@ module Samagotchi
         usage: -> { @metrics.usage },
         turn_author: -> { turn_author },
         # A plugin's prompt section is in the stable part: a full re-read.
-        cache_confirm: ->(line, changed) { CacheConfirm.ask(line: line, cost: :full, changed: changed, engine: self) }
+        cache_confirm: ->(line, changed) { CacheConfirm.ask(line: line, cost: :full, changed: changed, engine: self) },
+        candidate_proposed: ->(_candidate) { judge_late_candidates }
       )
     end
 
