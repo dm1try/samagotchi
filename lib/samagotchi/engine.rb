@@ -170,6 +170,10 @@ module Samagotchi
       @chat_backend_mutex = Mutex.new
       @side_judgments = SideJudgments.new
       @context_judge_after_turn = nil
+      # On mode's cards an answer brought while a turn ran: shown once it
+      # has ended (#show_context_cards_after_turn).
+      @context_cards_after_turn = []
+      @context_cards_mutex = Mutex.new
       @toolkit_warmup_thread = nil
       @host_registry = host_registry || HostRegistry.new
       # A model given here (a worker's session model) is the one it runs,
@@ -2342,6 +2346,7 @@ module Samagotchi
         raise
       ensure
         release_turn(probe_cancel_before)
+        show_context_cards_after_turn
         run_context_judge_after_turn
       end
     end
@@ -3298,7 +3303,9 @@ module Samagotchi
     # #after_judged: on mode attaches or cards; audit nothing). Taken on
     # the caller's thread. The attach only writes the session's folder: its
     # note comes with the next between-turn delivery, never into a running
-    # turn. A card shows only while this Engine is still on that session.
+    # turn. A card shows only while this Engine is still on that session,
+    # and not in a running turn (it isn't the turn's: no "waiting for you"
+    # on it), but once it has ended.
     # @return [#call] (job, fields)
     def context_choice(session, log, settings)
       session_id = session.id
@@ -3308,7 +3315,11 @@ module Samagotchi
         current = @session
         next nil unless current.nil? || current.id == session_id
 
-        show_card(**card)
+        @context_cards_mutex.synchronize do
+          next @context_cards_after_turn << card if turn_running?
+
+          show_card(**card)
+        end
       end
       lambda do |job, fields|
         ContextCandidateChoice.after_judged(job: job, fields: fields, settings: settings, project_root: project_root,
@@ -3316,6 +3327,16 @@ module Samagotchi
       end
     end
     private :context_choice
+
+    # The cards #context_choice held while a turn ran (#run_turn's ensure,
+    # after the turn flag is released).
+    def show_context_cards_after_turn
+      cards = @context_cards_mutex.synchronize { @context_cards_after_turn.slice!(0..) }
+      cards.each { |card| show_card(**card) }
+    rescue StandardError => e
+      ContextJudge.warn(e)
+    end
+    private :show_context_cards_after_turn
 
     # The asks a shared local host kept for the turn's end: a completed
     # turn starts them before its warm-up (which waits for them,

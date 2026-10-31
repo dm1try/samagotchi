@@ -215,6 +215,26 @@ RSpec.describe Samagotchi::Engine do
       expect(own(session).sources).to eq([])
     end
 
+    it "holds a card an answer brings mid-turn until the turn has ended" do
+      engine = build_engine
+      allow(engine).to receive(:show_card).and_call_original
+      running = true
+      allow(engine).to receive(:turn_running?) { running }
+      session = new_session
+      propose(session, "pr-412")
+      answers.push([0.7, 0.9])
+
+      judge(engine, session, "Fix the login redirect")
+      expect(engine).not_to have_received(:show_card)
+      expect(lines("carded").size).to eq(1)
+
+      running = false
+      engine.send(:show_context_cards_after_turn)
+      expect(engine).to have_received(:show_card).once.with(hash_including(id: "context-candidate-pr-412"))
+      engine.send(:show_context_cards_after_turn)
+      expect(engine).to have_received(:show_card).once
+    end
+
     it "leaves a candidate under the offer threshold proposed" do
       engine = build_engine
       allow(engine).to receive(:show_card).and_call_original
