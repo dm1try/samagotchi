@@ -50,6 +50,29 @@ RSpec.describe Samagotchi::ContextSources do
     end
   end
 
+  describe "a source's movable" do
+    it "is derived when not given: a command source moves, a pushed one stays" do
+      expect(source("pr-1", cmd: "gh pr view 1").movable?).to be(true)
+      expect(source("notes").movable?).to be(false)
+    end
+
+    it "takes the flag given, both ways, and keeps it through to_h/from_h" do
+      pushed = source("notes").with(movable: true)
+      command = source("ci", cmd: "x").with(movable: false)
+
+      expect(pushed.movable?).to be(true)
+      expect(command.movable?).to be(false)
+      expect(described_class::Source.from_h(pushed.to_h).movable).to be(true)
+      expect(described_class::Source.from_h(command.to_h).movable).to be(false)
+    end
+
+    it "writes no key when derived, and reads an old file (no key) or a junk value as derived" do
+      expect(source("ci", cmd: "x").to_h).not_to have_key("movable")
+      expect(described_class::Source.from_h({ "name" => "ci", "cmd" => "x" }).movable).to be_nil
+      expect(described_class::Source.from_h({ "name" => "ci", "movable" => "yes" }).movable).to be_nil
+    end
+  end
+
   describe "a location" do
     let(:loc) { described_class.session_location(session_id, state_dir: state_dir) }
 

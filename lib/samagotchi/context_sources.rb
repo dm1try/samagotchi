@@ -53,21 +53,32 @@ module Samagotchi
     # folder its cmd's {bundle_dir} names (ContextProviders.command_for).
     # +title+: what a person reads it as (a candidate's, when one was
     # attached; nil for most).
-    Source = Data.define(:name, :cmd, :every_seconds, :why, :hint, :scope, :added_by, :created_at, :provider, :title) do
-      def initialize(name:, cmd:, every_seconds:, why:, hint:, scope:, added_by:, created_at:, provider: nil, title: nil) = super
+    # +movable+: whether a continue or a fork takes it to the new session
+    # (ContextSources.move); nil derives it (#movable?).
+    Source = Data.define(:name, :cmd, :every_seconds, :why, :hint, :scope, :added_by, :created_at, :provider, :title,
+                         :movable) do
+      def initialize(name:, cmd:, every_seconds:, why:, hint:, scope:, added_by:, created_at:, provider: nil, title: nil,
+                     movable: nil) = super
 
       def push? = cmd.nil?
+
+      # Given (+movable+), else derived from who writes the text: a command
+      # source moves (chi runs its command, in the new session too); a
+      # pushed one stays (its writer holds the old session's id).
+      def movable? = movable.nil? ? !push? : movable
 
       def to_h
         { "name" => name, "cmd" => cmd, "every_seconds" => every_seconds, "why" => why, "hint" => hint,
           "scope" => scope, "added_by" => added_by, "created_at" => created_at, "provider" => provider,
-          "title" => title }.compact
+          "title" => title, "movable" => movable }.compact
       end
 
       def self.from_h(data)
+        movable = data["movable"]
         new(name: data["name"].to_s, cmd: data["cmd"], every_seconds: data["every_seconds"]&.to_i,
             why: data["why"], hint: data["hint"], scope: data["scope"].to_s, added_by: data["added_by"],
-            created_at: data["created_at"], provider: data["provider"], title: data["title"])
+            created_at: data["created_at"], provider: data["provider"], title: data["title"],
+            movable: [true, false].include?(movable) ? movable : nil)
       end
     end
 
