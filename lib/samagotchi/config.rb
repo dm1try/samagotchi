@@ -217,6 +217,14 @@ module Samagotchi
       # counted here); then they wait as notes. 0: a peer source
       # wakes like any other (once per 10 minutes, the guard line).
       Entry.new(key: "context.peer_turns",       yaml_path: %w[context peer_turns],       type: :integer, default: 3,               expose: %i[env config cli], lifecycle: :next_matching_turn_display_poll_write),
+      # The candidate judge (ContextJudge): off (no conversation text goes to a System 1 host); audit (asks and logs
+      # context_candidates.jsonl, attaches nothing); on (reads as audit until on mode's attaching lands). Its host and
+      # model are guardrails.system_one.host/model. threshold / offer_threshold: what a judged line's would says
+      # (attach, offer); reask_after_turns: the owner prompts after a judged ask before its one re-ask.
+      Entry.new(key: "context.candidates.mode",  yaml_path: %w[context candidates mode],  type: :enum,   default: "off", expose: %i[config], enum_values: %w[off audit on], lifecycle: :next_turn_start),
+      Entry.new(key: "context.candidates.threshold", yaml_path: %w[context candidates threshold], type: :float, default: 0.8, expose: %i[config], lifecycle: :next_turn_start),
+      Entry.new(key: "context.candidates.offer_threshold", yaml_path: %w[context candidates offer_threshold], type: :float, default: 0.6, expose: %i[config], lifecycle: :next_turn_start),
+      Entry.new(key: "context.candidates.reask_after_turns", yaml_path: %w[context candidates reask_after_turns], type: :integer, default: 3, expose: %i[config], lifecycle: :next_turn_start),
 
       # What the model is sent of the conversation (LLMContextStrategy, LLMContextView): none, or a list of layers
       # (stale, forget; "|"-separated or a YAML list); forget (the model's forget_outputs) is experimental.
