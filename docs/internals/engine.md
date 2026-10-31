@@ -52,7 +52,8 @@ Engine#run_turn(session, prompt, on_event:, max_iterations:, cancel_controller:,
   │     #   ToolkitBinding#suggest sets the session's toolkit, origin suggested, saved, with the notice;
   │     #   then start_context_judge (owner turns only: ContextCandidatesLog#look, and unless
   │     #   context.candidates.mode is off, ContextJudge's asks on SideJudgments' :context kind; on a shared
-  │     #   local System 1 host they wait for run_turn's ensure, after release_turn; docs/context.md, The judge);
+  │     #   local System 1 host they wait for the turn's end: started before warm_up_next_turn, whose warm-up
+  │     #   waits for them, or from run_turn's ensure; docs/context.md, The judge);
   │     #   then the session's toolkit (apply_toolkit!: Registry#toolkit, ToolIndex#refresh! for find_tools'
   │     #   chi line, a prompt rebuild when it changed). A Stop during the probes or the waits returns false
   │     #   (the ask's line says canceled; an ensure marks one the turn never settled failed).

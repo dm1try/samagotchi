@@ -38,6 +38,10 @@ module Samagotchi
     DECIDE_TIMEOUT = 3
     # Seconds #stop waits for a killed warm-up's thread to end.
     STOP_JOIN_SECONDS = 1
+    # Seconds a warm-up waits for the side asks sent to the same server
+    # before it (#start's +after+: the candidate judge's, which evict the
+    # cached prefix the warm-up is there to restore).
+    AFTER_SECONDS = 5
 
     # Whether cache.warmup allows a warm-up (auto, the default; off, false,
     # no or 0 turn it off; on/true/1 (YAML's unquoted on) are auto; anything
@@ -67,8 +71,11 @@ module Samagotchi
     # Start a warm-up of +prompt+ on +client+ in its own thread.
     # @param slot [Integer, nil] the last request's slot (nil: unpinned, and
     #   nothing to pin the next request to)
+    # @param after [Thread, nil] asks to the same server that go first: the
+    #   warm-up waits for them (AFTER_SECONDS at most), so it re-warms what
+    #   they evicted
     # @return [Thread, nil] nil once #stop ran
-    def start(client:, prompt:, model:, slot:, images: [])
+    def start(client:, prompt:, model:, slot:, images: [], after: nil)
       return nil if @mutex.synchronize { @stopped }
 
       # Whether the warm-up went to its slot (true) or was skipped: the
@@ -76,6 +83,7 @@ module Samagotchi
       sent = Queue.new
       thread = Thread.new do
         Thread.current.report_on_exception = false
+        after&.join(AFTER_SECONDS)
         busy = slot.is_a?(Integer) && client.slot_status(slot, model: model) == :busy
         sent << !busy
         next skip(slot) if busy

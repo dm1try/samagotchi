@@ -62,6 +62,32 @@ RSpec.describe Samagotchi::Engine, "turn-end warm-up", :warmup do
     expect(sent.first[:prompt]).to end_with("<|im_start|>user\nhi<|im_end|>\n<|im_start|>assistant\nAnswer<|im_end|>\n")
   end
 
+  it "starts the candidate judge's after-turn asks first, and warms up once they are done" do
+    release = Queue.new
+    order = []
+    asks = nil
+    allow(engine).to receive(:start_context_judge) do
+      engine.instance_variable_set(:@context_judge_after_turn, lambda {
+        order << :asks
+        asks = Thread.new { release.pop }
+      })
+    end
+    allow(engine.prompt_warmup).to receive(:start).and_wrap_original do |original, **kwargs|
+      order << [:warmup, kwargs[:after]]
+      original.call(**kwargs)
+    end
+
+    engine.run_turn(session, "hi")
+
+    expect(order).to eq([:asks, [:warmup, asks]])
+    expect(warmups).to be_empty
+    release << true
+    join!(asks, "the held asks")
+    expect(sent_warmups.size).to eq(1)
+  ensure
+    release << true
+  end
+
   it "warms the prompt under the next turn's strategy, resolved again after the turn (a /model switch)" do
     during = Samagotchi::LLMContextStrategy::Resolved.new(layers: [], strategy: :none, source: :config)
     after = Samagotchi::LLMContextStrategy::Resolved.new(layers: [:stale], strategy: [:stale], source: :model_setting)

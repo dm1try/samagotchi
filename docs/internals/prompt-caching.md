@@ -86,10 +86,13 @@ right-hand column happens.
   sends no worker warm-up.
 - The candidate judge (`context.candidates.mode`, `ContextJudge`) adds nothing to the model's request: its asks
   go to System 1 only, and nothing it answers enters the history (attaching, a later slice, goes through the
-  between-turn note delivery). On a shared local server it asks after the turn ends (`Engine#run_turn`'s ensure,
-  after `release_turn`), not skipped: each ask there evicts the session's cached prefix (and a turn-end warm-up's),
-  so the next turn re-reads its prompt. That is bounded: at most two judged asks per candidate (one re-ask after
-  `reask_after_turns` owner prompts), plus a deferred ask per owner prompt before a task is stated.
+  between-turn note delivery). On a shared local server it asks after the turn's last request, not skipped: a
+  completed turn starts the asks right before its turn-end warm-up, and the warm-up waits for them
+  (`PromptWarmup#start`'s `after:`, `AFTER_SECONDS` at most), so it re-warms the prefix the asks evicted and the
+  next turn prefills only its own message. A turn that ended otherwise (a Stop, a failure: no warm-up) starts them
+  from `Engine#run_turn`'s ensure, and its next turn re-reads its prompt. Where no warm-up runs (`cache.warmup:
+  off`, a chat host) the asks still evict the prefix. Bounded either way: at most two judged asks per candidate (one
+  re-ask after `reask_after_turns` owner prompts), plus a deferred ask per owner prompt before a task is stated.
 - A kit's prompt text (`toolkit.kits.<name>.prompt:`, `chi.toolkit … prompt:`) sits after the appended files and
   before the memory indexes (`SystemPrompt#kit_prompt_section`): one prefix per kit, never per-session text, so
   sessions on the kit share it; a memory write (the indexes after it) doesn't move it. It is part of the

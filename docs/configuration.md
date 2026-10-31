@@ -1781,7 +1781,7 @@ context:
 ```
 
 A remote host is asked beside the turn. A System 1 host that is the model's own local server is asked after the
-turn ends: each ask there evicts the session's cached prefix, so the next turn reads its prompt again (see
+turn's last request, and the turn-end warm-up follows them, re-warming the prefix they evicted (see
 [prompt caching](internals/prompt-caching.md)).
 
 ## Opening files from chi web

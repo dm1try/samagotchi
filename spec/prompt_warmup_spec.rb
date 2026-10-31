@@ -122,6 +122,23 @@ RSpec.describe Samagotchi::PromptWarmup do
     end
   end
 
+  it "waits for the asks sent before it (after:), up to its bound" do
+    release = Queue.new
+    asks = Thread.new { release.pop }
+    allow(client).to receive(:slot_status).and_return(:idle)
+    allow(client).to receive(:warm_up).and_return(Samagotchi::Client::Warmup.new(slot: 1, cache_n: 1, prompt_n: 1, prompt_ms: 1))
+
+    warmup.start(client: client, prompt: "head", model: "m", slot: 1, after: asks)
+    expect(warmup.running?).to be(true)
+    expect(client).not_to have_received(:warm_up)
+
+    release << true
+    join!(asks, "the asks")
+    warmup.wait(2)
+    expect(client).to have_received(:warm_up).once
+    expect(described_class::AFTER_SECONDS).to be <= 10
+  end
+
   it "logs a failed warm-up and never raises" do
     allow(client).to receive(:slot_status).and_return(nil)
     allow(client).to receive(:warm_up).and_raise(Errno::ECONNREFUSED)

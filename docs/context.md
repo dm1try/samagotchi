@@ -394,8 +394,9 @@ What it asks, and when:
   yours came, with the conversation grown; then it is done.
 - **Where it runs:** on a remote System 1 host (Jev) beside your turn; on the
   model's own local server (System 1 on the same Splash) after your turn
-  ends, so it never competes with the turn's prefill. One session's asks run
-  one batch at a time.
+  ends, so it never competes with the turn's prefill; the turn-end warm-up
+  waits for those asks and restores the cached prompt they pushed out. One
+  session's asks run one batch at a time.
 
 ### The log and the report
 
