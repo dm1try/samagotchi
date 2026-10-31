@@ -192,7 +192,7 @@ RSpec.describe Samagotchi::Engine, "toolkit suggestion on mode" do
     expect(notices.map { |e| [e[:level], e[:text]] })
       .to eq([[:warn, "toolkit: full (no suggestion: System 1 took over 100 ms) · /toolkit to change"]])
     release << true
-    join!(engine.instance_variable_get(:@toolkit_audit_thread), "the toolkit ask")
+    join!(engine.instance_variable_get(:@side_judgments).thread(:toolkit), "the toolkit ask")
     expect(log_lines.last).to include("would" => "suggested", "did" => "timeout")
   ensure
     release << true
@@ -225,7 +225,7 @@ RSpec.describe Samagotchi::Engine, "toolkit suggestion on mode" do
     expect(result).not_to be_nil
     expect([sess.toolkit.name, sess.toolkit_origin]).to eq(%w[full default])
     release << true
-    join!(engine.instance_variable_get(:@toolkit_audit_thread), "the toolkit ask")
+    join!(engine.instance_variable_get(:@side_judgments).thread(:toolkit), "the toolkit ask")
     expect(log_lines.last).to include("did" => "canceled")
   ensure
     release << true
@@ -242,7 +242,7 @@ RSpec.describe Samagotchi::Engine, "toolkit suggestion on mode" do
 
     turn(session, cancel_controller: controller)
     release << true
-    join!(engine.instance_variable_get(:@toolkit_audit_thread), "the toolkit ask")
+    join!(engine.instance_variable_get(:@side_judgments).thread(:toolkit), "the toolkit ask")
 
     expect(declared).to be_empty
     expect(log_lines.last).to include("did" => "canceled")
@@ -282,7 +282,7 @@ RSpec.describe Samagotchi::Engine, "toolkit suggestion on mode" do
     expect(asked).to be_empty
   end
 
-  def ask_thread = engine.instance_variable_get(:@toolkit_audit_thread)
+  def ask_thread = engine.instance_variable_get(:@side_judgments).thread(:toolkit)
 
   it "lets a Stop win over an answer already in: no switch, the line says canceled (M1)" do
     answers << pick("kit:web", 0.9)

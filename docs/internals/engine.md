@@ -38,7 +38,7 @@ Engine#run_turn(session, prompt, on_event:, max_iterations:, cancel_controller:,
   │     #                      resumed: true (only on a step-limit Continue: resumed: given),
   │     #                      images (only when there are any), cut_after (the model's cut wait, s)}
   │     # start_toolkit_suggestion: ToolkitSuggest's ask on its own thread from a copied snapshot (audit and on
-  │     #   mode: one eligibility, one thread). Audit never blocks the turn or changes the session; on mode
+  │     #   mode: one eligibility; SideJudgments' :toolkit kind: one in flight, warn-not-raise). Audit never blocks the turn or changes the session; on mode
   │     #   returns a ToolkitSuggest::Pending the turn joins below. See configuration.md (Toolkits) and
   │     #   guardrails.md (System 1).
   │     # refresh_profile! (may ask the server's /props once)

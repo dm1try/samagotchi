@@ -46,6 +46,7 @@ require_relative "llm/turn_settings"
 require_relative "session"
 require_relative "toolkit_binding"
 require_relative "participant_mode"
+require_relative "side_judgments"
 require_relative "toolkit_suggest"
 require_relative "tool_loads"
 require_relative "answer_tail"
@@ -162,7 +163,7 @@ module Samagotchi
       @no_interrupt = no_interrupt
       @chat_backend = nil
       @chat_backend_mutex = Mutex.new
-      @toolkit_audit_thread = nil
+      @side_judgments = SideJudgments.new
       @toolkit_warmup_thread = nil
       @host_registry = host_registry || HostRegistry.new
       # A model given here (a worker's session model) is the one it runs,
@@ -1123,10 +1124,10 @@ module Samagotchi
 
     # How long #shutdown waits for the running anytime commands, in all.
     SHUTDOWN_JOIN_SECONDS = 3.0
-    # How long #shutdown waits for a running toolkit audit ask (a one-shot
-    # -p --non-interactive exits right after its turn); a slower ask goes
-    # unlogged.
-    TOOLKIT_AUDIT_JOIN_SECONDS = 1.0
+    # How long #shutdown waits for the running side judgments (System 1
+    # asks: SideJudgments; a one-shot -p --non-interactive exits right
+    # after its turn), in all; a slower ask goes unlogged.
+    SIDE_JUDGMENTS_JOIN_SECONDS = 1.0
 
     # The REPL or the session's worker is leaving (/exit, an idle exit, a
     # crash, TERM): stop the idle jobs, give the running anytime commands
@@ -1152,7 +1153,7 @@ module Samagotchi
 
         thread.join([deadline - Process.clock_gettime(Process::CLOCK_MONOTONIC), 0].max)
       end
-      @toolkit_audit_thread&.join(TOOLKIT_AUDIT_JOIN_SECONDS)
+      @side_judgments.join(SIDE_JUDGMENTS_JOIN_SECONDS)
       # The warm-up's answer is dropped anyway.
       stop_toolkit_warmup
       left = threads.count(&:alive?)
@@ -3030,7 +3031,7 @@ module Samagotchi
 
       # One ask at a time: an eligible turn while the last one still runs
       # goes unasked, and says so.
-      if @toolkit_audit_thread&.alive?
+      if @side_judgments.in_flight?(:toolkit)
         Log.info(:toolkit, "toolkit_suggest_in_flight_skipped", session_id: session.id)
         return
       end
@@ -3076,18 +3077,9 @@ module Samagotchi
       # On mode: cut by a Stop while the turn waits (Pending#wait), not
       # by one after it went on; audit's ask is never cut.
       controller = joined ? pending.cancel_controller : nil
-      @toolkit_audit_thread = Thread.new do
-        judged = nil
-        begin
-          judged = ToolkitSuggest.judge(client: client, snapshot: snapshot, threshold: threshold,
-                                        cancel_controller: controller)
-        rescue LLM::RequestCancelled
-          nil
-        rescue StandardError => e
-          ToolkitSuggest.warn(e)
-        ensure
-          pending.finish(judged)
-        end
+      @side_judgments.start(:toolkit, warn: ToolkitSuggest.method(:warn), finish: pending.method(:finish)) do
+        ToolkitSuggest.judge(client: client, snapshot: snapshot, threshold: threshold,
+                             cancel_controller: controller)
       end
       joined ? pending : nil
     rescue StandardError => e
@@ -3195,11 +3187,7 @@ module Samagotchi
     private :stop_toolkit_warmup
 
     def toolkit_suggestion_log
-      path = ToolkitSuggest.log_path(session_state_dir)
-      SystemOne::Log.new(dir: File.dirname(path), file: File.basename(path),
-                         warn: lambda { |reason|
-                           Log.warn(:toolkit, "toolkit_suggest_log_failed", echo: "[samagotchi:toolkit] #{reason}")
-                         })
+      SideJudgments.log(ToolkitSuggest.log_path(session_state_dir), tag: :toolkit, event: "toolkit_suggest_log_failed")
     end
     private :toolkit_suggestion_log
 

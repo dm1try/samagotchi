@@ -79,7 +79,7 @@ RSpec.describe Samagotchi::Engine do
     allow(Samagotchi::SystemOne::Client).to receive(:from_config).and_return(system_one)
 
     start(engine)
-    join!(engine.instance_variable_get(:@toolkit_audit_thread), "the toolkit audit")
+    join!(engine.instance_variable_get(:@side_judgments).thread(:toolkit), "the toolkit audit")
     line = JSON.parse(File.readlines(File.join(dir, Samagotchi::ToolkitSuggest::FILE)).last)
 
     expect(line["kits"].keys).to contain_exactly("full", "web", "coding")
@@ -111,9 +111,9 @@ RSpec.describe Samagotchi::Engine do
       release << true
     end
 
-    expect(engine.instance_variable_get(:@toolkit_audit_thread)).not_to be_alive
-    expect(Samagotchi::Engine::TOOLKIT_AUDIT_JOIN_SECONDS).to be < Samagotchi::Engine::SHUTDOWN_JOIN_SECONDS
-    expect(Samagotchi::Engine::TOOLKIT_AUDIT_JOIN_SECONDS).to be >= 1.0
+    expect(engine.instance_variable_get(:@side_judgments).thread(:toolkit)).not_to be_alive
+    expect(Samagotchi::Engine::SIDE_JUDGMENTS_JOIN_SECONDS).to be < Samagotchi::Engine::SHUTDOWN_JOIN_SECONDS
+    expect(Samagotchi::Engine::SIDE_JUDGMENTS_JOIN_SECONDS).to be >= 1.0
   end
 
   it "says so when an eligible turn goes unasked because the last ask still runs" do
@@ -243,7 +243,7 @@ RSpec.describe Samagotchi::Engine do
 
     s = session
     start(engine, session: s)
-    engine.instance_variable_get(:@toolkit_audit_thread).join
+    engine.instance_variable_get(:@side_judgments).thread(:toolkit).join
 
     expect(s.toolkit.name).to eq("full")
     expect(s.toolkit_origin).to eq("default")
