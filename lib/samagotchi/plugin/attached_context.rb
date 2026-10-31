@@ -120,6 +120,15 @@ module Samagotchi
         location&.candidates || []
       end
 
+      # What the continue that started this session left with the previous
+      # link (pushed sources, a peer's pairing among them): each one's name,
+      # hint (its last pushed one, else the source's) and the session it
+      # stayed in. Read-only; none for a session that isn't a continue's.
+      # @return [Array<ContextSources::Left>]
+      def left_behind
+        location&.left || []
+      end
+
       # Takes back this session's candidate +name+. A source attached from
       # it stays attached (chi context rm removes that).
       # @return [Boolean] whether there was one

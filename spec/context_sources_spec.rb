@@ -230,6 +230,42 @@ RSpec.describe Samagotchi::ContextSources do
         .to eq("Context moved with this session: feed, pr-1. Left with 11111111: ci (not movable), notes (pushed).")
     end
 
+    it "keeps what a continue left in the new link's left.json, the snapshot's hint over the source's" do
+      from.add(source("claude-inbox").with(hint: "/tmp/first.sock"))
+      from.record_text("claude-inbox", fetched("inbox", hint: "/tmp/again.sock"))
+      from.add(source("notes").with(hint: "pasted"))
+      from.add(source("pr-1", cmd: "x"))
+
+      move
+
+      expect(to.left).to eq([described_class::Left.new(name: "claude-inbox", hint: "/tmp/again.sock", from: session_id),
+                             described_class::Left.new(name: "notes", hint: "pasted", from: session_id)])
+      expect(to.sources.map(&:name)).to eq(%w[pr-1])
+    end
+
+    it "keeps no left.json for a fork, nor when nothing stayed" do
+      from.add(source("notes"))
+      move(mode: :fork, seed: [])
+      expect(to.left).to eq([])
+
+      from.remove("notes")
+      from.add(source("pr-1", cmd: "x"))
+      described_class.move(from: session_id, to: "88888888-2222-3333-4444-555555555555", mode: :continue,
+                           state_dir: state_dir)
+      expect(described_class.session_location("88888888-2222-3333-4444-555555555555", state_dir: state_dir).left)
+        .to eq([])
+    end
+
+    it "words a peer's pairing left behind as one group: an inbox gets asked, an outbox alone pairs on its next answer" do
+      %w[claude-inbox claude-outbox codex-outbox notes].each { |name| from.add(source(name)) }
+      from.add(source("zed-inbox", cmd: "x").with(movable: false))
+
+      expect(move.note_text(session_id)).to eq(
+        "Left with 11111111: claude-inbox, claude-outbox (Claude's pairing: chi asks Claude to pair again with this " \
+        "session), codex-outbox (Codex pairs again when it next answers), notes (pushed), zed-inbox (not movable)."
+      )
+    end
+
     it "copies the declined and muted markers, never candidates or locks" do
       from.add(source("pr-1", cmd: "x"))
       from.decline("old", "https://x/old")

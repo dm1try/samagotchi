@@ -23,13 +23,14 @@ module Samagotchi
   #   sessions/<id>/muted/<name>                   a marker: this session ignores <name>
   #   sessions/<id>/declined/<name>                a marker (its hint inside): the user removed <name>
   #   sessions/<id>/candidates/<name>.json         a Candidate: a source a plugin proposed here (ctx.context.propose)
+  #   sessions/<id>/left.json                      [Left]: what a continue left with the previous link (.move)
   # The guardrails protect the root (ProtectedPaths, CHI_TEXT): a source's
   # command runs later, outside the gate.
   module ContextSources
     DIR = "context"
     NAME_RE = /\A[a-z0-9][a-z0-9-]{0,39}\z/
-    # subscriptions.json shares a session's folder with its sources.
-    RESERVED_NAMES = %w[subscriptions].freeze
+    # subscriptions.json and left.json share a session's folder with its sources.
+    RESERVED_NAMES = %w[subscriptions left].freeze
     SCOPES = %w[session project].freeze
     MIN_EVERY_SECONDS = 30
     DEFAULT_EVERY_SECONDS = 300
@@ -38,6 +39,7 @@ module Samagotchi
     LINE_MAX_CHARS = 300
     SNAPSHOT_SUFFIX = ".snapshot.json"
     SUBSCRIPTIONS_FILE = "subscriptions.json"
+    LEFT_FILE = "left.json"
     MUTED_DIR = "muted"
     DECLINED_DIR = "declined"
     CANDIDATES_DIR = "candidates"
@@ -190,10 +192,11 @@ module Samagotchi
         return [] unless Dir.exist?(dir)
 
         Dir.children(dir).sort.filter_map do |file|
-          next unless file.end_with?(".json") && !file.end_with?(SNAPSHOT_SUFFIX) && file != SUBSCRIPTIONS_FILE
+          next unless file.end_with?(".json") && !file.end_with?(SNAPSHOT_SUFFIX)
 
           name = file.delete_suffix(".json")
-          name.match?(NAME_RE) ? source(name) : nil
+          # subscriptions.json, left.json: not sources.
+          name.match?(NAME_RE) && !RESERVED_NAMES.include?(name) ? source(name) : nil
         end
       end
 
@@ -385,6 +388,18 @@ module Samagotchi
         AtomicFile.write(File.join(dir, SUBSCRIPTIONS_FILE), JSON.generate(subs.transform_values(&:to_h)))
       end
 
+      # What a continue left with the previous link (ContextSources.move).
+      # @return [Array<Left>] none without the file
+      def left
+        rows = ContextSources.read_json_value(File.join(dir, LEFT_FILE))
+        Array(rows).filter_map { |row| Left.from_h(row) if row.is_a?(Hash) && row["name"].is_a?(String) }
+      end
+
+      def write_left(rows)
+        FileUtils.mkdir_p(dir)
+        AtomicFile.write(File.join(dir, LEFT_FILE), JSON.generate(rows.map(&:to_h)))
+      end
+
       def update_subscription(name)
         subs = subscriptions
         subs[name] = yield(subs[name] || Subscription.blank(name))
@@ -398,7 +413,31 @@ module Samagotchi
     # (its movable: false).
     Stayed = Data.define(:name, :why) do
       def label = why == :pushed ? "pushed" : "not movable"
+
+      # The peer whose pairing this is ("Claude"), for a pushed
+      # <peer>-inbox or <peer>-outbox (the peer bundles' names: the move
+      # runs where no plugin is loaded, so the name is all there is; it
+      # only words the note, PeerSources decides what a peer is); nil for
+      # any other.
+      def peer
+        match = why == :pushed && PEER_NAME.match(name)
+        match ? match[1].capitalize : nil
+      end
+
+      def inbox? = name.end_with?("-inbox")
     end
+    # A source a continue left with the previous link (+from+), as the new
+    # link's left.json keeps it: its +name+ and +hint+, the snapshot's (a
+    # pushed hint: a peer's re-pair pushes its new inbox there) else the
+    # source's. ctx.context.left_behind reads it (Plugin::Peer asks the peer
+    # to pair again at that inbox).
+    Left = Data.define(:name, :hint, :from) do
+      def to_h = { "name" => name, "hint" => hint, "from" => from }.compact
+
+      def self.from_h(data) = new(name: data["name"].to_s, hint: data["hint"]&.to_s, from: data["from"]&.to_s)
+    end
+
+    PEER_NAME = /\A([a-z][a-z0-9]*)-(?:inbox|outbox)\z/
 
     # What ContextSources.move did: the names it took to the new session
     # (+moved+) and the sources it left (+stayed+, Stayed).
@@ -415,10 +454,26 @@ module Samagotchi
 
         lines = []
         lines << "Context moved with this session: #{moved.join(", ")}." unless moved.empty?
-        unless stayed.empty?
-          lines << "Left with #{from.to_s[0, 8]}: #{stayed.map { |s| "#{s.name} (#{s.label})" }.join(", ")}."
-        end
+        lines << "Left with #{from.to_s[0, 8]}: #{left_words.join(", ")}." unless stayed.empty?
         lines.join(" ")
+      end
+
+      # Each stayed source with why; a peer's pairing as one group, saying
+      # what chi does about it (Plugin::Peer posts the moved message to an
+      # inbox left behind; an outbox alone hears of it on its next push's
+      # refusal), never whether it worked.
+      def left_words
+        stayed.group_by { |s| s.peer || s }.values.map do |group|
+          peer = group.first.peer
+          next "#{group.first.name} (#{group.first.label})" unless peer
+
+          how = if group.any?(&:inbox?)
+                  "#{peer}'s pairing: chi asks #{peer} to pair again with this session"
+                else
+                  "#{peer} pairs again when it next answers"
+                end
+          "#{group.map(&:name).join(", ")} (#{how})"
+        end
       end
 
       # A UI's few words (chi send --new --continues); nil for nothing.
@@ -459,7 +514,8 @@ module Samagotchi
     # its +seed+ (the fork's messages) last had: the newest note about the
     # source (its note_id, ContextAbsorber#text_note_id), else as a
     # continue's. Never candidates/, lock files, or a source +to+ has
-    # already (it wins).
+    # already (it wins). A continue's link keeps what stayed in left.json
+    # (Left, Location#left).
     # @param seed [Array<Hash>] a fork's messages
     # @return [Moved]
     def move(from:, to:, mode:, state_dir:, seed: nil)
@@ -471,10 +527,12 @@ module Samagotchi
 
       moved = []
       stayed = []
+      left = []
       subs = {}
       source_loc.sources.each do |source|
         unless source.movable?
           stayed << Stayed.new(name: source.name, why: source.movable.nil? ? :pushed : :not_movable)
+          left << Left.new(name: source.name, hint: source_loc.snapshot(source.name).hint || source.hint, from: from)
           next
         end
         next if File.exist?(target.source_path(source.name))
@@ -485,6 +543,7 @@ module Samagotchi
       end
       [DECLINED_DIR, MUTED_DIR].each { |folder| copy_markers(source_loc.dir, target.dir, folder) }
       target.write_subscriptions(target.subscriptions.merge(subs)) unless subs.empty?
+      target.write_left(left) if mode == :continue && !left.empty?
       Moved.new(moved: moved, stayed: stayed)
     end
 
@@ -697,10 +756,15 @@ module Samagotchi
     end
 
     def read_json(path)
+      data = read_json_value(path)
+      data.is_a?(Hash) ? data : nil
+    end
+
+    # The JSON value in +path+; nil when there is none or it isn't JSON.
+    def read_json_value(path)
       return nil unless File.file?(path)
 
-      data = JSON.parse(File.read(path))
-      data.is_a?(Hash) ? data : nil
+      JSON.parse(File.read(path))
     rescue JSON::ParserError, SystemCallError
       nil
     end

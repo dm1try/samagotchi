@@ -271,6 +271,11 @@ module Samagotchi
       # one its participants read, not the owner's working session.
       def review? = !!saved_session&.review?
 
+      # The id of the session this one continues (a continue's new link,
+      # Session#continues), else nil.
+      # @return [String, nil]
+      def continues = saved_session&.continues
+
       # Whether the session is a fork (ctx.sessions.fork: /btw keep, a
       # plugin's): it has a parent and isn't a delegate child, and it
       # started from a conversation, so its first prompt isn't its first

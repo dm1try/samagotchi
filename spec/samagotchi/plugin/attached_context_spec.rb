@@ -306,6 +306,28 @@ RSpec.describe Samagotchi::Plugin::Context, "session kind" do
                        .tap { |s| s.save(state_dir: state_dir) }
   end
 
+  it "says which session a continue's link continues (nil for any other)" do
+    previous = make
+    link = make(continues: previous.id)
+    expect([ctx_for(link).continues, ctx_for(previous).continues, ctx_for(nil).continues]).to eq([previous.id, nil, nil])
+  end
+
+  it "reads what the continue left behind, read-only (none for another session)" do
+    previous = make
+    loc = Samagotchi::ContextSources.session_location(previous.id, state_dir: state_dir)
+    loc.add(Samagotchi::ContextSources::Source.new(name: "claude-inbox", cmd: nil, every_seconds: nil, why: nil,
+                                                   hint: "/tmp/a.sock", scope: "session", added_by: "cli",
+                                                   created_at: "2026-10-31T10:00:00Z"))
+    link = make(continues: previous.id)
+    Samagotchi::ContextSources.move(from: previous.id, to: link.id, mode: :continue, state_dir: state_dir)
+
+    expect(ctx_for(link).context.left_behind)
+      .to eq([Samagotchi::ContextSources::Left.new(name: "claude-inbox", hint: "/tmp/a.sock", from: previous.id)])
+    expect(ctx_for(previous).context.left_behind).to eq([])
+    expect(ctx_for(nil).context.left_behind).to eq([])
+    expect(ctx_for(link).context).not_to respond_to(:write_left)
+  end
+
   it "says whether the session is a scratch one or a delegate child" do
     parent = make
     expect(ctx_for(parent)).to have_attributes(scratch?: false, delegate?: false)
