@@ -209,7 +209,8 @@ RSpec.describe Samagotchi::ProjectEnv do
       before_env
       fake_mise(script: "#!/bin/sh\necho $$ > #{seen}.pid\nexec sleep 30\n")
       started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
-      expect(overlay(timeout: 0.3).reason).to eq("mise_timeout")
+      # 1 s, not less: a loaded machine's sh may not have written its pid by a shorter timeout
+      expect(overlay(timeout: 1).reason).to eq("mise_timeout")
       expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < time_bound(5, below: 30)
       expect_untouched("mise_timeout")
       pid = File.read("#{seen}.pid").to_i
