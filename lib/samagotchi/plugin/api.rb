@@ -49,7 +49,7 @@ module Samagotchi
         "chi.toolkit(prompt:)" => "0.72.0", "ctx.ask_model(model:)" => "0.80.0", "chi.toolkit(groups:)" => "0.121.0",
         "chi.prompt_section" => "0.132.0", "chi.prompt_changed" => "0.132.0", "ctx.cache_confirm" => "0.132.0",
         "ctx.model_names" => "0.132.0"
-        # Unreleased: "ctx.context.propose", "ctx.context.candidates".
+        # Unreleased: "ctx.context.propose", "ctx.context.candidates", "ctx.context.withdraw", "ctx.review".
       }.freeze
 
       # @param bundle [String]

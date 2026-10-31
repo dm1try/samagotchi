@@ -265,6 +265,10 @@ module Samagotchi
       # another session handed over, not the user's own.
       def delegate? = !!saved_session&.delegate?
 
+      # Whether the session is a review session (`chi review`, Session#review?):
+      # one its participants read, not the owner's working session.
+      def review? = !!saved_session&.review?
+
       # Whether the session is a fork (ctx.sessions.fork: /btw keep, a
       # plugin's): it has a parent and isn't a delegate child, and it
       # started from a conversation, so its first prompt isn't its first

@@ -7,12 +7,15 @@ require "time"
 require "tmpdir"
 
 # github-pr: a session on a branch with an open GitHub PR gets the PR
-# attached as context (docs/context.md) when its worker starts: a quiet
-# init task asks git for the branch and gh for its PR, and attaches it
-# through this bundle's provider (manifest context_providers, which also
-# serves `chi context add <PR URL>` and the web's "+ URL"). Nothing for a
-# scratch session or a delegate child (D12), and nothing, quietly, without
-# gh, its login, a repo or an open PR.
+# proposed as a candidate (docs/context.md, Candidates) when its worker
+# starts: a quiet init task asks git for the branch and gh for its PR, and
+# proposes it through this bundle's provider (manifest context_providers,
+# which also serves `chi context add <PR URL>` and the web's "+ URL"),
+# titled "#N <title>", mentioned by "#N", the branch and the URL. chi
+# attaches it once the owner mentions one of them. Nothing for a scratch
+# session, and nothing, quietly, without gh, its login, a repo or an open
+# PR. At a turn's start, more than RELOOK_SECONDS after the last look, it
+# looks again on a thread of its own (a branch switched mid-session).
 #
 # Line links: in the web, a `lib/foo.rb:28` (or `lib/foo.rb:28-34`, in
 # inline code too) in the model's answer links to that line of the PR the
@@ -32,11 +35,9 @@ require "tmpdir"
 # the REPL and -p too (still not for a scratch session).
 #
 # `bundles: github-pr: auto_attach:` says what the init task does with the
-# branch's open PR: `attach` (the default), `offer` (a card with Attach and
-# Not here, which run /pr-attach N and /pr-decline N; nothing attached until
-# a click; offered once per session) or `off` (nothing). In offer mode the
-# offers, their outcomes and each session's first prompt go to
-# <data_dir>/offers.ndjson (OffersLog), to find heuristics later.
+# branch's open PR: `propose` (the default, above), `attach` (attached at
+# once, the old default: not for a delegate child, D12) or `off`
+# (nothing). `offer` (the card it once posted) is read as `propose`.
 class Plugin
   # gh and git each get this long (a network hang must not keep a thread).
   COMMAND_SECONDS = 20
@@ -44,14 +45,12 @@ class Plugin
   GENERATION_CHECK_SECONDS = 30
   # line_links' values: off, a worker's only (the default), every frontend.
   LINE_LINKS_MODES = { false => :off, true => :worker, "always" => :always }.freeze
-  # auto_attach's values (YAML's bare true/false: attach/off).
-  AUTO_ATTACH_MODES = { "attach" => :attach, "offer" => :offer, "off" => :off, true => :attach, false => :off }.freeze
-  # /pr-attach and /pr-decline take a PR number (`42` or `#42`).
-  PR_NUMBER = /\A#?(\d+)\z/
-  # The offer card's line under the PR's title.
-  OFFER_LINE = "Not attached: the agent gets nothing until you attach it."
-  # first_prompt keeps this much of the prompt.
-  FIRST_PROMPT_CHARS = 160
+  # auto_attach's values (YAML's bare true/false: attach/off). `offer`, the
+  # card it once posted, reads as propose (warned once).
+  AUTO_ATTACH_MODES = { "propose" => :propose, "attach" => :attach, "offer" => :propose, "off" => :off, true => :attach,
+                        false => :off }.freeze
+  # A turn's start looks for the branch's PR again after this long.
+  RELOOK_SECONDS = 300
   # A git remote URL's GitHub owner and repo (https, ssh or scp-like).
   REMOTE_REPO = %r{github\.com[:/]([^/\s]+)/([^/\s]+?)(?:\.git)?/?\z}i
 
@@ -59,6 +58,9 @@ class Plugin
     @cache = PrCache.new
     @generation_checked_at = nil
     @warned_mode = false
+    @looked_at = nil
+    @look_mutex = Mutex.new
+    @looking = false
     @warned_line_links = false
     # cwd => the "owner/repo"s (downcased) its git remotes name on
     # github.com, for the worker's life.
@@ -67,7 +69,7 @@ class Plugin
 
   def register(chi)
     chi.init("Looking for this branch's pull request", quiet: true) do |ctx|
-      summary = attach_branch_pr(ctx)
+      summary = look(ctx)
       # Inline (an init task has its own thread), whatever the attach
       # returned (attached already, a child, a scratch session), and after
       # it, so a PR it just attached is warm for the first answer.
@@ -78,13 +80,7 @@ class Plugin
       # The prompt too: messages is the history before this turn, and a
       # delegate child's task is its first prompt.
       kick(ctx, attached_prs(ctx) + PrRef.from_messages(event[:messages], prompt: event[:prompt])) if prefetch?(ctx)
-      log_first_prompt(event, ctx)
-    end
-    chi.command("/pr-attach", "Attach the PR this session was offered: /pr-attach 42", anytime: true) do |args, ctx|
-      offer_command("/pr-attach", args, ctx) { |number, offer| attach_offered(ctx, number, offer) }
-    end
-    chi.command("/pr-decline", "Don't attach the PR this session was offered: /pr-decline 42", anytime: true) do |args, ctx|
-      offer_command("/pr-decline", args, ctx) { |number, offer| decline_offered(ctx, number, offer) }
+      relook(ctx)
     end
     chi.on(:before_generation) { |_event, ctx| check_attached(ctx) }
     # After source-links (90): its links are in the display this one gets.
@@ -94,11 +90,12 @@ class Plugin
   # @return [String] what it did (the init task's summary)
   def attach_branch_pr(ctx)
     return "skipped: a scratch session" if ctx.scratch?
-    return "skipped: a delegate child" if ctx.delegate?
     return "no session yet" unless ctx.session_id
 
     mode = auto_attach_mode(ctx)
     return "auto_attach: off" if mode == :off
+    return "skipped: a delegate child" if mode == :attach && ctx.delegate?
+    return "skipped: a review session" if mode == :propose && ctx.review?
 
     branch = run(ctx, "git", "branch", "--show-current").to_s.strip
     return "not on a branch" if branch.empty?
@@ -109,7 +106,7 @@ class Plugin
 
     name = "pr-#{pr["number"]}"
     return "#{name} is attached already" if ctx.context.list.any? { |source| source[:name] == name || source[:hint] == pr["url"] }
-    return offer_branch_pr(ctx, branch, pr, name) if mode == :offer
+    return propose_branch_pr(ctx, branch, pr, name) if mode == :propose
 
     attached = ctx.context.attach(url: pr["url"], name: name, why: "branch #{branch} has open PR ##{pr["number"]}")
     attached ? "attached #{name}" : "#{name} was removed from this session; not attached again"
@@ -118,19 +115,49 @@ class Plugin
     "no pull request attached"
   end
 
-  # `bundles: github-pr: auto_attach:`, read at each worker start.
-  # @return [Symbol] :attach, :offer or :off; an unknown value is :attach
-  #   (logged once)
+  # `bundles: github-pr: auto_attach:`, read at each look.
+  # @return [Symbol] :propose, :attach or :off; `offer` and an unknown
+  #   value are :propose (logged once)
   def auto_attach_mode(ctx)
     value = ctx.settings["auto_attach"]
-    return :attach if value.nil?
+    return :propose if value.nil?
 
     key = value.is_a?(String) ? value.strip.downcase : value
+    warn_mode(ctx, :pr_auto_attach_offer_is_propose, value) if key == "offer"
     AUTO_ATTACH_MODES.fetch(key) do
-      ctx.log.warn(:pr_auto_attach_unknown, value: value.to_s[0, 40]) unless @warned_mode
-      @warned_mode = true
-      :attach
+      warn_mode(ctx, :pr_auto_attach_unknown, value)
+      :propose
     end
+  end
+
+  # #attach_branch_pr, remembering when (a turn's start looks again after
+  # RELOOK_SECONDS).
+  def look(ctx)
+    @look_mutex.synchronize { @looked_at = now }
+    attach_branch_pr(ctx)
+  end
+
+  # A turn's start: the branch's PR looked for again, on a thread of its
+  # own (git and gh never hold the turn), when the last look is more than
+  # RELOOK_SECONDS old and none runs. Propose mode only: attach mode
+  # attaches at the worker's start alone, as it always did.
+  def relook(ctx)
+    return if ctx.scratch? || auto_attach_mode(ctx) != :propose
+
+    claimed = @look_mutex.synchronize do
+      next false if @looking || @looked_at.nil? || now - @looked_at < RELOOK_SECONDS
+
+      @looking = true
+    end
+    return unless claimed
+
+    thread = Thread.new do
+      ctx.log.debug(:pr_relooked, summary: look(ctx))
+    ensure
+      @look_mutex.synchronize { @looking = false }
+    end
+    thread.report_on_exception = false
+    thread
   end
 
   # The after_turn handler: links the answer's `path:line` refs from the
@@ -224,117 +251,24 @@ class Plugin
     end
   end
 
-  def offer_card_id(number) = "github-pr-offer-#{number}"
-
-  # Offer mode: a card instead of the attach, once per session per PR (a
-  # worker restart finds the candidate). The candidate is proposed after
-  # the card, so a card that failed leaves none.
-  def offer_branch_pr(ctx, branch, pr, name)
-    return "#{name} was removed from this session; not offered" if ctx.context.declined?(name, url: pr["url"])
-    return "#{name} was offered already" if offered(ctx, name)
-
+  # Propose mode: the PR as a candidate; an owner prompt already in the
+  # session that mentions it attaches it at once (ctx.context.propose).
+  def propose_branch_pr(ctx, branch, pr, name)
     number = pr["number"]
-    body = [pr["title"].to_s.gsub(/\s+/, " ").strip, OFFER_LINE].reject(&:empty?).join("\n\n")
-    ctx.card(id: offer_card_id(number), title: "PR ##{number} for branch #{branch}", body: body, level: :info,
-             actions: [{ label: "Attach", command: "/pr-attach #{number}" },
-                       { label: "Not here", command: "/pr-decline #{number}" }])
-    ctx.context.propose(url: pr["url"], name: name, title: "##{number} #{pr["title"].to_s.gsub(/\s+/, " ").strip}".strip,
-                        mentions: ["##{number}", branch, pr["url"]])
-    offers_log(ctx).write("offered", session: ctx.session_id, project_root: project_root(ctx), cwd: ctx.cwd,
-                                     branch: branch, pr: pr["url"], checkout: checkout_kind(ctx), model: ctx.model)
-    "offered #{name}"
+    title = "##{number} #{pr["title"].to_s.gsub(/\s+/, " ").strip}".strip
+    proposed = ctx.context.propose(url: pr["url"], name: name, title: title, mentions: ["##{number}", branch, pr["url"]])
+    proposed ? "proposed #{name}" : "#{name} was removed from this session; not proposed"
   end
 
-  # The candidate offer mode proposed as +name+, or nil.
-  def offered(ctx, name) = ctx.context.candidates.find { |candidate| candidate.name == name }
-
-  # /pr-attach and /pr-decline: the PR number and its offer (a candidate),
-  # else the answer (a usage line, no offer).
-  def offer_command(command, args, ctx)
-    number = args.to_s.strip[PR_NUMBER, 1] or return "usage: #{command} <PR number>, as the offer card names it"
-    number = number.to_i
-    offer = offered(ctx, "pr-#{number}")
-    return "no offered PR ##{number} here; use `chi context add <PR URL>`" unless offer
-
-    yield number, offer
-  rescue Samagotchi::Plugin::AttachedContext::Error => e
-    "pr-#{number} not changed: #{e.message}"
+  def warn_mode(ctx, event, value)
+    ctx.log.warn(event, value: value.to_s[0, 40]) unless @warned_mode
+    @warned_mode = true
   end
-
-  # The user's click: attached as auto-attach would, past a decline, with
-  # auto-attach's why (no git or gh here: the branch is the offer's second
-  # mention).
-  def attach_offered(ctx, number, offer)
-    branch = offer.mentions[1]
-    why = "#{branch ? "branch #{branch} has open PR ##{number}" : "open PR ##{number}"} (attached from the offer)"
-    attached = ctx.context.attach(url: offer.url, name: offer.name, why: why, force: true)
-    return "#{offer.name} wasn't attached" unless attached
-
-    ctx.card(id: offer_card_id(number), title: "PR ##{number}", body: "Attached #{attached}")
-    offers_log(ctx).write("attached", session: ctx.session_id, pr: offer.url, seconds: seconds_since(offer))
-    nil
-  end
-
-  # Not for a PR attached here already (a stale card): that is
-  # `chi context rm`'s, and a declined marker would leave it attached.
-  def decline_offered(ctx, number, offer)
-    attached = ctx.context.list.find { |source| source[:name] == offer.name || source[:hint] == offer.url }
-    return "#{attached[:name]} is attached here; `chi context rm #{attached[:name]}` removes it" if attached
-
-    ctx.context.decline(url: offer.url, name: offer.name)
-    ctx.card(id: offer_card_id(number), title: "PR ##{number}", body: "Not attached here; + URL attaches it")
-    offers_log(ctx).write("declined", session: ctx.session_id, pr: offer.url, seconds: seconds_since(offer))
-    nil
-  end
-
-  def seconds_since(offer)
-    (Time.now - Time.iso8601(offer.at.to_s)).round
-  rescue ArgumentError
-    nil
-  end
-
-  # Offer mode: every session's first prompt (offered or not; a web chat's
-  # first turn starts before the init task's gh returns), joined to the
-  # offers by session at analysis time. First = no user message yet (a
-  # context note may be in messages already); a fork starts from its
-  # parent's conversation, user messages and all, so its first is the one
-  # the log has no first_prompt row for yet.
-  def log_first_prompt(event, ctx)
-    return if event[:prompt].nil? || auto_attach_mode(ctx) != :offer
-    return if ctx.scratch? || ctx.session_id.nil?
-
-    log = offers_log(ctx)
-    if Array(event[:messages]).any? { |message| message_role(message) == "user" }
-      return unless ctx.fork? && !log.first_prompt?(ctx.session_id)
-    elsif ctx.delegate?
-      return
-    end
-    log.write("first_prompt", session: ctx.session_id, prompt: event[:prompt].to_s[0, FIRST_PROMPT_CHARS])
-  rescue StandardError => e
-    ctx.log.debug(:pr_offers_log_failed, error: e.class.name)
-  end
-
-  def message_role(message)
-    return nil unless message.is_a?(Hash)
-
-    (message.key?(:role) ? message[:role] : message["role"]).to_s
-  end
-
-  def offers_log(ctx) = OffersLog.new(File.join(ctx.data_dir, OffersLog::FILE), ctx.log)
 
   def project_root(ctx)
     ctx.repo_root
   rescue StandardError
     nil
-  end
-
-  # "main" for the main checkout, "worktree" for a linked one (its git dir
-  # isn't the common one), nil outside a repo.
-  def checkout_kind(ctx)
-    dirs = run(ctx, "git", "rev-parse", "--path-format=absolute", "--git-dir", "--git-common-dir").to_s.split("\n")
-    return nil unless dirs.size == 2
-
-    dirs[0] == dirs[1] ? "main" : "worktree"
   end
 
   def now = Process.clock_gettime(Process::CLOCK_MONOTONIC)
@@ -416,50 +350,6 @@ class Plugin
     end
   rescue SystemCallError
     nil
-  end
-end
-
-# <data_dir>/offers.ndjson: one JSON object a line, {event:, ts:, …},
-# private to the user (0600: it holds prompts). Every worker shares it, so
-# each write holds offers.ndjson.lock (flock) around the size check, the
-# rotation and the append; over MAX_BYTES the file becomes
-# offers.ndjson.1 (one old file kept). A failure is logged at debug: the
-# log never breaks an attach.
-class OffersLog
-  FILE = "offers.ndjson"
-  MAX_BYTES = 1024 * 1024
-  LINE_MAX_BYTES = 4000
-  MODE = 0o600
-
-  def initialize(path, log)
-    @path = path
-    @log = log
-  end
-
-  def write(event, **fields)
-    line = "#{JSON.generate({ event: event, ts: Time.now.utc.iso8601 }.merge(fields))}\n"
-    return @log.debug(:pr_offers_line_too_long, event: event) if line.bytesize > LINE_MAX_BYTES
-
-    File.open("#{@path}.lock", File::RDWR | File::CREAT, MODE) do |lock|
-      lock.flock(File::LOCK_EX)
-      File.rename(@path, "#{@path}.1") if File.size?(@path).to_i > MAX_BYTES
-      File.open(@path, File::WRONLY | File::APPEND | File::CREAT, MODE) { |file| file.write(line) }
-    end
-    nil
-  rescue StandardError => e
-    @log.debug(:pr_offers_log_failed, error: e.class.name)
-    nil
-  end
-
-  # Whether the log (or its old file) has session +id+'s first_prompt row.
-  def first_prompt?(id)
-    [@path, "#{@path}.1"].any? do |path|
-      File.exist?(path) && File.foreach(path).any? do |line|
-        line.include?(%("session":#{JSON.generate(id)})) && JSON.parse(line)["event"] == "first_prompt"
-      rescue JSON::ParserError
-        false
-      end
-    end
   end
 end
 
