@@ -30,6 +30,15 @@ and commands may change between minor versions. How releases are made:
   `auto_attach: offer` (the card with Attach and Not here, `/pr-attach`, `/pr-decline`) is gone and reads as
   `propose`, as does an unknown value. (github-pr 0.6.0)
 
+### Fixed
+
+- chi web's update check no longer holds up the page, the API or the automatic install while it fetches from
+  RubyGems (~10 s): reading and saving the auto-update record take their own lock.
+- Stopping chi web while the automatic update's preflight runs waits for it (up to 25 s) instead of abandoning it,
+  and a preflight that ends after the stop no longer restarts chi web.
+- An automatic install with `update.restart: idle` no longer offers the "installed" toast's Restart buttons (a
+  failed run, `restart: never` or a manual install still do).
+
 ## [0.139.1] - 2026-10-31
 
 ### Fixed
