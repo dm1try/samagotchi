@@ -356,6 +356,25 @@ chi context push: 3f2a9c1e was continued as 7b1d…: notes stays with the sessio
 
 An archived session that nobody continued takes pushes as before.
 
+### Peers and a continue
+
+A peer's pairing ([claude-peer, codex-peer](plugins.md#the-claude-peer-bundle):
+`<peer>-inbox` and `<peer>-outbox`, both pushed) stays with the old session,
+and the peer pairs again with the new one. The continue keeps what stayed in
+the new session (`left.json` beside its sources: each name, its last pushed
+hint, the old id; `ctx.context.left_behind`), and the new session's worker
+posts the peer one `moved` message to the inbox left behind, once:
+`chi <old> · moved · continued as <new id>`. The peer's chi-peer skill pairs
+again with the new id, the same way it paired before. Without an inbox (an
+outbox-only pairing through a remote), or when the message didn't arrive, the
+peer's next push to the old id is refused with the new id, and the skill pairs
+again and pushes there. The second note says which, not whether it worked:
+
+> Left with 3f2a9c1e: claude-inbox, claude-outbox (Claude's pairing: chi asks Claude to pair again with this session).
+
+or, for an outbox alone, `codex-outbox (Codex pairs again when it next
+answers)`. A fork takes no pairing and posts nothing.
+
 ## Candidates
 
 A bundle can **propose** a source instead of attaching it

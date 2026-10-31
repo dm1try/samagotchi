@@ -14,6 +14,11 @@ and commands may change between minor versions. How releases are made:
   source moves, a pushed one stays; `chi context add --movable / --no-movable` (and `ctx.context.attach(movable:)`)
   say it outright, and `chi context ls` marks one that stays. A push into a continued session is refused with the
   next link's id. See docs/context.md (Movable context).
+- A paired Claude Code or Codex session follows a continue: the new session asks it once to pair again with the new
+  id (a `moved` message to the inbox the old session had), and a reply pushed to the old id is refused with the new
+  one, so the peer pairs again then (claude-peer 0.4.6, codex-peer 0.3.5: install the chi-peer skill again with
+  `/claude install-skill` or `/codex install-skill`). Bundles get `ctx.continues` and `ctx.context.left_behind`. See
+  docs/context.md (Peers and a continue).
 
 ## [0.140.0] - 2026-10-31
 

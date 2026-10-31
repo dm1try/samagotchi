@@ -822,6 +822,7 @@ full label, `plugin.rb (bundle my-bundle)`.
 | `ctx.delegate?` | whether the session is a delegate child: a task another session handed over |
 | `ctx.review?` | whether the session is a review session (`chi review`): one its participants read, not the owner's working session |
 | `ctx.frontend` | what runs the session, read now: `:repl` (the REPL, `-p` without `--non-interactive`), `:one_shot` (`-p --non-interactive`: one turn, then exit) or `:worker` (a session worker: the web, an attached TUI). Only a worker's answers reach the web while it runs; a REPL's show there once the session is opened. Until the host sets it (while the plugins load, inside `Engine.new`) it reads `:one_shot`, so read it in hooks and init tasks, not in `register` |
+| `ctx.continues` | the id of the session this one continues (a [continue](sessions.md#session-chains)'s new link), else nil |
 | `ctx.fork?` | whether the session is a fork (`ctx.sessions.fork`): it has a parent but isn't a delegate child, and started from a conversation, so its first prompt isn't its first user message |
 | `ctx.model` | the model the session runs on now: its resolved ref (`host:id`), right after `/model` too |
 | `ctx.model_key` | that model's memory overlay key (`<name>.<key>.md`, what `memory_write current_model_only` writes) |
@@ -1139,6 +1140,7 @@ ctx.context.decline(url: "https://github.com/acme/app/pull/42")    # => "pr-42"
 ctx.context.propose(url: "https://github.com/acme/app/pull/42", title: "#42 Make the thing", mentions: ["#42", "feat/x"])
 ctx.context.candidates  # => [#<data Candidate name="pr-42", url="https://…", title="#42 Make the thing", …>]
 ctx.context.withdraw("pr-42")  # => true
+ctx.context.left_behind  # => [#<data Left name="claude-inbox", hint="/tmp/…sock", from="3f2a9c1e-…">]
 ```
 
 [Attached context](context.md) for the session the plugin runs in: chi runs
@@ -1183,6 +1185,12 @@ gets a note when its text changes.
   markers. `withdraw(name)` takes a candidate back (true when there was
   one); a source attached from it stays attached. Neither an attach nor a
   decline removes a candidate; deleting the session does.
+- `left_behind` (read-only) lists what the continue that started this
+  session left with the previous link ([Movable
+  context](context.md#movable-context)): `ContextSources::Left` values with
+  `name`, `hint` (the last pushed one, else the source's) and `from` (the
+  previous link's id); `[]` for a session that isn't a continue's. The peer
+  bundles read it to ask their peer to pair again (below).
 - The source is the session's (not the project's), marked
   `added_by: plugin:<bundle>`. It is plugin code, so it isn't asked about as
   the agent's `chi context add --cmd` is.
@@ -2379,6 +2387,27 @@ Claude pairs; without one the bundle costs one tool declaration.
   the remote machine can send into this Claude session (sshd makes it the
   user's, mode 0600 by default): fine on your own machine or pod, not a shared
   host. Claude's own skill has the same under "chi on another machine over SSH".
+- **A continue.** The pairing's two sources are pushed, so they stay with
+  the old session when you continue it ([Movable
+  context](context.md#peers-and-a-continue)). The new session's worker posts
+  Claude one message, from a quiet init task, to the socket the old
+  `claude-inbox` last had:
+
+  ```
+  chi <old> · moved · continued as <new id>
+  This chi session was continued as <new id>. Pair with <new id> the way you paired with <old>, then answer there (chi context push claude-outbox <new id>).
+  ```
+
+  Claude's skill pairs again with the new id the same way it paired before
+  (the same `CHI_REMOTE` and `--inbox-socket`). It is posted once (a marker
+  under the bundle's `sessions/<id>/`, so a worker restart doesn't post it
+  again); a post that fails (that Claude session ended) is logged and
+  dropped. An outbox-only pairing has no inbox to post to: Claude's next
+  answer to the old id is refused with the new one (`<old> was continued as
+  <id>`), and the skill pairs again and pushes the answer there. The new
+  session's note says which: `Left with 3f2a9c1e: claude-inbox, claude-outbox
+  (Claude's pairing: chi asks Claude to pair again with this session).`, or
+  `(Claude pairs again when it next answers)`.
 - **Asking first.** The tool has no `targets:`, so guardrails match it by name
   only: to be asked before each send, add a rule ([Rules in
   config.yml](guardrails.md#rules-in-configyml)):
@@ -2502,6 +2531,12 @@ skill install card) works the same.
   peer's, Codex's answers wake chi up to `context.peer_turns` turns in a row,
   and `VERDICT OK` wakes chi once to close the round. Needs chi 0.67.0 (the closing
   wake: the chi released with this bundle).
+- **A continue** works as claude-peer's: the new session queues Codex the
+  `moved` message on the thread the old `codex-inbox` named, once, and
+  Codex's skill pairs again with the new id (the same `CHI_REMOTE`, if any).
+  A pairing through a remote has no inbox: Codex pairs again when its next
+  push is refused. A closed Codex session still takes the message; it waits
+  for `codex resume` there.
 
 ## The ruby bundle
 
