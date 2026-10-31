@@ -12,6 +12,8 @@ require_relative "../note_delivery"
 require_relative "../image_store"
 require_relative "../context_candidates"
 require_relative "../context_sources"
+require_relative "../archive_store"
+require_relative "../session_chain"
 require_relative "../send_command/busy"
 require_relative "../chi_invocation"
 require_relative "../worker_sidecar"
@@ -292,11 +294,19 @@ module Samagotchi
         ContextAdded.new(name: source.name)
       end
 
-      # New text for the target's --push source +name+.
+      # New text for the target's --push source +name+. Refused, nothing
+      # written, when the session was continued (its writer holds a stale
+      # id): a source of its own, or none of the name. A project's source
+      # takes it (the next link sees it too).
       # @param fetched [ContextSources::Fetched]
       # @return [ContextPush]
       def context_push(target, name, fetched)
-        attached = context_attached(target, name) or return ContextPush.new(status: :missing)
+        attached = context_attached(target, name)
+        if !target.project? && (attached.nil? || attached.location.session?) &&
+           (next_id = continued_as(target.session_id))
+          return ContextPush.new(status: :continued, next_id: next_id)
+        end
+        return ContextPush.new(status: :missing) unless attached
         return ContextPush.new(status: :not_push) unless attached.source.push?
 
         before, written = attached.location.locked(name) do
@@ -492,6 +502,16 @@ module Samagotchi
       end
 
       def dir = @state_dir ? { state_dir: @state_dir } : {}
+
+      # The session that continues +id+, or nil. The archive check first: a
+      # continued link is always archived, and SessionChain.next_of loads
+      # every session.
+      def continued_as(id)
+        return nil unless ArchiveStore.archived?(session_dir(id))
+
+        SessionChain.next_of(id, state_dir: state_dir!)
+      end
+
       def state_dir! = @state_dir || Session.default_state_dir
       def session_dir(id) = Session.session_dir(id, state_dir: state_dir!)
 

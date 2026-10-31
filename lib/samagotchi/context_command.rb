@@ -228,6 +228,9 @@ module Samagotchi
           # two fetches would read as a change and then vanish.
           error_line("#{command_name}: #{SessionAccess::ContextPush.not_push_message(name)}")
           next false
+        when :continued
+          error_line("#{command_name}: #{SessionAccess::ContextPush.continued_message(name, target.session_id, pushed.next_id)}")
+          next false
         end
 
         @stdout.puts("#{target.label}  #{name}: #{pushed.revision == pushed.before ? "unchanged" : "new text"} " \

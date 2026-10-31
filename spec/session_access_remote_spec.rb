@@ -153,6 +153,17 @@ RSpec.describe Samagotchi::SessionAccess::Remote do
         .to eq(Samagotchi::SessionAccess::ContextAdded.new(name: "pr-1", movable_dropped: true))
     end
 
+    it "maps a push's 410 context_continued to :continued with the next id; another 410 is a refusal" do
+      fetched = Samagotchi::ContextSources::Fetched.new(text: "x", summary: nil, wake: false, hint: nil)
+      access, = scripted([410, { error: "context_continued", next_id: "n-1", detail: "…" }])
+      expect(access.context_push(target, "notes", fetched))
+        .to eq(Samagotchi::SessionAccess::ContextPush.new(status: :continued, next_id: "n-1"))
+
+      access, = scripted([410, { error: "gone", detail: "other" }])
+      expect { access.context_push(target, "notes", fetched) }
+        .to raise_error(Samagotchi::SessionAccess::RemoteFailed, /answered 410 gone: other/)
+    end
+
     it "matches no_provider by code and retains the old chi web's detail fallback" do
       url = "https://nope.example/1"
       expected = "no installed bundle on studio resolves #{url} (chi bundle install github-pr there for GitHub PRs)"

@@ -505,6 +505,10 @@ module Samagotchi
 
           raise_refusal(reply)
         when 409 then ContextPush.new(status: :not_push)
+        when 410
+          raise_refusal(reply) unless reply.error == "context_continued"
+
+          ContextPush.new(status: :continued, next_id: reply.json["next_id"].to_s)
         when 400 then raise ContextSources::Invalid, reply.json["detail"].to_s
         else raise_refusal(reply)
         end

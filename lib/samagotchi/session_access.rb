@@ -266,15 +266,25 @@ module Samagotchi
     end
 
     # chi context push's outcome: :pushed (+before+ the revision it had,
-    # +revision+ the new one), :missing (no such source) or :not_push (a
-    # command source, whose text is its command's).
-    ContextPush = Data.define(:status, :before, :revision) do
-      def initialize(status:, before: nil, revision: nil) = super
+    # +revision+ the new one), :missing (no such source), :not_push (a
+    # command source, whose text is its command's) or :continued (the
+    # session was continued, as +next_id+: nothing was written).
+    ContextPush = Data.define(:status, :before, :revision, :next_id) do
+      def initialize(status:, before: nil, revision: nil, next_id: nil) = super
 
       # Why a push to +name+ was refused as :not_push: a command source's
       # text is its command's, and a push between two fetches would read
       # as a change and then vanish.
       def self.not_push_message(name) = "#{name} runs a command, which writes its text: push goes to a --push source"
+
+      # Why a push to +name+ in session +id+ was refused as :continued: its
+      # writer holds the old id, and nothing reads a continued session.
+      # Generic (the CLI and chi web load no plugins): a peer's skill owns
+      # its re-pair.
+      def self.continued_message(name, id, next_id)
+        "#{id.to_s[0, 8]} was continued as #{next_id}: #{name} stays with the session it was attached to; " \
+          "attach it to #{next_id} (or pair again with #{next_id}) and push there"
+      end
     end
   end
 end

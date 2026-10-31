@@ -370,6 +370,17 @@ RSpec.describe Samagotchi::Web::App, "session access routes" do
       expect(call("#{path}/notes/push", method: "POST", body: {})).to match([400, include("error" => "missing_fields")])
     end
 
+    it "answers 410 context_continued with the next link's id for a push into a continued session" do
+      call(path, method: "POST", body: { name: "notes", push: true })
+      Samagotchi::ArchiveStore.archive(session.id, state_dir: state_dir)
+      link = make.tap { |s| s.continues = session.id }.tap { |s| s.save(state_dir: state_dir) }
+
+      expect(call("#{path}/notes/push", method: "POST", body: { text: "late" }))
+        .to eq([410, { "error" => "context_continued", "next_id" => link.id,
+                       "detail" => Samagotchi::SessionAccess::ContextPush.continued_message("notes", session.id, link.id) }])
+      expect(location.snapshot("notes").text).to be_nil
+    end
+
     it "with own=1 detaches only the session's own source: a project's is 409 project_source, none 404" do
       call(path, method: "POST", body: { name: "mine", push: true })
       project = Samagotchi::ContextSources.project_location_for(session.project_root, state_dir: state_dir)

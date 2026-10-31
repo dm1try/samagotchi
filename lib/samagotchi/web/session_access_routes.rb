@@ -450,8 +450,10 @@ module Samagotchi
       # hint}: new text for the session's --push source (chi context push;
       # the fields as a source's JSON output gives them, checked the same
       # way). 200 {status: "pushed", name, before, revision, changed}; 404
-      # context_missing (no such source); 409 not_push (a command source); 400
-      # invalid_text.
+      # context_missing (no such source); 409 not_push (a command source); 410
+      # context_continued (the session was continued, as next_id: never 409,
+      # which an older Remote reads as not_push, nor "continued", which it
+      # reads as a continue's refusal); 400 invalid_text.
       def handle_context_push(req, id, name)
         body = body_hash(req) or return error_response(400, "invalid_json", "invalid JSON body")
         return error_response(400, "missing_fields", "text is required") unless body["text"].is_a?(String)
@@ -465,6 +467,9 @@ module Samagotchi
         case pushed.status
         when :missing then error_response(404, "context_missing", "no source #{name[0, 40]}")
         when :not_push then error_response(409, "not_push", SessionAccess::ContextPush.not_push_message(name))
+        when :continued
+          json_response(410, { error: "context_continued", next_id: pushed.next_id,
+                               detail: SessionAccess::ContextPush.continued_message(name, id, pushed.next_id) })
         else json_response(200, { status: "pushed", name: name, before: pushed.before, revision: pushed.revision,
                                   changed: pushed.before != pushed.revision })
         end
