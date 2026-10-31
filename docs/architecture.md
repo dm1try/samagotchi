@@ -663,7 +663,8 @@ the worker's own atomic refusal still applies), the left ones retried each step 
 turn running, `Server.restart_preflight` (the restart's command with `--version`, 20 s, killed on a timeout; it must
 print a chi at least the release) and, if it passes, the record's `phase: web` is written **before**
 `UpdateOps#restart_web`. A failed preflight, or a refused restart, publishes `restart_failed` and ends the run
-(`failed`). The restarted chi web's AutoUpdate (first step after 5 s) finds `phase: web`, checks it runs the
+(`failed`). `AutoUpdate#stop` waits `STOP_WAIT` (25 s, longer than the preflight's timeout) for its thread, and a
+preflight that ends after a stop leads to nothing (no `web`, no exec): the next start takes the run up again. The restarted chi web's AutoUpdate (first step after 5 s) finds `phase: web`, checks it runs the
 release, counts the workers once more and publishes `updated`, then `done`. Results reach the phone as `chi_notice`
 hub events (`SessionHub#publish_notice`), see [internals/web-push.md](internals/web-push.md).
 

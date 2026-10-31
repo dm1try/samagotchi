@@ -339,6 +339,28 @@ RSpec.describe Samagotchi::Web::AutoUpdate do
       expect(check.auto_state).to include(phase: "failed", pushed: true)
     end
 
+    it "lets a preflight that a stop finds running end, then neither restarts chi web nor records it" do
+      preflighting = Queue.new
+      finish_preflight = Queue.new
+      allow(preflight).to receive(:call) do
+        preflighting << true
+        finish_preflight.pop
+        nil
+      end
+      runner = described_class.new(hub: hub, ops: ops, check: check, auto: auto, restart: restart, preflight: preflight,
+                                   clock: -> { now }, first: 0).start
+      pop!(preflighting, "the preflight to start")
+      stopping = Thread.new { runner.stop }
+      begin
+        expect(stopping).to be_alive # it waits for the preflight
+      ensure
+        finish_preflight << true
+        join!(stopping, "the stop")
+      end
+      expect(ops).not_to have_received(:restart_web)
+      expect(check.auto_state).to include(phase: "workers")
+    end
+
     it "tries chi web again when another operation took the turn from it" do
       allow(ops).to receive(:restart_web).and_return(:busy, :started)
       auto_update.step

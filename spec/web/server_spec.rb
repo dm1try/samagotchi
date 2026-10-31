@@ -269,6 +269,10 @@ RSpec.describe Samagotchi::Web::Server do
       expect(preflight(Timeout::Error.new("took more than 20 s")).first).to include("took more than 20 s")
     end
 
+    it "ends within the wait of AutoUpdate's stop, which never abandons one mid-way" do
+      expect(Samagotchi::Web::AutoUpdate::STOP_WAIT).to be > described_class::PREFLIGHT_TIMEOUT
+    end
+
     it "fails when there is nothing to exec" do
       allow(described_class).to receive(:reexec_command).with(["--version"]).and_return(nil)
 

@@ -47,6 +47,10 @@ module Samagotchi
       RETRY_FOR = 24 * 3600
       # The phases a run is still in.
       OPEN_PHASES = %w[installed workers web].freeze
+      # How long stop waits for the thread: long enough for a preflight
+      # (Server::PREFLIGHT_TIMEOUT, 20 s; a healthy one takes about a
+      # second) to end on its own, so a stop never abandons one mid-way.
+      STOP_WAIT = 25
 
       # @param hub [SessionHub]
       # @param ops [UpdateOps]
@@ -87,7 +91,7 @@ module Samagotchi
         @wakeup << :stop
         thread = @thread
         @thread = nil
-        thread&.join(5.0)
+        thread&.join(STOP_WAIT)
         nil
       end
 
@@ -226,6 +230,9 @@ module Samagotchi
         return if busy_turn?
 
         problem = @preflight&.call(record[:version])
+        # Stopped meanwhile (chi web is shutting down): no exec, no record
+        # of one; the next start takes it up again.
+        return if @stopped
         return restart_failed(record, problem, "auto_restart_preflight_failed") if problem
 
         save(record.merge(phase: "web"))
