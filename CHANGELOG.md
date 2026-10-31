@@ -12,6 +12,10 @@ and commands may change between minor versions. How releases are made:
 - Candidates for attached context: a bundle proposes a source (`ctx.context.propose`, `candidates`, `withdraw`),
   and chi attaches it when the session's owner mentions it; `chi context ls` and `/context` list them with their
   state (proposed, attached, declined). See docs/context.md (Candidates).
+- The candidate judge, audit only and opt-in (`context.candidates.mode: audit`; off by default): System 1 is asked
+  whether the session's work is about each proposed candidate, and the answers go to `context_candidates.jsonl`;
+  nothing is attached. `chi context report [--days N]` counts them against what you attached or declined. Jev
+  through OpenRouter works as the System 1 host. See docs/context.md (The judge).
 
 ### Changed
 

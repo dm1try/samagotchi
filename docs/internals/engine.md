@@ -50,6 +50,9 @@ Engine#run_turn(session, prompt, on_event:, max_iterations:, cancel_controller:,
   │     #   start, or a Stop (which wins over an answer already in, and cuts the ask's request through
   │     #   Pending#cancel_controller; a Stop after a timeout doesn't), and on a candidate picked ≥ threshold
   │     #   ToolkitBinding#suggest sets the session's toolkit, origin suggested, saved, with the notice;
+  │     #   then start_context_judge (owner turns only: ContextCandidatesLog#look, and unless
+  │     #   context.candidates.mode is off, ContextJudge's asks on SideJudgments' :context kind; on a shared
+  │     #   local System 1 host they wait for run_turn's ensure, after release_turn; docs/context.md, The judge);
   │     #   then the session's toolkit (apply_toolkit!: Registry#toolkit, ToolIndex#refresh! for find_tools'
   │     #   chi line, a prompt rebuild when it changed). A Stop during the probes or the waits returns false
   │     #   (the ask's line says canceled; an ensure marks one the turn never settled failed).

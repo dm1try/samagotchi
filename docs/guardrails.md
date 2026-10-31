@@ -1087,6 +1087,16 @@ contention guard. The session's own checks come first; the kits and the
 suggestion log are read only for a session that can be asked, the log only
 after an earlier `undecided`.
 
+The candidate judge is a third use (`context.candidates.mode`, off by
+default; [context.md, The judge](context.md#the-judge)): two `noul`
+questions per proposed candidate, "Is this session's work about the
+candidate?" and "Has the user stated a task yet?", on the same host and
+model, gated by its own mode alone. It logs to `context_candidates.jsonl`
+with the `context` tag. Unlike the toolkit's audit it doesn't skip a shared
+local host: it asks after the turn ends there. Both side judgments run
+through `SideJudgments` (one ask in flight per kind, a failure is one warn,
+shutdown waits up to a second).
+
 ### What the audit writes
 
 With a client, `GuardrailWiring#request_approval` asks System 1 one `noul`

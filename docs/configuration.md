@@ -1758,6 +1758,32 @@ its own). The first target is a long session such as a day-long coordinator, whe
   turn that runs a layer or whose session set its strategy) and the web's chip. A woken worker's status line counts
   its saved context against the session's budget.
 
+## The candidate judge
+
+`context.candidates.mode: audit` asks System 1 whether a session's work is about each candidate a bundle proposed
+(see [The judge](context.md#the-judge)); it uses `guardrails.system_one.host` and `.model`, but its own mode: System
+1's `mode` (approvals) can stay `off`. Jev, the hosted judgment model, is served through OpenRouter
+(`/api/v1/systemone`), so OpenRouter can be the System 1 host:
+
+```yaml
+hosts:
+  openrouter:
+    url: https://openrouter.ai/api/v1
+    api: openai
+    api_key_env: OPENROUTER_API_KEY
+guardrails:
+  system_one:
+    host: openrouter
+    model: typesafe/jev-1.14
+context:
+  candidates:
+    mode: audit
+```
+
+A remote host is asked beside the turn. A System 1 host that is the model's own local server is asked after the
+turn ends: each ask there evicts the session's cached prefix, so the next turn reads its prompt again (see
+[prompt caching](internals/prompt-caching.md)).
+
 ## Opening files from chi web
 
 In `chi web`, a file tool's row (read, edit, write) and the lines of its diff are refs to that file. They look like

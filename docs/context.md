@@ -354,6 +354,76 @@ candidates (attached when the session's owner mentions one):
 Forks and continues start without candidates: the bundle proposes again in
 the new session.
 
+### The judge
+
+A mention is the only thing that attaches a candidate by itself. With
+`context.candidates.mode: audit` chi also asks [System 1](guardrails.md#system-1-experimental)
+about each proposed candidate — "Is this session's work about the
+candidate?" — and logs the answer, so you can see how it would do before
+anything depends on it. It attaches nothing (`on` reads as `audit` for now).
+The default is `off`: no conversation text goes to a System 1 host unless you
+turn this on, whatever `guardrails.system_one` says. The host and model are
+`guardrails.system_one.host` / `.model` (Jev through OpenRouter: see
+[The candidate judge](configuration.md#the-candidate-judge)).
+
+```yaml
+context:
+  candidates:
+    mode: audit            # off (default) | audit | on (= audit for now)
+    threshold: 0.8         # would attach at or above this
+    offer_threshold: 0.6   # would offer from this, below threshold
+    reask_after_turns: 3   # owner prompts before the one re-ask
+```
+
+What it asks, and when:
+
+- **One ask per candidate**, at the start of each of your own turns (never a
+  participant's, never in a review session or on a Continue), after the
+  toolkit suggestion. A candidate proposed while your turn runs (github-pr's
+  usual case) is asked about right then, on your prompts so far.
+- **What it sees:** the candidate's title (and description, when the bundle
+  gave one) and your own prompts: the first one with a task in it and the
+  latest, each cut at 1500 characters. Never the branch, the checkout or the
+  source's "why". For a delegate child, also the titles of what its parent
+  session has attached, and the question says the first message is the
+  parent's request.
+- **Has a task been stated yet?** The same ask has a second question; below
+  0.5 the candidate stays unjudged and is asked again at your next prompt
+  (a first "hi" doesn't count against it).
+- **After a judged ask:** one re-ask once `reask_after_turns` more prompts of
+  yours came, with the conversation grown; then it is done.
+- **Where it runs:** on a remote System 1 host (Jev) beside your turn; on the
+  model's own local server (System 1 on the same Splash) after your turn
+  ends, so it never competes with the turn's prefill. One session's asks run
+  one batch at a time.
+
+### The log and the report
+
+Everything about candidates goes to `context_candidates.jsonl` in the state
+folder (0600, local; written in every mode, `off` too, since nothing in it
+leaves the machine): `proposed`, `mentioned`, `judged` (the probability `p`,
+the task-stated probability `task_p`, `stated`, `would`: attach / offer /
+none at the thresholds then, with your prompts cut to 200 characters),
+`attached` / `declined` / `detached` (what you did, seen at your next turn's
+start) and `withdrawn`.
+
+`chi context report [--days N]` counts it, with no prompts in the output
+(this machine only):
+
+```
+$ chi context report
+chi context report: the last 14 days, 12 sessions (mode audit)
+  candidates: proposed 14 · mentioned 3 · attached by you 1 · declined 2 · detached 0 · withdrawn 0
+  judge: 19 asks · judged 15 · no task yet 4 · 11 candidates judged
+  would attach (each candidate's latest judged ask):
+    ≥ 0.5  5
+    ≥ 0.6  4  offer_threshold
+    ≥ 0.7  3
+    ≥ 0.8  3  threshold
+    ≥ 0.9  1
+  against your own choice (6 judged candidates you attached, mentioned or declined), at 0.8: agree 5 · would attach what you declined 0 · would miss what you attached 1
+```
+
 ## GitHub PRs: the github-pr bundle
 
 ```sh
@@ -497,6 +567,10 @@ sessions/<id>/muted/<name>                    a project source this session mute
 sessions/<id>/declined/<name>                 a source you removed (its hint inside): auto-attach skips it
 sessions/<id>/candidates/<name>.json          a source a plugin proposed here ({url or cmd, title, describe, mentions, proposed_by, at}; no status)
 ```
+
+The candidates' log, `context_candidates.jsonl`, sits one level up, beside
+the sessions folder (`$XDG_STATE_HOME/samagotchi/`; see
+[The log and the report](#the-log-and-the-report)).
 
 Deleting a session deletes its folder. A source and its snapshot go with
 `chi context rm`; its `.lock` stays (a fetch may still hold it).
