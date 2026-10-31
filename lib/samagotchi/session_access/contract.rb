@@ -93,6 +93,8 @@ module Samagotchi
         "context refresh" => LOCAL_ONLY,
         "context mute" => LOCAL_ONLY,
         "context unmute" => LOCAL_ONLY,
+        # This machine's candidates log (ContextReportCommand).
+        "context report" => LOCAL_ONLY,
 
         "sessions" => SUPPORTED,
         "sessions list" => SUPPORTED,

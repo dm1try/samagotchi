@@ -5,6 +5,7 @@ require "time"
 require_relative "context_sources"
 require_relative "context_fetch"
 require_relative "context_providers"
+require_relative "context_report_command"
 require_relative "memory_paths"
 require_relative "session"
 require_relative "cli/command"
@@ -23,7 +24,7 @@ module Samagotchi
     include RedactedInspect
 
     USAGE = <<~TEXT
-      Usage: chi context <add|push|ls|show|refresh|rm|mute|unmute> [options] [TARGET]
+      Usage: chi context <add|push|ls|show|refresh|rm|mute|unmute|report> [options] [TARGET]
         add NAME (--cmd CMD | --push) [--every SECONDS] [--why TEXT] [--hint TEXT] TARGET
         add URL [--why TEXT] [--hint TEXT] TARGET   a URL an installed bundle's provider knows (github-pr: a PR)
               a source: CMD prints its text (plain, or JSON {"text", "summary", "wake", "hint"});
@@ -36,12 +37,13 @@ module Samagotchi
         refresh NAME [TARGET]               run NAME's command now, here (a live worker absorbs the result)
         rm NAME TARGET                      detach a source
         mute|unmute NAME ID...              a project's source, ignored by one session
+        report [--days N]                   the candidate judge's counts (this machine's log)
       TARGET: session ids or unique prefixes, or --project (this git repository's
         sessions, all of them). Inside a chi session (its execute) the default is that
         session. Find ids with: chi sessions list [--live]
     TEXT
 
-    SUBCOMMANDS = %w[add push ls show refresh rm mute unmute].freeze
+    SUBCOMMANDS = %w[add push ls show refresh rm mute unmute report].freeze
 
     FLAGS = {
       "add" => CLI::Flags.new(help: HELP_WORDS) do |f|
@@ -67,7 +69,8 @@ module Samagotchi
       "refresh" => CLI::Flags.new(help: HELP_WORDS) { |f| f.switch "--project" },
       "rm" => CLI::Flags.new(help: HELP_WORDS) { |f| f.switch "--project" },
       "mute" => CLI::Flags.new(help: HELP_WORDS),
-      "unmute" => CLI::Flags.new(help: HELP_WORDS)
+      "unmute" => CLI::Flags.new(help: HELP_WORDS),
+      "report" => ContextReportCommand::FLAGS
     }.freeze
 
     # Where a command acts: a session (its own sources, then its project's)
@@ -106,6 +109,10 @@ module Samagotchi
         return 0
       end
       return usage_error("unknown subcommand #{@sub}") unless SUBCOMMANDS.include?(@sub)
+      # Its own command (its own flags and usage): this machine's log.
+      if @sub == "report"
+        return ContextReportCommand.new(@argv[1..], stdout: @stdout, stderr: @stderr, state_dir: @state_dir).run
+      end
 
       parsed = parse_flags(FLAGS.fetch(@sub), @argv[1..])
       return parsed if parsed.is_a?(Integer)

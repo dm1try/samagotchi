@@ -66,7 +66,7 @@ RSpec.describe "chi --help" do
     out, _err, status = fork_chi("context", "--help")
 
     expect(status.exitstatus).to eq(0)
-    expect(out).to start_with("Usage: chi context <add|push|ls|show|refresh|rm|mute|unmute>")
+    expect(out).to start_with("Usage: chi context <add|push|ls|show|refresh|rm|mute|unmute|report>")
   end
 
   it "dispatches chi broadcast with its own help" do

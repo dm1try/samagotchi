@@ -42,7 +42,7 @@ RSpec.describe Samagotchi::ContextCommand do
   RemoteBackend.both(self) do
     it "prints its usage for no arguments and --help, and refuses an unknown subcommand" do
       expect(run).to eq(0)
-      expect(out.string).to include("chi context <add|push|ls|show|refresh|rm|mute|unmute>")
+      expect(out.string).to include("chi context <add|push|ls|show|refresh|rm|mute|unmute|report>")
       expect(run("bogus")).to eq(2)
       expect(err.string).to include("unknown subcommand bogus")
     end
