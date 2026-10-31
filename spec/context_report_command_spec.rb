@@ -48,6 +48,23 @@ RSpec.describe Samagotchi::ContextReportCommand do
     expect(out).not_to include("Fix")
   end
 
+  it "counts on mode's attaches, the judge's attaches you removed later, its cards and their answers" do
+    write(
+      line("proposed", "s1", "a"), judged("s1", "a", 0.9, would: "attach"), line("judge_attached", "s1", "a", p: 0.9),
+      line("declined", "s1", "a", by: "user"),
+      line("proposed", "s1", "b"), judged("s1", "b", 0.95), line("judge_attached", "s1", "b", p: 0.95),
+      line("proposed", "s1", "c"), judged("s1", "c", 0.7), line("carded", "s1", "c", p: 0.7),
+      line("attached", "s1", "c", by: "command"),
+      line("proposed", "s1", "d"), judged("s1", "d", 0.65), line("carded", "s1", "d", p: 0.65),
+      line("declined", "s1", "d", by: "command")
+    )
+
+    described_class.new([], stdout: stdout, stderr: stderr, state_dir: state_dir, now: now).run
+
+    expect(stdout.string).to include("on mode: judge attached 2 · you removed 1 of them later · carded 2 · " \
+                                     "/context attach 1 · /context decline 1 (the card's buttons)")
+  end
+
   it "takes --days, and refuses a bad one" do
     write(line("proposed", "s1", "a", at: "2026-10-20T10:00:00Z"))
     described_class.new(%w[--days 30], stdout: stdout, stderr: stderr, state_dir: state_dir, now: now).run

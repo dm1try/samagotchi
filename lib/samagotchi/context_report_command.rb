@@ -14,7 +14,9 @@ module Samagotchi
   # (ContextCandidatesLog), no prompts: what was proposed and mentioned,
   # the judge's asks, what it would attach at each threshold, and how that
   # agrees with what the user did with the same candidates (attached,
-  # mentioned, or declined). This machine only (SessionAccess::Contract).
+  # mentioned, or declined); on mode's attaches (and how many the user
+  # removed later), cards and /context attach|decline. This machine only
+  # (SessionAccess::Contract).
   class ContextReportCommand
     include CLI::Command
 
@@ -24,7 +26,8 @@ module Samagotchi
         proposed, mentioned, attached or declined by you, withdrawn; the judge's asks
         (judged, or no task stated yet); how many candidates it would attach at each
         threshold (each candidate's latest judged ask); and how that agrees with what
-        you did with them. Default: the last 14 days.
+        you did with them. On mode: the judge's attaches, how many you removed later,
+        its cards, and /context attach|decline. Default: the last 14 days.
     TEXT
 
     DEFAULT_DAYS = 14
@@ -71,7 +74,20 @@ module Samagotchi
         would: THRESHOLDS.to_h { |t| [t, latest.values.count { |p| p.to_f >= t }] },
         threshold: threshold, offer_threshold: offer_threshold,
         agreement: agreement(latest, choices, threshold)
-      }
+      }.merge(on_mode(records, by_candidate))
+    end
+
+    # On mode's own lines: the judge's attaches, those the user removed
+    # later (its false positives), the cards, and /context attach|decline.
+    def self.on_mode(records, by_candidate)
+      by_command = ->(kind) { records.count { |line| line["kind"] == kind && line["by"] == "command" } }
+      removed = by_candidate.values.count do |lines|
+        index = lines.index { |line| line["kind"] == "judge_attached" }
+        index && lines.drop(index + 1).any? { |line| %w[declined detached].include?(line["kind"]) && line["by"] != "command" }
+      end
+      { judge_attached: records.count { |line| line["kind"] == "judge_attached" }, judge_removed: removed,
+        carded: records.count { |line| line["kind"] == "carded" }, command_attached: by_command.call("attached"),
+        command_declined: by_command.call("declined") }
     end
 
     # What the user last did with a candidate: "attached" (attached by
@@ -123,6 +139,9 @@ module Samagotchi
       @stdout.puts("  candidates: proposed #{counts[:proposed]} · mentioned #{counts[:mentioned]} · " \
                    "attached by you #{counts[:attached]} · declined #{counts[:declined]} · " \
                    "detached #{counts[:detached]} · withdrawn #{counts[:withdrawn]}")
+      @stdout.puts("  on mode: judge attached #{counts[:judge_attached]} · you removed #{counts[:judge_removed]} of them " \
+                   "later · carded #{counts[:carded]} · /context attach #{counts[:command_attached]} · " \
+                   "/context decline #{counts[:command_declined]} (the card's buttons)")
       @stdout.puts("  judge: #{counts[:asks]} asks · judged #{counts[:stated]} · no task yet #{counts[:unstated]} · " \
                    "#{counts[:candidates_judged]} candidates judged")
       return if counts[:candidates_judged].zero?
