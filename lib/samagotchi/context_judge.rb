@@ -32,6 +32,9 @@ module Samagotchi
     PROMPT_MAX = 1500
     # Below this the user hasn't stated a task yet: the ask is deferred.
     TASK_MIN = 0.5
+    # A prompt of this many words or fewer is not the first substantive one
+    # while a longer one follows (#conversation).
+    SHORT_WORDS = 3
     ABOUT = "A user works with a coding agent session. The state names a candidate source of context and the " \
             "user's messages in the session so far (the first one with a task, and the latest). " \
             "Is this session's work about the candidate? Work on something else is not."
@@ -68,17 +71,24 @@ module Samagotchi
     # The bounded conversation the state carries: the first substantive
     # owner prompt and the latest (one when they are the same). +skip+
     # owner prompts at the start are not substantive (an earlier ask said
-    # no task was stated in them); a delegate child skips none (its first
-    # is the parent's request).
+    # no task was stated in them), nor is a short one (SHORT_WORDS words or
+    # fewer: "hi", "ok go") while a longer one follows, as the earlier
+    # prompts may have come before any candidate was there to ask about. A
+    # delegate child (+child+) keeps its first: the parent's request.
     # @param texts [Array<String>] the owner's prompts, oldest first
     # @return [Array<String>]
-    def conversation(texts, skip: 0)
+    def conversation(texts, skip: 0, child: false)
       texts = Array(texts).map(&:to_s).reject { |text| text.strip.empty? }
       return [] if texts.empty?
 
-      first = skip < texts.size ? skip : 0
+      first = child ? 0 : first_substantive(texts, skip)
       picked = first == texts.size - 1 ? [texts.last] : [texts[first], texts.last]
       picked.map { |text| bound(text) }
+    end
+
+    def first_substantive(texts, skip)
+      from = skip < texts.size ? skip : 0
+      (from...texts.size).find { |index| texts[index].split.size > SHORT_WORDS } || from
     end
 
     def bound(text)
@@ -132,7 +142,7 @@ module Samagotchi
       owner_prompts = texts.size
       return [] if owner_prompts.zero?
 
-      conversation = conversation(texts, skip: parent_attached ? 0 : skip(records))
+      conversation = conversation(texts, skip: skip(records), child: !parent_attached.nil?)
       rows.filter_map do |candidate, status|
         next unless status == "proposed"
         next unless due?(records, candidate.name, owner_prompts: owner_prompts,

@@ -47,6 +47,13 @@ RSpec.describe Samagotchi::ContextJudge do
       expect(described_class.conversation(["fix the bug"])).to eq(["fix the bug"])
     end
 
+    it "passes over short leading prompts while a longer one follows, never a delegate child's first" do
+      expect(described_class.conversation(["hi", "fix the login redirect", "and the test please"]))
+        .to eq(["fix the login redirect", "and the test please"])
+      expect(described_class.conversation(%w[hi ok])).to eq(%w[hi ok])
+      expect(described_class.conversation(["go", "fix the login redirect"], child: true)).to eq(["go", "fix the login redirect"])
+    end
+
     it "falls back to the first prompt when every prompt was skipped" do
       expect(described_class.conversation(%w[hi hello], skip: 5)).to eq(%w[hi hello])
     end
