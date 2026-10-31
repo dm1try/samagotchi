@@ -110,6 +110,70 @@ RSpec.describe Samagotchi::Plugin::Peer do
     expect(plugin.send(:completed_answer, cancelled)).to be_nil
   end
 
+  describe "#pair_again, a continue's link asking the peer to pair again (its quiet init task)" do
+    let(:previous) do
+      Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: tmpdir)
+                         .tap { |s| s.save(state_dir: state_dir) }
+    end
+    let(:previous_loc) { Samagotchi::ContextSources.session_location(previous.id, state_dir: state_dir) }
+    let(:session) do
+      Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: tmpdir,
+                                      continues: previous.id).tap { |s| s.save(state_dir: state_dir) }
+    end
+    let(:moved) do
+      "chi #{previous.id[0, 8]} · moved · continued as #{session.id}\nThis chi session was continued as " \
+        "#{session.id}. Pair with #{session.id} the way you paired with #{previous.id[0, 8]}, then answer there " \
+        "(chi context push echo-outbox #{session.id})."
+    end
+
+    def leave(name, hint)
+      previous_loc.add(Samagotchi::ContextSources::Source.new(name: name, cmd: nil, every_seconds: nil, why: "Echo",
+                                                              hint: "echo:first", scope: "session", added_by: "cli",
+                                                              created_at: Time.now.utc.iso8601))
+      previous_loc.record_text(name, Samagotchi::ContextSources::Fetched.new(text: "x", summary: nil, wake: false,
+                                                                             hint: hint))
+    end
+
+    def continue! = Samagotchi::ContextSources.move(from: previous.id, to: session.id, mode: :continue,
+                                                    state_dir: state_dir)
+
+    it "posts the moved message to the inbox left behind (its last pushed hint), once across a worker restart" do
+      leave("echo-inbox", "echo:again")
+      leave("echo-outbox", nil)
+      continue!
+
+      expect(plugin.pair_again(ctx)).to eq("asked Echo to pair again with #{session.id[0, 8]}")
+      expect(plugin.posted).to eq([["echo:again", moved]])
+
+      restarted = peer_class.new({})
+      expect(restarted.pair_again(ctx)).to eq("asked already")
+      expect(restarted.posted).to be_nil
+    end
+
+    it "posts nothing on a plain start, or when only the outbox stayed" do
+      plain = Samagotchi::Plugin::Context.new(bundle: "echo-peer", label: "l", settings: {}, env: { "XDG_STATE_HOME" => state_home },
+                                              host: Samagotchi::Plugin::Host.new(session_id: -> { previous.id },
+                                                                                 cwd: -> { tmpdir },
+                                                                                 state_dir: -> { state_dir }))
+      expect(plugin.pair_again(plain)).to eq("not a continue")
+
+      leave("echo-outbox", nil)
+      continue!
+      expect(plugin.pair_again(ctx)).to eq("no echo-inbox left behind")
+      expect(plugin.posted).to be_nil
+    end
+
+    it "logs a post that fails and drops it: no raise, no retry" do
+      leave("echo-inbox", "elsewhere")
+      continue!
+      expect(ctx.log).to receive(:warn).with("moved_not_posted", error: "bad hint elsewhere")
+
+      expect(plugin.pair_again(ctx)).to eq("couldn't ask Echo to pair again: bad hint elsewhere")
+      expect(plugin.pair_again(ctx)).to eq("asked already")
+      expect(plugin.posted).to be_nil
+    end
+  end
+
   it "names the hook a subclass left out" do
     pair
     peer_class.send(:remove_method, :post)

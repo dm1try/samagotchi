@@ -40,6 +40,12 @@ module Samagotchi
     # quote. Such a text is titled by its first quoted line, not the quote's
     # `From your thinking:` label.
     #
+    # A continue leaves the pairing with the previous link (its inbox and
+    # outbox are pushed sources: ContextSources.move). The new link's quiet
+    # init task (#pair_again) posts the `moved` message to the inbox left
+    # behind, once, so the peer pairs again with the new id; its chi-peer
+    # skill knows how it paired.
+    #
     # A subclass (the bundle's Plugin) sets the strings, as constants:
     # INBOX, OUTBOX ("<peer>-inbox", "-outbox"), BUNDLE, NAME (the peer, as
     # the model and user call it: "Claude"), APP (its product: "Claude
@@ -62,6 +68,8 @@ module Samagotchi
       PAIR_PLACEHOLDER = "__CHI_PEER_PAIR__"
       PAYLOADS_PLACEHOLDER = "__CHI_PEER_PAYLOADS__"
       DIFF_LINES = 20
+      # Under the session's data dir: the moved message went (or was tried).
+      MOVED_MARKER = "moved-posted"
       # The label line a web quote starts with (annotations.js sourceLabel).
       QUOTE_LABEL = /\AFrom (?:your thinking|your earlier step|the .+ call|my earlier message):\z/
 
@@ -90,6 +98,7 @@ module Samagotchi
           run_command(args.to_s.strip, ctx)
         end
         chi.annotation "Confirm with #{peer::NAME}", command: "#{peer::COMMAND} validate"
+        chi.init("Asking #{peer::NAME} to pair again", quiet: true) { |ctx| pair_again(ctx) }
         # The outbox source is the peer's answers: its own wake budget and
         # line (context.peer_turns).
         chi.peer_source peer::OUTBOX, label: peer::NAME
@@ -130,7 +139,51 @@ module Samagotchi
         "sent to #{self.class::NAME}: #{kind} · #{title}#{" (the text in #{where})" unless where == "inline"}"
       end
 
+      # A continue's new link whose previous link kept this peer's INBOX
+      # (ctx.context.left_behind): posts the moved message to that inbox's
+      # hint, once (a marker under the session's data dir: a worker restart
+      # doesn't post again). A post that fails is logged and dropped: no
+      # retry, and the peer's next push to the old id is refused with the
+      # new one (its skill pairs again then).
+      # @return [String] what it did (the quiet init task's summary)
+      def pair_again(ctx)
+        peer = self.class
+        previous = ctx.continues or return "not a continue"
+        id = ctx.session_id or return "no session yet"
+        left = ctx.context.left_behind.find { |row| row.name == peer::INBOX }
+        hint = left&.hint.to_s.strip
+        return "no #{peer::INBOX} left behind" if hint.empty?
+        return "asked already" unless claim_moved(ctx, id)
+
+        check_hint!(hint)
+        post(hint, moved_message(previous, id))
+        "asked #{peer::NAME} to pair again with #{id[0, 8]}"
+      rescue SendError, SystemCallError, ArgumentError => e
+        ctx.log.warn("moved_not_posted", error: e.message)
+        "couldn't ask #{peer::NAME} to pair again: #{e.message}"
+      end
+
+      # What the peer gets when +previous+ was continued as +id+: the usual
+      # header, kind moved, and how to go on. Not a literal pair command:
+      # the skill knows how its peer paired (a remote, an ssh socket).
+      def moved_message(previous, id)
+        short = previous.to_s[0, 8]
+        "chi #{short} · moved · continued as #{id}\n" \
+          "This chi session was continued as #{id}. Pair with #{id} the way you paired with #{short}, then " \
+          "answer there (chi context push #{self.class::OUTBOX} #{id})."
+      end
+
       private
+
+      # Takes the moved marker for session +id+; false when it is there.
+      def claim_moved(ctx, id)
+        File.open(File.join(session_dir(ctx, id), MOVED_MARKER), File::WRONLY | File::CREAT | File::EXCL, 0o600) do |file|
+          file.write("#{Time.now.utc.iso8601}\n")
+        end
+        true
+      rescue Errno::EEXIST
+        false
+      end
 
       # The transport: sends +text+ to the peer at +hint+ (the inbox's hint).
       # @raise [SendError]

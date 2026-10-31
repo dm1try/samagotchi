@@ -69,7 +69,11 @@ module Samagotchi
           'require "samagotchi/guardrails/context"' => "for GitInfo: a ctx helper for the checkout's files could replace it",
           "Samagotchi::Guardrails::GitInfo.new" => "the work tree's top for the AGENTS.md chain (ctx.repo_root covers the top only)"
         },
-        "claude-peer" => PEER_SPEC,
+        # Both bundles' goldens live in claude-peer's spec/.
+        "claude-peer" => PEER_SPEC.merge(
+          "Samagotchi::ContextSources.move" => "spec: a continue leaving the pairing behind, as SessionContinue " \
+                                               "moves it: needs a kit helper that continues a session"
+        ),
         "codex-peer" => PEER_SPEC,
         "coordinator" => {
           "Samagotchi::MemoryPaths.scope_dir" => "where the coordinator's memories live: needs a ctx memory-path API",

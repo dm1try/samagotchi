@@ -10,7 +10,7 @@ require "samagotchi/context_sources"
 # show the model or the user: what register declares (the tool description is
 # in the system prompt), each send's result and message, every send error,
 # the /claude and /codex replies, the status and skill cards and the skill
-# they install. They pin the two bundles' shared Samagotchi::Plugin::Peer base
+# they install, and the moved message a continue's link posts. They pin the two bundles' shared Samagotchi::Plugin::Peer base
 # (docs/plugins.md) to what the bundles said before it.
 #
 # Paths, the session id and payload times are written as <TMP>, <ID>, <SHORT>
@@ -31,6 +31,7 @@ RSpec.describe "Peer bundle goldens", :bundle do
       when :annotation then { annotation: name, **options }
       when :peer_source then { peer_source: name, label: options[:label] }
       when :on then { hook: name, priority: options.fetch(:priority, 100) }
+      when :init then { init: name, **options.except(:block) }
       else raise "#{decl.name}: not in the goldens yet"
       end
     end
@@ -181,6 +182,25 @@ RSpec.describe "Peer bundle goldens", :bundle do
     FileUtils.rm_rf(File.dirname(target))
   end
 
+  # The previous session (<ID>) paired, then continued as a link (<NEW>):
+  # the link's init task, run twice (a worker restart), with what it posted.
+  def continued(&)
+    pair
+    outbox(nil)
+    link = Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: tmpdir,
+                                           continues: session.id).tap { |s| s.save(state_dir: state_dir) }
+    Samagotchi::ContextSources.move(from: session.id, to: link.id, mode: :continue, state_dir: state_dir)
+    bundle.set(session_id: link.id)
+    results = yield(-> { Array.new(2) { bundle.run_inits } })
+    out.replace(out.gsub(link.id, "<NEW>").gsub(link.id[0, 8], "<NEWSHORT>"))
+    section("init results", results.inspect.gsub(link.id[0, 8], "<NEWSHORT>"))
+  end
+
+  def expect_skill_rules
+    skill = File.read(File.join(shipped, "scripts", "chi-peer-SKILL.md"))
+    expect(skill).to include("**A `moved` message**", "**A push refused** with `<old> was continued as <new id>`")
+  end
+
   def skill_cards
     run_command("not installed", "install-skill")
     run_command("install", "install-skill --yes")
@@ -270,6 +290,17 @@ RSpec.describe "Peer bundle goldens", :bundle do
       skill_cards
       expect_golden("skill")
     end
+
+    it "posts the moved message once to the inbox a continue left behind; the skill says what to do with it" do
+      continued do |run|
+        result = nil
+        lines = listen { result = run.call }
+        lines.each { |line| section("posted", line) }
+        result
+      end
+      expect_golden("moved")
+      expect_skill_rules
+    end
   end
 
   context "with codex-peer" do
@@ -348,6 +379,16 @@ RSpec.describe "Peer bundle goldens", :bundle do
     it "keeps the skill card in each state, and the skill" do
       skill_cards
       expect_golden("skill")
+    end
+
+    it "posts the moved message once to the inbox a continue left behind; the skill says what to do with it" do
+      continued do |run|
+        result = run.call
+        section("queued", File.read(args_file).split("\0").inspect)
+        result
+      end
+      expect_golden("moved")
+      expect_skill_rules
     end
   end
 end

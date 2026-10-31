@@ -65,6 +65,7 @@ permissions.
 - **context**: take it in for your own work. No reply, unless something in it
   contradicts what you know: then reply with that.
 - **question**: answer it briefly.
+- **moved**: chi continued the session (below).
 
 Tell the user in one line what came in and what you answered.
 
@@ -88,6 +89,19 @@ EOF
   to close the round.
 - Never answer a chi message with `chi send`: it counts as the user typing,
   outside the round's limit. Use it only when the user asks you to.
+
+## chi continued the session
+
+chi can continue its session as a new one, with a new id. Your pairing stays
+with the old id, so pair again:
+
+- **A `moved` message** (`chi <old> · moved · continued as <new id>`): run
+  the pair command again with the new id, the same way you paired before
+  (the same `CHI_REMOTE`, the same `--inbox-socket`). From then on answer only
+  the new id; an answer you are still writing goes there too. Don't reply to
+  the message itself.
+- **A push refused** with `<old> was continued as <new id>`: pair again with
+  the new id the same way, then push the answer again, to the new id.
 
 ## chi on another machine over SSH
 

@@ -13,7 +13,8 @@ RSpec.describe "chi.peer_source" do
   let(:peer_sources) { Samagotchi::PeerSources.new }
   let(:registries) do
     Samagotchi::Plugin::Registries.new(commands: Samagotchi::Commands::Registry.new, tools: Samagotchi::Tools::Registry.new,
-                                       hooks: Samagotchi::Hooks::Registry.new, peer_sources: peer_sources)
+                                       hooks: Samagotchi::Hooks::Registry.new, peer_sources: peer_sources,
+                                       init: ->(*, **) {})
   end
 
   def api(bundle = "mine") = Samagotchi::Plugin::Api.new(bundle: bundle, label: "plugin.rb (bundle #{bundle})", registries: registries)

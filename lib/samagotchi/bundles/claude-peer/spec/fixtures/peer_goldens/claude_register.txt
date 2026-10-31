@@ -38,6 +38,11 @@
   "annotation": "Confirm with Claude",
   "command": "/claude validate"
 }
+=== init
+{
+  "init": "Asking Claude to pair again",
+  "quiet": true
+}
 === peer_source
 {
   "peer_source": "claude-outbox",

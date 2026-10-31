@@ -38,6 +38,11 @@
   "annotation": "Confirm with Codex",
   "command": "/codex validate"
 }
+=== init
+{
+  "init": "Asking Codex to pair again",
+  "quiet": true
+}
 === peer_source
 {
   "peer_source": "codex-outbox",
