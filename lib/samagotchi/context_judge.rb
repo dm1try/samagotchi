@@ -22,8 +22,8 @@ module Samagotchi
   # next owner prompt. After a judged ask, one re-ask once
   # context.candidates.reask_after_turns more owner prompts came, then
   # done (#due?). What it asked and answered is a `judged` line in
-  # ContextCandidatesLog; in this slice nothing is attached (on mode is
-  # audit until the attaching comes).
+  # ContextCandidatesLog. In on mode ContextCandidateChoice acts on it
+  # (attach, card, or nothing); audit only logs.
   module ContextJudge
     MODES = %w[off audit on].freeze
     ABOUT_ID = "about"

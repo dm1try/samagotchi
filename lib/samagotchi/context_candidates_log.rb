@@ -16,16 +16,22 @@ module Samagotchi
   # - proposed: a plugin's ctx.context.propose recorded it (title, by)
   # - mentioned: an owner prompt named it and it was attached (mention)
   # - judged: System 1's ask (ContextJudge.ask: p, task_p, stated, would, …)
-  # - attached / declined / detached: the derived status changed since the
-  #   last line said otherwise, seen at an owner turn's start (#look): the
-  #   user's own doing (chi context add, chi web's chip ×, chi context rm)
+  # - judge_attached: on mode attached it (p ≥ threshold; p)
+  # - carded: on mode showed its card (the middle band; p): once per
+  #   candidate, read back by ContextCandidateChoice.carded?
+  # - attached / declined with by "command": /context attach|decline NAME
+  #   (the card's buttons)
+  # - attached / declined / detached with by "user": the derived status
+  #   changed since the last line said otherwise, seen at an owner turn's
+  #   start (#look): the user's own doing (chi context add, chi web's chip
+  #   ×, chi context rm; a removed source is declined)
   # - withdrawn: the plugin took the candidate back
   module ContextCandidatesLog
     FILE = "context_candidates.jsonl"
     # What a logged prompt keeps of its text.
     PROMPT_MAX = 200
     # The status each kind leaves a candidate in (#statuses).
-    STATUS_OF = { "proposed" => "proposed", "mentioned" => "attached", "attached" => "attached",
+    STATUS_OF = { "proposed" => "proposed", "mentioned" => "attached", "judge_attached" => "attached", "attached" => "attached",
                   "declined" => "declined", "detached" => "proposed", "withdrawn" => nil }.freeze
 
     module_function

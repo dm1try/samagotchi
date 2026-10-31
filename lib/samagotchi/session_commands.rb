@@ -8,6 +8,7 @@ require_relative "turn_flow"
 require_relative "cache_confirm"
 require_relative "tools/execute"
 require_relative "tools/builtins"
+require_relative "context_candidate_choice"
 require_relative "context_candidates"
 require_relative "tools/context_read"
 require_relative "tools/peers"
@@ -99,12 +100,12 @@ module Samagotchi
                         mid_turn: show_mid_turn(GUARDRAILS_COMMAND)) do |text|
         guardrails(text.delete_prefix(GUARDRAILS_COMMAND).strip)
       end
-      # It only reads the store: mid-turn too.
-      registry.register(CONTEXT_COMMAND, "list the attached context and its candidates (chi context)", anytime: true,
-                                                                                                      match: ->(text) { text.match?(%r{\A/context(?:\s+.*)?\z}i) }) do |text|
-        next reply("usage: #{CONTEXT_COMMAND}", status: :error) unless text.strip.casecmp?(CONTEXT_COMMAND)
-
-        reply(context_listing)
+      # The list only reads the store; attach and decline only write it (the
+      # note waits for the next between-turn delivery): mid-turn too.
+      registry.register(CONTEXT_COMMAND, "list the attached context and its candidates (chi context); attach NAME, " \
+                                         "decline NAME: a candidate", anytime: true,
+                                                                     match: ->(text) { text.match?(%r{\A/context(?:\s+.*)?\z}i) }) do |text|
+        context_command(text.strip.sub(%r{\A/context}i, "").strip)
       end
       registry.register(MODEL_COMMAND, "show or switch the model", mid_turn: show_mid_turn(MODEL_COMMAND),
                         match: ->(text) { text.match?(%r{\A/model(?:\s+.*)?\z}) }) { |text| model(text) }
@@ -431,6 +432,23 @@ module Samagotchi
 
     # /guardrails: the rules (by source), what failed to load, the stored
     # approvals, numbered; /guardrails revoke N removes approval N.
+    # /context, /context attach NAME, /context decline NAME
+    # (ContextCandidateChoice.choose: the owner's own; a participant can't
+    # send a / line, and a review session refuses them).
+    def context_command(args)
+      return reply(context_listing) if args.empty?
+
+      action, name, extra = args.split(/\s+/, 3)
+      action = action.downcase.to_sym
+      unless %i[attach decline].include?(action) && name && extra.nil?
+        return reply(ContextCandidateChoice::USAGE, status: :error)
+      end
+
+      status, output = ContextCandidateChoice.choose(action, name, session: @engine.session, state_dir: @engine.peer_state_dir,
+                                                                   show_card: ->(**card) { @engine.show_card(**card) })
+      reply(output, status: status)
+    end
+
     # /context: what context_read without a name gives the model.
     def context_listing
       session = @engine.session

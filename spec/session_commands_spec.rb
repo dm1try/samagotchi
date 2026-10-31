@@ -914,15 +914,36 @@ RSpec.describe Samagotchi::SessionCommands do
       expect(engine.command_registry.lookup("/context").anytime).to be(true)
     end
 
-    it "lists the session's candidates after it, and answers an argument with its usage" do
+    it "lists the session's candidates after it, and answers another argument with its usage" do
       own = Samagotchi::ContextSources.session_location(engine.session.id, state_dir: state_dir)
       own.add_candidate(Samagotchi::ContextSources::Candidate.new(name: "pr-412", url: nil, cmd: "printf x", title: "#412 Fix",
                                                                   describe: nil, mentions: [], proposed_by: nil, at: nil))
 
       expect(commands.run("/context").output).to eq("No attached context in this session.\n\n" \
-                                                    "Candidates (attached when a prompt of yours mentions one):\n" \
+                                                    "Candidates (attached when a prompt of yours mentions one, or by " \
+                                                    "/context attach NAME):\n" \
                                                     "- pr-412 · proposed · #412 Fix")
-      expect(commands.run("/context attach pr-412")).to have_attributes(status: :error, output: "usage: /context")
+      usage = "usage: /context [attach NAME | decline NAME]"
+      expect(commands.run("/context pr-412")).to have_attributes(status: :error, output: usage)
+      expect(commands.run("/context attach")).to have_attributes(status: :error, output: usage)
+    end
+
+    it "attaches or declines a candidate (/context attach|decline NAME), closing its card" do
+      engine.session.save(state_dir: state_dir)
+      own = Samagotchi::ContextSources.session_location(engine.session.id, state_dir: state_dir)
+      %w[pr-412 pr-500].each do |name|
+        own.add_candidate(Samagotchi::ContextSources::Candidate.new(name: name, url: nil, cmd: "printf x", title: "##{name}",
+                                                                    describe: nil, mentions: [], proposed_by: nil, at: nil))
+      end
+      allow(engine).to receive(:show_card).and_call_original
+
+      expect(commands.run("/context attach pr-412")).to have_attributes(status: :ok, output: "attached pr-412: its text comes with your next message")
+      expect(commands.run("/context decline pr-500")).to have_attributes(status: :ok, output: "declined pr-500: not proposed again in this session")
+      expect(commands.run("/context attach nope")).to have_attributes(status: :error, output: "no candidate nope in this session (see /context)")
+
+      expect(own.source("pr-412").why).to eq("you attached it")
+      expect(own.declined?("pr-500")).to be(true)
+      expect(engine).to have_received(:show_card).with(hash_including(id: "context-candidate-pr-412", actions: []))
     end
   end
 

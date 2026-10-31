@@ -168,6 +168,6 @@ RSpec.describe Samagotchi::ContextCandidates do
     own.add_candidate(candidate)
 
     expect(described_class.listing(session.id, project_root: nil, state_dir: state_dir))
-      .to eq("Candidates (attached when a prompt of yours mentions one):\n- pr-412 · proposed · #412 Fix login")
+      .to eq("Candidates (attached when a prompt of yours mentions one, or by /context attach NAME):\n- pr-412 · proposed · #412 Fix login")
   end
 end

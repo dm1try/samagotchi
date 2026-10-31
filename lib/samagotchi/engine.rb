@@ -48,6 +48,7 @@ require_relative "toolkit_binding"
 require_relative "participant_mode"
 require_relative "context_candidates"
 require_relative "context_candidates_log"
+require_relative "context_candidate_choice"
 require_relative "context_judge"
 require_relative "owner_prompt"
 require_relative "side_judgments"
@@ -169,7 +170,6 @@ module Samagotchi
       @chat_backend_mutex = Mutex.new
       @side_judgments = SideJudgments.new
       @context_judge_after_turn = nil
-      @context_judge_on_noted = false
       @toolkit_warmup_thread = nil
       @host_registry = host_registry || HostRegistry.new
       # A model given here (a worker's session model) is the one it runs,
@@ -2443,8 +2443,9 @@ module Samagotchi
       # On mode: the suggested kit, before anything is declared (a Stop
       # during the wait is caught by the check below).
       settle_toolkit_suggestion(turn, toolkit_suggestion)
-      # The candidate judge (audit): its asks run beside the turn on a
-      # remote System 1 host, after it on the model's own local one.
+      # The candidate judge: its asks run beside the turn on a remote
+      # System 1 host, after it on the model's own local one; on mode's
+      # attaches reach the model at the next between-turn delivery.
       start_context_judge(turn)
       apply_toolkit!(session, turn.on_event)
       refresh_participants!(session)
@@ -3260,7 +3261,6 @@ module Samagotchi
       settings = ContextJudge::Settings.from_config
       return if settings.mode == "off"
 
-      note_context_judge_on(settings.mode)
       jobs = ContextJudge.jobs(rows, records, session_id: session.id, texts: texts, settings: settings, phase: phase,
                                               parent_attached: context_parent_attached(session))
       return if jobs.empty?
@@ -3268,7 +3268,8 @@ module Samagotchi
       client = SystemOne::Client.from_config(host_registry: @host_registry, mode: "on", tag: :context)
       return unless client
 
-      ask = -> { start_context_asks(client, jobs, log, settings) }
+      choice = context_choice(session, log, settings)
+      ask = -> { start_context_asks(client, jobs, log, settings, choice) }
       if turn_running? && system_one_shares_local_host?(client.host)
         Log.info(:context, "context_judge_after_turn", session_id: session.id, host: client.host)
         @context_judge_after_turn = ask
@@ -3281,17 +3282,40 @@ module Samagotchi
     private :context_judge_pass
 
     # @return [Thread, nil] the asks' thread, nil when none started
-    def start_context_asks(client, jobs, log, settings)
+    def start_context_asks(client, jobs, log, settings, choice)
       if @side_judgments.in_flight?(:context)
         Log.info(:context, "context_judge_in_flight_skipped", session_id: jobs.first.session_id)
         return nil
       end
 
       @side_judgments.start(:context, warn: ContextJudge.method(:warn)) do
-        jobs.each { |job| ContextJudge.ask(client: client, job: job, log: log, settings: settings) }
+        jobs.each { |job| choice.call(job, ContextJudge.ask(client: client, job: job, log: log, settings: settings)) }
       end
     end
     private :start_context_asks
+
+    # What an answer does on the asks' thread (ContextCandidateChoice
+    # #after_judged: on mode attaches or cards; audit nothing). Taken on
+    # the caller's thread. The attach only writes the session's folder: its
+    # note comes with the next between-turn delivery, never into a running
+    # turn. A card shows only while this Engine is still on that session.
+    # @return [#call] (job, fields)
+    def context_choice(session, log, settings)
+      session_id = session.id
+      project_root = session.project_root
+      state_dir = session_state_dir
+      show = lambda do |**card|
+        current = @session
+        next nil unless current.nil? || current.id == session_id
+
+        show_card(**card)
+      end
+      lambda do |job, fields|
+        ContextCandidateChoice.after_judged(job: job, fields: fields, settings: settings, project_root: project_root,
+                                            state_dir: state_dir, log: log, show_card: show)
+      end
+    end
+    private :context_choice
 
     # The asks a shared local host kept for the turn's end: a completed
     # turn starts them before its warm-up (which waits for them,
@@ -3307,16 +3331,6 @@ module Samagotchi
       nil
     end
     private :run_context_judge_after_turn
-
-    # In this slice on mode attaches nothing yet: it asks and logs as audit
-    # does, and says so once.
-    def note_context_judge_on(mode)
-      return if mode != "on" || @context_judge_on_noted
-
-      @context_judge_on_noted = true
-      Log.info(:context, "context_judge_on_is_audit", reason: "on mode's attaching isn't built yet: asks and logs only")
-    end
-    private :note_context_judge_on
 
     # A delegate child's parent's sources, by title (else name): the
     # judge's started_from. nil for any other session (a chi send --new

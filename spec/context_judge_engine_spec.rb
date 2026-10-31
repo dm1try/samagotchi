@@ -96,7 +96,7 @@ RSpec.describe Samagotchi::Engine do
     end
   end
 
-  it "asks once per proposed candidate at an owner turn's start, logs it and attaches nothing" do
+  it "asks once per proposed candidate at an owner turn's start, logs it and in audit attaches nothing" do
     engine = build_engine
     session = new_session
     propose(session, "pr-412")
@@ -170,6 +170,81 @@ RSpec.describe Samagotchi::Engine do
     join!(engine.instance_variable_get(:@side_judgments).thread(:context), "the late ask")
 
     expect(lines("judged").first).to include("phase" => "late", "owner_prompts" => 1)
+  end
+
+  context "with mode on" do
+    let(:mode) { "on" }
+
+    def own(session) = Samagotchi::ContextSources.session_location(session.id, state_dir: state_dir)
+
+    it "attaches a candidate the judge puts at or over the threshold, adding nothing to the conversation itself" do
+      engine = build_engine
+      allow(engine).to receive(:show_card).and_call_original
+      session = new_session
+      propose(session, "pr-412")
+      answers.push([0.9, 0.9])
+      before = session.messages.dup
+
+      judge(engine, session, "Fix the login redirect")
+
+      expect(own(session).source("pr-412").why).to eq("it looks related to your task")
+      expect(session.messages).to eq(before)
+      expect(engine).not_to have_received(:show_card)
+      expect(lines.map { |line| line["kind"] }).to eq(%w[judged judge_attached])
+    end
+
+    it "shows the middle band's card once, also after a restart (a new Engine)" do
+      engine = build_engine
+      allow(engine).to receive(:show_card).and_call_original
+      session = new_session
+      propose(session, "pr-412")
+      answers.push([0.7, 0.9], [0.7, 0.9])
+
+      judge(engine, session, "Fix the login redirect")
+      expect(engine).to have_received(:show_card).once.with(hash_including(id: "context-candidate-pr-412"))
+      engine.shutdown
+
+      restarted = build_engine
+      allow(restarted).to receive(:show_card).and_call_original
+      ["Fix the login redirect", "a", "b"].each { |text| owner_prompt(session, text) }
+      judge(restarted, session, "and c")
+
+      expect(lines("judged").size).to eq(2)
+      expect(restarted).not_to have_received(:show_card)
+      expect(lines("carded").size).to eq(1)
+      expect(own(session).sources).to eq([])
+    end
+
+    it "leaves a candidate under the offer threshold proposed" do
+      engine = build_engine
+      allow(engine).to receive(:show_card).and_call_original
+      session = new_session
+      propose(session, "pr-412")
+      answers.push([0.3, 0.9])
+
+      judge(engine, session, "Fix the login redirect")
+
+      expect(own(session).sources).to eq([])
+      expect(engine).not_to have_received(:show_card)
+      expect(Samagotchi::ContextCandidates.with_status(session.id, project_root: session.project_root, state_dir: state_dir)
+        .map(&:last)).to eq(["proposed"])
+    end
+
+    it "never judges again a judge-attached source the user removed: it is declined" do
+      engine = build_engine
+      session = new_session
+      propose(session, "pr-412")
+      answers.push([0.9, 0.9])
+      judge(engine, session, "Fix the login redirect")
+      pop!(asked, "the first ask")
+
+      own(session).remove("pr-412")
+      ["Fix the login redirect", "a", "b"].each { |text| owner_prompt(session, text) }
+      judge(engine, session, "and c")
+
+      expect(asked).to be_empty
+      expect(lines.map { |line| line["kind"] }).to eq(%w[judged judge_attached declined])
+    end
   end
 
   it "gives a delegate child its parent's attached sources as started_from" do

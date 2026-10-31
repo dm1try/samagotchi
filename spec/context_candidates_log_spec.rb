@@ -19,9 +19,11 @@ RSpec.describe Samagotchi::ContextCandidatesLog do
     records = [{ "kind" => "proposed", "name" => "a" }, { "kind" => "mentioned", "name" => "a" },
                { "kind" => "proposed", "name" => "b" }, { "kind" => "judged", "name" => "b" },
                { "kind" => "declined", "name" => "b" }, { "kind" => "proposed", "name" => "c" },
-               { "kind" => "withdrawn", "name" => "c" }]
+               { "kind" => "withdrawn", "name" => "c" }, { "kind" => "proposed", "name" => "d" },
+               { "kind" => "carded", "name" => "d" }, { "kind" => "proposed", "name" => "e" },
+               { "kind" => "judge_attached", "name" => "e" }]
 
-    expect(described_class.statuses(records)).to eq("a" => "attached", "b" => "declined")
+    expect(described_class.statuses(records)).to eq("a" => "attached", "b" => "declined", "d" => "proposed", "e" => "attached")
   end
 
   it "logs what the user changed since the last line: attached, declined, detached" do

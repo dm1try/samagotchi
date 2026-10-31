@@ -70,7 +70,7 @@ module Samagotchi
       return nil if rows.empty?
 
       lines = rows.map { |candidate, state| "- #{candidate.name} · #{state} · #{candidate.title}" }
-      "Candidates (attached when a prompt of yours mentions one):\n#{lines.join("\n")}"
+      "Candidates (attached when a prompt of yours mentions one, or by /context attach NAME):\n#{lines.join("\n")}"
     end
 
     # The words in +text+ that name +candidate+: its first mention found,
