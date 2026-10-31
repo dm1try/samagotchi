@@ -22,13 +22,13 @@ RSpec.describe Samagotchi::MemoryBundle::Status do
 
   it "lists each stored need with found: from the current PATH" do
     Samagotchi::MemoryBundle::Installer.new(source: fixture, name: "sample-needs", scope: "system").run
-    needs = described_class.bundle_status("sample-needs")[:needs]
+    needs = described_class.bundle_status("sample-needs").needs
     expect(needs.map { |n| [n[:command], n[:found]] }).to eq([["chi-surely-missing-cmd", false], ["sh", true]])
   end
 
   it "finds each installed file's index line (lines name the entry without .md)" do
     Samagotchi::MemoryBundle::Installer.new(source: fixture, name: "sample-needs", scope: "system").run
-    files = described_class.bundle_status("sample-needs")[:files]
+    files = described_class.bundle_status("sample-needs").files
     expect(files).not_to be_empty
     expect(files.transform_values { |f| f[:index_present] }).to all(satisfy { |_k, v| v == true })
   end
@@ -42,16 +42,17 @@ RSpec.describe Samagotchi::MemoryBundle::Status do
 
     st = described_class.bundle_status("sample-needs")
 
-    expect(st).to include(scope: "team", scope_error: "unknown scope: team", target_dir: nil)
-    expect(st[:files]).not_to be_empty
-    expect(st[:files].values).to all(include(unchecked: true, missing: false, modified: false))
+    expect([st.scope, st.scope_error, st.target_dir]).to eq(["team", "unknown scope: team", nil])
+    expect(st.files).not_to be_empty
+    expect(st.files.values).to all(include(unchecked: true, missing: false, modified: false))
     expect(File).not_to have_received(:read).with(start_with(system_dir + "/").and(end_with(".md")))
     expect(Samagotchi::MemoryBundle::IndexUpdater).not_to have_received(:index_path_for)
   end
 
   it "has no scope_error for a scope it knows" do
     Samagotchi::MemoryBundle::Installer.new(source: fixture, name: "sample-needs", scope: "system").run
-    expect(described_class.bundle_status("sample-needs")).to include(scope: "system", scope_error: nil, target_dir: system_dir)
+    st = described_class.bundle_status("sample-needs")
+    expect([st.scope, st.scope_error, st.target_dir]).to eq(["system", nil, system_dir])
   end
 
   it "reads a legacy record (no scope, hooks, plugin or needs; a file entry that isn't an object) as a system bundle" do
@@ -67,10 +68,10 @@ RSpec.describe Samagotchi::MemoryBundle::Status do
 
     st = described_class.bundle_status("legacy")
 
-    expect(st).to include(scope: "system", scope_error: nil, target_dir: system_dir, plugin: nil,
-                          hooks_requires_failure: nil, needs: [])
-    expect(st[:files]["old.md"]).to include(modified: false, missing: false, conflict: false)
-    expect(st[:files]["odd.md"]).to include(stored_checksum: nil, missing: true)
+    expect([st.scope, st.scope_error, st.target_dir, st.plugin, st.hooks_requires_failure, st.needs])
+      .to eq(["system", nil, system_dir, nil, nil, []])
+    expect(st.files["old.md"]).to include(modified: false, missing: false, conflict: false)
+    expect(st.files["odd.md"]).to include(stored_checksum: nil, missing: true)
   end
 
   it "has no needs for a bundle that declares none" do
@@ -95,7 +96,7 @@ RSpec.describe Samagotchi::MemoryBundle::Status do
                                                          "files" => files.keys.to_h { |f| [f, "sha256:x"] }))
     Samagotchi::MemoryBundle::Installer.new(source: src, name: "ovl", scope: "system", strict: false).run
 
-    files = described_class.bundle_status("ovl")[:files]
+    files = described_class.bundle_status("ovl").files
     expect(files["tips.qwen3.md"]).to include(overlay: true, index_present: nil)
     expect(files["tips.md"]).to include(overlay: false, index_present: true)
     expect(files["notes.v2.md"][:overlay]).to be(true) # no base anywhere: an overlay, as the installer took it

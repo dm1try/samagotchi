@@ -244,7 +244,7 @@ RSpec.describe "Bundle plugin: manifest, install, provenance, status, build" do
       expect(Samagotchi::Plugin::Loader.unloadable_reason(provenance.plugin_path, provenance.record)).to be_nil
       expect(data[:files][:"identity.md"]).to include(conflict: true)
       expect(File.read(provenance.base_path("identity.md"))).to eq("# Id\n")
-      expect(Samagotchi::MemoryBundle::Status.bundle_status("plug")[:files]["identity.md"]).to include(conflict: true)
+      expect(Samagotchi::MemoryBundle::Status.bundle_status("plug").files["identity.md"]).to include(conflict: true)
     end
 
     it "lists it among the installed bundles with a plugin" do
@@ -264,35 +264,35 @@ RSpec.describe "Bundle plugin: manifest, install, provenance, status, build" do
   describe "status" do
     it "says ok, modified or missing" do
       install(write_source)
-      expect(Samagotchi::MemoryBundle::Status.bundle_status("plug")[:plugin]).to include(file: "plugin.rb", state: "ok")
+      expect(Samagotchi::MemoryBundle::Status.bundle_status("plug").plugin).to include(file: "plugin.rb", state: "ok")
       File.write(provenance.plugin_path, "# edited\n")
-      expect(Samagotchi::MemoryBundle::Status.bundle_status("plug")[:plugin][:state]).to eq("modified")
+      expect(Samagotchi::MemoryBundle::Status.bundle_status("plug").plugin[:state]).to eq("modified")
       File.delete(provenance.plugin_path)
-      expect(Samagotchi::MemoryBundle::Status.bundle_status("plug")[:plugin][:state]).to eq("missing")
+      expect(Samagotchi::MemoryBundle::Status.bundle_status("plug").plugin[:state]).to eq("missing")
     end
 
     it "carries a requires_chi failure" do
       install(write_source(requires_chi: ">= 99.0"))
-      expect(Samagotchi::MemoryBundle::Status.bundle_status("plug")[:plugin][:requires_failure]).to match(/requires chi >= 99.0/)
+      expect(Samagotchi::MemoryBundle::Status.bundle_status("plug").plugin[:requires_failure]).to match(/requires chi >= 99.0/)
     end
 
     it "carries a requires_chi failure for a hook-only bundle" do
       install(write_source(plugin: nil, hook: true, requires_chi: ">= 99.0"))
       st = Samagotchi::MemoryBundle::Status.bundle_status("plug")
-      expect(st[:plugin]).to be_nil
-      expect(st[:hooks_requires_failure]).to match(/requires chi >= 99.0/)
+      expect(st.plugin).to be_nil
+      expect(st.hooks_requires_failure).to match(/requires chi >= 99.0/)
     end
 
     it "has no hooks failure when the bundle has no hooks or this chi meets requires_chi" do
       install(write_source(requires_chi: ">= 99.0"))
-      expect(Samagotchi::MemoryBundle::Status.bundle_status("plug")[:hooks_requires_failure]).to be_nil
+      expect(Samagotchi::MemoryBundle::Status.bundle_status("plug").hooks_requires_failure).to be_nil
       install(write_source(plugin: nil, hook: true, requires_chi: ">= 0.1.0"), force: true, upgrade: true)
-      expect(Samagotchi::MemoryBundle::Status.bundle_status("plug")[:hooks_requires_failure]).to be_nil
+      expect(Samagotchi::MemoryBundle::Status.bundle_status("plug").hooks_requires_failure).to be_nil
     end
 
     it "has no plugin entry without one" do
       install(write_source(plugin: nil))
-      expect(Samagotchi::MemoryBundle::Status.bundle_status("plug")[:plugin]).to be_nil
+      expect(Samagotchi::MemoryBundle::Status.bundle_status("plug").plugin).to be_nil
     end
   end
 

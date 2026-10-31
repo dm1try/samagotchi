@@ -568,7 +568,7 @@ RSpec.describe Samagotchi::MemoryBundle::Installer do
       expect(inst.warnings).to include("tips.#{key}.md is taken as a model overlay of your tips.md, which the bundle " \
                                        "doesn't ship; it gets no index line")
       expect(File.exist?(index_path) ? File.read(index_path) : "").not_to include("tips.#{key}")
-      expect(Samagotchi::MemoryBundle::Status.bundle_status("ovl-bundle")[:files]["tips.#{key}.md"][:overlay]).to be(true)
+      expect(Samagotchi::MemoryBundle::Status.bundle_status("ovl-bundle").files["tips.#{key}.md"][:overlay]).to be(true)
     end
   end
 

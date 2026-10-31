@@ -12,6 +12,16 @@ require_relative "../model_overlay"
 module Samagotchi
   module MemoryBundle
     module Status
+      # A bundle as this chi reads it now (what chi bundle status prints):
+      # its stored record, the scope it resolves to (scope_error when it
+      # can't), the folder its files belong in, what each file looks like on
+      # disk, its installed plugin, why none of its hooks load, and its needs
+      # with what this process's PATH found. The +files+ entries and +plugin+
+      # stay Hashes: their fields differ per case (an unchecked file has no
+      # paths at all).
+      Report = Data.define(:provenance, :scope, :scope_error, :target_dir, :files, :plugin,
+                           :hooks_requires_failure, :needs)
+
       # A scope this chi can't resolve (a newer chi's, a hand edit) isn't
       # guessed: scope_error says so, target_dir is nil and each file is
       # unchecked (no disk reads, nothing counted as missing).
@@ -50,9 +60,9 @@ module Samagotchi
             base_path: base_path
           }
         end
-        { provenance: bundle, scope: scope, scope_error: target_dir ? nil : "unknown scope: #{scope}",
-          target_dir: target_dir, files: details, plugin: plugin_status(provenance, bundle),
-          hooks_requires_failure: hooks_requires_failure(bundle), needs: needs_status(bundle) }
+        Report.new(provenance: bundle, scope: scope, scope_error: target_dir ? nil : "unknown scope: #{scope}",
+                   target_dir: target_dir, files: details, plugin: plugin_status(provenance, bundle),
+                   hooks_requires_failure: hooks_requires_failure(bundle), needs: needs_status(bundle))
       end
 
       # Why none of the bundle's hooks load (this chi doesn't meet its
