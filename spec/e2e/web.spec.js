@@ -1310,7 +1310,11 @@ test("a parent's delegates fold into its card: one strip card with a popover, in
     await page.locator("#allTile").click();
     // The list now starts under the top bar, where the tile was: move the pointer off it, or the order
     // drawn under it holds (lists_view.js listOrder) and the waiting family seeded just now lands last.
-    await page.mouse.move(2, 700);
+    // Onto the list's head, not a viewport corner: this worker's chi is shared, and with ~25 cards from
+    // earlier tests the list reaches the viewport's bottom (its -14px margin puts its left edge at x=2).
+    await page.locator("#count").hover();
+    expect(await page.evaluate(() => document.querySelector("#allList").matches(":hover")),
+      "the pointer is still over #allList: its order stays held").toBe(false);
     const waitingCard = page.locator(`#allList .card[data-id="${waitingFam.parent}"]`);
     await expect(waitingCard).toHaveClass(/\bwaiting\b/);
     // Open (a member waits), the chip is just the count: the rows carry the marks, no status dots.
