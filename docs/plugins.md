@@ -1133,8 +1133,8 @@ ctx.context.attach(url: "https://github.com/acme/app/pull/42", why: "branch feat
 ctx.context.attach(name: "ci", cmd: "bin/ci-status", why: "this branch's CI", every_seconds: 120)
 ctx.context.list  # => [{name:, scope:, why:, hint:, fetched_at:, error:, provider:, summary:}]
 ctx.context.decline(url: "https://github.com/acme/app/pull/42")    # => "pr-42"
-ctx.context.mark_offered("pr-42", "https://github.com/acme/app/pull/42", why: "branch feat/x has open PR #42")
-ctx.context.offered("pr-42")  # => #<data Offer name="pr-42", hint="https://…", why="branch…", at="2026-10-08T…Z">, or nil
+ctx.context.propose(url: "https://github.com/acme/app/pull/42", title: "#42 Make the thing", mentions: ["#42", "feat/x"])
+ctx.context.candidates  # => [#<data Candidate name="pr-42", url="https://…", title="#42 Make the thing", …>]
 ```
 
 [Attached context](context.md) for the session the plugin runs in: chi runs
@@ -1156,12 +1156,16 @@ gets a note when its text changes.
   `url:`, the name and hint come from the bundle's provider (`name:`
   replaces the name). It returns the name. A source attached already stays
   attached (`chi context rm` removes it).
-- `mark_offered(name, hint, why: nil)` records that the plugin offered a
-  source here (the hint is usually its URL; `why:` is kept for the attach
-  that may follow); `offered(name)` returns that record
-  (`ContextSources::Offer`: `name`, `hint`, `why`, `at`) or nil. A plugin that asks
-  before it attaches uses it so a worker restart doesn't ask again. Neither
-  an attach nor a decline clears it; deleting the session does.
+- `propose(url:, title:, name: nil, describe: nil, mentions: [])` or
+  `propose(name:, cmd:, title:, describe: nil, mentions: [])` records a
+  candidate: a source proposed for this session, not attached. `title` is
+  what a person reads, `describe` more of it, `mentions` the words a prompt
+  names it by. A candidate of that name stays as first proposed (a worker
+  restart proposing again changes nothing), and one the user removed from
+  the session (its name or its URL) isn't proposed: nil. `candidates` lists
+  them (`ContextSources::Candidate`: `name`, `url`, `cmd`, `title`,
+  `describe`, `mentions`, `proposed_by`, `at`), by name. Neither an attach
+  nor a decline removes a candidate; deleting the session does.
 - The source is the session's (not the project's), marked
   `added_by: plugin:<bundle>`. It is plugin code, so it isn't asked about as
   the agent's `chi context add --cmd` is.
@@ -1171,7 +1175,7 @@ gets a note when its text changes.
   (nil before any text; chi 0.63.0).
 - Two attaches of one source at once (a double click) both return its
   name.
-- `attach`, `decline` and `mark_offered` raise
+- `attach`, `decline` and `propose` raise
   `Samagotchi::Plugin::AttachedContext::Error` with the reason (no session
   yet, no provider for the URL, a bad name).
 

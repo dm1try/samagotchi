@@ -227,29 +227,33 @@ class Plugin
   def offer_card_id(number) = "github-pr-offer-#{number}"
 
   # Offer mode: a card instead of the attach, once per session per PR (a
-  # worker restart finds the offered marker). The marker is written after
+  # worker restart finds the candidate). The candidate is proposed after
   # the card, so a card that failed leaves none.
   def offer_branch_pr(ctx, branch, pr, name)
     return "#{name} was removed from this session; not offered" if ctx.context.declined?(name, url: pr["url"])
-    return "#{name} was offered already" if ctx.context.offered(name)
+    return "#{name} was offered already" if offered(ctx, name)
 
     number = pr["number"]
     body = [pr["title"].to_s.gsub(/\s+/, " ").strip, OFFER_LINE].reject(&:empty?).join("\n\n")
     ctx.card(id: offer_card_id(number), title: "PR ##{number} for branch #{branch}", body: body, level: :info,
              actions: [{ label: "Attach", command: "/pr-attach #{number}" },
                        { label: "Not here", command: "/pr-decline #{number}" }])
-    ctx.context.mark_offered(name, pr["url"], why: "branch #{branch} has open PR ##{number}")
+    ctx.context.propose(url: pr["url"], name: name, title: "##{number} #{pr["title"].to_s.gsub(/\s+/, " ").strip}".strip,
+                        mentions: ["##{number}", branch, pr["url"]])
     offers_log(ctx).write("offered", session: ctx.session_id, project_root: project_root(ctx), cwd: ctx.cwd,
                                      branch: branch, pr: pr["url"], checkout: checkout_kind(ctx), model: ctx.model)
     "offered #{name}"
   end
 
-  # /pr-attach and /pr-decline: the PR number and its offer, else the
-  # answer (a usage line, no offer).
+  # The candidate offer mode proposed as +name+, or nil.
+  def offered(ctx, name) = ctx.context.candidates.find { |candidate| candidate.name == name }
+
+  # /pr-attach and /pr-decline: the PR number and its offer (a candidate),
+  # else the answer (a usage line, no offer).
   def offer_command(command, args, ctx)
     number = args.to_s.strip[PR_NUMBER, 1] or return "usage: #{command} <PR number>, as the offer card names it"
     number = number.to_i
-    offer = ctx.context.offered("pr-#{number}")
+    offer = offered(ctx, "pr-#{number}")
     return "no offered PR ##{number} here; use `chi context add <PR URL>`" unless offer
 
     yield number, offer
@@ -258,26 +262,28 @@ class Plugin
   end
 
   # The user's click: attached as auto-attach would, past a decline, with
-  # the offer's why (no git or gh here).
+  # auto-attach's why (no git or gh here: the branch is the offer's second
+  # mention).
   def attach_offered(ctx, number, offer)
-    why = "#{offer.why || "open PR ##{number}"} (attached from the offer)"
-    attached = ctx.context.attach(url: offer.hint, name: offer.name, why: why, force: true)
+    branch = offer.mentions[1]
+    why = "#{branch ? "branch #{branch} has open PR ##{number}" : "open PR ##{number}"} (attached from the offer)"
+    attached = ctx.context.attach(url: offer.url, name: offer.name, why: why, force: true)
     return "#{offer.name} wasn't attached" unless attached
 
     ctx.card(id: offer_card_id(number), title: "PR ##{number}", body: "Attached #{attached}")
-    offers_log(ctx).write("attached", session: ctx.session_id, pr: offer.hint, seconds: seconds_since(offer))
+    offers_log(ctx).write("attached", session: ctx.session_id, pr: offer.url, seconds: seconds_since(offer))
     nil
   end
 
   # Not for a PR attached here already (a stale card): that is
   # `chi context rm`'s, and a declined marker would leave it attached.
   def decline_offered(ctx, number, offer)
-    attached = ctx.context.list.find { |source| source[:name] == offer.name || source[:hint] == offer.hint }
+    attached = ctx.context.list.find { |source| source[:name] == offer.name || source[:hint] == offer.url }
     return "#{attached[:name]} is attached here; `chi context rm #{attached[:name]}` removes it" if attached
 
-    ctx.context.decline(url: offer.hint, name: offer.name)
+    ctx.context.decline(url: offer.url, name: offer.name)
     ctx.card(id: offer_card_id(number), title: "PR ##{number}", body: "Not attached here; + URL attaches it")
-    offers_log(ctx).write("declined", session: ctx.session_id, pr: offer.hint, seconds: seconds_since(offer))
+    offers_log(ctx).write("declined", session: ctx.session_id, pr: offer.url, seconds: seconds_since(offer))
     nil
   end
 

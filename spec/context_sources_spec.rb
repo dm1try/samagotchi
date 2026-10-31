@@ -190,11 +190,22 @@ RSpec.describe Samagotchi::ContextSources do
     expect(described_class.project_cwd(nil, "/fallback")).to eq("/fallback")
   end
 
+  it "reads no candidate from a file that isn't a JSON object" do
+    loc = described_class.session_location(session_id, state_dir: state_dir)
+    FileUtils.mkdir_p(File.dirname(loc.candidate_path("c")))
+    File.write(loc.candidate_path("c"), "[]")
+    File.write(loc.candidate_path("d"), "{not json")
+
+    expect(loc.candidate("c")).to be_nil
+    expect(loc.candidates).to eq([])
+  end
+
   it "removes a deleted session's folder (its markers too), and nothing for an id that isn't one" do
     loc = described_class.session_location(session_id, state_dir: state_dir)
     loc.add(source("a"))
     loc.decline("b", "https://x")
-    loc.mark_offered("c", "https://y")
+    loc.add_candidate(Samagotchi::ContextSources::Candidate.new(name: "c", url: "https://y", cmd: nil, title: "C", describe: nil,
+                                                                mentions: [], proposed_by: nil, at: nil))
     loc.mute("d")
 
     expect(described_class.remove_session("../x", state_dir: state_dir)).to eq([])

@@ -169,7 +169,7 @@ RSpec.describe "The github-pr bundle", :bundle do
       it "attaches without a card, an offer or a log line" do
         expect(plugin.attach_branch_pr(ctx)).to eq("attached pr-42")
         expect(cards).to eq([])
-        expect(ctx.context.offered("pr-42")).to be_nil
+        expect(ctx.context.candidates).to eq([])
         expect(offers).to eq([])
       end
 
@@ -190,7 +190,8 @@ RSpec.describe "The github-pr bundle", :bundle do
                                body: "Make the thing\n\nNot attached: the agent gets nothing until you attach it.",
                                level: :info, actions: [{ label: "Attach", command: "/pr-attach 42" },
                                                        { label: "Not here", command: "/pr-decline 42" }] }])
-        expect(ctx.context.offered("pr-42")).to have_attributes(hint: pr_url)
+        expect(ctx.context.candidates).to match([have_attributes(name: "pr-42", url: pr_url, title: "#42 Make the thing",
+                                                                 mentions: ["#42", "feat/x", pr_url])])
         expect(offers).to match([hash_including("event" => "offered", "session" => session.id, "pr" => pr_url, "branch" => "feat/x",
                                                 "cwd" => tmpdir, "model" => "host:gemma4", "ts" => String)])
         expect(offers.first).to include("project_root", "checkout")
@@ -205,7 +206,7 @@ RSpec.describe "The github-pr bundle", :bundle do
       it "leaves no offer marker when the card fails" do
         allow(ctx).to receive(:card).and_raise(ArgumentError, "bad card")
         expect(plugin.attach_branch_pr(ctx)).to eq("no pull request attached")
-        expect(ctx.context.offered("pr-42")).to be_nil
+        expect(ctx.context.candidates).to eq([])
       end
 
       it "doesn't offer a PR the user removed from the session" do

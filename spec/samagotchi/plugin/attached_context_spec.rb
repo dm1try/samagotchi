@@ -127,19 +127,37 @@ RSpec.describe Samagotchi::Plugin::AttachedContext do
     expect(own.source("pr-4")).not_to be_nil
   end
 
-  it "records an offer and reads it back" do
-    expect(ctx.context.offered("pr-4")).to be_nil
+  it "proposes a candidate, once by name, and reads it back" do
+    install_provider
+    expect(ctx.context.candidates).to eq([])
 
-    offer = ctx.context.mark_offered("pr-4", "https://example.com/pull/4", why: "branch x has open PR #4")
+    candidate = ctx.context.propose(url: "https://example.com/pull/4", title: "#4  Fix\nthe thing",
+                                    describe: "more", mentions: ["#4", "feat/x", "#4", " "])
 
-    expect(ctx.context.offered("pr-4")).to eq(offer)
-    expect(offer).to have_attributes(name: "pr-4", hint: "https://example.com/pull/4", why: "branch x has open PR #4")
-    expect(ctx.context.mark_offered("ci", nil)).to have_attributes(hint: nil, why: nil)
-    expect(ctx.context.offered("ci")).to have_attributes(hint: nil, why: nil)
-    expect(Time.iso8601(offer.at)).to be_within(5).of(Time.now)
+    expect(candidate).to have_attributes(name: "pr-4", url: "https://example.com/pull/4", cmd: nil, title: "#4 Fix the thing",
+                                         describe: "more", mentions: ["#4", "feat/x"], proposed_by: "plugin:prs")
+    expect(Time.iso8601(candidate.at)).to be_within(5).of(Time.now)
+    expect(ctx.context.candidates).to eq([candidate])
+    # Idempotent: the first proposal stays.
+    expect(ctx.context.propose(url: "https://example.com/pull/4", title: "other")).to eq(candidate)
+    expect(ctx.context.propose(name: "ci", cmd: "bin/ci", title: "CI")).to have_attributes(name: "ci", cmd: "bin/ci", url: nil)
+    expect(ctx.context.candidates.map(&:name)).to eq(%w[ci pr-4])
     # Neither an attach nor a decline clears it.
     ctx.context.decline(name: "pr-4")
-    expect(ctx.context.offered("pr-4")).to eq(offer)
+    expect(ctx.context.candidates.first(2).last).to eq(candidate)
+  end
+
+  it "proposes nothing the user removed (by name or URL), and says what it can't propose" do
+    install_provider
+    own.decline("pr-5", "https://example.com/pull/5")
+    own.decline("other", "https://example.com/pull/6")
+
+    expect(ctx.context.propose(url: "https://example.com/pull/5", title: "#5")).to be_nil
+    expect(ctx.context.propose(url: "https://example.com/pull/6", title: "#6")).to be_nil
+    expect(ctx.context.candidates).to eq([])
+    expect { ctx.context.propose(url: "https://nowhere.example/1", title: "x") }.to raise_error(described_class::Error, /no installed bundle/)
+    expect { ctx.context.propose(name: "x", title: "x") }.to raise_error(described_class::Error, /give url: or cmd:/)
+    expect { ctx.context.propose(name: "x", cmd: "date", title: " ") }.to raise_error(described_class::Error, "give title:")
   end
 
   it "lists the session's sources" do
@@ -179,10 +197,10 @@ RSpec.describe Samagotchi::Plugin::AttachedContext do
     it "attaches, declines and offers nothing" do
       expect { ctx.context.attach(name: "date", cmd: "date") }.to raise_error(described_class::Error, "this session has no id yet")
       expect { ctx.context.decline(name: "date") }.to raise_error(described_class::Error, "this session has no id yet")
-      expect { ctx.context.mark_offered("date", nil) }.to raise_error(described_class::Error, "this session has no id yet")
+      expect { ctx.context.propose(name: "date", cmd: "date", title: "date") }.to raise_error(described_class::Error, "this session has no id yet")
       expect(ctx.context.list).to eq([])
       expect(ctx.context.declined?("date", url: "https://x")).to be(false)
-      expect(ctx.context.offered("date")).to be_nil
+      expect(ctx.context.candidates).to eq([])
     end
   end
 end

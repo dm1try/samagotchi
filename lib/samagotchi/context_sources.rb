@@ -22,7 +22,7 @@ module Samagotchi
   #   sessions/<id>/subscriptions.json             {name => Subscription}; the worker writes it
   #   sessions/<id>/muted/<name>                   a marker: this session ignores <name>
   #   sessions/<id>/declined/<name>                a marker (its hint inside): the user removed <name>
-  #   sessions/<id>/offered/<name>                 a marker ({hint, why, at}): a plugin offered <name> (ctx.context.mark_offered)
+  #   sessions/<id>/candidates/<name>.json         a Candidate: a source a plugin proposed here (ctx.context.propose)
   # The guardrails protect the root (ProtectedPaths, CHI_TEXT): a source's
   # command runs later, outside the gate.
   module ContextSources
@@ -40,7 +40,10 @@ module Samagotchi
     SUBSCRIPTIONS_FILE = "subscriptions.json"
     MUTED_DIR = "muted"
     DECLINED_DIR = "declined"
-    OFFERED_DIR = "offered"
+    CANDIDATES_DIR = "candidates"
+    # A candidate keeps this many mentions, each one line of up to LINE_MAX_CHARS.
+    MENTIONS_MAX = 10
+    DESCRIBE_MAX_CHARS = 1000
 
     # A name, a command, a value the store can't take.
     class Invalid < ArgumentError; end
@@ -133,10 +136,25 @@ module Samagotchi
     # What a command printed or a push sent (the contract, ContextSources.parse_output).
     Fetched = Data.define(:text, :summary, :wake, :hint)
 
-    # A plugin's offer of a source to a session (ctx.context.mark_offered):
-    # +hint+ (often the URL), +why+ (the plugin's reason, for the attach
-    # that may follow; nil for none) and +at+, when it was offered (ISO 8601).
-    Offer = Data.define(:name, :hint, :why, :at)
+    # A source a plugin proposed for a session, not attached
+    # (ctx.context.propose): its spec (+url+, through an installed bundle's
+    # provider, or +cmd+), +title+ (what a person or a judge reads),
+    # +describe+ (optional, more of the same), +mentions+ (the words in an
+    # owner prompt that name it), +proposed_by+ ("plugin:<bundle>") and
+    # +at+, when it was proposed (ISO 8601). Written once: whether it is
+    # attached or declined is the store's (a source of its name, a declined
+    # marker), never kept here.
+    Candidate = Data.define(:name, :url, :cmd, :title, :describe, :mentions, :proposed_by, :at) do
+      def to_h
+        { "url" => url, "cmd" => cmd, "title" => title, "describe" => describe, "mentions" => mentions,
+          "proposed_by" => proposed_by, "at" => at }.compact
+      end
+
+      def self.from_h(name, data)
+        new(name: name, url: data["url"], cmd: data["cmd"], title: data["title"].to_s, describe: data["describe"],
+            mentions: Array(data["mentions"]).map(&:to_s), proposed_by: data["proposed_by"], at: data["at"])
+      end
+    end
 
     # A source as one session sees it: the definition, where it lives, and
     # +shadowed+ for a project source hidden by a session one of its name.
@@ -288,22 +306,36 @@ module Samagotchi
         end
       end
 
-      def offered_path(name) = File.join(dir, OFFERED_DIR, ContextSources.check_name!(name))
+      def candidate_path(name) = File.join(dir, CANDIDATES_DIR, "#{ContextSources.check_name!(name)}.json")
 
-      # Session only: a plugin offered +name+ here (so it doesn't offer it
-      # again). Neither an add nor a decline clears it.
-      # @return [Offer]
-      def mark_offered(name, hint, why: nil, at: Time.now)
-        offer = Offer.new(name: ContextSources.check_name!(name), hint: hint, why: why, at: at.utc.iso8601)
-        FileUtils.mkdir_p(File.join(dir, OFFERED_DIR))
-        AtomicFile.write(offered_path(name), "#{JSON.generate({ "hint" => offer.hint, "why" => offer.why, "at" => offer.at }.compact)}\n")
-        offer
+      # Session only: records +candidate+ unless one of its name is here
+      # already (the first proposal stays as it was). Neither an add nor a
+      # decline clears it; deleting the session does.
+      # @return [Candidate] the one recorded (+candidate+ or the earlier one)
+      def add_candidate(candidate)
+        existing = candidate(candidate.name)
+        return existing if existing
+
+        FileUtils.mkdir_p(File.join(dir, CANDIDATES_DIR))
+        AtomicFile.write(candidate_path(candidate.name), "#{JSON.generate(candidate.to_h)}\n")
+        candidate
       end
 
-      # @return [Offer, nil]
-      def offered(name)
-        data = ContextSources.read_json(offered_path(name))
-        data.is_a?(Hash) ? Offer.new(name: name, hint: data["hint"], why: data["why"], at: data["at"]) : nil
+      # @return [Candidate, nil]
+      def candidate(name)
+        data = ContextSources.read_json(candidate_path(name))
+        data ? Candidate.from_h(name, data) : nil
+      end
+
+      # @return [Array<Candidate>] by name
+      def candidates
+        folder = File.join(dir, CANDIDATES_DIR)
+        return [] unless Dir.exist?(folder)
+
+        Dir.children(folder).sort.filter_map do |file|
+          name = file.delete_suffix(".json")
+          candidate(name) if file.end_with?(".json") && name.match?(NAME_RE) && !RESERVED_NAMES.include?(name)
+        end
       end
 
       # Session only: the markers and the worker's subscription file.

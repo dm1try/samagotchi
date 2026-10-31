@@ -76,22 +76,30 @@ module Samagotchi
         name_declined?(own, name) || (!url.to_s.empty? && own.declined_hints.include?(url))
       end
 
-      # Records that this plugin offered +name+ (+hint+: its URL; +why+: the
-      # reason an attach from the offer gives) here, so a worker restart
-      # doesn't offer it again.
-      # @return [ContextSources::Offer]
+      # Proposes a source for this session without attaching it: +url+
+      # (through an installed bundle's provider; +name+ replaces the
+      # provider's) or +name+ and +cmd+. +title+ is what a person (or a
+      # judge) reads, +describe+ more of it, +mentions+ the words an owner
+      # prompt names it by. Idempotent by name: a candidate of that name
+      # stays as first proposed. One the user removed from the session (its
+      # name, or its URL) isn't proposed.
+      # @return [ContextSources::Candidate, nil] nil when declined
       # @raise [Error]
-      def mark_offered(name, hint, why: nil)
-        own_location!.mark_offered(name, hint, why: why)
-      rescue ContextSources::Invalid => e
+      def propose(title:, url: nil, name: nil, cmd: nil, describe: nil, mentions: [])
+        own = own_location!
+        candidate = new_candidate(url: url, name: name, cmd: cmd, title: title, describe: describe, mentions: mentions)
+        return nil if own.declined?(candidate.name) || (url && own.declined_hints.include?(candidate.url))
+
+        own.add_candidate(candidate)
+      rescue ContextSources::Invalid, ContextProviders::Invalid => e
         raise Error, e.message
       end
 
-      # @return [ContextSources::Offer, nil] the offer #mark_offered recorded
-      def offered(name)
-        location&.offered(name)
-      rescue ContextSources::Invalid
-        nil
+      # This session's candidates (#propose), by name; none before the
+      # session has an id.
+      # @return [Array<ContextSources::Candidate>]
+      def candidates
+        location&.candidates || []
       end
 
       # This session's sources (its own, then its project's); none before
@@ -145,6 +153,26 @@ module Samagotchi
         resolved = ContextProviders.resolve(url) or raise Error, "no installed bundle resolves #{url}"
         source(name: name ? ContextSources.check_name!(name) : resolved.name, cmd: resolved.cmd, why: why || resolved.why,
                hint: resolved.hint, every_seconds: resolved.every_seconds, provider: resolved.bundle)
+      end
+
+      def new_candidate(url:, name:, cmd:, title:, describe:, mentions:)
+        if url
+          resolved = ContextProviders.resolve(url) or raise Error, "no installed bundle resolves #{url}"
+          name = name ? ContextSources.check_name!(name) : resolved.name
+          cmd = nil
+        else
+          raise Error, "give url: or cmd: (with name:)" if cmd.to_s.strip.empty?
+
+          name = ContextSources.check_name!(name)
+        end
+        title = ContextSources.one_line(title, ContextSources::LINE_MAX_CHARS) or raise Error, "give title:"
+        ContextSources::Candidate.new(
+          name: name, url: url&.to_s, cmd: cmd&.to_s, title: title,
+          describe: ContextSources.one_line(describe, ContextSources::DESCRIBE_MAX_CHARS),
+          mentions: Array(mentions).filter_map { |word| ContextSources.one_line(word.to_s, ContextSources::LINE_MAX_CHARS) }
+                                   .uniq.first(ContextSources::MENTIONS_MAX),
+          proposed_by: "plugin:#{@bundle}", at: Time.now.utc.iso8601
+        )
       end
 
       def from_cmd(name:, cmd:, why:, hint:, every_seconds:)
