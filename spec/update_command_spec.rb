@@ -10,6 +10,9 @@ require "yaml"
 require "digest"
 require "samagotchi/memory_bundle/shas"
 require "samagotchi/update_command"
+# Loaded here: the stub_const below would otherwise invent the constant, and the
+# file's require, once used up, never brings the real one back for later examples.
+require "samagotchi/bundle_command/installed_check"
 
 RSpec.describe Samagotchi::UpdateCommand do
   include WorkerFixtures
