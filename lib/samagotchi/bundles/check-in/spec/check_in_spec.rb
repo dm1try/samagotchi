@@ -351,6 +351,15 @@ RSpec.describe "The check-in plugin", :bundle do
       expect(state["tools"]).to eq(['read {"path":"a.rb"} -> the file', 'execute {"command":"ls"} -> one two'])
     end
 
+    it "keeps what a call asked for, without its name or nil fields, as the real call hash has them" do
+      p = plugin("after" => 1)
+      judging(p)
+      turn(p)
+      fire(p, :after_tool_call, tool: "execute", call: { name: "execute", content: "echo 1", path: nil, scope: nil }, output: "1")
+      p.judgments.wait
+      expect(p.judgments.runs("progress").last["state"]["tools"]).to eq(['execute {"content":"echo 1"} -> 1'])
+    end
+
     it "sends only the calls since the last check-in, each cut as it is captured" do
       p = plugin("after" => 2, "every" => 2)
       judging(p)

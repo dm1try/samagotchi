@@ -241,7 +241,12 @@ class Plugin
 
   def call_args(call)
     args = call.is_a?(Hash) ? (call[:arguments] || call["arguments"] || call) : call
-    args.is_a?(String) ? args : JSON.generate(args)
+    return args if args.is_a?(String)
+
+    # The tool's name is already in the entry and nil fields say nothing:
+    # the cut should keep what the call asked for.
+    args = args.compact.except(:name, "name") if args.is_a?(Hash)
+    JSON.generate(args)
   rescue StandardError
     args.to_s
   end
