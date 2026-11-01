@@ -66,7 +66,10 @@ runs), with its state, host and model but no answers, so a later replay can answ
 
 **That means prompts, commands, diffs and any secret in them are in these files.** A state is whatever the
 use sends System 1: an approval's command (up to 2000 chars), diff and earlier examples, a toolkit's
-first prompt, a context candidate's owner prompts.
+first prompt, a context candidate's owner prompts. **check-in's sends tool output** — the calls of a turn
+since its last check-in, each cut as it is captured, and what each tool returned — the first class of data
+approvals and context never send: on a hosted `system_one.host` it reaches that host with the ask, so a
+hosted System 1 sees the machine's tool output, not just what the agent asked about.
 
 `chain_link` is the session's parent, else the session it continues. It isn't the chain's root: following a
 chain takes a session listing (`SessionChain`), too slow on an approval's path. An export splitting by chain
@@ -91,6 +94,8 @@ the run: a join happens at read, and a line whose run is gone is dropped.
     `about`. A chip removed after the last turn isn't seen, and an attach by hand is no label.
   - Toolkit has none: `did: chosen` doesn't say what was picked. "Covers" stays derived in `chi toolkit report`.
   - A bundle's: its own word, raw, by `<bundle>` or `<bundle>:<what>`, through `ctx.judgments.label`. A bundle reaches only its own runs.
+    check-in's are the card's actions that took effect (`nudge`, `keep_going`, `stop`, weak — a Nudge asks for a status, not a
+    verdict, and Keep going may be habit) and `turn_stopped` by `turn` when the turn ended with the card still open.
 - `acted` {`what`, `at`}: approvals' decision (`auto`, `asked`, `audit`), toolkit's `did`, a bundle's own word.
 - `gates` {`rule`, `rule_listed`, `self_protect_refused`, `threshold`, `at`}: approvals', at ask time,
   since neither can be recomputed later.

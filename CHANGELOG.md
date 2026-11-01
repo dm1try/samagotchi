@@ -18,6 +18,10 @@ and commands may change between minor versions. How releases are made:
   `ctx.judgments.label` says what came of it, and each ask saves a run. Each is off until you set its mode under
   `system_one.judgments`, which may also give it its own host and model (core's judgments take neither). Bundles' judgments stay out of
   the session's spend, so no cost cap covers them on a hosted host. The test kit has `bundle.judgments`. See docs/plugins.md (Judgments).
+- check-in asks System 1 `check-in.progress` at every check-in ("is this turn still making progress toward what the user asked?"),
+  off until you set its mode. The turn's prompt, the calls since the last check-in, the count and the elapsed time go, and what you
+  then did with the card is saved as a label on that run. Nothing is acted on: the card, the nudge and the notice are as they were.
+  It is the first use to send tool output to System 1 (docs/system-one.md). `chi update` gets it (check-in 0.3.0).
 
 ### Changed
 

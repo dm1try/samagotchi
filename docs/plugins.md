@@ -2067,6 +2067,18 @@ and goes with the session; another session starts from config.yml:
 | `/checkin mode ask` / `nudge` / `notify` | the mode |
 | `/checkin nudge` / `later` / `stop` | the card's actions, also by hand |
 
+**Asking System 1 (audit).** Each check-in also asks the cheap judgment model
+`check-in.progress` — "Is this turn still making progress toward what the user
+asked?" — on a side thread, with the owner's prompt, the calls since the last
+check-in (each cut as it is captured, about 4 KB in all), the count and the
+elapsed time. It is off until you give it a mode in
+[`system_one.judgments`](configuration.md#bundles-judgments), and nothing is
+acted on: the answer is saved, and so is what the user then did with the card
+(`nudge`, `keep_going`, `stop`, or `turn_stopped` when the card was still open
+when the turn ended), as a label on that run for a later look. The card, the
+nudge and the notice are the same either way. See
+[System 1's saved runs](system-one.md).
+
 ## The slow-commands bundle
 
 `chi bundle install slow-commands` installs the bundle shipped with chi (`chi
