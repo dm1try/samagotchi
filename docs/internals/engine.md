@@ -353,7 +353,7 @@ One iteration with tool calls:
   kept of M, the whole within the cap unless the cap is shorter than that line); an `execute` result keeps a head
   and a long tail with a gap line between them, its whole output saved in `sessions/<id>/tool_output/`
   (`ToolOutputFiles`, through `KernelLoop#session_dir`, which the Engine sets). See
-  [Tool output guardrails](tool-guardrails.md#the-runners-cut-max_tool_output_chars). The model (both loops), the
+  [Tool output guardrails](tool-output-limits.md#the-runners-cut-max_tool_output_chars). The model (both loops), the
   event and the after_tool_call hook get that text.
 - Emits `:tool_call_completed` {iteration, call_count, call_index, tool, output, output_truncated, output_file,
   activity, images, diff, waited_ms, view, ref, refs}, then fires `:after_tool_call` {iteration, tool, output,
@@ -883,7 +883,7 @@ Paths are under `lib/samagotchi/`.
 | `llm/native_backend.rb` | Wraps KernelLoop as a backend (`#complete` calls `#run`) |
 | `llm/model_result.rb` | `LLM::ModelResult`, what a backend returns |
 | `tool_runner.rb` | Per-call path (gate, start/complete events, output cap, images, diffs) |
-| `tool_output_cut.rb`, `tool_output_files.rb` | `ToolOutputCut`: how a tool's output longer than `max_tool_output_chars` is cut, by the tool's policy (`POLICIES`; `:head` for a tool with none); `ToolOutputFiles`: the whole output of an execute cut that way, saved in the session's `tool_output/` folder ([tool-guardrails.md](tool-guardrails.md)) |
+| `tool_output_cut.rb`, `tool_output_files.rb` | `ToolOutputCut`: how a tool's output longer than `max_tool_output_chars` is cut, by the tool's policy (`POLICIES`; `:head` for a tool with none); `ToolOutputFiles`: the whole output of an execute cut that way, saved in the session's `tool_output/` folder ([tool-output-limits.md](tool-output-limits.md)) |
 | `tool_row_fields.rb`, `row_refs.rb` | `ToolRowFields`: a tool row's fields beyond its params (`ACTIVITY_KEYS`, `EVENT_KEYS`), the same live and on a reload; `RowRefs`: a plugin tool's row refs (`refs:`), checked, capped and saved with the result |
 | `tool_response.rb` | Per-batch dispatch and tool_response entries (joined for native, single for chat) |
 | `empty_answer_retry.rb` | The empty-answer and cut retry budget |

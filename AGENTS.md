@@ -134,7 +134,7 @@ In REPL mode `TerminalUI#run` is the single dispatch for the REPL, `-p`/`--promp
 - The web's working set (stamps, `WorkingSet`, `:working_set_updated`, the overlay) → `docs/internals/working-set.md`
 - The web frontend (where page state lives, write → redraw, render idioms, stale-answer guards, storage, streams) → `docs/internals/web-frontend.md`
 - Task tools (`task_create`/`task_wait`…) → `docs/internals/background-tasks.md`
-- read/execute limits (size, timeout, hand-over) → `docs/internals/tool-guardrails.md`; allow/ask/deny, approvals, rules → `docs/guardrails.md`
+- read/execute limits (size, timeout, hand-over) → `docs/internals/tool-output-limits.md`; allow/ask/deny, approvals, rules → `docs/guardrails.md`
 - System 1, the approval judge (`lib/samagotchi/system_one/`, `GuardrailWiring#request_approval`, `chi guardrails replay`) → `docs/guardrails.md` (System 1)
 - Hooks → `docs/hooks.md`; plugins (commands, tools in a bundle, `chi.prompt_section`, `ctx.cache_confirm`) → `docs/plugins.md`; their prompt place → `docs/internals/prompt-caching.md`
 - The chi home (`ChiHome`, home.json, `Record#boot_argv`, `chi home`, `HomeDoctor`, `HomeNotice`) → `docs/architecture.md` (How chi launches itself), `docs/configuration.md` (The chi home)

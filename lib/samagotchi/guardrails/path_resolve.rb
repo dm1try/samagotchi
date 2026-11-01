@@ -9,7 +9,7 @@ module Samagotchi
     # Outside, ShellPaths, RmTargets, ReviewPaths, PairCommand, Targets,
     # ParentApprovals, System 1's SelfProtect). Each surface keeps its own
     # predicate; this only says where a path lands and whether it is in a
-    # dir. docs/internals/tool-guardrails.md maps which surface uses which.
+    # dir. docs/internals/tool-output-limits.md maps which surface uses which.
     module PathResolve
       # How many symlinks .real follows on a path that doesn't exist
       # (about the kernel's own ELOOP limit).

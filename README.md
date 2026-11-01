@@ -221,7 +221,7 @@ once, for the session, for the repo, or for the whole rule in the repo.
 - [Writing a bundle](docs/bundle-authoring.md): `chi bundle new`, `test`, `check`, `try`, `install --dev`
 - [Testing](docs/testing.md): specs, affected specs, lint, worktrees
 - [Architecture](docs/architecture.md): Engine, TerminalUI, bridge, web
-- Internals: [Engine](docs/internals/engine.md), [Gemma 4 contract](docs/internals/gemma4-contract.md), [prompt caching](docs/internals/prompt-caching.md), [context telemetry](docs/internals/context-telemetry.md), [LLM context: forget layer](docs/internals/llm-context-forget.md), [replay benchmark](docs/internals/llm-context-bench.md), [live runs](docs/internals/llm-context-live.md), [tool output limits](docs/internals/tool-guardrails.md), [background tasks](docs/internals/background-tasks.md), [bundles](docs/internals/bundles.md), [Anthropic Messages API](docs/internals/anthropic.md)
+- Internals: [Engine](docs/internals/engine.md), [Gemma 4 contract](docs/internals/gemma4-contract.md), [prompt caching](docs/internals/prompt-caching.md), [context telemetry](docs/internals/context-telemetry.md), [LLM context: forget layer](docs/internals/llm-context-forget.md), [replay benchmark](docs/internals/llm-context-bench.md), [live runs](docs/internals/llm-context-live.md), [tool output limits](docs/internals/tool-output-limits.md), [background tasks](docs/internals/background-tasks.md), [bundles](docs/internals/bundles.md), [Anthropic Messages API](docs/internals/anthropic.md)
 
 ## Development
 
