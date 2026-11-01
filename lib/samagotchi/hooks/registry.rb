@@ -84,14 +84,17 @@ module Samagotchi
     #   :log   warns (a stream hook at most once a minute, failure_log_gate)
     #   :skip  is silent
     # :log and :skip rescue StandardError and ScriptError.
+    # Whatever the policy, +on_failure+ is called, so a hook file that raises
+    # under :skip (a bundle's own hooks/*.rb, chi-nah among them) is not
+    # simply invisible: the loader hands it the Engine's notice.
     # @param label [String] the hook, for the deny reason and the warning
     # @param event [Symbol] the hook's event
     # @param log [Array(Symbol, String)] the warning's tag and record name
     # @param echo [Boolean] the warning also goes to stderr
     # @param fields [Hash] more fields for the warning's record
-    # @param on_failure [#call, nil] under :log, (label, "Class: message") on
-    #   every failure the rescue takes, logged or not; whatever it raises
-    #   stays here, so it can't change the policy
+    # @param on_failure [#call, nil] (label, "Class: message") on every
+    #   failure the rescue takes, under every policy, logged or not;
+    #   whatever it raises stays here, so it can't change the policy
     def self.wrap(label:, event:, policy:, log: [:hooks, "hook_failed"], echo: true, fields: {}, on_failure: nil, &block)
       log_failure = failure_log_gate(event)
       lambda do |payload|
@@ -111,8 +114,10 @@ module Samagotchi
             Log.warn(log[0], log[1], echo: echo ? "[samagotchi:hooks] #{text}" : nil, hook: label, event: event.to_s,
                                      error: e.class.name, msg: text, **fields)
           end
-          tell_failure(on_failure, label, failed)
         end
+        # The notice, whatever the policy: :skip logs nothing, so without it a
+        # broken bundle hook file would fail with no trace at all.
+        tell_failure(on_failure, label, failed)
       end
     end
 

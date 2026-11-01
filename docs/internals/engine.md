@@ -742,9 +742,11 @@ step's text ([architecture.md](../architecture.md), the `display_refs` paragraph
 - **Turn-scoped hooks** (`Engine#register_hook`, `Registry#register`) are cleared by `clear_hooks` in
   `release_turn`.
 - Order of a fire: bundle hooks (by priority, bundle, hook name), then config hooks, then turn-scoped hooks.
-- A hook that raises is logged; it never breaks the turn. A plugin's `chi.on` handler also tells the user, once per
-  label in this Engine (`Hooks.wrap(on_failure:)` → `HookRoutes#plugin_hook_failed`: a `:guardrail_warning` labelled
-  `plugins`, with `Engine#plugin_warning` for a UI that joins later). A `hooks/*.rb` file doesn't.
+- A hook that raises is logged; it never breaks the turn. A plugin's `chi.on` handler and a bundle's `hooks/*.rb`
+  file also tell the user, once per label in this Engine (`Hooks.wrap(on_failure:)` → `HookRoutes#plugin_hook_failed`: a
+  `:guardrail_warning` labelled `plugins`, with `Engine#plugin_warning` for a UI that joins later). The Engine hands
+  that callback to the hook files through `ExtensionLoad.new(hook_failed:)` → `Hooks::BundleLoader.load(hook_failed:)`;
+  a config hook (config.yml's own files) has none, and the test kit's sandbox gives none.
 - A notice from a hook goes to the running turn's sink and the observers. Outside a turn it is announced with
   `between_turns: true`; while the plugins load it is held and announced after. `EventRoutes#route` decides it, the
   same routes as a card's (`Engine#show_card`), with their own marks (`NOTICE_MARKS`, `CARD_MARKS`); a guardrails

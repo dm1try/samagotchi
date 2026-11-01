@@ -48,6 +48,10 @@ and commands may change between minor versions. How releases are made:
 - A plugin's `chi.on` handler that raises now tells you, once per event in a worker, in the TUI and the web
   (`plugins> plugin.rb (bundle x) before_turn hook failed (…)`). Before, only the log knew. The hook is still skipped, and the log
   still has each failure.
+- A bundle's `hooks/*.rb` file that raises now tells you the same way, once per hook in a worker, whatever its `on_error` —
+  including the default `skip`, which logged nothing at all. A guard bundle that broke (`chi-nah`, say) used to fail quietly;
+  now `plugins> guard.rb (bundle chi-nah) before_tool_call hook failed (…)` says so. `on_error` still decides logging and
+  the deny; the notice is only added, and config.yml's own hooks are unchanged.
 
 ### Fixed
 

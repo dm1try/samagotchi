@@ -6,6 +6,9 @@ require "fileutils"
 require "digest"
 require "samagotchi/hooks/bundle_loader"
 require "samagotchi/hooks/registry"
+require "samagotchi/hook_routes"
+require "samagotchi/engine"
+require "samagotchi/memory_bundle/provenance"
 require "samagotchi/guardrails"
 
 RSpec.describe Samagotchi::Hooks::BundleLoader do
@@ -253,6 +256,106 @@ RSpec.describe Samagotchi::Hooks::BundleLoader do
     end
   end
 
+  describe "the notice for a hook file that raises" do
+    # Where a HookRoutes' notices land, so the specs can read them.
+    def notice_sink
+      Struct.new(:notices) do
+        def route(event, **_marks)
+          notices << event
+        end
+
+        def route_by_turn(event, **_marks)
+          notices << event
+        end
+      end.new([])
+    end
+
+    # Load one hook file that always raises, told through real HookRoutes.
+    # @return [Registry, HookRoutes, Array<Hash>] the sink's notices
+    def load_raising(on_error:, event: "after_tool_call", basename: "boom.rb")
+      hooks_dir = File.join(tmpdir, "hooks")
+      klass = basename.sub(".rb", "").split("_").map(&:capitalize).join
+      body = "class #{klass}; def call(e); raise \"boom\"; end; end"
+      write_hook(hooks_dir, basename, body)
+      registry = Samagotchi::Hooks::Registry.new
+      sink = notice_sink
+      hook_routes = Samagotchi::HookRoutes.new(event_routes: sink, question_desk: -> {},
+                                               cancel_controller: -> {}, steer: ->(_text, _source) {})
+      described_class.load(bundle_name: "notice-bundle", hooks_dir: hooks_dir,
+                           metadata: { basename => { "event" => event, "on_error" => on_error,
+                                                     "sha256" => Digest::SHA256.hexdigest(body) } },
+                           registry: registry,
+                           hook_failed: ->(hook, failed, effect: nil) { hook_routes.plugin_hook_failed(hook, failed, effect: effect) })
+      [registry, hook_routes, sink.notices]
+    end
+
+    it "tells once, whatever on_error: skip, naming bundle, file and event" do
+      registry, hook_routes, notices = load_raising(on_error: "skip")
+      allow(Samagotchi::Log).to receive(:warn)
+      2.times { registry.fire(:after_tool_call, { type: :after_tool_call }) }
+      expect(Samagotchi::Log).not_to have_received(:warn).with(:hooks, "bundle_hook_failed", any_args)
+      expect(notices.map { |notice| notice[:message] }).to eq(
+        ["boom.rb (bundle notice-bundle) after_tool_call hook failed (RuntimeError: boom): it's skipped, and its next failures are silent"]
+      )
+      expect(hook_routes.hook_failures_message).to eq(notices.first[:message])
+      expect(notices.first[:label]).to eq("plugins")
+    end
+
+    it "tells once for an on_error: log hook, though the log has every failure" do
+      registry, _routes, notices = load_raising(on_error: "log")
+      logged = []
+      allow(Samagotchi::Log).to receive(:warn).with(:hooks, "bundle_hook_failed", any_args) { logged << :logged }
+      3.times { registry.fire(:after_tool_call, { type: :after_tool_call }) }
+      expect(logged.size).to eq(3)
+      expect(notices.size).to eq(1)
+      expect(notices.first[:message]).to end_with(": it's skipped, and only the log has its next failures")
+    end
+
+    it "tells once for a fail_closed hook and still denies every call" do
+      registry, _routes, notices = load_raising(on_error: "fail_closed", event: "before_tool_call", basename: "guardrails.rb")
+      verdicts = []
+      2.times do
+        verdict = Samagotchi::Guardrails::Verdict.new(call: { name: "execute" })
+        registry.fire(:before_tool_call, { type: :before_tool_call, guardrail: verdict })
+        verdicts << verdict
+      end
+      expect(verdicts).to all(be_deny)
+      expect(notices.size).to eq(1)
+      expect(notices.first[:message]).to eq(
+        "guardrail guardrails.rb (bundle notice-bundle) before_tool_call hook failed (RuntimeError: boom): " \
+        "it denies every tool call it guards, and its next failures are in each denial's reason"
+      )
+    end
+
+    it "tells once per event of a hook with events: so a stream hook can't nag" do
+      hooks_dir = File.join(tmpdir, "hooks")
+      write_hook(hooks_dir, "watch.rb", "class Watch; def call(e); raise \"boom\"; end; end")
+      registry = Samagotchi::Hooks::Registry.new
+      sink = notice_sink
+      hook_routes = Samagotchi::HookRoutes.new(event_routes: sink, question_desk: -> {},
+                                               cancel_controller: -> {}, steer: ->(_text, _source) {})
+      described_class.load(bundle_name: "watch", hooks_dir: hooks_dir,
+                           metadata: { "watch.rb" => { "events" => %w[generation_progress after_turn], "on_error" => "skip" } },
+                           registry: registry,
+                           hook_failed: ->(hook, failed, effect: nil) { hook_routes.plugin_hook_failed(hook, failed, effect: effect) })
+      3.times { registry.fire(:generation_progress, { type: :generation_progress }) }
+      registry.fire(:after_turn, { type: :after_turn })
+      expect(sink.notices.map { |notice| notice[:message] }).to eq(
+        ["watch.rb (bundle watch) generation_progress hook failed (RuntimeError: boom): it's skipped, and its next failures are silent",
+         "watch.rb (bundle watch) after_turn hook failed (RuntimeError: boom): it's skipped, and its next failures are silent"]
+      )
+    end
+
+    it "tells nothing when no one is there to tell (the test kit loads it this way)" do
+      hooks_dir = File.join(tmpdir, "hooks")
+      write_hook(hooks_dir, "silent.rb", "class Silent; def call(e); raise \"silent\"; end; end")
+      registry = Samagotchi::Hooks::Registry.new
+      expect { described_class.load(bundle_name: "no-notice", hooks_dir: hooks_dir, metadata: { "silent.rb" => { "event" => "after_tool_call" } }, registry: registry) }
+        .not_to raise_error
+      expect { registry.fire(:after_tool_call, { type: :after_tool_call }) }.not_to raise_error
+    end
+  end
+
   describe ".namespace_for" do
     it "creates distinct modules per bundle" do
       ns1 = described_class.namespace_for("a")
@@ -430,6 +533,60 @@ RSpec.describe Samagotchi::Hooks::BundleLoader do
       end.not_to output(/already initialized constant/).to_stderr
       expect(first::Counter).not_to equal(second::Counter)
       expect([first::Counter.built, second::Counter.built]).to eq([1, 1])
+    end
+  end
+
+  # The Engine builds its HookRoutes before the hooks load (#initialize), so
+  # it hands ExtensionLoad the notice each bundle's hook file gets.
+  describe "the Engine's wiring" do
+    let(:client) { instance_double(Samagotchi::Client) }
+
+    around { |example| with_config_home(File.join(tmpdir, "config")) { example.run } }
+    around { |example| with_env("SAMAGOTCHI_DEFAULT_MODEL" => "Gemma-4B-it") { example.run } }
+
+    # An installed bundle named +name+ with one hook file, as written.
+    def install_hook_bundle(name, basename, body)
+      hooks_dir = File.join(Samagotchi::MemoryBundle::Provenance.bundles_dir, name, "hooks")
+      write_hook(hooks_dir, basename, body)
+      sha = Digest::SHA256.hexdigest(body)
+      record = Samagotchi::MemoryBundle::InstalledBundle.parse(name,
+                                                               hooks: { basename => { event: "after_tool_call", on_error: "skip", sha256: "sha256:#{sha}" } },
+                                                               trust_level: "reviewed")
+      allow(Samagotchi::ConfigFile).to receive(:bundle_settings).and_return({})
+      allow(Samagotchi::Plugin::Loader).to receive(:load_installed)
+      allow(Samagotchi::MemoryBundle::Provenance).to receive(:each_installed).and_call_original
+      allow(Samagotchi::MemoryBundle::Provenance).to receive(:each_installed).with(holding: :hooks).and_yield(name, record)
+    end
+
+    def warnings(engine)
+      seen = []
+      engine.subscribe(observer: ->(event) { seen << event })
+      engine.instance_variable_get(:@hooks).fire(:after_tool_call, { type: :after_tool_call })
+      seen.select { |event| event[:type] == :guardrail_warning }
+    end
+
+    it "tells the user once a bundle's hook file raises, on the plugins' surface" do
+      install_hook_bundle("wired", "silent.rb", "class Silent; def call(e); raise \"boom\"; end; end")
+      engine = Samagotchi::Engine.new(client: client)
+      engine.announce_load_events!
+
+      warnings = warnings(engine)
+      expect(warnings.map { |warning| warning[:label] }).to eq(["plugins"])
+      expect(warnings.first[:message]).to eq(
+        "silent.rb (bundle wired) after_tool_call hook failed (RuntimeError: boom): it's skipped, and its next failures are silent"
+      )
+    end
+
+    it "says nothing for a hook that does not raise" do
+      install_hook_bundle("quiet", "ok.rb", "class Ok; def call(e); e[:ran] = true; end; end")
+      engine = Samagotchi::Engine.new(client: client)
+      engine.announce_load_events!
+      event = { type: :after_tool_call }
+      engine.instance_variable_get(:@hooks).fire(:after_tool_call, event)
+
+      expect(event[:ran]).to be true
+      expect(warnings(engine)).to be_empty
+      expect(engine.plugin_warning).to be_nil
     end
   end
 end

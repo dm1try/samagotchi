@@ -13,8 +13,14 @@ module Samagotchi
   # turn (Engine#announce_load_events!).
   class ExtensionLoad
     # @param hook_failures [Guardrails::LoadFailures] where hooks that fail to load go
-    def initialize(hook_failures:)
+    # @param hook_failed [#call, nil] (label, "Class: message", effect:) when
+    #   an installed bundle's hook file raises at fire time: the Engine's
+    #   HookRoutes, so the user is told once per hook. nil where there is no
+    #   UI to tell (the test kit's sandbox): a hook that raises then says
+    #   nothing, and raises nothing.
+    def initialize(hook_failures:, hook_failed: nil)
       @hook_failures = hook_failures
+      @hook_failed = hook_failed
       @loading = false
       @held_events = []
     end
@@ -87,7 +93,7 @@ module Samagotchi
         begin
           Hooks::BundleLoader.load(bundle_name: bundle_name, hooks_dir: hooks_dir, metadata: bundle.hooks, registry: registry,
                                    failures: @hook_failures, settings: settings[bundle_name.to_s] || {},
-                                   requires_chi: bundle.requires_chi)
+                                   requires_chi: bundle.requires_chi, hook_failed: @hook_failed)
         rescue Exception => e # rubocop:disable Lint/RescueException -- a hook's SyntaxError or exit must not stop chi
           raise if e.is_a?(SignalException) # Ctrl-C and kill signals are the user's
 

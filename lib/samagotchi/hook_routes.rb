@@ -20,6 +20,13 @@ module Samagotchi
     NOTICE_FALLBACKS = %i[display editor].freeze
     # How much of a failed hook's error #plugin_hook_failed shows.
     HOOK_FAILURE_CHARS = 300
+    # What the notice says the hook now does, by the policy Hooks.wrap gave it
+    # (a chi.on handler is always :log; a bundle's hook file any of the three).
+    HOOK_FAILURE_EFFECTS = {
+      log: "it's skipped, and only the log has its next failures",
+      skip: "it's skipped, and its next failures are silent",
+      deny: "it denies every tool call it guards, and its next failures are in each denial's reason"
+    }.freeze
 
     # @param event_routes      [EventRoutes] where a notice goes
     # @param question_desk     [#call] → QuestionDesk
@@ -91,14 +98,17 @@ module Samagotchi
       nil
     end
 
-    # A chi.on handler raised (the log has every firing: Hooks.wrap). Its
-    # first failure on this Engine, so in this worker, tells the user, as a
-    # plugin that failed to load does; then only the log. One line per
-    # label, so per bundle and event: a handler on a stream can't nag.
+    # A bundle hook file or a chi.on handler raised (Hooks.wrap; the log has
+    # every firing of a :log one). Its first failure on this Engine, so in
+    # this worker, tells the user, as a plugin that failed to load does; then
+    # only the log. One line per label — file, bundle and event — so a
+    # handler on a stream can't nag.
     # @param hook [String] "<file> (bundle <name>) <event> hook"
     # @param failed [String] "Class: message"
-    def plugin_hook_failed(hook, failed)
-      line = "#{hook} failed (#{failed.lines.first.to_s.strip[0, HOOK_FAILURE_CHARS]}): it's skipped, and only the log has its next failures"
+    # @param effect [Symbol] the hook's policy, for what the line says it does
+    def plugin_hook_failed(hook, failed, effect: :log)
+      line = "#{hook} failed (#{failed.lines.first.to_s.strip[0, HOOK_FAILURE_CHARS]}): " \
+             "#{HOOK_FAILURE_EFFECTS[effect] || HOOK_FAILURE_EFFECTS[:log]}"
       first = @hook_failures_lock.synchronize { @hook_failures.key?(hook) ? false : (@hook_failures[hook] = line) }
       guardrail_notify(line, label: "plugins") if first
       nil

@@ -472,6 +472,23 @@ once in the UI.
 Hook failures never break the engine loop — each hook is wrapped in its own
 try/catch.
 
+A bundle's `hooks/*.rb` file that **raises** tells you once per hook in a
+worker, on the plugins' surface, whatever its `on_error` (the same notice a
+`chi.on` handler gets):
+
+```
+plugins> guardrail guardrails.rb (bundle known-names) before_tool_call hook failed (RuntimeError: boom):
+         it denies every tool call it guards, and its next failures are in each denial's reason
+```
+
+The label names the file, the bundle and the event, so one line per hook: a
+hook on a stream can't nag. `on_error` still decides what happens at every
+firing — `skip` logs nothing, `log` warns each time (a stream hook at most
+once a minute), a fail_closed `before_tool_call` hook denies the call — the
+notice is only added on top. A config hook (config.yml's own files) keeps its
+behaviour: no notice, just the log. A UI that joins later reads the same lines
+from `Engine#plugin_warning`.
+
 ## Runtime Hook Registration
 
 You can also register hooks programmatically during a turn (they are cleared

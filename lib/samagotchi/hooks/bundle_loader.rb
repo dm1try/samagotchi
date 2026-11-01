@@ -40,6 +40,9 @@ module Samagotchi
     #     the tool call (fail-closed).
     #   - "log": warn to stderr and continue.
     #   - "skip" (default): silently continue.
+    # Whatever the policy, a hook file that raises is told to the user once
+    # per hook (its +hook_failed+ callback, the Engine's
+    # HookRoutes#plugin_hook_failed): :skip would otherwise leave no trace.
     module BundleLoader
       class << self
         # Load all hook plugins for a bundle into the given registry.
@@ -57,8 +60,11 @@ module Samagotchi
         # @param requires_chi [String, nil] the bundle's requirement; when
         #   this chi doesn't meet it no hook loads (each is reported, as the
         #   plugin loader does)
+        # @param hook_failed [#call, nil] (label, "Class: message", effect:)
+        #   when a hook file raises at fire time — the Engine's HookRoutes;
+        #   nil when there is no UI to tell (the test kit)
         # @return [Integer] number of hooks successfully registered
-        def load(bundle_name:, hooks_dir:, metadata:, registry:, failures: nil, settings: {}, requires_chi: nil)
+        def load(bundle_name:, hooks_dir:, metadata:, registry:, failures: nil, settings: {}, requires_chi: nil, hook_failed: nil)
           return 0 unless metadata.is_a?(Hash)
 
           too_old = MemoryBundle::Manifest.requires_chi_failure(requires_chi, Samagotchi::VERSION)
@@ -85,7 +91,7 @@ module Samagotchi
             end
 
             begin
-              load_hook_file(bundle_name, basename, file, hook, registry, settings: settings)
+              load_hook_file(bundle_name, basename, file, hook, registry, settings: settings, hook_failed: hook_failed)
               loaded += 1
             rescue Exception => e # rubocop:disable Lint/RescueException -- a hook's SyntaxError or exit must not stop chi
               raise if e.is_a?(SignalException) # Ctrl-C and kill signals are the user's
@@ -107,9 +113,12 @@ module Samagotchi
         # @param hook [MemoryBundle::BundleHook] its manifest entry
         # @param namespace [Module, nil] the module the file is evaluated
         #   in (default: the bundle's, #namespace_for)
+        # @param hook_failed [#call, nil] (label, "Class: message", effect:)
+        #   on every raise at fire time, whatever the policy; nil gives no
+        #   notice (the log still has a :log hook's failures)
         # @raise [Exception] what loading or building the file raised;
         #   nothing is registered then
-        def load_hook_file(bundle_name, basename, file, hook, registry, settings: {}, namespace: nil)
+        def load_hook_file(bundle_name, basename, file, hook, registry, settings: {}, namespace: nil, hook_failed: nil)
           plugin = instantiate(bundle_name, basename, file, settings: settings, namespace: namespace)
           hook.events.each do |event_name|
             event_sym = event_name.to_sym
@@ -119,8 +128,15 @@ module Samagotchi
                      else :skip
                      end
             label = "#{"guardrail " if fail_closed}#{basename} (bundle #{bundle_name})"
+            # Every policy tells, once per label: a hook file under the
+            # default :skip would raise with no trace anywhere. The label
+            # names the file, the bundle and the event, so one label per
+            # hook and a stream hook can't nag.
+            on_failure = hook_failed && lambda { |hook_label, failed|
+              hook_failed.call("#{hook_label} #{event_sym} hook", failed, effect: policy)
+            }
             handler = Hooks.wrap(label: label, event: event_sym, policy: policy, log: [:hooks, "bundle_hook_failed"],
-                                 fields: { bundle: bundle_name }) { |event| plugin.call(event) }
+                                 fields: { bundle: bundle_name }, on_failure: on_failure) { |event| plugin.call(event) }
             registry.register_bundle(bundle_name, event_sym, hook_name: basename, priority: hook.priority, &handler)
           end
           nil

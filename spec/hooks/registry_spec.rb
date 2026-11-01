@@ -221,3 +221,58 @@ RSpec.describe Samagotchi::Hooks::Registry, "the hook runtime on the event" do
     end
   end
 end
+
+RSpec.describe Samagotchi::Hooks, "Hooks.wrap's failure notice" do
+  # A hook file's wrap, as Hooks::BundleLoader builds it: label names the
+  # file, the bundle and the event.
+  def wrapped(policy:, on_failure: nil, &block)
+    Samagotchi::Hooks.wrap(label: "audit.rb (bundle b) after_tool_call hook", event: :after_tool_call,
+                           policy: policy, echo: false, on_failure: on_failure, &block)
+  end
+
+  it "tells the notice for an on_error: skip hook, though nothing is logged" do
+    told = []
+    allow(Samagotchi::Log).to receive(:warn)
+    hook = wrapped(policy: :skip, on_failure: ->(label, failed) { told << [label, failed] }) { |_event| raise "silent" }
+    hook.call({ type: :after_tool_call })
+    expect(told).to eq([["audit.rb (bundle b) after_tool_call hook", "RuntimeError: silent"]])
+    expect(Samagotchi::Log).not_to have_received(:warn)
+  end
+
+  it "tells every firing of a :log hook, as the log has each of them" do
+    told = []
+    allow(Samagotchi::Log).to receive(:warn)
+    hook = wrapped(policy: :log, on_failure: ->(_label, failed) { told << failed }) { |_event| raise "boom" }
+    2.times { hook.call({ type: :after_tool_call }) }
+    expect(told).to eq(["RuntimeError: boom", "RuntimeError: boom"])
+    expect(Samagotchi::Log).to have_received(:warn).with(:hooks, "hook_failed", any_args).twice
+  end
+
+  it "tells a fail_closed hook and still denies the call" do
+    told = []
+    verdict = Samagotchi::Guardrails::Verdict.new(call: { name: "execute" })
+    hook = described_class.wrap(label: "guardrail g.rb (bundle b) before_tool_call hook", event: :before_tool_call,
+                                policy: :deny, echo: false, on_failure: ->(_label, failed) { told << failed }) { |_event| raise "boom" }
+    hook.call({ type: :before_tool_call, guardrail: verdict })
+    expect(verdict).to be_deny
+    expect(told).to eq(["RuntimeError: boom"])
+  end
+
+  it "tells nothing for a config hook, which is given no notice to make" do
+    allow(Samagotchi::Log).to receive(:warn)
+    hook = described_class.wrap(label: "audit.rb (config)", event: :before_turn, policy: :skip) { |_event| raise "silent" }
+    expect { hook.call({ type: :before_turn }) }.not_to raise_error
+    expect(Samagotchi::Log).not_to have_received(:warn)
+  end
+
+  it "swallows a notice that raises: the policy still holds" do
+    allow(Samagotchi::Log).to receive(:debug)
+    verdict = Samagotchi::Guardrails::Verdict.new(call: { name: "execute" })
+    hook = described_class.wrap(label: "guardrail g.rb (bundle b) before_tool_call hook", event: :before_tool_call,
+                                policy: :deny, echo: false,
+                                on_failure: ->(_label, _failed) { raise "the notice itself is broken" }) { |_event| raise "boom" }
+    expect { hook.call({ type: :before_tool_call, guardrail: verdict }) }.not_to raise_error
+    expect(verdict).to be_deny
+    expect(Samagotchi::Log).to have_received(:debug).with(:hooks, "hook_failure_not_told", any_args)
+  end
+end

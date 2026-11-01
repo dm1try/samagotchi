@@ -3,6 +3,7 @@
 require "spec_helper"
 require "samagotchi/extension_load"
 require "samagotchi/guardrails"
+require "samagotchi/memory_bundle/provenance"
 
 RSpec.describe Samagotchi::ExtensionLoad do
   subject(:extension_load) { described_class.new(hook_failures: Samagotchi::Guardrails::LoadFailures.new) }
@@ -30,6 +31,25 @@ RSpec.describe Samagotchi::ExtensionLoad do
 
     expect { extension_load.load_plugins(Object.new, failures: nil) }.to raise_error("boom")
     expect(extension_load.loading?).to be false
+  end
+
+  it "hands the hook-failure notice to every installed bundle's hook files" do
+    allow(Samagotchi::ConfigFile).to receive(:bundle_settings).and_return({})
+    record = Samagotchi::MemoryBundle::InstalledBundle.parse("b", hooks: { "k.rb" => { event: "before_turn" } }, trust_level: "reviewed")
+    allow(Samagotchi::MemoryBundle::Provenance).to receive(:each_installed).with(holding: :hooks).and_yield("b", record)
+    notice = ->(hook, failed, effect: nil) { [hook, failed, effect] }
+    expect(Samagotchi::Hooks::BundleLoader).to receive(:load).with(hash_including(hook_failed: notice)).and_return(1)
+
+    described_class.new(hook_failures: Samagotchi::Guardrails::LoadFailures.new, hook_failed: notice).hooks
+  end
+
+  it "loads the hooks with no notice when the Engine gives none (the test kit's sandbox)" do
+    allow(Samagotchi::ConfigFile).to receive(:bundle_settings).and_return({})
+    record = Samagotchi::MemoryBundle::InstalledBundle.parse("b", hooks: { "k.rb" => { event: "before_turn" } }, trust_level: "reviewed")
+    allow(Samagotchi::MemoryBundle::Provenance).to receive(:each_installed).with(holding: :hooks).and_yield("b", record)
+    expect(Samagotchi::Hooks::BundleLoader).to receive(:load).with(hash_including(hook_failed: nil)).and_return(1)
+
+    extension_load.hooks
   end
 
   it "reads config.yml bundles: once" do

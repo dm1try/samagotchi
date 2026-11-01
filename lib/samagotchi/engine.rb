@@ -296,7 +296,12 @@ module Samagotchi
     # toolkit, the tool index, peer sources), then the plugins themselves
     # unless +load+ is false (see #initialize for when).
     def build_tools_and_plugins(load:, task_finish_notes:)
-      @extension_load = ExtensionLoad.new(hook_failures: @guardrail_failures)
+      # The routes are built already (#initialize), so a bundle's hook file
+      # that raises at fire time is told the same way a chi.on handler is:
+      # once per hook in this worker. The guard covers a hook that raises
+      # before the routes are there (nothing in the Engine's path does).
+      @extension_load = ExtensionLoad.new(hook_failures: @guardrail_failures,
+                                          hook_failed: ->(hook, failed, effect: nil) { @hook_routes&.plugin_hook_failed(hook, failed, effect: effect) })
       @hooks = @extension_load.hooks
       # The tools this session offers (the prompts' declarations and the
       # kernel's dispatch): the built-ins, per Engine. execute.description
