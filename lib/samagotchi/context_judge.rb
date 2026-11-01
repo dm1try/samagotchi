@@ -26,6 +26,8 @@ module Samagotchi
   # (attach, card, or nothing); audit only logs.
   module ContextJudge
     MODES = %w[off audit on].freeze
+    # Its saved asks' name (SystemOne::Runs).
+    JUDGMENT = "context.candidate"
     ABOUT_ID = "about"
     TASK_ID = "task"
     # The bound on each prompt in the state.

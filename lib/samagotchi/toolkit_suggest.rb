@@ -17,6 +17,8 @@ module Samagotchi
   class ToolkitSuggest
     FILE = "toolkit_suggestions.jsonl"
     QUESTION_ID = "toolkit"
+    # Its saved asks' name (SystemOne::Runs).
+    JUDGMENT = "toolkit.suggest"
     PROMPT_MAX = 1500
     CHARS_PER_TOKEN = 4.0
     INSTRUCTIONS = "A user is starting a session of a coding agent with the prompt in the state. " \

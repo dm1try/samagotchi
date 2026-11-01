@@ -40,6 +40,12 @@ RSpec.describe Samagotchi::SystemOne::Recording do
     expect(line).not_to have_key("failure")
   end
 
+  it "says the use's own mode when the client's isn't it" do
+    described_class.wrap(client, judgment: "approvals.allow", runs: runs, recorded_mode: "shadow")
+                   .ask(state: "x", questions: questions)
+    expect(line["mode"]).to eq("shadow")
+  end
+
   it "uses the run id it is given: one client serves several threads" do
     recording.ask(state: "x", questions: questions, run_id: "approvals.allow/given")
     expect(line["id"]).to eq("approvals.allow/given")
@@ -74,7 +80,7 @@ RSpec.describe Samagotchi::SystemOne::Recording do
   end
 
   it "keeps the answer when the run can't be saved: one warn" do
-    broken = s1::Runs.new(store: Class.new { def append(*) = raise(IOError, "disk full") }.new)
+    broken = s1::Runs.new(store: Class.new { def version(*) = raise(IOError, "disk full") }.new)
     expect(Samagotchi::Log).to receive(:warn).with(:system_one, "system_one_run_failed", hash_including(echo: /disk full/)).once
     expect(recording(runs: broken).ask(state: "x", questions: questions)).to eq("allow" => answer)
   end

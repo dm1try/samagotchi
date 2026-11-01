@@ -3059,7 +3059,7 @@ module Samagotchi
       end
 
       client = system_one_recording(SystemOne::Client.from_config(host_registry: @host_registry, mode: "on", tag: :toolkit),
-                                    "toolkit.suggest", session)
+                                    ToolkitSuggest::JUDGMENT, session, mode: Config.get("toolkit.suggest.mode").to_s)
       return unless client
 
       # D7: on a shared single-slot server audit's free ask would compete
@@ -3217,19 +3217,23 @@ module Samagotchi
     # +client+ (nil for none) saving its asks as +judgment+'s runs. Anything
     # going wrong here leaves the client as it was: a run is never worth a
     # judgment.
-    def system_one_recording(client, judgment, session)
-      return nil if client.nil?
+    #
+    # A scratch session's asks aren't saved; a participant's turn is never
+    # judged, so it never comes here.
+    # @param mode [String, nil] the use's mode, for its runs (Recording.wrap)
+    def system_one_recording(client, judgment, session, mode: nil)
+      return client if client.nil? || session&.scratch
 
       context = SystemOne::Recording::Context.of(session, session_model: session && effective_model_name)
-      SystemOne::Recording.wrap(client, judgment: judgment, runs: system_one_runs, context: context)
+      SystemOne::Recording.wrap(client, judgment: judgment, runs: system_one_runs, context: context, recorded_mode: mode)
     rescue StandardError => e
       Log.warn(:system_one, "system_one_recording_failed", error: e.class.name, msg: e.message.to_s[0, 200])
       client
     end
     private :system_one_recording
 
-    # Where runs are saved: nowhere until the store comes.
-    def system_one_runs = SystemOne::Runs.new
+    # Where this Engine's runs are saved; read each time, as the settings are.
+    def system_one_runs = SystemOne::Runs.for_sessions_dir(session_state_dir)
     private :system_one_runs
 
     # D7: System 1's host is the session's model server, and a local one
@@ -3293,7 +3297,7 @@ module Samagotchi
       return if jobs.empty?
 
       client = system_one_recording(SystemOne::Client.from_config(host_registry: @host_registry, mode: "on", tag: :context),
-                                    "context.candidate", session)
+                                    ContextJudge::JUDGMENT, session, mode: settings.mode)
       return unless client
 
       choice = context_choice(session, log, settings)

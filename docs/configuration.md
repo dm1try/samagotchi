@@ -169,6 +169,7 @@ or `chi web` restart.
 | `context.*` except `context.every_seconds`, `llm_context.*` except `llm_context.policy`, `steer.cut_after`, `memory.index_warn_tokens`, `status.line`, `web.participants.*` | Next matching turn, display, poll or write | Readers resolve these settings when they perform that operation. Session-specific LLM context and thinking values remain saved in the session. A participant's grant keeps the expiry and cap it was issued with; `web.participants.*` is what the next invite gets, and the cap and queue of a grant from before caps. |
 | `context.every_seconds` | Next context poll | The poller checks it for each source that has no explicit interval. |
 | `guardrails.*` | Next tool call or approval | Guardrail rules and disable lists are reloaded when the config file changes; rule settings take effect on that evaluation. `guardrails.parent_answers` is checked when a parent answers a question. |
+| `system_one.runs` | Next tool call or approval | Each ask reads it. |
 | `hooks`, `bundles` | Worker start | Hooks, plugins and their bundle settings load with the engine. |
 | `recap.*` | Worker start | The engine builds its recap job at start, and again when it binds a session with its own `recap.enabled` or `recap.sentences` (`--set`, see "Per-session settings") and when `/recap on\|off\|default` changes the session's own value. |
 | `session.shared` | Next `chi` invocation | It selects attached-worker or in-process mode for that invocation. |
@@ -2211,6 +2212,7 @@ column says so, a `--kebab-name` flag. The maps (`hosts:`, `models:`,
 | `guardrails.system_one.threshold` | `0.8` | | The probability an auto-allow needs. config.yml only. |
 | `guardrails.system_one.min_record` | `5` | | How many clean records a rule needs before System 1 is trusted for it: labelled asks of that rule at the threshold the user allowed. config.yml only. |
 | `guardrails.system_one.timeout_ms` | `2000` | | Milliseconds one judgment may take; a slower one is no judgment and the ask goes to the user. config.yml only. |
+| `system_one.runs` | `on` | | Save each System 1 ask and what came of it, under the state dir, as long as sessions last (see [System 1's saved runs](system-one.md)); `off` stops saving. config.yml only. |
 | `log.file` | state dir | yes | See "Debug Log File". |
 | `log.disable` | `false` | yes | No file logging. |
 | `log.level` | `info` | yes | `debug`, `info`, `warn`, `error`. |

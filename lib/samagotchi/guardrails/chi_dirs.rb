@@ -12,8 +12,9 @@ module Samagotchi
     # words against, as this process's environment and config.yml name them
     # (read each call). Each surface keeps its set:
     #   .protected     the config dir, the hooks dir, the approval store's
-    #                  dir, the installed bundles' dir, attached context: an
-    #                  ask only the user may answer (ParentApprovals.chi_files?)
+    #                  dir, the installed bundles' dir, attached context,
+    #                  System 1's saved runs: an ask only the user may answer
+    #                  (ParentApprovals.chi_files?)
     #   .touches       .protected and the session repo's git hooks dir: a
     #                  rule's touches: chi_dirs (Targets#touches_chi?)
     #   .self_protect  .protected and the whole state dir, resolved: what
@@ -27,11 +28,13 @@ module Samagotchi
       module_function
 
       # chi's config dir, the hooks dir, the approval store's dir, the
-      # installed bundles' dir and attached context.
+      # installed bundles' dir, attached context and System 1's saved runs
+      # (labels there may train a model: no agent writes them).
       def protected
         hooks = begin Hooks::Loader.hooks_dir rescue nil end
         bundles = begin MemoryPaths.bundles_dir rescue nil end
-        [ConfigFile.config_dir, hooks, File.join(Paths.state_dir, "guardrails"), bundles, File.join(Paths.state_dir, "context")]
+        [ConfigFile.config_dir, hooks, File.join(Paths.state_dir, "guardrails"), bundles, File.join(Paths.state_dir, "context"),
+         File.join(Paths.state_dir, "system_one")]
           .compact.map { |dir| dir.to_s.chomp("/") }.reject(&:empty?).uniq
       end
 

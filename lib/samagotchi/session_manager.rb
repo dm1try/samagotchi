@@ -6,6 +6,7 @@ require "time"
 require "securerandom"
 require "rbconfig"
 require_relative "chi_home"
+require_relative "system_one/runs"
 require_relative "child_env"
 require_relative "client_id"
 require_relative "analytics_file"
@@ -1043,7 +1044,9 @@ module Samagotchi
     # @raise [OwnedByTUI] a chi REPL owns it (never stopped from here)
     # @raise [DeleteRefused] a worker owns it and +stop+ is false, or it
     #   outlived the wait
-    def self.delete_session(id_or_prefix, state_dir: nil, stop: false, wait: STOP_WAIT)
+    # @param purge_runs [Boolean] also delete System 1's saved runs of it; a
+    #   session a worker left empty has none worth the read
+    def self.delete_session(id_or_prefix, state_dir: nil, stop: false, wait: STOP_WAIT, purge_runs: true)
       sd = state_dir || Session.default_state_dir
       given = id_or_prefix.to_s
       # Only a plain id: anything else could name a path outside the state dir.
@@ -1072,7 +1075,15 @@ module Samagotchi
       PluginSessionState.remove(id)
       removed.concat(ContextSources.remove_session(id, state_dir: sd))
       Participants.end_sessions([id], by: "delete", state_dir: sd)
+      purge_session_runs(id, sd) if purge_runs
       { id: id, removed: removed, stopped: !owner.nil? }
+    end
+
+    # Never a reason a delete fails: one warn, and the sweep ages them out.
+    private_class_method def self.purge_session_runs(id, state_dir)
+      SystemOne::Runs.purge_session(id, sessions_dir: state_dir)
+    rescue StandardError => e
+      Log.warn(:worker, "session_runs_purge_failed", sid: id, error: e.class.name, msg: e.message.to_s[0, 200])
     end
 
     # @return [Boolean] whether the session had no owner within +timeout+ seconds
@@ -1216,7 +1227,7 @@ module Samagotchi
     private_class_method def self.discard_left_session(session_id, state_dir:, default_model:)
       return unless discardable?(session_id, state_dir: state_dir, default_model: default_model)
 
-      delete_session(session_id, state_dir: state_dir)
+      delete_session(session_id, state_dir: state_dir, purge_runs: false)
       Log.info(:worker, "discarded_empty", sid: session_id)
     rescue DeleteRefused, OwnedByTUI, ArgumentError, SystemCallError => e
       Log.info(:worker, "kept_session", sid: session_id, error: e.class.name, msg: e.message)

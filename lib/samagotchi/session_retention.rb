@@ -10,6 +10,7 @@ require_relative "model_profile"
 require_relative "session_manager"
 require_relative "plugin_session_state"
 require_relative "context_sources"
+require_relative "system_one/runs"
 
 module Samagotchi
   # Which sessions go: `chi sessions prune` / `clean` (.prune) and the lazy
@@ -109,6 +110,7 @@ module Samagotchi
         return if age < interval
       end
       result = prune(state_dir: sd)
+      sweep_runs(sd)
       FileUtils.touch(marker)
       if result[:deleted].any?
         Log.info(:worker, "retention_pruned", echo: "[retention] pruned #{result[:deleted].size} sessions (kept #{result[:kept].size})", deleted: result[:deleted].size, kept: result[:kept].size)
@@ -117,6 +119,14 @@ module Samagotchi
     rescue StandardError => e
       Log.warn(:worker, "retention_failed", echo: "[retention] sweep failed: #{e.class}: #{e.message}", error: e.class.name)
       nil
+    end
+
+    # System 1's saved runs last as long as sessions, by day file. Never a
+    # reason the session sweep fails.
+    private_class_method def self.sweep_runs(state_dir)
+      SystemOne::Runs.sweep_at(File.dirname(state_dir))
+    rescue StandardError => e
+      Log.warn(:worker, "retention_runs_failed", echo: "[retention] saved runs: #{e.class}: #{e.message}", error: e.class.name)
     end
 
     # The caller's value (a sessions prune flag) or session.retention_days.

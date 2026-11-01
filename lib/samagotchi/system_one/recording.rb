@@ -31,15 +31,19 @@ module Samagotchi
       end
 
       # The wrapped client, or nil for none: the caller's nil check stays.
-      def self.wrap(client, judgment:, runs:, context: Context.new)
-        client && new(client, judgment: judgment, runs: runs, context: context)
+      # @param recorded_mode [String, nil] the use's mode as a run says it,
+      #   where the client's isn't it (toolkit and context build theirs "on"
+      #   in audit too); nil: the client's
+      def self.wrap(client, judgment:, runs:, context: Context.new, recorded_mode: nil)
+        client && new(client, judgment: judgment, runs: runs, context: context, recorded_mode: recorded_mode)
       end
 
-      def initialize(client, judgment:, runs:, context: Context.new)
+      def initialize(client, judgment:, runs:, context: Context.new, recorded_mode: nil)
         @client = client
         @judgment = judgment
         @runs = runs
         @context = context
+        @recorded_mode = recorded_mode
       end
 
       def host = @client.host
@@ -78,7 +82,7 @@ module Samagotchi
         @runs.record(
           id: run_id || Runs.new_id(@judgment), judgment: @judgment, questions: questions,
           **@context.to_h.transform_keys(&:to_sym),
-          state: state, asked: true, origin: "live", mode: said(:mode), host: said(:host),
+          state: state, asked: true, origin: "live", mode: @recorded_mode || said(:mode), host: said(:host),
           model: facts[:model] || said(:model), served_model: facts[:served_model],
           answers: facts[:raw] || answers&.transform_values(&:to_h), usage: facts[:usage],
           failure: facts[:failure], failure_text: facts[:failure_text]&.to_s&.slice(0, 500),

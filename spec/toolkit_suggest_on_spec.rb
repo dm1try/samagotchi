@@ -418,8 +418,13 @@ RSpec.describe Samagotchi::Engine, "toolkit suggestion on mode" do
       join!(engine.instance_variable_get(:@side_judgments).thread(:toolkit), "the ask")
       line = store.lines["toolkit.suggest"].first
       expect(line).to include("judgment" => "toolkit.suggest", "host" => "judge", "mode" => "on", "asked" => true)
+      expect(store.versions["toolkit.suggest"].size).to eq(1)
       expect(line["state"]["prompt"]).to eq("Fix the browser flow")
       expect(line["answers"]["toolkit"]).to include("choice" => "kit:web")
+    end
+
+    it "saves no run for a scratch session" do
+      expect(engine.send(:system_one_recording, system_one, "toolkit.suggest", session.tap { |s| s.scratch = true })).to equal(system_one)
     end
 
     it "gives a warm-up the bare client: no run" do

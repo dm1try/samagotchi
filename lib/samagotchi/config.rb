@@ -191,6 +191,9 @@ module Samagotchi
       # How long one judgment may take, in milliseconds; a judgment that doesn't arrive asks the user.
       Entry.new(key: "guardrails.system_one.timeout_ms", yaml_path: %w[guardrails system_one timeout_ms], type: :integer, default: 2000,  expose: %i[config], lifecycle: :next_tool_or_approval),
 
+      # Save each System 1 ask and what came of it (docs/system-one.md): on (the default) | off.
+      Entry.new(key: "system_one.runs", yaml_path: %w[system_one runs], type: :enum, default: "on", expose: %i[config], enum_values: %w[on off], lifecycle: :next_tool_or_approval),
+
       Entry.new(key: "log.file",                 yaml_path: %w[log file],                 type: :string, default: nil,              expose: %i[env config cli], lifecycle: :process_start),
       Entry.new(key: "log.disable",              yaml_path: %w[log disable],              type: :bool,   default: false,            expose: %i[env config cli], lifecycle: :process_start),
       # debug adds payload dumps (model responses, tool args/results) and fetch lines.

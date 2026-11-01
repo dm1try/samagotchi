@@ -28,6 +28,13 @@ RSpec.describe Samagotchi::SystemOne::Runs do
     expect(other_wording["criteria_digest"]).to eq(base["criteria_digest"])
   end
 
+  it "keeps core's names from a bundle" do
+    expect(described_class.declarable?("check-in.progress")).to be(true)
+    %w[approvals.x context.x guardrails toolkit.y check-in.progress.replay ../x a/b].each do |name|
+      expect(described_class.declarable?(name)).to be(false), name
+    end
+  end
+
   it "saves nothing without a store" do
     expect(described_class.new).not_to be_on
     expect(described_class.new.record(id: "x/1", judgment: "x", questions: [question])).to be(false)
