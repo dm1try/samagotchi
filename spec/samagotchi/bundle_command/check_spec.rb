@@ -243,6 +243,25 @@ RSpec.describe Samagotchi::BundleCommand::Check do
     end
   end
 
+  it "requires-chi-floor: what 0.140.0 and 0.141.0 added to ctx and ctx.context, a keyword too" do
+    { "ctx.context.propose(title: \"t\")" => %w[ctx.context.propose 0.140.0],
+      "ctx.context.candidates" => %w[ctx.context.candidates 0.140.0],
+      "ctx.context.withdraw(\"n\")" => %w[ctx.context.withdraw 0.140.0],
+      "ctx.review?" => %w[ctx.review 0.140.0],
+      "ctx.continues" => %w[ctx.continues 0.141.0],
+      "ctx.context.left_behind" => %w[ctx.context.left_behind 0.141.0],
+      "ctx.context.attach(url: \"u\", movable: true)" => ["ctx.context.attach(movable:)", "0.141.0"] }.each do |code, (call, version)|
+      out.truncate(0)
+      out.rewind
+      edit("plugin.rb") { |text| text.sub(/\|_args, ctx\| .*? \}/, "|_args, ctx| #{code} }") }
+      refresh!
+      expect(findings(:warn).grep(/requires-chi-floor/)).to eq(
+        ["warn requires-chi-floor manifest.yml:7: requires_chi \">= 0.80.0\" admits chi 0.80.0, " \
+         "but plugin.rb uses #{call}, which needs chi #{version} (fix: requires_chi: \">= #{version}\")"]
+      )
+    end
+  end
+
   it "requires-chi-floor: a keyword added later (chi.toolkit's prompt: and groups:), with or without parens" do
     edit("manifest.yml") { |text| text.sub('requires_chi: ">= 0.80.0"', 'requires_chi: ">= 0.66.0"') }
     edit("plugin.rb") { |text| text.sub("chi.on(", "chi.toolkit \"web\", base: \"lean\",\n                prompt: \"Be brief\"\n    chi.on(") }

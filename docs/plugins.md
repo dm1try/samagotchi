@@ -5,9 +5,6 @@ tools, hooks and background setup to every session. Its hooks are ordinary
 bundle hooks ([hooks.md](hooks.md)). Its commands and tools work like chi's
 own.
 
-This is the first version of the plugin API. More of it comes later: see
-[Not yet](#not-yet).
-
 Writing a bundle? Start with [bundle-authoring.md](bundle-authoring.md): the `chi bundle new` / `test` / `check`
 loop, the event shapes, the kit, the pitfalls.
 
@@ -1352,6 +1349,9 @@ are the rest of the surface they may use. A change to any of them gets a
 CHANGELOG line and bumps the shipped bundles that use it. Anything else under
 `Samagotchi::` is internal.
 
+**New API ships with its first caller:** a `chi.*` or `ctx.*` method arrives in the same change as a shipped bundle
+that calls it, or for a real external bundle that does. No method on the chance that someone will want it.
+
 **Stable**
 
 1. `Samagotchi::Plugin::Api` / `chi.*` and `ctx` as documented above (`ctx.cost`'s and `ctx.usage`'s values by their methods), including
@@ -1386,12 +1386,10 @@ fails on a reference in neither (docs/testing.md).
 **Used by shipped bundles today, but internal** (may change without notice; a
 bundle that needs one should ask for an API instead):
 
-- `Samagotchi::Tools::MemoryRead.memories_dir`, `Samagotchi::MemoryPaths.scope_dir`,
-  `Samagotchi::ConfigFile.global_path` and
-  `Samagotchi::Config.validate_yaml_sections`.
+- `Samagotchi::Tools::MemoryRead.memories_dir` and `Samagotchi::MemoryPaths.scope_dir`.
 - `Samagotchi::Ref` / `Samagotchi::RefAction` constants and
   `Samagotchi::TokenUsage::CHARS_PER_TOKEN`.
-- `Samagotchi::ProcessGroup.stop`, `Samagotchi::Guardrails::ShellLex` and
+- `Samagotchi::ProcessGroup.stop`, `Samagotchi::ProjectEnv`, `Samagotchi::Guardrails::ShellLex` and
   `Samagotchi::Guardrails::GitInfo`.
 - `Samagotchi::Tools::Execute.const_get` reflection.
 
@@ -2806,9 +2804,3 @@ for one model family, loaded into the prompt only for the models a note's
 - `chi bundle new`, `test` and `check`: start a bundle, run its tests on chi's Ruby, check it as an install takes
   it ([cli.md](cli.md#writing-a-bundle-new-test-check)); `chi bundle try PATH -p TEXT`: run it for one turn in a
   sandbox and trace what it did ([cli.md](cli.md#trying-a-bundle)). The path: [bundle-authoring.md](bundle-authoring.md).
-
-## Not yet
-
-These are planned:
-
-- `chi.prompt` for sections of the system prompt.

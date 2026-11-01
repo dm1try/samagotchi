@@ -50,8 +50,12 @@ module Samagotchi
         "chi.toolkit(prompt:)" => "0.72.0", "ctx.ask_model(model:)" => "0.80.0", "chi.toolkit(groups:)" => "0.121.0",
         "chi.prompt_section" => "0.132.0", "chi.prompt_changed" => "0.132.0", "ctx.cache_confirm" => "0.132.0",
         "ctx.model_names" => "0.132.0", "chi.judgment" => "0.142.0", "ctx.judge" => "0.142.0",
-        "ctx.judge_later" => "0.142.0", "ctx.judgments" => "0.142.0"
-        # Unreleased: "ctx.context.propose", "ctx.context.candidates", "ctx.context.withdraw", "ctx.review", "ctx.session_dir".
+        "ctx.judge_later" => "0.142.0", "ctx.judgments" => "0.142.0",
+        "ctx.context.decline" => "0.43.0", "ctx.context.declined(url:)" => "0.43.0", "ctx.context.attach(force:)" => "0.43.0",
+        "ctx.ask_user(effects:)" => "0.86.0", "chi.toolkit(description:)" => "0.122.0", "ctx.review" => "0.140.0",
+        "ctx.context.propose" => "0.140.0", "ctx.context.candidates" => "0.140.0", "ctx.context.withdraw" => "0.140.0",
+        "ctx.continues" => "0.141.0", "ctx.context.left_behind" => "0.141.0", "ctx.context.attach(movable:)" => "0.141.0"
+        # Unreleased (moved up, with its version, at the release: docs/releasing.md): "ctx.session_dir".
       }.freeze
 
       # @param bundle [String]

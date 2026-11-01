@@ -41,6 +41,11 @@ and commands may change between minor versions. How releases are made:
   (`plugins> plugin.rb (bundle x) before_turn hook failed (…)`). Before, only the log knew. The hook is still skipped, and the log
   still has each failure.
 
+### Fixed
+
+- `chi bundle check`'s `requires-chi-floor` knows the calls and keywords it was missing: `ctx.context.propose`, `candidates`, `withdraw` and
+  `left_behind`, `ctx.review?`, `ctx.continues`, `ctx.context.attach(movable:)` and others, so a bundle using them with a lower `requires_chi` is told.
+
 ## [0.142.0] - 2026-11-01
 
 ### Added
