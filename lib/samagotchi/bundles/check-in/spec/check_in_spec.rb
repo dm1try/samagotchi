@@ -320,10 +320,11 @@ RSpec.describe "The check-in plugin", :bundle do
       p.judgments.answer("progress", noul: 0.4)
     end
 
-    # A tool call as chi's ToolRunner fires it (docs/hooks.md, Hook Events).
-    def tool_call(p, tool, args: {}, result: "ok")
+    # A tool call as chi's ToolRunner fires it (docs/hooks.md, Hook Events):
+    # the flat call Tools::BuiltinCalls builds, its main argument in content:.
+    def tool_call(p, tool, content: "", result: "ok")
       fire(p, :after_tool_call, tool: tool, output: result, status: "ok", iteration: 1, elapsed_ms: 4,
-           call: { name: tool, arguments: args }, result: result)
+           call: { name: tool, content: content, path: nil, scope: nil }, result: result)
     end
 
     def labels(p) = p.judgments.labels("progress")
@@ -338,8 +339,8 @@ RSpec.describe "The check-in plugin", :bundle do
       p = plugin("after" => 2, "every" => 3)
       judging(p)
       turn(p)
-      tool_call(p, "read", args: { path: "a.rb" }, result: "the file")
-      tool_call(p, "execute", args: { command: "ls" }, result: "one two")
+      tool_call(p, "read", content: "a.rb", result: "the file")
+      tool_call(p, "execute", content: "ls", result: "one two")
       p.judgments.wait
 
       runs = p.judgments.runs("progress")
@@ -349,7 +350,7 @@ RSpec.describe "The check-in plugin", :bundle do
       state = run["state"]
       expect([state["prompt"], state["calls"]]).to eq(["go", 2])
       expect(state["elapsed_s"]).to be_between(0, 60)
-      expect(state["tools"]).to eq(['read {"path":"a.rb"} -> the file', 'execute {"command":"ls"} -> one two'])
+      expect(state["tools"]).to eq(['read {"content":"a.rb"} -> the file', 'execute {"content":"ls"} -> one two'])
     end
 
     it "keeps what a call asked for, without its name or nil fields, as the real call hash has them" do
@@ -365,18 +366,18 @@ RSpec.describe "The check-in plugin", :bundle do
       p = plugin("after" => 2, "every" => 2)
       judging(p)
       turn(p)
-      tool_call(p, "read", args: { path: "a" * 400 }, result: "x" * 900)
-      tool_call(p, "execute", args: { command: "ls" }, result: "y")
-      tool_call(p, "grep", args: { pattern: "z" }, result: "found")
-      tool_call(p, "read", args: { path: "b" }, result: "second")
+      tool_call(p, "read", content: "a" * 400, result: "x" * 900)
+      tool_call(p, "execute", content: "ls", result: "y")
+      tool_call(p, "execute", content: "pwd", result: "found")
+      tool_call(p, "read", content: "b", result: "second")
       p.judgments.wait
 
       runs = p.judgments.runs("progress")
       expect(runs.size).to eq(2)
       first, second = [run_at(p, 2), run_at(p, 4)].map { |run| run["state"] }
       expect([first["calls"], second["calls"]]).to eq([2, 4])
-      expect(second["tools"]).to eq(['grep {"pattern":"z"} -> found', 'read {"path":"b"} -> second'])
-      expect(first["tools"].first).to start_with('read {"path":"aaa')
+      expect(second["tools"]).to eq(['execute {"content":"pwd"} -> found', 'read {"content":"b"} -> second'])
+      expect(first["tools"].first).to start_with('read {"content":"aaa')
       expect(first["tools"].first).to end_with("…")
       expect(first["tools"].first.length).to be <= 340
     end
@@ -385,13 +386,13 @@ RSpec.describe "The check-in plugin", :bundle do
       p = plugin("after" => 20, "every" => 20)
       judging(p)
       turn(p)
-      20.times { |i| tool_call(p, "execute", args: { command: "cat file#{i}" }, result: "y" * 400) }
+      20.times { |i| tool_call(p, "execute", content: "cat file#{i}", result: "y" * 400) }
       p.judgments.wait
 
       tools = p.judgments.runs("progress").last["state"]["tools"]
       expect(tools.size).to be_between(10, 19)
       expect(tools.join.bytesize).to be <= 4096
-      expect(tools.last).to eq('execute {"command":"cat file19"} -> ' + ("y" * 200) + "…")
+      expect(tools.last).to eq('execute {"content":"cat file19"} -> ' + ("y" * 200) + "…")
     end
 
     it "asks nothing and saves nothing while no mode is set, and the card works as before" do
