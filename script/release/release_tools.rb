@@ -510,7 +510,23 @@ module ReleaseTools
                   "and drop the marker (rake release:bump does both)"
     end
     problems << remote_not_yet_problem if remote_not_yet?(root)
+    problems.concat(unreleased_api_problems(root, version))
     problems
+  end
+
+  # A new plugin API call waits in a comment in Plugin::Api::SINCE until it
+  # is released (docs/releasing.md); a release that left it there ships it
+  # with no floor for `chi bundle check`'s requires-chi-floor.
+  PLUGIN_API = "lib/samagotchi/plugin/api.rb"
+  UNRELEASED_API = /^\s*#\s*Unreleased\b.*$/
+
+  def unreleased_api_problems(root, version)
+    path = File.join(root, PLUGIN_API)
+    comment = File.exist?(path) ? File.read(path)[UNRELEASED_API] : nil
+    return [] unless comment
+
+    ["#{PLUGIN_API}: Plugin::Api::SINCE's Unreleased comment still names #{comment.scan(/"([^"]+)"/).flatten.join(", ")}: " \
+     "give each \"#{version}\" in SINCE and drop the comment"]
   end
 
   # The remote attach's temporary refusals (TerminalUI::RemoteLink::NOT_YET:

@@ -533,5 +533,29 @@ RSpec.describe ReleaseTools do
       git("commit", "-q", "-am", "done")
       expect(described_class.consistency_problems(tmp)).to eq([])
     end
+
+    it "names the API calls still waiting in Plugin::Api::SINCE's Unreleased comment, until they have a version" do
+      write(ReleaseTools::PLUGIN_API, <<~RUBY)
+        SINCE = {
+          "ctx.a" => "0.1.0"
+          # Unreleased (moved up, with its version, at the release: docs/releasing.md): "ctx.b", "ctx.c(d:)".
+        }.freeze
+      RUBY
+      git("add", ".")
+      git("commit", "-q", "-m", "unreleased")
+      expect(described_class.consistency_problems(tmp)).to eq(
+        ["#{ReleaseTools::PLUGIN_API}: Plugin::Api::SINCE's Unreleased comment still names ctx.b, ctx.c(d:): " \
+         "give each \"0.2.0\" in SINCE and drop the comment"]
+      )
+
+      write(ReleaseTools::PLUGIN_API, %(SINCE = { "ctx.a" => "0.1.0", "ctx.b" => "0.2.0", "ctx.c(d:)" => "0.2.0" }.freeze\n))
+      git("commit", "-q", "-am", "moved up")
+      expect(described_class.consistency_problems(tmp)).to eq([])
+    end
+
+    it "reads the real Plugin::Api's comment: reworded, the check would pass it by" do
+      lines = File.readlines(File.join(repo_root, ReleaseTools::PLUGIN_API)).grep(/unreleased/i)
+      expect(lines).to all(match(ReleaseTools::UNRELEASED_API).and(match(/"[^"]+"/)))
+    end
   end
 end

@@ -28,7 +28,8 @@ can run the whole release; the user approves the notes before the tag and the
     one-line string). `release:bump` touches no other `requires_chi` but a
     profile's (next point);
   - a new `ctx.*` / `chi.*` call a plugin may make gets its release's version in `Plugin::Api::SINCE` once
-    released (`chi bundle check`'s `requires-chi-floor` reads it); an unreleased one waits there as a comment;
+    released (`chi bundle check`'s `requires-chi-floor` reads it); an unreleased one waits there as an `# Unreleased` comment, and
+    `release:check` fails while that comment is left: move each call up with the new version;
   - a new shipped bundle joins a profile (`includes:` in `core` or `dev`; a
     spec checks every bundle is in exactly one), and that profile's version
     goes up: `chi update` then installs only the new bundle for those who
@@ -71,7 +72,7 @@ as the GitHub release body.
 | `rake gem:validate`, `gem:build`, `gem:install`, `gem:clean` | Check the gemspec; build the gem into `pkg/`; build and install it locally; remove the built gems. |
 | `rake release:draft_changelog` | A draft Unreleased section from the commit subjects since the last tag, grouped. Stdout only. |
 | `rake release:bump[X.Y.Z]` | VERSION, the system manifest, Gemfile.lock, CHANGELOG, and `requires_chi: ">= X.Y.Z"` for each bundle marked `requires_chi_next` (the marker dropped), then a profile left below a member's `requires_chi` raised to it, with a patch bump of its version (none when it moved since the last tag) and named in the CHANGELOG's "Update with `chi update`" line. No commit. |
-| `rake release:check` | Clean tracked tree, VERSION == system bundle, a CHANGELOG section, no `requires_chi_next` left, `bundles:check`, `rake lint` (RuboCop) + `npm run lint` (the web frontend's ESLint), rspec (both roots: `spec` and the bundles' own `spec/`) + `rake bundles:specs` + npm test, `gem build`, then a clean install into a temp GEM_HOME that runs `chi --version`, `chi self` and `chi bundle list` with a temp HOME. Needs the network (gem dependencies). |
+| `rake release:check` | Clean tracked tree, VERSION == system bundle, a CHANGELOG section, no `requires_chi_next` left, no `# Unreleased` comment left in `Plugin::Api::SINCE`, `bundles:check`, `rake lint` (RuboCop) + `npm run lint` (the web frontend's ESLint), rspec (both roots: `spec` and the bundles' own `spec/`) + `rake bundles:specs` + npm test, `gem build`, then a clean install into a temp GEM_HOME that runs `chi --version`, `chi self` and `chi bundle list` with a temp HOME. Needs the network (gem dependencies). |
 | `rake release:notes[X.Y.Z]` | Prints the CHANGELOG section (default: the current VERSION). |
 
 ## Runbook
