@@ -1,6 +1,8 @@
 # frozen_string_literal: true
 
+require "tmpdir"
 require "samagotchi/engine"
+require "support/test_kernel"
 
 # Approvals' client as the Engine builds it: its own mode key, recorded.
 RSpec.describe Samagotchi::Engine do
