@@ -12,7 +12,7 @@ for (const k of ["MutationObserver", "localStorage"]) {
 
 const {
   HIDDEN_CLASS, REVISE_UNAVAILABLE, historyTurns, installReviseStacks, reviseChipTemplate, reviseChipText,
-  reviseWorkerUnavailable, stacks, stubKey, stubText, versionChipText,
+  reviseWorkerUnavailable, stacks, stubKey, stubParts, stubText, versionChipText,
 } = await import("../../../lib/samagotchi/web/public/revise_stack.js");
 const { FOLD_PREFIX, readFolded, writeFold } = await import("../../../lib/samagotchi/web/public/answer_fold.js");
 const { revealInHistory } = await import("../../../lib/samagotchi/web/public/history_reveal.js");
@@ -44,6 +44,10 @@ test("the words: a stub, the version chip, the composer's chip and its refusal",
   assert.equal(stubText({ version: 1, label: "PROJ-123: Retry", lines: 84, top: 3 }),
     "v1 · “PROJ-123: Retry” · 84 lines — superseded by v3");
   assert.equal(stubText({ version: 2, label: "", lines: 1, top: 3 }), "v2 · 1 line — superseded by v3");
+  // The tail is its own part: a narrow screen clips only the opening.
+  assert.deepEqual(stubParts({ version: 1, label: "PROJ-123: Retry", lines: 84, top: 3 }),
+    { said: "v1 · “PROJ-123: Retry” · 84 lines", by: " — superseded by v3" });
+  assert.deepEqual(stubParts({ version: 2, label: "", lines: 1, top: 3 }), { said: "v2 · 1 line", by: " — superseded by v3" });
   assert.equal(versionChipText(3), "v3 · 2 earlier");
   assert.equal(versionChipText(3, 2), "v3 · 2 earlier");
   assert.equal(versionChipText(3, 0), "v1 of 3", "an earlier version on view");
@@ -167,6 +171,32 @@ test("the page: superseded turns fold to one stub each, in place; the top answer
   assert.ok(picks[2].disabled, "the version on view isn't picked");
   // Superseded answers have no Revise; the top and an unstacked one do.
   assert.deepEqual([...history.querySelectorAll("[data-revise]")].map((b) => b.dataset.revise), ["v3", "x"]);
+  history.remove();
+});
+
+test("the page: a stub's words are two spans — the opening that a narrow screen clips, the “superseded by vN” that stays whole", () => {
+  clearFolds();
+  // Two versions of the same answer that open with the same line: the tail is
+  // what tells the stubs apart, so index.html keeps it unclipped (flex:none).
+  const opening = "PONG from the fake model. It streams word by word and then ends.";
+  const { history } = page([
+    ["v1", `${opening}\n${lines(40)}`],
+    ["v2", `${opening}\n${lines(12)}`, { revises: "v1", prompt: "shorter" }],
+    ["v3", "the top answer", { revises: "v2", prompt: "shortest" }],
+  ]);
+  const stubs = [...history.querySelectorAll(".stack-stub")];
+  assert.equal(stubs.length, 2, "two superseded versions");
+  for (const [at, stub] of stubs.entries()) {
+    const text = stub.querySelector(".stack-stub-text");
+    const said = text.querySelector(".stack-stub-said");
+    const by = text.querySelector(".stack-stub-by");
+    assert.ok(said && by, `stub v${at + 1}: the opening and the tail spans`);
+    assert.ok(said.nextElementSibling === by, "the tail follows the opening");
+    assert.equal(by.textContent, " — superseded by v3");
+    assert.match(said.textContent, new RegExp(`^v${at + 1} · “`));
+    assert.doesNotMatch(said.textContent, /superseded/, "the version that superseded it is not in the clipped part");
+    assert.equal(text.textContent, `${said.textContent}${by.textContent}`, "the two spans are the stub's whole words");
+  }
   history.remove();
 });
 
