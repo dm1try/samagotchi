@@ -797,8 +797,10 @@ Engine
 Both loops:
 
 - <a id="a-reply-that-is-only-a-tool-call"></a>**A reply that is only a tool call** (`LLM::StrayToolCall`, `LLM::ChatLoop` only): a reply with no tool
-  calls whose whole text is one closed tool-call block, which the host couldn't read, isn't an answer. A reply opening with prose or a fence stays
-  an answer, and the check is one string test on a normal one. Nothing is guessed from the block and it never enters the history (`:generation_completed`
+  calls whose whole text is one tool-call block closed by the tag that opened it (`<function=` by `</function>`, `<parameter=` by `</parameter>` or
+  `</function>`, `<tool_call>` by `</tool_call>`), with nothing else in it — the block need not carry inner tags — isn't an answer. A reply
+  opening with prose or a fence, or saying anything after the close, stays an answer, and the check is one string test on a normal one. Nothing is
+  guessed from the block and it never enters the history (`:generation_completed`
   and `:after_generation` have already seen the text): `:generation_retrying` with `restarted` voids the streamed text, `:empty_answer_retry` with
   `malformed` goes out, and a hidden `TurnNote.malformed_retry` asks again at the retry temperature. It has its own budget, so `retry.empty_answer: 0`
   doesn't turn it off, and a real tool call resets it. Two in a row fail the turn with `LLM::MalformedGeneration`, keeping its earlier steps. Each is

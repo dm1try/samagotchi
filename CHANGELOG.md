@@ -20,6 +20,8 @@ and commands may change between minor versions. How releases are made:
 
 ### Fixed
 
+- A reply that is only a tool call the host could not read is now caught when the block has nothing inside it
+  (`<function=task_list></function>`, `<tool_call>{"name":"x"}</tool_call>`), and its close must be the tag that opened it.
 - A Stop that arrives on a reply that is only a tool call the host could not read ends the turn cancelled. It used to fail
   it with "the reply came back as a ... block the host could not read, twice in a row".
 - With `update.auto: install`, "chi updated to X" counts the sessions the old chi web restarted (it said 0 of them), and a run

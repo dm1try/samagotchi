@@ -10,20 +10,29 @@ module Samagotchi
     # It is not an answer, and nothing is guessed from it: ChatLoop asks for
     # the reply once more, and a second one fails the turn.
     #
-    # The rule is the narrow one the data supports, and it needs no model
-    # profile (ChatLoop has no ToolCallParser): the whole reply is one closed
-    # block that opens with the call. A reply opening with prose, a fence or
-    # a quote is an answer, and so is one that mentions, quotes or fences the
-    # syntax. KernelLoop has its own path for a corrupt generation
-    # (ToolCallParser#malformed, per profile); this predicate is ChatLoop's.
+    # The rule: the whole reply is one closed block that opens with the call
+    # and ends with that call's own close. It needs no model profile (ChatLoop
+    # has no ToolCallParser). A reply opening with prose, a fence or a quote is
+    # an answer, and so is one that mentions, quotes or fences the syntax, or
+    # says anything after the close. The block carries no inner tags: an empty
+    # `<function=task_list></function>` and `<tool_call>{"name":"x"}</tool_call>`
+    # are calls the host could not read just as much as one with its
+    # `<parameter=` inside. Widening past the inner tag costs at most one
+    # hidden retry, and nothing is guessed from the block, so a reply that
+    # reads as a call is treated as one. KernelLoop has its own path for a
+    # corrupt generation (ToolCallParser#malformed, per profile); this
+    # predicate is ChatLoop's.
     module StrayToolCall
       # A stray call can only open with the block itself.
       OPENS = ["<tool_call>", "<function=", "<parameter="].freeze
-      # ... and end with the close of that block: nothing else in the reply.
-      CLOSES = ["</function>", "</parameter>", "</tool_call>"].freeze
-      # A block carries its own tags; an answer that merely starts with a
-      # "<" is not one.
-      INNER_TAG = /<[a-z_]+=/i
+      # ... and end with the close of that same block: nothing else in the
+      # reply. A `<parameter=` call often closes with `</function>` (the
+      # flavour that mixes the two tags does it mid-block too).
+      CLOSES = {
+        "<tool_call>" => ["</tool_call>"],
+        "<function=" => ["</function>"],
+        "<parameter=" => ["</parameter>", "</function>"]
+      }.freeze
       # How much of the reply the warning keeps (KernelLoop's own cap).
       TAIL_CHARS = 400
 
@@ -42,11 +51,9 @@ module Samagotchi
 
         opener = OPENS.find { |open| body.start_with?(open) }
         return nil if opener.nil?
-        return nil unless CLOSES.any? { |close| body.end_with?(close) }
-
-        # The tags inside it: a lone opening tag in a sentence is not a call
-        # the host tried to read.
-        return nil unless body[1..-2].match?(INNER_TAG)
+        # The close belongs to the opener: text that ends in any other tag is
+        # not one call the host tried to read.
+        return nil unless CLOSES[opener].any? { |close| body.end_with?(close) }
 
         opener[/[a-z_]+/]
       end
