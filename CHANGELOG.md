@@ -20,6 +20,8 @@ and commands may change between minor versions. How releases are made:
 
 ### Fixed
 
+- `chi sessions delete` now also drops the session's lines from `context_candidates.jsonl` (its `judged` lines keep 200
+  characters of its prompts), as it already purges that session's System 1 runs.
 - A reply that is only a tool call the host could not read is now caught when the block has nothing inside it
   (`<function=task_list></function>`, `<tool_call>{"name":"x"}</tool_call>`), and its close must be the tag that opened it.
 - A Stop that arrives on a reply that is only a tool call the host could not read ends the turn cancelled. It used to fail

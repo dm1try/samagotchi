@@ -4,6 +4,7 @@ require "json"
 require "tmpdir"
 require "samagotchi/context_candidates_log"
 require "samagotchi/context_sources"
+require "samagotchi/session_manager"
 
 RSpec.describe Samagotchi::ContextCandidatesLog do
   def candidate(name)
@@ -45,5 +46,37 @@ RSpec.describe Samagotchi::ContextCandidatesLog do
   it "keeps a logged prompt to one short line" do
     expect(described_class.short("a\n  b")).to eq("a b")
     expect(described_class.short("x" * 300).length).to eq(described_class::PROMPT_MAX)
+  end
+
+  it "chi sessions delete drops the session's lines, and no other session's" do
+    Dir.mktmpdir("candidates-log") do |dir|
+      state = File.join(dir, "sessions")
+      session = Samagotchi::Session.new_session(mode: "assist", model_name: "m", working_directory: dir).tap { |s| s.save(state_dir: state) }
+      described_class.event("proposed", session_id: session.id, name: "a", state_dir: state)
+      described_class.event("judged", session_id: session.id, name: "a", state_dir: state, run_id: "r1",
+                            prompt: described_class.short("work on the fence " * 40))
+      described_class.event("proposed", session_id: "other", name: "b", state_dir: state)
+
+      Samagotchi::SessionManager.delete_session(session.id, state_dir: state)
+
+      log = described_class.log_for(state)
+      expect(log.records.map { |line| line["session_id"] }).to eq(["other"])
+      expect(File.read(log.path)).not_to include("fence")
+    end
+  end
+
+  it "leaves the log alone when an empty session is discarded (purge_runs: false)" do
+    Dir.mktmpdir("candidates-log") do |dir|
+      state = File.join(dir, "sessions")
+      session = Samagotchi::Session.new_session(mode: "assist", model_name: "m", working_directory: dir).tap { |s| s.save(state_dir: state) }
+      described_class.event("proposed", session_id: "other", name: "b", state_dir: state)
+      log = described_class.log_for(state)
+      before = File.stat(log.path).mtime
+      expect(described_class).not_to receive(:purge_session)
+
+      Samagotchi::SessionManager.delete_session(session.id, state_dir: state, purge_runs: false)
+
+      expect(File.stat(log.path).mtime).to eq(before)
+    end
   end
 end

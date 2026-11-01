@@ -42,6 +42,16 @@ RSpec.describe Samagotchi::SystemOne::Log do
       .to eq([%w[suggestion s1 undecided], %w[suggestion s2 default]])
   end
 
+  it "prunes the lines a caller rejects, keeping the rest in order" do
+    log.judgment(rule: "git-push", session_id: "s1")
+    log.judgment(rule: "git-rebase", session_id: "s2")
+    File.open(path, "a") { |file| file.puts "not json" }
+
+    expect(log.prune { |line| line["session_id"] != "s1" }).to eq(2)
+    expect(log.records.map { |entry| entry["rule"] }).to eq(["git-rebase"])
+    expect(File.read(path).lines.size).to eq(1)
+  end
+
   it "creates the directory beside the approvals store and writes the file 0600" do
     log.judgment(rule: "git-push")
     expect(File.exist?(path)).to be true

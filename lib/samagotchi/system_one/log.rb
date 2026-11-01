@@ -115,6 +115,27 @@ module Samagotchi
         []
       end
 
+      # Drop the lines +keep+ rejects, rewriting the file under the same
+      # exclusive lock an append takes. A line that does not parse goes with
+      # them: nothing here can read it back.
+      # @param keep [#call] (line) — whether to keep a parsed line
+      # @return [Integer] how many lines were dropped
+      def prune(&)
+        with_lock(File::LOCK_EX) do |file|
+          lines = file.readlines
+          kept = lines.select { |line| (data = parse(line)) && yield(data) }
+          out = kept.join
+          file.rewind
+          file.write(out)
+          file.flush
+          file.truncate(out.bytesize)
+          lines.size - kept.size
+        end
+      rescue StandardError => e
+        warn_about(e)
+        0
+      end
+
       private
 
       def append(line)

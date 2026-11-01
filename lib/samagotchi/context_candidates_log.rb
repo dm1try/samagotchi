@@ -60,6 +60,17 @@ module Samagotchi
     # +session_id+'s lines, oldest first.
     def records_for(log, session_id) = log.records.select { |line| line["session_id"] == session_id.to_s }
 
+    # Explicit `chi sessions delete`: everything the session left in the log
+    # goes with it, including the `judged` lines that keep 200 characters of
+    # its prompts. Never raises.
+    # @return [Integer] how many lines were dropped
+    def purge_session(session_id, state_dir: nil)
+      log_for(state_dir).prune { |line| line["session_id"] != session_id.to_s }
+    rescue StandardError => e
+      Log.warn(:context, "context_candidates_log_failed", error: e.class.name, msg: e.message.to_s[0, 200])
+      0
+    end
+
     # The status the lines last left each candidate in, by name (a
     # withdrawn one is gone).
     # @return [Hash{String => String}]

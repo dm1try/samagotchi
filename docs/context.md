@@ -500,7 +500,10 @@ none at the thresholds then, with your prompts cut to 200 characters),
 `p`), `attached` / `declined` with `by: "command"` (`/context attach|decline`,
 the card's buttons), `attached` / `declined` / `detached` with `by: "user"`
 (what you did otherwise, seen at your next turn's start; removing a source
-declines it) and `withdrawn`.
+declines it) and `withdrawn`. `chi sessions delete` drops a session's lines
+from this log too, so the prompts it cut to 200 characters go with it; the
+log's own size cap (5 MB, keeping the newest half) is what ages everything
+else.
 
 `chi context report [--days N]` counts it, with no prompts in the output
 (this machine only):

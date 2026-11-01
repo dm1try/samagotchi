@@ -46,6 +46,7 @@ require_relative "continue_offer"
 require_relative "image_store"
 require_relative "plugin_session_state"
 require_relative "context_sources"
+require_relative "context_candidates_log"
 require_relative "session_chain"
 require_relative "child_move"
 require_relative "tools/task_runtime"
@@ -1044,8 +1045,9 @@ module Samagotchi
     # @raise [OwnedByTUI] a chi REPL owns it (never stopped from here)
     # @raise [DeleteRefused] a worker owns it and +stop+ is false, or it
     #   outlived the wait
-    # @param purge_runs [Boolean] also delete System 1's saved runs of it; a
-    #   session a worker left empty has none worth the read
+    # @param purge_runs [Boolean] also delete System 1's saved runs of it and
+    #   its candidate-log lines; a session a worker left empty has none worth
+    #   the read
     def self.delete_session(id_or_prefix, state_dir: nil, stop: false, wait: STOP_WAIT, purge_runs: true)
       sd = state_dir || Session.default_state_dir
       given = id_or_prefix.to_s
@@ -1075,7 +1077,10 @@ module Samagotchi
       PluginSessionState.remove(id)
       removed.concat(ContextSources.remove_session(id, state_dir: sd))
       Participants.end_sessions([id], by: "delete", state_dir: sd)
-      purge_session_runs(id, sd) if purge_runs
+      if purge_runs
+        purge_session_runs(id, sd)
+        ContextCandidatesLog.purge_session(id, state_dir: sd)
+      end
       { id: id, removed: removed, stopped: !owner.nil? }
     end
 
