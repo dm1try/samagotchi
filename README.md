@@ -218,6 +218,7 @@ once, for the session, for the repo, or for the whole rule in the repo.
 - [Guardrails](docs/guardrails.md): allow / ask / deny for tool calls, rules, approvals
 - [Hooks](docs/hooks.md): plugin hooks and bundle hooks
 - [Plugins](docs/plugins.md): bundle plugins (commands, tools, hooks)
+- [Bundles](docs/bundles.md): what each shipped bundle does (btw, mcp, cost-cap, claude-peer, skills…), its commands and settings
 - [Writing a bundle](docs/bundle-authoring.md): `chi bundle new`, `test`, `check`, `try`, `install --dev`
 - [Testing](docs/testing.md): specs, affected specs, lint, worktrees
 - [Architecture](docs/architecture.md): Engine, TerminalUI, bridge, web

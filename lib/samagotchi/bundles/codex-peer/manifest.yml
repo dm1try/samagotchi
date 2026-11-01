@@ -1,6 +1,6 @@
 ---
 name: codex-peer
-version: 0.3.5
+version: 0.3.6
 scope: system
 description: "Pair this session with an OpenAI Codex CLI session you work with: the codex_send tool and /codex send it a part of the work (a plan step, a diff, a finding) to validate or as context, with codex queue, and Codex's answer comes back as the codex-outbox context; /codex install-skill installs Codex's chi-peer skill, which pairs"
 trust_level: reviewed
@@ -10,7 +10,7 @@ files:
     description: "Send a part of the work to the paired Codex CLI session (codex_send): only when the user asks, or to reply to its answer in a peer turn; validate, context or question; Codex's answer comes as the codex-outbox context"
 plugin:
   file: plugin.rb
-  sha256: sha256:b03465566272891237ac1906980ff6956579a4703d3a42c414ce50a81de551f6
+  sha256: sha256:e71efb40d8864d5324c25e3c0dea14e9ec62625a19d7790315513f016412b768
 scripts:
   pair: sha256:a61c3d311ce3f3e5386e90f0f867f649a39763a5883877e731e43d84dd9c85aa
   chi-peer-SKILL.md: sha256:cbcc12f27b99d0cd40744b86d98e2b0ad55ff63697304a652ebe5ed36fe686d1

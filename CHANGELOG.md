@@ -1689,7 +1689,7 @@ Update with `chi update`.
   and active minutes across turns, the bound a session whose step-limit Continue keeps being answered otherwise
   lacks. At a cap the turn pauses on Continue / Stop, the question naming the session's totals; `/workcap` shows or
   sets it, `chi send --new --set work-cap.tool_calls=400` caps a child. Inert until a cap is set. See
-  [docs/plugins.md](docs/plugins.md#the-work-cap-bundle).
+  [docs/bundles.md](docs/bundles.md#the-work-cap-bundle).
 
 ### Fixed
 
@@ -1825,7 +1825,7 @@ Update with `chi update` (the system bundle 0.95.0), then restart `chi web`.
 - The `model-notes` bundle (0.1.0, in the `dev` profile, now 0.7.0): reviewed model notes, for now
   `model_notes_deepseek` for DeepSeek V4 / V4.1 (`models: *deepseek-v4*`). A same-name note you already have is
   skipped and keeps loading; to take the bundle's, remove yours and install again. See
-  [docs/plugins.md](docs/plugins.md#the-model-notes-bundle).
+  [docs/bundles.md](docs/bundles.md#the-model-notes-bundle).
 
 ### Changed
 
@@ -3649,7 +3649,7 @@ Update with `chi update` (mcp 0.6.1).
   instructions. Guardrail rules on `mcp_<server>_<tool>` names still match (`mcp_call` acts as that tool), and the
   question names `<server>: <tool>`; approvals stored under the old names don't carry over. Hooks and loop-guard's
   `ignore_tools` see `mcp_call`. `/mcp` lists the tools as `<server>/<tool>` and says what every request carries.
-  Needs chi 0.37.0. See [docs/plugins.md](docs/plugins.md#the-mcp-bundle).
+  Needs chi 0.37.0. See [docs/bundles.md](docs/bundles.md#the-mcp-bundle).
 
 ### Fixed
 
@@ -3701,7 +3701,7 @@ Update with `chi update` (mcp 0.5.1).
   rebuild (the split, your decisions, its verdicts, follow-ups), its status in the index description, and resumes
   from it in a new session after checking git and the session list; `/coordinate resume` picks up an open handoff.
   When the work is done it marks the handoff DONE and asks whether to remove it. See
-  [docs/plugins.md](docs/plugins.md#the-coordinator-bundle).
+  [docs/bundles.md](docs/bundles.md#the-coordinator-bundle).
 - The guardrails bundle (0.8.0) asks before every memory removal (`memory-remove`, once at a time). Guardrail rules
   take `memory: remove`.
 - In the web, a file reference in an answer (`lib/foo.rb:28`, `lib/foo.rb:28-34`, in inline code too) links to that
@@ -3710,7 +3710,7 @@ Update with `chi update` (mcp 0.5.1).
   at the PR's head. Display only; `bundles: github-pr: line_links: false` turns it off (github-pr 0.2.0; run
   `chi update`). See [docs/context.md](docs/context.md#line-links).
 - `/mcp` shows roughly how many tokens each MCP server's tool definitions take in every request, and the total
-  (mcp 0.5.0; run `chi update`). See [docs/plugins.md](docs/plugins.md#the-mcp-bundle).
+  (mcp 0.5.0; run `chi update`). See [docs/bundles.md](docs/bundles.md#the-mcp-bundle).
 
 ### Fixed
 

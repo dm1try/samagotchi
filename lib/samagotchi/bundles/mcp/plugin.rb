@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-# The mcp bundle (docs/plugins.md, The mcp bundle): tools from MCP servers.
+# The mcp bundle (docs/bundles.md, The mcp bundle): tools from MCP servers.
 # Each server in config.yml runs as a child process (stdio only in v1) for
 # the session's life. Its tools aren't declared one by one: the bundle
 # publishes them into chi's tool index (chi.tool_source, a group per
@@ -962,7 +962,7 @@ class Plugin
   end
 
   def listing
-    return "No servers. Add them in config.yml under `bundles: mcp: servers:` (docs/plugins.md, The mcp bundle)." if @servers.empty?
+    return "No servers. Add them in config.yml under `bundles: mcp: servers:` (docs/bundles.md, The mcp bundle)." if @servers.empty?
 
     servers = @servers.map do |server|
       marker = if @source && !@source.declared_groups.include?(server.name)

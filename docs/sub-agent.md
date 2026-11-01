@@ -24,10 +24,10 @@ parent's setting, then to the child's.
 
 The other direction, chi sending a part of its work to a Claude Code session
 you already work with (to validate, as context, or with a question), is the
-[claude-peer bundle](plugins.md#the-claude-peer-bundle): Claude pairs with the
+[claude-peer bundle](bundles.md#the-claude-peer-bundle): Claude pairs with the
 chi session, chi's `claude_send` tool or `/claude` writes to Claude's inbox,
 and Claude's answer comes back as attached context. The
-[codex-peer bundle](plugins.md#the-codex-peer-bundle) does the same with a
+[codex-peer bundle](bundles.md#the-codex-peer-bundle) does the same with a
 Codex CLI session (`codex_send`, `/codex`, through `codex queue`). The peer's
 answers wake chi in a short loop (fix or disagree, send again) until it says
 `VERDICT OK` (one closing wake: chi carries on or tells you what was agreed)
@@ -45,10 +45,10 @@ chi answer ID --question QID (--option N|LABEL)... [--text T] [--timeout S] [--f
 chi answer ID --question QID --dismiss [--timeout S] [--format json]
 ```
 
-A child with a bundle setting of its own, such as a $ cap (the [cost-cap bundle](plugins.md#the-cost-cap-bundle)):
+A child with a bundle setting of its own, such as a $ cap (the [cost-cap bundle](bundles.md#the-cost-cap-bundle)):
 `chi send --new --wait --format json --set cost-cap.cap=3 -m "task"`. At the cap the wait exits 3 with the cost-cap
 question; `chi answer ID --question QID --option Continue` (or `Stop`) answers it. A cap on the child's work across
-its turns (the [work-cap bundle](plugins.md#the-work-cap-bundle)), the bound a parent that keeps answering the step
+its turns (the [work-cap bundle](bundles.md#the-work-cap-bundle)), the bound a parent that keeps answering the step
 limit's Continue doesn't otherwise have: `--set work-cap.tool_calls=400` (or `work-cap.minutes=60`, active minutes).
 
 `chi answer` waits after answering, the same way `chi send --wait` does, so the
@@ -124,10 +124,10 @@ A chi parent's `delegate_result` gets a child's step-limit question back as a
 `delegate session:` (which drops the question), or report back. It isn't
 relayed to the parent's user the way approvals are.
 
-A session at its cost cap (the [cost-cap bundle](plugins.md#the-cost-cap-bundle)) waits the same way, as a
+A session at its cost cap (the [cost-cap bundle](bundles.md#the-cost-cap-bundle)) waits the same way, as a
 question of kind `hook` with header "Cost cap" and options `Continue` and `Stop`: `--option Continue` raises the cap
 by another cap's worth and the turn goes on, `--option Stop` ends it `canceled` with `stopped_by: cost-cap`. A session at its work cap (the
-[work-cap bundle](plugins.md#the-work-cap-bundle)) asks the same, header "Work cap", the question naming the
+[work-cap bundle](bundles.md#the-work-cap-bundle)) asks the same, header "Work cap", the question naming the
 session's totals (`Work cap reached: 412 tool calls of 400 (6 turns, 47 min active, $1.20). Continue raises it to
 800.`); `stopped_by: work-cap` on Stop.
 

@@ -2,7 +2,7 @@
 
 Read this first when someone asks for new chi functionality "as a bundle". It is the short path: the loop, the
 files, what a hook sees, how to test, and what goes wrong. The full references are in this same `docs/` folder:
-[plugins.md](plugins.md) (the `chi.*` API and `ctx`) and [hooks.md](hooks.md) (every event's fields).
+[plugins.md](plugins.md) (the API), [hooks.md](hooks.md) (event fields), [bundles.md](bundles.md) (shipped bundles).
 
 ## The loop
 

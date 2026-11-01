@@ -6,7 +6,7 @@ description: "Breaks loops: the same tool call with the same result again and ag
 trust_level: reviewed
 plugin:
   file: plugin.rb
-  sha256: sha256:334c45355493b35904a27a61d8cd12e4cce157fa0eff233918c92cf2961cba57
+  sha256: sha256:a4ac7c48a903716b7e1c4fa35348439e90ac97d3ad421378ce7d3ac819229a09
 requires_chi: ">= 0.6.0"
 # config.yml bundles: loop-guard: (another key warns; an older chi ignores this)
 settings: [deny_after, stop_after, ignore_tools, mode, thinking]

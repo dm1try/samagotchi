@@ -12,7 +12,7 @@
 # --remote NAME in CHI) chi there can't reach this machine's socket: it
 # attaches claude-outbox only, and says so. With --inbox-socket PATH the hint
 # is PATH instead, a socket on chi's machine made by forwarding this Claude's
-# socket there with `ssh -R`, so chi can send here too (docs/plugins.md).
+# socket there with `ssh -R`, so chi can send here too (docs/bundles.md).
 set -eu
 
 usage() {

@@ -6,7 +6,7 @@ description: "Checks on a long turn: after N tool calls with no answer, a card a
 trust_level: reviewed
 plugin:
   file: plugin.rb
-  sha256: sha256:9113ef31641c98e13593ff25ebb860385708f3986502e10ede265981d7084f91
+  sha256: sha256:732f144471d146832d2f01a5e999463be789a35af476fbc5d97349091c07aea2
 # check-in.progress asks System 1 (chi.judgment, new in 0.142.0);
 # ctx.session_dir is new in the next chi
 requires_chi_next: true

@@ -5,7 +5,7 @@ require "json"
 require "socket"
 require "samagotchi/plugin/peer"
 
-# claude-peer (docs/plugins.md, The claude-peer bundle): a live link between
+# claude-peer (docs/bundles.md, The claude-peer bundle): a live link between
 # this chi session and a Claude Code session the user works with. Claude
 # pairs (its chi-peer skill, scripts/pair): it attaches the `claude-inbox`
 # context, whose hint is its per-session inbox socket

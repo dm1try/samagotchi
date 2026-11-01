@@ -126,10 +126,10 @@ pbpaste | chi context push clip --project
 ```
 
 A Claude Code session can be a pushed source too: the
-[claude-peer bundle](plugins.md#the-claude-peer-bundle)'s `pair` script attaches
+[claude-peer bundle](bundles.md#the-claude-peer-bundle)'s `pair` script attaches
 `claude-inbox` (Claude's inbox socket as the hint) and `claude-outbox`, where
 Claude pushes its answers as JSON with `wake: true`. The
-[codex-peer bundle](plugins.md#the-codex-peer-bundle)'s does the same for a
+[codex-peer bundle](bundles.md#the-codex-peer-bundle)'s does the same for a
 Codex session: `codex-inbox` (Codex's thread id as the hint) and
 `codex-outbox`.
 
@@ -273,7 +273,7 @@ back the same way, its note plain, and pauses wakes too.
 
 ### Peer sources: the peer loop
 
-The claude-peer and codex-peer bundles ([Plugins](plugins.md)) pair the
+The claude-peer and codex-peer bundles ([Bundles](bundles.md#the-claude-peer-bundle)) pair the
 session with a Claude Code or Codex session; the peer's answers come back as
 the `claude-outbox` / `codex-outbox` pushed source (the peer's `scripts/pair`
 attaches it). The bundle declares that source a peer's (`chi.peer_source`,
@@ -358,7 +358,7 @@ An archived session that nobody continued takes pushes as before.
 
 ### Peers and a continue
 
-A peer's pairing ([claude-peer, codex-peer](plugins.md#the-claude-peer-bundle):
+A peer's pairing ([claude-peer, codex-peer](bundles.md#the-claude-peer-bundle):
 `<peer>-inbox` and `<peer>-outbox`, both pushed) stays with the old session,
 and the peer pairs again with the new one. The continue keeps what stayed in
 the new session (`left.json` beside its sources: each name, its last pushed

@@ -11,7 +11,7 @@ require "samagotchi/context_sources"
 # in the system prompt), each send's result and message, every send error,
 # the /claude and /codex replies, the status and skill cards and the skill
 # they install, and the moved message a continue's link posts. They pin the two bundles' shared Samagotchi::Plugin::Peer base
-# (docs/plugins.md) to what the bundles said before it.
+# (docs/plugins.md, docs/bundles.md) to what the bundles said before it.
 #
 # Paths, the session id and payload times are written as <TMP>, <ID>, <SHORT>
 # and HHMMSS. Regenerate after an intended change with:

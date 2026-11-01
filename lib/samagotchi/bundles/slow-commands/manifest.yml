@@ -6,7 +6,7 @@ description: "Remembers commands that ran past the execute limit in a project; t
 trust_level: reviewed
 plugin:
   file: plugin.rb
-  sha256: sha256:249615f1d8529ab020ea9872bb42b00463594f20a9ec44fecc4e0f58d34dce91
+  sha256: sha256:e51c099c1552bd0cd1fe46e4fd235a3fe8340693e6ca338eb7ed09d8398a6f0f
 # Execute::HANDED_OVER, read when the plugin loads (0.59.0); after_tool_call's
 # call:, elapsed_ms: and result: (0.57.0)
 requires_chi: ">= 0.59.0"

@@ -7,7 +7,7 @@ trust_level: reviewed
 files: {}
 plugin:
   file: plugin.rb
-  sha256: sha256:b892de35b1fc16dd22152cd95a6c90447a2be45f4daff04a4648ab2653463a20
+  sha256: sha256:718e53db877eacd2714e69427c69cfc6c551aaf3417bb760a27dac3331363db5
 # 0.67.0 is the release with chi.tool_source (the core tool index the bundle publishes into).
 requires_chi: ">= 0.121.0"
 # config.yml bundles: mcp: (another key warns; an older chi ignores this)

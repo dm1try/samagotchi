@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-# The cost-cap bundle (docs/plugins.md, The cost-cap bundle): a per-session
+# The cost-cap bundle (docs/bundles.md, The cost-cap bundle): a per-session
 # cap on what the session spends (ctx.cost: reported + estimated, side
 # requests included). Before each generation it compares the spend with
 # the cap: at warn_at of it the user (only) gets one notice, at the cap the

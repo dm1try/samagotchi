@@ -6,7 +6,7 @@ description: "Skills (skill_<name> memories, the steps of a task done together):
 trust_level: reviewed
 plugin:
   file: plugin.rb
-  sha256: sha256:42f535eb1dd616bdf2e027031538c9419767c531e2b52e2baa8f1cc83accaba7
+  sha256: sha256:781d943749d59ade0e24d04ba774449d31267eb8ca435835c36c67a3e523e632
 requires_chi: ">= 0.11.0"
 # config.yml bundles: skills: (another key warns; an older chi ignores this)
 settings: [history_keep, nudge]

@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-# The check-in bundle (docs/plugins.md, The check-in bundle): a turn that
+# The check-in bundle (docs/bundles.md, The check-in bundle): a turn that
 # has made many tool calls without answering gets checked on. After `after`
 # tool calls (then every `every` more) it asks the user with a card (Nudge /
 # Keep going / Stop), nudges the model by itself, or only says so.

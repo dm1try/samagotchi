@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-# The coordinator bundle (docs/plugins.md, The coordinator bundle): chi as a
+# The coordinator bundle (docs/bundles.md, The coordinator bundle): chi as a
 # coordinator of parallel work. Its skill_coordinator memory holds the steps
 # (split the work, one worktree and a wait: false delegate per task, check
 # each report, ask before each merge); this plugin adds two commands.

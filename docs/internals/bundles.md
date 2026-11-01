@@ -3,7 +3,7 @@
 How `lib/samagotchi/memory_bundle/` turns a bundle (a dir, git URL, zip or tar holding `manifest.yml`, `*.md`
 memories and optional `hooks/`, `guardrails/`, a plugin file and `scripts/`) into installed state, and back. The
 user-facing side (what a bundle owns, profiles, needs) is in [memory.md](../memory.md#what-a-bundle-owns) and
-[plugins.md](../plugins.md).
+[plugins.md](../plugins.md) and [bundles.md](../bundles.md).
 
 ## Where things live
 

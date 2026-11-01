@@ -77,7 +77,7 @@ guardrails:
   disable: [guardrails:git-rebase]
 ```
 
-- `bundles:` map of installed bundle name → its settings (one Hash, string keys, handed to the bundle's hook/plugin `initialize(settings)`). Read when a session's Engine starts: after a change restart the session's worker (`chi sessions stop <id>`) or the REPL. Unknown keys are ignored by the bundle, not validated. `chi bundle list` names the bundles; each bundle's keys are in `docs/plugins.md` / `docs/guardrails.md`.
+- `bundles:` map of installed bundle name → its settings (one Hash, string keys, handed to the bundle's hook/plugin `initialize(settings)`). Read when a session's Engine starts: after a change restart the session's worker (`chi sessions stop <id>`) or the REPL. Unknown keys are ignored by the bundle, not validated. `chi bundle list` names the bundles; each bundle's keys are in `docs/bundles.md` / `docs/guardrails.md`.
 
 ```yaml
 bundles:

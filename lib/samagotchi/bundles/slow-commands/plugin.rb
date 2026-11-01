@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-# The slow-commands bundle (docs/plugins.md, The slow-commands bundle): an
+# The slow-commands bundle (docs/bundles.md, The slow-commands bundle): an
 # `execute` that ran past its limit (or close to it) is remembered for the
 # project, and the next identical `execute` is denied with advice: start it
 # with task_create, then task_wait with a timeout that fits.

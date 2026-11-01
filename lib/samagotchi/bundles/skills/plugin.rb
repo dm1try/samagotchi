@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-# The skills bundle (docs/plugins.md, The skills bundle): a skill is a memory
+# The skills bundle (docs/bundles.md, The skills bundle): a skill is a memory
 # named skill_<name> that holds the steps of a task done with the user
 # (docs/memory.md, Skills). The system bundle's identity already tells the
 # model to save, follow and update skills; this bundle adds `/skill` for the

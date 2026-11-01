@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-# The ruby bundle (docs/plugins.md, The ruby bundle): an `execute` that ran
+# The ruby bundle (docs/bundles.md, The ruby bundle): an `execute` that ran
 # RSpec and got no examples at all steers a hint into the running turn.
 #
 # RSpec prints `0 examples, 0 failures` for a run whose path matched no

@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-# The work-cap bundle (docs/plugins.md, The work-cap bundle): a per-session
+# The work-cap bundle (docs/bundles.md, The work-cap bundle): a per-session
 # cap on the work a session does across its turns (ctx.usage: tool calls,
 # active minutes), the session-wide bound the per-turn step limit and
 # check-in don't give. Before each generation it compares the work with the

@@ -182,7 +182,7 @@ Working habits for this model:
   `model_notes_deepseek` (`models: *deepseek-v4*`) and `model_notes_tone`
   (`models: *`, concise answers for every model). Each note's provenance
   and evidence is in the bundle's `notes/README.md`, and its spec pins which
-  model ids load which note ([Plugins](plugins.md#the-model-notes-bundle)).
+  model ids load which note ([Bundles](bundles.md#the-model-notes-bundle)).
   - **Your own note of the same name wins.** The install skips a
     `model_notes_<name>.md` you already have and never owns it, so your note
     is what loads, the two never stack, and upgrades leave it alone.
@@ -320,7 +320,7 @@ A skill is plain Markdown, no frontmatter:
 
 It is a memory like any other: `memory_read`, `chi --mute skill_release`,
 `chi bundle build` share it. The optional `skills` bundle (`chi bundle install
-skills`, [docs/plugins.md](plugins.md#the-skills-bundle)) adds `/skill save`,
+skills`, [docs/bundles.md](bundles.md#the-skills-bundle)) adds `/skill save`,
 `/skill list`, `/skill show`, `/skill diff`, keeps older versions with a
 one-line diff after each update, and nudges a model that skips a failing
 step instead of fixing the skill.

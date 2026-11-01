@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-# The agents-md bundle (docs/plugins.md, The agents-md bundle): a nested
+# The agents-md bundle (docs/bundles.md, The agents-md bundle): a nested
 # AGENTS.md of the session's checkout is steered into the conversation the
 # first time a tool touches a file under its directory.
 #

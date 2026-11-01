@@ -10,7 +10,7 @@ require_relative "../paths"
 module Samagotchi
   module Plugin
     # The base of the peer bundles' plugins (claude-peer, codex-peer;
-    # docs/plugins.md): a live link between a chi session and another agent's
+    # docs/bundles.md): a live link between a chi session and another agent's
     # session the user works with. The peer pairs (its chi-peer skill,
     # scripts/pair): it attaches the `<peer>-inbox` context, whose hint says
     # where to send (a subclass's #check_hint!), and `<peer>-outbox`, where

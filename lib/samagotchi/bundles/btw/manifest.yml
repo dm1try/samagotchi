@@ -6,7 +6,7 @@ description: "/btw <question>: a side answer about the conversation, as a card i
 trust_level: reviewed
 plugin:
   file: plugin.rb
-  sha256: sha256:226a251865695a86cdb05d6b6318fc062e0ab54518bb25733699db964cbed80b
+  sha256: sha256:6497129b06d1c3061c1d7d9d7a9c3dfdbcf790e8f2049addad0c26d24771015f
 requires_chi: ">= 0.1.30"
 # config.yml bundles: btw: (another key warns; an older chi ignores this)
 settings: [max_tokens, timeout]

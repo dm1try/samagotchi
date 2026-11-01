@@ -4,7 +4,7 @@ require "json"
 require "open3"
 require "samagotchi/plugin/peer"
 
-# codex-peer (docs/plugins.md, The codex-peer bundle): a live link between
+# codex-peer (docs/bundles.md, The codex-peer bundle): a live link between
 # this chi session and an OpenAI Codex CLI session the user works with, the
 # claude-peer bundle with the transport swapped. Codex pairs (its chi-peer
 # skill, scripts/pair): it attaches the `codex-inbox` context, whose hint is

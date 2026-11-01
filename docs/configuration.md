@@ -1452,7 +1452,7 @@ To skip loading AGENTS.md (all of the chain), set `skip_agents_md: true` at the 
 
 Nested `AGENTS.md` files (in directories the session doesn't run in) are
 steered into the conversation on first touch by the `agents-md` bundle
-([The agents-md bundle](plugins.md#the-agents-md-bundle)); `skip_agents_md`
+([The agents-md bundle](bundles.md#the-agents-md-bundle)); `skip_agents_md`
 disables that steering too.
 
 ## Appended prompt files
