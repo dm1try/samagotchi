@@ -7,6 +7,8 @@ and commands may change between minor versions. How releases are made:
 [docs/releasing.md](docs/releasing.md).
 ## [Unreleased]
 
+## [0.142.0] - 2026-11-01
+
 ### Added
 
 - System 1's asks are saved, so a later comparison or fine-tune has what was sent, answered and done: approvals, toolkit
@@ -35,14 +37,19 @@ and commands may change between minor versions. How releases are made:
   `guardrails.system_one.host` → `system_one.host`, `.model` → `system_one.model`, `.timeout_ms` →
   `system_one.timeout_ms`. `mode`, `rules`, `threshold` and `min_record` stay where they are. Until all of them have moved chi warns
   at start, nothing is judged and nothing auto-allows: approvals ask you, and toolkit suggestions and context candidates
-  ask nothing. Restart workers on an older chi after the edit. See docs/configuration.md.
+  ask nothing. Move `model` rather than deleting it: with no model set, the host's first model would answer under approvals'
+  existing record. Restart workers on an older chi after the edit. See docs/configuration.md.
 
 ### Fixed
 
-- A reply that was only a tool call written as text, which the host couldn't read, ended the turn as if it were the answer: exit 0, work left uncommitted. The chat loop now asks again once with a hidden note; two in a row fail the turn visibly and keep its earlier steps. Seen with Flash Next.
+- A reply that was only a tool call written as text, which the host couldn't read, ended the turn as if it were the answer:
+  exit 0, work left uncommitted. The chat loop now asks again once with a hidden note; two in a row fail the turn visibly
+  and keep its earlier steps. Seen with Flash Next.
 - A System 1 `score` answer was dropped: the host sends `score` as the probability-weighted level index (a fraction,
   not a level number), and chi only accepted a whole number. The score is kept as sent and `answer.level` names the
   level with the most probability. See docs/guardrails.md (System 1).
+
+Update with `chi update` (check-in 0.3.0, the core profile 0.4.1).
 
 ## [0.141.0] - 2026-10-31
 
@@ -5416,7 +5423,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.141.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.142.0...HEAD
+[0.142.0]: https://github.com/dm1try/samagotchi/compare/v0.141.0...v0.142.0
 [0.141.0]: https://github.com/dm1try/samagotchi/compare/v0.140.0...v0.141.0
 [0.140.0]: https://github.com/dm1try/samagotchi/compare/v0.139.1...v0.140.0
 [0.139.1]: https://github.com/dm1try/samagotchi/compare/v0.139.0...v0.139.1

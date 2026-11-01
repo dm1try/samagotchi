@@ -7,8 +7,7 @@ trust_level: reviewed
 plugin:
   file: plugin.rb
   sha256: sha256:fbb7165631c8a8096d900511a95874fe61e72ad8c6f1b45c5c829a285084f25b
-requires_chi: ">= 0.3.0"
+requires_chi: ">= 0.142.0"
 # check-in.progress asks System 1 (chi.judgment, new in 0.142.0): the marker
 # below raises the floor at the release (docs/releasing.md), since chi on main
 # is 0.141.0 and would otherwise refuse its own bundle.
-requires_chi_next: "chi.judgment, new in 0.142.0"
