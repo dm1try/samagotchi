@@ -931,10 +931,13 @@ RSpec.describe Samagotchi::SessionCommands do
     it "attaches or declines a candidate (/context attach|decline NAME), closing its card" do
       engine.session.save(state_dir: state_dir)
       own = Samagotchi::ContextSources.session_location(engine.session.id, state_dir: state_dir)
+      log = Samagotchi::ContextCandidatesLog.log_for(state_dir)
       %w[pr-412 pr-500].each do |name|
         own.add_candidate(Samagotchi::ContextSources::Candidate.new(name: name, url: nil, cmd: "printf x", title: "##{name}",
                                                                     describe: nil, mentions: [], proposed_by: nil, at: nil))
       end
+      # Only pr-412 ever had its offer card shown.
+      Samagotchi::ContextCandidatesLog.event("carded", session_id: engine.session.id, name: "pr-412", log: log, p: 0.7)
       allow(engine).to receive(:show_card).and_call_original
 
       expect(commands.run("/context attach pr-412")).to have_attributes(status: :ok, output: "attached pr-412: its text comes with your next message")
@@ -944,6 +947,8 @@ RSpec.describe Samagotchi::SessionCommands do
       expect(own.source("pr-412").why).to eq("you attached it")
       expect(own.declined?("pr-500")).to be(true)
       expect(engine).to have_received(:show_card).with(hash_including(id: "context-candidate-pr-412", actions: []))
+      # No card was open for pr-500: the answer says so without one.
+      expect(engine).not_to have_received(:show_card).with(hash_including(id: "context-candidate-pr-500"))
     end
   end
 

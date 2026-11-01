@@ -99,9 +99,11 @@ RSpec.describe Samagotchi::ContextCandidateChoice do
 
     it "attaches a proposed candidate with the owner's why, and closes its card" do
       propose
+      after_judged(judged(0.7, "offer"))
 
       expect(choose(:attach, "pr-412")).to eq([:ok, "attached pr-412: its text comes with your next message"])
       expect(own.source("pr-412").why).to eq("you attached it")
+      expect(cards.size).to eq(2)
       expect(cards.last).to include(id: "context-candidate-pr-412", actions: [], body: "Attached.")
       expect(log.records.last).to include("kind" => "attached", "by" => "command")
       expect(choose(:attach, "pr-412")).to eq([:error, "pr-412 is attached already"])
@@ -110,6 +112,7 @@ RSpec.describe Samagotchi::ContextCandidateChoice do
 
     it "declines a proposed candidate: never proposed or judged again here" do
       propose
+      after_judged(judged(0.7, "offer"))
 
       expect(choose(:decline, "pr-412")).to eq([:ok, "declined pr-412: not proposed again in this session"])
       expect(Samagotchi::ContextCandidates.with_status(session.id, project_root: dir, state_dir: state_dir).map(&:last))
@@ -117,6 +120,15 @@ RSpec.describe Samagotchi::ContextCandidateChoice do
       expect(log.records.last).to include("kind" => "declined", "by" => "command")
       expect(cards.last).to include(body: "Not attached here.", actions: [])
       expect(choose(:attach, "pr-412").first).to eq(:error)
+    end
+
+    it "answers without a card when no offer card is open (typed in, off or audit mode)" do
+      propose
+      propose("pr-501")
+
+      expect(choose(:attach, "pr-412").first).to eq(:ok)
+      expect(choose(:decline, "pr-501").first).to eq(:ok)
+      expect(cards).to be_empty
     end
 
     it "refuses an unknown name, a missing one and a review session" do

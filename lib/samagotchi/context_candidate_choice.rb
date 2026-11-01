@@ -82,13 +82,22 @@ module Samagotchi
       ContextCandidatesLog.records_for(log, session_id).any? { |line| line["kind"] == "carded" && line["name"] == name }
     end
 
+    # Replace an open offer card with what became of it. Typed in off or audit
+    # mode no card is open: #choose answers without one rather than raising a
+    # "closed" card out of nowhere.
+    def close_open_card(candidate, session_id, state_dir, show_card, body)
+      return unless carded?(ContextCandidatesLog.log_for(state_dir), session_id, candidate.name)
+
+      show_card.call(**closed_card(candidate, body))
+    end
+
     def judge_attach(candidate, job:, p:, state_dir:, log:, show_card:)
       own = ContextSources.session_location(job.session_id, state_dir: state_dir)
       own.add(ContextCandidates.source_for(candidate, why: JUDGE_WHY))
       Log.info(:context, "candidate_attached", name: candidate.name, trigger: "judge")
       ContextCandidatesLog.event("judge_attached", session_id: job.session_id, name: candidate.name, log: log, p: p)
       # A card from an earlier ask loses its buttons.
-      show_card.call(**closed_card(candidate, "Attached: #{JUDGE_WHY}.")) if carded?(log, job.session_id, candidate.name)
+      close_open_card(candidate, job.session_id, state_dir, show_card, "Attached: #{JUDGE_WHY}.")
       :attached
     rescue ContextSources::Invalid, ContextProviders::Invalid => e
       Log.warn(:context, "candidate_not_attached", name: candidate.name, error: e.message.to_s[0, 200])
@@ -134,7 +143,7 @@ module Samagotchi
       Log.info(:context, "candidate_attached", name: candidate.name, trigger: "command")
       ContextCandidatesLog.event("attached", session_id: session.id, name: candidate.name, state_dir: state_dir, by: "command")
       label_run(session, candidate, "attached", state_dir)
-      show_card.call(**closed_card(candidate, "Attached."))
+      close_open_card(candidate, session.id, state_dir, show_card, "Attached.")
       [:ok, "attached #{candidate.name}: its text comes with your next message"]
     rescue ContextSources::Invalid, ContextProviders::Invalid => e
       [:error, "#{candidate.name} not attached: #{e.message}"]
@@ -155,7 +164,7 @@ module Samagotchi
       ContextSources.session_location(session.id, state_dir: state_dir).decline(candidate.name, candidate.url.to_s)
       ContextCandidatesLog.event("declined", session_id: session.id, name: candidate.name, state_dir: state_dir, by: "command")
       label_run(session, candidate, "declined", state_dir)
-      show_card.call(**closed_card(candidate, "Not attached here."))
+      close_open_card(candidate, session.id, state_dir, show_card, "Not attached here.")
       [:ok, "declined #{candidate.name}: not proposed again in this session"]
     end
   end
