@@ -238,6 +238,15 @@ counts. So:
   reload. An asking card (check-in) has no `.waiting`, as its turn goes on: its dot keeps blinking. `.init-spin` is
   outside the stage (plugin setup only).
 
+A running turn's text reaches the page at most every 100 ms (`turn_block.js FLUSH_MS`): a chunk only marks its step dirty,
+and `flush` writes the dirty steps, follows and runs `onChange`, which refreshes the stage on the next frame
+(`stage_view.js scheduleRefresh`, unthrottled: a collapse or a card stays immediate). The first chunk after a quiet
+interval flushes on the next frame, so a first token isn't late; one inside the interval sets a timer for the rest, which
+then asks for a frame, so a hidden tab's flush still pauses. A chunk that opens a step applies at once. What must not wait
+writes for itself: `generationCompleted` and a step's close write its text, a card's refresh reads the model.
+`reset`, `turnEnded` and `flush` itself cancel the timer. A frame already requested can't be cancelled that way, so it may
+run `flush` with nothing to write, which doesn't count as a flush for the interval.
+
 ## Stale answers
 
 The page switches sessions, reopens a popover or asks again while a fetch is out. An answer for the old ask must be

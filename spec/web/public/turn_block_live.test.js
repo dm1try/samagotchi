@@ -312,3 +312,162 @@ test("createTurnBlock: a question's refs on the asking step go on its closed tex
   turnBlock.generationStarted({ iteration: 3 });
   assert.equal(answerRefsOf(turnBlock.step(1).el.querySelector(":scope > .gen-text")), null);
 });
+
+// The flush's cadence on hand-run frames, a fake timer and a fake clock:
+// +advance(ms)+ moves the clock and fires what is due; +frames.run()+ runs
+// the frames requested so far.
+function cadence(t, opts = {}) {
+  let queue = [];
+  let clock = 1000;
+  t.mock.method(globalThis, "requestAnimationFrame", (fn) => { queue.push(fn); return queue.length; });
+  t.mock.method(performance, "now", () => clock);
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  let changes = 0;
+  const { turnBlock } = liveBlock({ onChange: () => { changes++; }, ...opts });
+  turnBlock.turnStarted({});
+  turnBlock.generationStarted({ iteration: 1 });
+  const frames = {
+    pending: () => queue.length,
+    run() {
+      const now = queue;
+      queue = [];
+      for (const fn of now) fn(clock);
+    },
+  };
+  return {
+    turnBlock,
+    frames,
+    changes: () => changes,
+    advance(ms) {
+      clock += ms;
+      t.mock.timers.tick(ms);
+    },
+    say: (text) => turnBlock.chunk({ thinking: text, iteration: 1 }),
+    // The chunks so far flushed: the interval's clock runs from here.
+    flushed() {
+      this.say("first. ");
+      frames.run();
+    },
+  };
+}
+
+test("flush cadence: the first chunk is on the next frame, with no wait", (t) => {
+  const c = cadence(t);
+  c.say("first. ");
+  assert.equal(c.frames.pending(), 1);
+  c.say("second. ");
+  assert.equal(c.frames.pending(), 1, "one frame for what comes before it");
+});
+
+test("flush cadence: chunks inside the interval wait for its end and share one frame, one onChange", (t) => {
+  const c = cadence(t);
+  c.flushed();
+  const before = c.changes();
+  c.say("a. ");
+  c.advance(30);
+  c.say("b. ");
+  c.advance(30);
+  c.say("c. ");
+  c.advance(39);
+  assert.equal(c.frames.pending(), 0, "99 ms: no frame yet");
+  assert.equal(c.changes(), before, "a chunk alone doesn't refresh the stage");
+  c.advance(1);
+  assert.equal(c.frames.pending(), 1, "at the interval's end: a frame, not a flush (a hidden tab's flush pauses)");
+  assert.equal(c.changes(), before);
+  c.frames.run();
+  assert.equal(c.changes(), before + 1);
+  assert.equal(c.turnBlock.current().turn.gens[0].thinking, "first. a. b. c. ");
+});
+
+test("flush cadence: past the interval the next chunk is on the next frame again", (t) => {
+  const c = cadence(t);
+  c.flushed();
+  c.advance(100);
+  c.say("late. ");
+  assert.equal(c.frames.pending(), 1);
+});
+
+test("flush cadence: a chunk that opens a step shows it at once, not at the flush", (t) => {
+  const c = cadence(t);
+  c.flushed();
+  const before = c.changes();
+  c.turnBlock.chunk({ text: "Next step.", iteration: 2 });
+  assert.equal(c.changes(), before + 1);
+  assert.ok(c.turnBlock.step(1), "the step's element is there");
+});
+
+test("flush cadence: reset drops the waiting timer", (t) => {
+  const c = cadence(t);
+  c.flushed();
+  c.say("a. ");
+  c.turnBlock.reset();
+  c.advance(100);
+  assert.equal(c.frames.pending(), 0);
+});
+
+test("flush cadence: a new turn's first chunk doesn't wait for the old turn's interval", (t) => {
+  const c = cadence(t);
+  c.flushed();
+  c.turnBlock.turnStarted({});
+  c.turnBlock.generationStarted({ iteration: 1 });
+  c.say("again. ");
+  assert.equal(c.frames.pending(), 1);
+});
+
+test("flush cadence: a turn's end drops the waiting timer and what it held", (t) => {
+  const c = cadence(t);
+  c.flushed();
+  c.say("a. ");
+  c.turnBlock.turnEnded({ kind: "completed" });
+  c.advance(100);
+  assert.equal(c.frames.pending(), 0, "no timer left");
+  // Nothing left marked pending: a late chunk asks for a flush of its own.
+  c.turnBlock.chunk({ text: "late", iteration: 1 });
+  assert.equal(c.frames.pending(), 1);
+});
+
+test("flush cadence: a turn's end forgets the dirty steps, so its late frame doesn't count as a flush", (t) => {
+  const c = cadence(t);
+  c.turnBlock.chunk({ text: "Next step.", iteration: 2 }); // closes the first step
+  c.say("first. "); // a late chunk for it, dirty and not the step the end closes; a frame requested
+  c.turnBlock.turnEnded({ kind: "completed" });
+  c.advance(100);
+  c.frames.run(); // late, nothing left to write
+  c.advance(1);
+  c.turnBlock.chunk({ text: "late", iteration: 1 });
+  assert.equal(c.frames.pending(), 1, "no wait: no flush wrote anything");
+});
+
+test("flush cadence: a direct flush takes the waiting timer with it", (t) => {
+  const c = cadence(t);
+  c.flushed();
+  c.say("a. ");
+  c.turnBlock.flush();
+  c.advance(100);
+  assert.equal(c.frames.pending(), 0);
+});
+
+test("flush cadence: a frame that runs while a timer waits takes the timer with it", (t) => {
+  const c = cadence(t);
+  c.say("first. ");
+  c.turnBlock.flush(); // the frame it requested stays requested
+  c.say("a. ");
+  assert.equal(c.frames.pending(), 1, "the old frame only: the chunk took a timer");
+  c.advance(20);
+  c.frames.run();
+  const changes = c.changes();
+  c.advance(100);
+  assert.equal(c.frames.pending(), 0, "no second frame from the timer");
+  assert.equal(c.changes(), changes);
+});
+
+test("flush cadence: an empty late frame doesn't count as a flush, so the next first chunk has no wait", (t) => {
+  const c = cadence(t);
+  c.say("first. ");
+  c.turnBlock.flush(); // at 1000; its frame still to come
+  c.advance(150);
+  c.frames.run(); // late, nothing to write
+  c.advance(1);
+  c.say("next. ");
+  assert.equal(c.frames.pending(), 1, "the interval runs from the flush that wrote, 151 ms ago");
+});

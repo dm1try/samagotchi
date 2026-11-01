@@ -17,6 +17,10 @@ and commands may change between minor versions. How releases are made:
 - The web's session bar on a phone no longer swipes: id, status, model and ⚙ stay on the row, and ⋯ opens a bottom sheet with the
   rest (toolkit, working set, participants, chain links, delegates, the telemetry, Continue, Archive, Stop, Delete). A dot on ⋯ says
   when something there needs a look. See [docs/cli.md](docs/cli.md#the-session-bar-on-a-phone).
+- chi web uses much less CPU during a turn: about a fifth of a core less on a Mac Studio while a question waits or the model
+  is silent, and less while text streams. The stage's dot and running tick are now a slow opacity blink instead of a pulsing
+  ring, the spinners turn in small steps, and while a question or an approval blocks the turn they stand still, so movement
+  means chi is working. An in-turn card like check-in's keeps its dot blinking, as that turn goes on.
 
 ### Fixed
 

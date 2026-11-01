@@ -383,6 +383,7 @@ test("identity: the headline element is kept; fresh is added again only when its
     await frame();
     assert.ok(!headline.classList.contains("fresh"), "same text: left alone");
     view.chunk({ iteration: 1, text: "Another one now. " });
+    view.flush(); // inside the flush interval (turn_block.js): nothing would write it yet
     await frame();
     assert.ok($(view, ".ts-headline") === headline);
     assert.ok(headline.classList.contains("fresh"));
