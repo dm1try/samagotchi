@@ -26,86 +26,39 @@ Samagotchi is split into a core **Engine** (`lib/samagotchi/engine.rb`) and a
   without terminal coupling.
 
 ## CLI Usage (`bin/chi`)
-In REPL mode `TerminalUI#run` is the single dispatch for the REPL, `-p`/`--prompt`,
-`--non-interactive` and `--resume`; attached (the default), `-p` and `--resume` go to
-`TerminalUI::AttachLauncher`. Flag semantics (also in `docs/cli.md`):
-- `-p`, `--prompt TEXT`: feed `TEXT` as the first turn — feeds **and** runs it.
-- `--non-interactive`: run one turn then exit (high iteration cap; implies `--no-interrupt`).
-  A harmless no-op when given without `-p` (no session created).
-- `--resume SESSION_ID`: load a prior session's history instead of creating a fresh one;
-  composes with `-p` (prompt runs on the resumed session, prior history preserved as context).
-- `-p "..."` alone (no `--non-interactive`) runs one turn and **stays in the session**: the
-  attached TUI by default, the REPL with `--no-shared`.
-- `--remote NAME` (before the subcommand; or `CHI_REMOTE=NAME`, the flag wins): the session commands
-  (`send`, `answer`, `note`, a session's `context`, `sessions list/stop/restart/archive/unarchive/delete`, `share`,
-  `review`)
-  against another machine's chi web (`SessionAccess::Remote`, `SessionAccess::Dispatch`); what
-  `SessionAccess::Contract` lists local-only exits 2. `chi remote add|ls|rm` keeps the remotes
-  (`$XDG_CONFIG_HOME/samagotchi/remotes.yml`, 0600). See docs/cli.md (Remote sessions).
-- `chi share ID --name NAME [--identity EMAIL] [--agent] [--expires 3d] [--cap 2]` / `share ls [ID]` / `share cap ID P DOLLARS` /
-  `share revoke ID [P] | --all` (local or `--remote`): a session's participants, each a `Web::Grants` grant (a `chp_`
-  token for one session, digest-only, 7 days, a $2 cap, revoked on archive/delete; `--identity` binds it to one
-  account behind an auth proxy that names the user, refused elsewhere) that reaches only that session's
-  `:participant` routes through chi web. Their `POST …/turn` is a queued turn of their own (no `!`/`/` lines, a turn
-  limit, spend by author) whose rules `ParticipantMode.of` decides: in a review session a read-only review turn
-  (`Guardrails::ReviewBoundary`, the reserved `review` kit); in a working session a pair turn under the owner's
-  guardrails (`Guardrails::PairBoundary`: no secrets, no chi, no background jobs, no owner-voiced tools; asks to the
-  owner, once only, a write outside the project always asks; a mid-turn cap or revoke stop), only for a grant stamped
-  `mode: pair` at invite (`ReviewStart.share_terms`; a worker without `pair_turns` and older grants stay review). Code and docs say "participants" / "review" / "pair", never
-  "shared". See docs/internals/participants.md.
-- `chi review FILE… [--dir D] [--model M]` / `chi review --from ID [FILE…]` (local or `--remote`): a review session
-  (`review: {subjects, from}`, `ReviewStart`) to share: its subjects are project files checked by
-  `Guardrails::ReviewPaths`, a `--from` fork starts from ID's recap and leaves ID running. Participants read the
-  subjects as the Plan (`GET …/review`'s `subjects`); the owner's Apply quotes a review turn's proposal
-  (`ReviewApply`, `GET …/apply`). See docs/sessions.md (Review sessions).
-- `chi web --tunnel tailscale` (`Web::Tunnel::Tailscale`): Tailscale Serve 443 → chi web's port for this run (never
-  Funnel), public_url = this machine's ts.net name, identity `Tailscale-User-Login`, owner `web.proxy.owner` else
-  this machine's login; never written to config.yml. Adopts only its own exact handler, refuses anything else on 443,
-  turns 443 off on exit only while it is still exactly that. Specs: a fake tailscale via `SAMAGOTCHI_TAILSCALE_CLI`
-  (spec_helper points it at a missing file). See docs/configuration.md (Tailscale Serve).
-- Also (docs/cli.md): `chi web --start-dir DIR` (config `web.start_dir`: the project chi web's page opens on),
-  `chi web push ls|rm|test` (this machine's Web Push devices, `PushCommand`), `chi guardrails replay`
-  (`GuardrailsCommand`: seeds System 1's record from the approvals already answered), and
-  `chi toolkit report [--days N]` (`ToolkitReportCommand`: grades audit suggestions against session tool calls),
-  `chi judgments ls|report NAME [--days N]` (`JudgmentsCommand`: System 1's saved runs),
-  and `chi home [set [--ruby PATH] | doctor]` (`HomeCommand`; `ChiHome`, home.json: the Ruby every chi launch boots,
-  through `Record#boot_argv`'s `Gem.paths` prelude, never GEM_* in an env; docs/architecture.md "How chi launches
-  itself").
-- `--attach ID`: attach to a session's worker (waking one if it has exited);
-  `--shared`/`--no-shared` override `session.shared` for this run.
-- `--remote NAME` (or `CHI_REMOTE`) before `--attach ID`, `--resume ID` or `-p` (attached only): the TUI on that
-  machine's session, through its chi web (`RemoteAttachCommand`, branched in bin/chi after `RunOptions.parse` and
-  before the local checks). A new session there needs `--dir DIR` (that machine's absolute path; `--dir` is
-  remote-only). `--non-interactive`, `--verbose`, `--no-shared`, `--memory`, `--mute`, `--append-system-prompt`
-  are this machine's (exit 2; `Contract::RUN`).
-- `--model NAME` (this run, not saved), `--thinking LEVEL` and `--llm-context`
-  (`--llm-context-apply`, `--llm-context-budget`): the session's own thinking level and
-  LLM context strategy, saved in the session.
-- `--memory` / `--mute NAME` (both repeatable): preload a memory into the prompt / hide one
-  from the session. `--no-interrupt`, `--no-default-input`, `-v`/`--verbose`, `--help` also
-  available; `SAMAGOTCHI_DEFAULT_INPUT` prefill (edit, not run).
-  The config.yml `memories:` list is the persistent baseline of preloaded memory
-  entries (same name shape as `--memory`); `--memory` values are appended after
-  it, deduped.
-- `--toolkit NAME`, `--tool NAME` / `--no-tool NAME` (repeatable): a new session's toolkit, the tools its prompts
-  declare (`full` by default; config `toolkit.default`, `toolkit.child`, `toolkit.kits`). Saved in the session at
-  creation, never re-resolved from config; `/toolkit` changes it from the next turn's start. Ignored with
-  `--attach`/`--resume`, like `--memory`.
-- `--append-system-prompt FILE` (repeatable): FILE's text goes into the system prompt after the
-  AGENTS.md chain (root → cwd); config.yml `append_system_prompt:` is its baseline. Saved in the
-  session (kept by respawns, forks and continues); ignored with `--attach`/`--resume`, like `--memory`.
-- `--set KEY=VALUE` (repeatable; also `chi send --new --set`): a core key marked session-settable
-  (`Config::Entry#session?`: `recap.enabled`, `recap.sentences`; saved as `config_settings`, read first through
-  `Config.get(key, session:)`) or `BUNDLE.KEY`: a bundle setting for a new session, a key the
-  installed bundle's manifest lists in `session_settings:` (others exit 2). Saved in the session (kept by respawns,
-  forks and continues), laid over config.yml's `bundles: <name>:` in `ctx.settings`; ignored with
-  `--attach`/`--resume`.
-- The loop follows the model's host: a host whose `api:` has a chat adapter
-  (`LLM::Adapters::BY_API`) uses the chat loop, `LLM::ChatLoop`: `api: openai` on
-  `LLM::OpenAIChat` (`/v1/chat/completions`), `api: anthropic` on
-  `LLM::AnthropicMessages` (`/v1/messages`). Every other host runs chi's own
-  raw-prompt loop (`KernelLoop`). `--backend` and `SAMAGOTCHI_BACKEND` are gone
-  (see docs/configuration.md).
+The flags, subcommands and REPL commands are in `docs/cli.md` (its Flags table and Entrypoint scenarios are the
+reference); a subcommand's class is `XCommand` under `lib/samagotchi/` (`chi home` is `HomeCommand`). What an agent gets wrong without being told:
+- In REPL mode `TerminalUI#run` is the single dispatch for the REPL, `-p`/`--prompt`, `--non-interactive` and
+  `--resume`; attached (the default), `-p` and `--resume` go to `TerminalUI::AttachLauncher`. `-p` **feeds and runs**
+  the prompt and, without `--non-interactive`, **stays in the session** (the attached TUI; the REPL with
+  `--no-shared`). `--non-interactive` is one turn then exit; bare, it is a no-op that creates no session.
+- Flags that shape a *new* session (`--memory`, `--mute`, `--toolkit`/`--tool`/`--no-tool`, `--append-system-prompt`,
+  `--set`) are saved in it at creation and ignored with `--attach`/`--resume`; `--model` is for this run only,
+  `--thinking` and `--llm-context*` are the session's own, saved. Saved means a respawn, a fork and a continue keep
+  them (a toolkit is never re-resolved from config).
+- `--remote NAME` / `CHI_REMOTE` (the flag wins) runs the session commands (`send`, `answer`, `note`, a session's
+  `context`, `sessions list/stop/restart/archive/unarchive/delete`, `share`, `review`) and, with `--attach`,
+  `--resume` or `-p`, the TUI against another machine's chi web (`SessionAccess::Remote`/`Dispatch`,
+  `RemoteAttachCommand`, branched in bin/chi after `RunOptions.parse`); what `SessionAccess::Contract` lists as
+  local-only (`Contract::RUN` for the run flags) exits 2; `--dir` is remote-only. See docs/cli.md (Remote sessions),
+  docs/internals/remote-sessions.md.
+- `chi share` (the owner inviting participants) makes `Web::Grants` grants (`chp_` tokens, one session, digest-only) that reach only that
+  session's `:participant` routes through chi web; `ParticipantMode.of` decides what their turn is: a read-only
+  review turn (`Guardrails::ReviewBoundary`) or, for a grant stamped `mode: pair` at invite, a pair turn under the
+  owner's guardrails (`Guardrails::PairBoundary`). `chi review` starts a review session (`ReviewStart`; subjects checked
+  by `Guardrails::ReviewPaths`; the owner's Apply is `ReviewApply`). **Code and docs say "participants" / "review" /
+  "pair", never "shared"** (`session.shared` already means attached by default). See docs/cli.md (Participants),
+  docs/sessions.md (Review sessions), docs/internals/participants.md.
+- `chi web --tunnel tailscale` (`Web::Tunnel::Tailscale`) never uses Funnel and never writes config.yml. Specs reach
+  no real `tailscale`: `spec_helper` points `SAMAGOTCHI_TAILSCALE_CLI` at a missing file (docs/testing.md); the
+  command is in docs/configuration.md (Tailscale Serve).
+- Other commands are in docs/cli.md: `chi web --start-dir`, `chi web push`, `chi guardrails replay`, `chi toolkit
+  report`, and `chi home` (`ChiHome`: the Ruby every chi launch boots, never `GEM_*` in an env; docs/architecture.md
+  "How chi launches itself").
+- The loop follows the model's host: a host whose `api:` has a chat adapter (`LLM::Adapters::BY_API`) uses the chat
+  loop, `LLM::ChatLoop`: `api: openai` on `LLM::OpenAIChat` (`/v1/chat/completions`), `api: anthropic` on
+  `LLM::AnthropicMessages` (`/v1/messages`). Every other host runs chi's own raw-prompt loop (`KernelLoop`).
+  `--backend` and `SAMAGOTCHI_BACKEND` are gone (docs/configuration.md).
 
 ## Core Principles
 - **Memory-Centric**: The harness relies heavily on memory (project/system scopes) for persistent cognition; tools operate on code/memories but the core is not self-modifying.
