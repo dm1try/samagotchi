@@ -23,6 +23,7 @@ require_relative "bridge/turn_accumulator"
 require_relative "session"
 require_relative "engine"
 require_relative "system_one/log"
+require_relative "system_one/approval_label"
 require_relative "session_commands"
 require_relative "queued_command"
 require_relative "steer"
@@ -815,6 +816,7 @@ module Samagotchi
       return [{}, 409, { error: "already_labelled" }] unless entry["answer"].nil?
       return [{}, 500, { error: "label_failed", detail: "could not write the System 1 label" }] unless log.label(judgment_id, "should_have_asked")
 
+      SystemOne::ApprovalLabel.save(SystemOne::Runs.for_sessions_dir(@state_dir), judgment_id, SystemOne::ApprovalLabel::WRONG)
       [{}, 200, { status: "labelled", id: judgment_id }]
     end
 

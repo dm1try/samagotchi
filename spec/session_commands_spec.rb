@@ -1128,6 +1128,13 @@ RSpec.describe Samagotchi::SessionCommands do
       expect(commands.run("/guardrails nope").output).to eq("usage: /guardrails [revoke N | wrong [N]]")
     end
 
+    it "labels the auto-allow's saved run with /guardrails wrong" do
+      id = system_one_log.judgment(id: "approvals.allow/run-1", session_id: session.id, rule: "git-push", tool: "execute", call: "x", p: 0.97, decision: "auto")
+      commands.run("/guardrails wrong")
+      lines = Samagotchi::SystemOne::RunsStore.new(File.dirname(engine.session_state_dir)).lines("approvals.allow")
+      expect(lines.first).to include("run_id" => id, "value" => "should_have_asked", "strength" => "strong")
+    end
+
     it "labels this session's newest auto-allows with /guardrails wrong [N], appending a label" do
       first = auto_allow("git-push", "git push origin main")
       other_session = auto_allow("git-rebase", "git rebase main", session_id: "another-session")

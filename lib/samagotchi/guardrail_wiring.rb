@@ -44,12 +44,15 @@ module Samagotchi
     #   (a bundle's rules kept because it needs a newer chi)
     # @param system_one [#call] → SystemOne::Client or nil: the judgment client
     #   (nil while `guardrails.system_one.mode` is off or no host is set)
+    # @param system_one_runs [#call] → SystemOne::Runs or nil: where labels
+    #   and what an ask led to are saved
     # @param cancel_controller [#call] → the running turn's CancellationController, nil
     # @param participant [#call] (author) → the participant's
     #   Participants::Entry (participants.json: their name, their grant's
     #   mode), nil for none
     def initialize(scratch:, hooks:, tools:, session:, model_key:, cancelled:, ask:, model_name: -> {},
-                   notify: ->(_message) {}, system_one: -> {}, cancel_controller: -> {}, participant: ->(_author) {})
+                   notify: ->(_message) {}, system_one: -> {}, system_one_runs: -> {}, cancel_controller: -> {},
+                   participant: ->(_author) {})
       @scratch = scratch
       @hooks_lookup = hooks
       @tools_lookup = tools
@@ -60,6 +63,7 @@ module Samagotchi
       @ask = ask
       @notify = notify
       @system_one = system_one
+      @system_one_runs = system_one_runs
       @cancel_controller = cancel_controller
       @participant = participant
       @turn_mode = nil
@@ -375,11 +379,12 @@ module Samagotchi
       # judged is written after it, so the examples are always earlier asks.
       entries = log.entries
       started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+      run_id = SystemOne::Runs.new_id(SystemOne::ApprovalQuestion::JUDGMENT)
       answers = begin
         client.ask(state: SystemOne::ApprovalQuestion.state(approval, session_title: @session_lookup.call&.title,
                                                             entries: entries),
                    questions: { SystemOne::ApprovalQuestion::ID => SystemOne::ApprovalQuestion.question },
-                   cancel_controller: @cancel_controller.call)
+                   cancel_controller: @cancel_controller.call, run_id: run_id)
       rescue LLM::RequestCancelled
         raise
       rescue StandardError => e
@@ -393,13 +398,14 @@ module Samagotchi
       auto = system_one_auto_allow?(client, approval, p, entries, targets: targets)
       decision = system_one_decision(client, auto)
 
-      id = log.judgment(session_id: @session_lookup.call&.id,
+      id = log.judgment(id: run_id, session_id: @session_lookup.call&.id,
                         rule: approval.rule, source: approval.source, tool: approval.tool,
                         **SystemOne::ApprovalQuestion.call_fields(approval),
                         repo_name: approval.repo_name,
                         p: p, threshold: Config.get("guardrails.system_one.threshold"), model: client.model,
                         latency_ms: latency_ms, decision: decision, origin: "live")
       # A judgment the log cannot hold is no judgment: the user is asked.
+      system_one_run_facts(run_id, approval, targets, id.nil? && auto ? "asked" : decision)
       { id: id, p: p, auto: auto && !id.nil? }
     rescue LLM::RequestCancelled
       raise
@@ -407,6 +413,22 @@ module Samagotchi
       # The approval never fails because of System 1.
       Samagotchi::Log.warn(:guardrails, "system_one_judgment_failed", error: "#{e.class}: #{e.message}")
       nil
+    end
+
+    # The saved run's later lines: what the ask led to, and what the gates
+    # say of it now, which can't be recomputed later (a rule list changes):
+    # a later comparison must tell a sweep of gated asks from ungated ones.
+    def system_one_run_facts(run_id, approval, targets, what)
+      runs = @system_one_runs.call
+      return unless runs&.on?
+
+      rule = approval.rule.to_s
+      runs.gates(run_id, rule: rule, rule_listed: system_one_rules.include?(rule),
+                         self_protect_refused: SystemOne::SelfProtect.refuse?(approval, targets: targets),
+                         threshold: Config.get("guardrails.system_one.threshold"))
+      runs.acted(run_id, what)
+    rescue StandardError => e
+      Samagotchi::Log.warn(:guardrails, "system_one_run_facts_failed", error: "#{e.class}: #{e.message}")
     end
 
     # What the judgment line says it did: "auto" (System 1 answered for the
@@ -450,41 +472,22 @@ module Samagotchi
       []
     end
 
-    # The user's answer to that ask, as a label on the judgment: the scope
-    # they took, a denial, or none for an ask that was cancelled. A parent
-    # agent's answer is not the user's: its allow labels nothing, and its
-    # deny is a label only where the parent could have allowed — a parent
-    # that was not allowed to permit says nothing about what the user would
-    # have done (docs/guardrails.md, "System 1").
+    # The answer to that ask, as a label on the judgment and on its saved run
+    # (SystemOne::ApprovalLabel: which answers are labels, how strong).
     def system_one_label(judgment, answer, payload)
       id = judgment && judgment[:id]
       return nil if id.nil?
 
-      scopes = Array(payload[:approval].scopes)
-      if !answer.is_a?(Samagotchi::QuestionAnswer)
-        label = "none"
-      elsif answer.parent_agent?
-        return nil if parent_allowed?(answer, scopes) || !parent_may_permit?(payload)
+      label = SystemOne::ApprovalLabel.of(answer, scopes: Array(payload[:approval].scopes),
+                                                  parent_may_permit: -> { parent_may_permit?(payload) })
+      return nil if label.nil?
 
-        label = "deny"
-      else
-        index = answer.selected_indices.first
-        label = if index && index < scopes.size
-                  scopes[index] == "once" ? "allow_once" : "allow_wide"
-                else
-                  "deny"
-                end
-      end
-      system_one_log.label(id, label, question_id: (answer.id if answer.is_a?(Samagotchi::QuestionAnswer)))
+      written = system_one_log.label(id, label.value, question_id: (answer.id if answer.is_a?(Samagotchi::QuestionAnswer)))
+      SystemOne::ApprovalLabel.save(@system_one_runs.call, id, label)
+      written
     rescue StandardError => e
       Samagotchi::Log.warn(:guardrails, "system_one_label_failed", error: "#{e.class}: #{e.message}")
       nil
-    end
-
-    # Whether a parent's answer picked one of the offered scopes.
-    def parent_allowed?(answer, scopes)
-      index = answer.selected_indices.first
-      !index.nil? && index < scopes.size
     end
 
     # Whether this session's parent level lets a parent allow a call at all,

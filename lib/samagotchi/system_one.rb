@@ -13,6 +13,7 @@ require_relative "system_one/record"
 require_relative "system_one/similar"
 require_relative "system_one/self_protect"
 require_relative "system_one/approval_question"
+require_relative "system_one/approval_label"
 
 module Samagotchi
   # System 1: the cheap judgment model that will, one phase at a time,

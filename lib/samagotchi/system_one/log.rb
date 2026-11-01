@@ -48,10 +48,12 @@ module Samagotchi
         append(line)
       end
 
-      # @param fields [Hash] the judgment's own fields (rule, tool, p, …)
+      # @param fields [Hash] the judgment's own fields (rule, tool, p, …); its
+      #   :id if the caller has one (a saved run's), else a new one
       # @return [String, nil] the judgment's id, nil when nothing was written
       def judgment(fields)
-        id = SecureRandom.uuid
+        fields = fields.dup
+        id = fields.delete(:id) || SecureRandom.uuid
         entry("judgment", { "id" => id }.merge(fields)) ? id : nil
       end
 

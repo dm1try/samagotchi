@@ -23,6 +23,7 @@ require_relative "working_set_command"
 require_relative "recap_command"
 require_relative "guardrails/parent_policy"
 require_relative "system_one/log"
+require_relative "system_one/approval_label"
 require_relative "system_one/record"
 
 module Samagotchi
@@ -479,6 +480,8 @@ module Samagotchi
       unless system_one_log.label(entry["id"], "should_have_asked")
         return reply("could not label System 1 auto-allow #{index} (see the guardrails log)", status: :error)
       end
+
+      SystemOne::ApprovalLabel.save(SystemOne::Runs.for_sessions_dir(@engine.session_state_dir), entry["id"], SystemOne::ApprovalLabel::WRONG)
 
       call = shorten_call(entry["call"].to_s.gsub(/\s+/, " "))
       probability = entry["p"].nil? ? "unknown" : format("%.2f", entry["p"].to_f)

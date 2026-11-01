@@ -558,6 +558,17 @@ RSpec.describe Samagotchi::Bridge do
       @bridge_port, @bridge_secret = JSON.parse(File.read(sidecar)).values_at("port", "secret")
     end
 
+    it "labels the auto-allow's saved run too, strong" do
+      start_bridge
+      log = Samagotchi::SystemOne::Log.new(dir: Samagotchi::Guardrails::Approvals.dir_for(state_dir))
+      id = log.judgment(id: "approvals.allow/run-1", session_id: @session.id, rule: "git-push", decision: "auto", p: 0.97)
+      client = Samagotchi::BridgeClient.new(session_id: @session.id, port: @bridge_port, secret: @bridge_secret)
+
+      expect(client.mark_system_one_wrong(judgment_id: id).status).to eq(200)
+      lines = Samagotchi::SystemOne::RunsStore.new(File.dirname(state_dir)).lines("approvals.allow")
+      expect(lines.first).to include("run_id" => id, "value" => "should_have_asked", "by" => "user", "strength" => "strong")
+    end
+
     it "labels this session's System 1 auto-allow and returns 404 for an unknown judgment" do
       start_bridge
       log = Samagotchi::SystemOne::Log.new(dir: Samagotchi::Guardrails::Approvals.dir_for(state_dir))

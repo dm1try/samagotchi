@@ -15,6 +15,8 @@ module Samagotchi
     # the memory an ask names and the earlier asks it resembles.
     module ApprovalQuestion
       ID = "allow"
+      # Its saved asks' name (Runs).
+      JUDGMENT = "approvals.allow"
       # What the judgment is asked, in the model's terms. Frozen: a change
       # here is a change in behaviour, not a wording tweak.
       INSTRUCTIONS = "A coding agent wants to run this tool call, and a guardrail rule asked its user to approve it. " \

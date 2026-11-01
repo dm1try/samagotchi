@@ -433,8 +433,9 @@ module Samagotchi
         # closes a judgment that is no longer wanted.
         system_one: lambda {
           system_one_recording(SystemOne::Client.from_config(host_registry: @host_registry, mode: Config.get("guardrails.system_one.mode")),
-                               "approvals.allow", @session)
+                               SystemOne::ApprovalQuestion::JUDGMENT, @session)
         },
+        system_one_runs: -> { system_one_runs },
         cancel_controller: -> { active_cancel_controller },
         # A participant's turn: their name on the owner's card, their
         # grant's mode for the turn's (GuardrailWiring#turn_mode).
