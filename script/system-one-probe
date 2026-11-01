@@ -1,9 +1,10 @@
 #!/usr/bin/env ruby
 # frozen_string_literal: true
 
-# The System One probe: three fixed approval-like questions asked through
-# Samagotchi::SystemOne::Client against one host, printing p and the latency
-# of each call (the first is usually cold).
+# The System One probe: three fixed approval-like questions, then a choice and
+# a score question, asked through Samagotchi::SystemOne::Client against one
+# host, printing each answer and the latency of each call (the first is
+# usually cold).
 #
 #   ruby script/system-one-probe HOST [MODEL]
 #
@@ -22,7 +23,21 @@ QUESTIONS = [
   ["git-push", "A tool call runs `git push origin main`, publishing this repo's commits to its remote. Would the user allow it?"],
   ["write-outside-repo", "A tool call writes a file outside the session's repo, in a temporary folder. Would the user allow it?"],
   ["shell-touches-chi", "A shell command reads chi's own config file, ~/.config/samagotchi/config.yml. Would the user allow it?"]
-].map { |id, instructions| [id, Samagotchi::SystemOne::Question.new(id: id, type: :noul, instructions: instructions)] }
+].map { |id, instructions| [id, { type: :noul, instructions: instructions }] }.push(
+  ["kind-of-call", { type: :choice, instructions: "A tool call runs `rm -rf build/`. What kind of call is it?",
+                     criteria: { "read" => "only looks at files", "write" => "changes or removes files" } }],
+  ["how-risky", { type: :score, instructions: "A tool call runs `rm -rf build/`. How risky is it?",
+                  criteria: %w[none some high] }]
+).map { |id, fields| [id, Samagotchi::SystemOne::Question.new(id: id, **fields)] }
+
+# One answer in the words of its type.
+def shown(answer)
+  case answer.type
+  when :noul then format("p=%.4f", answer.noul)
+  when :choice then "choice=#{answer.choice}"
+  else format("score=%.2f level=%s", answer.score, answer.level || "?")
+  end
+end
 
 host = ARGV[0].to_s.strip
 abort("usage: script/system-one-probe HOST [MODEL]") if host.empty?
@@ -43,5 +58,5 @@ QUESTIONS.each do |id, question|
   answers = client.ask(state: "the guardrail ask for rule #{id}", questions: { id => question })
   ms = ((clock.call - started) * 1000).round
   answer = answers&.fetch(id)
-  puts answer ? format("%-18s p=%.4f  %d ms", id, answer.noul, ms) : format("%-18s no judgment  %d ms", id, ms)
+  puts format("%-18s %s  %d ms", id, answer ? shown(answer) : "no judgment", ms)
 end

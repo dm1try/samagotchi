@@ -1165,8 +1165,9 @@ written, and the call is denied without a card; a turn that stopped as the
 judgment came back opens no card either.
 
 `ruby script/system-one-probe HOST [MODEL]` asks three fixed approval-like
-questions through the client and prints each probability and the latency of
-the call — how a host is checked before any of this is turned on.
+questions, then a choice and a score question, through the client and prints
+each answer and the latency of the call — how a host is checked before any of
+this is turned on.
 
 ### Answering for the user: `on` mode
 
