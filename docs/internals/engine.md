@@ -722,7 +722,7 @@ loops). It is display-only and never reaches the wire (prompt-caching.md, rule 7
 model's opens, never from `QuestionDesk`: `Engine#request_question` (the kernel's `question_handler`, after
 `AskUserQuestion.validate`; not with `interface == :non_interactive`) and the guardrail wiring's `ask:` lambda
 (`GuardrailWiring#request_approval`, after a stored approval and the non-interactive deny). So `ask_for_hook`, a
-relayed approval (`EnginePeers#open_question` → `Engine#open_question`) and `post` (the step-limit question) never
+relayed approval (`Engine::RelayPeer#open_question` → `Engine#open_question`) and `post` (the step-limit question) never
 fire it. `QuestionAsked.fire` is a no-op without a subscriber (`Registry#any?`); else it finds the live
 conversation's last `role: "model"` entry (`Engine#live_conversation`, one lookup for both loops: a ChatLoop batch may
 end in a tool result), builds an `AnswerRefs` on that step alone with the question caps (50 / 32 KiB), fires with the
