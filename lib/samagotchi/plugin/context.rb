@@ -15,6 +15,7 @@ require_relative "side_question"
 module Samagotchi
   # Context#saved_session reads it; Sessions and AttachedContext load it too.
   autoload :Session, File.expand_path("../session", __dir__)
+  autoload :PluginSessionState, File.expand_path("../plugin_session_state", __dir__)
 
   module Plugin
     # Loaded on first ctx.sessions / ctx.context (or a bundle naming
@@ -298,6 +299,15 @@ module Samagotchi
       # @return [String]
       def data_dir
         @data_dir ||= File.join(Paths.state_dir(env: @env), "plugins", @bundle).tap { |dir| FileUtils.mkdir_p(dir) }
+      end
+
+      # This session's own folder under #data_dir, created on use and read
+      # now (a continue moves the id on). chi removes it with the session:
+      # the layout is core's (PluginSessionState).
+      # @return [String, nil] nil with no session yet
+      def session_dir
+        id = session_id
+        id && PluginSessionState.dir(data_dir, id)
       end
 
       # The conversation so far, a frozen copy, without the system prompt.

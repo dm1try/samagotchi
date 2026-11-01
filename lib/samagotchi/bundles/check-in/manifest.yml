@@ -6,8 +6,7 @@ description: "Checks on a long turn: after N tool calls with no answer, a card a
 trust_level: reviewed
 plugin:
   file: plugin.rb
-  sha256: sha256:cb994f2e5db8338b4a6d49ef52bfdfee7b3a9b05826e625dd8ab1d17e215e86b
-requires_chi: ">= 0.142.0"
-# check-in.progress asks System 1 (chi.judgment, new in 0.142.0): the marker
-# below raises the floor at the release (docs/releasing.md), since chi on main
-# is 0.141.0 and would otherwise refuse its own bundle.
+  sha256: sha256:9113ef31641c98e13593ff25ebb860385708f3986502e10ede265981d7084f91
+# check-in.progress asks System 1 (chi.judgment, new in 0.142.0);
+# ctx.session_dir is new in the next chi
+requires_chi_next: true

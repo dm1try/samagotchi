@@ -7,7 +7,7 @@ require "samagotchi/testing/rspec"
 # test (bundle.set(cost:)), the Continue / Stop question answered from the
 # queue, the state file in the example's sandbox.
 RSpec.describe "The cost-cap bundle", :bundle do
-  let(:state_file) { File.join(sandbox.state_dir, "plugins", "cost-cap", "sessions", "test-session.json") }
+  let(:state_file) { File.join(sandbox.state_dir, "plugins", "cost-cap", "sessions", "test-session", "state.json") }
 
   def plugin(settings = { "default" => 3.0 }, cost: 0.0) = shipped_bundle("cost-cap", settings: settings, host: { cost: cost })
 

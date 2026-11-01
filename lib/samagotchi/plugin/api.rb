@@ -51,7 +51,7 @@ module Samagotchi
         "chi.prompt_section" => "0.132.0", "chi.prompt_changed" => "0.132.0", "ctx.cache_confirm" => "0.132.0",
         "ctx.model_names" => "0.132.0", "chi.judgment" => "0.142.0", "ctx.judge" => "0.142.0",
         "ctx.judge_later" => "0.142.0", "ctx.judgments" => "0.142.0"
-        # Unreleased: "ctx.context.propose", "ctx.context.candidates", "ctx.context.withdraw", "ctx.review".
+        # Unreleased: "ctx.context.propose", "ctx.context.candidates", "ctx.context.withdraw", "ctx.review", "ctx.session_dir".
       }.freeze
 
       # @param bundle [String]

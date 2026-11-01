@@ -22,7 +22,7 @@
 # Mutex.
 #
 # What /checkin changes (on/off, mode, the threshold) is the session's: it
-# is saved in the bundle's data dir (sessions/<id>.json) and read back
+# is saved in the session's folder (ctx.session_dir) and read back
 # when the session comes back (a worker's restart), before its first turn
 # or command. Another session starts from the settings.
 #
@@ -39,7 +39,6 @@
 #   mode: ask          ask | nudge | notify
 #   message: "..."     what a nudge says; {calls} is the count
 #   ignore_tools: [task_wait, task_get, delegate_result]
-require "fileutils"
 require "json"
 require "securerandom"
 
@@ -390,7 +389,7 @@ class Plugin
   def read_state(ctx, id)
     return {} unless id
 
-    data = JSON.parse(File.read(state_path(ctx, id)))
+    data = JSON.parse(File.read(state_file(ctx)))
     data.is_a?(Hash) ? data : {}
   rescue SystemCallError, JSON::ParserError
     {}
@@ -401,8 +400,7 @@ class Plugin
     id = ctx.session_id
     return unless id
 
-    path = state_path(ctx, id)
-    FileUtils.mkdir_p(File.dirname(path))
+    path = state_file(ctx)
     temp = "#{path}.#{Process.pid}.tmp"
     File.write(temp, JSON.generate({ "enabled" => @enabled, "mode" => @mode, "after" => @after, "every" => @every }))
     File.rename(temp, path)
@@ -410,7 +408,7 @@ class Plugin
     ctx.log.warn("check_in_state_not_saved", msg: e.message) if ctx.respond_to?(:log)
   end
 
-  def state_path(ctx, id) = File.join(ctx.data_dir, "sessions", "#{id.to_s.gsub(/[^A-Za-z0-9_.-]+/, "_")}.json")
+  def state_file(ctx) = File.join(ctx.session_dir, "state.json")
 
   # --- helpers ---------------------------------------------------------------
 

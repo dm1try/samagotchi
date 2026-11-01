@@ -19,14 +19,13 @@
 # (cap: five) warns the user once and the next key is used, so a typo is
 # never a silent "no cap".
 #
-# State: <data_dir>/sessions/<session id>.json, {"cap": 3.0, "step": 3.0},
+# State: <ctx.session_dir>/state.json, {"cap": 3.0, "step": 3.0},
 # written by /cap and by Continue; "cap": null (or false) is off for the
 # session, over the config. Without a file the cap comes from the settings:
 # cap:, else child: for a delegate, else default:.
 # The cap is resolved once per session id (ctx.delegate? parses the session
 # file) and kept until /cap or Continue writes a new one.
 require "json"
-require "fileutils"
 
 class Plugin
   USAGE = "usage: /cap [N | $N | off] (USD; /cap alone shows the spend)"
@@ -248,7 +247,7 @@ class Plugin
   def state(ctx, session)
     return [nil, nil] unless session
 
-    path = state_path(ctx, session)
+    path = state_file(ctx)
     saved = JSON.parse(File.read(path))
     raise JSON::ParserError, "not a JSON object" unless saved.is_a?(Hash)
     return [nil, nil] unless saved.key?("cap")
@@ -286,8 +285,7 @@ class Plugin
   # A state file there that doesn't read (#state) is written over: logged
   # and said, never a silent replace.
   def save(ctx, session, data)
-    path = state_path(ctx, session)
-    FileUtils.mkdir_p(File.dirname(path))
+    path = state_file(ctx)
     replacing = unreadable_file?(path)
     Samagotchi::AtomicFile.write(path, "#{JSON.generate(data)}\n")
     replaced(ctx, path) if replacing
@@ -309,7 +307,7 @@ class Plugin
     ctx.notify("cost-cap: #{path} didn't read; replaced with the new cap", level: :warn)
   end
 
-  def state_path(ctx, session) = File.join(ctx.data_dir, "sessions", "#{session.gsub(/[^A-Za-z0-9_.-]/, "_")}.json")
+  def state_file(ctx) = File.join(ctx.session_dir, "state.json")
 
   def money(value) = self.class.money(value)
 

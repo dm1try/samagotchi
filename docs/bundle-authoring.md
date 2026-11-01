@@ -89,7 +89,7 @@ Match on `result:`, not `output:`. An execute's result is its `stdout:` and `std
 empty), then `exit: N` (`exit: 0 (no output)` when both were empty); a non-zero exit makes `status:` `"error"`.
 Act through `ctx`: `ctx.notify(text, level: :warn)`, `ctx.steer(text)` (a line the model reads before its next
 step), `ctx.card(…)`, `ctx.stop_turn(reason)`, `ctx.ask_user(…)`, `ctx.data_dir` (the bundle's state folder),
-`ctx.cwd`, `ctx.log`. In a test, each recorded notice, steer or stop names its hook as `"plugin.rb (bundle
+`ctx.session_dir` (this session's, removed with it), `ctx.cwd`, `ctx.log`. In a test, each recorded notice, steer or stop names its hook as `"plugin.rb (bundle
 my-bundle)"`, the plugin's label (a `hooks/x.rb` file's is `"x.rb (bundle my-bundle)"`).
 
 ## Testing it

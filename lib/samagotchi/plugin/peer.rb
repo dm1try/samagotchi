@@ -131,11 +131,11 @@ module Samagotchi
         body, where = if text.length <= INLINE_CHARS
                         [text, "inline"]
                       else
-                        path = write_payload(ctx, id, title, text)
+                        path = write_payload(ctx, title, text)
                         ["payload: #{path} (#{text.lines.size} lines, #{text.length} chars)", path]
                       end
         post(hint, "chi #{id[0, 8]} · #{kind} · #{title}\n#{body}")
-        record(ctx, id, kind: kind, title: title, chars: text.length, payload: where == "inline" ? nil : where)
+        record(ctx, kind: kind, title: title, chars: text.length, payload: where == "inline" ? nil : where)
         "sent to #{self.class::NAME}: #{kind} · #{title}#{" (the text in #{where})" unless where == "inline"}"
       end
 
@@ -153,7 +153,7 @@ module Samagotchi
         left = ctx.context.left_behind.find { |row| row.name == peer::INBOX }
         hint = left&.hint.to_s.strip
         return "no #{peer::INBOX} left behind" if hint.empty?
-        return "asked already" unless claim_moved(ctx, id)
+        return "asked already" unless claim_moved(ctx)
 
         check_hint!(hint)
         post(hint, moved_message(previous, id))
@@ -175,9 +175,9 @@ module Samagotchi
 
       private
 
-      # Takes the moved marker for session +id+; false when it is there.
-      def claim_moved(ctx, id)
-        File.open(File.join(session_dir(ctx, id), MOVED_MARKER), File::WRONLY | File::CREAT | File::EXCL, 0o600) do |file|
+      # Takes this session's moved marker; false when it is there.
+      def claim_moved(ctx)
+        File.open(File.join(ctx.session_dir, MOVED_MARKER), File::WRONLY | File::CREAT | File::EXCL, 0o600) do |file|
           file.write("#{Time.now.utc.iso8601}\n")
         end
         true
@@ -302,7 +302,7 @@ module Samagotchi
                   ["**not paired.** In #{peer::APP}, install the chi-peer skill (Install skill below), then tell " \
                    "#{peer::NAME} \"pair with chi #{id.to_s[0, 8]}\"."]
                 end
-        lines << "last send: #{last_send_line(ctx, id)}" if id && last_send(ctx, id)
+        lines << "last send: #{last_send_line(ctx)}" if id && last_send(ctx)
         lines << "last answer (#{peer::OUTBOX}): #{outbox_line(outbox)}" if outbox
         lines << "skill: **differs from this bundle's**: #{peer::COMMAND} install-skill (Replace), then pair again" if skill_differs?(ctx)
         lines << transport_line
@@ -312,15 +312,15 @@ module Samagotchi
         nil
       end
 
-      def last_send(ctx, id)
-        path = File.join(ctx.data_dir, "sessions", id, LAST_SEND)
+      def last_send(ctx)
+        path = File.join(ctx.session_dir, LAST_SEND)
         File.file?(path) ? JSON.parse(File.read(path)) : nil
       rescue JSON::ParserError, SystemCallError
         nil
       end
 
-      def last_send_line(ctx, id)
-        sent = last_send(ctx, id)
+      def last_send_line(ctx)
+        sent = last_send(ctx)
         where = sent["payload"] ? "in `#{sent["payload"]}`" : "inline"
         "#{ago(sent["at"])} · #{sent["kind"]} · #{sent["title"]} (#{sent["chars"]} chars, #{where})"
       end
@@ -424,10 +424,9 @@ module Samagotchi
         end
       end
 
-      # sessions/<id>/<HHMMSS>-<slug>.md under the bundle's data dir, readable
-      # by its owner only.
-      def write_payload(ctx, id, title, text)
-        dir = session_dir(ctx, id)
+      # <HHMMSS>-<slug>.md in ctx.session_dir, readable by its owner only.
+      def write_payload(ctx, title, text)
+        dir = ctx.session_dir
         base = "#{Time.now.strftime("%H%M%S")}-#{slug(title)}"
         path = File.join(dir, "#{base}.md")
         n = 1
@@ -438,13 +437,9 @@ module Samagotchi
         raise SendError, "couldn't write the payload file: #{e.message}"
       end
 
-      def session_dir(ctx, id)
-        File.join(ctx.data_dir, "sessions", id).tap { |dir| FileUtils.mkdir_p(dir) }
-      end
-
-      def record(ctx, id, **send)
+      def record(ctx, **send)
         entry = { at: Time.now.utc.iso8601, **send }
-        @lock.synchronize { File.write(File.join(session_dir(ctx, id), LAST_SEND), JSON.generate(entry)) }
+        @lock.synchronize { File.write(File.join(ctx.session_dir, LAST_SEND), JSON.generate(entry)) }
       rescue SystemCallError => e
         ctx.log.info(:last_send_not_saved, error: e.message)
       end

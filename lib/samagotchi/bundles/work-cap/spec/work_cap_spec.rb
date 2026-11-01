@@ -7,7 +7,7 @@ require "samagotchi/testing/rspec"
 # for the totals) set by the test, the Continue / Stop question answered
 # from the queue, the state file in the example's sandbox.
 RSpec.describe "The work-cap bundle", :bundle do
-  let(:state_file) { File.join(sandbox.state_dir, "plugins", "work-cap", "sessions", "test-session.json") }
+  let(:state_file) { File.join(sandbox.state_dir, "plugins", "work-cap", "sessions", "test-session", "state.json") }
 
   def plugin(settings = { "default" => { "tool_calls" => 400 } }, usage: {}, cost: nil, session_settings: {})
     shipped_bundle("work-cap", settings: settings, host: { usage: usage, cost: cost }, session_settings: session_settings)

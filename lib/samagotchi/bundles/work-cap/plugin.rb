@@ -35,14 +35,13 @@
 # What counts: ctx.usage's tool calls and active time (generations plus
 # finished tool calls, never a question's wait), less ignore_tools'.
 #
-# State: <data_dir>/sessions/<session id>.json, {"tool_calls": {"cap": 800,
+# State: <ctx.session_dir>/state.json, {"tool_calls": {"cap": 800,
 # "step": 400}, "minutes": {"cap": null}}, written by /workcap and by
 # Continue; a meter's "cap": null is off for the session, over the config;
 # a meter missing from the file comes from the settings. Resolved once per
 # session id and settings (ctx.delegate? parses the session file) and kept
 # until /workcap or Continue writes a new file, or the settings change.
 require "json"
-require "fileutils"
 
 class Plugin
   USAGE = "usage: /workcap [N | Nm | Nh | off] (N tool calls, Nm or Nh active time; /workcap alone shows the totals)"
@@ -194,7 +193,7 @@ class Plugin
                           header: "Work cap", options: OPTIONS, effects: EFFECTS)
     if continue?(answer)
       raised.each do |meter, cap|
-        save_meter(ctx, resolved[:session], meter, "cap" => cap, "step" => reached[meter][:step] || reached[meter][:cap])
+        save_meter(ctx, meter, "cap" => cap, "step" => reached[meter][:step] || reached[meter][:cap])
       end
       ctx.notify("#{raised.size == 1 ? "cap" : "caps"} raised to " \
                  "#{raised.map { |meter, cap| "#{count(cap)} #{unit(meter)}" }.join(" and ")}")
@@ -261,14 +260,14 @@ class Plugin
     return "work-cap: no session yet" unless session
 
     if %w[off 0].include?(arg)
-      METERS.each { |meter| save_meter(ctx, session, meter, "cap" => nil) }
+      METERS.each { |meter| save_meter(ctx, meter, "cap" => nil) }
       return "work-cap: no cap for this session"
     end
     meter = arg.match?(NUMBER) ? "tool_calls" : "minutes"
     value = self.class.amount(arg, meter)
     return USAGE unless value
 
-    save_meter(ctx, session, meter, "cap" => value, "step" => value)
+    save_meter(ctx, meter, "cap" => value, "step" => value)
     "work-cap: #{unit(meter)} cap set to #{count(value)} (#{count(used(ctx, ctx.usage)[meter])} so far)"
   rescue StandardError => e
     ctx.log.warn(:workcap_command_failed, error: "#{e.class}: #{e.message}")
@@ -311,7 +310,7 @@ class Plugin
   def state(ctx, session)
     return [{}, nil] unless session
 
-    path = state_path(ctx, session)
+    path = state_file(ctx)
     saved = JSON.parse(File.read(path))
     raise JSON::ParserError, "not a JSON object" unless saved.is_a?(Hash)
 
@@ -385,9 +384,8 @@ class Plugin
   # Write one meter's cap into the session's state file (the other kept).
   # One there that doesn't read (#state) is written over: logged and said,
   # never a silent replace.
-  def save_meter(ctx, session, meter, data)
-    path = state_path(ctx, session)
-    FileUtils.mkdir_p(File.dirname(path))
+  def save_meter(ctx, meter, data)
+    path = state_file(ctx)
     saved = begin
       JSON.parse(File.read(path))
     rescue Errno::ENOENT
@@ -412,7 +410,7 @@ class Plugin
   # 800.0 as 800 (a whole cap is saved as an Integer), 2.5 as it is.
   def whole(value) = value.is_a?(Float) && value.finite? && value == value.to_i ? value.to_i : value
 
-  def state_path(ctx, session) = File.join(ctx.data_dir, "sessions", "#{session.gsub(/[^A-Za-z0-9_.-]/, "_")}.json")
+  def state_file(ctx) = File.join(ctx.session_dir, "state.json")
 
   def count(value) = self.class.count(value)
 

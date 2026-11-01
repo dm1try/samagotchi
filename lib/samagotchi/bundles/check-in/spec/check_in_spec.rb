@@ -275,7 +275,8 @@ RSpec.describe "The check-in plugin", :bundle do
       restarted.set(session_id: "s1")
       turn(restarted)
       expect(checkin(restarted)).to start_with("check-in is off: mode nudge, after 30 tool calls")
-      expect(Dir.children(File.join(p.ctx.data_dir, "sessions"))).to eq(["s1.json"])
+      expect(File).to exist(File.join(p.ctx.data_dir, "sessions", "s1", "state.json"))
+      expect(File).not_to exist(File.join(p.ctx.data_dir, "sessions", "s2", "state.json"))
     end
 
     it "a restored threshold counts from the session's next turn" do

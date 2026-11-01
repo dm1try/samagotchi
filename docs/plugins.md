@@ -837,7 +837,8 @@ full label, `plugin.rb (bundle my-bundle)`.
 | `ctx.usage` | the session's work so far, read now, as a frozen value: `turns` (finished ones and the running one), `tool_calls` and `tool_calls_by_tool` (every call, running ones included; canonical names: an alias counts under its tool, a `call_tool` call under the inner tool), `steps` (the loop rounds that dispatched tools, `/stats`' iterations) and `active_ms` (`active_minutes` too): work time, the generations' time plus the finished tool calls' time, never the waits between them (a question, an approval, the user's answer to `ask_user_question`), with `tool_ms_by_tool` its tool part by tool, so a waiting tool's time (`task_wait`) can be left out. Its counts are the ones `/stats` and `chi sessions stats` show, earlier workers' included. Use its methods, not its class. Needs chi 0.100.0 (guard it with `ctx.respond_to?(:usage)`) |
 | `ctx.turn_author` | who wrote the running turn when it isn't the session's owner: a participant's `"p:<id>"` (`chi share`); nil for the owner's turns and between turns. Every hook event of such a turn carries the same as `author:`. The handler runs with the owner's power whatever the author ([hooks](hooks.md#participants-turns)). Needs chi 0.105.0 (guard it with `ctx.respond_to?(:turn_author)`) |
 | `ctx.settings` | the bundle's settings, frozen: config.yml's `bundles: <bundle>:` with the session's own `--set` values laid over it ([Per-session settings](#per-session-settings)); the config alone until the session is bound (in `register` and `chi.ctx`) |
-| `ctx.data_dir` | `$XDG_STATE_HOME/samagotchi/plugins/<bundle>/`, created on first use. A session's own state goes in `sessions/<id>.json` or `sessions/<id>/` there: chi removes it when the session is deleted, discarded or pruned |
+| `ctx.data_dir` | `$XDG_STATE_HOME/samagotchi/plugins/<bundle>/`, created on first use: what the bundle keeps across sessions |
+| `ctx.session_dir` | this session's own folder there, created on use, read now; nil with no session yet. chi removes it when the session is deleted, discarded or pruned, so don't build the path yourself. A `sessions/<id>.json` an older version of your bundle kept moves in as `state.json` (chi still removes one left there). Needs chi newer than 0.142.0 |
 | `ctx.log` | `ctx.log.info(:event, key: value)`: debug-log records tagged `plugins`, with `bundle=<bundle>` |
 | `ctx.messages` | the conversation, as a frozen copy, without the system prompt. While a turn runs, a session worker's (attached, web) adds that turn so far: its prompt, the model's text and the lines merged into it (no tool calls or thinking); the REPL's is the conversation before that turn. An entry may carry `at`, when it happened (docs/sessions.md, Message times) |
 | `ctx.messages_partial?` | whether `ctx.messages` leaves out a running turn (the REPL mid-turn), so a plugin can say what its answer is about |
@@ -1929,7 +1930,7 @@ Q --option Continue` (or `--option 1`) goes on, `--option Stop` stops the turn (
 parent may Continue: nothing restricts it, as with the step limit. A background delegate child at its cap waits on
 its own card and doesn't wake its parent ([sessions.md](sessions.md#delegating)).
 
-The state is one file per session, `<data_dir>/sessions/<session id>.json` (`{"cap": 3.0, "step": 3.0}`), removed
+The state is one file per session, `state.json` in `ctx.session_dir` (`{"cap": 3.0, "step": 3.0}`), removed
 with the session. A file that is there but doesn't read (not JSON, or not a mapping) is logged
 (`costcap_state_unreadable`) and gets one notice, `cost-cap: <path> doesn't read, its /cap cap is ignored; using
 default: ($5.00)`: the settings' cap is used, never a silent drop; the next `/cap` or Continue rewrites it, logged
@@ -1990,7 +1991,7 @@ bundles:
   `/workcap 2h`: the active-minutes cap.
 - `/workcap off` (or `/workcap 0`): no work cap for this session, over the config.
 
-The state is one file per session, `<data_dir>/sessions/<session id>.json` (`{"tool_calls": {"cap": 800, "step":
+The state is one file per session, `state.json` in `ctx.session_dir` (`{"tool_calls": {"cap": 800, "step":
 400}}`, a meter's `"cap": null` for off). A file that is there but doesn't read (not JSON, or not a mapping) is
 logged (`workcap_state_unreadable`) and gets one notice, `work-cap: <path> doesn't read, its /workcap caps are
 ignored; using default.tool_calls: (400)`: the settings' caps are used, never a silent drop; the next `/workcap` or
@@ -2052,7 +2053,7 @@ with a line and carry on unchanged.
 
 `/checkin` (anytime) for this session. What it changes (on/off, the mode,
 the threshold) is saved with the session, in the bundle's data dir
-(`plugins/check-in/sessions/<id>.json`), so it outlasts a worker's restart
+(`plugins/check-in/sessions/<id>/state.json`), so it outlasts a worker's restart
 and goes with the session; another session starts from config.yml:
 
 | | |

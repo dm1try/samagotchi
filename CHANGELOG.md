@@ -31,6 +31,9 @@ and commands may change between minor versions. How releases are made:
 
 - `chi bundle check` warns (`api`) on a `ctx.*` or `chi.*` call, or a keyword, that this chi's API lacks, at its line:
   `ctx.settingz`, `ctx.sessions.nope`, `ctx.card(titel:)`. It reads the plugin's source, so a path no test runs counts too.
+- `ctx.session_dir`: a session's own folder for a bundle, created on use, removed with the session, so a bundle no longer
+  builds that path itself. cost-cap, work-cap and check-in now keep their state there (`state.json`); a running session's
+  file moves in by itself. `chi update` gets them (cost-cap 0.2.4, work-cap 0.1.4, check-in 0.3.1).
 - A plugin's `chi.on` handler that raises now tells you, once per event in a worker, in the TUI and the web
   (`plugins> plugin.rb (bundle x) before_turn hook failed (…)`). Before, only the log knew. The hook is still skipped, and the log
   still has each failure.
