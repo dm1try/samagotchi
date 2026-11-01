@@ -27,6 +27,10 @@ and commands may change between minor versions. How releases are made:
 - With `update.auto: install` and `update.restart: idle`, sessions that were busy or recently used at the update really are tried again for
   a day, as documented. They used to stay on the old chi once chi web had restarted. The extra tries respect the idle rule, and the page only hears of one that restarts a session.
 - A hung `chi update` run by chi web (the **Update** button, `update.auto: install`) is stopped after 30 minutes and reported as failed. It used to answer "update running" to every later update until chi web restarted.
+### Added
+
+- `chi bundle check` warns (`api`) on a `ctx.*` or `chi.*` call, or a keyword, that this chi's API lacks, at its line:
+  `ctx.settingz`, `ctx.sessions.nope`, `ctx.card(titel:)`. It reads the plugin's source, so a path no test runs counts too.
 
 ## [0.142.0] - 2026-11-01
 

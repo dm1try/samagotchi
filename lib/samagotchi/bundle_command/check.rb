@@ -1,6 +1,5 @@
 # frozen_string_literal: true
 
-require "prism"
 require "rbconfig"
 require "stringio"
 require "tmpdir"
@@ -10,6 +9,7 @@ require_relative "../memory_bundle/memory_files"
 require_relative "../plugin/api"
 require_relative "../version"
 require_relative "../cli/flags"
+require_relative "api_calls"
 
 module Samagotchi
   class BundleCommand
@@ -80,6 +80,7 @@ module Samagotchi
           check_trust(manifest)
           check_clash(manifest)
           check_install(manifest) unless missing || placeholders? || manifest.session_settings_clash
+          check_api(manifest)
           check_boundary(manifest)
           check_tests
         end
@@ -217,7 +218,7 @@ module Samagotchi
 
         source = File.read(path(manifest.plugin[:file]))
         calls = source.scan(API_CALL).flat_map { |call| [call, call.split(".").first(2).join(".")] }
-        calls = (calls + keyword_calls(source)).uniq.select { |call| Plugin::Api::SINCE.key?(call) }
+        calls = (calls + ApiCalls.new(source).keywords).uniq.select { |call| Plugin::Api::SINCE.key?(call) }
         call = calls.max_by { |c| Gem::Version.new(Plugin::Api::SINCE[c]) } or return
         version = Plugin::Api::SINCE[call]
         return unless Gem::Version.new(version) > floor
@@ -226,29 +227,6 @@ module Samagotchi
             "requires_chi #{manifest.requires_chi.inspect} admits chi #{floor}, but #{manifest.plugin[:file]} uses " \
             "#{call}, which needs chi #{version}", line: line,
                                                                                       fix: "requires_chi: \">= #{version}\"")
-      end
-
-      # Each API call's keywords in +source+, as "chi.toolkit(groups:)": the
-      # call's receiver as written, its name and the keyword (Prism sees
-      # them with or without parens, over lines). Nothing when it doesn't parse.
-      def keyword_calls(source)
-        result = Prism.parse(source)
-        return [] unless result.success?
-
-        found = []
-        nodes = [result.value]
-        while (node = nodes.pop)
-          nodes.concat(node.compact_child_nodes)
-          next unless node.is_a?(Prism::CallNode) && node.receiver && node.arguments
-
-          call = "#{node.receiver.slice}.#{node.name}"
-          node.arguments.arguments.grep(Prism::KeywordHashNode).each do |hash|
-            hash.elements.each do |pair|
-              found << "#{call}(#{pair.key.unescaped}:)" if pair.is_a?(Prism::AssocNode) && pair.key.is_a?(Prism::SymbolNode)
-            end
-          end
-        end
-        found
       end
 
       def lower_bound(requirement)
@@ -382,6 +360,17 @@ module Samagotchi
       end
 
       # ── what it reaches of chi ────────────────────────────────────────
+
+      # A warning, as a name past the boundary is: the plugin may be written
+      # for a newer chi, and a call on a path that never runs breaks nothing.
+      def check_api(manifest)
+        file = manifest.plugin && manifest.plugin[:file]
+        return unless file && File.file?(path(file))
+
+        ApiCalls.new(File.read(path(file))).findings.each do |finding|
+          add(:warn, :api, file, finding.message, line: finding.line, fix: finding.fix)
+        end
+      end
 
       def check_boundary(manifest)
         require_relative "../testing/boundary"

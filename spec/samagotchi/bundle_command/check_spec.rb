@@ -154,6 +154,87 @@ RSpec.describe Samagotchi::BundleCommand::Check do
                                    "(fix: requires_chi: \">= 0.34.0\")"])
   end
 
+  describe "api: a call or keyword the plugin API lacks" do
+    def body(code)
+      edit("plugin.rb") { |text| text.sub("ctx.notify(@word)", code) }
+      refresh!
+    end
+
+    def api_findings = findings.select { |line| line.include?(" api ") }
+
+    it "warns on ctx.*, a member's member and a keyword, each at its line, and still exits 0" do
+      body("ctx.settingz\n      ctx.sessions.nope\n      ctx.card(titel: \"x\")")
+      expect(api_findings).to eq([
+        "warn api plugin.rb:7: ctx.settingz isn't in chi #{Samagotchi::VERSION}'s plugin API (fix: did you mean ctx.settings? docs/plugins.md has the API)",
+        "warn api plugin.rb:8: ctx.sessions.nope isn't in chi #{Samagotchi::VERSION}'s plugin API (fix: docs/plugins.md has the API)",
+        "warn api plugin.rb:9: ctx.card takes no titel: in chi #{Samagotchi::VERSION} (fix: did you mean title:? it takes title:, body:, actions:, level:, id:)"
+      ])
+      expect(@status).to eq(0)
+    end
+
+    it "warns on chi.* at the line it is called, on a call that never runs" do
+      edit("plugin.rb") { |text| text.sub("chi.on(", "chi.unknown_decl(\"x\") if false\n    chi.on(") }
+      refresh!
+      expect(api_findings.map { |line| line[/\Awarn api plugin.rb:\d+: \S+/] }).to eq(["warn api plugin.rb:8: chi.unknown_decl"])
+    end
+
+    it "takes the API's whole surface: members, values, predicates, Object's methods and keywords it declares" do
+      body(<<~RUBY)
+        ctx.scratch?
+        ctx.log.info(:x, a: 1)
+        ctx.cost.known?
+        ctx.usage.turns
+        ctx.sessions.send("id", "text", delivery: :queue)
+        ctx.context.attach(url: "u", name: "n")
+        ctx.judgments.label("r", "v", by: "me")
+        ctx.http.get("u", timeout: 3)
+        ctx.notify("x", level: :warn)
+        ctx.steer(text: "a hash, a method with no keywords takes as its argument")
+        ctx.class
+        ctx&.model
+        chi.ctx.settings
+        chi.tool("t", "d", any: "tool forwards its keywords") { nil } if false
+      RUBY
+      expect(api_findings).to eq([])
+    end
+
+    it "leaves a call the plugin guards with respond_to? (a newer chi's), and one through a variable" do
+      body(<<~RUBY)
+        ctx.from_a_newer_chi if ctx.respond_to?(:from_a_newer_chi)
+        sessions = ctx.sessions
+        sessions.nope
+      RUBY
+      expect(api_findings).to eq([])
+    end
+
+    it "leaves a local named ctx or chi that holds something else, and takes chi.ctx's" do
+      body(<<~RUBY)
+        chi = Object.new
+        chi.anything
+      RUBY
+      expect(api_findings).to eq([])
+
+      out.truncate(0)
+      out.rewind
+      edit("plugin.rb") { |text| text.sub("chi = Object.new\n", "").sub("chi.anything", "ctx = chi.ctx\n        ctx.nope") }
+      refresh!
+      expect(api_findings.map { |line| line[/ctx\.\w+/] }).to eq(["ctx.nope"])
+    end
+
+    it "says nothing about a plugin that doesn't parse: the install's error has it" do
+      edit("plugin.rb") { |text| text.sub("ctx.notify(@word)", "ctx.nope(") }
+      refresh!
+      expect(api_findings).to eq([])
+      expect(@status).to eq(1)
+    end
+
+    it "keeps every shipped plugin free of findings" do
+      Dir[File.join(Samagotchi::Testing::Bundle::SHIPPED_DIR, "*", "plugin.rb")].each do |file|
+        expect(Samagotchi::BundleCommand::ApiCalls.new(File.read(file)).findings).to eq([]), file
+      end
+    end
+  end
+
   it "requires-chi-floor: a keyword added later (chi.toolkit's prompt: and groups:), with or without parens" do
     edit("manifest.yml") { |text| text.sub('requires_chi: ">= 0.80.0"', 'requires_chi: ">= 0.66.0"') }
     edit("plugin.rb") { |text| text.sub("chi.on(", "chi.toolkit \"web\", base: \"lean\",\n                prompt: \"Be brief\"\n    chi.on(") }

@@ -29,7 +29,7 @@ module Samagotchi
       # one (ctx.sessions.children) is listed when it came later; fork, send
       # and read are in v0.2.0. Keys have no "?" (API_CALL drops it). A
       # keyword added later is "call(keyword:)", the call's receiver as the
-      # plugin writes it (Check#keyword_calls: `ctx.sessions.send(…,
+      # plugin writes it (ApiCalls#keywords: `ctx.sessions.send(…,
       # delivery:)` is seen, a `sessions = ctx.sessions` alias isn't).
       # Events aren't listed: chi.on takes any symbol and an older chi never
       # fires one it doesn't know (harmless; chi bundle check warns on it),
