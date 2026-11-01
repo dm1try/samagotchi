@@ -152,6 +152,22 @@ test("Context's default clears the apply rule and the budget too; the fields sho
   assert.equal(form.querySelector("option[selected]").value, "default");
 });
 
+// The audit's repro, pinned end to end: the pick goes through mergeChoice,
+// whose "a field equal to its initial value is not changed" rule is what used
+// to leave the rule and the budget behind, and the chip and ⚙'s dot follow the
+// choice, not the pressed segment.
+test("after a strategy with a rule and a budget, the default pick clears the chip too", (t) => {
+  const p = panel(t, { choice: { llmContext: { strategy: ["stale"], apply: "payoff", budget_tokens: 64000 } } });
+  p.button.click();
+  const over = () => overrides({ llmContext: p.state.llmContext, llmContextSummary: LLM_CONTEXT });
+  assert.equal(over().llmContext.text, "ctx stale · apply payoff · budget 64000");
+  assert.ok(settingsLabel(over()).set);
+  p.act("ctx:default");
+  assert.equal(p.state.llmContext, null);
+  assert.equal(over().llmContext, null);
+  assert.deepEqual(settingsLabel(over()), { set: false, label: "Session settings" });
+});
+
 test("the review view: ‹ back, an open quote's error, Set returns with the files, No review clears them", (t) => {
   const p = panel(t);
   p.button.click();
