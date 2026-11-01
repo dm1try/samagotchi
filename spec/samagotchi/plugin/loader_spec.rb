@@ -204,6 +204,18 @@ RSpec.describe Samagotchi::Plugin::Loader do
     expect(failed).to eq(%w[generation_progress before_turn before_turn])
   end
 
+  it "tells every UI, when the first turn does, of a config.yml bundles: name nothing has, and still runs" do
+    install_plugin("marker", hook_plugin)
+    File.write(Samagotchi::ConfigFile.global_path, { "bundles" => { "markerr" => { "mark" => "x" }, "marker" => { "mark" => "y" } } }.to_yaml)
+    eng = engine
+    seen = []
+    eng.subscribe(observer: ->(event) { seen << event })
+    eng.announce_load_events!
+
+    expect(seen.select { |event| event[:type] == :hook_notice }.map { |event| [event[:hook], event[:text], event[:level]] })
+      .to eq([["config", "config.yml bundles: markerr: no installed bundle markerr (did you mean marker?)", :warn]])
+  end
+
   describe "a chi.on handler that raises" do
     let(:broken) do
       <<~RUBY

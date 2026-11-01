@@ -10,3 +10,6 @@ plugin:
 # check-in.progress asks System 1 (chi.judgment, new in 0.142.0);
 # ctx.session_dir is new in the next chi
 requires_chi_next: true
+requires_chi: ">= 0.142.0"
+# config.yml bundles: check-in: (another key warns; an older chi ignores this)
+settings: [after, every, mode, message, ignore_tools]

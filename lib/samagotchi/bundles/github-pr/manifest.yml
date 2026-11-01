@@ -1,6 +1,6 @@
 ---
 name: github-pr
-version: 0.6.0
+version: 0.6.1
 scope: system
 description: Proposes the branch's open GitHub pull request to a session, attached once you mention it (#N, the branch or its URL), and attaches any PR URL with chi context add or the web's "+ URL"; the agent gets a note when reviews, comments, checks or its state change; in the web, a path:line in an answer links to that line of the PR; the auto_attach setting can attach the PR at once instead, or do nothing
 trust_level: reviewed
@@ -20,3 +20,5 @@ context_providers:
   cmd: '{ruby} {bundle_dir}/scripts/pr_context.rb {url}'
   why: GitHub PR
   every_seconds: 300
+# config.yml bundles: github-pr: (another key warns; an older chi ignores this)
+settings: [auto_attach, line_links]

@@ -34,6 +34,7 @@ require_relative "peer_sources"
 require_relative "session_commands"
 require_relative "plugin/loader"
 require_relative "plugin/card"
+require_relative "bundle_settings_check"
 require_relative "extension_load"
 require_relative "log"
 require_relative "log_subscriber"
@@ -2932,8 +2933,21 @@ module Samagotchi
       # What plugins show while they load (an MCP server that didn't
       # start) waits for the first turn, beside the load warnings: no UI
       # is there yet, and the Engine isn't built.
-      @extension_load.load_plugins(registries, failures: @plugin_failures) { warn_undeclared_judgments }
+      @extension_load.load_plugins(registries, failures: @plugin_failures) do
+        warn_undeclared_judgments
+        warn_bundle_settings
+      end
     end
+
+    # config.yml bundles: names and keys that do nothing (BundleSettingsCheck),
+    # held like the judgments' line, for the same reason.
+    def warn_bundle_settings
+      BundleSettingsCheck.warnings(@extension_load.bundle_settings).each do |line|
+        Log.warn(:config, "bundle_setting_unknown", msg: line)
+        hook_notify(line, :warn, "config")
+      end
+    end
+    private :warn_bundle_settings
 
     # Held with the plugins' own notices, so every UI gets it: a worker's
     # stderr goes nowhere.

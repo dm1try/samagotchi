@@ -72,6 +72,35 @@ RSpec.describe "Bundle plugin: manifest, install, provenance, status, build" do
       expect(provenance.record.requires_chi).to eq(">= 0.1.0")
     end
 
+    it "reads settings: as session_settings: is written, nil when absent, records them at install and builds them back" do
+      src = write_source
+      path = File.join(src, "manifest.yml")
+      File.write(path, File.read(path) + "settings: {limit: number, free: any}\n")
+      expect(described_class.read(dir: src).settings).to eq(%w[limit free])
+      expect(described_class.read(dir: src).setting_types).to eq("limit" => "number")
+      expect(described_class.read(dir: write_source).settings).to be_nil
+
+      install(src)
+      expect(provenance.record.settings).to eq(%w[limit free])
+      expect(provenance.record.setting_types).to eq("limit" => "number")
+
+      dir = File.join(tmpdir, "built")
+      described_class.write(dir: dir, name: "plug", version: "1.0.0", files: {}, settings: %w[limit free], setting_types: { "limit" => "number" })
+      expect(YAML.load_file(File.join(dir, "manifest.yml"))["settings"]).to eq("limit" => "number", "free" => "any")
+      described_class.write(dir: dir, name: "plug", version: "1.0.0", files: {})
+      expect(YAML.load_file(File.join(dir, "manifest.yml"))).not_to have_key("settings")
+    end
+
+    it "refuses a settings: of another shape, naming it" do
+      src = write_source
+      path = File.join(src, "manifest.yml")
+      original = File.read(path)
+      File.write(path, "#{original}settings: nope\n")
+      expect { described_class.read(dir: src) }.to raise_error(described_class::ValidationError, /\Asettings: a list of setting names/)
+      File.write(path, "#{original}settings: {limit: integer}\n")
+      expect { described_class.read(dir: src) }.to raise_error(described_class::ValidationError, /\Asettings: limit's type is number/)
+    end
+
     it "reads session_settings: (the keys a session's --set may give), records them at install and builds them back" do
       src = write_source
       path = File.join(src, "manifest.yml")

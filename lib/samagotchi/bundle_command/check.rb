@@ -79,6 +79,7 @@ module Samagotchi
           check_requires_chi(manifest)
           check_trust(manifest)
           check_clash(manifest)
+          check_settings(manifest)
           check_install(manifest) unless missing || placeholders? || manifest.session_settings_clash
           check_api(manifest)
           check_boundary(manifest)
@@ -318,6 +319,16 @@ module Samagotchi
         yield
       ensure
         $stderr = saved
+      end
+
+      # --set KEY=VALUE against the manifest's settings:, as config.yml's are.
+      def check_settings(manifest)
+        return if manifest.settings.nil? || @settings.empty?
+
+        require_relative "../bundle_settings_check"
+        record = MemoryBundle::InstalledBundle.new(name: manifest.name, settings: manifest.settings, setting_types: manifest.setting_types,
+                                                   session_settings: manifest.session_settings)
+        BundleSettingsCheck.record_warnings(record, @settings).each { |line| add(:warn, :settings, "manifest.yml", line, line: manifest_line("settings")) }
       end
 
       def install_warnings(warnings)

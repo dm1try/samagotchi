@@ -127,7 +127,7 @@ own subsystems: `hosts:` (below), `models:` (see "Prompt profile" and
 `guardrails:` (see [Guardrails](guardrails.md)), `bundles:` (a bundle's
 settings for its hooks, see [Hooks: Settings](hooks.md#settings); a session's own
 `--set BUNDLE.KEY=VALUE`, for a key the bundle's manifest lists in `session_settings:`, lays over them, see
-[Per-session settings](plugins.md#per-session-settings); `--set KEY=VALUE` does the same for a few core keys,
+[Per-session settings](plugins.md#per-session-settings); a name no installed bundle has, or a key its manifest's `settings:` rules out, warns at a session's start; `--set KEY=VALUE` does the same for a few core keys,
 see "Per-session settings" below),
 `memories:` and `append_system_prompt:` (see "Appended prompt files"). Their entry names (host names, model ids, aliases) are yours to
 choose. The `memories:` list is the persistent baseline for preloaded memory entries —

@@ -60,7 +60,8 @@ plugin:
 `bundles: my-bundle:` as a Hash with string keys, once, when the plugin loads. A value a session may set
 (`chi --set my-bundle.KEY=V`, listed in the manifest's `session_settings:`, typed with `{KEY: number}` so a
 value of another type is refused) is read from `ctx.settings` at call
-time. `chi bundle check --set KEY=VALUE` gives the sandboxed load a setting.
+time. List what config.yml may set in the manifest's `settings:` (`settings: [greeting]`, or `{greeting: string}`), so a
+typo in the user's config warns instead of doing nothing. `chi bundle check --set KEY=VALUE` gives the sandboxed load a setting.
 
 ## What a hook sees
 

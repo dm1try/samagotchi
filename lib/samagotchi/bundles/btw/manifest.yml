@@ -1,6 +1,6 @@
 ---
 name: btw
-version: 0.1.2
+version: 0.1.3
 scope: system
 description: "/btw <question>: a side answer about the conversation, as a card in every UI, even mid-turn; Keep as session forks it into a child session"
 trust_level: reviewed
@@ -8,3 +8,5 @@ plugin:
   file: plugin.rb
   sha256: sha256:226a251865695a86cdb05d6b6318fc062e0ab54518bb25733699db964cbed80b
 requires_chi: ">= 0.1.30"
+# config.yml bundles: btw: (another key warns; an older chi ignores this)
+settings: [max_tokens, timeout]

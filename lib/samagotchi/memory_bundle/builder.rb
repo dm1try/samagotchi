@@ -202,7 +202,7 @@ module Samagotchi
         parts.scripts.each_value { |src| FileUtils.cp(src, File.join(staging, "scripts", File.basename(src))) }
       end
 
-      # manifest.yml for the staged bundle: requires_chi, needs, session_settings (typed) and the
+      # manifest.yml for the staged bundle: requires_chi, needs, session_settings and settings (typed) and the
       # file descriptions come from the installed bundle's record, the
       # trust_level from the CLI else the record.
       def write_manifest(staging, name, version, files_map, parts)
@@ -225,7 +225,9 @@ module Samagotchi
           context_providers: parts.context_providers,
           file_descriptions: file_descriptions(record, files_map),
           session_settings: record&.session_settings || [],
-          session_setting_types: record&.session_setting_types || {}
+          session_setting_types: record&.session_setting_types || {},
+          settings: record&.settings,
+          setting_types: record&.setting_types || {}
         )
       end
 

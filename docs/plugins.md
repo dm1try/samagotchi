@@ -33,6 +33,9 @@ requires_chi: ">= 0.1.28"    # optional: a gem-style requirement (">= 0.1.28, < 
                              # to the chi being released (docs/releasing.md)
 session_settings: [cap]      # optional: the settings a session may set (chi --set my-bundle.cap=3);
                              # {cap: number} types them: number (or off), boolean, string or any
+settings: [greeting]         # optional: the keys config.yml bundles: my-bundle: may have, written the same way
+                             # (any also takes a mapping or a list). With it, another key warns; a session
+                             # setting needn't be listed twice
 needs: [gh]                  # optional: outside commands it relies on (see memory.md#bundles-that-need-outside-commands)
 ```
 
@@ -78,6 +81,10 @@ Settings work as they do for hooks ([hooks.md](hooks.md#settings)). An
 `bundles:`, as one Hash with string keys. It runs once, when the plugin loads, before any session: it never
 sees a session's own `--set` values. A value a session may set is read from `ctx.settings` in the handler or
 command that uses it (see [Per-session settings](#per-session-settings)).
+
+A config.yml `bundles:` name that no installed bundle has shows a warning when a session starts, in every UI (`config>`…);
+so does a key or a value's type the manifest's `settings:` rules out. It warns only: the session goes on, and a
+bundle with no `settings:` has its keys left alone. `chi bundle check --set` warns the same way (`settings`).
 
 ## The API: `register(chi)`
 

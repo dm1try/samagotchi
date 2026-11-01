@@ -13,3 +13,5 @@ requires_chi_next: true
 requires_chi: ">= 0.100.0"
 # chi --set work-cap.tool_calls=400 / work-cap.minutes=60: the session's own caps, a number or off
 session_settings: {tool_calls: number, minutes: number}
+# config.yml bundles: work-cap: (another key warns; an older chi ignores this)
+settings: [child, default, warn_at, ignore_tools]

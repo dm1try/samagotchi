@@ -154,6 +154,14 @@ RSpec.describe Samagotchi::BundleCommand::Check do
                                    "(fix: requires_chi: \">= 0.34.0\")"])
   end
 
+  it "settings: warns on a --set the manifest's settings: rules out, as config.yml's bundles: does" do
+    edit("manifest.yml") { |text| "#{text}settings: [word]\n" }
+    expect(check("--set", "wrod=hi").grep(/ settings /)).to eq([
+      "warn settings manifest.yml:#{File.readlines(manifest).size}: config.yml bundles: check-clean.wrod: check-clean takes word (did you mean word?)"
+    ])
+    expect(@status).to eq(0)
+  end
+
   describe "api: a call or keyword the plugin API lacks" do
     def body(code)
       edit("plugin.rb") { |text| text.sub("ctx.notify(@word)", code) }

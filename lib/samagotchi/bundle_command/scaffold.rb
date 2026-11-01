@@ -65,6 +65,7 @@ module Samagotchi
           scope: system
           description: "What #{@name} adds to chi, in one line"
           requires_chi: ">= #{VERSION}"
+          settings: [greeting]
           plugin:
             file: plugin.rb
             sha256: sha256:

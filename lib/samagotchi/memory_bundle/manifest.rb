@@ -46,6 +46,12 @@ module Samagotchi
     #                          #   plugin from ctx.settings at call time;
     #                          #   or {cap: number}: each with the type
     #                          #   --set checks (SESSION_SETTING_TYPES)
+    #   settings: [default]    # optional — the keys config.yml bundles: <name>:
+    #                          #   may have, as session_settings: is written (a
+    #                          #   list, or {key: type}; a value may also be
+    #                          #   any Hash or list under any); with it, another
+    #                          #   key warns (BundleSettingsCheck). A session
+    #                          #   setting needn't be listed twice
     #   includes: [a, b]       # optional — a profile (meta bundle): the
     #                          #   shipped bundles it installs; its dir holds
     #                          #   only manifest.yml (MemoryBundle::Profile)
@@ -65,7 +71,7 @@ module Samagotchi
       # the description a mapping gave, for the files that have one; hooks:
       # name → BundleHook.
       attr_reader :name, :version, :scope, :description, :files, :file_descriptions, :hooks, :trust_level, :plugin, :requires_chi, :needs, :includes,
-                  :scripts, :context_providers, :session_settings, :session_setting_types
+                  :scripts, :context_providers, :session_settings, :session_setting_types, :settings, :setting_types
 
       def initialize(path:)
         @path = path
@@ -91,6 +97,9 @@ module Samagotchi
         @includes = parse_includes(raw["includes"])
         @session_settings = self.class.parse_session_settings(raw["session_settings"])
         @session_setting_types = self.class.parse_session_setting_types(raw["session_settings"])
+        # nil: the manifest says nothing of them (unlike settings: []).
+        @settings = raw["settings"].nil? ? nil : self.class.parse_session_settings(raw["settings"], key: "settings")
+        @setting_types = self.class.parse_session_setting_types(raw["settings"], key: "settings")
       end
 
       # Why the install refuses this bundle's session_settings: a key whose
@@ -155,7 +164,7 @@ module Samagotchi
       # +file_descriptions+ (name → text) writes those files as mappings.
       def self.write(dir:, name:, version:, files:, scope: nil, description: "", hooks: nil, trust_level: nil,
                      plugin: nil, requires_chi: nil, needs: nil, scripts: {}, context_providers: [], file_descriptions: {},
-                     session_settings: [], session_setting_types: {})
+                     session_settings: [], session_setting_types: {}, settings: nil, setting_types: {})
         FileUtils.mkdir_p(dir)
         manifest = {
           "name" => name,
@@ -179,6 +188,7 @@ module Samagotchi
         manifest["scripts"] = scripts.transform_keys(&:to_s) unless scripts.empty?
         manifest["context_providers"] = context_providers.map(&:to_h) unless context_providers.empty?
         manifest["session_settings"] = session_settings_entry(session_settings, session_setting_types) unless Array(session_settings).empty?
+        manifest["settings"] = session_settings_entry(settings, setting_types) unless settings.nil?
         File.write(File.join(dir, "manifest.yml"), YAML.dump(manifest))
       end
 
@@ -190,33 +200,33 @@ module Samagotchi
       # boolean, string; any (or a list's key) takes every scalar.
       SESSION_SETTING_TYPES = %w[number boolean string any].freeze
 
-      # session_settings: → the keys, [] when absent: a list of plain key
-      # names, or a mapping of them to types; anything else is a
-      # ValidationError.
-      def self.parse_session_settings(raw)
+      # session_settings: (or settings:, +key+) → the keys, [] when absent: a
+      # list of plain key names, or a mapping of them to types; anything else
+      # is a ValidationError.
+      def self.parse_session_settings(raw, key: "session_settings")
         return [] if raw.nil?
 
         keys = raw.is_a?(Hash) && raw.values.all?(String) ? raw.keys : raw
         keys = nil unless keys.is_a?(Array)
-        unless keys&.all? { |key| (key.is_a?(String) || key.is_a?(Symbol)) && key.to_s.match?(SESSION_SETTING) }
-          raise ValidationError, "session_settings: a list of setting names, or a mapping of them to types (#{raw.inspect})"
+        unless keys&.all? { |name| (name.is_a?(String) || name.is_a?(Symbol)) && name.to_s.match?(SESSION_SETTING) }
+          raise ValidationError, "#{key}: a list of setting names, or a mapping of them to types (#{raw.inspect})"
         end
 
         keys.map(&:to_s).uniq
       end
 
-      # session_settings: → {key => type} for the keys a mapping types
+      # session_settings: (or settings:, +key+) → {key => type} for the keys a mapping types
       # (any left out), {} for a list or none.
       # @raise [ValidationError] a type that isn't one of SESSION_SETTING_TYPES
-      def self.parse_session_setting_types(raw)
+      def self.parse_session_setting_types(raw, key: "session_settings")
         return {} unless raw.is_a?(Hash)
 
-        raw.each_with_object({}) do |(key, type), types|
+        raw.each_with_object({}) do |(name, type), types|
           unless SESSION_SETTING_TYPES.include?(type)
-            raise ValidationError, "session_settings: #{key}'s type is #{SESSION_SETTING_TYPES[0..-2].join(", ")} or " \
+            raise ValidationError, "#{key}: #{name}'s type is #{SESSION_SETTING_TYPES[0..-2].join(", ")} or " \
                                    "#{SESSION_SETTING_TYPES.last}, not #{type.inspect}"
           end
-          types[key.to_s] = type unless type == "any"
+          types[name.to_s] = type unless type == "any"
         end
       end
 

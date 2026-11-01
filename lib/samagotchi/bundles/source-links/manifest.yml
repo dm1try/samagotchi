@@ -1,6 +1,6 @@
 ---
 name: source-links
-version: 0.6.0
+version: 0.6.1
 scope: system
 description: Links source refs (JIRA tickets, GitHub issues, …) in the model's answer — inline links in the web, refs in a waiting question's reply, and a one-line note after the turn (note false turns it off); sources are configured patterns
 trust_level: reviewed
@@ -13,3 +13,5 @@ hooks:
     events: [after_turn, question_asked]
     on_error: log
     priority: 90
+# config.yml bundles: source-links: (another key warns; an older chi ignores this)
+settings: [sources, max, note]

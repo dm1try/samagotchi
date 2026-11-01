@@ -196,17 +196,23 @@ module Samagotchi
           if keys.nil?
             raise Error, "#{where}: #{unknown_core("#{bundle}.#{key}", bundles: bundles)}" if note.nil? && core_section?(bundle)
 
-            raise Error, "#{where}: #{note || "no installed bundle #{bundle} (#{takers(bundles)})"}"
+            raise Error, "#{where}: #{note || "#{no_installed_bundle(bundle)} (#{takers(bundles)})"}"
           end
           raise Error, "#{where}: #{bundle} takes no session settings#{" #{note}" if note}" if keys.empty?
-          raise Error, "#{where}: #{bundle} takes #{keys.join(", ")}" unless keys.include?(key)
+          raise Error, "#{where}: #{takes_keys(bundle, keys)}" unless keys.include?(key)
 
           takes, what = TYPES[types.dig(bundle, key)]
-          raise Error, "#{where}: #{bundle} takes #{what} for #{key}, not #{value.inspect}" if takes && !takes.call(value)
+          raise Error, "#{where}: #{wrong_type(bundle, key, what, value)}" if takes && !takes.call(value)
         end
       end
       settings
     end
+
+    # One message per condition: --set's refusals (.check!) and config.yml's
+    # warnings (BundleSettingsCheck).
+    def no_installed_bundle(bundle) = "no installed bundle #{bundle}"
+    def takes_keys(bundle, keys) = keys.empty? ? "#{bundle} takes no settings" : "#{bundle} takes #{keys.join(", ")}"
+    def wrong_type(bundle, key, what, value) = "#{bundle} takes #{what} for #{key}, not #{value.inspect}"
 
     # --set's values parsed and checked (.parse, .check!) against the
     # installed bundles (.availability).

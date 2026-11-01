@@ -153,7 +153,7 @@ The loop for a bundle you're writing (the whole path: [bundle-authoring.md](bund
   then forces), `install` (each Installer warning, a `needs` one as warn, and each plugin or hook load failure at
   the source `file:line`; skipped while a placeholder sha is unfilled), `registered` (info: each command, tool,
   hook with its priority, init, toolkit, tool source and peer source), `hook-event` (warn: a `chi.on` event chi
-  never fires), `api` (warn: a `ctx.*` / `chi.*` call or a keyword this chi's API lacks, read from the source with
+  never fires), `settings` (warn: a `--set` the manifest's `settings:` rules out, as config.yml's `bundles:` is told), `api` (warn: a `ctx.*` / `chi.*` call or a keyword this chi's API lacks, read from the source with
   Prism against the API's own classes, on a path that never runs too; written on a local `ctx` / `chi` itself, so a
   `s = ctx.sessions` variable isn't followed; a name the plugin guards with `respond_to?` is left), `boundary` (warn: a `Samagotchi::` name outside "Stable for bundles"; a shipped bundle's listed
   exceptions aside) and `tests` (info: how to run them, or "no tests"). `--set KEY=VALUE` (repeatable, typed as

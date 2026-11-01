@@ -154,7 +154,8 @@ module Samagotchi
       #   source, recorded as DEV_SHA (no sha256 check) with "dev": true
       def write(files:, scope:, version:, source_path:, hooks: {}, trust_level: nil, source_commit: nil, hooks_files: {},
                 guardrails_files: {}, plugin_file: nil, requires_chi: nil, needs: nil, conflicts: [], includes: nil,
-                scripts_files: {}, context_providers: [], file_descriptions: {}, session_settings: [], session_setting_types: {}, dev: false)
+                scripts_files: {}, context_providers: [], file_descriptions: {}, session_settings: [], session_setting_types: {}, settings: nil, setting_types: {},
+                dev: false)
         FileUtils.mkdir_p(@bundle_dir)
         bases_dir = File.join(@bundle_dir, "bases")
         FileUtils.mkdir_p(bases_dir)
@@ -256,6 +257,8 @@ module Samagotchi
         manifest_data["context_providers"] = context_providers.map(&:to_h) unless context_providers.empty?
         manifest_data["session_settings"] = Array(session_settings).map(&:to_s) unless Array(session_settings).empty?
         manifest_data["session_setting_types"] = session_setting_types.to_h { |k, v| [k.to_s, v.to_s] } unless session_setting_types.to_h.empty?
+        manifest_data["settings"] = settings.map(&:to_s) unless settings.nil?
+        manifest_data["setting_types"] = setting_types.to_h { |k, v| [k.to_s, v.to_s] } unless setting_types.to_h.empty?
 
         write_manifest(manifest_data)
       end

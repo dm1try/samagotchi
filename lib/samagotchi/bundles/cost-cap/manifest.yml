@@ -14,3 +14,5 @@ requires_chi: ">= 0.92.0"
 # session_settings: as a mapping of keys to types is new
 # chi --set cost-cap.cap=3: a session's own cap (ctx.settings["cap"]), a number or off
 session_settings: {cap: number}
+# config.yml bundles: cost-cap: (another key warns; an older chi ignores this)
+settings: [default, child, warn_at]
