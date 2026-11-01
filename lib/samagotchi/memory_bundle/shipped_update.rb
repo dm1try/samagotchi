@@ -60,6 +60,15 @@ module Samagotchi
         Listing.grouped(Listing.shipped(dir: shipped_dir), installed.map(&:first))
       end
 
+      # The installed bundles chi doesn't update (plan's "not from chi"), for
+      # chi update's re-check: not a profile (no code of its own, its members
+      # are chi's), nor one whose record doesn't read (its row says so).
+      # @return [Array<InstalledBundle>]
+      def external(shipped_dir: SourceNormalizer::SHIPPED_DIR)
+        shipped = Listing.shipped(dir: shipped_dir).to_h { |s| [s.name, s] }
+        installed.filter_map { |name, bundle| bundle unless bundle.error? || bundle.profile? || from_chi?(bundle, shipped[name]) }
+      end
+
       # Runs the Installer for each :would_update row; the others pass
       # through. A failing bundle doesn't stop the rest.
       # @return [Array<Row>]
@@ -98,13 +107,16 @@ module Samagotchi
         Provenance.each_installed.reject { |name, _| name == SystemBundle::BUNDLE_NAME }
       end
 
+      # Whether it is the bundle chi ships as +ship+ (nil: none of its name).
+      def from_chi?(bundle, ship) = !ship.nil? && bundle.source.to_s.match?(SourceNormalizer::SHIPPED_SOURCE)
+
       def plan_row(name, bundle, ship, shipped_dir, chi_version)
         row = Row.new(name: name, kept: [], replaced: [])
         return skip(row, "manifest.json unreadable") if bundle.error?
 
         row.from = bundle.version.to_s
         row.scope = bundle.effective_scope
-        return skip(row, "not from chi") unless ship && bundle.source.to_s.match?(SourceNormalizer::SHIPPED_SOURCE)
+        return skip(row, "not from chi") unless from_chi?(bundle, ship)
 
         row.to = ship.version.to_s
         return skip(row, "newer than shipped: left") if Listing.newer?(row.from, row.to)

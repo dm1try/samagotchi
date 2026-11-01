@@ -8,6 +8,7 @@ require "stringio"
 require "tmpdir"
 require "yaml"
 require "digest"
+require "samagotchi/memory_bundle/shas"
 require "samagotchi/update_command"
 
 RSpec.describe Samagotchi::UpdateCommand do
@@ -213,6 +214,231 @@ RSpec.describe Samagotchi::UpdateCommand do
     run
     expect(line("bundles")).to end_with("skipped (update.bundles: false)")
     expect(btw_version).to eq("0.0.1")
+  end
+
+  describe "the external bundles' re-check" do
+    let(:fixture) { File.expand_path("fixtures/bundles/check/clean", __dir__) }
+
+    # The check spec's clean bundle as +name+, with this plugin source and
+    # manifest keys, installed from a folder of its own (not a shipped one).
+    def install_external(name, plugin: nil, manifest: {}, dev: false)
+      dir = File.join(tmp, "external", name)
+      FileUtils.mkdir_p(File.dirname(dir))
+      FileUtils.cp_r(fixture, dir)
+      File.write(File.join(dir, "plugin.rb"), plugin) if plugin
+      path = File.join(dir, "manifest.yml")
+      File.write(path, Samagotchi::MemoryBundle::Shas.refresh(dir).first)
+      File.write(path, YAML.dump(YAML.load_file(path).merge("name" => name).merge(manifest)))
+      Samagotchi::MemoryBundle::Installer.new(source: dir, name: name, scope: "system", strict: true, dev: dev).run
+      dir
+    end
+
+    def stale_plugin
+      <<~RUBY
+        class Plugin
+          def register(chi)
+            chi.on(:after_tool_call) { |_event, ctx| ctx.gone_api }
+          end
+        end
+      RUBY
+    end
+
+    def json_rows(*argv)
+      status = run("--json", "--no-gem", "--no-desktop", *argv)
+      [status, JSON.parse(out.string)]
+    end
+
+    def finding_rows(rows, name) = rows.select { |row| row["component"] == name && row["level"] }
+
+    def installed_bytes
+      Dir.glob(File.join(Samagotchi::MemoryBundle::Provenance.bundles_dir, "**", "*")).select { |f| File.file?(f) }.to_h { |f| [f, File.binread(f)] }
+    end
+
+    it "warns about a stale name, says nothing of a clean bundle, and changes neither" do
+      install_external("clean-one")
+      install_external("stale-one", plugin: stale_plugin)
+      Samagotchi::MemoryBundle::SystemBundle.sync
+      before = installed_bytes
+
+      status, rows = json_rows
+      expect(status).to eq(0)
+      expect(finding_rows(rows, "clean-one")).to be_empty
+      expect(rows.find { |r| r["component"] == "clean-one" }["status"]).to eq("skipped (not from chi)")
+      stale = finding_rows(rows, "stale-one")
+      expect(stale.size).to eq(1)
+      expect(stale.first).to include("level" => "warn", "failed" => false, "kept" => [])
+      expect(stale.first["status"]).to start_with("warn api plugin.rb:3:").and include("gone_api")
+      expect(installed_bytes).to eq(before)
+    end
+
+    it "keeps saying a second run is up to date, the warning row repeating" do
+      Samagotchi::MemoryBundle::SystemBundle.sync
+      install_external("stale-one", plugin: stale_plugin)
+
+      2.times do
+        expect(run("--no-gem", "--no-desktop")).to eq(0)
+        expect(line("stale-one")).to match(/\Astale-one\s+\S+\s+skipped \(not from chi\)\z/)
+        expect(out.string).to include("warn api plugin.rb:3:", "Bundles not from chi are left as they are")
+        expect(out.string).to end_with("everything is up to date\n")
+      end
+    end
+
+    it "reports a requires_chi the new chi fails as an error row, without failing the update" do
+      install_external("too-old", manifest: { "requires_chi" => "< 0.1" })
+      status, rows = json_rows
+      row = finding_rows(rows, "too-old").first
+      expect(status).to eq(0)
+      expect(row).to include("level" => "error", "failed" => false)
+      expect(row["status"]).to start_with("error requires-chi manifest.yml").and include("this chi can't load it")
+    end
+
+    it "reports a plugin that no longer loads" do
+      install_external("broken", plugin: "class Plugin\n  def register(chi) = chi.no_such_registration\nend\n")
+      status, rows = json_rows
+      expect(status).to eq(0)
+      expect(finding_rows(rows, "broken").map { |r| r["status"] }).to include(a_string_including("no_such_registration"))
+    end
+
+    it "skips what only an author's source tree can act on" do
+      dir = install_external("plain", plugin: "class Plugin\n  def register(chi) = nil\nend\n",
+                                      manifest: { "trust_level" => "reviewed", "requires_chi" => nil, "needs" => ["no-such-command-here"] })
+      FileUtils.mkdir_p(File.join(dir, "spec"))
+      _, rows = json_rows
+      expect(finding_rows(rows, "plain")).to be_empty
+    end
+
+    it "says an installed plugin edited since doesn't load, and leaves it" do
+      install_external("edited")
+      plugin = File.join(Samagotchi::MemoryBundle::Provenance.new(name: "edited").plugin_dir, "plugin.rb")
+      File.write(plugin, "#{File.read(plugin)}\n# mine\n")
+      _, rows = json_rows
+      expect(finding_rows(rows, "edited").map { |r| r["status"] }).to include(a_string_starting_with("warn edited plugin/plugin.rb:"))
+      expect(File.read(plugin)).to end_with("# mine\n")
+    end
+
+    it "checks a dev install's linked files" do
+      install_external("linked", plugin: stale_plugin, dev: true)
+      _, rows = json_rows
+      expect(finding_rows(rows, "linked").map { |r| r["status"] }).to contain_exactly(a_string_starting_with("warn api plugin.rb:3:"))
+    end
+
+    it "loads it with the user's config.yml settings" do
+      install_external("configured", plugin: <<~RUBY)
+        class Plugin
+          def initialize(settings) = settings.fetch("needed")
+          def register(chi) = nil
+        end
+      RUBY
+      _, rows = json_rows
+      expect(finding_rows(rows, "configured").size).to eq(1)
+
+      File.write(Samagotchi::ConfigFile.global_path, YAML.dump("bundles" => { "configured" => { "needed" => 1 } }))
+      _, rows = json_rows
+      expect(finding_rows(rows, "configured")).to be_empty
+    end
+
+    it "leaves the shipped bundles out" do
+      install_old_btw
+      _, rows = json_rows
+      expect(rows.select { |r| r["level"] }).to be_empty
+    end
+
+    it "makes a bundle whose check dies a row of its own, and goes on" do
+      install_external("exits", plugin: "exit 7\n")
+      install_external("exits-hard", plugin: "Process.exit!(7)\n")
+      install_external("stale-one", plugin: stale_plugin)
+      status, rows = json_rows
+      expect(status).to eq(0)
+      expect(finding_rows(rows, "exits").map { |r| r["status"] }.join).to include("SystemExit")
+      expect(finding_rows(rows, "exits-hard").first).to include("level" => "error", "failed" => false)
+      expect(finding_rows(rows, "exits-hard").first["status"]).to start_with("error check manifest.json: the check died")
+      expect(finding_rows(rows, "stale-one").size).to eq(1)
+    end
+
+    it "takes half an answer as that bundle's own row (a child that died mid-write)" do
+      install_external("half", plugin: "")
+      allow(File).to receive(:read).and_wrap_original do |read, path, *rest, **opts|
+        path.to_s.end_with?("answer.json") ? '[{"level' : read.call(path, *rest, **opts)
+      end
+      status, rows = json_rows
+      expect(status).to eq(0)
+      expect(finding_rows(rows, "half").first).to include("level" => "error", "failed" => false)
+      expect(finding_rows(rows, "half").first["status"]).to include("the check died: JSON::ParserError")
+    end
+
+    it "gives up on a bundle whose load hangs" do
+      install_external("hangs", plugin: "sleep\n")
+      stub_const("Samagotchi::BundleCommand::InstalledCheck::TIMEOUT", 2)
+      status, rows = json_rows
+      expect(status).to eq(0)
+      expect(finding_rows(rows, "hangs").first["status"]).to start_with("error check manifest.json: no answer in 2 s")
+    end
+
+    it "keeps a plugin's own printing out of --json" do
+      install_external("noisy", plugin: "$stdout.puts 'hi'\nSTDOUT.puts 'hi'\nsystem('echo hi')\nclass Plugin\n  def register(chi) = nil\nend\n")
+      expect(run("--json", "--no-gem", "--no-desktop")).to eq(0)
+      expect { JSON.parse(out.string) }.not_to raise_error
+    end
+
+    it "leaves it out with --no-bundles or update.bundles: false" do
+      install_external("stale-one", plugin: stale_plugin)
+      expect(run("--no-bundles", "--no-gem", "--no-desktop")).to eq(0)
+      expect(out.string).not_to include("gone_api", "external bundles")
+
+      allow(Samagotchi::Config).to receive(:get).and_call_original
+      allow(Samagotchi::Config).to receive(:get).with("update.bundles").and_return(false)
+      run("--no-gem", "--no-desktop")
+      expect(out.string).not_to include("gone_api", "external bundles")
+    end
+
+    it "checks in a dry run when no newer gem is coming" do
+      install_external("stale-one", plugin: stale_plugin)
+      expect(run("--dry-run", "--no-desktop")).to eq(0)
+      expect(out.string).to include("warn api plugin.rb:3:", "(dry run: nothing was changed)")
+    end
+
+    it "checks in the run handed over to: the new chi's" do
+      install_external("stale-one", plugin: stale_plugin)
+      expect(run("--no-gem", "--gem-from", "0.2.0", "--no-desktop")).to eq(0)
+      expect(out.string).to include("warn api plugin.rb:3:")
+    end
+
+    context "with a newer gem" do
+      let(:newer) { Gem::Version.new(Samagotchi::VERSION).bump.to_s + ".0" }
+      let(:fetcher) { -> { JSON.generate(version: newer) } }
+      let(:no_wrapper) do
+        Gem::Specification.new { |s| s.name = "samagotchi"; s.version = Samagotchi::VERSION }
+                          .tap { |s| s.loaded_from = File.join(tmp, "no-wrapper", "specifications", "samagotchi.gemspec") }
+      end
+
+      it "doesn't check against this chi in a dry run: the newer one would" do
+        install_external("stale-one", plugin: stale_plugin)
+        expect(run("--dry-run", "--no-desktop")).to eq(0)
+        expect(line("external bundles")).to end_with("not checked (chi #{newer} checks them once installed)")
+        expect(out.string).not_to include("gone_api")
+      end
+
+      it "says nothing of it with no external bundle" do
+        run("--dry-run", "--no-desktop")
+        expect(out.string).not_to include("external bundles")
+      end
+
+      it "doesn't check against this chi when nothing can hand over to the new gem" do
+        install_external("stale-one", plugin: stale_plugin)
+        expect(run("--no-desktop", gem_spec: no_wrapper)).to eq(0)
+        expect(execs).to be_empty
+        expect(line("chi (gem)")).to include("run chi update again")
+        expect(line("external bundles")).to end_with("not checked (chi #{newer} checks them: run chi update again)")
+        expect(out.string).not_to include("gone_api")
+      end
+
+      it "checks against this chi when the install failed: it is what stays" do
+        allow(gem_runner).to receive(:run).and_return(["no\n", false])
+        install_external("stale-one", plugin: stale_plugin)
+        expect(run("--no-desktop")).to eq(1)
+        expect(out.string).to include("warn api plugin.rb:3:")
+      end
+    end
   end
 
   describe "the gem" do

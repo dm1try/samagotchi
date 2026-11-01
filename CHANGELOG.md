@@ -7,6 +7,12 @@ and commands may change between minor versions. How releases are made:
 [docs/releasing.md](docs/releasing.md).
 ## [Unreleased]
 
+### Added
+
+- `chi update` checks the bundles chi doesn't ship, such as one from GitHub, against the new chi, and adds a row for each warning or error: a `requires_chi` it fails, a plugin or
+  hook that no longer loads, a `ctx` call the API lacks, a reference to chi's internals. It never changes them, and these rows don't fail the update (`--json`: a new `level` field). `--no-bundles` skips
+  it, and `--dry-run` with a newer gem to install says `not checked`, as only that chi could answer. See [docs/cli.md](docs/cli.md#updating).
+
 ### Changed
 
 - With System 1 on the model's own local server, its asks now run during your turn as on any other host: toolkit suggestions (audit, the

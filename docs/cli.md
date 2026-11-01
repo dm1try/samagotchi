@@ -34,7 +34,7 @@
 - `chi desktop install|upgrade|uninstall|status` — the macOS "Send to chi" helper: a Service and a ⌃⌥⌘N hotkey that send text or images to a session (live, stopped or new) as a message (⏎, a turn runs) or a context note (⌘⏎) (see [Desktop helper](desktop.md))
 - `chi models [--format text|json] [--timeout S] [TEXT]` — list the models every configured host offers, as the names `--model` takes (see [Listing the models](#listing-the-models))
 - `chi self` — print version, source dir (checkout or installed gem), config/memory/session paths, model/host and bundles. Run by a session's `execute`, the `model` row (and host, loop, profile, thinking, served model) is **that session's** model, labelled `(this session <id8>; default …)`; elsewhere it is the default, `(default)`. `model key` is the memory overlay key (`<name>.<key>.md`), and `big memories` the memories over `memory.entry_warn_tokens` ([Memory](memory.md#a-memorys-size)), and `model notes` the model notes a prompt of that model loads (`model_notes_deepseek (system, 612 chars)`, `none`; inside a session its `--mute` list is left out). `chi self --model` prints only the model a new session starts on, an alias resolved to its target (the desktop helper's hint)
-- `chi update [--dry-run] [--to VERSION] [--json] [--no-gem] [--no-bundles] [--no-desktop]` — update an installed chi: the gem, the system bundle, the shipped bundles you installed and the desktop helper, in one table (see [Updating](#updating))
+- `chi update [--dry-run] [--to VERSION] [--json] [--no-gem] [--no-bundles] [--no-desktop]` — update an installed chi: the gem, the system bundle, the shipped bundles you installed and the desktop helper, and check the bundles from elsewhere, in one table (see [Updating](#updating))
 - `chi home`, `chi home set [--ruby PATH]`, `chi home doctor` — the chi home: the one Ruby (and its gem path) every chi launch boots, whoever launches it. `chi home` shows it (its Ruby, the newest chi in it, gem home and path, `mise`, when and by which chi it was set, and the chi you ran when that is another one; exit 1 with the problem when it can't boot chi), `set` records this chi's Ruby and gem path (or `--ruby PATH`'s own; it must have samagotchi), `doctor` checks it and what should follow it, one row each with `ok`, `warn` or `fail` and what to run (exit 1 on a `fail`; see [Checking it](configuration.md#checking-it-chi-home-doctor)). At a terminal, a chi on another Ruby than the home's says so in one dim line a day. This machine only (see [The chi home](configuration.md#the-chi-home))
 - `chi bundle install|upgrade|uninstall|status|diff|list|build|trash|new|test|check` — manage memory bundles (see [Bundle hooks](hooks.md#bundle-hooks-unified-workflow-bundle)); `list` shows the installed ones and the ones shipped with chi, which `install <name>` installs; `core` and `dev` are profiles that install a set of them (see [Bundle profiles](memory.md#bundle-profiles-core-and-dev),  [Guardrails](guardrails.md), [Bundles](bundles.md#the-btw-bundle), [the mcp bundle](bundles.md#the-mcp-bundle) [the loop-guard bundle](bundles.md#the-loop-guard-bundle), [the check-in bundle](bundles.md#the-check-in-bundle) and [the skills bundle](bundles.md#the-skills-bundle)). `trash` lists and empties the bundle trash (moved files from uninstalls/upgrades). A usage error (an unknown subcommand or flag, a missing argument, a bad `build --scope`) exits 2, as for the other subcommands. Plain `chi` and `chi web` exit 1 on an unknown flag, a flag missing its value or a stray argument. `new`, `test` and `check` are for writing one: see [Writing a bundle](#writing-a-bundle-new-test-check)
 
@@ -231,8 +231,10 @@ btw            0.1.1         up to date
 known-names    0.1.0  0.1.1  updated
 core           0.1.0  0.2.0  updated (+ new-bundle)
 infra_tools    1.0.0         skipped (not from chi)
+infra_tools                  warn api plugin.rb:3: ctx.old_name isn't in chi 0.3.0's plugin API (fix: docs/plugins.md has the API)
 Chi Helper     0.2.0         up to date (launch file refreshed)
 workers                      2 live on 0.2.0: they keep it until restarted (chi sessions restart 2ea8c1f0 91b0d2aa); or they idle out after 30 min with nothing attached
+Bundles not from chi are left as they are: their author's next version, or chi bundle upgrade NAME, is what changes them
 Also shipped, not installed: dev (mcp, skills, source-links) (chi bundle install NAME)
 done
 ```
@@ -241,8 +243,10 @@ done
   newest release. It must be newer than the running chi; an equal or older
   version is refused.
 - `--json` writes the component rows as one JSON array on stdout. Each row has
-  `component`, `from`, `to`, `status`, `failed` and `kept` fields; `kept` is an
-  array of edited filenames. Install progress is written to stderr.
+  `component`, `from`, `to`, `status`, `failed`, `kept` and `level` fields;
+  `kept` is an array of edited filenames, and `level` is `warn` or `error` on a
+  re-check's row (below), `null` on the others. Install progress is written to
+  stderr.
 
 - **chi web update notices.** By default, chi web checks RubyGems about 30
   seconds after it starts and every 24 hours after that. Once a stable release
@@ -304,6 +308,30 @@ done
   A bundle of the same name from elsewhere (a zip, git) is skipped ("not from
   chi"), a newer installed one is left, one whose new version needs a newer
   chi is skipped, and bundles you didn't install stay uninstalled.
+- **Bundles not from chi** are never changed, but the chi the update leaves
+  checks what is installed of them (the plugin, hooks and rules as they are,
+  not their source, which may be gone) with `chi bundle check`'s own checks,
+  and each warning or error is a row under the bundle's name: `requires_chi`
+  ruling this chi out, a plugin or hook that no longer loads, a hook on an event
+  chi no longer fires, a `ctx`/`chi` call the API lacks, a reference to chi's
+  internals, a name chi now ships, or a hook or plugin edited since it was installed (it
+  doesn't load). What only an author can act on (shas, unlisted files, tests, a
+  missing `requires_chi`, its floor, `trust_level`) is left out, and so are
+  profiles. A clean bundle gets no row beyond its `skipped (not from chi)`.
+  - **They fail nothing:** an error row too has `failed: false` and leaves the exit
+    status 0, chi web's **Update** and `update.auto` done. A warning repeats on
+    every run until the bundle changes, and a second run still says `everything is up to date`.
+  - **Each runs in a child process**, with your config.yml `bundles: <name>:`
+    settings in a sandbox: its code runs, as in any session. One that exits or
+    doesn't answer in 30 s is an `error check` row of its own; the rest go on.
+  - **Under the new chi:** the check runs in the update handed over to, so the new
+    API is what it's held against. When that hasn't happened, a row says
+    `external bundles … not checked (…)` instead of an answer about the old
+    API: `--dry-run` with a newer gem to install (without one, a dry run checks,
+    against this chi), and a gem installed with no way to hand over (run `chi
+    update` again). A failed gem install checks against this chi, since it stays.
+  - `--no-bundles` (`update.bundles: false`) leaves these out too: no check, no row
+    but `bundles skipped`.
 - **Profiles** (`core`, `dev`): an installed one installs the bundles a new
   chi added to it (`updated (+ name)`), even at the same version, and retries
   one that failed before; one you uninstalled stays out. See [Bundle

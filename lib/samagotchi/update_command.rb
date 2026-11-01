@@ -21,8 +21,10 @@ module Samagotchi
   # bundle, the shipped bundles the user installed, and the macOS helper.
   # Unedited things update; edited ones are kept (.md) or replaced and
   # reported (hooks, plugin, rules, which didn't load once edited). Live
-  # workers and a running chi web are reported, never restarted. Prints one
-  # table; a second run changes nothing and says so.
+  # workers and a running chi web are reported, never restarted. The bundles
+  # chi didn't ship are only checked, under the chi that will run them
+  # (BundleCommand::InstalledCheck): what it finds is rows that fail nothing.
+  # Prints one table; a second run changes nothing and says so.
   class UpdateCommand
     include CLI::Command
 
@@ -32,12 +34,16 @@ module Samagotchi
         system bundle, the bundles chi ships that you installed (chi bundle
         list), and the desktop helper (macOS; rebuilt only when its sources
         changed). Edited memory files are kept and reported; nothing is
-        installed that isn't already, and old gem versions stay.
-        --dry-run      show what would change; change nothing
+        installed that isn't already, and old gem versions stay. The bundles
+        chi doesn't ship are never changed: the new chi checks them and adds
+        a row per warning or error (these don't fail the update).
+        --dry-run      show what would change; change nothing (with a newer
+                       gem to install, bundles chi doesn't ship aren't checked:
+                       that chi would)
         --to VERSION   install exactly this gem version (must be newer than this chi)
         --json         print update rows as one JSON document
         --no-gem       don't install a newer gem (config update.gem: false)
-        --no-bundles   leave the shipped bundles alone (config update.bundles: false)
+        --no-bundles   leave all bundles alone, unchecked too (config update.bundles: false)
         --no-desktop   leave the desktop helper alone (config update.desktop: false)
         Running sessions keep their chi until restarted (chi sessions
         restart ID) or until they idle out with nothing attached; a running
@@ -68,8 +74,9 @@ module Samagotchi
                     "--no-register" => :no_register, "--to" => :to, "--json" => :json }.freeze
 
     # A table row. info rows (live workers, chi web) say what runs; they
-    # never fail.
-    Row = Struct.new(:component, :from, :to, :status, :failed, :kept, keyword_init: true)
+    # never fail. level ("warn", "error"; else nil) marks a finding on a bundle
+    # chi didn't ship: it reports, changes nothing and fails nothing.
+    Row = Struct.new(:component, :from, :to, :status, :failed, :kept, :level, keyword_init: true)
 
     # What a row says after a change, and in a dry run.
     VERBS = { update: ["updated", "would update"], install: ["installed", "would install"],
@@ -137,12 +144,12 @@ module Samagotchi
                     GemUpdate.new(gem_bin: ChiHome.gem_bin(@run_home), install_env: ChiHome.install_env(@run_home))
       @dry_run = options[:dry_run]
       gem = gem_row(options)
-      rows = [gem, system_bundle_row, *bundle_rows(options), desktop_row(options), *live_rows].compact
+      rows = [gem, system_bundle_row, *bundle_rows(options), *external_rows(options), desktop_row(options), *live_rows].compact
       if options[:json]
         @stdout.puts(JSON.generate(rows.map { |row| row.to_h.merge(failed: !!row.failed, kept: row.kept || []) }))
       else
         print_table(rows)
-        footers(options).each { |line| @stdout.puts(line) }
+        footers(options, rows).each { |line| @stdout.puts(line) }
         @stdout.puts(summary(rows))
       end
       rows.any?(&:failed) ? 1 : 0
@@ -233,20 +240,26 @@ module Samagotchi
       return up_to_date(row) unless options[:to] || @gem_update.newer?(latest)
 
       row.to = latest.version
-      return done(row, :update) if @dry_run
+      if @dry_run
+        @not_checked = "chi #{latest.version} checks them once installed"
+        return done(row, :update)
+      end
 
       (options[:json] ? @stderr : @stdout).puts("installing samagotchi #{latest.version}…")
       output, ok = @gem_update.install(latest)
       return failed(row, output.lines.map(&:strip).reject(&:empty?).last.to_s) unless ok
 
-      hand_over(options, row)
+      hand_over(options, row, latest.version)
     end
 
     # exec the newest installed samagotchi: the chi home's boot, else the
     # wrapper. Without either (installed with --bindir), this version syncs.
-    def hand_over(options, row)
+    def hand_over(options, row, version)
       wrapper = InstalledGem.wrapper(@gem_spec) unless @run_home
-      return done(row, :update, "run chi update again to sync with it") unless @run_home || wrapper
+      unless @run_home || wrapper
+        @not_checked = "chi #{version} checks them: run chi update again"
+        return done(row, :update, "run chi update again to sync with it")
+      end
 
       passed = options[:to] ? ["--to", options[:to]] : []
       passed += HANDED_OVER.except("--to").select { |_, key| options[key] }.keys
@@ -286,6 +299,22 @@ module Samagotchi
       rows = MemoryBundle::ShippedUpdate.plan(shipped_dir: @shipped_dir)
       rows = MemoryBundle::ShippedUpdate.apply(rows) unless @dry_run
       rows.map { |r| bundle_row(r) }
+    end
+
+    # The bundles chi doesn't ship, checked by the chi that will run them: this
+    # one, but when a newer gem is yet to take over (@not_checked: a dry run,
+    # or no way to hand over). The run handed over to is the new chi's own.
+    def external_rows(options)
+      return [] if off(options, "bundles")
+
+      bundles = MemoryBundle::ShippedUpdate.external(shipped_dir: @shipped_dir)
+      return [] if bundles.empty?
+      return [Row.new(component: "external bundles", status: "not checked (#{@not_checked})")] if @not_checked
+
+      require_relative "bundle_command/installed_check"
+      bundles.flat_map do |bundle|
+        BundleCommand::InstalledCheck.run(bundle).map { |found| Row.new(component: bundle.name, status: found.text, level: found.level) }
+      end
     end
 
     def bundle_row(update)
@@ -375,20 +404,24 @@ module Samagotchi
       "; or they idle out after #{minutes.round(1).to_s.delete_suffix(".0")} min with nothing attached"
     end
 
-    def footers(options)
+    def footers(options, rows)
       return [] if off(options, "bundles")
 
+      lines = rows.any?(&:level) ? ["Bundles not from chi are left as they are: their author's next version, or chi bundle upgrade NAME, is what changes them"] : []
       names = MemoryBundle::ShippedUpdate.not_installed(shipped_dir: @shipped_dir).map do |s|
         s.includes.empty? ? s.source : "#{s.source} (#{s.includes.join(", ")})"
       end
-      names.empty? ? [] : ["Also shipped, not installed: #{names.join(", ")} (chi bundle install NAME)"]
+      lines << "Also shipped, not installed: #{names.join(", ")} (chi bundle install NAME)" unless names.empty?
+      lines
     end
 
     def summary(rows)
       return "(dry run: nothing was changed)" if @dry_run
       return "some parts failed (see above)" if rows.any?(&:failed)
 
-      rows.all? { |r| r.status.start_with?("up to date", "skipped", "not installed", "couldn't check") } ? "everything is up to date" : "done"
+      # A finding on a bundle chi didn't ship repeats until its bundle changes; it isn't a change.
+      changes = rows.reject(&:level)
+      changes.all? { |r| r.status.start_with?("up to date", "skipped", "not installed", "couldn't check") } ? "everything is up to date" : "done"
     end
 
     # "updated" (or "would update" in a dry run), with a note; the block

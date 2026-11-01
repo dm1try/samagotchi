@@ -24,6 +24,10 @@ module Samagotchi
     # plugin's and hooks' own code runs as written; --fix rewrites stale
     # sha256 lines (MemoryBundle::Shas). #run returns 0 without errors, 1
     # with any.
+    #
+    # installed: true is `chi update`'s look at a bundle someone else wrote
+    # (InstalledCheck, on a MemoryBundle::InstalledCopy): what this chi breaks
+    # of it, and none of what only its author can act on in a source tree.
     class Check
       HELP = <<~TEXT
         Usage: chi bundle check [PATH] [--fix] [--set KEY=VALUE]
@@ -61,29 +65,33 @@ module Samagotchi
       # @param dir [String] the bundle's folder
       # @param fix [Boolean] rewrite stale sha lines
       # @param settings [Hash] config.yml `bundles: <name>:` for the load
-      def initialize(dir, fix: false, settings: {}, stdout: $stdout)
+      # @param installed [Boolean] +dir+ is a bundle's installed copy
+      def initialize(dir, fix: false, settings: {}, installed: false, stdout: $stdout)
         @dir = File.expand_path(dir)
         @fix = fix
         @settings = settings
+        @installed = installed
         @stdout = stdout
         @findings = []
       end
+
+      # @return [Array<Finding>] what #run found
+      attr_reader :findings
 
       # @return [Integer] exit status
       def run
         manifest = read_manifest
         if manifest
           missing = check_files(manifest)
-          check_unlisted(manifest)
-          check_shas unless missing
+          check_source_tree(manifest, missing) unless @installed
           check_requires_chi(manifest)
-          check_trust(manifest)
+          check_trust(manifest) unless @installed
           check_clash(manifest)
-          check_settings(manifest)
+          check_settings(manifest) unless @installed
           check_install(manifest) unless missing || placeholders? || manifest.session_settings_clash
           check_api(manifest)
           check_boundary(manifest)
-          check_tests
+          check_tests unless @installed
         end
         errors = @findings.count(&:error?)
         warnings = @findings.count { |f| f.level == :warn }
@@ -93,6 +101,11 @@ module Samagotchi
       end
 
       private
+
+      def check_source_tree(manifest, missing)
+        check_unlisted(manifest)
+        check_shas unless missing
+      end
 
       def add(level, code, file, message, line: nil, fix: nil)
         finding = Finding.new(level: level, code: code, file: file, line: line, message: message, fix: fix)
@@ -206,10 +219,10 @@ module Samagotchi
           @too_new = true
           add(:error, :"requires-chi", "manifest.yml", "this chi can't load it: #{failure}", line: line,
                                                                                             fix: "chi update, or lower requires_chi")
-        elsif manifest.requires_chi.nil? && code?(manifest)
+        elsif manifest.requires_chi.nil? && code?(manifest) && !@installed
           add(:warn, :"requires-chi", "manifest.yml", "no requires_chi for a bundle with code", fix: "add requires_chi: \">= #{VERSION}\"")
         end
-        check_floor(manifest, line) if manifest.plugin && manifest.requires_chi && !@too_new
+        check_floor(manifest, line) if manifest.plugin && manifest.requires_chi && !@too_new && !@installed
       end
 
       # The plugin calls an API newer than the oldest chi requires_chi admits.
@@ -258,8 +271,9 @@ module Samagotchi
           add(:warn, :clash, "manifest.yml", "chi ships a bundle named #{name}; installing this one replaces chi's",
               line: manifest_line("name"), fix: "rename the bundle")
         end
-        # A shipped bundle installed from any chi's copy is that bundle.
-        return if shipped?
+        # A shipped bundle installed from any chi's copy is that bundle; an
+        # installed copy is the installed bundle.
+        return if shipped? || @installed
 
         record = installed_record(name)
         return unless record
@@ -336,6 +350,8 @@ module Samagotchi
         warnings.each do |warning|
           next if stale_reported && warning.start_with?("Checksum mismatch")
           next if @too_new && warning.include?("won't load:")
+          # This machine's PATH, said at install; nothing a chi update changed.
+          next if @installed && warning.start_with?("needs ")
 
           if warning.start_with?("needs ")
             add(:warn, :install, "manifest.yml", warning)
