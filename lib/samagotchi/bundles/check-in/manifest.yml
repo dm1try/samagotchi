@@ -1,12 +1,12 @@
 ---
 name: check-in
-version: 0.3.2
+version: 0.3.3
 scope: system
 description: "Checks on a long turn: after N tool calls with no answer, a card asks the user (Nudge / Keep going / Stop), or the model is nudged to say what it has found"
 trust_level: reviewed
 plugin:
   file: plugin.rb
-  sha256: sha256:b0d410efd43a543b2b7a85e06a5f77242fc5e0610d7fc0a94339017d26f7cdb4
+  sha256: sha256:6580d6d19ac9beda871d88d3955abc5a319dd8b5aea225a06dee90b6daeeddce
 # check-in.progress asks System 1 (chi.judgment, new in 0.142.0);
 # ctx.session_dir is new in 0.143.0
 requires_chi: ">= 0.143.0"

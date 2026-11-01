@@ -236,15 +236,19 @@ class Plugin
   end
 
   def call_args(call)
-    args = call.is_a?(Hash) ? (call[:arguments] || call["arguments"] || call) : call
-    return args if args.is_a?(String)
+    return call if call.is_a?(String)
+    return JSON.generate(call) unless call.is_a?(Hash)
+
+    # A tool that isn't built in has its arguments on args: and, as JSON, in
+    # content: (or there alone, when none could be read): say them once.
+    args = call[:args]
+    return args.empty? ? call[:content].to_s : JSON.generate(args) if args.is_a?(Hash)
 
     # The tool's name is already in the entry and nil fields say nothing:
     # the cut should keep what the call asked for.
-    args = args.compact.except(:name, "name") if args.is_a?(Hash)
-    JSON.generate(args)
+    JSON.generate(call.compact.except(:name, "name"))
   rescue StandardError
-    args.to_s
+    call.to_s
   end
 
   def cut(text, limit)

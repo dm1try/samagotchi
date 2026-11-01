@@ -362,6 +362,25 @@ RSpec.describe "The check-in plugin", :bundle do
       expect(p.judgments.runs("progress").last["state"]["tools"]).to eq(['execute {"content":"echo 1"} -> 1'])
     end
 
+    it "keeps a tool's arguments once: one that isn't built in has them on args: and, as JSON, in content:" do
+      p = plugin("after" => 1)
+      judging(p)
+      turn(p)
+      args = { "pattern" => "z", "path" => "lib" }
+      fire(p, :after_tool_call, tool: "grep", call: { name: "grep", content: JSON.generate(args), path: nil, scope: nil, args: args }, output: "1")
+      p.judgments.wait
+      expect(p.judgments.runs("progress").last["state"]["tools"]).to eq(['grep {"pattern":"z","path":"lib"} -> 1'])
+    end
+
+    it "keeps the text of a call whose arguments couldn't be read" do
+      p = plugin("after" => 1)
+      judging(p)
+      turn(p)
+      fire(p, :after_tool_call, tool: "grep", call: { name: "grep", content: "z lib", path: nil, scope: nil, args: {} }, output: "1")
+      p.judgments.wait
+      expect(p.judgments.runs("progress").last["state"]["tools"]).to eq(["grep z lib -> 1"])
+    end
+
     it "sends only the calls since the last check-in, each cut as it is captured" do
       p = plugin("after" => 2, "every" => 2)
       judging(p)
