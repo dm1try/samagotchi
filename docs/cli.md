@@ -461,6 +461,11 @@ and `--shared` are refused. Its first line says it is a scratch session.
 
 ### Sharing a session
 
+Two different things share a session: `session.shared` is about UIs — several
+terminals and the Web UI attached to one worker — while `chi share` invites
+other people, participants with a link of their own (see
+[Participants](#participants)).
+
 Plain `chi` runs the session in a background worker and attaches the terminal
 to it (`session.shared`, default `true`). A worker's session can have any number
 of UIs at once: the Web UI and attached terminals (`chi`, `--resume`,
