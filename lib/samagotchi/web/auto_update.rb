@@ -5,6 +5,7 @@ require "time"
 require_relative "../config"
 require_relative "../log"
 require_relative "../version"
+require_relative "auto_update_record"
 
 module Samagotchi
   module Web
@@ -31,8 +32,9 @@ module Samagotchi
     # A preflight that fails leaves chi web as it is and says so.
     # update.restart: never stops after the install.
     #
-    # The run's record lives in update_check.json (UpdateCheck#save_auto),
-    # so a chi web restart finds it. See docs/architecture.md.
+    # The run's record (AutoUpdateRecord) lives in update_check.json
+    # (UpdateCheck#save_auto), so a chi web restart finds it. See
+    # docs/architecture.md.
     class AutoUpdate
       # Seconds between steps, and before the first (the checker's first
       # check is at 30).
@@ -100,7 +102,7 @@ module Samagotchi
         return unless @auto == "install"
 
         record = @check.auto_state
-        return carry_on(record) if record && OPEN_PHASES.include?(record[:phase])
+        return carry_on(record) if record && OPEN_PHASES.include?(record.phase)
 
         version = @check.available
         return unless version
@@ -126,12 +128,12 @@ module Samagotchi
 
       # A run that this chi web's start finds on its way to the web restart.
       def restarted?
-        @check.auto_state&.dig(:phase) == "web"
+        @check.auto_state&.phase == "web"
       end
 
       # This release's run is already on record (installed, or given up on).
       def tried?(version)
-        @check.auto_state&.dig(:version) == version
+        @check.auto_state&.version == version
       end
 
       # A turn runs, or a question waits for its answer, in any session.
@@ -147,9 +149,10 @@ module Samagotchi
         return Log.info(:web, "auto_update_deferred", version: version, why: result) if result.is_a?(Symbol)
 
         rows = result[:rows]
-        record = { version: version, from: VERSION, at: @clock.call.iso8601, kept: kept_files(rows) }
+        record = AutoUpdateRecord.new(version: version, from: VERSION, at: @clock.call.iso8601, kept: kept_files(rows),
+                                      phase: "installed")
         if result[:state] == "done"
-          Log.info(:web, "auto_update_installed", version: version, kept: record[:kept].size)
+          Log.info(:web, "auto_update_installed", version: version, kept: record.kept.size)
           installed(record)
         else
           failed(record, rows)
@@ -160,15 +163,15 @@ module Samagotchi
       # toast and idle exit carry chi web and the workers over; else the
       # restarts follow, here and now when nothing holds them.
       def installed(record)
-        return carry_on(save(record.merge(phase: "installed"))) unless @restart == "never"
+        return carry_on(save(record)) unless @restart == "never"
 
-        @hub.publish_notice(kind: "installed", version: record[:version], kept: record[:kept].size)
-        save(record.merge(phase: "done", pushed: true))
+        @hub.publish_notice(kind: "installed", version: record.version, kept: record.kept.size)
+        save(record.with(phase: "done", pushed: true))
       end
 
       # The next step of a run on record.
       def carry_on(record)
-        case record[:phase]
+        case record.phase
         when "installed", "workers" then workers_then_web(record)
         when "web" then finish(record)
         end
@@ -177,20 +180,10 @@ module Samagotchi
       def workers_then_web(record)
         return if @ops.running?
 
-        record = restart_workers(record) if record[:phase] == "installed" || workers_left?(record)
+        record = restart_workers(record) if record.phase == "installed" || record.left_to_try?(@clock.call, RETRY_FOR)
         return unless record
 
         restart_web(record)
-      end
-
-      def workers_left?(record)
-        record.dig(:workers, :left).to_i.positive? && @clock.call - recorded_at(record) < RETRY_FOR
-      end
-
-      def recorded_at(record)
-        Time.iso8601(record[:at].to_s)
-      rescue ArgumentError
-        @clock.call
       end
 
       # A pass over the stale workers that are idle and quiet; the counts
@@ -200,8 +193,8 @@ module Samagotchi
         return if result.is_a?(Symbol)
 
         states = result[:rows].map { |row| row["state"] }
-        restarted = record.dig(:workers, :restarted).to_i + states.count("restarted")
-        save(record.merge(phase: "workers", workers: { restarted: restarted, left: states.size - states.count("restarted") }))
+        restarted = states.count("restarted")
+        save(record.with(phase: "workers", restarted: record.restarted + restarted, left: states.size - restarted))
       end
 
       # Idle and quiet: no turn, no question, untouched for QUIET seconds.
@@ -229,41 +222,40 @@ module Samagotchi
       def restart_web(record)
         return if busy_turn?
 
-        problem = @preflight&.call(record[:version])
+        problem = @preflight&.call(record.version)
         # Stopped meanwhile (chi web is shutting down): no exec, no record
         # of one; the next start takes it up again.
         return if @stopped
         return restart_failed(record, problem, "auto_restart_preflight_failed") if problem
 
-        save(record.merge(phase: "web"))
-        Log.info(:web, "auto_update_restart", version: record[:version])
+        save(record.with(phase: "web"))
+        Log.info(:web, "auto_update_restart", version: record.version)
         case (answer = @ops.restart_web)
         when :started then nil
-        when :busy then save(record.merge(phase: "workers"))
+        when :busy then save(record.with(phase: "workers"))
         else restart_failed(record, "chi web can't restart itself here (#{answer})", "auto_restart_refused")
         end
       end
 
       def restart_failed(record, detail, event)
-        Log.warn(:web, event, version: record[:version], detail: detail)
-        @hub.publish_notice(kind: "restart_failed", version: record[:version], detail: detail)
-        save(record.merge(phase: "failed", detail: detail, pushed: true))
+        Log.warn(:web, event, version: record.version, detail: detail)
+        @hub.publish_notice(kind: "restart_failed", version: record.version, detail: detail)
+        save(record.with(phase: "failed", detail: detail, pushed: true))
       end
 
       # In the restarted chi web: on the version, the workers counted once
       # more, "chi updated" said.
       def finish(record)
-        if Gem::Version.new(VERSION) < Gem::Version.new(record[:version])
+        if Gem::Version.new(VERSION) < Gem::Version.new(record.version)
           return restart_failed(record, "chi web came back on #{VERSION}", "auto_restart_wrong_version")
         end
 
         @hub.scan
         record = restart_workers(record) || record
-        workers = record[:workers] || {}
-        Log.info(:web, "auto_update_done", version: record[:version], restarted: workers[:restarted], left: workers[:left])
-        @hub.publish_notice(kind: "updated", version: record[:version], kept: record[:kept].to_a.size,
-                            restarted: workers[:restarted].to_i, left: workers[:left].to_i)
-        save(record.merge(phase: "done", pushed: true))
+        Log.info(:web, "auto_update_done", version: record.version, restarted: record.restarted, left: record.left)
+        @hub.publish_notice(kind: "updated", version: record.version, kept: record.kept.size,
+                            restarted: record.restarted, left: record.left)
+        save(record.with(phase: "done", pushed: true))
       end
 
       def save(record)
@@ -274,11 +266,11 @@ module Samagotchi
       def failed(record, rows)
         row = rows.find { |candidate| candidate["failed"] } || rows.first || {}
         detail = row["status"].to_s.lines.first.to_s.strip
-        Log.warn(:web, "auto_update_failed_install", version: record[:version], detail: detail)
+        Log.warn(:web, "auto_update_failed_install", version: record.version, detail: detail)
         gem_installed = rows.any? { |candidate| candidate["component"] == "chi (gem)" && !candidate["failed"] }
-        @hub.publish_notice(kind: "failed", version: record[:version], detail: detail.empty? ? nil : detail,
+        @hub.publish_notice(kind: "failed", version: record.version, detail: detail.empty? ? nil : detail,
                             installed: gem_installed)
-        @check.save_auto(record.merge(phase: "failed", detail: detail, pushed: true), failed: record[:version])
+        @check.save_auto(record.with(phase: "failed", detail: detail, pushed: true), failed: record.version)
       end
 
       def kept_files(rows)

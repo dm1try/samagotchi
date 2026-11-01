@@ -168,29 +168,32 @@ RSpec.describe Samagotchi::Web::UpdateCheck do
   end
 
   describe "AutoUpdate's record" do
+    def record(**fields) = Samagotchi::Web::AutoUpdateRecord.new(**fields)
+
     it "is saved privately, survives a restart and a later check, and holds the versions given up on" do
       update_check = checker
       expect(update_check.auto_state).to be_nil
       expect(update_check.auto_failed?(release_version)).to be(false)
 
-      update_check.save_auto({ version: release_version, from: "0.1.0", phase: "failed", kept: [] }, failed: release_version)
-      update_check.save_auto({ version: release_version, from: "0.1.0", phase: "failed", kept: [] }, failed: release_version)
+      failed = record(version: release_version, from: "0.1.0", phase: "failed", restarted: 2, left: 1)
+      update_check.save_auto(failed, failed: release_version)
+      update_check.save_auto(failed, failed: release_version)
 
       expect(File.stat(state_file).mode & 0o777).to eq(0o600)
       expect(JSON.parse(File.read(state_file))).to include("auto_failed" => [release_version],
                                                            "auto" => include("version" => release_version, "phase" => "failed"))
       restored = checker
-      expect(restored.auto_state).to include(version: release_version, phase: "failed")
+      expect(restored.auto_state).to eq(failed)
       expect(restored.auto_failed?(release_version)).to be(true)
 
       expect(restored.check).to be(true)
-      expect(restored.auto_state).to include(phase: "failed")
+      expect(restored.auto_state).to have_attributes(phase: "failed", restarted: 2, left: 1)
       expect(restored.auto_failed?(release_version)).to be(true)
     end
 
     it "is cleared by saving nil, and a failed version stays failed" do
       update_check = checker
-      update_check.save_auto({ version: "0.1.0", phase: "done" }, failed: "0.0.9")
+      update_check.save_auto(record(version: "0.1.0", phase: "done"), failed: "0.0.9")
       update_check.save_auto(nil)
 
       expect(update_check.auto_state).to be_nil
@@ -210,11 +213,11 @@ RSpec.describe Samagotchi::Web::UpdateCheck do
         pop!(fetching, "the fetch to start")
 
         read = Thread.new do
-          update_check.save_auto({ version: release_version, phase: "installed" }, failed: "0.0.9")
+          update_check.save_auto(record(version: release_version, phase: "installed"), failed: "0.0.9")
           [update_check.auto_state, update_check.auto_failed?("0.0.9")]
         end
         join!(read, "the state's read and save during the fetch")
-        expect(read.value).to eq([{ version: release_version, phase: "installed" }, true])
+        expect(read.value).to eq([record(version: release_version, phase: "installed"), true])
       ensure
         release_fetch << true
         join!(check, "the check")
@@ -222,6 +225,13 @@ RSpec.describe Samagotchi::Web::UpdateCheck do
       expect(check.value).to be(true)
       expect(JSON.parse(File.read(state_file))).to include("available" => release_version, "auto_failed" => ["0.0.9"],
                                                            "auto" => include("phase" => "installed"))
+    end
+
+    it "reads as no record when the file's `auto` is not one" do
+      FileUtils.mkdir_p(File.dirname(state_file))
+      File.write(state_file, JSON.generate(available: release_version, notified: [], auto: { phase: "web" }))
+
+      expect(checker.auto_state).to be_nil
     end
 
     it "loads a state file written before it existed" do

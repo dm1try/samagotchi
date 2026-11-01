@@ -385,7 +385,8 @@ and installs it through `UpdateOps#install(wait: true, auto: true)` when the ins
 runs, no hub summary has `status: running` or a `pending_question`, and the version isn't in `auto_failed` or
 already in the `auto` record (one automatic try per version). Its frames carry `auto: true` (the page: "Automatic
 chi update in progress", "(automatic)" in the sheet's title). Its record is `update_check.json`'s `auto`:
-`{version, from, at, kept, phase: installed|workers|web|done|failed, workers: {restarted, left}, detail, pushed}`.
+`{version, from, at, kept, phase: installed|workers|web|done|failed, workers: {restarted, left}, detail, pushed}`,
+in Ruby the value object `Web::AutoUpdateRecord`, which owns that shape (`from_h`, `to_store`).
 With `update.restart: never` the run ends at the install (`chi_notice` `installed`). With `idle` it goes on
 (`phase` `installed` → `workers` → `web` → `done`): `UpdateOps#restart_workers(select:)` over the stale workers whose
 summary is idle with no question and `updated_at` at least 10 minutes old (`QUIET`; the others are `skipped` rows;

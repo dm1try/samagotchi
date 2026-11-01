@@ -116,8 +116,8 @@ RSpec.describe Samagotchi::Web::AutoUpdate do
       auto_update.step
 
       expect(notices).to eq([{ kind: "installed", version: version, kept: 2 }])
-      expect(check.auto_state).to include(version: version, from: Samagotchi::VERSION, phase: "done", pushed: true,
-                                          kept: ["a.md", "b.md"])
+      expect(check.auto_state).to have_attributes(version: version, from: Samagotchi::VERSION, phase: "done", pushed: true,
+                                                  kept: ["a.md", "b.md"])
     end
 
     it "installs the release once: a later step finds it on record" do
@@ -148,7 +148,7 @@ RSpec.describe Samagotchi::Web::AutoUpdate do
       expect(ops).to have_received(:install).once
       expect(notices).to eq([{ kind: "failed", version: version, detail: "failed (offline)", installed: false }])
       expect(check.auto_failed?(version)).to be(true)
-      expect(check.auto_state).to include(phase: "failed", detail: "failed (offline)")
+      expect(check.auto_state).to have_attributes(phase: "failed", detail: "failed (offline)")
     end
 
     it "stays given up on across a chi web restart, and tries a newer release" do
@@ -220,14 +220,14 @@ RSpec.describe Samagotchi::Web::AutoUpdate do
       expect(order).to eq(%i[workers preflight web])
       expect(preflight).to have_received(:call).with(version)
       expect(notices).to be_empty
-      expect(check.auto_state).to include(phase: "web", workers: { restarted: 1, left: 1 }, version: version,
-                                          at: now.iso8601)
+      expect(check.auto_state).to have_attributes(phase: "web", restarted: 1, left: 1, version: version,
+                                                  at: now.iso8601)
     end
 
     it "records the web phase before the exec, which ends this process" do
       seen = nil
       allow(ops).to receive(:restart_web) do
-        seen = check.auto_state[:phase]
+        seen = check.auto_state.phase
         :started
       end
       auto_update.step
@@ -272,7 +272,7 @@ RSpec.describe Samagotchi::Web::AutoUpdate do
 
       expect(ops).to have_received(:restart_workers).twice
       expect(ops).not_to have_received(:restart_web)
-      expect(check.auto_state).to include(phase: "workers", workers: { restarted: 2, left: 1 })
+      expect(check.auto_state).to have_attributes(phase: "workers", restarted: 2, left: 1)
 
       summaries.clear
       auto_update.step
@@ -322,7 +322,7 @@ RSpec.describe Samagotchi::Web::AutoUpdate do
       allow(ops).to receive(:restart_workers).and_return(:busy, workers_result)
       auto_update.step
       expect(ops).not_to have_received(:restart_web)
-      expect(check.auto_state).to include(phase: "installed")
+      expect(check.auto_state).to have_attributes(phase: "installed")
 
       auto_update.step
       expect(ops).to have_received(:restart_web)
@@ -336,7 +336,7 @@ RSpec.describe Samagotchi::Web::AutoUpdate do
       expect(ops).not_to have_received(:restart_web)
       expect(preflight).to have_received(:call).once
       expect(notices).to eq([{ kind: "restart_failed", version: version, detail: "the new chi said \"boom\", not #{version}" }])
-      expect(check.auto_state).to include(phase: "failed", pushed: true)
+      expect(check.auto_state).to have_attributes(phase: "failed", pushed: true)
     end
 
     it "lets a preflight that a stop finds running end, then neither restarts chi web nor records it" do
@@ -358,17 +358,17 @@ RSpec.describe Samagotchi::Web::AutoUpdate do
         join!(stopping, "the stop")
       end
       expect(ops).not_to have_received(:restart_web)
-      expect(check.auto_state).to include(phase: "workers")
+      expect(check.auto_state).to have_attributes(phase: "workers")
     end
 
     it "tries chi web again when another operation took the turn from it" do
       allow(ops).to receive(:restart_web).and_return(:busy, :started)
       auto_update.step
-      expect(check.auto_state).to include(phase: "workers")
+      expect(check.auto_state).to have_attributes(phase: "workers")
 
       auto_update.step
       expect(ops).to have_received(:restart_web).twice
-      expect(check.auto_state).to include(phase: "web")
+      expect(check.auto_state).to have_attributes(phase: "web")
     end
 
     it "says so when chi web can't restart itself here" do
@@ -377,12 +377,46 @@ RSpec.describe Samagotchi::Web::AutoUpdate do
 
       expect(notices.map { |notice| notice[:kind] }).to eq(["restart_failed"])
       expect(notices.first[:detail]).to include("no_wrapper")
-      expect(check.auto_state).to include(phase: "failed")
+      expect(check.auto_state).to have_attributes(phase: "failed")
+    end
+
+    describe "the record read back from its file" do
+      def reloaded_check
+        Samagotchi::Web::UpdateCheck.new(hub: hub, enabled: false, auto: true, fetcher: -> { [release] }, clock: -> { now },
+                                         state_file: state_file, gem_spec: Object.new, bundler: false, gem_dir: root,
+                                         installed_versions: installed_versions)
+      end
+
+      def after_restart(check)
+        described_class.new(hub: hub, ops: ops, check: check, auto: auto, restart: restart, preflight: preflight, clock: -> { now })
+      end
+
+      it "tells the phone the workers the old chi web restarted too" do
+        auto_update.step # 1 restarted, 1 skipped, then the exec
+        stub_const("Samagotchi::VERSION", version)
+        allow(ops).to receive(:restart_workers).and_return(state: "done", rows: [{ "session_id" => "b", "state" => "restarted" }])
+
+        after_restart(reloaded_check).step
+
+        expect(notices).to contain_exactly(include(kind: "updated", restarted: 2, left: 0))
+      end
+
+      it "still tries the left workers of a run chi web was restarted in the middle of" do
+        state = JSON.parse(File.read(state_file))
+        state["auto"] = { "version" => version, "from" => "0.1.0", "at" => now.iso8601, "kept" => [], "phase" => "workers",
+                          "workers" => { "restarted" => 1, "left" => 2 } }
+        File.write(state_file, JSON.generate(state))
+
+        after_restart(reloaded_check).step
+
+        expect(ops).to have_received(:restart_workers).once
+      end
     end
 
     describe "in the restarted chi web (a run on record at phase web)" do
       let(:record) do
-        { version: version, from: "0.1.0", at: now.iso8601, kept: %w[a.md b.md], phase: "web", workers: { restarted: 3, left: 1 } }
+        Samagotchi::Web::AutoUpdateRecord.new(version: version, from: "0.1.0", at: now.iso8601, kept: %w[a.md b.md], phase: "web",
+                                              restarted: 3, left: 1)
       end
       let(:workers_result) { { state: "done", rows: [{ "session_id" => "b", "state" => "restarted" }] } }
 
@@ -397,7 +431,7 @@ RSpec.describe Samagotchi::Web::AutoUpdate do
 
         expect(hub).to have_received(:scan).once
         expect(notices).to eq([{ kind: "updated", version: version, kept: 2, restarted: 4, left: 0 }])
-        expect(check.auto_state).to include(phase: "done", pushed: true)
+        expect(check.auto_state).to have_attributes(phase: "done", pushed: true)
         expect(ops).not_to have_received(:restart_web)
         expect(ops).not_to have_received(:install)
       end
@@ -408,7 +442,7 @@ RSpec.describe Samagotchi::Web::AutoUpdate do
 
         expect(notices.map { |notice| notice[:kind] }).to eq(["restart_failed"])
         expect(notices.first[:detail]).to include("0.0.1")
-        expect(check.auto_state).to include(phase: "failed")
+        expect(check.auto_state).to have_attributes(phase: "failed")
       end
 
       it "takes its first step soon, not after the full first wait" do

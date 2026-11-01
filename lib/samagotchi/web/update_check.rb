@@ -12,6 +12,7 @@ require_relative "../installed_versions"
 require_relative "../log"
 require_relative "../paths"
 require_relative "../version"
+require_relative "auto_update_record"
 
 module Samagotchi
   module Web
@@ -117,11 +118,10 @@ module Samagotchi
         still_newer(@state[:available])
       end
 
-      # AutoUpdate's record of the run it started: {version:, from:, phase:,
-      # kept:, workers:, pushed:, detail:} (symbol keys), nil when none.
-      # @return [Hash, nil]
+      # AutoUpdate's record of the run it started, nil when none.
+      # @return [AutoUpdateRecord, nil]
       def auto_state
-        @state_lock.synchronize { @state[:auto]&.dup }
+        @state_lock.synchronize { @state[:auto] }
       end
 
       # Whether AutoUpdate already tried +version+ and failed (one automatic
@@ -132,6 +132,7 @@ module Samagotchi
 
       # Saves AutoUpdate's record (nil clears it); +failed+ adds a version to
       # the ones it gave up on.
+      # @param auto [AutoUpdateRecord, nil]
       def save_auto(auto, failed: nil)
         @state_lock.synchronize do
           failed_list = failed && !@state[:auto_failed].include?(failed) ? @state[:auto_failed] + [failed] : @state[:auto_failed]
@@ -211,7 +212,7 @@ module Samagotchi
           checked_at: data["checked_at"],
           available: data["available"],
           notified: strings(data["notified"]),
-          auto: data["auto"].is_a?(Hash) ? data["auto"].transform_keys(&:to_sym) : nil,
+          auto: AutoUpdateRecord.from_h(data["auto"]),
           auto_failed: strings(data["auto_failed"])
         }
       rescue JSON::ParserError, SystemCallError => e
@@ -225,7 +226,7 @@ module Samagotchi
 
       def persist(state)
         FileUtils.mkdir_p(File.dirname(@state_file))
-        AtomicFile.write(@state_file, JSON.generate(state), perm: 0o600)
+        AtomicFile.write(@state_file, JSON.generate(state.merge(auto: state[:auto]&.to_store)), perm: 0o600)
         @state = state
       end
 

@@ -7,6 +7,11 @@ and commands may change between minor versions. How releases are made:
 [docs/releasing.md](docs/releasing.md).
 ## [Unreleased]
 
+### Fixed
+
+- With `update.auto: install`, "chi updated to X" counts the sessions the old chi web restarted (it said 0 of them), and a run
+  chi web is restarted in the middle of still tries the sessions it had left.
+
 ## [0.142.0] - 2026-11-01
 
 ### Added
