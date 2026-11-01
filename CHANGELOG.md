@@ -1050,7 +1050,7 @@ Update with `chi update` (the system bundle 0.118.0), then restart `chi web`.
 - `/exit` in an attached terminal **asks what to do with what still runs** when only things you can stop keep the
   worker up (reminders, a watched background task, a delegate with a live worker): keep running in the background,
   stop them and exit, or go back. Anything else that holds the worker (a running turn, queued prompts, another UI)
-  still refuses as before, and a delegate never holds the idle exit. See [cli.md](docs/cli.md#attached-terminal).
+  still refuses as before, and a delegate never holds the idle exit. See [cli.md](docs/cli.md#sharing-a-session).
 - The web's `stop session` asks the same first: a sheet (a bottom sheet on a phone) counts what still runs and offers
   **Stop all**, **Stop session only** (the stop as it was: background tasks and delegates keep running) or
   **Cancel**; with nothing to stop it is one tap as before. See [Sessions](docs/sessions.md).

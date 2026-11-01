@@ -13,8 +13,7 @@ module Samagotchi
   # - the status line's value (#display), every request and again from the
   #   server's final counts after each generation;
   # - a :context_status stream event (#observe's return), on every request,
-  #   so the web and the attached TUI get a fresh estimate each time (the
-  #   context.status_cadence setting no longer throttles this event);
+  #   so the web and the attached TUI get a fresh estimate each time;
   # - the model's own short line (#take_guidance), once per rise into a
   #   bucket whose guidance asks for a change (the second threshold up).
   #

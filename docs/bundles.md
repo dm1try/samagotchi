@@ -1118,7 +1118,7 @@ skill install card) works the same.
   hint, pushed so a re-pair refreshes it) and `codex-outbox`. Run outside
   Codex (no `CODEX_THREAD_ID`) it refuses. Codex replies with one JSON push
   to `codex-outbox` (`text`, `summary`, `wake: true`), which wakes chi, the
-  first answer too: that needs chi 0.63.0, the bundle's `requires_chi`.
+  first answer too (that needs chi 0.63.0; the bundle's `requires_chi` is `>= 0.70.0`).
 - **Peer messages are user turns in Codex.** Claude Code marks an inbox
   message as from another session; `codex queue` lands as a plain user
   message. So Codex's skill starts with the rule: a message whose first line

@@ -11,7 +11,10 @@ are offered.
 Who votes, in order:
 
 1. `before_tool_call` hooks (Ruby; see [Hooks](hooks.md#guardrails-from-a-hook)).
-2. Core checks: a required guardrail that failed to load, then protected paths, then (a delegate child only)
+2. Core checks (`GuardrailWiring#checks`): a required guardrail that failed to load, then (a participant's turn only)
+   [the review boundary](#a-participants-review-boundary) or, for a pair turn,
+   [the pair boundary](#a-participants-pair-boundary), then protected paths, then (a `chi scratch` session only)
+   writes to the memories folder (rule `scratch-session`), then (a delegate child only)
    [the child boundary](#a-delegate-childs-boundary).
 3. YAML rules: `config.yml`'s `guardrails:` section, then installed bundles' rule files (by bundle name).
 
