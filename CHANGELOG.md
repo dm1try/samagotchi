@@ -24,6 +24,9 @@ and commands may change between minor versions. How releases are made:
 
 ### Fixed
 
+- A waiting approval on the web page opens at its question and command, on a phone and on a desktop, when it arrives and when the page
+  loads on it. A card too tall for the stage showed its options with what it asks scrolled out of sight; the options are now a scroll
+  down the stage's one scroll.
 - `chi update` tells you a `chi web` started with `--port` runs old code; it only looked on `web.port`.
 - `/guardrails` no longer shows `System 1 (on):` when the settings mean nothing can be judged: it reads
   `System 1 (on, but nothing is judged: system_one.host is not set):`, and likewise for a host that isn't in `hosts:`,

@@ -521,6 +521,41 @@ async function answer(card) {
   await tick();
 }
 
+test("a tall card answered: its line comes back for a reader who had scrolled down it, its slot shows its end", async (t) => {
+  const { view, card } = await askPage(t, { overflow: false, cards: [["bubble question approval", { kind: "approval" }]] });
+  try {
+    const scroller = $(view, ".ts-scroll");
+    const extras = $(view, ".ts-extras");
+    Object.defineProperty(extras, "offsetTop", { configurable: true, get: () => 200 });
+    Object.defineProperty(extras, "offsetHeight", { configurable: true, get: () => 60 });
+    Object.defineProperty(extras, "scrollHeight", { configurable: true, get: () => 60 });
+    Object.defineProperty(scroller, "clientHeight", { configurable: true, get: () => 400 });
+    scroller.scrollTop = 500;
+    await answer(card);
+    assert.equal(view.root.classList.contains("waiting"), false);
+    assert.equal(scroller.scrollTop, 0, "the line in sight, not the blank the card left");
+    assert.equal(extras.scrollTop, 60);
+  } finally {
+    view.reset();
+  }
+});
+
+test("a card answered leaves alone a reader who still sees where it was", async (t) => {
+  const { view, card } = await askPage(t, { overflow: false, cards: [["bubble question approval", { kind: "approval" }]] });
+  try {
+    const scroller = $(view, ".ts-scroll");
+    const extras = $(view, ".ts-extras");
+    Object.defineProperty(extras, "offsetTop", { configurable: true, get: () => 200 });
+    Object.defineProperty(extras, "offsetHeight", { configurable: true, get: () => 60 });
+    Object.defineProperty(scroller, "clientHeight", { configurable: true, get: () => 400 });
+    scroller.scrollTop = 190;
+    await answer(card);
+    assert.equal(scroller.scrollTop, 190);
+  } finally {
+    view.reset();
+  }
+});
+
 test("question room: an overflowing plain ask question gets the class and the raised cap", async (t) => {
   const { view } = await askPage(t);
   try {

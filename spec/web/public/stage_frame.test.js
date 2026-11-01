@@ -9,7 +9,7 @@ globalThis.matchMedia ??= () => ({ matches: false });
 
 const { createStageFrame } = await import("../../../lib/samagotchi/web/public/stage_frame.js");
 
-function frameOf({ holding = true, collapsed = false, cloudOpen = false, roomCap = false } = {}) {
+function frameOf({ holding = true, collapsed = false, cloudOpen = false, roomCap = false, waitingCard = () => null } = {}) {
   const observedLog = [];
   const saved = globalThis.ResizeObserver;
   globalThis.ResizeObserver = class {
@@ -33,6 +33,7 @@ function frameOf({ holding = true, collapsed = false, cloudOpen = false, roomCap
       isCollapsed: () => state.collapsed,
       isCloudOpen: () => state.cloudOpen,
       isRoomCap: () => state.roomCap,
+      waitingCard,
     });
     return { frame, stage, state, observedLog, centerEl, dockEl, ...parts };
   } finally {
@@ -173,6 +174,115 @@ test("fitCap's keyboard path (a smaller cap while a card waits) keeps the card-e
   frame.fitCap();
   await new Promise((resolve) => requestAnimationFrame(() => resolve()));
   assert.equal(scroller.scrollTop, extras.offsetTop + extras.offsetHeight - scroller.clientHeight);
+});
+
+// A waiting card taller than the view: the asking text at 100, the card
+// from 200 to 1000 in the extras, a 400 px scroller.
+function tallCard() {
+  let card = null;
+  const f = frameOf({ waitingCard: () => card });
+  const set = (el, props) => {
+    for (const [k, v] of Object.entries(props)) Object.defineProperty(el, k, { configurable: true, get: () => v });
+  };
+  card = document.createElement("details");
+  f.extras.appendChild(card);
+  set(f.asking, { offsetTop: 100, offsetHeight: 60 });
+  set(f.extras, { offsetTop: 200, offsetHeight: 800 });
+  set(card, { offsetTop: 200, offsetHeight: 800 });
+  set(f.scroller, { clientHeight: 400 });
+  f.stage.classList.add("waiting");
+  return { ...f, card, set };
+}
+
+// The cap drops under the stage (a keyboard): what the rule then did, a frame on.
+async function capDrop(t, { centerEl, frame, scroller }, { view = null } = {}) {
+  let center = 2000;
+  Object.defineProperty(centerEl, "clientHeight", { configurable: true, get: () => center });
+  const was = Object.getOwnPropertyDescriptor(window, "innerHeight");
+  Object.defineProperty(window, "innerHeight", { configurable: true, get: () => 1000 });
+  t.after(() => { if (was) Object.defineProperty(window, "innerHeight", was); else delete window.innerHeight; });
+  frame.fitCap();
+  center = 600;
+  frame.fitCap();
+  if (view !== null) Object.defineProperty(scroller, "clientHeight", { configurable: true, get: () => view });
+  await new Promise((resolve) => requestAnimationFrame(() => resolve()));
+}
+
+test("reveal: a waiting card taller than the view reads from its top, not from its options", () => {
+  const { frame, scroller, extras, card } = tallCard();
+  frame.reveal(extras, { now: true });
+  assert.equal(scroller.scrollTop, card.offsetTop - 8);
+  // Also for a reader below it (the cloud open under the card).
+  scroller.scrollTop = 900;
+  frame.reveal(extras, { now: true });
+  assert.equal(scroller.scrollTop, card.offsetTop - 8);
+});
+
+test("reveal: a waiting card that fits keeps the card-end rule", () => {
+  const { frame, scroller, extras, asking, card, set } = tallCard();
+  set(extras, { offsetTop: 600, offsetHeight: 200 });
+  set(card, { offsetTop: 600, offsetHeight: 200 });
+  set(asking, { offsetTop: 100, offsetHeight: 450 });
+  frame.reveal(extras, { now: true });
+  assert.equal(scroller.scrollTop, 400, "they don't fit together: the card's end");
+  // Both fit: the asking text's top.
+  set(asking, { offsetTop: 450, offsetHeight: 100 });
+  scroller.scrollTop = 0;
+  frame.reveal(extras, { now: true });
+  assert.equal(scroller.scrollTop, 400);
+});
+
+test("reveal: a slot without the waiting card (the cloud opening) keeps its own rule", () => {
+  const { frame, scroller, cloud, set } = tallCard();
+  set(cloud, { offsetTop: 1000, offsetHeight: 200 });
+  frame.reveal(cloud, { now: true });
+  assert.equal(scroller.scrollTop, 800);
+});
+
+test("a smaller cap that puts a card in sight out of the view brings it back, to its top", async (t) => {
+  const f = tallCard();
+  f.scroller.scrollTop = 0;
+  await capDrop(t, f, { view: 100 });
+  assert.equal(f.scroller.scrollTop, f.card.offsetTop - 8);
+});
+
+test("a smaller cap leaves a reader above the card alone while it still shows", async (t) => {
+  const f = tallCard();
+  f.scroller.scrollTop = 0;
+  await capDrop(t, f, { view: 300 });
+  assert.equal(f.scroller.scrollTop, 0);
+});
+
+test("a smaller cap leaves a reader inside the card where they read", async (t) => {
+  const f = tallCard();
+  f.scroller.scrollTop = 500;
+  await capDrop(t, f);
+  assert.equal(f.scroller.scrollTop, 500);
+});
+
+test("a smaller cap doesn't bring back a reader who scrolled away from the card", async (t) => {
+  const f = tallCard();
+  f.set(f.card, { offsetTop: 700, offsetHeight: 800 });
+  f.set(f.extras, { offsetTop: 700, offsetHeight: 800 });
+  f.scroller.scrollTop = 0;
+  await capDrop(t, f);
+  assert.equal(f.scroller.scrollTop, 0);
+});
+
+test("a smaller cap keeps the field someone types in, not the card's top", async (t) => {
+  const f = tallCard();
+  document.body.append(f.stage);
+  t.after(() => f.stage.remove());
+  const reason = document.createElement("input");
+  reason.type = "text";
+  f.card.appendChild(reason);
+  reason.focus();
+  let scrolled = 0;
+  reason.scrollIntoView = () => { scrolled += 1; };
+  f.scroller.scrollTop = 0;
+  await capDrop(t, f);
+  assert.ok(scrolled >= 1);
+  assert.equal(f.scroller.scrollTop, 0);
 });
 
 test("reveal now (the keyboard's smaller cap) stops a running ease, which would take the scroll back to its old target", async () => {

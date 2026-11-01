@@ -401,6 +401,19 @@ test("a turn at its step limit asks to continue: the card survives a reload, Con
   await expect(page.locator("#topStrip .card.waiting")).toHaveCount(0);
 });
 
+// A waiting card reads from its top: what asks and what it approves inside the
+// stage's visible scroll area, no scrolling needed.
+async function expectCardTopInView(page, card) {
+  await page.waitForFunction(() => !document.querySelector("#turnStage .ts-scroll[data-following]") && document.querySelector("#turnStage").getAnimations().length === 0);
+  const view = await page.locator("#turnStage .ts-scroll").boundingBox();
+  for (const part of [card.locator("summary"), card.locator(".approval-what")]) {
+    await expect(part).toBeVisible();
+    const box = await part.boundingBox();
+    expect(box.y).toBeGreaterThanOrEqual(view.y);
+    expect(box.y + box.height).toBeLessThanOrEqual(view.y + view.height);
+  }
+}
+
 test("an approval card: allowing it runs the tool", async ({ page, script }) => {
   script("approval");
   await watchShifts(page);
@@ -412,6 +425,7 @@ test("an approval card: allowing it runs the tool", async ({ page, script }) => 
   await expect(card.locator(".approval-why")).toContainText("e2e-ask");
   // The stage shows the reply that asked for it above the card.
   await expect(page.locator("#turnStage .ts-asking")).toHaveText("Running the command that needs approval.");
+  await expectCardTopInView(page, card);
   // The plain flip: the first words stream as the answer, then the tool
   // starts; the stage holds its height and nothing in it moves. (The
   // composer card settles into a new session's layout meanwhile.)
@@ -439,10 +453,8 @@ test("an approval card: allowing it runs the tool", async ({ page, script }) => 
   await expect(card.locator(".question-result")).toContainText("Allow");
   await expect(answer(page)).toHaveText("The approved command ran.");
   // The answer: the stage keeps its height and nothing in it shifts. This
-  // card is taller than its room (its options in sight, its top scrolled
-  // out), so it can't keep its top: its line comes into the stage's view
-  // (the focus may scroll the stage to it). The question test has a card
-  // that keeps it.
+  // card is taller than its room (its top in sight, the rest a scroll away):
+  // its line stays in the stage's view.
   const endAt = momentAt(await stageMarks(page), (m) => /\bended\b/.test(m.cls), answerAt);
   expect(await shiftSum(page, { from: answerAt, to: endAt, withInput: true })).toBeLessThan(0.01);
   expect(await snaps(page, { from: answerAt, to: endAt, keys: ["status", "chip", "composer"] })).toEqual([]);
@@ -460,15 +472,27 @@ test("an approval card: allowing it runs the tool", async ({ page, script }) => 
 // the parent's own card; allowing it there runs the child's command, and the
 // parent's model gets the outcome line with the reply.
 test("a delegate's approval is answered on the parent's page", async ({ page, script }) => {
+  // A phone: the card is taller than the stage's view, and reads from its top
+  // on arrival and when the page opens on it.
+  await page.setViewportSize({ width: 390, height: 844 });
   script("delegate_relay");
   await send(page, "Delegate the command that needs approval");
   const card = page.locator(`${H} .bubble.question.approval`);
   await expect(card.locator(".approval-delegate")).toContainText("E2E_CHILD_TASK");
   await expect(card.locator(".approval-what")).toHaveText(APPROVAL_COMMAND);
   await expect(card.locator("summary")).toContainText("Approve delegate");
+  await expectCardTopInView(page, card);
+  await page.reload();
+  await expect(card.locator(".approval-what")).toHaveText(APPROVAL_COMMAND);
+  await expectCardTopInView(page, card);
+  // Reaching for the options scrolls down the card; the answer brings its line back.
   await card.locator(".question-option").first().click();
   await card.locator(".question-submit").click();
   await expect(card.locator(".question-result")).toContainText("Allowed: Allow once");
+  const view = await page.locator("#turnStage .ts-scroll").boundingBox();
+  const line = await card.locator("summary").boundingBox();
+  expect(line.y).toBeGreaterThanOrEqual(view.y);
+  expect(line.y + line.height).toBeLessThanOrEqual(view.y + view.height);
   await expect(answer(page)).toHaveText("The delegate is done.");
   await turnEnded(page, 1);
   const row = page.locator("#history .activity-row").filter({ hasText: "delegate" });

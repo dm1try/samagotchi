@@ -838,6 +838,9 @@ body.stage-view .turn-stage{position:absolute;left:0;right:0;bottom:100%;margin-
 /* Rows that arrive during the turn (cards, queued prompts, commands, notes) and after its end (the end line): capped, own scroll. */
 .ts-extras,.ts-tail{display:flex;flex-direction:column;gap:8px;max-height:calc(var(--stage-max,60vh) * .4);overflow:auto;scrollbar-width:thin}
 .turn-stage.held-wait .ts-extras{max-height:calc(var(--stage-max,60vh) * .7)}
+/* A blocking card is read whole in the stage's one scroll (from its top, stage_frame.js revealTop), not in a smaller scroller of
+   its own: its question and command never sit above a nested view's edge. Answered, the slot has its cap again. */
+.turn-stage.waiting :is(.ts-extras,.ts-tail){max-height:none;overflow:visible}
 /* The card under the live slots stays put from its arrival to the next step: waiting, the slots keep at least their running
    height (the asking text in the headline's place, the tool row's and the trail's room left blank); answered, the height
    they had while waiting (stage_view.js). */
