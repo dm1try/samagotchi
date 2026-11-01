@@ -64,6 +64,19 @@ RSpec.describe "The check-in bundle, installed" do
     expect(File.exist?(index) ? File.read(index) : "").not_to include("check-in")
   end
 
+  it "asks System 1 nothing while check-in.progress has no mode, and behaves as it always did" do
+    replies = [tool_call, tool_call, "found it"]
+    allow(client).to receive(:complete) { replies.shift || "found it" }
+
+    engine.run_turn(session, "look around")
+
+    expect(cards.first[:title]).to eq("2 tool calls, no answer yet")
+    expect(cards.last[:title]).to eq("check-in")
+    expect(events.none? { |event| event[:type] == :hook_notice && event[:text].to_s.include?("judgment") }).to be(true)
+    runs = File.join(tmpdir, "state", "system_one", "runs", "check-in.progress")
+    expect(File.exist?(runs)).to be(false)
+  end
+
   it "asks with a card mid-turn; its Nudge puts the message into the turn, and the card closes at the end" do
     replies = [tool_call, tool_call, tool_call, "found it"]
     nudged = nil

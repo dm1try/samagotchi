@@ -26,6 +26,13 @@
 # when the session comes back (a worker's restart), before its first turn
 # or command. Another session starts from the settings.
 #
+# Each check-in also asks System 1 `check-in.progress` (docs/system-one.md),
+# off until the user sets a mode for it: the turn's prompt, the calls since
+# the last check-in and the count and elapsed time go, on a side thread, to
+# the cheap judgment model. Nothing is done with the answer: it is saved,
+# and what the user then did with the card is saved as a label on that run.
+# The card, the nudge and the notify are the same either way.
+#
 # Settings (config.yml, bundles: check-in:):
 #   after: 50          tool calls in one turn before the first check-in
 #   every: 50          then again every this many more
@@ -43,6 +50,15 @@ class Plugin
   DEFAULT_IGNORE = %w[task_wait task_get delegate_result].freeze
   LAST_TOOLS = 5
   USAGE = "usage: /checkin [on|off|<calls>|mode ask|nudge|notify|nudge|later|stop]"
+  # The audit judgment (docs/plugins.md, Judgments): one noul question per
+  # check-in, answered on a side thread and never acted on.
+  PROGRESS = "progress"
+  PROGRESS_QUESTION = "Is this turn still making progress toward what the user asked?"
+  # The calls since the last check-in, each cut as it is captured and kept
+  # together under about 4 KB (the oldest go first).
+  CALL_CHARS = 120
+  RESULT_CHARS = 200
+  CALLS_TOTAL = 4096
 
   def initialize(settings = {})
     @after = positive(settings["after"]) || 50
@@ -59,7 +75,14 @@ class Plugin
   end
 
   def register(chi)
-    chi.on(:before_turn) { |_event, ctx| before_turn(ctx) }
+    # An older chi has no judgments; the check-in itself is the same there.
+    @declared = chi.respond_to?(:judgment)
+    if @declared
+      chi.judgment PROGRESS, questions: { PROGRESS => { type: "noul", instructions: PROGRESS_QUESTION } },
+                             shared_host: :skip
+    end
+
+    chi.on(:before_turn) { |event, ctx| before_turn(event, ctx) }
     chi.on(:after_tool_call) { |event, ctx| after_tool_call(event, ctx) }
     chi.on(:after_turn) { |event, ctx| after_turn(event, ctx) }
     chi.command "/checkin", "check on a long turn: status, on|off, <calls>, mode ask|nudge|notify, nudge, later, stop",
@@ -82,13 +105,21 @@ class Plugin
     @nudge = nil    # the card's Nudge this turn: { text:, count: }
     @checked_in = nil # the count at this turn's latest check-in
     @nudged_for = nil # the check-in (its count, :none before one) nudged
+    @prompt = nil   # the owner's prompt, for the judgment
+    @calls_since = [] # the calls since the last check-in, for the judgment
+    @calls_bytes = 0
+    @run = nil      # the latest check-in's run, for its labels
   end
 
-  def before_turn(ctx)
+  def before_turn(event, ctx)
     close_card(ctx, "The turn ended after #{calls} tool calls.")
     @mutex.synchronize do
       load_session(ctx)
       reset
+      # A continue, a wake or a reminder has no prompt of its own, and a
+      # participant's turn says nothing about the owner's: the judgment gets
+      # none then.
+      @prompt = ctx.turn_author ? nil : event[:prompt]
     end
   end
 
@@ -100,13 +131,17 @@ class Plugin
       load_session(ctx)
       @count += 1
       @tools = (@tools + [tool]).last(LAST_TOOLS)
+      note_call(event)
       next nil unless @enabled && @count >= @next_at
 
       @next_at = @count + @every
       @checked_in = @count
       [@count, @mode]
     end
-    check_in(ctx, *due) if due
+    return unless due
+
+    check_in(ctx, *due)
+    ask_progress(ctx)
   end
 
   def check_in(ctx, count, mode)
@@ -128,7 +163,7 @@ class Plugin
   end
 
   def after_turn(event, ctx)
-    return if close_card(ctx, "The turn ended after #{calls} tool calls.")
+    label(ctx, "turn_stopped", by: "turn", strength: nil) if close_card(ctx, "The turn ended after #{calls} tool calls.")
 
     nudge_not_sent(event, ctx)
   end
@@ -189,6 +224,58 @@ class Plugin
 
     ctx.card(id: id, title: "check-in", body: body)
     true
+  end
+
+  # --- the progress judgment (audit) ---------------------------------------
+
+  # Every counted call since the last check-in, in the words System 1 sees:
+  # the tool, what it was asked for, what it said. Cut here, so the state
+  # stays near 4 KB whatever a tool returned (docs/system-one.md: this is
+  # tool output reaching System 1, which approvals and context never send).
+  def note_call(event)
+    entry = "#{event[:tool]} #{cut(call_args(event[:call]), CALL_CHARS)} -> #{cut(event[:result] || event[:output], RESULT_CHARS)}"
+    @calls_since << entry
+    @calls_bytes += entry.bytesize
+    @calls_bytes -= @calls_since.shift.bytesize while @calls_bytes > CALLS_TOTAL && @calls_since.size > 1
+  end
+
+  def call_args(call)
+    args = call.is_a?(Hash) ? (call[:arguments] || call["arguments"] || call) : call
+    args.is_a?(String) ? args : JSON.generate(args)
+  rescue StandardError
+    args.to_s
+  end
+
+  def cut(text, limit)
+    text = text.to_s
+    text.length > limit ? "#{text[0, limit]}…" : text
+  end
+
+  # The ask, on its own thread. Nothing reads the answer: the turn and the
+  # card are what they are with the judgment off. `shared_host: :skip` (the
+  # declaration) saves the run with `asked: false` when a turn is running on
+  # the same local System 1 host, so the ask never evicts that turn's cache.
+  def ask_progress(ctx)
+    return unless @declared
+
+    state = @mutex.synchronize do
+      state = { prompt: @prompt, calls: @count, elapsed_s: (monotonic - @started).round, tools: @calls_since.dup }
+      @calls_since = []
+      @calls_bytes = 0
+      state
+    end
+    run = ctx.judge_later(PROGRESS, state: state)
+    @mutex.synchronize { @run = run }
+  end
+
+  # What the user did with the card, saved on this turn's latest check-in's
+  # run: raw words, mapped only at analysis, since a Nudge asks for a status
+  # rather than a verdict and Keep going may be habit. A run that was never
+  # saved (the judgment off, no host) labels nothing.
+  def label(ctx, value, by: "card", strength: "weak")
+    return false unless @declared
+
+    ctx.judgments.label(@mutex.synchronize { @run }, value, by: by, strength: strength)
   end
 
   # --- /checkin --------------------------------------------------------------
@@ -262,6 +349,7 @@ class Plugin
     end
 
     @mutex.synchronize { @nudge = { text: text, count: count } }
+    label(ctx, "nudge") if card_open?
     close_card(ctx, "Nudged the model at #{count} tool calls.")
     nil
   end
@@ -270,12 +358,14 @@ class Plugin
     at = @mutex.synchronize { @next_at }
     return "check-in: no check-in open" unless close_card(ctx, "Kept going; the next check-in is at #{at} tool calls.")
 
+    label(ctx, "keep_going")
     nil
   end
 
   def stop(ctx)
     return "check-in: no turn running" unless ctx.stop_turn("stopped from check-in")
 
+    label(ctx, "stop") if card_open?
     close_card(ctx, "Stopped the turn at #{calls} tool calls.")
     nil
   end
@@ -325,6 +415,8 @@ class Plugin
   # --- helpers ---------------------------------------------------------------
 
   def calls = @mutex.synchronize { @count }
+
+  def card_open? = @mutex.synchronize { @card_open }
 
   def message(count) = @message.gsub("{calls}", count.to_s)
 

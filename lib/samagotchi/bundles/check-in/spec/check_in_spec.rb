@@ -7,8 +7,12 @@ require "samagotchi/testing/rspec"
 # and runs real turns.
 RSpec.describe "The check-in plugin", :bundle do
   # The plugin as chi loads it, for session s1. Each call is a new load (a
-  # worker's restart): the same sandbox, so the same data dir.
-  def plugin(settings = {}) = shipped_bundle("check-in", settings: settings, host: { session_id: "s1" })
+  # worker's restart): the same sandbox, so the same data dir. Its progress
+  # judgment is off here, as it is in chi until the user sets a mode.
+  def plugin(settings = {})
+    shipped_bundle("check-in", settings: settings, host: { session_id: "s1" })
+      .tap { |bundle| bundle.judgments.mode("progress", "off") }
+  end
 
   def fire(p, type, **event) = p.fire(type, **event)
 
@@ -303,6 +307,225 @@ RSpec.describe "The check-in plugin", :bundle do
       expect(p.cards).to be_empty
       tools(p, "d")
       expect(p.cards.last[:title]).to eq("14 tool calls, no answer yet")
+    end
+  end
+
+  # docs/system-one.md, Bundles' judgments: the ask at each check-in and the
+  # labels of what the user then did, on the kit's fake System 1.
+  describe "the progress judgment" do
+    # chi's default is no mode at all (off); the kit needs the mode and an answer.
+    def judging(p, mode: "audit")
+      p.judgments.mode("progress", mode)
+      p.judgments.answer("progress", noul: 0.4)
+    end
+
+    # A tool call as chi's ToolRunner fires it (docs/hooks.md, Hook Events).
+    def tool_call(p, tool, args: {}, result: "ok")
+      fire(p, :after_tool_call, tool: tool, output: result, status: "ok", iteration: 1, elapsed_ms: 4,
+           call: { name: tool, arguments: args }, result: result)
+    end
+
+    def labels(p) = p.judgments.labels("progress")
+
+    # The run of the check-in at +calls+ tool calls (the asks are on a side
+    # thread, so the runs are not in order).
+    def run_at(p, calls)
+      p.judgments.runs("progress").find { |run| run["state"]["calls"] == calls }
+    end
+
+    it "asks at each check-in with the prompt, the calls since the last one, the count and the time" do
+      p = plugin("after" => 2, "every" => 3)
+      judging(p)
+      turn(p)
+      tool_call(p, "read", args: { path: "a.rb" }, result: "the file")
+      tool_call(p, "execute", args: { command: "ls" }, result: "one two")
+      p.judgments.wait
+
+      runs = p.judgments.runs("progress")
+      expect(runs.size).to eq(1)
+      run = runs.last
+      expect([run["judgment"], run["asked"], run["mode"], run["session_model"]]).to eq(["check-in.progress", true, "audit", "test:model"])
+      state = run["state"]
+      expect([state["prompt"], state["calls"]]).to eq(["go", 2])
+      expect(state["elapsed_s"]).to be_between(0, 60)
+      expect(state["tools"]).to eq(['read {"path":"a.rb"} -> the file', 'execute {"command":"ls"} -> one two'])
+    end
+
+    it "sends only the calls since the last check-in, each cut as it is captured" do
+      p = plugin("after" => 2, "every" => 2)
+      judging(p)
+      turn(p)
+      tool_call(p, "read", args: { path: "a" * 400 }, result: "x" * 900)
+      tool_call(p, "execute", args: { command: "ls" }, result: "y")
+      tool_call(p, "grep", args: { pattern: "z" }, result: "found")
+      tool_call(p, "read", args: { path: "b" }, result: "second")
+      p.judgments.wait
+
+      runs = p.judgments.runs("progress")
+      expect(runs.size).to eq(2)
+      first, second = [run_at(p, 2), run_at(p, 4)].map { |run| run["state"] }
+      expect([first["calls"], second["calls"]]).to eq([2, 4])
+      expect(second["tools"]).to eq(['grep {"pattern":"z"} -> found', 'read {"path":"b"} -> second'])
+      expect(first["tools"].first).to start_with('read {"path":"aaa')
+      expect(first["tools"].first).to end_with("…")
+      expect(first["tools"].first.length).to be <= 340
+    end
+
+    it "keeps the calls under about 4 KB, dropping the oldest" do
+      p = plugin("after" => 20, "every" => 20)
+      judging(p)
+      turn(p)
+      20.times { |i| tool_call(p, "execute", args: { command: "cat file#{i}" }, result: "y" * 400) }
+      p.judgments.wait
+
+      tools = p.judgments.runs("progress").last["state"]["tools"]
+      expect(tools.size).to be_between(10, 19)
+      expect(tools.join.bytesize).to be <= 4096
+      expect(tools.last).to eq('execute {"command":"cat file19"} -> ' + ("y" * 200) + "…")
+    end
+
+    it "asks nothing and saves nothing while no mode is set, and the card works as before" do
+      p = plugin("after" => 2)
+      turn(p)
+      tools(p, "read", "read")
+      expect(p.judgments.asks).to be_empty
+      expect(p.judgments.runs("progress")).to be_empty
+
+      expect(p.cards.last[:title]).to eq("2 tool calls, no answer yet")
+      expect(checkin(p, "nudge")).to be_nil
+      expect(checkin(p, "later")).to eq("check-in: no check-in open")
+      expect(steers(p).size).to eq(1)
+      expect(labels(p)).to be_empty
+    end
+
+    it "labels what the card's action did, on the latest check-in's run" do
+      p = plugin("after" => 2, "every" => 4)
+      judging(p)
+      turn(p)
+      tool_call(p, "read", result: "a")
+      tool_call(p, "read", result: "b")
+      p.judgments.wait
+      run = p.judgments.runs("progress").last["id"]
+
+      expect(checkin(p, "nudge")).to be_nil
+      expect(labels(p).size).to eq(1)
+      expect(labels(p).first).to include("kind" => "label", "run_id" => run, "value" => "nudge",
+                                         "by" => "check-in:card", "strength" => "weak")
+
+      # A repeat Nudge, a Keep going with no card and a Stop with no card: no label.
+      expect(checkin(p, "nudge")).to eq("check-in: already nudged at 2 tool calls")
+      expect(checkin(p, "later")).to eq("check-in: no check-in open")
+      expect(checkin(p, "stop")).to be_nil
+      expect(labels(p).size).to eq(1)
+
+      # The next check-in, and Stop on the card it opens.
+      tools(p, "read", "read", "read", "read")
+      p.judgments.wait
+      expect(checkin(p, "stop")).to be_nil
+      expect(labels(p).map { |line| [line["value"], line["run_id"]] }).to eq(
+        [["nudge", run], ["stop", run_at(p, 6)["id"]]]
+      )
+    end
+
+    it "labels the turn's end when the card was still open, and nothing when it wasn't" do
+      p = plugin("after" => 1, "every" => 1)
+      judging(p)
+      turn(p)
+      tool_call(p, "read", result: "a")
+      p.judgments.wait
+
+      expect(checkin(p, "later")).to be_nil
+      expect(labels(p).map { |line| [line["value"], line["by"], line["strength"]] })
+        .to eq([["keep_going", "check-in:card", "weak"]])
+
+      tool_call(p, "read", result: "b")
+      p.judgments.wait
+      fire(p, :after_turn, status: "completed")
+      expect(labels(p).map { |line| [line["value"], line["by"], line["strength"]] })
+        .to eq([["keep_going", "check-in:card", "weak"], ["turn_stopped", "check-in:turn", nil]])
+
+      p2 = plugin("after" => 5)
+      judging(p2)
+      turn(p2)
+      tool_call(p2, "read", result: "a")
+      fire(p2, :after_turn, status: "completed")
+      expect(p2.judgments.asks).to be_empty
+      expect(labels(p2)).to be_empty
+    end
+
+    it "asks in nudge and notify modes, where there is no card to label" do
+      p = plugin("after" => 1, "mode" => "nudge")
+      judging(p)
+      turn(p)
+      tool_call(p, "read", result: "a")
+      p.judgments.wait
+
+      expect(p.judgments.asks.size).to eq(1)
+      expect(checkin(p, "nudge")).to eq("check-in: already nudged at 1 tool calls")
+      expect(labels(p)).to be_empty
+    end
+
+    it "saves the run unasked while a turn runs on the System 1 host" do
+      p = plugin("after" => 1)
+      judging(p)
+      p.judgments.shared_host_busy(true)
+      turn(p)
+      tool_call(p, "read", result: "a")
+      p.judgments.wait
+
+      expect(p.judgments.asks).to be_empty
+      run = p.judgments.runs("progress").last
+      expect([run["asked"], run["skipped"]]).to eq([false, "shared_host"])
+      expect(run["state"]["calls"]).to eq(1)
+    end
+
+    it "saves no prompt for a turn someone else is running, or for a continue" do
+      p = plugin("after" => 1)
+      judging(p)
+      p.set(turn_author: "p:1")
+      turn(p)
+      tool_call(p, "read", result: "a")
+      p.judgments.wait
+      expect(p.judgments.asks.last.state["prompt"]).to be_nil
+
+      p2 = plugin("after" => 1)
+      judging(p2)
+      fire(p2, :before_turn, prompt: nil, resumed: true)
+      tool_call(p2, "read", result: "a")
+      p2.judgments.wait
+      expect(p2.judgments.asks.last.state["prompt"]).to be_nil
+    end
+
+    it "a restarted plugin has no run to label, so a click labels nothing" do
+      p = plugin("after" => 2)
+      judging(p)
+      turn(p)
+      tools(p, "read", "read")
+      p.judgments.wait
+      expect(checkin(p, "nudge")).to be_nil
+
+      restarted = plugin("after" => 2)
+      judging(restarted)
+      expect(checkin(restarted, "nudge")).to be_nil
+      expect(restarted.judgments.labels("progress")).to be_empty
+      expect(restarted.judgments.runs("progress")).to be_empty
+    end
+
+    it "changes nothing the user sees: the card, its actions and its notices are the same" do
+      p = plugin("after" => 2, "every" => 2)
+      judging(p, mode: "on")
+      turn(p)
+      tools(p, "read", "read")
+      p.judgments.wait
+
+      expect(notices(p)).to be_empty
+      expect(steers(p)).to be_empty
+      expect(p.cards.last[:title]).to eq("2 tool calls, no answer yet")
+      expect(p.cards.last[:actions]).to eq([{ label: "Nudge", command: "/checkin nudge" },
+                                            { label: "Keep going", command: "/checkin later" },
+                                            { label: "Stop", command: "/checkin stop" }])
+      expect(checkin(p, "later")).to be_nil
+      expect(p.cards.last[:body]).to eq("Kept going; the next check-in is at 4 tool calls.")
     end
   end
 end
