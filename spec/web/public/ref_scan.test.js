@@ -33,6 +33,14 @@ test("refs in inline code and in text, ranges too; fenced code, markdown links a
   ]);
 });
 
+// CommonMark: an opening backtick fence's info string carries no backtick.
+// Taken as a fence, "```foo``` first" stays open and hides every ref after it.
+test("a line that opens and closes backticks on itself is inline code, not a fence", () => {
+  assert.deepEqual(found("```foo``` first\nlib/foo.rb:28"), [["lib/foo.rb:28", "/p/lib/foo.rb", 28, null]]);
+  assert.deepEqual(found("```lib/foo.rb:28``` first"), [["```lib/foo.rb:28```", "/p/lib/foo.rb", 28, null]]);
+  assert.deepEqual(found("```ruby\nlib/foo.rb:28\n```\n"), []);
+});
+
 test("a bare name or an absolute path: the one touched file it names", () => {
   assert.deepEqual(found("source_links.rb:2 /p/lib/foo.rb:21"), [
     ["source_links.rb:2", "/p/lib/samagotchi/source_links.rb", 2, null],

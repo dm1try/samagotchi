@@ -453,6 +453,15 @@ RSpec.describe "The github-pr bundle", :bundle do
         MD
       end
 
+      # CommonMark: an opening backtick fence's info string carries no backtick.
+      # Taken as a fence, "```foo``` first" stays open and hides every ref after it.
+      it "reads a line that opens and closes backticks on itself as inline code, not a fence" do
+        expect(answer("```foo``` first\nlib/foo.rb:28")).to eq("```foo``` first\n[lib/foo.rb:28](#{anchor("lib/foo.rb", "R28")})")
+        expect(answer("```lib/foo.rb:28``` first")).to eq("[```lib/foo.rb:28```](#{anchor("lib/foo.rb", "R28")}) first")
+        fenced = "```ruby\nlib/foo.rb:28\n```\n"
+        expect(answer(fenced)).to eq(fenced)
+      end
+
       it "resolves a bare name or an absolute worktree path by a unique suffix" do
         expect(answer("source_links.rb:2 /Users/me/samagotchi-pr42/lib/foo.rb:21"))
           .to eq("[source_links.rb:2](#{anchor("lib/samagotchi/source_links.rb", "R2")}) " \

@@ -501,8 +501,10 @@ class LineLinker
   QUICK = /\S:\d/
   URL_SPAN = %r{[a-z][a-z0-9+.-]*://\S+}i
   MARKDOWN_LINK = /\[[^\]]*\]\([^)]*\)/
-  # A fenced code block's opening line (up to 3 spaces, then ``` or ~~~).
-  FENCE_OPEN = /\A {0,3}(`{3,}|~{3,})/
+  # A fenced code block's opening line (up to 3 spaces, then ``` or ~~~). A
+  # backtick fence's info string carries no backtick: "```foo``` first" is
+  # inline code, and as a fence it would stay open over the rest of the text.
+  FENCE_OPEN = /\A {0,3}(`{3,}(?![^\n]*`)|~{3,})/
 
   # The content of the last model message, or nil (string or symbol keys).
   def self.last_model_text(messages)

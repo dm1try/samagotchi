@@ -86,8 +86,10 @@ class SourceLinks
   URL_SPAN = %r{[a-z][a-z0-9+.-]*://\S+}i
   TRAILING_URL_PUNCTUATION = /[.,;:!?'"]+\z/
   MARKDOWN_LINK = /\[([^\]]*)\]\(([^)]*)\)/
-  # A fenced code block's opening line (up to 3 spaces, then ``` or ~~~).
-  FENCE_OPEN = /\A {0,3}(`{3,}|~{3,})/
+  # A fenced code block's opening line (up to 3 spaces, then ``` or ~~~). A
+  # backtick fence's info string carries no backtick: "```foo``` first" is
+  # inline code, and as a fence it would stay open over the rest of the text.
+  FENCE_OPEN = /\A {0,3}(`{3,}(?![^\n]*`)|~{3,})/
   # A `{word}` or `{N}` placeholder in a `url:` template.
   PLACEHOLDER = /\{(\w+)\}/
   # Placeholders every pattern has: {match} (group 1, else the whole ref),

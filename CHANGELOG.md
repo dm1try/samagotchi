@@ -18,6 +18,11 @@ and commands may change between minor versions. How releases are made:
   rest (toolkit, working set, participants, chain links, delegates, the telemetry, Continue, Archive, Stop, Delete). A dot on ⋯ says
   when something there needs a look. See [docs/cli.md](docs/cli.md#the-session-bar-on-a-phone).
 
+### Fixed
+
+- An answer with a line that opens and closes backticks itself (```` ```foo``` first ````) no longer loses every link after it: the source-links
+  and github-pr bundles and the web's file refs read it as inline code, not as a code block left open.
+
 ## [0.143.0] - 2026-11-01
 
 ### Added

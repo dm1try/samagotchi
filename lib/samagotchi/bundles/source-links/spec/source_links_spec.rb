@@ -46,6 +46,15 @@ RSpec.describe "The source-links bundle on a question", :bundle do
     expect(bundle.notices).to be_empty
   end
 
+  # CommonMark: an opening backtick fence's info string carries no backtick.
+  # Taken as a fence, "```foo``` first" stays open and hides every ref after it.
+  it "reads a line that opens and closes backticks on itself as inline code, not a fence" do
+    bundle = hook
+    expect(bundle.question_asked("```foo``` first\nDEMO-1?").map { |r| r[:match] }).to eq(%w[DEMO-1])
+    expect(bundle.question_asked("```DEMO-1``` first, then DEMO-2?").map { |r| r[:match] }).to eq(%w[DEMO-2])
+    expect(bundle.question_asked("```ruby\nDEMO-1\n```\nDEMO-2?").map { |r| r[:match] }).to eq(%w[DEMO-2])
+  end
+
   it "attaches nothing without sources, or for a question that names none" do
     expect(hook({}).question_asked("DEMO-1?")).to eq([])
     expect(hook.question_asked("Which file should I read?", question: { question: "README or Gemfile?", options: %w[a b] })).to eq([])
