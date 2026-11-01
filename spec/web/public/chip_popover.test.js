@@ -273,3 +273,34 @@ test("a click on a button the act redraws away doesn't close it", () => {
   assert.equal(s.ctl.isOpen(), false);
   s.done();
 });
+
+// A chip the phone's bar folds behind ⋯ has no box: its popover goes to the
+// stand-in, and so do aria-expanded and the focus on close.
+test("an anchor with no box is placed and focused at the page's stand-in", () => {
+  const standIn = document.createElement("button");
+  standIn.setAttribute("data-anchor-stand-in", "");
+  document.body.append(standIn);
+  standIn.getClientRects = () => [{}];
+  standIn.getBoundingClientRect = () => ({ left: 300, top: 700, bottom: 730 });
+  const { ctl, chip, done } = shell();
+  chip.getClientRects = () => [];
+  chip.getBoundingClientRect = () => ({ left: 0, top: 0, bottom: 0 });
+
+  chip.click();
+  assert.equal(ctl.pop.style.left, "300px");
+  assert.equal(ctl.pop.style.bottom, "108px");
+  assert.equal(standIn.getAttribute("aria-expanded"), "true");
+  document.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Escape" }));
+  assert.equal(standIn.getAttribute("aria-expanded"), "false");
+  assert.equal(document.activeElement, standIn);
+
+  // An anchor with a box keeps its place, whatever else stands by.
+  chip.getClientRects = () => [{}];
+  chip.getBoundingClientRect = () => ({ left: 40, top: 700, bottom: 730 });
+  chip.click();
+  assert.equal(ctl.pop.style.left, "40px");
+  assert.equal(standIn.getAttribute("aria-expanded"), "false");
+  ctl.close();
+  standIn.remove();
+  done();
+});
