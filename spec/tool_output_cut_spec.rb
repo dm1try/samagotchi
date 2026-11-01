@@ -47,6 +47,21 @@ RSpec.describe Samagotchi::ToolOutputCut do
     end
   end
 
+  describe "memory_line" do
+    it "names the memory file and start_line, the whole within the cap, and is not a HEAD_CUT line" do
+      line = described_class.memory_line(["/m/p", "/m/s"], single: true)
+      text = described_class.head("z" * 400, 200, line: line)
+      expect(text).to end_with("chars; the rest is in the memory's .md file in /m/p or /m/s: read it with start_line]")
+      expect(text.length).to be <= 200
+      expect(text).not_to match(described_class::HEAD_CUT)
+      expect(described_class.apply("z" * 400, cap: 200, tool: "memory_read", line: line)).to eq([text, nil])
+    end
+
+    it "leaves read's line alone" do
+      expect("z".*(400).then { described_class.head(_1, 200) }).to end_with("read it in parts]")
+    end
+  end
+
   it "cuts an unknown tool's output by the head" do
     expect(described_class.policy("some_plugin_tool")).to eq(:head)
     expect(described_class.apply("y" * 200, cap: 80, tool: "some_plugin_tool")).to eq([described_class.head("y" * 200, 80), nil])

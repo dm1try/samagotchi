@@ -306,7 +306,9 @@ module Samagotchi
     # Precedence: an explicit override wins, then max_tool_output_chars
     # (Config). A non-positive value falls back to
     # DEFAULT_MAX_TOOL_OUTPUT_CHARS (there is intentionally no "unlimited" — live UIs get a
-    # bounded `output:` plus a truthful `output_truncated:` flag).
+    # bounded `output:` plus a truthful `output_truncated:` flag). The one
+    # exception is memory_read, which ToolRunner leaves out of this cap
+    # (memory.read_max_chars, 0: no fixed cap; a memory is read whole).
     # Class-level so the chat loop resolves it the same way.
     def self.resolve_output_char_cap(override)
       parsed = (override || Samagotchi::Config.get("max_tool_output_chars")).to_i

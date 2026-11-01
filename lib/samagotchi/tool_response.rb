@@ -6,7 +6,7 @@ module Samagotchi
   # what the model gets back is per format: the native loop answers a batch
   # with ONE tool_response (#joined), the chat loop each call with its own,
   # paired by tool_call_id (#single). Both feed the capped outputs
-  # (max_tool_output_chars).
+  # (max_tool_output_chars; memory_read's is memory.read_max_chars).
   module ToolResponse
     SEPARATOR = "\n\n---\n\n"
     # Saved with a result for the web's reload (a plugin tool's params line,

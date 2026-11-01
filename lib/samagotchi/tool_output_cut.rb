@@ -9,7 +9,9 @@ module Samagotchi
   #
   # :head keeps the first chars and ends with head_line ("[cut: N of M
   # chars; read it in parts]"): read (which has line ranges) and every tool
-  # with no policy of its own.
+  # with no policy of its own. memory_read's cut (a memory.read_max_chars
+  # cap) ends with memory_line instead, which says where the rest is
+  # (the memory's .md file, read with start_line): memory_read has no parts.
   #
   # :head_tail_file (execute) keeps a short head and a long tail, whole
   # lines, with one gap line between them, and saves the whole output
@@ -95,9 +97,11 @@ module Samagotchi
     #   +save+ returned (nil when it wasn't called)
     # @param ref [String, nil] :head_tail_ref: the file the whole text is in
     # @param ref_stderr [String, nil] :head_tail_ref: its stderr's file, if apart
-    def apply(output, cap:, tool:, save: nil, ref: nil, ref_stderr: nil, head_chars: HEAD_CHARS)
+    # @param line [#call, nil] (kept, total) → the cut line of a :head cut
+    #   (head_line when nil): memory_read's names the memory file
+    def apply(output, cap:, tool:, save: nil, ref: nil, ref_stderr: nil, head_chars: HEAD_CHARS, line: nil)
       kind = policy(tool)
-      return [head(output, cap), nil] if kind == :head || cap < MIN_TAIL * 3
+      return [head(output, cap, line: line), nil] if kind == :head || cap < MIN_TAIL * 3
 
       if kind == :head_tail_ref
         text = head_tail(output, cap: cap, blocks: [Block.new(from: 0, length: output.length)], head_chars: head_chars,
@@ -137,10 +141,26 @@ module Samagotchi
     # +output+ cut to +cap+ chars, the cut line included: the model knows
     # what it didn't get. A cap smaller than the line keeps +cap+ chars and
     # the line goes past it.
-    def head(output, cap)
-      keep = cap - head_line(cap, output.length).length
+    # @param line [#call, nil] (kept, total) → the cut line, head_line when nil
+    def head(output, cap, line: nil)
+      line ||= method(:head_line)
+      keep = cap - line.call(cap, output.length).length
       keep = cap unless keep.positive?
-      "#{output[0, keep]}#{head_line(keep, output.length)}"
+      "#{output[0, keep]}#{line.call(keep, output.length)}"
+    end
+
+    # memory_read's cut line: the rest is in the memory's file, which read
+    # takes with start_line. +where+ names the memory dir(s) searched
+    # ("the memory .md file" for one name, "the .md files" for a list or the
+    # indexes).
+    # @param dirs [Array<String>] the memories dirs searched
+    # @param single [Boolean] one memory name was read
+    # @return [#call] a +line+ for head/apply
+    def memory_line(dirs, single:)
+      what = single ? "the memory's .md file" : "the memories' .md files"
+      lambda do |kept, total|
+        "\n[cut: #{kept} of #{total} chars; the rest is in #{what} in #{dirs.join(" or ")}: read it with start_line]"
+      end
     end
 
     def head_line(kept, total)

@@ -176,4 +176,39 @@ RSpec.describe "Tool call wrapper parity" do
       expect(native).to include("the task's whole output is in /tasks/t1.log")
     end
   end
+
+  describe "a memory_read result over max_tool_output_chars" do
+    let(:long) { (1..600).map { |i| "memory line #{i}" }.join("\n") }
+    let(:native_call) { %(call:memory_read{name: "big", scope: "system"}) }
+    let(:chat_call) { ["c1", "memory_read", { "name" => "big", "scope" => "system" }] }
+
+    around { |ex| with_config_home(File.join(dir, "config")) { ex.run } }
+
+    before { allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_return(long) }
+
+    it "both loops give the model all of it, not cut by max_tool_output_chars" do
+      _result, native = run_native(max_tool_output_chars: 2000, call: native_call)
+      expect(completed[:output_truncated]).to be(false)
+      events.clear
+      _result, chat = run_chat(max_tool_output_chars: 2000, call: chat_call)
+
+      expect(chat).to eq(native)
+      expect(native).to end_with("memory line 600")
+      expect(native).not_to include("[cut:")
+      expect(completed[:output_truncated]).to be(false)
+    end
+
+    it "both loops cut it alike at memory.read_max_chars, with the line naming the memory file" do
+      with_env("SAMAGOTCHI_MEMORY_READ_MAX_CHARS" => "1500") do
+        _result, native = run_native(max_tool_output_chars: 2000, call: native_call)
+        events.clear
+        _result, chat = run_chat(max_tool_output_chars: 2000, call: chat_call)
+
+        expect(chat).to eq(native)
+        expect(native.length).to be <= 1500
+        expect(native).to match(/\[cut: \d+ of \d+ chars; the rest is in the memory's \.md file in .+: read it with start_line\]\z/)
+        expect(completed[:output_truncated]).to be(true)
+      end
+    end
+  end
 end

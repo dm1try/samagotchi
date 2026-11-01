@@ -12,6 +12,8 @@ require_relative "tool_output_cut"
 require_relative "tool_output_files"
 require_relative "tools/output_guardrails"
 require_relative "tools/tool_path"
+require_relative "tools/memory"
+require_relative "config"
 require_relative "memory_bundle/index_sync"
 require_relative "memory_bundle/index_size"
 require_relative "participant_mode"
@@ -37,7 +39,8 @@ module Samagotchi
   # and their veto), dispatch through KernelLoop, the after_tool_call hook
   # and the output cap. Both loops feed the model `capped_output:` (cut to
   # the cap by the tool's ToolOutputCut policy, with a "[cut: …]" line),
-  # the text the event and the hook get too.
+  # the text the event and the hook get too. memory_read has its own cap,
+  # memory.read_max_chars (0: none), not max_tool_output_chars.
   class ToolRunner
     # More images in one result are left out, each with a line (a tool
     # that returns many screenshots can't flood the context).
@@ -139,8 +142,9 @@ module Samagotchi
       if (changed = changed_call_line(original, call))
         output = "#{changed}\n#{output}"
       end
-      truncated = !max_tool_output_chars.nil? && output.length > max_tool_output_chars
-      capped, saved = truncated ? cut(call, output, max_tool_output_chars, result) : output
+      cap = output_cap(call, max_tool_output_chars)
+      truncated = !cap.nil? && output.length > cap
+      capped, saved = truncated ? cut(call, output, cap, result) : output
       output_file = saved.path if saved.is_a?(ToolOutputFiles::Saved)
 
       # The call's outcome as its activity line has it (worked out from the
@@ -197,9 +201,31 @@ module Samagotchi
     #   there is none) when it was cut that way
     def cut(call, output, cap, result)
       ToolOutputCut.apply(output, cap: cap, tool: call[:name], save: ->(text, dry: false) { save_output(call, text, dry: dry) },
+                                  line: (memory_cut_line(call) if call[:name] == MEMORY_READ),
                                   ref: result[:ref_path], ref_stderr: result[:ref_stderr_path],
                                   head_chars: Tools::OutputGuardrails.config_positive_int("execute.cut_head_chars",
                                                                                           ToolOutputCut::HEAD_CHARS))
+    end
+
+    MEMORY_READ = Tools::MemoryRead::NAME
+
+    # The most chars +call+'s result may hold: +cap+ (max_tool_output_chars)
+    # for every tool but memory_read, which memory.read_max_chars caps (0:
+    # no fixed cap, nil here). A nil +cap+ stays nil.
+    def output_cap(call, cap)
+      return cap unless cap && call[:name] == MEMORY_READ
+
+      fixed = Config.get("memory.read_max_chars").to_i
+      fixed.positive? ? fixed : nil
+    end
+
+    # memory_read's cut line: the rest is in the memory's file, in the dir(s)
+    # the call searched (a scope, else project then system).
+    def memory_cut_line(call)
+      scope = call[:scope].to_s.strip
+      scopes = Tools::VALID_SCOPES.include?(scope) ? [scope] : Tools::VALID_SCOPES
+      names = Tools::MemoryRead.parse_names(call[:content].to_s)
+      ToolOutputCut.memory_line(scopes.map { |s| Tools::MemoryRead.memories_dir(s) }, single: names.size == 1)
     end
 
     # The whole output in the session's tool_output folder

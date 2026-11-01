@@ -247,6 +247,59 @@ RSpec.describe Samagotchi::ToolRunner do
     end
   end
 
+  describe "the output cap on a memory_read result (memory.read_max_chars, not max_tool_output_chars)" do
+    around { |ex| with_config_home(Dir.mktmpdir("memcap")) { ex.run } }
+
+    let(:call) { { name: "memory_read", content: "big", scope: "project" } }
+    let(:full) { "[memory_read]\n#{"m" * 2000}" }
+
+    before { allow(kernel).to receive(:dispatch_tool_call) { { output: full, activity: { tool: "memory_read", status: "ok" } } } }
+
+    def capped_run(c = call, cap: 100)
+      runner.run(c, iteration: 1, call_index: 1, call_count: 1, on_stream_event: ->(e) { events << e }, max_tool_output_chars: cap)
+    end
+
+    it "comes back whole, past max_tool_output_chars, with output_truncated false" do
+      result = capped_run
+      expect(result.capped_output).to eq(full)
+      expect(result.truncated).to be(false)
+      expect(events.find { |e| e[:type] == :tool_call_completed }).to include(output: full, output_truncated: false)
+    end
+
+    it "is cut at memory.read_max_chars with the line naming the memory file's dir" do
+      with_env("SAMAGOTCHI_MEMORY_READ_MAX_CHARS" => "600") do
+        result = capped_run
+        dir = Samagotchi::MemoryPaths.scope_dir("project")
+        expect(result.capped_output).to end_with("chars; the rest is in the memory's .md file in #{dir}: read it with start_line]")
+        expect(result.capped_output).to match(/\n\[cut: \d+ of 2014 chars;/)
+        expect(result.capped_output.length).to be <= 600
+        expect(result.truncated).to be(true)
+        expect(result.capped_output).not_to match(Samagotchi::ToolOutputCut::HEAD_CUT)
+      end
+    end
+
+    it "names both dirs without a scope, and stays generic for a comma list" do
+      with_env("SAMAGOTCHI_MEMORY_READ_MAX_CHARS" => "800") do
+        both = capped_run({ name: "memory_read", content: "a,b" }, cap: 10).capped_output
+        project = Samagotchi::MemoryPaths.scope_dir("project")
+        system = Samagotchi::MemoryPaths.scope_dir("system")
+        expect(both).to include("in the memories' .md files in #{project} or #{system}: read it with start_line]")
+      end
+    end
+
+    it "leaves every other tool cut by max_tool_output_chars" do
+      allow(kernel).to receive(:dispatch_tool_call) { { output: full, activity: { tool: "web_fetch", status: "ok" } } }
+      result = capped_run({ name: "web_fetch", content: "x" })
+      expect(result.truncated).to be(true)
+      expect(result.capped_output).to end_with("read it in parts]")
+    end
+
+    it "keeps the cut on a read of a memory file" do
+      allow(kernel).to receive(:dispatch_tool_call) { { output: full, activity: { tool: "read", status: "ok" } } }
+      expect(capped_run({ name: "read", path: "x.md" }).capped_output).to end_with("read it in parts]")
+    end
+  end
+
   describe "the output cap on an execute result (head, tail, saved file)" do
     around do |example|
       Dir.mktmpdir("chi-session") do |dir|
