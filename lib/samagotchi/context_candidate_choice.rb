@@ -133,10 +133,17 @@ module Samagotchi
       own.add(ContextCandidates.source_for(candidate, why: CHOSEN_WHY))
       Log.info(:context, "candidate_attached", name: candidate.name, trigger: "command")
       ContextCandidatesLog.event("attached", session_id: session.id, name: candidate.name, state_dir: state_dir, by: "command")
+      label_run(session, candidate, "attached", state_dir)
       show_card.call(**closed_card(candidate, "Attached."))
       [:ok, "attached #{candidate.name}: its text comes with your next message"]
     rescue ContextSources::Invalid, ContextProviders::Invalid => e
       [:error, "#{candidate.name} not attached: #{e.message}"]
+    end
+
+    # /context attach|decline (the card's buttons), on the latest ask's run.
+    def label_run(session, candidate, value, state_dir)
+      records = ContextCandidatesLog.records_for(ContextCandidatesLog.log_for(state_dir), session.id)
+      ContextCandidatesLog.label_run(records, candidate.name, value, by: "command", sessions_dir: state_dir)
     end
 
     def decline(candidate, status, session, state_dir, show_card)
@@ -147,6 +154,7 @@ module Samagotchi
 
       ContextSources.session_location(session.id, state_dir: state_dir).decline(candidate.name, candidate.url.to_s)
       ContextCandidatesLog.event("declined", session_id: session.id, name: candidate.name, state_dir: state_dir, by: "command")
+      label_run(session, candidate, "declined", state_dir)
       show_card.call(**closed_card(candidate, "Not attached here."))
       [:ok, "declined #{candidate.name}: not proposed again in this session"]
     end

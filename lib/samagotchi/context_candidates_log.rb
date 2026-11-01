@@ -3,6 +3,7 @@
 require_relative "log"
 require_relative "session"
 require_relative "side_judgments"
+require_relative "system_one/runs"
 
 module Samagotchi
   # The candidates' record, `context_candidates.jsonl` in the state dir
@@ -15,7 +16,8 @@ module Samagotchi
   # Kinds (every line has session_id, name and at):
   # - proposed: a plugin's ctx.context.propose recorded it (title, by)
   # - mentioned: an owner prompt named it and it was attached (mention)
-  # - judged: System 1's ask (ContextJudge.ask: p, task_p, stated, would, …)
+  # - judged: System 1's ask (ContextJudge.ask: run_id, p, task_p, stated,
+  #   would, …)
   # - judge_attached: on mode attached it (p ≥ threshold; p)
   # - carded: on mode showed its card (the middle band; p): once per
   #   candidate, read back by ContextCandidateChoice.carded?
@@ -33,6 +35,10 @@ module Samagotchi
     # The status each kind leaves a candidate in (#statuses).
     STATUS_OF = { "proposed" => "proposed", "mentioned" => "attached", "judge_attached" => "attached", "attached" => "attached",
                   "declined" => "declined", "detached" => "proposed", "withdrawn" => nil }.freeze
+
+    # The kinds #look sees that are a removal: a chip's ×, chi context rm. One
+    # removed after the session's last turn is never seen.
+    REMOVED = %w[declined detached].freeze
 
     module_function
 
@@ -77,8 +83,26 @@ module Samagotchi
 
         kind = status == "proposed" ? "detached" : status
         event(kind, session_id: session_id, name: candidate.name, log: log, by: "user")
+        label_run(records, candidate.name, kind, by: "user", root: log.dir) if REMOVED.include?(kind)
         kind
       end
+    end
+
+    # The user's say on a candidate, as a label on the latest ask about it
+    # (the judged line's run, question "about"). No ask with a run: nothing.
+    # Never raises.
+    # @param records [Array<Hash>] the session's lines (#records_for)
+    # @param root [String, nil] the state dir; nil: from +sessions_dir+
+    # @return [Boolean] whether a label was written
+    def label_run(records, name, value, by:, sessions_dir: nil, root: nil)
+      judged = records.reverse_each.find { |line| line["kind"] == "judged" && line["name"] == name && line["run_id"] }
+      return false if judged.nil?
+
+      runs = SystemOne::Runs.in(root || File.dirname(sessions_dir || Session.default_state_dir))
+      runs.label(judged["run_id"], value, by: by, question: "about")
+    rescue StandardError => e
+      Log.warn(:context, "context_candidates_log_failed", error: e.class.name, msg: e.message.to_s[0, 200])
+      false
     end
 
     # +text+ as a log line keeps it: one line, at most PROMPT_MAX chars.

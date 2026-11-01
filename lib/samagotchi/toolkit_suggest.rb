@@ -6,6 +6,7 @@ require_relative "cancellation_controller"
 require_relative "log"
 require_relative "owner_prompt"
 require_relative "system_one/question"
+require_relative "system_one/runs"
 require_relative "toolkit"
 
 module Samagotchi
@@ -123,8 +124,9 @@ module Samagotchi
       question, = question(default: Toolkit.new(name: snapshot.default.name),
                            kits: snapshot.candidates.to_h { |candidate| [candidate.name, kit_for(candidate)] },
                            project: snapshot.state.fetch(:project), prompt: snapshot.state.fetch(:prompt))
+      run_id = SystemOne::Runs.new_id(JUDGMENT)
       answer = client.ask(state: snapshot.state, questions: { QUESTION_ID => question },
-                          cancel_controller: cancel_controller)&.fetch(QUESTION_ID, nil)
+                          cancel_controller: cancel_controller, run_id: run_id)&.fetch(QUESTION_ID, nil)
       raw = answer&.choice
       candidate_name = raw.to_s.delete_prefix("kit:")
       candidate = snapshot.candidates.find { |item| item.name == candidate_name } if raw.to_s.start_with?("kit:")
@@ -150,6 +152,7 @@ module Samagotchi
               end
       fields = {
         session_id: snapshot.session_id,
+        run_id: run_id,
         turn_number: snapshot.turn_number,
         default_kit: snapshot.default.name,
         raw: raw,
@@ -196,8 +199,11 @@ module Samagotchi
       # @return [CancellationController] what the ask's request watches
       attr_reader :cancel_controller
 
-      def initialize(log:, timeout_seconds:, joined:, clock: -> { Process.clock_gettime(Process::CLOCK_MONOTONIC) })
+      # @param acted [#call, nil] (judged, did), once, as its line is written
+      #   with what the turn did: the saved run's acted line
+      def initialize(log:, timeout_seconds:, joined:, acted: nil, clock: -> { Process.clock_gettime(Process::CLOCK_MONOTONIC) })
         @log = log
+        @acted = acted
         @clock = clock
         @deadline = clock.call + timeout_seconds.to_f
         @joined = joined
@@ -286,6 +292,7 @@ module Samagotchi
 
         @recorded = true
         ToolkitSuggest.record(@log, @judged, did: did)
+        @acted&.call(@judged, did) unless did.nil?
       end
     end
 

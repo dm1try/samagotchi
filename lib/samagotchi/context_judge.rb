@@ -4,6 +4,7 @@ require_relative "config"
 require_relative "context_candidates_log"
 require_relative "log"
 require_relative "system_one/question"
+require_relative "system_one/runs"
 
 module Samagotchi
   # System 1's judgment of a session's candidate context
@@ -170,14 +171,15 @@ module Samagotchi
     # candidate is asked again at the next owner prompt.
     # @return [Hash, nil] the line's fields
     def ask(client:, job:, log:, settings:, cancel_controller: nil)
+      run_id = SystemOne::Runs.new_id(JUDGMENT)
       answers = client.ask(state: state(job), questions: questions(child: !job.parent_attached.nil?),
-                           cancel_controller: cancel_controller)
+                           cancel_controller: cancel_controller, run_id: run_id)
       about = answers&.dig(ABOUT_ID)&.noul
       task = answers&.dig(TASK_ID)&.noul
       return nil if about.nil? || task.nil?
 
       stated = task >= TASK_MIN
-      fields = { "title" => job.title, "phase" => job.phase, "owner_prompts" => job.owner_prompts,
+      fields = { "run_id" => run_id, "title" => job.title, "phase" => job.phase, "owner_prompts" => job.owner_prompts,
                  "p" => about.round(4), "task_p" => task.round(4), "stated" => stated,
                  "would" => stated ? would(about, settings) : nil, "mode" => settings.mode,
                  "threshold" => settings.threshold, "offer_threshold" => settings.offer_threshold,

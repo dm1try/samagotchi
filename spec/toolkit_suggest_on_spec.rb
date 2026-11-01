@@ -421,6 +421,9 @@ RSpec.describe Samagotchi::Engine, "toolkit suggestion on mode" do
       expect(store.versions["toolkit.suggest"].size).to eq(1)
       expect(line["state"]["prompt"]).to eq("Fix the browser flow")
       expect(line["answers"]["toolkit"]).to include("choice" => "kit:web")
+      acted = store.lines["toolkit.suggest"].find { |entry| entry["kind"] == "acted" }
+      expect(acted).to include("run_id" => line["id"], "what" => "suggested")
+      expect(log_lines.last).to include("run_id" => line["id"], "did" => "suggested")
     end
 
     it "saves no run for a scratch session" do
