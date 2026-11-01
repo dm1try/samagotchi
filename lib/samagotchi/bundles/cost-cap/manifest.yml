@@ -9,8 +9,7 @@ plugin:
   sha256: sha256:6101e5f4b2b454224ccc780637a84e429e90f179d8f37ba8681a1c5bf5d0c840
 # ctx.cost is new in chi 0.83.0; ask_user's effects: in the next chi
 # ctx.session_dir is new in the next chi
-requires_chi_next: true
-requires_chi: ">= 0.92.0"
+requires_chi: ">= 0.143.0"
 # session_settings: as a mapping of keys to types is new
 # chi --set cost-cap.cap=3: a session's own cap (ctx.settings["cap"]), a number or off
 session_settings: {cap: number}

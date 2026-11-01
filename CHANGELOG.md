@@ -7,11 +7,28 @@ and commands may change between minor versions. How releases are made:
 [docs/releasing.md](docs/releasing.md).
 ## [Unreleased]
 
+## [0.143.0] - 2026-11-01
+
 ### Added
 
 - `chi update` checks the bundles chi doesn't ship, such as one from GitHub, against the new chi, and adds a row for each warning or error: a `requires_chi` it fails, a plugin or
   hook that no longer loads, a `ctx` call the API lacks, a reference to chi's internals. It never changes them, and these rows don't fail the update (`--json`: a new `level` field). `--no-bundles` skips
   it, and `--dry-run` with a newer gem to install says `not checked`, as only that chi could answer. See [docs/cli.md](docs/cli.md#updating).
+- `chi bundle check` warns (`api`) on a `ctx.*` or `chi.*` call, or a keyword, that this chi's API lacks, at its line:
+  `ctx.settingz`, `ctx.sessions.nope`, `ctx.card(titel:)`. It reads the plugin's source, so a path no test runs counts too.
+- `ctx.session_dir`: a session's own folder for a bundle, created on use, removed with the session, so a bundle no longer
+  builds that path itself. cost-cap, work-cap and check-in now keep their state there (`state.json`); a running session's
+  file moves in by itself. `chi update` gets them (cost-cap 0.2.4, work-cap 0.1.4, check-in 0.3.1).
+- A manifest may list `settings:`, the keys config.yml's `bundles: <name>:` takes, with `session_settings:`' types. A key it rules out warns
+  when a session starts, in every UI, and so does a `bundles:` name no installed bundle has. Only a warning: the session goes on.
+  The shipped bundles with settings list theirs (`chi update`).
+- A plugin's `chi.on` handler that raises now tells you, once per event in a worker, in the TUI and the web
+  (`plugins> plugin.rb (bundle x) before_turn hook failed (…)`). Before, only the log knew. The hook is still skipped, and the log
+  still has each failure.
+- A bundle's `hooks/*.rb` file that raises now tells you the same way, once per hook in a worker, whatever its `on_error` —
+  including the default `skip`, which logged nothing at all. A guard bundle that broke (`chi-nah`, say) used to fail quietly;
+  now `plugins> guard.rb (bundle chi-nah) before_tool_call hook failed (…)` says so. `on_error` still decides logging and
+  the deny; the notice is only added, and config.yml's own hooks are unchanged.
 
 ### Changed
 
@@ -41,28 +58,12 @@ and commands may change between minor versions. How releases are made:
 - A hung `chi update` run by chi web (the **Update** button, `update.auto: install`) is stopped after 30 minutes and reported as failed. It used to answer "update running" to every later update until chi web restarted.
 - Web: a hash that names no session (`#/`, or none) while one is open now leaves it, as the **+** button does. It used to change
   only the URL: the page kept showing that session, and Send went into it.
-### Added
-
-- `chi bundle check` warns (`api`) on a `ctx.*` or `chi.*` call, or a keyword, that this chi's API lacks, at its line:
-  `ctx.settingz`, `ctx.sessions.nope`, `ctx.card(titel:)`. It reads the plugin's source, so a path no test runs counts too.
-- `ctx.session_dir`: a session's own folder for a bundle, created on use, removed with the session, so a bundle no longer
-  builds that path itself. cost-cap, work-cap and check-in now keep their state there (`state.json`); a running session's
-  file moves in by itself. `chi update` gets them (cost-cap 0.2.4, work-cap 0.1.4, check-in 0.3.1).
-- A manifest may list `settings:`, the keys config.yml's `bundles: <name>:` takes, with `session_settings:`' types. A key it rules out warns
-  when a session starts, in every UI, and so does a `bundles:` name no installed bundle has. Only a warning: the session goes on.
-  The shipped bundles with settings list theirs (`chi update`).
-- A plugin's `chi.on` handler that raises now tells you, once per event in a worker, in the TUI and the web
-  (`plugins> plugin.rb (bundle x) before_turn hook failed (…)`). Before, only the log knew. The hook is still skipped, and the log
-  still has each failure.
-- A bundle's `hooks/*.rb` file that raises now tells you the same way, once per hook in a worker, whatever its `on_error` —
-  including the default `skip`, which logged nothing at all. A guard bundle that broke (`chi-nah`, say) used to fail quietly;
-  now `plugins> guard.rb (bundle chi-nah) before_tool_call hook failed (…)` says so. `on_error` still decides logging and
-  the deny; the notice is only added, and config.yml's own hooks are unchanged.
-
-### Fixed
-
 - `chi bundle check`'s `requires-chi-floor` knows the calls and keywords it was missing: `ctx.context.propose`, `candidates`, `withdraw` and
   `left_behind`, `ctx.review?`, `ctx.continues`, `ctx.context.attach(movable:)` and others, so a bundle using them with a lower `requires_chi` is told.
+- `/context attach` and `/context decline`, typed in or from audit or off mode, no longer show a "closed" card when no offer card was open.
+- Web: on a phone, a Revise stub's "superseded by vN" stays readable, so two stubs that open with the same line can be told apart.
+
+Update with `chi update` (the core profile 0.4.2): check-in 0.3.1, cost-cap 0.2.4 and work-cap 0.1.4 keep their state in `ctx.session_dir`, and check-in no longer passes `shared_host:` (the older check-in 0.3.0 fails to load on this chi until it is updated). btw, agents-md, claude-peer, codex-peer, coordinator, github-pr, known-names, loop-guard, mcp, ruby, skills, slow-commands and source-links only list their settings or have small fixes.
 
 ## [0.142.0] - 2026-11-01
 
@@ -5480,7 +5481,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.142.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.143.0...HEAD
+[0.143.0]: https://github.com/dm1try/samagotchi/compare/v0.142.0...v0.143.0
 [0.142.0]: https://github.com/dm1try/samagotchi/compare/v0.141.0...v0.142.0
 [0.141.0]: https://github.com/dm1try/samagotchi/compare/v0.140.0...v0.141.0
 [0.140.0]: https://github.com/dm1try/samagotchi/compare/v0.139.1...v0.140.0

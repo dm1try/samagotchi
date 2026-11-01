@@ -9,8 +9,7 @@ plugin:
   sha256: sha256:d2c61b0aa26775c7b9783681fec4e5759766ad01e92f78ed88743a52ff5a1495
 # ask_user's effects: are in chi 0.92.0; ctx.usage is new in the next chi
 # ctx.session_dir is new in the next chi
-requires_chi_next: true
-requires_chi: ">= 0.100.0"
+requires_chi: ">= 0.143.0"
 # chi --set work-cap.tool_calls=400 / work-cap.minutes=60: the session's own caps, a number or off
 session_settings: {tool_calls: number, minutes: number}
 # config.yml bundles: work-cap: (another key warns; an older chi ignores this)

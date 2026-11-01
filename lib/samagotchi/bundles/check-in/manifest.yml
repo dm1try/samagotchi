@@ -9,7 +9,6 @@ plugin:
   sha256: sha256:732f144471d146832d2f01a5e999463be789a35af476fbc5d97349091c07aea2
 # check-in.progress asks System 1 (chi.judgment, new in 0.142.0);
 # ctx.session_dir is new in the next chi
-requires_chi_next: true
-requires_chi: ">= 0.142.0"
+requires_chi: ">= 0.143.0"
 # config.yml bundles: check-in: (another key warns; an older chi ignores this)
 settings: [after, every, mode, message, ignore_tools]
