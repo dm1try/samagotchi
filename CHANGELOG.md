@@ -30,7 +30,7 @@ and commands may change between minor versions. How releases are made:
   and github-pr bundles and the web's file refs read it as inline code, not as a code block left open.
 - A session whose cost-cap, work-cap or check-in saved nothing no longer leaves an empty folder under `plugins/<bundle>/sessions/`.
   `ctx.session_dir(create: false)` is the path with no folder made, for a bundle that only reads. `chi update` gets them
-  (cost-cap 0.2.5, work-cap 0.1.5, check-in 0.3.2).
+  (cost-cap 0.2.5, work-cap 0.1.5, check-in 0.3.3).
 - A Stop that arrives on an empty reply ends the turn cancelled. It used to end
   as "no answer: the model returned nothing".
 
