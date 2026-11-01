@@ -287,6 +287,43 @@ RSpec.describe Samagotchi::ToolRunner do
       end
     end
 
+    describe "the overflow guard" do
+      def window(tokens, source) = Samagotchi::ContextWindow::Resolved.new(tokens: tokens, source: source)
+
+      def guarded(win, c = call)
+        described_class.new(kernel, window: -> { win }).run(c, iteration: 1, call_index: 1, call_count: 1, on_stream_event: nil,
+                                                              max_tool_output_chars: 10)
+      end
+
+      it "cuts at half a known window in characters (context.chars_per_token)" do
+        result = guarded(window(250, :server))
+        expect(result.truncated).to be(true)
+        expect(result.capped_output.length).to be_between(495, 500)
+        with_env("SAMAGOTCHI_CONTEXT_CHARS_PER_TOKEN" => "2") do
+          expect(guarded(window(250, :server)).capped_output.length).to be_between(245, 250)
+        end
+      end
+
+      it "doesn't guard the default window, an unreadable one or a result under half" do
+        expect(guarded(window(250, :default)).truncated).to be(false)
+        expect(guarded(nil).truncated).to be(false)
+        expect(described_class.new(kernel, window: -> { raise "no" }).run(call, iteration: 1, call_index: 1, call_count: 1,
+                                                                            on_stream_event: nil, max_tool_output_chars: 10).truncated).to be(false)
+        expect(guarded(window(100_000, :config)).truncated).to be(false)
+      end
+
+      it "asks the kernel's tool_output_window when no reader is given" do
+        kernel.define_singleton_method(:tool_output_window) { Samagotchi::ContextWindow::Resolved.new(tokens: 250, source: :model_list) }
+        expect(runner.run(call, iteration: 1, call_index: 1, call_count: 1, on_stream_event: nil,
+                                max_tool_output_chars: 10).truncated).to be(true)
+      end
+
+      it "leaves other tools alone" do
+        allow(kernel).to receive(:dispatch_tool_call) { { output: full, activity: { tool: "read", status: "ok" } } }
+        expect(guarded(window(250, :server), { name: "read", path: "x" }).capped_output).to end_with("read it in parts]")
+      end
+    end
+
     it "leaves every other tool cut by max_tool_output_chars" do
       allow(kernel).to receive(:dispatch_tool_call) { { output: full, activity: { tool: "web_fetch", status: "ok" } } }
       result = capped_run({ name: "web_fetch", content: "x" })

@@ -193,6 +193,16 @@ module Samagotchi
     attr_accessor :generation_guard
 
     # The generation guard, if any; one that raises never breaks the turn.
+    # The model's context window as this loop knows it (ContextWindow.resolve
+    # on the client and the turn's setting): ToolRunner halves it for
+    # memory_read's overflow guard. nil when it can't be read.
+    # @return [ContextWindow::Resolved, nil]
+    def tool_output_window
+      ContextWindow.resolve(client: @client, model: @turn_settings&.model_name, setting: @turn_settings&.window_setting)
+    rescue StandardError
+      nil
+    end
+
     def guard_generation
       @generation_guard&.call
     rescue StandardError => e

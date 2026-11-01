@@ -374,7 +374,7 @@ module Samagotchi
       def strip_model_thought(text) = @kernel.strip_model_thought(text)
 
       def tool_runner
-        @tool_runner ||= ToolRunner.new(@kernel)
+        @tool_runner ||= ToolRunner.new(@kernel, window: -> { context_window(@kernel.turn_settings&.model_name) })
       end
 
       # The window for +model+: the kernel's client probes the server it

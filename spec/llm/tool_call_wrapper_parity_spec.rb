@@ -31,8 +31,8 @@ RSpec.describe "Tool call wrapper parity" do
 
   # ── Native (raw-prompt KernelLoop) ────────────────────────────────────────
 
-  def run_native(max_tool_output_chars: nil, prompts: [], call: %(call:read{path: "#{file}"}), session_dir: nil)
-    client = double("client", context_window: nil)
+  def run_native(max_tool_output_chars: nil, prompts: [], call: %(call:read{path: "#{file}"}), session_dir: nil, window: nil)
+    client = double("client", context_window: window)
     replies = [%(<|tool_call>#{call}<tool_call|>), "done"]
     allow(client).to receive(:complete) do |prompt, *|
       prompts << prompt
@@ -48,10 +48,11 @@ RSpec.describe "Tool call wrapper parity" do
 
   # ── Chat loop ─────────────────────────────────────────────────────────────
 
-  def run_chat(max_tool_output_chars: nil, call: ["c1", "read", { "path" => file }], session_dir: nil)
-    kernel = Samagotchi::KernelLoop.new(client: double("client", context_window: nil), hooks: hooks, profile: "gemma4")
+  def run_chat(max_tool_output_chars: nil, call: ["c1", "read", { "path" => file }], session_dir: nil, window: nil,
+               adapter_class: FakeChatAdapter)
+    kernel = Samagotchi::KernelLoop.new(client: double("client", context_window: window), hooks: hooks, profile: "gemma4")
     kernel.session_dir = session_dir
-    adapter = FakeChatAdapter.new(FakeChatAdapter.tools(call), FakeChatAdapter.text("done"))
+    adapter = adapter_class.new(FakeChatAdapter.tools(call), FakeChatAdapter.text("done"))
     backend = Samagotchi::LLM::ChatLoop.new(kernel: kernel, adapter: adapter)
     result = backend.complete(messages: [{ role: "user", content: "read it" }], on_stream_event: on_event,
                               max_tool_output_chars: max_tool_output_chars)
@@ -208,6 +209,54 @@ RSpec.describe "Tool call wrapper parity" do
         expect(native.length).to be <= 1500
         expect(native).to match(/\[cut: \d+ of \d+ chars; the rest is in the memory's \.md file in .+: read it with start_line\]\z/)
         expect(completed[:output_truncated]).to be(true)
+      end
+    end
+
+    describe "the overflow guard (a result over half the window, with no memory.read_max_chars)" do
+      # A 1000-token window at 4 chars a token: a result over 2000 chars is cut.
+      let(:guard_line) { /\[cut: \d+ of \d+ chars; the rest is in the memory's \.md file in .+: read it with start_line\]\z/ }
+      # A remote host: the chat loop's window comes from its adapter, not the kernel's client.
+      let(:listed_adapter) do
+        Class.new(FakeChatAdapter) do
+          def remote? = true
+          def context_window(model: nil) = 1000
+        end
+      end
+
+      it "native: cuts it on a known window" do
+        _result, seen = run_native(max_tool_output_chars: 20_000, call: native_call, window: 1000)
+        expect(seen).to match(guard_line)
+        expect(seen.length).to be <= 2000
+        expect(completed[:output_truncated]).to be(true)
+      end
+
+      it "chat: cuts it alike on a known window of the kernel's client" do
+        _result, native = run_native(max_tool_output_chars: 20_000, call: native_call, window: 1000)
+        events.clear
+        _result, chat = run_chat(max_tool_output_chars: 20_000, call: chat_call, window: 1000)
+        expect(chat).to eq(native)
+      end
+
+      it "chat: cuts it on a window only the adapter's model list knows" do
+        _result, seen = run_chat(max_tool_output_chars: 20_000, call: chat_call, adapter_class: listed_adapter)
+        expect(seen).to match(guard_line)
+        expect(seen.length).to be <= 2000
+      end
+
+      it "neither loop guards an unknown window" do
+        _result, native = run_native(max_tool_output_chars: 20_000, call: native_call)
+        events.clear
+        _result, chat = run_chat(max_tool_output_chars: 20_000, call: chat_call)
+        expect(chat).to eq(native)
+        expect(native).to end_with("memory line 600")
+        expect(native).not_to include("[cut:")
+      end
+
+      it "a set memory.read_max_chars wins over the guard" do
+        with_env("SAMAGOTCHI_MEMORY_READ_MAX_CHARS" => "5000") do
+          _result, seen = run_native(max_tool_output_chars: 20_000, call: native_call, window: 1000)
+          expect(seen.length).to be_between(4000, 5000)
+        end
       end
     end
   end

@@ -54,9 +54,14 @@ module Samagotchi
     #   the kernel is built.
     # @param clock [#call] monotonic seconds, for the approval wait and the
     #   dispatch time (after_tool_call's elapsed_ms)
-    def initialize(kernel, clock: -> { Process.clock_gettime(Process::CLOCK_MONOTONIC) })
+    # @param window [#call, nil] → ContextWindow::Resolved or nil: the
+    #   model's window, for memory_read's overflow guard. nil: the kernel's
+    #   own reader (KernelLoop#tool_output_window); a loop whose window comes
+    #   from more than the kernel's client (LLM::ChatLoop's adapter) passes it.
+    def initialize(kernel, clock: -> { Process.clock_gettime(Process::CLOCK_MONOTONIC) }, window: nil)
       @kernel = kernel
       @clock = clock
+      @window = window
     end
 
     # @param call_index [Integer] 1-based position of the call in its batch
@@ -211,12 +216,27 @@ module Samagotchi
 
     # The most chars +call+'s result may hold: +cap+ (max_tool_output_chars)
     # for every tool but memory_read, which memory.read_max_chars caps (0:
-    # no fixed cap, nil here). A nil +cap+ stays nil.
+    # no fixed cap) and, with none set, a known window's half (#window_guard).
+    # A nil +cap+ stays nil.
     def output_cap(call, cap)
       return cap unless cap && call[:name] == MEMORY_READ
 
       fixed = Config.get("memory.read_max_chars").to_i
-      fixed.positive? ? fixed : nil
+      fixed.positive? ? fixed : window_guard
+    end
+
+    # Half the model's context window in characters, the most one memory_read
+    # result may take: a context overflow fails the turn (its work rolls back
+    # and a retry repeats the read). nil when the window isn't known (the
+    # default isn't a window) or can't be read. It checks this result, not the
+    # context already used.
+    def window_guard
+      window = @window ? @window.call : (@kernel.tool_output_window if @kernel.respond_to?(:tool_output_window))
+      return nil unless window&.tokens&.positive? && window.source != :default
+
+      (window.tokens * MemoryBundle::IndexSize.chars_per_token / 2).floor
+    rescue StandardError
+      nil
     end
 
     # memory_read's cut line: the rest is in the memory's file, in the dir(s)
