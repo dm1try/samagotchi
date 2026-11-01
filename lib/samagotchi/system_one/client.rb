@@ -47,6 +47,7 @@ module Samagotchi
       def self.from_config(host_registry:, mode:, env: ENV, model: nil, host: nil, tag: :guardrails)
         mode = mode.to_s.strip.downcase
         return nil unless MODES.include?(mode) && mode != "off"
+        return nil if moved_keys_left?
 
         host = (host.nil? ? Config.get("system_one.host") : host).to_s.strip
         return nil if host.empty?
@@ -67,6 +68,17 @@ module Samagotchi
         timeout_ms = Config.get("system_one.timeout_ms").to_i
         timeout_ms.positive? ? timeout_ms : DEFAULT_TIMEOUT_MS
       end
+
+      # Whether config.yml still sets a key that moved to system_one (the
+      # warning names it). A file half moved is no judgment: with the host
+      # moved and the model not, the host's first model would answer under
+      # approvals' clean record (Record is model-blind) and could auto-allow.
+      def self.moved_keys_left?
+        section = ConfigFile.section("guardrails")
+        own = section["system_one"] if section.is_a?(Hash)
+        own.is_a?(Hash) && own.keys.map(&:to_s).intersect?(Config::SYSTEM_ONE_MOVED_KEYS)
+      end
+      private_class_method :moved_keys_left?
 
       # @param state [String, Hash, Array] what the question is about, as the
       #   contract takes it

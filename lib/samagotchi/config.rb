@@ -397,6 +397,8 @@ module Samagotchi
     # And toolkit's kits (Toolkit.kits), and bundles' judgments' settings (SystemOne::JudgmentSettings).
     SECTION_EXTRA_KEYS = { "guardrails" => %w[rules disable].freeze, "toolkit" => %w[kits].freeze, "system_one" => %w[judgments].freeze }.freeze
 
+    # guardrails.system_one's keys that moved to system_one (SystemOne::Client.from_config).
+    SYSTEM_ONE_MOVED_KEYS = %w[host model timeout_ms].freeze
     # What a system_one.judgments entry may hold. Core's judgments take none (RESERVED_JUDGMENTS).
     JUDGMENT_ENTRY_KEYS = %w[mode host model].freeze
     JUDGMENT_MODES = %w[off audit on].freeze
@@ -799,7 +801,7 @@ module Samagotchi
       # Keys replaced by another, and what the warning adds: it names the new
       # one (no alias).
       PARENT_ANSWERS_HINT = "hard, standard or soft; see docs/guardrails.md"
-      SYSTEM_ONE_MOVED_HINT = "it has moved, and it has no effect here: without system_one.host nothing is judged or " \
+      SYSTEM_ONE_MOVED_HINT = "it has moved: until all of host, model and timeout_ms have, nothing is judged or " \
                               "auto-allowed, and every ask goes to you; see docs/configuration.md"
       REPLACED_KEYS = {
         "guardrails.parent_approvals" => ["guardrails.parent_answers", PARENT_ANSWERS_HINT],

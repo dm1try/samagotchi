@@ -171,6 +171,15 @@ RSpec.describe Samagotchi::SystemOne::Client do
       expect(described_class.configured_timeout_ms).to eq(described_class::DEFAULT_TIMEOUT_MS)
     end
 
+    it "is nil on a file half moved, so another model can't answer under approvals' clean record" do
+      File.write(File.join(config_dir, "samagotchi", "config.yml"),
+                 YAML.dump({ "system_one" => { "host" => "splash" }, "guardrails" => { "system_one" => { "mode" => "on", "model" => "m" } } }))
+      expect(described_class.from_config(host_registry: registry, mode: "on")).to be_nil
+      File.write(File.join(config_dir, "samagotchi", "config.yml"),
+                 YAML.dump({ "system_one" => { "host" => "splash", "model" => "m" }, "guardrails" => { "system_one" => { "mode" => "on" } } }))
+      expect(described_class.from_config(host_registry: registry, mode: "on")).to have_attributes(host: "splash", model: "m")
+    end
+
     it "is nil for a mode the settings don't have, with config's own warning" do
       write_config({ "mode" => "sometimes", "host" => "splash" })
       expect(Samagotchi::Log).to receive(:warn).with(:config, "invalid_value",
