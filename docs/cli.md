@@ -378,10 +378,12 @@ flag also works as `--kebab-case VALUE`, e.g. `--server-host`, `--server-port`,
 `--read-truncate-at-bytes`; an on/off setting is `--[no-]kebab-case` with no value
 (`--context-status`, `--no-context-status`). `chi --help` lists them all.
 
-**Which loop runs.** There is no backend flag: the model's host decides. A host with
-`api: openai` in config.yml is driven through the OpenAI chat API (streamed; a remote
-provider via `url:` and `api_key_env:`); every other host gets chi's own raw-prompt loop. `/model` and `--model host:model` switch hosts, and
-the loop with them. See [Configuration](configuration.md) (`hosts:` and `api:`).
+**Which loop runs.** There is no backend flag: the model's host's `api:` decides. A host whose `api:` has
+a chat adapter runs `LLM::ChatLoop` — `api: openai` through `LLM::OpenAIChat` (`/v1/chat/completions`,
+streamed; a remote provider via `url:` and `api_key_env:`) or `api: anthropic` through
+`LLM::AnthropicMessages` (`/v1/messages`). Every other host (no `api:`, or `api: llama_cpp`) runs chi's own
+raw-prompt loop, `KernelLoop`, on llama.cpp's native `/completion`. `/model` and `--model host:model` switch
+hosts, and the loop with them. See [Configuration](configuration.md) (`hosts:` and `api:`).
 `--backend`, `SAMAGOTCHI_BACKEND` and a `backend:` key were removed (`backend:` warns
 as an unknown key).
 

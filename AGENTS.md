@@ -55,10 +55,7 @@ reference); a subcommand's class is `XCommand` under `lib/samagotchi/` (`chi hom
 - Other commands are in docs/cli.md: `chi web --start-dir`, `chi web push`, `chi guardrails replay`, `chi toolkit
   report`, and `chi home` (`ChiHome`: the Ruby every chi launch boots, never `GEM_*` in an env; docs/architecture.md
   "How chi launches itself").
-- The loop follows the model's host: a host whose `api:` has a chat adapter (`LLM::Adapters::BY_API`) uses the chat
-  loop, `LLM::ChatLoop`: `api: openai` on `LLM::OpenAIChat` (`/v1/chat/completions`), `api: anthropic` on
-  `LLM::AnthropicMessages` (`/v1/messages`). Every other host runs chi's own raw-prompt loop (`KernelLoop`).
-  `--backend` and `SAMAGOTCHI_BACKEND` are gone (docs/configuration.md).
+- Which loop runs is the host's `api:`: docs/cli.md, "Which loop runs".
 
 ## Core Principles
 - **Memory-Centric**: The harness relies heavily on memory (project/system scopes) for persistent cognition; tools operate on code/memories but the core is not self-modifying.
