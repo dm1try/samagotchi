@@ -2651,7 +2651,7 @@ for one model family, loaded into the prompt only for the models a note's
   prefix and against its model key, case-insensitively, and `*` also matches
   `/`: `*deepseek-v4*` covers `deepseek/deepseek-v4.1-flash` on any provider,
   MLX and GGUF names, but not `deepseek-ai/DeepSeek-R1-Distill-Qwen-32B`.
-- **Tested.** `spec/model_ids.yml` lists real id forms and the exact notes
+- **Tested.** `lib/samagotchi/bundles/model-notes/spec/model_ids.yml` lists real id forms and the exact notes
   each loads (negative rows included); the spec installs the bundle and
   resolves each through `sandbox.model_notes_for`
   ([Testing a bundle](#testing-a-bundle-experimental)). It also checks each
