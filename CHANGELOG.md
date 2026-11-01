@@ -20,6 +20,9 @@ and commands may change between minor versions. How releases are made:
 
 ### Fixed
 
+- `/guardrails` no longer shows `System 1 (on):` when the settings mean nothing can be judged: it reads
+  `System 1 (on, but nothing is judged: system_one.host is not set):`, and likewise for a host that isn't in `hosts:`,
+  isn't `api: openai` or names no model.
 - A `bundles:` entry in config.yml for a bundle that isn't installed (or a key it doesn't take) warns once, not in every new session,
   respawn and delegate; a changed finding warns again, as does one fixed and then back.
 - An answer with a line that opens and closes backticks itself (```` ```foo``` first ````) no longer loses every link after it: the source-links

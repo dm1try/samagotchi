@@ -512,7 +512,8 @@ module Samagotchi
       mode = Config.get("guardrails.system_one.mode").to_s
       return if mode == "off" && entries.empty?
 
-      lines << "System 1 (#{mode}):"
+      no_judgment = SystemOne::Client.no_judgment_reason(host_registry: @engine.host_registry, mode: mode)
+      lines << (no_judgment ? "System 1 (#{mode}, but nothing is judged: #{no_judgment}):" : "System 1 (#{mode}):")
       auto_allows = system_one_auto_allows(entries)
       lines << "  auto-allows (this session, newest first; /guardrails wrong N):"
       if auto_allows.empty?

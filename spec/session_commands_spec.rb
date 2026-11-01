@@ -993,6 +993,8 @@ RSpec.describe Samagotchi::SessionCommands do
     it "lists this session's recent auto-allows and a Record summary for each rule" do
       allow(Samagotchi::Config).to receive(:get).and_call_original
       allow(Samagotchi::Config).to receive(:get).with("guardrails.system_one.mode").and_return("on")
+      allow(Samagotchi::Config).to receive(:get).with("system_one.host").and_return("chat")
+      allow(Samagotchi::Config).to receive(:get).with("system_one.model").and_return("judge")
       log = system_one_log
       accepted = log.judgment(session_id: session.id, rule: "git-push", call: "git push", p: 0.97, decision: "asked")
       log.label(accepted, "allow_once")
@@ -1010,6 +1012,30 @@ RSpec.describe Samagotchi::SessionCommands do
                              "    git-push: asks=3, labelled=1, allow_once=1, allow_wide=0, deny=0, should_have_asked=0, none=0, no_label=2, no_p=0",
                              "    git-rebase: asks=1, labelled=0, allow_once=0, allow_wide=0, deny=0, should_have_asked=0, none=0, no_label=1, no_p=0")
       expect(out).not_to include("another session")
+    end
+
+    it "says when System 1 is on but nothing can be judged, and why" do
+      allow(Samagotchi::Config).to receive(:get).and_call_original
+      allow(Samagotchi::Config).to receive(:get).with("guardrails.system_one.mode").and_return("on")
+      host = nil
+      model = "judge"
+      allow(Samagotchi::Config).to receive(:get).with("system_one.host") { host }
+      allow(Samagotchi::Config).to receive(:get).with("system_one.model") { model }
+
+      expect(commands.run("/guardrails").output).to include("System 1 (on, but nothing is judged: system_one.host is not set):")
+
+      host = "nowhere"
+      expect(commands.run("/guardrails").output).to include('nothing is judged: host "nowhere" is not in hosts:):')
+
+      host = "alpha"
+      expect(commands.run("/guardrails").output).to include("nothing is judged: host alpha has api: llama_cpp;")
+
+      host = "chat"
+      model = nil
+      expect(commands.run("/guardrails").output).to include("nothing is judged: host chat names no model for System One):")
+
+      model = "judge"
+      expect(commands.run("/guardrails").output).to include("System 1 (on):")
     end
 
     it "shows System 1 history in off mode when entries exist, but hides an empty off-mode section" do

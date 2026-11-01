@@ -47,15 +47,7 @@ module Samagotchi
       # @raise [BackendError] the request failed, the status isn't 200, or
       #   the body isn't a usable response
       def ask(state:, questions:, cancel_controller: nil, observer: nil)
-        entry = @host_registry.find_entry(@host)
-        raise UnsupportedHost, "host #{@host.inspect} is not in hosts:" unless entry
-        unless entry.api&.to_sym == :openai
-          raise UnsupportedHost, "host #{@host} has api: #{entry.api || "llama_cpp"}; System One speaks the OpenAI-compatible API"
-        end
-
-        model = @model || host_model(entry)
-        raise UnsupportedHost, "host #{@host} names no model for System One" if model.nil? || model.empty?
-
+        entry, model = target
         observer&.call(model: model)
         url = "#{entry.openai_base_url.to_s.chomp("/")}/systemone"
         questions = SystemOne.normalize_questions(questions)
@@ -76,6 +68,24 @@ module Samagotchi
           levels = question.criteria.size if question.type == :score
           [question.id, Answer.from_wire(question.id, answers[question.id], levels: levels)]
         end
+      end
+
+      # The hosts: entry and model an ask would go to, without asking: all
+      # read from the settings, no request.
+      # @return [Array(HostRegistry::Entry, String)]
+      # @raise [UnsupportedHost] the host is unknown, not an openai host, or
+      #   names no model
+      def target
+        entry = @host_registry.find_entry(@host)
+        raise UnsupportedHost, "host #{@host.inspect} is not in hosts:" unless entry
+        unless entry.api&.to_sym == :openai
+          raise UnsupportedHost, "host #{@host} has api: #{entry.api || "llama_cpp"}; System One speaks the OpenAI-compatible API"
+        end
+
+        model = @model || host_model(entry)
+        raise UnsupportedHost, "host #{@host} names no model for System One" if model.nil? || model.empty?
+
+        [entry, model]
       end
 
       private

@@ -171,6 +171,20 @@ RSpec.describe Samagotchi::SystemOne::Client do
       expect(described_class.configured_timeout_ms).to eq(described_class::DEFAULT_TIMEOUT_MS)
     end
 
+    it "names what stops a judgment, from the settings alone" do
+      reason = ->(mode) { described_class.no_judgment_reason(host_registry: registry, mode: mode) }
+      write_config({ "mode" => "on", "model" => "m" })
+      expect(reason.call("on")).to eq("system_one.host is not set")
+      expect(reason.call("off")).to be_nil
+
+      write_config({ "mode" => "on", "host" => "splash", "model" => "m" })
+      expect(reason.call("audit")).to be_nil
+
+      File.write(File.join(config_dir, "samagotchi", "config.yml"),
+                 YAML.dump({ "system_one" => { "host" => "splash" }, "guardrails" => { "system_one" => { "mode" => "on", "model" => "m" } } }))
+      expect(reason.call("on")).to eq("guardrails.system_one still sets a key that moved to system_one")
+    end
+
     it "is nil on a file half moved, so another model can't answer under approvals' clean record" do
       File.write(File.join(config_dir, "samagotchi", "config.yml"),
                  YAML.dump({ "system_one" => { "host" => "splash" }, "guardrails" => { "system_one" => { "mode" => "on", "model" => "m" } } }))

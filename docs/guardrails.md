@@ -107,7 +107,9 @@ A file that doesn't parse is moved aside to `approvals.json.corrupt-<UTC time>`
 with one warning, and chi starts with no stored approvals (more asks, nothing lost).
 `/guardrails` lists the rules and approvals; `/guardrails revoke N` removes
 approval N. When System 1 is enabled or has judgments, it also shows this
-session's recent auto-allows and each rule's record summary. In System 1 `on`
+session's recent auto-allows and each rule's record summary, and its heading says
+when the settings mean nothing can be judged (`System 1 (on, but nothing is judged:
+system_one.host is not set):`; no request is made to check). In System 1 `on`
 mode, `/guardrails wrong [N]` flags the Nth newest auto-allowed call in this
 session as one System 1 should have asked about (default 1). The flag is
 appended to the judgments log; the rule asks again until its record is rebuilt.

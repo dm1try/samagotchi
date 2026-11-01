@@ -60,6 +60,23 @@ module Samagotchi
             mode: mode, host: host, model: model.empty? ? nil : model, tag: tag)
       end
 
+      # Why an ask under +mode+ would get no judgment whatever the host does,
+      # from the settings alone (no request); nil when one would be asked for,
+      # and under off, which promises none (`/guardrails`).
+      # @return [String, nil]
+      def self.no_judgment_reason(host_registry:, mode:)
+        return nil if mode.to_s.strip.downcase == "off"
+        return "guardrails.system_one still sets a key that moved to system_one" if moved_keys_left?
+
+        client = from_config(host_registry: host_registry, mode: mode)
+        return "system_one.host is not set" unless client
+
+        client.backend.target
+        nil
+      rescue UnsupportedHost => e
+        e.message
+      end
+
       # system_one.timeout_ms, else the default: the whole
       # request's limit, and how long a turn waits for an answer (toolkit
       # suggestion's on mode).
