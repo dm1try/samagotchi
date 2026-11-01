@@ -95,9 +95,25 @@ test("a prompt from the start page streams an answer and the turn ends", async (
   await switcher.getByRole("button", { name: "Next version" }).click();
   await expect(page.locator("#history .stack-view")).toHaveCount(0);
   await expect(switcher.locator(".stack-switch-sr")).toHaveText("version 2 of 2");
+  // On a phone only the stub's opening clips: "superseded by vN" stays whole.
+  await page.setViewportSize({ width: 390, height: 800 });
+  const by = page.locator("#history .stack-stub-by");
+  await expect(by).toHaveText(" — superseded by v2");
+  const inside = await by.evaluate((el) => {
+    const span = el.getBoundingClientRect();
+    return span.width > 0 && span.right <= el.parentElement.getBoundingClientRect().right + 0.5;
+  });
+  expect(inside).toBe(true);
+  await page.setViewportSize({ width: 1100, height: 800 });
   // Unfolded from its stub: the first version is back in place.
   await page.locator("#history .stack-stub").click();
   await expect(page.locator("#history .bubble.output:visible")).toHaveCount(2);
+  // An anchor's fragment keeps the session; the start page's own hash leaves it.
+  await page.evaluate(() => { location.hash = "#some-heading"; });
+  await expect(page.locator("#history .bubble.output:visible")).toHaveCount(2);
+  await page.evaluate(() => { location.hash = "#/"; });
+  await expect(page.locator("#history .bubble")).toHaveCount(0);
+  await expect(page).not.toHaveURL(/#\/s\//);
 });
 
 test("a multi-step turn shows its steps, tool rows and the markdown answer", async ({ page, script }) => {
