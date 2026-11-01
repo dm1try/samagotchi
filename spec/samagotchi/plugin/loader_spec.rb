@@ -252,7 +252,8 @@ RSpec.describe Samagotchi::Plugin::Loader do
 
       expect(logged).to eq(%w[before_turn before_turn before_turn after_turn after_turn])
       expect(warnings.map { |event| event[:label] }).to eq(%w[plugins plugins])
-      expect(warnings.first[:message]).to eq(
+      # Ruby 3.3 opens the quoted method name with a backtick, later Rubies with a quote.
+      expect(warnings.first[:message].tr("`", "'")).to eq(
         "plugin.rb (bundle brk) before_turn hook failed (NoMethodError: undefined method 'removed_api_call' for an instance of " \
         "Samagotchi::Plugin::Context): it's skipped, and only the log has its next failures"
       )
