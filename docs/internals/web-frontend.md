@@ -220,6 +220,24 @@ A new chip on the bar needs its place in that CSS's hidden list and a row in `mo
 it is lost on a phone. `app.js`'s `updateInfoBar` feeds the sheet (`update`) on every redraw; its rows and actions draw into
 fixed slots, so a row that joins keeps the focus where it was. The `narrowScreen` listener closes the sheet when the window grows.
 
+## Frames
+
+During a turn the cost is frames, not code: JS, layout and style are each a few percent of a core, while an animation
+that updates at 60 fps keeps the compositor and GPU busy (25-50% of a core with nothing to show). Moving a pulse to
+`transform`/`opacity` on the compositor still costs most of that, because the composites go on; the update rate is what
+counts. So:
+
+- **An infinite animation is stepped, moves only `opacity` or `transform`, and stops when the turn waits.**
+  `spec/web/public/frames.test.js` reads every page and stylesheet for the first two (`.card.skeleton` is the allowed
+  exception: loading only), and for its off switch under `prefers-reduced-motion`.
+- The dot, a running tick and a live step's dot share `live-blink 2.4s steps(16)`. `steps()` applies per segment and the
+  keyframes have two, so that is 13 updates/s: a third keyframe would change the rate. The spinners are
+  `init-spin .8s steps(16)`, 20 updates/s.
+- A blocking card (`.turn-stage.waiting`: a question, an approval, a delegate's relayed one, whose parent's turn blocks on
+  it) stops them all, so movement means chi is working; `stage.spec.js`'s question scenario checks it, also after a
+  reload. An asking card (check-in) has no `.waiting`, as its turn goes on: its dot keeps blinking. `.init-spin` is
+  outside the stage (plugin setup only).
+
 ## Stale answers
 
 The page switches sessions, reopens a popover or asks again while a fetch is out. An answer for the old ask must be

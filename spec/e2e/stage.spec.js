@@ -183,6 +183,18 @@ test("the hand-off waits while the pointer is over the stage, runs about 1.5 s a
   await handedOff(page, 3);
 });
 
+// A blocking card waits: no infinite animation in the stage (finite fades may
+// run). Not vacuously: taken off for one synchronous look (nothing paints),
+// the waiting state is all that keeps the running tick and the dot still.
+const stillWhileWaiting = (page) => stageEl(page).evaluate((el) => {
+  const infinite = () => el.getAnimations({ subtree: true }).filter((a) => a.effect.getComputedTiming().iterations === Infinity);
+  const still = infinite().length;
+  el.classList.remove("waiting");
+  const moving = infinite().map((a) => a.effect.target).map((t) => (t.matches(".ts-tick.running") ? "tick" : t.className));
+  el.classList.add("waiting");
+  return { still, tick: moving.includes("tick"), dot: moving.includes("ts-mark") };
+});
+
 // A phone (390×700): the stage's cap is low and the top bar wraps its title.
 test("a question card sits in the stage (also after a reload mid-turn), and the answer comes after it", async ({ page, script }) => {
   await page.setViewportSize({ width: 390, height: 700 });
@@ -202,6 +214,13 @@ test("a question card sits in the stage (also after a reload mid-turn), and the 
   await expect(asking).toContainText("I can start from either file: README.md describes the project");
   await expect(stageEl(page).locator(".ts-headline")).toBeHidden();
   expect((await frames(page)).filter((f) => f.waits !== f.asking)).toEqual([]);
+  // Movement means chi is working: the dot blinks until the card waits, and
+  // from then on the stage is still (every frame). The ask's own tick lands in
+  // the card's frame, so it is seen moving only through stillWhileWaiting.
+  const seen = await frames(page);
+  expect(seen.some((f) => !f.blocked && f.infinite > 0)).toBe(true);
+  expect(seen.filter((f) => f.blocked && f.infinite > 0)).toEqual([]);
+  expect(await stillWhileWaiting(page)).toEqual({ still: 0, tick: true, dot: true });
   // With web.markdown on, it reads as markdown: its heading, and its link opens a new tab.
   await expect(asking.locator("h2")).toHaveText("Two files");
   await expect(asking.locator('a[target="_blank"]')).toHaveAttribute("href", "https://example.com/files");
@@ -234,6 +253,7 @@ test("a question card sits in the stage (also after a reload mid-turn), and the 
   await expect(asking).toContainText("I can start from either file: README.md describes the project");
   await expect(askRef).toHaveText("JIRA-7");
   await page.waitForFunction(() => document.querySelector("#turnStage").getAnimations().length === 0); // its rise is over
+  expect(await stillWhileWaiting(page)).toEqual({ still: 0, tick: true, dot: true });
   // A phone's keyboard (the window 420 px tall): the cap drops, the held
   // stage clamps to it at once and the waiting card stays in sight; when
   // the keyboard goes the stage grows back only to what its content needs:
@@ -419,6 +439,9 @@ test("check-in's card waits for the user in the stage; after Nudge the turn stay
   const card = stageEl(page).locator(".ts-extras .plugin-card");
   await expect(card.locator(".card-title")).toHaveText("3 tool calls, no answer yet");
   await expect(stageEl(page)).toHaveAttribute("data-phase", "waiting for you");
+  // An asking card's turn goes on: its dot keeps blinking, the waiting colour.
+  await expect(stageEl(page)).not.toHaveClass(/\bwaiting\b/);
+  await expect.poll(() => stageEl(page).locator(".ts-mark").evaluate((el) => el.getAnimations().filter((a) => a.effect.getComputedTiming().iterations === Infinity).length)).toBe(1);
   // The steps opened and closed by hand: the stage grows for them, then
   // shrinks back (no empty room left under the card).
   await page.waitForFunction(() => document.querySelector("#turnStage").getAnimations().length === 0);

@@ -68,15 +68,17 @@ export async function startSampling(page) {
 }
 export const stopSampling = (page) => page.evaluate(() => { clearInterval(window.sampler); return window.samples; });
 
-// Every frame: whether a question card waits in the stage and whether the
-// asking text shows (window.frames2); frames() reads them.
+// Every frame: whether a question card waits in the stage, whether the
+// asking text shows, whether the stage is in its waiting state and how many
+// infinite animations run in it (window.frames2); frames() reads them.
 export const watchFrames = (page) => page.evaluate(() => {
   window.frames2 = [];
   cancelAnimationFrame(window.framesRaf);
   const tick = () => {
     const s = document.querySelector("#turnStage");
     const waits = !!s.querySelector(".ts-extras .bubble.question:not(.answered):not(.cancelled)");
-    window.frames2.push({ waits, asking: !s.querySelector(".ts-asking").hidden, phase: s.dataset.phase, t: performance.now() });
+    const infinite = s.getAnimations({ subtree: true }).filter((a) => a.effect.getComputedTiming().iterations === Infinity).length;
+    window.frames2.push({ waits, asking: !s.querySelector(".ts-asking").hidden, phase: s.dataset.phase, t: performance.now(), blocked: s.classList.contains("waiting"), infinite });
     window.framesRaf = requestAnimationFrame(tick);
   };
   tick();

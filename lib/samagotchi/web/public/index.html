@@ -168,7 +168,7 @@ main{flex:1;display:flex;flex-direction:column;gap:16px;padding:16px;overflow:au
 .init-text{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .init-task.done .init-text{color:var(--ok-text)}
 .init-mark{flex:none;width:10px;text-align:center;color:var(--ok)}
-.init-spin{flex:none;width:10px;height:10px;border:1.5px solid var(--border-strong);border-top-color:var(--accent);border-radius:50%;animation:init-spin .8s linear infinite}
+.init-spin{flex:none;width:10px;height:10px;border:1.5px solid var(--border-strong);border-top-color:var(--accent);border-radius:50%;animation:init-spin .8s steps(16) infinite}
 @keyframes init-spin{to{transform:rotate(360deg)}}
 @media (prefers-reduced-motion:reduce){.init-spin{animation:none;border-top-color:var(--accent)}.init-task{transition:none}}
 .markdown-warning{margin:0 16px 4px;padding:8px 10px;border:1px solid var(--warn);border-radius:8px;background:var(--warn-bg);color:var(--warn-bright);font-size:12px;line-height:1.4}
@@ -240,7 +240,7 @@ main{flex:1;display:flex;flex-direction:column;gap:16px;padding:16px;overflow:au
 .activity-status.error::before,.activity-status.blocked::before{content:"\2715"}
 .activity-status.stopped::before{content:"\25A0";font-size:10px}
 .activity-status.running::before{content:"";display:inline-block;box-sizing:border-box;width:10px;height:10px;vertical-align:-1px;border:1.5px solid currentColor;border-right-color:transparent;border-radius:50%}
-.turn-work:not(.done) .activity-status.running::before{animation:init-spin .8s linear infinite}
+.turn-work:not(.done) .activity-status.running::before{animation:init-spin .8s steps(16) infinite}
 .activity-state{flex:none;white-space:nowrap;font-size:11px;text-transform:uppercase;letter-spacing:.03em;font-weight:600}
 :is(.activity-status,.activity-state).running{color:var(--warn)}
 :is(.activity-status,.activity-state).ok{color:var(--ok)}
@@ -365,8 +365,9 @@ button.system-one-wrong,.system-one-wrong.marked{flex:none;padding:1px 6px;borde
 .gen.live{border-top-color:transparent;background:var(--accent-tint);border-radius:8px;padding:6px 9px 8px calc(9px + var(--step-indent));margin-left:-9px;margin-right:-9px}
 .gen.live>summary{color:var(--accent);white-space:normal}
 /* The live step's marker: a pulsing accent dot in place of the chevron (the block's own left bar stays the only one). */
-.gen.live>summary::before{content:"";display:inline-block;width:7px;height:7px;margin:0 8px 1px 2px;border-radius:50%;background:var(--accent);vertical-align:middle;animation:step-pulse 1.6s ease-in-out infinite}
-@keyframes step-pulse{0%,100%{box-shadow:0 0 0 0 color-mix(in srgb,var(--accent) 55%,transparent)}50%{box-shadow:0 0 0 4px color-mix(in srgb,var(--accent) 0%,transparent)}}
+.gen.live>summary::before{content:"";display:inline-block;width:7px;height:7px;margin:0 8px 1px 2px;border-radius:50%;background:var(--accent);vertical-align:middle;animation:live-blink 2.4s steps(16) infinite}
+/* Two segments on purpose: steps() applies per segment, so 2 x 16 / 2.4 s = 13 updates/s (docs/internals/web-frontend.md, Frames). */
+@keyframes live-blink{0%,100%{opacity:1}50%{opacity:.45}}
 @media (prefers-reduced-motion:reduce){.gen.live>summary::before{animation:none}}
 /* A step's thinking is a one-line ticker: the newest complete sentence,
    ellipsed to one line (the collapsed .bubble.thinking look, scoped to .gen
@@ -763,7 +764,7 @@ body.stage-view .turn-stage{position:absolute;left:0;right:0;bottom:100%;margin-
 @keyframes ts-arrive{from{opacity:0;transform:translateY(60px)}}
 .ts-status{flex:none;display:flex;align-items:center;gap:8px;min-width:0;padding:8px 8px 0 14px;font-size:12px;color:var(--text-muted);font-variant-numeric:tabular-nums;white-space:nowrap}
 .turn-stage.collapsed .ts-status{padding-bottom:8px;cursor:pointer}
-.ts-mark{flex:none;width:7px;height:7px;border-radius:50%;background:var(--accent);animation:step-pulse 1.6s ease-in-out infinite}
+.ts-mark{flex:none;width:7px;height:7px;border-radius:50%;background:var(--accent);animation:live-blink 2.4s steps(16) infinite}
 .turn-stage.ended .ts-mark{width:auto;height:auto;background:none;animation:none;font-size:12px;line-height:1}
 .turn-stage[data-phase="answered"] .ts-mark,.turn-stage[data-phase="answered"] .ts-phase{color:var(--ok)}
 .turn-stage[data-phase="canceled"] .ts-mark,.turn-stage[data-phase="canceled"] .ts-phase,.turn-stage[data-phase="waiting for you"] .ts-phase{color:var(--warn-text)}
@@ -820,7 +821,7 @@ body.stage-view .turn-stage{position:absolute;left:0;right:0;bottom:100%;margin-
 .turn-stage.asking .ts-headline{display:none}
 @keyframes ts-fade{from{opacity:.35}}
 .ts-now{height:var(--ts-now-h);display:flex;align-items:center;gap:8px;min-width:0;padding:0 9px;border-radius:8px;background:var(--accent-tint);font-size:13px}
-.ts-spin{flex:none;width:11px;height:11px;border:2px solid var(--warn);border-right-color:transparent;border-radius:50%;animation:init-spin .8s linear infinite}
+.ts-spin{flex:none;width:11px;height:11px;border:2px solid var(--warn);border-right-color:transparent;border-radius:50%;animation:init-spin .8s steps(16) infinite}
 .ts-idle{flex:none;width:11px;height:11px;border:2px solid var(--border-strong);border-radius:50%}
 .ts-tool{flex:none;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;font-weight:600;color:var(--accent)}
 .ts-title{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;color:var(--text-2)}
@@ -891,8 +892,9 @@ body.stage-view .turn-stage{position:absolute;left:0;right:0;bottom:100%;margin-
 .ts-tick.blocked{background:var(--danger-text);opacity:1}
 /* A call the user's Stop cut: the ■ STOPPED rows' amber, still (running blinks). */
 .ts-tick.stopped{background:var(--warn-text);opacity:.8}
-.ts-tick.running{background:var(--warn);opacity:1;animation:ts-blink 1s ease-in-out infinite}
-@keyframes ts-blink{50%{opacity:.35}}
+.ts-tick.running{background:var(--warn);opacity:1;animation:live-blink 2.4s steps(16) infinite}
+/* A blocking card waits: nothing moves, since movement means chi is working. (.ts-spin is in .ts-now, not displayed then; an asking card's turn goes on, no .waiting.) */
+.turn-stage.waiting .ts-mark,.turn-stage.waiting .ts-tick.running,.turn-stage.waiting .gen.live>summary::before,.turn-stage.waiting .turn-work:not(.done) .activity-status.running::before{animation:none}
 .ts-cloud-body{max-height:calc(var(--stage-max,60vh) * .62);overflow:auto;scrollbar-width:thin;border-left:1px solid var(--border);margin-left:6px;padding-left:10px}
 .ts-cloud-body[hidden]{display:none}
 .turn-stage .turn-work{border:0;background:transparent;padding:0;border-radius:0}
@@ -1078,7 +1080,7 @@ button.ws-row:hover:not(:disabled){filter:none}@media(hover:hover){button.ws-row
   .ts-cancel{padding:1px 8px}
   .ts-trail-item{max-width:24ch}
 }
-@media (prefers-reduced-motion:reduce){.turn-stage.enter,.ts-arrive,.ts-headline.fresh,.ts-tick.running,.ts-mark,.turn-work:not(.done) .activity-status.running::before{animation:none}.turn-stage.leaving,#center.reserve-easing #history{transition:none}}
+@media (prefers-reduced-motion:reduce){.turn-stage.enter,.ts-arrive,.ts-headline.fresh,.ts-tick.running,.ts-mark,.ts-spin,.turn-work:not(.done) .activity-status.running::before{animation:none}.turn-stage.leaving,#center.reserve-easing #history{transition:none}}
 #infoBar{display:flex;background:transparent;border-radius:0 0 16px 16px;color:var(--text-2);gap:10px;align-items:flex-start;flex-wrap:wrap;flex-shrink:0;transition:opacity 280ms ease}
 #infoBar.visible{display:flex}
 /* The meta row keeps its room: with a plain flex:1 the bar's own buttons (continue, archive, stop session, delete)
