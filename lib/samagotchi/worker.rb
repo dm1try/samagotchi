@@ -81,8 +81,11 @@ module Samagotchi
     # gets it over the Bridge a moment after it starts, and that message's
     # turn goes first (the reports join it).
     WAKE_START_GRACE = 2.0
-    # How much of a command's output goes into its :command_ran.
-    COMMAND_OUTPUT_LIMIT = 4096
+    # How much of a command's output goes into its :command_ran, in chars.
+    # Room for a real listing (/guardrails with a bundle's rules, /models):
+    # the event lives only in the Bridge's ring (256 events, in memory) and
+    # on the streams, a session file doesn't hold it.
+    COMMAND_OUTPUT_LIMIT = 64 * 1024
     BUSY_OUTPUT = "busy: wait for the turn to end"
     # /exit held by background tasks a finish wake waits for: how to end them.
     TASK_STOP_HINT = "stop one with the web's stop-task button or by asking for task_stop"
@@ -1211,8 +1214,10 @@ module Samagotchi
     #   line that applies it (the TUI's prefill, the web's Apply button)
     def announce_command(command, status:, output:, changed:, anytime: false, confirm: nil)
       TurnCheckpoint.record_command_outcome(@session_dir, command.enqueued_id, status: status)
-      text = output.to_s
-      event = { type: :command_ran, **command.event_fields, status: status, output: text[0, COMMAND_OUTPUT_LIMIT],
+      # Any bytes (a !cmd's): one that JSON can't take would end every stream
+      # that reaches this event, for as long as the ring holds it.
+      text = output.to_s.scrub("?")
+      event = { type: :command_ran, **command.event_fields, status: status, output: command_output_shown(text),
                 changed: changed.map(&:to_s), model_name: @engine.effective_model_name }
       event[:anytime] = true if anytime
       # The session's title after /title (nil: cleared), for the TUIs' row.
@@ -1226,6 +1231,18 @@ module Samagotchi
       event[:confirm] = confirm.to_h if confirm
       event[:output_truncated] = true if text.length > COMMAND_OUTPUT_LIMIT
       @engine.announce(event)
+    end
+
+    # +text+ as its :command_ran carries it: over the limit, its head to a
+    # line's end (one long line is cut where it must be), then a line that
+    # says so: every UI prints this text as it is.
+    def command_output_shown(text)
+      return text if text.length <= COMMAND_OUTPUT_LIMIT
+
+      kept = text[0, COMMAND_OUTPUT_LIMIT]
+      line_end = kept.rindex("\n")
+      kept = kept[0, line_end] if line_end && line_end > COMMAND_OUTPUT_LIMIT / 2
+      "#{kept}\n[cut: #{kept.length} of #{text.length} chars: a command's output stops here]"
     end
 
     # One Engine turn, the same for a prompt, a reminder and a continue:

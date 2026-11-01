@@ -1993,6 +1993,69 @@ RSpec.describe Samagotchi::Worker do
         expect(switched[:reasoning_history]).to eq(level: "all", source: "session", own: "all")
       end
 
+      describe "a command's output in its command_ran" do
+        let(:limit) { described_class::COMMAND_OUTPUT_LIMIT }
+
+        def output_of(text)
+          engine.command_registry.register("/long", "a long reply", source: "b") { |_args| text }
+          start_worker(poll_interval: 5)
+          ran(JSON.parse(post_command("/long").body)["command_id"])
+        end
+
+        it "keeps a real command's long listing whole (/guardrails with a bundle's rules ends past 4 KB)" do
+          listing = "#{"  1. a rule\n" * 1000}System 1 (on):"
+          expect(listing.length).to be > 4096
+
+          done = output_of(listing)
+
+          expect(done[:output]).to eq(listing)
+          expect(done).not_to have_key(:output_truncated)
+        end
+
+        it "ends what it cuts with a line saying so, at a line boundary" do
+          line = "a line of ten thousand\n"
+          text = line * ((limit / line.length) + 100)
+
+          done = output_of(text)
+
+          kept, cut_line = done[:output].rpartition("\n").values_at(0, 2)
+          expect(kept).to end_with("ten thousand")
+          expect(cut_line).to eq("[cut: #{kept.length} of #{text.length} chars: a command's output stops here]")
+          expect(kept.length).to be <= limit
+          expect(done[:output_truncated]).to be(true)
+        end
+
+        it "cuts one long line where it must, and says so too" do
+          text = "x" * (limit + 10)
+
+          done = output_of(text)
+
+          expect(done[:output]).to eq("#{"x" * limit}\n[cut: #{limit} of #{limit + 10} chars: a command's output stops here]")
+        end
+
+        it "doesn't throw away most of the room for a line boundary near the start" do
+          text = "short\n#{"x" * (limit * 2)}"
+
+          done = output_of(text)
+
+          expect(done[:output]).to start_with("short\nxxx").and include("[cut: #{limit} of #{text.length} chars")
+        end
+
+        it "takes invalid bytes: the event stays one a stream can write" do
+          done = output_of("a\xFFb\n")
+
+          expect(done[:output]).to eq("a?b\n")
+          expect { JSON.generate(done) }.not_to raise_error
+        end
+
+        it "cuts output with invalid bytes" do
+          done = output_of("#{"\xFF\n" * limit}more\n")
+
+          expect(done[:output].lines.last).to start_with("[cut: ")
+          expect { JSON.generate(done) }.not_to raise_error
+        end
+      end
+
       it "runs a plugin command, and the cards it shows follow its command_ran (as its output)" do
         engine.command_registry.register("/hi", "greet", source: "b") do |_args|
           engine.show_card(source: "b", title: "Hi card")

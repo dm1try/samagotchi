@@ -212,7 +212,8 @@ The Bridge exposes:
   `404` for an unknown id. A POST with a body because routes match exact paths.
 - `POST /session/:id/command` — a session command (`/model`, `/models`, `!rollback`, `!cmd`,
   `/continue`) for the worker loop; `202` with a `command_id` its `:command_ran` names, `400` when
-  the line isn't one. A `:command_ran` carries `thinking`, `reasoning_history` and `llm_context`
+  the line isn't one. A `:command_ran`'s `output` is the command's, up to `Worker::COMMAND_OUTPUT_LIMIT` (64 KiB of chars; past it
+  the text ends with a `[cut: N of M chars: …]` line, which the UIs print as they print the rest). It carries `thinking`, `reasoning_history` and `llm_context`
   (the summaries the next turn runs under) when the command changed them or the model, and
   `confirm: {line, text}` when a `/thinking` or `/reasoning-history` change from a `web:` or `tui:`
   client asks first (`CacheConfirm`; nothing changed, `line` applies it).

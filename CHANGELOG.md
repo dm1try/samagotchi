@@ -28,6 +28,11 @@ and commands may change between minor versions. How releases are made:
   loads on it. A card too tall for the stage showed its options with what it asks scrolled out of sight; the options are now a scroll
   down the stage's one scroll.
 - `chi update` tells you a `chi web` started with `--port` runs old code; it only looked on `web.port`.
+- `/guardrails` in chi web or an attached terminal shows all of its listing: a command's reply was cut at 4 KB, so with the core
+  bundle's rules System 1's section never showed and the text stopped mid-word. A reply now goes up to 64 KB, and a longer one ends
+  with a line saying it was cut.
+- A `!` command that prints bytes that aren't valid UTF-8 no longer breaks the session's page and attached terminals: its output
+  stopped every stream that reached it, on each reconnect. The bad bytes show as `?`, as they do in the saved conversation.
 - `/guardrails` no longer shows `System 1 (on):` when the settings mean nothing can be judged: it reads
   `System 1 (on, but nothing is judged: system_one.host is not set):`, and likewise for a host that isn't in `hosts:`,
   isn't `api: openai` or names no model.
