@@ -489,10 +489,14 @@ notice is only added on top. A config hook (config.yml's own files) keeps its
 behaviour: no notice, just the log. A UI that joins later reads the same lines
 from `Engine#plugin_warning`.
 
+In the [bundle test kit](plugins.md#testing-a-bundle-experimental) a hook that raises raises
+`Testing::HookFailed` out of the call that fired it, under every `on_error`.
+
 ## Runtime Hook Registration
 
 You can also register hooks programmatically during a turn (they are cleared
-automatically after each `run_turn`):
+automatically after each `run_turn`; one that raises is logged, tells you once
+per event in a worker, as a bundle's does, and the next hook runs):
 
 ```ruby
 engine = Samagotchi::Engine.new

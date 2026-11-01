@@ -1288,11 +1288,21 @@ module Samagotchi
     # Hooks are turn-scoped: they are automatically cleared after each
     # `run_turn` call so that a single turn's hooks do not leak into the next.
     #
+    # A hook that raises tells the user once, as a bundle's does
+    # (HookRoutes#plugin_hook_failed); the registry logs each failure and goes on.
+    #
     # @param name [Symbol] one of the hook names (see Hooks module)
     # @param block [Proc] receives an event hash (may mutate in place)
     # @return [void]
-    def register_hook(name, &)
-      @hooks.register(name, &)
+    def register_hook(name, &block)
+      return @hooks.register(name) unless block
+
+      @hooks.register(name) do |event|
+        yield(event)
+      rescue StandardError => e
+        @hook_routes.plugin_hook_failed("#{Hooks::Registry::TURN_HOOK_LABEL} (#{name})", "#{e.class}: #{e.message}")
+        raise
+      end
     end
 
     # Unregister a previously registered hook.

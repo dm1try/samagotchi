@@ -216,6 +216,24 @@ RSpec.describe Samagotchi::Plugin::Loader do
       .to eq([["config", "config.yml bundles: markerr: no installed bundle markerr (did you mean marker?)", :warn]])
   end
 
+  it "tells the user once of a turn-scoped hook that raises, keeps logging it, and runs the next one" do
+    eng = engine
+    eng.announce_load_events!
+    seen = []
+    eng.subscribe(observer: ->(event) { seen << event })
+    ran = []
+    eng.register_hook(:before_turn) { raise "boom" }
+    eng.register_hook(:before_turn) { ran << :next }
+    allow(Samagotchi::Log).to receive(:exception).and_call_original
+
+    2.times { eng.instance_variable_get(:@hooks).fire(:before_turn, { type: :before_turn }) }
+
+    expect(seen.select { |event| event[:type] == :guardrail_warning }.map { |event| [event[:label], event[:message]] })
+      .to eq([["plugins", "turn hook (before_turn) failed (RuntimeError: boom): it's skipped, and only the log has its next failures"]])
+    expect(Samagotchi::Log).to have_received(:exception).with(:hooks, "hook_failed", kind_of(RuntimeError), any_args).twice
+    expect(ran).to eq(%i[next next])
+  end
+
   describe "a chi.on handler that raises" do
     let(:broken) do
       <<~RUBY
