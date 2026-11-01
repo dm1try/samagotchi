@@ -152,6 +152,13 @@ RSpec.describe Samagotchi::Web::UpdateOps do
       expect(ops.restart_web).to eq(:busy)
     end
 
+    it "answers :start_failed and lets go when asking for the restart raises, so later operations aren't refused for good" do
+      ops.restart_web = -> { raise ThreadError, "can't alloc thread" }
+
+      expect(ops.restart_web).to eq(:start_failed)
+      expect(ops).not_to be_running
+    end
+
     it "lets go when the restart is refused" do
       ops.restart_web = -> { :no_wrapper }
       expect(ops.restart_web).to eq(:no_wrapper)

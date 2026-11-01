@@ -107,7 +107,7 @@ module Samagotchi
       # pipes read here) or a worker restart pass would die mid-way, so
       # neither may run, and none starts once the restart is asked for.
       # @return [Symbol] :unavailable (no restart lambda), :busy, :started,
-      #   :no_wrapper or :requested (already restarting)
+      #   :no_wrapper, :requested (already restarting) or :start_failed
       def restart_web
         return :unavailable unless @restart_web
 
@@ -126,6 +126,10 @@ module Samagotchi
         end
         release
         answer
+      rescue StandardError => e
+        release
+        Log.warn(:web, "restart_web_start_failed", error: e.class.name, msg: e.message)
+        :start_failed
       end
 
       # The chi update child: with a chi home, the home's chi (its gem dirs

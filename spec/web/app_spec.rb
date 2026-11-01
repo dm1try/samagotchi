@@ -766,6 +766,17 @@ RSpec.describe Samagotchi::Web::App do
         finish << true
       end
 
+      it "answers 503 when asking for the restart raises, and a later operation still starts" do
+        app = events_app
+        app.restart_web = -> { raise ThreadError, "can't alloc thread" }
+
+        status, _headers, response = app.call(env_for("/api/update/restart_web", method: "POST"))
+
+        expect(status).to eq(503)
+        expect(JSON.parse(response.first)).to include("error" => "restart_start_failed")
+        expect(app.update_ops).not_to be_running
+      end
+
       it "refuses when there is no chi wrapper to exec (a --bindir install), and lets updates run after" do
         app = events_app
         app.restart_web = -> { :no_wrapper }

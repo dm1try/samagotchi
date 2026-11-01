@@ -11,6 +11,8 @@ and commands may change between minor versions. How releases are made:
 
 - With `update.auto: install`, "chi updated to X" counts the sessions the old chi web restarted (it said 0 of them), and a run
   chi web is restarted in the middle of still tries the sessions it had left.
+- With `update.auto: install`, an error in one step (a full disk, a hiccup reading the sessions) no longer stops automatic updates until
+  chi web restarts: the step is tried again 5 minutes later.
 
 ## [0.142.0] - 2026-11-01
 

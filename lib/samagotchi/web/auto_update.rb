@@ -119,9 +119,15 @@ module Samagotchi
         until @stopped
           break if @wakeup.pop(timeout: wait) == :stop
 
-          step
+          guarded_step
           wait = @poll
         end
+      end
+
+      # A step that raises (a full disk, a hub hiccup) is taken again at the
+      # next poll: it only delays the run, and never ends the thread.
+      def guarded_step
+        step
       rescue StandardError => e
         Log.exception(:web, "auto_update_failed", e)
       end
@@ -165,8 +171,8 @@ module Samagotchi
       def installed(record)
         return carry_on(save(record)) unless @restart == "never"
 
-        @hub.publish_notice(kind: "installed", version: record.version, kept: record.kept.size)
         save(record.with(phase: "done", pushed: true))
+        @hub.publish_notice(kind: "installed", version: record.version, kept: record.kept.size)
       end
 
       # The next step of a run on record.
@@ -194,7 +200,10 @@ module Samagotchi
 
         states = result.rows.map { |row| row["state"] }
         restarted = states.count("restarted")
-        save(record.with(phase: "workers", restarted: record.restarted + restarted, left: states.size - restarted))
+        # The first pass moves the run on; a later one keeps its phase, so a
+        # finish cut short here finishes, rather than restarting chi web again.
+        phase = record.phase == "installed" ? "workers" : record.phase
+        save(record.with(phase: phase, restarted: record.restarted + restarted, left: states.size - restarted))
       end
 
       # Idle and quiet: no turn, no question, untouched for QUIET seconds.
@@ -239,8 +248,8 @@ module Samagotchi
 
       def restart_failed(record, detail, event)
         Log.warn(:web, event, version: record.version, detail: detail)
-        @hub.publish_notice(kind: "restart_failed", version: record.version, detail: detail)
         save(record.with(phase: "failed", detail: detail, pushed: true))
+        @hub.publish_notice(kind: "restart_failed", version: record.version, detail: detail)
       end
 
       # In the restarted chi web: on the version, the workers counted once
@@ -253,11 +262,13 @@ module Samagotchi
         @hub.scan
         record = restart_workers(record) || record
         Log.info(:web, "auto_update_done", version: record.version, restarted: record.restarted, left: record.left)
+        save(record.with(phase: "done", pushed: true))
         @hub.publish_notice(kind: "updated", version: record.version, kept: record.kept.size,
                             restarted: record.restarted, left: record.left)
-        save(record.with(phase: "done", pushed: true))
       end
 
+      # The record first, then the telling: a save that raises takes the step
+      # again at the next poll, and the owner hears it once.
       def save(record)
         @check.save_auto(record)
         record
@@ -268,9 +279,9 @@ module Samagotchi
         detail = row["status"].to_s.lines.first.to_s.strip
         Log.warn(:web, "auto_update_failed_install", version: record.version, detail: detail)
         gem_installed = rows.any? { |candidate| candidate["component"] == "chi (gem)" && !candidate["failed"] }
+        @check.save_auto(record.with(phase: "failed", detail: detail, pushed: true), failed: record.version)
         @hub.publish_notice(kind: "failed", version: record.version, detail: detail.empty? ? nil : detail,
                             installed: gem_installed)
-        @check.save_auto(record.with(phase: "failed", detail: detail, pushed: true), failed: record.version)
       end
 
       def kept_files(rows)

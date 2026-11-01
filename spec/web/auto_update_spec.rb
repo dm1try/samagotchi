@@ -374,6 +374,14 @@ RSpec.describe Samagotchi::Web::AutoUpdate do
       expect(check.auto_state).to have_attributes(phase: "web")
     end
 
+    it "says so when asking for the restart couldn't start it" do
+      allow(ops).to receive(:restart_web).and_return(:start_failed)
+      auto_update.step
+
+      expect(notices.map { |notice| notice[:kind] }).to eq(["restart_failed"])
+      expect(check.auto_state).to have_attributes(phase: "failed")
+    end
+
     it "says so when chi web can't restart itself here" do
       allow(ops).to receive(:restart_web).and_return(:no_wrapper)
       auto_update.step
@@ -470,6 +478,83 @@ RSpec.describe Samagotchi::Web::AutoUpdate do
 
     auto_update.step
     expect(notices.size).to eq(1)
+  end
+
+  describe "a step that raises" do
+    it "keeps the thread, logs it, and installs at a later step" do
+      failures = [IOError.new("hub hiccup")]
+      allow(hub).to receive(:snapshot) do
+        failure = failures.shift
+        raise failure if failure
+
+        summaries
+      end
+      installed = Queue.new
+      allow(ops).to receive(:install) { (installed << true) && result }
+      allow(Samagotchi::Log).to receive(:exception)
+      runner = described_class.new(hub: hub, ops: ops, check: check, auto: auto, restart: restart, first: 0, poll: 0.01).start
+
+      pop!(installed, "the install at the step after the raise")
+      runner.stop
+
+      expect(Samagotchi::Log).to have_received(:exception).with(:web, "auto_update_failed", an_instance_of(IOError)).once
+    end
+
+    it "waits the whole poll before the next one, however often it raises" do
+      asked = Queue.new
+      allow(hub).to receive(:snapshot) do
+        asked << true
+        raise IOError, "hub hiccup"
+      end
+      allow(Samagotchi::Log).to receive(:exception)
+      runner = described_class.new(hub: hub, ops: ops, check: check, auto: auto, restart: restart, first: 0, poll: 3600).start
+      thread = runner.instance_variable_get(:@thread)
+
+      pop!(asked, "the first step")
+      wait_for("the thread to wait for its next step") { thread.status == "sleep" }
+
+      expect(thread).to be_alive
+      expect(asked).to be_empty
+      runner.stop
+    end
+  end
+
+  describe "a record that can't be saved" do
+    before { allow(check).to(receive(:save_auto).and_wrap_original { |_original, *_args, **_opts| raise Errno::ENOSPC }) }
+
+    def saving_again = allow(check).to(receive(:save_auto).and_call_original)
+
+    it "says a failed install once the record holds it, not at each try" do
+      allow(ops).to receive(:install).and_return(op_result("failed", [{ "component" => "chi (gem)", "status" => "failed (x)",
+                                                                        "failed" => true, "kept" => [] }]))
+      expect { auto_update.step }.to raise_error(Errno::ENOSPC)
+      expect(notices).to be_empty
+
+      saving_again
+      auto_update.step
+      expect(notices.map { |notice| notice[:kind] }).to eq(["failed"])
+    end
+
+    it "says \"chi updated\" once" do
+      allow(ops).to receive(:restart_workers).and_return(op_result("done", []))
+      allow(hub).to receive(:scan)
+      stub_const("Samagotchi::VERSION", version)
+      saving_again
+      check.save_auto(Samagotchi::Web::AutoUpdateRecord.new(version: version, at: now.iso8601, phase: "web"))
+      runner = described_class.new(hub: hub, ops: ops, check: check, auto: auto, restart: "idle", clock: -> { now })
+      saved = 0
+      allow(check).to receive(:save_auto).and_wrap_original do |original, *args, **opts|
+        # The pass's own save goes through; the one that closes the run fails once.
+        raise Errno::ENOSPC if args.first.phase == "done" && (saved += 1) == 1
+
+        original.call(*args, **opts)
+      end
+
+      expect { runner.step }.to raise_error(Errno::ENOSPC)
+      runner.step
+
+      expect(notices.map { |notice| notice[:kind] }).to eq(["updated"])
+    end
   end
 
   it "runs its steps on a thread until stopped" do

@@ -396,7 +396,7 @@ print a chi at least the release) and, if it passes, the record's `phase: web` i
 `UpdateOps#restart_web`. A failed preflight, or a refused restart, publishes `restart_failed` and ends the run
 (`failed`). `AutoUpdate#stop` waits `STOP_WAIT` (25 s, longer than the preflight's timeout) for its thread, and a
 preflight that ends after a stop leads to nothing (no `web`, no exec): the next start takes the run up again. The restarted chi web's AutoUpdate (first step after 5 s) finds `phase: web`, checks it runs the
-release, counts the workers once more and publishes `updated`, then `done`. Results reach the phone as `chi_notice`
+release, counts the workers once more and publishes `updated`, then `done`. A step that raises is logged (`auto_update_failed`) and taken again at the next poll; each one saves the record before it publishes, so the owner hears it once. Results reach the phone as `chi_notice`
 hub events (`SessionHub#publish_notice`), see [internals/web-push.md](internals/web-push.md).
 
 The page's scope is in its URL, and the server picks the default: `?dir=<folder>` is that folder's

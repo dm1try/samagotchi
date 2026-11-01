@@ -765,6 +765,7 @@ module Samagotchi
         when :unavailable then error_response(503, "restart_unavailable", "chi web cannot restart itself in this process")
         when :busy then error_response(409, "update_running", UPDATE_RUNNING)
         when :started then json_response(202, { state: "restarting" })
+        when :start_failed then error_response(503, "restart_start_failed", "couldn't start chi web's restart")
         when :no_wrapper
           error_response(409, "restart_unavailable", "no chi wrapper to restart into (installed with --bindir?); " \
                                                      "restart chi web in its terminal")
