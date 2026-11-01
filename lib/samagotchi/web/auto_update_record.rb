@@ -10,8 +10,8 @@ module Samagotchi
     # shape is this class's: #to_store writes it, .from_h reads it, and
     # nobody else sees its keys.
     #
-    # +phase+: installed, workers, web (AutoUpdate::OPEN_PHASES), done or
-    # failed. +restarted+ and +left+ count the stale workers (`workers` in
+    # +phase+: installed, workers, web (AutoUpdate::OPEN_PHASES), retrying,
+    # done or failed. +restarted+ and +left+ count the stale workers (`workers` in
     # the file); +at+ is when the install ended, an ISO 8601 string.
     AutoUpdateRecord = Data.define(:version, :from, :at, :kept, :phase, :restarted, :left, :detail, :pushed) do
       def initialize(version:, phase:, from: nil, at: nil, kept: [], restarted: 0, left: 0, detail: nil, pushed: false)

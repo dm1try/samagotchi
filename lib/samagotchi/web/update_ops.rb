@@ -87,12 +87,15 @@ module Samagotchi
       # Restarts every stale worker (the worker refuses atomically when busy).
       # @param select [#call, nil] asked of each stale worker (a
       #   LiveVersions::Worker): false leaves it, as a `skipped` row
+      # @param quiet [Boolean] no frames until a worker restarts (AutoUpdate's
+      #   repeated passes: each frame is a sticky toast on the page, and a
+      #   pass that changes nothing has nothing to say)
       # @return [Symbol, Result] as #install
-      def restart_workers(wait: false, auto: false, select: nil)
+      def restart_workers(wait: false, auto: false, select: nil, quiet: false)
         return :busy unless claim
 
-        @hub.publish_update(state: "running", rows: [], operation: "workers", auto: auto)
-        thread = Thread.new { perform_worker_restarts(auto, select) }
+        @hub.publish_update(state: "running", rows: [], operation: "workers", auto: auto) unless quiet
+        thread = Thread.new { perform_worker_restarts(auto, select, quiet) }
         wait ? thread.value : :started
       rescue ThreadError => e
         release
@@ -226,22 +229,24 @@ module Samagotchi
 
       def default_state_dir = @state_dir || Session.default_state_dir
 
-      def perform_worker_restarts(auto, select)
+      def perform_worker_restarts(auto, select, quiet)
+        frames = !quiet
         # Installed now: the hub's own look is up to a full probe old (nil right after chi web started).
         target = @hub.refresh_installed || VERSION
         rows = []
         LiveVersions.stale_workers(target, state_dir: default_state_dir).each do |worker|
           row = select && !select.call(worker) ? skipped(worker) : restart_one(worker)
           rows << row
-          @hub.publish_update(state: "running", rows: rows.dup, operation: "workers", auto: auto)
+          frames ||= row["state"] == "restarted"
+          @hub.publish_update(state: "running", rows: rows.dup, operation: "workers", auto: auto) if frames
         end
         state = rows.any? { |row| row["state"] == "failed" } ? "failed" : "done"
-        @hub.publish_update(state: state, rows: rows, operation: "workers", auto: auto)
+        @hub.publish_update(state: state, rows: rows, operation: "workers", auto: auto) if frames
         Result.new(state: state, rows: rows)
       rescue StandardError => e
         Log.exception(:web, "worker_restart_failed", e)
         rows = [{ "state" => "failed", "reason" => e.class.name, "detail" => e.message }]
-        @hub.publish_update(state: "failed", rows: rows, operation: "workers", auto: auto)
+        @hub.publish_update(state: "failed", rows: rows, operation: "workers", auto: auto) if frames
         Result.new(state: "failed", rows: rows)
       ensure
         release

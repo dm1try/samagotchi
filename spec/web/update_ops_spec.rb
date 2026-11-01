@@ -129,6 +129,48 @@ RSpec.describe Samagotchi::Web::UpdateOps do
       expect(manager).not_to have_received(:restart_session).with("stay", any_args)
     end
 
+    describe "quiet" do
+      def worker(id) = Samagotchi::LiveVersions::Worker.new(session_id: id, version: "0.122.0", restart: true)
+
+      before do
+        allow(Samagotchi::LiveVersions).to receive(:stale_workers).and_return([worker("stay"), worker("go")])
+        allow(hub).to receive(:touch)
+        allow(manager).to receive(:restart_session)
+          .and_return(Samagotchi::SessionManager::Restarted.new(session_id: "go", from_version: "0.122.0", version: "99.0.0"))
+      end
+
+      it "publishes nothing when no worker restarted, but answers the rows" do
+        result = ops.restart_workers(wait: true, auto: true, select: ->(_worker) { false }, quiet: true)
+
+        expect(result.rows.map { |row| row["state"] }).to eq(%w[skipped skipped])
+        expect(frames).to be_empty
+        expect(ops).not_to be_running
+      end
+
+      it "publishes nothing for a worker that refuses" do
+        allow(manager).to receive(:restart_session).and_raise(Samagotchi::SessionManager::OwnedByTUI.new("go"))
+
+        result = ops.restart_workers(wait: true, select: ->(_worker) { true }, quiet: true)
+
+        expect(result.rows.map { |row| row["state"] }).to eq(%w[owned_by_tui owned_by_tui])
+        expect(frames).to be_empty
+      end
+
+      it "publishes from the first restart on, and how it ended" do
+        ops.restart_workers(wait: true, auto: true, select: ->(candidate) { candidate.session_id == "go" }, quiet: true)
+
+        expect(frames.map { |frame| frame[:state] }).to eq(%w[running done])
+        expect(frames.last[:rows].size).to eq(2)
+      end
+
+      it "publishes nothing when the pass itself fails" do
+        allow(Samagotchi::LiveVersions).to receive(:stale_workers).and_raise(IOError)
+
+        expect(ops.restart_workers(wait: true, quiet: true)).to have_attributes(state: "failed")
+        expect(frames).to be_empty
+      end
+    end
+
     it "answers :start_failed when no thread starts" do
       allow(Thread).to receive(:new).and_raise(ThreadError)
 

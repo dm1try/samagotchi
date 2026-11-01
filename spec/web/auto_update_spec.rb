@@ -391,6 +391,49 @@ RSpec.describe Samagotchi::Web::AutoUpdate do
       expect(check.auto_state).to have_attributes(phase: "failed")
     end
 
+    it "takes a whole run through the real operations and the real file, a chi web restart between" do
+      frames = []
+      hub.subscribe(->(event) { frames << event.data if event.type == "chi_update" })
+      allow(hub).to receive(:refresh_installed).and_return(version)
+      allow(hub).to receive(:touch)
+      manager = double("manager")
+      allow(manager).to receive(:restart_session) do |id, **|
+        Samagotchi::SessionManager::Restarted.new(session_id: id, from_version: "0.1.0", version: version)
+      end
+      real_ops = lambda do
+        Samagotchi::Web::UpdateOps.new(hub: hub, manager: manager, state_dir: root, blocked: -> {},
+                                       runner: ->(_argv, env:, progress:) { [rows.to_json, true] })
+      end
+      worker = ->(id) { Samagotchi::LiveVersions::Worker.new(session_id: id, version: "0.1.0", restart: true) }
+      allow(Samagotchi::LiveVersions).to receive(:stale_workers).and_return([worker.call("quiet"), worker.call("fresh")])
+      # Quiet for 10 minutes, and touched a minute before the install: the install waits for no quiet.
+      summaries.push({ id: "quiet", status: "idle", updated_at: quiet_at }, { id: "fresh", status: "idle", updated_at: (now - 60).iso8601 })
+
+      first_ops = real_ops.call
+      first_ops.restart_web = -> { true }
+      described_class.new(hub: hub, ops: first_ops, check: check, auto: auto, restart: restart, preflight: preflight, clock: -> { now }).step
+      expect(notices).to be_empty
+
+      # The exec: a new process reads the file, and "quiet" has moved over.
+      stub_const("Samagotchi::VERSION", version)
+      allow(Samagotchi::LiveVersions).to receive(:stale_workers).and_return([worker.call("fresh")])
+      restarted_check = Samagotchi::Web::UpdateCheck.new(hub: hub, enabled: false, auto: true, fetcher: -> { [release] }, clock: -> { now },
+                                                         state_file: state_file, gem_spec: Object.new, bundler: false, gem_dir: root,
+                                                         installed_versions: installed_versions)
+      second_ops = real_ops.call
+      seen_frames = frames.size
+      described_class.new(hub: hub, ops: second_ops, check: restarted_check, auto: auto, restart: restart, clock: -> { now }).step
+      expect(notices).to eq([{ kind: "updated", version: version, kept: 0, restarted: 1, left: 1 }])
+      expect(restarted_check.auto_state).to have_attributes(phase: "retrying", restarted: 1, left: 1)
+      expect(frames.size).to eq(seen_frames) # a pass that restarted nothing is off the page
+
+      # "fresh" has been left alone for long enough.
+      described_class.new(hub: hub, ops: second_ops, check: restarted_check, auto: auto, restart: restart, clock: -> { now + 600 }).step
+      expect(restarted_check.auto_state).to have_attributes(phase: "done", restarted: 2, left: 0)
+      expect(notices.size).to eq(1)
+      expect(manager).to have_received(:restart_session).with("fresh", any_args).once
+    end
+
     describe "the record read back from its file" do
       def reloaded_check
         Samagotchi::Web::UpdateCheck.new(hub: hub, enabled: false, auto: true, fetcher: -> { [release] }, clock: -> { now },
@@ -445,6 +488,167 @@ RSpec.describe Samagotchi::Web::AutoUpdate do
         expect(check.auto_state).to have_attributes(phase: "done", pushed: true)
         expect(ops).not_to have_received(:restart_web)
         expect(ops).not_to have_received(:install)
+      end
+
+      describe "with workers still left after its pass" do
+        let(:skipped_rows) { op_result("done", [{ "session_id" => "b", "state" => "skipped" }]) }
+        let(:restarted_rows) { op_result("done", [{ "session_id" => "b", "state" => "restarted" }]) }
+
+        def at(time, check: self.check, restart: self.restart)
+          described_class.new(hub: hub, ops: ops, check: check, auto: auto, restart: restart, preflight: preflight, clock: -> { time })
+        end
+
+        def retrying_check
+          Samagotchi::Web::UpdateCheck.new(hub: hub, enabled: false, auto: true, fetcher: -> { [release] }, clock: -> { now },
+                                           state_file: state_file, gem_spec: Object.new, bundler: false, gem_dir: root,
+                                           installed_versions: installed_versions)
+        end
+
+        before { allow(ops).to receive(:restart_workers).and_return(skipped_rows) }
+
+        it "says chi updated at once, and stays open to try them" do
+          auto_update.step
+
+          expect(notices).to eq([{ kind: "updated", version: version, kept: 2, restarted: 3, left: 1 }])
+          expect(check.auto_state).to have_attributes(phase: "retrying", pushed: true, restarted: 3, left: 1)
+        end
+
+        it "tries them at each later step, says nothing more, and ends once none is left" do
+          auto_update.step
+          at(now + 300).step
+          expect(ops).to have_received(:restart_workers).twice
+          expect(check.auto_state).to have_attributes(phase: "retrying", left: 1)
+
+          allow(ops).to receive(:restart_workers).and_return(restarted_rows)
+          at(now + 600).step
+
+          expect(check.auto_state).to have_attributes(phase: "done", restarted: 4, left: 0)
+          expect(notices.size).to eq(1)
+
+          at(now + 900).step
+          expect(ops).to have_received(:restart_workers).exactly(3).times
+        end
+
+        it "ends when a worker has gone by itself (an idle exit)" do
+          auto_update.step
+          allow(ops).to receive(:restart_workers).and_return(op_result("done", []))
+          at(now + 300).step
+
+          expect(check.auto_state).to have_attributes(phase: "done", restarted: 3, left: 0)
+          expect(notices.size).to eq(1)
+        end
+
+        it "keeps the idle rule at each later step" do
+          auto_update.step
+          captured = nil
+          allow(ops).to receive(:restart_workers) do |select:, **|
+            captured = select
+            skipped_rows
+          end
+          later = now + 300
+          summaries.push({ id: "quiet", status: "idle", updated_at: (later - 601).iso8601 },
+                         { id: "fresh", status: "idle", updated_at: (later - 60).iso8601 },
+                         { id: "running", status: "running", updated_at: (later - 601).iso8601 },
+                         { id: "asking", status: "idle", updated_at: (later - 601).iso8601, pending_question: { id: "q" } })
+          at(later).step
+
+          workers = %w[quiet fresh running asking].map { |id| Samagotchi::LiveVersions::Worker.new(session_id: id, version: "0.1.0", restart: true) }
+          expect(workers.select { |worker| captured.call(worker) }.map(&:session_id)).to eq(["quiet"])
+        end
+
+        it "asks that a pass with nothing to report stays off the page" do
+          auto_update.step
+          at(now + 300).step
+
+          expect(ops).to have_received(:restart_workers).with(hash_including(quiet: true)).twice
+        end
+
+        it "waits for another operation, and tries again" do
+          auto_update.step
+          allow(ops).to receive(:restart_workers).and_return(:busy)
+          at(now + 300).step
+
+          expect(check.auto_state).to have_attributes(phase: "retrying", left: 1)
+        end
+
+        it "ends at RETRY_FOR without another pass, and says nothing more" do
+          auto_update.step
+          at(now + described_class::RETRY_FOR).step
+
+          expect(ops).to have_received(:restart_workers).once
+          expect(check.auto_state).to have_attributes(phase: "done", left: 1)
+          expect(notices.size).to eq(1)
+        end
+
+        it "ends at RETRY_FOR though every pass raises" do
+          auto_update.step
+          allow(ops).to receive(:restart_workers).and_raise(IOError)
+          expect { at(now + 300).step }.to raise_error(IOError)
+          at(now + described_class::RETRY_FOR).step
+
+          expect(check.auto_state).to have_attributes(phase: "done")
+        end
+
+        it "goes straight to done when the run is older than RETRY_FOR already" do
+          at(now + described_class::RETRY_FOR).step
+
+          expect(check.auto_state).to have_attributes(phase: "done", left: 1)
+          expect(notices.size).to eq(1)
+        end
+
+        it "takes up again after chi web restarts mid-retry, without saying chi updated twice" do
+          auto_update.step
+          allow(ops).to receive(:restart_workers).and_return(restarted_rows)
+
+          restarted = retrying_check
+          expect(restarted.auto_state).to have_attributes(phase: "retrying", restarted: 3, left: 1)
+          at(now + 300, check: restarted).step
+
+          expect(restarted.auto_state).to have_attributes(phase: "done", restarted: 4, left: 0)
+          expect(notices.size).to eq(1)
+          expect(hub).to have_received(:scan).once
+        end
+
+        it "stops at once with update.restart: never" do
+          auto_update.step
+          at(now + 300, restart: "never").step
+
+          expect(ops).to have_received(:restart_workers).once
+          expect(check.auto_state).to have_attributes(phase: "done")
+        end
+
+        describe "and a newer release out" do
+          let(:newer) { Gem::Version.new(version).bump.to_s }
+
+          before do
+            auto_update.step
+            allow(check).to receive(:available).and_return(newer)
+          end
+
+          it "does not hold the install: the new run takes the workers over" do
+            at(now + 300).step
+
+            expect(ops).to have_received(:install).with(newer, wait: true, auto: true)
+            expect(check.auto_state).to have_attributes(version: newer)
+          end
+
+          it "keeps the install's own gate, and goes on trying meanwhile" do
+            summaries << { id: "a", status: "running" }
+            at(now + 300).step
+
+            expect(ops).not_to have_received(:install)
+            expect(ops).to have_received(:restart_workers).twice
+            expect(check.auto_state).to have_attributes(version: version, phase: "retrying")
+          end
+
+          it "goes on trying after giving that release up" do
+            check.save_auto(check.auto_state, failed: newer)
+            at(now + 300).step
+
+            expect(ops).not_to have_received(:install)
+            expect(check.auto_state).to have_attributes(version: version, phase: "retrying")
+          end
+        end
       end
 
       it "says chi web came back on another chi when it did not come back on the release" do

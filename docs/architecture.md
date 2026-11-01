@@ -385,18 +385,23 @@ and installs it through `UpdateOps#install(wait: true, auto: true)` when the ins
 runs, no hub summary has `status: running` or a `pending_question`, and the version isn't in `auto_failed` or
 already in the `auto` record (one automatic try per version). Its frames carry `auto: true` (the page: "Automatic
 chi update in progress", "(automatic)" in the sheet's title). Its record is `update_check.json`'s `auto`:
-`{version, from, at, kept, phase: installed|workers|web|done|failed, workers: {restarted, left}, detail, pushed}`,
+`{version, from, at, kept, phase: installed|workers|web|retrying|done|failed, workers: {restarted, left}, detail, pushed}`,
 in Ruby the value object `Web::AutoUpdateRecord`, which owns that shape (`from_h`, `to_store`).
 With `update.restart: never` the run ends at the install (`chi_notice` `installed`). With `idle` it goes on
-(`phase` `installed` → `workers` → `web` → `done`): `UpdateOps#restart_workers(select:)` over the stale workers whose
+(`phase` `installed` → `workers` → `web` → `retrying` → `done`): `UpdateOps#restart_workers(select:)` over the stale workers whose
 summary is idle with no question and `updated_at` at least 10 minutes old (`QUIET`; the others are `skipped` rows;
-the worker's own atomic refusal still applies), the left ones retried each step for 24 h (`RETRY_FOR`); then, with no
+the worker's own atomic refusal still applies); then, with no
 turn running, `Server.restart_preflight` (the restart's command with `--version`, 20 s, killed on a timeout; it must
 print a chi at least the release) and, if it passes, the record's `phase: web` is written **before**
 `UpdateOps#restart_web`. A failed preflight, or a refused restart, publishes `restart_failed` and ends the run
 (`failed`). `AutoUpdate#stop` waits `STOP_WAIT` (25 s, longer than the preflight's timeout) for its thread, and a
 preflight that ends after a stop leads to nothing (no `web`, no exec): the next start takes the run up again. The restarted chi web's AutoUpdate (first step after 5 s) finds `phase: web`, checks it runs the
-release, counts the workers once more and publishes `updated`, then `done`. A step that raises is logged (`auto_update_failed`) and taken again at the next poll; each one saves the record before it publishes, so the owner hears it once. Results reach the phone as `chi_notice`
+release, counts the workers once more and publishes `updated`, then `done`, or `retrying` while workers are left. Those are
+retried each step until none is left or 24 h (`RETRY_FOR`) have passed since the install, under the same filter, and from
+whichever chi web is up (`workers` before the restart, `retrying` after it, and a restart mid-retry reads it from the
+record). The time is checked before each pass, so a run always ends. A later pass is `quiet:`: no `chi_update` frames (each
+is a sticky toast) unless a worker restarts, and no further `chi_notice`. `retrying` isn't an open phase for the install
+gate: a newer release installs under its usual gate, and its record replaces this one, its own passes taking the workers over. A step that raises is logged (`auto_update_failed`) and taken again at the next poll; each one saves the record before it publishes, so the owner hears it once. Results reach the phone as `chi_notice`
 hub events (`SessionHub#publish_notice`), see [internals/web-push.md](internals/web-push.md).
 
 The page's scope is in its URL, and the server picks the default: `?dir=<folder>` is that folder's

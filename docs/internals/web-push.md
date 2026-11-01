@@ -188,7 +188,7 @@ from saying it twice across restarts). The key's `chi:` prefix keeps sw.js from 
 
 `updated` is sent by the **restarted** chi web (its AutoUpdate finds the run at `phase: web`): the exec ends the
 old process, and `Notifier#stop` does not flush the shows still in their hold, so a push queued just before it would
-be lost. Sending from the new process also proves it came up.
+be lost. Sending from the new process also proves it came up. The workers left then restart without another show.
 
 **Seeding**: `Notifier#start(hub)` subscribes with `snapshot: true` and takes the summaries as the seed, so what is
 open already never pushes. The hub's projection is empty before its first scan, so `Server.start` runs `hub.scan`

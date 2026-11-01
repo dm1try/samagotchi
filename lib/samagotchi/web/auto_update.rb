@@ -22,13 +22,18 @@ module Samagotchi
     #
     # With update.restart: idle (the default) the install is followed by:
     # 1. the stale workers, only those idle and quiet for QUIET seconds (the
-    #    worker still refuses atomically when it isn't), the left ones tried
-    #    again each step for RETRY_FOR;
+    #    worker still refuses atomically when it isn't);
     # 2. chi web itself, once no operation and no turn runs: a preflight
     #    (the newest chi must start and say its version) first, then the
     #    exec. The restarted chi web's own AutoUpdate sees phase `web`,
     #    counts the workers once more and says "chi updated": the process
     #    that survives is the one that speaks, and that proves it is up.
+    # 3. the workers still left, tried again each step, by the same rule,
+    #    until none is left or RETRY_FOR has passed since the install (in
+    #    whichever chi web is up: `workers` before its restart, `retrying`
+    #    after). "chi updated" doesn't wait for them, nothing more is said of
+    #    them, and `retrying` holds no next release back: its install takes
+    #    the workers over in a run of its own.
     # A preflight that fails leaves chi web as it is and says so.
     # update.restart: never stops after the install.
     #
@@ -47,8 +52,10 @@ module Samagotchi
       QUIET = 600
       # The workers a run couldn't restart are tried again this long.
       RETRY_FOR = 24 * 3600
-      # The phases a run is still in.
+      # The phases a run is still on its way through; no next install starts.
       OPEN_PHASES = %w[installed workers web].freeze
+      # The phase after "chi updated" while workers are left.
+      RETRYING = "retrying"
       # How long stop waits for the thread: long enough for a preflight
       # (Server::PREFLIGHT_TIMEOUT, 20 s; a healthy one takes about a
       # second) to end on its own, so a stop never abandons one mid-way.
@@ -103,6 +110,8 @@ module Samagotchi
 
         record = @check.auto_state
         return carry_on(record) if record && OPEN_PHASES.include?(record.phase)
+
+        retry_left(record) if record&.phase == RETRYING
 
         version = @check.available
         return unless version
@@ -193,9 +202,11 @@ module Samagotchi
       end
 
       # A pass over the stale workers that are idle and quiet; the counts
-      # add up over passes. nil when another operation took the turn.
+      # add up over passes. nil when another operation took the turn. Only a
+      # run's first pass shows on the page regardless: the later ones come
+      # every POLL, for up to RETRY_FOR, and show only when a worker restarts.
       def restart_workers(record)
-        result = @ops.restart_workers(wait: true, auto: true, select: quiet_filter)
+        result = @ops.restart_workers(wait: true, auto: true, select: quiet_filter, quiet: record.phase != "installed")
         return if result.is_a?(Symbol)
 
         states = result.rows.map { |row| row["state"] }
@@ -262,9 +273,25 @@ module Samagotchi
         @hub.scan
         record = restart_workers(record) || record
         Log.info(:web, "auto_update_done", version: record.version, restarted: record.restarted, left: record.left)
-        save(record.with(phase: "done", pushed: true))
+        save(record.with(phase: record.left_to_try?(@clock.call, RETRY_FOR) ? RETRYING : "done", pushed: true))
         @hub.publish_notice(kind: "updated", version: record.version, kept: record.kept.size,
                             restarted: record.restarted, left: record.left)
+      end
+
+      # After "chi updated": another pass over the workers left, until none is
+      # or RETRY_FOR is over. The time is looked at first, so a pass that keeps
+      # raising or being refused still ends the run.
+      def retry_left(record)
+        return close_retry(record) if @restart == "never" || !record.left_to_try?(@clock.call, RETRY_FOR)
+        return if @ops.running?
+
+        record = restart_workers(record)
+        close_retry(record) if record && !record.left.positive?
+      end
+
+      def close_retry(record)
+        Log.info(:web, "auto_update_retry_done", version: record.version, restarted: record.restarted, left: record.left)
+        save(record.with(phase: "done"))
       end
 
       # The record first, then the telling: a save that raises takes the step

@@ -13,6 +13,8 @@ and commands may change between minor versions. How releases are made:
   chi web is restarted in the middle of still tries the sessions it had left.
 - With `update.auto: install`, an error in one step (a full disk, a hiccup reading the sessions) no longer stops automatic updates until
   chi web restarts: the step is tried again 5 minutes later.
+- With `update.auto: install` and `update.restart: idle`, sessions that were busy or recently used at the update really are tried again for
+  a day, as documented. They used to stay on the old chi once chi web had restarted. The extra tries respect the idle rule, and the page only hears of one that restarts a session.
 
 ## [0.142.0] - 2026-11-01
 

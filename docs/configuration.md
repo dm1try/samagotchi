@@ -2150,17 +2150,19 @@ Both are read when chi web starts (restart it to apply a change). What it does, 
    it pushes the failed row's reason and stays quiet until a newer release (or you, with the button) tries again.
 3. **Restarts** (`update.restart: idle`). Stale workers first, only those whose session is idle and untouched for
    10 minutes (so nobody who is about to type loses their worker), and each worker still refuses by itself when
-   something holds it ([sessions](sessions.md)); the ones left are tried again for a day, then wait for their own
-   idle exit or the session's **Restart**. Then chi web itself, once no turn runs anywhere: it first runs the
+   something holds it ([sessions](sessions.md)). Then chi web itself, once no turn runs anywhere: it first runs the
    restart's own command with `--version` (20 s at most) and restarts only if the newest chi answers with the
    release's version; otherwise chi web stays up and the phone hears "chi X is installed; chi web didn't restart".
    The restart is the **Restart chi web** one: same port, same token, same Tailscale Serve handler, the open page's
    streams reconnect in a few seconds and a Reload toast follows. It doesn't wait for a page in front: the page isn't
    reloaded by itself, so a draft in the composer stays. A **Send** or **Allow** pressed in those few seconds fails
    with its error and leaves the text in the composer: press it again.
+   The workers left are tried again every 5 minutes, by the same rule and from the restarted chi web too, for a day from
+   the install; after that they wait for their own idle exit or the session's **Restart**. A newer release in that day
+   installs as usual and takes them over.
 4. **Says so.** The restarted chi web pushes "chi updated to X" ("chi web and 3 sessions restarted; 1 restarts when
-   idle. Kept your edits in 2 files."). With `update.restart: never` the push is "chi X is installed" and chi web and
-   the workers move over when you restart them (the page's toast offers it). The push needs the phone set up
+   idle. Kept your edits in 2 files."); the later restarts of those sessions push nothing more. With
+   `update.restart: never` the push is "chi X is installed" and chi web and the workers move over when you restart them (the page's toast offers it). The push needs the phone set up
    ([Phone notifications](#phone-notifications-web-push)); without it the page's toasts and
    `$XDG_STATE_HOME/samagotchi/update_check.json` (`auto`) are the record.
 
