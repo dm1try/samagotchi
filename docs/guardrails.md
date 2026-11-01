@@ -1046,7 +1046,13 @@ reaching them — see [Answering for the user](#answering-for-the-user-on-mode).
 `Samagotchi::SystemOne` (lib/samagotchi/system_one/) speaks the TypeSafe
 "System One" judgment API: `POST <host>/v1/systemone` with
 `{model, state, questions}` and answers of type `noul` (a probability),
-`choice` or `score`. The host is a `hosts:` entry with `api: openai` — a
+`choice` or `score`. A `score` answer's number is not a level: it is the
+probability-weighted level index (Σ index × its probability), so a two-level
+question's score is exactly the probability of its second level. The response
+also sends `legend` (level index => name) and `probabilities` per index; chi
+keeps the score as sent and reads the level with the most probability as
+`answer.level`. A score that isn't a number, or is past the last level, is no
+answer. The host is a `hosts:` entry with `api: openai` — a
 local Splash server, or the hosted Jev API — and its key is that host's own
 `api_key_env:`.
 

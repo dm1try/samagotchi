@@ -1044,7 +1044,7 @@ anything that goes wrong on the way:**
 | On the Result | |
 |---|---|
 | `no_judgment?` | no answers |
-| `answers` | `{id => answer}`: `.noul`, `.choice`, `.score`, `.confidence`, `.probabilities` |
+| `answers` | `{id => answer}`: `.noul`, `.choice`, `.score` (a score is the probability-weighted level index, not a level number), `.level` (the name of the most likely level, when the response has a legend), `.confidence`, `.probabilities` |
 | `p(id)` | a `noul` question's probability of yes (nil for no answer, or another type); no id: the only question's |
 | `audit?`, `mode` | the judgment's mode: `"off"`, `"audit"` or `"on"` |
 | `run_id` | for `ctx.judgments`; nil when no run was saved |

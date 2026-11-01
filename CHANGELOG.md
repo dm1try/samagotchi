@@ -33,6 +33,12 @@ and commands may change between minor versions. How releases are made:
   at start, nothing is judged and nothing auto-allows: approvals ask you, and toolkit suggestions and context candidates
   ask nothing. Restart workers on an older chi after the edit. See docs/configuration.md.
 
+### Fixed
+
+- A System 1 `score` answer was dropped: the host sends `score` as the probability-weighted level index (a fraction,
+  not a level number), and chi only accepted a whole number. The score is kept as sent and `answer.level` names the
+  level with the most probability. See docs/guardrails.md (System 1).
+
 ## [0.141.0] - 2026-10-31
 
 ### Added

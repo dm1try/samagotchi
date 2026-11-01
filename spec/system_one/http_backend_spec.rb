@@ -43,6 +43,25 @@ RSpec.describe Samagotchi::SystemOne::HttpBackend do
     expect(request.header("content-type")).to eq("application/json")
   end
 
+  it "reads a score answer as the server writes it: the weighted level and the name of the level" do
+    # The answers entry a real /v1/systemone sends for a score question (see
+    # spec/system_one/answer_spec.rb for the capture it came from).
+    server.enqueue("/v1/systemone", json: {
+      "model" => "judge",
+      "answers" => { "risk" => { "type" => "score", "score" => 0.03632387287794245,
+                                 "legend" => { "0" => "safe", "1" => "moderate", "2" => "dangerous" },
+                                 "probabilities" => { "0" => 0.9701821968222645, "1" => 0.023311733477528764,
+                                                      "2" => 0.006506069700206843 },
+                                 "confidence" => 0.8636907071300592 } }
+    })
+    score = Samagotchi::SystemOne::Question.new(id: "risk", type: "score", instructions: "how risky is this push?",
+                                                criteria: %w[safe moderate dangerous])
+    answers = backend.ask(state: "git push origin main", questions: { "risk" => score })
+
+    expect(answers["risk"]).to have_attributes(type: :score, score: 0.03632387287794245, level: "safe",
+                                               confidence: 0.8636907071300592)
+  end
+
   it "tells an observer the model it resolved and what the response said beside the answers" do
     server.enqueue("/v1/systemone", json: judged)
     told = {}

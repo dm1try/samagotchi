@@ -20,10 +20,67 @@ RSpec.describe Samagotchi::SystemOne::Answer do
                                       noul: nil, probabilities: { "git-push" => 0.91, "other" => 0.09 })
   end
 
-  it "reads a score answer, whole numbers only, and a probabilities list" do
+  # What POST http://127.0.0.1:8000/v1/systemone answers a two-level score
+  # question with (host main, model ISTA-DASLab/Qwen3.8-Flash-Next-GSQ-RCO-GGUF:Q2_0,
+  # state "git push origin main # docs only, one commit", criteria allow/ask),
+  # verbatim from the response's answers map.
+  REAL_TWO_LEVEL = {
+    "type" => "score",
+    "score" => 0.06001537920600701,
+    "legend" => { "0" => "allow", "1" => "ask" },
+    "probabilities" => { "0" => 0.9399846207939929, "1" => 0.06001537920600701 },
+    "confidence" => 0.6724940341689145
+  }.freeze
+
+  # The same host, criteria safe/moderate/dangerous, asked of the same state.
+  REAL_THREE_LEVEL = {
+    "type" => "score",
+    "score" => 0.03632387287794245,
+    "legend" => { "0" => "safe", "1" => "moderate", "2" => "dangerous" },
+    "probabilities" => { "0" => 0.9701821968222645, "1" => 0.023311733477528764, "2" => 0.006506069700206843 },
+    "confidence" => 0.8636907071300592
+  }.freeze
+
+  it "reads a score answer as the weighted level the server sends, named by its legend" do
+    answer = from_wire(REAL_TWO_LEVEL)
+    expect(answer).to have_attributes(type: :score, level: "allow", confidence: 0.6724940341689145,
+                                      probabilities: { "0" => 0.9399846207939929, "1" => 0.06001537920600701 })
+    # score is Σ index × its probability, so on two levels it is the
+    # probability of level 1 — here, 6% for "ask".
+    expect(answer.score).to eq(REAL_TWO_LEVEL["probabilities"].sum { |index, weight| index.to_i * weight })
+    expect(answer.score).to eq(0.06001537920600701)
+
+    three = from_wire(REAL_THREE_LEVEL)
+    expect(three.level).to eq("safe")
+    expect(three.score).to eq(REAL_THREE_LEVEL["probabilities"].sum { |index, weight| index.to_i * weight })
+    expect(three.score).to be_between(0, 2)
+  end
+
+  it "names the level the probabilities favour, and keeps a whole score whole" do
     expect(from_wire({ "type" => "score", "score" => 2, "confidence" => 0.5, "probabilities" => [0.1, 0.4, 0.5] }))
-      .to have_attributes(type: :score, score: 2, confidence: 0.5, probabilities: [0.1, 0.4, 0.5])
+      .to have_attributes(type: :score, score: 2, level: nil, confidence: 0.5, probabilities: [0.1, 0.4, 0.5])
     expect(from_wire({ "type" => "score", "score" => 1.0 }).score).to eq(1)
+    expect(from_wire({ "type" => "score", "score" => 1, "legend" => %w[low mid high],
+                       "probabilities" => [0.1, 0.7, 0.2] }))
+      .to have_attributes(score: 1, level: "mid")
+    # The weighted index can land exactly on a level.
+    expect(from_wire({ "type" => "score", "score" => 2.0, "legend" => { "0" => "no", "1" => "maybe", "2" => "yes" },
+                       "probabilities" => { "0" => 0.0, "1" => 0.0, "2" => 1.0 } }))
+      .to have_attributes(score: 2, level: "yes")
+  end
+
+  it "is nil for a score out of the levels, or one that isn't a number" do
+    out_of_range = [
+      { "type" => "score", "score" => 2.5, "legend" => { "0" => "allow", "1" => "ask" } },
+      { "type" => "score", "score" => 1.5, "probabilities" => [0.5, 0.5] },
+      { "type" => "score", "score" => "high" },
+      { "type" => "score", "score" => -1 },
+      { "type" => "score", "score" => Float::NAN },
+      { "type" => "score" },
+      { "type" => "score", "score" => 0.5, "legend" => {} },
+      { "type" => "score", "score" => 0.5, "legend" => { "level one" => "allow" } }
+    ]
+    expect(out_of_range.map { |raw| from_wire(raw) }.uniq).to eq([nil])
   end
 
   it "is nil for anything malformed, never a guess" do
@@ -39,7 +96,6 @@ RSpec.describe Samagotchi::SystemOne::Answer do
       { "type" => "noul", "noul" => Float::NAN },
       { "type" => "choice" },                # no choice
       { "type" => "choice", "choice" => "" },
-      { "type" => "score", "score" => 1.5 }, # not a whole level
       { "type" => "score", "score" => "high" },
       { "type" => "score", "score" => -1 },
       { "type" => "noul", "noul" => 0.5, "confidence" => 1.4 },  # a field it can't read
