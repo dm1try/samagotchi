@@ -220,6 +220,9 @@ RSpec.configure do |config|
     # this whole suite shares: a spec that lists a fake host's models must
     # not make the next example's model look unknown (nor hide a real one).
     FileUtils.rm_f(Samagotchi::ModelListStore.path) if defined?(Samagotchi::ModelListStore)
+    # The same for the bundles: warnings last shown: an example's stamp must
+    # not quieten the same line in the next one.
+    FileUtils.rm_f(Samagotchi::BundleSettingsCheck.stamp_path) if defined?(Samagotchi::BundleSettingsCheck)
     # The attached TUI's status ticker thread draws until the spinner
     # finishes, and many specs start one they never finish: it would write
     # into later specs' output (AttachedLoop builds its view with the default

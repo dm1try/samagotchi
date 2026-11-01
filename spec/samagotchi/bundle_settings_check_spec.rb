@@ -53,6 +53,36 @@ RSpec.describe Samagotchi::BundleSettingsCheck do
     expect(warnings("none" => { "x" => 1 })).to eq(["config.yml bundles: none.x: none takes no settings"])
   end
 
+  describe ".unshown" do
+    let(:lines) { %w[one two] }
+    let(:stamp) { described_class.stamp_path }
+
+    it "lives under the state dir" do
+      expect(stamp).to eq(File.join(Samagotchi::Paths.state_dir, "bundles_warned"))
+    end
+
+    it "shows the lines once, in whatever order they come" do
+      expect(described_class.unshown(lines)).to eq(lines)
+      expect(described_class.unshown(lines.reverse)).to eq([])
+    end
+
+    it "shows the lines when the stamp can't be written" do
+      allow(Samagotchi::AtomicFile).to receive(:write).and_raise(Errno::EACCES)
+      2.times { expect(described_class.unshown(lines)).to eq(lines) }
+    end
+
+    it "shows the lines when the stamp can't be read" do
+      described_class.unshown(lines)
+      allow(File).to receive(:read).with(stamp).and_raise(Errno::EACCES)
+      expect(described_class.unshown(lines)).to eq(lines)
+    end
+
+    it "leaves no stamp with no lines" do
+      expect(described_class.unshown([])).to eq([])
+      expect(File.exist?(stamp)).to be(false)
+    end
+  end
+
   it "reads nothing with no bundles: section" do
     expect(Samagotchi::MemoryBundle::Provenance).not_to receive(:each_installed)
     expect(warnings({})).to eq([])

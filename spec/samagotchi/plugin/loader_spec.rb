@@ -216,6 +216,59 @@ RSpec.describe Samagotchi::Plugin::Loader do
       .to eq([["config", "config.yml bundles: markerr: no installed bundle markerr (did you mean marker?)", :warn]])
   end
 
+  describe "the bundles: warnings across Engines" do
+    def config_bundles(*names) = File.write(Samagotchi::ConfigFile.global_path, { "bundles" => names.to_h { |name| [name, {}] } }.to_yaml)
+
+    # What a new Engine (a new session, a respawn, a delegate) shows.
+    def shown
+      eng = engine
+      seen = []
+      eng.subscribe(observer: ->(event) { seen << event })
+      eng.announce_load_events!
+      seen.select { |event| event[:hook] == "config" }.map { |event| event[:text] }
+    end
+
+    let(:nope) { "config.yml bundles: nope: no installed bundle nope" }
+
+    it "warns once for two Engines on the same config, and keeps logging" do
+      config_bundles("nope")
+      allow(Samagotchi::Log).to receive(:warn).and_call_original
+
+      expect(shown).to eq([nope])
+      expect(shown).to eq([])
+      expect(Samagotchi::Log).to have_received(:warn).with(:config, "bundle_setting_unknown", msg: nope).twice
+    end
+
+    it "warns again on a changed finding" do
+      config_bundles("nope")
+      shown
+      config_bundles("nope", "other")
+
+      expect(shown).to eq([nope, "config.yml bundles: other: no installed bundle other"])
+    end
+
+    it "warns again when the findings went and came back" do
+      config_bundles("nope")
+      shown
+      File.write(Samagotchi::ConfigFile.global_path, "{}\n")
+      expect(shown).to eq([])
+      expect(File.exist?(Samagotchi::BundleSettingsCheck.stamp_path)).to be(false)
+      config_bundles("nope")
+
+      expect(shown).to eq([nope])
+    end
+
+    it "warns every time, and still starts, on a stamp it can't read or write" do
+      config_bundles("nope")
+      FileUtils.mkdir_p(File.join(Samagotchi::BundleSettingsCheck.stamp_path, "in-the-way"))
+
+      expect(shown).to eq([nope])
+      expect(shown).to eq([nope])
+    ensure
+      FileUtils.rm_rf(Samagotchi::BundleSettingsCheck.stamp_path)
+    end
+  end
+
   it "tells the user once of a turn-scoped hook that raises, keeps logging it, and runs the next one" do
     eng = engine
     eng.announce_load_events!

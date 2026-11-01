@@ -20,6 +20,8 @@ and commands may change between minor versions. How releases are made:
 
 ### Fixed
 
+- A `bundles:` entry in config.yml for a bundle that isn't installed (or a key it doesn't take) warns once, not in every new session,
+  respawn and delegate; a changed finding warns again, as does one fixed and then back.
 - An answer with a line that opens and closes backticks itself (```` ```foo``` first ````) no longer loses every link after it: the source-links
   and github-pr bundles and the web's file refs read it as inline code, not as a code block left open.
 - A session whose cost-cap, work-cap or check-in saved nothing no longer leaves an empty folder under `plugins/<bundle>/sessions/`.

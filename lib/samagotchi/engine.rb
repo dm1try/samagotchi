@@ -2955,12 +2955,12 @@ module Samagotchi
     end
 
     # config.yml bundles: names and keys that do nothing (BundleSettingsCheck),
-    # held like the judgments' line, for the same reason.
+    # held like the judgments' line, for the same reason. Logged by every
+    # Engine; shown by the first to find them (BundleSettingsCheck.unshown).
     def warn_bundle_settings
-      BundleSettingsCheck.warnings(@extension_load.bundle_settings).each do |line|
-        Log.warn(:config, "bundle_setting_unknown", msg: line)
-        hook_notify(line, :warn, "config")
-      end
+      lines = BundleSettingsCheck.warnings(@extension_load.bundle_settings)
+      lines.each { |line| Log.warn(:config, "bundle_setting_unknown", msg: line) }
+      BundleSettingsCheck.unshown(lines).each { |line| hook_notify(line, :warn, "config") }
     end
     private :warn_bundle_settings
 
