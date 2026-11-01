@@ -97,6 +97,8 @@ SUBCOMMANDS = {
   "guardrails" => ["samagotchi/guardrails_command", "GuardrailsCommand"],
   # audit suggestions for which toolkit fits a session's first prompt
   "toolkit" => ["samagotchi/toolkit_report_command", "ToolkitReportCommand"],
+  # System 1's saved asks on this machine (ls, report)
+  "judgments" => ["samagotchi/judgments_command", "JudgmentsCommand"],
   # other machines' chi web, for chi --remote NAME (add, ls, rm)
   "remote" => ["samagotchi/remote_command", "RemoteCommand"],
   # the chi home: the Ruby every chi launch boots (set, doctor)

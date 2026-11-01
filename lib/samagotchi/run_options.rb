@@ -207,6 +207,7 @@ module Samagotchi
                  chi memory <ls|rm> [--scope project|system]   the memories; rm moves one to the bundle trash
                  chi bundle <install|upgrade|uninstall|status|diff|list|build|trash|new|test|check|try>
                  chi guardrails replay [--dry-run] [--threshold T] [--model M]   seed System 1's record from answered approvals
+                 chi judgments ls | report NAME  System 1's saved asks on this machine
                  chi toolkit report [--days N]   grade toolkit suggestions against the tools sessions used
                  chi desktop <install|upgrade|uninstall|status>   macOS "Send to chi" helper
                  chi models [--format json] [TEXT]   the models --model takes, from every host
