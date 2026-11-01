@@ -294,7 +294,7 @@ well formed (unique ids, known keys and labels, a rule that exists in its set).
 
 ```sh
 script/affected-specs                 # the specs for this branch's change, best first, at most 16
-bundle exec rspec $(script/affected-specs)
+script/affected-specs --run           # runs them; with no Ruby picks it says so and runs nothing
 script/affected-specs --why           # with the reason for each pick; --all: no cap; --run: runs them
 script/affected-specs A..B            # another range (A...B: from their merge-base); a single REV: vs the working tree
 ```

@@ -8,9 +8,8 @@ require_relative "picker"
 module AffectedSpecs
   # script/affected-specs [RANGE] [--why] [--all] [--cap N] [--run]
   #
-  # The Ruby specs go to stdout, one per line, so
-  # `bundle exec rspec $(script/affected-specs)` runs them; the node tests,
-  # hints and the "more" line go to stderr.
+  # The Ruby specs go to stdout, one per line (`script/affected-specs --run`
+  # runs them); the node tests, hints and the "more" line go to stderr.
   class CLI
     DEFAULT_CAP = 16
 
@@ -48,8 +47,8 @@ module AffectedSpecs
           Lists the spec files to run for a change, best first: changed specs, specs named
           after a changed file, the rules for specs that read docs or source as text, the
           other name matches, specs that name a changed method (prism >= 1.0), then specs
-          that name the changed file's class. Ruby specs on stdout (for
-          `bundle exec rspec $(script/affected-specs)`); node tests and hints on stderr.
+          that name the changed file's class. Ruby specs on stdout (--run runs them);
+          node tests and hints on stderr.
 
           RANGE: A..B, A...B (from their merge-base), or a base REV (compared with the
           working tree). Default: the merge-base with main (or origin/main), plus
@@ -116,6 +115,9 @@ module AffectedSpecs
       result = result.with(ruby: present)
       ruby = options[:cap] ? result.ruby.first(options[:cap]) : result.ruby
       node = options[:cap] ? result.node.first(options[:cap]) : result.node
+      if ruby.empty?
+        @err.puts "affected-specs: no Ruby specs picked; a bare `bundle exec rspec` runs the whole suite"
+      end
       ruby.each { |pick| @out.puts(options[:why] ? "#{pick.path}  # #{pick.reason}" : pick.path) }
       more = result.ruby.size - ruby.size
       @err.puts "affected-specs: #{more} more (--all lists them)" if more.positive?

@@ -8,7 +8,7 @@
 # the full suite at merge.
 #
 #   script/affected-specs [RANGE] [--why] [--all] [--cap N] [--run]   # --help says more
-#   bundle exec rspec $(script/affected-specs)
+#   script/affected-specs --run                                       # runs the picks
 #
 # RANGE defaults to the merge-base with main plus uncommitted and untracked
 # files. Ruby specs go to stdout; node tests (npm test targets) and hints to

@@ -9,6 +9,9 @@ require_relative "../../script/affected_specs/cli"
 # script/affected-specs on a temp git repo: the default range (merge-base
 # with main, uncommitted and untracked files), A..B, --why, --cap.
 RSpec.describe AffectedSpecs::CLI do
+  # Said whenever a change has no Ruby picks: a bare `rspec` runs everything.
+  NO_RUBY_PICKS = "affected-specs: no Ruby specs picked; a bare `bundle exec rspec` runs the whole suite\n"
+
   let(:repo) { File.realpath(Dir.mktmpdir("affected-specs-")) }
   let(:out) { StringIO.new }
   let(:err) { StringIO.new }
@@ -52,8 +55,8 @@ RSpec.describe AffectedSpecs::CLI do
     git("checkout", "-q", "-b", "feat")
   end
 
-  it "prints nothing and exits 0 when nothing changed" do
-    expect(run_cli).to eq([0, "", ""])
+  it "says no Ruby specs were picked when nothing changed, and prints nothing on stdout" do
+    expect(run_cli).to eq([0, "", NO_RUBY_PICKS])
   end
 
   it "takes the branch's commits, uncommitted and untracked files by default" do
@@ -77,6 +80,21 @@ RSpec.describe AffectedSpecs::CLI do
     expect(stdout).to eq("spec/gadget_spec.rb  # named after lib/samagotchi/gadget.rb\n")
     expect(stderr).to eq(<<~TEXT)
       npm: spec/web/public/panel.test.js  # named after lib/samagotchi/web/public/panel.js
+      affected-specs: web frontend changed: also run npm run lint and npm run e2e before handing over
+    TEXT
+  end
+
+  it "warns on stderr for a frontend-only change: no Ruby picks, so nothing to run" do
+    write("lib/samagotchi/web/public/panel.js")
+    head = commit("web")
+
+    status, stdout, stderr = run_cli("#{@base}..#{head}")
+
+    expect(status).to eq(0)
+    expect(stdout).to eq("")
+    expect(stderr).to eq(<<~TEXT)
+      #{NO_RUBY_PICKS.chomp}
+      npm test targets: node --test spec/web/public/panel.test.js
       affected-specs: web frontend changed: also run npm run lint and npm run e2e before handing over
     TEXT
   end
@@ -166,15 +184,19 @@ RSpec.describe AffectedSpecs::CLI do
     later = commit("later")
     git("checkout", "-q", @base)
 
-    expect(run_cli("#{@base}..#{later}")).to eq([0, "", "affected-specs: not in this checkout, skipped: spec/later_spec.rb\n"])
+    expect(run_cli("#{@base}..#{later}")).to eq(
+      [0, "", "affected-specs: not in this checkout, skipped: spec/later_spec.rb\n#{NO_RUBY_PICKS}"]
+    )
   end
 
-  it "runs nothing with --run when nothing is picked" do
+  it "runs nothing with --run when nothing is picked, saying so" do
     cli = described_class.new(["--run"], out: out, err: err, dir: repo)
     allow(cli).to receive(:system)
 
     expect(cli.run).to eq(0)
     expect(cli).not_to have_received(:system)
+    expect(out.string).to eq("")
+    expect(err.string).to eq(NO_RUBY_PICKS)
   end
 
   it "refuses a negative --cap" do
