@@ -69,6 +69,22 @@ RSpec.describe Samagotchi::JudgmentsCommand do
     expect(stdout.string).to include("last 30 days", "runs 1").and include("labels: none")
   end
 
+  it "reports past a p the backend sent out of range" do
+    save("1", p: -5)
+    save("2", p: 7)
+    save("3", p: 0.5)
+    expect(run_command("report", "approvals.allow")).to eq(0)
+    expect(stdout.string).to include("allow (noul): 1 with a p")
+  end
+
+  it "counts in ls as report does: each run's last label, none for a run that's gone" do
+    save("1")
+    2.times { runs.label("approvals.allow/1", "deny", by: "user", question: "allow") }
+    runs.label("approvals.allow/gone", "deny", by: "user", question: "allow")
+    run_command("ls")
+    expect(stdout.string).to include("runs 1  labels 1")
+  end
+
   it "says when a judgment has no runs" do
     expect(run_command("report", "nothing.here")).to eq(0)
     expect(stdout.string).to eq("No runs of nothing.here.\n")

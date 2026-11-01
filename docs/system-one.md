@@ -22,7 +22,7 @@ one warn and never changes the answer. A use that needs the run's id at once pas
 | `context.candidate` | `ContextJudge.ask` | labels |
 
 Not saved: a toolkit warm-up (it goes straight to the backend), `chi guardrails replay`,
-chi web's availability check, a scratch session's asks, and a participant's turn (never judged).
+chi web's availability check, a scratch session's asks or anything about them, and a participant's turn (never judged).
 An owner's turn in a review session is judged, so it is saved. Test runs are saved with `test_run: true`.
 
 ## The store
@@ -92,6 +92,6 @@ To stop saving: `system_one.runs: off` in config.yml (what's there still ages ou
 
 ## Looking at it
 
-`chi judgments ls` lists each judgment's digests, runs, labels, failures, models and size. `chi judgments report NAME
+`chi judgments ls` lists each judgment's digests, runs, labels (each run's last, per question), failures, models and size. `chi judgments report NAME
 [--days N]` gives one judgment's counts, p histogram and labels by value (each run's last, per question). Both only read.
 A use's own report stays: `chi context report`, `chi toolkit report`, `/guardrails`.

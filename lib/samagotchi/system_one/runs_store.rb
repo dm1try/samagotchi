@@ -21,8 +21,6 @@ module Samagotchi
       DIR_MODE = 0o700
       # The longest line: a longer state is saved cut, marked "truncated".
       MAX_LINE_BYTES = 16 * 1024
-      # Cutting a state to fit: a state as a string may first grow as JSON.
-      FIT_TRIES = 4
 
       attr_reader :dir
 
@@ -55,12 +53,13 @@ module Samagotchi
         end
       end
 
-      # The judgments with a folder, sorted.
+      # The judgments with a folder, sorted; a folder that isn't one is left
+      # alone, and in no one's way.
       # @return [Array<String>]
       def names
         return [] unless Dir.exist?(@dir)
 
-        Dir.children(@dir).select { |name| File.directory?(File.join(@dir, name)) }.sort
+        Dir.children(@dir).select { |name| name.match?(NAME) && File.directory?(File.join(@dir, name)) }.sort
       end
 
       # Every parseable line, oldest day first.
@@ -148,23 +147,21 @@ module Samagotchi
 
       def day_of(line) = line.fetch("at")[0, 10]
 
-      # The line as written: past the cap its state is cut, as a string, and
-      # marked; a line whose state can't make it fit keeps its facts only.
+      # The line as written: past the cap its state is cut, as a string, as
+      # little as fits (escaping makes a byte cost more than one in the line:
+      # the most that fits is searched for) and marked; a line that doesn't
+      # fit with no state at all keeps its facts only.
       def fit(line)
         text = JSON.generate(line)
         return text if text.bytesize <= MAX_LINE_BYTES
 
         line = line.merge("truncated" => true)
         state = line["state"].is_a?(String) ? line["state"] : JSON.generate(line["state"])
-        FIT_TRIES.times do
-          line = line.merge("state" => state)
-          text = JSON.generate(line)
-          return text if text.bytesize <= MAX_LINE_BYTES
+        cut = ->(bytes) { JSON.generate(line.merge("state" => state.byteslice(0, bytes).scrub(""))) }
+        return JSON.generate(line.except("state", "answers", "failure_text")) if cut.call(0).bytesize > MAX_LINE_BYTES
 
-          keep = [state.bytesize - (text.bytesize - MAX_LINE_BYTES) - 16, 0].max
-          state = state.byteslice(0, keep).to_s.scrub("")
-        end
-        JSON.generate(line.except("state", "answers", "failure_text"))
+        bytes = (0..[state.bytesize, MAX_LINE_BYTES].min).bsearch { |size| cut.call(size + 1).bytesize > MAX_LINE_BYTES }
+        cut.call(bytes || [state.bytesize, MAX_LINE_BYTES].min)
       end
 
       def write(path, text)

@@ -75,6 +75,29 @@ RSpec.describe "GuardrailWiring: System 1's saved runs" do
     expect(lines("label").size).to eq(1)
   end
 
+  it "hangs nothing on a scratch session's ask: no run, no gates, no label" do
+    session.scratch = true
+    runs_file = s1::Runs.new(store: store)
+    w = Samagotchi::GuardrailWiring.new(scratch: true, hooks: -> {}, tools: -> {}, session: -> { session }, model_key: -> {},
+                                        cancelled: -> { false }, ask: ->(_) { once },
+                                        system_one: -> { s1::Client.new(backend: judge, mode: "audit", host: "splash") },
+                                        system_one_runs: -> { runs_file }, cancel_controller: -> {})
+    w.state_dir = File.join(base, "sessions")
+    w.interface = :worker
+    w.request_approval(verdict_for)
+    expect(store.lines).to be_empty
+    expect(judgments.first["id"]).not_to include("/")
+  end
+
+  it "denies an agent's write to the saved runs, on the state dir it is wired to" do
+    w = wiring(s1::Client.new(backend: judge, mode: "audit", host: "splash"))
+    verdict = Samagotchi::Guardrails::Verdict.new(call: { name: "write", path: File.join(base, "system_one", "runs", "x.jsonl"), content: "x" })
+    verdict.context = Samagotchi::Guardrails::Context.new(cwd: base, session_id: session.id)
+    verdict.targets = Samagotchi::Guardrails::Targets.for(verdict.call, verdict.context)
+    w.send(:protected_paths).check(verdict)
+    expect([verdict.decision, verdict.rule]).to eq([:deny, "system-one-runs"])
+  end
+
   it "reads no gate with runs off" do
     off = s1::Runs.new
     w = Samagotchi::GuardrailWiring.new(scratch: false, hooks: -> {}, tools: -> {}, session: -> { session }, model_key: -> {},

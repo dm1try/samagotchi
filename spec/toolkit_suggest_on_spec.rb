@@ -430,6 +430,15 @@ RSpec.describe Samagotchi::Engine, "toolkit suggestion on mode" do
       expect(engine.send(:system_one_recording, system_one, "toolkit.suggest", session.tap { |s| s.scratch = true })).to equal(system_one)
     end
 
+    it "says nothing about a scratch session's ask: no run, no acted line" do
+      answers << pick("kit:web", 0.9)
+      sess = session
+      sess.scratch = true
+      turn(sess)
+      join!(engine.instance_variable_get(:@side_judgments).thread(:toolkit), "the ask")
+      expect(store.lines).to be_empty
+    end
+
     it "gives a warm-up the bare client: no run" do
       warmed = Queue.new
       allow(Samagotchi::ToolkitSuggest).to receive(:warm) { |client:, **| warmed << client }

@@ -380,7 +380,8 @@ module Samagotchi
       # judged is written after it, so the examples are always earlier asks.
       entries = log.entries
       started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
-      run_id = SystemOne::Runs.new_id(SystemOne::ApprovalQuestion::JUDGMENT)
+      # A scratch session saves no run, so nothing hangs a later line on one.
+      run_id = SystemOne::Runs.new_id(SystemOne::ApprovalQuestion::JUDGMENT) unless @session_lookup.call&.scratch
       answers = begin
         client.ask(state: SystemOne::ApprovalQuestion.state(approval, session_title: @session_lookup.call&.title,
                                                             entries: entries),
@@ -421,7 +422,7 @@ module Samagotchi
     # a later comparison must tell a sweep of gated asks from ungated ones.
     def system_one_run_facts(run_id, approval, targets, what)
       runs = @system_one_runs.call
-      return unless runs&.on?
+      return unless run_id && runs&.on?
 
       rule = approval.rule.to_s
       runs.gates(run_id, rule: rule, rule_listed: system_one_rules.include?(rule),

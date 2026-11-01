@@ -48,6 +48,28 @@ RSpec.describe Samagotchi::SystemOne::RunsStore do
     expect(parsed.size).to eq(3)
     expect(parsed.map { |line| line["truncated"] }).to all(be(true))
     expect(parsed).to all(include("state" => a_kind_of(String)))
+    # As little as fits: escaping costs line bytes, it doesn't cost the state.
+    expect(lines.map(&:bytesize)).to all(be > described_class::MAX_LINE_BYTES - 64)
+    expect(parsed[0]["state"].bytesize).to be > 15_000
+    expect(parsed[1]["state"].bytesize).to be > 4_000
+    expect(parsed[2]["state"]).to be_valid_encoding
+    expect(parsed[2]["state"]).to end_with("é")
+  end
+
+  it "keeps a line's facts when the rest alone is over the cap" do
+    runs.record(id: "approvals.allow/1", judgment: "approvals.allow", questions: [question], state: "x", answers: { "a" => "y" * 40_000 }, session_id: "s1")
+    line = store.lines("approvals.allow").first
+    expect(line).to include("id" => "approvals.allow/1", "session_id" => "s1", "truncated" => true)
+    expect(line).not_to have_key("answers")
+  end
+
+  it "leaves a folder that isn't a judgment's alone, and in no one's way" do
+    run(session: "gone")
+    FileUtils.mkdir_p(File.join(root, "system_one", "runs", "Backup"))
+    expect(store.names).to eq(["approvals.allow"])
+    expect(store.sweep(days: 14, max_bytes: 1000)).to eq(0)
+    expect(store.purge_session("gone")).to eq(1)
+    expect(Dir.exist?(File.join(root, "system_one", "runs", "Backup"))).to be(true)
   end
 
   it "leaves a small state whole, unmarked" do
@@ -204,9 +226,10 @@ RSpec.describe "Runs at the session's edges" do
 
   it "a session its worker left empty is deleted without reading the runs" do
     session = new_session
-    save_run(session.id)
-    Samagotchi::SessionManager.delete_session(session.id, state_dir: sessions, purge_runs: false)
-    expect(store.lines("approvals.allow").size).to eq(1)
+    allow(Samagotchi::SessionManager).to receive(:discardable?).and_return(true)
+    expect(Samagotchi::SystemOne::Runs).not_to receive(:purge_session)
+    Samagotchi::SessionManager.send(:discard_left_session, session.id, state_dir: sessions, default_model: "m")
+    expect(File.exist?(Samagotchi::Session.session_file(session.id, state_dir: sessions))).to be(false)
   end
 
   it "a delete goes on when the purge fails" do

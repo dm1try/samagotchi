@@ -3096,9 +3096,9 @@ module Samagotchi
         state: { project: state[:project].dup.freeze, prompt: state[:prompt].dup.freeze }.freeze
       )
       threshold = Config.get("toolkit.suggest.threshold")
-      runs = system_one_runs
+      runs = session.scratch ? nil : system_one_runs
       pending = ToolkitSuggest::Pending.new(log: log, joined: joined,
-                                            acted: ->(judged, did) { runs.acted(judged.fields[:run_id], did) },
+                                            acted: runs && ->(judged, did) { runs.acted(judged.fields[:run_id], did) },
                                             timeout_seconds: SystemOne::Client.configured_timeout_ms / 1000.0)
       # On mode: cut by a Stop while the turn waits (Pending#wait), not
       # by one after it went on; audit's ask is never cut.

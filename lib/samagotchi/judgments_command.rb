@@ -65,11 +65,10 @@ module Samagotchi
     end
 
     def ls_line(name)
-      lines = @store.lines(name)
-      runs = lines.select { |line| line["kind"] == "run" }
+      runs, later = @store.lines(name).partition { |line| line["kind"] == "run" }
       models = runs.filter_map { |run| run["served_model"] || run["model"] }.uniq
       "#{name}  digests #{@store.versions(name).size}  runs #{runs.size}  " \
-        "labels #{lines.count { |line| line["kind"] == "label" }}  failures #{runs.count { |run| run["failure"] }}  " \
+        "labels #{last_labels(runs, later).size}  failures #{runs.count { |run| run["failure"] }}  " \
         "models #{models.empty? ? "none" : models.join(", ")}  #{size_text(@store.size(name))}"
     end
 
@@ -108,20 +107,26 @@ module Samagotchi
       failures = tally(runs.filter_map { |run| run["failure"] })
       @stdout.puts("failures by class: #{failures}") unless failures.empty?
       print_answers(runs)
+      last = last_labels(runs, later)
       ids = runs.to_h { |run| [run["id"], true] }
-      labels = later.select { |line| line["kind"] == "label" && ids[line["run_id"]] }
-      # One label per run and question: the last said.
-      last = labels.to_h { |line| [[line["run_id"], line["question"]], line] }.values
       @stdout.puts("labels: #{last.empty? ? "none" : tally(last.map { |line| "#{line["value"]} (#{line["by"]})" })}")
       acted = later.select { |line| line["kind"] == "acted" && ids[line["run_id"]] }
       @stdout.puts("acted: #{tally(acted.map { |line| line["what"] })}") unless acted.empty?
+    end
+
+    # One label per run and question: the last said. One whose run is gone
+    # or out of the window doesn't count.
+    def last_labels(runs, later)
+      ids = runs.to_h { |run| [run["id"], true] }
+      labels = later.select { |line| line["kind"] == "label" && ids[line["run_id"]] }
+      labels.to_h { |line| [[line["run_id"], line["question"]], line] }.values
     end
 
     def print_answers(runs)
       answers = runs.flat_map { |run| (run["answers"].is_a?(Hash) ? run["answers"] : {}).to_a }
       answers.group_by(&:first).sort.each do |question, pairs|
         values = pairs.map(&:last).grep(Hash)
-        probabilities = values.filter_map { |answer| answer["noul"] || answer["confidence"] }.grep(Numeric)
+        probabilities = values.filter_map { |answer| answer["noul"] || answer["confidence"] }.grep(Numeric).select { |p| p.between?(0, 1) }
         kind = values.first&.fetch("type", nil)
         @stdout.puts("#{question} (#{kind}): #{probabilities.size} with a p#{", picks #{picks(values)}" if picks(values)}")
         histogram(probabilities).each { |line| @stdout.puts("  #{line}") }

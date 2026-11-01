@@ -162,6 +162,63 @@ RSpec.describe Samagotchi::ToolkitSuggest do
     let(:now) { [0.0] }
     let(:clock) { -> { now.first } }
 
+    describe "acted, the saved run's line" do
+      let(:acted) { [] }
+      let(:hook) { ->(given, did) { acted << [given, did] } }
+
+      def pending(joined: true, timeout: 1)
+        described_class.new(log: log, timeout_seconds: timeout, joined: joined, acted: hook, clock: clock)
+      end
+
+      it "says what the turn did with an answer, once" do
+        ask = pending
+        ask.finish(judged)
+        ask.wait(nil)
+        ask.record("suggested")
+        ask.abandon(:canceled)
+        expect(acted).to eq([[judged, "suggested"]])
+      end
+
+      it "says timeout when the ask ends after the turn gave up" do
+        ask = pending
+        now[0] = 2.0
+        expect(ask.wait(nil).first).to eq(:timeout)
+        expect(acted).to be_empty
+        ask.finish(judged)
+        expect(acted).to eq([[judged, "timeout"]])
+      end
+
+      it "says canceled for a Stop, with the answer in or still to come" do
+        stop = instance_double(Samagotchi::CancellationController, cancelled?: true)
+        answered = pending
+        answered.finish(judged)
+        answered.wait(stop)
+        expect(acted).to eq([[judged, "canceled"]])
+
+        acted.clear
+        late = pending
+        late.wait(stop)
+        late.finish(judged)
+        expect(acted).to eq([[judged, "canceled"]])
+      end
+
+      it "says why when the turn failed before it settled" do
+        ask = pending
+        ask.finish(judged)
+        ask.abandon(:failed)
+        expect(acted).to eq([[judged, "failed"]])
+      end
+
+      it "says nothing for audit, which does nothing with it, or an ask that ended with nothing" do
+        audit = pending(joined: false)
+        audit.finish(judged)
+        empty = pending
+        empty.finish(nil)
+        empty.wait(nil)
+        expect(acted).to be_empty
+      end
+    end
+
     it "records an audit ask on its own thread, with no did" do
       pending = described_class.new(log: log, timeout_seconds: 1, joined: false, clock: clock)
 
