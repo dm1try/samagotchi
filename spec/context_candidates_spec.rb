@@ -118,7 +118,7 @@ RSpec.describe Samagotchi::ContextCandidates do
 
       expect(described_class.before_turn(session: session, prompt: "#412", author: nil, state_dir: state_dir, seconds: 0.3))
         .to eq(["pr-412"])
-      expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < 3
+      expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < time_bound(3, below: 5) # not the command's 5 s
       expect(own.snapshot("pr-412")).to have_attributes(text: nil, checked_at: nil, error: nil)
     end
 

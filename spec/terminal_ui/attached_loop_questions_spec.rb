@@ -44,7 +44,7 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "questions" do
 
   def finish
     typed << nil
-    @thread.join(2)
+    join!(@thread, "the attached loop")
   end
 
   it "asks a question at the ? prompt, its choices in the notes slot, and sends the answer" do

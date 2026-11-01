@@ -19,7 +19,7 @@ module WebServer
 
     def stop
       server.shutdown
-      thread.join(5)
+      SpecWaiting.join!(thread, "the web server thread")
     end
   end
 

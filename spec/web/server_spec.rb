@@ -837,7 +837,7 @@ RSpec.describe Samagotchi::Web::Server do
       expect(described_class.probe("127.0.0.1", port)).to include("app" => "chi-web", "pid" => Process.pid)
     ensure
       webrick&.shutdown
-      thread&.join(2)
+      join!(thread, "the WEBrick thread") if thread
     end
   end
 

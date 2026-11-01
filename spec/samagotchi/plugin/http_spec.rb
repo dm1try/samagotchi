@@ -254,7 +254,7 @@ RSpec.describe Samagotchi::Plugin::Http do
       expect { http.get(url, timeout: 30, cancel: cancel) }.to raise_error(Samagotchi::Plugin::HttpCancelled, /cancelled/)
       expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < time_bound(5, below: 30)
     ensure
-      # Bounded, but no raise here: it would hide the example's own failure.
+      # wait-ok: best effort; a raise here would hide the example's own failure.
       canceller&.join(5)
     end
 

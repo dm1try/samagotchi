@@ -231,7 +231,7 @@ RSpec.describe Samagotchi::ContextCommand do
           wait_for("the push to wait for the lock") { thread.status == "sleep" }
           expect(own(a).snapshot("notes").text).to be_nil
           lock.flock(File::LOCK_UN)
-          thread.join(5)
+          join!(thread, "the push")
         end
         expect([pushed, own(a).snapshot("notes").text]).to eq([0, "hello"])
       end

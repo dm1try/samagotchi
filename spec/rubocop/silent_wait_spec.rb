@@ -123,7 +123,7 @@ RSpec.describe RuboCop::Cop::Samagotchi::SilentWait do
   describe "a statement join(N)" do
     let(:join_message) { described_class::MSG_JOIN }
 
-    it "flags a join with a number whose value is dropped, an example's last line, or an each block's" do
+    it "flags a join with a number whose value is dropped: an example's, an each block's, a method's" do
       expect_offense(<<~RUBY)
         it "joins" do
           thread.join(2)
@@ -136,6 +136,31 @@ RSpec.describe RuboCop::Cop::Samagotchi::SilentWait do
                 ^^^^^^^^^^^^^ #{join_message}
         threads.each { |t| t.join(5) }
                            ^^^^^^^^^ #{join_message}
+        def stop
+          server.shutdown
+          thread.join(5)
+          ^^^^^^^^^^^^^^ #{join_message}
+        end
+        def finish = thread.join(2)
+                     ^^^^^^^^^^^^^^ #{join_message}
+      RUBY
+    end
+
+    it "flags a join a cleanup drops: an ensure clause, a method's last line, a block with no value taken" do
+      expect_offense(<<~RUBY)
+        it "runs" do
+          start
+        ensure
+          thread&.join(5)
+          ^^^^^^^^^^^^^^^ #{join_message}
+        end
+        File.open(path) do |lock|
+          lock.flock(File::LOCK_EX)
+          thread.join(5)
+          ^^^^^^^^^^^^^^ #{join_message}
+        end
+        def stop = thread.join(5)
+                   ^^^^^^^^^^^^^^ #{join_message}
       RUBY
     end
 
@@ -144,7 +169,7 @@ RSpec.describe RuboCop::Cop::Samagotchi::SilentWait do
         expect(thread.join(0.1)).to be_nil
         thread.join(2) || raise("stuck")
         done = thread.join(1)
-        def finish = thread.join(2)
+        def result = thread.join(2)&.value
         thread.join
         lines.join(",")
         parts.join(separator)

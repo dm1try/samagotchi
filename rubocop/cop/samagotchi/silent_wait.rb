@@ -38,12 +38,15 @@ module RuboCop
       # never takes) is a silent wait too: its N isn't scaled by
       # SPEC_TIME_SCALE, and at the deadline it returns nil, which a
       # statement drops, leaving the thread running into teardown. That
-      # includes the last line of an each block, whose value each drops.
+      # includes the last line of an each block, whose value each drops, and
+      # the last statement of a method (a teardown helper), whose nil the
+      # caller never looks at.
       # A join whose nil is fine carries "# wait-ok: why".
       #
       #   # bad
       #   thread.join(2)
       #   threads.each { |t| t.join(5) }
+      #   def stop = thread.join(5)
       #
       #   # good
       #   join!(thread, "the watcher")
@@ -59,6 +62,10 @@ module RuboCop
         EXAMPLE_BLOCKS = %i[it specify example before after around].to_set.freeze
         # Blocks whose body value the call drops.
         EACH_BLOCKS = %i[each each_value each_with_index reverse_each].to_set.freeze
+        # Blocks whose body value is kept (the join's nil shows up in the
+        # result), so it is not silently dropped.
+        COLLECTING = %i[map collect select filter flat_map filter_map sum reduce inject each_with_object
+                        sort_by group_by partition].to_set.freeze
         RESTRICT_ON_SEND = %i[join].freeze
 
         # @!method numeric_join?(node)
@@ -102,7 +109,7 @@ module RuboCop
           return true unless node.value_used?
           return true if last_in_example?(node)
 
-          last_in_each?(node)
+          last_in_each?(node) || last_in_method?(node) || last_in_cleanup?(node) || last_in_dropped_block?(node)
         end
 
         def last_in_each?(node)
@@ -110,6 +117,49 @@ module RuboCop
           current = current.parent while current.parent && passes_value_on?(current.parent, current)
           container = current.parent
           container&.any_block_type? && EACH_BLOCKS.include?(container.method_name) && container.body.equal?(current)
+        end
+
+        # The last statement of a method: the join's nil becomes the return
+        # value, and the call that drops it (a teardown, a cleanup) never
+        # learns that the thread outlived the example.
+        def last_in_method?(node)
+          root = value_root(node)
+          container = root.parent
+          container&.def_type? && container.body.equal?(root)
+        end
+
+        # An ensure or rescue clause: the value of the whole expression is
+        # the body's, so the cleanup's join is dropped where it sits.
+        def last_in_cleanup?(node)
+          root = value_root(node)
+          parent = root.parent
+          return false if parent.nil?
+
+          case parent.type
+          when :ensure, :rescue then !parent.children.first.equal?(root)
+          when :resbody then parent.body.equal?(root)
+          else false
+          end
+        end
+
+        # The last line of a block the call takes no value from (File.open(path) do … end,
+        # a flock block, a queued callback). A block whose value the code keeps
+        # (map, select) is not one.
+        def last_in_dropped_block?(node)
+          root = value_root(node)
+          block = root.parent
+          return false unless block&.any_block_type? && block.body.equal?(root)
+          return false if EXAMPLE_BLOCKS.include?(block.method_name) || COLLECTING.include?(block.method_name)
+
+          !block.value_used?
+        end
+
+        # The node whose value this one's value is, walking through the
+        # wrappers that pass a value on.
+        def value_root(node)
+          current = node
+          current = current.parent while current.parent && passes_value_on?(current.parent, current)
+          current
         end
 
         def silent?(node)

@@ -1016,7 +1016,7 @@ RSpec.describe "task tools" do
         expect(thread).not_to be_alive
       ensure
         gate << true
-        thread&.join(5)
+        join!(thread, "the exit-status recorder") if thread
       end
     end
 
@@ -1058,7 +1058,7 @@ RSpec.describe "task tools" do
         expect(thread.name).to eq(Samagotchi::Tools::TaskRuntime::EXIT_STATUS_THREAD)
       ensure
         gate << true
-        thread&.join(5)
+        join!(thread, "the exit-status recorder") if thread
       end
 
       it "corrects a handed-over record from the status (as execute's hand-over calls it)" do

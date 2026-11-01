@@ -67,7 +67,7 @@ RSpec.describe Samagotchi::SideJudgments do
 
     expect(judgments.join(0.2)).to be(judgments)
 
-    expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < 1.0
+    expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < time_bound(1.0) # the 0.2 s budget in all, not a hang
   ensure
     2.times { release << true }
     threads&.each { |thread| join!(thread, "an ask") }

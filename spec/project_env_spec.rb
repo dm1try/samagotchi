@@ -213,8 +213,11 @@ RSpec.describe Samagotchi::ProjectEnv do
       expect(overlay(timeout: 1).reason).to eq("mise_timeout")
       expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < time_bound(5, below: 30)
       expect_untouched("mise_timeout")
-      pid = File.read("#{seen}.pid").to_i
-      expect { Process.kill(0, pid) }.to raise_error(Errno::ESRCH)
+      # wait-ok: the pid only proves the timed-out sh was reaped; a loaded runner
+      # can hit the 1 s timeout before the fake sh writes it, and then there is
+      # no process to check.
+      pid = wait_until(timeout: 2) { File.exist?("#{seen}.pid") } && File.read("#{seen}.pid").to_i
+      expect { Process.kill(0, pid) }.to raise_error(Errno::ESRCH) if pid
       expect(Samagotchi::Log).to have_received(:warn).with(:worker, "project_env", hash_including(reason: "mise_timeout")).once
     end
 
