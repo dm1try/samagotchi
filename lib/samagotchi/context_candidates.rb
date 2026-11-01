@@ -33,7 +33,10 @@ module Samagotchi
     BRANCH_MIN_CHARS = 6
     NUMBER_MIN = 10
     # A fenced code block's opening line (up to 3 spaces, then ``` or ~~~).
-    FENCE_OPEN = /\A {0,3}(`{3,}|~{3,})/
+    # A backtick fence's info string carries no backtick, so nothing after the
+    # marker on that line may be one: "```foo``` first" is inline code, and
+    # reading it as a fence leaves it unclosed and blanks the rest of the text.
+    FENCE_OPEN = /\A {0,3}(`{3,}(?![^\n]*`)|~{3,})/
     # What may sit around a word-like mention without joining it.
     WORD_BEFORE = %r{(?<![\w./#-])}
     WORD_AFTER = %r{(?![\w/-])(?!\.[\w/-])}

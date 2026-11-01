@@ -68,6 +68,16 @@ RSpec.describe Samagotchi::ContextCandidates do
       expect(mentions?("```\nunclosed #412", ["#412"])).to be(false)
     end
 
+    it "reads a line that opens and closes backticks on itself as inline code, not a fence" do
+      # CommonMark: an opening backtick fence's info string carries no
+      # backtick, so "```foo``` first" is inline code. Taking it as a fence
+      # leaves it unclosed and blanks everything after it.
+      expect(mentions?("```foo``` first\nwork on feat/login-fix", ["feat/login-fix"])).to be(true)
+      expect(mentions?("```foo```\nwork on feat/login-fix", ["feat/login-fix"])).to be(true)
+      # A real fence still blanks what it holds.
+      expect(mentions?("```ruby\nwork on feat/login-fix\n```\n", ["feat/login-fix"])).to be(false)
+    end
+
     it "names the mention found" do
       expect(described_class.mention_in("fix feat/login-fix", candidate)).to eq("feat/login-fix")
     end
