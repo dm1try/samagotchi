@@ -366,9 +366,9 @@ RSpec.describe "The work-cap bundle", :bundle do
 
     it "sets the tool-call cap with N, the minutes with Nm or Nh, each saved apart" do
       bundle = plugin({}, usage: calls(12, active_ms: minutes(3)))
-      expect(bundle.command("/workcap 400")).to eq("work-cap: tool calls cap set to 400 (12 so far)")
-      expect(bundle.command("/workcap 90m")).to eq("work-cap: active minutes cap set to 90 (3 so far)")
-      expect(bundle.command("/workcap 2h")).to eq("work-cap: active minutes cap set to 120 (3 so far)")
+      expect(bundle.command("/workcap 400")).to eq("work-cap: cap set to 400 tool calls (12 so far)")
+      expect(bundle.command("/workcap 90m")).to eq("work-cap: cap set to 90 active minutes (3 so far)")
+      expect(bundle.command("/workcap 2h")).to eq("work-cap: cap set to 120 active minutes (3 so far)")
       expect(state).to eq("tool_calls" => { "cap" => 400.0, "step" => 400.0 }, "minutes" => { "cap" => 120.0, "step" => 120.0 })
       expect(bundle.command("/workcap")).to eq("work-cap: 12 of 400 tool calls, 3 of 120 active minutes (1 turn)")
     end

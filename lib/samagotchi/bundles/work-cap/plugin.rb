@@ -268,7 +268,7 @@ class Plugin
     return USAGE unless value
 
     save_meter(ctx, meter, "cap" => value, "step" => value)
-    "work-cap: #{unit(meter)} cap set to #{count(value)} (#{count(used(ctx, ctx.usage)[meter])} so far)"
+    "work-cap: cap set to #{counted(value, meter)} (#{count(used(ctx, ctx.usage)[meter])} so far)"
   rescue StandardError => e
     ctx.log.warn(:workcap_command_failed, error: "#{e.class}: #{e.message}")
     "work-cap: #{e.message}"
