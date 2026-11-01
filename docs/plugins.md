@@ -787,7 +787,7 @@ file can't make itself a peer's, and uninstalling the bundle ends it.
 Subclasses of `Samagotchi::Plugin::Peer` (below) declare their `OUTBOX`
 source. Needs chi 0.67.0 (guard it with `chi.respond_to?(:peer_source)`).
 
-### `chi.judgment(name, questions:, positive: nil, negative: nil, shared_host: :skip)`
+### `chi.judgment(name, questions:, positive: nil, negative: nil)`
 
 A cheap System 1 question this bundle asks with `ctx.judge` or `ctx.judge_later`: see
 [Judgments](#judgments-chijudgment-and-ctxjudge).
@@ -1000,7 +1000,7 @@ gives a bundle no new power. Needs chi 0.142.0 (guard it with `chi.respond_to?(:
 ```ruby
 def register(chi)
   chi.judgment "progress", questions: { "progress" => { type: "noul", instructions: "Is this turn still making progress?" } },
-                           positive: "keep_going", negative: "stop", shared_host: :skip
+                           positive: "keep_going", negative: "stop"
 
   chi.on(:after_tool_call) do |_event, ctx|
     @run = ctx.judge_later("progress", state: { prompt: @prompt, calls: @calls }) do |result|
@@ -1031,10 +1031,6 @@ name has a capital or a dot fails to load on this call. `approvals`, `context`, 
   session. A plain map is checked when declared, a bad one failing the plugin's load; a callable's result at each ask, raising there.
 - `positive:` and `negative:` name the label values that say the answer was right and wrong (a word or a list). They
   are saved in each run for a later comparison, and don't limit `label`.
-- `shared_host:` says what to do while a turn runs on the same local server (the same `hosts:` entry or the same URL
-  root, and not a remote one), where an ask evicts the turn's cached prompt: `:skip`, the default, saves the run with `asked: false`, so a
-  later replay can answer it; `:ask` asks anyway. Between turns and on a remote host, it asks either way. A turn's hooks count as in the
-  turn, `:after_turn` and `:session_end` too: an ask there would still evict the prefix the next turn wants.
 
 `ctx.judge(name, state:)` asks and waits, at most `system_one.timeout_ms`. `name` is as declared, without the bundle.
 `state:` is a String, Hash or Array: what the question is about, sent to the System 1 host and saved as sent (bytes that
@@ -1057,7 +1053,6 @@ anything that goes wrong on the way:**
 | `:no_session` | no session bound yet | no |
 | `:failed` | the host couldn't be reached, timed out, refused, or sent something unusable | yes, with `failure` |
 | `:cancelled` | the turn was stopped during the ask | yes, with `failure: "cancelled"` |
-| `:shared_host` | `shared_host: :skip`, and a turn is running on it | yes, `asked: false` |
 | `:busy` | `judge_later` only: this judgment's last one still runs | yes, `asked: false` |
 
 An undeclared name or a bad `state:` (not a String, Hash or Array, or nested too deep) raises `ArgumentError`, as `ask_model` does for a bad model, and so does `ctx.judge` in a
@@ -1418,7 +1413,7 @@ bundle.questions.last.effects                            # an ask_user's tags as
 bundle.answer({ selected: "yes" })                       # the next ask_user's answer
 bundle.model_answers << "a summary"                      # the next ask_model's answer
 bundle.judgments.answer("progress", noul: 0.9)           # ctx.judge's answer from now on; question: for one of several, or a block given the state
-bundle.judgments.fail("progress")                        # a failed backend; mode("progress", "off"), no_host("progress"), shared_host_busy too
+bundle.judgments.fail("progress")                        # a failed backend; mode("progress", "off"), no_host("progress") too
 bundle.judgments.wait                                    # judge_later's threads and blocks are done
 bundle.judgments.asks.last.state                         # the asks that reached System 1: name, state, questions, cancel
 bundle.judgments.runs("progress").last["asked"]          # the runs as chi saves them; labels("progress"), acted_lines("progress") too

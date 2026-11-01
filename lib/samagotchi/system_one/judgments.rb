@@ -20,9 +20,9 @@ module Samagotchi
     class Judgments
       # What chi.judgment declared. +questions+ is an Array of Question, or a
       # callable given the ctx, returning what normalize_questions takes.
-      Declaration = Data.define(:name, :questions, :positive, :negative, :shared_host) do
+      Declaration = Data.define(:name, :questions, :positive, :negative) do
         # @raise [ArgumentError] anything the declaration can't be
-        def self.build(bundle:, name:, questions:, positive: nil, negative: nil, shared_host: :skip)
+        def self.build(bundle:, name:, questions:, positive: nil, negative: nil)
           full = "#{bundle}.#{name}"
           # The first word is the bundle: "a.b" + "x" and "a" + "b.x" must not meet.
           raise ArgumentError, "judgment #{full.inspect}: a bundle with a dot in its name can't declare one" if bundle.to_s.include?(".")
@@ -31,12 +31,9 @@ module Samagotchi
             raise ArgumentError, "judgment #{full.inspect}: a full name is dot-separated words of a-z, 0-9, _ and -, " \
                                  "with no first word of #{Runs::RESERVED.join(", ")} and no #{Runs::RESERVED_SUFFIX} at its end"
           end
-          unless SHARED_HOST.include?(shared_host)
-            raise ArgumentError, "judgment #{full}: shared_host: is #{SHARED_HOST.map(&:inspect).join(" or ")}, not #{shared_host.inspect}"
-          end
 
           new(name: full, questions: questions.respond_to?(:call) ? questions : checked(full, questions),
-              positive: Array(positive).map(&:to_s).freeze, negative: Array(negative).map(&:to_s).freeze, shared_host: shared_host)
+              positive: Array(positive).map(&:to_s).freeze, negative: Array(negative).map(&:to_s).freeze)
         end
 
         # The questions of an ask now.
@@ -56,10 +53,8 @@ module Samagotchi
         def run_fields = { positive: positive, negative: negative }.reject { |_key, values| values.empty? }
       end
 
-      SHARED_HOST = %i[ask skip].freeze
-
       # What an ask came to. +reason+ says why there's no answer: :off,
-      # :no_host, :no_session, :failed, :cancelled, :shared_host or :busy; nil
+      # :no_host, :no_session, :failed, :cancelled or :busy; nil
       # with answers. +mode+ is the judgment's ("off", "audit", "on"): in audit
       # the bundle looks and doesn't act. +run_id+ is nil when no run is saved.
       Result = Data.define(:answers, :run_id, :mode, :reason) do
@@ -79,7 +74,7 @@ module Samagotchi
       end
 
       # One ask, made ready on the caller's thread.
-      Ask = Data.define(:client, :questions, :state, :run_id, :mode, :shared_host)
+      Ask = Data.define(:client, :questions, :state, :run_id, :mode)
 
       # The seams are what the Engine knows, read at each ask. They default to
       # nothing, for a chi with no Engine (a bundle's install check): nothing
@@ -89,17 +84,15 @@ module Samagotchi
       # @param runs [#call] → the Runs to save in
       # @param where [#call] → Recording::Context, nil with no session
       # @param side [SideJudgments]
-      # @param shared_host_busy [#call] (host) → whether a turn is running on it
       # @param participant [#call] → whether a participant's turn runs: its
       #   text is never saved
       def initialize(settings: JudgmentSettings.method(:of), client_for: ->(_name, _settings) {}, runs: -> { Runs.new }, where: -> {},
-                     side: SideJudgments.new, shared_host_busy: ->(_host) { false }, participant: -> { false })
+                     side: SideJudgments.new, participant: -> { false })
         @settings = settings
         @client_for = client_for
         @runs = runs
         @where = where
         @side = side
-        @shared_host_busy = shared_host_busy
         @participant = participant
         @declarations = {}
         @mutex = Mutex.new
@@ -120,7 +113,7 @@ module Samagotchi
         ask = prepare(name, state, context)
         return ask if ask.is_a?(Result)
 
-        shared_host?(ask) ? skipped(ask, :shared_host) : asked(ask, cancel_controller)
+        asked(ask, cancel_controller)
       end
 
       # Ask on +name+'s side thread, one at a time; the block gets the Result
@@ -130,7 +123,6 @@ module Samagotchi
       def later(name, state:, context: nil, &block)
         ask = prepare(name, state, context)
         return tell(name, block, ask).run_id if ask.is_a?(Result)
-        return tell(name, block, skipped(ask, :shared_host)).run_id if shared_host?(ask)
 
         started = @side.start(name, warn: warner(name, "judge_later_failed"),
                                     finish: ->(result) { deliver(name, block, result || Result.none(:failed, mode: ask.mode, run_id: ask.run_id)) }) do
@@ -196,7 +188,7 @@ module Samagotchi
         runs = @participant.call ? Runs.new : @runs.call
         Ask.new(client: Recording.new(client, judgment: declaration.name, runs: runs, context: where, fields: declaration.run_fields),
                 questions: declaration.questions_for(context), state: copy_of(declaration, state),
-                run_id: runs.on? ? Runs.new_id(declaration.name) : nil, mode: settings.mode, shared_host: declaration.shared_host)
+                run_id: runs.on? ? Runs.new_id(declaration.name) : nil, mode: settings.mode)
       end
 
       # A state nested too deep to copy (a cycle) is a bad state: a
@@ -212,15 +204,6 @@ module Samagotchi
       rescue StandardError => e
         warner(declaration.name, "judgment_client_failed").call(e)
         nil
-      end
-
-      # Whether this ask would evict a running turn's cached prompt, and its
-      # bundle said to skip then. A check that fails counts as yes: no ask.
-      def shared_host?(ask)
-        ask.shared_host == :skip && @shared_host_busy.call(ask.client.host)
-      rescue StandardError => e
-        Samagotchi::Log.warn(:plugins, "judgment_shared_host_check_failed", error: e.class.name)
-        true
       end
 
       def skipped(ask, reason)

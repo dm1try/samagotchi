@@ -75,7 +75,7 @@ module Samagotchi
       end
 
       # An ask that wasn't made: its run, at once, asked: false, so a later
-      # replay can answer the state with no eviction today (docs/system-one.md).
+      # replay can answer the state (docs/system-one.md).
       # @param reason [String] why: the run's +skipped+
       def skip(state:, questions:, reason:, run_id: nil)
         save(questions) do

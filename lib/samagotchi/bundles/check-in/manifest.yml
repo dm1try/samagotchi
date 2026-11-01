@@ -1,12 +1,12 @@
 ---
 name: check-in
-version: 0.3.0
+version: 0.3.1
 scope: system
 description: "Checks on a long turn: after N tool calls with no answer, a card asks the user (Nudge / Keep going / Stop), or the model is nudged to say what it has found"
 trust_level: reviewed
 plugin:
   file: plugin.rb
-  sha256: sha256:fbb7165631c8a8096d900511a95874fe61e72ad8c6f1b45c5c829a285084f25b
+  sha256: sha256:cb994f2e5db8338b4a6d49ef52bfdfee7b3a9b05826e625dd8ab1d17e215e86b
 requires_chi: ">= 0.142.0"
 # check-in.progress asks System 1 (chi.judgment, new in 0.142.0): the marker
 # below raises the floor at the release (docs/releasing.md), since chi on main

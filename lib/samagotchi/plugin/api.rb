@@ -413,14 +413,11 @@ module Samagotchi
       # @param positive [String, Array<String>, nil] the label values that
       #   say the answer was right, for a later comparison
       # @param negative [String, Array<String>, nil] and wrong
-      # @param shared_host [Symbol] what to do while a turn runs on the same
-      #   local server, where an ask evicts its cached prompt: :skip saves
-      #   the run unasked (asked: false), :ask asks anyway
-      def judgment(name, questions:, positive: nil, negative: nil, shared_host: :skip)
+      def judgment(name, questions:, positive: nil, negative: nil)
         raise ArgumentError, "this chi has no judgments (plugins: false)" unless @registries.judgments
 
         declaration = SystemOne::Judgments::Declaration.build(bundle: @bundle, name: name, questions: questions, positive: positive,
-                                                              negative: negative, shared_host: shared_host)
+                                                              negative: negative)
         if @judgments.any? { |item| item.name == declaration.name } || @registries.judgments.declared?(declaration.name)
           raise ArgumentError, "judgment #{declaration.name} is declared twice"
         end

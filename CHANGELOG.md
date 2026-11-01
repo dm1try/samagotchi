@@ -7,6 +7,17 @@ and commands may change between minor versions. How releases are made:
 [docs/releasing.md](docs/releasing.md).
 ## [Unreleased]
 
+### Changed
+
+- With System 1 on the model's own local server, its asks now run during your turn as on any other host: toolkit suggestions (audit, the
+  deferred switch and the worker's warm-up, all skipped there before), context candidates (held to the turn's end before) and bundles' judgments (skipped before).
+  Measured on Splash, they don't push out the session's cached prompt. Each costs the running generation about 0.15 s.
+
+### Removed
+
+- `shared_host:` on `chi.judgment`, the `:shared_host` reason, and `shared_host_busy` in the bundle test kit: a bundle still passing `shared_host:` fails to load, with an
+  `ArgumentError`. check-in 0.3.1 no longer passes it, so run `chi update`.
+
 ### Fixed
 
 - With `update.auto: install`, "chi updated to X" counts the sessions the old chi web restarted (it said 0 of them), and a run

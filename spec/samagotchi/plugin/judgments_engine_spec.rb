@@ -37,10 +37,9 @@ RSpec.describe "Bundles' judgments on the Engine" do
     engine
   end
 
-  def declare(shared_host: :skip)
+  def declare
     engine.instance_variable_get(:@judgments).declare(
-      Samagotchi::SystemOne::Judgments::Declaration.build(bundle: "probe", name: "x", questions: { "q" => { type: "noul", instructions: "i" } },
-                                                          shared_host: shared_host)
+      Samagotchi::SystemOne::Judgments::Declaration.build(bundle: "probe", name: "x", questions: { "q" => { type: "noul", instructions: "i" } })
     )
     engine.session = session
   end
@@ -112,30 +111,28 @@ RSpec.describe "Bundles' judgments on the Engine" do
     expect(ctx.judge("x", state: "s")).to have_attributes(reason: :no_session)
   end
 
-  describe "shared_host" do
+  describe "with System 1 on the model's own local host, during a turn" do
     before do
       config({ "system_one" => { "host" => "judge", "judgments" => { "probe.x" => { "mode" => "on" } } } })
       backend_answers
-      allow(engine).to receive(:system_one_shares_local_host?).with("judge").and_return(true)
+      allow(engine.instance_variable_get(:@host_registry)).to receive(:host_for_model)
+        .and_return([Samagotchi::HostRegistry::HostEntry.new(name: "judge", host: "127.0.0.1", port: 8080, client: test_client), nil])
+      allow(engine).to receive(:turn_running?).and_return(true)
+      declare
     end
 
-    it ":skip saves the run unasked while a turn runs on the same local server" do
-      declare
-      allow(engine).to receive(:turn_running?).and_return(true)
+    it "ctx.judge asks" do
       result = ctx.judge("x", state: "s")
-      expect(result).to have_attributes(reason: :shared_host, no_judgment?: true)
-      expect(runs.last).to include("id" => result.run_id, "asked" => false, "skipped" => "shared_host")
+      expect(result.p).to eq(0.9)
+      expect(runs.last).to include("id" => result.run_id, "asked" => true)
     end
 
-    it ":skip asks between turns" do
-      declare
-      expect(ctx.judge("x", state: "s").p).to eq(0.9)
-    end
-
-    it ":ask asks anyway" do
-      declare(shared_host: :ask)
-      allow(engine).to receive(:turn_running?).and_return(true)
-      expect(ctx.judge("x", state: "s").p).to eq(0.9)
+    it "ctx.judge_later asks" do
+      got = Queue.new
+      id = ctx.judge_later("x", state: "s") { |result| got << result }
+      expect(pop!(got, "the block's result")).to have_attributes(run_id: id, reason: nil)
+      join!(engine.instance_variable_get(:@side_judgments).thread("probe.x"), "the ask")
+      expect(runs.last).to include("id" => id, "asked" => true)
     end
   end
 

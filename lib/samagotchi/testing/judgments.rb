@@ -56,7 +56,6 @@ module Samagotchi
         @failing = {}
         @modes = {}
         @no_host = {}
-        @shared_host_busy = false
         @asks = []
         @store = SystemOne::Runs::MemoryStore.new
         @side = SideJudgments.new
@@ -102,13 +101,6 @@ module Samagotchi
       # @return [Judgments] self
       def no_host(name)
         @mutex.synchronize { @no_host[full(name)] = true }
-        self
-      end
-
-      # Whether a turn runs on the System 1 host (shared_host: :skip skips then).
-      # @return [Judgments] self
-      def shared_host_busy(busy = true)
-        @shared_host_busy = busy
         self
       end
 
@@ -176,7 +168,6 @@ module Samagotchi
             id && SystemOne::Recording::Context.new(session_id: id, session_model: @recorder[:model_name])
           },
           side: @side,
-          shared_host_busy: ->(_host) { @shared_host_busy },
           participant: -> { !@recorder[:turn_author].nil? }
         )
       end

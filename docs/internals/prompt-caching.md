@@ -85,6 +85,13 @@ right-hand column happens.
   session's context folder, and its note comes with the between-turn delivery (`ContextAbsorber`), never mid-turn.
   Its asks start beside the turn on any host. Bounded: at most two judged asks per candidate (one re-ask after
   `reask_after_turns` owner prompts), plus a deferred ask per owner prompt before a task is stated.
+- System 1's asks (`SystemOne::Client`, `/v1/systemone`) go beside the turn on any host, the model's own Splash too,
+  because they don't cost the session its cached prompt there. Measured 2026-11-01 on a local Splash with a 60k-token
+  session: the next request still had 60,064 tokens cached in 0.13 s after 3 asks (0.09 s with none), and 60,160 cached
+  in 0.18 s after 10 asks during generation; asks answered in 108-158 ms during a turn, and those 10 took the
+  generation from 2.87 s to 4.43 s. An earlier guard skipped or deferred them on the assumption that an ask takes the
+  slot and evicts the prefix, never measured there; don't rebuild it from that assumption. Not measured: a prefix past
+  Splash's cache capacity (262144 tokens).
 - A kit's prompt text (`toolkit.kits.<name>.prompt:`, `chi.toolkit … prompt:`) sits after the appended files and
   before the memory indexes (`SystemPrompt#kit_prompt_section`): one prefix per kit, never per-session text, so
   sessions on the kit share it; a memory write (the indexes after it) doesn't move it. It is part of the
@@ -267,7 +274,8 @@ is prefilled once. The native and the chat loop use the same plan.
 ## Server-side settings worth knowing
 
 - **Splash:** `--persistent-cache` (with `--max-cache-disk`) keeps restore points across restarts. Splash learns
-  a new branch point on the 2nd session, so the 3rd one gets the full reuse.
+  a new branch point on the 2nd session, so the 3rd one gets the full reuse. System 1's asks on the same server leave
+  a session's cached prefix alone (measured 2026-11-01, above).
 - **llama.cpp:** `--cache-ram` (the host-memory prompt cache, 8 GiB by default in recent builds) is what keeps
   sessions apart: when a task starts on a slot, the idle slots' state goes to that cache, and an unpinned request
   restores the best match on whatever slot it gets. So a recap or another session between two turns costs

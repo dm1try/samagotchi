@@ -77,10 +77,7 @@ class Plugin
   def register(chi)
     # An older chi has no judgments; the check-in itself is the same there.
     @declared = chi.respond_to?(:judgment)
-    if @declared
-      chi.judgment PROGRESS, questions: { PROGRESS => { type: "noul", instructions: PROGRESS_QUESTION } },
-                             shared_host: :skip
-    end
+    chi.judgment PROGRESS, questions: { PROGRESS => { type: "noul", instructions: PROGRESS_QUESTION } } if @declared
 
     chi.on(:before_turn) { |event, ctx| before_turn(event, ctx) }
     chi.on(:after_tool_call) { |event, ctx| after_tool_call(event, ctx) }
@@ -257,9 +254,7 @@ class Plugin
   end
 
   # The ask, on its own thread. Nothing reads the answer: the turn and the
-  # card are what they are with the judgment off. `shared_host: :skip` (the
-  # declaration) saves the run with `asked: false` when a turn is running on
-  # the same local System 1 host, so the ask never evicts that turn's cache.
+  # card are what they are with the judgment off.
   def ask_progress(ctx)
     return unless @declared
 

@@ -61,8 +61,8 @@ A `run` line: `id`, `judgment`, `at`, `instructions_digest`, `criteria_digest`, 
 `failure` and `failure_text`, `latency_ms`, `session_id`, `chain_link`, `session_model`, `test_run`, `truncated`.
 Nil fields are left out. A bundle's run may add `positive` and `negative`, the label values it declared.
 
-A skipped ask is a run too, written at once: `asked: false` and `skipped` (`shared_host`, or `busy` for a `judge_later` whose last one still
-runs), with its state, host and model but no answers, so a later replay can answer it with no eviction today.
+A skipped ask is a run too, written at once: `asked: false` and `skipped` (`busy`: a `judge_later` whose last one still
+runs), with its state, host and model but no answers, so a later replay can answer it.
 
 **That means prompts, commands, diffs and any secret in them are in these files.** A state is whatever the
 use sends System 1: an approval's command (up to 2000 chars), diff and earlier examples, a toolkit's

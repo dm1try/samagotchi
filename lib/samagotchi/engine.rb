@@ -3241,7 +3241,6 @@ module Samagotchi
         runs: -> { @session&.scratch ? SystemOne::Runs.new : system_one_runs },
         where: -> { @session && SystemOne::Recording::Context.of(@session, session_model: effective_model_name) },
         side: @side_judgments,
-        shared_host_busy: ->(host) { turn_running? && system_one_shares_local_host?(host) },
         participant: -> { !turn_author.nil? }
       )
     end
@@ -3250,19 +3249,6 @@ module Samagotchi
     # Where this Engine's runs are saved; read each time, as the settings are.
     def system_one_runs = SystemOne::Runs.for_sessions_dir(session_state_dir)
     private :system_one_runs
-
-    # D7: System 1's host is the session's model server, and a local one
-    # (a single-slot Splash or llama.cpp): the same name, or two hosts:
-    # entries for one server root (scheme, host, port).
-    def system_one_shares_local_host?(judge_name)
-      model_host, = @host_registry.host_for_model(effective_model_name)
-      return false if model_host.nil? || model_host.remote?
-      return true if judge_name.to_s.strip.casecmp?(model_host.name.to_s)
-
-      judge = @host_registry.find_entry(judge_name)
-      !judge.nil? && judge.root_url.downcase == model_host.root_url.downcase
-    end
-    private :system_one_shares_local_host?
 
     # The candidate judge (ContextJudge) at an owner turn's start, after
     # the toolkit's ask settled: the session's candidates' status changes

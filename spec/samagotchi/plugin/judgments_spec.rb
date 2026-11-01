@@ -49,13 +49,13 @@ RSpec.describe "chi.judgment and ctx.judge" do
       expect(ctx.judge("progress", state: "s").run_id).to start_with("probe.progress/")
     end
 
-    it "refuses a second declaration, a bad name, a bad shared_host and bad questions: the plugin fails to load" do
+    it "refuses a second declaration, a bad name, an unknown keyword and bad questions: the plugin fails to load" do
       question = '{ "q" => { type: "noul", instructions: "i" } }'
       [
         ["#{noul}\n#{noul}", /declared twice/],
         [%(chi.judgment "Bad Name", questions: #{question}), /dot-separated/],
         [%(chi.judgment "x.replay", questions: #{question}), /replay/],
-        [%(chi.judgment "x", questions: #{question}, shared_host: :after_turn), /shared_host/],
+        [%(chi.judgment "x", questions: #{question}, shared_host: :skip), /shared_host/],
         [%(chi.judgment "x", questions: { "q" => { type: "nope", instructions: "i" } }), /type must be/],
         [%(chi.judgment "x", questions: {}), /no questions/]
       ].each do |register, message|
@@ -192,23 +192,6 @@ RSpec.describe "chi.judgment and ctx.judge" do
       expect(judgments.runs("progress").last).to include("failure" => "cancelled")
     end
 
-    it "skips while a turn runs on the shared host, saving the run asked: false" do
-      declared
-      judgments.answer("progress", noul: 0.9).shared_host_busy
-      result = ctx.judge("progress", state: "the state")
-      expect(result).to have_attributes(no_judgment?: true, reason: :shared_host, run_id: start_with("probe.progress/"))
-      expect(judgments.asks).to be_empty
-      expect(judgments.runs("progress").last).to include("id" => result.run_id, "asked" => false, "skipped" => "shared_host",
-                                                         "state" => "the state", "mode" => "on", "host" => "fake")
-      expect(judgments.runs("progress").last).not_to include("answers", "latency_ms")
-    end
-
-    it "asks anyway under shared_host: :ask" do
-      bundle_with(%(chi.judgment "x", questions: { "q" => { type: "noul", instructions: "i" } }, shared_host: :ask))
-      judgments.answer("x", noul: 0.9).shared_host_busy
-      expect(ctx.judge("x", state: "s").p).to eq(0.9)
-    end
-
     it "raises in a :generation_progress handler, whose stream it would hold, pointing to ctx.judge_later" do
       declared(%(\nchi.on(:generation_progress) { |_event, ctx| ctx.judge("progress", state: "s") }))
       expect { @bundle.fire(:generation_progress, thinking: "", text: "") }
@@ -319,16 +302,6 @@ RSpec.describe "chi.judgment and ctx.judge" do
       expect(ctx.judge_later("progress", state: "s") { |result| got << result }).to be_nil
       expect(got.pop(timeout: 5).p).to eq(0.9)
       expect(judgments.wait.runs("progress")).to be_empty
-    end
-
-    it "skips under shared_host: :skip with the block told" do
-      declared
-      judgments.answer("progress", noul: 0.9).shared_host_busy
-      got = Queue.new
-      id = ctx.judge_later("progress", state: "s") { |result| got << result }
-      expect(got.pop(timeout: 5)).to have_attributes(reason: :shared_host, run_id: id)
-      expect(judgments.runs("progress").last).to include("id" => id, "asked" => false)
-      expect(judgments.asks).to be_empty
     end
 
     it "tells the block on a failed backend, and a failed ask frees the kind" do

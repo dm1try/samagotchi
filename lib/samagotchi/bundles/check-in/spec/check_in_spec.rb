@@ -474,20 +474,6 @@ RSpec.describe "The check-in plugin", :bundle do
       expect(labels(p)).to be_empty
     end
 
-    it "saves the run unasked while a turn runs on the System 1 host" do
-      p = plugin("after" => 1)
-      judging(p)
-      p.judgments.shared_host_busy(true)
-      turn(p)
-      tool_call(p, "read", result: "a")
-      p.judgments.wait
-
-      expect(p.judgments.asks).to be_empty
-      run = p.judgments.runs("progress").last
-      expect([run["asked"], run["skipped"]]).to eq([false, "shared_host"])
-      expect(run["state"]["calls"]).to eq(1)
-    end
-
     it "saves no prompt for a turn someone else is running, or for a continue" do
       p = plugin("after" => 1)
       judging(p)
