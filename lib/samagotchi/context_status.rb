@@ -299,7 +299,7 @@ module Samagotchi
 
     def bucket_rank(bucket) = self.class.bucket_rank(bucket, @thresholds)
 
-    # A rise (never a fall or a cadence tick) into a bucket whose guidance
+    # A rise (never a fall) into a bucket whose guidance
     # asks for a change. With no previous bucket (a first turn, a resumed
     # session with no line yet), the first bucket counts as a rise from 0.
     def guidance_due?(previous, bucket)
