@@ -379,31 +379,51 @@ RSpec.describe Samagotchi::Engine, "toolkit suggestion on mode" do
     expect(log_lines.last).to include("did" => "unavailable")
   end
 
-  context "when System 1 shares the model's local single-slot host (M2)" do
+  context "with System 1 on the model's own local host" do
     before do
-      allow(engine).to receive(:system_one_shares_local_host?).and_return(true)
-      allow(Samagotchi::Log).to receive(:info).and_call_original
+      allow(engine.instance_variable_get(:@host_registry)).to receive(:host_for_model)
+        .and_return([Samagotchi::HostRegistry::HostEntry.new(name: "judge", host: "127.0.0.1", port: 8080, client: client), nil])
     end
 
-    it "asks on the first turn, but not on the deferred path" do
+    it "asks on the first turn and on the deferred path" do
       answers << pick("undecided", 0.9) << pick("kit:web", 0.9)
       sess = session
 
       turn(sess, "hi there")
       turn(sess, "now fix the browser flow")
 
-      expect(asked.size).to eq(1)
-      expect(Samagotchi::Log).to have_received(:info).with(:toolkit, "toolkit_suggest_shared_host_skipped",
-                                                           hash_including(host: "judge"))
-      expect(sess.toolkit_origin).to eq("default")
+      expect(asked.size).to eq(2)
+      expect(sess.toolkit_origin).to eq("suggested")
     end
 
-    it "doesn't warm up" do
+    it "asks audit's question during the turn, on a later turn too" do
+      allow(Samagotchi::Config).to receive(:get).with("toolkit.suggest.mode").and_return("audit")
+      answers << pick("undecided", 0.9) << pick("undecided", 0.9)
+      sess = session
+      during = []
+      allow(kernel).to receive(:run) do |messages, **|
+        thread = engine.instance_variable_get(:@side_judgments).thread(:toolkit)
+        join!(thread, "the audit ask") if thread
+        during << [engine.turn_running?, asked.size]
+        Samagotchi::LLM::ModelResult.new(text: "ok", conversation: messages.reject { |m| m[:role].to_s == "system" } +
+                                                                   [{ role: "model", content: "ok" }],
+                                         exhausted: false, pending_tool_calls: false, tool_activity: [])
+      end
+
+      turn(sess, "hi there")
+      turn(sess, "now fix the browser flow")
+
+      expect(during).to eq([[true, 1], [true, 2]])
+    end
+
+    it "warms up as an idle worker starts" do
+      answers << pick("undecided", 0.9)
       engine.session = session
 
       engine.warm_toolkit_suggestion!
+      join!(engine.instance_variable_get(:@toolkit_warmup_thread), "the warm-up")
 
-      expect(engine.instance_variable_get(:@toolkit_warmup_thread)).to be_nil
+      expect(asked.size).to eq(1)
     end
   end
 

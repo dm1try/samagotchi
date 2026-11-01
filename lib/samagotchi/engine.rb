@@ -3069,15 +3069,6 @@ module Samagotchi
                                     ToolkitSuggest::JUDGMENT, session, mode: Config.get("toolkit.suggest.mode").to_s)
       return unless client
 
-      # D7: on a shared single-slot server audit's free ask would compete
-      # with the turn's prefill, and any ask evicts the session's cached
-      # prefix: on mode asks only on a first turn there (nothing is cached
-      # yet worth keeping), never on the deferred path.
-      if (!joined || ToolkitSuggest.model_reply?(session.messages)) && system_one_shares_local_host?(client.host)
-        Log.info(:toolkit, "toolkit_suggest_shared_host_skipped", session_id: session.id, host: client.host)
-        return
-      end
-
       # The warm-up's only value is the cache: the real ask never queues
       # behind it.
       stop_toolkit_warmup
@@ -3196,9 +3187,6 @@ module Samagotchi
 
       client = SystemOne::Client.from_config(host_registry: @host_registry, mode: "on", tag: :toolkit)
       return unless client
-      # D7: on the model's own single-slot server it would evict the
-      # session's cached prefix for a question that may never come.
-      return if system_one_shares_local_host?(client.host)
 
       project = File.basename(session.project_root.to_s)
       @toolkit_warmup_thread = Thread.new do

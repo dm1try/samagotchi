@@ -144,50 +144,10 @@ RSpec.describe Samagotchi::Engine do
     end
   end
 
-  it "skips a shared local System 1 host before starting the ask" do
-    engine = build_engine
-    local_host = double(name: "judge", remote?: false)
-    registry = double(host_for_model: [local_host, nil])
-    engine.instance_variable_set(:@host_registry, registry)
-    allow(engine).to receive(:effective_model_name).and_return("model")
-    system_one = instance_double(Samagotchi::SystemOne::Client, host: "judge")
-    allow(system_one).to receive(:ask)
-    allow(Samagotchi::SystemOne::Client).to receive(:from_config).and_return(system_one)
-    allow(Samagotchi::Log).to receive(:info)
-
-    start(engine)
-
-    expect(Samagotchi::Log).to have_received(:info).with(
-      :toolkit, "toolkit_suggest_shared_host_skipped",
-      hash_including(host: "judge")
-    )
-    expect(system_one).not_to have_received(:ask)
-  end
-
-  it "skips a local System 1 host under another name for the model's server root (D7)" do
+  it "asks a System 1 host under another name for the model's own server root" do
     engine = build_engine
     model_host = double(name: "splash", remote?: false, root_url: "http://127.0.0.1:8080")
-    judge_host = double(name: "judge", root_url: "HTTP://127.0.0.1:8080")
-    registry = double(host_for_model: [model_host, nil])
-    allow(registry).to receive(:find_entry).with("judge").and_return(judge_host)
-    engine.instance_variable_set(:@host_registry, registry)
-    allow(engine).to receive(:effective_model_name).and_return("model")
-    system_one = instance_double(Samagotchi::SystemOne::Client, host: "judge")
-    allow(system_one).to receive(:ask)
-    allow(Samagotchi::SystemOne::Client).to receive(:from_config).and_return(system_one)
-    allow(Samagotchi::Log).to receive(:info)
-
-    start(engine)
-
-    expect(Samagotchi::Log).to have_received(:info).with(:toolkit, "toolkit_suggest_shared_host_skipped",
-                                                         hash_including(host: "judge"))
-    expect(system_one).not_to have_received(:ask)
-  end
-
-  it "asks when the local System 1 host is another server" do
-    engine = build_engine
-    model_host = double(name: "splash", remote?: false, root_url: "http://127.0.0.1:8080")
-    registry = double(host_for_model: [model_host, nil], find_entry: double(root_url: "http://127.0.0.1:8082"))
+    registry = double(host_for_model: [model_host, nil], find_entry: double(root_url: "HTTP://127.0.0.1:8080"))
     engine.instance_variable_set(:@host_registry, registry)
     allow(engine).to receive(:effective_model_name).and_return("model")
     asked = Queue.new

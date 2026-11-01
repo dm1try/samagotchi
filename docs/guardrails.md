@@ -1086,12 +1086,8 @@ not `guardrails.system_one.mode`. Audit never changes the session's toolkit;
 on mode's turn waits for the answer (at most `timeout_ms`, cut by a Stop)
 and may start the session on the suggested kit (configuration.md, Toolkits).
 Its warnings use the `toolkit` tag and its records are written to
-`toolkit_suggestions.jsonl` beside the guardrail logs. To avoid competing
-with the session's model, audit skips (one info line) when
-the System 1 host is the model's local host: the same `hosts:` name, or
-another entry for the same server root (scheme, host and port). There is no
-reliable single-slot signal, so this host-identity check is the available
-contention guard. The session's own checks come first; the kits and the
+`toolkit_suggestions.jsonl` beside the guardrail logs. The session's own
+checks come first; the kits and the
 suggestion log are read only for a session that can be asked, the log only
 after an earlier `undecided`.
 
