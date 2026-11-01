@@ -19,6 +19,12 @@ const buttonsFor = ({ archived = false, continuing = false, next = null, owner =
 
 const keys = (bar) => moreRows(bar).map((r) => r.key);
 
+test("the model's row unfolds only what its value doesn't already say", () => {
+  const model = (text, title) => moreRows({ ...bare, model: { text, title, mismatch: false } })[0];
+  assert.equal(model("qwen", "qwen").info, null);
+  assert.equal(model("qwen", "served: gemma; asked for qwen").info, "served: gemma; asked for qwen");
+});
+
 test("a bare session has the model and toolkit rows alone; the others only when it has them", () => {
   assert.deepEqual(keys(bare), ["model", "toolkit"]);
   assert.deepEqual(keys(null), []);
@@ -157,6 +163,7 @@ test("a tooltip-only chip's row unfolds its tooltip in place; a link is a link; 
   const bar = { ...bare, parent: { id: "f".repeat(16), title: "t" } };
   ctl.update({ bar, buttons: buttonsFor() });
   button.click();
+  assert.equal(ctl.pop.querySelector('[data-act="info:model"]'), null, "a model row with nothing more to say doesn't unfold");
   const toolkit = ctl.pop.querySelector('[data-act="info:toolkit"]');
   assert.equal(toolkit.getAttribute("aria-expanded"), "false");
   toolkit.click();
