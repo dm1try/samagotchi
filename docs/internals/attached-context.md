@@ -144,9 +144,8 @@ nothing, so the next owner prompt asks again.
 The driver is the Engine, not the judge: `Engine#start_context_judge` (an owner turn's start; skipped for participants,
 review sessions and a Continue) and `judge_late_candidates` (a proposal after the prompts) call `context_judge_pass`.
 It first logs status changes (`ContextCandidatesLog.look`), returns at `mode: off`, builds the due `Job`s, and hands
-them to `SideJudgments` (`:context` kind: one thread, one batch per session at a time). On the model's own local
-server (`system_one_shares_local_host?`) the pass is held in `@context_judge_after_turn` and started after the turn
-(before the prompt warm-up, which waits for it); any other host is asked at once.
+them to `SideJudgments` (`:context` kind: one thread, one batch per session at a time), asked at once on any host,
+the model's own server too.
 
 `ContextCandidateChoice.after_judged` acts on `fields["would"]` in `on` mode only: *attach* → `judge_attach` (a
 session source with `JUDGE_WHY`, no probability in the model-visible why), *offer* → one card (`offer_card`, buttons

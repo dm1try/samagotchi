@@ -37,11 +37,10 @@ RSpec.describe Samagotchi::Engine do
     FileUtils.rm_rf(dir)
   end
 
-  def build_engine(model_host: double(name: "model", remote?: true, root_url: "https://model:443"))
+  def build_engine
     client = test_client
     @engine = described_class.new(client: client, kernel: test_kernel(client: client), model_name: "Gemma-4B-it")
     @engine.instance_variable_set(:@session_state_dir, state_dir)
-    @engine.instance_variable_set(:@host_registry, double(host_for_model: [model_host, nil], find_entry: nil))
     allow(@engine).to receive(:effective_model_name).and_return("model")
     @engine
   end
@@ -158,18 +157,79 @@ RSpec.describe Samagotchi::Engine do
     expect(line["state"]["candidate"]).to include("Fix the login redirect")
   end
 
-  it "waits for the turn's end on the model's own local server" do
-    engine = build_engine(model_host: double(name: "judge", remote?: false, root_url: "http://127.0.0.1:8080"))
-    allow(engine).to receive(:turn_running?).and_return(true)
-    session = new_session
-    propose(session, "pr-412")
+  # A whole run_turn with System 1 on the session's model server. The asks start
+  # at the turn's start: the docs' promises for what they answer hold there too.
+  context "with System 1 on the model's own local host, during a turn" do
+    let(:mode) { "on" }
+    let(:kernel_client) { test_client }
+    let(:kernel) { test_kernel(client: kernel_client) }
+    let(:requests) { [] }
 
-    judge(engine, session, "Fix the login redirect")
-    expect(system_one).not_to have_received(:ask)
+    def own(session) = Samagotchi::ContextSources.session_location(session.id, state_dir: state_dir)
 
-    engine.send(:run_context_judge_after_turn)
-    join!(engine.instance_variable_get(:@side_judgments).thread(:context), "the asks after the turn")
-    expect(lines("judged").size).to eq(1)
+    def own_host_engine
+      @engine = described_class.new(client: kernel_client, kernel: kernel, model_name: "Gemma-4B-it").tap do |engine|
+        engine.session_state_dir = state_dir
+        allow(engine.instance_variable_get(:@host_registry)).to receive(:host_for_model)
+          .and_return([Samagotchi::HostRegistry::HostEntry.new(name: "judge", host: "127.0.0.1", port: 8080, client: kernel_client), nil])
+      end
+    end
+
+    # The model's request: it waits for the asks, so what they answered is
+    # there to be seen while the turn is running.
+    def model_waits_for_the_asks(engine, seen = {})
+      allow(kernel).to receive(:run) do |messages, **|
+        thread = engine.instance_variable_get(:@side_judgments).thread(:context)
+        join!(thread, "the asks during the turn") if requests.empty? && thread
+        seen[:running] = engine.turn_running? if requests.empty?
+        seen[:judged] = lines("judged").size if requests.empty?
+        yield seen if block_given? && requests.empty?
+        requests << messages.map(&:dup)
+        Samagotchi::LLM::ModelResult.new(text: "ok", conversation: messages.reject { |m| m[:role].to_s == "system" } +
+                                                                   [{ role: "model", content: "ok" }],
+                                         exhausted: false, pending_tool_calls: false, tool_activity: [])
+      end
+      seen
+    end
+
+    it "asks during the turn; an attach stays out of its history, and its note is delivered between turns" do
+      engine = own_host_engine
+      session = new_session
+      propose(session, "pr-412")
+      answers.push([0.9, 0.9])
+      seen = model_waits_for_the_asks(engine) { |facts| facts[:attached] = !own(session).source("pr-412").nil? }
+
+      engine.run_turn(session, "Fix the login redirect")
+
+      expect(seen).to eq(running: true, judged: 1, attached: true)
+      note = ->(message) { message[:context_source] == "pr-412" }
+      expect(requests.first.select(&note)).to be_empty
+      expect(session.messages.select(&note)).to be_empty
+
+      # The poller's fetch, then the delivery between turns.
+      own(session).record_text("pr-412", Samagotchi::ContextSources::Fetched.new(text: "x", summary: nil, wake: false, hint: nil))
+      expect(Samagotchi::ContextCandidates.deliver_notes(engine, session, state_dir: state_dir)).to eq(1)
+      engine.run_turn(session, "and the test")
+      expect(requests.last.count(&note)).to eq(1)
+    end
+
+    it "holds a card its answer brings until the turn has ended" do
+      engine = own_host_engine
+      allow(engine).to receive(:show_card).and_call_original
+      session = new_session
+      propose(session, "pr-412")
+      answers.push([0.7, 0.9])
+      seen = model_waits_for_the_asks(engine) do |facts|
+        facts[:carded] = lines("carded").size
+        expect(engine).not_to have_received(:show_card)
+      end
+
+      engine.run_turn(session, "Fix the login redirect")
+
+      expect(seen).to include(running: true, carded: 1)
+      expect(engine).to have_received(:show_card).once.with(hash_including(id: "context-candidate-pr-412"))
+      expect(requests.first.map { |message| message[:content].to_s }).not_to include(a_string_including("pr-412"))
+    end
   end
 
   it "judges a late proposal on the owner's prompts so far" do

@@ -1796,9 +1796,8 @@ context:
     mode: audit
 ```
 
-A remote host is asked beside the turn. A System 1 host that is the model's own local server is asked after the
-turn's last request, and the turn-end warm-up follows them, re-warming the prefix they evicted (see
-[prompt caching](internals/prompt-caching.md)).
+The asks run beside the turn, on any host: they cost the session's cached prompt nothing on the model's own Splash
+either (see [prompt caching](internals/prompt-caching.md)).
 
 
 ## Bundles' judgments

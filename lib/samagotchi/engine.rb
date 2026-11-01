@@ -170,7 +170,6 @@ module Samagotchi
       @chat_backend_mutex = Mutex.new
       @side_judgments = SideJudgments.new
       @judgments = build_judgments
-      @context_judge_after_turn = nil
       # On mode's cards an answer brought while a turn ran: shown once it
       # has ended (#show_context_cards_after_turn).
       @context_cards_after_turn = []
@@ -2321,10 +2320,7 @@ module Samagotchi
                                 pending_input: pending_input)
         publish_used_memories(session, on_event)
         complete_turn(turn, result)
-        # The candidate judge's asks a shared local server kept for the
-        # turn's end go first; the warm-up follows them and re-warms the
-        # prefix they evicted.
-        warm_up_next_turn(turn, result, after: run_context_judge_after_turn)
+        warm_up_next_turn(turn, result)
         result
       rescue Interrupt => e
         # After the end event (in the after_turn/session_end hooks) the
@@ -2352,7 +2348,6 @@ module Samagotchi
       ensure
         release_turn(probe_cancel_before)
         show_context_cards_after_turn
-        run_context_judge_after_turn
       end
     end
 
@@ -2453,8 +2448,7 @@ module Samagotchi
       # On mode: the suggested kit, before anything is declared (a Stop
       # during the wait is caught by the check below).
       settle_toolkit_suggestion(turn, toolkit_suggestion)
-      # The candidate judge: its asks run beside the turn on a remote
-      # System 1 host, after it on the model's own local one; on mode's
+      # The candidate judge: its asks run beside the turn; on mode's
       # attaches reach the model at the next between-turn delivery.
       start_context_judge(turn)
       apply_toolkit!(session, turn.on_event)
@@ -2534,7 +2528,7 @@ module Samagotchi
     # start differs anyway or starts at once: a reminder due, a continue
     # offer (the turn ran out of steps), a carried steer or queued input.
     # Never fails the turn.
-    def warm_up_next_turn(turn, result, after: nil)
+    def warm_up_next_turn(turn, result)
       return if result.canceled? || result.resumable?
 
       model = effective_model
@@ -2549,7 +2543,7 @@ module Samagotchi
       return unless prompt
 
       started = @prompt_warmup.start(client: client, prompt: prompt, model: @kernel.turn_settings.model_name,
-                                     slot: @kernel.last_slot, images: images, after: after)
+                                     slot: @kernel.last_slot, images: images)
       @kernel.warmed_up! if started
     rescue StandardError => e
       Log.warn(:model, "warmup_skipped", error: e.class.name, msg: e.message.to_s[0, 200])
@@ -3309,10 +3303,7 @@ module Samagotchi
     private :judge_late_candidates
 
     # One look at +session+'s candidates; the asks go to SideJudgments'
-    # :context kind, one thread asking each due candidate in turn. On the
-    # model's own local server (#system_one_shares_local_host?) the asks
-    # wait for the running turn's end (#run_context_judge_after_turn),
-    # never competing with its prefill; any other host is asked now.
+    # :context kind, one thread asking each due candidate in turn.
     def context_judge_pass(session, texts, phase:)
       return if session.id.nil? || session.scratch
 
@@ -3333,14 +3324,7 @@ module Samagotchi
                                     ContextJudge::JUDGMENT, session, mode: settings.mode)
       return unless client
 
-      choice = context_choice(session, log, settings)
-      ask = -> { start_context_asks(client, jobs, log, settings, choice) }
-      if turn_running? && system_one_shares_local_host?(client.host)
-        Log.info(:context, "context_judge_after_turn", session_id: session.id, host: client.host)
-        @context_judge_after_turn = ask
-      else
-        ask.call
-      end
+      start_context_asks(client, jobs, log, settings, context_choice(session, log, settings))
     rescue StandardError => e
       ContextJudge.warn(e)
     end
@@ -3397,21 +3381,6 @@ module Samagotchi
       ContextJudge.warn(e)
     end
     private :show_context_cards_after_turn
-
-    # The asks a shared local host kept for the turn's end: a completed
-    # turn starts them before its warm-up (which waits for them,
-    # PromptWarmup#start's after:); a turn that ended otherwise, from
-    # #run_turn's ensure.
-    # @return [Thread, nil] the asks' thread
-    def run_context_judge_after_turn
-      ask = @context_judge_after_turn or return nil
-      @context_judge_after_turn = nil
-      ask.call
-    rescue StandardError => e
-      ContextJudge.warn(e)
-      nil
-    end
-    private :run_context_judge_after_turn
 
     # A delegate child's parent's sources, by title (else name): the
     # judge's started_from. nil for any other session (a chi send --new
