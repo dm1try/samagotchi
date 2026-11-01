@@ -20,6 +20,7 @@ and commands may change between minor versions. How releases are made:
 
 ### Fixed
 
+- `chi update` tells you a `chi web` started with `--port` runs old code; it only looked on `web.port`.
 - `/guardrails` no longer shows `System 1 (on):` when the settings mean nothing can be judged: it reads
   `System 1 (on, but nothing is judged: system_one.host is not set):`, and likewise for a host that isn't in `hosts:`,
   isn't `api: openai` or names no model.

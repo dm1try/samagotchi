@@ -14,6 +14,7 @@ require_relative "memory_bundle/system_bundle"
 require_relative "session"
 require_relative "version"
 require_relative "web/lan"
+require_relative "web/running"
 require "json"
 
 module Samagotchi
@@ -369,8 +370,7 @@ module Samagotchi
       rows = []
       stale = LiveVersions.stale_workers(VERSION, state_dir: @state_dir)
       rows << Row.new(component: "workers", status: workers_status(stale)) unless stale.empty?
-      host, port = @web
-      info = LiveVersions.web_info(host, port)
+      port, info = web_answering
       web = info && info["version"].to_s
       if web && !web.empty? && web != VERSION
         # Since newest_workers, the sessions it starts run the newest chi.
@@ -379,6 +379,19 @@ module Samagotchi
                         status: "running old code#{": new sessions it starts run #{web} too" if spreads}; restart it")
       end
       rows
+    end
+
+    # The port a chi web answers on and its /api/info: the port the running
+    # one recorded (a --port it was started with is not config's), else
+    # config's. Nil with none.
+    def web_answering
+      host, configured = @web
+      recorded = Web::Running.port(path: Web::Running.path(state_dir: @state_dir))
+      [recorded, configured].compact.uniq.each do |port|
+        info = LiveVersions.web_info(host, port)
+        return [port, info] if info
+      end
+      nil
     end
 
     # A worker keeps its chi until restarted: `chi sessions restart` for

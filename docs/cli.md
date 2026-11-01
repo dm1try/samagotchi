@@ -353,8 +353,8 @@ done
   restarts: `chi sessions stop ID`, and the next prompt starts it on the new
   chi); it exits on its own only when nothing is attached (no web tab, no
   terminal, no reminder) and `session.idle_exit_minutes` pass (never with 0).
-  A new or woken worker always starts on the newest chi installed. A `chi web`
-  on `web.port` running an older chi needs a restart (Ctrl-C, then `chi web`):
+  A new or woken worker always starts on the newest chi installed. A running
+  `chi web` (on the port it was started with, else `web.port`) on an older chi needs a restart (Ctrl-C, then `chi web`):
   its page says so too. One from before workers started on the newest chi
   also starts its new sessions on its own version until then (the row says so).
 

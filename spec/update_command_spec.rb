@@ -10,6 +10,7 @@ require "yaml"
 require "digest"
 require "samagotchi/memory_bundle/shas"
 require "samagotchi/update_command"
+require "samagotchi/web/running"
 # Loaded here: the stub_const below would otherwise invent the constant, and the
 # file's require, once used up, never brings the real one back for later examples.
 require "samagotchi/bundle_command/installed_check"
@@ -844,6 +845,36 @@ RSpec.describe Samagotchi::UpdateCommand do
       web[1] = server.addr[1]
       run
       expect(line("chi web :#{server.addr[1]}")).to include("0.2.0", "new sessions it starts run 0.2.0 too; restart it")
+    end
+
+    # A chi web started with --port: config's web.port (web) has nothing on it.
+    def old_web_answering
+      listener.tap do |server|
+        Thread.new do
+          client = server.accept
+          client.readpartial(4096)
+          body = JSON.generate(app: "chi-web", version: "0.2.0")
+          client.write("HTTP/1.1 200 OK\r\nContent-Length: #{body.bytesize}\r\nConnection: close\r\n\r\n#{body}")
+          client.close
+        rescue IOError
+          nil
+        end
+      end
+    end
+
+    it "finds a chi web on the port it recorded, not config's" do
+      server = old_web_answering
+      Samagotchi::Web::Running.record(port: server.addr[1], path: Samagotchi::Web::Running.path(state_dir: state_dir))
+      run
+      expect(line("chi web :#{server.addr[1]}")).to include("0.2.0", "restart it")
+    end
+
+    it "falls back on config's port when the recorded one has gone (a chi web killed hard)" do
+      server = old_web_answering
+      Samagotchi::Web::Running.record(port: closed_port, path: Samagotchi::Web::Running.path(state_dir: state_dir))
+      web[1] = server.addr[1]
+      run
+      expect(line("chi web :#{server.addr[1]}")).to include("0.2.0", "restart it")
     end
 
     it "says a chi web that starts newest workers only needs a restart" do
