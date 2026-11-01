@@ -62,9 +62,19 @@ RSpec.describe Samagotchi::KernelLoop, "malformed generation" do
 
     expect(Samagotchi::Log).to have_received(:warn).with(
       :model, "generation_malformed",
-      hash_including(iteration: 1, reason: "unclosed tool call", id_slot: 2, cache_n: 5000, finish_reason: "stop",
+      hash_including(iteration: 1, reason: "unclosed tool call", id_slot: 2, cache_n: 5000, served_model: nil,
+                     finish_reason: "stop", retried: true,
                      payload: a_string_ending_with("is 7."))
     )
+  end
+
+  # ChatLoop logs the same event with retried true when the reply is asked
+  # again; KernelLoop used to say whether a retry had already happened.
+  it "marks the second one in a row as not retried, since the turn fails" do
+    script(leaked)
+
+    expect { run }.to raise_error(Samagotchi::LLM::MalformedGeneration)
+    expect(Samagotchi::Log).to have_received(:warn).with(:model, "generation_malformed", hash_including(retried: false))
   end
 
   it "fails the turn when the retry is malformed too, saving no answer and running no tool" do

@@ -693,9 +693,14 @@ module Samagotchi
     # asking again. A second one fails the turn. Returns :next.
     def after_malformed(turn, generation, reason)
       response = generation.response.to_s
+      # The fields ChatLoop's generation_malformed has too (iteration, served_model,
+      # finish_reason, retried, payload); retried is true when this reply is the
+      # one asked again, as there.
       Log.warn(:model, "generation_malformed", iteration: turn.iteration, reason: reason, id_slot: @last_slot,
-                                               cache_n: generation.cache&.dig(:cached), finish_reason: generation.finish_reason,
-                                               retried: turn.malformed_retried ? true : false,
+                                               cache_n: generation.cache&.dig(:cached),
+                                               served_model: generation.served_model,
+                                               finish_reason: generation.finish_reason,
+                                               retried: !turn.malformed_retried,
                                                payload: response[-MALFORMED_TAIL_CHARS..] || response)
       turn.buffer.slice!(generation.buffer_mark..)
       if turn.malformed_retried

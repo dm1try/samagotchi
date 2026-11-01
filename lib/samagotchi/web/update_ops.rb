@@ -270,7 +270,8 @@ module Samagotchi
         # Installed now: the hub's own look is up to a full probe old (nil right after chi web started).
         target = @hub.refresh_installed || VERSION
         rows = []
-        LiveVersions.stale_workers(target, state_dir: default_state_dir).each do |worker|
+        workers = LiveVersions.stale_workers(target, state_dir: default_state_dir)
+        workers.each do |worker|
           row = select && !select.call(worker) ? skipped(worker) : restart_one(worker)
           rows << row
           frames ||= row["state"] == "restarted"
@@ -280,7 +281,9 @@ module Samagotchi
         @hub.publish_update(state: state, rows: rows, operation: "workers", auto: auto) if frames
         Result.new(state: state, rows: rows)
       rescue StandardError => e
-        Log.exception(:web, "worker_restart_failed", e)
+        # The batch failed, not one worker: the sessions it was working through
+        # go on the record, as restart_one puts its own sid there.
+        Log.exception(:web, "worker_restart_failed", e, sids: workers&.map(&:session_id))
         rows = [{ "state" => "failed", "reason" => e.class.name, "detail" => e.message }]
         @hub.publish_update(state: "failed", rows: rows, operation: "workers", auto: auto) if frames
         Result.new(state: "failed", rows: rows)

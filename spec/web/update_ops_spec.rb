@@ -240,6 +240,18 @@ RSpec.describe Samagotchi::Web::UpdateOps do
         expect(ops.restart_workers(wait: true, quiet: true)).to have_attributes(state: "failed")
         expect(frames).to be_empty
       end
+
+      it "logs the sessions the pass was working through, as restart_one logs its sid" do
+        allow(Samagotchi::LiveVersions).to receive(:stale_workers)
+          .and_return([worker("stay"), worker("go")])
+        allow(Samagotchi::Log).to receive(:exception)
+
+        expect(ops.restart_workers(wait: true, quiet: true, select: ->(_) { raise IOError, "the selection broke" }))
+          .to have_attributes(state: "failed")
+        expect(Samagotchi::Log).to have_received(:exception).with(
+          :web, "worker_restart_failed", anything, sids: %w[stay go]
+        )
+      end
     end
 
     it "answers :start_failed when no thread starts" do
