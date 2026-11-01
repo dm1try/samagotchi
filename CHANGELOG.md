@@ -24,6 +24,7 @@ and commands may change between minor versions. How releases are made:
 
 ### Fixed
 
+- An event with bytes JSON can't take (a plugin's card, say) no longer ends every stream that reaches it: it goes out scrubbed.
 - A waiting approval on the web page opens at its question and command, on a phone and on a desktop, when it arrives and when the page
   loads on it. A card too tall for the stage showed its options with what it asks scrolled out of sight; the options are now a scroll
   down the stage's one scroll.

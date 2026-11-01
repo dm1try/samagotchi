@@ -4,6 +4,7 @@ require "json"
 
 require_relative "client_event"
 require_relative "event_id"
+require_relative "../llm/utf8_scrub"
 
 module Samagotchi
   class Bridge
@@ -231,9 +232,18 @@ module Samagotchi
         lines << "id: #{EventId.format(seq, @epoch)}"
         event_type = data.is_a?(Hash) && (data[:type] || data["type"])
         lines << "event: #{event_type}" if event_type && !event_type.to_s.empty?
-        JSON.generate(data).each_line { |line| lines << "data: #{line.chomp}" }
+        frame_json(data).each_line { |line| lines << "data: #{line.chomp}" }
         io.write(lines.join("\r\n") + "\r\n\r\n")
         io.flush
+      end
+
+      # An event holding bytes JSON can't take (a plugin's card, a tool's text)
+      # goes out scrubbed: raising here would end this stream, and every stream
+      # after it, for as long as the ring holds the event.
+      def frame_json(data)
+        JSON.generate(data)
+      rescue JSON::GeneratorError
+        JSON.generate(LLM::Utf8Scrub.call(data))
       end
 
       def write_heartbeat(io)

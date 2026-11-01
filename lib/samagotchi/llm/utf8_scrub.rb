@@ -8,8 +8,9 @@ module Samagotchi
     # `JSON#to_json` raises `JSON::GeneratorError` on such input, which would
     # abort the whole turn, so a request body is scrubbed first: only
     # offending bytes are replaced with "?", every valid UTF-8 string passes
-    # through untouched. Non-UTF-8 encodings are left alone because
-    # `#to_json` already handles them without raising.
+    # through untouched. A binary string is read as UTF-8 first (JSON raises
+    # on its high bytes too); other encodings are left alone because
+    # `#to_json` converts them without raising.
     module Utf8Scrub
       module_function
 
@@ -18,7 +19,8 @@ module Samagotchi
       def call(obj)
         case obj
         when String
-          obj.encoding == Encoding::UTF_8 && !obj.valid_encoding? ? obj.scrub("?") : obj
+          text = obj.encoding == Encoding::BINARY ? obj.dup.force_encoding(Encoding::UTF_8) : obj
+          text.encoding == Encoding::UTF_8 && !text.valid_encoding? ? text.scrub("?") : text
         when Array
           obj.map { |element| call(element) }
         when Hash
