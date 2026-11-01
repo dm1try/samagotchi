@@ -179,18 +179,19 @@ module Samagotchi
       # mode GuardrailWiring also reads rules, threshold and min_record for the auto-allow (docs/guardrails.md).
       # off (the default) | audit (judge every ask, log it, never decide) | on. An unknown value warns and is off.
       Entry.new(key: "guardrails.system_one.mode",       yaml_path: %w[guardrails system_one mode],      type: :enum,    default: "off",  expose: %i[config], enum_values: %w[off audit on], lifecycle: :next_tool_or_approval),
-      # The hosts: entry serving /v1/systemone (Splash, or the hosted Jev API); unset: no judgment.
-      Entry.new(key: "guardrails.system_one.host",       yaml_path: %w[guardrails system_one host],      type: :string,  default: nil,    expose: %i[config], lifecycle: :next_tool_or_approval),
-      # The judgment model; unset: the host's first model, and no judgment if it names none.
-      Entry.new(key: "guardrails.system_one.model",      yaml_path: %w[guardrails system_one model],     type: :string,  default: nil,    expose: %i[config], lifecycle: :next_tool_or_approval),
       # The rule ids System 1 may answer for ("a|b", or a YAML list, parsed like guardrails.small_models).
       Entry.new(key: "guardrails.system_one.rules",      yaml_path: %w[guardrails system_one rules],      type: :string,  default: nil,    expose: %i[config], lifecycle: :next_tool_or_approval),
       # The probability an auto-allow needs, and how many clean records a rule needs before it is trusted.
       Entry.new(key: "guardrails.system_one.threshold",  yaml_path: %w[guardrails system_one threshold],  type: :float,   default: 0.8,   expose: %i[config], lifecycle: :next_tool_or_approval),
       Entry.new(key: "guardrails.system_one.min_record", yaml_path: %w[guardrails system_one min_record], type: :integer, default: 5,     expose: %i[config], lifecycle: :next_tool_or_approval),
-      # How long one judgment may take, in milliseconds; a judgment that doesn't arrive asks the user.
-      Entry.new(key: "guardrails.system_one.timeout_ms", yaml_path: %w[guardrails system_one timeout_ms], type: :integer, default: 2000,  expose: %i[config], lifecycle: :next_tool_or_approval),
 
+      # What every use of System 1 shares: approvals, toolkit suggestions, context candidates and bundles' judgments.
+      # The hosts: entry serving /v1/systemone (Splash, or the hosted Jev API); unset: no judgment, so nothing auto-allows.
+      Entry.new(key: "system_one.host",       yaml_path: %w[system_one host],       type: :string,  default: nil,  expose: %i[config], lifecycle: :next_tool_or_approval),
+      # The judgment model; unset: the host's first model, and no judgment if it names none.
+      Entry.new(key: "system_one.model",      yaml_path: %w[system_one model],      type: :string,  default: nil,  expose: %i[config], lifecycle: :next_tool_or_approval),
+      # How long one judgment may take, in milliseconds; a judgment that doesn't arrive is no judgment.
+      Entry.new(key: "system_one.timeout_ms", yaml_path: %w[system_one timeout_ms], type: :integer, default: 2000, expose: %i[config], lifecycle: :next_tool_or_approval),
       # Save each System 1 ask and what came of it (docs/system-one.md): on (the default) | off.
       Entry.new(key: "system_one.runs", yaml_path: %w[system_one runs], type: :enum, default: "on", expose: %i[config], enum_values: %w[on off], lifecycle: :next_tool_or_approval),
 
@@ -222,7 +223,7 @@ module Samagotchi
       Entry.new(key: "context.peer_turns",       yaml_path: %w[context peer_turns],       type: :integer, default: 3,               expose: %i[env config cli], lifecycle: :next_matching_turn_display_poll_write),
       # The candidate judge (ContextJudge): off (no conversation text goes to a System 1 host); audit (asks and logs
       # context_candidates.jsonl, attaches nothing); on (ContextCandidateChoice: p ≥ threshold attaches quietly,
-      # offer_threshold ≤ p < threshold shows one card). Its host and model are guardrails.system_one.host/model.
+      # offer_threshold ≤ p < threshold shows one card). Its host and model are system_one.host and .model.
       # reask_after_turns: the owner prompts after a judged ask before its one re-ask.
       Entry.new(key: "context.candidates.mode",  yaml_path: %w[context candidates mode],  type: :enum,   default: "off", expose: %i[config], enum_values: %w[off audit on], lifecycle: :next_matching_turn_display_poll_write),
       Entry.new(key: "context.candidates.threshold", yaml_path: %w[context candidates threshold], type: :float, default: 0.8, expose: %i[config], lifecycle: :next_matching_turn_display_poll_write),
@@ -263,7 +264,7 @@ module Samagotchi
       Entry.new(key: "toolkit.default",          yaml_path: %w[toolkit default],          type: :string, default: nil,              expose: %i[env config], lifecycle: :session_creation),
       Entry.new(key: "toolkit.child",            yaml_path: %w[toolkit child],            type: :string, default: nil,              expose: %i[env config], lifecycle: :session_creation),
       # Toolkit suggestion (ToolkitSuggest): off; audit (logs, never blocks or changes a session); on (the first eligible
-      # turn waits up to guardrails.system_one.timeout_ms and may start on the suggested kit).
+      # turn waits up to system_one.timeout_ms and may start on the suggested kit).
       Entry.new(key: "toolkit.suggest.mode",     yaml_path: %w[toolkit suggest mode],     type: :enum,   default: "off", expose: %i[config], enum_values: %w[off audit on], lifecycle: :worker_start),
       Entry.new(key: "toolkit.suggest.threshold", yaml_path: %w[toolkit suggest threshold], type: :float, default: 0.5, expose: %i[config], lifecycle: :worker_start),
       Entry.new(key: "toolkit.suggest.defer_turns", yaml_path: %w[toolkit suggest defer_turns], type: :integer, default: 3, expose: %i[config], lifecycle: :worker_start),
@@ -393,8 +394,16 @@ module Samagotchi
     # The keys a hosts.<name>.models entry may hold (HostModel.parse_map).
     HOST_MODEL_KEYS = %w[price served].freeze
     # Section keys beyond the registry's: guardrails' YAML rules (Engine#guardrail_rules).
-    # And toolkit's kits (Toolkit.kits).
-    SECTION_EXTRA_KEYS = { "guardrails" => %w[rules disable].freeze, "toolkit" => %w[kits].freeze }.freeze
+    # And toolkit's kits (Toolkit.kits), and bundles' judgments' settings (SystemOne::JudgmentSettings).
+    SECTION_EXTRA_KEYS = { "guardrails" => %w[rules disable].freeze, "toolkit" => %w[kits].freeze, "system_one" => %w[judgments].freeze }.freeze
+
+    # What a system_one.judgments entry may hold. Core's judgments take none (RESERVED_JUDGMENTS).
+    JUDGMENT_ENTRY_KEYS = %w[mode host model].freeze
+    JUDGMENT_MODES = %w[off audit on].freeze
+    # Names core keeps, as a judgment's first word: a bundle can't declare one and
+    # system_one.judgments can't set one (Record and Similar are model-blind, so a
+    # swapped model would inherit a clean record and could auto-allow).
+    RESERVED_JUDGMENTS = %w[approvals context guardrails toolkit].freeze
 
     # What a :bool value reads as (Config.coerce!), YAML 1.1's words and 1/0.
     BOOL_WORDS = { "1" => true, "true" => true, "yes" => true, "on" => true,
@@ -465,6 +474,14 @@ module Samagotchi
 
         word = BOOL_ENUM_WORDS[raw]
         word && entry.enum_values.include?(word) ? word : nil
+      end
+
+      # A system_one.judgments entry's mode as written, nil for one it can't
+      # be: an unquoted on/off is a boolean there too.
+      # @return [String, nil]
+      def judgment_mode(raw)
+        word = BOOL_ENUM_WORDS.fetch(raw) { raw.to_s.strip.downcase }
+        word if JUDGMENT_MODES.include?(word)
       end
 
       # What +entry+'s type takes, as a refusal names it.
@@ -695,10 +712,34 @@ module Samagotchi
       # A section's leaf: a key the registry knows, or a mapping of a
       # third level (web.participants.cap) whose keys it knows.
       def leaf_problems(path, value)
+        return judgment_problems(value) if path == "system_one.judgments"
+
         if value.is_a?(Hash) && ENTRIES.any? { |e| e.key.start_with?("#{path}.") }
           value.keys.filter_map { |leaf| key_problem("#{path}.#{leaf}") }
         else
           [key_problem(path)].compact
+        end
+      end
+
+      # system_one.judgments' entries: a map entry bypasses the registry, so
+      # its keys and mode are checked here (an unquoted on/off is a boolean).
+      # An undeclared name can only be told once the plugins have loaded
+      # (SystemOne::Judgments#warn_undeclared).
+      def judgment_problems(value)
+        return value.nil? ? [] : ["config: 'system_one.judgments' must be a mapping of judgments; ignored"] unless value.is_a?(Hash)
+
+        value.flat_map do |name, entry|
+          where = "system_one.judgments.#{name}"
+          if RESERVED_JUDGMENTS.include?(name.to_s.split(".").first)
+            next ["config: #{where}: core's judgments take no settings of their own; ignored (see docs/system-one.md)"]
+          end
+          next ["config: #{where} must be a mapping of #{JUDGMENT_ENTRY_KEYS.join(", ")}; ignored"] unless entry.is_a?(Hash)
+
+          unknown = (entry.keys.map(&:to_s) - JUDGMENT_ENTRY_KEYS).map do |k|
+            unknown_key_message("#{where}.#{k}", k, JUDGMENT_ENTRY_KEYS, prefix: "#{where}.")
+          end
+          mode = entry.key?("mode") && judgment_mode(entry["mode"]).nil? ? ["config: #{where}.mode must be off, audit or on; it is off"] : []
+          unknown + mode
         end
       end
 
@@ -755,10 +796,17 @@ module Samagotchi
         @known_sections ||= known_config_keys.filter_map { |k| k.split(".").first if k.include?(".") }.to_set.freeze
       end
 
-      # Keys replaced by another: the warning names the new one (no alias).
+      # Keys replaced by another, and what the warning adds: it names the new
+      # one (no alias).
+      PARENT_ANSWERS_HINT = "hard, standard or soft; see docs/guardrails.md"
+      SYSTEM_ONE_MOVED_HINT = "it has moved, and it has no effect here: without system_one.host nothing is judged or " \
+                              "auto-allowed, and every ask goes to you; see docs/configuration.md"
       REPLACED_KEYS = {
-        "guardrails.parent_approvals" => "guardrails.parent_answers",
-        "turn.parent_continue" => "guardrails.parent_answers"
+        "guardrails.parent_approvals" => ["guardrails.parent_answers", PARENT_ANSWERS_HINT],
+        "turn.parent_continue" => ["guardrails.parent_answers", PARENT_ANSWERS_HINT],
+        "guardrails.system_one.host" => ["system_one.host", SYSTEM_ONE_MOVED_HINT],
+        "guardrails.system_one.model" => ["system_one.model", SYSTEM_ONE_MOVED_HINT],
+        "guardrails.system_one.timeout_ms" => ["system_one.timeout_ms", SYSTEM_ONE_MOVED_HINT]
       }.freeze
 
       # nil when +dotted+ is a key the file may hold.
@@ -766,7 +814,7 @@ module Samagotchi
         return nil if known_config_keys.include?(dotted)
         return "config: #{ConfigFile.removed_transport_problem("'#{dotted}'")}" if dotted == "server.transport"
         if (replaced = REPLACED_KEYS[dotted])
-          return "config: unknown key '#{dotted}': replaced by '#{replaced}' (hard, standard or soft; see docs/guardrails.md)"
+          return "config: unknown key '#{dotted}': replaced by '#{replaced.first}' (#{replaced.last})"
         end
 
         entry = find_by_key(dotted)

@@ -169,7 +169,7 @@ or `chi web` restart.
 | `context.*` except `context.every_seconds`, `llm_context.*` except `llm_context.policy`, `steer.cut_after`, `memory.index_warn_tokens`, `status.line`, `web.participants.*` | Next matching turn, display, poll or write | Readers resolve these settings when they perform that operation. Session-specific LLM context and thinking values remain saved in the session. A participant's grant keeps the expiry and cap it was issued with; `web.participants.*` is what the next invite gets, and the cap and queue of a grant from before caps. |
 | `context.every_seconds` | Next context poll | The poller checks it for each source that has no explicit interval. |
 | `guardrails.*` | Next tool call or approval | Guardrail rules and disable lists are reloaded when the config file changes; rule settings take effect on that evaluation. `guardrails.parent_answers` is checked when a parent answers a question. |
-| `system_one.runs` | Next tool call or approval | Each ask reads it. |
+| `system_one.host`, `system_one.model`, `system_one.timeout_ms`, `system_one.runs`, `system_one.judgments` | Next tool call or approval | Each ask reads them. |
 | `hooks`, `bundles` | Worker start | Hooks, plugins and their bundle settings load with the engine. |
 | `recap.*` | Worker start | The engine builds its recap job at start, and again when it binds a session with its own `recap.enabled` or `recap.sentences` (`--set`, see "Per-session settings") and when `/recap on\|off\|default` changes the session's own value. |
 | `session.shared` | Next `chi` invocation | It selects attached-worker or in-process mode for that invocation. |
@@ -1534,7 +1534,7 @@ toolkit:
   resolve (a missing base, a cycle) is left out of the candidates. A worker that exits waits about a second for a
   running ask, so a one-shot `-p --non-interactive` run may end before its suggestion is logged.
 - **On mode.** `toolkit.suggest.mode: on` asks the same question on the same eligible turns, but the turn waits for
-  the answer before it declares any tool, for at most `guardrails.system_one.timeout_ms` from the ask's start (it
+  the answer before it declares any tool, for at most `system_one.timeout_ms` from the ask's start (it
   starts right after the turn does, so plugin and MCP start-up hide most of it). A described kit picked with
   confidence at or above `toolkit.suggest.threshold` becomes the session's toolkit, saved with `toolkit_origin:
   suggested`, and the turn's first request declares it; the notice reads
@@ -1542,7 +1542,7 @@ toolkit:
   pick, `undecided`, no answer, a failing System 1, which warns once as `[samagotchi:toolkit]`) keeps the default
   kit. No answer in time or none at all says so in a warn notice, `toolkit: full (no suggestion: System 1 took over
   5000 ms) · /toolkit to change` (or `System 1 gave no answer`), and a timeout logs a `toolkit_suggest_timeout`
-  warning: a slow System 1 host wants a larger `guardrails.system_one.timeout_ms`. A Stop during the wait (or before it, even with the answer in) ends the turn before its first request, and
+  warning: a slow System 1 host wants a larger `system_one.timeout_ms`. A Stop during the wait (or before it, even with the answer in) ends the turn before its first request, and
   nothing switches. After an `undecided`, a later prompt within the defer limits may switch the session; that notice
   says `from this turn`, and that request re-reads the whole prompt (system prompt, tools and conversation, which
   the defer limits keep small) without `/toolkit`'s cache confirmation. `/toolkit` or `ctx.use_toolkit` marks the
@@ -1592,7 +1592,7 @@ toolkit:
 - **A new web chat: 🧰.** The start page's 🧰 (beside ⚙; a bottom sheet on a phone) picks the new session's toolkit.
   **Auto**, checked by default, sends nothing: the session is on `toolkit.default` with `toolkit_origin: default`, so
   with `toolkit.suggest.mode: on` its first message may switch it to a suggested kit. Auto is listed only when that
-  can happen as far as chi web can tell (on mode, a `guardrails.system_one.host`, two described config kits); bundle
+  can happen as far as chi web can tell (on mode, a `system_one.host`, two described config kits); bundle
   and memory kits can add candidates it doesn't see. A kit picked is sent as `POST /api/sessions`'s `toolkit` and
   saved as `chosen`: no suggestion, the default kit included (its row says `default`); without Auto, the default's
   row is the one checked and sends nothing. The list holds the built-ins and config kits a new session can start
@@ -1778,7 +1778,7 @@ its own). The first target is a long session such as a day-long coordinator, whe
 
 `context.candidates.mode: audit` asks System 1 whether a session's work is about each candidate a bundle proposed
 (see [The judge](context.md#the-judge)); `on` also acts on the answer: attaches at `threshold`, a card from
-`offer_threshold` ([On mode](context.md#on-mode)). It uses `guardrails.system_one.host` and `.model`, but its own mode: System
+`offer_threshold` ([On mode](context.md#on-mode)). It uses `system_one.host` and `.model`, but its own mode: System
 1's `mode` (approvals) can stay `off`. Jev, the hosted judgment model, is served through OpenRouter
 (`/api/v1/systemone`), so OpenRouter can be the System 1 host:
 
@@ -1788,10 +1788,9 @@ hosts:
     url: https://openrouter.ai/api/v1
     api: openai
     api_key_env: OPENROUTER_API_KEY
-guardrails:
-  system_one:
-    host: openrouter
-    model: typesafe/jev-1.14
+system_one:
+  host: openrouter
+  model: typesafe/jev-1.14
 context:
   candidates:
     mode: audit
@@ -1800,6 +1799,27 @@ context:
 A remote host is asked beside the turn. A System 1 host that is the model's own local server is asked after the
 turn's last request, and the turn-end warm-up follows them, re-warming the prefix they evicted (see
 [prompt caching](internals/prompt-caching.md)).
+
+
+## Bundles' judgments
+
+A bundle can declare its own cheap System 1 questions ([Judgments](plugins.md#judgments-chijudgment-and-ctxjudge)). Each is off until
+you set its mode under its full name, `<bundle>.<name>`, in `system_one.judgments`:
+
+```yaml
+system_one:
+  host: splash
+  judgments:
+    check-in.progress:
+      mode: audit            # off (the default) | audit | on
+      host: openrouter       # optional, this judgment alone; else system_one.host
+      model: typesafe/jev-1.14  # optional, this judgment alone; else system_one.model
+```
+
+A name no installed bundle declares warns at start. Core's judgments (`approvals.*`, `context.*`, `guardrails.*`,
+`toolkit.*`) take no settings here and warn if named: `SystemOne::Record` and `Similar` don't look at the model, so a
+model swapped for approvals alone would inherit a clean record and could auto-allow.
+A bundle's judgments on a hosted host aren't under any cost cap: they stay out of the session's spend, as all of System 1's do.
 
 ## Opening files from chi web
 
@@ -2206,12 +2226,12 @@ column says so, a `--kebab-name` flag. The maps (`hosts:`, `models:`,
 | `guardrails.small_models` | `auto` | | Which models get the `models: small` rules: `auto` (32B or less by the size in the name, an MoE's active size), a list of globs, or `[]`. config.yml only. See [Guardrails](guardrails.md#rules-for-some-models). |
 | `guardrails.parent_answers` | `soft` | | Which options a parent agent (`chi answer`) may pick on a session's question, by their effect: `hard` (a deny, a Stop, a plain answer), `standard` (+ Continue and other spending options), `soft` (+ "Allow once"); never a wider scope or an allow on chi's own config. An invalid value warns and is `hard`. A session's own `parent_answers` (`chi --parent-answers`, `/parent-answers`) may only tighten it. Replaces `guardrails.parent_approvals` and `turn.parent_continue`. config.yml only: no environment variable (a parent can still pick the config dir with `XDG_CONFIG_HOME`). A convention for an honest parent, not a security boundary. See [Guardrails](guardrails.md#answers-from-a-parent-agent). |
 | `guardrails.system_one.mode` | `off` | | System 1, the cheap judgment that answers an ask before the user sees it: `off` (the default), `audit` (judge every ask, log it, never decide), `on` (also allowed to allow a call once, behind the gates in [System 1](guardrails.md#system-1-experimental)). An unknown value warns and is `off`. Experimental. config.yml only. See [Guardrails](guardrails.md#system-1-experimental). |
-| `guardrails.system_one.host` | none | | The `hosts:` entry serving `/v1/systemone` (a local Splash, or the hosted Jev API); unset: no judgment. config.yml only. |
-| `guardrails.system_one.model` | none | | The judgment model; unset uses the host's first model, and a host that names none has no judgment. config.yml only. |
 | `guardrails.system_one.rules` | none | | The rule ids System 1 may answer for in `on` mode: `"git-push|git-rebase"` or a YAML list, parsed like `guardrails.small_models`. Nothing is auto-allowed while it is unset; the `chi-answer-piped`, `chi-answer-http` and `chi-broadcast` rules never are, however they are listed. config.yml only. |
 | `guardrails.system_one.threshold` | `0.8` | | The probability an auto-allow needs. config.yml only. |
 | `guardrails.system_one.min_record` | `5` | | How many clean records a rule needs before System 1 is trusted for it: labelled asks of that rule at the threshold the user allowed. config.yml only. |
-| `guardrails.system_one.timeout_ms` | `2000` | | Milliseconds one judgment may take; a slower one is no judgment and the ask goes to the user. config.yml only. |
+| `system_one.host` | none | | The `hosts:` entry serving `/v1/systemone` (a local Splash, or the hosted Jev API); unset: no judgment, by any use of System 1, so nothing auto-allows and every ask goes to the user. Moved from `guardrails.system_one.host`. config.yml only. |
+| `system_one.model` | none | | The judgment model; unset uses the host's first model, and a host that names none has no judgment. Moved from `guardrails.system_one.model`. config.yml only. |
+| `system_one.timeout_ms` | `2000` | | Milliseconds one judgment may take; a slower one is no judgment and the ask goes to the user. Moved from `guardrails.system_one.timeout_ms`. config.yml only. |
 | `system_one.runs` | `on` | | Save each System 1 ask and what came of it, under the state dir, as long as sessions last (see [System 1's saved runs](system-one.md)); `off` stops saving. config.yml only. |
 | `log.file` | state dir | yes | See "Debug Log File". |
 | `log.disable` | `false` | yes | No file logging. |
@@ -2235,13 +2255,13 @@ column says so, a `--kebab-name` flag. The maps (`hosts:`, `models:`,
 | `context.every_seconds` | `300` | | How often an attached context source's command runs when it has no `--every` (seconds, at least 30). See [Attached context](context.md). |
 | `context.wake` | `true` | yes | A source whose update says `wake: true` may start a turn in a live, idle session (one per source per 10 minutes, a peer source up to `context.peer_turns` in a row, within `session.max_wakes`); so may a session's pushed source's first push. `false`: updates wait as notes for the next turn. See [Waking](context.md#waking). |
 | `context.peer_turns` | `3` | yes | Wake turns in a row a peer agent's answers may start (a peer bundle's outbox source, such as `codex-outbox`), with no message typed in the web or a TUI in between (`chi send` doesn't count); within `session.max_wakes`. Then answers wait as notes, and the UIs hear it once. An answer whose summary ends its verdicts with `VERDICT OK` wakes once to close the round, counted toward `session.max_wakes` only. `0`: a peer source wakes like any other. See [Waking](context.md#waking). |
-| `context.candidates.mode` | `off` | | The candidate judge: `off` (the default: no conversation text goes to a System 1 host), `audit` (asks System 1 whether the session's work is about each proposed candidate and logs it in `context_candidates.jsonl`; attaches nothing), `on` (the same asks, acted on: attached at `threshold`, a card from `offer_threshold`; see [On mode](context.md#on-mode)). Its host and model are `guardrails.system_one.host` / `.model`. config.yml only. See [The judge](context.md#the-judge). |
+| `context.candidates.mode` | `off` | | The candidate judge: `off` (the default: no conversation text goes to a System 1 host), `audit` (asks System 1 whether the session's work is about each proposed candidate and logs it in `context_candidates.jsonl`; attaches nothing), `on` (the same asks, acted on: attached at `threshold`, a card from `offer_threshold`; see [On mode](context.md#on-mode)). Its host and model are `system_one.host` / `.model`. config.yml only. See [The judge](context.md#the-judge). |
 | `context.candidates.threshold` | `0.8` | | The probability at which the judge attaches a candidate in on mode (a judged line's `would: attach`). config.yml only. |
 | `context.candidates.offer_threshold` | `0.6` | | The probability from which on mode shows the candidate's card, once (`would: offer`, below `threshold`). config.yml only. |
 | `context.candidates.reask_after_turns` | `3` | | Owner prompts after a judged ask before the judge's one re-ask of that candidate. config.yml only. |
 | `toolkit.default` | `full` | | The toolkit a new session is stored on: the tools its prompts declare (`full`, `lean`, `child`, one of `toolkit.kits` or a bundle's). `chi --toolkit` picks one per session. See "Toolkits". |
 | `toolkit.child` | `full` | | A delegate child's toolkit, unless its `delegate` call names one (`toolkit:`). See "Toolkits". |
-| `toolkit.suggest.mode` | `off` | | `audit` asks System 1 for a toolkit suggestion without changing the session; `on` waits for it (up to `guardrails.system_one.timeout_ms`) on an eligible turn and starts the session on a confidently suggested kit (Toolkits, On mode). The System 1 host, model and timeout come from `guardrails.system_one.*`. config.yml only. |
+| `toolkit.suggest.mode` | `off` | | `audit` asks System 1 for a toolkit suggestion without changing the session; `on` waits for it (up to `system_one.timeout_ms`) on an eligible turn and starts the session on a confidently suggested kit (Toolkits, On mode). The System 1 host, model and timeout come from `guardrails.system_one.*`. config.yml only. |
 | `toolkit.suggest.threshold` | `0.5` | | Minimum confidence for a non-default toolkit suggestion. config.yml only. |
 | `toolkit.suggest.defer_turns` | `3` | | Maximum owner-prompt number for another ask after `undecided` (the owner's own prompts: not steers, notes, reminders or `!` command output). config.yml only. |
 | `toolkit.suggest.defer_tokens` | `5000` | | Maximum estimated conversation size for another ask after `undecided` (characters / 4). config.yml only. |

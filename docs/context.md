@@ -432,8 +432,8 @@ about each proposed candidate — "Is this session's work about the
 candidate?" — and logs the answer, so you can see how it would do before
 anything depends on it; `audit` attaches nothing. With `on` the answer acts
 ([On mode](#on-mode)). The default is `off`: no conversation text goes to a System 1 host unless you
-turn this on, whatever `guardrails.system_one` says. The host and model are
-`guardrails.system_one.host` / `.model` (Jev through OpenRouter: see
+turn this on, whatever `guardrails.system_one.mode` says. The host and model are
+`system_one.host` / `.model` (Jev through OpenRouter: see
 [The candidate judge](configuration.md#the-candidate-judge)).
 
 ```yaml

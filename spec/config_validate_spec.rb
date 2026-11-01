@@ -79,17 +79,46 @@ RSpec.describe "Samagotchi::Config.validate_yaml_sections" do
   # System 1 (docs/guardrails.md "System 1"): config.yml only, like every
   # other guardrails setting.
   it "takes the System 1 settings and warns about a mode it doesn't have" do
-    expect(problems("guardrails: {system_one: {mode: audit, host: splash, model: m, rules: [git-push, git-rebase], " \
-                    "threshold: 0.9, min_record: 3, timeout_ms: 1200}}")).to eq([])
+    expect(problems("system_one: {host: splash, model: m, timeout_ms: 1200}\n" \
+                    "guardrails: {system_one: {mode: audit, rules: [git-push, git-rebase], threshold: 0.9, min_record: 3}}")).to eq([])
 
     file = { "guardrails" => { "system_one" => { "rules" => %w[git-push git-rebase], "threshold" => "0.9" } } }
     expect(Samagotchi::Config.resolve("guardrails.system_one.rules", file_data: file, env: {})).to eq("git-push|git-rebase")
     expect(Samagotchi::Config.resolve("guardrails.system_one.threshold", file_data: file, env: {})).to eq(0.9)
-    expect(Samagotchi::Config.resolve("guardrails.system_one.timeout_ms", file_data: {}, env: {})).to eq(2000)
+    expect(Samagotchi::Config.resolve("system_one.timeout_ms", file_data: {}, env: {})).to eq(2000)
 
     expect(Samagotchi::Log).to receive(:warn).with(:config, "invalid_value",
                                                    hash_including(echo: /guardrails\.system_one\.mode: "sometimes"/))
     expect(Samagotchi::Config.resolve("guardrails.system_one.mode", file_data: { "guardrails" => { "system_one" => { "mode" => "sometimes" } } }, env: {})).to eq("off")
+  end
+
+  it "warns once per old System 1 key, naming the new one and that nothing is judged until it moves" do
+    found = problems("guardrails: {system_one: {mode: on, host: splash, model: m, timeout_ms: 1200}}")
+    expect(found).to contain_exactly(
+      include("'guardrails.system_one.host': replaced by 'system_one.host'", "nothing is judged or auto-allowed"),
+      include("'guardrails.system_one.model': replaced by 'system_one.model'"),
+      include("'guardrails.system_one.timeout_ms': replaced by 'system_one.timeout_ms'")
+    )
+  end
+
+  describe "system_one.judgments" do
+    it "takes a bundle's entries, an unquoted mode: on and off among them" do
+      expect(problems("system_one: {judgments: {check-in.progress: {mode: on, host: h, model: m}, b.x: {mode: off}, c.y: {mode: audit}}}")).to eq([])
+      expect(problems("system_one: {judgments: ~}")).to eq([])
+    end
+
+    it "warns on a key an entry doesn't have, a mode it can't be, and an entry or a section of the wrong shape" do
+      expect(problems("system_one: {judgments: {b.x: {modle: on}}}")).to contain_exactly(include("unknown key 'system_one.judgments.b.x.modle'", "system_one.judgments.b.x.mode"))
+      expect(problems("system_one: {judgments: {b.x: {mode: sometimes}}}")).to contain_exactly(include("system_one.judgments.b.x.mode must be off, audit or on"))
+      expect(problems("system_one: {judgments: {b.x: on}}")).to contain_exactly(include("system_one.judgments.b.x must be a mapping"))
+      expect(problems("system_one: {judgments: on}")).to contain_exactly(include("'system_one.judgments' must be a mapping"))
+    end
+
+    it "warns that core's judgments take no settings of their own" do
+      %w[approvals.allow toolkit.suggest context.candidate guardrails.x].each do |name|
+        expect(problems("system_one: {judgments: {#{name}: {model: other}}}")).to contain_exactly(include("#{name}: core's judgments take no settings"))
+      end
+    end
   end
 
   it "takes toolkit suggestion settings at worker start, with audit as the only active behavior" do

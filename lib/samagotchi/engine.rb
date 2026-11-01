@@ -3131,7 +3131,7 @@ module Samagotchi
         # slow System 1 host (a local one) is the usual cause.
         timeout_ms = SystemOne::Client.configured_timeout_ms
         Log.warn(:toolkit, "toolkit_suggest_timeout", session_id: turn.session.id, timeout_ms: timeout_ms,
-                                                      reason: "System 1 gave no answer within guardrails.system_one.timeout_ms")
+                                                      reason: "System 1 gave no answer within system_one.timeout_ms")
         @toolkit_binding.fell_back(turn.session, "System 1 took over #{timeout_ms} ms")
         return
       end

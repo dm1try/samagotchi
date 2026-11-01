@@ -39,7 +39,7 @@ module Samagotchi
           user-only). --threshold overrides guardrails.system_one.threshold
           for the table; --model overrides the configured model for this run.
           --dry-run judges and prints the table without writing a line. Needs
-          guardrails.system_one.mode audit or on and a guardrails.system_one.host
+          guardrails.system_one.mode audit or on and a system_one.host
           (exit 2 without one).
     TEXT
 
@@ -149,7 +149,7 @@ module Samagotchi
       client = @client || SystemOne::Client.from_config(host_registry: HostRegistry.new, mode: Config.get("guardrails.system_one.mode"), model: options[:model])
       if client.nil?
         error_line("chi guardrails replay: no System 1 client — set guardrails.system_one.mode to audit or on " \
-                   "and guardrails.system_one.host in config.yml")
+                   "and system_one.host in config.yml")
         return CLI::Exit::USAGE
       end
 

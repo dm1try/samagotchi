@@ -22,7 +22,7 @@ RSpec.describe Samagotchi::Engine do
   def with_settings(mode)
     allow(Samagotchi::Config).to receive(:get).and_call_original
     allow(Samagotchi::Config).to receive(:get).with("guardrails.system_one.mode").and_return(mode)
-    allow(Samagotchi::Config).to receive(:get).with("guardrails.system_one.host").and_return("judge")
+    allow(Samagotchi::Config).to receive(:get).with("system_one.host").and_return("judge")
   end
 
   it "keeps guardrails.system_one.mode: audit stays audit, never on" do

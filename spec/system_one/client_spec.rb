@@ -111,7 +111,9 @@ RSpec.describe Samagotchi::SystemOne::Client do
     end
 
     def write_config(settings)
-      File.write(File.join(config_dir, "samagotchi", "config.yml"), YAML.dump({ "guardrails" => { "system_one" => settings } }))
+      shared, own = settings.partition { |key, _value| %w[host model timeout_ms].include?(key) }.map(&:to_h)
+      File.write(File.join(config_dir, "samagotchi", "config.yml"),
+                 YAML.dump({ "system_one" => shared, "guardrails" => { "system_one" => own } }))
     end
 
     it "is nil while the mode is off, the default" do
@@ -158,6 +160,15 @@ RSpec.describe Samagotchi::SystemOne::Client do
       expect(described_class.from_config(host_registry: registry, mode: Samagotchi::Config.get("guardrails.system_one.mode"))).not_to be_nil
       write_config({ "mode" => "off", "host" => "splash" })
       expect(described_class.from_config(host_registry: registry, mode: Samagotchi::Config.get("guardrails.system_one.mode"))).to be_nil
+    end
+
+    # D1: the keys moved, with no alias. The user's config still says the old
+    # ones until they edit it, and that has to fail safe.
+    it "is nil, so nothing auto-allows, while host and model sit under the old guardrails.system_one keys" do
+      File.write(File.join(config_dir, "samagotchi", "config.yml"),
+                 YAML.dump({ "guardrails" => { "system_one" => { "mode" => "on", "host" => "splash", "model" => "m", "timeout_ms" => 9000 } } }))
+      expect(described_class.from_config(host_registry: registry, mode: Samagotchi::Config.get("guardrails.system_one.mode"))).to be_nil
+      expect(described_class.configured_timeout_ms).to eq(described_class::DEFAULT_TIMEOUT_MS)
     end
 
     it "is nil for a mode the settings don't have, with config's own warning" do

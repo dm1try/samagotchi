@@ -38,17 +38,18 @@ module Samagotchi
       # takes effect on the next ask.
       # @param mode [String, Symbol] the caller's own: there is no default,
       #   so nothing gets "on" by leaving it out, and no use reads another's
-      #   mode key (approvals pass guardrails.system_one.mode)
+      #   mode key (approvals pass guardrails.system_one.mode); host, model and
+      #   timeout are system_one.*, every use's
       # @param model [String, nil] a model for this call only (chi guardrails
       #   replay --model), else the configured one
       def self.from_config(host_registry:, mode:, env: ENV, model: nil, tag: :guardrails)
         mode = mode.to_s.strip.downcase
         return nil unless MODES.include?(mode) && mode != "off"
 
-        host = Config.get("guardrails.system_one.host").to_s.strip
+        host = Config.get("system_one.host").to_s.strip
         return nil if host.empty?
 
-        model = (model.nil? ? Config.get("guardrails.system_one.model") : model).to_s.strip
+        model = (model.nil? ? Config.get("system_one.model") : model).to_s.strip
         timeout_ms = configured_timeout_ms
 
         new(backend: HttpBackend.new(host_registry: host_registry, host: host, model: model.empty? ? nil : model,
@@ -56,12 +57,12 @@ module Samagotchi
             mode: mode, host: host, model: model.empty? ? nil : model, tag: tag)
       end
 
-      # guardrails.system_one.timeout_ms, else the default: the whole
+      # system_one.timeout_ms, else the default: the whole
       # request's limit, and how long a turn waits for an answer (toolkit
       # suggestion's on mode).
       # @return [Integer]
       def self.configured_timeout_ms
-        timeout_ms = Config.get("guardrails.system_one.timeout_ms").to_i
+        timeout_ms = Config.get("system_one.timeout_ms").to_i
         timeout_ms.positive? ? timeout_ms : DEFAULT_TIMEOUT_MS
       end
 

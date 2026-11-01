@@ -15,6 +15,14 @@ and commands may change between minor versions. How releases are made:
   in all), `chi sessions delete` purges a session's, and `system_one.runs: off` stops it. `chi judgments ls` and
   `chi judgments report NAME [--days N]` show what's there. See docs/system-one.md.
 
+### Changed
+
+- **Edit your config:** System 1's shared settings moved out of `guardrails.system_one`, with no alias:
+  `guardrails.system_one.host` → `system_one.host`, `.model` → `system_one.model`, `.timeout_ms` →
+  `system_one.timeout_ms`. `mode`, `rules`, `threshold` and `min_record` stay where they are. Until you move them chi warns
+  at start, nothing is judged and nothing auto-allows: approvals ask you, and toolkit suggestions and context candidates
+  ask nothing. Move all three together, and restart workers on an older chi afterwards. See docs/configuration.md.
+
 ## [0.141.0] - 2026-10-31
 
 ### Added

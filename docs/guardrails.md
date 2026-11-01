@@ -1051,20 +1051,21 @@ local Splash server, or the hosted Jev API — and its key is that host's own
 `api_key_env:`.
 
 ```yaml
+system_one:                  # what every use of System 1 shares
+  host: splash               # the hosts: entry serving /v1/systemone
+  model: Qwen3.8-Flash-Next-GSQ-RCO-GGUF:Q2_0   # else the host's first model
+  timeout_ms: 2000           # a slower judgment is no judgment
 guardrails:
-  system_one:
+  system_one:                # approvals' own
     mode: off                # off (default) | audit (judge, log, never decide) | on
-    host: splash             # the hosts: entry serving /v1/systemone
-    model: Qwen3.8-Flash-Next-GSQ-RCO-GGUF:Q2_0   # else the host's first model
     rules: [git-push, git-rebase]                  # the rule ids it may answer for
     threshold: 0.8           # the probability an auto-allow needs
     min_record: 5            # clean records a rule needs before it is trusted
-    timeout_ms: 2000         # a slower judgment is no judgment
 ```
 
-`SystemOne::Client.from_config(host_registry: ...)` reads these on every
+`SystemOne::Client.from_config(host_registry:, mode:)` reads these on every
 call, so a config.yml change takes effect on the next ask. `mode: off` (the
-default) or no `host` means there is no client at all. Anything else is no
+default) or no `system_one.host` means there is no client at all. Anything else is no
 judgment and one `Log.warn(:guardrails, "system_one_failed", …)`: an
 unreachable host, a host that isn't `api: openai`, a status other than 200,
 a body that isn't JSON, a question with no answer, a request longer than

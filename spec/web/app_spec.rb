@@ -3063,7 +3063,7 @@ RSpec.describe Samagotchi::Web::App do
         allow(Samagotchi::Config).to receive(:get).and_call_original
         allow(Samagotchi::Config).to receive(:get).with("toolkit.default").and_return(default)
         allow(Samagotchi::Config).to receive(:get).with("toolkit.suggest.mode").and_return(suggest)
-        allow(Samagotchi::Config).to receive(:get).with("guardrails.system_one.host").and_return(system_one_host)
+        allow(Samagotchi::Config).to receive(:get).with("system_one.host").and_return(system_one_host)
       end
 
       it "lists the built-ins and config kits a new session can start on, with their descriptions" do
