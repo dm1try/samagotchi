@@ -26,7 +26,7 @@ module Samagotchi
         @calls = 0
       end
 
-      def ask(state:, questions:, cancel_controller: nil)
+      def ask(state:, questions:, cancel_controller: nil, observer: nil)
         @calls += 1
         raise BackendError, @error if @failing
 

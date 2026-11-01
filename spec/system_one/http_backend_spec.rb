@@ -43,6 +43,13 @@ RSpec.describe Samagotchi::SystemOne::HttpBackend do
     expect(request.header("content-type")).to eq("application/json")
   end
 
+  it "tells an observer the model it resolved and what the response said beside the answers" do
+    server.enqueue("/v1/systemone", json: judged)
+    told = {}
+    backend(model: nil).ask(state: "x", questions: questions, observer: ->(**facts) { told.merge!(facts) })
+    expect(told).to eq(model: "judge-first", served_model: "judge", raw: judged["answers"], usage: { "input_tokens" => 12 })
+  end
+
   it "sends exactly one /v1, whether the host is configured by url or by host and port" do
     2.times { server.enqueue("/v1/systemone", json: judged) }
     described_class.new(host_registry: registry, host: "one", model: "judge", timeout_ms: 2000, env: {}).ask(state: "x", questions: questions)

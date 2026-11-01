@@ -36,13 +36,17 @@ module Samagotchi
         @env = env
       end
 
+      # @param observer [#call, nil] told (**facts) the model it resolved,
+      #   before the request, then what the response said beside the parsed
+      #   answers: served_model:, raw: (each answer as sent, score legends
+      #   and all) and usage: (Splash's input_tokens, output_tokens)
       # @return [Hash{String => Answer}] one Answer per question, nil for a
       #   question the response answered badly
       # @raise [UnsupportedHost] the host is unknown, not an openai host, or
       #   names no model
       # @raise [BackendError] the request failed, the status isn't 200, or
       #   the body isn't a usable response
-      def ask(state:, questions:, cancel_controller: nil)
+      def ask(state:, questions:, cancel_controller: nil, observer: nil)
         entry = @host_registry.find_entry(@host)
         raise UnsupportedHost, "host #{@host.inspect} is not in hosts:" unless entry
         unless entry.api&.to_sym == :openai
@@ -52,6 +56,7 @@ module Samagotchi
         model = @model || host_model(entry)
         raise UnsupportedHost, "host #{@host} names no model for System One" if model.nil? || model.empty?
 
+        observer&.call(model: model)
         url = "#{entry.openai_base_url.to_s.chomp("/")}/systemone"
         questions = SystemOne.normalize_questions(questions)
         body = { model: model, state: state, questions: questions.to_h { |question| [question.id, question.to_wire] } }
@@ -64,7 +69,9 @@ module Samagotchi
           raise BackendError, "#{@host}: #{status} #{error_detail(response.body)}"
         end
 
-        answers = answers_of(response.body)
+        data = reply_of(response.body)
+        answers = data["answers"]
+        observer&.call(served_model: data["model"], raw: answers, usage: data["usage"])
         questions.to_h { |question| [question.id, Answer.from_wire(question.id, answers[question.id])] }
       end
 
@@ -99,14 +106,15 @@ module Samagotchi
         end
       end
 
-      def answers_of(body)
+      # The response's JSON, its answers map checked.
+      def reply_of(body)
         data = JSON.parse(body.to_s)
         raise BackendError, "the response is not JSON: #{body.to_s[0, 200]}" unless data.is_a?(Hash)
 
         answers = data["answers"]
         raise BackendError, "the response has no answers map" unless answers.is_a?(Hash)
 
-        answers
+        data
       rescue JSON::ParserError => e
         raise BackendError, "the response is not JSON: #{e.message[0, 200]}"
       end

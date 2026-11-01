@@ -68,27 +68,32 @@ module Samagotchi
       # @param state [String, Hash, Array] what the question is about, as the
       #   contract takes it
       # @param questions [Hash{String => Question|Hash}] the questions, by id
+      # @param observer [#call, nil] told (**facts) what the return value
+      #   hides: why it is nil (failure:, failure_text:) and what the backend
+      #   said (model:, served_model:, raw:, usage:), on this thread, before
+      #   #ask returns (Recording)
       # @return [Hash{String => Answer}, nil] one Answer per question, or nil
       #   when there is no judgment at all
-      def ask(state:, questions:, cancel_controller: nil)
+      def ask(state:, questions:, cancel_controller: nil, observer: nil)
         questions = SystemOne.normalize_questions(questions)
         return nil if questions.empty?
 
         answers = begin
-          @backend.ask(state: state, questions: questions, cancel_controller: cancel_controller)
+          @backend.ask(state: state, questions: questions, cancel_controller: cancel_controller,
+                       **(observer ? { observer: observer } : {}))
         rescue LLM::RequestCancelled
           raise
         rescue StandardError => e
-          return no_judgment("#{e.class}: #{e.message}", error: e.class.name)
+          return no_judgment("#{e.class}: #{e.message}", failure: e.class.name, observer: observer, error: e.class.name)
         end
 
         unless answers.is_a?(Hash)
-          return no_judgment("the backend returned #{answers.inspect}")
+          return no_judgment("the backend returned #{answers.inspect}", failure: "bad_response", observer: observer)
         end
 
         answers = questions.to_h { |question| [question.id, answers[question.id]] }
         missing = questions.reject { |question| answers[question.id].is_a?(Answer) }
-        return no_judgment("no answer for #{missing.map(&:id).join(", ")}") unless missing.empty?
+        return no_judgment("no answer for #{missing.map(&:id).join(", ")}", failure: "no_answer", observer: observer) unless missing.empty?
 
         answers
       end
@@ -96,7 +101,8 @@ module Samagotchi
       private
 
       # One warn, one nil: the ask goes to the user.
-      def no_judgment(reason, **fields)
+      def no_judgment(reason, failure:, observer:, **fields)
+        observer&.call(failure: failure, failure_text: reason)
         # Qualified: inside SystemOne, the bare Log is now SystemOne::Log.
         Samagotchi::Log.warn(@tag, "system_one_failed", echo: "[samagotchi:#{@tag}] system one: #{reason}", host: @host, **fields)
         nil

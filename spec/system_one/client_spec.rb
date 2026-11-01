@@ -76,6 +76,23 @@ RSpec.describe Samagotchi::SystemOne::Client do
       .to raise_error(ArgumentError, /questions must be a hash/)
   end
 
+  describe "the observer" do
+    it "is told why there is no judgment" do
+      told = {}
+      allow(Samagotchi::Log).to receive(:warn)
+      backend = Samagotchi::SystemOne::FakeBackend.new(failing: true, error: "asleep")
+      expect(client(backend).ask(state: "x", questions: { "a" => question("a") }, observer: ->(**facts) { told.merge!(facts) })).to be_nil
+      expect(told).to include(failure: "Samagotchi::SystemOne::BackendError", failure_text: /asleep/)
+    end
+
+    it "changes nothing the backend is asked without one" do
+      backend = double("backend")
+      expect(backend).to receive(:ask).with(state: "x", questions: [question("a")], cancel_controller: nil).and_return({})
+      allow(Samagotchi::Log).to receive(:warn)
+      client(backend).ask(state: "x", questions: { "a" => question("a") })
+    end
+  end
+
   describe "from_config" do
     let(:config_dir) { Dir.mktmpdir("system-one-config") }
 
