@@ -1929,8 +1929,24 @@ test("stop asks about the background task still running: the sheet, then Stop al
   await turnEnded(page, 1);
   const id = page.url().match(/#\/s\/([0-9a-f-]+)$/)[1];
 
-  await page.setViewportSize({ width: 390, height: 700 });
-  await page.locator("#infoStopBtn").click();
+  // A phone's bar: no swiping, ⚙'s target is the chip itself, and Stop is behind ⋯.
+  await page.setViewportSize({ width: 390, height: 800 });
+  await expectNoHorizontalOverflow(page);
+  await expect(page.locator("#infoBar .ctx")).toBeHidden();
+  await expect(page.locator("#infoBar .meta")).toHaveCSS("overflow-x", "visible");
+  const gearIsTop = await page.locator("#infoBar .settings-chip").evaluate((chip) => {
+    const box = chip.getBoundingClientRect();
+    return chip.contains(document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2));
+  });
+  expect(gearIsTop).toBe(true);
+  await expect(page.locator("#infoStopBtn")).toBeHidden();
+  await page.locator("#infoMoreBtn").click();
+  const more = page.locator("#moreSheet");
+  await expect(more).toBeVisible();
+  await expect(more).toHaveClass(/\bsheet\b/);
+  await expect(more.locator(".more-act")).toHaveText(["Continue", "Archive", "Stop", "Delete"]);
+  await more.locator('[data-act="go:stop"]').click();
+  await expect(more).toBeHidden();
 
   const sheet = page.locator("#stopSheet");
   await expect(sheet).toBeVisible();
@@ -1938,6 +1954,7 @@ test("stop asks about the background task still running: the sheet, then Stop al
   await expect(sheet.locator(".ss-line").first()).toContainText("1 background task");
   await expect(sheet.locator(".ss-line").first()).toContainText("sleep 120");
   await expect(sheet.locator(".ss-acts button")).toHaveText(["Stop all", "Stop session only", "Cancel"]);
+  await expect(page.locator("#infoMoreBtn")).toHaveAttribute("aria-expanded", "true");
   await page.screenshot({ path: "tmp/e2e/stop-sheet-phone.png" });
 
   const held = page.waitForResponse((res) => res.url().endsWith(`/api/sessions/${id}/holds/stop`) && res.status() === 200);

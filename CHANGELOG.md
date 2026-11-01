@@ -14,6 +14,9 @@ and commands may change between minor versions. How releases are made:
   `warn boundary plugin.rb: Samagotchi::OldInternal::Thing is gone from this chi, so this bundle may fail`; a name that
   still works (`Samagotchi::Log`) gets no row, so the table stops repeating warnings about bundles that load fine.
   `chi bundle check` (the author's own run) stays strict.
+- The web's session bar on a phone no longer swipes: id, status, model and ⚙ stay on the row, and ⋯ opens a bottom sheet with the
+  rest (toolkit, working set, participants, chain links, delegates, the telemetry, Continue, Archive, Stop, Delete). A dot on ⋯ says
+  when something there needs a look. See [docs/cli.md](docs/cli.md#the-session-bar-on-a-phone).
 
 ## [0.143.0] - 2026-11-01
 

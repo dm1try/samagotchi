@@ -23,7 +23,7 @@ page. A factory dep a new version stops passing is the same hazard the other way
 out of `send_turn.js`, `session_actions.js` and `lists_view.js`); a page loaded before keeps all its old modules
 until a reload, so the risk is a mixed cache, not an open tab. `answer_fold.js`, `details_motion.js`,
 `turn_range.js`, `history_reveal.js`, `latest.js`, `session_payload.js`, `method_api.js`, `session_store.js`,
-`session_fields.js`, `feature_gates.js`, `revise_stack.js`, `revise_switch.js`, `shell_command.js`, `stale_params.js` and `popover_modal.js` are new modules for that reason.
+`session_fields.js`, `feature_gates.js`, `revise_stack.js`, `revise_switch.js`, `shell_command.js`, `stale_params.js`, `popover_modal.js` and `more_sheet.js` are new modules for that reason.
 
 ## Two pages, two models
 
@@ -209,6 +209,16 @@ createFamilyPop`) still place their own. Every popover behaves the same (`popove
 (`focusBack`), and its `:hover` tints (the opener's too) sit in `@media(hover:hover)`, so a tap on a phone leaves
 none behind. `model_picker.js`, `command_list.js` (listboxes: the focus stays in the input), `ref_menu.js` (a menu)
 and `update_sheet.js` (a native modal `<dialog>`) aren't popovers in that sense.
+
+**A phone's session bar** (`more_sheet.js`): CSS alone folds the chips and the bar's buttons away at 600 px or less
+(`display:none`, so the same `.meta` draws both layouts and `info_bar.js` knows nothing of it); they stay in the DOM.
+⋯'s sheet (`#infoMoreBtn`) draws its rows from the bar's model, and a row or an action clicks the real chip or button, so
+each keeps one set of handlers, confirmations and in-flight rules. A chip the sheet opens has no box to be placed at, so
+`chip_popover.js` places it, marks `aria-expanded` and gives focus back at the page's `[data-anchor-stand-in]` (⋯); that
+matters at exactly 600 px, where the CSS is a phone's but the shell (`SHEET_MAX`, `<`) still draws a popover, not a sheet.
+A new chip on the bar needs its place in that CSS's hidden list and a row in `moreRows`, and its attention state in the row, or
+it is lost on a phone. `app.js`'s `updateInfoBar` feeds the sheet (`update`) on every redraw; its rows and actions draw into
+fixed slots, so a row that joins keeps the focus where it was. The `narrowScreen` listener closes the sheet when the window grows.
 
 ## Stale answers
 
