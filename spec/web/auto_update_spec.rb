@@ -6,9 +6,12 @@ require "json"
 require "samagotchi/live_versions"
 require "samagotchi/web/auto_update"
 require "samagotchi/web/update_check"
+require "samagotchi/web/update_ops"
 require "samagotchi/web/session_hub"
 
 RSpec.describe Samagotchi::Web::AutoUpdate do
+  def op_result(state, rows) = Samagotchi::Web::UpdateOps::Result.new(state: state, rows: rows)
+
   let(:root) { Dir.mktmpdir("auto-update-spec") }
   let(:state_file) { File.join(root, "update_check.json") }
   let(:now) { Time.utc(2026, 10, 30, 12) }
@@ -24,7 +27,7 @@ RSpec.describe Samagotchi::Web::AutoUpdate do
                                      installed_versions: installed_versions)
   end
   let(:rows) { [{ "component" => "chi (gem)", "status" => "updated", "failed" => false, "kept" => [] }] }
-  let(:result) { { state: "done", rows: rows } }
+  let(:result) { op_result("done", rows) }
   let(:ops) { double("ops", blocked_reason: nil, running?: false) }
   let(:auto) { "install" }
   let(:restart) { "never" }
@@ -139,7 +142,7 @@ RSpec.describe Samagotchi::Web::AutoUpdate do
 
   describe "a failed install" do
     let(:rows) { [{ "component" => "chi (gem)", "status" => "failed (offline)\nmore", "failed" => true, "kept" => [] }] }
-    let(:result) { { state: "failed", rows: rows } }
+    let(:result) { op_result("failed", rows) }
 
     it "pushes the first failed row's status once and gives the release up" do
       auto_update.step
@@ -174,10 +177,10 @@ RSpec.describe Samagotchi::Web::AutoUpdate do
     end
 
     it "uses the child's own words as the failure when it printed no rows" do
-      allow(ops).to receive(:install).and_return(state: "failed", rows: [
+      allow(ops).to receive(:install).and_return(op_result("failed", [
         { "component" => "chi update", "status" => "failed (no such version)",
           "failed" => true, "kept" => [] }
-      ])
+      ]))
       auto_update.step
 
       expect(notices.first).to include(detail: "failed (no such version)")
@@ -195,7 +198,7 @@ RSpec.describe Samagotchi::Web::AutoUpdate do
   describe "with update.restart: idle" do
     let(:restart) { "idle" }
     let(:workers_result) do
-      { state: "done", rows: [{ "session_id" => "a", "state" => "restarted" }, { "session_id" => "b", "state" => "skipped" }] }
+      op_result("done", [{ "session_id" => "a", "state" => "restarted" }, { "session_id" => "b", "state" => "skipped" }])
     end
     let(:preflight) { double("preflight", call: nil) }
     let(:auto_update) do
@@ -295,7 +298,7 @@ RSpec.describe Samagotchi::Web::AutoUpdate do
     end
 
     it "goes straight to chi web when every worker restarted" do
-      allow(ops).to receive(:restart_workers).and_return(state: "done", rows: [{ "session_id" => "a", "state" => "restarted" }])
+      allow(ops).to receive(:restart_workers).and_return(op_result("done", [{ "session_id" => "a", "state" => "restarted" }]))
       allow(ops).to receive(:install) do
         summaries << { id: "a", status: "running" }
         result
@@ -394,7 +397,7 @@ RSpec.describe Samagotchi::Web::AutoUpdate do
       it "tells the phone the workers the old chi web restarted too" do
         auto_update.step # 1 restarted, 1 skipped, then the exec
         stub_const("Samagotchi::VERSION", version)
-        allow(ops).to receive(:restart_workers).and_return(state: "done", rows: [{ "session_id" => "b", "state" => "restarted" }])
+        allow(ops).to receive(:restart_workers).and_return(op_result("done", [{ "session_id" => "b", "state" => "restarted" }]))
 
         after_restart(reloaded_check).step
 
@@ -418,7 +421,7 @@ RSpec.describe Samagotchi::Web::AutoUpdate do
         Samagotchi::Web::AutoUpdateRecord.new(version: version, from: "0.1.0", at: now.iso8601, kept: %w[a.md b.md], phase: "web",
                                               restarted: 3, left: 1)
       end
-      let(:workers_result) { { state: "done", rows: [{ "session_id" => "b", "state" => "restarted" }] } }
+      let(:workers_result) { op_result("done", [{ "session_id" => "b", "state" => "restarted" }]) }
 
       before do
         check.save_auto(record)

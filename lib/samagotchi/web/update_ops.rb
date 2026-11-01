@@ -26,6 +26,13 @@ module Samagotchi
       # chi update's own words when it printed no rows.
       class UpdateFailed < StandardError; end
 
+      # What an operation asked for with wait: true answers once it ended.
+      # +state+: done or failed; +rows+: the same hashes its frames carry
+      # (the page's JSON, in chi update --json's own shape).
+      Result = Data.define(:state, :rows) do
+        def done? = state == "done"
+      end
+
       # @param hub [SessionHub, nil] the frames' publisher
       # @param manager [#restart_session] SessionManager
       # @param state_dir [String, nil] the sessions dir (nil: the default)
@@ -58,10 +65,10 @@ module Samagotchi
       def running? = @mutex.synchronize { @running }
 
       # Runs `chi update --to +version+` on a thread.
-      # @param wait [Boolean] block until it ends and answer its final
-      #   `{state:, rows:}` instead of :started
-      # @return [Symbol, Hash] :started, :busy (another operation runs) or
-      #   :start_failed (no thread); with wait: the result
+      # @param wait [Boolean] block until it ends and answer its Result
+      #   instead of :started
+      # @return [Symbol, Result] :started, :busy (another operation runs) or
+      #   :start_failed (no thread); with wait: the Result
       def install(version, wait: false, auto: false)
         return :busy unless claim
 
@@ -80,7 +87,7 @@ module Samagotchi
       # Restarts every stale worker (the worker refuses atomically when busy).
       # @param select [#call, nil] asked of each stale worker (a
       #   LiveVersions::Worker): false leaves it, as a `skipped` row
-      # @return [Symbol, Hash] as #install
+      # @return [Symbol, Result] as #install
       def restart_workers(wait: false, auto: false, select: nil)
         return :busy unless claim
 
@@ -161,13 +168,13 @@ module Samagotchi
         @hub.refresh_installed if success
         state = success ? "done" : "failed"
         @hub.publish_update(state: state, rows: rows, operation: "install", version: version, auto: auto)
-        { state: state, rows: rows }
+        Result.new(state: state, rows: rows)
       rescue StandardError => e
         Log.exception(:web, "update_failed", e)
         rows = [{ "component" => "chi update", "status" => "failed (#{e.message.lines.first.to_s.strip})",
                   "failed" => true, "kept" => [] }]
         @hub.publish_update(state: "failed", rows: rows, operation: "install", version: version, auto: auto)
-        { state: "failed", rows: rows }
+        Result.new(state: "failed", rows: rows)
       ensure
         release
       end
@@ -226,12 +233,12 @@ module Samagotchi
         end
         state = rows.any? { |row| row["state"] == "failed" } ? "failed" : "done"
         @hub.publish_update(state: state, rows: rows, operation: "workers", auto: auto)
-        { state: state, rows: rows }
+        Result.new(state: state, rows: rows)
       rescue StandardError => e
         Log.exception(:web, "worker_restart_failed", e)
         rows = [{ "state" => "failed", "reason" => e.class.name, "detail" => e.message }]
         @hub.publish_update(state: "failed", rows: rows, operation: "workers", auto: auto)
-        { state: "failed", rows: rows }
+        Result.new(state: "failed", rows: rows)
       ensure
         release
       end

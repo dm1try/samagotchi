@@ -29,7 +29,7 @@ RSpec.describe Samagotchi::Web::UpdateOps do
     it "waits for the child and answers its final state and rows, its frames marked automatic when asked" do
       result = ops.install("99.0.0", wait: true, auto: true)
 
-      expect(result).to eq(state: "done", rows: rows)
+      expect(result).to eq(described_class::Result.new(state: "done", rows: rows))
       expect(frames.map { |frame| frame[:state] }).to eq(%w[running done])
       expect(frames).to all(include(operation: "install", version: "99.0.0", auto: true))
       expect(ops).not_to be_running
@@ -63,16 +63,16 @@ RSpec.describe Samagotchi::Web::UpdateOps do
 
       result = ops.install("99.0.0", wait: true)
 
-      expect(result[:state]).to eq("failed")
-      expect(result[:rows].first).to include("component" => "chi update", "failed" => true,
-                                             "status" => "failed (no such version)")
+      expect(result.state).to eq("failed")
+      expect(result.rows.first).to include("component" => "chi update", "failed" => true,
+                                           "status" => "failed (no such version)")
     end
 
     it "says a child that failed with rows failed, with those rows" do
       bad = [{ "component" => "chi (gem)", "status" => "failed (offline)", "failed" => true, "kept" => [] }]
       ops = described_class.new(hub: hub, state_dir: state_dir, runner: ->(*, **) { [bad.to_json, false] }, blocked: -> {})
 
-      expect(ops.install("99.0.0", wait: true)).to eq(state: "failed", rows: bad)
+      expect(ops.install("99.0.0", wait: true)).to eq(described_class::Result.new(state: "failed", rows: bad))
     end
 
     it "looks at what is installed before it says done" do
@@ -106,8 +106,9 @@ RSpec.describe Samagotchi::Web::UpdateOps do
 
       result = ops.restart_workers(wait: true, auto: true)
 
-      expect(result).to eq(state: "done", rows: [{ "session_id" => "one", "state" => "restarted",
-                                                   "from_version" => "0.122.0", "version" => "99.0.0" }])
+      expect(result.rows).to eq([{ "session_id" => "one", "state" => "restarted",
+                                   "from_version" => "0.122.0", "version" => "99.0.0" }])
+      expect(result).to be_done
       expect(frames).to all(include(operation: "workers", auto: true))
     end
 
@@ -122,9 +123,9 @@ RSpec.describe Samagotchi::Web::UpdateOps do
 
       result = ops.restart_workers(wait: true, select: ->(worker) { worker.session_id == "go" })
 
-      expect(result[:state]).to eq("done")
-      expect(result[:rows].map { |row| row.values_at("session_id", "state") }).to eq([%w[go restarted], %w[stay skipped]])
-      expect(result[:rows].last).to include("reason" => "not_idle")
+      expect(result).to be_done
+      expect(result.rows.map { |row| row.values_at("session_id", "state") }).to eq([%w[go restarted], %w[stay skipped]])
+      expect(result.rows.last).to include("reason" => "not_idle")
       expect(manager).not_to have_received(:restart_session).with("stay", any_args)
     end
 

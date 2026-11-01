@@ -148,10 +148,10 @@ module Samagotchi
         result = @ops.install(version, wait: true, auto: true)
         return Log.info(:web, "auto_update_deferred", version: version, why: result) if result.is_a?(Symbol)
 
-        rows = result[:rows]
+        rows = result.rows
         record = AutoUpdateRecord.new(version: version, from: VERSION, at: @clock.call.iso8601, kept: kept_files(rows),
                                       phase: "installed")
-        if result[:state] == "done"
+        if result.done?
           Log.info(:web, "auto_update_installed", version: version, kept: record.kept.size)
           installed(record)
         else
@@ -192,7 +192,7 @@ module Samagotchi
         result = @ops.restart_workers(wait: true, auto: true, select: quiet_filter)
         return if result.is_a?(Symbol)
 
-        states = result[:rows].map { |row| row["state"] }
+        states = result.rows.map { |row| row["state"] }
         restarted = states.count("restarted")
         save(record.with(phase: "workers", restarted: record.restarted + restarted, left: states.size - restarted))
       end
