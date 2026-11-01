@@ -45,7 +45,7 @@ module Samagotchi
 
       # Names core keeps (a first word, as a bundle's scope would be) and the
       # suffix a later replay's runs use: a bundle's judgment takes none.
-      RESERVED = %w[approvals context guardrails toolkit].freeze
+      RESERVED = Config::RESERVED_JUDGMENTS
       RESERVED_SUFFIX = ".replay"
       # The total the sweep keeps (docs/system-one.md).
       MAX_BYTES = 100 * 1024 * 1024

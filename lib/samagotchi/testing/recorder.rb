@@ -4,6 +4,7 @@ require_relative "../plugin/card"
 require_relative "../plugin/context"
 require_relative "../guardrails/parent_policy"
 require_relative "../hook_question"
+require_relative "judgments"
 
 module Samagotchi
   module Testing
@@ -82,6 +83,10 @@ module Samagotchi
       end
 
       def [](key) = @mutex.synchronize { @values.fetch(key) }
+
+      # ctx.judge and ctx.judge_later's System 1 (Testing::Judgments).
+      # @return [Judgments]
+      def judgments = @mutex.synchronize { @judgments ||= Judgments.new(self) }
 
       # Only stop_turn's, or only stop_generation's.
       def turn_stops = stops.select { |stop| stop.kind == :turn }

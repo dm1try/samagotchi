@@ -169,6 +169,7 @@ module Samagotchi
       @chat_backend = nil
       @chat_backend_mutex = Mutex.new
       @side_judgments = SideJudgments.new
+      @judgments = build_judgments
       @context_judge_after_turn = nil
       # On mode's cards an answer brought while a turn ran: shown once it
       # has ended (#show_context_cards_after_turn).
@@ -2928,12 +2929,13 @@ module Samagotchi
         tool_index: @tool_index,
         peer_sources: @peer_sources,
         prompt_sections: @prompt_sections,
-        prompt_changed: -> { prompt_changed! }
+        prompt_changed: -> { prompt_changed! },
+        judgments: @judgments
       )
       # What plugins show while they load (an MCP server that didn't
       # start) waits for the first turn, beside the load warnings: no UI
       # is there yet, and the Engine isn't built.
-      @extension_load.load_plugins(registries, failures: @plugin_failures)
+      @extension_load.load_plugins(registries, failures: @plugin_failures).tap { @judgments.warn_undeclared }
     end
 
     # Keep a plugin's new tool set (chi.replace_tools, from any thread)
@@ -3235,6 +3237,24 @@ module Samagotchi
     end
     private :system_one_recording
 
+    # Bundles' judgments (chi.judgment), on this Engine's Runs and side asks.
+    # A judgment's own host and model are for bundles only: core's clients
+    # above never pass them (D2, JudgmentSettings).
+    def build_judgments
+      SystemOne::Judgments.new(
+        client_for: lambda { |_name, settings|
+          SystemOne::Client.from_config(host_registry: @host_registry, mode: settings.mode, host: settings.host,
+                                        model: settings.model, tag: :plugins)
+        },
+        runs: -> { @session&.scratch ? SystemOne::Runs.new : system_one_runs },
+        where: -> { @session && SystemOne::Recording::Context.of(@session, session_model: effective_model_name) },
+        side: @side_judgments,
+        shared_host_busy: ->(host) { turn_running? && system_one_shares_local_host?(host) },
+        participant: -> { !turn_author.nil? }
+      )
+    end
+    private :build_judgments
+
     # Where this Engine's runs are saved; read each time, as the settings are.
     def system_one_runs = SystemOne::Runs.for_sessions_dir(session_state_dir)
     private :system_one_runs
@@ -3481,7 +3501,8 @@ module Samagotchi
         turn_author: -> { turn_author },
         # A plugin's prompt section is in the stable part: a full re-read.
         cache_confirm: ->(line, changed) { CacheConfirm.ask(line: line, cost: :full, changed: changed, engine: self) },
-        candidate_proposed: ->(_candidate) { judge_late_candidates }
+        candidate_proposed: ->(_candidate) { judge_late_candidates },
+        judgments: -> { @judgments }
       )
     end
 

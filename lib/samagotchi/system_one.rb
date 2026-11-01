@@ -8,6 +8,8 @@ require_relative "system_one/http_backend"
 require_relative "system_one/client"
 require_relative "system_one/runs"
 require_relative "system_one/recording"
+require_relative "system_one/judgment_settings"
+require_relative "system_one/judgments"
 require_relative "system_one/log"
 require_relative "system_one/record"
 require_relative "system_one/similar"
@@ -25,7 +27,8 @@ module Samagotchi
   # auto-allow is P3b (docs/guardrails.md, "System 1").
   # Every core ask goes through SystemOne::Recording, the seam that saves it
   # as a run, with labels and what came of it (SystemOne::Runs, RunsStore;
-  # docs/system-one.md).
+  # docs/system-one.md). Bundles ask through SystemOne::Judgments, on the same
+  # Client and Recording (chi.judgment, ctx.judge).
   module SystemOne
   end
 end

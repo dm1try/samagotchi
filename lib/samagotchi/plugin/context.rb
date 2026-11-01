@@ -28,6 +28,7 @@ module Samagotchi
     autoload :Http, File.expand_path("http", __dir__)
     autoload :HttpError, File.expand_path("http", __dir__)
     autoload :HttpCancelled, File.expand_path("http", __dir__)
+    autoload :Judgments, File.expand_path("judgments", __dir__)
 
     # The Engine's side of a Context: callables, so the Engine itself is
     # never handed out. +messages+ returns the conversation, +notify+ takes
@@ -65,11 +66,13 @@ module Samagotchi
     # session's model is looked up under (EffectiveModel#names).
     # +candidate_proposed+ takes (candidate): a late proposal no owner
     # prompt mentions, for the candidate judge (Engine#judge_late_candidates).
+    # +judgments+ returns the SystemOne::Judgments ctx.judge, ctx.judge_later
+    # and ctx.judgments ask and label through.
     Host = Struct.new(:session_id, :cwd, :messages, :messages_partial, :notify, :ask_user, :cancelled, :card,
                       :ask_model, :model_name, :model_key, :state_dir, :scratch, :setup, :prompt_files,
                       :steer, :stop_turn, :stop_generation, :frontend, :toolkit, :declared_tools, :use_toolkit, :load_tools,
                       :cancel_controller, :cost, :usage, :turn_author, :cache_confirm, :model_names,
-                      :candidate_proposed, keyword_init: true)
+                      :candidate_proposed, :judgments, keyword_init: true)
 
     # ctx.ask_model failed: the model couldn't be reached, timed out, or
     # sent nothing usable. The message says why, for the user.
@@ -407,6 +410,45 @@ module Samagotchi
       # ctx.ask_model's answer limit when none is given.
       ASK_MAX_TOKENS = 1024
 
+      # Ask System 1 this bundle's judgment (chi.judgment, docs/plugins.md,
+      # Judgments) and wait, at most system_one.timeout_ms. A Stop of the
+      # turn cuts an ask made for it. Off, no host, a failed backend or a
+      # skip is a Result with no answers, never a raise.
+      # @param name [String] as declared, without the bundle
+      # @param state [String, Hash, Array] what the question is about; it
+      #   goes to the System 1 host and is saved in the run as sent
+      # @return [SystemOne::Judgments::Result] #answers, #p(id), #run_id,
+      #   #audit?, #no_judgment?, #reason
+      # @raise [ArgumentError] a judgment this bundle didn't declare, a bad
+      #   state, or called in a :generation_progress handler, whose stream it
+      #   would hold (use #judge_later)
+      def judge(name, state:)
+        event = Thread.current[CURRENT_EVENTS]&.[](self)
+        if event.is_a?(Hash) && event[:type] == :generation_progress
+          raise ArgumentError, "ctx.judge would hold the stream in a :generation_progress handler; use ctx.judge_later"
+        end
+
+        judgment_layer.judge(judgment_name(name), state: state, context: self, cancel_controller: http_cancel_controller)
+      end
+
+      # #judge off this thread: the run's id comes back at once and the block
+      # gets the Result later, on another thread, always once. So its ctx.*
+      # act on the session as it is then, not this handler's event. While
+      # this judgment's last judge_later still runs, nothing is asked: a
+      # skipped run, and the block gets a Result with no answers.
+      # @return [String, nil] the run's id; nil when no run will be saved (off,
+      #   no host, runs off, a scratch session, a participant's turn)
+      # @raise [ArgumentError] a judgment this bundle didn't declare, a bad state
+      def judge_later(name, state:, &)
+        judgment_layer.later(judgment_name(name), state: state, context: self, &)
+      end
+
+      # What came of this bundle's judgments' runs: #label, #acted.
+      # @return [Judgments]
+      def judgments
+        @judgments ||= Judgments.new(-> { judgment_layer }, bundle: @bundle)
+      end
+
       # Other sessions: fork one from a conversation, send one a message,
       # read one (Sessions).
       # @return [Sessions]
@@ -492,6 +534,12 @@ module Samagotchi
       end
 
       private
+
+      def judgment_layer
+        @host.judgments&.call or raise ArgumentError, "this chi has no judgments (plugins: false)"
+      end
+
+      def judgment_name(name) = "#{@bundle}.#{name}"
 
       # Whether this plugin's handler runs on this thread (#with_event).
       def in_handler? = !!Thread.current[CURRENT_EVENTS]&.key?(self)

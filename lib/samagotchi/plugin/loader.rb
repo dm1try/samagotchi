@@ -22,9 +22,10 @@ module Samagotchi
     # +tool_index+ the Engine's Tools::ToolIndex (chi.tool_source);
     # +peer_sources+ the Engine's PeerSources (chi.peer_source);
     # +prompt_sections+ the Engine's PromptSections (chi.prompt_section),
-    # +prompt_changed+ rebuilds its system prompts (chi.prompt_changed!).
+    # +prompt_changed+ rebuilds its system prompts (chi.prompt_changed!),
+    # +judgments+ the Engine's SystemOne::Judgments (chi.judgment).
     Registries = Struct.new(:commands, :tools, :hooks, :context_for, :tools_changed, :services, :stage_tools, :init,
-                            :toolkits, :tool_index, :peer_sources, :prompt_sections, :prompt_changed,
+                            :toolkits, :tool_index, :peer_sources, :prompt_sections, :prompt_changed, :judgments,
                             keyword_init: true)
 
     # Loads installed bundles' plugins (manifest plugin: {file:, sha256:})

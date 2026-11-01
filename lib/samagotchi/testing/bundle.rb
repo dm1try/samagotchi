@@ -101,7 +101,8 @@ module Samagotchi
           Plugin::Registries.new(
             commands: SessionCommands.register_builtins(Commands::Registry.new), tools: Tools::Builtins.registry,
             services: Plugin::Services.new, stage_tools: ->(*) {}, toolkits: [], tool_index: Tools::ToolIndex.new,
-            peer_sources: PeerSources.new, prompt_sections: Plugin::PromptSections.new, **fields
+            peer_sources: PeerSources.new, prompt_sections: Plugin::PromptSections.new,
+            judgments: SystemOne::Judgments.new, **fields
           )
         end
       end
@@ -375,6 +376,11 @@ module Samagotchi
       # Queue ask_model answers: a String, an exception, or a callable.
       def model_answers = @recorder.model_answers
 
+      # ctx.judge and ctx.judge_later's System 1, on a FakeBackend: what it
+      # answers, and the asks, runs and labels it saw (Testing::Judgments).
+      # @return [Judgments]
+      def judgments = @recorder.judgments.scoped(@name)
+
       # Queue ask_user answers ({selected:, freeform:, selected_indices:},
       # or a callable given the HookQuestion).
       def answer(*answers)
@@ -425,7 +431,8 @@ module Samagotchi
             @inits << Init.new(label: label, plugin_label: plugin_label, provides_tools: provides_tools, quiet: quiet,
                                timeout: timeout, failed: failed, block: block)
           },
-          toolkits: toolkits
+          toolkits: toolkits,
+          judgments: @recorder.judgments.layer
         )
       end
 

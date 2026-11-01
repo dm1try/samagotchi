@@ -38,12 +38,15 @@ module Samagotchi
         client && new(client, judgment: judgment, runs: runs, context: context, recorded_mode: recorded_mode)
       end
 
-      def initialize(client, judgment:, runs:, context: Context.new, recorded_mode: nil)
+      # @param fields [Hash] more for each of its runs (a bundle's judgment's
+      #   positive: and negative: label values)
+      def initialize(client, judgment:, runs:, context: Context.new, recorded_mode: nil, fields: {})
         @client = client
         @judgment = judgment
         @runs = runs
         @context = context
         @recorded_mode = recorded_mode
+        @fields = fields
       end
 
       def host = @client.host
@@ -71,23 +74,35 @@ module Samagotchi
         raise
       end
 
+      # An ask that wasn't made: its run, at once, asked: false, so a later
+      # replay can answer the state with no eviction today (docs/system-one.md).
+      # @param reason [String] why: the run's +skipped+
+      def skip(state:, questions:, reason:, run_id: nil)
+        save(questions) do
+          { id: run_id || Runs.new_id(@judgment), state: state, asked: false, skipped: reason, model: said(:model) }
+        end
+      end
+
       private
 
       def record(run_id, state, questions, answers, facts, started)
+        save(questions) do
+          { id: run_id || Runs.new_id(@judgment), state: state, asked: true, model: facts[:model] || said(:model),
+            served_model: facts[:served_model], answers: facts[:raw] || answers&.transform_values(&:to_h), usage: facts[:usage],
+            failure: facts[:failure], failure_text: facts[:failure_text]&.to_s&.slice(0, 500),
+            latency_ms: ((Process.clock_gettime(Process::CLOCK_MONOTONIC) - started) * 1000).round }
+        end
+      end
+
+      # One run: the block's fields, and what every run says.
+      def save(questions)
         return unless @runs.on?
 
         questions = SystemOne.normalize_questions(questions)
         return if questions.empty? # Client#ask asked nothing.
 
-        @runs.record(
-          id: run_id || Runs.new_id(@judgment), judgment: @judgment, questions: questions,
-          **@context.to_h.transform_keys(&:to_sym),
-          state: state, asked: true, origin: "live", mode: @recorded_mode || said(:mode), host: said(:host),
-          model: facts[:model] || said(:model), served_model: facts[:served_model],
-          answers: facts[:raw] || answers&.transform_values(&:to_h), usage: facts[:usage],
-          failure: facts[:failure], failure_text: facts[:failure_text]&.to_s&.slice(0, 500),
-          latency_ms: ((Process.clock_gettime(Process::CLOCK_MONOTONIC) - started) * 1000).round
-        )
+        @runs.record(judgment: @judgment, questions: questions, **@context.to_h.transform_keys(&:to_sym), **@fields,
+                     origin: "live", mode: @recorded_mode || said(:mode), host: said(:host), **yield)
       rescue StandardError, SystemStackError => e # a state nested too deep to copy
         # Qualified: inside SystemOne, the bare Log is SystemOne::Log.
         Samagotchi::Log.warn(:system_one, "system_one_run_failed",

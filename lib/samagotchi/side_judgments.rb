@@ -16,6 +16,7 @@ module Samagotchi
   class SideJudgments
     def initialize
       @threads = {}
+      @asides = []
       @mutex = Mutex.new
     end
 
@@ -42,9 +43,19 @@ module Samagotchi
       end
     end
 
+    # Run the block on its own thread, in no kind: telling a caller there
+    # was no ask. #join waits for it too. A raise goes to +warn+.
+    # @return [Thread]
+    def aside(warn:, &block)
+      @mutex.synchronize do
+        @asides.select!(&:alive?)
+        Thread.new { run(warn, nil, &block) }.tap { |thread| @asides << thread }
+      end
+    end
+
     # Wait for every running ask, up to +seconds+ in all.
     def join(seconds)
-      threads = @mutex.synchronize { @threads.values }
+      threads = @mutex.synchronize { @threads.values + @asides }
       deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + seconds
       threads.each do |thread|
         next if thread == Thread.current

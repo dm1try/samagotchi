@@ -4,6 +4,7 @@ require_relative "../toolkit"
 require_relative "../log"
 require_relative "../hooks/registry"
 require_relative "../commands/registry"
+require_relative "../system_one/judgments"
 require_relative "service"
 require_relative "tool_result"
 require_relative "tool_spec"
@@ -48,7 +49,8 @@ module Samagotchi
         "ctx.sessions.review" => "0.107.0", "ctx.sessions.send(delivery:)" => "0.64.0",
         "chi.toolkit(prompt:)" => "0.72.0", "ctx.ask_model(model:)" => "0.80.0", "chi.toolkit(groups:)" => "0.121.0",
         "chi.prompt_section" => "0.132.0", "chi.prompt_changed" => "0.132.0", "ctx.cache_confirm" => "0.132.0",
-        "ctx.model_names" => "0.132.0"
+        "ctx.model_names" => "0.132.0", "chi.judgment" => "0.142.0", "ctx.judge" => "0.142.0",
+        "ctx.judge_later" => "0.142.0", "ctx.judgments" => "0.142.0"
         # Unreleased: "ctx.context.propose", "ctx.context.candidates", "ctx.context.withdraw", "ctx.review".
       }.freeze
 
@@ -71,6 +73,7 @@ module Samagotchi
         @toolkits = []
         @prompt_sections = []
         @peer_sources = []
+        @judgments = []
         @tool_source = nil
         @committed = false
       end
@@ -399,6 +402,33 @@ module Samagotchi
         nil
       end
 
+      # A cheap question this bundle asks System 1 (docs/plugins.md,
+      # Judgments): ctx.judge and ctx.judge_later ask it, and each ask saves a
+      # run. Off until the user sets its mode in config.yml's
+      # system_one.judgments, under its full name "<bundle>.<name>".
+      # @param name [String] dot-separated words of a-z, 0-9, _ and -
+      # @param questions [Hash, #call] id => {type:, instructions:, criteria:}
+      #   ("noul", "choice" or "score"), checked now; or a callable given the
+      #   ctx, returning that at each ask, where they vary per session
+      # @param positive [String, Array<String>, nil] the label values that
+      #   say the answer was right, for a later comparison
+      # @param negative [String, Array<String>, nil] and wrong
+      # @param shared_host [Symbol] what to do while a turn runs on the same
+      #   local server, where an ask evicts its cached prompt: :skip saves
+      #   the run unasked (asked: false), :ask asks anyway
+      def judgment(name, questions:, positive: nil, negative: nil, shared_host: :skip)
+        raise ArgumentError, "this chi has no judgments (plugins: false)" unless @registries.judgments
+
+        declaration = SystemOne::Judgments::Declaration.build(bundle: @bundle, name: name, questions: questions, positive: positive,
+                                                              negative: negative, shared_host: shared_host)
+        if @judgments.any? { |item| item.name == declaration.name } || @registries.judgments.declared?(declaration.name)
+          raise ArgumentError, "judgment #{declaration.name} is declared twice"
+        end
+
+        @judgments << declaration
+        nil
+      end
+
       # Register what was staged. Called by Loader after #register. What
       # can only be checked now (an annotation's command) is checked before
       # anything is registered: a raise here leaves the registries as they were.
@@ -439,6 +469,7 @@ module Samagotchi
         end
         @registries.tool_index.add(@tool_source) if @tool_source
         @peer_sources.each { |item| @registries.peer_sources.declare(item[:name], label: item[:label], bundle: @bundle) }
+        @judgments.each { |declaration| @registries.judgments.declare(declaration) }
         @committed = true
       end
 
@@ -446,7 +477,7 @@ module Samagotchi
       def counts = { commands: @commands.size, annotations: @annotations.size, tools: @tools.size, hooks: @hooks.size,
                      services: @services.size, inits: @inits.size, toolkits: @toolkits.size,
                      prompt_sections: @prompt_sections.size,
-                     tool_sources: @tool_source ? 1 : 0, peer_sources: @peer_sources.size }
+                     tool_sources: @tool_source ? 1 : 0, peer_sources: @peer_sources.size, judgments: @judgments.size }
 
       # Each annotation's command is one #command staged.
       def check_annotations!

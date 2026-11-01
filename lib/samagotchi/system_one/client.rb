@@ -41,12 +41,14 @@ module Samagotchi
       #   mode key (approvals pass guardrails.system_one.mode); host, model and
       #   timeout are system_one.*, every use's
       # @param model [String, nil] a model for this call only (chi guardrails
-      #   replay --model), else the configured one
-      def self.from_config(host_registry:, mode:, env: ENV, model: nil, tag: :guardrails)
+      #   replay --model, a bundle's judgment's own), else the configured one
+      # @param host [String, nil] a host for this call only (a bundle's
+      #   judgment's own, never core's: JudgmentSettings), else the configured one
+      def self.from_config(host_registry:, mode:, env: ENV, model: nil, host: nil, tag: :guardrails)
         mode = mode.to_s.strip.downcase
         return nil unless MODES.include?(mode) && mode != "off"
 
-        host = Config.get("system_one.host").to_s.strip
+        host = (host.nil? ? Config.get("system_one.host") : host).to_s.strip
         return nil if host.empty?
 
         model = (model.nil? ? Config.get("system_one.model") : model).to_s.strip
