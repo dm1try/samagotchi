@@ -20,7 +20,9 @@ module Samagotchi
       # not usable: no type, a type the contract doesn't have, a noul outside
       # 0..1, a score that isn't a number or past the last level, … A nil means
       # "no judgment for this question", never a guess.
-      def self.from_wire(id, raw)
+      # @param levels [Integer, nil] how many levels the question declared: a
+      #   bare score, with no legend or probabilities, is checked against it
+      def self.from_wire(id, raw, levels: nil)
         return nil unless raw.is_a?(Hash)
 
         type = raw["type"].to_s.strip.downcase.to_sym
@@ -46,7 +48,7 @@ module Samagotchi
           legend = levels(raw["legend"])
           return nil if bad_field(raw, "legend", legend)
 
-          score = level_score(raw["score"], legend, odds)
+          score = level_score(raw["score"], legend, odds, levels)
           score.nil? ? nil : new(**answer, score: score, level: top_level(legend, odds))
         end
       end
@@ -100,14 +102,15 @@ module Samagotchi
       end
 
       # The score as sent: the weighted level index, a whole number kept whole.
-      # Not a number, or past the last level the response names, is no answer.
-      private_class_method def self.level_score(value, legend, odds)
+      # Not a number, or past the last level the response names (or else the
+      # question declared), is no answer.
+      private_class_method def self.level_score(value, legend, odds, levels)
         return nil unless value.is_a?(Numeric)
 
         score = value.to_f
         return nil if score.nan? || score.infinite? || score.negative?
 
-        count = legend&.size || (odds.is_a?(Array) ? odds.size : odds&.size)
+        count = legend&.size || (odds.is_a?(Array) ? odds.size : odds&.size) || levels
         # A hair past the last level is the probabilities' own rounding, not a
         # level out of range.
         return nil if count && score > count - 1 + 1e-9

@@ -62,6 +62,16 @@ RSpec.describe Samagotchi::SystemOne::HttpBackend do
                                                confidence: 0.8636907071300592)
   end
 
+  it "checks a bare score against the levels the question declared" do
+    score = Samagotchi::SystemOne::Question.new(id: "risk", type: "score", instructions: "how risky is this push?",
+                                                criteria: %w[safe risky blocked])
+    server.enqueue("/v1/systemone", json: { "answers" => { "risk" => { "type" => "score", "score" => 99 } } })
+    expect(backend.ask(state: "s", questions: { "risk" => score })["risk"]).to be_nil
+
+    server.enqueue("/v1/systemone", json: { "answers" => { "risk" => { "type" => "score", "score" => 2 } } })
+    expect(backend.ask(state: "s", questions: { "risk" => score })["risk"]).to have_attributes(score: 2)
+  end
+
   it "tells an observer the model it resolved and what the response said beside the answers" do
     server.enqueue("/v1/systemone", json: judged)
     told = {}

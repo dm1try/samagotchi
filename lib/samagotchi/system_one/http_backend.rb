@@ -72,7 +72,10 @@ module Samagotchi
         data = reply_of(response.body)
         answers = data["answers"]
         observer&.call(served_model: data["model"], raw: answers, usage: data["usage"])
-        questions.to_h { |question| [question.id, Answer.from_wire(question.id, answers[question.id])] }
+        questions.to_h do |question|
+          levels = question.criteria.size if question.type == :score
+          [question.id, Answer.from_wire(question.id, answers[question.id], levels: levels)]
+        end
       end
 
       private
