@@ -94,6 +94,30 @@ RSpec.describe Samagotchi::LLM::ChatLoop, "a reply that is only a tool call" do
       expect(types.count(:generation_started)).to eq(2)
     end
 
+    it "ends cancelled when the Stop lands on the first stray reply, rather than failing the turn" do
+      controller = Samagotchi::CancellationController.new
+      backend.adapter = adapter = FakeChatAdapter.new(text(STRAY), text("PONG"))
+
+      # The Stop arrives as the reply comes in: the cancel is set before the
+      # retry decision is made.
+      result = backend.complete(messages: [{ role: "user", content: "go" }], model_name: "flash-next",
+                                cancel_controller: controller,
+                                on_stream_event: lambda { |event|
+                                  events << event
+                                  controller.cancel!(:manual) if event[:type] == :generation_completed && !controller.cancelled?
+                                })
+
+      expect(result).to be_canceled
+      expect(result.cancellation_reason).to eq(:manual)
+      expect(result.text).to eq("")
+      # Nothing was asked again and nothing was raised: the block is not the
+      # second one in a row.
+      expect(adapter.requests.length).to eq(1)
+      expect(contents(result.conversation)).not_to include("<tool_call>")
+      expect(types).not_to include(:generation_retrying, :empty_answer_retry)
+      expect(types).to include(:generation_cancelled)
+    end
+
     it "logs what the host sent, with the shape, the finish reason and the tail" do
       backend.adapter = FakeChatAdapter.new(text(STRAY, reasoning: "thinking first"),
                                             text("PONG", usage: Samagotchi::LLM::Usage.new(prompt_tokens: 10, completion_tokens: 4, source: :server)))

@@ -663,6 +663,11 @@ module Samagotchi
                                                     retried: retry_stray,
                                                     payload: LLM::StrayToolCall.tail(last_text))
                 unless retry_stray
+                  # A Stop that lands on the first stray reply is not the second
+                  # one in a row: the retry is off because the turn is stopping.
+                  # Cancelled means cancelled, not a failed turn.
+                  return canceled(iteration, @cancel_controller.reason) if @cancel_controller&.cancelled?
+
                   # The second one in a row is no answer and runs no tool: the
                   # turn fails, and its earlier steps stay (FailedTurn's
                   # partial conversation, as for any provider error here).
