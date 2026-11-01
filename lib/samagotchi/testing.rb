@@ -12,6 +12,7 @@
 #   require "samagotchi/testing/rspec"      # RSpec helpers
 #   require "samagotchi/testing/minitest"   # Samagotchi::Testing::Case
 require_relative "version"
+require_relative "testing/env_not_shown"
 require_relative "testing/sandbox"
 require_relative "testing/recorder"
 require_relative "testing/host"

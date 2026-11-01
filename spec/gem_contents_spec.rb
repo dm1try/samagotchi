@@ -50,7 +50,8 @@ RSpec.describe "The built gem" do
     expect(bundle_specs).not_to be_empty
     expect(files.grep(%r{\Alib/samagotchi/bundles/[^/]+/spec/})).to eq([])
     kit = Dir.glob("lib/samagotchi/testing{.rb,/*.rb}", base: root)
-    expect(kit).to include("lib/samagotchi/testing.rb", "lib/samagotchi/testing/bundle.rb", "lib/samagotchi/testing/rspec.rb")
+    expect(kit).to include("lib/samagotchi/testing.rb", "lib/samagotchi/testing/bundle.rb", "lib/samagotchi/testing/rspec.rb",
+                           "lib/samagotchi/testing/env_not_shown.rb")
     expect(files).to include(*kit)
   end
 

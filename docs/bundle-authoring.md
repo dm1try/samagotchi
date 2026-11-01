@@ -121,7 +121,7 @@ end
 `bundle.http.stub` stubs `ctx.http`; `bundle.question_asked(text, question:)` fires `:question_asked` and returns
 the refs; `sandbox.config`, `sandbox.fake_executable` and `bundle.install` cover setup.
 The full list is in [plugins.md, Testing a bundle](plugins.md#testing-a-bundle-experimental). The kit is
-experimental (it may change before chi 1.0). If a test needs a fake of chi's own (a stub of a `Samagotchi::`
+experimental (it may change before chi 1.0). A failing matcher that meets `ENV` prints `#<the process ENV, contents not shown>`, not your keys. If a test needs a fake of chi's own (a stub of a `Samagotchi::`
 class, a hand-built `ctx`), that is a gap in the kit: say so to the user rather than reaching into chi.
 
 ## Pitfalls
