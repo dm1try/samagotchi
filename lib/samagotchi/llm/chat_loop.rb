@@ -677,6 +677,11 @@ module Samagotchi
                                                     "could not read, twice in a row; nothing was run", host: host)
                 end
               end
+              # A Stop that lands on an empty reply is no empty answer either:
+              # nothing more is asked because the turn is stopping. (A refusal
+              # the Stop landed on stays what the provider said.)
+              return canceled(iteration, @cancel_controller.reason) if empty && !stopped && @cancel_controller&.cancelled?
+
               # Kept before a merge too: the model answers the merged line
               # knowing what it just said.
               @conversation << with_thinking({ role: "model", content: last_text }, response) unless empty || stray

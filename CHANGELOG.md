@@ -22,6 +22,8 @@ and commands may change between minor versions. How releases are made:
 
 - An answer with a line that opens and closes backticks itself (```` ```foo``` first ````) no longer loses every link after it: the source-links
   and github-pr bundles and the web's file refs read it as inline code, not as a code block left open.
+- A Stop that arrives on an empty reply ends the turn cancelled on a chat host (`api: openai`, `api: anthropic`). It used to end
+  as "no answer: the model returned nothing".
 
 ## [0.143.0] - 2026-11-01
 

@@ -481,6 +481,43 @@ RSpec.describe Samagotchi::LLM::ChatLoop do
       expect(backend.adapter.requests.length).to eq(2)
     end
 
+    it "ends cancelled when the Stop lands on the empty reply of the retry, the nudge kept" do
+      controller = Samagotchi::CancellationController.new
+      backend.adapter = adapter = FakeChatAdapter.new(text(""), text(""), text("PONG"))
+      generations = 0
+
+      result = backend.complete(messages: [{ role: "user", content: "hi" }], model_name: "flash-next",
+                                cancel_controller: controller,
+                                on_stream_event: lambda { |event|
+                                  next unless event[:type] == :generation_completed
+
+                                  generations += 1
+                                  controller.cancel!(:manual) if generations == 2
+                                })
+
+      expect(result).to be_canceled
+      expect(result.cancellation_reason).to eq(:manual)
+      expect(result).not_to be_empty_answer
+      expect(adapter.requests.length).to eq(2)
+      expect(result.conversation).to eq([{ role: "user", content: "hi" }, Samagotchi::TurnNote.empty_retry])
+    end
+
+    it "takes a refusal the Stop landed on as the refusal it was" do
+      controller = Samagotchi::CancellationController.new
+      refused = Samagotchi::LLM::ChatResponse.new(text: "", reasoning: "", tool_calls: [],
+                                                  usage: Samagotchi::LLM::Usage.none, finish_reason: "refusal")
+      backend.adapter = FakeChatAdapter.new(refused)
+
+      result = backend.complete(messages: [{ role: "user", content: "hi" }], model_name: "flash-next",
+                                cancel_controller: controller,
+                                on_stream_event: lambda { |event|
+                                  controller.cancel!(:manual) if event[:type] == :generation_completed
+                                })
+
+      expect(result).not_to be_canceled
+      expect(result.refusal).not_to be_nil
+    end
+
     it "keeps each empty generation's reasoning for the UIs, never in the conversation" do
       backend.adapter = FakeChatAdapter.new(text("", reasoning: "first"), text("", reasoning: "second"))
 
@@ -1290,7 +1327,8 @@ RSpec.describe Samagotchi::LLM::ChatLoop do
 
       expect(adapter).to have_received(:chat).once
       expect(events.map { |e| e[:type] }).not_to include(:empty_answer_retry)
-      expect(result).to be_empty_answer
+      expect(result).to be_canceled
+      expect(result).not_to be_empty_answer
     end
   end
 

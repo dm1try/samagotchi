@@ -96,6 +96,25 @@ RSpec.describe Samagotchi::Engine, "#run_turn with an empty-answer retry" do
     expect(events.map { |e| e[:type] }).to include(:empty_answer_retry, :turn_canceled)
   end
 
+  # The Stop comes as the empty reply does: nothing raises out of the
+  # request, so it is the loop that has to say cancelled, not empty.
+  it "leaves a Stop landing on an empty reply a cancelled turn, not an empty one" do
+    controller = Samagotchi::CancellationController.new
+    adapter = FakeChatAdapter.new(FakeChatAdapter.text(""), FakeChatAdapter.text("PONG"))
+    allow(engine).to receive(:backend_for).and_return(Samagotchi::LLM::ChatLoop.new(kernel: kernel, adapter: adapter))
+
+    engine.run_turn(session, "hi", cancel_controller: controller, on_event: lambda { |event|
+      events << event
+      controller.cancel!(:user) if event[:type] == :generation_completed
+    })
+
+    expect(adapter.requests.length).to eq(1)
+    expect(session.last_turn.to_file).to include("outcome" => "canceled")
+    expect(session.messages.last[:content]).to start_with("[SYSTEM: the previous turn was cancelled")
+    expect(events.map { |e| e[:type] }).to include(:turn_canceled)
+    expect(events.map { |e| e[:type] }).not_to include(:empty_answer_retry, :turn_completed)
+  end
+
   # The nudge this turn spent goes; an earlier turn's note stays (a continue
   # turn has no user message of its own, and that note says why the turn
   # before ended).
