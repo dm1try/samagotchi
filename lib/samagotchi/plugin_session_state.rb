@@ -21,15 +21,18 @@ module Samagotchi
     # A session's folder under a bundle's +data_dir+, created. A
     # sessions/<id>.json there moves in as STATE_FILE, so a running session
     # keeps it when its bundle moves to ctx.session_dir.
+    # @param create [Boolean] false for a read: only names the folder, so a
+    #   session with nothing saved leaves none (the older file still moves in)
     # @return [String, nil] nil for an id that isn't a plain one (it could
     #   name a path outside the dir)
-    def dir(data_dir, session_id)
+    def dir(data_dir, session_id, create: true)
       id = session_id.to_s
       return nil unless Session.valid_id?(id)
 
       path = File.join(data_dir, "sessions", id)
-      FileUtils.mkdir_p(path)
-      adopt("#{path}.json", File.join(path, STATE_FILE))
+      older = "#{path}.json"
+      FileUtils.mkdir_p(path) if create || File.file?(older)
+      adopt(older, File.join(path, STATE_FILE))
       path
     end
 

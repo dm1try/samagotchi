@@ -389,7 +389,7 @@ class Plugin
   def read_state(ctx, id)
     return {} unless id
 
-    data = JSON.parse(File.read(state_file(ctx)))
+    data = JSON.parse(File.read(saved_file(ctx)))
     data.is_a?(Hash) ? data : {}
   rescue SystemCallError, JSON::ParserError
     {}
@@ -409,6 +409,9 @@ class Plugin
   end
 
   def state_file(ctx) = File.join(ctx.session_dir, "state.json")
+
+  # For a read: a session with nothing saved keeps no folder.
+  def saved_file(ctx) = File.join(ctx.session_dir(create: false), "state.json")
 
   # --- helpers ---------------------------------------------------------------
 

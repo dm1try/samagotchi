@@ -304,10 +304,11 @@ module Samagotchi
       # This session's own folder under #data_dir, created on use and read
       # now (a continue moves the id on). chi removes it with the session:
       # the layout is core's (PluginSessionState).
+      # @param create [Boolean] false for a read: the path, with no folder made
       # @return [String, nil] nil with no session yet
-      def session_dir
+      def session_dir(create: true)
         id = session_id
-        id && PluginSessionState.dir(data_dir, id)
+        id && PluginSessionState.dir(data_dir, id, create: create)
       end
 
       # The conversation so far, a frozen copy, without the system prompt.

@@ -313,7 +313,7 @@ module Samagotchi
       end
 
       def last_send(ctx)
-        path = File.join(ctx.session_dir, LAST_SEND)
+        path = File.join(ctx.session_dir(create: false), LAST_SEND)
         File.file?(path) ? JSON.parse(File.read(path)) : nil
       rescue JSON::ParserError, SystemCallError
         nil

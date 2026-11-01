@@ -310,7 +310,7 @@ class Plugin
   def state(ctx, session)
     return [{}, nil] unless session
 
-    path = state_file(ctx)
+    path = saved_file(ctx)
     saved = JSON.parse(File.read(path))
     raise JSON::ParserError, "not a JSON object" unless saved.is_a?(Hash)
 
@@ -411,6 +411,9 @@ class Plugin
   def whole(value) = value.is_a?(Float) && value.finite? && value == value.to_i ? value.to_i : value
 
   def state_file(ctx) = File.join(ctx.session_dir, "state.json")
+
+  # For a read: a session with nothing saved keeps no folder.
+  def saved_file(ctx) = File.join(ctx.session_dir(create: false), "state.json")
 
   def count(value) = self.class.count(value)
 

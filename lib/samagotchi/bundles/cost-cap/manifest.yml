@@ -1,15 +1,16 @@
 ---
 name: cost-cap
-version: 0.2.4
+version: 0.2.5
 scope: system
 description: "A per-session $ cap: at the cap the turn pauses on Continue (another cap's worth) / Stop, a warning at 80% goes to the user only; /cap shows or sets it"
 trust_level: reviewed
 plugin:
   file: plugin.rb
-  sha256: sha256:6101e5f4b2b454224ccc780637a84e429e90f179d8f37ba8681a1c5bf5d0c840
+  sha256: sha256:2d1f739ed0246d3d3040e0534cced2a1f621bdc5881fdde8b463df8a0501e477
 # ctx.cost is new in chi 0.83.0; ask_user's effects: in the next chi
-# ctx.session_dir is new in the next chi
+# ctx.session_dir is new in 0.143.0
 requires_chi: ">= 0.143.0"
+requires_chi_next: "ctx.session_dir(create:)"
 # session_settings: as a mapping of keys to types is new
 # chi --set cost-cap.cap=3: a session's own cap (ctx.settings["cap"]), a number or off
 session_settings: {cap: number}

@@ -65,6 +65,11 @@ RSpec.describe Samagotchi::Plugin::Peer do
 
   def last_send = JSON.parse(File.read(File.join(ctx.data_dir, "sessions", session.id, "last-send.json")))
 
+  it "looks for the last send without leaving a session folder" do
+    expect(plugin.send(:last_send, ctx)).to be_nil
+    expect(File).not_to exist(File.join(ctx.data_dir, "sessions", session.id))
+  end
+
   it "posts a short part inline to the inbox's hint, in the subclass's words, and records it" do
     pair
 
