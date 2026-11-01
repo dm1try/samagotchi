@@ -185,7 +185,7 @@ or `chi web` restart.
 
 ### Per-session settings
 
-A few core keys can be set for one session: `chi --set KEY=VALUE` (or `chi send --new --set KEY=VALUE`, or
+A few core keys can be set for one session (the registry entries marked `session: true`, `Config::Entry#session?`): `chi --set KEY=VALUE` (or `chi send --new --set KEY=VALUE`, or
 `POST /api/sessions` `settings`) at its creation, and `recap.enabled` later too with `/recap on`, `/recap off` or `/recap default`
 (at once; `default` removes the session's own value, see [Session recap](cli.md#session-recap)). The value is saved in the session file (`config_settings`), so a
 worker respawn, a continue and a fork keep it; a delegate child starts without it, on config.yml's. It goes first:

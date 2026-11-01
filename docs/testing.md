@@ -40,6 +40,8 @@ that way locally: `npx playwright run-server --port 3333`, then `PW_TEST_CONNECT
 
 No spec reads your own setup. The suite points `XDG_CONFIG_HOME` and `XDG_STATE_HOME` at temp folders,
 clears your `SAMAGOTCHI_*` environment, and keeps every spec off the network (WebMock).
+`SAMAGOTCHI_TAILSCALE_CLI` points at a file that does not exist (`spec_helper.rb`), so no spec reaches a real `tailscale`; a
+`chi web --tunnel tailscale` spec writes a fake one and sets the variable.
 
 Goldens (`*_golden_spec.rb`, the prompt snapshots) hold no machine state, so they pass on any runner: no absolute
 paths (replace them with placeholders), no PATH tools (the suite pins `rg` as found, `spec_helper.rb`; an example
