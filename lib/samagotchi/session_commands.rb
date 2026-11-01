@@ -968,13 +968,13 @@ module Samagotchi
       # Sort hosts for deterministic output
       results.keys.sort.each do |hname|
         data = results[hname]
-        host_label = "#{hname} (#{data[:host]}:#{data[:port]})"
+        host_label = "#{hname} (#{data.host}:#{data.port})"
         # Declared ids (hosts.<name>.models) first, as "(config)", never cut
         # by MODELS_PER_HOST; a host that failed keeps only those, as
         # "(config, host down)" under its unreachable line.
         rows = host_rows.fetch(hname, [])
-        if data[:error]
-          lines << "#{host_label} — unreachable: #{data[:error]}"
+        if data.error
+          lines << "#{host_label} — unreachable: #{data.error}"
           next if rows.empty?
         elsif rows.empty?
           lines << "#{host_label} — no models discovered"
@@ -995,7 +995,7 @@ module Samagotchi
         end
         next if declared.empty? && shown.empty?
 
-        lines << "#{host_label}:" unless data[:error]
+        lines << "#{host_label}:" unless data.error
         hidden = needle.empty? ? [shown.size - MODELS_PER_HOST, 0].max : 0
         (declared + shown.first(shown.size - hidden)).each do |row, identifier|
           raw = row.info&.raw || {}

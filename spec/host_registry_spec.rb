@@ -151,7 +151,7 @@ RSpec.describe Samagotchi::HostRegistry do
       registry.client_override = stub
       allow(stub).to receive(:list_models).and_return([{ "id" => "m" }])
 
-      expect(registry.list_all_models.values.map { |r| r[:models].map(&:id) }).to all(eq(["m"]))
+      expect(registry.list_all_models.values.map { |r| r.models.map(&:id) }).to all(eq(["m"]))
     end
   end
 
@@ -179,9 +179,9 @@ RSpec.describe Samagotchi::HostRegistry do
     it "lists every host's models as ModelInfo, raw hosts' hashes included" do
       results = registry.list_all_models
 
-      expect(results["box"][:models].first).to have_attributes(id: "gemma-4-26b", raw: { "id" => "gemma-4-26b", "status" => "loaded" })
-      expect(results["oai"][:models].map(&:id)).to eq(["qwen-local"])
-      expect(results["fw"][:models].first.context_window).to eq(131_072)
+      expect(results["box"].models.first).to have_attributes(id: "gemma-4-26b", raw: { "id" => "gemma-4-26b", "status" => "loaded" })
+      expect(results["oai"].models.map(&:id)).to eq(["qwen-local"])
+      expect(results["fw"].models.first.context_window).to eq(131_072)
     end
 
     it "logs a host whose list failed, and lists the others" do
@@ -190,8 +190,8 @@ RSpec.describe Samagotchi::HostRegistry do
 
       results = registry.list_all_models
 
-      expect(results["oai"]).to include(models: [], error: a_string_including("Connection refused"))
-      expect(results["box"][:models].map(&:id)).to eq(["gemma-4-26b"])
+      expect(results["oai"]).to have_attributes(models: [], error: a_string_including("Connection refused"))
+      expect(results["box"].models.map(&:id)).to eq(["gemma-4-26b"])
       expect(Samagotchi::Log).to have_received(:warn)
         .with(:model, "list_failed", hash_including(host: "oai", error: "Errno::ECONNREFUSED"))
     end
@@ -205,7 +205,7 @@ RSpec.describe Samagotchi::HostRegistry do
 
       results = registry.list_all_models
 
-      expect(results["oai"][:error]).to eq("request failed after 3 attempts: Errno::ECONNRESET: #{reset.message}")
+      expect(results["oai"].error).to eq("request failed after 3 attempts: Errno::ECONNRESET: #{reset.message}")
       expect(Samagotchi::ModelCatalog.listing(results, registry: registry).warnings)
         .to eq(["fw: connection refused", "oai: request failed after 3 attempts: Errno::ECONNRESET: #{reset.message}"])
     end
@@ -301,8 +301,8 @@ RSpec.describe Samagotchi::HostRegistry do
 
       # not the stalled host's time: it answers only once released, after the example
       expect(mono - started).to be < time_bound(2)
-      expect(results["default"][:models].map(&:id)).to eq(["fast-model"])
-      expect(results["slow"]).to include(models: [], error: "no answer in 0.1 s")
+      expect(results["default"].models.map(&:id)).to eq(["fast-model"])
+      expect(results["slow"]).to have_attributes(models: [], error: "no answer in 0.1 s")
     end
 
     it "returns a snapshot a late thread doesn't change, and stores no partial listing" do
@@ -310,7 +310,7 @@ RSpec.describe Samagotchi::HostRegistry do
       release << :go
       expect(slow_list_saved.ids).to eq(["late-model"])
 
-      expect(results["slow"][:error]).to eq("no answer in 0.05 s")
+      expect(results["slow"].error).to eq("no answer in 0.05 s")
       expect(registry.cached_results).to be_nil
       # Not from a model index (none is stored) but from the list the late
       # thread saved (ModelListStore): the slow host's id isn't missed.
@@ -321,7 +321,7 @@ RSpec.describe Samagotchi::HostRegistry do
       release << :go
       results = registry.list_all_models(wait: 2)
 
-      expect(results["slow"][:models].map(&:id)).to eq(["late-model"])
+      expect(results["slow"].models.map(&:id)).to eq(["late-model"])
       expect(registry.cached_results).to eq(results)
       expect(registry.resolve("late-model").entry.name).to eq("slow")
     end

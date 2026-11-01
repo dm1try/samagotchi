@@ -2890,7 +2890,7 @@ RSpec.describe Samagotchi::Web::App do
       built = []
       allow(Samagotchi::HostRegistry).to receive(:new) do |hosts_config:|
         built << hosts_config.keys
-        FakeModelRegistry.new(hosts_config.keys.to_h { |k| [k, { models: [model_info("m-#{k}")], error: nil }] },
+        FakeModelRegistry.new(hosts_config.keys.to_h { |k| [k, Samagotchi::HostRegistry::HostListing.new(models: [model_info("m-#{k}")])] },
                               default_host: "box")
       end
       app = described_class.new(manager: FakeResponsesManager.new, session_class: StubSessionLoader)
@@ -2912,8 +2912,8 @@ RSpec.describe Samagotchi::Web::App do
 
     it "lists the default host's models bare and the other hosts' as host:model, the default host first, from the cached lists" do
       registry = FakeModelRegistry.new({
-        "box" => { models: [model_info("gemma4-26b"), model_info("qwen3.6")], error: nil },
-        "default" => { models: [model_info("Gemma-4B-it"), model_info("Qwen3-14B")], error: nil }
+        "box" => Samagotchi::HostRegistry::HostListing.new(models: [model_info("gemma4-26b"), model_info("qwen3.6")]),
+        "default" => Samagotchi::HostRegistry::HostListing.new(models: [model_info("Gemma-4B-it"), model_info("Qwen3-14B")])
       })
 
       payload = models_payload(registry)
@@ -2927,8 +2927,8 @@ RSpec.describe Samagotchi::Web::App do
 
     it "marks an id the host declares under hosts.<name>.models configured, listed first" do
       declared = Samagotchi::HostModel.parse_map(%w[rr/x], "box")
-      registry = FakeModelRegistry.new({ "default" => { models: [model_info("Gemma-4B-it")], error: nil },
-                                         "box" => { models: [model_info("qwen3.6")], error: nil } },
+      registry = FakeModelRegistry.new({ "default" => Samagotchi::HostRegistry::HostListing.new(models: [model_info("Gemma-4B-it")]),
+                                         "box" => Samagotchi::HostRegistry::HostListing.new(models: [model_info("qwen3.6")]) },
                                        entries: { "box" => Samagotchi::HostRegistry::HostEntry.new(name: "box", models: declared) })
 
       expect(models_payload(registry)["models"].drop(1))
@@ -2938,8 +2938,8 @@ RSpec.describe Samagotchi::Web::App do
 
     it "adds each model's configured sampling, as /model words it, to the models that have some" do
       registry = FakeModelRegistry.new({
-        "default" => { models: [model_info("Gemma-4B-it")], error: nil },
-        "work" => { models: [model_info("qwen")], error: nil }
+        "default" => Samagotchi::HostRegistry::HostListing.new(models: [model_info("Gemma-4B-it")]),
+        "work" => Samagotchi::HostRegistry::HostListing.new(models: [model_info("qwen")])
       })
       entries = { "default" => Samagotchi::HostRegistry::HostEntry.new(name: "default", host: "h", port: 1),
                   "work" => Samagotchi::HostRegistry::HostEntry.new(name: "work", host: "h", port: 2, sampling: { temperature: 0.6 }) }
@@ -2959,7 +2959,7 @@ RSpec.describe Samagotchi::Web::App do
     end
 
     it "adds each model's LLM context, with where each value comes from: a model's llm_context_strategy is its own" do
-      registry = FakeModelRegistry.new({ "default" => { models: [model_info("Gemma-4B-it"), model_info("qwen")], error: nil } })
+      registry = FakeModelRegistry.new({ "default" => Samagotchi::HostRegistry::HostListing.new(models: [model_info("Gemma-4B-it"), model_info("qwen")]) })
       entry = Samagotchi::HostRegistry::HostEntry.new(name: "default", host: "h", port: 1)
       registry.define_singleton_method(:resolve) do |name|
         Samagotchi::HostRegistry::ModelTarget.new(model: name, entry: entry, bare_model: name, client: nil)
@@ -2977,7 +2977,7 @@ RSpec.describe Samagotchi::Web::App do
     end
 
     it "adds each model's thinking level with where it comes from, no session's own" do
-      registry = FakeModelRegistry.new({ "default" => { models: [model_info("Gemma-4B-it"), model_info("qwen")], error: nil } })
+      registry = FakeModelRegistry.new({ "default" => Samagotchi::HostRegistry::HostListing.new(models: [model_info("Gemma-4B-it"), model_info("qwen")]) })
       entry = Samagotchi::HostRegistry::HostEntry.new(name: "default", host: "h", port: 1)
       registry.define_singleton_method(:resolve) do |name|
         Samagotchi::HostRegistry::ModelTarget.new(model: name, entry: entry, bare_model: name, client: nil)
@@ -2992,7 +2992,7 @@ RSpec.describe Samagotchi::Web::App do
     end
 
     it "leaves a model whose LLM context can't be read without one, and the later models' sampling as it is" do
-      registry = FakeModelRegistry.new({ "default" => { models: [model_info("Gemma-4B-it"), model_info("qwen")], error: nil } })
+      registry = FakeModelRegistry.new({ "default" => Samagotchi::HostRegistry::HostListing.new(models: [model_info("Gemma-4B-it"), model_info("qwen")]) })
       entry = Samagotchi::HostRegistry::HostEntry.new(name: "default", host: "h", port: 1, sampling: { temperature: 0.6 })
       registry.define_singleton_method(:resolve) do |name|
         Samagotchi::HostRegistry::ModelTarget.new(model: name, entry: entry, bare_model: name, client: nil)
@@ -3011,7 +3011,7 @@ RSpec.describe Samagotchi::Web::App do
     end
 
     it "keeps the default in the list when no host lists it, and leaves :batch variants out" do
-      registry = FakeModelRegistry.new({ "default" => { models: [model_info("other"), model_info("other:batch")], error: nil } })
+      registry = FakeModelRegistry.new({ "default" => Samagotchi::HostRegistry::HostListing.new(models: [model_info("other"), model_info("other:batch")]) })
 
       payload = models_payload(registry)
 
@@ -3021,8 +3021,8 @@ RSpec.describe Samagotchi::Web::App do
 
     it "answers with the other hosts and a warning when a host is down" do
       registry = FakeModelRegistry.new({
-        "default" => { models: [model_info("Gemma-4B-it")], error: nil },
-        "cloud" => { models: [], error: "connection refused" }
+        "default" => Samagotchi::HostRegistry::HostListing.new(models: [model_info("Gemma-4B-it")]),
+        "cloud" => Samagotchi::HostRegistry::HostListing.new(models: [], error: "connection refused")
       })
 
       payload = models_payload(registry)
@@ -3033,8 +3033,8 @@ RSpec.describe Samagotchi::Web::App do
 
     it "keeps a down host's declared ids, unavailable, next to its warning" do
       declared = Samagotchi::HostModel.parse_map(%w[rr/x], "cloud")
-      registry = FakeModelRegistry.new({ "default" => { models: [model_info("Gemma-4B-it")], error: nil },
-                                         "cloud" => { models: [], error: "connection refused" } },
+      registry = FakeModelRegistry.new({ "default" => Samagotchi::HostRegistry::HostListing.new(models: [model_info("Gemma-4B-it")]),
+                                         "cloud" => Samagotchi::HostRegistry::HostListing.new(models: [], error: "connection refused") },
                                        entries: { "cloud" => Samagotchi::HostRegistry::HostEntry.new(name: "cloud", models: declared) })
 
       payload = models_payload(registry)
@@ -3052,7 +3052,7 @@ RSpec.describe Samagotchi::Web::App do
     end
 
     it "does not wait past its deadline: a slow listing answers the last cached lists, or the default alone" do
-      slow = FakeModelRegistry.new({ "default" => { models: [model_info("late")], error: nil } }, delay: 3)
+      slow = FakeModelRegistry.new({ "default" => Samagotchi::HostRegistry::HostListing.new(models: [model_info("late")]) }, delay: 3)
       started = mono
       payload = models_payload(slow, models_wait_timeout: 0.05)
 
@@ -3060,14 +3060,14 @@ RSpec.describe Samagotchi::Web::App do
       expect(payload["models"].map { |m| m["name"] }).to eq(%w[Gemma-4B-it])
       expect(payload["warning"]).to eq("the hosts are still listing their models")
 
-      cached = FakeModelRegistry.new({ "default" => { models: [model_info("late")], error: nil } }, delay: 1,
-                                     cached: { "default" => { models: [model_info("Gemma-4B-it"), model_info("old")], error: nil } })
+      cached = FakeModelRegistry.new({ "default" => Samagotchi::HostRegistry::HostListing.new(models: [model_info("late")]) }, delay: 1,
+                                     cached: { "default" => Samagotchi::HostRegistry::HostListing.new(models: [model_info("Gemma-4B-it"), model_info("old")]) })
       payload = models_payload(cached, models_wait_timeout: 0.05)
       expect(payload["models"].map { |m| m["name"] }).to eq(%w[Gemma-4B-it old])
     end
 
     describe "toolkits (the start page's picker)" do
-      let(:registry) { FakeModelRegistry.new({ "default" => { models: [model_info("Gemma-4B-it")], error: nil } }) }
+      let(:registry) { FakeModelRegistry.new({ "default" => Samagotchi::HostRegistry::HostListing.new(models: [model_info("Gemma-4B-it")]) }) }
 
       def stub_toolkit_config(kits: nil, default: nil, suggest: nil, system_one_host: nil)
         allow(Samagotchi::Toolkit).to receive(:config_kits).and_return(kits)

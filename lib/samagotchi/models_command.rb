@@ -75,7 +75,7 @@ module Samagotchi
     def catalog(timeout)
       registry = @registry || HostRegistry.new
       results = registry.list_all_models(force: true, wait: timeout)
-      listed = results.values.any? { |data| data[:error].nil? }
+      listed = results.values.any? { |data| data.error.nil? }
       [ModelCatalog.payload(results, registry: registry, default_name: default_name), listed]
     rescue StandardError => e
       [{ default: default_name, default_typed: nil, default_host: nil, models: [], aliases: [], warnings: [e.message] }, false]

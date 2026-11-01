@@ -29,6 +29,13 @@ module Samagotchi
     # free model on OpenRouter can send only keep-alives for minutes).
     REMOTE_FIRST_TOKEN_TIMEOUT = 120
 
+    # One host's answer in list_all_models: the host it was listed from and
+    # its port; models: the LLM::ModelInfo list it served ([] when it failed
+    # or declared none); error: the listing failure text, nil when it answered.
+    HostListing = Data.define(:host, :port, :models, :error) do
+      def initialize(host: nil, port: nil, models: [], error: nil) = super
+    end
+
     # url: the configured url, when the entry has one (host, port and scheme
     # come from it); api_key_env: the variable holding the host's API key;
     # auth: the header it goes in (LLM::ApiKey::SCHEMES), nil for the api's own default;
@@ -341,7 +348,7 @@ module Samagotchi
     end
 
     # List models on all hosts in parallel. On error per-host, skip with error entry (no failover).
-    # Returns { host_name => { host:, port:, models: [LLM::ModelInfo], error: nil|String } }
+    # Returns { host_name => HostListing }
     # Also populates the model index. Unless forced, a host's list is reused
     # for its TTL (60s; 10 minutes for a remote host).
     #
@@ -361,12 +368,12 @@ module Samagotchi
         Thread.new do
           begin
             models = list_models_for(entry)
-            data = { host: entry.host, port: entry.port, models: models, error: nil }
+            data = HostListing.new(host: entry.host, port: entry.port, models: models, error: nil)
             @mutex.synchronize { @host_lists[name] = { data: data, at: @clock.call } }
             save_model_list(name, models)
           rescue StandardError => e
             Log.warn(:model, "list_failed", host: name, error: e.class.name, msg: e.message.to_s[0, 500])
-            data = { host: entry.host, port: entry.port, models: [], error: list_error(e) }
+            data = HostListing.new(host: entry.host, port: entry.port, models: [], error: list_error(e))
           end
           results_mutex.synchronize { results[name] = data }
         end
@@ -380,8 +387,8 @@ module Samagotchi
           @entries.each_with_object({}) do |(name, entry), acc|
             acc[name] = results.fetch(name) do
               partial = true
-              { host: entry.host, port: entry.port, models: [],
-                error: "no answer in #{wait == wait.to_i ? wait.to_i : wait} s" }
+              HostListing.new(host: entry.host, port: entry.port, models: [],
+                              error: "no answer in #{wait == wait.to_i ? wait.to_i : wait} s")
             end
           end
         end
@@ -395,9 +402,9 @@ module Samagotchi
       index = Hash.new { |h, k| h[k] = [] }
       @entries.each_key do |hname|
         data = results[hname]
-        next if data.nil? || data[:error]
+        next if data.nil? || data.error
 
-        Array(data[:models]).each do |m|
+        Array(data.models).each do |m|
           down = m.id.to_s.strip.downcase
           index[down] << hname unless down.empty? || index[down].include?(hname)
         end

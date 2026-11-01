@@ -21,7 +21,7 @@ module Samagotchi
 
     module_function
 
-    # @param results [Hash] list_all_models' answer
+    # @param results [Hash{String => HostRegistry::HostListing}] list_all_models' answer
     # @param registry [#default_entry, #entries]
     # @return [Listing]
     def listing(results, registry:)
@@ -30,7 +30,8 @@ module Samagotchi
       warnings = []
       host_rows = HostModel.rows(results, registry.entries)
       results.keys.sort_by { |name| [name == default_host ? 0 : 1, name] }.each do |host|
-        warnings << "#{host}: #{results[host][:error]}" if results[host][:error]
+        error = results[host].error
+        warnings << "#{host}: #{error}" if error
         host_rows.fetch(host, []).each do |row|
           id = row.id
           next if id.strip.empty? || (!row.configured && id.end_with?(":batch"))

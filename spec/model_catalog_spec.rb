@@ -51,8 +51,8 @@ RSpec.describe Samagotchi::ModelCatalog do
     end
 
     it "notes a host's error as a warning" do
-      listing = described_class.listing({ "default" => { models: [info("a")], error: nil },
-                                          "box" => { models: [], error: "connection refused" } }, registry: registry)
+      listing = described_class.listing({ "default" => Samagotchi::HostRegistry::HostListing.new(models: [info("a")]),
+                                          "box" => Samagotchi::HostRegistry::HostListing.new(models: [], error: "connection refused") }, registry: registry)
 
       expect(listing.rows.map(&:ref)).to eq(["a"])
       expect(listing.warnings).to eq(["box: connection refused"])
@@ -134,7 +134,7 @@ RSpec.describe Samagotchi::ModelCatalog do
     end
 
     it "keeps the warnings as an array" do
-      failing = { "default" => { models: [info("gemma-4")], error: nil }, "box" => { models: [], error: "no answer in 4 s" } }
+      failing = { "default" => Samagotchi::HostRegistry::HostListing.new(models: [info("gemma-4")]), "box" => Samagotchi::HostRegistry::HostListing.new(models: [], error: "no answer in 4 s") }
 
       expect(described_class.payload(failing, registry: registry, default_name: "gemma-4")[:warnings])
         .to eq(["box: no answer in 4 s"])

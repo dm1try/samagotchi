@@ -441,7 +441,7 @@ RSpec.describe Samagotchi::SessionCommands do
   end
 
   it "lists every host's models with /models" do
-    allow(registry).to receive(:list_all_models).and_return("alpha" => { host: "alpha.test", port: 1111, error: "refused" })
+    allow(registry).to receive(:list_all_models).and_return("alpha" => Samagotchi::HostRegistry::HostListing.new(host: "alpha.test", port: 1111, error: "refused"))
 
     expect(commands.run("/models").output).to eq("alpha (alpha.test:1111) — unreachable: refused")
   end
@@ -450,8 +450,8 @@ RSpec.describe Samagotchi::SessionCommands do
     # A remote provider's catalog (OpenRouter ~380 ids) must not flood the terminal.
     let(:catalog) do
       ids = (1..25).map { |i| format("vendor/model-%02d", i) } + ["qwen/qwen3.8-27b:free"]
-      { "remote" => { host: "openrouter.ai", port: 443,
-                      models: ids.map { |id| Samagotchi::LLM::ModelInfo.new(id: id, context_window: nil, supports_tools: nil, raw: {}) } } }
+      { "remote" => Samagotchi::HostRegistry::HostListing.new(host: "openrouter.ai", port: 443,
+                                                              models: ids.map { |id| Samagotchi::LLM::ModelInfo.new(id: id, context_window: nil, supports_tools: nil, raw: {}) }) }
     end
 
     before do
@@ -482,9 +482,9 @@ RSpec.describe Samagotchi::SessionCommands do
       end
       let(:catalog) do
         ids = (1..450).map { |i| format("vendor/model-%03d", i) }
-        { "remote" => { host: "openrouter.ai", port: 443,
-                        models: ids.map { |id| Samagotchi::LLM::ModelInfo.new(id: id, context_window: nil, supports_tools: nil, raw: {}) } },
-          "gw" => { host: "gw.example", port: 443, models: [] } }
+        { "remote" => Samagotchi::HostRegistry::HostListing.new(host: "openrouter.ai", port: 443,
+                                                                models: ids.map { |id| Samagotchi::LLM::ModelInfo.new(id: id, context_window: nil, supports_tools: nil, raw: {}) }),
+          "gw" => Samagotchi::HostRegistry::HostListing.new(host: "gw.example", port: 443, models: []) }
       end
 
       it "prints them first under their host as (config), outside the 20 per host, and on a host that lists none" do
@@ -497,15 +497,16 @@ RSpec.describe Samagotchi::SessionCommands do
       end
 
       it "keeps a status the host lists for a declared id, and folds its :batch variant whatever the case" do
-        catalog["gw"][:models] = [Samagotchi::LLM::ModelInfo.new(id: "RR/A", context_window: nil, supports_tools: nil, raw: { "status" => "loaded" }),
-                                  Samagotchi::LLM::ModelInfo.new(id: "rr/a:batch", context_window: nil, supports_tools: nil, raw: {})]
+        catalog["gw"] = Samagotchi::HostRegistry::HostListing.new(host: "gw.example", port: 443,
+                                                                  models: [Samagotchi::LLM::ModelInfo.new(id: "RR/A", context_window: nil, supports_tools: nil, raw: { "status" => "loaded" }),
+                                                                           Samagotchi::LLM::ModelInfo.new(id: "rr/a:batch", context_window: nil, supports_tools: nil, raw: {})])
 
         expect(commands.run("/models rr/").output.lines(chomp: true).first(4))
           .to eq(["gw (gw.example:443):", "  RR/A (config, loaded)", "  rr/b (config)", "  … plus 1 :batch variant; /models :batch lists them"])
       end
 
       it "lists a down host's declared ids as (config, host down) under its unreachable line" do
-        catalog["gw"] = { host: "gw.example", port: 443, models: [], error: "connection refused" }
+        catalog["gw"] = Samagotchi::HostRegistry::HostListing.new(host: "gw.example", port: 443, error: "connection refused")
         allow(Samagotchi::ConfigFile).to receive(:model_aliases).and_return({ "rr" => "gw:rr/a" })
 
         lines = commands.run("/models").output.lines(chomp: true)
@@ -532,7 +533,7 @@ RSpec.describe Samagotchi::SessionCommands do
       let(:catalog) do
         ids = (1..25).map { |i| format("vendor/model-%02d", i) }
         ids += ["vendor/model-01:batch", "vendor/model-24:batch", "lonely/only:batch"]
-        { "remote" => { host: "openrouter.ai", port: 443, models: ids.map { |id| info(id) } } }
+        { "remote" => Samagotchi::HostRegistry::HostListing.new(host: "openrouter.ai", port: 443, models: ids.map { |id| info(id) }) }
       end
 
       it "hides a :batch variant of a listed id and says how many" do

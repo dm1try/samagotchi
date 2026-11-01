@@ -67,7 +67,7 @@ RSpec.describe Samagotchi::HostModel do
     def entry(*ids) = Struct.new(:models).new(described_class.parse_map(ids, "spec"))
 
     it "puts a host's declared ids first, one row in the host's spelling for an id it also lists, and the listed rest after" do
-      rows = described_class.rows({ "work" => { models: [info("a"), info("rr/x"), info("b")], error: nil } },
+      rows = described_class.rows({ "work" => Samagotchi::HostRegistry::HostListing.new(models: [info("a"), info("rr/x"), info("b")]) },
                                   { "work" => entry("RR/x", "rr/y") })
 
       expect(rows["work"].map { |r| [r.id, r.configured, r.info&.id] })
@@ -75,8 +75,8 @@ RSpec.describe Samagotchi::HostModel do
     end
 
     it "shows a host that lists nothing its declared ids, and an errored host only its declared ids, unavailable" do
-      rows = described_class.rows({ "work" => { models: [], error: nil }, "down" => { models: [], error: "refused" },
-                                    "gone" => { models: [], error: "refused" } },
+      rows = described_class.rows({ "work" => Samagotchi::HostRegistry::HostListing.new(models: []), "down" => Samagotchi::HostRegistry::HostListing.new(models: [], error: "refused"),
+                                    "gone" => Samagotchi::HostRegistry::HostListing.new(models: [], error: "refused") },
                                   { "work" => entry("rr/x"), "down" => entry("rr/z"), "gone" => entry })
 
       expect(rows.transform_values { |rs| rs.map { |r| [r.id, r.configured, r.info, r.unavailable] } })

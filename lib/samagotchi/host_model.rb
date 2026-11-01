@@ -81,18 +81,18 @@ module Samagotchi
     # A host that errored keeps only its declared ids, marked unavailable
     # (still pickable; the listings warn it's unreachable); [] when it
     # declares none.
-    # @param results [Hash{String => Hash}] host name => {models: [ModelInfo], error:}
+    # @param results [Hash{String => HostRegistry::HostListing}] host name => the listing
     # @param entries [Hash{String => HostRegistry::HostEntry}]
     # @return [Hash{String => Array<Row>}] for every host in +results+
     def self.rows(results, entries)
       results.each_with_object({}) do |(name, data), out|
         declared = entries[name]&.models || {}
-        if data[:error]
+        if data.error
           out[name] = declared.values.map { |m| HostModel::Row.new(id: m.id, configured: true, info: nil, unavailable: true) }
           next
         end
 
-        infos = Array(data[:models])
+        infos = Array(data.models)
         by_id = infos.group_by { |info| info.id.to_s.downcase }
         out[name] = declared.values.map do |m|
           info = by_id[m.id.downcase]&.first
