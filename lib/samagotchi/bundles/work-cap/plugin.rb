@@ -133,7 +133,7 @@ class Plugin
     usage = ctx.usage
     used = used(ctx, usage)
     reached = capped.select { |meter, meter_cap| used[meter] >= meter_cap[:cap] }
-    return at_cap(ctx, resolved, reached, usage, used) unless reached.empty?
+    return at_cap(ctx, reached, usage, used) unless reached.empty?
 
     share = warn_share(ctx)
     return unless share
@@ -184,7 +184,7 @@ class Plugin
     used.empty? ? "no cap" : "using #{used.join(", ")}"
   end
 
-  def at_cap(ctx, resolved, reached, usage, used)
+  def at_cap(ctx, reached, usage, used)
     raised = reached.to_h do |meter, meter_cap|
       [meter, raised_cap(meter_cap[:cap], meter_cap[:step] || meter_cap[:cap], used[meter])]
     end

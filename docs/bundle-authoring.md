@@ -59,9 +59,8 @@ plugin:
 `plugin.rb` defines `class Plugin` with `register(chi)`; `initialize(settings)` (optional) gets config.yml
 `bundles: my-bundle:` as a Hash with string keys, once, when the plugin loads. A value a session may set
 (`chi --set my-bundle.KEY=V`, listed in the manifest's `session_settings:`, typed with `{KEY: number}` so a
-value of another type is refused) is read from `ctx.settings` at call
-time. List what config.yml may set in the manifest's `settings:` (`settings: [greeting]`, or `{greeting: string}`), so a
-typo in the user's config warns instead of doing nothing. `chi bundle check --set KEY=VALUE` gives the sandboxed load a setting.
+value of another type is refused) is read from `ctx.settings` at call time. List what config.yml may set in `settings:`
+(`[greeting]`, or `{greeting: string}`): a typo there then warns. `chi bundle check --set KEY=VALUE` gives the sandboxed load a setting.
 
 ## What a hook sees
 
@@ -134,16 +133,14 @@ class, a hand-built `ctx`), that is a gap in the kit: say so to the user rather 
   newer than the floor (`ctx.http` needs 0.80.0, `ctx.cost` 0.83.0, `ctx.usage` 0.100.0, `ctx.sessions.children` 0.34.0). A keyword added
   later counts too (`ctx.ask_model(model:)` 0.80.0, `ctx.sessions.send(delivery:)` 0.64.0, `chi.toolkit(prompt:)`
   0.72.0, `chi.toolkit(groups:)` 0.121.0), when the call is written on `ctx` / `chi` itself (not through a variable).
-- **A typo in an API call.** `check` warns (`api`) on a `ctx.*` / `chi.*` call or a keyword this chi lacks, at its
-  line, even on a path no test runs. Written for a newer chi on purpose? Guard it with `ctx.respond_to?(:name)`.
+- **A typo in an API call.** `check` warns (`api`) on a call or keyword this chi lacks, on any path; for a newer chi on purpose, guard it with `ctx.respond_to?(:name)`.
 - **trust_level.** Leave it out. `reviewed` / `trusted` are for someone who reviewed the bundle, not its author.
 - **Restart.** A session loads bundles when it starts: after an install or a settings change, the user starts a
   new session (or `chi sessions restart ID`).
 - **chi's internals.** A bundle may use `chi.*`, `ctx` and the names
   [plugins.md, Stable for bundles](plugins.md#stable-for-bundles) lists; any other `Samagotchi::` name may change
   in any release (`check` warns: `boundary`).
-- **Load errors.** A plugin that raises at load is skipped and the session goes on: `check` shows the error at its
-  `plugin.rb:LINE`.
+- **Load errors.** A plugin that raises at load is skipped and the session goes on: `check` shows the error at its `plugin.rb:LINE`.
 
 ## Verifying it live
 
