@@ -131,8 +131,8 @@ RSpec.describe "Session archive" do
 
       result = Samagotchi::SessionManager.archive_session(parent.id[0, 8], state_dir: tmpdir)
 
-      expect(result).to include(id: parent.id, stopped: [], discarded: [])
-      expect(result[:archived]).to contain_exactly(parent.id, child.id)
+      expect(result).to have_attributes(id: parent.id, stopped: [], discarded: [])
+      expect(result.archived).to contain_exactly(parent.id, child.id)
       expect([archived?(parent), archived?(child), archived?(other)]).to eq([true, true, false])
 
       back = Samagotchi::SessionManager.unarchive_session(parent.id, state_dir: tmpdir)
@@ -164,7 +164,7 @@ RSpec.describe "Session archive" do
       result = Samagotchi::SessionManager.archive_session(live.id, state_dir: tmpdir)
 
       expect(Samagotchi::SessionManager).to have_received(:stop_session).with(live.id, state_dir: tmpdir, wait: 5)
-      expect(result).to include(archived: [live.id], stopped: [live.id])
+      expect(result).to have_attributes(archived: [live.id], stopped: [live.id])
       expect(archived?(live)).to be(true)
     end
 
@@ -193,7 +193,7 @@ RSpec.describe "Session archive" do
 
       result = Samagotchi::SessionManager.archive_session(parent.id, state_dir: tmpdir, except: [kept.id])
 
-      expect(result[:archived]).to contain_exactly(parent.id, done.id)
+      expect(result.archived).to contain_exactly(parent.id, done.id)
       expect([archived?(parent), archived?(done), archived?(kept), archived?(under_kept)])
         .to eq([true, true, false, false])
     end

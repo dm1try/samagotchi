@@ -215,11 +215,12 @@ RSpec.describe Samagotchi::TerminalUI::LocalLink do
     calls = []
     link = described_class.new(client: client, state_dir: state_dir,
                                delete_session: ->(sid) { calls << [:delete, sid] },
-                               archive_session: ->(sid) { (calls << [:archive, sid]) && { discarded: [] } },
+                               archive_session: ->(sid) { (calls << [:archive, sid]) && Samagotchi::SessionManager::ArchiveResult.new(id: sid, archived: [], stopped: [], discarded: []) },
                                installed_version: -> { "9.9.9" },
                                children_counts: ->(sid) { (calls << [:children, sid]) && :counts })
 
-    expect([link.children_counts, link.archive_session, link.installed_version]).to eq([:counts, { discarded: [] }, "9.9.9"])
+    expect([link.children_counts, link.archive_session, link.installed_version])
+      .to eq([:counts, Samagotchi::SessionManager::ArchiveResult.new(id: id, archived: [], stopped: [], discarded: []), "9.9.9"])
     link.delete_session
     expect(calls).to eq([[:children, id], [:archive, id], [:delete, id]])
   end

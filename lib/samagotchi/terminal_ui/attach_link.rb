@@ -74,8 +74,8 @@ module Samagotchi
       # /exit --delete, once the worker let go.
       def delete_session = raise(NotImplementedError)
 
-      # /archive: SessionManager.archive_session's result ({discarded: […]}).
-      # @return [Hash]
+      # /archive: SessionManager.archive_session's result.
+      # @return [SessionManager::ArchiveResult]
       def archive_session = raise(NotImplementedError)
 
       # The newest chi installed where the worker runs, for the version line.

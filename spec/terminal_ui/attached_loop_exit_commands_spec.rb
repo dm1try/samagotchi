@@ -338,7 +338,7 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "/exit and /detach" do
     let(:archive_session) do
       lambda do |id|
         archived << id
-        { id: id, archived: [id], stopped: [], discarded: [] }
+        Samagotchi::SessionManager::ArchiveResult.new(id: id, archived: [id], stopped: [], discarded: [])
       end
     end
     let(:attached) { described_class.new(client: client, screen: screen, client_id: "tui:1", archive_session: archive_session) }

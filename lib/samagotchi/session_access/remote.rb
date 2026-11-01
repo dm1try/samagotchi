@@ -432,13 +432,13 @@ module Samagotchi
                                       version: reply.json["version"])
       end
 
-      # @return [Hash] {id:, archived:, stopped:, discarded:}
+      # @return [SessionManager::ArchiveResult] the reply's lists coerced to arrays
       def archive(id)
         reply = request(:post, "#{session_path(id)}/archive")
         raise_refusal(reply) unless reply.status == 200
 
-        { id: reply.json["session_id"] || id, archived: Array(reply.json["archived"]), stopped: Array(reply.json["stopped"]),
-          discarded: Array(reply.json["discarded"]) }
+        SessionManager::ArchiveResult.new(id: reply.json["session_id"] || id, archived: Array(reply.json["archived"]),
+                                          stopped: Array(reply.json["stopped"]), discarded: Array(reply.json["discarded"]))
       end
 
       # @return [Hash] {id:, unarchived:}

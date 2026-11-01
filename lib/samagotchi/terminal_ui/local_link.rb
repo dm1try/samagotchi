@@ -33,7 +33,7 @@ module Samagotchi
       # @param state_dir [String] the state dir the worker was found in
       # @param delete_session [#call] session id -> deletes it
       # @param archive_session [#call] session id -> archives it
-      #   (SessionManager.archive_session's result)
+      #   (SessionManager::ArchiveResult)
       # @param installed_version [#call] -> the newest chi installed
       # @param children_counts [#call] session id -> ChildrenStatus::Counts
       def initialize(client:, state_dir: Session.default_state_dir,

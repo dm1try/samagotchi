@@ -395,11 +395,15 @@ module Samagotchi
         .select { |s| s[:parent_id] == parent_id.to_s }
     end
 
+    # What one archive did: id: the session it was asked for; archived: the
+    # ids (it and its delegates) now hidden for good; stopped: the live
+    # workers stopped first; discarded: empty sessions its stopping worker deleted.
+    ArchiveResult = Data.define(:id, :archived, :stopped, :discarded)
+
     # Archive a session and its delegated children (ArchiveStore): hidden
     # from every list, kept by the retention sweep. A live idle worker is
     # stopped first; the marker is written even while it shuts down.
-    # @return [Hash] {id:, archived: [ids], stopped: [ids], discarded: [ids]};
-    #   discarded: empty sessions their stopping worker deleted
+    # @return [ArchiveResult]
     # @raise [ArgumentError] unknown id (Session::AmbiguousId for a prefix of several)
     # @raise [OwnedByTUI] a chi REPL owns it or one of its children
     # @raise [ArchiveRefused] a turn runs in it or in a child, a prompt is
@@ -419,7 +423,7 @@ module Samagotchi
       archived.each { |sid| ReminderCarry.remove(Session.session_dir(sid, state_dir: sd)) }
       # D8: an archive ends the review (unarchiving doesn't restore it).
       Participants.end_sessions(archived, by: "archive", state_dir: sd)
-      { id: id, archived: archived, stopped: stopped, discarded: discarded }
+      ArchiveResult.new(id: id, archived: archived, stopped: stopped, discarded: discarded)
     end
 
     # The session and its descendants, with their owners, when they can be

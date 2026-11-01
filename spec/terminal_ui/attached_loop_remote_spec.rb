@@ -109,7 +109,7 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "through a remote" do
 
     it "/archive: the worker exits, then the session is archived there" do
       allow(client).to receive(:request_exit).and_return(response(200, { status: "exiting", session_id: "s-1234" }))
-      allow(remote).to receive(:archive).and_return({ id: "s-1234", archived: ["s-1234"], stopped: [], discarded: [] })
+      allow(remote).to receive(:archive).and_return(Samagotchi::SessionManager::ArchiveResult.new(id: "s-1234", archived: ["s-1234"], stopped: [], discarded: []))
 
       run_with(["/archive"])
 

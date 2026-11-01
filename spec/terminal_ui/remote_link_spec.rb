@@ -190,11 +190,11 @@ RSpec.describe Samagotchi::TerminalUI::RemoteLink do
 
     it "deletes (force) and archives there; a request that can't be made is Unreachable" do
       allow(remote).to receive(:delete).and_return({ id: "s-1", stopped: true })
-      allow(remote).to receive(:archive).and_return({ id: "s-1", archived: ["s-1"], stopped: [], discarded: [] })
+      allow(remote).to receive(:archive).and_return(Samagotchi::SessionManager::ArchiveResult.new(id: "s-1", archived: ["s-1"], stopped: [], discarded: []))
 
       expect(link.delete_session).to eq({ id: "s-1", stopped: true })
       expect(remote).to have_received(:delete).with("s-1", force: true)
-      expect(link.archive_session[:archived]).to eq(["s-1"])
+      expect(link.archive_session.archived).to eq(["s-1"])
 
       allow(remote).to receive(:archive).and_raise(Samagotchi::SessionAccess::RemoteFailed, "remote studio: refused")
       expect { link.archive_session }.to raise_error(Samagotchi::SessionAccess::WebBridgeClient::Unreachable, "remote studio: refused")

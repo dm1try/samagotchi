@@ -124,7 +124,7 @@ module Samagotchi
           return detach("#{ExitLines.exit_line(reply, via: via, session_id: id)} Not archived.") unless [200, 409].include?(reply.status)
 
           result = @link.archive_session
-          return detach("Detached; the session was empty, so it is discarded.") if result[:discarded].include?(id)
+          return detach("Detached; the session was empty, so it is discarded.") if result.discarded.include?(id)
 
           detach("Detached; archived session #{id}. #{via.command("sessions list --archived")} finds it.")
         rescue SystemCallError, IOError => e

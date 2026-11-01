@@ -134,7 +134,7 @@ module Samagotchi
         ArchiveStore.archived?(Session.session_dir(sid, state_dir: state_dir))
       end
       archive = SessionManager.archive_session(id, state_dir: state_dir, wait: archive_wait, except: plan.move)
-      archived = archive[:archived] - already
+      archived = archive.archived - already
       begin
         spawn_continuation(previous, prompt: prompt, preview: preview, choice: checked.choice, state_dir: state_dir,
                                      move: plan.move)

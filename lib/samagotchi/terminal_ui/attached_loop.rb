@@ -97,7 +97,7 @@ module Samagotchi
       # @param now [#call] the wall clock, a Time (the gap dividers)
       # @param delete_session [#call] session id -> deletes it (/exit --delete)
       # @param archive_session [#call] session id -> archives it (/archive);
-      #   SessionManager.archive_session's result
+      #   SessionManager::ArchiveResult
       # @param wait_at_eof [Boolean] lines come from a pipe or a file (`chi -p
       #   X </dev/null`): at their end, detach only once this run's prompts
       #   (the -p one too) have had their turns; if one failed, #run says so

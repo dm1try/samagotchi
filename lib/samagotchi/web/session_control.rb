@@ -447,9 +447,9 @@ module Samagotchi
       # are refused (409).
       def handle_archive(_req, id)
         result = @manager.archive_session(id, state_dir: @state_dir, wait: STOP_WAIT_SECONDS)
-        (result[:archived] + result[:discarded]).each { |sid| @hub&.touch(sid) }
-        json_response(200, { status: "archived", session_id: result[:id], archived: result[:archived],
-                             stopped: result[:stopped], discarded: result[:discarded] })
+        (result.archived + result.discarded).each { |sid| @hub&.touch(sid) }
+        json_response(200, { status: "archived", session_id: result.id, archived: result.archived,
+                             stopped: result.stopped, discarded: result.discarded })
       rescue SessionManager::OwnedByTUI => e
         owned_by_repl(id, e)
       rescue SessionManager::ArchiveRefused => e

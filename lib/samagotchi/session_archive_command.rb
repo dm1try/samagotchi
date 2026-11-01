@@ -64,10 +64,10 @@ module Samagotchi
       id = @access.resolve_id(given)
       short = id[0, 8]
       result = @access.archive(id)
-      if result[:archived].include?(id)
+      if result.archived.include?(id)
         notes = []
-        notes << "stopped its worker" if result[:stopped].include?(id)
-        others = result[:archived].size - 1
+        notes << "stopped its worker" if result.stopped.include?(id)
+        others = result.archived.size - 1
         notes << "and #{others} delegate#{"s" if others != 1}" if others.positive?
         @stdout.puts("#{short}  archived#{" (#{notes.join(", ")})" unless notes.empty?}")
       else

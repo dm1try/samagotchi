@@ -271,7 +271,7 @@ module Samagotchi
       # @return [SessionManager::RestartResult]
       def restart(id) = SessionManager.restart_session(id, **dir)
 
-      # @return [Hash] SessionManager.archive_session's
+      # @return [SessionManager::ArchiveResult]
       def archive(id) = SessionManager.archive_session(id, **dir)
 
       # @return [Hash] SessionManager.unarchive_session's

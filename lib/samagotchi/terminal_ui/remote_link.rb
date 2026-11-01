@@ -151,8 +151,7 @@ module Samagotchi
         raise SessionAccess::WebBridgeClient::Unreachable, e.message
       end
 
-      # /archive: POST …/archive there ({discarded: […]}, as
-      # SessionManager.archive_session's).
+      # /archive: POST …/archive there (a SessionManager::ArchiveResult).
       def archive_session
         @remote.archive(session_id)
       rescue SessionAccess::RemoteFailed => e
