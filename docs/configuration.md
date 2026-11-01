@@ -1640,6 +1640,21 @@ toolkit:
   changes what saved sessions on it send after an upgrade: the next request reads the prompt again once, as a
   tool's schema change does. So can an edit to `toolkit.kits`: a session's worker reads the kits once when it starts, so a running session keeps its
   tools and the edit reaches it at its next worker start (after an idle exit, `chi sessions restart`).
+- **Why a session is on its kit: `toolkit_origin`.** The session file records `default` (the configured kit),
+  `chosen` (a user-selected kit, `/toolkit` and `ctx.use_toolkit` included), `inherited` (a continue or a fork) or
+  `suggested` (`toolkit.suggest.mode: on` switched it). A file from before the field reads as `chosen`, so an old
+  default session is never newly suggested a kit; only a `default` session is ever suggested one. A delegate child
+  gets the kit its `delegate` call names (`toolkit:`, any kit the parent knows), else `toolkit.child`; a kit its worker
+  can't resolve declares every tool.
+- **Loads saved in the conversation.** A `find_tools` result on a chat host saves the tools its hit loads as
+  `loaded: ["list_sessions", "mcp_fs_read"]` on its `tool_response` entry (wire names: a built-in's, an MCP tool's
+  `mcp_<server>_<tool>`), whatever the host: a later turn on `api: anthropic` (after a `/model` switch, a resume) sends
+  the load as references, any other host ignores it. A plugin's `ctx.load_tools` leaves a system entry
+  `{"role": "system", "kind": "tool_change", "content": "[tools loaded: delegate (bundle)]", "tool_change": {"add":
+  ["delegate"], "by": "bundle"}}` after the turn's user message, only on a host that takes tool changes
+  (`api: anthropic`; [wire details](internals/anthropic.md#tool-changes-ctxload_tools)). It is never the system head,
+  counts as conversation, is hidden in the web and TUI histories and goes to no other wire. Either way the names stay
+  deferred for the session's life, across respawns, `--resume` and forks.
 
 ## LLM context: the forget layer
 

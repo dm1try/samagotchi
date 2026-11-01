@@ -111,6 +111,51 @@ chi sessions clean --dry-run --days 7            # test sessions older than 7 da
 - A `chi scratch` session (`"scratch": true`) is deleted when its REPL ends; one a killed process left behind is deleted by the next sweep, `prune` or `clean`, whatever its age or status, once nobody owns it. `list` shows it as `[scratch]` (every text form; `scratch: true` in `--format json`); `chi web` never shows one. See [CLI: Scratch sessions](cli.md#scratch-sessions).
 - For ad-hoc manual QA use `SAMAGOTCHI_ENV=test XDG_STATE_HOME=/tmp/chi-test-$USER chi ...` to isolate from real state; the flag also marks sessions that `chi web` or an attached `chi` spawn (their workers inherit the environment), so `clean` finds them if they land in the real state.
 
+## Session file
+
+`Session::FIELDS` is the table of `<uuid>.json`, in the order `Session#save` writes it (`Session.from_h` and `#to_h` both go by it; 41 keys). A key a file lacks reads as the default below; `review`, `first_turn_id`, `verdicts` and `verify_fresh` are written only when set (`OPTIONAL_FIELDS`). A key this chi doesn't know is kept and written back as it was (see the rule above). "Who writes it": the Engine runs in the session's worker (or the REPL); the rest are named.
+
+| Key | Meaning | Written by |
+|-----|---------|------------|
+| `metadata_version` | The file format version (`METADATA_VERSION`, 3). | `Session#save` |
+| `written_by` | The chi version that saved the file last (see *Which chi a worker runs*). | `Session#save` |
+| `id` | The uuid; also the file name. Required. | `Session.new_session` |
+| `mode` | `assist`, the only mode. Required. | `SessionManager.spawn_session` |
+| `model_name` | The resolved model ref (an alias applied; `host:id` when it names a host), so a resume keeps the model. Required. | creation, `/model` |
+| `model_typed` | The name it was typed as when that differs (an alias), for the `models:` lookup after a resume; `null` otherwise. | creation, `/model` |
+| `working_directory` | The folder the session runs in. Required. | creation |
+| `messages` | The conversation (symbol keys in memory, strings on disk). While a turn runs, a save writes the turn's checkpoint here instead (`TurnCheckpoint`). | the Engine, per turn |
+| `created_at`, `updated_at` | ISO times; `updated_at` is stamped by every save and orders the lists. Required. | `Session#save` |
+| `status` | `idle`, `running`, `error` or `stopped` (turn state, not liveness; a stop is also the `<id>/stopped` marker). | the worker / Engine; the marker by `chi sessions stop` |
+| `last_prompt` | The newest prompt; a session created with a first prompt holds it here until its worker takes it; after an `error` status, the reason. | `SessionManager.spawn_session`, the Engine, `Session.mark_error` |
+| `first_preview` | The first user message as a one-line preview (whitespace collapsed, 80 characters), or the first context note's (`note: …`) until a message is typed. Cached so lists and `Session.resolve_id`'s ambiguity message need not read `messages`. | `Session#save` (`compute_first_preview!`) |
+| `title` | The name the user gave (`/title`, whitespace collapsed, 80 characters); shown in place of `first_preview` (`display_title`); a continue's new link inherits it. The recap's auto title is not stored here. See [Session titles](#session-titles). | `/title` (`TitleCommand`), `SessionManager` |
+| `test_run` | Tagged by `SAMAGOTCHI_ENV=test`, `RACK_ENV=test` or `CI` (see Test-session hygiene). | creation |
+| `pending_question` | The question the worker waits on (`PendingQuestion`), `null` with none. | `QuestionDesk` |
+| `used_memory_names` | The memories the session read. | the Engine |
+| `project_root` | The project the session started in, stored because a worktree may be deleted later; `null` outside a repo. | creation |
+| `preloaded_memory_names`, `muted_memory_names` | `--memory` and `--mute`, written before the worker starts so a respawn builds the same prompt. | creation |
+| `prompt_notes` | The model notes the system prompt carried at its last build (`[{name, scope, chars, digest}]`, see [Memory](memory.md#model-notes)). | the Engine, at each prompt build |
+| `parent_id` | The session that delegated this one or forked it (`ctx.sessions.fork`); `null` otherwise. See [Delegating](#delegating). | `SessionManager.spawn_session`; `ChildMove` writes a `parent.json` beside it instead of this file |
+| `scratch` | A `chi scratch` session, deleted when its REPL ends. | creation |
+| `last_turn` | How the last turn ended (`LastTurn`), for a parent's wait and the web's notifications. | the Engine, at a turn's end |
+| `verdicts` | Verdict cards recorded by completed Verify turns, in append order. | `Engine#record_verdict`, `VerifyFresh` |
+| `delegate` | Started by the `delegate` tool (a fork has a `parent_id` but isn't one). | `Tools::Delegate` via `spawn_session` |
+| `llm_context` | The session's own LLM context values (strategy, apply rule, budget), over the model's; `null` with none. | creation (`--llm-context`), `/llm-context`; copied by a fork and a continue, not a delegate child |
+| `continues` | The previous link of a chain; `null` otherwise. See [Session chains](#session-chains). | `SessionContinue` |
+| `thinking` | The session's own thinking level (`off`/`low`/`medium`/`high`), over the process default and the model's. | creation (`--thinking`), `/thinking`; kept by a continue and a fork |
+| `reasoning_history` | Its own `reasoning_history` level (`drop`/`turn`/`all`). | `/reasoning-history`; carried like `thinking` |
+| `appended_prompt_files` | The absolute paths of the files `--append-system-prompt` put into the system prompt (config.yml's `append_system_prompt:` entries are not stored); kept by respawns, copied by a fork and a continue (`SessionSetup`). | creation |
+| `toolkit` | The toolkit it was created on, as named (`{name, add, remove}`); `null` is `full`. See [Toolkits](configuration.md#toolkits). | creation, `/toolkit` |
+| `toolkit_origin` | Why it is on that kit: `default`, `chosen` (also the reading of a file from before the field), `inherited` or `suggested`. | creation, `/toolkit`, the toolkit suggestion |
+| `bundle_settings`, `config_settings` | `--set`: `BUNDLE.KEY` values by bundle and the session-settable core keys; kept by a respawn, a continue and a fork, not by a delegate child. | creation |
+| `interrupted_turn` | The mark of a turn a worker checkpointed and never finished (`InterruptedTurn`); the next worker settles it and sets it to `null`. | the worker |
+| `parent_answers` | Its own `guardrails.parent_answers` (it may only tighten config.yml's). | creation (`--parent-answers`), `/parent-answers` |
+| `working_set_pins` | The working-set items the user pinned (`/working-set pin`); kept by a respawn, a continue and a fork. | the Engine's command |
+| `review` | A review session's subjects and source (`SessionReview`), see [Review sessions](#review-sessions). | `ReviewStart` |
+| `first_turn_id` | The id the creating prompt's turn gets, so a wait can name it (`chi send --new --wait`, `--wait --turn T ID`); `null` for a session created idle. | `SessionManager.spawn_session` |
+| `verify_fresh` | A Verify fresh child's requester, rules and claim (`VerifyFreshOrigin`). | `VerifyFresh.start`, once |
+
 ## Context notes
 
 A context note is text pushed into a session as background: not a prompt, and it starts no turn.
@@ -311,30 +356,7 @@ sessions](cli.md#review-sessions)); both start idle and print the `chi share` li
 
 ## Toolkits
 
-A session file's `toolkit` (`{"name", "add", "remove"}`) is the toolkit it was created on, as named: config's
-`toolkit.default`, `toolkit.child` for a delegate child, or `chi --toolkit` / `chi send --new --toolkit` (with
-`--tool` / `--no-tool`). It is never resolved again from config: a respawned or woken worker declares the same
-tools. `null` (a session from before toolkits) is `full`. A continue (`continue →`, `chi send --new --continues`)
-and a fork (`ctx.sessions.fork`) keep it, as they keep the thinking level; a delegate child gets the kit its
-`delegate` call names (`toolkit:`, any kit the parent knows) or `toolkit.child`; one its worker can't resolve
-declares every tool (full). The file stores only the name: a kit's tools and prompt text come from its definition.
-`/toolkit` changes it, saved at once, from the next turn's start. See
-[Toolkits](configuration.md#toolkits).
-
-`toolkit_origin` records why the session is on that kit: `default` for the configured kit, `chosen` for a
-user-selected kit (including `/toolkit` and `ctx.use_toolkit`), `inherited` for a continue or fork, or `suggested`
-when `toolkit.suggest.mode: on` switched it ([Toolkits](configuration.md#toolkits)). A session file from before the
-field reads as `chosen`. Only a `default` session is ever suggested a kit.
-
-A `find_tools` result on a chat host saves the tools its hit loads as `loaded: ["list_sessions", "mcp_fs_read"]` on
-its `tool_response` entry (wire names: a built-in's, an MCP tool's `mcp_<server>_<tool>`), whatever the host: a
-later turn on `api: anthropic` (after a `/model` switch, a resume) sends the load as references, any other host
-ignores it. The names stay deferred for the session's life, across respawns, `--resume` and forks.
-
-A plugin's `ctx.load_tools` leaves a system entry `{"role": "system", "kind": "tool_change", "content": "[tools loaded:
-delegate (bundle)]", "tool_change": {"add": ["delegate"], "by": "bundle"}}` after the turn's user message, only on a
-host that takes tool changes (`api: anthropic`). It is never the system head, counts as conversation, is hidden in
-the web and TUI histories, and goes to no other wire; its names stay deferred for the session's life like a load's.
+A session's `toolkit` and `toolkit_origin` are in the [Session file](#session-file) table. What a toolkit is, how it is saved at creation, what a continue, a fork and a delegate child get, `/toolkit`, and how `find_tools` loads and `ctx.load_tools` tool changes are saved in the conversation: [Toolkits](configuration.md#toolkits).
 
 ## Parent answers
 
