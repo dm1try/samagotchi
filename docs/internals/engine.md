@@ -811,7 +811,7 @@ Both loops:
   again, up to `retry.empty_answer` times (at most 3), with a hidden nudge (`TurnNote.empty_retry`) on the tail.
   The retry request runs at temperature 0.6 when the configured sampling sets no temperature; a configured one
   is kept. A length stop with the context at least 90% full is not retried. When the retries run out, the
-  Engine keeps a `TurnNote.empty` note as the turn's end. In `ChatLoop`, a Stop that lands on an empty reply ends the turn cancelled.
+  Engine keeps a `TurnNote.empty` note as the turn's end. A Stop that lands on an empty reply ends the turn cancelled, in both loops.
 - **A refusal** (chat loop only): a finish reason `refusal` (Messages), or `content_filter` (OpenAI) with no text, is
   an empty answer never retried; text streamed before a refusal is not kept, and tool calls with it are not run. A
   `content_filter` with text keeps it, marked `ChatLoop::FILTERED_MARK`, also never retried. `ModelResult#refusal` is `{category:}` (from the response's

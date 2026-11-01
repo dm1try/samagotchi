@@ -94,6 +94,23 @@ RSpec.describe Samagotchi::KernelLoop, "empty answer retry" do
     expect(result.empty_retries).to eq(1)
   end
 
+  it "ends cancelled, asking nothing more, when a Stop lands on the empty reply" do
+    controller = Samagotchi::CancellationController.new
+    calls = []
+    allow(client).to receive(:complete) do |prompt, **_kwargs|
+      calls << prompt
+      controller.cancel!(:user)
+      "<think>Nothing to say.</think>"
+    end
+
+    result = run(cancel_controller: controller)
+
+    expect(calls.size).to eq(1)
+    expect(result).to be_canceled
+    expect(result).not_to be_empty_answer
+    expect(result.conversation.map { |m| m[:role] }).to eq(["user"])
+  end
+
   it "does nothing with retry.empty_answer 0" do
     ENV["SAMAGOTCHI_RETRY_EMPTY_ANSWER"] = "0"
     calls = script("", "late")

@@ -734,6 +734,13 @@ module Samagotchi
       response = request.prefill + generation.response.to_s
       answer = -> { PromptLiteralGuard.restore(strip_thought_blocks(response), profile: @profile) }
       empty = strip_thought_blocks(response.to_s).strip.empty?
+      # A Stop that lands on an empty reply is no empty answer: the empty
+      # generation goes, as it does below, and the turn ends cancelled.
+      if empty && turn.cancel_controller&.cancelled?
+        turn.empty_steps << turn.conversation.pop
+        raise Client::RequestCancelled, turn.cancel_controller.reason
+      end
+
       retry_empty = empty && turn.empty_retry.retry_empty?(iteration: turn.iteration,
                                                            cancelled: turn.cancel_controller&.cancelled?,
                                                            finish_reason: generation.finish_reason,
