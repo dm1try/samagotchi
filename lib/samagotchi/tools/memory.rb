@@ -234,6 +234,8 @@ module Samagotchi
         # The index's size before the write, for the note on crossing
         # memory.index_warn_tokens (not for the verbatim index write).
         before = index_size(resolved_scope) unless entry_name == MEMORY_INDEX
+        # And the memory's own size, for memory.entry_warn_tokens.
+        entry_before = entry_size(resolved_scope, entry_name, file_path) unless entry_name == MEMORY_INDEX
         if entry_name == MEMORY_INDEX
           Samagotchi::MemoryBundle::IndexUpdater.locked_write(dir) { body }
         else
@@ -248,6 +250,7 @@ module Samagotchi
           message += " Index line refreshed automatically."
           message += index_crossing_note(before, resolved_scope)
         end
+        message += entry_crossing_note(entry_before, resolved_scope, entry_name, body) if entry_before
 
         message
       rescue StandardError => e
@@ -317,6 +320,31 @@ module Samagotchi
         require_relative "../memory_bundle/index_size"
         size = Samagotchi::MemoryBundle::IndexSize
         size.measure(scope) if size.warn_limit.positive?
+      end
+
+      # The memory +name+ as its file is now (0 tokens when it isn't there), nil
+      # when memory.entry_warn_tokens is off, for a model note (its own
+      # warning) or when it can't be measured.
+      def self.entry_size(scope, name, file_path)
+        require_relative "../memory_bundle/entry_size"
+        size = Samagotchi::MemoryBundle::EntrySize
+        return nil unless size.warn_limit.positive? && size.counted?(name)
+
+        size.of_text(name, scope, File.file?(file_path) ? File.read(file_path, encoding: "UTF-8") : "")
+      rescue StandardError
+        nil
+      end
+
+      # "\n\nNote: memory '<name>' is now ~N tokens …" when the write took
+      # the memory from at or under memory.entry_warn_tokens to over it
+      # (+before+: its size before the write), else "". +body+ is what was
+      # written.
+      def self.entry_crossing_note(before, scope, name, body)
+        size = Samagotchi::MemoryBundle::EntrySize
+        note = size.crossing_note(before, size.of_text(name, scope, body))
+        note ? "\n\n#{note}" : ""
+      rescue StandardError
+        ""
       end
 
       # "\n\nNote: the <scope> memory index is now ~N tokens …" when the

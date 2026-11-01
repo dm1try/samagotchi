@@ -857,6 +857,66 @@ RSpec.describe Samagotchi::Tools::MemoryWrite do
     end
   end
 
+  describe "the note when a write takes a memory over memory.entry_warn_tokens" do
+    let(:small) { "s" * 100 }
+    let(:big) { "b" * 400 }
+    let(:note) { "Note: memory 'notes' is now ~100 tokens (over memory.entry_warn_tokens 50), paid on each read." }
+
+    around { |ex| with_env("SAMAGOTCHI_MEMORY_ENTRY_WARN_TOKENS" => "50") { ex.run } }
+
+    def write(content, name = "notes", **) = described_class.call(content, path: name, scope: "project", description: "d", **)
+
+    it "comes once, on the write that crosses, after the index line; the next write while over gets none" do
+      write(small)
+      crossing = write(big)
+      expect(crossing).to include("Index line refreshed automatically.\n\n#{note}")
+      expect(crossing).to end_with("When you next have a moment, tighten it; split out only parts that are read separately, " \
+                                   "since each new memory adds an index line to every prompt. Don't remove or merge memories " \
+                                   "unless the user asks.")
+      expect(write(big)).not_to include("Note:")
+    end
+
+    it "comes on a first write that is already over, and again after a drop under and a new crossing" do
+      expect(write(big)).to include(note)
+      expect(write(small)).not_to include("Note:")
+      expect(write(big)).to include(note)
+    end
+
+    it "doesn't come under the limit, at exactly the limit or with the limit 0" do
+      expect(write(small)).not_to include("Note:")
+      expect(write("e" * 200)).not_to include("Note:")
+      with_env("SAMAGOTCHI_MEMORY_ENTRY_WARN_TOKENS" => "0") { expect(write(big, "other")).not_to include("Note:") }
+    end
+
+    it "isn't looked for on a description-only write, a remove, an overlay, the verbatim index or a model note" do
+      write(small)
+      File.write(File.join(project_memories_dir, "notes.md"), big)
+      expect(described_class.call("", path: "notes", scope: "project", description: "new")).not_to include("Note:")
+      expect(write(big, "model_notes_x", current_model_only: false).to_s).to start_with("Error: model note")
+      expect(write("models: qwen*\n#{big}", "model_notes_x")).not_to include("Note:")
+      expect(write(big, "notes", current_model_only: true, model_key: "qwen")).to start_with("Model overlay")
+      expect(described_class.call(big, path: "index", scope: "project")).not_to include("Note:")
+      expect(described_class.call("", path: "notes", scope: "project", remove: true)).not_to include("Note:")
+    end
+
+    it "is independent of memory.index_warn_tokens, and both notes come when both limits are crossed" do
+      with_env("SAMAGOTCHI_MEMORY_INDEX_WARN_TOKENS" => "0") { expect(write(big)).to include(note) }
+      described_class.call("seed\n", path: "seed", scope: "project", description: "seed memory")
+      limit = Samagotchi::MemoryBundle::IndexSize.of_scope("project").tokens + 5
+      with_env("SAMAGOTCHI_MEMORY_INDEX_WARN_TOKENS" => limit.to_s) do
+        both = write(big, "another", description: nil)
+        expect(both).to include("Note: the project memory index is now ~")
+        expect(both).to include("Note: memory 'another' is now ~100 tokens")
+        expect(both.index("Note: the project")).to be < both.index("Note: memory")
+      end
+    end
+
+    it "doesn't fail the write when measuring fails" do
+      allow(Samagotchi::MemoryBundle::EntrySize).to receive(:of_text).and_raise(RuntimeError, "boom")
+      expect(write(big)).to start_with("Memory 'notes' saved to project scope")
+    end
+  end
+
   describe "concurrent writers sharing one project folder" do
     it "keeps every entry's index line when several processes write at once" do
       names = (1..8).map { |i| "entry_#{i}" }

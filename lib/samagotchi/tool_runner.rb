@@ -16,6 +16,7 @@ require_relative "tools/memory"
 require_relative "config"
 require_relative "memory_bundle/index_sync"
 require_relative "memory_bundle/index_size"
+require_relative "memory_bundle/entry_size"
 require_relative "participant_mode"
 
 module Samagotchi
@@ -123,6 +124,7 @@ module Samagotchi
       end
       before = verdict.deny? ? NOT_AN_EDIT : file_before(call)
       index_before = before.equal?(NOT_AN_EDIT) ? nil : memory_index_size(call)
+      entry_before = before.equal?(NOT_AN_EDIT) ? nil : MemoryBundle::EntrySize.measure_file(Tools::ToolPath.normalize(call[:path]))
       elapsed_ms = nil
       if verdict.deny?
         result = denied(call, verdict)
@@ -134,6 +136,7 @@ module Samagotchi
       diff = file_change(call, before)
       if diff && refresh_memory_index(call)
         result = with_index_note(result, index_before, call)
+        result = with_entry_note(result, entry_before, call)
       end
       result = approved(result, verdict) if verdict.allow? && verdict.decided_by
       result, images = attach_images(call, result) if result[:images]
@@ -318,6 +321,16 @@ module Samagotchi
       return result unless before
 
       note = MemoryBundle::IndexSize.crossing_note(before, memory_index_size(call))
+      note ? result.merge(output: "#{result[:output]}\n\n#{note}") : result
+    end
+
+    # +result+ with the note a write/edit gets when it took the memory over
+    # memory.entry_warn_tokens (MemoryBundle::EntrySize). It is apart from
+    # the index's: that one is off with index_warn_tokens at 0, this one isn't.
+    def with_entry_note(result, before, call)
+      return result unless before
+
+      note = MemoryBundle::EntrySize.crossing_note(before, MemoryBundle::EntrySize.measure_file(Tools::ToolPath.normalize(call[:path])))
       note ? result.merge(output: "#{result[:output]}\n\n#{note}") : result
     end
 

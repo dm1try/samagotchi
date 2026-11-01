@@ -960,6 +960,54 @@ RSpec.describe Samagotchi::ToolRunner do
       end
     end
 
+    describe "the note when a write or edit takes a memory over memory.entry_warn_tokens" do
+      around do |ex|
+        with_config_home(File.join(@dir, "config")) { with_env("SAMAGOTCHI_MEMORY_ENTRY_WARN_TOKENS" => "50") { ex.run } }
+      end
+
+      let(:memories) { Samagotchi::MemoryPaths.system_dir.tap { |dir| FileUtils.mkdir_p(dir) } }
+      let(:note) { "Note: memory 'notes' is now ~100 tokens (over memory.entry_warn_tokens 50)" }
+
+      def write_memory(content, name = "notes") = run({ name: "write", path: File.join(memories, "#{name}.md"), content: content })
+
+      it "comes once, after the write that crosses, on the output the model gets; a first big write gets it" do
+        first = write_memory("b" * 400)
+        expect(first.output).to include("\n\n#{note}")
+        expect(first.capped_output).to eq(first.output)
+        expect(events.last[:output]).to include(note)
+        expect(write_memory("c" * 400).output).not_to include("Note:")
+        expect(write_memory("s" * 40).output).not_to include("Note:")
+      end
+
+      it "comes for an edit that crosses, once" do
+        write_memory("s" * 100)
+        edit = run({ name: "edit", path: File.join(memories, "notes.md"), old_text: "s" * 100, new_text: "b" * 400 })
+        expect(edit.output).to include(note)
+        again = run({ name: "edit", path: File.join(memories, "notes.md"), old_text: "b" * 400, new_text: "c" * 400 })
+        expect(again.output).not_to include("Note:")
+      end
+
+      it "comes without the index's note when memory.index_warn_tokens is 0, and apart from it" do
+        with_env("SAMAGOTCHI_MEMORY_INDEX_WARN_TOKENS" => "0") { expect(write_memory("b" * 400).output).to include(note) }
+      end
+
+      it "has both notes when both limits are crossed, the index's first" do
+        write_memory("seed")
+        limit = Samagotchi::MemoryBundle::IndexSize.of_scope("system").tokens
+        with_env("SAMAGOTCHI_MEMORY_INDEX_WARN_TOKENS" => limit.to_s) do
+          out = write_memory("b" * 400, "other").output
+          expect(out.index("Note: the system memory index")).to be < out.index("Note: memory 'other'")
+        end
+      end
+
+      it "isn't there for the limit 0, a model note, an overlay, the index or a file outside the memories" do
+        with_env("SAMAGOTCHI_MEMORY_ENTRY_WARN_TOKENS" => "0") { expect(write_memory("b" * 400).output).not_to include("Note:") }
+        expect(write_memory("models: qwen*\n#{"b" * 400}", "model_notes_x").output).not_to include("Note:")
+        expect(write_memory("b" * 400, "notes.qwen").output).not_to include("Note:")
+        expect(run({ name: "write", path: path("big.md"), content: "b" * 400 }).output).not_to include("Note:")
+      end
+    end
+
     it "is absent for a denied edit and for other tools" do
       File.write(path, "a\n")
       hooks.register(:before_tool_call) { |e| e[:blocked] = true if e[:call][:name] == "edit" }

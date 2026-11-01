@@ -211,6 +211,9 @@ module Samagotchi
       # The most characters one memory_read result holds (ToolOutputCut cuts it with a line naming the memory file); 0: no
       # fixed cap. memory_read is not cut by max_tool_output_chars (ToolRunner).
       Entry.new(key: "memory.read_max_chars",    yaml_path: %w[memory read_max_chars],    type: :integer, default: 0,               expose: %i[env config cli], lifecycle: :next_matching_use),
+      # The tokens one memory may hold (each read of it pays them) before a write that crosses it gets a note
+      # (MemoryBundle::EntrySize); 0: no note.
+      Entry.new(key: "memory.entry_warn_tokens", yaml_path: %w[memory entry_warn_tokens], type: :integer, default: 5000,            expose: %i[env config cli], lifecycle: :next_matching_turn_display_poll_write),
       Entry.new(key: "context.status_thresholds", yaml_path: %w[context status_thresholds], type: :string, default: "20,40,60,80",    expose: %i[env config cli], lifecycle: :next_matching_turn_display_poll_write),
       # Attached context (ContextSources): how often a source's command runs when it names no --every (seconds; less
       # than 30 counts as 30).
