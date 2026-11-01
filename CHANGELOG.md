@@ -7,6 +7,14 @@ and commands may change between minor versions. How releases are made:
 [docs/releasing.md](docs/releasing.md).
 ## [Unreleased]
 
+### Added
+
+- System 1's asks are saved, so a later comparison or fine-tune has what was sent, answered and done: approvals, toolkit
+  suggestions and context candidates, with the user's answers as labels, under `<state dir>/system_one/runs/`, 0600 and
+  local only. They hold prompts, commands and diffs, as sent. They last as long as sessions (`session.retention_days`, 100 MB
+  in all), `chi sessions delete` purges a session's, and `system_one.runs: off` stops it. `chi judgments ls` and
+  `chi judgments report NAME [--days N]` show what's there. See docs/system-one.md.
+
 ## [0.141.0] - 2026-10-31
 
 ### Added

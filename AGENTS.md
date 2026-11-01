@@ -67,6 +67,7 @@ In REPL mode `TerminalUI#run` is the single dispatch for the REPL, `-p`/`--promp
   `chi web push ls|rm|test` (this machine's Web Push devices, `PushCommand`), `chi guardrails replay`
   (`GuardrailsCommand`: seeds System 1's record from the approvals already answered), and
   `chi toolkit report [--days N]` (`ToolkitReportCommand`: grades audit suggestions against session tool calls),
+  `chi judgments ls|report NAME [--days N]` (`JudgmentsCommand`: System 1's saved runs),
   and `chi home [set [--ruby PATH] | doctor]` (`HomeCommand`; `ChiHome`, home.json: the Ruby every chi launch boots,
   through `Record#boot_argv`'s `Gem.paths` prelude, never GEM_* in an env; docs/architecture.md "How chi launches
   itself").
@@ -137,6 +138,7 @@ In REPL mode `TerminalUI#run` is the single dispatch for the REPL, `-p`/`--promp
 - Task tools (`task_create`/`task_wait`…) → `docs/internals/background-tasks.md`
 - read/execute limits (size, timeout, hand-over) → `docs/internals/tool-output-limits.md`; allow/ask/deny, approvals, rules → `docs/guardrails.md`
 - System 1, the approval judge (`lib/samagotchi/system_one/`, `GuardrailWiring#request_approval`, `chi guardrails replay`) → `docs/guardrails.md` (System 1)
+- System 1's common layer and saved runs (`SystemOne::Recording`, `Runs`, `RunsStore`, `ApprovalLabel`, `chi judgments`) → `docs/system-one.md`
 - Hooks → `docs/hooks.md`; plugins (commands, tools in a bundle, `chi.prompt_section`, `ctx.cache_confirm`) → `docs/plugins.md`; their prompt place → `docs/internals/prompt-caching.md`
 - The chi home (`ChiHome`, home.json, `Record#boot_argv`, `chi home`, `HomeDoctor`, `HomeNotice`) → `docs/architecture.md` (How chi launches itself), `docs/configuration.md` (The chi home)
 - The project env (`ProjectEnv`, `session.project_env`, the chi shim) → `docs/sessions.md` (Project env); the env tools spawn with → `docs/internals/background-tasks.md`

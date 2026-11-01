@@ -24,7 +24,8 @@ module Samagotchi
   # (SystemOne::Record, SystemOne::SelfProtect). The line a UI shows for an
   # auto-allow is P3b (docs/guardrails.md, "System 1").
   # Every core ask goes through SystemOne::Recording, the seam that saves it
-  # as a run (SystemOne::Runs).
+  # as a run, with labels and what came of it (SystemOne::Runs, RunsStore;
+  # docs/system-one.md).
   module SystemOne
   end
 end

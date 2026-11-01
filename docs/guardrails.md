@@ -283,8 +283,9 @@ Built in, for `write`, `edit` and `memory_write` (symlinks resolved; see
 [How paths resolve](#how-paths-resolve)):
 
 - deny: the approval store's dir, installed bundles (`memories/.bundles/`),
-  and [attached context](context.md) sources (`<state dir>/context/`: a
-  source's command runs later, outside the gate; `chi context` changes them);
+  [attached context](context.md) sources (`<state dir>/context/`: a
+  source's command runs later, outside the gate; `chi context` changes them)
+  and [System 1's saved runs](system-one.md) (`<state dir>/system_one/`);
 - ask (once or for the session): `config.yml`, `home.json` (the [chi home](configuration.md#the-chi-home): the Ruby every chi launch boots), the chi shim (`$XDG_STATE_HOME/samagotchi/bin/chi`, the `chi` every tool runs: `chi-shim`) and the plain hooks dir.
 
 `execute` can still reach them; the guardrails bundle asks about shell
@@ -745,7 +746,7 @@ repo is in count as outside.
 
 `touches: chi_dirs` (shell tools) matches a command that names a path in chi's
 own folders: the config folder (`config.yml`, `memories/`), the hooks folder,
-the approval store, installed bundles (`memories/.bundles`), the session repo's
+the approval store, attached context, System 1's saved runs, installed bundles (`memories/.bundles`), the session repo's
 git hooks (`core.hooksPath` honoured) or any `.git/hooks` (a submodule's `.git/modules/<name>/hooks` too)
 outside a tmp folder.
 Each word is read as a path against the folder the command is in by then
@@ -1118,7 +1119,8 @@ offers no examples. A participant's turn (review or pair) is never judged:
 there is no user there to ask, and its asks go to the owner. The judgment runs before the card appears, so an ask is
 slower by up to `timeout_ms` (2000 ms by default).
 
-Each judgment is a line in `judgments.jsonl`, beside `approvals.json` in
+Each ask is also saved whole, with what the user answered, as a [run](system-one.md); the line's `id` is the
+run's. Each judgment is a line in `judgments.jsonl`, beside `approvals.json` in
 `$XDG_STATE_HOME/samagotchi/guardrails/` (`SystemOne::Log`): 0600, appended
 under an exclusive `flock` (several workers write it), and rewritten —
 keeping the newest half of its lines — once it passes 5 MB. A line is never
