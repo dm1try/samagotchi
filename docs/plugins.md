@@ -787,6 +787,11 @@ file can't make itself a peer's, and uninstalling the bundle ends it.
 Subclasses of `Samagotchi::Plugin::Peer` (below) declare their `OUTBOX`
 source. Needs chi 0.67.0 (guard it with `chi.respond_to?(:peer_source)`).
 
+### `chi.judgment(name, questions:, positive: nil, negative: nil, shared_host: :skip)`
+
+A cheap System 1 question this bundle asks with `ctx.judge` or `ctx.judge_later`: see
+[Judgments](#judgments-chijudgment-and-ctxjudge).
+
 ### `chi.ctx`
 
 The plugin's context (the `ctx` its handlers get), for `register` itself:
@@ -844,6 +849,7 @@ full label, `plugin.rb (bundle my-bundle)`.
 | `ctx.stop_turn(reason)` | stop the running turn after a warn notice with the reason; true when it stopped one now. In a `:before_tool_call` block it also denies that call |
 | `ctx.stop_generation(reason)` | cut the generation that is streaming: the turn goes on and the model is asked again ([hooks.md](hooks.md#watching-the-stream)). Shows nothing: post your own notice. True when it cut one now |
 | `ctx.ask_model(messages:, prompt:, …)` | a side answer from the session's model: see [Side answers](#side-answers-ctxask_model) |
+| `ctx.judge(name, state:)`, `ctx.judge_later(name, state:) { |result| … }`, `ctx.judgments` | a cheap System 1 question this bundle declared, saved as a run: see [Judgments](#judgments-chijudgment-and-ctxjudge) |
 | `ctx.http` | an HTTP client for calling services (`get`, `post_json`, `request`): see [Calling services](#calling-services-ctxhttp) |
 | `ctx.sessions` | fork, send to, read, list and stop other sessions: see [Other sessions](#other-sessions-ctxsessions) |
 | `ctx.toolkit` | the name of the session's toolkit (`full` for a session from before toolkits); nil with no session |
@@ -982,6 +988,103 @@ llama.cpp serves on a native host too.
 Each call counts in the session's side requests, under the bundle's name: `/stats`' `side requests:` line and the
 web's ctx tooltip (`2 (btw 1, recap 1) · …`), with its tokens and its cost (reported, else estimated from the target
 model's price), never in the session's own totals.
+
+## Judgments: `chi.judgment` and `ctx.judge`
+
+A judgment is a small question for [System 1](system-one.md), the cheap judgment model: a yes/no with a probability, a
+choice, or a score, in about the time a tool call takes. Where `ctx.ask_model` gets free text from the session's model,
+a judgment gets a number from the model the user set for this, and every ask is saved, so a later comparison or
+fine-tune has what was sent and what came of it. It is chi's own layer (approvals use the same `Client` and runs) and
+gives a bundle no new power.
+
+```ruby
+def register(chi)
+  chi.judgment "progress", questions: { "progress" => { type: "noul", instructions: "Is this turn still making progress?" } },
+                           positive: "keep_going", negative: "stop", shared_host: :skip
+
+  chi.on(:after_tool_call) do |_event, ctx|
+    @run = ctx.judge_later("progress", state: { prompt: @prompt, calls: @calls }) do |result|
+      next if result.no_judgment? || result.audit?
+
+      ctx.notify("this turn looks stuck") if result.p < 0.2
+    end
+  end
+
+  chi.command("/going", "Say the turn is fine") do |_args, ctx|
+    ctx.judgments.label(@run, "keep_going", by: "command")
+    nil
+  end
+end
+```
+
+**It is off until the user says so.** The full name is `<bundle>.<name>` (`check-in.progress`), and it asks nothing until
+config.yml's [`system_one.judgments`](configuration.md#bundles-judgments) gives it a mode, `audit` or `on`, which it can
+also give a host and a model of its own. Neither `audit` nor `on` changes anything by itself: `result.audit?` is the bundle's
+to honour (in audit, look and don't act). A full name is dot-separated words of a-z, 0-9, `_` and `-`, so a bundle whose
+name has a capital fails to load on this call. `approvals`, `context`, `guardrails` and `toolkit` as a first word and
+`.replay` at the end are core's.
+
+`chi.judgment`:
+
+- `questions:` is a map of id to `{type:, instructions:, criteria:}`: `"noul"`, `"choice"` (criteria: `{name => description or
+  nil}`) or `"score"` (criteria: a list of levels). Or a callable given `ctx`, called at each ask, where they vary per
+  session. A plain map is checked when declared, a bad one failing the plugin's load; a callable's result at each ask, raising there.
+- `positive:` and `negative:` name the label values that say the answer was right and wrong (a word or a list). They
+  are saved in each run for a later comparison, and don't limit `label`.
+- `shared_host:` says what to do while a turn runs on the same local server (the same `hosts:` entry or the same URL
+  root, and not a remote one), where an ask evicts the turn's cached prompt: `:skip`, the default, saves the run with `asked: false`, so a
+  later replay can answer it; `:ask` asks anyway. Between turns and on a remote host, it asks either way.
+
+`ctx.judge(name, state:)` asks and waits, at most `system_one.timeout_ms`. `name` is as declared, without the bundle.
+`state:` is a String, Hash or Array: what the question is about, sent to the System 1 host and saved as sent (bytes that
+aren't UTF-8 replaced). It stops when the turn is stopped, as `ctx.http` does. **It returns a Result, and doesn't raise for
+anything that goes wrong on the way:**
+
+| On the Result | |
+|---|---|
+| `no_judgment?` | no answers |
+| `answers` | `{id => answer}`: `.noul`, `.choice`, `.score`, `.confidence`, `.probabilities` |
+| `p(id)` | a `noul` question's probability of yes (nil for no answer, or another type); no id: the only question's |
+| `audit?`, `mode` | the judgment's mode: `"off"`, `"audit"` or `"on"` |
+| `run_id` | for `ctx.judgments`; nil when no run was saved |
+| `reason` | why there's no answer, below; nil with answers |
+
+| `reason` | When | A run? |
+|---|---|---|
+| `:off` | no mode set | no |
+| `:no_host` | no `system_one.host`, nor one of its own | no |
+| `:no_session` | no session bound yet | no |
+| `:failed` | the host couldn't be reached, timed out, refused, or sent something unusable | yes, with `failure` |
+| `:cancelled` | the turn was stopped during the ask | yes, with `failure: "cancelled"` |
+| `:shared_host` | `shared_host: :skip`, and a turn is running on it | yes, `asked: false` |
+| `:busy` | `judge_later` only: this judgment's last one still runs | yes, `asked: false` |
+
+An undeclared name or a bad `state:` raises `ArgumentError`, as `ask_model` does for a bad model, and so does `ctx.judge` in a
+`:generation_progress` handler, whose stream it would hold.
+
+`ctx.judge_later(name, state:) { |result| … }` asks on its own thread and **returns the run's id at once** (nil when no run will be
+saved). One per judgment runs at a time. The block is optional, and gets the Result once, on another thread, however
+the ask went, also when nothing was asked. A block that raises is logged.
+
+- **The block's `ctx.*` act on the session as it is then**, not as the handler's event: the turn may have ended, or the
+  worker moved to another session. Compare `ctx.session_id` with the one you started from before acting.
+- A `judge_later` still running when chi shuts down gets a second, then it and its run are lost. On `chi -p
+  --non-interactive` this is the usual end of a slow ask.
+- Snapshot what you need: the block sees only what it closes over.
+
+`ctx.judgments.label(run_id, value, by: nil, strength: nil, question: nil)` saves what came of a run, as a later line on it;
+`ctx.judgments.acted(run_id, what)` saves what the bundle did about it. Both return whether they saved anything. `value`
+and `what` are the bundle's own words (up to 200 characters), mapped only at analysis. `by:` says what said it, always after
+the bundle's name (`check-in:card`). `strength:` is `"strong"` (the user said so) or `"weak"` (they may have clicked out of habit).
+A `nil` id saves nothing and isn't an error, so a run that wasn't saved needs no check; another bundle's id raises `ArgumentError`.
+
+**What's saved.** A run holds the state as sent: prompts, commands and whatever else the bundle put there, in the
+user's state dir, for as long as sessions last ([System 1's saved runs](system-one.md)). Nothing is saved for a scratch
+session or in a participant's turn (those asks still go to the host). `system_one.runs: off` stops all of it.
+
+**Cost.** A judgment stays out of the session's spend, as all of System 1's do, and **a bundle's judgments on a hosted host aren't under a
+cost cap**. At about $0.000015 a question that's accepted; ask at a human pace all the same, not per stream batch. The tokens a host reports are
+saved in the run (`usage`).
 
 ## Calling services: `ctx.http`
 
@@ -1313,6 +1416,11 @@ bundle.notices.map(&:text)                               # also cards, steers, s
 bundle.questions.last.effects                            # an ask_user's tags as given: { "Continue" => :spend }
 bundle.answer({ selected: "yes" })                       # the next ask_user's answer
 bundle.model_answers << "a summary"                      # the next ask_model's answer
+bundle.judgments.answer("progress", noul: 0.9)           # ctx.judge's answer from now on; question: for one of several, or a block given the state
+bundle.judgments.fail("progress")                        # a failed backend; mode("progress", "off"), no_host("progress"), shared_host_busy too
+bundle.judgments.wait                                    # judge_later's threads and blocks are done
+bundle.judgments.asks.last.state                         # the asks that reached System 1: name, state, questions, cancel
+bundle.judgments.runs("progress").last["asked"]          # the runs as chi saves them; labels("progress"), acted_lines("progress") too
 bundle.sessions.on(:children) { |all:| [] }              # ctx.sessions, scripted and recorded
 bundle.http.stub(:post, "http://127.0.0.1:9000/classify", json: { label: "safe" })   # ctx.http, never the network
 bundle.set(running: false)                               # the session's values: cwd:, messages:, cancelled: …

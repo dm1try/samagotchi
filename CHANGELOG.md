@@ -14,6 +14,10 @@ and commands may change between minor versions. How releases are made:
   local only. They hold prompts, commands and diffs, as sent. They last as long as sessions (`session.retention_days`, 100 MB
   in all), `chi sessions delete` purges a session's, and `system_one.runs: off` stops it. `chi judgments ls` and
   `chi judgments report NAME [--days N]` show what's there. See docs/system-one.md.
+- Bundles can ask System 1 cheap questions of their own: `chi.judgment` declares one, `ctx.judge` and `ctx.judge_later` ask it,
+  `ctx.judgments.label` says what came of it, and each ask saves a run. Each is off until you set its mode under
+  `system_one.judgments`, which may also give it its own host and model (core's judgments take neither). Bundles' judgments stay out of
+  the session's spend, so no cost cap covers them on a hosted host. The test kit has `bundle.judgments`. See docs/plugins.md (Judgments).
 
 ### Changed
 

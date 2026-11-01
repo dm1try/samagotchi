@@ -117,6 +117,7 @@ end
 
 `bundle.tool_call` runs guarded hooks; `bundle.tool` calls a registered tool. `bundle.steers`, `cards`, `stops` and
 `questions` record effects; `bundle.answer` / `model_answers` provide `ask_user` / `ask_model` answers.
+`bundle.judgments` answers `ctx.judge` and records its asks and runs (each judgment is on in the kit, off in chi until the user sets it);
 `bundle.http.stub` stubs `ctx.http`; `bundle.question_asked(text, question:)` fires `:question_asked` and returns
 the refs; `sandbox.config`, `sandbox.fake_executable` and `bundle.install` cover setup.
 The full list is in [plugins.md, Testing a bundle](plugins.md#testing-a-bundle-experimental). The kit is
