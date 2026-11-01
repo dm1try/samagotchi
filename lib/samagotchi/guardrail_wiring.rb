@@ -277,6 +277,7 @@ module Samagotchi
           config_path: Samagotchi::ConfigFile.global_path,
           hooks_dir: Hooks::Loader.hooks_dir,
           context_dir: ContextSources.root,
+          runs_dir: File.join(File.dirname(@approvals.path, 2), "system_one"),
           home_path: ChiHome.path,
           shim_path: ChiShim.path
         )

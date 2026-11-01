@@ -11,9 +11,10 @@ module Samagotchi
     # lexical answer and where the write lands, a vote when either is
     # protected).
     #   deny: the approval store's dir, installed bundles (.bundles/:
-    #         hooks, rules, manifests) and attached context (a source's
+    #         hooks, rules, manifests), attached context (a source's
     #         command runs later, outside the gate; chi context writes
-    #         it); nothing legitimate writes there through the file tools.
+    #         it) and System 1's saved runs (a label there may train a
+    #         model); nothing legitimate writes there through the file tools.
     #   ask (once / session): config.yml, home.json (the chi home: the
     #         Ruby every chi launch boots), the chi shim (ChiShim: the
     #         `chi` every tool runs) and the plain hooks dir. The
@@ -31,13 +32,15 @@ module Samagotchi
       # @param config_path [String] config.yml
       # @param hooks_dir [String] the plain hooks dir
       # @param context_dir [String, nil] <state dir>/context (ContextSources.root)
+      # @param runs_dir [String, nil] <state dir>/system_one (SystemOne::Runs)
       # @param home_path [String, nil] home.json (ChiHome.path)
       # @param shim_path [String, nil] the chi shim (ChiShim.path)
-      def initialize(store_dir:, bundles_dir:, config_path:, hooks_dir:, context_dir: nil, home_path: nil, shim_path: nil)
+      def initialize(store_dir:, bundles_dir:, config_path:, hooks_dir:, context_dir: nil, runs_dir: nil, home_path: nil, shim_path: nil)
         @deny = [
           ["guardrail-store", store_dir, "the approval store belongs to the user"],
           ["installed-bundles", bundles_dir, "installed bundles (hooks, rules, manifests) are changed by chi bundle install"],
-          ["chi-context", context_dir, "attached context sources run commands; change them with chi context"]
+          ["chi-context", context_dir, "attached context sources run commands; change them with chi context"],
+          ["system-one-runs", runs_dir, "System 1's saved runs are chi's own record"]
         ]
         @ask = [
           ["chi-config", config_path, "changes chi's config.yml"],

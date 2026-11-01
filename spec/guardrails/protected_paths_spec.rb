@@ -13,6 +13,7 @@ RSpec.describe Samagotchi::Guardrails::ProtectedPaths do
                         config_path: File.join(config_dir, "config.yml"),
                         hooks_dir: File.join(config_dir, "hooks"),
                         context_dir: File.join(root, "state", "context"),
+                        runs_dir: File.join(root, "state", "system_one"),
                         home_path: File.join(config_dir, "home.json"),
                         shim_path: File.join(root, "state", "bin", "chi"))
   end
@@ -32,6 +33,11 @@ RSpec.describe Samagotchi::Guardrails::ProtectedPaths do
     expect([v.decision, v.rule, v.source]).to eq([:deny, "guardrail-store", "core"])
     v = verdict_for(name: "edit", path: "config/memories/.bundles/b/hooks/g.rb", content: "x")
     expect([v.decision, v.rule]).to eq([:deny, "installed-bundles"])
+  end
+
+  it "denies writes to System 1's saved runs: a label there may train a model" do
+    v = verdict_for(name: "write", path: "state/system_one/runs/approvals.allow/2026-11-01.jsonl", content: "x")
+    expect([v.decision, v.rule, v.source]).to eq([:deny, "system-one-runs", "core"])
   end
 
   it "denies writes to attached context: a source's command runs later, outside the gate" do
