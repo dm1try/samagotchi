@@ -9,6 +9,7 @@ require_relative "../client_id"
 require_relative "../installed_gem"
 require_relative "../live_versions"
 require_relative "../log"
+require_relative "../process_group"
 require_relative "../session"
 require_relative "../session_manager"
 require_relative "../version"
@@ -33,18 +34,31 @@ module Samagotchi
         def done? = state == "done"
       end
 
+      # How long the chi update child may run: far past a gem install on a slow
+      # line. Past it the child is stuck, and holding the one-at-a-time rule
+      # would answer 409 to every later operation and hold AutoUpdate for good.
+      UPDATE_TIMEOUT = 30 * 60
+      # A stopped child's TERM to KILL, and how long what a child that has
+      # exited left behind may hold its pipes.
+      STOP_GRACE = 5
+
       # @param hub [SessionHub, nil] the frames' publisher
       # @param manager [#restart_session] SessionManager
       # @param state_dir [String, nil] the sessions dir (nil: the default)
       # @param runner [#call] `(argv, env:, progress:) → [stdout, success]`
       #   runs the chi update child
       # @param blocked [#call] why this install can't take a gem, or nil
-      def initialize(hub:, manager: SessionManager, state_dir: nil, runner: nil, blocked: nil)
+      # @param deadline [#call] `(wait_thread) → truthy` when the child ended in time
+      # @param stop_grace [Numeric] STOP_GRACE
+      def initialize(hub:, manager: SessionManager, state_dir: nil, runner: nil, blocked: nil,
+                     deadline: ->(child) { child.join(UPDATE_TIMEOUT) }, stop_grace: STOP_GRACE)
         @hub = hub
         @manager = manager
         @state_dir = state_dir
         @runner = runner || method(:run_update_command)
         @blocked = blocked || -> { UpdateCheck.blocked_reason }
+        @deadline = deadline
+        @stop_grace = stop_grace
         @mutex = Mutex.new
         @running = false
         @restart_web = nil
@@ -194,14 +208,36 @@ module Samagotchi
         nil
       end
 
+      # In a process group of its own, so a stop reaches what it started too.
       def run_update_command(argv, env:, progress:)
-        Open3.popen3(env, *argv) do |stdin, stdout, stderr, wait_thread|
+        Open3.popen3(env, *argv, pgroup: true) do |stdin, stdout, stderr, wait_thread|
           stdin.close
-          stderr_thread = Thread.new { stderr.each_line { |line| progress.call(line.chomp) } }
-          output = stdout.read
-          stderr_thread.value
-          [output, wait_thread.value.success?]
+          output = ProcessGroup::PipeReader.new(stdout)
+          stderr_thread = progress_thread(stderr, progress)
+          stop_update_child(wait_thread) unless @deadline.call(wait_thread)
+          # Both pipes end with the child, unless something it left behind holds them.
+          output.finish(poll: @stop_grace, grace: 1)
+          stderr_thread.join(@stop_grace)
+          [output.text, wait_thread.value.success?]
         end
+      end
+
+      def progress_thread(stderr, progress)
+        Thread.new do
+          Thread.current.report_on_exception = false
+          stderr.each_line { |line| progress.call(line.chomp) }
+        rescue IOError # popen3's block ended with something still holding the pipe
+          nil
+        end
+      end
+
+      # @raise [UpdateFailed] always: perform_install's failed row says it
+      def stop_update_child(child)
+        pid = child.pid
+        Log.warn(:web, "update_timed_out", pid: pid)
+        ProcessGroup.stop(pid, grace: @stop_grace, poll: 0.05, leader: true,
+                               stopped: -> { !child.alive? && !ProcessGroup.group_alive?(pid) })
+        raise UpdateFailed, "chi update stopped after #{UPDATE_TIMEOUT / 60} minutes without finishing"
       end
 
       # One worker's restart as its row.

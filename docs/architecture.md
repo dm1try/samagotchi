@@ -365,7 +365,8 @@ The owner's update routes publish progress and results as `chi_update` events wi
 `version` and may include a progress line. The hub retains the latest event for a reconnecting
 tab's snapshot. `POST /api/update` decides itself whether this install can take a gem
 (`UpdateCheck.blocked_reason`: a checkout, Bundler, an unwritable gem dir → 409 `update_blocked`), so
-it holds with `update.notify: off`; a child that prints no rows fails with its own last line, and a
+it holds with `update.notify: off`; a child that prints no rows fails with its own last line, a child still running after
+30 minutes (`UpdateOps::UPDATE_TIMEOUT`; it has a process group of its own) is stopped with what it started and fails the same way, and a
 done install refreshes the hub's installed version (`SessionHub#refresh_installed`) before its `done`.
 Worker restarts target every worker older than the version installed now (refreshed the same way)
 and publish per-session results. Only one of an install, a worker restart pass and a web restart runs
