@@ -89,7 +89,10 @@ module Samagotchi
     # @param log [Array(Symbol, String)] the warning's tag and record name
     # @param echo [Boolean] the warning also goes to stderr
     # @param fields [Hash] more fields for the warning's record
-    def self.wrap(label:, event:, policy:, log: [:hooks, "hook_failed"], echo: true, fields: {}, &block)
+    # @param on_failure [#call, nil] under :log, (label, "Class: message") on
+    #   every failure the rescue takes, logged or not; whatever it raises
+    #   stays here, so it can't change the policy
+    def self.wrap(label:, event:, policy:, log: [:hooks, "hook_failed"], echo: true, fields: {}, on_failure: nil, &block)
       log_failure = failure_log_gate(event)
       lambda do |payload|
         yield(payload)
@@ -102,13 +105,23 @@ module Samagotchi
         failed = "#{e.class}: #{e.message}"
         if policy == :deny
           payload[:guardrail]&.deny!("#{label} raised #{failed}", rule: "guardrail-load", source: "core", decided_by: "core") if payload.is_a?(Hash)
-        elsif policy == :log && log_failure.call
-          text = "#{label} failed: #{failed}"
-          Log.warn(log[0], log[1], echo: echo ? "[samagotchi:hooks] #{text}" : nil, hook: label, event: event.to_s,
-                                   error: e.class.name, msg: text, **fields)
+        elsif policy == :log
+          if log_failure.call
+            text = "#{label} failed: #{failed}"
+            Log.warn(log[0], log[1], echo: echo ? "[samagotchi:hooks] #{text}" : nil, hook: label, event: event.to_s,
+                                     error: e.class.name, msg: text, **fields)
+          end
+          tell_failure(on_failure, label, failed)
         end
       end
     end
+
+    def self.tell_failure(on_failure, label, failed)
+      on_failure&.call(label, failed)
+    rescue StandardError => e
+      Log.debug(:hooks, "hook_failure_not_told", hook: label, error: e.class.name)
+    end
+    private_class_method :tell_failure
 
     # What a hook can do beyond reading its event: the Engine's
     # callables, each given the hook's label. +notify+ takes

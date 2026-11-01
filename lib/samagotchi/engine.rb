@@ -1548,9 +1548,11 @@ module Samagotchi
       @guardrail_failures.message if @guardrail_failures_announced
     end
 
-    # The plugins' load warning the first turn announced, likewise.
+    # The plugins' load warning the first turn announced, likewise, and what
+    # their failed chi.on handlers told (HookRoutes#plugin_hook_failed).
     def plugin_warning
-      @plugin_failures.message if @guardrail_failures_announced
+      loaded = @plugin_failures.message if @guardrail_failures_announced
+      [loaded, @hook_routes.hook_failures_message].compact.join("; ").then { |text| text unless text.empty? }
     end
 
     # Ask the user to approve a call the gate voted `ask` on
@@ -2924,7 +2926,8 @@ module Samagotchi
         peer_sources: @peer_sources,
         prompt_sections: @prompt_sections,
         prompt_changed: -> { prompt_changed! },
-        judgments: @judgments
+        judgments: @judgments,
+        hook_failed: ->(hook, failed) { @hook_routes.plugin_hook_failed(hook, failed) }
       )
       # What plugins show while they load (an MCP server that didn't
       # start) waits for the first turn, beside the load warnings: no UI

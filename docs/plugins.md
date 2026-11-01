@@ -465,7 +465,8 @@ attaches refs to it ([Refs on the answer](hooks.md#refs-on-the-answer-display-on
 `:question_asked`, `event[:refs]` attaches refs to the reply that asks a question
 ([Refs on a question](hooks.md#refs-on-a-question-display-only)). Its label is
 `plugin.rb (bundle my-bundle)`. The block may take only the event. If it
-raises, the error is logged and the hook is skipped.
+raises, the error is logged and the hook is skipped; the first failure per
+event in a worker also shows once in every UI (`plugins> plugin.rb (bundle x) before_turn hook failed (…)`).
 
 To act from the block, use `ctx`: `ctx.notify`, `ctx.ask_user`,
 `ctx.steer`, `ctx.stop_turn`, `ctx.stop_generation`. Inside the block they

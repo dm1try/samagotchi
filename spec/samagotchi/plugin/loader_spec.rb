@@ -204,6 +204,68 @@ RSpec.describe Samagotchi::Plugin::Loader do
     expect(failed).to eq(%w[generation_progress before_turn before_turn])
   end
 
+  describe "a chi.on handler that raises" do
+    let(:broken) do
+      <<~RUBY
+        class Plugin
+          def register(chi)
+            chi.on(:before_turn) { |_event, ctx| ctx.removed_api_call }
+            chi.on(:after_turn) { raise "turn over\nsecond line" }
+            chi.on(:session_end) { |event| event[:ran_after] = true }
+          end
+        end
+      RUBY
+    end
+    let(:eng) do
+      install_plugin("brk", broken)
+      engine
+    end
+    let(:hooks) { eng.instance_variable_get(:@hooks) }
+    let(:seen) { [] }
+
+    def warnings = seen.select { |event| event[:type] == :guardrail_warning }
+
+    before do
+      eng.announce_load_events!
+      eng.subscribe(observer: ->(event) { seen << event })
+    end
+
+    it "tells the user once per hook, on the plugins' surface, and logs every firing" do
+      logged = []
+      allow(Samagotchi::Log).to receive(:warn).and_call_original
+      allow(Samagotchi::Log).to receive(:warn).with(:plugins, "plugin_hook_failed", any_args) { |*_args, **fields| logged << fields[:event] }
+
+      3.times { hooks.fire(:before_turn, { type: :before_turn }) }
+      2.times { hooks.fire(:after_turn, { type: :after_turn }) }
+
+      expect(logged).to eq(%w[before_turn before_turn before_turn after_turn after_turn])
+      expect(warnings.map { |event| event[:label] }).to eq(%w[plugins plugins])
+      expect(warnings.first[:message]).to eq(
+        "plugin.rb (bundle brk) before_turn hook failed (NoMethodError: undefined method 'removed_api_call' for an instance of " \
+        "Samagotchi::Plugin::Context): it's skipped, and only the log has its next failures"
+      )
+      expect(warnings.last[:message]).to start_with("plugin.rb (bundle brk) after_turn hook failed (RuntimeError: turn over):")
+    end
+
+    it "shows a UI that joins later the same line (Bridge's snapshot)" do
+      expect(eng.plugin_warning).to be_nil
+      hooks.fire(:before_turn, { type: :before_turn })
+      expect(eng.plugin_warning).to eq(warnings.first[:message])
+
+      hooks.fire(:after_turn, { type: :after_turn })
+      expect(eng.plugin_warning).to eq(warnings.map { |event| event[:message] }.join("; "))
+    end
+
+    it "stays fail-open: the event goes on to the next hook, and a failing notice costs nothing" do
+      event = { type: :session_end }
+      hooks.fire(:session_end, event)
+      expect(event[:ran_after]).to be true
+
+      allow(eng.instance_variable_get(:@hook_routes)).to receive(:guardrail_notify).and_raise("no UI")
+      expect { hooks.fire(:before_turn, { type: :before_turn }) }.not_to raise_error
+    end
+  end
+
   describe "chi.service" do
     before { $plugin_service_log = [] }
     after { $plugin_service_log = nil }

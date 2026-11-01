@@ -228,7 +228,7 @@ turn. Don't ask questions or call the model from it: `event[:ask_user]`
 returns nil at once here, and `ctx.ask_model` would hold the stream for its
 whole answer. A hook that never returns hangs the turn, as any hook does. A
 plugin's block that raises is logged (`plugin_hook_failed`) at most once a
-minute.
+minute, and its first failure in a worker shows once in every UI.
 
 Two ways to act:
 

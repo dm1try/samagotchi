@@ -213,7 +213,8 @@ module Samagotchi
       # the block gets the event hash and the Context (a block may take the
       # event alone); while it runs, ctx.notify and the other helpers act
       # as this event's (Context#with_event). A block that raises is
-      # logged (not shown) and skipped.
+      # logged and skipped; its first failure in this worker also tells the
+      # user, once (Registries#hook_failed).
       # @param priority [Integer] lower runs first among bundle hooks
       def on(event, priority: 100, &block)
         raise ArgumentError, "on(#{event.inspect}) needs a block" unless block
@@ -444,9 +445,10 @@ module Samagotchi
         @tools.each { |tool| @registries.tools.register(tool.name, source: @bundle, **tool.entry_fields(context)) }
         @hooks.each do |hook|
           block = hook[:block]
-          # Logged only (echo: false): a turn's live region is on screen.
+          # Never stderr (echo: false): a turn's live region is on screen.
           handler = Hooks.wrap(label: "#{@label} #{hook[:event]} hook", event: hook[:event], policy: :log,
-                               log: [:plugins, "plugin_hook_failed"], echo: false, fields: { bundle: @bundle }) do |event|
+                               log: [:plugins, "plugin_hook_failed"], echo: false, fields: { bundle: @bundle },
+                               on_failure: @registries.hook_failed) do |event|
             # ctx's helpers act as this event's while the block runs.
             context ? context.with_event(event) { block.call(event, context) } : block.call(event, context)
           end

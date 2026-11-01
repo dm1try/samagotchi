@@ -18,6 +18,8 @@ module Samagotchi
   class HookRoutes
     # What a notice may stand in for (#notify's fallback_for:).
     NOTICE_FALLBACKS = %i[display editor].freeze
+    # How much of a failed hook's error #plugin_hook_failed shows.
+    HOOK_FAILURE_CHARS = 300
 
     # @param event_routes      [EventRoutes] where a notice goes
     # @param question_desk     [#call] → QuestionDesk
@@ -31,6 +33,8 @@ module Samagotchi
       @steer = steer
       @turn_author = turn_author
       @unknown_fallbacks = Set.new
+      @hook_failures = {}
+      @hook_failures_lock = Mutex.new
     end
 
     # The things a hook can do beyond reading its event. Each gets the
@@ -81,9 +85,30 @@ module Samagotchi
     # load failures show): a running turn's event, else announced or held for
     # the caller (EventRoutes#route_by_turn: never held while the plugins
     # load, never an anytime command's, unmarked).
-    def guardrail_notify(message)
-      @event_routes.route_by_turn({ type: :guardrail_warning, message: message.to_s })
+    # @param label [String, nil] whose line ("plugins"); nil for the guardrails
+    def guardrail_notify(message, label: nil)
+      @event_routes.route_by_turn({ type: :guardrail_warning, message: message.to_s, label: label }.compact)
       nil
+    end
+
+    # A chi.on handler raised (the log has every firing: Hooks.wrap). Its
+    # first failure on this Engine, so in this worker, tells the user, as a
+    # plugin that failed to load does; then only the log. One line per
+    # label, so per bundle and event: a handler on a stream can't nag.
+    # @param hook [String] "<file> (bundle <name>) <event> hook"
+    # @param failed [String] "Class: message"
+    def plugin_hook_failed(hook, failed)
+      line = "#{hook} failed (#{failed.lines.first.to_s.strip[0, HOOK_FAILURE_CHARS]}): it's skipped, and only the log has its next failures"
+      first = @hook_failures_lock.synchronize { @hook_failures.key?(hook) ? false : (@hook_failures[hook] = line) }
+      guardrail_notify(line, label: "plugins") if first
+      nil
+    end
+
+    # What #plugin_hook_failed told, for a UI that joins later; nil for none.
+    # @return [String, nil]
+    def hook_failures_message
+      lines = @hook_failures_lock.synchronize { @hook_failures.values }
+      lines.empty? ? nil : lines.join("; ")
     end
 
     # A question through the question flow (REPL sync handler, attached TUI,

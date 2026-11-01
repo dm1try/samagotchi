@@ -31,6 +31,9 @@ and commands may change between minor versions. How releases are made:
 
 - `chi bundle check` warns (`api`) on a `ctx.*` or `chi.*` call, or a keyword, that this chi's API lacks, at its line:
   `ctx.settingz`, `ctx.sessions.nope`, `ctx.card(titel:)`. It reads the plugin's source, so a path no test runs counts too.
+- A plugin's `chi.on` handler that raises now tells you, once per event in a worker, in the TUI and the web
+  (`plugins> plugin.rb (bundle x) before_turn hook failed (…)`). Before, only the log knew. The hook is still skipped, and the log
+  still has each failure.
 
 ## [0.142.0] - 2026-11-01
 
