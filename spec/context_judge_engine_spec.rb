@@ -144,6 +144,20 @@ RSpec.describe Samagotchi::Engine do
     expect(system_one).not_to have_received(:ask)
   end
 
+  it "saves each ask as context.candidate's run, on the session it judged" do
+    store = Samagotchi::SystemOne::Runs::MemoryStore.new
+    engine = build_engine
+    allow(engine).to receive(:system_one_runs).and_return(Samagotchi::SystemOne::Runs.new(store: store))
+    session = new_session
+    propose(session, "pr-412")
+
+    judge(engine, session, "Fix the login redirect")
+    join!(engine.instance_variable_get(:@side_judgments).thread(:context), "the asks")
+    line = store.lines["context.candidate"].first
+    expect(line).to include("judgment" => "context.candidate", "session_id" => session.id, "session_model" => "model")
+    expect(line["state"]["candidate"]).to include("Fix the login redirect")
+  end
+
   it "waits for the turn's end on the model's own local server" do
     engine = build_engine(model_host: double(name: "judge", remote?: false, root_url: "http://127.0.0.1:8080"))
     allow(engine).to receive(:turn_running?).and_return(true)

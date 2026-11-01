@@ -407,6 +407,34 @@ RSpec.describe Samagotchi::Engine, "toolkit suggestion on mode" do
     end
   end
 
+  describe "runs (the recording seam)" do
+    let(:store) { Samagotchi::SystemOne::Runs::MemoryStore.new }
+
+    before { allow(engine).to receive(:system_one_runs).and_return(Samagotchi::SystemOne::Runs.new(store: store)) }
+
+    it "saves the real ask as toolkit.suggest's run" do
+      answers << pick("kit:web", 0.9)
+      turn(session)
+      join!(engine.instance_variable_get(:@side_judgments).thread(:toolkit), "the ask")
+      line = store.lines["toolkit.suggest"].first
+      expect(line).to include("judgment" => "toolkit.suggest", "host" => "judge", "mode" => "on", "asked" => true)
+      expect(line["state"]["prompt"]).to eq("Fix the browser flow")
+      expect(line["answers"]["toolkit"]).to include("choice" => "kit:web")
+    end
+
+    it "saves no run for a warm-up" do
+      release = Queue.new
+      entered = Queue.new
+      answers << -> { (entered << true) && release.pop && pick("kit:web", 0.9) }
+      engine.session = session
+      engine.warm_toolkit_suggestion!
+      pop!(entered, "the warm-up ask")
+      release << true
+      join!(engine.instance_variable_get(:@toolkit_warmup_thread), "the warm-up")
+      expect(store.lines).to be_empty
+    end
+  end
+
   it "stops a still-running warm-up when the first real ask starts, so it never queues behind it (M3)" do
     release = Queue.new
     entered = Queue.new

@@ -431,7 +431,10 @@ module Samagotchi
         # System 1 (experimental, audit phase): the judgment client is read
         # from config on every ask, and the running turn's cancel controller
         # closes a judgment that is no longer wanted.
-        system_one: -> { SystemOne::Client.from_config(host_registry: @host_registry, mode: Config.get("guardrails.system_one.mode")) },
+        system_one: lambda {
+          system_one_recording(SystemOne::Client.from_config(host_registry: @host_registry, mode: Config.get("guardrails.system_one.mode")),
+                               "approvals.allow", @session)
+        },
         cancel_controller: -> { active_cancel_controller },
         # A participant's turn: their name on the owner's card, their
         # grant's mode for the turn's (GuardrailWiring#turn_mode).
@@ -3055,7 +3058,8 @@ module Samagotchi
         return
       end
 
-      client = SystemOne::Client.from_config(host_registry: @host_registry, mode: "on", tag: :toolkit)
+      client = system_one_recording(SystemOne::Client.from_config(host_registry: @host_registry, mode: "on", tag: :toolkit),
+                                    "toolkit.suggest", session)
       return unless client
 
       # D7: on a shared single-slot server audit's free ask would compete
@@ -3210,6 +3214,24 @@ module Samagotchi
     end
     private :toolkit_suggestion_log
 
+    # +client+ (nil for none) saving its asks as +judgment+'s runs. Anything
+    # going wrong here leaves the client as it was: a run is never worth a
+    # judgment.
+    def system_one_recording(client, judgment, session)
+      return nil if client.nil?
+
+      context = SystemOne::Recording::Context.of(session, session_model: session && effective_model_name)
+      SystemOne::Recording.wrap(client, judgment: judgment, runs: system_one_runs, context: context)
+    rescue StandardError => e
+      Log.warn(:system_one, "system_one_recording_failed", error: e.class.name, msg: e.message.to_s[0, 200])
+      client
+    end
+    private :system_one_recording
+
+    # Where runs are saved: nowhere until the store comes.
+    def system_one_runs = SystemOne::Runs.new
+    private :system_one_runs
+
     # D7: System 1's host is the session's model server, and a local one
     # (a single-slot Splash or llama.cpp): the same name, or two hosts:
     # entries for one server root (scheme, host, port).
@@ -3270,7 +3292,8 @@ module Samagotchi
                                               parent_attached: context_parent_attached(session))
       return if jobs.empty?
 
-      client = SystemOne::Client.from_config(host_registry: @host_registry, mode: "on", tag: :context)
+      client = system_one_recording(SystemOne::Client.from_config(host_registry: @host_registry, mode: "on", tag: :context),
+                                    "context.candidate", session)
       return unless client
 
       choice = context_choice(session, log, settings)
