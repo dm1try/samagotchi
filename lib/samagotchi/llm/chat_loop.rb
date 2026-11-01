@@ -11,6 +11,7 @@ require_relative "anthropic_wire"
 require_relative "native_tool_normalizer"
 require_relative "refusal_memo"
 require_relative "stream_drops"
+require_relative "stray_tool_call"
 require_relative "../kernel_loop"
 require_relative "../answer_display"
 require_relative "../answer_refs"
@@ -584,6 +585,10 @@ module Samagotchi
           @reasoning_start = ReasoningHistory.run_start(conversation, start || conversation.length)
           @tool_activity = []
           @empty_retry = EmptyAnswerRetry.new
+          # A reply that was only a tool call the host could not read is asked
+          # for once, whatever retry.empty_answer says (a bug fix, not a
+          # preference), at the same retry temperature.
+          @stray_retry = EmptyAnswerRetry.new(limit: 1)
           # The empty generations, never saved: the UIs draw the turn's
           # steps from them (ModelResult#empty_steps).
           @empty_steps = []
@@ -629,6 +634,10 @@ module Samagotchi
             # tool calls that came with it are not run.
             @refusal = refusal_of(response, last_text)
             stopped = @refusal || response.finish_reason.to_s == FILTERED
+            # The budget is for two in a row: a real tool call in between means
+            # the model recovered, and a slip later in a long turn gets its own retry.
+            @stray_retry = EmptyAnswerRetry.new(limit: 1) unless response.tool_calls.empty?
+
             if response.tool_calls.empty? || stopped
               # A refusal is no answer, never asked again; text it streamed
               # before is not kept as one. A filtered answer's text stays,
@@ -637,24 +646,56 @@ module Samagotchi
               last_text = "#{last_text}\n#{FILTERED_MARK}" if !@refusal && response.finish_reason.to_s == FILTERED
               # Only whitespace is no answer either (as in the native loop).
               empty = last_text.strip.empty?
+              # A reply that is nothing but a tool call the host could not
+              # read (LLM::StrayToolCall) is no answer either. Checked here,
+              # before the append, so the bad text never enters the history:
+              # the retry's prompt is the same conversation plus one note, and
+              # nothing is guessed from the block. (:generation_completed and
+              # :after_generation have already seen the text, as they do for
+              # every step; the UIs lose the streamed text with the
+              # :generation_retrying below.)
+              stray = empty || stopped ? nil : LLM::StrayToolCall.shape(last_text)
+              retry_stray = stray && @stray_retry.left? && !@cancel_controller&.cancelled?
+              if stray
+                Log.warn(:model, "generation_malformed", iteration: iteration, shape: stray,
+                                                    finish_reason: response.finish_reason,
+                                                    served_model: response.model,
+                                                    retried: retry_stray,
+                                                    payload: LLM::StrayToolCall.tail(last_text))
+                unless retry_stray
+                  # The second one in a row is no answer and runs no tool: the
+                  # turn fails, and its earlier steps stay (FailedTurn's
+                  # partial conversation, as for any provider error here).
+                  @stray_retry.drop_nudge!(@conversation)
+                  host = host_label
+                  raise LLM::MalformedGeneration.new("#{host}: the reply came back as a #{stray} block the host " \
+                                                    "could not read, twice in a row; nothing was run", host: host)
+                end
+              end
               # Kept before a merge too: the model answers the merged line
               # knowing what it just said.
-              @conversation << with_thinking({ role: "model", content: last_text }, response) unless empty
+              @conversation << with_thinking({ role: "model", content: last_text }, response) unless empty || stray
               retry_empty = empty && !stopped &&
                             @empty_retry.retry_empty?(iteration: iteration, cancelled: @cancel_controller&.cancelled?,
                                                       finish_reason: response.finish_reason,
                                                       used_tokens: response.usage&.total_tokens, window_tokens: @window&.tokens)
-              # An empty answer that will be retried is no answer site: a
-              # plugin's steer joins the retry instead of being dropped, and
-              # queued input (a user's line, a steer) goes in place of the nudge.
-              next if inject_pending_input(iteration, answer: retry_empty ? nil : last_text)
+              # An empty answer or a stray call that will be retried is no
+              # answer site: a plugin's steer joins the retry instead of being
+              # dropped, and queued input (a user's line, a steer) goes in
+              # place of the nudge.
+              next if inject_pending_input(iteration, answer: retry_empty || retry_stray ? nil : last_text)
 
               # An empty answer (content "" + stop, seen from a remote host)
-              # ends the turn with no text: the UIs show their notice.
-              @empty_steps << with_thinking({ role: "model", content: "" }, response) if empty
+              # ends the turn with no text: the UIs show their notice. A stray
+              # reply's text goes to the steps too, so a reload of the turn
+              # can show what the model wrote and did not get run.
+              @empty_steps << with_thinking({ role: "model", content: empty ? "" : last_text }, response) if empty || retry_stray
+              # Nothing of this reply is the turn's answer: a run that runs
+              # out of steps at the retry reports no answer, not the block.
+              last_text = "" if empty || retry_stray
               next if retry_empty && nudge_empty_answer(iteration, response)
+              next if retry_stray && nudge_stray_call(iteration, response, stray)
 
-              last_text = "" if empty
               exhausted = false
               break
             end
@@ -690,6 +731,27 @@ module Samagotchi
           @empty_retry.nudge!(@conversation, TurnNote.empty_retry,
                               emit: method(:emit), iteration: iteration, finish_reason: response.finish_reason,
                               thinking_chars: response.reasoning.to_s.length)
+        end
+
+        # The hidden nudge before the retry of a reply that was only a tool
+        # call (LLM::StrayToolCall). The step's streamed text is void, so the
+        # stream events say so first (:generation_retrying with restarted,
+        # what TurnAccumulator and the web already honour), then the note goes
+        # on the tail (:empty_answer_retry with malformed, the "malformed
+        # answer" line the UIs know) and the next request runs at the retry
+        # sampling. Returns true.
+        def nudge_stray_call(iteration, response, shape)
+          emit(type: :generation_retrying, iteration: iteration, restarted: true, shape: shape)
+          @stray_retry.nudge!(@conversation, TurnNote.malformed_retry,
+                              emit: method(:emit), iteration: iteration, malformed: true, shape: shape,
+                              finish_reason: response.finish_reason, thinking_chars: response.reasoning.to_s.length)
+        end
+
+        # The host a failure is blamed on: the adapter's own name, the model
+        # when the adapter has none.
+        def host_label
+          name = @loop.adapter.host_name if @loop.adapter.respond_to?(:host_name)
+          name.to_s.strip.empty? ? @model_name.to_s : name.to_s
         end
 
         # A cut generation (CutPolicy): a Stop after it ends the turn as
@@ -737,7 +799,9 @@ module Samagotchi
           @loop.fire_hook(:before_generation, { type: :before_generation, iteration: iteration })
           return [@cancel_controller.reason, "", ""] if @cancel_controller&.cancelled?
 
-          retry_generation = @empty_retry.take_sampling!
+          # The retry of an empty answer, or of a reply that was only a tool
+          # call, runs at the retry temperature.
+          retry_generation = @empty_retry.take_sampling! || @stray_retry.take_sampling!
           emit(type: :generation_started, iteration: iteration, context_window_tokens: window&.tokens,
                context_window_source: window&.source, price: @loop.price&.to_h)
           streamed = +""

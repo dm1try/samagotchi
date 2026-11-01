@@ -244,11 +244,13 @@ module Samagotchi
       def summary = "unexpected response from host #{host}: #{detail}"
     end
 
-    # A native generation that came out corrupt twice (KernelLoop: a tool
-    # call never closed, or a fresh thought header after the answer), the
-    # second time without the server's prompt cache. A poisoned llama.cpp
-    # prompt cache does this (ggml-org/llama.cpp#27148); the text is not
-    # an answer.
+    # A generation that came out corrupt twice, and is no answer. KernelLoop:
+    # a native generation with a tool call never closed, or a fresh thought
+    # header after the answer, the second time asked without the server's
+    # prompt cache (a poisoned llama.cpp prompt cache does this,
+    # ggml-org/llama.cpp#27148). ChatLoop: a reply that is nothing but a
+    # tool-call block the host could not read (LLM::StrayToolCall), asked for
+    # once more with a nudge.
     class MalformedGeneration < ProtocolError
       def summary = "malformed generation from host #{host}: #{detail}"
     end

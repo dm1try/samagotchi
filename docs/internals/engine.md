@@ -794,6 +794,13 @@ Engine
 
 Both loops:
 
+- <a id="a-reply-that-is-only-a-tool-call"></a>**A reply that is only a tool call** (`LLM::StrayToolCall`, `LLM::ChatLoop` only): a reply with no tool
+  calls whose whole text is one closed tool-call block, which the host couldn't read, isn't an answer. A reply opening with prose or a fence stays
+  an answer, and the check is one string test on a normal one. Nothing is guessed from the block and it never enters the history (`:generation_completed`
+  and `:after_generation` have already seen the text): `:generation_retrying` with `restarted` voids the streamed text, `:empty_answer_retry` with
+  `malformed` goes out, and a hidden `TurnNote.malformed_retry` asks again at the retry temperature. It has its own budget, so `retry.empty_answer: 0`
+  doesn't turn it off, and a real tool call resets it. Two in a row fail the turn with `LLM::MalformedGeneration`, keeping its earlier steps. Each is
+  logged as `generation_malformed` with the shape, finish reason, served model and the text's tail. `KernelLoop` has its own path (`ToolCallParser#malformed`).
 - **Empty-answer retry** (`EmptyAnswerRetry`): a generation with no visible text and no tool calls is asked
   again, up to `retry.empty_answer` times (at most 3), with a hidden nudge (`TurnNote.empty_retry`) on the tail.
   The retry request runs at temperature 0.6 when the configured sampling sets no temperature; a configured one

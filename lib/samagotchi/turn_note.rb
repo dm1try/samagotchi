@@ -205,6 +205,15 @@ module Samagotchi
                           "or answer if it is done."))
     end
 
+    # The hidden nudge before a retry of a reply that came back as a tool call
+    # written as text, which the host could not read (ChatLoop's
+    # LLM::StrayToolCall): nothing ran, and the text is not in the history, so
+    # the model is told what it is being asked for again.
+    def malformed_retry
+      retry_nudge(message("your last reply was a tool call written as plain text, and the host could not read it, " \
+                          "so nothing ran. Call the tool again as a real tool call, or answer in plain text."))
+    end
+
     # The hidden nudge before a retry of a generation a plugin cut
     # (stop_generation): +by+ is the bundle, +reason+ what it said.
     def cut_retry(by, reason)

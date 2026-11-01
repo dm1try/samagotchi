@@ -39,6 +39,7 @@ and commands may change between minor versions. How releases are made:
 
 ### Fixed
 
+- A reply that was only a tool call written as text, which the host couldn't read, ended the turn as if it were the answer: exit 0, work left uncommitted. The chat loop now asks again once with a hidden note; two in a row fail the turn visibly and keep its earlier steps. Seen with Flash Next.
 - A System 1 `score` answer was dropped: the host sends `score` as the probability-weighted level index (a fraction,
   not a level number), and chi only accepted a whole number. The score is kept as sent and `answer.level` names the
   level with the most probability. See docs/guardrails.md (System 1).
