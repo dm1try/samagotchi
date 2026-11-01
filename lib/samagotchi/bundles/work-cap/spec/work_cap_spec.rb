@@ -127,6 +127,21 @@ RSpec.describe "The work-cap bundle", :bundle do
       expect(state).to eq("minutes" => { "cap" => 120.0, "step" => 60.0 })
     end
 
+    it "says one in the singular, a meter and the totals alike" do
+      calls_cap = plugin({ "default" => { "tool_calls" => 1 } }, usage: calls(1))
+      calls_cap.answer({ selected: ["Continue"] })
+      generation(calls_cap)
+      expect(calls_cap.questions.last.question)
+        .to eq("Work cap reached: 1 tool call of 1 (1 turn, <1 min active). Continue raises it to 2.")
+      expect(calls_cap.command("/workcap")).to start_with("work-cap: 1 of 2 tool calls")
+
+      minutes_cap = plugin({ "default" => { "minutes" => 1 } }, usage: calls(1, active_ms: minutes(1)))
+      minutes_cap.answer({ selected: ["Continue"] })
+      generation(minutes_cap)
+      expect(minutes_cap.questions.last.question)
+        .to eq("Work cap reached: 1 active minute of 1 (1 turn, 1 tool call). Continue raises it to 2.")
+    end
+
     it "asks once when both meters are reached, naming both, and Continue raises each" do
       bundle = plugin({ "default" => { "tool_calls" => 10, "minutes" => 5 } },
                       usage: calls(12, turns: 1, active_ms: minutes(6)))

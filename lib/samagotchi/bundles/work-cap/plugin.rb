@@ -142,7 +142,7 @@ class Plugin
       cap = meter_cap[:cap]
       next unless used[meter] >= share * cap && first_warning?(meter, [resolved[:session], cap])
 
-      ctx.notify("#{count(used[meter])} of #{count(cap)} #{unit(meter)} (#{(used[meter] / cap * 100).floor}%)",
+      ctx.notify("#{count(used[meter])} of #{counted(cap, meter)} (#{(used[meter] / cap * 100).floor}%)",
                  level: :warn)
     end
   end
@@ -196,7 +196,7 @@ class Plugin
         save_meter(ctx, meter, "cap" => cap, "step" => reached[meter][:step] || reached[meter][:cap])
       end
       ctx.notify("#{raised.size == 1 ? "cap" : "caps"} raised to " \
-                 "#{raised.map { |meter, cap| "#{count(cap)} #{unit(meter)}" }.join(" and ")}")
+                 "#{raised.map { |meter, cap| counted(cap, meter) }.join(" and ")}")
     else
       stop(ctx, reached, usage, used)
     end
@@ -204,21 +204,21 @@ class Plugin
 
   # "412 tool calls of 400", and "61 active minutes of 60" for the other.
   def reached_text(reached, used)
-    reached.map { |meter, meter_cap| "#{count(used[meter])} #{unit(meter)} of #{count(meter_cap[:cap])}" }.join(", ")
+    reached.map { |meter, meter_cap| "#{counted(used[meter], meter)} of #{count(meter_cap[:cap])}" }.join(", ")
   end
 
   # "it to 800", or "them to 800 tool calls and 120 active minutes".
   def raised_text(raised)
     return "it to #{count(raised.values.first)}" if raised.size == 1
 
-    "them to #{raised.map { |meter, cap| "#{count(cap)} #{unit(meter)}" }.join(" and ")}"
+    "them to #{raised.map { |meter, cap| counted(cap, meter) }.join(" and ")}"
   end
 
   # The session's totals a reader decides on, the reached meters left out
   # (already named): turns, tool calls, active minutes and the spend.
   def totals(ctx, usage, used, skip = [])
     parts = ["#{usage.turns} #{usage.turns == 1 ? "turn" : "turns"}"]
-    parts << "#{count(used["tool_calls"])} tool calls" unless skip.include?("tool_calls")
+    parts << counted(used["tool_calls"], "tool_calls") unless skip.include?("tool_calls")
     parts << "#{active_text(used["minutes"])} active" unless skip.include?("minutes")
     cost = ctx.cost
     parts << format("$%.2f", cost.total) if cost.known? && cost.total.positive?
@@ -281,11 +281,17 @@ class Plugin
     return "work-cap: no cap (#{totals(ctx, usage, used)})" if meters.values.none? { |meter_cap| meter_cap[:cap] }
 
     capped = meters.select { |_meter, meter_cap| meter_cap[:cap] }
-    caps = capped.map { |meter, meter_cap| "#{count(used[meter])} of #{count(meter_cap[:cap])} #{unit(meter)}" }
+    caps = capped.map { |meter, meter_cap| "#{count(used[meter])} of #{counted(meter_cap[:cap], meter)}" }
     "work-cap: #{caps.join(", ")} (#{totals(ctx, usage, used, capped.keys)})"
   end
 
   def unit(meter) = meter == "tool_calls" ? "tool calls" : "active minutes"
+
+  # "412 tool calls", "1 tool call".
+  def counted(value, meter)
+    number = count(value)
+    "#{number} #{number == "1" ? unit(meter).chomp("s") : unit(meter)}"
+  end
 
   # The session's caps now: per meter the state file's, else the session's
   # own value (--set), else child:'s for a delegate, else default:'s.
