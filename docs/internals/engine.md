@@ -348,7 +348,7 @@ One iteration with tool calls:
 - For edit and write: diffs the file before and after, and refreshes a memory's index line
   (`MemoryBundle::IndexSync`).
 - Attaches returned images, at most `MAX_IMAGES_PER_RESULT` (4) per result.
-- Scrubs bytes that aren't UTF-8, and caps the output at `max_tool_output_chars` by the tool's `ToolOutputCut`
+- Scrubs bytes that aren't UTF-8, and caps the output at `max_tool_output_chars` (a `memory_read`'s is `memory.read_max_chars`, 0: none, with an overflow guard at half a known window) by the tool's `ToolOutputCut`
   policy: `read` and most tools are cut to their head and end with `[cut: N of M chars; read it in parts]` (N
   kept of M, the whole within the cap unless the cap is shorter than that line); an `execute` result keeps a head
   and a long tail with a gap line between them, its whole output saved in `sessions/<id>/tool_output/`
@@ -883,7 +883,7 @@ Paths are under `lib/samagotchi/`.
 | `llm/native_backend.rb` | Wraps KernelLoop as a backend (`#complete` calls `#run`) |
 | `llm/model_result.rb` | `LLM::ModelResult`, what a backend returns |
 | `tool_runner.rb` | Per-call path (gate, start/complete events, output cap, images, diffs) |
-| `tool_output_cut.rb`, `tool_output_files.rb` | `ToolOutputCut`: how a tool's output longer than `max_tool_output_chars` is cut, by the tool's policy (`POLICIES`; `:head` for a tool with none); `ToolOutputFiles`: the whole output of an execute cut that way, saved in the session's `tool_output/` folder ([tool-output-limits.md](tool-output-limits.md)) |
+| `tool_output_cut.rb`, `tool_output_files.rb` | `ToolOutputCut`: how a tool's output longer than `max_tool_output_chars` (a `memory_read`'s: `memory.read_max_chars`) is cut, by the tool's policy (`POLICIES`; `:head` for a tool with none); `ToolOutputFiles`: the whole output of an execute cut that way, saved in the session's `tool_output/` folder ([tool-output-limits.md](tool-output-limits.md)) |
 | `tool_row_fields.rb`, `row_refs.rb` | `ToolRowFields`: a tool row's fields beyond its params (`ACTIVITY_KEYS`, `EVENT_KEYS`), the same live and on a reload; `RowRefs`: a plugin tool's row refs (`refs:`), checked, capped and saved with the result |
 | `tool_response.rb` | Per-batch dispatch and tool_response entries (joined for native, single for chat) |
 | `empty_answer_retry.rb` | The empty-answer and cut retry budget |

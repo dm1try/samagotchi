@@ -41,7 +41,7 @@ This memory teaches you (the agent) how to use Samagotchi memories — persisten
 
 **When to write:**
 - After learning a durable preference (e.g. commit style, test command, coding guideline) that the user confirmed or you observed repeatedly — ask before overwriting existing entries where appropriate.
-- Keep entries small and focused (one topic per file). Use clear filenames: `commit_preferences`, `testing_guide`, `project_conventions`.
+- Keep entries compact: `memory_read` returns a memory whole and every read pays its size. A write that takes one over `memory.entry_warn_tokens` (5000 tokens) ends with a note: tighten it when you next have a moment, but never remove or merge memories unless the user asks. Keep entries small and focused (one topic per file). Use clear filenames: `commit_preferences`, `testing_guide`, `project_conventions`.
 - Never store secrets, tokens, or transient state. Memories are shared via bundles. One exception: a skill may keep a working handoff memory (its steps say so) whose status is its description, removed when the work is done.
 
 **Placeholders:**

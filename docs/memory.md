@@ -225,7 +225,7 @@ memory's line are left out), so their size is paid on every request. Nothing cap
 or trims them; chi measures them (tokens estimated as characters /
 `context.chars_per_token`) and shows the size:
 
-- `chi self` has a `memory index` row:
+- `chi self` has a `memory index` row (and a `big memories` row, see [A memory's size](#a-memorys-size)):
   `system ~2.0k tokens (54 lines), project ~1.4k tokens (35 lines)`, with
   `, over 2500` inside the parentheses for a scope over
   `memory.index_warn_tokens`.
@@ -251,6 +251,36 @@ measure on their own, so writes in parallel sessions that race over the limit
 may each get it. Bundle installs and uninstalls and hand edits
 change index lines without a note; `chi self`'s row shows where an index
 stands.
+
+## A memory's size
+
+`memory_read` returns a memory whole: `max_tool_output_chars` does not cut it (see [Tool output
+guardrails](internals/tool-output-limits.md#the-runners-cut-max_tool_output_chars)), so each read of a memory pays its
+size. Two limits stay:
+
+- `memory.read_max_chars` (default `0`, no fixed cap) caps a `memory_read` result at that many characters.
+- An overflow guard: with that at 0 and a known context window, a result over half the window is cut. A context
+  overflow fails the turn and rolls its work back, and a retry repeats the read. With an unknown window there is no guard.
+  It checks one result, not the context already used.
+
+A cut result ends with `[cut: N of M chars; the rest is in the memory's .md file in <dir>: read it with start_line]`;
+`read` the file with `start_line` for the rest.
+
+`memory.entry_warn_tokens` (default `5000`, about 20K characters at the default `context.chars_per_token`; `0` turns it
+off) is the size a write may take one memory to before the model is told. When a `memory_write` with content, or a
+`write`/`edit` on a memory file, takes a memory from at or under the limit to over it, the tool result ends with one note
+(a memory that did not exist counts as 0, so a first big write gets it):
+
+> Note: memory 'NAME' is now ~N tokens (over memory.entry_warn_tokens 5000), paid on each read. When you next have a moment, tighten it; split out only parts that are read separately, since each new memory adds an index line to every prompt. Don't remove or merge memories unless the user asks.
+
+Once per crossing, as the index's note: a write while the memory is already over gets none. None for a
+description-only write, a remove, the verbatim `index` write, a model overlay, a `model_notes_*` memory (it has its own
+warning), a bundle install or a hand edit. It is independent of `memory.index_warn_tokens`: with that at 0 this note
+still comes, and a write that crosses both has both notes. Nothing is said when a memory is read: that would repeat on
+every read. `chi self` has a `big memories` row instead: the memories over the limit in both scopes, largest first
+(5, then `+N more`), `none` when there are none, a bundle's tagged `from <bundle>` (the shipped
+`config_modification_protocol` is over on every install; the fix is upstream's). This is how a
+memory already over the limit gets seen.
 
 ## Skills
 

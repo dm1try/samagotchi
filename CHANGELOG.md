@@ -21,6 +21,12 @@ and commands may change between minor versions. How releases are made:
 
 ### Changed
 
+- `memory_read` reads a memory whole: `max_tool_output_chars` no longer cuts it, so a skill or memory over 10,000 characters
+  arrives complete (before, the end was lost and "read it in parts" had no parts). `memory.read_max_chars` (default `0`, no
+  fixed cap) caps it if you want one. A result over half a known context window is still cut, since an overflow would roll
+  the turn back. A cut now says where the rest is: the memory's `.md` file, read with `start_line`.
+- A write that takes a memory over `memory.entry_warn_tokens` (default `5000` tokens) ends with a note to tighten it, once
+  per crossing (`0` turns it off); `chi self` has a `big memories` row for the ones already over. See docs/memory.md.
 - **Edit your config:** System 1's shared settings moved out of `guardrails.system_one`, with no alias:
   `guardrails.system_one.host` → `system_one.host`, `.model` → `system_one.model`, `.timeout_ms` →
   `system_one.timeout_ms`. `mode`, `rules`, `threshold` and `min_record` stay where they are. Until all of them have moved chi warns

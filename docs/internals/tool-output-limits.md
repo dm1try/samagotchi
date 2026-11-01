@@ -58,7 +58,7 @@ Implementation note:
 
 ## The runner's cut (`max_tool_output_chars`)
 
-After a tool's own limits, `ToolRunner` caps every result at `max_tool_output_chars` (default `10000`
+After a tool's own limits, `ToolRunner` caps every result but a `memory_read`'s at `max_tool_output_chars` (default `10000`
 characters, both loops). How a longer one is cut is the tool's policy, `ToolOutputCut::POLICIES` (by the
 built-in name; a tool with none gets `:head`):
 
@@ -67,7 +67,26 @@ built-in name; a tool with none gets `:head`):
 | `execute` | `:head_tail_file` | a short head, a long tail, one gap line between them; the whole output saved in the session's folder |
 | `task_wait` | `:head_tail_ref` | the same head and tail, the gap line naming the task's log (`output_path`, `Tools::RefText`); nothing saved |
 | `delegate`, `delegate_result` | `:head_tail_ref` | the same, the gap line naming the child's reply file (its `output/<timestamp>.txt`); nothing saved |
-| `read` and every other tool (`task_get`/`task_list`/`task_create`/`task_stop`, `web_fetch`, `memory_read`, `context_read`, plugin and MCP tools) | `:head` | the first chars, then `[cut: N of M chars; read it in parts]` |
+| `read` and every other tool (`task_get`/`task_list`/`task_create`/`task_stop`, `web_fetch`, `context_read`, plugin and MCP tools) | `:head` | the first chars, then `[cut: N of M chars; read it in parts]` |
+| `memory_read` | `:head`, its own cap | not cut by `max_tool_output_chars`; see below |
+
+`memory_read` is the one tool `max_tool_output_chars` does not cap, in any form (a name, a comma list, a blank name for the
+indexes): a memory is read whole, since a model that needs the skill pays for all of it anyway. `ToolRunner#output_cap`
+resolves the cap per call, so both loops get it (they both come through `ToolResponse.run_batch`). Two things can still
+cut a `memory_read` result, both with the same `:head` cut and a line that says where the rest is, since `memory_read`
+has no parts to read:
+
+- `memory.read_max_chars` (default `0`: none). A positive value caps the result at that many characters.
+- The overflow guard, with `memory.read_max_chars` at 0: a result over half the model's context window (in characters,
+  tokens x `context.chars_per_token`) is cut. A context overflow is a hard failure (`LLM::FailedTurn.keeps_work?` is
+  false), so the turn's work rolls back and a retry would repeat the same read. The window is the loop's own:
+  `KernelLoop#tool_output_window` (the client's probe, the turn's `window_tokens` setting), or for `LLM::ChatLoop` its
+  adapter's model list too (`ToolRunner.new(kernel, window:)`). An unknown window (`ContextWindow` falling back to
+  its default) has no guard. It checks this one result, not the context already used.
+
+The line is `[cut: N of M chars; the rest is in the memory's .md file in <the memories dir(s) searched>: read it with
+start_line]` ("the memories' .md files" for a comma list or the indexes). `ToolOutputCut::HEAD_CUT` does not match it.
+`read` on a memory's file keeps the `max_tool_output_chars` cut: it has line ranges.
 
 `:head_tail_file` is for output whose end matters: a test run's summary, an error, the `exit:` line. The head is
 `execute.cut_head_chars` at most (default `1000`) and never more than a quarter of the room; the tail gets
