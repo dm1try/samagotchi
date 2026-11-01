@@ -135,10 +135,14 @@ RSpec.describe Samagotchi::SystemOne::Client do
     it "overrides only the mode and failure log tag when requested" do
       write_config({ "mode" => "off", "host" => "splash", "model" => "configured-model", "timeout_ms" => 1500 })
       host_registry = registry
-      expect(Samagotchi::SystemOne::HttpBackend).to receive(:new).with(
-        host_registry: host_registry, host: "splash", model: "configured-model", timeout_ms: 1500, env: ENV
-      ).and_call_original
+      built = nil
+      allow(Samagotchi::SystemOne::HttpBackend).to receive(:new).and_wrap_original do |original, **kwargs|
+        built = kwargs
+        original.call(**kwargs)
+      end
       client = described_class.from_config(host_registry: host_registry, mode: :audit, tag: :toolkit)
+      expect(built.except(:env)).to eq(host_registry: host_registry, host: "splash", model: "configured-model", timeout_ms: 1500)
+      expect(built[:env]).to be_the_process_env
       expect(client).to have_attributes(mode: "audit", host: "splash", model: "configured-model")
 
       allow(client.backend).to receive(:ask).and_raise(Samagotchi::SystemOne::BackendError, "failed")

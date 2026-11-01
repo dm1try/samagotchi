@@ -53,6 +53,15 @@ module SpecEnv
   end
 end
 
+# A failing matcher that does meet the process ENV (an argument the code under
+# test passes on, say) prints this instead of its contents: rspec formats
+# with #inspect and diffs with pp. A stub_const("ENV", ENV.to_h...) is a plain
+# Hash and isn't covered.
+require "pp"
+SPEC_ENV_NOT_SHOWN = "#<the process ENV, contents not shown>"
+def ENV.inspect = SPEC_ENV_NOT_SHOWN
+def ENV.pretty_print(printer) = printer.text(SPEC_ENV_NOT_SHOWN)
+
 # The process ENV holds real API keys, so a spec never hands ENV itself to a
 # matcher: a failing one inspects its actual (and a failing `with(...)` its
 # arguments), printing the whole ENV. Check a key with
