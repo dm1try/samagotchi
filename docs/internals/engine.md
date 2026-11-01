@@ -598,9 +598,12 @@ Where a participant's author (`"p:<id>"`; `Steer.participant_author?`: any autho
   `Worker#run_prompt` checks their link and cap (`participant_refusal`: `participants.json`'s entry and cap against
   `SessionMetrics#spend`) before their turn starts and after it ends (the owner's notice, once per cap). A Continue
   keeps the offer turn's author (`ContinueOffer#run_continue_turn`, from `last_turn.author`).
-- **The gate**: `GuardrailWiring#review_boundary` (`Guardrails::ReviewBoundary`) is the first core check; it reads
-  `#turn_author` and denies a participant's turn all but `Toolkit::REVIEW_TOOLS` (not `forget_outputs`)
-  (docs/guardrails.md). The declared tools stay the session's (D3: no rebuild per author).
+- **The gate**: `GuardrailWiring#participant_boundary` is the core check after the load failures, picked by
+  `#turn_mode`: `Guardrails::PairBoundary` for a pair turn, `Guardrails::ReviewBoundary` for a review one. Both read
+  `#turn_author` and are no-ops for the owner's turns; the review boundary denies a participant's turn everything
+  outside `Toolkit::REVIEW_TOOLS` (not `forget_outputs`), the pair boundary denies secrets, owner-voiced tools and
+  `ask_user_question` and always asks before a write that may land outside the project (docs/guardrails.md).
+  The declared tools stay the session's (D3: no rebuild per author).
 - **Hooks and plugins**: `Engine#turn_author` (the running turn's participant author, nil otherwise) is the hook
   runtime's `turn_author` (`Hooks::Registry#with_runtime` adds `author:` to every event of such a turn) and the
   plugin host's (`ctx.turn_author`).
@@ -752,16 +755,12 @@ step's text ([architecture.md](../architecture.md), the `display_refs` paragraph
 `ToolRunner` asks the kernel's `Guardrails::Gate` (set by the Engine from `GuardrailWiring`) before each call;
 the gate is not itself a hook. `Gate#evaluate` fires the `:before_tool_call` hooks (the voters, e.g. the
 known-names bundle or a config hook), which vote through `event[:guardrail]` (`deny!`, `ask!`) or the legacy
-`event[:blocked]` flag. A deny stays a deny for the hooks after it. Then the core checks run on the final call,
-in `GuardrailWiring#checks` order:
-
-1. load failures (`Guardrails::LoadFailures`): a required hook or rule file that failed to load denies every call;
-2. `rules.hook_asks`: with guardrails disabled, a hook's ask is dropped (a deny still applies);
-3. protected paths;
-4. `ScratchWrites` (a `chi scratch` session only): write and edit under the memories folder are denied;
-5. `ChildBoundary` (a delegate child only): a change outside its folder asks;
-6. the rules (config and bundles, e.g. the guardrails bundle's `rules.yml`; a rule can match the tool, its
-   targets and the model).
+`event[:blocked]` flag. A deny stays a deny for the hooks after it; a hook's ask is dropped when guardrails are
+disabled. Then the core checks run on the final call in `GuardrailWiring#checks` order
+(`lib/samagotchi/guardrail_wiring.rb`): the load failures first, then the participant's boundary
+(`participant_boundary`, `PairBoundary` for a pair turn else `ReviewBoundary`), then the hook asks, the protected
+paths, the scratch writes, the delegate child's boundary, the rules. That method is the order; it is not spelled
+out here so this page can't drift from it.
 
 A gate that raises denies the call.
 
