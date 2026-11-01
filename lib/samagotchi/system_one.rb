@@ -22,6 +22,8 @@ module Samagotchi
   # that passes every gate allows the call once, without asking
   # (SystemOne::Record, SystemOne::SelfProtect). The line a UI shows for an
   # auto-allow is P3b (docs/guardrails.md, "System 1").
+  # Every core ask goes through SystemOne::Recording, the seam that saves it
+  # as a run (SystemOne::Runs).
   module SystemOne
   end
 end

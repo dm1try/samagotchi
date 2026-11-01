@@ -422,16 +422,20 @@ RSpec.describe Samagotchi::Engine, "toolkit suggestion on mode" do
       expect(line["answers"]["toolkit"]).to include("choice" => "kit:web")
     end
 
-    it "saves no run for a warm-up" do
-      release = Queue.new
-      entered = Queue.new
-      answers << -> { (entered << true) && release.pop && pick("kit:web", 0.9) }
+    it "gives a warm-up the bare client: no run" do
+      warmed = Queue.new
+      allow(Samagotchi::ToolkitSuggest).to receive(:warm) { |client:, **| warmed << client }
       engine.session = session
       engine.warm_toolkit_suggestion!
-      pop!(entered, "the warm-up ask")
-      release << true
-      join!(engine.instance_variable_get(:@toolkit_warmup_thread), "the warm-up")
-      expect(store.lines).to be_empty
+      expect(pop!(warmed, "the warm-up")).to equal(system_one)
+    end
+
+    it "leaves the client as it was when the recording can't be set up, and a run id doesn't hurt it" do
+      allow(Samagotchi::SystemOne::Recording::Context).to receive(:of).and_raise("no context")
+      allow(Samagotchi::Log).to receive(:warn)
+      wrapped = engine.send(:system_one_recording, system_one, "toolkit.suggest", session)
+      expect(wrapped).to equal(system_one)
+      expect(Samagotchi::Log).to have_received(:warn).with(:system_one, "system_one_recording_failed", anything)
     end
   end
 

@@ -88,6 +88,18 @@ RSpec.describe Samagotchi::SystemOne::Recording do
     expect(seen["command"].bytes).to eq("caf\xE9".bytes)
   end
 
+  it "saves no run when there was nothing to ask" do
+    expect(recording.ask(state: "x", questions: {})).to be_nil
+    expect(store.lines).to be_empty
+  end
+
+  it "keeps the answer when the state is nested too deep to copy: one warn" do
+    deep = []
+    200_000.times { deep = [deep] }
+    expect(Samagotchi::Log).to receive(:warn).with(:system_one, "system_one_run_failed", anything).once
+    expect(recording.ask(state: deep, questions: questions)).to eq("allow" => answer)
+  end
+
   it "saves nothing and asks as before without a store" do
     off = s1::Runs.new
     expect(off).not_to receive(:record)

@@ -76,6 +76,12 @@ RSpec.describe Samagotchi::SystemOne::Client do
       .to raise_error(ArgumentError, /questions must be a hash/)
   end
 
+  it "takes a run id it has no use for: a caller asks a bare client and a Recording alike" do
+    answer = Samagotchi::SystemOne::Answer.new(id: "a", type: :noul, noul: 0.9)
+    backend = Samagotchi::SystemOne::FakeBackend.new({ "a" => answer })
+    expect(client(backend).ask(state: "x", questions: { "a" => question("a") }, run_id: "j/1")).to eq("a" => answer)
+  end
+
   describe "the observer" do
     it "is told why there is no judgment" do
       told = {}

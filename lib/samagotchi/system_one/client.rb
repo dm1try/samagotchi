@@ -72,9 +72,11 @@ module Samagotchi
       #   hides: why it is nil (failure:, failure_text:) and what the backend
       #   said (model:, served_model:, raw:, usage:), on this thread, before
       #   #ask returns (Recording)
+      # @param run_id [String, nil] Recording's: a bare client saves no run,
+      #   and a caller holding a bare client asks the same way
       # @return [Hash{String => Answer}, nil] one Answer per question, or nil
       #   when there is no judgment at all
-      def ask(state:, questions:, cancel_controller: nil, observer: nil)
+      def ask(state:, questions:, cancel_controller: nil, observer: nil, run_id: nil)
         questions = SystemOne.normalize_questions(questions)
         return nil if questions.empty?
 
