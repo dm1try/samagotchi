@@ -913,5 +913,5 @@ Paths are under `lib/samagotchi/`.
 | `worker_wakes.rb` | `WorkerWakes`: a worker's wake budget for the turns nobody typed (`session.max_wakes`) |
 | `task_watch.rb`, `task_finish_note.rb` | `TaskWatch`: the background tasks a worker's session started that the model hasn't seen finish; `TaskFinishNote`: the note one leaves when it does ([background-tasks.md](background-tasks.md#finish-wake)) |
 | `side_usage.rb` | `SideUsage`: one side request's usage (a recap, `ctx.ask_model`), folded into the session's side sums (`:side_usage`) |
-| `bridge/client_event.rb` | `Bridge::ClientEvent.project`: what an SSE client gets for an engine event ([architecture.md](../architecture.md)) |
+| `bridge/client_event.rb` | `Bridge::ClientEvent.project`: what an SSE client gets for an engine event ([bridge.md](bridge.md)) |
 | `guardrails/parent_policy.rb` | `Guardrails::ParentPolicy`: which options of a question a parent agent may pick (`guardrails.parent_answers`) |

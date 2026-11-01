@@ -194,7 +194,7 @@ callback the spec can wait on), not another local fix in the spec.
 ### Talking to a real Bridge
 
 A session's Bridge answers only a request that names its secret (`X-Chi-Bridge`, from the worker's `bridge.json`;
-see [architecture.md](architecture.md)). A spec that writes its own request to a real Bridge (`Net::HTTP`, a raw
+see [internals/bridge.md](internals/bridge.md)). A spec that writes its own request to a real Bridge (`Net::HTTP`, a raw
 socket) names it too: `include BridgeAuth` (spec/support/bridge_auth.rb, required by the spec that needs it) gives
 `bridge_auth(session_dir_or_sidecar)`, the header as a Hash, and `bridge_auth_line(...)` for a raw request; or read
 `port` and `secret` from the sidecar in one go, as `WorkerLink.client` does. A client made with `BridgeClient.new`

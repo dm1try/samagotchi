@@ -124,7 +124,8 @@ In REPL mode `TerminalUI#run` is the single dispatch for the REPL, `-p`/`--promp
 - Sessions are file-based (`~/.local/state/samagotchi/sessions/<uuid>.json` + sidecar). Retention is 14d/500 (env `SAMAGOTCHI_SESSION_RETENTION_DAYS`, `SAMAGOTCHI_SESSION_MAX_COUNT`), `updated_at desc` by default, lazy sweep at most once per `session.sweep_interval_hours` (default 24) from `chi web`'s session hub tick (and on `GET /api/sessions`); manual via `bin/chi sessions {list,prune,clean} --dry-run`. Use `XDG_STATE_HOME` for isolated test runs; `test_run` flag auto-set when `SAMAGOTCHI_ENV`/`RACK_ENV`/`CI`.
 
 ## Where to read before changing a layer
-- Engine, turn loop, KernelLoop/ChatLoop, tool dispatch → `docs/internals/engine.md`; components, Worker, Bridge, web → `docs/architecture.md`
+- Engine, turn loop, KernelLoop/ChatLoop, tool dispatch → `docs/internals/engine.md`; components, Worker, web → `docs/architecture.md`
+- The Bridge (routes, SSE replay and `reset`, `TurnAccumulator`, `CardStore`, `SSEWriter`, the secret) → `docs/internals/bridge.md`
 - System prompt order, request layout, prompt caching → `docs/internals/prompt-caching.md`
 - Anthropic's Messages API (`api: anthropic`: wire translation, dialects, cache breakpoints, thinking replay) → `docs/internals/anthropic.md`
 - LLM context strategies (`llm_context`, the forget layer) → `docs/internals/llm-context-forget.md`
