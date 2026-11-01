@@ -1,11 +1,12 @@
 # Participants: identity and routes
 
 A session's owner can invite **participants** to review it: people, or agents, who reach that one session through
-chi web with a link of their own. This page is the identity layer (the shared-sessions plan's P2): grants, the gate,
-the routes a participant reaches, and what is written where; and their **review turns** (P3b): queued, read-only,
-limited and capped; and what they **see** (P4a): their page and its reads, all through one filter. Participants are
-experimental. An agent participant waits on its own turns' replies through the API. The code and docs say
-"participants" and "review", never "shared": `session.shared` already means "attached by default".
+chi web with a link of their own. This page is the identity layer: grants, the gate, the routes a participant
+reaches, and what is written where; and their **turns**: review turns queued, read-only, limited and capped, pair
+turns that act under the owner's guardrails; and what they **see**: their page and its reads, all through one
+filter. Participants are experimental. An agent participant waits on its own turns' replies through the API. The
+code and docs say "participants", "review" and "pair", never "shared": `session.shared` already means "attached by
+default".
 
 Participants reach chi web on the **LAN** (`web.host: lan`), or **behind an auth proxy** with `web.public_url`
 (experimental; docs/configuration.md, "Behind an auth proxy"): there every request needs a token, this machine's too,
@@ -43,9 +44,9 @@ participant** and **one role**, until it expires or is revoked.
   newer chi's: read (its links work, but a grant with keys this chi doesn't know is left out: such a key may
   restrict it, so it fails closed) and never written (`Grants::Newer`, one message saying to update chi; a revoke
   the gate can't write still refuses the grant). A grant's keys this chi doesn't know are kept on a rewrite
-  (`Grant#extra`), so a field a later chi adds the omit-if-default way survives. A chi from before the version check
-  doesn't look at it: **mixed installs** on one state dir are a hazard, as a chi before 0.109 (no `identity`) rewriting
-  the store unbinds every grant, and one before this change drops unknown keys. A stored `identity` that isn't one
+  (`Grant#extra`), so a field a later chi adds the omit-if-default way survives. **Mixed installs** on one state dir
+  are a hazard: an older chi that doesn't know `identity` unbinds every grant when it rewrites the store, and one
+  that doesn't keep a grant's unknown keys drops them. A stored `identity` that isn't one
   `#issue` would write (`false`, `""`, a list, upper case) makes the store Corrupt (fails closed). Readers follow its mtime (a `chi share revoke` in another process takes effect at chi web's next request).
   `last_used_at` is written at most once a minute per grant. **chi web refuses to start** when that folder or file can
   be read by another user, or isn't this user's (`Grants.check_permissions!`, one message naming the `chmod`). Only
@@ -648,7 +649,7 @@ invited to has none: its files stay byte for byte as they were.
   expires_at, removed_at, cap}]}`, rewritten by whoever changes a grant (chi web, `chi share`), inside the grants
   store's lock (`Grants#update`'s `on_write`), so two writers can't finish out of order and lose a revoke here. Never
   a token or a digest.
-  The worker reads it with `Participants.read` (P3a's system-prompt line, `ctx`).
+  The worker reads it with `Participants.read` (`SessionParticipants#refresh!`, for the system prompt's participants line).
 - **`participants.jsonl`** (0600, append-only, `Participants.log`): one JSON line per event, with `at`: `issued`
   (participant, name, kind, role, expires_at), `revoked` (participant, by), `expired` (the first refused use after the
   expiry, once per chi web), `peer` (the first use and each new peer since chi web started: ip, user agent; behind a
@@ -668,8 +669,8 @@ invited to has none: its files stay byte for byte as they were.
 
 What a participant writes is marked as theirs everywhere it is kept or sent. The
 author is `"p:<id>"` (`Grant#author`), stamped by chi web from the principal and never taken from a body. Absent
-means the owner: old sessions and every owner path read as the owner's, byte for byte as before (a pre-P3 session
-fixture loads and saves unchanged, `spec/turn_author_record_spec.rb`).
+means the owner: a turn or session with no author keys reads as the owner's and gains none on save
+(`spec/turn_author_record_spec.rb`).
 
 - **Messages.** A participant's opening message is saved raw with `author`, `author_name` (the name the sidecar gave
   the participant when it was written) and `participant_mode` (`ParticipantMode.of` when `Engine#run_turn` builds it, before any request carries it). Merged input and
@@ -741,7 +742,7 @@ participant TUI in v1.
   worker announces `:participants_changed` (`Engine#announce_participants`: `{participants: [{id, name, kind}],
   joined: […], left: [{…, reason: revoked | expired}]}`) to every UI; its start announces nobody. "Joined" means
   invited: participants have no presence of their own yet. `session_state_snapshot`'s `participants` names who is in
-  the review now, so a UI that joins has them. Owner frames only: no participant stream carries them (P4a's filter).
+  the review now, so a UI that joins has them. Owner frames only: no participant stream carries them (`Web::ParticipantView`).
 - **Lines.** A participant's prompt (`turn_enqueued`'s `author`, an origin's, a queued row's, a saved message's
   `author` / `author_name`) is led by their name (`Formatting#participant_prefix`: `Alex ▸ review>`, cleaned by
   `ParticipantName`, the id when the TUI knows no name), in a colour picked from their id. Each change is one line per

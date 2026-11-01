@@ -86,7 +86,7 @@ Configuration:
 - `SAMAGOTCHI_CONTEXT_WINDOW_TOKENS` / `context.window_tokens`: context window size for when neither the server nor the model's or host's config gives one (step 4 of the lookup below).
 - `models.<key>.window_tokens` / `hosts.<name>.window_tokens` (config file only): the window for one model, or for every model on a host (step 3 below).
 - `SAMAGOTCHI_CONTEXT_CHARS_PER_TOKEN` (default `4.0`): heuristic ratio for char-to-token estimation.
-- `SAMAGOTCHI_CONTEXT_STATUS_THRESHOLDS` / `context.status_thresholds` (default `20,40,60,80`): comma-separated threshold percentages. They set the buckets, and the buckets' guidance gates the model's own `[CONTEXT: …]` line. (`context.status_cadence` is gone: the event streams on every request.)
+- `SAMAGOTCHI_CONTEXT_STATUS_THRESHOLDS` / `context.status_thresholds` (default `20,40,60,80`): comma-separated threshold percentages. They set the buckets, and the buckets' guidance gates the model's own `[CONTEXT: …]` line; the `:context_status` event streams on every request.
 
 The `context.*` settings are read once, when the turn's `ContextStatus` is built, so a change counts from the next turn.
 
