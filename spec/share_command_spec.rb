@@ -38,11 +38,6 @@ RSpec.describe Samagotchi::ShareCommand do
     end
   end
 
-  it "keeps Local's default port in step with chi web's" do
-    require "samagotchi/web/server"
-    expect(Samagotchi::SessionAccess::Local::WEB_PORT).to eq(Samagotchi::Web::Server::DEFAULT_PORT)
-  end
-
   it "prints the usage for no arguments and --help" do
     expect(described_class.new([], stdout: out, stderr: err).run).to eq(0)
     expect(out.string).to start_with("Usage: chi share ID --name NAME")

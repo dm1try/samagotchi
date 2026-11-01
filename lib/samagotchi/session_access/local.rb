@@ -22,6 +22,7 @@ require_relative "../review_start"
 require_relative "../launch_mode"
 require_relative "../participants"
 require_relative "../config"
+require_relative "../live_versions"
 require_relative "../web/grants"
 require_relative "../web/info_probe"
 require_relative "../web/public_url"
@@ -453,8 +454,6 @@ module Samagotchi
 
       def grants = @grants ||= Web::Grants.new(Web::Grants.path(state_dir: state_dir!))
 
-      # Web::Server::DEFAULT_PORT, without loading chi web.
-      WEB_PORT = 4567
       LOCAL_PROBE_TIMEOUT = 1.0
 
       # Where this machine's chi web answers (GET /api/info): its LAN ip
@@ -491,14 +490,12 @@ module Samagotchi
       end
 
       def local_web
-        configured = Config.get("web.port").to_s.to_i
-        configured = WEB_PORT unless configured.positive?
-        recorded = Web::Running.port(path: Web::Running.path(state_dir: state_dir!))
-        [recorded, configured].compact.uniq.each do |port|
-          info = Web::InfoProbe.call("127.0.0.1", port, timeout: LOCAL_PROBE_TIMEOUT)
-          return LocalWeb.new(ip: own_address(info["lan"]), port: port) if info.is_a?(Hash)
-        end
-        LocalWeb.new(ip: nil, port: configured)
+        configured = LiveVersions.configured_web_port
+        answer = LiveVersions.web_answering("127.0.0.1", configured, path: Web::Running.path(state_dir: state_dir!),
+                                                                     timeout: LOCAL_PROBE_TIMEOUT)
+        return LocalWeb.new(ip: nil, port: configured) unless answer
+
+        LocalWeb.new(ip: own_address(answer.info["lan"]), port: answer.port)
       end
 
       def dir = @state_dir ? { state_dir: @state_dir } : {}

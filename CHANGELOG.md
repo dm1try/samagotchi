@@ -28,6 +28,7 @@ and commands may change between minor versions. How releases are made:
   loads on it. A card too tall for the stage showed its options with what it asks scrolled out of sight; the options are now a scroll
   down the stage's one scroll.
 - `chi update` tells you a `chi web` started with `--port` runs old code; it only looked on `web.port`.
+- `chi self` finds a `chi web` started with `--port`; it said `not running on port N` for `web.port`.
 - `/guardrails` in chi web or an attached terminal shows all of its listing: a command's reply was cut at 4 KB, so with the core
   bundle's rules System 1's section never showed and the text stopped mid-word. A reply now goes up to 64 KB, and a longer one ends
   with a line saying it was cut.

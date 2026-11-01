@@ -84,4 +84,46 @@ RSpec.describe Samagotchi::LiveVersions do
       expect(described_class.web_info("127.0.0.1", port)).to be_nil
     end
   end
+
+  it "keeps its default port in step with chi web's" do
+    require "samagotchi/web/server"
+    expect(described_class::DEFAULT_WEB_PORT).to eq(Samagotchi::Web::Server::DEFAULT_PORT)
+  end
+
+  describe ".web_answering" do
+    let(:record) { File.join(state_dir, "web.json") }
+
+    before do
+      Samagotchi::Web::Running.record(port: 4999, path: record)
+      allow(described_class).to receive(:web_info).and_return(nil)
+    end
+
+    def answers_on(port) = allow(described_class).to receive(:web_info).with("h", port, timeout: 0.1).and_return({ "version" => port.to_s })
+
+    def answering = described_class.web_answering("h", 4567, path: record, timeout: 0.1)
+
+    it "takes the port the running chi web recorded before config's" do
+      answers_on(4999)
+      answers_on(4567)
+      expect(answering).to have_attributes(port: 4999, info: { "version" => "4999" })
+    end
+
+    it "takes config's when the recorded one doesn't answer" do
+      answers_on(4567)
+      expect(answering).to have_attributes(port: 4567)
+    end
+
+    it "is nil when neither answers" do
+      expect(answering).to be_nil
+    end
+
+    it "probes config's alone with no record, and a port recorded and configured once" do
+      FileUtils.rm_f(record)
+      expect(answering).to be_nil
+      expect(described_class).to have_received(:web_info).with("h", 4567, timeout: 0.1).once
+      Samagotchi::Web::Running.record(port: 4567, path: record)
+      expect(answering).to be_nil
+      expect(described_class).to have_received(:web_info).twice
+    end
+  end
 end

@@ -212,6 +212,25 @@ RSpec.describe Samagotchi::SelfReport do
         expect(Samagotchi::LiveVersions).to have_received(:web_info).with("127.0.0.1", 4999, timeout: 0.3)
       end
     end
+
+    context "when one was started with --port" do
+      before do
+        Samagotchi::Web::Running.record(port: 4999, path: Samagotchi::Web::Running.path(env: env))
+        allow(Samagotchi::LiveVersions).to receive(:web_info).with(anything, 4999, timeout: 0.3)
+                                                             .and_return({ "app" => "chi-web", "lan" => nil })
+        allow(Samagotchi::LiveVersions).to receive(:web_info).with(anything, 4567, timeout: 0.3).and_return(nil)
+      end
+
+      it "finds it on the port it recorded, not config's" do
+        expect(field("chi web")).to eq("on 127.0.0.1:4999 (this machine only)")
+      end
+
+      it "names config's port when the recorded one has gone (a chi web killed hard)" do
+        allow(Samagotchi::LiveVersions).to receive(:web_info).with(anything, 4999, timeout: 0.3).and_return(nil)
+
+        expect(field("chi web")).to eq("not running on port 4567")
+      end
+    end
   end
 
   describe "desktop" do

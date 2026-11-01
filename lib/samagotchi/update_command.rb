@@ -107,7 +107,7 @@ module Samagotchi
       @platform = platform || Desktop::MacOS.method(:from_config)
       @supported = supported
       @state_dir = state_dir
-      @web = web || [Web::Lan.local_host(Config.get("web.host")), Config.get("web.port").to_i]
+      @web = web || [Web::Lan.local_host(Config.get("web.host")), LiveVersions.configured_web_port]
     end
 
     # @return [Integer] 0 nothing failed, 1 a part failed (or a checkout), 2 usage
@@ -370,28 +370,16 @@ module Samagotchi
       rows = []
       stale = LiveVersions.stale_workers(VERSION, state_dir: @state_dir)
       rows << Row.new(component: "workers", status: workers_status(stale)) unless stale.empty?
-      port, info = web_answering
-      web = info && info["version"].to_s
-      if web && !web.empty? && web != VERSION
+      host, configured = @web
+      answer = LiveVersions.web_answering(host, configured, path: Web::Running.path(state_dir: @state_dir))
+      web = answer&.info&.fetch("version", nil).to_s
+      if !web.empty? && web != VERSION
         # Since newest_workers, the sessions it starts run the newest chi.
-        spreads = !Array(info["features"]).include?("newest_workers")
-        rows << Row.new(component: "chi web :#{port}", from: web,
+        spreads = !Array(answer.info["features"]).include?("newest_workers")
+        rows << Row.new(component: "chi web :#{answer.port}", from: web,
                         status: "running old code#{": new sessions it starts run #{web} too" if spreads}; restart it")
       end
       rows
-    end
-
-    # The port a chi web answers on and its /api/info: the port the running
-    # one recorded (a --port it was started with is not config's), else
-    # config's. Nil with none.
-    def web_answering
-      host, configured = @web
-      recorded = Web::Running.port(path: Web::Running.path(state_dir: @state_dir))
-      [recorded, configured].compact.uniq.each do |port|
-        info = LiveVersions.web_info(host, port)
-        return [port, info] if info
-      end
-      nil
     end
 
     # A worker keeps its chi until restarted: `chi sessions restart` for
