@@ -130,6 +130,65 @@ RSpec.describe Samagotchi::SelfReport do
     end
   end
 
+  describe "big memories" do
+    let(:memories) { File.join(config_home, "samagotchi", "memories") }
+    let(:project) { File.join(memories, "projects", Samagotchi::MemoryPaths.project_key) }
+
+    before { FileUtils.mkdir_p(project) }
+
+    def memory(dir, name, chars) = File.write(File.join(dir, "#{name}.md"), "m" * chars)
+
+    it "says none when no memory is over memory.entry_warn_tokens" do
+      memory(memories, "small", 100)
+      memory(memories, "exactly", 20_000)
+      expect(field("big memories")).to eq("none")
+    end
+
+    it "lists the ones over, both scopes, largest first, with their scope" do
+      memory(memories, "sys_big", 24_000)
+      memory(project, "proj_big", 28_000)
+      expect(field("big memories")).to eq("proj_big ~7.0k tokens (project), sys_big ~6.0k tokens (system)")
+      with_env("SAMAGOTCHI_MEMORY_ENTRY_WARN_TOKENS" => "6500") { expect(field("big memories")).to eq("proj_big ~7.0k tokens (project)") }
+      with_env("SAMAGOTCHI_MEMORY_ENTRY_WARN_TOKENS" => "0") { expect(field("big memories")).to eq("off (memory.entry_warn_tokens 0)") }
+    end
+
+    it "shows 5 and then how many more" do
+      7.times { |i| memory(memories, "m#{i}", 30_000 - (i * 400)) }
+      shown = field("big memories")
+      expect(shown.split(", ").map { |part| part[/\Am\d/] || part }).to eq(["m0", "m1", "m2", "m3", "m4", "+2 more"])
+    end
+
+    it "tags a bundle's memory with the bundle" do
+      memory(memories, "owned", 24_000)
+      FileUtils.mkdir_p(File.join(bundles_dir, "samagotchi-system"))
+      File.write(File.join(bundles_dir, "samagotchi-system", "manifest.json"),
+                 JSON.generate("name" => "samagotchi-system", "version" => "1", "files" => { "owned.md" => {} }))
+      expect(field("big memories")).to eq("owned ~6.0k tokens (system, from samagotchi-system)")
+    end
+
+    it "leaves out the index, overlays, model notes, hidden and archived files and .bundles" do
+      memory(memories, "base", 24_000)
+      memory(memories, "base.qwen", 24_000)
+      memory(memories, "index", 24_000)
+      memory(memories, "model_notes_x", 24_000)
+      memory(memories, ".hidden", 24_000)
+      File.write(File.join(memories, "index.md.backup"), "m" * 24_000)
+      FileUtils.mkdir_p(File.join(memories, "archived"))
+      memory(File.join(memories, "archived"), "old", 24_000)
+      FileUtils.mkdir_p(File.join(bundles_dir, "b"))
+      memory(File.join(bundles_dir, "b"), "kept", 24_000)
+      expect(field("big memories")).to eq("base ~6.0k tokens (system)")
+    end
+
+    it "names a scope it can't read and still lists the other" do
+      memory(memories, "sys_big", 24_000)
+      memory(project, "proj_big", 24_000)
+      allow(File).to receive(:read).and_call_original
+      allow(File).to receive(:read).with(a_string_including("proj_big"), encoding: "UTF-8").and_raise(Errno::EACCES)
+      expect(field("big memories")).to eq("sys_big ~6.0k tokens (system), (project memories unreadable: Permission denied)")
+    end
+  end
+
   describe "chi web" do
     it "says it isn't running" do
       expect(field("chi web")).to eq("not running on port 4567")

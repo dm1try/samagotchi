@@ -51,6 +51,24 @@ module Samagotchi
         nil
       end
 
+      # The memories of +scope+ over +limit+ tokens, largest first: each
+      # top-level *.md of its dir but the index, the overlays and the
+      # model notes (hidden files, .bundles/ and archived/ are not in a
+      # top-level glob). Nothing for a limit that isn't positive.
+      # @param env [Hash] the XDG env the memories dir resolves from
+      # @return [Array<EntrySize>]
+      def self.over_limit(scope, limit: warn_limit, env: ENV)
+        return [] unless limit.to_i.positive?
+
+        Dir.glob(File.join(Tools::MemoryRead.memories_dir(scope, env: env), "*.md")).filter_map do |path|
+          name = File.basename(path, ".md")
+          next unless counted?(name) && File.file?(path) && !ModelOverlay.overlay_file?(path)
+
+          size = of_text(name, scope, File.read(path, encoding: "UTF-8"))
+          size if size.over?(limit)
+        end.sort_by { |size| [-size.tokens, size.name] }
+      end
+
       # memory.entry_warn_tokens: the tokens one memory may hold before a
       # write that crosses it gets a note; 0 turns the note off.
       def self.warn_limit

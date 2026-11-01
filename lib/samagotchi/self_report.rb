@@ -21,6 +21,7 @@ require_relative "memory_bundle/provenance"
 require_relative "memory_bundle/manifest"
 require_relative "memory_bundle/system_bundle"
 require_relative "memory_bundle/index_size"
+require_relative "memory_bundle/entry_size"
 require_relative "desktop"
 require_relative "live_versions"
 require_relative "web/lan"
@@ -60,6 +61,7 @@ module Samagotchi
         ["memories", Tools::MemoryRead.memories_dir("system", env: env)],
         ["project memories", Tools::MemoryRead.memories_dir("project", env: env)],
         ["memory index", memory_index_summary(env)],
+        ["big memories", big_memories_summary(env)],
         ["sessions", Session.default_state_dir(env: env)],
         ["log", log_path(env)],
         ["model", model ? model_label(model, default, env) : "(not configured)"],
@@ -120,6 +122,40 @@ module Samagotchi
       %w[system project].map { |scope| MemoryBundle::IndexSize.of_scope(scope, env: env).summary(limit) }.join(", ")
     rescue StandardError => e
       "(unreadable: #{e.message})"
+    end
+
+    # How many big memories "big memories" names before "+N more".
+    BIG_MEMORIES_SHOWN = 5
+
+    # The memories over memory.entry_warn_tokens in both scopes, largest
+    # first, "name ~5.6k tokens (system, from samagotchi-system)": each
+    # memory_read of one pays its size, and a memory already over gets no
+    # crossing note. A bundle's memory says whose it is (upstream's to
+    # tighten). "none" when there are none, "off" with the limit 0. A scope
+    # that can't be read is named instead.
+    def big_memories_summary(env)
+      limit = MemoryBundle::EntrySize.warn_limit
+      return "off (memory.entry_warn_tokens 0)" unless limit.positive?
+
+      big = []
+      unreadable = []
+      %w[system project].each do |scope|
+        big.concat(MemoryBundle::EntrySize.over_limit(scope, limit: limit, env: env))
+      rescue StandardError => e
+        unreadable << "#{scope} memories unreadable: #{e.message}"
+      end
+      shown = big.sort_by { |size| [-size.tokens, size.scope, size.name] }.first(BIG_MEMORIES_SHOWN).map { |size| big_memory(size, env) }
+      shown << "+#{big.size - BIG_MEMORIES_SHOWN} more" if big.size > BIG_MEMORIES_SHOWN
+      parts = shown + unreadable.map { |text| "(#{text})" }
+      parts.empty? ? "none" : parts.join(", ")
+    end
+
+    def big_memory(size, env)
+      owner = MemoryBundle::Provenance.claimants("#{size.name}.md", scope: size.scope, dir: MemoryPaths.bundles_dir(env: env)).first
+      where = [size.scope, ("from #{owner}" if owner)].compact.join(", ")
+      "#{size.name} ~#{MemoryBundle::IndexSize.count_text(size.tokens)} tokens (#{where})"
+    rescue StandardError
+      "#{size.name} ~#{MemoryBundle::IndexSize.count_text(size.tokens)} tokens (#{size.scope})"
     end
 
     def with_presence(path)
