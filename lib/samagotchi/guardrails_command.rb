@@ -146,7 +146,7 @@ module Samagotchi
       threshold = threshold(options[:threshold])
       return usage_error(threshold) if threshold.is_a?(String)
 
-      client = @client || SystemOne::Client.from_config(host_registry: HostRegistry.new, model: options[:model])
+      client = @client || SystemOne::Client.from_config(host_registry: HostRegistry.new, mode: Config.get("guardrails.system_one.mode"), model: options[:model])
       if client.nil?
         error_line("chi guardrails replay: no System 1 client — set guardrails.system_one.mode to audit or on " \
                    "and guardrails.system_one.host in config.yml")

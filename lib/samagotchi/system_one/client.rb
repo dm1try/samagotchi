@@ -17,7 +17,7 @@ module Samagotchi
     # while the judge is asked is not a failed judgment: its
     # LLM::RequestCancelled goes on to the caller, which asks no one.
     #
-    #   client = SystemOne::Client.from_config(host_registry: registry)
+    #   client = SystemOne::Client.from_config(host_registry: registry, mode: "audit")
     #   client&.ask(state: "git push origin main", questions: {"allow" => question})
     class Client
       MODES = %w[off audit on].freeze
@@ -33,13 +33,16 @@ module Samagotchi
         @tag = tag.to_sym
       end
 
-      # nil when judgment is off (the default) or no host is named, so the
-      # caller needs no other check. The settings are read every call: a
-      # config.yml change takes effect on the next ask.
+      # nil when +mode+ is off or no host is named, so the caller needs no
+      # other check. The settings are read every call: a config.yml change
+      # takes effect on the next ask.
+      # @param mode [String, Symbol] the caller's own: there is no default,
+      #   so nothing gets "on" by leaving it out, and no use reads another's
+      #   mode key (approvals pass guardrails.system_one.mode)
       # @param model [String, nil] a model for this call only (chi guardrails
       #   replay --model), else the configured one
-      def self.from_config(host_registry:, env: ENV, model: nil, mode: nil, tag: :guardrails)
-        mode = (mode.nil? ? Config.get("guardrails.system_one.mode") : mode).to_s.strip.downcase
+      def self.from_config(host_registry:, mode:, env: ENV, model: nil, tag: :guardrails)
+        mode = mode.to_s.strip.downcase
         return nil unless MODES.include?(mode) && mode != "off"
 
         host = Config.get("guardrails.system_one.host").to_s.strip

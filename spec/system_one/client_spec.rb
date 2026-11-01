@@ -92,17 +92,17 @@ RSpec.describe Samagotchi::SystemOne::Client do
     end
 
     it "is nil while the mode is off, the default" do
-      expect(described_class.from_config(host_registry: registry)).to be_nil
+      expect(described_class.from_config(host_registry: registry, mode: Samagotchi::Config.get("guardrails.system_one.mode"))).to be_nil
     end
 
     it "is nil when no host is named, whatever the mode" do
       write_config({ "mode" => "audit" })
-      expect(described_class.from_config(host_registry: registry)).to be_nil
+      expect(described_class.from_config(host_registry: registry, mode: Samagotchi::Config.get("guardrails.system_one.mode"))).to be_nil
     end
 
     it "builds a client for audit and on, with the host and model it reads" do
       write_config({ "mode" => "on", "host" => "splash", "model" => "Qwen3.8-Flash", "timeout_ms" => 1500 })
-      client = described_class.from_config(host_registry: registry)
+      client = described_class.from_config(host_registry: registry, mode: Samagotchi::Config.get("guardrails.system_one.mode"))
       expect(client).to have_attributes(mode: "on", host: "splash", model: "Qwen3.8-Flash")
       expect(client.backend).to be_a(Samagotchi::SystemOne::HttpBackend)
     end
@@ -125,23 +125,23 @@ RSpec.describe Samagotchi::SystemOne::Client do
 
     it "takes the model a run names over the configured one" do
       write_config({ "mode" => "audit", "host" => "splash", "model" => "configured-model" })
-      client = described_class.from_config(host_registry: registry, model: "run-model")
+      client = described_class.from_config(host_registry: registry, mode: Samagotchi::Config.get("guardrails.system_one.mode"), model: "run-model")
       expect(client.model).to eq("run-model")
-      expect(described_class.from_config(host_registry: registry).model).to eq("configured-model")
+      expect(described_class.from_config(host_registry: registry, mode: Samagotchi::Config.get("guardrails.system_one.mode")).model).to eq("configured-model")
     end
 
     it "reads the settings again on every call, so config.yml changes take effect" do
       write_config({ "mode" => "audit", "host" => "splash" })
-      expect(described_class.from_config(host_registry: registry)).not_to be_nil
+      expect(described_class.from_config(host_registry: registry, mode: Samagotchi::Config.get("guardrails.system_one.mode"))).not_to be_nil
       write_config({ "mode" => "off", "host" => "splash" })
-      expect(described_class.from_config(host_registry: registry)).to be_nil
+      expect(described_class.from_config(host_registry: registry, mode: Samagotchi::Config.get("guardrails.system_one.mode"))).to be_nil
     end
 
     it "is nil for a mode the settings don't have, with config's own warning" do
       write_config({ "mode" => "sometimes", "host" => "splash" })
       expect(Samagotchi::Log).to receive(:warn).with(:config, "invalid_value",
                                                      hash_including(echo: /guardrails\.system_one\.mode/))
-      expect(described_class.from_config(host_registry: registry)).to be_nil
+      expect(described_class.from_config(host_registry: registry, mode: Samagotchi::Config.get("guardrails.system_one.mode"))).to be_nil
     end
   end
 end

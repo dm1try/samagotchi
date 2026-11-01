@@ -431,7 +431,7 @@ module Samagotchi
         # System 1 (experimental, audit phase): the judgment client is read
         # from config on every ask, and the running turn's cancel controller
         # closes a judgment that is no longer wanted.
-        system_one: -> { SystemOne::Client.from_config(host_registry: @host_registry) },
+        system_one: -> { SystemOne::Client.from_config(host_registry: @host_registry, mode: Config.get("guardrails.system_one.mode")) },
         cancel_controller: -> { active_cancel_controller },
         # A participant's turn: their name on the owner's card, their
         # grant's mode for the turn's (GuardrailWiring#turn_mode).
