@@ -156,7 +156,8 @@ The loop for a bundle you're writing (the whole path: [bundle-authoring.md](bund
   never fires), `settings` (warn: a `--set` the manifest's `settings:` rules out, as config.yml's `bundles:` is told), `api` (warn: a `ctx.*` / `chi.*` call or a keyword this chi's API lacks, read from the source with
   Prism against the API's own classes, on a path that never runs too; written on a local `ctx` / `chi` itself, so a
   `s = ctx.sessions` variable isn't followed; a name the plugin guards with `respond_to?` is left), `boundary` (warn: a `Samagotchi::` name outside "Stable for bundles"; a shipped bundle's listed
-  exceptions aside) and `tests` (info: how to run them, or "no tests"). `--set KEY=VALUE` (repeatable, typed as
+  exceptions aside. On an installed bundle (`chi update`) only a name this chi no longer has is a row: the constant
+  doesn't resolve, or the method named isn't there) and `tests` (info: how to run them, or "no tests"). `--set KEY=VALUE` (repeatable, typed as
   `chi --set`) goes to `bundles: <name>:` in the sandbox's config.yml.
 
 ### Trying a bundle
@@ -314,7 +315,9 @@ done
   and each warning or error is a row under the bundle's name: `requires_chi`
   ruling this chi out, a plugin or hook that no longer loads, a hook on an event
   chi no longer fires, a `ctx`/`chi` call the API lacks, a reference to chi's
-  internals, a name chi now ships, or a hook or plugin edited since it was installed (it
+  internals that this chi no longer has (`Samagotchi::OldInternal::Thing is gone from this chi, so this bundle may
+  fail` — a name that still resolves gets no row, so a bundle reaching `Samagotchi::Log` isn't warned about on every
+  update), a name chi now ships, or a hook or plugin edited since it was installed (it
   doesn't load). What only an author can act on (shas, unlisted files, tests, a
   missing `requires_chi`, its floor, `trust_level`) is left out, and so are
   profiles. A clean bundle gets no row beyond its `skipped (not from chi)`.

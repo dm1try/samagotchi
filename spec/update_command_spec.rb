@@ -271,6 +271,29 @@ RSpec.describe Samagotchi::UpdateCommand do
       expect(installed_bytes).to eq(before)
     end
 
+    it "warns on an internal name only when this chi no longer has it, and says so" do
+      install_external("still-there", plugin: <<~RUBY)
+        class Plugin
+          def register(chi) = nil
+          def logged = Samagotchi::Log
+        end
+      RUBY
+      install_external("no-longer", plugin: <<~RUBY)
+        class Plugin
+          def register(chi) = nil
+          def thing = Samagotchi::OldInternal::Thing
+        end
+      RUBY
+
+      _, rows = json_rows
+      expect(finding_rows(rows, "still-there")).to be_empty
+      gone = finding_rows(rows, "no-longer")
+      expect(gone.size).to eq(1)
+      expect(gone.first).to include("level" => "warn", "failed" => false)
+      expect(gone.first["status"]).to eq("warn boundary plugin.rb: Samagotchi::OldInternal::Thing is gone from this chi, " \
+                                         "so this bundle may fail (fix: use chi.* / ctx, or the names docs/plugins.md lists as stable)")
+    end
+
     it "keeps saying a second run is up to date, the warning row repeating" do
       Samagotchi::MemoryBundle::SystemBundle.sync
       install_external("stale-one", plugin: stale_plugin)

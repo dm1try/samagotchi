@@ -67,4 +67,65 @@ RSpec.describe Samagotchi::Testing::Boundary do
       )
     end
   end
+
+  describe ".gone?" do
+    let(:dir) { Dir.mktmpdir("boundary-gone-") }
+
+    after { FileUtils.rm_rf(dir) }
+
+    # lib/samagotchi loads lazily, so what a process has required says nothing
+    # about what chi has. A probe in this process would have most of lib
+    # loaded already; the question only bites in a fresh Ruby that knows
+    # nothing but the boundary module.
+    def probe(references)
+      script = File.join(dir, "probe.rb")
+      File.write(script, <<~RUBY)
+        require "json"
+        $LOAD_PATH.unshift(ARGV[0])
+        require "samagotchi/testing/boundary"
+        boundary = Samagotchi::Testing::Boundary
+        puts JSON.generate(gone: ARGV[1..].select { |reference| boundary.gone?(reference) })
+      RUBY
+      reader, writer = IO.pipe
+      pid = Process.spawn(RbConfig.ruby, script, described_class::LIB_DIR, *references, out: writer)
+      writer.close
+      answer = reader.read
+      reader.close
+      Process.wait(pid)
+      JSON.parse(answer)
+    end
+
+    it "finds none of the exceptions a shipped bundle reaches gone: every name still resolves" do
+      references = described_class::EXCEPTIONS.flat_map { |_, listed| listed.keys }.uniq
+      expect(probe(references)["gone"]).to eq([])
+    end
+
+    it "doesn't call a bare require of chi gone" do
+      expect(probe([%(require "samagotchi")])["gone"]).to eq([])
+    end
+
+    it "survives a file of chi's that can't load (a gem missing), and won't call a name it defines gone" do
+      file = File.join(dir, "needs_a_gem.rb")
+      File.write(file, %(require "no_such_gem_at_all"\nmodule Samagotchi; module OnlyThere; end; end\n))
+      script = File.join(dir, "probe_load.rb")
+      File.write(script, <<~RUBY)
+        $LOAD_PATH.unshift(ARGV[0])
+        require "samagotchi/testing/boundary"
+        boundary = Samagotchi::Testing::Boundary
+        boundary.send(:remove_const, :CORE_FILES)
+        boundary.const_set(:CORE_FILES, [ARGV[1]].freeze)
+        print [boundary.gone?("Samagotchi::OnlyThere"), boundary.gone?("Samagotchi::NoSuchThing")].inspect
+      RUBY
+      output = IO.popen([RbConfig.ruby, script, described_class::LIB_DIR, file], &:read)
+      expect(output).to eq("[false, true]")
+    end
+
+    it "calls a name this chi does not have gone, and one it does not" do
+      result = probe(["Samagotchi::OldInternal::Thing", "Samagotchi::Log", "Samagotchi::Log.warn",
+                      "Samagotchi::Log.no_such_method", %(require "samagotchi/engine"),
+                      %(require "samagotchi/no_such_file")])
+      expect(result["gone"]).to eq(["Samagotchi::OldInternal::Thing", "Samagotchi::Log.no_such_method",
+                                    %(require "samagotchi/no_such_file")])
+    end
+  end
 end

@@ -1384,7 +1384,9 @@ that calls it, or for a real external bundle that does. No method on the chance 
 and `Boundary::EXCEPTIONS` the per-bundle list of what each shipped bundle
 (and its specs) reaches beyond it, each with why: the APIs to design before
 that bundle could leave chi's repo. `spec/samagotchi/testing/boundary_spec.rb`
-fails on a reference in neither (docs/testing.md).
+fails on a reference in neither (docs/testing.md). In `chi update`'s re-check of
+an installed bundle the same scan warns only for a name this chi no longer has
+(`Boundary.gone?`): a reference that still resolves gets no row.
 
 **Used by shipped bundles today, but internal** (may change without notice; a
 bundle that needs one should ask for an API instead):

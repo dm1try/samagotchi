@@ -171,6 +171,82 @@ module Samagotchi
           name == entry.name || name.start_with?("#{entry.name}.", "#{entry.name}::")
         end
       end
+
+      # A reference this chi still has, read as a constant path and, when the
+      # source names one, the method on it. Anything else is a form we can't
+      # read, and #gone? answers "still there" for it.
+      NAME_AND_METHOD = /\A(?<name>Samagotchi(?:::[A-Z]\w*)+)(?:\.(?<method>[a-z_]\w*[?!]?))?\z/
+
+      # Every .rb of this chi's library. Shipped bundles' own code is not chi's
+      # internals: loading it here would run a bundle's plugin twice.
+      CORE_FILES = Dir.glob(File.join(LIB_DIR, "**", "*.rb"))
+                      .reject { |file| file.start_with?(File.join(LIB_DIR, "samagotchi", "bundles") + File::SEPARATOR) }
+                      .sort.freeze
+
+      # Whether this chi no longer has a reference #scan found: its constant
+      # does not resolve, or the object behind it has no method the name
+      # names. That is the one question `chi update` asks of a bundle it
+      # didn't write (Check with installed: true); a name that still resolves
+      # breaks nothing, so it gets no row.
+      #
+      # The trap: lib/samagotchi loads lazily — each command requires what it
+      # uses — so the running process may simply not have a name yet, and
+      # asking it directly would call that "gone". When a name does not
+      # resolve, #load_chi requires every file of this chi's library and asks
+      # again, so the answer does not depend on what happened to be loaded. It
+      # is lazy: a bundle reaching nothing internal, or reaching only names
+      # this process already has, never pays for it; and the load happens in
+      # the forked child, not in the update itself. A name that still fails
+      # after that is "gone" only if this chi's source defines it nowhere: a
+      # file the child could not require says nothing either way.
+      def gone?(reference)
+        match = NAME_AND_METHOD.match(reference)
+        return gone_require?(reference) if match.nil?
+        return false if resolves?(match[:name], match[:method])
+
+        load_chi
+        return false if resolves?(match[:name], match[:method])
+
+        !defined_in_source?(match[:name])
+      end
+
+      def resolves?(name, method)
+        object = Object.const_get(name)
+        method.nil? || object.respond_to?(method)
+      rescue NameError
+        false
+      end
+      private_class_method :resolves?
+
+      # A require of one of chi's files is gone only when the file is not
+      # there; a require_relative the scan accepted points at a file it found.
+      def gone_require?(reference)
+        match = %r{\Arequire "samagotchi(?:/([\w/]+))?"\z}.match(reference)
+        match ? !File.file?(File.join(LIB_DIR, "#{["samagotchi", match[1]].compact.join("/")}.rb")) : false
+      end
+      private_class_method :gone_require?
+
+      def load_chi
+        return if @chi_loaded
+
+        @chi_loaded = true
+        @unloadable = []
+        CORE_FILES.each do |file|
+          require file
+        rescue StandardError, ScriptError # ScriptError: a LoadError, as the kit's adapters give with no rspec installed
+          @unloadable << file
+        end
+      end
+      private_class_method :load_chi
+
+      # A name that failed to resolve is "gone" only when no file of this chi
+      # defines it: one the child could not require (a gem missing, say) says
+      # nothing about what chi has.
+      def defined_in_source?(path)
+        last = path.split("::").last
+        @unloadable.any? { |file| File.read(file).match?(/\b(?:module|class)\s+#{last}\b|\b#{last}\s*=/) }
+      end
+      private_class_method :defined_in_source?
     end
   end
 end

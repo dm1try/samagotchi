@@ -7,6 +7,14 @@ and commands may change between minor versions. How releases are made:
 [docs/releasing.md](docs/releasing.md).
 ## [Unreleased]
 
+### Changed
+
+- `chi update`'s re-check of the bundles chi doesn't ship warns about a reference to chi's internals only when this chi
+  no longer has it: the constant doesn't resolve, or the method the name gives isn't there. The row reads
+  `warn boundary plugin.rb: Samagotchi::OldInternal::Thing is gone from this chi, so this bundle may fail`; a name that
+  still works (`Samagotchi::Log`) gets no row, so the table stops repeating warnings about bundles that load fine.
+  `chi bundle check` (the author's own run) stays strict.
+
 ## [0.143.0] - 2026-11-01
 
 ### Added

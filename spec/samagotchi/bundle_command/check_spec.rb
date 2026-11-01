@@ -37,6 +37,13 @@ RSpec.describe Samagotchi::BundleCommand::Check do
 
   def findings(level = nil) = check.select { |l| level ? l.start_with?("#{level} ") : l.match?(/\A(error|warn|info) /) }
 
+  # What `chi update` sees of the same folder: Check with installed: true.
+  def installed_findings(level = :warn)
+    check = Samagotchi::BundleCommand::Check.new(dir, installed: true, stdout: StringIO.new)
+    check.run
+    check.findings.select { |finding| finding.level == level }.map(&:to_s)
+  end
+
   it "passes the base fixture: registered and tests info lines, exit 0" do
     expect(check).to eq([
       "info registered plugin.rb: command /greet",
@@ -305,6 +312,17 @@ RSpec.describe Samagotchi::BundleCommand::Check do
     refresh!
     expect(findings(:warn)).to eq(["warn boundary plugin.rb: Samagotchi::MemoryPaths.scope_dir is internal to chi and may break " \
                                    "on a chi upgrade (fix: use chi.* / ctx, or the names docs/plugins.md lists as stable)"])
+  end
+
+  it "boundary, installed: only a name this chi no longer has, and it says so" do
+    edit("plugin.rb") { |text| text.sub("ctx.notify(@word)", "Samagotchi::Log") }
+    refresh!
+    expect(installed_findings).to be_empty
+
+    edit("plugin.rb") { |text| text.sub("Samagotchi::Log", "Samagotchi::OldInternal::Thing") }
+    refresh!
+    expect(installed_findings).to eq(["warn boundary plugin.rb: Samagotchi::OldInternal::Thing is gone from this chi, " \
+                                      "so this bundle may fail (fix: use chi.* / ctx, or the names docs/plugins.md lists as stable)"])
   end
 
   it "registered: a manifest hook with events: is one line per event" do

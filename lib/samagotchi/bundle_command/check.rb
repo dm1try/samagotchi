@@ -403,8 +403,19 @@ module Samagotchi
         require_relative "../testing/boundary"
         known = shipped? ? Testing::Boundary::EXCEPTIONS.fetch(manifest.name, {}) : {}
         Testing::Boundary.scan(@dir).reject { |f| known.key?(f.reference) }.each do |finding|
-          add(:warn, :boundary, finding.file, "#{finding.reference} is internal to chi and may break on a chi upgrade",
-              fix: "use chi.* / ctx, or the names docs/plugins.md lists as stable")
+          if @installed
+            # `chi update` asks one question of a bundle it didn't write: what
+            # does this chi break of it. A name that still resolves is not a
+            # warning, so the table stays clear of rows that repeat while
+            # nothing is wrong.
+            next unless Testing::Boundary.gone?(finding.reference)
+
+            add(:warn, :boundary, finding.file, "#{finding.reference} is gone from this chi, so this bundle may fail",
+                fix: "use chi.* / ctx, or the names docs/plugins.md lists as stable")
+          else
+            add(:warn, :boundary, finding.file, "#{finding.reference} is internal to chi and may break on a chi upgrade",
+                fix: "use chi.* / ctx, or the names docs/plugins.md lists as stable")
+          end
         end
       end
 
