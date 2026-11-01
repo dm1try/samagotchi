@@ -75,8 +75,8 @@ module Samagotchi
       # approvals' clean record (Record is model-blind) and could auto-allow.
       def self.moved_keys_left?
         section = ConfigFile.section("guardrails")
-        own = section["system_one"] if section.is_a?(Hash)
-        own.is_a?(Hash) && own.keys.map(&:to_s).intersect?(Config::SYSTEM_ONE_MOVED_KEYS)
+        own = section.is_a?(Hash) ? section["system_one"] || section["system-one"] : nil
+        own.is_a?(Hash) && own.keys.map { |key| key.to_s.tr("-", "_") }.intersect?(Config::SYSTEM_ONE_MOVED_KEYS)
       end
       private_class_method :moved_keys_left?
 

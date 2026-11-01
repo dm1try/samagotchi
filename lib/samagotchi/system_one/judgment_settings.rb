@@ -18,6 +18,11 @@ module Samagotchi
 
       def off? = mode == "off"
 
+      # The model for Client.from_config: its own; else, on a host of its own,
+      # that host's first ("": the shared model belongs to the shared host);
+      # else nil, the shared one.
+      def client_model = model || (host ? "" : nil)
+
       # @param name [String] the judgment's full name
       # @param section [Hash, nil] config.yml's system_one section
       # @return [JudgmentSettings]

@@ -34,7 +34,7 @@ module Samagotchi
         return false unless own?(run_id)
 
         @layer.call.label(run_id, value, by: by.to_s.strip.empty? ? @bundle : "#{@bundle}:#{text("by", by)}",
-                                         strength: strength&.to_s, question: question&.to_s)
+                                         strength: strength&.to_s, question: question && text("question", question.to_s))
       end
 
       # What the bundle did with the answer: never known when the run is saved.
@@ -50,12 +50,13 @@ module Samagotchi
 
       private
 
-      # False for nil; a run that isn't this bundle's raises.
+      # False for nil; a run of anything but a judgment this bundle declared
+      # raises (a name it can't declare has no run of its).
       def own?(run_id)
         return false if run_id.nil?
 
         judgment = SystemOne::Runs.judgment_of(run_id)
-        return true if judgment&.start_with?("#{@bundle}.")
+        return true if judgment&.start_with?("#{@bundle}.") && @layer.call.declared?(judgment)
 
         raise ArgumentError, "#{run_id.inspect} is not a run of bundle #{@bundle}'s"
       end

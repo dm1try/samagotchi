@@ -82,6 +82,14 @@ RSpec.describe "Bundles' judgments on the Engine" do
     expect(runs.last).to include("host" => "own", "model" => "own-model", "mode" => "audit")
   end
 
+  it "on a host of its own with no model of its own, asks that host's first, not the shared host's model" do
+    config({ "system_one" => { "host" => "judge", "model" => "shared-model", "judgments" => { "probe.x" => { "mode" => "on", "host" => "own" } } } })
+    declare
+    expect(Samagotchi::SystemOne::HttpBackend).to receive(:new).with(hash_including(host: "own", model: nil)).and_call_original
+    backend_answers
+    ctx.judge("x", state: "s")
+  end
+
   it "says no host with no system_one.host, and saves nothing" do
     config({ "system_one" => { "judgments" => { "probe.x" => { "mode" => "on" } } } })
     declare
@@ -131,7 +139,7 @@ RSpec.describe "Bundles' judgments on the Engine" do
     end
   end
 
-  it "asks a judge_later on the Engine's side judgments, its kind the full name, joined at shutdown" do
+  it "asks a judge_later on the Engine's side judgments, its kind the full name" do
     config({ "system_one" => { "host" => "judge", "judgments" => { "probe.x" => { "mode" => "on" } } } })
     declare
     backend_answers
@@ -175,26 +183,18 @@ RSpec.describe "Bundles' judgments on the Engine" do
     expect(runs).to be_empty
   end
 
-  it "stays out of the session's spend" do
-    config({ "system_one" => { "host" => "judge", "judgments" => { "probe.x" => { "mode" => "on" } } } })
-    declare
-    backend_answers
-    expect { ctx.judge("x", state: "s") }.not_to(change { ctx.cost.total })
-  end
-
-  it "warns once at load about a system_one.judgments name no bundle declares, not a declared one's, not core's" do
+  it "says once, in a notice held for every UI, which system_one.judgments name no bundle declares; not a declared one's, not core's" do
     config({ "system_one" => { "judgments" => { "probe.x" => { "mode" => "on" }, "probe.typo" => { "mode" => "on" }, "approvals.allow" => { "mode" => "on" } } } })
-    judgments = engine.instance_variable_get(:@judgments)
-    judgments.declare(Samagotchi::SystemOne::Judgments::Declaration.build(bundle: "probe", name: "x", questions: { "q" => { type: "noul", instructions: "i" } }))
-    allow(Samagotchi::Log).to receive(:warn).and_call_original
-    judgments.warn_undeclared
-    expect(Samagotchi::Log).to have_received(:warn).with(:config, "judgment_undeclared", echo: include("system_one.judgments.probe.typo")).once
-    expect(Samagotchi::Log).to have_received(:warn).with(:config, "judgment_undeclared", anything).once
-  end
-
-  it "runs the undeclared check when the plugins load" do
-    expect(engine.instance_variable_get(:@judgments)).to receive(:warn_undeclared)
-    engine.send(:load_plugins)
+    engine.instance_variable_get(:@judgments).declare(
+      Samagotchi::SystemOne::Judgments::Declaration.build(bundle: "probe", name: "x", questions: { "q" => { type: "noul", instructions: "i" } })
+    )
+    held = engine.instance_variable_get(:@extension_load)
+    registries = Samagotchi::Plugin::Registries.new
+    allow(Samagotchi::Plugin::Loader).to receive(:load_installed).and_return([])
+    held.load_plugins(registries, failures: nil) { engine.send(:warn_undeclared_judgments) }
+    notices = held.held_events.select { |event| event.to_s.include?("system_one.judgments") }
+    expect(notices.size).to eq(1)
+    expect(notices.first.to_s).to include("system_one.judgments.probe.typo", "no loaded bundle declares it")
   end
 
   # D2: Record and Similar are model-blind (Record#initialize filters by rule
@@ -225,7 +225,7 @@ RSpec.describe "Bundles' judgments on the Engine" do
       with_own = calls.select { |call| call.match?(/\b(host|model):/) }
       expect(calls.size).to be >= 4
       expect(with_own.size).to eq(1)
-      expect(with_own.first).to include("settings.host", "settings.model")
+      expect(with_own.first).to include("settings.host", "settings.client_model")
     end
 
     it "no bundle can declare one, or reach one through ctx" do

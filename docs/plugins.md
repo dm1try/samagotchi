@@ -995,7 +995,7 @@ A judgment is a small question for [System 1](system-one.md), the cheap judgment
 choice, or a score, in about the time a tool call takes. Where `ctx.ask_model` gets free text from the session's model,
 a judgment gets a number from the model the user set for this, and every ask is saved, so a later comparison or
 fine-tune has what was sent and what came of it. It is chi's own layer (approvals use the same `Client` and runs) and
-gives a bundle no new power.
+gives a bundle no new power. Needs chi 0.142.0 (guard it with `chi.respond_to?(:judgment)`).
 
 ```ruby
 def register(chi)
@@ -1021,7 +1021,7 @@ end
 config.yml's [`system_one.judgments`](configuration.md#bundles-judgments) gives it a mode, `audit` or `on`, which it can
 also give a host and a model of its own. Neither `audit` nor `on` changes anything by itself: `result.audit?` is the bundle's
 to honour (in audit, look and don't act). A full name is dot-separated words of a-z, 0-9, `_` and `-`, so a bundle whose
-name has a capital fails to load on this call. `approvals`, `context`, `guardrails` and `toolkit` as a first word and
+name has a capital or a dot fails to load on this call. `approvals`, `context`, `guardrails` and `toolkit` as a first word and
 `.replay` at the end are core's.
 
 `chi.judgment`:
@@ -1033,7 +1033,8 @@ name has a capital fails to load on this call. `approvals`, `context`, `guardrai
   are saved in each run for a later comparison, and don't limit `label`.
 - `shared_host:` says what to do while a turn runs on the same local server (the same `hosts:` entry or the same URL
   root, and not a remote one), where an ask evicts the turn's cached prompt: `:skip`, the default, saves the run with `asked: false`, so a
-  later replay can answer it; `:ask` asks anyway. Between turns and on a remote host, it asks either way.
+  later replay can answer it; `:ask` asks anyway. Between turns and on a remote host, it asks either way. A turn's hooks count as in the
+  turn, `:after_turn` and `:session_end` too: an ask there would still evict the prefix the next turn wants.
 
 `ctx.judge(name, state:)` asks and waits, at most `system_one.timeout_ms`. `name` is as declared, without the bundle.
 `state:` is a String, Hash or Array: what the question is about, sent to the System 1 host and saved as sent (bytes that
@@ -1052,14 +1053,14 @@ anything that goes wrong on the way:**
 | `reason` | When | A run? |
 |---|---|---|
 | `:off` | no mode set | no |
-| `:no_host` | no `system_one.host`, nor one of its own | no |
+| `:no_host` | no `system_one.host`, nor one of its own, or a config still on the moved `guardrails.system_one` keys | no |
 | `:no_session` | no session bound yet | no |
 | `:failed` | the host couldn't be reached, timed out, refused, or sent something unusable | yes, with `failure` |
 | `:cancelled` | the turn was stopped during the ask | yes, with `failure: "cancelled"` |
 | `:shared_host` | `shared_host: :skip`, and a turn is running on it | yes, `asked: false` |
 | `:busy` | `judge_later` only: this judgment's last one still runs | yes, `asked: false` |
 
-An undeclared name or a bad `state:` raises `ArgumentError`, as `ask_model` does for a bad model, and so does `ctx.judge` in a
+An undeclared name or a bad `state:` (not a String, Hash or Array, or nested too deep) raises `ArgumentError`, as `ask_model` does for a bad model, and so does `ctx.judge` in a
 `:generation_progress` handler, whose stream it would hold.
 
 `ctx.judge_later(name, state:) { |result| … }` asks on its own thread and **returns the run's id at once** (nil when no run will be
@@ -1076,11 +1077,11 @@ the ask went, also when nothing was asked. A block that raises is logged.
 `ctx.judgments.acted(run_id, what)` saves what the bundle did about it. Both return whether they saved anything. `value`
 and `what` are the bundle's own words (up to 200 characters), mapped only at analysis. `by:` says what said it, always after
 the bundle's name (`check-in:card`). `strength:` is `"strong"` (the user said so) or `"weak"` (they may have clicked out of habit).
-A `nil` id saves nothing and isn't an error, so a run that wasn't saved needs no check; another bundle's id raises `ArgumentError`.
+A `nil` id saves nothing and isn't an error, so a run that wasn't saved needs no check; an id of anything this bundle didn't declare raises `ArgumentError`.
 
 **What's saved.** A run holds the state as sent: prompts, commands and whatever else the bundle put there, in the
 user's state dir, for as long as sessions last ([System 1's saved runs](system-one.md)). Nothing is saved for a scratch
-session or in a participant's turn (those asks still go to the host). `system_one.runs: off` stops all of it.
+session or in a participant's turn, later lines included (those asks still go to the host). `system_one.runs: off` stops all of it.
 
 **Cost.** A judgment stays out of the session's spend, as all of System 1's do, and **a bundle's judgments on a hosted host aren't under a
 cost cap**. At about $0.000015 a question that's accepted; ask at a human pace all the same, not per stream batch. The tokens a host reports are

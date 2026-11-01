@@ -176,6 +176,9 @@ RSpec.describe Samagotchi::SystemOne::Client do
                  YAML.dump({ "system_one" => { "host" => "splash" }, "guardrails" => { "system_one" => { "mode" => "on", "model" => "m" } } }))
       expect(described_class.from_config(host_registry: registry, mode: "on")).to be_nil
       File.write(File.join(config_dir, "samagotchi", "config.yml"),
+                 YAML.dump({ "system_one" => { "host" => "splash" }, "guardrails" => { "system-one" => { "mode" => "on", "model" => "m" } } }))
+      expect(described_class.from_config(host_registry: registry, mode: "on")).to be_nil
+      File.write(File.join(config_dir, "samagotchi", "config.yml"),
                  YAML.dump({ "system_one" => { "host" => "splash", "model" => "m" }, "guardrails" => { "system_one" => { "mode" => "on" } } }))
       expect(described_class.from_config(host_registry: registry, mode: "on")).to have_attributes(host: "splash", model: "m")
     end

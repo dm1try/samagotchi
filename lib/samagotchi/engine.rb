@@ -2935,8 +2935,18 @@ module Samagotchi
       # What plugins show while they load (an MCP server that didn't
       # start) waits for the first turn, beside the load warnings: no UI
       # is there yet, and the Engine isn't built.
-      @extension_load.load_plugins(registries, failures: @plugin_failures).tap { @judgments.warn_undeclared }
+      @extension_load.load_plugins(registries, failures: @plugin_failures) { warn_undeclared_judgments }
     end
+
+    # Held with the plugins' own notices, so every UI gets it: a worker's
+    # stderr goes nowhere.
+    def warn_undeclared_judgments
+      @judgments.undeclared.each do |name|
+        Log.warn(:config, "judgment_undeclared", judgment: name)
+        hook_notify("system_one.judgments.#{name}: no loaded bundle declares it, so it does nothing", :warn, "config")
+      end
+    end
+    private :warn_undeclared_judgments
 
     # Keep a plugin's new tool set (chi.replace_tools, from any thread)
     # for the turn thread (PluginTasks#stage_tools).
@@ -3244,7 +3254,7 @@ module Samagotchi
       SystemOne::Judgments.new(
         client_for: lambda { |_name, settings|
           SystemOne::Client.from_config(host_registry: @host_registry, mode: settings.mode, host: settings.host,
-                                        model: settings.model, tag: :plugins)
+                                        model: settings.client_model, tag: :plugins)
         },
         runs: -> { @session&.scratch ? SystemOne::Runs.new : system_one_runs },
         where: -> { @session && SystemOne::Recording::Context.of(@session, session_model: effective_model_name) },

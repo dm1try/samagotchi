@@ -741,7 +741,8 @@ module Samagotchi
             unknown_key_message("#{where}.#{k}", k, JUDGMENT_ENTRY_KEYS, prefix: "#{where}.")
           end
           mode = entry.key?("mode") && judgment_mode(entry["mode"]).nil? ? ["config: #{where}.mode must be off, audit or on; it is off"] : []
-          unknown + mode
+          text = %w[host model].reject { |k| entry[k].nil? || entry[k].is_a?(String) }.map { |k| "config: #{where}.#{k} must be text" }
+          unknown + mode + text
         end
       end
 

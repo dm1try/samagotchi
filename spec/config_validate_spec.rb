@@ -111,6 +111,7 @@ RSpec.describe "Samagotchi::Config.validate_yaml_sections" do
       expect(problems("system_one: {judgments: {b.x: {modle: on}}}")).to contain_exactly(include("unknown key 'system_one.judgments.b.x.modle'", "system_one.judgments.b.x.mode"))
       expect(problems("system_one: {judgments: {b.x: {mode: sometimes}}}")).to contain_exactly(include("system_one.judgments.b.x.mode must be off, audit or on"))
       expect(problems("system_one: {judgments: {b.x: on}}")).to contain_exactly(include("system_one.judgments.b.x must be a mapping"))
+      expect(problems("system_one: {judgments: {b.x: {host: [a]}}}")).to contain_exactly(include("system_one.judgments.b.x.host must be text"))
       expect(problems("system_one: {judgments: on}")).to contain_exactly(include("'system_one.judgments' must be a mapping"))
     end
 

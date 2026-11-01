@@ -43,11 +43,12 @@ module Samagotchi
     end
 
     # Load the installed bundles' plugins into +registries+; one that fails
-    # goes to +failures+, and the rest still load.
+    # goes to +failures+, and the rest still load. The block runs after them,
+    # still loading: what it shows is held with theirs.
     def load_plugins(registries, failures:)
       @held_events = []
       @loading = true
-      Plugin::Loader.load_installed(registries, failures: failures, settings: bundle_settings)
+      Plugin::Loader.load_installed(registries, failures: failures, settings: bundle_settings).tap { yield if block_given? }
     ensure
       @loading = false
     end

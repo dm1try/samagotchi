@@ -24,6 +24,9 @@ module Samagotchi
         # @raise [ArgumentError] anything the declaration can't be
         def self.build(bundle:, name:, questions:, positive: nil, negative: nil, shared_host: :skip)
           full = "#{bundle}.#{name}"
+          # The first word is the bundle: "a.b" + "x" and "a" + "b.x" must not meet.
+          raise ArgumentError, "judgment #{full.inspect}: a bundle with a dot in its name can't declare one" if bundle.to_s.include?(".")
+
           unless Runs.declarable?(full)
             raise ArgumentError, "judgment #{full.inspect}: a full name is dot-separated words of a-z, 0-9, _ and -, " \
                                  "with no first word of #{Runs::RESERVED.join(", ")} and no #{Runs::RESERVED_SUFFIX} at its end"
@@ -138,22 +141,26 @@ module Samagotchi
       end
 
       # A later line on a run (Runs#label, #acted); false when it isn't saved.
+      # Nothing is saved in a participant's turn, as an ask there saves no run.
       def label(run_id, value, by:, strength: nil, question: nil)
+        return false if @participant.call
+
         @runs.call.label(run_id, value, by: by, strength: strength, question: question)
       end
 
-      def acted(run_id, what) = @runs.call.acted(run_id, what)
+      def acted(run_id, what)
+        return false if @participant.call
 
-      # One warn per system_one.judgments name no plugin declared, once the
-      # plugins have loaded: a typo there is a judgment that stays off.
-      # Core's names have their own warning (Config.validate_yaml_sections).
-      def warn_undeclared
+        @runs.call.acted(run_id, what)
+      end
+
+      # The system_one.judgments names no plugin declared, once the plugins
+      # have loaded: a typo there is a judgment that stays off. Core's names
+      # have their own warning (Config.validate_yaml_sections).
+      # @return [Array<String>]
+      def undeclared
         known = @mutex.synchronize { @declarations.keys }
-        (JudgmentSettings.names - known).each do |name|
-          next if Config::RESERVED_JUDGMENTS.include?(name.split(".").first)
-
-          Samagotchi::Log.warn(:config, "judgment_undeclared", echo: "Warning: config: system_one.judgments.#{name}: no installed bundle declares it")
-        end
+        (JudgmentSettings.names - known).reject { |name| Config::RESERVED_JUDGMENTS.include?(name.split(".").first) }
       end
 
       private
@@ -188,8 +195,16 @@ module Samagotchi
       def ready(declaration, settings, client, where, state, context)
         runs = @participant.call ? Runs.new : @runs.call
         Ask.new(client: Recording.new(client, judgment: declaration.name, runs: runs, context: where, fields: declaration.run_fields),
-                questions: declaration.questions_for(context), state: Runs.scrubbed(state),
+                questions: declaration.questions_for(context), state: copy_of(declaration, state),
                 run_id: runs.on? ? Runs.new_id(declaration.name) : nil, mode: settings.mode, shared_host: declaration.shared_host)
+      end
+
+      # A state nested too deep to copy (a cycle) is a bad state: a
+      # SystemStackError would go past a hook's rescue and end the turn.
+      def copy_of(declaration, state)
+        Runs.scrubbed(state)
+      rescue SystemStackError
+        raise ArgumentError, "judgment #{declaration.name}: state: is nested too deep"
       end
 
       def client_for(declaration, settings)

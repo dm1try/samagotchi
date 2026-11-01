@@ -1527,7 +1527,7 @@ toolkit:
   `undecided` for greetings or check-ins. Only a default-origin session with at least two described candidates is
   asked; chosen or inherited toolkits, delegate children, review sessions and participant turns are skipped. After
   `undecided`, later owner prompts may be asked again within both defer limits. The default is `off`. System 1's
-  host, model and timeout come from `guardrails.system_one.*`; the suggestion threshold and defer limits are its own
+  host, model and timeout come from `system_one.*`; the suggestion threshold and defer limits are its own
   settings below. Suggestions are
   kept in `toolkit_suggestions.jsonl`; `chi toolkit report` grades them against the session's tool calls. One ask
   runs at a time (a turn that comes while one still runs goes unasked, with an info line), and a kit that doesn't
@@ -1813,10 +1813,10 @@ system_one:
     check-in.progress:
       mode: audit            # off (the default) | audit | on
       host: openrouter       # optional, this judgment alone; else system_one.host
-      model: typesafe/jev-1.14  # optional, this judgment alone; else system_one.model
+      model: typesafe/jev-1.14  # optional, this judgment alone; else system_one.model, or on a host of its own that host's first model
 ```
 
-A name no installed bundle declares warns at start. Core's judgments (`approvals.*`, `context.*`, `guardrails.*`,
+A name no loaded bundle declares gets a notice at the session's first turn. Core's judgments (`approvals.*`, `context.*`, `guardrails.*`,
 `toolkit.*`) take no settings here and warn if named: `SystemOne::Record` and `Similar` don't look at the model, so a
 model swapped for approvals alone would inherit a clean record and could auto-allow.
 A bundle's judgments on a hosted host aren't under any cost cap: they stay out of the session's spend, as all of System 1's do.
@@ -2261,7 +2261,7 @@ column says so, a `--kebab-name` flag. The maps (`hosts:`, `models:`,
 | `context.candidates.reask_after_turns` | `3` | | Owner prompts after a judged ask before the judge's one re-ask of that candidate. config.yml only. |
 | `toolkit.default` | `full` | | The toolkit a new session is stored on: the tools its prompts declare (`full`, `lean`, `child`, one of `toolkit.kits` or a bundle's). `chi --toolkit` picks one per session. See "Toolkits". |
 | `toolkit.child` | `full` | | A delegate child's toolkit, unless its `delegate` call names one (`toolkit:`). See "Toolkits". |
-| `toolkit.suggest.mode` | `off` | | `audit` asks System 1 for a toolkit suggestion without changing the session; `on` waits for it (up to `system_one.timeout_ms`) on an eligible turn and starts the session on a confidently suggested kit (Toolkits, On mode). The System 1 host, model and timeout come from `guardrails.system_one.*`. config.yml only. |
+| `toolkit.suggest.mode` | `off` | | `audit` asks System 1 for a toolkit suggestion without changing the session; `on` waits for it (up to `system_one.timeout_ms`) on an eligible turn and starts the session on a confidently suggested kit (Toolkits, On mode). The System 1 host, model and timeout come from `system_one.*`. config.yml only. |
 | `toolkit.suggest.threshold` | `0.5` | | Minimum confidence for a non-default toolkit suggestion. config.yml only. |
 | `toolkit.suggest.defer_turns` | `3` | | Maximum owner-prompt number for another ask after `undecided` (the owner's own prompts: not steers, notes, reminders or `!` command output). config.yml only. |
 | `toolkit.suggest.defer_tokens` | `5000` | | Maximum estimated conversation size for another ask after `undecided` (characters / 4). config.yml only. |

@@ -127,6 +127,14 @@ RSpec.describe "chi.judgment and ctx.judge" do
       expect(judgments.asks.last.state).to eq("bad � byte")
     end
 
+    it "raises ArgumentError, not a SystemStackError past the hook's rescue, for a state nested without end" do
+      declared
+      cycle = {}
+      cycle["self"] = cycle
+      expect { ctx.judge("progress", state: cycle) }.to raise_error(ArgumentError, /nested too deep/)
+      expect { ctx.judge_later("progress", state: cycle) }.to raise_error(ArgumentError, /nested too deep/)
+    end
+
     it "raises ArgumentError for a name it didn't declare, as ask_model does, and for a state it can't send" do
       declared
       expect { ctx.judge("other", state: "s") }.to raise_error(ArgumentError, /no judgment probe.other declared/)
@@ -286,7 +294,7 @@ RSpec.describe "chi.judgment and ctx.judge" do
       expect(judgments.wait.runs("progress").map { |run| run["id"] }).to contain_exactly(first_id, second_id)
     end
 
-    it "tells the block off this thread and returns nil when off, with no host, or with no run to save" do
+    it "tells the block off this thread and returns nil when off" do
       declared
       judgments.mode("progress", "off")
       got = Queue.new
@@ -294,6 +302,23 @@ RSpec.describe "chi.judgment and ctx.judge" do
       result, thread = got.pop(timeout: 5)
       expect(result).to have_attributes(reason: :off, no_judgment?: true)
       expect(thread).not_to eq(Thread.current)
+    end
+
+    it "tells the block and returns nil with no host" do
+      declared
+      judgments.no_host("progress")
+      got = Queue.new
+      expect(ctx.judge_later("progress", state: "s") { |result| got << result }).to be_nil
+      expect(got.pop(timeout: 5)).to have_attributes(reason: :no_host)
+    end
+
+    it "answers and returns nil with no run to save (a scratch session)" do
+      declared(host: { scratch: true })
+      judgments.answer("progress", noul: 0.9)
+      got = Queue.new
+      expect(ctx.judge_later("progress", state: "s") { |result| got << result }).to be_nil
+      expect(got.pop(timeout: 5).p).to eq(0.9)
+      expect(judgments.wait.runs("progress")).to be_empty
     end
 
     it "skips under shared_host: :skip with the block told" do
@@ -353,11 +378,27 @@ RSpec.describe "chi.judgment and ctx.judge" do
     end
 
     it "refuses another bundle's run, core's among them" do
-      ["other.progress/abc", "approvals.allow/abc", "probe-other.x/abc", "garbage"].each do |id|
+      ["other.progress/abc", "approvals.allow/abc", "probe-other.x/abc", "probe.nope/abc", "probe.nope.replay/abc", "garbage"].each do |id|
         expect { ctx.judgments.label(id, "v") }.to raise_error(ArgumentError, /not a run of bundle probe's/), id
         expect { ctx.judgments.acted(id, "v") }.to raise_error(ArgumentError, /not a run of bundle probe's/), id
       end
       expect(judgments.labels("progress")).to be_empty
+    end
+
+    it "gives a bundle named like core's nothing of core's, and one with a dot no judgment" do
+      question = { "q" => { type: "noul", instructions: "i" } }
+      expect { Samagotchi::SystemOne::Judgments::Declaration.build(bundle: "a.b", name: "x", questions: question) }.to raise_error(ArgumentError, /dot/)
+      layer = Samagotchi::SystemOne::Judgments.new(runs: -> { Samagotchi::SystemOne::Runs.new(store: Samagotchi::SystemOne::Runs::MemoryStore.new) })
+      labels = Samagotchi::Plugin::Judgments.new(-> { layer }, bundle: "approvals")
+      expect { labels.label("approvals.allow/abc", "allow_wide", strength: "strong") }.to raise_error(ArgumentError, /not a run of bundle approvals's/)
+    end
+
+    it "saves no later line in a participant's turn" do
+      id = run_id
+      @bundle.set(turn_author: "p:p_0123abcd")
+      expect(ctx.judgments.label(id, "v")).to be(false)
+      expect(ctx.judgments.acted(id, "v")).to be(false)
+      expect(judgments.labels("progress") + judgments.acted_lines("progress")).to be_empty
     end
 
     it "takes the nil a run that wasn't saved gives, saving nothing" do
@@ -370,6 +411,7 @@ RSpec.describe "chi.judgment and ctx.judge" do
       expect { ctx.judgments.label(run_id, :word) }.to raise_error(ArgumentError, /label takes/)
       expect { ctx.judgments.label(run_id, "x" * 201) }.to raise_error(ArgumentError, /label takes/)
       expect { ctx.judgments.label(run_id, "v", strength: "very") }.to raise_error(ArgumentError, /strength/)
+      expect { ctx.judgments.label(run_id, "v", question: "x" * 201) }.to raise_error(ArgumentError, /question takes/)
     end
 
     it "saves no line for a scratch session" do
