@@ -11,6 +11,8 @@ and commands may change between minor versions. How releases are made:
 
 - The web's live answer box shows a new line at once instead of fading it in, which takes about a quarter off the CPU a
   streaming answer uses in chi web.
+- An approval card's folder and reason wrap at words; only a token too long for the line breaks. The command box is
+  unchanged.
 
 ## [0.144.0] - 2026-11-02
 

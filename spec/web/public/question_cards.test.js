@@ -1,6 +1,7 @@
 import "./dom_shim.js";
 import test from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
 import { createQuestionCards } from "../../../lib/samagotchi/web/public/question_cards.js";
 
 // A small DOM stand-in: elements with classList, children, listeners and a
@@ -876,4 +877,13 @@ test("a question without refs (or a relayed hook question's text) pairs none", a
   const r = setup({ pairRefs: (el, refs) => relayed.push(refs) });
   r.cards.renderQuestion({ ...PQ, kind: "hook", refs: REFS, relay: { id: "r1", child_id: "cccc2222-0000", chain: ["cccc2222"], asked: "Go?" } });
   assert.deepEqual(relayed, []);
+});
+
+test("the card's prose wraps at words, the command box still breaks anywhere", () => {
+  const html = fs.readFileSync(new URL("../../../lib/samagotchi/web/public/index.html", import.meta.url), "utf8");
+  const rule = (sel) => html.split("\n").find((line) => line.startsWith(`${sel}{`));
+  const prose = rule(".approval-where,.approval-why");
+  assert.doesNotMatch(prose, /word-break/);
+  assert.match(prose, /overflow-wrap:anywhere/);
+  assert.match(rule(".approval-what"), /word-break:break-all/);
 });
