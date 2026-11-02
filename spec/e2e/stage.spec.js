@@ -329,6 +329,7 @@ test("a question card sits in the stage (also after a reload mid-turn), and the 
 // (0.85 of the page, never above the session panel), the reply reads from
 // its start in the stage's one scroll, and a pill leads to the card.
 test("a long reply that asks gets the question room: read from its start, a pill to the card, the answer moves nothing", async ({ page, script }) => {
+  await page.setViewportSize({ width: 390, height: 420 });
   script("question_long");
   await watchShifts(page);
   await watchStage(page);
@@ -364,6 +365,11 @@ test("a long reply that asks gets the question room: read from its start, a pill
   await pill.click();
   await expect.poll(inSight).toBe(true);
   await expect(pill).toBeHidden();
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await expect(pill).toBeVisible();
+  await pill.click();
+  await expect.poll(inSight).toBe(true);
+  await settled(page, { stage: true });
   // From the answer until the turn is answered nothing moves on its own.
   await page.waitForFunction(() => document.querySelector("#turnStage").getAnimations().length === 0);
   await page.waitForFunction(() => !document.querySelector("#turnStage [data-following]")); // the pill's ease is over
