@@ -315,7 +315,7 @@ reach another device or the server.
 | Key | Module | What |
 |---|---|---|
 | `chi_model`, `chi_model_recent` | `model_pick.js`, `model_picker.js`, `start_page.js` | the start page's model and its recent list |
-| `chi_composer_collapsed` | `composer_fold.js` | the composer folded |
+| `chi_composer_collapsed` | `composer_fold.js` | the composer folded (a card's text field folds it for the time it has the focus on a narrow or touch screen, `composer_grip.js watchCardField`, on top of this and of the visit's state: neither is written) |
 | `chi_composer_floor` | `composer_grip.js`, `composer_mount.js` | the composer's dragged height |
 | `chi_strip_hidden` (`chi_zen`: the old name, read once) | app.js | the session strip hidden |
 | `chi_stage_collapsed` | `stage_view.js` | the stage collapsed |

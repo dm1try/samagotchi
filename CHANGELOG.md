@@ -22,6 +22,8 @@ and commands may change between minor versions. How releases are made:
 - A web approval too tall for the stage takes the stage's raised cap, as a long question already did, so on a phone its
   question, command and Submit show without scrolling when the card fits the page. A delegate's relayed approval too.
 - The web's session bar says "waiting" instead of "running" while a card blocks the turn, as `chi sessions list` does.
+- On a phone or touch screen the web's composer folds while a card's text field has the focus, so the card keeps those
+  rows with the keyboard up, and comes back when the field lets go. The saved fold and the draft are untouched.
 
 ## [0.144.0] - 2026-11-02
 

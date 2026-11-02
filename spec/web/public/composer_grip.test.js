@@ -247,3 +247,94 @@ test("a resize drag after a click takes the pending fold back: the box stays ope
   t.mock.timers.tick(GRIP_CLICK_FOLD_MS * 2);
   assert.equal(folded(), false);
 });
+
+const CARD_FIELD_TICK_FOR_TEST = 150;
+
+// ── a card's field folds the composer on a narrow or touch screen ─────────
+
+function cardField(ctx, { narrow = true } = {}) {
+  const { doc, win } = ctx;
+  win.matchMedia = () => ({ matches: narrow });
+  const card = doc.createElement("details");
+  card.className = "bubble question";
+  const field = doc.createElement("input");
+  field.type = "text";
+  field.className = "question-freeform";
+  card.append(field);
+  doc.body.append(card);
+  const focus = () => { field.focus(); field.dispatchEvent(new win.Event("focusin", { bubbles: true })); };
+  return { field, focus };
+}
+
+test("a card's field folds an open composer for its focus: the saved choice untouched, the draft kept", (t) => {
+  t.mock.timers.enable({ apis: ["setInterval"] });
+  const ctx = setup();
+  ctx.grip.newVisit();
+  ctx.promptEl.value = "a draft";
+  const { field, focus } = cardField(ctx);
+  assert.equal(ctx.folded(), false);
+  focus();
+  assert.equal(ctx.folded(), true);
+  assert.equal(ctx.grip.isComposerFolded(), true);
+  t.mock.timers.tick(1000);
+  assert.equal(ctx.folded(), true, "held while the field has the focus");
+  field.blur();
+  t.mock.timers.tick(CARD_FIELD_TICK_FOR_TEST);
+  assert.equal(ctx.folded(), true, "a tap on Submit lands before the composer comes back");
+  t.mock.timers.tick(CARD_FIELD_TICK_FOR_TEST);
+  assert.equal(ctx.folded(), false);
+  assert.equal(ctx.promptEl.value, "a draft");
+  assert.equal(localStorage.getItem(COMPOSER_FOLD_KEY), null);
+});
+
+test("a composer the user folded stays folded after the card's field lets go", (t) => {
+  t.mock.timers.enable({ apis: ["setInterval"] });
+  const ctx = setup({ saved: "1" });
+  ctx.grip.newVisit();
+  const { field, focus } = cardField(ctx);
+  focus();
+  field.blur();
+  t.mock.timers.tick(CARD_FIELD_TICK_FOR_TEST * 2);
+  assert.equal(ctx.folded(), true);
+  assert.equal(localStorage.getItem(COMPOSER_FOLD_KEY), "1");
+});
+
+test("a card's field disabled by its answer (no blur event) gives the composer back", (t) => {
+  t.mock.timers.enable({ apis: ["setInterval"] });
+  const ctx = setup();
+  ctx.grip.newVisit();
+  const { field, focus } = cardField(ctx);
+  focus();
+  assert.equal(ctx.folded(), true);
+  field.disabled = true;
+  t.mock.timers.tick(CARD_FIELD_TICK_FOR_TEST * 2);
+  assert.equal(ctx.folded(), false);
+});
+
+test("the page opening the composer while a card's field has the focus wins; nothing is saved", (t) => {
+  t.mock.timers.enable({ apis: ["setInterval"] });
+  const ctx = setup({ saved: "1" });
+  ctx.grip.newVisit();
+  const { focus } = cardField(ctx);
+  focus();
+  ctx.grip.focusPrompt();
+  assert.equal(ctx.folded(), false);
+  assert.equal(localStorage.getItem(COMPOSER_FOLD_KEY), "1");
+});
+
+test("a wide screen with a mouse: a card's field leaves the composer alone", () => {
+  const ctx = setup();
+  ctx.grip.newVisit();
+  const { focus } = cardField(ctx, { narrow: false });
+  focus();
+  assert.equal(ctx.folded(), false);
+});
+
+test("the composer's own box and a radio don't fold it", () => {
+  const ctx = setup();
+  ctx.grip.newVisit();
+  ctx.win.matchMedia = () => ({ matches: true });
+  ctx.promptEl.focus();
+  ctx.promptEl.dispatchEvent(new ctx.win.Event("focusin", { bubbles: true }));
+  assert.equal(ctx.folded(), false);
+});
