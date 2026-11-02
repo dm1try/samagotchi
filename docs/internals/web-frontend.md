@@ -23,7 +23,7 @@ page. A factory dep a new version stops passing is the same hazard the other way
 out of `send_turn.js`, `session_actions.js` and `lists_view.js`); a page loaded before keeps all its old modules
 until a reload, so the risk is a mixed cache, not an open tab. `answer_fold.js`, `details_motion.js`,
 `turn_range.js`, `history_reveal.js`, `latest.js`, `session_payload.js`, `method_api.js`, `session_store.js`,
-`session_fields.js`, `feature_gates.js`, `revise_stack.js`, `revise_switch.js`, `shell_command.js`, `stale_params.js`, `popover_modal.js` and `more_sheet.js` are new modules for that reason.
+`session_fields.js`, `feature_gates.js`, `revise_stack.js`, `revise_switch.js`, `shell_command.js`, `stale_params.js`, `popover_modal.js`, `more_sheet.js` and `worker_features.js` are new modules for that reason.
 
 ## Two pages, two models
 
@@ -152,7 +152,8 @@ restart's hub event that brings the feature enables it, the worker going (`worke
 it's unavailable. `forgetSession` and `renderSessionView` draw the history with the answer already, so they `prime()`
 the gates in the batch of their write, and nothing fires. Today two gates: `verify` (Verify fresh on a verdict's
 card, `redrawFresh`) and `revise` (the answers' Revise buttons and the composer's Revising chip, `redrawRevise`).
-Both refuse only a live worker without the feature: a worker that isn't up is woken by the send as a new one, which
+Both refuse only a live worker without the feature — `workerPredates(features, up, feature)` in
+`worker_features.js`, the rule both gates share: a worker that isn't up is woken by the send as a new one, which
 has it. A new action that needs a worker feature is one more entry.
 
 ### Exceptions
