@@ -70,6 +70,7 @@ test("messageAuthorData: whose a review message is", () => {
   assert.deepEqual(messageAuthorData({ mine: true, author: "p:1", author_name: "Alex" }), { by: "me" });
   assert.deepEqual(messageAuthorData({ author: "p:2", author_name: "Sam" }), { by: "participant", name: "Sam" });
   assert.deepEqual(messageAuthorData({ author: "p:2" }), { by: "participant", name: "" });
+  assert.deepEqual(messageAuthorData({ author: "bot", automatic: true }), { by: "automatic" }, "only a p: author is a participant's");
   assert.deepEqual(messageAuthorData({ automatic: true }), { by: "automatic" });
   assert.deepEqual(messageAuthorData({}), { by: "owner" });
 });
