@@ -813,7 +813,7 @@ body.stage-view .turn-stage{position:absolute;left:0;right:0;bottom:100%;margin-
    its room, read from the top. */
 .ts-asking{max-height:calc(var(--stage-max,60vh) * .35);overflow:auto;scrollbar-width:thin;white-space:pre-wrap;overflow-wrap:anywhere;font-size:14px;line-height:1.55;color:var(--narr);border-left:2px solid var(--border-strong);padding-left:10px}
 /* The question room (stage_view.js drawRoom): a model's own question whose asking text overflows that cap. The slot loses its
-   cap and its own scroll, and the stage's one scroll covers the whole reply (the stage's cap rises for the turn, stage_frame.js).
+   cap and its own scroll, and the stage's one scroll covers the whole reply (the stage's cap rises until the next step, stage_frame.js).
    --stage-max also scales the extras, the cloud and the queued slot: a ceiling only, content that fit stays as it is. */
 .turn-stage.question-room .ts-asking{max-height:none;overflow:visible}
 .turn-stage.asking .ts-headline{display:none}
@@ -841,7 +841,7 @@ body.stage-view .turn-stage{position:absolute;left:0;right:0;bottom:100%;margin-
 .turn-stage.waiting :is(.ts-extras,.ts-tail){max-height:none;overflow:visible}
 /* The card under the live slots stays put from its arrival to the next step: waiting, the slots keep at least their running
    height (the asking text in the headline's place, the tool row's and the trail's room left blank); answered, the height
-   they had while waiting (stage_view.js). */
+   they had while waiting. The next step lets it go with the frame (stage_view.js releaseHeldWait). */
 .turn-stage.waiting .ts-live{min-height:var(--ts-live-h)}
 .turn-stage.held-wait:not(.waiting) .ts-live{min-height:max(var(--ts-live-h),var(--live-held,0px))}
 /* A 1 px mark at the tallest content's end, so the scroll extent never drops while a turn runs (stage_view.js fitFrame). */

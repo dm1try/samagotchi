@@ -452,12 +452,14 @@ test("an approval card: allowing it runs the tool", async ({ page, script }) => 
   await first.press("Enter");
   await expect(card.locator(".question-result")).toContainText("Allow");
   await expect(answer(page)).toHaveText("The approved command ran.");
-  // The answer: the stage keeps its height and nothing in it shifts. This
-  // card is taller than its room (its top in sight, the rest a scroll away):
-  // its line stays in the stage's view.
-  const endAt = momentAt(await stageMarks(page), (m) => /\bended\b/.test(m.cls), answerAt);
-  expect(await shiftSum(page, { from: answerAt, to: endAt, withInput: true })).toBeLessThan(0.01);
-  expect(await snaps(page, { from: answerAt, to: endAt, keys: ["status", "chip", "composer"] })).toEqual([]);
+  // The answer: until the next step the stage keeps its height and nothing in
+  // it shifts; that step lets the height go, once. This card is taller than
+  // its room (its top in sight, the rest a scroll away): its line stays in the
+  // stage's view.
+  const marks2 = await stageMarks(page);
+  const nextStepAt = momentAt(marks2, (m) => !/\bheld-wait\b/.test(m.cls), answerAt);
+  expect(await shiftSum(page, { from: answerAt, to: nextStepAt - 1, withInput: true })).toBeLessThan(0.01);
+  expect(await snaps(page, { from: answerAt, to: nextStepAt - 1, keys: ["status", "chip", "composer"] })).toEqual([]);
   const line = await card.locator("summary").boundingBox();
   const view = await page.locator("#turnStage .ts-scroll").boundingBox();
   expect(line.y).toBeGreaterThanOrEqual(view.y);

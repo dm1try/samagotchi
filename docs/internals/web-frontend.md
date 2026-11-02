@@ -220,6 +220,18 @@ A new chip on the bar needs its place in that CSS's hidden list and a row in `mo
 it is lost on a phone. `app.js`'s `updateInfoBar` feeds the sheet (`update`) on every redraw; its rows and actions draw into
 fixed slots, so a row that joins keeps the focus where it was. The `narrowScreen` listener closes the sheet when the window grows.
 
+
+## The stage's height
+
+`stage_frame.js` is the one writer. The cap is a ceiling: 60% of the page, 80% with the cloud open, 85% while a card has
+the room, and never above the session panel. The frame is grow-only while a turn runs, so a change inside the stage
+never moves its top edge, with one exception: **the next step after a blocking card's answer lets the frame go, once**
+(`stage_view.js releaseHeldWait`, from `generationStarted`). The `held-wait` class says it is due: set with `waiting`,
+cleared there, so a later step, which calls it again, does nothing. What goes together: the live slots' waiting height, a
+raised cap, the tallest content seen (`forgetContent`). At the tap nothing moves: the card collapses to its line inside
+the held frame and the stage's scroll stays, unless the line would be above the view (a reader who scrolled down a card
+taller than the stage), when it comes back to the view's top (`settleAnsweredCard`).
+
 ## Frames
 
 During a turn the cost is frames, not code: JS, layout and style are each a few percent of a core, while an animation

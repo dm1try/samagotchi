@@ -280,35 +280,39 @@ test("a question card sits in the stage (also after a reload mid-turn), and the 
     done(el.getAnimations().length === 0 && el.offsetHeight === parseFloat(el.style.getPropertyValue("--stage-max"))))));
   await expect.poll(filled).toBe(true);
   await expect.poll(inSight).toBe(true);
-  // From the answer until the turn is answered nothing moves on its own:
-  // the card's collapse and the slots' swap come with the click. (The
-  // shifts' recorder came back with the reload.)
+  // From the answer until the next step nothing moves on its own: the
+  // card's collapse and the slots' swap come with the click. The next step
+  // lets the held height go, once. (The shifts' recorder came back with the
+  // reload.)
   await watchFrames(page);
   await watchStage(page);
   await startSnaps(page);
   const submitAt = await pageNow(page);
   await expect(stageEl(page).locator(".ts-prompt .user-message")).toHaveText("Read a file of my choice");
-  const cardTop = (await card.boundingBox()).y;
+  const heldHeight = await stageEl(page).evaluate((el) => el.offsetHeight);
   await card.locator(".question-option", { hasText: "README.md" }).click();
   await card.locator(".question-submit").click();
   await expect(stageEl(page).locator(".ts-answer .bubble.output")).toHaveText("Read the file you picked. Done.");
   await expect(asking).toBeHidden();
+  const nextStepAt = momentAt(await stageMarks(page), (m) => !/\bheld-wait\b/.test(m.cls), submitAt);
+  expect(await shiftSum(page, { from: submitAt, to: nextStepAt - 1, withInput: true })).toBeLessThan(0.01);
+  // The card stays where it was until then (its collapse and the swap above
+  // it happen inside the held stage).
+  expect(await snaps(page, { from: submitAt, to: nextStepAt - 1, keys: ["card"] })).toEqual([]);
+  // It went: the stage is shorter than the tall card's height it held.
+  await expect.poll(() => stageEl(page).evaluate((el) => el.offsetHeight)).toBeLessThan(heldHeight);
   // The frames are sampled at the next frame after the answer: wait for the answered one.
   await expect.poll(async () => (await frames(page)).some((f) => f.phase === "answered")).toBe(true);
   const answeredAt = (await frames(page)).find((f) => f.phase === "answered").t;
-  expect(await shiftSum(page, { from: submitAt, to: answeredAt, withInput: true })).toBeLessThan(0.01);
-  // The card stays where it was (its collapse and the swap above it happen
-  // inside the held stage).
-  expect(await snaps(page, { from: submitAt, to: answeredAt, keys: ["card"] })).toEqual([]);
-  expect(Math.abs((await card.boundingBox()).y - cardTop)).toBeLessThanOrEqual(2);
   await page.mouse.move(0, 0);
   await handedOff(page, 1);
   await expectNoHorizontalOverflow(page);
-  // The turn end with a short answer: the stage keeps its height, nothing
-  // in it moves.
+  // The turn end with a short answer: once the answer's growth has eased (the
+  // frame let go at the next step, so a short answer grows it again), the
+  // stage keeps its height and nothing in it moves.
   const leaveAt = momentAt(await stageMarks(page), (m) => /\bleaving\b/.test(m.cls), answeredAt);
-  expect(await shiftSum(page, { from: answeredAt, to: leaveAt, withInput: true })).toBeLessThan(0.01);
-  expect(await snaps(page, { from: answeredAt, to: leaveAt })).toEqual([]);
+  expect(await shiftSum(page, { from: answeredAt + 400, to: leaveAt, withInput: true })).toBeLessThan(0.01);
+  expect(await snaps(page, { from: answeredAt + 400, to: leaveAt })).toEqual([]);
   // The hand-off to a reader at the history's end: the reserve eases down
   // under the sliding stage and the history follows the turn's arrival.
   await expect(stageEl(page)).toBeHidden();
@@ -328,7 +332,7 @@ test("a question card sits in the stage (also after a reload mid-turn), and the 
 // A long "plan, then ask" reply: the question room. The stage's cap rises
 // (0.85 of the page, never above the session panel), the reply reads from
 // its start in the stage's one scroll, and a pill leads to the card.
-test("a long reply that asks gets the question room: read from its start, a pill to the card, the answer moves nothing", async ({ page, script }) => {
+test("a long reply that asks gets the question room: read from its start, a pill to the card, the answer moves nothing until the next step", async ({ page, script }) => {
   await page.setViewportSize({ width: 390, height: 420 });
   script("question_long");
   await watchShifts(page);
@@ -370,25 +374,23 @@ test("a long reply that asks gets the question room: read from its start, a pill
   await pill.click();
   await expect.poll(inSight).toBe(true);
   await settled(page, { stage: true });
-  // From the answer until the turn is answered nothing moves on its own.
+  // From the answer until the next step nothing moves on its own.
   await page.waitForFunction(() => document.querySelector("#turnStage").getAnimations().length === 0);
   await page.waitForFunction(() => !document.querySelector("#turnStage [data-following]")); // the pill's ease is over
   await watchFrames(page);
   await startSnaps(page);
   const submitAt = await pageNow(page);
-  const cardTop = (await card.boundingBox()).y;
   await card.locator(".question-option", { hasText: "README.md" }).click();
   await card.locator(".question-submit").click();
   await expect(stageEl(page).locator(".ts-answer .bubble.output")).toHaveText("Read the file you picked. Done.");
   await expect(stageEl(page)).not.toHaveClass(/question-room/);
   await expect(pill).toBeHidden();
-  // The answer's text streams before the turn ends, and the frames are
-  // sampled at the next frame after it: wait for the answered one.
-  await expect.poll(async () => (await frames(page)).some((f) => f.phase === "answered")).toBe(true);
-  const answeredAt = (await frames(page)).find((f) => f.phase === "answered").t;
-  expect(await shiftSum(page, { from: submitAt, to: answeredAt, withInput: true })).toBeLessThan(0.01);
-  expect(await snaps(page, { from: submitAt, to: answeredAt, keys: ["card"] })).toEqual([]);
-  expect(Math.abs((await card.boundingBox()).y - cardTop)).toBeLessThanOrEqual(2);
+  const nextStepAt = momentAt(await stageMarks(page), (m) => !/\bheld-wait\b/.test(m.cls), submitAt);
+  expect(await shiftSum(page, { from: submitAt, to: nextStepAt - 1, withInput: true })).toBeLessThan(0.01);
+  expect(await snaps(page, { from: submitAt, to: nextStepAt - 1, keys: ["card"] })).toEqual([]);
+  // The next step brought the raised cap back down.
+  const capNow = await stageEl(page).evaluate((el) => parseFloat(el.style.getPropertyValue("--stage-max")));
+  expect(capNow).toBeLessThanOrEqual(Math.round(0.6 * page.viewportSize().height));
   await page.mouse.move(0, 0);
   await handedOff(page, 1);
   const kinds = await page.locator("#history > :not(.revise-row)").evaluateAll((els) => els.map((el) =>

@@ -16,6 +16,9 @@ and commands may change between minor versions. How releases are made:
 - The web's approval card has no Deny radio: the Deny button beside Submit denies in one tap, and a reason typed in the
   box now goes with it. Terminals, `chi answer` and relayed approvals still answer Deny by its label.
 - The text fields on the web's cards ask iOS Safari not to offer its AutoFill Contact bar.
+- The web's stage shrinks back once at the next step after a question or approval is answered, so no empty room stays
+  under the answered card, and a raised cap comes back down then. At the tap nothing moves. Otherwise the stage still
+  only grows during a turn.
 
 ## [0.144.0] - 2026-11-02
 

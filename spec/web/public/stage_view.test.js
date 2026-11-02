@@ -483,7 +483,7 @@ function sizePage(t) {
 // A turn whose reply asks: the asking text drawn, overflowing its cap
 // (+overflow+) or not, then +cards+ placed in the extras (each a
 // [className, dataset]).
-async function askPage(t, { overflow = true, cards = [["bubble question", { kind: "question" }]] } = {}) {
+async function askPage(t, { overflow = true, cards = [["bubble question", { kind: "question" }]], cardHeight = null } = {}) {
   const { view } = page({ taskStop: fakeTaskStop });
   sizePage(t);
   view.turnStarted({});
@@ -500,6 +500,7 @@ async function askPage(t, { overflow = true, cards = [["bubble question", { kind
     // The card's buttons: an answer removes them (a childList change, as
     // question_cards.js's resolve does).
     card.appendChild(document.createElement("button"));
+    if (cardHeight !== null) Object.defineProperty(card, "offsetHeight", { configurable: true, get: () => cardHeight });
     view.place(card);
     return card;
   });
@@ -511,6 +512,17 @@ async function askPage(t, { overflow = true, cards = [["bubble question", { kind
 }
 
 const room = (view) => view.root.classList.contains("question-room");
+// fitFrame runs on the cap's change: a resize that moves the cap there and
+// back refits the frame (happy-dom has no ResizeObserver callbacks).
+async function refit(view) {
+  const was = Object.getOwnPropertyDescriptor(window, "innerHeight");
+  const h = window.innerHeight;
+  Object.defineProperty(window, "innerHeight", { configurable: true, get: () => h + 200 });
+  window.dispatchEvent(new window.Event("resize"));
+  Object.defineProperty(window, "innerHeight", was);
+  window.dispatchEvent(new window.Event("resize"));
+  await frame();
+}
 const capOf = (view) => view.root.style.getPropertyValue("--stage-max");
 const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
 const resize = () => window.dispatchEvent(new window.Event("resize"));
@@ -521,7 +533,7 @@ async function answer(card) {
   await tick();
 }
 
-test("a tall card answered: its line comes back for a reader who had scrolled down it, its slot shows its end", async (t) => {
+test("a tall card answered: its line comes back for a reader who had scrolled down it, as little as shows it; its slot shows its end", async (t) => {
   const { view, card } = await askPage(t, { overflow: false, cards: [["bubble question approval", { kind: "approval" }]] });
   try {
     const scroller = $(view, ".ts-scroll");
@@ -529,12 +541,30 @@ test("a tall card answered: its line comes back for a reader who had scrolled do
     Object.defineProperty(extras, "offsetTop", { configurable: true, get: () => 200 });
     Object.defineProperty(extras, "offsetHeight", { configurable: true, get: () => 60 });
     Object.defineProperty(extras, "scrollHeight", { configurable: true, get: () => 60 });
+    Object.defineProperty(card, "offsetTop", { configurable: true, get: () => 200 });
     Object.defineProperty(scroller, "clientHeight", { configurable: true, get: () => 400 });
     scroller.scrollTop = 500;
     await answer(card);
     assert.equal(view.root.classList.contains("waiting"), false);
-    assert.equal(scroller.scrollTop, 0, "the line in sight, not the blank the card left");
+    assert.equal(scroller.scrollTop, 192, "the line at the view's top, not the blank the card left");
     assert.equal(extras.scrollTop, 60);
+  } finally {
+    view.reset();
+  }
+});
+
+test("a card answered at the view's top stays exactly there, with its line's blank below it", async (t) => {
+  const { view, card } = await askPage(t, { overflow: false, cards: [["bubble question approval", { kind: "approval" }]] });
+  try {
+    const scroller = $(view, ".ts-scroll");
+    const extras = $(view, ".ts-extras");
+    Object.defineProperty(extras, "offsetTop", { configurable: true, get: () => 200 });
+    Object.defineProperty(extras, "offsetHeight", { configurable: true, get: () => 60 });
+    Object.defineProperty(card, "offsetTop", { configurable: true, get: () => 200 });
+    Object.defineProperty(scroller, "clientHeight", { configurable: true, get: () => 200 });
+    scroller.scrollTop = 192;
+    await answer(card);
+    assert.equal(scroller.scrollTop, 192);
   } finally {
     view.reset();
   }
@@ -598,20 +628,23 @@ test("question room: none when an answered ask card sits in the extras and an ap
   }
 });
 
-test("question room: the class goes at the answer, the cap stays for the turn; a new turn and a clear drop it", async (t) => {
+test("question room: the class goes at the answer, the cap stays until the next step; a new turn and a clear drop it", async (t) => {
   const { view, card } = await askPage(t);
   try {
     await answer(card);
     assert.equal(room(view), false);
     resize();
-    assert.equal(capOf(view), "850px", "the frame is grow-only: the cap never drops at the answer");
-    view.turnStarted({});
-    assert.equal(capOf(view), "600px");
+    assert.equal(capOf(view), "850px", "nothing moves at the tap: the cap holds until the next step");
+    view.generationStarted({ iteration: 2 });
+    assert.equal(capOf(view), "600px", "the next step brings it back down");
     const again = await askPage(t);
     assert.equal(capOf(again.view), "850px");
-    again.view.reset();
+    again.view.turnStarted({});
     assert.equal(capOf(again.view), "600px");
-    assert.equal(room(again.view), false);
+    const third = await askPage(t);
+    third.view.reset();
+    assert.equal(capOf(third.view), "600px");
+    assert.equal(room(third.view), false);
   } finally {
     view.reset();
   }
@@ -765,60 +798,78 @@ test("question room: measured at the asking text's draws only: a short question 
   }
 });
 
-// After the answer the live slots keep the waiting height (held-wait) until
-// the next step; with the room that height is the whole reply's. At the
-// next step it goes as far as the stage's scroll can absorb it (the scroll
-// moves up by as much): the card in view doesn't move.
-function heldLive(view, { waiting, running }) {
-  const live = $(view, ".ts-live");
-  Object.defineProperty(live, "offsetHeight", { configurable: true, get: () => {
-    if (live.style.minHeight) return Math.max(running, parseFloat(live.style.minHeight));
-    const held = view.root.classList.contains("held-wait");
-    return held ? waiting : running;
-  } });
-  return live;
-}
+const APPROVAL_CARD = ["bubble question approval", { kind: "approval" }];
 
-test("question room: the next step lets the held height go under the scroll's cover (the card stays put)", async (t) => {
-  const { view, card } = await askPage(t);
+// After a blocking card's answer the frame holds until the next step (nothing
+// moves at the tap), and the next step lets go of it once: the waiting height,
+// the tallest content seen, a raised cap. Later steps are grow-only again.
+function frameLaidOut(view, { natural }) {
+  const content = { value: natural };
+  for (const [sel, props] of [[".ts-prompt", { offsetTop: 0, offsetHeight: 0 }]]) {
+    for (const [k, v] of Object.entries(props)) Object.defineProperty($(view, sel), k, { configurable: true, get: () => v });
+  }
+  const extras = $(view, ".ts-extras");
+  Object.defineProperty(extras, "getClientRects", { configurable: true, value: () => [{}] });
+  Object.defineProperty(extras, "offsetTop", { configurable: true, get: () => 0 });
+  Object.defineProperty(extras, "offsetHeight", { configurable: true, get: () => content.value });
+  return content;
+}
+const heightOf = (view) => parseFloat(view.root.style.height);
+
+test("the next step after an answered card shrinks the frame; the tap doesn't, and a later step doesn't", async (t) => {
+  const { view, card } = await askPage(t, { overflow: false, cards: [APPROVAL_CARD] });
   try {
-    const live = heldLive(view, { waiting: 700, running: 100 });
+    const content = frameLaidOut(view, { natural: 500 });
+    await refit(view);
+    const tall = heightOf(view);
+    assert.ok(tall >= 500, `held ${tall}`);
+    content.value = 60;
     await answer(card);
-    view.scrollEl.scrollTop = 450;
+    await refit(view);
+    assert.equal(heightOf(view), tall, "the tap: grow-only, nothing moves");
+    assert.equal(view.root.classList.contains("held-wait"), true);
     view.generationStarted({ iteration: 2 });
-    // 600 px to let go, 450 absorbed by the scroll: 150 kept.
-    assert.equal(view.scrollEl.scrollTop, 0);
-    assert.equal(live.style.minHeight, "250px");
+    const shrunk = heightOf(view);
+    assert.ok(shrunk < tall, `the next step: ${tall} to ${shrunk}`);
     assert.equal(view.root.classList.contains("held-wait"), false);
-    // All of it when the scroll covers it.
-    view.chunk({ iteration: 2, text: "Reading. " });
-    view.turnStarted({});
-    assert.equal(live.style.minHeight, "");
+    // Grow-only again: growth stays, a later step lets nothing go.
+    content.value = 300;
+    await refit(view);
+    const grown = heightOf(view);
+    assert.ok(grown > shrunk);
+    content.value = 60;
+    view.generationStarted({ iteration: 3 });
+    await refit(view);
+    assert.equal(heightOf(view), grown, "only once: a second generationStarted holds");
   } finally {
     view.reset();
   }
-  const again = await askPage(t);
+});
+
+test("a next step with no answered card before it keeps the frame", async (t) => {
+  const { view } = page({ taskStop: fakeTaskStop });
+  sizePage(t);
   try {
-    heldLive(again.view, { waiting: 700, running: 100 });
-    await answer(again.card);
-    again.view.scrollEl.scrollTop = 800;
-    again.view.generationStarted({ iteration: 2 });
-    assert.equal(again.view.scrollEl.scrollTop, 200);
-    assert.equal($(again.view, ".ts-live").style.minHeight, "");
+    view.turnStarted({});
+    view.generationStarted({ iteration: 1 });
+    await frame();
+    const content = frameLaidOut(view, { natural: 400 });
+    await refit(view);
+    const tall = heightOf(view);
+    content.value = 40;
+    view.generationStarted({ iteration: 2 });
+    await refit(view);
+    assert.equal(heightOf(view), tall);
   } finally {
-    again.view.reset();
+    view.reset();
   }
 });
 
-test("without the room the next step lets the held height go as before (the scroll left alone)", async (t) => {
-  const { view, card } = await askPage(t, { overflow: false });
+test("a card still waiting at a generation keeps the held state", async (t) => {
+  const { view } = await askPage(t, { overflow: false, cards: [APPROVAL_CARD] });
   try {
-    const live = heldLive(view, { waiting: 300, running: 100 });
-    await answer(card);
-    view.scrollEl.scrollTop = 150;
     view.generationStarted({ iteration: 2 });
-    assert.equal(view.scrollEl.scrollTop, 150);
-    assert.equal(live.style.minHeight, "");
+    assert.equal(view.root.classList.contains("held-wait"), true);
   } finally {
     view.reset();
   }
