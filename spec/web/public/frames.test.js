@@ -102,3 +102,7 @@ test("the pulse's timing: the dot and tick 13 updates/s, the spinners 20", () =>
     assert.equal(animationOf(selector), "init-spin .8s steps(16) infinite", selector);
   }
 });
+
+test("a live answer's new line has no fade: per sentence, it was most of a streaming answer's animation cost", () => {
+  assert.doesNotMatch(sheets[0][1], /\.sentence\s*\{[^}]*animation/);
+});

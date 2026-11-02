@@ -237,6 +237,9 @@ counts. So:
   it) stops them all, so movement means chi is working; `stage.spec.js`'s question scenario checks it, also after a
   reload. An asking card (check-in) has no `.waiting`, as its turn goes on: its dot keeps blinking. `.init-spin` is
   outside the stage (plugin setup only).
+- A one-shot fade on something that arrives many times a second is a recurring cost too. A live answer's new line
+  appears at once: its fade alone was about a quarter of the streaming answer's total on the Studio (24-25% of a core to
+  17-19%). The headline's `ts-fade` stays: turning it off saved nothing measurable.
 
 A running turn's text reaches the page at most every 100 ms (`turn_block.js FLUSH_MS`): a chunk only marks its step dirty,
 and `flush` writes the dirty steps, follows and runs `onChange`, which refreshes the stage on the next frame

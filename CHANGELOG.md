@@ -7,6 +7,11 @@ and commands may change between minor versions. How releases are made:
 [docs/releasing.md](docs/releasing.md).
 ## [Unreleased]
 
+### Changed
+
+- The web's live answer box shows a new line at once instead of fading it in, which takes about a quarter off the CPU a
+  streaming answer uses in chi web.
+
 ## [0.144.0] - 2026-11-02
 
 ### Changed
