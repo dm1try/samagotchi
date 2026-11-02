@@ -331,4 +331,92 @@ RSpec.describe Samagotchi::MemoryUsage do
     )
     expect(summary.not_read_total).to eq(0)
   end
+
+  describe "the command" do
+    def run(*argv)
+      with_env("XDG_STATE_HOME" => File.join(tmp, "state")) do
+        Dir.chdir(repo) { Samagotchi::MemoryCommand.new(argv, stdout: out, stderr: err).run }
+      end
+    end
+
+    before { build_fixture }
+
+    it "prints the sections, with the cut caveat and the unknown names" do
+      expect(run("usage")).to eq(0)
+      expect(out.string.lines.first).to eq("5 sessions over 13 days, 1 unreadable file skipped\n")
+      expect(out.string).to include("Most read, by tokens (these 5 of 5: 96% of 313 read tokens)")
+      expect(out.string).to include("note: 1 of these reads came back cut")
+      expect(out.string).to include("Not read in saved sessions: 2 of 7 of your own memories")
+      expect(out.string).to include("Names read that have no memory now: 1")
+    end
+
+    it "reports the same numbers as json" do
+      expect(run("usage", "--format", "json")).to eq(0)
+      json = JSON.parse(out.string)
+      expect(json["sessions"]).to eq(5)
+      expect(json["days"]).to eq(13)
+      expect(json["reads"]).to eq({ "count" => 8, "tokens" => 313, "cut_reads" => 1, "names" => 5 })
+      expect(json["indexes"].map { |index| index["scope"] }).to eq(%w[project system])
+      expect(json["top"].first).to eq({ "name" => "identity", "scope" => "system", "tokens" => 106, "reads" => 2,
+                                        "cut_reads" => 0, "bytes" => 200, "size_tokens" => 50, "source" => nil })
+      expect(json["not_read"]).to eq({ "count" => 2, "total" => 7,
+                                       "largest" => [{ "name" => "cold", "scope" => "project", "bytes" => 300,
+                                                       "tokens" => 75 },
+                                                     { "name" => "guide", "scope" => "system", "bytes" => 40,
+                                                       "tokens" => 10 }] })
+      expect(json["unknown_names"]).to eq(1)
+    end
+
+    it "takes one scope and a row limit" do
+      expect(run("usage", "--scope", "system", "--top", "1", "--format", "json")).to eq(0)
+      json = JSON.parse(out.string)
+      expect(json["indexes"].map { |index| index["scope"] }).to eq(["system"])
+      expect(json["top"].size).to eq(1)
+      expect(json["not_read"]["largest"].map { |entry| entry["name"] }).to eq(["guide"])
+      expect(json["not_read"]["total"]).to eq(3)
+    end
+
+    it "says so with nothing saved, and exits 0" do
+      FileUtils.rm_rf(File.join(tmp, "state"))
+      expect(run("usage")).to eq(0)
+      expect(out.string).to eq("no sessions to count: nothing saved in #{File.join(tmp, "state", "samagotchi", "sessions")}\n")
+    end
+
+    it "says no reads when a session read nothing" do
+      FileUtils.rm_rf(state)
+      save_session("quiet", working_directory: repo, messages: [{ "role" => "user", "content" => "go" }])
+      expect(run("usage")).to eq(0)
+      expect(out.string).to include("1 session over 0 days")
+      expect(out.string).to include("No memory reads in these sessions.")
+      expect(out.string).not_to include("Most read")
+    end
+
+    it "refuses a bad --top, a stray NAME and an unknown format" do
+      expect(run("usage", "--top", "0")).to eq(2)
+      expect(run("usage", "--top", "abc")).to eq(2)
+      expect(run("usage", "extra")).to eq(2)
+      expect(run("usage", "--format", "yaml")).to eq(2)
+      expect(err.string.lines.map(&:chomp)).to eq([
+        "chi memory usage: --top must be a positive integer (see chi memory usage --help)",
+        "chi memory usage: --top must be a positive integer (see chi memory usage --help)",
+        "chi memory usage: usage takes no NAME (unexpected extra) (see chi memory usage --help)",
+        "chi memory usage: unknown format \"yaml\": use --format text|json (see chi memory usage --help)"
+      ])
+    end
+
+    it "counts config.yml's memories: baseline as used" do
+      config = File.join(tmp, "config", "samagotchi", "config.yml")
+      File.write(config, "#{File.read(config)}memories:\n  - system/guide\n")
+      expect(run("usage", "--format", "json")).to eq(0)
+      json = JSON.parse(out.string)
+      expect(json["not_read"]["count"]).to eq(1)
+      expect(json["not_read"]["largest"].map { |entry| entry["name"] }).to eq(["cold"])
+    end
+
+    it "writes nothing to the sessions or the memories" do
+      first = [snapshot(state), snapshot(system_dir), snapshot(project_dir(repo))]
+      run("usage")
+      expect([snapshot(state), snapshot(system_dir), snapshot(project_dir(repo))]).to eq(first)
+    end
+  end
 end

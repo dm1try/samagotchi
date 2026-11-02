@@ -28,7 +28,7 @@ RSpec.describe Samagotchi::MemoryCommand do
 
   it "prints its usage, and refuses an unknown subcommand, scope, format or a stray argument" do
     expect(run).to eq(0)
-    expect(out.string).to start_with("Usage: chi memory <ls|rm> [options]")
+    expect(out.string).to start_with("Usage: chi memory <ls|rm|usage> [options]")
     expect(run("help")).to eq(0)
 
     expect(run("mv")).to eq(2)
