@@ -229,6 +229,8 @@ or trims them; chi measures them (tokens estimated as characters /
   `system ~2.0k tokens (54 lines), project ~1.4k tokens (35 lines)`, with
   `, over 2500` inside the parentheses for a scope over
   `memory.index_warn_tokens`.
+- `chi memory usage` counts what the memories cost over the saved sessions: each scope's index tokens,
+  the memories read most, and the ones no session read (see [What the memories cost](#what-the-memories-cost)).
 - `/stats` has `memory index:     ~3.4k tokens in this session's prompt (system 2.0k, project 1.4k)`,
   and the web's ctx tooltip (info bar and session card) the same line. It is
   what this session's prompt holds, measured when the prompt was built (after
@@ -281,6 +283,42 @@ every read. `chi self` has a `big memories` row instead: the memories over the l
 (5, then `+N more`), `none` when there are none, a bundle's tagged `from <bundle>` (the shipped
 `config_modification_protocol` is over on every install; the fix is upstream's). This is how a
 memory already over the limit gets seen.
+
+## What the memories cost
+
+`chi memory usage [--scope project|system] [--top N] [--format text|json]` answers
+"where do my memories cost the most?" from the saved session files. It reads only: no
+writes, no model call, no grades, and no advice to delete anything. `chi self`'s `big memories`
+row still lists memories over `memory.entry_warn_tokens`; this is the other half — cost is
+size times reads, and a memory of 2k tokens read fifty times costs more than one of 8k read once.
+
+- **The header** says how many sessions were counted and the days they span, because retention
+  limits what can be seen: 14 days and 500 sessions by default, so "not read" means "not read
+  in the sessions still saved". Archived sessions count; test runs and sessions with no user
+  message do not.
+- **The indexes come first**, since both are sent with every prompt: their tokens (the same
+  figure `chi self` and `/stats` show), the `memory.index_warn_tokens` limit, and how many of
+  their lines name a memory no counted session read.
+- **Most read, by tokens**: name, tokens, reads, the memory's size now, its scope, and `from <bundle>`
+  for a bundle's memory (which the user cannot tighten in place). The header of the section says
+  what share the shown rows make of all read tokens (`--top` caps the rows, 10 by default).
+- **Not read in saved sessions**: the count of the user's own memories no counted session read,
+  then the largest of them. A bundle's memories are not listed, and a memory the session was
+  started with (`--memory`, or config.yml's `memories:`) counts as used: the model has it in the
+  prompt without a read. A line says an index line is paid whether or not the memory is read, so
+  a never-read memory still costs its line.
+- Names read that no longer have a memory behind them are counted in one line, not as rows.
+
+A read is a `memory_read`, or a `read` of a memory's file, in either loop's saved shape (the chat
+loop's calls paired by `tool_call_id`, the native loop's call markup with one joined result). Its
+cost is the size of the result as it was saved — a cut result counts as it happened, a model overlay
+too — in tokens as the prompt estimates them (characters / `context.chars_per_token`). A comma list
+of names splits that one result by share. A project memory is credited only with the reads of
+sessions of this folder's project (worktrees of one repository share it); a system memory with every
+session's, whichever project they came from.
+
+Reads saved before whole reads hold cut results; when any counted read does, one line under "Most
+read" says so, since a big memory may cost more per read now than those numbers show.
 
 ## Skills
 

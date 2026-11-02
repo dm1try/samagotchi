@@ -7,6 +7,14 @@ and commands may change between minor versions. How releases are made:
 [docs/releasing.md](docs/releasing.md).
 ## [Unreleased]
 
+### Added
+
+- `chi memory usage [--scope project|system] [--top N] [--format text|json]` reports what the memories
+  cost, counted from the saved sessions: each scope's index tokens against `memory.index_warn_tokens` and
+  how many of its lines name a memory no session read, the memories read most by tokens with the share they
+  make of all read tokens, and the user's own memories no saved session read. It reads only — no grades, no
+  advice to delete, nothing written. [docs/memory.md](docs/memory.md) has the details.
+
 ## [0.145.0] - 2026-11-02
 
 ### Changed
