@@ -177,3 +177,11 @@ test("the ctx tooltip says the window is unknown, until the next request right a
   assert.match(model({ ctxUnknownAfterSwitch: true }).ctx.tip, /^Context window unknown until the next request\n/);
   assert.equal(model({ ctxUnknownAfterSwitch: true }).ctx.text, "ctx ?");
 });
+
+test("the status chip says waiting while a card blocks the running turn, and only then", () => {
+  const running = { ...emptySessionState(), status: "running", model: "qwen", dir: "/p" };
+  assert.equal(sessionBar(args({ state: running, running: true })).bar.status, "running");
+  assert.equal(sessionBar(args({ state: running, running: true, waiting: true })).bar.status, "waiting");
+  // A summary that hasn't caught up with the turn's end says nothing here.
+  assert.equal(sessionBar(args({ waiting: true })).bar.status, "idle");
+});
