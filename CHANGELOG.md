@@ -13,6 +13,8 @@ and commands may change between minor versions. How releases are made:
   streaming answer uses in chi web.
 - An approval card's folder and reason wrap at words; only a token too long for the line breaks. The command box is
   unchanged.
+- The web's approval card has no Deny radio: the Deny button beside Submit denies in one tap, and a reason typed in the
+  box now goes with it. Terminals, `chi answer` and relayed approvals still answer Deny by its label.
 
 ## [0.144.0] - 2026-11-02
 

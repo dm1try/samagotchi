@@ -879,6 +879,63 @@ test("a question without refs (or a relayed hook question's text) pairs none", a
   assert.deepEqual(relayed, []);
 });
 
+// ── the web's Deny: the button, not a radio ───────────────────────────────
+
+const DENYABLE = { id: "a1", kind: "approval", question: "Run it?", options: ["Allow once", "Allow for the session", "Deny"], allow_freeform: true,
+  approval: { tool: "execute", command: "rm -rf build", reason: "cleanup" } };
+
+test("an approval's card has no Deny radio: the Deny button stands for it", () => {
+  const { cards } = setup();
+  cards.renderQuestion(DENYABLE);
+  const card = cards.questionCard();
+  assert.deepEqual(card.querySelectorAll(".question-option input").map((i) => i.value), ["Allow once", "Allow for the session"]);
+  assert.equal(card.querySelector(".question-dismiss").textContent, "Deny");
+});
+
+test("a relayed approval has no Deny radio either; a plain question's option called Deny stays", () => {
+  const { cards } = setup();
+  cards.renderQuestion({ ...DENYABLE, relay: { child_id: "c1", chain: ["c1"] } });
+  assert.deepEqual(cards.questionCard().querySelectorAll(".question-option input").map((i) => i.value), ["Allow once", "Allow for the session"]);
+  const other = setup();
+  other.cards.renderQuestion({ id: "q9", question: "Which?", options: ["Keep", "Deny"] });
+  assert.deepEqual(other.cards.questionCard().querySelectorAll(".question-option input").map((i) => i.value), ["Keep", "Deny"]);
+});
+
+test("an approval whose last option isn't Deny keeps every radio; its Deny button only dismisses", async () => {
+  const { cards, calls } = setup();
+  cards.renderQuestion({ ...DENYABLE, options: ["Allow once", "Skip"] });
+  const card = cards.questionCard();
+  assert.deepEqual(card.querySelectorAll(".question-option input").map((i) => i.value), ["Allow once", "Skip"]);
+  card.querySelector(".question-freeform").value = "no";
+  card.querySelector(".question-dismiss").click();
+  await flush();
+  assert.deepEqual(calls, [["dismissQuestion", "s1", "a1"]]);
+});
+
+test("Deny with nothing typed dismisses (one tap); with a reason it answers Deny, the reason with it", async () => {
+  const empty = setup();
+  empty.cards.renderQuestion(DENYABLE);
+  empty.cards.questionCard().querySelector(".question-dismiss").click();
+  await flush();
+  assert.deepEqual(empty.calls, [["dismissQuestion", "s1", "a1"]]);
+  const typed = setup();
+  typed.cards.renderQuestion(DENYABLE);
+  const card = typed.cards.questionCard();
+  card.querySelector(".question-freeform").value = "  not on main ";
+  card.querySelector(".question-dismiss").click();
+  await flush();
+  assert.deepEqual(typed.calls, [["sendAnswer", "s1", { id: "a1", selected: ["Deny"], freeform: "not on main" }]]);
+});
+
+test("the card still reads a Deny answered elsewhere (a terminal, chi answer)", () => {
+  const { cards } = setup();
+  cards.renderQuestion(DENYABLE);
+  const card = cards.questionCard();
+  cards.resolveQuestion("a1", { answer: { selected: ["Deny"], freeform: "no" } });
+  assert.equal(card.classList.contains("denied"), true);
+  assert.equal(card.querySelector(".question-result").textContent, "Denied: no");
+});
+
 test("the card's prose wraps at words, the command box still breaks anywhere", () => {
   const html = fs.readFileSync(new URL("../../../lib/samagotchi/web/public/index.html", import.meta.url), "utf8");
   const rule = (sel) => html.split("\n").find((line) => line.startsWith(`${sel}{`));
