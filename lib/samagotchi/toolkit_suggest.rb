@@ -18,6 +18,9 @@ module Samagotchi
   class ToolkitSuggest
     FILE = "toolkit_suggestions.jsonl"
     QUESTION_ID = "toolkit"
+    # The defer sentinel: the choice "There is no task yet", asked as a
+    # criterion, never offered as a kit, and hidden from the web's picker.
+    UNDECIDED = "undecided"
     # Its saved asks' name (SystemOne::Runs).
     JUDGMENT = "toolkit.suggest"
     PROMPT_MAX = 1500
@@ -42,7 +45,7 @@ module Samagotchi
     # not the whole ask, and the ≥ 2 clause counts what is left.
     def self.candidates(kits, default_name:)
       kits.values.filter_map do |kit|
-        next if [default_name.to_s, Toolkit::REVIEW, "undecided"].include?(kit.name)
+        next if [default_name.to_s, Toolkit::REVIEW, UNDECIDED].include?(kit.name)
         next if kit.description.to_s.empty?
         next unless resolves?(kit.name, kits)
 
@@ -62,7 +65,7 @@ module Samagotchi
       candidates = candidates(kits, default_name: default.name)
       criteria = candidates.to_h { |kit| ["kit:#{kit.name}", "#{kit.name}: #{kit.description}"] }
       criteria["default"] = "none of the other toolkits fits: the user's everyday default"
-      criteria["undecided"] = "There is no task yet; defer this choice"
+      criteria[UNDECIDED] = "There is no task yet; defer this choice"
       question = SystemOne::Question.new(id: QUESTION_ID, type: :choice, instructions: INSTRUCTIONS, criteria: criteria)
       [question, { project: project.to_s, prompt: prompt.to_s[0, PROMPT_MAX] }]
     end
@@ -81,7 +84,7 @@ module Samagotchi
 
       messages = Array(session.messages)
       return true unless model_reply?(messages)
-      return false unless field(value(last_suggestion), :raw) == "undecided"
+      return false unless field(value(last_suggestion), :raw) == UNDECIDED
 
       current_turn_number = turn_number(messages)
       current_turn_number <= defer_turns.to_i && conversation_chars(messages) / CHARS_PER_TOKEN < defer_tokens.to_i
@@ -139,7 +142,7 @@ module Samagotchi
       decided = raw == "default" || (candidate && confidence && confidence >= threshold.to_f)
       would = if answer.nil?
                 "no_judgment"
-              elsif raw == "undecided"
+              elsif raw == UNDECIDED
                 "defer"
               elsif raw == "default"
                 "default"
