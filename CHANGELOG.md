@@ -19,6 +19,8 @@ and commands may change between minor versions. How releases are made:
 - The web's stage shrinks back once at the next step after a question or approval is answered, so no empty room stays
   under the answered card, and a raised cap comes back down then. At the tap nothing moves. Otherwise the stage still
   only grows during a turn.
+- A web approval too tall for the stage takes the stage's raised cap, as a long question already did, so on a phone its
+  question, command and Submit show without scrolling when the card fits the page. A delegate's relayed approval too.
 
 ## [0.144.0] - 2026-11-02
 

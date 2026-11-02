@@ -232,6 +232,11 @@ raised cap, the tallest content seen (`forgetContent`). At the tap nothing moves
 the held frame and the stage's scroll stays, unless the line would be above the view (a reader who scrolled down a card
 taller than the stage), when it comes back to the view's top (`settleAnsweredCard`).
 
+Two cards raise the cap: a model's own question whose reply overflows its slot (`drawRoom`, the question room, read from
+the reply's start with a pill to the card) and a blocking approval too tall for the stage's view, a delegate's relayed
+one too (`raiseForApproval`, `stage_frame.js fitsCap`). An approval gets the cap only: no room class and no pill, as it
+opens at its question and command (`revealTop`).
+
 ## Frames
 
 During a turn the cost is frames, not code: JS, layout and style are each a few percent of a core, while an animation

@@ -650,6 +650,55 @@ test("question room: the class goes at the answer, the cap stays until the next 
   }
 });
 
+// A blocking approval too tall for the stage's view gets the same raised cap
+// as a long question (never the question room's class or its pill: it opens
+// at its question and command).
+const APPROVAL_CARD = ["bubble question approval", { kind: "approval" }];
+
+test("an approval too tall for the stage raises the cap; one that fits doesn't", async (t) => {
+  const tall = await askPage(t, { overflow: false, cards: [APPROVAL_CARD], cardHeight: 700 });
+  try {
+    assert.equal(capOf(tall.view), "850px");
+    assert.equal(room(tall.view), false);
+    assert.equal($(tall.view, ".ts-room-pill").hidden, true);
+  } finally {
+    tall.view.reset();
+  }
+  const short = await askPage(t, { overflow: false, cards: [APPROVAL_CARD], cardHeight: 300 });
+  try {
+    assert.equal(capOf(short.view), "600px");
+  } finally {
+    short.view.reset();
+  }
+});
+
+test("a delegate's relayed approval too tall for the stage raises the cap too; a relayed hook question doesn't", async (t) => {
+  const relayed = await askPage(t, { overflow: false, cards: [["bubble question approval", { kind: "approval", relay: "1" }]], cardHeight: 700 });
+  try {
+    assert.equal(capOf(relayed.view), "850px");
+  } finally {
+    relayed.view.reset();
+  }
+  const hook = await askPage(t, { overflow: false, cards: [["bubble question", { kind: "hook", relay: "1" }]], cardHeight: 700 });
+  try {
+    assert.equal(capOf(hook.view), "600px");
+  } finally {
+    hook.view.reset();
+  }
+});
+
+test("an approval's raised cap holds at the tap and comes down once at the next step", async (t) => {
+  const { view, card } = await askPage(t, { overflow: false, cards: [APPROVAL_CARD], cardHeight: 700 });
+  try {
+    await answer(card);
+    assert.equal(capOf(view), "850px");
+    view.generationStarted({ iteration: 2 });
+    assert.equal(capOf(view), "600px");
+  } finally {
+    view.reset();
+  }
+});
+
 // ── the question room's arrival reveal and jump pill ─────────────────────
 
 // Layout stubs (happy-dom has none): the asking text at 100, the card's
@@ -797,8 +846,6 @@ test("question room: measured at the asking text's draws only: a short question 
     view.reset();
   }
 });
-
-const APPROVAL_CARD = ["bubble question approval", { kind: "approval" }];
 
 // After a blocking card's answer the frame holds until the next step (nothing
 // moves at the tap), and the next step lets go of it once: the waiting height,
