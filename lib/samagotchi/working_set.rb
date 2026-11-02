@@ -235,7 +235,8 @@ module Samagotchi
     def shared_with(touch, key) = touch.share > 1 ? found_names(touch.run) - [key] : []
 
     # A memory_read's names (Tools::MemoryRead.parse_names: none for the
-    # index listing), less the ones its output says weren't found.
+    # index listing), less the ones its output says weren't found. Public:
+    # `chi memory usage` counts reads the same way (MemoryUsage).
     def found_names(run)
       names = Tools::MemoryRead.parse_names(run.call[:content].to_s)
       last = run.text.split(ToolResponse::SEPARATOR).last.to_s
@@ -308,6 +309,6 @@ module Samagotchi
 
     def field(hash, key) = hash.key?(key) ? hash[key] : hash[key.to_s]
 
-    private_class_method :all_touches, :touches, :failed?, :found_names, :shared_with, :item, :still_sent?, :dropped?, :with_id, :changed?, :stamp_of, :field
+    private_class_method :all_touches, :touches, :failed?, :shared_with, :item, :still_sent?, :dropped?, :with_id, :changed?, :stamp_of, :field
   end
 end

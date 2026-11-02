@@ -1,0 +1,334 @@
+# frozen_string_literal: true
+
+require "json"
+require "stringio"
+require "tmpdir"
+require "spec_helper"
+require "samagotchi/memory_command"
+require "samagotchi/memory_usage"
+
+# `chi memory usage` (docs/memory.md, "What the memories cost"): the counting
+# from fixture sessions shaped like real files of both loops, and the command's
+# two formats. Nothing is written: the fixture's state and memories dirs are
+# only read.
+RSpec.describe Samagotchi::MemoryUsage do
+  SEP = Samagotchi::ToolResponse::SEPARATOR
+
+  let(:tmp) { Dir.mktmpdir("memory-usage") }
+  # A folder holding a .git directory is a project to MemoryPaths, so the
+  # fixture has two projects and one folder in no repository.
+  let(:repo) { File.join(tmp, "repo").tap { |dir| FileUtils.mkdir_p(File.join(dir, ".git")) } }
+  let(:other) { File.join(tmp, "other").tap { |dir| FileUtils.mkdir_p(File.join(dir, ".git")) } }
+  let(:loose) { File.join(tmp, "loose").tap { |dir| FileUtils.mkdir_p(dir) } }
+  let(:state) { File.join(tmp, "state", "samagotchi", "sessions") }
+  let(:out) { StringIO.new }
+  let(:err) { StringIO.new }
+
+  around { |example| with_config_home(File.join(tmp, "config")) { example.run } }
+
+  def project_dir(cwd) = Samagotchi::MemoryPaths.project_dir(cwd: File.realpath(cwd))
+  def system_dir = Samagotchi::MemoryPaths.system_dir
+
+  def remember(dir, name, body)
+    FileUtils.mkdir_p(dir)
+    File.write(File.join(dir, "#{name}.md"), body)
+  end
+
+  def write_index(dir, lines)
+    FileUtils.mkdir_p(dir)
+    File.write(File.join(dir, "index.md"), "# Memory Index\n\n#{lines.join("\n")}\n")
+  end
+
+  # A session file of the shape chi saves, in the fixture state dir. project_root
+  # is left unstored (as in a file from before the field) so the fallback to
+  # working_directory is what counts it.
+  def save_session(name, working_directory:, messages:, project_root: nil, test_run: false,
+                   used: [], preloaded: [], updated_at: "2026-11-01T10:00:00.000Z")
+    FileUtils.mkdir_p(state)
+    File.write(File.join(state, "#{name}.json"), JSON.generate({
+      "metadata_version" => 3, "id" => name, "mode" => "assist", "model_name" => "gemma",
+      "working_directory" => working_directory, "project_root" => project_root, "messages" => messages,
+      "created_at" => updated_at, "updated_at" => updated_at, "status" => "idle", "test_run" => test_run,
+      "used_memory_names" => used, "preloaded_memory_names" => preloaded
+    }))
+  end
+
+  def call(id, name, arguments)
+    { "role" => "model", "content" => "", "tool_calls" => [{ "id" => id, "name" => name, "arguments" => arguments }] }
+  end
+
+  def result(id, text)
+    { "role" => "tool_response", "tool_call_id" => id, "content" => text }
+  end
+
+  def report(top: 10, root: repo, scope: nil)
+    sessions, unreadable = Samagotchi::MemoryUsage.load_sessions(state_dir: state)
+    Dir.chdir(root) do
+      Samagotchi::MemoryUsage.new(
+        sessions: sessions, entries: Samagotchi::MemoryCommand.entries(scope), unreadable: unreadable,
+        root: root, scopes: scope ? [scope] : Samagotchi::MemoryUsage::SCOPES
+      ).report(top: top)
+    end
+  end
+
+  def row(summary, name, scope) = summary.top.find { |use| use.name == name && use.scope == scope }
+
+  def index_of(summary, scope) = summary.indexes.find { |index| index.scope == scope }
+
+  # A folder's files and their mtimes: a usage run changes none of them.
+  def snapshot(dir) = Dir.glob(File.join(dir, "**/*")).to_h { |path| [path, File.mtime(path)] }
+
+  def build_fixture
+    write_index(system_dir, [
+      "- **identity** · system · 2026-11-01 · 50 — Who chi is",
+      "- **guide** · system · 2026-11-01 · 10 — The team's guide",
+      "- **big** · system · 2026-11-01 · 75 — Read, but cut",
+      "- **bundle-notes** · system · 2026-11-01 · 20 · from team — A bundle's memory"
+    ])
+    remember(system_dir, "identity", "z" * 200)
+    remember(system_dir, "guide", "g" * 40)
+    remember(system_dir, "big", "b" * 300)
+    remember(system_dir, "bundle-notes", "n" * 50)
+
+    write_index(project_dir(repo), [
+      "- **handoff** · project · 2026-11-01 · 25 — Where the work stands",
+      "- **notes** · project · 2026-11-01 · 25 — Some notes",
+      "- **dormant** · project · 2026-11-01 · 40 — Read once",
+      "- **cold** · project · 2026-11-01 · 75 — Never opened"
+    ])
+    remember(project_dir(repo), "handoff", "x" * 100)
+    remember(project_dir(repo), "notes", "y" * 100)
+    remember(project_dir(repo), "dormant", "d" * 160)
+    remember(project_dir(repo), "cold", "c" * 300)
+
+    # The other project has a memory of its own with the same name.
+    write_index(project_dir(other), ["- **handoff** · project · 2026-11-01 · 250 — Another repo's handoff"])
+    remember(project_dir(other), "handoff", "o" * 1000)
+
+    # A chat-loop session of this project: a read, a comma list, a read of a
+    # system memory's file.
+    save_session("chat", working_directory: repo, updated_at: "2026-10-20T10:00:00.000Z", messages: [
+      { "role" => "user", "content" => "go" },
+      call("c1", "memory_read", { "name" => "handoff" }),
+      result("c1", "[memory_read]\n#{"x" * 100}"),
+      call("c2", "memory_read", { "name" => "handoff, notes" }),
+      result("c2", "[memory_read]\n#{"x" * 100}#{SEP}#{"y" * 100}"),
+      call("c3", "read", { "path" => File.join(system_dir, "identity.md") }),
+      result("c3", "[read]\n#{"z" * 200}")
+    ])
+
+    # A native-loop session of another project: its joined result carries no
+    # tool_call_id and its call is markup in the model entry. The chat call
+    # after it reads that project's own handoff, not this one.
+    save_session("native", working_directory: other, messages: [
+      { "role" => "user", "content" => "go" },
+      { "role" => "model",
+        "content" => "<tool_call>\n<function=memory_read>\n<parameter=name>\nidentity\n</parameter>\n</function>\n</tool_call>" },
+      { "role" => "tool_response", "content" => "[memory_read]\n#{"z" * 200}" },
+      call("c4", "memory_read", { "name" => "handoff" }),
+      result("c4", "[memory_read]\n#{"o" * 1000}")
+    ])
+
+    # A read saved when reads were cut.
+    save_session("cut", working_directory: repo, updated_at: "2026-10-30T10:00:00.000Z", messages: [
+      { "role" => "user", "content" => "go" },
+      call("c5", "memory_read", { "name" => "big" }),
+      result("c5", "[memory_read]\n#{"b" * 200}\n[cut: 100 of 300 chars; read it in parts]")
+    ])
+
+    # A session with no stored project_root, working in this project's folder.
+    save_session("outside", working_directory: repo, updated_at: "2026-10-25T10:00:00.000Z", messages: [
+      { "role" => "user", "content" => "go" },
+      call("c6", "memory_read", { "name" => "dormant" }),
+      result("c6", "[memory_read]\n#{"d" * 160}")
+    ])
+
+    # A name with no memory behind it, a test session, a session with no user
+    # message: none of them count.
+    save_session("ghost", working_directory: repo, updated_at: "2026-11-02T10:00:00.000Z", messages: [
+      { "role" => "user", "content" => "go" },
+      call("c7", "memory_read", { "name" => "gone" }),
+      result("c7", "Error: memory not found: gone"),
+      call("c8", "memory_read", { "name" => "phantom" }),
+      result("c8", "[memory_read]\n#{"p" * 40}")
+    ])
+    save_session("testrun", working_directory: repo, test_run: true, messages: [
+      { "role" => "user", "content" => "go" },
+      call("c9", "memory_read", { "name" => "guide" }),
+      result("c9", "[memory_read]\n#{"g" * 40}")
+    ])
+    save_session("nouser", working_directory: repo, messages: [
+      call("c10", "memory_read", { "name" => "guide" }),
+      result("c10", "[memory_read]\n#{"g" * 40}")
+    ])
+    File.write(File.join(state, "broken.json"), "{not json")
+  end
+
+  it "counts reads of both saved shapes, splitting a comma list by share" do
+    build_fixture
+    summary = report
+
+    expect(summary.sessions).to eq(5)
+    expect(summary.unreadable).to eq(1)
+    expect(summary.days).to eq(13)
+    expect(summary.read_names).to eq(5)
+    expect(summary.read_count).to eq(8)
+    expect(summary.read_tokens).to eq(313)
+    expect(summary.cut_reads).to eq(1)
+
+    expect(row(summary, "handoff", "project")).to eq(
+      Samagotchi::MemoryUsage::Use.new(name: "handoff", scope: "project", tokens: 57, reads: 2, cut_reads: 0,
+                                       bytes: 100, size_tokens: 25, source: nil)
+    )
+    expect(row(summary, "notes", "project").tokens).to eq(28)
+    expect(row(summary, "identity", "system").reads).to eq(2)
+    expect(row(summary, "identity", "system").tokens).to eq(106)
+    expect(row(summary, "big", "system").cut_reads).to eq(1)
+  end
+
+  it "reads a memory's file as a read of that memory" do
+    build_fixture
+    summary = report
+
+    expect(row(summary, "identity", "system").reads).to eq(2)
+    expect(row(summary, "identity", "system").bytes).to eq(200)
+    expect(row(summary, "identity", "system").size_tokens).to eq(50)
+  end
+
+  it "does not credit a project memory with another project's reads, and credits a system one across projects" do
+    build_fixture
+    summary = report
+
+    # The other project's 1000-character handoff is not in this project's rows.
+    expect(row(summary, "handoff", "project").reads).to eq(2)
+    expect(summary.top.sum(&:tokens)).to eq(299) # the phantom read is in the total, not a row
+    expect(row(summary, "identity", "system").reads).to eq(2)
+  end
+
+  it "matches a session with no stored project_root by the folder it works in" do
+    write_index(project_dir(loose), ["- **near** · project · 2026-11-01 · 10 — A memory in a folder that is no repo"])
+    remember(project_dir(loose), "near", "n" * 40)
+    save_session("loose", working_directory: loose, messages: [
+      { "role" => "user", "content" => "go" },
+      call("c1", "memory_read", { "name" => "near" }),
+      result("c1", "[memory_read]\n#{"n" * 40}")
+    ])
+
+    summary = report(root: loose)
+    expect(summary.sessions).to eq(1)
+    expect(row(summary, "near", "project")).not_to be_nil
+    expect(summary.not_read).to eq([])
+  end
+
+  it "lists the memories no counted session read, largest first, without a bundle's" do
+    build_fixture
+    summary = report
+
+    expect(summary.not_read_total).to eq(7)
+    expect(summary.not_read.map(&:name)).to eq(%w[cold guide])
+    expect(summary.not_read.map(&:scope)).to eq(%w[project system])
+    expect(summary.not_read.map(&:tokens)).to eq([75, 10])
+  end
+
+  it "counts a session's own used and preloaded names as read" do
+    write_index(project_dir(repo), ["- **dormant** · project · 2026-11-01 · 40 — Never opened"])
+    remember(project_dir(repo), "dormant", "d" * 160)
+    write_index(system_dir, ["- **guide** · system · 2026-11-01 · 10 — The team's guide"])
+    remember(system_dir, "guide", "g" * 40)
+    save_session("pre", working_directory: repo, preloaded: ["project/dormant"], used: ["guide"], messages: [
+      { "role" => "user", "content" => "go" }
+    ])
+
+    summary = report
+    expect(summary.read_count).to eq(0)
+    expect(summary.not_read).to eq([])
+    expect(summary.not_read_total).to eq(2)
+    expect(index_of(summary, "project").unread_lines).to eq(0)
+    expect(index_of(summary, "system").unread_lines).to eq(0)
+  end
+
+  it "measures each scope's index against its limit" do
+    build_fixture
+    summary = report
+
+    expect(index_of(summary, "system").lines).to eq(5)
+    expect(index_of(summary, "system").unread_lines).to eq(2)
+    expect(index_of(summary, "system").unread_percent).to eq(40)
+    expect(index_of(summary, "system").tokens).to eq((File.read(File.join(system_dir, "index.md")).length / 4.0).ceil)
+    expect(index_of(summary, "system").limit).to eq(2500)
+    expect(index_of(summary, "project").lines).to eq(5)
+    expect(index_of(summary, "project").unread_lines).to eq(1)
+  end
+
+  it "counts a read whose name has no memory, but not as a row" do
+    build_fixture
+    summary = report
+
+    expect(summary.unknown_names).to eq(1)
+    expect(summary.top.map(&:name)).not_to include("phantom")
+    expect(row(summary, "phantom", "system")).to be_nil
+  end
+
+  it "counts what config.yml's memories: preloads as used, not as unread" do
+    write_index(system_dir, ["- **always** · system · 2026-11-01 · 10 — Preloaded by config"])
+    remember(system_dir, "always", "a" * 100)
+
+    summary = described_class.new(sessions: [], entries: Samagotchi::MemoryCommand.entries,
+                                  baseline: ["system/always"]).report
+    expect(summary.not_read.map(&:name)).to eq([])
+    expect(summary.not_read_total).to eq(1)
+    expect(summary.indexes.first.unread_lines).to eq(0)
+  end
+
+  it "reports nothing with no sessions to count" do
+    summary = described_class.new(sessions: [], entries: []).report
+    expect(summary.sessions).to eq(0)
+    expect(summary.read_count).to eq(0)
+    expect(summary.days).to eq(0)
+    expect(summary.top).to eq([])
+  end
+
+  it "keeps --top rows per section" do
+    build_fixture
+    summary = report(top: 2)
+
+    expect(summary.top.map(&:name)).to eq(%w[identity big])
+    expect(summary.not_read.map(&:name)).to eq(%w[cold guide])
+  end
+
+  it "counts every unread memory past the row limit" do
+    remember(project_dir(repo), "one", "x" * 40)
+    remember(project_dir(repo), "two", "x" * 30)
+    remember(project_dir(repo), "three", "x" * 20)
+    save_session("s", working_directory: repo, messages: [{ role: "user", content: "hi" }])
+    summary = report(top: 1)
+
+    expect(summary.not_read.map(&:name)).to eq(%w[one])
+    expect(summary.not_read_count).to eq(3)
+  end
+
+  it "doesn't let another project's used name vouch for this project's memory of that name" do
+    remember(project_dir(repo), "shared_name", "x" * 40)
+    save_session("s", working_directory: other, used: ["shared_name"],
+                      messages: [{ role: "user", content: "hi" }])
+
+    expect(report.not_read.map(&:name)).to eq(%w[shared_name])
+  end
+
+  it "marks a memory a bundle owns, and leaves it out of the not-read list" do
+    write_index(system_dir, ["- **team** · system · 2026-11-01 · 20 · from team — A bundle's memory"])
+    remember(system_dir, "team", "t" * 80)
+    save_session("bundled", working_directory: repo, messages: [
+      { "role" => "user", "content" => "go" },
+      call("c1", "memory_read", { "name" => "team" }),
+      result("c1", "[memory_read]\n#{"t" * 80}")
+    ])
+
+    summary = report
+    expect(row(summary, "team", "system")).to eq(
+      Samagotchi::MemoryUsage::Use.new(name: "team", scope: "system", tokens: 24, reads: 1, cut_reads: 0,
+                                       bytes: 80, size_tokens: 20, source: "team")
+    )
+    expect(summary.not_read_total).to eq(0)
+  end
+end
