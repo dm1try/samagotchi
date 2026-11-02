@@ -7,23 +7,28 @@ and commands may change between minor versions. How releases are made:
 [docs/releasing.md](docs/releasing.md).
 ## [Unreleased]
 
+## [0.145.0] - 2026-11-02
+
 ### Changed
 
-- The web's live answer box shows a new line at once instead of fading it in, which takes about a quarter off the CPU a
-  streaming answer uses in chi web.
-- An approval card's folder and reason wrap at words; only a token too long for the line breaks. The command box is
-  unchanged.
-- The web's approval card has no Deny radio: the Deny button beside Submit denies in one tap, and a reason typed in the
-  box now goes with it. Terminals, `chi answer` and relayed approvals still answer Deny by its label.
-- The text fields on the web's cards ask iOS Safari not to offer its AutoFill Contact bar.
-- The web's stage shrinks back once at the next step after a question or approval is answered, so no empty room stays
-  under the answered card, and a raised cap comes back down then. At the tap nothing moves. Otherwise the stage still
-  only grows during a turn.
-- A web approval too tall for the stage takes the stage's raised cap, as a long question already did, so on a phone its
-  question, command and Submit show without scrolling when the card fits the page. A delegate's relayed approval too.
-- The web's session bar says "waiting" instead of "running" while a card blocks the turn, as `chi sessions list` does.
-- On a phone or touch screen the web's composer folds while a card's text field has the focus, so the card keeps those
-  rows with the keyboard up, and comes back when the field lets go. The saved fold and the draft are untouched.
+- On a phone, a web approval uses more of the screen, and a short one shows its question, command and Submit without
+  scrolling. A tall card can use the stage's raised height, as a long question already could.
+- The stage shrinks back once at the next step after you answer a question or approval, so no empty room stays under the
+  answered card. Otherwise it still only grows during a turn.
+- The web's approval card has no Deny radio. The Deny button denies in one tap, and a reason typed in the box now goes
+  with it. Terminals, `chi answer` and relayed approvals still answer Deny by its label.
+- On a phone or touch screen, the composer folds while a card's text field has focus and comes back afterwards. Your
+  saved fold and draft are untouched.
+- The session bar says "waiting" instead of "running" while a card blocks the turn.
+- A live answer's new line appears at once instead of fading in, which takes about a quarter off the CPU a streaming
+  answer uses on a Mac Studio.
+
+### Fixed
+
+- An approval card's folder and reason wrap at words instead of splitting them.
+- The text fields on web cards ask iOS Safari not to offer its AutoFill Contact bar.
+
+Update with `chi update`.
 
 ## [0.144.0] - 2026-11-02
 
@@ -5544,7 +5549,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.144.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.145.0...HEAD
+[0.145.0]: https://github.com/dm1try/samagotchi/compare/v0.144.0...v0.145.0
 [0.144.0]: https://github.com/dm1try/samagotchi/compare/v0.143.0...v0.144.0
 [0.143.0]: https://github.com/dm1try/samagotchi/compare/v0.142.0...v0.143.0
 [0.142.0]: https://github.com/dm1try/samagotchi/compare/v0.141.0...v0.142.0
