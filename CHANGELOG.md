@@ -7,6 +7,8 @@ and commands may change between minor versions. How releases are made:
 [docs/releasing.md](docs/releasing.md).
 ## [Unreleased]
 
+## [0.144.0] - 2026-11-02
+
 ### Changed
 
 - `chi update`'s re-check of the bundles chi doesn't ship warns about a reference to chi's internals only when this chi
@@ -47,6 +49,8 @@ and commands may change between minor versions. How releases are made:
   (cost-cap 0.2.5, work-cap 0.1.5, check-in 0.3.3).
 - A Stop that arrives on an empty reply ends the turn cancelled. It used to end
   as "no answer: the model returned nothing".
+
+Update with `chi update` (the core profile 0.4.3): check-in 0.3.3, cost-cap 0.2.5 and work-cap 0.1.5 (these three need this chi), github-pr 0.6.2 and source-links 0.6.2.
 
 ## [0.143.0] - 2026-11-01
 
@@ -5522,7 +5526,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.143.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.144.0...HEAD
+[0.144.0]: https://github.com/dm1try/samagotchi/compare/v0.143.0...v0.144.0
 [0.143.0]: https://github.com/dm1try/samagotchi/compare/v0.142.0...v0.143.0
 [0.142.0]: https://github.com/dm1try/samagotchi/compare/v0.141.0...v0.142.0
 [0.141.0]: https://github.com/dm1try/samagotchi/compare/v0.140.0...v0.141.0
