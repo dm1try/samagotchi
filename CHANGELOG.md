@@ -15,6 +15,7 @@ and commands may change between minor versions. How releases are made:
   unchanged.
 - The web's approval card has no Deny radio: the Deny button beside Submit denies in one tap, and a reason typed in the
   box now goes with it. Terminals, `chi answer` and relayed approvals still answer Deny by its label.
+- The text fields on the web's cards ask iOS Safari not to offer its AutoFill Contact bar.
 
 ## [0.144.0] - 2026-11-02
 

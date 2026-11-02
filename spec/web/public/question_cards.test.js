@@ -936,6 +936,21 @@ test("the card still reads a Deny answered elsewhere (a terminal, chi answer)", 
   assert.equal(card.querySelector(".question-result").textContent, "Denied: no");
 });
 
+test("a card's text fields ask for no contact AutoFill and keep autocorrect", () => {
+  const { cards } = setup();
+  cards.renderQuestion(DENYABLE);
+  const box = cards.questionCard().querySelector(".question-freeform");
+  assert.equal(box.getAttribute("autocomplete"), "off");
+  assert.equal(box.getAttribute("autocorrect"), "on");
+  assert.equal(box.name, "chi-card-note");
+  const step = setup();
+  step.cards.renderQuestion({ id: "c1", kind: "continue", header: "Step limit", options: ["Continue", "Stop"], allow_freeform: true });
+  assert.equal(step.cards.questionCard().querySelector(".continue-reason").getAttribute("autocomplete"), "off");
+  const old = setup();
+  old.cards.renderContinue({ context: {} });
+  assert.equal(old.history.children[0].querySelector(".continue-reason").getAttribute("autocomplete"), "off");
+});
+
 test("the card's prose wraps at words, the command box still breaks anywhere", () => {
   const html = fs.readFileSync(new URL("../../../lib/samagotchi/web/public/index.html", import.meta.url), "utf8");
   const rule = (sel) => html.split("\n").find((line) => line.startsWith(`${sel}{`));
