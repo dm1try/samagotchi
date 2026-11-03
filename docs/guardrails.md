@@ -81,7 +81,8 @@ Who answers:
 
 The model gets one line on a deny. A rule's or hook's deny reads
 `[execute] Error: denied by guardrail (rule git-push, bundle guardrails): git push publishes commits. The user was not asked. Do not retry it or reach the same result another way; ask the user how to proceed.`
-When the user picks Deny on an ask, it leads with the user's answer:
+When the user picks Deny on an ask, it leads with the user's answer (a parent
+agent's Deny says `The parent agent declined this call`):
 `[execute] Error: The user declined this call: "open a PR instead". It needed approval (rule git-push, bundle guardrails): git push publishes commits. Do not retry it or reach the same result another way; ask the user how to proceed.`
 
 ## Approvals

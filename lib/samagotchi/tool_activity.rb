@@ -45,9 +45,9 @@ module Samagotchi
 
     # A call the guardrails denied, as its saved text reads after the
     # "[tool]" lead (ToolRunner#denied, Guardrails::Verdict#deny_text): a
-    # rule's or hook's deny, a legacy hook veto, or the user declining (or
-    # cancelling) the approval.
-    GUARDRAIL_DENIED = /\AError: (?:(?:denied|blocked) by guardrail\b|The (?:user declined this call|approval was cancelled)\b.*? It needed approval \()/m
+    # rule's or hook's deny, a legacy hook veto, or the user or a parent agent
+    # declining (or cancelling) the approval.
+    GUARDRAIL_DENIED = /\AError: (?:(?:denied|blocked) by guardrail\b|The (?:(?:user|parent agent) declined this call|approval was cancelled)\b.*? It needed approval \()/m
 
     # Whether a saved result text (#saved_result_text) is a guardrail's
     # deny: "blocked" as live (its activity's status), not "error", for a

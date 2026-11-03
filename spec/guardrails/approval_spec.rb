@@ -275,6 +275,17 @@ RSpec.describe Samagotchi::Guardrails::Approval do
       expect(v.deny_text).to start_with("The user declined this call. It needed approval (rule git-push, bundle guardrails):")
     end
 
+    it "names a parent agent as who answered, not the user" do
+      deny = Samagotchi::QuestionAnswer.new(id: "q", selected: ["Deny"], freeform: "wrong folder", selected_indices: [2], by: "parent_agent")
+      v = described_class.settle(ask, deny, scopes)
+      expect(v.decided_by).to eq("parent agent")
+      expect(v.deny_text).to start_with('The parent agent declined this call: "wrong folder". It needed approval (rule git-push')
+      expect(Samagotchi::ToolActivity.guardrail_denied?("Error: #{v.deny_text}")).to be(true)
+
+      allow = Samagotchi::QuestionAnswer.new(id: "q", selected: ["Allow once"], selected_indices: [0], by: "parent_agent")
+      expect(described_class.settle(ask, allow, scopes).decided_by).to eq("parent agent")
+    end
+
     it "denies a freeform-only answer with that reason" do
       answer = Samagotchi::QuestionAnswer.new(id: "q", selected: [], freeform: "not now")
       v = described_class.settle(ask, answer, scopes)

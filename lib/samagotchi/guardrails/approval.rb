@@ -181,16 +181,17 @@ module Samagotchi
           return verdict.settle!(:deny, decided_by: "user", note: "The approval was cancelled.")
         end
 
+        who = answer.parent_agent? ? Verdict::PARENT_AGENT : "user"
         index = answer.selected_indices.first
         if index && index < scopes.size
-          verdict.settle!(:allow, decided_by: "user")
+          verdict.settle!(:allow, decided_by: who)
           verdict.scope = scopes[index]
           return verdict
         end
 
         freeform = answer.freeform.to_s.strip
-        note = freeform.empty? ? "The user declined this call." : "The user declined this call: #{freeform.inspect}."
-        verdict.settle!(:deny, decided_by: "user", note: note)
+        declined = "The #{who} declined this call"
+        verdict.settle!(:deny, decided_by: who, note: freeform.empty? ? "#{declined}." : "#{declined}: #{freeform.inspect}.")
       end
 
       # The rule's scopes; "rule" only when a rule id names what to approve.

@@ -26,6 +26,8 @@ module Samagotchi
       PROTECTED_RULES = %w[chi-config chi-home chi-shim chi-hooks shell-touches-chi chi-context-cmd chi-broadcast prompt-memory-write
                            model-overlay-write chi-answer-piped chi-answer-http].freeze
       SCOPES = %w[once session repo rule].freeze
+      # Who answered an ask when it was a parent agent, not the user.
+      PARENT_AGENT = "parent agent"
       DO_NOT_RETRY = "Do not retry it or reach the same result another way; ask the user how to proceed."
 
       attr_reader :decision, :reason, :rule, :source, :scopes, :decided_by
@@ -118,12 +120,12 @@ module Samagotchi
 
       # What the model gets for a deny (after the "[tool] Error: " prefix):
       # who decided, why, and not to route around it (or the voter's own
-      # advice). A user's deny leads with the user's answer, so it doesn't
-      # read as the rule refusing.
+      # advice). A deny on an ask leads with the answer, the user's or a
+      # parent agent's, so it doesn't read as the rule refusing.
       def deny_text
         reason = @reason.to_s.strip
         reason += "." unless reason.empty? || reason.match?(/[.!?]\z/)
-        parts = if @decided_by == "user" && @note
+        parts = if ["user", PARENT_AGENT].include?(@decided_by) && @note
                   [@note, "It needed approval (#{decider}):", reason]
                 else
                   ["denied by guardrail (#{decider}):", reason, @note || "The user was not asked."]
