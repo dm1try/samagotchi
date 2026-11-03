@@ -98,7 +98,8 @@ RSpec.describe Samagotchi::SessionContinue, ".run" do
     as_of = Time.iso8601("2026-10-08T17:30:00Z").localtime.strftime("%Y-%m-%d %H:%M")
     started = Time.iso8601("2026-10-08T09:00:00+02:00").localtime.strftime("%Y-%m-%d %H:%M")
     expect(note[:text]).to eq("This session continues #{previous.id[0, 8]} (#{started}), the previous link of its chain. " \
-                              "Its recap, as of #{as_of}:\nThe user reviewed three PRs and merged two.")
+                              "Its recap, as of #{as_of}:\nThe user reviewed three PRs and merged two." \
+                              "\n\nIts last answer:\nok")
   end
 
   it "sets the new link's opener (not saved) from a previous link that is itself a continuation, nil from a first link" do
@@ -133,7 +134,7 @@ RSpec.describe Samagotchi::SessionContinue, ".run" do
 
     link = continue(previous.id, prompt: "start the day")
 
-    expect(note_of(link.id)[:text]).to end_with("the previous link of its chain. It left no recap.")
+    expect(note_of(link.id)[:text]).to end_with("the previous link of its chain. It left no recap.\n\nIts last answer:\nok")
     expect(load(link.id)).to have_attributes(last_prompt: "start the day", first_preview: "start the day",
                                              status: Samagotchi::Session::STATUS_RUNNING)
   end
@@ -153,18 +154,176 @@ RSpec.describe Samagotchi::SessionContinue, ".run" do
 
     link = continue(previous.id, recap_wait: 5)
 
-    expect(note_of(link.id)[:text]).to end_with(":\nThe fresh recap.")
+    expect(note_of(link.id)[:text]).to end_with(":\nThe fresh recap.\n\nIts last answer:\nok")
   end
 
-  it "continues on an 8000-character CJK recap, its note cut on a character within the limit" do
-    previous = make
-    save_recap(previous.id, "概" * Samagotchi::SessionChain::RECAP_CHARS)
+  describe "the carry note's last answer" do
+    let(:marker) { "\n\nIts last answer:\n" }
+    let(:limit) { Samagotchi::SessionInbox::NOTE_MAX_BYTES }
 
-    text = note_of(continue(previous.id).id)[:text]
+    def with_messages(*messages)
+      make.tap do |s|
+        s.messages = [{ role: "user", content: "wrap up" }, *messages]
+        s.save(state_dir: tmpdir)
+      end
+    end
 
-    expect(text.bytesize).to be <= Samagotchi::SessionInbox::NOTE_MAX_BYTES
-    expect(text).to be_valid_encoding.and end_with("概…")
-    expect(archived?(previous.id)).to be(true)
+    def note_after_continue(previous) = note_of(continue(previous.id).id)[:text]
+    def carried(previous) = note_after_continue(previous).split(marker, 2)[1]
+    def answer(text, **rest) = { role: "assistant", content: text, **rest }
+
+    it "keeps the end of a long answer, to the exact character cap" do
+      text = "start #{"x" * 5000} next: merge abc123"
+
+      carried_text = carried(with_messages(answer(text)))
+
+      expect(carried_text.length).to eq(Samagotchi::SessionChain::LAST_ANSWER_CHARS)
+      expect(carried_text).to start_with("…x").and end_with("next: merge abc123")
+    end
+
+    it "takes an answer of exactly the cap whole" do
+      text = "y" * Samagotchi::SessionChain::LAST_ANSWER_CHARS
+
+      expect(carried(with_messages(answer(text)))).to eq(text)
+    end
+
+    it "strips thinking and wire markup, and keeps a cut reply's [interrupted]" do
+      expect(carried(with_messages(answer("<think>hmm</think>Done: abc123.\n\n[interrupted]"))))
+        .to eq("Done: abc123.\n\n[interrupted]")
+    end
+
+    it "takes the content, not a hook's display" do
+      expect(carried(with_messages(answer("the words", display: "<b>shown</b>")))).to eq("the words")
+    end
+
+    it "stays the last word after a !shell line the user ran" do
+      expect(carried(with_messages(answer("Done."), { role: "user", content: "!(git log)\nabc" }))).to eq("Done.")
+    end
+
+    it "scrubs invalid bytes on disk instead of losing the answer" do
+      previous = with_messages(answer("broken"))
+      file = File.join(tmpdir, "#{previous.id}.json")
+      File.binwrite(file, File.binread(file).sub('"broken"', "\"bro\xFFken\"".b))
+
+      expect(carried(previous)).to eq("bro\uFFFDken")
+    end
+
+    {
+      "an empty conversation" => [],
+      "only tool calls" => [{ role: "assistant", content: "", tool_calls: [{ id: "c1" }] }],
+      "a narration step that asked for tools" => [{ role: "assistant", content: "Now reading.", tool_calls: [{ id: "c1" }] }],
+      "a later turn that failed" => [{ role: "assistant", content: "old" }, { role: "user", content: "next", turn_id: "t2" }],
+      "a later tool response" => [{ role: "assistant", content: "old" }, { role: "tool_response", content: "out" }],
+      "non-String content" => [{ role: "assistant", content: [{ type: "text", text: "parts" }] }]
+    }.each do |what, messages|
+      it "gives no answer for #{what}" do
+        previous = make
+        previous.messages = messages
+        previous.save(state_dir: tmpdir)
+
+        expect(note_after_continue(previous)).to end_with("It left no recap.")
+      end
+    end
+
+    it "gives no answer on a review link, whose next link's participants could differ" do
+      previous = with_messages(answer("for this link's participants"))
+      previous.review = Samagotchi::SessionReview.new(subjects: ["docs/plan.md"])
+      previous.save(state_dir: tmpdir)
+
+      expect(note_after_continue(previous)).to end_with("It left no recap.")
+    end
+
+    it "continues with no answer, logging why, when the previous link's file can't be read any more" do
+      previous = with_messages(answer("gone"))
+      allow(manager).to receive(:archive_session).and_wrap_original do |original, *args, **kwargs|
+        original.call(*args, **kwargs).tap { File.write(File.join(tmpdir, "#{previous.id}.json"), "{not json") }
+      end
+      allow(Samagotchi::Log).to receive(:warn)
+
+      link = continue(previous.id)
+
+      expect(note_of(link.id)[:text]).to end_with("It left no recap.")
+      expect(Samagotchi::Log).to have_received(:warn).with(:worker, "continue_last_answer_failed", hash_including(sid: previous.id))
+    end
+
+    it "carries the newer answer of a turn that finished during the recap wait" do
+      previous = with_messages(answer("before the wait"))
+      allow(described_class).to receive(:recap_before_archive) do
+        fresh = load(previous.id)
+        fresh.messages += [{ role: "user", content: "one more", turn_id: "t2" }, answer("after the wait")]
+        fresh.save(state_dir: tmpdir)
+      end
+
+      expect(carried(previous)).to eq("after the wait")
+    end
+
+    it "continues on an 8000-character CJK recap and a long answer, within the note's limit" do
+      previous = with_messages(answer("答" * 5000))
+      save_recap(previous.id, "概" * Samagotchi::SessionChain::RECAP_CHARS)
+
+      text = note_after_continue(previous)
+
+      expect(text.bytesize).to be <= limit
+      expect(text).to be_valid_encoding
+      expect(archived?(previous.id)).to be(true)
+    end
+
+    it "cuts a Cyrillic answer near the limit on a character, keeping its end" do
+      previous = with_messages(answer("начало #{"я" * 3900} дальше: слить"))
+      save_recap(previous.id, "р" * Samagotchi::SessionChain::RECAP_CHARS)
+
+      text = note_after_continue(previous)
+      carried_text = text.split(marker, 2)[1]
+
+      expect(text.bytesize).to be_between(limit - 1, limit)
+      expect(carried_text).to be_valid_encoding
+      expect(carried_text).to start_with("…я").and end_with("дальше: слить")
+    end
+
+    it "takes the answer whole when it just fits" do
+      recap_chars = 7000
+      previous = make
+      save_recap(previous.id, "р" * recap_chars)
+      head = Samagotchi::SessionChain.note_text(previous, recap: Samagotchi::RecapStore.read(dir_of(previous.id)), state_dir: tmpdir)
+                                     .split(marker, 2)[0]
+      room = limit - head.bytesize - marker.bytesize
+      text = "ж" * (room / 2)
+      previous.messages = [answer(text)]
+      previous.save(state_dir: tmpdir)
+
+      expect(carried(previous)).to eq(text)
+    end
+
+    describe "session.carry_last_answer" do
+      def setting(value)
+        allow(Samagotchi::Config).to receive(:get).and_call_original
+        allow(Samagotchi::Config).to receive(:get).with("session.carry_last_answer").and_return(value)
+      end
+
+      it "is on by default" do
+        expect(Samagotchi::Config.get("session.carry_last_answer")).to be(true)
+        expect(carried(with_messages(answer("kept")))).to eq("kept")
+      end
+
+      it "gives the recap-only note when off" do
+        setting(false)
+        previous = with_messages(answer("left out"))
+        save_recap(previous.id, "The recap.")
+
+        expect(note_after_continue(previous)).to end_with(":\nThe recap.")
+      end
+
+      it "still holds an oversized recap to the note's limit when off" do
+        setting(false)
+        previous = make
+        save_recap(previous.id, "概" * Samagotchi::SessionChain::RECAP_CHARS)
+
+        text = note_after_continue(previous)
+
+        expect(text.bytesize).to be <= limit
+        expect(text).to end_with("…")
+      end
+    end
   end
 
   it "archives the previous link's finished delegates with it" do
@@ -580,7 +739,7 @@ RSpec.describe Samagotchi::SessionContinue, ".run" do
                                        thinking: :low, toolkit: Samagotchi::Toolkit.new(name: "coordinator"),
                                        settings: Samagotchi::SessionConfig::Settings.new(core: { "recap.enabled" => false }, bundles: { "cost-cap" => { "cap" => 3 } }))
       expect(link.model_warning).to be_nil
-      expect(note_of(link.id)[:text]).to end_with("the previous link of its chain. It left no recap.")
+      expect(note_of(link.id)[:text]).to end_with("the previous link of its chain. It left no recap.\n\nIts last answer:\nok")
       expect(archived?(previous.id)).to be(true)
     end
 

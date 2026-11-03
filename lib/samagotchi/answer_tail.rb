@@ -46,7 +46,7 @@ module Samagotchi
       return false if ContextNote.note?(message) || Steer.steer?(message) || TurnNote.empty_answer(message)
       return false unless %w[assistant model].include?((message[:role] || message["role"]).to_s)
 
-      !OutputFormatter.strip_markup((message[:content] || message["content"]).to_s).empty?
+      !OutputFormatter.strip_markup((message[:content] || message["content"]).to_s.scrub).empty?
     end
   end
 end

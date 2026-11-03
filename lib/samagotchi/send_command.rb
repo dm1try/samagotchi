@@ -76,7 +76,8 @@ module Samagotchi
                     in its folder, on its model (or --model's; one whose
                     host is gone falls back to the default, with a
                     warning), LLM context, thinking level, toolkit and
-                    bundle settings, with a note carrying its recap; it
+                    bundle settings, with a note carrying its recap and
+                    last answer; it
                     is archived.
                     last:ID names the chain's latest link.
                     Without -m the new session waits idle. Refused for a

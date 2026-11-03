@@ -7,6 +7,10 @@ and commands may change between minor versions. How releases are made:
 [docs/releasing.md](docs/releasing.md).
 ## [Unreleased]
 
+### Changed
+
+- A continue's carry note now holds the previous session's last answer after its recap (its last 4000 characters when longer), so a wrap-up's exact shas, paths and next steps reach the next link without a paste; `session.carry_last_answer: false` keeps it recap-only. A note can no longer exceed its 16 KiB and fail the continue: a recap of many non-ASCII characters used to.
+
 ## [0.147.0] - 2026-11-03
 
 ### Changed

@@ -1,8 +1,13 @@
 # frozen_string_literal: true
 
 require "time"
+require_relative "answer_tail"
+require_relative "config"
+require_relative "log"
+require_relative "output_formatter"
 require_relative "session"
 require_relative "session_inbox"
+require_relative "steer"
 require_relative "recap_store"
 
 module Samagotchi
@@ -21,6 +26,10 @@ module Samagotchi
     # sentences. Characters, not bytes: #note_text holds the carry note to
     # SessionInbox::NOTE_MAX_BYTES itself.
     RECAP_CHARS = 8000
+    # The most of the previous link's last answer the carry note takes. A
+    # wrap-up closes on what comes next, so a longer one keeps its end.
+    LAST_ANSWER_CHARS = 4000
+    LAST_ANSWER_HEAD = "\n\nIts last answer:\n"
     # The "…" that marks a cut, in bytes.
     CUT_MARK_BYTES = 3
 
@@ -67,16 +76,60 @@ module Samagotchi
     end
 
     # The context note a new link starts with: which session it continues,
-    # from when, and that session's recap with its time, when it has one.
-    # Never more than the recap: no transcript. Never over
+    # from when, that session's recap with its time, when it has one, and
+    # its last answer (#last_answer; session.carry_last_answer). No other transcript. Never over
     # SessionInbox::NOTE_MAX_BYTES, whatever the session holds: the inbox
-    # rejects a longer note, and a continue writes it after the archive.
-    # @param previous [Session]
+    # rejects a longer note, and a continue writes it after the archive. The
+    # answer gets what the rest leaves.
+    # @param previous [Session] the answer is read fresh from its file
     # @param recap [Hash, nil] RecapStore.read's
     # @return [String]
-    def note_text(previous, recap:)
+    def note_text(previous, recap:, state_dir:)
       head = "This session continues #{previous.id[0, 8]} (#{clock(previous.created_at) || previous.created_at}), the previous link of its chain."
-      keep_start("#{head}#{recap_text(recap)}", SessionInbox::NOTE_MAX_BYTES)
+      text = keep_start("#{head}#{recap_text(recap)}", SessionInbox::NOTE_MAX_BYTES)
+      room = SessionInbox::NOTE_MAX_BYTES - text.bytesize - LAST_ANSWER_HEAD.bytesize
+      answer = carried_answer(previous, room: room, state_dir: state_dir)
+      answer ? "#{text}#{LAST_ANSWER_HEAD}#{answer}" : text
+    end
+
+    # The last answer as the carry note takes it, in at most +room+ bytes;
+    # nil with session.carry_last_answer off, when there is none, when a
+    # review link has it (a continue copies review: but not the grants, so
+    # the next link's participants could differ) or when the session can't
+    # be read: this runs inside a continue's rollback, and a note without it
+    # is still a good note.
+    # @return [String, nil]
+    def carried_answer(previous, room:, state_dir:)
+      return nil if previous.review? || !Config.get("session.carry_last_answer")
+
+      text = last_answer(Session.load(previous.id, state_dir: state_dir).messages)
+      text && keep_end(text, room)
+    rescue StandardError => e
+      Log.warn(:worker, "continue_last_answer_failed", sid: previous.id, error: e.class.name, msg: e.message)
+      nil
+    end
+
+    # The session's last word: the text of AnswerTail's newest bubble, with
+    # the wire-format markup stripped, unless that bubble is a step of a
+    # turn (it asked for tools) or old text a later turn never replaced
+    # (one that failed or was cut before it answered). A cut reply keeps
+    # its "[interrupted]": that is what happened.
+    # @param messages [Array<Hash>]
+    # @return [String, nil]
+    def last_answer(messages)
+      found = AnswerTail.find(messages)
+      return nil unless found && found[:content].is_a?(String) && Array(found[:tool_calls]).empty?
+
+      at = messages.rindex { |m| m.equal?(found) }
+      return nil if messages[(at + 1)..].any? { |m| m[:role].to_s == "tool_response" || later_turn?(m) }
+
+      OutputFormatter.strip_markup(found[:content].scrub)
+    end
+
+    # A turn's opening, not a `!shell` line: a command the user ran after
+    # the answer leaves it the last word.
+    def later_turn?(message)
+      Steer.turn_prompt?(message) && !shell_line?(message)
     end
 
     # At most +max+ bytes of +text+'s start, cut on a character.
@@ -84,6 +137,18 @@ module Samagotchi
       return text if text.bytesize <= max
 
       "#{text.byteslice(0, max - CUT_MARK_BYTES).scrub("")}…"
+    end
+
+    # +text+'s end: at most LAST_ANSWER_CHARS characters and +max+ bytes,
+    # with the "…" of a cut; nil when no character fits.
+    def keep_end(text, max)
+      return nil if max <= CUT_MARK_BYTES
+
+      text = "…#{text[(1 - LAST_ANSWER_CHARS)..]}" if text.length > LAST_ANSWER_CHARS
+      return text if text.bytesize <= max
+
+      kept = text.byteslice(-(max - CUT_MARK_BYTES), max - CUT_MARK_BYTES).scrub("")
+      kept.empty? ? nil : "…#{kept}"
     end
 
     # +recap+ as a note's tail: " Its recap, as of <time>:\n<text>" (cut
@@ -116,11 +181,16 @@ module Samagotchi
 
         text = msg[:content]
         next unless text.is_a?(String) && !text.strip.empty?
-        next if msg[:turn_id].nil? && text.start_with?("!(")
+        next if shell_line?(msg)
 
         return text.strip
       end
       nil
+    end
+
+    # A stored `!shell` line: "!(cmd)\n<output>", no turn_id.
+    def shell_line?(message)
+      message[:turn_id].nil? && message[:content].is_a?(String) && message[:content].start_with?("!(")
     end
 
     def clock(iso)

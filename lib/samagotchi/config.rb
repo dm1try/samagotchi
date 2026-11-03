@@ -142,6 +142,8 @@ module Samagotchi
       Entry.new(key: "session.project_env",           yaml_path: %w[session project_env],           type: :enum,    default: "mise", expose: %i[env config], enum_values: %w[mise off], lifecycle: :worker_start),
       # Plain `chi` runs like `chi --shared` (bin/chi, LaunchMode); false, or --no-shared per run, keeps the plain REPL. No CLI flag: that would duplicate --shared.
       Entry.new(key: "session.shared",                yaml_path: %w[session shared],                type: :bool,    default: true,  expose: %i[env config], lifecycle: :next_invocation),
+      # false: a continue's carry note holds the previous link's recap only (SessionChain.note_text), not its last answer too.
+      Entry.new(key: "session.carry_last_answer",     yaml_path: %w[session carry_last_answer],     type: :bool,    default: true,  expose: %i[env config], lifecycle: :next_lifecycle_decision),
       # false: a session nothing happened in is deleted when it is left (SessionManager.discardable?).
       Entry.new(key: "session.keep_empty",            yaml_path: %w[session keep_empty],            type: :bool,    default: false, expose: %i[env config], lifecycle: :next_lifecycle_decision),
       # The most sessions one session may have delegated and still running (the delegate tool); a guard against a runaway model.

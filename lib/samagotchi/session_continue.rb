@@ -69,7 +69,8 @@ module Samagotchi
     # +id_or_ref+ (Session#continues) in its folder, on its model (the name
     # it was typed as, so an alias holds) and with its own setup (SessionSetup),
     # starting with a context note from chi: the link and the previous
-    # link's recap (SessionChain.note_text). +model+, when given, is the
+    # link's recap and last answer (SessionChain.note_text), read after the
+    # recap wait, so a turn that finished in it counts. +model+, when given, is the
     # new link's model instead; an inherited one whose host can't run it any
     # more (gone, disabled, an alias naming another host) falls back to the
     # default with a warning (#model_for). The previous link is archived
@@ -212,7 +213,7 @@ module Samagotchi
       link = SessionManager.spawn_session(
         prompt: start, preview: preview, title: previous.title, working_directory: previous.working_directory,
         model_name: choice.model, setup: SessionSetup.of(previous), review: previous.review,
-        continues: previous.id, note: SessionChain.note_text(previous, recap: recap),
+        continues: previous.id, note: SessionChain.note_text(previous, recap: recap, state_dir: state_dir),
         note_source: SessionChain::NOTE_SOURCE, state_dir: state_dir, before_spawn: before_spawn
       )
       link.moved_children = move
