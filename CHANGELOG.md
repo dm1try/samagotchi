@@ -7,6 +7,8 @@ and commands may change between minor versions. How releases are made:
 [docs/releasing.md](docs/releasing.md).
 ## [Unreleased]
 
+## [0.147.0] - 2026-11-03
+
 ### Changed
 
 - With `update.auto: install` a newer chi installed some other way, such as `chi update` in a terminal, now gets the
@@ -5593,7 +5595,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.146.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.147.0...HEAD
+[0.147.0]: https://github.com/dm1try/samagotchi/compare/v0.146.0...v0.147.0
 [0.146.0]: https://github.com/dm1try/samagotchi/compare/v0.145.0...v0.146.0
 [0.145.0]: https://github.com/dm1try/samagotchi/compare/v0.144.0...v0.145.0
 [0.144.0]: https://github.com/dm1try/samagotchi/compare/v0.143.0...v0.144.0
