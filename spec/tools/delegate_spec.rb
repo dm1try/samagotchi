@@ -466,6 +466,254 @@ RSpec.describe "delegate tools" do
       end
     end
 
+    describe "a task that names another checkout while the child has no cwd:" do
+      let(:repo) { File.join(File.realpath(tmpdir), "app") }
+      let(:fix) { File.join(File.dirname(repo), "app-fix") }
+      let(:parent) { make(cwd: repo, prompt: "the plan", model: "big-model") }
+
+      def git(*args)
+        ok = system("git", "-c", "user.name=x", "-c", "user.email=x@x", "-c", "init.defaultBranch=main", *args,
+                    out: File::NULL, err: File::NULL)
+        raise "git #{args.join(" ")} failed" unless ok
+
+        ok
+      end
+
+      def line(checkout, child_id)
+        "Warning: this child runs in #{repo}, but its task names #{checkout}. If it should work there, stop it " \
+          "(chi sessions stop #{child_id}) and call delegate again without session, with cwd: #{checkout}."
+      end
+
+      # The child's id, as the tool result gives it.
+      def child_id(out) = out[/session: ([0-9a-f-]+)/, 1]
+
+      def child_folder
+        id = (session_files - [parent.id]).first
+        id && Samagotchi::Session.load(id, state_dir: tmpdir).working_directory
+      end
+
+      before do
+        git("init", "-q", repo)
+        git("-C", repo, "commit", "-q", "--allow-empty", "-m", "init")
+      end
+
+      it "warns, and still starts the child in the parent's folder" do
+        git("-C", repo, "worktree", "add", "-q", "../app-fix", "-b", "fix/thing")
+
+        out = described_class.call("fix it in ../app-fix", wait: false, peers: worker_peers)
+
+        expect(out).to include(line(fix, child_id(out)))
+        expect(out.scan(/^Warning: /).size).to eq(1)
+        expect(child_folder).to eq(repo)
+      end
+
+      it "warns for a path under the other checkout" do
+        git("-C", repo, "worktree", "add", "-q", "../app-fix", "-b", "fix/thing")
+        FileUtils.mkdir_p(File.join(fix, "lib"))
+
+        out = described_class.call("edit #{File.join(fix, "lib", "a.rb")}", wait: false, peers: worker_peers)
+
+        expect(out).to include(line(fix, child_id(out)))
+        expect(child_folder).to eq(repo)
+      end
+
+      it "says nothing for a folder that only looks like one (app-fix-2)" do
+        git("-C", repo, "worktree", "add", "-q", "../app-fix", "-b", "fix/thing")
+        FileUtils.mkdir_p(File.join(File.dirname(repo), "app-fix-2"))
+
+        out = described_class.call("look at #{File.join(File.dirname(repo), "app-fix-2")}",
+                                   wait: false, peers: worker_peers)
+
+        expect(out).to start_with("session: ")
+        expect(out).not_to include("Warning")
+      end
+
+      it "warns for ../name with no clause of its own" do
+        git("-C", repo, "worktree", "add", "-q", "../app-fix", "-b", "fix/thing")
+
+        out = described_class.call("../app-fix has the failing spec", wait: false, peers: worker_peers)
+
+        expect(out).to include(line(fix, child_id(out)))
+      end
+
+      it "warns from a worktree parent that names the main checkout" do
+        git("-C", repo, "worktree", "add", "-q", "../app-fix", "-b", "fix/thing")
+        worktree_parent = make(cwd: fix, prompt: "the plan", model: "big-model")
+        fix_peers = Samagotchi::Tools::Peers.new(session_id: worktree_parent.id, cwd: fix, state_dir: tmpdir)
+
+        out = described_class.call("check #{repo} too", wait: false, peers: fix_peers)
+
+        expect(out).to include("this child runs in #{fix}, but its task names #{repo}. If it should work there")
+        expect(Samagotchi::Session.load(out[/session: ([0-9a-f-]+)/, 1], state_dir: tmpdir).working_directory).to eq(fix)
+      end
+
+      it "attributes a nested worktree's path to that worktree, not to main" do
+        git("-C", repo, "worktree", "add", "-q", "../app-fix", "-b", "fix/thing")
+        nested = File.join(fix, "nested")
+        git("-C", fix, "worktree", "add", "-q", "nested", "-b", "nested/thing")
+
+        out = described_class.call("work in #{nested}", wait: false, peers: worker_peers)
+
+        expect(out).to include(line(nested, child_id(out)))
+        expect(out.scan(/^Warning: /).size).to eq(1)
+      end
+
+      it "says nothing for a child whose folder is a subfolder of the checkout its task names" do
+        git("-C", repo, "worktree", "add", "-q", "../app-fix", "-b", "fix/thing")
+        nested = File.join(fix, "nested")
+        git("-C", fix, "worktree", "add", "-q", "nested", "-b", "nested/thing")
+        FileUtils.mkdir_p(File.join(nested, "lib"))
+        holder = make(cwd: nested, prompt: "the plan", model: "big-model")
+        holder_peers = Samagotchi::Tools::Peers.new(session_id: holder.id, cwd: nested, state_dir: tmpdir)
+
+        out = described_class.call("edit #{File.join(nested, "lib", "a.rb")}", wait: false, peers: holder_peers)
+
+        expect(out).not_to include("Warning")
+        expect(Samagotchi::Session.load(child_id(out), state_dir: tmpdir).working_directory).to eq(nested)
+      end
+
+      it "follows a symlinked path to its checkout" do
+        git("-C", repo, "worktree", "add", "-q", "../app-fix", "-b", "fix/thing")
+        link = File.join(File.dirname(repo), "linkfix")
+        File.symlink(fix, link)
+
+        out = described_class.call("see #{link}", wait: false, peers: worker_peers)
+
+        expect(out).to include(line(fix, child_id(out)))
+      end
+
+      it "reads ~/ as the home folder" do
+        git("-C", repo, "worktree", "add", "-q", "../app-fix", "-b", "fix/thing")
+        original = ENV["HOME"]
+        ENV["HOME"] = File.dirname(repo)
+
+        out = described_class.call("work in ~/app-fix", wait: false, peers: worker_peers)
+
+        expect(out).to include(line(fix, child_id(out)))
+      ensure
+        ENV["HOME"] = original
+      end
+
+      it "warns with trailing punctuation and backticks around the path" do
+        git("-C", repo, "worktree", "add", "-q", "../app-fix", "-b", "fix/thing")
+
+        [
+          ["work in ../app-fix.", "#{fix}."],
+          ["run `../app-fix` there", "`#{fix}`"],
+          ["cd ../app-fix/ and build", "#{fix}/"]
+        ].each do |task, named|
+          out = described_class.call(task, wait: false, peers: worker_peers)
+          expect(out).to include(line(fix, child_id(out))), "no warning for #{named}"
+        end
+      end
+
+      it "says nothing for a URL or a path of no checkout" do
+        git("-C", repo, "worktree", "add", "-q", "../app-fix", "-b", "fix/thing")
+
+        out = described_class.call("open https://example.com/app-fix and http://127.0.0.1:8080/api/sessions",
+                                   wait: false, peers: worker_peers)
+
+        expect(out).not_to include("Warning")
+        expect(described_class.call("see /no/such/dir", wait: false, peers: worker_peers)).not_to include("Warning")
+      end
+
+      it "says nothing for the checkout holding the child's folder, or a subfolder of it" do
+        git("-C", repo, "worktree", "add", "-q", "../app-fix", "-b", "fix/thing")
+        FileUtils.mkdir_p(File.join(repo, "lib"))
+
+        expect(described_class.call("stay in #{repo}", wait: false, peers: worker_peers)).not_to include("Warning")
+        sub_peers = Samagotchi::Tools::Peers.new(session_id: parent.id, cwd: File.join(repo, "lib"), state_dir: tmpdir)
+        expect(described_class.call("in #{File.join(repo, "lib")}", wait: false, peers: sub_peers)).not_to include("Warning")
+      end
+
+      it "says nothing for a worktree that was deleted" do
+        git("-C", repo, "worktree", "add", "-q", "../app-fix", "-b", "fix/thing")
+        FileUtils.rm_rf(fix)
+
+        expect(described_class.call("work in #{fix}", wait: false, peers: worker_peers)).not_to include("Warning")
+      end
+
+      it "says nothing when the task has no path at all" do
+        git("-C", repo, "worktree", "add", "-q", "../app-fix", "-b", "fix/thing")
+
+        expect(described_class.call("count the specs", wait: false, peers: worker_peers)).not_to include("Warning")
+      end
+
+      it "says nothing when cwd: is given, even the parent's own folder" do
+        git("-C", repo, "worktree", "add", "-q", "../app-fix", "-b", "fix/thing")
+
+        expect(described_class.call("work in ../app-fix, cwd later", cwd: repo, wait: false, peers: worker_peers))
+          .not_to include("Warning")
+        expect(described_class.call("fix it", cwd: "../app-fix", wait: false, peers: worker_peers)).not_to include("Warning")
+      end
+
+      it "says nothing outside a repository" do
+        plain = File.join(File.realpath(tmpdir), "plain")
+        FileUtils.mkdir_p(File.join(File.realpath(tmpdir), "plain-sibling"))
+        loose = make(cwd: plain, prompt: "plan")
+        loose_peers = Samagotchi::Tools::Peers.new(session_id: loose.id, cwd: plain, state_dir: tmpdir)
+
+        out = described_class.call("see ../plain-sibling", wait: false, peers: loose_peers)
+
+        expect(out).not_to include("Warning")
+        expect(out).to include("status: running")
+      end
+
+      context "in a bare layout (a .bare repository, worktrees next to it)" do
+        let(:container) { File.join(File.realpath(tmpdir), "proj") }
+        let(:repo) { File.join(container, "main") }
+
+        before do
+          git("clone", "-q", "--bare", repo, File.join(container, ".bare"))
+          FileUtils.rm_rf(repo)
+          File.write(File.join(container, ".git"), "gitdir: ./.bare\n")
+          git("-C", container, "worktree", "add", "-q", "main", "main")
+          git("-C", container, "worktree", "add", "-q", "-b", "fix", "fix")
+        end
+
+        it "warns for another worktree of the bare repository" do
+          out = described_class.call("work in ../fix", wait: false, peers: worker_peers)
+
+          expect(out).to include("its task names #{File.join(container, "fix")}")
+        end
+      end
+
+      it "says nothing on a follow-up: it keeps the child's folder" do
+        git("-C", repo, "worktree", "add", "-q", "../app-fix", "-b", "fix/thing")
+        child = make(parent_id: parent.id, cwd: repo, prompt: "first task", status: "idle")
+        allow(Samagotchi::SessionManager).to receive(:deliver_turn).and_return(
+          Struct.new(:status, :enqueued_id, :error).new(:refused, nil, "not running")
+        )
+
+        out = described_class.call("now in ../app-fix", session: child.id, wait: false, peers: worker_peers)
+
+        expect(out).not_to include("Warning")
+        expect(out).to start_with("Error:")
+      end
+
+      it "puts the model warning first, then this one" do
+        saved_models(%w[gemma-small])
+        git("-C", repo, "worktree", "add", "-q", "../app-fix", "-b", "fix/thing")
+
+        out = described_class.call("fix it in ../app-fix", model: "default:gemma-smal", wait: false, peers: worker_peers)
+
+        expect(out).to start_with("Warning: host 'default' doesn't list model 'gemma-smal' (did you mean: gemma-small?); " \
+                                  "started it anyway; `chi models` lists what the hosts serve\n")
+        expect(out.lines[1]).to eq("#{line(fix, child_id(out))}\n")
+      end
+
+      it "still starts the child when the check itself raises" do
+        git("-C", repo, "worktree", "add", "-q", "../app-fix", "-b", "fix/thing")
+        allow(Samagotchi::MemoryPaths).to receive(:common_git_dir).and_raise(StandardError, "boom")
+
+        out = described_class.call("fix it in ../app-fix", wait: false, peers: worker_peers)
+
+        expect(out).to start_with("session: ")
+        expect(out).not_to include("Warning")
+        expect(child_folder).to eq(repo)
+      end
+    end
+
     describe "a follow-up (session:)" do
       let(:child) { make(parent_id: parent.id, prompt: "first task", status: "idle") }
 

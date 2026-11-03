@@ -144,6 +144,50 @@ RSpec.describe Samagotchi::MemoryPaths do
     end
   end
 
+  describe ".common_git_dir" do
+    def git(*args)
+      out, status = Open3.capture2e("git", "-c", "user.name=x", "-c", "user.email=x@x",
+                                    "-c", "init.defaultBranch=main", *args)
+      raise "git #{args.join(" ")} failed: #{out}" unless status.success?
+
+      out
+    end
+
+    around do |example|
+      Dir.mktmpdir { |tmp| @tmp = tmp; example.run }
+    end
+
+    let(:real_tmp) { File.realpath(@tmp) }
+
+    it "is the same real dir for the main checkout, a worktree and a subfolder of it" do
+      repo = File.join(real_tmp, "repo")
+      git("init", "-q", repo)
+      git("-C", repo, "commit", "-q", "--allow-empty", "-m", "init")
+      tree = File.join(real_tmp, "repo-feature")
+      git("-C", repo, "worktree", "add", "-q", "-b", "feature", tree)
+      FileUtils.mkdir_p(File.join(tree, "lib"))
+
+      expect(described_class.common_git_dir(repo)).to eq(File.join(repo, ".git"))
+      expect(described_class.common_git_dir(File.join(tree, "lib"))).to eq(File.join(repo, ".git"))
+    end
+
+    it "is the bare dir of a ./.bare layout, and nil outside any repository" do
+      proj = File.join(real_tmp, "proj")
+      bare = File.join(proj, ".bare")
+      git("init", "-q", File.join(real_tmp, "src"))
+      git("-C", File.join(real_tmp, "src"), "commit", "-q", "--allow-empty", "-m", "init")
+      git("clone", "-q", "--bare", File.join(real_tmp, "src"), bare)
+      File.write(File.join(proj, ".git"), "gitdir: ./.bare\n")
+      git("-C", proj, "worktree", "add", "-q", File.join(proj, "main"), "main")
+      plain = File.join(real_tmp, "plain")
+      FileUtils.mkdir_p(plain)
+
+      expect(described_class.common_git_dir(File.join(proj, "main"))).to eq(bare)
+      expect(described_class.common_git_dir(proj)).to eq(bare)
+      expect(described_class.common_git_dir(plain)).to be_nil
+    end
+  end
+
   describe ".scope_dir" do
     let(:env) { { "XDG_CONFIG_HOME" => "/xdg" } }
 

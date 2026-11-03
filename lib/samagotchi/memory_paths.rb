@@ -51,6 +51,15 @@ module Samagotchi
       File.basename(common) == ".git" ? File.dirname(common) : common
     end
 
+    # The repository's common git dir of +cwd+ as an absolute real path (the
+    # same for every worktree of it), or nil outside any repository. Reads
+    # files only, no git process; #project_root turns it into a checkout
+    # folder, which a bare layout's container is not.
+    def common_git_dir(cwd = Dir.pwd)
+      gitdir = git_dir(cwd)
+      gitdir && File.realpath(common_dir(gitdir))
+    end
+
     # The top of the git work tree holding +cwd+: the directory with the
     # nearest .git (a linked worktree's own checkout, unlike #project_root);
     # nil outside any repository.

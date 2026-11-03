@@ -5,6 +5,7 @@ require_relative "../session"
 require_relative "../config"
 require_relative "../model_profile"
 require_relative "../memory_paths"
+require_relative "../guardrails/context"
 require_relative "peers"
 require_relative "delegate_wait"
 require_relative "../child_reports"
@@ -27,6 +28,9 @@ module Samagotchi
       NAME = "delegate"
       MAX_CHILDREN_KEY = "session.max_children"
       MAX_CHILDREN_DEFAULT = 4
+      # A path in a task: absolute, ~/ or ../, not glued to a word (a URL's
+      # /api is not one) and stopping at quotes, backticks or punctuation.
+      PATH_TOKEN = %r{(?<![\w./~-])(?:~/|\.\./|/(?!/))[^\s`'"<>()\[\]{},;&|]*}
       # A child spawned this many seconds ago counts as running even before
       # its worker holds the owner lock: two delegate calls in one model
       # message come milliseconds apart, and the first child's worker is
@@ -60,19 +64,19 @@ module Samagotchi
 
         cwd = cwd.to_s.strip
         toolkit = toolkit.to_s.strip
-        child_id, warning = if session.to_s.strip.empty?
-                              start_child(task, parent: parent, model: model, cwd: cwd, toolkit: toolkit, state_dir: sd,
-                                                peers: peers)
-                            elsif !cwd.empty?
-                              "Error: cwd starts a new child; a follow-up with session keeps the child's folder"
-                            elsif !toolkit.empty?
-                              "Error: toolkit starts a new child; a follow-up keeps the child's toolkit"
-                            else
-                              follow_up(task, session: session.to_s.strip, parent: parent, state_dir: sd)
-                            end
+        child_id, warnings = if session.to_s.strip.empty?
+                               start_child(task, parent: parent, model: model, cwd: cwd, toolkit: toolkit, state_dir: sd,
+                                                 peers: peers)
+                             elsif !cwd.empty?
+                               "Error: cwd starts a new child; a follow-up with session keeps the child's folder"
+                             elsif !toolkit.empty?
+                               "Error: toolkit starts a new child; a follow-up keeps the child's toolkit"
+                             else
+                               follow_up(task, session: session.to_s.strip, parent: parent, state_dir: sd)
+                             end
         return child_id if child_id.start_with?("Error:")
 
-        note = warning ? "Warning: #{warning}\n" : ""
+        note = Array(warnings).map { |warning| "Warning: #{warning}\n" }.join
         if wait
           result = DelegateWait.call(child_id, peers: peers, timeout: timeout)
           return RefText.wrap(note + result, result.respond_to?(:ref_path) ? result.ref_path : nil)
@@ -114,7 +118,8 @@ module Samagotchi
       private_class_method :full_hint
 
       # @param toolkit [String] a kit's name, "" for config's toolkit.child
-      # @return [String] the new child's id, or an Error: line
+      # @return [String, Array<String>] the new child's id, or an Error: line,
+      #   and its warnings (each without the "Warning: " prefix)
       def self.start_child(task, parent:, model:, cwd:, toolkit:, state_dir:, peers:)
         if parent.parent_id
           return "Error: this session is a delegate of #{parent.parent_id}; delegated sessions don't delegate further"
@@ -142,9 +147,79 @@ module Samagotchi
                                              model_name: child_model(model, parent), memories: CHILD_MEMORIES,
                                              parent_id: parent.id, delegate: true, setup: setup, state_dir: state_dir)
         DelegateWait.mark_started(parent.id, child, state_dir: state_dir)
-        [child.id, child.model_warning]
+        # The line for a task that names a worktree while the child runs in
+        # the parent's folder (no cwd: given): the child still starts.
+        [child.id, [child.model_warning, other_checkout(task, folder, parent: parent, child_id: child.id,
+                                                        no_cwd: cwd.empty?)].compact]
       end
       private_class_method :start_child
+
+      # A new child with no cwd: its task may name another checkout of this
+      # repository (a worktree the parent meant to pass as cwd:), which makes
+      # every write there an ask for the user (child-boundary). One warning
+      # line, however many are named; nil when the task names none, or names
+      # only the checkout holding the child's folder (or a subfolder of it).
+      # Never raises: a started child must not come back as an Error:.
+      # @return [String, nil]
+      def self.other_checkout(task, folder, parent:, child_id:, no_cwd:)
+        return nil unless no_cwd
+
+        checkout = foreign_checkout(task, folder)
+        return nil unless checkout
+
+        Log.info(:worker, "delegate_other_checkout", parent: parent.id[0, 8])
+        "this child runs in #{folder}, but its task names #{checkout}. If it should work there, stop it " \
+          "(chi sessions stop #{child_id}) and call delegate again without session, with cwd: #{checkout}."
+      rescue StandardError
+        nil
+      end
+      private_class_method :other_checkout
+
+      # The checkout of +folder+'s repository that the task names and that is
+      # not the one holding +folder+: the first path token in the task that
+      # belongs to one (the deepest containing it), else nil. Reads files
+      # only, no git process, so a spec stubbing Process.spawn is unaffected.
+      # @return [String, nil] an absolute checkout folder
+      def self.foreign_checkout(task, folder)
+        common = MemoryPaths.common_git_dir(folder)
+        return nil unless common
+
+        checkouts = Guardrails::GitInfo.checkouts(common).map { |checkout| File.realpath(checkout) }
+        own = deepest_checkout(File.realpath(folder), checkouts)
+        task.to_s.scan(PATH_TOKEN) do |token|
+          path = existing_ancestor(File.expand_path(token.sub(/[.:!?]+\z/, ""), folder))
+          next if path.nil?
+
+          found = deepest_checkout(path, checkouts)
+          return found if found && found != own
+        end
+        nil
+      end
+      private_class_method :foreign_checkout
+
+      # The checkout containing +path+, matched by whole components (so
+      # /x/app is not found in /x/app-fix): the deepest, so a nested worktree's
+      # path belongs to that worktree, not to main; nil when none does.
+      def self.deepest_checkout(path, checkouts)
+        checkouts.select { |checkout| within?(path, checkout) }.max_by { |checkout| checkout.count("/") }
+      end
+      private_class_method :deepest_checkout
+
+      # +path+'s longest ancestor that exists, realpathed (a worktree not made
+      # yet still points at its parent folder); nil when nothing above it does.
+      def self.existing_ancestor(path)
+        dir = path
+        until File.exist?(dir)
+          parent = File.dirname(dir)
+          return nil if parent == dir
+
+          dir = parent
+        end
+        File.realpath(dir)
+      rescue StandardError
+        nil
+      end
+      private_class_method :existing_ancestor
 
       # The Error: line for a toolkit name the parent doesn't know
       # (Peers#toolkit_names: its built-in, config and plugin kits), nil

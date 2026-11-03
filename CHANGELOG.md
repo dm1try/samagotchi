@@ -17,6 +17,9 @@ and commands may change between minor versions. How releases are made:
 
 ### Changed
 
+- A `delegate` child started with no `cwd:` whose task names another checkout of the repository gets a
+  `Warning:` line in the tool result naming that checkout and how to start the child there; the child still
+  runs in the parent's folder. [docs/sessions.md](docs/sessions.md#delegating)
 - The session option on a file ask says what it covers: "Allow edits to config.yml for the session"
   rather than "Allow this call for the session".
 
