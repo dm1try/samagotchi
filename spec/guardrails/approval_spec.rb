@@ -3,6 +3,7 @@
 require "tmpdir"
 require "samagotchi/guardrails"
 require "samagotchi/tools/registry"
+require "samagotchi/tool_activity"
 
 RSpec.describe Samagotchi::Guardrails::Approval do
   let(:dir) { File.realpath(Dir.mktmpdir("guard-appr")) }
