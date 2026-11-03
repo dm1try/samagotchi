@@ -18,6 +18,42 @@ RSpec.describe Samagotchi::SystemOne::Record do
 
   def record(list) = described_class.new(list, rule: "git-push")
 
+  describe "by repository" do
+    def in_repo(count, repo, **fields) = asks(count, **fields).map { |entry| entry.merge("repo" => repo) }
+    def in_a(list) = described_class.new(list, rule: "git-push", repo: "/a/.git")
+
+    it "counts only that repo's lines toward a clean record" do
+      expect(in_a(in_repo(5, "/a/.git")).qualifies?(threshold: 0.8, min_record: 5)).to be true
+      expect(in_a(in_repo(4, "/a/.git") + in_repo(5, "/b/.git")).qualifies?(threshold: 0.8, min_record: 5)).to be false
+    end
+
+    it "counts a line with no repo for nothing" do
+      expect(in_a(asks(5)).qualifies?(threshold: 0.8, min_record: 5)).to be false
+    end
+
+    it "keeps another repo's false allow out of the window" do
+      expect(in_a(in_repo(5, "/a/.git") + in_repo(1, "/b/.git", answer: "deny")).qualifies?(threshold: 0.8, min_record: 5)).to be true
+    end
+
+    it "looks at the repo's own window" do
+      expect(in_a(in_repo(5, "/a/.git") + in_repo(1, "/a/.git", answer: "deny")).qualifies?(threshold: 0.8, min_record: 5)).to be false
+    end
+
+    it "keeps the other rules out, and with no repo counts every line" do
+      other = in_repo(5, "/a/.git", rule: "git-rebase")
+      expect(in_a(other).entries).to eq([])
+      expect(record(in_repo(3, "/a/.git") + in_repo(2, "/b/.git") + asks(1)).entries.size).to eq(6)
+    end
+
+    it "reads which rules go by repo from the config: git-merge by default, a list replaces it" do
+      expect(described_class.per_repo?("git-merge")).to be true
+      expect(described_class.per_repo?("git-push")).to be false
+      allow(Samagotchi::Config).to receive(:get).with("guardrails.system_one.repo_rules").and_return("git-push|x")
+      expect(described_class.per_repo?("git-merge")).to be false
+      expect(described_class.per_repo?("git-push")).to be true
+    end
+  end
+
   it "qualifies at exactly min_record clean allows" do
     expect(record(asks(5)).qualifies?(threshold: 0.8, min_record: 5)).to be true
     expect(record(asks(4)).qualifies?(threshold: 0.8, min_record: 5)).to be false

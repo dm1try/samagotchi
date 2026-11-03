@@ -190,6 +190,7 @@ RSpec.describe "A second rule's ask on one call" do
     before do
       allow(Samagotchi::Config).to receive(:get).and_call_original
       allow(Samagotchi::Config).to receive(:get).with("guardrails.system_one.rules").and_return("git-merge")
+      allow(Samagotchi::Config).to receive(:get).with("guardrails.system_one.repo_rules").and_return(nil)
       5.times do |i|
         id = log.judgment(rule: "git-merge", tool: "execute", p: 0.99, decision: "asked", origin: "live", call_digest: "d#{i}")
         log.label(id, "allow_once")

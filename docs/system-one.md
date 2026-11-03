@@ -33,7 +33,7 @@ same `Client` and `Recording`: the API is in [plugins.md](plugins.md#judgments-c
 [configuration.md](configuration.md#bundles-judgments).
 
 Only bundles' judgments have settings of their own (`JudgmentSettings`). Core's take no host, model or mode here, whatever
-`system_one.judgments` says: `Record` and `Similar` are model-blind (`Record#initialize` filters by rule only), so a model swapped
+`system_one.judgments` says: `Record` and `Similar` are model-blind (`Record#initialize` filters by rule, and by repository for a rule in `guardrails.system_one.repo_rules`, never by model), so a model swapped
 for approvals alone would inherit a clean record and could auto-allow. Before any such swap, `Record` and `Similar` have to go by model.
 
 Core's uses keep their own threads (`ToolkitSuggest::Pending`, `ContextJudge`, the approval path) and contention; only the ask-and-save

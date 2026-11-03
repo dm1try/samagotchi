@@ -10,6 +10,7 @@ and commands may change between minor versions. How releases are made:
 ### Added
 
 - `chi guardrails rule <id>` prints exactly `asks` when that rule votes `ask` on this machine now, and says why not otherwise. [docs/cli.md](docs/cli.md)
+- `guardrails.system_one.repo_rules` (default `git-merge`): a rule's System 1 record per repository, so a clean record at home doesn't let System 1 answer it in an unknown project. [docs/guardrails.md](docs/guardrails.md#answering-for-the-user-on-mode)
 
 ### Changed
 

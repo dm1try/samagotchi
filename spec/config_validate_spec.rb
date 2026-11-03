@@ -85,6 +85,8 @@ RSpec.describe "Samagotchi::Config.validate_yaml_sections" do
     file = { "guardrails" => { "system_one" => { "rules" => %w[git-push git-rebase], "threshold" => "0.9" } } }
     expect(Samagotchi::Config.resolve("guardrails.system_one.rules", file_data: file, env: {})).to eq("git-push|git-rebase")
     expect(Samagotchi::Config.resolve("guardrails.system_one.threshold", file_data: file, env: {})).to eq(0.9)
+    expect(Samagotchi::Config.resolve("guardrails.system_one.repo_rules", file_data: file, env: {})).to eq("git-merge")
+    expect(Samagotchi::Config.resolve("guardrails.system_one.repo_rules", file_data: { "guardrails" => { "system_one" => { "repo_rules" => [] } } }, env: {}).to_s).to eq("")
     expect(Samagotchi::Config.resolve("system_one.timeout_ms", file_data: {}, env: {})).to eq(2000)
 
     expect(Samagotchi::Log).to receive(:warn).with(:config, "invalid_value",

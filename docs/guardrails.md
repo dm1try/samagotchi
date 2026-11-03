@@ -1083,6 +1083,7 @@ guardrails:
   system_one:                # approvals' own
     mode: off                # off (default) | audit (judge, log, never decide) | on
     rules: [git-push, git-rebase]                  # the rule ids it may answer for
+    repo_rules: [git-merge]  # the rules whose record goes by repository (the default)
     threshold: 0.8           # the probability an auto-allow needs
     min_record: 5            # clean records a rule needs before it is trusted
 ```
@@ -1247,7 +1248,14 @@ ask](#approvals) on the call, is judged and logged but always goes to the user):
    or above the threshold that the user allowed, and none of its **last 20
    labelled** asks judged at the threshold that the user denied or later
    flagged as one System 1 should have asked about. Asks with no label, no
-   probability, or a `none` label count for neither side.
+   probability, or a `none` label count for neither side. A rule in
+   `guardrails.system_one.repo_rules` (default `git-merge`) counts only this
+   repository's asks (the judgment's `repo`, its common git dir, so a repository's
+   worktrees share it): a clean record at home doesn't let a merge pass in an
+   unknown project. Outside a repository such a rule never qualifies, and lines
+   written before `repo` was recorded, or by `chi guardrails replay`, are in no
+   repository's record. `/guardrails` shows the rule's whole record, labelled
+   `git-merge (per repo)`.
 
 Then the judgment's `decision` is `auto`, the verdict settles as
 `settle!(:allow, decided_by: "system one")` with scope `once`, and nothing is

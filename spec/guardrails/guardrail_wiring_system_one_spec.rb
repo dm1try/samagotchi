@@ -39,6 +39,67 @@ RSpec.describe "GuardrailWiring: System 1 on an approval (audit)" do
 
   def log_lines = File.exist?(log_path) ? File.readlines(log_path).map { |line| JSON.parse(line) } : []
 
+  describe "a rule whose record goes by repository (on mode)" do
+    let(:client) { S1::Client.new(backend: judge, mode: "on", host: "splash", model: "judge-model") }
+    let(:asked) { [] }
+    let(:ask) do
+      lambda { |payload|
+        asked << payload
+        answer
+      }
+    end
+    let(:repo_a) { File.join(base, "a").tap { |d| system("git", "init", "-q", d) } }
+    let(:repo_b) { File.join(base, "b").tap { |d| system("git", "init", "-q", d) } }
+    let(:log) { S1::Log.new(dir: File.join(base, "guardrails")) }
+
+    before do
+      allow(Samagotchi::Config).to receive(:get).and_call_original
+      allow(Samagotchi::Config).to receive(:get).with("guardrails.system_one.rules").and_return("git-merge|git-push")
+    end
+
+    # A real common git dir, as Targets#repo reports it.
+    def common_dir(repo)
+      File.realpath(File.join(repo, IO.popen(["git", "-C", repo, "rev-parse", "--git-common-dir"], &:read).strip))
+    end
+
+    def earn(rule, repo)
+      5.times { log.label(log.judgment(rule: rule, tool: "execute", p: 0.97, decision: "asked", origin: "live", repo: repo), "allow_once") }
+    end
+
+    def verdict_in(dir, rule:)
+      verdict = Samagotchi::Guardrails::Verdict.new(call: { name: "execute", content: "git merge y" })
+      verdict.ask!("merges", rule: rule, source: "config", scopes: %w[once rule])
+      verdict.context = Samagotchi::Guardrails::Context.new(cwd: dir, session_id: session.id, git: Samagotchi::Guardrails::GitInfo.new)
+      verdict.targets = Samagotchi::Guardrails::Targets.for(verdict.call, verdict.context)
+      verdict
+    end
+
+    it "auto-allows where the record was earned, and asks in another repo" do
+      earn("git-merge", common_dir(repo_a))
+      expect(wiring(ask: ask).request_approval(verdict_in(repo_a, rule: "git-merge")).decided_by).to eq("system one")
+      expect(asked).to eq([])
+      expect(wiring(ask: ask).request_approval(verdict_in(repo_b, rule: "git-merge")).decided_by).to eq("user")
+      expect(asked.size).to eq(1)
+    end
+
+    it "writes the repo on the judgment line" do
+      earn("git-merge", common_dir(repo_a))
+      wiring(ask: ask).request_approval(verdict_in(repo_b, rule: "git-merge"))
+      expect(log.entries.last).to include("repo" => common_dir(repo_b), "decision" => "asked")
+    end
+
+    it "never qualifies outside a repository, whatever the record" do
+      earn("git-merge", nil)
+      outside = File.join(base, "plain").tap { |d| FileUtils.mkdir_p(d) }
+      expect(wiring(ask: ask).request_approval(verdict_in(outside, rule: "git-merge")).decided_by).to eq("user")
+    end
+
+    it "leaves the other rules on one record" do
+      earn("git-push", common_dir(repo_a))
+      expect(wiring(ask: ask).request_approval(verdict_in(repo_b, rule: "git-push")).decided_by).to eq("system one")
+    end
+  end
+
   it "asks the user anyway and settles exactly as they answered" do
     w = wiring
     verdict = w.request_approval(verdict_for)

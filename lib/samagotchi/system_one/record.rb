@@ -1,5 +1,8 @@
 # frozen_string_literal: true
 
+require_relative "../config"
+require_relative "../model_match"
+
 module Samagotchi
   module SystemOne
     # One rule's record: what System 1 has judged for it and what the user
@@ -7,7 +10,9 @@ module Samagotchi
     # joined with their last label), filtered to one rule. The gate before
     # System 1 answers for the user: enough clean allows at the threshold,
     # and no false allow among the rule's last 20 labelled asks
-    # (docs/guardrails.md, "System 1").
+    # (docs/guardrails.md, "System 1"). A rule in
+    # guardrails.system_one.repo_rules goes by repository: what the user allowed
+    # in one says nothing about another, so its record is built per repo.
     #
     # An ask with no label, no probability, or a `none` label counts for
     # neither side: only a judgment the user actually answered teaches
@@ -21,13 +26,22 @@ module Samagotchi
       # How many of the rule's labelled asks the false-allow check looks at.
       WINDOW = 20
 
+      # Whether +rule+'s record goes by repository
+      # (guardrails.system_one.repo_rules, read like .rules).
+      def self.per_repo?(rule)
+        ModelMatch.parse(Config.get("guardrails.system_one.repo_rules")).include?(rule.to_s)
+      end
+
       attr_reader :rule, :entries
 
       # @param entries [Array<Hash>] SystemOne::Log#entries, oldest first
       # @param rule [String] the rule the record is for
-      def initialize(entries, rule:)
+      # @param repo [String, nil] only this repository's asks (a judgment's
+      #   repo: Guardrails::Targets#repo, its common git dir); nil: all of the
+      #   rule's. A line with no repo is in no repository's record.
+      def initialize(entries, rule:, repo: nil)
         @rule = rule.to_s
-        @entries = Array(entries).select { |entry| entry["rule"].to_s == @rule }
+        @entries = Array(entries).select { |entry| entry["rule"].to_s == @rule && (repo.nil? || entry["repo"] == repo) }
       end
 
       # @param threshold [Float] the probability an auto-allow needs

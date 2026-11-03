@@ -534,7 +534,7 @@ module Samagotchi
         rules.each do |rule|
           summary = SystemOne::Record.new(entries, rule: rule).summary
           counts = summary.reject { |key, _| key == :rule }.map { |key, value| "#{key}=#{value}" }.join(", ")
-          lines << "    #{rule}: #{counts}"
+          lines << "    #{rule}#{" (per repo)" if SystemOne::Record.per_repo?(rule)}: #{counts}"
         end
       end
     end

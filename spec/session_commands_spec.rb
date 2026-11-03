@@ -990,6 +990,15 @@ RSpec.describe Samagotchi::SessionCommands do
       expect(out).not_to include("System 1")
     end
 
+    it "labels a rule whose record goes by repository, its summary still whole" do
+      allow(Samagotchi::Config).to receive(:get).and_call_original
+      allow(Samagotchi::Config).to receive(:get).with("guardrails.system_one.mode").and_return("on")
+      allow(Samagotchi::Config).to receive(:get).with("system_one.host").and_return("chat")
+      system_one_log.judgment(session_id: session.id, rule: "git-merge", call: "git merge y", p: 0.97, decision: "asked", repo: "/a/.git")
+      system_one_log.judgment(session_id: session.id, rule: "git-merge", call: "git merge z", p: 0.97, decision: "asked", repo: "/b/.git")
+      expect(commands.run("/guardrails").output).to include("    git-merge (per repo): asks=2,")
+    end
+
     it "lists this session's recent auto-allows and a Record summary for each rule" do
       allow(Samagotchi::Config).to receive(:get).and_call_original
       allow(Samagotchi::Config).to receive(:get).with("guardrails.system_one.mode").and_return("on")

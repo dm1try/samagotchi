@@ -183,6 +183,9 @@ module Samagotchi
       Entry.new(key: "guardrails.system_one.mode",       yaml_path: %w[guardrails system_one mode],      type: :enum,    default: "off",  expose: %i[config], enum_values: %w[off audit on], lifecycle: :next_tool_or_approval),
       # The rule ids System 1 may answer for ("a|b", or a YAML list, parsed like guardrails.small_models).
       Entry.new(key: "guardrails.system_one.rules",      yaml_path: %w[guardrails system_one rules],      type: :string,  default: nil,    expose: %i[config], lifecycle: :next_tool_or_approval),
+      # The rule ids whose record goes by repository (SystemOne::Record): a clean record in one repo says nothing about
+      # another. Parsed like rules; [] for none. Others stay whole-rule, so a deny in repo A also holds back repo B.
+      Entry.new(key: "guardrails.system_one.repo_rules", yaml_path: %w[guardrails system_one repo_rules], type: :string,  default: "git-merge", expose: %i[config], lifecycle: :next_tool_or_approval),
       # The probability an auto-allow needs, and how many clean records a rule needs before it is trusted.
       Entry.new(key: "guardrails.system_one.threshold",  yaml_path: %w[guardrails system_one threshold],  type: :float,   default: 0.8,   expose: %i[config], lifecycle: :next_tool_or_approval),
       Entry.new(key: "guardrails.system_one.min_record", yaml_path: %w[guardrails system_one min_record], type: :integer, default: 5,     expose: %i[config], lifecycle: :next_tool_or_approval),
