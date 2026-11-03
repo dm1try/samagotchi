@@ -42,8 +42,8 @@ module Samagotchi
 
     # One memory read at least once in the sessions counted: its tokens (the
     # results' size) and reads, +cut_reads+ of them returned a cut result,
-    # +bytes+ its file now (nil: no file) and +size_tokens+ that size,
-    # +source+ the bundle that owns it.
+    # +bytes+ its file now (nil: no file) and +size_tokens+ that size (nil
+    # when there is no file), +source+ the bundle that owns it.
     Use = Data.define(:name, :scope, :tokens, :reads, :cut_reads, :bytes, :size_tokens, :source) do
       def to_h = super.transform_keys(&:to_s)
     end
@@ -65,13 +65,14 @@ module Samagotchi
     end
 
     # Everything the command prints. +sessions+ are the ones counted (no test
-    # runs, none without a user message, archived ones included); +top+ and
-    # +not_read+ are limited to +top+ rows each.
-    Report = Data.define(:sessions, :unreadable, :days, :indexes, :read_count, :read_tokens, :cut_reads,
+    # runs, none without a user message, archived ones included), +skipped+
+    # the saved files not counted for that reason, +unreadable+ the files that
+    # could not be read; +top+ and +not_read+ are limited to +top+ rows each.
+    Report = Data.define(:sessions, :skipped, :unreadable, :days, :indexes, :read_count, :read_tokens, :cut_reads,
                          :read_names, :unknown_names, :top, :not_read, :not_read_count, :not_read_total) do
       def to_h
         {
-          "sessions" => sessions, "unreadable" => unreadable, "days" => days,
+          "sessions" => sessions, "skipped" => skipped, "unreadable" => unreadable, "days" => days,
           "indexes" => indexes.map(&:to_h),
           "reads" => { "count" => read_count, "tokens" => read_tokens, "cut_reads" => cut_reads,
                        "names" => read_names },
@@ -89,7 +90,13 @@ module Samagotchi
       sessions = []
       unreadable = 0
       Dir.glob(File.join(state_dir, "*#{Session::FILE_EXT}")).sort.each do |path|
-        sessions << Session.from_h(JSON.parse(File.read(path, encoding: "UTF-8")))
+        data = JSON.parse(File.read(path, encoding: "UTF-8"))
+        # A project_root that is not a path (a hand-edited file) makes every
+        # later step raise, so the file counts as unreadable rather than
+        # taking the whole report down.
+        raise ArgumentError, "project_root is not a path" unless data["project_root"].nil? || data["project_root"].is_a?(String)
+
+        sessions << Session.from_h(data)
       rescue StandardError
         unreadable += 1
       end
@@ -133,10 +140,13 @@ module Samagotchi
       used = Set.new(@baseline.flat_map { |name| SCOPES.map { |scope| [scope, name] } })
       times = []
       sessions = 0
+      skipped = 0
 
       @sessions.each do |session|
-        next if session.test_run
-        next unless session.messages.any? { |entry| entry[:role].to_s == "user" }
+        if session.test_run || !session.messages.any? { |entry| entry[:role].to_s == "user" }
+          skipped += 1
+          next
+        end
 
         sessions += 1
         time = time_of(session.updated_at)
@@ -166,7 +176,7 @@ module Samagotchi
       rows = known.map do |(scope, name), acc|
         entry = entry_for(scope, name)
         Use.new(name: name, scope: scope, tokens: acc[:tokens], reads: acc[:reads], cut_reads: acc[:cut_reads],
-                bytes: entry.bytes, size_tokens: token_count(entry.bytes), source: entry.source)
+                bytes: entry.bytes, size_tokens: entry.bytes ? token_count(entry.bytes) : nil, source: entry.source)
       end.sort_by { |row| [-row.tokens, row.name] }
 
       unread = @entries.reject { |entry| entry.source || used.include?([entry.scope.to_s, entry.name]) }
@@ -177,6 +187,7 @@ module Samagotchi
 
       Report.new(
         sessions: sessions,
+        skipped: skipped,
         unreadable: @unreadable,
         days: times.empty? ? 0 : ((times.max - times.min) / 86_400.0).round,
         indexes: @scopes.map { |scope| index_row(scope, used) },

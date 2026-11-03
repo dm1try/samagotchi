@@ -126,13 +126,23 @@ module Samagotchi
       # @param env [Hash] the XDG env the memories dir resolves from
       def self.scoped_index(scope, env: ENV)
         dir = memories_dir(scope, env: env)
-        index_path = File.join(dir, "#{MEMORY_INDEX}.md")
-        return File.read(index_path, encoding: "UTF-8") if File.exist?(index_path)
+        return read_text(File.join(dir, "#{MEMORY_INDEX}.md")) if File.file?(File.join(dir, "#{MEMORY_INDEX}.md"))
 
         files = Dir.glob(File.join(dir, "*.md")).sort
         return "No memories stored yet." if files.empty?
 
         "Stored memories (no index yet):\n" + files.map { |f| File.basename(f, ".md") }.join("\n")
+      end
+
+      # A text file from a memories dir, safe to match: a hand-edited index
+      # can hold a byte that isn't valid UTF-8, and a regex on it raises.
+      def self.read_text(path)
+        return "" unless File.file?(path)
+
+        text = File.read(path, encoding: "UTF-8")
+        text.valid_encoding? ? text : text.scrub
+      rescue StandardError
+        ""
       end
 
       def self.memory_path(entry_name, scope)

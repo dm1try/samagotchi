@@ -212,7 +212,7 @@ RSpec.describe Samagotchi::MemoryUsage do
     save_session("otherfile", working_directory: other, messages: [
       { "role" => "user", "content" => "go" },
       call("c11", "read", { "path" => File.join(project_dir(other), "handoff.md") }),
-      result("c11", "[read]\n#{'o' * 1000}")
+      result("c11", "[read]\n#{"o" * 1000}")
     ])
 
     summary = report
@@ -225,7 +225,7 @@ RSpec.describe Samagotchi::MemoryUsage do
   it "splits a comma list by every name asked for, the index's own text included" do
     write_index(project_dir(repo), ["- **a** · project · 2026-11-01 · 100 — A"])
     remember(project_dir(repo), "a", "x" * 400)
-    asked = "[memory_read]\n#{'I' * 4000}#{SEP}#{"x" * 400}"
+    asked = "[memory_read]\n#{"I" * 4000}#{SEP}#{"x" * 400}"
     save_session("list", working_directory: repo, messages: [
       { "role" => "user", "content" => "go" },
       call("c1", "memory_read", { "name" => "index, a" }),
@@ -247,7 +247,7 @@ RSpec.describe Samagotchi::MemoryUsage do
     save_session("overlay", working_directory: repo, messages: [
       { "role" => "user", "content" => "go" },
       call("c1", "read", { "path" => File.join(project_dir(repo), "tips.qwen3-6.md") }),
-      result("c1", "[read]\n#{'o' * 80}")
+      result("c1", "[read]\n#{"o" * 80}")
     ])
 
     summary = report
@@ -266,7 +266,7 @@ RSpec.describe Samagotchi::MemoryUsage do
     save_session("dotted", working_directory: repo, messages: [
       { "role" => "user", "content" => "go" },
       call("c1", "read", { "path" => File.join(project_dir(repo), "notes.v2.md") }),
-      result("c1", "[read]\n#{'v' * 40}")
+      result("c1", "[read]\n#{"v" * 40}")
     ])
 
     summary = report
@@ -285,7 +285,7 @@ RSpec.describe Samagotchi::MemoryUsage do
     save_session("prose", working_directory: repo, messages: [
       { "role" => "user", "content" => "go" },
       call("c1", "memory_read", { "name" => "a" }),
-      result("c1", "[memory_read]\n#{'x' * 40}")
+      result("c1", "[memory_read]\n#{"x" * 40}")
     ])
 
     summary = report
@@ -308,7 +308,7 @@ RSpec.describe Samagotchi::MemoryUsage do
     save_session("reallycut", working_directory: repo, messages: [
       { "role" => "user", "content" => "go" },
       call("c2", "memory_read", { "name" => "a" }),
-      result("c2", "[memory_read]\n#{'x' * 300}\n[cut: 100 of 400 chars; read it in parts]")
+      result("c2", "[memory_read]\n#{"x" * 300}\n[cut: 100 of 400 chars; read it in parts]")
     ])
 
     summary = report
@@ -316,8 +316,34 @@ RSpec.describe Samagotchi::MemoryUsage do
     expect(row(summary, "a", "project").cut_reads).to eq(1)
   end
 
+  it "counts a session file with a project_root that is not a path as unreadable" do
+    build_fixture
+    File.write(File.join(state, "odd_root.json"), JSON.generate({
+      "id" => "odd", "mode" => "assist", "model_name" => "gemma", "working_directory" => repo,
+      "project_root" => 123, "messages" => [{ "role" => "user", "content" => "go" }],
+      "created_at" => "2026-11-01T10:00:00.000Z", "updated_at" => "2026-11-01T10:00:00.000Z"
+    }))
 
+    sessions, unreadable = described_class.load_sessions(state_dir: state)
+    expect(unreadable).to eq(2)
+    expect(sessions.map(&:id)).not_to include("odd")
+    summary = report
+    expect(summary.sessions).to eq(5)
+    expect(summary.unreadable).to eq(2)
+  end
 
+  it "counts the sessions it skips, so a run with nothing counted says so" do
+    save_session("testrun", working_directory: repo, test_run: true, messages: [{ "role" => "user", "content" => "go" }])
+    save_session("nouser", working_directory: repo, messages: [])
+    File.write(File.join(state, "broken.json"), "{not json")
+
+    sessions, unreadable = described_class.load_sessions(state_dir: state)
+    summary = described_class.new(sessions: sessions, entries: [], unreadable: unreadable).report
+    expect(summary.sessions).to eq(0)
+    expect(summary.skipped).to eq(2)
+    expect(summary.unreadable).to eq(1)
+    expect(summary.to_h["skipped"]).to eq(2)
+  end
 
   it "matches a session with no stored project_root by the folder it works in" do
     write_index(project_dir(loose), ["- **near** · project · 2026-11-01 · 10 — A memory in a folder that is no repo"])
@@ -459,7 +485,7 @@ RSpec.describe Samagotchi::MemoryUsage do
 
     it "prints the sections, with the cut caveat and the unknown names" do
       expect(run("usage")).to eq(0)
-      expect(out.string.lines.first).to eq("5 sessions over 13 days, 1 unreadable file skipped\n")
+      expect(out.string.lines.first).to eq("5 sessions over 13 days, 1 unreadable file skipped, 2 sessions not counted (test run or no user message)\n")
       expect(out.string).to include("Most read, by tokens (these 5 of 5: 96% of 313 read tokens)")
       expect(out.string).to include("note: 1 of these reads came back cut")
       expect(out.string).to include("Not read in saved sessions: 2 of 7 of your own memories")
@@ -529,11 +555,81 @@ RSpec.describe Samagotchi::MemoryUsage do
       expect(json["not_read"]["largest"].map { |entry| entry["name"] }).to eq(["cold"])
     end
 
+    it "says what is in the dir when nothing is counted" do
+      FileUtils.rm_rf(state)
+      save_session("testrun", working_directory: repo, test_run: true, messages: [{ "role" => "user", "content" => "go" }])
+      save_session("nouser", working_directory: repo, messages: [])
+      File.write(File.join(state, "broken.json"), "{not json")
 
+      expect(run("usage")).to eq(0)
+      expect(out.string).to eq("no sessions to count: 1 file that could not be read and 2 sessions not counted " \
+                               "(test runs or no user message) in #{File.join(tmp, "state", "samagotchi", "sessions")}\n")
+    end
 
+    it "counts the system memories every prompt carries as used, not unread" do
+      write_index(system_dir, [
+        "- **identity** · system · 2026-11-01 · 10 — Who chi is",
+        "- **never opened** · system · 2026-11-01 · 160 — Nobody reads it"
+      ])
+      remember(system_dir, "identity", "i" * 40)
+      FileUtils.rm_rf(state)
+      save_session("quiet", working_directory: repo, messages: [{ "role" => "user", "content" => "go" }])
 
+      expect(run("usage", "--format", "json")).to eq(0)
+      json = JSON.parse(out.string)
+      system = json["indexes"].find { |index| index["scope"] == "system" }
+      expect(system["unread_lines"]).to eq(1)
+      expect(json["not_read"]["largest"].map { |entry| entry["name"] }).not_to include("identity")
+      expect(json["not_read"]["largest"].map { |entry| entry["name"] }).to include("never opened")
+    end
 
+    it "prints - where a counted read's memory has no file" do
+      write_index(project_dir(repo), ["- **ghost** · project · 2026-11-01 · 9 KB — A line whose file is gone"])
+      save_session("ghostread", working_directory: repo, messages: [
+        { "role" => "user", "content" => "go" },
+        call("c1", "memory_read", { "name" => "ghost", "scope" => "project" }),
+        result("c1", "[memory_read]\n#{"g" * 90}")
+      ])
 
+      expect(run("usage", "--format", "json")).to eq(0)
+      ghost = JSON.parse(out.string)["top"].find { |row| row["name"] == "ghost" }
+      expect(ghost).to eq({ "name" => "ghost", "scope" => "project", "tokens" => 26, "reads" => 1,
+                            "cut_reads" => 0, "bytes" => nil, "size_tokens" => nil, "source" => nil })
+      expect(run("usage")).to eq(0)
+      expect(out.string).to match(/^  ghost\s+\d+\s+1\s+-\s+project$/)
+    end
+
+    it "prints no empty table when every read is of a name with no memory" do
+      FileUtils.rm_rf(state)
+      save_session("phantom", working_directory: repo, messages: [
+        { "role" => "user", "content" => "go" },
+        call("c1", "memory_read", { "name" => "phantom" }),
+        result("c1", "[memory_read]\n#{"p" * 40}")
+      ])
+
+      expect(run("usage")).to eq(0)
+      expect(out.string).to include("Most read, by tokens: none of these reads names a memory still there (1 name read, 14 tokens)")
+      expect(out.string).not_to include("Memory  tokens  reads  size  scope  from")
+    end
+
+    it "refuses a --top bigger than the report can hold" do
+      expect(run("usage", "--top", "99999999999999999999")).to eq(2)
+      expect(run("usage", "--top", "1001")).to eq(2)
+      expect(run("usage", "--top", "1000")).to eq(0)
+      expect(err.string.lines.map(&:chomp)).to eq([
+        "chi memory usage: --top must be at most 1000 (see chi memory usage --help)",
+        "chi memory usage: --top must be at most 1000 (see chi memory usage --help)"
+      ])
+    end
+
+    it "tolerates an index with a byte that isn't valid UTF-8" do
+      File.write(File.join(project_dir(repo), "index.md"),
+                 "# Memory Index\n\n- **a** · project · 2026-11-01 · 10 — A \xFF note\n".b)
+      expect(run("usage", "--format", "json")).to eq(0)
+      expect(JSON.parse(out.string)["indexes"].first["lines"]).to eq(1)
+      expect(run("ls", "--scope", "project")).to eq(0)
+      expect(out.string).to include("  a  ")
+    end
 
     it "writes nothing to the sessions or the memories" do
       first = [snapshot(state), snapshot(system_dir), snapshot(project_dir(repo))]

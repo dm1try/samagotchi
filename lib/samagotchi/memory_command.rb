@@ -5,6 +5,7 @@ require_relative "cli/command"
 require_relative "cli/exit"
 require_relative "cli/flags"
 require_relative "memory_paths"
+require_relative "system_prompt"
 require_relative "tools/memory"
 require_relative "memory_bundle/index_updater"
 require_relative "memory_bundle/provenance"
@@ -31,7 +32,7 @@ module Samagotchi
              uninstall removes it. NAME.<key> removes one model overlay alone.
         usage [--scope project|system] [--top N] [--format text|json]   what the memories cost, counted from
              the saved sessions: each scope's index tokens, the memories read most (by tokens), and the ones
-             no saved session read. --top is the rows per section (10); no sessions says so and exits 0.
+             no saved session read. --top is the rows per section (10, at most 1000); no sessions says so and exits 0.
     TEXT
 
     SUBCOMMANDS = %w[ls rm usage].freeze
@@ -42,6 +43,9 @@ module Samagotchi
     SIZE_COLUMN = 2
     # usage's rows per section, when --top is not given.
     DEFAULT_TOP = 10
+    # The most rows --top may ask for: a report of more is unreadable, and a
+    # huge number used to raise out of Array#first.
+    TOP_LIMIT = 1000
 
     FLAGS = {
       "ls" => CLI::Flags.new(help: HELP_WORDS) do |f|
@@ -107,7 +111,7 @@ module Samagotchi
       return [] unless File.directory?(dir)
 
       index_path = File.join(dir, "#{Tools::MEMORY_INDEX}.md")
-      index_text = File.file?(index_path) ? File.read(index_path, encoding: "UTF-8") : ""
+      index_text = Tools::MemoryRead.read_text(index_path)
       # name => its line; the first one when a name has two. A name rm
       # would refuse (a path: "../x") isn't listed.
       lines = {}
@@ -210,12 +214,16 @@ module Samagotchi
       format = options[:format]
       return usage_error("unknown format #{format.inspect}: use --format text|json") unless [nil, "text", "json"].include?(format)
       return usage_error("--top must be a positive integer") unless options[:top].nil? || options[:top].to_s.match?(/\A[1-9]\d*\z/)
+      return usage_error("--top must be at most #{TOP_LIMIT}") if options[:top].to_i > TOP_LIMIT
 
       sessions, unreadable = MemoryUsage.load_sessions
       report = MemoryUsage.new(
         sessions: sessions, entries: self.class.entries(options[:scope]),
         scopes: options[:scope] ? [options[:scope]] : SCOPES, unreadable: unreadable, root: Dir.pwd,
-        baseline: ConfigFile.preloaded_memories
+        # config.yml's memories: plus the system memories every prompt carries
+        # (SystemPrompt::DEFAULT_SYSTEM_MEMORIES): both are in the prompt from
+        # the start, so no read is needed for them.
+        baseline: ConfigFile.preloaded_memories + SystemPrompt::DEFAULT_SYSTEM_MEMORIES
       ).report(top: (options[:top] || DEFAULT_TOP).to_i)
 
       if format == "json"
@@ -228,13 +236,17 @@ module Samagotchi
 
     def print_usage(report)
       if report.sessions.zero?
-        @stdout.puts("no sessions to count: nothing saved in #{Session.default_state_dir}")
+        why = []
+        why << "#{report.unreadable} #{report.unreadable == 1 ? "file" : "files"} that could not be read" if report.unreadable.positive?
+        why << "#{report.skipped} #{report.skipped == 1 ? "session" : "sessions"} not counted (test runs or no user message)" if report.skipped.positive?
+        @stdout.puts(why.empty? ? "no sessions to count: nothing saved in #{Session.default_state_dir}" : "no sessions to count: #{why.join(" and ")} in #{Session.default_state_dir}")
         return
       end
 
       header = "#{report.sessions} #{report.sessions == 1 ? "session" : "sessions"} over " \
                "#{report.days} #{report.days == 1 ? "day" : "days"}"
       header += ", #{report.unreadable} unreadable #{report.unreadable == 1 ? "file" : "files"} skipped" if report.unreadable.positive?
+      header += ", #{report.skipped} #{report.skipped == 1 ? "session" : "sessions"} not counted (test run or no user message)" if report.skipped.positive?
       @stdout.puts(header)
       @stdout.puts
 
@@ -248,6 +260,11 @@ module Samagotchi
 
       if report.read_count.zero?
         @stdout.puts("No memory reads in these sessions.")
+      elsif report.top.empty?
+        # Every read is of a name with no memory behind it: no rows to show.
+        @stdout.puts("Most read, by tokens: none of these reads names a memory still there " \
+                     "(#{report.unknown_names} #{report.unknown_names == 1 ? "name" : "names"} read, " \
+                     "#{token_text(report.read_tokens)} tokens)")
       else
         share = report.read_tokens.positive? ? (100.0 * report.top.sum(&:tokens) / report.read_tokens).round : 0
         @stdout.puts("Most read, by tokens (these #{report.top.size} of #{report.read_names}: " \
@@ -255,7 +272,7 @@ module Samagotchi
         print_table(%w[Memory tokens reads size scope from],
                     report.top.map do |use|
                       [indent(use.name), token_text(use.tokens), use.reads.to_s,
-                       use.size_tokens ? token_text(use.size_tokens) : "-", use.scope, use.source.to_s]
+                       size_text(use.size_tokens), use.scope, use.source.to_s]
                     end, right: [1, 2])
         if report.cut_reads.positive?
           @stdout.puts(indent("note: #{report.cut_reads} of these reads came back cut (reads used to be cut), " \
@@ -269,7 +286,7 @@ module Samagotchi
       else
         @stdout.puts("Not read in saved sessions: #{report.not_read_count} of #{report.not_read_total} of your own " \
                      "memories (a bundle's are not listed)")
-        print_table(["", "size", "scope"], report.not_read.map { |entry| [indent(entry.name), token_text(entry.tokens), entry.scope] }, right: [1]) if report.not_read.any?
+        print_table(["", "size", "scope"], report.not_read.map { |entry| [indent(entry.name), size_text(entry.tokens), entry.scope] }, right: [1]) if report.not_read.any?
         @stdout.puts(indent("An index line is paid whatever a session reads: a memory nobody opens still costs its line in every prompt."))
       end
 
@@ -286,6 +303,9 @@ module Samagotchi
 
       format("%.1fM", number / 1_000_000.0)
     end
+
+    # A size column: "-" when the memory has no file to measure.
+    def size_text(tokens) = tokens.nil? ? "-" : token_text(tokens)
 
     # A header row and its rows, two spaces apart; the +right+ columns align on
     # their numbers.
@@ -338,9 +358,8 @@ module Samagotchi
 
     def present?(name, scope)
       dir = MemoryPaths.scope_dir(scope)
-      index = File.join(dir, "#{Tools::MEMORY_INDEX}.md")
       File.file?(File.join(dir, "#{name}.md")) ||
-        (File.file?(index) && File.read(index, encoding: "UTF-8").match?(Tools::MemoryWrite.managed_pattern(name)))
+        Tools::MemoryRead.read_text(File.join(dir, "#{Tools::MEMORY_INDEX}.md")).match?(Tools::MemoryWrite.managed_pattern(name))
     end
   end
 end
