@@ -205,6 +205,120 @@ RSpec.describe Samagotchi::MemoryUsage do
     expect(row(summary, "identity", "system").reads).to eq(2)
   end
 
+  it "gates a read of a memory's file by project, as memory_read is" do
+    build_fixture
+    # A session of the other project reads its own handoff's file: `memory_line`
+    # sends the model to the file for a big memory, so these reads are normal.
+    save_session("otherfile", working_directory: other, messages: [
+      { "role" => "user", "content" => "go" },
+      call("c11", "read", { "path" => File.join(project_dir(other), "handoff.md") }),
+      result("c11", "[read]\n#{'o' * 1000}")
+    ])
+
+    summary = report
+    expect(row(summary, "handoff", "project").reads).to eq(2)
+    expect(summary.read_count).to eq(8) # the other project's read is counted nowhere, not as a row
+    expect(summary.unknown_names).to eq(1)
+    expect(index_of(summary, "project").unread_lines).to eq(1)
+  end
+
+  it "splits a comma list by every name asked for, the index's own text included" do
+    write_index(project_dir(repo), ["- **a** · project · 2026-11-01 · 100 — A"])
+    remember(project_dir(repo), "a", "x" * 400)
+    asked = "[memory_read]\n#{'I' * 4000}#{SEP}#{"x" * 400}"
+    save_session("list", working_directory: repo, messages: [
+      { "role" => "user", "content" => "go" },
+      call("c1", "memory_read", { "name" => "index, a" }),
+      result("c1", asked)
+    ])
+
+    summary = report
+    # WorkingSet divides the one result by both names; the index is not a row,
+    # but it is one of the names the share is worked out over.
+    expect(row(summary, "a", "project").tokens).to eq(((asked.length / 4.0) / 2).ceil)
+    expect(summary.read_names).to eq(1)
+    expect(summary.read_tokens).to eq(row(summary, "a", "project").tokens)
+  end
+
+  it "counts a read of an overlay's file as a read of the memory it overlays" do
+    write_index(project_dir(repo), ["- **tips** · project · 2026-11-01 · 100 — Tips"])
+    remember(project_dir(repo), "tips", "t" * 100)
+    remember(project_dir(repo), "tips.qwen3-6", "o" * 80)
+    save_session("overlay", working_directory: repo, messages: [
+      { "role" => "user", "content" => "go" },
+      call("c1", "read", { "path" => File.join(project_dir(repo), "tips.qwen3-6.md") }),
+      result("c1", "[read]\n#{'o' * 80}")
+    ])
+
+    summary = report
+    expect(row(summary, "tips", "project").reads).to eq(1)
+    expect(summary.unknown_names).to eq(0)
+    expect(summary.not_read).to eq([])
+  end
+
+  it "keeps a dotted name's own reads when it is a memory of its own" do
+    write_index(project_dir(repo), [
+      "- **notes** · project · 2026-11-01 · 40 — Notes",
+      "- **notes.v2** · project · 2026-11-01 · 40 — The newer notes"
+    ])
+    remember(project_dir(repo), "notes", "n" * 40)
+    remember(project_dir(repo), "notes.v2", "v" * 40)
+    save_session("dotted", working_directory: repo, messages: [
+      { "role" => "user", "content" => "go" },
+      call("c1", "read", { "path" => File.join(project_dir(repo), "notes.v2.md") }),
+      result("c1", "[read]\n#{'v' * 40}")
+    ])
+
+    summary = report
+    expect(row(summary, "notes.v2", "project").reads).to eq(1)
+    expect(row(summary, "notes", "project")).to be_nil
+  end
+
+  it "counts only memory lines in the index's unread fraction" do
+    write_index(project_dir(repo), [
+      "- **a** · project · 2026-11-01 · 40 — A",
+      "- **Important**: always rebase first",
+      "- **b**: a legacy line"
+    ])
+    remember(project_dir(repo), "a", "x" * 40)
+    remember(project_dir(repo), "b", "y" * 40)
+    save_session("prose", working_directory: repo, messages: [
+      { "role" => "user", "content" => "go" },
+      call("c1", "memory_read", { "name" => "a" }),
+      result("c1", "[memory_read]\n#{'x' * 40}")
+    ])
+
+    summary = report
+    index = index_of(summary, "project")
+    # The heading and the bold prose line are neither denominator nor unread;
+    # the legacy line of a memory that has a file is.
+    expect(index.lines).to eq(2)
+    expect(index.unread_lines).to eq(1)
+    expect(summary.not_read.map(&:name)).to eq(%w[b])
+  end
+
+  it "reads a cut only where the cut marker is its own line" do
+    write_index(project_dir(repo), ["- **a** · project · 2026-11-01 · 100 — A"])
+    remember(project_dir(repo), "a", "x" * 400)
+    save_session("mentions", working_directory: repo, messages: [
+      { "role" => "user", "content" => "go" },
+      call("c1", "memory_read", { "name" => "a" }),
+      result("c1", "[memory_read]\nthe old log says: [cut: 5 chars not shown] here")
+    ])
+    save_session("reallycut", working_directory: repo, messages: [
+      { "role" => "user", "content" => "go" },
+      call("c2", "memory_read", { "name" => "a" }),
+      result("c2", "[memory_read]\n#{'x' * 300}\n[cut: 100 of 400 chars; read it in parts]")
+    ])
+
+    summary = report
+    expect(summary.cut_reads).to eq(1)
+    expect(row(summary, "a", "project").cut_reads).to eq(1)
+  end
+
+
+
+
   it "matches a session with no stored project_root by the folder it works in" do
     write_index(project_dir(loose), ["- **near** · project · 2026-11-01 · 10 — A memory in a folder that is no repo"])
     remember(project_dir(loose), "near", "n" * 40)
@@ -251,12 +365,14 @@ RSpec.describe Samagotchi::MemoryUsage do
     build_fixture
     summary = report
 
-    expect(index_of(summary, "system").lines).to eq(5)
+    # Only the memory lines count: the "# Memory Index" heading is paid in
+    # tokens, but it is not a memory line.
+    expect(index_of(summary, "system").lines).to eq(4)
     expect(index_of(summary, "system").unread_lines).to eq(2)
-    expect(index_of(summary, "system").unread_percent).to eq(40)
+    expect(index_of(summary, "system").unread_percent).to eq(50)
     expect(index_of(summary, "system").tokens).to eq((File.read(File.join(system_dir, "index.md")).length / 4.0).ceil)
     expect(index_of(summary, "system").limit).to eq(2500)
-    expect(index_of(summary, "project").lines).to eq(5)
+    expect(index_of(summary, "project").lines).to eq(4)
     expect(index_of(summary, "project").unread_lines).to eq(1)
   end
 
@@ -412,6 +528,12 @@ RSpec.describe Samagotchi::MemoryUsage do
       expect(json["not_read"]["count"]).to eq(1)
       expect(json["not_read"]["largest"].map { |entry| entry["name"] }).to eq(["cold"])
     end
+
+
+
+
+
+
 
     it "writes nothing to the sessions or the memories" do
       first = [snapshot(state), snapshot(system_dir), snapshot(project_dir(repo))]

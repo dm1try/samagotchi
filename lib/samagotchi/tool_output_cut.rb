@@ -35,9 +35,20 @@ module Samagotchi
     REF_WHAT = { "task_wait" => "the task's whole output", "delegate" => "the child's whole reply",
                  "delegate_result" => "the child's whole reply" }.freeze
 
+    # How every cut marker line opens: "[cut: N of M chars" or "[cut: N
+    # chars" - head_line, memory_line and the gap lines all end the result
+    # with one of these.
+    CUT_OPEN = /\[cut: \d+(?: of \d+)? chars/
+
     # A head cut's last line (head_line), as LLMContextStale recognizes a
     # partial read by it. Kept in sync with head_line by its spec.
-    HEAD_CUT = /\[cut: \d+ of \d+ chars; read it in parts\]\z/
+    HEAD_CUT = /#{CUT_OPEN}; read it in parts\]\z/
+
+    # Is +line+ one of those markers on its own line? A body that only
+    # mentions "[cut: ..." is not a cut result.
+    def self.cut_marker_line?(line)
+      line.to_s.strip.match?(/\A#{CUT_OPEN}[^\n]*\]\z/)
+    end
 
     # What a web row keeps of a tool's output, on a reload
     # (MessageParts) and a mid-turn join (Bridge::TurnAccumulator): the

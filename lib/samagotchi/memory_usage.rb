@@ -10,6 +10,8 @@ require_relative "llm_context_stale"
 require_relative "working_set"
 require_relative "file_ref"
 require_relative "tool_response"
+require_relative "tool_output_cut"
+require_relative "model_overlay"
 require_relative "tools/memory"
 
 module Samagotchi
@@ -37,12 +39,6 @@ module Samagotchi
     SCOPES = Tools::VALID_SCOPES
     MEMORY_READ = Tools::MemoryRead::NAME
     FILE_READ = Tools::Read::NAME
-    # A result the runner cut (ToolOutputCut). Reads saved before whole reads
-    # hold cut results, so the cut caveat is one line, not a section.
-    CUT = /\[cut: \d+(?: of \d+)? chars/
-    # A managed index line, as MemoryCommand::LINE matches it (the legacy
-    # "- **name**: desc" form included).
-    INDEX_LINE = /^- \*\*([^*\n]+)\*\*/
 
     # One memory read at least once in the sessions counted: its tokens (the
     # results' size) and reads, +cut_reads+ of them returned a cut result,
@@ -53,7 +49,7 @@ module Samagotchi
     end
 
     # One scope's index as every prompt pays it: its tokens, the warning
-    # limit (0: off), its lines, and the lines naming a memory no counted
+    # limit (0: off), its memory lines, and those naming a memory no counted
     # session read.
     Index = Data.define(:scope, :tokens, :limit, :lines, :unread_lines) do
       def unread_percent = lines.zero? ? 0 : (100.0 * unread_lines / lines).round
@@ -211,12 +207,17 @@ module Samagotchi
     end
 
     # One scope's index: its tokens and lines as the prompt pays them, and how
-    # many of its entry lines name a memory no counted session read.
+    # many of its memory lines name a memory no counted session read. Only the
+    # lines of memories count (MemoryCommand::LINE, and the entries `chi memory
+    # ls` finds behind them): a heading or a bold line of prose is neither the
+    # denominator nor an unread line.
     def index_row(scope, used)
       text = index_text(scope)
       size = MemoryBundle::IndexSize.of_text(scope, text, chars_per_token: @chars_per_token)
-      unread = text.each_line.count { |line| (match = INDEX_LINE.match(line)) && !used.include?([scope, match[1]]) }
-      Index.new(scope: scope, tokens: size.tokens, limit: @warn_limit, lines: size.lines, unread_lines: unread)
+      names = text.each_line.filter_map { |line| (match = MemoryCommand::LINE.match(line)) && match[1] }.uniq
+      entries = names.select { |name| entry_for(scope, name) }
+      unread = entries.count { |name| !used.include?([scope, name]) }
+      Index.new(scope: scope, tokens: size.tokens, limit: @warn_limit, lines: entries.size, unread_lines: unread)
     end
 
     def index_text(scope)
@@ -233,19 +234,24 @@ module Samagotchi
 
         if name == MEMORY_READ
           # index.md is not a memory: the model reads it by name now and then,
-          # and its cost is the Indexes section above.
-          names = WorkingSet.found_names(run).reject { |memory| memory.casecmp?(Tools::MEMORY_INDEX) }
+          # and its cost is the Indexes section above - but it is one of the
+          # names the one result is split between, as WorkingSet does.
+          found = WorkingSet.found_names(run)
+          names = found.reject { |memory| memory.casecmp?(Tools::MEMORY_INDEX) }
           next [] if names.empty?
 
-          tokens = token_count(run.text.length, names.size)
-          cut = run.text.match?(CUT)
+          tokens = token_count(run.text.length, found.size)
+          cut = cut_result?(run.text)
           names.filter_map do |memory|
             scope = scope_of(memory, call[:scope], project_dir)
             scope == "project" && !project ? nil : [scope, memory, tokens, cut]
           end
         elsif name == FILE_READ
-          scope, memory = memory_file(FileRef.for(name, call, cwd: session.working_directory)&.path, project_dir)
-          scope ? [[scope, memory, token_count(run.text.length), run.text.match?(CUT)]] : []
+          found = memory_file(FileRef.for(name, call, cwd: session.working_directory)&.path, project_dir)
+          # A project memory is credited only with this project's sessions.
+          next [] if found.nil? || (found.first == "project" && !project)
+
+          [[found.first, found.last, token_count(run.text.length), cut_result?(run.text)]]
         else
           []
         end
@@ -255,6 +261,14 @@ module Samagotchi
     # WorkingSet's rule: an errored or interrupted run touched nothing.
     def failed?(text)
       ToolResponse.interrupted_text?(text) || text.sub(ToolResponse::LEAD, "").lstrip.start_with?("Error")
+    end
+
+    # A result the runner cut: one of ToolOutputCut's marker lines is its own
+    # line. Reads saved before whole reads hold cut results, so the cut
+    # caveat below is one line, not a section; a memory that only mentions
+    # "[cut: ..." in its body is not one.
+    def cut_result?(text)
+      text.to_s.each_line.any? { |line| ToolOutputCut.cut_marker_line?(line) }
     end
 
     # Which scope a name a session read belongs to: the scope the call gave,
@@ -273,14 +287,31 @@ module Samagotchi
       return nil if path.nil? || !path.end_with?(".md")
 
       dir = expand(File.dirname(path))
-      name = File.basename(path, ".md")
-      return nil if name.empty? || name.casecmp?(Tools::MEMORY_INDEX) || name.start_with?(".")
+      stem = File.basename(path, ".md")
+      return nil if stem.empty? || stem.casecmp?(Tools::MEMORY_INDEX) || stem.start_with?(".")
 
       if dir == expand(MemoryPaths.system_dir(env: @env))
-        ["system", name]
+        ["system", base_memory("system", stem)]
       elsif project_dir && dir == expand(project_dir)
-        ["project", name]
+        ["project", base_memory("project", stem)]
       end
+    end
+
+    # The memory a file's stem names. A model overlay's file (<base>.<key>.md,
+    # ModelOverlay and Tools::MemoryWrite.overlay_files) is a read of the
+    # memory it overlays - unless the stem is a memory of its own, which
+    # overlay_files also checks: a name with a dot (handoff_x.v2) has an
+    # index line, so it is listed by `chi memory ls`.
+    def base_memory(scope, stem)
+      base = ModelOverlay.base_file_for("#{stem}.md")
+      return stem if base.nil?
+
+      named = File.basename(base, ".md")
+      # A stem that is a memory of its own keeps its own reads; an orphan
+      # overlay (its base is gone) stays the name its file has.
+      return stem if entry_for(scope, stem) || entry_for(scope, named).nil?
+
+      named
     end
 
     def expand(dir)
@@ -294,7 +325,7 @@ module Samagotchi
     # folder it works in.
     def session_project_root(session)
       root = session.project_root ||
-             (session.working_directory.to_s.empty? ? nil : MemoryPaths.project_root(File.expand_path(session.working_directory)))
+             (session.working_directory.to_s.empty? ? nil : MemoryPaths.project_root(File.expand_path(session.working_directory.to_s)))
       root && expand(root)
     end
 
