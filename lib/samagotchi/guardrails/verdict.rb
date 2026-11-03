@@ -8,7 +8,8 @@ module Samagotchi
     # first one stays, except that a protected rule's ask (PROTECTED_RULES)
     # takes over an unprotected ask: its rule id is what a parent's answer
     # and a stored approval are checked against, and the offered scopes
-    # narrow to both asks' common ones.
+    # narrow to both asks' common ones. A second rule's ask takes rule grants
+    # out (#second_rule_asks!): the one id it keeps can't answer for both.
     class Verdict
       STRICTNESS = { allow: 0, ask: 1, deny: 2 }.freeze
       # Rules that ask about chi's own config and hooks: the core
@@ -47,6 +48,9 @@ module Samagotchi
 
       def fresh_ask? = @fresh_ask == true
 
+      # Whether a second distinct rule asks about this call (#second_rule_asks!).
+      def second_rule_ask? = @second_rule_ask == true
+
       def initialize(call:)
         @call = call
         @decision = :allow
@@ -81,6 +85,22 @@ module Samagotchi
         picked = SCOPES if picked.empty?
         picked &= earlier if earlier
         @scopes = picked.empty? ? %w[once] : picked
+        self
+      end
+
+      # A second distinct rule asks about this call (Rules#check). The ask
+      # names one rule, and a rule grant or System 1's record is about that
+      # rule alone, so neither answers for the other's: no rule-scope entry
+      # matches it (Approvals.find_in), System 1 doesn't auto-allow it, and it
+      # offers what both rules allow, minus the rule. An exact-call entry
+      # (session, repo) still answers: it is keyed on the whole command.
+      # @param scopes [Array<String>, nil] the second rule's scopes (default all)
+      def second_rule_asks!(scopes = nil)
+        @second_rule_ask = true
+        allowed = Array(scopes).map(&:to_s) & SCOPES
+        allowed = SCOPES if allowed.empty?
+        left = (@scopes & allowed) - %w[rule]
+        @scopes = left.empty? ? %w[once] : left
         self
       end
 

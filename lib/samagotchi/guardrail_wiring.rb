@@ -323,7 +323,7 @@ module Samagotchi
       # one that passes every gate is allowed once without reaching them
       # (docs/guardrails.md, "System 1").
       judgment = begin
-        system_one_judge(payload, targets: verdict.targets)
+        system_one_judge(payload, targets: verdict.targets, ask_user: verdict.fresh_ask? || verdict.second_rule_ask?)
       rescue LLM::RequestCancelled
         return turn_stopped(verdict)
       end
@@ -366,8 +366,9 @@ module Samagotchi
     # auto-allowed: its asks go to the owner. No client (mode off, no
     # host) means no line at all. A judgment that fails is logged with p nil,
     # so the failures are in the log too.
+    # With +ask_user+ (a fresh ask, a second rule's) it is judged and logged, never answered.
     # @return [Hash, nil] {id:, p:, auto:}, nil when nothing was written
-    def system_one_judge(payload, targets: nil)
+    def system_one_judge(payload, targets: nil, ask_user: false)
       return nil if Steer.participant_author?(turn_author)
 
       client = @system_one.call
@@ -397,7 +398,7 @@ module Samagotchi
       end
       latency_ms = ((Process.clock_gettime(Process::CLOCK_MONOTONIC) - started) * 1000).round
       p = answers && answers[SystemOne::ApprovalQuestion::ID]&.noul
-      auto = system_one_auto_allow?(client, approval, p, entries, targets: targets)
+      auto = !ask_user && system_one_auto_allow?(client, approval, p, entries, targets: targets)
       decision = system_one_decision(client, auto)
 
       id = log.judgment(id: run_id, session_id: @session_lookup.call&.id,

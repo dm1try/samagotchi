@@ -310,10 +310,13 @@ module Samagotchi
         @disable.reject { |entry| @rules.any? { |rule| disables?(entry, rule) } }
       end
 
-      # A core check: every matching rule votes (strictest wins).
+      # A core check: every matching rule votes (strictest wins). A second
+      # rule id that asks takes rule grants out (Verdict#second_rule_asks!);
+      # asks from before the rules (the child boundary's) stay as they are.
       def check(verdict)
         return verdict unless @enabled
 
+        asking = nil
         @rules.each do |rule|
           next if disabled?(rule)
           next unless rule.for_mode?(@mode)
@@ -323,6 +326,8 @@ module Samagotchi
             verdict.deny!(rule.reason, rule: rule.id, source: rule.source, decided_by: "rule")
           else
             verdict.ask!(rule.reason, scopes: rule.scopes, rule: rule.id, source: rule.source, decided_by: "rule")
+            verdict.second_rule_asks!(rule.scopes) if asking && asking != rule.id
+            asking ||= rule.id
           end
         end
         verdict

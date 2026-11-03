@@ -6,7 +6,8 @@ loops (native and chat hosts). The verdict is **allow**, **ask** or
 voter. Of two asks the first one names the rule, except a rule only the
 user may allow (`chi-config`, `chi-home`, `chi-shim`, `chi-hooks`, `shell-touches-chi`,
 `chi-context-cmd`, `chi-broadcast`): it takes over, and only the scopes both asks offer
-are offered.
+are offered. When a second YAML rule with another id asks about the same call (`git merge y && git push`), no
+[rule grant](#approvals) answers it and none is offered.
 
 Who votes, in order:
 
@@ -103,7 +104,14 @@ stored with the repository's common git dir as `repo`, and the worktree as
 (samagotchi)`). An entry stored before chi 0.20 has no `repo` and still only
 matches its exact folder.
 
-A stored approval only relaxes an ask; a deny rule is never approvable.
+A stored approval only relaxes an ask; a deny rule is never approvable. An ask names one rule, so on a call two YAML
+rules ask about (`git merge y && git push`, `git push && git reset --hard`, `git merge y && rm -rf ~`;
+`Verdict#second_rule_ask?`) no **rule** grant answers it, whichever rule it was given for, System 1 doesn't auto-allow
+it, and it offers the scopes both rules allow, minus the rule. A session or repo approval for exactly that command still
+answers it, since it is keyed on the whole command you saw: `git branch -D x && git push origin --delete x` offers
+once, session and repo, while `git merge y && git push` offers once, as `git-merge` offers only once and its rule.
+Two rules with one id (a config.yml copy of a bundle's rule) are one rule; a core ask followed by a rule's (the
+[child boundary's](#a-delegate-childs-boundary)) keeps its own scopes.
 A file that doesn't parse is moved aside to `approvals.json.corrupt-<UTC time>`
 with one warning, and chi starts with no stored approvals (more asks, nothing lost).
 `/guardrails` lists the rules and approvals; `/guardrails revoke N` removes
@@ -1177,7 +1185,8 @@ this is turned on.
 ### Answering for the user: `on` mode
 
 In `on` mode an ask is allowed **once**, without reaching the user, when every
-gate below passes, in this order:
+gate below passes, in this order (a pair turn's fresh ask, or [a second rule's
+ask](#approvals) on the call, is judged and logged but always goes to the user):
 
 1. the mode is `on` (in `audit` the judgment decides nothing);
 2. the ask's rule is in `guardrails.system_one.rules` — `"git-push|git-rebase"`

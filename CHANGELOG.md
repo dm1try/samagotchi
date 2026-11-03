@@ -11,6 +11,10 @@ and commands may change between minor versions. How releases are made:
 
 - A continue's carry note now holds the previous session's last answer after its recap (its last 4000 characters when longer), so a wrap-up's exact shas, paths and next steps reach the next link without a paste; `session.carry_last_answer: false` keeps it recap-only. A note can no longer exceed its 16 KiB and fail the continue: a recap of many non-ASCII characters used to.
 
+### Fixed
+
+- A stored approval no longer covers another rule's ask on the same call. With rule `git-push` allowed in the repo, `git push && git reset --hard` ran with no ask, because an ask keeps the first rule's id. When a second rule asks about a call, no rule grant answers it, none is offered and System 1 doesn't auto-allow it; a session or repo approval for exactly that command still answers. [docs/guardrails.md](docs/guardrails.md#approvals)
+
 ## [0.147.0] - 2026-11-03
 
 ### Changed

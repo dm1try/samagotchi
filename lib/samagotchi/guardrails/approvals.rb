@@ -80,7 +80,9 @@ module Samagotchi
           case e["scope"]
           when "session" then session_id && e["session_id"] == session_id && e["key"] == key
           when "repo" then here.call(e) && e["key"] == key
-          when "rule" then verdict.rule && e["rule"] == verdict.rule && e["source"] == verdict.source && here.call(e)
+          when "rule"
+            # One rule's grant can't answer for a second rule's ask on the call.
+            !verdict.second_rule_ask? && verdict.rule && e["rule"] == verdict.rule && e["source"] == verdict.source && here.call(e)
           end
         end
       end
