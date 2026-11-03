@@ -40,6 +40,10 @@ module Samagotchi
       # The guardrails bundle's ask before a memory removal: its paths are in
       # the config dir, yet a parent may answer it.
       MEMORY_REMOVE_RULE = "memory-remove"
+      # A delegate child's ask before it acts outside its folder. It carries
+      # the core source but isn't about chi's own files, so it follows the
+      # level like any other ask, unless it names them (#chi_files?).
+      CHILD_BOUNDARY_RULE = "child-boundary"
       # The guardrails bundle's shell-touches-chi, for a word it can't
       # resolve to a path (Guardrails::ShellPaths): CHI_TEXT and .git/hooks.
       CHI_SHELL_TEXT = Regexp.union(CHI_TEXT, %r{\.git/(?:modules/\S+/)?hooks})
@@ -68,7 +72,7 @@ module Samagotchi
         facts = ApprovalFacts.from_h(facts)
         return false if facts.nil?
         return true if PROTECTED_RULES.include?(facts.rule.to_s)
-        return true if facts.source.to_s == ProtectedPaths::SOURCE
+        return true if facts.source.to_s == ProtectedPaths::SOURCE && facts.rule.to_s != CHILD_BOUNDARY_RULE
         # A memory's file sits in the config dir, but removing one is the
         # memory-remove rule's ask, which a parent may answer.
         return false if facts.rule.to_s == MEMORY_REMOVE_RULE

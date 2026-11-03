@@ -37,6 +37,14 @@ RSpec.describe Samagotchi::Guardrails::ParentApprovals do
     def facts(fields) = once_only.merge(approval: { tool: "write", scopes: %w[once session] }.merge(fields))
     def protected?(pending) = described_class.protected?(Samagotchi::PendingQuestion.from_file(pending))
 
+    it "leaves a child-boundary ask to the level, unless it names chi's own files; pair-boundary stays the user's" do
+      sibling = facts(tool: "edit", source: "core", rule: "child-boundary", paths: ["/work/other-worktree/a.rb"])
+      expect(protected?(sibling)).to be(false)
+      expect(protected?(facts(tool: "edit", source: "core", rule: "child-boundary", paths: [File.join(config_home, "samagotchi", "config.yml")]))).to be(true)
+      expect(protected?(facts(tool: "execute", source: "core", rule: "child-boundary", command: "cat > ~/.config/samagotchi/hooks/x.rb"))).to be(true)
+      expect(protected?(facts(tool: "edit", source: "core", rule: "pair-boundary", paths: ["/work/a.rb"]))).to be(true)
+    end
+
     it "is protected by its rule, its source, its paths or its command" do
       [
         facts(source: "core", rule: "chi-config", paths: ["/elsewhere/config.yml"]),
