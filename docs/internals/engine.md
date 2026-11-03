@@ -805,7 +805,7 @@ Both loops:
   guessed from the block and it never enters the history (`:generation_completed`
   and `:after_generation` have already seen the text): `:generation_retrying` with `restarted` voids the streamed text, `:empty_answer_retry` with
   `malformed` goes out, and a hidden `TurnNote.malformed_retry` asks again at the retry temperature. It has its own budget, so `retry.empty_answer: 0`
-  doesn't turn it off, and a real tool call resets it. Two in a row fail the turn with `LLM::MalformedGeneration`, keeping its earlier steps. Each is
+  doesn't turn it off, and a real tool call resets it. Two in a row fail the turn with `LLM::MalformedGeneration`, keeping its earlier steps; a Stop that lands on a stray reply ends the turn cancelled, not failed, because a stopped turn skips this path. Each is
   logged as `generation_malformed` with the shape, finish reason, served model and the text's tail. `KernelLoop` has its own path (`ToolCallParser#malformed`).
 - **Empty-answer retry** (`EmptyAnswerRetry`): a generation with no visible text and no tool calls is asked
   again, up to `retry.empty_answer` times (at most 3), with a hidden nudge (`TurnNote.empty_retry`) on the tail.

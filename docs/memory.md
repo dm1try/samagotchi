@@ -295,13 +295,18 @@ size times reads, and a memory of 2k tokens read fifty times costs more than one
 - **The header** says how many sessions were counted and the days they span, because retention
   limits what can be seen: 14 days and 500 sessions by default, so "not read" means "not read
   in the sessions still saved". Archived sessions count; test runs and sessions with no user
-  message do not.
+  message do not, and the header says how many of those were left out. With nothing counted at
+  all, the line says what is in the dir instead of "nothing saved": the files that could not be
+  read and the sessions not counted.
 - **The indexes come first**, since both are sent with every prompt: their tokens (the same
   figure `chi self` and `/stats` show), the `memory.index_warn_tokens` limit, and how many of
-  their lines name a memory no counted session read.
-- **Most read, by tokens**: name, tokens, reads, the memory's size now, its scope, and `from <bundle>`
-  for a bundle's memory (which the user cannot tighten in place). The header of the section says
-  what share the shown rows make of all read tokens (`--top` caps the rows, 10 by default).
+  their *memory* lines name a memory no counted session read. The index's heading and a bold
+  line of prose are not memory lines, so they sit in neither the count nor its denominator.
+- **Most read, by tokens**: name, tokens, reads, the memory's size now (`-` when the line has no
+  file behind it), its scope, and `from <bundle>` for a bundle's memory (which the user cannot
+  tighten in place). The header of the section says what share the shown rows make of all read
+  tokens (`--top` caps the rows, 10 by default, at most 1000). If every read is of a name with
+  no memory now, the section says that instead of listing rows.
 - **Not read in saved sessions**: the count of the user's own memories no counted session read,
   then the largest of them. A bundle's memories are not listed, and a memory the session was
   started with (`--memory`, or config.yml's `memories:`) counts as used: the model has it in the
@@ -312,8 +317,10 @@ size times reads, and a memory of 2k tokens read fifty times costs more than one
 A read is a `memory_read`, or a `read` of a memory's file, in either loop's saved shape (the chat
 loop's calls paired by `tool_call_id`, the native loop's call markup with one joined result). Its
 cost is the size of the result as it was saved — a cut result counts as it happened, a model overlay
-too — in tokens as the prompt estimates them (characters / `context.chars_per_token`). A comma list
-of names splits that one result by share. A project memory is credited only with the reads of
+too, and `read`ing an overlay's file is a read of the memory it overlays — in tokens as the prompt
+estimates them (characters / `context.chars_per_token`). A comma list of names splits that one result
+by share, over every name asked for: `index` is not a row, but it is one of the names the share is
+worked out over. A project memory is credited only with the reads of
 sessions of this folder's project (worktrees of one repository share it); a system memory with every
 session's, whichever project they came from.
 

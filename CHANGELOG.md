@@ -15,6 +15,11 @@ and commands may change between minor versions. How releases are made:
   make of all read tokens, and the user's own memories no saved session read. It reads only — no grades, no
   advice to delete, nothing written. [docs/memory.md](docs/memory.md) has the details.
 
+### Fixed
+
+- The session bar's status chip follows a question or approval card the moment it is answered,
+  instead of holding "waiting" until the next tick while the turn is already running again.
+
 ## [0.145.0] - 2026-11-02
 
 ### Changed
