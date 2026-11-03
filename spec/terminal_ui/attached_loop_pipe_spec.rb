@@ -39,7 +39,7 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "input from a pipe" do
     @push.call("type" => "snapshot", "snapshot" => { "messages" => [], "current_turn" => nil, "queued" => [], "event_seq" => 1 })
   end
 
-  def result = @thread.join(2)&.value
+  def result = join!(@thread, "the attached loop").value
 
   it "sends the -p prompt once and ends with :turn_failed when its turn fails" do
     start
