@@ -8,6 +8,7 @@ require_relative "cli/flags"
 require_relative "config"
 require_relative "bridge/card_store"
 require_relative "guardrails/approval"
+require_relative "guardrail_wiring"
 require_relative "guardrails/approvals"
 require_relative "guardrails/parent_policy"
 require_relative "host_registry"
@@ -20,7 +21,10 @@ module Samagotchi
   # seed: System 1 judges every approval this machine's sessions already
   # answered, and the judgment and the user's answer go to the log as they
   # would live. A rule's record then starts with the asks the user really
-  # decided on, instead of waiting for a few days of live ones.
+  # decided on, instead of waiting for a few days of live ones. `rule` says
+  # whether one rule votes `ask` on this machine now, read from the config and
+  # the installed bundles as a worker reads them (GuardrailWiring#rules), by
+  # its id: the text of a command never comes near it.
   class GuardrailsCommand
     include CLI::Command
 
@@ -41,16 +45,24 @@ module Samagotchi
           --dry-run judges and prints the table without writing a line. Needs
           guardrails.system_one.mode audit or on and a system_one.host
           (exit 2 without one).
+        rule <id>
+          Print exactly "asks" when the rule is loaded, not disabled and votes
+          ask in this guardrails.mode for every model; another line says why not
+          when it isn't (exit 0 either way). Reads config.yml and the installed
+          bundles, as a worker does: no session, no model, nothing written.
     TEXT
 
-    SUBCOMMANDS = %w[replay].freeze
+    SUBCOMMANDS = %w[replay rule].freeze
     FLAGS = {
       "replay" => CLI::Flags.new(help: HELP_WORDS, args: false) do |f|
         f.switch "--dry-run"
         f.value "--threshold"
         f.value "--model"
-      end
+      end,
+      "rule" => CLI::Flags.new(help: HELP_WORDS)
     }.freeze
+    # What `rule` prints when a rule asks. An agent compares the line to it.
+    ASKS = "asks"
     # The labels that mean the user let the call through.
     ALLOW_LABELS = %w[allow_once allow_wide].freeze
     # replay's table, in column order: the rule, how many asks it had, how
@@ -135,12 +147,44 @@ module Samagotchi
       parsed = parse_flags(FLAGS.fetch(@sub), @argv[1..])
       return parsed if parsed.is_a?(Integer)
 
+      return rule(parsed.args) if @sub == "rule"
+
       replay(parsed.options)
     end
 
     private
 
     def command_name = @sub ? "chi guardrails #{@sub}" : "chi guardrails"
+
+    def rule(args)
+      return usage_error("give one rule id") unless args.size == 1
+
+      @stdout.puts(rule_status(args.first))
+      CLI::Exit::OK
+    end
+
+    # The rule set as a worker would load it now, the rule's id looked up in
+    # it. Every other answer than ASKS names what stands in the way.
+    def rule_status(id)
+      wiring = GuardrailWiring.new(scratch: false, hooks: -> {}, tools: -> {}, session: -> {}, model_key: -> {},
+                                   cancelled: -> { false }, ask: ->(_fields) {})
+      rules = wiring.rules
+      failed = wiring.failures.required
+      return "rules failed to load: #{failed.map(&:what).join(", ")}" unless failed.empty?
+      return "guardrails are off (guardrails.enabled: false)" unless rules.enabled?
+
+      named = rules.rules.select { |r| r.id == id }
+      return "no rule #{id} is loaded" if named.empty?
+
+      enabled = named.reject { |r| rules.disabled?(r) }
+      return "rule #{id} is disabled (guardrails.disable)" if enabled.empty?
+
+      voting = enabled.select { |r| r.for_mode?(rules.mode) }
+      return "rule #{id} doesn't vote in guardrails.mode #{rules.mode}" if voting.empty?
+      return "rule #{id} denies" if voting.any? { |r| r.verdict == :deny }
+
+      voting.any? { |r| r.models.nil? } ? ASKS : "rule #{id} asks for some models only"
+    end
 
     def replay(options)
       threshold = threshold(options[:threshold])

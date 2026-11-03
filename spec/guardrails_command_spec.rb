@@ -35,6 +35,69 @@ RSpec.describe Samagotchi::GuardrailsCommand do
 
   # `judge:` is the client the command judges with: the fake by default, nil
   # for the "config names no client" case.
+  describe "rule" do
+    let(:config_home) { File.join(tmpdir, "config") }
+    let(:state_home) { File.join(tmpdir, "state") }
+    let(:rule) { { "id" => "git-merge", "tool" => "shell", "command" => "git merge", "verdict" => "ask" } }
+
+    around do |example|
+      saved = ENV.to_h.slice("XDG_CONFIG_HOME", "XDG_STATE_HOME")
+      ENV["XDG_CONFIG_HOME"] = config_home
+      ENV["XDG_STATE_HOME"] = state_home
+      example.run
+    ensure
+      ENV["XDG_CONFIG_HOME"] = saved["XDG_CONFIG_HOME"]
+      ENV["XDG_STATE_HOME"] = saved["XDG_STATE_HOME"]
+    end
+
+    def status(guardrails, id: "git-merge")
+      FileUtils.mkdir_p(File.join(config_home, "samagotchi"))
+      File.write(File.join(config_home, "samagotchi", "config.yml"), { "guardrails" => guardrails }.to_yaml)
+      Samagotchi::Config.reload!
+      expect(run(["rule", id])).to eq(0)
+      out.string
+    end
+
+    it "prints exactly asks for a loaded rule that votes" do
+      expect(status({ "rules" => [rule] })).to eq("asks\n")
+    end
+
+    it "says so when no rule has the id" do
+      expect(status({ "rules" => [rule] }, id: "git-push")).to eq("no rule git-push is loaded\n")
+    end
+
+    it "says so when the rule is disabled" do
+      expect(status({ "rules" => [rule], "disable" => ["git-merge"] })).to eq("rule git-merge is disabled (guardrails.disable)\n")
+    end
+
+    it "says so with guardrails.enabled: false" do
+      expect(status({ "rules" => [rule], "enabled" => false })).to eq("guardrails are off (guardrails.enabled: false)\n")
+    end
+
+    it "says so when the mode leaves it out" do
+      expect(status({ "rules" => [rule.merge("modes" => ["strict"])] })).to eq("rule git-merge doesn't vote in guardrails.mode auto\n")
+      out.truncate(0)
+      out.rewind
+      expect(status({ "rules" => [rule.merge("modes" => ["strict"])], "mode" => "strict" })).to eq("asks\n")
+    end
+
+    it "says so for a deny, or a rule for some models" do
+      expect(status({ "rules" => [rule.merge("verdict" => "deny")] })).to eq("rule git-merge denies\n")
+      out.truncate(0)
+      out.rewind
+      expect(status({ "rules" => [rule.merge("models" => "small")] })).to eq("rule git-merge asks for some models only\n")
+    end
+
+    it "says so when the rules don't load: the worker would deny every call" do
+      expect(status({ "rules" => [rule.merge("verdict" => "maybe")] })).to start_with("rules failed to load: rules in config.yml")
+    end
+
+    it "is a usage error without one id" do
+      expect(run(["rule"])).to eq(2)
+      expect(err.string).to include("chi guardrails rule: give one rule id")
+    end
+  end
+
   def run(argv, judge: client)
     described_class.new(argv, stdout: out, stderr: err, client: judge, sessions_dir: sessions_dir, log: log).run
   end
