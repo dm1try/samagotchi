@@ -41,8 +41,7 @@ module Samagotchi
 
       # What a subscriber gets: `session` with {session: summary} for an
       # upsert, `session_gone` with {id:} for a removal, `chi` with
-      #   {version:, installed:, available:, update_blocked:} when chi version
-      #   state changes. seq is monotonic per
+      #   the #chi_state fields when chi version state changes. seq is monotonic per
       # hub, for the log's sake: there is no replay.
       Event = Struct.new(:type, :seq, :data, keyword_init: true)
 
@@ -76,7 +75,7 @@ module Samagotchi
       # @param installed_versions [#newest] what is installed (InstalledVersions)
       # @param update_auto [String] update.auto, said in the chi state (the page's wording)
       # @param update_restart [String] update.restart, said beside it (whether
-      #   an automatic install's run restarts by itself: no Restart toast)
+      #   a newer installed chi restarts by itself: no Restart toast)
       def initialize(state_dir:, manager: SessionManager, now: nil, scan_interval: SCAN_INTERVAL,
                      full_probe_interval: FULL_PROBE_INTERVAL, installed_versions: InstalledVersions.new,
                      update_auto: Config.get("update.auto"), update_restart: Config.get("update.restart"))
@@ -87,6 +86,7 @@ module Samagotchi
         @installed = nil
         @available = nil
         @update_blocked = nil
+        @auto_offers = nil
         @update_state = nil
         @manager = manager
         @now = now || -> { Process.clock_gettime(Process::CLOCK_MONOTONIC) }
@@ -164,7 +164,7 @@ module Samagotchi
       def chi_state
         @monitor.synchronize do
           { version: VERSION, installed: @installed, available: @available, update_blocked: @update_blocked,
-            auto: @update_auto, restart: @update_restart }
+            auto: @update_auto, restart: @update_restart, auto_offers: @auto_offers }
         end
       end
 
@@ -176,6 +176,19 @@ module Samagotchi
           @available = available
           @update_blocked = blocked
           emit("chi", chi_state.merge(notify ? { update_notice: true } : {})) if changed || notify
+        end
+        nil
+      end
+
+      # AutoUpdate won't (or hasn't, for long) restart onto +version+ by itself:
+      # the page offers the restarts for it, in spite of update.auto. In memory:
+      # AutoUpdate says it again after a chi web restart.
+      def auto_offer_restart(version)
+        @monitor.synchronize do
+          next if @auto_offers == version
+
+          @auto_offers = version
+          emit("chi", chi_state)
         end
         nil
       end

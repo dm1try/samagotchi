@@ -3,6 +3,7 @@
 require "rubygems/version"
 require "time"
 require_relative "../config"
+require_relative "../installed_versions"
 require_relative "../log"
 require_relative "../version"
 require_relative "auto_update_record"
@@ -37,6 +38,17 @@ module Samagotchi
     # A preflight that fails leaves chi web as it is and says so.
     # update.restart: never stops after the install.
     #
+    # A newer chi installed some other way (a terminal's `chi update`, inside
+    # update.min_age_hours or not) is adopted: once it has settled and the
+    # gate is open, it gets a run from step 1 on. One run per version here
+    # too, so a restart that didn't take isn't tried again.
+    #
+    # The page offers no restart buttons for a run that will do them itself.
+    # It offers them again when this says so (SessionHub#auto_offer_restart):
+    # a run on record for the version ended with chi web still older, or
+    # something held it for HELD_FOR, a forgotten question or a long turn.
+    # The trying goes on behind that offer.
+    #
     # The run's record (AutoUpdateRecord) lives in update_check.json
     # (UpdateCheck#save_auto), so a chi web restart finds it. See
     # docs/architecture.md.
@@ -56,6 +68,13 @@ module Samagotchi
       OPEN_PHASES = %w[installed workers web].freeze
       # The phase after "chi updated" while workers are left.
       RETRYING = "retrying"
+      # A newer chi seen installed is adopted only this long after: `chi update`
+      # installs the gem first and merges the bundles after, with no lock or
+      # marker to look at. In practice the next POLL.
+      SETTLE = 60
+      # How long a newer installed chi may wait for its restart before the page
+      # offers the buttons again.
+      HELD_FOR = 3600
       # How long stop waits for the thread: long enough for a preflight
       # (Server::PREFLIGHT_TIMEOUT, 20 s; a healthy one takes about a
       # second) to end on its own, so a stop never abandons one mid-way.
@@ -84,6 +103,7 @@ module Samagotchi
         @wakeup = Queue.new
         @thread = nil
         @stopped = false
+        @seen = nil
       end
 
       def start
@@ -108,17 +128,17 @@ module Samagotchi
       def step
         return unless @auto == "install"
 
+        note_installed
         record = @check.auto_state
         return carry_on(record) if record && OPEN_PHASES.include?(record.phase)
 
         retry_left(record) if record&.phase == RETRYING
-
-        version = @check.available
-        return unless version
-        return if @check.auto_failed?(version) || tried?(version)
         return if @ops.blocked_reason || @ops.running? || busy_turn?
 
-        install(version)
+        version = @check.available
+        return install(version) if version && !@check.auto_failed?(version) && !tried?(version)
+
+        adopt_installed
       end
 
       private
@@ -158,6 +178,37 @@ module Samagotchi
         end
       end
 
+      # What is installed, ahead of every gate: since when a newer chi is, and
+      # whether the page should offer the restarts for it. A chi web restart
+      # starts the clock over, and finds a closed run's offer again here.
+      def note_installed
+        installed = @hub.refresh_installed
+        return @seen = nil unless InstalledVersions.newer?(installed)
+
+        now = @clock.call
+        @seen = [installed, now] unless @seen&.first == installed
+        @hub.auto_offer_restart(installed) if closed_run?(installed) || now - @seen.last >= HELD_FOR
+      end
+
+      # A run on record for +version+ that is over, with chi web still older.
+      def closed_run?(version)
+        record = @check.auto_state
+        !record.nil? && record.version == version && !OPEN_PHASES.include?(record.phase)
+      end
+
+      # A newer chi this didn't install, settled: a run of its own from here.
+      # The terminal's table already told what `chi update` kept.
+      def adopt_installed
+        return unless @restart == "idle" && @seen
+
+        installed, seen_at = @seen
+        now = @clock.call
+        return if tried?(installed) || now - seen_at < SETTLE
+
+        Log.info(:web, "auto_update_adopted", version: installed, from: VERSION)
+        carry_on(save(AutoUpdateRecord.new(version: installed, from: VERSION, at: now.iso8601, phase: "installed")))
+      end
+
       def install(version)
         Log.info(:web, "auto_update_start", version: version, from: VERSION)
         result = @ops.install(version, wait: true, auto: true)
@@ -187,7 +238,9 @@ module Samagotchi
       # The next step of a run on record.
       def carry_on(record)
         case record.phase
-        when "installed", "workers" then workers_then_web(record)
+        when "installed", "workers"
+          # Restarted by hand on the way (the page's offer): nothing left to exec.
+          InstalledVersions.newer?(record.version) ? workers_then_web(record) : finish(record)
         when "web" then finish(record)
         end
       end
@@ -260,6 +313,7 @@ module Samagotchi
       def restart_failed(record, detail, event)
         Log.warn(:web, event, version: record.version, detail: detail)
         save(record.with(phase: "failed", detail: detail, pushed: true))
+        @hub.auto_offer_restart(record.version)
         @hub.publish_notice(kind: "restart_failed", version: record.version, detail: detail)
       end
 
@@ -307,6 +361,7 @@ module Samagotchi
         Log.warn(:web, "auto_update_failed_install", version: record.version, detail: detail)
         gem_installed = rows.any? { |candidate| candidate["component"] == "chi (gem)" && !candidate["failed"] }
         @check.save_auto(record.with(phase: "failed", detail: detail, pushed: true), failed: record.version)
+        @hub.auto_offer_restart(record.version)
         @hub.publish_notice(kind: "failed", version: record.version, detail: detail.empty? ? nil : detail,
                             installed: gem_installed)
       end

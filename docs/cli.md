@@ -267,7 +267,9 @@ done
   in place, the notice gives the blocker and its command instead.
   With `update.auto: install` chi web installs the release by itself once no
   turn runs anywhere, then restarts idle workers and itself (`update.restart`),
-  and the notice reads "installs by itself" with no **Update** button; see
+  and the notice reads "installs by itself" with no **Update** button. A newer
+  chi installed from a terminal gets those restarts too, and no **Restart**
+  buttons unless the restart failed or has waited an hour; see
   [Unattended updates](configuration.md#unattended-updates-updateauto).
 
 - **The chi home.** With a [chi home](configuration.md#the-chi-home), a `chi
@@ -355,7 +357,8 @@ done
   terminal, no reminder) and `session.idle_exit_minutes` pass (never with 0).
   A new or woken worker always starts on the newest chi installed. A running
   `chi web` (on the port it was started with, else `web.port`) on an older chi needs a restart (Ctrl-C, then `chi web`):
-  its page says so too. One from before workers started on the newest chi
+  its page says so too. With `update.auto: install` it restarts by itself once no turn
+  runs ([Unattended updates](configuration.md#unattended-updates-updateauto)). One from before workers started on the newest chi
   also starts its new sessions on its own version until then (the row says so).
 
 `--dry-run` shows the table with "would update" and changes nothing. It is

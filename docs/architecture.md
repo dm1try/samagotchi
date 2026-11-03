@@ -335,9 +335,10 @@ reload in a toast, since an open tab keeps its old JS across a `chi web` upgrade
 `installed`, the newest chi on this machine (`InstalledVersions`: the highest `samagotchi-<v>.gemspec`
 in RubyGems' specification dirs, or a checkout's `version.rb` on disk; looked at again on each full
 probe, every 10 s). A `chi` frame and the `GET /api/events` snapshot carry the full state
-`{version, installed, available, update_blocked, auto, restart}` (`auto`: `update.auto`, `off` or `install`, which the page's
-"available" wording follows; `restart`: `update.restart`, with which the page offers no Restart toast for the
-version an automatic install's frames name unless it is `never` or the run failed: that run restarts by itself); `/api/info` and the session-command wake response carry the same fields. `SessionHub#update_available` publishes the checker result under the hub's
+`{version, installed, available, update_blocked, auto, restart, auto_offers}` (`auto`: `update.auto`, `off` or `install`, which the page's
+"available" wording follows; `restart`: `update.restart`; `auto_offers`: the version AutoUpdate says the page should offer
+the restarts for. With `auto: install`, `restart: idle` and no block the page offers no Restart toast for a newer installed
+chi, however it got installed, unless `auto_offers` names it); `/api/info` and the session-command wake response carry the same fields. `SessionHub#update_available` publishes the checker result under the hub's
 Monitor, but fetching never holds it.
 
 `Web::UpdateCheck` runs its own thread beside the hub. When `update.notify: on` (the default) or
@@ -385,7 +386,14 @@ is `update.auto: install`. Every 5 minutes (the first step 60 s after start) it 
 and installs it through `UpdateOps#install(wait: true, auto: true)` when the install isn't blocked, no operation
 runs, no hub summary has `status: running` or a `pending_question`, and the version isn't in `auto_failed` or
 already in the `auto` record (one automatic try per version). Its frames carry `auto: true` (the page: "Automatic
-chi update in progress", "(automatic)" in the sheet's title). Its record is `update_check.json`'s `auto`:
+chi update in progress", "(automatic)" in the sheet's title, no restart buttons in the sheet, no toast for a worker pass
+unless it fails). A newer chi installed some other way (`AutoUpdate#adopt_installed`: `update.restart: idle`, the same gate, no
+available release to install first, none on record for that version) is **adopted** once seen for `SETTLE` (60 s, in
+practice the next step, as `chi update` merges the bundles after installing the gem and leaves no lock to look at): its
+record starts at `phase: installed` and the run goes on as below. Ahead of every gate each step calls
+`SessionHub#auto_offer_restart` (`auto_offers`, in memory) when a run on record for the newest installed chi is closed with
+this chi web still older, or that chi has waited `HELD_FOR` (1 h): the trying goes on, and the page has its buttons back;
+`restart_failed` and a failed install call it at once. Its record is `update_check.json`'s `auto`:
 `{version, from, at, kept, phase: installed|workers|web|retrying|done|failed, workers: {restarted, left}, detail, pushed}`,
 in Ruby the value object `Web::AutoUpdateRecord`, which owns that shape (`from_h`, `to_store`).
 With `update.restart: never` the run ends at the install (`chi_notice` `installed`). With `idle` it goes on
@@ -395,7 +403,8 @@ the worker's own atomic refusal still applies); then, with no
 turn running, `Server.restart_preflight` (the restart's command with `--version`, 20 s, killed on a timeout; it must
 print a chi at least the release) and, if it passes, the record's `phase: web` is written **before**
 `UpdateOps#restart_web`. A failed preflight, or a refused restart, publishes `restart_failed` and ends the run
-(`failed`). `AutoUpdate#stop` waits `STOP_WAIT` (25 s, longer than the preflight's timeout) for its thread, and a
+(`failed`). A run at `installed` or `workers` that finds this chi web already on its version (restarted by hand from the
+page's offer) goes straight to the finish. `AutoUpdate#stop` waits `STOP_WAIT` (25 s, longer than the preflight's timeout) for its thread, and a
 preflight that ends after a stop leads to nothing (no `web`, no exec): the next start takes the run up again. The restarted chi web's AutoUpdate (first step after 5 s) finds `phase: web`, checks it runs the
 release, counts the workers once more and publishes `updated`, then `done`, or `retrying` while workers are left. Those are
 retried each step until none is left or 24 h (`RETRY_FOR`) have passed since the install, under the same filter, and from

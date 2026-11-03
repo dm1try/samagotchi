@@ -7,6 +7,19 @@ and commands may change between minor versions. How releases are made:
 [docs/releasing.md](docs/releasing.md).
 ## [Unreleased]
 
+### Changed
+
+- With `update.auto: install` a newer chi installed some other way, such as `chi update` in a terminal, now gets the
+  same unattended restarts as one chi web installed itself: idle workers and chi web move onto it within about 10
+  minutes once no turn runs, and the phone hears "chi updated to X". The page offers no **Restart** buttons meanwhile,
+  unless the restart failed or has waited an hour; `update.restart: never` keeps them.
+  [docs/configuration.md](docs/configuration.md#unattended-updates-updateauto)
+
+### Fixed
+
+- An automatic update's sheet no longer offers **Restart workers** and **Restart chi web** beside a run already doing
+  both, and its worker restarts no longer stack sticky toasts unless one fails.
+
 ## [0.146.0] - 2026-11-03
 
 ### Added

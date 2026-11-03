@@ -502,10 +502,10 @@ RSpec.describe Samagotchi::Web::SessionHub do
       hub.scan
       expect(events.map { |e| [e.type, e.data] }).to eq([["chi", { version: Samagotchi::VERSION, installed: "0.18.1",
                                                                    available: nil, update_blocked: nil, auto: "off",
-                                                                   restart: "idle" }]])
+                                                                   restart: "idle", auto_offers: nil }]])
       expect(hub.installed).to eq("0.18.1")
       expect(hub.chi_state).to eq(version: Samagotchi::VERSION, installed: "0.18.1", available: nil, update_blocked: nil, auto: "off",
-                                  restart: "idle")
+                                  restart: "idle", auto_offers: nil)
 
       installed.newest = "0.19.0"
       hub.scan # not a full probe yet: nothing
@@ -539,7 +539,7 @@ RSpec.describe Samagotchi::Web::SessionHub do
       hub.update_available(available: "99.0.0", blocked: "bundler")
 
       expect(events.last.data).to eq(version: Samagotchi::VERSION, installed: nil, available: "99.0.0",
-                                     update_blocked: "bundler", auto: "off", restart: "idle")
+                                     update_blocked: "bundler", auto: "off", restart: "idle", auto_offers: nil)
     end
 
     it "publishes chi update progress and keeps the latest state for event snapshots" do

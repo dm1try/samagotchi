@@ -2163,6 +2163,17 @@ Both are read when chi web starts (restart it to apply a change). What it does, 
    ([Phone notifications](#phone-notifications-web-push)); without it the page's toasts and
    `$XDG_STATE_HOME/samagotchi/update_check.json` (`auto`) are the record.
 
+**A chi installed some other way** (`chi update` in a terminal, a release newer than `update.min_age_hours` allows, a
+hand `gem install`) gets steps 3 and 4 too, with `update.restart: idle` and an install that isn't blocked: chi web notices it,
+waits for the next 5-minute look (`chi update` merges the bundles after installing the gem) and for the quiet moment of
+step 1, then restarts as above, so chi web is on it within about 10 minutes when nothing runs. A release it can install
+goes first. One run per version here too: a restart that didn't take isn't tried again.
+
+The page offers no **Restart** buttons while chi web is going to restart by itself. They come back, as a toast, when it
+won't (a failed run) or when something has held it for an hour (a forgotten question, a long turn); it keeps trying behind
+them. Worker restarts in such a run show no toast unless one fails, and the sheet behind **View** has only **Close**;
+the session's own **Restart** in its bar is always there.
+
 There is no watchdog: chi web restarts into the newest chi it just proved can start, and nothing brings an old one
 back by itself. To roll back, install the older gem with `gem install samagotchi -v X` and restart chi web
 (`chi update --to` refuses a version that isn't newer than the running chi). The desktop helper isn't rebuilt (that
@@ -2288,7 +2299,7 @@ column says so, a `--kebab-name` flag. The maps (`hosts:`, `models:`,
 | `update.bundles` | `true` | | `false`: `chi update` leaves the shipped bundles to `chi bundle upgrade` (`--no-bundles`). |
 | `update.desktop` | `true` | | `false`: `chi update` leaves the desktop helper alone (`--no-desktop`). |
 | `update.notify` | `on` | | `on`: chi web checks RubyGems once a day and shows aged stable releases newer than both this chi and the newest installed chi; `off`: no thread or network check. |
-| `update.auto` | `off` | | `install`: chi web installs the release its checker found (aged by `update.min_age_hours`) once no turn runs and no question waits in any session, as the **Update** button would (shipped bundles merged, your edits kept and reported), then pushes how it went; `update.restart` says what follows. An install that fails is tried once per version (a newer release, or the **Update** button, tries again). The check runs even with `update.notify: off` (which then only silences the page's and the phone's "available"). An install that can't run here (a checkout, Bundler, an unwritable gem dir) stays a notice. `off`: notice only. See [Unattended updates](#unattended-updates-updateauto). |
+| `update.auto` | `off` | | `install`: chi web installs the release its checker found (aged by `update.min_age_hours`) once no turn runs and no question waits in any session, as the **Update** button would (shipped bundles merged, your edits kept and reported), then pushes how it went; `update.restart` says what follows, also for a chi installed some other way (`chi update` in a terminal). An install that fails is tried once per version (a newer release, or the **Update** button, tries again). The check runs even with `update.notify: off` (which then only silences the page's and the phone's "available"). An install that can't run here (a checkout, Bundler, an unwritable gem dir) stays a notice. `off`: notice only. See [Unattended updates](#unattended-updates-updateauto). |
 | `update.restart` | `idle` | | With `update.auto: install`: `idle` restarts the stale workers whose session is idle and untouched for 10 minutes, then chi web itself, once no turn runs anywhere and the newest chi has answered `chi --version`; it pushes "chi updated to X". `never`: the install only (the page's toast offers the restarts, workers also exit on their own when idle). |
 | `update.check_hours` | `24` | | Hours between RubyGems checks (at least 1). The first check starts about 30 seconds after chi web starts. |
 | `update.min_age_hours` | `24` | | A release must be this old before chi web offers it; `0` disables the age delay. |

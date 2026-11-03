@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  compareVersions, mergeVersionState, newerVersion, restartConfirmText, versionNotice, workerBadge,
+  compareVersions, mergeVersionState, newerVersion, restartConfirmText, updateFrameToast, versionNotice, workerBadge,
 } from "../../../lib/samagotchi/web/public/update_notice.js";
 
 test("versionNotice: a snapshot from another chi version than the page's asks for a reload", () => {
@@ -67,28 +67,45 @@ test("versionNotice: with update.auto: install an available chi says it installs
   assert.equal(versionNotice({ loaded: "0.18.1", served: "0.18.1", available: "0.19.0", auto: "off" }).updateVersion, "0.19.0");
 });
 
-test("versionNotice: an automatic install that restarts by itself offers no Restart toast for its version", () => {
-  const base = { loaded: "0.18.1", served: "0.18.1", installed: "0.19.0", available: "0.19.0", auto: "install" };
-  assert.equal(versionNotice({ ...base, restart: "idle", autoInstall: "0.19.0" }), null);
-  // update.restart: never, an install from the button or a terminal, or another version: the toast offers the restarts.
-  assert.equal(versionNotice({ ...base, restart: "never", autoInstall: "0.19.0" }).key, "installed:0.19.0");
-  assert.equal(versionNotice({ ...base, restart: "idle", autoInstall: null }).key, "installed:0.19.0");
-  assert.equal(versionNotice({ ...base, restart: "idle", autoInstall: "0.18.9" }).key, "installed:0.19.0");
-  assert.equal(versionNotice({ ...base, auto: "off", restart: "idle", autoInstall: "0.19.0" }).key, "installed:0.19.0");
+test("versionNotice: a newer chi that restarts by itself offers no Restart toast, however it got installed", () => {
+  const base = { loaded: "0.18.1", served: "0.18.1", installed: "0.19.0", auto: "install", restart: "idle" };
+  assert.equal(versionNotice(base), null);
+  assert.equal(versionNotice({ ...base, autoOffers: null }), null);
+  // An offer for another version doesn't count.
+  assert.equal(versionNotice({ ...base, autoOffers: "0.18.9" }), null);
+  // chi web says it won't, or has been held for long; update.restart: never; update.auto: off; a blocked install.
+  assert.equal(versionNotice({ ...base, autoOffers: "0.19.0" }).key, "installed:0.19.0");
+  assert.deepEqual(versionNotice({ ...base, autoOffers: "0.19.0" }).actions, ["restartWorkers", "restartWeb"]);
+  assert.equal(versionNotice({ ...base, restart: "never" }).key, "installed:0.19.0");
+  assert.equal(versionNotice({ ...base, auto: "off" }).key, "installed:0.19.0");
+  assert.equal(versionNotice({ ...base, updateBlocked: "checkout" }).key, "installed:0.19.0");
 });
 
-test("mergeVersionState keeps the restart setting and the automatic install a chi_update state names", () => {
+test("updateFrameToast: an automatic run's worker passes say something only when one fails", () => {
+  const workers = { operation: "workers", auto: true };
+  assert.equal(updateFrameToast({ ...workers, state: "running" }), null);
+  assert.equal(updateFrameToast({ ...workers, state: "done" }), null);
+  assert.equal(updateFrameToast({ ...workers, state: "failed" }), "Automatic worker restart failed");
+  assert.equal(updateFrameToast({ operation: "install", auto: true, state: "running" }), "Automatic chi update in progress");
+});
+
+test("updateFrameToast: an owner's operation says what runs and how it ended, with the sheet closed", () => {
+  const workers = { operation: "workers" };
+  assert.equal(updateFrameToast({ ...workers, state: "running" }), "Worker restart in progress");
+  assert.equal(updateFrameToast({ ...workers, state: "done" }), "Worker restart done");
+  assert.equal(updateFrameToast({ ...workers, state: "done" }, { wasOpen: true }), null);
+  assert.equal(updateFrameToast({ ...workers, state: "done" }, { snapshot: true }), null);
+  assert.equal(updateFrameToast({ ...workers, state: "running" }, { snapshot: true }), "Worker restart in progress");
+  assert.equal(updateFrameToast({ operation: "install", state: "done" }), null); // the version toast says it
+  assert.equal(updateFrameToast({ operation: "install", state: "failed" }), "Chi update failed");
+});
+
+test("mergeVersionState keeps the restart setting and what chi web offers to restart", () => {
   assert.equal(mergeVersionState({}, { restart: "never" }).restart, "never");
   assert.equal(mergeVersionState({ restart: "never" }, { version: "0.18.1" }).restart, "never");
-  const running = { operation: "install", version: "0.19.0", state: "running", auto: true };
-  assert.equal(mergeVersionState({}, { chi_update: running }).autoInstall, "0.19.0");
-  assert.equal(mergeVersionState({}, { chi_update: { ...running, state: "done" } }).autoInstall, "0.19.0");
-  // A failed run, or the Update button's install, isn't one that restarts by itself.
-  assert.equal(mergeVersionState({ autoInstall: "0.19.0" }, { chi_update: { ...running, state: "failed" } }).autoInstall, null);
-  assert.equal(mergeVersionState({ autoInstall: "0.19.0" }, { chi_update: { ...running, auto: undefined } }).autoInstall, null);
-  // A worker restart's state leaves it as it was.
-  assert.equal(mergeVersionState({ autoInstall: "0.19.0" }, { chi_update: { operation: "workers", state: "done" } }).autoInstall,
-    "0.19.0");
+  assert.equal(mergeVersionState({}, { auto_offers: "0.19.0" }).autoOffers, "0.19.0");
+  assert.equal(mergeVersionState({ autoOffers: "0.19.0" }, { version: "0.18.1" }).autoOffers, "0.19.0");
+  assert.equal(mergeVersionState({ autoOffers: "0.19.0" }, { auto_offers: null }).autoOffers, null);
 });
 
 test("mergeVersionState keeps the auto setting from a frame that names it, and ignores a frame that doesn't", () => {

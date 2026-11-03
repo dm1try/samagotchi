@@ -761,6 +761,227 @@ RSpec.describe Samagotchi::Web::AutoUpdate do
     end
   end
 
+  describe "a newer chi it didn't install" do
+    let(:restart) { "idle" }
+    let(:installed) { version }
+    let(:hub_versions) { double("hub's installed versions") }
+    let(:hub) do
+      Samagotchi::Web::SessionHub.new(state_dir: root, update_auto: "install", update_restart: restart, installed_versions: hub_versions)
+    end
+    let(:clock_at) { [now] }
+    let(:preflight) { double("preflight", call: nil) }
+    let(:auto_update) do
+      described_class.new(hub: hub, ops: ops, check: check, auto: auto, restart: restart, preflight: preflight, clock: -> { clock_at.first })
+    end
+    let(:workers_result) { op_result("done", []) }
+    # The checker has nothing: the release is inside update.min_age_hours, or already installed.
+    let(:release) { Samagotchi::GemUpdate::Release.new(version: version, created_at: now - 60, prerelease: false) }
+
+    before do
+      allow(hub_versions).to receive(:newest) { installed }
+      allow(ops).to receive_messages(restart_workers: workers_result, restart_web: :started)
+      allow(hub).to receive(:scan)
+    end
+
+    def later(seconds) = clock_at[0] += seconds
+
+    # Seen at one step, adopted at the next.
+    def settled_step
+      auto_update.step
+      later(described_class::POLL)
+      auto_update.step
+    end
+
+    it "takes it up only once it has settled: chi update merges the bundles after the gem" do
+      auto_update.step
+      expect(check.auto_state).to be_nil
+      expect(ops).not_to have_received(:restart_workers)
+
+      later(described_class::SETTLE)
+      auto_update.step
+
+      expect(ops).not_to have_received(:install)
+      expect(ops).to have_received(:restart_workers).once
+      expect(preflight).to have_received(:call).with(installed)
+      expect(ops).to have_received(:restart_web).once
+      expect(check.auto_state).to have_attributes(version: installed, from: Samagotchi::VERSION, phase: "web", kept: [])
+    end
+
+    it "does nothing when what is installed is no newer than this chi" do
+      allow(hub_versions).to receive(:newest).and_return(Samagotchi::VERSION)
+      settled_step
+      expect(check.auto_state).to be_nil
+    end
+
+    it "starts the settling over for another version" do
+      auto_update.step
+      later(described_class::SETTLE)
+      newer = Gem::Version.new(version).bump.to_s
+      allow(hub_versions).to receive(:newest).and_return(newer)
+      auto_update.step
+      expect(check.auto_state).to be_nil
+      later(described_class::SETTLE)
+      auto_update.step
+      expect(check.auto_state).to have_attributes(version: newer)
+    end
+
+    it "leaves it alone with update.auto off" do
+      described_class.new(hub: hub, ops: ops, check: check, auto: "off", restart: restart, clock: -> { clock_at.first }).tap do |off|
+        off.step
+        later(described_class::POLL)
+        off.step
+      end
+      expect(check.auto_state).to be_nil
+    end
+
+    context "with update.restart: never" do
+      let(:restart) { "never" }
+
+      it "leaves it to the page's toast" do
+        settled_step
+        expect(check.auto_state).to be_nil
+        expect(ops).not_to have_received(:restart_workers)
+      end
+    end
+
+    it "leaves it alone while the install is blocked (a checkout's git pull, Bundler, an unwritable gem dir)" do
+      allow(ops).to receive(:blocked_reason).and_return("checkout")
+      settled_step
+      expect(check.auto_state).to be_nil
+    end
+
+    it "waits while a turn runs, a question waits or another operation runs" do
+      summaries.push({ id: "a", status: "running" })
+      settled_step
+      expect(check.auto_state).to be_nil
+
+      summaries.replace([{ id: "a", status: "idle", pending_question: { id: "q" } }])
+      later(described_class::POLL)
+      auto_update.step
+      expect(check.auto_state).to be_nil
+
+      summaries.clear
+      allow(ops).to receive(:running?).and_return(true)
+      later(described_class::POLL)
+      auto_update.step
+      expect(check.auto_state).to be_nil
+
+      allow(ops).to receive(:running?).and_return(false)
+      later(described_class::POLL)
+      auto_update.step
+      expect(check.auto_state).to have_attributes(version: installed, phase: "web")
+    end
+
+    it "lets an available newer release go first: it installs and restarts onto the newest" do
+      newer = Gem::Version.new(version).bump.to_s
+      allow(check).to receive(:available).and_return(newer)
+      allow(ops).to receive(:install).and_return(result)
+      settled_step
+      expect(ops).to have_received(:install).with(newer, wait: true, auto: true)
+      expect(check.auto_state).to have_attributes(version: newer)
+    end
+
+    it "keeps a stamp the retry window can read back from the file" do
+      allow(ops).to receive(:restart_workers).and_return(op_result("done", [{ "session_id" => "a", "state" => "skipped" }]))
+      settled_step
+      reread = Samagotchi::Web::UpdateCheck.new(hub: hub, enabled: false, auto: true, fetcher: -> { [] }, clock: -> { now },
+                                                state_file: state_file, gem_spec: Object.new, bundler: false, gem_dir: root,
+                                                installed_versions: installed_versions)
+      expect(reread.auto_state.left_to_try?(clock_at.first + 60, described_class::RETRY_FOR)).to be(true)
+    end
+
+    it "takes the whole run to chi updated: the restarted chi web says it, once" do
+      settled_step
+      expect(notices).to be_empty
+
+      stub_const("Samagotchi::VERSION", installed)
+      restarted = described_class.new(hub: hub, ops: ops, check: check, auto: auto, restart: restart, clock: -> { clock_at.first })
+      restarted.step
+      restarted.step
+
+      expect(notices).to eq([{ kind: "updated", version: installed, kept: 0, restarted: 0, left: 0 }])
+      expect(check.auto_state).to have_attributes(phase: "done")
+      expect(ops).to have_received(:restart_web).once
+    end
+
+    describe "what the page is told about offering the restarts" do
+      def offers = hub.chi_state[:auto_offers]
+
+      it "offers nothing while a run is on its way to doing them" do
+        settled_step
+        expect(offers).to be_nil
+      end
+
+      it "offers them when a held restart has waited long, and still adopts once it is free" do
+        summaries.push({ id: "a", status: "idle", pending_question: { id: "q" } })
+        auto_update.step
+        later(described_class::HELD_FOR - 1)
+        auto_update.step
+        expect(offers).to be_nil
+
+        later(1)
+        auto_update.step
+        expect(offers).to eq(installed)
+        expect(check.auto_state).to be_nil
+
+        summaries.clear
+        later(described_class::POLL)
+        auto_update.step
+        expect(check.auto_state).to have_attributes(version: installed, phase: "web")
+      end
+
+      it "offers them at once, and tries no more, when the preflight fails" do
+        allow(preflight).to receive(:call).and_return("no such chi")
+        settled_step
+        expect(offers).to eq(installed)
+        expect(notices.map { |notice| notice[:kind] }).to eq(["restart_failed"])
+
+        later(described_class::POLL)
+        auto_update.step
+        expect(notices.size).to eq(1)
+        expect(preflight).to have_received(:call).once
+      end
+
+      it "fails once when a restart comes back on the old chi, with no loop" do
+        settled_step
+        again = described_class.new(hub: hub, ops: ops, check: check, auto: auto, restart: restart, preflight: preflight, clock: -> { clock_at.first })
+        2.times do
+          again.step
+          later(described_class::POLL)
+        end
+        expect(notices.map { |notice| notice[:kind] }).to eq(["restart_failed"])
+        expect(ops).to have_received(:restart_web).once
+        expect(offers).to eq(installed)
+      end
+
+      it "offers them again in a restarted chi web from a closed run, ahead of the gate" do
+        check.save_auto(Samagotchi::Web::AutoUpdateRecord.new(version: installed, from: "0.1.0", at: now.iso8601, phase: "failed"))
+        summaries.push({ id: "a", status: "running" })
+        auto_update.step
+        expect(offers).to eq(installed)
+        expect(ops).not_to have_received(:restart_workers)
+      end
+
+      it "says so in one chi frame" do
+        frames = []
+        hub.subscribe(->(event) { frames << event.data if event.type == "chi" && event.data[:auto_offers] })
+        2.times { hub.auto_offer_restart(installed) }
+        expect(frames.size).to eq(1)
+      end
+    end
+
+    it "finishes a run this chi web is already on, with no second restart (Restart chi web by hand on the way)" do
+      stub_const("Samagotchi::VERSION", installed)
+      check.save_auto(Samagotchi::Web::AutoUpdateRecord.new(version: installed, from: "0.1.0", at: now.iso8601, phase: "workers"))
+
+      auto_update.step
+
+      expect(ops).not_to have_received(:restart_web)
+      expect(notices).to eq([{ kind: "updated", version: installed, kept: 0, restarted: 0, left: 0 }])
+      expect(check.auto_state).to have_attributes(phase: "done")
+    end
+  end
+
   it "runs its steps on a thread until stopped" do
     stepped = Queue.new
     allow(ops).to receive(:install) { (stepped << true) && result }
