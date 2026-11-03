@@ -7,6 +7,8 @@ and commands may change between minor versions. How releases are made:
 [docs/releasing.md](docs/releasing.md).
 ## [Unreleased]
 
+## [0.146.0] - 2026-11-03
+
 ### Added
 
 - `chi memory usage [--scope project|system] [--top N] [--format text|json]` reports what the memories
@@ -33,6 +35,8 @@ and commands may change between minor versions. How releases are made:
 - A parent agent's Deny on a child's approval says so: the child read "The user declined this call".
 - A delegate child's second report in one parent turn reaches the parent. A reply that came after a
   reported question, while the parent's turn was still running, was lost with nothing left to wake it.
+
+Update with `chi update`.
 
 ## [0.145.0] - 2026-11-02
 
@@ -5576,7 +5580,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.145.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.146.0...HEAD
+[0.146.0]: https://github.com/dm1try/samagotchi/compare/v0.145.0...v0.146.0
 [0.145.0]: https://github.com/dm1try/samagotchi/compare/v0.144.0...v0.145.0
 [0.144.0]: https://github.com/dm1try/samagotchi/compare/v0.143.0...v0.144.0
 [0.143.0]: https://github.com/dm1try/samagotchi/compare/v0.142.0...v0.143.0
