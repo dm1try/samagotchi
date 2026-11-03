@@ -883,19 +883,19 @@ by themselves there.
   guardrails mode and without the guardrails bundle ([a delegate child's
   boundary](guardrails.md#a-delegate-childs-boundary)); you answer on its
   card, or on the parent's while it waits.
-- **Merges.** The parent's merge in its own checkout is a plain `git
-  merge`; to be asked before every merge, add a rule ([Rules in
-  config.yml](guardrails.md#rules-in-configyml)):
-
-  ```yaml
-  guardrails:
-    rules:
-      - id: git-merge
-        tool: shell
-        command: '\bgit\s+merge\b'
-        verdict: ask
-        reason: merging a child's branch
-  ```
+- **Merges.** The bundle's rule `git-merge` (`guardrails/merge.yml`) asks before every `git merge`, whatever the
+  branch, including `git -C`, `--git-dir=`, a `cd` before it and `sh -c`. It offers Allow once and **Allow rule git-merge
+  in this repo**: that grant holds for every later merge in the repository, in each of its worktrees and sessions,
+  and for nothing else. `git merge y && git push` still asks, once ([Approvals](guardrails.md#approvals)). `merge-base`,
+  `merge-tree`, `merge-file`, `mergetool` and a merge whose first word is `--abort`, `--continue` or `--quit` don't ask;
+  `git pull` and `gh pr merge` are not covered. It votes in every session on a machine with this bundle, in any repo,
+  children and background builds too, so a child's `git merge main` raises a card. A `--non-interactive` merge is denied,
+  with nobody to ask. It over-asks where the words are data (a commit message, `chi send -m`), and when merging the default branch into
+  a feature branch. `guardrails.disable: [git-merge]` switches it off. A grant goes by the repository chi is in, so
+  `git -C other merge` or `cd other && git merge` from a granted repo passes: an accident guard, as the rest
+  of the rules are. "Rule in this repo" tapped on a child's `git merge main` frees every merge there, as the rule's
+  reason says. A `git-merge` rule copied into config.yml votes first and keeps its behaviour; the old snippet,
+  `\bgit\s+merge\b`, also matches `git merge-base`, so drop your copy.
 
 ## The claude-peer bundle
 

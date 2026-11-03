@@ -1365,6 +1365,10 @@ discard uncommitted changes, and `git stash drop`/`clear`. They offer only
 them on every model, set `small_models` to `"*"`; to drop them, `[]` (or
 `disable:` the ids).
 
+The coordinator bundle (in `dev`, not here: everyone with the core profile would get a new ask) adds `git-merge`, which
+asks before every `git merge` ([the coordinator bundle](bundles.md#the-coordinator-bundle)). `chi guardrails rule <id>`
+says whether a rule asks on this machine now.
+
 A bundle ships rules as `guardrails/*.yml` (the same `rules:` shape). Install
 records each file's sha256; a file changed afterwards, missing, or not parsing
 denies every call until the bundle is reinstalled.

@@ -1,6 +1,6 @@
 ---
 name: coordinator
-version: 0.6.1
+version: 0.7.0
 scope: system
 description: "Coordinate parallel work: the coordinator skill (split the work, one worktree and child session per task, check each report, ask before each merge, a handoff memory to resume from), /coordinate <goal>, /coordinate resume, /coordinate end, /coordinate review (experimental: a sprint review session to share) and /children; the coordinator toolkit (lean + delegate, delegate_result, list_sessions) and the coding toolkit for build children (child + be concise)"
 trust_level: reviewed
@@ -16,3 +16,5 @@ plugin:
 # the next chi.
 requires_chi: ">= 0.107.0"
 # /coordinate review uses ctx.sessions.review (the next chi).
+# No requires_chi_next for guardrails/merge.yml: its keys are long supported, and first-ever too-new rules would make a
+# live older worker deny every call. A chi without `chi guardrails rule` gives a usage error, and the skill then asks.

@@ -135,6 +135,29 @@ RSpec.describe "Bundle guardrail rule files" do
   # A running worker reads a bundle's rules again when they change; after
   # `chi update` the installed bundle may need a newer chi than the worker
   # runs (a rule key it doesn't know).
+  # chi update lands the coordinator's rule under a live worker on an older chi:
+  # a requires_chi_next here would be its first-ever too-new rules, a required
+  # load failure, and that worker would deny every call until it restarts.
+  describe "the shipped coordinator bundle under a worker on an older chi" do
+    let(:shipped) { File.expand_path("../../lib/samagotchi/bundles/coordinator", __dir__) }
+
+    it "carries no requires_chi_next" do
+      expect(YAML.safe_load_file(File.join(shipped, "manifest.yml"))).not_to have_key("requires_chi_next")
+    end
+
+    it "loads its rule and asks, with nothing denied, also when it lands while the worker runs" do
+      stub_const("Samagotchi::VERSION", "0.147.0")
+      eng = engine
+      expect(evaluate(eng, "ls")).to be_allow
+
+      install(shipped, "coordinator")
+      v = evaluate(eng, "git merge x")
+      expect([v.decision, v.rule, v.source]).to eq([:ask, "git-merge", "bundle coordinator"])
+      expect(evaluate(eng, "ls")).to be_allow
+      expect(eng.guardrail_failures.list).to be_empty
+    end
+  end
+
   describe "a bundle that needs a newer chi than this one" do
     let(:future_rules) do
       { "rules" => [{ "id" => "future", "tool" => "shell", "future_key" => "x", "verdict" => "deny" }] }

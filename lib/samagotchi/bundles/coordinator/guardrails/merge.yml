@@ -1,0 +1,21 @@
+# The coordinator's merge approval (docs/bundles.md, The coordinator bundle).
+# Here and not in the guardrails bundle: that one is in the core profile, so
+# everyone would get a new ask and --non-interactive merges would start being
+# denied. The skill and the rule upgrade together.
+#
+# Votes in every session on a machine with this bundle, any repo, children and
+# background builds too, and a --non-interactive merge is denied: nobody to ask.
+#
+# Asks on every merge, whatever the branch. Same git-with-global-options prefix
+# as the guardrails bundle's rules; merge-base, merge-tree, merge-file,
+# mergetool and a merge whose first word is --abort, --continue or --quit don't
+# match. git pull and gh pr merge are not covered. Text as data over-asks (a
+# commit message, chi send -m, a heredoc).
+rules:
+  - id: git-merge
+    tool: shell
+    command: '\bgit(?:\s+(?:-C\s+\S+|-c\s+\S+|--?[A-Za-z][\w-]*(?:=\S+)?))*\s+merge(?=[\s;&|)]|$)(?!\s+--(?:abort|continue|quit)\b)'
+    skip_read_only: true
+    verdict: ask
+    scopes: [once, rule]
+    reason: git merge joins a branch into the checked-out one; allowing the rule covers every later merge in this repo
