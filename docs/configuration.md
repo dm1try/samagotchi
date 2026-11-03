@@ -2175,8 +2175,10 @@ them. Worker restarts in such a run show no toast unless one fails, and the shee
 the session's own **Restart** in its bar is always there.
 
 There is no watchdog: chi web restarts into the newest chi it just proved can start, and nothing brings an old one
-back by itself. To roll back, install the older gem with `gem install samagotchi -v X` and restart chi web
-(`chi update --to` refuses a version that isn't newer than the running chi). The desktop helper isn't rebuilt (that
+back by itself. To roll back, set `update.auto: off` (or the next check installs the release again), uninstall the newer
+gem with the chi home's Ruby (`gem uninstall samagotchi -v Y`: chi always starts the newest one installed, so installing an
+older gem beside it changes nothing), and restart chi web. `chi _X_ web` stays on X only with `update.auto: off`: a restart
+starts the newest. `chi update --to` refuses a version that isn't newer than the running chi. The desktop helper isn't rebuilt (that
 stays a manual `chi update`).
 
 ## All settings
