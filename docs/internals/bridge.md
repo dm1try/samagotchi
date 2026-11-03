@@ -66,7 +66,9 @@ the "asking again" and steer-cut rows, ✂ rows and questions (with how they wer
 One per `GET /session/:id/stream` connection, and itself that connection's observer: `Engine#emit_event` calls
 `#call` on the turn's thread, so it only pushes onto a `BoundedQueue` (when full, the oldest entry goes and an
 overflow flag is set). The connection's own thread (`#serve!`) drains the queue onto the socket, so a slow client
-cannot stall a turn or another subscriber. `serve!` orders a join so that nothing is missed or doubled:
+cannot stall a turn or another subscriber. An event holding bytes JSON can't take goes out scrubbed
+(`SSEWriter#frame_json`, `LLM::Utf8Scrub`): a raise there would end this stream, and every later one for as long as the
+ring holds the event. `serve!` orders a join so that nothing is missed or doubled:
 
 1. subscribe the live queue first;
 2. capture `event_count` (the snapshot seq);
