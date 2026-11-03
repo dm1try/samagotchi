@@ -50,6 +50,12 @@ RSpec.describe Samagotchi::Relay do
     expect(card).to include(multi_select: false, allow_freeform: true)
   end
 
+  it "keeps what a file ask's session option covers, and says whose session" do
+    file_ask = pending.merge(options: ["Allow once", "Allow edits to a.rb for the session", "Allow this call in this repo", "Deny"])
+    card = described_class.card(child, as_saved(file_ask), relay_id: "r-1")
+    expect(card[:options][1]).to eq("Allow edits to a.rb for delegate #{short}'s session")
+  end
+
   it "relabels the session scope for the child's session, by index; once, repo and Deny keep theirs" do
     card = described_class.card(child, as_saved(pending), relay_id: "r-1")
     expect(card[:options]).to eq(["Allow once", "Allow this call for delegate #{short}'s session",

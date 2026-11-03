@@ -63,6 +63,21 @@ RSpec.describe Samagotchi::Guardrails::Approval do
       expect(payload).to include(kind: "approval", header: "Approve tool call?", allow_freeform: true, multi_select: false)
     end
 
+    # Approvals.key_for keys a file tool's session answer on its paths, so the
+    # label says that, and a command's on the exact command, so it stays "this call".
+    it "says what a session answer covers" do
+      session = lambda do |c|
+        described_class.payload(ask(scopes: %w[once session], c: c))[:options][1]
+      end
+      path = File.join(dir, "config.yml")
+      expect(session.call({ name: "edit", path: path, content: "x" })).to eq("Allow edits to config.yml for the session")
+      expect(session.call({ name: "write", path: path, content: "x" })).to eq("Allow writes to config.yml for the session")
+      expect(session.call(call)).to eq("Allow this call for the session")
+      once = ask(scopes: %w[once session], c: { name: "edit", path: path, content: "a" })
+      other = ask(scopes: %w[once session], c: { name: "edit", path: path, content: "b" })
+      expect(Samagotchi::Guardrails::Approvals.key_for(once)).to eq(Samagotchi::Guardrails::Approvals.key_for(other))
+    end
+
     it "names a participant's turn's ask and offers it once only, even in a scratch session; the owner's unnamed" do
       payload = described_class.payload(ask(scopes: %w[once session repo]), author: "p:p_0123abcd", author_name: "Sam",
                                                                             only: %w[once session])

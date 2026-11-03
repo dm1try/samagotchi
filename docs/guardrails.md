@@ -91,7 +91,7 @@ Allowing beyond "once" is stored in `$XDG_STATE_HOME/samagotchi/guardrails/appro
 
 | Scope | Allows |
 |---|---|
-| session | this exact call (tool + command, or paths) in this session |
+| session | this exact call in this session: the tool + command, or for a file tool its paths, so its label names them (`Allow edits to config.yml for the session`) and a later edit of that file needs no ask |
 | repo | this exact call in this repo (the cwd outside a repo), any session |
 | rule | anything this rule asks about in this repo |
 
@@ -233,6 +233,10 @@ with `only the user can allow it`. The same holds for the guardrails bundle's
 other user-only rules (`chi-context-cmd`, `chi-broadcast`,
 `prompt-memory-write`, `model-overlay-write`, and `chi-answer-piped` /
 `chi-answer-http`, which answer a grandchild's question as the user).
+
+`child-boundary` isn't one of them: an ask before a delegate child acts outside
+its folder follows the level, so a `soft` parent may give Allow once. If that
+call names chi's own files, it is the user's as above.
 
 A plugin's or a hook's question (`ask_user`) tags its options the same way
 (`effects:`, see [Plugins](plugins.md)); an untagged one is a plain `answer`.

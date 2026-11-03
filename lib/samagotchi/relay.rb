@@ -94,12 +94,12 @@ module Samagotchi
     end
 
     # The child's options, by index: "session" is the child's session, so
-    # it says whose; "once", "repo", "rule" and Deny keep their labels (the
+    # it says whose (one more hop names the longer chain), and keeps what it covers; "once", "repo", "rule" and Deny keep their labels (the
     # approvals store is shared, a session scope keys on the child's id).
     def relabel(options, scopes, who)
       scopes = Array(scopes)
       options.each_with_index.map do |label, index|
-        scopes[index].to_s == "session" ? "Allow this call for delegate #{who}'s session" : label.to_s
+        scopes[index].to_s == "session" ? label.to_s.sub(/for (?:the|delegate .*'s) session\z/, "for delegate #{who}'s session") : label.to_s
       end
     end
 

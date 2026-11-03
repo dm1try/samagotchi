@@ -206,11 +206,23 @@ module Samagotchi
         place = verdict.targets&.repo_root ? "in this repo (#{verdict.targets.repo_name})" : "in this directory"
         case scope
         when "once" then ONCE
-        when "session" then "Allow this call for the session"
+        when "session" then "Allow #{session_subject(verdict.targets)} for the session"
         when "repo" then "Allow this call #{place}"
         when "rule" then "Allow rule #{verdict.rule} #{place}"
         end
       end
+
+      # What a session answer covers, as Approvals.key_for keys it: a file
+      # tool's later calls on the same paths, else this one exact call.
+      def session_subject(targets)
+        return "this call" if targets.nil? || targets.command || targets.paths.empty?
+
+        what = targets.paths.one? ? File.basename(targets.paths.first) : "#{targets.paths.size} files"
+        "#{SESSION_VERBS.fetch(targets.tool, "#{targets.tool} on")} #{what}"
+      end
+
+      # How a session label names a file tool's calls.
+      SESSION_VERBS = { "edit" => "edits to", "write" => "writes to" }.freeze
 
       # How much of a plugin tool's arguments the question shows.
       ARGS_CHARS = 300
