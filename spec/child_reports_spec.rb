@@ -336,6 +336,90 @@ RSpec.describe "delegate reports" do
       expect(taken.map(&:text)).to eq(["session: #{child.id}\nstatus: answered\n---\ndone after the wait"])
     end
 
+    context "with a second ring from one child in one parent turn" do
+      let(:continue_card) { { id: "c1", kind: "continue", header: "Step limit", question: "Continue it?", options: %w[Continue Stop] } }
+
+      def asks_then_replies(box)
+        end_turn(child, pending_question: continue_card)
+        ring(why: "question")
+        first = box.take.fetch(0)
+        write_reply(child, "the reply")
+        end_turn(child)
+        ring
+        [first, box.take]
+      end
+
+      it "reports the reply after a reported question, and moves the cursor past both when the turn is kept" do
+        box = reports
+        _, second = asks_then_replies(box)
+        expect(second.size).to eq(1)
+        expect(second.first.text).to include("the reply")
+
+        box.commit
+        expect(rings).to be_empty
+        expect(cursor.report_claim).to be_nil
+        ring
+        expect(reports.take).to eq([])
+      end
+
+      it "reports a second question" do
+        own(child)
+        box = reports
+        end_turn(child, pending_question: continue_card)
+        ring(why: "question")
+        box.take
+        # Still the same turn: only its question changes.
+        asking = Samagotchi::Session.load(child.id, state_dir: tmpdir)
+        asking.pending_question = continue_card.merge(id: "c2")
+        asking.status = "running"
+        asking.save(state_dir: tmpdir)
+        ring(why: "question")
+        expect(box.take.fetch(0).text).to include("--question c2")
+        box.commit
+        expect(rings).to be_empty
+        expect(cursor.question_id).to eq("c2")
+      end
+
+      it "offers the latest news again when the turn is rolled back, once" do
+        box = reports
+        asks_then_replies(box)
+        box.release
+        expect(rings.size).to eq(2)
+        expect(cursor.report_claim).to be_nil
+
+        again = reports
+        expect(again.take.map(&:text)).to contain_exactly(include("the reply"))
+        again.commit
+        expect(reports.take).to eq([])
+      end
+
+      it "survives the parent's worker going mid-turn: a new one reports it once" do
+        asks_then_replies(reports)
+        fresh = reports
+        expect(fresh.take.map(&:text)).to contain_exactly(include("the reply"))
+        fresh.commit
+        expect(reports.take).to eq([])
+      end
+
+      it "reports what came after a delegate_result the model ran in the same turn, and keeps its cursor" do
+        box = reports
+        end_turn(child, pending_question: continue_card)
+        ring(why: "question")
+        box.take
+        write_reply(child, "second")
+        end_turn(child)
+        expect(Samagotchi::Tools::DelegateWait.call(child.id, peers: peers, timeout: 0)).to end_with("second")
+        write_reply(child, "third")
+        end_turn(child)
+        ring
+
+        expect(box.take.fetch(0).text).to include("third")
+        box.commit
+        expect(reports.take).to eq([])
+        expect(Samagotchi::Tools::DelegateResult.call(session: child.id, timeout: 0, peers: peers)).to include("no reply yet")
+      end
+    end
+
     it "makes one report of two rings from one child" do
       write_reply(child, "the reply")
       end_turn(child)

@@ -312,12 +312,12 @@ module Samagotchi
       own + strays
     end
 
-    # A second ring for a child taken earlier in this turn: read from where
-    # the first report left the cursor, keeping the first one's +before+.
+    # A second ring for a child taken earlier in this turn: this report's
+    # cursors (#report_for), both reports' rings.
     def merge_taken(earlier, report)
       return report unless earlier
 
-      report.with(before: earlier.before, rings: earlier.rings + report.rings)
+      report.with(rings: earlier.rings + report.rings)
     end
 
     # @return [Report, nil] nil when the child has nothing to report
@@ -325,7 +325,14 @@ module Samagotchi
       child = Session.load(child_id, state_dir: @state_dir)
       return nil unless child.parent_id == @session_id
 
-      before = @taken[child_id]&.after || Tools::DelegateCursors.get(@session_id, child_id, state_dir: @state_dir)
+      current = Tools::DelegateCursors.get(@session_id, child_id, state_dir: @state_dir)
+      earlier = @taken[child_id]
+      # Until the turn commits, the file holds the cursor from before the
+      # first report, plus its claim. A second ring reads on from where that
+      # report left it, and a commit moves on from the file's. If the model
+      # moved the cursor meanwhile (delegate_result), the file's is the truth.
+      kept = earlier && current.without_claim == earlier.before.without_claim ? earlier : nil
+      before = kept ? kept.after : current
       # A follow-up's turn (DelegateCursor#turn) is reported by its own
       # reply, as delegate_result takes it, not a newer queued turn's.
       wait = ReplyWait.call(child_id, state_dir: @state_dir, cursor: before.reply_file, baseline: before.baseline,
@@ -337,14 +344,14 @@ module Samagotchi
                                         turn: wait.status == :waiting_for_answer ? before.turn : nil)
                     .with_baseline(ReplyWait.baseline_of(wait.session))
       claim = Tools::ReportClaim.new(id: claim_id, file: wait.file, cursor: after)
-      return nil unless Tools::DelegateCursors.claim_report(@session_id, child_id, expected: before, claim: claim,
+      return nil unless Tools::DelegateCursors.claim_report(@session_id, child_id, expected: current, claim: claim,
                                                             state_dir: @state_dir)
 
       # A reported end is the follow-up turn's too (DelegateCursor#turn):
       # a later wait on it would repeat its reply.
       after = after.with(report_claim: claim)
       text = Tools::DelegateWait.finish(wait, child_id, timeout: 0, report: true)
-      Report.new(child_id: child_id, text: text, before: before, after: after, rings: rings, claim_id: claim_id,
+      Report.new(child_id: child_id, text: text, before: kept ? kept.before : before, after: after, rings: rings, claim_id: claim_id,
                  relay: relay?(wait) ? wait.question : nil)
     rescue ArgumentError
       nil # the child is gone

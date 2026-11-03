@@ -27,6 +27,8 @@ and commands may change between minor versions. How releases are made:
 - A parent agent may give Allow once on a delegate child's `child-boundary` ask under
   `guardrails.parent_answers: soft`. It was refused with a false "changes chi's own config"; an ask
   that really names chi's own files stays yours.
+- A delegate child's second report in one parent turn reaches the parent. A reply that came after a
+  reported question, while the parent's turn was still running, was lost with nothing left to wake it.
 
 ## [0.145.0] - 2026-11-02
 
