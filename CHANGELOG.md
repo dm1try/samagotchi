@@ -7,9 +7,14 @@ and commands may change between minor versions. How releases are made:
 [docs/releasing.md](docs/releasing.md).
 ## [Unreleased]
 
+### Added
+
+- `chi guardrails rule <id>` prints exactly `asks` when that rule votes `ask` on this machine now, and says why not otherwise. [docs/cli.md](docs/cli.md)
+
 ### Changed
 
 - A continue's carry note now holds the previous session's last answer after its recap (its last 4000 characters when longer), so a wrap-up's exact shas, paths and next steps reach the next link without a paste; `session.carry_last_answer: false` keeps it recap-only. A note can no longer exceed its 16 KiB and fail the continue: a recap of many non-ASCII characters used to.
+- The coordinator's merges are now guardrail approvals (bundle coordinator 0.7.0). A verified branch that can fast-forward merges with no question from the model: you get the new `git-merge` rule's card, and **Allow rule git-merge in this repo** lets later merges there pass, so trusted projects merge on green and an unknown one still asks. Anything less certain still gets the question, and with no grant a yes is followed by the card. The rule votes in every session on a machine with the coordinator bundle, in any repo, children and background builds too (a child's `git merge main` raises a card), and `--non-interactive` merges are now denied. `chi update` brings it. [docs/bundles.md](docs/bundles.md#the-coordinator-bundle)
 
 ### Fixed
 

@@ -3,7 +3,8 @@
 # The coordinator bundle (docs/bundles.md, The coordinator bundle): chi as a
 # coordinator of parallel work. Its skill_coordinator memory holds the steps
 # (split the work, one worktree and a wait: false delegate per task, check
-# each report, ask before each merge); this plugin adds two commands.
+# each report, merge under the git-merge rule's approval or ask); this plugin
+# adds two commands, and guardrails/merge.yml that rule.
 #
 # /children [all] shows this session's children as a card, newest first:
 # state, branch, the last reply and whether it was reported (ChildrenStatus

@@ -332,6 +332,24 @@ RSpec.describe "The coordinator plugin", :bundle do
                                "Work only in <absolute worktree path>", "Don't call delegate_result")
     end
 
+    it "keeps the skill's two merge paths: A only when every check holds, B for anything else, a decline never retried" do
+      skill = File.read(File.join(dir, "skill_coordinator.md"))
+      expect(skill).to include("`chi guardrails rule git-merge` printed exactly `asks`", "THIS session verified the branch",
+                               "you read the branch's whole diff in this session (`git diff <default>...<branch>`), not only --stat",
+                               "a diff too long to read in one go is a doubt, take B",
+                               "a verdict read from the handoff doesn't count", "the user said nothing to hold this branch",
+                               "as a command of its\n   own, nothing chained", "B, anything else",
+                               "a child naming none: say so, its branch goes through 6B",
+                               "your step 4 verdict is exactly \"done and verified\" (not \"done with doubts\", not \"failed\")",
+                               "If a merge comes back \"The user declined\": save that, don't retry, don't ask again",
+                               "means here: report it and leave the branch; the user can say otherwise",
+                               "chi's card comes up on the merge too: declining\n   there is a no",
+                               "\"No one to approve\", cancelled, stopped) is no answer", "or go to step 6.")
+      expect(skill).not_to include("ready to merge.", "asked as\n  always")
+      # A linear reader meets the checked-out branch check before either path.
+      expect(skill.index("`git branch --show-current` must print <default>")).to be < skill.index("A (no question from you)")
+    end
+
     it "keeps the handoff memory: status in a descriptive description, resume reads the body, saves first, removes when done" do
       skill = File.read(File.join(dir, "skill_coordinator.md"))
       expect(skill).to include("handoff_<epic-slug>", "never what to do", "description only (no content)",

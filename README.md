@@ -152,8 +152,8 @@ finds another session, `send_note` tells it something, and `delegate` hands a
 task to a child session that runs in parallel and reports back only its final
 reply (a normal session: `chi --attach <id>` steers it). With the `coordinator`
 bundle (in `dev`), `/coordinate <goal>` has chi split the work into tasks, each
-in a child session in its own git worktree, check each report and ask you
-before each merge; `/children` shows the children and their state. With the
+in a child session in its own git worktree, check each report and merge under
+an approval you give chi (once, or per repo), or ask you first; `/children` shows the children and their state. With the
 `claude-peer` bundle (in `dev`), chi sends a part of its work to a Claude Code
 session you pair it with, to validate or as context, and Claude answers back
 into chi (`/claude`); the `codex-peer` bundle (in `dev`) does the same with an

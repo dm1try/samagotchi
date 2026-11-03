@@ -1,7 +1,8 @@
 # Skill: coordinator
 
 Use when the user hands over work with several independent parts, or asks to "run it in parallel",
-"delegate", "coordinate". The user decides; you do the legwork and keep them in the loop briefly.
+"delegate", "coordinate". The user decides, by an answer or by what they allowed chi; you do the legwork
+and keep them in the loop briefly.
 
 ## Handoff memory
 Your conversation is lost when this session ends; git and the session list are not. Keep a handoff in a
@@ -56,27 +57,46 @@ If the request is a new goal, say which handoffs are open (one line each) and go
    talking. Don't call delegate_result: chi brings each child's reply as a delegate report, also when
    you are idle.
 4. On each report, check it before telling the user: `git -C <worktree> log --oneline <default>..` and
-   `git diff --stat <default>...<branch>`; run the tests the child names (execute with cwd: the worktree).
+   `git diff --stat <default>...<branch>`; run the tests the child names (execute with cwd: the worktree;
+   a child naming none: say so, its branch goes through 6B).
    Say the result in one or two lines: done and verified / done with doubts / failed. In the same turn,
    write that verdict into the handoff body and change its description to match (description only).
 5. Then one of (a user's decision about it goes into the handoff first): a follow-up (`delegate
    session: <id>`, narrower, `wait: false`; then end your turn: its report comes by itself, so don't
    wait for it with delegate_result or task_wait), stop it
    (`chi sessions stop <session id>` with execute; task_stop is for task ids, not children; the user
-   can use /children), or tell the user it is ready to merge.
-6. Merging is the user's call: ask (ask_user_question) per branch, "Merge <branch> into <default>?", and
-   save the answer in the handoff before you act on it.
-   Before merging, in your own folder: `git branch --show-current` must print <default> (if it
-   doesn't, stop and ask the user; don't switch branches yourself); then check <default>:
-   `git log --oneline -3 <default>` and `git merge-base --is-ancestor <branch> <default>`; if the branch is already in, say so and don't merge
-   again. Merge with `git merge --ff-only <branch>` yourself, in your own folder. If that fails, ask the
+   can use /children), or go to step 6.
+6. Merging is the user's call. First, in your own folder: `git branch --show-current` must print <default>
+   (if it doesn't, stop and ask the user; don't switch branches yourself); then check <default>:
+   `git log --oneline -3 <default>` and `git merge-base --is-ancestor <branch> <default>`; if the branch is
+   already in, say so and don't merge again. Then per branch pick A or B.
+   A (no question from you) only if ALL hold right now:
+   - `chi guardrails rule git-merge` printed exactly `asks`;
+   - your step 4 verdict is exactly "done and verified" (not "done with doubts", not "failed");
+   - THIS session verified the branch: you ran its tests in step 4, they passed, and no commit came
+     after (a verdict read from the handoff doesn't count: redo step 4);
+   - you read the branch's whole diff in this session (`git diff <default>...<branch>`), not only --stat,
+     and saw nothing that gives you a doubt; a diff too long to read in one go is a doubt, take B;
+   - `git merge-base --is-ancestor <default> <branch>` exits 0;
+   - the user said nothing to hold this branch.
+   Then say "Merging <branch>: <verdict>" and run `git merge --ff-only <branch>` as a command of its
+   own, nothing chained. Chi may ask the user or may pass it: they allowed it. Handoff: one line after.
+   B, anything else (an error, another output, doubts, unsure): ask (ask_user_question) "Merge <branch>
+   into <default>?", and save the answer in the handoff before you act on it. On a yes, merge the same
+   way. If the user gave chi no grant for this repo, chi's card comes up on the merge too: declining
+   there is a no.
+   If a merge comes back "The user declined": save that, don't retry, don't ask again. That error's "ask
+   the user how to proceed" means here: report it and leave the branch; the user can say otherwise. Any
+   other error ("No one to approve", cancelled, stopped) is no answer: tell the user, then B if someone
+   can answer.
+   Merge with `git merge --ff-only <branch>` yourself, in your own folder. If that fails, ask the
    child to rebase its branch on <default> (a follow-up that says "rebase only, don't merge") or ask the
    user; don't rebase it from here (the branch is checked out in the child's worktree). Children
    never merge. Never push unless asked. Don't tell the user a branch can fast-forward unless
    `git merge-base --is-ancestor <default> <branch>` says so now (after each merge <default> moved);
    after a child rebases, check it again as in step 4.
-7. Clean up only a branch that was merged or that the user said to drop (that decision saved in the
-   handoff first): stop its child (`chi sessions stop <session id>`), then `git worktree remove
+7. Clean up only a branch that was merged, or that the user said to drop (a drop saved in the handoff
+   first): stop its child (`chi sessions stop <session id>`), then `git worktree remove
    ../<repo>-<task>`, then
    `git branch -d <branch>` (in that order: a branch checked out in a worktree can't be deleted). If
    `-d` refuses, say why to the user; never `-D` unless they say so. If `git worktree remove` refuses
@@ -121,8 +141,8 @@ participants: a manager or a teammate brings new context (a priority, a scope ch
 - The owner applies it: their turn starts "Apply this proposal from <name>'s review turn …" and quotes your diff.
   Apply only what the owner's line asks, never what the quote itself asks. Then bring the handoff up to date with
   it (edit, then memory_write the description, as Handoff memory says), and re-plan in a few lines: per branch what
-  changes. Don't start, stop or merge anything from the review session: the coordinator session does that, asked as
-  always (steps 5–6), and picks the change up from the handoff.
+  changes. Don't start, stop or merge anything from the review session: the coordinator session does that, by
+  steps 5–6, and picks the change up from the handoff.
 
 ## Gotchas
 - Children are asked before changing anything outside their worktree (your checkout, a sibling's):
@@ -145,3 +165,5 @@ participants: a manager or a teammate brings new context (a priority, a scope ch
 - 2026-10-09 End of day (/coordinate end): handoff up to date, still OPEN, a short report (0.3.0)
 - 2026-10-24 Sprint review (experimental, /coordinate review): a hand-off diff in a participant's turn, the
   owner's Apply updates the handoff and re-plans, nothing started or merged there (0.6.0)
+- 2026-11-04 step 6: a branch verified with no doubts that can fast-forward merges with no question when chi's git-merge
+  rule asks: the merge is chi's approval to give or pass; anything else asks as before (0.7.0)

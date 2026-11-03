@@ -799,7 +799,7 @@ chi bundle install coordinator    # in the dev profile
 
 chi as a coordinator of parallel work, the way you would run several agents
 yourself: split the work, one git worktree and child session per task, keep
-talking while they run, check each report, and merge only with your OK. It
+talking while they run, check each report, and merge only when you allow it. It
 works in a session with a worker (plain `chi`, the web). A `--no-shared` REPL
 or `-p` gets no delegate reports, so the children's replies wouldn't come back
 by themselves there.
@@ -810,7 +810,7 @@ by themselves there.
   <branch>`), starts a child there with `delegate wait: false, cwd:`, tells
   you what started and ends its turn. When a child's report comes, it checks
   the branch (`git log`, `git diff --stat`, the tests the child names) before
-  telling you. It asks before each merge (`ask_user_question`), checks that its
+  telling you. Before merging (**Merges** below) it checks that its
   own folder is on the default branch and that branch's log first (another
   agent may have merged the branch already), merges `--ff-only` and never
   pushes unless you ask. After a merge it stops the
@@ -856,7 +856,7 @@ by themselves there.
   diff in your turn there: the model brings the handoff up to date and
   re-plans in words, and starts, stops or merges nothing from the review
   session: the coordinator session picks the change up from the handoff,
-  merges still asked. Experimental: it may go if it doesn't earn its place.
+  and merges as it always does. Experimental: it may go if it doesn't earn its place.
 - **The coordinator toolkit.** The bundle declares `coordinator`: `lean`
   plus `delegate`, `delegate_result` and `list_sessions`
   ([Toolkits](configuration.md#toolkits)). `/coordinate` puts a fresh session
@@ -883,7 +883,17 @@ by themselves there.
   guardrails mode and without the guardrails bundle ([a delegate child's
   boundary](guardrails.md#a-delegate-childs-boundary)); you answer on its
   card, or on the parent's while it waits.
-- **Merges.** The bundle's rule `git-merge` (`guardrails/merge.yml`) asks before every `git merge`, whatever the
+- **Merges.** Your approval is chi's own card, not a question from the model. When its verdict on a branch is "done and
+  verified" (no doubts) and the branch can fast-forward, and `chi guardrails rule git-merge` prints `asks`, and it read the branch's whole diff in this session, not only the stat, the skill says `Merging <branch>: <verdict>` and runs
+  `git merge --ff-only <branch>` alone. You then get the approval card, or, if you allowed the rule in this repo, it
+  passes: home projects you trust merge on green, an unknown one still asks. Anything else (tests not run in this
+  session, a child that named none, a resumed session's old verdict, the rule off, doubts) goes back to a question
+  (`ask_user_question`). With no grant, a yes there is followed by chi's card on the merge, and declining the card is a
+  no. A Deny is saved and not retried: the model reports it and leaves the branch until you say otherwise. Under `--non-interactive` no one can answer, so a merge is
+  denied and it tells you. A parent agent may give Allow once under `guardrails.parent_answers: soft`, as it may answer
+  a question today.
+
+  The bundle's rule `git-merge` (`guardrails/merge.yml`) asks before every `git merge`, whatever the
   branch, including `git -C`, `--git-dir=`, a `cd` before it and `sh -c`. It offers Allow once and **Allow rule git-merge
   in this repo**: that grant holds for every later merge in the repository, in each of its worktrees and sessions,
   and for nothing else. `git merge y && git push` still asks, once ([Approvals](guardrails.md#approvals)). `merge-base`,
