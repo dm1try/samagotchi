@@ -156,6 +156,17 @@ RSpec.describe Samagotchi::SessionContinue, ".run" do
     expect(note_of(link.id)[:text]).to end_with(":\nThe fresh recap.")
   end
 
+  it "continues on an 8000-character CJK recap, its note cut on a character within the limit" do
+    previous = make
+    save_recap(previous.id, "概" * Samagotchi::SessionChain::RECAP_CHARS)
+
+    text = note_of(continue(previous.id).id)[:text]
+
+    expect(text.bytesize).to be <= Samagotchi::SessionInbox::NOTE_MAX_BYTES
+    expect(text).to be_valid_encoding.and end_with("概…")
+    expect(archived?(previous.id)).to be(true)
+  end
+
   it "archives the previous link's finished delegates with it" do
     previous = make
     child = make(prompt: "count the specs", parent_id: previous.id, delegate: true)

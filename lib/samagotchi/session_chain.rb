@@ -2,6 +2,7 @@
 
 require "time"
 require_relative "session"
+require_relative "session_inbox"
 require_relative "recap_store"
 
 module Samagotchi
@@ -16,9 +17,12 @@ module Samagotchi
     LAST_PREFIX = "last:"
     # Who the carry note is from (ContextNote's label: "note from session chain").
     NOTE_SOURCE = "session chain"
-    # The most of the previous link's recap the carry note takes; a recap is
-    # a few sentences, this only keeps a runaway one under the note's 16 KiB.
+    # The most of the previous link's recap a note takes; a recap is a few
+    # sentences. Characters, not bytes: #note_text holds the carry note to
+    # SessionInbox::NOTE_MAX_BYTES itself.
     RECAP_CHARS = 8000
+    # The "…" that marks a cut, in bytes.
+    CUT_MARK_BYTES = 3
 
     module_function
 
@@ -64,13 +68,22 @@ module Samagotchi
 
     # The context note a new link starts with: which session it continues,
     # from when, and that session's recap with its time, when it has one.
-    # Never more than the recap: no transcript.
+    # Never more than the recap: no transcript. Never over
+    # SessionInbox::NOTE_MAX_BYTES, whatever the session holds: the inbox
+    # rejects a longer note, and a continue writes it after the archive.
     # @param previous [Session]
     # @param recap [Hash, nil] RecapStore.read's
     # @return [String]
     def note_text(previous, recap:)
       head = "This session continues #{previous.id[0, 8]} (#{clock(previous.created_at) || previous.created_at}), the previous link of its chain."
-      "#{head}#{recap_text(recap)}"
+      keep_start("#{head}#{recap_text(recap)}", SessionInbox::NOTE_MAX_BYTES)
+    end
+
+    # At most +max+ bytes of +text+'s start, cut on a character.
+    def keep_start(text, max)
+      return text if text.bytesize <= max
+
+      "#{text.byteslice(0, max - CUT_MARK_BYTES).scrub("")}…"
     end
 
     # +recap+ as a note's tail: " Its recap, as of <time>:\n<text>" (cut
