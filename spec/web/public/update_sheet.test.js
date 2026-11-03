@@ -176,3 +176,20 @@ test("a restart from the installed notice's toast also offers the other one in t
   sheet.reconnected("99.0.0");
   assert.ok(el.querySelector('[data-act="restart-workers"]'));
 });
+
+test("an automatic run's sheet offers no restarts: it restarts them by itself; a manual run after it does", async (t) => {
+  const el = dialog();
+  t.after(() => el.remove());
+  const sheet = createUpdateSheet({ dialog: el, update: async () => {}, restartWorkers: async () => {}, restartWeb: async () => {} });
+  const buttons = () => [...el.querySelectorAll("footer button")].map((button) => button.textContent);
+
+  sheet.receive({ operation: "install", version: "99.0.0", state: "done", auto: true, rows: [] });
+  sheet.view();
+  assert.deepEqual(buttons(), ["Close"]);
+
+  sheet.receive({ operation: "workers", state: "done", auto: true, rows: [] });
+  assert.deepEqual(buttons(), ["Close"]);
+
+  sheet.receive({ operation: "install", version: "99.0.1", state: "done", rows: [] });
+  assert.deepEqual(buttons(), ["Restart workers", "Restart chi web", "Close"]);
+});
