@@ -85,7 +85,7 @@ class FakeEl {
   }
 }
 
-function setup({ near = true, fail = null, page = {}, asking = "", renderMarkdown, linkRefs, pairRefs, staged = false } = {}) {
+function setup({ near = true, fail = null, page = {}, asking = "", renderMarkdown, linkRefs, pairRefs, staged = false, onPending = () => {} } = {}) {
   const history = new FakeEl("div");
   const calls = [];
   const call = (name) => (...args) => {
@@ -107,6 +107,7 @@ function setup({ near = true, fail = null, page = {}, asking = "", renderMarkdow
     renderMarkdown,
     linkRefs,
     pairRefs,
+    onPending,
     api: { sendAnswer: call("sendAnswer"), dismissQuestion: call("dismissQuestion"), sendCommand: call("sendCommand") },
     doc: {
       createElement: (tag) => new FakeEl(tag),
@@ -234,6 +235,44 @@ test("answered (here or elsewhere): marked, disabled, collapsed to the result; a
   assert.equal(cards.pendingQuestion(), null);
   cards.resolveQuestion("q1", { answer: { selected: ["a"] } });
   assert.equal(card.querySelectorAll(".question-result").length, 1);
+});
+
+// The session bar's status chip reads pendingQuestion() (app.js sessionWaits),
+// so every change of the open question has to touch that redraw (docs/internals/
+// web-frontend.md, write -> redraw); otherwise the chip stays "waiting" until
+// the next tick after an answer.
+test("every change of the open question calls the page's hook", () => {
+  const seen = [];
+  const { cards } = setup({ onPending: (pq) => seen.push(pq?.id ?? null) });
+
+  cards.renderQuestion(PQ);
+  assert.deepEqual(seen, ["q1"]);
+  // The same question delivered again is no change.
+  cards.renderQuestion(PQ);
+  assert.deepEqual(seen, ["q1"]);
+
+  cards.markRelayed("q1", "the parent");
+  assert.deepEqual(seen, ["q1", "q1"]);
+
+  cards.resolveQuestion("q1", { answer: { selected: ["a"] } });
+  assert.equal(cards.pendingQuestion(), null);
+  assert.deepEqual(seen.slice(-2), ["q1", null]);
+
+  cards.renderQuestion({ id: "q2", question: "Then?" });
+  cards.removeQuestion();
+  assert.deepEqual(seen.slice(-2), ["q2", null]);
+});
+
+test("isResolved names the question answered here, not one merely removed", () => {
+  const { cards } = setup();
+  cards.renderQuestion(PQ);
+  assert.equal(cards.isResolved("q1"), false);
+  cards.resolveQuestion("q1", { answer: { selected: ["a"] } });
+  assert.equal(cards.isResolved("q1"), true);
+
+  cards.renderQuestion({ id: "q2", question: "Then?" });
+  cards.removeQuestion();
+  assert.equal(cards.isResolved("q2"), false);
 });
 
 test("a recommended option: marked with a tag, shown without the mark, answered with the full label", async () => {
