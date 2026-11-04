@@ -3,6 +3,9 @@
 require "minitest"
 require_relative "../testing"
 
+# Not in testing.rb: `chi bundle check` loads that into a real chi.
+Samagotchi::Testing::GitEnv.scrub!
+
 module Samagotchi
   module Testing
     # The bundle test kit in Minitest (EXPERIMENTAL, docs/plugins.md): a

@@ -7,12 +7,13 @@ require_relative "../log"
 require_relative "../paths"
 require_relative "../sandbox_layout"
 require_relative "fake_executable"
+require_relative "git_env"
 
 module Samagotchi
   module Testing
     # The environment a bundle test runs in: temp config, state, data and cache
     # homes (config.yml, memories, ctx.data_dir, the debug log), HOME and the peer
-    # CLIs' folders, git without the user's config, no Keychain, none of
+    # CLIs' folders, git without the user's config or an inherited repo (GitEnv), no Keychain, none of
     # the user's SAMAGOTCHI_* settings, a bin/ first on PATH for fake
     # commands. ENV is put back on #leave.
     #
@@ -166,6 +167,7 @@ module Samagotchi
       # ENV at +layout+'s folders, none of the SAMAGOTCHI_* settings but KEPT.
       def point_env(layout)
         ENV.each_key.select { |key| key.start_with?("SAMAGOTCHI_") && !KEPT.include?(key) }.each { |key| ENV.delete(key) }
+        GitEnv.clear(ENV)
         File.write(File.join(@root, "gitconfig"), "")
         ENV.update(
           **layout.env,

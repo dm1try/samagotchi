@@ -2,6 +2,13 @@
 
 $LOAD_PATH.unshift File.expand_path("../lib", __dir__)
 
+# First, before anything can run git: a suite started by git (`rebase --exec`,
+# `bisect run`, a hook) inherits GIT_DIR and the like, and a spec's git in its
+# temp repo would act on the real repo instead. For this process and all it
+# starts (specs, forks, script/ helpers); the bundle test kit's adapters do the same.
+require "samagotchi/testing/git_env"
+Samagotchi::Testing::GitEnv.scrub!
+
 require "fileutils"
 require "io/console" # IO.console, stubbed in every example below
 require "timeout"

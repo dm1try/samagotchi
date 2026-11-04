@@ -3,6 +3,9 @@
 require "rspec/core"
 require_relative "../testing"
 
+# Not in testing.rb: `chi bundle check` loads that into a real chi.
+Samagotchi::Testing::GitEnv.scrub!
+
 # The bundle test kit in RSpec (EXPERIMENTAL, docs/plugins.md): example groups
 # tagged :bundle get Samagotchi::Testing::Helpers (load_bundle,
 # shipped_bundle, sandbox), and each of their examples runs in its own
