@@ -462,6 +462,73 @@ RSpec.describe "Kept edits in a bundle" do
 
   def uninstall(**opts) = Samagotchi::MemoryBundle::Uninstaller.new(name: "demo", **opts).tap(&:run)
 
+  describe "an uninstall" do
+    before do
+      full_source("1.0.0")
+      run_installer
+    end
+
+    it "copies each edited hook, rule, plugin and script to the trash, with --force or without" do
+      [{}, { force: true }].each do |opts|
+        full_source("1.0.0")
+        run_installer unless provenance.installed?
+        installed_assets.each_value { |path| File.write(path, "edited #{File.basename(path)}\n") }
+        un = uninstall(**opts)
+
+        expect(File.exist?(provenance.bundle_dir)).to be false
+        saved = Dir.glob(File.join(un.trash_dir, "**", "*")).select { |f| File.file?(f) }.to_h { |f| [f.delete_prefix("#{un.trash_dir}/"), File.read(f)] }
+        expect(saved).to include(installed_assets.to_h { |label, path| [label, "edited #{File.basename(path)}\n"] })
+      end
+    end
+
+    it "copies nothing for unedited ones" do
+      expect(uninstall.trash_copy_line).to be_nil
+      expect(trash_files.keys).to eq(["a.md"])
+    end
+
+    it "names what it saved in chi bundle uninstall's output" do
+      File.write(installed_assets["scripts/s.sh"], "edited\n")
+      out = StringIO.new
+      code = Samagotchi::BundleCommand.new(%w[uninstall demo], stdin: StringIO.new, stdout: out, stderr: StringIO.new).run
+
+      expect(code).to eq(0)
+      expect(out.string).to match(%r{^Copied to the trash first: scripts/s\.sh \(.*/\.trash/demo-\d{8}-\d{6}\)$})
+    end
+
+    it "copies nothing when an edited memory blocks it" do
+      File.write(target, "edited\n")
+      File.write(installed_assets["hooks/h.rb"], "edited\n")
+
+      expect { uninstall }.to raise_error(Samagotchi::MemoryBundle::Uninstaller::UninstallError)
+      expect(trash_files).to be_empty
+      expect(File.read(installed_assets["hooks/h.rb"])).to eq("edited\n")
+    end
+
+    it "copies an edit from a bundle with no memories and no hooks, which goes by a shorter path" do
+      uninstall
+      write_source("1.0.0", {})
+      FileUtils.mkdir_p(File.join(source, "guardrails"))
+      File.write(File.join(source, "guardrails", "r.yml"), "# rule\n")
+      run_installer
+      File.write(installed_assets["guardrails/r.yml"], "edited\n")
+      un = uninstall
+
+      expect(File.read(File.join(un.trash_dir, "guardrails", "r.yml"))).to eq("edited\n")
+      expect(un.trash_copy_line).to include("guardrails/r.yml")
+    end
+
+    it "copies a dev install's links never, and leaves their source alone" do
+      uninstall
+      full_source("1.0.0")
+      run_installer(dev: true)
+      expect(File.symlink?(installed_assets["hooks/h.rb"])).to be true
+      un = uninstall
+
+      expect(un.trash_copy_line).to be_nil
+      expect(File.read(File.join(source, "hooks", "h.rb"))).to eq("# hook 1.0.0\n")
+    end
+  end
+
   describe "nested files in an asset folder" do
     before do
       full_source("1.0.0")
@@ -479,6 +546,14 @@ RSpec.describe "Kept edits in a bundle" do
 
       expect(trash_files).to eq(nested)
       expect(up.summary).to include("scripts/sub/mine.txt")
+    end
+
+    it "are copied before an uninstall removes them" do
+      FileUtils.mkdir_p(File.join(provenance.hooks_dir, "sub"))
+      File.write(File.join(provenance.hooks_dir, "sub", "mine.txt"), "my hooks\n")
+      uninstall
+
+      expect(trash_files).to include(nested.merge("hooks/sub/mine.txt" => "my hooks\n"))
     end
 
     it "leave out a nested link and what it points at" do

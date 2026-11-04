@@ -167,6 +167,7 @@ module Samagotchi
           result.removed << member
           result.trash[member] = [uninstaller.trashed_files, uninstaller.trash_dir] if uninstaller.trash_dir
           result.warnings.concat(uninstaller.warnings.map { |w| "#{member}: #{w}" })
+          result.warnings << "#{member}: #{uninstaller.trash_copy_line}" if uninstaller.trash_copy_line
         rescue Uninstaller::UninstallError => e
           result.blocked[member] = e.message
         end

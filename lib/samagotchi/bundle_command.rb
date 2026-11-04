@@ -396,6 +396,7 @@ module Samagotchi
         uninstaller.run
         @stdout.puts "Uninstalled bundle '#{bundle_name}'"
         puts_trashed(uninstaller.trashed_files, uninstaller.trash_dir)
+        @stdout.puts uninstaller.trash_copy_line if uninstaller.trash_copy_line
         @stdout.puts "Removed: #{uninstaller.removed_files.join(", ")}" unless uninstaller.removed_files.empty?
         hook_removed = uninstaller.removed_files.count { |f| f.start_with?("hooks/") }
         @stdout.puts "Hooks removed: #{hook_removed}" if hook_removed > 0

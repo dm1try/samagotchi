@@ -487,7 +487,9 @@ for a file another bundle installed.
   and the output names them and the dir:
   `Moved to the trash: notes.md (…/.trash/team-notes-20261003-120000)`. So
   does an upgrade's removal of a file the new version no longer ships. A
-  file you edited still needs `--force`. `chi bundle trash` lists the trash
+  file you edited still needs `--force`. A hook, rule, plugin or script you
+  edited isn't asked about: it is copied to the same dir (`Copied to the trash
+  first: scripts/x (…)`) and the bundle's own copy goes. `chi bundle trash` lists the trash
   (oldest first, with file count, size, and age); `--empty` deletes all
   folders, `--older-than DAYS` keeps only recent ones, and `--dry-run`
   previews. Hooks, rules and the plugin live in the bundle's own dir and

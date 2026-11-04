@@ -207,6 +207,21 @@ RSpec.describe Samagotchi::MemoryBundle::Profile do
     end
   end
 
+  describe ".uninstall of a member with an edit in its own folder" do
+    it "names what it copied to the trash" do
+      ship("a")
+      core = ship_meta("core", ["a"])
+      install(core)
+      mine = File.join(prov.new(name: "a").bundle_dir, "scripts", "mine.sh")
+      FileUtils.mkdir_p(File.dirname(mine))
+      File.write(mine, "mine\n")
+
+      result = described_class.uninstall("core", shipped_dir: shipped)
+
+      expect(result.warnings).to include(a_string_matching(%r{\Aa: Copied to the trash first: scripts/mine\.sh \(}))
+    end
+  end
+
   describe ".uninstall" do
     it "uninstalls the recorded members still installed, then the meta" do
       %w[a b c].each { |n| ship(n) }

@@ -18,9 +18,10 @@ module Samagotchi
         def self.not_installed(name) = new("Bundle '#{name}' is not installed")
       end
 
-      # removed_files: the bundle's own hooks/ and plugin/ files (deleted);
-      # trashed_files: its memory files, moved to trash_dir (Trash), nil
-      # when none was moved.
+      # removed_files: the bundle's own hooks/ and plugin/ files (deleted, an
+      # edited one copied to trash_dir first: trash_copy_line);
+      # trashed_files: its memory files, moved to trash_dir (Trash), which is
+      # nil when nothing went there.
       attr_reader :warnings, :removed_files, :trashed_files
 
       def initialize(name:, scope: nil, force: false)
@@ -35,6 +36,10 @@ module Samagotchi
 
       def trash_dir = @trash.dir
 
+      # What it copied to the trash from the bundle's own folder, said once
+      # (nil: nothing).
+      def trash_copy_line = @trash.copy_line
+
       def run
         provenance = Provenance.new(name: @name)
         bundle = provenance.record
@@ -47,7 +52,9 @@ module Samagotchi
         files = bundle.files
         hooks = bundle.hooks
         if files.empty? && hooks.empty?
-          # No file list, just remove provenance
+          # No file list, just remove provenance (rules, a plugin and scripts
+          # live there too)
+          save_edits(provenance, bundle)
           FileUtils.rm_rf(provenance.bundle_dir)
           return true
         end
@@ -72,6 +79,8 @@ module Samagotchi
         end
 
         raise UninstallError, "Uninstall blocked: #{blocked.join(", ")} has local edits (use --force)" if blocked.any?
+
+        save_edits(provenance, bundle)
 
         files.each do |file_key, _meta|
           file_key_str = file_key.to_s
@@ -126,6 +135,15 @@ module Samagotchi
       end
 
       private
+
+      # Copies each edited file of the bundle's own folder to the trash: the
+      # rm_rf below takes them, --force or not.
+      def save_edits(provenance, bundle)
+        @trash.copy_edits(provenance.hooks_dir, "hooks", bundle.hooks.transform_values(&:sha256))
+        @trash.copy_edits(provenance.guardrails_dir, "guardrails", bundle.guardrails)
+        @trash.copy_edits(provenance.plugin_dir, "plugin", bundle.plugin_shas)
+        @trash.copy_edits(provenance.scripts_dir, "scripts", bundle.scripts)
+      end
 
       # A kept shared file's index line names the bundle that still has it
       # (a model overlay has none: the caller skips it).
