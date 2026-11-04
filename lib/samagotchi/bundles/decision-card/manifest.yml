@@ -1,12 +1,12 @@
 ---
 name: decision-card
-version: 0.1.0
+version: 0.2.0
 scope: system
 description: "In a session with objectives, a long answer ending in a question gets a card: a short summary and the question, answered in the composer"
 trust_level: reviewed
 plugin:
   file: plugin.rb
-  sha256: sha256:84f0578f2d85e7fb0dbf4139274c560166180ffb17e14878ea41eb7fd3218fb8
+  sha256: sha256:e628d84ab9521f7e8e5f3bc69da97fe00e574082412ea24e9f3f1c6234ad31a9
 # ctx.objectives and ctx.turn_running? are new after 0.148.0
 requires_chi: ">= 0.148.0"
 requires_chi_next: "ctx.objectives, ctx.turn_running?"

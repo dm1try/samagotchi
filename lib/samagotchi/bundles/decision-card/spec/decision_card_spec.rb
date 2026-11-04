@@ -517,8 +517,71 @@ RSpec.describe "The decision-card plugin", :bundle do
     expect(bundle.ctx.messages.map { |message| message[:content] }).to eq(conversation.map { |message| message[:content] })
   end
 
-  it "declares no command or tool" do
+  it "declares /short and no tool" do
     bundle = plugin
-    expect(bundle.bundle_commands).to be_empty
+    expect(bundle.bundle_commands.map(&:name)).to eq(["/short"])
+  end
+
+  describe "/short" do
+    def run_short(bundle, messages: conversation)
+      bundle.set(messages: messages)
+      bundle.command("/short")
+    end
+
+    it "shows the last answer's short version in a card, replacing its waiting card; nothing else" do
+      bundle = plugin
+      bundle.model_answers << "It holds two coffees and asks about filters."
+      run_short(bundle)
+      expect(bundle.model_requests.size).to eq(1)
+      expect(bundle.cards.map { |c| c[:id] }.uniq.size).to eq(1)
+      expect(bundle.cards.last).to include(title: "Short version")
+      expect(bundle.cards.last[:body]).to start_with("It holds two coffees and asks about filters.\n\n")
+    end
+
+    it "says so when there is no answer yet, and asks no model" do
+      bundle = plugin
+      expect(run_short(bundle, messages: [{ role: "user", content: "hi" }])).to include("no answer")
+      expect(bundle.model_requests).to be_empty
+    end
+
+    it "refuses during a turn, in one line, and asks no model" do
+      bundle = plugin(running: true)
+      output = run_short(bundle)
+      expect(output).to include("after this turn")
+      expect(bundle.model_requests).to be_empty
+      expect(bundle.cards).to be_empty
+    end
+
+    it "ends its card saying it didn't finish when the request is cut off" do
+      bundle = plugin
+      bundle.model_answers << Samagotchi::Plugin::ModelCancelled.new("the request was cancelled")
+      run_short(bundle)
+      expect(bundle.cards.last[:body]).to start_with("No short version")
+    end
+
+    it "ends its card when the worker leaves with the request still out, once" do
+      bundle = plugin
+      asked = Queue.new
+      release = Queue.new
+      bundle.model_answers << lambda { |*|
+        asked << true
+        release.pop
+        "too late"
+      }
+      thread = Thread.new { run_short(bundle) }
+      asked.pop
+      bundle.shutdown
+      expect(bundle.cards.last[:body]).to include("the session stopped")
+      release << true
+      thread.join
+      expect(bundle.cards.map { |c| c[:body] }.join).not_to include("too late")
+    end
+
+    it "says a failed request in the card" do
+      bundle = plugin
+      bundle.model_answers << Samagotchi::Plugin::ModelError.new("the model is away")
+      run_short(bundle)
+      expect(bundle.cards.last[:body]).to include("the model is away")
+    end
   end
 end

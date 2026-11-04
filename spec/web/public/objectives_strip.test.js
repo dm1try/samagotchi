@@ -117,3 +117,43 @@ test("Not yet sends one message, from a row with a move or by id; a row with no 
   assert.deepEqual(sent, ["Not yet on O1 (Moved).", "Not yet on O2 (Not moved)."]);
   control.reset();
 });
+
+test("Save with a blank text takes the edit back, and the panel stays", async () => {
+  const { el, control, lines, pop } = strip();
+  control.seed(view());
+  el.querySelector(".obj-edit").click();
+  pop().querySelector('[data-row="O2"] .obj-row-text').click();
+  pop().querySelector('form[data-id="O2"] input').value = "   ";
+  pop().querySelector('form[data-id="O2"]').dispatchEvent(new window.Event("submit", { bubbles: true, cancelable: true }));
+  await settle();
+  assert.deepEqual(lines, []);
+  assert.equal(pop().querySelector('form[data-id="O2"]'), null);
+  assert.equal(pop().hidden, false);
+  control.reset();
+});
+
+test("Not yet in the list: two taps send one message, and a failure lets it be tapped again", async () => {
+  const sent = [];
+  let fail = false;
+  document.getElementById("objectivesPanel")?.remove();
+  const el = document.createElement("div");
+  document.body.appendChild(el);
+  const control = createObjectivesStrip({ el, session: () => "s1", failed: () => {}, sendMessage: async (text) => { sent.push(text); if (fail) throw new Error("no"); } });
+  control.seed({ pending: false, items: [{ id: "O1", text: "A", status: "active", move: { note: "n", evidence: "" } }] });
+  el.querySelector(".obj-edit").click();
+  const pop = document.getElementById("objectivesPanel");
+  const tap = () => pop.querySelector('[data-obj-act="notyet"]');
+  tap().click();
+  tap().click();
+  await settle();
+  assert.equal(sent.length, 1);
+  assert.equal(tap().disabled, true);
+  control.reset();
+  control.seed({ pending: false, items: [{ id: "O1", text: "A", status: "active", move: { note: "n", evidence: "" } }] });
+  el.querySelector(".obj-edit").click();
+  fail = true;
+  assert.equal(await control.notYet("O1"), false);
+  await settle();
+  assert.equal(tap().disabled, false);
+  control.reset();
+});

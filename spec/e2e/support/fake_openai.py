@@ -130,6 +130,9 @@ class H(http.server.BaseHTTPRequestHandler):
             until = os.path.join(DIR, it["hold_until"]); deadline = time.time() + 60
             while not os.path.exists(until) and time.time() < deadline: time.sleep(0.05)
         time.sleep(float(it.get("hold", 0)))
+        # A side request (ctx.ask_model) doesn't stream: the iteration's text, whole.
+        if not json.loads(body or b"{}").get("stream"):
+            return self._send(200, json.dumps({"choices": [{"message": {"role": "assistant", "content": it.get("text", "")}, "finish_reason": "stop"}]}))
         self.send_response(200); self.send_header("Content-Type", "text/event-stream"); self.send_header("Transfer-Encoding", "chunked"); self.end_headers()
         def w(obj):
             c = ("data: " + json.dumps(obj) + "\n\n").encode()

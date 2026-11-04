@@ -1261,6 +1261,9 @@ The card has no buttons, so it invents no options, and it is no "needs you": no 
 - **A shown card folds** to a line (`Asked: …`) when your next turn starts (a reminder's, a child's report's or a participant's turn leaves it open): in the web a row in the same place; the terminals
   print it as an update.
 - **A failed request** is only logged (`no_card` in the debug log): no card, no notice, no push.
+- **`/short`**: the last answer's short version on demand, in a card, by the same side request. The web's objectives offer it
+  under the newest long answer of a session with a list (Short version), between turns. Typed, it works in any session; during
+  a turn it refuses, since that turn's answer isn't there yet.
 - **Nothing else changes**: nothing enters the conversation, so the next request is byte for byte what it would be
   without the bundle. The card lives in the session's `cards.json`, as any card. `chi bundle uninstall decision-card` takes
   it all away (a member of a profile you uninstall stays out); a session you have open needs `chi sessions restart ID`.

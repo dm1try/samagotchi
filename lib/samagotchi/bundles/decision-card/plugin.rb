@@ -24,6 +24,10 @@
 #
 # A failed request shows nothing: it is only logged.
 #
+# /short is the same seam on demand: the last answer's short version, in a card,
+# for any long answer (the web's objectives offer it), its model and its limits
+# the card's. Nothing enters the conversation here either.
+#
 # Settings (config.yml, bundles: decision-card:):
 #   min_chars: 1200   how long an answer is long
 #   tail_chars: 300   how far from the end the question may be
@@ -54,6 +58,13 @@ class Plugin
   # An :info card with no actions and one line up to 160 characters is a notice row (docs/plugins.md, Cards).
   FOLDED_CHARS = 160
   # A question mark that ends a word (not a URL's), with the marks that may close it.
+  SHORT_TITLE = "Short version"
+  SHORT_CUT_OFF = "No short version: the session stopped before it came."
+  SHORT_BUSY = "a turn is running: /short works on its answer, after this turn"
+  # Under the answer. Two paragraphs also keep it a card: a short body alone is a collapsed notice row.
+  SHORT_NOTE = "_Asked on demand, not added to the conversation._"
+  SHORT_REQUEST = "Give the assistant's last answer above in two or three plain sentences, at most 60 words. Say what it " \
+                  "found or did, and anything it asks the user. Add nothing it doesn't say."
   QUESTION_MARK = /[?？؟](?=[\s"'”’»」』)*_\]…]|\.(?:\s|\z)|\z)/
   CODE = /```.*?(?:```|\z)|~~~.*?(?:~~~|\z)|`[^`\n]*`|^(?: {4}|\t)[^\n]*/m
   # What a side answer says for "nothing to decide", however it words it.
@@ -77,12 +88,20 @@ class Plugin
     @mutex = Mutex.new
     @ask = nil
     @shown = []
+    @shorts = {}
     @thread = nil
   end
 
   def register(chi)
     chi.on(:before_turn) { |event, ctx| turn_started(event, ctx) }
     chi.on(:after_turn) { |event, ctx| turn_ended(event, ctx) }
+    chi.service(:short_requests, eager: true) do |svc|
+      svc.on_stop { @mutex.synchronize { @shorts.keys }.each { |id| end_short(id, SHORT_CUT_OFF) } }
+      true
+    end
+    chi.command("/short", "the last answer's short version, in a card; nothing enters the conversation", anytime: true) do |_args, ctx|
+      short(ctx)
+    end
   end
 
   # The side request's thread is done. Nothing in chi waits for it: it is for specs.
@@ -107,6 +126,44 @@ class Plugin
 
   def fold(ctx, shown)
     ctx.card(id: shown.id, title: "Asked", body: cut(shown.question, FOLDED_CHARS))
+  end
+
+  # On the command's own thread. Not beside a turn: ctx.messages holds that turn so
+  # far, so its "last answer" would be interim text.
+  # @return [String, nil] what the command answers: only why there is no card
+  def short(ctx)
+    return SHORT_BUSY if ctx.turn_running?
+
+    messages = ctx.messages
+    answer = last_answer(messages) or return "no answer to shorten yet"
+
+    id = ctx.card(title: SHORT_TITLE, body: "…")
+    @mutex.synchronize { @shorts[id] = ctx }
+    reply = ctx.ask_model(messages: exchange(last_prompt(messages), answer), prompt: SHORT_REQUEST, system: SYSTEM,
+                          timeout: @timeout, max_tokens: @max_tokens, model: @model)
+    end_short(id, "#{reply.strip}\n\n#{SHORT_NOTE}")
+    nil
+  rescue StandardError => e
+    end_short(id, "No short version: #{e.message}") if id
+    nil
+  end
+
+  # Once per card, whichever comes first: its answer, or the worker leaving with
+  # the request still out (chi waits 3 s for a command, then this service stops,
+  # while a card can still reach the UIs). A worker killed outright runs neither:
+  # its "…" stays, a one-line row.
+  def end_short(id, body)
+    ctx = @mutex.synchronize { @shorts.delete(id) } or return
+
+    ctx.card(id: id, title: SHORT_TITLE, body: body)
+  end
+
+  # @return [String, nil] the newest non-empty answer's text
+  def last_answer(messages)
+    found = Array(messages).reverse_each.find do |message|
+      %w[model assistant].include?(field(message, :role).to_s) && !field(message, :content).to_s.strip.empty?
+    end
+    found && field(found, :content).to_s
   end
 
   def turn_ended(event, ctx)
