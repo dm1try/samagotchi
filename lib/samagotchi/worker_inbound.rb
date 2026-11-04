@@ -113,15 +113,18 @@ module Samagotchi
     # note the saved conversation already holds. A failed save keeps the
     # files too: the next pass claims them again, finds them in the
     # conversation and saves again. Not activity: a note alone neither
-    # starts a turn nor keeps an idle worker up.
+    # starts a turn nor keeps an idle worker up. Of the objectives notes in
+    # a batch only the newest goes in: each is a whole list, so the older
+    # ones (edits made during a turn) would only be sent for nothing.
     def absorb_notes
       files = SessionInbox.find_new_note_files(@session_dir)
       return if files.empty? || @stopped.call
 
       claimed = files.filter_map { |file| SessionInbox.claim_note_file(file) }
-      claimed.each do |file|
-        note = SessionInbox.read_note(file)
-        @engine.add_context_note(@session, note) if note
+      notes = claimed.filter_map { |file| SessionInbox.read_note(file) }
+      newest_list = notes.reverse.find { |note| note[:objectives] }
+      notes.each do |note|
+        @engine.add_context_note(@session, note) if !note[:objectives] || note.equal?(newest_list)
       end
       return unless save(:notes)
 

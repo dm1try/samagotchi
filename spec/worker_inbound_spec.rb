@@ -3,6 +3,7 @@
 require "spec_helper"
 require "tmpdir"
 
+require "samagotchi/objectives"
 require "samagotchi/worker_inbound"
 require "samagotchi/worker_wakes"
 require "samagotchi/context_absorber"
@@ -79,6 +80,41 @@ RSpec.describe Samagotchi::WorkerInbound do
 
       expect(saved.messages.map { |m| m[:content] }.join).to include("the build is red")
       expect(Samagotchi::SessionInbox.find_new_note_files(session_dir)).to be_empty
+    end
+
+    describe "objectives notes" do
+      let(:first_list) { Samagotchi::Objectives::List.new.add("Old aim") }
+      let(:second_list) { first_list.add("New aim") }
+
+      def queue_list(list)
+        Samagotchi::SessionInbox.write_note(session.id, text: list.text, source: Samagotchi::Objectives::SOURCE,
+                                                        objectives: list.to_payload, state_dir: tmpdir)
+      end
+
+      it "takes only the newest list in a batch, deletes them all and keeps the plain notes" do
+        queue_list(first_list)
+        queue_list(second_list)
+        Samagotchi::SessionInbox.write_note(session.id, text: "fyi", state_dir: tmpdir)
+
+        inbound.absorb_notes
+
+        lists = session.messages.select { |m| m[:objectives] }
+        expect(lists.size).to eq(1)
+        expect(Samagotchi::ContextNote.text_of(lists.first)).to eq("O1 Old aim\nO2 New aim")
+        expect(session.messages.map { |m| Samagotchi::ContextNote.text_of(m) }).to include("the build is red", "fyi")
+        expect(Samagotchi::SessionInbox.find_new_note_files(session_dir)).to be_empty
+        expect(Samagotchi::Objectives.build(saved.messages)).to eq(second_list)
+      end
+
+      it "skips a list a crashed worker's save already holds" do
+        path = queue_list(first_list)
+        claimed = Samagotchi::SessionInbox.claim_note_file(path)
+        session.messages = [Samagotchi::ContextNote.message(**Samagotchi::SessionInbox.read_note(claimed))]
+
+        inbound.absorb_notes
+
+        expect(session.messages.count { |m| m[:objectives] }).to eq(1)
+      end
     end
 
     it "keeps the claimed files when the save fails" do
