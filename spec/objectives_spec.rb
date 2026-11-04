@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require "fileutils"
 require "json"
 require "tmpdir"
 require "spec_helper"
@@ -14,6 +15,72 @@ RSpec.describe Samagotchi::Objectives do
   def note(id, list)
     Samagotchi::ContextNote.message(note_id: id, text: list.text, source: described_class::SOURCE,
                                     header: Samagotchi::ContextNote::OBJECTIVES_HEADER, objectives: list.to_payload)
+  end
+
+  describe ".changes" do
+    let(:before) { described_class::List.new.set([{ text: "A" }, { text: "B" }, { text: "C" }]).mark("O3", "done") }
+
+    it "says what the user did to each objective, in the list's order" do
+      after = before.mark("O1", "done").mark("O3", "active").reword("O2", "B2").add("D")
+      expect(described_class.changes(before, after).map(&:to_h)).to eq(
+        [{ id: "O1", kind: "done", text: "A" }, { id: "O2", kind: "reworded", text: "B2", was: "B" },
+         { id: "O3", kind: "reopened", text: "C" }, { id: "O4", kind: "added", text: "D" }]
+      )
+    end
+
+    it "reads a set's new list as drops and adds" do
+      after = before.set([{ text: "X" }])
+      expect(described_class.changes(before, after).map { |c| [c.id, c.kind] })
+        .to eq([%w[O1 dropped], %w[O2 dropped], %w[O3 dropped], %w[O4 added]])
+    end
+
+    it "has nothing to say for an unchanged list" do
+      expect(described_class.changes(before, before)).to eq([])
+    end
+  end
+
+  describe ".entry" do
+    it "is the note's list for the page, with what changed since the one before" do
+      after = list.mark("O1", "done")
+      entry = described_class.entry(after.to_payload, before: list)
+      expect(entry[:items].first).to include("id" => "O1", "status" => "done")
+      expect(entry[:changes]).to eq([{ id: "O1", kind: "done", text: "Two coffees, open the cart" }])
+    end
+
+    it "has no changes for a first list, and nil for what isn't a list" do
+      expect(described_class.entry(list.to_payload, before: described_class::List.new)).not_to have_key(:changes)
+      expect(described_class.entry({ "items" => "no" })).to be_nil
+    end
+  end
+
+  describe ".view" do
+    let(:state_dir) { Dir.mktmpdir("objectives-view") }
+    let(:id) { "11111111-1111-4111-8111-111111111111" }
+
+    before { FileUtils.mkdir_p(Samagotchi::Session.session_dir(id, state_dir: state_dir)) }
+    after { FileUtils.rm_rf(state_dir) }
+
+    it "is nil with no list, so the page shows nothing" do
+      expect(described_class.view(id, [{ role: "user", content: "hi" }], state_dir: state_dir)).to be_nil
+    end
+
+    it "is the fold, each item with its last move, not pending" do
+      moved = list.with(moves: { "O2" => described_class::Move.new(id: "O2", note: "held", evidence: "") })
+      expect(moved.to_view(pending: false)).to eq(
+        items: [{ "id" => "O1", "text" => "Two coffees, open the cart", "status" => "active" },
+                { "id" => "O2", "text" => "Stops before checkout", "status" => "active", "done_when" => "no order is placed",
+                  "move" => { "note" => "held", "evidence" => "" } }],
+        pending: false
+      )
+    end
+
+    it "takes an unabsorbed edit, and says it is pending" do
+      edited = list.mark("O1", "done")
+      Samagotchi::SessionInbox.write_note(id, text: edited.text, source: "objectives", objectives: edited.to_payload, state_dir: state_dir)
+      view = described_class.view(id, [note("n1", list)], state_dir: state_dir)
+      expect(view[:pending]).to be(true)
+      expect(view[:items].first["status"]).to eq("done")
+    end
   end
 
   describe ".build, moves" do

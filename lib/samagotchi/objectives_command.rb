@@ -103,6 +103,7 @@ module Samagotchi
                                                 state_dir: @engine.session_state_dir, objectives: list.to_payload)
       return ["refused: #{NoteDelivery::REPL_REFUSAL}", :error] unless result.delivered?
 
+      @engine.announce_objectives(session)
       ["#{lines_of(list)}\n#{BETWEEN_TURNS}", :ok]
     rescue SessionInbox::NoteRejected => e
       [e.message, :error]

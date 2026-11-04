@@ -7,6 +7,7 @@ require_relative "../context_note"
 require_relative "../image_store"
 require_relative "../message_parts"
 require_relative "../message_time"
+require_relative "../objectives"
 require_relative "../output_formatter"
 require_relative "../recap_store"
 require_relative "../ref"
@@ -95,11 +96,19 @@ module Samagotchi
         list = Array(msgs)
         # The outputs' ✂ marks (LLM context edits), by id, for the parts.
         marks = parts ? MessageParts.edit_marks(list) : {}
+        # The list before each objectives note, for what its entry says changed.
+        objectives = nil
         list.each_with_index do |m, index|
           role = (m[:role] || m["role"]).to_s
           content = (m[:content] || m["content"]).to_s
           if Samagotchi::ContextNote.note?(m)
             note = { role: "note", content: Samagotchi::ContextNote.text_of(m), label: Samagotchi::ContextNote.label_of(m), **time_of(m) }
+            payload = Samagotchi::ContextNote.fetch(m, :objectives)
+            entry = payload && Samagotchi::Objectives.entry(payload, before: objectives)
+            if entry
+              note[:objectives] = entry
+              objectives = Samagotchi::Objectives.from_payload(payload)
+            end
             # A context wake turn's note starts that turn (Steer.turn_prompt?):
             # the page opens the turn with it and pairs it with its record.
             if Samagotchi::Steer.turn_prompt?(m)

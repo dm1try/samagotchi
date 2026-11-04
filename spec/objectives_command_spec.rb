@@ -14,7 +14,11 @@ RSpec.describe Samagotchi::ObjectivesCommand do
     Samagotchi::Session.new_session(mode: "assist", model_name: "m", working_directory: tmpdir).tap { |s| s.save(state_dir: tmpdir) }
   end
   let(:session_dir) { Samagotchi::Session.session_dir(session.id, state_dir: tmpdir) }
-  let(:engine) { Struct.new(:session, :session_state_dir, :live_conversation).new(session, tmpdir) }
+  let(:engine) do
+    Struct.new(:session, :session_state_dir, :live_conversation, :announced) do
+      def announce_objectives(session) = (self.announced = session)
+    end.new(session, tmpdir)
+  end
   let(:command) { described_class.new(engine: engine) }
 
   before { locks << Samagotchi::OwnerLock.acquire(session_dir, kind: "worker") }

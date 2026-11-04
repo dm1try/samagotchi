@@ -50,6 +50,13 @@ module Samagotchi
       def line = evidence.empty? ? note : "#{note} (evidence: #{evidence})"
     end
 
+    # What the user did to one objective between two lists, for the entry's
+    # line: +kind+ added, done, dropped, reopened or reworded; +was+ a
+    # reworded one's old text. Display only, computed from the two lists.
+    Change = Data.define(:id, :kind, :text, :was) do
+      def to_h = { id: id, kind: kind, text: text, was: was }.compact
+    end
+
     # The list: its items and the number the next id takes (it only grows,
     # so a /objectives set doesn't reuse an id it dropped), and +moves+, the
     # latest Move per id, which #build folds from the tool calls (never in
@@ -83,6 +90,11 @@ module Samagotchi
         with(items: items.map { |item| item.id == id ? item.with(status: status) : item })
       end
 
+      # @return [List]
+      def reword(id, text, done_when: nil)
+        with(items: items.map { |item| item.id == id ? item.with(text: text, done_when: done_when) : item })
+      end
+
       # The note's text: what the model is shown (a dropped one isn't).
       def text
         lines = items.reject { |item| item.status == DROPPED }.map(&:line)
@@ -91,6 +103,19 @@ module Samagotchi
 
       # What the note carries, in one key style: strings, as a save leaves them.
       def to_payload = { "next" => next_number, "items" => items.map(&:to_payload) }
+
+      # What the page draws: the items, each with its last move, and whether
+      # the newest edit is still a file waiting to go in.
+      def to_view(pending:)
+        { items: items.map { |item| item_view(item) }, pending: pending }
+      end
+
+      private
+
+      def item_view(item)
+        move = moves[item.id]
+        move ? item.to_payload.merge("move" => { "note" => move.note, "evidence" => move.evidence }) : item.to_payload
+      end
     end
 
     module_function
@@ -139,6 +164,36 @@ module Samagotchi
       build(conversation, pending: pending_payload(Session.session_dir(session_id, state_dir: state_dir)), running: running)
     end
 
+    # The list as the page draws it (List#to_view), nil with no list: the page
+    # shows nothing then.
+    # @return [Hash, nil]
+    def view(session_id, conversation, state_dir:, running: nil)
+      pending = pending_payload(Session.session_dir(session_id, state_dir: state_dir))
+      list = build(conversation, pending: pending, running: running)
+      list.empty? ? nil : list.to_view(pending: !pending.nil?)
+    end
+
+    # One note's list for the page's entry: its items and, when there was a
+    # list before it, what changed.
+    # @param payload [Object] the note's :objectives
+    # @param before [List, nil] the list before this note
+    # @return [Hash, nil] nil for what isn't a list
+    def entry(payload, before: nil)
+      list = from_payload(payload) or return nil
+
+      fields = { items: list.items.map(&:to_payload) }
+      fields[:changes] = changes(before, list).map(&:to_h) if before && !before.empty?
+      fields
+    end
+
+    # What the user did between two lists, in the new list's order.
+    # @return [Array<Change>]
+    def changes(before, after)
+      (before.items.map(&:id) | after.items.map(&:id)).filter_map do |id|
+        change_of(before.find(id), after.find(id))
+      end
+    end
+
     # The newest objectives note waiting in +session_dir+'s notes/.
     # @return [Hash, nil] its payload
     def pending_payload(session_dir)
@@ -180,6 +235,18 @@ module Samagotchi
       Log.warn(:worker, "continue_objectives_failed", sid: previous.id, error: e.class.name, msg: e.message)
       nil
     end
+
+    def change_of(was, now)
+      return Change.new(id: was.id, kind: DROPPED, text: was.text, was: nil) unless now
+      return Change.new(id: now.id, kind: "added", text: now.text, was: nil) unless was
+
+      if now.text != was.text || now.done_when != was.done_when
+        Change.new(id: now.id, kind: "reworded", text: now.text, was: was.text)
+      elsif now.status != was.status
+        Change.new(id: now.id, kind: now.status == ACTIVE ? "reopened" : now.status, text: now.text, was: nil)
+      end
+    end
+    private_class_method :change_of
 
     def item_of(raw)
       return nil unless raw.is_a?(Hash)

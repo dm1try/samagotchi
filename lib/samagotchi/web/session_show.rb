@@ -6,6 +6,7 @@ require "uri"
 require_relative "../analytics_file"
 require_relative "../answer_refs"
 require_relative "../answer_tail"
+require_relative "../objectives"
 require_relative "../output_formatter"
 require_relative "../question_asked"
 require_relative "../guardrails/approvals"
@@ -91,8 +92,18 @@ module Samagotchi
           # The stream cursor `<seq>-<epoch>`: a later worker resets it
           # instead of taking the seq as its own. Only the snapshot has it.
           last_event_id: turn_snapshot && turn_snapshot["event_id"],
-          timing: timing
+          timing: timing,
+          **objectives_field(id, raw_messages)
         })
+      end
+
+      # The session's list (the page's strip), and no key with no list: a
+      # session without one reads as it always did. A snapshot's entries have
+      # string keys (paired_runs reads symbols).
+      def objectives_field(id, messages)
+        symbols = Array(messages).map { |message| message.is_a?(Hash) ? message.transform_keys(&:to_sym) : message }
+        view = Samagotchi::Objectives.view(id, symbols, state_dir: default_state_dir)
+        view ? { objectives: view } : {}
       end
 
       # A list in the worker's turn +snapshot+ (queued prompts, commands,

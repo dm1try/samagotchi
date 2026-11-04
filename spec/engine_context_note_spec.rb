@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "samagotchi/engine"
+require "samagotchi/objectives"
 require "samagotchi/session"
 require "support/test_kernel"
 
@@ -44,6 +45,17 @@ RSpec.describe Samagotchi::Engine, "context notes" do
       added = events.find { |e| e[:type] == :context_added }
       expect(added).to include(session_id: session.id, note_id: note[:note_id], source: "slack", label: "slack",
                                text: "deploy frozen", created_at: note[:created_at])
+    end
+
+    it "carries an objectives note's list and what changed, then announces the list" do
+      list = Samagotchi::Objectives::List.new.set([{ text: "A" }, { text: "B" }])
+      edited = list.mark("O1", "done")
+      engine.add_context_note(session, note.merge(note_id: "first", objectives: list.to_payload, source: "objectives"))
+      engine.add_context_note(session, note.merge(note_id: "second", objectives: edited.to_payload, source: "objectives"))
+      added = events.select { |e| e[:type] == :context_added }.last
+      expect(added[:objectives][:changes]).to eq([{ id: "O1", kind: "done", text: "A" }])
+      updated = events.select { |e| e[:type] == :objectives_updated }.last
+      expect(updated[:items].first).to include("id" => "O1", "status" => "done")
     end
 
     it "skips a note the conversation already holds (a re-read after a crash)" do

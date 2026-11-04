@@ -1,0 +1,19 @@
+/* The session's objectives (objectives_strip.js, objectives_entry.js). Colours are tokens.css's only. */
+#objectivesStrip{flex:none;padding:6px max(16px,calc((100% - 960px)/2));border-bottom:1px solid var(--border);background:color-mix(in srgb,var(--bg-panel) 60%,transparent)}
+#objectivesStrip[hidden]{display:none}
+.obj-strip{display:flex;align-items:center;gap:8px;min-height:32px}
+.obj-chips{display:flex;flex-wrap:wrap;gap:6px;min-width:0;flex:1}
+.obj-chip{display:inline-flex;align-items:baseline;gap:6px;max-width:280px;min-width:0;padding:3px 10px;border-radius:999px;border:1px solid var(--accent-border);background:var(--accent-bg);color:var(--text-2);font-size:13px;line-height:1.4}
+.obj-chip.done{background:transparent;border-color:var(--border-strong);color:var(--text-muted)}
+.obj-id{flex:none;font:700 12px ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--accent)}
+.obj-chip.done .obj-id{color:var(--text-muted)}
+.obj-text{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.obj-count{flex:none;color:var(--text-muted);font-size:12px;font-variant-numeric:tabular-nums}
+/* An objectives note in the conversation: pills for a list, a line for an edit. */
+.bubble.note.objectives-entry{display:flex;flex-wrap:wrap;align-items:center;gap:6px;background:transparent;border:0;padding:2px 0;white-space:normal}
+.obj-entry-label{color:var(--text-muted);font-size:12px;margin-right:2px}
+.obj-pill{display:inline-block;padding:2px 10px;border-radius:999px;border:1px solid var(--accent-border);background:var(--accent-bg);color:var(--text-2);font-size:13px;line-height:1.45}
+.obj-pill.done{background:transparent;border-color:var(--border-strong);color:var(--text-muted)}
+.bubble.note.objectives-entry.change{flex-wrap:nowrap;gap:10px;color:var(--text-muted);font-size:13px}
+.obj-rule{flex:1 1 16px;min-width:16px;height:1px;background:var(--border-strong)}
+.obj-change{min-width:0;text-align:center;overflow-wrap:anywhere}

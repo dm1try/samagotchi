@@ -14,6 +14,7 @@
 <link rel="stylesheet" href="/assets/annotate_bar.css">
 <link rel="stylesheet" href="/assets/composer.css">
 <link rel="stylesheet" href="/assets/forms.css">
+<link rel="stylesheet" href="/assets/objectives.css">
 <style>
 /* Icon masks shared by the phone info bar and the all view's cards (the stroke only shapes the mask; the icon takes currentColor); the image icon is composer.css's. */
 :root{--icon-archive:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='2' y='2.75' width='12' height='3.5' rx='1'/%3E%3Cpath d='M3.25 6.25v6a1 1 0 0 0 1 1h7.5a1 1 0 0 0 1-1v-6M6.5 9h3'/%3E%3C/svg%3E");--icon-unarchive:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='2' y='2.75' width='12' height='3.5' rx='1'/%3E%3Cpath d='M3.25 6.25v6a1 1 0 0 0 1 1h7.5a1 1 0 0 0 1-1v-6M8 11.5V8.25M6.5 9.75 8 8.25l1.5 1.5'/%3E%3C/svg%3E")}
@@ -1788,6 +1789,7 @@ a{color:var(--accent)}
     <div id="stage">
       <div id="markdownWarning" class="markdown-warning" hidden></div>
       <div id="markdownTip" class="markdown-tip" hidden><span class="markdown-tip-text"></span><button type="button" class="markdown-tip-close" aria-label="Dismiss tip" title="Dismiss tip">×</button></div>
+      <div id="objectivesStrip" hidden></div>
       <div id="history"></div>
       <div id="empty"></div>
       <div id="notice" role="status" hidden></div>

@@ -956,7 +956,7 @@ module Samagotchi
     ANNOUNCEABLE_EVENTS = %i[turn_enqueued turn_dequeued input_merged prompt_restored continue_offered continue_resolved
                              command_queued command_ran context_added card hook_notice guardrail_warning
                              plugin_init_started plugin_init_finished working_set_updated participants_changed
-                             verdict_recorded].freeze
+                             verdict_recorded objectives_updated].freeze
 
     # Put a transport-level event into the ordered event log. Unlike turn
     # events it reaches only persistent observers (no turn sink, no memory
@@ -985,6 +985,25 @@ module Samagotchi
       return unless session
 
       synchronize_events { emit_working_set(nil, session, session.messages) }
+    end
+
+    # The session's objectives as the page draws them (Objectives.view), when
+    # that differs from the last announced: after an edit (its file written,
+    # pending), once a list note is in, at a turn's end (its moves) and after
+    # a rollback. A session with no list announces nothing. It only informs:
+    # a failure is logged, never the turn's.
+    def announce_objectives(session = @session)
+      return unless session
+
+      synchronize_events do
+        view = Objectives.view(session.id, session.messages, state_dir: session_state_dir, running: live_conversation&.dup)
+        next if view.nil? || view == @objectives_announced
+
+        @objectives_announced = view
+        announce({ type: :objectives_updated, session_id: session.id, **view })
+      end
+    rescue StandardError => e
+      Log.warn(:engine, "objectives_announce_failed", error: e.class.name, msg: e.message)
     end
 
     # The strategy the working set is built under now, as LLMContextView
@@ -1018,11 +1037,13 @@ module Samagotchi
         next nil if Array(session.messages).any? { |m| m[:note_id] == note[:note_id] }
 
         message = ContextNote.message(**note)
+        entry = note[:objectives] && Objectives.entry(note[:objectives], before: Objectives.build(session.messages))
         replace_session_messages(session, Array(session.messages) + [message])
         announce({ type: :context_added, session_id: session.id, note_id: note[:note_id], source: note[:source],
                    label: ContextNote.label_of(message), from_session: note[:from_session],
                    from_cwd: note[:from_cwd], text: note[:text], context_source: note[:context_source],
-                   created_at: note[:created_at] }.compact)
+                   created_at: note[:created_at], objectives: entry }.compact)
+        announce_objectives(session) if entry
         message
       end
     end
@@ -1677,6 +1698,7 @@ module Samagotchi
         event[:verdict] = verdict if verdict
         event[:revises] = revises.to_h if revises
         emit_working_set(turn.on_event, turn.session, turn.session.messages)
+        announce_objectives(turn.session)
         turn.session.status = Session::STATUS_IDLE
         record_last_turn(turn.session, outcome, seconds, turn.origin, event, limit: exhausted ? turn.limit : nil)
         emit_event(turn.on_event, turn.tag(event))
@@ -2889,7 +2911,10 @@ module Samagotchi
       raise ArgumentError, "no current session" unless @session
 
       messages = replace_session_messages(@session, clone_messages(checkpoint))
-      announce_working_set unless turn_running?
+      unless turn_running?
+        announce_working_set
+        announce_objectives
+      end
       messages
     end
 

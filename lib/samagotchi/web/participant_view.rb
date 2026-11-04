@@ -82,7 +82,7 @@ module Samagotchi
         after_generation after_tool_call after_turn answer_display before_generation before_tool_call before_turn
         card command_output command_queued command_ran context_added context_status empty_answer_retry
         generation_cancelled generation_completed generation_progress generation_started guardrail_warning hook_notice
-        llm_context_edited merged_input participants_changed pending_input_merged plugin_init_finished
+        llm_context_edited merged_input objectives_updated participants_changed pending_input_merged plugin_init_finished
         plugin_init_started plugin_init_wait prompt_restored question question_relay reasoning_history_refused
         recap_ready reminder_injected sampling_refused session_end session_start side_usage steer_cut thinking_dropped
         thinking_refused tool_dispatch_completed tool_dispatch_started used_memories_updated working_set_updated

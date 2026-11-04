@@ -1203,6 +1203,9 @@ module Samagotchi
         save_or_log(:command) { save_session } unless Array(result.changed).empty?
         announce_command(command, status: result.status.to_s, output: result.output, changed: Array(result.changed),
                                   anytime: true, confirm: result.confirm)
+        # It may have left a note (/objectives): an idle loop takes it now, not
+        # at the fallback tick. Harmless otherwise: one more pass.
+        @waker.wake
       rescue StandardError => e
         Log.warn(:worker, "anytime_command_failed", line: command.line, error: e.class.name, msg: e.message)
       end
