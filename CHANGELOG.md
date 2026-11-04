@@ -7,6 +7,8 @@ and commands may change between minor versions. How releases are made:
 [docs/releasing.md](docs/releasing.md).
 ## [Unreleased]
 
+## [0.148.0] - 2026-11-04
+
 ### Added
 
 - `chi guardrails rule <id>` prints exactly `asks` when that rule votes `ask` on this machine now, and says why not otherwise. [docs/cli.md](docs/cli.md)
@@ -5609,7 +5611,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.147.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.148.0...HEAD
+[0.148.0]: https://github.com/dm1try/samagotchi/compare/v0.147.0...v0.148.0
 [0.147.0]: https://github.com/dm1try/samagotchi/compare/v0.146.0...v0.147.0
 [0.146.0]: https://github.com/dm1try/samagotchi/compare/v0.145.0...v0.146.0
 [0.145.0]: https://github.com/dm1try/samagotchi/compare/v0.144.0...v0.145.0
