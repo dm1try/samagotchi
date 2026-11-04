@@ -8,7 +8,6 @@ plugin:
   file: plugin.rb
   sha256: sha256:e628d84ab9521f7e8e5f3bc69da97fe00e574082412ea24e9f3f1c6234ad31a9
 # ctx.objectives and ctx.turn_running? are new after 0.148.0
-requires_chi: ">= 0.148.0"
-requires_chi_next: "ctx.objectives, ctx.turn_running?"
+requires_chi: ">= 0.149.0"
 # config.yml bundles: decision-card: (another key warns; an older chi ignores this)
 settings: [min_chars, tail_chars, model, timeout, max_tokens]

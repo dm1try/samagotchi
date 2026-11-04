@@ -7,6 +7,8 @@ and commands may change between minor versions. How releases are made:
 [docs/releasing.md](docs/releasing.md).
 ## [Unreleased]
 
+## [0.149.0] - 2026-11-04
+
 ### Added
 
 - `/objectives` gives a session a short list of what it is to achieve (`set A | B`, `add`, `done`, `drop`), kept in the conversation as a note; a continue carries it, and a session with no list gets no note and no prompt line. A first version to try. [docs/sessions.md](docs/sessions.md#objectives)
@@ -15,6 +17,8 @@ and commands may change between minor versions. How releases are made:
 - The web shows a session's objectives in the conversation: a strip above it with the current list, each list note drawn as pills or a line of what you changed, and the model's moves as chips above an answer. A tap edits the list with no message or turn (`/objectives edit ID TEXT` is new, and the terminals keep the command), Not yet tells the agent in a message, and on a phone it is one line and a bottom sheet. The `objectives` tool gains `propose`: the model suggests a change and you apply it from a card; it never changes the list by itself. `decision-card`'s `/short` gives a long answer's short version on demand. A session with no list shows nothing new. The tool's schema changed, so the prompt cache misses once. [docs/sessions.md](docs/sessions.md#objectives)
 - Check this (`/objectives check O2`, or the button in the web's list): on request, one side request reads an objective's latest move against what the session's tools returned and people said, and reports a verdict with reasons in a card. Information only: no status changes and nothing enters the conversation. `objectives.check_model` picks a cheaper model, whose host then gets up to 24,000 characters of tool output, known secret shapes redacted.
 - `objectives.system_one: audit` (off by default) saves a System 1 yes/no per active objective on incoming messages and finished answers, for `chi judgments`; nothing acts on it. Its text goes to the System 1 host.
+
+Update with `chi update` (coordinator 0.8.0, decision-card 0.2.0, dev profile 0.7.5). `chi update` installs decision-card for anyone on the dev profile; it does nothing in a session with no objectives.
 
 ## [0.148.0] - 2026-11-04
 
@@ -5620,7 +5624,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.148.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.149.0...HEAD
+[0.149.0]: https://github.com/dm1try/samagotchi/compare/v0.148.0...v0.149.0
 [0.148.0]: https://github.com/dm1try/samagotchi/compare/v0.147.0...v0.148.0
 [0.147.0]: https://github.com/dm1try/samagotchi/compare/v0.146.0...v0.147.0
 [0.146.0]: https://github.com/dm1try/samagotchi/compare/v0.145.0...v0.146.0

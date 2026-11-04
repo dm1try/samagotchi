@@ -55,8 +55,8 @@ module Samagotchi
         "ctx.ask_user(effects:)" => "0.86.0", "chi.toolkit(description:)" => "0.122.0", "ctx.review" => "0.140.0",
         "ctx.context.propose" => "0.140.0", "ctx.context.candidates" => "0.140.0", "ctx.context.withdraw" => "0.140.0",
         "ctx.continues" => "0.141.0", "ctx.context.left_behind" => "0.141.0", "ctx.context.attach(movable:)" => "0.141.0",
-        "ctx.session_dir" => "0.143.0", "ctx.session_dir(create:)" => "0.144.0"
-        # Unreleased (moved up, with its version, at the release: docs/releasing.md): "ctx.objectives", "ctx.turn_running?".
+        "ctx.session_dir" => "0.143.0", "ctx.session_dir(create:)" => "0.144.0",
+        "ctx.objectives" => "0.149.0", "ctx.turn_running?" => "0.149.0"
       }.freeze
 
       # @param bundle [String]
