@@ -69,3 +69,6 @@ form.obj-row{align-items:center}
 .obj-move-line{display:flex;align-items:baseline;gap:8px;color:var(--text-2);flex-wrap:wrap}
 .obj-move-note{min-width:0;flex:1 1 200px;overflow-wrap:anywhere}
 .obj-concerns .obj-pill{margin-right:4px}
+.obj-notyet{flex:none}
+.obj-moves:not(.newest) .obj-notyet{display:none}
+@media (pointer:coarse){.obj-notyet{min-height:36px}}

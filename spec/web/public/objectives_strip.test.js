@@ -97,3 +97,23 @@ test("the first active objective is the phone's one chip", () => {
   assert.deepEqual([...el.querySelectorAll(".obj-chip.first .obj-id")].map((n) => n.textContent), ["O2"]);
   control.reset();
 });
+
+test("Not yet sends one message, from a row with a move or by id; a row with no move has none", async () => {
+  const sent = [];
+  document.getElementById("objectivesPanel")?.remove();
+  const el = document.createElement("div");
+  document.body.appendChild(el);
+  const control = createObjectivesStrip({ el, session: () => "s1", sendMessage: async (text) => { sent.push(text); } });
+  control.seed({ pending: false, items: [
+    { id: "O1", text: "Moved", status: "active", move: { note: "n", evidence: "" } }, { id: "O2", text: "Not moved", status: "active" },
+  ] });
+  el.querySelector(".obj-edit").click();
+  const pop = document.getElementById("objectivesPanel");
+  assert.equal(pop.querySelector('[data-row="O2"] [data-obj-act="notyet"]'), null);
+  pop.querySelector('[data-row="O1"] [data-obj-act="notyet"]').click();
+  control.notYet("O2");
+  control.notYet("O9");
+  await settle();
+  assert.deepEqual(sent, ["Not yet on O1 (Moved).", "Not yet on O2 (Not moved)."]);
+  control.reset();
+});
