@@ -43,3 +43,23 @@ form.obj-row{align-items:center}
 .obj-input{flex:1;min-width:0;padding:5px 8px;border-radius:6px;border:1px solid var(--border-strong);background:var(--bg-inset);color:var(--text);font-size:14px}
 .obj-add{display:flex;gap:6px;align-items:center}
 .obj-note{color:var(--text-muted);font-size:12px}
+/* A phone: one line, the objective being worked on and how far along, and the whole list a tap away in a bottom sheet (chip_popover.js), never pushing the conversation down. */
+@media(max-width:600px){
+  #objectivesStrip{padding:4px 12px}
+  .obj-strip{min-height:36px}
+  .obj-chips{flex-wrap:nowrap}
+  .obj-chip:not(.first){display:none}
+  .obj-chip.first{flex:1;max-width:none;min-height:36px;align-items:center;border-radius:10px}
+  .obj-edit{padding:8px;min-height:36px}
+  .obj-waiting{max-width:90px;font-size:11px;line-height:1.2}
+  .obj-pill{font-size:12.5px}
+  .bubble.note.objectives-entry.change{font-size:12.5px;gap:6px}
+}
+.obj-panel.sheet{font-size:15px;max-height:85dvh}
+.obj-panel.sheet .obj-row{align-items:center;padding:6px 0}
+.obj-panel.sheet .obj-row-text{font-size:15px;min-height:32px}
+.obj-panel.sheet .obj-row-acts{gap:6px}
+.obj-panel.sheet .obj-act{min-height:44px;min-width:56px;padding:0 8px;font-size:14px;border-radius:10px}
+.obj-panel.sheet .obj-input{min-height:44px;font-size:16px;border-radius:10px}
+.obj-panel.sheet .obj-note{font-size:12px}
+@media (prefers-reduced-motion:reduce){.obj-chip,.obj-act{transition:none}}

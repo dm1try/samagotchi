@@ -90,3 +90,10 @@ test("a waiting edit shows on the strip and in the list; a refused post reaches 
   assert.deepEqual(errors, ["no"]);
   control.reset();
 });
+
+test("the first active objective is the phone's one chip", () => {
+  const { el, control } = strip();
+  control.seed(view());
+  assert.deepEqual([...el.querySelectorAll(".obj-chip.first .obj-id")].map((n) => n.textContent), ["O2"]);
+  control.reset();
+});
