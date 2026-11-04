@@ -529,10 +529,12 @@ for a file another bundle installed.
   this way is retried at the same version: the system bundle's at each chi start
   and on `chi update`, another shipped bundle's on `chi update`, and any other
   bundle's on `chi bundle upgrade`.
-- **A file marked by an older chi** merges only if the bundle takes out or rewords
-  no line the file still holds. Otherwise it stays behind until you resolve it by
-  hand, with `--agent` or with `--force`, and the retry can't fix that: the base
-  that mark recorded may be your own text, and chi can't tell. Kept edits
+- **A file marked by an older chi** merges normally when its recorded base is a
+  version chi shipped, which chi checks against the samagotchi gems still
+  installed. Otherwise that base may be your own text, so the file merges only if
+  the bundle takes out or rewords no line it still holds. If it does, the file
+  stays behind until you resolve it by hand, with `--agent` or with `--force`, and
+  the retry can't fix that. Kept edits
   exit 2; `chi bundle diff NAME FILE` shows the base, and `--force` takes
   the bundle's version, copying a file that differs to the bundle trash first
   (the output says `Copied to the trash first: …`).

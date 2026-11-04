@@ -29,7 +29,8 @@ module Samagotchi
     #   - noop, keep (a merge that adds nothing too): the file has nothing left
     #     to miss, so the mark goes;
     #   - conflict: nothing changes but that digest, and nothing is said;
-    #   - fast_forward (this chi's mark only), install: the next upgrade's
+    #   - fast_forward (one Merger::Upgrade#outcome lets go ahead), install: the
+    #     next upgrade's
     #     (save_marked_file, a restore);
     #   - one it can't read or replace: left as it is, and a note says why.
     #

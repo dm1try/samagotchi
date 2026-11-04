@@ -409,9 +409,10 @@ module Samagotchi
         @upgrade_view ||= Merger::Upgrade.new(provenance: @provenance, target_dir: @target_dir, source_dir: @bundle_dir)
       end
 
-      # A file with a mark this chi made that equals its base: the user put it
-      # back by hand, so the update goes ahead, with a spare copy, and says so.
-      # (An older chi's mark never gets here: Merger::Upgrade#outcome.)
+      # A marked file that equals its base, and the update goes ahead: the base
+      # is known to be real (this chi's mark, or ShippedHistory), or no line of the
+      # file goes. A copy is kept, and it says so. (Merger::Upgrade#outcome stops
+      # an older chi's mark otherwise.)
       def save_marked_file(file_key, target_path)
         return unless @existing.files.dig(file_key, :conflict)
 

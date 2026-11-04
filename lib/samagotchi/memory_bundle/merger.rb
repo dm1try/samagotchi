@@ -8,6 +8,7 @@ module Samagotchi
   module MemoryBundle
     # Most processes that load this never merge.
     autoload :TextMerge, File.expand_path("text_merge", __dir__)
+    autoload :ShippedHistory, File.expand_path("shipped_history", __dir__)
 
     # 3-way merge helper for bundle upgrades.
     #
@@ -71,19 +72,25 @@ module Samagotchi
       Upgrade = Data.define(:provenance, :target_dir, :source_dir) do
         # What the upgrade does to the file: .classify, then, where both sides
         # changed it, the text merge (git runs here, once per call). A mark from
-        # an older chi never fast-forwards: see .merge_outcome.
+        # an older chi fast-forwards only if no line of the file goes or its base
+        # is proved: see .merge_outcome.
         # @return [Outcome]
         def outcome(file_key)
           classified = classified(file_key)
           return classified unless classified.conflict? || classified == FAST_FORWARD
 
           legacy = InstalledBundle.legacy_mark?(provenance.record&.files&.fetch(file_key, nil))
-          return classified if classified == FAST_FORWARD && !legacy
-          # The guard's own case at its plainest: the file is the base, which
-          # may be the user's text, and all of it would go.
-          return CONFLICT.with(merge: TextMerge.failed(LEGACY_BASE)) if classified == FAST_FORWARD
+          # Asked only when the guard would otherwise fire.
+          unproved = -> { legacy && !ShippedHistory.shipped?(provenance.name, file_key, paths(file_key)[:base]) }
+          return Merger.merge_outcome(paths(file_key), unproved: unproved) if classified.conflict?
 
-          Merger.merge_outcome(paths(file_key), legacy: legacy)
+          # The guard's own case at its plainest: the file is the base, which
+          # may be the user's text. One that only gains lines loses nothing, and
+          # save_marked_file keeps a copy.
+          sides = paths(file_key)
+          return classified unless legacy && Merger.removes_lines?(File.binread(sides[:current]), File.binread(sides[:incoming]))
+
+          unproved.call ? CONFLICT.with(merge: TextMerge.failed(LEGACY_BASE)) : classified
         end
 
         # .classify alone: no merge is tried.
@@ -149,17 +156,19 @@ module Samagotchi
       # Both sides changed the file: the text merge's answer as an Outcome. No
       # base means no merge: the file stays as a conflict.
       #
-      # legacy: the file's mark may be 0.149's, whose base can be the user's own
+      # unproved: the file's mark may be 0.149's, whose base can be the user's own
       # text. Merging against it reads the bundle's text as undoing that text,
       # with no conflict to show for it, so a merge that would take any line out
-      # of the file stays a conflict, and so does a fast-forward (Upgrade#outcome).
-      # The price: a base that really is the bundle's old text looks the same, so
-      # such a file stays behind too. A mark from this chi has a real base, and
-      # a merge there may take what the bundle removed.
+      # of the file stays a conflict, and so does such a fast-forward (Upgrade#outcome).
+      # A base some installed chi shipped can't be the user's text
+      # (ShippedHistory), and a mark from this chi has a real base: a merge there
+      # may take what the bundle removed. With no such gem left, a real base
+      # looks the same, and the file stays behind.
       # @param sides [Hash{Symbol => String}] Upgrade#paths
-      # @param legacy [Boolean] InstalledBundle.legacy_mark?
+      # @param unproved [#call] whether the base may be the user's text; called
+      #   only when the merge would take a line out
       # @return [Outcome]
-      def self.merge_outcome(sides, legacy: false)
+      def self.merge_outcome(sides, unproved: -> { false })
         unless sides[:base] && File.exist?(sides[:base])
           return CONFLICT.with(merge: TextMerge.failed(TextMerge::NO_BASE))
         end
@@ -168,7 +177,7 @@ module Samagotchi
         result = TextMerge.merge(base: File.binread(sides[:base]), ours: ours, theirs: File.binread(sides[:incoming]))
         return CONFLICT.with(merge: result) unless result.clean?
         return ALREADY_MERGED if result.text.b == ours.b
-        return CONFLICT.with(merge: TextMerge.failed(LEGACY_BASE)) if legacy && removes_lines?(ours, result.text)
+        return CONFLICT.with(merge: TextMerge.failed(LEGACY_BASE)) if removes_lines?(ours, result.text) && unproved.call
 
         Outcome.new(status: :merged, base: :incoming, merge: result, current_sha: Digest::SHA256.hexdigest(ours))
       end

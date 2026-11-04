@@ -314,9 +314,10 @@ done
   bundle's, with a copy of yours in the bundle trash first). A later run retries
   a file kept that way at the same version, and its row reads `0.8.0  merged
   (FILE)` when it merges; a real conflict changes nothing and says nothing. A file marked by an older chi
-  merges only if the bundle takes out or rewords no line it still holds; otherwise
-  it stays behind until resolved by hand, with `--agent` or with `--force`, and the
-  retry can't fix that. Hooks, rules and the plugin are replaced; an edited one didn't
+  merges normally when its recorded base is a version chi shipped (an installed
+  samagotchi gem still has it). Otherwise it merges only if the bundle takes out or
+  rewords no line it still holds, and if it does, it stays behind until resolved by
+  hand, with `--agent` or with `--force`, and the retry can't fix that. Hooks, rules and the plugin are replaced; an edited one didn't
   load anyway (its sha no longer matched), the row says it was replaced, and
   a copy goes to the bundle trash first (`chi bundle trash`; `hooks/x`,
   `guardrails/x`, `plugin/x`, `scripts/x` inside the dir).

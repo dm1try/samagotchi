@@ -37,8 +37,9 @@ module Samagotchi
         changed). A memory file you edited takes the update in a text merge
         (the old file goes to the bundle trash), or stays as it is when the
         merge finds a real conflict, and the table says which; each run
-        retries a file left behind, though one an older chi marked merges only
-        if the bundle takes out or rewords no line it still holds. Nothing is
+        retries a file left behind, though one an older chi marked, with a base
+        no installed chi shipped, merges only if the bundle takes out or rewords
+        no line it still holds. Nothing is
         installed that isn't already, and old gem versions stay. The bundles chi doesn't ship are
         never changed: the new chi checks them and adds a row per warning or
         error (these don't fail the update).

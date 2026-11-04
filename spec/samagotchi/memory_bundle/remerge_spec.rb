@@ -299,6 +299,8 @@ RSpec.describe Samagotchi::MemoryBundle::Remerge do
     let(:shipped) { doc }
     let(:why) { "no merge possible (#{Samagotchi::MemoryBundle::Merger::LEGACY_BASE})" }
 
+    before { allow(Gem).to receive(:path).and_return([]) }
+
     # What 0.149 left, at 2.0.0, and one more edit since.
     def legacy_mark(version: "2.0.0")
       write_source("1.0.0", doc)
@@ -393,6 +395,30 @@ RSpec.describe Samagotchi::MemoryBundle::Remerge do
       end
     end
 
+    # Nothing of the file goes, so the guard's reason doesn't hold.
+    it "lets a file equal to its base take an update that only adds, a spare copy in the trash, and says so" do
+      write_source("1.0.0", doc)
+      install
+      old_mark
+      added = doc(tail: "the tail\nand a new line")
+      write_source("2.0.0", added)
+      up = install(upgrade: true)
+
+      expect(File.read(target)).to eq(added)
+      expect(trash_files).to eq("a.md" => doc)
+      expect(up.warnings).to include(a_string_including("your copy is in the trash"))
+      expect(entry).not_to include(:conflict, :legacy_base, :incoming_sha)
+      expect(base).to eq(added)
+    end
+
+    it "doesn't count a line the bundle kept but moved as taken out, and counts a lost repeat" do
+      merger = Samagotchi::MemoryBundle::Merger
+      expect(merger.removes_lines?("a\nb\n", "b\nnew\na\n")).to be false
+      expect(merger.removes_lines?("a\n\nb\n", "a\nb\n")).to be true
+      expect(merger.removes_lines?("a\na\n", "a\n")).to be true
+      expect(merger.removes_lines?("a", "a\n")).to be false
+    end
+
     # What the guard costs: it can't tell this base from the user's text.
     it "leaves a file that really is the bundle's old text behind, unchanged, until --force" do
       write_source("1.0.0", doc)
@@ -470,6 +496,147 @@ RSpec.describe Samagotchi::MemoryBundle::Remerge do
       expect(remerge.merged).to eq(["a.md"])
       expect(File.read(target)).to eq(doc(intro: "my intro", tail: "my tail"))
       expect(File.read(target)).not_to include("the tail")
+    end
+  end
+
+  # All the known marks have a base some chi shipped: provably not the user's text.
+  describe "a mark from an older chi whose base is a version chi shipped" do
+    let(:gems) { File.join(tmpdir, "gems") }
+    let(:edited) { doc(intro: "my intro") }
+    let(:reworded) { doc(tail: "tail two") }
+
+    def ship_in_gem(version, text, name: "demo", dir: "some-old-dir", file: "a.md", manifest: nil)
+      bundle = File.join(gems, "gems", "samagotchi-#{version}", "lib", "samagotchi", "bundles", dir)
+      FileUtils.mkdir_p(bundle)
+      File.write(File.join(bundle, file), text)
+      File.write(File.join(bundle, "manifest.yml"), manifest || YAML.dump({ "name" => name, "version" => "0.1.0", "scope" => "system" }))
+      bundle
+    end
+
+    def old_marked(mine)
+      write_source("1.0.0", doc)
+      install
+      File.write(target, mine)
+      old_mark
+    end
+
+    before { allow(Gem).to receive(:path).and_return([gems]) }
+
+    it "merges a line the bundle reworded, on a retry, and settles: base incoming, mark and flag gone" do
+      ship_in_gem("0.1.0", "another bundle's older text\n")
+      ship_in_gem("0.2.0", doc)
+      old_marked(edited)
+      write_source("1.0.0", reworded)
+      result = remerge
+
+      expect(result.merged).to eq(["a.md"])
+      expect(File.read(target)).to eq(doc(intro: "my intro", tail: "tail two"))
+      expect(base).to eq(reworded)
+      expect(entry).not_to include(:conflict, :legacy_base, :incoming_sha)
+    end
+
+    it "merges on a new version's upgrade, after a stamp too" do
+      ship_in_gem("0.2.0", doc)
+      old_marked(edited)
+      provenance.stamp_incoming("a.md" => "older-text")
+      write_source("2.0.0", reworded)
+      up = install(upgrade: true)
+
+      expect(up.merged_files).to eq(["a.md"])
+      expect(entry).not_to include(:conflict, :legacy_base, :incoming_sha)
+    end
+
+    it "lets a file equal to that base take the update, a spare copy in the trash" do
+      ship_in_gem("0.2.0", doc)
+      old_marked(doc)
+      write_source("2.0.0", reworded)
+      up = install(upgrade: true)
+
+      expect(File.read(target)).to eq(reworded)
+      expect(trash_files).to eq("a.md" => doc)
+      expect(up.warnings).to include(a_string_including("your copy is in the trash"))
+      expect(entry).not_to include(:conflict, :legacy_base)
+    end
+
+    it "keeps a real conflict a mark, its file and base untouched" do
+      ship_in_gem("0.2.0", doc)
+      old_marked(doc(tail: "my tail"))
+      write_source("1.0.0", reworded)
+
+      expect(remerge).to have_attributes(merged: [], stamped: ["a.md"])
+      expect(File.read(target)).to eq(doc(tail: "my tail"))
+      expect(base).to eq(doc)
+      expect(entry).to include(conflict: true, legacy_base: true)
+    end
+
+    context "with no proof" do
+      def expect_blocked
+        old_marked(edited)
+        write_source("1.0.0", reworded)
+        expect(remerge.merged).to eq([])
+        expect(File.read(target)).to eq(edited)
+        expect(base).to eq(doc)
+        expect(entry).to include(conflict: true)
+      end
+
+      it "blocks with no gems at all" do
+        expect_blocked
+      end
+
+      it "blocks when another bundle shipped those bytes" do
+        ship_in_gem("0.2.0", doc, name: "someone-else")
+        expect_blocked
+      end
+
+      it "blocks when another file of the bundle had those bytes, or other bytes of that size" do
+        ship_in_gem("0.2.0", doc, file: "b.md")
+        ship_in_gem("0.3.0", doc.tr("e", "x"))
+        expect_blocked
+      end
+
+      it "blocks on a gem that only looks like samagotchi's" do
+        bundle = ship_in_gem("0.2.0", doc)
+        FileUtils.mv(File.dirname(bundle, 4), File.join(gems, "gems", "samagotchi-tools-0.2.0"))
+        expect_blocked
+      end
+
+      it "blocks when the manifest doesn't parse or isn't a mapping" do
+        ship_in_gem("0.2.0", doc, manifest: "name: [unclosed\n")
+        ship_in_gem("0.3.0", doc, manifest: "- not a mapping\n")
+        expect_blocked
+      end
+
+      it "blocks when a gem's folder or file can't be read" do
+        skip "root reads anything" if Process.uid.zero?
+        bundle = ship_in_gem("0.2.0", doc)
+        File.chmod(0o000, File.join(bundle, "a.md"))
+        File.chmod(0o000, ship_in_gem("0.3.0", doc))
+        begin
+          expect_blocked
+        ensure
+          File.chmod(0o644, File.join(bundle, "a.md"))
+          File.chmod(0o755, File.join(gems, "gems", "samagotchi-0.3.0", "lib", "samagotchi", "bundles", "some-old-dir"))
+        end
+      end
+
+      it "blocks a file equal to its base from fast-forwarding too" do
+        ship_in_gem("0.2.0", doc, name: "someone-else")
+        old_marked(doc)
+        write_source("2.0.0", reworded)
+        up = install(upgrade: true)
+
+        expect(up.results["a.md"][:status]).to eq("conflict")
+        expect(File.read(target)).to eq(doc)
+        expect(trash_files).to be_empty
+      end
+
+      it "doesn't look at the gems unless the guard would fire" do
+        old_marked(edited)
+        write_source("1.0.0", doc(tail: "the tail\nand a new line"))
+        expect(Gem).not_to receive(:path)
+
+        expect(remerge.merged).to eq(["a.md"])
+      end
     end
   end
 
