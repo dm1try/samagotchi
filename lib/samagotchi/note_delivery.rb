@@ -14,6 +14,9 @@ module Samagotchi
   # note in its notes/ folder, which a live worker adds within seconds and
   # a session with no worker at its next start. Callers word the outcome.
   module NoteDelivery
+    # Why a chi REPL's session takes no note.
+    REPL_REFUSAL = "it is open in a chi REPL; notes need attached mode"
+
     # The outcome for one session.
     # @!attribute status [Symbol] :queued (a worker runs it), :waits (no
     #   worker: it waits for the next start) or :refused (a chi REPL owns it)
@@ -26,14 +29,15 @@ module Samagotchi
     module_function
 
     # @param id [String] a full session id (resolved by the caller)
+    # @param objectives [Hash, nil] an objectives note's payload
     # @return [Result]
     # @raise [SessionInbox::NoteRejected] an empty note or one over 16 KiB
-    def deliver(id, text:, source:, state_dir:, from_session: nil, from_cwd: nil)
+    def deliver(id, text:, source:, state_dir:, from_session: nil, from_cwd: nil, objectives: nil)
       owner = SessionManager.session_owner(id, state_dir: state_dir)
       return Result.new(id: id, status: :refused, queued: 0) if owner&.tui?
 
       path = SessionInbox.write_note(id, text: text, source: source, from_session: from_session, from_cwd: from_cwd,
-                                         state_dir: state_dir)
+                                         objectives: objectives, state_dir: state_dir)
       return Result.new(id: id, status: :queued, queued: 0) if owner
 
       Result.new(id: id, status: :waits, queued: SessionInbox.find_new_note_files(File.dirname(path, 2)).size)

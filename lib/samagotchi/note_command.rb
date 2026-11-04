@@ -123,7 +123,7 @@ module Samagotchi
 
     def outcome(result)
       case result.status
-      when :refused then "refused: it is open in a chi REPL; notes need attached mode"
+      when :refused then "refused: #{NoteDelivery::REPL_REFUSAL}"
       when :queued then "queued: its worker adds it within a few seconds"
       else "waits for the session's next start (#{result.queued} #{result.queued == 1 ? "note" : "notes"} queued)"
       end

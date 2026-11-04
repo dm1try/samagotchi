@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "tempfile"
+require "tmpdir"
 require "samagotchi/session_commands"
 require "samagotchi/engine"
 require "samagotchi/session"
@@ -33,6 +34,24 @@ RSpec.describe Samagotchi::SessionCommands do
   let(:session) do
     Samagotchi::Session.new_session(mode: "assist", model_name: "beta:Qwen3-14B", working_directory: Dir.pwd).tap do |s|
       s.messages = [{ role: "system", content: "sys" }, { role: "user", content: "old" }]
+    end
+  end
+
+  describe "/objectives" do
+    it "runs through #run: an edit is a note file, nothing to save, and the show reads it" do
+      Dir.mktmpdir("session-commands-objectives") do |dir|
+        engine.session_state_dir = dir
+        session.save(state_dir: dir)
+
+        result = commands.run("/objectives set Ship it\nStay small")
+
+        expect(result).to have_attributes(status: :ok, changed: [])
+        expect(result.output).to include("O1 Ship it", "O2 Stay small")
+        expect(commands.run("/objectives").output).to include("O2 Stay small")
+        session_dir = Samagotchi::Session.session_dir(session.id, state_dir: dir)
+        expect(Samagotchi::SessionInbox.find_new_note_files(session_dir).size).to eq(1)
+        expect(saved).to be_empty
+      end
     end
   end
 
@@ -84,7 +103,7 @@ RSpec.describe Samagotchi::SessionCommands do
       lines = result.output.lines.map(&:rstrip)
       expect(lines.first).to eq("commands:")
       expect(lines.map { |l| l.split.first }.drop(1))
-        .to eq(%w[!<cmd> !rollback /context /continue /guardrails /help /llm-context /model /models /parent-answers /reasoning-history /recap /thinking /title /toolkit /working-set /hello /side
+        .to eq(%w[!<cmd> !rollback /context /continue /guardrails /help /llm-context /model /models /objectives /parent-answers /reasoning-history /recap /thinking /title /toolkit /working-set /hello /side
                   /archive /cut /detach /exit /participants /queue /quit /share /stats /unqueue])
       expect(lines).to include("  /hello              greet  (sample-plugin)", "  /side               ask aside  (btw; mid-turn too)",
                                start_with("  /model              show or switch the model  (show: mid-turn too)"),
@@ -99,6 +118,8 @@ RSpec.describe Samagotchi::SessionCommands do
       expect(lines).to include("  /title              show or set this session's title (--clear: back to its first message)  (mid-turn too)")
       expect(engine.command_registry.lookup("/title Coordinator")).to have_attributes(id: :title, anytime: true)
       expect(engine.command_registry.lookup("/titles")).to be_nil
+      expect(engine.command_registry.lookup("/objectives set A\nB")).to have_attributes(id: :objectives, anytime: true)
+      expect(engine.command_registry.lookup("/objectivesx")).to be_nil
     end
   end
 

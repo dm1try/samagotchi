@@ -27,6 +27,10 @@ require_relative "system_one/approval_label"
 require_relative "system_one/record"
 
 module Samagotchi
+  # Loaded on first use (a /objectives line): keeps the bundle test kit's
+  # load budget (spec/samagotchi/testing/sandbox_spec.rb).
+  autoload :ObjectivesCommand, File.expand_path("objectives_command", __dir__)
+
   # The session commands a REPL and a session worker both run: /model,
   # /models, /llm-context, /guardrails, /context, !rollback, !cmd and the answer to a continue offer. They act on
   # the Engine and its TurnFlow; the host prints the result's output and
@@ -50,6 +54,8 @@ module Samagotchi
     REASONING_HISTORY_COMMAND = ReasoningHistoryCommand::NAME
     WORKING_SET_COMMAND = WorkingSetCommand::NAME
     RECAP_COMMAND = RecapCommand::NAME
+    # A literal: ObjectivesCommand loads on first use (the autoload above).
+    OBJECTIVES_COMMAND = "/objectives"
     # A remote catalog has hundreds of ids (OpenRouter ~380): plain /models
     # shows this many per host; /models <text> lists every match.
     MODELS_PER_HOST = 20
@@ -134,6 +140,9 @@ module Samagotchi
       # Only a name: renaming a running session doesn't wait for its turn.
       registry.register(TITLE_COMMAND, "show or set this session's title (--clear: back to its first message)",
                         id: :title, anytime: true, match: ->(text) { text.match?(%r{\A/title(?:\s+.*)?\z}) }) { |text| title(text) }
+      # An edit only writes a note file (it goes in between turns): mid-turn too.
+      registry.register(OBJECTIVES_COMMAND, "show or edit what this session is to achieve (set A | B, add TEXT, done ID…, drop ID…, undo ID…)",
+                        id: :objectives, anytime: true) { |text| objectives(text) }
       registry.register(HELP_COMMAND, "list the commands, the bundles' too", anytime: true) { |_text| reply(help_listing) }
       registry.register("/stats", "show the session's stats", local: true)
       # /recap with words (on|off|default, or a slip: the usage) runs here:
@@ -701,6 +710,12 @@ module Samagotchi
     def title(text)
       output, changed, status = TitleCommand.new(engine: @engine).run(text.delete_prefix(TITLE_COMMAND))
       reply(output, status: status, changed: changed ? [:title] : [])
+    end
+
+    # /objectives (ObjectivesCommand): nothing to save, an edit is a note file.
+    def objectives(text)
+      output, status = ObjectivesCommand.new(engine: @engine).run(text.delete_prefix(OBJECTIVES_COMMAND))
+      reply(output, status: status)
     end
 
     # /recap on|off|default (RecapCommand); :recap in changed when this

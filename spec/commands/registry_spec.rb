@@ -172,9 +172,9 @@ RSpec.describe Samagotchi::Commands::Registry do
 
     it "offers the same Tab lists in the REPL and the attached TUI, but /detach, /unqueue, /share and /participants (the REPL owns its session and its own queue)" do
       expect(builtins.completions(:repl))
-        .to eq(%w[/archive /context /continue /cut /exit /guardrails /help /llm-context /model /models /parent-answers /queue /quit /reasoning-history /recap /stats /thinking /title /toolkit /working-set])
+        .to eq(%w[/archive /context /continue /cut /exit /guardrails /help /llm-context /model /models /objectives /parent-answers /queue /quit /reasoning-history /recap /stats /thinking /title /toolkit /working-set])
       expect(builtins.completions(:attached))
-        .to eq(%w[/archive /context /continue /cut /detach /exit /guardrails /help /llm-context /model /models /parent-answers /participants /queue /quit /reasoning-history /recap /share /stats /thinking /title /toolkit /unqueue
+        .to eq(%w[/archive /context /continue /cut /detach /exit /guardrails /help /llm-context /model /models /objectives /parent-answers /participants /queue /quit /reasoning-history /recap /share /stats /thinking /title /toolkit /unqueue
                   /working-set])
     end
 
@@ -193,7 +193,7 @@ RSpec.describe Samagotchi::Commands::Registry do
     it "is frozen, and each command #run runs has a handler" do
       expect(builtins).to be_frozen
       runnable = builtins.entries.reject(&:local)
-      expect(runnable.map(&:id)).to eq(%i[rollback shell continue models guardrails context model llm_context thinking reasoning_history toolkit working_set parent_answers title help recap_setting])
+      expect(runnable.map(&:id)).to eq(%i[rollback shell continue models guardrails context model llm_context thinking reasoning_history toolkit working_set parent_answers title objectives help recap_setting])
       expect(runnable.map(&:handler)).to all(be_a(Proc))
     end
   end

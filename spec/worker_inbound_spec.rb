@@ -4,6 +4,7 @@ require "spec_helper"
 require "tmpdir"
 
 require "samagotchi/objectives"
+require "samagotchi/session_commands"
 require "samagotchi/worker_inbound"
 require "samagotchi/worker_wakes"
 require "samagotchi/context_absorber"
@@ -130,6 +131,20 @@ RSpec.describe Samagotchi::WorkerInbound do
 
       expect(session.messages).to be_empty
       expect(Samagotchi::SessionInbox.find_new_note_files(session_dir).size).to eq(1)
+    end
+  end
+
+  describe "a participant's /objectives" do
+    it "is refused like any command: no turn, nothing queued, no note file" do
+      allow(engine).to receive(:command_registry).and_return(Samagotchi::SessionCommands.builtin_registry)
+      allow(Samagotchi::Participants).to receive(:log)
+      input = Samagotchi::SessionInbox.write_input(session_dir, prompt: "/objectives set Mine now", author: "p:abc")
+
+      expect { |turn| inbound.take_input(input, &turn) }.not_to yield_control
+
+      expect(queued).to be_empty
+      expect(Samagotchi::SessionInbox.find_new_note_files(session_dir)).to be_empty
+      expect(Samagotchi::Participants).to have_received(:log).with(session.id, :refused, hash_including(what: "command"))
     end
   end
 
