@@ -564,75 +564,60 @@ module Samagotchi
       rescue ArgumentError => e
         @stderr.puts "Bundle '#{bname}': #{e.message}"; return 1
       end
-      files = record.files
       hooks = record.hooks
       plugin_path = prov.plugin_path(record)
       plugin_file = plugin_path && File.basename(plugin_path)
-      show_plugin = lambda do
-        @stdout.puts "=== plugin/#{plugin_file} ==="
-        @stdout.puts "--- base (provenance) ---"
-        base = prov.plugin_base_path(plugin_file)
-        @stdout.puts File.exist?(base) ? File.read(base) : "(no base)"
-        @stdout.puts "--- current (on-disk) ---"
-        @stdout.puts File.exist?(plugin_path) ? File.read(plugin_path) : "(missing)"
-        @stdout.puts "--- metadata: sha256=#{record.plugin.sha256}#{" requires_chi=#{record.requires_chi}" if record.requires_chi}"
-      end
       if file_arg
         # Try file first, then hook
         if record.owns?(file_arg)
-          base = prov.base_path(file_arg)
-          cur = File.join(target_dir, file_arg)
-          @stdout.puts "=== #{file_arg} ==="
-          @stdout.puts "--- base (provenance) ---"
-          @stdout.puts File.exist?(base) ? File.read(base) : "(no base)"
-          @stdout.puts "--- current (on-disk) ---"
-          @stdout.puts File.exist?(cur) ? File.read(cur) : "(missing)"
+          diff_memory(prov, target_dir, file_arg)
         elsif hooks.key?(file_arg)
-          base = prov.base_path(file_arg)
-          cur = File.join(prov.hooks_dir, file_arg)
-          @stdout.puts "=== hooks/#{file_arg} ==="
-          @stdout.puts "--- base (provenance) ---"
-          @stdout.puts File.exist?(base) ? File.read(base) : "(no base)"
-          @stdout.puts "--- current (on-disk) ---"
-          @stdout.puts File.exist?(cur) ? File.read(cur) : "(missing)"
-          # Show hook metadata
-          @stdout.puts hook_metadata_line(hooks[file_arg])
+          diff_hook(prov, file_arg, hooks[file_arg])
         elsif plugin_file && [plugin_file, "plugin/#{plugin_file}"].include?(file_arg)
-          show_plugin.call
+          diff_plugin(prov, record, plugin_path)
         else
           @stdout.puts "=== #{file_arg} ==="
           @stdout.puts "(not found in bundle)"
         end
         @stdout.puts ""
       else
-        files.each_key do |k|
-          base = prov.base_path(k)
-          cur = File.join(target_dir, k)
-          @stdout.puts "=== #{k} ==="
-          @stdout.puts "--- base (provenance) ---"
-          @stdout.puts File.exist?(base) ? File.read(base) : "(no base)"
-          @stdout.puts "--- current (on-disk) ---"
-          @stdout.puts File.exist?(cur) ? File.read(cur) : "(missing)"
+        record.files.each_key do |key|
+          diff_memory(prov, target_dir, key)
           @stdout.puts ""
         end
-        # Hooks diff
-        hooks.each do |k, hook|
-          base = prov.base_path(k)
-          cur = File.join(prov.hooks_dir, k)
-          @stdout.puts "=== hooks/#{k} ==="
-          @stdout.puts "--- base (provenance) ---"
-          @stdout.puts File.exist?(base) ? File.read(base) : "(no base)"
-          @stdout.puts "--- current (on-disk) ---"
-          @stdout.puts File.exist?(cur) ? File.read(cur) : "(missing)"
-          @stdout.puts hook_metadata_line(hook)
+        hooks.each do |key, hook|
+          diff_hook(prov, key, hook)
           @stdout.puts ""
         end
         if plugin_file
-          show_plugin.call
+          diff_plugin(prov, record, plugin_path)
           @stdout.puts ""
         end
       end
       0
+    end
+
+    def diff_memory(prov, target_dir, key)
+      print_base_and_current(key, prov.base_path(key), File.join(target_dir, key))
+    end
+
+    def diff_hook(prov, key, hook)
+      print_base_and_current("hooks/#{key}", prov.base_path(key), File.join(prov.hooks_dir, key))
+      @stdout.puts hook_metadata_line(hook)
+    end
+
+    def diff_plugin(prov, record, plugin_path)
+      file = File.basename(plugin_path)
+      print_base_and_current("plugin/#{file}", prov.plugin_base_path(file), plugin_path)
+      @stdout.puts "--- metadata: sha256=#{record.plugin.sha256}#{" requires_chi=#{record.requires_chi}" if record.requires_chi}"
+    end
+
+    def print_base_and_current(heading, base, current)
+      @stdout.puts "=== #{heading} ==="
+      @stdout.puts "--- base (provenance) ---"
+      @stdout.puts File.exist?(base) ? File.read(base) : "(no base)"
+      @stdout.puts "--- current (on-disk) ---"
+      @stdout.puts File.exist?(current) ? File.read(current) : "(missing)"
     end
 
     def list

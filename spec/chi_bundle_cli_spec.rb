@@ -732,6 +732,62 @@ Hooks removed: 1\n\z})
     end
   end
 
+  # Base and current of each thing a bundle installs, whole-file.
+  context "with a memory, a hook and a plugin to diff" do
+    before do
+      @root = self.class.sandbox
+      src = self.class.make_bundle(File.join(@root, "src"), name: "demo", version: "1.0.0", content: "one\n")
+      FileUtils.mkdir_p(File.join(src, "hooks"))
+      File.write(File.join(src, "hooks", "h.rb"), "# hook\n")
+      File.write(File.join(src, "plug.rb"), "# plugin\n")
+      File.write(File.join(src, "manifest.yml"), <<~YAML, mode: "a")
+        hooks:
+          h.rb:
+            event: before_turn
+            sha256: sha256:#{Digest::SHA256.hexdigest("# hook\n")}
+        plugin:
+          file: plug.rb
+          sha256: sha256:#{Digest::SHA256.hexdigest("# plugin\n")}
+      YAML
+      chi("install", src)
+      File.write(File.join(memories, "a.md"), "edited\n")
+      File.write(File.join(memories, ".bundles", "demo", "hooks", "h.rb"), "# edited hook\n")
+      File.write(File.join(memories, ".bundles", "demo", "plugin", "plug.rb"), "# edited plugin\n")
+    end
+
+    after { FileUtils.rm_rf(@root) }
+
+    let(:memory_diff) { "=== a.md ===\n--- base (provenance) ---\none\n--- current (on-disk) ---\nedited\n" }
+    let(:hook_diff) do
+      "=== hooks/h.rb ===\n--- base (provenance) ---\n# hook\n--- current (on-disk) ---\n# edited hook\n" \
+        "--- metadata: event=before_turn on_error=skip priority=100 sha256=sha256:#{Digest::SHA256.hexdigest("# hook\n")}\n"
+    end
+    let(:plugin_diff) do
+      "=== plugin/plug.rb ===\n--- base (provenance) ---\n# plugin\n--- current (on-disk) ---\n# edited plugin\n" \
+        "--- metadata: sha256=sha256:#{Digest::SHA256.hexdigest("# plugin\n")}\n"
+    end
+
+    it "prints all of them, each followed by a blank line" do
+      expect(chi("diff", "demo")).to eq(["#{memory_diff}\n#{hook_diff}\n#{plugin_diff}\n", "", 0])
+    end
+
+    it "prints the one named: a memory, a hook, a plugin with or without its folder" do
+      expect(chi("diff", "demo", "a.md")).to eq(["#{memory_diff}\n", "", 0])
+      expect(chi("diff", "demo", "h.rb")).to eq(["#{hook_diff}\n", "", 0])
+      expect(chi("diff", "demo", "plug.rb")).to eq(["#{plugin_diff}\n", "", 0])
+      expect(chi("diff", "demo", "plugin/plug.rb")).to eq(["#{plugin_diff}\n", "", 0])
+      expect(chi("diff", "demo", "nope.md")).to eq(["=== nope.md ===\n(not found in bundle)\n\n", "", 0])
+    end
+
+    it "says so when a side is gone" do
+      FileUtils.rm(File.join(memories, "a.md"))
+      FileUtils.rm(File.join(memories, ".bundles", "demo", "bases", "a.md"))
+      expect(chi("diff", "demo", "a.md")).to eq(
+        ["=== a.md ===\n--- base (provenance) ---\n(no base)\n--- current (on-disk) ---\n(missing)\n\n", "", 0]
+      )
+    end
+  end
+
   context "with a conflicting local edit" do
     before do
       @root = self.class.sandbox
