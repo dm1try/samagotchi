@@ -196,8 +196,9 @@ OSA
 
 `/objectives set A | B` gives a session a short list of what it is to achieve, and `/objectives` shows it. The list goes
 into the conversation as a note under its own frame (`[OBJECTIVES, set by the user. …]`), which asks the model to keep
-work on it, to say when something falls outside it and not to change it itself. A session with no list sends exactly
-what it would without the feature. Each item has an id (`O1`, never reused), a status (active, done, dropped) and
+work on it, to say when something falls outside it and not to change it itself. A session with no list behaves as it
+would without the feature; its request only carries the `objectives` tool below (declared on `full`, named in the
+not-loaded line elsewhere). Each item has an id (`O1`, never reused), a status (active, done, dropped) and
 optionally a done-when hint, which nothing enforces.
 
 An edit waits for a moment between turns: it lands within seconds in an idle session, and at the turn's end during one.
@@ -205,6 +206,12 @@ Several edits made during a turn go in as one list. A continue copies the list t
 the carry note; a review link doesn't. `!rollback` keeps it. A chi REPL's session (`--no-shared`) refuses an edit, as it
 refuses a note. See [cli.md](cli.md#session-objectives) for the commands and
 [internals/objectives.md](internals/objectives.md) for the mechanism.
+
+The model can record a **move** with the `objectives` tool: a line on what it did or found for an objective, with
+optional evidence. A move shows as the tool's row in the turn, and `/objectives` shows each objective's latest one under
+it. It is information only: only you change the list or a status, and it never approves anything. A move costs one
+generation when it's the step's only call. On a kit that doesn't declare the tool, `/toolkit add objectives` declares it
+(the model can also reach it with `call_tool`). A participant's turn is denied it.
 
 ## Notes a turn leaves for the model
 

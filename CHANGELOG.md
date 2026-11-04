@@ -9,7 +9,8 @@ and commands may change between minor versions. How releases are made:
 
 ### Added
 
-- `/objectives` gives a session a short list of what it is to achieve (`set A | B`, `add`, `done`, `drop`), kept in the conversation as a note; a continue carries it, and a session with no list sends the same requests as before. A first version to try. [docs/sessions.md](docs/sessions.md#objectives)
+- `/objectives` gives a session a short list of what it is to achieve (`set A | B`, `add`, `done`, `drop`), kept in the conversation as a note; a continue carries it, and a session with no list gets no note and no prompt line. A first version to try. [docs/sessions.md](docs/sessions.md#objectives)
+- The `objectives` tool lets the model record a move on an objective (a line, optional evidence): information only, it never changes the list, and `/objectives` shows each objective's latest. Declared on `full` and the coordinator toolkit, so a `full` request carries its schema with or without a list; other kits name it in the not-loaded line. The coordinator bundle's skill says a move or a `done` is never approval to merge. [docs/sessions.md](docs/sessions.md#objectives)
 
 ## [0.148.0] - 2026-11-04
 

@@ -34,7 +34,7 @@ ContextNote.message(note_id:, text: list.text, source: "objectives", header: Con
 
   A dropped item is left out of the text, and a list with nothing left says `(no objectives now)` so that it still
   replaces the one before it. The frame has no clock, and there are no system prompt lines about it, so a session with
-  no list sends the same bytes as before.
+  no list adds no note and no prompt line. It still carries the tool's bytes ([Moves](#moves)).
 
 A note body isn't escaped when it is saved, and a system-role note reaches the model as it stands, so outside text
 could carry a line that looks exactly like this frame. On the wire, `Steer.wire_text` leads such a line with `(quoted) `
@@ -53,6 +53,9 @@ it can't wipe the fold or restart the ids.
 list note wins, and a pending payload wins over that, because a file not yet absorbed is newer than anything in the
 conversation. `Objectives.pending_payload(session_dir)` finds the newest objectives file among the notes;
 `Objectives.current` is the two together.
+
+`build` also fills `List#moves`, the latest `Objectives::Move` per id ([Moves](#moves)). Moves are never in the frame or
+the payload, so an edit and a continue carry none: a new link starts with no last move.
 
 ## Editing
 
@@ -74,6 +77,37 @@ conversation. `Objectives.pending_payload(session_dir)` finds the newest objecti
 The attached TUI and the web composer send the line like any session command (the registry's listing tells them it
 runs mid-turn too). So does `chi send -m "/objectives …"`. A participant's command is refused as any other is.
 
+## Moves
+
+The `objectives` tool (`Tools::ObjectivesTool`, schema last in `TOOL_SCHEMAS`) has one action, `move`: `id`, `note`,
+optional `evidence`. A call with no `action` is a move too. It is information only: nothing is written, and the call in
+history is the record. A handler can't append an entry mid-turn safely, and a system entry would split a call from its
+response, so there is no new entry kind. `Objectives.moves_in` reads the calls back with
+`LLMContextStale.paired_runs`, as `WorkingSet` does: both hosts' forms, a `call_tool` of it as it ran. A run whose output
+counts only if its output is the tool's answer that it recorded that id (`ObjectivesTool.recorded?`): a call with no list,
+a refusal, a denial or an interrupt recorded nothing. A rollback that drops the turn drops its moves.
+
+Mid-turn, `session.messages` doesn't hold the running turn. `/objectives` adds the loop's own conversation
+(`Engine#live_conversation`, a `dup` read on the command's thread), because `Engine#plugin_messages`' running part (the
+Bridge's `TurnAccumulator#current_messages`) leaves tool calls out. A move shows once its result is in.
+
+- **The answer** says it recorded a move, that the list is unchanged and that the user edits it with `/objectives`; so
+  does the schema's description. Other actions get an `Error:` with the same sentence. A small model told to edit the
+  list has nothing to call, and this is the only place it is told so: no stable-prompt line.
+- **No list**: `There are no objectives here…`, not an error, for a delegate (its fold is empty), a session with no list
+  and a kernel without a session (`Tools::Peers#objectives` is nil; `Engine::PeerView#objectives` reads the session).
+- **Refused**: an unknown id, a dropped objective, an empty note. A `done` objective takes a move.
+- **Declared**: on `full` (`all_core`) and on the coordinator kit (its bundle adds it); named in the not-loaded line
+  elsewhere, and so counted in `find_tools`' chi line, and among the deferred tools on a host that loads tools.
+- **Cost**: one extra generation when the move is the step's only call, none when it comes in a batch with another call.
+- **Guardrails**: no rule names it, so it passes with no ask, in `strict` too. `ReviewBoundary` denies it as anything
+  outside its kit. `PairBoundary` denies it as owner-voiced: a move stays in the owner's history and reads as the
+  session's own.
+- **The row**: `recording a move` in the TUI's line with `id=`, `note=`, `evidence=`; the web's row is `objectives O2 note · evidence`
+  (`ToolActivity#tool_title`). No UI of its own.
+
+`serves` on `ask_user_question` waits until moves read well. The model can't edit the list and can't propose an edit.
+
 ## Continue, rollback, fork
 
 - **Continue**: `Objectives.carry`, in `SessionContinue`'s `before_spawn`, writes a second note file in the new link,
@@ -83,11 +117,13 @@ runs mid-turn too). So does `chi send -m "/objectives …"`. A participant's com
   continue's rollback. A review link's list stays behind, as its last answer does: the next link's participants could
   differ.
 - **Rollback**: a note survives `TurnFlow#restore`, and an unabsorbed edit is on disk, untouched.
-- **Fork, delegate**: a plugin fork copies what it is passed. A delegate starts with an empty fold.
+- **Fork, delegate**: a plugin fork copies what it is passed. A delegate starts with an empty fold, so the tool answers
+  that there are none.
 
 ## Not in this version
 
-Later phases (a move tool that reads `tool_calls` in the fold, a long-answer card, the strip) aren't here, and neither
-are stable-prompt lines. A UI of its own would replace the default note bubble.
+Later phases (a long-answer card, the strip) aren't here, and neither are stable-prompt lines. A UI of its own would
+replace the default note bubble.
 
-Taking it out: old notes stay readable framed bubbles and keep being sent, and the key is ignored.
+Taking it out: old notes stay readable framed bubbles and keep being sent, and the key is ignored. Old `objectives` calls
+stay as history; with a kit no longer declaring the tool, they are ordinary saved calls.

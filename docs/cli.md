@@ -868,7 +868,8 @@ message; a continue's next link keeps it. In the web, `✎` next to the session'
 title (its strip card, or the top bar) does it. See [Session titles](sessions.md#session-titles).
 
 <a id="session-objectives"></a>
-`/objectives` shows what the session is to achieve; [Objectives](sessions.md#objectives) has what that does.
+`/objectives` shows what the session is to achieve, each objective's latest move under it (`last move: …`, recorded by
+the model's `objectives` tool); [Objectives](sessions.md#objectives) has what that does.
 - `/objectives set Two coffees | Stops before checkout (done when: no order is placed)`: a new list. Parts are split by
   ` | ` or by lines; a part may end `(done when: …)`. It replaces the list, and ids go on from the old one's.
 - `/objectives add TEXT`: one more (several with ` | `).
