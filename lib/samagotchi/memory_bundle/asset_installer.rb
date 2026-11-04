@@ -19,6 +19,8 @@ module Samagotchi
     # warnings, and #run returns what the record (Provenance#write) keeps.
     # A dev install (+dev+, `chi bundle install --dev`) links each file to
     # the source instead of copying it, and warns of no checksum mismatch.
+    # An edited file it replaces or removes is copied to the trash first,
+    # under its subfolder (#save_edit); a link never is.
     class AssetInstaller
       # What was installed: the paths Provenance#write records (each
       # empty / nil on a dry run).
@@ -33,7 +35,8 @@ module Samagotchi
       # @param existing [InstalledBundle, nil] the record before this install
       # @param results, warnings, conflicts the Installer's (results and
       #   warnings are added to)
-      def initialize(name:, source_dir:, manifest:, provenance:, existing:, results:, warnings:, conflicts:,
+      # @param trash [Trash] the Installer's
+      def initialize(name:, source_dir:, manifest:, provenance:, existing:, results:, warnings:, conflicts:, trash:,
                      force: false, strict: true, upgrade: false, dry_run: false, dev: false)
         @name = name
         @bundle_dir = source_dir
@@ -43,6 +46,7 @@ module Samagotchi
         @results = results
         @warnings = warnings
         @conflicts = conflicts
+        @trash = trash
         @force = force
         @strict = strict
         @upgrade = upgrade
@@ -112,6 +116,7 @@ module Samagotchi
 
         FileUtils.mkdir_p(@provenance.hooks_dir)
         unchanged = File.exist?(dest) && FileUtils.identical?(src, dest)
+        save_edit(dest, "hooks/#{basename}", prev_sha, incoming: src)
         place(src, dest)
         @results[basename] = if unchanged
                                { status: "skipped", reason: "already up to date" }
@@ -135,6 +140,7 @@ module Samagotchi
           else
             FileUtils.mkdir_p(@provenance.hooks_dir)
             dest = File.join(@provenance.hooks_dir, basename)
+            save_edit(dest, "hooks/#{basename}", @existing&.hooks&.dig(basename)&.sha256, incoming: src)
             place(src, dest)
             @results[basename] = { status: "installed" }
             @hook_files[basename] = dest
@@ -152,6 +158,7 @@ module Samagotchi
           if File.exist?(old_dest) && !@force && !File.symlink?(old_dest)
             @warnings << "Bundle no longer includes hook #{old_key_str} but local file exists — removing"
           end
+          save_edit(old_dest, "hooks/#{old_key_str}", @existing.hooks[old_key_str]&.sha256)
           FileUtils.rm_f(old_dest)
         end
       end
@@ -190,6 +197,7 @@ module Samagotchi
           dest = File.join(target, File.basename(src))
           File.file?(dest) && FileUtils.identical?(src, dest)
         end
+        save_edits(target, "guardrails", @existing&.guardrails, incoming_rules.to_h { |src| [File.basename(src), src] })
         FileUtils.rm_rf(target)
         return {} if incoming_rules.empty?
 
@@ -210,7 +218,10 @@ module Samagotchi
       def install_plugin
         plugin = @manifest&.plugin
         unless plugin
-          FileUtils.rm_rf(@provenance.plugin_dir) unless @dry_run
+          unless @dry_run
+            save_edits(@provenance.plugin_dir, "plugin", recorded_plugin)
+            FileUtils.rm_rf(@provenance.plugin_dir)
+          end
           return nil
         end
 
@@ -228,6 +239,7 @@ module Samagotchi
 
         dest = File.join(@provenance.plugin_dir, plugin[:file])
         unchanged = File.file?(dest) && FileUtils.identical?(src, dest)
+        save_edits(@provenance.plugin_dir, "plugin", recorded_plugin, { plugin[:file] => src })
         FileUtils.rm_rf(@provenance.plugin_dir)
         FileUtils.mkdir_p(@provenance.plugin_dir)
         place(src, dest)
@@ -265,6 +277,8 @@ module Samagotchi
           dest = File.join(@provenance.scripts_dir, file)
           File.file?(dest) && FileUtils.identical?(File.join(@bundle_dir, "scripts", file), dest)
         end
+        save_edits(@provenance.scripts_dir, "scripts", @existing&.scripts,
+                   scripts.keys.to_h { |file| [file, File.join(@bundle_dir, "scripts", file)] })
         FileUtils.rm_rf(@provenance.scripts_dir)
         return {} if scripts.empty?
 
@@ -284,6 +298,36 @@ module Samagotchi
           end
           [file, dest]
         end
+      end
+
+      # save_edit for every file in +dir+, which is about to go.
+      # @param recorded [Hash, nil] file name => its recorded sha256
+      # @param incoming [Hash] file name => the source replacing it
+      def save_edits(dir, label, recorded, incoming = {})
+        return if File.symlink?(dir) || !File.directory?(dir)
+
+        Dir.children(dir).sort.each do |file|
+          save_edit(File.join(dir, file), "#{label}/#{file}", recorded&.[](file), incoming: incoming[file])
+        end
+      end
+
+      # Copies the file at +path+ to the trash as +label+ (hooks/x) before an
+      # install replaces or removes it, when that would lose something: its
+      # bytes are neither what the record says was installed (no sha recorded:
+      # unknown, so it counts as edited) nor +incoming+'s. A link (a dev
+      # install's) points at the source, which nothing here touches.
+      def save_edit(path, label, recorded, incoming: nil)
+        return if File.symlink?(path) || !File.file?(path)
+        return if incoming && File.file?(incoming) && FileUtils.identical?(incoming, path)
+        return if !Provenance.recorded_sha(recorded).empty? && Provenance.sha_matches?(path, recorded)
+
+        @trash.copy(path, as: label)
+      end
+
+      # The installed plugin's sha by file name, for save_edits.
+      def recorded_plugin
+        plugin = @existing&.plugin
+        plugin ? { plugin.file => plugin.sha256 } : {}
       end
 
       # Copies +src+ to +dest+, or (a dev install) links +dest+ to it. An

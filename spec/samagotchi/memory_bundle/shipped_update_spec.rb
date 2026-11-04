@@ -111,6 +111,8 @@ RSpec.describe Samagotchi::MemoryBundle::ShippedUpdate do
 
     row = described_class.apply(described_class.plan).first
     expect(row).to have_attributes(status: :updated, replaced: ["hooks/known_names.rb"])
+    expect(row.trash_copy).to match(%r{\ACopied to the trash first: hooks/known_names\.rb \(.*/\.trash/known-names-\d{8}-\d{6}\)\z})
+    expect(File.read(File.join(row.trash_copy[/\((.*)\)/, 1], "hooks", "known_names.rb"))).to eq("# mine\n")
     expect(File.read(File.join(shipped, "known-names", "hooks", "known_names.rb")))
       .to eq(File.read(File.join(Samagotchi::MemoryBundle::Provenance.new(name: "known-names").hooks_dir, "known_names.rb")))
   end

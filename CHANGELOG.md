@@ -14,6 +14,7 @@ and commands may change between minor versions. How releases are made:
 ### Fixed
 
 - `chi bundle install --force` and `chi bundle upgrade --force` no longer destroy what they overwrite: a memory that differs from the bundle's, your own same-name file too, is copied to the bundle trash first, and the output names it (`Copied to the trash first: …`; `chi bundle trash` lists it).
+- An install, upgrade or `chi update` that replaces or removes a hook, rule, plugin or script you edited copies it to the bundle trash first, under its own subfolder (`hooks/x`, `scripts/x`), and says so. A `--dev` install's links are left out.
 
 ## [0.149.0] - 2026-11-04
 

@@ -207,6 +207,16 @@ RSpec.describe Samagotchi::UpdateCommand do
     expect(row.status).to include("kept your edits in known_names.md")
   end
 
+  it "names the trash copy of an edited hook it replaced" do
+    update = Samagotchi::MemoryBundle::ShippedUpdate::Row.new(
+      name: "known-names", from: "1", to: "2", status: :updated, kept: [], replaced: ["hooks/x.rb"],
+      trash_copy: "Copied to the trash first: hooks/x.rb (/t)"
+    )
+    row = described_class.new(["--no-gem"], stdout: out, stderr: err).send(:bundle_row, update)
+
+    expect(row.status).to include("replaced edited hooks/x.rb (it wasn't loading); Copied to the trash first: hooks/x.rb (/t)")
+  end
+
   it "leaves the bundles alone with --no-bundles or update.bundles: false" do
     install_old_btw
     expect(run("--no-bundles")).to eq(0)

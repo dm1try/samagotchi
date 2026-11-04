@@ -322,7 +322,7 @@ module Samagotchi
       row = Row.new(component: update.name, from: update.from, to: update.to)
       case update.status
       when :would_update, :updated
-        notes = [adds(update.adds), kept(row, update.kept, update.name), replaced(update.replaced), *update.kept_own].compact
+        notes = [adds(update.adds), kept(row, update.kept, update.name), replaced(update.replaced), update.trash_copy, *update.kept_own].compact
         done(row, :update, notes.empty? ? nil : notes.join("; "))
       when :up_to_date then up_to_date(row)
       when :skipped then skipped(row, update.note)

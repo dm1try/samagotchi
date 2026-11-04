@@ -103,7 +103,7 @@ module Samagotchi
 
         installed = AssetInstaller.new(
           name: @name, source_dir: @bundle_dir, manifest: @manifest, provenance: @provenance, existing: @existing,
-          results: @results, warnings: @warnings, conflicts: @conflicts,
+          results: @results, warnings: @warnings, conflicts: @conflicts, trash: @trash,
           force: @force, strict: @strict, upgrade: @upgrade, dry_run: @dry_run, dev: @dev
         ).run
 

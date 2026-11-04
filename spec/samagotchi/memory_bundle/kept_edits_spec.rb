@@ -84,4 +84,128 @@ RSpec.describe "Kept edits in a bundle" do
       expect(File.read(target)).to eq("edited\n")
     end
   end
+
+  describe "hooks, rules, the plugin and scripts" do
+    def asset_source(version, body, hook: "h.rb", rule: "r.yml", plugin: "plugin.rb", script: "s.sh")
+      write_source(version, { "a.md" => "same\n" })
+      extra = {}
+      if hook
+        FileUtils.mkdir_p(File.join(source, "hooks"))
+        File.write(File.join(source, "hooks", hook), "# hook #{body}\n")
+        extra["hooks"] = { hook => { "event" => "after_turn", "on_error" => "log" } }
+      else
+        extra["hooks"] = {}
+      end
+      if rule
+        FileUtils.mkdir_p(File.join(source, "guardrails"))
+        File.write(File.join(source, "guardrails", rule), "# rule #{body}\n")
+      end
+      if plugin
+        File.write(File.join(source, plugin), "# plugin #{body}\n")
+        extra["plugin"] = { "file" => plugin, "sha256" => "" }
+      end
+      if script
+        FileUtils.mkdir_p(File.join(source, "scripts"))
+        File.write(File.join(source, "scripts", script), "# script #{body}\n")
+        extra["scripts"] = { script => { "sha256" => "" } }
+      end
+      manifest = YAML.safe_load_file(File.join(source, "manifest.yml")).merge(extra)
+      File.write(File.join(source, "manifest.yml"), YAML.dump(manifest))
+      source
+    end
+
+    let(:installed) do
+      { "hooks/h.rb" => File.join(provenance.hooks_dir, "h.rb"), "guardrails/r.yml" => File.join(provenance.guardrails_dir, "r.yml"),
+        "plugin/plugin.rb" => File.join(provenance.plugin_dir, "plugin.rb"), "scripts/s.sh" => File.join(provenance.scripts_dir, "s.sh") }
+    end
+
+    before do
+      asset_source("1.0.0", "one")
+      run_installer
+    end
+
+    it "copies each edited file an upgrade replaces, in its own subfolder, and says so" do
+      installed.each_value { |path| File.write(path, "edited #{File.basename(path)}\n") }
+      asset_source("2.0.0", "two")
+      up = run_installer(upgrade: true)
+
+      expect(trash_files).to eq(installed.to_h { |label, path| [label, "edited #{File.basename(path)}\n"] })
+      expect(File.read(installed["hooks/h.rb"])).to eq("# hook two\n")
+      expect(up.summary).to include("Copied to the trash first: ")
+      expect(up.summary).to include("hooks/h.rb", "guardrails/r.yml", "plugin/plugin.rb", "scripts/s.sh")
+    end
+
+    it "keeps same-name files of two kinds apart" do
+      asset_source("1.0.1", "one", hook: "x", rule: nil, plugin: nil, script: "x")
+      run_installer(upgrade: true)
+      File.write(File.join(provenance.hooks_dir, "x"), "my hook\n")
+      File.write(File.join(provenance.scripts_dir, "x"), "my script\n")
+      asset_source("2.0.0", "two", hook: "x", rule: nil, plugin: nil, script: "x")
+      run_installer(upgrade: true)
+
+      expect(trash_files).to eq("hooks/x" => "my hook\n", "scripts/x" => "my script\n")
+    end
+
+    it "copies each edited file an upgrade prunes" do
+      installed.each_value { |path| File.write(path, "edited\n") }
+      asset_source("2.0.0", "two", hook: nil, rule: nil, plugin: nil, script: nil)
+      run_installer(upgrade: true)
+
+      expect(trash_files.keys).to match_array(installed.keys)
+      installed.each_value { |path| expect(File.exist?(path)).to be false }
+    end
+
+    it "copies nothing for unedited files" do
+      asset_source("2.0.0", "two")
+      up = run_installer(upgrade: true)
+
+      expect(trash_files).to be_empty
+      expect(up.trash_dir).to be_nil
+    end
+
+    it "copies nothing when an edited file already has the incoming bytes" do
+      File.write(installed["hooks/h.rb"], "# hook two\n")
+      asset_source("2.0.0", "two")
+      run_installer(upgrade: true)
+
+      expect(trash_files).to be_empty
+    end
+
+    it "copies an edit a plain re-install replaces" do
+      File.write(installed["guardrails/r.yml"], "edited\n")
+      run_installer
+
+      expect(trash_files).to eq("guardrails/r.yml" => "edited\n")
+    end
+
+    it "copies nothing on a dry run" do
+      installed.each_value { |path| File.write(path, "edited\n") }
+      asset_source("2.0.0", "two")
+      run_installer(upgrade: true, dry_run: true)
+
+      expect(trash_files).to be_empty
+    end
+  end
+
+  describe "a dev install's links" do
+    it "are never copied to the trash, replaced or pruned" do
+      FileUtils.mkdir_p(File.join(source, "hooks"))
+      write_source("1.0.0", { "a.md" => "one\n" }, extra: { "hooks" => { "h.rb" => { "event" => "after_turn" } } })
+      FileUtils.mkdir_p(File.join(source, "hooks"))
+      File.write(File.join(source, "hooks", "h.rb"), "# hook\n")
+      run_installer(dev: true)
+      link = File.join(provenance.hooks_dir, "h.rb")
+      expect(File.symlink?(link)).to be true
+
+      File.write(File.join(source, "hooks", "h.rb"), "# edited in the source\n")
+      run_installer(dev: true)
+      expect(trash_files).to be_empty
+
+      FileUtils.rm_f(File.join(source, "hooks", "h.rb"))
+      manifest = YAML.safe_load_file(File.join(source, "manifest.yml")).merge("hooks" => {})
+      File.write(File.join(source, "manifest.yml"), YAML.dump(manifest))
+      run_installer(dev: true)
+      expect(trash_files).to be_empty
+    end
+  end
 end

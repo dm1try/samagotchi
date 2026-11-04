@@ -39,8 +39,10 @@ module Samagotchi
       # adds is nil but for a profile: the members it installs.
       # kept_own is nil but for a profile that installed a member: its
       # Profile.kept_own_line lines.
+      # trash_copy is nil but under apply when it saved edited files
+      # (Installer#trash_copy_line).
       Row = Struct.new(:name, :from, :to, :status, :note, :kept, :replaced, :source_dir, :scope, :adds, :kept_own,
-                       keyword_init: true)
+                       :trash_copy, keyword_init: true)
 
       module_function
 
@@ -83,6 +85,7 @@ module Samagotchi
           row.dup.tap do |r|
             r.status = :updated
             r.kept = installer.conflicts.keys
+            r.trash_copy = installer.trash_copy_line
           end
         rescue StandardError => e
           row.dup.tap do |r|

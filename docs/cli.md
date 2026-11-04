@@ -308,7 +308,9 @@ done
   one that the new version also changes is kept, and the row says so (`chi
   bundle diff NAME FILE` shows it; `chi bundle upgrade NAME --force` takes the
   bundle's, with a copy of yours in the bundle trash first). Hooks, rules and the plugin are replaced; an edited one didn't
-  load anyway (its sha no longer matched) and the row says it was replaced.
+  load anyway (its sha no longer matched), the row says it was replaced, and
+  a copy goes to the bundle trash first (`chi bundle trash`; `hooks/x`,
+  `guardrails/x`, `plugin/x`, `scripts/x` inside the dir).
   A bundle of the same name from elsewhere (a zip, git) is skipped ("not from
   chi"), a newer installed one is left, one whose new version needs a newer
   chi is skipped, and bundles you didn't install stay uninstalled.
