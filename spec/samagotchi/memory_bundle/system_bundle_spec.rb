@@ -142,6 +142,20 @@ RSpec.describe Samagotchi::MemoryBundle::SystemBundle do
         expect(installed_version).to eq("0.1.6")
       end
 
+      # The dry run asks about the manifest's files:, the Installer about
+      # MemoryFiles.select. Pinned, not endorsed (Merger::Upgrade#conflicts).
+      it "keeps nothing in a dry run of a manifest with no files:, where the upgrade itself conflicts" do
+        ship("0.1.6", "old\n")
+        described_class.sync
+        File.write(File.join(Samagotchi::MemoryPaths.system_dir, "identity.md"), "mine\n")
+        ship("0.1.10", "new\n")
+        Samagotchi::MemoryBundle::Manifest.write(dir: described_class::GEM_BUNDLE_DIR, name: described_class::BUNDLE_NAME,
+                                                 version: "0.1.10", scope: "system", files: {})
+
+        expect(described_class.sync(dry_run: true).kept).to eq([])
+        expect(described_class.sync.kept).to eq(["identity.md"])
+      end
+
       it "reports a restored file" do
         ship("0.1.6", "old\n")
         described_class.sync

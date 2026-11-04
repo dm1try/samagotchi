@@ -45,6 +45,26 @@ RSpec.describe "Kept edits in a bundle" do
     end
   end
 
+  describe "a dry run of an upgrade" do
+    before do
+      write_source("1.0.0", { "a.md" => "a1\n", "b.md" => "b1\n", "c.md" => "c1\n" })
+      run_installer
+      File.write(target, "edited\n")
+      File.write(File.join(memories, "b.md"), "edited\n")
+    end
+
+    it "names only a real conflict, with its three sides, and moves nothing" do
+      write_source("2.0.0", { "a.md" => "a2\n", "b.md" => "b1\n", "c.md" => "c2\n" })
+      dry = run_installer(upgrade: true, dry_run: true)
+
+      expect(dry.conflicts).to eq("a.md" => { base: provenance.base_path("a.md"), current: target, incoming: File.join(source, "a.md") })
+      expect(dry.results.slice("a.md", "b.md", "c.md").transform_values { |r| r[:status] })
+        .to eq("a.md" => "conflict", "b.md" => "keep", "c.md" => "fast_forward")
+      expect(File.read(target)).to eq("edited\n")
+      expect(provenance.record.version).to eq("1.0.0")
+    end
+  end
+
   describe "--force over a file that differs" do
     before do
       write_source("1.0.0")

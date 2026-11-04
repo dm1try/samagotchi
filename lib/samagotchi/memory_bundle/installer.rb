@@ -359,12 +359,11 @@ module Samagotchi
         MemoryFiles.symlinks(@bundle_dir, @manifest).each { |name| @warnings << "#{name} is a symlink (not installed)" }
       end
 
-      # An upgrade's 3-way merge of one file (Merger.classify against the
+      # An upgrade's 3-way merge of one file (Merger::Upgrade against the
       # base the last install recorded); a conflict leaves the local file
       # and is recorded in @conflicts for the agent step.
       def merge_memory(file_key, file_path, target_path)
-        base_path = @provenance.base_path(file_key)
-        outcome = @outcomes[file_key] = Merger.classify(base_path: base_path, current_path: target_path, incoming_path: file_path)
+        outcome = @outcomes[file_key] = upgrade_view.outcome(file_key)
         case outcome.status
         when :install
           FileUtils.cp(file_path, target_path)
@@ -379,11 +378,15 @@ module Samagotchi
           @results[file_key] = { status: "skipped", reason: "already up to date" }
         when :conflict
           @results[file_key] = { status: "conflict", reason: "local edits conflict with bundle update" }
-          @conflicts[file_key] = { base: base_path, current: target_path, incoming: file_path }
+          @conflicts[file_key] = upgrade_view.paths(file_key)
           @warnings << "Conflict in #{file_key}: local edits conflict with bundle update (use --force to overwrite or resolve interactively)"
         else raise ArgumentError, "unknown outcome status #{outcome.status.inspect} for #{file_key}" # the base would move with nothing written
         end
         update_target_index(@target_scope, target_path, file_key)
+      end
+
+      def upgrade_view
+        @upgrade_view ||= Merger::Upgrade.new(provenance: @provenance, target_dir: @target_dir, source_dir: @bundle_dir)
       end
 
       # A file marked conflict that equals its base: the base may be the user's
@@ -406,10 +409,9 @@ module Samagotchi
         end
 
         if @upgrade && @existing
-          base_path = @provenance.base_path(file_key)
-          outcome = Merger.classify(base_path: base_path, current_path: target_path, incoming_path: file_path)
+          outcome = upgrade_view.outcome(file_key)
           @results[file_key] = { status: outcome.status.to_s }
-          @conflicts[file_key] = { base: base_path, current: target_path, incoming: file_path } if outcome.conflict?
+          @conflicts[file_key] = upgrade_view.paths(file_key) if outcome.conflict?
         elsif FileUtils.identical?(file_path, target_path)
           @results[file_key] = { status: "skipped", reason: "already up to date" }
         else
@@ -520,6 +522,7 @@ module Samagotchi
         case outcome.base
         when :recorded then recorded_base(@provenance.base_path(file_key))
         when :on_disk then File.join(@target_dir, file_key)
+        else raise ArgumentError, "unknown base #{outcome.base.inspect} for #{file_key}" # nil would drop the base silently
         end
       end
 

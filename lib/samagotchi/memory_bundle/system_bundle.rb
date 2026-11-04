@@ -172,14 +172,13 @@ module Samagotchi
       end
 
       # The files an upgrade would keep: installed by the bundle, edited
-      # here and changed in the shipped bundle (a dry run's kept).
+      # here and changed in the shipped bundle (a dry run's kept). The
+      # manifest's files:, not MemoryFiles.select: see Merger::Upgrade#conflicts.
       def conflicting(gem_manifest)
         provenance = Provenance.new(name: BUNDLE_NAME)
         owned = provenance.record&.files&.keys || []
-        (gem_manifest.files.keys.map(&:to_s).sort & owned).select do |key|
-          Merger.classify(base_path: provenance.base_path(key), current_path: File.join(MemoryPaths.system_dir, key),
-                          incoming_path: File.join(GEM_BUNDLE_DIR, key)).conflict?
-        end
+        Merger::Upgrade.new(provenance: provenance, target_dir: MemoryPaths.system_dir, source_dir: GEM_BUNDLE_DIR)
+                       .conflicts(gem_manifest.files.keys.map(&:to_s).sort & owned)
       end
 
       def upgrade_installer

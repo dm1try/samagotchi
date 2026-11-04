@@ -32,6 +32,32 @@ module Samagotchi
       # (the user's text, perhaps) must not become the base. A noop to callers.
       NO_INCOMING = Outcome.new(status: :noop, base: :recorded)
 
+      # One bundle's upgrade as seen before it runs: what it does to a file,
+      # nothing written. The one way to ask: Installer's merge and dry run,
+      # ShippedUpdate's plan and SystemBundle's dry run. Which files to ask
+      # about is the caller's, and they differ (see #conflicts).
+      Upgrade = Data.define(:provenance, :target_dir, :source_dir) do
+        # @return [Outcome]
+        def outcome(file_key)
+          sides = paths(file_key)
+          Merger.classify(base_path: sides[:base], current_path: sides[:current], incoming_path: sides[:incoming])
+        end
+
+        # The ones among +file_keys+ that end in a conflict. The Installer's
+        # own list is MemoryFiles.select, and a plan may ask about others:
+        # ShippedUpdate about every *.md shipped, SystemBundle about the
+        # manifest's files:. So a plan can name a file the upgrade itself
+        # doesn't merge (docs/internals/bundles.md).
+        # @return [Array<String>]
+        def conflicts(file_keys) = file_keys.select { |key| outcome(key).conflict? }
+
+        # @return [Hash{Symbol => String}] the file's :base, :current, :incoming
+        def paths(file_key)
+          { base: provenance.base_path(file_key), current: File.join(target_dir, file_key),
+            incoming: File.join(source_dir, file_key) }
+        end
+      end
+
       # Classify a single file for upgrade.
       # @return [Outcome]
       def self.classify(base_path:, current_path:, incoming_path:)

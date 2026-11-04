@@ -94,6 +94,49 @@ RSpec.describe Samagotchi::MemoryBundle::ShippedUpdate do
     expect(described_class.plan.first.status).to eq(:up_to_date)
   end
 
+  # The plan asks about every shipped *.md, the Installer about
+  # MemoryFiles.select, so the two can disagree. Pinned, not endorsed: a plan
+  # that unifies them changes what these say (Merger::Upgrade#conflicts).
+  describe "a plan that names a file the upgrade doesn't merge" do
+    let(:root) { File.join(tmp, "gem", "lib", "samagotchi", "bundles") }
+    let(:dir) { File.join(root, "listed") }
+
+    def ship_listed(version, listed)
+      FileUtils.mkdir_p(dir)
+      listed.each { |name, text| File.write(File.join(dir, name), text) }
+      File.write(File.join(dir, "manifest.yml"),
+                 YAML.dump({ "name" => "listed", "version" => version, "scope" => "system",
+                             "files" => listed.transform_values { |text| "sha256:#{Digest::SHA256.hexdigest(text)}" } }))
+    end
+
+    before do
+      ship_listed("1.0.0", "a.md" => "a1\n", "b.md" => "b1\n")
+      Samagotchi::MemoryBundle::Installer.new(source: dir, name: "listed", scope: "system", strict: true, shipped_dir: root).run
+      File.write(File.join(system_dir, "b.md"), "edited\n")
+    end
+
+    def plan_then_apply
+      rows = described_class.plan(shipped_dir: root)
+      [rows.first.kept, described_class.apply(rows).first.kept]
+    end
+
+    it "one dropped from files: but still shipped" do
+      ship_listed("2.0.0", "a.md" => "a2\n")
+      File.write(File.join(dir, "b.md"), "b2\n")
+
+      expect(plan_then_apply).to eq([%w[b.md], []])
+    end
+
+    it "one that is now a symlink" do
+      ship_listed("2.0.0", "a.md" => "a2\n")
+      File.write(File.join(dir, "elsewhere"), "b2\n")
+      FileUtils.rm_f(File.join(dir, "b.md"))
+      File.symlink("elsewhere", File.join(dir, "b.md"))
+
+      expect(plan_then_apply).to eq([%w[b.md], []])
+    end
+  end
+
   it "doesn't plan a user's own same-name memory as kept: the bundle never installed it" do
     FileUtils.mkdir_p(system_dir)
     File.write(File.join(system_dir, "known_names.md"), "my own\n")

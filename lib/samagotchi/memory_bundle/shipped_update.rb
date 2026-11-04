@@ -167,14 +167,11 @@ module Samagotchi
 
       # The bundle's .md files whose local edits conflict with the shipped
       # version (a same-name file it didn't install is skipped, not merged).
+      # Every shipped *.md, not MemoryFiles.select: see Merger::Upgrade#conflicts.
       def conflicts(row, bundle)
-        provenance = Provenance.new(name: row.name)
-        target_dir = MemoryPaths.scope_dir!(row.scope)
-        owned = bundle.files.keys
-        (Dir.glob(File.join(row.source_dir, "*.md")).map { |f| File.basename(f) }.sort & owned).select do |key|
-          Merger.classify(base_path: provenance.base_path(key), current_path: File.join(target_dir, key),
-                          incoming_path: File.join(row.source_dir, key)).conflict?
-        end
+        shipped = Dir.glob(File.join(row.source_dir, "*.md")).map { |f| File.basename(f) }.sort
+        Merger::Upgrade.new(provenance: Provenance.new(name: row.name), target_dir: MemoryPaths.scope_dir!(row.scope),
+                            source_dir: row.source_dir).conflicts(shipped & bundle.files.keys)
       end
 
       # Installed hooks, rules and the plugin whose sha differs from the

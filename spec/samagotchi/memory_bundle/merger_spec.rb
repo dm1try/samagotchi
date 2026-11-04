@@ -9,6 +9,8 @@ require "samagotchi/memory_bundle/installer"
 RSpec.describe Samagotchi::MemoryBundle::Merger do
   let(:tmp) { Dir.mktmpdir("samagotchi-merger-") }
 
+  around { |example| with_config_home(File.join(tmp, "config")) { example.run } }
+
   after { FileUtils.rm_rf(tmp) }
 
   # The outcome for a base, current and incoming text (nil: no such file).
@@ -38,13 +40,41 @@ RSpec.describe Samagotchi::MemoryBundle::Merger do
     end
   end
 
+  describe Samagotchi::MemoryBundle::Merger::Upgrade do
+    let(:upgrade) do
+      provenance = Samagotchi::MemoryBundle::Provenance.new(name: "demo")
+      FileUtils.mkdir_p([File.join(provenance.bundle_dir, "bases"), File.join(tmp, "target"), File.join(tmp, "source")])
+      described_class.new(provenance: provenance, target_dir: File.join(tmp, "target"), source_dir: File.join(tmp, "source"))
+    end
+
+    def sides(key, base:, current:, incoming:)
+      { base: base, current: current, incoming: incoming }.each do |side, text|
+        File.write(upgrade.paths(key)[side], text)
+      end
+    end
+
+    it "names a file's three sides" do
+      expect(upgrade.paths("a.md")).to eq(base: upgrade.provenance.base_path("a.md"), current: File.join(tmp, "target/a.md"),
+                                          incoming: File.join(tmp, "source/a.md"))
+    end
+
+    it "answers for one file and picks the conflicts of the files asked about, writing nothing" do
+      sides("edited.md", base: "b\n", current: "c\n", incoming: "i\n")
+      sides("plain.md", base: "b\n", current: "b\n", incoming: "i\n")
+      sides("kept.md", base: "b\n", current: "c\n", incoming: "b\n")
+      sides("unasked.md", base: "b\n", current: "c\n", incoming: "i\n")
+
+      expect(upgrade.outcome("plain.md")).to eq(Samagotchi::MemoryBundle::Merger::FAST_FORWARD)
+      expect(upgrade.conflicts(%w[edited.md kept.md plain.md])).to eq(%w[edited.md])
+      expect(File.read(upgrade.paths("plain.md")[:current])).to eq("b\n")
+    end
+  end
+
   # What each outcome's base means for the record, end to end.
   describe "the next base" do
     let(:source) { File.join(tmp, "src") }
     let(:memories) { Samagotchi::MemoryPaths.system_dir }
     let(:provenance) { Samagotchi::MemoryBundle::Provenance.new(name: "demo") }
-
-    around { |example| with_config_home(File.join(tmp, "config")) { example.run } }
 
     def install(version, text, **opts)
       FileUtils.mkdir_p(source)
@@ -109,6 +139,15 @@ RSpec.describe Samagotchi::MemoryBundle::Merger do
       expect(base_text).to eq("v1\n")
       expect(provenance.record.version).to eq("1.0.0")
       expect(File.read(File.join(memories, "a.md"))).to eq("edit\n")
+    end
+
+    it "refuses a base next_base doesn't know, with the record unmoved" do
+      File.write(File.join(memories, "a.md"), "edit\n")
+      classify_as(:keep, :unheard_of)
+
+      expect { install("2.0.0", "v1\n", upgrade: true) }.to raise_error(ArgumentError, "unknown base :unheard_of for a.md")
+      expect(base_text).to eq("v1\n")
+      expect(provenance.record.version).to eq("1.0.0")
     end
   end
 end
