@@ -1240,3 +1240,37 @@ for one model family, loaded into the prompt only for the models a note's
   through upgrades; other notes stack with the bundle's
   ([Model notes](memory.md#model-notes)).
 
+## The decision-card bundle
+
+`chi bundle install decision-card` (or the `dev` profile) installs the bundle shipped with chi. It is a try-out, written
+only against this API (`lib/samagotchi/bundles/decision-card/plugin.rb`). It does nothing in a session with no
+[objectives](sessions.md#objectives): no request, no card.
+
+In a session with an active objective, an answer that is long and ends in a question gets a card when the turn is over:
+a short summary, the question, and the objective it concerns when the model names one. You answer in the composer.
+The card has no buttons, so it invents no options, and it is no "needs you": no push, no waiting mark.
+
+- **The gate**: a completed owner's turn (not a stopped one, a participant's or a `--non-interactive` one), at least
+  `min_chars` characters, a question mark that ends a word in the last `tail_chars` of the prose (code is left out). All of
+  it is read before any request.
+- **The request**: one side answer (`ctx.ask_model`) about the turn's prompt and answer, with the list in its prompt. It
+  counts in `/stats`' side requests under `decision-card`. If the model says the answer asks nothing, or leaves out the
+  summary or the question, there is no card.
+- **It may be late.** It runs on a thread, so the turn's end doesn't wait, and a one-slot local server answers it after
+  the running request. A new turn cancels it, which frees that slot, and a card still to come is dropped.
+- **A shown card folds** to a line (`Asked: …`) when your next turn starts (a reminder's, a child's report's or a participant's turn leaves it open): in the web a row in the same place; the terminals
+  print it as an update.
+- **A failed request** is only logged (`no_card` in the debug log): no card, no notice, no push.
+- **Nothing else changes**: nothing enters the conversation, so the next request is byte for byte what it would be
+  without the bundle. The card lives in the session's `cards.json`, as any card. `chi bundle uninstall decision-card` takes
+  it all away (a member of a profile you uninstall stays out); a session you have open needs `chi sessions restart ID`.
+
+```yaml
+bundles:
+  decision-card:
+    min_chars: 1200    # how long an answer is long
+    tail_chars: 300    # how far from the end the question may be
+    model: null        # a cheap configured model ("host:id" or an alias); null is the session's own
+    timeout: 120       # seconds the side request may take (a number)
+    max_tokens: 300    # the side answer's limit
+```

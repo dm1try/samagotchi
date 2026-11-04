@@ -120,10 +120,30 @@ Bridge's `TurnAccumulator#current_messages`) leaves tool calls out. A move shows
 - **Fork, delegate**: a plugin fork copies what it is passed. A delegate starts with an empty fold, so the tool answers
   that there are none.
 
+## The long-answer card
+
+A bundle, not core: [decision-card](../bundles.md#the-decision-card-bundle), removed by uninstalling. It reads the list with
+`ctx.objectives`, the plugin API over `Objectives.current`; `items` and `text` are the bundle's only view of the object.
+
+`:after_turn` reads the answer's length and tail from `event[:answer]`, not from the stored message, which on the native
+loop still holds its thought block, and starts a thread only when both pass, so the turn's end
+is held for no request and the web's answer doesn't wait (no `event[:present]`). The thread reads the list and, with an active
+objective, makes one `ctx.ask_model`. A Transcript drops system entries, so the list goes in `prompt:`. The objective a reply
+names is display only: an id the list doesn't have, or has dropped, is left out.
+
+Stale is a new turn: `:before_turn` takes the running `Ask` and cancels its request, so a one-slot server is free for that
+turn, and `show` holds the same mutex, so a card shows before that start or not at all. The hook runs inside its turn, so the
+card waits for `ctx.turn_running?` to go false: shown earlier, it gets `in_turn: true` and lands in that turn's collapsed block.
+The request doesn't wait: it goes ahead of the turn-end warm-up, so on a one-slot server the warm-up queues behind it and is the
+last thing in the slot, and the next turn keeps its prefilled prompt. A shown card is replaced by a one-line one with
+the same id only at a turn of the owner's (a prompt, no author): a wake has no prompt, and a child's report isn't an answer. A
+worker that restarts forgets a shown card, which then stays as it is: it has no buttons.
+
+A card with no actions writes no `pending_card.json`, so it never reaches `Web::Push::Attention`.
+
 ## Not in this version
 
-Later phases (a long-answer card, the strip) aren't here, and neither are stable-prompt lines. A UI of its own would
-replace the default note bubble.
+Later phases (the strip) aren't here, and neither are stable-prompt lines. A UI of its own would replace the default note bubble.
 
 Taking it out: old notes stay readable framed bubbles and keep being sent, and the key is ignored. Old `objectives` calls
-stay as history; with a kit no longer declaring the tool, they are ordinary saved calls.
+stay as history; with a kit no longer declaring the tool, they are ordinary saved calls. The card's bundle uninstalls.

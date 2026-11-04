@@ -11,6 +11,7 @@ and commands may change between minor versions. How releases are made:
 
 - `/objectives` gives a session a short list of what it is to achieve (`set A | B`, `add`, `done`, `drop`), kept in the conversation as a note; a continue carries it, and a session with no list gets no note and no prompt line. A first version to try. [docs/sessions.md](docs/sessions.md#objectives)
 - The `objectives` tool lets the model record a move on an objective (a line, optional evidence): information only, it never changes the list, and `/objectives` shows each objective's latest. Declared on `full` and the coordinator toolkit, so a `full` request carries its schema with or without a list; other kits name it in the not-loaded line. The coordinator bundle's skill says a move or a `done` is never approval to merge. [docs/sessions.md](docs/sessions.md#objectives)
+- The `decision-card` bundle (in the `dev` profile): in a session with objectives, a long answer ending in a question gets a card with a short summary and the question, which you answer in the composer. One side request per such answer; a session with no list makes none, and nothing enters the conversation. `chi bundle uninstall decision-card` takes it away. Plugins get `ctx.objectives`. [docs/bundles.md](docs/bundles.md#the-decision-card-bundle)
 
 ## [0.148.0] - 2026-11-04
 
