@@ -109,6 +109,13 @@ If the request is a new goal, say which handoffs are open (one line each) and go
    description to "DONE: …" and ask the user whether to remove it (memory_write name, scope and
    remove: true).
 
+## Objectives
+If this session has an OBJECTIVES note: when a branch's verdict, merge or blocker moves an objective, record it with
+`objectives` (action: move, the id, a one-line note, evidence: a sha or a test count), not per command.
+A move or a `done` is never approval to merge. A user's "not yet" on an objective a branch serves, or their changing
+what it asks, counts as "the user said to hold" that branch (step 6), until the user says otherwise; their marking it
+done isn't a hold. The user edits the list with /objectives; you don't.
+
 ## End of day
 When the user ends the day (`/coordinate end`, "that's all for today"), before you answer:
 1. Check where things stand: for each branch in your handoff `git log --oneline <default>..<branch>` and
@@ -167,3 +174,5 @@ participants: a manager or a teammate brings new context (a priority, a scope ch
   owner's Apply updates the handoff and re-plans, nothing started or merged there (0.6.0)
 - 2026-11-04 step 6: a branch verified with no doubts that can fast-forward merges with no question when chi's git-merge
   rule asks: the merge is chi's approval to give or pass; anything else asks as before (0.7.0)
+- 2026-11-04 Objectives: record a move with the objectives tool; a move or a done never approves a merge; a user's
+  "not yet" or changed objective is a hold until they say otherwise (0.8.0)

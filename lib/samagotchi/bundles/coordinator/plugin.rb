@@ -42,7 +42,8 @@
 # itself (the core child-boundary guardrail), in every mode: nothing to set up.
 #
 # The coordinator toolkit is lean plus the tools that run children
-# (delegate, delegate_result, list_sessions). /coordinate puts the session
+# (delegate, delegate_result, list_sessions) and objectives (the skill's
+# moves). /coordinate puts the session
 # on it before it asks the model (ctx.use_toolkit), which chi allows only
 # before the session's first model reply and outside a turn: otherwise it
 # says to run /toolkit coordinator, unless the session declares delegate
@@ -84,7 +85,7 @@ class Plugin
   def initialize(_settings = {}); end
 
   TOOLKIT = "coordinator"
-  TOOLKIT_TOOLS = %w[delegate delegate_result list_sessions].freeze
+  TOOLKIT_TOOLS = %w[delegate delegate_result list_sessions objectives].freeze
   CODING_TOOLKIT = "coding"
   CODING_PROMPT = "- Be concise in your responses\n- Show file paths clearly when working with files"
 

@@ -141,7 +141,7 @@ RSpec.describe "The coordinator plugin", :bundle do
     end
 
     it "declares the coordinator toolkit (lean and the tools that run children) and coding (child and pi's plain lines)" do
-      expect(bundle.toolkits.map { |kit| [kit.name, kit.base, kit.add, kit.remove, kit.prompt] }).to eq([["coordinator", "lean", %w[delegate delegate_result list_sessions], [], nil],
+      expect(bundle.toolkits.map { |kit| [kit.name, kit.base, kit.add, kit.remove, kit.prompt] }).to eq([["coordinator", "lean", %w[delegate delegate_result list_sessions objectives], [], nil],
                                                                                                          ["coding", "child", [], [], "- Be concise in your responses\n- Show file paths clearly when working with files"]])
     end
 

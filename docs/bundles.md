@@ -858,7 +858,7 @@ by themselves there.
   session: the coordinator session picks the change up from the handoff,
   and merges as it always does. Experimental: it may go if it doesn't earn its place.
 - **The coordinator toolkit.** The bundle declares `coordinator`: `lean`
-  plus `delegate`, `delegate_result` and `list_sessions`
+  plus `delegate`, `delegate_result`, `list_sessions` and `objectives` (the skill records moves with it)
   ([Toolkits](configuration.md#toolkits)). `/coordinate` puts a fresh session
   on it before it asks the model (`ctx.use_toolkit`). When chi refuses (a reply
   or a turn already there) and the session's toolkit has no `delegate`, the
