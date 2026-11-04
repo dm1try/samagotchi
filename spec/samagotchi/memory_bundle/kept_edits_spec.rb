@@ -85,6 +85,7 @@ RSpec.describe "Kept edits in a bundle" do
     end
   end
 
+
   describe "hooks, rules, the plugin and scripts" do
     def asset_source(version, body, hook: "h.rb", rule: "r.yml", plugin: "plugin.rb", script: "s.sh")
       write_source(version, { "a.md" => "same\n" })
@@ -187,6 +188,7 @@ RSpec.describe "Kept edits in a bundle" do
     end
   end
 
+
   describe "a dev install's links" do
     it "are never copied to the trash, replaced or pruned" do
       FileUtils.mkdir_p(File.join(source, "hooks"))
@@ -206,6 +208,22 @@ RSpec.describe "Kept edits in a bundle" do
       File.write(File.join(source, "manifest.yml"), YAML.dump(manifest))
       run_installer(dev: true)
       expect(trash_files).to be_empty
+    end
+  end
+
+
+  describe "Provenance#resolve_conflicts" do
+    it "keeps the entry's description" do
+      old = File.join(tmpdir, "old.md")
+      incoming = File.join(tmpdir, "new.md")
+      File.write(old, "old\n")
+      File.write(incoming, "new\n")
+      provenance.write(files: { "a.md" => old }, scope: "system", version: "1", source_path: "/s",
+                       conflicts: ["a.md"], file_descriptions: { "a.md" => "What a is" })
+
+      provenance.resolve_conflicts("a.md" => { incoming: incoming, current: old })
+
+      expect(provenance.read[:files][:"a.md"]).to eq(checksum: Digest::SHA256.hexdigest("new\n"), description: "What a is")
     end
   end
 end

@@ -265,7 +265,8 @@ module Samagotchi
 
       # After a conflict was resolved by hand: each file's base becomes the
       # bundle's version (the incoming file, else what's on disk now) and
-      # its conflict mark goes. The rest of the manifest stays as is.
+      # its conflict mark goes. The rest of the manifest (its description
+      # too) stays as is.
       # @param conflicts [Hash{String => Hash}] Installer#conflicts
       def resolve_conflicts(conflicts)
         return unless installed?
@@ -281,7 +282,7 @@ module Samagotchi
 
           content = File.read(src)
           File.write(base_path(key), content)
-          raw["files"][key] = { "checksum" => Digest::SHA256.hexdigest(content) }
+          raw["files"][key] = raw["files"][key].except("conflict").merge("checksum" => Digest::SHA256.hexdigest(content))
         end
         write_manifest(raw)
       end
