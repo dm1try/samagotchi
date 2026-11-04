@@ -321,7 +321,7 @@ module Samagotchi
     # (scripts already read it so): not CLI::Exit::USAGE by meaning.
     CONFLICTS_KEPT = 2
 
-    # @return [Integer] 0 resolved, CONFLICTS_KEPT kept the edits
+    # @return [Integer] 0 all resolved, CONFLICTS_KEPT kept some edits
     def upgrade_conflicts(installer, bundle_name, expanded_source, agent)
       @stdout.puts "\n#{installer.conflicts.size} conflict(s) need resolution."
       installer.conflicts.each { |k, _| @stdout.puts "  conflict: #{k}" }
@@ -341,20 +341,39 @@ module Samagotchi
       end
 
       prompt = build_conflict_prompt(bundle_name, installer.conflicts, expanded_source)
+      before = installer.conflicts.to_h { |key, info| [key, Samagotchi::MemoryBundle::Merger.digest(info[:current])] }
       @stdout.puts "Launching interactive session for conflict resolution… (/exit when done)"
       require "samagotchi/terminal_ui"
       Samagotchi::TerminalUI.new(prompt: prompt).run
-      # The installer already recorded the upgrade (conflicted files kept
-      # their old base); the resolved files now start from the bundle's
-      # version.
-      Samagotchi::MemoryBundle::Provenance.new(name: bundle_name).resolve_conflicts(installer.conflicts)
-      @stdout.puts "Provenance updated after interactive resolution."
-      @stdout.puts "Upgrade resolved interactively."
-      0
+      settle_conflicts(installer.conflicts, before, bundle_name)
     ensure
       # An owned source (git/zip/tar) was kept for the incoming files above;
       # the agent step is done with them now.
       installer.cleanup_source!
+    end
+
+    # After the agent step. The installer already recorded the upgrade
+    # (conflicted files kept their old base); a file the step changed, with
+    # no conflict markers left, now starts from the bundle's version. Any
+    # other stays a conflict: moving its base would turn a visible miss into
+    # a kept edit the next upgrade says nothing about.
+    # @param before [Hash{String => String, nil}] each file's digest before the step
+    # @return [Integer] 0 all resolved, CONFLICTS_KEPT some still behind
+    def settle_conflicts(conflicts, before, bundle_name)
+      merger = Samagotchi::MemoryBundle::Merger
+      untouched, changed = conflicts.partition { |key, info| merger.digest(info[:current]) == before[key] }
+      marked, settled = changed.partition { |_, info| merger.markers?(info[:current]) }
+      Samagotchi::MemoryBundle::Provenance.new(name: bundle_name).resolve_conflicts(settled.to_h)
+      untouched.each { |key, _| @stdout.puts "Nothing changed in #{key}: still behind." }
+      marked.each { |key, _| @stdout.puts "#{key} still holds conflict markers: still behind." }
+      if untouched.empty? && marked.empty?
+        @stdout.puts "Provenance updated after interactive resolution."
+        @stdout.puts "Upgrade resolved interactively."
+        return 0
+      end
+
+      @stdout.puts "Resolved: #{settled.map(&:first).join(", ")}" unless settled.empty?
+      CONFLICTS_KEPT
     end
 
     def uninstall(rest)

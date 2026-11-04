@@ -37,7 +37,7 @@ user-facing side (what a bundle owns, profiles, needs) is in [memory.md](../memo
 | `Manifest` | parses/validates `manifest.yml` (`name:` is the bundle's name and a directory under `.bundles/`, so a path such as `../x`, `a/b`, `.` or `..` is refused: `name: … is not a bundle name`; YAML that doesn't parse or isn't a mapping is a `ValidationError` too; files, hooks as `BundleHook`, plugin, scripts, needs, requires_chi, includes, context_providers, session_settings: the keys a session's `chi --set` may give, a list or a mapping of them to types (`SESSION_SETTING_TYPES`), recorded at install in `manifest.json` (`session_settings`, `session_setting_types`) for `SessionConfig` to check; settings: the keys config.yml's `bundles: <name>:` may have, the same shape, recorded as `settings` (nil when the manifest has none) and `setting_types` for `BundleSettingsCheck`, whose warnings the Engine holds for the first turn and `SessionConfig`'s refusals share the words of) and writes it (`Manifest.write`, for Builder). It ignores `requires_chi_next`, a shipped bundle's release-time marker (`script/release/release_tools.rb`, docs/releasing.md) |
 | `Installer` | one install/upgrade/dry run of one bundle (below) |
 | `AssetInstaller` | the parts that live in `.bundles/<name>/`: hooks, guardrail rules, plugin, scripts; returns `AssetInstaller::Installed` (the paths the record keeps). A file it replaces or removes whose bytes are neither the recorded sha nor the incoming file's is copied to the Installer's `Trash` first (`#save_edit`, as `hooks/x`, `guardrails/x`, `plugin/x`, `scripts/x`; no sha recorded counts as edited; a dev link never is) |
-| `Merger` | 3-way classification per file: `install`, `fast_forward`, `keep`, `noop`, `conflict` |
+| `Merger` | 3-way classification per file: `install`, `fast_forward`, `keep`, `noop`, `conflict`; `.markers?` (a file holding a merge's `<<<<<<<`/`>>>>>>>` lines; `=======` alone is a Markdown underline) |
 | `Provenance` | the `.bundles/<name>/` dir: `#write` the record + bases, `#record` → `InstalledBundle`, `.each_installed`, `.claimants` (which bundles own a file) |
 | `InstalledBundle`, `BundleHook`, `PluginRef` | value objects for the record; tolerant of older records (missing keys read as empty). `BundleHook#events` is the manifest's `event:` or its `events:` list (written back as `event:` for one, as an older chi reads it); `Hooks::BundleLoader#load_hook_file` builds the hook once and registers it under each |
 | `Builder` | `chi bundle build`: memories (+ the installed bundle's hooks, rules, plugin, scripts) → zip/tar/dir |
@@ -106,7 +106,9 @@ The order matters: warnings print in it, and a plugin/script the manifest names 
 
 Results are `@results` (file → `{status:, reason:}`), summarised by `#summary`. An upgrade with conflicts keeps an
 owned source dir alive (`#source_dir`) until `#cleanup_source!`, because the conflict agent reads the incoming
-files; `Provenance#resolve_conflicts` then moves the resolved files' bases forward.
+files; `BundleCommand#settle_conflicts` then runs `Provenance#resolve_conflicts`, which moves a base forward and keeps
+the entry's description, only for a file the agent step changed that holds no markers (`Merger.markers?`). Any other keeps
+its old base and mark, and the command exits `CONFLICTS_KEPT`.
 
 ## Builder#run, in order
 

@@ -512,7 +512,9 @@ for a file another bundle installed.
   you didn't edit and keeps one you did (a conflict), then asks on a
   terminal whether to launch a chi session that merges the two (`/exit`
   when done). `--agent` launches it without asking, `--no-agent` never does;
-  with neither and no terminal it keeps your edits and says so. Kept edits
+  with neither and no terminal it keeps your edits and says so. Only a file
+  the session changed, with no conflict markers left, counts as resolved: any
+  other stays a conflict (`Nothing changed in X: still behind.`). Kept edits
   exit 2; `chi bundle diff NAME FILE` shows the base, and `--force` takes
   the bundle's version, copying a file that differs to the bundle trash first
   (the output says `Copied to the trash first: …`).

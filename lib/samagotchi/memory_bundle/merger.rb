@@ -44,6 +44,20 @@ module Samagotchi
         end
       end
 
+      # A line a merge tool leaves around a conflict. "=======" isn't one: it
+      # is also a Markdown heading's underline.
+      CONFLICT_MARKER = /^(?:<{7}|>{7})(?: |$)/
+
+      # Whether the file holds a merge's conflict markers.
+      def self.markers?(path)
+        File.exist?(path) && File.binread(path).match?(CONFLICT_MARKER)
+      end
+
+      # The file's digest, nil when there is none.
+      def self.digest(path)
+        File.exist?(path) ? Digest::SHA256.hexdigest(File.binread(path)) : nil
+      end
+
       def self.current_modified?(base_path, current_path)
         return true unless base_path && File.exist?(base_path) && File.exist?(current_path)
 

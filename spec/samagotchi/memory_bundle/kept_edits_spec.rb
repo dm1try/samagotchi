@@ -85,7 +85,6 @@ RSpec.describe "Kept edits in a bundle" do
     end
   end
 
-
   describe "hooks, rules, the plugin and scripts" do
     def asset_source(version, body, hook: "h.rb", rule: "r.yml", plugin: "plugin.rb", script: "s.sh")
       write_source(version, { "a.md" => "same\n" })
@@ -188,7 +187,6 @@ RSpec.describe "Kept edits in a bundle" do
     end
   end
 
-
   describe "a dev install's links" do
     it "are never copied to the trash, replaced or pruned" do
       FileUtils.mkdir_p(File.join(source, "hooks"))
@@ -211,6 +209,87 @@ RSpec.describe "Kept edits in a bundle" do
     end
   end
 
+  describe "the agent step of an upgrade" do
+    let(:stdout) { StringIO.new }
+    let(:stderr) { StringIO.new }
+    let(:b_target) { File.join(memories, "b.md") }
+
+    before do
+      write_source("1.0.0", { "a.md" => "a one\n", "b.md" => "b one\n" },
+                   extra: { "files" => { "a.md" => { "sha256" => "fake", "description" => "A" },
+                                         "b.md" => { "sha256" => "fake", "description" => "B" } } })
+      run_installer
+      File.write(target, "a edited\n")
+      File.write(b_target, "b edited\n")
+      write_source("2.0.0", { "a.md" => "a two\n", "b.md" => "b two\n" },
+                   extra: { "files" => { "a.md" => { "sha256" => "fake", "description" => "A" },
+                                         "b.md" => { "sha256" => "fake", "description" => "B" } } })
+    end
+
+    # An upgrade whose agent step (the TerminalUI) does +agent+.
+    def upgrade_with_agent(&agent)
+      ui = instance_double(Samagotchi::TerminalUI)
+      allow(ui).to receive(:run) { agent&.call }
+      allow(Samagotchi::TerminalUI).to receive(:new).and_return(ui)
+      Samagotchi::BundleCommand.new(["upgrade", source, "--agent"], stdin: StringIO.new, stdout: stdout, stderr: stderr).run
+    end
+
+    def entry(key) = provenance.read[:files][key.to_sym]
+
+    it "leaves a file nothing changed as a conflict, says so and exits with CONFLICTS_KEPT" do
+      code = upgrade_with_agent
+
+      expect(code).to eq(Samagotchi::BundleCommand::CONFLICTS_KEPT)
+      expect(entry("a.md")).to include(conflict: true)
+      expect(File.read(provenance.base_path("a.md"))).to eq("a one\n")
+      expect(stdout.string).to include("Nothing changed in a.md: still behind", "Nothing changed in b.md: still behind")
+      expect(stdout.string).not_to include("resolved interactively")
+    end
+
+    it "brings the next upgrade back to a conflict, not a silent keep" do
+      upgrade_with_agent
+      again = run_installer(upgrade: true)
+
+      expect(again.results["a.md"][:status]).to eq("conflict")
+    end
+
+    it "keeps a file that still holds conflict markers as a conflict" do
+      code = upgrade_with_agent do
+        File.write(target, "<<<<<<< mine\na edited\n=======\na two\n>>>>>>> theirs\n")
+        File.write(b_target, "b merged\n")
+      end
+
+      expect(code).to eq(Samagotchi::BundleCommand::CONFLICTS_KEPT)
+      expect(entry("a.md")).to include(conflict: true)
+      expect(stdout.string).to include("a.md still holds conflict markers: still behind")
+      expect(entry("b.md")).not_to include(:conflict)
+      expect(File.read(provenance.base_path("b.md"))).to eq("b two\n")
+      expect(stdout.string).to include("Resolved: b.md")
+    end
+
+    it "doesn't take a Markdown rule or heading underline for a marker" do
+      code = upgrade_with_agent do
+        File.write(target, "Title\n=======\n> quote\n")
+        File.write(b_target, "b merged\n")
+      end
+
+      expect(code).to eq(0)
+      expect(entry("a.md")).not_to include(:conflict)
+    end
+
+    it "settles every changed file with no markers, moves the base, keeps the description and exits 0" do
+      code = upgrade_with_agent do
+        File.write(target, "a merged\n")
+        File.write(b_target, "b merged\n")
+      end
+
+      expect(code).to eq(0)
+      expect(entry("a.md")).to eq(checksum: Digest::SHA256.hexdigest("a two\n"), description: "A")
+      expect(File.read(provenance.base_path("a.md"))).to eq("a two\n")
+      expect(File.read(target)).to eq("a merged\n")
+      expect(stdout.string).to include("Upgrade resolved interactively.")
+    end
+  end
 
   describe "Provenance#resolve_conflicts" do
     it "keeps the entry's description" do

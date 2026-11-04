@@ -53,7 +53,8 @@ RSpec.describe "chi bundle upgrade --agent from a zip source" do
         seen[:existed] = incoming && File.exist?(incoming)
         seen[:content] = incoming && File.exist?(incoming) ? File.read(incoming) : nil
       end
-      define_method(:run) { nil }
+      # The agent merges: only a changed file counts as resolved.
+      define_method(:run) { File.write(File.join(Samagotchi::MemoryPaths.system_dir, "a.md"), "edited\ntwo\n") }
     end
     stub_const("Samagotchi::TerminalUI", fake)
 
@@ -64,6 +65,28 @@ RSpec.describe "chi bundle upgrade --agent from a zip source" do
     expect(seen[:existed]).to be(true)
     expect(seen[:content]).to eq("two\n")
     # The temp dir is gone once the agent step is done.
+    expect(File.exist?(seen[:incoming])).to be(false)
+  end
+
+  it "cleans the temp dir too when the agent step changed nothing, and keeps the conflict" do
+    v1 = make_bundle(File.join(tmpdir, "v1"), name: "demo", version: "1.0.0", content: "one\n")
+    run("install", v1)
+    File.write(File.join(Samagotchi::MemoryPaths.system_dir, "a.md"), "edited\n")
+
+    v2 = make_bundle(File.join(tmpdir, "v2"), name: "demo", version: "2.0.0", content: "two\n")
+    zip = File.join(tmpdir, "v2.zip")
+    system("zip", "-r", zip, ".", chdir: v2)
+
+    seen = {}
+    fake = Class.new do
+      define_method(:initialize) { |prompt:| seen[:incoming] = prompt[/incoming: (\S+)/, 1] }
+      define_method(:run) { nil }
+    end
+    stub_const("Samagotchi::TerminalUI", fake)
+
+    expect(run("upgrade", zip, "--agent")).to eq(Samagotchi::BundleCommand::CONFLICTS_KEPT)
+    expect(out.string).to include("Nothing changed in a.md: still behind.")
+    expect(Samagotchi::MemoryBundle::Provenance.new(name: "demo").read[:files][:"a.md"]).to include(conflict: true)
     expect(File.exist?(seen[:incoming])).to be(false)
   end
 
