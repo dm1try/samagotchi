@@ -529,7 +529,8 @@ message:
 - owner-voiced tools, which act in the owner's name beyond the turn:
   `delegate` and any `delegate_*` tool, `register_reminder`,
   `cancel_reminder`, `send_note`, `forget_outputs`, `task_create`,
-  `task_stop`, `find_tools` (it loads tools into the session), and
+  `task_stop`, `find_tools` (it loads tools into the session), `objectives`
+  (a move on the owner's list), and
   `memory_write` (a memory reaches the owner's later sessions); and the tools
   that read the owner's background tasks and their output, `task_wait`,
   `task_get`, `task_list` (a pair turn starts none);

@@ -54,9 +54,10 @@
       "context_read",
       "delegate",
       "delegate_result",
-      "ask_user_question"
+      "ask_user_question",
+      "objectives"
     ],
-    "digest": "sha256:37f96320bbcc265ad0099831897c4b909d04c6c5d77f40b01296d6c38d58341c"
+    "digest": "sha256:b537907444332edec845d02233242dcf73c2fc273b4de820f17645598458ce69"
   },
   "tool_choice": {
     "type": "auto"

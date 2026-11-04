@@ -107,7 +107,8 @@
       "context_read",
       "delegate",
       "delegate_result",
-      "ask_user_question"
+      "ask_user_question",
+      "objectives"
     ],
     "tool_choice": "auto",
     "reasoning_effort": "low",
@@ -243,7 +244,8 @@
       "context_read",
       "delegate",
       "delegate_result",
-      "ask_user_question"
+      "ask_user_question",
+      "objectives"
     ],
     "tool_choice": "auto",
     "reasoning_effort": "low",

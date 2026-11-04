@@ -16,6 +16,92 @@ RSpec.describe Samagotchi::Objectives do
                                     header: Samagotchi::ContextNote::OBJECTIVES_HEADER, objectives: list.to_payload)
   end
 
+  describe ".build, moves" do
+    def recorded(id) = "[objectives]\nRecorded a move on #{id}. The list is unchanged."
+
+    def chat_model(*calls) = { role: "model", content: "", tool_calls: calls }
+    def chat_call(id, args) = { id: id, name: "objectives", arguments: args }
+
+    def chat_result(id, ref, text = recorded("O1"))
+      { role: "tool_response", content: text, tool_call_id: id, tool_ids: [ref] }
+    end
+
+    def built(*entries, **opts) = described_class.build([note("n1", list), *entries], **opts)
+
+    it "reads a chat host's calls, the latest per objective" do
+      built_list = built(chat_model(chat_call("a", { action: "move", id: "O2", note: "first" })), chat_result("a", "t1", recorded("O2")),
+                         chat_model(chat_call("b", { action: "move", id: "O2", note: "second", evidence: "abc123" })),
+                         chat_result("b", "t2", recorded("O2")))
+
+      move = built_list.moves.fetch("O2")
+      expect(move).to have_attributes(id: "O2", note: "second", evidence: "abc123")
+      expect(move.line).to eq("second (evidence: abc123)")
+      expect(built_list.moves).not_to have_key("O1")
+    end
+
+    it "reads a kernel host's calls from the model text" do
+      text = "<tool_call>\n<function=objectives>\n<parameter=action>\nmove\n</parameter>\n<parameter=id>\nO1\n</parameter>\n" \
+             "<parameter=note>\nnative\n</parameter>\n</function>\n</tool_call>"
+      built_list = built({ role: "model", content: text }, { role: "tool_response", content: recorded("O1"), tool_ids: ["t1"] })
+
+      expect(built_list.moves.fetch("O1").note).to eq("native")
+    end
+
+    it "reads a call_tool's move, as it ran" do
+      call = { id: "a", name: "call_tool",
+               arguments: { tool: "chi/objectives", args: { action: "move", id: "O1", note: "by the index" } } }
+      built_list = built(chat_model(call), chat_result("a", "t1"))
+
+      expect(built_list.moves.fetch("O1").note).to eq("by the index")
+    end
+
+    it "leaves out a refused, denied or interrupted call, as the runner saves them" do
+      ["[objectives]\nError: no objective O1 (this session's: O2). Nothing was recorded.",
+       "[objectives] Error: denied by guardrail (rule pair-boundary, core): not allowed",
+       Samagotchi::ToolResponse.interrupted_text("objectives")].each do |text|
+        expect(built(chat_model(chat_call("a", { id: "O1", note: "no" })), chat_result("a", "t1", text)).moves).to be_empty
+      end
+    end
+
+    it "leaves out a call made with no list, which recorded nothing, once a list comes" do
+      answer = "[objectives]\n#{Samagotchi::Tools::ObjectivesTool::NONE}"
+      conversation = [chat_model(chat_call("a", { id: "O1", note: "before any list" })), chat_result("a", "t1", answer),
+                      chat_model(chat_call("b", { id: "O1" })), chat_result("b", "t2", answer), note("n1", list)]
+
+      expect(described_class.build(conversation).moves).to be_empty
+    end
+
+    it "takes the running turn's moves over the saved ones" do
+      saved = [chat_model(chat_call("a", { id: "O1", note: "saved" })), chat_result("a", "t1"),
+               chat_model(chat_call("b", { id: "O2", note: "saved two" })), chat_result("b", "t2", recorded("O2"))]
+      running = [chat_model(chat_call("c", { id: "O1", note: "running" })), chat_result("c", "t3")]
+      moves = built(*saved, running: running).moves
+
+      expect(moves.transform_values(&:note)).to eq("O1" => "running", "O2" => "saved two")
+    end
+
+    it "keeps moves under a pending list, which holds none of its own" do
+      newer = list.mark("O1", described_class::DONE)
+      built_list = built(chat_model(chat_call("a", { id: "O1", note: "x" })), chat_result("a", "t1"), pending: newer.to_payload)
+
+      expect(built_list.find("O1").status).to eq(described_class::DONE)
+      expect(built_list.moves.keys).to eq(["O1"])
+    end
+
+    it "keeps a move out of the frame and the payload" do
+      built_list = built(chat_model(chat_call("a", { id: "O1", note: "x" })), chat_result("a", "t1"))
+
+      expect(built_list.text).to eq(list.text)
+      expect(built_list.to_payload).to eq(list.to_payload)
+    end
+
+    it "folds one line of a many-line note" do
+      built_list = built(chat_model(chat_call("a", { id: "O1", note: "one\ntwo   three" })), chat_result("a", "t1"))
+
+      expect(built_list.moves.fetch("O1").line).to eq("one two three")
+    end
+  end
+
   describe "List" do
     it "numbers from O1 and renders what the frame holds" do
       expect(list.text).to eq("O1 Two coffees, open the cart\nO2 Stops before checkout (done when: no order is placed)")

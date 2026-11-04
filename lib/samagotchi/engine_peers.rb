@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative "objectives"
+
 module Samagotchi
   # The views of an Engine its peers get: the kernel's tools
   # (Engine#initialize sets @kernel.peers) and a delegate's approval relay
@@ -28,6 +30,12 @@ module Samagotchi
       # The peer's name when +name+ is a source a peer bundle declared
       # (PeerSources), for context_read's header.
       def peer_label(name) = engine.peer_sources&.label_for(name)
+
+      # The session's objectives now (the objectives tool), nil outside one.
+      def objectives
+        session = engine.session
+        session && Objectives.current(session.id, session.messages, state_dir: engine.peer_state_dir)
+      end
     end
 
     # What the approval relay needs from the parent's Engine (Peers#relay):

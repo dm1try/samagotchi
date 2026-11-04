@@ -47,7 +47,7 @@ RSpec.describe "ChatLoop's deferred tools" do
 
     tools = chat.requests.first[:tools]
     expect(deferred_names(chat.requests.first)).to eq(%w[register_reminder cancel_reminder list_reminders list_sessions
-                                                         send_note delegate delegate_result])
+                                                         send_note delegate delegate_result objectives])
     expect(tools.index { |t| t[:defer_loading] }).to eq(tools.count { |t| !t[:defer_loading] })
     expect(tools.last).to include(type: "function", defer_loading: true)
   end

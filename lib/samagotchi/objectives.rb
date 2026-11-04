@@ -1,9 +1,11 @@
 # frozen_string_literal: true
 
 require_relative "context_note"
+require_relative "llm_context_stale"
 require_relative "log"
 require_relative "session"
 require_relative "session_inbox"
+require_relative "tools/objectives_tool"
 
 module Samagotchi
   # A session's objectives: what the user wants it to achieve, a list they
@@ -11,7 +13,9 @@ module Samagotchi
   # as a note entry (ContextNote::OBJECTIVES_HEADER, its payload under the
   # message's :objectives), each edit a whole new list that replaces the one
   # before it. Pure but for the file reads named below, built from a
-  # conversation as WorkingSet is. See docs/internals/objectives.md.
+  # conversation as WorkingSet is. The model's moves are its calls of the
+  # objectives tool (Tools::ObjectivesTool), read back from the same
+  # conversation: not entries. See docs/internals/objectives.md.
   module Objectives
     # Who a list's note is from (ContextNote's label).
     SOURCE = "objectives"
@@ -40,11 +44,18 @@ module Samagotchi
       def to_payload = { "id" => id, "text" => text, "status" => status, "done_when" => done_when }.compact
     end
 
+    # What the model last said moved an objective: information only, read
+    # from its tool call, and shown by /objectives.
+    Move = Data.define(:id, :note, :evidence) do
+      def line = evidence.empty? ? note : "#{note} (evidence: #{evidence})"
+    end
+
     # The list: its items and the number the next id takes (it only grows,
-    # so a /objectives set doesn't reuse an id it dropped). Edits answer a
-    # new List.
-    List = Data.define(:items, :next_number) do
-      def initialize(items: [], next_number: 1)
+    # so a /objectives set doesn't reuse an id it dropped), and +moves+, the
+    # latest Move per id, which #build folds from the tool calls (never in
+    # the frame or the payload). Edits answer a new List.
+    List = Data.define(:items, :next_number, :moves) do
+      def initialize(items: [], next_number: 1, moves: {})
         super
       end
 
@@ -84,21 +95,48 @@ module Samagotchi
 
     module_function
 
+    # The id a call names, as the list spells it.
+    def move_id(call) = call[:id].to_s.strip.upcase
+
+    # A call's text as one line.
+    def clean(text) = text.to_s.gsub(/[[:space:]]+/, " ").strip
+
     # The list as +conversation+ leaves it, +pending+ over it: a pending file
     # is newer than anything the conversation holds. Pure.
     # @param conversation [Array<Hash>, nil] the stored entries
     # @param pending [Hash, nil] #pending_payload's
+    # @param running [Array<Hash>, nil] the running turn's conversation, which
+    #   +conversation+ (a session's messages) doesn't hold yet: its moves count
     # @return [List]
-    def build(conversation, pending: nil)
-      from_payload(pending) || Array(conversation).reduce(List.new) do |list, message|
-        (ContextNote.note?(message) && from_payload(ContextNote.fetch(message, :objectives))) || list
+    def build(conversation, pending: nil, running: nil)
+      conversation = Array(conversation)
+      list = from_payload(pending) || conversation.reduce(List.new) do |so_far, message|
+        (ContextNote.note?(message) && from_payload(ContextNote.fetch(message, :objectives))) || so_far
+      end
+      list.empty? ? list : list.with(moves: moves_in(conversation).merge(moves_in(Array(running))))
+    end
+
+    # The latest Move per id among the conversation's objectives calls that
+    # recorded one (LLMContextStale.paired_runs, as the working set reads its
+    # runs: a call_tool's too, both hosts' forms). Tools::ObjectivesTool
+    # .recorded? is the check: a call with no list, a refused, a denied or an
+    # interrupted one recorded nothing.
+    # @return [Hash{String => Move}]
+    def moves_in(conversation)
+      LLMContextStale.paired_runs(conversation).each_with_object({}) do |run, moves|
+        next unless run.call[:name] == Tools::ObjectivesTool::NAME
+
+        id = move_id(run.call)
+        next unless Tools::ObjectivesTool.recorded?(run.text, id)
+
+        moves[id] = Move.new(id: id, note: clean(run.call[:note]), evidence: clean(run.call[:evidence]))
       end
     end
 
     # A session's list now, its unabsorbed newest file included.
     # @return [List]
-    def current(session_id, conversation, state_dir:)
-      build(conversation, pending: pending_payload(Session.session_dir(session_id, state_dir: state_dir)))
+    def current(session_id, conversation, state_dir:, running: nil)
+      build(conversation, pending: pending_payload(Session.session_dir(session_id, state_dir: state_dir)), running: running)
     end
 
     # The newest objectives note waiting in +session_dir+'s notes/.

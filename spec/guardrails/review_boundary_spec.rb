@@ -115,7 +115,7 @@ RSpec.describe Samagotchi::Guardrails::ReviewBoundary do
 
   it "denies, never asks, every other tool" do
     %w[write edit memory_write execute task_create task_wait delegate delegate_result send_note list_sessions
-       register_reminder web_fetch context_read ask_user_question call_tool find_tools load_tools forget_outputs].each do |tool|
+       register_reminder web_fetch context_read ask_user_question call_tool find_tools load_tools forget_outputs objectives].each do |tool|
       verdict = verdict_for({ name: tool, content: "x", path: "docs/plan.md" })
       expect(verdict).to be_deny, tool
       expect(verdict.reason).to eq(format(described_class::NOT_IN_KIT, tool)), tool

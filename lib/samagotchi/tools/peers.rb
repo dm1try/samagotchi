@@ -27,6 +27,9 @@ module Samagotchi
       # A person's message waits for the turn's next boundary: never here
       # (Engine::PeerView asks the running turn).
       def input_waiting? = false
+
+      # The session's objectives: none here (Engine::PeerView reads them).
+      def objectives = nil
     end
   end
 end

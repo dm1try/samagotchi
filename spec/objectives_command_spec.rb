@@ -14,7 +14,7 @@ RSpec.describe Samagotchi::ObjectivesCommand do
     Samagotchi::Session.new_session(mode: "assist", model_name: "m", working_directory: tmpdir).tap { |s| s.save(state_dir: tmpdir) }
   end
   let(:session_dir) { Samagotchi::Session.session_dir(session.id, state_dir: tmpdir) }
-  let(:engine) { Struct.new(:session, :session_state_dir).new(session, tmpdir) }
+  let(:engine) { Struct.new(:session, :session_state_dir, :live_conversation).new(session, tmpdir) }
   let(:command) { described_class.new(engine: engine) }
 
   before { locks << Samagotchi::OwnerLock.acquire(session_dir, kind: "worker") }
@@ -220,5 +220,39 @@ RSpec.describe Samagotchi::ObjectivesCommand do
     engine.session = nil
 
     expect(run("set A")).to eq(["no session yet", :error])
+  end
+
+  describe "moves" do
+    before do
+      list = Samagotchi::Objectives::List.new.set([{ text: "Two coffees" }, { text: "Stops before checkout" }])
+      session.messages = [
+        Samagotchi::ContextNote.message(note_id: "n1", text: list.text, source: Samagotchi::Objectives::SOURCE,
+                                        header: Samagotchi::ContextNote::OBJECTIVES_HEADER, objectives: list.to_payload),
+        { role: "model", content: "", tool_calls: [{ id: "a", name: "objectives",
+                                                     arguments: { action: "move", id: "O2", note: "Closed", evidence: "spec" } }] },
+        { role: "tool_response", content: "[objectives]\nRecorded a move on O2.", tool_call_id: "a", tool_ids: ["t1"] }
+      ]
+    end
+
+    it "shows an objective's latest move under it, and none where there is none" do
+      expect(run("")).to eq(["objectives:\n  O1 Two coffees\n  O2 Stops before checkout\n    last move: Closed (evidence: spec)", :ok])
+    end
+
+    it "shows a move of the running turn, which session.messages doesn't hold yet" do
+      engine.live_conversation = [
+        { role: "model", content: "", tool_calls: [{ id: "b", name: "objectives", arguments: { id: "O1", note: "Mid-turn" } }] },
+        { role: "tool_response", content: "[objectives]\nRecorded a move on O1.", tool_call_id: "b", tool_ids: ["t2"] }
+      ]
+
+      expect(run("").first).to include("O1 Two coffees\n    last move: Mid-turn",
+                                       "last move: Closed (evidence: spec)")
+    end
+
+    it "sends no move in an edit's list" do
+      run("done O2")
+
+      note = Samagotchi::SessionInbox.read_note(files.first)
+      expect(note[:text]).to eq("O1 Two coffees\nO2 [done] Stops before checkout")
+    end
   end
 end

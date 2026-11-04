@@ -53,7 +53,8 @@ module Samagotchi
         "delegate" => { content: "task", fallback: :prefix_or_raw },
         "ask_user_question" => { content: "question", also: %w[question], verbatim: %w[options], options: true,
                                  fallback: :raw },
-        "forget_outputs" => { content: "note", also: %w[note], verbatim: %w[ids keep restore] }
+        "forget_outputs" => { content: "note", also: %w[note], verbatim: %w[ids keep restore] },
+        "objectives" => { content: "note", also: %w[note] }
       }.freeze
 
       # A name the model uses for a built-in, mapped to that built-in (a model

@@ -552,5 +552,39 @@
         "additionalProperties": false
       }
     }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "objectives",
+      "description": "Record a move on one of the objectives in the OBJECTIVES note: in a line, what you did or found that moves it, so the user can follow. It records only: it doesn't edit the list, change a status or mark anything done, and it approves nothing. The user edits the list with /objectives; asked to change it, say so instead of saying you changed it. One when an objective really moved, not per step.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string",
+            "description": "move, the only action"
+          },
+          "id": {
+            "type": "string",
+            "description": "The objective's id, e.g. O2"
+          },
+          "note": {
+            "type": "string",
+            "description": "What moved, in a line"
+          },
+          "evidence": {
+            "type": "string",
+            "description": "Optional: what shows it (a commit, a test count, a file)"
+          }
+        },
+        "required": [
+          "action",
+          "id",
+          "note"
+        ],
+        "additionalProperties": false
+      }
+    }
   }
 ]

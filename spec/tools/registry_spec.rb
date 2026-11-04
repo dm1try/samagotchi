@@ -207,7 +207,7 @@ RSpec.describe Samagotchi::Tools::Registry do
       expect(registry.left_out("execute")).to be_nil
       expect(registry.left_out("nope")).to be_nil
       expect(registry.left_out_names).to eq(%w[register_reminder cancel_reminder list_reminders list_sessions send_note
-                                               delegate delegate_result])
+                                               delegate delegate_result objectives])
       expect(registry["delegate"]).not_to be_nil
     end
 
@@ -227,7 +227,7 @@ RSpec.describe Samagotchi::Tools::Registry do
       it "is a built-in the kit's list leaves out; a removed one is the user's to bring back" do
         registry.toolkit = kit(remove: %w[delegate echo])
         expect(registry.reachable_names).to eq(%w[register_reminder cancel_reminder list_reminders list_sessions send_note
-                                                  delegate_result])
+                                                  delegate_result objectives])
         expect(registry.removed_names).to eq(%w[delegate echo])
         expect(registry.indexed("send_note")&.name).to eq("send_note")
         expect(registry.indexed("delegate")).to be_nil

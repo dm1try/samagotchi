@@ -25,6 +25,7 @@ require_relative "delegate"
 require_relative "delegate_result"
 require_relative "ask_user_question"
 require_relative "forget_outputs"
+require_relative "objectives_tool"
 require_relative "../guardrails/parent_approvals"
 require_relative "../guardrails/pair_boundary"
 require_relative "../model_profile"
@@ -58,7 +59,8 @@ module Samagotchi
         ContextRead,
         Delegate,
         DelegateResult,
-        AskUserQuestion
+        AskUserQuestion,
+        ObjectivesTool
       ].freeze
       # The built-ins an LLM context layer adds (offered only under it).
       LAYER_CLASSES = [ForgetOutputs].freeze
@@ -115,6 +117,7 @@ module Samagotchi
           DelegateResult.call(call[:content], session: call[:session], timeout: call[:timeout], peers: kctx.peers)
         end,
         AskUserQuestion::NAME => ->(call, kctx) { kctx.ask_user_question(call) },
+        ObjectivesTool::NAME => ->(call, kctx) { ObjectivesTool.call(call, peers: kctx.peers) },
         ForgetOutputs::NAME => ->(call, kctx) { kctx.forget_outputs(call) }
       }.freeze
 

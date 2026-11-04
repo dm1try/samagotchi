@@ -31,11 +31,11 @@ RSpec.describe Samagotchi::ToolkitCommand do
     expect(lines[1]).to match(/\A  declared \(16, ~\d\.\dk tokens\): execute ~\d+, read ~\d+/)
     expect(lines[2]).to eq("  groups: all")
     expect(lines[3]).to eq("  reachable (find_tools): register_reminder, cancel_reminder, list_reminders, list_sessions, " \
-                           "send_note, delegate, delegate_result")
+                           "send_note, delegate, delegate_result, objectives")
     expect(lines[4]).to eq("  removed: none")
     expect(lines[5]).to eq("  toolkits: full, lean, child, review; /toolkit [NAME | add TOOL | remove TOOL] changes it")
     expect(command.run("child")[0].lines[3..4].map(&:chomp))
-      .to eq(["  reachable (find_tools): register_reminder, cancel_reminder, list_reminders, list_sessions",
+      .to eq(["  reachable (find_tools): register_reminder, cancel_reminder, list_reminders, list_sessions, objectives",
               "  removed: memory_write, delegate, delegate_result"])
     session.toolkit = Samagotchi::Toolkit.new(name: "lean", remove: ["call_tool"])
     expect(command.run("")[0].lines[3]).to start_with("  not loaded: register_reminder, ")

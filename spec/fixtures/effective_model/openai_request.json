@@ -55,9 +55,10 @@
       "context_read",
       "delegate",
       "delegate_result",
-      "ask_user_question"
+      "ask_user_question",
+      "objectives"
     ],
-    "digest": "sha256:9387dfee026c3111f2d26b7b3fe2fac313db09a8b11f010883daeadf3d4ec970"
+    "digest": "sha256:7d222fbc9b47301fe1b04a33039899c777d5ea2b7bad56f53aa3a5c74be34365"
   },
   "tool_choice": "auto",
   "chat_template_kwargs": {

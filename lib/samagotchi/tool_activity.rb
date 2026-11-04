@@ -23,6 +23,7 @@ require_relative "tools/context_read"
 require_relative "tools/delegate"
 require_relative "tools/delegate_result"
 require_relative "tools/forget_outputs"
+require_relative "tools/objectives_tool"
 
 module Samagotchi
   # The one-line summary of a tool call that the UIs show ("reading file",
@@ -112,6 +113,7 @@ module Samagotchi
              when Tools::Read::NAME, Tools::MemoryRead::NAME then call[:content]
              when Tools::Write::NAME, Tools::Edit::NAME, Tools::MemoryWrite::NAME then call[:path]
              when Tools::Execute::NAME, Tools::TaskCreate::NAME then command_title(call[:content])
+             when Tools::ObjectivesTool::NAME then "#{call[:id]} #{call[:note]}#{" · #{call[:evidence]}" unless call[:evidence].to_s.strip.empty?}"
              end
       text = text.to_s.strip
       return nil if text.empty?
@@ -205,6 +207,7 @@ module Samagotchi
       when Tools::Delegate::NAME then "delegating"
       when Tools::DelegateResult::NAME then "waiting for a delegate"
       when Tools::ForgetOutputs::NAME then forget_outputs_action(call)
+      when Tools::ObjectivesTool::NAME then "recording a move"
       else registry_entry(registry, tool_name)&.label || "calling tool"
       end
     end
@@ -430,6 +433,10 @@ module Samagotchi
         parts << "restore=#{preview_tool_param(request.restore.join(","))}" if request.restore?
         parts << "note=#{preview_tool_param(request.note)}" unless request.note.empty?
         parts.empty? ? nil : parts.join(" ")
+      when Tools::ObjectivesTool::NAME
+        parts = ["id=#{preview_tool_param(call[:id])}", "note=#{preview_tool_param(call[:note])}"]
+        parts << "evidence=#{preview_tool_param(call[:evidence])}" unless call[:evidence].to_s.strip.empty?
+        parts.join(" ")
       when Tools::AskUserQuestion::NAME
         parts = ["question=#{preview_tool_param(call[:question] || call[:content])}"]
         opts = call[:options]

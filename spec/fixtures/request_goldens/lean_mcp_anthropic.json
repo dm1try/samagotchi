@@ -464,7 +464,7 @@
       },
       {
         "name": "find_tools",
-        "description": "Search tools this session doesn't declare, by keywords. It answers up to 5 tools, each with its name (<group>/<tool>) and inputSchema; call one with call_tool. An empty query lists every tool's name.\nGroups:\n- chi: chi's own tools not declared in this session (7 tools)\n- fs: files (2 tools)",
+        "description": "Search tools this session doesn't declare, by keywords. It answers up to 5 tools, each with its name (<group>/<tool>) and inputSchema; call one with call_tool. An empty query lists every tool's name.\nGroups:\n- chi: chi's own tools not declared in this session (8 tools)\n- fs: files (2 tools)",
         "input_schema": {
           "type": "object",
           "properties": {
@@ -634,6 +634,38 @@
               "description": "Maximum seconds to wait (default: 600; 0 checks once without waiting); on a timeout the child keeps running and its reply comes as a delegate report"
             }
           },
+          "additionalProperties": false
+        },
+        "defer_loading": true
+      },
+      {
+        "name": "objectives",
+        "description": "Record a move on one of the objectives in the OBJECTIVES note: in a line, what you did or found that moves it, so the user can follow. It records only: it doesn't edit the list, change a status or mark anything done, and it approves nothing. The user edits the list with /objectives; asked to change it, say so instead of saying you changed it. One when an objective really moved, not per step.",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "description": "move, the only action"
+            },
+            "id": {
+              "type": "string",
+              "description": "The objective's id, e.g. O2"
+            },
+            "note": {
+              "type": "string",
+              "description": "What moved, in a line"
+            },
+            "evidence": {
+              "type": "string",
+              "description": "Optional: what shows it (a commit, a test count, a file)"
+            }
+          },
+          "required": [
+            "action",
+            "id",
+            "note"
+          ],
           "additionalProperties": false
         },
         "defer_loading": true

@@ -166,7 +166,7 @@ RSpec.describe Samagotchi::Engine, "toolkit" do
   it "names the call_tool route alone when the toolkit removes find_tools" do
     allow(kernel).to receive(:run).and_return(result)
     turn(session(Samagotchi::Toolkit.new(name: "lean", remove: ["find_tools"])))
-    expect(engine.system_prompt).to include("delegate_result. Call one with call_tool(tool: \"chi/<name>\", args: {…}). " \
+    expect(engine.system_prompt).to include("delegate_result, objectives. Call one with call_tool(tool: \"chi/<name>\", args: {…}). " \
                                             "Removed (toolkit lean): find_tools. Only the user can load it")
   end
 

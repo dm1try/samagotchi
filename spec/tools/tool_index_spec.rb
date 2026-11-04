@@ -248,14 +248,14 @@ RSpec.describe Samagotchi::Tools::ToolIndex do
       chi = index.all_groups.first
       expect(chi.name).to eq("chi")
       expect(chi.tools.map(&:name)).to eq(%w[register_reminder cancel_reminder list_reminders list_sessions send_note
-                                             delegate delegate_result])
+                                             delegate delegate_result objectives])
       expect(find_entry.schema[:description]).to end_with(
-        "\nGroups:\n- chi: chi's own tools not declared in this session (7 tools)"
+        "\nGroups:\n- chi: chi's own tools not declared in this session (8 tools)"
       )
 
       registry.toolkit = kit("child")
       expect(index.all_groups.first.tools.map(&:name)).to eq(%w[register_reminder cancel_reminder list_reminders
-                                                                list_sessions])
+                                                                list_sessions objectives])
       registry.toolkit = kit(remove: %w[delegate])
       expect(index.all_groups.first.tools.map(&:name)).not_to include("delegate", "forget_outputs")
       registry.toolkit = nil
@@ -304,7 +304,7 @@ RSpec.describe Samagotchi::Tools::ToolIndex do
       registry.toolkit = kit
       index.refresh!
       first = registry[find_name].schema[:description]
-      expect(first).to end_with("\n- chi: chi's own tools not declared in this session (7 tools)\n- fs (1 tool)")
+      expect(first).to end_with("\n- chi: chi's own tools not declared in this session (8 tools)\n- fs (1 tool)")
 
       again = described_class.new.tap { |i| i.add(fs) }
       other = Samagotchi::Tools::Builtins.registry

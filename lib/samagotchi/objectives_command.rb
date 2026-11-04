@@ -4,9 +4,10 @@ require_relative "note_delivery"
 require_relative "objectives"
 
 module Samagotchi
-  # /objectives: with no arguments the session's list (Objectives); `set`,
-  # `add`, `done` and `drop` edit it. An edit is a whole new list in a note
-  # file (NoteDelivery, with its refusal of a chi REPL's session), so it is
+  # /objectives: with no arguments the session's list (Objectives), each
+  # objective's latest move under it (the model's objectives tool; a move
+  # changes nothing); `set`, `add`, `done` and `drop` edit it. An edit is a
+  # whole new list in a note file (NoteDelivery, with its refusal of a chi REPL's session), so it is
   # safe from any thread, a turn running or not: it goes into the conversation
   # at the worker's next pass between turns, and a second edit stacks on an
   # unabsorbed first. Nothing here saves the session.
@@ -33,7 +34,11 @@ module Samagotchi
     # @return [Array(String, Symbol)] the reply, and :ok or :error
     def run(args)
       session = @engine.session or return ["no session yet", :error]
-      list = Objectives.current(session.id, session.messages, state_dir: @engine.session_state_dir)
+      # The running turn's moves aren't in session.messages yet. A snapshot from
+      # this thread, read only: an entry is there whole or not yet, and a call
+      # with no result yet pairs with nothing.
+      list = Objectives.current(session.id, session.messages, state_dir: @engine.session_state_dir,
+                                                              running: @engine.live_conversation&.dup)
       verb, rest = args.to_s.strip.split(/\s+/, 2)
       return [listing(list, session), :ok] if verb.nil?
 
@@ -110,6 +115,10 @@ module Samagotchi
       pending ? "#{lines_of(list)}\n#{BETWEEN_TURNS}" : lines_of(list)
     end
 
-    def lines_of(list) = ["objectives:", *list.items.map { |item| "  #{item.line}" }].join("\n")
+    def lines_of(list)
+      ["objectives:", *list.items.flat_map { |item| item_lines(item, list.moves[item.id]) }].join("\n")
+    end
+
+    def item_lines(item, move) = ["  #{item.line}", *("    last move: #{move.line}" if move)]
   end
 end

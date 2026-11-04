@@ -34,7 +34,8 @@ module Samagotchi
     #   - owner-voiced tools (OWNER_VOICED, and any delegate_* tool): what
     #     speaks or acts in the owner's name beyond this turn (a delegate, a
     #     reminder, a note to another session, a background task, a
-    #     forgotten output, the session's loaded tools); the tools that read
+    #     forgotten output, the session's loaded tools, a move on the owner's
+    #     objectives); the tools that read
     #     the owner's background tasks (OWNER_TASK_READERS); and memory_write:
     #     a memory reaches the owner's later sessions;
     #   - ask_user_question: there is no one on the participant's side to
@@ -51,7 +52,7 @@ module Samagotchi
       RULE = "pair-boundary"
       SOURCE = "core"
       OWNER_VOICED = %w[delegate register_reminder cancel_reminder send_note forget_outputs task_create task_stop
-                        find_tools].freeze
+                        find_tools objectives].freeze
       OWNER_VOICED_PREFIX = "delegate_"
       # The background task tools that read the owner's tasks (a pair turn
       # starts none: task_create is owner-voiced, and its execute is never

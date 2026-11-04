@@ -2855,7 +2855,8 @@ module Samagotchi
     # The running turn's conversation as its loop builds it (both loops
     # register it on the kernel's llm_context_turn): the same array the loop
     # appends to, not a copy, so read it on the turn's thread (the pending
-    # input drain, at an iteration boundary: TurnCheckpoint). nil when no
+    # input drain, at an iteration boundary: TurnCheckpoint), or from another
+    # only as a dup, read only (/objectives). nil when no
     # turn runs (llm_context_turn is never cleared, and still holds the
     # last turn's then).
     # @return [Array<Hash>, nil]

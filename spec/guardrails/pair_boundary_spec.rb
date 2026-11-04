@@ -819,7 +819,7 @@ RSpec.describe Samagotchi::Guardrails::PairBoundary do
   end
 
   it "denies the owner-voiced tools, any delegate_* tool and every memory_write" do
-    (described_class::OWNER_VOICED + %w[cancel_reminder task_stop find_tools delegate_result]).each do |tool|
+    (described_class::OWNER_VOICED + %w[objectives cancel_reminder task_stop find_tools delegate_result]).each do |tool|
       verdict = verdict_for({ name: tool, content: "x" })
       expect(verdict).to be_deny, tool
       expect(verdict.reason).to eq(format(described_class::OWNER_ONLY, tool))

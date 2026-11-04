@@ -35,7 +35,7 @@ RSpec.describe Samagotchi::Tools::DeferredTools do
     toolkit!
 
     expect(names).to eq(%w[register_reminder cancel_reminder list_reminders list_sessions send_note delegate
-                           delegate_result mcp_fs_read mcp_fs_write])
+                           delegate_result objectives mcp_fs_read mcp_fs_write])
     first = described_class.list(registry, []).first
     expect(first.description).to start_with("Register a periodic reminder.")
     expect(first.schema).to include(type: "object")
