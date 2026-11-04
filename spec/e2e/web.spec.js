@@ -1793,6 +1793,45 @@ test("a step whose stream drops mid-answer is asked again: the partial goes live
   await expect(page.locator("#history .bubble.output")).toHaveText(answer);
 });
 
+test("objectives: a tap edits the list with no message, at once idle and after the turn mid-turn", async ({ page, script }) => {
+  script("plain");
+  await send(page, "Hello");
+  await turnEnded(page, 1);
+  await expect(page.locator("#objectivesStrip")).toBeHidden();
+  await page.locator("#prompt").fill("/objectives set Two coffees | Stops before checkout");
+  await page.locator("#actionBtn").click();
+  const chip = (id) => page.locator(`#objectivesStrip .obj-chip[data-id="${id}"]`);
+  await expect(chip("O2")).toBeVisible();
+  await expect(page.locator(`${H} .objectives-entry .obj-pill`)).toHaveCount(2);
+  // Idle: no bubble of its own, the entry says it.
+  const commands = await page.locator(`${H} .bubble.command`).count();
+  await chip("O1").click();
+  await page.locator('#objectivesPanel [data-row="O1"] [data-obj-act="done"]').click();
+  await expect(chip("O1")).toHaveClass(/done/);
+  // Under the worker's 5 s fallback tick: the edit woke its loop.
+  await expect(page.locator(`${H} .objectives-entry.change`)).toHaveText("You marked O1 done", { timeout: 2_500 });
+  await expect(page.locator(`${H} .bubble.command`)).toHaveCount(commands);
+  await page.keyboard.press("Escape");
+  // Mid-turn: the strip has it and says it waits; the entry comes at the end.
+  script("mid_turn_command");
+  await send(page, "Take a moment");
+  await expect(page.locator("#turnStage .ts-cancel")).toBeVisible();
+  await chip("O2").click();
+  await page.locator('#objectivesPanel [data-row="O2"] [data-obj-act="drop"]').click();
+  await expect(page.locator("#objectivesStrip .obj-waiting")).toHaveText("Applies after this turn");
+  await expect(chip("O2")).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  await expect(page.locator(`${H} .objectives-entry.change`)).toHaveCount(1);
+  await turnEnded(page, 2);
+  await expect(page.locator(`${H} .objectives-entry.change`)).toHaveCount(2);
+  await expect(page.locator("#objectivesStrip .obj-waiting")).toHaveCount(0);
+  await page.reload();
+  await turnEnded(page, 2);
+  await expect(chip("O1")).toHaveClass(/done/);
+  await expect(chip("O2")).toHaveCount(0);
+  await expect(page.locator(`${H} .objectives-entry.change`)).toHaveCount(2);
+});
+
 test("/model X sent mid-turn shows queued, survives a reload, and applies once the turn ends", async ({ page, script }) => {
   script("mid_turn_command");
   await send(page, "Take a moment");

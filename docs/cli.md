@@ -873,6 +873,7 @@ the model's `objectives` tool); [Objectives](sessions.md#objectives) has what th
 - `/objectives set Two coffees | Stops before checkout (done when: no order is placed)`: a new list. Parts are split by
   ` | ` or by lines; a part may end `(done when: …)`. It replaces the list, and ids go on from the old one's.
 - `/objectives add TEXT`: one more (several with ` | `).
+- `/objectives edit O1 TEXT`: a new text, the rest of the line whole (it may end `(done when: …)`); id and status stay.
 - `/objectives done O1 [O2…]`, `/objectives drop O1 [O2…]`: mark items. An id it doesn't have refuses the whole line, and
   so does `done` on a dropped item. The model is shown a done item as `O1 [done] …` and no dropped one.
 - `/objectives undo O1 [O2…]`: back to active, after a mistaken `done` or `drop`.

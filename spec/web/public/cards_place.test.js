@@ -174,3 +174,29 @@ test("a card's action follows no worker when another session opened meanwhile", 
   await new Promise((r) => setTimeout(r, 0));
   assert.equal(woke.length, 0);
 });
+
+test("a proposal card's buttons stay disabled until its card comes or the action fails; another card's come back", async () => {
+  const h = history();
+  let fail = false;
+  const { cards } = harness(h, { api: { sendCommand: async () => { if (fail) throw new Error("nope"); return {}; } } });
+  const actions = [{ label: "Apply", command: "/objectives --card c1 done O1" }, { label: "Dismiss", command: "/objectives --card c1 dismiss" }];
+  cards.upsertCard({ id: "c1", title: "Mark O1 done?", body: "b", actions });
+  cards.upsertCard({ id: "c2", title: "Other", body: "b", actions: [{ label: "Go", command: "/go" }] });
+  const buttons = () => [...h.querySelectorAll('[data-card-id="c1"] .card-action')];
+  cards.onCardAction({ target: buttons()[0] });
+  await new Promise((r) => setTimeout(r, 0));
+  assert.deepEqual(buttons().map((b) => b.disabled), [true, true]);
+  // The worker refused it (its command_ran): back.
+  cards.actionFailed(actions[0].command);
+  assert.deepEqual(buttons().map((b) => b.disabled), [false, false]);
+  // A failed post: back.
+  fail = true;
+  cards.onCardAction({ target: buttons()[0] });
+  await new Promise((r) => setTimeout(r, 0));
+  assert.deepEqual(buttons().map((b) => b.disabled), [false, false]);
+  fail = false;
+  const other = h.querySelector('[data-card-id="c2"] .card-action');
+  cards.onCardAction({ target: other });
+  await new Promise((r) => setTimeout(r, 0));
+  assert.equal(other.disabled, false);
+});

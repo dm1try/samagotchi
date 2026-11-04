@@ -1,8 +1,9 @@
 # Session objectives
 
 A session's objectives are a short list the user types: what this session is to achieve. The first version is a
-try-out, so each piece can come out alone. There is no new message kind, store or UI: the list is a note in the
-conversation, the command writes a note file, and the UIs show the default note bubble. For the user's side, see
+try-out, so each piece can come out alone. There is no new message kind or store: the list is a note in the
+conversation and the command writes a note file. Terminals show the default note bubble; the web draws it
+([The page](#the-page)). For the user's side, see
 [sessions.md](../sessions.md#objectives) and [cli.md](../cli.md).
 
 ## The object and the entry
@@ -62,6 +63,9 @@ the payload, so an edit and a continue carry none: a new link starts with no las
 `/objectives` (`ObjectivesCommand`, registered `anytime`) reads `Objectives.current`. An edit goes out through
 `NoteDelivery.deliver(objectives:)`, which means:
 
+- One edit's read and write are one step (`Objectives.with_lock`, a file lock in the session's folder, across threads
+  and processes), and the worker's absorb holds it from its claim to the files' delete, so no edit reads between them.
+  Each note holds a whole list: without this, two edits that read the same list lost one.
 - `done` refuses a dropped item, and `undo` puts an item back to active.
 - A part with no text of its own refuses the line. An empty done-when is none, and of two done-when groups the last
   counts. A leading `[done]`, `[dropped]` or `[active]` is stripped, so a text can't pass for a status. Any whitespace
@@ -106,7 +110,61 @@ Bridge's `TurnAccumulator#current_messages`) leaves tool calls out. A move shows
 - **The row**: `recording a move` in the TUI's line with `id=`, `note=`, `evidence=`; the web's row is `objectives O2 note · evidence`
   (`ToolActivity#tool_title`). No UI of its own.
 
-`serves` on `ask_user_question` waits until moves read well. The model can't edit the list and can't propose an edit.
+`serves` on `ask_user_question` waits until moves read well. The model can't edit the list.
+
+## Proposals
+
+`action: propose` (`change` add, reword, done or drop; `id`; `text`; `note`, why) checks the change against the list
+(`Objectives::Proposal#refusal`) and hands it to `Engine#propose_objective`, which keeps it until the turn is over,
+as `#context_choice`'s cards are kept: shown in `run_turn`'s ensure, it is a between-turns card (no `in_turn`), so it
+writes no `pending_card.json`, the stage doesn't say it waits, and it keeps its buttons over a restart (`CardStore` takes
+them only from a card shown in a turn). The same change twice in a turn is one card. A P3 finding stands: a card action
+can't carry a plain reply, so an action here is a real edit.
+
+Apply is `/objectives --card ID done O2`: the proposal's own line (`Proposal#line`) behind a prefix the command reads
+(`ObjectivesCommand::CARD`), so it goes through the one route, with its refusals. On success the card with that id is
+replaced by a one-line notice. Dismiss (`--card ID dismiss`) only folds it. Either is recorded under the lock
+(`objectives_cards.json` in the session's folder), so a repeat, from a stale tab or a second tap, applies nothing: it
+says the proposal was already applied and folds the card again. A reword carries what it was proposed against
+(`--was`, `Objectives.fingerprint`) and is refused when the item has changed since. It keeps the item's done-when unless its text
+brings its own. The page keeps a proposal card's buttons off until the folded card comes or the action fails
+(`cards_place.js actionFailed`). A turn leaves at most `PROPOSALS_PER_TURN` (3) cards; past that the tool says so. A refused edit leaves the card, and its
+`command_ran` shows the refusal. Nothing is recorded as a move (`recorded?` is positive); the call stays in history as
+any call. An add's text can't split on ` | `. The body names the line, for a terminal, which shows no button.
+
+## The page
+
+`Objectives.view` (`List#to_view`) is what the page draws: the items, each with its last move, and `pending`, whether
+the newest list is a file still waiting. The session read (`objectives`, no key with no list) and the live
+`:objectives_updated` carry it. `Engine#announce_objectives` emits when the view differs from the last: after an edit,
+once a list note is in (`add_context_note`), at a turn's end (its moves) and after a rollback between turns. A session
+with no list emits nothing. Between two tabs that is all it takes. A participant gets neither: the event is in
+`ParticipantView::DROPPED`.
+
+Idle, an edit lands at once: the worker's anytime path wakes the loop (`@waker.wake`, one extra pass for any anytime
+command), which absorbs the file. It no longer waits for the fallback tick.
+
+- **The wiring** (`objectives_wiring.js`): the routes the strip and the moves post on, each following a woken worker
+  only while the page still shows that session.
+- **The strip** (`objectives_strip.js`, `#objectivesStrip`; pure parts in `objectives_model.js`, CSS in
+  `objectives.css`). A factory with its own closure (the list; never `store.current`), seeded by `renderSessionView` and reset
+  by `forgetSession`. Its edit list is a `chip_popover.js` shell, so a phone gets the bottom sheet and the focus rules.
+  Every edit is a line on the command route with `card: true`: no echo, and `commandView` hides a good `/objectives`
+  answer that came with that mark, so a tap leaves no bubble, a refusal does. The strip redraws from the event, never
+  optimistically.
+- **The entry** (`objectives_entry.js`, from `turn_html.js noteBubbleTemplate`): `Objectives.entry` puts the note's items
+  and, against the list before it, `changes` (`Objectives.changes`, display only) on the history item and on
+  `context_added`. A first list is pills; a later one a line, `You marked O1 done`. The raw text stays the tooltip.
+- **Moves** (`objectives_moves.js`): a tool row's id is a chip (`moveRowText`), and a row that recorded a move carries
+  `data-move-id`. One observer on `#history` reads those back into a line after each finished `.turn-work`, so a reload,
+  a live end and a hand-off all draw it. The newest line's Not yet is `objectivesStrip.notYet`. A decision card's
+  `Concerns O2` gets the chip there too.
+- **Not yet** is `POST /turn` with a client id of its own (`<tab>:objectives`), so the stream draws its bubble in every
+  tab, this one too: the page's own echo needs the composer. It steers a running turn or starts a turn, as a typed line.
+- **Short version**: the same observer offers `/short` (decision-card) under the newest long answer (`foldable`), only with a list
+  and with the command in the session's listing, and not during a turn: `/short` itself refuses then, since a running
+  turn's "last answer" is interim text. A request that fails, or a worker that leaves with one still out (the bundle's service
+  stops after chi's 3 s wait for a command), ends the card saying so; a worker killed outright leaves its one-line `…` row.
 
 ## Continue, rollback, fork
 
@@ -143,7 +201,9 @@ A card with no actions writes no `pending_card.json`, so it never reaches `Web::
 
 ## Not in this version
 
-Later phases (the strip) aren't here, and neither are stable-prompt lines. A UI of its own would replace the default note bubble.
+Stable-prompt lines aren't here, and terminals have no picture: they keep `/objectives`. Checks (P5) come later.
 
 Taking it out: old notes stay readable framed bubbles and keep being sent, and the key is ignored. Old `objectives` calls
-stay as history; with a kit no longer declaring the tool, they are ordinary saved calls. The card's bundle uninstalls.
+stay as history; with a kit no longer declaring the tool, they are ordinary saved calls. The card's bundle uninstalls. The
+page's pieces are the `objectives_*.js` modules and `objectives.css`, wired in a few lines of `app.js`; without them a list note
+falls back to the default bubble once `noteBubbleTemplate`'s first line goes.

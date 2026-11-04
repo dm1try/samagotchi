@@ -102,7 +102,7 @@ test("every stream event type has its handler", () => {
   assert.deepEqual(Object.keys(handlers).sort(), [
     "answer_display", "card", "command_queued", "command_ran", "context_added", "context_status", "continue_offered",
     "continue_resolved", "empty_answer_retry", "generation_chunk", "generation_completed", "generation_retrying",
-    "generation_started", "guardrail_warning", "hook_notice", "input_merged", "llm_context_edited", "merged_input",
+    "generation_started", "guardrail_warning", "hook_notice", "input_merged", "llm_context_edited", "merged_input", "objectives_updated",
     "participants_changed", "pending_input_merged", "plugin_init_finished", "plugin_init_started", "plugin_init_wait", "prompt_restored",
     "question_answered", "question_cancelled", "question_relay", "question_requested", "recap_ready", "reminder_injected",
     "reset", "side_usage", "steer_cut", "tool_call_completed", "tool_call_started", "turn_canceled", "turn_completed",

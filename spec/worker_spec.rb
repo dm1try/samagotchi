@@ -2480,6 +2480,15 @@ RSpec.describe Samagotchi::Worker do
         end
       end
 
+      describe "an anytime command that leaves a note (/objectives)" do
+        it "wakes the idle loop: the note goes in well before the fallback tick" do
+          start_worker(poll_interval: 30)
+          command_id = JSON.parse(post_command("/objectives set A | B").body)["command_id"]
+          ran(command_id)
+          wait_for("the list note in the conversation") { seen.any? { |e| e[:type] == :context_added && e[:source] == "objectives" } }
+        end
+      end
+
       describe "a show form (/model, /models, … alone) while a turn runs" do
         it "runs at once beside the turn, marked anytime, and a setting form waits for the turn's end" do
           allow(engine.host_registry).to receive(:list_all_models).and_return({})

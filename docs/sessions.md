@@ -213,6 +213,18 @@ it. It is information only: only you change the list or a status, and it never a
 generation when it's the step's only call. On a kit that doesn't declare the tool, `/toolkit add objectives` declares it
 (the model can also reach it with `call_tool`). A participant's turn is denied it.
 
+The model can also **propose** a change with that tool (add, reword, done, drop). You see a card when the turn is over:
+Apply makes the edit, once, Dismiss leaves the list, and ignoring it changes nothing. A turn leaves at most 3. A proposed
+reword is refused when you changed that objective since. The model never changes the list by itself.
+
+**In the web** a session with a list has a strip above the conversation: its objectives and how many are done (a phone
+shows one line, the one being worked on). A tap opens the list, where you add, mark done, drop, undo and tap a text to
+reword it, with no message and no turn. Mid-turn the strip has the change and says it applies after this turn. Each list
+in the conversation shows as pills, or as one line of what you changed. A turn's moves show as chips above its answer;
+Not yet on one (or in the list, for an objective with a move) sends `Not yet on O2 (…).` as a normal message. With the
+[decision-card](bundles.md#the-decision-card-bundle) bundle, the newest long answer offers its Short version in a card,
+which enters no history. A session with no list shows none of this. A participant doesn't see the list.
+
 ## Notes a turn leaves for the model
 
 A turn that ends without an answer leaves one line for the model to read on its next turn, as a tail

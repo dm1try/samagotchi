@@ -636,7 +636,7 @@ stripped of surrounding whitespace, except file text, an edit's
 | `delegate` | `task` | — | `model`, `session`, `cwd`, `toolkit`, `wait`, `timeout` |
 | `delegate_result` | — | — | `session`, `timeout` |
 | `ask_user_question` | `question` | — | `question`, `options`, `header`, `multi_select`, `allow_freeform` |
-| `objectives` | `note` | — | `action`, `id`, `note`, `evidence` |
+| `objectives` | `note` | — | `action`, `id`, `note`, `evidence`, `change`, `text` |
 | `forget_outputs` | `note` | — | `ids`, `note`, `keep`, `restore` |
 
 A `write`'s `content:` is the file text; an `edit` carries `old_text:` and

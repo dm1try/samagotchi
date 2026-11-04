@@ -23,7 +23,7 @@ page. A factory dep a new version stops passing is the same hazard the other way
 out of `send_turn.js`, `session_actions.js` and `lists_view.js`); a page loaded before keeps all its old modules
 until a reload, so the risk is a mixed cache, not an open tab. `answer_fold.js`, `details_motion.js`,
 `turn_range.js`, `history_reveal.js`, `latest.js`, `session_payload.js`, `method_api.js`, `session_store.js`,
-`session_fields.js`, `feature_gates.js`, `revise_stack.js`, `revise_switch.js`, `shell_command.js`, `stale_params.js`, `popover_modal.js`, `more_sheet.js`, `hash_intent.js` (what the hash asks for: session, all, start or keep) and `worker_features.js` are new modules for that reason.
+`session_fields.js`, `feature_gates.js`, `revise_stack.js`, `revise_switch.js`, `shell_command.js`, `stale_params.js`, `popover_modal.js`, `more_sheet.js`, `hash_intent.js` (what the hash asks for: session, all, start or keep), `worker_features.js` and the `objectives_*.js` modules are new modules for that reason.
 
 ## Two pages, two models
 
@@ -53,6 +53,9 @@ change.
 | **The history DOM** | the conversation as drawn: which turn a bubble belongs to (`data-turn-id`, `data-answer-turn`), kept command bubbles, which texts were shown, unnamed badges, folded answers and long prompts (`.folded`), Revise stamps (`data-revises` on a prompt; a Verify turn's `data-verify`) and the stacks' folded versions (`.stack-hidden`, `.stack-stub.open`); the switcher's version on view is `revise_stack.js`'s own (a copy `.stack-view` before the top answer, the top `.stack-swapped`; never stored) | `bubbles.js`, `cards_place.js`, `question_cards.js`, `turn_block.js`/`stage_view.js`, `answer_fold.js`, `revise_stack.js`, `stream_handlers.js` (a live `turn_completed`'s `revises` and `verify` onto its prompt) | read back as state: `turn_range.js turnElements` (one walker for a turn's elements), `keptCommandBubbles`, `seedSeenFromDom`, `nameUnnamedBadges`/`nameVerdictCards`, `answer_fold.js` and `revise_stack.js` (their observers decorate every path that fills `#history`; the stacks are `stacks()` of the stamps, read again on each change, never a store field), `history_reveal.js revealInHistory` (the one way a jump unfolds what hides its target) |
 | **localStorage** (`storage.js` `readStored`/`writeStored`, guarded) | per-browser choices only | the module that owns the choice | read at start (see Storage keys) |
 | **SSE** | see Streams | the server | owner page: events go into the DOM directly; participant page: an event marks the data stale |
+
+The objectives' strip keeps the list in its own closure (`objectives_strip.js`, seeded by `renderSessionView`, reset by
+`forgetSession`, updated by `objectives_updated`): [objectives.md](objectives.md#the-page).
 
 The start page's own choices (the model, the ⚙ panel, the 🧰 list) live in `start_page.js`'s closure, never in
 `store.current`. A fresh chain link's picker reads both.
