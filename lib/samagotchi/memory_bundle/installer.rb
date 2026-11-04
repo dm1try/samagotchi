@@ -68,9 +68,7 @@ module Samagotchi
       def trash_dir = @trash.dir
 
       # What it copied to the trash before overwriting, said once (nil: nothing).
-      def trash_copy_line
-        "Copied to the trash first: #{@trash.copied.join(", ")} (#{trash_dir})" unless @trash.copied.empty?
-      end
+      def trash_copy_line = @trash.copy_line
 
       # The normalized source dir. An owned one (a git/zip/tar extract) is
       # removed after #run, or kept until #cleanup_source! when an upgrade

@@ -2,6 +2,7 @@
 
 require "fileutils"
 require_relative "../memory_paths"
+require_relative "provenance"
 
 module Samagotchi
   module MemoryBundle
@@ -89,6 +90,36 @@ module Samagotchi
         FileUtils.cp(path, dest, preserve: true)
         @copied << as
         dest
+      end
+
+      # Copies the file at +path+ as +as+ before it is replaced or removed, when
+      # that would lose something: its bytes are neither what the record says
+      # was installed (no sha recorded: unknown, so it counts as edited) nor
+      # +incoming+'s. A link (a dev install's) points at its source, which
+      # nothing here touches.
+      def copy_edit(path, as:, recorded: nil, incoming: nil)
+        return if File.symlink?(path) || !File.file?(path)
+        return if incoming && File.file?(incoming) && FileUtils.identical?(incoming, path)
+        return if !Provenance.recorded_sha(recorded).empty? && Provenance.sha_matches?(path, recorded)
+
+        copy(path, as: as)
+      end
+
+      # copy_edit for every file under +dir+, which is about to go, at any depth
+      # (kept as <label>/<its path in dir>). A linked dir isn't followed.
+      # @param recorded [Hash, nil] path in dir => its recorded sha256
+      # @param incoming [Hash] path in dir => the source replacing it
+      def copy_edits(dir, label, recorded = nil, incoming = {})
+        return if File.symlink?(dir) || !File.directory?(dir)
+
+        Dir.glob("**/*", File::FNM_DOTMATCH, base: dir).sort.each do |file|
+          copy_edit(File.join(dir, file), as: "#{label}/#{file}", recorded: recorded&.[](file), incoming: incoming[file])
+        end
+      end
+
+      # What #copy saved, said once (nil: nothing).
+      def copy_line
+        "Copied to the trash first: #{@copied.join(", ")} (#{@dir})" unless @copied.empty?
       end
 
       private

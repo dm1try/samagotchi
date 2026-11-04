@@ -100,6 +100,9 @@ module Samagotchi
 
       def owns?(file_key) = files.key?(file_key.to_s)
 
+      # The plugin's file => its recorded sha256, as guardrails and scripts read.
+      def plugin_shas = plugin ? { plugin.file => plugin.sha256 } : {}
+
       def needs? = needs.is_a?(Array) && !needs.empty?
 
       def context_providers? = context_providers.is_a?(Array) && !context_providers.empty?

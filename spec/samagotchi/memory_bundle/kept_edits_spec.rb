@@ -461,4 +461,36 @@ RSpec.describe "Kept edits in a bundle" do
   end
 
   def uninstall(**opts) = Samagotchi::MemoryBundle::Uninstaller.new(name: "demo", **opts).tap(&:run)
+
+  describe "nested files in an asset folder" do
+    before do
+      full_source("1.0.0")
+      run_installer
+      %w[guardrails plugin scripts].each do |kind|
+        FileUtils.mkdir_p(File.join(provenance.bundle_dir, kind, "sub"))
+        File.write(File.join(provenance.bundle_dir, kind, "sub", "mine.txt"), "my #{kind}\n")
+      end
+    end
+
+    let(:nested) { %w[guardrails plugin scripts].to_h { |kind| ["#{kind}/sub/mine.txt", "my #{kind}\n"] } }
+
+    it "are copied with their relative path before an upgrade removes them" do
+      up = run_installer(full_source("2.0.0"), upgrade: true)
+
+      expect(trash_files).to eq(nested)
+      expect(up.summary).to include("scripts/sub/mine.txt")
+    end
+
+    it "leave out a nested link and what it points at" do
+      outside = File.join(tmpdir, "outside")
+      FileUtils.mkdir_p(outside)
+      File.write(File.join(outside, "x"), "not ours\n")
+      File.symlink(File.join(outside, "x"), File.join(provenance.scripts_dir, "sub", "link"))
+      File.symlink(outside, File.join(provenance.scripts_dir, "sub", "dirlink"))
+      run_installer(full_source("2.0.0"), upgrade: true)
+
+      expect(trash_files).to eq(nested)
+      expect(File.read(File.join(outside, "x"))).to eq("not ours\n")
+    end
+  end
 end
