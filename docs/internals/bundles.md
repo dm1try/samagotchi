@@ -101,7 +101,9 @@ The order matters: warnings print in it, and a plugin/script the manifest names 
 7. `write_provenance` (manifest, not a dry run): bases come from the incoming file, except where the user's edit was
    kept (kept/noop/conflict/kept_pruned, or a re-install's skipped edit): those keep the old base, so the next
    upgrade still sees the edit. One with no base stays without one (a nil in `Provenance#write`'s `files:`, which keeps the
-   entry and its recorded checksum): taking the user's file would let the next upgrade fast-forward over it. A plain install also keeps the record (the old base) of a file an earlier install
+   entry and its recorded checksum): taking the user's file would let the next upgrade fast-forward over it. A plain
+   install carries the `conflict` mark of a file it skipped (`held_conflict_marks`), a newer source moving `version`
+   included; it goes once the file has the incoming bytes. A plain install also keeps the record (the old base) of a file an earlier install
    owned and this version doesn't ship, while it is on disk (`dropped_owned_files`), so the next upgrade prunes it.
 8. `detect_placeholders`.
 

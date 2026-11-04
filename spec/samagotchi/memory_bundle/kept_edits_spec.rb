@@ -369,4 +369,46 @@ RSpec.describe "Kept edits in a bundle" do
       expect(run_installer(write_source("2.0.0", { "z.md" => "z\n" }), upgrade: true).results["a.md"][:status]).to eq("kept_pruned")
     end
   end
+
+  describe "a plain install over a conflict-marked file" do
+    before do
+      write_source("1.0.0")
+      run_installer
+      File.write(target, "edited\n")
+      run_installer(write_source("2.0.0"), upgrade: true)
+      expect(provenance.read[:files][:"a.md"]).to include(conflict: true)
+    end
+
+    it "keeps the mark and the base on a file it skipped" do
+      up = run_installer(write_source("2.0.0"))
+
+      expect(up.results["a.md"]).to eq(status: "skipped", reason: "already exists")
+      expect(provenance.read[:files][:"a.md"]).to include(conflict: true)
+      expect(File.read(provenance.base_path("a.md"))).to eq("v1.0.0\n")
+    end
+
+    it "keeps it when a newer source moves the version with the file unchanged" do
+      run_installer(write_source("3.0.0"))
+
+      data = provenance.read
+      expect(data[:version]).to eq("3.0.0")
+      expect(data[:files][:"a.md"]).to include(conflict: true)
+      expect(File.read(target)).to eq("edited\n")
+      expect(File.read(provenance.base_path("a.md"))).to eq("v1.0.0\n")
+    end
+
+    it "drops it once the file has the incoming bytes" do
+      File.write(target, "v2.0.0\n")
+      run_installer(write_source("2.0.0"))
+
+      expect(provenance.read[:files][:"a.md"]).not_to include(:conflict)
+    end
+
+    it "doesn't invent one on a file that had none" do
+      File.write(File.join(memories, "x.md"), "mine\n")
+      run_installer(write_source("2.0.0", { "a.md" => "v2.0.0\n", "x.md" => "theirs\n" }))
+
+      expect(provenance.read[:files]).not_to have_key(:"x.md")
+    end
+  end
 end

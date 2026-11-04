@@ -445,7 +445,7 @@ module Samagotchi
           plugin_file: installed.plugin_file,
           requires_chi: @manifest.requires_chi,
           needs: @manifest.needs,
-          conflicts: @conflicts.keys,
+          conflicts: @conflicts.keys + held_conflict_marks,
           scripts_files: installed.script_files,
           context_providers: @manifest.context_providers,
           file_descriptions: @manifest.file_descriptions,
@@ -455,6 +455,16 @@ module Samagotchi
           setting_types: @manifest.setting_types,
           dev: @dev
         )
+      end
+
+      # The files a plain install skipped that are still marked conflict:
+      # Provenance#write rebuilds their entries, and a file it left alone has
+      # missed the bundle's change as much as before (its version may move on
+      # all the same). One with the incoming bytes has nothing left to miss.
+      def held_conflict_marks
+        return [] if @upgrade || @existing.nil?
+
+        @owned.select { |key| @results.dig(key, :reason) == "already exists" && @existing.files.dig(key, :conflict) }
       end
 
       # file key => the file whose content becomes its base. A file the
