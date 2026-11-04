@@ -2485,7 +2485,7 @@ RSpec.describe Samagotchi::Worker do
           start_worker(poll_interval: 30)
           command_id = JSON.parse(post_command("/objectives set A | B").body)["command_id"]
           ran(command_id)
-          wait_for("the list note in the conversation") { seen.any? { |e| e[:type] == :context_added && e[:source] == "objectives" } }
+          wait_for("the list note in the conversation") { events_seen.any? { |e| e[:type] == :context_added && e[:source] == "objectives" } }
         end
       end
 
