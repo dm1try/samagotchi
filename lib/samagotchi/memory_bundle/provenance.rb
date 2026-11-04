@@ -150,6 +150,8 @@ module Samagotchi
       # @param needs [Array<Hash>] the manifest's needs ({command:, why:, hint:})
       # @param conflicts [Array<String>] files an upgrade kept with local
       #   edits that conflict with it; their entries get conflict: true
+      # @param incoming_shas [Hash{String => String}] those files' incoming
+      #   digests, recorded with the mark (incoming_sha: what Remerge retries)
       # @param includes [Array<String>, nil] a profile's recorded members
       #   (MemoryBundle::Profile); nil for a plain bundle
       # @param scripts_files [Hash] file name => installed script; the
@@ -158,7 +160,7 @@ module Samagotchi
       # @param dev [Boolean] a dev install: its files are links to the
       #   source, recorded as DEV_SHA (no sha256 check) with "dev": true
       def write(files:, scope:, version:, source_path:, hooks: {}, trust_level: nil, source_commit: nil, hooks_files: {},
-                guardrails_files: {}, plugin_file: nil, requires_chi: nil, needs: nil, conflicts: [], includes: nil,
+                guardrails_files: {}, plugin_file: nil, requires_chi: nil, needs: nil, conflicts: [], incoming_shas: {}, includes: nil,
                 scripts_files: {}, context_providers: [], file_descriptions: {}, session_settings: [], session_setting_types: {}, settings: nil, setting_types: {},
                 dev: false)
         FileUtils.mkdir_p(@bundle_dir)
@@ -179,7 +181,10 @@ module Samagotchi
           else
             merged_entries[file_key] = merged_entries.fetch(file_key, {}).slice(:checksum)
           end
-          merged_entries[file_key][:conflict] = true if conflicts.include?(file_key.to_s)
+          if conflicts.include?(file_key.to_s)
+            merged_entries[file_key][:conflict] = true
+            merged_entries[file_key][:incoming_sha] = incoming_shas[file_key.to_s] if incoming_shas[file_key.to_s]
+          end
           merged_entries[file_key][:description] = file_descriptions[file_key.to_s] if file_descriptions[file_key.to_s]
         end
 
@@ -289,11 +294,24 @@ module Samagotchi
 
           content = File.read(info[:incoming])
           File.write(base_path(key), content)
-          raw["files"][key] = raw["files"][key].except("conflict").merge("checksum" => Digest::SHA256.hexdigest(content))
+          raw["files"][key] = raw["files"][key].except("conflict", "incoming_sha").merge("checksum" => Digest::SHA256.hexdigest(content))
           key
         end
         write_manifest(raw)
         settled
+      end
+
+      # Records the incoming digest on marks that have none: a mark made before
+      # chi kept it, once Remerge has tried it (the rest of the manifest stays).
+      # @param shas [Hash{String => String}] file key => digest
+      def stamp_incoming(shas)
+        return unless installed?
+
+        raw = JSON.parse(File.read(File.join(@bundle_dir, "manifest.json")))
+        shas.each do |key, sha|
+          raw["files"][key.to_s]["incoming_sha"] = sha if raw.dig("files", key.to_s, "conflict")
+        end
+        write_manifest(raw)
       end
 
       # The installed bundle's record, nil when it isn't installed.

@@ -218,6 +218,31 @@ RSpec.describe Samagotchi::UpdateCommand do
     expect(row.status).to eq("updated (merged identity.md; Copied to the trash first: identity.md (/t))")
   end
 
+  it "reads 'merged' for a file merged at the same version, with no to" do
+    update = Samagotchi::MemoryBundle::ShippedUpdate::Row.new(
+      name: "coordinator", from: "0.8.0", status: :merged, merged: ["skill.md"], kept: [], replaced: [],
+      trash_copy: "Copied to the trash first: skill.md (/t)"
+    )
+    row = described_class.new(["--no-gem"], stdout: out, stderr: err).send(:bundle_row, update)
+    expect(row).to have_attributes(from: "0.8.0", to: nil, status: "merged (skill.md; Copied to the trash first: skill.md (/t))")
+
+    result = Samagotchi::MemoryBundle::SystemBundle::Result.new(from: "0.8.0", to: "0.8.0", status: :merged, merged: ["identity.md"], kept: [], notes: [], warnings: [])
+    allow(Samagotchi::MemoryBundle::SystemBundle).to receive(:sync).and_return(result)
+    command = described_class.new(["--no-gem"], stdout: out, stderr: err)
+    expect(command.send(:system_bundle_row)).to have_attributes(from: "0.8.0", to: nil, status: "merged (identity.md)")
+    command.instance_variable_set(:@dry_run, true)
+    expect(command.send(:system_bundle_row).status).to eq("would merge (identity.md)")
+  end
+
+  it "reads 'up to date' when a retry only records a digest, and gives a retry's note" do
+    update = Samagotchi::MemoryBundle::ShippedUpdate::Row.new(name: "x", from: "1", status: :would_merge, merged: [], kept: [], replaced: [])
+    command = described_class.new(["--no-gem"], stdout: out, stderr: err)
+    expect(command.send(:bundle_row, update).status).to eq("up to date")
+
+    update = Samagotchi::MemoryBundle::ShippedUpdate::Row.new(name: "x", from: "1", status: :up_to_date, note: "a.md: not in the bundle now, nothing to merge")
+    expect(command.send(:bundle_row, update).status).to eq("up to date (a.md: not in the bundle now, nothing to merge)")
+  end
+
   it "names merged files in a bundle's row, and what a dry run would merge" do
     update = Samagotchi::MemoryBundle::ShippedUpdate::Row.new(
       name: "known-names", from: "1", to: "2", status: :updated, merged: ["a.md"], kept: ["b.md"], replaced: [],

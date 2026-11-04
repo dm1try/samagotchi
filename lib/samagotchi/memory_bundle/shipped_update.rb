@@ -6,6 +6,7 @@ require_relative "manifest"
 require_relative "merger"
 require_relative "profile"
 require_relative "provenance"
+require_relative "remerge"
 require_relative "source"
 require_relative "status"
 require_relative "system_bundle"
@@ -32,9 +33,14 @@ module Samagotchi
     # to install (Profile.to_install, less the ones this chi can't load),
     # even at the same version, so a member that failed is retried. adds
     # names them.
+    #
+    # At the same version a row retries the files marked conflict (Remerge):
+    # :would_merge when that would change anything, then :merged when a file
+    # merged. Not for a project-scope bundle: chi bundle upgrade in the project.
     module ShippedUpdate
-      # status: :would_update (plan), :updated, :up_to_date, :skipped,
-      # :failed. note says why for skipped/failed. merged, kept and replaced
+      # status: :would_update, :would_merge (plan), :updated, :merged,
+      # :up_to_date, :skipped, :failed. note says why for skipped/failed, and
+      # what a retry at the same version left. merged, kept and replaced
       # are file names; under plan they are what apply would merge, keep or
       # replace.
       # adds is nil but for a profile: the members it installs.
@@ -72,11 +78,13 @@ module Samagotchi
         installed.filter_map { |name, bundle| bundle unless bundle.error? || bundle.profile? || from_chi?(bundle, shipped[name]) }
       end
 
-      # Runs the Installer for each :would_update row; the others pass
-      # through. A failing bundle doesn't stop the rest.
+      # Runs the Installer for each :would_update row, Remerge for each
+      # :would_merge row; the others pass through. A failing bundle doesn't
+      # stop the rest.
       # @return [Array<Row>]
       def apply(rows)
         rows.map do |row|
+          next apply_remerge(row) if row.status == :would_merge
           next row unless row.status == :would_update
           next apply_profile(row) if row.adds
 
@@ -94,6 +102,16 @@ module Samagotchi
             r.status = :failed
             r.note = e.message.lines.first.to_s.strip
           end
+        end
+      end
+
+      def apply_remerge(row)
+        done = remerge(row).run
+        row.dup.tap do |r|
+          r.status = done.merged.empty? ? :up_to_date : :merged
+          r.merged = done.merged
+          r.trash_copy = done.trash_copy
+          r.note = note_of(done)
         end
       end
 
@@ -128,7 +146,7 @@ module Samagotchi
 
         row.source_dir = File.join(shipped_dir, ship.source)
         return profile_row(row, bundle, shipped_dir, chi_version) if Profile.shipped_meta?(row.source_dir, shipped_dir: shipped_dir)
-        return row.tap { |r| r.status = :up_to_date; r.to = nil } unless Listing.newer?(row.to, row.from)
+        return same_version_row(row) unless Listing.newer?(row.to, row.from)
 
         manifest = Manifest.read(dir: row.source_dir)
         if Manifest.requires_chi_failure(manifest.requires_chi, chi_version)
@@ -143,6 +161,28 @@ module Samagotchi
         row.replaced = edited_executables(name, bundle)
         row.status = :would_update
         row
+      end
+
+      # Up to date, unless a file marked conflict could settle now.
+      def same_version_row(row)
+        row.to = nil
+        row.status = :up_to_date
+        return row if row.scope == "project" || !MemoryPaths.scope_dir(row.scope)
+
+        planned = remerge(row).run(dry_run: true)
+        row.merged = planned.merged
+        row.note = note_of(planned)
+        row.status = :would_merge if planned.work?
+        row
+      end
+
+      def remerge(row)
+        Remerge.new(name: row.name, scope: row.scope, target_dir: MemoryPaths.scope_dir!(row.scope), source_dir: row.source_dir)
+      end
+
+      def note_of(remerged)
+        lines = remerged.notes + remerged.warnings
+        lines.empty? ? nil : lines.join("; ")
       end
 
       def profile_row(row, bundle, shipped_dir, chi_version)

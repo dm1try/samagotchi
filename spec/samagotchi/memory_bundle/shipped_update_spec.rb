@@ -131,6 +131,101 @@ RSpec.describe Samagotchi::MemoryBundle::ShippedUpdate do
     end
   end
 
+  describe "a file marked conflict at the same version" do
+    let(:root) { File.join(tmp, "gem", "lib", "samagotchi", "bundles") }
+    let(:dir) { File.join(root, "merged") }
+    let(:live) { File.join(system_dir, "note.md") }
+    let(:record) { File.join(Samagotchi::MemoryBundle::Provenance.new(name: "merged").bundle_dir, "manifest.json") }
+
+    def note(intro: "the intro", tail: "the tail")
+      "# Note\n\n#{intro}\n\none\ntwo\nthree\nfour\nfive\n\n#{tail}\n"
+    end
+
+    def ship_note(version, text, scope: "system")
+      FileUtils.mkdir_p(dir)
+      File.write(File.join(dir, "note.md"), text)
+      File.write(File.join(dir, "manifest.yml"),
+                 YAML.dump({ "name" => "merged", "version" => version, "scope" => scope,
+                             "files" => { "note.md" => "sha256:#{Digest::SHA256.hexdigest(text)}" } }))
+    end
+
+    def mark(version:)
+      raw = JSON.parse(File.read(record))
+      raw["version"] = version
+      raw["files"]["note.md"]["conflict"] = true
+      File.write(record, JSON.pretty_generate(raw))
+    end
+
+    before do
+      ship_note("1.0.0", note)
+      install(dir, "merged")
+      ship_note("2.0.0", note(tail: "tail two"))
+      mark(version: "2.0.0")
+    end
+
+    it "plans would_merge, writing nothing, merges on apply, and is up to date after" do
+      File.write(live, note(intro: "my intro"))
+
+      rows = described_class.plan(shipped_dir: root)
+      expect(rows.first).to have_attributes(status: :would_merge, from: "2.0.0", to: nil, merged: ["note.md"], kept: [])
+      expect(File.read(live)).to eq(note(intro: "my intro"))
+
+      row = described_class.apply(rows).first
+      expect(row).to have_attributes(status: :merged, from: "2.0.0", to: nil, merged: ["note.md"])
+      expect(row.trash_copy).to include("Copied to the trash first: note.md")
+      expect(File.read(live)).to eq(note(intro: "my intro", tail: "tail two"))
+
+      expect(described_class.plan(shipped_dir: root).first).to have_attributes(status: :up_to_date, merged: [])
+    end
+
+    it "stays quiet on a real conflict, the first run only recording its digest" do
+      File.write(live, note(tail: "my tail"))
+
+      first = described_class.apply(described_class.plan(shipped_dir: root)).first
+      expect(first).to have_attributes(status: :up_to_date, merged: [], note: nil)
+      expect(File.read(live)).to eq(note(tail: "my tail"))
+      expect(JSON.parse(File.read(record))["files"]["note.md"]).to include("conflict" => true, "incoming_sha" => Digest::SHA256.hexdigest(note(tail: "tail two")))
+
+      stamp = File.mtime(record)
+      expect(described_class.apply(described_class.plan(shipped_dir: root)).first.status).to eq(:up_to_date)
+      expect(File.mtime(record)).to eq(stamp)
+    end
+
+    it "says when the bundle has no such file now, keeping it" do
+      File.write(live, note(intro: "my intro"))
+      FileUtils.rm_f(File.join(dir, "note.md"))
+
+      expect(described_class.plan(shipped_dir: root).first)
+        .to have_attributes(status: :up_to_date, note: "note.md: not in the bundle now, nothing to merge")
+    end
+
+    it "leaves a project-scope bundle to chi bundle upgrade in the project" do
+      project = Samagotchi::MemoryPaths.scope_dir("project")
+      FileUtils.mkdir_p(project)
+      File.write(File.join(project, "note.md"), note(intro: "my intro"))
+      raw = JSON.parse(File.read(record))
+      raw["scope"] = "project"
+      File.write(record, JSON.pretty_generate(raw))
+
+      rows = described_class.apply(described_class.plan(shipped_dir: root))
+      expect(rows.first).to have_attributes(status: :up_to_date, merged: [])
+      expect(File.read(File.join(project, "note.md"))).to eq(note(intro: "my intro"))
+    end
+
+    it "doesn't crash the plan on a marked file it can't read, and says so" do
+      skip "root reads anything" if Process.uid.zero?
+      File.write(live, note(intro: "my intro"))
+      File.chmod(0o000, live)
+      begin
+        row = described_class.plan(shipped_dir: root).first
+        expect(row.status).to eq(:up_to_date)
+        expect(row.note).to start_with("note.md: left as it is (").and include("Permission denied")
+      ensure
+        File.chmod(0o644, live)
+      end
+    end
+  end
+
   # The plan asks about every shipped *.md, the Installer about
   # MemoryFiles.select, so the two can disagree. Pinned, not endorsed: a plan
   # that unifies them changes what these say (Merger::Upgrade#forecast).

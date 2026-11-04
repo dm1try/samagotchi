@@ -147,6 +147,71 @@ RSpec.describe Samagotchi::MemoryBundle::SystemBundle do
         expect(File.read(base)).to eq(text.call("intro", "new tail"))
       end
 
+      describe "a file marked conflict at the same version" do
+        let(:record) { File.join(Samagotchi::MemoryBundle::Provenance.new(name: described_class::BUNDLE_NAME).bundle_dir, "manifest.json") }
+        let(:live) { File.join(Samagotchi::MemoryPaths.system_dir, "identity.md") }
+
+        def text(intro: "intro", tail: "tail") = "#{intro}\n\none\ntwo\nthree\nfour\nfive\n\n#{tail}\n"
+
+        # What a user on 0.149 has: the new version, the old base, a mark with no digest.
+        def mark_old(mine)
+          ship("0.1.6", text)
+          described_class.sync
+          File.write(live, mine)
+          ship("0.1.10", text(tail: "new tail"))
+          raw = JSON.parse(File.read(record))
+          raw["version"] = "0.1.10"
+          raw["files"]["identity.md"]["conflict"] = true
+          File.write(record, JSON.pretty_generate(raw))
+        end
+
+        it "merges once, said in a dry run first, then is up to date, with no echo" do
+          mark_old(text(intro: "my intro"))
+
+          expect(described_class.sync(dry_run: true)).to have_attributes(status: :merged, from: "0.1.10", to: "0.1.10", merged: ["identity.md"], trash_copy: nil)
+          expect(installed_identity).to eq(text(intro: "my intro"))
+
+          result = described_class.sync
+          expect(result).to have_attributes(status: :merged, merged: ["identity.md"], warnings: [])
+          expect(result.trash_copy).to include("Copied to the trash first: identity.md")
+          expect(result).to be_changed
+          expect(installed_identity).to eq(text(intro: "my intro", tail: "new tail"))
+          expect(installed_version).to eq("0.1.10")
+
+          expect(described_class.sync).to have_attributes(status: :up_to_date, merged: [])
+        end
+
+        it "says nothing at a start that merges but logs it, and nothing at a real conflict" do
+          mark_old(text(intro: "my intro"))
+          expect(Samagotchi::Log).to receive(:info).with(:memory, "system_bundle_merged", hash_including(file: "identity.md"))
+          expect { described_class.ensure! }.not_to output.to_stderr
+        end
+
+        it "leaves a real conflict untouched and silent, start after start" do
+          mark_old(text(tail: "my tail"))
+
+          2.times do
+            expect { expect(described_class.ensure!).to be(false) }.not_to output.to_stderr
+            expect(installed_identity).to eq(text(tail: "my tail"))
+            expect(JSON.parse(File.read(record))["files"]["identity.md"]).to include("conflict" => true)
+          end
+          base = Samagotchi::MemoryBundle::Provenance.new(name: described_class::BUNDLE_NAME).base_path("identity.md")
+          expect(File.read(base)).to eq(text)
+        end
+
+        it "merges through a restore that runs the Installer too, and says so" do
+          mark_old(text(intro: "my intro"))
+          dir = described_class::GEM_BUNDLE_DIR
+          File.write(File.join(dir, "gone.md"), "gone\n")
+          Samagotchi::MemoryBundle::Manifest.write(
+            dir: dir, name: described_class::BUNDLE_NAME, version: "0.1.10", scope: "system",
+            files: { "identity.md" => "sha256:#{Digest::SHA256.hexdigest(text(tail: "new tail"))}", "gone.md" => "sha256:#{Digest::SHA256.hexdigest("gone\n")}" }
+          )
+
+          expect(described_class.sync).to have_attributes(status: :restored, merged: ["identity.md"])
+        end
+      end
+
       it "writes nothing with dry_run" do
         ship("0.1.6", "old\n")
         expect(described_class.sync(dry_run: true).status).to eq(:installed)

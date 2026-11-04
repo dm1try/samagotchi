@@ -82,7 +82,8 @@ module Samagotchi
 
     # What a row says after a change, and in a dry run.
     VERBS = { update: ["updated", "would update"], install: ["installed", "would install"],
-              restore: ["restored missing files", "would restore missing files"] }.freeze
+              restore: ["restored missing files", "would restore missing files"],
+              merge: ["merged", "would merge"] }.freeze
 
     # @param gem_spec [Gem::Specification, nil] the installed gem (nil: a checkout)
     # @param platform [#call] register: → a Desktop::MacOS-like object
@@ -287,8 +288,11 @@ module Samagotchi
       when :updated
         notes = [merged(result.merged), kept(row, result.kept, MemoryBundle::SystemBundle::BUNDLE_NAME), result.trash_copy].compact
         done(row, :update, notes.empty? ? nil : notes.join("; "))
-      when :restored then done(row, :restore).tap { |r| r.to = nil }
-      when :up_to_date then up_to_date(row)
+      when :restored
+        notes = [merged(result.merged), result.trash_copy].compact
+        done(row, :restore, notes.empty? ? nil : notes.join("; ")).tap { |r| r.to = nil }
+      when :merged then merged_row(row, result.merged, [result.trash_copy, *result.notes, *result.warnings])
+      when :up_to_date then up_to_date(row, result.notes.join("; "))
       when :newer_installed then skipped(row, "newer than this chi's #{result.to}: left").tap { |r| r.to = nil }
       when :skipped then skipped(row, result.error)
       else failed(row, result.error)
@@ -327,7 +331,9 @@ module Samagotchi
       when :would_update, :updated
         notes = [adds(update.adds), merged(update.merged), kept(row, update.kept, update.name), replaced(update.replaced), update.trash_copy, *update.kept_own].compact
         done(row, :update, notes.empty? ? nil : notes.join("; "))
-      when :up_to_date then up_to_date(row)
+      when :would_merge, :merged
+        update.merged.empty? ? up_to_date(row, update.note) : merged_row(row, update.merged, [update.trash_copy, update.note])
+      when :up_to_date then up_to_date(row, update.note)
       when :skipped then skipped(row, update.note)
       else failed(row, update.note)
       end
@@ -437,10 +443,16 @@ module Samagotchi
       row
     end
 
-    def up_to_date(row)
+    def up_to_date(row, note = nil)
       row.to = nil
-      row.status = "up to date"
+      row.status = note.to_s.empty? ? "up to date" : "up to date (#{note})"
       row
+    end
+
+    # A file marked conflict merged at the same version: "0.8.0  merged (x.md)".
+    def merged_row(row, files, notes)
+      row.to = nil
+      done(row, :merge, [files.join(", "), *notes.compact].join("; "))
     end
 
     def skipped(row, why)

@@ -11,7 +11,8 @@ module Samagotchi
     # lacks keys a newer chi writes, and a key that is missing or of the
     # wrong shape reads as empty (nil for the optional strings and lists).
     #
-    #   files       file key ("x.md") => { checksum:, conflict:, description: } (symbol keys)
+    #   files       file key ("x.md") => { checksum:, conflict:, incoming_sha:, description: } (symbol keys);
+    #               incoming_sha: the bundle text a conflict mark speaks of, nil on an older mark
     #   hooks       basename => BundleHook
     #   guardrails  basename => recorded sha256 ("" when none)
     #   scripts     file name => recorded sha256 ("" when none)

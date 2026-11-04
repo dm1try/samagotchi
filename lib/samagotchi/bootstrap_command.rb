@@ -481,6 +481,7 @@ module Samagotchi
              when :installed then dry_run ? "would install #{version}" : "#{version} installed"
              when :updated then "#{result.from} → #{result.to} #{dry_run ? "would update" : "updated"}"
              when :restored then "#{version} #{dry_run ? "would restore" : "restored"} missing files"
+             when :merged then "#{version} #{dry_run ? "would merge" : "merged"} #{result.merged.join(", ")}"
              when :up_to_date then "#{version} up to date"
              when :newer_installed then "v#{result.from} left as is (newer than this chi's v#{result.to})"
              when :skipped then "skipped (#{result.error})"

@@ -5,6 +5,7 @@ require_relative "installer"
 require_relative "provenance"
 require_relative "manifest"
 require_relative "merger"
+require_relative "remerge"
 require_relative "../log"
 
 module Samagotchi
@@ -30,13 +31,15 @@ module Samagotchi
       module_function
 
       # What sync did (or, with dry_run, would do). status is :installed,
-      # :updated, :restored (missing files put back), :up_to_date,
+      # :updated, :restored (missing files put back), :merged (a file marked
+      # conflict merged at the same version, Remerge), :up_to_date,
       # :newer_installed (left as is), :skipped (SKIP_ENV or no shipped
       # bundle) or :failed (error: says why); merged lists the files a text
       # merge replaced (trash_copy says where the old ones went), kept the files
-      # whose local edits conflicted with the update and were kept.
-      Result = Struct.new(:from, :to, :status, :merged, :kept, :trash_copy, :warnings, :error, keyword_init: true) do
-        def changed? = %i[installed updated restored].include?(status)
+      # whose local edits conflicted with the update and were kept. notes: what
+      # chi update's row may add (ensure! says nothing of them).
+      Result = Struct.new(:from, :to, :status, :merged, :kept, :trash_copy, :notes, :warnings, :error, keyword_init: true) do
+        def changed? = %i[installed updated restored merged].include?(status)
       end
 
       # Ensure the system bundle is installed and up-to-date.
@@ -51,7 +54,7 @@ module Samagotchi
           with_lock { note_newer_installed(result.from, result.to) }
         end
         # The echo is P3's shared line; until then the log has it.
-        result.merged.each { |file_key| Log.info(:memory, "system_bundle_merged", file: file_key.to_s, to: result.to.to_s) }
+        result.merged.each { |file_key| Log.info(:memory, "system_bundle_merged", file: file_key.to_s, to: result.to.to_s, trash: result.trash_copy) }
         result.kept.each do |file_key|
           Log.info(:memory, "system_local_edit_kept", echo: "[samagotchi-system] kept local edit in #{file_key} (bundle v#{result.to} has update — run: chi bundle status #{BUNDLE_NAME} / chi bundle diff #{BUNDLE_NAME} #{file_key})", file: file_key.to_s)
         end
@@ -89,15 +92,18 @@ module Samagotchi
             dry_run ? planned_update(gem_manifest, from, to) : upgrade_existing(from, to)
           else
             # Already at desired version — still verify files present (e.g. user deleted one)
-            verify_files_present(gem_manifest, from, dry_run)
+            # and retry the files marked conflict.
+            verified = verify_files_present(gem_manifest, from, dry_run)
+            verified.status == :up_to_date ? remerge(bundle, verified, dry_run) : verified
           end
         end
       rescue StandardError => e
         result(:failed, error: "ensure failed: #{e.class}: #{e.message}")
       end
 
-      def result(status, from: nil, to: nil, merged: [], kept: [], trash_copy: nil, warnings: [], error: nil)
-        Result.new(from: from, to: to, status: status, merged: merged, kept: kept, trash_copy: trash_copy, warnings: warnings, error: error)
+      def result(status, from: nil, to: nil, merged: [], kept: [], trash_copy: nil, notes: [], warnings: [], error: nil)
+        Result.new(from: from, to: to, status: status, merged: merged, kept: kept, trash_copy: trash_copy, notes: notes,
+                   warnings: warnings, error: error)
       end
 
       # Parallel chi starts on one config dir take turns: the second one reads
@@ -171,8 +177,17 @@ module Samagotchi
         return result(:up_to_date, from: version, to: version) unless missing
         return result(:restored, from: version, to: version) if dry_run
 
-        upgrade_installer.run
-        result(:restored, from: version, to: version)
+        installer = upgrade_installer
+        installer.run
+        result(:restored, from: version, to: version, merged: installer.merged_files, trash_copy: installer.trash_copy_line)
+      end
+
+      # An up-to-date bundle's marked files, retried. No marks: nothing is read.
+      def remerge(bundle, verified, dry_run)
+        done = Remerge.new(name: BUNDLE_NAME, scope: SCOPE, target_dir: MemoryPaths.system_dir, source_dir: GEM_BUNDLE_DIR, record: bundle)
+                      .run(dry_run: dry_run)
+        status = done.merged.empty? ? :up_to_date : :merged
+        result(status, from: verified.from, to: verified.to, merged: done.merged, trash_copy: done.trash_copy, notes: done.notes, warnings: done.warnings)
       end
 
       # A dry run's answer for an upgrade: what it would merge and keep, among
@@ -191,7 +206,7 @@ module Samagotchi
         Installer.new(source: GEM_BUNDLE_DIR, name: BUNDLE_NAME, scope: SCOPE, force: false, strict: true, upgrade: true,
                       shipped_dir: File.dirname(GEM_BUNDLE_DIR))
       end
-      private_class_method :with_lock, :note_newer_installed, :install_fresh, :upgrade_existing, :verify_files_present,
+      private_class_method :with_lock, :note_newer_installed, :install_fresh, :upgrade_existing, :verify_files_present, :remerge,
                            :upgrade_installer, :result, :planned_update
     end
   end

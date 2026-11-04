@@ -43,6 +43,16 @@ RSpec.describe "chi bootstrap" do
     [out.string, err.string, code]
   end
 
+  it "names a merge at the same version in its system bundle line, not as a failure" do
+    out = StringIO.new
+    command = Samagotchi::BootstrapCommand.new([], stdin: StringIO.new(""), stdout: out, stderr: StringIO.new, env: {})
+    result = Samagotchi::MemoryBundle::SystemBundle::Result.new(from: "1.0.0", to: "1.0.0", status: :merged, merged: ["identity.md"])
+
+    expect(command.send(:system_bundle_line, result, false)).to be(true)
+    command.send(:system_bundle_line, result, true)
+    expect(out.string).to eq("system bundle: v1.0.0 merged identity.md\nsystem bundle: v1.0.0 would merge identity.md\n")
+  end
+
   # The same through bin/chi in a child process.
   def spawn_bootstrap(*args)
     out, err, status = Open3.capture3(env, RbConfig.ruby, chi, "bootstrap", *args, stdin_data: "")
