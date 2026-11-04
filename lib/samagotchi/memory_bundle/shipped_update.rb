@@ -173,7 +173,7 @@ module Samagotchi
         owned = bundle.files.keys
         (Dir.glob(File.join(row.source_dir, "*.md")).map { |f| File.basename(f) }.sort & owned).select do |key|
           Merger.classify(base_path: provenance.base_path(key), current_path: File.join(target_dir, key),
-                          incoming_path: File.join(row.source_dir, key)) == :conflict
+                          incoming_path: File.join(row.source_dir, key)).conflict?
         end
       end
 

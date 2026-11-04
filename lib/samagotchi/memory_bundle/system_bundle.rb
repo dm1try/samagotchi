@@ -178,7 +178,7 @@ module Samagotchi
         owned = provenance.record&.files&.keys || []
         (gem_manifest.files.keys.map(&:to_s).sort & owned).select do |key|
           Merger.classify(base_path: provenance.base_path(key), current_path: File.join(MemoryPaths.system_dir, key),
-                          incoming_path: File.join(GEM_BUNDLE_DIR, key)) == :conflict
+                          incoming_path: File.join(GEM_BUNDLE_DIR, key)).conflict?
         end
       end
 

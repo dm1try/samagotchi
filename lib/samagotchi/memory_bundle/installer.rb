@@ -55,6 +55,7 @@ module Samagotchi
         @warnings = []
         @placeholder_warnings = []
         @conflicts = {}
+        @outcomes = {}
         @overlays = []
         @trash = Trash.new(name)
       end
@@ -335,6 +336,7 @@ module Samagotchi
             @trash.copy(target_path) if File.exist?(target_path) && !FileUtils.identical?(file_path, target_path)
             FileUtils.cp(file_path, target_path)
             @owned << file_key
+            @outcomes[file_key] = Merger::INSTALL
             @results[file_key] = { status: "installed" }
             update_target_index(@target_scope, target_path, file_key)
           end
@@ -362,7 +364,8 @@ module Samagotchi
       # and is recorded in @conflicts for the agent step.
       def merge_memory(file_key, file_path, target_path)
         base_path = @provenance.base_path(file_key)
-        case Merger.classify(base_path: base_path, current_path: target_path, incoming_path: file_path)
+        outcome = @outcomes[file_key] = Merger.classify(base_path: base_path, current_path: target_path, incoming_path: file_path)
+        case outcome.status
         when :install
           FileUtils.cp(file_path, target_path)
           @results[file_key] = { status: "installed" }
@@ -378,6 +381,7 @@ module Samagotchi
           @results[file_key] = { status: "conflict", reason: "local edits conflict with bundle update" }
           @conflicts[file_key] = { base: base_path, current: target_path, incoming: file_path }
           @warnings << "Conflict in #{file_key}: local edits conflict with bundle update (use --force to overwrite or resolve interactively)"
+        else raise ArgumentError, "unknown outcome status #{outcome.status.inspect} for #{file_key}" # the base would move with nothing written
         end
         update_target_index(@target_scope, target_path, file_key)
       end
@@ -403,9 +407,9 @@ module Samagotchi
 
         if @upgrade && @existing
           base_path = @provenance.base_path(file_key)
-          classification = Merger.classify(base_path: base_path, current_path: target_path, incoming_path: file_path)
-          @results[file_key] = { status: classification.to_s }
-          @conflicts[file_key] = { base: base_path, current: target_path, incoming: file_path } if classification == :conflict
+          outcome = Merger.classify(base_path: base_path, current_path: target_path, incoming_path: file_path)
+          @results[file_key] = { status: outcome.status.to_s }
+          @conflicts[file_key] = { base: base_path, current: target_path, incoming: file_path } if outcome.conflict?
         elsif FileUtils.identical?(file_path, target_path)
           @results[file_key] = { status: "skipped", reason: "already up to date" }
         else
@@ -490,22 +494,15 @@ module Samagotchi
         @owned.select { |key| @results.dig(key, :reason) == "already exists" && @existing.files.dig(key, :conflict) }
       end
 
-      # file key => the file whose content becomes its base. A file the
-      # upgrade left as the user has it (kept, noop, conflict, kept_pruned)
-      # keeps its old base, so the next upgrade still sees the local edit
-      # (nil when it has none: the user's file must not become the base, or
-      # the next upgrade fast-forwards over it); the rest (installed, updated,
-      # skipped) take what is on disk now. A file the bundle dropped but the
-      # user kept stays recorded too.
+      # file key => the file whose content becomes its base: the one its
+      # Merger::Outcome names (next_base). A file the bundle dropped but the
+      # user kept stays recorded too, with the base it has.
       def upgrade_provenance_files
         files = {}
         @owned.each do |file_key|
-          target_path = File.join(@target_dir, file_key)
-          next unless File.exist?(target_path)
+          next unless File.exist?(File.join(@target_dir, file_key))
 
-          status = @results[file_key] ? @results[file_key][:status].to_s : nil
-          base_path = @provenance.base_path(file_key)
-          files[file_key] = %w[kept noop conflict kept_pruned].include?(status) ? recorded_base(base_path) : target_path
+          files[file_key] = next_base(file_key, @outcomes.fetch(file_key))
         end
         @existing.files.each_key do |old_key_str|
           next if @bundle_md.include?(old_key_str)
@@ -514,6 +511,16 @@ module Samagotchi
           files[old_key_str] = recorded_base(@provenance.base_path(old_key_str))
         end
         files
+      end
+
+      # The file an Outcome's base names. nil for a kept file with no base:
+      # the user's file must not become one, or the next upgrade fast-forwards
+      # over it.
+      def next_base(file_key, outcome)
+        case outcome.base
+        when :recorded then recorded_base(@provenance.base_path(file_key))
+        when :on_disk then File.join(@target_dir, file_key)
+        end
       end
 
       # +base_path+, nil when there is no base (Provenance#write's "keep the

@@ -9,24 +9,47 @@ module Samagotchi
     # Compare base (provenance snapshot), current (on-disk), incoming (new bundle)
     # and classify per file. Used by Installer#run when provenance exists.
     module Merger
+      # What an upgrade does to one file. status names the case; base is where
+      # the file's next base comes from:
+      #   :on_disk   the file as the install leaves it: it took the bundle's
+      #              bytes, or already had them.
+      #   :recorded  the base it has (none stays none): the file stays as the
+      #              user has it, and the next upgrade must still see the edit.
+      # Installer#next_base reads it. A new outcome and its base go here; it
+      # also needs a branch in Installer#merge_memory (which raises without
+      # one), #next_base if its base is a new kind, and its status word in
+      # Installer#preview_memory, #verify_memory_checksums' list and #summary.
+      Outcome = Data.define(:status, :base) do
+        def conflict? = status == :conflict
+      end
+
+      INSTALL = Outcome.new(status: :install, base: :on_disk)
+      FAST_FORWARD = Outcome.new(status: :fast_forward, base: :on_disk)
+      NOOP = Outcome.new(status: :noop, base: :on_disk)
+      KEEP = Outcome.new(status: :keep, base: :recorded)
+      CONFLICT = Outcome.new(status: :conflict, base: :recorded)
+      # Nothing to take: the bundle has no such file, so whatever is on disk
+      # (the user's text, perhaps) must not become the base. A noop to callers.
+      NO_INCOMING = Outcome.new(status: :noop, base: :recorded)
+
       # Classify a single file for upgrade.
-      # Returns :install, :keep, :fast_forward, :conflict, :noop
+      # @return [Outcome]
       def self.classify(base_path:, current_path:, incoming_path:)
         base_exists = base_path && File.exist?(base_path)
         current_exists = File.exist?(current_path)
         incoming_exists = File.exist?(incoming_path)
 
-        return :noop unless incoming_exists
+        return NO_INCOMING unless incoming_exists
 
         unless current_exists
-          return :install
+          return INSTALL
         end
 
         # No base (legacy bundle without provenance or first file) -> treat as modified
         unless base_exists
           incoming_digest = Digest::SHA256.hexdigest(File.read(incoming_path))
           current_digest = Digest::SHA256.hexdigest(File.read(current_path))
-          return current_digest == incoming_digest ? :noop : :conflict
+          return current_digest == incoming_digest ? NOOP : CONFLICT
         end
 
         base_digest = Digest::SHA256.hexdigest(File.read(base_path))
@@ -34,13 +57,13 @@ module Samagotchi
         incoming_digest = Digest::SHA256.hexdigest(File.read(incoming_path))
 
         if current_digest == incoming_digest
-          :noop
+          NOOP
         elsif current_digest == base_digest
-          :fast_forward
+          FAST_FORWARD
         elsif incoming_digest == base_digest
-          :keep
+          KEEP
         else
-          :conflict
+          CONFLICT
         end
       end
 
