@@ -83,7 +83,7 @@
   `file:line`. Read the source `chi self` reports, not some other checkout on disk.
 - Installed gem files and bundled memories (`identity`, `memory_guide`,
   `config_modification_protocol`, `self_map`, `delegated`) are managed: don't edit them
-  (local edits conflict on upgrade).
+  (an upgrade merges local edits when it can, and a real conflict leaves the file behind).
   Put notes in my own memories. Guidance for some models only is a model note
   (`model_notes_<name>`, first line `models: <glob>`; memory_guide); a model-only
   addition to one memory is an overlay on it (`current_model_only: true`), and it

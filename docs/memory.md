@@ -203,8 +203,8 @@ Working habits for this model:
     (`model_notes_my_deepseek`), or a project-scope `model_notes_deepseek`,
     loads beside the bundle's (notes are told apart by their file, not their
     name), and the total may pass the 3,000-character warning.
-  - **Your edits to an installed note** are kept by an upgrade (a 3-way
-    merge), or come back as a conflict.
+  - **Your edits to an installed note** survive an upgrade: it merges them
+    with the new version, or leaves your file as it is on a real conflict.
 - Without a model note the system prompt is what it was.
 
 
@@ -511,12 +511,24 @@ for a file another bundle installed.
   `.tgz` or `.tar` gives that archive, any other path a directory; default
   `<name>.zip`).
 - **An upgrade that meets your edits.** `chi bundle upgrade` updates a file
-  you didn't edit and keeps one you did (a conflict), then asks on a
+  you didn't edit. One you edited that the bundle also changed takes a text
+  merge (with `git`, which chi doesn't otherwise need): when it comes out clean
+  the file holds both, the old one is in the bundle trash, and the output says
+  `Merged: X` (a dry run, `Would merge: X`). Entries both sides added under a
+  `Changelog` heading are kept, yours first. A clean merge is text, not
+  meaning: two sentences can still disagree, so read what you care about (`chi
+  bundle trash` lists the old copy).
+- **A real conflict** leaves your file untouched, never with markers in it, and
+  marks it. So does no `git`, or a file with no recorded base, and the warning
+  says why. The upgrade then asks on a
   terminal whether to launch a chi session that merges the two (`/exit`
   when done). `--agent` launches it without asking, `--no-agent` never does;
   with neither and no terminal it keeps your edits and says so. Only a file
   the session changed, with no conflict markers left, counts as resolved: any
-  other stays a conflict (`Nothing changed in X: still behind.`). Kept edits
+  other stays a conflict (`Nothing changed in X: still behind.`). A file marked
+  this way is retried at the same version: the system bundle's at each chi start
+  and on `chi update`, another shipped bundle's on `chi update`, and any other
+  bundle's on `chi bundle upgrade`. Kept edits
   exit 2; `chi bundle diff NAME FILE` shows the base, and `--force` takes
   the bundle's version, copying a file that differs to the bundle trash first
   (the output says `Copied to the trash first: …`).

@@ -114,7 +114,7 @@ Bundles are versioned directories/zips/tar.gz/git URLs with a `manifest.yml` and
 | Command | Purpose |
 |---------|---------|
 | `install <source> [--scope system\|project] [--force]` | Install from dir/zip/tar.gz/git URL. `--force` overwrites existing entries, otherwise skips them; a skipped file stays the user's (not recorded, never upgraded or removed by the bundle). Writes provenance to `.bundles/<name>/` (base snapshots + `manifest.json`) and updates `index.md`. Warns on double-brace placeholders and checksum mismatches (strict mode). |
-| `upgrade <source> [--force] [--dry-run] [--agent]` | 3-way merge upgrade (base vs current vs incoming) per `Merger.classify`: `install` (new file), `noop` (current==incoming), `fast_forward` (current==base, not edited → auto-update), `keep` (incoming==base → preserve local edits), `conflict` (both edited → warn, needs `--force` or interactive `memory_write` resolution). Pruned files (removed from new bundle) are kept if locally edited, otherwise warned. |
+| `upgrade <source> [--force] [--dry-run] [--agent]` | 3-way merge upgrade (base vs current vs incoming) per `Merger::Upgrade#outcome` (`Merger.classify`, then a text merge where both sides changed): `install` (new file), `noop` (current==incoming), `fast_forward` (current==base, not edited → auto-update), `keep` (incoming==base → preserve local edits), `merged` (both edited, a text merge with `git` comes out clean → the file takes it, the old one goes to the bundle trash, and entries both sides added under a `Changelog` heading are kept), `conflict` (both edited, a real conflict, or no `git` or base → the file stays untouched and marked, needs a retry, `--force` or interactive `memory_write` resolution). A marked file is retried at the same version: the system bundle's at each chi start and on `chi update`, another shipped bundle's on `chi update`, any other bundle's on `chi bundle upgrade`. Pruned files (removed from new bundle) are kept if locally edited, otherwise warned. |
 | `uninstall <bundle> [--force]` | Moves the bundle's memory files to `.bundles/.trash/<bundle>-<time>/` (refuses locally edited ones unless `--force`; keeps a file another installed bundle also lists), removes their `index.md` lines, deletes the provenance dir. |
 | `status [<bundle>]` | Provenance + per-file `ok|modified|missing|no-index` vs stored checksum and base snapshot; a model overlay (`<name>.<key>.md`) has no index line and reads `ok (model overlay)`. |
 | `diff <bundle> [file]` | Prints `base` (provenance snapshot) vs `current` (on-disk) for each file. |
@@ -138,7 +138,7 @@ chi bundle install https://github.com/org/bundle.git#v1.2.0 --scope system --for
 
 # check what would change and upgrade
 chi bundle upgrade ./my-bundle --dry-run
-chi bundle upgrade ./my-bundle  # auto-merges, warns on conflicts
+chi bundle upgrade ./my-bundle  # merges your edits, warns on a real conflict
 
 # share again after editing
 chi bundle build --scope system --out updated.zip
@@ -155,9 +155,9 @@ chi bundle build --scope system --out updated.zip
 2. **Prefer project scope** for repo decisions; `system` for cross-project identity/preferences.
 3. **One concept per file:** small files merge and share better than monoliths.
 4. **Use bundles for sharing:** `build` → zip → share → `install`. Do not copy raw `~/.config` paths in docs — give `chi bundle install <url>` instructions.
-5. **Respect local edits:** installs skip existing files by default; use `--force` only when the user explicitly wants overwrite. Upgrades preserve edits (`keep`) or report `conflict` — guide the user to resolve via `memory_read`/`memory_write` or `chi bundle diff <bundle>` + `--force`.
+5. **Respect local edits:** installs skip existing files by default; use `--force` only when the user explicitly wants overwrite. Upgrades preserve edits (`keep`, `merged`) or report `conflict`, leaving the file behind — guide the user to resolve via `memory_read`/`memory_write` or `chi bundle diff <bundle>` + `--force`.
 6. **Keep secrets out:** never write tokens/keys to memories — they are plain files and go into bundles.
 
 ## Current system bundle
 
-`samagotchi-system` (`lib/samagotchi/bundles/system/manifest.yml`) ships `identity.md` + `self_map.md` + `config_modification_protocol.md` + `delegated.md` + this guide itself. It is auto-installed/upgraded on first `Engine` creation (`SystemBundle.ensure!`) — no manual install needed. Its files are managed by chi: a newer chi upgrades them (a 3-way merge keeps local edits and reports conflicts), so put your own preferences in separate memories rather than editing these.
+`samagotchi-system` (`lib/samagotchi/bundles/system/manifest.yml`) ships `identity.md` + `self_map.md` + `config_modification_protocol.md` + `delegated.md` + this guide itself. It is auto-installed/upgraded on first `Engine` creation (`SystemBundle.ensure!`) — no manual install needed. Its files are managed by chi: a newer chi upgrades them (a text merge keeps local edits, and a real conflict leaves the file behind), so put your own preferences in separate memories rather than editing these.

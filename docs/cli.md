@@ -230,7 +230,8 @@ component      from   to     status
 chi (gem)      0.2.0  0.3.0  updated
 system bundle  0.2.0  0.3.0  updated (kept your edits in identity.md: chi bundle diff samagotchi-system identity.md)
 btw            0.1.1         up to date
-known-names    0.1.0  0.1.1  updated
+known-names    0.1.0  0.1.1  updated (merged known_names.md; Copied to the trash first: known_names.md (…/.trash/known-names-20260102-101500))
+coordinator    0.8.0         merged (skill_coordinator.md; Copied to the trash first: skill_coordinator.md (…/.trash/coordinator-20260102-101500))
 core           0.1.0  0.2.0  updated (+ new-bundle)
 infra_tools    1.0.0         skipped (not from chi)
 infra_tools                  warn api plugin.rb:3: ctx.old_name isn't in chi 0.3.0's plugin API (fix: docs/plugins.md has the API)
@@ -246,7 +247,8 @@ done
   version is refused.
 - `--json` writes the component rows as one JSON array on stdout. Each row has
   `component`, `from`, `to`, `status`, `failed`, `kept` and `level` fields;
-  `kept` is an array of edited filenames, and `level` is `warn` or `error` on a
+  `kept` is an array of edited filenames left behind (a merged file is named in
+  `status`), and `level` is `warn` or `error` on a
   re-check's row (below), `null` on the others. Install progress is written to
   stderr.
 
@@ -304,10 +306,14 @@ done
   the row says what it did.
 - **Shipped bundles**: each one you installed from chi (`chi bundle install
   NAME`) is upgraded when chi ships a newer version. Memory files get the
-  3-way merge of `chi bundle upgrade`: an unedited file is updated, an edited
-  one that the new version also changes is kept, and the row says so (`chi
+  3-way merge of `chi bundle upgrade`: an unedited file is updated, and an
+  edited one that the new version also changes takes a text merge, with the old
+  file in the bundle trash and `merged FILE` in the row. A real conflict, no
+  `git`, or no recorded base keeps your file untouched, and the row says so (`chi
   bundle diff NAME FILE` shows it; `chi bundle upgrade NAME --force` takes the
-  bundle's, with a copy of yours in the bundle trash first). Hooks, rules and the plugin are replaced; an edited one didn't
+  bundle's, with a copy of yours in the bundle trash first). A later run retries
+  a file kept that way at the same version, and its row reads `0.8.0  merged
+  (FILE)` when it merges; a real conflict changes nothing and says nothing. Hooks, rules and the plugin are replaced; an edited one didn't
   load anyway (its sha no longer matched), the row says it was replaced, and
   a copy goes to the bundle trash first (`chi bundle trash`; `hooks/x`,
   `guardrails/x`, `plugin/x`, `scripts/x` inside the dir).
@@ -369,7 +375,7 @@ this version's view: bundles that only a newer gem ships newer show up once
 that gem is installed (the real run installs it first and hands over).
 `--no-gem`, `--no-bundles` and `--no-desktop` leave a part alone for one run;
 `update.gem`, `update.bundles` and `update.desktop: false` in config.yml turn
-one off for good. It exits 0 when nothing failed (kept edits and skips are
+one off for good. It exits 0 when nothing failed (merged and kept edits and skips are
 fine), 1 when a part failed, 2 on a usage error. A second run changes nothing
 and ends with "everything is up to date".
 

@@ -34,11 +34,13 @@ module Samagotchi
         Updates this chi's install: the gem (from rubygems.org), then the
         system bundle, the bundles chi ships that you installed (chi bundle
         list), and the desktop helper (macOS; rebuilt only when its sources
-        changed). A memory file you edited takes the update in a text merge, or
-        stays as it is when the merge finds a real conflict, and the table says
-        which; nothing is installed that isn't already, and old gem versions stay. The bundles
-        chi doesn't ship are never changed: the new chi checks them and adds
-        a row per warning or error (these don't fail the update).
+        changed). A memory file you edited takes the update in a text merge
+        (the old file goes to the bundle trash), or stays as it is when the
+        merge finds a real conflict, and the table says which; each run
+        retries a file left behind. Nothing is installed that isn't
+        already, and old gem versions stay. The bundles chi doesn't ship are
+        never changed: the new chi checks them and adds a row per warning or
+        error (these don't fail the update).
         --dry-run      show what would change; change nothing (with a newer
                        gem to install, bundles chi doesn't ship aren't checked:
                        that chi would)

@@ -53,8 +53,10 @@ chi update              # the gem, then the bundles and the desktop helper
 `chi update` installs the newest samagotchi from rubygems.org (old versions
 stay installed: running sessions still use them), then brings the rest up to
 the new version: the system bundle, the bundles chi ships that you installed,
-and the macOS helper (rebuilt only when its sources changed). Memory files you
-edited are kept, and the table says which. Running sessions keep their chi
+and the macOS helper (rebuilt only when its sources changed). A memory file you
+edited takes the update in a text merge (the old file goes to the bundle trash),
+or stays as it is when the merge finds a real conflict, and the table says
+which. Running sessions keep their chi
 until restarted (`chi sessions restart ID`, or the Restart badge on the web);
 new and woken ones start on the new chi. A running `chi web` needs a restart,
 and its page says so. From a checkout, `git pull` instead. See

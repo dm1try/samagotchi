@@ -18,7 +18,8 @@ module Samagotchi
           --force overwrites existing entries (one that differs is copied to the trash first); default skips them.
 
         upgrade <source> [--scope system|project] [--force] [--dry-run] [--agent|--no-agent]
-          Upgrade a bundle (3-way merge: auto-merge if not edited, conflict otherwise).
+          Upgrade a bundle (3-way: a file you didn't edit updates; one you edited takes a text
+          merge, the old file in the bundle trash; a real conflict leaves it as it is).
           --dry-run shows what would change. --agent launches interactive session on conflict.
 
         uninstall <bundle> [--scope system|project] [--force]

@@ -2141,7 +2141,7 @@ Both are read when chi web starts (restart it to apply a change). What it does, 
    install isn't blocked (a source checkout, Bundler, a RubyGems directory chi can't write: those stay a notice, with
    the command to run). `chi update` also merges the shipped bundles that live sessions read, hence "no turn anywhere".
 2. **Installs** exactly the release the notice named, as the **Update** button does (the system bundle and shipped
-   bundles are merged three ways; files you edited are kept and counted in the push). The page's sticky toast says
+   bundles are merged three ways; a file you edited takes a text merge, and one with a real conflict is kept and counted in the push). The page's sticky toast says
    "Automatic chi update in progress" and its sheet shows the rows; with `update.restart: idle` no "installed"
    toast with **Restart** buttons follows (the run restarts by itself). A failed install is tried **once per version**:
    it pushes the failed row's reason and stays quiet until a newer release (or you, with the button) tries again.
