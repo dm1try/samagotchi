@@ -5,6 +5,7 @@ require_relative "session"
 require_relative "session_setup"
 require_relative "session_inbox"
 require_relative "session_chain"
+require_relative "objectives"
 require_relative "child_move"
 require_relative "context_move"
 require_relative "archive_store"
@@ -209,6 +210,8 @@ module Samagotchi
         ChildMove.apply(move, from: previous.id, to: link.id, state_dir: state_dir)
         # Its movable context too, with a note saying what moved and stayed.
         moved_context = ContextMove.call(from: previous.id, to: link.id, mode: :continue, state_dir: state_dir)
+        # Its objectives last: the list reads as the latest word.
+        Objectives.carry(previous, to: link.id, state_dir: state_dir)
       end
       link = SessionManager.spawn_session(
         prompt: start, preview: preview, title: previous.title, working_directory: previous.working_directory,

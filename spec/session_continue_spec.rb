@@ -6,6 +6,7 @@ require "spec_helper"
 require "samagotchi/worker_link"
 require "samagotchi/session_continue"
 require "samagotchi/session_chain"
+require "samagotchi/objectives"
 require "samagotchi/tools/delegate_cursor"
 require_relative "support/worker_links"
 
@@ -155,6 +156,68 @@ RSpec.describe Samagotchi::SessionContinue, ".run" do
     link = continue(previous.id, recap_wait: 5)
 
     expect(note_of(link.id)[:text]).to end_with(":\nThe fresh recap.\n\nIts last answer:\nok")
+  end
+
+  describe "the objectives" do
+    let(:list) { Samagotchi::Objectives::List.new.add("Ship it", done_when: "main is green").add("Stay small") }
+
+    def list_note(list, id: "n1")
+      Samagotchi::ContextNote.message(note_id: id, text: list.text, source: "objectives",
+                                      header: Samagotchi::ContextNote::OBJECTIVES_HEADER, objectives: list.to_payload)
+    end
+
+    def with_list(list)
+      make.tap do |s|
+        s.messages += [list_note(list)]
+        s.save(state_dir: tmpdir)
+      end
+    end
+
+    def notes_of(id)
+      Samagotchi::SessionInbox.find_new_note_files(dir_of(id)).map { |f| Samagotchi::SessionInbox.read_note(f) }
+    end
+
+    it "go to the new link as a second note file, after the carry note, as a note the worker frames" do
+      link = continue(with_list(list).id)
+
+      carry, objectives = notes_of(link.id)
+      expect(carry[:source]).to eq(Samagotchi::SessionChain::NOTE_SOURCE)
+      expect(objectives).to include(source: "objectives", header: "OBJECTIVES", text: list.text)
+      expect(Samagotchi::Objectives.from_payload(objectives[:objectives])).to eq(list)
+    end
+
+    it "take the previous link's unabsorbed newest file over its conversation" do
+      previous = with_list(list)
+      newer = list.mark("O1", Samagotchi::Objectives::DONE)
+      Samagotchi::SessionInbox.write_note(previous.id, text: newer.text, source: "objectives", objectives: newer.to_payload,
+                                                       state_dir: tmpdir)
+
+      objectives = notes_of(continue(previous.id).id).last
+      expect(Samagotchi::Objectives.from_payload(objectives[:objectives])).to eq(newer)
+    end
+
+    it "leave a link's note alone when the previous one has no list" do
+      expect(notes_of(continue(make.id).id).size).to eq(1)
+    end
+
+    it "stay behind on a review link" do
+      previous = with_list(list)
+      previous.review = Samagotchi::SessionReview.new(subjects: ["a.rb"])
+      previous.save(state_dir: tmpdir)
+
+      expect(notes_of(continue(previous.id).id).map { |n| n[:source] }).to eq([Samagotchi::SessionChain::NOTE_SOURCE])
+    end
+
+    it "fail alone: a list that can't be read logs and the continue goes on" do
+      previous = with_list(list)
+      allow(Samagotchi::Objectives).to receive(:current).and_raise(Errno::EACCES)
+      allow(Samagotchi::Log).to receive(:warn)
+
+      link = continue(previous.id)
+
+      expect(notes_of(link.id).size).to eq(1)
+      expect(Samagotchi::Log).to have_received(:warn).with(:worker, "continue_objectives_failed", hash_including(sid: previous.id))
+    end
   end
 
   describe "the carry note's last answer" do
