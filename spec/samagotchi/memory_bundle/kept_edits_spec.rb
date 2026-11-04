@@ -63,6 +63,21 @@ RSpec.describe "Kept edits in a bundle" do
       expect(File.read(target)).to eq("edited\n")
       expect(provenance.record.version).to eq("1.0.0")
     end
+
+    it "says a kept edit is kept, with no checksum mismatch for it" do
+      write_source("2.0.0", { "a.md" => "a2\n", "b.md" => "b1\n", "c.md" => "c2\n" })
+      dry = run_installer(upgrade: true, dry_run: true)
+
+      expect(dry.summary).to include("Kept (local edits preserved): b.md")
+      expect(dry.warnings.grep(/Checksum mismatch for b\.md/)).to be_empty
+    end
+
+    it "prints no checksum mismatch for a file a plain install would skip" do
+      dry = run_installer(write_source("1.0.0", { "a.md" => "a1\n", "b.md" => "b1\n", "c.md" => "c1\n" }), dry_run: true)
+
+      expect(dry.results["a.md"][:status]).to eq("would_skip")
+      expect(dry.warnings.grep(/Checksum mismatch for a\.md/)).to be_empty
+    end
   end
 
   describe "--force over a file that differs" do

@@ -126,7 +126,7 @@ module Samagotchi
         lines << "Source changes: #{@source_change.join(" → ")}" if @source_change
         installed = @results.select { |_, r| r[:status].to_s == "installed" }.keys
         updated = @results.select { |_, r| r[:status].to_s == "updated" }.keys
-        kept = @results.select { |_, r| %w[kept kept_pruned].include?(r[:status].to_s) }.keys
+        kept = @results.select { |_, r| %w[kept keep kept_pruned].include?(r[:status].to_s) }.keys
         skipped = @results.select { |_, r| %w[skipped noop would_skip].include?(r[:status].to_s) }.keys
         conflicts = @results.select { |_, r| r[:status].to_s == "conflict" }.keys
         would_install = @results.select { |_, r| r[:status].to_s == "would_install" }.keys
@@ -420,14 +420,15 @@ module Samagotchi
       end
 
       # Strict mode: a memory written from the bundle whose sha256 differs
-      # from its manifest's warns. One that wasn't copied (kept, skipped:
-      # a local edit isn't a bad download) or was merged isn't checked.
+      # from its manifest's warns. One that wasn't copied (kept, skipped, a
+      # dry run's keep and would_skip: a local edit isn't a bad download) or
+      # was merged isn't checked.
       def verify_memory_checksums
         @bundle_md.each do |file_key|
           next if @conflicts.key?(file_key)
 
           status = @results[file_key] ? @results[file_key][:status].to_s : nil
-          next if %w[kept kept_pruned fast_forward updated skipped].include?(status)
+          next if %w[kept keep kept_pruned fast_forward updated skipped would_skip].include?(status)
 
           target_path = File.join(@target_dir, file_key)
           next unless File.exist?(target_path)
