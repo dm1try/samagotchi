@@ -51,6 +51,7 @@ require_relative "context_candidates"
 require_relative "context_candidates_log"
 require_relative "context_candidate_choice"
 require_relative "context_judge"
+require_relative "objectives_audit"
 require_relative "owner_prompt"
 require_relative "side_judgments"
 require_relative "toolkit_suggest"
@@ -769,6 +770,8 @@ module Samagotchi
     # command's ask_model between turns).
     # @return [String, nil]
     def side_author(kind)
+      # Check this is only ever the owner's, whichever turn runs as it ends.
+      return nil if kind.to_s == ObjectivesCheck::SOURCE
       return nil unless turn_running? || kind.to_s == RECAP_SIDE_KIND
 
       @guardrail_wiring.turn_author
@@ -1084,6 +1087,7 @@ module Samagotchi
                    from_cwd: note[:from_cwd], text: note[:text], context_source: note[:context_source],
                    created_at: note[:created_at], objectives: entry }.compact)
         announce_objectives(session) if entry
+        objectives_audit.note(session, note)
         message
       end
     end
@@ -2532,6 +2536,7 @@ module Samagotchi
       # The candidate judge: its asks run beside the turn; on mode's
       # attaches reach the model at the next between-turn delivery.
       start_context_judge(turn)
+      audit_objectives_incoming(turn)
       apply_toolkit!(session, turn.on_event)
       refresh_participants!(session)
       # A Stop during the waits above: the turn ends here,
@@ -2809,6 +2814,7 @@ module Samagotchi
       # a display version of the answer (AnswerDisplay) and event[:refs]
       # for refs on it (AnswerRefs).
       session = turn.session
+      audit_objectives_outgoing(turn, result) unless canceled || result.exhausted?
       display = AnswerDisplay.new(session.messages)
       refs = AnswerRefs.new(session.messages, cwd: session.working_directory)
       after_turn = { type: :after_turn, status: canceled ? "canceled" : "completed",
@@ -3365,6 +3371,36 @@ module Samagotchi
       context_judge_pass(session, ContextCandidates.owner_texts(session.messages) + [turn.prompt], phase: "turn")
     end
     private :start_context_judge
+
+    # System 1 on the objectives, in audit (ObjectivesAudit): the owner's turns
+    # only, and for a message a person's: a reminder's or a delegate's prompt isn't one.
+    def audit_objectives_incoming(turn)
+      return unless turn.prompt.is_a?(String) && turn.origin.human? && OwnerPrompt.turn?(session: turn.session, author: turn.origin.author)
+
+      objectives_audit.incoming(turn.session, turn.prompt)
+    end
+    private :audit_objectives_incoming
+
+    def audit_objectives_outgoing(turn, result)
+      return unless OwnerPrompt.turn?(session: turn.session, author: turn.origin.author)
+
+      objectives_audit.outgoing(turn.session, result.text)
+    end
+    private :audit_objectives_outgoing
+
+    # With saving off nothing would come of an ask, so none is made.
+    def objectives_audit
+      @objectives_audit ||= ObjectivesAudit.new(
+        side: @side_judgments, state_dir: -> { session_state_dir },
+        client_for: lambda do |judgment, session|
+          next nil unless system_one_runs.on?
+
+          system_one_recording(SystemOne::Client.from_config(host_registry: @host_registry, mode: ObjectivesAudit::MODE, tag: :system_one),
+                               judgment, session)
+        end
+      )
+    end
+    private :objectives_audit
 
     # A late proposal no owner prompt mentions (Plugin::Host
     # #candidate_proposed: github-pr's init task runs beside the first

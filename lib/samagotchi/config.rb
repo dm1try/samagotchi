@@ -243,6 +243,9 @@ module Samagotchi
 
       # Check this (ObjectivesCheck): a cheap configured model for its one side request; nil is the session's.
       Entry.new(key: "objectives.check_model", yaml_path: %w[objectives check_model], type: :string, default: nil, expose: %i[config], lifecycle: :next_matching_turn_display_poll_write),
+      # System 1 on the objectives (ObjectivesAudit): audit saves a yes/no per active objective on what comes in and goes
+      # out, acted on by nothing; off (no conversation text goes to a System 1 host for it). Host and model: system_one.*.
+      Entry.new(key: "objectives.system_one", yaml_path: %w[objectives system_one], type: :enum, default: "off", expose: %i[config], enum_values: %w[off audit], lifecycle: :next_matching_turn_display_poll_write),
 
       # What the model is sent of the conversation (LLMContextStrategy, LLMContextView): none, or a list of layers
       # (stale, forget; "|"-separated or a YAML list); forget (the model's forget_outputs) is experimental.
@@ -419,7 +422,7 @@ module Samagotchi
     # Names core keeps, as a judgment's first word: a bundle can't declare one and
     # system_one.judgments can't set one (Record and Similar are model-blind, so a
     # swapped model would inherit a clean record and could auto-allow).
-    RESERVED_JUDGMENTS = %w[approvals context guardrails toolkit].freeze
+    RESERVED_JUDGMENTS = %w[approvals context guardrails objectives toolkit].freeze
 
     # What a :bool value reads as (Config.coerce!), YAML 1.1's words and 1/0.
     BOOL_WORDS = { "1" => true, "true" => true, "yes" => true, "on" => true,
