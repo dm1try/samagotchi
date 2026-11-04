@@ -38,7 +38,7 @@ user-facing side (what a bundle owns, profiles, needs) is in [memory.md](../memo
 | `Installer` | one install/upgrade/dry run of one bundle (below) |
 | `AssetInstaller` | the parts that live in `.bundles/<name>/`: hooks, guardrail rules, plugin, scripts; returns `AssetInstaller::Installed` (the paths the record keeps). A file it replaces or removes whose bytes are neither the recorded sha nor the incoming file's is copied to the Installer's `Trash` first (`#save_edit`, as `hooks/x`, `guardrails/x`, `plugin/x`, `scripts/x`; no sha recorded counts as edited; a dev link never is) |
 | `Merger` | 3-way classification per file: `install`, `fast_forward`, `keep`, `noop`, `conflict`; `.markers?` (a file holding a merge's `<<<<<<<`/`>>>>>>>` lines; `=======` alone is a Markdown underline) |
-| `Provenance` | the `.bundles/<name>/` dir: `#write` the record + bases, `#record` → `InstalledBundle`, `.each_installed`, `.claimants` (which bundles own a file) |
+| `Provenance` | the `.bundles/<name>/` dir: `#write` the record + bases (its `files:` is the full list: a key left out is dropped, a nil value keeps the entry with no base), `#record` → `InstalledBundle`, `.each_installed`, `.claimants` (which bundles own a file) |
 | `InstalledBundle`, `BundleHook`, `PluginRef` | value objects for the record; tolerant of older records (missing keys read as empty). `BundleHook#events` is the manifest's `event:` or its `events:` list (written back as `event:` for one, as an older chi reads it); `Hooks::BundleLoader#load_hook_file` builds the hook once and registers it under each |
 | `Builder` | `chi bundle build`: memories (+ the installed bundle's hooks, rules, plugin, scripts) → zip/tar/dir |
 | `Profile` | meta bundles (`includes:`): install the members, record which; `InstallResult#kept_own` names a new member's memory files the user already had, with other bytes (`kept_own_line`, printed by `chi bundle`, `chi update` and `chi bootstrap`); a dry run runs each member's Installer as a dry run too, so it names them as well |
@@ -100,7 +100,8 @@ The order matters: warnings print in it, and a plugin/script the manifest names 
 6. `verify_memory_checksums` (strict), `warn_missing_needs`.
 7. `write_provenance` (manifest, not a dry run): bases come from the incoming file, except where the user's edit was
    kept (kept/noop/conflict/kept_pruned, or a re-install's skipped edit): those keep the old base, so the next
-   upgrade still sees the edit. A plain install also keeps the record (the old base) of a file an earlier install
+   upgrade still sees the edit. One with no base stays without one (a nil in `Provenance#write`'s `files:`, which keeps the
+   entry and its recorded checksum): taking the user's file would let the next upgrade fast-forward over it. A plain install also keeps the record (the old base) of a file an earlier install
    owned and this version doesn't ship, while it is on disk (`dropped_owned_files`), so the next upgrade prunes it.
 8. `detect_placeholders`.
 

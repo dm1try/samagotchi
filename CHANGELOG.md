@@ -17,6 +17,7 @@ and commands may change between minor versions. How releases are made:
 - An install, upgrade or `chi update` that replaces or removes a hook, rule, plugin or script you edited copies it to the bundle trash first, under its own subfolder (`hooks/x`, `scripts/x`), and says so. A `--dev` install's links are left out.
 - A memory whose conflict was resolved through `chi bundle upgrade --agent` keeps its description in the bundle's record.
 - `chi bundle upgrade --agent` no longer calls a conflict resolved when nothing merged it. A file the session didn't change, or one still holding conflict markers, stays a conflict, the output says so (`Nothing changed in X: still behind.`), and the command exits 2. It used to mark the file resolved, so later upgrades kept it without a word and the bundle's change never arrived.
+- An edited memory with no recorded base keeps surviving upgrades as a conflict. Its own text used to become the base, so the following upgrade overwrote it with nothing in the trash.
 
 ## [0.149.0] - 2026-11-04
 

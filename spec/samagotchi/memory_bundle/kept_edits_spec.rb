@@ -189,7 +189,6 @@ RSpec.describe "Kept edits in a bundle" do
 
   describe "a dev install's links" do
     it "are never copied to the trash, replaced or pruned" do
-      FileUtils.mkdir_p(File.join(source, "hooks"))
       write_source("1.0.0", { "a.md" => "one\n" }, extra: { "hooks" => { "h.rb" => { "event" => "after_turn" } } })
       FileUtils.mkdir_p(File.join(source, "hooks"))
       File.write(File.join(source, "hooks", "h.rb"), "# hook\n")
@@ -303,6 +302,71 @@ RSpec.describe "Kept edits in a bundle" do
       provenance.resolve_conflicts("a.md" => { incoming: incoming, current: old })
 
       expect(provenance.read[:files][:"a.md"]).to eq(checksum: Digest::SHA256.hexdigest("new\n"), description: "What a is")
+    end
+  end
+
+  describe "a kept file with no base" do
+    before do
+      write_source("1.0.0")
+      run_installer
+      File.write(target, "edited\n")
+      FileUtils.rm_f(provenance.base_path("a.md"))
+    end
+
+    it "survives two upgrades as a conflict, its base still missing" do
+      %w[2.0.0 3.0.0].each do |version|
+        up = run_installer(write_source(version), upgrade: true)
+
+        expect(up.results["a.md"][:status]).to eq("conflict")
+        expect(File.read(target)).to eq("edited\n")
+        expect(File.exist?(provenance.base_path("a.md"))).to be false
+        expect(provenance.read[:files][:"a.md"]).to include(conflict: true)
+        expect(provenance.read[:version]).to eq(version)
+      end
+      expect(trash_files).to be_empty
+    end
+
+    it "keeps the entry's checksum as recorded, never the edit's" do
+      recorded = provenance.read[:files][:"a.md"][:checksum]
+      run_installer(write_source("2.0.0"), upgrade: true)
+
+      expect(provenance.read[:files][:"a.md"][:checksum]).to eq(recorded)
+    end
+
+    it "gets a base once it is level with the bundle" do
+      run_installer(write_source("2.0.0"), upgrade: true)
+      File.write(target, "v3.0.0\n")
+      run_installer(write_source("3.0.0"), upgrade: true)
+
+      expect(File.read(provenance.base_path("a.md"))).to eq("v3.0.0\n")
+      expect(provenance.read[:files][:"a.md"]).not_to include(:conflict)
+    end
+
+    it "survives a plain install, then an upgrade" do
+      run_installer(write_source("1.0.1"))
+      expect(File.exist?(provenance.base_path("a.md"))).to be false
+
+      up = run_installer(write_source("2.0.0"), upgrade: true)
+      expect(up.results["a.md"][:status]).to eq("conflict")
+      expect(File.read(target)).to eq("edited\n")
+    end
+
+    it "stays kept when the bundle stops shipping it, upgrade after upgrade" do
+      %w[2.0.0 3.0.0].each do |version|
+        up = run_installer(write_source(version, { "z.md" => "z\n" }), upgrade: true)
+
+        expect(up.results["a.md"]).to include(status: "kept_pruned")
+        expect(File.read(target)).to eq("edited\n")
+        expect(File.exist?(provenance.base_path("a.md"))).to be false
+      end
+      expect(trash_files).to be_empty
+    end
+
+    it "stays recorded through a plain install that no longer ships it" do
+      run_installer(write_source("1.0.1", { "z.md" => "z\n" }))
+
+      expect(provenance.read[:files]).to have_key(:"a.md")
+      expect(run_installer(write_source("2.0.0", { "z.md" => "z\n" }), upgrade: true).results["a.md"][:status]).to eq("kept_pruned")
     end
   end
 end

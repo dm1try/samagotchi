@@ -459,9 +459,11 @@ module Samagotchi
 
       # file key => the file whose content becomes its base. A file the
       # upgrade left as the user has it (kept, noop, conflict, kept_pruned)
-      # keeps its old base, so the next upgrade still sees the local edit;
-      # the rest (installed, updated, skipped) take what is on disk now. A
-      # file the bundle dropped but the user kept stays recorded too.
+      # keeps its old base, so the next upgrade still sees the local edit
+      # (nil when it has none: the user's file must not become the base, or
+      # the next upgrade fast-forwards over it); the rest (installed, updated,
+      # skipped) take what is on disk now. A file the bundle dropped but the
+      # user kept stays recorded too.
       def upgrade_provenance_files
         files = {}
         @owned.each do |file_key|
@@ -470,18 +472,20 @@ module Samagotchi
 
           status = @results[file_key] ? @results[file_key][:status].to_s : nil
           base_path = @provenance.base_path(file_key)
-          files[file_key] = %w[kept noop conflict kept_pruned].include?(status) && File.exist?(base_path) ? base_path : target_path
+          files[file_key] = %w[kept noop conflict kept_pruned].include?(status) ? recorded_base(base_path) : target_path
         end
         @existing.files.each_key do |old_key_str|
           next if @bundle_md.include?(old_key_str)
           next unless @results[old_key_str] && @results[old_key_str][:status].to_s == "kept_pruned"
 
-          base_path = @provenance.base_path(old_key_str)
-          src = File.exist?(base_path) ? base_path : File.join(@target_dir, old_key_str)
-          files[old_key_str] = src if File.exist?(src)
+          files[old_key_str] = recorded_base(@provenance.base_path(old_key_str))
         end
         files
       end
+
+      # +base_path+, nil when there is no base (Provenance#write's "keep the
+      # entry, without one").
+      def recorded_base(base_path) = File.exist?(base_path) ? base_path : nil
 
       # file key => its base's content source for a plain install. Skipped
       # for a local edit: keep the installed base, so the next upgrade still
@@ -491,9 +495,8 @@ module Samagotchi
           target_path = File.join(@target_dir, file_key)
           next unless File.exist?(target_path)
 
-          base_path = @provenance.base_path(file_key)
-          kept = @existing && @results.dig(file_key, :reason) == "already exists" && File.exist?(base_path)
-          map[file_key] = kept ? base_path : target_path
+          kept = @existing && @results.dig(file_key, :reason) == "already exists"
+          map[file_key] = kept ? recorded_base(@provenance.base_path(file_key)) : target_path
         end
         files.merge(dropped_owned_files)
       end
@@ -511,8 +514,7 @@ module Samagotchi
           next if @bundle_md.include?(file_key)
           next unless File.exist?(File.join(@target_dir, file_key))
 
-          base_path = @provenance.base_path(file_key)
-          files[file_key] = base_path if File.exist?(base_path)
+          files[file_key] = recorded_base(@provenance.base_path(file_key))
         end
       end
 

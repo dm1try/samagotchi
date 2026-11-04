@@ -135,6 +135,11 @@ module Samagotchi
       # Writes provenance for an installation: merges into existing manifest.json
       # and saves base snapshots. Stale base snapshots (files removed from bundle)
       # are pruned.
+      # @param files [Hash{String => String, nil}] every file the record keeps
+      #   => the file whose content is its base; a key left out is dropped from
+      #   the record. nil keeps an entry with no base (a kept edit that has
+      #   none: the user's file must never become it), with its recorded
+      #   checksum.
       # @param hooks_files [Hash] basename => path for hook file snapshots (optional)
       # @param guardrails_files [Hash] basename => installed rule file; the
       #   sha256 of each is recorded (the Engine checks it at load)
@@ -166,11 +171,14 @@ module Samagotchi
         merged_entries = existing ? existing.files.dup : {}
 
         files.each do |file_key, file_path|
-          content = File.read(file_path)
-          checksum = Digest::SHA256.hexdigest(content)
-          # Save base snapshot — use file_key as-is (it already includes .md).
-          File.write(File.join(bases_dir, file_key), content)
-          merged_entries[file_key] = { checksum: checksum }
+          if file_path
+            content = File.read(file_path)
+            # Save base snapshot — use file_key as-is (it already includes .md).
+            File.write(File.join(bases_dir, file_key), content)
+            merged_entries[file_key] = { checksum: Digest::SHA256.hexdigest(content) }
+          else
+            merged_entries[file_key] = merged_entries.fetch(file_key, {}).slice(:checksum)
+          end
           merged_entries[file_key][:conflict] = true if conflicts.include?(file_key.to_s)
           merged_entries[file_key][:description] = file_descriptions[file_key.to_s] if file_descriptions[file_key.to_s]
         end
