@@ -43,6 +43,7 @@ module Samagotchi
         Allowed.new(name: "Samagotchi::Log.debug", file: "samagotchi/log"),
         Allowed.new(name: "Samagotchi::Config.get", file: "samagotchi/config"),
         Allowed.new(name: "Samagotchi::VERSION", file: "samagotchi/version"),
+        Allowed.new(name: "Samagotchi::CancellationController", file: "samagotchi/cancellation_controller"),
         # The kit itself, for a bundle's own specs.
         Allowed.new(name: "Samagotchi::Testing", file: "samagotchi/testing")
       ].freeze
