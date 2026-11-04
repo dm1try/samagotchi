@@ -271,6 +271,13 @@ RSpec.describe "Kept edits in a bundle" do
       expect(dry.summary).not_to include("Would merge")
       expect(File.read(target)).to eq("edited\n")
     end
+
+    it "gives a dry run the same reason: no git" do
+      FileUtils.mkdir_p(File.join(tmpdir, "no-git"))
+      dry = with_env("PATH" => File.join(tmpdir, "no-git")) { run_installer(write_source("2.0.0"), upgrade: true, dry_run: true) }
+
+      expect(dry.summary).to include("Conflict in a.md: no merge possible (git not found), local edits kept")
+    end
   end
 
   describe "--force over a file that differs" do

@@ -430,8 +430,9 @@ module Samagotchi
 
         if @upgrade && @existing
           outcome = upgrade_view.outcome(file_key)
+          return note_conflict(file_key, outcome) if outcome.conflict?
+
           @results[file_key] = { status: outcome.merged? ? "would_merge" : outcome.status.to_s }
-          @conflicts[file_key] = upgrade_view.paths(file_key) if outcome.conflict?
         elsif FileUtils.identical?(file_path, target_path)
           @results[file_key] = { status: "skipped", reason: "already up to date" }
         else
