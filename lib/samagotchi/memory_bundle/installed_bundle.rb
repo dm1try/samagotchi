@@ -11,8 +11,9 @@ module Samagotchi
     # lacks keys a newer chi writes, and a key that is missing or of the
     # wrong shape reads as empty (nil for the optional strings and lists).
     #
-    #   files       file key ("x.md") => { checksum:, conflict:, incoming_sha:, description: } (symbol keys);
-    #               incoming_sha: the bundle text a conflict mark speaks of, nil on an older mark
+    #   files       file key ("x.md") => { checksum:, conflict:, incoming_sha:, legacy_base:, description: } (symbol keys);
+    #               incoming_sha: the bundle text a conflict mark speaks of, nil on an older mark;
+    #               legacy_base: true on an older mark that has since got its incoming_sha (.legacy_mark?)
     #   hooks       basename => BundleHook
     #   guardrails  basename => recorded sha256 ("" when none)
     #   scripts     file name => recorded sha256 ("" when none)
@@ -45,6 +46,12 @@ module Samagotchi
       def initialize(name:, **fields)
         super(name: name, **OPTIONAL, **fields)
       end
+
+      # Whether a file's entry is a conflict mark from an older chi: no
+      # incoming_sha, or legacy_base. Such a mark's base may be the user's own
+      # text (0.149 took it for a file with no base). Getting its digest later
+      # must not make it look new, so legacy_base stays until the mark goes.
+      def self.legacy_mark?(entry) = !!entry && entry[:conflict] == true && (entry[:legacy_base] == true || !entry[:incoming_sha])
 
       # The record at +path+, nil when there is none.
       # @raise [JSON::ParserError, SystemCallError] it doesn't read

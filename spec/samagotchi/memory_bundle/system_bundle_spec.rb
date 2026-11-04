@@ -158,7 +158,7 @@ RSpec.describe Samagotchi::MemoryBundle::SystemBundle do
           ship("0.1.6", text)
           described_class.sync
           File.write(live, mine)
-          ship("0.1.10", text(tail: "new tail"))
+          ship("0.1.10", text(tail: "tail\nnew tail"))
           raw = JSON.parse(File.read(record))
           raw["version"] = "0.1.10"
           raw["files"]["identity.md"]["conflict"] = true
@@ -175,7 +175,7 @@ RSpec.describe Samagotchi::MemoryBundle::SystemBundle do
           expect(result).to have_attributes(status: :merged, merged: ["identity.md"], warnings: [])
           expect(result.trash_copy).to include("Copied to the trash first: identity.md")
           expect(result).to be_changed
-          expect(installed_identity).to eq(text(intro: "my intro", tail: "new tail"))
+          expect(installed_identity).to eq(text(intro: "my intro", tail: "tail\nnew tail"))
           expect(installed_version).to eq("0.1.10")
 
           expect(described_class.sync).to have_attributes(status: :up_to_date, merged: [])
@@ -205,7 +205,7 @@ RSpec.describe Samagotchi::MemoryBundle::SystemBundle do
           File.write(File.join(dir, "gone.md"), "gone\n")
           Samagotchi::MemoryBundle::Manifest.write(
             dir: dir, name: described_class::BUNDLE_NAME, version: "0.1.10", scope: "system",
-            files: { "identity.md" => "sha256:#{Digest::SHA256.hexdigest(text(tail: "new tail"))}", "gone.md" => "sha256:#{Digest::SHA256.hexdigest("gone\n")}" }
+            files: { "identity.md" => "sha256:#{Digest::SHA256.hexdigest(text(tail: "tail\nnew tail"))}", "gone.md" => "sha256:#{Digest::SHA256.hexdigest("gone\n")}" }
           )
 
           expect(described_class.sync).to have_attributes(status: :restored, merged: ["identity.md"])

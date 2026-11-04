@@ -159,7 +159,7 @@ RSpec.describe Samagotchi::MemoryBundle::ShippedUpdate do
     before do
       ship_note("1.0.0", note)
       install(dir, "merged")
-      ship_note("2.0.0", note(tail: "tail two"))
+      ship_note("2.0.0", note(tail: "the tail\nand a new line"))
       mark(version: "2.0.0")
     end
 
@@ -173,18 +173,18 @@ RSpec.describe Samagotchi::MemoryBundle::ShippedUpdate do
       row = described_class.apply(rows).first
       expect(row).to have_attributes(status: :merged, from: "2.0.0", to: nil, merged: ["note.md"])
       expect(row.trash_copy).to include("Copied to the trash first: note.md")
-      expect(File.read(live)).to eq(note(intro: "my intro", tail: "tail two"))
+      expect(File.read(live)).to eq(note(intro: "my intro", tail: "the tail\nand a new line"))
 
       expect(described_class.plan(shipped_dir: root).first).to have_attributes(status: :up_to_date, merged: [])
     end
 
     it "stays quiet on a real conflict, the first run only recording its digest" do
-      File.write(live, note(tail: "my tail"))
+      File.write(live, note(tail: "my tail\nand another line"))
 
       first = described_class.apply(described_class.plan(shipped_dir: root)).first
       expect(first).to have_attributes(status: :up_to_date, merged: [], note: nil)
-      expect(File.read(live)).to eq(note(tail: "my tail"))
-      expect(JSON.parse(File.read(record))["files"]["note.md"]).to include("conflict" => true, "incoming_sha" => Digest::SHA256.hexdigest(note(tail: "tail two")))
+      expect(File.read(live)).to eq(note(tail: "my tail\nand another line"))
+      expect(JSON.parse(File.read(record))["files"]["note.md"]).to include("conflict" => true, "incoming_sha" => Digest::SHA256.hexdigest(note(tail: "the tail\nand a new line")))
 
       stamp = File.mtime(record)
       expect(described_class.apply(described_class.plan(shipped_dir: root)).first.status).to eq(:up_to_date)

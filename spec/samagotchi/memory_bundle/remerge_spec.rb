@@ -55,6 +55,13 @@ RSpec.describe Samagotchi::MemoryBundle::Remerge do
     File.write(manifest_path, JSON.pretty_generate(raw))
   end
 
+  # A mark as this chi makes it: it names what it missed.
+  def new_mark
+    raw = JSON.parse(File.read(manifest_path))
+    raw["files"]["a.md"]["incoming_sha"] = Digest::SHA256.hexdigest(File.read(File.join(source, "a.md")))
+    File.write(manifest_path, JSON.pretty_generate(raw))
+  end
+
   # An edit marked conflict at 2.0.0, and the base from 1.0.0.
   def marked_at_two(mine:, shipped:)
     write_source("1.0.0", doc)
@@ -68,9 +75,9 @@ RSpec.describe Samagotchi::MemoryBundle::Remerge do
   end
 
   context "with a mark with no digest (older chi) that merges now" do
-    let(:merged) { doc(intro: "my intro", tail: "tail two") }
+    let(:merged) { doc(intro: "my intro", tail: "the tail\nand a new line") }
 
-    before { marked_at_two(mine: doc(intro: "my intro"), shipped: doc(tail: "tail two")) }
+    before { marked_at_two(mine: doc(intro: "my intro"), shipped: doc(tail: "the tail\nand a new line")) }
 
     it "merges once, the base the incoming file and the mark gone, then does nothing" do
       result = remerge
@@ -78,8 +85,8 @@ RSpec.describe Samagotchi::MemoryBundle::Remerge do
       expect(result.merged).to eq(["a.md"])
       expect(result.trash_copy).to include("Copied to the trash first: a.md")
       expect(File.read(target)).to eq(merged)
-      expect(base).to eq(doc(tail: "tail two"))
-      expect(entry).to eq(checksum: Digest::SHA256.hexdigest(doc(tail: "tail two")), description: "What a is")
+      expect(base).to eq(doc(tail: "the tail\nand a new line"))
+      expect(entry).to eq(checksum: Digest::SHA256.hexdigest(doc(tail: "the tail\nand a new line")), description: "What a is")
       expect(trash_files).to eq("a.md" => doc(intro: "my intro"))
 
       expect(Samagotchi::MemoryBundle::TextMerge).not_to receive(:merge)
@@ -158,6 +165,7 @@ RSpec.describe Samagotchi::MemoryBundle::Remerge do
     end
 
     it "merges once the user's edit no longer overlaps" do
+      new_mark
       remerge
       File.write(target, doc(intro: "my intro"))
 
@@ -246,8 +254,9 @@ RSpec.describe Samagotchi::MemoryBundle::Remerge do
       expect(base).to eq(doc(tail: "tail two"))
     end
 
-    it "leaves one equal to its base for the next upgrade, which saves it first" do
+    it "leaves one equal to its base, with a mark this chi made, for the next upgrade, which saves it first" do
       marked_at_two(mine: doc, shipped: doc(tail: "tail two"))
+      new_mark
       result = remerge
 
       expect(result).not_to be_work
@@ -265,7 +274,7 @@ RSpec.describe Samagotchi::MemoryBundle::Remerge do
     end
 
     it "gives a model overlay no index line" do
-      marked_at_two(mine: doc(intro: "my intro"), shipped: doc(tail: "tail two"))
+      marked_at_two(mine: doc(intro: "my intro"), shipped: doc(tail: "the tail\nand a new line"))
       FileUtils.mv(target, File.join(memories, "a.deepseek.md"))
       File.write(target, doc)
       manifest = YAML.safe_load_file(File.join(source, "manifest.yml"))
@@ -282,8 +291,190 @@ RSpec.describe Samagotchi::MemoryBundle::Remerge do
     end
   end
 
+  # 0.149 took a file with no base as its own base: base = the user's text U.
+  # A merge then reads the bundle's text as "undo U", and takes U out of the file.
+  describe "a mark from an older chi whose base is the user's own text" do
+    let(:user_text) { doc(intro: "my intro") }
+    let(:live) { "#{user_text}one more edit\n" }
+    let(:shipped) { doc }
+    let(:why) { "no merge possible (#{Samagotchi::MemoryBundle::Merger::LEGACY_BASE})" }
+
+    # What 0.149 left, at 2.0.0, and one more edit since.
+    def legacy_mark(version: "2.0.0")
+      write_source("1.0.0", doc)
+      install
+      File.write(provenance.base_path("a.md"), user_text)
+      File.write(target, live)
+      raw = JSON.parse(File.read(manifest_path))
+      raw["version"] = version
+      File.write(manifest_path, JSON.pretty_generate(raw))
+      old_mark
+      write_source(version, shipped)
+    end
+
+    def expect_kept
+      expect(File.read(target)).to eq(live)
+      expect(base).to eq(user_text)
+      expect(entry).to include(conflict: true, legacy_base: true)
+      expect(trash_files).to be_empty
+    end
+
+    it "doesn't let a retry take the user's lines out" do
+      legacy_mark
+      result = remerge
+
+      expect(result).to have_attributes(merged: [], settled: [], stamped: ["a.md"])
+      expect_kept
+    end
+
+    it "keeps the protection once its digest is recorded: a later run is the same" do
+      legacy_mark
+      remerge
+      expect(entry).to include(incoming_sha: Digest::SHA256.hexdigest(shipped))
+      stamp = File.mtime(manifest_path)
+
+      expect(remerge).not_to be_work
+      expect(File.mtime(manifest_path)).to eq(stamp)
+      expect_kept
+    end
+
+    it "doesn't let a new version's upgrade take them out, and the warning says why" do
+      legacy_mark
+      write_source("3.0.0", shipped)
+      up = install(upgrade: true)
+
+      expect(up.results["a.md"][:status]).to eq("conflict")
+      expect(up.merged_files).to be_empty
+      expect(up.warnings).to include(a_string_including(why))
+      expect_kept
+    end
+
+    it "keeps it through a retry, then upgrades, then a plain install" do
+      legacy_mark
+      remerge
+      write_source("3.0.0", shipped)
+      install(upgrade: true)
+      expect_kept
+      write_source("4.0.0", doc(intro: "the intro again", tail: "tail four"))
+      expect(install(upgrade: true).results["a.md"][:status]).to eq("conflict")
+      expect_kept
+      write_source("5.0.0", shipped)
+      install
+      expect_kept
+    end
+
+    context "when the file is the base: nothing but the bundle's text would be left of it" do
+      before do
+        legacy_mark
+        File.write(target, user_text)
+      end
+
+      it "doesn't let a retry replace it" do
+        expect(remerge).to have_attributes(merged: [], stamped: ["a.md"])
+        expect(File.read(target)).to eq(user_text)
+        expect(base).to eq(user_text)
+        expect(entry).to include(conflict: true, legacy_base: true)
+        expect(trash_files).to be_empty
+      end
+
+      it "doesn't let an upgrade fast-forward over it, and says why, in a dry run too" do
+        write_source("3.0.0", shipped)
+        dry = install(upgrade: true, dry_run: true)
+        expect(dry.results["a.md"][:status]).to eq("conflict")
+        expect(dry.summary).not_to include("Fast-forward")
+        expect(dry.summary).to include(why)
+
+        up = install(upgrade: true)
+        expect(up.results["a.md"][:status]).to eq("conflict")
+        expect(up.warnings).to include(a_string_including(why))
+        expect(File.read(target)).to eq(user_text)
+        expect(base).to eq(user_text)
+        expect(trash_files).to be_empty
+      end
+    end
+
+    # What the guard costs: it can't tell this base from the user's text.
+    it "leaves a file that really is the bundle's old text behind, unchanged, until --force" do
+      write_source("1.0.0", doc)
+      install
+      old_mark
+      write_source("2.0.0", doc(tail: "tail two"))
+      up = install(upgrade: true)
+
+      expect(up.results["a.md"][:status]).to eq("conflict")
+      expect(File.read(target)).to eq(doc)
+      expect(base).to eq(doc)
+      expect(entry).to include(conflict: true, legacy_base: true)
+      expect(remerge).not_to be_work
+
+      install(upgrade: true, force: true)
+      expect(File.read(target)).to eq(doc(tail: "tail two"))
+      expect(entry).not_to include(:conflict, :legacy_base, :incoming_sha)
+      expect(trash_files.keys).to eq(["a.md"])
+    end
+
+    it "says the same in a dry run and in a plan's forecast" do
+      legacy_mark
+      write_source("3.0.0", shipped)
+      dry = install(upgrade: true, dry_run: true)
+
+      expect(dry.results["a.md"][:status]).to eq("conflict")
+      expect(dry.summary).to include(why)
+      expect(Samagotchi::MemoryBundle::Merger::Upgrade.new(provenance: provenance, target_dir: memories, source_dir: source).forecast(["a.md"]))
+        .to have_attributes(merged: [], conflicts: ["a.md"])
+      expect(File.read(target)).to eq(live)
+      expect(entry).not_to have_key(:legacy_base)
+    end
+
+    it "still merges when the merge takes no line out, and the mark and the protection go" do
+      write_source("1.0.0", doc)
+      install
+      File.write(target, doc(intro: "my intro"))
+      old_mark
+      write_source("1.0.0", doc(tail: "the tail\nand a new line"))
+      result = remerge
+
+      expect(result.merged).to eq(["a.md"])
+      expect(File.read(target)).to eq(doc(intro: "my intro", tail: "the tail\nand a new line"))
+      expect(entry).not_to include(:conflict, :legacy_base, :incoming_sha)
+    end
+
+    it "lets it go once the file no longer stands to lose lines, even after a stamp" do
+      legacy_mark
+      remerge
+      File.write(target, "#{doc}my line\n")
+
+      expect(remerge.settled).to eq(["a.md"])
+      expect(File.read(target)).to eq("#{doc}my line\n")
+      expect(entry).not_to include(:conflict, :legacy_base, :incoming_sha)
+    end
+
+    it "goes when an agent step settles the file" do
+      legacy_mark
+      remerge
+      provenance.resolve_conflicts("a.md" => { incoming: File.join(source, "a.md"), current: target })
+
+      expect(entry).not_to include(:conflict, :legacy_base, :incoming_sha)
+    end
+
+    it "doesn't touch a mark this chi made: a merge there may take the bundle's removals" do
+      write_source("1.0.0", doc)
+      install
+      File.write(target, doc(intro: "my intro"))
+      write_source("2.0.0", doc(tail: "my tail"))
+      FileUtils.mkdir_p(File.join(tmpdir, "no-git"))
+      with_env("PATH" => File.join(tmpdir, "no-git")) { install(upgrade: true) }
+      expect(entry).to include(conflict: true)
+      expect(entry).not_to have_key(:legacy_base)
+
+      expect(remerge.merged).to eq(["a.md"])
+      expect(File.read(target)).to eq(doc(intro: "my intro", tail: "my tail"))
+      expect(File.read(target)).not_to include("the tail")
+    end
+  end
+
   it "leaves a file it can't replace, marked, with a note, when the trash can't hold the copy" do
-    marked_at_two(mine: doc(intro: "my intro"), shipped: doc(tail: "tail two"))
+    marked_at_two(mine: doc(intro: "my intro"), shipped: doc(tail: "the tail\nand a new line"))
     File.write(File.join(Samagotchi::MemoryPaths.bundles_dir, ".trash"), "in the way\n")
     result = remerge
 

@@ -409,10 +409,9 @@ module Samagotchi
         @upgrade_view ||= Merger::Upgrade.new(provenance: @provenance, target_dir: @target_dir, source_dir: @bundle_dir)
       end
 
-      # A file marked conflict that equals its base: the base may be the user's
-      # own text (0.149 took it for a file with no base, and a downgrade writes
-      # that again), so a fast-forward would destroy it. Copied, and said; one
-      # really put back by hand only gets a spare copy.
+      # A file with a mark this chi made that equals its base: the user put it
+      # back by hand, so the update goes ahead, with a spare copy, and says so.
+      # (An older chi's mark never gets here: Merger::Upgrade#outcome.)
       def save_marked_file(file_key, target_path)
         return unless @existing.files.dig(file_key, :conflict)
 

@@ -13,7 +13,7 @@ and commands may change between minor versions. How releases are made:
 
 - An upgrade now merges a memory you edited with the bundle's new version instead of leaving it behind. `chi bundle upgrade`, `chi update` and the automatic system bundle update run a text merge (needs `git`): a clean merge replaces the file, with the old one in the bundle trash and the report saying `Merged:` or `merged x.md`, and `--dry-run` says `would merge`. Entries both sides added under a `Changelog` heading are kept, yours first. A real conflict, no `git`, or no recorded base leaves your file untouched, as before.
 
-- A memory left behind as a conflict gets another try without waiting for the bundle's next version: the system bundle retries its files marked conflict at every chi start and on `chi update`, the other bundles chi ships on `chi update`, and any other bundle on `chi bundle upgrade`. It touches memory files only, and a row reads `0.8.0  merged (x.md)`. A real conflict changes nothing and says nothing.
+- A memory left behind as a conflict gets another try without waiting for the bundle's next version: the system bundle retries its files marked conflict at every chi start and on `chi update`, the other bundles chi ships on `chi update`, and any other bundle on `chi bundle upgrade`. It touches memory files only, and a row reads `0.8.0  merged (x.md)`. A real conflict changes nothing and says nothing. A file marked by an older chi merges only if the bundle takes out or rewords no line it still holds, since that mark's base may be your own text. Otherwise it stays behind until resolved by hand, with `--agent` or with `--force`, and the retry can't fix that.
 
 ### Fixed
 

@@ -22,13 +22,15 @@ module Samagotchi
     #   - the shipped text isn't the one the mark names (a checkout at the same
     #     VERSION can carry other text): left alone. A mark that names none
     #     (older chi) is tried too, the migration; a real conflict then records
-    #     the digest. A mark whose digest matches is tried on every run, since
+    #     the digest and legacy_base, so Merger.merge_outcome keeps protecting
+    #     its file (a merge there may not take a line out). A mark whose digest matches is tried on every run, since
     #     the user's file or git may have changed;
     #   - merged: replaced as the Installer does, base the incoming file;
     #   - noop, keep (a merge that adds nothing too): the file has nothing left
     #     to miss, so the mark goes;
     #   - conflict: nothing changes but that digest, and nothing is said;
-    #   - fast_forward, install: the next upgrade's (save_marked_file, a restore);
+    #   - fast_forward (this chi's mark only), install: the next upgrade's
+    #     (save_marked_file, a restore);
     #   - one it can't read or replace: left as it is, and a note says why.
     #
     # It can't loop: settling clears the mark, and a real conflict writes nothing.

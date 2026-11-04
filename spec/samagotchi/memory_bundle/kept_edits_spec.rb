@@ -707,15 +707,14 @@ RSpec.describe "Kept edits in a bundle" do
       provenance.write(files: { "a.md" => target }, scope: "system", version: "2.0.0", source_path: source, conflicts: ["a.md"])
     end
 
-    it "copies the file to the trash before the fast-forward, and says so" do
+    it "stays a conflict at the next upgrade: no fast-forward over it" do
       up = run_installer(write_source("3.0.0"), upgrade: true)
 
-      expect(trash_files).to eq("a.md" => "edited\n")
-      expect(File.read(target)).to eq("v3.0.0\n")
-      expect(up.summary).to include("Copied to the trash first: a.md (#{up.trash_dir})")
-      expect(up.warnings).to include(a_string_including("a.md was marked as kept", "your copy is in the trash"))
-      expect(provenance.read[:files][:"a.md"]).not_to include(:conflict)
-      expect(File.read(provenance.base_path("a.md"))).to eq("v3.0.0\n")
+      expect(up.results["a.md"][:status]).to eq("conflict")
+      expect(File.read(target)).to eq("edited\n")
+      expect(File.read(provenance.base_path("a.md"))).to eq("edited\n")
+      expect(provenance.read[:files][:"a.md"]).to include(conflict: true, legacy_base: true)
+      expect(trash_files).to be_empty
     end
 
     it "copies nothing when the mark is gone: an unmarked record like this can't be told from an unedited file" do
@@ -723,6 +722,27 @@ RSpec.describe "Kept edits in a bundle" do
       run_installer(write_source("3.0.0"), upgrade: true)
 
       expect(trash_files).to be_empty
+    end
+  end
+
+  describe "a mark this chi made, on a file put back to its base" do
+    before do
+      write_source("1.0.0")
+      run_installer
+      File.write(target, "edited\n")
+      run_installer(write_source("2.0.0"), upgrade: true)
+      File.write(target, "v1.0.0\n")
+    end
+
+    it "takes the update, a spare copy in the trash first, and says so" do
+      up = run_installer(write_source("3.0.0"), upgrade: true)
+
+      expect(trash_files).to eq("a.md" => "v1.0.0\n")
+      expect(File.read(target)).to eq("v3.0.0\n")
+      expect(up.summary).to include("Copied to the trash first: a.md (#{up.trash_dir})")
+      expect(up.warnings).to include(a_string_including("a.md was marked as kept", "your copy is in the trash"))
+      expect(provenance.read[:files][:"a.md"]).not_to have_key(:conflict)
+      expect(File.read(provenance.base_path("a.md"))).to eq("v3.0.0\n")
     end
   end
 

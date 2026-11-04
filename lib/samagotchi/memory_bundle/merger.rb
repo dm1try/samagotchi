@@ -2,6 +2,7 @@
 
 require "digest"
 require_relative "../atomic_file"
+require_relative "installed_bundle"
 
 module Samagotchi
   module MemoryBundle
@@ -60,17 +61,29 @@ module Samagotchi
       # of them.
       Forecast = Data.define(:merged, :conflicts)
 
+      # Why a merge of a mark from an older chi didn't go ahead (.merge_outcome).
+      LEGACY_BASE = "an older chi may have taken your text as the base, and the merge would remove lines from your file"
+
       # One bundle's upgrade as seen before it runs: what it does to a file,
       # nothing written. The one way to ask: Installer's merge and dry run,
       # ShippedUpdate's plan and SystemBundle's dry run. Which files to ask
       # about is the caller's, and they differ (see #forecast).
       Upgrade = Data.define(:provenance, :target_dir, :source_dir) do
         # What the upgrade does to the file: .classify, then, where both sides
-        # changed it, the text merge (git runs here, once per call).
+        # changed it, the text merge (git runs here, once per call). A mark from
+        # an older chi never fast-forwards: see .merge_outcome.
         # @return [Outcome]
         def outcome(file_key)
           classified = classified(file_key)
-          classified.conflict? ? Merger.merge_outcome(paths(file_key)) : classified
+          return classified unless classified.conflict? || classified == FAST_FORWARD
+
+          legacy = InstalledBundle.legacy_mark?(provenance.record&.files&.fetch(file_key, nil))
+          return classified if classified == FAST_FORWARD && !legacy
+          # The guard's own case at its plainest: the file is the base, which
+          # may be the user's text, and all of it would go.
+          return CONFLICT.with(merge: TextMerge.failed(LEGACY_BASE)) if classified == FAST_FORWARD
+
+          Merger.merge_outcome(paths(file_key), legacy: legacy)
         end
 
         # .classify alone: no merge is tried.
@@ -135,9 +148,18 @@ module Samagotchi
 
       # Both sides changed the file: the text merge's answer as an Outcome. No
       # base means no merge: the file stays as a conflict.
+      #
+      # legacy: the file's mark may be 0.149's, whose base can be the user's own
+      # text. Merging against it reads the bundle's text as undoing that text,
+      # with no conflict to show for it, so a merge that would take any line out
+      # of the file stays a conflict, and so does a fast-forward (Upgrade#outcome).
+      # The price: a base that really is the bundle's old text looks the same, so
+      # such a file stays behind too. A mark from this chi has a real base, and
+      # a merge there may take what the bundle removed.
       # @param sides [Hash{Symbol => String}] Upgrade#paths
+      # @param legacy [Boolean] InstalledBundle.legacy_mark?
       # @return [Outcome]
-      def self.merge_outcome(sides)
+      def self.merge_outcome(sides, legacy: false)
         unless sides[:base] && File.exist?(sides[:base])
           return CONFLICT.with(merge: TextMerge.failed(TextMerge::NO_BASE))
         end
@@ -146,8 +168,15 @@ module Samagotchi
         result = TextMerge.merge(base: File.binread(sides[:base]), ours: ours, theirs: File.binread(sides[:incoming]))
         return CONFLICT.with(merge: result) unless result.clean?
         return ALREADY_MERGED if result.text.b == ours.b
+        return CONFLICT.with(merge: TextMerge.failed(LEGACY_BASE)) if legacy && removes_lines?(ours, result.text)
 
         Outcome.new(status: :merged, base: :incoming, merge: result, current_sha: Digest::SHA256.hexdigest(ours))
+      end
+
+      # Whether +merged+ holds fewer copies of any line of +ours+.
+      def self.removes_lines?(ours, merged)
+        kept = merged.b.each_line.map(&:chomp).tally
+        ours.b.each_line.map(&:chomp).tally.any? { |line, count| kept.fetch(line, 0) < count }
       end
 
       # A :merged outcome's text goes in +path+, unless the file changed since

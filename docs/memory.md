@@ -519,8 +519,8 @@ for a file another bundle installed.
   meaning: two sentences can still disagree, so read what you care about (`chi
   bundle trash` lists the old copy).
 - **A real conflict** leaves your file untouched, never with markers in it, and
-  marks it. So does no `git`, or a file with no recorded base, and the warning
-  says why. The upgrade then asks on a
+  marks it. So does no `git`, a file with no recorded base, or a file marked by
+  an older chi (below), and the warning says why. The upgrade then asks on a
   terminal whether to launch a chi session that merges the two (`/exit`
   when done). `--agent` launches it without asking, `--no-agent` never does;
   with neither and no terminal it keeps your edits and says so. Only a file
@@ -528,7 +528,11 @@ for a file another bundle installed.
   other stays a conflict (`Nothing changed in X: still behind.`). A file marked
   this way is retried at the same version: the system bundle's at each chi start
   and on `chi update`, another shipped bundle's on `chi update`, and any other
-  bundle's on `chi bundle upgrade`. Kept edits
+  bundle's on `chi bundle upgrade`.
+- **A file marked by an older chi** merges only if the bundle takes out or rewords
+  no line the file still holds. Otherwise it stays behind until you resolve it by
+  hand, with `--agent` or with `--force`, and the retry can't fix that: the base
+  that mark recorded may be your own text, and chi can't tell. Kept edits
   exit 2; `chi bundle diff NAME FILE` shows the base, and `--force` takes
   the bundle's version, copying a file that differs to the bundle trash first
   (the output says `Copied to the trash first: …`).

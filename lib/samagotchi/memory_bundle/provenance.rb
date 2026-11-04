@@ -151,7 +151,9 @@ module Samagotchi
       # @param conflicts [Array<String>] files an upgrade kept with local
       #   edits that conflict with it; their entries get conflict: true
       # @param incoming_shas [Hash{String => String}] those files' incoming
-      #   digests, recorded with the mark (incoming_sha: what Remerge retries)
+      #   digests, recorded with the mark (incoming_sha: what Remerge retries).
+      #   A mark from an older chi that stays a mark gets legacy_base: true
+      #   (InstalledBundle.legacy_mark?)
       # @param includes [Array<String>, nil] a profile's recorded members
       #   (MemoryBundle::Profile); nil for a plain bundle
       # @param scripts_files [Hash] file name => installed script; the
@@ -173,6 +175,7 @@ module Samagotchi
         merged_entries = existing ? existing.files.dup : {}
 
         files.each do |file_key, file_path|
+          legacy = InstalledBundle.legacy_mark?(merged_entries[file_key])
           if file_path
             content = File.read(file_path)
             # Save base snapshot — use file_key as-is (it already includes .md).
@@ -184,6 +187,7 @@ module Samagotchi
           if conflicts.include?(file_key.to_s)
             merged_entries[file_key][:conflict] = true
             merged_entries[file_key][:incoming_sha] = incoming_shas[file_key.to_s] if incoming_shas[file_key.to_s]
+            merged_entries[file_key][:legacy_base] = true if legacy
           end
           merged_entries[file_key][:description] = file_descriptions[file_key.to_s] if file_descriptions[file_key.to_s]
         end
@@ -294,7 +298,7 @@ module Samagotchi
 
           content = File.read(info[:incoming])
           File.write(base_path(key), content)
-          raw["files"][key] = raw["files"][key].except("conflict", "incoming_sha").merge("checksum" => Digest::SHA256.hexdigest(content))
+          raw["files"][key] = raw["files"][key].except("conflict", "incoming_sha", "legacy_base").merge("checksum" => Digest::SHA256.hexdigest(content))
           key
         end
         write_manifest(raw)
@@ -302,14 +306,17 @@ module Samagotchi
       end
 
       # Records the incoming digest on marks that have none: a mark made before
-      # chi kept it, once Remerge has tried it (the rest of the manifest stays).
+      # chi kept it, once Remerge has tried it. legacy_base keeps it known for
+      # what it is (InstalledBundle.legacy_mark?). The rest of the manifest stays.
       # @param shas [Hash{String => String}] file key => digest
       def stamp_incoming(shas)
         return unless installed?
 
         raw = JSON.parse(File.read(File.join(@bundle_dir, "manifest.json")))
         shas.each do |key, sha|
-          raw["files"][key.to_s]["incoming_sha"] = sha if raw.dig("files", key.to_s, "conflict")
+          next unless raw.dig("files", key.to_s, "conflict")
+
+          raw["files"][key.to_s].merge!("incoming_sha" => sha, "legacy_base" => true)
         end
         write_manifest(raw)
       end
