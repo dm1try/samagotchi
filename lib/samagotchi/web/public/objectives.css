@@ -37,6 +37,8 @@ button.obj-chip{cursor:pointer;font:inherit;font-size:13px;line-height:1.4;text-
 .obj-row.done .obj-id,.obj-row.dropped .obj-id{color:var(--text-muted)}
 .obj-row-sub{display:flex;flex-direction:column;gap:1px;color:var(--text-muted);font-size:12px;overflow-wrap:anywhere}
 .obj-row-acts{flex:none;display:flex;gap:4px}
+.obj-check.refuted{color:var(--warn-text)}
+.obj-check.confirmed{color:var(--text-2)}
 .obj-act{padding:3px 10px;font-size:12px;border-radius:6px}
 .obj-act.ghost{background:var(--bg-raised);color:var(--text-2)}
 form.obj-row{align-items:center}
@@ -56,9 +58,12 @@ form.obj-row{align-items:center}
   .bubble.note.objectives-entry.change{font-size:12.5px;gap:6px}
 }
 .obj-panel.sheet{font-size:15px;max-height:85dvh}
-.obj-panel.sheet .obj-row{align-items:center;padding:6px 0}
+.obj-panel.sheet .obj-row{align-items:flex-start;flex-wrap:wrap;padding:8px 0}
+.obj-panel.sheet form.obj-row{align-items:center;flex-wrap:nowrap}
+/* The text keeps the row's width and the buttons get their own line: a phone reads a reason. */
+.obj-panel.sheet .obj-row-main{flex:1 1 calc(100% - 40px)}
 .obj-panel.sheet .obj-row-text{font-size:15px;min-height:32px}
-.obj-panel.sheet .obj-row-acts{gap:6px}
+.obj-panel.sheet .obj-row-acts{flex:1 1 100%;flex-wrap:wrap;justify-content:flex-end;gap:6px}
 .obj-panel.sheet .obj-act{min-height:44px;min-width:56px;padding:0 8px;font-size:14px;border-radius:10px}
 .obj-panel.sheet .obj-input{min-height:44px;font-size:16px;border-radius:10px}
 .obj-panel.sheet .obj-note{font-size:12px}

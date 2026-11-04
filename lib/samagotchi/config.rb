@@ -241,6 +241,9 @@ module Samagotchi
       Entry.new(key: "context.candidates.offer_threshold", yaml_path: %w[context candidates offer_threshold], type: :float, default: 0.6, expose: %i[config], lifecycle: :next_matching_turn_display_poll_write),
       Entry.new(key: "context.candidates.reask_after_turns", yaml_path: %w[context candidates reask_after_turns], type: :integer, default: 3, expose: %i[config], lifecycle: :next_matching_turn_display_poll_write),
 
+      # Check this (ObjectivesCheck): a cheap configured model for its one side request; nil is the session's.
+      Entry.new(key: "objectives.check_model", yaml_path: %w[objectives check_model], type: :string, default: nil, expose: %i[config], lifecycle: :next_matching_turn_display_poll_write),
+
       # What the model is sent of the conversation (LLMContextStrategy, LLMContextView): none, or a list of layers
       # (stale, forget; "|"-separated or a YAML list); forget (the model's forget_outputs) is experimental.
       # models.<key>.llm_context_strategy and hosts.<name>.llm_context_strategy come first.

@@ -157,3 +157,63 @@ test("Not yet in the list: two taps send one message, and a failure lets it be t
   assert.equal(tap().disabled, false);
   control.reset();
 });
+
+test("Check this: only with a move; posts its line, and a running or finished check shows in the row", async () => {
+  const { el, control, lines, pop } = strip();
+  control.seed({ items: [{ id: "O1", text: "A", status: "active", move: { note: "did it", evidence: "" } },
+                         { id: "O2", text: "B", status: "active" }], pending: false });
+  el.querySelector(".obj-edit").click();
+  assert.equal(pop().querySelector('[data-row="O2"] [data-obj-act="check"]'), null);
+  pop().querySelector('[data-row="O1"] [data-obj-act="check"]').click();
+  await settle();
+  assert.deepEqual(lines, ["/objectives check O1"]);
+
+  control.update({ items: [{ id: "O1", text: "A", status: "active", move: { note: "did it", evidence: "" }, check: { running: true } }], pending: false });
+  assert.equal(pop().querySelector('[data-row="O1"] .obj-check').textContent, "Checking…");
+  assert.equal(pop().querySelector('[data-row="O1"] [data-obj-act="check"]').disabled, true);
+
+  control.update({ items: [{ id: "O1", text: "A", status: "active", move: { note: "did it", evidence: "" },
+                             check: { verdict: "refuted", reason: "no suite ran", model: "main:x" } }], pending: false });
+  const row = pop().querySelector('[data-row="O1"]');
+  assert.equal(row.querySelector(".obj-check").textContent, "Check: refuted — no suite ran");
+  assert.match(row.querySelector(".obj-check").title, /main:x/);
+  assert.equal(row.querySelector('[data-obj-act="check"]').disabled, false);
+});
+
+test("a check on a dropped objective isn't offered", () => {
+  const { el, control, pop } = strip();
+  control.seed({ items: [{ id: "O1", text: "A", status: "dropped", move: { note: "x", evidence: "" } }, { id: "O2", text: "B", status: "active" }], pending: false });
+  el.querySelector(".obj-edit").click();
+  assert.equal(pop().querySelector('[data-row="O1"] [data-obj-act="check"]'), null);
+});
+
+test("a running check lets go when it expires, with no event: the row goes and the button is back", async () => {
+  const { el, control, pop } = strip();
+  const item = { id: "O1", text: "A", status: "active", move: { note: "did it", evidence: "" } };
+  control.seed({ items: [{ ...item, check: { running: true, until: new Date(Date.now() + 30).toISOString() } }], pending: false });
+  el.querySelector(".obj-edit").click();
+  assert.equal(pop().querySelector('[data-row="O1"] .obj-check').textContent, "Checking…");
+  await new Promise((resolve) => setTimeout(resolve, 80));
+  assert.equal(pop().querySelector('[data-row="O1"] .obj-check'), null);
+  assert.equal(pop().querySelector('[data-row="O1"] [data-obj-act="check"]').disabled, false);
+  control.reset();
+});
+
+test("a check's start or end doesn't bring Not yet back: only a change to the list does", async () => {
+  const sent = [];
+  document.body.innerHTML = "";
+  const host = document.createElement("div");
+  document.body.appendChild(host);
+  const control = createObjectivesStrip({ el: host, session: () => "s1", sendMessage: async (text) => sent.push(text) });
+  const item = { id: "O1", text: "A", status: "active", move: { note: "did it", evidence: "" } };
+  control.seed({ items: [item], pending: false });
+  await control.notYet("O1");
+  control.update({ items: [{ ...item, check: { running: true, until: new Date(Date.now() + 9000).toISOString() } }], pending: false });
+  assert.equal(await control.notYet("O1"), false);
+  control.update({ items: [{ ...item, check: { verdict: "confirmed", reason: "r" } }], pending: false });
+  assert.equal(await control.notYet("O1"), false);
+  assert.equal(sent.length, 1);
+  control.update({ items: [{ ...item, move: { note: "newer", evidence: "" } }], pending: false });
+  assert.equal(await control.notYet("O1"), true);
+  control.reset();
+});

@@ -2,6 +2,7 @@
 
 require_relative "note_delivery"
 require_relative "objectives"
+require_relative "objectives_check"
 
 module Samagotchi
   # /objectives: with no arguments the session's list (Objectives), each
@@ -13,7 +14,7 @@ module Samagotchi
   # unabsorbed first. Nothing here saves the session.
   class ObjectivesCommand
     NAME = "/objectives"
-    USAGE = "usage: #{NAME} [set A | B | add TEXT | edit ID TEXT | done ID… | drop ID… | undo ID…] " \
+    USAGE = "usage: #{NAME} [set A | B | add TEXT | edit ID TEXT | done ID… | drop ID… | undo ID… | check ID] " \
             "(a text may end \"(done when: …)\"; lines work as | does)".freeze
     NONE = "no objectives; #{NAME} set A | B sets them".freeze
     BETWEEN_TURNS = "(an edit goes into the conversation between turns)"
@@ -28,6 +29,7 @@ module Samagotchi
     CARD = /\A--card\s+(\S+)\s*(?:--was\s+(\S+)\s*)?/
     FOLDS = { Objectives::APPLIED => "Proposal applied", Objectives::DISMISSED => "Proposal dismissed" }.freeze
     DISMISS = "dismiss"
+    CHECK = /\Acheck(?:\s|\z)/i
     MARKS = { "done" => Objectives::DONE, "drop" => Objectives::DROPPED, "undo" => Objectives::ACTIVE }.freeze
 
     # @param engine [Engine] #session, #session_state_dir
@@ -40,6 +42,8 @@ module Samagotchi
     def run(args)
       args = args.to_s.strip
       return run_line(args) if args.empty?
+      # Not under the lock: a model request. Takes it only to start.
+      return ObjectivesCheck.run(@engine, args.split(/\s+/, 2).last) if args.match?(CHECK)
 
       locked(@engine.session) do
         card, was = args.match(CARD)&.captures
@@ -171,14 +175,18 @@ module Samagotchi
     def listing(list, session)
       return NONE if list.empty?
 
-      pending = Objectives.pending_payload(Session.session_dir(session.id, state_dir: @engine.session_state_dir))
-      pending ? "#{lines_of(list)}\n#{BETWEEN_TURNS}" : lines_of(list)
+      dir = Session.session_dir(session.id, state_dir: @engine.session_state_dir)
+      checks = ObjectivesCheck.view_of(dir, list)
+      pending = Objectives.pending_payload(dir)
+      pending ? "#{lines_of(list, checks)}\n#{BETWEEN_TURNS}" : lines_of(list, checks)
     end
 
-    def lines_of(list)
-      ["objectives:", *list.items.flat_map { |item| item_lines(item, list.moves[item.id]) }].join("\n")
+    def lines_of(list, checks = {})
+      ["objectives:", *list.items.flat_map { |item| item_lines(item, list.moves[item.id], checks[item.id]) }].join("\n")
     end
 
-    def item_lines(item, move) = ["  #{item.line}", *("    last move: #{move.line}" if move)]
+    def item_lines(item, move, check)
+      ["  #{item.line}", *("    last move: #{move.line}" if move), *("    #{ObjectivesCheck.line_of(check)}" if check)]
+    end
   end
 end

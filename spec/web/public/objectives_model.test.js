@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { addLine, changeText, editableText, entryLine, headline, markLine, pendingText, progress, rewordLine, stripItems } from "../../../lib/samagotchi/web/public/objectives_model.js";
+import { addLine, changeText, checkText, editableText, expireChecks, nextExpiry, entryLine, headline, markLine, pendingText, progress, rewordLine, stripItems } from "../../../lib/samagotchi/web/public/objectives_model.js";
 
 const list = { items: [
   { id: "O1", text: "A", status: "done" }, { id: "O2", text: "B", status: "active" },
@@ -49,4 +49,24 @@ test("a waiting edit says so, mid-turn that it waits for the turn", () => {
   assert.equal(pendingText({ pending: false }, true), null);
   assert.equal(pendingText({ pending: true }, true), "Applies after this turn");
   assert.equal(pendingText({ pending: true }, false), null);
+});
+
+test("checkText words a check, and nothing with none", () => {
+  assert.equal(checkText(null), null);
+  assert.equal(checkText({ running: true }), "Checking…");
+  assert.equal(checkText({ verdict: "confirmed", reason: "seen" }), "Check: confirmed — seen");
+  assert.equal(checkText({ verdict: "no_answer", reason: "" }), "Check: no answer");
+});
+
+test("expireChecks drops a running check past its time, nextExpiry says the soonest", () => {
+  const now = 1_000_000;
+  const at = (ms) => new Date(ms).toISOString();
+  const list = { items: [{ id: "O1", check: { running: true, until: at(now - 1) } }, { id: "O2", check: { running: true, until: at(now + 50) } },
+                         { id: "O3", check: { verdict: "confirmed" } }, { id: "O4" }] };
+  assert.equal(nextExpiry(list), now - 1);
+  const left = expireChecks(list, now);
+  assert.deepEqual(left.items.map((i) => i.check?.verdict || i.check?.running || null), [null, true, "confirmed", null]);
+  assert.equal(nextExpiry(left), now + 50);
+  assert.equal(nextExpiry({ items: [{ id: "O3", check: { verdict: "confirmed" } }] }), null);
+  assert.equal(expireChecks(null, now), null);
 });

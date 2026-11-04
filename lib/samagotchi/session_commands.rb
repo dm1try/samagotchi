@@ -141,7 +141,7 @@ module Samagotchi
       registry.register(TITLE_COMMAND, "show or set this session's title (--clear: back to its first message)",
                         id: :title, anytime: true, match: ->(text) { text.match?(%r{\A/title(?:\s+.*)?\z}) }) { |text| title(text) }
       # An edit only writes a note file (it goes in between turns): mid-turn too.
-      registry.register(OBJECTIVES_COMMAND, "show or edit what this session is to achieve (set A | B, add TEXT, edit ID TEXT, done ID…, drop ID…, undo ID…)",
+      registry.register(OBJECTIVES_COMMAND, "show or edit what this session is to achieve (set A | B, add TEXT, edit ID TEXT, done ID…, drop ID…, undo ID…, check ID)",
                         id: :objectives, anytime: true) { |text| objectives(text) }
       registry.register(HELP_COMMAND, "list the commands, the bundles' too", anytime: true) { |_text| reply(help_listing) }
       registry.register("/stats", "show the session's stats", local: true)

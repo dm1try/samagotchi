@@ -1008,6 +1008,16 @@ module Samagotchi
       Log.warn(:turn, "objectives_announce_failed", error: e.class.name, msg: e.message)
     end
 
+    # Check this (ObjectivesCheck)'s one side request. Its usage is in the
+    # session's side line. Raises as ctx.ask_model's request does.
+    # @param request [Array<Hash>] chat messages
+    # @param model [String, nil] a configured model; nil: the session's
+    # @return [String] the answer
+    def ask_objective_check(request, model:)
+      ask_side_model(request, timeout: ObjectivesCheck::TIMEOUT_SECONDS, max_tokens: ObjectivesCheck::MAX_TOKENS,
+                              cancel_controller: nil, model: model, source: ObjectivesCheck::SOURCE)
+    end
+
     # A change the model proposes (the objectives tool), kept until the turn
     # is over, as #context_choice's cards are: a card shown then is a quiet one, between turns, with its Apply kept
     # over a restart (CardStore), not a running turn's that says it waits on the

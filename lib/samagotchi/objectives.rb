@@ -8,7 +8,10 @@ require_relative "atomic_file"
 require_relative "context_note"
 require_relative "llm_context_stale"
 require_relative "log"
+require_relative "message_time"
+require_relative "objectives_check"
 require_relative "session"
+require_relative "session_chain"
 require_relative "session_inbox"
 require_relative "tools/objectives_tool"
 
@@ -34,6 +37,9 @@ module Samagotchi
     NONE_LEFT = "(no objectives now)"
     # Cards a turn may leave: a model's proposals are for reading.
     PROPOSALS_PER_TURN = 3
+    # Notes that say nothing new from outside: the list's own, and a continue's
+    # carry note, which holds the agent's last answer (#outside_note?).
+    NOT_OUTSIDE = [SOURCE, SessionChain::NOTE_SOURCE].freeze
     # Beside the session's notes/: what #with_lock takes.
     LOCK_FILE = "objectives.lock"
     # Proposal cards answered, {card id => APPLIED | DISMISSED}, so that a repeat
@@ -62,7 +68,12 @@ module Samagotchi
 
     # What the model last said moved an objective: information only, read
     # from its tool call, and shown by /objectives.
-    Move = Data.define(:id, :note, :evidence) do
+    # +ref+ names the call itself, words apart: its run's id and its model
+    # entry's time, so a later move in the same words is another move, and so is
+    # one after a rollback hands the same id out again.
+    Move = Data.define(:id, :note, :evidence, :ref) do
+      def initialize(id:, note:, evidence:, ref: nil) = super
+
       def line = evidence.empty? ? note : "#{note} (evidence: #{evidence})"
     end
 
@@ -175,17 +186,20 @@ module Samagotchi
       # What the note carries, in one key style: strings, as a save leaves them.
       def to_payload = { "next" => next_number, "items" => items.map(&:to_payload) }
 
-      # What the page draws: the items, each with its last move, and whether
-      # the newest edit is still a file waiting to go in.
-      def to_view(pending:)
-        { items: items.map { |item| item_view(item) }, pending: pending }
+      # What the page draws: the items, each with its last move and last check,
+      # and whether the newest edit is still a file waiting to go in.
+      # @param checks [Hash{String => Hash}] ObjectivesCheck.view_of's
+      def to_view(pending:, checks: {})
+        { items: items.map { |item| item_view(item, checks[item.id]) }, pending: pending }
       end
 
       private
 
-      def item_view(item)
+      def item_view(item, check)
         move = moves[item.id]
-        move ? item.to_payload.merge("move" => { "note" => move.note, "evidence" => move.evidence }) : item.to_payload
+        view = item.to_payload
+        view = view.merge("move" => { "note" => move.note, "evidence" => move.evidence }) if move
+        check ? view.merge("check" => check) : view
       end
     end
 
@@ -260,9 +274,21 @@ module Samagotchi
         id = move_id(run.call)
         next unless Tools::ObjectivesTool.recorded?(run.text, id)
 
-        moves[id] = Move.new(id: id, note: clean(run.call[:note]), evidence: clean(run.call[:evidence]))
+        moves[id] = Move.new(id: id, note: clean(run.call[:note]), evidence: clean(run.call[:evidence]), ref: move_ref(conversation, run))
       end
     end
+
+    # Whether a note is news from outside the session's own words, for what reads
+    # a conversation as evidence or as incoming (ObjectivesCheck, ObjectivesAudit).
+    # @param source [String, nil] the note's source
+    # @param payload [Object] the note's :objectives
+    def outside_note?(source, payload) = payload.nil? && !NOT_OUTSIDE.include?(source)
+
+    def move_ref(conversation, run)
+      called = conversation[0...run.index].reverse_each.find { |entry| entry[:role].to_s == "model" }
+      "#{run.ref&.id}@#{called && called[MessageTime::KEY]}"
+    end
+    private_class_method :move_ref
 
     # A session's list now, its unabsorbed newest file included.
     # @return [List]
@@ -274,9 +300,10 @@ module Samagotchi
     # shows nothing then.
     # @return [Hash, nil]
     def view(session_id, conversation, state_dir:, running: nil)
-      pending = pending_payload(Session.session_dir(session_id, state_dir: state_dir))
+      dir = Session.session_dir(session_id, state_dir: state_dir)
+      pending = pending_payload(dir)
       list = build(conversation, pending: pending, running: running)
-      list.empty? ? nil : list.to_view(pending: !pending.nil?)
+      list.empty? ? nil : list.to_view(pending: !pending.nil?, checks: ObjectivesCheck.view_of(dir, list))
     end
 
     # One note's list for the page's entry: its items and, when there was a
