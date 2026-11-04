@@ -63,3 +63,9 @@ form.obj-row{align-items:center}
 .obj-panel.sheet .obj-input{min-height:44px;font-size:16px;border-radius:10px}
 .obj-panel.sheet .obj-note{font-size:12px}
 @media (prefers-reduced-motion:reduce){.obj-chip,.obj-act{transition:none}}
+/* A move: a turn's line above its answer, a tool row's chip, a decision card's "Concerns". */
+.obj-pill.obj-mark{padding:0 7px;font:700 11.5px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--accent)}
+.obj-moves{display:flex;flex-direction:column;gap:2px;margin-bottom:-4px;font-size:13px}
+.obj-move-line{display:flex;align-items:baseline;gap:8px;color:var(--text-2);flex-wrap:wrap}
+.obj-move-note{min-width:0;flex:1 1 200px;overflow-wrap:anywhere}
+.obj-concerns .obj-pill{margin-right:4px}
