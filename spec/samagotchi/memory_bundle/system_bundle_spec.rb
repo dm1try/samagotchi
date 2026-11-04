@@ -181,9 +181,9 @@ RSpec.describe Samagotchi::MemoryBundle::SystemBundle do
           expect(described_class.sync).to have_attributes(status: :up_to_date, merged: [])
         end
 
-        it "says nothing at a start that merges but logs it, and nothing at a real conflict" do
+        it "says so at a start that merges, one line in the row's words, and not at the next" do
           mark_old(text(intro: "my intro"))
-          expect(Samagotchi::Log).to receive(:info).with(:memory, "system_bundle_merged", hash_including(file: "identity.md"))
+          expect { described_class.ensure! }.to output(/\A\[samagotchi-system\] merged \(identity\.md; Copied to the trash first: identity\.md \(.*\)\)\n\z/).to_stderr
           expect { described_class.ensure! }.not_to output.to_stderr
         end
 

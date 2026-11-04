@@ -55,8 +55,10 @@ module Samagotchi
         when :newer_installed
           with_lock { note_newer_installed(result.from, result.to) }
         end
-        # No echo yet: chi update's row and the log say it.
-        result.merged.each { |file_key| Log.info(:memory, "system_bundle_merged", file: file_key.to_s, to: result.to.to_s, trash: result.trash_copy) }
+        unless result.merged.empty?
+          note = [result.merged.join(", "), result.trash_copy].compact.join("; ")
+          Log.info(:memory, "system_bundle_merged", echo: "[samagotchi-system] merged (#{note})", files: result.merged.join(","), to: result.to.to_s)
+        end
         result.kept.each do |file_key|
           Log.info(:memory, "system_local_edit_kept", echo: "[samagotchi-system] kept local edit in #{file_key} (bundle v#{result.to} has update — run: chi bundle status #{BUNDLE_NAME} / chi bundle diff #{BUNDLE_NAME} #{file_key})", file: file_key.to_s)
         end
