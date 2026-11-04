@@ -271,28 +271,29 @@ module Samagotchi
         write_manifest(manifest_data)
       end
 
-      # After a conflict was resolved by hand: each file's base becomes the
-      # bundle's version (the incoming file, else what's on disk now) and
-      # its conflict mark goes. The rest of the manifest (its description
-      # too) stays as is.
+      # After a conflict was settled: each file's base becomes the incoming
+      # file and its conflict mark goes. The rest of the manifest (its
+      # description too) stays as is. A file whose incoming copy is gone keeps
+      # its mark and base: taking the file on disk would make the user's text
+      # the base, and the next upgrade would fast-forward over it.
       # @param conflicts [Hash{String => Hash}] Installer#conflicts
+      # @return [Array<String>] the files it settled
       def resolve_conflicts(conflicts)
-        return unless installed?
+        return [] unless installed?
 
         raw = JSON.parse(File.read(File.join(@bundle_dir, "manifest.json")))
         raw["files"] ||= {}
-        conflicts.each do |file_key, info|
+        settled = conflicts.filter_map do |file_key, info|
           key = file_key.to_s
-          next unless raw["files"].key?(key)
+          next unless raw["files"].key?(key) && info[:incoming] && File.exist?(info[:incoming])
 
-          src = [info[:incoming], info[:current]].find { |p| p && File.exist?(p) }
-          next unless src
-
-          content = File.read(src)
+          content = File.read(info[:incoming])
           File.write(base_path(key), content)
           raw["files"][key] = raw["files"][key].except("conflict").merge("checksum" => Digest::SHA256.hexdigest(content))
+          key
         end
         write_manifest(raw)
+        settled
       end
 
       # The installed bundle's record, nil when it isn't installed.

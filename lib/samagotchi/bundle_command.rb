@@ -362,17 +362,19 @@ module Samagotchi
     def settle_conflicts(conflicts, before, bundle_name)
       merger = Samagotchi::MemoryBundle::Merger
       untouched, changed = conflicts.partition { |key, info| merger.digest(info[:current]) == before[key] }
-      marked, settled = changed.partition { |_, info| merger.markers?(info[:current]) }
-      Samagotchi::MemoryBundle::Provenance.new(name: bundle_name).resolve_conflicts(settled.to_h)
+      marked, clean = changed.partition { |_, info| merger.markers?(info[:current]) }
+      settled = Samagotchi::MemoryBundle::Provenance.new(name: bundle_name).resolve_conflicts(clean.to_h)
+      gone = clean.map(&:first) - settled
       untouched.each { |key, _| @stdout.puts "Nothing changed in #{key}: still behind." }
       marked.each { |key, _| @stdout.puts "#{key} still holds conflict markers: still behind." }
-      if untouched.empty? && marked.empty?
+      gone.each { |key| @stdout.puts "The bundle's copy of #{key} is gone: still behind." }
+      if untouched.empty? && marked.empty? && gone.empty?
         @stdout.puts "Provenance updated after interactive resolution."
         @stdout.puts "Upgrade resolved interactively."
         return 0
       end
 
-      @stdout.puts "Resolved: #{settled.map(&:first).join(", ")}" unless settled.empty?
+      @stdout.puts "Resolved: #{settled.join(", ")}" unless settled.empty?
       CONFLICTS_KEPT
     end
 

@@ -312,6 +312,19 @@ RSpec.describe "Kept edits in a bundle" do
       expect(entry("a.md")).not_to include(:conflict)
     end
 
+    it "keeps a file as a conflict when the bundle's copy went during the step" do
+      code = upgrade_with_agent do
+        File.write(target, "a merged\n")
+        File.write(b_target, "b merged\n")
+        FileUtils.rm_f(File.join(source, "a.md"))
+      end
+
+      expect(code).to eq(Samagotchi::BundleCommand::CONFLICTS_KEPT)
+      expect(entry("a.md")).to include(conflict: true)
+      expect(File.read(provenance.base_path("a.md"))).to eq("a one\n")
+      expect(stdout.string).to include("The bundle's copy of a.md is gone: still behind.", "Resolved: b.md")
+    end
+
     it "settles every changed file with no markers, moves the base, keeps the description and exits 0" do
       code = upgrade_with_agent do
         File.write(target, "a merged\n")
@@ -338,6 +351,31 @@ RSpec.describe "Kept edits in a bundle" do
       provenance.resolve_conflicts("a.md" => { incoming: incoming, current: old })
 
       expect(provenance.read[:files][:"a.md"]).to eq(checksum: Digest::SHA256.hexdigest("new\n"), description: "What a is")
+    end
+
+    context "when the incoming file is gone" do
+      before do
+        write_source("1.0.0")
+        run_installer
+        File.write(target, "edited\n")
+        run_installer(write_source("2.0.0"), upgrade: true)
+      end
+
+      it "keeps the mark and the base, and answers that it settled nothing" do
+        settled = provenance.resolve_conflicts("a.md" => { incoming: File.join(tmpdir, "gone.md"), current: target })
+
+        expect(settled).to eq([])
+        expect(provenance.read[:files][:"a.md"]).to include(conflict: true)
+        expect(File.read(provenance.base_path("a.md"))).to eq("v1.0.0\n")
+      end
+
+      it "leaves the edit safe at the next upgrade" do
+        provenance.resolve_conflicts("a.md" => { incoming: File.join(tmpdir, "gone.md"), current: target })
+        up = run_installer(write_source("3.0.0"), upgrade: true)
+
+        expect(up.results["a.md"][:status]).to eq("conflict")
+        expect(File.read(target)).to eq("edited\n")
+      end
     end
   end
 

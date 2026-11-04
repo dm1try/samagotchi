@@ -22,6 +22,7 @@ and commands may change between minor versions. How releases are made:
 - An edited memory with no recorded base keeps surviving upgrades as a conflict. Its own text used to become the base, so the following upgrade overwrote it with nothing in the trash. A record an older chi already left that way (marked conflict, the base being your text) takes the update at the next upgrade, with your text copied to the bundle trash first and a line saying so.
 - A plain `chi bundle install` keeps the conflict mark on a file it skipped, so `chi bundle status` still shows the file missed an update.
 - `chi bundle upgrade --dry-run` no longer prints a false `Checksum mismatch` for a memory you edited, and its `Kept` line now names those files. This only changes a dry run's output.
+- `chi bundle upgrade --agent` no longer takes your file as the new base when the bundle's copy disappears during the session. The next upgrade used to overwrite the edit with nothing in the trash; the file now stays a conflict and the command says so.
 
 ## [0.149.0] - 2026-11-04
 
