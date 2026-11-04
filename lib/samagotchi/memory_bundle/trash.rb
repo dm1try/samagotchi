@@ -8,7 +8,8 @@ module Samagotchi
     # Where a bundle operation puts the memory files it takes away
     # (uninstall, an upgrade's dropped file): moved, never deleted, into
     # <system memories>/.bundles/.trash/<bundle>-<YYYYmmdd-HHMMSS>/, one dir
-    # per operation (-2, -3… when one already has that name). A dot dir, so
+    # per operation (-2, -3… when one already has that name). A file about to
+    # be overwritten is copied there instead (#copy). A dot dir, so
     # Provenance.each_installed never reads it as a bundle.
     #
     # `chi bundle trash` lists and empties the trash.
@@ -55,14 +56,18 @@ module Samagotchi
         entries
       end
 
-      # The dir, once a file was moved (nil before).
+      # The dir, once a file was moved or copied (nil before).
       attr_reader :dir
+
+      # What #copy saved, each by its name in the dir.
+      attr_reader :copied
 
       def initialize(name, now: Time.now, bundles_dir: MemoryPaths.bundles_dir)
         @name = name.to_s
         @now = now
         @bundles_dir = bundles_dir
         @dir = nil
+        @copied = []
       end
 
       # Moves +path+ into the trash dir (created on the first call).
@@ -70,6 +75,19 @@ module Samagotchi
       def move(path)
         dest = File.join(ensure_dir, File.basename(path))
         FileUtils.mv(path, dest)
+        dest
+      end
+
+      # Copies +path+ (through a link, its mode kept) into the trash dir,
+      # the original staying: for a file about to be overwritten.
+      # @param as [String] its name there; "hooks/x" keeps a subfolder, so
+      #   hooks/x and scripts/x don't collide
+      # @return [String] the copy's path
+      def copy(path, as: File.basename(path))
+        dest = File.join(ensure_dir, as)
+        FileUtils.mkdir_p(File.dirname(dest))
+        FileUtils.cp(path, dest, preserve: true)
+        @copied << as
         dest
       end
 

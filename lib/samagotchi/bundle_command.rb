@@ -15,7 +15,7 @@ module Samagotchi
         install <source> [--scope system|project] [--force]
           Install a memory bundle from a directory, zip, tar archive, or git URL.
           Source is the path/URL to the bundle (dir/zip/tar.gz/git).
-          --force overwrites existing entries; default skips them.
+          --force overwrites existing entries (one that differs is copied to the trash first); default skips them.
 
         upgrade <source> [--scope system|project] [--force] [--dry-run] [--agent|--no-agent]
           Upgrade a bundle (3-way merge: auto-merge if not edited, conflict otherwise).
@@ -66,7 +66,7 @@ module Samagotchi
         install <source> [--scope system|project] [--force]
           Install a memory bundle from a directory, zip, tar archive, or git URL,
           or a bundle shipped with chi by name (see: chi bundle list).
-          --force overwrites existing entries; default skips them.
+          --force overwrites existing entries (one that differs is copied to the trash first); default skips them.
         install --dev PATH
           Install the bundle in the local directory PATH as a link to it: its plugin, hooks, rules and scripts
           are PATH's own files (an edit applies at the next worker or chi web restart, with no re-install) and
@@ -402,6 +402,7 @@ module Samagotchi
       result.skipped.each { |member, why| lines << "skipped #{member}: #{why}" }
       result.failed.each { |member, why| lines << "failed #{member}: #{why}" }
       lines.concat(result.kept_own_lines)
+      lines.concat(result.trash_copies)
       lines << "nothing new to install" if lines.empty?
       lines.each { |line| @stdout.puts "  #{line}" }
       @stdout.puts "(dry-run: no changes written)" if dry_run

@@ -28,7 +28,7 @@ RSpec.describe "chi bundle (CLI)" do
       install <source> [--scope system|project] [--force]
         Install a memory bundle from a directory, zip, tar archive, or git URL.
         Source is the path/URL to the bundle (dir/zip/tar.gz/git).
-        --force overwrites existing entries; default skips them.
+        --force overwrites existing entries (one that differs is copied to the trash first); default skips them.
 
       upgrade <source> [--scope system|project] [--force] [--dry-run] [--agent|--no-agent]
         Upgrade a bundle (3-way merge: auto-merge if not edited, conflict otherwise).
@@ -77,7 +77,7 @@ RSpec.describe "chi bundle (CLI)" do
       install <source> [--scope system|project] [--force]
         Install a memory bundle from a directory, zip, tar archive, or git URL,
         or a bundle shipped with chi by name (see: chi bundle list).
-        --force overwrites existing entries; default skips them.
+        --force overwrites existing entries (one that differs is copied to the trash first); default skips them.
       install --dev PATH
         Install the bundle in the local directory PATH as a link to it: its plugin, hooks, rules and scripts
         are PATH's own files (an edit applies at the next worker or chi web restart, with no re-install) and
@@ -451,6 +451,15 @@ Hooks removed: 1\n\z})
       expect(chi("status")).to eq(["  broken (manifest.json unreadable)\n  sample-hooks-bundle v1.0.0 scope=system files=1 hooks=1 issues=0\n", "", 0])
     end
 
+    it "names the file a profile's --force copied to the trash" do
+      FileUtils.mkdir_p(memories)
+      File.write(File.join(memories, "guardrails.md"), "mine\n")
+      out, err, code = chi("install", "core", "--force")
+
+      expect([err, code]).to eq(["", 0])
+      expect(out).to match(%r{^  guardrails: Copied to the trash first: guardrails\.md \(\S+/\.trash/guardrails-\d{8}-\d{6}\)$})
+    end
+
     it "records a profile member installed by hand, refuses a profile in a project, and keeps a profile whose member is edited" do
       chi("install", "guardrails")
       expect(chi("install", "core"))
@@ -758,8 +767,12 @@ Hooks removed: 1\n\z})
     it "takes the bundle's version with --force" do
       out, err, code = chi("upgrade", @v3, "--force")
 
-      expect([out, err, code]).to eq(["Installed: a.md\n#{provenance_line("demo")}", "", 0])
+      trash = Regexp.escape(File.join(memories, ".bundles", ".trash"))
+      expect([err, code]).to eq(["", 0])
+      expect(out).to match(%r{\AInstalled: a\.md\nCopied to the trash first: a\.md \(#{trash}/demo-\d{8}-\d{6}\)\n#{Regexp.escape(provenance_line("demo"))}\z})
       expect(File.read(File.join(memories, "a.md"))).to eq("three\n")
+      expect(chi("trash")[0]).to include("demo-")
+      expect(File.read(Dir.glob(File.join(memories, ".bundles", ".trash", "demo-*", "a.md")).first)).to eq("edited\n")
     end
   end
 

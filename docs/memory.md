@@ -197,8 +197,8 @@ Working habits for this model:
     (`chi memory rm model_notes_deepseek --scope system`, or `memory_write`
     with `remove: true`, moves it to the trash) and run
     `chi bundle install model-notes` again: the install writes the missing
-    file and owns it from then on. Don't use `--force`: it overwrites every
-    file of the bundle with no trash copy.
+    file and owns it from then on. `--force` overwrites every file of the
+    bundle instead, each one that differs copied to the bundle trash first.
   - **Other notes stack.** A note of another name for the same models
     (`model_notes_my_deepseek`), or a project-scope `model_notes_deepseek`,
     loads beside the bundle's (notes are told apart by their file, not their
@@ -514,7 +514,8 @@ for a file another bundle installed.
   when done). `--agent` launches it without asking, `--no-agent` never does;
   with neither and no terminal it keeps your edits and says so. Kept edits
   exit 2; `chi bundle diff NAME FILE` shows the base, and `--force` takes
-  the bundle's version.
+  the bundle's version, copying a file that differs to the bundle trash first
+  (the output says `Copied to the trash first: …`).
 - **A dev install** (`chi bundle install --dev PATH`) links the hooks, rules,
   plugin and scripts to `PATH` but still copies the memories at install, so
   an edit to one of them in `PATH` isn't seen until the next install.

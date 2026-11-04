@@ -11,6 +11,10 @@ and commands may change between minor versions. How releases are made:
 
 - Check this also reads the agent's visible answers, never its thinking, so a claim about what the agent said or asked can be confirmed. They settle only that: a claim of work with nothing but the agent's words behind it isn't `confirmed`. With `objectives.check_model` they go to that host too. [docs/sessions.md](docs/sessions.md#objectives)
 
+### Fixed
+
+- `chi bundle install --force` and `chi bundle upgrade --force` no longer destroy what they overwrite: a memory that differs from the bundle's, your own same-name file too, is copied to the bundle trash first, and the output names it (`Copied to the trash first: …`; `chi bundle trash` lists it).
+
 ## [0.149.0] - 2026-11-04
 
 ### Added

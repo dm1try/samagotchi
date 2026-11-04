@@ -63,9 +63,14 @@ module Samagotchi
       # source (Installer#check_source), else nil.
       attr_reader :source_change
 
-      # Where an upgrade moved the files the bundle no longer ships (nil:
-      # none moved).
+      # Where this install moved the files the bundle no longer ships and
+      # copied the ones it overwrote (nil: none).
       def trash_dir = @trash.dir
+
+      # What it copied to the trash before overwriting, said once (nil: nothing).
+      def trash_copy_line
+        "Copied to the trash first: #{@trash.copied.join(", ")} (#{trash_dir})" unless @trash.copied.empty?
+      end
 
       # The normalized source dir. An owned one (a git/zip/tar extract) is
       # removed after #run, or kept until #cleanup_source! when an upgrade
@@ -148,6 +153,7 @@ module Samagotchi
         lines << "Kept (local edits preserved): #{kept.join(", ")}" unless kept.empty?
         lines << "Skipped: #{skipped.join(", ")}" unless skipped.empty?
         lines << "Conflicts: #{conflicts.join(", ")}" unless conflicts.empty?
+        lines << trash_copy_line if trash_copy_line
         lines.concat(@warnings) unless @warnings.empty?
         lines.concat(@placeholder_warnings) unless @placeholder_warnings.empty?
         lines << "#{@name} is already installed; `chi bundle upgrade #{@name}` updates it and keeps local edits" if @reinstall
@@ -314,6 +320,8 @@ module Samagotchi
             @owned << file_key if owned_before.include?(file_key)
             skip_existing(file_key, file_path, target_path, @target_scope, owned: owned_before.include?(file_key))
           else
+            # Only --force gets here with a file in place: a copy keeps it.
+            @trash.copy(target_path) if File.exist?(target_path) && !FileUtils.identical?(file_path, target_path)
             FileUtils.cp(file_path, target_path)
             @owned << file_key
             @results[file_key] = { status: "installed" }

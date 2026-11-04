@@ -193,6 +193,20 @@ RSpec.describe Samagotchi::MemoryBundle::Profile do
     end
   end
 
+  describe ".install with force" do
+    it "names what it copied to the trash before overwriting a member's file" do
+      ship("a")
+      core = ship_meta("core", ["a"])
+      FileUtils.mkdir_p(system_dir)
+      File.write(File.join(system_dir, "a.md"), "mine\n")
+
+      result = install(core, force: true)
+
+      expect(File.read(File.join(system_dir, "a.md"))).to eq("# a\n")
+      expect(result.trash_copies).to contain_exactly(a_string_matching(%r{\Aa: Copied to the trash first: a\.md \(.*/\.trash/a-\d{8}-\d{6}\)\z}))
+    end
+  end
+
   describe ".uninstall" do
     it "uninstalls the recorded members still installed, then the meta" do
       %w[a b c].each { |n| ship(n) }

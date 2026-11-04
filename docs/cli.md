@@ -307,7 +307,7 @@ done
   3-way merge of `chi bundle upgrade`: an unedited file is updated, an edited
   one that the new version also changes is kept, and the row says so (`chi
   bundle diff NAME FILE` shows it; `chi bundle upgrade NAME --force` takes the
-  bundle's). Hooks, rules and the plugin are replaced; an edited one didn't
+  bundle's, with a copy of yours in the bundle trash first). Hooks, rules and the plugin are replaced; an edited one didn't
   load anyway (its sha no longer matched) and the row says it was replaced.
   A bundle of the same name from elsewhere (a zip, git) is skipped ("not from
   chi"), a newer installed one is left, one whose new version needs a newer

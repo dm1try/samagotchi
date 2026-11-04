@@ -25,6 +25,49 @@ RSpec.describe Samagotchi::MemoryBundle::Trash do
     end
   end
 
+  describe "#copy" do
+    it "copies a file into the trash dir, the original staying" do
+      Dir.mktmpdir do |bundles_dir|
+        file = File.join(bundles_dir, "original.md")
+        File.write(file, "hello")
+
+        trash = described_class.new("test-bundle", bundles_dir: bundles_dir)
+        dest = trash.copy(file)
+
+        expect(File.read(file)).to eq("hello")
+        expect(File.read(dest)).to eq("hello")
+        expect(File.dirname(dest)).to eq(trash.dir)
+        expect(trash.copied).to eq(["original.md"])
+      end
+    end
+
+    it "keeps a subfolder, so a hook and a script of one name don't collide, and the mode" do
+      Dir.mktmpdir do |bundles_dir|
+        hook = File.join(bundles_dir, "h")
+        script = File.join(bundles_dir, "s")
+        File.write(hook, "hook")
+        File.write(script, "script")
+        File.chmod(0o755, script)
+
+        trash = described_class.new("test-bundle", bundles_dir: bundles_dir)
+        trash.copy(hook, as: "hooks/x")
+        trash.copy(script, as: "scripts/x")
+
+        expect(File.read(File.join(trash.dir, "hooks", "x"))).to eq("hook")
+        expect(File.read(File.join(trash.dir, "scripts", "x"))).to eq("script")
+        expect(File.stat(File.join(trash.dir, "scripts", "x")).mode & 0o777).to eq(0o755)
+        expect(trash.copied).to eq(["hooks/x", "scripts/x"])
+        expect(described_class.entries(bundles_dir: bundles_dir).first.files).to eq(2)
+      end
+    end
+
+    it "has no dir and no copies before the first" do
+      trash = described_class.new("test-bundle", bundles_dir: "/nope")
+      expect(trash.dir).to be_nil
+      expect(trash.copied).to eq([])
+    end
+  end
+
   # -- class methods --
 
   describe ".entries" do

@@ -27,8 +27,10 @@ module Samagotchi
       # installed: members installed now; already: members found installed
       # (recorded, not reinstalled); skipped and failed: name => why;
       # kept_own: member installed now => its memory files the user already
-      # had, left as they are and not owned (Installer#skip_existing).
-      InstallResult = Struct.new(:name, :version, :installed, :already, :skipped, :failed, :kept_own, keyword_init: true) do
+      # had, left as they are and not owned (Installer#skip_existing);
+      # trash_copies: "member: line" for what --force copied to the trash
+      # (Installer#trash_copy_line).
+      InstallResult = Struct.new(:name, :version, :installed, :already, :skipped, :failed, :kept_own, :trash_copies, keyword_init: true) do
         def failed? = !failed.empty?
 
         # One line per kept file (Profile.kept_own_line).
@@ -98,7 +100,7 @@ module Samagotchi
         was = recorded(bundle, manifest)
         installed = installed_names
         result = InstallResult.new(name: manifest.name, version: manifest.version, installed: [],
-                                   already: (manifest.includes - was) & installed, skipped: {}, failed: {}, kept_own: {})
+                                   already: (manifest.includes - was) & installed, skipped: {}, failed: {}, kept_own: {}, trash_copies: [])
 
         to_install(manifest, bundle, installed: installed).each do |member|
           install_member(member, shipped_dir, chi_version, dry_run, force, result)
@@ -130,6 +132,7 @@ module Samagotchi
         result.installed << member
         kept = installer.results.select { |_, entry| kept_own?(entry) }.keys
         result.kept_own[member] = kept.sort unless kept.empty?
+        result.trash_copies << "#{member}: #{installer.trash_copy_line}" if installer.trash_copy_line
       rescue StandardError => e
         result.failed[member] = e.message.lines.first.to_s.strip
       end

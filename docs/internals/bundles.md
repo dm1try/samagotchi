@@ -15,7 +15,8 @@ user-facing side (what a bundle owns, profiles, needs) is in [memory.md](../memo
   <name>/manifest.json           the install record (Provenance#write, read as InstalledBundle)
   <name>/bases/                  each file as installed: the base of the next upgrade's 3-way merge
   <name>/hooks/ guardrails/ plugin/ scripts/
-  .trash/<name>-<stamp>/         files an uninstall or upgrade took away (Trash), never deleted
+  .trash/<name>-<stamp>/         files an uninstall or upgrade took away, and copies of what an install
+                                 overwrote (Trash), never deleted
 ```
 
 ## Components
@@ -43,7 +44,7 @@ user-facing side (what a bundle owns, profiles, needs) is in [memory.md](../memo
 | `Profile` | meta bundles (`includes:`): install the members, record which; `InstallResult#kept_own` names a new member's memory files the user already had, with other bytes (`kept_own_line`, printed by `chi bundle`, `chi update` and `chi bootstrap`); a dry run runs each member's Installer as a dry run too, so it names them as well |
 | `SystemBundle`, `ShippedUpdate` | the built-in system bundle (`ensure!` at Engine start, `sync` in `chi update`) and `chi update`'s upgrade of shipped bundles; both drive the Installer with `upgrade: true`. `ShippedUpdate.external` is the rest: what `chi update` only checks |
 | `InstalledCopy`, `BundleCommand::InstalledCheck` | `chi update`'s re-check of the bundles chi didn't ship ([docs/cli.md](../cli.md#updating)). `InstalledCopy` lays a record and its installed files out as a source folder (manifest.yml from `Manifest.write`, the files' own shas, memories from `bases/`); `InstalledCheck` forks per bundle (a plugin's `exit` or hang is that bundle's row; stdio to /dev/null, so `--json` stays parseable; `TIMEOUT`, then KILL of its group) and runs `Check.new(dir, installed: true)` there, which leaves out what only suits a source tree. Its `boundary` finding is narrower there than in a source tree: `Testing::Boundary.gone?` calls a reference gone only when its constant doesn't resolve or the object has no method the name names, so a bundle reaching `Samagotchi::Log` gets no row. lib loads lazily, so when a name doesn't resolve `gone?` requires every file of this chi's library in that same child and asks again (about 0.2 s, only for a bundle that reaches into chi at all); anything it can't read — a `const_get`, a require of a file that is there — is taken as still there. The fork is the point: `Sandbox` swaps ENV and the plugin's code is arbitrary. `UpdateCommand#external_rows` makes the rows (`level`, never `failed`) and holds the check back while a newer gem is yet to take over (`@not_checked`), since a fork is this chi's code |
-| `Uninstaller`, `Trash`, `Status`, `Listing` | remove, keep removed files, `chi bundle status`, `chi bundle list` |
+| `Uninstaller`, `Trash`, `Status`, `Listing` | remove; keep removed files (`Trash#move`) and a copy of overwritten ones (`Trash#copy`, its `as:` keeping a subfolder); `chi bundle status`; `chi bundle list` |
 | `IndexUpdater`, `IndexSync` | the managed `index.md` lines (Installer; and the write/edit tools for memories) |
 | `EntrySize` | one memory's size in tokens: `memory.entry_warn_tokens`' crossing note after a memory write, `chi self`'s `big memories` row |
 | `IndexSize` | one scope's memory index as the prompt carries it (tokens, lines, bytes): `memory.index_warn_tokens`' crossing note after a memory write, `chi self`'s summary, the prompt's figures (`SystemPrompt`) |
@@ -87,7 +88,8 @@ The order matters: warnings print in it, and a plugin/script the manifest names 
    (an older record's relative path) never refuses.
 3. `install_memories`, per memory (`MemoryFiles.select`: a non-empty `files:` list, else every top-level `*.md` but
    README, CHANGELOG, LICENSE and the like; a listed name not shipped warns; a symlink is skipped with a warning): an upgrade 3-way merges the files the bundle owns (`merge_memory`), a dry run only
-   classifies (`preview_memory`), a plain install writes new files and skips existing ones (`skip_existing`). A
+   classifies (`preview_memory`), a plain install writes new files and skips existing ones (`skip_existing`), and `--force` overwrites, a file that
+   differs copied to the trash first (`Trash#copy`, said by `#trash_copy_line`; a profile's in `InstallResult#trash_copies`). A
    same-name file the bundle didn't write is the user's: skipped and never recorded (`@owned`). Model overlays
    (`<name>.<key>.md`) get no index line (`note_overlay`).
 4. `AssetInstaller#run`: hooks (manifest-listed, else every `hooks/*.rb`), prune dropped hooks, hook checksums,
