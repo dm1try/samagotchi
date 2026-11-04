@@ -86,6 +86,15 @@ module Samagotchi
       event
     end
 
+    def objectives_proposal?(call) = call[:action].to_s.strip.downcase == Tools::ObjectivesTool::PROPOSE
+
+    # An objectives row's words: "O2 note · evidence", or "propose done O2 note".
+    def objectives_title(call)
+      return "#{Tools::ObjectivesTool::PROPOSE} #{call[:change]} #{call[:id]} #{call[:text]} · #{call[:note]}".squeeze(" ") if objectives_proposal?(call)
+
+      "#{call[:id]} #{call[:note]}#{" · #{call[:evidence]}" unless call[:evidence].to_s.strip.empty?}"
+    end
+
     # An execute's description, cut as a row's title; nil for the rest.
     def command_description(tool_name, call)
       return nil unless call.is_a?(Hash) && ToolView::TOOLS.include?(tool_name)
@@ -113,7 +122,7 @@ module Samagotchi
              when Tools::Read::NAME, Tools::MemoryRead::NAME then call[:content]
              when Tools::Write::NAME, Tools::Edit::NAME, Tools::MemoryWrite::NAME then call[:path]
              when Tools::Execute::NAME, Tools::TaskCreate::NAME then command_title(call[:content])
-             when Tools::ObjectivesTool::NAME then "#{call[:id]} #{call[:note]}#{" · #{call[:evidence]}" unless call[:evidence].to_s.strip.empty?}"
+             when Tools::ObjectivesTool::NAME then objectives_title(call)
              end
       text = text.to_s.strip
       return nil if text.empty?
@@ -207,7 +216,7 @@ module Samagotchi
       when Tools::Delegate::NAME then "delegating"
       when Tools::DelegateResult::NAME then "waiting for a delegate"
       when Tools::ForgetOutputs::NAME then forget_outputs_action(call)
-      when Tools::ObjectivesTool::NAME then "recording a move"
+      when Tools::ObjectivesTool::NAME then objectives_proposal?(call) ? "proposing a change" : "recording a move"
       else registry_entry(registry, tool_name)&.label || "calling tool"
       end
     end
@@ -435,6 +444,7 @@ module Samagotchi
         parts.empty? ? nil : parts.join(" ")
       when Tools::ObjectivesTool::NAME
         parts = ["id=#{preview_tool_param(call[:id])}", "note=#{preview_tool_param(call[:note])}"]
+        parts.unshift("change=#{preview_tool_param(call[:change])}") if objectives_proposal?(call)
         parts << "evidence=#{preview_tool_param(call[:evidence])}" unless call[:evidence].to_s.strip.empty?
         parts.join(" ")
       when Tools::AskUserQuestion::NAME

@@ -14,6 +14,75 @@ RSpec.describe Samagotchi::Tools::ObjectivesTool do
 
   def move(**args) = described_class.call(args, peers: peers)
 
+  describe "propose" do
+    let(:peers) do
+      Struct.new(:objectives, :proposed) do
+        def propose_objective(proposal) = (self.proposed = proposal)
+      end.new(list)
+    end
+
+    def propose(**args) = described_class.call({ action: "propose", note: "why", **args }, peers: peers)
+
+    it "queues a proposal and says the list is unchanged until the user applies it" do
+      answer = propose(change: "done", id: "o2")
+      expect(answer).to include("Proposed", "unchanged", "the user")
+      expect(peers.proposed.line).to eq("/objectives done O2")
+      expect(peers.proposed.note).to eq("why")
+    end
+
+    it "builds each change's own line, its text one line, a | not splitting an add" do
+      propose(change: "add", text: "Do\nA | B")
+      expect(peers.proposed.line).to eq("/objectives add Do A / B")
+      propose(change: "reword", id: "O1", text: "One | two")
+      expect(peers.proposed.line).to eq("/objectives edit O1 One | two")
+      propose(change: "drop", id: "O1")
+      expect(peers.proposed.line).to eq("/objectives drop O1")
+    end
+
+    it "keeps no pipe that would split an add, side by side ones too" do
+      propose(change: "add", text: "alpha | | beta | gamma")
+      expect(peers.proposed.line).to eq("/objectives add alpha / / beta / gamma")
+    end
+
+    it "keeps a reworded item's done-when, on the card and in the apply, unless the text brings its own" do
+      peers.objectives = list.reword("O2", "Stops", done_when: "no order")
+      propose(change: "reword", id: "O2", text: "Halts")
+      expect(peers.proposed.line).to eq("/objectives edit O2 Halts (done when: no order)")
+      expect(peers.proposed.body).to include("Halts (done when: no order)")
+      propose(change: "reword", id: "O2", text: "Halts (done when: at the cart)")
+      expect(peers.proposed.line).to eq("/objectives edit O2 Halts (done when: at the cart)")
+    end
+
+    it "carries what a reword was proposed against in its card's action" do
+      propose(change: "reword", id: "O1", text: "New")
+      stamp = Samagotchi::Objectives.fingerprint(list.find("O1"))
+      expect(peers.proposed.action_line("c1")).to eq("/objectives --card c1 --was #{stamp} edit O1 New")
+      propose(change: "done", id: "O1")
+      expect(peers.proposed.action_line("c1")).to eq("/objectives --card c1 done O1")
+    end
+
+    it "says so when the turn has proposed enough" do
+      refusing = Struct.new(:objectives) { def propose_objective(_) = false }.new(list)
+      answer = described_class.call({ action: "propose", change: "done", id: "O1", note: "n" }, peers: refusing)
+      expect(answer).to start_with("Error:")
+      expect(answer).to include("at most 3")
+    end
+
+    it "refuses what can't apply, and proposes nothing" do
+      expect(propose(change: "explode", id: "O1")).to start_with("Error:")
+      expect(propose(change: "done", id: "O9")).to start_with("Error: no objective O9")
+      expect(propose(change: "add")).to start_with("Error:")
+      expect(propose(change: "reword", id: "O1", text: " ")).to start_with("Error:")
+      expect(peers.proposed).to be_nil
+    end
+
+    it "answers plainly with no list, and is never a move" do
+      empty = Struct.new(:objectives).new(Samagotchi::Objectives::List.new)
+      expect(described_class.call({ action: "propose", change: "done", id: "O1", note: "n" }, peers: empty)).to eq(described_class::NONE)
+      expect(described_class.recorded?(propose(change: "done", id: "O1"), "O1")).to be(false)
+    end
+  end
+
   it "records a move and says that it doesn't edit the list, and who does" do
     answer = move(action: "move", id: "O2", note: "Checkout stays closed", evidence: "spec green")
 
@@ -57,7 +126,7 @@ RSpec.describe Samagotchi::Tools::ObjectivesTool do
   it "refuses any other action and says the user edits the list" do
     answer = move(action: "done", id: "O1", note: "x")
 
-    expect(answer).to start_with("Error: this tool only records a move")
+    expect(answer).to start_with("Error: this tool records a move")
     expect(answer).to include("/objectives")
     expect(answer).not_to include("done")
   end

@@ -67,6 +67,44 @@ RSpec.describe Samagotchi::Engine, "context notes" do
     end
   end
 
+  describe "a proposed objectives change" do
+    let(:proposal) { Samagotchi::Objectives::Proposal.new(change: "done", id: "O1", text: "", note: "it merged") }
+
+    it "shows its card after the turn, between turns, with Apply and Dismiss; the same change once" do
+      allow(kernel).to receive(:run) do
+        2.times { engine.propose_objective(proposal) }
+        expect(events.map { |e| e[:type] }).not_to include(:card)
+        kernel_result
+      end
+
+      engine.run_turn(session, "hi")
+
+      cards = events.select { |e| e[:type] == :card }
+      expect(cards.size).to eq(1)
+      expect(cards.first).to include(title: "Mark O1 done?", in_turn: false, source: "objectives")
+      apply, dismiss = cards.first[:actions]
+      expect(apply[:label]).to eq("Apply")
+      expect(apply[:command]).to eq("/objectives --card #{cards.first[:id]} done O1")
+      expect(dismiss[:command]).to eq("/objectives --card #{cards.first[:id]} dismiss")
+      expect(session.messages.map { |m| m[:content] }.join).not_to include("Mark O1")
+    end
+  end
+
+  describe "proposals in one turn" do
+    def proposal(id) = Samagotchi::Objectives::Proposal.new(change: "done", id: id, text: "", note: "n")
+
+    it "takes three, a repeat counting once, and refuses the next" do
+      answers = nil
+      allow(kernel).to receive(:run) do
+        answers = %w[O1 O1 O2 O3 O4].map { |id| engine.propose_objective(proposal(id)) }
+        kernel_result
+      end
+      engine.run_turn(session, "hi")
+      expect(answers).to eq([true, true, true, true, false])
+      expect(events.count { |e| e[:type] == :card }).to eq(3)
+    end
+  end
+
   describe "in the next turn" do
     it "sits at the tail, after the history and before the new prompt" do
       session.messages = [{ role: "system", content: "old" }, { role: "user", content: "a" }, { role: "model", content: "b" }]

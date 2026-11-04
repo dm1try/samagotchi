@@ -557,30 +557,37 @@
     "type": "function",
     "function": {
       "name": "objectives",
-      "description": "Record a move on one of the objectives in the OBJECTIVES note: in a line, what you did or found that moves it, so the user can follow. It records only: it doesn't edit the list, change a status or mark anything done, and it approves nothing. The user edits the list with /objectives; asked to change it, say so instead of saying you changed it. One when an objective really moved, not per step.",
+      "description": "Record a move on one of the objectives in the OBJECTIVES note: in a line, what you did or found that moves it, so the user can follow. One when an objective really moved, not per step. Or propose a change to the list (action propose): the user sees a card and applies it or not. This tool doesn't edit the list, change a status or mark anything done, and it approves nothing; the user edits the list with /objectives. Asked to change it, propose it or say so, instead of saying you changed it.",
       "parameters": {
         "type": "object",
         "properties": {
           "action": {
             "type": "string",
-            "description": "move, the only action"
+            "description": "move or propose"
           },
           "id": {
             "type": "string",
-            "description": "The objective's id, e.g. O2"
+            "description": "The objective's id, e.g. O2 (not for a proposed add)"
           },
           "note": {
             "type": "string",
-            "description": "What moved, in a line"
+            "description": "A move: what moved, in a line. A proposal: why, in a line"
           },
           "evidence": {
             "type": "string",
-            "description": "Optional: what shows it (a commit, a test count, a file)"
+            "description": "Optional, a move's: what shows it (a commit, a test count, a file)"
+          },
+          "change": {
+            "type": "string",
+            "description": "A proposal's: add, reword, done or drop"
+          },
+          "text": {
+            "type": "string",
+            "description": "A proposed add's or reword's new text"
           }
         },
         "required": [
           "action",
-          "id",
           "note"
         ],
         "additionalProperties": false

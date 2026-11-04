@@ -36,6 +36,9 @@ module Samagotchi
         session = engine.session
         session && Objectives.current(session.id, session.messages, state_dir: engine.peer_state_dir)
       end
+
+      # A proposed change: its card shows at the turn's end (Engine#propose_objective).
+      def propose_objective(proposal) = engine.propose_objective(proposal)
     end
 
     # What the approval relay needs from the parent's Engine (Peers#relay):

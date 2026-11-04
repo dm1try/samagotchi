@@ -18,11 +18,16 @@ module Samagotchi
     NONE = "no objectives; #{NAME} set A | B sets them".freeze
     BETWEEN_TURNS = "(an edit goes into the conversation between turns)"
     SEPARATOR = /\n|(?:\A|\s)\|(?:\s|\z)/
-    # The last group: an earlier one stays text.
-    DONE_WHEN = /\A(.*)\(done when:\s*(.*?)\s*\)\z/i
     # What the frame shows a status as: typed at a text's start it would pass
     # for one (Objectives::Item#line).
     STATUS_MARK = /\A(?:\[(?:#{Objectives::STATUSES.join("|")})\]\s*)+/i
+    # A proposal card's action (Tools::ObjectivesTool): the edit, then the card
+    # folds to a line, once: it is recorded, so a repeat applies nothing. A
+    # reword's --was says what it was proposed against. The prefix is the
+    # card's own; nobody types it.
+    CARD = /\A--card\s+(\S+)\s*(?:--was\s+(\S+)\s*)?/
+    FOLDS = { Objectives::APPLIED => "Proposal applied", Objectives::DISMISSED => "Proposal dismissed" }.freeze
+    DISMISS = "dismiss"
     MARKS = { "done" => Objectives::DONE, "drop" => Objectives::DROPPED, "undo" => Objectives::ACTIVE }.freeze
 
     # @param engine [Engine] #session, #session_state_dir
@@ -33,6 +38,48 @@ module Samagotchi
     # @param args [String] what follows /objectives
     # @return [Array(String, Symbol)] the reply, and :ok or :error
     def run(args)
+      args = args.to_s.strip
+      return run_line(args) if args.empty?
+
+      locked(@engine.session) do
+        card, was = args.match(CARD)&.captures
+        card ? run_card(card, was, args.sub(CARD, "")) : run_line(args)
+      end
+    end
+
+    private
+
+    def run_card(card, was, line)
+      dir = Session.session_dir(@engine.session.id, state_dir: @engine.session_state_dir)
+      answered = Objectives.card_state(dir, card)
+      if answered
+        fold(card, answered, line)
+        return ["this proposal was already #{answered}", :ok]
+      end
+
+      output, status = line == DISMISS ? ["", :ok] : run_line(line, was: was)
+      return [output, status] unless status == :ok
+
+      state = line == DISMISS ? Objectives::DISMISSED : Objectives::APPLIED
+      Objectives.record_card(dir, card, state)
+      fold(card, state, line)
+      [output, status]
+    end
+
+    # An edit's read and write as one step (Objectives.with_lock); a show, alone
+    # or an edit's "(no change)", reads as it always did.
+    def locked(session, &)
+      return yield if session.nil?
+
+      Objectives.with_lock(Session.session_dir(session.id, state_dir: @engine.session_state_dir), &)
+    end
+
+    def fold(card, state, line)
+      @engine.show_card(source: Objectives::SOURCE, id: card, title: FOLDS.fetch(state),
+                        body: state == Objectives::APPLIED ? line : "")
+    end
+
+    def run_line(args, was: nil)
       session = @engine.session or return ["no session yet", :error]
       # The running turn's moves aren't in session.messages yet. A snapshot from
       # this thread, read only: an entry is there whole or not yet, and a call
@@ -42,7 +89,7 @@ module Samagotchi
       verb, rest = args.to_s.strip.split(/\s+/, 2)
       return [listing(list, session), :ok] if verb.nil?
 
-      edited = edit(list, verb.downcase, rest.to_s)
+      edited = edit(list, verb.downcase, rest.to_s, was: was)
       return [USAGE, :error] if edited.nil?
       return [edited, :error] if edited.is_a?(String)
       return ["#{listing(list, session)}\n(no change)", :ok] if edited == list
@@ -50,18 +97,16 @@ module Samagotchi
       deliver(edited, session)
     end
 
-    private
-
     # @return [Objectives::List, String, nil] the new list, what's wrong with
     #   the line, or nil for a line that isn't one
-    def edit(list, verb, rest)
+    def edit(list, verb, rest, was: nil)
       case verb
       when "set", "add"
         entries = entries_of(rest)
         return nil if entries.nil? || entries.empty?
 
         verb == "set" ? list.set(entries) : entries.reduce(list) { |so_far, e| so_far.add(e[:text], done_when: e[:done_when]) }
-      when "edit" then reword(list, rest)
+      when "edit" then reword(list, rest, was: was)
       when *MARKS.keys then mark(list, MARKS.fetch(verb), rest)
       end
     end
@@ -82,13 +127,14 @@ module Samagotchi
     end
 
     # The objective's new text: the whole rest of the line, a | too.
-    def reword(list, rest)
+    def reword(list, rest, was: nil)
       id, text = rest.strip.split(/\s+/, 2)
       entry = text && entry_of(text.gsub(/[[:space:]]+/, " ").strip)
       return nil unless entry
 
       id = id.upcase
-      return "no objective #{id}" unless list.find(id)
+      item = list.find(id) or return "no objective #{id}"
+      return "#{id} has changed since this was proposed: #{item.text}" if was && Objectives.fingerprint(item) != was
 
       list.reword(id, entry[:text], done_when: entry[:done_when])
     end
@@ -103,7 +149,7 @@ module Samagotchi
     end
 
     def entry_of(part)
-      found = DONE_WHEN.match(part)
+      found = Objectives::DONE_WHEN.match(part)
       text = (found ? found[1] : part).sub(STATUS_MARK, "").strip
       return nil if text.empty?
 

@@ -15,8 +15,13 @@ RSpec.describe Samagotchi::ObjectivesCommand do
   end
   let(:session_dir) { Samagotchi::Session.session_dir(session.id, state_dir: tmpdir) }
   let(:engine) do
-    Struct.new(:session, :session_state_dir, :live_conversation, :announced) do
+    Struct.new(:session, :session_state_dir, :live_conversation, :announced, :cards) do
       def announce_objectives(session) = (self.announced = session)
+
+      def show_card(**card)
+        (self.cards ||= []) << card
+        card[:id]
+      end
     end.new(session, tmpdir)
   end
   let(:command) { described_class.new(engine: engine) }
@@ -291,5 +296,96 @@ RSpec.describe Samagotchi::ObjectivesCommand do
     command.run("")
     command.run("done O9")
     expect(engine.announced).to be_nil
+  end
+
+  describe "a proposal card's lines" do
+    before { command.run("set A | B") }
+
+    it "applies the edit and folds the card to a line" do
+      expect(command.run("--card c1 done O1").last).to eq(:ok)
+      expect(Samagotchi::Objectives.pending_payload(session_dir)["items"].first["status"]).to eq("done")
+      expect(engine.cards).to eq([{ source: "objectives", id: "c1", title: "Proposal applied", body: "done O1" }])
+    end
+
+    it "folds the card too when it changes nothing (a second Apply, another tab)" do
+      command.run("done O1")
+      command.run("--card c1 done O1")
+      expect(engine.cards.last).to include(id: "c1", title: "Proposal applied")
+    end
+
+    it "leaves the card when the edit is refused" do
+      expect(command.run("--card c1 done O9")).to eq(["no objective O9", :error])
+      expect(engine.cards).to be_nil
+    end
+
+    it "dismisses: the list untouched, the card a line" do
+      before = Samagotchi::Objectives.pending_payload(session_dir)
+      expect(command.run("--card c1 dismiss").last).to eq(:ok)
+      expect(Samagotchi::Objectives.pending_payload(session_dir)).to eq(before)
+      expect(engine.cards).to eq([{ source: "objectives", id: "c1", title: "Proposal dismissed", body: "" }])
+    end
+  end
+
+  describe "concurrent edits" do
+    before { command.run("set A | B | C | D | E | F | G | H") }
+
+    it "keeps every edit: each reads the list the last one left" do
+      ids = (1..8).map { |n| "O#{n}" }
+      ids.map { |id| Thread.new { described_class.new(engine: engine).run("done #{id}") } }.each(&:join)
+      statuses = Samagotchi::Objectives.pending_payload(session_dir)["items"].map { |item| item["status"] }
+      expect(statuses).to eq(["done"] * 8)
+    end
+
+    it "waits for the lock an absorb or another process holds" do
+      thread = nil
+      Samagotchi::Objectives.with_lock(session_dir) do
+        thread = Thread.new { described_class.new(engine: engine).run("done O1") }
+        expect(thread.join(0.1)).to be_nil
+      end
+      expect(thread.join(5)).to eq(thread)
+    end
+  end
+
+  describe "a proposal card applied again" do
+    before { command.run("set A | B") }
+
+    def items = Samagotchi::Objectives.pending_payload(session_dir)["items"]
+
+    it "applies once: a repeat changes nothing, says so and folds the card again" do
+      command.run("--card c1 add Dup me")
+      output, status = command.run("--card c1 add Dup me")
+      expect(status).to eq(:ok)
+      expect(output).to include("already applied")
+      expect(items.map { |item| item["text"] }).to eq(%w[A B] + ["Dup me"])
+      expect(engine.cards.map { |c| c[:title] }).to eq(["Proposal applied", "Proposal applied"])
+    end
+
+    it "keeps the answer over a new command object, as a new worker's would" do
+      command.run("--card c1 dismiss")
+      output, = described_class.new(engine: engine).run("--card c1 add Late")
+      expect(output).to include("already dismissed")
+      expect(items.size).to eq(2)
+    end
+
+    it "takes two Applies at once as one" do
+      Array.new(4) { Thread.new { described_class.new(engine: engine).run("--card c1 add Once") } }.each(&:join)
+      expect(items.count { |item| item["text"] == "Once" }).to eq(1)
+    end
+
+    it "refuses a reword proposed against a text that has changed since, and leaves the card" do
+      stamp = Samagotchi::Objectives.fingerprint(Samagotchi::Objectives::Item.new(id: "O1", text: "A"))
+      command.run("edit O1 Newer")
+      output, status = command.run("--card c1 --was #{stamp} edit O1 Stale")
+      expect(status).to eq(:error)
+      expect(output).to include("O1 has changed since this was proposed")
+      expect(items.first["text"]).to eq("Newer")
+      expect(engine.cards).to be_nil
+    end
+
+    it "applies a reword whose item is as it was proposed against" do
+      stamp = Samagotchi::Objectives.fingerprint(Samagotchi::Objectives::Item.new(id: "O1", text: "A"))
+      expect(command.run("--card c1 --was #{stamp} edit O1 Fresh").last).to eq(:ok)
+      expect(items.first["text"]).to eq("Fresh")
+    end
   end
 end

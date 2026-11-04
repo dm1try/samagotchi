@@ -1,5 +1,10 @@
 # frozen_string_literal: true
 
+require "digest"
+require "fileutils"
+require "json"
+
+require_relative "atomic_file"
 require_relative "context_note"
 require_relative "llm_context_stale"
 require_relative "log"
@@ -27,6 +32,17 @@ module Samagotchi
     # What a list with nothing left to send says, so that it still replaces
     # the one before it.
     NONE_LEFT = "(no objectives now)"
+    # Cards a turn may leave: a model's proposals are for reading.
+    PROPOSALS_PER_TURN = 3
+    # Beside the session's notes/: what #with_lock takes.
+    LOCK_FILE = "objectives.lock"
+    # Proposal cards answered, {card id => APPLIED | DISMISSED}, so that a repeat
+    # of a card's line can't apply again. Under #with_lock.
+    CARDS_FILE = "objectives_cards.json"
+    APPLIED = "applied"
+    DISMISSED = "dismissed"
+    # A text's own done-when: the last group, an earlier one stays text.
+    DONE_WHEN = /\A(.*)\(done when:\s*(.*?)\s*\)\z/i
 
     # One objective: +id+ "O1", never reused; +status+ ACTIVE, DONE or
     # DROPPED; +done_when+ an optional hint, never enforced.
@@ -55,6 +71,61 @@ module Samagotchi
     # reworded one's old text. Display only, computed from the two lists.
     Change = Data.define(:id, :kind, :text, :was) do
       def to_h = { id: id, kind: kind, text: text, was: was }.compact
+    end
+
+    # A change the model proposes (the objectives tool), shown to the user as a
+    # card whose action is #line: the same edit they could type. +change+ add,
+    # reword, done or drop; +note+ why.
+    Proposal = Data.define(:change, :id, :text, :note, :was) do
+      # +was+: what a reword was proposed against (Objectives.fingerprint).
+      def initialize(change:, id:, text:, note:, was: nil)
+        super
+      end
+
+      # A proposal against +list+: a reword keeps the item's done-when unless its
+      # text brings one, and carries what it was proposed against.
+      def self.against(list, change:, id:, text:, note:)
+        item = change == "reword" ? list.find(id) : nil
+        return new(change: change, id: id, text: text, note: note) unless item
+
+        kept = item.done_when && !text.empty? && !text.match?(DONE_WHEN) ? "#{text} (done when: #{item.done_when})" : text
+        new(change: change, id: id, text: kept, note: note, was: Objectives.fingerprint(item))
+      end
+
+      # What's wrong with it against +list+, nil when it can apply.
+      def refusal(list)
+        return "change must be add, reword, done or drop" unless %w[add reword done drop].include?(change)
+        return "#{change} needs a text" if %w[add reword].include?(change) && text.empty?
+        return nil if change == "add"
+
+        list.find(id) ? nil : "no objective #{id} (this session's: #{list.items.map(&:id).join(", ")})"
+      end
+
+      # The /objectives line that applies it. An add's text can't split in two.
+      def line
+        case change
+        when "add" then "/objectives add #{text.gsub(/(?<!\S)\|(?!\S)/, "/")}"
+        when "reword" then "/objectives edit #{id} #{text}"
+        else "/objectives #{change} #{id}"
+        end
+      end
+
+      # The card's Apply: #line behind the prefix ObjectivesCommand reads.
+      def action_line(card)
+        line.sub("/objectives ", "/objectives --card #{card} #{"--was #{was} " if was}")
+      end
+
+      def title
+        case change
+        when "add" then "Add an objective?"
+        when "reword" then "Reword #{id}?"
+        when "done" then "Mark #{id} done?"
+        else "Drop #{id}?"
+        end
+      end
+
+      # The card's body: what, why, and the line for a terminal, which shows no button.
+      def body = [(text unless text.empty?), (note unless note.empty?), "`#{line}`"].compact.join("\n\n")
     end
 
     # The list: its items and the number the next id takes (it only grows,
@@ -119,6 +190,41 @@ module Samagotchi
     end
 
     module_function
+
+    # One edit's read and write as one step, across threads (each anytime command
+    # has its own) and processes: each note holds a whole list, so two edits that
+    # read the same list would lose one. The worker's absorb holds it too, so an
+    # edit reads neither between the note going into the conversation and its
+    # file going. An edit's events go under it: the order is always this lock,
+    # then the event log. Nothing takes this under the event log.
+    def with_lock(session_dir)
+      FileUtils.mkdir_p(session_dir)
+      File.open(File.join(session_dir, LOCK_FILE), File::RDWR | File::CREAT, 0o600) do |file|
+        file.flock(File::LOCK_EX)
+        yield
+      end
+    end
+
+    # An item's words, short: what a proposed reword was made against.
+    def fingerprint(item) = Digest::SHA256.hexdigest("#{item.text}\0#{item.done_when}")[0, 12]
+
+    # How a proposal card was answered, nil when it wasn't. Under #with_lock.
+    def card_state(session_dir, card)
+      JSON.parse(File.read(File.join(session_dir, CARDS_FILE)))[card]
+    rescue SystemCallError, JSON::ParserError, TypeError
+      nil
+    end
+
+    # Under #with_lock.
+    def record_card(session_dir, card, state)
+      path = File.join(session_dir, CARDS_FILE)
+      known = begin
+        JSON.parse(File.read(path))
+      rescue SystemCallError, JSON::ParserError
+        {}
+      end
+      AtomicFile.write(path, JSON.generate(known.merge(card => state)))
+    end
 
     # The id a call names, as the list spells it.
     def move_id(call) = call[:id].to_s.strip.upcase

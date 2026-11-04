@@ -134,6 +134,20 @@ RSpec.describe Samagotchi::WorkerInbound do
     end
   end
 
+  describe "the objectives lock" do
+    it "holds it from the claim to the files' delete, so an edit can't read between them" do
+      list = Samagotchi::Objectives::List.new.set([{ text: "A" }])
+      Samagotchi::SessionInbox.write_note(session.id, text: list.text, source: "objectives", objectives: list.to_payload, state_dir: tmpdir)
+      locked = nil
+      allow(engine).to receive(:add_context_note).and_wrap_original do |original, *args|
+        File.open(File.join(session_dir, Samagotchi::Objectives::LOCK_FILE)) { |f| locked = !f.flock(File::LOCK_EX | File::LOCK_NB) }
+        original.call(*args)
+      end
+      inbound.absorb_notes
+      expect(locked).to be(true)
+    end
+  end
+
   describe "a participant's /objectives" do
     it "is refused like any command: no turn, nothing queued, no note file" do
       allow(engine).to receive(:command_registry).and_return(Samagotchi::SessionCommands.builtin_registry)

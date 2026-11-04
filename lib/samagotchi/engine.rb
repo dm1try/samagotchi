@@ -156,6 +156,8 @@ module Samagotchi
       # steers) and the idle layer's activity clock. Built first: a plugin
       # may steer or ask whether a turn runs while it loads.
       @turn_state = TurnState.new(clock: -> { monotonic_now })
+      @objective_proposals = []
+      @objective_proposals_mutex = Mutex.new
       # A message for the running turn cutting its generation.
       @steer_cut = SteerCut.new(clock: -> { monotonic_now }, controller: -> { active_cancel_controller },
                                 cut_after: -> { steer_cut_after })
@@ -1003,8 +1005,36 @@ module Samagotchi
         announce({ type: :objectives_updated, session_id: session.id, **view })
       end
     rescue StandardError => e
-      Log.warn(:engine, "objectives_announce_failed", error: e.class.name, msg: e.message)
+      Log.warn(:turn, "objectives_announce_failed", error: e.class.name, msg: e.message)
     end
+
+    # A change the model proposes (the objectives tool), kept until the turn
+    # is over, as #context_choice's cards are: a card shown then is a quiet one, between turns, with its Apply kept
+    # over a restart (CardStore), not a running turn's that says it waits on the
+    # user. The same change twice in a turn is one card.
+    # @return [Boolean] false past Objectives::PROPOSALS_PER_TURN
+    def propose_objective(proposal)
+      @objective_proposals_mutex.synchronize do
+        next true if @objective_proposals.any? { |p| p.line == proposal.line }
+        next false if @objective_proposals.size >= Objectives::PROPOSALS_PER_TURN
+
+        @objective_proposals << proposal
+        true
+      end
+    end
+
+    def show_objective_proposals
+      proposals = @objective_proposals_mutex.synchronize { @objective_proposals.slice!(0..) }
+      proposals.each do |proposal|
+        id = "objectives-#{SecureRandom.hex(4)}"
+        show_card(source: Objectives::SOURCE, id: id, title: proposal.title, body: proposal.body,
+                  actions: [{ label: "Apply", command: proposal.action_line(id) },
+                            { label: "Dismiss", command: "/objectives --card #{id} dismiss" }])
+      end
+    rescue StandardError => e
+      Log.warn(:turn, "objectives_proposal_failed", error: e.class.name, msg: e.message)
+    end
+    private :show_objective_proposals
 
     # The strategy the working set is built under now, as LLMContextView
     # takes it: the running turn's, else the next turn's (#emit_working_set).
@@ -2388,6 +2418,7 @@ module Samagotchi
       ensure
         release_turn(probe_cancel_before)
         show_context_cards_after_turn
+        show_objective_proposals
       end
     end
 

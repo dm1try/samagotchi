@@ -9,6 +9,7 @@ require_relative "client_id"
 require_relative "config"
 require_relative "context_note"
 require_relative "log"
+require_relative "objectives"
 require_relative "session"
 require_relative "session_inbox"
 require_relative "steer"
@@ -120,15 +121,19 @@ module Samagotchi
       files = SessionInbox.find_new_note_files(@session_dir)
       return if files.empty? || @stopped.call
 
-      claimed = files.filter_map { |file| SessionInbox.claim_note_file(file) }
-      notes = claimed.filter_map { |file| SessionInbox.read_note(file) }
-      newest_list = notes.reverse.find { |note| note[:objectives] }
-      notes.each do |note|
-        @engine.add_context_note(@session, note) if !note[:objectives] || note.equal?(newest_list)
-      end
-      return unless save(:notes)
+      # Under the objectives' lock: an edit reads the conversation and then the
+      # pending file, so it must see this whole step or none of it.
+      Objectives.with_lock(@session_dir) do
+        claimed = files.filter_map { |file| SessionInbox.claim_note_file(file) }
+        notes = claimed.filter_map { |file| SessionInbox.read_note(file) }
+        newest_list = notes.reverse.find { |note| note[:objectives] }
+        notes.each do |note|
+          @engine.add_context_note(@session, note) if !note[:objectives] || note.equal?(newest_list)
+        end
+        next unless save(:notes)
 
-      claimed.each { |file| FileUtils.rm_f(file) }
+        claimed.each { |file| FileUtils.rm_f(file) }
+      end
     end
 
     # The attached context's notes (ContextAbsorber), between turns. Not

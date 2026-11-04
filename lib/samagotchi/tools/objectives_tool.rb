@@ -7,14 +7,18 @@ module Samagotchi
   autoload :Objectives, File.expand_path("../objectives", __dir__)
 
   module Tools
-    # The objectives tool's one action: a move, what the model did or found for
+    # The objectives tool's two actions. A move: what the model did or found for
     # an objective. Information only: it never changes a status or the list
     # (the user does, /objectives), and nothing is written here: the call in
-    # history is the record, which Objectives.build reads back. So this only
-    # checks the call and says what it did. See docs/internals/objectives.md.
+    # history is the record, which Objectives.build reads back. A proposal: a
+    # change to the list the user applies from a card with one tap, the card's
+    # action being the /objectives line; the model never changes the list by
+    # itself. See docs/internals/objectives.md.
     class ObjectivesTool
       NAME = "objectives"
       MOVE = "move"
+      PROPOSE = "propose"
+      PROPOSED = "Proposed %s. The list is unchanged: the user sees a card and applies it or not."
       RECORDED = "Recorded a move on %s."
       EDITED_BY_USER = "The user edits the list with /objectives."
       NONE = "There are no objectives here, so nothing was recorded. #{EDITED_BY_USER}".freeze
@@ -34,16 +38,29 @@ module Samagotchi
       # @return [String] the tool result
       def self.call(call, peers:)
         action = call[:action].to_s.strip.downcase
-        unless action.empty? || action == MOVE
-          return "Error: this tool only records a move (action: move); it edits nothing. #{EDITED_BY_USER}"
+        unless action.empty? || [MOVE, PROPOSE].include?(action)
+          return "Error: this tool records a move (action: move) or proposes a change (action: propose); it edits nothing. #{EDITED_BY_USER}"
         end
 
         list = peers&.objectives
         return NONE if list.nil? || list.empty?
+        return propose(list, call, peers) if action == PROPOSE
 
         id = Objectives.move_id(call)
         refusal(list, id, call) || "#{RECORDED % id} The list is unchanged: this tool doesn't edit it. #{EDITED_BY_USER}"
       end
+
+      def self.propose(list, call, peers)
+        proposal = Objectives::Proposal.against(list, change: call[:change].to_s.strip.downcase, id: Objectives.move_id(call),
+                                                      text: Objectives.clean(call[:text]), note: Objectives.clean(call[:note]))
+        refused = proposal.refusal(list)
+        return "Error: #{refused}. Nothing was proposed." if refused
+
+        return "Error: at most #{Objectives::PROPOSALS_PER_TURN} proposals a turn. Nothing more was proposed." unless peers.propose_objective(proposal)
+
+        format(PROPOSED, proposal.line.delete_prefix("/objectives "))
+      end
+      private_class_method :propose
 
       def self.refusal(list, id, call)
         item = list.find(id)
