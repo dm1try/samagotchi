@@ -57,6 +57,13 @@ module Samagotchi
         entries
       end
 
+      # The one refusal for a file system error while files are being saved and
+      # replaced. Every save comes before its removal, so an edit is where it
+      # was or in the trash; a retry finds what this run already placed.
+      def self.failure_message(error)
+        "#{error.message}: nothing was lost (your edits are in place or in the trash); fix that and run the command again"
+      end
+
       # The dir, once a file was moved or copied (nil before).
       attr_reader :dir
 

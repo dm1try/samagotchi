@@ -568,4 +568,85 @@ RSpec.describe "Kept edits in a bundle" do
       expect(File.read(File.join(outside, "x"))).to eq("not ours\n")
     end
   end
+
+  describe "when an edit can't be saved" do
+    let(:trash_root) { File.join(Samagotchi::MemoryPaths.bundles_dir, ".trash") }
+    let(:plugin) { File.join(provenance.plugin_dir, "plugin.rb") }
+
+    before do
+      full_source("1.0.0")
+      run_installer
+      File.write(plugin, "edited\n")
+    end
+
+    after { File.chmod(0o644, plugin) if File.exist?(plugin) }
+
+    def upgrade_via_command(*flags)
+      out = StringIO.new
+      err = StringIO.new
+      code = Samagotchi::BundleCommand.new(["upgrade", source, *flags], stdin: StringIO.new, stdout: out, stderr: err).run
+      [code, out.string, err.string]
+    end
+
+    it "fails cleanly when .trash is a file, naming it, and a retry heals" do
+      File.write(trash_root, "in the way\n")
+      full_source("2.0.0")
+      code, _out, err = upgrade_via_command
+
+      expect(code).to eq(1)
+      expect(err).to start_with("Upgrade failed: ").and include(".trash", "nothing was lost")
+      expect(File.read(plugin)).to eq("edited\n")
+      expect(provenance.read[:version]).to eq("1.0.0")
+
+      FileUtils.rm_f(trash_root)
+      expect(upgrade_via_command.first).to eq(0)
+      expect(trash_files).to eq("plugin/plugin.rb" => "edited\n")
+      expect(File.read(plugin)).to eq("# plugin 2.0.0\n")
+      expect(provenance.read[:version]).to eq("2.0.0")
+    end
+
+    it "fails cleanly on an edited file it can't read, naming it, and a retry heals" do
+      skip "root reads anything" if Process.uid.zero?
+      File.chmod(0o000, plugin)
+      full_source("2.0.0")
+      code, _out, err = upgrade_via_command
+
+      expect(code).to eq(1)
+      expect(err).to start_with("Upgrade failed: ").and include("plugin.rb", "nothing was lost")
+      File.chmod(0o644, plugin)
+      expect(File.read(plugin)).to eq("edited\n")
+
+      expect(upgrade_via_command.first).to eq(0)
+      expect(trash_files).to eq("plugin/plugin.rb" => "edited\n")
+      expect(provenance.read[:version]).to eq("2.0.0")
+    end
+
+    it "fails cleanly on --force over a memory when .trash is a file" do
+      File.write(target, "edited\n")
+      File.write(trash_root, "in the way\n")
+      full_source("2.0.0")
+      code, _out, err = upgrade_via_command("--force")
+
+      expect(code).to eq(1)
+      expect(err).to include(".trash", "nothing was lost")
+      expect(File.read(target)).to eq("edited\n")
+    end
+
+    it "refuses an uninstall the same way, removing nothing, and a retry heals" do
+      File.write(trash_root, "in the way\n")
+      out = StringIO.new
+      err = StringIO.new
+      code = Samagotchi::BundleCommand.new(%w[uninstall demo], stdin: StringIO.new, stdout: out, stderr: err).run
+
+      expect(code).to eq(1)
+      expect(err.string).to start_with("Uninstall failed: ").and include(".trash", "nothing was lost")
+      expect(File.read(plugin)).to eq("edited\n")
+      expect(File.read(target)).to eq("same\n")
+      expect(provenance).to be_installed
+
+      FileUtils.rm_f(trash_root)
+      uninstall
+      expect(trash_files).to eq("a.md" => "same\n", "plugin/plugin.rb" => "edited\n")
+    end
+  end
 end

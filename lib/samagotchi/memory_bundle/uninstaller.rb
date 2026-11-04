@@ -132,6 +132,8 @@ module Samagotchi
         @removed_files << "plugin/#{File.basename(plugin_path)}" if plugin_path && File.exist?(plugin_path)
         FileUtils.rm_rf(provenance.bundle_dir)
         true
+      rescue SystemCallError => e
+        raise UninstallError, Trash.failure_message(e)
       end
 
       private

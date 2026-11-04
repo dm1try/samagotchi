@@ -97,16 +97,7 @@ module Samagotchi
         check_source
         # A plain install over an installed bundle: summary points at upgrade.
         @reinstall = @existing && !@upgrade && !@force && !@dry_run
-        install_memories
-
-        installed = AssetInstaller.new(
-          name: @name, source_dir: @bundle_dir, manifest: @manifest, provenance: @provenance, existing: @existing,
-          results: @results, warnings: @warnings, conflicts: @conflicts, trash: @trash,
-          force: @force, strict: @strict, upgrade: @upgrade, dry_run: @dry_run, dev: @dev
-        ).run
-
-        # Files the previous version shipped and this one doesn't.
-        prune_dropped_files(@existing.files, @bundle_md, @target_dir, @target_scope, @provenance) if @upgrade && @existing
+        installed = replace_files
         verify_memory_checksums if @manifest && @strict
         warn_missing_needs(@manifest) if @manifest
         if @manifest && !@dry_run
@@ -160,6 +151,28 @@ module Samagotchi
       end
 
       private
+
+      # The steps that replace files: memories, the bundle's own folder, then
+      # the files it dropped. The record isn't written yet, so a failed run is
+      # retried as the same upgrade.
+      # @return [AssetInstaller::Installed]
+      # @raise [InstallError] a file system error (a file it can't read, a
+      #   .trash it can't write)
+      def replace_files
+        install_memories
+
+        installed = AssetInstaller.new(
+          name: @name, source_dir: @bundle_dir, manifest: @manifest, provenance: @provenance, existing: @existing,
+          results: @results, warnings: @warnings, conflicts: @conflicts, trash: @trash,
+          force: @force, strict: @strict, upgrade: @upgrade, dry_run: @dry_run, dev: @dev
+        ).run
+
+        # Files the previous version shipped and this one doesn't.
+        prune_dropped_files(@existing.files, @bundle_md, @target_dir, @target_scope, @provenance) if @upgrade && @existing
+        installed
+      rescue SystemCallError => e
+        raise InstallError, Trash.failure_message(e)
+      end
 
       # Who may install under this name (a manifest can take any name: a
       # repo calling itself guardrails). Sources compare by SourceIdentity

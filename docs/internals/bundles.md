@@ -107,6 +107,11 @@ The order matters: warnings print in it, and a plugin/script the manifest names 
    owned and this version doesn't ship, while it is on disk (`dropped_owned_files`), so the next upgrade prunes it.
 8. `detect_placeholders`.
 
+A file system error in steps 3 to 5 (`Installer#replace_files`; a `.trash` it can't write, an edited file it can't read) is an
+`InstallError` in `Trash.failure_message`'s words, as it is an `UninstallError` in `Uninstaller#run`. Each save comes before
+its removal, so no edit is lost, and the record isn't written, so a retry is the same upgrade. Not atomic: files the
+failed run already placed stay.
+
 Results are `@results` (file → `{status:, reason:}`), summarised by `#summary`. An upgrade with conflicts keeps an
 owned source dir alive (`#source_dir`) until `#cleanup_source!`, because the conflict agent reads the incoming
 files; `BundleCommand#settle_conflicts` then runs `Provenance#resolve_conflicts`, which moves a base forward and keeps
