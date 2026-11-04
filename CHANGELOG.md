@@ -7,6 +7,10 @@ and commands may change between minor versions. How releases are made:
 [docs/releasing.md](docs/releasing.md).
 ## [Unreleased]
 
+### Added
+
+- `/objectives` gives a session a short list of what it is to achieve (`set A | B`, `add`, `done`, `drop`), kept in the conversation as a note; a continue carries it, and a session with no list sends the same requests as before. A first version to try. [docs/sessions.md](docs/sessions.md#objectives)
+
 ## [0.148.0] - 2026-11-04
 
 ### Added

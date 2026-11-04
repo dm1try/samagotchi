@@ -192,6 +192,20 @@ OSA
 [ -n "$picked" ] && pbpaste | "$chi" note --source clipboard $(print -r -- "$picked" | cut -f1)
 ```
 
+## Objectives
+
+`/objectives set A | B` gives a session a short list of what it is to achieve, and `/objectives` shows it. The list goes
+into the conversation as a note under its own frame (`[OBJECTIVES, set by the user. …]`), which asks the model to keep
+work on it, to say when something falls outside it and not to change it itself. A session with no list sends exactly
+what it would without the feature. Each item has an id (`O1`, never reused), a status (active, done, dropped) and
+optionally a done-when hint, which nothing enforces.
+
+An edit waits for a moment between turns: it lands within seconds in an idle session, and at the turn's end during one.
+Several edits made during a turn go in as one list. A continue copies the list to the next link, as a second note after
+the carry note; a review link doesn't. `!rollback` keeps it. A chi REPL's session (`--no-shared`) refuses an edit, as it
+refuses a note. See [cli.md](cli.md#session-objectives) for the commands and
+[internals/objectives.md](internals/objectives.md) for the mechanism.
+
 ## Notes a turn leaves for the model
 
 A turn that ends without an answer leaves one line for the model to read on its next turn, as a tail

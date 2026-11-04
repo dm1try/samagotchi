@@ -867,6 +867,18 @@ mid-turn too, and the lists, cards, top bar and tab show it in place of the firs
 message; a continue's next link keeps it. In the web, `✎` next to the session's
 title (its strip card, or the top bar) does it. See [Session titles](sessions.md#session-titles).
 
+<a id="session-objectives"></a>
+`/objectives` shows what the session is to achieve; [Objectives](sessions.md#objectives) has what that does.
+- `/objectives set Two coffees | Stops before checkout (done when: no order is placed)`: a new list. Parts are split by
+  ` | ` or by lines; a part may end `(done when: …)`. It replaces the list, and ids go on from the old one's.
+- `/objectives add TEXT`: one more (several with ` | `).
+- `/objectives done O1 [O2…]`, `/objectives drop O1 [O2…]`: mark items. An id it doesn't have refuses the whole line, and
+  so does `done` on a dropped item. The model is shown a done item as `O1 [done] …` and no dropped one.
+- `/objectives undo O1 [O2…]`: back to active, after a mistaken `done` or `drop`.
+
+All of them run mid-turn too. An edit answers with the new list at once and goes into the conversation between turns.
+Refused in a chi REPL's session (`--no-shared`), as `chi note` is; `/objectives` alone still answers there.
+
 A `/model`, `/llm-context`, `/thinking`, `/reasoning-history` or `/toolkit` change that restarts the prompt cache
 asks first: the reply says what it costs, changes nothing, and names the line
 that applies it (`/thinking low --yes`, `/model qwen --default --yes`). `--yes` (or `-y`) applies it at once.
