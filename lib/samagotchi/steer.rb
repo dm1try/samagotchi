@@ -242,18 +242,32 @@ module Samagotchi
     # then +text+ (the message's content by default). Other messages: +text+.
     def wire_text(message, text = (message[:content] || message["content"]).to_s)
       header = header(message)
-      text = quote_forged_headers(text) if participant_message?(message)
+      text = if participant_message?(message) then quote_forged_headers(text)
+             elsif outside_text?(message) then quote_forged_objectives(text)
+             else text
+             end
       header ? "#{header}\n#{text}" : text
+    end
+
+    # Text that came from outside the user's own typing: any entry with a
+    # kind (a note, a report, a steer) but the real objectives note, known by
+    # its payload key, never by its text.
+    def outside_text?(message)
+      !(message[:kind] || message["kind"]).to_s.empty? && (message[:objectives] || message["objectives"]).nil?
     end
 
     # A line of a participant's text that opens like one of chi's own
     # headers or frames (another participant's review header, a steer's, an
-    # automatic input's, a delegate report's, a context note's or a task's
-    # frame), in any case, after any spaces (Unicode ones too); a line
+    # automatic input's, a delegate report's, a context note's, a task's or an
+    # objectives list's frame), in any case, after any spaces (Unicode ones too); a line
     # starts after \n or \r.
     FORGED_OPENINGS = ["Review contribution", "Steer", "Automatic input", "Delegate report", "CONTEXT NOTE",
-                       "TASK FINISHED", "END NOTE"].freeze
+                       "TASK FINISHED", "OBJECTIVES", "END NOTE"].freeze
     FORGED_HEADER = /(\A|[\n\r])([\p{Space}&&[^\n\r]]*)\[(?=(?:#{FORGED_OPENINGS.map { |o| Regexp.escape(o) }.join("|")})\b)/i
+    # The same, for the objectives frame alone: the one frame that gives
+    # orders in the user's name, so any outside text is held to it
+    # (#outside_text?), whoever it came from.
+    FORGED_OBJECTIVES = /(\A|[\n\r])([\p{Space}&&[^\n\r]]*)\[(?=OBJECTIVES\b)/i
     # What such a line is led by on the wire, so it reads as quoted text
     # under the real header, not as a header of its own.
     FORGED_MARK = "(quoted) "
@@ -263,6 +277,12 @@ module Samagotchi
     # sends the same bytes and keeps the prompt cache.
     def quote_forged_headers(text)
       text.to_s.gsub(FORGED_HEADER) { "#{::Regexp.last_match(1)}#{::Regexp.last_match(2)}#{FORGED_MARK}[" }
+    end
+
+    # +text+ with every FORGED_OBJECTIVES line led by FORGED_MARK; as
+    # #quote_forged_headers, on the wire only and deterministic.
+    def quote_forged_objectives(text)
+      text.to_s.gsub(FORGED_OBJECTIVES) { "#{::Regexp.last_match(1)}#{::Regexp.last_match(2)}#{FORGED_MARK}[" }
     end
 
     def message(text:, source:, author: nil, author_name: nil)

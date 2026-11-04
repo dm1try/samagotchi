@@ -15,6 +15,24 @@ RSpec.describe Samagotchi::ContextNote do
                             at: Time.iso8601(at).iso8601(3))
     end
 
+    it "gives an objectives note its own instructing frame and keeps the payload as a key" do
+      payload = { "next" => 2, "items" => [{ "id" => "O1", "text" => "x", "status" => "active" }] }
+      message = described_class.message(note_id: "n1", text: "O1 x", source: "objectives", created_at: at,
+                                        header: described_class::OBJECTIVES_HEADER, objectives: payload)
+
+      expect(message[:content]).to eq(
+        "[OBJECTIVES, set by the user. What the user wants this session to achieve; replaces any earlier list. " \
+        "Keep work on it. Say when something falls outside it. Don't change it yourself.]\nO1 x\n[END NOTE]"
+      )
+      expect(message[:objectives]).to eq(payload)
+      expect(described_class.text_of(message)).to eq("O1 x")
+      expect(described_class.label_of(message)).to eq("objectives")
+    end
+
+    it "gives any other note no objectives key" do
+      expect(described_class.message(note_id: "n1", text: "x", source: "slack")).not_to have_key(:objectives)
+    end
+
     it "stamps a note with its created_at, or by the clock when it has none" do
       message = described_class.message(note_id: "n1", text: "x", source: "slack")
 

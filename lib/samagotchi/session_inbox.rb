@@ -5,6 +5,7 @@ require "json"
 require "time"
 require "securerandom"
 require_relative "atomic_file"
+require_relative "context_note"
 require_relative "delivery"
 require_relative "log"
 require_relative "session"
@@ -83,11 +84,13 @@ module Samagotchi
     # to the conversation between turns. It never starts a turn.
     # @param source [String] where it came from ("cli", "slack", "session")
     # @param from_session [String, nil] the sending session, for a peer's note
+    # @param objectives [Hash, nil] an objectives note's payload
+    #   (Objectives::List#to_payload)
     # @param now [Time] the time the file is named and stamped by (a spec's clock)
     # @return [String] the note file's path
     # @raise [NoteRejected] for an empty note or one over 16 KiB (never cut)
     def self.write_note(session_id, text:, source: "cli", from_session: nil, from_cwd: nil, state_dir: nil,
-                        now: Time.now)
+                        objectives: nil, now: Time.now)
       body = checked_text(text)
       sd = state_dir || Session.default_state_dir
       notes_dir = File.join(Session.session_dir(session_id, state_dir: sd), NOTES_DIR)
@@ -98,7 +101,7 @@ module Samagotchi
       name = "#{now.strftime("%Y%m%d%H%M%S%9N")}-#{SecureRandom.hex(3)}.json"
       path = File.join(notes_dir, name)
       record = { "text" => body, "source" => source.to_s, "from_session" => from_session,
-                 "from_cwd" => from_cwd, "created_at" => now.iso8601 }.compact
+                 "from_cwd" => from_cwd, "created_at" => now.iso8601, "objectives" => objectives }.compact
       AtomicFile.write(path, JSON.generate(record))
       path
     end
@@ -134,15 +137,20 @@ module Samagotchi
     end
 
     # @return [Hash, nil] {note_id:, text:, source:, from_session:, from_cwd:,
-    #   created_at:}, or nil for a file that holds no usable note
+    #   created_at:}, with an objectives note's objectives: and its header:
+    #   (ContextNote.message takes them), or nil for a file that holds no
+    #   usable note
     def self.read_note(note_file)
       data = JSON.parse(File.read(note_file))
       text = data["text"].to_s.strip
       return nil if text.empty?
 
-      { note_id: File.basename(note_file).sub(/\.json(\.processing)?\z/, ""), text: text,
-        source: data["source"].to_s.empty? ? "cli" : data["source"].to_s,
-        from_session: data["from_session"], from_cwd: data["from_cwd"], created_at: data["created_at"] }
+      note = { note_id: File.basename(note_file).sub(/\.json(\.processing)?\z/, ""), text: text,
+               source: data["source"].to_s.empty? ? "cli" : data["source"].to_s,
+               from_session: data["from_session"], from_cwd: data["from_cwd"], created_at: data["created_at"] }
+      return note unless data["objectives"].is_a?(Hash)
+
+      note.merge(objectives: data["objectives"], header: ContextNote::OBJECTIVES_HEADER)
     rescue JSON::ParserError, SystemCallError, NoMethodError, TypeError
       nil
     end

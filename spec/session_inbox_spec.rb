@@ -451,6 +451,21 @@ RSpec.describe Samagotchi::SessionInbox do
       expect(note[:created_at]).to be_a(String)
     end
 
+    it "writes and reads an objectives note's payload and header" do
+      payload = { "next" => 2, "items" => [{ "id" => "O1", "text" => "x", "status" => "active" }] }
+      path = described_class.write_note(session.id, text: "O1 x", source: "objectives", objectives: payload, state_dir: tmpdir)
+
+      expect(described_class.read_note(path)).to include(text: "O1 x", source: "objectives", objectives: payload,
+                                                         header: Samagotchi::ContextNote::OBJECTIVES_HEADER)
+    end
+
+    it "gives a plain note neither key, and no key in its file" do
+      path = described_class.write_note(session.id, text: "hello", state_dir: tmpdir)
+
+      expect(described_class.read_note(path).keys).not_to include(:objectives, :header)
+      expect(JSON.parse(File.read(path)).keys).not_to include("objectives")
+    end
+
     it "reads nil for a broken or empty note file" do
       FileUtils.mkdir_p(notes_dir)
       broken = File.join(notes_dir, "20260101000000000000000-abc.json")

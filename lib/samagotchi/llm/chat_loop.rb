@@ -259,7 +259,7 @@ module Samagotchi
       # Claude model's cache breakpoint there (PromptCache) and drops it
       # for every other request.
       def system_message(entry, index)
-        text = entry[:content].to_s
+        text = Steer.wire_text(entry, entry[:content].to_s)
         split = index.zero? && @stable_length&.call(text)
         split ? { role: "system", content: text, cache_split: split } : { role: "system", content: text }
       end

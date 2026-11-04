@@ -71,7 +71,7 @@ module Samagotchi
   #       │                        # enqueued_id, no_interrupt?, images?}
   #       ├── notes/              # context notes: background text the worker adds to
   #       │   └── <ts>-<rand>.json # the conversation between turns, never a turn
-  #       │                        # ({text, source, from_session?, from_cwd?, created_at})
+  #       │                        # ({text, source, from_session?, from_cwd?, created_at, objectives?})
   #       ├── output/             # agent writes responses here
   #       │   └── <timestamp>.txt # one file per agent response
   #       └── bridge.json         # Bridge sidecar (how clients reach the worker)

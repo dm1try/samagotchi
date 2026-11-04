@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "samagotchi/turn_flow"
+require "samagotchi/objectives"
 require "samagotchi/kernel_loop"
 
 RSpec.describe Samagotchi::TurnFlow do
@@ -67,6 +68,23 @@ RSpec.describe Samagotchi::TurnFlow do
       expect(engine.messages.last[:content]).to eq("Partial\n[interrupted]")
       expect(flow.rollback!).to be(true)
       expect(engine.messages).to eq(before)
+    end
+
+    it "keeps the objectives through !rollback: a list from before the turn and one that arrived in it" do
+      earlier = Samagotchi::Objectives::List.new.add("Old aim")
+      later = earlier.add("New aim")
+      note = lambda do |id, list|
+        Samagotchi::ContextNote.message(note_id: id, text: list.text, source: Samagotchi::Objectives::SOURCE,
+                                        header: Samagotchi::ContextNote::OBJECTIVES_HEADER, objectives: list.to_payload)
+      end
+      engine.messages += [note.call("n1", earlier)]
+
+      run_prompt("go", [note.call("n2", later), { role: "model", content: "Partial\n[interrupted]" }])
+      flow.after_turn(result(engine.messages, canceled: true))
+      expect(flow.rollback!).to be(true)
+
+      expect(Samagotchi::Objectives.build(engine.messages)).to eq(later)
+      expect(engine.messages.none? { |m| m[:content].to_s.include?("Partial") }).to be(true)
     end
 
     it "rolls a cancelled continue back to where it started and keeps the offer" do
