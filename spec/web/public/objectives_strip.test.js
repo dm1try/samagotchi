@@ -8,11 +8,20 @@ const view = (over = {}) => ({ pending: false, items: [
   { id: "O3", text: "Dropped one", status: "dropped" },
 ], ...over });
 
-function strip() {
+function strip({ running = false, sendLine = async () => {}, failed = () => {} } = {}) {
+  document.getElementById("objectivesPanel")?.remove();
   const el = document.createElement("div");
   el.hidden = true;
-  return { el, control: createObjectivesStrip({ el }) };
+  document.body.appendChild(el);
+  const lines = [];
+  const control = createObjectivesStrip({
+    el, session: () => "s1", running: () => running, failed,
+    sendLine: (line) => { lines.push(line); return sendLine(line); },
+  });
+  return { el, control, lines, pop: () => document.getElementById("objectivesPanel") };
 }
+
+const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
 
 test("no list: the strip stays hidden and empty", () => {
   const { el, control } = strip();
@@ -31,4 +40,53 @@ test("a list shows active first, without the dropped one, with its count, and an
   assert.equal(el.querySelector(".obj-count").textContent, "1/1");
   control.reset();
   assert.equal(el.hidden, true);
+});
+
+test("a chip opens the edit list; done, drop and undo post their lines", async () => {
+  const { el, control, lines, pop } = strip();
+  control.seed(view());
+  el.querySelector('.obj-chip[data-id="O2"]').click();
+  assert.equal(pop().hidden, false);
+  pop().querySelector('[data-row="O2"] [data-obj-act="done"]').click();
+  await settle();
+  pop().querySelector('[data-row="O1"] [data-obj-act="undo"]').click();
+  await settle();
+  pop().querySelector('[data-row="O3"] [data-obj-act="undo"]').click();
+  await settle();
+  pop().querySelector('[data-row="O2"] [data-obj-act="drop"]').click();
+  assert.deepEqual(lines, ["/objectives done O2", "/objectives undo O1", "/objectives undo O3", "/objectives drop O2"]);
+  control.reset();
+  assert.equal(pop().hidden, true);
+});
+
+test("a tap on the text edits it; Esc takes the edit back, Save posts it", async () => {
+  const { el, control, lines, pop } = strip();
+  control.seed(view());
+  el.querySelector(".obj-edit").click();
+  pop().querySelector('[data-row="O2"] .obj-row-text').click();
+  const input = pop().querySelector('form[data-id="O2"] input');
+  assert.equal(input.value, "Stops before checkout");
+  input.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+  assert.equal(pop().querySelector('form[data-id="O2"]'), null);
+  assert.equal(pop().hidden, false);
+  pop().querySelector('[data-row="O2"] .obj-row-text').click();
+  pop().querySelector('form[data-id="O2"] input').value = "Stops at the cart";
+  pop().querySelector('form[data-id="O2"]').dispatchEvent(new window.Event("submit", { bubbles: true, cancelable: true }));
+  await settle();
+  assert.deepEqual(lines, ["/objectives edit O2 Stops at the cart"]);
+  control.reset();
+});
+
+test("a waiting edit shows on the strip and in the list; a refused post reaches failed", async () => {
+  const errors = [];
+  const { el, control, pop } = strip({ running: true, sendLine: async () => { throw new Error("no"); }, failed: (e) => errors.push(e.message) });
+  control.seed(view({ pending: true }));
+  assert.equal(el.querySelector(".obj-waiting").textContent, "Applies after this turn");
+  el.querySelector(".obj-edit").click();
+  assert.equal(pop().querySelector(".obj-note").textContent, "Applies after this turn");
+  pop().querySelector('[data-row="O2"] [data-obj-act="done"]').click();
+  await settle();
+  await settle();
+  assert.deepEqual(errors, ["no"]);
+  control.reset();
 });

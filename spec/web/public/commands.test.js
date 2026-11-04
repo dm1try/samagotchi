@@ -1,7 +1,7 @@
 import "./dom_shim.js";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { applyConfirm, drawCommandBubble, keptCommandBubbles, restoreCommandBubbles } from "../../../lib/samagotchi/web/public/commands.js";
+import { applyConfirm, commandView, drawCommandBubble, keptCommandBubbles, restoreCommandBubbles } from "../../../lib/samagotchi/web/public/commands.js";
 
 function bubble(view, keptFor = null) {
   const div = document.createElement("div");
@@ -74,4 +74,13 @@ test("keptCommandBubbles keeps this session's finished page-only bubbles; restor
   history.insertAdjacentHTML("afterbegin", '<div class="hint">Loading…</div>');
   restoreCommandBubbles(history, kept);
   assert.deepEqual([...history.children].map((el) => el.className), ["bubble user", "bubble command", "bubble user"]);
+});
+
+test("a tap's /objectives edit shows no bubble, unless it was refused", () => {
+  const ran = { line: "/objectives done O1", output: "objectives:\n  O1 [done] A", card: true, status: "ok" };
+  assert.equal(commandView(ran, "me").hidden, true);
+  assert.equal(commandView({ ...ran, status: "error", output: "no objective O1" }, "me").hidden, false);
+  // Typed, it answers as it always did; another card's action with words too.
+  assert.equal(commandView({ ...ran, card: false }, "me").hidden, false);
+  assert.equal(commandView({ ...ran, line: "/going" }, "me").hidden, false);
 });

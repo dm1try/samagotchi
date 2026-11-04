@@ -259,4 +259,37 @@ RSpec.describe Samagotchi::ObjectivesCommand do
       expect(note[:text]).to eq("O1 Two coffees\nO2 [done] Stops before checkout")
     end
   end
+
+  describe "edit" do
+    before { command.run("set A | B (done when: x)") }
+
+    it "gives an objective a new text, keeping its id and status, with a new done-when or none" do
+      command.run("done O1")
+      expect(command.run("edit o1 New A").last).to eq(:ok)
+      command.run("edit O2 New B (done when: y)")
+      list = Samagotchi::Objectives.pending_payload(session_dir)
+      expect(list["items"]).to eq([{ "id" => "O1", "text" => "New A", "status" => "done" },
+                                   { "id" => "O2", "text" => "New B", "status" => "active", "done_when" => "y" }])
+    end
+
+    it "keeps the whole line as the text, a | too" do
+      command.run("edit O1 one | two")
+      expect(Samagotchi::Objectives.pending_payload(session_dir)["items"].first["text"]).to eq("one | two")
+    end
+
+    it "refuses an unknown id and a line with no text" do
+      expect(command.run("edit O9 x")).to eq(["no objective O9", :error])
+      expect(command.run("edit O1").last).to eq(:error)
+      expect(command.run("edit O1 (done when: y)").last).to eq(:error)
+    end
+  end
+
+  it "announces the list after an edit, and only after one" do
+    command.run("set A")
+    expect(engine.announced).to eq(session)
+    engine.announced = nil
+    command.run("")
+    command.run("done O9")
+    expect(engine.announced).to be_nil
+  end
 end

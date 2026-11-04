@@ -17,3 +17,29 @@
 .bubble.note.objectives-entry.change{flex-wrap:nowrap;gap:10px;color:var(--text-muted);font-size:13px}
 .obj-rule{flex:1 1 16px;min-width:16px;height:1px;background:var(--border-strong)}
 .obj-change{min-width:0;text-align:center;overflow-wrap:anywhere}
+/* The strip's chips open the edit list. */
+button.obj-chip{cursor:pointer;font:inherit;font-size:13px;line-height:1.4;text-align:left}
+@media(hover:hover){button.obj-chip:hover:not(:disabled){filter:none;border-color:var(--accent)}}
+.obj-edit{flex:none;background:transparent;color:var(--text-muted);padding:3px 8px;font-size:12px}
+@media(hover:hover){.obj-edit:hover:not(:disabled){filter:none;color:var(--text-bright)}}
+.obj-waiting{flex:none;color:var(--warn-text);font-size:12px}
+/* The edit list (chip_popover.js's shell, .ctx-popover; a bottom sheet on a phone). */
+.obj-panel{display:flex;flex-direction:column;gap:10px;overflow:auto}
+.obj-rows{display:flex;flex-direction:column;gap:2px}
+.obj-row{display:flex;align-items:flex-start;gap:8px;padding:6px 0;border-top:1px solid var(--border)}
+.obj-row:first-child{border-top:0}
+.obj-row .obj-id{padding-top:3px}
+.obj-row-main{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.obj-row-text{display:block;width:100%;padding:2px 0;background:transparent;color:var(--text);text-align:left;font-size:14px;line-height:1.4;border-radius:4px;white-space:normal;overflow-wrap:anywhere}
+@media(hover:hover){.obj-row-text:hover:not(:disabled){filter:none;text-decoration:underline dotted var(--text-muted)}}
+.obj-row.done .obj-row-text{color:var(--text-muted)}
+.obj-row.dropped .obj-row-text{color:var(--text-faint);text-decoration:line-through}
+.obj-row.done .obj-id,.obj-row.dropped .obj-id{color:var(--text-muted)}
+.obj-row-sub{display:flex;flex-direction:column;gap:1px;color:var(--text-muted);font-size:12px;overflow-wrap:anywhere}
+.obj-row-acts{flex:none;display:flex;gap:4px}
+.obj-act{padding:3px 10px;font-size:12px;border-radius:6px}
+.obj-act.ghost{background:var(--bg-raised);color:var(--text-2)}
+form.obj-row{align-items:center}
+.obj-input{flex:1;min-width:0;padding:5px 8px;border-radius:6px;border:1px solid var(--border-strong);background:var(--bg-inset);color:var(--text);font-size:14px}
+.obj-add{display:flex;gap:6px;align-items:center}
+.obj-note{color:var(--text-muted);font-size:12px}

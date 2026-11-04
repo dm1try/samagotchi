@@ -6,14 +6,14 @@ require_relative "objectives"
 module Samagotchi
   # /objectives: with no arguments the session's list (Objectives), each
   # objective's latest move under it (the model's objectives tool; a move
-  # changes nothing); `set`, `add`, `done` and `drop` edit it. An edit is a
+  # changes nothing); `set`, `add`, `edit`, `done`, `drop` and `undo` edit it. An edit is a
   # whole new list in a note file (NoteDelivery, with its refusal of a chi REPL's session), so it is
   # safe from any thread, a turn running or not: it goes into the conversation
   # at the worker's next pass between turns, and a second edit stacks on an
   # unabsorbed first. Nothing here saves the session.
   class ObjectivesCommand
     NAME = "/objectives"
-    USAGE = "usage: #{NAME} [set A | B | add TEXT | done ID… | drop ID… | undo ID…] " \
+    USAGE = "usage: #{NAME} [set A | B | add TEXT | edit ID TEXT | done ID… | drop ID… | undo ID…] " \
             "(a text may end \"(done when: …)\"; lines work as | does)".freeze
     NONE = "no objectives; #{NAME} set A | B sets them".freeze
     BETWEEN_TURNS = "(an edit goes into the conversation between turns)"
@@ -61,6 +61,7 @@ module Samagotchi
         return nil if entries.nil? || entries.empty?
 
         verb == "set" ? list.set(entries) : entries.reduce(list) { |so_far, e| so_far.add(e[:text], done_when: e[:done_when]) }
+      when "edit" then reword(list, rest)
       when *MARKS.keys then mark(list, MARKS.fetch(verb), rest)
       end
     end
@@ -78,6 +79,18 @@ module Samagotchi
       end
 
       ids.reduce(list) { |so_far, id| so_far.mark(id, status) }
+    end
+
+    # The objective's new text: the whole rest of the line, a | too.
+    def reword(list, rest)
+      id, text = rest.strip.split(/\s+/, 2)
+      entry = text && entry_of(text.gsub(/[[:space:]]+/, " ").strip)
+      return nil unless entry
+
+      id = id.upcase
+      return "no objective #{id}" unless list.find(id)
+
+      list.reword(id, entry[:text], done_when: entry[:done_when])
     end
 
     # One {text:, done_when:} per line or |-part, any whitespace collapsed
