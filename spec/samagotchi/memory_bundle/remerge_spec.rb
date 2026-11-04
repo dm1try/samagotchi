@@ -235,6 +235,17 @@ RSpec.describe Samagotchi::MemoryBundle::Remerge do
       expect(entry).not_to have_key(:conflict)
     end
 
+    it "settles one that already holds the bundle's change, with no claim of a merge" do
+      both = doc(intro: "my intro", tail: "tail two")
+      marked_at_two(mine: both, shipped: doc(tail: "tail two"))
+      result = remerge
+
+      expect(result).to have_attributes(merged: [], settled: ["a.md"], trash_copy: nil)
+      expect(File.read(target)).to eq(both)
+      expect(entry).not_to have_key(:conflict)
+      expect(base).to eq(doc(tail: "tail two"))
+    end
+
     it "leaves one equal to its base for the next upgrade, which saves it first" do
       marked_at_two(mine: doc, shipped: doc(tail: "tail two"))
       result = remerge

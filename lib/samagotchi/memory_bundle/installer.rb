@@ -380,7 +380,7 @@ module Samagotchi
           FileUtils.cp(file_path, target_path)
           @results[file_key] = { status: "updated", reason: "auto-merged (not edited)" }
         when :keep
-          @results[file_key] = { status: "kept", reason: "bundle unchanged, local edits preserved" }
+          @results[file_key] = { status: "kept", reason: outcome == Merger::KEEP ? "bundle unchanged, local edits preserved" : "local edits already hold the bundle's changes" }
         when :noop
           @results[file_key] = { status: "skipped", reason: "already up to date" }
         when :merged

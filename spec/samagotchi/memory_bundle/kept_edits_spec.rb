@@ -132,14 +132,19 @@ RSpec.describe "Kept edits in a bundle" do
       expect(up.summary).to include("Copied to the trash first: a.md (#{up.trash_dir})")
     end
 
-    it "copies nothing when the merge leaves the text as it is" do
+    it "keeps a file that already holds the bundle's change, with no claim of a merge, and moves its base" do
       both = doc(intro: "my intro", tail: "tail two")
       File.write(target, both)
       up = run_installer(write_source("2.0.0", { "a.md" => doc(tail: "tail two") }), upgrade: true)
 
-      expect(up.results["a.md"][:status]).to eq("merged")
+      expect(up.results["a.md"]).to eq(status: "kept", reason: "local edits already hold the bundle's changes")
+      expect(up.merged_files).to be_empty
       expect(trash_files).to be_empty
+      expect(File.read(target)).to eq(both)
       expect(File.read(provenance.base_path("a.md"))).to eq(doc(tail: "tail two"))
+
+      dry = run_installer(write_source("3.0.0", { "a.md" => doc(tail: "tail two") }), upgrade: true, dry_run: true)
+      expect(dry.summary).to include("Kept (local edits preserved): a.md")
     end
 
     it "writes through a symlink, keeping the link and its target's mode" do

@@ -25,7 +25,8 @@ module Samagotchi
     #     the digest. A mark whose digest matches is tried on every run, since
     #     the user's file or git may have changed;
     #   - merged: replaced as the Installer does, base the incoming file;
-    #   - noop, keep: the file has nothing left to miss, so the mark goes;
+    #   - noop, keep (a merge that adds nothing too): the file has nothing left
+    #     to miss, so the mark goes;
     #   - conflict: nothing changes but that digest, and nothing is said;
     #   - fast_forward, install: the next upgrade's (save_marked_file, a restore);
     #   - one it can't read or replace: left as it is, and a note says why.
@@ -84,7 +85,7 @@ module Samagotchi
         outcome = view.outcome(key)
         if outcome.merged? then merge_file(key, outcome)
         elsif outcome.conflict? then @stamped[key] = incoming_sha unless entry[:incoming_sha]
-        elsif [Merger::NOOP, Merger::KEEP].include?(outcome) then @settled << key
+        elsif %i[noop keep].include?(outcome.status) then @settled << key
         end
       rescue SystemCallError => e
         @notes << "#{key}: left as it is (#{e.message})"

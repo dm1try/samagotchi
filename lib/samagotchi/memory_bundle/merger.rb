@@ -52,6 +52,9 @@ module Samagotchi
       # Nothing to take: the bundle has no such file, so whatever is on disk
       # (the user's text, perhaps) must not become the base. A noop to callers.
       NO_INCOMING = Outcome.new(status: :noop, base: :recorded)
+      # Both changed it, and the text merge adds nothing: the user's file already
+      # has what the bundle brings. Kept, but the base moves on. (Upgrade#outcome)
+      ALREADY_MERGED = Outcome.new(status: :keep, base: :incoming)
 
       # What an upgrade would do to the files asked about, by what callers say
       # of them.
@@ -142,6 +145,7 @@ module Samagotchi
         ours = File.binread(sides[:current])
         result = TextMerge.merge(base: File.binread(sides[:base]), ours: ours, theirs: File.binread(sides[:incoming]))
         return CONFLICT.with(merge: result) unless result.clean?
+        return ALREADY_MERGED if result.text.b == ours.b
 
         Outcome.new(status: :merged, base: :incoming, merge: result, current_sha: Digest::SHA256.hexdigest(ours))
       end
@@ -149,17 +153,14 @@ module Samagotchi
       # A :merged outcome's text goes in +path+, unless the file changed since
       # the merge read it (a live memory_write): a last check just before the
       # rename, so that write isn't lost. Through a symlink, its mode kept, the
-      # old file copied to +trash+ first (not when the text is what it has).
+      # old file copied to +trash+ first.
       # @return [Boolean] false: the file changed, nothing was replaced
       def self.write_merged(path, outcome, trash)
         return false unless digest(path) == outcome.current_sha
 
-        text = outcome.merge.text
-        return true if Digest::SHA256.hexdigest(text) == outcome.current_sha
-
         real = File.realpath(path)
         trash.copy(path)
-        AtomicFile.write(real, text, perm: File.stat(real).mode & 0o7777) do
+        AtomicFile.write(real, outcome.merge.text, perm: File.stat(real).mode & 0o7777) do
           raise ChangedDuringMerge unless digest(real) == outcome.current_sha
         end
         true
