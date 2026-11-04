@@ -356,6 +356,7 @@ module Samagotchi
           FileUtils.cp(file_path, target_path)
           @results[file_key] = { status: "installed" }
         when :fast_forward
+          save_marked_file(file_key, target_path)
           FileUtils.cp(file_path, target_path)
           @results[file_key] = { status: "updated", reason: "auto-merged (not edited)" }
         when :keep
@@ -368,6 +369,17 @@ module Samagotchi
           @warnings << "Conflict in #{file_key}: local edits conflict with bundle update (use --force to overwrite or resolve interactively)"
         end
         update_target_index(@target_scope, target_path, file_key)
+      end
+
+      # A file marked conflict that equals its base: the base may be the user's
+      # own text (0.149 took it for a file with no base, and a downgrade writes
+      # that again), so a fast-forward would destroy it. Copied, and said; one
+      # really put back by hand only gets a spare copy.
+      def save_marked_file(file_key, target_path)
+        return unless @existing.files.dig(file_key, :conflict)
+
+        @trash.copy(target_path)
+        @warnings << "#{file_key} was marked as kept but matched its recorded base, so it took the update; your copy is in the trash"
       end
 
       # A dry run's verdict for one file, nothing written: an upgrade

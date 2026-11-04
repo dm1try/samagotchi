@@ -87,7 +87,7 @@ The order matters: warnings print in it, and a plugin/script the manifest names 
    `#source_change` (the summary's first line, `Source changes: old → new`). A source `SourceIdentity` can't place
    (an older record's relative path) never refuses.
 3. `install_memories`, per memory (`MemoryFiles.select`: a non-empty `files:` list, else every top-level `*.md` but
-   README, CHANGELOG, LICENSE and the like; a listed name not shipped warns; a symlink is skipped with a warning): an upgrade 3-way merges the files the bundle owns (`merge_memory`), a dry run only
+   README, CHANGELOG, LICENSE and the like; a listed name not shipped warns; a symlink is skipped with a warning): an upgrade 3-way merges the files the bundle owns (`merge_memory`; a fast-forward over an entry marked `conflict` copies the file to the trash first, since 0.149 could leave the user's text as that base: `save_marked_file`), a dry run only
    classifies (`preview_memory`), a plain install writes new files and skips existing ones (`skip_existing`), and `--force` overwrites, a file that
    differs copied to the trash first (`Trash#copy`, said by `#trash_copy_line`; a profile's in `InstallResult#trash_copies`). A
    same-name file the bundle didn't write is the user's: skipped and never recorded (`@owned`). Model overlays

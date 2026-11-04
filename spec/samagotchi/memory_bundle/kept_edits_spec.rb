@@ -9,6 +9,7 @@ require "stringio"
 require "samagotchi/bundle_command"
 require "samagotchi/terminal_ui"
 require "samagotchi/memory_bundle/installer"
+require "samagotchi/memory_bundle/uninstaller"
 
 # What an install or upgrade may never do to an edit: lose it, or bury the
 # miss. (Trash#copy itself: trash_spec.rb.)
@@ -411,4 +412,53 @@ RSpec.describe "Kept edits in a bundle" do
       expect(provenance.read[:files]).not_to have_key(:"x.md")
     end
   end
+
+  describe "a conflict-marked record whose base is the user's file" do
+    # What 0.149 left for an edit with no base, or a downgrade recreates.
+    before do
+      write_source("1.0.0")
+      run_installer
+      File.write(target, "edited\n")
+      provenance.write(files: { "a.md" => target }, scope: "system", version: "2.0.0", source_path: source, conflicts: ["a.md"])
+    end
+
+    it "copies the file to the trash before the fast-forward, and says so" do
+      up = run_installer(write_source("3.0.0"), upgrade: true)
+
+      expect(trash_files).to eq("a.md" => "edited\n")
+      expect(File.read(target)).to eq("v3.0.0\n")
+      expect(up.summary).to include("Copied to the trash first: a.md (#{up.trash_dir})")
+      expect(up.warnings).to include(a_string_including("a.md was marked as kept", "your copy is in the trash"))
+      expect(provenance.read[:files][:"a.md"]).not_to include(:conflict)
+      expect(File.read(provenance.base_path("a.md"))).to eq("v3.0.0\n")
+    end
+
+    it "copies nothing when the mark is gone: an unmarked record like this can't be told from an unedited file" do
+      provenance.write(files: { "a.md" => target }, scope: "system", version: "2.0.0", source_path: source)
+      run_installer(write_source("3.0.0"), upgrade: true)
+
+      expect(trash_files).to be_empty
+    end
+  end
+
+  # A bundle with a memory, a hook, a rule, a plugin and a script.
+  def full_source(version, memory: true)
+    write_source(version, memory ? { "a.md" => "same\n" } : {})
+    { "hooks/h.rb" => "# hook\n", "guardrails/r.yml" => "# rule\n", "plugin.rb" => "# plugin\n", "scripts/s.sh" => "# script\n" }.each do |file, text|
+      FileUtils.mkdir_p(File.dirname(File.join(source, file)))
+      File.write(File.join(source, file), "#{text.chomp} #{version}\n")
+    end
+    manifest = YAML.safe_load_file(File.join(source, "manifest.yml"))
+    manifest.merge!("hooks" => { "h.rb" => { "event" => "after_turn", "on_error" => "log" } },
+                    "plugin" => { "file" => "plugin.rb", "sha256" => "" }, "scripts" => { "s.sh" => { "sha256" => "" } })
+    File.write(File.join(source, "manifest.yml"), YAML.dump(manifest))
+    source
+  end
+
+  def installed_assets
+    { "hooks/h.rb" => File.join(provenance.hooks_dir, "h.rb"), "guardrails/r.yml" => File.join(provenance.guardrails_dir, "r.yml"),
+      "plugin/plugin.rb" => File.join(provenance.plugin_dir, "plugin.rb"), "scripts/s.sh" => File.join(provenance.scripts_dir, "s.sh") }
+  end
+
+  def uninstall(**opts) = Samagotchi::MemoryBundle::Uninstaller.new(name: "demo", **opts).tap(&:run)
 end
