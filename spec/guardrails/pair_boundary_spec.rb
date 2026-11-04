@@ -7,6 +7,7 @@ require "samagotchi/guardrail_wiring"
 require "samagotchi/session"
 require "samagotchi/web/running"
 require "samagotchi/tools/builtins"
+require "support/hard_link"
 
 # Every example runs with HOME in a temp dir: nothing here may touch the
 # real ~/.ssh or dotfiles.
@@ -650,7 +651,7 @@ RSpec.describe Samagotchi::Guardrails::PairBoundary do
     it "asks for a tmp path that lands elsewhere: a dangling symlink, a file with another hard link" do
       dir = Dir.mktmpdir("pair-tmp", tmp)
       File.symlink(File.join(home, "other", "new.txt"), File.join(dir, "dangle"))
-      File.link(File.join(home, "other", "notes.md"), File.join(dir, "hard"))
+      hard_link(File.join(home, "other", "notes.md"), File.join(dir, "hard"))
       [File.join(dir, "dangle"), File.join(dir, "hard")].each do |path|
         expect(verdict_for({ name: "write", path: path, content: "x" })).to be_ask, path
         expect(asks?("echo hi > #{path}")).to be(true), path

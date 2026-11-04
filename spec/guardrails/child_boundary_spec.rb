@@ -6,6 +6,7 @@ require "open3"
 require "samagotchi/guardrails"
 require "samagotchi/guardrail_wiring"
 require "samagotchi/tools/memory"
+require "support/hard_link"
 
 RSpec.describe Samagotchi::Guardrails::ChildBoundary do
   # A tmp repository: main (the main checkout), with linked worktrees
@@ -87,11 +88,11 @@ RSpec.describe Samagotchi::Guardrails::ChildBoundary do
     it "asks for a write through a dangling symlink or onto a hard link, in a tmp dir or its folder" do
       tmp = Samagotchi::Guardrails::Outside.tmp_roots.find { |dir| !base.start_with?(File.join(dir, "")) }
       File.symlink(File.join(main, "other.txt"), File.join(child, "dangling"))
-      File.link(File.join(main, "a.txt"), File.join(child, "hard"))
+      hard_link(File.join(main, "a.txt"), File.join(child, "hard"))
       if tmp
         box = Dir.mktmpdir("child-boundary-links", tmp)
         File.symlink(File.join(main, "new.txt"), File.join(box, "dangling"))
-        File.link(File.join(main, "a.txt"), File.join(box, "hard"))
+        hard_link(File.join(main, "a.txt"), File.join(box, "hard"))
         expect(verdict_for(name: "write", path: File.join(box, "dangling"), content: "x")).to be_ask
         expect(verdict_for(name: "edit", path: File.join(box, "hard"), old_string: "a", new_string: "b")).to be_ask
         expect(verdict_for(name: "write", path: File.join(box, "plain.txt"), content: "x")).to be_allow
@@ -212,7 +213,7 @@ RSpec.describe Samagotchi::Guardrails::ChildBoundary do
         FileUtils.mkdir_p(out)
         File.symlink(File.join(main, "a.txt"), File.join(out, "a.txt"))
         File.symlink(File.join(main, "new.txt"), File.join(out, "dangling"))
-        File.link(File.join(main, "a.txt"), File.join(out, "hard"))
+        hard_link(File.join(main, "a.txt"), File.join(out, "hard"))
         File.symlink(main, File.join(out, "dir"))
         expect(run("cat #{main}/a.txt > #{out}/a.txt")).to be_ask
         expect(run("cat #{main}/a.txt > #{out}/dangling")).to be_ask
