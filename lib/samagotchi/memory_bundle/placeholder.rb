@@ -25,7 +25,8 @@ module Samagotchi
       private
 
       def extract_placeholders(content)
-        content.scan(PLACEHOLDER_RE).flatten
+        # A memory may hold bytes that aren't UTF-8: a hint must not fail an install.
+        content.scrub.scan(PLACEHOLDER_RE).flatten
       end
     end
   end

@@ -183,6 +183,18 @@ RSpec.describe "Kept edits in a bundle" do
       expect(Dir.glob(File.join(memories, "*.tmp"))).to be_empty
     end
 
+    it "merges a file that isn't valid UTF-8, reports it, and the next upgrade works too" do
+      latin = doc(intro: "caf\xE9 intro".b).b
+      File.binwrite(target, latin)
+      up = run_installer(write_source("2.0.0", { "a.md" => doc(tail: "tail two") }), upgrade: true)
+
+      expect(up.merged_files).to eq(["a.md"])
+      expect(up.summary).to include("Merged: a.md")
+      expect(File.binread(target)).to eq(doc(intro: "caf\xE9 intro".b, tail: "tail two").b)
+      expect(run_installer(write_source("3.0.0", { "a.md" => doc(tail: "tail three") }), upgrade: true).merged_files).to eq(["a.md"])
+      expect(provenance.read[:version]).to eq("3.0.0")
+    end
+
     it "says would merge in a dry run, and writes nothing" do
       dry = run_installer(write_source("2.0.0", { "a.md" => doc(tail: "tail two") }), upgrade: true, dry_run: true)
 
