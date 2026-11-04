@@ -199,11 +199,66 @@ worker that restarts forgets a shown card, which then stays as it is: it has no 
 
 A card with no actions writes no `pending_card.json`, so it never reaches `Web::Push::Attention`.
 
+## Check this
+
+`/objectives check O2` and the list's **Check this** (an objective with a move, the one route) run `ObjectivesCheck.run` on the
+anytime command's own thread: one side request (`Engine#ask_objective_check`, on `ask_side_model`) reads the objective's latest
+move against the session's record, and the answer is a verdict with reasons. Information only: no status changes, it is
+never an approval, no coordinator path reads it, and nothing enters the conversation or the next request.
+
+**Why not a `VerifyFresh` child.** The plan said "VerifyFresh-like, fit unchecked". It fits poorly:
+
+- `VerifyFresh.start` starts from a saved unclear verdict and its `VerifyAnchor`, a quote of at most 200 characters that
+  `verify_anchor_source_session` holds against the parent's text. A move has neither, and a faked one would land in `session.verdicts`.
+- A child is an agent on the session's model with the owner's tools: an unknown number of requests, approvals waiting
+  on the child, a place in `session.max_children` and in the session lists, and its spend outside the parent's line.
+  Keeping it read-only and out of the delegate paths (`ChildRing`, `ChildrenStatus`) needs a new session field.
+
+The side request costs exactly one request, shows in the session's side line (kind `objectives`) and comes out with one
+file. What it gives up: **it can't open a file or run anything.** It reads what the session saw, so a claim that nothing in
+the record settles is `unclear`, and a file changed since isn't seen. If that turns out too weak, a read-only child is the
+next step, and the file and view below can stay.
+
+**Independence.** The request (`ObjectivesCheck.request`) has its own system text and no tools. Its record is what people and
+notes said and what tools returned (`.record`, each entry cut at 1,500 characters, the newest 24,000 kept). It never holds the
+agent's prose, the system prompt, the list's notes, a continue's carry note, which holds the agent's last answer
+(`Objectives.outside_note?`, the rule the audit shares), or the objectives tool's calls, since a move isn't evidence for itself.
+Note and evidence are capped at 1,000 characters each. Mid-turn it reads the loop's conversation (`Engine#live_conversation`), the running turn's runs too.
+
+**Its frame.** The claim and the record sit between `<record-RANDOM>` tags made per request, so tool output printing a closing tag
+stays inside; the request says that what's inside is data and its instructions aren't to be followed. No model is needed for
+the frame to hold; a model may still be swayed by text inside it, which is why a verdict is information only.
+
+**Its host.** The model is the session's, or `objectives.check_model`, whose host may be another one. The whole user text goes through
+`Web::ParticipantView::Redact.text`, chi's participant redaction: known key shapes and `token=`-style values become `[redacted]`, and
+the home folder `~`. That is by pattern, so a secret of another shape still goes.
+
+**State.** `objective_checks.jsonl` beside the session: a `running` line, then one with `verdict` (confirmed, refuted, unclear,
+`no_answer`), `reason`, `text`, `model` and `mark`: a digest of the item's line as sent and the move itself (`Move#ref`, its run's
+id and its model entry's time, with its words). The start is under `Objectives.with_lock`, so a double tap or a second tab answers "already
+being checked" and asks nothing. A running line stops counting once its worker's pid is gone, so a kill, a shutdown or a restart frees
+the next check at once, and past `RUNNING_SECONDS` in any case. `Objectives.view` puts the last check on its item (`check`), only while `mark`
+matches: a reword, a status change or a newer move, in the same words too, offers the check again. A running check carries `until`, because no event says
+its worker died: the strip lets the row go at that time (`armExpiry`), and a reconnect's session read clears it sooner. `announce_objectives` carries the start and the end. A continue doesn't carry it.
+
+**Shown as** a card with no actions (`source: objectives`, on the command's thread, so `anytime` and not in a turn's block, and it
+writes no `pending_card.json`, so no push), the list's row, and `check:` under the move in `/objectives`. A model that fails is
+`no_answer`: logged (`objectives_check_failed`), an info card saying so, and the next tap may try again.
+
+**Limits.** Refused during a participant's turn, whose text stays out of a side request; one ending during their turn is still the owner's (`Engine#side_author`). A participant can't reach it: the
+command route is the owner's, and `card` and `objectives_updated` are in `ParticipantView::DROPPED`. A move made in the running
+turn isn't on the page until the turn's end (`announce_objectives`), so its tap waits for that; the typed line works at once.
+
+## System 1 in audit
+
+`ObjectivesAudit`, off unless `objectives.system_one: audit`. See [system-one.md](../system-one.md#objectives-in-audit).
+
 ## Not in this version
 
-Stable-prompt lines aren't here, and terminals have no picture: they keep `/objectives`. Checks (P5) come later.
+Stable-prompt lines aren't here, and terminals have no picture: they keep `/objectives`.
 
 Taking it out: old notes stay readable framed bubbles and keep being sent, and the key is ignored. Old `objectives` calls
 stay as history; with a kit no longer declaring the tool, they are ordinary saved calls. The card's bundle uninstalls. The
 page's pieces are the `objectives_*.js` modules and `objectives.css`, wired in a few lines of `app.js`; without them a list note
-falls back to the default bubble once `noteBubbleTemplate`'s first line goes.
+falls back to the default bubble once `noteBubbleTemplate`'s first line goes. Check this is `objectives_check.rb`, its line in the command and
+the `check` key; the audit is `objectives_audit.rb` and three calls in `Engine`. Old `objective_checks.jsonl` files and saved runs are then read by nothing.

@@ -1,5 +1,7 @@
 // Happy paths of the web UI against a scripted fake model (support/scripts).
 // Assertions are on page state only; every wait is on the DOM, no sleeps.
+import fs from "node:fs";
+import path from "node:path";
 import { test, expect } from "./support/fixtures.js";
 import { PROMPT_LINE_PX } from "../../lib/samagotchi/web/public/composer_size.js";
 import { expectNoHorizontalOverflow } from "./support/layout.js";
@@ -1791,6 +1793,34 @@ test("a step whose stream drops mid-answer is asked again: the partial goes live
   await page.reload();
   await turnEnded(page, 1);
   await expect(page.locator("#history .bubble.output")).toHaveText(answer);
+});
+
+test("objectives: Check this shows a verdict and leaves the conversation alone", async ({ page, script, chi }) => {
+  script("objectives_check");
+  fs.rmSync(path.join(chi.dirs.fake, "objectives_check_go"), { force: true });
+  await send(page, "Hello");
+  await turnEnded(page, 1);
+  await page.locator("#prompt").fill("/objectives set Print it");
+  await page.locator("#actionBtn").click();
+  await expect(page.locator("#objectivesStrip .obj-chip")).toHaveCount(1);
+  await expect(page.locator(`${H} .objectives-entry .obj-pill`)).toHaveCount(1);
+  await send(page, "Go");
+  await turnEnded(page, 2);
+  const id = page.url().split("/s/")[1];
+  const messages = async () => (await (await page.request.get(`${chi.baseURL}/api/sessions/${id}`)).json()).messages;
+  const before = await messages();
+  await page.locator("#objectivesStrip .obj-chip").click();
+  const row = page.locator('#objectivesPanel [data-row="O1"]');
+  await row.locator('[data-obj-act="check"]').click();
+  await expect(row.locator(".obj-check")).toHaveText("Checking…");
+  await expect(row.locator('[data-obj-act="check"]')).toBeDisabled();
+  fs.writeFileSync(path.join(chi.dirs.fake, "objectives_check_go"), "");
+  await expect(row.locator(".obj-check")).toHaveText("Check: confirmed — the record shows it");
+  await page.keyboard.press("Escape");
+  await expect(page.locator(".plugin-card", { hasText: "O1: confirmed" })).toHaveCount(1);
+  // No status moved, nothing went in.
+  await expect(page.locator("#objectivesStrip .obj-count")).toHaveText("0/1");
+  expect(await messages()).toEqual(before);
 });
 
 test("objectives: a tap edits the list with no message, at once idle and after the turn mid-turn", async ({ page, script }) => {

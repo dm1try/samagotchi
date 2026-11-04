@@ -85,7 +85,7 @@ reference); a subcommand's class is `XCommand` under `lib/samagotchi/` (`chi hom
 - Attached context (`chi context`, refreshed outside text) → `docs/context.md`; the mechanism (`ContextSources`, poller, absorber, candidates, judge, `ContextMove`, `left.json`) → `docs/internals/attached-context.md`
 - The web's working set (stamps, `WorkingSet`, `:working_set_updated`, the overlay) → `docs/internals/working-set.md`
 - The web frontend (where page state lives, write → redraw, render idioms, stale-answer guards, storage, streams) → `docs/internals/web-frontend.md`
-- Session objectives (`Objectives`, `/objectives`, the note entry, the continue copy) → `docs/internals/objectives.md`
+- Session objectives (`Objectives`, `/objectives`, the note entry, the continue copy, `ObjectivesCheck`, `ObjectivesAudit`) → `docs/internals/objectives.md`
 - Task tools (`task_create`/`task_wait`…) → `docs/internals/background-tasks.md`
 - read/execute limits (size, timeout, hand-over) → `docs/internals/tool-output-limits.md`; allow/ask/deny, approvals, rules → `docs/guardrails.md`
 - System 1, the approval judge (`lib/samagotchi/system_one/`, `GuardrailWiring#request_approval`, `chi guardrails replay`) → `docs/guardrails.md` (System 1)

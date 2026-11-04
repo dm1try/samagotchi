@@ -1,0 +1,12 @@
+{
+  "delay": 0.01,
+  "branches": [
+    {"when_last": "Does the record support", "iterations": [
+      {"hold_until": "objectives_check_go", "text": "The tool run printed it.\nVerdict: confirmed — the record shows it"}
+    ]}
+  ],
+  "iterations": [
+    {"text": "Recording.", "tools": [{"name": "objectives", "arguments": {"action": "move", "id": "O1", "note": "printed it", "evidence": ""}}]},
+    {"text": "Moved it."}
+  ]
+}

@@ -3,7 +3,7 @@
 System 1 is the cheap judgment model chi asks small questions: approvals
 ([guardrails.md](guardrails.md#system-1-experimental)), toolkit suggestions
 ([configuration.md](configuration.md#toolkits)), context candidates
-([context.md](context.md)) and bundles' own ([plugins.md](plugins.md#judgments-chijudgment-and-ctxjudge)). Each use keeps its own mode, gates and log. What they share is
+([context.md](context.md)), the objectives' audit ([below](#objectives-in-audit)) and bundles' own ([plugins.md](plugins.md#judgments-chijudgment-and-ctxjudge)). Each use keeps its own mode, gates and log. What they share is
 one host (`system_one.host`, `.model`, `.timeout_ms`) and one layer that saves every ask, so a later comparison or fine-tune has what
 was sent and what came of it. The runs don't leave the machine; a hosted System 1 host sees each state as it is asked.
 
@@ -20,6 +20,7 @@ one warn and never changes the answer. A use that needs the run's id at once pas
 | `approvals.allow` | `GuardrailWiring#system_one_judge` | gates, acted (the judgment line's decision), labels |
 | `toolkit.suggest` | `ToolkitSuggest.judge` | acted (the log's `did`), no labels |
 | `context.candidate` | `ContextJudge.ask` | labels |
+| `objectives.incoming`, `objectives.outgoing` | `ObjectivesAudit` | none: nothing acts on them |
 | `<bundle>.<name>` | `SystemOne::Judgments` (`ctx.judge`, `ctx.judge_later`) | the bundle's: labels, acted |
 
 Not saved: a toolkit warm-up (it goes straight to the backend), `chi guardrails replay`,
@@ -40,6 +41,21 @@ Core's uses keep their own threads (`ToolkitSuggest::Pending`, `ContextJudge`, t
 seam is common. A bundle's `judge_later` runs on the Engine's `SideJudgments` under its full name as the kind, so `SideJudgments#join`
 at shutdown covers it, and a run cut by that one-second limit is lost. Its asks stay out of the session's spend, as all of System 1's do, and no
 cost cap covers them on a hosted host.
+
+## Objectives in audit
+
+`objectives.system_one: audit` asks whether a message may affect an objective: one yes/no (`affects`) per active objective, each ask
+one request and one run. It is off by default, and asks only with a list that has an active objective, a `system_one.host` and saving on
+(`system_one.runs`). **Mode audit only:** there is no `on`. Nothing reads an answer: no card, no wake, no push, nothing in a prompt, and no turn. A
+per-message judge on an objective didn't work as a gate on the pod (AUC about .5 to .66), so these runs are there to look at, with `chi judgments report objectives.incoming`.
+
+- `objectives.incoming`: a person's message of the owner's of 40 characters or more at its turn's start (`TurnOrigin#human?`: not a reminder's or a delegate's prompt), not a `/` or `!` line, and a note going
+  into the conversation (not the list's own, nor a continue's carry note: `Objectives.outside_note?`). A steer isn't asked about.
+- `objectives.outgoing`: a finished answer of the owner's turn of 400 characters or more, not a cancelled or exhausted one.
+- The state: `objective` (its text and done-when, no id or status) and `message` (2000 characters: a message's head, an answer's tail).
+  **That text goes to the System 1 host**, a hosted one too, and into the run. A participant's turn, a review session and a scratch session are never asked about.
+- At most 6 objectives per message. Each direction has one ask running: what comes meanwhile is a run with `asked: false`, `skipped: busy`.
+- The asks run on `SideJudgments`' threads beside the turn, so a turn doesn't wait; on a one-slot server shared with the session's model, a request can still queue behind or ahead of them. They share `/v1/systemone` with approvals: on a slow one-slot host an approval can wait behind up to 2 in-flight asks and time out to the user. A failed ask is a run with its `failure` and one log line (`system_one_failed`), and a `--no-shared` REPL's stderr shows that line as for any System 1 ask.
 
 ## The store
 
