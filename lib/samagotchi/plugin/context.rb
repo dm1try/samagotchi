@@ -16,6 +16,8 @@ module Samagotchi
   # Context#saved_session reads it; Sessions and AttachedContext load it too.
   autoload :Session, File.expand_path("../session", __dir__)
   autoload :PluginSessionState, File.expand_path("../plugin_session_state", __dir__)
+  # Context#objectives reads it; the kit shouldn't carry its files.
+  autoload :Objectives, File.expand_path("../objectives", __dir__)
 
   module Plugin
     # Loaded on first ctx.sessions / ctx.context (or a bundle naming
@@ -73,7 +75,7 @@ module Samagotchi
                       :ask_model, :model_name, :model_key, :state_dir, :scratch, :setup, :prompt_files,
                       :steer, :stop_turn, :stop_generation, :frontend, :toolkit, :declared_tools, :use_toolkit, :load_tools,
                       :cancel_controller, :cost, :usage, :turn_author, :cache_confirm, :model_names,
-                      :candidate_proposed, :judgments, keyword_init: true)
+                      :candidate_proposed, :judgments, :turn_running, keyword_init: true)
 
     # ctx.ask_model failed: the model couldn't be reached, timed out, or
     # sent nothing usable. The message says why, for the user.
@@ -321,6 +323,11 @@ module Samagotchi
         Array(@host.messages.call).map { |message| message.dup.freeze }.freeze
       end
 
+      # Whether a turn runs now. Its :after_turn hooks run inside it, so a thread
+      # one of them starts can use this to wait for the end: a card shown before
+      # then belongs to that turn's block.
+      def turn_running? = !!@host.turn_running&.call
+
       # Whether #messages leaves out a running turn (the REPL mid-turn), so
       # a plugin can say what its answer is about.
       def messages_partial? = !!@host.messages_partial&.call
@@ -378,6 +385,19 @@ module Samagotchi
       # @raise [ArgumentError] no title, a bad level or action
       def card(title:, body: "", actions: [], level: :info, id: nil)
         @host.card.call(source: @bundle, title: title, body: body, actions: actions, level: level, id: id)
+      end
+
+      # The session's objectives (docs/internals/objectives.md), read now: the
+      # newest list the conversation holds, an edit not yet absorbed over it.
+      # Mid-turn a worker's conversation leaves the running turn's tool calls
+      # out, so a move shows at the turn's end.
+      # @return [Objectives::List] empty when the session has none (or there
+      #   is no session yet); use its methods, not its class
+      def objectives
+        id = session_id
+        return Objectives::List.new unless id
+
+        Objectives.current(id, messages, state_dir: @host.state_dir&.call || Session.default_state_dir)
       end
 
       # A side answer (plan D7): one request to the session's current model

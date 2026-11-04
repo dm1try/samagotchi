@@ -39,6 +39,7 @@ module Samagotchi
           notify: ->(text, level, label, fallback_for: nil) { recorder.notify(text, level, label, fallback_for) },
           ask_user: ->(question) { recorder.ask_user(question) },
           cancelled: -> { recorder[:cancelled] },
+          turn_running: -> { recorder[:running] },
           card: ->(**card) { recorder.card(**card) },
           ask_model: lambda { |request, timeout:, max_tokens:, cancel_controller:, model: nil, source: nil|
             recorder.ask_model(request, timeout: timeout, max_tokens: max_tokens, cancel_controller: cancel_controller,

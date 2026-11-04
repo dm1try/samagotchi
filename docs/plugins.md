@@ -850,10 +850,12 @@ full label, `plugin.rb (bundle my-bundle)`.
 | `ctx.messages` | the conversation, as a frozen copy, without the system prompt. While a turn runs, a session worker's (attached, web) adds that turn so far: its prompt, the model's text and the lines merged into it (no tool calls or thinking); the REPL's is the conversation before that turn. An entry may carry `at`, when it happened (docs/sessions.md, Message times) |
 | `ctx.messages_partial?` | whether `ctx.messages` leaves out a running turn (the REPL mid-turn), so a plugin can say what its answer is about |
 | `ctx.prompt_files` | the files whose text is in the session's system prompt now: the AGENTS.md chain (the work tree top down to the cwd) and the appended files (`append_system_prompt:`, `--append-system-prompt`); absolute paths, in prompt order, `[]` before the first build |
+| `ctx.objectives` | the session's [objectives](internals/objectives.md), read now, as a frozen value: `empty?`, `items` (each `id`, `text`, `status` `"active"`, `"done"` or `"dropped"`, `done_when`), `find(id)`, `text` (the lines the model is shown) and `moves` (the latest move per id; mid-turn, a worker's leaves the running turn's out). An edit not yet absorbed counts. Empty when the session has none. Use its methods, not its class. Needs chi newer than 0.148.0 |
 | `ctx.notify(text, level: :info, fallback_for: nil)` | one line to the user, labelled by the bundle (`my-bundle> …`). Every UI shows it, during a turn (a tool, a hook) or between turns (a command). `fallback_for: :display` marks a line that repeats the answer's display (`event[:present]`), which a UI that renders the display leaves out (`fallback_for: :editor`: a file the viewer could open from a ref in its editor): see [Hooks](hooks.md#what-a-hook-can-do-the-runtime). The keyword needs chi 0.35.0 (it raises on an older chi) |
 | `ctx.card(title:, body: "", actions: [], level: :info, id: nil)` | a card in every UI, returning its id: see [Cards](#cards) |
 | `ctx.ask_user(question:, options:, header: nil, allow_freeform: false, effects: nil)` | a single-select question through the question flow: `{selected:, freeform:, selected_indices:}`, or nil (no one to ask, cancelled, bad options or effects). `effects:` tags the options a parent agent's answer is held to (label => `:spend`, `:permit`, `:permit_wide` or `:deny`; untagged = `:answer`): tag every option that spends or permits, and never let text alone or a dismissal do either ([hooks.md](hooks.md#what-a-hook-can-do-the-runtime)). It needs a chi newer than 0.85.0 |
 | `ctx.cancelled?` | whether the running turn was cancelled (a long tool should stop) |
+| `ctx.turn_running?` | whether a turn runs now. An `:after_turn` hook runs inside its turn, so a card a thread shows before the turn is over belongs to that turn's block, which the web collapses: wait for this to go false. Needs chi newer than 0.148.0 |
 | `ctx.steer(text)` | put text into the running turn: its own user message at the loop's next boundary, shown as `my-bundle> nudged: …`. The model reads it with a header naming your bundle (`[Steer from the my-bundle plugin, mid-task. …]`); the session keeps the raw text. Returns true when queued, false with no turn running (it never starts one; that is `ctx.sessions`' send). Dropped (logged) if the model answers or the turn ends first. Safe from any thread: an anytime command, a hook (false from `:after_turn`), your own |
 | `ctx.stop_turn(reason)` | stop the running turn after a warn notice with the reason; true when it stopped one now. In a `:before_tool_call` block it also denies that call |
 | `ctx.stop_generation(reason)` | cut the generation that is streaming: the turn goes on and the model is asked again ([hooks.md](hooks.md#watching-the-stream)). Shows nothing: post your own notice. True when it cut one now |
@@ -1377,8 +1379,8 @@ that calls it, or for a real external bundle that does. No method on the chance 
    `Samagotchi::Tools::Execute.timeout_seconds`.
 5. `Samagotchi::Tools::TaskRuntime::TASKS_DIR` and `EXIT_CODE_FILENAME`.
 6. `Samagotchi::AtomicFile.write`, `Samagotchi::Log.warn` /
-   `Samagotchi::Log.debug`, `Samagotchi::Config.get` and
-   `Samagotchi::VERSION`.
+   `Samagotchi::Log.debug`, `Samagotchi::Config.get`,
+   `Samagotchi::VERSION` and `Samagotchi::CancellationController` (`new`, `cancel!`: what `cancel:` takes).
 
 `Samagotchi::Testing::Boundary::ALLOWED` is the checked copy of this list,
 and `Boundary::EXCEPTIONS` the per-bundle list of what each shipped bundle

@@ -2740,14 +2740,17 @@ module Samagotchi
 
       # Fire :after_turn hook (an answer or a Stop; an Interrupt or a failure
       # ends the turn in #run_turn without it), with a read-only
-      # copy of the conversation the turn stored, event[:present] for
+      # copy of the conversation the turn stored, event[:answer] (the answer's
+      # text: the native loop's stored message still holds its thought),
+      # event[:present] for
       # a display version of the answer (AnswerDisplay) and event[:refs]
       # for refs on it (AnswerRefs).
       session = turn.session
       display = AnswerDisplay.new(session.messages)
       refs = AnswerRefs.new(session.messages, cwd: session.working_directory)
       after_turn = { type: :after_turn, status: canceled ? "canceled" : "completed",
-                     messages: hook_messages(session.messages) }
+                     messages: hook_messages(session.messages),
+                     answer: (result.text unless canceled || result.exhausted?) }
       after_turn[:present] = display.presenter(after_turn)
       after_turn[:refs] = refs.adder(after_turn)
       @hooks.fire(:after_turn, after_turn)
@@ -3447,6 +3450,7 @@ module Samagotchi
         cwd: -> { @session&.working_directory },
         messages: -> { plugin_messages },
         messages_partial: -> { turn_running? && @running_turn_messages.nil? },
+        turn_running: -> { turn_running? },
         notify: ->(text, level, label, fallback_for: nil) { hook_notify(text, level, label, fallback_for: fallback_for) },
         ask_user: ->(question) { hook_ask_user(question) },
         # An init task's is its own (a Ctrl-C ends a turn, not the task).
