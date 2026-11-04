@@ -199,16 +199,47 @@ RSpec.describe Samagotchi::MemoryBundle::SystemBundle do
           expect(File.read(base)).to eq(text)
         end
 
-        it "merges through a restore that runs the Installer too, and says so" do
+        it "restores a missing file alone: no merge, no asset touched, the record's version and time kept" do
           mark_old(text(intro: "my intro"))
           dir = described_class::GEM_BUNDLE_DIR
           File.write(File.join(dir, "gone.md"), "gone\n")
           Samagotchi::MemoryBundle::Manifest.write(
             dir: dir, name: described_class::BUNDLE_NAME, version: "0.1.10", scope: "system",
-            files: { "identity.md" => "sha256:#{Digest::SHA256.hexdigest(text(tail: "tail\nnew tail"))}", "gone.md" => "sha256:#{Digest::SHA256.hexdigest("gone\n")}" }
+            files: { "identity.md" => { "sha256" => "sha256:#{Digest::SHA256.hexdigest(text(tail: "tail\nnew tail"))}" },
+                     "gone.md" => { "sha256" => "sha256:#{Digest::SHA256.hexdigest("gone\n")}", "description" => "What gone is" } }
           )
+          provenance = Samagotchi::MemoryBundle::Provenance.new(name: described_class::BUNDLE_NAME)
+          FileUtils.mkdir_p(provenance.guardrails_dir)
+          rule = File.join(provenance.guardrails_dir, "r.yml")
+          File.write(rule, "x\n")
+          inode = File.stat(rule).ino
+          was = provenance.read
 
-          expect(described_class.sync).to have_attributes(status: :restored, merged: ["identity.md"])
+          expect(described_class.sync(dry_run: true).status).to eq(:restored)
+          expect(File.exist?(File.join(Samagotchi::MemoryPaths.system_dir, "gone.md"))).to be false
+
+          expect(described_class.sync).to have_attributes(status: :restored, merged: [], kept: [], warnings: [])
+          system_dir = Samagotchi::MemoryPaths.system_dir
+          expect(File.read(File.join(system_dir, "gone.md"))).to eq("gone\n")
+          expect(File.read(provenance.base_path("gone.md"))).to eq("gone\n")
+          expect(provenance.read[:files][:"gone.md"]).to eq(checksum: Digest::SHA256.hexdigest("gone\n"), description: "What gone is")
+          expect(File.read(File.join(system_dir, "index.md"))[/^- \*\*gone\*\*.*$/]).to include("from samagotchi-system", "What gone is")
+          expect(installed_identity).to eq(text(intro: "my intro"))
+          expect(provenance.read[:files][:"identity.md"]).to include(conflict: true)
+          expect(provenance.read.slice(:version, :installed_at)).to eq(was.slice(:version, :installed_at))
+          expect(File.stat(rule).ino).to eq(inode)
+
+          expect(described_class.sync).to have_attributes(status: :merged, merged: ["identity.md"])
+        end
+
+        it "restores a deleted marked file with the bundle's text, and the mark goes" do
+          mark_old(text(intro: "my intro"))
+          FileUtils.rm_f(live)
+
+          expect(described_class.sync.status).to eq(:restored)
+          expect(installed_identity).to eq(text(tail: "tail\nnew tail"))
+          expect(JSON.parse(File.read(record))["files"]["identity.md"]).not_to have_key("conflict")
+          expect(described_class.sync.status).to eq(:up_to_date)
         end
       end
 

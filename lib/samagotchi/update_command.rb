@@ -291,9 +291,7 @@ module Samagotchi
       when :updated
         notes = [merged(result.merged), kept(row, result.kept, MemoryBundle::SystemBundle::BUNDLE_NAME), result.trash_copy].compact
         done(row, :update, notes.empty? ? nil : notes.join("; "))
-      when :restored
-        notes = [merged(result.merged), result.trash_copy].compact
-        done(row, :restore, notes.empty? ? nil : notes.join("; ")).tap { |r| r.to = nil }
+      when :restored then done(row, :restore).tap { |r| r.to = nil }
       when :merged then merged_row(row, result.merged, [result.trash_copy, *result.notes, *result.warnings])
       when :up_to_date then up_to_date(row, result.notes.join("; "))
       when :newer_installed then skipped(row, "newer than this chi's #{result.to}: left").tap { |r| r.to = nil }

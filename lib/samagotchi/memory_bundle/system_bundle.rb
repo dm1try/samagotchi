@@ -4,6 +4,8 @@ require "fileutils"
 require_relative "installer"
 require_relative "provenance"
 require_relative "manifest"
+require_relative "index_updater"
+require_relative "memory_files"
 require_relative "merger"
 require_relative "remerge"
 require_relative "../log"
@@ -169,17 +171,31 @@ module Samagotchi
       end
 
       # A file from the bundle missing on disk (the user deleted it) is put
-      # back via the Installer (which classifies it as :install), without a
-      # full reinstall.
+      # back, and nothing else: at the same version a checkout can carry other
+      # text, so no other file is merged here (Remerge has its guard), and a live
+      # session's guardrails, plugin and scripts stay where they are.
       def verify_files_present(gem_manifest, version, dry_run)
         target_dir = MemoryPaths.system_dir
-        missing = gem_manifest.files.keys.any? { |k| !File.exist?(File.join(target_dir, k)) }
-        return result(:up_to_date, from: version, to: version) unless missing
+        missing = MemoryFiles.select(GEM_BUNDLE_DIR, gem_manifest).reject { |key| File.exist?(File.join(target_dir, key)) }
+        return result(:up_to_date, from: version, to: version) if missing.empty?
         return result(:restored, from: version, to: version) if dry_run
 
-        installer = upgrade_installer
-        installer.run
-        result(:restored, from: version, to: version, merged: installer.merged_files, trash_copy: installer.trash_copy_line)
+        warnings = missing.filter_map { |key| restore_file(key, gem_manifest.file_descriptions[key]) }
+        result(:restored, from: version, to: version, warnings: warnings)
+      end
+
+      # @return [String, nil] a warning: the file is in place, its index line isn't
+      def restore_file(key, description)
+        source = File.join(GEM_BUNDLE_DIR, key)
+        target = File.join(MemoryPaths.system_dir, key)
+        FileUtils.cp(source, target)
+        Provenance.new(name: BUNDLE_NAME).record_restored(key, source, description: description)
+        begin
+          IndexUpdater.update_index(SCOPE, key.delete_suffix(".md"), File.size(target), description, source: BUNDLE_NAME)
+          nil
+        rescue StandardError => e
+          "index.md: line for #{key.delete_suffix(".md")} not updated (#{e.message})"
+        end
       end
 
       # An up-to-date bundle's marked files, retried. No marks: nothing is read.
@@ -206,7 +222,7 @@ module Samagotchi
         Installer.new(source: GEM_BUNDLE_DIR, name: BUNDLE_NAME, scope: SCOPE, force: false, strict: true, upgrade: true,
                       shipped_dir: File.dirname(GEM_BUNDLE_DIR))
       end
-      private_class_method :with_lock, :note_newer_installed, :install_fresh, :upgrade_existing, :verify_files_present, :remerge,
+      private_class_method :with_lock, :note_newer_installed, :install_fresh, :upgrade_existing, :verify_files_present, :restore_file, :remerge,
                            :upgrade_installer, :result, :planned_update
     end
   end

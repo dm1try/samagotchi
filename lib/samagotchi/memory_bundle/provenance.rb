@@ -305,6 +305,19 @@ module Samagotchi
         settled
       end
 
+      # A missing file was put back with the bundle's bytes: +path+ is its base,
+      # its entry is made or rebuilt (no mark), and the rest of the manifest stays.
+      def record_restored(file_key, path, description: nil)
+        raw = JSON.parse(File.read(File.join(@bundle_dir, "manifest.json")))
+        content = File.binread(path)
+        File.binwrite(base_path(file_key), content)
+        entry = { "checksum" => Digest::SHA256.hexdigest(content) }
+        kept = description || raw.dig("files", file_key, "description")
+        entry["description"] = kept if kept
+        (raw["files"] ||= {})[file_key] = entry
+        write_manifest(raw)
+      end
+
       # Records the incoming digest on marks that have none: a mark made before
       # chi kept it, once Remerge has tried it. legacy_base keeps it known for
       # what it is (InstalledBundle.legacy_mark?). The rest of the manifest stays.
