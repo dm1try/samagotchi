@@ -58,14 +58,14 @@ RSpec.describe Samagotchi::MemoryBundle::Merger do
                                           incoming: File.join(tmp, "source/a.md"))
     end
 
-    it "answers for one file and picks the conflicts of the files asked about, writing nothing" do
+    it "answers for one file and picks the conflicts among the files asked about, writing nothing" do
       sides("edited.md", base: "b\n", current: "c\n", incoming: "i\n")
       sides("plain.md", base: "b\n", current: "b\n", incoming: "i\n")
       sides("kept.md", base: "b\n", current: "c\n", incoming: "b\n")
       sides("unasked.md", base: "b\n", current: "c\n", incoming: "i\n")
 
       expect(upgrade.outcome("plain.md")).to eq(Samagotchi::MemoryBundle::Merger::FAST_FORWARD)
-      expect(upgrade.conflicts(%w[edited.md kept.md plain.md])).to eq(%w[edited.md])
+      expect(upgrade.forecast(%w[edited.md kept.md plain.md]).conflicts).to eq(%w[edited.md])
       expect(File.read(upgrade.paths("plain.md")[:current])).to eq("b\n")
     end
   end

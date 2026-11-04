@@ -10,6 +10,7 @@ require "samagotchi/bundle_command"
 require "samagotchi/terminal_ui"
 require "samagotchi/memory_bundle/installer"
 require "samagotchi/memory_bundle/uninstaller"
+require "samagotchi/memory_bundle/status"
 
 # What an install or upgrade may never do to an edit: lose it, or bury the
 # miss. (Trash#copy itself: trash_spec.rb.)
@@ -77,6 +78,193 @@ RSpec.describe "Kept edits in a bundle" do
 
       expect(dry.results["a.md"][:status]).to eq("would_skip")
       expect(dry.warnings.grep(/Checksum mismatch for a\.md/)).to be_empty
+    end
+  end
+
+  # Enough common text between the two edits that git keeps them apart.
+  def doc(intro: "the intro", tail: "the tail")
+    "# Title\n\n#{intro}\n\n## Steps\n\n1. first step\n2. second step\n3. third step\n\n## Notes\n\n#{tail}\n"
+  end
+
+  describe "an upgrade over an edit that merges clean" do
+    before do
+      write_source("1.0.0", { "a.md" => doc })
+      run_installer
+      File.write(target, doc(intro: "my intro"))
+    end
+
+    it "merges, with no markers, and says so" do
+      up = run_installer(write_source("2.0.0", { "a.md" => doc(tail: "tail two") }), upgrade: true)
+
+      expect(File.read(target)).to eq(doc(intro: "my intro", tail: "tail two"))
+      expect(up.results["a.md"][:status]).to eq("merged")
+      expect(up.merged_files).to eq(["a.md"])
+      expect(up.conflicts).to be_empty
+      expect(up.summary).to include("Merged: a.md")
+      expect(up.warnings.join).not_to include("Conflict", "Checksum mismatch")
+    end
+
+    # Taking the merged file as the base makes current == base, and the next
+    # upgrade fast-forwards over the edit.
+    it "keeps the edit through three upgrades in a row, the base the incoming file each time" do
+      %w[two three four].each_with_index do |word, i|
+        incoming = doc(tail: "tail #{word}")
+        up = run_installer(write_source("#{i + 2}.0.0", { "a.md" => incoming }), upgrade: true)
+
+        expect(up.results["a.md"][:status]).to eq("merged")
+        expect(File.read(target)).to eq(doc(intro: "my intro", tail: "tail #{word}"))
+        expect(File.read(provenance.base_path("a.md"))).to eq(incoming)
+        expect(provenance.read[:files][:"a.md"]).to eq(checksum: Digest::SHA256.hexdigest(incoming))
+      end
+    end
+
+    it "still calls the file edited: a status of modified, an uninstall that refuses" do
+      run_installer(write_source("2.0.0", { "a.md" => doc(tail: "tail two") }), upgrade: true)
+
+      expect(Samagotchi::MemoryBundle::Status.bundle_status("demo").files["a.md"]).to include(modified: true, conflict: false)
+      expect { uninstall }.to raise_error(Samagotchi::MemoryBundle::Uninstaller::UninstallError)
+    end
+
+    it "copies the old file to the trash first" do
+      up = run_installer(write_source("2.0.0", { "a.md" => doc(tail: "tail two") }), upgrade: true)
+
+      expect(trash_files).to eq("a.md" => doc(intro: "my intro"))
+      expect(up.summary).to include("Copied to the trash first: a.md (#{up.trash_dir})")
+    end
+
+    it "copies nothing when the merge leaves the text as it is" do
+      both = doc(intro: "my intro", tail: "tail two")
+      File.write(target, both)
+      up = run_installer(write_source("2.0.0", { "a.md" => doc(tail: "tail two") }), upgrade: true)
+
+      expect(up.results["a.md"][:status]).to eq("merged")
+      expect(trash_files).to be_empty
+      expect(File.read(provenance.base_path("a.md"))).to eq(doc(tail: "tail two"))
+    end
+
+    it "writes through a symlink, keeping the link and its target's mode" do
+      real = File.join(tmpdir, "elsewhere.md")
+      File.write(real, doc(intro: "my intro"))
+      File.chmod(0o640, real)
+      FileUtils.rm_f(target)
+      File.symlink(real, target)
+      run_installer(write_source("2.0.0", { "a.md" => doc(tail: "tail two") }), upgrade: true)
+
+      expect(File.symlink?(target)).to be true
+      expect(File.read(real)).to eq(doc(intro: "my intro", tail: "tail two"))
+      expect(File.stat(real).mode & 0o777).to eq(0o640)
+      expect(trash_files).to eq("a.md" => doc(intro: "my intro"))
+    end
+
+    it "keeps a plain file's mode" do
+      File.chmod(0o600, target)
+      run_installer(write_source("2.0.0", { "a.md" => doc(tail: "tail two") }), upgrade: true)
+
+      expect(File.stat(target).mode & 0o777).to eq(0o600)
+    end
+
+    it "leaves a write that came in during the merge, as a conflict with the old base and the mark" do
+      allow_any_instance_of(Samagotchi::MemoryBundle::Trash).to receive(:copy).and_wrap_original do |copy, *args, **opts|
+        File.write(target, "a live memory_write\n")
+        copy.call(*args, **opts)
+      end
+      up = run_installer(write_source("2.0.0", { "a.md" => doc(tail: "tail two") }), upgrade: true)
+
+      expect(File.read(target)).to eq("a live memory_write\n")
+      expect(up.results["a.md"][:status]).to eq("conflict")
+      expect(up.warnings).to include(a_string_including("Conflict in a.md: no merge possible (#{Samagotchi::MemoryBundle::TextMerge::RACED})"))
+      expect(File.read(provenance.base_path("a.md"))).to eq(doc)
+      expect(provenance.read[:files][:"a.md"]).to include(conflict: true)
+      expect(Dir.glob(File.join(memories, "*.tmp"))).to be_empty
+    end
+
+    it "says would merge in a dry run, and writes nothing" do
+      dry = run_installer(write_source("2.0.0", { "a.md" => doc(tail: "tail two") }), upgrade: true, dry_run: true)
+
+      expect(dry.results["a.md"][:status]).to eq("would_merge")
+      expect(dry.summary).to include("Would merge: a.md")
+      expect(dry.summary).not_to include("Merged:", "Checksum mismatch")
+      expect(dry.conflicts).to be_empty
+      expect(File.read(target)).to eq(doc(intro: "my intro"))
+      expect(File.read(provenance.base_path("a.md"))).to eq(doc)
+      expect(trash_files).to be_empty
+      expect(provenance.read[:version]).to eq("1.0.0")
+    end
+
+    it "fails cleanly when the trash can't hold the copy, the file and record as they were" do
+      File.write(File.join(Samagotchi::MemoryPaths.bundles_dir, ".trash"), "in the way\n")
+
+      expect { run_installer(write_source("2.0.0", { "a.md" => doc(tail: "tail two") }), upgrade: true) }
+        .to raise_error(Samagotchi::MemoryBundle::Installer::InstallError, /nothing was lost/)
+      expect(File.read(target)).to eq(doc(intro: "my intro"))
+      expect(provenance.read[:version]).to eq("1.0.0")
+    end
+
+    it "unions a Changelog both sides added to" do
+      log = "#{doc}\n## Changelog\n- one\n"
+      write_source("1.0.0", { "a.md" => log })
+      run_installer(write_source("1.0.0", { "a.md" => log }), force: true)
+      File.write(target, "#{log}- mine\n")
+      run_installer(write_source("2.0.0", { "a.md" => "#{log}- theirs\n" }), upgrade: true)
+
+      expect(File.read(target)).to eq("#{log}- mine\n- theirs\n")
+      expect(File.read(provenance.base_path("a.md"))).to eq("#{log}- theirs\n")
+    end
+  end
+
+  describe "an upgrade that can't merge" do
+    before do
+      write_source("1.0.0")
+      run_installer
+      File.write(target, "edited\n")
+    end
+
+    def expect_untouched(up, version: "2.0.0")
+      expect(File.read(target)).to eq("edited\n")
+      expect(up.results["a.md"][:status]).to eq("conflict")
+      expect(up.conflicts).to have_key("a.md")
+      expect(provenance.read[:files][:"a.md"]).to include(conflict: true)
+      expect(provenance.read[:version]).to eq(version)
+      expect(trash_files).to be_empty
+    end
+
+    it "leaves a real conflict untouched, no markers, the base old and the mark on" do
+      up = run_installer(write_source("2.0.0"), upgrade: true)
+
+      expect_untouched(up)
+      expect(File.read(provenance.base_path("a.md"))).to eq("v1.0.0\n")
+      expect(up.warnings).to include(a_string_including("Conflict in a.md: local edits conflict with bundle update"))
+    end
+
+    it "conflicts again at the next upgrade" do
+      run_installer(write_source("2.0.0"), upgrade: true)
+      expect_untouched(run_installer(write_source("3.0.0"), upgrade: true), version: "3.0.0")
+    end
+
+    it "says why when there is no git, and keeps the file" do
+      FileUtils.mkdir_p(File.join(tmpdir, "no-git"))
+      up = with_env("PATH" => File.join(tmpdir, "no-git")) { run_installer(write_source("2.0.0"), upgrade: true) }
+
+      expect_untouched(up)
+      expect(File.read(provenance.base_path("a.md"))).to eq("v1.0.0\n")
+      expect(up.warnings).to include(a_string_including("Conflict in a.md: no merge possible (git not found), local edits kept"))
+    end
+
+    it "says why when there is no base, and keeps the file with none" do
+      FileUtils.rm_f(provenance.base_path("a.md"))
+      up = run_installer(write_source("2.0.0"), upgrade: true)
+
+      expect_untouched(up)
+      expect(File.exist?(provenance.base_path("a.md"))).to be false
+      expect(up.warnings).to include(a_string_including("no merge possible (no recorded base)"))
+    end
+
+    it "calls a real conflict a conflict in a dry run, with no write" do
+      dry = run_installer(write_source("2.0.0"), upgrade: true, dry_run: true)
+
+      expect(dry.results["a.md"][:status]).to eq("conflict")
+      expect(dry.summary).not_to include("Would merge")
+      expect(File.read(target)).to eq("edited\n")
     end
   end
 

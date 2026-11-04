@@ -1,9 +1,13 @@
 # frozen_string_literal: true
 
 require "digest"
+require_relative "../atomic_file"
 
 module Samagotchi
   module MemoryBundle
+    # Most processes that load this never merge.
+    autoload :TextMerge, File.expand_path("text_merge", __dir__)
+
     # 3-way merge helper for bundle upgrades.
     #
     # Compare base (provenance snapshot), current (on-disk), incoming (new bundle)
@@ -15,12 +19,29 @@ module Samagotchi
       #              bytes, or already had them.
       #   :recorded  the base it has (none stays none): the file stays as the
       #              user has it, and the next upgrade must still see the edit.
+      #   :incoming  the bundle's new file: a merged file keeps the user's
+      #              edits, so it must never become the base (the edit is what
+      #              differs from the base, and the next upgrade would
+      #              fast-forward over it).
       # Installer#next_base reads it. A new outcome and its base go here; it
       # also needs a branch in Installer#merge_memory (which raises without
       # one), #next_base if its base is a new kind, and its status word in
       # Installer#preview_memory, #verify_memory_checksums' list and #summary.
-      Outcome = Data.define(:status, :base) do
+      #
+      # merge is Upgrade#outcome's TextMerge::Result, so a merge runs git once
+      # and its answer travels with the outcome: a :merged outcome's text, a
+      # :conflict's why (nil for a real one). current_sha is the digest of the
+      # file that merge read: write_merged checks it. .classify leaves both nil.
+      Outcome = Data.define(:status, :base, :merge, :current_sha) do
+        def initialize(status:, base:, merge: nil, current_sha: nil) = super
+
         def conflict? = status == :conflict
+
+        def merged? = status == :merged
+
+        # Why no merge was possible, nil when one wasn't tried or it found a
+        # real conflict.
+        def why = merge&.why
       end
 
       INSTALL = Outcome.new(status: :install, base: :on_disk)
@@ -32,24 +53,40 @@ module Samagotchi
       # (the user's text, perhaps) must not become the base. A noop to callers.
       NO_INCOMING = Outcome.new(status: :noop, base: :recorded)
 
+      # What an upgrade would do to the files asked about, by what callers say
+      # of them.
+      Forecast = Data.define(:merged, :conflicts)
+
       # One bundle's upgrade as seen before it runs: what it does to a file,
       # nothing written. The one way to ask: Installer's merge and dry run,
       # ShippedUpdate's plan and SystemBundle's dry run. Which files to ask
-      # about is the caller's, and they differ (see #conflicts).
+      # about is the caller's, and they differ (see #forecast).
       Upgrade = Data.define(:provenance, :target_dir, :source_dir) do
+        # What the upgrade does to the file: .classify, then, where both sides
+        # changed it, the text merge (git runs here, once per call).
         # @return [Outcome]
         def outcome(file_key)
+          classified = classified(file_key)
+          classified.conflict? ? Merger.merge_outcome(paths(file_key)) : classified
+        end
+
+        # .classify alone: no merge is tried.
+        # @return [Outcome]
+        def classified(file_key)
           sides = paths(file_key)
           Merger.classify(base_path: sides[:base], current_path: sides[:current], incoming_path: sides[:incoming])
         end
 
-        # The ones among +file_keys+ that end in a conflict. The Installer's
-        # own list is MemoryFiles.select, and a plan may ask about others:
-        # ShippedUpdate about every *.md shipped, SystemBundle about the
+        # The ones among +file_keys+ that would merge or end in a conflict. The
+        # Installer's own list is MemoryFiles.select, and a plan may ask about
+        # others: ShippedUpdate about every *.md shipped, SystemBundle about the
         # manifest's files:. So a plan can name a file the upgrade itself
         # doesn't merge (docs/internals/bundles.md).
-        # @return [Array<String>]
-        def conflicts(file_keys) = file_keys.select { |key| outcome(key).conflict? }
+        # @return [Forecast]
+        def forecast(file_keys)
+          outcomes = file_keys.to_h { |key| [key, outcome(key)] }
+          Forecast.new(merged: outcomes.select { |_, o| o.merged? }.keys, conflicts: outcomes.select { |_, o| o.conflict? }.keys)
+        end
 
         # @return [Hash{Symbol => String}] the file's :base, :current, :incoming
         def paths(file_key)
@@ -92,6 +129,47 @@ module Samagotchi
           CONFLICT
         end
       end
+
+      # Both sides changed the file: the text merge's answer as an Outcome. No
+      # base means no merge: the file stays as a conflict.
+      # @param sides [Hash{Symbol => String}] Upgrade#paths
+      # @return [Outcome]
+      def self.merge_outcome(sides)
+        unless sides[:base] && File.exist?(sides[:base])
+          return CONFLICT.with(merge: TextMerge.failed(TextMerge::NO_BASE))
+        end
+
+        ours = File.binread(sides[:current])
+        result = TextMerge.merge(base: File.binread(sides[:base]), ours: ours, theirs: File.binread(sides[:incoming]))
+        return CONFLICT.with(merge: result) unless result.clean?
+
+        Outcome.new(status: :merged, base: :incoming, merge: result, current_sha: Digest::SHA256.hexdigest(ours))
+      end
+
+      # A :merged outcome's text goes in +path+, unless the file changed since
+      # the merge read it (a live memory_write): a last check just before the
+      # rename, so that write isn't lost. Through a symlink, its mode kept, the
+      # old file copied to +trash+ first (not when the text is what it has).
+      # @return [Boolean] false: the file changed, nothing was replaced
+      def self.write_merged(path, outcome, trash)
+        return false unless digest(path) == outcome.current_sha
+
+        text = outcome.merge.text
+        return true if Digest::SHA256.hexdigest(text) == outcome.current_sha
+
+        real = File.realpath(path)
+        trash.copy(path)
+        AtomicFile.write(real, text, perm: File.stat(real).mode & 0o7777) do
+          raise ChangedDuringMerge unless digest(real) == outcome.current_sha
+        end
+        true
+      rescue ChangedDuringMerge
+        false
+      end
+
+      class ChangedDuringMerge < StandardError
+      end
+      private_constant :ChangedDuringMerge
 
       # A line a merge tool leaves around a conflict. "=======" isn't one: it
       # is also a Markdown heading's underline.

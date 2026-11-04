@@ -128,6 +128,25 @@ RSpec.describe Samagotchi::MemoryBundle::SystemBundle do
         expect(described_class.sync).to have_attributes(status: :newer_installed, from: "0.1.10", to: "0.1.8")
       end
 
+      it "merges an edit that doesn't overlap the update, says so in a dry run first, and keeps the old file in the trash" do
+        text = ->(intro, tail) { "#{intro}\n\none\ntwo\nthree\nfour\nfive\n\n#{tail}\n" }
+        ship("0.1.6", text.call("intro", "tail"))
+        described_class.sync
+        edited = text.call("my intro", "tail")
+        File.write(File.join(Samagotchi::MemoryPaths.system_dir, "identity.md"), edited)
+        ship("0.1.10", text.call("intro", "new tail"))
+
+        expect(described_class.sync(dry_run: true)).to have_attributes(status: :updated, merged: ["identity.md"], kept: [], trash_copy: nil)
+        expect(installed_identity).to eq(edited)
+
+        result = described_class.sync
+        expect(result).to have_attributes(status: :updated, merged: ["identity.md"], kept: [], warnings: [])
+        expect(result.trash_copy).to include("Copied to the trash first: identity.md")
+        expect(installed_identity).to eq(text.call("my intro", "new tail"))
+        base = Samagotchi::MemoryBundle::Provenance.new(name: described_class::BUNDLE_NAME).base_path("identity.md")
+        expect(File.read(base)).to eq(text.call("intro", "new tail"))
+      end
+
       it "writes nothing with dry_run" do
         ship("0.1.6", "old\n")
         expect(described_class.sync(dry_run: true).status).to eq(:installed)
@@ -143,7 +162,7 @@ RSpec.describe Samagotchi::MemoryBundle::SystemBundle do
       end
 
       # The dry run asks about the manifest's files:, the Installer about
-      # MemoryFiles.select. Pinned, not endorsed (Merger::Upgrade#conflicts).
+      # MemoryFiles.select. Pinned, not endorsed (Merger::Upgrade#forecast).
       it "keeps nothing in a dry run of a manifest with no files:, where the upgrade itself conflicts" do
         ship("0.1.6", "old\n")
         described_class.sync

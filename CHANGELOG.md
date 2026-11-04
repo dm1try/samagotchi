@@ -11,6 +11,8 @@ and commands may change between minor versions. How releases are made:
 
 - Check this also reads the agent's visible answers, never its thinking, so a claim about what the agent said or asked can be confirmed. They settle only that: a claim of work with nothing but the agent's words behind it isn't `confirmed`. With `objectives.check_model` they go to that host too. [docs/sessions.md](docs/sessions.md#objectives)
 
+- An upgrade now merges a memory you edited with the bundle's new version instead of leaving it behind. `chi bundle upgrade`, `chi update` and the automatic system bundle update run a text merge (needs `git`): a clean merge replaces the file, with the old one in the bundle trash and the report saying `Merged:` or `merged x.md`, and `--dry-run` says `would merge`. Entries both sides added under a `Changelog` heading are kept, yours first. A real conflict, no `git`, or no recorded base leaves your file untouched, as before.
+
 ### Fixed
 
 - `chi bundle install --force` and `chi bundle upgrade --force` no longer destroy what they overwrite: a memory that differs from the bundle's, your own same-name file too, is copied to the bundle trash first, and the output names it (`Copied to the trash first: …`; `chi bundle trash` lists it).

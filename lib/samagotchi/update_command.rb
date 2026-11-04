@@ -20,8 +20,8 @@ require "json"
 module Samagotchi
   # `chi update`: brings an installed chi up to date in one go: the system
   # bundle, the shipped bundles the user installed, and the macOS helper.
-  # Unedited things update; edited ones are kept (.md) or replaced and
-  # reported (hooks, plugin, rules, which didn't load once edited). Live
+  # Unedited things update; edited ones are merged or kept (.md) or replaced
+  # and reported (hooks, plugin, rules, which didn't load once edited). Live
   # workers and a running chi web are reported, never restarted. The bundles
   # chi didn't ship are only checked, under the chi that will run them
   # (BundleCommand::InstalledCheck): what it finds is rows that fail nothing.
@@ -34,8 +34,9 @@ module Samagotchi
         Updates this chi's install: the gem (from rubygems.org), then the
         system bundle, the bundles chi ships that you installed (chi bundle
         list), and the desktop helper (macOS; rebuilt only when its sources
-        changed). Edited memory files are kept and reported; nothing is
-        installed that isn't already, and old gem versions stay. The bundles
+        changed). A memory file you edited takes the update in a text merge, or
+        stays as it is when the merge finds a real conflict, and the table says
+        which; nothing is installed that isn't already, and old gem versions stay. The bundles
         chi doesn't ship are never changed: the new chi checks them and adds
         a row per warning or error (these don't fail the update).
         --dry-run      show what would change; change nothing (with a newer
@@ -283,7 +284,9 @@ module Samagotchi
       row = Row.new(component: "system bundle", from: result.from, to: result.to)
       case result.status
       when :installed then done(row, :install)
-      when :updated then done(row, :update, kept(row, result.kept, MemoryBundle::SystemBundle::BUNDLE_NAME))
+      when :updated
+        notes = [merged(result.merged), kept(row, result.kept, MemoryBundle::SystemBundle::BUNDLE_NAME), result.trash_copy].compact
+        done(row, :update, notes.empty? ? nil : notes.join("; "))
       when :restored then done(row, :restore).tap { |r| r.to = nil }
       when :up_to_date then up_to_date(row)
       when :newer_installed then skipped(row, "newer than this chi's #{result.to}: left").tap { |r| r.to = nil }
@@ -322,7 +325,7 @@ module Samagotchi
       row = Row.new(component: update.name, from: update.from, to: update.to)
       case update.status
       when :would_update, :updated
-        notes = [adds(update.adds), kept(row, update.kept, update.name), replaced(update.replaced), update.trash_copy, *update.kept_own].compact
+        notes = [adds(update.adds), merged(update.merged), kept(row, update.kept, update.name), replaced(update.replaced), update.trash_copy, *update.kept_own].compact
         done(row, :update, notes.empty? ? nil : notes.join("; "))
       when :up_to_date then up_to_date(row)
       when :skipped then skipped(row, update.note)
@@ -454,6 +457,12 @@ module Samagotchi
     # A profile's new members: "+ btw".
     def adds(members)
       members.nil? || members.empty? ? nil : "+ #{members.join(", ")}"
+    end
+
+    def merged(files)
+      return nil if files.nil? || files.empty?
+
+      "#{@dry_run ? "would merge" : "merged"} #{files.join(", ")}"
     end
 
     def kept(row, files, bundle)

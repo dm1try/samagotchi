@@ -18,6 +18,8 @@ module Samagotchi
     # @param content [String] written as-is, byte for byte
     # @param perm [Integer, nil] the new file's mode; nil = a fresh file's
     #   (0666 less the umask), like File.write
+    # @yield just before the rename, when given: a last check of what is being
+    #   replaced; raising leaves +path+ as it was
     # @return [String] +path+
     def write(path, content, perm: nil)
       tmp = "#{path}.#{Process.pid}.#{SecureRandom.hex(4)}.tmp"
@@ -25,6 +27,7 @@ module Samagotchi
         io.write(content)
       end
       File.chmod(perm, tmp) if perm
+      yield if block_given?
       File.rename(tmp, path)
       path
     ensure

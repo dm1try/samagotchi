@@ -71,6 +71,9 @@ module Samagotchi
       # What it copied to the trash before overwriting, said once (nil: nothing).
       def trash_copy_line = @trash.copy_line
 
+      # The files this run merged, the bundle's changes joined to the user's.
+      def merged_files = @results.select { |_, r| r[:status] == "merged" }.keys
+
       # The normalized source dir. An owned one (a git/zip/tar extract) is
       # removed after #run, or kept until #cleanup_source! when an upgrade
       # has conflicts (the agent step reads the incoming files); nil once
@@ -126,6 +129,8 @@ module Samagotchi
         lines << "Source changes: #{@source_change.join(" → ")}" if @source_change
         installed = @results.select { |_, r| r[:status].to_s == "installed" }.keys
         updated = @results.select { |_, r| r[:status].to_s == "updated" }.keys
+        merged = merged_files
+        would_merge = @results.select { |_, r| r[:status].to_s == "would_merge" }.keys
         kept = @results.select { |_, r| %w[kept keep kept_pruned].include?(r[:status].to_s) }.keys
         skipped = @results.select { |_, r| %w[skipped noop would_skip].include?(r[:status].to_s) }.keys
         conflicts = @results.select { |_, r| r[:status].to_s == "conflict" }.keys
@@ -138,6 +143,8 @@ module Samagotchi
         lines << "Updated: #{updated.join(", ")}" unless updated.empty?
         lines << "Would install: #{would_install.join(", ")}" unless would_install.empty?
         lines << "Fast-forward: #{fast_forward.join(", ")}" unless fast_forward.empty?
+        lines << "Merged: #{merged.join(", ")}" unless merged.empty?
+        lines << "Would merge: #{would_merge.join(", ")}" unless would_merge.empty?
         lines << "Removed (no longer in the bundle): #{removed.join(", ")}#{" (moved to #{trash_dir})" if trash_dir}" unless removed.empty?
         lines << "Would remove (no longer in the bundle): #{would_remove.join(", ")}" unless would_remove.empty?
         lines << "Kept (local edits preserved): #{kept.join(", ")}" unless kept.empty?
@@ -360,8 +367,8 @@ module Samagotchi
       end
 
       # An upgrade's 3-way merge of one file (Merger::Upgrade against the
-      # base the last install recorded); a conflict leaves the local file
-      # and is recorded in @conflicts for the agent step.
+      # base the last install recorded); a clean text merge replaces the file;
+      # a conflict leaves it and is recorded in @conflicts for the agent step.
       def merge_memory(file_key, file_path, target_path)
         outcome = @outcomes[file_key] = upgrade_view.outcome(file_key)
         case outcome.status
@@ -376,13 +383,26 @@ module Samagotchi
           @results[file_key] = { status: "kept", reason: "bundle unchanged, local edits preserved" }
         when :noop
           @results[file_key] = { status: "skipped", reason: "already up to date" }
+        when :merged
+          if Merger.write_merged(target_path, outcome, @trash)
+            @results[file_key] = { status: "merged", reason: "the bundle's changes joined to local edits" }
+          else
+            note_conflict(file_key, @outcomes[file_key] = Merger::CONFLICT.with(merge: TextMerge.failed(TextMerge::RACED)))
+          end
         when :conflict
-          @results[file_key] = { status: "conflict", reason: "local edits conflict with bundle update" }
-          @conflicts[file_key] = upgrade_view.paths(file_key)
-          @warnings << "Conflict in #{file_key}: local edits conflict with bundle update (use --force to overwrite or resolve interactively)"
+          note_conflict(file_key, outcome)
         else raise ArgumentError, "unknown outcome status #{outcome.status.inspect} for #{file_key}" # the base would move with nothing written
         end
         update_target_index(@target_scope, target_path, file_key)
+      end
+
+      # The file stays as it is, with the old base and the mark. One wording per
+      # reason: a real conflict, or why no merge could be tried.
+      def note_conflict(file_key, outcome)
+        why = outcome.why ? "no merge possible (#{outcome.why}), local edits kept" : "local edits conflict with bundle update"
+        @results[file_key] = { status: "conflict", reason: why }
+        @conflicts[file_key] = upgrade_view.paths(file_key)
+        @warnings << "Conflict in #{file_key}: #{why} (use --force to overwrite or resolve interactively)"
       end
 
       def upgrade_view
@@ -410,7 +430,7 @@ module Samagotchi
 
         if @upgrade && @existing
           outcome = upgrade_view.outcome(file_key)
-          @results[file_key] = { status: outcome.status.to_s }
+          @results[file_key] = { status: outcome.merged? ? "would_merge" : outcome.status.to_s }
           @conflicts[file_key] = upgrade_view.paths(file_key) if outcome.conflict?
         elsif FileUtils.identical?(file_path, target_path)
           @results[file_key] = { status: "skipped", reason: "already up to date" }
@@ -422,13 +442,13 @@ module Samagotchi
       # Strict mode: a memory written from the bundle whose sha256 differs
       # from its manifest's warns. One that wasn't copied (kept, skipped, a
       # dry run's keep and would_skip: a local edit isn't a bad download) or
-      # was merged isn't checked.
+      # was merged (merged, a dry run's would_merge) isn't checked.
       def verify_memory_checksums
         @bundle_md.each do |file_key|
           next if @conflicts.key?(file_key)
 
           status = @results[file_key] ? @results[file_key][:status].to_s : nil
-          next if %w[kept keep kept_pruned fast_forward updated skipped would_skip].include?(status)
+          next if %w[kept keep kept_pruned fast_forward updated skipped would_skip merged would_merge].include?(status)
 
           target_path = File.join(@target_dir, file_key)
           next unless File.exist?(target_path)
@@ -523,6 +543,7 @@ module Samagotchi
         case outcome.base
         when :recorded then recorded_base(@provenance.base_path(file_key))
         when :on_disk then File.join(@target_dir, file_key)
+        when :incoming then File.join(@bundle_dir, file_key)
         else raise ArgumentError, "unknown base #{outcome.base.inspect} for #{file_key}" # nil would drop the base silently
         end
       end

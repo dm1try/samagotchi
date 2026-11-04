@@ -94,9 +94,46 @@ RSpec.describe Samagotchi::MemoryBundle::ShippedUpdate do
     expect(described_class.plan.first.status).to eq(:up_to_date)
   end
 
+  describe "an edit that merges clean" do
+    let(:root) { File.join(tmp, "gem", "lib", "samagotchi", "bundles") }
+    let(:dir) { File.join(root, "merged") }
+    let(:live) { File.join(system_dir, "note.md") }
+
+    def note(intro: "the intro", tail: "the tail")
+      "# Note\n\n#{intro}\n\none\ntwo\nthree\nfour\nfive\n\n#{tail}\n"
+    end
+
+    def ship_note(version, text)
+      FileUtils.mkdir_p(dir)
+      File.write(File.join(dir, "note.md"), text)
+      File.write(File.join(dir, "manifest.yml"),
+                 YAML.dump({ "name" => "merged", "version" => version, "scope" => "system",
+                             "files" => { "note.md" => "sha256:#{Digest::SHA256.hexdigest(text)}" } }))
+    end
+
+    before do
+      ship_note("1.0.0", note)
+      install(dir, "merged")
+      File.write(live, note(intro: "my intro"))
+      ship_note("2.0.0", note(tail: "tail two"))
+    end
+
+    it "plans it as merged, not kept, writing nothing, then merges and names the trash copy" do
+      rows = described_class.plan(shipped_dir: root)
+      expect(rows.first).to have_attributes(status: :would_update, merged: ["note.md"], kept: [])
+      expect(File.read(live)).to eq(note(intro: "my intro"))
+
+      row = described_class.apply(rows).first
+      expect(row).to have_attributes(status: :updated, merged: ["note.md"], kept: [])
+      expect(row.trash_copy).to include("Copied to the trash first: note.md")
+      expect(File.read(live)).to eq(note(intro: "my intro", tail: "tail two"))
+      expect(File.read(Samagotchi::MemoryBundle::Provenance.new(name: "merged").base_path("note.md"))).to eq(note(tail: "tail two"))
+    end
+  end
+
   # The plan asks about every shipped *.md, the Installer about
   # MemoryFiles.select, so the two can disagree. Pinned, not endorsed: a plan
-  # that unifies them changes what these say (Merger::Upgrade#conflicts).
+  # that unifies them changes what these say (Merger::Upgrade#forecast).
   describe "a plan that names a file the upgrade doesn't merge" do
     let(:root) { File.join(tmp, "gem", "lib", "samagotchi", "bundles") }
     let(:dir) { File.join(root, "listed") }

@@ -207,6 +207,32 @@ RSpec.describe Samagotchi::UpdateCommand do
     expect(row.status).to include("kept your edits in known_names.md")
   end
 
+  it "names merged files in the system bundle's row" do
+    result = Samagotchi::MemoryBundle::SystemBundle::Result.new(
+      from: "1", to: "2", status: :updated, merged: ["identity.md"], kept: [], warnings: [],
+      trash_copy: "Copied to the trash first: identity.md (/t)"
+    )
+    allow(Samagotchi::MemoryBundle::SystemBundle).to receive(:sync).and_return(result)
+    row = described_class.new(["--no-gem"], stdout: out, stderr: err).send(:system_bundle_row)
+
+    expect(row.status).to eq("updated (merged identity.md; Copied to the trash first: identity.md (/t))")
+  end
+
+  it "names merged files in a bundle's row, and what a dry run would merge" do
+    update = Samagotchi::MemoryBundle::ShippedUpdate::Row.new(
+      name: "known-names", from: "1", to: "2", status: :updated, merged: ["a.md"], kept: ["b.md"], replaced: [],
+      trash_copy: "Copied to the trash first: a.md (/t)"
+    )
+    row = described_class.new(["--no-gem"], stdout: out, stderr: err).send(:bundle_row, update)
+    expect(row.status).to eq("updated (merged a.md; kept your edits in b.md: chi bundle diff known-names b.md; Copied to the trash first: a.md (/t))")
+
+    command = described_class.new(["--no-gem"], stdout: out, stderr: err)
+    command.instance_variable_set(:@dry_run, true)
+    update.trash_copy = nil
+    update.kept = []
+    expect(command.send(:bundle_row, update).status).to eq("would update (would merge a.md)")
+  end
+
   it "names the trash copy of an edited hook it replaced" do
     update = Samagotchi::MemoryBundle::ShippedUpdate::Row.new(
       name: "known-names", from: "1", to: "2", status: :updated, kept: [], replaced: ["hooks/x.rb"],

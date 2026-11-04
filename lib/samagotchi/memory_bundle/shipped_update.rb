@@ -22,8 +22,8 @@ module Samagotchi
     # newer and this chi meets its requires_chi. It never installs a
     # bundle that isn't installed and never downgrades.
     #
-    # .md files take the Installer's 3-way merge: a conflict keeps the
-    # user's file (kept). Hooks, rules and the plugin are replaced; an
+    # .md files take the Installer's 3-way merge: a clean text merge replaces
+    # the file (merged), a real conflict keeps the user's (kept). Hooks, rules and the plugin are replaced; an
     # edited one (which didn't load: its sha no longer matched) is listed
     # in replaced.
     #
@@ -34,14 +34,15 @@ module Samagotchi
     # names them.
     module ShippedUpdate
       # status: :would_update (plan), :updated, :up_to_date, :skipped,
-      # :failed. note says why for skipped/failed. kept and replaced are
-      # file names; under plan they are what apply would keep or replace.
+      # :failed. note says why for skipped/failed. merged, kept and replaced
+      # are file names; under plan they are what apply would merge, keep or
+      # replace.
       # adds is nil but for a profile: the members it installs.
       # kept_own is nil but for a profile that installed a member: its
       # Profile.kept_own_line lines.
       # trash_copy is nil but under apply when it saved edited files
       # (Installer#trash_copy_line).
-      Row = Struct.new(:name, :from, :to, :status, :note, :kept, :replaced, :source_dir, :scope, :adds, :kept_own,
+      Row = Struct.new(:name, :from, :to, :status, :note, :merged, :kept, :replaced, :source_dir, :scope, :adds, :kept_own,
                        :trash_copy, keyword_init: true)
 
       module_function
@@ -84,6 +85,7 @@ module Samagotchi
           installer.run
           row.dup.tap do |r|
             r.status = :updated
+            r.merged = installer.merged_files
             r.kept = installer.conflicts.keys
             r.trash_copy = installer.trash_copy_line
           end
@@ -114,7 +116,7 @@ module Samagotchi
       def from_chi?(bundle, ship) = !ship.nil? && bundle.source.to_s.match?(SourceNormalizer::SHIPPED_SOURCE)
 
       def plan_row(name, bundle, ship, shipped_dir, chi_version)
-        row = Row.new(name: name, kept: [], replaced: [])
+        row = Row.new(name: name, merged: [], kept: [], replaced: [])
         return skip(row, "manifest.json unreadable") if bundle.error?
 
         row.from = bundle.version.to_s
@@ -135,7 +137,9 @@ module Samagotchi
         return skip(row, "project scope: chi bundle upgrade #{ship.source} in the project") if row.scope == "project"
         return skip(row, "unknown scope #{row.scope}: upgrade chi or reinstall") unless MemoryPaths.scope_dir(row.scope)
 
-        row.kept = conflicts(row, bundle)
+        forecast = forecast(row, bundle)
+        row.merged = forecast.merged
+        row.kept = forecast.conflicts
         row.replaced = edited_executables(name, bundle)
         row.status = :would_update
         row
@@ -165,13 +169,14 @@ module Samagotchi
         row
       end
 
-      # The bundle's .md files whose local edits conflict with the shipped
-      # version (a same-name file it didn't install is skipped, not merged).
-      # Every shipped *.md, not MemoryFiles.select: see Merger::Upgrade#conflicts.
-      def conflicts(row, bundle)
+      # What the upgrade would do to the bundle's .md files that local edits and
+      # the shipped version both changed (a same-name file it didn't install is
+      # skipped, not merged). Every shipped *.md, not MemoryFiles.select: see
+      # Merger::Upgrade#forecast.
+      def forecast(row, bundle)
         shipped = Dir.glob(File.join(row.source_dir, "*.md")).map { |f| File.basename(f) }.sort
         Merger::Upgrade.new(provenance: Provenance.new(name: row.name), target_dir: MemoryPaths.scope_dir!(row.scope),
-                            source_dir: row.source_dir).conflicts(shipped & bundle.files.keys)
+                            source_dir: row.source_dir).forecast(shipped & bundle.files.keys)
       end
 
       # Installed hooks, rules and the plugin whose sha differs from the
