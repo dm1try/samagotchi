@@ -219,8 +219,9 @@ reword is refused when you changed that objective since. The model never changes
 
 **Check this** (`/objectives check O2`, or the button in the web's list, for an objective with a move) asks for an independent read of
 the latest move: one side request, on your request only, on the session's model or `objectives.check_model`. It sees the
-claim, what people and notes said and what tools returned, not the agent's prose, and no file: what the record doesn't
-settle comes back `unclear`. **That is up to 24,000 characters of raw tool output, which with a hosted `check_model` leaves the machine on one tap, even from a local session.** chi's redaction takes out known key shapes and `token=`-style values first, by pattern only, so another secret in a tool's output still goes. The verdict (confirmed, refuted, unclear) and its reasons come as a card and under the
+claim, what people and notes said, what tools returned and the agent's visible answers (never its thinking), and no file. The agent's
+words settle what it said or asked, never that its work was done: "I ran the tests" with no run behind it isn't `confirmed`. What the record doesn't
+settle comes back `unclear`. **That is up to 24,000 characters of raw tool output, messages and the agent's visible answers, which with a hosted `check_model` leaves the machine on one tap, even from a local session.** chi's redaction takes out known key shapes and `token=`-style values first, by pattern only, so another secret in them still goes. The verdict (confirmed, refuted, unclear) and its reasons come as a card and under the
 objective. It is information only: it changes no status, approves nothing, and isn't in the conversation or the model's next request.
 A second tap while one runs asks nothing. Its cost is in the session's side line. Mid-turn it runs beside the turn; on a one-slot
 local server it answers after the running request. A participant can't reach it. See

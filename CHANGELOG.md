@@ -7,6 +7,10 @@ and commands may change between minor versions. How releases are made:
 [docs/releasing.md](docs/releasing.md).
 ## [Unreleased]
 
+### Changed
+
+- Check this also reads the agent's visible answers, never its thinking, so a claim about what the agent said or asked can be confirmed. They settle only that: a claim of work with nothing but the agent's words behind it isn't `confirmed`. With `objectives.check_model` they go to that host too. [docs/sessions.md](docs/sessions.md#objectives)
+
 ## [0.149.0] - 2026-11-04
 
 ### Added

@@ -205,7 +205,7 @@ RSpec.describe Samagotchi::ObjectivesCheck do
     let(:item) { Samagotchi::Objectives::Item.new(id: "O1", text: "Specs pass", done_when: "suite green") }
     let(:claim) { Samagotchi::Objectives::Move.new(id: "O1", note: "ran the suite", evidence: "0 failures") }
 
-    it "gives the reader the claim and the record, none of the agent's prose or system prompt" do
+    it "gives the reader the claim and the record, the agent's words labelled, no system prompt or list note" do
       conversation = [
         { role: "system", content: "SYSTEM PROMPT" },
         { role: "user", content: "run the specs", turn_id: "t" },
@@ -220,8 +220,16 @@ RSpec.describe Samagotchi::ObjectivesCheck do
 
       expect(system[:role]).to eq("system")
       expect(user[:content]).to include("O1 Specs pass", "suite green", "ran the suite", "0 failures", "run the specs", "3 examples", "builder says done")
-      expect(user[:content]).not_to include("SYSTEM PROMPT", "AGENT PROSE", "OBJ LIST")
+      expect(user[:content]).to include("[agent's own words]\nAGENT PROSE: all is well")
+      expect(user[:content]).not_to include("SYSTEM PROMPT", "OBJ LIST")
       expect(user[:content]).to include("Verdict: confirmed|refuted|unclear")
+    end
+
+    it "tells the reader the agent's words settle what it said, never that work was done" do
+      system, user = described_class.request(item, claim, [])
+
+      expect(system[:content]).to include("own words settle what it said or asked").and include("never proof of work")
+      expect(user[:content]).to include("own words show what it said or asked, never that its work was done")
     end
 
     it "keeps the newest of a long record, each run's output cut" do
@@ -292,6 +300,55 @@ RSpec.describe Samagotchi::ObjectivesCheck do
       carry = Samagotchi::ContextNote.message(note_id: "c", text: "AGENT LAST ANSWER", source: Samagotchi::SessionChain::NOTE_SOURCE)
 
       expect(described_class.record([carry])).not_to include("AGENT LAST ANSWER")
+    end
+
+    it "keeps each answer's words whole enough, cut as any entry is" do
+      text = described_class.record([{ role: "model", content: "#{"a" * 5000}the question?" }])
+
+      expect(text).to start_with("[agent's own words]\n").and include("the question?")
+      expect(text).not_to match(/a{#{described_class::OUTPUT_CHARS + 1}}/)
+    end
+
+    it "a tool-call-only step adds no empty label, in either storage" do
+      chat = chat_model(chat_call("c", "execute", command: "ls"))
+      qwen = { role: "model", content: "<think>\nhm\n</think>\n\n<tool_call>\n<function=execute>\n</function>\n</tool_call>" }
+      gemma = { role: "model", content: "<|tool_call>call:execute{command:<|\"|>ls<|\"|>}<tool_call|>" }
+
+      expect(described_class.record([chat, qwen, gemma])).to eq("")
+    end
+
+    it "keeps thinking out: the chat loop's fields and every inline form of the native loop's" do
+      fields = { role: "model", content: "VISIBLE 0", thinking: "SECRET THOUGHT", reasoning_content: "SECRET THOUGHT",
+                 "anthropic_content" => [{ "type" => "thinking", "thinking" => "SECRET THOUGHT" }] }
+      inline = [
+        "<think>\nSECRET THOUGHT\n</think>\n\nVISIBLE 1",
+        "SECRET THOUGHT\n</think>\nVISIBLE 2",
+        "<|channel>thought\nSECRET THOUGHT<channel|>VISIBLE 3",
+        "<|think|>SECRET THOUGHT<|channel>thought\nx<channel|>VISIBLE 4",
+        "<think>\nSECRET THOUGHT cut off by the limit",
+        "<|channel>thought\nSECRET THOUGHT cut off by the limit"
+      ].map { |content| { role: "model", content: content } }
+
+      text = described_class.record([fields, *inline])
+
+      expect(text).not_to include("SECRET THOUGHT", "<think>", "<|channel>", "<channel|>")
+      expect(text).to include("VISIBLE 0", "VISIBLE 1", "VISIBLE 2", "VISIBLE 3", "VISIBLE 4")
+      expect(text.scan("[agent's own words]").size).to eq(5)
+    end
+
+    it "a native step keeps its words and loses its calls, the objectives tool's too" do
+      entry = { role: "model", content: <<~CONTENT }
+        Two questions for you?
+        <tool_call>
+        <function=objectives>
+        <parameter=note>SELF NOTE</parameter>
+        </function>
+        </tool_call>
+      CONTENT
+
+      text = described_class.record([entry])
+
+      expect(text).to eq("[agent's own words]\nTwo questions for you?")
     end
 
     it "keeps the text of a multipart user entry" do

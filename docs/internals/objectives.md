@@ -220,8 +220,13 @@ the record settles is `unclear`, and a file changed since isn't seen. If that tu
 next step, and the file and view below can stay.
 
 **Independence.** The request (`ObjectivesCheck.request`) has its own system text and no tools. Its record is what people and
-notes said and what tools returned (`.record`, each entry cut at 1,500 characters, the newest 24,000 kept). It never holds the
-agent's prose, the system prompt, the list's notes, a continue's carry note, which holds the agent's last answer
+notes said, what tools returned, and the agent's visible answers labelled `[agent's own words]` (`.record`, each entry cut at 1,500 characters, the
+newest 24,000 kept). Without those answers a claim about what the agent said or asked could only come back `unclear`. So the request says they settle
+what was said or asked and are never proof of work, which needs a tool's output or a person's word. That rule is words to a model, not a mechanism: a
+probe on Qwen3.8 Flash Next held it 3 of 3 (only the agent's "all pass": `unclear`), and a verdict is information only either way.
+The record never holds the agent's thinking (`own_words`: a chat entry's `thinking` and `anthropic_content` aren't read; a native
+entry's content is the raw response, so its inline thoughts, a thought cut off unclosed, and its call markup come out), the system prompt, the list's
+notes, a continue's carry note, an earlier session's answer that would read as outside news
 (`Objectives.outside_note?`, the rule the audit shares), or the objectives tool's calls, since a move isn't evidence for itself.
 Note and evidence are capped at 1,000 characters each. Mid-turn it reads the loop's conversation (`Engine#live_conversation`), the running turn's runs too.
 
