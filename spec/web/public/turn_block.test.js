@@ -30,7 +30,7 @@ test("turnHistoryHtml: a reloaded tool turn is its block's outline of steps, the
   const html = turnHistoryHtml(items, timing, { thumbs });
   assert.equal(html,
     '<div class="bubble user" data-copy-source="p"><div class="user-message">p</div></div>' +
-    '<details class="turn-work done outline"><summary>2 steps · 2 tool calls</summary>' +
+    '<details class="turn-work done outline"><summary><span class="tw-sum"><span class="turn-steps">2 steps · 2 tool calls</span></span></summary>' +
     '<details class="gen"><summary class="repeats"><span class="gen-head">Let me &lt;check&gt;.</span><span class="gen-sep"> · </span><span class="gen-calls">1 tool call</span></summary><div class="gen-text">Let me &lt;check&gt;.</div>' +
     '<div class="activity-body"><div class="activity-row" data-key="1:1"><span class="activity-status ok" role="img" aria-label="done" title="done"></span><span class="activity-tool">execute</span><span class="activity-duration">7ms</span></div></div></details>' +
     '<div class="outline-fold" role="button" tabindex="0" aria-expanded="false">1 step</div><details class="gen folded"><summary>working with read · 1 tool call</summary>' +
@@ -83,7 +83,7 @@ test("turnHistoryHtml: a turn canceled before any answer keeps its timing under 
   });
   const html = turnHistoryHtml(items, canceled, { thumbs });
   assert.match(html, /<\/details><div class="turn-timing">turn 1 · 0.9s · canceled<\/div><div class="bubble cancel stopped">\u25A0 canceled<\/div>$/);
-  assert.match(html, /<summary>1 step · 1 tool call<\/summary><details class="gen"><summary>working with execute · 1 tool call<\/summary>/);
+  assert.match(html, /<span class="turn-steps">1 step · 1 tool call<\/span><\/span><\/summary><details class="gen"><summary>working with execute · 1 tool call<\/summary>/);
 });
 
 test("turnHistoryNodes: a canceled or failed turn's outline stays open, a completed or recordless one's closes", () => {
@@ -117,7 +117,7 @@ test("turnHistoryHtml with parts: each step expands to its thinking, text and ca
   const html = turnHistoryHtml(items, timing, { thumbs });
   assert.equal(html,
     '<div class="bubble user" data-copy-source="p"><div class="user-message">p</div></div>' +
-    '<details class="turn-work done outline"><summary>3 steps · 2 tool calls</summary>' +
+    '<details class="turn-work done outline"><summary><span class="tw-sum"><span class="turn-steps">3 steps · 2 tool calls</span></span></summary>' +
     '<details class="gen"><summary class="repeats"><span class="gen-head">Let me check.</span><span class="gen-sep"> · </span><span class="gen-calls">1 tool call</span></summary><details class="thinking"><summary>thinking</summary><div class="thinking-body">plan &lt;a&gt;</div></details><div class="gen-text">Let me check.</div>' +
     '<div class="activity-body"><div class="activity-row" data-key="1:1"><span class="activity-status ok" role="img" aria-label="done" title="done"></span><span class="activity-tool">execute</span>' +
     '<span class="activity-params">command="true"</span><span class="activity-duration">7ms</span><div class="activity-output" title="exit: 0">exit: 0</div></div></div></details>' +
@@ -324,7 +324,7 @@ test("turnHistoryHtml: a turn with no answer keeps its empty steps, then the mut
   const html = turnHistoryHtml(items, normalizeTiming({ turn_records: [{ id: "T1", duration_ms: 3700 }] }), { thumbs });
   assert.equal(html,
     '<div class="bubble user" data-copy-source="p"><div class="user-message">p</div></div>' +
-    '<details class="turn-work done"><summary>2 steps</summary>' +
+    '<details class="turn-work done"><summary><span class="tw-sum"><span class="turn-steps">2 steps</span></span></summary>' +
     '<details class="gen"><summary>thinking</summary><div class="thinking-body">first</div></details>' +
     '<details class="gen"><summary>thinking</summary><div class="thinking-body">second</div></details>' +
     '</details>' +
@@ -389,7 +389,7 @@ test("turnHistoryHtml with parts: a failed call's row keeps its word after the p
   assert.match(html, /<div class="activity-row" data-key="1:1"><span class="activity-status error" role="img" aria-label="error" title="error"><\/span>/);
   assert.match(html, /<span class="activity-params">command="ls \/x"<\/span><span class="activity-state error">error<\/span><span class="activity-duration">15ms<\/span>/);
   // The step says so, with the red-chevron class, and the block's bare count too (under 3 calls).
-  assert.match(html, /<details class="turn-work done"><summary>1 step · 1 tool call \(1 failed\)<\/summary><details class="gen has-failed"><summary>working with execute · 1 tool call \(1 failed\)<\/summary>/);
+  assert.match(html, /<details class="turn-work done"><summary><span class="tw-sum"><span class="turn-steps">1 step · 1 tool call \(1 failed\)<\/span><\/span><\/summary><details class="gen has-failed"><summary>working with execute · 1 tool call \(1 failed\)<\/summary>/);
 });
 
 test("turnHistoryHtml: a task_wait titled by its task's command shows it, its id line on hover", () => {

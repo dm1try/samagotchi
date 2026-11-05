@@ -23,15 +23,16 @@ const items = [
 const timing = normalizeTiming({ turn_records: [{ id: "T1", status: "completed", duration_ms: 5 }, { id: "T2", status: "completed", duration_ms: 5 }] });
 const thumbs = () => "";
 
-test("turnHistoryNodes with the working set: blocks and rows stamped with ordinals, a footprint after the block", () => {
+test("turnHistoryNodes with the working set: blocks and rows stamped with ordinals, the footprint first on the block's summary line", () => {
   const out = turnHistoryNodes(items, timing, { thumbs, workingSet: true });
   const holder = document.createElement("div");
   holder.append(out);
   const block = holder.querySelector(".turn-work");
   assert.equal(block.dataset.turn, "0");
   assert.deepEqual([...block.querySelectorAll(".activity-row")].map((r) => r.dataset.at), ["0.0", "0.1", "1.0"]);
-  const foot = block.nextElementSibling;
-  assert.ok(foot.matches(".ws-foot"));
+  const foot = block.querySelector(":scope > summary > .tw-sum > .ws-foot:first-child");
+  assert.ok(foot.nextElementSibling.matches(".turn-steps"));
+  assert.equal(block.nextElementSibling?.matches(".ws-foot") ?? false, false);
   assert.equal(foot.dataset.wsTurn, "0");
   assert.equal(foot.textContent.replace(/\s+/g, " ").trim(), "touched a.rb · ◆ style s1 · b.rb");
   assert.equal(foot.querySelector(".ws-step").dataset.at, "0.0.1");
@@ -59,13 +60,37 @@ test("stampRows: the live block's turn and each row's step.row, found by its key
   assert.equal(block.dataset.turn, "7");
 });
 
-test("footprintNode: a line for a turn that touched something, none otherwise; handOffOrder puts it after the block", () => {
+test("footprintNode: a span for a turn that touched something, none otherwise; handOffOrder has no place for it", () => {
   const its = itemsOfTurn({ gens: [{ tools: [{ ...read("lib/x.rb"), status: "ok" }] }] }, 2);
   const foot = footprintNode(its, 2);
+  assert.equal(foot.tagName, "SPAN");
   assert.equal(foot.getAttribute("role"), "button");
   assert.match(foot.getAttribute("aria-label"), /^Working set of this turn: x\.rb\. Open the list\.$/);
   assert.equal(footprintNode([], 2), null);
-  assert.deepEqual(handOffOrder({ prompt: "P", block: "B", footprint: "F", answer: ["A"] }), ["P", "B", "F", "A"]);
+  assert.deepEqual(handOffOrder({ prompt: "P", block: "B", footprint: "F", answer: ["A"] }), ["P", "B", "A"]);
+});
+
+test("a footprint in a summary: a click cancels the summary's toggle, on its words and its step tag; elsewhere it cancels nothing", () => {
+  const historyEl = document.createElement("div");
+  const infoEl = document.createElement("div");
+  document.body.append(historyEl, infoEl);
+  createWorkingSet({ historyEl, infoEl, state: () => ({ preloadedMemories: [], mutedMemories: [], usedMemories: [] }), session: () => "s1", getWorkingSet: () => Promise.resolve({ items: [], at: 0 }) });
+  const its = itemsOfTurn({ gens: [{ tools: [{ ...read("lib/x.rb"), status: "ok" }] }, { tools: [{ tool: "memory_read", title: "style", status: "ok" }] }] }, 0);
+  const inSummary = document.createElement("summary");
+  inSummary.append(footprintNode(its, 0));
+  const alone = footprintNode(its, 0);
+  historyEl.append(inSummary, alone);
+  const click = (el) => {
+    const e = new window.MouseEvent("click", { bubbles: true, cancelable: true });
+    el.dispatchEvent(e);
+    document.querySelector("#workingSetPopover .ctx-pop-close")?.click();
+    return e.defaultPrevented;
+  };
+  assert.equal(click(inSummary.querySelector(".w")), true);
+  assert.equal(click(inSummary.querySelector(".ws-step")), true);
+  assert.equal(click(alone.querySelector(".w")), false);
+  historyEl.remove();
+  infoEl.remove();
 });
 
 const bar = (extra = {}) => ({

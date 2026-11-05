@@ -242,7 +242,10 @@ session's set (load, resync) and when the list opens (a file changed while the s
 passes `working_set_updated` to it, and does nothing when the flag is off. A new snapshot redraws:
 - the session bar's chip and the open list;
 - the footprints, in place (`refreshFootprints`, the same node; a `data-ws-sig` of the items' states skips an
-  unchanged one);
+  unchanged one). A footprint is a `<span>` in its block's summary line, `.turn-work > summary > .tw-sum`, before the
+  steps' `.turn-steps`: drawn in the reload's template (`turnHistoryNodes`), prepended at the hand-off
+  (`stage_view.js handOff`, while the stage still hides the summary). A click there must not toggle the block:
+  `details_motion.js` skips `.ws-foot`, and `footClick` cancels the click;
 - the rail (`onServer`, the stage's `scheduleRefresh`).
 
 A state is the item's state now, not when its turn ran. A state change never refolds and never moves a line: the
@@ -287,7 +290,7 @@ leaves nothing behind. The rail adds a dashed `+ name · next turn` line per pen
 (`working_set_rail.js addLabels`, inside the rail's budget), and `read again next turn` on a held line's title.
 
 **Looks** (design spec §3, §5): a stale line is faded (`--ws-stale-opacity`: `.55` on the light palette, `.4` on the
-dark one, where a lighter grey reads as plain secondary text; a footprint label `.55` on both, its text already faint); a forgotten one is struck in `--text-faint`
+dark one, where a lighter grey reads as plain secondary text; a footprint label `.55` on both); a forgotten one is struck in `--text-faint`
 at `opacity: .5`. A group shows `✂n` for its forgotten members. It is struck only when all its members are
 forgotten, and faded when all are stale or forgotten (`groupState`). The list's ops text says `stale` or `forgotten`
 in words (colour is never alone) and shows `~1.2k` tokens per row (`tokensText`). A footprint adds `n stale` (plain; a file the turn's

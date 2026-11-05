@@ -1202,7 +1202,8 @@ again). When a step ends its thinking closes to a plain `thinking` line
 live narration is a box of about three lines that fills sentence by
 sentence (a sentence shows once it is complete) and scrolls to the newest
 when full. When the turn ends the block closes to its summary (`3 steps
-· 8 tool calls · execute ×7 · read ×1`). Opened, it shows its outline when any of
+· 8 tool calls · execute ×7 · read ×1`, after the turn's
+[footprint](#the-working-set) when it has one). Opened, it shows its outline when any of
 its steps said something: one line per step that wrote text (that text's first
 line), and each run of steps that only called tools or thought sits behind one
 `· N steps` line that shows them. A canceled or failed turn with such a step
@@ -1252,12 +1253,14 @@ session bar shows the `mem N` chip again.
   folds it to one line (`SET 17 + ◆ name`), kept per browser; a click opens the
   list. In a stage narrower than 760 px it is one line under the last calls;
   on a phone it isn't shown.
-- **The footprint**, one line under each finished turn's block, live and after
+- **The footprint**, each finished turn's block's summary line, live and after
   a reload: `touched …/web/public/ · 4 files · ◆ 2 memories s2–10 · +1 url ·
   edited 1`, then `n stale`, `n forgotten` or `n dropped` while some are (a file
-  changed after the turn read it, even at its very end, says so here). A step
-  tag (`s2`) goes to that call's row; the rest opens the turn's list. A turn
-  that touched nothing has none.
+  changed after the turn read it, even at its very end, says so here), with the
+  steps' count at the right. A step tag (`s2`) goes to that call's row; the rest
+  of its words opens the turn's list; the chevron or the count opens the steps.
+  A phone shows the footprint alone, no count. A turn that touched nothing has
+  none: its summary is the count.
 - **The `set N` chip** in the session bar, in place of the `mem N` chip (whose
   tooltip goes too): the session's whole set, preloaded (`--memory`) and muted
   (`--mute`) memories included; its dot lights when the set changed since you

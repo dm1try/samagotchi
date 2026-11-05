@@ -172,6 +172,15 @@ test("createTurnBlock: a completed turn's answer bubble carries its turn id (dat
 const outlineOf = (block) => [...block.children].filter((el) => !el.matches("summary")).map((el) =>
   el.matches(".outline-fold") ? `fold ${el.textContent}` : `${el.className} ${el.querySelector(":scope > summary").textContent.split(" · ")[0]}`);
 
+test("createTurnBlock: the block's summary line holds its count in .turn-steps, kept up to date", () => {
+  const { turnBlock } = liveBlock();
+  stepOne(turnBlock);
+  const steps = turnBlock.current().blockEl.querySelector(":scope > summary > .tw-sum > .turn-steps");
+  assert.match(steps.textContent, /^working · 1 step/);
+  turnBlock.turnEnded({ kind: "canceled" });
+  assert.match(steps.textContent, /^1 step/);
+});
+
 test("createTurnBlock: a canceled or failed turn with narrated steps stays open; with none said it closes", () => {
   for (const kind of ["canceled", "failed"]) {
     const { turnBlock } = liveBlock();

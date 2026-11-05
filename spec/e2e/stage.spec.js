@@ -325,7 +325,7 @@ test("a question card sits in the stage (also after a reload mid-turn), and the 
   // without the answer's Revise row (revise_stack.js).
   const kinds = await page.locator("#history > :not(.revise-row)").evaluateAll((els) => els.map((el) =>
     [...el.classList].filter((c) => c !== "ts-arrive").slice(0, 2).join(" ")));
-  expect(kinds).toEqual(["bubble user", "turn-work done", "ws-foot", "bubble question", "bubble output", "turn-timing"]);
+  expect(kinds).toEqual(["bubble user", "turn-work done", "bubble question", "bubble output", "turn-timing"]);
   // The asking step's text in the history keeps the ref (live, at the turn's end).
   await expect(page.locator('#history .gen > .gen-text [data-ref-kind="issue"]')).toHaveText("JIRA-7");
 });
@@ -396,7 +396,7 @@ test("a long reply that asks gets the question room: read from its start, a pill
   await handedOff(page, 1);
   const kinds = await page.locator("#history > :not(.revise-row)").evaluateAll((els) => els.map((el) =>
     [...el.classList].filter((c) => c !== "ts-arrive").slice(0, 2).join(" ")));
-  expect(kinds).toEqual(["bubble user", "turn-work done", "ws-foot", "bubble question", "bubble output", "turn-timing"]);
+  expect(kinds).toEqual(["bubble user", "turn-work done", "bubble question", "bubble output", "turn-timing"]);
 });
 
 test("the stage folds to its status row, and stays folded across a reload", async ({ page, script }) => {
@@ -556,9 +556,9 @@ test("the delivery line reads the thinking step; Alt+Enter queues messages below
 // stage holds what the turn read (a file, a memory) without changing the
 // stage's height, the session bar's set chip stands in the mem chip's
 // place, a step tag jumps to its call live and after a reload, and the
-// footprint line lands under the handed-off block.
+// footprint lands in the handed-off block's summary line.
 test.describe("the working set", () => {
-  test("the rail fills without a height change; set chip for the mem chip; step tags jump live and after a reload; the footprint", async ({ page, script, chi }) => {
+  test("the rail fills without a height change; set chip for the mem chip; step tags jump live and after a reload; the footprint", async ({ page, browser, script, chi }) => {
     test.setTimeout(60_000);
     const memories = path.join(chi.dirs.config, "samagotchi", "memories");
     fs.mkdirSync(memories, { recursive: true });
@@ -597,16 +597,70 @@ test.describe("the working set", () => {
       const session = await (await page.request.get(new URL(`/api/sessions/${id}`, page.url()).href)).json();
       expect(session.session.used_memory_names).toContain("e2e-style");
       await expect(page.locator("#infoText .mem-chip")).toHaveCount(0);
-      // The footprint, right after the block, live and after a reload.
-      const foot = page.locator("#history .turn-work + .ws-foot");
+      // The footprint is the block's summary line, live and after a reload,
+      // the steps' count beside it.
+      const block = page.locator("#history .turn-work");
+      const foot = block.locator("> summary .ws-foot");
       await expect(foot).toContainText("README.md");
       await expect(foot).toContainText("e2e-style");
       await page.reload();
       await expect(foot).toHaveText(/touched README\.md · ◆ e2e-style s2/);
+      await expect(block.locator("> summary .turn-steps")).toContainText("step");
+      // The words open the turn's list and leave the block alone, by click and
+      // by Enter; the count toggles the block.
+      await expect(block).toHaveJSProperty("open", false);
+      const list = page.locator("#workingSetPopover");
+      await foot.locator(".w").click();
+      await expect(list).toBeVisible();
+      await expect(block).toHaveJSProperty("open", false);
+      await list.locator(".ctx-pop-close").click();
+      await expect(list).toBeHidden();
+      await foot.focus();
+      await page.keyboard.press("Enter");
+      await expect(list).toBeVisible();
+      await expect(block).toHaveJSProperty("open", false);
+      await list.locator(".ctx-pop-close").click();
+      await expect(list).toBeHidden();
+      await block.locator("> summary .turn-steps").click();
+      await expect(block).toHaveJSProperty("open", true);
+      // Its motion's end: a click during it is dropped (details_motion.js).
+      await block.evaluate((el) => Promise.all(el.getAnimations().map((anim) => anim.finished)));
+      await block.locator("> summary .turn-steps").click();
+      await expect(block).toHaveJSProperty("open", false);
+      // A step tag jumps, into the closed block.
       await foot.locator(".ws-step").click();
       const row = page.locator('#history .turn-work[data-turn="0"] .activity-row[data-at="1.0"]');
       await expect(row).toHaveClass(/ref-flash/);
       await expect(row).toBeInViewport();
+      // A phone: no count, so the chevron is the way to the steps: a tap beside
+      // its glyph, over the block's padding, opens them; a tap on the words
+      // opens the sheet and leaves the block.
+      await test.step("at 390 px", async () => {
+        const phone = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
+        try {
+          const small = await phone.newPage();
+          await small.goto(page.url());
+          const smallBlock = small.locator("#history .turn-work");
+          const summary = smallBlock.locator("> summary");
+          await expect(summary.locator(".ws-foot")).toBeVisible();
+          await expect(summary.locator(".turn-steps")).toBeHidden();
+          await expect(smallBlock).toHaveJSProperty("open", false);
+          await summary.locator(".ws-foot .w").tap();
+          await expect(small.locator("#workingSetPopover")).toBeVisible();
+          await expect(smallBlock).toHaveJSProperty("open", false);
+          await small.locator("#workingSetPopover .ctx-pop-close").tap();
+          await expect(small.locator("#workingSetPopover")).toBeHidden();
+          const box = await summary.boundingBox();
+          const beside = { x: box.x - 6, y: box.y + box.height / 2 };
+          // The hit area itself: Chromium's touch adjustment would snap this tap to the summary anyway.
+          expect(await small.evaluate(({ x, y }) => document.elementFromPoint(x, y).tagName, beside)).toBe("SUMMARY");
+          await small.touchscreen.tap(beside.x, beside.y);
+          await expect(smallBlock).toHaveJSProperty("open", true);
+          await expect(small.locator("#workingSetPopover")).toBeHidden();
+        } finally {
+          await phone.close();
+        }
+      });
     } finally {
       fs.rmSync(note, { force: true });
     }
@@ -676,8 +730,8 @@ test.describe("the working set", () => {
       await page.mouse.move(0, 0);
       await handedOff(page, 1);
       await page.reload();
-      await expect(page.locator("#history .turn-work + .ws-foot .l.file.stale")).toHaveText("README.md");
-      await expect(page.locator("#history .turn-work + .ws-foot .s")).toHaveText("1 stale");
+      await expect(page.locator("#history .turn-work > summary .ws-foot .l.file.stale")).toHaveText("README.md");
+      await expect(page.locator("#history .turn-work > summary .ws-foot .s")).toHaveText("1 stale");
     } finally {
       fs.writeFileSync(readme, readmeText);
     }

@@ -346,10 +346,16 @@ button.system-one-wrong,.system-one-wrong.marked{flex:none;padding:1px 6px;borde
 .thinking-body{margin-top:6px;font-size:13px;color:var(--text-3);white-space:pre-wrap;word-break:break-word;font-style:italic;max-height:240px;overflow:auto}
 /* The turn block (the stage's cloud, the history): one block per turn, its steps as collapsed rows, the live one open on top. */
 .turn-work{border:1px solid var(--border);border-left:3px solid var(--accent);border-radius:12px;background:var(--bg-panel);padding:8px 12px;font-size:14px}
-.turn-work>summary{cursor:pointer;color:var(--text-muted);font-size:13px;font-weight:600;user-select:none;list-style:none}
+.turn-work>summary{position:relative;padding-left:13px;cursor:pointer;color:var(--text-muted);font-size:13px;font-weight:600;user-select:none;list-style:none}
 .turn-work>summary::-webkit-details-marker{display:none}
-.turn-work>summary::before{content:"▸ ";color:var(--accent)}
-.turn-work[open]>summary::before{content:"▾ "}
+.turn-work>summary::before{content:"▸";position:absolute;left:0;color:var(--accent)}
+/* The summary's line: flex on this span, not on <summary> (WebKit's flex on a summary has had quirks). The chevron and the steps toggle the block, the footprint opens the turn's working set (working_set_view.js footClick). */
+.tw-sum{display:flex;align-items:baseline;gap:10px;min-width:0}
+/* The count gives way before the footprint, which is what the line is for. */
+.ws-foot~.turn-steps{margin-left:auto;flex:0 100 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;font-size:12px;font-weight:500;color:var(--text-muted);white-space:nowrap}
+/* A phone has no count to tap, and the chevron is then the only way to the steps: its hit area spreads over the block's padding, the glyph stays where it is. */
+@media (max-width:600px){.ws-foot~.turn-steps{display:none}.turn-work>summary::before{left:-12px;top:-8px;width:36px;box-sizing:border-box;padding:8px 0 8px 12px}}
+.turn-work[open]>summary::before{content:"▾"}
 /* Closed, a block keeps its box (the bar, the border, the width): a click changes its height only (details_motion.js); thinking and the recap the same. */
 /* A step's body (thinking, narration, rows, cards) sits --step-indent right of its summary, so the thinking
    chevron and the row marks share one column under the step's own chevron. The summary takes it back with a
@@ -978,11 +984,11 @@ body.working-set .ts-live{position:relative;padding-right:264px}
 }
 body.working-set .turn-stage.waiting .ts-live{min-height:calc(var(--ts-live-h) + var(--ws-row-h,0px))}
 body.working-set .turn-stage.held-wait:not(.waiting) .ts-live{min-height:max(calc(var(--ts-live-h) + var(--ws-row-h,0px)),var(--live-held,0px))}
-/* A finished turn's footprint, under its closed block (working_set_view.js): one faint line; a click opens its list. */
-.ws-foot{display:block;width:fit-content;max-width:calc(100% - 13px);box-sizing:border-box;margin:-4px 0 0 13px;padding:0 6px;border-radius:6px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11.5px;line-height:18px;color:var(--text-faint);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer}
-@media(hover:hover){.ws-foot:hover{color:var(--text-muted);background:var(--bg-hover)}}
+/* A finished turn's footprint, its block's summary line (working_set_view.js): a click opens its list. */
+.ws-foot{flex:0 1 auto;min-width:0;padding:0 6px;border-radius:6px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12.5px;font-weight:500;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer}
+@media(hover:hover){.ws-foot:hover{background:var(--bg-hover)}}
 .ws-foot:focus-visible{outline:2px solid var(--accent-ring);outline-offset:1px}
-.ws-foot .w{font-family:ui-sans-serif,system-ui,sans-serif}
+.ws-foot .w{font-family:ui-sans-serif,system-ui,sans-serif;font-weight:600;color:var(--text-muted)}
 .ws-foot .sep{color:var(--border-strong)}
 .ws-foot .e{color:var(--accent)}
 .ws-foot .k{color:var(--think-text)}

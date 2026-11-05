@@ -123,7 +123,7 @@ test("a multi-step turn shows its steps, tool rows and the markdown answer", asy
   await send(page, "Check the shell and the README");
   await turnEnded(page, 1);
   const work = page.locator("#history .turn-work.done");
-  await expect(work.locator("> summary")).toHaveText("3 steps · 2 tool calls");
+  await expect(work.locator("> summary .turn-steps")).toHaveText("3 steps · 2 tool calls");
   const rows = work.locator(".activity-row");
   await expect(rows).toHaveCount(2);
   await expect(rows.nth(0).locator(".activity-tool")).toHaveText("execute");
@@ -250,13 +250,12 @@ test("a reload mid-turn and after it keeps the retry row, the answered card and 
   await page.reload();
   await turnEnded(page, 1);
   expect(await rows("#history")).toEqual(expected);
-  // In the turn's order: the steered line and the card after its steps
-  // (the working set's footprint right under them), before its
-  // answer and its one timing line (the answer's Revise row aside).
+  // In the turn's order: the steered line and the card after its steps,
+  // before its answer and its one timing line (the answer's Revise row aside).
   const order = await page.locator("#history > :not(.revise-row)").evaluateAll((els) => els.map((e) =>
     e.matches(".bubble.user.steered") ? "steered" : e.matches(".bubble.user") ? "user" : e.matches(".turn-work") ? "block"
       : e.matches(".bubble.question") ? "card" : e.matches(".bubble.output") ? "answer" : e.matches(".turn-timing") ? "timing" : e.className));
-  expect(order).toEqual(["user", "block", "ws-foot", "card", "steered", "answer", "timing"]);
+  expect(order).toEqual(["user", "block", "card", "steered", "answer", "timing"]);
 });
 
 // LLM context edits (llm_context.strategy stale, apply next_request): the
@@ -613,7 +612,7 @@ test("an edit's approval card, then its row's title and diff lines, open the fil
   // The steps block, the edit's fold and its step, opened when they are closed.
   const openSteps = async () => {
     const block = page.locator("#history .turn-work");
-    if (!(await block.evaluate((el) => el.open))) await block.locator("> summary").click();
+    if (!(await block.evaluate((el) => el.open))) await block.locator("> summary .turn-steps").click();
     const fold = block.locator("> .outline-fold");
     if (!(await fold.evaluate((el) => el.classList.contains("open")))) await fold.click();
     const step = block.locator("> details.gen").nth(1);

@@ -65,6 +65,25 @@ test("animateHeight: height keyframes (a fade too), the overflow clipped meanwhi
   el.remove();
 });
 
+test("a click on a footprint in the summary is left alone: no motion, no preventDefault there; the steps beside it still animate", () => {
+  const animated = [];
+  const root = document.createElement("div");
+  installDetailsMotion({ root, selector: ".turn-work", motion: () => { animated.push(1); return true; } });
+  const { details, summary } = collapsible("turn-work", false);
+  details.animate = () => ({ finished: Promise.resolve() });
+  summary.innerHTML = '<span class="tw-sum"><span class="ws-foot"><span class="w">touched</span></span><span class="turn-steps">3 steps</span></span>';
+  root.appendChild(details);
+  const click = (el) => {
+    const e = new window.MouseEvent("click", { bubbles: true, cancelable: true });
+    el.dispatchEvent(e);
+    return e.defaultPrevented;
+  };
+  assert.equal(click(summary.querySelector(".w")), false);
+  assert.equal(animated.length, 0);
+  assert.equal(click(summary.querySelector(".turn-steps")), true);
+  assert.equal(animated.length, 1);
+});
+
 test("a summary click animates the block closed, then open; nothing else's summary; a second click mid-motion is dropped", async () => {
   const root = document.createElement("div");
   document.body.append(root);
