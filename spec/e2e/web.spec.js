@@ -2028,7 +2028,7 @@ test("thinking loop: loop-guard cuts it, asks again, answers", async ({ page, sc
 // step's read) stays in sight when that step closes mid-turn: it leaves the
 // collapsing step for the block, and after the turn ends it is under the
 // block, where a reload puts it, also once the session is stopped.
-test("a warn card stays in sight when its step closes mid-turn", async ({ page, script }) => {
+test("a warn card stays in sight when its step closes mid-turn", async ({ page, script, fakeMode }) => {
   script("warn_card");
   await send(page, "Read the flagged file");
   const card = page.locator(`${H} .plugin-card.warn`).filter({ hasText: "e2e warn card" });
@@ -2057,6 +2057,17 @@ test("a warn card stays in sight when its step closes mid-turn", async ({ page, 
   await page.reload();
   await expect(page.locator("#history .bubble.user")).toHaveCount(1);
   await expect(page.locator("#history > .plugin-card.warn").filter({ hasText: "e2e warn card" })).toHaveCount(1);
+  // A turn that then fails with nothing kept is no turn: the card stays above
+  // its prompt, live and after a reload.
+  fakeMode("500");
+  await send(page, "Say pong");
+  const aboveFailed = async () => {
+    await expect(page.locator("#history > .plugin-card.warn ~ .bubble.user.failed")).toHaveCount(1);
+    await expect(page.locator("#history > .bubble.user.failed ~ .plugin-card.warn")).toHaveCount(0);
+  };
+  await aboveFailed();
+  await page.reload();
+  await aboveFailed();
 });
 
 // The Stop button asks first what the worker still has that the user can

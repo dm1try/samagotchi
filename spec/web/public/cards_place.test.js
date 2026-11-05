@@ -200,3 +200,38 @@ test("a proposal card's buttons stay disabled until its card comes or the action
   await new Promise((r) => setTimeout(r, 0));
   assert.equal(other.disabled, false);
 });
+
+// The page draws a failed turn's prompt (its prompt went back to the user,
+// the store never counted it) at the end of the history, then places the
+// snapshot's cards around it.
+const FAILED_PROMPT = '<div class="bubble user failed" data-failed-turn="1">failed</div><div class="bubble cancel">✕ failed</div>';
+
+function order(h) {
+  return [...h.children].map((el) => el.dataset.cardId || el.textContent);
+}
+
+test("a failed prompt is no turn: a card goes above it, as it showed live", () => {
+  const h = history(`<div class="bubble user">one</div><div class="bubble output">a1</div>${FAILED_PROMPT}`);
+  const { cards } = harness(h);
+  cards.placeSnapshotCards([{ type: "card", id: "c1", title: "t", body: "b", turns_since: 0 }], { before: h.querySelector(".failed") });
+  assert.deepEqual(order(h), ["one", "a1", "c1", "failed", "✕ failed"]);
+});
+
+test("a failed prompt doesn't count: an older card stays above the turn after it", () => {
+  const h = history(`<div class="bubble user">one</div><div class="bubble output">a1</div><div class="bubble user">two</div><div class="bubble output">a2</div>${FAILED_PROMPT}`);
+  const { cards } = harness(h);
+  cards.placeSnapshotCards([{ type: "card", id: "c1", title: "t", body: "b", turns_since: 1 }], { before: h.querySelector(".failed") });
+  assert.deepEqual(order(h), ["one", "a1", "c1", "two", "a2", "failed", "✕ failed"]);
+});
+
+test("a last turn's notice goes in that turn, not after a failed prompt", () => {
+  const h = history(`<div class="bubble user">one</div><div class="bubble output">a1</div>${FAILED_PROMPT}`);
+  const { cards } = harness(h);
+  cards.placeSnapshotCards([{ type: "hook_notice", hook: "h", text: "note", in_turn: true, turns_since: 0 }], { before: h.querySelector(".failed") });
+  assert.equal(h.querySelector(".hook-notice").nextElementSibling.textContent, "a1");
+});
+
+test("a reloaded turn's elements stop at its prompt, not at a failed one", () => {
+  const h = history(`<div class="bubble user">one</div><div class="bubble output">a1</div>${FAILED_PROMPT}<div class="bubble note">n</div>`);
+  assert.deepEqual(reloadedTurnEls(h, null).map((el) => el.textContent), ["one", "a1", "failed", "✕ failed", "n"]);
+});

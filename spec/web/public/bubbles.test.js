@@ -256,3 +256,20 @@ test("a recap shown after the snapshot's cards (the load's order): last after th
   assert.deepEqual([...historyEl.children].map((el, i) => el.matches(kinds[i])), kinds.map(() => true));
   assert.equal(historyEl.querySelector(".bubble.recap").nextElementSibling, gap);
 });
+
+test("a failed prompt is no turn prompt, drawn from the session or live: the store never counted it", () => {
+  const { bubbles, historyEl } = harness();
+  const first = bubbles.makeUserBubble("one");
+  bubbles.makeUserBubble("reloaded", { state: "failed" }).dataset.failedTurn = "1";
+  bubbles.makeUserBubble("live", { state: "failed", enqueuedId: "failed:1" });
+  assert.deepEqual(turnPromptBubbles(historyEl), [first]);
+});
+
+test("a stale recap counts past a failed prompt", () => {
+  const { bubbles, historyEl } = harness();
+  bubbles.makeUserBubble("one");
+  const second = bubbles.makeUserBubble("two");
+  bubbles.makeUserBubble("gone", { state: "failed" });
+  bubbles.showRecap("summary", 1);
+  assert.ok(second.previousElementSibling === historyEl.querySelector(".bubble.recap"));
+});

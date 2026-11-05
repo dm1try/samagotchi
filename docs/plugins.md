@@ -942,6 +942,10 @@ worker gone), then moves out of the block, after the turn's end line, so it
 stays in sight; a reload puts it in the same place. An `:info` card of a
 completed turn stays in its step.
 
+Between turns, a card goes above the first turn prompt after it, live and
+after a reload. A failed turn whose prompt went back to its sender isn't a
+turn: its prompt line comes after the cards.
+
 An [anytime command](#anytime-true)'s cards show as it shows them, after its
 line, in every UI, whether a turn runs or not.
 
