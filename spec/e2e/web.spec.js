@@ -214,7 +214,8 @@ test("a turn with no answer ends in the stage as no answer, then one notice, liv
 // A turn's own rows come back where they were, on a mid-turn join and after
 // the turn: the empty answer's retry row, the answered question card, and
 // a line sent while the turn ran (the steered bubble, not a turn of its own).
-test("a reload mid-turn and after it keeps the retry row, the answered card and the steered line in the turn", async ({ page, script }) => {
+test("a reload mid-turn and after it keeps the retry row, the answered card and the steered line in the turn", async ({ page, script, browser }) => {
+  test.setTimeout(60_000);
   script("reload_rows");
   await send(page, "Read a file of my choice");
   const card = page.locator(`${H} .bubble.question`);
@@ -256,6 +257,50 @@ test("a reload mid-turn and after it keeps the retry row, the answered card and 
     e.matches(".bubble.user.steered") ? "steered" : e.matches(".bubble.user") ? "user" : e.matches(".turn-work") ? "block"
       : e.matches(".bubble.question") ? "card" : e.matches(".bubble.output") ? "answer" : e.matches(".turn-timing") ? "timing" : e.className));
   expect(order).toEqual(["user", "block", "card", "steered", "answer", "timing"]);
+
+  // A line sent while a text-only step streams: that step's whole reply stays
+  // reachable under the block's summary, live, after a reload and at 390 px.
+  // The variants (a tool step after it, the control): turn_block_chrome.test.js.
+  const opensToReply = async (on) => {
+    const block = on.locator("#history > .turn-work").last();
+    await expect(block.locator("> summary")).toHaveText("1 step");
+    await expect(block).toHaveJSProperty("open", false);
+    await block.locator("> summary").click();
+    // Their motion's end: a click during it is dropped (details_motion.js).
+    await expect(block).toHaveJSProperty("open", true);
+    await block.evaluate((el) => Promise.all(el.getAnimations().map((anim) => anim.finished)));
+    const step = block.locator("> .gen");
+    await expect(step.locator("> summary")).toContainText("First reply that the steer interrupted.");
+    await step.locator("> summary").click();
+    await expect(step).toHaveJSProperty("open", true);
+    await step.evaluate((el) => Promise.all(el.getAnimations().map((anim) => anim.finished)));
+    await expect(step.locator("> .gen-text")).toContainText("A second paragraph of the first reply");
+    await expect(step.locator("> .gen-text")).toBeVisible();
+    expect((await step.locator("> .gen-text").boundingBox()).height).toBeGreaterThan(20);
+    // The steered line and the answer stay after the block.
+    await expect(on.locator("#history > .turn-work + .bubble.user.steered + .bubble.output").last()).toContainText("Second reply");
+  };
+  await test.step("a line sent during a text-only step", async () => {
+    script("steer_text");
+    await send(page, "Say something long");
+    await expect(page.locator(H).getByText("First reply that the steer").first()).toBeVisible();
+    await send(page, "ANSWER-NOW");
+    await turnEnded(page, 2);
+    await opensToReply(page);
+    await page.reload();
+    await turnEnded(page, 2);
+    await opensToReply(page);
+    const phone = await browser.newContext({ viewport: { width: 390, height: 844 } });
+    try {
+      const small = await phone.newPage();
+      await small.goto(page.url());
+      await expect(small.locator("#history .bubble.output").last()).toContainText("Second reply");
+      await opensToReply(small);
+      await expectNoHorizontalOverflow(small);
+    } finally {
+      await phone.close();
+    }
+  });
 });
 
 // LLM context edits (llm_context.strategy stale, apply next_request): the

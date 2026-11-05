@@ -1206,7 +1206,8 @@ when full. When the turn ends the block closes to its summary (`3 steps
 [footprint](#the-working-set) when it has one). Opened, it shows its outline when any of
 its steps said something: one line per step that wrote text (that text's first
 line), and each run of steps that only called tools or thought sits behind one
-`· N steps` line that shows them. A canceled or failed turn with such a step
+`· N steps` line that shows them. That includes a reply a line was steered into: its
+step is a row like any other, and the answer that follows is the bubble. A canceled or failed turn with such a step
 stays open, as its last narrated step is the only text you get. A reload draws
 the same from what was saved: a failed turn whose stream dropped mid-narration
 saved no such step, so it reloads closed. Either way the answer is a normal bubble under the block (Markdown,

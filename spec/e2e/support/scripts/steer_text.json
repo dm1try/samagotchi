@@ -1,0 +1,11 @@
+{
+  "delay": 0.05,
+  "branches": [
+    {"when_last": "ANSWER-NOW", "iterations": [
+      {"text": "Second reply, after the steer."}
+    ]}
+  ],
+  "iterations": [
+    {"text": "First reply that the steer interrupted. Its second sentence runs on with words one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen seventeen eighteen nineteen twenty.\n\nA second paragraph of the first reply, which must stay reachable."}
+  ]
+}

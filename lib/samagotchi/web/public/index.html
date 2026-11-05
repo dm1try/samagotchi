@@ -405,11 +405,11 @@ button.system-one-wrong,.system-one-wrong.marked{flex:none;padding:1px 6px;borde
 .gen:not(.live) .gen-text{font-size:14px;color:var(--text-2)}
 .gen-text:empty{display:none}
 .gen .activity-body{margin-top:6px}
-/* One gen, no thinking, no tool rows: nothing to stack yet, so the narration streams like a plain answer bubble. */
-.turn-work:not(:has(.gen~.gen,.thinking-body,.activity-body)){border:0;padding:0;background:transparent}
-.turn-work:not(:has(.gen~.gen,.thinking-body,.activity-body))>summary,.turn-work:not(:has(.gen~.gen,.thinking-body,.activity-body)) .gen>summary{display:none}
-.turn-work:not(:has(.gen~.gen,.thinking-body,.activity-body)) .gen{margin:0;padding:0;border:0;background:transparent}
-.turn-work:not(:has(.gen~.gen,.thinking-body,.activity-body)) .gen-text{margin:0;background:var(--bg-panel);border:1px solid var(--border);border-left:3px solid var(--accent);border-radius:12px;padding:12px 14px;opacity:.95}
+/* One gen, no thinking, no tool rows: nothing to stack yet, so the narration streams like a plain answer bubble. A step that closed with text (a line steered in after it, its answer gone from the block) is a row: its summary is the way to its text. */
+.turn-work:not(:has(.gen~.gen,.thinking-body,.activity-body,.gen:not(.live)>.gen-text)){border:0;padding:0;background:transparent}
+.turn-work:not(:has(.gen~.gen,.thinking-body,.activity-body,.gen:not(.live)>.gen-text))>summary,.turn-work:not(:has(.gen~.gen,.thinking-body,.activity-body,.gen:not(.live)>.gen-text)) .gen>summary{display:none}
+.turn-work:not(:has(.gen~.gen,.thinking-body,.activity-body,.gen:not(.live)>.gen-text)) .gen{margin:0;padding:0;border:0;background:transparent}
+.turn-work:not(:has(.gen~.gen,.thinking-body,.activity-body,.gen:not(.live)>.gen-text)) .gen-text{margin:0;background:var(--bg-panel);border:1px solid var(--border);border-left:3px solid var(--accent);border-radius:12px;padding:12px 14px;opacity:.95}
 @media(max-width:600px){.gen{--step-indent:8px}}
 /* A question card asks for input like the composer card, so it wears the same glass (the recipe above); only its warm tint is its own. */
 .bubble.question{border-left:3px solid var(--warn);background:color-mix(in srgb,var(--warn) 7%,var(--glass-bg));padding:10px 12px}
