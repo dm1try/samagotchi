@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "fileutils"
+require "securerandom"
 
 require_relative "client_id"
 require_relative "config"
@@ -1263,14 +1264,15 @@ module Samagotchi
       # a fresh worker's first), so the list is this turn's from the start.
       @merged_this_turn = []
       origin = fresh_origin(turn_args[:origin])
-      turn_args = turn_args.merge(origin: origin)
+      # Settled here: the checkpoint's prompt carries it from the start.
+      turn_args = turn_args.merge(origin: origin, id: turn_args[:id] || SecureRandom.uuid)
       verdicts_before = @session.verdicts.size
       @reporting_turn = reports_to_parent?(origin)
       # A participant's review turn merges no input (#pending_input_drain).
       @participant_turn = origin.participant?
       restores = @turn_flow.restores
       begin
-        @checkpoint.begin_turn(prompt: prompt, enqueued_id: origin.enqueued_id, author: turn_author_fields(origin))
+        @checkpoint.begin_turn(prompt: prompt, turn_id: turn_args[:id], enqueued_id: origin.enqueued_id, author: turn_author_fields(origin))
         @session.status = Session::STATUS_RUNNING
         # A continue that moved this session to the chain's new link wrote
         # the new parent beside it (Session::PARENT_FILE): this turn's

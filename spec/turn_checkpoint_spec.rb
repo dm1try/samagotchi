@@ -38,6 +38,20 @@ RSpec.describe Samagotchi::TurnCheckpoint do
     expect(on_disk["interrupted_turn"]).to include("iteration" => 0)
   end
 
+  it "stamps the overlay's prompt with the turn's id, so a kill before the first boundary leaves it anchored" do
+    checkpoint.begin_turn(prompt: "task", turn_id: "t1")
+    session.save(state_dir: tmpdir)
+    expect(on_disk["messages"].last).to include("content" => "task", "turn_id" => "t1")
+
+    checkpoint.boundary(history + [{ role: "user", content: "task", turn_id: "t1" }], turn_id: "t1")
+    session.save(state_dir: tmpdir)
+    expect(on_disk["messages"].last).to include("content" => "task", "turn_id" => "t1")
+
+    checkpoint.begin_turn(turn_id: "t2")
+    session.save(state_dir: tmpdir)
+    expect(on_disk["messages"].map { |m| m["turn_id"] }).not_to include("t2")
+  end
+
   it "puts the turn's enqueued_id on every mark: the first and each boundary's; none for a turn that ran no input" do
     checkpoint.begin_turn(prompt: "task", enqueued_id: "q1")
     session.save(state_dir: tmpdir)

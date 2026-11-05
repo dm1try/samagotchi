@@ -171,17 +171,20 @@ module Samagotchi
 
     # A turn begins (before Engine#run_turn and the worker's running save):
     # the overlay starts as the history plus +prompt+ (text only: no
-    # images, no turn id), marked at iteration 0, so a worker killed before
-    # the loop's first boundary leaves the prompt and a mark the next one
-    # settles. A continue turn (no prompt) is the history, marked.
+    # images), marked at iteration 0, so a worker killed before the loop's
+    # first boundary leaves the prompt and a mark the next one settles. The
+    # prompt carries +turn_id+, as the first boundary's copy does: a card's
+    # place counts from it (Bridge::CardStore). A continue turn (no prompt)
+    # is the history, marked.
     # Every mark of the turn carries +enqueued_id+ and a participant's
     # +author+ (InterruptedTurn's).
     # @param prompt [String, nil]
+    # @param turn_id [String, nil] the id the turn runs under
     # @param enqueued_id [String, nil] the input the turn runs
     # @param author [Hash] a participant's prompt's author fields
     #   (Engine#author_fields), so a kill before the first boundary leaves
     #   it theirs; {} for the owner's
-    def begin_turn(prompt: nil, enqueued_id: nil, author: {})
+    def begin_turn(prompt: nil, turn_id: nil, enqueued_id: nil, author: {})
       @boundaries = 0
       @enqueued_id = enqueued_id.to_s.empty? ? nil : enqueued_id.to_s
       @author = author[:author]
@@ -190,7 +193,10 @@ module Samagotchi
       messages = Array(@session.messages).dup
       # Stamped by the wall clock here, a moment before the turn's own
       # stamp (Engine's Turn#wall), which the turn's first boundary saves.
-      messages << { role: "user", content: prompt, **author, MessageTime::KEY => MessageTime.iso(MessageTime.now) } unless prompt.to_s.empty?
+      unless prompt.to_s.empty?
+        messages << { role: "user", content: prompt, **(turn_id ? { turn_id: turn_id } : {}), **author,
+                      MessageTime::KEY => MessageTime.iso(MessageTime.now) }
+      end
       @session.turn_checkpoint = { messages: messages, marker: InterruptedTurn.new(started_at: @started_at, at: @started_at, iteration: 0,
                                                                                    enqueued_id: @enqueued_id, author: @author) }
     end

@@ -868,6 +868,9 @@ RSpec.describe Samagotchi::Worker do
         expect(saved.status).to eq("running")
         expect(saved.messages.last).to include(role: "user", content: "stubborn")
         expect(saved.interrupted_turn).to have_attributes(iteration: 0)
+        # The id its run_turn got: a card's place counts from it (CardStore).
+        started = seen_events.find { |e| e[:type] == :turn_started }
+        expect(saved.messages.last[:turn_id]).to be_a(String).and eq(started[:turn_id])
       end
 
       it "lets a turn that ended run its after_turn hooks past the grace (no cancel), its display kept" do
