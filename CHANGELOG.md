@@ -28,6 +28,7 @@ and commands may change between minor versions. How releases are made:
 - A web card keeps its place after a reload when the turn after it failed with nothing kept: above the failed prompt, as it showed live, not below it, and an older card no longer lands one turn too late. A failed prompt isn't counted as a turn any more.
 - `chi bundle list` and `chi self` say when a bundle has a file behind (`1 file behind`), and `chi bundle status` says it per file. `issues=` now counts files that stay behind, are missing or can't be read: an edit alone is no issue. A file `chi bundle status` can't read no longer crashes it.
 - A merge a chi start made, which in a worker reaches only the log, now leaves a note on the file's record: `chi bundle status` shows it (with the old copy's folder) and the next `chi update`'s row is its last appearance.
+- `chi update` no longer crashes on an edited memory it can't read at a newer version: that bundle's row fails and says which file, and the others go on.
 - `chi update` no longer reads `up to date` for a file that stays behind at the same version: a real conflict, no `git`, a timeout, a file it can't read, or one left for the bundle's next version now name the file and why, and the summary counts them.
 - A file marked by an older chi whose base chi can't vouch for no longer claims to hold your edits: it says chi can't tell, and why.
 - `chi update`'s table no longer carries the trash's long path: the row says `old copies: chi bundle trash`, and `--json`'s `trash_copy` has the full line.

@@ -168,6 +168,12 @@ module Samagotchi
         row.replaced = edited_executables(name, bundle)
         row.status = :would_update
         row
+      rescue SystemCallError => e
+        # A file it can't read: the upgrade would fail on it, so this is that
+        # row, not a crash of the whole plan. Apply passes it through.
+        row.status = :failed
+        row.note = Trash.failure_message(e)
+        row
       end
 
       # Up to date, unless a file marked conflict could settle now or stays behind.

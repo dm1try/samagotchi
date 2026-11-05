@@ -9,6 +9,7 @@ require_relative "index_updater"
 require_relative "memory_files"
 require_relative "merger"
 require_relative "remerge"
+require_relative "trash"
 require_relative "../log"
 
 module Samagotchi
@@ -125,6 +126,10 @@ module Samagotchi
             verified.tap { |done| done.behind = Provenance.new(name: BUNDLE_NAME).record.behind_files }
           end
         end
+      rescue Installer::InstallError => e
+        result(:failed, error: e.message)
+      rescue SystemCallError => e
+        result(:failed, error: Trash.failure_message(e))
       rescue StandardError => e
         result(:failed, error: "ensure failed: #{e.class}: #{e.message}")
       end

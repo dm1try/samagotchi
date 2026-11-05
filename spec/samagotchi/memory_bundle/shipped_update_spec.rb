@@ -227,6 +227,26 @@ RSpec.describe Samagotchi::MemoryBundle::ShippedUpdate do
     end
   end
 
+  it "fails only that row, in the plan and through apply, on an edited file it can't read at a newer version" do
+    skip "root reads anything" if Process.uid.zero?
+    install(old_copy("known-names", md: "old words\n"), "known-names")
+    install(old_copy("btw", md: "old words\n"), "btw")
+    live = File.join(system_dir, "known_names.md")
+    File.write(live, "mine\n")
+    File.chmod(0o000, live)
+    begin
+      rows = described_class.plan
+      row = rows.find { |candidate| candidate.name == "known-names" }
+      expect(row.status).to eq(:failed)
+      expect(row.note).to include("Permission denied", "nothing was lost")
+      applied = described_class.apply(rows)
+      expect(applied.find { |candidate| candidate.name == "known-names" }.status).to eq(:failed)
+      expect(applied.find { |candidate| candidate.name == "btw" }.status).to eq(:updated)
+    ensure
+      File.chmod(0o644, live)
+    end
+  end
+
   # The plan asks about every shipped *.md, the Installer about
   # MemoryFiles.select, so the two can disagree. Pinned, not endorsed: a plan
   # that unifies them changes what these say (Merger::Upgrade#forecast).
