@@ -60,8 +60,10 @@ the "asking again" and steer-cut rows, ✂ rows and questions (with how they wer
   an opening with no id (`/continue no`'s reason, Qwen's recovery line) counts as on the page. Nothing orders such an opening
   against an entry, so the store reads the session's messages (its `messages:` lambda) when an entry is shown between turns, and
   at the turn's end for what a running turn showed that isn't its own: `past_idless` is how many of them, right after the opening
-  it counts from, the entry already came after, and they don't count for it. A `!rollback` can only shorten that run, so a stale
-  number never eats a later turn. A turn's own rows don't read it: they count such a line, which sits below them. `current` is a card of the running turn. A card that
+  it counts from, the entry already came after, and they don't count for it. A `!rollback` usually only shortens that run, and the count
+  is capped at the run still there, so a stale number doesn't eat a later turn. It can also move an entry's counting point back to a
+  run the entry never recorded (T1, `/continue no, too slow`, a card, a held T2 stopped, a second card, `!rollback`: the second card,
+  anchored to T2, now counts from T1 and reads above the reason and the first card). That rare inversion is accepted. A turn's own rows don't read it: they count such a line, which sits below them. `current` is a card of the running turn. A card that
   comes mid-turn but isn't the turn's (an anytime command's, such as `/btw`) goes after that turn (`during`), and so does a
   between-turns notice. A card with an earlier card's id replaces it in place and keeps its anchor. A `list` with no messages
   (`?cards=1`'s bodies, `chi bundle try`'s trace) has no `turns_since`.
@@ -80,7 +82,7 @@ the "asking again" and steer-cut rows, ✂ rows and questions (with how they wer
 - **Saved.** With a `path` (`cards.json` in the session's folder) the store rewrites the file after each event in
   `SAVED_ON`, and a later worker's store starts from it, so a turn's cards outlive the worker; `CardStore.saved(dir, messages:)`
   is what chi web reads for a session no worker runs. The file is `{version: 2, turn_log:, entries:}`. The log is pruned at
-  save to start at the opening the earliest anchor counts from (all of it while an entry has none, or for a store with no
+  a turn's start and end and at an idle show (a running turn's rows reuse the start's, as finding it walks the messages) to start at the opening the earliest anchor counts from (all of it while an entry has none, or for a store with no
   `messages:`), so a restart reads an entry as the live store did; an old card therefore keeps it whole. `seed` drops an entry
   whose `turn_id`, `base_since` or `past_idless` isn't an id or a non-negative integer. Load warnings
   are the worker's own (each start announces them) and an unanswered question waits for no one: neither is saved or seeded. An
@@ -91,11 +93,13 @@ the "asking again" and steer-cut rows, ✂ rows and questions (with how they wer
   nothing (no id to check). The next save writes version 2 with `base_since` kept. `SessionManager.cards_empty?` reads both.
 - **An older chi on a version 2 file.** Its `seed` wants an integer `turns`, finds none, and starts with no entries. A chi web not
   yet restarted only reads: it lists no cards for that session until restarted, and the file stays whole. An older **writer** does
-  damage: at its first saved event (`:turn_started`) it writes `{"version":1,"turns":1,"entries":[]}` over the file, so that session's
-  cards go, and with them the answered approvals `chi guardrails replay` reads. A plain upgrade can't reach this: a worker already
-  running seeded before and keeps its own version 1 file, and a spawn runs the newest chi installed (`SessionManager.worker_command`).
-  It takes an older process starting on a session a newer one wrote: a downgrade, a chi home whose newest chi is older
-  (`home_older_than_spawner`), or a REPL or `bin/chi` from an older gem or checkout on the same state dir. Nothing on this side stops
+  damage: at its first saved event, `:turn_started`, it writes `{"version":1,"turns":0,"running":true,"entries":[]}` over the file
+  (`{"version":1,"turns":1,"entries":[]}` after that first turn), so that session's cards go, and with them the answered approvals
+  `chi guardrails replay` reads. A plain upgrade doesn't reach this: a worker already running seeded before and keeps its own version 1
+  file, and a spawn runs the newest chi installed (`SessionManager.worker_command`), unless that activation raises LoadError: the boot
+  line then falls back to the spawner's or the home's pinned version, which can be older. Otherwise it takes an older process starting
+  on a session a newer one wrote: a downgrade, a chi home whose newest chi is older (`home_older_than_spawner`), or a REPL or `bin/chi`
+  from an older gem or checkout on the same state dir. Nothing on this side stops
   it: an older chi can't be changed, and having it read the file would mean writing fake `turns` counters into every file.
 - **A killed turn needs nothing special.** `TurnCheckpoint` keeps a running turn's prompt in the session file, with its id from
   the start (`Worker#run_engine_turn` settles it first), so it counts as any opening. A REPL keeps no running turn in the
