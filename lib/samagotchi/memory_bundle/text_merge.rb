@@ -89,22 +89,24 @@ module Samagotchi
 
       def failed(why) = Result.new(status: :failed, text: nil, hunks: [], why: why)
 
-      # What +theirs+ changed against +base+, section by section: what a file that
-      # kept its own text has missed. A conflict's hunks can't say that: the whole
-      # file stays, so a change git would have merged is missed too, and the one
-      # hunk may be a Changelog line beside a whole new section.
+      # What +theirs+ changed against +base+ and +ours+ hasn't got, section by
+      # section: what a file that kept its own text has missed. A conflict's hunks
+      # can't say that: the whole file stays, so a change git would have merged is
+      # missed too, and the one hunk may be a Changelog line beside a whole new
+      # section. A section the user already brought over by hand isn't missed, nor
+      # one the bundle took out and the user did too.
       # A heading (as written, "## Steps") names its section, the deepest one; a
       # Changelog comes last, being the least of it.
       # @return [Array(Array<String>, Boolean)] the headings; whether text under
       #   no heading changed
-      def changed_sections(base, theirs)
-        before, after = [base, theirs].map do |text|
+      def changed_sections(base, theirs, ours)
+        before, after, held = [base, theirs, ours].map do |text|
           # Where a section falls leaves blank lines of its own at the end.
           Scan.new(text).sections.map { |heading, lines| [heading, lines.join.strip] }
         end
-        headings = (after - before).map(&:first)
+        headings = (after - before - held).map(&:first)
         gone = (before - after).map(&:first) - after.map(&:first)
-        names = (headings + gone).uniq
+        names = (headings + (gone & held.map(&:first))).uniq
         unnamed = names.include?(nil)
         changelog, named = names.compact.partition { |name| name.sub(/\A#+[ \t]*/, "").match?(Scan::CHANGELOG) }
         [named + changelog, unnamed]

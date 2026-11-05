@@ -106,6 +106,16 @@ RSpec.describe Samagotchi::MemoryBundle::FileStanding do
       expect(behind_lines).to eq(["a.md stays behind 2.0.0: missed ## Steps, ## Rules"])
     end
 
+    it "doesn't call a section missed that the user brought over by hand" do
+      write_source("1.0.0", doc)
+      install
+      File.write(target, doc(steps: "mine", rules: "new rules"))
+      write_source("2.0.0", doc(steps: "theirs", rules: "new rules"))
+      install(upgrade: true)
+
+      expect(entry[:missed]).to eq(["## Steps"])
+    end
+
     it "saves the bundle's text until the file settles, and the folder goes with the last" do
       left_behind
       expect(File.read(saved)).to eq(doc(steps: "theirs", rules: "new rules"))

@@ -126,7 +126,8 @@ module Samagotchi
           end
           return FileStanding::Behind.new(file: file_key, version: version, why: why) unless File.exist?(base)
 
-          headings, unnamed = TextMerge.changed_sections(File.binread(base), File.binread(paths(file_key)[:incoming]))
+          sides = paths(file_key)
+          headings, unnamed = TextMerge.changed_sections(File.binread(base), File.binread(sides[:incoming]), File.binread(sides[:current]))
           places = unnamed ? [outcome.merge&.hunks&.count { |hunk| !hunk.union? }.to_i, 1].max : 0
           FileStanding::Behind.new(file: file_key, version: version, why: why, missed: headings, places: places)
         end

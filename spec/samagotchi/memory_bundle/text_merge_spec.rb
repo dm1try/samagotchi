@@ -54,7 +54,7 @@ RSpec.describe Samagotchi::MemoryBundle::TextMerge do
   end
 
   describe ".changed_sections" do
-    def changed(base, theirs) = described_class.changed_sections(base, theirs)
+    def changed(base, theirs, ours = base) = described_class.changed_sections(base, theirs, ours)
 
     it "names each section the bundle changed or added, in its order" do
       base = "# T\n\nintro\n\n## A\n\nold\n\n## B\n\nsame\n"
@@ -77,6 +77,14 @@ RSpec.describe Samagotchi::MemoryBundle::TextMerge do
       theirs = "## Changelog\n\n- a\n- b\n\n## A\n\n```\n## not one\ny\n```\n"
 
       expect(changed(base, theirs)).to eq([["## A", "## Changelog"], false])
+    end
+
+    it "leaves out what the file already holds: a section brought over by hand, one both took out" do
+      base = "## A\n\nold\n\n## Gone\n\nx\n"
+      theirs = "## A\n\nnew\n\n## New\n\nmore\n"
+
+      expect(changed(base, theirs)).to eq([["## A", "## New", "## Gone"], false])
+      expect(changed(base, theirs, "## A\n\nmine\n\n## New\n\nmore\n")).to eq([["## A"], false])
     end
 
     it "finds nothing when nothing changed, or only moved" do
