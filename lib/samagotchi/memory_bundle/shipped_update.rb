@@ -112,6 +112,7 @@ module Samagotchi
             r.note = e.message.lines.first.to_s.strip
             r.merged = installer&.merged_files || []
             r.behind = installer&.behind || []
+            r.trash_copy = installer&.trash_copy_line
           end
         end
       end

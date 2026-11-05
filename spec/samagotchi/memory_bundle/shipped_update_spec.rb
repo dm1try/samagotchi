@@ -253,11 +253,12 @@ RSpec.describe Samagotchi::MemoryBundle::ShippedUpdate do
     rows = described_class.plan
     allow_any_instance_of(Samagotchi::MemoryBundle::Provenance).to receive(:write).and_raise("the disk is full")
     allow_any_instance_of(Samagotchi::MemoryBundle::Installer).to receive(:merged_files).and_return(["known_names.md"])
+    allow_any_instance_of(Samagotchi::MemoryBundle::Installer).to receive(:trash_copy_line).and_return("the trash line")
     allow_any_instance_of(Samagotchi::MemoryBundle::Provenance).to receive(:note_merged)
     rows.first.behind = [Samagotchi::MemoryBundle::FileStanding::Behind.new(file: "planned.md")]
 
     row = described_class.apply(rows).first
-    expect(row).to have_attributes(status: :failed, note: "the disk is full", merged: ["known_names.md"], kept: ["known_names.md"])
+    expect(row).to have_attributes(status: :failed, note: "the disk is full", merged: ["known_names.md"], kept: ["known_names.md"], trash_copy: "the trash line")
   end
 
   it "keeps a skipped row's files that stay behind in the plan, and any merge note" do
