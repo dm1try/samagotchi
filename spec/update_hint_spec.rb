@@ -49,6 +49,15 @@ RSpec.describe Samagotchi::UpdateHint do
     expect(show(version: "9.0.1")).to eq("chi 9.0.1: 1 bundle can be updated: chi update")
   end
 
+  it "counts a retry that would merge, not one that only records a reason" do
+    row = Samagotchi::MemoryBundle::ShippedUpdate::Row
+    allow(Samagotchi::MemoryBundle::ShippedUpdate).to receive(:plan).and_return(
+      [row.new(name: "a", status: :would_merge, merged: ["a.md"]), row.new(name: "b", status: :would_merge, merged: [])]
+    )
+
+    expect(show).to eq("chi 9.0.0: 1 bundle can be updated: chi update")
+  end
+
   it "says the helper alone, and nothing off macOS" do
     allow(helper).to receive(:stale?).and_return(true)
     expect(show).to eq("chi 9.0.0: the desktop helper can be updated: chi update")
