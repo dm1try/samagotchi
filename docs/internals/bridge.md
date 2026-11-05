@@ -60,6 +60,11 @@ the "asking again" and steer-cut rows, ✂ rows and questions (with how they wer
   and an unanswered question waits for no one: neither is saved or seeded. An entry from an earlier worker lists with
   `earlier: true`; one shown during a turn comes back **without its actions** (their turn no longer runs), while a
   between-turns card keeps its buttons.
+- **A killed turn counts.** A worker killed mid-turn never saw the turn end, but `TurnCheckpoint` keeps its prompt (the
+  next worker settles it as canceled). The Bridge's store (`killed_turn_stays:`) saves `"running": true` at
+  `:turn_started`, and a store started from that adds the one turn. An ordered end clears it, so a graceful stop's
+  cancel counts once; a file without the field counts none. A REPL's store never saves it: it keeps no running turn in
+  the session, so a kill takes the prompt too.
 
 ## SSEWriter
 

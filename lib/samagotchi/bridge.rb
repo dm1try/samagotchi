@@ -136,7 +136,7 @@ module Samagotchi
       @accumulator = TurnAccumulator.new
       # Saved in the session's folder: a later worker, and the web without
       # one, show the cards where they were.
-      @cards = CardStore.new(path: File.join(session_dir, CardStore::FILE))
+      @cards = CardStore.new(path: File.join(session_dir, CardStore::FILE), killed_turn_stays: true)
       @pending_card = PendingCard.new(session_dir)
       @heartbeat_interval = heartbeat_interval
       @epoch = SecureRandom.hex(4)

@@ -449,6 +449,95 @@ RSpec.describe "Cards" do
         .to eq("check" => [], "offer" => offer)
     end
 
+    # A worker's store (the Bridge's): TurnCheckpoint keeps a running turn's
+    # prompt in the session, so a turn a kill cut short is still a turn.
+    describe "a worker killed in a turn" do
+      def worker_store = Samagotchi::Bridge::CardStore.new(path: path, killed_turn_stays: true)
+
+      def between(id) = card(id).merge(in_turn: false, level: :info)
+
+      it "counts the turn: a card before it goes above its prompt, for good" do
+        worker_store.tap do |store|
+          store.call(between("before"))
+          store.call({ type: :turn_started })
+        end
+        later = worker_store
+        expect(later.list.first).to include(id: "before", turns_since: 1, current: false)
+        expect(Samagotchi::Bridge::CardStore.saved(dir).first).to include(turns_since: 1)
+        later.call({ type: :turn_started })
+        later.call({ type: :turn_completed })
+        expect(later.list.first[:turns_since]).to eq(2)
+      end
+
+      it "keeps the killed turn's own card with it, and an anytime command's after it" do
+        worker_store.tap do |store|
+          store.call({ type: :turn_started })
+          store.call(card("own"))
+          store.call(between("btw"))
+        end
+        later = worker_store
+        expect(later.list.map { |c| [c[:id], c[:turns_since], c[:current]] }).to eq([["own", 0, false], ["btw", 0, false]])
+        expect(later.list.last).not_to have_key(:during)
+        later.call({ type: :turn_started })
+        expect(later.list.map { |c| [c[:id], c[:current]] }).to eq([["own", false], ["btw", false]])
+        later.call({ type: :turn_completed })
+        expect(later.list.map { |c| c[:turns_since] }).to eq([1, 1])
+      end
+
+      it "doesn't count a turn that ended before the kill: a graceful stop's real cancel, once" do
+        worker_store.tap do |store|
+          store.call(between("before"))
+          store.call({ type: :turn_started })
+          store.call({ type: :turn_canceled })
+        end
+        expect(worker_store.list.first[:turns_since]).to eq(1)
+      end
+
+      it "doesn't count a failed turn rolled back before the kill" do
+        worker_store.tap do |store|
+          store.call(between("before"))
+          store.call({ type: :turn_started })
+          store.call({ type: :turn_failed })
+        end
+        expect(worker_store.list.first[:turns_since]).to eq(0)
+      end
+
+      it "doesn't count a kill before the turn began: its prompt was not kept" do
+        worker_store.call(between("before"))
+        expect(worker_store.list.first[:turns_since]).to eq(0)
+      end
+
+      it "counts it once however many stores start from the file, and each killed turn" do
+        worker_store.tap do |store|
+          store.call(between("before"))
+          store.call({ type: :turn_started })
+        end
+        expect(Array.new(3) { worker_store.list.first[:turns_since] }).to eq([1, 1, 1])
+        worker_store.call({ type: :turn_started })
+        expect(worker_store.list.first[:turns_since]).to eq(2)
+      end
+
+      it "reads an old file with no running turn saved as none" do
+        File.write(path, JSON.generate({ "version" => 1, "turns" => 2, "entries" => [
+          { "type" => "card", "id" => "old", "in_turn" => false, "turns" => 1 }
+        ] }))
+        expect(worker_store.list.first[:turns_since]).to eq(1)
+      end
+
+      it "writes no file for a session with no entries" do
+        worker_store.call({ type: :turn_started })
+        expect(File.exist?(path)).to be(false)
+      end
+
+      it "doesn't count a REPL's: it keeps no running turn in the session, so the kill took the prompt" do
+        Samagotchi::Bridge::CardStore.new(path: path).tap do |store|
+          store.call(between("before"))
+          store.call({ type: :turn_started })
+        end
+        expect(worker_store.list.first[:turns_since]).to eq(0)
+      end
+    end
+
     it "starts empty from a missing, broken or foreign file" do
       expect(Samagotchi::Bridge::CardStore.saved(dir)).to eq([])
       File.write(path, "{not json")
@@ -459,6 +548,16 @@ RSpec.describe "Cards" do
   end
 
   describe "the Bridge's snapshot" do
+    it "counts a turn its worker was killed in, when a later worker's Bridge starts" do
+      state_dir = Dir.mktmpdir
+      bridge = Samagotchi::Bridge.new(engine: engine, state_dir: state_dir, session_id: "s1")
+      engine.subscribe(observer: bridge.instance_variable_get(:@cards))
+      engine.show_card(source: "b", title: "one", id: "c1")
+      bridge.instance_variable_get(:@cards).call({ type: :turn_started })
+      later = Samagotchi::Bridge.new(engine: engine, state_dir: state_dir, session_id: "s1")
+      expect(later.snapshot[:cards].first).to include(id: "c1", turns_since: 1)
+    end
+
     it "carries the cards" do
       bridge = Samagotchi::Bridge.new(engine: engine, state_dir: Dir.mktmpdir, session_id: "s1")
       engine.subscribe(observer: bridge.instance_variable_get(:@cards))

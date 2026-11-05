@@ -20,6 +20,7 @@ and commands may change between minor versions. How releases are made:
 ### Fixed
 
 - The web no longer loses a reply you steered: a line sent while a text-only step streamed left that step's whole text hidden, with no row or summary to open, live and after a reload. The step is now a row of the steps block (`1 step`), like any other text step.
+- A web card no longer lands one turn late for good after a worker was killed in the next turn (`kill -9`, a pod that didn't wait): the turn is counted, since its prompt stays in the session.
 - A web card keeps its place after a reload when the turn after it failed with nothing kept: above the failed prompt, as it showed live, not below it, and an older card no longer lands one turn too late. A failed prompt isn't counted as a turn any more.
 - `chi bundle install --force` and `chi bundle upgrade --force` no longer destroy what they overwrite: a memory that differs from the bundle's, your own same-name file too, is copied to the bundle trash first, and the output names it (`Copied to the trash first: …`; `chi bundle trash` lists it).
 - An install, upgrade or `chi update` that replaces or removes a hook, rule, plugin or script you edited copies it to the bundle trash first, under its own subfolder (`hooks/x`, `scripts/sub/x`) at any depth, and says so. A `--dev` install's links are left out.

@@ -50,6 +50,15 @@ module Samagotchi
     # to a turn no worker runs any more (check-in's Nudge would steer the
     # new worker's turn). A card shown between turns (github-pr's offer,
     # btw, coordinator) keeps its buttons.
+    #
+    # A turn its worker was killed in never ended here, yet the session keeps
+    # its prompt (TurnCheckpoint, written before :turn_started) and it ends
+    # canceled. So +killed_turn_stays+ (a worker's) saves that a turn runs, and
+    # a store started from such a file counts that turn. A turn that ended
+    # (a graceful stop's cancel too) saved that it no longer runs. Started
+    # from the same file again, the count is the same: nothing is written
+    # until the next event. A REPL keeps no running turn in the session: a kill
+    # takes the prompt along, so its store saves no such thing.
     class CardStore
       CAPACITY = 20
       NOTICE_TYPES = %i[hook_notice guardrail_warning empty_answer_retry steer_cut].freeze
@@ -59,7 +68,7 @@ module Samagotchi
       FILE = "cards.json"
       # The events after which the file is written again: the ones that
       # change an entry or the turn count.
-      SAVED_ON = (%i[card hook_notice empty_answer_retry steer_cut llm_context_edited question_requested question_answered
+      SAVED_ON = (%i[turn_started card hook_notice empty_answer_retry steer_cut llm_context_edited question_requested question_answered
                      question_cancelled question_relay turn_failed] + Events::TURN_KEPT).freeze
 
       # What a session's saved file lists, as a store started from it lists
@@ -72,9 +81,12 @@ module Samagotchi
 
       # @param path [String, nil] the file the entries are saved in and
       #   started from; nil keeps them in memory only
-      def initialize(capacity: CAPACITY, path: nil)
+      # @param killed_turn_stays [Boolean] the session keeps a running turn's
+      #   prompt on disk (a worker's TurnCheckpoint): save that a turn runs
+      def initialize(capacity: CAPACITY, path: nil, killed_turn_stays: false)
         @capacity = capacity
         @path = path
+        @killed_turn_stays = killed_turn_stays
         @mutex = Mutex.new
         @entries = []
         @turns_done = 0
@@ -122,21 +134,26 @@ module Samagotchi
         return if entries.empty? && !File.exist?(@path)
 
         FileUtils.mkdir_p(File.dirname(@path))
-        AtomicFile.write(@path, JSON.generate({ "version" => 1, "turns" => @turns_done, "entries" => entries }))
+        saved = { "version" => 1, "turns" => @turns_done, "entries" => entries }
+        saved["running"] = true if @killed_turn_stays && @running
+        AtomicFile.write(@path, JSON.generate(saved))
       rescue StandardError
         nil # a card that can't be saved still shows live
       end
 
       # The entries an earlier worker saved (a missing or broken file:
       # none), their types as symbols again; a card that came during that
-      # worker's last turn stays where it was, as after a failed turn.
+      # worker's last turn stays where it was, as after a failed turn, or
+      # after that turn when the worker was killed in it. A file from before
+      # "running" has none: no turn counted.
       def seed
         return unless @path && File.file?(@path)
 
         data = JSON.parse(File.read(@path), symbolize_names: true)
         return unless data.is_a?(Hash) && data[:turns].is_a?(Integer) && data[:entries].is_a?(Array)
 
-        @turns_done = data[:turns]
+        killed_in_turn = data[:running] == true
+        @turns_done = data[:turns] + (killed_in_turn ? 1 : 0)
         @entries = data[:entries].filter_map do |entry|
           next unless entry.is_a?(Hash) && entry[:type].is_a?(String) && entry[:turns].is_a?(Integer)
 
@@ -144,7 +161,7 @@ module Samagotchi
           entry = entry.merge(actions: []) if entry[:type] == :card && entry[:in_turn] && entry.key?(:actions)
           entry unless entry[:type] == :guardrail_warning || open_question?(entry)
         end
-        settle_during(after_turn: false)
+        settle_during(after_turn: killed_in_turn)
       rescue StandardError
         @turns_done = 0
         @entries = []
