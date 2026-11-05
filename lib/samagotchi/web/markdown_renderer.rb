@@ -17,6 +17,15 @@ module Samagotchi
       ALLOWED_ELEMENTS = %w[a blockquote br code del em h1 h2 h3 h4 h5 h6 hr li ol p pre s strong span table tbody td th thead tr ul].freeze
       DROP_ELEMENTS = %w[iframe object script style svg].freeze
       ALLOWED_PROTOCOLS = %w[http https mailto].freeze
+      # Both Commonmarker calls take these: the parse that reads the fences has
+      # to see the blocks #render's own parse does.
+      OPTIONS = {
+        render: { escape: true }, # escape raw HTML from source; highlighter output is still emitted
+        extension: { header_ids: nil }
+      }.freeze
+      # What may reach a page as a block's data-lang: a fence's first word,
+      # downcased (BlockRenderers routes on it).
+      FENCE_LANG = /\A[a-z0-9_+-]{1,32}\z/
 
       def initialize(enabled: false)
         @enabled = enabled
@@ -46,10 +55,7 @@ module Samagotchi
       def render(markdown)
         return nil unless available?
 
-        html = Commonmarker.to_html(markdown.to_s, options: {
-          render: { escape: true }, # escape raw HTML from source; highlighter output is still emitted
-          extension: { header_ids: nil }
-        }, plugins: {
+        html = Commonmarker.to_html(markdown.to_s, options: OPTIONS, plugins: {
           # An empty theme makes syntect emit scope classes (`keyword`, `string`, ...)
           # instead of inline colours from one fixed theme, so the page's light and
           # dark palettes colour code blocks (the --code-* tokens in index.html).
@@ -57,7 +63,7 @@ module Samagotchi
         })
         return nil unless html
 
-        sanitize(html)
+        sanitize(html, fence_languages(markdown.to_s))
       end
 
       private
@@ -77,7 +83,35 @@ module Samagotchi
         @commonmarker_installed = Gem::Specification.find_all_by_name("commonmarker").any?
       end
 
-      def sanitize(html)
+      # Every code block's language, in document order (nil for an indented block
+      # or a bare fence): the highlighter drops it from the HTML, the parse tree
+      # has it. [] for a text with no fence: its blocks have no language.
+      def fence_languages(markdown)
+        return [] unless markdown.include?("```") || markdown.include?("~~~")
+
+        languages = []
+        Commonmarker.parse(markdown, options: OPTIONS).walk do |node|
+          languages << language_of(node.fence_info) if node.type == :code_block
+        end
+        languages
+      end
+
+      def language_of(info)
+        word = info.to_s.split.first.to_s.downcase
+        word if word.match?(FENCE_LANG)
+      end
+
+      # After the walk, which drops every attribute it doesn't know. Blocks and
+      # languages pair by position; a count that differs says the two parses
+      # disagree, and then no block gets one (it shows as source).
+      def mark_languages(fragment, languages)
+        blocks = fragment.css("pre")
+        return unless blocks.size == languages.size
+
+        blocks.zip(languages) { |pre, language| pre["data-lang"] = language if language }
+      end
+
+      def sanitize(html, languages)
         fragment = Nokogiri::HTML5.fragment(html)
         fragment.traverse do |node|
           next unless node.element?
@@ -90,6 +124,7 @@ module Samagotchi
             sanitize_attributes(node)
           end
         end
+        mark_languages(fragment, languages)
         fragment.to_html
       end
 
