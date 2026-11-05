@@ -236,6 +236,16 @@ test("a failed prompt is no turn: a card goes above it, as it showed live", () =
   assert.deepEqual(order(h), ["one", "a1", "c1", "failed", "✕ failed"]);
 });
 
+test("a card shown after the failed prompt stays below it and its end line; one from before stays above", () => {
+  const h = history(`<div class="bubble user">one</div><div class="bubble output">a1</div>${FAILED_PROMPT}`);
+  const { cards } = harness(h);
+  cards.placeSnapshotCards([
+    { type: "card", id: "c1", title: "t", body: "b", turns_since: 0 },
+    { type: "card", id: "c2", title: "t", body: "b", turns_since: 0, after_failed: true },
+  ], { before: h.querySelector(".failed") });
+  assert.deepEqual(order(h), ["one", "a1", "c1", "failed", "✕ failed", "c2"]);
+});
+
 test("a failed prompt doesn't count: an older card stays above the turn after it", () => {
   const h = history(`<div class="bubble user">one</div><div class="bubble output">a1</div><div class="bubble user">two</div><div class="bubble output">a2</div>${FAILED_PROMPT}`);
   const { cards } = harness(h);

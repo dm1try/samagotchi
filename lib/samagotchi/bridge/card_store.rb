@@ -70,7 +70,7 @@ module Samagotchi
       SAVED_ON = (%i[turn_started card hook_notice empty_answer_retry steer_cut llm_context_edited question_requested question_answered
                      question_cancelled question_relay] + Events::TURN_END).freeze
       # What only the store reads: never listed.
-      INTERNAL_FIELDS = %i[turn_id continued base_since past_idless during].freeze
+      INTERNAL_FIELDS = %i[turn_id continued base_since past_idless during after_failed].freeze
 
       # What a session's saved file lists, as a store started from it lists
       # (no turn running): the web's cards for a session no worker runs.
@@ -98,6 +98,7 @@ module Samagotchi
         @turn_log = []
         @running_turn = nil
         @continuing = false
+        @failed_turn = nil
         @iteration = nil
         @calls = 0
         seed
@@ -117,9 +118,11 @@ module Samagotchi
       #   that left nothing by.
       # @return [Array<Hash>] oldest first: the card's (or notice's) fields
       #   plus current:, turns_since: with +messages+, earlier: true for one an
-      #   earlier worker saved, and during: true for a card that came while the
+      #   earlier worker saved, during: true for a card that came while the
       #   running turn runs but isn't that turn's (it goes after the running
-      #   turn's prompt)
+      #   turn's prompt), and after_failed: true for one shown after the last
+      #   turn's prompt went back (the page draws that prompt at the end: it goes
+      #   after it, as it showed live)
       def list(messages: nil)
         @mutex.synchronize do
           places = messages && !@entries.empty? ? CardPlaces.new(@turn_log, messages) : nil
@@ -138,6 +141,7 @@ module Samagotchi
         out[:turns_since] = places.turns_since(entry) if places
         out[:current] = current
         out[:during] = true if entry[:during]
+        out[:after_failed] = true if entry[:after_failed] && entry[:turn_id] == @failed_turn
         out
       end
 
@@ -171,7 +175,9 @@ module Samagotchi
         return if entries.empty? && !File.exist?(@path)
 
         FileUtils.mkdir_p(File.dirname(@path))
-        AtomicFile.write(@path, JSON.generate({ "version" => 2, "turn_log" => pruned_log(entries), "entries" => entries }))
+        saved = { "version" => 2, "turn_log" => pruned_log(entries), "entries" => entries }
+        saved["failed_turn"] = @failed_turn if @failed_turn
+        AtomicFile.write(@path, JSON.generate(saved))
       rescue StandardError
         nil # a card that can't be saved still shows live
       end
@@ -200,6 +206,7 @@ module Samagotchi
 
         if data[:turn_log].is_a?(Array)
           @turn_log = data[:turn_log].grep(String)
+          @failed_turn = data[:failed_turn] if data[:failed_turn].is_a?(String)
           @entries = seeded(data[:entries])
         elsif data[:turns].is_a?(Integer)
           seed_v1(data)
@@ -247,6 +254,7 @@ module Samagotchi
           @turn_log << event[:turn_id] if event[:turn_id]
           @running_turn = event[:turn_id]
           @continuing = event[:continue] ? true : false
+          @failed_turn = nil
           @iteration = nil
           @calls = 0
         when :generation_started
@@ -283,6 +291,7 @@ module Samagotchi
           entry.delete(:during)
           entry.delete(:continued) if entry[:turn_id] == @running_turn && !Events.kept_turn?(event)
         end
+        @failed_turn = Events.kept_turn?(event) ? nil : @running_turn
         @running_turn = nil
       end
 
@@ -306,7 +315,7 @@ module Samagotchi
         if index
           # Replaced where it was: the first one's place stays.
           old = @entries[index]
-          @entries[index] = card.merge(updated: true, **old.slice(:in_turn, :turn_id, :during, :continued, :base_since, :past_idless))
+          @entries[index] = card.merge(updated: true, **old.slice(:in_turn, :turn_id, :during, :continued, :base_since, :past_idless, :after_failed))
         else
           entry = card.merge(in_turn: event[:in_turn] ? true : false, turn_id: anchor)
           entry[:during] = true if @running_turn && !event[:in_turn]
@@ -353,6 +362,7 @@ module Samagotchi
       end
 
       def push(entry)
+        entry[:after_failed] = true if @failed_turn && !entry[:in_turn]
         note_past_idless(entry) unless @running_turn
         @entries << entry
         cap = cap_class(entry)

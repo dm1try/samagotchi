@@ -69,7 +69,9 @@ the "asking again" and steer-cut rows, ✂ rows and questions (with how they wer
   (a `!rollback`, a failed turn with nothing kept, a prompt stopped before the model) lists as a between-turns entry at its
   place, a card without its actions and a hook's notice without its step; its other rows, having no step to sit in, aren't
   listed. Nothing in the entry changes. A kept Continue or reminder turn never has an opening, so its entries are `continued`
-  and stay rows of the turn before; a failed one loses the mark at its end.
+  and stay rows of the turn before; a failed one loses the mark at its end. The page draws a failed prompt at the history's
+  end, so an entry pushed idle after it lists `after_failed` (the store's saved `failed_turn`) and goes below it, until the
+  next turn starts.
 - **Caps.** `CAPACITY` (20) each for notices, ✂ rows (`LLM_CONTEXT_TYPES`) and cards, so one burst cannot push out
   another kind. An open question (an approval too) is never pushed out.
 - **Saved.** With a `path` (`cards.json` in the session's folder) the store rewrites the file after each event in

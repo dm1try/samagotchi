@@ -911,6 +911,67 @@ RSpec.describe "Cards" do
       end
     end
 
+    describe "a card shown after a failed turn's prompt went back" do
+      def between(id) = card(id).merge(in_turn: false, level: :info)
+
+      it "saves the mark at the failed turn's end, with nothing else" do
+        store = Samagotchi::Bridge::CardStore.new(path: path)
+        store.call(between("before"))
+        turn(:turn_started, :turn_failed, on: store)
+        expect(JSON.parse(File.read(path))["failed_turn"]).to eq("t1")
+      end
+
+      it "keeps the mark when it's replaced" do
+        store = Samagotchi::Bridge::CardStore.new
+        turn(:turn_started, :turn_failed, on: store)
+        store.call(between("after"))
+        store.call(between("after").merge(title: "again"))
+        expect(listed(store).first).to include(title: "again", after_failed: true)
+      end
+
+      it "says so (the page draws that prompt at the end), saved, until the next turn starts" do
+        store = Samagotchi::Bridge::CardStore.new(path: path)
+        store.call(between("before"))
+        turn(:turn_started, :turn_failed, on: store)
+        store.call(between("after"))
+        store.call({ type: :hook_notice, hook: "h", text: "note", level: :info, between_turns: true })
+        expect(listed(store).map { |c| c[:after_failed] }).to eq([nil, true, true])
+        expect(JSON.parse(File.read(path))["failed_turn"]).to eq("t1")
+        expect(saved.map { |c| c[:after_failed] }).to eq([nil, true, true])
+
+        turn(:turn_started, on: store)
+        expect(listed(store).map { |c| c[:after_failed] }).to eq([nil, nil, nil])
+        expect(JSON.parse(File.read(path))).not_to have_key("failed_turn")
+      end
+
+      it "never marks a failed turn's own card, nor a :during one" do
+        store = Samagotchi::Bridge::CardStore.new
+        turn(:turn_started, on: store)
+        store.call(card("own"))
+        store.call(between("btw"))
+        turn(:turn_failed, on: store)
+        expect(listed(store).map { |c| c[:after_failed] }).to eq([nil, nil])
+      end
+
+      it "doesn't move an older card below a newer failed prompt" do
+        store = Samagotchi::Bridge::CardStore.new
+        turn(:turn_started, :turn_failed, on: store)
+        store.call(between("after"))
+        turn(:turn_started, :turn_failed, on: store)
+        expect(listed(store).first[:after_failed]).to be_nil
+        store.call(between("later"))
+        expect(listed(store).map { |c| c[:after_failed] }).to eq([nil, true])
+      end
+
+      it "isn't for a failed turn that kept its steps: its prompt stays in the history" do
+        store = Samagotchi::Bridge::CardStore.new
+        turn(:turn_started, on: store)
+        failed_keeping_steps(on: store)
+        store.call(between("after"))
+        expect(listed(store).first).not_to have_key(:after_failed)
+      end
+    end
+
     describe "the file (version 2)" do
       def worker(**options) = Samagotchi::Bridge::CardStore.new(path: path, messages: -> { conversation }, **options)
 

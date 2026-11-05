@@ -944,7 +944,8 @@ completed turn stays in its step.
 
 Between turns, a card goes above the first turn prompt after it, live and
 after a reload. A failed turn whose prompt went back to its sender isn't a
-turn: its prompt line comes after the cards.
+turn: its prompt line comes after the cards shown before it, and before those
+shown after.
 
 An [anytime command](#anytime-true)'s cards show as it shows them, after its
 line, in every UI, whether a turn runs or not.
