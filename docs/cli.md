@@ -327,12 +327,13 @@ Also shipped, not installed: dev (mcp, skills, source-links) (chi bundle install
   edits of yours, says so, and the file stays behind until resolved by
   hand, with `--agent` or with `--force`; the retry can't fix that. Every merge
   leaves a note on the file's record, since a worker's reaches only the log and an
-  automatic update's rows may be read by no one. `chi bundle status` shows it, and
-  each `chi update` row names it (`up to date (merged 0.8.0 into your FILE on
-  2026-11-05 14:03; …)`) until a `chi update` you run has shown it, which is its last
-  appearance: a merge that run itself made shows once more in the next. A dry run
-  and an automatic update (`update.auto`) show it and leave it; so does a row with no
-  place for it (skipped, failed). A memory that can't be read at a
+  automatic update's rows may be read by no one. `chi bundle status` shows it while it
+  exists. A `chi update` row names an earlier one (`up to date (merged 0.8.0 into your
+  FILE on 2026-11-05 14:03; …)`), and a row printed to you ends the note for what it
+  printed, that run's own merges included; so does `chi bundle upgrade`, which prints
+  the merge itself, and `--force` replacing the file. A dry run and an automatic update
+  (`update.auto`) show it and leave it, and so does a failed row or one with no place
+  for it (a skipped system bundle). A memory that can't be read at a
   newer version fails that bundle's row with the file's name. Hooks, rules and the plugin are replaced; an edited one didn't
   load anyway (its sha no longer matched), the row says it was replaced, and
   a copy goes to the bundle trash first (`chi bundle trash`; `hooks/x`,

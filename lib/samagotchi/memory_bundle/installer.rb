@@ -59,6 +59,7 @@ module Samagotchi
         @placeholder_warnings = []
         @conflicts = {}
         @behind = []
+        @replaced = []
         @outcomes = {}
         @overlays = []
         @trash = Trash.new(name)
@@ -343,6 +344,7 @@ module Samagotchi
             skip_existing(file_key, file_path, target_path, @target_scope, owned: owned_before.include?(file_key))
           else
             # Only --force gets here with a file in place: a copy keeps it.
+            @replaced << file_key if File.exist?(target_path)
             @trash.copy(target_path) if File.exist?(target_path) && !FileUtils.identical?(file_path, target_path)
             FileUtils.cp(file_path, target_path)
             @owned << file_key
@@ -521,6 +523,8 @@ module Samagotchi
           setting_types: @manifest.setting_types,
           dev: @dev
         )
+        # Replaced by --force: an earlier merge into it no longer says anything true.
+        @provenance.clear_merge_notes([], files: @replaced)
       end
 
       # The files a plain install skipped that are still marked conflict:

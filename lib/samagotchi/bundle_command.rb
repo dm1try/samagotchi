@@ -233,6 +233,9 @@ module Samagotchi
       run_installer(installer, failed: "Upgrade") do |manifest|
         print_hooks_and_plugin(manifest, plugin: !dry_run)
         next dry_run_done if dry_run
+
+        # Its summary said so, to someone reading.
+        Samagotchi::MemoryBundle::Provenance.new(name: bundle_name).clear_merge_notes([], files: installer.merged_files)
         next upgrade_conflicts(installer, bundle_name, expanded_source, agent) if installer.conflicts.any? && !force
 
         print_provenance(bundle_name, manifest)

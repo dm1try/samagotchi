@@ -545,8 +545,9 @@ for a file another bundle installed.
 - **Every merge is noted on the file's record.** The system bundle's upgrade and
   retry run at each start, a worker's only output is its log, and no one may read
   an automatic update. So `chi bundle status` shows the merge with the old copy's
-  folder, and `chi update` rows name it until a `chi update` you run has shown it
-  (an automatic one leaves it). No session is told at start.
+  folder while the note exists. A `chi update` row or `chi bundle upgrade` output
+  printed to you ends it for what it printed (an automatic update leaves it), and
+  `--force` replacing the file ends it too. No session is told at start.
 - **`chi bundle status`** says per file what is `modified`, `missing` or
   `unreadable`, and that a file stays behind and why. Its `issues=` counts files
   behind, missing or unreadable (and a plugin or hooks that won't load), not edits. A

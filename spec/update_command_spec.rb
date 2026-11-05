@@ -252,7 +252,7 @@ RSpec.describe Samagotchi::UpdateCommand do
     stamp = Samagotchi::MemoryBundle::FileStanding.local_time(note.at)
     allow(Samagotchi::MemoryBundle::SystemBundle).to receive(:merge_notes).and_return([note])
     cleared = []
-    allow(Samagotchi::MemoryBundle::SystemBundle).to receive(:clear_merge_notes) { |notes| cleared << notes }
+    allow(Samagotchi::MemoryBundle::SystemBundle).to receive(:clear_merge_notes) { |notes, **| cleared << notes }
     result = Samagotchi::MemoryBundle::SystemBundle::Result.new(from: "1", to: "1", status: :up_to_date, merged: [], behind: [], warnings: [])
     allow(Samagotchi::MemoryBundle::SystemBundle).to receive(:sync).and_return(result)
     command = described_class.new(["--no-gem"], stdout: out, stderr: err)
@@ -260,6 +260,7 @@ RSpec.describe Samagotchi::UpdateCommand do
     expect(command.send(:system_bundle_row)).to have_attributes(status: "up to date (merged 1 into your identity.md on #{stamp}; old copies: chi bundle trash)",
                                                                 merged: [], earlier: ["identity.md"], to: nil)
     expect(cleared).to eq([[note]])
+    expect(Samagotchi::MemoryBundle::SystemBundle).to have_received(:clear_merge_notes).with([note], files: [])
   end
 
   context "with an earlier merge's note" do
@@ -281,12 +282,17 @@ RSpec.describe Samagotchi::UpdateCommand do
     it "keeps it when the row has no place for it: skipped, failed" do
       expect(row_for(:skipped, error: "off").status).not_to include("merged")
       expect(row_for(:failed, error: "boom").status).not_to include("merged")
-      expect(system).not_to have_received(:clear_merge_notes)
+      expect(system).to have_received(:clear_merge_notes).with([], files: []).twice
     end
 
     it "shows it and keeps it in a dry run" do
       expect(row_for(:up_to_date, dry_run: true).status).to include("merged 1 into your identity.md")
       expect(system).not_to have_received(:clear_merge_notes)
+    end
+
+    it "takes only the marker's own value as unattended" do
+      row_for(:up_to_date, env: { Samagotchi::ChildEnv::UNATTENDED_UPDATE => "0" })
+      expect(system).to have_received(:clear_merge_notes).with([note], files: [])
     end
 
     it "shows it and keeps it in an automatic run, which no one may read" do
@@ -297,7 +303,7 @@ RSpec.describe Samagotchi::UpdateCommand do
     it "clears it through a row that names it, newer installed and restored too" do
       expect(row_for(:newer_installed).status).to include("merged 1 into your identity.md")
       expect(row_for(:restored).status).to include("merged 1 into your identity.md")
-      expect(system).to have_received(:clear_merge_notes).twice
+      expect(system).to have_received(:clear_merge_notes).with([note], files: []).twice
     end
   end
 
@@ -314,7 +320,7 @@ RSpec.describe Samagotchi::UpdateCommand do
     note = Samagotchi::MemoryBundle::FileStanding::MergeNote.new(file: "a.md", version: "1", at: nil, trash: nil)
     behind = Samagotchi::MemoryBundle::FileStanding::Behind.new(file: "b.md", version: "1")
     update = Samagotchi::MemoryBundle::ShippedUpdate::Row.new(name: "x", from: "1", status: :skipped, note: "not from chi", merged: [], behind: [behind], replaced: [], earlier: [note])
-    expect_any_instance_of(Samagotchi::MemoryBundle::Provenance).to receive(:clear_merge_notes).with([note])
+    expect_any_instance_of(Samagotchi::MemoryBundle::Provenance).to receive(:clear_merge_notes).with([note], files: [])
 
     row = described_class.new(["--no-gem"], stdout: out, stderr: err).send(:bundle_row, update)
     expect(row.status).to eq("skipped (not from chi; b.md stays behind 1 (chi bundle diff x b.md); merged 1 into your a.md)")

@@ -37,8 +37,7 @@ module Samagotchi
         list), and the desktop helper (macOS; rebuilt only when its sources
         changed). A memory file you edited takes the update in a text merge
         (the old file goes to the bundle trash), or stays behind as it is when
-        no merge is possible, and the table says which and why (a merge shows
-        again in the next run, its last appearance); each run
+        no merge is possible, and the table says which and why; each run
         retries a file left behind, though one an older chi marked, with a base
         no installed chi shipped, merges only if the bundle takes out or rewords
         no line it still holds. Nothing is
@@ -306,7 +305,7 @@ module Samagotchi
       when :skipped then skipped(row, result.error)
       else failed(row, result.error)
       end
-      system.clear_merge_notes(earlier) if notes_shown?(earlier)
+      system.clear_merge_notes(earlier, files: result.merged) if read_by_someone?
       row
     end
 
@@ -348,7 +347,8 @@ module Samagotchi
       when :skipped then skipped(row, [update.note, *notes].join("; "))
       else failed(row, [update.note, *notes].compact.join("; "))
       end
-      MemoryBundle::Provenance.new(name: update.name).clear_merge_notes(earlier) if notes_shown?(earlier)
+      # A failed row keeps them: the run didn't finish, and the next says what stands.
+      MemoryBundle::Provenance.new(name: update.name).clear_merge_notes(earlier, files: row.merged) if read_by_someone? && update.status != :failed
       row
     end
 
@@ -367,10 +367,10 @@ module Samagotchi
       trash_copy || earlier.any?(&:trash) ? [*notes, MemoryBundle::FileStanding::IN_THE_TRASH] : notes
     end
 
-    # Whether a row just showed these notes to someone who reads it: that is their
-    # last appearance. A dry run changes nothing, and an automatic update's rows
-    # may be read by no one (ChildEnv::UNATTENDED_UPDATE).
-    def notes_shown?(notes) = notes.any? && !@dry_run && !@unattended
+    # Whether a row printed now ends the notes for what it printed, this run's
+    # merges too. A dry run changes nothing, and an automatic update's rows may be
+    # read by no one (ChildEnv::UNATTENDED_UPDATE).
+    def read_by_someone? = !@dry_run && !@unattended
 
     # A row at the same version: up to date only when nothing merged and nothing
     # stays behind. No to, and no verb of its own: the clauses say it all.

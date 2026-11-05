@@ -365,7 +365,7 @@ module Samagotchi
       # Every merge leaves a note on the file's entry, one no one may have seen (a
       # worker's start logs it and nothing else, an automatic update's rows are
       # read by no one). It stays through later upgrades, until #clear_merge_notes,
-      # which the next chi update a person runs does once its row has shown it.
+      # which a report someone reads does once it has shown the merge.
       # @param files [Array<String>]
       # @param version [String] what merged
       # @param trash [String, nil] the dir holding the old copy
@@ -381,14 +381,21 @@ module Samagotchi
 
       # These notes go, and a later merge's on the same file stays. A note that
       # can't be cleared shows once more: nothing about it fails a report.
-      # @param notes [Array<FileStanding::MergeNote>] as #record gave them
-      def clear_merge_notes(notes)
-        raw = JSON.parse(File.read(File.join(@bundle_dir, "manifest.json")))
-        notes.each do |note|
-          entry = raw.dig("files", note.file)
-          next unless entry && entry["merged_version"] == note.version && entry["merged_at"] == note.at
+      # @param notes [Array<FileStanding::MergeNote>] as #record gave them, read
+      #   before a run
+      # @param files [Array<String>] files whose note goes whatever it says: the run
+      #   just merged or replaced them. Another file's, a worker's meanwhile, stays.
+      def clear_merge_notes(notes, files: [])
+        return if notes.empty? && files.empty?
 
-          MERGE_NOTE_FIELDS.each { |field| entry.delete(field) }
+        raw = JSON.parse(File.read(File.join(@bundle_dir, "manifest.json")))
+        stale = notes.select do |note|
+          entry = raw.dig("files", note.file)
+          entry && entry["merged_version"] == note.version && entry["merged_at"] == note.at
+        end
+        (stale.map(&:file) + files).each do |file|
+          entry = raw.dig("files", file)
+          MERGE_NOTE_FIELDS.each { |field| entry.delete(field) } if entry
         end
         write_manifest(raw)
       rescue JSON::ParserError, SystemCallError

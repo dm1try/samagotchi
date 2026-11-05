@@ -213,6 +213,11 @@ RSpec.describe Samagotchi::MemoryBundle::SystemBundle do
             provenance.note_merged(["identity.md"], version: "9", trash: nil)
             described_class.clear_merge_notes(notes)
             expect(described_class.merge_notes.map(&:version)).to eq(["9"])
+
+            described_class.clear_merge_notes([], files: ["other.md"])
+            expect(described_class.merge_notes.map(&:version)).to eq(["9"])
+            described_class.clear_merge_notes([], files: ["identity.md"])
+            expect(described_class.merge_notes).to be_empty
           end
 
           it "doesn't raise when the note can't be written or cleared" do

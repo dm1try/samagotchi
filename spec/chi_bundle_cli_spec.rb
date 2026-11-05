@@ -868,6 +868,17 @@ Hooks removed: 1\n\z})
       expect(line).not_to include("ok")
     end
 
+    it "ends a merge's note with the output that printed it" do
+      text = "# T\n\none\n\ntwo\n\nthree\n\nfour\n\nfive\n"
+      File.write(File.join(memories, ".bundles", "demo", "bases", "a.md"), text)
+      File.write(File.join(memories, "a.md"), text.sub("one", "mine"))
+      newer = self.class.make_bundle(File.join(@root, "newer"), name: "demo", version: "4.0.0", content: text.sub("five", "new five"))
+
+      expect(chi("upgrade", newer, "--dry-run")[0]).to include("would merge 4.0.0 into your a.md")
+      expect(chi("upgrade", newer)[0]).to include("merged 4.0.0 into your a.md")
+      expect(JSON.parse(File.read(File.join(memories, ".bundles", "demo", "manifest.json")))["files"]["a.md"]).not_to have_key("merged_version")
+    end
+
     it "shows a merge's note in status, with the old copy's dir" do
       manifest = File.join(memories, ".bundles", "demo", "manifest.json")
       raw = JSON.parse(File.read(manifest))

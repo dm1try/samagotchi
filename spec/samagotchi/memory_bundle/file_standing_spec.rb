@@ -266,6 +266,38 @@ RSpec.describe Samagotchi::MemoryBundle::FileStanding do
       expect(entry.keys).not_to include(:conflict, :missed)
     end
 
+    it "clears a note only for that merge: another with the same version stays" do
+      write_source("1.0.0", doc)
+      install
+      provenance.note_merged(["a.md"], version: "1.0.0", trash: nil, at: Time.at(1))
+      read = provenance.record.merge_notes
+      provenance.note_merged(["a.md"], version: "1.0.0", trash: nil, at: Time.at(2))
+
+      provenance.clear_merge_notes(read)
+      expect(provenance.record.merge_notes.size).to eq(1)
+    end
+
+    it "fails no report when a note can't be cleared" do
+      write_source("1.0.0", doc)
+      install
+      File.write(File.join(provenance.bundle_dir, "manifest.json"), "not json")
+
+      expect { provenance.clear_merge_notes([], files: ["a.md"]) }.not_to raise_error
+    end
+
+    it "ends a merge's note when --force replaces the file" do
+      write_source("1.0.0", doc)
+      install
+      File.write(target, doc(intro: "mine"))
+      write_source("2.0.0", doc(rules: "new"))
+      install(upgrade: true)
+      expect(provenance.record.merge_notes.size).to eq(1)
+
+      write_source("3.0.0", doc(rules: "newer"))
+      install(upgrade: true, force: true)
+      expect(provenance.record.merge_notes).to be_empty
+    end
+
     it "drops the saved text when an upgrade settles the file" do
       left_behind
       File.write(target, doc(steps: "newer", rules: "new rules"))
