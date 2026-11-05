@@ -187,7 +187,7 @@ Working habits for this model:
     `model_notes_<name>.md` you already have and never owns it, so your note
     is what loads, the two never stack, and upgrades leave it alone.
     `chi bundle install model-notes` says `Skipped model_notes_deepseek.md
-    (already exists; use --force to overwrite)`; through the `dev` profile
+    (already exists; --force takes the bundle's version, your file copied to the trash first)`; through the `dev` profile
     (`chi bundle install dev`, `chi bundle upgrade dev`, `chi update`) it is
     `model-notes: kept your own model_notes_deepseek.md (not the bundle's; to
     take the bundle's, remove yours with chi memory rm model_notes_deepseek
@@ -514,16 +514,19 @@ for a file another bundle installed.
   you didn't edit. One you edited that the bundle also changed takes a text
   merge (with `git`, which chi doesn't otherwise need): when it comes out clean
   the file holds both, the old one is in the bundle trash, and the output says
-  `Merged: X` (a dry run, `Would merge: X`). Entries both sides added under a
+  `merged 0.8.0 into your X` (a dry run, `would merge 0.8.0 into your X`). Entries both sides added under a
   `Changelog` heading are kept, yours first. A clean merge is text, not
   meaning: two sentences can still disagree, so read what you care about (`chi
   bundle trash` lists the old copy).
 - **A real conflict** leaves your file untouched, never with markers in it, and
   marks it. So does no `git`, a file with no recorded base, or a file marked by
-  an older chi (below), and the warning says why. The upgrade then asks on a
+  an older chi (below). The output says `X stays behind 0.8.0:` with why and what
+  it missed, as `chi update`, `chi bundle status` and `chi bundle list` (`1 file
+  behind`) do from then on, until the file has the bundle's bytes; the bundle's text
+  waits in `.bundles/<name>/incoming/` until it settles. The upgrade then asks on a
   terminal whether to launch a chi session that merges the two (`/exit`
   when done). `--agent` launches it without asking, `--no-agent` never does;
-  with neither and no terminal it keeps your edits and says so. Only a file
+  with neither and no terminal the file just stays behind. Only a file
   the session changed, with no conflict markers left, counts as resolved: any
   other stays a conflict (`Nothing changed in X: still behind.`). A file marked
   this way is retried at the same version: the system bundle's at each chi start
@@ -532,12 +535,20 @@ for a file another bundle installed.
 - **A file marked by an older chi** merges normally when its recorded base is a
   version chi shipped, which chi checks against the samagotchi gems still
   installed. Otherwise that base may be your own text, so the file merges only if
-  the bundle takes out or rewords no line it still holds. If it does, the file
+  the bundle takes out or rewords no line it still holds. If it does, chi can't
+  tell whether the file holds edits of yours and says that; the file
   stays behind until you resolve it by hand, with `--agent` or with `--force`, and
-  the retry can't fix that. Kept edits
+  the retry can't fix that. A file left behind makes the upgrade
   exit 2; `chi bundle diff NAME FILE` shows the base, and `--force` takes
   the bundle's version, copying a file that differs to the bundle trash first
   (the output says `Copied to the trash first: …`).
+- **A merge at a chi start.** The system bundle's upgrade and retry run at each
+  start, and a worker's only output is its log. So the merge stays noted on the file's record:
+  `chi bundle status` shows it with the old copy's folder, and the next `chi
+  update`'s row is its last appearance. No session is told at start.
+- **`chi bundle status`** says per file what is `modified`, `missing` or
+  `unreadable`, and that a file stays behind and why. Its `issues=` counts files
+  behind, missing or unreadable (and a plugin or hooks that won't load), not edits.
 - **A dev install** (`chi bundle install --dev PATH`) links the hooks, rules,
   plugin and scripts to `PATH` but still copies the memories at install, so
   an edit to one of them in `PATH` isn't seen until the next install.

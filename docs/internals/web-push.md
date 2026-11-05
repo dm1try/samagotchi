@@ -181,9 +181,9 @@ from saying it twice across restarts). The key's `chi:` prefix keeps sw.js from 
 
 | `kind` | key | title / body |
 |---|---|---|
-| `installed` (`update.restart: never`) | `chi:installed:<X>` | "chi X is installed" / "chi web and its sessions switch over when you restart them." + kept edits |
+| `installed` (`update.restart: never`) | `chi:installed:<X>` | "chi X is installed" / "chi web and its sessions switch over when you restart them." + the edited files (`FileStanding.counts_sentence`) |
 | `failed` | `chi:update_failed:<X>` | "chi X didn't install" (or "installed with a problem" when the gem row was fine) / the first failed row's status, "Open chi web for details." |
-| `updated` | `chi:updated:<X>` | "chi updated to X" / "chi web and 3 sessions restarted; 1 restarts when idle." + kept edits |
+| `updated` | `chi:updated:<X>` | "chi updated to X" / "chi web and 3 sessions restarted; 1 restarts when idle." + the edited files |
 | `restart_failed` | `chi:restart_failed:<X>` | "chi X is installed; chi web didn't restart" / why (a failed `--version` preflight, no wrapper), "Restart chi web in its terminal." |
 
 `updated` is sent by the **restarted** chi web (its AutoUpdate finds the run at `phase: web`): the exec ends the

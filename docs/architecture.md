@@ -394,7 +394,7 @@ record starts at `phase: installed` and the run goes on as below. Ahead of every
 `SessionHub#auto_offer_restart` (`auto_offers`, in memory) when a run on record for the newest installed chi is closed with
 this chi web still older, or that chi has waited `HELD_FOR` (1 h): the trying goes on, and the page has its buttons back;
 `restart_failed` and a failed install call it at once. Its record is `update_check.json`'s `auto`:
-`{version, from, at, kept, phase: installed|workers|web|retrying|done|failed, workers: {restarted, left}, detail, pushed}`,
+`{version, from, at, kept, merged, phase: installed|workers|web|retrying|done|failed, workers: {restarted, left}, detail, pushed}`,
 in Ruby the value object `Web::AutoUpdateRecord`, which owns that shape (`from_h`, `to_store`).
 With `update.restart: never` the run ends at the install (`chi_notice` `installed`). With `idle` it goes on
 (`phase` `installed` → `workers` → `web` → `retrying` → `done`): `UpdateOps#restart_workers(select:)` over the stale workers whose

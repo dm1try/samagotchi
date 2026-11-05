@@ -228,10 +228,11 @@ $ chi models qwen                # only the names containing "qwen" (any case)
 ```
 component      from   to     status
 chi (gem)      0.2.0  0.3.0  updated
-system bundle  0.2.0  0.3.0  updated (kept your edits in identity.md: chi bundle diff samagotchi-system identity.md)
+system bundle  0.2.0  0.3.0  updated (identity.md stays behind 0.3.0: missed ## Who you are (chi bundle diff samagotchi-system identity.md))
 btw            0.1.1         up to date
-known-names    0.1.0  0.1.1  updated (merged known_names.md; Copied to the trash first: known_names.md (…/.trash/known-names-20260102-101500))
-coordinator    0.8.0         merged (skill_coordinator.md; Copied to the trash first: skill_coordinator.md (…/.trash/coordinator-20260102-101500))
+known-names    0.1.0  0.1.1  updated (merged 0.1.1 into your known_names.md; old copies: chi bundle trash)
+coordinator    0.8.0         merged 0.8.0 into your skill_coordinator.md; old copies: chi bundle trash
+loop-guard     0.2.0         notes.md stays behind 0.2.0: no merge possible (git not found) (chi bundle diff loop-guard notes.md)
 core           0.1.0  0.2.0  updated (+ new-bundle)
 infra_tools    1.0.0         skipped (not from chi)
 infra_tools                  warn api plugin.rb:3: ctx.old_name isn't in chi 0.3.0's plugin API (fix: docs/plugins.md has the API)
@@ -239,14 +240,14 @@ Chi Helper     0.2.0         up to date (launch file refreshed)
 workers                      2 live on 0.2.0: they keep it until restarted (chi sessions restart 2ea8c1f0 91b0d2aa); or they idle out after 30 min with nothing attached
 Bundles not from chi are left as they are: their author's next version, or chi bundle upgrade NAME, is what changes them
 Also shipped, not installed: dev (mcp, skills, source-links) (chi bundle install NAME)
-done
+2 files stay behind (see above)
 ```
 
 - `--to VERSION` installs exactly that gem version instead of checking for the
   newest release. It must be newer than the running chi; an equal or older
   version is refused.
 - `--json` writes the component rows as one JSON array on stdout. Each row has
-  `component`, `from`, `to`, `status`, `failed`, `kept` and `level` fields;
+  `component`, `from`, `to`, `status`, `failed`, `kept`, `merged`, `trash_copy` and `level` fields;
   `kept` is an array of edited filenames left behind (a merged file is named in
   `status`), and `level` is `warn` or `error` on a
   re-check's row (below), `null` on the others. Install progress is written to
@@ -308,16 +309,27 @@ done
   NAME`) is upgraded when chi ships a newer version. Memory files get the
   3-way merge of `chi bundle upgrade`: an unedited file is updated, and an
   edited one that the new version also changes takes a text merge, with the old
-  file in the bundle trash and `merged FILE` in the row. A real conflict, no
-  `git`, or no recorded base keeps your file untouched, and the row says so (`chi
-  bundle diff NAME FILE` shows it; `chi bundle upgrade NAME --force` takes the
-  bundle's, with a copy of yours in the bundle trash first). A later run retries
-  a file kept that way at the same version, and its row reads `0.8.0  merged
-  (FILE)` when it merges; a real conflict changes nothing and says nothing. A file marked by an older chi
+  file in the bundle trash and `merged 0.8.0 into your FILE` in the row. A real
+  conflict, no `git`, or no recorded base keeps your file untouched, and the row
+  says `FILE stays behind 0.8.0:` with why and what it missed (up to three headings
+  and a count, or `2 places`). `chi bundle diff NAME FILE` shows it; `chi bundle
+  upgrade NAME --force` takes the bundle's, with a copy of yours in the bundle
+  trash first. A later run retries such a file at the same version: its row reads
+  `0.8.0  merged 0.8.0 into your FILE` when it merges, and names it as behind when
+  it doesn't. So does a file left for the bundle's next version (it matches its old
+  base), or one the retry can't read, and the row never says `up to date` while a file
+  stays behind. Once a file has the bundle's bytes it isn't behind, however it got
+  them. A file marked by an older chi
   merges normally when its recorded base is a version chi shipped (an installed
-  samagotchi gem still has it). Otherwise it merges only if the bundle takes out or
-  rewords no line it still holds, and if it does, it stays behind until resolved by
-  hand, with `--agent` or with `--force`, and the retry can't fix that. Hooks, rules and the plugin are replaced; an edited one didn't
+  samagotchi gem still has it). Otherwise that base may be your own text, so it merges only if the bundle takes out or
+  rewords no line it still holds. If it does, chi can't tell whether the file holds
+  edits of yours, says so, and the file stays behind until resolved by
+  hand, with `--agent` or with `--force`; the retry can't fix that. A merge a chi
+  start made (the system bundle's, which in a worker reaches only the log) shows in
+  `chi bundle status` and in the next `chi update`'s row, whose appearance is its
+  last: `up to date (merged 0.8.0 into your FILE on 2026-11-05 14:03; …)`. A dry run
+  shows it too and leaves it for the real run. A memory that can't be read at a
+  newer version fails that bundle's row with the file's name. Hooks, rules and the plugin are replaced; an edited one didn't
   load anyway (its sha no longer matched), the row says it was replaced, and
   a copy goes to the bundle trash first (`chi bundle trash`; `hooks/x`,
   `guardrails/x`, `plugin/x`, `scripts/x` inside the dir).
@@ -379,9 +391,10 @@ this version's view: bundles that only a newer gem ships newer show up once
 that gem is installed (the real run installs it first and hands over).
 `--no-gem`, `--no-bundles` and `--no-desktop` leave a part alone for one run;
 `update.gem`, `update.bundles` and `update.desktop: false` in config.yml turn
-one off for good. It exits 0 when nothing failed (merged and kept edits and skips are
+one off for good. It exits 0 when nothing failed (merged edits, files that stay behind and skips are
 fine), 1 when a part failed, 2 on a usage error. A second run changes nothing
-and ends with "everything is up to date".
+and ends with "everything is up to date", or with `N files stay behind (see above)`
+when some do.
 
 From a checkout it refuses (`git pull`, or `chi bundle upgrade NAME` for one
 bundle). After a gem update, the first interactive start of the new version
