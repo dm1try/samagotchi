@@ -3,6 +3,7 @@
 require "spec_helper"
 require "tmpdir"
 require "fileutils"
+require "json"
 
 require "samagotchi/memory_bundle/text_merge"
 
@@ -85,6 +86,14 @@ RSpec.describe Samagotchi::MemoryBundle::TextMerge do
 
       expect(changed(base, theirs)).to eq([["## A", "## New", "## Gone"], false])
       expect(changed(base, theirs, "## A\n\nmine\n\n## New\n\nmore\n")).to eq([["## A"], false])
+    end
+
+    it "gives headings as valid UTF-8, whatever the bytes" do
+      names = changed("## Память — главное\n\nx\n\n## caf\xE9\n\nx\n".b, "## Память — главное\n\ny\n\n## caf\xE9\n\ny\n".b).first
+
+      expect(names).to eq(["## Память — главное", "## caf\uFFFD"])
+      expect(names.map(&:encoding).uniq).to eq([Encoding::UTF_8])
+      expect(JSON.generate(names)).to include("Память")
     end
 
     it "finds nothing when nothing changed, or only moved" do

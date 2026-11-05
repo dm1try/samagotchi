@@ -43,6 +43,23 @@ RSpec.describe "chi bootstrap" do
     [out.string, err.string, code]
   end
 
+  it "says what stays behind in its system bundle line, whatever the bytes" do
+    out = StringIO.new
+    command = Samagotchi::BootstrapCommand.new([], stdin: StringIO.new(""), stdout: out, stderr: StringIO.new, env: {})
+    file = Samagotchi::MemoryBundle::FileStanding::Behind.new(file: "заметки.md".dup.force_encoding(Encoding::US_ASCII), version: "2.0.0", missed: ["## Шаги — главное".b])
+    result = Samagotchi::MemoryBundle::SystemBundle::Result
+
+    command.send(:system_bundle_line, result.new(from: "1.0.0", to: "2.0.0", status: :updated, merged: ["a.md"], behind: [file]), false)
+    command.send(:system_bundle_line, result.new(from: "2.0.0", to: "2.0.0", status: :up_to_date, merged: [], behind: [file]), false)
+    command.send(:system_bundle_line, result.new(from: "2.0.0", to: "2.0.0", status: :up_to_date, merged: [], behind: []), false)
+
+    expect(out.string.lines.map(&:chomp)).to eq([
+      "system bundle: 1.0.0 → 2.0.0 updated (merged into your a.md; заметки.md stays behind 2.0.0: missed ## Шаги — главное (chi bundle diff samagotchi-system заметки.md))",
+      "system bundle: v2.0.0 заметки.md stays behind 2.0.0: missed ## Шаги — главное (chi bundle diff samagotchi-system заметки.md)",
+      "system bundle: v2.0.0 up to date"
+    ])
+  end
+
   it "names a merge at the same version in its system bundle line, not as a failure" do
     out = StringIO.new
     command = Samagotchi::BootstrapCommand.new([], stdin: StringIO.new(""), stdout: out, stderr: StringIO.new, env: {})

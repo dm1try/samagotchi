@@ -8,6 +8,8 @@ require "yaml"
 require "samagotchi/memory_bundle/builder"
 require "samagotchi/memory_bundle/installer"
 require "samagotchi/memory_bundle/remerge"
+require "samagotchi/memory_bundle/listing"
+require "samagotchi/memory_bundle/status"
 require "samagotchi/memory_bundle/uninstaller"
 
 # What chi says of a bundle file that stays behind, and what the record keeps
@@ -42,6 +44,22 @@ RSpec.describe Samagotchi::MemoryBundle::FileStanding do
 
       expect(words).to start_with("chi can't tell whether it holds edits of yours")
       expect(behind.new(file: "x.md", version: "1", why: words).line).not_to include("kept", "your edits")
+    end
+
+    it "reads a wrong shape as nothing known" do
+      file = behind.new(file: "x.md", version: "1", why: { "a" => 1 }, missed: { "x" => 1 }, places: { "a" => 1 })
+
+      expect(file.line).to eq("x.md stays behind 1")
+      expect(behind.new(file: "x.md", missed: ["## A", 3, nil], places: "2")).to have_attributes(missed: ["## A"], places: 0)
+    end
+
+    it "joins any file name and heading in one line" do
+      name = "заметки.md".dup.force_encoding(Encoding::US_ASCII)
+      line = behind.new(file: name, version: "1", missed: ["## Выводы — главное".b]).line
+
+      expect(line).to eq("заметки.md stays behind 1: missed ## Выводы — главное")
+      expect(described_class.merged_line([name], "1")).to eq("merged 1 into your заметки.md")
+      expect(described_class.clauses("b", "1", behind: [behind.new(file: name, version: "1")]).first).to include("chi bundle diff b заметки.md")
     end
 
     it "counts in one wording" do
@@ -96,6 +114,60 @@ RSpec.describe Samagotchi::MemoryBundle::FileStanding do
       File.write(target, doc(steps: "mine"))
       write_source("2.0.0", doc(steps: "theirs", rules: "new rules"))
       install(upgrade: true)
+    end
+
+    context "with a heading that isn't ASCII" do
+      def non_ascii(steps: "one") = "# Заметки\n\n## Шаги — главное\n\n#{steps}\n\n## caf\xE9\n\nsame\n".b
+
+      before do
+        write_source("1.0.0", non_ascii)
+        install
+        File.binwrite(target, non_ascii(steps: "мой"))
+        write_source("2.0.0", non_ascii(steps: "новый"))
+      end
+
+      it "records it through a manifest round trip, the upgrade going through" do
+        up = install(upgrade: true)
+
+        expect(up.results["a.md"][:status]).to eq("conflict")
+        expect(provenance.record.version).to eq("2.0.0")
+        expect(entry[:missed]).to eq(["## Шаги — главное"])
+        expect(behind_lines).to eq(["a.md stays behind 2.0.0: missed ## Шаги — главное"])
+        expect(File.binread(target)).to eq(non_ascii(steps: "мой"))
+      end
+
+      it "finds the mark unchanged at the next retry, with no write" do
+        install(upgrade: true)
+        expect(remerge).not_to be_work
+      end
+    end
+
+    it "handles a file name that isn't ASCII" do
+      name = "заметки.md"
+      FileUtils.rm_rf(source)
+      FileUtils.mkdir_p(source)
+      File.write(File.join(source, name), doc)
+      File.write(File.join(source, "manifest.yml"), YAML.dump({ "name" => "demo", "version" => "1.0.0", "scope" => "system", "files" => { name => "sha256:fake" } }))
+      install
+      File.write(File.join(memories, name), doc(steps: "мой — шаг"))
+      File.write(File.join(source, name), doc(steps: "новый"))
+      File.write(File.join(source, "manifest.yml"), YAML.dump({ "name" => "demo", "version" => "2.0.0", "scope" => "system", "files" => { name => "sha256:fake" } }))
+      install(upgrade: true)
+
+      expect(behind_lines).to eq(["заметки.md stays behind 2.0.0: missed ## Steps"])
+      expect(File.exist?(provenance.incoming_path(name))).to be true
+    end
+
+    it "reads a wrong-shaped record as nothing known, in every surface" do
+      left_behind
+      manifest = File.join(provenance.bundle_dir, "manifest.json")
+      raw = JSON.parse(File.read(manifest))
+      raw["files"]["a.md"].merge!("missed" => { "x" => 1 }, "missed_places" => {}, "why" => 7)
+      File.write(manifest, JSON.generate(raw))
+
+      expect(behind_lines).to eq(["a.md stays behind 2.0.0"])
+      expect(Samagotchi::MemoryBundle::Listing.installed(shipped: []).first.behind).to eq(1)
+      expect(Samagotchi::MemoryBundle::Status.bundle_status("demo").files["a.md"][:behind]).not_to be_nil
     end
 
     it "records what the bundle changed, not only where the conflict is" do

@@ -312,10 +312,11 @@ module Samagotchi
         end
 
         def add_heading(bare)
-          @heading = bare.sub(/\A {0,3}\#{1,6}[ \t]*/, "").sub(/[ \t#:]*\z/, "")
+          # Reports and the record take these: the scan is binary, and they need text.
+          @heading = text_of(bare.sub(/\A {0,3}\#{1,6}[ \t]*/, "").sub(/[ \t#:]*\z/, ""))
           @changelog = bare[HEADING, 1].size <= CHANGELOG_LEVEL && @heading.match?(CHANGELOG)
           @in_item = false
-          @sections << [bare.strip.sub(/[ \t#:]*\z/, ""), []]
+          @sections << [text_of(bare.strip.sub(/[ \t#:]*\z/, "")), []]
         end
 
         # Whether the section so far is still nothing but list entries.
@@ -387,6 +388,9 @@ module Samagotchi
         def more_of_entry?(bare) = bare.match?(ITEM_MORE) && !structural?(bare.lstrip)
 
         def indent(line) = line[/\A[ \t]*/].size
+
+        # As UTF-8, what isn't valid replaced: a heading is for reading.
+        def text_of(bytes) = bytes.dup.force_encoding(Encoding::UTF_8).scrub
 
         def structural?(text) = text.match?(LIKE_HEADING) || text.match?(RULE) || text.match?(FENCE)
       end

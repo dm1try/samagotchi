@@ -34,9 +34,12 @@ module Samagotchi
       # (.no_merge, or a plain reason), nil for a real conflict. missed: the
       # headings of the sections the bundle changed. places: the changes under no
       # heading.
+      # What a record gives is read as it is shaped: anything else is nothing known.
       Behind = Data.define(:file, :version, :why, :missed, :places) do
         def initialize(file:, version: nil, why: nil, missed: [], places: 0)
-          super(file: file, version: version, why: why, missed: Array(missed), places: places.to_i)
+          super(file: file, version: version, why: why.is_a?(String) ? FileStanding.text(why) : nil,
+                missed: (missed.is_a?(Array) ? missed : []).grep(String).map { |heading| FileStanding.text(heading) },
+                places: places.is_a?(Integer) && places.positive? ? places : 0)
         end
 
         # "stays behind 0.8.0: missed ## Objectives"
@@ -47,7 +50,7 @@ module Samagotchi
         end
 
         # "x.md stays behind 0.8.0: missed ## Objectives"
-        def line(dry_run: false) = "#{file} #{state(dry_run: dry_run)}"
+        def line(dry_run: false) = "#{FileStanding.text(file)} #{state(dry_run: dry_run)}"
       end
 
       # A merge no report has shown yet, as the file's record keeps it
@@ -63,9 +66,13 @@ module Samagotchi
 
       module_function
 
+      # +value+ as UTF-8, whatever it was tagged, what isn't valid replaced: a file
+      # name under LC_ALL=C and a heading must join in one line.
+      def text(value) = value.to_s.dup.force_encoding(Encoding::UTF_8).scrub
+
       # "merged 0.8.0 into your x.md, y.md"
       def merged_line(files, version, dry_run: false)
-        "#{dry_run ? "would merge" : "merged"}#{" #{version}" if version} into your #{files.join(", ")}"
+        "#{dry_run ? "would merge" : "merged"}#{" #{version}" if version} into your #{files.map { |file| text(file) }.join(", ")}"
       end
 
       # The clause for a merge that couldn't answer: +why+ is TextMerge's reason
@@ -112,7 +119,7 @@ module Samagotchi
         lines + earlier.map(&:line)
       end
 
-      def diff_hint(bundle, file) = "chi bundle diff #{bundle} #{file}"
+      def diff_hint(bundle, file) = "chi bundle diff #{text(bundle)} #{text(file)}"
 
       def local_time(stamp)
         Time.iso8601(stamp.to_s).localtime.strftime("%Y-%m-%d %H:%M")
