@@ -85,7 +85,7 @@ module Samagotchi
         llm_context_edited merged_input objectives_updated participants_changed pending_input_merged plugin_init_finished
         plugin_init_started plugin_init_wait prompt_restored question question_relay reasoning_history_refused
         recap_ready reminder_injected sampling_refused session_end session_start side_usage steer_cut thinking_dropped
-        thinking_refused tool_dispatch_completed tool_dispatch_started turn_rolled_back used_memories_updated working_set_updated
+        thinking_refused tool_dispatch_completed tool_dispatch_started used_memories_updated working_set_updated
       ].freeze
 
       # A merged input line's saved sources a participant sees: a person's

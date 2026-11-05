@@ -65,17 +65,14 @@ RSpec.describe Samagotchi::TurnFlow do
       expect(engine.messages).to eq(before)
     end
 
-    it "says a !rollback took the turn back (the cards' count follows), and only when it did" do
+    it "takes the turn back once, and says whether it did; nobody needs telling (the cards' places follow the messages)" do
       expect(flow.rollback!).to be(false)
-      expect(engine.announced).to eq([])
 
       run_prompt("go", [{ role: "model", content: "Partial\n[interrupted]" }])
       flow.after_turn(result(engine.messages, canceled: true))
-      expect(engine.announced).to eq([])
-      flow.rollback!
-      expect(engine.announced).to eq([{ type: :turn_rolled_back }])
+      expect(flow.rollback!).to be(true)
       expect(flow.rollback!).to be(false)
-      expect(engine.announced.size).to eq(1)
+      expect(engine.announced).to eq([])
     end
 
     it "keeps a cancelled turn's partial progress and the checkpoint for !rollback" do
