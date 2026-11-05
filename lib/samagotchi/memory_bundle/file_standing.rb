@@ -88,7 +88,7 @@ module Samagotchi
       def missed_words(headings, places)
         return places.positive? ? "missed #{counted(places, "place")}" : nil if headings.empty?
 
-        more = headings.size - SHOWN_MISSED + places
+        more = [headings.size - SHOWN_MISSED, 0].max + places
         words = "missed #{headings.first(SHOWN_MISSED).join(", ")}"
         more.positive? ? "#{words} and #{more} more" : words
       end

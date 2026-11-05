@@ -26,6 +26,12 @@ RSpec.describe Samagotchi::MemoryBundle::FileStanding do
       expect(behind.new(file: "x.md", version: "1", missed: headings.first(3), places: 1).line).to end_with("## C and 1 more")
     end
 
+    it "adds a change under no heading to the named ones, however few" do
+      expect(described_class.missed_words(["## A"], 1)).to eq("missed ## A and 1 more")
+      expect(described_class.missed_words(["## A"], 5)).to eq("missed ## A and 5 more")
+      expect(described_class.missed_words(["## A", "## B", "## C", "## D"], 1)).to eq("missed ## A, ## B, ## C and 2 more")
+    end
+
     it "counts places when there are no headings" do
       expect(behind.new(file: "x.md", version: "1", places: 1).line).to eq("x.md stays behind 1: missed 1 place")
       expect(behind.new(file: "x.md", version: "1", places: 2).line).to eq("x.md stays behind 1: missed 2 places")
@@ -176,6 +182,27 @@ RSpec.describe Samagotchi::MemoryBundle::FileStanding do
       expect(entry).to include(conflict: true, missed: ["## Steps", "## Rules"])
       expect(up.behind.map(&:line)).to eq(["a.md stays behind 2.0.0: missed ## Steps, ## Rules"])
       expect(behind_lines).to eq(["a.md stays behind 2.0.0: missed ## Steps, ## Rules"])
+    end
+
+    it "names the changed intro beside a heading, and counts only the hunks under no heading" do
+      write_source("1.0.0", doc)
+      install
+      File.write(target, doc(steps: "mine", intro: "my intro"))
+      write_source("2.0.0", doc(steps: "theirs", intro: "new intro"))
+      install(upgrade: true)
+
+      expect(entry).to include(missed: ["# T", "## Steps"])
+      expect(entry).not_to have_key(:missed_places)
+
+      plain = "one\n\ntwo\n\nthree\n\nfour\n\nfive\n\nsix\n\nseven\n"
+      write_source("3.0.0", plain)
+      install(upgrade: true, force: true)
+      File.write(target, plain.sub("one", "mine 1").sub("seven", "mine 7"))
+      write_source("4.0.0", plain.sub("one", "new 1").sub("seven", "new 7"))
+      install(upgrade: true)
+
+      expect(entry).to include(missed_places: 2)
+      expect(behind_lines).to eq(["a.md stays behind 4.0.0: missed 2 places"])
     end
 
     it "doesn't call a section missed that the user brought over by hand" do
