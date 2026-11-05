@@ -207,6 +207,19 @@ RSpec.describe Samagotchi::MemoryBundle::FileStanding do
       expect(behind_lines).to eq(["a.md stays behind 4.0.0: missed 2 places"])
     end
 
+    it "counts only the conflicts under no heading as places" do
+      preamble = lambda do |top, steps|
+        "#{top}\n\nkeep a\nkeep b\nkeep c\nkeep d\n\n## Steps\n\n#{steps}\n"
+      end
+      write_source("1.0.0", preamble["top", "one"])
+      install
+      File.write(target, preamble["my top", "mine"])
+      write_source("2.0.0", preamble["new top", "theirs"])
+      install(upgrade: true)
+
+      expect(entry).to include(missed: ["## Steps"], missed_places: 1)
+    end
+
     it "doesn't call a section missed that the user brought over by hand" do
       write_source("1.0.0", doc)
       install
@@ -325,6 +338,50 @@ RSpec.describe Samagotchi::MemoryBundle::FileStanding do
 
       expect(entry).to include(conflict: true, missed: ["# T", "## Steps", "## Rules"])
       expect(File.read(saved)).to eq(doc(steps: "theirs", rules: "new rules", intro: "new intro"))
+    end
+
+    it "keeps an older mark's own words at a plain install, under the new version" do
+      left_behind
+      manifest = File.join(provenance.bundle_dir, "manifest.json")
+      raw = JSON.parse(File.read(manifest))
+      raw["files"]["a.md"] = raw["files"]["a.md"].slice("checksum", "conflict").merge("why" => "older words")
+      File.write(manifest, JSON.generate(raw))
+      write_source("3.0.0", doc(steps: "theirs", rules: "newer"))
+      up = install
+
+      expect(entry).to include(conflict: true, why: "older words", legacy_base: true)
+      expect(entry).not_to have_key(:missed)
+      expect(up.warnings.join).not_to include("older words")
+      expect(behind_lines.first).to start_with("a.md stays behind 3.0.0: older words")
+    end
+
+    it "keeps the mark at a plain install when what it missed can't be read" do
+      left_behind
+      write_source("3.0.0", doc(steps: "theirs", rules: "newer"))
+      allow(Samagotchi::MemoryBundle::TextMerge).to receive(:changed_sections).and_raise(Errno::EACCES)
+      install
+
+      expect(behind_lines).to eq(["a.md stays behind 3.0.0"])
+    end
+
+    it "words a held mark for the new version" do
+      left_behind
+      write_source("3.0.0", doc(steps: "theirs", rules: "new rules"))
+      install
+
+      expect(behind_lines).to eq(["a.md stays behind 3.0.0: missed ## Steps, ## Rules"])
+    end
+
+    it "says when a merge's note can't be written, the merge standing" do
+      write_source("1.0.0", doc)
+      install
+      File.write(target, doc(intro: "mine"))
+      write_source("2.0.0", doc(rules: "new"))
+      allow_any_instance_of(Samagotchi::MemoryBundle::Provenance).to receive(:note_merged).and_raise(Errno::EACCES)
+      up = install(upgrade: true)
+
+      expect(up.merged_files).to eq(["a.md"])
+      expect(up.warnings.join).to include("merge not noted on the record")
     end
 
     it "drops an old reason at a plain install: no merge ran for this source" do

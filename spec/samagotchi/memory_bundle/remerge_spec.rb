@@ -676,6 +676,15 @@ RSpec.describe Samagotchi::MemoryBundle::Remerge do
     end
   end
 
+  it "says when a merge's note can't be written, the merge standing" do
+    marked_at_two(mine: doc(intro: "my intro"), shipped: doc(tail: "the tail\nand a new line"))
+    allow_any_instance_of(Samagotchi::MemoryBundle::Provenance).to receive(:note_merged).and_raise(Errno::EACCES)
+    result = remerge
+
+    expect(result.merged).to eq(["a.md"])
+    expect(result.warnings.join).to include("merge not noted on the record")
+  end
+
   it "marks a merge a live write got in front of, the mark saying so" do
     marked_at_two(mine: doc(intro: "my intro"), shipped: doc(tail: "the tail\nand a new line"))
     allow_any_instance_of(Samagotchi::MemoryBundle::Trash).to receive(:copy).and_wrap_original do |copy, *args, **opts|

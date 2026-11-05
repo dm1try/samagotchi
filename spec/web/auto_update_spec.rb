@@ -123,6 +123,17 @@ RSpec.describe Samagotchi::Web::AutoUpdate do
                                                   kept: ["a.md", "b.md"], merged: ["c.md"])
     end
 
+    context "when a row only names an earlier merge" do
+      let(:rows) { [{ "component" => "system bundle", "status" => "up to date (merged …)", "failed" => false, "kept" => [], "merged" => [], "earlier" => ["old.md"] }] }
+
+      it "doesn't count it again in the push" do
+        auto_update.step
+
+        expect(notices).to eq([{ kind: "installed", version: version, kept: 0, merged: 0 }])
+        expect(check.auto_state.merged).to eq([])
+      end
+    end
+
     it "installs the release once: a later step finds it on record" do
       auto_update.step
       auto_update.step

@@ -21,13 +21,14 @@ test("the install sheet shows component rows and calls out kept edits", () => {
       { component: "system bundle", status: "unchanged", kept: [] },
       { component: "coordinator", status: "updated (x.md stays behind 99.0.0: missed ## Steps)", kept: ["x.md"], merged: [] },
       { component: "btw", status: "updated (merged 99.0.0 into your y.md)", kept: [], merged: ["y.md"] },
+      { component: "mcp", status: "up to date (merged 1.0 into your z.md on 2026-11-05 10:00)", kept: [], merged: [], earlier: ["z.md"] },
     ],
   }));
   const text = div.textContent.replace(/\s+/g, " ");
 
   assert.match(text, /Update chi to 99\.0\.0/);
   assert.deepEqual([...div.querySelectorAll(".us-row-head")].map((row) => [...row.children].map((part) => part.textContent)),
-    [["chi (gem)", "updated"], ["system bundle", "unchanged"], ["coordinator"], ["btw"]]);
+    [["chi (gem)", "updated"], ["system bundle", "unchanged"], ["coordinator"], ["btw"], ["mcp"]]);
   assert.match(text, /0\.1\.0 → 99\.0\.0/);
   // chi update's words, whole, with none of the sheet's own.
   assert.equal(div.querySelector(".us-kept").textContent, "updated (x.md stays behind 99.0.0: missed ## Steps)");

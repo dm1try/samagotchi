@@ -307,6 +307,21 @@ RSpec.describe Samagotchi::UpdateCommand do
     end
   end
 
+  it "gives --json's rows merged and earlier apart" do
+    note = Samagotchi::MemoryBundle::FileStanding::MergeNote.new(file: "old.md", version: "1", at: nil, trash: nil)
+    system = Samagotchi::MemoryBundle::SystemBundle
+    allow(system).to receive(:merge_notes).and_return([note])
+    allow(system).to receive(:clear_merge_notes)
+    allow(system).to receive(:sync).and_return(system::Result.new(from: "1", to: "1", status: :merged, merged: ["new.md"], behind: [], warnings: []))
+    json = StringIO.new
+    described_class.new(%w[--no-gem --no-bundles --no-desktop --json], stdout: json, stderr: err, gem_spec: gem_spec, supported: false, state_dir: state_dir,
+                                                                       web: web, bundler: true, home: Class.new { def self.current(**) = nil }).run
+
+    row = JSON.parse(json.string).find { |candidate| candidate["component"] == "system bundle" }
+    expect(row).to include("merged" => ["new.md"], "earlier" => ["old.md"])
+    expect(system).to have_received(:clear_merge_notes).with([note], files: ["new.md"])
+  end
+
   it "keeps a shipped bundle's note on a failed row, and names what that run did merge" do
     note = Samagotchi::MemoryBundle::FileStanding::MergeNote.new(file: "a.md", version: "1", at: nil, trash: nil)
     update = Samagotchi::MemoryBundle::ShippedUpdate::Row.new(name: "x", from: "1", to: "2", status: :failed, note: "boom", merged: ["b.md"], behind: [], replaced: [], earlier: [note])
