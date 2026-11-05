@@ -5,6 +5,7 @@ require "uri"
 require "time"
 require_relative "attention"
 require_relative "../../log"
+require_relative "../../memory_bundle/file_standing"
 
 module Samagotchi
   module Web
@@ -52,10 +53,10 @@ module Samagotchi
         AUTO_NOTICES = {
           "installed" => lambda do |version, notes|
             ["installed", "chi #{version} is installed",
-             "chi web and its sessions switch over when you restart them.#{kept_words(notes[:kept])}"]
+             "chi web and its sessions switch over when you restart them.#{file_words(notes)}"]
           end,
           "updated" => lambda do |version, notes|
-            ["updated", "chi updated to #{version}", "#{restarted_words(notes[:restarted], notes[:left])}#{kept_words(notes[:kept])}"]
+            ["updated", "chi updated to #{version}", "#{restarted_words(notes[:restarted], notes[:left])}#{file_words(notes)}"]
           end,
           "restart_failed" => lambda do |version, notes|
             ["restart_failed", "chi #{version} is installed; chi web didn't restart",
@@ -79,13 +80,10 @@ module Samagotchi
           "#{words}."
         end
 
-        # " Kept your edits in 2 files." ("" for none).
-        def self.kept_words(count)
-          if count.to_i.positive?
-            " Kept your edits in #{count} #{count == 1 ? "file" : "files"}."
-          else
-            ""
-          end
+        # " Merged the update into 1 file you edited. 2 files stay behind." ("" for none).
+        def self.file_words(notes)
+          words = MemoryBundle::FileStanding.counts_sentence(merged: notes[:merged].to_i, behind: notes[:kept].to_i)
+          words.empty? ? "" : " #{words}"
         end
 
         # A show carries +open+ only while its JSON stays this small: one

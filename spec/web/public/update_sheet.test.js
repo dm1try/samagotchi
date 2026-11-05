@@ -17,19 +17,22 @@ test("the install sheet shows component rows and calls out kept edits", () => {
   div.innerHTML = markupOf(updateSheetTemplate({
     operation: "install", version: "99.0.0", state: "done",
     rows: [
-      { component: "chi (gem)", status: "updated", from: "0.1.0", to: "99.0.0", kept: ["config.yml", "memories/notes.md"] },
+      { component: "chi (gem)", status: "updated", from: "0.1.0", to: "99.0.0", kept: [] },
       { component: "system bundle", status: "unchanged", kept: [] },
+      { component: "coordinator", status: "updated (x.md stays behind 99.0.0: missed ## Steps)", kept: ["x.md"], merged: [] },
+      { component: "btw", status: "updated (merged 99.0.0 into your y.md)", kept: [], merged: ["y.md"] },
     ],
   }));
   const text = div.textContent.replace(/\s+/g, " ");
 
   assert.match(text, /Update chi to 99\.0\.0/);
   assert.deepEqual([...div.querySelectorAll(".us-row-head")].map((row) => [...row.children].map((part) => part.textContent)),
-    [["chi (gem)", "updated"], ["system bundle", "unchanged"]]);
+    [["chi (gem)", "updated"], ["system bundle", "unchanged"], ["coordinator"], ["btw"]]);
   assert.match(text, /0\.1\.0 → 99\.0\.0/);
-  const kept = div.querySelector(".us-kept");
-  assert.equal(kept.querySelector("strong").textContent, "Kept edited files:");
-  assert.deepEqual([...kept.querySelectorAll("li")].map((file) => file.textContent), ["config.yml", "memories/notes.md"]);
+  // chi update's words, whole, with none of the sheet's own.
+  assert.equal(div.querySelector(".us-kept").textContent, "updated (x.md stays behind 99.0.0: missed ## Steps)");
+  assert.match(text, /updated \(merged 99\.0\.0 into your y\.md\)/);
+  assert.doesNotMatch(text, /Kept edited/);
 });
 
 test("an automatic run's sheet says so in its title", () => {
@@ -64,11 +67,11 @@ test("the sheet follows update events and its operations call the owner APIs", a
   }), true);
   sheet.receive({
     operation: "install", version: "99.0.0", state: "done",
-    rows: [{ component: "chi (gem)", status: "updated", kept: ["config.yml"] }],
+    rows: [{ component: "system bundle", status: "x.md stays behind 99.0.0", kept: ["x.md"] }],
   });
   assert.doesNotMatch(el.textContent, /Installing samagotchi/);
   assert.match(el.querySelector(".us-status").textContent, /Update complete\./);
-  assert.deepEqual([...el.querySelectorAll(".us-kept li")].map((file) => file.textContent), ["config.yml"]);
+  assert.equal(el.querySelector(".us-kept").textContent, "x.md stays behind 99.0.0");
   el.querySelector('[data-act="close"]').click();
   assert.equal(sheet.isOpen(), false);
 

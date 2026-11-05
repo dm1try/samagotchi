@@ -111,16 +111,16 @@ RSpec.describe Samagotchi::Web::AutoUpdate do
   describe "a done install" do
     let(:rows) do
       [{ "component" => "chi (gem)", "status" => "updated", "failed" => false, "kept" => [] },
-       { "component" => "system bundle", "status" => "updated", "failed" => false, "kept" => ["a.md", "b.md"] },
+       { "component" => "system bundle", "status" => "updated", "failed" => false, "kept" => ["a.md", "b.md"], "merged" => ["c.md"] },
        { "component" => "other", "status" => "updated", "failed" => false, "kept" => ["a.md"] }]
     end
 
-    it "pushes once what was installed and how many files kept their edits, and records it" do
+    it "pushes once what was installed and how many edited files merged or stayed behind, and records it" do
       auto_update.step
 
-      expect(notices).to eq([{ kind: "installed", version: version, kept: 2 }])
+      expect(notices).to eq([{ kind: "installed", version: version, kept: 2, merged: 1 }])
       expect(check.auto_state).to have_attributes(version: version, from: Samagotchi::VERSION, phase: "done", pushed: true,
-                                                  kept: ["a.md", "b.md"])
+                                                  kept: ["a.md", "b.md"], merged: ["c.md"])
     end
 
     it "installs the release once: a later step finds it on record" do
@@ -423,7 +423,7 @@ RSpec.describe Samagotchi::Web::AutoUpdate do
       second_ops = real_ops.call
       seen_frames = frames.size
       described_class.new(hub: hub, ops: second_ops, check: restarted_check, auto: auto, restart: restart, clock: -> { now }).step
-      expect(notices).to eq([{ kind: "updated", version: version, kept: 0, restarted: 1, left: 1 }])
+      expect(notices).to eq([{ kind: "updated", version: version, kept: 0, merged: 0, restarted: 1, left: 1 }])
       expect(restarted_check.auto_state).to have_attributes(phase: "retrying", restarted: 1, left: 1)
       expect(frames.size).to eq(seen_frames) # a pass that restarted nothing is off the page
 
@@ -484,7 +484,7 @@ RSpec.describe Samagotchi::Web::AutoUpdate do
         auto_update.step
 
         expect(hub).to have_received(:scan).once
-        expect(notices).to eq([{ kind: "updated", version: version, kept: 2, restarted: 4, left: 0 }])
+        expect(notices).to eq([{ kind: "updated", version: version, kept: 2, merged: 0, restarted: 4, left: 0 }])
         expect(check.auto_state).to have_attributes(phase: "done", pushed: true)
         expect(ops).not_to have_received(:restart_web)
         expect(ops).not_to have_received(:install)
@@ -509,7 +509,7 @@ RSpec.describe Samagotchi::Web::AutoUpdate do
         it "says chi updated at once, and stays open to try them" do
           auto_update.step
 
-          expect(notices).to eq([{ kind: "updated", version: version, kept: 2, restarted: 3, left: 1 }])
+          expect(notices).to eq([{ kind: "updated", version: version, kept: 2, merged: 0, restarted: 3, left: 1 }])
           expect(check.auto_state).to have_attributes(phase: "retrying", pushed: true, restarted: 3, left: 1)
         end
 
@@ -899,7 +899,7 @@ RSpec.describe Samagotchi::Web::AutoUpdate do
       restarted.step
       restarted.step
 
-      expect(notices).to eq([{ kind: "updated", version: installed, kept: 0, restarted: 0, left: 0 }])
+      expect(notices).to eq([{ kind: "updated", version: installed, kept: 0, merged: 0, restarted: 0, left: 0 }])
       expect(check.auto_state).to have_attributes(phase: "done")
       expect(ops).to have_received(:restart_web).once
     end
@@ -977,7 +977,7 @@ RSpec.describe Samagotchi::Web::AutoUpdate do
       auto_update.step
 
       expect(ops).not_to have_received(:restart_web)
-      expect(notices).to eq([{ kind: "updated", version: installed, kept: 0, restarted: 0, left: 0 }])
+      expect(notices).to eq([{ kind: "updated", version: installed, kept: 0, merged: 0, restarted: 0, left: 0 }])
       expect(check.auto_state).to have_attributes(phase: "done")
     end
   end

@@ -216,7 +216,8 @@ module Samagotchi
       # `chi_update` frames are the page's), and not kept for a snapshot.
       # @param kind [String] installed, updated or failed
       # @param version [String] the release it is about
-      # @param notes [Hash] detail:, kept: (a count), restarted:, left:
+      # @param notes [Hash] detail:, kept:, merged: (counts of edited files that
+      #   stayed behind and that took the update), restarted:, left:
       def publish_notice(kind:, version:, **notes)
         @monitor.synchronize { emit("chi_notice", { kind: kind, version: version, **notes }) }
         nil

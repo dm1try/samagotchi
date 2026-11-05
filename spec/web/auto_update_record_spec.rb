@@ -10,7 +10,7 @@ RSpec.describe Samagotchi::Web::AutoUpdateRecord do
   def through_json(record) = described_class.from_h(JSON.parse(JSON.generate(record.to_store)))
 
   it "comes back from JSON equal to what went in" do
-    record = described_class.new(version: "1.2.3", from: "1.2.2", at: now.iso8601, kept: ["a.md"], phase: "failed",
+    record = described_class.new(version: "1.2.3", from: "1.2.2", at: now.iso8601, kept: ["a.md"], merged: ["b.md"], phase: "failed",
                                  restarted: 2, left: 1, detail: "boom", pushed: true)
 
     expect(through_json(record)).to eq(record)

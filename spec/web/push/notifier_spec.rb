@@ -158,23 +158,23 @@ RSpec.describe Samagotchi::Web::Push::Notifier do
       expect(client.calls.map { |call| call[:payload][:title] }).to eq(["chi 0.19.0 installed with a problem"])
     end
 
-    it "pushes an automatic install's result with the files whose edits were kept" do
+    it "pushes an automatic install's result with the edited files that stayed behind" do
       notice("installed", kept: 2)
       advance(3)
 
       expect(client.calls.map { |call| call[:payload].values_at(:tag, :title, :body) }).to eq([
         ["chi:installed:0.19.0", "chi 0.19.0 is installed",
-         "chi web and its sessions switch over when you restart them. Kept your edits in 2 files."]
+         "chi web and its sessions switch over when you restart them. 2 files stay behind."]
       ])
     end
 
-    it "pushes 'chi updated' with what restarted and what waits, and the kept edits" do
-      notice("updated", restarted: 3, left: 1, kept: 2)
+    it "pushes 'chi updated' with what restarted and what waits, and the edited files" do
+      notice("updated", restarted: 3, left: 1, kept: 2, merged: 1)
       advance(3)
 
       expect(client.calls.map { |call| call[:payload].values_at(:tag, :title, :body) }).to eq([
         ["chi:updated:0.19.0", "chi updated to 0.19.0",
-         "chi web and 3 sessions restarted; 1 restarts when idle. Kept your edits in 2 files."]
+         "chi web and 3 sessions restarted; 1 restarts when idle. Merged the update into 1 file you edited. 2 files stay behind."]
       ])
     end
 
@@ -184,7 +184,7 @@ RSpec.describe Samagotchi::Web::Push::Notifier do
       advance(3)
 
       expect(client.calls.map { |call| call[:payload][:body] }).to contain_exactly(
-        "chi web restarted.", "chi web and 1 session restarted; 2 restart when idle. Kept your edits in 1 file."
+        "chi web restarted.", "chi web and 1 session restarted; 2 restart when idle. 1 file stays behind."
       )
     end
 

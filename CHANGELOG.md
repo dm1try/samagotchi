@@ -30,6 +30,7 @@ and commands may change between minor versions. How releases are made:
 - A merge a chi start made, which in a worker reaches only the log, now leaves a note on the file's record: `chi bundle status` shows it (with the old copy's folder) and the next `chi update`'s row is its last appearance.
 - `chi update` no longer crashes on an edited memory it can't read at a newer version: that bundle's row fails and says which file, and the others go on.
 - The start-up hint `… can be updated: chi update` counts a bundle whose file would now merge at the same version.
+- The update sheet shows `chi update`'s own words for an edited file, and the phone's push after an automatic update counts both sides (`Merged the update into 1 file you edited. 2 files stay behind.`): a merge used to go unmentioned, and every kept file read as `Kept your edits`.
 - `chi update` no longer reads `up to date` for a file that stays behind at the same version: a real conflict, no `git`, a timeout, a file it can't read, or one left for the bundle's next version now name the file and why, and the summary counts them.
 - A file marked by an older chi whose base chi can't vouch for no longer claims to hold your edits: it says chi can't tell, and why.
 - `chi update`'s table no longer carries the trash's long path: the row says `old copies: chi bundle trash`, and `--json`'s `trash_copy` has the full line.

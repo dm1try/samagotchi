@@ -13,8 +13,10 @@ module Samagotchi
     # +phase+: installed, workers, web (AutoUpdate::OPEN_PHASES), retrying,
     # done or failed. +restarted+ and +left+ count the stale workers (`workers` in
     # the file); +at+ is when the install ended, an ISO 8601 string.
-    AutoUpdateRecord = Data.define(:version, :from, :at, :kept, :phase, :restarted, :left, :detail, :pushed) do
-      def initialize(version:, phase:, from: nil, at: nil, kept: [], restarted: 0, left: 0, detail: nil, pushed: false)
+    # +kept+ and +merged+ name the edited memory files that stayed behind and
+    # that took the update (chi update --json's).
+    AutoUpdateRecord = Data.define(:version, :from, :at, :kept, :merged, :phase, :restarted, :left, :detail, :pushed) do
+      def initialize(version:, phase:, from: nil, at: nil, kept: [], merged: [], restarted: 0, left: 0, detail: nil, pushed: false)
         super
       end
 
@@ -30,14 +32,14 @@ module Samagotchi
 
         workers = hash["workers"].is_a?(Hash) ? hash["workers"] : {}
         new(version: version, phase: phase, from: hash["from"], at: hash["at"],
-            kept: Array(hash["kept"]).grep(String), restarted: workers["restarted"].to_i, left: workers["left"].to_i,
+            kept: Array(hash["kept"]).grep(String), merged: Array(hash["merged"]).grep(String), restarted: workers["restarted"].to_i, left: workers["left"].to_i,
             detail: hash["detail"], pushed: hash["pushed"] == true)
       end
 
       # What goes in the file, for .from_h to read back.
       # @return [Hash{String => Object}]
       def to_store
-        { "version" => version, "from" => from, "at" => at, "kept" => kept, "phase" => phase,
+        { "version" => version, "from" => from, "at" => at, "kept" => kept, "merged" => merged, "phase" => phase,
           "workers" => { "restarted" => restarted, "left" => left }, "detail" => detail,
           "pushed" => pushed ? true : nil }.compact
       end

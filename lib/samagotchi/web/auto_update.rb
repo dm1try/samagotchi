@@ -197,7 +197,7 @@ module Samagotchi
       end
 
       # A newer chi this didn't install, settled: a run of its own from here.
-      # The terminal's table already told what `chi update` kept.
+      # The terminal's table already told what `chi update` merged or left behind.
       def adopt_installed
         return unless @restart == "idle" && @seen
 
@@ -215,10 +215,10 @@ module Samagotchi
         return Log.info(:web, "auto_update_deferred", version: version, why: result) if result.is_a?(Symbol)
 
         rows = result.rows
-        record = AutoUpdateRecord.new(version: version, from: VERSION, at: @clock.call.iso8601, kept: kept_files(rows),
-                                      phase: "installed")
+        record = AutoUpdateRecord.new(version: version, from: VERSION, at: @clock.call.iso8601, kept: files_in(rows, "kept"),
+                                      merged: files_in(rows, "merged"), phase: "installed")
         if result.done?
-          Log.info(:web, "auto_update_installed", version: version, kept: record.kept.size)
+          Log.info(:web, "auto_update_installed", version: version, kept: record.kept.size, merged: record.merged.size)
           installed(record)
         else
           failed(record, rows)
@@ -232,7 +232,7 @@ module Samagotchi
         return carry_on(save(record)) unless @restart == "never"
 
         save(record.with(phase: "done", pushed: true))
-        @hub.publish_notice(kind: "installed", version: record.version, kept: record.kept.size)
+        @hub.publish_notice(kind: "installed", version: record.version, kept: record.kept.size, merged: record.merged.size)
       end
 
       # The next step of a run on record.
@@ -328,7 +328,7 @@ module Samagotchi
         record = restart_workers(record) || record
         Log.info(:web, "auto_update_done", version: record.version, restarted: record.restarted, left: record.left)
         save(record.with(phase: record.left_to_try?(@clock.call, RETRY_FOR) ? RETRYING : "done", pushed: true))
-        @hub.publish_notice(kind: "updated", version: record.version, kept: record.kept.size,
+        @hub.publish_notice(kind: "updated", version: record.version, kept: record.kept.size, merged: record.merged.size,
                             restarted: record.restarted, left: record.left)
       end
 
@@ -366,8 +366,8 @@ module Samagotchi
                             installed: gem_installed)
       end
 
-      def kept_files(rows)
-        rows.flat_map { |row| Array(row["kept"]).map(&:to_s) }.uniq
+      def files_in(rows, field)
+        rows.flat_map { |row| Array(row[field]).map(&:to_s) }.uniq
       end
     end
   end

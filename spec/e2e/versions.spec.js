@@ -6,7 +6,7 @@ import { test, expect } from "./support/fixtures.js";
 
 test.use({ installed: "99.0.0" });
 
-test("the available update notice opens a progress sheet with kept edits", async ({ chi, context }) => {
+test("the available update notice opens a progress sheet, naming a file that stays behind", async ({ chi, context }) => {
   const page = await context.newPage();
   const errors = [];
   const requests = [];
@@ -50,13 +50,13 @@ test("the available update notice opens a progress sheet with kept edits", async
     publish("chi_update", {
       operation: "install", version: "100.0.0", state: "done",
       rows: [{
-        component: "chi (gem)", status: "updated", from: "0.123.0", to: "100.0.0",
-        kept: ["config.yml", `memories/${"edited-".repeat(18)}notes.md`],
+        component: "system bundle", from: "0.123.0", to: "100.0.0",
+        status: `updated (${"edited-".repeat(18)}notes.md stays behind 100.0.0: missed ## Steps, ## Rules)`,
+        kept: [`${"edited-".repeat(18)}notes.md`],
       }],
     });
   });
-  await expect(sheet).toContainText("Kept edited files");
-  await expect(sheet).toContainText("config.yml");
+  await expect(sheet).toContainText("stays behind 100.0.0: missed ## Steps, ## Rules");
   await expect(toast.locator(".toast-action")).toHaveText(["Restart workers", "Restart chi web"]);
   const widths = await page.evaluate(() => {
     const dialog = document.querySelector("#updateSheet");
