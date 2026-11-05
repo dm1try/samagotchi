@@ -21,6 +21,7 @@ globalThis.matchMedia ??= () => ({ matches: false });
 if (!window.HTMLElement.prototype.animate) window.HTMLElement.prototype.animate = () => ({ finished: Promise.resolve(), cancel() {}, playState: "finished" });
 
 const { createStageView } = await import("../../../lib/samagotchi/web/public/stage_view.js");
+const { createCardsPlace } = await import("../../../lib/samagotchi/web/public/cards_place.js");
 
 function page({ taskStop = null, renderMarkdown, onCancel = null } = {}) {
   document.body.innerHTML = '<div id="center"><div id="history"></div><div id="dock"><div id="composer"></div></div></div>';
@@ -105,6 +106,37 @@ test("a row placed while the finished turn slides away lands after the turn, not
   const kids = [...historyEl.children];
   assert.ok(kids.includes(prompt), "the turn is in the history");
   assert.ok(kids.indexOf(row) > kids.indexOf(prompt), "the row comes after the turn");
+  assert.ok(view.root.hidden);
+});
+
+// A short notice's update to a long body swaps its element (card.js drawCard:
+// <details> to <div>). In the slide the pieces are already listed: the old
+// element would arrive and the new one go with the stage.
+test("a card's update that swaps its element during the slide arrives in the history, not the old element", (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const { historyEl, view, append } = page();
+  const cards = createCardsPlace({
+    historyEl,
+    turnDom: view,
+    findInTurnRoots: (selector) => [...historyEl.querySelectorAll(selector), ...view.root.querySelectorAll(selector)],
+    selected: () => "s1",
+    clientId: "me",
+    questionCards: null,
+    bubbles: { removeHintIfEmpty: () => {}, placeFollowing: (el) => { append(el); return el; } },
+    followWokenWorker: () => {},
+    api: {},
+  });
+  endedTurn(view);
+  cards.upsertCard({ id: "short", title: "Short version", body: "…" });
+  assert.equal(view.root.querySelector(".plugin-card").tagName, "DETAILS");
+  view.handOff();
+  assert.ok(view.root.classList.contains("leaving"));
+  cards.upsertCard({ id: "short", title: "Short version", body: "The answer.\n\nAsked about it." });
+  t.mock.timers.tick(1000);
+  const shown = [...historyEl.querySelectorAll(".plugin-card")];
+  assert.equal(shown.length, 1);
+  assert.equal(shown[0].tagName, "DIV");
+  assert.match(shown[0].textContent, /The answer\./);
   assert.ok(view.root.hidden);
 });
 
