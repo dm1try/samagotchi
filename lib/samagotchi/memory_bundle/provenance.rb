@@ -204,9 +204,8 @@ module Samagotchi
           if (mark = marked[file_key.to_s])
             merged_entries[file_key].merge!(mark_fields(mark))
             merged_entries[file_key][:legacy_base] = true if legacy
-            save_incoming(file_key, incoming_dir)
-            incoming = incoming_dir && File.join(incoming_dir, file_key.to_s)
-            merged_entries[file_key][:incoming_sha] = self.class.file_sha(incoming) if incoming && File.exist?(incoming)
+            sha = incoming_dir && incoming_sha(File.join(incoming_dir, file_key.to_s))
+            merged_entries[file_key][:incoming_sha] = sha if sha
           end
           merged_entries[file_key][:description] = file_descriptions[file_key.to_s] if file_descriptions[file_key.to_s]
         end
@@ -297,6 +296,7 @@ module Samagotchi
         manifest_data["setting_types"] = setting_types.to_h { |k, v| [k.to_s, v.to_s] } unless setting_types.to_h.empty?
 
         write_manifest(manifest_data)
+        marked.each_key { |key| save_incoming(key, incoming_dir) }
         prune_incoming(marked.keys)
       end
 
@@ -357,8 +357,8 @@ module Samagotchi
           save_incoming(mark.file, incoming_dir)
           entry.reject! { |field, _| %w[why missed missed_places].include?(field) }
           entry.merge!(mark_fields(mark).transform_keys(&:to_s))
-          source = File.join(incoming_dir, mark.file)
-          entry.merge!("incoming_sha" => self.class.file_sha(source), "legacy_base" => true) if File.exist?(source) && !entry["incoming_sha"]
+          sha = incoming_sha(File.join(incoming_dir, mark.file))
+          entry.merge!("incoming_sha" => sha, "legacy_base" => true) if sha && !entry["incoming_sha"]
         end
         write_manifest(raw)
       end
@@ -417,12 +417,24 @@ module Samagotchi
       end
       private :mark_fields
 
+      def incoming_sha(path)
+        File.exist?(path) ? self.class.file_sha(path) : nil
+      rescue SystemCallError
+        nil
+      end
+      private :incoming_sha
+
+      # The saved text is a convenience, and an install's assets are already in
+      # place when this runs: failing here would leave them under the old record's
+      # shas, and a plugin that doesn't load. So nothing about it fails a write.
       def save_incoming(file_key, incoming_dir)
         source = incoming_dir && File.join(incoming_dir, file_key.to_s)
         return unless source && File.exist?(source)
 
         FileUtils.mkdir_p(File.dirname(incoming_path(file_key)))
         FileUtils.cp(source, incoming_path(file_key))
+      rescue SystemCallError
+        nil
       end
       private :save_incoming
 
@@ -436,6 +448,8 @@ module Samagotchi
 
         (Dir.children(dir) - keep).each { |file| FileUtils.rm_f(File.join(dir, file)) }
         Dir.rmdir(dir) if Dir.empty?(dir)
+      rescue SystemCallError
+        nil
       end
       private :prune_incoming
 

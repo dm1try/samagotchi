@@ -200,6 +200,19 @@ RSpec.describe Samagotchi::MemoryBundle::FileStanding do
       expect(entry.keys).not_to include(:why, :missed, :missed_places, :conflict)
     end
 
+    it "goes through when the text can't be saved: the record must follow the assets" do
+      write_source("1.0.0", doc)
+      install
+      File.write(target, doc(steps: "mine"))
+      File.write(File.join(provenance.bundle_dir, "incoming"), "in the way\n")
+      write_source("2.0.0", doc(steps: "theirs"))
+      up = install(upgrade: true)
+
+      expect(up.behind.map(&:file)).to eq(["a.md"])
+      expect(provenance.record.version).to eq("2.0.0")
+      expect(entry).to include(conflict: true, incoming_sha: Digest::SHA256.hexdigest(doc(steps: "theirs")))
+    end
+
     it "drops the saved text when an upgrade settles the file" do
       left_behind
       File.write(target, doc(steps: "newer", rules: "new rules"))
