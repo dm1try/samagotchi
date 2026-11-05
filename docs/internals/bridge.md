@@ -52,6 +52,9 @@ the "asking again" and steer-cut rows, ✂ rows and questions (with how they wer
 - **Placement is relative.** An entry carries `turns` and lists with `turns_since` (turns completed after it) and
   `current` (a card of the running turn). A card that comes mid-turn but isn't the turn's (an anytime command's, such as
   `/btw`) goes after that turn (`during`). A card with an earlier card's id replaces it in place.
+- **A turn that leaves nothing.** `!rollback` (`TurnFlow#rollback!`, `:turn_rolled_back`) takes a kept turn's count
+  back. Of a rolled-back turn, and a failed one with nothing kept, the cards and hook notices become between-turns entries
+  at its place (the cards lose their actions); its other rows go, having no step to sit in.
 - **Caps.** `CAPACITY` (20) each for notices, ✂ rows (`LLM_CONTEXT_TYPES`) and cards, so one burst cannot push out
   another kind. An open question (an approval too) is never pushed out.
 - **Saved.** With a `path` (`cards.json` in the session's folder) the store rewrites the file after each event in

@@ -961,7 +961,7 @@ module Samagotchi
     ANNOUNCEABLE_EVENTS = %i[turn_enqueued turn_dequeued input_merged prompt_restored continue_offered continue_resolved
                              command_queued command_ran context_added card hook_notice guardrail_warning
                              plugin_init_started plugin_init_finished working_set_updated participants_changed
-                             verdict_recorded objectives_updated].freeze
+                             verdict_recorded objectives_updated turn_rolled_back].freeze
 
     # Put a transport-level event into the ordered event log. Unlike turn
     # events it reaches only persistent observers (no turn sink, no memory

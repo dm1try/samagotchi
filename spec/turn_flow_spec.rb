@@ -9,11 +9,15 @@ RSpec.describe Samagotchi::TurnFlow do
   let(:engine_class) do
     Class.new do
       attr_accessor :messages, :effective_model_name
+      attr_reader :announced
 
       def initialize(messages)
         @messages = messages
         @effective_model_name = "m1"
+        @announced = []
       end
+
+      def announce(event) = @announced << event
 
       def messages_checkpoint = @messages.map(&:dup)
       def rollback_to(checkpoint) = @messages = checkpoint.map(&:dup)
@@ -59,6 +63,19 @@ RSpec.describe Samagotchi::TurnFlow do
       expect(flow.offer[:no_interrupt]).to be(true)
       expect(flow.rollback!).to be(true)
       expect(engine.messages).to eq(before)
+    end
+
+    it "says a !rollback took the turn back (the cards' count follows), and only when it did" do
+      expect(flow.rollback!).to be(false)
+      expect(engine.announced).to eq([])
+
+      run_prompt("go", [{ role: "model", content: "Partial\n[interrupted]" }])
+      flow.after_turn(result(engine.messages, canceled: true))
+      expect(engine.announced).to eq([])
+      flow.rollback!
+      expect(engine.announced).to eq([{ type: :turn_rolled_back }])
+      expect(flow.rollback!).to be(false)
+      expect(engine.announced.size).to eq(1)
     end
 
     it "keeps a cancelled turn's partial progress and the checkpoint for !rollback" do

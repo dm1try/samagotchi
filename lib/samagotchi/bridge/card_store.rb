@@ -28,6 +28,10 @@ module Samagotchi
     # isn't the turn's but comes while one runs (an anytime command's, such
     # as /btw) goes after that turn: its prompt is already in the history.
     # A failed turn leaves no prompt, so its cards stay before the next one.
+    # A !rollback (:turn_rolled_back) takes a kept turn's prompt out again,
+    # and its count with it. Of a turn that left nothing, its cards and hook
+    # notices stay as between-turns ones where it was, without their
+    # actions; its other rows (no step to sit in) go.
     #
     # Notices (hook notices, load warnings, "asking again" rows), ✂ rows
     # and cards (with questions) are capped apart, +capacity+ each, so a
@@ -69,7 +73,7 @@ module Samagotchi
       # The events after which the file is written again: the ones that
       # change an entry or the turn count.
       SAVED_ON = (%i[turn_started card hook_notice empty_answer_retry steer_cut llm_context_edited question_requested question_answered
-                     question_cancelled question_relay turn_failed] + Events::TURN_KEPT).freeze
+                     question_cancelled question_relay turn_failed turn_rolled_back] + Events::TURN_KEPT).freeze
 
       # What a session's saved file lists, as a store started from it lists
       # (no turn running): the web's cards for a session no worker runs.
@@ -186,6 +190,8 @@ module Samagotchi
           kept = Events.kept_turn?(event)
           @turns_done += 1 if kept
           settle_during(after_turn: kept)
+          unstep_turn_left_nothing unless kept
+        when :turn_rolled_back then take_turn_back
         when :card then add_card(event)
         when :hook_notice then add_notice(event)
         # What failed to load (guardrails, plugins): before the first turn
@@ -224,6 +230,28 @@ module Samagotchi
           next unless entry.delete(:during)
 
           entry[:turns] = @turns_done if after_turn
+        end
+      end
+
+      # The last kept turn's prompt left the conversation. An entry from
+      # after it (a card shown before the !rollback) stays before the next.
+      def take_turn_back
+        @turns_done = [@turns_done - 1, 0].max
+        unstep_turn_left_nothing
+        @entries.each { |entry| entry[:turns] = [entry[:turns], @turns_done].min }
+      end
+
+      # The turn that would be the next one's place has no prompt in the
+      # history: what it showed isn't a row of a turn any more (a later
+      # turn would read it as its own, +current+).
+      def unstep_turn_left_nothing
+        @entries = @entries.filter_map do |entry|
+          next entry unless entry[:in_turn] && entry[:turns] == @turns_done
+
+          case entry[:type]
+          when :card then entry.merge(in_turn: false, **(entry.key?(:actions) ? { actions: [] } : {}))
+          when :hook_notice then entry.except(:iteration, :calls).merge(in_turn: false)
+          end
         end
       end
 

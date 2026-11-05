@@ -236,6 +236,89 @@ RSpec.describe "Cards" do
       expect(store.list.first).to include(turns_since: 1, current: false)
     end
 
+    describe "a turn taken back (!rollback, :turn_rolled_back)" do
+      it "takes its count back: a card before it is at the end again, and above the next turn" do
+        turn(:turn_started, :turn_completed)
+        store.call(card("before"))
+        turn(:turn_started, :turn_canceled)
+        expect(store.list.first[:turns_since]).to eq(1)
+        turn(:turn_rolled_back)
+        expect(store.list.first[:turns_since]).to eq(0)
+        turn(:turn_started, :turn_completed)
+        expect(store.list.first[:turns_since]).to eq(1)
+      end
+
+      it "does the same for a failed turn whose work stayed" do
+        store.call(card("before"))
+        turn(:turn_started)
+        store.call({ type: :turn_failed, kept_steps: 2 })
+        turn(:turn_rolled_back, :turn_started, :turn_completed)
+        expect(store.list.first[:turns_since]).to eq(1)
+      end
+
+      it "keeps a card shown after the turn before the next one" do
+        turn(:turn_started, :turn_canceled)
+        store.call(card("after"))
+        turn(:turn_rolled_back)
+        expect(store.list.first[:turns_since]).to eq(0)
+        turn(:turn_started, :turn_completed)
+        expect(store.list.first[:turns_since]).to eq(1)
+      end
+
+      it "keeps the turn's own card where the turn was, as a card between turns, with no actions" do
+        turn(:turn_started, :turn_completed)
+        turn(:turn_started)
+        store.call(card("own", in_turn: true).merge(actions: [{ label: "Nudge", command: "/checkin nudge" }]))
+        turn(:turn_canceled, :turn_rolled_back)
+        expect(store.list.first).to include(id: "own", in_turn: false, actions: [], turns_since: 0, current: false)
+        turn(:turn_started)
+        expect(store.list.first).to include(in_turn: false, current: false)
+        turn(:turn_completed)
+        expect(store.list.first[:turns_since]).to eq(1)
+      end
+
+      it "leaves an earlier turn's own card in that turn" do
+        turn(:turn_started)
+        store.call(card("first", in_turn: true))
+        turn(:turn_completed, :turn_started, :turn_canceled, :turn_rolled_back)
+        expect(store.list.first).to include(id: "first", in_turn: true, turns_since: 0, current: false)
+      end
+
+      it "takes the turn's rows with it (no step to sit in); its hook notice stays between turns" do
+        wide = described_class.new
+        wide.call({ type: :turn_started })
+        wide.call({ type: :generation_started, iteration: 2 })
+        wide.call({ type: :hook_notice, hook: "h", text: "why", level: :warn })
+        wide.call({ type: :empty_answer_retry, attempt: 1, of: 2 })
+        wide.call({ type: :steer_cut, source: "x" })
+        wide.call({ type: :llm_context_edited, moment: "m" })
+        wide.call({ type: :question_requested, pending_question: { id: "q1", question: "Which?" } })
+        wide.call({ type: :question_answered, id: "q1", answer: { selected: ["A"] } })
+        wide.call({ type: :turn_canceled })
+        wide.call({ type: :turn_rolled_back })
+        expect(wide.list).to eq([{ type: :hook_notice, hook: "h", text: "why", level: :warn, in_turn: false, turns_since: 0, current: false }])
+      end
+
+      it "stops at no turns: nothing goes negative, and the next turn counts" do
+        store.call(card("before"))
+        turn(:turn_rolled_back, :turn_rolled_back)
+        expect(store.list.first[:turns_since]).to eq(0)
+        turn(:turn_started, :turn_completed)
+        expect(store.list.first[:turns_since]).to eq(1)
+      end
+    end
+
+    it "keeps a failed turn's own card before the next turn, not as that turn's (nothing of it stayed)" do
+      turn(:turn_started, :turn_completed, :turn_started)
+      store.call(card("own", in_turn: true))
+      turn(:turn_failed)
+      expect(store.list.first).to include(in_turn: false, turns_since: 0, current: false)
+      turn(:turn_started)
+      expect(store.list.first).to include(current: false)
+      turn(:turn_completed)
+      expect(store.list.first[:turns_since]).to eq(1)
+    end
+
     it "keeps a card replaced during a turn in its first place" do
       store.call(card("btw"))
       turn(:turn_started)
@@ -536,6 +619,16 @@ RSpec.describe "Cards" do
         end
         expect(worker_store.list.first[:turns_since]).to eq(0)
       end
+    end
+
+    it "saves a turn taken back: a later worker's count agrees" do
+      store = Samagotchi::Bridge::CardStore.new(path: path)
+      store.call(card("before").merge(in_turn: false))
+      store.call({ type: :turn_started })
+      store.call({ type: :turn_canceled })
+      store.call({ type: :turn_rolled_back })
+      expect(Samagotchi::Bridge::CardStore.saved(dir).first[:turns_since]).to eq(0)
+      expect(JSON.parse(File.read(path))["turns"]).to eq(0)
     end
 
     it "starts empty from a missing, broken or foreign file" do
