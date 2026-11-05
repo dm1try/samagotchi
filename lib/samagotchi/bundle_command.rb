@@ -487,9 +487,11 @@ module Samagotchi
           mods << "missing" if info[:missing]
           mods << "unreadable" if info[:unreadable]
           mods << "no-index" unless info[:index_present] || info[:overlay]
-          label = mods.empty? ? "ok" : mods.join(",")
+          label = mods.join(",")
+          label = "ok" if mods.empty? && !info[:behind]
           label += " (model overlay)" if info[:overlay]
-          label += "; #{info[:behind].state} (#{standing.diff_hint(name, k)})" if info[:behind]
+          behind = info[:behind] && "#{info[:behind].state} (#{standing.diff_hint(name, k)})"
+          label = [label, behind].reject { |part| part.nil? || part.empty? }.join("; ")
           label += "; #{info[:merge_note].line}#{" (old copy in #{info[:merge_note].trash})" if info[:merge_note].trash}" if info[:merge_note]
           @stdout.puts "  #{k}: #{label}"
         end

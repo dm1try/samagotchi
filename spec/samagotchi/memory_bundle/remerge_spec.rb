@@ -199,6 +199,16 @@ RSpec.describe Samagotchi::MemoryBundle::Remerge do
       expect(File.read(target)).to eq(doc(intro: "my intro"))
       expect(entry).to include(conflict: true, incoming_sha: "another-digest")
     end
+
+    it "reads as behind in the mark's words" do
+      expect(remerge.behind.map(&:file)).to eq(["a.md"])
+    end
+
+    it "isn't behind when the file is level with the text the mark names" do
+      mark_names(Digest::SHA256.hexdigest(doc(intro: "my intro")))
+
+      expect(remerge).to have_attributes(behind: [], merged: [], settled: [])
+    end
   end
 
   context "when the bundle has no such file now" do
@@ -223,6 +233,16 @@ RSpec.describe Samagotchi::MemoryBundle::Remerge do
       write_b = YAML.safe_load_file(File.join(source, "manifest.yml")).merge("files" => { "b.md" => "sha256:fake" })
       File.write(File.join(source, "manifest.yml"), YAML.dump(write_b))
       expect_left_alone(remerge)
+    end
+
+    it "isn't behind when level with the mark's text, or missing" do
+      FileUtils.rm_f(File.join(source, "a.md"))
+      mark_names(Digest::SHA256.hexdigest(doc(intro: "my intro")))
+      expect(remerge.behind).to be_empty
+
+      mark_names("other")
+      FileUtils.rm_f(target)
+      expect(remerge.behind).to be_empty
     end
 
     it "skips one that is a symlink now: never a memory" do
@@ -279,8 +299,7 @@ RSpec.describe Samagotchi::MemoryBundle::Remerge do
       marked_at_two(mine: doc, shipped: doc(tail: "tail two"))
       FileUtils.rm_f(target)
 
-      expect(remerge.merged).to be_empty
-      expect(remerge.behind.map(&:line)).to eq(["a.md stays behind 2.0.0: #{Samagotchi::MemoryBundle::FileStanding::FILE_MISSING}"])
+      expect(remerge).to have_attributes(merged: [], behind: [], warnings: ["a.md: #{Samagotchi::MemoryBundle::FileStanding::FILE_MISSING}"])
       expect(remerge).not_to be_work
       expect(File.exist?(target)).to be false
     end
@@ -650,6 +669,20 @@ RSpec.describe Samagotchi::MemoryBundle::Remerge do
         expect(remerge.merged).to eq(["a.md"])
       end
     end
+  end
+
+  it "marks a merge a live write got in front of, the mark saying so" do
+    marked_at_two(mine: doc(intro: "my intro"), shipped: doc(tail: "the tail\nand a new line"))
+    allow_any_instance_of(Samagotchi::MemoryBundle::Trash).to receive(:copy).and_wrap_original do |copy, *args, **opts|
+      File.write(target, "a live memory_write\n")
+      copy.call(*args, **opts)
+    end
+    result = remerge
+
+    expect(result.merged).to be_empty
+    expect(result.behind.map(&:why)).to eq(["no merge possible (#{Samagotchi::MemoryBundle::TextMerge::RACED})"])
+    expect(entry).to include(conflict: true, why: "no merge possible (#{Samagotchi::MemoryBundle::TextMerge::RACED})")
+    expect(File.read(target)).to eq("a live memory_write\n")
   end
 
   it "leaves a file it can't replace, marked, with a note, when the trash can't hold the copy" do

@@ -124,12 +124,7 @@ module Samagotchi
       def behind_files(target_dir = MemoryPaths.scope_dir(effective_scope))
         return [] unless target_dir
 
-        files.filter_map do |key, entry|
-          next unless entry[:conflict] == true
-
-          path = File.join(target_dir, key)
-          behind_entry(key, entry) if File.exist?(path) && FileStanding.differs?(path, entry[:incoming_sha])
-        end
+        files.filter_map { |key, entry| behind_entry(key, entry) if FileStanding.behind?(File.join(target_dir, key), entry) }
       end
 
       # The merges no chi update has shown yet.
@@ -144,7 +139,8 @@ module Samagotchi
 
       # The file's mark as a report reads it.
       def behind_entry(key, entry = files.fetch(key))
-        FileStanding::Behind.new(file: key, version: version, why: entry[:why], missed: entry[:missed], places: entry[:missed_places])
+        FileStanding::Behind.new(file: key, version: version, why: entry[:why], missed: entry[:missed], places: entry[:missed_places],
+                                 unsure: !entry[:incoming_sha] && !entry[:why])
       end
 
       def needs? = needs.is_a?(Array) && !needs.empty?

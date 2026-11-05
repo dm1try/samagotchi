@@ -19,7 +19,8 @@ module Samagotchi
     # could hit a transient deny.
     #
     # Each marked file, by what Merger::Upgrade says of it:
-    #   - not shipped now: its mark, base and text stay, and it reads as behind;
+    #   - not shipped now: its mark, base and text stay, and it reads as behind
+    #     unless level or missing, as every report has it;
     #   - the shipped text isn't the one the mark names (a checkout at the same
     #     VERSION can carry other text): left alone, behind as its mark says. A
     #     mark that names none (older chi) is tried too, the migration; a real
@@ -31,8 +32,10 @@ module Samagotchi
     #   - noop, keep (a merge that adds nothing too): the file has nothing left
     #     to miss, so the mark goes;
     #   - conflict: behind, and the mark records why, only when that changed;
-    #   - fast_forward (one Merger::Upgrade#outcome lets go ahead), install: the
-    #     next upgrade's (save_marked_file, a restore), behind until then;
+    #   - fast_forward (one Merger::Upgrade#outcome lets go ahead): the next
+    #     upgrade's (save_marked_file), behind until then;
+    #   - install: a missing file, which isn't behind (FileStanding.behind?): the
+    #     next upgrade or a restore puts it back, and a warning says so;
     #   - one it can't read or replace: left as it is, behind, saying why.
     #
     # It can't loop: settling clears the mark, and a real conflict writes nothing.
@@ -82,10 +85,17 @@ module Samagotchi
       private
 
       def retry_file(key, entry, shipped)
-        return stay(key, FileStanding::NOT_SHIPPED) unless shipped.include?(key)
+        behind = FileStanding.behind?(view.paths(key)[:current], entry)
+        unless shipped.include?(key)
+          stay(key, FileStanding::NOT_SHIPPED) if behind
+          return
+        end
 
         incoming_sha = Merger.digest(view.paths(key)[:incoming])
-        return @behind << @record.behind_entry(key, entry) if entry[:incoming_sha] && entry[:incoming_sha] != incoming_sha
+        if entry[:incoming_sha] && entry[:incoming_sha] != incoming_sha
+          @behind << @record.behind_entry(key, entry) if behind
+          return
+        end
 
         outcome = view.outcome(key)
         case outcome.status
@@ -93,7 +103,7 @@ module Samagotchi
         when :conflict then mark(key, entry, view.behind(key, outcome, @record.version))
         when :noop, :keep then @settled << key
         when :fast_forward then mark(key, entry, behind_for(key, FileStanding::WAITS_FOR_UPGRADE))
-        when :install then mark(key, entry, behind_for(key, FileStanding::FILE_MISSING))
+        when :install then @warnings << "#{key}: #{FileStanding::FILE_MISSING}"
         end
       rescue SystemCallError => e
         stay(key, FileStanding.left_as_it_is(e.message))

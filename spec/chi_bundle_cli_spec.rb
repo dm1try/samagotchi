@@ -856,6 +856,18 @@ Hooks removed: 1\n\z})
       end
     end
 
+    it "doesn't call a file ok while saying it stays behind, and words an older mark softly" do
+      manifest = File.join(memories, ".bundles", "demo", "manifest.json")
+      File.write(File.join(memories, "a.md"), File.read(File.join(memories, ".bundles", "demo", "bases", "a.md")))
+      raw = JSON.parse(File.read(manifest))
+      raw["files"]["a.md"]["conflict"] = true
+      File.write(manifest, JSON.generate(raw))
+
+      line = chi("status", "demo")[0].lines.grep(/a\.md/).first
+      expect(line).to start_with("  a.md: may be behind 1.0.0: ")
+      expect(line).not_to include("ok")
+    end
+
     it "shows a merge's note in status, with the old copy's dir" do
       manifest = File.join(memories, ".bundles", "demo", "manifest.json")
       raw = JSON.parse(File.read(manifest))

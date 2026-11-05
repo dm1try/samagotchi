@@ -254,6 +254,18 @@ RSpec.describe Samagotchi::MemoryBundle::FileStanding do
       expect(provenance.record.version).to eq("1.0.0")
     end
 
+    it "gives one answer to behind, a restored file's saved text going too" do
+      left_behind
+      recorded = provenance.record
+      File.write(target, File.read(saved))
+      expect(recorded.behind_files).to be_empty
+      expect(remerge.behind).to be_empty
+
+      provenance.record_restored("a.md", File.join(source, "a.md"))
+      expect(File.exist?(saved)).to be false
+      expect(entry.keys).not_to include(:conflict, :missed)
+    end
+
     it "drops the saved text when an upgrade settles the file" do
       left_behind
       File.write(target, doc(steps: "newer", rules: "new rules"))
@@ -313,7 +325,7 @@ RSpec.describe Samagotchi::MemoryBundle::FileStanding do
       raw["files"]["a.md"] = raw["files"]["a.md"].slice("checksum", "conflict")
       File.write(File.join(provenance.bundle_dir, "manifest.json"), JSON.pretty_generate(raw))
 
-      expect(behind_lines).to eq(["a.md stays behind 2.0.0"])
+      expect(behind_lines).to eq(["a.md may be behind 2.0.0: #{described_class::UNSURE}"])
     end
 
     it "names no sections for an older mark, whose base may be the user's text" do

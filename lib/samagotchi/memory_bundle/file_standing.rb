@@ -21,6 +21,7 @@ module Samagotchi
       # A marked file Remerge leaves for the next upgrade or restore.
       WAITS_FOR_UPGRADE = "it matches its old base, and the bundle's next version replaces it"
       FILE_MISSING = "the file is missing, and the bundle's next version puts it back"
+      UNSURE = "an older chi marked it, and the next upgrade or chi update checks it"
       NOT_SHIPPED = "not in the bundle now, nothing to merge"
 
       # What --force does to a file that stays behind.
@@ -33,17 +34,20 @@ module Samagotchi
       # One file that stays behind. why: the clause saying why no merge was tried
       # (.no_merge, or a plain reason), nil for a real conflict. missed: the
       # headings of the sections the bundle changed. places: the changes under no
-      # heading.
+      # heading. unsure: an older mark that no retry has looked at, with nothing to
+      # compare the file to, so chi can't say it is behind.
       # What a record gives is read as it is shaped: anything else is nothing known.
-      Behind = Data.define(:file, :version, :why, :missed, :places) do
-        def initialize(file:, version: nil, why: nil, missed: [], places: 0)
+      Behind = Data.define(:file, :version, :why, :missed, :places, :unsure) do
+        def initialize(file:, version: nil, why: nil, missed: [], places: 0, unsure: false)
           super(file: file, version: version, why: why.is_a?(String) ? FileStanding.text(why) : nil,
                 missed: (missed.is_a?(Array) ? missed : []).grep(String).map { |heading| FileStanding.text(heading) },
-                places: places.is_a?(Integer) && places.positive? ? places : 0)
+                places: places.is_a?(Integer) && places.positive? ? places : 0, unsure: unsure)
         end
 
         # "stays behind 0.8.0: missed ## Objectives"
         def state(dry_run: false)
+          return "may be behind#{" #{version}" if version}: #{UNSURE}" if unsure
+
           head = "#{dry_run ? "would stay" : "stays"} behind#{" #{version}" if version}"
           rest = [why, FileStanding.missed_words(missed, places)].compact.join("; ")
           rest.empty? ? head : "#{head}: #{rest}"
@@ -126,6 +130,14 @@ module Samagotchi
         Time.iso8601(stamp.to_s).localtime.strftime("%Y-%m-%d %H:%M")
       rescue ArgumentError
         stamp.to_s
+      end
+
+      # The one answer to whether a file stays behind, for a report and a retry
+      # alike: marked, there, and not level with the bundle's text the mark speaks
+      # of. A missing file is a missing file (a project-scope record doesn't even
+      # say which project it means).
+      def behind?(path, entry)
+        entry[:conflict] == true && File.exist?(path) && differs?(path, entry[:incoming_sha])
       end
 
       # The file's bytes aren't what the mark says the bundle ships. One it can't
