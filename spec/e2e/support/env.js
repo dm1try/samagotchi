@@ -10,6 +10,15 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+// First, before anything can run git: `npm run e2e` under `git rebase --exec`,
+// `bisect run` or a hook inherits GIT_DIR and the like, and every chi and tool
+// the suite starts would. For this process and all it starts (the config and each
+// worker load this file), from git's own list: what Samagotchi::GitEnv::VARS, which
+// spec_helper clears, is checked against.
+for (const name of execFileSync("git", ["rev-parse", "--local-env-vars"], { encoding: "utf8" }).split("\n")) {
+  if (name) delete process.env[name];
+}
+
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const CHECKOUT = path.resolve(HERE, "../../..");
 export const SCRIPTS = path.join(HERE, "scripts");

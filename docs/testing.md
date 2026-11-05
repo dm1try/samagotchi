@@ -43,6 +43,8 @@ clears your `SAMAGOTCHI_*` environment, and keeps every spec off the network (We
 It also clears what tells git which repo to act on (`GIT_DIR`, `GIT_WORK_TREE`, the rest of
 `git rev-parse --local-env-vars`: `GitEnv`), first thing in `spec_helper.rb` and as the bundle test kit's
 adapters load, so a run from `git rebase --exec`, `bisect run` or a hook can't reach the real repo through a spec's git.
+`npm run e2e` clears the same list as `spec/e2e/support/env.js` loads, asked of git. chi's own git calls on a folder chi
+chose spawn with `GitEnv::UNSET`, in any run.
 `SAMAGOTCHI_TAILSCALE_CLI` points at a file that does not exist (`spec_helper.rb`), so no spec reaches a real `tailscale`; a
 `chi web --tunnel tailscale` spec writes a fake one and sets the variable.
 
