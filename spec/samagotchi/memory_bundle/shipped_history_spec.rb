@@ -26,11 +26,13 @@ RSpec.describe Samagotchi::MemoryBundle::ShippedHistory do
   end
 
   # A fresh process, as a chi launch is: no Bundler, none of this suite's gem path.
+  # BUNDLER_SETUP too: RubyGems requires what it names at boot, whatever RUBYOPT
+  # says, and a bundle with a `path` (CI's) then replaces GEM_HOME and GEM_PATH.
   def ask(prelude: "", env: {})
-    script = "#{prelude}; require 'samagotchi/memory_bundle/shipped_history'; " \
+    script = "raise 'under Bundler' if defined?(Bundler); #{prelude}; require 'samagotchi/memory_bundle/shipped_history'; " \
              "print Samagotchi::MemoryBundle::ShippedHistory.shipped?('demo', 'a.md', #{asked.inspect})"
     clean = { "GEM_HOME" => nil, "GEM_PATH" => nil, "RUBYOPT" => nil, "RUBYLIB" => nil, "BUNDLE_GEMFILE" => nil,
-              "BUNDLE_BIN_PATH" => nil, "XDG_CONFIG_HOME" => File.join(tmp, "config") }
+              "BUNDLE_BIN_PATH" => nil, "BUNDLER_SETUP" => nil, "XDG_CONFIG_HOME" => File.join(tmp, "config") }
     out, err, status = Open3.capture3(clean.merge(env), RbConfig.ruby, "-I", lib, "-e", script)
     expect(status).to be_success, err
     out
