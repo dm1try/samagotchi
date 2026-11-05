@@ -86,7 +86,7 @@ module Samagotchi
       def retry_file(key, entry, shipped)
         behind = FileStanding.behind?(view.paths(key)[:current], entry)
         unless shipped.include?(key)
-          stay(key, FileStanding::NOT_SHIPPED) if behind
+          not_shipped(key, entry) if behind
           return
         end
 
@@ -109,6 +109,14 @@ module Samagotchi
       end
 
       def behind_for(key, why) = FileStanding::Behind.new(file: key, version: @record.version, why: why)
+
+      # The record says it too, so chi bundle status reads as the row does. There
+      # is no bundle text to save or compare with: only the words can change.
+      def not_shipped(key, entry)
+        behind = behind_for(key, FileStanding::NOT_SHIPPED)
+        @behind << behind
+        @stamped << behind unless @record.behind_entry(key, entry) == behind
+      end
 
       # Behind for now, with a reason worth no write to the record.
       def stay(key, why) = @behind << behind_for(key, why)

@@ -196,7 +196,7 @@ RSpec.describe Samagotchi::MemoryBundle::ShippedUpdate do
       FileUtils.rm_f(File.join(dir, "note.md"))
 
       expect(described_class.plan(shipped_dir: root).first)
-        .to have_attributes(status: :up_to_date, note: nil,
+        .to have_attributes(status: :would_merge, note: nil,
                             behind: [Samagotchi::MemoryBundle::FileStanding::Behind.new(file: "note.md", version: "2.0.0", why: "not in the bundle now, nothing to merge")])
     end
 

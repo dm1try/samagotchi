@@ -21,7 +21,7 @@ module Samagotchi
       # A marked file Remerge leaves for the next upgrade or restore.
       WAITS_FOR_UPGRADE = "it matches its old base, and the bundle's next version replaces it"
       FILE_MISSING = "the file is missing, and the bundle's next version puts it back"
-      UNSURE = "an older chi marked it, and the next upgrade or chi update checks it"
+      UNSURE = "an older chi marked it, and the next upgrade checks it"
       NOT_SHIPPED = "not in the bundle now, nothing to merge"
 
       # What --force does to a file that stays behind, and to an edited one being removed.

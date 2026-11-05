@@ -213,7 +213,7 @@ RSpec.describe Samagotchi::MemoryBundle::Remerge do
 
   context "when the bundle has no such file now" do
     def expect_left_alone(result)
-      expect(result).not_to be_work
+      expect(result.merged + result.settled).to be_empty
       expect(result.behind.map(&:line)).to eq(["a.md stays behind 2.0.0: not in the bundle now, nothing to merge"])
       expect(File.read(target)).to eq(doc(intro: "my intro"))
       expect(base).to eq(doc)
@@ -224,7 +224,12 @@ RSpec.describe Samagotchi::MemoryBundle::Remerge do
 
     it "skips a file gone from the source, keeping its mark, base and text" do
       FileUtils.rm_f(File.join(source, "a.md"))
+      expect_left_alone(remerge(dry_run: true))
+      expect(entry).not_to have_key(:why)
       expect_left_alone(remerge)
+      expect(entry).to include(why: Samagotchi::MemoryBundle::FileStanding::NOT_SHIPPED)
+      expect(provenance.record.behind_files.map(&:line)).to eq(["a.md stays behind 2.0.0: not in the bundle now, nothing to merge"])
+      expect(remerge).not_to be_work
       expect_left_alone(remerge(dry_run: true))
     end
 
