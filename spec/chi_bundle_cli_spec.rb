@@ -856,6 +856,15 @@ Hooks removed: 1\n\z})
       end
     end
 
+    it "shows a merge's note in status, with the old copy's dir" do
+      manifest = File.join(memories, ".bundles", "demo", "manifest.json")
+      raw = JSON.parse(File.read(manifest))
+      raw["files"]["a.md"].merge!("merged_version" => "1.0.0", "merged_at" => "2026-11-05T10:00:00Z", "merged_trash" => "/the/trash")
+      File.write(manifest, JSON.generate(raw))
+
+      expect(chi("status", "demo")[0]).to match(%r{  a\.md: modified; merged 1\.0\.0 into your a\.md on \S+ \S+ \(old copy in /the/trash\)\n})
+    end
+
     it "doesn't count an edit the bundle has no change for as an issue" do
       expect(chi("status", "demo")[0]).to include("  a.md: modified\n")
       expect(chi("status")[0]).to include("  demo v1.0.0 scope=system files=1 issues=0\n")

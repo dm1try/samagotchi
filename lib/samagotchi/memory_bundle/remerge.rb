@@ -45,10 +45,10 @@ module Samagotchi
       # with no merge. stamped: their mark was updated. behind: each file that
       # stays behind, and why (FileStanding::Behind). work? says whether a real run
       # would change anything.
-      Result = Data.define(:merged, :settled, :stamped, :behind, :warnings, :trash_copy) do
+      Result = Data.define(:merged, :settled, :stamped, :behind, :warnings, :trash_copy, :trash_dir) do
         def work? = [merged, settled, stamped].any?(&:any?)
       end
-      NOTHING = Result.new(merged: [], settled: [], stamped: [], behind: [], warnings: [], trash_copy: nil).freeze
+      NOTHING = Result.new(merged: [], settled: [], stamped: [], behind: [], warnings: [], trash_copy: nil, trash_dir: nil).freeze
 
       # @param record [InstalledBundle, nil] the bundle's record (read when not given)
       def initialize(name:, scope:, target_dir:, source_dir:, record: nil)
@@ -76,7 +76,8 @@ module Samagotchi
         shipped = MemoryFiles.select(@source_dir, Manifest.read(dir: @source_dir))
         marked.each { |key, entry| retry_file(key, entry, shipped) }
         settle unless dry_run
-        Result.new(merged: @merged, settled: @settled, stamped: @stamped.map(&:file), behind: @behind, warnings: @warnings, trash_copy: @trash.copy_line)
+        Result.new(merged: @merged, settled: @settled, stamped: @stamped.map(&:file), behind: @behind, warnings: @warnings, trash_copy: @trash.copy_line,
+                   trash_dir: @trash.dir)
       end
 
       private

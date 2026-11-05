@@ -41,7 +41,8 @@ module Samagotchi
       # merge replaced (trash_copy says where the old ones went), behind each file
       # that stays behind (FileStanding::Behind). ensure! says only what an upgrade
       # left behind: a file that was already behind isn't news at every start.
-      Result = Struct.new(:from, :to, :status, :merged, :behind, :trash_copy, :warnings, :error, keyword_init: true) do
+      # trash_dir: the dir of those old copies.
+      Result = Struct.new(:from, :to, :status, :merged, :behind, :trash_copy, :trash_dir, :warnings, :error, keyword_init: true) do
         def changed? = %i[installed updated restored merged].include?(status)
 
         def kept = Array(behind).map(&:file)
@@ -61,6 +62,7 @@ module Samagotchi
         unless result.merged.empty?
           note = [FileStanding.merged_line(result.merged, result.to), result.trash_copy].compact.join("; ")
           Log.info(:memory, "system_bundle_merged", echo: "[samagotchi-system] #{note}", files: result.merged.join(","), to: result.to.to_s)
+          with_lock { Provenance.new(name: BUNDLE_NAME).note_merged(result.merged, version: result.to, trash: result.trash_dir) }
         end
         if result.status == :updated
           result.behind.each do |file|
@@ -69,6 +71,21 @@ module Samagotchi
         end
         result.warnings.each { |w| Log.warn(:memory, "system_bundle_warning", echo: "[samagotchi-system] #{w}") }
         result.changed?
+      end
+
+      # The merges ensure! made that no chi update has shown (MergeNote): the
+      # caller's row is their last appearance, so they go, but in a dry run. Ask
+      # before .sync's upgrade: the row reads them either way.
+      # @return [Array<FileStanding::MergeNote>]
+      def take_merge_notes(dry_run: false)
+        with_lock do
+          provenance = Provenance.new(name: BUNDLE_NAME)
+          notes = provenance.record&.merge_notes || []
+          provenance.clear_merge_notes unless dry_run || notes.empty?
+          notes
+        end
+      rescue StandardError
+        []
       end
 
       # Install, upgrade or repair the installed system bundle to match the
@@ -112,8 +129,8 @@ module Samagotchi
         result(:failed, error: "ensure failed: #{e.class}: #{e.message}")
       end
 
-      def result(status, from: nil, to: nil, merged: [], behind: [], trash_copy: nil, warnings: [], error: nil)
-        Result.new(from: from, to: to, status: status, merged: merged, behind: behind, trash_copy: trash_copy,
+      def result(status, from: nil, to: nil, merged: [], behind: [], trash_copy: nil, trash_dir: nil, warnings: [], error: nil)
+        Result.new(from: from, to: to, status: status, merged: merged, behind: behind, trash_copy: trash_copy, trash_dir: trash_dir,
                    warnings: warnings, error: error)
       end
 
@@ -176,7 +193,8 @@ module Samagotchi
         installer.run
         behind = installer.behind
         warnings = installer.warnings.reject { |w| behind.any? { |file| w.start_with?(file.line) } }
-        result(:updated, from: from, to: to, merged: installer.merged_files, behind: behind, trash_copy: installer.trash_copy_line, warnings: warnings)
+        result(:updated, from: from, to: to, merged: installer.merged_files, behind: behind, trash_copy: installer.trash_copy_line,
+                                          trash_dir: installer.trash_dir, warnings: warnings)
       end
 
       # A file from the bundle missing on disk (the user deleted it) is put
@@ -212,7 +230,8 @@ module Samagotchi
         done = Remerge.new(name: BUNDLE_NAME, scope: SCOPE, target_dir: MemoryPaths.system_dir, source_dir: GEM_BUNDLE_DIR, record: bundle)
                       .run(dry_run: dry_run)
         status = done.merged.empty? ? :up_to_date : :merged
-        result(status, from: verified.from, to: verified.to, merged: done.merged, behind: done.behind, trash_copy: done.trash_copy, warnings: done.warnings)
+        result(status, from: verified.from, to: verified.to, merged: done.merged, behind: done.behind, trash_copy: done.trash_copy,
+                                         trash_dir: done.trash_dir, warnings: done.warnings)
       end
 
       # A dry run's answer for an upgrade: what it would merge and keep, among

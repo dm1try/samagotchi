@@ -19,7 +19,8 @@ module Samagotchi
       # with what this process's PATH found. The +files+ entries and +plugin+
       # stay Hashes: their fields differ per case (an unchecked file has no
       # paths at all). An entry's behind is its FileStanding::Behind, nil for a
-      # file that isn't; unreadable: the file is there, but this chi can't read it.
+      # file that isn't; merge_note its FileStanding::MergeNote, nil without one;
+      # unreadable: the file is there, but this chi can't read it.
       Report = Data.define(:provenance, :scope, :scope_error, :target_dir, :files, :plugin,
                            :hooks_requires_failure, :needs)
 
@@ -36,6 +37,7 @@ module Samagotchi
         files = bundle.files
         details = {}
         behind = bundle.behind_files(target_dir).to_h { |file| [file.file, file] }
+        notes = bundle.merge_notes.to_h { |note| [note.file, note] }
         files.each do |file_key_str, meta|
           next details[file_key_str] = unchecked_file(meta) unless target_dir
 
@@ -55,6 +57,7 @@ module Samagotchi
           details[file_key_str] = {
             conflict: meta[:conflict] == true,
             behind: behind[file_key_str],
+            merge_note: notes[file_key_str],
             unreadable: unreadable,
             stored_checksum: stored_checksum,
             current_checksum: current_checksum,

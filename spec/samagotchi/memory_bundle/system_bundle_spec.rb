@@ -187,6 +187,43 @@ RSpec.describe Samagotchi::MemoryBundle::SystemBundle do
           expect { described_class.ensure! }.not_to output.to_stderr
         end
 
+        context "when a start merged it and nothing has said so to anyone" do
+          let(:provenance) { Samagotchi::MemoryBundle::Provenance.new(name: described_class::BUNDLE_NAME) }
+
+          before do
+            mark_old(text(intro: "my intro"))
+            allow(Samagotchi::Log).to receive(:info) # a worker: the echo reaches no one
+            described_class.ensure!
+          end
+
+          it "keeps a note on the record, with the version, the time and the old copy's dir" do
+            note = provenance.record.merge_notes.first
+            expect(note).to have_attributes(file: "identity.md", version: "0.1.10")
+            expect(Dir.exist?(note.trash)).to be true
+            expect(note.line).to match(/\Amerged 0\.1\.10 into your identity\.md on \d{4}-\d{2}-\d{2} \d{2}:\d{2}\z/)
+          end
+
+          it "goes when taken, but not in a dry run" do
+            expect(described_class.take_merge_notes(dry_run: true).size).to eq(1)
+            expect(described_class.take_merge_notes.size).to eq(1)
+            expect(described_class.take_merge_notes).to be_empty
+            expect(provenance.read[:files][:"identity.md"].keys).not_to include(:merged_version, :merged_at, :merged_trash)
+          end
+
+          it "stays through a later upgrade" do
+            ship("0.1.11", text(intro: "the intro", tail: "tail\nnew tail"))
+            described_class.ensure!
+
+            expect(provenance.record.merge_notes.map(&:version)).to eq(["0.1.10"])
+          end
+        end
+
+        it "leaves no note when chi update's own sync merges: its row says it" do
+          mark_old(text(intro: "my intro"))
+          expect(described_class.sync.merged).to eq(["identity.md"])
+          expect(described_class.take_merge_notes).to be_empty
+        end
+
         it "leaves a real conflict untouched and silent, start after start" do
           mark_old(text(tail: "my tail"))
 

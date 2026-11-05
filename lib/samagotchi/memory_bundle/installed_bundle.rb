@@ -17,7 +17,8 @@ module Samagotchi
     #               description: } (symbol keys);
     #               incoming_sha: the bundle text a conflict mark speaks of, nil on an older mark;
     #               legacy_base: true on an older mark that has since got its incoming_sha (.legacy_mark?);
-    #               why, missed, missed_places: FileStanding::Behind's, nil on an older mark
+    #               why, missed, missed_places: FileStanding::Behind's, nil on an older mark;
+    #               merged_version, merged_at, merged_trash: a merge no report has shown (Provenance#note_merged)
     #   hooks       basename => BundleHook
     #   guardrails  basename => recorded sha256 ("" when none)
     #   scripts     file name => recorded sha256 ("" when none)
@@ -128,6 +129,16 @@ module Samagotchi
 
           path = File.join(target_dir, key)
           behind_entry(key, entry) if File.exist?(path) && FileStanding.differs?(path, entry[:incoming_sha])
+        end
+      end
+
+      # The merges no chi update has shown yet.
+      # @return [Array<FileStanding::MergeNote>]
+      def merge_notes
+        files.filter_map do |key, entry|
+          next unless entry[:merged_version]
+
+          FileStanding::MergeNote.new(file: key, version: entry[:merged_version], at: entry[:merged_at], trash: entry[:merged_trash])
         end
       end
 

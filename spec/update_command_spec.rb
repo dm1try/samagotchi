@@ -247,6 +247,19 @@ RSpec.describe Samagotchi::UpdateCommand do
     expect(command.send(:bundle_row, update)).to have_attributes(status: "a.md stays behind 1: missed ## Steps (chi bundle diff x a.md)", kept: ["a.md"], to: nil)
   end
 
+  it "shows a merge a worker made in the next row, once, and in a dry run without using it up" do
+    note = Samagotchi::MemoryBundle::FileStanding::MergeNote.new(file: "identity.md", version: "1", at: "2026-11-05T10:00:00Z", trash: "/long/trash")
+    stamp = Samagotchi::MemoryBundle::FileStanding.local_time(note.at)
+    allow(Samagotchi::MemoryBundle::SystemBundle).to receive(:take_merge_notes).and_return([note], [])
+    result = Samagotchi::MemoryBundle::SystemBundle::Result.new(from: "1", to: "1", status: :up_to_date, merged: [], behind: [], warnings: [])
+    allow(Samagotchi::MemoryBundle::SystemBundle).to receive(:sync).and_return(result)
+    command = described_class.new(["--no-gem"], stdout: out, stderr: err)
+
+    expect(command.send(:system_bundle_row)).to have_attributes(status: "up to date (merged 1 into your identity.md on #{stamp}; old copies: chi bundle trash)",
+                                                                merged: ["identity.md"], to: nil)
+    expect(command.send(:system_bundle_row).status).to eq("up to date")
+  end
+
   it "reads a same-version conflict as behind in the system row and the summary, with why" do
     gone = Samagotchi::MemoryBundle::FileStanding::Behind.new(file: "identity.md", version: "1", why: Samagotchi::MemoryBundle::FileStanding.no_merge("git not found"))
     result = Samagotchi::MemoryBundle::SystemBundle::Result.new(from: "1", to: "1", status: :up_to_date, merged: [], behind: [gone], warnings: [])

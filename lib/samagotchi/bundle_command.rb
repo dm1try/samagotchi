@@ -490,6 +490,7 @@ module Samagotchi
           label = mods.empty? ? "ok" : mods.join(",")
           label += " (model overlay)" if info[:overlay]
           label += "; #{info[:behind].state} (#{standing.diff_hint(name, k)})" if info[:behind]
+          label += "; #{info[:merge_note].line}#{" (old copy in #{info[:merge_note].trash})" if info[:merge_note].trash}" if info[:merge_note]
           @stdout.puts "  #{k}: #{label}"
         end
         # Hooks

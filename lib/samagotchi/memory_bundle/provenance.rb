@@ -25,6 +25,8 @@ module Samagotchi
 
       # What a conflict mark adds to a file's entry.
       MARK_FIELDS = %w[conflict incoming_sha legacy_base why missed missed_places].freeze
+      # What a merge no report has shown adds to a file's entry (#note_merged).
+      MERGE_NOTE_FIELDS = %w[merged_version merged_at merged_trash].freeze
 
       def initialize(name:)
         @name = name
@@ -189,6 +191,7 @@ module Samagotchi
 
         files.each do |file_key, file_path|
           legacy = InstalledBundle.legacy_mark?(merged_entries[file_key])
+          note = merged_entries.fetch(file_key, {}).slice(*MERGE_NOTE_FIELDS.map(&:to_sym))
           if file_path
             content = File.read(file_path)
             # Save base snapshot — use file_key as-is (it already includes .md).
@@ -197,6 +200,7 @@ module Samagotchi
           else
             merged_entries[file_key] = merged_entries.fetch(file_key, {}).slice(:checksum)
           end
+          merged_entries[file_key].merge!(note)
           if (mark = marked[file_key.to_s])
             merged_entries[file_key].merge!(mark_fields(mark))
             merged_entries[file_key][:legacy_base] = true if legacy
@@ -356,6 +360,30 @@ module Samagotchi
           source = File.join(incoming_dir, mark.file)
           entry.merge!("incoming_sha" => self.class.file_sha(source), "legacy_base" => true) if File.exist?(source) && !entry["incoming_sha"]
         end
+        write_manifest(raw)
+      end
+
+      # A merge no one may have seen (a worker's start logs it and nothing else):
+      # its note stays on the file's entry, through later upgrades too, until
+      # #clear_merge_notes, which the next chi update's row is.
+      # @param files [Array<String>]
+      # @param version [String] what merged
+      # @param trash [String, nil] the dir holding the old copy
+      def note_merged(files, version:, trash:, at: Time.now)
+        return unless installed?
+
+        raw = JSON.parse(File.read(File.join(@bundle_dir, "manifest.json")))
+        files.each do |key|
+          raw.dig("files", key)&.merge!({ "merged_version" => version.to_s, "merged_at" => at.iso8601, "merged_trash" => trash }.compact)
+        end
+        write_manifest(raw)
+      end
+
+      def clear_merge_notes
+        return unless installed?
+
+        raw = JSON.parse(File.read(File.join(@bundle_dir, "manifest.json")))
+        raw["files"]&.each_value { |entry| MERGE_NOTE_FIELDS.each { |field| entry.delete(field) } }
         write_manifest(raw)
       end
 

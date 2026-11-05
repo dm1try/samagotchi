@@ -288,9 +288,10 @@ module Samagotchi
     end
 
     def system_bundle_row
+      earlier = MemoryBundle::SystemBundle.take_merge_notes(dry_run: @dry_run)
       result = MemoryBundle::SystemBundle.sync(dry_run: @dry_run)
       row = Row.new(component: "system bundle", from: result.from, to: result.to)
-      notes = file_notes(row, MemoryBundle::SystemBundle::BUNDLE_NAME, result.to, result.merged, result.behind, result.trash_copy)
+      notes = file_notes(row, MemoryBundle::SystemBundle::BUNDLE_NAME, result.to, result.merged, result.behind, result.trash_copy, earlier: earlier)
       case result.status
       when :installed then done(row, :install)
       when :updated then done(row, :update, notes.empty? ? nil : notes.join("; "))
@@ -344,14 +345,14 @@ module Samagotchi
     # What one bundle's memory files did, in FileStanding's words; the row keeps
     # the file names and the trash copy's full line for --json.
     # @return [Array<String>] the row's clauses
-    def file_notes(row, bundle, version, merged, behind, trash_copy)
+    def file_notes(row, bundle, version, merged, behind, trash_copy, earlier: [])
       merged = Array(merged)
       behind = Array(behind)
-      row.merged = merged
+      row.merged = (merged + earlier.map(&:file)).uniq
       row.kept = behind.map(&:file)
       row.trash_copy = trash_copy
-      notes = MemoryBundle::FileStanding.clauses(bundle, version, merged: merged, behind: behind, dry_run: @dry_run)
-      trash_copy ? [*notes, MemoryBundle::FileStanding::IN_THE_TRASH] : notes
+      notes = MemoryBundle::FileStanding.clauses(bundle, version, merged: merged, behind: behind, earlier: earlier, dry_run: @dry_run)
+      trash_copy || earlier.any?(&:trash) ? [*notes, MemoryBundle::FileStanding::IN_THE_TRASH] : notes
     end
 
     # A row at the same version: up to date only when nothing merged and nothing
