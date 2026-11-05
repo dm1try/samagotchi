@@ -74,11 +74,11 @@ module Samagotchi
 
           if !@force && File.exist?(base_path) && Merger.current_modified?(base_path, target_path)
             blocked << file_key_str
-            @warnings << "Skipped #{file_key_str}: local edits detected (--force moves it to the trash)"
+            @warnings << "Skipped #{file_key_str}: local edits detected (#{FileStanding::FORCE_MOVES})"
           end
         end
 
-        raise UninstallError, "Uninstall blocked: #{blocked.join(", ")} has local edits (--force moves it to the trash)" if blocked.any?
+        raise UninstallError, "Uninstall blocked: #{blocked.join(", ")} has local edits (#{FileStanding::FORCE_MOVES})" if blocked.any?
 
         save_edits(provenance, bundle)
 

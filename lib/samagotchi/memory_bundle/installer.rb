@@ -533,7 +533,19 @@ module Samagotchi
         return [] if @upgrade || @existing.nil?
 
         kept = @owned.select { |key| @results.dig(key, :reason) == "already exists" && @existing.files.dig(key, :conflict) }
-        kept.map { |key| @existing.behind_entry(key) }
+        kept.map { |key| held_mark(key) }
+      end
+
+      # The mark now speaks of this source's text, so what it says comes from that
+      # text too: what was missed recomputed, an old reason dropped. No merge ran,
+      # so one from an older chi, which can't name sections, keeps its own words.
+      def held_mark(key)
+        entry = @existing.files.fetch(key)
+        return @existing.behind_entry(key, entry).with(version: @manifest.version) if InstalledBundle.legacy_mark?(entry)
+
+        upgrade_view.behind(key, Merger::CONFLICT, @manifest.version)
+      rescue SystemCallError
+        FileStanding::Behind.new(file: key, version: @manifest.version)
       end
 
       # file key => the file whose content becomes its base: the one its
@@ -642,7 +654,7 @@ module Samagotchi
             remove_target_index(scope, key)
           else
             @results[key] = { status: "kept_pruned", reason: "local edits preserved" }
-            @warnings << "Kept #{key}: no longer in the bundle but edited locally (--force moves it to the trash)"
+            @warnings << "Kept #{key}: no longer in the bundle but edited locally (#{FileStanding::FORCE_MOVES})"
           end
         end
       end

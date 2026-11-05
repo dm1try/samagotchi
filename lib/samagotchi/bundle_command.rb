@@ -367,9 +367,10 @@ module Samagotchi
       marked, clean = changed.partition { |_, info| merger.markers?(info[:current]) }
       settled = Samagotchi::MemoryBundle::Provenance.new(name: bundle_name).resolve_conflicts(clean.to_h)
       gone = clean.map(&:first) - settled
-      untouched.each { |key, _| @stdout.puts "Nothing changed in #{key}: still behind." }
-      marked.each { |key, _| @stdout.puts "#{key} still holds conflict markers: still behind." }
-      gone.each { |key| @stdout.puts "The bundle's copy of #{key} is gone: still behind." }
+      standing = Samagotchi::MemoryBundle::FileStanding
+      untouched.each { |key, _| @stdout.puts standing.still_behind(:untouched, key) }
+      marked.each { |key, _| @stdout.puts standing.still_behind(:markers, key) }
+      gone.each { |key| @stdout.puts standing.still_behind(:incoming_gone, key) }
       if untouched.empty? && marked.empty? && gone.empty?
         @stdout.puts "Provenance updated after interactive resolution."
         @stdout.puts "Upgrade resolved interactively."

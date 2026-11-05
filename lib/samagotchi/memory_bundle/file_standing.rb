@@ -24,8 +24,13 @@ module Samagotchi
       UNSURE = "an older chi marked it, and the next upgrade or chi update checks it"
       NOT_SHIPPED = "not in the bundle now, nothing to merge"
 
-      # What --force does to a file that stays behind.
+      # What --force does to a file that stays behind, and to an edited one being removed.
       FORCE_TAKES = "--force takes the bundle's version, your file copied to the trash first"
+      FORCE_MOVES = "--force moves it to the trash"
+      # Why a file an agent step was given stays behind (BundleCommand#settle_conflicts).
+      STILL_BEHIND = { untouched: "Nothing changed in %s: still behind.",
+                       markers: "%s still holds conflict markers: still behind.",
+                       incoming_gone: "The bundle's copy of %s is gone: still behind." }.freeze
       # A chi update row's short word for the trash; the path is long for a table.
       IN_THE_TRASH = "old copies: chi bundle trash"
       # How many missed headings a line names.
@@ -86,6 +91,8 @@ module Samagotchi
         why == LEGACY_BASE ? "chi can't tell whether it holds edits of yours (#{why})" : "no merge possible (#{why})"
       end
 
+      def still_behind(reason, file) = format(STILL_BEHIND.fetch(reason), text(file))
+
       def left_as_it_is(message) = "left as it is (#{message})"
 
       # "missed ## A, ## B, ## C and 2 more", "missed 2 places"; nil for nothing known.
@@ -118,10 +125,9 @@ module Samagotchi
       # @param earlier [Array<MergeNote>]
       # @return [Array<String>]
       def clauses(bundle, version, merged: [], behind: [], earlier: [], dry_run: false)
-        lines = merged.empty? ? [] : [merged_line(merged, version, dry_run: dry_run)]
-        lines.concat(behind.map { |file| file.line(dry_run: dry_run) })
-        lines[-1] += " (#{diff_hint(bundle, behind.first.file)})" unless behind.empty?
-        lines + earlier.map(&:line)
+        behind_lines = behind.map { |file| file.line(dry_run: dry_run) }
+        behind_lines[0] += " (#{diff_hint(bundle, behind.first.file)})" unless behind.empty?
+        [*(merged.empty? ? nil : merged_line(merged, version, dry_run: dry_run)), *behind_lines, *earlier.map(&:line)]
       end
 
       def diff_hint(bundle, file) = "chi bundle diff #{text(bundle)} #{text(file)}"

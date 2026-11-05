@@ -79,7 +79,7 @@ RSpec.describe Samagotchi::MemoryBundle::FileStanding do
       files = [behind.new(file: "a.md", version: "2", missed: ["## A"]), behind.new(file: "b.md", version: "2")]
 
       expect(described_class.clauses("demo", "2", merged: ["c.md"], behind: files))
-        .to eq(["merged 2 into your c.md", "a.md stays behind 2: missed ## A", "b.md stays behind 2 (chi bundle diff demo a.md)"])
+        .to eq(["merged 2 into your c.md", "a.md stays behind 2: missed ## A (chi bundle diff demo a.md)", "b.md stays behind 2"])
     end
   end
 
@@ -284,13 +284,24 @@ RSpec.describe Samagotchi::MemoryBundle::FileStanding do
       expect(behind_lines).to eq(["a.md stays behind 3.0.0: missed # T, ## Steps, ## Rules"])
     end
 
-    it "keeps the mark, the words and the saved text through a plain install" do
+    it "keeps the mark through a plain install, its words those of the source it now speaks of" do
       left_behind
-      write_source("3.0.0", doc(steps: "theirs", rules: "new rules"))
+      write_source("3.0.0", doc(steps: "theirs", rules: "new rules", intro: "new intro"))
       install
 
-      expect(entry).to include(conflict: true, missed: ["## Steps", "## Rules"])
-      expect(File.exist?(saved)).to be true
+      expect(entry).to include(conflict: true, missed: ["# T", "## Steps", "## Rules"])
+      expect(File.read(saved)).to eq(doc(steps: "theirs", rules: "new rules", intro: "new intro"))
+    end
+
+    it "drops an old reason at a plain install: no merge ran for this source" do
+      left_behind
+      FileUtils.mkdir_p(File.join(tmpdir, "no-git"))
+      with_env("PATH" => File.join(tmpdir, "no-git")) { remerge }
+      expect(entry).to include(why: "no merge possible (git not found)")
+
+      write_source("3.0.0", doc(steps: "theirs", rules: "new rules"))
+      install
+      expect(entry).not_to have_key(:why)
     end
 
     it "isn't behind once its bytes equal the bundle's, marked or not" do
