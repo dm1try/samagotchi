@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require "digest"
 require "json"
 require_relative "../memory_paths"
 require_relative "bundle_hook"
@@ -126,7 +127,14 @@ module Samagotchi
       def behind_files(target_dir = MemoryPaths.scope_dir(effective_scope))
         return [] unless target_dir
 
-        files.filter_map { |key, entry| behind_entry(key, entry) if FileStanding.behind?(File.join(target_dir, key), entry) }
+        files.filter_map { |key, entry| behind_entry(key, entry) if behind_file?(key, File.join(target_dir, key)) }
+      end
+
+      # FileStanding.behind? for this record's file. An older mark names no text,
+      # but a source still on disk holds it: level with that, it has missed nothing.
+      def behind_file?(key, path)
+        entry = files.fetch(key)
+        FileStanding.behind?(path, entry, incoming_sha: entry[:incoming_sha] || source_sha(key))
       end
 
       # The merges no chi update has shown yet.
@@ -144,6 +152,14 @@ module Samagotchi
         FileStanding::Behind.new(file: key, version: version, why: entry[:why], missed: entry[:missed], places: entry[:missed_places],
                                  unsure: !entry[:incoming_sha] && !entry[:why])
       end
+
+      def source_sha(key)
+        path = File.join(source.to_s, key)
+        File.file?(path) ? Digest::SHA256.file(path).hexdigest : nil
+      rescue SystemCallError
+        nil
+      end
+      private :source_sha
 
       def needs? = needs.is_a?(Array) && !needs.empty?
 

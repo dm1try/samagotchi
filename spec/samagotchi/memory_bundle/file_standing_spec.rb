@@ -73,6 +73,8 @@ RSpec.describe Samagotchi::MemoryBundle::FileStanding do
       expect(described_class.behind_count(2)).to eq("2 files behind")
       expect(described_class.stay_behind(1)).to eq("1 file stays behind")
       expect(described_class.stay_behind(2)).to eq("2 files stay behind")
+      expect(described_class.behind_count(2, unsure: true)).to eq("2 files may be behind")
+      expect(described_class.stay_behind(1, unsure: true)).to eq("1 file may be behind")
     end
 
     it "gives a report's clauses, the diff hint once" do
@@ -172,7 +174,7 @@ RSpec.describe Samagotchi::MemoryBundle::FileStanding do
       File.write(manifest, JSON.generate(raw))
 
       expect(behind_lines).to eq(["a.md stays behind 2.0.0"])
-      expect(Samagotchi::MemoryBundle::Listing.installed(shipped: []).first.behind).to eq(1)
+      expect(Samagotchi::MemoryBundle::Listing.installed(shipped: []).first.behind.size).to eq(1)
       expect(Samagotchi::MemoryBundle::Status.bundle_status("demo").files["a.md"][:behind]).not_to be_nil
     end
 
@@ -369,6 +371,26 @@ RSpec.describe Samagotchi::MemoryBundle::FileStanding do
       File.write(File.join(provenance.bundle_dir, "manifest.json"), JSON.pretty_generate(raw))
 
       expect(behind_lines).to eq(["a.md may be behind 2.0.0: #{described_class::UNSURE}"])
+    end
+
+    it "doesn't count an older mark as behind when the file is level with its source" do
+      left_behind
+      raw = JSON.parse(File.read(File.join(provenance.bundle_dir, "manifest.json")))
+      raw["files"]["a.md"] = raw["files"]["a.md"].slice("checksum", "conflict")
+      File.write(File.join(provenance.bundle_dir, "manifest.json"), JSON.pretty_generate(raw))
+      expect(behind_lines.size).to eq(1)
+
+      File.write(target, File.read(File.join(source, "a.md")))
+      expect(behind_lines).to be_empty
+    end
+
+    it "is sure of an older mark a retry gave a reason" do
+      left_behind
+      raw = JSON.parse(File.read(File.join(provenance.bundle_dir, "manifest.json")))
+      raw["files"]["a.md"] = raw["files"]["a.md"].slice("checksum", "conflict").merge("why" => "a reason")
+      File.write(File.join(provenance.bundle_dir, "manifest.json"), JSON.pretty_generate(raw))
+
+      expect(behind_lines).to eq(["a.md stays behind 2.0.0: a reason"])
     end
 
     it "names no sections for an older mark, whose base may be the user's text" do

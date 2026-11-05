@@ -551,7 +551,8 @@ for a file another bundle installed.
 - **`chi bundle status`** says per file what is `modified`, `missing` or
   `unreadable`, and that a file stays behind and why. Its `issues=` counts files
   behind, missing or unreadable (and a plugin or hooks that won't load), not edits. A
-  file an older chi marked, which no retry has looked at, says `may be behind`.
+  file an older chi marked, which no retry has looked at, says `may be behind`, and so
+  do the counts in `chi bundle list`, `chi self` and `chi update`'s last line.
 - **A dev install** (`chi bundle install --dev PATH`) links the hooks, rules,
   plugin and scripts to `PATH` but still copies the memories at install, so
   an edit to one of them in `PATH` isn't seen until the next install.

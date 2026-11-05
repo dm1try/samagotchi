@@ -856,16 +856,24 @@ Hooks removed: 1\n\z})
       end
     end
 
-    it "doesn't call a file ok while saying it stays behind, and words an older mark softly" do
+    it "doesn't call a file ok while saying it stays behind" do
       manifest = File.join(memories, ".bundles", "demo", "manifest.json")
       File.write(File.join(memories, "a.md"), File.read(File.join(memories, ".bundles", "demo", "bases", "a.md")))
+      raw = JSON.parse(File.read(manifest))
+      raw["files"]["a.md"].merge!("conflict" => true, "incoming_sha" => "other")
+      File.write(manifest, JSON.generate(raw))
+
+      expect(chi("status", "demo")[0].lines.grep(/a\.md/).first).to start_with("  a.md: stays behind 1.0.0 (chi bundle diff demo a.md)")
+    end
+
+    it "words an older mark softly in status and list" do
+      manifest = File.join(memories, ".bundles", "demo", "manifest.json")
       raw = JSON.parse(File.read(manifest))
       raw["files"]["a.md"]["conflict"] = true
       File.write(manifest, JSON.generate(raw))
 
-      line = chi("status", "demo")[0].lines.grep(/a\.md/).first
-      expect(line).to start_with("  a.md: may be behind 1.0.0: ")
-      expect(line).not_to include("ok")
+      expect(chi("status", "demo")[0].lines.grep(/a\.md/).first).to start_with("  a.md: modified; may be behind 1.0.0: an older chi marked it, and the next upgrade checks it")
+      expect(chi("list")[0]).to include("(1 file may be behind: chi bundle status demo)")
     end
 
     it "ends a merge's note with the output that printed it" do

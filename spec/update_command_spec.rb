@@ -335,6 +335,9 @@ RSpec.describe Samagotchi::UpdateCommand do
     row = command.send(:system_bundle_row)
     expect(row.status).to eq("identity.md stays behind 1: no merge possible (git not found) (chi bundle diff samagotchi-system identity.md)")
     expect(command.send(:summary, [row])).to eq("1 file stays behind (see above)")
+
+    result.behind = [Samagotchi::MemoryBundle::FileStanding::Behind.new(file: "identity.md", version: "1", unsure: true)]
+    expect(command.send(:summary, [command.send(:system_bundle_row)])).to eq("1 file may be behind (see above)")
   end
 
   it "names merged files in a bundle's row, and what a dry run would merge" do

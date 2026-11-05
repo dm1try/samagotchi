@@ -718,6 +718,9 @@ RSpec.describe Samagotchi::SelfReport do
     File.write(File.join(config_home, "samagotchi", "memories", "x.md"), "mine\n")
     File.write(File.join(dir, "manifest.json"), JSON.generate(version: "0.0.9", files: { "x.md" => { conflict: true, incoming_sha: "other" } }))
     expect(field("bundles")).to eq("samagotchi-system 0.0.9 (shipped #{shipped}) (1 file behind)")
+
+    File.write(File.join(dir, "manifest.json"), JSON.generate(version: "0.0.9", files: { "x.md" => { conflict: true } }))
+    expect(field("bundles")).to eq("samagotchi-system 0.0.9 (shipped #{shipped}) (1 file may be behind)")
   end
 
   it "lists every bundle with a manifest.json by name, '?' for a version it can't read" do

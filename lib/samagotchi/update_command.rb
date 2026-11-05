@@ -362,6 +362,7 @@ module Samagotchi
       row.merged = merged
       row.earlier = earlier.map(&:file)
       row.kept = behind.map(&:file)
+      @unsure_behind ||= behind.any?(&:unsure)
       row.trash_copy = trash_copy
       notes = MemoryBundle::FileStanding.clauses(bundle, version, merged: merged, behind: behind, earlier: earlier, dry_run: @dry_run)
       trash_copy || earlier.any?(&:trash) ? [*notes, MemoryBundle::FileStanding::IN_THE_TRASH] : notes
@@ -473,7 +474,7 @@ module Samagotchi
       return "some parts failed (see above)" if rows.any?(&:failed)
 
       behind = rows.sum { |row| Array(row.kept).size }
-      return "#{MemoryBundle::FileStanding.stay_behind(behind)} (see above)" if behind.positive?
+      return "#{MemoryBundle::FileStanding.stay_behind(behind, unsure: @unsure_behind)} (see above)" if behind.positive?
 
       # A finding on a bundle chi didn't ship repeats until its bundle changes; it isn't a change.
       changes = rows.reject(&:level)

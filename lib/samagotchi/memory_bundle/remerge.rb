@@ -84,7 +84,7 @@ module Samagotchi
       private
 
       def retry_file(key, entry, shipped)
-        behind = FileStanding.behind?(view.paths(key)[:current], entry)
+        behind = @record.behind_file?(key, view.paths(key)[:current])
         unless shipped.include?(key)
           not_shipped(key, entry) if behind
           return

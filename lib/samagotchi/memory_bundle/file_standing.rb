@@ -105,11 +105,15 @@ module Samagotchi
         more.positive? ? "#{words} and #{more} more" : words
       end
 
-      # "1 file behind"
-      def behind_count(count) = "#{counted(count, "file")} behind"
+      # "1 file behind"; "2 files may be behind" if chi isn't sure of one of them.
+      def behind_count(count, unsure: false) = "#{counted(count, "file")} #{"may be " if unsure}behind"
 
-      # "1 file stays behind", "2 files stay behind"
-      def stay_behind(count) = "#{counted(count, "file")} #{count == 1 ? "stays" : "stay"} behind"
+      # "1 file stays behind", "2 files stay behind"; "1 file may be behind"
+      def stay_behind(count, unsure: false)
+        return behind_count(count, unsure: true) if unsure
+
+        "#{counted(count, "file")} #{count == 1 ? "stays" : "stay"} behind"
+      end
 
       # The sentence of a push, merged and behind as counts: "" for neither.
       def counts_sentence(merged:, behind:)
@@ -143,8 +147,9 @@ module Samagotchi
       # alike: marked, there, and not level with the bundle's text the mark speaks
       # of. A missing file is a missing file (a project-scope record doesn't even
       # say which project it means).
-      def behind?(path, entry)
-        entry[:conflict] == true && File.exist?(path) && differs?(path, entry[:incoming_sha])
+      # @param incoming_sha [String, nil] that text's digest, for a mark with none
+      def behind?(path, entry, incoming_sha: entry[:incoming_sha])
+        entry[:conflict] == true && File.exist?(path) && differs?(path, incoming_sha)
       end
 
       # The file's bytes aren't what the mark says the bundle ships. One it can't

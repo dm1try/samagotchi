@@ -653,7 +653,10 @@ module Samagotchi
           line = "  #{b.name.ljust(name_w)}  #{"v#{b.version || "?"}".ljust(ver_w)}  scope=#{b.scope || "?"}  " \
                  "#{b.includes ? profile_members(b.includes, installed) : "files=#{b.files}"}  installed=#{b.installed_at || "?"}"
           line += "  (shipped v#{b.upgrade.version}: chi bundle upgrade #{b.upgrade.source})" if b.upgrade
-          line += "  (#{Samagotchi::MemoryBundle::FileStanding.behind_count(b.behind)}: chi bundle status #{b.name})" if b.behind.to_i.positive?
+          if b.behind&.any?
+            count = Samagotchi::MemoryBundle::FileStanding.behind_count(b.behind.size, unsure: b.behind.any?(&:unsure))
+            line += "  (#{count}: chi bundle status #{b.name})"
+          end
           @stdout.puts line
         end
         @stdout.puts "  (or all at once: chi update)" if installed.any?(&:upgrade)

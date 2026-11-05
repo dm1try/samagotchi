@@ -494,8 +494,8 @@ module Samagotchi
         version = bundle.version || "?"
         label = "#{name} #{version}"
         label += " (shipped #{shipped})" if name == MemoryBundle::SystemBundle::BUNDLE_NAME
-        behind = bundle.behind_files.size
-        label += " (#{MemoryBundle::FileStanding.behind_count(behind)})" if behind.positive?
+        behind = bundle.behind_files
+        label += " (#{MemoryBundle::FileStanding.behind_count(behind.size, unsure: behind.any?(&:unsure))})" if behind.any?
         label
       end
       installed.empty? ? "(none installed; shipped system bundle #{shipped || "?"})" : installed.join(", ")
