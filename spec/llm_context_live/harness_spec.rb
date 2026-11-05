@@ -89,6 +89,29 @@ RSpec.describe "the llm_context live harness" do
     end
   end
 
+  describe LLMContextLive::Shell do
+    # prepare_repo's git init, add and commit, from a hook or `rebase --exec`:
+    # they went into the repo the environment names.
+    it "runs a command's git on its own repo, whatever repo the environment names" do
+      sentinel = File.join(dir, "sentinel")
+      repo = File.join(dir, "repo")
+      system("git", "init", "-q", sentinel, exception: true)
+      FileUtils.mkdir_p(repo)
+
+      with_env("GIT_DIR" => File.join(sentinel, ".git")) do
+        expect(described_class.new.run(["git", "-C", repo, "init", "-q"])).to be_ok
+      end
+
+      expect(File.directory?(File.join(repo, ".git"))).to be true
+    end
+
+    it "lets a run's own env set any of them" do
+      ran = described_class.new.run(["sh", "-c", 'printf %s "$GIT_DIR"'], env: { "GIT_DIR" => "/own/.git" })
+
+      expect(ran.out).to eq("/own/.git")
+    end
+  end
+
   describe LLMContextLive::Collector do
     let(:workspace) { LLMContextLive::Workspace.new(dir) }
     let(:shell) { LLMContextLive::Shell.new }

@@ -2,6 +2,7 @@
 
 require "open3"
 require "timeout"
+require_relative "../../lib/samagotchi/git_env"
 
 module LLMContextLive
   # A command's end: its exit status (nil when it timed out), stdout and
@@ -20,7 +21,7 @@ module LLMContextLive
     def run(argv, env: {}, chdir: nil, timeout: nil, stdin: nil)
       options = { pgroup: true }
       options[:chdir] = chdir if chdir
-      Open3.popen3(env, *argv, **options) do |input, out, err, wait|
+      Open3.popen3(Samagotchi::GitEnv::UNSET.merge(env), *argv, **options) do |input, out, err, wait|
         input.write(stdin) if stdin
         input.close
         reader = Thread.new { out.read }
