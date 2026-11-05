@@ -116,6 +116,7 @@ module Samagotchi
 
         [@bundle_dir, @manifest]
       ensure
+        note_merges
         # An owned source (git/zip/tar) is cleaned up here, unless an upgrade
         # kept conflicts: the agent step still needs the incoming files, so
         # the caller runs #cleanup_source! when it is done.
@@ -407,6 +408,16 @@ module Samagotchi
         @results[file_key] = { status: "conflict", reason: behind.state(dry_run: @dry_run) }
         @conflicts[file_key] = upgrade_view.paths(file_key)
         @warnings << "#{behind.line(dry_run: @dry_run)} (#{FileStanding::FORCE_TAKES})"
+      end
+
+      # What merged, on the record, a run that failed later too: the file holds the
+      # merge whichever way the run ended. Never fails the run.
+      def note_merges
+        return if merged_files.empty?
+
+        @provenance.note_merged(merged_files, version: @manifest&.version, trash: trash_dir)
+      rescue StandardError => e
+        @warnings << "merge not noted on the record (#{e.message})"
       end
 
       def upgrade_view

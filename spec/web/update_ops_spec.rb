@@ -14,13 +14,27 @@ RSpec.describe Samagotchi::Web::UpdateOps do
   let(:rows) { [{ "component" => "chi (gem)", "status" => "updated", "failed" => false, "kept" => ["a.md"] }] }
   let(:runner) { ->(_argv, env:, progress:) { [rows.to_json, true] } }
   let(:ops) { described_class.new(hub: hub, manager: manager, state_dir: state_dir, runner: runner, blocked: -> {}) }
-  let(:manager) { double("manager") }
 
-  before { hub.subscribe(->(event) { events << event }) }
+  let(:manager) { double("manager") }
 
   after do
     hub.stop
     FileUtils.rm_rf(state_dir)
+  end
+
+  before { hub.subscribe(->(event) { events << event }) }
+
+  it "marks only an automatic run's chi update as unattended" do
+    seen = []
+    recording = lambda do |_argv, env:, progress:|
+      seen << env[Samagotchi::ChildEnv::UNATTENDED_UPDATE]
+      [rows.to_json, true]
+    end
+    ops = described_class.new(hub: hub, manager: manager, state_dir: state_dir, runner: recording, blocked: -> {})
+
+    ops.install("9.9.9", wait: true)
+    ops.install("9.9.9", wait: true, auto: true)
+    expect(seen).to eq([nil, "1"])
   end
 
   def frames = events.select { |event| event.type == "chi_update" }.map(&:data)

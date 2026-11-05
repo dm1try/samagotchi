@@ -37,7 +37,8 @@ module Samagotchi
         list), and the desktop helper (macOS; rebuilt only when its sources
         changed). A memory file you edited takes the update in a text merge
         (the old file goes to the bundle trash), or stays behind as it is when
-        no merge is possible, and the table says which and why; each run
+        no merge is possible, and the table says which and why (a merge shows
+        again in the next run, its last appearance); each run
         retries a file left behind, though one an older chi marked, with a base
         no installed chi shipped, merges only if the bundle takes out or rewords
         no line it still holds. Nothing is
@@ -85,8 +86,8 @@ module Samagotchi
     # chi didn't ship: it reports, changes nothing and fails nothing. kept: the
     # memory files that stay behind; merged: the ones that took the update;
     # trash_copy: where their old copies went, in full (the table's short: --json
-    # has the path).
-    Row = Struct.new(:component, :from, :to, :status, :failed, :kept, :merged, :trash_copy, :level, keyword_init: true)
+    # has the path); earlier: the files of the earlier merges the row names.
+    Row = Struct.new(:component, :from, :to, :status, :failed, :kept, :merged, :earlier, :trash_copy, :level, keyword_init: true)
 
     # What a row says after a change, and in a dry run.
     VERBS = { update: ["updated", "would update"], install: ["installed", "would install"],
@@ -104,6 +105,7 @@ module Samagotchi
                    gem_update: nil, exec: nil, bundler: nil, home: ChiHome, env: ENV)
       @home = home
       @in_home = env.delete(IN_HOME_ENV) == "1"
+      @unattended = env[ChildEnv::UNATTENDED_UPDATE] == "1"
       # Built after the home is known: its install env goes into the home.
       @gem_update_given = gem_update
       @exec = exec || ->(argv) { Kernel.exec(*argv) }
@@ -156,7 +158,7 @@ module Samagotchi
       gem = gem_row(options)
       rows = [gem, system_bundle_row, *bundle_rows(options), *external_rows(options), desktop_row(options), *live_rows].compact
       if options[:json]
-        @stdout.puts(JSON.generate(rows.map { |row| row.to_h.merge(failed: !!row.failed, kept: row.kept || [], merged: row.merged || []) }))
+        @stdout.puts(JSON.generate(rows.map { |row| row.to_h.merge(failed: !!row.failed, kept: row.kept || [], merged: row.merged || [], earlier: row.earlier || []) }))
       else
         print_table(rows)
         footers(options, rows).each { |line| @stdout.puts(line) }
@@ -288,10 +290,13 @@ module Samagotchi
     end
 
     def system_bundle_row
-      earlier = MemoryBundle::SystemBundle.take_merge_notes(dry_run: @dry_run)
-      result = MemoryBundle::SystemBundle.sync(dry_run: @dry_run)
+      system = MemoryBundle::SystemBundle
+      earlier = system.merge_notes
+      result = system.sync(dry_run: @dry_run)
+      # These rows have no place for the notes, which wait for one that has.
+      earlier = [] if %i[installed skipped failed].include?(result.status)
       row = Row.new(component: "system bundle", from: result.from, to: result.to)
-      notes = file_notes(row, MemoryBundle::SystemBundle::BUNDLE_NAME, result.to, result.merged, result.behind, result.trash_copy, earlier: earlier)
+      notes = file_notes(row, system::BUNDLE_NAME, result.to, result.merged, result.behind, result.trash_copy, earlier: earlier)
       case result.status
       when :installed then done(row, :install)
       when :updated then done(row, :update, notes.empty? ? nil : notes.join("; "))
@@ -301,6 +306,8 @@ module Samagotchi
       when :skipped then skipped(row, result.error)
       else failed(row, result.error)
       end
+      system.clear_merge_notes(earlier) if notes_shown?(earlier)
+      row
     end
 
     def bundle_rows(options)
@@ -331,29 +338,39 @@ module Samagotchi
 
     def bundle_row(update)
       row = Row.new(component: update.name, from: update.from, to: update.to)
-      notes = file_notes(row, update.name, update.to || update.from, update.merged, update.behind, update.trash_copy)
+      earlier = update.status == :failed ? [] : Array(update.earlier)
+      notes = file_notes(row, update.name, update.to || update.from, update.merged, update.behind, update.trash_copy, earlier: earlier)
       case update.status
       when :would_update, :updated
         notes = [adds(update.adds), *notes, replaced(update.replaced), *update.kept_own].compact
         done(row, :update, notes.empty? ? nil : notes.join("; "))
       when :would_merge, :merged, :up_to_date then same_version(row, [*notes, update.note].compact, changed: Array(update.merged).any?)
       when :skipped then skipped(row, [update.note, *notes].join("; "))
-      else failed(row, update.note)
+      else failed(row, [update.note, *notes].compact.join("; "))
       end
+      MemoryBundle::Provenance.new(name: update.name).clear_merge_notes(earlier) if notes_shown?(earlier)
+      row
     end
 
     # What one bundle's memory files did, in FileStanding's words; the row keeps
-    # the file names and the trash copy's full line for --json.
+    # the file names and the trash copy's full line for --json. merged is what
+    # this run merged, earlier the files of the notes it shows.
     # @return [Array<String>] the row's clauses
     def file_notes(row, bundle, version, merged, behind, trash_copy, earlier: [])
       merged = Array(merged)
       behind = Array(behind)
-      row.merged = (merged + earlier.map(&:file)).uniq
+      row.merged = merged
+      row.earlier = earlier.map(&:file)
       row.kept = behind.map(&:file)
       row.trash_copy = trash_copy
       notes = MemoryBundle::FileStanding.clauses(bundle, version, merged: merged, behind: behind, earlier: earlier, dry_run: @dry_run)
       trash_copy || earlier.any?(&:trash) ? [*notes, MemoryBundle::FileStanding::IN_THE_TRASH] : notes
     end
+
+    # Whether a row just showed these notes to someone who reads it: that is their
+    # last appearance. A dry run changes nothing, and an automatic update's rows
+    # may be read by no one (ChildEnv::UNATTENDED_UPDATE).
+    def notes_shown?(notes) = notes.any? && !@dry_run && !@unattended
 
     # A row at the same version: up to date only when nothing merged and nothing
     # stays behind. No to, and no verb of its own: the clauses say it all.

@@ -54,9 +54,10 @@ module Samagotchi
       end
 
       # A merge no report has shown yet, as the file's record keeps it
-      # (Provenance#note_merged): a worker's merge reaches nothing but its log. It
-      # shows in chi bundle status and in the next chi update, whose row is its
-      # last appearance. No start says it: most sessions never read that file.
+      # (Provenance#note_merged). Every merge leaves one: a worker's reaches nothing
+      # but its log, an automatic update's rows no person. It shows in chi bundle
+      # status and in chi update's rows until a chi update someone runs has shown
+      # it. No start says it: most sessions never read that file.
       MergeNote = Data.define(:file, :version, :at, :trash) do
         # "merged 0.8.0 into your x.md on 2026-11-05 14:03"
         def line

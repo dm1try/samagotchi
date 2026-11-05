@@ -114,7 +114,7 @@ RSpec.describe "Kept edits in a bundle" do
         expect(up.results["a.md"][:status]).to eq("merged")
         expect(File.read(target)).to eq(doc(intro: "my intro", tail: "tail #{word}"))
         expect(File.read(provenance.base_path("a.md"))).to eq(incoming)
-        expect(provenance.read[:files][:"a.md"]).to eq(checksum: Digest::SHA256.hexdigest(incoming))
+        expect(provenance.read[:files][:"a.md"].except(:merged_version, :merged_at, :merged_trash)).to eq(checksum: Digest::SHA256.hexdigest(incoming))
       end
     end
 

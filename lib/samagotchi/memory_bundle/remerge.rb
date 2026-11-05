@@ -45,10 +45,10 @@ module Samagotchi
       # with no merge. stamped: their mark was updated. behind: each file that
       # stays behind, and why (FileStanding::Behind). work? says whether a real run
       # would change anything.
-      Result = Data.define(:merged, :settled, :stamped, :behind, :warnings, :trash_copy, :trash_dir) do
+      Result = Data.define(:merged, :settled, :stamped, :behind, :warnings, :trash_copy) do
         def work? = [merged, settled, stamped].any?(&:any?)
       end
-      NOTHING = Result.new(merged: [], settled: [], stamped: [], behind: [], warnings: [], trash_copy: nil, trash_dir: nil).freeze
+      NOTHING = Result.new(merged: [], settled: [], stamped: [], behind: [], warnings: [], trash_copy: nil).freeze
 
       # @param record [InstalledBundle, nil] the bundle's record (read when not given)
       def initialize(name:, scope:, target_dir:, source_dir:, record: nil)
@@ -76,8 +76,7 @@ module Samagotchi
         shipped = MemoryFiles.select(@source_dir, Manifest.read(dir: @source_dir))
         marked.each { |key, entry| retry_file(key, entry, shipped) }
         settle unless dry_run
-        Result.new(merged: @merged, settled: @settled, stamped: @stamped.map(&:file), behind: @behind, warnings: @warnings, trash_copy: @trash.copy_line,
-                   trash_dir: @trash.dir)
+        Result.new(merged: @merged, settled: @settled, stamped: @stamped.map(&:file), behind: @behind, warnings: @warnings, trash_copy: @trash.copy_line)
       end
 
       private
@@ -124,6 +123,13 @@ module Samagotchi
         @provenance.resolve_conflicts(files.to_h { |key| [key, view.paths(key)] }) unless files.empty?
         @provenance.refresh_marks(@stamped, @source_dir) unless @stamped.empty?
         @merged.each { |key| refresh_index(key) }
+        note_merges
+      end
+
+      def note_merges
+        @provenance.note_merged(@merged, version: @record.version, trash: @trash.dir) unless @merged.empty?
+      rescue StandardError => e
+        @warnings << "merge not noted on the record (#{e.message})"
       end
 
       # The file's size moved; its description and source stay. Not fatal, as

@@ -175,7 +175,8 @@ module Samagotchi
       def perform_install(version, auto)
         argv = update_argv(version)
         said = nil
-        output, success = @runner.call(argv, env: ChildEnv.unbundled,
+        env = auto ? ChildEnv.unbundled.merge(ChildEnv::UNATTENDED_UPDATE => "1") : ChildEnv.unbundled
+        output, success = @runner.call(argv, env: env,
                                              progress: lambda { |line|
                                                said = line unless line.strip.empty?
                                                @hub.publish_update(state: "running", rows: [], progress: line,

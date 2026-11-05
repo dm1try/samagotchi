@@ -20,6 +20,10 @@ module Samagotchi
     # (Tools::Builtins.parent_env): that session's, not a child chi's.
     SESSION_MARKERS = %w[SAMAGOTCHI_PARENT_SESSION SAMAGOTCHI_SESSION_MODEL SAMAGOTCHI_SESSION_THINKING
                          SAMAGOTCHI_SESSION_REASONING_HISTORY].freeze
+    # "1" in the chi update an automatic run starts (Web::UpdateOps): no person
+    # reads its rows. An env marker, so it reaches the chi a hand-over or the home
+    # execs, and an older chi that doesn't know it simply ignores it.
+    UNATTENDED_UPDATE = "SAMAGOTCHI_UPDATE_UNATTENDED"
 
     module_function
 

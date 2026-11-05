@@ -213,6 +213,20 @@ RSpec.describe Samagotchi::MemoryBundle::FileStanding do
       expect(entry).to include(conflict: true, incoming_sha: Digest::SHA256.hexdigest(doc(steps: "theirs")))
     end
 
+    it "notes a merge whichever way the run ended, and none in a dry run" do
+      write_source("1.0.0", doc)
+      install
+      File.write(target, doc(intro: "mine"))
+      write_source("2.0.0", doc(rules: "new"))
+      install(upgrade: true, dry_run: true)
+      expect(provenance.record.merge_notes).to be_empty
+
+      allow_any_instance_of(Samagotchi::MemoryBundle::Provenance).to receive(:write).and_raise("the disk is full")
+      expect { install(upgrade: true) }.to raise_error("the disk is full")
+      expect(provenance.record.merge_notes.map { |note| [note.file, note.version] }).to eq([["a.md", "2.0.0"]])
+      expect(provenance.record.version).to eq("1.0.0")
+    end
+
     it "drops the saved text when an upgrade settles the file" do
       left_behind
       File.write(target, doc(steps: "newer", rules: "new rules"))

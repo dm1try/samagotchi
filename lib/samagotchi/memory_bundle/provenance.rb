@@ -363,9 +363,10 @@ module Samagotchi
         write_manifest(raw)
       end
 
-      # A merge no one may have seen (a worker's start logs it and nothing else):
-      # its note stays on the file's entry, through later upgrades too, until
-      # #clear_merge_notes, which the next chi update's row is.
+      # Every merge leaves a note on the file's entry, one no one may have seen (a
+      # worker's start logs it and nothing else, an automatic update's rows are
+      # read by no one). It stays through later upgrades, until #clear_merge_notes,
+      # which the next chi update a person runs does once its row has shown it.
       # @param files [Array<String>]
       # @param version [String] what merged
       # @param trash [String, nil] the dir holding the old copy
@@ -379,12 +380,20 @@ module Samagotchi
         write_manifest(raw)
       end
 
-      def clear_merge_notes
-        return unless installed?
-
+      # These notes go, and a later merge's on the same file stays. A note that
+      # can't be cleared shows once more: nothing about it fails a report.
+      # @param notes [Array<FileStanding::MergeNote>] as #record gave them
+      def clear_merge_notes(notes)
         raw = JSON.parse(File.read(File.join(@bundle_dir, "manifest.json")))
-        raw["files"]&.each_value { |entry| MERGE_NOTE_FIELDS.each { |field| entry.delete(field) } }
+        notes.each do |note|
+          entry = raw.dig("files", note.file)
+          next unless entry && entry["merged_version"] == note.version && entry["merged_at"] == note.at
+
+          MERGE_NOTE_FIELDS.each { |field| entry.delete(field) }
+        end
         write_manifest(raw)
+      rescue JSON::ParserError, SystemCallError
+        nil
       end
 
       # The installed bundle's record, nil when it isn't installed.

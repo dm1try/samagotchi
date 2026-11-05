@@ -247,6 +247,35 @@ RSpec.describe Samagotchi::MemoryBundle::ShippedUpdate do
     end
   end
 
+  it "says on a failed row what that run did, not what the plan expected, and notes a merge it made" do
+    install(old_copy("known-names", md: "# T\n\nold words\n\nmore\n"), "known-names")
+    File.write(File.join(system_dir, "known_names.md"), "# T\n\nmy words\n\nmore\n")
+    rows = described_class.plan
+    allow_any_instance_of(Samagotchi::MemoryBundle::Provenance).to receive(:write).and_raise("the disk is full")
+    allow_any_instance_of(Samagotchi::MemoryBundle::Installer).to receive(:merged_files).and_return(["known_names.md"])
+    allow_any_instance_of(Samagotchi::MemoryBundle::Provenance).to receive(:note_merged)
+    rows.first.behind = [Samagotchi::MemoryBundle::FileStanding::Behind.new(file: "planned.md")]
+
+    row = described_class.apply(rows).first
+    expect(row).to have_attributes(status: :failed, note: "the disk is full", merged: ["known_names.md"], kept: ["known_names.md"])
+  end
+
+  it "keeps a skipped row's files that stay behind in the plan, and any merge note" do
+    source = old_copy("known-names", md: "old words\n")
+    install(source, "known-names")
+    File.write(File.join(system_dir, "known_names.md"), "mine\n")
+    provenance = Samagotchi::MemoryBundle::Provenance.new(name: "known-names")
+    manifest = File.join(provenance.bundle_dir, "manifest.json")
+    raw = JSON.parse(File.read(manifest))
+    raw["source"] = "/not/chi/known-names"
+    raw["files"]["known_names.md"].merge!("conflict" => true, "incoming_sha" => "other", "merged_version" => "1", "merged_at" => "2026-11-05T10:00:00Z")
+    File.write(manifest, JSON.generate(raw))
+
+    row = described_class.plan.first
+    expect(row).to have_attributes(status: :skipped, kept: ["known_names.md"])
+    expect(row.earlier.map(&:file)).to eq(["known_names.md"])
+  end
+
   # The plan asks about every shipped *.md, the Installer about
   # MemoryFiles.select, so the two can disagree. Pinned, not endorsed: a plan
   # that unifies them changes what these say (Merger::Upgrade#forecast).

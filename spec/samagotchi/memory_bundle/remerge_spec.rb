@@ -94,7 +94,8 @@ RSpec.describe Samagotchi::MemoryBundle::Remerge do
       expect(result.trash_copy).to include("Copied to the trash first: a.md")
       expect(File.read(target)).to eq(merged)
       expect(base).to eq(doc(tail: "the tail\nand a new line"))
-      expect(entry).to eq(checksum: Digest::SHA256.hexdigest(doc(tail: "the tail\nand a new line")), description: "What a is")
+      expect(entry.except(:merged_version, :merged_at, :merged_trash)).to eq(checksum: Digest::SHA256.hexdigest(doc(tail: "the tail\nand a new line")), description: "What a is")
+      expect(entry).to include(merged_version: "2.0.0")
       expect(trash_files).to eq("a.md" => doc(intro: "my intro"))
 
       expect(Samagotchi::MemoryBundle::TextMerge).not_to receive(:merge)

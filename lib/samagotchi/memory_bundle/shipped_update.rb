@@ -49,8 +49,10 @@ module Samagotchi
       # Profile.kept_own_line lines.
       # trash_copy is nil but under apply when it saved edited files
       # (Installer#trash_copy_line).
+      # earlier: the merge notes on its record when the plan read it
+      # (FileStanding::MergeNote): this run's own merges aren't among them.
       Row = Struct.new(:name, :from, :to, :status, :note, :merged, :behind, :replaced, :source_dir, :scope, :adds, :kept_own,
-                       :trash_copy, keyword_init: true) do
+                       :trash_copy, :earlier, keyword_init: true) do
         def kept = Array(behind).map(&:file)
       end
 
@@ -64,6 +66,7 @@ module Samagotchi
           row = plan_row(name, bundle, shipped[name], shipped_dir, chi_version)
           # A row that retried nothing still has its files that stay behind.
           row.behind = bundle.behind_files if row.status == :skipped && !bundle.error?
+          row.earlier = bundle.merge_notes
           row
         end
       end
@@ -107,6 +110,8 @@ module Samagotchi
           row.dup.tap do |r|
             r.status = :failed
             r.note = e.message.lines.first.to_s.strip
+            r.merged = installer&.merged_files || []
+            r.behind = installer&.behind || []
           end
         end
       end

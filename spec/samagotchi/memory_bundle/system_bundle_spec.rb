@@ -203,11 +203,26 @@ RSpec.describe Samagotchi::MemoryBundle::SystemBundle do
             expect(note.line).to match(/\Amerged 0\.1\.10 into your identity\.md on \d{4}-\d{2}-\d{2} \d{2}:\d{2}\z/)
           end
 
-          it "goes when taken, but not in a dry run" do
-            expect(described_class.take_merge_notes(dry_run: true).size).to eq(1)
-            expect(described_class.take_merge_notes.size).to eq(1)
-            expect(described_class.take_merge_notes).to be_empty
+          it "goes when cleared, and not a later merge's on the same file" do
+            notes = described_class.merge_notes
+            expect(notes.size).to eq(1)
+            described_class.clear_merge_notes(notes)
+            expect(described_class.merge_notes).to be_empty
             expect(provenance.read[:files][:"identity.md"].keys).not_to include(:merged_version, :merged_at, :merged_trash)
+
+            provenance.note_merged(["identity.md"], version: "9", trash: nil)
+            described_class.clear_merge_notes(notes)
+            expect(described_class.merge_notes.map(&:version)).to eq(["9"])
+          end
+
+          it "doesn't raise when the note can't be written or cleared" do
+            allow_any_instance_of(Samagotchi::MemoryBundle::Provenance).to receive(:note_merged).and_raise(Errno::EACCES)
+            mark_old(text(intro: "my intro 2"))
+
+            expect { described_class.ensure! }.not_to raise_error
+            allow(File).to receive(:read).and_call_original
+            allow(File).to receive(:read).with(end_with("manifest.json")).and_raise(Errno::EACCES)
+            expect { described_class.clear_merge_notes([]) }.not_to raise_error
           end
 
           it "stays through a later upgrade" do
@@ -218,10 +233,16 @@ RSpec.describe Samagotchi::MemoryBundle::SystemBundle do
           end
         end
 
-        it "leaves no note when chi update's own sync merges: its row says it" do
+        it "leaves a note whoever merged: one rule for a start and for chi update" do
           mark_old(text(intro: "my intro"))
           expect(described_class.sync.merged).to eq(["identity.md"])
-          expect(described_class.take_merge_notes).to be_empty
+          expect(described_class.merge_notes.map(&:file)).to eq(["identity.md"])
+        end
+
+        it "leaves none in a dry run" do
+          mark_old(text(intro: "my intro"))
+          expect(described_class.sync(dry_run: true).merged).to eq(["identity.md"])
+          expect(described_class.merge_notes).to be_empty
         end
 
         it "leaves a real conflict untouched and silent, start after start" do
