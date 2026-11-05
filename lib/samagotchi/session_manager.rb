@@ -1018,15 +1018,18 @@ module Samagotchi
       turns.is_a?(Array) && turns.empty?
     end
 
-    # A folder's cards.json is empty only when it is a JSON object whose
-    # turns is an integer zero. Anything unreadable, not JSON, not an
-    # object, the wrong type, or turns not an integer reads as "not empty":
-    # a broken or wrong-shape cards file keeps the folder instead of
-    # raising (Array#/Hash#to_i) or reading as empty.
+    # A folder's cards.json is empty only when it is a JSON object with no
+    # turn in it: an empty turn_log, or an older file's (Bridge::CardStore
+    # version 1) turns an integer zero. Anything unreadable, not JSON, not an
+    # object, the wrong type, or neither of those reads as "not empty": a
+    # broken or wrong-shape cards file keeps the folder instead of raising
+    # (Array#/Hash#to_i) or reading as empty.
     def self.cards_empty?(path)
       data = read_json(path)
-      turns = data.is_a?(Hash) ? data["turns"] : nil
-      turns.is_a?(Integer) && turns.zero?
+      return false unless data.is_a?(Hash)
+
+      turns = data["turns"]
+      data["turn_log"] == [] || (turns.is_a?(Integer) && turns.zero?)
     end
 
     # A session-dir JSON file's contents, or nil when it is missing,

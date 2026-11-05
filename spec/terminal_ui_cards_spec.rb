@@ -28,15 +28,15 @@ RSpec.describe "TerminalUI cards.json" do
     FileUtils.remove_entry(state_home)
   end
 
-  it "counts the REPL's kept turns on from the saved count; a failed one doesn't count" do
+  it "counts on from an older file's saved count by the REPL's kept turns; a failed one doesn't count" do
     FileUtils.mkdir_p(File.dirname(cards_path))
     card = { type: "card", id: "c1", source: "x", title: "t", body: "b", in_turn: false, turns: 1 }
     File.write(cards_path, JSON.generate({ version: 1, turns: 2, entries: [card] }))
     ui = Samagotchi::TerminalUI.new(client: client, session_id: session.id, surface: surface)
     observer = ui.engine.instance_variable_get(:@session_observer)
     allow(ui).to receive(:poll_input_with_reminder_check) do
-      [%i[turn_started turn_completed], %i[turn_started turn_failed], %i[turn_started turn_canceled]].each do |pair|
-        pair.each { |type| observer.notify({ type: type }) }
+      [%i[turn_started turn_completed], %i[turn_started turn_failed], %i[turn_started turn_canceled]].each_with_index do |pair, n|
+        pair.each { |type| observer.notify({ type: type, turn_id: "t#{n}" }) }
       end
       "/exit"
     end
@@ -45,8 +45,9 @@ RSpec.describe "TerminalUI cards.json" do
     ui.run
 
     saved = JSON.parse(File.read(cards_path))
-    expect(saved["turns"]).to eq(4)
-    expect(Samagotchi::Bridge::CardStore.saved(File.dirname(cards_path)).first).to include(id: "c1", turns_since: 3)
+    expect(saved).to include("version" => 2, "turn_log" => %w[t0 t1 t2])
+    messages = [{ role: "user", content: "one", turn_id: "t0" }, { role: "user", content: "three", turn_id: "t2" }]
+    expect(Samagotchi::Bridge::CardStore.saved(File.dirname(cards_path), messages: messages).first).to include(id: "c1", turns_since: 3)
   end
 
   it "writes no cards.json for a session that never showed a card" do

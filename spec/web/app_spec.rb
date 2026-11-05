@@ -1477,10 +1477,13 @@ RSpec.describe Samagotchi::Web::App do
       it "on a saved question card (cards.json) are checked again too" do
         state_dir = Dir.mktmpdir
         store = Samagotchi::Bridge::CardStore.new(path: File.join(state_dir, "s1", Samagotchi::Bridge::CardStore::FILE))
-        store.call({ type: :turn_started })
+        store.call({ type: :turn_started, turn_id: "t1" })
         store.call({ type: :question_requested, pending_question: { id: "q1", question: "Proceed?", refs: [good, bad] } })
         store.call({ type: :question_answered, id: "q1", answer: { id: "q1", selected: ["Yes"] } })
         store.call({ type: :turn_completed })
+        session = Samagotchi::Session.new_session(mode: "assist", model_name: "TestModel", working_directory: Dir.pwd)
+        session.messages = [{ role: "user", content: "hello", turn_id: "t1" }, { role: "assistant", content: "hi" }]
+        allow(StubSessionLoader).to receive(:load).and_return(session)
         app = build_app(manager: FakeResponsesManager.new, state_dir: state_dir)
 
         cards = JSON.parse(app.call(env_for("/api/sessions/s1"))[2].first)["cards"]
@@ -2223,12 +2226,15 @@ RSpec.describe Samagotchi::Web::App do
       it "without a live worker, hands out the ones the last worker saved in the session's folder, rendered the same" do
         state_dir = Dir.mktmpdir
         store = Samagotchi::Bridge::CardStore.new(path: File.join(state_dir, "s1", Samagotchi::Bridge::CardStore::FILE))
-        store.call({ type: :turn_started })
+        store.call({ type: :turn_started, turn_id: "t1" })
         store.call({ type: :generation_started, iteration: 3 })
         store.call({ type: :hook_notice, hook: "loop-guard", text: "loop: repeated, denied", level: :warn })
         store.call({ type: :card, id: "stop", source: "loop-guard", title: "Stopped", body: "some **bold**", level: :warn,
                      actions: [], in_turn: true })
         store.call({ type: :turn_canceled })
+        session = Samagotchi::Session.new_session(mode: "assist", model_name: "TestModel", working_directory: Dir.pwd)
+        session.messages = [{ role: "user", content: "hello", turn_id: "t1" }, { role: "assistant", content: "hi" }]
+        allow(StubSessionLoader).to receive(:load).and_return(session)
         app = build_app(manager: FakeResponsesManager.new, state_dir: state_dir, markdown: true)
 
         cards = JSON.parse(app.call(env_for("/api/sessions/s1"))[2].first)["cards"]
@@ -2238,6 +2244,31 @@ RSpec.describe Samagotchi::Web::App do
                                     "turns_since" => 0, "current" => false)
         expect(cards[1]).to include("id" => "stop", "turns_since" => 0, "current" => false)
         expect(cards[1]["body_html"]).to include("<strong>bold</strong>")
+      ensure
+        FileUtils.rm_rf(state_dir) if state_dir
+      end
+
+      it "places a stopped session's cards from its session file, version 2 and version 1; ?cards=1 carries the bodies alone" do
+        state_dir = Dir.mktmpdir
+        path = File.join(state_dir, "s1", Samagotchi::Bridge::CardStore::FILE)
+        store = Samagotchi::Bridge::CardStore.new(path: path)
+        card = { type: :card, id: "c1", source: "b", title: "T", body: "some **bold**", level: :info, actions: [], in_turn: false }
+        store.call({ type: :turn_started, turn_id: "t1" })
+        store.call({ type: :turn_completed })
+        store.call(card)
+        session = Samagotchi::Session.new_session(mode: "assist", model_name: "TestModel", working_directory: Dir.pwd)
+        session.messages = [{ role: "user", content: "one", turn_id: "t1" }, { role: "assistant", content: "a" },
+                            { role: "user", content: "two", turn_id: "t2" }, { role: "assistant", content: "b" }]
+        allow(StubSessionLoader).to receive(:load).and_return(session)
+        app = build_app(manager: FakeResponsesManager.new, state_dir: state_dir, markdown: true)
+
+        expect(JSON.parse(app.call(env_for("/api/sessions/s1"))[2].first)["cards"].first).to include("id" => "c1", "turns_since" => 1)
+        bodies = JSON.parse(app.call(env_for("/api/sessions/s1?cards=1"))[2].first)["cards"].first
+        expect(bodies["body_html"]).to include("<strong>bold</strong>")
+        expect(bodies).not_to have_key("turns_since")
+
+        File.write(path, JSON.generate({ version: 1, turns: 3, entries: [{ type: "card", id: "old", in_turn: false, turns: 1 }] }))
+        expect(JSON.parse(app.call(env_for("/api/sessions/s1"))[2].first)["cards"].first).to include("id" => "old", "turns_since" => 2)
       ensure
         FileUtils.rm_rf(state_dir) if state_dir
       end

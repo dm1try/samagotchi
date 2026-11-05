@@ -544,13 +544,13 @@ module Samagotchi
 
     # The session's cards.json and pending_card.json, kept as a worker's
     # Bridge keeps them (it owns the session as a worker would): this REPL's
-    # kept turns count on from the saved count, so a card an earlier worker
-    # showed stays that many turns back, and its own cards and notices are
-    # saved for the next; an open card with actions is on disk, where
+    # turns go on the same turn log, so a card an earlier worker showed keeps its
+    # place above the turns after it, and its own cards and notices are saved
+    # for the next; an open card with actions is on disk, where
     # `chi web`'s session hub reads it to mark the session as waiting.
     def keep_cards(session)
       path = File.join(Session.session_dir(session.id), Bridge::CardStore::FILE)
-      @cards_handle ||= @engine.subscribe(observer: Bridge::CardStore.new(path: path))
+      @cards_handle ||= @engine.subscribe(observer: Bridge::CardStore.new(path: path, messages: -> { @engine.session&.messages }))
       keep_pending_card(session)
     end
 

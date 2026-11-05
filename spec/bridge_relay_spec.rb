@@ -103,7 +103,7 @@ RSpec.describe Samagotchi::Bridge, "approval relay" do
     it "keeps the marker on the cards' open question (a joining UI's)" do
       cards = @bridges.first.instance_variable_get(:@cards)
       # A question is a row of a running turn.
-      cards.call({ type: :turn_started })
+      cards.call({ type: :turn_started, turn_id: "t1" })
       _box, qid = ask_child
       relay("opened", "r-1", qid)
       card = wait_for("the relayed question's card") { cards.list.find { |e| e[:type] == :question && e[:pending_question][:relayed_to] } }

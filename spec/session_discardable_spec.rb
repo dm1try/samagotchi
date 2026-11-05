@@ -2,6 +2,7 @@
 
 require "tmpdir"
 require "spec_helper"
+require "samagotchi/bridge"
 require "samagotchi/session_manager"
 require "samagotchi/worker"
 require "samagotchi/terminal_ui"
@@ -102,6 +103,19 @@ RSpec.describe "discarding an empty session" do
       worker: true, repl: true, sweep: true },
     { name: "a turn's saved cards",
       change: ->(_, d) { File.write(File.join(d, "cards.json"), JSON.generate("turns" => 1, "entries" => [{ "type" => "card" }])) },
+      worker: false, repl: false, sweep: false },
+    # As a real store writes them (version 2), the shapes above are an older file's.
+    { name: "a store's file from before any turn",
+      change: lambda { |_, d|
+        Samagotchi::Bridge::CardStore.new(path: File.join(d, "cards.json")).call({ type: :hook_notice, hook: "h", text: "n", between_turns: true })
+      },
+      worker: true, repl: true, sweep: true },
+    { name: "a store's file with a turn",
+      change: lambda { |_, d|
+        store = Samagotchi::Bridge::CardStore.new(path: File.join(d, "cards.json"))
+        store.call({ type: :turn_started, turn_id: "t1" })
+        store.call({ type: :card, id: "c1", in_turn: true })
+      },
       worker: false, repl: false, sweep: false },
     # A broken analytics.json or cards.json is "not empty" everywhere: the
     # worker, the REPL and the sweep all keep the folder, none crashes.

@@ -136,7 +136,7 @@ module Samagotchi
       @accumulator = TurnAccumulator.new
       # Saved in the session's folder: a later worker, and the web without
       # one, show the cards where they were.
-      @cards = CardStore.new(path: File.join(session_dir, CardStore::FILE), killed_turn_stays: true)
+      @cards = CardStore.new(path: File.join(session_dir, CardStore::FILE), messages: -> { @engine.session&.messages })
       @pending_card = PendingCard.new(session_dir)
       @heartbeat_interval = heartbeat_interval
       @epoch = SecureRandom.hex(4)
@@ -339,7 +339,8 @@ module Samagotchi
     # What the page re-reads at a turn's end and when a card arrives: the
     # session state, the last answer (Engine#last_answer_message: one
     # message, not the conversation) and the cards, as one step of the event
-    # log (one event_seq). Light whatever the session's length: GET tail.
+    # log (one event_seq). Light for a long session: GET tail copies no messages,
+    # and placing the cards only walks them (about 10 ms at 40k messages).
     # The session's folder (working_directory) rides along: what the web
     # checks the answer's file refs against without reading the session file.
     # @return [Hash] {session_id:, working_directory:, session_state_snapshot:, answer:, cards:, event_seq:, event_id:}
@@ -372,8 +373,9 @@ module Samagotchi
 
     private
 
-    # The cards, against the messages a snapshot's page draws: the session's
-    # own, which a running turn leaves alone. No copy: GET tail stays light.
+    # The cards, placed against the messages a snapshot's page draws (the
+    # session's own, which a running turn leaves alone). No copy: GET tail
+    # stays light.
     def cards_listing
       @cards.list(messages: @engine.session&.messages)
     end

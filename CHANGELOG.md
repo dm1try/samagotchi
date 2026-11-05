@@ -9,6 +9,7 @@ and commands may change between minor versions. How releases are made:
 
 ### Fixed
 
+- A card or notice keeps its place in the web after a reload, however many turns came after it: a finished task's or an attached context's wake no longer sends it above earlier prompts, and a reminder or a Continue no longer pushes it toward the bottom. A card now stays with the turn it came after, also through a `!rollback` or a restart. A session's existing cards keep the places they have. Going back to an older chi on a session afterwards clears that session's cards.
 - A saved recap sits where it belongs in the web after a task or context wake, or a `!cmd`.
 
 ## [0.150.0] - 2026-11-05

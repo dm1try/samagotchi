@@ -15,7 +15,8 @@ rescues its own errors: an observer must never break the running turn.
 |-------|------------------|-------|
 | `RingBuffer` | `ring_buffer.rb` | The last `ring_capacity` (256) raw events by `event_seq`, in memory, for a reconnect's replay. The capture observer feeds it. |
 | `TurnAccumulator` | `turn_accumulator.rb` | The turn in progress, folded from events. |
-| `CardStore` | `card_store.rb` | The last cards and notices, saved in `cards.json`. |
+| `CardStore` | `card_store.rb` | The last cards and notices, saved in `cards.json`, each anchored to its turn. |
+| `CardPlaces` | `card_places.rb` | Pure: where `CardStore`'s entries sit in the messages the page draws (`turns_since`). |
 | `PendingCard` | `pending_card.rb` | `pending_card.json` `{id:, bundle:}`: the running turn's open card with actions (check-in's Nudge), written and removed with that card, so chi web's hub, which watches files and not workers, can notify. |
 
 Per connection there is an `SSEWriter` (with a `BoundedQueue`); `ClientEvent` and `EventId` are pure helpers. The
@@ -49,25 +50,51 @@ The cards a plugin or the Engine shows (`Engine#show_card`), hook notices, load 
 the "asking again" and steer-cut rows, ✂ rows and questions (with how they were answered), for a UI that joins later:
 `snapshot[:cards]` and `GET /tail`'s `cards`.
 
-- **Placement is relative.** An entry carries `turns` and lists with `turns_since` (turns completed after it) and
-  `current` (a card of the running turn). A card that comes mid-turn but isn't the turn's (an anytime command's, such as
-  `/btw`) goes after that turn (`during`). A card with an earlier card's id replaces it in place.
-- **A turn that leaves nothing.** `!rollback` (`TurnFlow#rollback!`, `:turn_rolled_back`) takes a kept turn's count
-  back. Of a rolled-back turn, and a failed one with nothing kept, the cards and hook notices become between-turns entries
-  at its place (the cards lose their actions); its other rows go, having no step to sit in.
+- **Anchored to its turn.** The store keeps a **turn log**, every id it saw at `:turn_started`, oldest first. An entry
+  holds `turn_id`: the running turn's, else the log's last (nil before any); a load warning, which the Engine announces
+  inside the first turn, takes the one before it. `list(messages:)` computes `turns_since` from the messages the page draws
+  (`CardPlaces`, the snapshot's own list; a stopped session's file for `.saved`): the turn openings (`Steer.turn_opening?`, as
+  the page's `TURN_PROMPT` and the recap count) after the last one whose id is in the log at or before the entry's, else from
+  the first one whose id is later in the log, else 0. The log only orders; the messages count. So a turn with no opening (a
+  reminder, a Continue, a failed or rolled-back one, a prompt stopped before the model) moves nothing, a wake's note does, and
+  an opening with no id (`/continue no`'s reason, Qwen's recovery line) counts as on the page. Nothing orders such an opening
+  against an entry, so the store reads the session's messages (its `messages:` lambda) when an entry is shown between turns, and
+  at the turn's end for what a running turn showed that isn't its own: `past_idless` is how many of them, right after the opening
+  it counts from, the entry already came after, and they don't count for it. A `!rollback` can only shorten that run, so a stale
+  number never eats a later turn. A turn's own rows don't read it: they count such a line, which sits below them. `current` is a card of the running turn. A card that
+  comes mid-turn but isn't the turn's (an anytime command's, such as `/btw`) goes after that turn (`during`), and so does a
+  between-turns notice. A card with an earlier card's id replaces it in place and keeps its anchor. A `list` with no messages
+  (`?cards=1`'s bodies, `chi bundle try`'s trace) has no `turns_since`.
+- **A turn that leaves nothing** is read, not told: an in-turn entry not `current` whose turn has no opening in the messages
+  (a `!rollback`, a failed turn with nothing kept, a prompt stopped before the model) lists as a between-turns entry at its
+  place, a card without its actions and a hook's notice without its step; its other rows, having no step to sit in, aren't
+  listed. Nothing in the entry changes. A kept Continue or reminder turn never has an opening, so its entries are `continued`
+  and stay rows of the turn before; a failed one loses the mark at its end.
 - **Caps.** `CAPACITY` (20) each for notices, ✂ rows (`LLM_CONTEXT_TYPES`) and cards, so one burst cannot push out
   another kind. An open question (an approval too) is never pushed out.
 - **Saved.** With a `path` (`cards.json` in the session's folder) the store rewrites the file after each event in
-  `SAVED_ON`, and a later worker's store starts from it, so a turn's cards outlive the worker; `CardStore.saved(dir)` is
-  what chi web reads for a session no worker runs. Load warnings are the worker's own (each start announces them)
-  and an unanswered question waits for no one: neither is saved or seeded. An entry from an earlier worker lists with
-  `earlier: true`; one shown during a turn comes back **without its actions** (their turn no longer runs), while a
-  between-turns card keeps its buttons.
-- **A killed turn counts.** A worker killed mid-turn never saw the turn end, but `TurnCheckpoint` keeps its prompt (the
-  next worker settles it as canceled). The Bridge's store (`killed_turn_stays:`) saves `"running": true` at
-  `:turn_started`, and a store started from that adds the one turn. An ordered end clears it, so a graceful stop's
-  cancel counts once; a file without the field counts none. A REPL's store never saves it: it keeps no running turn in
-  the session, so a kill takes the prompt too.
+  `SAVED_ON`, and a later worker's store starts from it, so a turn's cards outlive the worker; `CardStore.saved(dir, messages:)`
+  is what chi web reads for a session no worker runs. The file is `{version: 2, turn_log:, entries:}`. The log is pruned at
+  save to start at the opening the earliest anchor counts from (all of it while an entry has none, or for a store with no
+  `messages:`), so a restart reads an entry as the live store did; an old card therefore keeps it whole. `seed` drops an entry
+  whose `turn_id`, `base_since` or `past_idless` isn't an id or a non-negative integer. Load warnings
+  are the worker's own (each start announces them) and an unanswered question waits for no one: neither is saved or seeded. An
+  entry from an earlier worker lists with `earlier: true`; one shown during a turn comes back **without its actions** (their
+  turn no longer runs), while a between-turns card keeps its buttons.
+- **Version 1.** A file from before the log (top-level `turns`, each entry its own, maybe `running`) keeps its places, drift
+  included: `seed` turns each count into `base_since`, new openings add to it, and such an entry never reads as having left
+  nothing (no id to check). The next save writes version 2 with `base_since` kept. `SessionManager.cards_empty?` reads both.
+- **An older chi on a version 2 file.** Its `seed` wants an integer `turns`, finds none, and starts with no entries. A chi web not
+  yet restarted only reads: it lists no cards for that session until restarted, and the file stays whole. An older **writer** does
+  damage: at its first saved event (`:turn_started`) it writes `{"version":1,"turns":1,"entries":[]}` over the file, so that session's
+  cards go, and with them the answered approvals `chi guardrails replay` reads. A plain upgrade can't reach this: a worker already
+  running seeded before and keeps its own version 1 file, and a spawn runs the newest chi installed (`SessionManager.worker_command`).
+  It takes an older process starting on a session a newer one wrote: a downgrade, a chi home whose newest chi is older
+  (`home_older_than_spawner`), or a REPL or `bin/chi` from an older gem or checkout on the same state dir. Nothing on this side stops
+  it: an older chi can't be changed, and having it read the file would mean writing fake `turns` counters into every file.
+- **A killed turn needs nothing special.** `TurnCheckpoint` keeps a running turn's prompt in the session file, with its id from
+  the start (`Worker#run_engine_turn` settles it first), so it counts as any opening. A REPL keeps no running turn in the
+  session, so a kill takes the prompt along and there's nothing to count.
 
 ## SSEWriter
 
