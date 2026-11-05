@@ -877,6 +877,18 @@ Hooks removed: 1\n\z})
       expect(chi("status", "demo")[0]).to match(%r{  a\.md: modified; merged 1\.0\.0 into your a\.md on \S+ \S+ \(old copy in /the/trash\)\n})
     end
 
+    it "counts a file it can't read as an issue, marked or not" do
+      skip "root reads anything" if Process.uid.zero?
+      path = File.join(memories, "a.md")
+      File.chmod(0o000, path)
+      begin
+        expect(chi("status")[0]).to include("issues=1")
+        expect(chi("status", "demo")[0]).to include("  a.md: unreadable\n")
+      ensure
+        File.chmod(0o644, path)
+      end
+    end
+
     it "doesn't count an edit the bundle has no change for as an issue" do
       expect(chi("status", "demo")[0]).to include("  a.md: modified\n")
       expect(chi("status")[0]).to include("  demo v1.0.0 scope=system files=1 issues=0\n")

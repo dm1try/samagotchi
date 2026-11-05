@@ -233,6 +233,13 @@ RSpec.describe Samagotchi::MemoryBundle::SystemBundle do
           end
         end
 
+        it "keeps what stays behind on a newer install's result" do
+          mark_old(text(intro: "my intro"))
+          ship("0.1.2", text)
+
+          expect(described_class.sync).to have_attributes(status: :newer_installed, kept: ["identity.md"])
+        end
+
         it "leaves a note whoever merged: one rule for a start and for chi update" do
           mark_old(text(intro: "my intro"))
           expect(described_class.sync.merged).to eq(["identity.md"])

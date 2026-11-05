@@ -209,7 +209,7 @@ RSpec.describe Samagotchi::MemoryBundle::ShippedUpdate do
       File.write(record, JSON.pretty_generate(raw))
 
       rows = described_class.apply(described_class.plan(shipped_dir: root))
-      expect(rows.first).to have_attributes(status: :up_to_date, merged: [])
+      expect(rows.first).to have_attributes(status: :up_to_date, merged: [], kept: ["note.md"])
       expect(File.read(File.join(project, "note.md"))).to eq(note(intro: "my intro"))
     end
 
