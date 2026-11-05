@@ -1,7 +1,6 @@
 # frozen_string_literal: true
 
 require "fileutils"
-require_relative "file_standing"
 require_relative "installer"
 require_relative "provenance"
 require_relative "manifest"

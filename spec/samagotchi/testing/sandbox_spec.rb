@@ -124,7 +124,7 @@ RSpec.describe Samagotchi::Testing::Sandbox do
   # under this lib/ count: on CI the checkout is .../samagotchi/samagotchi/
   # and bundler-cache's vendor/bundle sits inside it, so a path match would
   # count gem files too.
-  it "requires no Engine with the kit, in under 277 chi files" do
+  it "requires no Engine with the kit, in under 276 chi files" do
     lib = File.expand_path("../../../lib", __dir__)
     script = 'lib = ARGV.fetch(0); require "samagotchi/testing"; ' \
              'print [$LOADED_FEATURES.count { |f| f.start_with?(lib + "/samagotchi/") }, ' \
@@ -133,6 +133,6 @@ RSpec.describe Samagotchi::Testing::Sandbox do
     expect(status).to be_success, err
     count, engine = out.split
     expect(engine).to eq("nil")
-    expect(Integer(count)).to be < 277
+    expect(Integer(count)).to be < 276
   end
 end

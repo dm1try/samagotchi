@@ -2,7 +2,6 @@
 
 require "digest"
 require_relative "../atomic_file"
-require_relative "file_standing"
 require_relative "installed_bundle"
 
 module Samagotchi

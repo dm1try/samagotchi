@@ -3,11 +3,13 @@
 require "json"
 require_relative "../memory_paths"
 require_relative "bundle_hook"
-require_relative "file_standing"
 require_relative "plugin_ref"
 
 module Samagotchi
   module MemoryBundle
+    # Only what reports on an edited file needs it.
+    autoload :FileStanding, File.expand_path("file_standing", __dir__)
+
     # An installed bundle's record, as Provenance#write keeps it in
     # <bundles>/<name>/manifest.json. Reading is tolerant: an older record
     # lacks keys a newer chi writes, and a key that is missing or of the

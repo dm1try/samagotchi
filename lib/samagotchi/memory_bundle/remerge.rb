@@ -1,7 +1,6 @@
 # frozen_string_literal: true
 
 require_relative "index_updater"
-require_relative "file_standing"
 require_relative "manifest"
 require_relative "memory_files"
 require_relative "merger"

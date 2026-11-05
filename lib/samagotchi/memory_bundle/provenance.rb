@@ -7,7 +7,6 @@ require "fileutils"
 require_relative "../atomic_file"
 require_relative "../memory_paths"
 require_relative "bundle_hook"
-require_relative "file_standing"
 require_relative "installed_bundle"
 
 module Samagotchi
