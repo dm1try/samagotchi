@@ -130,6 +130,17 @@ RSpec.describe "The github-pr bundle", :bundle do
       expect(ctx.context.candidates).to eq([])
     end
 
+    # A chi started from a hook or `rebase --exec`: git, and gh's own git, ask
+    # about the session's folder, not the repo the environment names.
+    it "asks git and gh about the session's folder, whatever repo the environment names" do
+      fake("git", 'echo "branch-${GIT_DIR:-clean}"')
+      fake("gh", %(echo "${GIT_DIR:-clean}" > #{tmpdir}/gh-saw; exit 1))
+      ENV["GIT_DIR"] = "/nowhere/.git"
+
+      expect(plugin.attach_branch_pr(ctx)).to eq("no pull request for branch-clean")
+      expect(File.read(File.join(tmpdir, "gh-saw")).strip).to eq("clean")
+    end
+
     context "in a scratch session" do
       let(:scratch) { true }
 

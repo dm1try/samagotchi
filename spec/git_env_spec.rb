@@ -66,6 +66,21 @@ RSpec.describe Samagotchi::GitEnv do
     expect(described_class::VARS - local).to eq([])
   end
 
+  it "leaves a spawn the settings given around chi, and clears all that names a repo" do
+    local = IO.popen(%w[git rev-parse --local-env-vars], &:read).split
+    expect(local - described_class::UNSET.keys).to contain_exactly("GIT_CONFIG_COUNT", "GIT_CONFIG_PARAMETERS")
+    expect(described_class::UNSET.values).to all(be_nil)
+  end
+
+  # `chi bundle check` loads testing.rb into a real chi: only its adapters scrub.
+  it "leaves a real chi's environment alone when it loads the kit" do
+    lib = File.expand_path("../lib", __dir__)
+    out, status = Open3.capture2e({ "GIT_DIR" => "/nowhere/.git" }, RbConfig.ruby, "-I", lib, "-e",
+                                  'require "samagotchi/testing"; print ENV["GIT_DIR"]')
+    expect(status).to be_success, out
+    expect(out).to eq("/nowhere/.git")
+  end
+
   it "clears them in a sandbox, puts them back after it, and leaves the suite's GIT_CONFIG_COUNT" do
     require "samagotchi/testing/sandbox"
     with_env("GIT_DIR" => "/nowhere/.git") do

@@ -194,6 +194,18 @@ RSpec.describe "The known-names bundle" do
     end
   end
 
+  # A chi started from a hook or `rebase --exec`: the git name is the session's
+  # repo's, not the repo the environment names.
+  it "reads the git name from the session's repo, whatever repo the environment names" do
+    other = File.join(File.dirname(repo), "other")
+    system("git", "init", "-q", other, exception: true)
+    system("git", "-C", other, "config", "user.name", "Xavier", exception: true)
+
+    with_env("GIT_DIR" => File.join(other, ".git")) do
+      expect(shell("ssh j0hnno@host")).to be_deny
+    end
+  end
+
   describe "mode: correct" do
     before { settings.merge!("mode" => "correct") }
 

@@ -1384,7 +1384,9 @@ that calls it, or for a real external bundle that does. No method on the chance 
 5. `Samagotchi::Tools::TaskRuntime::TASKS_DIR` and `EXIT_CODE_FILENAME`.
 6. `Samagotchi::AtomicFile.write`, `Samagotchi::Log.warn` /
    `Samagotchi::Log.debug`, `Samagotchi::Config.get`,
-   `Samagotchi::VERSION` and `Samagotchi::CancellationController` (`new`, `cancel!`: what `cancel:` takes).
+   `Samagotchi::VERSION`, `Samagotchi::CancellationController` (`new`, `cancel!`: what `cancel:` takes) and
+   `Samagotchi::GitEnv::UNSET` (a spawn env: a bundle's own git, or gh, asks about the folder it names, not the repo
+   a hook's or `rebase --exec`'s environment names).
 
 `Samagotchi::Testing::Boundary::ALLOWED` is the checked copy of this list,
 and `Boundary::EXCEPTIONS` the per-bundle list of what each shipped bundle

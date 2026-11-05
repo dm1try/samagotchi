@@ -404,6 +404,12 @@ RSpec.describe Samagotchi::MemoryBundle::TextMerge do
       end
     end
 
+    it "ignores config in the environment's newer form too" do
+      with_env("GIT_CONFIG_COUNT" => "9") do
+        expect(merge("# H\n\na\n", "# H\n\nmine\n", "# H\n\ntheirs\n").status).to eq(:conflict)
+      end
+    end
+
     it "ignores a broken global config" do
       config = File.join(tmp, "broken")
       File.write(config, "[not valid\n")

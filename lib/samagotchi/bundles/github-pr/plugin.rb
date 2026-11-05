@@ -5,6 +5,7 @@ require "json"
 require "open3"
 require "time"
 require "tmpdir"
+require "samagotchi/git_env"
 
 # github-pr: a session on a branch with an open GitHub PR gets the PR
 # proposed as a candidate (docs/context.md, Candidates) when its worker
@@ -334,7 +335,7 @@ class Plugin
 
   # stdout of a command that succeeded within COMMAND_SECONDS, else nil.
   def run(ctx, *command, chdir: ctx.cwd)
-    Open3.popen2(*command, chdir: chdir, err: File::NULL, pgroup: true) do |stdin, stdout, wait|
+    Open3.popen2(Samagotchi::GitEnv::UNSET, *command, chdir: chdir, err: File::NULL, pgroup: true) do |stdin, stdout, wait|
       stdin.close
       reader = Thread.new { stdout.read }
       unless wait.join(COMMAND_SECONDS)

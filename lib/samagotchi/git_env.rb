@@ -20,7 +20,10 @@ module Samagotchi
     ].freeze
 
     # What a spawn takes as its env: Process.spawn unsets a key mapped to nil.
-    UNSET = VARS.to_h { |name| [name, nil] }.freeze
+    # Not GIT_CONFIG_PARAMETERS, GIT_CONFIG_COUNT's older form (`git -c ...` around
+    # chi): settings for this git, not a repo, like a url.insteadOf for a clone.
+    # A test run clears it (VARS); what wants no config at all says so (TextMerge).
+    UNSET = (VARS - ["GIT_CONFIG_PARAMETERS"]).to_h { |name| [name, nil] }.freeze
 
     module_function
 

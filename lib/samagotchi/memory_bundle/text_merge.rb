@@ -183,7 +183,7 @@ module Samagotchi
       end
 
       def git_env(dir)
-        GitEnv::UNSET.merge("GIT_CONFIG_COUNT" => nil,
+        GitEnv::UNSET.merge("GIT_CONFIG_PARAMETERS" => nil, "GIT_CONFIG_COUNT" => nil,
                             "GIT_CONFIG_GLOBAL" => File::NULL, "GIT_CONFIG_SYSTEM" => File::NULL, "GIT_CONFIG_NOSYSTEM" => "1",
                             "GIT_CEILING_DIRECTORIES" => File.dirname(File.realpath(dir)))
       end

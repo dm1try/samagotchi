@@ -391,6 +391,27 @@ RSpec.describe "The source-links bundle" do
 
     def texts = notices.map { |n| n[:text] }
 
+    it "reads the checkout's remote, whatever repo the environment names" do
+      repo_with("origin" => "git@github.com:dm1try/samagotchi.git")
+      other = File.join(tmp, "other")
+      system("git", "init", "-q", other, exception: true)
+      system("git", "-C", other, "remote", "add", "origin", "git@github.com:x/other.git", exception: true)
+
+      with_env("GIT_COMMON_DIR" => File.join(other, ".git")) { Dir.chdir(tmp) { fire([model("See #12.")]) } }
+
+      expect(texts).to eq(["sources: GitHub #12 → https://github.com/dm1try/samagotchi/issues/12"])
+    end
+
+    it "keeps a url rewrite given with git -c around chi" do
+      repo_with("origin" => "git@github.com:dm1try/samagotchi.git")
+
+      with_env("GIT_CONFIG_PARAMETERS" => "'url.git@github.com:x/.insteadOf=git@github.com:dm1try/'") do
+        Dir.chdir(tmp) { fire([model("See #12.")]) }
+      end
+
+      expect(texts).to eq(["sources: GitHub #12 → https://github.com/x/samagotchi/issues/12"])
+    end
+
     it "links #12 to the origin's repo, and a qualified ref to its own" do
       repo_with("origin" => "git@github.com:dm1try/samagotchi.git")
       Dir.chdir(tmp) { fire([model("See #12 and rails/rails#5.")]) }

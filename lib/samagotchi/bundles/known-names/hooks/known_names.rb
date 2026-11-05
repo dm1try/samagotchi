@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require "samagotchi/git_env"
+
 # A before_tool_call guard against near-misses of protected identifiers in
 # a tool call's command or paths: the user's home folder name, login, git
 # name and email, the repo name, and any names from config. A local model
@@ -187,7 +189,7 @@ class KnownNames
   end
 
   def git_config(root, key)
-    IO.popen(["git", "-C", root, "config", "--get", key], err: File::NULL, &:read).to_s.strip
+    IO.popen(Samagotchi::GitEnv::UNSET, ["git", "-C", root, "config", "--get", key], err: File::NULL, &:read).to_s.strip
   rescue StandardError
     ""
   end

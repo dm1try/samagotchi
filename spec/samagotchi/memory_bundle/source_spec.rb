@@ -186,6 +186,23 @@ RSpec.describe Samagotchi::MemoryBundle::SourceNormalizer do
       end
     end
 
+    # `git -c url.X.insteadOf=Y` around chi: settings, not a repo.
+    it "keeps the settings given around chi for its clone" do
+      Dir.mktmpdir do |parent|
+        repo = File.join(parent, "repo")
+        system("git", "init", "-q", repo, exception: true)
+        File.write(File.join(repo, "identity.md"), "# Id\n")
+        system("git", "-C", repo, "add", ".", exception: true)
+        system("git", "-C", repo, "-c", "user.name=x", "-c", "user.email=x@x", "commit", "-qm", "x", exception: true)
+
+        with_env("GIT_CONFIG_PARAMETERS" => "'url.file://#{repo}.insteadOf=https://chi-test.invalid/x'") do
+          path, = described_class.normalize("https://chi-test.invalid/x")
+          expect(File.read(File.join(path, "identity.md"))).to eq("# Id\n")
+          described_class.cleanup(path)
+        end
+      end
+    end
+
     it "returns nil commit for non-git sources" do
       bundle_dir = write_bundle_dir(tmpdir, "identity.md" => "# Id\n")
       path, owned = described_class.normalize(bundle_dir)

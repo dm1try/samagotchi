@@ -2,6 +2,7 @@
 
 # Loaded through module_eval: it requires what it uses.
 require "open3"
+require "samagotchi/git_env"
 require "samagotchi/ref"
 
 # An after_turn (and question_asked) hook that links the source refs the
@@ -621,8 +622,7 @@ class SourceLinks
   end
 
   def read_remote(dir, name)
-    out, status = Open3.capture2({ "GIT_DIR" => nil, "GIT_WORK_TREE" => nil },
-                                 "git", "-C", dir, "remote", "get-url", name, err: File::NULL)
+    out, status = Open3.capture2(Samagotchi::GitEnv::UNSET, "git", "-C", dir, "remote", "get-url", name, err: File::NULL)
     unless status.success?
       Samagotchi::Log.debug(:hooks, "source_links_no_remote", remote: name, exit: status.exitstatus)
       return nil
