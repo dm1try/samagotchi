@@ -89,6 +89,40 @@ RSpec.describe "Cards" do
       expect(cards.first).to include(card)
     end
 
+    describe "a card a session command shows" do
+      let(:commands) do
+        Samagotchi::SessionCommands.new(engine: engine, turn_flow: Samagotchi::TurnFlow.new(engine: engine), default_model: "m",
+                                        registry: engine.command_registry)
+      end
+
+      before do
+        engine.command_registry.register("/hello", "greet", source: "b") do |_args|
+          engine.show_card(source: "b", title: "by hello", id: "c1")
+          nil
+        end
+      end
+
+      it "names the command, on the running thread and on an anytime command's" do
+        commands.run("/hello")
+        expect(cards.last).to include(id: "c1", command: "/hello")
+        seen.clear
+        engine.running_anytime { commands.run("/hello") }
+        expect(cards.last).to include(id: "c1", command: "/hello")
+      end
+
+      it "names none from another thread, or after the command" do
+        engine.command_registry.register("/bg", "in the background", source: "b") do |_args|
+          Thread.new { engine.show_card(source: "b", title: "off the command", id: "c2") }.join
+          nil
+        end
+        commands.run("/bg")
+        expect(cards.last).to include(id: "c2")
+        expect(cards.last).not_to have_key(:command)
+        engine.show_card(source: "b", title: "after", id: "c3")
+        expect(cards.last).not_to have_key(:command)
+      end
+    end
+
     it "keeps a given id (the same id replaces a card in the UIs)" do
       2.times { |n| engine.show_card(source: "b", title: "t#{n}", id: "same") }
       expect(cards.map { |c| [c[:id], c[:title]] }).to eq([%w[same t0], %w[same t1]])
@@ -746,6 +780,29 @@ RSpec.describe "Cards" do
       expect(first.list(messages: [{ role: "user", content: "p", turn_id: "only" }]).first[:turns_since]).to eq(1)
     end
 
+    describe "a card a command showed" do
+      def by_command(id, name = "/short") = card(id).merge(command: name)
+
+      it "lists a label for it, never the command itself; none for a hook's card or a turn's" do
+        store.call(by_command("s"))
+        turn(:turn_started)
+        store.call(card("own", in_turn: true))
+        store.call(card("hook"))
+        expect(listed.map { |c| [c[:id], c[:label]] }).to eq([["s", "from /short"], ["own", nil], ["hook", nil]])
+        expect(listed.first).not_to have_key(:command)
+        expect(listed.last).not_to have_key(:label)
+      end
+
+      it "the first show decides: a replacement keeps its command, even none" do
+        store.call(by_command("s"))
+        store.call(card("s", "answer")) # the service's stop thread, outside the command
+        expect(listed.first).to include(title: "answer", label: "from /short")
+        store.call(card("proposal"))
+        store.call(by_command("proposal", "/objectives"))
+        expect(listed.last).not_to have_key(:label)
+      end
+    end
+
     it "shows none of its internals" do
       turn(:turn_started, continue: true)
       store.call(card("own", in_turn: true))
@@ -970,6 +1027,13 @@ RSpec.describe "Cards" do
         store.call(between("after"))
         expect(listed(store).first).not_to have_key(:after_failed)
       end
+    end
+
+    it "keeps a command's label across a restart" do
+      store = Samagotchi::Bridge::CardStore.new(path: path)
+      store.call(card("s").merge(in_turn: false, command: "/short"))
+      expect(saved.first).to include(label: "from /short")
+      expect(saved.first).not_to have_key(:command)
     end
 
     describe "the file (version 2)" do

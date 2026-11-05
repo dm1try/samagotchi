@@ -72,6 +72,9 @@ the "asking again" and steer-cut rows, ✂ rows and questions (with how they wer
   and stay rows of the turn before; a failed one loses the mark at its end. The page draws a failed prompt at the history's
   end, so an entry pushed idle after it lists `after_failed` (the store's saved `failed_turn`) and goes below it, until the
   next turn starts.
+- **A command's card.** `SessionCommands#run` wraps its dispatch in `Engine#running_command`, so a card shown on that thread
+  carries `command:` (the event's field, `show_card` adds it). The store keeps the first show's (a replacement keeps it, even
+  none) and lists `label: "from /short"`, never `command`. The page draws it after a reload, where the command's line is gone.
 - **Caps.** `CAPACITY` (20) each for notices, ✂ rows (`LLM_CONTEXT_TYPES`) and cards, so one burst cannot push out
   another kind. An open question (an approval too) is never pushed out.
 - **Saved.** With a `path` (`cards.json` in the session's folder) the store rewrites the file after each event in

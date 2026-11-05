@@ -70,7 +70,7 @@ module Samagotchi
       SAVED_ON = (%i[turn_started card hook_notice empty_answer_retry steer_cut llm_context_edited question_requested question_answered
                      question_cancelled question_relay] + Events::TURN_END).freeze
       # What only the store reads: never listed.
-      INTERNAL_FIELDS = %i[turn_id continued base_since past_idless during after_failed].freeze
+      INTERNAL_FIELDS = %i[turn_id continued base_since past_idless during after_failed command].freeze
 
       # What a session's saved file lists, as a store started from it lists
       # (no turn running): the web's cards for a session no worker runs.
@@ -122,7 +122,8 @@ module Samagotchi
       #   running turn runs but isn't that turn's (it goes after the running
       #   turn's prompt), and after_failed: true for one shown after the last
       #   turn's prompt went back (the page draws that prompt at the end: it goes
-      #   after it, as it showed live)
+      #   after it, as it showed live); label: for a card a command showed ("from
+      #   /short"), for a page whose reload has lost the command's line
       def list(messages: nil)
         @mutex.synchronize do
           places = messages && !@entries.empty? ? CardPlaces.new(@turn_log, messages) : nil
@@ -142,6 +143,7 @@ module Samagotchi
         out[:current] = current
         out[:during] = true if entry[:during]
         out[:after_failed] = true if entry[:after_failed] && entry[:turn_id] == @failed_turn
+        out[:label] = "from #{entry[:command]}" if entry[:command]
         out
       end
 
@@ -310,12 +312,15 @@ module Samagotchi
       def anchor = @running_turn || @turn_log.last
 
       def add_card(event)
-        card = event.slice(:type, :id, :source, :title, :body, :level, :actions)
+        card = event.slice(:type, :id, :source, :title, :body, :level, :actions, :command)
         index = @entries.index { |entry| entry[:type] == :card && entry[:id] == card[:id] }
         if index
-          # Replaced where it was: the first one's place stays.
+          # Replaced where it was: the first one's place stays, and whose it is
+          # (a command's answer from another thread; a turn's proposal its own
+          # button's command replaced, which nobody typed).
           old = @entries[index]
-          @entries[index] = card.merge(updated: true, **old.slice(:in_turn, :turn_id, :during, :continued, :base_since, :past_idless, :after_failed))
+          @entries[index] = card.except(:command).merge(updated: true, **old.slice(:in_turn, :turn_id, :during, :continued, :base_since,
+                                                                                   :past_idless, :after_failed, :command))
         else
           entry = card.merge(in_turn: event[:in_turn] ? true : false, turn_id: anchor)
           entry[:during] = true if @running_turn && !event[:in_turn]

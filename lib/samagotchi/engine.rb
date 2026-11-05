@@ -1107,6 +1107,8 @@ module Samagotchi
     # @raise [ArgumentError] a card without a title, or a bad action
     def show_card(source:, title:, body: "", actions: [], level: :info, id: nil)
       card = Plugin::Card.build(source: source, title: title, body: body, actions: actions, level: level, id: id)
+      command = Thread.current[running_command_key]
+      card[:command] = command if command
       @event_routes.route(card, **EventRoutes::CARD_MARKS)
       card[:id]
     end
@@ -1124,6 +1126,20 @@ module Samagotchi
       yield
     ensure
       Thread.current[key] = outer
+    end
+
+    # Run a session command's dispatch: a card shown on this thread says
+    # it's that command's (:card's command:), for a reload that no longer has
+    # the command's line above it (Bridge::CardStore). A thread of its own
+    # isn't the command, nor a card shown after it.
+    # @param name [String] the command, "/short"
+    # @return the block's value
+    def running_command(name)
+      outer = Thread.current[running_command_key]
+      Thread.current[running_command_key] = name
+      yield
+    ensure
+      Thread.current[running_command_key] = outer
     end
 
     # Whether an anytime command (/btw) still runs on its thread.
@@ -2973,6 +2989,8 @@ module Samagotchi
     end
 
     private
+
+    def running_command_key = :"samagotchi_command_#{object_id}"
 
     # The one named seam for replacing a session's conversation (the
     # array is replaced, never mutated in place). No lock: a reader gets

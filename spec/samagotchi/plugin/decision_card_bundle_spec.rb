@@ -6,6 +6,8 @@ require "fileutils"
 require "samagotchi/engine"
 require "samagotchi/objectives"
 require "samagotchi/session"
+require "samagotchi/bridge"
+require "samagotchi/session_commands"
 require "samagotchi/memory_bundle/installer"
 require "support/test_kernel"
 
@@ -84,6 +86,20 @@ RSpec.describe "The decision-card bundle, installed" do
   end
 
   def cards = events.select { |event| event[:type] == :card }
+
+  it "lists /short's card as from /short, typed through the session's commands; a turn's own card names none" do
+    install
+    engine = new_engine
+    store = Samagotchi::Bridge::CardStore.new
+    engine.subscribe(observer: store)
+    session = new_session
+    run(engine, session)
+    commands = Samagotchi::SessionCommands.new(engine: engine, turn_flow: Samagotchi::TurnFlow.new(engine: engine), default_model: "m",
+                                               registry: engine.command_registry)
+    commands.run("/short")
+    expect(store.list(messages: session.messages).map { |c| [c[:title], c[:label]] })
+      .to contain_exactly(["A question for you · O1", nil], ["Short version", "from /short"])
+  end
 
   it "shows its card between turns, after the turn's end, with nothing in the conversation" do
     install

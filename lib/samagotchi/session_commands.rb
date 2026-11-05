@@ -317,16 +317,9 @@ module Samagotchi
       text = line.to_s.strip
       entry = @registry.lookup(text)
       return nil unless entry&.handler
-      return run_bundle_command(entry, text, confirm: confirm) unless entry.source == "core"
 
-      # Only commands that may ask take the flag.
-      return send(entry.id, text, confirm: confirm) if CONFIRMING.include?(entry.id)
-      # Who sent it goes to its handler per call, never through an ivar:
-      # an anytime command runs on another thread against this instance.
-      return continue_command(text, as_parent: as_parent) if entry.id == :continue
-      return parent_answers(text, user_ui: user_ui) if entry.id == :parent_answers
-
-      instance_exec(text, &entry.handler)
+      # A card it shows names it (Engine#running_command).
+      @engine.running_command(entry.name) { dispatch(entry, text, confirm:, as_parent:, user_ui:) }
     end
 
     # /continue [yes|no|no, <reason>]: the continue offer's answer.
@@ -366,6 +359,19 @@ module Samagotchi
     end
 
     private
+
+    def dispatch(entry, text, confirm:, as_parent:, user_ui:)
+      return run_bundle_command(entry, text, confirm: confirm) unless entry.source == "core"
+
+      # Only commands that may ask take the flag.
+      return send(entry.id, text, confirm: confirm) if CONFIRMING.include?(entry.id)
+      # Who sent it goes to its handler per call, never through an ivar:
+      # an anytime command runs on another thread against this instance.
+      return continue_command(text, as_parent: as_parent) if entry.id == :continue
+      return parent_answers(text, user_ui: user_ui) if entry.id == :parent_answers
+
+      instance_exec(text, &entry.handler)
+    end
 
     # The resolved ref (what the session stores and --alias/--default write).
     def model_name = @engine.effective_model_ref

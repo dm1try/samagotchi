@@ -124,7 +124,7 @@ module Samagotchi
         end
 
         # The listing's placement fields: nothing to place in a one-turn run.
-        LISTING_FIELDS = %w[turns_since current earlier after_failed].freeze
+        LISTING_FIELDS = %w[turns_since current earlier after_failed label].freeze
 
         # The saved cards as the web reads them (CardStore.saved), with
         # string keys and values, as the JSON trace prints them.

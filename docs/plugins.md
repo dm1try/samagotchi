@@ -945,7 +945,8 @@ completed turn stays in its step.
 Between turns, a card goes above the first turn prompt after it, live and
 after a reload. A failed turn whose prompt went back to its sender isn't a
 turn: its prompt line comes after the cards shown before it, and before those
-shown after.
+shown after. After a reload a card a command showed names it (`from /short`),
+its line being gone.
 
 An [anytime command](#anytime-true)'s cards show as it shows them, after its
 line, in every UI, whether a turn runs or not.
@@ -962,8 +963,8 @@ then a new turn) starts from them. Load warnings and a question still
 waiting when the worker went are not saved.
 
 The event is `{type: :card, id:, source:, title:, body:, level:, actions:,
-in_turn:}` (`source` is the bundle), logged as `card` with its source, id and
-title.
+in_turn:}` (`source` is the bundle), plus `command:` when a session command
+showed it (`"/short"`), logged as `card` with its source, id and title.
 
 ## Side answers: `ctx.ask_model`
 

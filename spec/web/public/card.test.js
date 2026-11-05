@@ -28,6 +28,37 @@ test("cardTemplate: no body and no actions leave out their parts", () => {
     '<div class="card-head"><span class="card-title">T</span></div><div class="card-error hidden"></div>');
 });
 
+test("cardTemplate: a label sits in the head before the source; none without one", () => {
+  assert.equal(cardInnerHtml({ title: "Short version", source: "decision-card", label: "from /short", actions: [] }),
+    '<div class="card-head"><span class="card-title">Short version</span><span class="card-label">from /short</span><span class="card-source">decision-card</span></div><div class="card-error hidden"></div>');
+});
+
+test("noticeTemplate: a label leads its from line; alone without a source", () => {
+  assert.equal(noticeInnerHtml({ title: "Short version", body: "b", source: "decision-card", label: "from /short" }),
+    '<summary>Short version: b</summary><div class="notice-from">from /short · <span class="card-source">decision-card</span></div>');
+  assert.equal(noticeInnerHtml({ title: "x", source: "x", label: "from /short" }),
+    '<summary>x</summary><div class="notice-from">from /short</div>');
+});
+
+test("drawCard: a reloaded card's label survives a live update, also onto a new element, and a body refresh", () => {
+  const labelled = { id: "s1", title: "Short version", body: "…", source: "decision-card", label: "from /short" };
+  const host = document.createElement("div");
+  document.body.append(host);
+  host.append(document.createElement("details"));
+  let el = drawCard(host.firstChild, labelled);
+  assert.match(el.querySelector(".notice-from").textContent, /^from \/short/);
+  // The answer comes on the stream, with no label, long enough to be a card.
+  el = drawCard(el, { id: "s1", title: "Short version", body: "line\nline", source: "decision-card" });
+  assert.equal(el.tagName, "DIV");
+  assert.equal(el.querySelector(".card-label").textContent, "from /short");
+  el = drawCard(el, { id: "s1", title: "Short version", body: "line\nline again", source: "decision-card" });
+  assert.equal(el.querySelector(".card-label").textContent, "from /short");
+  refreshCardBody(el, { body: "line\nline again", body_html: "<p>line</p>" });
+  assert.equal(el.querySelector(".card-label").textContent, "from /short");
+  assert.equal(el.querySelector(".card-body p").textContent, "line");
+  assert.equal(drawCard(document.createElement("div"), { id: "n", title: "T", body: "line\nline" }).querySelector(".card-label"), null);
+});
+
 test("cardBodyTemplate: the server's body_html (rendered markdown), else the text escaped in a <pre>", () => {
   assert.equal(cardBodyHtml({ ...card, body_html: "<p>hi <em>there</em></p>" }), "<p>hi <em>there</em></p>");
   assert.equal(cardBodyHtml({ body: "a < b" }), "<pre>a &lt; b</pre>");
