@@ -23,7 +23,7 @@ module Samagotchi
           --dry-run shows what would change. --agent launches interactive session on conflict.
 
         uninstall <bundle> [--scope system|project] [--force]
-          Remove a bundle and its index entries (--force if locally edited).
+          Remove a bundle and its index entries (--force moves a locally edited file to the trash).
 
         status [<bundle>]
           Show provenance and each file's status for bundles. issues= counts what

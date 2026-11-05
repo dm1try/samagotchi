@@ -36,7 +36,7 @@ RSpec.describe "chi bundle (CLI)" do
         --dry-run shows what would change. --agent launches interactive session on conflict.
 
       uninstall <bundle> [--scope system|project] [--force]
-        Remove a bundle and its index entries (--force if locally edited).
+        Remove a bundle and its index entries (--force moves a locally edited file to the trash).
 
       status [<bundle>]
         Show provenance and each file's status for bundles. issues= counts what
@@ -471,7 +471,7 @@ Hooks removed: 1\n\z})
 
       File.write(File.join(memories, "guardrails.md"), "mine\n")
       expect(chi("uninstall", "core"))
-        .to eq(["Removed from core: loop-guard, check-in, slow-commands, agents-md, cost-cap, work-cap\nKept guardrails: Uninstall blocked: guardrails.md has local edits (use --force)\n",
+        .to eq(["Removed from core: loop-guard, check-in, slow-commands, agents-md, cost-cap, work-cap\nKept guardrails: Uninstall blocked: guardrails.md has local edits (--force moves it to the trash)\n",
                 "Uninstall failed: core stays installed until guardrails goes (chi bundle uninstall core --force)\n", 1])
       expect(Dir.children(File.join(memories, ".bundles")).sort).to eq(%w[core guardrails])
       out, err, code = chi("uninstall", "core", "--force")
