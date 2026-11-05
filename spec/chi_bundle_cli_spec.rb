@@ -39,7 +39,8 @@ RSpec.describe "chi bundle (CLI)" do
         Remove a bundle and its index entries (--force if locally edited).
 
       status [<bundle>]
-        Show provenance + modification status for bundles.
+        Show provenance and each file's status for bundles. issues= counts what
+        needs you: a file that stays behind, is missing or can't be read, not one you edited.
 
       diff <bundle> [file]
         Show diffs between base/current/incoming for a bundle.
@@ -819,6 +820,45 @@ Hooks removed: 1\n\z})
         "#{conflict_head}The rest is upgraded. chi bundle diff demo FILE shows the base; " \
         "--force takes the bundle's version, your file copied to the trash first.\n", "", 2
       ])
+    end
+
+    context "once a file stays behind" do
+      before { chi("upgrade", @v3) }
+
+      it "says so per file in status, and counts it as an issue" do
+        expect(chi("status", "demo")[0]).to include("  a.md: modified; stays behind 3.0.0: missed 1 place (chi bundle diff demo a.md)\n")
+        expect(chi("status")[0]).to include("  demo v3.0.0 scope=system files=1 issues=1\n")
+      end
+
+      it "says so in list" do
+        expect(chi("list")[0]).to match(/^  demo .*\(1 file behind: chi bundle status demo\)$/)
+      end
+
+      it "stops once the file has the bundle's bytes, an edit alone being no issue" do
+        File.write(File.join(memories, "a.md"), "three\n")
+
+        expect(chi("status", "demo")[0]).to include("  a.md: modified\n")
+        expect(chi("status")[0]).to include("  demo v3.0.0 scope=system files=1 issues=0\n")
+        expect(chi("list")[0]).not_to include("behind")
+      end
+
+      it "reports a file it can't read, with no crash" do
+        skip "root reads anything" if Process.uid.zero?
+        path = File.join(memories, "a.md")
+        File.chmod(0o000, path)
+        begin
+          expect(chi("status", "demo")[0]).to include("  a.md: unreadable; stays behind 3.0.0")
+          expect(chi("status")[0]).to include("issues=1")
+          expect(chi("list")[0]).to include("1 file behind")
+        ensure
+          File.chmod(0o644, path)
+        end
+      end
+    end
+
+    it "doesn't count an edit the bundle has no change for as an issue" do
+      expect(chi("status", "demo")[0]).to include("  a.md: modified\n")
+      expect(chi("status")[0]).to include("  demo v1.0.0 scope=system files=1 issues=0\n")
     end
 
     it "takes the bundle's version with --force" do

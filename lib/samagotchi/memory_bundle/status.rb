@@ -18,7 +18,8 @@ module Samagotchi
       # disk, its installed plugin, why none of its hooks load, and its needs
       # with what this process's PATH found. The +files+ entries and +plugin+
       # stay Hashes: their fields differ per case (an unchecked file has no
-      # paths at all).
+      # paths at all). An entry's behind is its FileStanding::Behind, nil for a
+      # file that isn't; unreadable: the file is there, but this chi can't read it.
       Report = Data.define(:provenance, :scope, :scope_error, :target_dir, :files, :plugin,
                            :hooks_requires_failure, :needs)
 
@@ -34,14 +35,18 @@ module Samagotchi
         target_dir = MemoryPaths.scope_dir(scope)
         files = bundle.files
         details = {}
+        behind = bundle.behind_files(target_dir).to_h { |file| [file.file, file] }
         files.each do |file_key_str, meta|
           next details[file_key_str] = unchecked_file(meta) unless target_dir
 
           target_path = File.join(target_dir, file_key_str)
           base_path = provenance.base_path(file_key_str)
           stored_checksum = meta[:checksum]
-          current_checksum = File.exist?(target_path) ? Digest::SHA256.hexdigest(File.read(target_path)) : nil
-          base_checksum = File.exist?(base_path) ? Digest::SHA256.hexdigest(File.read(base_path)) : nil
+          current_checksum = checksum(target_path)
+          unreadable = current_checksum == :unreadable
+          current_checksum = nil if unreadable
+          base_checksum = checksum(base_path)
+          base_checksum = nil if base_checksum == :unreadable
           modified = base_checksum && current_checksum && base_checksum != current_checksum
           missing = !File.exist?(target_path)
           # A model overlay has no index line (Installer#note_overlay).
@@ -49,6 +54,8 @@ module Samagotchi
           index_present = overlay ? nil : index_has_entry?(scope, file_key_str)
           details[file_key_str] = {
             conflict: meta[:conflict] == true,
+            behind: behind[file_key_str],
+            unreadable: unreadable,
             stored_checksum: stored_checksum,
             current_checksum: current_checksum,
             base_checksum: base_checksum,
@@ -64,6 +71,14 @@ module Samagotchi
                    target_dir: target_dir, files: details, plugin: plugin_status(provenance, bundle),
                    hooks_requires_failure: hooks_requires_failure(bundle), needs: needs_status(bundle))
       end
+
+      # The file's digest, nil when there is none, :unreadable when it can't be read.
+      def self.checksum(path)
+        File.exist?(path) ? Digest::SHA256.file(path).hexdigest : nil
+      rescue SystemCallError
+        :unreadable
+      end
+      private_class_method :checksum
 
       # Why none of the bundle's hooks load (this chi doesn't meet its
       # requires_chi, Hooks::BundleLoader), or nil: it has no hooks or meets it.

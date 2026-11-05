@@ -15,8 +15,9 @@ module Samagotchi
     # its own line, and they aren't listed again.
     module Listing
       # error is set (and the rest nil) when the provenance manifest.json
-      # can't be read; includes is a profile's recorded members, else nil.
-      Installed = Struct.new(:name, :version, :scope, :files, :installed_at, :upgrade, :error, :includes, keyword_init: true)
+      # can't be read; includes is a profile's recorded members, else nil;
+      # behind counts its files that stay behind (InstalledBundle#behind_files).
+      Installed = Struct.new(:name, :version, :scope, :files, :installed_at, :upgrade, :error, :includes, :behind, keyword_init: true)
       # source is the name `chi bundle install` takes (the shipped dir's
       # name); includes is a profile's members ([] for a plain bundle).
       Shipped = Struct.new(:name, :source, :version, :description, :includes, keyword_init: true)
@@ -50,7 +51,7 @@ module Samagotchi
           Installed.new(name: name, version: bundle.version, scope: bundle.scope,
                         files: bundle.files.size, installed_at: bundle.installed_at,
                         upgrade: ship && newer?(ship.version, bundle.version) ? ship : nil,
-                        includes: bundle.includes)
+                        includes: bundle.includes, behind: bundle.behind_files.size)
         end
       end
 

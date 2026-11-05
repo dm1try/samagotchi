@@ -26,7 +26,8 @@ module Samagotchi
           Remove a bundle and its index entries (--force if locally edited).
 
         status [<bundle>]
-          Show provenance + modification status for bundles.
+          Show provenance and each file's status for bundles. issues= counts what
+          needs you: a file that stays behind, is missing or can't be read, not one you edited.
 
         diff <bundle> [file]
           Show diffs between base/current/incoming for a bundle.
@@ -477,16 +478,18 @@ module Samagotchi
         else
           @stdout.puts "Target: #{st.target_dir}"
         end
+        standing = Samagotchi::MemoryBundle::FileStanding
         st.files.each do |k, info|
           next @stdout.puts("  #{k}: unchecked") if info[:unchecked]
 
           mods = []
-          mods << "conflict (stays behind v#{st.provenance.version}: chi bundle diff #{name} #{k})" if info[:conflict]
           mods << "modified" if info[:modified]
           mods << "missing" if info[:missing]
+          mods << "unreadable" if info[:unreadable]
           mods << "no-index" unless info[:index_present] || info[:overlay]
           label = mods.empty? ? "ok" : mods.join(",")
           label += " (model overlay)" if info[:overlay]
+          label += "; #{info[:behind].state} (#{standing.diff_hint(name, k)})" if info[:behind]
           @stdout.puts "  #{k}: #{label}"
         end
         # Hooks
@@ -523,7 +526,7 @@ module Samagotchi
           next @stdout.puts("  #{bname} (manifest.json unreadable)") if record.error?
 
           st = Samagotchi::MemoryBundle::Status.bundle_status(bname)
-          mods = st.files.values.count { |v| v[:modified] || v[:missing] }
+          mods = st.files.values.count { |v| v[:behind] || v[:missing] || v[:unreadable] }
           hooks_count = st.provenance.hooks.size
           hook_info = hooks_count > 0 ? " hooks=#{hooks_count}" : ""
           plugin = st.plugin
@@ -643,6 +646,7 @@ module Samagotchi
           line = "  #{b.name.ljust(name_w)}  #{"v#{b.version || "?"}".ljust(ver_w)}  scope=#{b.scope || "?"}  " \
                  "#{b.includes ? profile_members(b.includes, installed) : "files=#{b.files}"}  installed=#{b.installed_at || "?"}"
           line += "  (shipped v#{b.upgrade.version}: chi bundle upgrade #{b.upgrade.source})" if b.upgrade
+          line += "  (#{Samagotchi::MemoryBundle::FileStanding.behind_count(b.behind)}: chi bundle status #{b.name})" if b.behind.to_i.positive?
           @stdout.puts line
         end
         @stdout.puts "  (or all at once: chi update)" if installed.any?(&:upgrade)
