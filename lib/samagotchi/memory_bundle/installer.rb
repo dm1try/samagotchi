@@ -516,6 +516,7 @@ module Samagotchi
           incoming_dir: @bundle_dir,
           scripts_files: installed.script_files,
           context_providers: @manifest.context_providers,
+          block_renderers: @manifest.block_renderers,
           file_descriptions: @manifest.file_descriptions,
           session_settings: @manifest.session_settings,
           session_setting_types: @manifest.session_setting_types,

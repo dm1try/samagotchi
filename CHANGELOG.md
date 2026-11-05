@@ -7,6 +7,10 @@ and commands may change between minor versions. How releases are made:
 [docs/releasing.md](docs/releasing.md).
 ## [Unreleased]
 
+### Added
+
+- A bundle can declare `block_renderers:` in its manifest: a fenced code block's language and the `scripts/` files that draw it in chi web. See docs/plugins.md (Block renderers).
+
 ### Changed
 
 - After a reload, a card a command showed names it (`from /short`) in the web, since the command's line isn't there any more.

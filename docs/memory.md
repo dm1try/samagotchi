@@ -557,7 +557,7 @@ for a file another bundle installed.
   plugin and scripts to `PATH` but still copies the memories at install, so
   an edit to one of them in `PATH` isn't seen until the next install.
 - **The rest of the manifest** (`plugin:`, `requires_chi`, `session_settings:`,
-  `context_providers:`, `requires_chi_next`) is in
+  `context_providers:`, `block_renderers:`, `requires_chi_next`) is in
   [Plugins](plugins.md) and [internals/bundles.md](internals/bundles.md).
 
 ## Bundle profiles: core and dev

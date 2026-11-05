@@ -1353,6 +1353,41 @@ context_providers:
   the PATH may be another one, such as macOS's 2.6).
 - The command follows [the contract](context.md#the-command-contract).
 
+## Block renderers
+
+A bundle can draw a fenced code block as a picture in chi web's answers: the model writes ```` ```mermaid ````, the
+page shows the drawing. No tool, no plugin code in the web server: chi web runs no plugins, and a reloaded page must
+draw after the worker has gone, so JS draws and Ruby only routes and serves.
+
+```yaml
+# manifest.yml
+scripts:
+  draw.js: sha256:…               # scripts/draw.js in the bundle
+block_renderers:
+  - lang: mermaid                 # a fence's first word, downcased: [a-z0-9_+-], at most 32
+    load: [draw.js]               # scripts: keys, loaded into the frame in this order
+```
+
+- `load:` names files under `scripts:`, so they install and check as any script does (`chi bundle check`,
+  `rake bundles:sha`), and one changed after the install isn't served until the bundle is reinstalled; a `--dev`
+  install's links aren't checked. A bundle with no memories installs fine, but `chi bundle build` still needs one:
+  it refuses with "No memories to build".
+- The first installed bundle (by name) with a language draws it. A bundle whose `requires_chi` this chi doesn't meet
+  draws nothing.
+- **What it needs of the page:** `web.markdown` on (a default-off setting, and the commonmarker gem). With it off a
+  fence has no language in the page and nothing draws, though a hint in the bundle's prompt section still reaches
+  the model: say so in the bundle's README.
+- **Where it draws:** the owner's page only, in answers and closed steps. Participants' pages, cards, question
+  replies, the asking slot, delegate reports and the doc viewer show the source, and so does the terminal.
+- **The script's side:** the last file calls `chi.defineRenderer({ init, render })`. `init()` (optional, may be async)
+  runs once; `render(source, theme)` returns the SVG as a string, or a promise of one. Throw to keep the block as
+  source. `theme` is `{name, bg, panel, text, muted, border, accent, font}`, from the page's tokens. The script runs in
+  a sandboxed frame with no cookie and no access to the page, and the CSP closes its network, but for WebRTC (what the
+  frame holds, the diagrams it rendered, could leave that way). The SVG is shown as an `<img>`, so its scripts, links
+  and remote images don't run: it has to stand alone (no `foreignObject`, every namespace prefix bound) and stay under 50,000 px a
+  side and 100M px. Over that, or if the image doesn't decode, the block stays source. The
+  layers and the residual risk are in [internals/block-renderers.md](internals/block-renderers.md).
+
 ## Stable for bundles
 
 Bundles normally use only `chi.*` and `ctx`; the constants and helpers below
@@ -1397,6 +1432,9 @@ that bundle could leave chi's repo. `spec/samagotchi/testing/boundary_spec.rb`
 fails on a reference in neither (docs/testing.md). In `chi update`'s re-check of
 an installed bundle the same scan warns only for a name this chi no longer has
 (`Boundary.gone?`): a reference that still resolves gets no row.
+
+A bundle's `block_renderers:` and the frame's `chi.defineRenderer` ([Block renderers](#block-renderers)) are stable
+too. They aren't Ruby, so the scan above doesn't see them.
 
 **Used by shipped bundles today, but internal** (may change without notice; a
 bundle that needs one should ask for an API instead):

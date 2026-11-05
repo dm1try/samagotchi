@@ -42,6 +42,7 @@ module Samagotchi
           requires_chi: bundle.requires_chi, needs: bundle.needs,
           # A record read with symbol keys: back to what a manifest.yml holds.
           context_providers: JSON.parse(JSON.generate(Array(bundle.context_providers))),
+          block_renderers: JSON.parse(JSON.generate(Array(bundle.block_renderers))),
           session_settings: bundle.session_settings, session_setting_types: bundle.session_setting_types,
           settings: bundle.settings, setting_types: bundle.setting_types
         )

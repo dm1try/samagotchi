@@ -92,7 +92,7 @@ module Samagotchi
 
           begin
             data = JSON.parse(File.read(mjson), symbolize_names: true)
-          rescue JSON::ParserError, SystemCallError => e
+          rescue JSON::ParserError, EncodingError, SystemCallError => e # a key that isn't UTF-8 can't be a symbol
             if holding.nil? || Dir.exist?(File.join(dir, name, holding.to_s))
               yield name, InstalledBundle.unreadable(name, "manifest.json is unreadable: #{e.message}")
             end
@@ -172,11 +172,12 @@ module Samagotchi
       # @param scripts_files [Hash] file name => installed script; the
       #   sha256 of each is recorded (ContextFetch checks it before a run)
       # @param context_providers [Array<ContextProviders::Provider>]
+      # @param block_renderers [Array<BlockRenderers::Renderer>]
       # @param dev [Boolean] a dev install: its files are links to the
       #   source, recorded as DEV_SHA (no sha256 check) with "dev": true
       def write(files:, scope:, version:, source_path:, hooks: {}, trust_level: nil, source_commit: nil, hooks_files: {},
                 guardrails_files: {}, plugin_file: nil, requires_chi: nil, needs: nil, marks: [], incoming_dir: nil, includes: nil,
-                scripts_files: {}, context_providers: [], file_descriptions: {}, session_settings: [], session_setting_types: {}, settings: nil, setting_types: {},
+                scripts_files: {}, context_providers: [], block_renderers: [], file_descriptions: {}, session_settings: [], session_setting_types: {}, settings: nil, setting_types: {},
                 dev: false)
         FileUtils.mkdir_p(@bundle_dir)
         bases_dir = File.join(@bundle_dir, "bases")
@@ -289,6 +290,7 @@ module Samagotchi
           end
         end
         manifest_data["context_providers"] = context_providers.map(&:to_h) unless context_providers.empty?
+        manifest_data["block_renderers"] = block_renderers.map(&:to_h) unless block_renderers.empty?
         manifest_data["session_settings"] = Array(session_settings).map(&:to_s) unless Array(session_settings).empty?
         manifest_data["session_setting_types"] = session_setting_types.to_h { |k, v| [k.to_s, v.to_s] } unless session_setting_types.to_h.empty?
         manifest_data["settings"] = settings.map(&:to_s) unless settings.nil?

@@ -7,6 +7,8 @@ require_relative "../context_providers"
 require_relative "bundle_hook"
 
 module Samagotchi
+  autoload :BlockRenderers, File.expand_path("../block_renderers", __dir__)
+
   module MemoryBundle
     # Parses and validates a bundle manifest.yml.
     #
@@ -41,6 +43,9 @@ module Samagotchi
     #       cmd: '{ruby} {bundle_dir}/scripts/pr_context.rb {url}'
     #       why: GitHub PR      #   optional
     #       every_seconds: 300  #   optional
+    #   block_renderers:       # optional — a fence's language → the scripts/
+    #     - lang: mermaid      #   files chi web's page loads to draw it
+    #       load: [lib.js, draw.js]   # (BlockRenderers); each one a scripts: key
     #   session_settings: [cap] # optional — the settings a session may set
     #                          #   (chi --set cost-cap.cap=3), read by the
     #                          #   plugin from ctx.settings at call time;
@@ -71,7 +76,7 @@ module Samagotchi
       # the description a mapping gave, for the files that have one; hooks:
       # name → BundleHook.
       attr_reader :name, :version, :scope, :description, :files, :file_descriptions, :hooks, :trust_level, :plugin, :requires_chi, :needs, :includes,
-                  :scripts, :context_providers, :session_settings, :session_setting_types, :settings, :setting_types
+                  :scripts, :context_providers, :block_renderers, :session_settings, :session_setting_types, :settings, :setting_types
 
       def initialize(path:)
         @path = path
@@ -94,6 +99,7 @@ module Samagotchi
         @needs = self.class.parse_needs(raw["needs"])
         @scripts = parse_scripts(raw["scripts"])
         @context_providers = parse_context_providers(raw["context_providers"])
+        @block_renderers = parse_block_renderers(raw["block_renderers"])
         @includes = parse_includes(raw["includes"])
         @session_settings = self.class.parse_session_settings(raw["session_settings"])
         @session_setting_types = self.class.parse_session_setting_types(raw["session_settings"])
@@ -163,7 +169,7 @@ module Samagotchi
       # Writes a fresh manifest.yml from computed checksums at `dir`.
       # +file_descriptions+ (name → text) writes those files as mappings.
       def self.write(dir:, name:, version:, files:, scope: nil, description: "", hooks: nil, trust_level: nil,
-                     plugin: nil, requires_chi: nil, needs: nil, scripts: {}, context_providers: [], file_descriptions: {},
+                     plugin: nil, requires_chi: nil, needs: nil, scripts: {}, context_providers: [], block_renderers: [], file_descriptions: {},
                      session_settings: [], session_setting_types: {}, settings: nil, setting_types: {})
         FileUtils.mkdir_p(dir)
         manifest = {
@@ -187,6 +193,7 @@ module Samagotchi
         manifest["needs"] = needs.map { |n| n.transform_keys(&:to_s).compact } unless needs.empty?
         manifest["scripts"] = scripts.transform_keys(&:to_s) unless scripts.empty?
         manifest["context_providers"] = context_providers.map(&:to_h) unless context_providers.empty?
+        manifest["block_renderers"] = block_renderers.map(&:to_h) unless block_renderers.empty?
         manifest["session_settings"] = session_settings_entry(session_settings, session_setting_types) unless Array(session_settings).empty?
         manifest["settings"] = session_settings_entry(settings, setting_types) unless settings.nil?
         File.write(File.join(dir, "manifest.yml"), YAML.dump(manifest))
@@ -359,6 +366,20 @@ module Samagotchi
       def parse_context_providers(raw)
         ContextProviders.parse_list(raw)
       rescue ContextProviders::Invalid => e
+        raise ValidationError, e.message
+      end
+
+      # @return [Array<BlockRenderers::Renderer>] each load is a scripts: key
+      def parse_block_renderers(raw)
+        return [] if raw.nil?
+
+        renderers = BlockRenderers.parse_list(raw)
+        renderers.each do |renderer|
+          missing = renderer.load - @scripts.keys
+          raise ValidationError, "block_renderers: #{renderer.lang} loads #{missing.join(", ")}, not under scripts:" unless missing.empty?
+        end
+        renderers
+      rescue BlockRenderers::Invalid => e
         raise ValidationError, e.message
       end
 

@@ -2,6 +2,7 @@
 
 require "nokogiri"
 require "uri"
+require_relative "../block_renderers"
 
 module Samagotchi
   module Web
@@ -23,9 +24,6 @@ module Samagotchi
         render: { escape: true }, # escape raw HTML from source; highlighter output is still emitted
         extension: { header_ids: nil }
       }.freeze
-      # What may reach a page as a block's data-lang: a fence's first word,
-      # downcased (BlockRenderers routes on it).
-      FENCE_LANG = /\A[a-z0-9_+-]{1,32}\z/
 
       def initialize(enabled: false)
         @enabled = enabled
@@ -98,7 +96,7 @@ module Samagotchi
 
       def language_of(info)
         word = info.to_s.split.first.to_s.downcase
-        word if word.match?(FENCE_LANG)
+        word if word.match?(BlockRenderers::LANG)
       end
 
       # After the walk, which drops every attribute it doesn't know. Blocks and

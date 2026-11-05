@@ -26,9 +26,9 @@ module Samagotchi
     #   guardrails  basename => recorded sha256 ("" when none)
     #   scripts     file name => recorded sha256 ("" when none)
     #   plugin      PluginRef, nil without one
-    #   needs, context_providers
-    #               the lists as recorded (nil when absent): Manifest.parse_needs
-    #               and ContextProviders.parse_list check them
+    #   needs, context_providers, block_renderers
+    #               the lists as recorded (nil when absent): Manifest.parse_needs,
+    #               ContextProviders.parse_list and BlockRenderers.parse_list check them
     #   includes    a profile's recorded members, nil for a plain bundle
     #   session_settings
     #               the keys a session may set (chi --set), [] when none
@@ -43,12 +43,12 @@ module Samagotchi
     #   error       why manifest.json couldn't be read (the rest empty), else nil
     class InstalledBundle < Data.define(:name, :version, :scope, :source, :installed_at, :trust_level, :source_commit,
                                         :requires_chi, :files, :hooks, :guardrails, :scripts, :plugin, :needs,
-                                        :includes, :context_providers, :session_settings, :session_setting_types, :settings,
+                                        :includes, :context_providers, :block_renderers, :session_settings, :session_setting_types, :settings,
                                         :setting_types, :dev,
                                         :error)
       OPTIONAL = { version: nil, scope: nil, source: nil, installed_at: nil, trust_level: nil, source_commit: nil,
                    requires_chi: nil, files: {}, hooks: {}, guardrails: {}, scripts: {}, plugin: nil, needs: nil,
-                   includes: nil, context_providers: nil, session_settings: [], session_setting_types: {}, settings: nil, setting_types: {}, dev: false,
+                   includes: nil, context_providers: nil, block_renderers: nil, session_settings: [], session_setting_types: {}, settings: nil, setting_types: {}, dev: false,
                    error: nil }.freeze
 
       def initialize(name:, **fields)
@@ -86,6 +86,7 @@ module Samagotchi
             guardrails: mapping(h["guardrails"]) { |meta| sha(meta) },
             scripts: mapping(h["scripts"]) { |meta| sha(meta) },
             plugin: PluginRef.parse(h["plugin"]), needs: h["needs"], context_providers: h["context_providers"],
+            block_renderers: h["block_renderers"],
             includes: h["includes"].is_a?(Array) ? h["includes"].map(&:to_s) : nil,
             session_settings: h["session_settings"].is_a?(Array) ? h["session_settings"].map(&:to_s) : [],
             session_setting_types: mapping(h["session_setting_types"]) { |type| type.to_s },
@@ -164,6 +165,8 @@ module Samagotchi
       def needs? = needs.is_a?(Array) && !needs.empty?
 
       def context_providers? = context_providers.is_a?(Array) && !context_providers.empty?
+
+      def block_renderers? = block_renderers.is_a?(Array) && !block_renderers.empty?
     end
   end
 end

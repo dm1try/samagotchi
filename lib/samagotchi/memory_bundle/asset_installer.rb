@@ -269,7 +269,7 @@ module Samagotchi
           raise Installer::InstallError, "the manifest names scripts/#{file}, which the bundle doesn't have" unless File.file?(src)
           raise Installer::InstallError, "scripts/#{file} is a symlink (not installed)" if linked?(src)
 
-          @warnings << "scripts/#{file} is not executable; chmod +x #{src}" if @dev && !File.executable?(src)
+          @warnings << "scripts/#{file} is not executable; chmod +x #{src}" if @dev && !File.executable?(src) && !page_only?(file)
         end
         return {} if @dry_run
 
@@ -298,6 +298,12 @@ module Samagotchi
           end
           [file, dest]
         end
+      end
+
+      # A file only a block renderer's load names: the page loads it, nothing runs it.
+      def page_only?(file)
+        @manifest.block_renderers.any? { |renderer| renderer.load.include?(file) } &&
+          @manifest.context_providers.none? { |provider| provider.cmd.include?(file) }
       end
 
       # Copies +src+ to +dest+, or (a dev install) links +dest+ to it. An

@@ -30,8 +30,8 @@ module Samagotchi
       #   hooks       basename => BundleHook; hook_files basename => path
       #   rules       guardrails/*.yml paths
       #   plugin      the installed plugin file, nil without one
-      #   scripts     file name => path; context_providers the parsed list
-      InstalledParts = Data.define(:record, :hooks, :hook_files, :rules, :plugin, :scripts, :context_providers)
+      #   scripts     file name => path; context_providers, block_renderers the parsed lists
+      InstalledParts = Data.define(:record, :hooks, :hook_files, :rules, :plugin, :scripts, :context_providers, :block_renderers)
 
       attr_reader :built_files, :warnings, :placeholder_warnings, :out_path, :staging_dir
 
@@ -179,7 +179,8 @@ module Samagotchi
           rules: Dir.exist?(rules_dir) ? Dir.glob(File.join(rules_dir, "*.yml")).sort : [],
           plugin: plugin && File.file?(plugin) ? plugin : nil,
           scripts: installed_scripts(prov, record),
-          context_providers: record ? ContextProviders.parse_list(record.context_providers) : []
+          context_providers: record ? ContextProviders.parse_list(record.context_providers) : [],
+          block_renderers: record ? BlockRenderers.parse_list(record.block_renderers) : []
         )
       end
 
@@ -223,6 +224,7 @@ module Samagotchi
           needs: record&.needs,
           scripts: parts.scripts.transform_values { |src| "sha256:#{Digest::SHA256.hexdigest(File.binread(src))}" },
           context_providers: parts.context_providers,
+          block_renderers: parts.block_renderers,
           file_descriptions: file_descriptions(record, files_map),
           session_settings: record&.session_settings || [],
           session_setting_types: record&.session_setting_types || {},
