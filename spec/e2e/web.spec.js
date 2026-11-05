@@ -530,9 +530,10 @@ test("an edit's approval card shows its diff; the row keeps the change after a r
     await diff.locator("summary").click({ force: true });
     await expect(diff.locator(".diff-add")).toHaveText("+font_size 14");
   };
-  // The steps block is its outline (the write's step said something), open
+  // The steps block is its outline (the write's step said something), closed
   // live and after a reload; the edit's step (tool-only) is behind its fold.
   const openEditStep = async () => {
+    await page.locator("#history .turn-work.outline").evaluate((el) => { el.open = true; });
     await page.locator("#history .turn-work.outline[open] > .outline-fold").click();
     await page.locator("#history .turn-work > details.gen").nth(1).locator("> summary").click();
   };
@@ -2120,9 +2121,10 @@ test("an answer's plugin refs pair with its link and text, a tool row's with its
       ["https://example.test/ABC-3", "_blank", "noopener,noreferrer"],
     ]);
 
-    for (const details of [page.locator("#history .turn-work"), page.locator("#history .turn-work details.gen").first()]) {
-      if (!(await details.evaluate((el) => el.open))) await details.locator("> summary").click();
-    }
+    // At once: a click's height motion would move the menu opened below.
+    await page.locator("#history .turn-work").evaluate((el) => { el.open = true; });
+    const step = page.locator("#history .turn-work details.gen").first();
+    if (!(await step.evaluate((el) => el.open))) await step.locator("> summary").click();
     const title = page.locator('#history .activity-row .activity-params.ref[data-ref-kind="issue"]');
     await expect(title).toHaveText('id="JIRA-7"');
     await recordOpens();

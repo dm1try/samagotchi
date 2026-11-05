@@ -172,10 +172,29 @@ test("createTurnBlock: a completed turn's answer bubble carries its turn id (dat
 const outlineOf = (block) => [...block.children].filter((el) => !el.matches("summary")).map((el) =>
   el.matches(".outline-fold") ? `fold ${el.textContent}` : `${el.className} ${el.querySelector(":scope > summary").textContent.split(" · ")[0]}`);
 
-test("createTurnBlock: a finished turn with narrated steps stays open as its outline, tool-only steps folded", () => {
+test("createTurnBlock: a canceled or failed turn with narrated steps stays open; with none said it closes", () => {
+  for (const kind of ["canceled", "failed"]) {
+    const { turnBlock } = liveBlock();
+    stepOne(turnBlock);
+    turnBlock.generationStarted({ iteration: 2 });
+    turnBlock.toolStarted({ iteration: 2, call_index: 1, tool: "read", params: 'path="A.md"' });
+    turnBlock.toolCompleted({ iteration: 2, call_index: 1, tool: "read", status: "ok", output: "ok" });
+    turnBlock.turnEnded({ kind });
+    assert.equal(turnBlock.current().blockEl.open, true, kind);
+  }
+  const { turnBlock } = liveBlock();
+  turnBlock.turnStarted({ prompt: "p" });
+  turnBlock.generationStarted({ iteration: 1 });
+  turnBlock.toolStarted({ iteration: 1, call_index: 1, tool: "read", params: 'path="A.md"' });
+  turnBlock.toolCompleted({ iteration: 1, call_index: 1, tool: "read", status: "ok", output: "ok" });
+  turnBlock.turnEnded({ kind: "canceled" });
+  assert.equal(turnBlock.current().blockEl.open, false);
+});
+
+test("createTurnBlock: a finished turn with narrated steps is its outline, closed, tool-only steps folded", () => {
   const { turnBlock } = liveBlock();
   const block = narratedTurn(turnBlock);
-  assert.equal(block.open, true);
+  assert.equal(block.open, false);
   assert.ok(block.classList.contains("outline"));
   assert.deepEqual(outlineOf(block), [
     "gen Let me check.", "fold 2 steps", "gen folded working with read", "gen folded thinking", "gen Middle note: switching to dev.",

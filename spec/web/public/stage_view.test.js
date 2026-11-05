@@ -69,6 +69,31 @@ test("the answer's turn key (data-answer-turn) arrives in the history with the h
   assert.equal(answer.dataset.answerTurn, "T7");
 });
 
+test("the hand-off: an outlined completed turn lands closed, a canceled or failed one open", () => {
+  const landed = (kind) => {
+    const { historyEl, view } = page();
+    view.turnStarted({ promptBubble: document.createElement("div") });
+    view.generationStarted({ iteration: 1 });
+    view.chunk({ iteration: 1, text: "Looking first." });
+    view.generationCompleted();
+    view.toolStarted({ iteration: 1, call_index: 1, tool: "read", params: 'path="A.md"' });
+    view.toolCompleted({ iteration: 1, call_index: 1, tool: "read", status: "ok", output: "ok" });
+    view.generationStarted({ iteration: 2 });
+    view.toolStarted({ iteration: 2, call_index: 1, tool: "read", params: 'path="B.md"' });
+    view.turnEnded({ kind });
+    view.answerReady();
+    assert.equal(view.root.querySelector(".turn-work").open, true, `${kind}: open while in the stage`);
+    view.handOff({ immediate: true });
+    const block = historyEl.querySelector(".turn-work");
+    assert.ok(block.classList.contains("outline"), kind);
+    return block.open;
+  };
+  assert.equal(landed("completed"), false);
+  assert.equal(landed("gone"), false);
+  assert.equal(landed("canceled"), true);
+  assert.equal(landed("failed"), true);
+});
+
 test("a row placed while the finished turn slides away lands after the turn, not above it", () => {
   const { historyEl, view, append } = page();
   const prompt = endedTurn(view);

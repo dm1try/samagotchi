@@ -30,7 +30,7 @@ test("turnHistoryHtml: a reloaded tool turn is its block's outline of steps, the
   const html = turnHistoryHtml(items, timing, { thumbs });
   assert.equal(html,
     '<div class="bubble user" data-copy-source="p"><div class="user-message">p</div></div>' +
-    '<details class="turn-work done outline" open=""><summary>2 steps · 2 tool calls</summary>' +
+    '<details class="turn-work done outline"><summary>2 steps · 2 tool calls</summary>' +
     '<details class="gen"><summary class="repeats"><span class="gen-head">Let me &lt;check&gt;.</span><span class="gen-sep"> · </span><span class="gen-calls">1 tool call</span></summary><div class="gen-text">Let me &lt;check&gt;.</div>' +
     '<div class="activity-body"><div class="activity-row" data-key="1:1"><span class="activity-status ok" role="img" aria-label="done" title="done"></span><span class="activity-tool">execute</span><span class="activity-duration">7ms</span></div></div></details>' +
     '<div class="outline-fold" role="button" tabindex="0" aria-expanded="false">1 step</div><details class="gen folded"><summary>working with read · 1 tool call</summary>' +
@@ -86,6 +86,27 @@ test("turnHistoryHtml: a turn canceled before any answer keeps its timing under 
   assert.match(html, /<summary>1 step · 1 tool call<\/summary><details class="gen"><summary>working with execute · 1 tool call<\/summary>/);
 });
 
+test("turnHistoryNodes: a canceled or failed turn's outline stays open, a completed or recordless one's closes", () => {
+  const items = [
+    { role: "user", content: "p", turn_id: "T" },
+    { role: "assistant", content: "Looking first." },
+    { role: "assistant", content: "Still at it." },
+  ];
+  const blockOf = (record) => {
+    const holder = document.createElement("div");
+    holder.append(turnHistoryNodes(items, {
+      turnRecords: record ? [{ id: "T", started_at: "2026-01-01T00:00:00Z", ...record }] : [],
+      toolRecords: record ? [{ turn_id: "T", tool: "read", status: "ok", iteration: 1, call_index: 1 }] : [],
+    }, { thumbs }));
+    return holder.querySelector(".turn-work");
+  };
+  for (const [record, open] of [[{ status: "canceled" }, true], [{ status: "failed" }, true], [{ status: "completed" }, false], [null, false]]) {
+    const block = blockOf(record);
+    assert.ok(block.classList.contains("outline"), record?.status);
+    assert.equal(block.open, open, record?.status);
+  }
+});
+
 test("turnHistoryHtml with parts: each step expands to its thinking, text and calls with params and output, as live", () => {
   const items = [
     { role: "user", content: "p" },
@@ -96,7 +117,7 @@ test("turnHistoryHtml with parts: each step expands to its thinking, text and ca
   const html = turnHistoryHtml(items, timing, { thumbs });
   assert.equal(html,
     '<div class="bubble user" data-copy-source="p"><div class="user-message">p</div></div>' +
-    '<details class="turn-work done outline" open=""><summary>3 steps · 2 tool calls</summary>' +
+    '<details class="turn-work done outline"><summary>3 steps · 2 tool calls</summary>' +
     '<details class="gen"><summary class="repeats"><span class="gen-head">Let me check.</span><span class="gen-sep"> · </span><span class="gen-calls">1 tool call</span></summary><details class="thinking"><summary>thinking</summary><div class="thinking-body">plan &lt;a&gt;</div></details><div class="gen-text">Let me check.</div>' +
     '<div class="activity-body"><div class="activity-row" data-key="1:1"><span class="activity-status ok" role="img" aria-label="done" title="done"></span><span class="activity-tool">execute</span>' +
     '<span class="activity-params">command="true"</span><span class="activity-duration">7ms</span><div class="activity-output" title="exit: 0">exit: 0</div></div></div></details>' +

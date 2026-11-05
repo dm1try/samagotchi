@@ -92,15 +92,16 @@ test("the stage keeps one height while a multi-step turn runs; nothing moves the
   expect(hiddenAt - leaveAt).toBeGreaterThan(300);
   expect(await shiftSum(page, { from: leaveAt, to: hiddenAt + 600 })).toBeLessThan(0.01);
   expect(await snaps(page, { from: leaveAt, to: hiddenAt + 600 })).toEqual([]);
-  // A handed-off turn is its outline: open on its narrated steps, each
-  // tool-only (or thinking-only) step behind a fold that shows it; a reload
-  // draws the same.
+  // A handed-off turn is its outline, closed: opened, its narrated steps
+  // show, each tool-only (or thinking-only) step behind a fold that shows it;
+  // a reload draws the same.
   const outline = async () => {
     const blocks = page.locator("#history .turn-work");
     await expect(blocks).toHaveCount(2);
     for (const block of await blocks.all()) {
       await expect(block).toHaveClass(/outline/);
-      await expect(block).toHaveJSProperty("open", true);
+      await expect(block).toHaveJSProperty("open", false);
+      await block.evaluate((el) => { el.open = true; });
       await expect(block.locator(":scope > .outline-fold")).toHaveText(["1 step", "1 step"]);
       await expect(block.locator(":scope > .gen:visible")).toHaveCount(4);
     }

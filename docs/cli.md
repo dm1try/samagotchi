@@ -1201,14 +1201,15 @@ again). When a step ends its thinking closes to a plain `thinking` line
 (unless you opened it); a step that only thought shows that line alone. The
 live narration is a box of about three lines that fills sentence by
 sentence (a sentence shows once it is complete) and scrolls to the newest
-when full. When the turn ends the block shows its outline when any of its steps said
-something: it stays open on one line per step that wrote text (that text's
-first line, so a mid-turn note reads without a click), and each run of steps
-that only called tools or thought sits behind one `· N steps` line that
-shows them; old turns open the same way after a reload. A turn whose steps
-said nothing collapses the block to its summary (`3 steps
-· 8 tool calls · execute ×7 · read ×1`). Either way the answer is a normal
-bubble under the block (Markdown, annotate). A plain answer
+when full. When the turn ends the block closes to its summary (`3 steps
+· 8 tool calls · execute ×7 · read ×1`). Opened, it shows its outline when any of
+its steps said something: one line per step that wrote text (that text's first
+line), and each run of steps that only called tools or thought sits behind one
+`· N steps` line that shows them. A canceled or failed turn with such a step
+stays open, as its last narrated step is the only text you get. A reload draws
+the same from what was saved: a failed turn whose stream dropped mid-narration
+saved no such step, so it reloads closed. Either way the answer is a normal bubble under the block (Markdown,
+annotate). A plain answer
 without tools ends exactly as it does today. Rows the code collapses stay
 as you toggled them. A reloaded session shows the same block
 from the saved messages (each step's thinking, narration, tool parameters
