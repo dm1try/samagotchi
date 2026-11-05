@@ -626,6 +626,17 @@ RSpec.describe "Cards" do
         expect(listed.map { |c| c[:turns_since] }).to eq([1, 1, 1])
       end
 
+      it "a turn's own row counts a line inside its turn, where a card from beside the turn doesn't" do
+        turn(:turn_started)
+        store.call(card("own", in_turn: true))
+        store.call(card("beside"))
+        opened(@running_id)
+        conversation << { role: "user", content: "Continue, the tool call was cut." }
+        @running_id = nil
+        store.call({ type: :turn_completed })
+        expect(listed.map { |c| [c[:id], c[:turns_since]] }).to eq([["own", 1], ["beside", 0]])
+      end
+
       it "a turn's own row counts it, as it comes after the row's step on the page" do
         turn(:turn_started, :turn_completed)
         turn(:turn_started, continue: true)
@@ -812,9 +823,13 @@ RSpec.describe "Cards" do
     end
 
     it "shows none of its internals" do
+      turn(:turn_started, :turn_completed)
+      conversation << { role: "user", content: "too slow" }
+      store.call(card("after").merge(command: "/x"))
       turn(:turn_started, continue: true)
       store.call(card("own", in_turn: true))
-      expect(listed.first.keys).not_to include(:turn_id, :continued, :base_since)
+      expect(store.instance_variable_get(:@entries).first).to include(:past_idless)
+      expect(listed.flat_map(&:keys)).not_to include(:turn_id, :continued, :base_since, :past_idless, :during, :after_failed, :command)
     end
   end
 
@@ -1332,6 +1347,23 @@ RSpec.describe "Cards" do
       session.messages << { role: "user", content: "killed", turn_id: "t1" }
       later = Samagotchi::Bridge.new(engine: engine, state_dir: state_dir, session_id: "s1")
       expect(later.snapshot[:cards].first).to include(id: "c1", turns_since: 1)
+    end
+
+    it "gives its store the session's messages: a card shown after an opening with no id stays below it, and the saved log reaches its opening" do
+      state_dir = Dir.mktmpdir
+      engine.session = session
+      bridge = Samagotchi::Bridge.new(engine: engine, state_dir: state_dir, session_id: "s1")
+      store = bridge.instance_variable_get(:@cards)
+      engine.subscribe(observer: store)
+      store.call({ type: :turn_started, turn_id: "t1" })
+      session.messages << { role: "user", content: "one", turn_id: "t1" }
+      store.call({ type: :turn_completed })
+      store.call({ type: :turn_started, turn_id: "c", continue: true })
+      store.call({ type: :turn_completed })
+      session.messages << { role: "user", content: "too slow" }
+      engine.show_card(source: "b", title: "after", id: "c1")
+      expect(bridge.snapshot[:cards].first[:turns_since]).to eq(0)
+      expect(JSON.parse(File.read(File.join(state_dir, "s1", "cards.json")))["turn_log"]).to eq(%w[t1 c])
     end
 
     it "lists against the messages the snapshot carries: a running wake's note is in both, a running prompt in neither" do

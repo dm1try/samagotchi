@@ -50,6 +50,22 @@ RSpec.describe "TerminalUI cards.json" do
     expect(Samagotchi::Bridge::CardStore.saved(File.dirname(cards_path), messages: messages).first).to include(id: "c1", turns_since: 3)
   end
 
+  it "gives its store the session's messages: a card shown after an opening with no id says so in the file" do
+    ui = Samagotchi::TerminalUI.new(client: client, session_id: session.id, surface: surface)
+    observer = ui.engine.instance_variable_get(:@session_observer)
+    allow(ui).to receive(:poll_input_with_reminder_check) do
+      %i[turn_started turn_completed].each { |type| observer.notify({ type: type, turn_id: "t1" }) }
+      ui.engine.session.messages = [{ role: "user", content: "one", turn_id: "t1" }, { role: "user", content: "too slow" }]
+      ui.engine.show_card(source: "b", title: "after", id: "c1")
+      "/exit"
+    end
+    allow(ui).to receive(:keep_after_exit)
+
+    ui.run
+
+    expect(JSON.parse(File.read(cards_path))["entries"].first).to include("id" => "c1", "past_idless" => 1)
+  end
+
   it "writes no cards.json for a session that never showed a card" do
     ui = Samagotchi::TerminalUI.new(client: client, session_id: session.id, surface: surface)
     observer = ui.engine.instance_variable_get(:@session_observer)
