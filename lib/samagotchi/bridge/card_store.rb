@@ -87,8 +87,8 @@ module Samagotchi
       # @param messages [#call, nil] the session's messages now (Session#messages:
       #   a running turn leaves them alone, a change replaces the array, so any
       #   thread may read them): where an opening with no id sits against an
-      #   entry, and how far the saved log must reach. Read at an idle show, a turn's
-      #   end and each save, never to push a running turn's row.
+      #   entry, and how far the saved log must reach. Read at an idle show and a
+      #   turn's start and end, never for a running turn's row.
       def initialize(capacity: CAPACITY, path: nil, messages: nil)
         @capacity = capacity
         @path = path
@@ -99,6 +99,7 @@ module Samagotchi
         @running_turn = nil
         @continuing = false
         @failed_turn = nil
+        @log_start = nil
         @iteration = nil
         @calls = 0
         seed
@@ -184,16 +185,25 @@ module Samagotchi
         nil # a card that can't be saved still shows live
       end
 
-      # The log from the opening the earliest anchor counts from: a turn before
-      # that orders nothing. All of it when an entry has no anchor, or none does
-      # yet (such an entry counts from the log's first turn), or with no messages
-      # to find that opening in.
+      # The log from the opening the earliest anchor counts from. Found by
+      # walking the messages, so a running turn's saves reuse what its start
+      # found (#fold forgets it there): its rows would walk them each, on the
+      # turn's thread. Nothing in a running turn needs an earlier start: a new
+      # entry anchors to it, and an evicted one only leaves the kept part longer.
       def pruned_log(entries)
+        @log_start = log_start(entries) unless @running_turn && @log_start
+        @turn_log.drop(@log_start)
+      end
+
+      # A turn before that opening orders nothing. 0 when an entry has no anchor,
+      # or none does yet (such an entry counts from the log's first turn), or with
+      # no messages to find that opening in.
+      def log_start(entries)
         positions = @turn_log.each_with_index.to_h
         anchors = entries.map { |entry| positions[entry[:turn_id]] }
-        return @turn_log if anchors.empty? || anchors.include?(nil) || !@messages
+        return 0 if anchors.empty? || anchors.include?(nil) || !@messages
 
-        @turn_log.drop(CardPlaces.new(@turn_log, @messages.call).log_start_for(anchors.min))
+        CardPlaces.new(@turn_log, @messages.call).log_start_for(anchors.min)
       end
 
       # The entries an earlier worker saved (a missing or broken file: none),
@@ -257,6 +267,7 @@ module Samagotchi
           @running_turn = event[:turn_id]
           @continuing = event[:continue] ? true : false
           @failed_turn = nil
+          @log_start = nil
           @iteration = nil
           @calls = 0
         when :generation_started

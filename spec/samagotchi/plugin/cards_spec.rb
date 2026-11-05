@@ -656,15 +656,23 @@ RSpec.describe "Cards" do
         expect(listed.first).to include(title: "again", turns_since: 1)
       end
 
-      it "doesn't walk the messages to push a running turn's row (a save does, with a file)" do
+      it "doesn't walk the messages for a running turn's rows, saved ones too; once at its start and once at its end" do
         reads = 0
-        counted = described_class.new(messages: lambda {
-          reads += 1
-          conversation
-        })
-        turn(:turn_started, on: counted)
-        3.times { counted.call({ type: :hook_notice, hook: "h", text: "row", level: :info }) }
-        expect(reads).to eq(0)
+        Dir.mktmpdir do |dir|
+          counted = described_class.new(path: File.join(dir, "cards.json"), messages: lambda {
+            reads += 1
+            conversation
+          })
+          turn(:turn_started, :turn_completed, on: counted)
+          counted.call(card("first"))
+          reads = 0
+          turn(:turn_started, on: counted)
+          expect(reads).to eq(1)
+          3.times { counted.call({ type: :hook_notice, hook: "h", text: "row", level: :info }) }
+          expect(reads).to eq(1)
+          turn(:turn_completed, on: counted)
+          expect(reads).to be > 1
+        end
       end
     end
 
@@ -1104,6 +1112,38 @@ RSpec.describe "Cards" do
         turn(:turn_started, :turn_completed, on: whole)
         turn(:turn_started, :turn_completed, on: whole)
         expect(JSON.parse(File.read(none))["turn_log"]).to eq(%w[t4 t5])
+      end
+
+      it "a kill mid-turn leaves a log a new worker reads the same as the live store" do
+        store = worker
+        turn(:turn_started, :turn_completed, on: store)
+        turn(:turn_started, on: store, continue: true)
+        store.call(card("own"))
+        turn(:turn_completed, on: store, opener: false)
+        conversation << { role: "user", content: "too slow" }
+        turn(:turn_started, on: store)
+        3.times { |n| store.call({ type: :hook_notice, hook: "h", text: "row #{n}", level: :info }) }
+        opened(@running_id) # the checkpoint's prompt, in the file
+        @running_id = nil
+        # The kill: this is the last save.
+        expect(JSON.parse(File.read(path))["turn_log"]).to eq(%w[t1 t2 t3])
+        live = listed(store).first[:turns_since]
+        expect(live).to eq(2)
+        expect(listed(worker).first[:turns_since]).to eq(live)
+        expect(saved.first[:turns_since]).to eq(live)
+      end
+
+      it "a first entry in a running turn saves a log that reads the same, and a !rollback before a turn is seen at its start" do
+        store = worker
+        turn(:turn_started, :turn_completed, on: store)
+        turn(:turn_started, on: store)
+        store.call(card("own"))
+        expect(JSON.parse(File.read(path))["turn_log"]).to eq(%w[t1 t2])
+        turn(:turn_canceled, on: store)
+        expect(JSON.parse(File.read(path))["turn_log"]).to eq(%w[t2])
+        rollback
+        turn(:turn_started, on: store)
+        expect(JSON.parse(File.read(path))["turn_log"]).to eq(%w[t1 t2 t3])
       end
 
       it "keeps the whole log with no messages to find an anchor's opening in" do
