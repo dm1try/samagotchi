@@ -184,6 +184,28 @@ RSpec.describe Samagotchi::ChiHome do
       expect(calls.last.first).not_to have_key("PATH")
     end
 
+    # RubyGems requires what BUNDLER_SETUP names at boot, whatever RUBYOPT says,
+    # and a bundle with a path then replaces GEM_HOME and GEM_PATH: `bundle exec
+    # chi home set --ruby X` recorded the bundle's vendor dir as X's gems.
+    it "gets the Ruby's own gem dirs, not those of the bundle it is asked from" do
+      project = File.join(tmp, "project")
+      FileUtils.mkdir_p(File.join(project, ".bundle"))
+      File.write(File.join(project, "Gemfile"), "")
+      File.write(File.join(project, ".bundle", "config"), %(---\nBUNDLE_PATH: "vendor/bundle"\n))
+      own, = Open3.capture2({ "BUNDLER_SETUP" => nil, "RUBYOPT" => nil, "RUBYLIB" => nil, "BUNDLE_GEMFILE" => nil, "GEM_HOME" => nil, "GEM_PATH" => nil },
+                            RbConfig.ruby, "-e", "print Gem.dir", chdir: tmp)
+
+      # BUNDLE_LOCKFILE at the suite's own would have that bundle write it, were
+      # this ever red.
+      probed = with_env("BUNDLER_SETUP" => Gem.find_files("bundler/setup").first,
+                        "BUNDLE_LOCKFILE" => File.join(project, "Gemfile.lock")) do
+        Dir.chdir(project) { described_class.probe(RbConfig.ruby, env: {}) }
+      end
+
+      expect(probed.gem_home).to eq(own)
+      expect(probed.gem_path).not_to include("vendor/bundle")
+    end
+
     it "is nil when the Ruby fails, doesn't answer JSON, or answers what home.json may not hold" do
       expect(described_class.probe(ruby, env: {}, runner: ->(*) { ["boom", false] })).to be_nil
       expect(described_class.probe(ruby, env: {}, runner: ->(*) { ["not json", true] })).to be_nil

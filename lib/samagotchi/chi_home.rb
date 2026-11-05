@@ -6,6 +6,7 @@ require "open3"
 require "rbconfig"
 require "time"
 require_relative "atomic_file"
+require_relative "bundler_env"
 require_relative "installed_gem"
 require_relative "log"
 require_relative "paths"
@@ -33,8 +34,9 @@ module Samagotchi
     # Where `mise` usually is when PATH doesn't have it (launchd's bare PATH).
     MISE_DIRS = ["/opt/homebrew/bin", "/usr/local/bin", File.join(Dir.home, ".local", "bin")].freeze
     # What a probe of another Ruby must not inherit: they would move it off
-    # its own gems.
-    PROBE_UNSET = %w[GEM_HOME GEM_PATH RUBYOPT RUBYLIB BUNDLE_GEMFILE BUNDLE_BIN_PATH].freeze
+    # its own gems. BUNDLER_SETUP alone does: RubyGems requires what it names at
+    # boot, and a bundle with a path then replaces GEM_HOME and GEM_PATH.
+    PROBE_UNSET = (%w[GEM_HOME GEM_PATH] + BundlerEnv::CHILD_RUBY).freeze
     PROBE = "require 'json'; print JSON.generate('ruby' => RbConfig.ruby, 'gem_home' => Gem.dir, " \
             "'gem_path' => Gem.path.join(File::PATH_SEPARATOR))"
     GEMSPEC = /\Asamagotchi-(#{Gem::Version::VERSION_PATTERN})\.gemspec\z/
