@@ -9,6 +9,7 @@ require_relative "desktop"
 require_relative "gem_update"
 require_relative "installed_gem"
 require_relative "live_versions"
+require_relative "memory_bundle/file_standing"
 require_relative "memory_bundle/shipped_update"
 require_relative "memory_bundle/system_bundle"
 require_relative "session"
@@ -20,7 +21,7 @@ require "json"
 module Samagotchi
   # `chi update`: brings an installed chi up to date in one go: the system
   # bundle, the shipped bundles the user installed, and the macOS helper.
-  # Unedited things update; edited ones are merged or kept (.md) or replaced
+  # Unedited things update; edited ones merge or stay behind (.md) or are replaced
   # and reported (hooks, plugin, rules, which didn't load once edited). Live
   # workers and a running chi web are reported, never restarted. The bundles
   # chi didn't ship are only checked, under the chi that will run them
@@ -35,8 +36,8 @@ module Samagotchi
         system bundle, the bundles chi ships that you installed (chi bundle
         list), and the desktop helper (macOS; rebuilt only when its sources
         changed). A memory file you edited takes the update in a text merge
-        (the old file goes to the bundle trash), or stays as it is when the
-        merge finds a real conflict, and the table says which; each run
+        (the old file goes to the bundle trash), or stays behind as it is when
+        no merge is possible, and the table says which and why; each run
         retries a file left behind, though one an older chi marked, with a base
         no installed chi shipped, merges only if the bundle takes out or rewords
         no line it still holds. Nothing is
@@ -81,13 +82,15 @@ module Samagotchi
 
     # A table row. info rows (live workers, chi web) say what runs; they
     # never fail. level ("warn", "error"; else nil) marks a finding on a bundle
-    # chi didn't ship: it reports, changes nothing and fails nothing.
-    Row = Struct.new(:component, :from, :to, :status, :failed, :kept, :level, keyword_init: true)
+    # chi didn't ship: it reports, changes nothing and fails nothing. kept: the
+    # memory files that stay behind; merged: the ones that took the update;
+    # trash_copy: where their old copies went, in full (the table's short: --json
+    # has the path).
+    Row = Struct.new(:component, :from, :to, :status, :failed, :kept, :merged, :trash_copy, :level, keyword_init: true)
 
     # What a row says after a change, and in a dry run.
     VERBS = { update: ["updated", "would update"], install: ["installed", "would install"],
-              restore: ["restored missing files", "would restore missing files"],
-              merge: ["merged", "would merge"] }.freeze
+              restore: ["restored missing files", "would restore missing files"] }.freeze
 
     # @param gem_spec [Gem::Specification, nil] the installed gem (nil: a checkout)
     # @param platform [#call] register: → a Desktop::MacOS-like object
@@ -153,7 +156,7 @@ module Samagotchi
       gem = gem_row(options)
       rows = [gem, system_bundle_row, *bundle_rows(options), *external_rows(options), desktop_row(options), *live_rows].compact
       if options[:json]
-        @stdout.puts(JSON.generate(rows.map { |row| row.to_h.merge(failed: !!row.failed, kept: row.kept || []) }))
+        @stdout.puts(JSON.generate(rows.map { |row| row.to_h.merge(failed: !!row.failed, kept: row.kept || [], merged: row.merged || []) }))
       else
         print_table(rows)
         footers(options, rows).each { |line| @stdout.puts(line) }
@@ -287,15 +290,13 @@ module Samagotchi
     def system_bundle_row
       result = MemoryBundle::SystemBundle.sync(dry_run: @dry_run)
       row = Row.new(component: "system bundle", from: result.from, to: result.to)
+      notes = file_notes(row, MemoryBundle::SystemBundle::BUNDLE_NAME, result.to, result.merged, result.behind, result.trash_copy)
       case result.status
       when :installed then done(row, :install)
-      when :updated
-        notes = [merged(result.merged), kept(row, result.kept, MemoryBundle::SystemBundle::BUNDLE_NAME), result.trash_copy].compact
-        done(row, :update, notes.empty? ? nil : notes.join("; "))
-      when :restored then done(row, :restore).tap { |r| r.to = nil }
-      when :merged then merged_row(row, result.merged, [result.trash_copy, *result.notes, *result.warnings])
-      when :up_to_date then up_to_date(row, result.notes.join("; "))
-      when :newer_installed then skipped(row, "newer than this chi's #{result.to}: left").tap { |r| r.to = nil }
+      when :updated then done(row, :update, notes.empty? ? nil : notes.join("; "))
+      when :restored then done(row, :restore, notes.empty? ? nil : notes.join("; ")).tap { |r| r.to = nil }
+      when :merged, :up_to_date then same_version(row, notes + result.warnings, changed: result.merged.any?)
+      when :newer_installed then skipped(row, ["newer than this chi's #{result.to}: left", *notes].join("; ")).tap { |r| r.to = nil }
       when :skipped then skipped(row, result.error)
       else failed(row, result.error)
       end
@@ -329,16 +330,38 @@ module Samagotchi
 
     def bundle_row(update)
       row = Row.new(component: update.name, from: update.from, to: update.to)
+      notes = file_notes(row, update.name, update.to || update.from, update.merged, update.behind, update.trash_copy)
       case update.status
       when :would_update, :updated
-        notes = [adds(update.adds), merged(update.merged), kept(row, update.kept, update.name), replaced(update.replaced), update.trash_copy, *update.kept_own].compact
+        notes = [adds(update.adds), *notes, replaced(update.replaced), *update.kept_own].compact
         done(row, :update, notes.empty? ? nil : notes.join("; "))
-      when :would_merge, :merged
-        update.merged.empty? ? up_to_date(row, update.note) : merged_row(row, update.merged, [update.trash_copy, update.note])
-      when :up_to_date then up_to_date(row, update.note)
-      when :skipped then skipped(row, update.note)
+      when :would_merge, :merged, :up_to_date then same_version(row, [*notes, update.note].compact, changed: Array(update.merged).any?)
+      when :skipped then skipped(row, [update.note, *notes].join("; "))
       else failed(row, update.note)
       end
+    end
+
+    # What one bundle's memory files did, in FileStanding's words; the row keeps
+    # the file names and the trash copy's full line for --json.
+    # @return [Array<String>] the row's clauses
+    def file_notes(row, bundle, version, merged, behind, trash_copy)
+      merged = Array(merged)
+      behind = Array(behind)
+      row.merged = merged
+      row.kept = behind.map(&:file)
+      row.trash_copy = trash_copy
+      notes = MemoryBundle::FileStanding.clauses(bundle, version, merged: merged, behind: behind, dry_run: @dry_run)
+      trash_copy ? [*notes, MemoryBundle::FileStanding::IN_THE_TRASH] : notes
+    end
+
+    # A row at the same version: up to date only when nothing merged and nothing
+    # stays behind. No to, and no verb of its own: the clauses say it all.
+    def same_version(row, notes, changed:)
+      return up_to_date(row, notes.join("; ")) unless changed || row.kept.any?
+
+      row.to = nil
+      row.status = notes.join("; ")
+      row
     end
 
     def desktop_row(options)
@@ -431,6 +454,9 @@ module Samagotchi
       return "(dry run: nothing was changed)" if @dry_run
       return "some parts failed (see above)" if rows.any?(&:failed)
 
+      behind = rows.sum { |row| Array(row.kept).size }
+      return "#{MemoryBundle::FileStanding.stay_behind(behind)} (see above)" if behind.positive?
+
       # A finding on a bundle chi didn't ship repeats until its bundle changes; it isn't a change.
       changes = rows.reject(&:level)
       changes.all? { |r| r.status.start_with?("up to date", "skipped", "not installed", "couldn't check") } ? "everything is up to date" : "done"
@@ -451,12 +477,6 @@ module Samagotchi
       row
     end
 
-    # A file marked conflict merged at the same version: "0.8.0  merged (x.md)".
-    def merged_row(row, files, notes)
-      row.to = nil
-      done(row, :merge, [files.join(", "), *notes.compact].join("; "))
-    end
-
     def skipped(row, why)
       row.status = "skipped (#{why})"
       row
@@ -471,20 +491,6 @@ module Samagotchi
     # A profile's new members: "+ btw".
     def adds(members)
       members.nil? || members.empty? ? nil : "+ #{members.join(", ")}"
-    end
-
-    def merged(files)
-      return nil if files.nil? || files.empty?
-
-      "#{@dry_run ? "would merge" : "merged"} #{files.join(", ")}"
-    end
-
-    def kept(row, files, bundle)
-      row.kept = files.dup
-      return nil if row.kept.empty?
-
-      verb = @dry_run ? "would keep" : "kept"
-      "#{verb} your edits in #{row.kept.join(", ")}: chi bundle diff #{bundle} #{row.kept.first}"
     end
 
     def replaced(files)

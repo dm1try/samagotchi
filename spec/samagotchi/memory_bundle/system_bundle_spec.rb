@@ -92,7 +92,7 @@ RSpec.describe Samagotchi::MemoryBundle::SystemBundle do
       File.write(File.join(Samagotchi::MemoryPaths.system_dir, "identity.md"), "mine\n")
       ship("0.1.10", "new\n")
 
-      expect { described_class.ensure! }.to output(/kept local edit in identity\.md/).to_stderr
+      expect { described_class.ensure! }.to output(/identity\.md stays behind 0\.1\.10/).to_stderr
       expect { described_class.ensure! }.not_to output.to_stderr
       expect(installed_version).to eq("0.1.10")
       expect(installed_identity).to eq("mine\n")
@@ -183,7 +183,7 @@ RSpec.describe Samagotchi::MemoryBundle::SystemBundle do
 
         it "says so at a start that merges, one line in the row's words, and not at the next" do
           mark_old(text(intro: "my intro"))
-          expect { described_class.ensure! }.to output(/\A\[samagotchi-system\] merged \(identity\.md; Copied to the trash first: identity\.md \(.*\)\)\n\z/).to_stderr
+          expect { described_class.ensure! }.to output(/\A\[samagotchi-system\] merged 0\.1\.10 into your identity\.md; Copied to the trash first: identity\.md \(.*\)\n\z/).to_stderr
           expect { described_class.ensure! }.not_to output.to_stderr
         end
 
@@ -218,7 +218,7 @@ RSpec.describe Samagotchi::MemoryBundle::SystemBundle do
           expect(described_class.sync(dry_run: true).status).to eq(:restored)
           expect(File.exist?(File.join(Samagotchi::MemoryPaths.system_dir, "gone.md"))).to be false
 
-          expect(described_class.sync).to have_attributes(status: :restored, merged: [], kept: [], warnings: [])
+          expect(described_class.sync).to have_attributes(status: :restored, merged: [], kept: ["identity.md"], warnings: [])
           system_dir = Samagotchi::MemoryPaths.system_dir
           expect(File.read(File.join(system_dir, "gone.md"))).to eq("gone\n")
           expect(File.read(provenance.base_path("gone.md"))).to eq("gone\n")

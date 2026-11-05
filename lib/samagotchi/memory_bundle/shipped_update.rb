@@ -24,7 +24,7 @@ module Samagotchi
     # bundle that isn't installed and never downgrades.
     #
     # .md files take the Installer's 3-way merge: a clean text merge replaces
-    # the file (merged), a real conflict keeps the user's (kept). Hooks, rules and the plugin are replaced; an
+    # the file (merged), a real conflict keeps the user's (behind). Hooks, rules and the plugin are replaced; an
     # edited one (which didn't load: its sha no longer matched) is listed
     # in replaced.
     #
@@ -36,20 +36,23 @@ module Samagotchi
     #
     # At the same version a row retries the files marked conflict (Remerge):
     # :would_merge when that would change anything, then :merged when a file
-    # merged. Not for a project-scope bundle: chi bundle upgrade in the project.
+    # merged; what stays behind reads as behind whichever it is. Not retried for
+    # a project-scope bundle: chi bundle upgrade in the project.
     module ShippedUpdate
       # status: :would_update, :would_merge (plan), :updated, :merged,
       # :up_to_date, :skipped, :failed. note says why for skipped/failed, and
-      # what a retry at the same version left. merged, kept and replaced
-      # are file names; under plan they are what apply would merge, keep or
-      # replace.
+      # what a retry at the same version warned of. merged and replaced are file
+      # names, behind FileStanding::Behind; under plan they are what apply would
+      # merge, replace or leave behind.
       # adds is nil but for a profile: the members it installs.
       # kept_own is nil but for a profile that installed a member: its
       # Profile.kept_own_line lines.
       # trash_copy is nil but under apply when it saved edited files
       # (Installer#trash_copy_line).
-      Row = Struct.new(:name, :from, :to, :status, :note, :merged, :kept, :replaced, :source_dir, :scope, :adds, :kept_own,
-                       :trash_copy, keyword_init: true)
+      Row = Struct.new(:name, :from, :to, :status, :note, :merged, :behind, :replaced, :source_dir, :scope, :adds, :kept_own,
+                       :trash_copy, keyword_init: true) do
+        def kept = Array(behind).map(&:file)
+      end
 
       module_function
 
@@ -58,7 +61,10 @@ module Samagotchi
       def plan(shipped_dir: SourceNormalizer::SHIPPED_DIR, chi_version: Samagotchi::VERSION)
         shipped = Listing.shipped(dir: shipped_dir).to_h { |s| [s.name, s] }
         installed.map do |name, bundle|
-          plan_row(name, bundle, shipped[name], shipped_dir, chi_version)
+          row = plan_row(name, bundle, shipped[name], shipped_dir, chi_version)
+          # A row that retried nothing still has its files that stay behind.
+          row.behind = bundle.behind_files if row.status == :skipped && !bundle.error?
+          row
         end
       end
 
@@ -94,7 +100,7 @@ module Samagotchi
           row.dup.tap do |r|
             r.status = :updated
             r.merged = installer.merged_files
-            r.kept = installer.conflicts.keys
+            r.behind = installer.behind
             r.trash_copy = installer.trash_copy_line
           end
         rescue StandardError => e
@@ -110,6 +116,7 @@ module Samagotchi
         row.dup.tap do |r|
           r.status = done.merged.empty? ? :up_to_date : :merged
           r.merged = done.merged
+          r.behind = done.behind
           r.trash_copy = done.trash_copy
           r.note = note_of(done)
         end
@@ -134,7 +141,7 @@ module Samagotchi
       def from_chi?(bundle, ship) = !ship.nil? && bundle.source.to_s.match?(SourceNormalizer::SHIPPED_SOURCE)
 
       def plan_row(name, bundle, ship, shipped_dir, chi_version)
-        row = Row.new(name: name, merged: [], kept: [], replaced: [])
+        row = Row.new(name: name, merged: [], behind: [], replaced: [])
         return skip(row, "manifest.json unreadable") if bundle.error?
 
         row.from = bundle.version.to_s
@@ -146,7 +153,7 @@ module Samagotchi
 
         row.source_dir = File.join(shipped_dir, ship.source)
         return profile_row(row, bundle, shipped_dir, chi_version) if Profile.shipped_meta?(row.source_dir, shipped_dir: shipped_dir)
-        return same_version_row(row) unless Listing.newer?(row.to, row.from)
+        return same_version_row(row, bundle) unless Listing.newer?(row.to, row.from)
 
         manifest = Manifest.read(dir: row.source_dir)
         if Manifest.requires_chi_failure(manifest.requires_chi, chi_version)
@@ -157,20 +164,24 @@ module Samagotchi
 
         forecast = forecast(row, bundle)
         row.merged = forecast.merged
-        row.kept = forecast.conflicts
+        row.behind = forecast.behind
         row.replaced = edited_executables(name, bundle)
         row.status = :would_update
         row
       end
 
-      # Up to date, unless a file marked conflict could settle now.
-      def same_version_row(row)
+      # Up to date, unless a file marked conflict could settle now or stays behind.
+      def same_version_row(row, bundle)
         row.to = nil
         row.status = :up_to_date
-        return row if row.scope == "project" || !MemoryPaths.scope_dir(row.scope)
+        if row.scope == "project" || !MemoryPaths.scope_dir(row.scope)
+          row.behind = bundle.behind_files
+          return row
+        end
 
         planned = remerge(row).run(dry_run: true)
         row.merged = planned.merged
+        row.behind = planned.behind
         row.note = note_of(planned)
         row.status = :would_merge if planned.work?
         row
@@ -180,10 +191,7 @@ module Samagotchi
         Remerge.new(name: row.name, scope: row.scope, target_dir: MemoryPaths.scope_dir!(row.scope), source_dir: row.source_dir)
       end
 
-      def note_of(remerged)
-        lines = remerged.notes + remerged.warnings
-        lines.empty? ? nil : lines.join("; ")
-      end
+      def note_of(remerged) = remerged.warnings.empty? ? nil : remerged.warnings.join("; ")
 
       def profile_row(row, bundle, shipped_dir, chi_version)
         manifest = Manifest.read(dir: row.source_dir)
@@ -216,7 +224,7 @@ module Samagotchi
       def forecast(row, bundle)
         shipped = Dir.glob(File.join(row.source_dir, "*.md")).map { |f| File.basename(f) }.sort
         Merger::Upgrade.new(provenance: Provenance.new(name: row.name), target_dir: MemoryPaths.scope_dir!(row.scope),
-                            source_dir: row.source_dir).forecast(shipped & bundle.files.keys)
+                            source_dir: row.source_dir).forecast(shipped & bundle.files.keys, version: row.to)
       end
 
       # Installed hooks, rules and the plugin whose sha differs from the

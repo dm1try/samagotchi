@@ -89,6 +89,27 @@ module Samagotchi
 
       def failed(why) = Result.new(status: :failed, text: nil, hunks: [], why: why)
 
+      # What +theirs+ changed against +base+, section by section: what a file that
+      # kept its own text has missed. A conflict's hunks can't say that: the whole
+      # file stays, so a change git would have merged is missed too, and the one
+      # hunk may be a Changelog line beside a whole new section.
+      # A heading (as written, "## Steps") names its section, the deepest one; a
+      # Changelog comes last, being the least of it.
+      # @return [Array(Array<String>, Boolean)] the headings; whether text under
+      #   no heading changed
+      def changed_sections(base, theirs)
+        before, after = [base, theirs].map do |text|
+          # Where a section falls leaves blank lines of its own at the end.
+          Scan.new(text).sections.map { |heading, lines| [heading, lines.join.strip] }
+        end
+        headings = (after - before).map(&:first)
+        gone = (before - after).map(&:first) - after.map(&:first)
+        names = (headings + gone).uniq
+        unnamed = names.include?(nil)
+        changelog, named = names.compact.partition { |name| name.sub(/\A#+[ \t]*/, "").match?(Scan::CHANGELOG) }
+        [named + changelog, unnamed]
+      end
+
       # Whether git's answer is made of the inputs' lines: anything else (an
       # empty answer to non-empty inputs too) must never replace a memory.
       def from_inputs?(lines, *inputs)
@@ -199,7 +220,11 @@ module Samagotchi
 
         attr_reader :hunks, :lines
 
+        # [heading as written (nil before the first), its lines], in order.
+        attr_reader :sections
+
         def initialize(output)
+          @sections = [[nil, []]]
           @hunks = []
           @pieces = []
           @lines = []
@@ -270,6 +295,11 @@ module Samagotchi
         def add_text(line, bare)
           @pieces << line
           @lines << line
+          classify_text(bare)
+          @sections.last.last << line
+        end
+
+        def classify_text(bare)
           return follow_fence(bare) if @fence || bare.match?(FENCE)
           return follow_comment(bare) if @comment || bare.include?(COMMENT_OPEN)
 
@@ -283,6 +313,7 @@ module Samagotchi
           @heading = bare.sub(/\A {0,3}\#{1,6}[ \t]*/, "").sub(/[ \t#:]*\z/, "")
           @changelog = bare[HEADING, 1].size <= CHANGELOG_LEVEL && @heading.match?(CHANGELOG)
           @in_item = false
+          @sections << [bare.strip.sub(/[ \t#:]*\z/, ""), []]
         end
 
         # Whether the section so far is still nothing but list entries.

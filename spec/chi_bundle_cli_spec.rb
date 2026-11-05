@@ -802,22 +802,22 @@ Hooks removed: 1\n\z})
     after { FileUtils.rm_rf(@root) }
 
     let(:conflict_head) do
-      "Conflicts: a.md\nConflict in a.md: local edits conflict with bundle update (use --force to overwrite or resolve interactively)\n" \
-        "\n1 conflict(s) need resolution.\n  conflict: a.md\n"
+      "a.md stays behind 3.0.0: missed 1 place (--force takes the bundle's version, your file copied to the trash first)\n" \
+        "\n1 file stays behind: a.md\n"
     end
 
     it "keeps the edit and exits 2 on a non-tty stdin" do
       expect(chi("upgrade", @v3)).to eq([
-        "#{conflict_head}Non-interactive terminal: kept your edits in the file(s) above; the rest is upgraded. " \
-        "Re-run with --force to take the bundle's version, or --agent in a TTY to merge.\n", "", 2
+        "#{conflict_head}Non-interactive terminal: the rest is upgraded. " \
+        "--force takes the bundle's version, your file copied to the trash first; --agent in a TTY merges.\n", "", 2
       ])
       expect(File.read(File.join(memories, "a.md"))).to eq("edited\n")
     end
 
     it "keeps the edit and exits 2 with --no-agent" do
       expect(chi("upgrade", @v3, "--no-agent")).to eq([
-        "#{conflict_head}Kept your edits in the file(s) above; the rest is upgraded. chi bundle diff demo FILE shows the base; " \
-        "re-run with --force to take the bundle's version.\n", "", 2
+        "#{conflict_head}The rest is upgraded. chi bundle diff demo FILE shows the base; " \
+        "--force takes the bundle's version, your file copied to the trash first.\n", "", 2
       ])
     end
 

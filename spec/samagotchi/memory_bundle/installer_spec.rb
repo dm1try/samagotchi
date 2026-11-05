@@ -189,7 +189,7 @@ RSpec.describe Samagotchi::MemoryBundle::Installer do
         again = installer_for(source: bundle_dir, name: "test-bundle", scope: "system")
         again.run
         expect(again.results["identity.md"]).to eq(status: "skipped", reason: "already exists")
-        expect(again.warnings).to eq(["Skipped identity.md (already exists; use --force to overwrite)"])
+        expect(again.warnings).to eq(["Skipped identity.md (already exists; #{Samagotchi::MemoryBundle::FileStanding::FORCE_TAKES})"])
         expect(again.summary).to include("chi bundle upgrade test-bundle")
       end
 
@@ -730,7 +730,7 @@ RSpec.describe Samagotchi::MemoryBundle::Installer do
 
       expect(File.read(old_path)).to include("my notes")
       expect(up.results["old.md"][:status]).to eq("kept_pruned")
-      expect(up.warnings).to include("Kept old.md: no longer in the bundle but edited locally (use --force to remove)")
+      expect(up.warnings).to include("Kept old.md: no longer in the bundle but edited locally (--force moves it to the trash)")
     end
 
     it "removes an edited dropped file with --force" do

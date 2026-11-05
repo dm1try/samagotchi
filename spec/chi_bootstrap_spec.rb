@@ -50,7 +50,7 @@ RSpec.describe "chi bootstrap" do
 
     expect(command.send(:system_bundle_line, result, false)).to be(true)
     command.send(:system_bundle_line, result, true)
-    expect(out.string).to eq("system bundle: v1.0.0 merged identity.md\nsystem bundle: v1.0.0 would merge identity.md\n")
+    expect(out.string).to eq("system bundle: v1.0.0 merged into your identity.md\nsystem bundle: v1.0.0 would merge into your identity.md\n")
   end
 
   # The same through bin/chi in a child process.
@@ -551,7 +551,7 @@ RSpec.describe "chi bootstrap" do
     it "exits 1 when a member fails, and still writes the config" do
       server.default("/v1/models", json: models("m"))
       failing = Class.new do
-        def sync_system(dry_run: false) = Samagotchi::MemoryBundle::SystemBundle::Result.new(status: :up_to_date, to: "0.8.0", kept: [], warnings: [])
+        def sync_system(dry_run: false) = Samagotchi::MemoryBundle::SystemBundle::Result.new(status: :up_to_date, to: "0.8.0", behind: [], warnings: [])
         def to_install(_) = []
 
         def install(name, dry_run: false)
@@ -573,7 +573,7 @@ RSpec.describe "chi bootstrap" do
     it "exits 1 with one line when installing the profile raises" do
       server.default("/v1/models", json: models("m"))
       raising = Class.new do
-        def sync_system(dry_run: false) = Samagotchi::MemoryBundle::SystemBundle::Result.new(status: :up_to_date, to: "0.8.0", kept: [], warnings: [])
+        def sync_system(dry_run: false) = Samagotchi::MemoryBundle::SystemBundle::Result.new(status: :up_to_date, to: "0.8.0", behind: [], warnings: [])
         def to_install(_) = raise(Errno::EACCES, "memories")
         def install(_name, dry_run: false) = raise(Samagotchi::MemoryBundle::Manifest::ValidationError, "manifest missing required field: name")
       end
@@ -612,7 +612,7 @@ RSpec.describe "chi bootstrap" do
       # No dev prompt: the Markdown one is the only question after the pick.
       let(:quiet_bundles) do
         Class.new do
-          def sync_system(dry_run: false) = Samagotchi::MemoryBundle::SystemBundle::Result.new(status: :up_to_date, to: "0.8.0", kept: [], warnings: [])
+          def sync_system(dry_run: false) = Samagotchi::MemoryBundle::SystemBundle::Result.new(status: :up_to_date, to: "0.8.0", behind: [], warnings: [])
           def to_install(_) = []
 
           def install(name, dry_run: false)

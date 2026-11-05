@@ -56,6 +56,14 @@ RSpec.describe Samagotchi::MemoryBundle::Remerge do
   end
 
   # A mark as this chi makes it: it names what it missed.
+  # The mark as a retry would have left it, naming +sha+ as the bundle's text.
+  def mark_names(sha, legacy_base: false)
+    raw = JSON.parse(File.read(manifest_path))
+    raw["files"]["a.md"]["incoming_sha"] = sha
+    raw["files"]["a.md"]["legacy_base"] = true if legacy_base
+    File.write(manifest_path, JSON.pretty_generate(raw))
+  end
+
   def new_mark
     raw = JSON.parse(File.read(manifest_path))
     raw["files"]["a.md"]["incoming_sha"] = Digest::SHA256.hexdigest(File.read(File.join(source, "a.md")))
@@ -179,7 +187,7 @@ RSpec.describe Samagotchi::MemoryBundle::Remerge do
   context "when the shipped text isn't the one the mark names" do
     before do
       marked_at_two(mine: doc(intro: "my intro"), shipped: doc(tail: "tail two"))
-      provenance.stamp_incoming("a.md" => "another-digest")
+      mark_names("another-digest")
     end
 
     it "leaves it alone, running no git" do
@@ -195,7 +203,7 @@ RSpec.describe Samagotchi::MemoryBundle::Remerge do
   context "when the bundle has no such file now" do
     def expect_left_alone(result)
       expect(result).not_to be_work
-      expect(result.notes).to eq(["a.md: not in the bundle now, nothing to merge"])
+      expect(result.behind.map(&:line)).to eq(["a.md stays behind 2.0.0: not in the bundle now, nothing to merge"])
       expect(File.read(target)).to eq(doc(intro: "my intro"))
       expect(base).to eq(doc)
       expect(entry).to include(conflict: true)
@@ -259,16 +267,19 @@ RSpec.describe Samagotchi::MemoryBundle::Remerge do
       new_mark
       result = remerge
 
-      expect(result).not_to be_work
+      expect(result.behind.map(&:line)).to eq(["a.md stays behind 2.0.0: #{Samagotchi::MemoryBundle::FileStanding::WAITS_FOR_UPGRADE}"])
       expect(File.read(target)).to eq(doc)
-      expect(entry).to include(conflict: true)
+      expect(entry).to include(conflict: true, why: Samagotchi::MemoryBundle::FileStanding::WAITS_FOR_UPGRADE)
       expect(trash_files).to be_empty
+      expect(remerge).not_to be_work
     end
 
     it "leaves a missing one" do
       marked_at_two(mine: doc, shipped: doc(tail: "tail two"))
       FileUtils.rm_f(target)
 
+      expect(remerge.merged).to be_empty
+      expect(remerge.behind.map(&:line)).to eq(["a.md stays behind 2.0.0: #{Samagotchi::MemoryBundle::FileStanding::FILE_MISSING}"])
       expect(remerge).not_to be_work
       expect(File.exist?(target)).to be false
     end
@@ -297,7 +308,7 @@ RSpec.describe Samagotchi::MemoryBundle::Remerge do
     let(:user_text) { doc(intro: "my intro") }
     let(:live) { "#{user_text}one more edit\n" }
     let(:shipped) { doc }
-    let(:why) { "no merge possible (#{Samagotchi::MemoryBundle::Merger::LEGACY_BASE})" }
+    let(:why) { "chi can't tell whether it holds edits of yours (#{Samagotchi::MemoryBundle::FileStanding::LEGACY_BASE})" }
 
     before { allow(Gem).to receive(:path).and_return([]) }
 
@@ -538,7 +549,7 @@ RSpec.describe Samagotchi::MemoryBundle::Remerge do
     it "merges on a new version's upgrade, after a stamp too" do
       ship_in_gem("0.2.0", doc)
       old_marked(edited)
-      provenance.stamp_incoming("a.md" => "older-text")
+      mark_names("older-text", legacy_base: true)
       write_source("2.0.0", reworded)
       up = install(upgrade: true)
 
@@ -646,7 +657,7 @@ RSpec.describe Samagotchi::MemoryBundle::Remerge do
     result = remerge
 
     expect(result.merged).to eq([])
-    expect(result.notes.first).to start_with("a.md: left as it is (")
+    expect(result.behind.first.line).to start_with("a.md stays behind 2.0.0: left as it is (")
     expect(File.read(target)).to eq(doc(intro: "my intro"))
     expect(entry).to include(conflict: true)
     expect(base).to eq(doc)
@@ -655,7 +666,7 @@ RSpec.describe Samagotchi::MemoryBundle::Remerge do
   it "stamps only an entry still marked" do
     write_source("1.0.0", doc)
     install
-    provenance.stamp_incoming("a.md" => "digest")
+    provenance.refresh_marks([Samagotchi::MemoryBundle::FileStanding::Behind.new(file: "a.md")], source)
 
     expect(entry).not_to have_key(:incoming_sha)
   end

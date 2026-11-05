@@ -324,26 +324,26 @@ module Samagotchi
 
     # @return [Integer] 0 all resolved, CONFLICTS_KEPT kept some edits
     def upgrade_conflicts(installer, bundle_name, expanded_source, agent)
-      @stdout.puts "\n#{installer.conflicts.size} conflict(s) need resolution."
-      installer.conflicts.each { |k, _| @stdout.puts "  conflict: #{k}" }
+      standing = Samagotchi::MemoryBundle::FileStanding
+      @stdout.puts "\n#{standing.stay_behind(installer.behind.size)}: #{installer.behind.map(&:file).join(", ")}"
       launch = if agent.nil? && @stdin.tty?
-                 @stdout.print "Conflicts detected — launch interactive agent to resolve? [y/N] "
+                 @stdout.print "Launch an interactive agent to merge them? [y/N] "
                  ans = begin; @stdin.gets; rescue StandardError => _e; nil; end
                  ans && ans.strip.downcase.start_with?("y")
                elsif agent.nil?
-                 @stdout.puts "Non-interactive terminal: kept your edits in the file(s) above; the rest is upgraded. Re-run with --force to take the bundle's version, or --agent in a TTY to merge."
+                 @stdout.puts "Non-interactive terminal: the rest is upgraded. #{standing::FORCE_TAKES}; --agent in a TTY merges."
                  return CONFLICTS_KEPT
                else
                  agent
                end
       unless launch
-        @stdout.puts "Kept your edits in the file(s) above; the rest is upgraded. chi bundle diff #{bundle_name} FILE shows the base; re-run with --force to take the bundle's version."
+        @stdout.puts "The rest is upgraded. #{standing.diff_hint(bundle_name, "FILE")} shows the base; #{standing::FORCE_TAKES}."
         return CONFLICTS_KEPT
       end
 
       prompt = build_conflict_prompt(bundle_name, installer.conflicts, expanded_source)
       before = installer.conflicts.to_h { |key, info| [key, Samagotchi::MemoryBundle::Merger.digest(info[:current])] }
-      @stdout.puts "Launching interactive session for conflict resolution… (/exit when done)"
+      @stdout.puts "Launching an interactive session to merge them… (/exit when done)"
       require "samagotchi/terminal_ui"
       Samagotchi::TerminalUI.new(prompt: prompt).run
       settle_conflicts(installer.conflicts, before, bundle_name)
@@ -481,7 +481,7 @@ module Samagotchi
           next @stdout.puts("  #{k}: unchecked") if info[:unchecked]
 
           mods = []
-          mods << "conflict (kept your edits over v#{st.provenance.version}: chi bundle diff #{name} #{k})" if info[:conflict]
+          mods << "conflict (stays behind v#{st.provenance.version}: chi bundle diff #{name} #{k})" if info[:conflict]
           mods << "modified" if info[:modified]
           mods << "missing" if info[:missing]
           mods << "no-index" unless info[:index_present] || info[:overlay]

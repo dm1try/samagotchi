@@ -204,68 +204,84 @@ RSpec.describe Samagotchi::UpdateCommand do
     expect(command.run).to eq(0)
     row = rows.find { |candidate| candidate.component == "known-names" }
     expect(row.kept).to eq(["known_names.md"])
-    expect(row.status).to include("kept your edits in known_names.md")
+    expect(row.status).to include("known_names.md stays behind").and include("chi bundle diff known-names known_names.md")
   end
 
   it "names merged files in the system bundle's row" do
     result = Samagotchi::MemoryBundle::SystemBundle::Result.new(
-      from: "1", to: "2", status: :updated, merged: ["identity.md"], kept: [], warnings: [],
+      from: "1", to: "2", status: :updated, merged: ["identity.md"], behind: [], warnings: [],
       trash_copy: "Copied to the trash first: identity.md (/t)"
     )
     allow(Samagotchi::MemoryBundle::SystemBundle).to receive(:sync).and_return(result)
     row = described_class.new(["--no-gem"], stdout: out, stderr: err).send(:system_bundle_row)
 
-    expect(row.status).to eq("updated (merged identity.md; Copied to the trash first: identity.md (/t))")
+    expect(row).to have_attributes(status: "updated (merged 2 into your identity.md; old copies: chi bundle trash)", merged: ["identity.md"],
+                                   trash_copy: "Copied to the trash first: identity.md (/t)")
   end
 
-  it "reads 'merged' for a file merged at the same version, with no to" do
+  it "reads as merged for a file merged at the same version, with no to" do
     update = Samagotchi::MemoryBundle::ShippedUpdate::Row.new(
-      name: "coordinator", from: "0.8.0", status: :merged, merged: ["skill.md"], kept: [], replaced: [],
+      name: "coordinator", from: "0.8.0", status: :merged, merged: ["skill.md"], behind: [], replaced: [],
       trash_copy: "Copied to the trash first: skill.md (/t)"
     )
     row = described_class.new(["--no-gem"], stdout: out, stderr: err).send(:bundle_row, update)
-    expect(row).to have_attributes(from: "0.8.0", to: nil, status: "merged (skill.md; Copied to the trash first: skill.md (/t))")
+    expect(row).to have_attributes(from: "0.8.0", to: nil, status: "merged 0.8.0 into your skill.md; old copies: chi bundle trash")
 
-    result = Samagotchi::MemoryBundle::SystemBundle::Result.new(from: "0.8.0", to: "0.8.0", status: :merged, merged: ["identity.md"], kept: [], notes: [], warnings: [])
+    result = Samagotchi::MemoryBundle::SystemBundle::Result.new(from: "0.8.0", to: "0.8.0", status: :merged, merged: ["identity.md"], behind: [], warnings: [])
     allow(Samagotchi::MemoryBundle::SystemBundle).to receive(:sync).and_return(result)
     command = described_class.new(["--no-gem"], stdout: out, stderr: err)
-    expect(command.send(:system_bundle_row)).to have_attributes(from: "0.8.0", to: nil, status: "merged (identity.md)")
+    expect(command.send(:system_bundle_row)).to have_attributes(from: "0.8.0", to: nil, status: "merged 0.8.0 into your identity.md")
     command.instance_variable_set(:@dry_run, true)
-    expect(command.send(:system_bundle_row).status).to eq("would merge (identity.md)")
+    expect(command.send(:system_bundle_row).status).to eq("would merge 0.8.0 into your identity.md")
   end
 
-  it "reads 'up to date' when a retry only records a digest, and gives a retry's note" do
-    update = Samagotchi::MemoryBundle::ShippedUpdate::Row.new(name: "x", from: "1", status: :would_merge, merged: [], kept: [], replaced: [])
+  it "reads 'up to date' only when nothing stays behind, a warning in its note" do
+    update = Samagotchi::MemoryBundle::ShippedUpdate::Row.new(name: "x", from: "1", status: :would_merge, merged: [], behind: [], replaced: [])
     command = described_class.new(["--no-gem"], stdout: out, stderr: err)
     expect(command.send(:bundle_row, update).status).to eq("up to date")
 
-    update = Samagotchi::MemoryBundle::ShippedUpdate::Row.new(name: "x", from: "1", status: :up_to_date, note: "a.md: not in the bundle now, nothing to merge")
-    expect(command.send(:bundle_row, update).status).to eq("up to date (a.md: not in the bundle now, nothing to merge)")
+    update = Samagotchi::MemoryBundle::ShippedUpdate::Row.new(name: "x", from: "1", status: :up_to_date, note: "index.md: not updated")
+    expect(command.send(:bundle_row, update).status).to eq("up to date (index.md: not updated)")
+
+    update = Samagotchi::MemoryBundle::ShippedUpdate::Row.new(name: "x", from: "1", status: :up_to_date, behind: [Samagotchi::MemoryBundle::FileStanding::Behind.new(file: "a.md", version: "1", missed: ["## Steps"])])
+    expect(command.send(:bundle_row, update)).to have_attributes(status: "a.md stays behind 1: missed ## Steps (chi bundle diff x a.md)", kept: ["a.md"], to: nil)
+  end
+
+  it "reads a same-version conflict as behind in the system row and the summary, with why" do
+    gone = Samagotchi::MemoryBundle::FileStanding::Behind.new(file: "identity.md", version: "1", why: Samagotchi::MemoryBundle::FileStanding.no_merge("git not found"))
+    result = Samagotchi::MemoryBundle::SystemBundle::Result.new(from: "1", to: "1", status: :up_to_date, merged: [], behind: [gone], warnings: [])
+    allow(Samagotchi::MemoryBundle::SystemBundle).to receive(:sync).and_return(result)
+    command = described_class.new(["--no-gem"], stdout: out, stderr: err)
+
+    row = command.send(:system_bundle_row)
+    expect(row.status).to eq("identity.md stays behind 1: no merge possible (git not found) (chi bundle diff samagotchi-system identity.md)")
+    expect(command.send(:summary, [row])).to eq("1 file stays behind (see above)")
   end
 
   it "names merged files in a bundle's row, and what a dry run would merge" do
     update = Samagotchi::MemoryBundle::ShippedUpdate::Row.new(
-      name: "known-names", from: "1", to: "2", status: :updated, merged: ["a.md"], kept: ["b.md"], replaced: [],
+      name: "known-names", from: "1", to: "2", status: :updated, merged: ["a.md"], behind: [Samagotchi::MemoryBundle::FileStanding::Behind.new(file: "b.md", version: "2", missed: ["## Steps"])], replaced: [],
       trash_copy: "Copied to the trash first: a.md (/t)"
     )
     row = described_class.new(["--no-gem"], stdout: out, stderr: err).send(:bundle_row, update)
-    expect(row.status).to eq("updated (merged a.md; kept your edits in b.md: chi bundle diff known-names b.md; Copied to the trash first: a.md (/t))")
+    expect(row.status).to eq("updated (merged 2 into your a.md; b.md stays behind 2: missed ## Steps (chi bundle diff known-names b.md); old copies: chi bundle trash)")
 
     command = described_class.new(["--no-gem"], stdout: out, stderr: err)
     command.instance_variable_set(:@dry_run, true)
     update.trash_copy = nil
-    update.kept = []
-    expect(command.send(:bundle_row, update).status).to eq("would update (would merge a.md)")
+    expect(command.send(:bundle_row, update).status).to eq("would update (would merge 2 into your a.md; b.md would stay behind 2: missed ## Steps (chi bundle diff known-names b.md))")
+    update.behind = []
+    expect(command.send(:bundle_row, update).status).to eq("would update (would merge 2 into your a.md)")
   end
 
   it "names the trash copy of an edited hook it replaced" do
     update = Samagotchi::MemoryBundle::ShippedUpdate::Row.new(
-      name: "known-names", from: "1", to: "2", status: :updated, kept: [], replaced: ["hooks/x.rb"],
+      name: "known-names", from: "1", to: "2", status: :updated, behind: [], replaced: ["hooks/x.rb"],
       trash_copy: "Copied to the trash first: hooks/x.rb (/t)"
     )
     row = described_class.new(["--no-gem"], stdout: out, stderr: err).send(:bundle_row, update)
 
-    expect(row.status).to include("replaced edited hooks/x.rb (it wasn't loading); Copied to the trash first: hooks/x.rb (/t)")
+    expect(row.status).to include("replaced edited hooks/x.rb (it wasn't loading)").and include("old copies: chi bundle trash")
   end
 
   it "leaves the bundles alone with --no-bundles or update.bundles: false" do

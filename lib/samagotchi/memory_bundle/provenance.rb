@@ -7,6 +7,7 @@ require "fileutils"
 require_relative "../atomic_file"
 require_relative "../memory_paths"
 require_relative "bundle_hook"
+require_relative "file_standing"
 require_relative "installed_bundle"
 
 module Samagotchi
@@ -22,9 +23,19 @@ module Samagotchi
 
       attr_reader :name, :bundle_dir
 
+      # What a conflict mark adds to a file's entry.
+      MARK_FIELDS = %w[conflict incoming_sha legacy_base why missed missed_places].freeze
+
       def initialize(name:)
         @name = name
         @bundle_dir = File.join(self.class.bundles_dir, name)
+      end
+
+      # The bundle's text a marked file missed: incoming/<file>, there until the
+      # file settles, so it outlives a git or zip source's extract. Nothing globs
+      # the bundle's folder for memories, and an uninstall's rm_rf sweeps it.
+      def incoming_path(file_key)
+        File.join(@bundle_dir, "incoming", file_key.to_s)
       end
 
       def hooks_dir
@@ -148,11 +159,12 @@ module Samagotchi
       #   snapshot
       # @param requires_chi [String, nil] the manifest's requirement
       # @param needs [Array<Hash>] the manifest's needs ({command:, why:, hint:})
-      # @param conflicts [Array<String>] files an upgrade kept with local
-      #   edits that conflict with it; their entries get conflict: true
-      # @param incoming_shas [Hash{String => String}] those files' incoming
-      #   digests, recorded with the mark (incoming_sha: what Remerge retries).
-      #   A mark from an older chi that stays a mark gets legacy_base: true
+      # @param marks [Array<FileStanding::Behind>] files an upgrade left behind;
+      #   their entries get conflict: true, and what the Behind says
+      # @param incoming_dir [String, nil] the bundle's source: each marked file's
+      #   digest goes with the mark (incoming_sha: what Remerge retries) and its
+      #   text is saved (#incoming_path), a settled file's going. A mark from an
+      #   older chi that stays a mark gets legacy_base: true
       #   (InstalledBundle.legacy_mark?)
       # @param includes [Array<String>, nil] a profile's recorded members
       #   (MemoryBundle::Profile); nil for a plain bundle
@@ -162,7 +174,7 @@ module Samagotchi
       # @param dev [Boolean] a dev install: its files are links to the
       #   source, recorded as DEV_SHA (no sha256 check) with "dev": true
       def write(files:, scope:, version:, source_path:, hooks: {}, trust_level: nil, source_commit: nil, hooks_files: {},
-                guardrails_files: {}, plugin_file: nil, requires_chi: nil, needs: nil, conflicts: [], incoming_shas: {}, includes: nil,
+                guardrails_files: {}, plugin_file: nil, requires_chi: nil, needs: nil, marks: [], incoming_dir: nil, includes: nil,
                 scripts_files: {}, context_providers: [], file_descriptions: {}, session_settings: [], session_setting_types: {}, settings: nil, setting_types: {},
                 dev: false)
         FileUtils.mkdir_p(@bundle_dir)
@@ -173,6 +185,7 @@ module Samagotchi
         # files and hooks not in this install are stale.
         existing = record
         merged_entries = existing ? existing.files.dup : {}
+        marked = marks.to_h { |mark| [mark.file, mark] }
 
         files.each do |file_key, file_path|
           legacy = InstalledBundle.legacy_mark?(merged_entries[file_key])
@@ -184,10 +197,12 @@ module Samagotchi
           else
             merged_entries[file_key] = merged_entries.fetch(file_key, {}).slice(:checksum)
           end
-          if conflicts.include?(file_key.to_s)
-            merged_entries[file_key][:conflict] = true
-            merged_entries[file_key][:incoming_sha] = incoming_shas[file_key.to_s] if incoming_shas[file_key.to_s]
+          if (mark = marked[file_key.to_s])
+            merged_entries[file_key].merge!(mark_fields(mark))
             merged_entries[file_key][:legacy_base] = true if legacy
+            save_incoming(file_key, incoming_dir)
+            incoming = incoming_dir && File.join(incoming_dir, file_key.to_s)
+            merged_entries[file_key][:incoming_sha] = self.class.file_sha(incoming) if incoming && File.exist?(incoming)
           end
           merged_entries[file_key][:description] = file_descriptions[file_key.to_s] if file_descriptions[file_key.to_s]
         end
@@ -278,6 +293,7 @@ module Samagotchi
         manifest_data["setting_types"] = setting_types.to_h { |k, v| [k.to_s, v.to_s] } unless setting_types.to_h.empty?
 
         write_manifest(manifest_data)
+        prune_incoming(marked.keys)
       end
 
       # After a conflict was settled: each file's base becomes the incoming
@@ -298,10 +314,11 @@ module Samagotchi
 
           content = File.read(info[:incoming])
           File.write(base_path(key), content)
-          raw["files"][key] = raw["files"][key].except("conflict", "incoming_sha", "legacy_base").merge("checksum" => Digest::SHA256.hexdigest(content))
+          raw["files"][key] = raw["files"][key].except(*MARK_FIELDS).merge("checksum" => Digest::SHA256.hexdigest(content))
           key
         end
         write_manifest(raw)
+        prune_incoming(marked_in(raw))
         settled
       end
 
@@ -316,20 +333,28 @@ module Samagotchi
         entry["description"] = kept if kept
         (raw["files"] ||= {})[file_key] = entry
         write_manifest(raw)
+        prune_incoming(marked_in(raw))
       end
 
-      # Records the incoming digest on marks that have none: a mark made before
-      # chi kept it, once Remerge has tried it. legacy_base keeps it known for
-      # what it is (InstalledBundle.legacy_mark?). The rest of the manifest stays.
-      # @param shas [Hash{String => String}] file key => digest
-      def stamp_incoming(shas)
+      # What a retry found of files still marked: the mark says it, its digest
+      # recorded if it had none (a mark made before chi kept it; legacy_base keeps
+      # that known, InstalledBundle.legacy_mark?), the bundle's text saved. The
+      # rest of the manifest stays.
+      # @param marks [Array<FileStanding::Behind>]
+      # @param incoming_dir [String] the bundle's source
+      def refresh_marks(marks, incoming_dir)
         return unless installed?
 
         raw = JSON.parse(File.read(File.join(@bundle_dir, "manifest.json")))
-        shas.each do |key, sha|
-          next unless raw.dig("files", key.to_s, "conflict")
+        marks.each do |mark|
+          entry = raw.dig("files", mark.file)
+          next unless entry&.fetch("conflict", nil)
 
-          raw["files"][key.to_s].merge!("incoming_sha" => sha, "legacy_base" => true)
+          save_incoming(mark.file, incoming_dir)
+          entry.reject! { |field, _| %w[why missed missed_places].include?(field) }
+          entry.merge!(mark_fields(mark).transform_keys(&:to_s))
+          source = File.join(incoming_dir, mark.file)
+          entry.merge!("incoming_sha" => self.class.file_sha(source), "legacy_base" => true) if File.exist?(source) && !entry["incoming_sha"]
         end
         write_manifest(raw)
       end
@@ -357,6 +382,34 @@ module Samagotchi
         AtomicFile.write(manifest_path, JSON.pretty_generate(manifest_data))
       end
       private :write_manifest
+
+      def mark_fields(mark)
+        { conflict: true, why: mark.why, missed: mark.missed.empty? ? nil : mark.missed,
+          missed_places: mark.places.zero? ? nil : mark.places }.compact
+      end
+      private :mark_fields
+
+      def save_incoming(file_key, incoming_dir)
+        source = incoming_dir && File.join(incoming_dir, file_key.to_s)
+        return unless source && File.exist?(source)
+
+        FileUtils.mkdir_p(File.dirname(incoming_path(file_key)))
+        FileUtils.cp(source, incoming_path(file_key))
+      end
+      private :save_incoming
+
+      def marked_in(raw) = (raw["files"] || {}).select { |_, entry| entry["conflict"] }.keys
+      private :marked_in
+
+      # Each file that settled loses its saved text; the folder goes with the last.
+      def prune_incoming(keep)
+        dir = File.join(@bundle_dir, "incoming")
+        return unless Dir.exist?(dir)
+
+        (Dir.children(dir) - keep).each { |file| FileUtils.rm_f(File.join(dir, file)) }
+        Dir.rmdir(dir) if Dir.empty?(dir)
+      end
+      private :prune_incoming
 
       # Returns the path to a base snapshot for a given file key.
       def base_path(file_key)

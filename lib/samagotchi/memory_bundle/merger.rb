@@ -2,6 +2,7 @@
 
 require "digest"
 require_relative "../atomic_file"
+require_relative "file_standing"
 require_relative "installed_bundle"
 
 module Samagotchi
@@ -59,11 +60,10 @@ module Samagotchi
       ALREADY_MERGED = Outcome.new(status: :keep, base: :incoming)
 
       # What an upgrade would do to the files asked about, by what callers say
-      # of them.
-      Forecast = Data.define(:merged, :conflicts)
-
-      # Why a merge of a mark from an older chi didn't go ahead (.merge_outcome).
-      LEGACY_BASE = "an older chi may have taken your text as the base, and the merge would remove lines from your file"
+      # of them. merged: file names; behind: FileStanding::Behind.
+      Forecast = Data.define(:merged, :behind) do
+        def conflicts = behind.map(&:file)
+      end
 
       # One bundle's upgrade as seen before it runs: what it does to a file,
       # nothing written. The one way to ask: Installer's merge and dry run,
@@ -90,7 +90,7 @@ module Samagotchi
           sides = paths(file_key)
           return classified unless legacy && Merger.removes_lines?(File.binread(sides[:current]), File.binread(sides[:incoming]))
 
-          unproved.call ? CONFLICT.with(merge: TextMerge.failed(LEGACY_BASE)) : classified
+          unproved.call ? CONFLICT.with(merge: TextMerge.failed(FileStanding::LEGACY_BASE)) : classified
         end
 
         # .classify alone: no merge is tried.
@@ -105,10 +105,28 @@ module Samagotchi
         # others: ShippedUpdate about every *.md shipped, SystemBundle about the
         # manifest's files:. So a plan can name a file the upgrade itself
         # doesn't merge (docs/internals/bundles.md).
+        # @param version [String, nil] the version it would bring
         # @return [Forecast]
-        def forecast(file_keys)
+        def forecast(file_keys, version: nil)
           outcomes = file_keys.to_h { |key| [key, outcome(key)] }
-          Forecast.new(merged: outcomes.select { |_, o| o.merged? }.keys, conflicts: outcomes.select { |_, o| o.conflict? }.keys)
+          Forecast.new(merged: outcomes.select { |_, o| o.merged? }.keys,
+                       behind: outcomes.select { |_, o| o.conflict? }.map { |key, o| behind(key, o, version) })
+        end
+
+        # A :conflict outcome as a report and the mark read it: why no merge was
+        # possible, and what the bundle changed that the file doesn't get. A base
+        # that may be the user's own text (an older mark) can't say what changed.
+        # @param version [String, nil] the version the file stays behind
+        # @return [FileStanding::Behind]
+        def behind(file_key, outcome, version)
+          why = outcome.why && FileStanding.no_merge(outcome.why)
+          base = paths(file_key)[:base]
+          entry = provenance.record&.files&.fetch(file_key, nil)
+          return FileStanding::Behind.new(file: file_key, version: version, why: why) if InstalledBundle.legacy_mark?(entry) || !File.exist?(base)
+
+          headings, unnamed = TextMerge.changed_sections(File.binread(base), File.binread(paths(file_key)[:incoming]))
+          places = unnamed ? [outcome.merge&.hunks&.count { |hunk| !hunk.union? }.to_i, 1].max : 0
+          FileStanding::Behind.new(file: file_key, version: version, why: why, missed: headings, places: places)
         end
 
         # @return [Hash{Symbol => String}] the file's :base, :current, :incoming
@@ -177,7 +195,7 @@ module Samagotchi
         result = TextMerge.merge(base: File.binread(sides[:base]), ours: ours, theirs: File.binread(sides[:incoming]))
         return CONFLICT.with(merge: result) unless result.clean?
         return ALREADY_MERGED if result.text.b == ours.b
-        return CONFLICT.with(merge: TextMerge.failed(LEGACY_BASE)) if removes_lines?(ours, result.text) && unproved.call
+        return CONFLICT.with(merge: TextMerge.failed(FileStanding::LEGACY_BASE)) if removes_lines?(ours, result.text) && unproved.call
 
         Outcome.new(status: :merged, base: :incoming, merge: result, current_sha: Digest::SHA256.hexdigest(ours))
       end

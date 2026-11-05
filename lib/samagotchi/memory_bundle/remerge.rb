@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "index_updater"
+require_relative "file_standing"
 require_relative "manifest"
 require_relative "memory_files"
 require_relative "merger"
@@ -18,21 +19,21 @@ module Samagotchi
     # could hit a transient deny.
     #
     # Each marked file, by what Merger::Upgrade says of it:
-    #   - not shipped now: its mark, base and text stay, and a note says so;
+    #   - not shipped now: its mark, base and text stay, and it reads as behind;
     #   - the shipped text isn't the one the mark names (a checkout at the same
-    #     VERSION can carry other text): left alone. A mark that names none
-    #     (older chi) is tried too, the migration; a real conflict then records
-    #     the digest and legacy_base, so Merger.merge_outcome keeps protecting
-    #     its file (a merge there may not take a line out). A mark whose digest matches is tried on every run, since
-    #     the user's file or git may have changed;
+    #     VERSION can carry other text): left alone, behind as its mark says. A
+    #     mark that names none (older chi) is tried too, the migration; a real
+    #     conflict then records the digest and legacy_base, so
+    #     Merger.merge_outcome keeps protecting its file (a merge there may not
+    #     take a line out). A mark whose digest matches is tried on every run,
+    #     since the user's file or git may have changed;
     #   - merged: replaced as the Installer does, base the incoming file;
     #   - noop, keep (a merge that adds nothing too): the file has nothing left
     #     to miss, so the mark goes;
-    #   - conflict: nothing changes but that digest, and nothing is said;
+    #   - conflict: behind, and the mark records why, only when that changed;
     #   - fast_forward (one Merger::Upgrade#outcome lets go ahead), install: the
-    #     next upgrade's
-    #     (save_marked_file, a restore);
-    #   - one it can't read or replace: left as it is, and a note says why.
+    #     next upgrade's (save_marked_file, a restore), behind until then;
+    #   - one it can't read or replace: left as it is, behind, saying why.
     #
     # It can't loop: settling clears the mark, and a real conflict writes nothing.
     # git runs once per marked file per run, and only for a marked file. A run
@@ -41,12 +42,13 @@ module Samagotchi
     # gets no Remerge, and `chi bundle upgrade` is its retry.
     class Remerge
       # merged: replaced (or, in a dry run, would be). settled: their mark gone
-      # with no merge. stamped: their mark got its digest. notes: what a report
-      # may say. work? says whether a real run would change anything.
-      Result = Data.define(:merged, :settled, :stamped, :notes, :warnings, :trash_copy) do
+      # with no merge. stamped: their mark was updated. behind: each file that
+      # stays behind, and why (FileStanding::Behind). work? says whether a real run
+      # would change anything.
+      Result = Data.define(:merged, :settled, :stamped, :behind, :warnings, :trash_copy) do
         def work? = [merged, settled, stamped].any?(&:any?)
       end
-      NOTHING = Result.new(merged: [], settled: [], stamped: [], notes: [], warnings: [], trash_copy: nil).freeze
+      NOTHING = Result.new(merged: [], settled: [], stamped: [], behind: [], warnings: [], trash_copy: nil).freeze
 
       # @param record [InstalledBundle, nil] the bundle's record (read when not given)
       def initialize(name:, scope:, target_dir:, source_dir:, record: nil)
@@ -67,43 +69,59 @@ module Samagotchi
         @dry_run = dry_run
         @merged = []
         @settled = []
-        @stamped = {}
-        @notes = []
+        @stamped = []
+        @behind = []
         @warnings = []
         @trash = Trash.new(@name)
         shipped = MemoryFiles.select(@source_dir, Manifest.read(dir: @source_dir))
         marked.each { |key, entry| retry_file(key, entry, shipped) }
         settle unless dry_run
-        Result.new(merged: @merged, settled: @settled, stamped: @stamped.keys, notes: @notes, warnings: @warnings, trash_copy: @trash.copy_line)
+        Result.new(merged: @merged, settled: @settled, stamped: @stamped.map(&:file), behind: @behind, warnings: @warnings, trash_copy: @trash.copy_line)
       end
 
       private
 
       def retry_file(key, entry, shipped)
-        return @notes << "#{key}: not in the bundle now, nothing to merge" unless shipped.include?(key)
+        return stay(key, FileStanding::NOT_SHIPPED) unless shipped.include?(key)
 
         incoming_sha = Merger.digest(view.paths(key)[:incoming])
-        return if entry[:incoming_sha] && entry[:incoming_sha] != incoming_sha
+        return @behind << @record.behind_entry(key, entry) if entry[:incoming_sha] && entry[:incoming_sha] != incoming_sha
 
         outcome = view.outcome(key)
-        if outcome.merged? then merge_file(key, outcome)
-        elsif outcome.conflict? then @stamped[key] = incoming_sha unless entry[:incoming_sha]
-        elsif %i[noop keep].include?(outcome.status) then @settled << key
+        case outcome.status
+        when :merged then merge_file(key, entry, outcome)
+        when :conflict then mark(key, entry, view.behind(key, outcome, @record.version))
+        when :noop, :keep then @settled << key
+        when :fast_forward then mark(key, entry, behind_for(key, FileStanding::WAITS_FOR_UPGRADE))
+        when :install then mark(key, entry, behind_for(key, FileStanding::FILE_MISSING))
         end
       rescue SystemCallError => e
-        @notes << "#{key}: left as it is (#{e.message})"
+        stay(key, FileStanding.left_as_it_is(e.message))
       end
 
-      def merge_file(key, outcome)
-        return @merged << key if @dry_run
+      def behind_for(key, why) = FileStanding::Behind.new(file: key, version: @record.version, why: why)
 
-        @merged << key if Merger.write_merged(view.paths(key)[:current], outcome, @trash)
+      # Behind for now, with a reason worth no write to the record.
+      def stay(key, why) = @behind << behind_for(key, why)
+
+      # Behind, and the record says so: a write only when it has something new,
+      # so a real conflict at each chi start writes nothing.
+      def mark(key, entry, behind)
+        @behind << behind
+        @stamped << behind unless entry[:incoming_sha] && @record.behind_entry(key, entry) == behind && File.exist?(@provenance.incoming_path(key))
+      end
+
+      def merge_file(key, entry, outcome)
+        return @merged << key if @dry_run
+        return @merged << key if Merger.write_merged(view.paths(key)[:current], outcome, @trash)
+
+        mark(key, entry, behind_for(key, FileStanding.no_merge(TextMerge::RACED)))
       end
 
       def settle
         files = @merged + @settled
         @provenance.resolve_conflicts(files.to_h { |key| [key, view.paths(key)] }) unless files.empty?
-        @provenance.stamp_incoming(@stamped) unless @stamped.empty?
+        @provenance.refresh_marks(@stamped, @source_dir) unless @stamped.empty?
         @merged.each { |key| refresh_index(key) }
       end
 

@@ -196,7 +196,8 @@ RSpec.describe Samagotchi::MemoryBundle::ShippedUpdate do
       FileUtils.rm_f(File.join(dir, "note.md"))
 
       expect(described_class.plan(shipped_dir: root).first)
-        .to have_attributes(status: :up_to_date, note: "note.md: not in the bundle now, nothing to merge")
+        .to have_attributes(status: :up_to_date, note: nil,
+                            behind: [Samagotchi::MemoryBundle::FileStanding::Behind.new(file: "note.md", version: "2.0.0", why: "not in the bundle now, nothing to merge")])
     end
 
     it "leaves a project-scope bundle to chi bundle upgrade in the project" do
@@ -219,7 +220,7 @@ RSpec.describe Samagotchi::MemoryBundle::ShippedUpdate do
       begin
         row = described_class.plan(shipped_dir: root).first
         expect(row.status).to eq(:up_to_date)
-        expect(row.note).to start_with("note.md: left as it is (").and include("Permission denied")
+        expect(row.behind.first.line).to start_with("note.md stays behind 2.0.0: left as it is (").and include("Permission denied")
       ensure
         File.chmod(0o644, live)
       end

@@ -1,0 +1,222 @@
+# frozen_string_literal: true
+
+require "spec_helper"
+require "tmpdir"
+require "fileutils"
+require "yaml"
+
+require "samagotchi/memory_bundle/builder"
+require "samagotchi/memory_bundle/installer"
+require "samagotchi/memory_bundle/remerge"
+require "samagotchi/memory_bundle/uninstaller"
+
+# What chi says of a bundle file that stays behind, and what the record keeps
+# for it to say that.
+RSpec.describe Samagotchi::MemoryBundle::FileStanding do
+  let(:behind) { described_class::Behind }
+
+  describe "the words" do
+    it "says what a file missed, three headings and a count" do
+      headings = ["## A", "## B", "## C", "## D", "## E"]
+
+      expect(behind.new(file: "x.md", version: "1", missed: headings.first(3)).line).to eq("x.md stays behind 1: missed ## A, ## B, ## C")
+      expect(behind.new(file: "x.md", version: "1", missed: headings).line).to eq("x.md stays behind 1: missed ## A, ## B, ## C and 2 more")
+      expect(behind.new(file: "x.md", version: "1", missed: headings.first(3), places: 1).line).to end_with("## C and 1 more")
+    end
+
+    it "counts places when there are no headings" do
+      expect(behind.new(file: "x.md", version: "1", places: 1).line).to eq("x.md stays behind 1: missed 1 place")
+      expect(behind.new(file: "x.md", version: "1", places: 2).line).to eq("x.md stays behind 1: missed 2 places")
+    end
+
+    it "says why before what, and nothing beyond behind when it knows neither" do
+      why = described_class.no_merge("git not found")
+
+      expect(behind.new(file: "x.md", version: "1", why: why, missed: ["## A"]).line).to eq("x.md stays behind 1: no merge possible (git not found); missed ## A")
+      expect(behind.new(file: "x.md", version: "1").line).to eq("x.md stays behind 1")
+      expect(behind.new(file: "x.md", version: "1").line(dry_run: true)).to eq("x.md would stay behind 1")
+    end
+
+    it "doesn't claim edits for a base it can't vouch for" do
+      words = described_class.no_merge(described_class::LEGACY_BASE)
+
+      expect(words).to start_with("chi can't tell whether it holds edits of yours")
+      expect(behind.new(file: "x.md", version: "1", why: words).line).not_to include("kept", "your edits")
+    end
+
+    it "counts in one wording" do
+      expect(described_class.behind_count(1)).to eq("1 file behind")
+      expect(described_class.behind_count(2)).to eq("2 files behind")
+      expect(described_class.stay_behind(1)).to eq("1 file stays behind")
+      expect(described_class.stay_behind(2)).to eq("2 files stay behind")
+    end
+
+    it "gives a report's clauses, the diff hint once" do
+      files = [behind.new(file: "a.md", version: "2", missed: ["## A"]), behind.new(file: "b.md", version: "2")]
+
+      expect(described_class.clauses("demo", "2", merged: ["c.md"], behind: files))
+        .to eq(["merged 2 into your c.md", "a.md stays behind 2: missed ## A", "b.md stays behind 2 (chi bundle diff demo a.md)"])
+    end
+  end
+
+  describe "a marked file in the record" do
+    let(:tmpdir) { Dir.mktmpdir("samagotchi-standing-") }
+    let(:memories) { Samagotchi::MemoryPaths.system_dir }
+    let(:provenance) { Samagotchi::MemoryBundle::Provenance.new(name: "demo") }
+    let(:target) { File.join(memories, "a.md") }
+    let(:source) { File.join(tmpdir, "src") }
+    let(:saved) { provenance.incoming_path("a.md") }
+
+    around { |example| with_config_home(File.join(tmpdir, "config")) { example.run } }
+
+    after { FileUtils.rm_rf(tmpdir) }
+
+    def doc(steps: "one", rules: "two", intro: "intro")
+      "# T\n\n#{intro}\n\n## Steps\n\n#{steps}\n\n## Rules\n\n#{rules}\n"
+    end
+
+    def write_source(version, text)
+      FileUtils.rm_rf(source)
+      FileUtils.mkdir_p(source)
+      File.write(File.join(source, "a.md"), text)
+      File.write(File.join(source, "manifest.yml"),
+                 YAML.dump({ "name" => "demo", "version" => version, "scope" => "system", "files" => { "a.md" => "sha256:fake" } }))
+    end
+
+    def install(**opts) = Samagotchi::MemoryBundle::Installer.new(source: source, name: "demo", strict: true, **opts).tap(&:run)
+    def entry = provenance.read[:files][:"a.md"]
+    def remerge = Samagotchi::MemoryBundle::Remerge.new(name: "demo", scope: "system", target_dir: memories, source_dir: source).run
+    def behind_lines = provenance.record.behind_files.map(&:line)
+
+    # Installed at 1.0.0, edited, and left behind 2.0.0 by a real conflict in
+    # ## Steps; the bundle changed ## Rules too, which a merge would have brought.
+    def left_behind
+      write_source("1.0.0", doc)
+      install
+      File.write(target, doc(steps: "mine"))
+      write_source("2.0.0", doc(steps: "theirs", rules: "new rules"))
+      install(upgrade: true)
+    end
+
+    it "records what the bundle changed, not only where the conflict is" do
+      up = left_behind
+
+      expect(entry).to include(conflict: true, missed: ["## Steps", "## Rules"])
+      expect(up.behind.map(&:line)).to eq(["a.md stays behind 2.0.0: missed ## Steps, ## Rules"])
+      expect(behind_lines).to eq(["a.md stays behind 2.0.0: missed ## Steps, ## Rules"])
+    end
+
+    it "saves the bundle's text until the file settles, and the folder goes with the last" do
+      left_behind
+      expect(File.read(saved)).to eq(doc(steps: "theirs", rules: "new rules"))
+
+      File.write(target, doc(rules: "new rules"))
+      write_source("2.0.0", doc(steps: "theirs", rules: "new rules"))
+      expect(remerge.merged).to eq(["a.md"])
+      expect(File.exist?(saved)).to be false
+      expect(Dir.exist?(File.dirname(saved))).to be false
+      expect(entry.keys).not_to include(:why, :missed, :missed_places, :conflict)
+    end
+
+    it "drops the saved text when an upgrade settles the file" do
+      left_behind
+      File.write(target, doc(steps: "newer", rules: "new rules"))
+      write_source("3.0.0", doc(steps: "newer", rules: "new rules"))
+      install(upgrade: true)
+
+      expect(File.exist?(saved)).to be false
+    end
+
+    it "replaces the saved text and the record at the next version's conflict" do
+      left_behind
+      write_source("3.0.0", doc(steps: "theirs again", rules: "new rules", intro: "new intro"))
+      install(upgrade: true)
+
+      expect(File.read(saved)).to eq(doc(steps: "theirs again", rules: "new rules", intro: "new intro"))
+      expect(behind_lines).to eq(["a.md stays behind 3.0.0: missed # T, ## Steps, ## Rules"])
+    end
+
+    it "keeps the mark, the words and the saved text through a plain install" do
+      left_behind
+      write_source("3.0.0", doc(steps: "theirs", rules: "new rules"))
+      install
+
+      expect(entry).to include(conflict: true, missed: ["## Steps", "## Rules"])
+      expect(File.exist?(saved)).to be true
+    end
+
+    it "isn't behind once its bytes equal the bundle's, marked or not" do
+      left_behind
+      File.write(target, File.read(saved))
+
+      expect(provenance.record.files["a.md"][:conflict]).to be true
+      expect(behind_lines).to be_empty
+    end
+
+    it "isn't behind when the file is gone: that is a missing file" do
+      left_behind
+      FileUtils.rm_f(target)
+
+      expect(behind_lines).to be_empty
+    end
+
+    it "counts a marked file it can't read as behind" do
+      skip "root reads anything" if Process.uid.zero?
+      left_behind
+      File.chmod(0o000, target)
+      begin
+        expect(behind_lines.size).to eq(1)
+      ensure
+        File.chmod(0o644, target)
+      end
+    end
+
+    it "reads an older mark, with no digest or words, as behind" do
+      left_behind
+      raw = JSON.parse(File.read(File.join(provenance.bundle_dir, "manifest.json")))
+      raw["files"]["a.md"] = raw["files"]["a.md"].slice("checksum", "conflict")
+      File.write(File.join(provenance.bundle_dir, "manifest.json"), JSON.pretty_generate(raw))
+
+      expect(behind_lines).to eq(["a.md stays behind 2.0.0"])
+    end
+
+    it "names no sections for an older mark, whose base may be the user's text" do
+      left_behind
+      raw = JSON.parse(File.read(File.join(provenance.bundle_dir, "manifest.json")))
+      raw["files"]["a.md"] = raw["files"]["a.md"].slice("checksum", "conflict")
+      File.write(File.join(provenance.bundle_dir, "manifest.json"), JSON.pretty_generate(raw))
+      FileUtils.rm_rf(File.dirname(saved))
+
+      expect(remerge.behind.map(&:missed)).to eq([[]])
+      expect(entry).to include(incoming_sha: Digest::SHA256.hexdigest(File.read(File.join(source, "a.md"))), legacy_base: true)
+      expect(File.exist?(saved)).to be true
+    end
+
+    it "records a reason that changes, once, and writes nothing while it stays" do
+      left_behind
+      manifest = File.join(provenance.bundle_dir, "manifest.json")
+      expect(remerge).not_to be_work
+      FileUtils.mkdir_p(File.join(tmpdir, "no-git"))
+      with_env("PATH" => File.join(tmpdir, "no-git")) do
+        expect(remerge.stamped).to eq(["a.md"])
+        expect(entry[:why]).to eq("no merge possible (git not found)")
+        expect(remerge).not_to be_work
+      end
+      before = File.mtime(manifest)
+      expect(remerge.stamped).to eq(["a.md"])
+      expect(entry).not_to have_key(:why)
+      expect(File.mtime(manifest)).to be >= before
+    end
+
+    it "is swept by an uninstall and left out of a build" do
+      left_behind
+      File.write(target, File.read(saved))
+      out = File.join(tmpdir, "built")
+      Samagotchi::MemoryBundle::Builder.new(scope: "system", name: "mine", out: out, files: ["a.md"]).run
+      expect(Dir.glob(File.join(out, "**", "*"), File::FNM_DOTMATCH).map { |f| File.basename(f) }).not_to include("incoming")
+
+      Samagotchi::MemoryBundle::Uninstaller.new(name: "demo", force: true).run
+      expect(File.exist?(provenance.bundle_dir)).to be false
+    end
+  end
+end

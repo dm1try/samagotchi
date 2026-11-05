@@ -31,7 +31,7 @@ RSpec.describe Samagotchi::MemoryBundle::Provenance do
       old = make_file(src, "identity.md", "old\n")
       plugin = make_file(src, "plugin.rb", "class Plugin; end\n")
       prov.write(files: { "identity.md" => old }, scope: "system", version: "2.0.0", source_path: "/s",
-                 plugin_file: plugin, conflicts: ["identity.md"])
+                 plugin_file: plugin, marks: [Samagotchi::MemoryBundle::FileStanding::Behind.new(file: "identity.md")])
       expect(prov.read[:files][:"identity.md"]).to include(conflict: true)
 
       incoming = make_file(File.join(tmpdir, "incoming"), "identity.md", "new\n")

@@ -53,6 +53,37 @@ RSpec.describe Samagotchi::MemoryBundle::TextMerge do
     expect(result.text).to eq("## Changelog\r\n- a\r\n- b\r\n- c\r\n")
   end
 
+  describe ".changed_sections" do
+    def changed(base, theirs) = described_class.changed_sections(base, theirs)
+
+    it "names each section the bundle changed or added, in its order" do
+      base = "# T\n\nintro\n\n## A\n\nold\n\n## B\n\nsame\n"
+      theirs = "# T\n\nintro\n\n## A\n\nnew\n\n## B\n\nsame\n\n### New\n\nmore\n"
+
+      expect(changed(base, theirs)).to eq([["## A", "### New"], false])
+    end
+
+    it "names a section the bundle took out" do
+      expect(changed("## A\n\none\n\n## B\n\ntwo\n", "## A\n\none\n")).to eq([["## B"], false])
+    end
+
+    it "says when text under no heading changed" do
+      expect(changed("a\nb\n", "a\nc\n")).to eq([[], true])
+      expect(changed("old\n\n## A\n\nx\n", "new\n\n## A\n\ny\n")).to eq([["## A"], true])
+    end
+
+    it "takes no fenced line for a heading, and puts a Changelog last" do
+      base = "## Changelog\n\n- a\n\n## A\n\n```\n## not one\nx\n```\n"
+      theirs = "## Changelog\n\n- a\n- b\n\n## A\n\n```\n## not one\ny\n```\n"
+
+      expect(changed(base, theirs)).to eq([["## A", "## Changelog"], false])
+    end
+
+    it "finds nothing when nothing changed, or only moved" do
+      expect(changed("## A\n\n1\n\n## B\n\n2\n", "## B\n\n2\n\n## A\n\n1\n")).to eq([[], false])
+    end
+  end
+
   describe "the Changelog rule" do
     let(:base) { "# T\n\n## Changelog\n- one\n" }
 

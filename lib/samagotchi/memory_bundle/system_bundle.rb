@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "fileutils"
+require_relative "file_standing"
 require_relative "installer"
 require_relative "provenance"
 require_relative "manifest"
@@ -37,11 +38,13 @@ module Samagotchi
       # conflict merged at the same version, Remerge), :up_to_date,
       # :newer_installed (left as is), :skipped (SKIP_ENV or no shipped
       # bundle) or :failed (error: says why); merged lists the files a text
-      # merge replaced (trash_copy says where the old ones went), kept the files
-      # whose local edits conflicted with the update and were kept. notes: what
-      # chi update's row may add (ensure! says nothing of them).
-      Result = Struct.new(:from, :to, :status, :merged, :kept, :trash_copy, :notes, :warnings, :error, keyword_init: true) do
+      # merge replaced (trash_copy says where the old ones went), behind each file
+      # that stays behind (FileStanding::Behind). ensure! says only what an upgrade
+      # left behind: a file that was already behind isn't news at every start.
+      Result = Struct.new(:from, :to, :status, :merged, :behind, :trash_copy, :warnings, :error, keyword_init: true) do
         def changed? = %i[installed updated restored merged].include?(status)
+
+        def kept = Array(behind).map(&:file)
       end
 
       # Ensure the system bundle is installed and up-to-date.
@@ -56,11 +59,13 @@ module Samagotchi
           with_lock { note_newer_installed(result.from, result.to) }
         end
         unless result.merged.empty?
-          note = [result.merged.join(", "), result.trash_copy].compact.join("; ")
-          Log.info(:memory, "system_bundle_merged", echo: "[samagotchi-system] merged (#{note})", files: result.merged.join(","), to: result.to.to_s)
+          note = [FileStanding.merged_line(result.merged, result.to), result.trash_copy].compact.join("; ")
+          Log.info(:memory, "system_bundle_merged", echo: "[samagotchi-system] #{note}", files: result.merged.join(","), to: result.to.to_s)
         end
-        result.kept.each do |file_key|
-          Log.info(:memory, "system_local_edit_kept", echo: "[samagotchi-system] kept local edit in #{file_key} (bundle v#{result.to} has update — run: chi bundle status #{BUNDLE_NAME} / chi bundle diff #{BUNDLE_NAME} #{file_key})", file: file_key.to_s)
+        if result.status == :updated
+          result.behind.each do |file|
+            Log.info(:memory, "system_file_behind", echo: "[samagotchi-system] #{file.line} (#{FileStanding.diff_hint(BUNDLE_NAME, file.file)})", file: file.file)
+          end
         end
         result.warnings.each { |w| Log.warn(:memory, "system_bundle_warning", echo: "[samagotchi-system] #{w}") }
         result.changed?
@@ -91,22 +96,24 @@ module Samagotchi
           elsif installed_newer?(from, to)
             # Running an older checkout/gem: never downgrade the user's system memories
             # (not even to restore a missing file). `chi self` shows installed vs shipped.
-            result(:newer_installed, from: from, to: to)
+            result(:newer_installed, from: from, to: to, behind: bundle.behind_files)
           elsif from != to
             dry_run ? planned_update(gem_manifest, from, to) : upgrade_existing(from, to)
           else
             # Already at desired version — still verify files present (e.g. user deleted one)
             # and retry the files marked conflict.
             verified = verify_files_present(gem_manifest, from, dry_run)
-            verified.status == :up_to_date ? remerge(bundle, verified, dry_run) : verified
+            next remerge(bundle, verified, dry_run) if verified.status == :up_to_date
+
+            verified.tap { |done| done.behind = Provenance.new(name: BUNDLE_NAME).record.behind_files }
           end
         end
       rescue StandardError => e
         result(:failed, error: "ensure failed: #{e.class}: #{e.message}")
       end
 
-      def result(status, from: nil, to: nil, merged: [], kept: [], trash_copy: nil, notes: [], warnings: [], error: nil)
-        Result.new(from: from, to: to, status: status, merged: merged, kept: kept, trash_copy: trash_copy, notes: notes,
+      def result(status, from: nil, to: nil, merged: [], behind: [], trash_copy: nil, warnings: [], error: nil)
+        Result.new(from: from, to: to, status: status, merged: merged, behind: behind, trash_copy: trash_copy,
                    warnings: warnings, error: error)
       end
 
@@ -163,13 +170,13 @@ module Samagotchi
       end
 
       # Installer handles fast_forward/keep/noop; a conflict keeps the local
-      # file, and its own "Conflict in" warning is left out (kept says it).
+      # file, and its own warning is left out (behind says it).
       def upgrade_existing(from, to)
         installer = upgrade_installer
         installer.run
-        kept = installer.conflicts.keys
-        warnings = installer.warnings.reject { |w| kept.any? { |k| w.start_with?("Conflict in #{k}:") } }
-        result(:updated, from: from, to: to, merged: installer.merged_files, kept: kept, trash_copy: installer.trash_copy_line, warnings: warnings)
+        behind = installer.behind
+        warnings = installer.warnings.reject { |w| behind.any? { |file| w.start_with?(file.line) } }
+        result(:updated, from: from, to: to, merged: installer.merged_files, behind: behind, trash_copy: installer.trash_copy_line, warnings: warnings)
       end
 
       # A file from the bundle missing on disk (the user deleted it) is put
@@ -205,7 +212,7 @@ module Samagotchi
         done = Remerge.new(name: BUNDLE_NAME, scope: SCOPE, target_dir: MemoryPaths.system_dir, source_dir: GEM_BUNDLE_DIR, record: bundle)
                       .run(dry_run: dry_run)
         status = done.merged.empty? ? :up_to_date : :merged
-        result(status, from: verified.from, to: verified.to, merged: done.merged, trash_copy: done.trash_copy, notes: done.notes, warnings: done.warnings)
+        result(status, from: verified.from, to: verified.to, merged: done.merged, behind: done.behind, trash_copy: done.trash_copy, warnings: done.warnings)
       end
 
       # A dry run's answer for an upgrade: what it would merge and keep, among
@@ -216,8 +223,8 @@ module Samagotchi
         provenance = Provenance.new(name: BUNDLE_NAME)
         owned = provenance.record&.files&.keys || []
         forecast = Merger::Upgrade.new(provenance: provenance, target_dir: MemoryPaths.system_dir, source_dir: GEM_BUNDLE_DIR)
-                                  .forecast(gem_manifest.files.keys.map(&:to_s).sort & owned)
-        result(:updated, from: from, to: to, merged: forecast.merged, kept: forecast.conflicts)
+                                  .forecast(gem_manifest.files.keys.map(&:to_s).sort & owned, version: to)
+        result(:updated, from: from, to: to, merged: forecast.merged, behind: forecast.behind)
       end
 
       def upgrade_installer

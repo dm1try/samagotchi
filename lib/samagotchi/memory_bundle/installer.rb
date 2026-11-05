@@ -8,6 +8,7 @@ require_relative "manifest"
 require_relative "source"
 require_relative "placeholder"
 require_relative "index_updater"
+require_relative "file_standing"
 require_relative "merger"
 require_relative "trash"
 require_relative "asset_installer"
@@ -34,6 +35,9 @@ module Samagotchi
 
       attr_reader :results, :warnings, :placeholder_warnings, :conflicts
 
+      # Each file this run left behind (FileStanding::Behind).
+      attr_reader :behind
+
       # prepared: the source already normalized (a PreparedSource, which the
       # Installer then owns and cleans up as its own); nil normalizes source.
       # shipped_dir: the bundles this chi ships (a bundle of their names
@@ -55,6 +59,7 @@ module Samagotchi
         @warnings = []
         @placeholder_warnings = []
         @conflicts = {}
+        @behind = []
         @outcomes = {}
         @overlays = []
         @trash = Trash.new(name)
@@ -133,7 +138,6 @@ module Samagotchi
         would_merge = @results.select { |_, r| r[:status].to_s == "would_merge" }.keys
         kept = @results.select { |_, r| %w[kept keep kept_pruned].include?(r[:status].to_s) }.keys
         skipped = @results.select { |_, r| %w[skipped noop would_skip].include?(r[:status].to_s) }.keys
-        conflicts = @results.select { |_, r| r[:status].to_s == "conflict" }.keys
         would_install = @results.select { |_, r| r[:status].to_s == "would_install" }.keys
         fast_forward = @results.select { |_, r| r[:status].to_s == "fast_forward" }.keys
         removed = @results.select { |_, r| r[:status].to_s == "removed" }.keys
@@ -143,13 +147,12 @@ module Samagotchi
         lines << "Updated: #{updated.join(", ")}" unless updated.empty?
         lines << "Would install: #{would_install.join(", ")}" unless would_install.empty?
         lines << "Fast-forward: #{fast_forward.join(", ")}" unless fast_forward.empty?
-        lines << "Merged: #{merged.join(", ")}" unless merged.empty?
-        lines << "Would merge: #{would_merge.join(", ")}" unless would_merge.empty?
+        lines << FileStanding.merged_line(merged, @manifest&.version) unless merged.empty?
+        lines << FileStanding.merged_line(would_merge, @manifest&.version, dry_run: true) unless would_merge.empty?
         lines << "Removed (no longer in the bundle): #{removed.join(", ")}#{" (moved to #{trash_dir})" if trash_dir}" unless removed.empty?
         lines << "Would remove (no longer in the bundle): #{would_remove.join(", ")}" unless would_remove.empty?
         lines << "Kept (local edits preserved): #{kept.join(", ")}" unless kept.empty?
         lines << "Skipped: #{skipped.join(", ")}" unless skipped.empty?
-        lines << "Conflicts: #{conflicts.join(", ")}" unless conflicts.empty?
         lines << trash_copy_line if trash_copy_line
         lines.concat(@warnings) unless @warnings.empty?
         lines.concat(@placeholder_warnings) unless @placeholder_warnings.empty?
@@ -396,13 +399,14 @@ module Samagotchi
         update_target_index(@target_scope, target_path, file_key)
       end
 
-      # The file stays as it is, with the old base and the mark. One wording per
-      # reason: a real conflict, or why no merge could be tried.
+      # The file stays as it is, with the old base and the mark, in FileStanding's
+      # words.
       def note_conflict(file_key, outcome)
-        why = outcome.why ? "no merge possible (#{outcome.why}), local edits kept" : "local edits conflict with bundle update"
-        @results[file_key] = { status: "conflict", reason: why }
+        behind = upgrade_view.behind(file_key, outcome, @manifest&.version)
+        @behind << behind
+        @results[file_key] = { status: "conflict", reason: behind.state(dry_run: @dry_run) }
         @conflicts[file_key] = upgrade_view.paths(file_key)
-        @warnings << "Conflict in #{file_key}: #{why} (use --force to overwrite or resolve interactively)"
+        @warnings << "#{behind.line(dry_run: @dry_run)} (#{FileStanding::FORCE_TAKES})"
       end
 
       def upgrade_view
@@ -496,8 +500,8 @@ module Samagotchi
           plugin_file: installed.plugin_file,
           requires_chi: @manifest.requires_chi,
           needs: @manifest.needs,
-          conflicts: marked = @conflicts.keys + held_conflict_marks,
-          incoming_shas: marked.to_h { |key| [key, Merger.digest(File.join(@bundle_dir, key))] },
+          marks: @behind + held_conflict_marks,
+          incoming_dir: @bundle_dir,
           scripts_files: installed.script_files,
           context_providers: @manifest.context_providers,
           file_descriptions: @manifest.file_descriptions,
@@ -513,10 +517,12 @@ module Samagotchi
       # Provenance#write rebuilds their entries, and a file it left alone has
       # missed the bundle's change as much as before (its version may move on
       # all the same). One with the incoming bytes has nothing left to miss.
+      # @return [Array<FileStanding::Behind>]
       def held_conflict_marks
         return [] if @upgrade || @existing.nil?
 
-        @owned.select { |key| @results.dig(key, :reason) == "already exists" && @existing.files.dig(key, :conflict) }
+        kept = @owned.select { |key| @results.dig(key, :reason) == "already exists" && @existing.files.dig(key, :conflict) }
+        kept.map { |key| @existing.behind_entry(key) }
       end
 
       # file key => the file whose content becomes its base: the one its
@@ -597,7 +603,7 @@ module Samagotchi
           return
         else
           @results[file_key] = { status: "skipped", reason: "already exists" }
-          @warnings << "Skipped #{file_key} (already exists; use --force to overwrite)"
+          @warnings << "Skipped #{file_key} (already exists; #{FileStanding::FORCE_TAKES})"
         end
         update_target_index(scope, target_path, file_key, owned: owned) unless @dry_run
       end
@@ -625,7 +631,7 @@ module Samagotchi
             remove_target_index(scope, key)
           else
             @results[key] = { status: "kept_pruned", reason: "local edits preserved" }
-            @warnings << "Kept #{key}: no longer in the bundle but edited locally (use --force to remove)"
+            @warnings << "Kept #{key}: no longer in the bundle but edited locally (--force moves it to the trash)"
           end
         end
       end

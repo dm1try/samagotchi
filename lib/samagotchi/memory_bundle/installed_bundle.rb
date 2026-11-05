@@ -1,7 +1,9 @@
 # frozen_string_literal: true
 
 require "json"
+require_relative "../memory_paths"
 require_relative "bundle_hook"
+require_relative "file_standing"
 require_relative "plugin_ref"
 
 module Samagotchi
@@ -11,9 +13,11 @@ module Samagotchi
     # lacks keys a newer chi writes, and a key that is missing or of the
     # wrong shape reads as empty (nil for the optional strings and lists).
     #
-    #   files       file key ("x.md") => { checksum:, conflict:, incoming_sha:, legacy_base:, description: } (symbol keys);
+    #   files       file key ("x.md") => { checksum:, conflict:, incoming_sha:, legacy_base:, why:, missed:, missed_places:,
+    #               description: } (symbol keys);
     #               incoming_sha: the bundle text a conflict mark speaks of, nil on an older mark;
-    #               legacy_base: true on an older mark that has since got its incoming_sha (.legacy_mark?)
+    #               legacy_base: true on an older mark that has since got its incoming_sha (.legacy_mark?);
+    #               why, missed, missed_places: FileStanding::Behind's, nil on an older mark
     #   hooks       basename => BundleHook
     #   guardrails  basename => recorded sha256 ("" when none)
     #   scripts     file name => recorded sha256 ("" when none)
@@ -110,6 +114,27 @@ module Samagotchi
 
       # The plugin's file => its recorded sha256, as guardrails and scripts read.
       def plugin_shas = plugin ? { plugin.file => plugin.sha256 } : {}
+
+      # The marked files that stay behind: one that isn't there is a missing file,
+      # and one with the bundle's bytes has nothing left to miss.
+      # @param target_dir [String, nil] where its files are; a scope this chi can't
+      #   resolve has none, and nothing is known of them
+      # @return [Array<FileStanding::Behind>]
+      def behind_files(target_dir = MemoryPaths.scope_dir(effective_scope))
+        return [] unless target_dir
+
+        files.filter_map do |key, entry|
+          next unless entry[:conflict] == true
+
+          path = File.join(target_dir, key)
+          behind_entry(key, entry) if File.exist?(path) && FileStanding.differs?(path, entry[:incoming_sha])
+        end
+      end
+
+      # The file's mark as a report reads it.
+      def behind_entry(key, entry = files.fetch(key))
+        FileStanding::Behind.new(file: key, version: version, why: entry[:why], missed: entry[:missed], places: entry[:missed_places])
+      end
 
       def needs? = needs.is_a?(Array) && !needs.empty?
 

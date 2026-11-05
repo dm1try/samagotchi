@@ -100,8 +100,8 @@ RSpec.describe "Kept edits in a bundle" do
       expect(up.results["a.md"][:status]).to eq("merged")
       expect(up.merged_files).to eq(["a.md"])
       expect(up.conflicts).to be_empty
-      expect(up.summary).to include("Merged: a.md")
-      expect(up.warnings.join).not_to include("Conflict", "Checksum mismatch")
+      expect(up.summary).to include("merged 2.0.0 into your a.md")
+      expect(up.warnings.join).not_to include("stays behind", "Checksum mismatch")
     end
 
     # Taking the merged file as the base makes current == base, and the next
@@ -177,7 +177,7 @@ RSpec.describe "Kept edits in a bundle" do
 
       expect(File.read(target)).to eq("a live memory_write\n")
       expect(up.results["a.md"][:status]).to eq("conflict")
-      expect(up.warnings).to include(a_string_including("Conflict in a.md: no merge possible (#{Samagotchi::MemoryBundle::TextMerge::RACED})"))
+      expect(up.warnings).to include(a_string_including("a.md stays behind 2.0.0: no merge possible (#{Samagotchi::MemoryBundle::TextMerge::RACED})"))
       expect(File.read(provenance.base_path("a.md"))).to eq(doc)
       expect(provenance.read[:files][:"a.md"]).to include(conflict: true)
       expect(Dir.glob(File.join(memories, "*.tmp"))).to be_empty
@@ -189,7 +189,7 @@ RSpec.describe "Kept edits in a bundle" do
       up = run_installer(write_source("2.0.0", { "a.md" => doc(tail: "tail two") }), upgrade: true)
 
       expect(up.merged_files).to eq(["a.md"])
-      expect(up.summary).to include("Merged: a.md")
+      expect(up.summary).to include("merged 2.0.0 into your a.md")
       expect(File.binread(target)).to eq(doc(intro: "caf\xE9 intro".b, tail: "tail two").b)
       expect(run_installer(write_source("3.0.0", { "a.md" => doc(tail: "tail three") }), upgrade: true).merged_files).to eq(["a.md"])
       expect(provenance.read[:version]).to eq("3.0.0")
@@ -199,8 +199,9 @@ RSpec.describe "Kept edits in a bundle" do
       dry = run_installer(write_source("2.0.0", { "a.md" => doc(tail: "tail two") }), upgrade: true, dry_run: true)
 
       expect(dry.results["a.md"][:status]).to eq("would_merge")
-      expect(dry.summary).to include("Would merge: a.md")
-      expect(dry.summary).not_to include("Merged:", "Checksum mismatch")
+      expect(dry.summary).to include("would merge 2.0.0 into your a.md")
+      expect(dry.summary).not_to include("Checksum mismatch")
+      expect(dry.summary.lines.map(&:chomp)).not_to include("merged 2.0.0 into your a.md")
       expect(dry.conflicts).to be_empty
       expect(File.read(target)).to eq(doc(intro: "my intro"))
       expect(File.read(provenance.base_path("a.md"))).to eq(doc)
@@ -250,7 +251,7 @@ RSpec.describe "Kept edits in a bundle" do
 
       expect_untouched(up)
       expect(File.read(provenance.base_path("a.md"))).to eq("v1.0.0\n")
-      expect(up.warnings).to include(a_string_including("Conflict in a.md: local edits conflict with bundle update"))
+      expect(up.warnings).to include(a_string_including("a.md stays behind 2.0.0: missed 1 place (#{Samagotchi::MemoryBundle::FileStanding::FORCE_TAKES})"))
     end
 
     it "conflicts again at the next upgrade" do
@@ -264,7 +265,7 @@ RSpec.describe "Kept edits in a bundle" do
 
       expect_untouched(up)
       expect(File.read(provenance.base_path("a.md"))).to eq("v1.0.0\n")
-      expect(up.warnings).to include(a_string_including("Conflict in a.md: no merge possible (git not found), local edits kept"))
+      expect(up.warnings).to include(a_string_including("a.md stays behind 2.0.0: no merge possible (git not found); missed 1 place"))
     end
 
     it "says why when there is no base, and keeps the file with none" do
@@ -280,7 +281,7 @@ RSpec.describe "Kept edits in a bundle" do
       dry = run_installer(write_source("2.0.0"), upgrade: true, dry_run: true)
 
       expect(dry.results["a.md"][:status]).to eq("conflict")
-      expect(dry.summary).not_to include("Would merge")
+      expect(dry.summary).not_to include("would merge")
       expect(File.read(target)).to eq("edited\n")
     end
 
@@ -288,7 +289,7 @@ RSpec.describe "Kept edits in a bundle" do
       FileUtils.mkdir_p(File.join(tmpdir, "no-git"))
       dry = with_env("PATH" => File.join(tmpdir, "no-git")) { run_installer(write_source("2.0.0"), upgrade: true, dry_run: true) }
 
-      expect(dry.summary).to include("Conflict in a.md: no merge possible (git not found), local edits kept")
+      expect(dry.summary).to include("a.md would stay behind 2.0.0: no merge possible (git not found); missed 1 place")
     end
   end
 
@@ -558,7 +559,7 @@ RSpec.describe "Kept edits in a bundle" do
       File.write(old, "old\n")
       File.write(incoming, "new\n")
       provenance.write(files: { "a.md" => old }, scope: "system", version: "1", source_path: "/s",
-                       conflicts: ["a.md"], file_descriptions: { "a.md" => "What a is" })
+                       marks: [Samagotchi::MemoryBundle::FileStanding::Behind.new(file: "a.md")], file_descriptions: { "a.md" => "What a is" })
 
       provenance.resolve_conflicts("a.md" => { incoming: incoming, current: old })
 
@@ -704,7 +705,8 @@ RSpec.describe "Kept edits in a bundle" do
       write_source("1.0.0")
       run_installer
       File.write(target, "edited\n")
-      provenance.write(files: { "a.md" => target }, scope: "system", version: "2.0.0", source_path: source, conflicts: ["a.md"])
+      provenance.write(files: { "a.md" => target }, scope: "system", version: "2.0.0", source_path: source,
+                       marks: [Samagotchi::MemoryBundle::FileStanding::Behind.new(file: "a.md")])
     end
 
     it "stays a conflict at the next upgrade: no fast-forward over it" do
