@@ -1,0 +1,10 @@
+---
+name: e2e-block-renderer
+version: 0.1.0
+scope: system
+description: "The e2e suite's block renderer: draws e2e-draw fences as a fixed picture"
+scripts:
+  draw.js: sha256:88d42955aab6d4b637acf8d73b56f1b03a7c879385df7f647f32d6ebdc81f79c
+block_renderers:
+  - lang: e2e-draw
+    load: [draw.js]

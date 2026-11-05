@@ -205,6 +205,10 @@ export async function startEnv({ lan = false, installed = null, proxy = false } 
     // /e2e-check), for the annotate scenario.
     execFileSync(path.join(CHECKOUT, "bin", "chi"), ["bundle", "install", path.join(CHECKOUT, "spec", "e2e", "support", "bundles", "e2e-annotation")],
       { cwd: dirs.project, env: childEnv, stdio: "ignore" });
+    // A test bundle that draws ```e2e-draw blocks, for the block renderer
+    // scenario: no plugin, only a renderer in the page's sandboxed frame.
+    execFileSync(path.join(CHECKOUT, "bin", "chi"), ["bundle", "install", path.join(CHECKOUT, "spec", "e2e", "support", "bundles", "e2e-block-renderer")],
+      { cwd: dirs.project, env: childEnv, stdio: "ignore" });
     // github-pr (shipped), for the PR line links scenario: its gh is the fake.
     execFileSync(path.join(CHECKOUT, "bin", "chi"), ["bundle", "install", "github-pr"],
       { cwd: dirs.project, env: childEnv, stdio: "ignore" });

@@ -2220,6 +2220,56 @@ test("an answer's plugin refs pair with its link and text, a tool row's with its
   await check();
 });
 
+// A bundle's block renderer (support/bundles/e2e-block-renderer) draws in the
+// sandboxed frame: the answer's block shows as an <img> with a data: URL, live
+// and after a reload (a <title> holds the source's first line, so the picture
+// is this block's), its source stays in the DOM hidden and the toggle shows it;
+// a block the renderer throws on stays source with its line, and a language no
+// bundle draws is left alone.
+test("a bundle's block renderer draws a fenced block in the answer, live and after a reload", async ({ page, script }) => {
+  const check = async () => {
+    const output = page.locator("#history .bubble.output").last();
+    const img = output.locator("figure.block-drawn img");
+    await expect(img).toHaveCount(1);
+    const src = await img.getAttribute("src");
+    expect(src.startsWith("data:image/svg+xml")).toBe(true);
+    expect(decodeURIComponent(src)).toContain("<title>first line</title>");
+    await expect(img).toHaveJSProperty("complete", true);
+    expect(await img.evaluate((el) => el.naturalWidth)).toBeGreaterThan(0);
+    const [drawn, thrown, other] = await output.locator("pre").all();
+    await expect(drawn).toBeHidden();
+    await expect(thrown).toBeVisible();
+    await expect(thrown).toHaveText(/throw me/);
+    await expect(output.locator(".block-note")).toHaveAttribute("data-text", "Couldn't draw this e2e-draw block: the fixture throws");
+    await expect(other).toBeVisible();
+    await output.locator(".block-toggle").click();
+    await expect(drawn).toBeVisible();
+    await expect(img).toBeHidden();
+    await output.locator(".block-toggle").click();
+    await expect(drawn).toBeHidden();
+    await expect(img).toBeVisible();
+  };
+  script("block_renderer");
+  await send(page, "Draw it");
+  await turnEnded(page, 1);
+  await check();
+  await page.reload();
+  await turnEnded(page, 1);
+  await check();
+});
+
+// A long streamed answer: its block lands in the stage first and the hand-off
+// moves it to #history, whose scroller is another, so its watch has to move too.
+test("a block in a long streamed answer draws after the stage hands it to the history", async ({ page, script }) => {
+  script("block_renderer_long");
+  await send(page, "Write a lot");
+  await turnEnded(page, 1);
+  const pre = page.locator('#history pre[data-lang="e2e-draw"]');
+  await expect(pre).toHaveCount(1);
+  await pre.evaluate((el) => (el.hidden ? el.previousElementSibling : el).scrollIntoView());
+  await expect(page.locator("#history figure.block-drawn img")).toHaveCount(1);
+});
+
 // The github-pr bundle's line links (its gh is support/fake_gh.sh): a
 // `path:line` in the answer links to that line of the PR the prompt names,
 // the Files changed anchor inside a hunk, the file at the PR's head outside.

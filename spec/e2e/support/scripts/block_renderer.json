@@ -1,0 +1,6 @@
+{
+  "delay": 0.02,
+  "iterations": [
+    {"text": "Here it is.\n\n```e2e-draw\nfirst line\nsecond line\n```\n\nand one that fails:\n\n```e2e-draw\nthrow me\n```\n\nand plain code:\n\n```ruby\nputs 1\n```\n"}
+  ]
+}

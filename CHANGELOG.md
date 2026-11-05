@@ -10,6 +10,7 @@ and commands may change between minor versions. How releases are made:
 ### Added
 
 - A bundle can declare `block_renderers:` in its manifest: a fenced code block's language and the `scripts/` files that draw it in chi web. See docs/plugins.md (Block renderers).
+- chi web draws such a block as a picture in answers and closed steps, once a bundle for its language is installed and `web.markdown` is on. A toggle shows the source; a block that can't be drawn stays source, with one muted line. The renderer runs in a sandboxed frame with no access to the page or its cookie, and a CSP that closes its network but for WebRTC.
 
 ### Changed
 
