@@ -135,6 +135,28 @@ RSpec.describe Samagotchi::MemoryBundle::TextMerge do
       expect(union("* m\n\n+ m2\n", "1. t\n2) t2\n")).to be_clean
     end
 
+    it "compares whole entries, so a nested item both sides share stays with each" do
+      result = union("- a\n  - note\n", "- b\n  - note\n")
+
+      expect(result).to be_clean
+      expect(result.text).to end_with("- one\n- a\n  - note\n- b\n  - note\n")
+    end
+
+    it "takes an entry both sides added, nested item and all, once" do
+      result = union("- a\n  - note\n- b\n", "- a\n  - note\n- c\n")
+
+      expect(result).to be_clean
+      expect(result.text.scan("  - note").size).to eq(1)
+      expect(result.text).to end_with("- b\n- c\n")
+    end
+
+    it "keeps items at one indent as entries of their own" do
+      result = union("  - a\n  - same\n", "  - b\n  - same\n")
+
+      expect(result).to be_clean
+      expect(result.text).to end_with("  - a\n  - same\n  - b\n")
+    end
+
     it "doesn't union a line that isn't a list entry" do
       ["IMPORTANT: always ask before pushing.\n", "**Rules**\n", "#Rules\n", "plain text\n", "  indented, no entry above\n", "- - -\n"].each do |line|
         expect(union(line, "- theirs\n").status).to eq(:conflict), "#{line.inspect} unioned on ours"

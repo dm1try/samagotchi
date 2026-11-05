@@ -179,10 +179,10 @@ module Samagotchi
       #   - base, ours and theirs each hold only list entries, and both sides
       #     still hold every entry of the base: both only added. An edited or
       #     dropped entry is a decision, and so is a base heading both dropped.
-      # An entry is a list item and the indented lines right under it, none of
-      # which, indentation aside, is a heading, a rule or a fence; a blank line
-      # ends it. The union is ours, then the entries of theirs that ours doesn't
-      # have.
+      # An entry is a list item and the lines indented deeper right under it,
+      # nested items too, none of which, indentation aside, is a heading, a rule
+      # or a fence; a blank line ends it. The union is ours, then the entries of
+      # theirs that ours doesn't have, compared whole.
       # Marker lines that don't pair up (a user's line equal to one) mean the
       # output can't be read at all.
       class Scan
@@ -342,16 +342,18 @@ module Samagotchi
             if bare.strip.empty?
               attached = false
             elsif structural?(bare.lstrip) then return nil
+            elsif attached && bare.match?(ITEM_MORE) && indent(bare) > indent(found.last.first) then found.last << line
             elsif bare.match?(ITEM)
               found << [line]
               attached = true
-            elsif attached && bare.match?(ITEM_MORE) then found.last << line
             else return nil
             end
           end
         end
 
         def more_of_entry?(bare) = bare.match?(ITEM_MORE) && !structural?(bare.lstrip)
+
+        def indent(line) = line[/\A[ \t]*/].size
 
         def structural?(text) = text.match?(LIKE_HEADING) || text.match?(RULE) || text.match?(FENCE)
       end

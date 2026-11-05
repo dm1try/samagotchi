@@ -35,6 +35,7 @@ and commands may change between minor versions. How releases are made:
 - `chi bundle upgrade --dry-run` no longer prints a false `Checksum mismatch` for a memory you edited, and its `Kept` line now names those files. This only changes a dry run's output.
 - `chi bundle upgrade --agent` no longer takes your file as the new base when the bundle's copy disappears during the session. The next upgrade used to overwrite the edit with nothing in the trash; the file now stays a conflict and the command says so.
 - An install or upgrade no longer fails at its last step on a memory that isn't valid UTF-8.
+- A Changelog merge compares whole entries, nested items included: your `- a` / `  - note` beside the bundle's `- b` / `  - note` no longer loses the bundle's `  - note`.
 - Putting back a deleted system memory at the same version now restores that file alone. It used to run a whole upgrade, replacing hooks, rules and the plugin under live sessions.
 
 ## [0.149.0] - 2026-11-04
