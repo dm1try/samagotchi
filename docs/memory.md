@@ -542,13 +542,15 @@ for a file another bundle installed.
   exit 2; `chi bundle diff NAME FILE` shows the base, and `--force` takes
   the bundle's version, copying a file that differs to the bundle trash first
   (the output says `Copied to the trash first: …`).
-- **A merge at a chi start.** The system bundle's upgrade and retry run at each
-  start, and a worker's only output is its log. So the merge stays noted on the file's record:
-  `chi bundle status` shows it with the old copy's folder, and the next `chi
-  update`'s row is its last appearance. No session is told at start.
+- **Every merge is noted on the file's record.** The system bundle's upgrade and
+  retry run at each start, a worker's only output is its log, and no one may read
+  an automatic update. So `chi bundle status` shows the merge with the old copy's
+  folder, and `chi update` rows name it until a `chi update` you run has shown it
+  (an automatic one leaves it). No session is told at start.
 - **`chi bundle status`** says per file what is `modified`, `missing` or
   `unreadable`, and that a file stays behind and why. Its `issues=` counts files
-  behind, missing or unreadable (and a plugin or hooks that won't load), not edits.
+  behind, missing or unreadable (and a plugin or hooks that won't load), not edits. A
+  file an older chi marked, which no retry has looked at, says `may be behind`.
 - **A dev install** (`chi bundle install --dev PATH`) links the hooks, rules,
   plugin and scripts to `PATH` but still copies the memories at install, so
   an edit to one of them in `PATH` isn't seen until the next install.

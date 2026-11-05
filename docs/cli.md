@@ -247,9 +247,10 @@ Also shipped, not installed: dev (mcp, skills, source-links) (chi bundle install
   newest release. It must be newer than the running chi; an equal or older
   version is refused.
 - `--json` writes the component rows as one JSON array on stdout. Each row has
-  `component`, `from`, `to`, `status`, `failed`, `kept`, `merged`, `trash_copy` and `level` fields;
-  `kept` is an array of edited filenames left behind (a merged file is named in
-  `status`), and `level` is `warn` or `error` on a
+  `component`, `from`, `to`, `status`, `failed`, `kept`, `merged`, `earlier`, `trash_copy` and `level` fields;
+  `kept` is an array of edited filenames left behind, `merged` of those this run
+  merged, `earlier` of those an earlier merge's note names, `trash_copy` the full line
+  saying where the old copies went (the table says `chi bundle trash`), and `level` is `warn` or `error` on a
   re-check's row (below), `null` on the others. Install progress is written to
   stderr.
 
@@ -324,11 +325,14 @@ Also shipped, not installed: dev (mcp, skills, source-links) (chi bundle install
   samagotchi gem still has it). Otherwise that base may be your own text, so it merges only if the bundle takes out or
   rewords no line it still holds. If it does, chi can't tell whether the file holds
   edits of yours, says so, and the file stays behind until resolved by
-  hand, with `--agent` or with `--force`; the retry can't fix that. A merge a chi
-  start made (the system bundle's, which in a worker reaches only the log) shows in
-  `chi bundle status` and in the next `chi update`'s row, whose appearance is its
-  last: `up to date (merged 0.8.0 into your FILE on 2026-11-05 14:03; …)`. A dry run
-  shows it too and leaves it for the real run. A memory that can't be read at a
+  hand, with `--agent` or with `--force`; the retry can't fix that. Every merge
+  leaves a note on the file's record, since a worker's reaches only the log and an
+  automatic update's rows may be read by no one. `chi bundle status` shows it, and
+  each `chi update` row names it (`up to date (merged 0.8.0 into your FILE on
+  2026-11-05 14:03; …)`) until a `chi update` you run has shown it, which is its last
+  appearance: a merge that run itself made shows once more in the next. A dry run
+  and an automatic update (`update.auto`) show it and leave it; so does a row with no
+  place for it (skipped, failed). A memory that can't be read at a
   newer version fails that bundle's row with the file's name. Hooks, rules and the plugin are replaced; an edited one didn't
   load anyway (its sha no longer matched), the row says it was replaced, and
   a copy goes to the bundle trash first (`chi bundle trash`; `hooks/x`,
