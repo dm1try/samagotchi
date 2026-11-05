@@ -224,8 +224,11 @@ module Samagotchi
       private
 
       # No page of chi web's may be framed by another (clickjacking): every
-      # HTML answer says so. The page's full CSP is a later change.
-      FRAME_HEADERS = { "X-Frame-Options" => "DENY", "Content-Security-Policy" => "frame-ancestors 'none'" }.freeze
+      # HTML answer says so. frame-src 'none': a page's own frames can't navigate
+      # anywhere, which a block renderer's frame's own CSP doesn't stop (a srcdoc
+      # frame still loads under it; docs/internals/block-renderers.md). The page's
+      # full CSP is a later change.
+      FRAME_HEADERS = { "X-Frame-Options" => "DENY", "Content-Security-Policy" => "frame-ancestors 'none'; frame-src 'none'" }.freeze
       FRAME_DESTS = %w[iframe frame embed object].freeze
 
       def unframed(response)

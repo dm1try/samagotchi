@@ -1892,7 +1892,7 @@ What changes once `web.public_url` is set:
   and a crafted link could swap your session): a link's one-time code and the 401 page's paste box do it, the paste
   box's redirect going to the public URL (never to a client-sent `X-Forwarded-Host`). The page accepts `POST`s from the public `https://` origin only (a sibling port on the same
   domain, or `http://`, is refused). No page of chi web's may be framed by another (`X-Frame-Options: DENY`,
-  `frame-ancestors 'none'`, in every mode).
+  `frame-ancestors 'none'`, in every mode), and frames inside its pages can't navigate (`frame-src 'none'`).
 - Links carry a **one-time code** in the fragment, never a token: `chi web` prints `Proxied: https://…/#code=chc_…`
   (the owner's: once, within 10 minutes; `chi web` again prints a new one), and a participant's link (`chi share`,
   the Invite dialog) is `https://<public url>/#code=chc_…&s=ID` (once, until the grant expires). A fragment isn't sent

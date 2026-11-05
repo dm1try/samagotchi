@@ -24,6 +24,7 @@ RSpec.describe Samagotchi::Web::App, "framing" do
     described_class.new(state_dir: state_dir, public_dir: public_dir, bridge_wait_timeout: 0, lan: lan,
                         hub: Samagotchi::Web::SessionHub.new(state_dir: state_dir))
   end
+  let(:policy) { "frame-ancestors 'none'; frame-src 'none'" }
 
   after do
     FileUtils.remove_entry(state_dir)
@@ -41,8 +42,14 @@ RSpec.describe Samagotchi::Web::App, "framing" do
   def frame_headers(headers) = headers.values_at("X-Frame-Options", "Content-Security-Policy")
 
   it "says DENY and frame-ancestors 'none' on the page, and on the static HTML" do
-    expect(frame_headers(call("/").last)).to eq(["DENY", "frame-ancestors 'none'"])
-    expect(frame_headers(call("/participant.html").last)).to eq(["DENY", "frame-ancestors 'none'"])
+    expect(frame_headers(call("/").last)).to eq(["DENY", policy])
+    expect(frame_headers(call("/participant.html").last)).to eq(["DENY", policy])
+  end
+
+  # A block renderer's srcdoc frame loads under it; a frame navigating itself
+  # anywhere doesn't (docs/internals/block-renderers.md).
+  it "says frame-src 'none' too, so no frame in a page can navigate" do
+    expect(call("/").last["Content-Security-Policy"]).to include("frame-src 'none'")
   end
 
   context "on the LAN" do
@@ -51,7 +58,7 @@ RSpec.describe Samagotchi::Web::App, "framing" do
     it "says so on the 401 page too" do
       status, headers = call("/", host: "192.168.1.55:4567", peer: "192.168.1.20")
       expect(status).to eq(401)
-      expect(frame_headers(headers)).to eq(["DENY", "frame-ancestors 'none'"])
+      expect(frame_headers(headers)).to eq(["DENY", policy])
     end
   end
 
