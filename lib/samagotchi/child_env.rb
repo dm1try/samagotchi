@@ -29,11 +29,14 @@ module Samagotchi
 
     # The keys of +env+ a child chi must not inherit: the guardrails
     # settings, the session markers, a smoke's fake "newest installed"
-    # (InstalledVersions::ENV_KEY, for the spawner's notices only) and the
-    # worker's project env marker and record (a child worker applies its own).
+    # (InstalledVersions::ENV_KEY, for the spawner's notices only), the
+    # worker's project env marker and record (a child worker applies its own) and
+    # an automatic update's marker (a session someone starts from one isn't it; the
+    # update's own hand-over execs, which this doesn't touch).
     # @return [Array<String>]
     def spawner_keys(env = ENV)
-      env.each_key.select { |key| key.start_with?(GUARDRAILS_PREFIX) } + SESSION_MARKERS + [InstalledVersions::ENV_KEY, ProjectEnv::MARKER_ENV, ProjectEnv::ORIG_ENV]
+      env.each_key.select { |key| key.start_with?(GUARDRAILS_PREFIX) } + SESSION_MARKERS +
+        [InstalledVersions::ENV_KEY, ProjectEnv::MARKER_ENV, ProjectEnv::ORIG_ENV, UNATTENDED_UPDATE]
     end
 
     # #spawner_keys mapped to nil: Process.spawn unsets a key mapped to nil.

@@ -15,6 +15,13 @@ RSpec.describe Samagotchi::ChildEnv do
     expect(described_class.spawner_keys(env)).not_to include("SAMAGOTCHI_DEFAULT_MODEL", "PATH")
   end
 
+  it "keeps an automatic update's marker from a child, not from that update's own hand-over" do
+    marked = env.merge(described_class::UNATTENDED_UPDATE => "1")
+
+    expect(described_class.scrub(marked)).not_to have_key(described_class::UNATTENDED_UPDATE)
+    expect(described_class.unbundled(marked)).not_to have_key(described_class::UNATTENDED_UPDATE)
+  end
+
   it "unsets them for Process.spawn and scrubs them from a copy" do
     expect(described_class.unset(env)).to include("SAMAGOTCHI_GUARDRAILS_RULES" => nil,
                                                   "SAMAGOTCHI_PARENT_SESSION" => nil)
