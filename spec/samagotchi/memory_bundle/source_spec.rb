@@ -158,6 +158,34 @@ RSpec.describe Samagotchi::MemoryBundle::SourceNormalizer do
       end
     end
 
+    # `chi bundle install URL` from a hook or `rebase --exec`: the sentinel is
+    # the repo git would act on (GIT_DIR alone gave its HEAD as source_commit,
+    # GIT_WORK_TREE failed the clone, GIT_OBJECT_DIRECTORY wrote into it).
+    it "clones and reads the URL, whatever repo the environment names" do
+      Dir.mktmpdir do |parent|
+        repo = File.join(parent, "repo")
+        sentinel = File.join(parent, "sentinel")
+        [repo, sentinel].each do |dir|
+          system("git", "init", "-q", dir, exception: true)
+          File.write(File.join(dir, "identity.md"), "# #{File.basename(dir)}\n")
+          system("git", "-C", dir, "add", ".", exception: true)
+          system("git", "-C", dir, "-c", "user.name=x", "-c", "user.email=x@x", "commit", "-qm", "x", exception: true)
+        end
+        expected = `git -C #{repo} rev-parse HEAD`.strip
+        files = -> { Dir.glob("**/*", File::FNM_DOTMATCH, base: sentinel).select { |f| File.file?(File.join(sentinel, f)) }.to_h { |f| [f, File.binread(File.join(sentinel, f))] } }
+        before = files.call
+
+        with_env("GIT_DIR" => File.join(sentinel, ".git"), "GIT_WORK_TREE" => sentinel,
+                 "GIT_OBJECT_DIRECTORY" => File.join(sentinel, ".git", "objects"), "GIT_INDEX_FILE" => File.join(sentinel, ".git", "index")) do
+          path, _owned, commit = described_class.normalize("file://#{repo}")
+          expect(commit).to eq(expected)
+          expect(File.read(File.join(path, "identity.md"))).to eq("# repo\n")
+          described_class.cleanup(path)
+        end
+        expect(files.call).to eq(before)
+      end
+    end
+
     it "returns nil commit for non-git sources" do
       bundle_dir = write_bundle_dir(tmpdir, "identity.md" => "# Id\n")
       path, owned = described_class.normalize(bundle_dir)

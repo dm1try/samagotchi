@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "../client_id"
+require_relative "../git_env"
 require_relative "../session"
 require_relative "../config"
 require_relative "../model_profile"
@@ -272,7 +273,7 @@ module Samagotchi
         git_dir = MemoryPaths.git_dir(folder)
         return false if git_dir && within?(folder, File.realpath(git_dir))
 
-        out = IO.popen(["git", "-C", folder, "rev-parse", "--is-inside-work-tree"], err: File::NULL, &:read)
+        out = IO.popen(GitEnv::UNSET, ["git", "-C", folder, "rev-parse", "--is-inside-work-tree"], err: File::NULL, &:read)
         out.strip == "true"
       rescue SystemCallError
         false

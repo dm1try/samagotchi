@@ -2,6 +2,7 @@
 
 require "open3"
 require "tmpdir"
+require_relative "../git_env"
 
 module Samagotchi
   module MemoryBundle
@@ -182,10 +183,9 @@ module Samagotchi
       end
 
       def git_env(dir)
-        { "GIT_DIR" => nil, "GIT_WORK_TREE" => nil, "GIT_COMMON_DIR" => nil, "GIT_INDEX_FILE" => nil, "GIT_PREFIX" => nil,
-          "GIT_CONFIG" => nil, "GIT_CONFIG_PARAMETERS" => nil, "GIT_CONFIG_COUNT" => nil,
-          "GIT_CONFIG_GLOBAL" => File::NULL, "GIT_CONFIG_SYSTEM" => File::NULL, "GIT_CONFIG_NOSYSTEM" => "1",
-          "GIT_CEILING_DIRECTORIES" => File.dirname(File.realpath(dir)) }
+        GitEnv::UNSET.merge("GIT_CONFIG_COUNT" => nil,
+                            "GIT_CONFIG_GLOBAL" => File::NULL, "GIT_CONFIG_SYSTEM" => File::NULL, "GIT_CONFIG_NOSYSTEM" => "1",
+                            "GIT_CEILING_DIRECTORIES" => File.dirname(File.realpath(dir)))
       end
 
       # git's output, read a line at a time. Takes the markers out, keeps track

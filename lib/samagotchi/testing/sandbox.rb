@@ -7,7 +7,7 @@ require_relative "../log"
 require_relative "../paths"
 require_relative "../sandbox_layout"
 require_relative "fake_executable"
-require_relative "git_env"
+require_relative "../git_env"
 
 module Samagotchi
   module Testing

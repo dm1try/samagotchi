@@ -401,7 +401,10 @@ module Samagotchi
       # :unknown for one the text doesn't tell); [] for other tools.
       def git_dirs
         @git_dirs ||= if shell?
-                        # chi's own GIT_DIR is not the command's concern
+                        # The text's and the call's env: only. chi's own GIT_DIR and
+                        # GIT_WORK_TREE aren't counted here, though execute inherits
+                        # them and the command does act on that repo; GitInfo (the
+                        # repo root and common dir this is compared with) follows them.
                         shell_envs.each_with_index.flat_map do |(home, vars), i|
                           ShellGitDirs.for(@command, cwd: @cwd, home: home, env: i.zero? ? {} : @env, vars: vars)
                         end.uniq

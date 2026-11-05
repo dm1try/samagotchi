@@ -93,6 +93,8 @@ module Samagotchi
         return {} unless File.directory?(dir)
 
         paths = ["--show-toplevel", "--git-path", "hooks", "--git-common-dir"]
+        # In chi's own environment, on purpose: a tool's git inherits it, and a
+        # card or a rule must judge the repo that git acts on (GIT_DIR around chi too).
         out, status = Open3.capture2e("git", "-C", dir, "rev-parse", *paths, "--abbrev-ref", "HEAD")
         # A repo with no commits yet has no HEAD: only the paths answer.
         out, status = Open3.capture2e("git", "-C", dir, "rev-parse", *paths) unless status.success?

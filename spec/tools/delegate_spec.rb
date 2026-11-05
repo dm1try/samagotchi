@@ -394,6 +394,20 @@ RSpec.describe "delegate tools" do
         expect(child_folder).to eq(File.join(repo, "lib"))
       end
 
+      # A chi started from a hook or `rebase --exec`: outside GIT_WORK_TREE, git
+      # says the session's own subfolder isn't in a work tree.
+      it "asks about the folder given, whatever repo the environment names" do
+        FileUtils.mkdir_p(File.join(repo, "lib"))
+        other = File.join(File.realpath(tmpdir), "other")
+        git("init", "-q", other)
+
+        with_env("GIT_DIR" => File.join(other, ".git"), "GIT_WORK_TREE" => other) do
+          described_class.call("look", cwd: File.join(repo, "lib"), wait: false, peers: worker_peers)
+        end
+
+        expect(child_folder).to eq(File.join(repo, "lib"))
+      end
+
       it "keeps the parent's folder for a blank cwd" do
         described_class.call("look", cwd: " ", wait: false, peers: worker_peers)
 

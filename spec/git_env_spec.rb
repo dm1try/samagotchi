@@ -3,12 +3,12 @@
 require "spec_helper"
 require "open3"
 require "rbconfig"
-require "samagotchi/testing/git_env"
+require "samagotchi/git_env"
 
 # A suite run from `git rebase --exec` or a hook once wrote core.bare=true, a
 # fake identity and a branch into the real .git. The mechanism's one test: each
 # entry point in a child ruby, whose inherited GIT_DIR is a temp sentinel repo.
-RSpec.describe Samagotchi::Testing::GitEnv do
+RSpec.describe Samagotchi::GitEnv do
   around do |example|
     Dir.mktmpdir("spec-git-env") do |dir|
       @tmp = File.realpath(dir)
@@ -63,6 +63,7 @@ RSpec.describe Samagotchi::Testing::GitEnv do
   it "lists all git calls local but the suite's own GIT_CONFIG_COUNT" do
     local = IO.popen(%w[git rev-parse --local-env-vars], &:read).split
     expect(local - described_class::VARS).to eq(["GIT_CONFIG_COUNT"])
+    expect(described_class::VARS - local).to eq([])
   end
 
   it "clears them in a sandbox, puts them back after it, and leaves the suite's GIT_CONFIG_COUNT" do

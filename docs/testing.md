@@ -41,7 +41,7 @@ that way locally: `npx playwright run-server --port 3333`, then `PW_TEST_CONNECT
 No spec reads your own setup. The suite points `XDG_CONFIG_HOME` and `XDG_STATE_HOME` at temp folders,
 clears your `SAMAGOTCHI_*` environment, and keeps every spec off the network (WebMock).
 It also clears what tells git which repo to act on (`GIT_DIR`, `GIT_WORK_TREE`, the rest of
-`git rev-parse --local-env-vars`: `Testing::GitEnv`), first thing in `spec_helper.rb` and as the bundle test kit's
+`git rev-parse --local-env-vars`: `GitEnv`), first thing in `spec_helper.rb` and as the bundle test kit's
 adapters load, so a run from `git rebase --exec`, `bisect run` or a hook can't reach the real repo through a spec's git.
 `SAMAGOTCHI_TAILSCALE_CLI` points at a file that does not exist (`spec_helper.rb`), so no spec reaches a real `tailscale`; a
 `chi web --tunnel tailscale` spec writes a fake one and sets the variable.

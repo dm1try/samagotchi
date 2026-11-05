@@ -1,7 +1,9 @@
 # frozen_string_literal: true
 
 require "tmpdir"
+require "yaml"
 require "samagotchi/guardrails"
+require "samagotchi/guardrails/parent_policy"
 require "samagotchi/tools/builtins"
 
 RSpec.describe Samagotchi::Guardrails::Context do
@@ -55,6 +57,62 @@ RSpec.describe Samagotchi::Guardrails::Context do
       git("init", "-q")
       git("config", "core.hooksPath", "my-hooks")
       expect(described_class.new(cwd: @dir).hooks_dir).to eq(File.join(@dir, "my-hooks"))
+    end
+  end
+
+  # Tools inherit chi's environment on purpose, so what chi was started with
+  # decides where a tool's git acts: the card and the rules must judge that repo.
+  describe "under a GIT_DIR around chi" do
+    let(:proj) { File.join(@dir, "proj") }
+    let(:other) { File.join(@dir, "other") }
+    let(:rules) do
+      doc = YAML.safe_load_file(File.expand_path("../../lib/samagotchi/bundles/guardrails/guardrails/rules.yml", __dir__))
+      ->(mode) { Samagotchi::Guardrails::Rules.new(Samagotchi::Guardrails::Rules.parse(doc["rules"], source: "b"), mode: mode) }
+    end
+
+    before do
+      [proj, other].each do |dir|
+        system("git", "init", "-q", "-b", File.basename(dir), dir, exception: true)
+        system("git", "-C", dir, "-c", "user.email=a@b", "-c", "user.name=a", "commit", "-q", "--allow-empty", "-m", "x", exception: true)
+      end
+    end
+
+    def verdict(ctx, command, mode: "auto")
+      call = { name: "execute", content: command }
+      v = Samagotchi::Guardrails::Verdict.new(call: call)
+      v.context = ctx
+      v.targets = Samagotchi::Guardrails::Targets.for(call, ctx)
+      rules.call(mode).check(v)
+    end
+
+    it "names on the git push card the repo the tool's git acts on" do
+      with_env("GIT_DIR" => File.join(other, ".git"), "GIT_WORK_TREE" => other) do
+        ctx = described_class.new(cwd: proj)
+        question = Samagotchi::Guardrails::Approval.payload(verdict(ctx, "git push origin main"))[:question]
+        tool_git = Samagotchi::Tools::Execute.call("git rev-parse --show-toplevel", cwd: proj)
+
+        expect(question).to include("(repo other, branch other)")
+        expect(ctx.repo_root).to eq(other)
+        expect(tool_git).to include(other)
+      end
+    end
+
+    it "keeps asking for a strict commit outside the session's folder" do
+      with_env("GIT_DIR" => File.join(other, ".git"), "GIT_WORK_TREE" => other) do
+        expect(verdict(described_class.new(cwd: proj), "git commit -am x", mode: "strict")).to be_ask
+      end
+    end
+
+    it "keeps a write into the hooks of a dotfiles GIT_DIR asking, from a folder in no repo" do
+      dotfiles = File.join(@dir, ".dotfiles")
+      plain = File.join(@dir, "plain").tap { |dir| FileUtils.mkdir_p(dir) }
+      system("git", "init", "-q", "--bare", dotfiles, exception: true)
+
+      with_env("GIT_DIR" => dotfiles, "GIT_WORK_TREE" => plain) do
+        ctx = described_class.new(cwd: plain)
+        expect(ctx.hooks_dir).to eq(File.join(dotfiles, "hooks"))
+        expect(verdict(ctx, "echo x > #{File.join(dotfiles, "hooks", "pre-commit")}")).to be_ask
+      end
     end
   end
 

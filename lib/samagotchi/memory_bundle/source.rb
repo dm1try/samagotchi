@@ -2,7 +2,7 @@
 
 require "tmpdir"
 require "fileutils"
-require "shellwords"
+require_relative "../git_env"
 
 module Samagotchi
   module MemoryBundle
@@ -81,13 +81,13 @@ module Samagotchi
           args = ["git", "clone", "--depth", "1"]
           args += ["--branch", ref] if ref && !ref.empty?
           args += [url, clone_dir]
-          result = system(*args)
+          result = system(GitEnv::UNSET, *args)
           raise UnknownSourceError, "git clone failed for #{git_url}" unless result && File.directory?(clone_dir)
 
           # Capture HEAD commit before stripping .git (audit trail)
           commit = nil
           begin
-            commit = `git -C #{clone_dir.shellescape} rev-parse HEAD 2>/dev/null`.strip
+            commit = IO.popen(GitEnv::UNSET, ["git", "-C", clone_dir, "rev-parse", "HEAD"], err: File::NULL, &:read).strip
             commit = nil if commit.empty?
           rescue StandardError
             commit = nil
