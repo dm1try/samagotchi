@@ -74,6 +74,7 @@ require_relative "session_create"
 require_relative "session_control"
 require_relative "verify_fresh_routes"
 require_relative "push_routes"
+require_relative "block_renderer_routes"
 require_relative "update_check"
 require_relative "update_ops"
 require_relative "proxy_gate"
@@ -107,6 +108,7 @@ module Samagotchi
       include SessionControl
       include VerifyFreshRoutes
       include PushRoutes
+      include BlockRendererRoutes
       include ProxyGate
 
       DEFAULT_HOST = BridgeClient::HOST
@@ -315,6 +317,8 @@ module Samagotchi
         ["DELETE", %r{\A/api/push/subscriptions/([^/]+)\z}, :handle_push_remove, :owner],
         ["POST", %r{\A/api/push/test\z}, :handle_push_test, :owner],
         ["POST", %r{\A/api/push/presence\z}, :handle_push_presence, :owner],
+        ["GET", %r{\A/api/block_renderers\z}, :handle_block_renderers, :owner],
+        ["GET", %r{\A/api/block_renderers/([^/]+)/([^/]+)\z}, :handle_block_renderer_file, :owner],
         ["GET", %r{\A/api/sessions/([^/]+)\z}, :handle_show, :participant, :session],
         ["DELETE", %r{\A/api/sessions/([^/]+)\z}, :handle_delete, :owner, :session]
       ].freeze
@@ -1800,19 +1804,22 @@ module Samagotchi
         rel = rel.split("/").reject { |p| p == ".." || p.empty? }.join("/")
         full = File.join(@public_dir, rel)
         if File.file?(full) && full.start_with?(@public_dir)
-          body = File.binread(full)
-          # no-cache + a content ETag: the browser revalidates every asset
-          # (the ES-module imports too) and gets a cheap 304 while it is
-          # unchanged, so a gem upgrade + chi web restart takes effect on the
-          # next load instead of after max-age runs out.
-          etag = %("#{Digest::SHA256.hexdigest(body)[0, 32]}")
-          headers = { "Cache-Control" => "no-cache", "ETag" => etag }
-          return [304, headers, []] if etag_match?(req.get_header("HTTP_IF_NONE_MATCH"), etag)
-
-          [200, headers.merge("Content-Type" => mime_type(full), "Content-Length" => body.bytesize.to_s), [body]]
+          revalidated_body(req, File.binread(full), mime_type(full))
         else
           not_found(path: req.path_info)
         end
+      end
+
+      # no-cache + a content ETag: the browser revalidates every asset
+      # (the ES-module imports too) and gets a cheap 304 while it is
+      # unchanged, so a gem upgrade + chi web restart takes effect on the
+      # next load instead of after max-age runs out.
+      def revalidated_body(req, body, content_type)
+        etag = %("#{Digest::SHA256.hexdigest(body)[0, 32]}")
+        headers = { "Cache-Control" => "no-cache", "ETag" => etag }
+        return [304, headers, []] if etag_match?(req.get_header("HTTP_IF_NONE_MATCH"), etag)
+
+        [200, headers.merge("Content-Type" => content_type, "Content-Length" => body.bytesize.to_s), [body]]
       end
 
       def etag_match?(if_none_match, etag)
