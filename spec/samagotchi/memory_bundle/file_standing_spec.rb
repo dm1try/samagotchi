@@ -188,6 +188,7 @@ RSpec.describe Samagotchi::MemoryBundle::FileStanding do
       FileUtils.rm_rf(File.dirname(saved))
 
       expect(remerge.behind.map(&:missed)).to eq([[]])
+      expect(remerge.behind.first.why).to eq(described_class::LEGACY_CONFLICT)
       expect(entry).to include(incoming_sha: Digest::SHA256.hexdigest(File.read(File.join(source, "a.md"))), legacy_base: true)
       expect(File.exist?(saved)).to be true
     end

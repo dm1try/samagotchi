@@ -16,6 +16,8 @@ module Samagotchi
     module FileStanding
       # Why a merge of a mark from an older chi didn't go ahead (Merger.merge_outcome).
       LEGACY_BASE = "an older chi may have taken your text as the base, and the merge would remove lines from your file"
+      # A real conflict on such a mark: its base can't say what the bundle changed.
+      LEGACY_CONFLICT = "it conflicts with the bundle's text, and an older chi's base can't say what it missed"
       # A marked file Remerge leaves for the next upgrade or restore.
       WAITS_FOR_UPGRADE = "it matches its old base, and the bundle's next version replaces it"
       FILE_MISSING = "the file is missing, and the bundle's next version puts it back"

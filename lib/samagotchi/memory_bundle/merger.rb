@@ -121,8 +121,10 @@ module Samagotchi
         def behind(file_key, outcome, version)
           why = outcome.why && FileStanding.no_merge(outcome.why)
           base = paths(file_key)[:base]
-          entry = provenance.record&.files&.fetch(file_key, nil)
-          return FileStanding::Behind.new(file: file_key, version: version, why: why) if InstalledBundle.legacy_mark?(entry) || !File.exist?(base)
+          if InstalledBundle.legacy_mark?(provenance.record&.files&.fetch(file_key, nil))
+            return FileStanding::Behind.new(file: file_key, version: version, why: why || FileStanding::LEGACY_CONFLICT)
+          end
+          return FileStanding::Behind.new(file: file_key, version: version, why: why) unless File.exist?(base)
 
           headings, unnamed = TextMerge.changed_sections(File.binread(base), File.binread(paths(file_key)[:incoming]))
           places = unnamed ? [outcome.merge&.hunks&.count { |hunk| !hunk.union? }.to_i, 1].max : 0
