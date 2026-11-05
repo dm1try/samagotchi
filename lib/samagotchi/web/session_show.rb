@@ -80,7 +80,7 @@ module Samagotchi
           plugin_warning: turn_snapshot && turn_snapshot["plugin_warning"],
           # Plugins' slow setup still running (chi.init): the page's init row.
           init_tasks: snapshot_list(turn_snapshot, "init_tasks"),
-          cards: cards_for_display(live_or_saved(turn_snapshot, "cards") { saved_cards(id) }, cwd: session.working_directory),
+          cards: cards_for_display(live_or_saved(turn_snapshot, "cards") { saved_cards(id, messages: raw_messages) }, cwd: session.working_directory),
           # The composer's / autocomplete; the built-ins until a worker
           # names its plugins' too.
           commands: turn_snapshot&.fetch("commands", nil) || SessionCommands.builtin_registry.listing,

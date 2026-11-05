@@ -288,8 +288,8 @@ module Samagotchi
       end
 
       # As JSON has them (string keys and values), like a snapshot's.
-      def saved_cards(id)
-        JSON.parse(JSON.generate(Samagotchi::Bridge::CardStore.saved(Session.session_dir(id, state_dir: default_state_dir))))
+      def saved_cards(id, messages: nil)
+        JSON.parse(JSON.generate(Samagotchi::Bridge::CardStore.saved(Session.session_dir(id, state_dir: default_state_dir), messages: messages)))
       rescue StandardError
         []
       end

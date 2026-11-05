@@ -78,9 +78,10 @@ module Samagotchi
       # What a session's saved file lists, as a store started from it lists
       # (no turn running): the web's cards for a session no worker runs.
       # @param session_dir [String]
+      # @param messages [Array<Hash>, nil] the session's messages
       # @return [Array<Hash>] [] without a readable file
-      def self.saved(session_dir)
-        new(path: File.join(session_dir, FILE)).list
+      def self.saved(session_dir, messages: nil)
+        new(path: File.join(session_dir, FILE)).list(messages: messages)
       end
 
       # @param path [String, nil] the file the entries are saved in and
@@ -114,7 +115,7 @@ module Samagotchi
       #   worker saved, and during: true for a card that
       #   came while the running turn runs but isn't that turn's (it goes
       #   after the running turn's prompt)
-      def list
+      def list(messages: nil)
         @mutex.synchronize do
           @entries.map do |entry|
             turns = entry[:turns]

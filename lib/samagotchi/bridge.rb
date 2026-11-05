@@ -315,7 +315,7 @@ module Samagotchi
           guardrail_warning: @engine.guardrail_warning,
           plugin_warning: @engine.plugin_warning,
           init_tasks: @engine.init_tasks,
-          cards: @cards.list,
+          cards: cards_listing,
           commands: command_registry.listing,
           chi_version: Samagotchi::VERSION,
           event_seq: seq,
@@ -350,7 +350,7 @@ module Samagotchi
         state = @engine.session_state_snapshot.merge(event_seq: seq, event_id: event_id(seq))
         { session_id: @session_id, working_directory: @engine.session&.working_directory,
           session_state_snapshot: state, answer: @engine.last_answer_message(turn_id: turn_id),
-          cards: @cards.list, event_seq: seq, event_id: event_id(seq) }
+          cards: cards_listing, event_seq: seq, event_id: event_id(seq) }
       end
     end
 
@@ -371,6 +371,12 @@ module Samagotchi
     end
 
     private
+
+    # The cards, against the messages a snapshot's page draws: the session's
+    # own, which a running turn leaves alone. No copy: GET tail stays light.
+    def cards_listing
+      @cards.list(messages: @engine.session&.messages)
+    end
 
     # The turn in progress (TurnAccumulator#current_turn) with the running
     # generation's phase as generation: {thinking_only:, age:}
