@@ -245,6 +245,27 @@ RSpec.describe Samagotchi::Steer do
     expect(described_class.turn_prompt?({ role: "system", content: "sys" })).to be(false)
   end
 
+  it ".shell_line? is a stored `!cmd` record: no turn id, with either key kind" do
+    expect(described_class.shell_line?({ role: "user", content: "!(ls)\nfile" })).to be(true)
+    expect(described_class.shell_line?({ "role" => "user", "content" => "!(ls)\nfile" })).to be(true)
+    expect(described_class.shell_line?({ role: "user", content: "!(ls)\nfile", turn_id: "t1" })).to be(false)
+    expect(described_class.shell_line?({ "role" => "user", "content" => "!(ls)", "turn_id" => "t1" })).to be(false)
+    expect(described_class.shell_line?({ role: "user", content: "hello" })).to be(false)
+    expect(described_class.shell_line?({ role: "user", content: [{ type: "text" }] })).to be(false)
+    expect(described_class.shell_line?(nil)).to be(false)
+  end
+
+  it ".turn_opening? is a turn prompt that isn't a `!cmd` record: a wake note or report counts" do
+    expect(described_class.turn_opening?({ role: "user", content: "hi" })).to be(true)
+    expect(described_class.turn_opening?({ role: "user", content: "!(ls)\nfile" })).to be(false)
+    expect(described_class.turn_opening?({ role: "user", content: "!(ls) typed in a prompt", turn_id: "t1" })).to be(true)
+    expect(described_class.turn_opening?({ role: "system", kind: "note", turn_start: true, turn_id: "t1" })).to be(true)
+    expect(described_class.turn_opening?({ role: "system", kind: "note" })).to be(false)
+    expect(described_class.turn_opening?({ role: "user", kind: "input", turn_start: true, turn_id: "t1" })).to be(true)
+    expect(described_class.turn_opening?({ role: "user", kind: "input" })).to be(false)
+    expect(described_class.turn_opening?(described_class.message(text: "x", source: "s"))).to be(false)
+  end
+
   it ".prompt? is a user message that is not a steer, with either key kind" do
     expect(described_class.prompt?({ role: "user", content: "x" })).to be(true)
     expect(described_class.prompt?({ "role" => "user", "content" => "x" })).to be(true)

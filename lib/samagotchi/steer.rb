@@ -336,6 +336,23 @@ module Samagotchi
       prompt?(message) && (!input?(message) || start)
     end
 
+    # A stored `!shell` line: "!(cmd)\n<output>", no turn id. A user message,
+    # so #turn_prompt? takes it; no turn ran.
+    def shell_line?(message)
+      return false unless message.is_a?(Hash)
+
+      content = message[:content] || message["content"]
+      (message[:turn_id] || message["turn_id"]).nil? && content.is_a?(String) && content.start_with?("!(")
+    end
+
+    # A turn's opening as the page draws it (TURN_PROMPT, bubbles.js): a prompt
+    # or a wake turn's note or report, not a `!shell` line. What the recap, the
+    # cards' count and "a later turn" go by. #turn_prompt? stays what bounds a
+    # turn's slice, where a `!shell` line ends one.
+    def turn_opening?(message)
+      turn_prompt?(message) && !shell_line?(message)
+    end
+
     # Call a loop's drain: +at_answer+ goes only to a drain that takes it
     # (the Engine's); a caller's own drain (a queue's #drain) is called bare.
     # A failing drain drains nothing (the loop keeps going).

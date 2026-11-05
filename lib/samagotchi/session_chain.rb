@@ -129,7 +129,7 @@ module Samagotchi
     # A turn's opening, not a `!shell` line: a command the user ran after
     # the answer leaves it the last word.
     def later_turn?(message)
-      Steer.turn_prompt?(message) && !shell_line?(message)
+      Steer.turn_opening?(message)
     end
 
     # At most +max+ bytes of +text+'s start, cut on a character.
@@ -181,16 +181,11 @@ module Samagotchi
 
         text = msg[:content]
         next unless text.is_a?(String) && !text.strip.empty?
-        next if shell_line?(msg)
+        next if Steer.shell_line?(msg)
 
         return text.strip
       end
       nil
-    end
-
-    # A stored `!shell` line: "!(cmd)\n<output>", no turn_id.
-    def shell_line?(message)
-      message[:turn_id].nil? && message[:content].is_a?(String) && message[:content].start_with?("!(")
     end
 
     def clock(iso)
