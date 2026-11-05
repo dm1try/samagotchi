@@ -214,7 +214,7 @@ test("a turn with no answer ends in the stage as no answer, then one notice, liv
 // A turn's own rows come back where they were, on a mid-turn join and after
 // the turn: the empty answer's retry row, the answered question card, and
 // a line sent while the turn ran (the steered bubble, not a turn of its own).
-test("a reload mid-turn and after it keeps the retry row, the answered card and the steered line in the turn", async ({ page, script, browser }) => {
+test("a reload mid-turn and after it keeps the retry row, the answered card and the steered line in the turn", async ({ page, script, browser, chi }) => {
   test.setTimeout(60_000);
   script("reload_rows");
   await send(page, "Read a file of my choice");
@@ -281,10 +281,18 @@ test("a reload mid-turn and after it keeps the retry row, the answered card and 
     await expect(on.locator("#history > .turn-work + .bubble.user.steered + .bubble.output").last()).toContainText("Second reply");
   };
   await test.step("a line sent during a text-only step", async () => {
+    // The step's stream stays open until the line is in: once it has ended
+    // the line is a turn of its own, with no block.
+    const streamEnd = path.join(chi.dirs.fake, "steer_text_go");
+    fs.rmSync(streamEnd, { force: true });
     script("steer_text");
     await send(page, "Say something long");
     await expect(page.locator(H).getByText("First reply that the steer").first()).toBeVisible();
+    const posted = page.waitForResponse((res) => res.url().endsWith("/turn") && res.request().postData()?.includes("ANSWER-NOW"));
     await send(page, "ANSWER-NOW");
+    expect((await posted).status()).toBe(202);
+    fs.writeFileSync(streamEnd, "");
+    await expect(page.locator(`${H} .bubble.user.steered`).filter({ hasText: "ANSWER-NOW" })).toHaveCount(1);
     await turnEnded(page, 2);
     await opensToReply(page);
     await page.reload();

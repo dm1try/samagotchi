@@ -4,7 +4,8 @@
 # request's tool results since the last user message pick the iteration; each streams its "thinking"
 # (reasoning_content), "text" (content) word by word ("delay" s apart, default 0.12) and its "tools" as
 # native tool_calls deltas, so the worker (api: openai) runs real tools. "hold" seconds wait before an
-# iteration's first chunk (a stable mid-turn moment). With "steer_keeps_count": true a user message right after a
+# iteration's first chunk (a stable mid-turn moment); "end_hold_until" (a path, as "hold_until") keeps its stream open
+# after its text, before its last chunk (a step still streaming). With "steer_keeps_count": true a user message right after a
 # tool result (steering merged mid-turn, a plugin's nudge) doesn't restart the count.
 # With "nudge_counts": true a system message after the
 # last user message (an empty-answer retry's nudge) counts as a step too, so an empty iteration can be followed by
@@ -126,9 +127,10 @@ class H(http.server.BaseHTTPRequestHandler):
         if it.get("error"): return self._send(int(it["error"]), json.dumps({"error": {"message": "boom"}}))
         delay = float(script.get("delay", 0.12))
         # "hold_until": a path (relative to the fake's dir) to wait for first, up to 60 s, before "hold".
-        if it.get("hold_until"):
-            until = os.path.join(DIR, it["hold_until"]); deadline = time.time() + 60
+        def wait_for(name):
+            until = os.path.join(DIR, name); deadline = time.time() + 60
             while not os.path.exists(until) and time.time() < deadline: time.sleep(0.05)
+        if it.get("hold_until"): wait_for(it["hold_until"])
         time.sleep(float(it.get("hold", 0)))
         # A side request (ctx.ask_model) doesn't stream: the iteration's text, whole.
         if not json.loads(body or b"{}").get("stream"):
@@ -163,6 +165,7 @@ class H(http.server.BaseHTTPRequestHandler):
                         self.connection.shutdown(socket.SHUT_RDWR); self.close_connection = True
                         return
                     w(ch({field: piece})); time.sleep(delay); sent += 1
+            if it.get("end_hold_until"): wait_for(it["end_hold_until"])
             tools = it.get("tools") or []
             for i, tool in enumerate(tools):
                 w(ch({"tool_calls": [{"index": i, "id": "call_%d_%d" % (done, i), "type": "function",
