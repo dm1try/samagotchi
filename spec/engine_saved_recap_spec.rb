@@ -51,6 +51,14 @@ RSpec.describe "Engine saved recap", :recap do
     expect(engine_for(session).saved_recap).to include(turns_since: 2)
   end
 
+  it "counts the turns the page draws: a wake's note does, a !cmd's record doesn't" do
+    history = [msg("user", "Bluefin"), msg("model", "ok")]
+    wake = { "role" => "system", "kind" => "note", "turn_start" => true, "turn_id" => "w1", "content" => "done" }
+    session = session_with(history + [msg("user", "!(ls)\nfile"), wake, msg("model", "x"), msg("user", "!(pwd)\n/"), msg("user", "next"), msg("model", "y")])
+    write_recap(session, covered: 2, digest_of: history.last)
+    expect(engine_for(session).saved_recap).to include(turns_since: 2)
+  end
+
   it "is nil with no saved recap, or with recap off" do
     session = session_with([msg("user", "hi")])
     expect(engine_for(session).saved_recap).to be_nil

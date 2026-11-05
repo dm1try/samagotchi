@@ -59,7 +59,7 @@ module Samagotchi
         return nil unless saved
 
         messages = Array(session.messages)
-        since = messages.drop(saved[:covered].to_i).count { |m| Samagotchi::Steer.turn_prompt?(m) }
+        since = messages.drop(saved[:covered].to_i).count { |m| Samagotchi::Steer.turn_opening?(m) }
         { text: saved[:text], turns_since: since, created_at: saved[:created_at] }.compact
       rescue StandardError
         nil

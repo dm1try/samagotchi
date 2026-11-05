@@ -413,7 +413,7 @@ test("turnHistoryHtml: a context wake turn starts with its note (turn_start): th
   assert.equal(turnHistoryHtml(items, two, { thumbs }),
     '<div class="bubble user" data-copy-source="p"><div class="user-message">p</div></div>' +
     '<div class="bubble output">PONG</div><div class="turn-timing">turn 1 · 0.5s</div>' +
-    '<div class="bubble note"><div class="note-line">note from context pr-1</div><div class="note-text">Updated: pr-1.</div></div>' +
+    '<div class="bubble note turn-start"><div class="note-line">note from context pr-1</div><div class="note-text">Updated: pr-1.</div></div>' +
     '<div class="bubble output" data-answer-turn="T2">Bob asked for changes.</div><div class="turn-timing">turn 2 · 2.0s</div>');
 });
 

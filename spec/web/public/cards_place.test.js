@@ -51,6 +51,25 @@ test("a reloaded turn's elements, its prompt first; steered lines aren't a turn'
   assert.deepEqual(reloadedTurnEls(h, null).map((el) => el.textContent), ["two", "more", "t2"]);
 });
 
+test("a reloaded turn's elements stop at a wake's note: a wake turn's rows look in that turn's block", () => {
+  const h = history('<div class="bubble user">one</div><div class="turn-work"><div class="gen"><div class="gen-text">first</div></div></div>'
+    + '<div class="bubble output">a1</div><div class="bubble note turn-start">woke</div>'
+    + '<div class="turn-work"><div class="gen"><div class="gen-text">wake step</div></div></div><div class="bubble output">a2</div>');
+  assert.deepEqual(reloadedTurnEls(h, null).map((el) => el.textContent), ["woke", "wake step", "a2"]);
+  const { cards } = harness(h);
+  cards.placeSnapshotCards([{ type: "hook_notice", in_turn: true, iteration: 1, hook: "h", text: "in wake", turns_since: 0 }]);
+  const [first, wake] = h.querySelectorAll(".turn-work");
+  assert.equal(first.querySelector(".hook-notice"), null);
+  assert.ok(wake.querySelector(".gen .activity-body .hook-notice").textContent.endsWith("in wake"));
+});
+
+test("a card goes above a wake's note when that wake came after it", () => {
+  const h = history('<div class="bubble user">one</div><div class="bubble output">a1</div><div class="bubble note turn-start">woke</div>'
+    + '<div class="bubble output">a2</div>');
+  harness(h).cards.placeSnapshotCards([{ type: "card", id: "c1", title: "Card", body: "x", turns_since: 1 }]);
+  assert.equal(h.querySelector(".plugin-card").nextElementSibling.textContent, "woke");
+});
+
 test("a turn's answer, else its timing line, else none", () => {
   const h = history(TWO_TURNS);
   const [first, second] = [reloadedTurnEls(h, h.querySelectorAll(".bubble.user")[1]), reloadedTurnEls(h, null)];

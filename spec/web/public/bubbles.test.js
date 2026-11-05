@@ -14,6 +14,15 @@ function history() {
   return el;
 }
 
+test("the history's turn prompts: a wake's note counts; a plain note, a !cmd's bubble, a steer, a failed prompt and a nested one don't", () => {
+  const h = history();
+  h.innerHTML = '<div class="bubble user">one</div><div class="bubble note turn-start">woke</div><div class="bubble note">plain</div>'
+    + '<div class="bubble command">!ls</div><div class="bubble user steered">more</div><div class="bubble user failed">gone</div>'
+    + '<div class="wrap"><div class="bubble user">nested</div><div class="bubble note turn-start">nested</div></div>'
+    + '<div class="bubble user">two</div>';
+  assert.deepEqual(turnPromptBubbles(h).map((el) => el.textContent), ["one", "woke", "two"]);
+});
+
 // The page's wiring over a bare history: no stage, the history at its end.
 function harness({ near = true, holds = false, steer = () => false } = {}) {
   const historyEl = history();

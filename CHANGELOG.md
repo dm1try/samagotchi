@@ -7,6 +7,10 @@ and commands may change between minor versions. How releases are made:
 [docs/releasing.md](docs/releasing.md).
 ## [Unreleased]
 
+### Fixed
+
+- A saved recap sits where it belongs in the web after a task or context wake, or a `!cmd`.
+
 ## [0.150.0] - 2026-11-05
 
 ### Changed

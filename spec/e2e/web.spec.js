@@ -2070,6 +2070,23 @@ test("a warn card stays in sight when its step closes mid-turn", async ({ page, 
   await aboveFailed();
 });
 
+// A wake is a turn on the page as it is in the count: a card shown before it
+// goes above the turn after the card, the note after that. The variants are
+// unit specs.
+test("a finished task's wake opens a turn: after a reload an earlier card keeps its place above the later turns", async ({ page, script }) => {
+  script("warn_card");
+  await send(page, "Read the flagged file");
+  await turnEnded(page, 1);
+  script("task_wake");
+  await send(page, "Start a task");
+  await expect(page.locator("#history .bubble.note")).toHaveCount(1);
+  await turnEnded(page, 3);
+  await page.reload();
+  const order = () => page.locator("#history > :is(.bubble.user, .plugin-card.warn, .bubble.note.turn-start)").evaluateAll((els) => els.map((el) => (
+    el.matches(".plugin-card") ? "card" : el.matches(".note") ? "note" : el.textContent.trim())));
+  await expect.poll(order).toEqual(["Read the flagged file", "card", "Start a task", "note"]);
+});
+
 // The Stop button asks first what the worker still has that the user can
 // stop (stop_sheet.js): a background task the turn started is listed at phone
 // width as a bottom sheet with its three answers, and "Stop all" runs the

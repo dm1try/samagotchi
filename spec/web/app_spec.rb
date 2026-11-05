@@ -1756,6 +1756,19 @@ RSpec.describe Samagotchi::Web::App do
       expect(payload["saved_recap"]).to eq("text" => "Earlier.", "turns_since" => 1)
     end
 
+    it "counts a stopped session's recap by the turns the page draws: a wake's note does, a !cmd's record doesn't" do
+      state_dir = Dir.mktmpdir
+      FileUtils.mkdir_p(File.join(state_dir, "s1"))
+      File.write(File.join(state_dir, "s1", "recap.json"), JSON.generate(text: "Earlier.", covered: 2, covered_digest: "x"))
+      session = Samagotchi::Session.new_session(mode: "assist", model_name: "TestModel", working_directory: Dir.pwd)
+      session.messages = [{ role: "user", content: "hello" }, { role: "assistant", content: "hi" }, { role: "user", content: "!(ls)\nfile" },
+                          { role: "system", kind: "note", turn_start: true, turn_id: "w1", content: "done" }, { role: "assistant", content: "ok" }]
+      allow(StubSessionLoader).to receive(:load).and_return(session)
+      app = build_app(manager: FakeResponsesManager.new, state_dir: state_dir)
+
+      expect(JSON.parse(app.call(env_for("/api/sessions/s1"))[2].first)["saved_recap"]).to eq("text" => "Earlier.", "turns_since" => 1)
+    end
+
     describe "an answer's display (AnswerDisplay, set by an after_turn hook)" do
       let(:answer) { "see JIRA-1 and `JIRA-1`" }
       let(:display) { "see [JIRA-1](https://j.test/browse/JIRA-1) and `JIRA-1`" }
