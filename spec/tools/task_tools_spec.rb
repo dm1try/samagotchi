@@ -71,10 +71,12 @@ RSpec.describe "task tools" do
       expect(File.read(output_path)).to include("no override")
     end
 
-    it "does not allow overrides of sanitized Bundler environment keys" do
-      result = described_class.call("echo blocked", env: { "RUBYOPT" => "-rbundler/setup" })
-
-      expect(result).to eq("Error: env key is reserved: RUBYOPT")
+    it "does not allow overrides of sanitized Bundler environment keys, and says how to set one" do
+      Samagotchi::BundlerEnv::CHILD_RUBY.each do |key|
+        expect(described_class.call("echo blocked", env: { key => "x" }))
+          .to eq("Error: env key is reserved: #{key} (chi clears it for every command; to set it for this one, " \
+                 "put it in the command: #{key}=value cmd)")
+      end
     end
 
     it "doesn't start a task once the turn is stopped" do

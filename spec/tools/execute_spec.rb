@@ -126,6 +126,25 @@ RSpec.describe Samagotchi::Tools::Execute do
       expect(own).to include("/own/Gemfile")
     end
 
+    # RubyGems requires what BUNDLER_SETUP names at boot, whatever RUBYOPT says:
+    # a project's plain `ruby -e` then loaded Bundler against its own Gemfile.
+    it "keeps a Gemfile out of a project's ruby under a chi run with bundle exec" do
+      Dir.mktmpdir("execute-bundler") do |dir|
+        File.write(File.join(dir, "Gemfile"), %(gem "no-such-gem-from-this-spec"\n))
+        with_env("BUNDLER_SETUP" => Gem.find_files("bundler/setup").first, "BUNDLE_LOCKFILE" => "/chi/Gemfile.lock") do
+          result = described_class.call(%(ruby -e 'print defined?(Bundler).inspect, " ", ENV["BUNDLE_LOCKFILE"].inspect'), cwd: dir)
+
+          expect(result).to include("nil nil", "exit: 0")
+        end
+      end
+    end
+
+    it "leaves a project's own Bundler settings to its bundle" do
+      with_env("BUNDLE_PATH" => "vendor/own", "BUNDLE_WITHOUT" => "docs") do
+        expect(described_class.call('printf %s "$BUNDLE_PATH|$BUNDLE_WITHOUT"')).to include("vendor/own|docs")
+      end
+    end
+
     it "captures stdout and reports exit 0" do
       result = described_class.call("ruby -e 'puts \"hello world\"'")
       expect(result).to include("hello world")

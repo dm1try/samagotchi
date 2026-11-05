@@ -6,6 +6,7 @@ require "securerandom"
 require "shellwords"
 require "time"
 require_relative "../atomic_file"
+require_relative "../bundler_env"
 require_relative "../child_env"
 require_relative "../log"
 require_relative "../process_group"
@@ -28,7 +29,7 @@ module Samagotchi
       STOP_POLL_INTERVAL_SEC = 0.1
       METADATA_VERSION = TaskRecord::METADATA_VERSION
       OUTPUT_TAIL_READ_BYTES = 16 * 1024
-      SANITIZED_ENV_KEYS = %w[RUBYOPT RUBYLIB BUNDLE_GEMFILE BUNDLE_BIN_PATH BUNDLER_VERSION].freeze
+      SANITIZED_ENV_KEYS = BundlerEnv::CHILD_RUBY
       # Set by chi (Builtins.parent_env); the model's env can't change it.
       MARKER_ENV_KEYS = ChildEnv::SESSION_MARKERS
       # task_wait and task_get add it to a task the user stopped (the web's
@@ -448,15 +449,16 @@ module Samagotchi
       # chi's own Ruby/Bundler setup, kept out of a command's environment
       # (execute and task_create both spawn with it): run under `bundle
       # exec`, chi would otherwise hand a project's `ruby -e` or
-      # `bundle exec` its Gemfile (RUBYOPT=-rbundler/setup, BUNDLE_GEMFILE).
+      # `bundle exec` its Gemfile (RUBYOPT=-rbundler/setup, BUNDLE_GEMFILE,
+      # BUNDLER_SETUP) and lockfile.
       def sanitized_spawn_env
-        {
-          "RUBYOPT" => sanitized_rubyopt,
-          "RUBYLIB" => nil,
-          "BUNDLE_GEMFILE" => nil,
-          "BUNDLE_BIN_PATH" => nil,
-          "BUNDLER_VERSION" => nil
-        }
+        SANITIZED_ENV_KEYS.to_h { |key| [key, nil] }.merge("RUBYOPT" => sanitized_rubyopt)
+      end
+
+      # The model's way out: a Ruby or Bundler variable it does want, for one command.
+      def sanitized_key_error(key)
+        "Error: env key is reserved: #{key} (chi clears it for every command; to set it for this one, " \
+          "put it in the command: #{key}=value cmd)"
       end
 
       def spawn_env_for(overrides)
@@ -469,7 +471,8 @@ module Samagotchi
         overrides.each do |key, value|
           return [nil, "Error: env keys and values must be strings"] unless key.is_a?(String) && value.is_a?(String)
           return [nil, "Error: env keys and values cannot contain NUL bytes"] if key.include?("\0") || value.include?("\0")
-          return [nil, "Error: env key is reserved: #{key}"] if SANITIZED_ENV_KEYS.include?(key) || MARKER_ENV_KEYS.include?(key)
+          return [nil, "Error: env key is reserved: #{key}"] if MARKER_ENV_KEYS.include?(key)
+          return [nil, sanitized_key_error(key)] if SANITIZED_ENV_KEYS.include?(key)
 
           normalized[key] = value
         end

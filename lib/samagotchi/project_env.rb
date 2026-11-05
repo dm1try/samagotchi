@@ -2,6 +2,7 @@
 
 require "json"
 require "open3"
+require_relative "bundler_env"
 require_relative "chi_home"
 require_relative "chi_shim"
 require_relative "config"
@@ -57,14 +58,14 @@ module Samagotchi
     RESERVED_PREFIXES = %w[XDG_ SAMAGOTCHI_].freeze
     # Never set from an ORIG_ENV record (a tool can write it), only unset:
     # loader and Bundler variables.
-    RESTORE_NEVER = /\A(?:DYLD_|LD_|RUBYOPT\z|RUBYLIB\z|RUBYGEMS_|BUNDLE)/
+    RESTORE_NEVER = /\A(?:DYLD_|LD_|RUBYOPT\z|RUBYLIB\z|RUBYGEMS_|#{BundlerEnv::PREFIX})/
     # Never passed to `mise env`: MISE_YES answers its trust prompt (it
     # would trust, and remember, an untrusted repo's mise.toml); CI too.
     MISE_UNSET = %w[MISE_YES CI].freeze
     TIMEOUT = 5
     # What execute and tasks set themselves (Tools::TaskRuntime's
     # sanitized env): never taken from the project's.
-    TOOLS_DROP = %w[RUBYOPT RUBYLIB BUNDLE_GEMFILE BUNDLE_BIN_PATH BUNDLER_VERSION].freeze
+    TOOLS_DROP = BundlerEnv::CHILD_RUBY
 
     # What #compute found: +env+ the tools' overlay ({key => value, or nil
     # to unset}; frozen, with the marker and the ORIG_ENV record),

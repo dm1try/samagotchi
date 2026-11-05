@@ -3,6 +3,7 @@
 require "fileutils"
 require "shellwords"
 require_relative "atomic_file"
+require_relative "bundler_env"
 require_relative "chi_home"
 require_relative "log"
 require_relative "paths"
@@ -25,7 +26,7 @@ module Samagotchi
     # ruby: unset before the exec.
     UNSET = "unset RUBYOPT RUBYLIB RUBYGEMS_GEMDEPS GEMRC LD_PRELOAD LD_LIBRARY_PATH DYLD_INSERT_LIBRARIES " \
             "DYLD_LIBRARY_PATH\n" \
-            "for v in $(/usr/bin/env | /usr/bin/sed -n 's/^\\(BUNDLE[A-Za-z0-9_]*\\)=.*/\\1/p'); do unset \"$v\"; done\n"
+            "for v in $(/usr/bin/env | /usr/bin/sed -n 's/^\\(#{BundlerEnv::PREFIX}[A-Za-z0-9_]*\\)=.*/\\1/p'); do unset \"$v\"; done\n"
 
     module_function
 

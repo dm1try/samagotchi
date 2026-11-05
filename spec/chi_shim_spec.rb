@@ -3,6 +3,7 @@
 require "tmpdir"
 require "spec_helper"
 require "samagotchi/chi_shim"
+require "samagotchi/bundler_env"
 
 RSpec.describe Samagotchi::ChiShim do
   let(:tmp) { Dir.mktmpdir("chi-shim") }
@@ -43,6 +44,7 @@ RSpec.describe Samagotchi::ChiShim do
     env = { "RUBYOPT" => "-rbundler/setup", "RUBYLIB" => "/p/lib", "BUNDLE_GEMFILE" => "/p/Gemfile",
             "BUNDLE_BIN_PATH" => "/b", "BUNDLER_VERSION" => "2.6.0", "RUBYGEMS_GEMDEPS" => "-", "GEMRC" => "/p/gemrc",
             "LD_PRELOAD" => "/p/x.so", "LD_LIBRARY_PATH" => "/p/lib", "KEEP" => "1" }
+    env.update(Samagotchi::BundlerEnv::VARS.to_h { |key| [key, "/b/#{key}"] })
     output = IO.popen(env, [File.join(dir, "chi")], &:read)
     expect(output.strip).to eq("[]")
   end
