@@ -7,10 +7,13 @@ and commands may change between minor versions. How releases are made:
 [docs/releasing.md](docs/releasing.md).
 ## [Unreleased]
 
+## [0.151.0] - 2026-11-05
+
 ### Added
 
 - A bundle can declare `block_renderers:` in its manifest: a fenced code block's language and the `scripts/` files that draw it in chi web. See docs/plugins.md (Block renderers).
 - chi web draws such a block as a picture in answers and closed steps, once a bundle for its language is installed and `web.markdown` is on. A toggle shows the source; a block that can't be drawn stays source, with one muted line. The renderer runs in a sandboxed frame with no access to the page or its cookie, and a CSP that closes its network but for WebRTC.
+- [chi-mermaid](https://github.com/dm1try/chi-mermaid), a separate bundle, draws ```` ```mermaid ```` blocks this way and tells the model it can write them: `chi bundle install https://github.com/dm1try/chi-mermaid`.
 
 ### Changed
 
@@ -21,6 +24,8 @@ and commands may change between minor versions. How releases are made:
 - A card or notice keeps its place in the web after a reload, however many turns came after it: a finished task's or an attached context's wake no longer sends it above earlier prompts, and a reminder or a Continue no longer pushes it toward the bottom. A card now stays with the turn it came after, also through a `!rollback` or a restart. A session's existing cards keep the places they have. Going back to an older chi on a session afterwards clears that session's cards.
 - A saved recap sits where it belongs in the web after a task or context wake, or a `!cmd`.
 - A card shown after a failed turn stays below that turn's prompt after a reload, as it was live.
+
+Update with `chi update`.
 
 ## [0.150.0] - 2026-11-05
 
@@ -5685,7 +5690,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.150.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.151.0...HEAD
+[0.151.0]: https://github.com/dm1try/samagotchi/compare/v0.150.0...v0.151.0
 [0.150.0]: https://github.com/dm1try/samagotchi/compare/v0.149.0...v0.150.0
 [0.149.0]: https://github.com/dm1try/samagotchi/compare/v0.148.0...v0.149.0
 [0.148.0]: https://github.com/dm1try/samagotchi/compare/v0.147.0...v0.148.0
