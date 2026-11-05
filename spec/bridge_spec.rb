@@ -523,7 +523,10 @@ RSpec.describe Samagotchi::Bridge do
   end
 
   describe "integration" do
-    let(:state_dir) { Dir.mktmpdir }
+    # A folder inside its own temp dir: the guardrails log and the saved runs
+    # sit beside the sessions dir, and beside a bare mktmpdir is the machine's
+    # shared tmp, which outlives the run.
+    let(:state_dir) { File.join(Dir.mktmpdir, "sessions").tap { |dir| FileUtils.mkdir_p(dir) } }
 
     include WorkerFixtures
 
