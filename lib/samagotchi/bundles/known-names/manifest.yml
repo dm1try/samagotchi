@@ -1,10 +1,10 @@
 ---
 name: known-names
 version: 0.1.9
+requires_chi: ">= 0.150.0"
 scope: system
 description: Catches a near-miss of a protected name (home folder, login, git name, repo name, names from config) in a tool call and rejects it with the right spelling; mode ask / correct optional
 trust_level: reviewed
-requires_chi_next: Samagotchi::GitEnv::UNSET
 files:
   known_names.md: sha256:d5348b95b6c655017b541910b36e384220da280818160201f6ec9a50e1e4287c
 hooks:

@@ -7,16 +7,15 @@ and commands may change between minor versions. How releases are made:
 [docs/releasing.md](docs/releasing.md).
 ## [Unreleased]
 
+## [0.150.0] - 2026-11-05
+
 ### Changed
 
 - The web's steps block closes to its summary line after a turn and after a reload, whatever its steps said; opened, it shows the outline as before. A canceled or failed turn with a narrated step stays open. [docs/cli.md](docs/cli.md#how-the-page-draws-a-turn)
 - The web's working-set footprint is now the steps block's summary line, in body colour, the steps' count at its right (a phone shows the footprint alone); there is no separate line under the block. A click on its words opens the turn's list, the chevron or the count opens the steps. [docs/cli.md](docs/cli.md#the-working-set)
 - Check this also reads the agent's visible answers, never its thinking, so a claim about what the agent said or asked can be confirmed. They settle only that: a claim of work with nothing but the agent's words behind it isn't `confirmed`. With `objectives.check_model` they go to that host too. [docs/sessions.md](docs/sessions.md#objectives)
-
 - An upgrade now merges a memory you edited with the bundle's new version instead of leaving it behind. `chi bundle upgrade`, `chi update` and the automatic system bundle update run a text merge (needs `git`): a clean merge replaces the file, with the old one in the bundle trash and the report saying `merged 0.8.0 into your x.md`, and `--dry-run` says `would merge`. When a chi start updates the system bundle, a terminal launch says so in one line. Entries both sides added under a `Changelog` heading are kept, yours first. A real conflict, no `git`, or no recorded base leaves your file untouched, as before, and a file marked by an older chi can stay behind too (see the next line).
-
 - A memory left behind as a conflict gets another try without waiting for the bundle's next version: the system bundle retries its files marked conflict at every chi start and on `chi update`, the other bundles chi ships on `chi update`, and any other bundle on `chi bundle upgrade`. It touches memory files only, and a row reads `0.8.0  merged 0.8.0 into your x.md`. A file marked by an older chi merges normally when its recorded base is a version chi shipped, checked against the samagotchi gems still installed. Otherwise that base may be your own text, so the file merges only if the bundle takes out or rewords no line it still holds. If it does, it stays behind until resolved by hand, with `--agent` or with `--force`, and the retry can't fix that.
-
 - Everything that reports an edited bundle file now says what happened in one wording: `merged 0.8.0 into your x.md`, or `x.md stays behind 0.8.0: missed ## Steps, ## Rules and 2 more` with the reason when there is one (`no merge possible (git not found)`). The record keeps why and what was missed, and the bundle's text is saved at `.bundles/<name>/incoming/<file>` until the file settles. `kept your edits` is gone from `chi update`, whose `--json` rows gain `merged` next to `kept`, and from `chi bundle upgrade`, `chi bootstrap` and the system bundle's line at a start.
 
 ### Fixed
@@ -51,6 +50,8 @@ and commands may change between minor versions. How releases are made:
 - An install or upgrade no longer fails at its last step on a memory that isn't valid UTF-8.
 - A Changelog merge compares whole entries, nested items included: your `- a` / `  - note` beside the bundle's `- b` / `  - note` no longer loses the bundle's `  - note`.
 - Putting back a deleted system memory at the same version now restores that file alone. It used to run a whole upgrade, replacing hooks, rules and the plugin under live sessions.
+
+Update with `chi update` (github-pr 0.6.3, known-names 0.1.9, source-links 0.6.3: their git calls ask about the session's folder, and they need this chi; dev profile 0.7.6).
 
 ## [0.149.0] - 2026-11-04
 
@@ -5669,7 +5670,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.149.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.150.0...HEAD
+[0.150.0]: https://github.com/dm1try/samagotchi/compare/v0.149.0...v0.150.0
 [0.149.0]: https://github.com/dm1try/samagotchi/compare/v0.148.0...v0.149.0
 [0.148.0]: https://github.com/dm1try/samagotchi/compare/v0.147.0...v0.148.0
 [0.147.0]: https://github.com/dm1try/samagotchi/compare/v0.146.0...v0.147.0
