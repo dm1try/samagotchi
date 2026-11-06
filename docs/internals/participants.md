@@ -471,7 +471,7 @@ fields: a field added to an event later reaches nobody until it is named there.
   this matches the rendered text the page selects without treating different casing as the same claim. The quote may
   also be in the answer as the pages show it (`Engine#verify_quote_in?`, `ParticipantView::Redact.text`: the session's
   folder relative, home `~`, secret shapes `[redacted]`): a participant's page has only that text, and the owner's
-  page quotes it the same way (`claimOpts()`, `normalizeClaim`; `spec/fixtures/redact_cases.json` keeps the two
+  page quotes it the same way (`owner_claim.js` `opts()`, `normalizeClaim`; `spec/fixtures/redact_cases.json` keeps the two
   sides alike), so a claim naming a path is taken on both. A fresh child
   checks the same anchor against its parent's history. A completed Verify reply whose final non-empty line has
   a valid `Verdict: confirmed|refuted|unclear — <reason>` appends a verdict to the session. Both pages place its card
