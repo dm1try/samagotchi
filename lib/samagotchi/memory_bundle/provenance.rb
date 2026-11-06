@@ -6,6 +6,7 @@ require "date"
 require "fileutils"
 require_relative "../atomic_file"
 require_relative "../memory_paths"
+require_relative "../version"
 require_relative "bundle_hook"
 require_relative "file_digest"
 require_relative "installed_bundle"
@@ -16,6 +17,9 @@ module Samagotchi
     # Each installed bundle gets a directory with:
     #   manifest.json — metadata about the install (merged on reinstall)
     #   bases/        — snapshots of every file as installed (for 3-way merge later)
+    #   manifest.yml  — the bundle's own manifest as installed (#write's
+    #                   manifest_from:), its sha in the record; read live
+    #                   through InstalledManifest
     class Provenance
       def self.bundles_dir
         MemoryPaths.bundles_dir
@@ -58,6 +62,11 @@ module Samagotchi
       # provider's command finds as {bundle_dir}/scripts.
       def scripts_dir
         File.join(@bundle_dir, "scripts")
+      end
+
+      # The bundle's manifest.yml as installed (InstalledBundle#kept_manifest_path).
+      def kept_manifest_path
+        File.join(@bundle_dir, "manifest.yml")
       end
 
       # The plugin file as installed, or nil when the bundle has none.
@@ -179,10 +188,18 @@ module Samagotchi
       # @param block_renderers [Array<BlockRenderers::Renderer>]
       # @param dev [Boolean] a dev install: its files are links to the
       #   source, recorded as DEV_SHA (no sha256 check) with "dev": true
+      # @param manifest_from [String, nil] the source dir: its manifest.yml is
+      #   kept at #kept_manifest_path (a copy, a link for a dev install),
+      #   recorded as manifest_sha (DEV_SHA for dev), with installed_by: this
+      #   chi's VERSION. nil leaves the kept file, and the record's
+      #   manifest_sha and installed_by, as they are. The keys a record mirrors
+      #   (requires_chi … setting_types) are still written from the kwargs:
+      #   an older chi sharing this memories dir reads only them
+      #   (docs/internals/bundles.md); a key a later manifest gains is never added
       def write(files:, scope:, version:, source_path:, hooks: {}, trust_level: nil, source_commit: nil, hooks_files: {},
                 guardrails_files: {}, plugin_file: nil, requires_chi: nil, needs: nil, marks: [], incoming_dir: nil, includes: nil,
                 scripts_files: {}, context_providers: [], block_renderers: [], file_descriptions: {}, session_settings: [], session_setting_types: {}, settings: nil, setting_types: {},
-                dev: false)
+                dev: false, manifest_from: nil)
         FileUtils.mkdir_p(@bundle_dir)
         bases_dir = File.join(@bundle_dir, "bases")
         FileUtils.mkdir_p(bases_dir)
@@ -299,6 +316,7 @@ module Samagotchi
         manifest_data["session_setting_types"] = session_setting_types.to_h { |k, v| [k.to_s, v.to_s] } unless session_setting_types.to_h.empty?
         manifest_data["settings"] = settings.map(&:to_s) unless settings.nil?
         manifest_data["setting_types"] = setting_types.to_h { |k, v| [k.to_s, v.to_s] } unless setting_types.to_h.empty?
+        manifest_data.merge!(kept_manifest_fields(existing, manifest_from, dev))
 
         write_manifest(manifest_data)
         marked.each_key { |key| save_incoming(key, incoming_dir) }
@@ -431,6 +449,39 @@ module Samagotchi
         AtomicFile.write(manifest_path, JSON.pretty_generate(manifest_data))
       end
       private :write_manifest
+
+      # The record's manifest_sha and installed_by: a fresh kept copy's, or
+      # (no manifest_from) the existing record's, the kept file left alone.
+      def kept_manifest_fields(existing, manifest_from, dev)
+        if manifest_from.nil?
+          return { "manifest_sha" => existing&.manifest_sha, "installed_by" => existing&.installed_by }.compact
+        end
+
+        sha = keep_manifest(File.join(manifest_from.to_s, "manifest.yml"), dev)
+        sha ? { "manifest_sha" => sha, "installed_by" => Samagotchi::VERSION } : {}
+      end
+      private :kept_manifest_fields
+
+      # +source+ to #kept_manifest_path: a link to its realpath for a dev
+      # install (DEV_SHA), else a copy written aside and renamed (a link left
+      # by a dev install is replaced, never written through), its sha.
+      # A source with no manifest.yml leaves none kept: nil.
+      def keep_manifest(source, dev)
+        dest = kept_manifest_path
+        unless File.file?(source)
+          FileUtils.rm_f(dest)
+          return nil
+        end
+
+        if dev
+          FileUtils.rm_f(dest)
+          File.symlink(File.realpath(source), dest)
+          return DEV_SHA
+        end
+        AtomicFile.write(dest, File.binread(source))
+        FileDigest.sha256(dest)
+      end
+      private :keep_manifest
 
       def mark_fields(mark)
         { conflict: true, why: mark.why, missed: mark.missed.empty? ? nil : mark.missed,

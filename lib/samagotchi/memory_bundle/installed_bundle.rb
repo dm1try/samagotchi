@@ -39,13 +39,20 @@ module Samagotchi
     #               later manifest gains is never mirrored
     #   dev         a dev install (`chi bundle install --dev`): its source is
     #               the folder it links to and its files carry Provenance::DEV_SHA
+    #   manifest_sha  the kept manifest.yml's recorded sha256 (Provenance::DEV_SHA
+    #               for a dev install's link), nil on a record written before
+    #               chi kept it, or rewritten since by a chi that doesn't
+    #   installed_by  the chi VERSION that wrote the record with its kept
+    #               manifest, nil when manifest_sha is
     #   dir         its .bundles/<name> folder (.read, Provenance.each_installed),
     #               nil for a record parsed alone or one that doesn't read
     #   error       why manifest.json couldn't be read (the rest empty), else nil
     class InstalledBundle < Data.define(:name, :version, :scope, :source, :installed_at, :source_commit, :files, :hooks,
-                                        :guardrails, :scripts, :plugin, :includes, :dev, :mirror, :dir, :error)
+                                        :guardrails, :scripts, :plugin, :includes, :dev, :mirror, :manifest_sha,
+                                        :installed_by, :dir, :error)
       OPTIONAL = { version: nil, scope: nil, source: nil, installed_at: nil, source_commit: nil, files: {}, hooks: {},
-                   guardrails: {}, scripts: {}, plugin: nil, includes: nil, dev: false, mirror: {}, dir: nil, error: nil }.freeze
+                   guardrails: {}, scripts: {}, plugin: nil, includes: nil, dev: false, mirror: {}, manifest_sha: nil,
+                   installed_by: nil, dir: nil, error: nil }.freeze
 
       # The manifest keys a record mirrors, as Provenance#write records them.
       MIRROR_KEYS = %w[requires_chi trust_level needs context_providers block_renderers session_settings
@@ -88,7 +95,8 @@ module Samagotchi
             scripts: mapping(h["scripts"]) { |meta| sha(meta) },
             plugin: PluginRef.parse(h["plugin"]),
             includes: h["includes"].is_a?(Array) ? h["includes"].map(&:to_s) : nil,
-            dev: h["dev"] == true, mirror: h.slice(*MIRROR_KEYS).compact, dir: dir)
+            dev: h["dev"] == true, mirror: h.slice(*MIRROR_KEYS).compact,
+            manifest_sha: string(h["manifest_sha"]), installed_by: string(h["installed_by"]), dir: dir)
       end
 
       def self.string(value) = value&.to_s
@@ -101,6 +109,9 @@ module Samagotchi
       private_class_method :string, :mapping, :sha
 
       def error? = !error.nil?
+
+      # Its kept manifest.yml (Provenance#kept_manifest_path), nil with no dir.
+      def kept_manifest_path = dir && File.join(dir, "manifest.yml")
 
       # What its manifest says (requires_chi, hook metadata, needs, providers,
       # renderers, settings…): the one way to read manifest data of an

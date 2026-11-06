@@ -532,7 +532,8 @@ module Samagotchi
           session_setting_types: @manifest.session_setting_types,
           settings: @manifest.settings,
           setting_types: @manifest.setting_types,
-          dev: @dev
+          dev: @dev,
+          manifest_from: @bundle_dir
         )
         # Replaced by --force: an earlier merge into it no longer says anything true.
         @provenance.clear_merge_notes([], files: @replaced)

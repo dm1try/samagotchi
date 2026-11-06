@@ -53,6 +53,19 @@ RSpec.describe Samagotchi::MemoryBundle::Installer do
 
   describe "#run" do
     context "with a directory source" do
+      it "keeps the bundle's manifest.yml, recorded by its sha; a dry run keeps nothing" do
+        bundle_dir = write_bundle(tmpdir, { "identity.md" => "# Identity\n" })
+        kept = File.join(bundles_dir, "test-bundle", "manifest.yml")
+        described_class.new(source: bundle_dir, name: "test-bundle", strict: true, dry_run: true).run
+        expect(File.exist?(kept)).to be(false)
+
+        installer_for(source: bundle_dir, name: "test-bundle").run
+        expect(File.read(kept)).to eq(File.read(File.join(bundle_dir, "manifest.yml")))
+        record = JSON.parse(File.read(File.join(bundles_dir, "test-bundle", "manifest.json")))
+        expect(record).to include("manifest_sha" => "sha256:#{Digest::SHA256.file(kept).hexdigest}",
+                                  "installed_by" => Samagotchi::VERSION)
+      end
+
       it "installs .md files into the system scope directory" do
         bundle_dir = write_bundle(tmpdir, {
           "identity.md" => "# Identity\n",

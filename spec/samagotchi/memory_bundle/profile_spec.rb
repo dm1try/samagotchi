@@ -76,6 +76,17 @@ RSpec.describe Samagotchi::MemoryBundle::Profile do
       expect(prov.new(name: "a").read[:source]).to eq(File.join(shipped, "a"))
     end
 
+    it "keeps the profile's manifest.yml and each member's, as their records say" do
+      %w[a b].each { |n| ship(n) }
+      core = ship_meta("core", %w[a b])
+      install(core)
+      %w[core a].each do |name|
+        kept = File.join(system_dir, ".bundles", name, "manifest.yml")
+        expect(File.read(kept)).to eq(File.read(File.join(name == "core" ? core : File.join(shipped, name), "manifest.yml")))
+        expect(prov.new(name: name).read[:manifest_sha]).to eq("sha256:#{Digest::SHA256.file(kept).hexdigest}")
+      end
+    end
+
     it "names a member's memory file the user already had, left as theirs, and not one that matches or is new" do
       %w[a b c].each { |n| ship(n) }
       FileUtils.mkdir_p(system_dir)

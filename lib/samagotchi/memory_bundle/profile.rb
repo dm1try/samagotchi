@@ -114,7 +114,8 @@ module Samagotchi
 
         Provenance.new(name: manifest.name).write(
           files: {}, scope: "system", version: manifest.version, source_path: dir,
-          trust_level: manifest.trust_level, requires_chi: manifest.requires_chi, includes: includes
+          trust_level: manifest.trust_level, requires_chi: manifest.requires_chi, includes: includes,
+          manifest_from: dir
         )
         result
       end

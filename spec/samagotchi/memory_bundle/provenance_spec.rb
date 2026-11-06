@@ -6,6 +6,8 @@ require "fileutils"
 require "yaml"
 require "digest"
 require "samagotchi/memory_bundle/provenance"
+require "samagotchi/context_providers"
+require "samagotchi/block_renderers"
 
 RSpec.describe Samagotchi::MemoryBundle::Provenance do
   let(:tmpdir) { Dir.mktmpdir("samagotchi-prov-") }
@@ -185,6 +187,96 @@ RSpec.describe Samagotchi::MemoryBundle::Provenance do
       prov.write(files: { "a.md" => f3, "c.md" => f3 }, scope: "system", version: "1.1", source_path: "/x")
       m = JSON.parse(File.read(prov.bundle_dir + "/manifest.json"), symbolize_names: true)
       expect(m[:files].keys).to contain_exactly(:"a.md", :"c.md")
+    end
+  end
+
+  describe "the kept manifest.yml (#write's manifest_from:)" do
+    let(:source) do
+      File.join(tmpdir, "src").tap do |dir|
+        make_file(dir, "manifest.yml", "name: kept\nversion: 1.0.0\nfuture_key: 1\n")
+        make_file(dir, "a.md", "A\n")
+      end
+    end
+    let(:kept) { File.join(bundles_dir, "kept", "manifest.yml") }
+
+    def write_kept(prov, **opts)
+      prov.write(files: { "a.md" => File.join(source, "a.md") }, scope: "system", version: "1.0.0", source_path: source,
+                 manifest_from: source, **opts)
+    end
+
+    it "copies the source's manifest.yml and records its sha and the chi that installed it" do
+      prov = described_class.new(name: "kept")
+      write_kept(prov)
+      expect(File.read(kept)).to eq(File.read(File.join(source, "manifest.yml")))
+      expect(File.symlink?(kept)).to be(false)
+      expect(prov.read).to include(manifest_sha: "sha256:#{Digest::SHA256.file(kept).hexdigest}",
+                                   installed_by: Samagotchi::VERSION)
+      expect(prov.record).to have_attributes(manifest_sha: "sha256:#{Digest::SHA256.file(kept).hexdigest}",
+                                             installed_by: Samagotchi::VERSION)
+    end
+
+    it "links a dev install's manifest.yml to the source, recorded as DEV_SHA" do
+      prov = described_class.new(name: "kept")
+      write_kept(prov, dev: true)
+      expect(File.symlink?(kept)).to be(true)
+      expect(File.readlink(kept)).to eq(File.realpath(File.join(source, "manifest.yml")))
+      expect(prov.read[:manifest_sha]).to eq(described_class::DEV_SHA)
+    end
+
+    it "replaces a dev link with a copy on a plain install, never writing through the link" do
+      prov = described_class.new(name: "kept")
+      write_kept(prov, dev: true)
+      other = File.join(tmpdir, "other").tap { |dir| make_file(dir, "manifest.yml", "name: kept\nversion: 2.0.0\n") }
+      prov.write(files: {}, scope: "system", version: "2.0.0", source_path: other, manifest_from: other)
+      expect(File.symlink?(kept)).to be(false)
+      expect(File.read(kept)).to eq("name: kept\nversion: 2.0.0\n")
+      expect(File.read(File.join(source, "manifest.yml"))).to start_with("name: kept\nversion: 1.0.0")
+    end
+
+    it "leaves the kept file and its sha alone when a write names no manifest_from" do
+      prov = described_class.new(name: "kept")
+      write_kept(prov)
+      sha = prov.read[:manifest_sha]
+      prov.write(files: {}, scope: "system", version: "1.0.0", source_path: source)
+      expect(File.read(kept)).to eq(File.read(File.join(source, "manifest.yml")))
+      expect(prov.read).to include(manifest_sha: sha, installed_by: Samagotchi::VERSION)
+    end
+
+    it "records nothing of a kept manifest for a write without one, as today's" do
+      prov = described_class.new(name: "plain")
+      prov.write(files: {}, scope: "system", version: "1.0", source_path: "/x")
+      expect(prov.read.keys).not_to include(:manifest_sha, :installed_by)
+      expect(prov.record).to have_attributes(manifest_sha: nil, installed_by: nil)
+      expect(File.exist?(File.join(bundles_dir, "plain", "manifest.yml"))).to be(false)
+    end
+
+    it "writes the record's mirror of the manifest keys exactly as before" do
+      prov = described_class.new(name: "kept")
+      provider = Samagotchi::ContextProviders.parse_list([{ "match" => "\\Ax", "name" => "x", "cmd" => "c" }])
+      renderer = Samagotchi::BlockRenderers.parse_list([{ "lang" => "mermaid", "load" => ["draw.js"] }])
+      write_kept(prov, trust_level: "reviewed", requires_chi: ">= 0.1", needs: [{ command: "gh", why: nil, hint: nil }],
+                       context_providers: provider, block_renderers: renderer, session_settings: ["cap"],
+                       session_setting_types: { "cap" => "number" }, settings: ["limit"], setting_types: { "limit" => "string" })
+      raw = JSON.parse(File.read(File.join(bundles_dir, "kept", "manifest.json")))
+      expect(raw.except("installed_at", "manifest_sha", "installed_by")).to eq(
+        "name" => "kept", "version" => "1.0.0", "scope" => "system", "source" => source,
+        "files" => { "a.md" => { "checksum" => Digest::SHA256.hexdigest("A\n") } }, "hooks" => {},
+        "trust_level" => "reviewed", "requires_chi" => ">= 0.1", "needs" => [{ "command" => "gh" }],
+        "context_providers" => [{ "match" => "\\Ax", "name" => "x", "cmd" => "c" }],
+        "block_renderers" => [{ "lang" => "mermaid", "load" => ["draw.js"] }],
+        "session_settings" => ["cap"], "session_setting_types" => { "cap" => "number" },
+        "settings" => ["limit"], "setting_types" => { "limit" => "string" }
+      )
+    end
+
+    it "keeps manifest_sha and installed_by through the in-place edits of the record" do
+      prov = described_class.new(name: "kept")
+      write_kept(prov, marks: [Samagotchi::MemoryBundle::FileStanding::Behind.new(file: "a.md")], incoming_dir: source)
+      before = prov.read.slice(:manifest_sha, :installed_by)
+      prov.note_merged(["a.md"], version: "1.0.0", trash: nil)
+      prov.resolve_conflicts("a.md" => { incoming: File.join(source, "a.md") })
+      expect(prov.read.slice(:manifest_sha, :installed_by)).to eq(before)
+      expect(before[:manifest_sha]).to start_with("sha256:")
     end
   end
 
