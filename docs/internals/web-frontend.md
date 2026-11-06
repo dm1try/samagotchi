@@ -23,7 +23,7 @@ page. A factory dep a new version stops passing is the same hazard the other way
 out of `send_turn.js`, `session_actions.js` and `lists_view.js`); a page loaded before keeps all its old modules
 until a reload, so the risk is a mixed cache, not an open tab. `answer_fold.js`, `details_motion.js`,
 `turn_range.js`, `history_reveal.js`, `latest.js`, `session_payload.js`, `method_api.js`, `session_store.js`,
-`session_fields.js`, `feature_gates.js`, `revise_stack.js`, `revise_switch.js`, `shell_command.js`, `stale_params.js`, `popover_modal.js`, `more_sheet.js`, `hash_intent.js` (what the hash asks for: session, all, start or keep), `worker_features.js`, `block_open.js`, `text_roots.js`, `block_source.js`, `block_frame.js`, `block_host.js`, `version_notices.js`, `owner_claim.js`, `owner_verify.js` and the `objectives_*.js` modules are new modules for that reason. The last three `block_*` draw a bundle's fenced blocks: [block-renderers.md](block-renderers.md).
+`session_fields.js`, `feature_gates.js`, `revise_stack.js`, `revise_switch.js`, `shell_command.js`, `stale_params.js`, `popover_modal.js`, `more_sheet.js`, `hash_intent.js` (what the hash asks for: session, all, start or keep), `worker_features.js`, `block_open.js`, `text_roots.js`, `block_source.js`, `block_frame.js`, `block_host.js`, `version_notices.js`, `owner_claim.js`, `owner_verify.js`, `composer_mode.js` and the `objectives_*.js` modules are new modules for that reason. The last three `block_*` draw a bundle's fenced blocks: [block-renderers.md](block-renderers.md).
 
 ## Two pages, two models
 
@@ -106,7 +106,7 @@ stale).
 **The redraws are registered, not called.** app.js registers each name once (`store.on`, at the bottom, once every
 piece a redraw calls exists): `lists` → `lists.render()`, `paintActive` → `lists.paintActive()`, `settingsPanel` →
 `settingsControl.refresh()`, `workingSetStrategy` → `workingSet.strategyChanged()`, `featureGates` (below), `composer` →
-`updateComposerMode()`, `infoBar` → `updateInfoBar()`. A writer writes and stops there: no `updateInfoBar()` after
+`composerMode.update()` (`composer_mode.js`), `infoBar` → `updateInfoBar()`. A writer writes and stops there: no `updateInfoBar()` after
 a store write. A value written unchanged redraws nothing (a chunk with the same ctx %).
 
 An input the store doesn't hold calls `store.touch(name)` where it changes: `infoBar` for the clock (liveTurn's
@@ -114,7 +114,7 @@ An input the store doesn't hold calls `store.touch(name)` where it changes: `inf
 set's and the participants' `onChange`, the continue and review in-flight sets
 (`session_actions.js`); `composer` and `infoBar` for `liveTurn.running` (`setTurnRunning`, with `settingsPanel`:
 the open ⚙ panel's running-turn note) and at the end of `renderSessionView` (a whole view drawn). Left as they are,
-on purpose: the `narrowScreen` listener calls `updateComposerMode()` (the bar doesn't read it),
+on purpose: `composer_mode.js`'s phone-width listener calls its `update()` (the bar doesn't read it),
 `applyStripHidden`/`applyView` call `updateSessionTitle()`, and `closeStream`/`stream.restart` set
 `streamControl = null` without a redraw (a resync or a workerGone follows).
 
@@ -179,7 +179,7 @@ The redraws, by their store names:
 - `infoBar` (`updateInfoBar()`): the session bar's buttons and info line (`info_bar_model.js sessionBar` →
   `info_bar.js`), the annotate bar, the fold controls, `updateSessionTitle()` and the fresh link's picker. Cheap: it
   runs on most writes and every clock tick.
-- `composer` (`updateComposerMode()`): the composer's placeholder, buttons and delivery line (selected, running,
+- `composer` (`composer_mode.js` `update()`): the composer's placeholder, buttons and delivery line (selected, running,
   owner).
 - `settingsPanel` (`settingsControl.refresh()`): the ⚙ chip's **open panel** (`settings_chip.js`; the chip itself is
   drawn by the bar), on `thinking`, `reasoningHistory` and `llmContext`; `workingSetStrategy`: the working set's open
@@ -224,7 +224,7 @@ each keeps one set of handlers, confirmations and in-flight rules. A chip the sh
 matters at exactly 600 px, where the CSS is a phone's but the shell (`SHEET_MAX`, `<`) still draws a popover, not a sheet.
 A new chip on the bar needs its place in that CSS's hidden list and a row in `moreRows`, and its attention state in the row, or
 it is lost on a phone. `app.js`'s `updateInfoBar` feeds the sheet (`update`) on every redraw; its rows and actions draw into
-fixed slots, so a row that joins keeps the focus where it was. The `narrowScreen` listener closes the sheet when the window grows.
+fixed slots, so a row that joins keeps the focus where it was. `composer_mode.js`'s phone-width listener closes the sheet when the window grows.
 
 
 ## The stage's height
