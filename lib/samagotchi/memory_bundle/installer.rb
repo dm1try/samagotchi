@@ -111,7 +111,7 @@ module Samagotchi
         @provenance = Provenance.new(name: @name)
         @existing = @provenance.record
         check_source
-        # A plain install over an installed bundle: summary points at upgrade.
+        # A plain install over an installed bundle: its summary says so.
         @reinstall = @existing && !@upgrade && !@force && !@dry_run
         installed = replace_files
         verify_memory_checksums if @manifest && @strict
@@ -145,7 +145,15 @@ module Samagotchi
         merged = merged_files
         would_merge = @results.select { |_, r| r[:status].to_s == "would_merge" }.keys
         kept = @results.select { |_, r| %w[kept keep kept_pruned].include?(r[:status].to_s) }.keys
-        skipped = @results.select { |_, r| %w[skipped noop would_skip].include?(r[:status].to_s) }.keys
+        # A file whose bytes are already the bundle's was not left out: it is
+        # up to date. Skipped keeps the files really left out -- the user's own
+        # memory, and a dry run's would_skip (a dry run's `noop` carries no
+        # reason, so it stays here).
+        up_to_date = @results.select { |_, r| r[:reason] == "already up to date" }.keys
+        skipped = @results.select do |_, r|
+          status = r[:status].to_s
+          status == "would_skip" || status == "noop" || (status == "skipped" && r[:reason] != "already up to date")
+        end.keys
         would_install = @results.select { |_, r| r[:status].to_s == "would_install" }.keys
         fast_forward = @results.select { |_, r| r[:status].to_s == "fast_forward" }.keys
         removed = @results.select { |_, r| r[:status].to_s == "removed" }.keys
@@ -160,11 +168,12 @@ module Samagotchi
         lines << "Removed (no longer in the bundle): #{removed.join(", ")}#{" (moved to #{trash_dir})" if trash_dir}" unless removed.empty?
         lines << "Would remove (no longer in the bundle): #{would_remove.join(", ")}" unless would_remove.empty?
         lines << "Kept (local edits preserved): #{kept.join(", ")}" unless kept.empty?
+        lines << "Up to date: #{up_to_date.join(", ")}" unless up_to_date.empty?
         lines << "Skipped: #{skipped.join(", ")}" unless skipped.empty?
         lines << trash_copy_line if trash_copy_line
         lines.concat(@warnings) unless @warnings.empty?
         lines.concat(@placeholder_warnings) unless @placeholder_warnings.empty?
-        lines << "#{@name} is already installed; `chi bundle upgrade #{@name}` updates it and keeps local edits" if @reinstall
+        lines << reinstall_line if @reinstall
 
         lines.any? ? lines.join("\n") : "No files to install."
       end
@@ -179,6 +188,22 @@ module Samagotchi
       end
 
       private
+
+      # A plain install over a bundle that is already installed from the same
+      # source: it rewrote the bundle's hooks, rules, plugin, scripts and its
+      # record, and left a memory the user wrote as it was. So the line says
+      # what changed, and points at the upgrade for the memories it kept.
+      def reinstall_line
+        line = "#{@name} was already installed from #{@source}: its hooks, rules, plugin and scripts " \
+               "now match it and its record was rewritten"
+        # `already exists` is the only reason a memory is left out of a plain
+        # install (skip_existing): its bytes differ from the bundle's.
+        if @results.any? { |_, r| r[:reason] == "already exists" }
+          line << "; your own copies of its memories were kept (chi bundle upgrade #{@name} " \
+                 "merges the bundle's changes into them)"
+        end
+        line
+      end
 
       # The steps that replace files: memories, the bundle's own folder, then
       # the files it dropped. The record isn't written yet, so a failed run is

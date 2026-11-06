@@ -246,7 +246,7 @@ RSpec.describe "Bundle plugin: manifest, install, provenance, status, build" do
       install(write_source)
       up = install(write_source, upgrade: true)
       expect(up.results["plugin.rb"]).to eq(status: "skipped", reason: "already up to date")
-      expect(up.summary).to include("Skipped: identity.md, plugin.rb")
+      expect(up.summary).to include("Up to date: identity.md, plugin.rb")
       expect(up.summary).not_to include("Updated:")
     end
 

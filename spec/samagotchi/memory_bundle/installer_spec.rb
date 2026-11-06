@@ -175,15 +175,16 @@ RSpec.describe Samagotchi::MemoryBundle::Installer do
         expect(installer.summary).not_to include("--force")
       end
 
-      it "re-installing an installed bundle hints at chi bundle upgrade, once" do
+      it "re-installing an installed bundle says what it rewrote, once" do
         bundle_dir = write_bundle(tmpdir, { "identity.md" => "# Identity\n" })
         installer_for(source: bundle_dir, name: "test-bundle", scope: "system").run
 
         again = installer_for(source: bundle_dir, name: "test-bundle", scope: "system")
         again.run
-        hint = "test-bundle is already installed; `chi bundle upgrade test-bundle` updates it and keeps local edits"
-        expect(again.summary.lines.map(&:chomp).count(hint)).to eq(1)
-        expect(again.summary).to include("Skipped: identity.md")
+        line = "test-bundle was already installed from #{bundle_dir}: its hooks, rules, plugin and scripts " \
+               "now match it and its record was rewritten"
+        expect(again.summary.lines.map(&:chomp).count(line)).to eq(1)
+        expect(again.summary).to include("Up to date: identity.md")
         expect(again.summary).not_to include("use --force")
       end
 
@@ -912,6 +913,79 @@ RSpec.describe Samagotchi::MemoryBundle::Installer do
       expect(summary).to include("identity.md")
       expect(summary).to include("new.md")
     end
+
+    # A bundle with one memory and one hook, so the summary has both kinds
+    # of file to name.
+    def summary_bundle(files: { "tips.md" => "# Tips\n" }, hooks: { "guardrails.rb" => "class G; end\n" })
+      dir = File.join(tmpdir, "summary-bundle")
+      FileUtils.mkdir_p(File.join(dir, "hooks"))
+      files.each { |name, text| File.write(File.join(dir, name), text) }
+      hooks.each { |name, text| File.write(File.join(dir, "hooks", name), text) }
+      manifest = {
+        "name" => "sum-bundle", "version" => "1.0.0", "scope" => "system",
+        "files" => files.to_h { |name, text| [name, "sha256:#{Digest::SHA256.hexdigest(text)}"] },
+        "hooks" => hooks.to_h { |name, text| [name, { "sha256" => "sha256:#{Digest::SHA256.hexdigest(text)}", "event" => "before_tool_call" }] }
+      }
+      File.write(File.join(dir, "manifest.yml"), YAML.dump(manifest))
+      dir
+    end
+
+    def install_summary(dir)
+      described_class.new(source: dir, name: "sum-bundle", scope: "system", strict: true).tap(&:run)
+    end
+
+    def rewritten_line(source)
+      "sum-bundle was already installed from #{source}: its hooks, rules, plugin and scripts " \
+        "now match it and its record was rewritten"
+    end
+
+    it "a file that already holds the bundle's bytes is Up to date, not Skipped" do
+      dir = summary_bundle
+      install_summary(dir)
+      again = install_summary(dir)
+
+      expect(again.results["tips.md"]).to eq(status: "skipped", reason: "already up to date")
+      expect(again.results["guardrails.rb"]).to eq(status: "skipped", reason: "already up to date")
+      expect(again.summary).to include("Up to date: tips.md, guardrails.rb")
+      expect(again.summary).not_to include("Skipped:")
+    end
+
+    it "a memory the user wrote is still Skipped, and its own bytes are not Up to date" do
+      dir = summary_bundle
+      install_summary(dir)
+      File.write(File.join(system_memories_dir, "tips.md"), "# Mine\n")
+      again = install_summary(dir)
+
+      expect(again.summary).to include("Skipped: tips.md")
+      expect(again.summary).to include("Up to date: guardrails.rb")
+      expect(again.summary).not_to include("Up to date: tips.md")
+    end
+
+    it "a reinstall names what it rewrote, and the memories it kept" do
+      dir = summary_bundle
+      install_summary(dir)
+      File.write(File.join(system_memories_dir, "tips.md"), "# Mine\n")
+
+      expect(install_summary(dir).summary).to include(
+        "#{rewritten_line(dir)}; your own copies of its memories were kept " \
+        "(chi bundle upgrade sum-bundle merges the bundle's changes into them)"
+      )
+    end
+
+    it "with no kept memory the reinstall line ends at the rewritten record" do
+      dir = summary_bundle
+      install_summary(dir)
+
+      expect(install_summary(dir).summary).to end_with(rewritten_line(dir))
+    end
+
+    it "a dry run says nothing about reinstalling, since it rewrote nothing" do
+      dir = summary_bundle
+      install_summary(dir)
+      dry = described_class.new(source: dir, name: "sum-bundle", scope: "system", strict: true, dry_run: true).tap(&:run)
+
+      expect(dry.summary).not_to include("was already installed")
+    end
   end
 
   describe "#placeholder_warnings" do
@@ -990,7 +1064,7 @@ RSpec.describe Samagotchi::MemoryBundle::Installer do
       up = described_class.new(source: bundle_dir, name: "same-bundle", scope: "system", strict: true, upgrade: true)
       up.run
       expect(up.results["guardrails.rb"]).to eq(status: "skipped", reason: "already up to date")
-      expect(up.summary).to include("Skipped: identity.md, guardrails.rb")
+      expect(up.summary).to include("Up to date: identity.md, guardrails.rb")
       expect(up.summary).not_to include("Updated:")
     end
 
@@ -1112,7 +1186,7 @@ RSpec.describe Samagotchi::MemoryBundle::Installer do
 
     it "changes nothing for a reinstall or an upgrade from the same source" do
       again = run(plugin_fixture)
-      expect(again.summary).to include("sample-plugin is already installed")
+      expect(again.summary).to include("sample-plugin was already installed")
       up = run(plugin_fixture, upgrade: true)
       expect(up.source_change).to be_nil
       expect(up.summary).not_to include("Source changes")
@@ -1201,7 +1275,7 @@ RSpec.describe Samagotchi::MemoryBundle::Installer do
       File.write(manifest, JSON.generate(JSON.parse(File.read(manifest)).merge("source" => old)))
 
       expect(run(shipped_btw, upgrade: true).source_change).to be_nil
-      expect(run(shipped_btw).summary).to include("btw is already installed")
+      expect(run(shipped_btw).summary).to include("btw was already installed")
     end
   end
 
@@ -1378,8 +1452,8 @@ RSpec.describe Samagotchi::MemoryBundle::Installer do
       expect(Samagotchi::MemoryBundle::Provenance.new(name: "repo-bundle").read[:files].keys.map(&:to_s)).to eq(["real.md"])
     end
 
-    # A plain re-install leaves the files alone (the summary points at
-    # upgrade), but it keeps the record of the ones it no longer ships, so
+    # A plain re-install leaves the memories it skips alone (the summary says
+    # so), but it keeps the record of the ones it no longer ships, so
     # that upgrade still moves them to the trash.
     it "a plain re-install keeps owning a README an older install made a memory, so the upgrade removes it" do
       old = raw_bundle({ "real.md" => "# Real\n", "README.md" => "# Readme\n" }, listed: %w[real.md README.md])

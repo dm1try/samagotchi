@@ -19,6 +19,7 @@ and commands may change between minor versions. How releases are made:
 
 ### Fixed
 
+- A `chi bundle install` of a bundle that is already installed from the same source says what it actually did: a file that already holds the bundle's bytes is `Up to date: …` rather than `Skipped: …` (which now names only the files really left out), and the last line reads `NAME was already installed from SOURCE: its hooks, rules, plugin and scripts now match it and its record was rewritten`, adding `your own copies of its memories were kept (chi bundle upgrade NAME merges the bundle's changes into them)` when a memory of yours was kept. [docs/internals/bundles.md](docs/internals/bundles.md)
 - `ContextProviders` (a bundle's `context_providers:`) now checks `requires_chi`: an installed bundle this chi is too old for is skipped when a URL is resolved (said once per process per bundle and version), and a source already attached to one is refused by name (`bundle X: it requires chi …`) rather than running its script.
 - `chi bundle upgrade NAME` upgrades a bundle installed from a folder, an archive or a git URL from where it came from: the name alone is enough, the source its record keeps is used (a recorded `#ref` included), and the line says `Upgrading NAME from SOURCE`. A dev install is still refused, in the Installer's own words; a record whose source is gone says so and asks for the path or URL.
 - An objectives proposal card no longer appears after a turn that was canceled, cut with Ctrl-C or failed: only a turn that completed shows the changes it proposed.

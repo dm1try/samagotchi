@@ -143,7 +143,13 @@ doesn't own: the Installer's `MemoryFiles.select`; `ShippedUpdate.forecast`' eve
 can name a file dropped from `files:` or now a symlink, which the upgrade doesn't merge: edited, it stays (`kept_pruned`, or `kept_shared` when another bundle has it too); `SystemBundle`'s dry
 run the manifest's `files:`, so a manifest with none plans nothing (the shipped one lists its files).
 
-Results are `@results` (file → `{status:, reason:}`), summarised by `#summary`. An upgrade with conflicts keeps an
+Results are `@results` (file → `{status:, reason:}`), summarised by `#summary`: a file that already holds the
+bundle's bytes (`reason: "already up to date"`, a memory or a hook/rule/plugin/script) is listed as `Up to date:`,
+and only the files really left out (`already exists`, a dry run's `would_skip`, a dry run upgrade's `noop`) as
+`Skipped:`. A plain install over a bundle already installed from the same source ends with `NAME was already
+installed from SOURCE: its hooks, rules, plugin and scripts now match it and its record was rewritten`, plus
+`; your own copies of its memories were kept (chi bundle upgrade NAME merges the bundle's changes into them)` when
+a memory was left out as `already exists`. An upgrade with conflicts keeps an
 owned source dir alive (`#source_dir`) until `#cleanup_source!`, because the conflict agent reads the incoming
 files; `BundleCommand#settle_conflicts` then runs `Provenance#resolve_conflicts`, which moves a base forward and keeps
 the entry's description, only for a file the agent step changed that holds no markers (`Merger.markers?`), and whose incoming

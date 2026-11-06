@@ -214,6 +214,32 @@ RSpec.describe "chi bundle (CLI)" do
         .to eq(["Installed: plugin.rb\nPlugin: plugin.rb (loads at the next chi start)\n#{provenance_line("sample-plugin")}", "", 0])
     end
 
+    # A plain install over an installed bundle rewrites its hooks, rules,
+    # plugin, scripts and record (it is not a skip), and leaves a memory the
+    # user wrote; the summary says both.
+    it "says what a second install of the same source rewrote, and the memory it kept" do
+      src = File.join(BUNDLE_FIXTURES, "sample_hooks_bundle")
+      rewritten = "sample-hooks-bundle was already installed from #{src}: its hooks, rules, plugin and scripts " \
+                  "now match it and its record was rewritten"
+
+      expect(chi("install", src))
+        .to eq(["Installed: identity.md, guardrails.rb\nHooks: 1 hook(s) (guardrails.rb)\n#{provenance_line("sample-hooks-bundle")}", "", 0])
+
+      expect(chi("install", src))
+        .to eq(["Up to date: identity.md, guardrails.rb\n#{rewritten}\n" \
+                "Hooks: 1 hook(s) (guardrails.rb)\n#{provenance_line("sample-hooks-bundle")}", "", 0])
+
+      File.write(File.join(memories, "identity.md"), "# Mine\n")
+      out, err, code = chi("install", src)
+      expect([err, code]).to eq(["", 0])
+      expect(out).to eq(["Up to date: guardrails.rb\nSkipped: identity.md\n" \
+                         "Skipped identity.md (already exists; #{Samagotchi::MemoryBundle::FileStanding::FORCE_TAKES})\n" \
+                         "#{rewritten}; your own copies of its memories were kept " \
+                         "(chi bundle upgrade sample-hooks-bundle merges the bundle's changes into them)\n" \
+                         "Hooks: 1 hook(s) (guardrails.rb)\n#{provenance_line("sample-hooks-bundle")}"].join(""))
+      expect(File.read(File.join(memories, "identity.md"))).to eq("# Mine\n")
+    end
+
     it "upgrades: falls back to install, then a dry run, then the upgrade" do
       v1 = self.class.make_bundle(File.join(@root, "b1"), name: "demo", version: "1.0.0", content: "one\n")
       v2 = self.class.make_bundle(File.join(@root, "b2"), name: "demo", version: "2.0.0", content: "two\n")
@@ -224,7 +250,7 @@ RSpec.describe "chi bundle (CLI)" do
       change = "Source changes: #{v1} → #{v2}\n"
       expect(chi("upgrade", v2, "--dry-run")).to eq(["#{change}Fast-forward: a.md\n(dry-run: no changes written)\n", "", 0])
       expect(chi("upgrade", v2)).to eq(["#{change}Updated: a.md\n#{provenance_line("demo")}", "", 0])
-      expect(chi("upgrade", v2)).to eq(["Skipped: a.md\n#{provenance_line("demo")}", "", 0])
+      expect(chi("upgrade", v2)).to eq(["Up to date: a.md\n#{provenance_line("demo")}", "", 0])
       expect(File.read(File.join(memories, "a.md"))).to eq("two\n")
     end
 
@@ -293,7 +319,7 @@ RSpec.describe "chi bundle (CLI)" do
 
       out, err, code = chi("upgrade", "btw")
       expect([err, code]).to eq(["", 0])
-      expect(out).to eq("Skipped: plugin.rb\nPlugin: plugin.rb (loads at the next chi start)\n#{provenance_line("btw")}")
+      expect(out).to eq("Up to date: plugin.rb\nPlugin: plugin.rb (loads at the next chi start)\n#{provenance_line("btw")}")
       record = JSON.parse(File.read(File.join(memories, ".bundles", "btw", "manifest.json")))
       expect(record["source"]).to eq(File.expand_path("../lib/samagotchi/bundles/btw", __dir__))
     end
@@ -417,7 +443,7 @@ RSpec.describe "chi bundle (CLI)" do
 
       expect(chi("upgrade", zip)).to eq(["Installed: a.md\n#{provenance_line("zipped")}", "Bundle 'zipped' not installed — falling back to install\n", 0])
       expect(Samagotchi::MemoryBundle::SourceNormalizer).to have_received(:normalize).once
-      expect(chi("upgrade", zip)).to eq(["Skipped: a.md\n#{provenance_line("zipped")}", "", 0])
+      expect(chi("upgrade", zip)).to eq(["Up to date: a.md\n#{provenance_line("zipped")}", "", 0])
       expect(Samagotchi::MemoryBundle::SourceNormalizer).to have_received(:normalize).twice
       expect(chi("install", zip)[2]).to eq(0)
       expect(Samagotchi::MemoryBundle::SourceNormalizer).to have_received(:normalize).thrice
@@ -765,7 +791,7 @@ Hooks removed: 1\n\z})
       out, err, code = chi("install", "--dev", @hooks_src)
 
       expect([err, code]).to eq(["", 0])
-      expect(out).to include("Skipped: identity.md")
+      expect(out).to include("Up to date: identity.md")
       expect(out).not_to include("no longer includes hook") # only a link went, not a local file
       expect(File.exist?(File.join(bundle_dir("sample-hooks-bundle"), "hooks", "guardrails.rb"))).to be(false)
       expect(File.symlink?(File.join(bundle_dir("sample-hooks-bundle"), "hooks", "kept.rb"))).to be(true)
