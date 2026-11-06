@@ -103,3 +103,22 @@ test("Verify's claim only in an ended turn's final answer", () => {
   assert.equal(live.verify.anchorFor({ source: { kind: "answer", root: liveAnswer }, range: live.select(liveAnswer, "keyed") }), null);
   live.done();
 });
+
+test("the armed claim's holder: set, read, clear(a) lets go only of its own, clear() of any", () => {
+  const h = harness();
+  const first = { turn_id: "T1", quote: "keyed" };
+  const second = { turn_id: "T1", quote: "by path" };
+  assert.equal(h.verify.anchor(), null);
+  h.verify.set(first);
+  assert.equal(h.verify.anchor(), first);
+  // A send's ack for the claim it took, after another was armed: the new one stays.
+  h.verify.set(second);
+  h.verify.clear(first);
+  assert.equal(h.verify.anchor(), second);
+  h.verify.clear(second);
+  assert.equal(h.verify.anchor(), null);
+  h.verify.set(first);
+  h.verify.clear();
+  assert.equal(h.verify.anchor(), null);
+  h.done();
+});
