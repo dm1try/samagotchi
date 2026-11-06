@@ -362,7 +362,7 @@ test("a decode that never ends gets a bound and a line, and the mark stays until
   let during = null;
   const decodeImage = () => { during = storage.keys.size; return new Promise(() => {}); };
   const { root } = setup(answer(block()), { storage, decodeImage, decodeTimeoutMs: 5 });
-  await new Promise((r) => setTimeout(r, 30));
+  for (let i = 0; i < 200 && !root.querySelector(".block-note"); i++) await settle();
   assert.equal(during, 1);
   assert.match(root.querySelector(".block-note").dataset.text, /too long to show/);
   assert.equal(storage.keys.size, 1);

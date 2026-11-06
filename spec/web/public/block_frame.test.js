@@ -133,8 +133,11 @@ test("a message from elsewhere answers nothing", async () => {
   env.say({ type: "ready" }, {}); // another window
   let settled = false;
   frame.ready.then(() => { settled = true; }, () => { settled = true; });
-  await new Promise((r) => setTimeout(r, 5));
+  for (let i = 0; i < 5; i++) await Promise.resolve(); // let any settle callback run
   assert.equal(settled, false);
+  env.say({ type: "ready" }); // the frame itself: the positive signal that ready can settle
+  await frame.ready;
+  assert.equal(settled, true);
   frame.drop();
 });
 
