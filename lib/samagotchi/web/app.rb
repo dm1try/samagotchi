@@ -62,6 +62,7 @@ require_relative "editor"
 require_relative "../message_parts"
 require_relative "../launch_mode"
 require_relative "session_summary"
+require_relative "session_hub"
 require_relative "project_list"
 require_relative "session_access_routes"
 require_relative "principal"
@@ -1025,7 +1026,7 @@ module Samagotchi
       def handle_info(req)
         return participant_info unless principal(req).owner?
 
-        chi_state = @hub&.chi_state || { version: Samagotchi::VERSION, installed: nil, available: nil, update_blocked: nil, auto: "off", restart: "idle", auto_offers: nil }
+        chi_state = @hub&.chi_state || SessionHub::HUBLESS_STATE
         json_response(200, { app: "chi-web", **chi_state, pid: Process.pid,
                              cwd: Dir.pwd, start_dir: start_dir, features: INFO_FEATURES, lan: @lan && @lan[:ip],
                              proxy: @public_url && { identity_header: @public_url.identity_header } })

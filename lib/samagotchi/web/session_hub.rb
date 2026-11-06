@@ -32,6 +32,12 @@ module Samagotchi
     # step under it, so no stale upsert can follow a fresh snapshot.
     class SessionHub
       SCAN_INTERVAL = 1.0
+      # What an info route says about updates when there is no hub at all:
+      # this chi's version, and nothing known of the rest. The one place this
+      # is written (Web::App#handle_info and the remote info route).
+      HUBLESS_STATE = { version: Samagotchi::VERSION, installed: nil, available: nil, update_blocked: nil,
+                        auto: "off", restart: "idle", auto_offers: nil }.freeze
+
       # The flock leaves no file trace when its holder dies, so owners are
       # probed: every tick for the sessions the projection believes owned
       # (a handful; OwnerLock.owner is open + LOCK_SH|LOCK_NB + close), and

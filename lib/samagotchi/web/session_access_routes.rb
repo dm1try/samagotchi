@@ -14,6 +14,7 @@ require_relative "../client_id"
 require_relative "../children_status"
 require_relative "../session_metrics"
 require_relative "../version"
+require_relative "session_hub"
 
 module Samagotchi
   module Web
@@ -274,7 +275,7 @@ module Samagotchi
                              model_name: session_access.show(id).model_name,
                              default_model: ModelProfile.default_model_name,
                              parent_strategy: strategy_json(session_access.parent_strategy(id)),
-                             **(@hub&.chi_state || { version: VERSION, installed: nil, available: nil, update_blocked: nil, auto: "off", restart: "idle", auto_offers: nil }) })
+                             **(@hub&.chi_state || SessionHub::HUBLESS_STATE) })
       rescue SessionManager::OwnedByTUI => e
         owned_by_tui(e)
       rescue SessionAccess::Refused => e
