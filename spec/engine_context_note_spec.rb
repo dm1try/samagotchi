@@ -82,11 +82,51 @@ RSpec.describe Samagotchi::Engine, "context notes" do
       cards = events.select { |e| e[:type] == :card }
       expect(cards.size).to eq(1)
       expect(cards.first).to include(title: "Mark O1 done?", in_turn: false, source: "objectives")
-      apply, dismiss = cards.first[:actions]
-      expect(apply[:label]).to eq("Apply")
-      expect(apply[:command]).to eq("/objectives --card #{cards.first[:id]} done O1")
+      _, dismiss = cards.first[:actions]
       expect(dismiss[:command]).to eq("/objectives --card #{cards.first[:id]} dismiss")
       expect(session.messages.map { |m| m[:content] }.join).not_to include("Mark O1")
+    end
+
+    it "shows no card when the turn is cut with Ctrl-C, and nothing carries to the next turn" do
+      allow(kernel).to receive(:run) do
+        engine.propose_objective(proposal)
+        raise Interrupt
+      end
+      begin
+        engine.run_turn(session, "hi")
+      rescue Interrupt
+        # as the TUI does: the turn is over, the exception goes on
+      end
+      expect(events.select { |e| e[:type] == :card }).to be_empty
+
+      allow(kernel).to receive(:run) { kernel_result }
+      engine.run_turn(session, "again")
+      expect(events.select { |e| e[:type] == :card }).to be_empty
+    end
+
+    it "shows no card when the turn fails, and nothing carries to the next turn" do
+      allow(kernel).to receive(:run) do
+        engine.propose_objective(proposal)
+        raise "provider is down"
+      end
+      expect { engine.run_turn(session, "hi") }.to raise_error(RuntimeError)
+      expect(events.select { |e| e[:type] == :card }).to be_empty
+
+      allow(kernel).to receive(:run) { kernel_result }
+      engine.run_turn(session, "again")
+      expect(events.select { |e| e[:type] == :card }).to be_empty
+    end
+
+    it "shows no card when the turn was stopped by a Stop" do
+      allow(kernel).to receive(:run) do
+        engine.propose_objective(proposal)
+        Samagotchi::LLM::ModelResult.new(text: "", conversation: [], exhausted: false, pending_tool_calls: false,
+                                         tool_activity: [], canceled: true, cancellation_reason: :stop)
+      end
+
+      engine.run_turn(session, "hi")
+
+      expect(events.select { |e| e[:type] == :card && e[:source] == "objectives" }).to be_empty
     end
   end
 

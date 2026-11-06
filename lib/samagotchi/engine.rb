@@ -1037,8 +1037,7 @@ module Samagotchi
     end
 
     def show_objective_proposals
-      proposals = @objective_proposals_mutex.synchronize { @objective_proposals.slice!(0..) }
-      proposals.each do |proposal|
+      drain_objective_proposals.each do |proposal|
         id = "objectives-#{SecureRandom.hex(4)}"
         show_card(source: Objectives::SOURCE, id: id, title: proposal.title, body: proposal.body,
                   actions: [{ label: "Apply", command: proposal.action_line(id) },
@@ -1048,6 +1047,22 @@ module Samagotchi
       Log.warn(:turn, "objectives_proposal_failed", error: e.class.name, msg: e.message)
     end
     private :show_objective_proposals
+
+    # A turn that did not complete (canceled, failed) takes its proposals
+    # off the buffer without showing them: their Apply card would sit after a
+    # turn whose `objectives propose` call is not in the history (a rollback
+    # after Ctrl-C drops it), and leaving them in the buffer would show them
+    # at the end of the next turn.
+    def discard_objective_proposals(turn)
+      dropped = drain_objective_proposals
+      Log.info(:turn, "objectives_proposals_dropped", count: dropped.size, outcome: turn.outcome.to_s) unless dropped.empty?
+    end
+    private :discard_objective_proposals
+
+    def drain_objective_proposals
+      @objective_proposals_mutex.synchronize { @objective_proposals.slice!(0..) }
+    end
+    private :drain_objective_proposals
 
     # The strategy the working set is built under now, as LLMContextView
     # takes it: the running turn's, else the next turn's (#emit_working_set).
@@ -1748,6 +1763,7 @@ module Samagotchi
     # no Revise on its answer, verdict or not, as a reload does).
     def end_turn(turn, outcome, save: false, exhausted: false)
       seconds = turn.elapsed
+      turn.outcome = outcome
       synchronize_events do
         kept, event = yield(seconds)
         event[:turn_id] = turn.id
@@ -2322,8 +2338,12 @@ module Samagotchi
     # :turn_started event's at and its user message's (and reminders') stamp.
     # +verify+, +revises+: a Verify turn's claim, a Revise turn's draft.
     Turn = Struct.new(:session, :prompt, :continue, :on_event, :controller, :origin, :started_at, :messages, :ended,
-                      :settings, :id, :limit, :resumed, :resume_from, :wall, :verify, :revises) do
+                      :settings, :id, :limit, :resumed, :resume_from, :wall, :verify, :revises, :outcome) do
       def resumed? = resumed ? true : false
+
+      # The turn ended as a completed one (not canceled, not failed): the
+      # test the between-turns cards of it (an objectives proposal) use.
+      def completed? = outcome == "completed"
 
       # The turn's boundary events carry the origin only when it names a
       # sender (not TurnOrigin::NONE), so payloads stay unchanged for callers
@@ -2448,7 +2468,10 @@ module Samagotchi
       ensure
         release_turn(probe_cancel_before)
         show_context_cards_after_turn
-        show_objective_proposals
+        # Only a completed turn shows its proposal cards: a canceled, failed
+        # or rolled-back turn keeps none, and its proposals are dropped here
+        # so the next turn does not show them either.
+        turn.completed? ? show_objective_proposals : discard_objective_proposals(turn)
       end
     end
 

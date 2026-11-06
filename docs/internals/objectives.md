@@ -116,10 +116,12 @@ Bridge's `TurnAccumulator#current_messages`) leaves tool calls out. A move shows
 
 `action: propose` (`change` add, reword, done or drop; `id`; `text`; `note`, why) checks the change against the list
 (`Objectives::Proposal#refusal`) and hands it to `Engine#propose_objective`, which keeps it until the turn is over,
-as `#context_choice`'s cards are kept: shown in `run_turn`'s ensure, it is a between-turns card (no `in_turn`), so it
-writes no `pending_card.json`, the stage doesn't say it waits, and it keeps its buttons over a restart (`CardStore` takes
-them only from a card shown in a turn). The same change twice in a turn is one card. A P3 finding stands: a card action
-can't carry a plain reply, so an action here is a real edit.
+as `#context_choice`'s cards are kept. `run_turn`'s ensure shows them only for a turn that completed: a canceled or
+failed one drops them (`Engine#discard_objective_proposals`), so its Apply card never outlives a turn whose call a
+rollback has taken out of the history, and nothing carries over to the next turn. A card is between turns (no
+`in_turn`), so it writes no `pending_card.json`, the stage doesn't say it waits, and it keeps its buttons over a
+restart (`CardStore` takes them only from a card shown in a turn). The same change twice in a turn is one card. A P3
+finding stands: a card action can't carry a plain reply, so an action here is a real edit.
 
 Apply is `/objectives --card ID done O2`: the proposal's own line (`Proposal#line`) behind a prefix the command reads
 (`ObjectivesCommand::CARD`), so it goes through the one route, with its refusals. On success the card with that id is
