@@ -1395,9 +1395,9 @@ block_renderers:
 
 ## Stable for bundles
 
-Bundles normally use only `chi.*` and `ctx`; the constants and helpers below
-are the rest of the surface they may use. A change to any of them gets a
-CHANGELOG line and bumps the shipped bundles that use it. Anything else under
+Bundles normally use only `chi.*` and `ctx`; the constants, helpers and manifest
+keys below are the rest of the surface they may use. A change to any of them gets
+a CHANGELOG line and bumps the shipped bundles that use it. Anything else under
 `Samagotchi::` is internal.
 
 **New API ships with its first caller:** a `chi.*` or `ctx.*` method arrives in the same change as a shipped bundle
@@ -1429,17 +1429,29 @@ that calls it, or for a real external bundle that does. No method on the chance 
    `Samagotchi::VERSION`, `Samagotchi::CancellationController` (`new`, `cancel!`: what `cancel:` takes) and
    `Samagotchi::GitEnv::UNSET` (a spawn env: a bundle's own git, or gh, asks about the folder it names, not the repo
    a hook's or `rebase --exec`'s environment names).
+7. **The manifest schema**: the manifest's keys and shapes, as [A bundle with a plugin](#a-bundle-with-a-plugin)
+   and [bundles.md](bundles.md) document them — `name`, `version`, `scope`, `description`, `files`, `hooks`,
+   `trust_level`, `plugin`, `requires_chi`, `requires_chi_next` (shipped bundles only: the release tooling
+   reads it, chi doesn't), `needs`, `scripts`, `context_providers`, `block_renderers`, `includes`,
+   `session_settings`, `settings`. Those are `Manifest::KEYS`; `Manifest::SINCE` is the chi release each
+   key or shape first worked in, and the docs don't copy it — the code is its truth.
+   - A key keeps its meaning. A new key gets a `SINCE` entry and a CHANGELOG line, and an older chi says
+     it ignores it (`unknown-key`).
+   - A later chi reads every key an earlier chi installed: the install keeps the bundle's `manifest.yml`
+     ([Trust](#trust)). One installed before chi kept manifests reads what its install recorded until it is
+     upgraded.
+   - A bundle declares its floor with `requires_chi`, and an install below it is refused (`--force` aside).
+     There is no `api_version:`.
+   - `block_renderers:` and the frame's `chi.defineRenderer` ([Block renderers](#block-renderers)) are part
+     of it. Neither is Ruby, so the scan below doesn't see them.
 
-`Samagotchi::Testing::Boundary::ALLOWED` is the checked copy of this list,
+`Samagotchi::Testing::Boundary::ALLOWED` is the checked copy of items 1-6,
 and `Boundary::EXCEPTIONS` the per-bundle list of what each shipped bundle
 (and its specs) reaches beyond it, each with why: the APIs to design before
 that bundle could leave chi's repo. `spec/samagotchi/testing/boundary_spec.rb`
 fails on a reference in neither (docs/testing.md). In `chi update`'s re-check of
 an installed bundle the same scan warns only for a name this chi no longer has
 (`Boundary.gone?`): a reference that still resolves gets no row.
-
-A bundle's `block_renderers:` and the frame's `chi.defineRenderer` ([Block renderers](#block-renderers)) are stable
-too. They aren't Ruby, so the scan above doesn't see them.
 
 **Used by shipped bundles today, but internal** (may change without notice; a
 bundle that needs one should ask for an API instead):
