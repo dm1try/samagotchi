@@ -509,7 +509,8 @@ RSpec.describe Samagotchi::MemoryBundle::Installer do
 
     def warning(key)
       Samagotchi::MemoryBundle::Manifest.unknown_key_line(key) +
-        "; a newer chi may read it (chi update, then chi bundle upgrade future-bundle)"
+        "; a newer chi reads it from the installed manifest (chi update, then chi bundle status future-bundle " \
+        "says whether it needs chi bundle upgrade future-bundle)"
     end
 
     it "warns once per unknown key, in a dry run too, and not for a manifest of keys chi knows" do

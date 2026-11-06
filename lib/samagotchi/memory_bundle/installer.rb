@@ -688,8 +688,8 @@ module Samagotchi
       # too: the key is in the manifest either way.
       def warn_unknown_keys(manifest)
         manifest.unknown_keys.each do |key|
-          @warnings << "#{Manifest.unknown_key_line(key)}; a newer chi may read it " \
-                       "(chi update, then chi bundle upgrade #{manifest.name})"
+          @warnings << "#{Manifest.unknown_key_line(key)}; a newer chi reads it from the installed manifest " \
+                       "(chi update, then chi bundle status #{manifest.name} says whether it needs chi bundle upgrade #{manifest.name})"
         end
       end
 
