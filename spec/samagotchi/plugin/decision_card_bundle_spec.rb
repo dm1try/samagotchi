@@ -82,7 +82,7 @@ RSpec.describe "The decision-card bundle, installed" do
   def run(engine, session, prompt = "order it")
     engine.session = session
     engine.run_turn(session, prompt)
-    plugin_threads.each(&:join)
+    plugin_threads.each { |t| t.join(5) or raise "plugin thread still running" }
   end
 
   def cards = events.select { |event| event[:type] == :card }
