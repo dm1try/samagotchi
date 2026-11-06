@@ -23,7 +23,7 @@ page. A factory dep a new version stops passing is the same hazard the other way
 out of `send_turn.js`, `session_actions.js` and `lists_view.js`); a page loaded before keeps all its old modules
 until a reload, so the risk is a mixed cache, not an open tab. `answer_fold.js`, `details_motion.js`,
 `turn_range.js`, `history_reveal.js`, `latest.js`, `session_payload.js`, `method_api.js`, `session_store.js`,
-`session_fields.js`, `feature_gates.js`, `revise_stack.js`, `revise_switch.js`, `shell_command.js`, `stale_params.js`, `popover_modal.js`, `more_sheet.js`, `hash_intent.js` (what the hash asks for: session, all, start or keep), `worker_features.js`, `block_open.js`, `text_roots.js`, `block_source.js`, `block_frame.js`, `block_host.js` and the `objectives_*.js` modules are new modules for that reason. The last three `block_*` draw a bundle's fenced blocks: [block-renderers.md](block-renderers.md).
+`session_fields.js`, `feature_gates.js`, `revise_stack.js`, `revise_switch.js`, `shell_command.js`, `stale_params.js`, `popover_modal.js`, `more_sheet.js`, `hash_intent.js` (what the hash asks for: session, all, start or keep), `worker_features.js`, `block_open.js`, `text_roots.js`, `block_source.js`, `block_frame.js`, `block_host.js`, `version_notices.js` and the `objectives_*.js` modules are new modules for that reason. The last three `block_*` draw a bundle's fenced blocks: [block-renderers.md](block-renderers.md).
 
 ## Two pages, two models
 
@@ -46,7 +46,7 @@ change.
 | Holder | What | Who writes | How a change reaches the screen |
 |---|---|---|---|
 | **The session store** (`session_store.js`; app.js `store`) | `store.selected` (the open session's id), `store.current` and `store.sessions` (below) | through the store only (see The session store); other modules get getters (`selected: () => store.selected`, `state: () => store.current`) or the store itself (`stream_handlers.js`, `send_turn.js`, `session_actions.js`) | the store runs the redraws that read what changed (below); nobody calls them by hand |
-| **app.js module scope**: about 20 top-level `let`s (`streamControl`, `eventsControl`, `pageCapabilities`/`pageEditorUrl`, `pendingVerifyAnchor`, `pendingClaim`, `resyncsInFlight`/`resyncAgain`, `resyncAttempts`, `scopeError`…) | the page's mode and its streams | app.js only; other modules get getters and hooks | the writer touches the redraw that reads it (`store.touch("infoBar")`: the stream, versions, `restartingIds`), or calls a redraw only it feeds |
+| **app.js module scope**: about 20 top-level `let`s (`streamControl`, `eventsControl`, `pageCapabilities`/`pageEditorUrl`, `pendingVerifyAnchor`, `pendingClaim`, `resyncsInFlight`/`resyncAgain`, `resyncAttempts`, `scopeError`…) | the page's mode and its streams | app.js only; other modules get getters and hooks | the writer touches the redraw that reads it (`store.touch("infoBar")`: the stream; `version_notices.js` does it for the versions and its `restarting` set), or calls a redraw only it feeds |
 | **`store.current`** (`session_state.js`: `emptySessionState` / `sessionStateFrom`; per field: `session_fields.js FIELDS`) | the open session's fields, about 40 (info bar, chips, verdicts, timing, worker, stream cursor) | `store.update` / `setStatus` from app.js, `stream_handlers.js`, `send_turn.js` (`firstPreview`, `owner`), `session_actions.js` (`status`); `forgetSession`'s `replaceCurrent`. Two writers in place, on purpose (D8 in `FIELDS`): live_timing.js's `activeTurn`, verdict_fresh.js's running list | the store runs the field's redraws (`FIELDS[key].redraws`) |
 | **`store.sessions`** (the hub's projection) | every card | `store.update({sessions})` from app.js: `openSessionEvents` (`applySessionEvent`), `refresh` (the list fallback), `addCreatedSession`, `applyView` (re-sorted), `replaceSelectedCard` (`setLiveStatus` through `setStatus`, `readTurnEnd`, `setUsedMemories`), the stream's close (`withoutWorker`); `session_actions.js` (`setSessions`) | the store: `lists` and `infoBar`. **Always a new array**; an entry is replaced, never changed in place. `followSelectedSession` copies the open one's owner and worker (`fieldsFromCard`) and, when not streaming, its status (`setStatus(…, "hub")`) into `store.current` |
 | **Factory closures**: the `create*` factories (popovers, panels, views) | each component's own state: open-for, busy, error, its own fetched list | the factory | an `onChange` hook back into app.js, or a getter the factory reads at draw time |
@@ -109,7 +109,7 @@ piece a redraw calls exists): `lists` → `lists.render()`, `paintActive` → `l
 a store write. A value written unchanged redraws nothing (a chunk with the same ctx %).
 
 An input the store doesn't hold calls `store.touch(name)` where it changes: `infoBar` for the clock (liveTurn's
-`onTick`), the versions (`noticeVersions`), `restartingIds`, the stream (`startStream`, `workerGone`), the working
+`onTick`), the versions and the sessions restarting (`version_notices.js` `notice`, `restart`), the stream (`startStream`, `workerGone`), the working
 set's and the participants' `onChange`, the continue and review in-flight sets
 (`session_actions.js`); `composer` and `infoBar` for `liveTurn.running` (`setTurnRunning`, with `settingsPanel`:
 the open ⚙ panel's running-turn note) and at the end of `renderSessionView` (a whole view drawn). Left as they are,
@@ -325,7 +325,7 @@ reach another device or the server.
 | `chi_stage_collapsed` | `stage_view.js` | the stage collapsed |
 | `chi_working_set_collapsed` | `working_set_rail.js` | the working set rail collapsed |
 | `chi_markdown_tip_dismissed` | `markdown_tip.js` | the markdown tip dismissed |
-| `chi_update_available_shown` | app.js | update notices already shown |
+| `chi_update_available_shown` | `version_notices.js` | update notices already shown |
 | `chi_notify`, `chi_push_device` | `notifications.js` (an injected storage) | the bell's state, this device's push id |
 | `chi_answer_fold:<session>` | `answer_fold.js`, `revise_stack.js` | the answers and long prompts (`<turn id>:prompt`) folded by hand, and the Revise stubs unfolded by hand (`stub:<turn id>`) (swept with the session list) |
 | `chi_review_history:<grant>`, `chi_review_history_session:<session>` | `review_history.js` (participant page) | a participant's composer history |
