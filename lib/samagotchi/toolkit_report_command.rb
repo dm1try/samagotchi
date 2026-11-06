@@ -241,7 +241,9 @@ module Samagotchi
     def grade(entry, kit, uses)
       kits = entry["kits"].is_a?(Hash) ? entry["kits"] : {}
       rules = kits[kit]
-      core_tools = Array(entry["core_tools"])
+      # The tools a kit's rules declare: the built-ins and the plugin tools
+      # (chi.tool) logged when the ask started (an older line has none).
+      core_tools = Array(entry["core_tools"]) | Array(entry["plugin_tools"])
       return ["ungradable", " (no rules logged for #{kit})"] unless rules.is_a?(Hash)
       return ["ungradable", " (tool calls not readable)"] if uses == :ungradable
 
@@ -259,8 +261,10 @@ module Samagotchi
     end
 
     # Whether a kit's rules declare +use+ (Toolkit::Resolved#declares?): a
-    # tool-index group by the kit's groups; a built-in by its core list;
-    # any other tool (a plugin's) unless the kit removes it.
+    # tool-index group by the kit's groups; a logged built-in or plugin
+    # tool (+core_tools+) by the kit's list (all of them on full) and its
+    # adds; any other (the index's own, a layer's, one that registered
+    # after the ask) unless the kit removes it.
     def covers?(rules, core_tools, use)
       return group_reached?(rules["groups"], use.group) if use.group && use.group != "chi"
 
@@ -276,8 +280,8 @@ module Samagotchi
       (declared & core_tools) - Array(rules["removed"])
     end
 
-    # +other+ declares no more built-ins and reaches no more groups than
-    # +rules+, and less of one of them.
+    # +other+ declares no more logged tools (built-ins and plugin tools)
+    # and reaches no more groups than +rules+, and less of one of them.
     def narrower?(other, rules, core_tools)
       mine = core_set(rules, core_tools)
       theirs = core_set(other, core_tools)

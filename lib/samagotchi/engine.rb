@@ -3231,14 +3231,15 @@ module Samagotchi
       end.freeze
       default_snapshot = ToolkitSuggest::Candidate.new(name: default.name.dup.freeze, description: nil,
                                                        rules: ToolkitSuggest.rules(default.resolve(kits)))
-      core_tools = @tools.entries(toolkit: nil).select(&:core?).map { |entry| entry.name.dup.freeze }.freeze
+      registered = @tools.entries(toolkit: nil).reject { |entry| entry.source == Tools::ToolIndex::SOURCE }
+      core_tools, plugin_tools = registered.partition(&:core?).map { |entries| entries.map { |entry| entry.name.dup.freeze }.freeze }
       state = ToolkitSuggest.question(
         default: default, kits: kits, project: File.basename(session.project_root.to_s),
         prompt: turn.prompt
       ).last
       snapshot = ToolkitSuggest::Snapshot.new(
         session_id: session.id.dup.freeze, turn_number: ToolkitSuggest.turn_number(session.messages),
-        default: default_snapshot, candidates: snapshots, core_tools: core_tools,
+        default: default_snapshot, candidates: snapshots, core_tools: core_tools, plugin_tools: plugin_tools,
         state: { project: state[:project].dup.freeze, prompt: state[:prompt].dup.freeze }.freeze
       )
       threshold = Config.get("toolkit.suggest.threshold")

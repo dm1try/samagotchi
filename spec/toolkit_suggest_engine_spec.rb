@@ -86,6 +86,8 @@ RSpec.describe Samagotchi::Engine do
     expect(line["kits"]["full"]).to include("all_core" => true, "groups" => "all")
     expect(line["kits"]["web"]["all_core"]).to be(false)
     expect(line["core_tools"]).to include("read", "write")
+    expect(line["core_tools"]).not_to include("find_tools", "call_tool")
+    expect(line["plugin_tools"]).to be_an(Array)
     expect(line).not_to have_key("suggested")
   ensure
     FileUtils.rm_rf(dir) if dir

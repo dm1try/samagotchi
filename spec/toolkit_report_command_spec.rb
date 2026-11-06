@@ -2,6 +2,7 @@
 
 require "stringio"
 require "samagotchi/toolkit_report_command"
+require "samagotchi/toolkit_suggest"
 
 RSpec.describe Samagotchi::ToolkitReportCommand do
   let(:fixture_dir) { File.expand_path("fixtures/toolkit_report", __dir__) }
@@ -31,8 +32,8 @@ RSpec.describe Samagotchi::ToolkitReportCommand do
                            "(web would also cover)")
     expect(out).to include("  tools: read, call_tool→github/search_issues")
     expect(out).to include("  tools: read, chrome_screenshot")
-    # A toolkit chosen since: only the asked turn. A plugin tool (not a logged built-in) is declared by
-    # every kit, though it registered after the ask started (M6).
+    # A toolkit chosen since: only the asked turn. A tool the line doesn't log (no built-in or plugin
+    # tool registered when the ask started, M6) is covered unless the kit removes it.
     expect(out).to include("44444444 turn 1: kit:web (p=0.90, would suggested) → web: covers " \
                            "(its turn only: the toolkit was chosen later)")
     # Unreadable calls are never covers or wider; a defer grades the default.
@@ -41,6 +42,26 @@ RSpec.describe Samagotchi::ToolkitReportCommand do
     expect(out).to include("full | 2 | 0 | 0 | 1 | 1 | below_threshold 1, defer 1")
     expect(out).to include("web | 3 | 1 | 2 | 0 | 0 | suggested 3")
     expect(stderr.string).to eq("")
+  end
+
+  it "grades a logged plugin tool (chi.tool) like a built-in: short on lean, chi/<name> too; covered on full and by add:" do
+    report = described_class.new(["report"], sessions_dir: sessions_dir, log: log)
+    rules = lambda do |name, **changes|
+      Samagotchi::ToolkitSuggest.rules(Samagotchi::Toolkit.new(name: name, **changes).resolve(Samagotchi::Toolkit.kits))
+    end
+    entry = { "core_tools" => %w[read write delegate], "plugin_tools" => %w[web_search],
+              "kits" => { "full" => rules.call("full"), "lean" => rules.call("lean"),
+                          "search" => rules.call("lean", add: %w[web_search]) } }
+    use = ->(name, group = nil) { described_class::ToolUse.new(name: name, group: group, label: name) }
+
+    expect(report.send(:grade, entry, "lean", [use.call("read"), use.call("web_search")]))
+      .to eq(["short of a tool", " (web_search)"])
+    expect(report.send(:grade, entry, "lean", [use.call("web_search", "chi")])).to eq(["short of a tool", " (web_search)"])
+    expect(report.send(:grade, entry, "search", [use.call("web_search")])).to eq(["covers", ""])
+    expect(report.send(:grade, entry, "full", [use.call("web_search")]))
+      .to eq(["wider than needed", " (search would also cover)"])
+    # An older line logs no plugin tools: an unlogged name is covered unless removed, as before.
+    expect(report.send(:grade, entry.except("plugin_tools"), "lean", [use.call("web_search")])).to eq(["covers", ""])
   end
 
   it "never grades a raw-prompt call_tool whose target it can't read as covered" do

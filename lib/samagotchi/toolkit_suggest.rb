@@ -31,8 +31,13 @@ module Samagotchi
     # A kit as the ask saw it: its name, classifier description and #rules.
     Candidate = Data.define(:name, :description, :rules)
     # +default+ is a Candidate (no description needed); +core_tools+ the
-    # built-ins registered when the ask started.
-    Snapshot = Data.define(:session_id, :turn_number, :default, :candidates, :core_tools, :state)
+    # built-ins registered when the ask started, +plugin_tools+ the plugin
+    # tools (chi.tool) registered then: a kit declares both by its rules.
+    Snapshot = Data.define(:session_id, :turn_number, :default, :candidates, :core_tools, :plugin_tools, :state) do
+      def initialize(session_id:, turn_number:, default:, candidates:, core_tools:, state:, plugin_tools: [])
+        super
+      end
+    end
     Suggestion = Data.define(:kit, :raw, :confidence, :decided)
     # One ask's outcome: its Suggestion, what on mode would do with it
     # (suggested, default, defer, below_threshold, invalid, no_judgment)
@@ -164,6 +169,7 @@ module Samagotchi
         decided: !!decided,
         would: would,
         core_tools: snapshot.core_tools,
+        plugin_tools: snapshot.plugin_tools,
         kits: [snapshot.default, *snapshot.candidates].to_h { |kit| [kit.name, kit.rules] }
       }
       Judged.new(suggestion: Suggestion.new(kit: selected, raw: raw, confidence: confidence, decided: !!decided),
@@ -319,10 +325,10 @@ module Samagotchi
     end
 
     # A resolved kit (Toolkit::Resolved) as frozen, JSON-ready rules, not
-    # a tool list: plugin and MCP tools may still be loading when the ask
-    # starts, and every kit declares a non-core tool anyway
-    # (Resolved#declares?), so the report expands these against the tools
-    # a turn really called (ToolkitReportCommand).
+    # a tool list: a plugin's replaced tools and MCP tools may still be
+    # loading when the ask starts, so the report expands these against
+    # the tools a turn really called (ToolkitReportCommand), the logged
+    # core_tools and plugin_tools by the same rule (Resolved#declares?).
     # @return [Hash{String => Object}]
     def self.rules(resolved)
       {
