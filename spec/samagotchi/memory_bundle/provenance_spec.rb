@@ -328,6 +328,17 @@ RSpec.describe Samagotchi::MemoryBundle::Provenance do
       expect(prov.record.manifest.origin).to eq(:kept)
     end
 
+    it "keeps the bytes it checked, not what the source holds by the time it writes" do
+      write_legacy
+      checked = File.read(File.join(source, "manifest.yml"))
+      allow(Samagotchi::MemoryBundle::Manifest).to receive(:new).and_wrap_original do |original, **opts|
+        original.call(**opts).tap { File.write(File.join(source, "manifest.yml"), "name: old\nversion: 1.0.0\nrequires_chi: '>= 99'\n") }
+      end
+      expect(prov.adopt_manifest(source)).to be_nil
+      expect(File.read(kept)).to eq(checked)
+      expect(prov.read[:manifest_sha]).to eq("sha256:#{Digest::SHA256.hexdigest(checked)}")
+    end
+
     it "writes nothing in a dry run, and says nothing against it" do
       write_legacy
       before = raw

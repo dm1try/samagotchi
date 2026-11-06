@@ -4,6 +4,7 @@ require "json"
 require "digest"
 require "date"
 require "fileutils"
+require "tmpdir"
 require_relative "../atomic_file"
 require_relative "../memory_paths"
 require_relative "../version"
@@ -458,11 +459,16 @@ module Samagotchi
         return "#{@name} keeps its manifest already" unless bundle.manifest_unkept?
 
         source = File.join(dir.to_s, "manifest.yml")
-        why = adoption_mismatch(bundle, dir.to_s, source)
+        return "#{dir} has no manifest.yml" unless File.file?(source)
+
+        # One read: the bytes checked are the bytes kept.
+        bytes = File.binread(source)
+        why = adoption_mismatch(bundle, dir.to_s, bytes)
         return why if why || dry_run
 
+        AtomicFile.write(kept_manifest_path, bytes)
         raw = JSON.parse(File.read(File.join(@bundle_dir, "manifest.json")))
-        write_manifest(raw.merge("manifest_sha" => keep_manifest(source, false)))
+        write_manifest(raw.merge("manifest_sha" => "sha256:#{Digest::SHA256.hexdigest(bytes)}"))
         nil
       rescue JSON::ParserError, SystemCallError => e
         "#{@name}'s record can't take it: #{e.message}"
@@ -526,11 +532,9 @@ module Samagotchi
       private :keep_manifest
 
       # Why +dir+ isn't the source of what +bundle+ installed (#adopt_manifest), nil when it is.
-      def adoption_mismatch(bundle, dir, source)
-        return "#{dir} has no manifest.yml" unless File.file?(source)
-
+      def adoption_mismatch(bundle, dir, bytes)
         manifest = begin
-          Manifest.new(path: source)
+          parsed(bytes)
         rescue Manifest::ValidationError, Psych::Exception, EncodingError => e
           return "#{dir}'s manifest.yml doesn't read: #{e.message}"
         end
@@ -548,6 +552,18 @@ module Samagotchi
         nil
       end
       private :adoption_mismatch
+
+      # +bytes+ as a manifest.yml, read where nothing else can change it.
+      def parsed(bytes)
+        Dir.mktmpdir("chi-adopt-") do |tmp|
+          path = File.join(tmp, "manifest.yml")
+          File.binwrite(path, bytes)
+          Manifest.new(path: path)
+        rescue Manifest::ValidationError => e
+          raise Manifest::ValidationError, e.message.gsub(tmp, "the source")
+        end
+      end
+      private :parsed
 
       # The SINCE entry of a mirrored key whose shape a newer chi reads.
       MIRROR_SINCE = { "session_setting_types" => "session_settings.types", "setting_types" => "settings.types" }.freeze
