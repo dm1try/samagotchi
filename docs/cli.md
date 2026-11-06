@@ -907,7 +907,6 @@ the model's `objectives` tool); [Objectives](sessions.md#objectives) has what th
 - `/objectives done O1 [O2…]`, `/objectives drop O1 [O2…]`: mark items. An id it doesn't have refuses the whole line, and
   so does `done` on a dropped item. The model is shown a done item as `O1 [done] …` and no dropped one.
 - `/objectives undo O1 [O2…]`: back to active, after a mistaken `done` or `drop`.
-
 - `/objectives check O1`: an independent read of O1's latest move, one side request; the verdict comes as a card and as
   `check: …` under the move. Information only: it edits nothing, and it is refused for an objective with no move or a dropped one, and during a participant's turn. See [Objectives](sessions.md#objectives).
 

@@ -5,6 +5,7 @@ format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 versions follow [Semantic Versioning](https://semver.org/); before 1.0, config
 and commands may change between minor versions. How releases are made:
 [docs/releasing.md](docs/releasing.md).
+
 ## [Unreleased]
 
 ## [0.151.0] - 2026-11-05
