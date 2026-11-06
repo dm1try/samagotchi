@@ -178,6 +178,15 @@ module Samagotchi
         lines.any? ? lines.join("\n") : "No files to install."
       end
 
+      # The one words for a record whose source can't be read again (relative,
+      # empty or gone): what `chi bundle upgrade NAME` refuses with and
+      # ManifestStanding names. An upgrade from a copy switches the source.
+      def self.source_gone_line(name, source)
+        recorded = source.to_s.strip
+        owner = recorded.empty? ? "#{name} has no recorded source" : "#{name}'s recorded source #{recorded} is gone"
+        "#{owner}: chi bundle upgrade <path or URL of a copy>"
+      end
+
       # The one words for a dev install an upgrade or a plain install meets:
       # it follows its source already. `Installer#refuse_dev_mismatch` raises
       # with them, and `chi bundle upgrade NAME` (which never reaches the

@@ -744,8 +744,8 @@ RSpec.describe Samagotchi::UpdateCommand do
         make_legacy("moved", source: File.join(tmp, "nowhere"))
         _, rows = json_rows
         expect(manifest_rows(rows, "moved").map { |r| r["status"] }).to eq(
-          ["installed by an older chi, which didn't keep its manifest: its source #{File.join(tmp, "nowhere")} is gone; " \
-           "install it again from a copy of the bundle"]
+          ["installed by an older chi, which didn't keep its manifest: moved's recorded source #{File.join(tmp, "nowhere")} is gone: " \
+           "chi bundle upgrade <path or URL of a copy>"]
         )
       end
 

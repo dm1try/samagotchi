@@ -1000,8 +1000,7 @@ module Samagotchi
       recorded = record.source.to_s.strip
       return [recorded, record] if normalizer.git_url?(recorded) || (recorded.start_with?("/") && File.exist?(recorded))
 
-      owner = recorded.empty? ? "#{record.name} has no recorded source" : "#{record.name}'s recorded source #{recorded} is gone"
-      @stderr.puts "Upgrade failed: #{owner}: chi bundle upgrade <path or URL>"
+      @stderr.puts "Upgrade failed: #{Samagotchi::MemoryBundle::Installer.source_gone_line(record.name, recorded)}"
       nil
     end
 

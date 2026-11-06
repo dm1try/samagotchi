@@ -385,7 +385,8 @@ Also shipped, not installed: dev (mcp, skills, source-links) (chi bundle install
   older chi didn't know aside), and the same memories, plugin, hooks, scripts and rules. A git source
   isn't cloned: the row names the command,
   `installed by an older chi, which didn't keep its manifest: chi bundle upgrade NAME reads it again from URL`.
-  A source that's gone or doesn't match gets its own row (why, and what to run). The
+  A source that's gone or doesn't match gets its own row (why, and what to run: for
+  a gone one, `NAME's recorded source S is gone: chi bundle upgrade <path or URL of a copy>`). The
   same goes for a record an older chi rewrote after a newer one kept the manifest
   (`an older chi rewrote its record after the install, so its manifest.yml may be an
   earlier version's`). `--dry-run` says `would keep its manifest` and writes nothing.

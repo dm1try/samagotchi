@@ -330,7 +330,7 @@ RSpec.describe "chi bundle (CLI)" do
       src = self.class.make_bundle(File.join(@root, "mine"), name: "demo", version: "1.0.0", content: "one\n")
       chi("install", src)
       record_path = File.join(memories, ".bundles", "demo", "manifest.json")
-      hint = "chi bundle upgrade <path or URL>\n"
+      hint = "chi bundle upgrade <path or URL of a copy>\n"
 
       FileUtils.rm_rf(src)
       expect(chi("upgrade", "demo")).to eq(["", "Upgrade failed: demo's recorded source #{src} is gone: #{hint}", 1])
