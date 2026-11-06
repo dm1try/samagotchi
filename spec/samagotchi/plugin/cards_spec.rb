@@ -1337,8 +1337,11 @@ RSpec.describe "Cards" do
   end
 
   describe "the Bridge's snapshot" do
+    let(:state_dir) { Dir.mktmpdir }
+
+    after { FileUtils.rm_rf(state_dir) }
+
     it "counts a turn its worker was killed in, when a later worker's Bridge starts" do
-      state_dir = Dir.mktmpdir
       engine.session = session
       bridge = Samagotchi::Bridge.new(engine: engine, state_dir: state_dir, session_id: "s1")
       engine.subscribe(observer: bridge.instance_variable_get(:@cards))
@@ -1350,7 +1353,6 @@ RSpec.describe "Cards" do
     end
 
     it "gives its store the session's messages: a card shown after an opening with no id stays below it, and the saved log reaches its opening" do
-      state_dir = Dir.mktmpdir
       engine.session = session
       bridge = Samagotchi::Bridge.new(engine: engine, state_dir: state_dir, session_id: "s1")
       store = bridge.instance_variable_get(:@cards)
@@ -1367,7 +1369,6 @@ RSpec.describe "Cards" do
     end
 
     it "lists against the messages the snapshot carries: a running wake's note is in both, a running prompt in neither" do
-      state_dir = Dir.mktmpdir
       engine.session = session
       bridge = Samagotchi::Bridge.new(engine: engine, state_dir: state_dir, session_id: "s1")
       store = bridge.instance_variable_get(:@cards)
@@ -1386,14 +1387,13 @@ RSpec.describe "Cards" do
     end
 
     it "carries the cards" do
-      bridge = Samagotchi::Bridge.new(engine: engine, state_dir: Dir.mktmpdir, session_id: "s1")
+      bridge = Samagotchi::Bridge.new(engine: engine, state_dir: state_dir, session_id: "s1")
       engine.subscribe(observer: bridge.instance_variable_get(:@cards))
       engine.show_card(source: "b", title: "one", id: "c1")
       expect(bridge.snapshot[:cards].map { |c| c[:id] }).to eq(["c1"])
     end
 
     it "saves them in the session's folder, and a later worker's Bridge starts from them" do
-      state_dir = Dir.mktmpdir
       bridge = Samagotchi::Bridge.new(engine: engine, state_dir: state_dir, session_id: "s1")
       engine.subscribe(observer: bridge.instance_variable_get(:@cards))
       engine.show_card(source: "b", title: "one", id: "c1")
@@ -1402,8 +1402,6 @@ RSpec.describe "Cards" do
       later = Samagotchi::Bridge.new(engine: Samagotchi::Engine.new(client: client, kernel: kernel), state_dir: state_dir,
                                      session_id: "s1")
       expect(later.snapshot[:cards].map { |c| c[:id] }).to eq(["c1"])
-    ensure
-      FileUtils.rm_rf(state_dir) if state_dir
     end
   end
 end
