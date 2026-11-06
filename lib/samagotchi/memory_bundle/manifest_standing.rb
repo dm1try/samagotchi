@@ -103,8 +103,8 @@ module Samagotchi
       def unkept_fix(bundle, refused)
         source = bundle.source.to_s.strip
         return reinstall(bundle) if bundle.dev
-        return "its source #{source.empty? ? "(none recorded)" : source} is gone; install it again from a copy of the bundle" if gone?(source, refused)
         return "chi bundle upgrade #{bundle.name} reads it again from #{source}" if refused == :git || SourceNormalizer.git_url?(source)
+        return "its source #{source.empty? ? "(none recorded)" : source} is gone; install it again from a copy of the bundle" if gone?(source, refused)
 
         shipped = SourceIdentity.of(source)&.shipped?
         if refused

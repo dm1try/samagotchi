@@ -389,7 +389,8 @@ Also shipped, not installed: dev (mcp, skills, source-links) (chi bundle install
   (`an older chi rewrote its record after the install, so its manifest.yml may be an
   earlier version's`). `--dry-run` says `would keep its manifest` and writes nothing.
   An edited `manifest.yml` isn't kept over: its row says so (`chi bundle upgrade
-  NAME`). These rows are warnings and fail nothing.
+  NAME`). These rows are warnings and fail nothing; `chi bundle status NAME` says the
+  same on its `Manifest:` line.
 - **Profiles** (`core`, `dev`): an installed one installs the bundles a new
   chi added to it (`updated (+ name)`), even at the same version, and retries
   one that failed before; one you uninstalled stays out. See [Bundle

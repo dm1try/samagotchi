@@ -518,6 +518,7 @@ module Samagotchi
           label += "; #{info[:merge_note].line}#{" (old copy in #{info[:merge_note].trash})" if info[:merge_note].trash}" if info[:merge_note]
           @stdout.puts "  #{k}: #{label}"
         end
+        @stdout.puts "  #{manifest_line(st.provenance)}"
         # Hooks
         manifest = st.provenance.manifest
         hooks = manifest.hooks
@@ -567,6 +568,14 @@ module Samagotchi
         end
       end
       0
+    end
+
+    # "Manifest: [kept]", or "[from the install record]", and what its case
+    # says (MemoryBundle::ManifestStanding).
+    def manifest_line(record)
+      require_relative "memory_bundle/manifest_standing"
+      standing = Samagotchi::MemoryBundle::ManifestStanding
+      ["Manifest:", standing.label(record), standing.line(record)].compact.join(" ")
     end
 
     # " dev → /path (missing)" when a dev install's source isn't there, else "".

@@ -1146,6 +1146,7 @@ Hooks removed: 1\n\z})
       expect(out.lines.drop(1).join).to eq(<<~TEXT)
         Target: #{memories}
           identity.md: ok
+          Manifest: [kept]
           trust_level: reviewed
           Hooks (1):
             guardrails.rb: event=before_tool_call on_error=fail_closed priority=10 [ok]
@@ -1156,7 +1157,7 @@ Hooks removed: 1\n\z})
       out, err, code = chi("status", "sample-plugin")
 
       expect([err, code]).to eq(["", 0])
-      expect(out.lines.drop(1).join).to eq("Target: #{memories}\n  trust_level: reviewed\n  Plugin: plugin.rb [ok]\n    requires_chi: >= 0.1.28\n")
+      expect(out.lines.drop(1).join).to eq("Target: #{memories}\n  Manifest: [kept]\n  trust_level: reviewed\n  Plugin: plugin.rb [ok]\n    requires_chi: >= 0.1.28\n")
     end
 
     # quirk: status takes the first non --arg as the name, a flag's value too
@@ -1187,6 +1188,68 @@ Hooks removed: 1\n\z})
     end
   end
 
+  context "with a bundle's manifest.yml as an older chi left it" do
+    before do
+      @root = self.class.sandbox
+      chi("install", source)
+    end
+
+    after { FileUtils.rm_rf(@root) }
+
+    let(:source) { self.class.make_bundle(File.join(@root, "b"), name: "demo", version: "1.0.0", content: "one\n") }
+    let(:bundle_dir) { File.join(memories, ".bundles", "demo") }
+    let(:mjson) { File.join(bundle_dir, "manifest.json") }
+
+    def edit_record = File.write(mjson, JSON.generate(yield(JSON.parse(File.read(mjson)))))
+    def manifest_line = chi("status", "demo")[0].lines.grep(/\A  Manifest:/).join
+
+    it "says kept for a manifest this chi installed" do
+      expect(manifest_line).to eq("  Manifest: [kept]\n")
+    end
+
+    it "says a legacy record's chi update keeps it from its folder, or names upgrade for a git one" do
+      FileUtils.rm_f(File.join(bundle_dir, "manifest.yml"))
+      edit_record { |raw| raw.except("manifest_sha", "installed_by") }
+      expect(manifest_line).to eq("  Manifest: [from the install record] installed by an older chi, which didn't keep its manifest: " \
+                                  "chi update keeps it from #{source}\n")
+      edit_record { |raw| raw.merge("source" => "https://example.invalid/demo") }
+      expect(manifest_line).to eq("  Manifest: [from the install record] installed by an older chi, which didn't keep its manifest: " \
+                                  "chi bundle upgrade demo reads it again from https://example.invalid/demo\n")
+    end
+
+    it "says a stale record's file may be an earlier version's" do
+      edit_record { |raw| raw.except("manifest_sha", "installed_by").merge("source" => "https://example.invalid/demo") }
+      expect(manifest_line).to eq("  Manifest: [from the install record] an older chi rewrote its record after the install, so its " \
+                                  "manifest.yml may be an earlier version's: chi bundle upgrade demo reads it again from https://example.invalid/demo\n")
+    end
+
+    it "says a recorded kept file that is gone is gone, and a dev record's command is its install --dev" do
+      FileUtils.rm_f(File.join(bundle_dir, "manifest.yml"))
+      expect(manifest_line).to eq("  Manifest: [from the install record] its kept manifest.yml is gone, so chi reads the install record: " \
+                                  "chi update keeps it from #{source}\n")
+      edit_record { |raw| raw.except("manifest_sha", "installed_by").merge("dev" => true) }
+      expect(manifest_line).to eq("  Manifest: [from the install record] installed by an older chi, which didn't keep its manifest: " \
+                                  "chi bundle install --dev #{source}\n")
+    end
+
+    it "says an edited one isn't read" do
+      File.write(File.join(bundle_dir, "manifest.yml"), "#{File.read(File.join(bundle_dir, "manifest.yml"))}# mine\n")
+      expect(manifest_line).to eq("  Manifest: [from the install record] manifest.yml changed since it was installed, so chi reads the " \
+                                  "install record (chi bundle upgrade demo)\n")
+    end
+
+    it "names the keys a kept manifest uses that came after the chi that installed it" do
+      File.write(File.join(bundle_dir, "manifest.yml"), "#{File.read(File.join(bundle_dir, "manifest.yml"))}settings: [limit]\n")
+      edit_record do |raw|
+        raw.merge("installed_by" => "0.142.0", "manifest_sha" => "sha256:#{Digest::SHA256.file(File.join(bundle_dir, "manifest.yml")).hexdigest}")
+      end
+      expect(manifest_line).to eq("  Manifest: [kept] installed by chi 0.142.0, which didn't act on settings: (0.143.0): " \
+                                  "chi bundle upgrade demo\n")
+      edit_record { |raw| raw.merge("installed_by" => "0.143.0") }
+      expect(manifest_line).to eq("  Manifest: [kept]\n")
+    end
+  end
+
   # A scope only a newer chi knows (read after a downgrade), or a hand edit.
   context "with a bundle whose provenance names a scope this chi doesn't know" do
     before(:context) do
@@ -1206,6 +1269,7 @@ Hooks removed: 1\n\z})
       expect(out.lines.drop(1).join).to eq(<<~TEXT)
         Target: (unknown scope: this chi can't resolve it; upgrade chi or reinstall the bundle)
           a.md: unchecked
+          Manifest: [kept]
           trust_level: experimental
       TEXT
     end
