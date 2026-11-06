@@ -268,7 +268,7 @@ bundles:
 | `url` | `http://127.0.0.1:8888` | the SearXNG root, `http` or `https` with a host; a trailing `/` is fine |
 | `max_results` | `8` | clamped to 1..20 |
 | `timeout` | `10` | seconds; a value that isn't a positive number uses the default |
-| `language` | unset | e.g. `en` |
+| `language` | unset | unset (the default): SearXNG picks the language from the query; set it (e.g. `en`) to force one; dates and some results may follow your region |
 | `safesearch` | unset | `0`, `1` or `2` |
 | `categories`, `engines` | unset | comma-separated. SearXNG silently drops names it doesn't know, so a typo gives its defaults |
 
