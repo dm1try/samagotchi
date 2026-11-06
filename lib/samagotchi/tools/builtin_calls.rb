@@ -149,20 +149,23 @@ module Samagotchi
       end
 
       # A saved call as it ran (a reload, the stale-read pairing): a call_tool
-      # of a built-in ("chi/delegate", or a bare "delegate") is that
-      # built-in's call with via: "call_tool" when +output+ (its saved
-      # result) shows it ran as that built-in: its "[name]" lead, or, with
-      # no lead, an error that names it (refused by its name before the
-      # gate); any other call as it is (a call_tool that ran, refused or
-      # not, leads with "[call_tool]").
+      # of a chi tool, a built-in or a plugin's ("chi/delegate",
+      # "chi/web_search", or a bare "delegate") is that tool's call with
+      # via: "call_tool" when +output+ (its saved result) shows it ran as
+      # that tool: its "[name]" lead, or, with no lead, an error that names
+      # it (refused by its name before the gate; a plugin tool's only by
+      # its chi/ name, the one no MCP tool has); any other call as it is (a
+      # call_tool that ran, refused or not, leads with "[call_tool]"). No
+      # registry is asked: a reload without the plugin reads the same.
       # @param call [Hash] as #build gives it
       # @param output [String, nil]
       # @return [Hash]
       def unwrap_saved(call, output)
         return call unless call[:name] == VIA && call[:args].is_a?(Hash)
 
-        name = call[:args]["tool"].to_s.strip.delete_prefix(VIA_GROUP)
-        return call unless row(name) && ran_as?(output.to_s, name)
+        named = call[:args]["tool"].to_s.strip
+        name = named.delete_prefix(VIA_GROUP)
+        return call if name.empty? || name == VIA || !ran_as?(output.to_s, name, error: row(name) || named != name)
 
         build(name, saved_args(call[:args]["args"])).merge(via: VIA)
       end
@@ -183,9 +186,10 @@ module Samagotchi
         build(VIA, { "tool" => name, "args" => call[:args] })
       end
 
-      def ran_as?(output, name)
+      # +error+: whether a lead-less error that names the tool counts.
+      def ran_as?(output, name, error: true)
         lead = output[SAVED_LEAD, 1]
-        lead ? lead == name : output.start_with?("Error: #{name} ")
+        lead ? lead == name : error && output.start_with?("Error: #{name} ")
       end
 
       # call_tool's inner args as saved: an object, or its JSON text.

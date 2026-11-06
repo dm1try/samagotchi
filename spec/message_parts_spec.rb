@@ -138,6 +138,34 @@ RSpec.describe Samagotchi::MessageParts do
       expect(tools[1]).not_to have_key(:via)
     end
 
+    it "reloads a plugin tool run through call_tool (chi/web_search) as its own row with via, registry or not" do
+      message = { role: "model", content: "",
+                  tool_calls: [{ id: "c1", name: "call_tool",
+                                 arguments: { "tool" => "chi/web_search", "args" => { "query" => "ruby" } } },
+                               { id: "c2", name: "call_tool", arguments: { "tool" => "web_search", "args" => { "query" => "x" } } },
+                               { id: "c3", name: "call_tool", arguments: { "tool" => "chi/web_search", "args" => {} } },
+                               { id: "c4", name: "call_tool", arguments: { "tool" => "web_search", "args" => {} } }] }
+      responses = [{ role: "tool_response", content: "[web_search]\nfound ruby", tool_call_id: "c1",
+                     tool_labels: "searching the web" },
+                   { role: "tool_response", content: "[web_search]\nfound x", tool_call_id: "c2" },
+                   { role: "tool_response", content: "Error: web_search isn't loaded in this session (toolkit lean)",
+                     tool_call_id: "c3" },
+                   { role: "tool_response", content: "Error: web_search isn't loaded in this session (toolkit lean)",
+                     tool_call_id: "c4" }]
+
+      tools = described_class.for_message(message, responses)[:tools]
+      expect(tools[0]).to include(tool: "web_search", via: "call_tool", params: 'query="ruby"', label: "searching the web",
+                                  output: "[web_search]\nfound ruby")
+      expect(tools[1]).to include(tool: "web_search", via: "call_tool")
+      expect(tools[2]).to include(tool: "web_search", via: "call_tool")
+      # A bare name with no lead could be any source's: it stays call_tool.
+      expect(tools[3]).to include(tool: "call_tool")
+      call = Samagotchi::Tools::BuiltinCalls.build("call_tool", { "tool" => "chi/web_search", "args" => '{"query":"ruby"}' })
+      expect(Samagotchi::Tools::BuiltinCalls.unwrap_saved(call, "[web_search]\nfound ruby"))
+        .to eq(name: "web_search", content: '{"query":"ruby"}', path: nil, scope: nil, args: { "query" => "ruby" },
+               via: "call_tool")
+    end
+
     it "reloads a direct call of an MCP tool (a host that loads tools) as the call_tool row it ran as" do
       message = { role: "model", content: "",
                   tool_calls: [{ id: "c1", name: "mcp_fs_read_file", arguments: { "path" => "a.txt" } },

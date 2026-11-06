@@ -240,8 +240,9 @@ module Samagotchi
     # +tool_id+: its output's ToolIds id, with its ✂ mark in +marks+.
     def tool_part(call, output, registry, shown = nil, images = nil, label: nil, diff: nil, refs: nil, cwd: nil,
                   tool_id: nil, marks: {})
-      # A built-in reached through call_tool reloads as that built-in's
-      # row, with via (its saved params and label are the built-in's).
+      # A chi tool (a built-in or a plugin's) reached through call_tool
+      # reloads as that tool's row, with via (its saved params and label
+      # are the tool's).
       # A direct call of an MCP tool reloads as the call_tool row it ran as.
       call = Tools::BuiltinCalls.unwrap_saved(Tools::BuiltinCalls.wrap_saved(call, output), output)
       name = call[:name].to_s

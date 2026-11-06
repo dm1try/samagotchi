@@ -197,8 +197,8 @@ module Samagotchi
         return texts ? [[refs.first, call, texts.first.text]] : []
       end
 
-      # A call_tool of a built-in ran as it: its run's lead names the
-      # built-in (BuiltinCalls.unwrap_saved).
+      # A call_tool of a chi tool (a built-in or a plugin's) ran as it: its
+      # run's lead names the tool (BuiltinCalls.unwrap_saved).
       calls = batch.map(&:last)
       calls = calls.zip(ToolResponse.runs(entry[:content], calls.size)).map do |call, run|
         Tools::BuiltinCalls.unwrap_saved(Tools::BuiltinCalls.wrap_saved(call, run&.text), run&.text)
