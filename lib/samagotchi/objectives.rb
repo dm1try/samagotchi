@@ -104,13 +104,19 @@ module Samagotchi
         new(change: change, id: id, text: kept, note: note, was: Objectives.fingerprint(item))
       end
 
-      # What's wrong with it against +list+, nil when it can apply.
+      # What's wrong with it against +list+, nil when it can apply: its #line
+      # through the same Edit its card's Apply runs, so what Apply would refuse
+      # is refused here.
       def refusal(list)
         return "change must be add, reword, done or drop" unless %w[add reword done drop].include?(change)
         return "#{change} needs a text" if %w[add reword].include?(change) && text.empty?
-        return nil if change == "add"
+        return "no objective #{id} (this session's: #{list.items.map(&:id).join(", ")})" unless change == "add" || list.find(id)
 
-        list.find(id) ? nil : "no objective #{id} (this session's: #{list.items.map(&:id).join(", ")})"
+        verb, rest = line.delete_prefix("/objectives ").split(/\s+/, 2)
+        edited = Edit.apply(list, verb, rest.to_s, was: was)
+        return "#{change} needs a text of its own, not only a status or a done-when" if edited.nil?
+
+        edited.is_a?(String) ? edited : nil
       end
 
       # The /objectives line that applies it. An add's text can't split in two.

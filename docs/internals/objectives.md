@@ -115,7 +115,8 @@ Bridge's `TurnAccumulator#current_messages`) leaves tool calls out. A move shows
 ## Proposals
 
 `action: propose` (`change` add, reword, done or drop; `id`; `text`; `note`, why) checks the change against the list
-(`Objectives::Proposal#refusal`) and hands it to `Engine#propose_objective`, which keeps it until the turn is over,
+(`Objectives::Proposal#refusal`: its line through `Objectives::Edit`, the edit the card's Apply runs, so the tool refuses
+what Apply would) and hands it to `Engine#propose_objective`, which keeps it until the turn is over,
 as `#context_choice`'s cards are kept. `run_turn`'s ensure shows them only for a turn that completed: a canceled or
 failed one drops them (`Engine#discard_objective_proposals`), so its Apply card never outlives a turn whose call a
 rollback has taken out of the history, and nothing carries over to the next turn. A card is between turns (no

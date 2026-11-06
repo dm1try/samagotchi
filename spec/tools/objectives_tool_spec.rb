@@ -76,6 +76,51 @@ RSpec.describe Samagotchi::Tools::ObjectivesTool do
       expect(peers.proposed).to be_nil
     end
 
+    # The card's Apply runs the proposal's line through /objectives: what it
+    # would refuse, the tool refuses, so no card is left that can't apply.
+    describe "what the card's Apply would refuse" do
+      def applied(line)
+        verb, rest = line.delete_prefix("/objectives ").split(/\s+/, 2)
+        Samagotchi::Objectives::Edit.apply(peers.objectives, verb, rest.to_s)
+      end
+
+      ["(done when: tests pass)", "[done]", "[active] [done]", "[done] (done when: x)"].each do |text|
+        it "refuses an add whose text is only #{text}, which Apply refuses too" do
+          answer = propose(change: "add", text: text)
+          expect(answer).to eq("Error: add needs a text of its own, not only a status or a done-when. Nothing was proposed.")
+          expect(peers.proposed).to be_nil
+          expect(applied("/objectives add #{text}")).to be_nil
+        end
+
+        it "refuses a reword whose text is only #{text}" do
+          expect(propose(change: "reword", id: "O1", text: text)).to start_with("Error: reword needs a text of its own")
+          expect(peers.proposed).to be_nil
+          expect(applied("/objectives edit O1 #{text}")).to be_nil
+        end
+      end
+
+      it "refuses a status-only reword of an item that keeps a done-when" do
+        peers.objectives = list.reword("O2", "Stops", done_when: "no order")
+        expect(propose(change: "reword", id: "O2", text: "[done]")).to start_with("Error: reword needs a text of its own")
+        expect(peers.proposed).to be_nil
+      end
+
+      it "refuses done for a dropped item, as Apply does, with the way back" do
+        peers.objectives = list.mark("O1", Samagotchi::Objectives::DROPPED)
+        answer = propose(change: "done", id: "O1")
+        expect(answer).to start_with("Error: O1 is dropped").and include("/objectives undo O1")
+        expect(peers.proposed).to be_nil
+        expect(applied("/objectives done O1")).to be_a(String)
+      end
+
+      it "still proposes what Apply takes: a drop of a dropped item, a status-led text with words of its own" do
+        peers.objectives = list.mark("O1", Samagotchi::Objectives::DROPPED)
+        expect(propose(change: "drop", id: "O1")).to start_with("Proposed")
+        expect(propose(change: "add", text: "[done] Ship it")).to start_with("Proposed")
+        expect(applied(peers.proposed.line)).to be_a(Samagotchi::Objectives::List)
+      end
+    end
+
     it "answers plainly with no list, and is never a move" do
       empty = Struct.new(:objectives).new(Samagotchi::Objectives::List.new)
       expect(described_class.call({ action: "propose", change: "done", id: "O1", note: "n" }, peers: empty)).to eq(described_class::NONE)

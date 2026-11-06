@@ -11,6 +11,7 @@ and commands may change between minor versions. How releases are made:
 ### Fixed
 
 - chi web: a diagram drawn by a block renderer is usable without a mouse: a screen reader hears that its source is behind the "Show the source" button, and a button that shows on keyboard focus zooms it to full size and back.
+- The objectives tool refuses a proposal its card's Apply would refuse (an add or reword whose text is only a status like `[done]` or only `(done when: …)`, or `done` for a dropped objective), so the model hears why instead of leaving a card that can't apply.
 
 ## [0.153.0] - 2026-11-06
 
