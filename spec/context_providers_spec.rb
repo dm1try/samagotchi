@@ -26,12 +26,13 @@ RSpec.describe Samagotchi::ContextProviders do
   around { |example| with_config_home(File.join(tmpdir, "config")) { example.run } }
   after { FileUtils.rm_rf(tmpdir) }
 
-  def install(name = "prs", providers: [provider], script_text: script)
+  def install(name = "prs", providers: [provider], script_text: script, requires_chi: nil)
     dir = File.join(bundles_dir, name)
     FileUtils.mkdir_p(File.join(dir, "scripts"))
     File.write(File.join(dir, "scripts", "pr.rb"), script_text)
     File.write(File.join(dir, "manifest.json"), JSON.generate(
       "name" => name, "version" => "1.0.0", "scope" => "system", "files" => {},
+      "requires_chi" => requires_chi,
       "scripts" => { "pr.rb" => { "sha256" => "sha256:#{Digest::SHA256.hexdigest(script_text)}" } },
       "context_providers" => providers
     ))
@@ -138,6 +139,53 @@ RSpec.describe Samagotchi::ContextProviders do
 
       expect { described_class.command_for(source) }
         .to raise_error(described_class::Invalid, %r{bundle prs's scripts/pr.rb differs from the installed one})
+    end
+  end
+
+  describe "a bundle whose requires_chi this chi doesn't meet" do
+    def source(provider)
+      Samagotchi::ContextSources::Source.new(name: "pr-12", cmd: "ruby {bundle_dir}/scripts/pr.rb x",
+                                             every_seconds: nil, why: nil, hint: nil, scope: "session",
+                                             added_by: "cli", created_at: nil, provider: provider)
+    end
+
+    it "is skipped by .resolve and .any?, and said once" do
+      install("old-prs", requires_chi: ">= 99.0")
+
+      expect(Samagotchi::Log).to receive(:warn).with(:context, "providers_too_new",
+                                                     hash_including(bundle: "old-prs", version: "1.0.0", requires_chi: ">= 99.0"))
+      expect(described_class.resolve("https://example.com/acme/pull/12")).to be_nil
+      expect(described_class.any?).to be(false)
+    end
+
+    it "says it once per process per bundle and version, not per call" do
+      dir = install("again-prs", requires_chi: ">= 99.0")
+      notices = []
+      allow(Samagotchi::Log).to receive(:warn) { |_tag, event, fields| notices << [event, fields[:version]] }
+
+      3.times { described_class.resolve("https://example.com/acme/pull/12") }
+      described_class.any?
+      expect(notices.count { |event, _| event == "providers_too_new" }).to eq(1)
+
+      # A new version of the same bundle is worth saying again.
+      record = File.join(dir, "manifest.json")
+      File.write(record, JSON.generate(JSON.parse(File.read(record)).merge("version" => "2.0.0")))
+      described_class.resolve("https://example.com/acme/pull/12")
+      expect(notices.count { |event, _| event == "providers_too_new" }).to eq(2)
+    end
+
+    it "refuses a source already attached to it, by name" do
+      install("command-old", requires_chi: ">= 99.0")
+
+      expect { described_class.command_for(source("command-old")) }
+        .to raise_error(described_class::Invalid, "bundle command-old: it requires chi >= 99.0 (this is chi #{Samagotchi::VERSION})")
+    end
+
+    it "leaves a bundle this chi does meet alone" do
+      dir = install("current-prs", requires_chi: ">= 0.1.0")
+
+      expect(described_class.resolve("https://example.com/acme/pull/12")&.bundle).to eq("current-prs")
+      expect(described_class.command_for(source("current-prs"))).to eq("ruby #{Shellwords.escape(dir)}/scripts/pr.rb x")
     end
   end
 

@@ -75,7 +75,10 @@ and a normal install from replacing each other (this is also why `chi bundle upg
 
 Readers of the installed state: `Hooks::BundleLoader` (Engine), `GuardrailWiring#bundle_rules`, `Plugin::Loader`,
 `ContextProviders` (scripts), `BundleNeeds` (index markers). Each goes through `Provenance.each_installed` / `#record`
-and checks the recorded sha256 (and `requires_chi`) before loading. They read shas and state off the record, and
+and checks the recorded sha256 (and `requires_chi`) before loading. `ContextProviders.resolve`/`.any?` skip a bundle
+whose `requires_chi` this chi doesn't meet, logging `providers_too_new` once per process per bundle and version (a
+Set under a Mutex, like `GuardrailWiring`'s kept-rules notice), and `.command_for` raises `Invalid` for a source
+attached to one. They read shas and state off the record, and
 manifest data (requires_chi, hook metadata, needs, providers, renderers, settings) through `InstalledBundle#manifest`
 (`InstalledManifest`: the kept `manifest.yml` when its sha holds, else the record's mirror), as do `SessionConfig`, `BundleSettingsCheck`, `BlockRenderers`, `Status`, `BundleCommand`'s
 status and diff, `Builder` and `InstalledCopy`. Their requires_chi checks are `InstalledManifest#requires_chi_failure`;

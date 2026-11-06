@@ -1352,6 +1352,10 @@ context_providers:
   and becomes the installed bundle's folder each time it runs, so an
   upgrade moves nothing. `{ruby}` becomes the Ruby chi runs on (a `ruby` on
   the PATH may be another one, such as macOS's 2.6).
+- A bundle whose `requires_chi` this chi doesn't meet provides nothing:
+  `.resolve` and `.any?` skip it (logged once per process per bundle and
+  version), and a source already attached to one — before a chi downgrade,
+  say — is refused by name, as a changed script is.
 - The command follows [the contract](context.md#the-command-contract).
 
 ## Block renderers
