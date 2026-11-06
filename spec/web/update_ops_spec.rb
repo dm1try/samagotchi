@@ -108,16 +108,26 @@ RSpec.describe Samagotchi::Web::UpdateOps do
     let(:pid_file) { File.join(state_dir, "descendant.pid") }
 
     # A seam for the deadline: it passes once the child is up, so a loaded runner can't reach it early.
-    def real_ops(script, deadline: nil)
+    # One script per install, in order: an example that installs twice gives the
+    # second one a child that ends at once, so it neither hangs the run nor
+    # rewrites the first child's pid file while the example is reading it.
+    def real_ops(*scripts, deadline: nil)
       options = deadline ? { deadline: deadline, stop_grace: 0.2 } : { stop_grace: 0.2 }
       described_class.new(hub: hub, state_dir: state_dir, blocked: -> {}, **options).tap do |built|
-        allow(built).to receive(:update_argv).and_return(["sh", "-c", script])
+        allow(built).to receive(:update_argv).and_return(*scripts.map { |script| ["sh", "-c", script] })
       end
     end
 
-    def descendant = File.read(pid_file).strip.then { |text| text.empty? ? nil : Integer(text) }
+    # The pid the child wrote for what it started, or nil while it hasn't: the
+    # write truncates the file first, so a read can land between the two.
+    def descendant
+      text = File.read(pid_file).strip
+      text.empty? ? nil : Integer(text)
+    rescue Errno::ENOENT
+      nil
+    end
 
-    def started? = File.exist?(pid_file) && !descendant.nil?
+    def started? = !descendant.nil?
 
     def deadline_passes_once_started
       lambda do |_child|
@@ -126,8 +136,16 @@ RSpec.describe Samagotchi::Web::UpdateOps do
       end
     end
 
-    # This example's own child, should it fail before the group is stopped.
-    after { Process.kill("KILL", descendant) if started? && !process_gone?(descendant) }
+    # What this example started, stopped and waited for, should it fail before
+    # the group is stopped: the pid read once, so a truncating write can't make
+    # it nil between two reads.
+    after do
+      pid = descendant
+      next if pid.nil? || process_gone?(pid)
+
+      Process.kill("KILL", pid)
+      wait_for("the child's child to be gone") { process_gone?(pid) }
+    end
 
     it "answers the child's rows, with its stderr as progress" do
       json = [{ component: "chi (gem)", status: "updated", failed: false, kept: [] }].to_json
@@ -139,7 +157,7 @@ RSpec.describe Samagotchi::Web::UpdateOps do
     end
 
     it "stops a child past the deadline, with what it started, and fails through the usual path" do
-      stopped = real_ops("sleep 300 & echo $! > #{pid_file}; wait", deadline: deadline_passes_once_started)
+      stopped = real_ops(%(sleep 300 & echo $! > #{pid_file}; wait), "echo '[]'", deadline: deadline_passes_once_started)
       runner = Thread.new { stopped.install("99.0.0", wait: true) }
 
       join!(runner, "the install to give up on the hung child")
@@ -149,8 +167,11 @@ RSpec.describe Samagotchi::Web::UpdateOps do
       expect(runner.value.rows.first["status"]).to include("stopped after #{described_class::UPDATE_TIMEOUT / 60} minutes")
       expect(frames.last).to include(state: "failed", operation: "install")
       expect(stopped).not_to be_running
-      wait_for("the child's child to be gone") { process_gone?(descendant) }
+      pid = descendant
+      wait_for("the child's child to be gone") { process_gone?(pid) }
+
       expect(stopped.install("99.0.1")).to eq(:started) # the operation is free again
+      wait_for("the second install to end") { !stopped.running? }
     end
 
     it "kills a child that ignores TERM" do
