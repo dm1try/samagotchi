@@ -163,7 +163,7 @@ test("a tooltip-only chip's row unfolds its tooltip in place; a link is a link; 
   const bar = { ...bare, parent: { id: "f".repeat(16), title: "t" } };
   ctl.update({ bar, buttons: buttonsFor() });
   button.click();
-  assert.equal(ctl.pop.querySelector('[data-act="info:model"]'), null, "a model row with nothing more to say doesn't unfold");
+  assert.ok(ctl.pop.querySelector('[data-act="info:model"]') === null, "a model row with nothing more to say doesn't unfold");
   const toolkit = ctl.pop.querySelector('[data-act="info:toolkit"]');
   assert.equal(toolkit.getAttribute("aria-expanded"), "false");
   toolkit.click();
@@ -171,7 +171,7 @@ test("a tooltip-only chip's row unfolds its tooltip in place; a link is a link; 
   assert.equal(toolkit.getAttribute("aria-expanded"), "true");
   assert.match(ctl.pop.querySelector(".more-info").textContent, /^Toolkit: full/);
   toolkit.click();
-  assert.equal(ctl.pop.querySelector(".more-info"), null);
+  assert.ok(ctl.pop.querySelector(".more-info") === null);
   assert.equal(ctl.pop.querySelector("a.more-row").getAttribute("href"), `#/s/${"f".repeat(16)}`);
 
   setSession("other");

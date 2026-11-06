@@ -75,7 +75,7 @@ test("live: a plain answer streaming has no chrome yet, and no block once it end
   turnBlock.flush();
   assert.equal(stacks(host.querySelector(".turn-work")), false);
   turnBlock.turnEnded({ kind: "completed" });
-  assert.equal(host.querySelector(".turn-work"), null);
+  assert.ok(host.querySelector(".turn-work") === null);
   assert.match(answer.querySelector(".bubble.output").textContent, /An answer so far/);
 });
 

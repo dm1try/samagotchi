@@ -305,7 +305,7 @@ test("a Verify turn restored before its ack: its claim is armed again with its l
 test("an ack naming a command: the echo goes, the composer is cleared, no prompt bubble stays", async () => {
   const h = harness({ sendTurn: async () => ({ command_id: "c1" }) });
   await h.send();
-  assert.equal(h.bubbles[0].el.parentNode, null);
+  assert.ok(h.bubbles[0].el.parentNode === null);
   assert.equal(h.cleared(), 1);
   assert.deepEqual(h.log, ["follow", "focus"]);
 });
@@ -314,7 +314,7 @@ test("errors: a terminal took the session; elsewhere it is a toast", async () =>
   const h = harness({ sendTurn: async () => { throw failure("owned_by_tui"); } });
   h.earlyRestores.set("old", {});
   await h.send();
-  assert.equal(h.bubbles[0].el.parentNode, null);
+  assert.ok(h.bubbles[0].el.parentNode === null);
   assert.equal(h.earlyRestores.size, 0);
   assert.equal(h.world.state.owner, "tui");
   assert.ok(h.log.includes("composerMode"));

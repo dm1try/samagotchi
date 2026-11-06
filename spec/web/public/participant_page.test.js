@@ -200,7 +200,7 @@ test("participant page: Verify fresh on an unclear card posts once, says it runs
   assert.equal(posts().length, 1);
   assert.equal(posts()[0].path, "/api/sessions/s1/verdicts/check/fresh");
   assert.equal(card().querySelector(".verify-fresh-running").textContent, "Verifying fresh…");
-  assert.equal(card().querySelector(".verify-fresh-btn"), null);
+  assert.ok(card().querySelector(".verify-fresh-btn") === null);
 
   sources[0].emit("verdict_recorded", {
     verdict: { ...unclear, verdict: "confirmed", reason: "keys.rb hashes it", check_turn_id: "fresh-check", fresh: true, of: "check" },
@@ -208,7 +208,7 @@ test("participant page: Verify fresh on an unclear card posts once, says it runs
   await settle();
   assert.equal($("thread").querySelectorAll(".verify-verdict").length, 1);
   assert.equal(card().querySelector(".verify-fresh-result").textContent, "fresh: ✅ confirmed — keys.rb hashes it");
-  assert.equal(card().querySelector(".verify-fresh-running"), null);
+  assert.ok(card().querySelector(".verify-fresh-running") === null);
 });
 
 test("participant page: a worker without Verify disables the preset and Verify fresh", async (t) => {
@@ -366,7 +366,7 @@ test("participant page: a failed read is said over the thread, never as a header
       else call.answer(200, REVIEW);
     },
   });
-  assert.equal($("offline").closest(".p-head-in"), null, "not in the header's flex rows");
+  assert.ok($("offline").closest(".p-head-in") === null, "not in the header's flex rows");
   assert.ok($("offline").parentElement === $("head"));
   const note = $("note").textContent;
   assert.match(note, /You can comment and ask/);
@@ -771,7 +771,7 @@ test("participant page: ↑ recalls this grant's own comments from this browser,
 test("participant page: a comment is always a plain queued turn: Alt+Enter sends the same, a `/` line opens no list, images stay out", async (t) => {
   const { $, posts } = await openPage(t, { respond: firstReadOnly(REVIEW_G1) });
   t.after(() => localStorage.removeItem("chi_review_history:g1"));
-  assert.equal(document.getElementById("commandList"), null, "no `/` completion on this page");
+  assert.ok(document.getElementById("commandList") === null, "no `/` completion on this page");
   $("comment").value = "/cut";
   $("comment").dispatchEvent(new window.Event("input"));
   enter($("comment"));

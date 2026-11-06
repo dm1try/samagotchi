@@ -56,7 +56,7 @@ test("drawCard: a reloaded card's label survives a live update, also onto a new 
   refreshCardBody(el, { body: "line\nline again", body_html: "<p>line</p>" });
   assert.equal(el.querySelector(".card-label").textContent, "from /short");
   assert.equal(el.querySelector(".card-body p").textContent, "line");
-  assert.equal(drawCard(document.createElement("div"), { id: "n", title: "T", body: "line\nline" }).querySelector(".card-label"), null);
+  assert.ok(drawCard(document.createElement("div"), { id: "n", title: "T", body: "line\nline" }).querySelector(".card-label") === null);
 });
 
 test("cardBodyTemplate: the server's body_html (rendered markdown), else the text escaped in a <pre>", () => {

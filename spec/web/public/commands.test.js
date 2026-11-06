@@ -35,8 +35,8 @@ test("drawCommandBubble draws an Apply button for this tab's own change that ask
   assert.equal(apply.dataset.confirmLine, "/thinking low --yes");
   assert.equal(apply.textContent, "Apply (restarts the cache)");
   assert.equal(apply.className, "command-confirm");
-  assert.equal(bubble({ ...view, own: false, label: "web" }).querySelector("[data-confirm-line]"), null);
-  assert.equal(bubble({ ...view, confirm: null }).querySelector("[data-confirm-line]"), null);
+  assert.ok(bubble({ ...view, own: false, label: "web" }).querySelector("[data-confirm-line]") === null);
+  assert.ok(bubble({ ...view, confirm: null }).querySelector("[data-confirm-line]") === null);
 });
 
 test("applyConfirm sends the line once, keeps the button disabled when sent, and enables it again when not", async () => {

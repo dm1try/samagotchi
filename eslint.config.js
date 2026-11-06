@@ -4,8 +4,25 @@
 // timing rule: a fixed pause (page.waitForTimeout) instead of a wait for the
 // state, the twin of the Samagotchi/SpecSleep cop. And the session store's one write path (a
 // write into the open session's state in place), and app.js's size cap. `npm run lint`; see
-// docs/testing.md.
+// docs/testing.md. In the web unit specs, one rule: no assert.equal(domNode, null), which hangs when it fails.
 import globals from "globals";
+
+// assert.equal / strictEqual / deepEqual (…, null | undefined) whose actual is a DOM lookup: a method that returns a
+// node or null, or a node's own link to another, optional chaining included.
+function domNullAssertSelectors() {
+  const lookups = "querySelector|closest|getElementById|elementFromPoint";
+  const links = "firstChild|lastChild|firstElementChild|lastElementChild|parentNode|parentElement|nextSibling|" +
+    "previousSibling|nextElementSibling|previousElementSibling|activeElement|offsetParent|shadowRoot";
+  const call = "CallExpression[callee.object.name='assert'][callee.property.name=/^(equal|strictEqual|deepEqual|deepStrictEqual)$/]";
+  const actuals = [
+    `[arguments.0.callee.property.name=/^(${lookups})$/]`,
+    `[arguments.0.expression.callee.property.name=/^(${lookups})$/]`,
+    `[arguments.0.property.name=/^(${links})$/]`,
+    `[arguments.0.expression.property.name=/^(${links})$/]`,
+  ];
+  const expecteds = ["[arguments.1.type='Literal'][arguments.1.raw='null']", "[arguments.1.type='Identifier'][arguments.1.name='undefined']"];
+  return actuals.flatMap((actual) => expecteds.map((expected) => call + actual + expected));
+}
 
 export default [
   { ignores: ["lib/samagotchi/web/public/vendor/"] },
@@ -70,6 +87,23 @@ export default [
     // The service worker: a classic script in the worker's scope (self, clients).
     files: ["lib/samagotchi/web/public/sw.js"],
     languageOptions: { sourceType: "script", globals: globals.serviceworker },
+  },
+  {
+    // A failing assert.equal(domNode, null) never fails: node's assert formats the happy-dom node it got, whose
+    // object graph (its document, its window) takes minutes and gigabytes, so `npm test` hangs instead of naming the
+    // test. Caught where the actual is a DOM lookup by its shape (a querySelector, a closest, a parentElement…); a
+    // helper that returns a node (`h.input()`) isn't, the doc's rule covers it (docs/testing.md).
+    name: "samagotchi/dom-null-asserts",
+    files: ["spec/web/public/**/*.js"],
+    linterOptions: { reportUnusedDisableDirectives: "error" },
+    languageOptions: { ecmaVersion: "latest", sourceType: "module" },
+    rules: {
+      "no-restricted-syntax": ["error", ...domNullAssertSelectors().map((selector) => ({
+        selector,
+        message: "A failing assert.equal(domNode, null) hangs npm test (node formats the whole happy-dom node): " +
+          "write assert.ok(x === null) (or === undefined).",
+      }))],
+    },
   },
   {
     files: ["spec/e2e/**/*.js"],

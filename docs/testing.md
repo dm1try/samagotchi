@@ -30,6 +30,11 @@ stage's hand-off dwell in stage.spec.js); a pause that is the behaviour outside 
 route) carries `// eslint-disable-line no-restricted-syntax -- why`. And in the seven
 modules that hold the owner page's session state, one more: no write into `current`, `store.current` or `state()`
 in place (`samagotchi/session-writes`; the store is the write path, see internals/web-frontend.md, The session store).
+In `spec/web/public/`, one rule only (`samagotchi/dom-null-asserts`): no `assert.equal(domNode, null)`. When it fails,
+node's assert formats the happy-dom node, whose graph (its document, its window) takes minutes and gigabytes, so
+`npm test` hangs instead of failing (`--test-timeout` doesn't end it). Write `assert.ok(x === null)` (or `=== undefined`),
+which names the expression and fails at once. The rule sees a DOM lookup by its shape (`querySelector`, `closest`,
+`parentElement`…); a helper that returns a node (`h.input()`) isn't seen, so the same form goes there by hand.
 
 CI's e2e job keeps the tests, chi and the fake model on the runner but runs Chromium in Playwright's image
 (`mcr.microsoft.com/playwright:v<version>-noble`, `playwright run-server` on the host network); the tests connect

@@ -402,9 +402,9 @@ test("a live notice row with a URL links it; the trail's flash stays text", asyn
     assert.equal(a.getAttribute("target"), "_blank");
     assert.equal(a.getAttribute("rel"), "noopener noreferrer");
     assert.equal(row.querySelectorAll("a").length, 1);
-    assert.equal(row.querySelector("b"), null);
+    assert.ok(row.querySelector("b") === null);
     assert.ok(row.textContent.endsWith("https://x.com/JIRA-1, <b>x</b>"));
-    assert.equal(view.root.querySelector(".ts-trail a"), null);
+    assert.ok(view.root.querySelector(".ts-trail a") === null);
   } finally {
     view.reset();
   }

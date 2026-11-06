@@ -295,7 +295,7 @@ test("an override chip opens the panel (the review chip on its view), expanded; 
   form.elements.subjects.value = "docs/plan.md, README.md";
   form.dispatchEvent(new window.Event("submit", { bubbles: true, cancelable: true }));
   assert.deepEqual(p.startPage.reviewSubjects(), ["docs/plan.md", "README.md"]);
-  assert.equal(p.panel().querySelector("form.rs-form"), null);
+  assert.ok(p.panel().querySelector("form.rs-form") === null);
   assert.equal(p.reviewChip.hidden, false);
   assert.equal(p.reviewChip.textContent, "review: plan.md +1");
   p.act("close");
@@ -344,7 +344,7 @@ test("without the models list ⚙ holds the review files only; without those eit
   await p.startPage.loadModels();
   assert.equal(p.gear.hidden, false);
   p.gear.click();
-  assert.equal(p.panel().querySelector(".sset-row"), null);
+  assert.ok(p.panel().querySelector(".sset-row") === null);
   assert.ok(p.panel().querySelector("[data-act=review]"));
   const bare = page(t, { listModels: failing, review: false });
   await bare.startPage.loadModels();

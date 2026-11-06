@@ -117,7 +117,7 @@ test("renderInfoBar: a clock tick rewrites the clock's text alone; the bar's nod
 test("renderInfoBar: the relations group (and its hairline) only with a relation; the other groups keep their nodes", () => {
   const el = document.createElement("div");
   renderInfoBar(el, bare);
-  assert.equal(el.querySelector(".relations"), null);
+  assert.ok(el.querySelector(".relations") === null);
   assert.equal(el.querySelectorAll(".bar-sep").length, 1);
   const clock = el.querySelector(".session-time");
   renderInfoBar(el, { ...bare, participants: { text: "participants · invite", count: 0, present: false, title: "Invite" } });
@@ -132,7 +132,7 @@ test("renderInfoBar: the memories in the tooltip; no session, no bar", () => {
   assert.equal(el.title, "memories: a · preloaded: b");
   renderInfoBar(el, null);
   assert.equal(el.title, "");
-  assert.equal(el.querySelector(".meta"), null);
+  assert.ok(el.querySelector(".meta") === null);
 });
 
 test("memoriesTooltip: the used memories always, preloaded and muted when there are any", () => {
@@ -167,5 +167,5 @@ test("infoBarHtml: the ⚙ chip reads ⚙ alone while the session follows the mo
   assert.equal(gear.getAttribute("aria-label"), "Session settings");
   assert.equal(gear.previousElementSibling.className, "model");
   render(infoBarHtml({ ...bare, settings: { thinking: null, reasoningHistory: null, llmContext: null } }), div);
-  assert.equal(div.querySelector(".settings-chip"), null);
+  assert.ok(div.querySelector(".settings-chip") === null);
 });

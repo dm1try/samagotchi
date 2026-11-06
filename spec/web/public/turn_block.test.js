@@ -502,7 +502,7 @@ test("turnHistoryNodes: an answer bubble knows its message's display_refs (no in
   const bubbles = [...holder.querySelectorAll(".bubble.output")];
   assert.deepEqual(bubbles.map((b) => b.textContent), ["First, JIRA-7.", "Report says ABC-3.", "Plain."]);
   assert.deepEqual(bubbles.map((b) => answerRefsOf(b)), [refs, reply, null]);
-  assert.equal(holder.querySelector("[data-answer-at]"), null);
+  assert.ok(holder.querySelector("[data-answer-at]") === null);
 });
 
 test("turnHistoryNodes: a step's text knows its message's display_refs (a question's), as an answer does", () => {
@@ -518,7 +518,7 @@ test("turnHistoryNodes: a step's text knows its message's display_refs (a questi
   const texts = [...holder.querySelectorAll(".gen > .gen-text")];
   assert.deepEqual(texts.map((el) => el.textContent), ["Proceed with DEMO-123?", "Reading."]);
   assert.deepEqual(texts.map((el) => answerRefsOf(el)), [refs, null]);
-  assert.equal(holder.querySelector("[data-answer-at]"), null);
+  assert.ok(holder.querySelector("[data-answer-at]") === null);
 });
 
 test("turnHistoryNodes: a step's text with its message's rendered markdown shows it, keeping the text as written for stepText", () => {
@@ -580,7 +580,7 @@ test("turnHistoryNodes: a gap divider between turns 10+ quiet minutes apart (its
   const old = document.createElement("div");
   old.append(turnHistoryNodes([{ role: "user", content: "x" }, { role: "assistant", content: "y" }], normalizeTiming({}), { thumbs }));
   assert.equal(old.querySelector(".bubble.user").hasAttribute("title"), false);
-  assert.equal(old.querySelector(".time-gap"), null);
+  assert.ok(old.querySelector(".time-gap") === null);
 });
 
 test("turnHistoryNodes: an old session's turns get their divider from the turn records (started_at, duration_ms)", () => {

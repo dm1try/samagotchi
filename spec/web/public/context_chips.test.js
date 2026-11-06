@@ -76,12 +76,12 @@ test("popoverTemplate: why, a link for a URL hint, summary, age, error; detach o
   assert.equal(project.querySelector(".ctx-pop-kind").textContent, "project · pushed");
   assert.equal(project.querySelector("div.ctx-pop-hint").textContent, "not a url");
   assert.equal(project.querySelector('[data-act="detach"]').textContent, "mute here");
-  assert.equal(project.querySelector('[data-act="view"]'), null);
+  assert.ok(project.querySelector('[data-act="view"]') === null);
   // The text read: shown, and no view button.
   const read = drawn(popoverTemplate(row(), { text: "the diff", now: NOW }));
   assert.equal(read.querySelector(".ctx-pop-text").hidden, false);
   assert.equal(read.querySelector(".ctx-pop-text").textContent, "the diff");
-  assert.equal(read.querySelector('[data-act="view"]'), null);
+  assert.ok(read.querySelector('[data-act="view"]') === null);
 });
 
 // The web attaches nothing itself: no "+ URL" chip, whatever the server
@@ -132,7 +132,7 @@ test("a refresh redraws the chips in place: a focused chip keeps its node and fo
   sources = [row()];
   await c.ctl.refresh();
   assert.equal(c.pop.hidden, true);
-  assert.equal(c.el.querySelector(".open"), null);
+  assert.ok(c.el.querySelector(".open") === null);
   c.done();
 });
 
@@ -145,7 +145,7 @@ test("view text shows the row's text in the popover; a refresh keeps it", async 
   const pre = c.pop.querySelector(".ctx-pop-text");
   assert.equal(pre.hidden, false);
   assert.equal(pre.textContent, "the text");
-  assert.equal(c.pop.querySelector('[data-act="view"]'), null);
+  assert.ok(c.pop.querySelector('[data-act="view"]') === null);
   await c.ctl.refresh();
   same(c.pop.querySelector(".ctx-pop-text"), pre, "text");
   assert.equal(pre.textContent, "the text");

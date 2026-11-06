@@ -265,7 +265,7 @@ test("an open family popover drawn again with a row's status changed keeps that 
   same(row.querySelector(".fr-open"), open, "row button");
   same(document.activeElement, open, "focus");
   assert.match(open.title, /c1 · idle/);
-  assert.equal(row.querySelector(".owner"), null);
+  assert.ok(row.querySelector(".owner") === null);
 });
 
 test("familyPop: never narrower than 300 px nor past the window's right edge", () => {
@@ -299,5 +299,5 @@ test("a member inserted before the focused row (a grandchild, depth first): the 
   // Its session gone: no other row takes the focus.
   fam = family(del("c1", "p"), del("g1", "c1"));
   pop.refresh();
-  assert.equal(document.activeElement?.closest?.(".family-row"), null);
+  assert.ok(document.activeElement?.closest?.(".family-row") === null);
 });

@@ -104,7 +104,7 @@ test("refTarget: a write approval without a diff opens at line 1; a command appr
   assert.equal(refTarget(first).line, null);
   assert.equal(refTarget(second).path, "/p/two.rb");
   const command = approvalCard({ tool: "execute", command: "cat /p/a.rb", paths: ["/p/a.rb"], reason: "r" });
-  assert.equal(command.querySelector("[data-ref-kind]"), null);
+  assert.ok(command.querySelector("[data-ref-kind]") === null);
   write.remove();
   command.remove();
 });
@@ -115,7 +115,7 @@ test("refTarget: a diff line outside a row or a card, and a row without a ref, a
   const card = mount(`<div class="bubble question approval">${diffHtml(editRow.diff)}</div>`);
   assert.equal(refTarget(card.querySelector(".diff-line.diff-add")), null);
   const plain = mount(toolRowHtml({ ...editRow, ref: null }));
-  assert.equal(plain.querySelector("[data-ref-kind]"), null);
+  assert.ok(plain.querySelector("[data-ref-kind]") === null);
   assert.equal(refTarget(plain.querySelector(".diff-line.diff-add")), null);
   loose.remove();
   card.remove();
@@ -346,13 +346,13 @@ test("a tap opens the menu of the ref's targets; picking one runs it; a tap on a
   const calls = installed(page.root, () => current);
   page.link.dispatchEvent(new window.PointerEvent("pointerdown", { bubbles: true, pointerType: "touch" }));
   page.link.dispatchEvent(new window.MouseEvent("mouseover", { bubbles: true }));
-  assert.equal(document.querySelector(".ref-more"), null);
+  assert.ok(document.querySelector(".ref-more") === null);
   click(page.link);
   const menu = document.querySelector(".ref-menu");
   assert.deepEqual([...menu.querySelectorAll('[role="menuitem"]')].map((b) => b.textContent), ["PR diff", "Show in turn", "Copy path"]);
   assert.equal(page.link.getAttribute("aria-expanded"), "true");
   click(menu.querySelector('[data-target="show"]'));
-  assert.equal(document.querySelector(".ref-menu"), null);
+  assert.ok(document.querySelector(".ref-menu") === null);
   assert.deepEqual(calls, [["show", "/p/lib/a.rb", 11]]);
   tap(page.text);
   click(document.querySelector('.ref-menu [data-target="copy"]'));
@@ -361,7 +361,7 @@ test("a tap opens the menu of the ref's targets; picking one runs it; a tap on a
   assert.deepEqual(calls.slice(1), [["copy", "/p/lib/a.rb"], ["link", "https://github.com/acme/app/pull/4/files#diff-1R11"]]);
   current = viewer;
   tap(page.editRow.querySelector(".diff-line.diff-add"));
-  assert.equal(document.querySelector(".ref-menu"), null);
+  assert.ok(document.querySelector(".ref-menu") === null);
   assert.deepEqual(calls.at(-1), ["open", "vscode://file/p/lib/a.rb:11"]);
   cleanup(page.root);
 });
@@ -386,7 +386,7 @@ test("keyboard: Enter is the main target, ↓ opens the menu on its first target
   key(items[0], "ArrowUp");
   assert.equal(document.activeElement, items[2]);
   key(items[2], "Escape");
-  assert.equal(document.querySelector(".ref-menu"), null);
+  assert.ok(document.querySelector(".ref-menu") === null);
   assert.equal(document.activeElement, page.text);
   // A link's Enter is its own click (the browser's); ↓ still opens its menu.
   const enter = new window.KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true });
@@ -557,7 +557,7 @@ test("after a tap, Enter on a focused link is the link's own click, not the menu
   const event = new window.MouseEvent("click", { bubbles: true, cancelable: true, button: 0 });
   page.link.dispatchEvent(event);
   assert.equal(event.defaultPrevented, false);
-  assert.equal(document.querySelector(".ref-menu"), null);
+  assert.ok(document.querySelector(".ref-menu") === null);
   cleanup(page.root);
 });
 
@@ -811,7 +811,7 @@ test("rowTitleRef: the row's own ref, else its first plugin ref that binds, in r
   assert.equal(rowTitleRef({}), null);
   // Escaped like any ref's attributes.
   const root = mount(toolRowHtml({ ...ticketRow, refs: [{ kind: "file", target: { path: '/p/a"><img src=x onerror=alert(1)>.rb' } }] }));
-  assert.equal(root.querySelector("img"), null);
+  assert.ok(root.querySelector("img") === null);
   assert.equal(root.querySelector(".activity-params").dataset.refPath, '/p/a"><img src=x onerror=alert(1)>.rb');
   cleanup(root);
 });

@@ -47,8 +47,8 @@ test("the newest long answer offers its short version after its own rows, where 
   row.querySelector("button").click();
   assert.equal(asked, 1);
   assert.equal(row.querySelector("button").disabled, true);
-  assert.equal(history("short answer").historyEl.querySelector(".obj-short"), null);
-  assert.equal(history("x".repeat(3000), { canShorten: false }).historyEl.querySelector(".obj-short"), null);
+  assert.ok(history("short answer").historyEl.querySelector(".obj-short") === null);
+  assert.ok(history("x".repeat(3000), { canShorten: false }).historyEl.querySelector(".obj-short") === null);
 });
 
 test("a failed Short version can be tapped again", async () => {

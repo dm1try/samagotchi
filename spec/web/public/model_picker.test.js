@@ -90,7 +90,7 @@ test("a search marks the matched letters, escaped; no match says so", () => {
   p.button.click();
   p.type("a<");
   assert.match(p.markup(), /<span class="model-host">box<\/span><span class="model-dot"> · <\/span><mark>a&lt;<\/mark>b&gt;<\/span>/);
-  assert.equal(p.list.querySelector("mark b"), null);
+  assert.ok(p.list.querySelector("mark b") === null);
   assert.equal(p.activeRow(), "box · a<b>");
   p.type("zzz-none");
   assert.deepEqual(p.rows(), []);

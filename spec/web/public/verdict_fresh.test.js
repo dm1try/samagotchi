@@ -46,7 +46,7 @@ test("offers Verify fresh on an unclear card, marks it running once started, and
 
   assert.deepEqual(asked, ["check-1"]);
   assert.deepEqual(running, [{ of: "check-1", child_id: "child-id" }]);
-  assert.equal(card.querySelector(".verify-fresh-btn"), null);
+  assert.ok(card.querySelector(".verify-fresh-btn") === null);
   assert.equal(card.querySelector(".verify-fresh-running").textContent, "Verifying fresh… open its session");
   assert.equal(card.querySelector(".verify-fresh-running a").getAttribute("href"), "#/s/child-id");
   win.happyDOM.abort();
@@ -65,7 +65,7 @@ test("lands a fresh verdict on its original's card and ends the running check", 
 
   assert.equal(root.querySelectorAll(".verify-verdict").length, 1);
   assert.equal(card.querySelector(".verify-fresh-result").textContent, "fresh: ✅ confirmed — keys.rb hashes it · open its session");
-  assert.equal(card.querySelector(".verify-fresh-running"), null);
+  assert.ok(card.querySelector(".verify-fresh-running") === null);
   // Still unclear on its own: another fresh check may follow, and the
   // button says it is another one.
   assert.equal(card.querySelector(".verify-fresh-btn").textContent, "Verify fresh again");
@@ -78,12 +78,12 @@ test("a participant sees the running check and the fresh verdict without a link,
 
   const card = placeVerdictWithFresh(root, unclear, { who: "Owner" }, fresh);
   assert.equal(card.querySelector(".verify-fresh-running").textContent, "Verifying fresh…");
-  assert.equal(card.querySelector(".verify-fresh-running a"), null);
+  assert.ok(card.querySelector(".verify-fresh-running a") === null);
 
   const idle = { verdicts: [unclear, freshRecord], running: [], canStart: false, start: async () => ({ ok: true }), childHref: () => null };
   placeVerdictWithFresh(root, unclear, { who: "Owner" }, idle);
-  assert.equal(card.querySelector(".verify-fresh-btn"), null);
-  assert.equal(card.querySelector(".verify-fresh-result a"), null);
+  assert.ok(card.querySelector(".verify-fresh-btn") === null);
+  assert.ok(card.querySelector(".verify-fresh-result a") === null);
   assert.equal(card.querySelectorAll(".verify-fresh").length, 1);
   win.happyDOM.abort();
 });
@@ -108,7 +108,7 @@ test("offers nothing on a confirmed or refuted card, and says why a start was re
   const refuted = { ...unclear, verdict: "refuted", check_turn_id: "check-3" };
   const refusing = { verdicts: [], running: [], canStart: true, start: async () => ({ ok: false, error: "cap reached" }) };
   const card = placeVerdictWithFresh(root, refuted, { who: "You" }, refusing);
-  assert.equal(card.querySelector(".verify-fresh"), null);
+  assert.ok(card.querySelector(".verify-fresh") === null);
 
   const open = placeVerdictWithFresh(root, unclear, { who: "You" }, refusing);
   open.querySelector(".verify-fresh-btn").click();
@@ -140,7 +140,7 @@ test("a start error is kept in the page's errors, so a redraw with fresh cards s
   again.querySelector(".verify-fresh-btn").click();
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(errors["check-1"], undefined);
-  assert.equal(again.querySelector(".verify-fresh-error"), null);
+  assert.ok(again.querySelector(".verify-fresh-error") === null);
   win.happyDOM.abort();
 });
 
@@ -151,6 +151,6 @@ test("redrawFresh follows a gate that flipped: the disabled button becomes start
   assert.equal(card.querySelector(".verify-fresh-btn").disabled, true);
   redrawFresh(root, { verdicts: [], running: [], canStart: true, start: async () => ({ ok: true }) });
   assert.equal(card.querySelector(".verify-fresh-btn").disabled, false);
-  assert.equal(card.querySelector(".verify-fresh-unavailable"), null);
+  assert.ok(card.querySelector(".verify-fresh-unavailable") === null);
   win.happyDOM.abort();
 });

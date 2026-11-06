@@ -118,8 +118,8 @@ test("a turn's roots: its opening's and its replies', up to the next turn", () =
   assert.equal(turn.anchor.dataset.turnId, TURN);
   assert.deepEqual(turn.roots.map((r) => r.textContent), ["Check the count", "The count is wrong in a.rb."]);
   assert.deepEqual(turnRoots(div, "ffff", ".p-bubble").roots.map((r) => r.textContent), ["And b?", "The count is wrong in b.rb too."]);
-  assert.equal(turnRoots(div, "99999999", ".p-bubble"), null);
-  assert.equal(turnRoots(div, "", ".p-bubble"), null);
+  assert.ok(turnRoots(div, "99999999", ".p-bubble") === null);
+  assert.ok(turnRoots(div, "", ".p-bubble") === null);
 });
 
 test("the turn a node is in: the last opening at or before it", () => {

@@ -111,7 +111,7 @@ test("a pick applies at once and keeps the panel open; default unsets it", (t) =
 test("Apply and budget: a disclosure, open when the choice has them; a bad budget's error, an edit clears it", (t) => {
   const p = panel(t);
   p.button.click();
-  assert.equal(p.pop.querySelector(".sset-ctx-form"), null);
+  assert.ok(p.pop.querySelector(".sset-ctx-form") === null);
   assert.ok(p.pop.querySelector(".sset-ctx-more [data-act=ctx-more]"));
   p.act("ctx-more");
   const form = p.pop.querySelector(".sset-ctx-form");
@@ -174,7 +174,7 @@ test("the review view: ‹ back, an open quote's error, Set returns with the fil
   p.act("review");
   assert.ok(document.activeElement === p.pop.querySelector("textarea"));
   p.act("back");
-  assert.equal(p.pop.querySelector("textarea"), null);
+  assert.ok(p.pop.querySelector("textarea") === null);
   p.act("review");
   p.pop.querySelector("textarea").value = '"docs/my plan';
   p.submit("form.rs-form");
@@ -205,7 +205,7 @@ test("a closed panel opens on the main view again; refuse opens the review view 
   assert.equal(p.button.getAttribute("aria-expanded"), "false");
   p.button.click();
   assert.equal(p.button.getAttribute("aria-expanded"), "true");
-  assert.equal(p.pop.querySelector("textarea"), null);
+  assert.ok(p.pop.querySelector("textarea") === null);
   p.ctl.refuse("x.md: no such file");
   assert.equal(p.pop.querySelector(".ctx-pop-error").textContent, "x.md: no such file");
   assert.equal(p.pop.querySelector("textarea").getAttribute("aria-invalid"), "true");

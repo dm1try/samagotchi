@@ -68,7 +68,7 @@ test("createTurnBlock: a live step is open, 'step N', its narration streaming; n
   assert.equal(el.className, "gen live");
   assert.equal(el.open, true);
   assert.equal(el.querySelector(":scope > summary").textContent, "step 1");
-  assert.equal(el.querySelector(".gen-text"), null);
+  assert.ok(el.querySelector(".gen-text") === null);
   turnBlock.chunk({ text: "One. Two", iteration: 1 });
   turnBlock.flush();
   assert.deepEqual([...el.querySelectorAll(".gen-text.streaming .narration .sentence")].map((s) => s.textContent), ["One."]);

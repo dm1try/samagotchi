@@ -97,6 +97,6 @@ test("installCopy: code blocks get a copy button in answers and delegate reports
   const [answer, report, prompt] = history.querySelectorAll(".bubble");
   assert.ok(answer.querySelector(".code-wrap > .copy-code"));
   assert.ok(report.querySelector(".code-wrap > .copy-code"));
-  assert.equal(prompt.querySelector(".copy-code"), null);
+  assert.ok(prompt.querySelector(".copy-code") === null);
   history.remove();
 });

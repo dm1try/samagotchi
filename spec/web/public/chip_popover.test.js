@@ -49,7 +49,7 @@ test("the shell is a hidden dialog on the body; the chip opens and closes it, a 
   s.ctl.refresh();
   s.chip.click();
   assert.equal(s.ctl.isOpen(), false);
-  assert.equal(s.ctl.pop.querySelector("form"), null);
+  assert.ok(s.ctl.pop.querySelector("form") === null);
   assert.deepEqual(s.calls, [["show", true], ["show", false], ["close"]]);
   s.done();
 });

@@ -35,7 +35,7 @@ test("the project picker preserves row order and marks current/default rows with
   assert.equal(host.querySelector("#projectAll").getAttribute("href"),
     "/?scope=all&from=/home/me/samagotchi/lib");
   // The all row's caption is a label, not a path: no .project-root (the monospace path style).
-  assert.equal(host.querySelector("#projectAll .project-root"), null);
+  assert.ok(host.querySelector("#projectAll .project-root") === null);
   assert.equal(host.querySelector("#projectAll .project-hint").textContent, "Every session");
 });
 

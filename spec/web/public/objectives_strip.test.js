@@ -67,7 +67,7 @@ test("a tap on the text edits it; Esc takes the edit back, Save posts it", async
   const input = pop().querySelector('form[data-id="O2"] input');
   assert.equal(input.value, "Stops before checkout");
   input.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
-  assert.equal(pop().querySelector('form[data-id="O2"]'), null);
+  assert.ok(pop().querySelector('form[data-id="O2"]') === null);
   assert.equal(pop().hidden, false);
   pop().querySelector('[data-row="O2"] .obj-row-text').click();
   pop().querySelector('form[data-id="O2"] input').value = "Stops at the cart";
@@ -109,7 +109,7 @@ test("Not yet sends one message, from a row with a move or by id; a row with no 
   ] });
   el.querySelector(".obj-edit").click();
   const pop = document.getElementById("objectivesPanel");
-  assert.equal(pop.querySelector('[data-row="O2"] [data-obj-act="notyet"]'), null);
+  assert.ok(pop.querySelector('[data-row="O2"] [data-obj-act="notyet"]') === null);
   pop.querySelector('[data-row="O1"] [data-obj-act="notyet"]').click();
   control.notYet("O2");
   control.notYet("O9");
@@ -127,7 +127,7 @@ test("Save with a blank text takes the edit back, and the panel stays", async ()
   pop().querySelector('form[data-id="O2"]').dispatchEvent(new window.Event("submit", { bubbles: true, cancelable: true }));
   await settle();
   assert.deepEqual(lines, []);
-  assert.equal(pop().querySelector('form[data-id="O2"]'), null);
+  assert.ok(pop().querySelector('form[data-id="O2"]') === null);
   assert.equal(pop().hidden, false);
   control.reset();
 });
@@ -163,7 +163,7 @@ test("Check this: only with a move; posts its line, and a running or finished ch
   control.seed({ items: [{ id: "O1", text: "A", status: "active", move: { note: "did it", evidence: "" } },
                          { id: "O2", text: "B", status: "active" }], pending: false });
   el.querySelector(".obj-edit").click();
-  assert.equal(pop().querySelector('[data-row="O2"] [data-obj-act="check"]'), null);
+  assert.ok(pop().querySelector('[data-row="O2"] [data-obj-act="check"]') === null);
   pop().querySelector('[data-row="O1"] [data-obj-act="check"]').click();
   await settle();
   assert.deepEqual(lines, ["/objectives check O1"]);
@@ -184,7 +184,7 @@ test("a check on a dropped objective isn't offered", () => {
   const { el, control, pop } = strip();
   control.seed({ items: [{ id: "O1", text: "A", status: "dropped", move: { note: "x", evidence: "" } }, { id: "O2", text: "B", status: "active" }], pending: false });
   el.querySelector(".obj-edit").click();
-  assert.equal(pop().querySelector('[data-row="O1"] [data-obj-act="check"]'), null);
+  assert.ok(pop().querySelector('[data-row="O1"] [data-obj-act="check"]') === null);
 });
 
 test("a running check lets go when it expires, with no event: the row goes and the button is back", async () => {
@@ -194,7 +194,7 @@ test("a running check lets go when it expires, with no event: the row goes and t
   el.querySelector(".obj-edit").click();
   assert.equal(pop().querySelector('[data-row="O1"] .obj-check').textContent, "Checking…");
   await new Promise((resolve) => setTimeout(resolve, 80));
-  assert.equal(pop().querySelector('[data-row="O1"] .obj-check'), null);
+  assert.ok(pop().querySelector('[data-row="O1"] .obj-check') === null);
   assert.equal(pop().querySelector('[data-row="O1"] [data-obj-act="check"]').disabled, false);
   control.reset();
 });

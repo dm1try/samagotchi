@@ -59,7 +59,7 @@ test("a reloaded turn's elements stop at a wake's note: a wake turn's rows look 
   const { cards } = harness(h);
   cards.placeSnapshotCards([{ type: "hook_notice", in_turn: true, iteration: 1, hook: "h", text: "in wake", turns_since: 0 }]);
   const [first, wake] = h.querySelectorAll(".turn-work");
-  assert.equal(first.querySelector(".hook-notice"), null);
+  assert.ok(first.querySelector(".hook-notice") === null);
   assert.ok(wake.querySelector(".gen .activity-body .hook-notice").textContent.endsWith("in wake"));
 });
 
@@ -83,7 +83,7 @@ test("a card is added once, then updated in place by its id", (t) => {
   const h = history('<div class="hint">No output yet.</div>');
   const { cards } = harness(h);
   cards.upsertCard({ id: "c1", title: "Check", body: "first" });
-  assert.equal(h.querySelector(".hint"), null);
+  assert.ok(h.querySelector(".hint") === null);
   const el = cards.cardElement("c1");
   assert.ok(el);
   cards.upsertCard({ id: "c1", title: "Check", body: "second" });

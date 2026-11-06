@@ -76,14 +76,14 @@ test("a prompt bubble's state badge and delivery", () => {
   assert.ok(b.classList.contains("steered") && !b.classList.contains("queued"));
   setBubbleState(b, null);
   assert.equal(b.dataset.userState, undefined);
-  assert.equal(b.querySelector(".state-badge"), null);
+  assert.ok(b.querySelector(".state-badge") === null);
 });
 
 test("an own echo is tagged by its turn_enqueued, started by its turn_started; another client's is added", () => {
   const { historyEl, bubbles } = harness();
   historyEl.append(hintEl("No output yet. Send a message."));
   const echo = bubbles.makeUserBubble("do it", { state: "queued", own: true });
-  assert.equal(historyEl.querySelector(".hint"), null);
+  assert.ok(historyEl.querySelector(".hint") === null);
   bubbles.applyPromptOps({ type: "turn_enqueued", enqueued_id: "e1", prompt: "do it", client_id: "me" });
   assert.equal(echo.dataset.enqueuedId, "e1");
   assert.ok(bubbles.bubbleById("e1") === echo);

@@ -284,7 +284,7 @@ test("a recommended option: marked with a tag, shown without the mark, answered 
   assert.equal(other.classList.contains("recommended"), false);
   assert.equal(rec.children[1].textContent, "Raise an error");
   assert.equal(rec.querySelector(".question-option-tag").textContent, "recommended");
-  assert.equal(other.querySelector(".question-option-tag"), null);
+  assert.ok(other.querySelector(".question-option-tag") === null);
   assert.deepEqual(card.querySelectorAll(".question-option input").map((i) => [i.value, i.checked]),
     [["Raise an error (Recommended)", false], ["Ignore them", false]]);
   rec.querySelector("input").checked = true;
@@ -301,7 +301,7 @@ test("an approval's options are never marked recommended", () => {
   cards.renderQuestion({ id: "a1", kind: "approval", question: "Run it?", options: ["Allow (Recommended)", "Deny"],
     approval: { tool: "execute", command: "ls" } });
   const card = cards.questionCard();
-  assert.equal(card.querySelector(".question-option.recommended"), null);
+  assert.ok(card.querySelector(".question-option.recommended") === null);
   assert.equal(card.querySelector(".question-option").children[1].textContent, "Allow (Recommended)");
 });
 
@@ -425,9 +425,9 @@ test("a step-limit question: Continue and Stop buttons, a reason for Stop, no Di
   assert.equal(card.querySelector(".question-text").textContent, STEP_LIMIT.question);
   assert.deepEqual(card.querySelectorAll(".question-choice").map((b) => b.textContent), ["Continue", "Stop"]);
   assert.equal(card.querySelector(".continue-reason").placeholder, "Stop, because… (the model reads it)");
-  assert.equal(card.querySelector(".question-dismiss"), null);
-  assert.equal(card.querySelector(".question-submit"), null);
-  assert.equal(card.querySelector(".question-option"), null);
+  assert.ok(card.querySelector(".question-dismiss") === null);
+  assert.ok(card.querySelector(".question-submit") === null);
+  assert.ok(card.querySelector(".question-option") === null);
 
   card.querySelector(".continue-yes").click();
   assert.deepEqual(calls[0], ["sendAnswer", "s1", { id: "c1", selected: ["Continue"] }]);

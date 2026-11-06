@@ -66,7 +66,7 @@ test("footprintNode: a span for a turn that touched something, none otherwise; h
   assert.equal(foot.tagName, "SPAN");
   assert.equal(foot.getAttribute("role"), "button");
   assert.match(foot.getAttribute("aria-label"), /^Working set of this turn: x\.rb\. Open the list\.$/);
-  assert.equal(footprintNode([], 2), null);
+  assert.ok(footprintNode([], 2) === null);
   assert.deepEqual(handOffOrder({ prompt: "P", block: "B", footprint: "F", answer: ["A"] }), ["P", "B", "A"]);
 });
 
@@ -102,10 +102,10 @@ test("the info bar: off, the mem chip and the memories tooltip; on, the set chip
   const div = document.createElement("div");
   renderInfoBar(div, bar());
   assert.equal(div.querySelector(".mem-chip").textContent, "mem 2");
-  assert.equal(div.querySelector(".ws-chip"), null);
+  assert.ok(div.querySelector(".ws-chip") === null);
   assert.match(div.title, /^memories: a, b/);
   renderInfoBar(div, bar({ workingSet: { chip: { n: 5, changed: true } } }));
-  assert.equal(div.querySelector(".mem-chip"), null);
+  assert.ok(div.querySelector(".mem-chip") === null);
   assert.equal(div.querySelector(".ws-chip").textContent, "set 5");
   assert.ok(div.querySelector(".ws-chip").classList.contains("changed"));
   assert.equal(div.title, "");
@@ -114,7 +114,7 @@ test("the info bar: off, the mem chip and the memories tooltip; on, the set chip
   assert.equal(div.querySelector(".ws-chip").textContent, "set 0");
   assert.ok(div.querySelector(".ws-chip").classList.contains("empty"));
   assert.match(div.querySelector(".ws-chip").title, /^Working set: nothing this session brought into context yet /);
-  assert.equal(div.querySelector(".mem-chip"), null);
+  assert.ok(div.querySelector(".mem-chip") === null);
   // The status word in its own span (its sizers are CSS's): the text is the word alone.
   assert.equal(div.querySelector(".status").textContent, "idle");
   const frag = document.createElement("div");
@@ -160,13 +160,13 @@ test("the server's snapshot: kept by its at, overlaid on every form, the footpri
   ws.update({ items: [{ kind: "file", key: "/p/lib/a.rb", state: "stale", tokens: 90 }], at: 7 });
   assert.ok(foot.querySelector(".l.stale"));
   assert.equal(foot.querySelector(".s").textContent, "1 stale");
-  assert.equal(foot.querySelector(".f"), null);
+  assert.ok(foot.querySelector(".f") === null);
 
   // A newer one where it is live again: the strike goes.
   ws.update({ items: [{ kind: "file", key: "/p/lib/a.rb", state: "live", tokens: 90 }], at: 8 });
-  assert.equal(foot.querySelector(".l.forgotten"), null);
-  assert.equal(foot.querySelector(".f"), null);
-  assert.equal(foot.querySelector(".s"), null);
+  assert.ok(foot.querySelector(".l.forgotten") === null);
+  assert.ok(foot.querySelector(".f") === null);
+  assert.ok(foot.querySelector(".s") === null);
   historyEl.remove();
   infoEl.remove();
 });
@@ -315,7 +315,7 @@ test("pending ops come from command_queued (any client's), net with their invers
   assert.equal(sent.at(-1), "/working-set undrop /p/lib/b.rb");
   ws.commandRan({ command_id: "c1" });
   ws.commandRan({ command_id: "c2" });
-  assert.equal(pop.querySelector(".ws-pending"), null);
+  assert.ok(pop.querySelector(".ws-pending") === null);
   // A reload's seed drops them: the snapshot's replay brings them again.
   ws.commandQueued({ command_id: "c3", line: "/working-set drop /p/lib/b.rb", waits: "turn_end" });
   assert.equal(ws.pending().size, 1);
@@ -328,7 +328,7 @@ test("pending ops come from command_queued (any client's), net with their invers
 
 test("pin shows only under forget; a pinned row has its 📌, unpin and a greyed drop, under any strategy", () => {
   const none = steeringView();
-  assert.equal(none.pop.querySelector('[data-op="pin"]'), null, "no forget layer: no pin");
+  assert.ok(none.pop.querySelector('[data-op="pin"]') === null, "no forget layer: no pin");
   none.ws.popover.close();
   none.infoEl.remove();
   none.pop.remove();
@@ -350,10 +350,10 @@ test("pin shows only under forget; a pinned row has its 📌, unpin and a greyed
   // A drop queued after it (another client's) is refused by the worker: the pin stays pending (no drop offered).
   ws.commandQueued({ command_id: "p2", line: "/working-set drop /p/lib/b.rb", waits: "turn_end" });
   assert.equal(row("b.rb").querySelector(".ws-pend").textContent, "applies next turn");
-  assert.equal(row("b.rb").querySelector('[data-op="drop"]'), null);
+  assert.ok(row("b.rb").querySelector('[data-op="drop"]') === null);
   // A pinned row's queued drop isn't pending either.
   ws.commandQueued({ command_id: "p3", line: "/working-set drop /p/lib/a.rb", waits: "turn_end" });
-  assert.equal(row("a.rb").querySelector(".ws-pend"), null);
+  assert.ok(row("a.rb").querySelector(".ws-pend") === null);
   assert.equal(row("a.rb").querySelector('[data-op="drop"]').disabled, true);
   row("b.rb").querySelector('[data-ws="steer"]').click();
   assert.equal(sent.at(-1), "/working-set unpin /p/lib/b.rb");
@@ -365,13 +365,13 @@ test("pin shows only under forget; a pinned row has its 📌, unpin and a greyed
 test("a strategy change (/llm-context's command_ran) redraws the open list: pin comes and goes with forget", () => {
   const llmContext = { strategy: "none" };
   const { ws, pop, row, infoEl } = steeringView({ llmContext });
-  assert.equal(row("a.rb").querySelector('[data-op="pin"]'), null);
+  assert.ok(row("a.rb").querySelector('[data-op="pin"]') === null);
   llmContext.strategy = "stale,forget";
   ws.strategyChanged();
   assert.ok(row("a.rb").querySelector('[data-op="pin"]'));
   llmContext.strategy = "none";
   ws.strategyChanged();
-  assert.equal(row("a.rb").querySelector('[data-op="pin"]'), null);
+  assert.ok(row("a.rb").querySelector('[data-op="pin"]') === null);
   ws.popover.close();
   infoEl.remove();
   pop.remove();
@@ -394,7 +394,7 @@ test("a pinned row keeps its unpin without the forget layer (its drop waits for 
   ws.update({ items: [{ kind: "file", key: "/p/lib/a.rb", state: "live", tokens: 40, pinned: true }, { kind: "file", key: "/p/lib/b.rb", state: "live", tokens: 9 }], at: 4 });
   assert.ok(row("a.rb").querySelector(".ws-pin"));
   assert.ok(row("a.rb").querySelector('[data-op="unpin"]'));
-  assert.equal(row("b.rb").querySelector('[data-op="pin"]'), null);
+  assert.ok(row("b.rb").querySelector('[data-op="pin"]') === null);
   ws.popover.close();
   infoEl.remove();
   pop.remove();
@@ -446,8 +446,8 @@ test("+ add: the list's foot posts what was typed; the added item is a pending +
     // The next turn's first request sent the note: no adds, nothing pending.
     ws.commandRan({ command_id: "c1" });
     ws.update({ items: [{ kind: "file", key: "/p/lib/a.rb", state: "live", tokens: 40 }], at: 7 });
-    assert.equal(row("lib/new file.rb"), undefined);
-    assert.equal(pop.querySelector(".ws-pending"), null);
+    assert.ok(row("lib/new file.rb") === undefined);
+    assert.ok(pop.querySelector(".ws-pending") === null);
   } finally {
     ws.popover.close();
     infoEl.remove();
@@ -459,7 +459,7 @@ test("a stale or forgotten row offers refresh (an add of it); pending, it reads 
   const { ws, pop, sent, row, infoEl } = steeringView();
   try {
     ws.update({ items: [{ kind: "file", key: "/p/lib/a.rb", state: "stale", tokens: 40 }, { kind: "file", key: "/p/lib/b.rb", state: "live", tokens: 9 }], at: 5 });
-    assert.equal(row("b.rb").querySelector('[data-op="add"]'), null);
+    assert.ok(row("b.rb").querySelector('[data-op="add"]') === null);
     const refresh = row("a.rb").querySelector('[data-op="add"]');
     assert.equal(refresh.textContent, "refresh");
     refresh.click();

@@ -52,7 +52,7 @@ test("authLost reloads once (the proxy's sign-in brings the user back), stamping
   authLost("again");
   assert.deepEqual(reloads, [1]);
   assert.equal(store.get(AUTH_RELOAD_KEY), "1000000");
-  assert.equal(window.document.getElementById("authLost"), null);
+  assert.ok(window.document.getElementById("authLost") === null);
 });
 
 test("authLost within a minute of the last reload shows the banner with Reload instead (no reload loop)", () => {

@@ -38,8 +38,8 @@ test("push devices: the sheet shows this device's switch (never Remove), Remove 
   assert.deepEqual(rows.map((r) => r.dataset.id), ["a1b2c3d4", "9f8e7d6c"]);
   assert.ok(rows[0].querySelector(".pd-tag").textContent.includes("this device"));
   assert.ok(rows[0].querySelector('[data-pd="this"]'));
-  assert.equal(rows[0].querySelector('[data-pd="remove"]'), null);
-  assert.equal(rows[1].querySelector('[data-pd="this"]'), null);
+  assert.ok(rows[0].querySelector('[data-pd="remove"]') === null);
+  assert.ok(rows[1].querySelector('[data-pd="this"]') === null);
   assert.equal(rows[1].querySelector('[data-pd="remove"]').dataset.id, "9f8e7d6c");
   assert.equal(rows.map((r) => r.querySelectorAll('[data-pd="done"]').length).join(), "1,1");
   assert.match(div.textContent, /2 more devices from an earlier address/);
@@ -53,7 +53,7 @@ test("push devices: off, this device's row says so and has no done switch; denie
   const div = document.createElement("div");
   div.innerHTML = markupOf(sheetTemplate(off));
   const first = div.querySelector(".pd-row");
-  assert.equal(first.querySelector('[data-pd="done"]'), null);
+  assert.ok(first.querySelector('[data-pd="done"]') === null);
   assert.match(first.textContent, /off: nothing is pushed here/);
   const denied = sheetModel({ state: "denied", info: info([]), now: NOW });
   assert.ok(denied.denied);

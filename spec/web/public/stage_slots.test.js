@@ -286,7 +286,7 @@ test("drawAsking without refs: the ref pass gets none; reset forgets them", asyn
   slots.reset();
   slots.drawAsking("DEMO-123?");
   assert.deepEqual(calls, [[TICKET], null]);
-  assert.equal(asking.querySelector("[data-ref-kind]"), null);
+  assert.ok(asking.querySelector("[data-ref-kind]") === null);
   slots.drawAsking("DEMO-123?", []);
   assert.deepEqual(calls, [[TICKET], null]);
 });

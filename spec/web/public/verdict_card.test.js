@@ -52,7 +52,7 @@ test("keeps all card content as text and updates an unnamed author when their na
   const card = placeVerdict(root, record, { who: "A participant", author: "p:alex" });
   assert.equal(card.querySelector(".verify-verdict-quote").textContent, "<script>claim</script>");
   assert.equal(card.querySelector(".verify-verdict-reason").textContent, "<img src=x>");
-  assert.equal(card.querySelector("img"), null);
+  assert.ok(card.querySelector("img") === null);
   nameVerdictCards(root, (author) => author === "p:alex" ? "Alex" : null);
   assert.equal(card.querySelector(".verify-verdict-who").textContent, "Alex");
   win.happyDOM.abort();

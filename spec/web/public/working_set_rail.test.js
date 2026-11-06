@@ -75,7 +75,7 @@ test("the rail marks a line with a pending op (dashed, its title says it), in pl
   assert.ok(a.classList.contains("pending"));
   assert.match(a.title, /drops next turn$/);
   assert.equal(line("b.rb").classList.contains("pending"), false);
-  assert.equal(s.r.el.querySelector("button.ws-act-b"), null);
+  assert.ok(s.r.el.querySelector("button.ws-act-b") === null);
   s.r.draw(items("a.rb", "b.rb"), { now: 0, pending: new Map() });
   assert.equal(a.classList.contains("pending"), false);
   s.done();

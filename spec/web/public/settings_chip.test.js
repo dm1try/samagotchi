@@ -182,7 +182,7 @@ test("the disclosure opens with an own apply or budget; its Set runs the changed
   form.elements.budget.dispatchEvent(new window.Event("input", { bubbles: true }));
   assert.equal(c.pop.querySelector(".ctx-pop-error").hidden, true);
   c.tap("ctx-more");
-  assert.equal(c.pop.querySelector(".sset-ctx-form"), null);
+  assert.ok(c.pop.querySelector(".sset-ctx-form") === null);
   c.done();
 });
 

@@ -108,8 +108,8 @@ test("linkRefs wraps refs in a rendered answer: text and inline code alone; pre,
     ["lib/foo.rb:3-5", "file", "/p/lib/foo.rb", "3", "5"],
   ]);
   assert.equal(el.querySelector(".ref code")?.textContent, "lib/foo.rb:3-5");
-  assert.equal(el.querySelector("pre .ref"), null);
-  assert.equal(el.querySelector("a .ref"), null);
+  assert.ok(el.querySelector("pre .ref") === null);
+  assert.ok(el.querySelector("a .ref") === null);
   assert.equal(el.querySelector("a").getAttribute("href"), "https://github.com/acme/app/pull/1/files#x");
   assert.match(el.textContent, /See lib\/foo\.rb:12 and lib\/foo\.rb:3-5, not cat lib\/foo\.rb:3\./);
 });

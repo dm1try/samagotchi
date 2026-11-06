@@ -155,12 +155,12 @@ test("detach keeps the turn id, drop forgets it; both stop the ticker and let th
   const { timing, page } = setup();
   timing.start(T0, "T1");
   timing.detach();
-  assert.equal(timing.el, null);
+  assert.ok(timing.el === null);
   assert.equal(timing.turnId, "T1");
   assert.equal(page.timers.size, 0);
   timing.start(T0, "T2");
   timing.drop();
-  assert.equal(timing.el, null);
+  assert.ok(timing.el === null);
   assert.equal(timing.turnId, null);
   assert.equal(page.timers.size, 0);
 });

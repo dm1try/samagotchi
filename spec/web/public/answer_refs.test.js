@@ -71,7 +71,7 @@ test("pass 3: a match split by emphasis or across nodes isn't paired; pre, code 
   const code = refs.find((r) => r.tagName === "SPAN" && r.querySelector("code"));
   assert.equal(code.textContent, "JIRA-1");
   assert.equal(idOf(code), "JIRA-1");
-  assert.equal(el.querySelector("pre [data-ref-kind]"), null);
+  assert.ok(el.querySelector("pre [data-ref-kind]") === null);
   assert.equal(boundRef(el.querySelector('[data-ref-kind="file"]')), null);
   el.remove();
 });
@@ -212,7 +212,7 @@ test("applyFinalAnswer without html (web.markdown off): the bubble keeps its tex
   const refs = [issue("JIRA-1")];
   assert.equal(applyFinalAnswer([{ role: "assistant", content: "See <b>JIRA-1</b>.", display_refs: refs }], [live], normalize), live);
   assert.equal(live.textContent, "See <b>JIRA-1</b>.");
-  assert.equal(live.querySelector("b"), null);
+  assert.ok(live.querySelector("b") === null);
   assert.equal(live.classList.contains("markdown"), false);
   assert.deepEqual(answerRefsOf(live), refs);
   pairAnswerRefs(live);

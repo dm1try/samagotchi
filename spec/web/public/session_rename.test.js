@@ -62,7 +62,7 @@ test("open: an input at the end of body over the title row, prefilled, focused; 
   h.input().value = "Release day";
   h.key("Enter");
   assert.deepEqual(h.sent, ["/title Release day"]);
-  assert.equal(h.input(), null);
+  assert.ok(h.input() === null);
   assert.equal(h.page.closes, 1);
 });
 
@@ -70,12 +70,12 @@ test("open does nothing with no title on screen or no session", () => {
   const h = harness();
   h.page.anchor = null;
   h.rename.open();
-  assert.equal(h.input(), null);
+  assert.ok(h.input() === null);
   assert.equal(h.page.popoversClosed, 0);
   h.page.anchor = h.row;
   h.page.id = null;
   h.rename.open();
-  assert.equal(h.input(), null);
+  assert.ok(h.input() === null);
 });
 
 test("the placeholder is the title as shown (an untitled chain link's is its chain's)", () => {
@@ -102,13 +102,13 @@ test("empty clears; the same title, Esc, or another session opened meanwhile sen
   h.rename.open();
   h.input().value = "Other";
   h.key("Escape");
-  assert.equal(h.input(), null);
+  assert.ok(h.input() === null);
   assert.deepEqual(h.sent, ["/title --clear"]);
 
   h.rename.open();
   h.page.id = "s2";
   h.rename.follow("s2");
-  assert.equal(h.input(), null);
+  assert.ok(h.input() === null);
 });
 
 test("Esc gives the focus back to the ✎ in the title row as drawn now", () => {
@@ -129,7 +129,7 @@ test("leaving the field saves what was typed, once; Esc then blur, or a switch, 
   h.input().value = "Typed on a phone";
   h.input().dispatchEvent(new window.Event("blur"));
   assert.deepEqual(h.sent, ["/title Typed on a phone"]);
-  assert.equal(h.input(), null);
+  assert.ok(h.input() === null);
 
   h.rename.open();
   const el = h.input();
@@ -144,7 +144,7 @@ test("leaving the field saves what was typed, once; Esc then blur, or a switch, 
   h.page.id = "s2";
   h.input().dispatchEvent(new window.Event("blur"));
   assert.deepEqual(h.sent, ["/title Typed on a phone"]);
-  assert.equal(h.input(), null);
+  assert.ok(h.input() === null);
 });
 
 test("reposition follows the title row; with it gone the input closes unsent", () => {
@@ -157,7 +157,7 @@ test("reposition follows the title row; with it gone the input closes unsent", (
   el.value = "Half typed";
   h.page.anchor = null;
   h.rename.reposition();
-  assert.equal(h.input(), null);
+  assert.ok(h.input() === null);
   assert.equal(h.page.closes, 1);
   el.dispatchEvent(new window.Event("blur"));
   assert.deepEqual(h.sent, []);
