@@ -349,4 +349,117 @@ RSpec.describe Samagotchi::MemoryBundle::Manifest do
         .to raise_error(described_class::ValidationError, /holds only its includes/)
     end
   end
+
+  describe "the keys this chi reads, and the release each one came in" do
+    # Manifest#initialize's own body, from its def to the line that ends it:
+    # every raw["…"] there is a key chi reads. parse_plugin's raw["file"] and
+    # raw["sha256"] sit past that end, so they aren't caught here.
+    def initialize_body
+      file, line = described_class.instance_method(:initialize).source_location
+      lines = File.readlines(file)
+      indent = lines[line - 1][/\A */].size
+      # The method's own end, at the def's indentation, closes it: an inner
+      # if's end is deeper.
+      lines[(line - 1)..].take_while { |text| text.strip != "end" || text[/\A */].size != indent }
+    end
+
+    def manifest(attrs) = described_class.new(path: write_manifest(attrs))
+
+    it "lists every key its parser reads and nothing else" do
+      read = initialize_body.flat_map { |line| line.scan(/\braw\[["']([a-z_]+)["']\]/) }.flatten.uniq
+      expect(read - described_class::KEYS).to eq([])
+      # name and version arrive through require_str; requires_chi_next is the
+      # release tooling's marker (docs/releasing.md), read nowhere in Manifest.
+      expect(described_class::KEYS - read).to eq(%w[name version requires_chi_next])
+    end
+
+    it "has a floor for every key newer than the first release (v0.2.0, read from git)" do
+      first_release = %w[name version scope description files hooks trust_level plugin requires_chi needs]
+      expect(described_class::KEYS - first_release - described_class::SINCE.keys - ["requires_chi_next"]).to eq([])
+      expect(described_class::SINCE.keys.reject { |key| described_class::KEYS.include?(key.split(".").first) }).to eq([])
+    end
+
+    it "reports a key this chi doesn't read, in the order the manifest lists them" do
+      path = File.join(tmpdir, "manifest.yml")
+      File.write(path, <<~YAML)
+        name: future-bundle
+        version: 1.0.0
+        card_layouts: [cards, panels]
+        files:
+          identity.md: sha256:aa
+        api_version: 3
+      YAML
+      expect(described_class.new(path: path).unknown_keys).to eq(%w[card_layouts api_version])
+    end
+
+    it "has no unknown key for a manifest that uses every key chi knows" do
+      manifest = manifest({
+        "scope" => "system",
+        "description" => "all of them",
+        "files" => { "identity.md" => "sha256:aa" },
+        "hooks" => { "h.rb" => { "event" => "after_turn" } },
+        "trust_level" => "reviewed",
+        "plugin" => { "file" => "plugin.rb", "sha256" => "sha256:bb" },
+        "requires_chi" => ">= 0.151.0",
+        "requires_chi_next" => true,
+        "needs" => ["gh"],
+        "scripts" => { "draw.js" => "sha256:cc" },
+        "context_providers" => [{ "match" => "x", "name" => "n", "cmd" => "c" }],
+        "block_renderers" => [{ "lang" => "mermaid", "load" => ["draw.js"] }],
+        "session_settings" => ["cap"],
+        "settings" => ["greeting"]
+      })
+      expect(manifest.unknown_keys).to eq([])
+      expect(manifest.name).to eq("test-bundle")
+    end
+
+    it "words the unknown key once, for every caller to add its own fix to" do
+      expect(described_class.unknown_key_line("card_layouts")).to eq(
+        "this chi (#{Samagotchi::VERSION}) doesn't know the manifest key card_layouts:, so it ignores it"
+      )
+    end
+
+    describe "#floor_keys" do
+      it "is empty for a manifest of only the first release's keys" do
+        expect(manifest({}).floor_keys).to eq({})
+      end
+
+      it "names each key it uses with the release that first read it" do
+        manifest = manifest({
+          "scripts" => { "draw.js" => "sha256:aa" },
+          "context_providers" => [{ "match" => "x", "name" => "n", "cmd" => "c" }],
+          "block_renderers" => [{ "lang" => "mermaid", "load" => ["draw.js"] }],
+          "session_settings" => ["cap"],
+          "settings" => ["greeting"]
+        })
+        expect(manifest.floor_keys).to eq("scripts" => "0.32.0", "context_providers" => "0.32.0",
+                                          "block_renderers" => "0.151.0", "session_settings" => "0.84.0", "settings" => "0.143.0")
+        # A profile's includes: is on its own: a meta ships no files, hooks, plugin or scripts.
+        expect(manifest("includes" => ["core"]).floor_keys).to eq("includes" => "0.8.0")
+      end
+
+      it "counts the shapes only a newer chi reads: a files: mapping, a hook's events:, a typed session_settings: or settings:" do
+        manifest = manifest({
+          "files" => { "identity.md" => { "sha256" => "sha256:aa", "description" => "Use when x" } },
+          "hooks" => { "h.rb" => { "events" => ["after_turn"] } },
+          "session_settings" => { "cap" => "number" },
+          "settings" => { "greeting" => "string" }
+        })
+        expect(manifest.floor_keys).to eq("files.description" => "0.34.0", "hooks.events" => "0.98.0",
+                                          "session_settings" => "0.84.0", "session_settings.types" => "0.92.0",
+                                          "settings" => "0.143.0", "settings.types" => "0.92.0")
+      end
+
+      it "takes no floor from a plain files: entry or a hook with only event:" do
+        manifest = manifest({ "files" => { "a.md" => "sha256:aa" }, "hooks" => { "h.rb" => { "event" => "after_turn" } } })
+        expect(manifest.floor_keys).to eq({})
+      end
+
+      it "is empty keys when an unknown one is next to a known one" do
+        manifest = manifest("includes" => ["core"], "card_layouts" => ["cards"])
+        expect(manifest.unknown_keys).to eq(["card_layouts"])
+        expect(manifest.floor_keys).to eq("includes" => "0.8.0")
+      end
+    end
+  end
 end

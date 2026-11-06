@@ -4,6 +4,7 @@ require "yaml"
 require "digest"
 require "fileutils"
 require_relative "../context_providers"
+require_relative "../version"
 require_relative "bundle_hook"
 
 module Samagotchi
@@ -72,15 +73,50 @@ module Samagotchi
       # A bundle name, as `chi bundle install <name>` takes a shipped one.
       BUNDLE_NAME = /\A[A-Za-z0-9][A-Za-z0-9_-]*\z/
 
+      # Every top-level manifest key this chi reads (requires_chi_next is known
+      # but read only by the release tooling: docs/releasing.md). A key not
+      # here is one this chi ignores: #unknown_keys, which `chi bundle check`
+      # and the Installer say.
+      KEYS = %w[name version scope description files hooks trust_level plugin requires_chi requires_chi_next needs
+                scripts context_providers block_renderers includes session_settings settings].freeze
+
+      # The first chi release that reads each manifest key or shape (from git:
+      # the first tag whose manifest.rb reads it), for `chi bundle check`'s
+      # requires-chi-floor on the manifest itself: a bundle whose requires_chi
+      # admits a chi that never saw the key. A key the first tag (v0.2.0)
+      # already reads has no entry. `files.description` is a files: entry given
+      # as a mapping, `*.types` a session_settings:/settings: given as a mapping
+      # of keys to types, `hooks.events` a hook entry with an events: list.
+      # A key added while unreleased waits here as an `# Unreleased` comment,
+      # the way Plugin::Api::SINCE does (docs/releasing.md).
+      SINCE = {
+        "includes" => "0.8.0",
+        "scripts" => "0.32.0",
+        "context_providers" => "0.32.0",
+        "files.description" => "0.34.0",
+        "session_settings" => "0.84.0",
+        "session_settings.types" => "0.92.0",
+        "settings.types" => "0.92.0",
+        "hooks.events" => "0.98.0",
+        "settings" => "0.143.0",
+        "block_renderers" => "0.151.0"
+      }.freeze
+
       # files: name → "sha256:<hex>" (both forms); file_descriptions: name →
       # the description a mapping gave, for the files that have one; hooks:
       # name → BundleHook.
       attr_reader :name, :version, :scope, :description, :files, :file_descriptions, :hooks, :trust_level, :plugin, :requires_chi, :needs, :includes,
-                  :scripts, :context_providers, :block_renderers, :session_settings, :session_setting_types, :settings, :setting_types
+                  :scripts, :context_providers, :block_renderers, :session_settings, :session_setting_types, :settings, :setting_types, :unknown_keys
 
       def initialize(path:)
         @path = path
         raw = load_mapping(path)
+        # Every key of the manifest, for #floor_keys to look at the shapes a
+        # newer chi reads.
+        @raw = raw
+        # A key this chi's parser never reads is one it ignores, in the order
+        # the manifest lists it.
+        @unknown_keys = raw.keys - KEYS
         @name     = require_str(raw, "name")
         # The name is a directory under .bundles/: never a path.
         if @name.match?(%r{[/\\\0]}) || %w[. ..].include?(@name)
@@ -166,6 +202,35 @@ module Samagotchi
         "it requires chi #{requirement} (this is chi #{version})"
       rescue ArgumentError => e # Gem::Requirement::BadRequirementError is one
         "its requires_chi #{requirement.inspect} is not a version requirement (#{e.message})"
+      end
+
+      # What an unknown manifest key means, said once (docs/cli.md): the
+      # Installer and `chi bundle check` add their own fix to it.
+      def self.unknown_key_line(key, version = Samagotchi::VERSION)
+        "this chi (#{version}) doesn't know the manifest key #{key}:, so it ignores it"
+      end
+
+      # The SINCE keys this manifest actually uses, each with the chi release
+      # that first read it: the plain keys, and the shapes only a newer chi
+      # reads — a files: entry given as a mapping, a hook entry with an events:
+      # list, a session_settings:/settings: given as a mapping of keys to types.
+      # @return [Hash{String => String}]
+      def floor_keys
+        raw = @raw
+        found = {}
+        found["includes"] = SINCE["includes"] unless @includes.empty?
+        found["scripts"] = SINCE["scripts"] unless @scripts.empty?
+        found["context_providers"] = SINCE["context_providers"] unless @context_providers.empty?
+        found["block_renderers"] = SINCE["block_renderers"] unless @block_renderers.empty?
+        found["session_settings"] = SINCE["session_settings"] unless @session_settings.empty?
+        found["settings"] = SINCE["settings"] unless @settings.nil?
+        found["files.description"] = SINCE["files.description"] if raw["files"].is_a?(Hash) && raw["files"].values.any?(Hash)
+        found["session_settings.types"] = SINCE["session_settings.types"] if raw["session_settings"].is_a?(Hash)
+        found["settings.types"] = SINCE["settings.types"] if raw["settings"].is_a?(Hash)
+        if raw["hooks"].is_a?(Hash) && raw["hooks"].values.any? { |entry| entry.is_a?(Hash) && entry.key?("events") }
+          found["hooks.events"] = SINCE["hooks.events"]
+        end
+        found
       end
 
       # Writes a fresh manifest.yml from computed checksums at `dir`.

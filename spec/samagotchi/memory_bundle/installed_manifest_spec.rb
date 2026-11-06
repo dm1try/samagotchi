@@ -108,7 +108,10 @@ RSpec.describe Samagotchi::MemoryBundle::InstalledManifest do
     let(:identity_and_state) { %i[name version scope files plugin] }
     let(:renamed) { { scripts: :script_names } }
     # Derived values a later phase adds to Manifest, each with why it has no counterpart here.
-    let(:excluded) { {} }
+    let(:excluded) do
+      { floor_keys: "a question about a manifest this chi parsed, asked by chi bundle check; a record's " \
+                     "mirror holds only keys this chi already read, so an installed bundle has no floor to name" }
+    end
 
     # A reader counts once a minimal manifest has its ivar, so Manifest#initialize
     # must set each one unconditionally (as it does: `@x = parse_x(raw["x"])`);
