@@ -48,6 +48,21 @@ module Samagotchi
     # @return [Hash]
     def scrub(env) = env.except(*spawner_keys(env))
 
+    # +env+ as a spawn argument that really removes what it leaves out. A Hash
+    # given to Process.spawn, Open3 or exec is merged onto the spawner's
+    # environment: a key only deleted from it is still inherited by the child.
+    # Every key +spawner+ has and +env+ doesn't is mapped to nil, which
+    # Process.spawn unsets, so the child sees exactly +env+ (and #scrub is
+    # safe to use with it). +env+ is not changed.
+    # @param env [Hash]
+    # @param spawner [Hash] the spawner's environment (default: ENV)
+    # @return [Hash]
+    def spawn_env(env, spawner: ENV)
+      out = env.dup
+      spawner.each_key { |key| out[key] = nil unless out.key?(key) }
+      out
+    end
+
     # In gem mode, what Bundler changed in +env+ mapped back
     # (InstalledGem.unbundled_env_changes): a child activates the installed
     # gem itself rather than inherit this app's bundle. {} in a checkout.

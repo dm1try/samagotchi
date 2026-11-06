@@ -101,6 +101,9 @@ module Samagotchi
           raise
         end
 
+        # The environment to spawn a child with: what the sandbox keeps, with
+        # every key it dropped present as nil (ChildEnv.spawn_env), so the
+        # child doesn't inherit it from this process.
         def child_env = @child_env.dup
 
         # Installs the tried bundle, then the shipped guardrails and
@@ -219,7 +222,12 @@ module Samagotchi
         # The user's environment (their hosts and keys) minus what no child
         # chi takes from its spawner (ChildEnv), the worker markers, this
         # chi's log and test settings, and the env forms of the config
-        # sections the sandbox drops.
+        # sections the sandbox drops. ChildEnv.spawn_env makes every dropped
+        # key an unset in the child: a Hash handed to Open3 or Process.spawn
+        # is merged onto this process's environment, so deleting a key from
+        # it alone still passes it on. The Bundler changes come from ENV, not
+        # from this copy: read from the copy, a key dropped above would look
+        # like one Bundler added and come back with its value.
         def build_child_env
           env = ChildEnv.scrub(ENV.to_h)
           env.delete("SAMAGOTCHI_LOG_FILE")
@@ -235,8 +243,8 @@ module Samagotchi
             "SAMAGOTCHI_KEYCHAIN" => "on",
             **@layout.env
           )
-          env.merge!(ChildEnv.unbundled(env))
-          env
+          env.merge!(ChildEnv.unbundled)
+          ChildEnv.spawn_env(env)
         end
       end
     end

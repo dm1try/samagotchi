@@ -22,6 +22,18 @@ RSpec.describe Samagotchi::ChildEnv do
     expect(described_class.unbundled(marked)).not_to have_key(described_class::UNATTENDED_UPDATE)
   end
 
+  it "turns a scrubbed copy into a spawn env whose removed keys are really unset" do
+    child = described_class.spawn_env(described_class.scrub(env).reject { |key, _| key == "PATH" }, spawner: env)
+
+    # Process.spawn merges a Hash onto the spawner's environment, so a key
+    # only deleted from it is inherited: spawn_env sends each removed one as nil.
+    expect(child).to include("SAMAGOTCHI_GUARDRAILS_RULES" => nil, "SAMAGOTCHI_PARENT_SESSION" => nil,
+                             "SAMAGOTCHI_INSTALLED_VERSION" => nil, "PATH" => nil)
+    expect(child["SAMAGOTCHI_DEFAULT_MODEL"]).to eq("kept")
+    expect(child.keys.sort).to eq(env.keys.sort)
+    expect(env).to include("SAMAGOTCHI_GUARDRAILS_RULES" => "deny", "PATH" => "/bin")
+  end
+
   it "unsets them for Process.spawn and scrubs them from a copy" do
     expect(described_class.unset(env)).to include("SAMAGOTCHI_GUARDRAILS_RULES" => nil,
                                                   "SAMAGOTCHI_PARENT_SESSION" => nil)

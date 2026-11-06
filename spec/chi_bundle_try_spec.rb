@@ -2,6 +2,7 @@
 
 require "fileutils"
 require "json"
+require "open3"
 require "stringio"
 require "samagotchi/bundle_command"
 require "samagotchi/bundle_command/try/sandbox"
@@ -107,6 +108,25 @@ RSpec.describe Samagotchi::BundleCommand::Try::Sandbox do
         expect(sandbox.child_env["XDG_CONFIG_HOME"]).to eq(sandbox.config_home)
         expect(sandbox.child_env["XDG_STATE_HOME"]).to eq(sandbox.state_home)
         expect(ENV["SAMAGOTCHI_PARENT_SESSION"]).to eq("parent-id")
+        sandbox.cleanup
+      end
+    end
+  end
+
+  it "keeps a denied variable really out of the child's environment, not just out of the Hash" do
+    Dir.mktmpdir do |dir|
+      source = bundle_at(File.join(dir, "source"))
+      with_env("SAMAGOTCHI_GUARDRAILS_SPEC_PROBE" => "leak", "SAMAGOTCHI_MEMORIES" => "private") do
+        sandbox = described_class.new(source)
+        # The child the sandbox spawns sees exactly this Hash: Open3 merges it
+        # onto this process's environment, so only a key sent as nil is absent.
+        probe = 'print ENV["SAMAGOTCHI_GUARDRAILS_SPEC_PROBE"].to_s, " ", ENV["SAMAGOTCHI_MEMORIES"].to_s, ' \
+                '" ", ENV["PATH"].to_s.empty?, " ", ENV["HOME"].to_s.empty?'
+        out, err, status = Open3.capture3(sandbox.child_env, RbConfig.ruby, "-e", probe)
+
+        expect(status.success?).to be(true), err
+        expect(out).to eq("  false false")
+        expect(ENV["SAMAGOTCHI_GUARDRAILS_SPEC_PROBE"]).to eq("leak")
         sandbox.cleanup
       end
     end
