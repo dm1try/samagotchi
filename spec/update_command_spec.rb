@@ -399,7 +399,7 @@ RSpec.describe Samagotchi::UpdateCommand do
 
     # The check spec's clean bundle as +name+, with this plugin source and
     # manifest keys, installed from a folder of its own (not a shipped one).
-    def install_external(name, plugin: nil, manifest: {}, dev: false)
+    def install_external(name, plugin: nil, manifest: {}, dev: false, force: false)
       dir = File.join(tmp, "external", name)
       FileUtils.mkdir_p(File.dirname(dir))
       FileUtils.cp_r(fixture, dir)
@@ -407,7 +407,7 @@ RSpec.describe Samagotchi::UpdateCommand do
       path = File.join(dir, "manifest.yml")
       File.write(path, Samagotchi::MemoryBundle::Shas.refresh(dir).first)
       File.write(path, YAML.dump(YAML.load_file(path).merge("name" => name).merge(manifest)))
-      Samagotchi::MemoryBundle::Installer.new(source: dir, name: name, scope: "system", strict: true, dev: dev).run
+      Samagotchi::MemoryBundle::Installer.new(source: dir, name: name, scope: "system", strict: true, dev: dev, force: force).run
       dir
     end
 
@@ -542,8 +542,10 @@ RSpec.describe Samagotchi::UpdateCommand do
       end
     end
 
+    # force: installs it — an install refuses a bundle this chi is too old
+    # for, and what the update re-checks is one already installed.
     it "reports a requires_chi the new chi fails as an error row, without failing the update" do
-      install_external("too-old", manifest: { "requires_chi" => "< 0.1" })
+      install_external("too-old", manifest: { "requires_chi" => "< 0.1" }, force: true)
       status, rows = json_rows
       row = finding_rows(rows, "too-old").first
       expect(status).to eq(0)
