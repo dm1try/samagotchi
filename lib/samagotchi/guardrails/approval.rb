@@ -213,8 +213,8 @@ module Samagotchi
         end
       end
 
-      # What a session answer covers, as Approvals.key_for keys it: a file
-      # tool's later calls on the same paths, else this one exact call.
+      # What a session answer covers, as Guardrails::Approvals.key_for keys
+      # it: a file tool's later calls on the same paths, else this one exact call.
       def session_subject(targets)
         return "this call" if targets.nil? || targets.command || targets.paths.empty?
 
