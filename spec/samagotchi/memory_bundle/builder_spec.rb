@@ -199,6 +199,16 @@ RSpec.describe Samagotchi::MemoryBundle::Builder do
     expect(Samagotchi::MemoryBundle::Manifest.read(dir: out).context_providers.map(&:to_h)).to eq([provider])
   end
 
+  it "refuses a build from an installed record whose context providers don't parse, rather than dropping them" do
+    src = write_bundle_with_hooks({ "identity.md" => "# Id\n" }, {}, name: "broken-prs")
+    Samagotchi::MemoryBundle::Installer.new(source: src, name: "broken-prs", scope: "system", strict: true).run
+    record = File.join(Samagotchi::MemoryBundle::Provenance.bundles_dir, "broken-prs", "manifest.json")
+    File.write(record, JSON.generate(JSON.parse(File.read(record)).merge("context_providers" => [{ "match" => "x" }])))
+
+    expect { described_class.new(scope: "system", name: "broken-prs", out: File.join(tmpdir, "out-broken")).run }
+      .to raise_error(described_class::BuildError, "the installed broken-prs's record: context_providers: an item has no name:")
+  end
+
   it "keeps the installed bundle's file descriptions, so a rebuild's manifest has the same mappings" do
     src = write_bundle_with_hooks({ "skill_x.md" => "# Skill: x\n", "identity.md" => "# Id\n" }, {}, name: "skills-ish")
     manifest = YAML.load_file(File.join(src, "manifest.yml"))

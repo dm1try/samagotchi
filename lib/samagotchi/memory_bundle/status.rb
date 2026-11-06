@@ -86,19 +86,19 @@ module Samagotchi
       # Why none of the bundle's hooks load (this chi doesn't meet its
       # requires_chi, Hooks::BundleLoader), or nil: it has no hooks or meets it.
       def self.hooks_requires_failure(bundle)
-        return nil if bundle.hooks.empty?
+        manifest = bundle.manifest
+        return nil if manifest.hooks.empty?
 
-        Manifest.requires_chi_failure(bundle.requires_chi, Samagotchi::VERSION)
+        manifest.requires_chi_failure
       end
 
       # The stored needs, each with found: from this process's PATH (the
-      # shell's; a worker's PATH can differ, see docs/memory.md).
+      # shell's; a worker's PATH can differ, see docs/memory.md). A needs:
+      # that doesn't parse is none.
       def self.needs_status(bundle, path: ENV["PATH"])
-        Manifest.parse_needs(bundle.needs).map do |need|
+        bundle.manifest.needs.map do |need|
           need.merge(found: BundleNeeds.found?(need[:command], path: path))
         end
-      rescue Manifest::ValidationError
-        []
       end
 
       # "needs gh (reads PRs) [ok]" / "needs gh [not found]: brew install gh"
@@ -120,8 +120,9 @@ module Samagotchi
                 elsif Provenance.sha_matches?(path, bundle.plugin.sha256) then "ok"
                 else "modified"
                 end
-        { file: File.basename(path), path: path, state: state, requires_chi: bundle.requires_chi,
-          requires_failure: Manifest.requires_chi_failure(bundle.requires_chi, Samagotchi::VERSION) }
+        manifest = bundle.manifest
+        { file: File.basename(path), path: path, state: state, requires_chi: manifest.requires_chi,
+          requires_failure: manifest.requires_chi_failure }
       end
 
       def self.unchecked_file(meta)

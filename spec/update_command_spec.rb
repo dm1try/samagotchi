@@ -556,6 +556,18 @@ RSpec.describe Samagotchi::UpdateCommand do
       expect(finding_rows(rows, "stale-one").size).to eq(1)
     end
 
+    it "names a record's manifest key that doesn't parse as an error row, in the words a source check gives it" do
+      install_external("bad-cp")
+      install_external("bad-needs")
+      { "bad-cp" => { "context_providers" => [{ "match" => "x" }] }, "bad-needs" => { "needs" => "gh" } }.each do |name, extra|
+        path = File.join(Samagotchi::MemoryBundle::Provenance.bundles_dir, name, "manifest.json")
+        File.write(path, JSON.generate(JSON.parse(File.read(path)).merge(extra)))
+      end
+      _, rows = json_rows
+      expect(finding_rows(rows, "bad-cp").map { |r| r["status"] }).to eq(["error manifest manifest.yml: context_providers: an item has no name:"])
+      expect(finding_rows(rows, "bad-needs").map { |r| r["status"] }).to eq(["error manifest manifest.yml: needs: must be a list of commands"])
+    end
+
     it "takes half an answer as that bundle's own row (a child that died mid-write)" do
       install_external("half", plugin: "")
       allow(File).to receive(:read).and_wrap_original do |read, path, *rest, **opts|

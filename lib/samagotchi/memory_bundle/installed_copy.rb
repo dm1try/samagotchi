@@ -1,7 +1,6 @@
 # frozen_string_literal: true
 
 require "fileutils"
-require "json"
 require "tmpdir"
 require_relative "bundle_hook"
 require_relative "manifest"
@@ -33,18 +32,17 @@ module Samagotchi
       end
 
       def write(bundle, provenance, dir)
+        manifest = bundle.manifest
         Manifest.write(
-          dir: dir, name: bundle.name, version: bundle.version.to_s.empty? ? "0" : bundle.version, trust_level: bundle.trust_level,
+          dir: dir, name: bundle.name, version: bundle.version.to_s.empty? ? "0" : bundle.version, trust_level: manifest.trust_level,
           files: memories(bundle, provenance, dir),
-          file_descriptions: bundle.files.to_h { |key, entry| [key, entry[:description].to_s] },
+          file_descriptions: manifest.file_descriptions,
           hooks: hooks(bundle, provenance, dir), plugin: plugin(bundle, provenance, dir),
           scripts: copies(bundle.scripts, provenance.scripts_dir, File.join(dir, "scripts")),
-          requires_chi: bundle.requires_chi, needs: bundle.needs,
-          # A record read with symbol keys: back to what a manifest.yml holds.
-          context_providers: JSON.parse(JSON.generate(Array(bundle.context_providers))),
-          block_renderers: JSON.parse(JSON.generate(Array(bundle.block_renderers))),
-          session_settings: bundle.session_settings, session_setting_types: bundle.session_setting_types,
-          settings: bundle.settings, setting_types: bundle.setting_types
+          requires_chi: manifest.requires_chi, needs: manifest.needs,
+          context_providers: manifest.context_providers, block_renderers: manifest.block_renderers,
+          session_settings: manifest.session_settings, session_setting_types: manifest.session_setting_types,
+          settings: manifest.settings, setting_types: manifest.setting_types
         )
         copies(bundle.guardrails, provenance.guardrails_dir, File.join(dir, "guardrails"))
       end

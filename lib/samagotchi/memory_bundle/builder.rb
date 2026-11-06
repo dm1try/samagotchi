@@ -7,7 +7,6 @@ require "tmpdir"
 require_relative "bundle_hook"
 require_relative "manifest"
 require_relative "placeholder"
-require_relative "../context_providers"
 require_relative "../memory_paths"
 require_relative "../model_overlay"
 
@@ -141,7 +140,8 @@ module Samagotchi
 
       # The installed bundle's hooks (a recorded one missing on disk left
       # out; one with no recorded sha gets its file's), guardrail rules,
-      # plugin, scripts and context providers. Without hooks or rules in a
+      # plugin, scripts, context providers and block renderers (its
+      # InstalledManifest's). Without hooks or rules in a
       # record, the scope dir's hooks/*.rb and guardrails/*.yml (building
       # from a raw bundle dir that is also the memories dir).
       # @return [InstalledParts]
@@ -175,13 +175,18 @@ module Samagotchi
 
         rules_dir = record&.guardrails&.any? ? prov.guardrails_dir : File.join(target_dir, "guardrails")
         plugin = record ? prov.plugin_path(record) : nil
+        manifest = record&.manifest
+        # A key of the record that doesn't parse isn't built as empty: the build refuses, as it always has.
+        problem = manifest&.problems&.values&.first
+        raise BuildError, "the installed #{name}'s record: #{problem}" if problem
+
         InstalledParts.new(
           record: record, hooks: hooks, hook_files: hook_files,
           rules: Dir.exist?(rules_dir) ? Dir.glob(File.join(rules_dir, "*.yml")).sort : [],
           plugin: plugin && File.file?(plugin) ? plugin : nil,
           scripts: installed_scripts(prov, record),
-          context_providers: record ? ContextProviders.parse_list(record.context_providers) : [],
-          block_renderers: record ? BlockRenderers.parse_list(record.block_renderers) : []
+          context_providers: manifest ? manifest.context_providers : [],
+          block_renderers: manifest ? manifest.block_renderers : []
         )
       end
 
@@ -205,12 +210,12 @@ module Samagotchi
       end
 
       # manifest.yml for the staged bundle: requires_chi, needs, session_settings and settings (typed) and the
-      # file descriptions come from the installed bundle's record, the
+      # file descriptions come from the installed bundle's manifest (InstalledManifest), the
       # trust_level from the CLI else the record.
       def write_manifest(staging, name, version, files_map, parts)
-        record = parts.record
+        manifest = parts.record&.manifest
         trust_level = @trust_level
-        trust_level = record.trust_level if (trust_level.nil? || trust_level.empty?) && record&.trust_level
+        trust_level = manifest.trust_level if (trust_level.nil? || trust_level.empty?) && manifest&.trust_level
         Manifest.write(
           dir: staging,
           name: name,
@@ -221,16 +226,16 @@ module Samagotchi
           hooks: parts.hooks.empty? ? nil : parts.hooks,
           trust_level: trust_level,
           plugin: parts.plugin && { file: File.basename(parts.plugin), sha256: FileDigest.sha256(parts.plugin) },
-          requires_chi: record&.requires_chi,
-          needs: record&.needs,
+          requires_chi: manifest&.requires_chi,
+          needs: manifest&.needs,
           scripts: parts.scripts.transform_values { |src| FileDigest.sha256(src) },
           context_providers: parts.context_providers,
           block_renderers: parts.block_renderers,
-          file_descriptions: file_descriptions(record, files_map),
-          session_settings: record&.session_settings || [],
-          session_setting_types: record&.session_setting_types || {},
-          settings: record&.settings,
-          setting_types: record&.setting_types || {}
+          file_descriptions: manifest ? manifest.file_descriptions.slice(*files_map.keys) : {},
+          session_settings: manifest&.session_settings || [],
+          session_setting_types: manifest&.session_setting_types || {},
+          settings: manifest&.settings,
+          setting_types: manifest&.setting_types || {}
         )
       end
 
@@ -278,18 +283,6 @@ module Samagotchi
 
         record.scripts.keys.sort.to_h { |file| [file, File.join(prov.scripts_dir, file)] }
                      .select { |_, path| File.file?(path) }
-      end
-
-      # The descriptions the installed bundle's record keeps for the files
-      # being built (its manifest's files: mappings), so a rebuild writes
-      # them back; {} without a record.
-      def file_descriptions(record, files_map)
-        return {} unless record
-
-        record.files.each_with_object({}) do |(key, entry), acc|
-          text = entry[:description].to_s
-          acc[key] = text if files_map.key?(key) && !text.empty?
-        end
       end
 
       # Without an allowlist, a memory another installed bundle owns (its

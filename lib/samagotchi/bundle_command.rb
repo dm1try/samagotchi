@@ -500,8 +500,9 @@ module Samagotchi
           @stdout.puts "  #{k}: #{label}"
         end
         # Hooks
-        hooks = st.provenance.hooks
-        trust = st.provenance.trust_level || "experimental"
+        manifest = st.provenance.manifest
+        hooks = manifest.hooks
+        trust = manifest.trust_level || "experimental"
         commit = st.provenance.source_commit
         @stdout.puts "  trust_level: #{trust}" if hooks.any? || trust
         @stdout.puts "  source_commit: #{commit}" if commit
@@ -512,7 +513,7 @@ module Samagotchi
             exists = File.exist?(hook_path) ? "ok" : "missing"
             @stdout.puts "    #{hk}: #{hook.events_field} on_error=#{hook.on_error} priority=#{hook.priority} [#{exists}]"
           end
-          @stdout.puts "    requires_chi: #{st.provenance.requires_chi}" if st.hooks_requires_failure
+          @stdout.puts "    requires_chi: #{manifest.requires_chi}" if st.hooks_requires_failure
           @stdout.puts "    not loaded: #{st.hooks_requires_failure}" if st.hooks_requires_failure
         end
         if (plugin = st.plugin)
@@ -534,7 +535,7 @@ module Samagotchi
 
           st = Samagotchi::MemoryBundle::Status.bundle_status(bname)
           mods = st.files.values.count { |v| v[:behind] || v[:missing] || v[:unreadable] }
-          hooks_count = st.provenance.hooks.size
+          hooks_count = st.provenance.manifest.hooks.size
           hook_info = hooks_count > 0 ? " hooks=#{hooks_count}" : ""
           plugin = st.plugin
           mods += 1 if plugin && (plugin[:state] != "ok" || plugin[:requires_failure])
@@ -577,7 +578,7 @@ module Samagotchi
       rescue ArgumentError => e
         @stderr.puts "Bundle '#{bname}': #{e.message}"; return 1
       end
-      hooks = record.hooks
+      hooks = record.manifest.hooks
       plugin_path = prov.plugin_path(record)
       plugin_file = plugin_path && File.basename(plugin_path)
       if file_arg
@@ -642,7 +643,8 @@ module Samagotchi
     def diff_plugin(prov, record, plugin_path)
       file = File.basename(plugin_path)
       print_base_and_current("plugin/#{file}", prov.plugin_base_path(file), plugin_path)
-      @stdout.puts "--- metadata: sha256=#{record.plugin.sha256}#{" requires_chi=#{record.requires_chi}" if record.requires_chi}"
+      requires_chi = record.manifest.requires_chi
+      @stdout.puts "--- metadata: sha256=#{record.plugin.sha256}#{" requires_chi=#{requires_chi}" if requires_chi}"
     end
 
     def print_base_and_current(heading, base, current)
