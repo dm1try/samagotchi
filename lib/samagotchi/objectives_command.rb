@@ -18,10 +18,6 @@ module Samagotchi
             "(a text may end \"(done when: …)\"; lines work as | does)".freeze
     NONE = "no objectives; #{NAME} set A | B sets them".freeze
     BETWEEN_TURNS = "(an edit goes into the conversation between turns)"
-    SEPARATOR = /\n|(?:\A|\s)\|(?:\s|\z)/
-    # What the frame shows a status as: typed at a text's start it would pass
-    # for one (Objectives::Item#line).
-    STATUS_MARK = /\A(?:\[(?:#{Objectives::STATUSES.join("|")})\]\s*)+/i
     # A proposal card's action (Tools::ObjectivesTool): the edit, then the card
     # folds to a line, once: it is recorded, so a repeat applies nothing. A
     # reword's --was says what it was proposed against. The prefix is the
@@ -30,7 +26,6 @@ module Samagotchi
     FOLDS = { Objectives::APPLIED => "Proposal applied", Objectives::DISMISSED => "Proposal dismissed" }.freeze
     DISMISS = "dismiss"
     CHECK = /\Acheck(?:\s|\z)/i
-    MARKS = { "done" => Objectives::DONE, "drop" => Objectives::DROPPED, "undo" => Objectives::ACTIVE }.freeze
 
     # @param engine [Engine] #session, #session_state_dir
     def initialize(engine:)
@@ -93,72 +88,12 @@ module Samagotchi
       verb, rest = args.to_s.strip.split(/\s+/, 2)
       return [listing(list, session), :ok] if verb.nil?
 
-      edited = edit(list, verb.downcase, rest.to_s, was: was)
+      edited = Objectives::Edit.apply(list, verb.downcase, rest.to_s, was: was)
       return [USAGE, :error] if edited.nil?
       return [edited, :error] if edited.is_a?(String)
       return ["#{listing(list, session)}\n(no change)", :ok] if edited == list
 
       deliver(edited, session)
-    end
-
-    # @return [Objectives::List, String, nil] the new list, what's wrong with
-    #   the line, or nil for a line that isn't one
-    def edit(list, verb, rest, was: nil)
-      case verb
-      when "set", "add"
-        entries = entries_of(rest)
-        return nil if entries.nil? || entries.empty?
-
-        verb == "set" ? list.set(entries) : entries.reduce(list) { |so_far, e| so_far.add(e[:text], done_when: e[:done_when]) }
-      when "edit" then reword(list, rest, was: was)
-      when *MARKS.keys then mark(list, MARKS.fetch(verb), rest)
-      end
-    end
-
-    def mark(list, status, rest)
-      ids = rest.upcase.split(/[\s,]+/).reject(&:empty?)
-      return nil if ids.empty?
-
-      missing = ids.reject { |id| list.find(id) }
-      return "no objective #{missing.join(", ")}" unless missing.empty?
-
-      if status == Objectives::DONE
-        dropped = ids.select { |id| list.find(id).status == Objectives::DROPPED }
-        return "#{dropped.join(", ")} is dropped; #{NAME} undo #{dropped.join(" ")} brings it back" unless dropped.empty?
-      end
-
-      ids.reduce(list) { |so_far, id| so_far.mark(id, status) }
-    end
-
-    # The objective's new text: the whole rest of the line, a | too.
-    def reword(list, rest, was: nil)
-      id, text = rest.strip.split(/\s+/, 2)
-      entry = text && entry_of(text.gsub(/[[:space:]]+/, " ").strip)
-      return nil unless entry
-
-      id = id.upcase
-      item = list.find(id) or return "no objective #{id}"
-      return "#{id} has changed since this was proposed: #{item.text}" if was && Objectives.fingerprint(item) != was
-
-      list.reword(id, entry[:text], done_when: entry[:done_when])
-    end
-
-    # One {text:, done_when:} per line or |-part, any whitespace collapsed
-    # (Unicode line separators too: the frame is one line per item).
-    # @return [Array<Hash>, nil] nil when a part has no text of its own
-    def entries_of(rest)
-      parts = rest.split(SEPARATOR).map { |part| part.gsub(/[[:space:]]+/, " ").strip }.reject(&:empty?)
-      entries = parts.map { |part| entry_of(part) }
-      entries.all? ? entries : nil
-    end
-
-    def entry_of(part)
-      found = Objectives::DONE_WHEN.match(part)
-      text = (found ? found[1] : part).sub(STATUS_MARK, "").strip
-      return nil if text.empty?
-
-      done_when = found && found[2]
-      { text: text, done_when: done_when.to_s.empty? ? nil : done_when }
     end
 
     def deliver(list, session)
