@@ -323,7 +323,8 @@ module Samagotchi
       # one that passes every gate is allowed once without reaching them
       # (docs/guardrails.md, "System 1").
       judgment = begin
-        system_one_judge(payload, targets: verdict.targets, ask_user: verdict.fresh_ask? || verdict.second_rule_ask?)
+        system_one_judge(payload, targets: verdict.targets, ask_user: verdict.fresh_ask? || verdict.second_rule_ask?,
+                         other_rules: verdict.other_ask_rules)
       rescue LLM::RequestCancelled
         return turn_stopped(verdict)
       end
@@ -367,8 +368,9 @@ module Samagotchi
     # host) means no line at all. A judgment that fails is logged with p nil,
     # so the failures are in the log too.
     # With +ask_user+ (a fresh ask, a second rule's) it is judged and logged, never answered.
+    # +other_rules+ are the ids of the other rules asking about the same call.
     # @return [Hash, nil] {id:, p:, auto:}, nil when nothing was written
-    def system_one_judge(payload, targets: nil, ask_user: false)
+    def system_one_judge(payload, targets: nil, ask_user: false, other_rules: nil)
       return nil if Steer.participant_author?(turn_author)
 
       client = @system_one.call
@@ -401,12 +403,16 @@ module Samagotchi
       auto = !ask_user && system_one_auto_allow?(client, approval, p, entries, targets: targets)
       decision = system_one_decision(client, auto)
 
-      id = log.judgment(id: run_id, session_id: @session_lookup.call&.id,
-                        rule: approval.rule, source: approval.source, tool: approval.tool,
-                        **SystemOne::ApprovalQuestion.call_fields(approval),
-                        repo_name: approval.repo_name, repo: targets&.repo,
-                        p: p, threshold: Config.get("guardrails.system_one.threshold"), model: client.model,
-                        latency_ms: latency_ms, decision: decision, origin: "live")
+      fields = { session_id: @session_lookup.call&.id, rule: approval.rule, source: approval.source,
+                 tool: approval.tool, **SystemOne::ApprovalQuestion.call_fields(approval),
+                 repo_name: approval.repo_name, repo: targets&.repo, p: p,
+                 threshold: Config.get("guardrails.system_one.threshold"), model: client.model,
+                 latency_ms: latency_ms, decision: decision, origin: "live" }
+      # A call two rules ask about names only one; the others ride along so
+      # each rule's record (SystemOne::Record) counts this ask.
+      others = Array(other_rules).map(&:to_s).reject(&:empty?) - [approval.rule.to_s]
+      fields[:other_rules] = others unless others.empty?
+      id = log.judgment(id: run_id, **fields)
       # A judgment the log cannot hold is no judgment: the user is asked.
       system_one_run_facts(run_id, approval, targets, id.nil? && auto ? "asked" : decision)
       { id: id, p: p, auto: auto && !id.nil? }

@@ -18,6 +18,13 @@ RSpec.describe Samagotchi::SystemOne::Record do
 
   def record(list) = described_class.new(list, rule: "git-push")
 
+  it "counts an ask two rules raised in the record of each of them" do
+    both = [{ "kind" => "judgment", "rule" => "git-merge", "other_rules" => ["git-push"], "p" => 0.9, "answer" => "allow_once" }]
+    expect(described_class.new(both, rule: "git-push").entries.size).to eq(1)
+    expect(described_class.new(both, rule: "git-merge").entries.size).to eq(1)
+    expect(described_class.new(both, rule: "git-clean").entries.size).to eq(0)
+  end
+
   describe "by repository" do
     def in_repo(count, repo, **fields) = asks(count, **fields).map { |entry| entry.merge("repo" => repo) }
     def in_a(list) = described_class.new(list, rule: "git-push", repo: "/a/.git")

@@ -63,6 +63,26 @@ module Samagotchi
         @note = nil
         @voter = nil
         @advice = nil
+        @ask_rules = []
+      end
+
+      # Every rule id that asked about this call, in the order they voted
+      # (Rules#check), including one whose vote did not take over. The ask
+      # names a single rule (#rule); the rest are #other_ask_rules.
+      attr_reader :ask_rules
+
+      # A rule that asks, recorded whatever became of its vote.
+      def note_ask_rule(rule)
+        id = rule.to_s
+        @ask_rules << id unless id.empty? || @ask_rules.include?(id)
+        self
+      end
+
+      # The rules that asked besides the one the ask names: nil when only one
+      # rule asked, so a judgment line carries nothing extra.
+      def other_ask_rules
+        others = @ask_rules - [rule.to_s]
+        others.empty? ? nil : others
       end
 
       # @param rule [String, nil] the rule id, when a rule decided

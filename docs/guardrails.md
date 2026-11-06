@@ -1157,6 +1157,10 @@ the whole call:
 
 `decision` is what the judgment led to: `audit` (audit mode), `asked` (on
 mode, the user was asked), `auto` (on mode, System 1 answered for the user).
+When two rules ask about one call the line's `rule` is the one the card names
+and `other_rules` lists the rest (`Verdict#other_ask_rules`), so a second
+rule's record (`SystemOne::Record`) counts the ask too; a line with one rule
+has no `other_rules` at all.
 A judgment that never arrived is logged too, with `p` null, so the failures
 count as well. The label line, keyed by the judgment's id, is what the user
 did: `allow_once`, `allow_wide` (any scope wider than once), `deny`, or

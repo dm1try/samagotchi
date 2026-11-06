@@ -325,6 +325,7 @@ module Samagotchi
           if rule.verdict == :deny
             verdict.deny!(rule.reason, rule: rule.id, source: rule.source, decided_by: "rule")
           else
+            verdict.note_ask_rule(rule.id)
             verdict.ask!(rule.reason, scopes: rule.scopes, rule: rule.id, source: rule.source, decided_by: "rule")
             verdict.second_rule_asks!(rule.scopes) if asking && asking != rule.id
             asking ||= rule.id

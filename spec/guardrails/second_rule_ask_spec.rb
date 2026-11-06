@@ -117,6 +117,13 @@ RSpec.describe "A second rule's ask on one call" do
       expect(evaluate("git reset --hard && git push && git merge y").scopes).to eq(%w[once])
     end
 
+    it "keeps every rule that asked on the verdict: one named, the rest beside it" do
+      verdict = evaluate("git merge y && git push && git reset --hard")
+      expect([verdict.rule, verdict.ask_rules, verdict.other_ask_rules]).to eq(
+        ["git-merge", %w[git-merge git-push git-reset-hard], %w[git-push git-reset-hard]]
+      )
+    end
+
     it "takes no stored rule grant of either rule, both granted or not" do
       grant("git branch -D feat/y")
       grant("git push")
@@ -207,6 +214,20 @@ RSpec.describe "A second rule's ask on one call" do
       expect(verdict).to be_deny
       expect(cards.size).to eq(1)
       expect(log.entries.last).to include("rule" => "git-merge", "decision" => "asked", "p" => 0.99)
+    end
+
+    it "names the other rule on the judgment, so both rules' records count the ask" do
+      verdict = wiring.request_approval(evaluate("git merge y && git push"))
+      expect(verdict).to be_deny
+      entry = log.entries.last
+      expect(entry).to include("rule" => "git-merge", "other_rules" => ["git-push"])
+      expect(s1::Record.new(log.entries, rule: "git-push").entries.size).to eq(1)
+      expect(s1::Record.new(log.entries, rule: "git-merge").entries.size).to eq(6)
+    end
+
+    it "leaves a one-rule judgment without the field" do
+      wiring.request_approval(evaluate("git merge y"))
+      expect(log.entries.last.keys).not_to include("other_rules")
     end
   end
 end

@@ -7,7 +7,8 @@ module Samagotchi
   module SystemOne
     # One rule's record: what System 1 has judged for it and what the user
     # did about those asks. Built from `SystemOne::Log#entries` (judgments
-    # joined with their last label), filtered to one rule. The gate before
+    # joined with their last label), filtered to one rule — an ask two rules
+    # raised counts for each of them (its `other_rules`). The gate before
     # System 1 answers for the user: enough clean allows at the threshold,
     # and no false allow among the rule's last 20 labelled asks
     # (docs/guardrails.md, "System 1"). A rule in
@@ -41,7 +42,14 @@ module Samagotchi
       #   rule's. A line with no repo is in no repository's record.
       def initialize(entries, rule:, repo: nil)
         @rule = rule.to_s
-        @entries = Array(entries).select { |entry| entry["rule"].to_s == @rule && (repo.nil? || entry["repo"] == repo) }
+        @entries = Array(entries).select { |entry| asks?(entry) && (repo.nil? || entry["repo"] == repo) }
+      end
+
+      # The judgment names the rule the ask was for; an ask two rules raised
+      # carries the others in `other_rules`, so it counts in each of their
+      # records too.
+      def asks?(entry)
+        entry["rule"].to_s == @rule || Array(entry["other_rules"]).any? { |other| other.to_s == @rule }
       end
 
       # @param threshold [Float] the probability an auto-allow needs
