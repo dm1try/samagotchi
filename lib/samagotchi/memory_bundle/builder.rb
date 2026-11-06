@@ -211,17 +211,19 @@ module Samagotchi
 
       # manifest.yml for the staged bundle: requires_chi, needs, session_settings and settings (typed) and the
       # file descriptions come from the installed bundle's manifest (InstalledManifest), the
-      # trust_level from the CLI else the record.
+      # trust_level and description from the CLI else that manifest. A key of its kept manifest.yml
+      # this chi doesn't know is carried as installed (the build is the bundle again), with a warning.
       def write_manifest(staging, name, version, files_map, parts)
         manifest = parts.record&.manifest
         trust_level = @trust_level
         trust_level = manifest.trust_level if (trust_level.nil? || trust_level.empty?) && manifest&.trust_level
+        description = @description.empty? && manifest&.description ? manifest.description : @description
         Manifest.write(
           dir: staging,
           name: name,
           version: version,
           scope: @scope,
-          description: @description,
+          description: description,
           files: files_map,
           hooks: parts.hooks.empty? ? nil : parts.hooks,
           trust_level: trust_level,
@@ -237,6 +239,16 @@ module Samagotchi
           settings: manifest&.settings,
           setting_types: manifest&.setting_types || {}
         )
+        carry_unknown_keys(staging, parts.record, manifest) if manifest&.origin == :kept && !manifest.unknown_keys.empty?
+      end
+
+      def carry_unknown_keys(staging, record, manifest)
+        path = File.join(staging, "manifest.yml")
+        kept = YAML.load_file(record.kept_manifest_path) || {}
+        File.write(path, YAML.dump(YAML.load_file(path).merge(kept.slice(*manifest.unknown_keys))))
+        manifest.unknown_keys.each do |key|
+          @warnings << "#{Manifest.unknown_key_line(key)}; the build carries it as installed"
+        end
       end
 
       # The staged bundle to +out+: a zip or tar archive, or a directory,

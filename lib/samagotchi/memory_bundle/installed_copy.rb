@@ -2,17 +2,25 @@
 
 require "fileutils"
 require "tmpdir"
+require "yaml"
 require_relative "bundle_hook"
 require_relative "manifest"
 require_relative "provenance"
 
 module Samagotchi
   module MemoryBundle
-    # An installed bundle laid out as a source folder again: manifest.yml from
-    # its record, the plugin, hooks, rules and scripts as they are installed
-    # (a dev install's links followed), the memories as their bases (the
-    # bundle's bytes, not the user's edits). A bundle's source may be gone or
-    # be a URL; this is what `chi update` can check of what really runs.
+    # An installed bundle laid out as a source folder again: the plugin, hooks,
+    # rules and scripts as they are installed (a dev install's links
+    # followed), the memories as their bases (the bundle's bytes, not the
+    # user's edits). A bundle's source may be gone or be a URL; this is what
+    # `chi update` can check of what really runs.
+    #
+    # manifest.yml: its files:, hooks:, plugin: and scripts: are the record's
+    # and the copy's (what is installed: a memory the install left out, or one
+    # with no base, and a manifest hook the record lacks aren't listed, so the
+    # check finds no missing-file for them). Every other key is the kept
+    # manifest.yml's when it is read (InstalledManifest origin :kept), so the
+    # check sees its unknown keys too; else the record's mirror's.
     #
     # The shas are the files' own, so an edited plugin is checked as written.
     # A plugin, hook or script the record lists that isn't there stays
@@ -44,9 +52,25 @@ module Samagotchi
           session_settings: manifest.session_settings, session_setting_types: manifest.session_setting_types,
           settings: manifest.settings, setting_types: manifest.setting_types
         )
+        keep_manifest_keys(bundle.kept_manifest_path, File.join(dir, "manifest.yml"), manifest.key_problems.keys) if manifest.origin == :kept
         copies(bundle.guardrails, provenance.guardrails_dir, File.join(dir, "guardrails"))
       end
       private_class_method :write
+
+      # What is installed, which the copy's manifest.yml takes from the record.
+      INSTALLED_KEYS = %w[name version files hooks plugin scripts].freeze
+
+      # The written manifest's INSTALLED_KEYS and +failed+ keys (the value
+      # InstalledManifest fell back to: InstalledCheck already names the
+      # problem, and the raw value would name it again), then the kept
+      # manifest's other keys. A kept file of comments only holds none.
+      def keep_manifest_keys(kept, written, failed)
+        ours = YAML.load_file(written)
+        theirs = YAML.load_file(kept) || {}
+        own = INSTALLED_KEYS + failed
+        File.write(written, YAML.dump(ours.slice(*own).merge(theirs.except(*own))))
+      end
+      private_class_method :keep_manifest_keys
 
       # A memory with no base has nothing to install, so it isn't listed.
       def memories(bundle, provenance, dir)
@@ -56,8 +80,9 @@ module Samagotchi
       end
       private_class_method :memories
 
+      # The recorded hooks with the metadata they load with (InstalledManifest#hooks).
       def hooks(bundle, provenance, dir)
-        bundle.hooks.to_h do |file, hook|
+        bundle.manifest.hooks.to_h do |file, hook|
           sha = copy(File.join(provenance.hooks_dir, file), File.join(dir, "hooks", file), hook.sha256)
           [file, hook.with(sha256: sha)]
         end

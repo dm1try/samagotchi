@@ -449,6 +449,64 @@ RSpec.describe Samagotchi::UpdateCommand do
       expect(installed_bytes).to eq(before)
     end
 
+    it "names a key of the kept manifest.yml this chi doesn't know, which the record never mirrors" do
+      install_external("future-one", manifest: { "card_layouts" => ["wide"] })
+      record = JSON.parse(File.read(File.join(Samagotchi::MemoryBundle::Provenance.bundles_dir, "future-one", "manifest.json")))
+      expect(record.keys).not_to include("card_layouts")
+
+      _, rows = json_rows
+      statuses = finding_rows(rows, "future-one").map { |r| r["status"] }
+      expect(statuses.size).to eq(1)
+      expect(statuses.first).to match(/\Awarn unknown-key manifest\.yml:\d+: /)
+        .and include(Samagotchi::MemoryBundle::Manifest.unknown_key_line("card_layouts"))
+    end
+
+    it "gives no missing-file row for what the kept manifest lists and the install left out, and still loads the plugin" do
+      Samagotchi::MemoryPaths.system_dir.then do |dir|
+        FileUtils.mkdir_p(dir)
+        File.write(File.join(dir, "check_note.md"), "the user's own note\n") # the install skips it: never recorded
+      end
+      install_external("partial", plugin: stale_plugin)
+      bundle_dir = File.join(Samagotchi::MemoryBundle::Provenance.bundles_dir, "partial")
+      record = JSON.parse(File.read(File.join(bundle_dir, "manifest.json")))
+      expect(record["files"]).to eq({})
+      # A hook the manifest lists that the record lacks (none was installed for it).
+      kept = File.join(bundle_dir, "manifest.yml")
+      File.write(kept, YAML.dump(YAML.load_file(kept).tap { |m| m["hooks"]["extra.rb"] = { "event" => "after_turn" } }))
+      File.write(File.join(bundle_dir, "manifest.json"),
+                 JSON.generate(record.merge("manifest_sha" => "sha256:#{Digest::SHA256.file(kept).hexdigest}")))
+
+      _, rows = json_rows
+      statuses = finding_rows(rows, "partial").map { |r| r["status"] }
+      expect(statuses.grep(/missing-file/)).to eq([])
+      expect(statuses.size).to eq(1)
+      expect(statuses.first).to start_with("warn api plugin.rb:3:").and include("gone_api")
+    end
+
+    # The kept manifest.yml rewritten by +edit+, its new sha recorded (as if installed so).
+    def rewrite_kept(name)
+      dir = File.join(Samagotchi::MemoryBundle::Provenance.bundles_dir, name)
+      kept = File.join(dir, "manifest.yml")
+      File.write(kept, yield(File.read(kept)))
+      record = JSON.parse(File.read(File.join(dir, "manifest.json")))
+      File.write(File.join(dir, "manifest.json"), JSON.generate(record.merge("manifest_sha" => "sha256:#{Digest::SHA256.file(kept).hexdigest}")))
+    end
+
+    it "names a kept key that doesn't parse once, not again from the copy" do
+      install_external("bad-kept")
+      rewrite_kept("bad-kept") { |text| "#{text}needs: gh\n" }
+      _, rows = json_rows
+      statuses = finding_rows(rows, "bad-kept").map { |r| r["status"] }
+      expect(statuses.grep(/needs: must be a list of commands/).size).to eq(1)
+    end
+
+    it "checks a bundle whose kept manifest is empty, or only comments, without dying" do
+      install_external("empty-kept")
+      rewrite_kept("empty-kept") { "# nothing here\n" }
+      _, rows = json_rows
+      expect(finding_rows(rows, "empty-kept").map { |r| r["status"] }.join).not_to include("the check died")
+    end
+
     it "warns on an internal name only when this chi no longer has it, and says so" do
       install_external("still-there", plugin: <<~RUBY)
         class Plugin

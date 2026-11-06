@@ -225,6 +225,34 @@ RSpec.describe Samagotchi::MemoryBundle::Builder do
     expect(built.checksum_for("skill_x.md")).to eq(Digest::SHA256.hexdigest("# Skill: x\n"))
   end
 
+  describe "from an installed bundle's kept manifest.yml" do
+    def install_described(name)
+      src = write_bundle_with_hooks({ "identity.md" => "# Id\n" }, {}, name: name)
+      manifest = YAML.load_file(File.join(src, "manifest.yml"))
+      File.write(File.join(src, "manifest.yml"), YAML.dump(manifest.merge("description" => "As installed", "card_layouts" => ["wide"])))
+      Samagotchi::MemoryBundle::Installer.new(source: src, name: name, scope: "system", strict: true).run
+    end
+
+    it "keeps its description, and carries a key this chi doesn't know, saying so" do
+      install_described("described")
+      out = File.join(tmpdir, "out-described")
+      builder = described_class.new(scope: "system", name: "described", out: out)
+      builder.run
+
+      built = YAML.load_file(File.join(out, "manifest.yml"))
+      expect(built).to include("description" => "As installed", "card_layouts" => ["wide"])
+      expect(builder.warnings).to include(start_with(Samagotchi::MemoryBundle::Manifest.unknown_key_line("card_layouts")))
+    end
+
+    it "takes --description over it" do
+      install_described("described")
+      out = File.join(tmpdir, "out-described-cli")
+      described_class.new(scope: "system", name: "described", out: out, description: "From the CLI").run
+
+      expect(YAML.load_file(File.join(out, "manifest.yml"))["description"]).to eq("From the CLI")
+    end
+  end
+
   it "names a project bundle after the repository, also from a linked worktree" do
     repo = File.join(File.realpath(tmpdir), "My Repo")
     FileUtils.mkdir_p(repo)
