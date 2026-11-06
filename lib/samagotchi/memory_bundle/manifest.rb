@@ -132,12 +132,14 @@ module Samagotchi
       end
 
       # Returns the expected sha256 hex digest for a given file key
-      # (e.g. "identity.md"), with the "sha256:" prefix stripped.
+      # (e.g. "identity.md"), with the "sha256:" prefix stripped, nil when
+      # the entry declares none (an empty value is nothing to verify).
       def checksum_for(file_key)
         raw = @files[file_key]
         return nil unless raw
 
-        raw.start_with?("sha256:") ? raw[7..] : raw
+        hex = raw.start_with?("sha256:") ? raw[7..] : raw
+        hex unless hex.nil? || hex.empty?
       end
 
       # Returns sha256 hex for a hook basename (e.g. "guardrails.rb"), nil

@@ -363,6 +363,23 @@ RSpec.describe Samagotchi::MemoryBundle::Installer do
           checksum_warnings = installer.warnings.select { |w| w.include?("Checksum mismatch") }
           expect(checksum_warnings).to be_empty
         end
+
+        it "does not warn when a files entry declares no checksum" do
+          bundle_dir = File.join(tmpdir, "bundle_cksum_none")
+          FileUtils.mkdir_p(bundle_dir)
+          File.write(File.join(bundle_dir, "identity.md"), "# Identity\n")
+          # A description-only entry: no sha256 at all.
+          manifest = { "name" => "cksum-none", "version" => "1.0", "files" => {
+            "identity.md" => { "description" => "Who this bundle is for" }
+          } }
+          File.write(File.join(bundle_dir, "manifest.yml"), YAML.dump(manifest))
+
+          installer = installer_for(source: bundle_dir, name: "cksum-none", scope: "system")
+          installer.run
+
+          checksum_warnings = installer.warnings.select { |w| w.include?("Checksum mismatch") }
+          expect(checksum_warnings).to be_empty
+        end
       end
     end
 

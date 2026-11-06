@@ -98,6 +98,12 @@ RSpec.describe Samagotchi::MemoryBundle::Manifest do
       expect(manifest.checksum_for("bar.md")).to be_nil
     end
 
+    it "returns nil for a files entry that declares no checksum" do
+      path = write_manifest({ "files" => { "foo.md" => { "description" => "Just a description" } } })
+      manifest = described_class.new(path: path)
+      expect(manifest.checksum_for("foo.md")).to be_nil
+    end
+
     it "defaults scope to nil when not provided" do
       path = write_manifest({})
       manifest = described_class.new(path: path)

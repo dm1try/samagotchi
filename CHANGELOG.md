@@ -10,6 +10,7 @@ and commands may change between minor versions. How releases are made:
 
 ### Fixed
 
+- A bundle `files:` entry with no checksum no longer warns "Checksum mismatch ... expected , got ..." on every strict install: an entry that declares no sha is not verified, while a wrong one still warns.
 - `chi bundle diff NAME FILE` now prints the bundle's new text after the base and your file when the file stays behind, so the sections the "stays behind" line names can be read.
 - `chi bundle try` no longer passes the user's filtered settings (guardrails, memories, hooks, log, web, update…) to the chi it runs in its sandbox through the environment: a variable the sandbox dropped was still inherited by the child, since a spawn environment is merged onto the spawner's rather than replacing it. [docs/internals/bundles.md](docs/internals/bundles.md)
 
