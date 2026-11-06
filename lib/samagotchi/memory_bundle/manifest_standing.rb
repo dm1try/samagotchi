@@ -63,12 +63,26 @@ module Samagotchi
       # whether it will or why not (an archive isn't extracted here: chi update
       # tries it).
       # @return [String, nil]
+      # A bundle chi ships is checked against this chi's shipped copy, which chi
+      # update reads (at another version, chi update upgrades it instead).
       def status_line(bundle)
-        source = bundle.source.to_s.strip
-        tryable = bundle.manifest_unkept? && !bundle.dev && !bundle.profile? && File.directory?(source) && source.start_with?("/")
-        return line(bundle) unless tryable
+        return line(bundle) unless bundle.manifest_unkept? && !bundle.dev && !bundle.profile?
 
-        line(bundle, refused: Provenance.new(name: bundle.name).adopt_manifest(source, dry_run: true))
+        dir = try_dir(bundle)
+        dir ? line(bundle, refused: Provenance.new(name: bundle.name).adopt_manifest(dir, dry_run: true)) : line(bundle)
+      end
+
+      # The folder chi update keeps it from, nil when it wouldn't try one here.
+      def try_dir(bundle)
+        source = bundle.source.to_s.strip
+        unless SourceIdentity.of(source)&.shipped?
+          return source.start_with?("/") && File.directory?(source) ? source : nil
+        end
+
+        dir = File.join(SourceNormalizer::SHIPPED_DIR, File.basename(source.chomp("/")))
+        File.file?(File.join(dir, "manifest.yml")) && Manifest.read(dir: dir).version == bundle.version.to_s ? dir : nil
+      rescue Manifest::ValidationError, Psych::Exception
+        nil
       end
 
       # Keeps the manifest of a record without a usable kept one (UNKEPT, not
@@ -151,7 +165,7 @@ module Samagotchi
         keys = newer.map { |key, floor| "#{key}: (#{floor})" }.join(", ")
         "installed by chi #{by}, which didn't act on #{keys}: #{reinstall(bundle)}"
       end
-      private_class_method :adopt, :unkept_words, :unkept_fix, :gone?, :local?, :reinstall, :newer_line
+      private_class_method :try_dir, :adopt, :unkept_words, :unkept_fix, :gone?, :local?, :reinstall, :newer_line
     end
   end
 end
