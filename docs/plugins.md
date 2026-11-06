@@ -29,6 +29,7 @@ plugin:
   file: plugin.rb
   sha256: sha256:6a1a7022…   # shasum -a 256 plugin.rb
 requires_chi: ">= 0.1.28"    # optional: a gem-style requirement (">= 0.1.28, < 0.2"); the bundle's hooks/ check it too
+                             # every key below has a chi floor: check warns when requires_chi admits a chi that never read it
 # requires_chi_next: true    # shipped bundles only, ignored by chi: rake release:bump raises requires_chi
                              # to the chi being released (docs/releasing.md)
 session_settings: [cap]      # optional: the settings a session may set (chi --set my-bundle.cap=3);

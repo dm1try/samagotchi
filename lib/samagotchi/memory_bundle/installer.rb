@@ -99,6 +99,7 @@ module Samagotchi
 
       def run
         load_source
+        warn_unknown_keys(@manifest) if @manifest
         @target_scope, @target_dir = resolve_target
         @file_descriptions = @manifest&.file_descriptions || {}
         @provenance = Provenance.new(name: @name)
@@ -670,6 +671,16 @@ module Samagotchi
         return Provenance.sha_matches?(target, recorded) unless Provenance.recorded_sha(recorded).empty?
 
         File.exist?(base_path) && Provenance.file_sha(target) == Provenance.file_sha(base_path)
+      end
+
+      # One warning per manifest key this chi's parser never reads (docs/cli.md's
+      # unknown-key): it is ignored, so the advice is chi's own. A dry run warns
+      # too: the key is in the manifest either way.
+      def warn_unknown_keys(manifest)
+        manifest.unknown_keys.each do |key|
+          @warnings << "#{Manifest.unknown_key_line(key)}; a newer chi may read it " \
+                       "(chi update, then chi bundle upgrade #{manifest.name})"
+        end
       end
 
       # Not fatal, like update_target_index: a warning says so.

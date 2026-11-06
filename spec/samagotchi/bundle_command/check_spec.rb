@@ -161,6 +161,64 @@ RSpec.describe Samagotchi::BundleCommand::Check do
                                    "(fix: requires_chi: \">= 0.34.0\")"])
   end
 
+  it "unknown-key: a manifest key this chi ignores, at its line, and the run still passes" do
+    edit("manifest.yml") { |text| "#{text}card_layouts: [cards]\napi_version: 3\n" }
+    expect(findings(:warn).grep(/unknown-key/)).to eq([
+      "warn unknown-key manifest.yml:17: this chi (#{Samagotchi::VERSION}) doesn't know the manifest key card_layouts:, " \
+      "so it ignores it (fix: update chi, or remove card_layouts: if it's a typo)",
+      "warn unknown-key manifest.yml:18: this chi (#{Samagotchi::VERSION}) doesn't know the manifest key api_version:, " \
+      "so it ignores it (fix: update chi, or remove api_version: if it's a typo)"
+    ])
+    expect(@status).to eq(0)
+  end
+
+  it "requires-chi-floor: a manifest key newer than the oldest chi requires_chi admits" do
+    edit("manifest.yml") { |text| "#{text}session_settings: [cap]\n" }
+    refresh!
+    expect(findings(:warn)).to eq(["warn requires-chi-floor manifest.yml:17: requires_chi \">= 0.80.0\" admits chi 0.80.0, " \
+                                   "but the manifest uses session_settings:, which needs chi 0.84.0 " \
+                                   "(fix: requires_chi: \">= 0.84.0\")"])
+  end
+
+  it "requires-chi-floor: nothing when requires_chi already admits the key's floor" do
+    edit("manifest.yml") { |text| text.sub('requires_chi: ">= 0.80.0"', 'requires_chi: ">= 0.84.0"') + "session_settings: [cap]\n" }
+    refresh!
+    expect(findings(:warn)).to eq([])
+  end
+
+  it "requires-chi-floor: the shape, not just the key — a files: entry given as a mapping" do
+    edit("manifest.yml") do |text|
+      text.sub('requires_chi: ">= 0.80.0"', 'requires_chi: ">= 0.30.0"')
+          .sub(/^  check_note\.md: (sha256:\h+)$/) do
+            "  check_note.md:\n    sha256: #{$1}\n    description: \"why it's there\""
+          end
+    end
+    refresh!
+    expect(findings(:warn)).to eq(["warn requires-chi-floor manifest.yml:8: requires_chi \">= 0.30.0\" admits chi 0.30.0, " \
+                                   "but the manifest uses a files: entry given as a mapping, which needs chi 0.34.0 " \
+                                   "(fix: requires_chi: \">= 0.34.0\")"])
+  end
+
+  it "requires-chi-floor: a manifest with no requires_chi at all gets the same warning, with the floor as its fix" do
+    edit("manifest.yml") { |text| text.sub(/^requires_chi: .*\n/, "") + "session_settings: [cap]\n" }
+    refresh!
+    expect(findings(:warn).grep(/requires-chi-floor/)).to eq([
+      "warn requires-chi-floor manifest.yml:#{File.read(manifest).lines.size}: no requires_chi, but the manifest " \
+      "uses session_settings:, which needs chi 0.84.0 (fix: requires_chi: \">= 0.84.0\")"
+    ])
+  end
+
+  it "installed: the unknown key is still a warning, the key floor never" do
+    edit("manifest.yml") { |text| "#{text}card_layouts: [cards]\nsession_settings: [cap]\n" }
+    refresh!
+    lines = installed_findings
+    expect(lines.grep(/unknown-key/)).to eq([
+      "warn unknown-key manifest.yml:17: this chi (#{Samagotchi::VERSION}) doesn't know the manifest key card_layouts:, " \
+      "so it ignores it (fix: update chi, or remove card_layouts: if it's a typo)"
+    ])
+    expect(lines.grep(/requires-chi-floor/)).to eq([])
+  end
+
   it "settings: warns on a --set the manifest's settings: rules out, as config.yml's bundles: does" do
     edit("manifest.yml") { |text| "#{text}settings: [word]\n" }
     expect(check("--set", "wrod=hi").grep(/ settings /)).to eq([

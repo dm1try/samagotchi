@@ -486,6 +486,35 @@ RSpec.describe Samagotchi::MemoryBundle::Installer do
     expect(installed.grep(/spec|notes\.md|fixtures/)).to eq([])
   end
 
+  describe "a manifest key this chi doesn't read" do
+    def bundle_with(base, extra)
+      dir = write_bundle(File.join(tmpdir, base), { "identity.md" => "# Identity\n" }, name: "future-bundle")
+      path = File.join(dir, "manifest.yml")
+      File.write(path, YAML.dump(YAML.safe_load_file(path).merge(extra)))
+      dir
+    end
+
+    def warning(key)
+      Samagotchi::MemoryBundle::Manifest.unknown_key_line(key) +
+        "; a newer chi may read it (chi update, then chi bundle upgrade future-bundle)"
+    end
+
+    it "warns once per unknown key, in a dry run too, and not for a manifest of keys chi knows" do
+      dir = bundle_with("future", { "card_layouts" => %w[cards panels], "api_version" => 3 })
+      expected = [warning("card_layouts"), warning("api_version")]
+
+      dry = described_class.new(source: dir, name: "future-bundle", scope: "system", strict: true, dry_run: true).tap(&:run)
+      expect(dry.warnings.grep(/doesn't know/)).to eq(expected)
+
+      installer = installer_for(source: dir, name: "future-bundle", scope: "system")
+      installer.run
+      expect(installer.warnings.grep(/doesn't know/)).to eq(expected)
+
+      clean = write_bundle(File.join(tmpdir, "clean"), { "identity.md" => "# Identity\n" }, name: "clean-bundle")
+      expect(installer_for(source: clean, name: "clean-bundle", scope: "system").tap(&:run).warnings.grep(/doesn't know/)).to eq([])
+    end
+  end
+
   describe "guardrail rule files" do
     it "an unchanged rules file is skipped as already up to date; a changed one is installed" do
       bundle_dir = write_bundle(tmpdir, { "identity.md" => "# Identity\n" })

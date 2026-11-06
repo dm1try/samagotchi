@@ -8,6 +8,10 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Added
+
+- `chi bundle install` and `chi bundle check` say when a manifest has a key this chi doesn't read (`unknown-key`): it is ignored, and a newer chi may read it. `chi bundle check` also warns (`requires-chi-floor`) when the manifest itself uses a key newer than the oldest chi its `requires_chi` admits, the way it already does for plugin API calls.
+
 ### Fixed
 
 - An objectives proposal card no longer appears after a turn that was canceled, cut with Ctrl-C or failed: only a turn that completed shows the changes it proposed.

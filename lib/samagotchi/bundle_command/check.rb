@@ -84,6 +84,7 @@ module Samagotchi
         if manifest
           missing = check_files(manifest)
           check_source_tree(manifest, missing) unless @installed
+          check_keys(manifest)
           check_requires_chi(manifest)
           check_trust(manifest) unless @installed
           check_clash(manifest)
@@ -145,6 +146,44 @@ module Samagotchi
         base = File.basename(file)
         index = @text.lines.index { |l| l.match?(/\A\s*(?:file: )?["']?#{Regexp.escape(base)}["']?:?(?:\s|\z)/) }
         index && (index + 1)
+      end
+
+      # ── the manifest's own keys ───────────────────────────────────────
+
+      # A key this chi's parser never reads is one it ignores, and a key whose
+      # floor is above what requires_chi admits is one an older chi would
+      # ignore too. The floor is the author's fix, so an installed bundle gets
+      # only the unknown-key line, as check_floor's call floor does today.
+      def check_keys(manifest)
+        manifest.unknown_keys.each do |key|
+          add(:warn, :"unknown-key", "manifest.yml", MemoryBundle::Manifest.unknown_key_line(key), line: manifest_line(key),
+              fix: "update chi, or remove #{key}: if it's a typo")
+        end
+        check_key_floor(manifest) unless @installed
+      end
+
+      # The manifest uses a key the oldest chi requires_chi admits never read.
+      # No plugin needed: the key is the bundle's own claim.
+      def check_key_floor(manifest)
+        key, version = manifest.floor_keys.max_by { |_, floor| Gem::Version.new(floor) }
+        return if key.nil?
+
+        bound = lower_bound(manifest.requires_chi)
+        return if bound && Gem::Version.new(version) <= bound
+
+        add(:warn, :"requires-chi-floor", "manifest.yml",
+            "#{manifest.requires_chi ? "requires_chi #{manifest.requires_chi.inspect} admits chi #{bound}," : "no requires_chi,"} " \
+            "but the manifest uses #{key_label(key)}, which needs chi #{version}",
+            line: manifest_line(key.split(".").first), fix: "requires_chi: \">= #{version}\"")
+      end
+
+      # How to name a SINCE key in a message: a shape is not a key on its own.
+      def key_label(key)
+        case key
+        when "files.description" then "a files: entry given as a mapping"
+        when "session_settings.types", "settings.types" then "#{key.split(".").first}: as a mapping of keys to types"
+        else "#{key}:"
+        end
       end
 
       # ── files ─────────────────────────────────────────────────────────
@@ -347,6 +386,9 @@ module Samagotchi
         stale_reported = @findings.any? { |f| f.code == :sha }
         warnings.each do |warning|
           next if stale_reported && warning.start_with?("Checksum mismatch")
+          # An unknown manifest key is check_keys' row, with the fix the install
+          # can't offer; the same condition twice would be two rows.
+          next if warning.include?("doesn't know the manifest key")
           next if @too_new && warning.include?("won't load:")
           # This machine's PATH, said at install; nothing a chi update changed.
           next if @installed && warning.start_with?("needs ")
