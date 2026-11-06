@@ -386,7 +386,7 @@ RSpec.describe Samagotchi::Worker, "attached context" do
 
     # Review item 3 (part 2): an exit or restart asked for doesn't wait
     # out a wake turn. A long tick: the loop runs only when woken, so the
-    # change and the request are both there on its next pass.
+    # change and the request are both there when it next comes round.
     it "doesn't wake for a change that comes with an exit request: the worker leaves, the change a note" do
       worker = start_worker(poll_interval: 30)
       waker = worker.instance_variable_get(:@waker)
@@ -396,6 +396,33 @@ RSpec.describe Samagotchi::Worker, "attached context" do
 
       push("pr-7", "v2", wake: true)
       expect(worker.send(:exit_request, "web:tab")).to be_nil
+
+      expect(join!(@thread, "the worker").value).to eq(:exit_requested)
+      expect(wake_turns).to be_empty
+      expect(saved_context_notes.last[:content]).to include("Updated: pr-7.")
+    end
+
+    # The request need not wait for the loop to come round: it can land in a
+    # pass already in flight, after its look at the context and before the
+    # leave check. Nothing later can pick the change up (the poller stops with
+    # the worker), so the leave itself notes it, as it does for a task that
+    # finished in the same gap.
+    it "notes a change that arrives after the leaving pass looked at the context" do
+      worker = start_worker(poll_interval: 30)
+      attach("pr-7", "v1")
+      worker.instance_variable_get(:@waker).wake
+      wait_for("the attached change to be marked seen") { own.subscription("pr-7").seen }
+      loop_rounds
+
+      # idle_pass's idle-exit check is the point of a pass that has already
+      # absorbed: land the change and the request there, so no later pass sees
+      # them.
+      allow_any_instance_of(Samagotchi::WorkerIdleExit).to receive(:due?).and_wrap_original do |original|
+        push("pr-7", "v2", wake: true)
+        worker.send(:exit_request, "web:tab")
+        original.call
+      end
+      worker.instance_variable_get(:@waker).wake
 
       expect(join!(@thread, "the worker").value).to eq(:exit_requested)
       expect(wake_turns).to be_empty

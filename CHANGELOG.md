@@ -8,6 +8,10 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Fixed
+
+- An attached context change that arrives while the worker's leaving pass is already in flight is saved as a note before the worker stops, instead of being dropped with its poller.
+
 ## [0.152.0] - 2026-11-06
 
 ### Added

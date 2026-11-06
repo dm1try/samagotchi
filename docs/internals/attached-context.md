@@ -35,6 +35,9 @@ Three rules hold the shape:
   conversation already holds. Ids are deterministic: `ctx-<name>-<serial>-<revision[0,12]>` (the serial makes A, B, A
   three notes), `ctx-<name>-error-<error_since digits>`, `ctx-<name>-detached-<seen[0,12]>`.
 - **Polling is not activity.** The poller and the absorb never hold a worker up (`WorkerIdleExit`).
+- **The leave absorbs too.** A pass looks at the context and then checks whether it should leave; a change that
+  lands in that gap has no later pass (the poller stops with the worker), so `Worker#left` absorbs whatever is
+  pending as plain notes before the recap, as it does for a background task that finished in the same gap.
 
 ## ContextSources
 

@@ -1793,6 +1793,12 @@ module Samagotchi
     # once) and leaves the recap to the conversation's next real pause.
     def left(result)
       deleting = result == :exit_requested && @exit_deletes
+      # The attached context goes with this process: a change that landed after
+      # the leaving pass looked at it has no later pass to note it, so note it
+      # here (no wake turn: the worker is on its way out). Not into a session
+      # /exit --delete deletes next: its save could land after the delete and
+      # write the session back.
+      absorb_context unless deleting
       # The watch goes with this process: a task that finished since the
       # last look (nothing held the exit for it: queue, a note-only task,
       # /exit) is a plain note for the next turn, not lost. Not into a
