@@ -228,8 +228,9 @@ module Samagotchi
           @failures.add("rules (bundle #{bundle_name})", bundle.error, required: true, group: :rules)
           next
         end
-        if (too_new = MemoryBundle::Manifest.requires_chi_failure(bundle.requires_chi, Samagotchi::VERSION))
-          rules.concat(too_new_bundle_rules(bundle_name, bundle, too_new))
+        manifest = bundle.manifest
+        if (too_new = manifest.requires_chi_failure)
+          rules.concat(too_new_bundle_rules(bundle_name, manifest, too_new))
           next
         end
         dir = MemoryBundle::Provenance.new(name: bundle_name).guardrails_dir
@@ -526,7 +527,8 @@ module Samagotchi
     # load the new ones). Never loaded (a chi older than the bundle it
     # starts with): none, and a required load failure, as the hook loader
     # does for a guardrail hook, so the calls aren't quietly unguarded.
-    def too_new_bundle_rules(bundle_name, bundle, reason)
+    # @param manifest [MemoryBundle::InstalledManifest]
+    def too_new_bundle_rules(bundle_name, manifest, reason)
       kept = @loaded_bundle_rules[bundle_name]
       unless kept
         Log.warn(:guardrails, "bundle_rules_requires_chi", echo: "[samagotchi:guardrails] bundle #{bundle_name}: its rules are not loaded: #{reason}",
@@ -536,19 +538,19 @@ module Samagotchi
         return []
       end
 
-      key = [bundle_name, bundle.version.to_s]
+      key = [bundle_name, manifest.version.to_s]
       return kept if @kept_noticed[key]
 
       @kept_noticed[key] = true
-      Log.warn(:guardrails, "bundle_rules_kept", bundle: bundle_name, version: bundle.version.to_s,
-                                                 requires_chi: bundle.requires_chi.to_s)
-      @notify.call(kept_notice(bundle_name, bundle))
+      Log.warn(:guardrails, "bundle_rules_kept", bundle: bundle_name, version: manifest.version.to_s,
+                                                 requires_chi: manifest.requires_chi.to_s)
+      @notify.call(kept_notice(bundle_name, manifest))
       kept
     end
 
-    def kept_notice(bundle_name, bundle)
+    def kept_notice(bundle_name, manifest)
       id = @session_lookup.call&.id || "ID"
-      "bundle #{bundle_name} #{bundle.version} needs chi #{bundle.requires_chi} and this session runs chi #{Samagotchi::VERSION}: " \
+      "bundle #{bundle_name} #{manifest.version} needs chi #{manifest.requires_chi} and this session runs chi #{Samagotchi::VERSION}: " \
         "its new rules are not loaded, the ones loaded before still apply. Restart the session to load them " \
         "(chi sessions stop #{id}, then chi --resume #{id})"
     end

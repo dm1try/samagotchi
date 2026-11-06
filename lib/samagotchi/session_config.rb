@@ -13,7 +13,7 @@ module Samagotchi
   # (RecapSetup). Its
   # bundles part: {bundle => {key => value}}, string keys, scalar values
   # (.typed). A bundle offers the keys a session may set in its manifest's
-  # session_settings: (recorded at install, InstalledBundle#session_settings);
+  # session_settings: (recorded at install, InstalledManifest#session_settings);
   # any other bundle or key is refused, so a typo isn't saved, and so is a
   # value of another type than the manifest gives the key (session_settings:
   # {cap: number}). The session keeps them (Session#settings, SessionSetup)
@@ -308,9 +308,10 @@ module Samagotchi
           notes[name] = "#{name} is installed but its plugin doesn't load: #{reason}"
           next
         end
-        offered[name] = bundle.session_settings
-        types[name] = bundle.session_setting_types unless bundle.session_setting_types.empty?
-        if bundle.session_settings.empty? && shipped_settings?(shipped_dir, name)
+        manifest = bundle.manifest
+        offered[name] = manifest.session_settings
+        types[name] = manifest.session_setting_types unless manifest.session_setting_types.empty?
+        if manifest.session_settings.empty? && shipped_settings?(shipped_dir, name)
           notes[name] = "(run `chi update` or `chi bundle upgrade #{name}` to refresh it)"
         end
       end

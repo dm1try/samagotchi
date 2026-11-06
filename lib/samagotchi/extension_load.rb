@@ -87,13 +87,14 @@ module Samagotchi
         end
         bundle_dir = File.join(MemoryBundle::Provenance.bundles_dir, bundle_name)
         hooks_dir = File.join(bundle_dir, "hooks")
-        if bundle.experimental?
+        manifest = bundle.manifest
+        if manifest.experimental?
           Log.info(:hooks, "experimental_bundle", echo: "[hooks] Bundle '#{bundle_name}' is experimental — its hooks may change or misbehave.", bundle: bundle_name)
         end
         begin
-          Hooks::BundleLoader.load(bundle_name: bundle_name, hooks_dir: hooks_dir, metadata: bundle.hooks, registry: registry,
+          Hooks::BundleLoader.load(bundle_name: bundle_name, hooks_dir: hooks_dir, metadata: manifest.hooks, registry: registry,
                                    failures: @hook_failures, settings: settings[bundle_name.to_s] || {},
-                                   requires_chi: bundle.requires_chi, hook_failed: @hook_failed)
+                                   requires_chi: manifest.requires_chi, hook_failed: @hook_failed)
         rescue Exception => e # rubocop:disable Lint/RescueException -- a hook's SyntaxError or exit must not stop chi
           raise if e.is_a?(SignalException) # Ctrl-C and kill signals are the user's
 

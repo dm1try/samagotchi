@@ -113,7 +113,7 @@ module Samagotchi
 
       # Why the installed file can't be loaded, or nil.
       def unloadable_reason(file, bundle)
-        failure = MemoryBundle::Manifest.requires_chi_failure(bundle.requires_chi, Samagotchi::VERSION)
+        failure = bundle.manifest.requires_chi_failure
         return failure if failure
         return "the file is missing" unless file && File.file?(file)
 

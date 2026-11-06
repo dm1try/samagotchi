@@ -32,7 +32,7 @@ module Samagotchi
         next ["config.yml bundles: #{name}: #{SessionConfig.no_installed_bundle(name)}#{near(name, installed.keys)}"] unless bundle
         next [] if bundle.error?
 
-        record_warnings(bundle, values)
+        record_warnings(bundle.manifest, values)
       end
     end
 
@@ -62,23 +62,24 @@ module Samagotchi
       lines
     end
 
-    # One bundle's +values+ against its record (or a manifest as one); none
-    # while it declares no settings:.
-    # @param bundle [MemoryBundle::InstalledBundle]
+    # One bundle's +values+ against its manifest (an installed one's or a
+    # source's); none while it declares no settings:.
+    # @param manifest [MemoryBundle::InstalledManifest, MemoryBundle::Manifest]
+    #   name, settings, session_settings, setting_types
     # @return [Array<String>]
-    def record_warnings(bundle, values)
-      return [] if bundle.settings.nil?
+    def record_warnings(manifest, values)
+      return [] if manifest.settings.nil?
 
-      values.flat_map { |key, value| value_warnings(bundle, key.to_s, value) }
+      values.flat_map { |key, value| value_warnings(manifest, key.to_s, value) }
     end
 
-    def value_warnings(bundle, key, value)
-      where = "config.yml bundles: #{bundle.name}.#{key}"
-      known = bundle.settings | bundle.session_settings
-      return ["#{where}: #{SessionConfig.takes_keys(bundle.name, known)}#{near(key, known)}"] unless known.include?(key)
+    def value_warnings(manifest, key, value)
+      where = "config.yml bundles: #{manifest.name}.#{key}"
+      known = manifest.settings | manifest.session_settings
+      return ["#{where}: #{SessionConfig.takes_keys(manifest.name, known)}#{near(key, known)}"] unless known.include?(key)
 
-      takes, what = SessionConfig::TYPES[bundle.setting_types[key]]
-      takes && !takes.call(value) ? ["#{where}: #{SessionConfig.wrong_type(bundle.name, key, what, value)}"] : []
+      takes, what = SessionConfig::TYPES[manifest.setting_types[key]]
+      takes && !takes.call(value) ? ["#{where}: #{SessionConfig.wrong_type(manifest.name, key, what, value)}"] : []
     end
     private_class_method :value_warnings
 

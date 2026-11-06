@@ -85,9 +85,9 @@ module Samagotchi
     def resolve(url)
       url = url.to_s.strip
       MemoryBundle::Provenance.each_installed do |bundle, record|
-        next if record.error? || !record.context_providers?
+        next if record.error?
 
-        providers(bundle, record).each do |provider|
+        providers(bundle, record.manifest).each do |provider|
           match = provider.regexp.match(url) or next
           return resolved(bundle, provider, match)
         end
@@ -97,14 +97,15 @@ module Samagotchi
 
     # Whether an installed bundle declares a provider (the web's "+ URL").
     def any?
-      MemoryBundle::Provenance.each_installed.any? { |_bundle, record| !record.error? && record.context_providers? }
+      MemoryBundle::Provenance.each_installed.any? { |_bundle, record| !record.error? && record.manifest.context_providers? }
     end
 
-    def providers(bundle, record)
-      parse_list(record.context_providers)
-    rescue Invalid => e
-      Log.warn(:context, "providers_unreadable", bundle: bundle, msg: e.message)
-      []
+    # Its parsed providers; a list that doesn't parse is none (logged).
+    def providers(bundle, manifest)
+      if (problem = manifest.problems["context_providers"])
+        Log.warn(:context, "providers_unreadable", bundle: bundle, msg: problem)
+      end
+      manifest.context_providers
     end
 
     def resolved(bundle, provider, match)

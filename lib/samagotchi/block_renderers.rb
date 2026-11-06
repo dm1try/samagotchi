@@ -76,10 +76,10 @@ module Samagotchi
     def for_installed
       taken = {}
       MemoryBundle::Provenance.each_installed do |bundle, record|
-        next unless record.block_renderers?
-        next if MemoryBundle::Manifest.requires_chi_failure(record.requires_chi, VERSION)
+        manifest = record.manifest
+        next if manifest.requires_chi_failure(VERSION)
 
-        renderers(bundle, record).each do |renderer|
+        renderers(bundle, manifest).each do |renderer|
           taken[renderer.lang] ||= Installed.new(lang: renderer.lang, bundle: bundle, files: renderer.load)
         end
       end
@@ -104,11 +104,12 @@ module Samagotchi
       raise Invalid, "bundle #{bundle}'s scripts/#{file} differs from the installed one (reinstall the bundle)"
     end
 
-    def renderers(bundle, record)
-      parse_list(record.block_renderers)
-    rescue ArgumentError => e # Invalid is one; so are a record's bytes that aren't UTF-8
-      Log.warn(:web, "block_renderers_unreadable", bundle: bundle, msg: e.message)
-      []
+    # Its parsed renderers; a list that doesn't parse is none (logged).
+    def renderers(bundle, manifest)
+      if (problem = manifest.problems["block_renderers"])
+        Log.warn(:web, "block_renderers_unreadable", bundle: bundle, msg: problem)
+      end
+      manifest.block_renderers
     end
     private_class_method :renderers
   end
