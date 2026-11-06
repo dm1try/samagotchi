@@ -44,7 +44,9 @@ moves the image too (`spec/ci_playwright_image_spec.rb` keeps a pinned tag out o
 that way locally: `npx playwright run-server --port 3333`, then `PW_TEST_CONNECT_WS_ENDPOINT=ws://127.0.0.1:3333/ npm run e2e`.
 
 No spec reads your own setup. The suite points `XDG_CONFIG_HOME` and `XDG_STATE_HOME` at temp folders,
-clears your `SAMAGOTCHI_*` environment, and keeps every spec off the network (WebMock).
+clears your `SAMAGOTCHI_*` environment, and keeps every spec off the network (WebMock). `TMPDIR` is a folder of the
+run's own (`SPEC_TMPDIR`, removed at the end), so a spec's bare `Dir.mktmpdir` or `Dir.tmpdir`, and what chi writes or
+sweeps beside it, never touches your real `$TMPDIR`. A spec can't assume that path's length: it is your `$TMPDIR`'s plus one folder.
 It also clears what tells git which repo to act on (`GIT_DIR`, `GIT_WORK_TREE`, the rest of
 `git rev-parse --local-env-vars`: `GitEnv`), first thing in `spec_helper.rb` and as the bundle test kit's
 adapters load, so a run from `git rebase --exec`, `bisect run` or a hook can't reach the real repo through a spec's git.

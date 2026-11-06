@@ -1742,10 +1742,12 @@ Need to inspect the filesystem first.
         expect(tool_event[:output]).to start_with("[read]\n")
         expect(tool_event[:output].length).to be <= Samagotchi::KernelLoop::DEFAULT_MAX_TOOL_OUTPUT_CHARS
         expect(tool_event[:output_truncated]).to be(true)
+        # The params are cut past a length, and a temp dir's path is as long as
+        # the machine's $TMPDIR makes it: only their start is fixed.
         expect(tool_event[:activity]).to include(
           action: "reading file",
           tool: "read",
-          params: %(path="#{path}"),
+          params: start_with(%(path="#{path[0, 20]})),
           status: "ok"
         )
       end

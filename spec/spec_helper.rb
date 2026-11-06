@@ -48,6 +48,18 @@ SPEC_ENV_SWITCHES = %w[SAMAGOTCHI_INTEGRATION SAMAGOTCHI_MACOS_BUILD].freeze
 SPEC_ENV_CLEAR = -> { ENV.keys.each { |key| ENV.delete(key) if key.start_with?("SAMAGOTCHI_") && !SPEC_ENV_SWITCHES.include?(key) } }
 SPEC_ENV_CLEAR.call
 
+# A temp dir of the run's own as TMPDIR, for this process and all it starts,
+# made before the suite's other temp dirs so they are in it too: a spec that
+# takes Dir.tmpdir or a bare mktmpdir for a sessions dir (its guardrails/,
+# context/, context_candidates.jsonl) or sweeps it by retention writes and
+# deletes in here, never in the developer's real $TMPDIR. A short name: unix
+# socket paths under it have a 104-byte limit on macOS. Removed at the end by
+# rspec's own process, not by a spec's fork.
+SPEC_TMPDIR = Dir.mktmpdir("chi")
+ENV["TMPDIR"] = SPEC_TMPDIR
+spec_tmp_owner = Process.pid
+at_exit { FileUtils.rm_rf(SPEC_TMPDIR) if Process.pid == spec_tmp_owner }
+
 # The per-example time limit (config.around below): its error, and the opt-in
 # live tags it leaves alone.
 class SpecExampleTimeout < StandardError; end
