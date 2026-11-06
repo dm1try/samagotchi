@@ -2,6 +2,7 @@
 
 require "spec_helper"
 require "json"
+require "tmpdir"
 require "samagotchi/memory_bundle/installed_bundle"
 require "samagotchi/memory_bundle/installed_manifest"
 
@@ -48,6 +49,16 @@ RSpec.describe Samagotchi::MemoryBundle::InstalledManifest do
         .to eq([true, false, false, false])
     end
 
+    it "reads session_settings of another shape as none" do
+      expect(record("session_settings" => "cap").manifest.session_settings).to eq([])
+    end
+
+    it "reads a legacy record's odd shapes as none, each with its problem" do
+      manifest = record("needs" => "gh", "context_providers" => {}).manifest
+      expect([manifest.needs?, manifest.context_providers?]).to eq([false, false])
+      expect(manifest.problems.keys).to eq(%w[needs context_providers])
+    end
+
     it "keeps a trust_level that is set, even an empty one, as not experimental" do
       expect(record("trust_level" => "").manifest.experimental?).to be(false)
       expect(record("trust_level" => "experimental").manifest.experimental?).to be(true)
@@ -87,6 +98,40 @@ RSpec.describe Samagotchi::MemoryBundle::InstalledManifest do
       expect(manifest.requires_chi_failure("1.0.0")).to be_nil
       expect(record({}).manifest.requires_chi_failure).to be_nil
       expect(record("requires_chi" => ">= 99999").manifest.requires_chi_failure).to include("this is chi #{Samagotchi::VERSION}")
+    end
+  end
+
+  # Ties the two classes together: a key Manifest reads has an answer
+  # here, and the record can't hand it out past the seam.
+  describe "tripwire" do
+    # Identity and state stay on the record; the rest is manifest data.
+    let(:identity_and_state) { %i[name version scope files plugin] }
+    let(:renamed) { { scripts: :script_names } }
+    # Derived values a later phase adds to Manifest, each with why it has no counterpart here.
+    let(:excluded) { {} }
+
+    # A reader counts once a minimal manifest has its ivar, so Manifest#initialize
+    # must set each one unconditionally (as it does: `@x = parse_x(raw["x"])`);
+    # one set only when its key is present would slip past this.
+    def manifest_readers
+      Dir.mktmpdir do |dir|
+        File.write(File.join(dir, "manifest.yml"), "name: t\nversion: 1.0.0\n")
+        manifest = Samagotchi::MemoryBundle::Manifest.read(dir: dir)
+        Samagotchi::MemoryBundle::Manifest.public_instance_methods(false).select do |name|
+          Samagotchi::MemoryBundle::Manifest.instance_method(name).arity.zero? && manifest.instance_variables.include?(:"@#{name}")
+        end
+      end
+    end
+
+    it "gives every attr_reader of Manifest, but identity and state, a counterpart" do
+      readers = manifest_readers
+      expect(readers).to include(:requires_chi, :block_renderers, :scripts)
+      wanted = (readers - identity_and_state - excluded.keys).map { |name| renamed.fetch(name, name) }
+      expect(wanted - described_class.members).to eq([])
+    end
+
+    it "keeps the mirrored keys off InstalledBundle's members" do
+      expect(installed.members & installed::MIRROR_KEYS.map(&:to_sym)).to eq([])
     end
   end
 end

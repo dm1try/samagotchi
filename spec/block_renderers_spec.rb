@@ -99,11 +99,11 @@ RSpec.describe Samagotchi::BlockRenderers do
     it "records them, and an upgrade that drops them forgets them" do
       install(source)
       record = Samagotchi::MemoryBundle::Provenance.new(name: "drawer").record
-      expect(record.block_renderers?).to be(true)
-      expect(described_class.parse_list(record.block_renderers).map(&:to_h)).to eq([entry])
+      expect(record.manifest.block_renderers?).to be(true)
+      expect(record.manifest.block_renderers.map(&:to_h)).to eq([entry])
 
       install(source(renderers: nil), upgrade: true)
-      expect(Samagotchi::MemoryBundle::Provenance.new(name: "drawer").record.block_renderers?).to be(false)
+      expect(Samagotchi::MemoryBundle::Provenance.new(name: "drawer").record.manifest.block_renderers?).to be(false)
     end
 
     it "doesn't warn that a --dev script a page loads isn't executable (it isn't run)" do

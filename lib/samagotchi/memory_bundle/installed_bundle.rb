@@ -13,9 +13,12 @@ module Samagotchi
     autoload :InstalledManifest, File.expand_path("installed_manifest", __dir__)
 
     # An installed bundle's record, as Provenance#write keeps it in
-    # <bundles>/<name>/manifest.json. Reading is tolerant: an older record
-    # lacks keys a newer chi writes, and a key that is missing or of the
-    # wrong shape reads as empty (nil for the optional strings and lists).
+    # <bundles>/<name>/manifest.json: identity, shas, files and marks.
+    # Reading is tolerant: an older record lacks keys a newer chi writes,
+    # and a key that is missing or of the wrong shape reads as empty (nil
+    # for the optional strings and lists). Its manifest data (requires_chi,
+    # trust_level, needs, providers, renderers, settings…) is read through
+    # #manifest, never off the record.
     #
     #   files       file key ("x.md") => { checksum:, conflict:, incoming_sha:, legacy_base:, why:, missed:, missed_places:,
     #               description: } (symbol keys);
@@ -27,34 +30,29 @@ module Samagotchi
     #   guardrails  basename => recorded sha256 ("" when none)
     #   scripts     file name => recorded sha256 ("" when none)
     #   plugin      PluginRef, nil without one
-    #   needs, context_providers, block_renderers
-    #               the lists as recorded (nil when absent): Manifest.parse_needs,
-    #               ContextProviders.parse_list and BlockRenderers.parse_list check them
     #   includes    a profile's recorded members, nil for a plain bundle
-    #   session_settings
-    #               the keys a session may set (chi --set), [] when none
-    #   session_setting_types
-    #               {key => type} for the typed ones (Manifest::SESSION_SETTING_TYPES), {} when none
-    #   settings    the keys config.yml bundles: <name>: may have, nil when the
-    #               manifest says nothing of them (BundleSettingsCheck)
-    #   setting_types
-    #               {key => type} for the typed ones, {} when none
+    #   mirror      the record's frozen copy of the manifest keys (MIRROR_KEYS,
+    #               string keys, the values as recorded), which only
+    #               InstalledManifest reads: requires_chi, trust_level, needs,
+    #               context_providers, block_renderers, session_settings,
+    #               session_setting_types, settings, setting_types. A key a
+    #               later manifest gains is never mirrored
     #   dev         a dev install (`chi bundle install --dev`): its source is
     #               the folder it links to and its files carry Provenance::DEV_SHA
     #   dir         its .bundles/<name> folder (.read, Provenance.each_installed),
     #               nil for a record parsed alone or one that doesn't read
     #   error       why manifest.json couldn't be read (the rest empty), else nil
-    class InstalledBundle < Data.define(:name, :version, :scope, :source, :installed_at, :trust_level, :source_commit,
-                                        :requires_chi, :files, :hooks, :guardrails, :scripts, :plugin, :needs,
-                                        :includes, :context_providers, :block_renderers, :session_settings, :session_setting_types, :settings,
-                                        :setting_types, :dev,
-                                        :dir, :error)
-      OPTIONAL = { version: nil, scope: nil, source: nil, installed_at: nil, trust_level: nil, source_commit: nil,
-                   requires_chi: nil, files: {}, hooks: {}, guardrails: {}, scripts: {}, plugin: nil, needs: nil,
-                   includes: nil, context_providers: nil, block_renderers: nil, session_settings: [], session_setting_types: {}, settings: nil, setting_types: {}, dev: false,
-                   dir: nil, error: nil }.freeze
+    class InstalledBundle < Data.define(:name, :version, :scope, :source, :installed_at, :source_commit, :files, :hooks,
+                                        :guardrails, :scripts, :plugin, :includes, :dev, :mirror, :dir, :error)
+      OPTIONAL = { version: nil, scope: nil, source: nil, installed_at: nil, source_commit: nil, files: {}, hooks: {},
+                   guardrails: {}, scripts: {}, plugin: nil, includes: nil, dev: false, mirror: {}, dir: nil, error: nil }.freeze
+
+      # The manifest keys a record mirrors, as Provenance#write records them.
+      MIRROR_KEYS = %w[requires_chi trust_level needs context_providers block_renderers session_settings
+                       session_setting_types settings setting_types].freeze
 
       def initialize(name:, **fields)
+        fields[:mirror] = fields[:mirror].to_h.transform_keys(&:to_s).slice(*MIRROR_KEYS).freeze if fields.key?(:mirror)
         super(name: name, **OPTIONAL, **fields)
       end
 
@@ -83,20 +81,14 @@ module Samagotchi
 
         h = raw.transform_keys(&:to_s)
         new(name: name, version: string(h["version"]), scope: string(h["scope"]), source: string(h["source"]),
-            installed_at: string(h["installed_at"]), trust_level: string(h["trust_level"]),
-            source_commit: string(h["source_commit"]), requires_chi: string(h["requires_chi"]),
+            installed_at: string(h["installed_at"]), source_commit: string(h["source_commit"]),
             files: mapping(h["files"]) { |entry| entry.is_a?(Hash) ? entry.transform_keys(&:to_sym) : {} },
             hooks: mapping(h["hooks"]) { |meta| BundleHook.parse(meta) },
             guardrails: mapping(h["guardrails"]) { |meta| sha(meta) },
             scripts: mapping(h["scripts"]) { |meta| sha(meta) },
-            plugin: PluginRef.parse(h["plugin"]), needs: h["needs"], context_providers: h["context_providers"],
-            block_renderers: h["block_renderers"],
+            plugin: PluginRef.parse(h["plugin"]),
             includes: h["includes"].is_a?(Array) ? h["includes"].map(&:to_s) : nil,
-            session_settings: h["session_settings"].is_a?(Array) ? h["session_settings"].map(&:to_s) : [],
-            session_setting_types: mapping(h["session_setting_types"]) { |type| type.to_s },
-            settings: h["settings"].is_a?(Array) ? h["settings"].map(&:to_s) : nil,
-            setting_types: mapping(h["setting_types"]) { |type| type.to_s },
-            dev: h["dev"] == true, dir: dir)
+            dev: h["dev"] == true, mirror: h.slice(*MIRROR_KEYS).compact, dir: dir)
       end
 
       def self.string(value) = value&.to_s
@@ -118,9 +110,6 @@ module Samagotchi
 
       # The scope its files went to: "system" when none is recorded.
       def effective_scope = scope.to_s.strip.empty? ? "system" : scope
-
-      # A bundle with no trust_level counts as experimental.
-      def experimental? = (trust_level || "experimental") == "experimental"
 
       # A profile (meta bundle): it records its members.
       def profile? = !includes.nil?
@@ -170,12 +159,6 @@ module Samagotchi
         nil
       end
       private :source_sha
-
-      def needs? = needs.is_a?(Array) && !needs.empty?
-
-      def context_providers? = context_providers.is_a?(Array) && !context_providers.empty?
-
-      def block_renderers? = block_renderers.is_a?(Array) && !block_renderers.empty?
     end
   end
 end

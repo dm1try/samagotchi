@@ -22,21 +22,16 @@ RSpec.describe Samagotchi::MemoryBundle::InstalledBundle do
       bundle = described_class.parse("full", JSON.parse(JSON.generate(raw)))
       expect(bundle).to have_attributes(
         name: "full", version: "1.2.0", scope: "project", source: "/src/full", installed_at: "2026-10-10T10:00:00+02:00",
-        trust_level: "reviewed", source_commit: "abc123", requires_chi: ">= 0.50", error: nil,
+        source_commit: "abc123", error: nil,
         files: { "a.md" => { checksum: "aa", conflict: true, description: "A" } },
         hooks: { "g.rb" => hook.new(sha256: "sha256:hh", event: "before_tool_call", on_error: "fail_closed", priority: 10) },
         guardrails: { "r.yml" => "sha256:rr" }, scripts: { "s.rb" => "sha256:ss" },
-        plugin: Samagotchi::MemoryBundle::PluginRef.new(file: "p.rb", sha256: "sha256:pp"),
-        needs: [{ "command" => "gh" }], includes: %w[a b], context_providers: [{ "match" => "x" }],
-        session_settings: ["cap"]
+        plugin: Samagotchi::MemoryBundle::PluginRef.new(file: "p.rb", sha256: "sha256:pp"), includes: %w[a b],
+        mirror: { "trust_level" => "reviewed", "requires_chi" => ">= 0.50", "needs" => [{ "command" => "gh" }],
+                  "context_providers" => [{ "match" => "x" }], "session_settings" => ["cap"] }
       )
-      expect([bundle.effective_scope, bundle.experimental?, bundle.profile?, bundle.needs?, bundle.context_providers?])
-        .to eq(["project", false, true, true, true])
+      expect([bundle.effective_scope, bundle.profile?]).to eq(["project", true])
       expect([bundle.owns?("a.md"), bundle.owns?(:"a.md"), bundle.owns?("b.md")]).to eq([true, true, false])
-    end
-
-    it "reads session_settings of another shape as none" do
-      expect(described_class.parse("x", { "session_settings" => "cap" }).session_settings).to eq([])
     end
 
     it "reads symbol keys too (a record read with symbolize_names)" do
@@ -49,10 +44,8 @@ RSpec.describe Samagotchi::MemoryBundle::InstalledBundle do
       bundle = described_class.parse("min", {})
       expect(bundle).to eq(described_class.new(name: "min"))
       expect(bundle).to have_attributes(version: nil, scope: nil, files: {}, hooks: {}, guardrails: {}, scripts: {},
-                                        plugin: nil, needs: nil, includes: nil, context_providers: nil, error: nil,
-                                        session_settings: [])
-      expect([bundle.effective_scope, bundle.experimental?, bundle.profile?, bundle.needs?, bundle.context_providers?, bundle.error?])
-        .to eq(["system", true, false, false, false, false])
+                                        plugin: nil, includes: nil, mirror: {}, error: nil)
+      expect([bundle.effective_scope, bundle.profile?, bundle.error?]).to eq(["system", false, false])
     end
 
     it "reads a legacy record: bare checksums, hooks without sha256, odd shapes as empty" do
@@ -62,9 +55,9 @@ RSpec.describe Samagotchi::MemoryBundle::InstalledBundle do
               "needs" => "gh", "context_providers" => {} }
       bundle = described_class.parse("old", raw)
       expect(bundle).to have_attributes(version: "3", files: { "old.md" => {} }, guardrails: { "r.yml" => "" },
-                                        plugin: nil, includes: nil, needs: "gh", context_providers: {})
+                                        plugin: nil, includes: nil, mirror: { "needs" => "gh", "context_providers" => {} })
       expect(bundle.hooks).to eq("h.rb" => hook.new(event: "before_turn"), "odd.rb" => hook.new)
-      expect([bundle.effective_scope, bundle.needs?, bundle.context_providers?]).to eq(["system", false, false])
+      expect(bundle.effective_scope).to eq("system")
     end
 
     it "reads a record that isn't an object as unreadable" do
@@ -72,9 +65,10 @@ RSpec.describe Samagotchi::MemoryBundle::InstalledBundle do
       expect(described_class.unreadable("x", "why")).to have_attributes(error?: true, files: {}, hooks: {})
     end
 
-    it "keeps a trust_level that is set, even an empty one, as not experimental" do
-      expect(described_class.parse("t", { "trust_level" => "" }).experimental?).to be(false)
-      expect(described_class.parse("t", { "trust_level" => "experimental" }).experimental?).to be(true)
+    it "mirrors only the manifest keys it knows, string keys, whatever .new is given" do
+      expect(described_class.parse("m", { "requires_chi" => ">= 1", "later_key" => [1], "needs" => nil }).mirror)
+        .to eq("requires_chi" => ">= 1")
+      expect(described_class.new(name: "m", mirror: { trust_level: "reviewed", other: 1 }).mirror).to eq("trust_level" => "reviewed")
     end
   end
 

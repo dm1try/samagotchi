@@ -59,13 +59,10 @@ module Samagotchi
             includes: bundle.includes, unknown_keys: [], problems: problems.freeze, origin: :record)
       end
 
-      # The record's values of the manifest keys, string keys.
-      def self.recorded(bundle)
-        { "requires_chi" => bundle.requires_chi, "trust_level" => bundle.trust_level, "needs" => bundle.needs,
-          "context_providers" => bundle.context_providers, "block_renderers" => bundle.block_renderers,
-          "session_settings" => bundle.session_settings, "session_setting_types" => bundle.session_setting_types,
-          "settings" => bundle.settings, "setting_types" => bundle.setting_types }
-      end
+      # The record's values of the manifest keys (its frozen mirror), string
+      # keys. A later phase reads the kept manifest.yml first; a bundle with
+      # no dir (a record parsed alone) always reads this.
+      def self.recorded(bundle) = bundle.mirror
 
       # The block's value, else +empty+ with the key's problem noted.
       # ArgumentError: ContextProviders::Invalid and BlockRenderers::Invalid

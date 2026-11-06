@@ -69,7 +69,7 @@ RSpec.describe "Bundle plugin: manifest, install, provenance, status, build" do
       File.write(path, File.read(path) + "requires_chi_next: the new chi.thing hook\n")
       expect(described_class.read(dir: src).requires_chi).to eq(">= 0.1.0")
       install(src)
-      expect(provenance.record.requires_chi).to eq(">= 0.1.0")
+      expect(provenance.record.manifest.requires_chi).to eq(">= 0.1.0")
     end
 
     it "reads settings: as session_settings: is written, nil when absent, records them at install and builds them back" do
@@ -81,8 +81,8 @@ RSpec.describe "Bundle plugin: manifest, install, provenance, status, build" do
       expect(described_class.read(dir: write_source).settings).to be_nil
 
       install(src)
-      expect(provenance.record.settings).to eq(%w[limit free])
-      expect(provenance.record.setting_types).to eq("limit" => "number")
+      expect(provenance.record.manifest.settings).to eq(%w[limit free])
+      expect(provenance.record.manifest.setting_types).to eq("limit" => "number")
 
       dir = File.join(tmpdir, "built")
       described_class.write(dir: dir, name: "plug", version: "1.0.0", files: {}, settings: %w[limit free], setting_types: { "limit" => "number" })
@@ -109,7 +109,7 @@ RSpec.describe "Bundle plugin: manifest, install, provenance, status, build" do
       expect(described_class.read(dir: write_source).session_settings).to eq([])
 
       install(src)
-      expect(provenance.record.session_settings).to eq(%w[cap warn_at])
+      expect(provenance.record.manifest.session_settings).to eq(%w[cap warn_at])
       expect(provenance.read[:session_settings]).to eq(%w[cap warn_at])
 
       dir = File.join(tmpdir, "built")
@@ -129,8 +129,8 @@ RSpec.describe "Bundle plugin: manifest, install, provenance, status, build" do
       expect(described_class.read(dir: write_source).session_setting_types).to eq({})
 
       install(src)
-      expect(provenance.record.session_settings).to eq(%w[cap flag note free])
-      expect(provenance.record.session_setting_types).to eq("cap" => "number", "flag" => "boolean", "note" => "string")
+      expect(provenance.record.manifest.session_settings).to eq(%w[cap flag note free])
+      expect(provenance.record.manifest.session_setting_types).to eq("cap" => "number", "flag" => "boolean", "note" => "string")
 
       dir = File.join(tmpdir, "built")
       described_class.write(dir: dir, name: "plug", version: "1.0.0", files: {}, session_settings: %w[cap free],
