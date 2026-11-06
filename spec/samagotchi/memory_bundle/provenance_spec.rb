@@ -283,7 +283,18 @@ RSpec.describe Samagotchi::MemoryBundle::Provenance do
   describe "#adopt_manifest (a record an older chi wrote, without its manifest.yml)" do
     let(:source) do
       File.join(tmpdir, "src").tap do |dir|
-        make_file(dir, "manifest.yml", "name: old\nversion: 1.0.0\nplugin:\n  file: plugin.rb\nfuture_key: 1\n")
+        make_file(dir, "manifest.yml", <<~YAML)
+          name: old
+          version: 1.0.0
+          requires_chi: ">= 0.1"
+          files:
+            a.md: sha256:#{Digest::SHA256.hexdigest("A\n")}
+          plugin:
+            file: plugin.rb
+          hooks:
+            h.rb: {event: after_turn}
+          future_key: 1
+        YAML
         make_file(dir, "a.md", "A\n")
         make_file(dir, "plugin.rb", "class Plugin; end\n")
         make_file(dir, "hooks/h.rb", "# hook\n")
@@ -295,12 +306,16 @@ RSpec.describe Samagotchi::MemoryBundle::Provenance do
     let(:prov) { described_class.new(name: "old") }
 
     # The record as a chi before the kept manifest wrote it: no manifest_from.
-    def write_legacy(version: "1.0.0", dev: false)
+    def write_legacy(version: "1.0.0", dev: false, **more)
       prov.write(files: { "a.md" => File.join(source, "a.md") }, scope: "system", version: version, source_path: source,
                  plugin_file: File.join(source, "plugin.rb"), hooks: { "h.rb" => { "event" => "after_turn" } },
                  hooks_files: { "h.rb" => File.join(source, "hooks/h.rb") }, scripts_files: { "s.sh" => File.join(source, "scripts/s.sh") },
-                 guardrails_files: { "g.yml" => File.join(source, "guardrails/g.yml") }, requires_chi: ">= 0.1", dev: dev)
+                 guardrails_files: { "g.yml" => File.join(source, "guardrails/g.yml") }, requires_chi: ">= 0.1",
+                 trust_level: "experimental", dev: dev, **more)
     end
+
+    # The source's manifest.yml, its mapping changed by the block.
+    def edit_source = File.write(File.join(source, "manifest.yml"), YAML.dump(yield(YAML.load_file(File.join(source, "manifest.yml")))))
 
     def raw = JSON.parse(File.read(File.join(bundles_dir, "old", "manifest.json")))
 
@@ -331,7 +346,7 @@ RSpec.describe Samagotchi::MemoryBundle::Provenance do
     end
 
     it "keeps one whose recorded kept file is gone, and its installed_by" do
-      prov.write(files: {}, scope: "system", version: "1.0.0", source_path: source, manifest_from: source)
+      write_legacy(manifest_from: source)
       FileUtils.rm_f(kept)
       installed_by = raw["installed_by"]
       expect(prov.adopt_manifest(source)).to be_nil
@@ -345,6 +360,46 @@ RSpec.describe Samagotchi::MemoryBundle::Provenance do
       expect(prov.adopt_manifest(source)).to eq("#{source} has old 1.0.0, not 0.9.0")
       expect(File.exist?(kept)).to be(false)
       expect(raw).to eq(before)
+    end
+
+    it "refuses a source whose manifest says other than the record at the same version, naming the key" do
+      changes = {
+        "requires_chi" => ->(m) { m.merge("requires_chi" => ">= 99.0") },
+        "trust_level" => ->(m) { m.merge("trust_level" => "reviewed") },
+        "needs" => ->(m) { m.merge("needs" => [{ "command" => "gh" }]) },
+        "hooks" => ->(m) { m.merge("hooks" => { "h.rb" => { "event" => "before_tool_call", "on_error" => "ignore" } }) }
+      }
+      changes.each do |key, change|
+        write_legacy
+        original = File.read(File.join(source, "manifest.yml"))
+        edit_source(&change)
+        expect(prov.adopt_manifest(source)).to eq("#{source}'s manifest.yml isn't the installed one (#{key})"), key
+        expect(File.exist?(kept)).to be(false)
+        File.write(File.join(source, "manifest.yml"), original)
+      end
+    end
+
+    it "refuses a source whose context provider changed from the recorded one" do
+      provider = Samagotchi::ContextProviders.parse_list([{ "match" => "\\Ax", "name" => "x", "cmd" => "echo SAFE" }])
+      write_legacy(context_providers: provider)
+      edit_source { |m| m.merge("context_providers" => [{ "match" => "\\Ax", "name" => "x", "cmd" => "echo SAFE" }]) }
+      expect(prov.adopt_manifest(source, dry_run: true)).to be_nil
+      edit_source { |m| m.merge("context_providers" => [{ "match" => "\\Ax", "name" => "x", "cmd" => "echo CHANGED" }]) }
+      expect(prov.adopt_manifest(source)).to eq("#{source}'s manifest.yml isn't the installed one (context_providers)")
+    end
+
+    it "adopts a key the record lacks when an older chi couldn't have known it (Manifest::SINCE)" do
+      write_legacy
+      make_file(source, "scripts/draw.js", "draw\n")
+      edit_source { |m| m.merge("scripts" => { "s.sh" => "", "draw.js" => "" }, "block_renderers" => [{ "lang" => "mmd", "load" => ["draw.js"] }]) }
+      expect(prov.adopt_manifest(source)).to be_nil
+      expect(prov.record.manifest.block_renderers.map(&:lang)).to eq(["mmd"])
+    end
+
+    it "refuses a source whose memory file isn't the recorded one" do
+      write_legacy
+      File.write(File.join(source, "a.md"), "changed\n")
+      expect(prov.adopt_manifest(source)).to eq("#{source}'s a.md isn't the installed one")
     end
 
     it "refuses another bundle's manifest" do

@@ -381,7 +381,8 @@ Also shipped, not installed: dev (mcp, skills, source-links) (chi bundle install
   the system bundle at the next chi start), a bundle from a folder or a zip/tar
   that is still there from it (a `kept its manifest` row; the archive is extracted
   and the extract removed). Only when the source is what's installed: the same
-  name and version, and the same plugin, hooks, scripts and rules. A git source
+  name and version, the same manifest values as the install recorded (a key the
+  older chi didn't know aside), and the same memories, plugin, hooks, scripts and rules. A git source
   isn't cloned: the row names the command,
   `installed by an older chi, which didn't keep its manifest: chi bundle upgrade NAME reads it again from URL`.
   A source that's gone or doesn't match gets its own row (why, and what to run). The

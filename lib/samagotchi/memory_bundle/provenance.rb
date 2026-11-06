@@ -158,6 +158,24 @@ module Samagotchi
         unchecked?(recorded) || file_sha(path) == recorded_sha(recorded)
       end
 
+      # The record's mirror of the manifest keys (InstalledBundle::MIRROR_KEYS)
+      # as #write records them from its kwargs: what an older chi reads, and
+      # what #adopt_manifest holds a source's manifest against.
+      def self.mirror_fields(trust_level:, requires_chi:, needs:, context_providers:, block_renderers:, session_settings:,
+                             session_setting_types:, settings:, setting_types:)
+        fields = {}
+        fields["trust_level"] = trust_level.to_s if trust_level && !trust_level.to_s.empty?
+        fields["requires_chi"] = requires_chi.to_s if requires_chi && !requires_chi.to_s.empty?
+        fields["needs"] = needs.map { |n| n.transform_keys(&:to_s).compact } if needs.is_a?(Array) && !needs.empty?
+        fields["context_providers"] = context_providers.map(&:to_h) unless context_providers.empty?
+        fields["block_renderers"] = block_renderers.map(&:to_h) unless block_renderers.empty?
+        fields["session_settings"] = Array(session_settings).map(&:to_s) unless Array(session_settings).empty?
+        fields["session_setting_types"] = session_setting_types.to_h { |k, v| [k.to_s, v.to_s] } unless session_setting_types.to_h.empty?
+        fields["settings"] = settings.map(&:to_s) unless settings.nil?
+        fields["setting_types"] = setting_types.to_h { |k, v| [k.to_s, v.to_s] } unless setting_types.to_h.empty?
+        fields
+      end
+
       # Writes provenance for an installation: merges into existing manifest.json
       # and saves base snapshots. Stale base snapshots (files removed from bundle)
       # are pruned.
@@ -287,7 +305,6 @@ module Samagotchi
           "files" => merged_entries,
           "hooks" => hooks_map
         }
-        manifest_data["trust_level"] = trust_level.to_s if trust_level && !trust_level.to_s.empty?
         manifest_data["dev"] = true if dev
         if guardrails_files.is_a?(Hash) && !guardrails_files.empty?
           manifest_data["guardrails"] = guardrails_files.sort.to_h do |basename, path|
@@ -303,20 +320,16 @@ module Samagotchi
           FileUtils.mkdir_p(File.join(bases_dir, "plugin"))
           File.binwrite(plugin_base_path(File.basename(plugin_file.to_s)), content)
         end
-        manifest_data["requires_chi"] = requires_chi.to_s if requires_chi && !requires_chi.to_s.empty?
-        manifest_data["needs"] = needs.map { |n| n.transform_keys(&:to_s).compact } if needs.is_a?(Array) && !needs.empty?
+        manifest_data.merge!(self.class.mirror_fields(trust_level: trust_level, requires_chi: requires_chi, needs: needs,
+                                                      context_providers: context_providers, block_renderers: block_renderers,
+                                                      session_settings: session_settings, session_setting_types: session_setting_types,
+                                                      settings: settings, setting_types: setting_types))
         manifest_data["includes"] = includes.map(&:to_s) if includes.is_a?(Array)
         unless scripts_files.empty?
           manifest_data["scripts"] = scripts_files.sort.to_h do |file, path|
             [file.to_s, { "sha256" => dev ? DEV_SHA : FileDigest.sha256(path.to_s) }]
           end
         end
-        manifest_data["context_providers"] = context_providers.map(&:to_h) unless context_providers.empty?
-        manifest_data["block_renderers"] = block_renderers.map(&:to_h) unless block_renderers.empty?
-        manifest_data["session_settings"] = Array(session_settings).map(&:to_s) unless Array(session_settings).empty?
-        manifest_data["session_setting_types"] = session_setting_types.to_h { |k, v| [k.to_s, v.to_s] } unless session_setting_types.to_h.empty?
-        manifest_data["settings"] = settings.map(&:to_s) unless settings.nil?
-        manifest_data["setting_types"] = setting_types.to_h { |k, v| [k.to_s, v.to_s] } unless setting_types.to_h.empty?
         manifest_data.merge!(kept_manifest_fields(existing, manifest_from, dev))
 
         write_manifest(manifest_data)
@@ -430,9 +443,10 @@ module Samagotchi
       # Keeps +dir+/manifest.yml for an installed bundle whose record has no
       # usable kept manifest (InstalledBundle#manifest_unkept?: an older chi
       # wrote it, or the file is gone), when +dir+ is the source of what's
-      # installed: its manifest names this bundle at the recorded version, and
-      # every sha the record has for a plugin, hook, script or rule is the
-      # source file's. Then the file is copied to #kept_manifest_path and the
+      # installed: its manifest names this bundle at the recorded version and
+      # says what the record keeps (#manifest_difference), and every sha the
+      # record has for a memory, plugin, hook, script or rule is the source
+      # file's. Then the file is copied to #kept_manifest_path and the
       # record gains its manifest_sha, and nothing else changes (installed_at,
       # the mirror, installed_by). A dev record is never adopted: its next
       # install --dev links the file. Read-only with dry_run.
@@ -524,6 +538,9 @@ module Samagotchi
         return "#{dir} has #{found}, not #{@name} #{bundle.version}" unless manifest.name == @name
         return "#{dir} has #{found}, not #{bundle.version}" unless manifest.version == bundle.version.to_s
 
+        key = manifest_difference(bundle, manifest)
+        return "#{dir}'s manifest.yml isn't the installed one (#{key})" if key
+
         installed_shas(bundle, manifest).each do |rel, sha|
           next if self.class.recorded_sha(sha).empty?
           return "#{dir}'s #{rel} isn't the installed one" unless self.class.file_sha(File.join(dir, rel)) == self.class.recorded_sha(sha)
@@ -532,9 +549,47 @@ module Samagotchi
       end
       private :adoption_mismatch
 
-      # Each file the record has a sha for, by its path in the bundle's source => that sha.
+      # The SINCE entry of a mirrored key whose shape a newer chi reads.
+      MIRROR_SINCE = { "session_setting_types" => "session_settings.types", "setting_types" => "settings.types" }.freeze
+
+      # The first manifest key in which +manifest+ says other than what the
+      # record keeps, nil when none: each mirrored key as #write records it (one
+      # the record lacks is fine only when an older chi couldn't have known it:
+      # Manifest::SINCE has it), then each recorded hook's events, on_error and
+      # priority.
+      def manifest_difference(bundle, manifest)
+        recorded = plain(bundle.mirror)
+        source = plain(self.class.mirror_fields(
+          trust_level: manifest.trust_level, requires_chi: manifest.requires_chi, needs: manifest.needs,
+          context_providers: manifest.context_providers, block_renderers: manifest.block_renderers,
+          session_settings: manifest.session_settings, session_setting_types: manifest.session_setting_types,
+          settings: manifest.settings, setting_types: manifest.setting_types
+        ))
+        differing = InstalledBundle::MIRROR_KEYS.find do |key|
+          next false if recorded[key] == source[key]
+
+          !(recorded[key].nil? && Manifest::SINCE.key?(MIRROR_SINCE.fetch(key, key)))
+        end
+        return differing if differing
+
+        same_hooks = bundle.hooks.all? do |file, hook|
+          theirs = manifest.hooks.fetch(file, BundleHook.new)
+          [hook.events, hook.on_error, hook.priority] == [theirs.events, theirs.on_error, theirs.priority]
+        end
+        same_hooks ? nil : "hooks"
+      end
+      private :manifest_difference
+
+      def plain(value) = JSON.parse(JSON.generate(value))
+      private :plain
+
+      # Each file the record has a sha for, by its path in the bundle's source
+      # => that sha: the plugin, hooks, scripts, rules, and each memory whose
+      # entry has a checksum and no conflict mark (its base is the bundle's text).
       def installed_shas(bundle, manifest)
-        shas = {}
+        shas = bundle.files.each_with_object({}) do |(key, entry), acc|
+          acc[key] = entry[:checksum].to_s unless entry[:conflict] || entry[:checksum].to_s.empty?
+        end
         if bundle.plugin
           file = manifest.plugin && manifest.plugin[:file].to_s
           shas[file && File.basename(file) == bundle.plugin.file ? file : bundle.plugin.file] = bundle.plugin.sha256
