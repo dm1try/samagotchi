@@ -27,7 +27,7 @@ It also checks `spec/e2e/` for two things: `no-unused-vars`, and the Playwright 
 Wait for the state (a locator's `expect`, `data-phase`, an animation's end through `waitForFunction`); time the page
 keeps (a pointer's dwell, a hold) runs on Playwright's `page.clock` (`install`, then `pauseAt` and `runFor`: the
 stage's hand-off dwell in stage.spec.js); a pause that is the behaviour outside the page (a slow post held in a
-route) carries `// eslint-disable-line no-restricted-syntax -- why`. And in the six
+route) carries `// eslint-disable-line no-restricted-syntax -- why`. And in the seven
 modules that hold the owner page's session state, one more: no write into `current`, `store.current` or `state()`
 in place (`samagotchi/session-writes`; the store is the write path, see internals/web-frontend.md, The session store).
 
