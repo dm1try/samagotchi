@@ -262,6 +262,52 @@ RSpec.describe Samagotchi::Engine, "toolkit" do
     expect(engine.system_prompt).not_to include("Not declared")
   end
 
+  describe "a plugin tool that arrives mid-session (chi.replace_tools)" do
+    def arrive(name)
+      spec = Samagotchi::Plugin::ToolSpec.build(name, "A late tool.") { "ok" }
+      engine.send(:stage_tools, "late-bundle", [spec], nil)
+    end
+
+    it "is reachable on lean, whose index is declared anyway" do
+      allow(kernel).to receive(:run).and_return(result)
+      sess = session(Samagotchi::Toolkit.new(name: "lean"))
+      turn(sess)
+      arrive("late_tool")
+      turn(sess)
+      expect(kernel.tools.names).to include("find_tools", "call_tool")
+      expect(kernel.tools.names).not_to include("late_tool")
+      expect(kernel.tools.reachable_names).to include("late_tool")
+      expect(kernel.tools["find_tools"].schema[:description]).to include("tools not declared in this session (9 tools)")
+      expect(events.select { |e| e[:type] == :hook_notice && e[:level] == :warn }).to eq([])
+    end
+
+    it "doesn't bring find_tools and call_tool in on a kit that needed none, says so once, and /toolkit add declares it" do
+      allow(kernel).to receive(:run).and_return(result)
+      left_out = %w[register_reminder cancel_reminder list_reminders list_sessions send_note delegate delegate_result
+                    objectives]
+      sess = session(Samagotchi::Toolkit.new(name: "lean", add: left_out))
+      turn(sess)
+      before = kernel.tools.names
+      expect(before).not_to include("find_tools", "call_tool")
+      arrive("late_tool")
+      turn(sess)
+      turn(sess)
+
+      expect(kernel.tools.names).to eq(before)
+      expect(kernel.tools.indexed("late_tool")).to be_nil
+      expect(engine.system_prompt).to include("Not loaded in this session (toolkit lean): late_tool. Only the user can load one")
+      notices = events.select { |e| e[:type] == :hook_notice && e[:level] == :warn }
+      expect(notices.map { |e| [e[:hook], e[:text]] }).to eq(
+        [["late-bundle", "late_tool isn't declared on toolkit lean, and call_tool can't reach it this session: it " \
+                         "arrived after the session's tools were set · /toolkit add late_tool declares it"]]
+      )
+
+      sess.toolkit = sess.toolkit.adding("late_tool")
+      turn(sess)
+      expect(kernel.tools.names).to include("late_tool")
+    end
+  end
+
   # The host that loads tools is the one the turn runs on after its
   # before_turn hooks (lean tools P2c): TurnSettings#loads_tools is set in
   # #generate, from the final model's adapter.

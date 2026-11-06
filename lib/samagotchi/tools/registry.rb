@@ -41,14 +41,16 @@ module Samagotchi
       # What Tools::ToolIndex#declare registered: the entries of +source+
       # are the index's search and call tools, +call_name+ the call tool's
       # name, and +groups+ the source groups registered when the plugins
-      # loaded. +deferrable+ (→ the sources'
+      # loaded; +loaded+ the entries registered then (nil: whatever is
+      # registered now), which alone decide whether the index's tools are
+      # needed (Registry#index_needed?). +deferrable+ (→ the sources'
       # tools a host that loads tools may declare deferred) and +wrap+
       # (call → the call_tool call a direct call of one of them runs as, or
       # nil) are nil when nothing reaches them.
-      Index = Data.define(:source, :call_name, :groups, :deferrable, :wrap, :unreached) do
-        def initialize(source:, call_name:, groups:, deferrable: nil, wrap: nil, unreached: nil)
+      Index = Data.define(:source, :call_name, :groups, :deferrable, :wrap, :unreached, :loaded) do
+        def initialize(source:, call_name:, groups:, deferrable: nil, wrap: nil, unreached: nil, loaded: nil)
           super(source: source, call_name: call_name, groups: Array(groups).map(&:to_s).uniq.freeze,
-                deferrable: deferrable, wrap: wrap, unreached: unreached)
+                deferrable: deferrable, wrap: wrap, unreached: unreached, loaded: loaded&.dup&.freeze)
         end
 
         def unreached_tool(name) = unreached&.call(name)
@@ -145,6 +147,25 @@ module Samagotchi
           .map(&:name)
       end
 
+      # The tools +toolkit+ leaves out of a turn under +layers+ that a
+      # plugin registered after the index was declared (chi.replace_tools)
+      # and that nothing reaches: call_tool isn't declared (the index's
+      # need is the load-time one, so the declared tools don't grow
+      # mid-session), nor removed by the user. /toolkit add declares one.
+      # @return [Array<String>] in declaration order
+      def stranded_names(layers: [], toolkit: @toolkit)
+        return [] if @index&.loaded.nil? || toolkit.nil? || toolkit.removed.include?(@index.call_name)
+        return [] if call_offered?(toolkit)
+
+        loaded = @index.loaded.map(&:name)
+        ordered(@entries.values.select { |entry| !loaded.include?(entry.name) && soft?(entry, layers, toolkit) })
+          .map(&:name)
+      end
+
+      # Every entry registered now, declared or not, in registration order.
+      # @return [Array<Entry>]
+      def registered = @entries.values
+
       # Every tool +source+ registered, declared or not (a plugin's tool set
       # changing: Plugin::ToolSpec.apply).
       # @return [Array<Entry>]
@@ -187,9 +208,11 @@ module Samagotchi
 
       def index_entry?(entry) = !@index.nil? && entry.source == @index.source
 
-      # From what the plugins registered at load and the toolkit alone, so
-      # the declared tools stay the same for a session's life. A tool left
-      # out counts only while call_tool can reach it (not removed).
+      # From what the plugins registered at load (Index#loaded) and the
+      # toolkit alone, so the declared tools stay the same for a session's
+      # life: a plugin tool registered later on a kit that leaves it out
+      # doesn't bring find_tools and call_tool in (#stranded_names). A tool
+      # left out counts only while call_tool can reach it (not removed).
       def index_needed?(toolkit)
         return true if reached_groups?(toolkit)
         return false if toolkit&.removed&.include?(@index.call_name)
@@ -201,7 +224,7 @@ module Samagotchi
       # removed or not: a source registered at load, or a tool (a built-in
       # or a plugin's) the toolkit leaves out without removing it.
       def index_reaches?(toolkit)
-        reached_groups?(toolkit) || @entries.values.any? { |entry| soft?(entry, [], toolkit) }
+        reached_groups?(toolkit) || (@index.loaded || @entries.values).any? { |entry| soft?(entry, [], toolkit) }
       end
 
       def reached_groups?(toolkit)

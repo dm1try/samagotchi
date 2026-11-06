@@ -38,6 +38,8 @@ module Samagotchi
       # config ones (#kits); Plugin::Registries appends to it.
       @plugin_kits = []
       @warned = []
+      # The tools #warn_stranded said once.
+      @stranded = []
     end
 
     # @return [Array<Toolkit::Kit>] the plugins' kits (Plugin::Registries' toolkits:)
@@ -192,13 +194,36 @@ module Samagotchi
       resolved = nil if resolved.everything?
       tools = @tools.call
       tools.reaching_kit = ->(group) { reaching_kit(group) }
-      return false if resolved == tools.toolkit
-
-      tools.toolkit = resolved
-      @refresh_index.call
-      @reset_prompt.call
-      true
+      changed = resolved != tools.toolkit
+      if changed
+        tools.toolkit = resolved
+        @refresh_index.call
+        @reset_prompt.call
+      end
+      warn_stranded(tools)
+      changed
     end
+
+    # "web_x isn't declared on toolkit lean, and call_tool can't reach it
+    # this session: it arrived after the session's tools were set ·
+    # /toolkit add web_x declares it"
+    def self.stranded_notice(tool, toolkit)
+      "#{tool} isn't declared on toolkit #{toolkit}, and call_tool can't reach it this session: it arrived after " \
+        "the session's tools were set · /toolkit add #{tool} declares it"
+    end
+
+    # A notice (by its bundle, once per tool and worker) for each plugin
+    # tool that arrived mid-session on a kit that leaves it out without
+    # the tool index to reach it (Tools::Registry#stranded_names).
+    def warn_stranded(tools)
+      return unless tools.respond_to?(:stranded_names)
+
+      (tools.stranded_names - @stranded).each do |name|
+        @stranded << name
+        @notify.call(self.class.stranded_notice(name, tools.toolkit.name), :warn, tools[name]&.source.to_s, extra: {})
+      end
+    end
+    private :warn_stranded
 
     # The first kit that resolves and reaches source group +group+, the
     # user's own (config's, the plugins') before the built-ins, so a hint

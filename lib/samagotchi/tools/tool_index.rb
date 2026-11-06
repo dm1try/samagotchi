@@ -287,6 +287,7 @@ module Samagotchi
         @registry = registry
         @described = description_lines(all_groups.reject { |group| own?(group) }).freeze
         @declared_group_names = @described.keys.freeze
+        loaded = registry.registered
         specs = [find_spec, call_spec]
         declared = specs.filter_map do |spec|
           if (taken = registry[spec.name])
@@ -301,7 +302,7 @@ module Samagotchi
         end
         registry.index = Registry::Index.new(source: SOURCE, call_name: CALL_NAME, groups: @declared_group_names,
                                              deferrable: -> { deferrable }, wrap: ->(call) { wrap(call) },
-                                             unreached: ->(name) { unreached_tool(name) })
+                                             unreached: ->(name) { unreached_tool(name) }, loaded: loaded)
         declared!(declared)
         declared.map(&:name)
       end
