@@ -250,7 +250,7 @@ RSpec.describe Samagotchi::Tools::ToolIndex do
       expect(chi.tools.map(&:name)).to eq(%w[register_reminder cancel_reminder list_reminders list_sessions send_note
                                              delegate delegate_result objectives])
       expect(find_entry.schema[:description]).to end_with(
-        "\nGroups:\n- chi: chi's own tools not declared in this session (8 tools)"
+        "\nGroups:\n- chi: chi's and its bundles' tools not declared in this session (8 tools)"
       )
 
       registry.toolkit = kit("child")
@@ -260,6 +260,27 @@ RSpec.describe Samagotchi::Tools::ToolIndex do
       expect(index.all_groups.first.tools.map(&:name)).not_to include("delegate", "forget_outputs")
       registry.toolkit = nil
       expect(index.all_groups).to eq([])
+    end
+
+    it "lists a plugin tool (chi.tool) the kit leaves out after the built-ins, never find_tools or call_tool" do
+      spec = Samagotchi::Plugin::ToolSpec.build("web_search", "Search the web for a query.",
+                                                params: { query: { type: "string", required: true } }) { "found" }
+      Samagotchi::Plugin::ToolSpec.apply(registry, "web-search", [spec], nil)
+      lean!
+      chi = index.all_groups.first
+      expect(chi.tools.map(&:name)).to eq(%w[register_reminder cancel_reminder list_reminders list_sessions send_note
+                                             delegate delegate_result objectives web_search])
+      expect(find_entry.schema[:description]).to end_with("bundles' tools not declared in this session (9 tools)")
+      expect(index.find("search web")).to include("chi/web_search: Search the web for a query.")
+      expect(index.find("search web").loaded).to include("web_search")
+      expect(index.find("tools").to_s).not_to include("chi/find_tools", "chi/call_tool")
+      expect(index.find("").to_s).not_to include("find_tools,", "call_tool,")
+      expect(index.call_targets({ "tool" => "chi/web_search", "args" => { "query" => "x" } }))
+        .to eq(acts_as: "web_search", args: { "query" => "x" }, label: "chi: web_search")
+
+      registry.toolkit = kit(add: %w[web_search])
+      expect(index.all_groups.first.tools.map(&:name)).not_to include("web_search")
+      expect(index.call("web_search", {})).to eq("Error: web_search is declared; call it directly")
     end
 
     it "answers a search with the tool's name, its registered schema, and how to call it" do
@@ -304,7 +325,7 @@ RSpec.describe Samagotchi::Tools::ToolIndex do
       registry.toolkit = kit
       index.refresh!
       first = registry[find_name].schema[:description]
-      expect(first).to end_with("\n- chi: chi's own tools not declared in this session (8 tools)\n- fs (1 tool)")
+      expect(first).to end_with("\n- chi: chi's and its bundles' tools not declared in this session (8 tools)\n- fs (1 tool)")
 
       again = described_class.new.tap { |i| i.add(fs) }
       other = Samagotchi::Tools::Builtins.registry

@@ -242,7 +242,24 @@ RSpec.describe Samagotchi::Engine, "toolkit" do
     allow(kernel).to receive(:run).and_return(result)
     turn(session(Samagotchi::Toolkit.new(name: "lean")))
     expect(kernel.tools.names).to include("find_tools", "call_tool")
-    expect(kernel.tools["find_tools"].schema[:description]).to include("- chi: chi's own tools not declared")
+    expect(kernel.tools["find_tools"].schema[:description]).to include("- chi: chi's and its bundles' tools not declared")
+  end
+
+  it "names a plugin tool (chi.tool) lean leaves out in the not-declared line, and declares it on full" do
+    allow(kernel).to receive(:run).and_return(result)
+    engine.tools.register("web_search", schema: { name: "web_search", description: "Search the web.",
+                                                  parameters: { type: "object", properties: {}, required: [] } },
+                                        handler: ->(*) { "found" }, source: "web-search")
+    sess = session(Samagotchi::Toolkit.new(name: "lean"))
+    turn(sess)
+    expect(kernel.tools.names).not_to include("web_search")
+    expect(engine.system_prompt).to match(/Not declared in this session \(toolkit lean\): [^\n]*objectives, web_search\. /)
+    expect(engine.toolkit_explained.reachable).to include("web_search")
+
+    sess.toolkit = Samagotchi::Toolkit.new(name: "full")
+    turn(sess)
+    expect(kernel.tools.names).to include("web_search")
+    expect(engine.system_prompt).not_to include("Not declared")
   end
 
   # The host that loads tools is the one the turn runs on after its

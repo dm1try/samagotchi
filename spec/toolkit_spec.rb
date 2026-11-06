@@ -35,13 +35,33 @@ RSpec.describe Samagotchi::Toolkit do
     end
   end
 
-  it "keeps a layer's tool (forget_outputs) and every plugin tool, unless removed" do
-    registry = Samagotchi::Tools::Builtins.registry
-    registry.register("mcp_x", schema: { name: "mcp_x" }, handler: ->(*) {}, source: "mcp")
-    lean = described_class.new(name: "lean").resolve(kits)
-    expect(lean.declares?(registry["forget_outputs"])).to be(true)
-    expect(lean.declares?(registry["mcp_x"])).to be(true)
-    expect(described_class.new(name: "lean", remove: ["mcp_x"]).resolve(kits).declares?(registry["mcp_x"])).to be(false)
+  describe "a plugin tool (chi.tool) and a layer's tool" do
+    let(:registry) do
+      Samagotchi::Tools::Builtins.registry.tap do |registry|
+        registry.register("web_search", schema: { name: "web_search" }, handler: ->(*) {}, source: "web-search")
+      end
+    end
+
+    def declares?(name, tool = "web_search", **changes)
+      described_class.new(name: name, **changes).resolve(kits).declares?(registry[tool])
+    end
+
+    it "declares a plugin tool like a built-in: on full and by add:, not on a kit that doesn't list it" do
+      expect(declares?("full")).to be(true)
+      expect(declares?("lean")).to be(false)
+      expect(declares?("child")).to be(false)
+      expect(declares?("lean", add: ["web_search"])).to be(true)
+      expect(declares?("full", remove: ["web_search"])).to be(false)
+      config = described_class.kits(config: { "wide" => { "base" => "full", "remove" => ["delegate"] },
+                                              "search" => { "base" => "lean", "add" => ["web_search"] } })
+      expect(described_class.new(name: "wide").resolve(config).declares?(registry["web_search"])).to be(true)
+      expect(described_class.new(name: "search").resolve(config).declares?(registry["web_search"])).to be(true)
+    end
+
+    it "keeps a layer's tool (forget_outputs) in every kit, unless removed" do
+      %w[full lean child].each { |kit| expect(declares?(kit, "forget_outputs")).to be(true) }
+      expect(declares?("lean", "forget_outputs", remove: ["forget_outputs"])).to be(false)
+    end
   end
 
   it "puts the session's own add and remove on top of its kit" do

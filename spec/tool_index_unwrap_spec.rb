@@ -9,6 +9,7 @@ require "samagotchi/tools/builtins"
 require "samagotchi/tools/builtin_calls"
 require "samagotchi/tools/tool_index"
 require "samagotchi/toolkit"
+require "samagotchi/plugin/tool_spec"
 require "support/test_kernel"
 
 # A call_tool of one of chi's own tools runs as that tool (lean tools P2b):
@@ -206,6 +207,47 @@ RSpec.describe "call_tool on a built-in" do
 
   it "can't be faked by a model: a parsed call never carries via:" do
     expect(Samagotchi::Tools::BuiltinCalls.build("delegate", { "task" => "x", "via" => "call_tool" })).not_to have_key(:via)
+  end
+
+  describe "a plugin tool (chi.tool) the kit leaves out" do
+    let(:registry) do
+      Samagotchi::Tools::Builtins.registry.tap do |registry|
+        spec = Samagotchi::Plugin::ToolSpec.build("web_search", "Search the web.", label: "searching the web",
+                                                                                   preview: ->(args) { "q=#{args["query"]}" },
+                                                                                   params: { query: { type: "string" } }) do |args|
+          ran << ["web_search", args["query"]]
+          "found #{args["query"]}"
+        end
+        Samagotchi::Plugin::ToolSpec.apply(registry, "web-search", [spec], nil)
+      end
+    end
+
+    def rules(*rows) = checks << Samagotchi::Guardrails::Rules.new(Samagotchi::Guardrails::Rules.parse(rows, source: "config"))
+
+    it "runs chi/web_search as web_search through the gate: its rule, approval key, label and preview" do
+      rules({ "id" => "ask-ws", "tool" => "web_search", "verdict" => "ask", "reason" => "off-machine" })
+      toolkit!("lean", add: %w[web_search])
+      direct = run({ name: "web_search", content: '{"query":"ruby"}', args: { "query" => "ruby" } })
+      toolkit!
+      expect(registry.names).not_to include("web_search")
+      unwrapped = run(via("chi/web_search", { "query" => "ruby" }))
+
+      expect(unwrapped.output).to eq("[web_search]\nfound ruby")
+      expect(unwrapped.output).to eq(direct.output)
+      expect(asked).to eq([%w[web_search web_search:query=ruby ask-ws]] * 2)
+      expect(seen).to eq([["web_search", nil], %w[web_search call_tool]])
+      expect(ran).to eq([%w[web_search ruby]] * 2)
+      started = events.select { |e| e[:type] == :tool_call_started }.last
+      expect(started).to include(tool: "web_search", via: "call_tool", label: "searching the web", params: "q=ruby")
+    end
+
+    it "is refused by its name once the kit removes it, before the gate" do
+      toolkit!("lean", remove: %w[web_search])
+      result = run(via("chi/web_search", { "query" => "ruby" }))
+      expect(result.output).to start_with("Error: web_search isn't loaded in this session (toolkit lean)")
+      expect(seen).to eq([])
+      expect(ran).to eq([])
+    end
   end
 
   it "runs an MCP tool or a miss as call_tool, as before" do

@@ -17,14 +17,15 @@ module Samagotchi
     # inputSchema, and call_tool, which calls one as <group>/<tool>.
     # A source (the mcp bundle, chi.tool_source) publishes its groups (an
     # MCP server each) and runs the calls; the index's own group, chi, is
-    # the built-ins the session's toolkit leaves out but doesn't remove
-    # (Registry#reachable_names), and a call_tool of one runs as that
-    # built-in (#unwrap, before the guardrail gate). The index searches the
+    # the tools the session's toolkit leaves out but doesn't remove, chi's
+    # built-ins and its bundles' (chi.tool) alike (Registry#reachable_names),
+    # and a call_tool of one runs as that tool (#unwrap, before the
+    # guardrail gate). The index searches the
     # groups, looks a call's tool up and checks it.
     #
     # The two tools are registered once, after the plugins load, and
     # declared per toolkit (Registry#declared?): when a source registered
-    # then, or the toolkit leaves a built-in reachable. The search tool's
+    # then, or the toolkit leaves a tool reachable. The search tool's
     # description has the source groups' lines as they were at load and a
     # chi line per toolkit (#refresh!): nothing a source publishes later
     # changes the request's tools, so the prompt cache keeps.
@@ -44,9 +45,10 @@ module Samagotchi
       # times one in its description.
       NAME_WEIGHT = 3
       PREVIEW_CHARS = 60
-      # The index's own group: chi's built-ins a toolkit leaves out.
+      # The index's own group: chi's tools (built-ins and bundles' chi.tool)
+      # a toolkit leaves out.
       CHI_GROUP = "chi"
-      CHI_SUMMARY = "chi's own tools not declared in this session"
+      CHI_SUMMARY = "chi's and its bundles' tools not declared in this session"
       # Group names a source can't publish: the index's own groups'.
       RESERVED_GROUPS = [CHI_GROUP].freeze
 
@@ -276,7 +278,7 @@ module Samagotchi
       end
 
       # Register the search and call tools in +registry+, once, after the
-      # plugins load (or without them: the built-ins a toolkit leaves out
+      # plugins load (or without them: the tools a toolkit leaves out
       # are reachable either way); +registry+ declares them per toolkit
       # (Registry::Index). A name another tool has is left out (a line in
       # +failures+).
@@ -362,7 +364,7 @@ module Samagotchi
       # A call of the tool +name+ names, with +args+ typed by its schema,
       # run by its source. It fails closed: a tool that isn't the one
       # guardrails were given (#claimed) is refused, and so is one of the
-      # index's own (a built-in runs as itself, #unwrap, or not at all).
+      # index's own (a chi tool runs as itself, #unwrap, or not at all).
       def call(name, args)
         tool = lookup(name)
         return tool if tool.is_a?(String)
@@ -388,12 +390,12 @@ module Samagotchi
         source.run(tool, inner)
       end
 
-      # The built-in a call_tool +call+ names, as the call that runs in its
+      # The chi tool a call_tool +call+ names, as the call that runs in its
       # place (ToolRunner#run's first step, before the guardrail gate):
       # built from its arguments as a direct call would be
       # (BuiltinCalls.build), with via: "call_tool". The name is a chi tool
-      # (a bare one only while the toolkit reaches it), or chi/<built-in>
-      # for any registered built-in: one the toolkit removes or declares
+      # (a bare one only while the toolkit reaches it), or chi/<name> for
+      # any registered built-in or plugin tool: one the toolkit removes or declares
       # is then refused by its name before the gate (ToolRunner#left_out?),
       # with no hook or card. Nil, so the call runs as call_tool, when the
       # turn under +layers+ doesn't offer call_tool, for an MCP tool, a miss
@@ -429,8 +431,8 @@ module Samagotchi
       end
 
       # The name a request declares +name+'s tool by when it goes out
-      # deferred (Tools::DeferredTools): a reachable built-in's (by its
-      # name or chi/<name>), a deferrable source tool's acts_as (by it or
+      # deferred (Tools::DeferredTools): a reachable chi tool's, built-in or
+      # plugin (by its name or chi/<name>), a deferrable source tool's acts_as (by it or
       # <group>/<tool>). Nil for any other: declared, removed, unknown, or a
       # source tool that can't be deferred. Never waits for a start.
       # @return [String, nil]
@@ -549,7 +551,7 @@ module Samagotchi
       end
 
       # The wire names of +matches+ a request can declare deferred: a
-      # built-in of the index's own groups by its name, a source's tool by
+      # chi tool of the index's own groups by its name, a source's tool by
       # its acts_as when it is #deferrable.
       def loadable(matches)
         sourced = nil
@@ -578,16 +580,17 @@ module Samagotchi
 
       def own?(group) = RESERVED_GROUPS.include?(group.name)
 
-      # The registered built-in chi/<name> names, reachable or not.
+      # The registered chi tool chi/<name> names (a built-in or a plugin's,
+      # never the index's own), reachable or not.
       def builtin_named(name)
         return nil unless name.start_with?("#{CHI_GROUP}/")
 
         entry = @registry[name.delete_prefix("#{CHI_GROUP}/")]
-        entry if entry&.core?
+        entry unless entry.nil? || entry.source == SOURCE
       end
 
-      # The index's own groups: chi, the built-ins the Registry's toolkit
-      # leaves out but reaches (none: no group). Each tool's schema is its
+      # The index's own groups: chi, the tools (built-ins and plugin tools)
+      # the Registry's toolkit leaves out but reaches (none: no group). Each tool's schema is its
       # registered entry's (a config's execute description included), and
       # it acts as itself.
       # @return [Array<Group>]
@@ -698,8 +701,10 @@ module Samagotchi
         return same.first if same.size == 1
         return "Error: #{name} names #{same.map(&:full_name).join(" and ")}; call one as <group>/<tool>" if same.size > 1
 
-        # A built-in the session declares is no starting server's tool.
-        return "Error: #{name} is declared; call it directly" if @registry&.offered(name)&.core?
+        # A chi tool the session declares (a built-in or a plugin's) is no
+        # starting server's tool.
+        declared = @registry&.offered(name)
+        return "Error: #{name} is declared; call it directly" if declared && declared.source != SOURCE
 
         # A name with a group's <group>/ waits for that group only; any
         # other name (an acts_as) for every one starting.

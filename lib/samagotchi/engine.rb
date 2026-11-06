@@ -345,7 +345,7 @@ module Samagotchi
       @prompt_sections = Plugin::PromptSections.new
       load_plugins if load
       # Registered from what the sources published while they loaded, and
-      # with no plugins too: a toolkit's left-out built-ins are reachable
+      # with no plugins too: a toolkit's left-out tools are reachable
       # either way (declared per toolkit, Tools::Registry).
       @tool_index.declare(@tools, failures: @plugin_failures)
     end

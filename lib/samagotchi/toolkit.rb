@@ -249,10 +249,13 @@ module Samagotchi
       Kit.new(name: REVIEW, tools: REVIEW_TOOLS, groups: [])
     ].to_h { |kit| [kit.name, kit] }.freeze
 
-    # What a toolkit declares, the Registry's filter: every built-in
-    # (+all_core+) or the ones in +core+, every plugin tool and every tool
-    # an LLM context layer gates (forget_outputs), but for +removed+;
-    # +added+ declares any registered tool. +fallback+: why the session's
+    # What a toolkit declares, the Registry's filter: every registered tool,
+    # built-ins and plugin tools (chi.tool) alike (+all_core+, full), or the
+    # built-ins in +core+, and every tool an LLM context layer gates
+    # (forget_outputs), but for +removed+; +added+ declares any registered
+    # tool. A tool it leaves out without removing is reachable through the
+    # tool index (Registry#reachable_names). The index's own tools
+    # (find_tools, call_tool) are the Registry's to declare. +fallback+: why the session's
     # own toolkit couldn't be resolved (this is FULL then), nil when it was.
     # +prompt+: the kit's prompt text (its own or its base's), nil without.
     # +groups+: :all or the sorted source group names/globs it reaches.
@@ -272,7 +275,7 @@ module Samagotchi
       # @param entry [Tools::Registry::Entry]
       def declares?(entry)
         return false if removed.include?(entry.name)
-        return true if added.include?(entry.name) || !entry.core? || !entry.layer.nil?
+        return true if added.include?(entry.name) || !entry.layer.nil?
 
         all_core || core.include?(entry.name)
       end

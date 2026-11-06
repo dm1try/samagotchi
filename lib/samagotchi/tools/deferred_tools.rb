@@ -9,8 +9,8 @@ module Samagotchi
     # that loads tools (LLM::AnthropicMessages#loads_tools?): every tool the
     # session reaches but doesn't declare, so a find_tools hit can load it
     # and the model calls it by its own name. In order:
-    # 1. the built-ins the toolkit leaves out but doesn't remove
-    #    (Registry#reachable_names), in registry order;
+    # 1. the chi tools (built-ins and plugin tools) the toolkit leaves out
+    #    but doesn't remove (Registry#reachable_names), in registry order;
     # 2. the tool index's source tools (an MCP server's, by acts_as), only
     #    while call_tool is declared (ToolIndex#deferrable: sorted by name);
     # 3. every other name the conversation loaded (a find result's

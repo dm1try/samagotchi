@@ -22,8 +22,9 @@ module Samagotchi
     #     resolves (a symlink in the project to ~/.ssh is ~/.ssh);
     #   memory_read: the project scope only, named (no fallback to system);
     #   anything else, call_tool's real target included: a call_tool of a
-    #     built-in reaches the gate as that built-in (ToolRunner#unwrapped),
-    #     so what is left of call_tool is a plugin or MCP tool, denied in v1.
+    #     chi tool (a built-in or a plugin's chi/<name>) reaches the gate as
+    #     that tool (ToolRunner#unwrapped), so what is left of call_tool is
+    #     an MCP tool, denied in v1.
     # The declared tools stay the session's (no prompt rebuild per author),
     # so a participant turn's model may still try a write: it is denied
     # here, with the header's "This turn may only read" to keep it rare.
@@ -82,7 +83,7 @@ module Samagotchi
         end
       end
 
-      # A plugin or MCP tool behind call_tool names what it acts as.
+      # An MCP tool behind call_tool names what it acts as.
       def tool_label(tool, targets)
         acts_as = targets&.acts_as
         acts_as && acts_as != tool ? "#{tool} (#{acts_as})" : tool

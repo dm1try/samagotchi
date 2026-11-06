@@ -116,18 +116,18 @@ module Samagotchi
         ordered(@entries.values.select { |entry| left_out?(entry, layers, toolkit) }).map(&:name)
       end
 
-      # The built-in +name+ names when the session's toolkit leaves it out
-      # but the tool index reaches it (#reachable_names).
+      # The tool +name+ names (a built-in or a plugin's) when the session's
+      # toolkit leaves it out but the tool index reaches it (#reachable_names).
       # @return [Entry, nil]
       def indexed(name, layers: [], toolkit: @toolkit)
         entry = self[name]
         entry if entry && call_offered?(toolkit) && soft?(entry, layers, toolkit)
       end
 
-      # The built-ins +toolkit+ leaves out of a turn under +layers+ that the
-      # tool index reaches (call_tool): not in its kit's list, but not
-      # removed either (remove:, --no-tool, /toolkit remove), with call_tool
-      # itself declared.
+      # The tools +toolkit+ leaves out of a turn under +layers+ that the tool
+      # index reaches (call_tool), built-ins and plugin tools alike: not in
+      # its kit's list, but not removed either (remove:, --no-tool, /toolkit
+      # remove), with call_tool itself declared. Never the index's own.
       # @return [Array<String>] in declaration order
       def reachable_names(layers: [], toolkit: @toolkit)
         return [] unless call_offered?(toolkit)
@@ -175,7 +175,7 @@ module Samagotchi
 
       # Declared by +toolkit+ (nil: every tool, full). The tool index's
       # tools are declared when they reach something, whatever the toolkit:
-      # a source registered at load, or a built-in it leaves out but
+      # a source registered at load, or a tool it leaves out but
       # doesn't remove (#index_needed?); unless it removes them.
       def declared?(entry, toolkit = @toolkit)
         if index_entry?(entry)
@@ -188,8 +188,8 @@ module Samagotchi
       def index_entry?(entry) = !@index.nil? && entry.source == @index.source
 
       # From what the plugins registered at load and the toolkit alone, so
-      # the declared tools stay the same for a session's life. A built-in
-      # left out counts only while call_tool can reach it (not removed).
+      # the declared tools stay the same for a session's life. A tool left
+      # out counts only while call_tool can reach it (not removed).
       def index_needed?(toolkit)
         return true if reached_groups?(toolkit)
         return false if toolkit&.removed&.include?(@index.call_name)
@@ -198,8 +198,8 @@ module Samagotchi
       end
 
       # Whether the index's tools would reach something under +toolkit+,
-      # removed or not: a source registered at load, or a built-in the
-      # toolkit leaves out without removing it.
+      # removed or not: a source registered at load, or a tool (a built-in
+      # or a plugin's) the toolkit leaves out without removing it.
       def index_reaches?(toolkit)
         reached_groups?(toolkit) || @entries.values.any? { |entry| soft?(entry, [], toolkit) }
       end
@@ -218,11 +218,12 @@ module Samagotchi
         toolkit&.removed&.include?(entry.name) == true && index_reaches?(toolkit)
       end
 
-      # A built-in +toolkit+ leaves out of a turn under +layers+ without
-      # removing it.
+      # A tool +toolkit+ leaves out of a turn under +layers+ without removing
+      # it: a built-in or a plugin's, never one of the index's own (they are
+      # declared when they reach something) or a layer's (always declared).
       def soft?(entry, layers, toolkit)
-        !toolkit.nil? && entry.core? && entry.offered?(layers) && !toolkit.removed.include?(entry.name) &&
-          !toolkit.declares?(entry)
+        !toolkit.nil? && !index_entry?(entry) && entry.layer.nil? && entry.offered?(layers) &&
+          !toolkit.removed.include?(entry.name) && !toolkit.declares?(entry)
       end
 
       # Whether +toolkit+ declares the index's call tool.

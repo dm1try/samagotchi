@@ -192,8 +192,9 @@ RSpec.describe Samagotchi::Tools::Registry do
     it "filters the declared tools by the toolkit and the turn's layers" do
       registry = extended_registry
       registry.toolkit = lean
-      expect(registry.names).not_to include("delegate", "forget_outputs")
-      expect(registry.names).to include("execute", "echo")
+      expect(registry.names).not_to include("delegate", "forget_outputs", "echo")
+      expect(registry.names).to include("execute")
+      expect(registry.names(toolkit: lean.changed(add: ["echo"]))).to include("echo")
       expect(registry.names(layers: [:forget])).to include("forget_outputs")
       expect(registry.schemas.map { |schema| schema[:name] }).to eq(registry.names)
       expect(Samagotchi::ToolDeclarations.native_schemas(registry).map { |schema| schema[:name] }).to eq(registry.names)
@@ -207,7 +208,8 @@ RSpec.describe Samagotchi::Tools::Registry do
       expect(registry.left_out("execute")).to be_nil
       expect(registry.left_out("nope")).to be_nil
       expect(registry.left_out_names).to eq(%w[register_reminder cancel_reminder list_reminders list_sessions send_note
-                                               delegate delegate_result objectives])
+                                               delegate delegate_result objectives echo])
+      expect(registry.left_out("echo")&.name).to eq("echo")
       expect(registry["delegate"]).not_to be_nil
     end
 
@@ -233,6 +235,25 @@ RSpec.describe Samagotchi::Tools::Registry do
         expect(registry.indexed("delegate")).to be_nil
         expect(registry.indexed("execute")).to be_nil
         expect(registry.indexed("forget_outputs", layers: [:forget])).to be_nil
+      end
+
+      it "reaches a plugin tool the kit leaves out like a built-in, never the index's own or a layer's tool" do
+        registry.register("find_tools", schema: schema.merge(name: "find_tools"), handler: ->(*) { "" }, source: "index")
+        registry.index = registry.index.with(groups: [])
+        registry.toolkit = kit
+        expect(registry.reachable_names.last).to eq("echo")
+        expect(registry.reachable_names).not_to include("find_tools", "call_tool", "forget_outputs")
+        expect(registry.reachable_names(layers: [:forget])).not_to include("forget_outputs")
+        expect(registry.indexed("echo")&.name).to eq("echo")
+        expect(registry.indexed("call_tool")).to be_nil
+        expect(registry.names).to include("find_tools", "call_tool")
+
+        registry.toolkit = kit(add: %w[echo])
+        expect(registry.names).to include("echo")
+        expect(registry.indexed("echo")).to be_nil
+        registry.toolkit = kit(remove: %w[echo])
+        expect(registry.indexed("echo")).to be_nil
+        expect(registry.removed_names).to eq(%w[echo])
       end
 
       it "declares the index's tools when they reach something, on full (nil) and a resolved toolkit alike" do

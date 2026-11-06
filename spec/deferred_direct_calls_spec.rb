@@ -8,6 +8,8 @@ require "samagotchi/tools/builtins"
 require "samagotchi/tools/builtin_calls"
 require "samagotchi/tools/tool_index"
 require "samagotchi/toolkit"
+require "samagotchi/tools/deferred_tools"
+require "samagotchi/plugin/tool_spec"
 require "support/test_kernel"
 
 # A direct call of a tool the session reaches but doesn't declare, on a host
@@ -110,6 +112,74 @@ RSpec.describe "direct calls of deferred tools" do
 
       expect(result.output).to start_with("Error: delegate isn't loaded in this session")
       expect([seen, ran]).to eq([[], []])
+    end
+  end
+
+  describe "a reachable plugin tool (chi.tool)" do
+    let(:registry) do
+      Samagotchi::Tools::Builtins.registry.tap do |registry|
+        spec = Samagotchi::Plugin::ToolSpec.build("web_search", "Search the web.", label: "searching the web",
+                                                                                   params: { query: { type: "string" } }) do |args|
+          ran << ["web_search", args["query"]]
+          "found #{args["query"]}"
+        end
+        Samagotchi::Plugin::ToolSpec.apply(registry, "web-search", [spec], nil)
+      end
+    end
+
+    it "goes out deferred by its name, and runs by it through the gate as itself (not call_tool)" do
+      loads_tools!
+      rules({ "id" => "ask-ws", "tool" => "web_search", "verdict" => "ask", "reason" => "off-machine" })
+      deferred = Samagotchi::Tools::DeferredTools.list(registry, [])
+      expect(deferred.map(&:name)).to include("web_search")
+      expect(deferred.find { |tool| tool.name == "web_search" }.description).to eq("Search the web.")
+      expect(index.deferred_name("chi/web_search")).to eq("web_search")
+
+      result = run(Samagotchi::Tools::BuiltinCalls.build("web_search", { "query" => "ruby" }))
+
+      expect(result.output).to eq("[web_search]\nfound ruby")
+      expect(seen).to eq([{ name: "web_search", args: { "query" => "ruby" } }])
+      expect(asked).to eq([%w[web_search web_search:query=ruby ask-ws]])
+      expect(events.first).to include(type: :tool_call_started, tool: "web_search", label: "searching the web")
+    end
+
+    it "is declared, not deferred, on full; refused with the call_tool route when the host doesn't load tools" do
+      registry.toolkit = nil
+      expect(Samagotchi::Tools::DeferredTools.list(registry, []).map(&:name)).not_to include("web_search")
+      expect(registry.names).to include("web_search")
+
+      registry.toolkit = Samagotchi::Toolkit.new(name: "lean").resolve(Samagotchi::Toolkit.kits)
+      loads_tools!(false)
+      result = run(Samagotchi::Tools::BuiltinCalls.build("web_search", { "query" => "ruby" }))
+      expect(result.output).to start_with("Error: web_search isn't declared in this session (toolkit lean); call it with " \
+                                          "call_tool(tool: \"chi/web_search\"")
+      expect(ran).to eq([])
+    end
+  end
+
+  describe "a reachable plugin tool named as an MCP tool's acts_as" do
+    let(:registry) do
+      Samagotchi::Tools::Builtins.registry.tap do |registry|
+        spec = Samagotchi::Plugin::ToolSpec.build("mcp_fs_read_file", "The plugin's own.") do |_args|
+          ran << ["plugin", nil]
+          "plugin ran"
+        end
+        Samagotchi::Plugin::ToolSpec.apply(registry, "clash", [spec], nil)
+      end
+    end
+
+    it "makes the bare name ambiguous to call_tool (no unwrap), and defers only the plugin's by that name" do
+      loads_tools!
+      result = run(Samagotchi::Tools::BuiltinCalls.build("call_tool", { "tool" => "mcp_fs_read_file", "args" => {} }))
+
+      expect(result.output).to eq("[call_tool]\nError: mcp_fs_read_file names chi/mcp_fs_read_file and fs/read_file; " \
+                                  "call one as <group>/<tool>")
+      expect(seen.first).to include(name: "call_tool")
+      expect(ran).to eq([])
+      deferred = Samagotchi::Tools::DeferredTools.list(registry, [])
+      expect(deferred.map(&:name).count("mcp_fs_read_file")).to eq(1)
+      expect(deferred.find { |tool| tool.name == "mcp_fs_read_file" }.description).to eq("The plugin's own.")
+      expect(index.deferrable.map(&:acts_as)).not_to include("mcp_fs_read_file")
     end
   end
 
