@@ -652,6 +652,33 @@ test("a click on the picture toggles its natural size", async () => {
   assert.ok(!root.querySelector("figure").classList.contains("natural"));
 });
 
+test("the picture is named with where its source is, and its zoom is a button the keyboard reaches", async () => {
+  const { root } = setup(answer(block()));
+  const before = root.textContent;
+  await settle();
+  const figure = root.querySelector("figure");
+  assert.equal(figure.querySelector(".block-img").alt, "mermaid diagram, its source under the Show the source button");
+  assert.equal(root.querySelector(".block-toggle").getAttribute("aria-label"), "Show the source");
+  const zoom = figure.querySelector(":scope > button.block-zoom");
+  assert.equal(zoom.type, "button");
+  assert.equal(zoom.textContent.trim(), "");
+  assert.equal(root.textContent, before);
+  assert.deepEqual([zoom.getAttribute("aria-label"), zoom.getAttribute("aria-pressed")], ["Show at full size", "false"]);
+  zoom.click(); // a button's Enter and Space are its click
+  assert.ok(figure.classList.contains("natural"));
+  assert.deepEqual([zoom.getAttribute("aria-label"), zoom.getAttribute("aria-pressed")], ["Fit to the column", "true"]);
+  figure.querySelector(".block-img").click();
+  assert.ok(!figure.classList.contains("natural"));
+  assert.equal(zoom.getAttribute("aria-pressed"), "false", "a click on the picture keeps the button's state");
+});
+
+test("the zoom button shows on keyboard focus only, takes no pointer while hidden, and goes with the picture", async () => {
+  const css = await readFile(new URL("../../../lib/samagotchi/web/public/block_renderers.css", import.meta.url), "utf8");
+  assert.match(css, /\.block-zoom:focus-visible[,{]/);
+  assert.match(css, /\.block-zoom:not\(:focus-visible\)\{pointer-events:none\}/);
+  assert.match(css, /\.block-drawn\.source>\.block-zoom\{display:none\}/);
+});
+
 test("it waits for the block to come near the view", async () => {
   const { root, calls, near } = setup(answer(block()), { lazy: true });
   await settle();

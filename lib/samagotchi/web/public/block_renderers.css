@@ -1,4 +1,4 @@
-/* A drawn fenced block (block_host.js): the picture scales to the column, a click shows its natural size in a scroller; the toggle shows the source, in the block's place. In a .code-wrap the copy button sits top-right, so the toggle sits left of it. */
+/* A drawn fenced block (block_host.js): the picture scales to the column, a click shows its natural size in a scroller; the toggle shows the source, in the block's place. In a .code-wrap the copy button sits top-right, so the toggle sits left of it. The zoom button, the keyboard's way to the natural size, shows on keyboard focus only, left of the toggle. */
 .block-drawn{position:relative;margin:0 0 12px;white-space:normal}
 .code-wrap>.block-drawn{margin:0}
 .code-wrap>.block-drawn.source{height:0}
@@ -8,11 +8,15 @@
 .block-img{display:block;max-width:100%;max-height:50000px;object-fit:contain;height:auto;margin:0 auto;cursor:zoom-in}
 .block-drawn.natural .block-img{max-width:50000px;margin:0;cursor:zoom-out}
 .block-drawn.source .block-scroll{display:none}
-.block-toggle{position:absolute;top:5px;right:5px;z-index:1;display:inline-flex;align-items:center;justify-content:center;height:24px;min-width:24px;padding:0 5px;border-radius:6px;background:var(--bg-raised);border:1px solid var(--border-strong);color:var(--text-3);opacity:0;transition:opacity .12s}
+.block-toggle,.block-zoom{position:absolute;top:5px;right:5px;z-index:1;display:inline-flex;align-items:center;justify-content:center;height:24px;min-width:24px;padding:0 5px;border-radius:6px;background:var(--bg-raised);border:1px solid var(--border-strong);color:var(--text-3);opacity:0;transition:opacity .12s}
 .code-wrap>.block-drawn>.block-toggle{right:34px}
-.block-toggle svg{display:block}
-.block-drawn:hover>.block-toggle,.code-wrap:hover>.block-drawn>.block-toggle,.block-toggle:focus-visible,.block-drawn.source>.block-toggle{opacity:1}
-.block-toggle:hover:not(:disabled){filter:none}@media(hover:hover){.block-toggle:hover:not(:disabled){color:var(--text-bright)}}
+.block-zoom{right:34px}
+.code-wrap>.block-drawn>.block-zoom{right:63px}
+.block-drawn.source>.block-zoom{display:none}
+.block-zoom:not(:focus-visible){pointer-events:none}
+.block-toggle svg,.block-zoom svg{display:block}
+.block-drawn:hover>.block-toggle,.code-wrap:hover>.block-drawn>.block-toggle,.block-toggle:focus-visible,.block-zoom:focus-visible,.block-drawn.source>.block-toggle{opacity:1}
+.block-toggle:hover:not(:disabled),.block-zoom:hover:not(:disabled){filter:none}@media(hover:hover){.block-toggle:hover:not(:disabled),.block-zoom:hover:not(:disabled){color:var(--text-bright)}}
 .block-drawn.source:not(:last-child){margin:0}
 /* Its words are the attribute's, so a bubble's text stays the answer's (block_host.js fail). */
 .block-note{margin:4px 0 12px;font-size:12px;color:var(--text-3);white-space:normal}

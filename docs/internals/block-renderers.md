@@ -30,6 +30,10 @@ model. The TUI is untouched: it shows a fence as source.
    clone arrives with both. On failure the `<pre>` stays, marked `data-block-failed`, with one muted line: an attribute CSS
    shows, never markup, and not in the bubble's `textContent`, which the page's dedupe and an annotation read (`copy.js`'s rule). CSS content can't be selected, so a click on the line copies its words.
    The toggle has an icon and an `aria-label`, no text (`copy.js`'s rule). A jump into the source shows it (`revealInHistory`).
+   For a screen reader: the hidden `<pre>` isn't read, so the `<img>`'s alt names the toggle that shows it ("mermaid
+   diagram, its source under the Show the source button"). The natural size, a click on the picture, is also a
+   `.block-zoom` button (icon, `aria-label`, `aria-pressed`) for the keyboard: before the toggle, shown on keyboard focus
+   only, and taking no pointer while hidden, so the mouse's view is as it was.
 6. Cache: a `Map` on `lang + theme + source`, about 200 entries, holding the `data:` URL; a later `bubble.innerHTML` wipes the
    figure and the observer redraws in the same pass. No `crypto.subtle`: it's undefined on a plain-http LAN address. A system
    theme change redraws through the figure (a hidden `<pre>` never intersects).

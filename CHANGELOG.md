@@ -8,6 +8,10 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Fixed
+
+- chi web: a diagram drawn by a block renderer is usable without a mouse: a screen reader hears that its source is behind the "Show the source" button, and a button that shows on keyboard focus zooms it to full size and back.
+
 ## [0.153.0] - 2026-11-06
 
 ### Added

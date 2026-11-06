@@ -2231,7 +2231,8 @@ test("an answer's plugin refs pair with its link and text, a tool row's with its
 // A bundle's block renderer (support/bundles/e2e-block-renderer) draws in the
 // sandboxed frame: the answer's block shows as an <img> with a data: URL, live
 // and after a reload (a <title> holds the source's first line, so the picture
-// is this block's), its source stays in the DOM hidden and the toggle shows it;
+// is this block's), its source stays in the DOM hidden and the toggle shows it,
+// the zoom works by keyboard;
 // a block the renderer throws on stays source with its line, and a language no
 // bundle draws is left alone.
 test("a bundle's block renderer draws a fenced block in the answer, live and after a reload", async ({ page, script }) => {
@@ -2256,6 +2257,20 @@ test("a bundle's block renderer draws a fenced block in the answer, live and aft
     await output.locator(".block-toggle").click();
     await expect(drawn).toBeHidden();
     await expect(img).toBeVisible();
+    // By keyboard: the picture's name says where its source is, and the zoom
+    // button, left of the toggle, shows on its focus and zooms on Enter.
+    await expect(img).toHaveAccessibleName("e2e-draw diagram, its source under the Show the source button");
+    const figure = output.locator("figure.block-drawn");
+    const zoom = figure.locator(".block-zoom");
+    await figure.locator(".block-toggle").focus();
+    await page.keyboard.press("Shift+Tab");
+    await expect(zoom).toBeFocused();
+    await expect(zoom).toHaveCSS("opacity", "1");
+    await page.keyboard.press("Enter");
+    await expect(figure).toHaveClass(/\bnatural\b/);
+    await expect(zoom).toHaveAttribute("aria-pressed", "true");
+    await page.keyboard.press("Enter");
+    await expect(figure).not.toHaveClass(/\bnatural\b/);
   };
   script("block_renderer");
   await send(page, "Draw it");
