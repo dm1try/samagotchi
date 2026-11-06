@@ -45,6 +45,32 @@ RSpec.describe Samagotchi::MemoryBundle::Provenance do
     end
   end
 
+  describe "the saved incoming text" do
+    it "prunes a settled file saved under incoming/ at any depth, and the dir left empty" do
+      prov = described_class.new(name: "nested-incoming")
+      src = File.join(tmpdir, "src")
+      make_file(src, "sub/keep.md", "kept text\n")
+      make_file(src, "sub/settled.md", "settled text\n")
+      marks = [Samagotchi::MemoryBundle::FileStanding::Behind.new(file: "sub/keep.md"),
+               Samagotchi::MemoryBundle::FileStanding::Behind.new(file: "sub/settled.md")]
+      prov.write(files: {}, scope: "system", version: "1.0.0", source_path: "/s", marks: marks, incoming_dir: src)
+      expect(File.exist?(prov.incoming_path("sub/settled.md"))).to be(true)
+
+      # Only one is still behind: the other's saved text goes, with its dir.
+      prov.write(files: {}, scope: "system", version: "1.0.1", source_path: "/s",
+                 marks: [Samagotchi::MemoryBundle::FileStanding::Behind.new(file: "sub/keep.md")], incoming_dir: src)
+      expect(File.exist?(prov.incoming_path("sub/keep.md"))).to be(true)
+      expect(File.exist?(prov.incoming_path("sub/settled.md"))).to be(false)
+      expect(Dir.exist?(File.join(prov.bundle_dir, "incoming", "sub"))).to be(true)
+
+      # Nothing marked: incoming/ and its dirs go entirely.
+      prov.write(files: {}, scope: "system", version: "1.0.2", source_path: "/s")
+      expect(File.exist?(prov.incoming_path("sub/keep.md"))).to be(false)
+      expect(Dir.exist?(File.join(prov.bundle_dir, "incoming", "sub"))).to be(false)
+      expect(Dir.exist?(File.join(prov.bundle_dir, "incoming"))).to be(false)
+    end
+  end
+
   describe "#write" do
     it "records a meta's includes, and none for a plain bundle" do
       meta = described_class.new(name: "core")

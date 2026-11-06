@@ -463,11 +463,21 @@ module Samagotchi
       private :marked_in
 
       # Each file that settled loses its saved text; the folder goes with the last.
+      # A file key can nest (a manifest's `files:` may name a path), so every file
+      # under incoming/ at any depth is looked at, and a dir the prune empties goes
+      # with it, deepest first.
       def prune_incoming(keep)
         dir = File.join(@bundle_dir, "incoming")
         return unless Dir.exist?(dir)
 
-        (Dir.children(dir) - keep).each { |file| FileUtils.rm_f(File.join(dir, file)) }
+        keep = keep.map(&:to_s)
+        entries = Dir.glob("**/*", base: dir)
+        entries.each do |rel|
+          FileUtils.rm_f(File.join(dir, rel)) if File.file?(File.join(dir, rel)) && !keep.include?(rel)
+        end
+        entries.select { |rel| File.directory?(File.join(dir, rel)) }
+               .sort_by { |rel| -rel.count("/") } # deepest first, so a parent is checked after its children
+               .each { |rel| Dir.rmdir(File.join(dir, rel)) if Dir.empty?(File.join(dir, rel)) }
         Dir.rmdir(dir) if Dir.empty?(dir)
       rescue SystemCallError
         nil

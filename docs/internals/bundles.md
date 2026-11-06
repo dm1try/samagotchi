@@ -16,8 +16,9 @@ user-facing side (what a bundle owns, profiles, needs) is in [memory.md](../memo
   <name>/bases/                  each file's base for the next upgrade's 3-way merge: as installed, or the
                                  bundle's own text after a merge
   <name>/incoming/               the bundle's text for each file marked conflict, until the file settles (Provenance:
-                                 #write, #refresh_marks, gone with #resolve_conflicts; read by BundleCommand#print_incoming for `chi bundle diff`); nothing globs it for memories
-                                 (Builder takes the scope dir's top level), and an uninstall's rm_rf sweeps it
+                                 #write, #refresh_marks, gone with #resolve_conflicts; #prune_incoming takes a settled file
+                                 at any depth and the dirs it leaves empty; read by BundleCommand#print_incoming for `chi bundle diff`);
+                                 nothing globs it for memories (Builder takes the scope dir's top level), and an uninstall's rm_rf sweeps it
   <name>/hooks/ guardrails/ plugin/ scripts/
   .trash/<name>-<stamp>/         files an uninstall or upgrade took away, and copies of what an install
                                  overwrote (Trash), never deleted
