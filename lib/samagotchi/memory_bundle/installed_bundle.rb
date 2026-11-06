@@ -10,6 +10,7 @@ module Samagotchi
   module MemoryBundle
     # Only what reports on an edited file needs it.
     autoload :FileStanding, File.expand_path("file_standing", __dir__)
+    autoload :InstalledManifest, File.expand_path("installed_manifest", __dir__)
 
     # An installed bundle's record, as Provenance#write keeps it in
     # <bundles>/<name>/manifest.json. Reading is tolerant: an older record
@@ -40,16 +41,18 @@ module Samagotchi
     #               {key => type} for the typed ones, {} when none
     #   dev         a dev install (`chi bundle install --dev`): its source is
     #               the folder it links to and its files carry Provenance::DEV_SHA
+    #   dir         its .bundles/<name> folder (.read, Provenance.each_installed),
+    #               nil for a record parsed alone or one that doesn't read
     #   error       why manifest.json couldn't be read (the rest empty), else nil
     class InstalledBundle < Data.define(:name, :version, :scope, :source, :installed_at, :trust_level, :source_commit,
                                         :requires_chi, :files, :hooks, :guardrails, :scripts, :plugin, :needs,
                                         :includes, :context_providers, :block_renderers, :session_settings, :session_setting_types, :settings,
                                         :setting_types, :dev,
-                                        :error)
+                                        :dir, :error)
       OPTIONAL = { version: nil, scope: nil, source: nil, installed_at: nil, trust_level: nil, source_commit: nil,
                    requires_chi: nil, files: {}, hooks: {}, guardrails: {}, scripts: {}, plugin: nil, needs: nil,
                    includes: nil, context_providers: nil, block_renderers: nil, session_settings: [], session_setting_types: {}, settings: nil, setting_types: {}, dev: false,
-                   error: nil }.freeze
+                   dir: nil, error: nil }.freeze
 
       def initialize(name:, **fields)
         super(name: name, **OPTIONAL, **fields)
@@ -66,7 +69,7 @@ module Samagotchi
       def self.read(name, path)
         return nil unless File.exist?(path)
 
-        parse(name, JSON.parse(File.read(path)))
+        parse(name, JSON.parse(File.read(path)), File.dirname(path))
       end
 
       # One that couldn't be read: +message+ says why.
@@ -74,7 +77,8 @@ module Samagotchi
 
       # @param raw [Hash] the parsed manifest.json (string or symbol keys);
       #   anything else reads as unreadable
-      def self.parse(name, raw)
+      # @param dir [String, nil] its .bundles/<name> folder
+      def self.parse(name, raw, dir = nil)
         return unreadable(name, "manifest.json is not an object") unless raw.is_a?(Hash)
 
         h = raw.transform_keys(&:to_s)
@@ -92,7 +96,7 @@ module Samagotchi
             session_setting_types: mapping(h["session_setting_types"]) { |type| type.to_s },
             settings: h["settings"].is_a?(Array) ? h["settings"].map(&:to_s) : nil,
             setting_types: mapping(h["setting_types"]) { |type| type.to_s },
-            dev: h["dev"] == true)
+            dev: h["dev"] == true, dir: dir)
       end
 
       def self.string(value) = value&.to_s
@@ -105,6 +109,12 @@ module Samagotchi
       private_class_method :string, :mapping, :sha
 
       def error? = !error.nil?
+
+      # What its manifest says (requires_chi, hook metadata, needs, providers,
+      # renderers, settings…): the one way to read manifest data of an
+      # installed bundle.
+      # @return [InstalledManifest]
+      def manifest = InstalledManifest.of(self)
 
       # The scope its files went to: "system" when none is recorded.
       def effective_scope = scope.to_s.strip.empty? ? "system" : scope

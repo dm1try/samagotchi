@@ -101,7 +101,7 @@ module Samagotchi
           end
           next if holding && !(data.is_a?(Hash) && data[holding].is_a?(Hash) && !data[holding].empty?)
 
-          yield name, InstalledBundle.parse(name, data)
+          yield name, InstalledBundle.parse(name, data, File.join(dir, name))
         end
       end
 

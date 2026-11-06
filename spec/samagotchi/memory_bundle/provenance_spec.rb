@@ -315,7 +315,7 @@ RSpec.describe Samagotchi::MemoryBundle::Provenance do
       File.write(File.join(bundles_dir, "samagotchi-system.lock"), "")
       seen = described_class.each_installed.to_a
       expect(seen.map(&:first)).to eq(%w[a a-b bad list])
-      expect(seen[1].last).to eq(Samagotchi::MemoryBundle::InstalledBundle.new(name: "a-b", version: "1"))
+      expect(seen[1].last).to eq(Samagotchi::MemoryBundle::InstalledBundle.new(name: "a-b", version: "1", dir: File.join(bundles_dir, "a-b")))
       expect(seen[2].last.error).to start_with("manifest.json is unreadable: ")
       expect(seen[3].last).to eq(Samagotchi::MemoryBundle::InstalledBundle.unreadable("list", "manifest.json is not an object"))
     end
