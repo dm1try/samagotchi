@@ -40,11 +40,11 @@ module Samagotchi
         return nil if ids.empty?
 
         missing = ids.reject { |id| list.find(id) }
-        return "no objective #{missing.join(", ")}" unless missing.empty?
+        return Objectives.unknown(missing, list) unless missing.empty?
 
         if status == Objectives::DONE
           dropped = ids.select { |id| list.find(id).status == Objectives::DROPPED }
-          return "#{dropped.join(", ")} is dropped; /objectives undo #{dropped.join(" ")} brings it back" unless dropped.empty?
+          return Objectives.dropped(dropped) unless dropped.empty?
         end
 
         ids.reduce(list) { |so_far, id| so_far.mark(id, status) }
@@ -57,7 +57,7 @@ module Samagotchi
         return nil unless entry
 
         id = id.upcase
-        item = list.find(id) or return "no objective #{id}"
+        item = list.find(id) or return Objectives.unknown(id, list)
         return "#{id} has changed since this was proposed: #{item.text}" if was && Objectives.fingerprint(item) != was
 
         list.reword(id, entry[:text], done_when: entry[:done_when])

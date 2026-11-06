@@ -79,7 +79,7 @@ module Samagotchi
     end
 
     def run_line(args, was: nil)
-      session = @engine.session or return ["no session yet", :error]
+      session = @engine.session or return [Session::NONE_YET, :error]
       # The running turn's moves aren't in session.messages yet. A snapshot from
       # this thread, read only: an entry is there whole or not yet, and a call
       # with no result yet pairs with nothing.

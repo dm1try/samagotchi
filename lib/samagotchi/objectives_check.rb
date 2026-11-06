@@ -77,7 +77,7 @@ module Samagotchi
     # @param args [String] the objective's id
     # @return [Array(String, Symbol)] the reply, and :ok or :error
     def run(engine, args)
-      session = engine.session or return ["no session yet", :error]
+      session = engine.session or return [Session::NONE_YET, :error]
       id = args.to_s.strip.upcase
       return ["usage: /objectives check ID", :error] unless Objectives::ID.match?(id)
       # The running turn's text is theirs: it doesn't go to a side request.
@@ -98,8 +98,8 @@ module Samagotchi
       model = configured_model
       Objectives.with_lock(dir) do
         list = Objectives.current(session.id, session.messages, state_dir: engine.session_state_dir, running: conversation)
-        item = list.find(id) or next ["no objective #{id}", :error]
-        next ["#{id} is dropped", :error] if item.status == Objectives::DROPPED
+        item = list.find(id) or next [Objectives.unknown(id, list), :error]
+        next [Objectives.dropped(id), :error] if item.status == Objectives::DROPPED
 
         move = list.moves[id] or next ["#{id} has no move to check yet", :error]
         name = model || engine.effective_model_ref

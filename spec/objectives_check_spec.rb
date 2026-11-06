@@ -170,7 +170,7 @@ RSpec.describe Samagotchi::ObjectivesCheck do
     end
 
     it "refuses what it can't check, asking nothing" do
-      expect(run("O9")).to eq(["no objective O9", :error])
+      expect(run("O9")).to eq(["no objective O9 (this session's: O1, O2)", :error])
       output, status = run("O2")
       expect(status).to eq(:error)
       expect(output).to include("no move")

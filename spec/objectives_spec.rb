@@ -17,6 +17,36 @@ RSpec.describe Samagotchi::Objectives do
                                     header: Samagotchi::ContextNote::OBJECTIVES_HEADER, objectives: list.to_payload)
   end
 
+  describe "its refusals' wordings" do
+    let(:list) { described_class::List.new.set([{ text: "A" }, { text: "B" }]).mark("O1", described_class::DROPPED) }
+
+    it "names an unknown id with this session's ids, and none when there are none" do
+      expect(described_class.unknown("O9", list)).to eq("no objective O9 (this session's: O1, O2)")
+      expect(described_class.unknown(%w[O8 O9], list)).to eq("no objective O8, O9 (this session's: O1, O2)")
+      expect(described_class.unknown("O9", described_class::List.new)).to eq("no objective O9")
+    end
+
+    it "names a dropped id with the way back" do
+      expect(described_class.dropped("O1")).to eq("O1 is dropped; /objectives undo O1 brings it back")
+      expect(described_class.dropped(%w[O1 O3])).to eq("O1, O3 are dropped; /objectives undo O1 O3 brings them back")
+    end
+
+    it "is what the command, a proposal, a move and a check each say, with only their own context" do
+      edit = ->(line) { described_class::Edit.apply(list, *line.split(/\s+/, 2)) }
+      proposal = ->(change, id) { described_class::Proposal.new(change: change, id: id, text: "", note: "").refusal(list) }
+      peers = Struct.new(:objectives).new(list)
+      move = ->(id) { Samagotchi::Tools::ObjectivesTool.call({ id: id, note: "n" }, peers: peers) }
+
+      unknown = described_class.unknown("O9", list)
+      expect([edit.call("done O9"), edit.call("edit O9 x"), proposal.call("drop", "O9")]).to all(eq(unknown))
+      expect(move.call("O9")).to eq("Error: #{unknown}. Nothing was recorded.")
+
+      dropped = described_class.dropped("O1")
+      expect([edit.call("done O1"), proposal.call("done", "O1")]).to all(eq(dropped))
+      expect(move.call("O1")).to eq("Error: #{dropped}. Nothing was recorded.")
+    end
+  end
+
   describe ".changes" do
     let(:before) { described_class::List.new.set([{ text: "A" }, { text: "B" }, { text: "C" }]).mark("O3", "done") }
 

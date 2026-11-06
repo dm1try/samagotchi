@@ -64,8 +64,8 @@ module Samagotchi
 
       def self.refusal(list, id, call)
         item = list.find(id)
-        return "Error: no objective #{id} (this session's: #{list.items.map(&:id).join(", ")}). Nothing was recorded." unless item
-        return "Error: #{id} was dropped, so nothing was recorded." if item.status == Objectives::DROPPED
+        return "Error: #{Objectives.unknown(id, list)}. Nothing was recorded." unless item
+        return "Error: #{Objectives.dropped(id)}. Nothing was recorded." if item.status == Objectives::DROPPED
 
         "Error: a move needs a note: what moved, in a line." if Objectives.clean(call[:note]).empty?
       end

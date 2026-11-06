@@ -283,7 +283,7 @@ RSpec.describe Samagotchi::ObjectivesCommand do
     end
 
     it "refuses an unknown id and a line with no text" do
-      expect(command.run("edit O9 x")).to eq(["no objective O9", :error])
+      expect(command.run("edit O9 x")).to eq(["no objective O9 (this session's: O1, O2)", :error])
       expect(command.run("edit O1").last).to eq(:error)
       expect(command.run("edit O1 (done when: y)").last).to eq(:error)
     end
@@ -314,7 +314,7 @@ RSpec.describe Samagotchi::ObjectivesCommand do
     end
 
     it "leaves the card when the edit is refused" do
-      expect(command.run("--card c1 done O9")).to eq(["no objective O9", :error])
+      expect(command.run("--card c1 done O9")).to eq(["no objective O9 (this session's: O1, O2)", :error])
       expect(engine.cards).to be_nil
     end
 

@@ -110,7 +110,7 @@ module Samagotchi
       def refusal(list)
         return "change must be add, reword, done or drop" unless %w[add reword done drop].include?(change)
         return "#{change} needs a text" if %w[add reword].include?(change) && text.empty?
-        return "no objective #{id} (this session's: #{list.items.map(&:id).join(", ")})" unless change == "add" || list.find(id)
+        return Objectives.unknown(id, list) unless change == "add" || list.find(id)
 
         verb, rest = line.delete_prefix("/objectives ").split(/\s+/, 2)
         edited = Edit.apply(list, verb, rest.to_s, was: was)
@@ -245,6 +245,20 @@ module Samagotchi
         {}
       end
       AtomicFile.write(path, JSON.generate(known.merge(card => state)))
+    end
+
+    # The one wording per refusal: the command, a proposal, a move and a check
+    # say these, each adding only its own context.
+    # @param ids [Array<String>, String] the ids the list doesn't have
+    def unknown(ids, list)
+      known = list.items.map(&:id)
+      "no objective #{Array(ids).join(", ")}#{" (this session's: #{known.join(", ")})" unless known.empty?}"
+    end
+
+    # @param ids [Array<String>, String] dropped ids
+    def dropped(ids)
+      ids = Array(ids)
+      "#{ids.join(", ")} #{ids.size == 1 ? "is" : "are"} dropped; /objectives undo #{ids.join(" ")} brings #{ids.size == 1 ? "it" : "them"} back"
     end
 
     # The id a call names, as the list spells it.

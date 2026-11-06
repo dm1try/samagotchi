@@ -54,6 +54,9 @@ module Samagotchi
     # The memory a delegate child starts with (Tools::Delegate::CHILD_MEMORIES).
     DELEGATE_MEMORY = "system/delegated"
 
+    # What a command answers when there is no session to act on yet.
+    NONE_YET = "no session yet"
+
     SORT_KEYS = %w[created_at updated_at].freeze
     SORT_ORDERS = %w[asc desc].freeze
 

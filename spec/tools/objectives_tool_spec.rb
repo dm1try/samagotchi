@@ -155,7 +155,7 @@ RSpec.describe Samagotchi::Tools::ObjectivesTool do
   it "refuses a dropped objective: it is off the list the model is shown" do
     peers.objectives = list.mark("O1", Samagotchi::Objectives::DROPPED)
 
-    expect(move(id: "O1", note: "x")).to start_with("Error: O1 was dropped")
+    expect(move(id: "O1", note: "x")).to eq("Error: #{Samagotchi::Objectives.dropped("O1")}. Nothing was recorded.")
   end
 
   it "takes a move on a done objective: work can still touch it" do
