@@ -612,6 +612,26 @@ module Samagotchi
 
     def diff_memory(prov, target_dir, key)
       print_base_and_current(key, prov.base_path(key), File.join(target_dir, key))
+      print_incoming(prov, key)
+    end
+
+    # The bundle's text a file stays behind (Provenance#incoming_path), so the
+    # sections the "stays behind" line names can be read. No saved copy: nothing.
+    def print_incoming(prov, key)
+      path = prov.incoming_path(key)
+      return unless File.exist?(path)
+
+      text = begin
+        File.read(path)
+      rescue SystemCallError
+        nil
+      end
+      if text
+        @stdout.puts "--- incoming (the bundle's #{prov.record.version}, which this file stays behind) ---"
+        @stdout.puts text
+      else
+        @stdout.puts "--- incoming: the bundle's saved copy can't be read ---"
+      end
     end
 
     def diff_hook(prov, key, hook)

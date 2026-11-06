@@ -539,7 +539,7 @@ for a file another bundle installed.
   tell whether the file holds edits of yours and says that; the file
   stays behind until you resolve it by hand, with `--agent` or with `--force`, and
   the retry can't fix that. A file left behind makes the upgrade
-  exit 2; `chi bundle diff NAME FILE` shows the base, and `--force` takes
+  exit 2; `chi bundle diff NAME FILE` shows the base, your file and the bundle's new text, and `--force` takes
   the bundle's version, copying a file that differs to the bundle trash first
   (the output says `Copied to the trash first: …`).
 - **Every merge is noted on the file's record.** The system bundle's upgrade and

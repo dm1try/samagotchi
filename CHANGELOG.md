@@ -8,6 +8,10 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Fixed
+
+- `chi bundle diff NAME FILE` now prints the bundle's new text after the base and your file when the file stays behind, so the sections the "stays behind" line names can be read.
+
 ## [0.151.0] - 2026-11-05
 
 ### Added

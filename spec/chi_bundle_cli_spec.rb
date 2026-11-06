@@ -830,6 +830,24 @@ Hooks removed: 1\n\z})
         expect(chi("status")[0]).to include("  demo v3.0.0 scope=system files=1 issues=1\n")
       end
 
+      it "diff shows the bundle's new text after base and current" do
+        out = chi("diff", "demo", "a.md")
+        expect(out).to eq([
+          "=== a.md ===\n--- base (provenance) ---\none\n--- current (on-disk) ---\nedited\n" \
+          "--- incoming (the bundle's 3.0.0, which this file stays behind) ---\nthree\n\n", "", 0
+        ])
+      end
+
+      it "diff says so when the saved incoming copy can't be read, and keeps the rest" do
+        incoming = File.join(memories, ".bundles", "demo", "incoming", "a.md")
+        FileUtils.rm(incoming)
+        FileUtils.mkdir(incoming)
+        expect(chi("diff", "demo", "a.md")[0]).to eq(
+          "=== a.md ===\n--- base (provenance) ---\none\n--- current (on-disk) ---\nedited\n" \
+          "--- incoming: the bundle's saved copy can't be read ---\n\n"
+        )
+      end
+
       it "says so in list" do
         expect(chi("list")[0]).to match(/^  demo .*\(1 file behind: chi bundle status demo\)$/)
       end

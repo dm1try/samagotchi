@@ -313,7 +313,7 @@ Also shipped, not installed: dev (mcp, skills, source-links) (chi bundle install
   file in the bundle trash and `merged 0.8.0 into your FILE` in the row. A real
   conflict, no `git`, or no recorded base keeps your file untouched, and the row
   says `FILE stays behind 0.8.0:` with why and what it missed (up to three headings
-  and a count, or `2 places`). `chi bundle diff NAME FILE` shows it; `chi bundle
+  and a count, or `2 places`). `chi bundle diff NAME FILE` shows it (the base, your file, then the bundle's new text); `chi bundle
   upgrade NAME --force` takes the bundle's, with a copy of yours in the bundle
   trash first. A later run retries such a file at the same version: its row reads
   `0.8.0  merged 0.8.0 into your FILE` when it merges, and names it as behind when

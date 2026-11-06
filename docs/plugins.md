@@ -1622,7 +1622,7 @@ gem.
   one bundle it shows `Plugin: plugin.rb [ok|modified|missing]` and a
   `requires_chi` failure.
 - `chi bundle diff <name> [plugin.rb]`: shows the installed base and the
-  file on disk.
+  file on disk; for a memory file that stays behind, also the bundle's new text.
 - `chi bundle build --name <name>`: puts the installed plugin (and
   `requires_chi`, its `scripts/` and `context_providers:`) into the built
   bundle.
