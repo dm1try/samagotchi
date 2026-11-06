@@ -171,7 +171,8 @@ RSpec.describe Samagotchi::BlockRenderers do
     end
 
     it "skips a bundle whose requires_chi this chi doesn't meet" do
-      install(source(requires_chi: ">= 999.0"))
+      # force: installs it: the reader's skip is what this tests.
+      install(source(requires_chi: ">= 999.0"), force: true)
 
       expect(described_class.for_installed).to eq([])
     end

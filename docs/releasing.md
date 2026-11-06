@@ -21,7 +21,9 @@ can run the whole release; the user approves the notes before the tag and the
   - a bundle that uses something new in chi marks it in the same change with
     `requires_chi_next: true` (or a short reason) in its `manifest.yml`, and
     leaves `requires_chi` alone: raising it to a chi that isn't released yet
-    would make chi on main refuse its own bundle. `release:bump` raises a
+    would make chi on main refuse its own bundle outright — an unmet
+    `requires_chi` now stops the install, not just the load (`--force` is the
+    only way past it). `release:bump` raises a
     marked bundle's `requires_chi` to `">= X.Y.Z"` and drops the marker;
     `release:check` fails while a marker is left. chi itself ignores the key,
     and `bundles:check` notes it (and fails a marker that isn't `true` or a

@@ -388,6 +388,12 @@ RSpec.describe Samagotchi::Hooks::BundleLoader do
 
     def sha = Digest::SHA256.hexdigest(code)
 
+    # The installed bundle's manifest the loader is given (docs/internals/bundles.md):
+    # the record's mirror is enough for the requires_chi gate.
+    def installed_manifest(requires_chi)
+      Samagotchi::MemoryBundle::InstalledBundle.parse("g", { "requires_chi" => requires_chi }).manifest
+    end
+
     before { write_hook(hooks_dir, "guard.rb", code) }
 
     it "doesn't load a hook whose file changed since install, and a required one fails" do
@@ -403,7 +409,8 @@ RSpec.describe Samagotchi::Hooks::BundleLoader do
 
     it "doesn't load a bundle's hooks when this chi doesn't meet its requires_chi; a required one fails" do
       expect do
-        described_class.load(bundle_name: "g", hooks_dir: hooks_dir, registry: registry, failures: failures, requires_chi: ">= 99.0",
+        described_class.load(bundle_name: "g", hooks_dir: hooks_dir, registry: registry, failures: failures,
+                             manifest: installed_manifest(">= 99.0"),
                              metadata: { "guard.rb" => { "event" => "before_tool_call", "on_error" => "fail_closed", "sha256" => "sha256:#{sha}" } })
       end.to output(/bundle 'g' hook 'guard.rb' not loaded: it requires chi >= 99.0 \(this is chi #{Regexp.escape(Samagotchi::VERSION)}\)/).to_stderr
       expect(registry.size).to eq(0)
@@ -411,7 +418,8 @@ RSpec.describe Samagotchi::Hooks::BundleLoader do
 
       failures2 = Samagotchi::Guardrails::LoadFailures.new
       expect do
-        described_class.load(bundle_name: "g", hooks_dir: hooks_dir, registry: registry, failures: failures2, requires_chi: ">= 99.0",
+        described_class.load(bundle_name: "g", hooks_dir: hooks_dir, registry: registry, failures: failures2,
+                             manifest: installed_manifest(">= 99.0"),
                              metadata: { "guard.rb" => { "event" => "after_turn" } })
       end.to output(/not loaded/).to_stderr
       expect([registry.size, failures2.list.size, failures2.required]).to eq([0, 1, []])
@@ -419,7 +427,7 @@ RSpec.describe Samagotchi::Hooks::BundleLoader do
 
     it "loads a bundle's hooks when this chi meets its requires_chi" do
       expect(described_class.load(bundle_name: "g", hooks_dir: hooks_dir, registry: registry, failures: failures,
-                                  requires_chi: ">= 0.1", metadata: { "guard.rb" => { "event" => "after_turn" } })).to eq(1)
+                                  manifest: installed_manifest(">= 0.1"), metadata: { "guard.rb" => { "event" => "after_turn" } })).to eq(1)
       expect(failures).not_to be_any
     end
 

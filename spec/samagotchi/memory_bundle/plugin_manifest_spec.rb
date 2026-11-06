@@ -186,6 +186,15 @@ RSpec.describe "Bundle plugin: manifest, install, provenance, status, build" do
       expect(described_class.requires_chi_failure("soon", "0.1.28")).to include("not a version requirement")
     end
 
+    # A requirement this chi can't even read (bytes that aren't UTF-8, as a
+    # record written by another chi can hold): an EncodingError out of
+    # Gem::Requirement, not an ArgumentError, and it counts as a failure.
+    it "reads a requires_chi it can't decode as a failure, not a crash" do
+      unreadable = ">= 99.0".encode("UTF-16LE")
+      expect { described_class.requires_chi_failure(unreadable, "0.1.28") }.not_to raise_error
+      expect(described_class.requires_chi_failure(unreadable, "0.1.28")).to include("not a version requirement")
+    end
+
     it "writes plugin: and requires_chi: back" do
       dir = File.join(tmpdir, "out")
       described_class.write(dir: dir, name: "plug", version: "1.0.0", files: {},
@@ -221,8 +230,15 @@ RSpec.describe "Bundle plugin: manifest, install, provenance, status, build" do
       expect(provenance.read[:plugin][:sha256]).to eq("sha256:#{Digest::SHA256.hexdigest(plugin_source)}")
     end
 
-    it "warns when this chi doesn't meet requires_chi" do
-      installer = install(write_source(requires_chi: ">= 99.0"))
+    it "refuses a bundle whose requires_chi this chi doesn't meet, without --force" do
+      expect { install(write_source(requires_chi: ">= 99.0")) }
+        .to raise_error(Samagotchi::MemoryBundle::Installer::InstallError,
+                        "plug can't be installed: it requires chi >= 99.0 (this is chi #{Samagotchi::VERSION}) (chi update, or --force to install it anyway)")
+      expect(Dir.exist?(File.join(bundles_dir, "plug"))).to be(false)
+    end
+
+    it "installs it with --force, warning that the plugin won't load" do
+      installer = install(write_source(requires_chi: ">= 99.0"), force: true)
       expect(installer.warnings.join).to match(/won't load: it requires chi >= 99.0/)
     end
 
@@ -234,8 +250,8 @@ RSpec.describe "Bundle plugin: manifest, install, provenance, status, build" do
       expect(up.summary).not_to include("Updated:")
     end
 
-    it "warns that a hook-only bundle's hooks won't load when this chi doesn't meet requires_chi" do
-      installer = install(write_source(plugin: nil, hook: true, requires_chi: ">= 99.0"))
+    it "with --force, warns that a hook-only bundle's hooks won't load when this chi doesn't meet requires_chi" do
+      installer = install(write_source(plugin: nil, hook: true, requires_chi: ">= 99.0"), force: true)
       expect(installer.warnings).to include("Bundle plug: its hooks won't load: it requires chi >= 99.0 (this is chi #{Samagotchi::VERSION})")
     end
 
@@ -300,20 +316,20 @@ RSpec.describe "Bundle plugin: manifest, install, provenance, status, build" do
       expect(Samagotchi::MemoryBundle::Status.bundle_status("plug").plugin[:state]).to eq("missing")
     end
 
-    it "carries a requires_chi failure" do
-      install(write_source(requires_chi: ">= 99.0"))
+    it "carries a requires_chi failure (installed with --force, since it is refused otherwise)" do
+      install(write_source(requires_chi: ">= 99.0"), force: true)
       expect(Samagotchi::MemoryBundle::Status.bundle_status("plug").plugin[:requires_failure]).to match(/requires chi >= 99.0/)
     end
 
-    it "carries a requires_chi failure for a hook-only bundle" do
-      install(write_source(plugin: nil, hook: true, requires_chi: ">= 99.0"))
+    it "carries a requires_chi failure for a hook-only bundle (installed with --force)" do
+      install(write_source(plugin: nil, hook: true, requires_chi: ">= 99.0"), force: true)
       st = Samagotchi::MemoryBundle::Status.bundle_status("plug")
       expect(st.plugin).to be_nil
       expect(st.hooks_requires_failure).to match(/requires chi >= 99.0/)
     end
 
     it "has no hooks failure when the bundle has no hooks or this chi meets requires_chi" do
-      install(write_source(requires_chi: ">= 99.0"))
+      install(write_source(requires_chi: ">= 99.0"), force: true)
       expect(Samagotchi::MemoryBundle::Status.bundle_status("plug").hooks_requires_failure).to be_nil
       install(write_source(plugin: nil, hook: true, requires_chi: ">= 0.1.0"), force: true, upgrade: true)
       expect(Samagotchi::MemoryBundle::Status.bundle_status("plug").hooks_requires_failure).to be_nil

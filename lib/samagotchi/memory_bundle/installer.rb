@@ -21,14 +21,16 @@ module Samagotchi
     #
     # Flow (#run):
     #   1. Normalize source → directory, read manifest.yml (load_source)
-    #   2. Copy .md files to the target scope dir and update index.md
+    #   2. Refuse a bundle whose requires_chi this chi doesn't meet,
+    #      unless force (refuse_too_new)
+    #   3. Copy .md files to the target scope dir and update index.md
     #      (install_memories: plain, dry run, or an upgrade's 3-way merge)
-    #   3. Hooks, guardrail rules, plugin, scripts into .bundles/<name>/
+    #   4. Hooks, guardrail rules, plugin, scripts into .bundles/<name>/
     #      (AssetInstaller)
-    #   4. An upgrade prunes the files the bundle dropped
-    #   5. Verify checksums (strict mode), warn about missing needs
-    #   6. Write provenance (.bundles/<name>/manifest.json, write_provenance)
-    #   7. Detect and report {{placeholders}}
+    #   5. An upgrade prunes the files the bundle dropped
+    #   6. Verify checksums (strict mode), warn about missing needs
+    #   7. Write provenance (.bundles/<name>/manifest.json, write_provenance)
+    #   8. Detect and report {{placeholders}}
     class Installer
       class InstallError < StandardError; end
 
@@ -42,8 +44,10 @@ module Samagotchi
       # shipped_dir: the bundles this chi ships (a bundle of their names
       # installs from a dir in it only, unless force); ShippedUpdate,
       # Profile and SystemBundle pass the one they install from.
+      # chi_version: the chi this install is for (Profile and ShippedUpdate
+      # check their bundles against a version they are given); default this chi.
       def initialize(source:, name:, scope: nil, force: false, strict: true, upgrade: false, dry_run: false, prepared: nil,
-                     shipped_dir: SourceNormalizer::SHIPPED_DIR, dev: false)
+                     shipped_dir: SourceNormalizer::SHIPPED_DIR, dev: false, chi_version: Samagotchi::VERSION)
         @source = source
         @shipped_dir = shipped_dir
         @prepared = prepared
@@ -54,6 +58,7 @@ module Samagotchi
         @upgrade = upgrade
         @dry_run = dry_run
         @dev = dev
+        @chi_version = chi_version
         @results = {}
         @warnings = []
         @placeholder_warnings = []
@@ -99,6 +104,7 @@ module Samagotchi
 
       def run
         load_source
+        refuse_too_new
         warn_unknown_keys(@manifest) if @manifest
         @target_scope, @target_dir = resolve_target
         @file_descriptions = @manifest&.file_descriptions || {}
@@ -186,7 +192,7 @@ module Samagotchi
         installed = AssetInstaller.new(
           name: @name, source_dir: @bundle_dir, manifest: @manifest, provenance: @provenance, existing: @existing,
           results: @results, warnings: @warnings, conflicts: @conflicts, trash: @trash,
-          force: @force, strict: @strict, upgrade: @upgrade, dry_run: @dry_run, dev: @dev
+          force: @force, strict: @strict, upgrade: @upgrade, dry_run: @dry_run, dev: @dev, chi_version: @chi_version
         ).run
 
         # Files the previous version shipped and this one doesn't.
@@ -306,6 +312,19 @@ module Samagotchi
         raise InstallError, e.message if @strict
 
         @warnings << "No manifest found — proceeding without strict manifest validation"
+      end
+
+      # A bundle whose requires_chi this chi doesn't meet is not installed at
+      # all: --force is what installs it, and its plugin, hooks and rules then
+      # warn that they won't load (AssetInstaller). The words come from
+      # Manifest.requires_chi_failure, so the requirement is said one way.
+      # A dry run is refused the same way: nothing there would load either.
+      # @raise [InstallError]
+      def refuse_too_new
+        failure = Manifest.requires_chi_failure(@manifest&.requires_chi, @chi_version)
+        return if failure.nil? || @force
+
+        raise InstallError, "#{@name} can't be installed: #{failure} (chi update, or --force to install it anyway)"
       end
 
       # The scope the files go to (the CLI's wins over the manifest's) and

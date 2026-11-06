@@ -16,12 +16,14 @@ module Samagotchi
           Install a memory bundle from a directory, zip, tar archive, or git URL.
           Source is the path/URL to the bundle (dir/zip/tar.gz/git).
           --force overwrites existing entries (one that differs is copied to the trash first); default skips them.
+          A bundle whose requires_chi this chi doesn't meet is refused; --force installs it anyway.
 
         upgrade <source|name> [--scope system|project] [--force] [--dry-run] [--agent|--no-agent]
           Upgrade a bundle (3-way: a file you didn't edit updates; one you edited takes a text
           merge, the old file in the bundle trash; a real conflict leaves it as it is).
           A bare NAME upgrades the bundle installed under that name from the source it came from.
           --dry-run shows what would change. --agent launches interactive session on conflict.
+          A bundle whose requires_chi this chi doesn't meet is refused; --force installs it anyway.
 
         uninstall <bundle> [--scope system|project] [--force]
           Remove a bundle and its index entries (--force moves a locally edited file to the trash).
@@ -70,13 +72,19 @@ module Samagotchi
           Install a memory bundle from a directory, zip, tar archive, or git URL,
           or a bundle shipped with chi by name (see: chi bundle list).
           --force overwrites existing entries (one that differs is copied to the trash first); default skips them.
+          It also installs a bundle whose requires_chi this chi doesn't meet: without --force that install is
+          refused, and the bundle is not written anywhere.
         install --dev PATH
           Install the bundle in the local directory PATH as a link to it: its plugin, hooks, rules and scripts
           are PATH's own files (an edit applies at the next worker or chi web restart, with no re-install) and
           their sha256 isn't checked, for this bundle only. Its memories are copied; re-install with --force to
           pick up memory edits. Upgrade refuses it; uninstall removes the link, never PATH's files.
     TEXT
-    UPGRADE_HELP = "Usage: chi bundle upgrade <source|name> [--scope system|project] [--force] [--dry-run] [--agent|--no-agent]"
+    UPGRADE_HELP = <<~TEXT
+      Usage: chi bundle upgrade <source|name> [--scope system|project] [--force] [--dry-run] [--agent|--no-agent]
+        --force takes the bundle's file over an edited one, and installs a bundle whose requires_chi this chi
+        doesn't meet (without it such a bundle is refused).
+    TEXT
     UNINSTALL_HELP = "Usage: chi bundle uninstall <bundle> [--scope system|project] [--force]"
     BUILD_HELP = <<~TEXT
       Usage: chi bundle build [--scope system|project] [--name NAME] [--version VER] [--description DESC] [--out PATH] [FILES...]
@@ -312,7 +320,11 @@ module Samagotchi
 
     def print_hooks_and_plugin(manifest, plugin: true)
       @stdout.puts "Hooks: #{manifest.hooks.size} hook(s) (#{manifest.hooks.keys.join(", ")})" if manifest&.hooks&.any?
-      @stdout.puts "Plugin: #{manifest.plugin[:file]} (loads at the next chi start)" if plugin && manifest&.plugin
+      return unless plugin && manifest&.plugin
+
+      # Installed with --force past its requires_chi: the Engine won't load it.
+      failure = Samagotchi::MemoryBundle::Manifest.requires_chi_failure(manifest.requires_chi, Samagotchi::VERSION)
+      @stdout.puts "Plugin: #{manifest.plugin[:file]} (#{failure ? "won't load on this chi: #{failure}" : "loads at the next chi start"})"
     end
 
     # @return [Integer] 0

@@ -6,8 +6,6 @@ require_relative "../log"
 require_relative "../guardrails/load_failures"
 require_relative "../memory_bundle/bundle_hook"
 require_relative "../memory_bundle/provenance"
-require_relative "../memory_bundle/manifest"
-require_relative "../version"
 
 module Samagotchi
   # Namespace that wraps hook plugin classes per-bundle. Each bundle's hooks are
@@ -57,17 +55,17 @@ module Samagotchi
         # @param settings [Hash] the bundle's section of config.yml
         #   `bundles:` (string keys); a hook class whose initialize takes an
         #   argument gets it
-        # @param requires_chi [String, nil] the bundle's requirement; when
-        #   this chi doesn't meet it no hook loads (each is reported, as the
-        #   plugin loader does)
+        # @param manifest [MemoryBundle::InstalledManifest, nil] the installed
+        #   bundle's manifest; when this chi doesn't meet its requires_chi no
+        #   hook loads (each is reported, as the plugin loader does)
         # @param hook_failed [#call, nil] (label, "Class: message", effect:)
         #   when a hook file raises at fire time — the Engine's HookRoutes;
         #   nil when there is no UI to tell (the test kit)
         # @return [Integer] number of hooks successfully registered
-        def load(bundle_name:, hooks_dir:, metadata:, registry:, failures: nil, settings: {}, requires_chi: nil, hook_failed: nil)
+        def load(bundle_name:, hooks_dir:, metadata:, registry:, failures: nil, settings: {}, manifest: nil, hook_failed: nil)
           return 0 unless metadata.is_a?(Hash)
 
-          too_old = MemoryBundle::Manifest.requires_chi_failure(requires_chi, Samagotchi::VERSION)
+          too_old = manifest&.requires_chi_failure
           loaded = 0
           metadata.each do |raw_basename, raw_meta|
             basename = raw_basename.to_s

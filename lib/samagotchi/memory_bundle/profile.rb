@@ -128,7 +128,7 @@ module Samagotchi
         # A dry run runs the Installer's too, which writes nothing, so it
         # names the files the real run would keep as the user's own.
         installer = Installer.new(source: member_dir, name: member, scope: "system", force: force, strict: true,
-                                  shipped_dir: shipped_dir, dry_run: dry_run)
+                                  shipped_dir: shipped_dir, dry_run: dry_run, chi_version: chi_version)
         installer.run
         result.installed << member
         kept = installer.results.select { |_, entry| kept_own?(entry) }.keys

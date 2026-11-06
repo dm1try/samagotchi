@@ -36,8 +36,10 @@ module Samagotchi
       # @param results, warnings, conflicts the Installer's (results and
       #   warnings are added to)
       # @param trash [Trash] the Installer's
+      # @param chi_version [String] the chi this install is for (the Installer's;
+      #   a caller that checks its own bundles against another version passes it)
       def initialize(name:, source_dir:, manifest:, provenance:, existing:, results:, warnings:, conflicts:, trash:,
-                     force: false, strict: true, upgrade: false, dry_run: false, dev: false)
+                     force: false, strict: true, upgrade: false, dry_run: false, dev: false, chi_version: Samagotchi::VERSION)
         @name = name
         @bundle_dir = source_dir
         @manifest = manifest
@@ -52,6 +54,7 @@ module Samagotchi
         @upgrade = upgrade
         @dry_run = dry_run
         @dev = dev
+        @chi_version = chi_version
       end
 
       # @return [Installed]
@@ -229,7 +232,7 @@ module Samagotchi
         raise Installer::InstallError, "the manifest names plugin #{plugin[:file]}, which the bundle doesn't have" unless File.file?(src)
         raise Installer::InstallError, "plugin #{plugin[:file]} is a symlink (not installed)" if linked?(src)
 
-        if (failure = Manifest.requires_chi_failure(@manifest.requires_chi, Samagotchi::VERSION))
+        if (failure = Manifest.requires_chi_failure(@manifest.requires_chi, @chi_version))
           @warnings << "Plugin #{plugin[:file]} won't load: #{failure}"
         end
         if @dry_run
@@ -341,7 +344,7 @@ module Samagotchi
       def warn_hooks_requires_chi
         return if @manifest.nil? || @bundle_hooks.empty?
 
-        if (failure = Manifest.requires_chi_failure(@manifest.requires_chi, Samagotchi::VERSION))
+        if (failure = Manifest.requires_chi_failure(@manifest.requires_chi, @chi_version))
           @warnings << "Bundle #{@name}: its hooks won't load: #{failure}"
         end
       end
@@ -353,7 +356,7 @@ module Samagotchi
       def warn_rules_requires_chi(rule_files)
         return if @manifest.nil? || rule_files.empty?
 
-        if (failure = Manifest.requires_chi_failure(@manifest.requires_chi, Samagotchi::VERSION))
+        if (failure = Manifest.requires_chi_failure(@manifest.requires_chi, @chi_version))
           @warnings << "Bundle #{@name}: its guardrail rules won't load: #{failure}; until chi is updated " \
                        "(chi update), guarded tool calls are refused"
         end

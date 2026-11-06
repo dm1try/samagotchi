@@ -129,7 +129,8 @@ class, a hand-built `ctx`), that is a gap in the kit: say so to the user rather 
 - **Shas.** Every file the manifest names has a sha256 line, and an edit makes it stale: the install then warns
   of a checksum mismatch, and a line with no sha installs unchecked. `chi bundle check --fix` rewrites them; run it
   after the last edit.
-- **requires_chi.** Use the chi the user runs (`chi --version`). `check` warns when the plugin calls something newer than the floor (`ctx.http` 0.80.0, `ctx.cost` 0.83.0, `ctx.usage` 0.100.0, `ctx.sessions.children` 0.34.0),
+- **requires_chi.** Use the chi the user runs (`chi --version`): a bundle whose `requires_chi` that chi doesn't
+  meet is now **refused at install** (`--force` is the only way past it), not just unloaded. `check` warns when the plugin calls something newer than the floor (`ctx.http` 0.80.0, `ctx.cost` 0.83.0, `ctx.usage` 0.100.0, `ctx.sessions.children` 0.34.0),
   or a keyword added later (`ctx.ask_model(model:)` 0.80.0, `ctx.sessions.send(delivery:)` 0.64.0, `chi.toolkit(prompt:)` 0.72.0, `chi.toolkit(groups:)` 0.121.0), written on `ctx` / `chi` itself rather than through a variable,
   or when the manifest itself uses a key newer than the floor (`block_renderers:` 0.151.0, `settings:` 0.143.0, `session_settings:` 0.84.0, `context_providers:` 0.32.0): an older chi ignores that key.
 - **A typo in an API call.** `check` warns (`api`) on a call or keyword this chi lacks, on any path; for a newer chi on purpose, guard it with `ctx.respond_to?(:name)`.

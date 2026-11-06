@@ -1552,7 +1552,8 @@ docs/testing.md). **Minitest:** `require "samagotchi/testing/minitest"` and subc
   `Samagotchi::Testing::Case` (the same helpers).
 - **Installed, not loaded from source:** `Samagotchi::Testing::Install.run(dir, settings: {})` (or
   `bundle.install`) installs the bundle into the sandbox as `chi bundle install` does (sha256 and `requires_chi`
-  checked) and loads the installed copy with chi's own loaders. It returns `warnings` (the Installer's),
+  checked: a bundle whose `requires_chi` this chi doesn't meet raises `InstallError` unless `force: true`)
+  and loads the installed copy with chi's own loaders. It returns `warnings` (the Installer's),
   `plugin_failures` / `hook_failures` (each with the `location` in your source, `plugin.rb:12`) and `registered`
   (commands, tools, hooks per event, inits, toolkits, tool and peer sources). A name chi ships raises
   `MemoryBundle::Installer::InstallError` unless `force: true`.
@@ -1580,7 +1581,9 @@ Plugins load when a session starts (`Engine.new`, in the REPL or a
 worker), after the bundle hooks. The steps are:
 
 1. The file must match the sha256 recorded at install (not checked for a bundle installed with `--dev`).
-2. chi must meet `requires_chi`.
+2. chi must meet `requires_chi`. A bundle whose `requires_chi` this chi doesn't
+   meet is refused at install, so this step is reached only by one installed
+   with `--force` or by a chi that has since been downgraded.
 3. The file is `module_eval`'d into a new module in the bundle's namespace
    (`Samagotchi::Bundles::<bundle>`).
 4. The class is built, and `register(chi)` runs.
@@ -1622,8 +1625,11 @@ gem.
 
 - `chi bundle install <dir>`: copies the plugin to
   `<memories>/.bundles/<name>/plugin/`. It records the plugin's sha256 and
-  `requires_chi`, and warns about a wrong declared sha256 or an unmet
-  `requires_chi`. It keeps the bundle's `manifest.yml` beside the record, and
+  `requires_chi`, and warns about a wrong declared sha256. A bundle whose
+  `requires_chi` this chi doesn't meet is **refused**: `Install failed: NAME
+  can't be installed: it requires chi >= X (this is chi Y)`, exit 1, nothing
+  written. `--force` installs it anyway, with the warnings that its plugin,
+  hooks and rules won't load. It keeps the bundle's `manifest.yml` beside the record, and
   chi reads the manifest from there at load, so for a bundle installed by this
   chi or later, a key this chi didn't know at install works once a newer chi
   reads it (one installed before reads what its install recorded until

@@ -41,7 +41,9 @@ RSpec.describe Samagotchi::Plugin::Loader do
     FileUtils.rm_rf(tmpdir)
   end
 
-  # Install a bundle +name+ whose plugin.rb is +source+.
+  # Install a bundle +name+ whose plugin.rb is +source+. A bundle whose
+  # requires_chi this chi doesn't meet is refused unless --force, so passing
+  # requires_chi: here forces the install (the loader's skip is what is tested).
   def install_plugin(name, source, requires_chi: nil)
     src = File.join(tmpdir, "src-#{name}")
     FileUtils.mkdir_p(src)
@@ -50,7 +52,7 @@ RSpec.describe Samagotchi::Plugin::Loader do
                  "plugin" => { "file" => "plugin.rb", "sha256" => "sha256:#{Digest::SHA256.hexdigest(source)}" } }
     manifest["requires_chi"] = requires_chi if requires_chi
     File.write(File.join(src, "manifest.yml"), YAML.dump(manifest))
-    Samagotchi::MemoryBundle::Installer.new(source: src, name: name, scope: "system", strict: true).run
+    Samagotchi::MemoryBundle::Installer.new(source: src, name: name, scope: "system", strict: true, force: !requires_chi.nil?).run
     File.join(bundles_dir, name, "plugin", "plugin.rb")
   end
 

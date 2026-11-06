@@ -25,11 +25,12 @@ RSpec.describe Samagotchi::Testing::Install do
 
   after { FileUtils.rm_rf(File.dirname(dir)) }
 
-  def bundle(plugin, hook: nil, plugin_sha: nil)
+  def bundle(plugin, hook: nil, plugin_sha: nil, requires_chi: nil)
     FileUtils.mkdir_p(File.join(dir, "hooks"))
     File.write(File.join(dir, "plugin.rb"), plugin)
     manifest = "name: greet\nversion: 0.1.0\nplugin:\n  file: plugin.rb\n  " \
                 "sha256: sha256:#{plugin_sha || Digest::SHA256.hexdigest(plugin)}\n"
+    manifest << "requires_chi: \"#{requires_chi}\"\n" if requires_chi
     if hook
       File.write(File.join(dir, "hooks", "h.rb"), hook)
       manifest << "hooks:\n  h.rb:\n    sha256: sha256:#{Digest::SHA256.hexdigest(hook)}\n    event: after_turn\n"
@@ -87,6 +88,23 @@ RSpec.describe Samagotchi::Testing::Install do
 
     expect { described_class.run(dir) }.to raise_error(Samagotchi::MemoryBundle::Installer::InstallError, /btw/)
     expect(described_class.run(dir, force: true).registered.commands).to eq([command("/hi")])
+  end
+
+  # A bundle whose requires_chi this chi doesn't meet is refused, as
+  # `chi bundle install` refuses it; force: installs it and its plugin then
+  # fails to load.
+  it "refuses a bundle this chi is too old for, and installs it with force:" do
+    bundle(plugin, requires_chi: ">= 99.0")
+
+    expect { described_class.run(dir) }
+      .to raise_error(Samagotchi::MemoryBundle::Installer::InstallError,
+                      "greet can't be installed: it requires chi >= 99.0 (this is chi #{Samagotchi::VERSION}) " \
+                      "(chi update, or --force to install it anyway)")
+
+    result = described_class.run(dir, force: true)
+    expect(result.warnings).to include(a_string_starting_with("Plugin plugin.rb won't load: it requires chi >= 99.0"))
+    expect(result.plugin_failures.map(&:what)).to eq(["plugin plugin.rb (bundle greet)"])
+    expect(result.registered.commands).to eq([])
   end
 
   it "is reached from a loaded bundle as Bundle#install" do

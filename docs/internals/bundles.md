@@ -78,9 +78,8 @@ Readers of the installed state: `Hooks::BundleLoader` (Engine), `GuardrailWiring
 and checks the recorded sha256 (and `requires_chi`) before loading. They read shas and state off the record, and
 manifest data (requires_chi, hook metadata, needs, providers, renderers, settings) through `InstalledBundle#manifest`
 (`InstalledManifest`: the kept `manifest.yml` when its sha holds, else the record's mirror), as do `SessionConfig`, `BundleSettingsCheck`, `BlockRenderers`, `Status`, `BundleCommand`'s
-status and diff, `Builder` and `InstalledCopy`. Their requires_chi checks are `InstalledManifest#requires_chi_failure`,
-except `Hooks::BundleLoader.load`, which still calls `Manifest.requires_chi_failure` on the requirement string
-`ExtensionLoad` passes it (`manifest.requires_chi`). `GuardrailWiring#rules_stamp` stats each bundle's
+status and diff, `Builder` and `InstalledCopy`. Their requires_chi checks are `InstalledManifest#requires_chi_failure`;
+`Hooks::BundleLoader.load` is given the installed bundle's manifest and uses the same gate. `GuardrailWiring#rules_stamp` stats each bundle's
 `manifest.yml` with its `manifest.json` and `guardrails/*`, so a changed requires_chi re-reads the rules. No reader
 calls `Manifest.new` on a kept file: `Manifest.tolerant` through `InstalledManifest` is the one read.
 The checks live in `Hooks::BundleLoader.load` and `Plugin::Loader.load_bundle`; the loading itself is
@@ -98,7 +97,7 @@ bundle, or a SyntaxError's own line), which `Install` maps from the installed co
 The order matters: warnings print in it, and a plugin/script the manifest names but the bundle lacks raises
 `InstallError` after the memories are already copied.
 
-1. `load_source`: normalize (or take the `PreparedSource` `BundleCommand` passed as `prepared:`), read `manifest.yml` (strict: a missing/invalid one raises; non-strict: a warning).
+1. `load_source`: normalize (or take the `PreparedSource` `BundleCommand` passed as `prepared:`), read `manifest.yml` (strict: a missing/invalid one raises; non-strict: a warning). Then `refuse_too_new`: a bundle whose `requires_chi` this chi doesn't meet raises `InstallError` unless `force` — nothing is written, dry run included (docs/plugins.md, "Loading, and when it fails").
 2. `resolve_target`: scope = CLI > manifest > `system`; then `check_source` against the existing record
    (`SourceIdentity`, source.rb): a name differing from an installed one only in case raises (`force` too); a
    shipped name (any case) from a source that isn't a dir in the Installer's `shipped_dir:` (default `SHIPPED_DIR`;

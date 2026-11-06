@@ -549,13 +549,14 @@ RSpec.describe Samagotchi::MemoryBundle::Installer do
 
     # GuardrailWiring#bundle_rules won't read them, and a session that never
     # loaded them refuses guarded calls until chi is updated: say so here.
+    # Such a bundle is refused unless --force, so these installs force it.
     it "warns that its rules won't load when this chi doesn't meet requires_chi" do
       bundle_dir = write_bundle(tmpdir, { "identity.md" => "# Identity\n" })
       FileUtils.mkdir_p(File.join(bundle_dir, "guardrails"))
       File.write(File.join(bundle_dir, "guardrails", "a.yml"), "rules: []\n")
       set_requires_chi(bundle_dir, ">= 99.0")
 
-      installer = installer_for(source: bundle_dir, name: "rules-bundle", scope: "system")
+      installer = installer_for(source: bundle_dir, name: "rules-bundle", scope: "system", force: true)
       installer.run
 
       expect(installer.warnings).to include(
@@ -574,11 +575,82 @@ RSpec.describe Samagotchi::MemoryBundle::Installer do
 
       plain = write_bundle(File.join(tmpdir, "plain"), { "identity.md" => "# Identity\n" }, name: "plain-bundle")
       set_requires_chi(plain, ">= 99.0")
-      plain_installer = installer_for(source: plain, name: "plain-bundle", scope: "system")
+      plain_installer = installer_for(source: plain, name: "plain-bundle", scope: "system", force: true)
       plain_installer.run
 
       expect(with_rules_installer.warnings.join).not_to include("guardrail rules")
       expect(plain_installer.warnings.join).not_to include("guardrail rules")
+    end
+  end
+
+  # A bundle this chi is too old for is not installed at all: --force is what
+  # installs it, and then its plugin, hooks and rules warn as they don't load.
+  describe "requires_chi this chi doesn't meet" do
+    def rules_bundle(base, name: "newer", version: "1.0.0", requires_chi: ">= 99.0")
+      bundle_dir = write_bundle(File.join(tmpdir, base), { "identity.md" => "# Identity\n" }, name: name, version: version)
+      FileUtils.mkdir_p(File.join(bundle_dir, "guardrails"))
+      File.write(File.join(bundle_dir, "guardrails", "a.yml"), "rules: []\n")
+      set_requires_chi(bundle_dir, requires_chi) if requires_chi
+      bundle_dir
+    end
+
+    def refusal(name, requirement)
+      "#{name} can't be installed: it requires chi #{requirement} (this is chi #{Samagotchi::VERSION}) " \
+        "(chi update, or --force to install it anyway)"
+    end
+
+    it "refuses it, writing nothing to the scope dir or under .bundles/" do
+      bundle_dir = rules_bundle("too-new")
+
+      expect { installer_for(source: bundle_dir, name: "newer", scope: "system").run }
+        .to raise_error(described_class::InstallError, refusal("newer", ">= 99.0"))
+
+      expect(File.exist?(File.join(system_memories_dir, "identity.md"))).to be(false)
+      expect(Dir.exist?(File.join(bundles_dir, "newer"))).to be(false)
+      expect(Dir.glob(File.join(system_memories_dir, "*"), File::FNM_DOTMATCH).select { |f| File.file?(f) }).to eq([])
+    end
+
+    it "refuses a dry run the same way" do
+      bundle_dir = rules_bundle("too-new-dry")
+      dry = described_class.new(source: bundle_dir, name: "newer", scope: "system", strict: true, dry_run: true)
+
+      expect { dry.run }.to raise_error(described_class::InstallError, refusal("newer", ">= 99.0"))
+      expect(Dir.exist?(File.join(bundles_dir, "newer"))).to be(false)
+    end
+
+    it "installs with force:, warnings and all" do
+      bundle_dir = rules_bundle("too-new-force")
+      installer = installer_for(source: bundle_dir, name: "newer", scope: "system", force: true)
+      installer.run
+
+      expect(installer.warnings).to include(
+        "Bundle newer: its guardrail rules won't load: it requires chi >= 99.0 (this is chi #{Samagotchi::VERSION}); " \
+        "until chi is updated (chi update), guarded tool calls are refused"
+      )
+      expect(File.exist?(File.join(bundles_dir, "newer", "guardrails", "a.yml"))).to be(true)
+    end
+
+    it "refuses an upgrade to a version this chi is too old for, keeping the installed one" do
+      v1 = rules_bundle("v1", requires_chi: nil)
+      installer_for(source: v1, name: "newer", scope: "system").run
+      v2 = rules_bundle("v2", version: "2.0.0", requires_chi: ">= 99.0")
+
+      expect { described_class.new(source: v2, name: "newer", scope: "system", strict: true, upgrade: true).run }
+        .to raise_error(described_class::InstallError, refusal("newer", ">= 99.0"))
+      expect(Samagotchi::MemoryBundle::Provenance.new(name: "newer").read[:version]).to eq("1.0.0")
+
+      forced = described_class.new(source: v2, name: "newer", scope: "system", strict: true, upgrade: true, force: true)
+      forced.run
+      expect(Samagotchi::MemoryBundle::Provenance.new(name: "newer").read[:version]).to eq("2.0.0")
+    end
+
+    it "refuses a dry-run upgrade of a too-new version too" do
+      v1 = rules_bundle("v1-dry", requires_chi: nil)
+      installer_for(source: v1, name: "newer", scope: "system").run
+      v2 = rules_bundle("v2-dry", version: "2.0.0", requires_chi: ">= 99.0")
+
+      expect { described_class.new(source: v2, name: "newer", scope: "system", strict: true, upgrade: true, dry_run: true).run }
+        .to raise_error(described_class::InstallError, refusal("newer", ">= 99.0"))
     end
   end
 

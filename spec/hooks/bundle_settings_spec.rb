@@ -37,13 +37,16 @@ RSpec.describe Samagotchi::Engine, "bundle settings" do
     described_class.new(client: client)
   end
 
-  it "passes the bundle's requires_chi to BundleLoader.load" do
+  it "passes the bundle's installed manifest to BundleLoader.load, its requires_chi with it" do
     stub_config({})
     allow(Samagotchi::MemoryBundle::Provenance).to receive(:each_installed).and_call_original
     allow(Samagotchi::MemoryBundle::Provenance).to receive(:each_installed).with(holding: :hooks)
       .and_yield("k", record("k", hooks: { "k.rb" => { event: "before_tool_call" } }, trust_level: "reviewed", requires_chi: ">= 99.0"))
-    expect(Samagotchi::Hooks::BundleLoader).to receive(:load).with(hash_including(bundle_name: "k", requires_chi: ">= 99.0")).and_return(0)
+    loaded_manifest = nil
+    allow(Samagotchi::Hooks::BundleLoader).to receive(:load) { |kwargs| loaded_manifest = kwargs[:manifest] }
     described_class.new(client: client)
+    expect(loaded_manifest.requires_chi).to eq(">= 99.0")
+    expect(loaded_manifest.requires_chi_failure).to include("this is chi #{Samagotchi::VERSION}")
   end
 
   # Engine's own rescues around bundle hook loading: a Ctrl-C reaches the

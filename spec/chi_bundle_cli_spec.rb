@@ -29,12 +29,14 @@ RSpec.describe "chi bundle (CLI)" do
         Install a memory bundle from a directory, zip, tar archive, or git URL.
         Source is the path/URL to the bundle (dir/zip/tar.gz/git).
         --force overwrites existing entries (one that differs is copied to the trash first); default skips them.
+        A bundle whose requires_chi this chi doesn't meet is refused; --force installs it anyway.
 
       upgrade <source|name> [--scope system|project] [--force] [--dry-run] [--agent|--no-agent]
         Upgrade a bundle (3-way: a file you didn't edit updates; one you edited takes a text
         merge, the old file in the bundle trash; a real conflict leaves it as it is).
         A bare NAME upgrades the bundle installed under that name from the source it came from.
         --dry-run shows what would change. --agent launches interactive session on conflict.
+        A bundle whose requires_chi this chi doesn't meet is refused; --force installs it anyway.
 
       uninstall <bundle> [--scope system|project] [--force]
         Remove a bundle and its index entries (--force moves a locally edited file to the trash).
@@ -81,11 +83,19 @@ RSpec.describe "chi bundle (CLI)" do
         Install a memory bundle from a directory, zip, tar archive, or git URL,
         or a bundle shipped with chi by name (see: chi bundle list).
         --force overwrites existing entries (one that differs is copied to the trash first); default skips them.
+        It also installs a bundle whose requires_chi this chi doesn't meet: without --force that install is
+        refused, and the bundle is not written anywhere.
       install --dev PATH
         Install the bundle in the local directory PATH as a link to it: its plugin, hooks, rules and scripts
         are PATH's own files (an edit applies at the next worker or chi web restart, with no re-install) and
         their sha256 isn't checked, for this bundle only. Its memories are copied; re-install with --force to
         pick up memory edits. Upgrade refuses it; uninstall removes the link, never PATH's files.
+  TEXT
+
+  UPGRADE_USAGE = <<~TEXT
+    Usage: chi bundle upgrade <source|name> [--scope system|project] [--force] [--dry-run] [--agent|--no-agent]
+      --force takes the bundle's file over an edited one, and installs a bundle whose requires_chi this chi
+      doesn't meet (without it such a bundle is refused).
   TEXT
 
   BUILD_USAGE = <<~TEXT
@@ -174,7 +184,7 @@ RSpec.describe "chi bundle (CLI)" do
 
     it "prints each subcommand's own --help" do
       expect(chi("install", "--help")).to eq([INSTALL_USAGE, "", 0])
-      expect(chi("upgrade", "--help")).to eq(["Usage: chi bundle upgrade <source|name> [--scope system|project] [--force] [--dry-run] [--agent|--no-agent]\n", "", 0])
+      expect(chi("upgrade", "--help")).to eq([UPGRADE_USAGE, "", 0])
       expect(chi("uninstall", "--help")).to eq(["Usage: chi bundle uninstall <bundle> [--scope system|project] [--force]\n", "", 0])
       expect(chi("build", "--help")).to eq([BUILD_USAGE, "", 0])
     end
@@ -442,7 +452,7 @@ RSpec.describe "chi bundle (CLI)" do
     end
 
     it "refuses upgrade and uninstall without a source or name, and an unknown bundle" do
-      expect(chi("upgrade")).to eq(["", "Usage: chi bundle upgrade <source|name> [--scope system|project] [--force] [--dry-run] [--agent|--no-agent]\n", 2])
+      expect(chi("upgrade")).to eq(["", UPGRADE_USAGE, 2])
       expect(chi("upgrade", "--bogus")).to eq(["", "Unknown bundle upgrade flag: --bogus\n", 2])
       expect(chi("uninstall")).to eq(["", "Usage: chi bundle uninstall <bundle> [--scope system|project] [--force]\n", 2])
       expect(chi("uninstall", "--bogus")).to eq(["", "Unknown bundle uninstall flag: --bogus\n", 2])
@@ -1189,14 +1199,29 @@ Hooks removed: 1\n\z})
       src = File.join(@root, "src")
       FileUtils.cp_r(File.join(BUNDLE_FIXTURES, "sample_hooks_bundle"), src)
       File.write(File.join(src, "manifest.yml"), "#{File.read(File.join(src, "manifest.yml"))}requires_chi: \">= 99.0\"\n")
-      @install = self.class.run_in(@root, "install", src)
+      @refused = self.class.run_in(@root, "install", src)
+      # What the refused run left behind, before --force installs it.
+      @left_after_refusal = Dir.glob(File.join(@root, "cfg", "samagotchi", "memories", "**", "*"), File::FNM_DOTMATCH)
+                             .select { |path| File.file?(path) }
+      @install = self.class.run_in(@root, "install", src, "--force")
     end
 
     after(:context) { FileUtils.rm_rf(@root) }
 
     let(:failure) { "it requires chi >= 99.0 (this is chi #{Samagotchi::VERSION})" }
 
-    it "install warns that its hooks won't load" do
+    it "refuses install without --force, and writes nothing" do
+      out, err, code = @refused
+      expect([out, err, code]).to eq(
+        ["", "Install failed: sample-hooks-bundle can't be installed: #{failure} " \
+             "(chi update, or --force to install it anyway)\n", 1]
+      )
+      expect(@left_after_refusal).to eq([])
+    end
+
+    it "installs with --force, warning that its hooks won't load" do
+      _out, err, code = @install
+      expect([err, code]).to eq(["", 0])
       expect(@install[0]).to include("Bundle sample-hooks-bundle: its hooks won't load: #{failure}")
     end
 
@@ -1207,6 +1232,26 @@ Hooks removed: 1\n\z})
       expect(out).to include("    guardrails.rb: event=before_tool_call on_error=fail_closed priority=10 [ok]\n    " \
                              "requires_chi: >= 99.0\n    not loaded: #{failure}\n")
       expect(chi("status")[0]).to eq("  sample-hooks-bundle v1.0.0 scope=system files=1 hooks=1 issues=1\n")
+    end
+  end
+
+  context "with a plugin bundle this chi is too old for" do
+    before(:context) do
+      @root = self.class.sandbox
+      src = File.join(@root, "src")
+      FileUtils.cp_r(File.join(BUNDLE_FIXTURES, "sample_plugin_bundle"), src)
+      File.write(File.join(src, "manifest.yml"), "#{File.read(File.join(src, "manifest.yml"))}requires_chi: \">= 99.0\"\n")
+      @install = self.class.run_in(@root, "install", src, "--force")
+    end
+
+    after(:context) { FileUtils.rm_rf(@root) }
+
+    it "says the plugin won't load on this chi, not that it loads at the next start" do
+      _out, err, code = @install
+      expect([err, code]).to eq(["", 0])
+      expect(@install[0]).to include(
+        "Plugin: plugin.rb (won't load on this chi: it requires chi >= 99.0 (this is chi #{Samagotchi::VERSION}))\n"
+      )
     end
   end
 

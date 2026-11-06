@@ -94,7 +94,7 @@ module Samagotchi
         begin
           Hooks::BundleLoader.load(bundle_name: bundle_name, hooks_dir: hooks_dir, metadata: manifest.hooks, registry: registry,
                                    failures: @hook_failures, settings: settings[bundle_name.to_s] || {},
-                                   requires_chi: manifest.requires_chi, hook_failed: @hook_failed)
+                                   manifest: manifest, hook_failed: @hook_failed)
         rescue Exception => e # rubocop:disable Lint/RescueException -- a hook's SyntaxError or exit must not stop chi
           raise if e.is_a?(SignalException) # Ctrl-C and kill signals are the user's
 

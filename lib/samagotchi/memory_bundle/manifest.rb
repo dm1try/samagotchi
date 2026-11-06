@@ -223,7 +223,11 @@ module Samagotchi
         return nil if Gem::Requirement.new(*requirement.to_s.split(",").map(&:strip)).satisfied_by?(Gem::Version.new(version.to_s))
 
         "it requires chi #{requirement} (this is chi #{version})"
-      rescue ArgumentError => e # Gem::Requirement::BadRequirementError is one
+      rescue ArgumentError, EncodingError => e
+        # Gem::Requirement::BadRequirementError is an ArgumentError; bytes that
+        # aren't UTF-8 (a record another chi wrote) raise an EncodingError out
+        # of Gem::Requirement. Either way this chi can't read the requirement,
+        # which is a failure: the bundle is refused, not loaded.
         "its requires_chi #{requirement.inspect} is not a version requirement (#{e.message})"
       end
 
