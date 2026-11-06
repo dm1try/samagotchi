@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-require "digest"
+require_relative "file_digest"
 
 module Samagotchi
   module MemoryBundle
@@ -38,8 +38,9 @@ module Samagotchi
       end
 
       # A hook known only by its file (no declared event): its sha, the defaults.
+      # Callers pass a file that is there (FileDigest is nil for one that isn't).
       def self.of_file(path)
-        new(sha256: "sha256:#{Digest::SHA256.hexdigest(File.binread(path))}")
+        new(sha256: FileDigest.sha256(path))
       end
 
       # "sha256:<hex>" from either form, "" for none.

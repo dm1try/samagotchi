@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
-require "digest"
 require "time"
+require_relative "file_digest"
 
 module Samagotchi
   module MemoryBundle
@@ -156,7 +156,7 @@ module Samagotchi
       # read isn't known to be level. No digest (an older mark): it isn't known
       # either, and a retry would have settled it.
       def differs?(path, incoming_sha)
-        incoming_sha.nil? || Digest::SHA256.file(path).hexdigest != incoming_sha
+        incoming_sha.nil? || FileDigest.hex(path) != incoming_sha
       rescue SystemCallError
         true
       end

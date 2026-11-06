@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
-require "digest"
 require "json"
+require_relative "file_digest"
 require_relative "../memory_paths"
 require_relative "bundle_hook"
 require_relative "plugin_ref"
@@ -155,8 +155,7 @@ module Samagotchi
       end
 
       def source_sha(key)
-        path = File.join(source.to_s, key)
-        File.file?(path) ? Digest::SHA256.file(path).hexdigest : nil
+        FileDigest.hex(File.join(source.to_s, key))
       rescue SystemCallError
         nil
       end

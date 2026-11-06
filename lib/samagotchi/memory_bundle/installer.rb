@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 require "fileutils"
-require "digest"
+require_relative "file_digest"
 require_relative "../memory_paths"
 require_relative "provenance"
 require_relative "manifest"
@@ -473,7 +473,7 @@ module Samagotchi
           expected = @manifest.checksum_for(file_key)
           next unless expected
 
-          actual = Digest::SHA256.hexdigest(File.read(target_path))
+          actual = FileDigest.hex(target_path)
           if actual != expected
             @warnings << "Checksum mismatch for #{file_key}: expected #{expected[0..7]}..., got #{actual[0..7]}..."
           end

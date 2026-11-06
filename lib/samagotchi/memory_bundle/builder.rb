@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "digest"
+require_relative "file_digest"
 require "fileutils"
 require "tmpdir"
 require_relative "bundle_hook"
@@ -219,10 +220,10 @@ module Samagotchi
           files: files_map,
           hooks: parts.hooks.empty? ? nil : parts.hooks,
           trust_level: trust_level,
-          plugin: parts.plugin && { file: File.basename(parts.plugin), sha256: Digest::SHA256.hexdigest(File.binread(parts.plugin)) },
+          plugin: parts.plugin && { file: File.basename(parts.plugin), sha256: FileDigest.sha256(parts.plugin) },
           requires_chi: record&.requires_chi,
           needs: record&.needs,
-          scripts: parts.scripts.transform_values { |src| "sha256:#{Digest::SHA256.hexdigest(File.binread(src))}" },
+          scripts: parts.scripts.transform_values { |src| FileDigest.sha256(src) },
           context_providers: parts.context_providers,
           block_renderers: parts.block_renderers,
           file_descriptions: file_descriptions(record, files_map),

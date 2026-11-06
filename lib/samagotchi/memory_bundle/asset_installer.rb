@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 require "fileutils"
-require "digest"
+require_relative "file_digest"
 require_relative "bundle_hook"
 require_relative "manifest"
 require_relative "provenance"
@@ -175,7 +175,7 @@ module Samagotchi
           dest = File.join(@provenance.hooks_dir, basename)
           next unless File.exist?(dest)
 
-          actual = Digest::SHA256.hexdigest(File.read(dest))
+          actual = FileDigest.hex(dest)
           if actual != expected
             @warnings << "Checksum mismatch for hook #{basename}: expected #{expected[0..7]}..., got #{actual[0..7]}..."
           end
@@ -251,7 +251,7 @@ module Samagotchi
                                     { status: "installed" }
                                   end
         expected = @manifest.checksum_for_plugin
-        actual = Digest::SHA256.hexdigest(File.binread(dest))
+        actual = FileDigest.hex(dest)
         if @strict && !@dev && expected && actual != expected
           @warnings << "Checksum mismatch for plugin #{plugin[:file]}: expected #{expected[0..7]}..., got #{actual[0..7]}..."
         end
@@ -291,7 +291,7 @@ module Samagotchi
                                         else { status: "installed" }
                                         end
           FileUtils.chmod(0o755, dest) unless @dev
-          actual = Digest::SHA256.hexdigest(File.binread(dest))
+          actual = FileDigest.hex(dest)
           expected = declared.to_s.delete_prefix("sha256:")
           if @strict && !@dev && !expected.empty? && actual != expected
             @warnings << "Checksum mismatch for script #{file}: expected #{expected[0..7]}..., got #{actual[0..7]}..."

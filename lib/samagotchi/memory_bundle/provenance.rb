@@ -7,6 +7,7 @@ require "fileutils"
 require_relative "../atomic_file"
 require_relative "../memory_paths"
 require_relative "bundle_hook"
+require_relative "file_digest"
 require_relative "installed_bundle"
 
 module Samagotchi
@@ -124,8 +125,11 @@ module Samagotchi
         value.to_s.delete_prefix("sha256:")
       end
 
+      # The digest of a file, nil when it isn't there (FileDigest). Every
+      # caller checks existence first; #sha_matches? reads a missing file as
+      # not the recorded one.
       def self.file_sha(path)
-        Digest::SHA256.hexdigest(File.binread(path))
+        FileDigest.hex(path)
       end
 
       # What a dev install (`chi bundle install --dev`) records instead of
@@ -269,15 +273,15 @@ module Samagotchi
         manifest_data["dev"] = true if dev
         if guardrails_files.is_a?(Hash) && !guardrails_files.empty?
           manifest_data["guardrails"] = guardrails_files.sort.to_h do |basename, path|
-            [basename.to_s, { "sha256" => dev ? DEV_SHA : "sha256:#{Digest::SHA256.hexdigest(File.read(path.to_s))}" }]
+            [basename.to_s, { "sha256" => dev ? DEV_SHA : FileDigest.sha256(path.to_s) }]
           end
         end
         manifest_data["source_commit"] = source_commit.to_s if source_commit && !source_commit.to_s.empty?
         FileUtils.rm_rf(File.join(bases_dir, "plugin"))
         if plugin_file
-          content = File.binread(plugin_file.to_s)
+          content = File.binread(plugin_file.to_s) # the base snapshot's bytes
           manifest_data["plugin"] = { "file" => File.basename(plugin_file.to_s),
-                                      "sha256" => dev ? DEV_SHA : "sha256:#{Digest::SHA256.hexdigest(content)}" }
+                                      "sha256" => dev ? DEV_SHA : FileDigest.sha256(plugin_file.to_s) }
           FileUtils.mkdir_p(File.join(bases_dir, "plugin"))
           File.binwrite(plugin_base_path(File.basename(plugin_file.to_s)), content)
         end
@@ -286,7 +290,7 @@ module Samagotchi
         manifest_data["includes"] = includes.map(&:to_s) if includes.is_a?(Array)
         unless scripts_files.empty?
           manifest_data["scripts"] = scripts_files.sort.to_h do |file, path|
-            [file.to_s, { "sha256" => dev ? DEV_SHA : "sha256:#{Digest::SHA256.hexdigest(File.binread(path.to_s))}" }]
+            [file.to_s, { "sha256" => dev ? DEV_SHA : FileDigest.sha256(path.to_s) }]
           end
         end
         manifest_data["context_providers"] = context_providers.map(&:to_h) unless context_providers.empty?
@@ -435,7 +439,7 @@ module Samagotchi
       private :mark_fields
 
       def incoming_sha(path)
-        File.exist?(path) ? self.class.file_sha(path) : nil
+        FileDigest.hex(path)
       rescue SystemCallError
         nil
       end

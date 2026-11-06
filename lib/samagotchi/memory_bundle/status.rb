@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-require "digest"
+require_relative "file_digest"
 require_relative "provenance"
 require_relative "manifest"
 require_relative "../version"
@@ -77,7 +77,7 @@ module Samagotchi
 
       # The file's digest, nil when there is none, :unreadable when it can't be read.
       def self.checksum(path)
-        File.exist?(path) ? Digest::SHA256.file(path).hexdigest : nil
+        FileDigest.hex(path)
       rescue SystemCallError
         :unreadable
       end

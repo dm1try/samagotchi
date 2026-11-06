@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
-require "digest"
 require "yaml"
+require_relative "file_digest"
 
 module Samagotchi
   module MemoryBundle
@@ -100,9 +100,10 @@ module Samagotchi
 
       def digest(dir, file)
         path = File.join(dir, file)
-        raise Error, "#{File.basename(dir)}/manifest.yml names #{file}, which isn't there" unless File.file?(path)
+        hex = FileDigest.hex(path)
+        raise Error, "#{File.basename(dir)}/manifest.yml names #{file}, which isn't there" if hex.nil?
 
-        Digest::SHA256.hexdigest(File.binread(path))
+        hex
       end
       private_class_method :digest
 

@@ -2,6 +2,7 @@
 
 require "digest"
 require_relative "../atomic_file"
+require_relative "file_digest"
 require_relative "installed_bundle"
 
 module Samagotchi
@@ -154,14 +155,12 @@ module Samagotchi
 
         # No base (legacy bundle without provenance or first file) -> treat as modified
         unless base_exists
-          incoming_digest = Digest::SHA256.hexdigest(File.read(incoming_path))
-          current_digest = Digest::SHA256.hexdigest(File.read(current_path))
-          return current_digest == incoming_digest ? NOOP : CONFLICT
+          return FileDigest.hex(current_path) == FileDigest.hex(incoming_path) ? NOOP : CONFLICT
         end
 
-        base_digest = Digest::SHA256.hexdigest(File.read(base_path))
-        current_digest = Digest::SHA256.hexdigest(File.read(current_path))
-        incoming_digest = Digest::SHA256.hexdigest(File.read(incoming_path))
+        base_digest = FileDigest.hex(base_path)
+        current_digest = FileDigest.hex(current_path)
+        incoming_digest = FileDigest.hex(incoming_path)
 
         if current_digest == incoming_digest
           NOOP
@@ -242,13 +241,13 @@ module Samagotchi
 
       # The file's digest, nil when there is none.
       def self.digest(path)
-        File.exist?(path) ? Digest::SHA256.hexdigest(File.binread(path)) : nil
+        FileDigest.hex(path)
       end
 
       def self.current_modified?(base_path, current_path)
         return true unless base_path && File.exist?(base_path) && File.exist?(current_path)
 
-        Digest::SHA256.hexdigest(File.read(base_path)) != Digest::SHA256.hexdigest(File.read(current_path))
+        FileDigest.hex(base_path) != FileDigest.hex(current_path)
       end
     end
   end
