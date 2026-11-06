@@ -544,6 +544,17 @@ RSpec.describe "The decision-card plugin", :bundle do
       expect(bundle.model_requests).to be_empty
     end
 
+    it "sends the answer as the user saw it: no thought, and a thought alone is no answer" do
+      bundle = plugin
+      bundle.model_answers << "Short."
+      run_short(bundle, messages: conversation(answer: "<think>SECRET PLAN</think>#{long}"))
+      expect(bundle.model_requests.last.request.last[:content]).to include("Which filter size").and(satisfy { |text| !text.include?("SECRET") })
+
+      cut_off = plugin
+      expect(run_short(cut_off, messages: conversation(answer: "<think>SECRET PLAN, cut off before it closed"))).to include("no answer")
+      expect(cut_off.model_requests).to be_empty
+    end
+
     it "refuses during a turn, in one line, and asks no model" do
       bundle = plugin(running: true)
       output = run_short(bundle)

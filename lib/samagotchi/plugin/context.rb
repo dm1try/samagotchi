@@ -18,6 +18,9 @@ module Samagotchi
   autoload :PluginSessionState, File.expand_path("../plugin_session_state", __dir__)
   # Context#objectives reads it; the kit shouldn't carry its files.
   autoload :Objectives, File.expand_path("../objectives", __dir__)
+  # Context#last_answer reads them.
+  autoload :AnswerTail, File.expand_path("../answer_tail", __dir__)
+  autoload :AnswerText, File.expand_path("../answer_text", __dir__)
 
   module Plugin
     # Loaded on first ctx.sessions / ctx.context (or a bundle naming
@@ -321,6 +324,17 @@ module Samagotchi
       # @return [Array<Hash>]
       def messages
         Array(@host.messages.call).map { |message| message.dup.freeze }.freeze
+      end
+
+      # The newest answer's text as the user saw it (AnswerText.visible): the
+      # newest bubble of #messages, its thoughts (a cut-off one too) and call
+      # markup out. Mid-turn a worker's can be the running turn's interim text.
+      # @return [String, nil] nil when there is none, or it was a thought alone
+      def last_answer
+        found = AnswerTail.find(messages)
+        content = found && (found[:content] || found["content"])
+        text = content.is_a?(String) ? AnswerText.visible(content) : ""
+        text.empty? ? nil : text
       end
 
       # Whether a turn runs now. Its :after_turn hooks run inside it, so a thread

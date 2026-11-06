@@ -135,7 +135,7 @@ class Plugin
     return SHORT_BUSY if ctx.turn_running?
 
     messages = ctx.messages
-    answer = last_answer(messages) or return "no answer to shorten yet"
+    answer = ctx.last_answer or return "no answer to shorten yet"
 
     id = ctx.card(title: SHORT_TITLE, body: "…")
     @mutex.synchronize { @shorts[id] = ctx }
@@ -156,14 +156,6 @@ class Plugin
     ctx = @mutex.synchronize { @shorts.delete(id) } or return
 
     ctx.card(id: id, title: SHORT_TITLE, body: body)
-  end
-
-  # @return [String, nil] the newest non-empty answer's text
-  def last_answer(messages)
-    found = Array(messages).reverse_each.find do |message|
-      %w[model assistant].include?(field(message, :role).to_s) && !field(message, :content).to_s.strip.empty?
-    end
-    found && field(found, :content).to_s
   end
 
   def turn_ended(event, ctx)

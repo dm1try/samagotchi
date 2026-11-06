@@ -2,9 +2,9 @@
 
 require "time"
 require_relative "answer_tail"
+require_relative "answer_text"
 require_relative "config"
 require_relative "log"
-require_relative "output_formatter"
 require_relative "session"
 require_relative "session_inbox"
 require_relative "steer"
@@ -109,10 +109,11 @@ module Samagotchi
       nil
     end
 
-    # The session's last word: the text of AnswerTail's newest bubble, with
-    # the wire-format markup stripped, unless that bubble is a step of a
-    # turn (it asked for tools) or old text a later turn never replaced
-    # (one that failed or was cut before it answered). A cut reply keeps
+    # The session's last word: the text of AnswerTail's newest bubble as the
+    # user saw it (AnswerText.visible: no thought, a cut-off one neither),
+    # unless that bubble is a step of a turn (it asked for tools), old text a
+    # later turn never replaced (one that failed or was cut before it
+    # answered) or a thought alone. A cut reply keeps
     # its "[interrupted]": that is what happened.
     # @param messages [Array<Hash>]
     # @return [String, nil]
@@ -123,7 +124,8 @@ module Samagotchi
       at = messages.rindex { |m| m.equal?(found) }
       return nil if messages[(at + 1)..].any? { |m| m[:role].to_s == "tool_response" || later_turn?(m) }
 
-      OutputFormatter.strip_markup(found[:content].scrub)
+      text = AnswerText.visible(found[:content])
+      text.empty? ? nil : text
     end
 
     # A turn's opening, not a `!shell` line: a command the user ran after

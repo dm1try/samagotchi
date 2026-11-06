@@ -1,13 +1,14 @@
 ---
 name: decision-card
-version: 0.2.0
+version: 0.2.1
 scope: system
 description: "In a session with objectives, a long answer ending in a question gets a card: a short summary and the question, answered in the composer"
 trust_level: reviewed
 plugin:
   file: plugin.rb
-  sha256: sha256:e628d84ab9521f7e8e5f3bc69da97fe00e574082412ea24e9f3f1c6234ad31a9
+  sha256: sha256:b85fd2162e41d1ea059ff6ca89ce6bb543e4f283d18337e9d4ac6936477d3770
 # ctx.objectives and ctx.turn_running? are new after 0.148.0
 requires_chi: ">= 0.149.0"
+requires_chi_next: "ctx.last_answer is new after 0.153.0"
 # config.yml bundles: decision-card: (another key warns; an older chi ignores this)
 settings: [min_chars, tail_chars, model, timeout, max_tokens]

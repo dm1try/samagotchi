@@ -57,6 +57,7 @@ module Samagotchi
         "ctx.continues" => "0.141.0", "ctx.context.left_behind" => "0.141.0", "ctx.context.attach(movable:)" => "0.141.0",
         "ctx.session_dir" => "0.143.0", "ctx.session_dir(create:)" => "0.144.0",
         "ctx.objectives" => "0.149.0", "ctx.turn_running?" => "0.149.0"
+        # Unreleased (moved up, with its version, at the release: docs/releasing.md): "ctx.last_answer".
       }.freeze
 
       # @param bundle [String]

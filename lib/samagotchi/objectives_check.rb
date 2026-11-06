@@ -6,16 +6,13 @@ require "json"
 require "securerandom"
 require "time"
 
+require_relative "answer_text"
 require_relative "config"
 require_relative "context_note"
 require_relative "llm_context_stale"
 require_relative "log"
-require_relative "message_parts"
-require_relative "model_profile"
-require_relative "output_formatter"
 require_relative "session"
 require_relative "steer"
-require_relative "tool_call_parser"
 require_relative "verdict"
 
 module Samagotchi
@@ -51,9 +48,6 @@ module Samagotchi
     LEFT_OUT = "[earlier record left out]"
     # What the agent said to the user, in the record.
     OWN_WORDS = "[agent's own words]"
-    # A thought cut off before its close: the whole entry, from an opening at its
-    # start. MessageParts' forms are the closed one and the template-opened one.
-    UNCLOSED_THINK = /\A\s*<think>.*\z/m
     SYSTEM = "You check one claim a coding agent made about its own work, for the user. You see only the claim and the " \
              "session's record: what the user and others wrote, what the tools returned, and what the agent said to the " \
              "user, marked #{OWN_WORDS}. You didn't do the work and you owe the agent nothing. The agent's own words " \
@@ -217,7 +211,7 @@ module Samagotchi
 
       case (entry[:role] || entry["role"]).to_s
       when "model"
-        words = own_words(text)
+        words = AnswerText.visible(text)
         "#{OWN_WORDS}\n#{cut(words, OUTPUT_CHARS)}" unless words.empty?
       when "user" then "[#{Steer.participant_message?(entry) ? "participant" : "user"}]\n#{cut(text, OUTPUT_CHARS)}"
       when "system"
@@ -228,19 +222,6 @@ module Samagotchi
       end
     end
     private_class_method :said_part
-
-    # What the user saw of a model entry. A chat entry's content is that already
-    # (its reasoning is the separate :thinking, its calls :tool_calls); a native
-    # entry's is the raw response, thoughts and call markup inline.
-    # @return [String]
-    def own_words(text)
-      gemma = ToolCallParser::Gemma.new(ModelProfile.gemma4)
-      text = gemma.strip_thought(text).gsub(MessageParts::QWEN_THINK, "").sub(UNCLOSED_THINK, "")
-                  .sub(MessageParts::QWEN_OPEN_THINK, "")
-      text = ToolCallParser.strip_calls(gemma.strip_tool_calls(text), "<tool_call>", "</tool_call>")
-      OutputFormatter.strip_markup(text)
-    end
-    private_class_method :own_words
 
     # A multipart entry's text parts.
     def text_of(content)
