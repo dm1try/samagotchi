@@ -373,6 +373,23 @@ Also shipped, not installed: dev (mcp, skills, source-links) (chi bundle install
     update` again). A failed gem install checks against this chi, since it stays.
   - `--no-bundles` (`update.bundles: false`) leaves these out too: no check, no row
     but `bundles skipped`.
+- **Bundles installed by an older chi** have no kept `manifest.yml` (it didn't
+  keep it), so chi reads what their install recorded, and a manifest
+  key that chi didn't know (`block_renderers:` before 0.151.0) is missing. Where
+  chi has the bundle's own manifest at the installed version, the update keeps it,
+  once: a shipped bundle from chi's shipped copy (`up to date (kept its manifest)`;
+  the system bundle at the next chi start), a bundle from a folder or a zip/tar
+  that is still there from it (a `kept its manifest` row; the archive is extracted
+  and the extract removed). Only when the source is what's installed: the same
+  name and version, and the same plugin, hooks, scripts and rules. A git source
+  isn't cloned: the row names the command,
+  `installed by an older chi, which didn't keep its manifest: chi bundle upgrade NAME reads it again from URL`.
+  A source that's gone or doesn't match gets its own row (why, and what to run). The
+  same goes for a record an older chi rewrote after a newer one kept the manifest
+  (`an older chi rewrote its record after the install, so its manifest.yml may be an
+  earlier version's`). `--dry-run` says `would keep its manifest` and writes nothing.
+  An edited `manifest.yml` isn't kept over: its row says so (`chi bundle upgrade
+  NAME`). These rows are warnings and fail nothing.
 - **Profiles** (`core`, `dev`): an installed one installs the bundles a new
   chi added to it (`updated (+ name)`), even at the same version, and retries
   one that failed before; one you uninstalled stays out. See [Bundle

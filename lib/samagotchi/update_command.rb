@@ -10,6 +10,7 @@ require_relative "gem_update"
 require_relative "installed_gem"
 require_relative "live_versions"
 require_relative "memory_bundle/file_standing"
+require_relative "memory_bundle/manifest_standing"
 require_relative "memory_bundle/shipped_update"
 require_relative "memory_bundle/system_bundle"
 require_relative "session"
@@ -331,8 +332,18 @@ module Samagotchi
 
       require_relative "bundle_command/installed_check"
       bundles.flat_map do |bundle|
-        BundleCommand::InstalledCheck.run(bundle).map { |found| Row.new(component: bundle.name, status: found.text, level: found.level) }
+        kept = MemoryBundle::ManifestStanding.keep(bundle, dry_run: @dry_run)
+        [manifest_row(kept)].compact +
+          BundleCommand::InstalledCheck.run(kept.bundle).map { |found| Row.new(component: bundle.name, status: found.text, level: found.level) }
       end
+    end
+
+    # What an external bundle's manifest.yml came to (ManifestStanding.keep):
+    # kept (or would be) is a change, anything else to say a warning.
+    def manifest_row(kept)
+      return nil unless kept.line
+
+      Row.new(component: kept.bundle.name, status: kept.line, level: kept.kept ? nil : "warn")
     end
 
     def bundle_row(update)
@@ -343,7 +354,7 @@ module Samagotchi
       when :would_update, :updated
         notes = [adds(update.adds), *notes, replaced(update.replaced), *update.kept_own].compact
         done(row, :update, notes.empty? ? nil : notes.join("; "))
-      when :would_merge, :merged, :up_to_date then same_version(row, [*notes, update.note].compact, changed: Array(update.merged).any?)
+      when :would_merge, :merged, :up_to_date then same_version(row, [*notes, update.note, update.manifest].compact, changed: Array(update.merged).any?)
       when :skipped then skipped(row, [update.note, *notes].join("; "))
       else failed(row, [update.note, *notes].compact.join("; "))
       end

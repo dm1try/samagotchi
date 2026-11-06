@@ -53,11 +53,13 @@ module Samagotchi
     #   includes                    a profile's recorded members (the record's
     #                               identity, never the kept file's), nil for a plain bundle
     #   unknown_keys                the kept manifest's keys this chi doesn't know
+    #   floor_keys                  the kept manifest's Manifest#floor_keys (key =>
+    #                               the first chi that read it), {} from the record
     #   origin                      :kept or :record
     class InstalledManifest < Data.define(:name, :version, :requires_chi, :trust_level, :description, :hooks, :needs,
                                           :script_names, :context_providers, :block_renderers, :session_settings,
                                           :session_setting_types, :settings, :setting_types, :file_descriptions,
-                                          :includes, :unknown_keys, :problems, :origin)
+                                          :includes, :unknown_keys, :floor_keys, :problems, :origin)
       # The key problems names the kept file's standing under.
       KEPT_FILE = "manifest.yml"
       # How many manifests the cache holds before it starts again.
@@ -132,7 +134,14 @@ module Samagotchi
             settings: settings.settings, setting_types: settings.setting_types,
             file_descriptions: pick.call("files", kept.file_descriptions, mirrored.file_descriptions),
             includes: bundle.includes,
-            unknown_keys: kept.unknown_keys.map(&:to_s), problems: problems.freeze, origin: :kept)
+            unknown_keys: kept.unknown_keys.map(&:to_s), floor_keys: floors(kept), problems: problems.freeze, origin: :kept)
+      end
+
+      # Manifest#floor_keys of the tolerant read; a shape it can't tell is no floor.
+      def self.floors(kept)
+        kept.floor_keys
+      rescue StandardError
+        {}
       end
 
       # Each recorded hook (what is installed): the kept manifest's metadata
@@ -159,7 +168,7 @@ module Samagotchi
             settings: list(raw["settings"]),
             setting_types: types(raw["setting_types"]),
             file_descriptions: file_descriptions(bundle.files),
-            includes: bundle.includes, unknown_keys: [], problems: problems.freeze, origin: :record)
+            includes: bundle.includes, unknown_keys: [], floor_keys: {}, problems: problems.freeze, origin: :record)
       end
 
       # The record's values of the manifest keys (its frozen mirror), string
@@ -188,7 +197,7 @@ module Samagotchi
           acc[key] = text unless text.empty?
         end
       end
-      private_class_method :deep_freeze, :kept_stat, :build, :standing, :from_kept, :kept_hooks, :from_record, :recorded, :parsed,
+      private_class_method :deep_freeze, :kept_stat, :build, :standing, :from_kept, :floors, :kept_hooks, :from_record, :recorded, :parsed,
                            :list, :types, :file_descriptions
 
       # Why the kept manifest.yml wasn't read: :missing, :stale or :edited (the class

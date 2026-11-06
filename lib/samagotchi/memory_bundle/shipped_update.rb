@@ -3,6 +3,7 @@
 require_relative "installer"
 require_relative "listing"
 require_relative "manifest"
+require_relative "manifest_standing"
 require_relative "merger"
 require_relative "profile"
 require_relative "provenance"
@@ -51,8 +52,11 @@ module Samagotchi
       # (Installer#trash_copy_line).
       # earlier: the merge notes on its record when the plan read it
       # (FileStanding::MergeNote): this run's own merges aren't among them.
+      # manifest: what a row at the shipped version says of its manifest.yml
+      # (ManifestStanding.keep's line: would keep or kept it, or why not and
+      # the command), nil when nothing.
       Row = Struct.new(:name, :from, :to, :status, :note, :merged, :behind, :replaced, :source_dir, :scope, :adds, :kept_own,
-                       :trash_copy, :earlier, keyword_init: true) do
+                       :trash_copy, :earlier, :manifest, keyword_init: true) do
         def kept = Array(behind).map(&:file)
       end
 
@@ -67,6 +71,7 @@ module Samagotchi
           # A row that retried nothing still has its files that stay behind.
           row.behind = bundle.behind_files if row.status == :skipped && !bundle.error?
           row.earlier = bundle.merge_notes
+          row.manifest = ManifestStanding.keep(bundle, source_dir: row.source_dir, dry_run: true).line if same_version?(row)
           row
         end
       end
@@ -120,19 +125,21 @@ module Samagotchi
         end
       end
 
-      # The statuses of a row at the shipped version (the plan's same-version
-      # rows, after apply): its record can keep the shipped dir's manifest.yml.
-      SAME_VERSION = %i[up_to_date merged].freeze
+      # The statuses of a row at the shipped version, in the plan and after
+      # apply: its record can keep the shipped dir's manifest.yml.
+      SAME_VERSION = %i[up_to_date would_merge merged].freeze
 
-      # Provenance#adopt_manifest from the shipped dir, for a same-version row
-      # whose record has no usable kept manifest (an older chi wrote it). A
-      # bumped bundle gets the file from its Installer.
+      def same_version?(row) = !row.source_dir.nil? && SAME_VERSION.include?(row.status)
+
+      # ManifestStanding.keep from the shipped dir for a same-version row: a
+      # record an older chi wrote keeps the shipped manifest.yml, and the row
+      # says so (or why not). A bumped bundle gets the file from its Installer.
       # @return [Row] the row
       def keep_manifest(row)
-        return row unless row.source_dir && SAME_VERSION.include?(row.status)
+        return row unless same_version?(row)
 
         bundle = Provenance.new(name: row.name).record
-        Provenance.new(name: row.name).adopt_manifest(row.source_dir) if bundle&.manifest_unkept?
+        row.manifest = bundle && ManifestStanding.keep(bundle, source_dir: row.source_dir).line
         row
       rescue JSON::ParserError, SystemCallError
         row

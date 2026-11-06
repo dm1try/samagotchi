@@ -620,14 +620,17 @@ RSpec.describe Samagotchi::UpdateCommand do
       install_external("bad-cp")
       install_external("bad-needs")
       { "bad-cp" => { "context_providers" => [{ "match" => "x" }] }, "bad-needs" => { "needs" => "gh" } }.each do |name, extra|
-        # A record from before chi kept the manifest: its mirror is what's read.
+        # A record from before chi kept the manifest: its mirror is what's read
+        # (from git, which chi update doesn't clone to keep it).
         FileUtils.rm_f(File.join(Samagotchi::MemoryBundle::Provenance.bundles_dir, name, "manifest.yml"))
         path = File.join(Samagotchi::MemoryBundle::Provenance.bundles_dir, name, "manifest.json")
-        File.write(path, JSON.generate(JSON.parse(File.read(path)).merge(extra)))
+        File.write(path, JSON.generate(JSON.parse(File.read(path)).except("manifest_sha", "installed_by")
+                                           .merge(extra, "source" => "https://example.invalid/#{name}")))
       end
       _, rows = json_rows
-      expect(finding_rows(rows, "bad-cp").map { |r| r["status"] }).to eq(["error manifest manifest.yml: context_providers: an item has no name:"])
-      expect(finding_rows(rows, "bad-needs").map { |r| r["status"] }).to eq(["error manifest manifest.yml: needs: must be a list of commands"])
+      errors = ->(name) { finding_rows(rows, name).map { |r| r["status"] }.grep(/\Aerror/) }
+      expect(errors.call("bad-cp")).to eq(["error manifest manifest.yml: context_providers: an item has no name:"])
+      expect(errors.call("bad-needs")).to eq(["error manifest manifest.yml: needs: must be a list of commands"])
     end
 
     it "takes half an answer as that bundle's own row (a child that died mid-write)" do
@@ -676,6 +679,133 @@ RSpec.describe Samagotchi::UpdateCommand do
       install_external("stale-one", plugin: stale_plugin)
       expect(run("--no-gem", "--gem-from", "0.2.0", "--no-desktop")).to eq(0)
       expect(out.string).to include("warn api plugin.rb:3:")
+    end
+
+    describe "a record an older chi wrote, without the kept manifest" do
+      def bundle_dir(name) = File.join(Samagotchi::MemoryBundle::Provenance.bundles_dir, name)
+      def kept(name) = File.join(bundle_dir(name), "manifest.yml")
+      def record(name) = JSON.parse(File.read(File.join(bundle_dir(name), "manifest.json")))
+
+      # As a chi before the kept manifest left it: no manifest_sha nor installed_by,
+      # the kept file gone (or, keep_file, an older one there: stale), +source+ recorded.
+      def make_legacy(name, source: nil, keep_file: false)
+        data = record(name).except("manifest_sha", "installed_by")
+        data["source"] = source if source
+        File.write(File.join(bundle_dir(name), "manifest.json"), JSON.generate(data))
+        keep_file ? File.write(kept(name), "name: #{name}\nversion: 0.0.1\n") : FileUtils.rm_f(kept(name))
+      end
+
+      def manifest_rows(rows, name) = rows.select { |row| row["component"] == name && row["status"].include?("manifest") }
+
+      it "keeps it from the recorded folder, says so once, and the next run has nothing to say" do
+        dir = install_external("from-dir")
+        make_legacy("from-dir")
+        _, rows = json_rows
+        expect(manifest_rows(rows, "from-dir")).to match([a_hash_including("status" => "kept its manifest", "level" => nil, "failed" => false)])
+        expect(File.read(kept("from-dir"))).to eq(File.read(File.join(dir, "manifest.yml")))
+        expect(record("from-dir")["manifest_sha"]).to start_with("sha256:")
+
+        _, rows = json_rows
+        expect(manifest_rows(rows, "from-dir")).to eq([])
+      end
+
+      it "keeps it from a recorded zip, its extract removed" do
+        dir = install_external("from-zip")
+        zip = File.join(tmp, "from-zip.zip")
+        Dir.chdir(File.dirname(dir)) { system("zip", "-qr", zip, "from-zip") || raise("zip failed") }
+        make_legacy("from-zip", source: zip)
+        prepared = []
+        allow(Samagotchi::MemoryBundle::PreparedSource).to receive(:prepare).and_wrap_original do |m, source|
+          m.call(source).tap { |p| prepared << p if source == zip }
+        end
+
+        _, rows = json_rows
+        expect(manifest_rows(rows, "from-zip").map { |r| r["status"] }).to eq(["kept its manifest"])
+        expect(File.read(kept("from-zip"))).to eq(File.read(File.join(dir, "manifest.yml")))
+        expect(prepared.size).to eq(1)
+        expect(File.exist?(prepared.first.dir)).to be(false)
+      end
+
+      it "doesn't clone a git source: the row names the command" do
+        install_external("from-git")
+        make_legacy("from-git", source: "https://example.invalid/chi-from-git")
+        status, rows = json_rows
+        expect(status).to eq(0)
+        expect(manifest_rows(rows, "from-git")).to match([a_hash_including(
+          "level" => "warn", "failed" => false,
+          "status" => "installed by an older chi, which didn't keep its manifest: chi bundle upgrade from-git reads it again " \
+                      "from https://example.invalid/chi-from-git"
+        )])
+        expect(File.exist?(kept("from-git"))).to be(false)
+      end
+
+      it "says a source that is gone is gone" do
+        install_external("moved")
+        make_legacy("moved", source: File.join(tmp, "nowhere"))
+        _, rows = json_rows
+        expect(manifest_rows(rows, "moved").map { |r| r["status"] }).to eq(
+          ["installed by an older chi, which didn't keep its manifest: its source #{File.join(tmp, "nowhere")} is gone; " \
+           "install it again from a copy of the bundle"]
+        )
+      end
+
+      it "says why a source that isn't what's installed wasn't read" do
+        dir = install_external("changed")
+        make_legacy("changed")
+        File.write(File.join(dir, "manifest.yml"), YAML.dump(YAML.load_file(File.join(dir, "manifest.yml")).merge("version" => "9.9.9")))
+        _, rows = json_rows
+        expect(manifest_rows(rows, "changed").map { |r| r["status"] }).to eq(
+          ["installed by an older chi, which didn't keep its manifest: chi bundle upgrade changed reads it again from #{dir} " \
+           "(#{dir} has changed 9.9.9, not #{record("changed")["version"]})"]
+        )
+      end
+
+      it "keeps it again over a stale file, or names the command for a stale git record" do
+        dir = install_external("stale-dir")
+        make_legacy("stale-dir", keep_file: true)
+        install_external("stale-git")
+        make_legacy("stale-git", source: "https://example.invalid/stale-git", keep_file: true)
+        _, rows = json_rows
+        expect(manifest_rows(rows, "stale-dir").map { |r| r["status"] }).to eq(["kept its manifest"])
+        expect(File.read(kept("stale-dir"))).to eq(File.read(File.join(dir, "manifest.yml")))
+        expect(manifest_rows(rows, "stale-git").map { |r| r["status"] }).to eq(
+          ["an older chi rewrote its record after the install, so its manifest.yml may be an earlier version's: " \
+           "chi bundle upgrade stale-git reads it again from https://example.invalid/stale-git"]
+        )
+      end
+
+      it "says it would keep it in a dry run, writing nothing" do
+        install_external("dry-one")
+        make_legacy("dry-one")
+        Samagotchi::MemoryBundle::SystemBundle.sync
+        before = installed_bytes
+        expect(run("--dry-run", "--no-gem", "--no-desktop")).to eq(0)
+        expect(out.string).to match(/^dry-one\s+would keep its manifest$/)
+        expect(installed_bytes).to eq(before)
+      end
+
+      it "names an edited kept manifest" do
+        install_external("edited-one")
+        File.write(kept("edited-one"), "#{File.read(kept("edited-one"))}# mine\n")
+        _, rows = json_rows
+        expect(manifest_rows(rows, "edited-one").map { |r| r["status"] }).to eq(
+          ["manifest.yml changed since it was installed, so chi reads the install record (chi bundle upgrade edited-one)"]
+        )
+      end
+
+      it "keeps a shipped bundle's at the same version, the row saying so" do
+        Samagotchi::MemoryBundle::Installer.new(source: File.join(shipped, "btw"), name: "btw", scope: "system", strict: true,
+                                                shipped_dir: shipped).run
+        make_legacy("btw")
+        run("--dry-run", "--no-gem", "--no-desktop")
+        expect(line("btw")).to end_with("up to date (would keep its manifest)")
+        expect(File.exist?(kept("btw"))).to be(false)
+        run("--no-gem", "--no-desktop")
+        expect(line("btw")).to end_with("up to date (kept its manifest)")
+        expect(File.exist?(kept("btw"))).to be(true)
+        run("--no-gem", "--no-desktop")
+        expect(line("btw")).to end_with("up to date")
+      end
     end
 
     context "with a newer gem" do
