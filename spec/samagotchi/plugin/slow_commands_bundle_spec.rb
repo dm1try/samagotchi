@@ -50,8 +50,9 @@ RSpec.describe "The slow-commands bundle" do
     end
 
     before do
-      # requires_chi names the release that carries after_tool_call's new keys.
-      stub_const("Samagotchi::VERSION", "0.59.0")
+      # This chi meets the bundle's requires_chi floor (">= 0.143.0", the release
+      # that reads settings:); the code running is still this checkout's.
+      stub_const("Samagotchi::VERSION", "0.143.0")
       FileUtils.mkdir_p(system_dir)
       allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_return("")
       @installer = Samagotchi::MemoryBundle::Installer.new(source: shipped, name: "slow-commands", scope: "system", strict: true)

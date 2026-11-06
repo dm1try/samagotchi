@@ -1,6 +1,6 @@
 ---
 name: agents-md
-version: 0.1.1
+version: 0.1.2
 scope: system
 description: "Steers a nested AGENTS.md into the conversation the first time a tool touches a file under its directory"
 trust_level: reviewed
@@ -8,6 +8,6 @@ plugin:
   file: plugin.rb
   sha256: sha256:56527b9d12cb9acd8f57ca00881ab159894ae2fb8def22bce66ac3774bb4187b
 # ctx.prompt_files, read when the plugin loads (0.60.0)
-requires_chi: ">= 0.60.0"
+requires_chi: ">= 0.143.0"
 # config.yml bundles: agents-md: (another key warns; an older chi ignores this)
 settings: [tools, max_chars]

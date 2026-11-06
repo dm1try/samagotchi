@@ -1,6 +1,6 @@
 ---
 name: mcp
-version: 0.7.5
+version: 0.7.6
 scope: system
 description: "Tools from MCP servers (stdio): each server in config.yml bundles: mcp: servers: runs for the session; their tools go into chi's tool index: the model searches them with find_tools and calls one with call_tool (<server>/<tool>); /mcp lists them"
 trust_level: reviewed
@@ -9,6 +9,6 @@ plugin:
   file: plugin.rb
   sha256: sha256:718e53db877eacd2714e69427c69cfc6c551aaf3417bb760a27dac3331363db5
 # 0.67.0 is the release with chi.tool_source (the core tool index the bundle publishes into).
-requires_chi: ">= 0.121.0"
+requires_chi: ">= 0.143.0"
 # config.yml bundles: mcp: (another key warns; an older chi ignores this)
 settings: [servers, timeout, startup_timeout]

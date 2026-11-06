@@ -1,6 +1,6 @@
 ---
 name: slow-commands
-version: 0.2.4
+version: 0.2.5
 scope: system
 description: "Remembers commands that ran past the execute limit in a project; the next identical execute is denied once a turn with advice to run it with task_create and task_wait; /slow-commands lists and forgets them"
 trust_level: reviewed
@@ -9,6 +9,6 @@ plugin:
   sha256: sha256:e51c099c1552bd0cd1fe46e4fd235a3fe8340693e6ca338eb7ed09d8398a6f0f
 # Execute::HANDED_OVER, read when the plugin loads (0.59.0); after_tool_call's
 # call:, elapsed_ms: and result: (0.57.0)
-requires_chi: ">= 0.59.0"
+requires_chi: ">= 0.143.0"
 # config.yml bundles: slow-commands: (another key warns; an older chi ignores this)
 settings: [mode, warn_ratio, ttl_days]

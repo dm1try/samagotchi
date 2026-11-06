@@ -74,8 +74,9 @@ RSpec.describe "The agents-md bundle" do
     end
 
     before do
-      # requires_chi names the release with ctx.prompt_files.
-      stub_const("Samagotchi::VERSION", "0.60.0")
+      # This chi meets the bundle's requires_chi floor (">= 0.143.0", the release
+      # that reads settings:); the code running is still this checkout's.
+      stub_const("Samagotchi::VERSION", "0.143.0")
       FileUtils.mkdir_p(Samagotchi::MemoryPaths.system_dir)
       allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_return("")
       @installer = Samagotchi::MemoryBundle::Installer.new(source: shipped, name: "agents-md", scope: "system", strict: true)
