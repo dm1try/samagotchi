@@ -225,7 +225,7 @@ host refused it for that model.
 `ChatLoop#tool_definitions(conversation, model:)` appends them (`Tools::DeferredTools.list`) only on such an
 adapter, and only with at least one tool declared (Messages wants one). The list, per request:
 
-1. the built-ins the toolkit reaches (`Registry#reachable_names`), in registry order;
+1. the built-ins and plugin tools the toolkit reaches (`Registry#reachable_names`), in registry order;
 2. the tool index's source tools while `call_tool` is declared (`ToolIndex#deferrable`, via
    `Registry::Index#deferrable`): callable, the only tool with its acts_as, a name Messages takes, no registered
    tool's name; by acts_as (`mcp_<server>_<tool>`), sorted by name;
@@ -270,11 +270,11 @@ sets `:tool_changes` for the model: the retry and every later request drop the s
 
 A direct call of a deferred tool runs whether something loaded it or not (the API doesn't check): the Engine sets
 `TurnSettings#loads_tools` from the turn's final model (after the before_turn hooks), and then `ToolRunner#run` and
-`KernelLoop#dispatch` take a reachable built-in by its own name (`Registry#indexed`) through the normal gate, and wrap
+`KernelLoop#dispatch` take a reachable built-in or plugin tool by its own name (`Registry#indexed`) through the normal gate, and wrap
 an MCP tool's acts_as into the `call_tool` call it stands for (`ToolIndex#wrap`): `call_tool`'s row, rules and
 approvals. A reload rebuilds that wrapped call from the saved one (`BuiltinCalls.wrap_saved`). Each such call is
 logged (`tool_direct_deferred`, with `loaded:` whether the conversation had loaded it). On `api: openai` and the
-native loop nothing is deferred, and a direct call of a reachable built-in is refused with the `call_tool` route as
+native loop nothing is deferred, and a direct call of a reachable built-in or plugin tool is refused with the `call_tool` route as
 before.
 
 ## 400 fallbacks

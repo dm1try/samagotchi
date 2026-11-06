@@ -275,16 +275,19 @@ bundles:
 - **Privacy:** the query goes to your SearXNG and on to the engines it is configured with. No guardrail rule asks
   about it by default; add one (`tool: web_search`, `verdict: ask`) if you want to approve each search. A review
   turn can't call it.
-- **Toolkits:** for now the tool is declared in every toolkit once the bundle is installed (about 150 tokens per
-  request). To leave it out, name it in a kit's `remove:` (a built-in kit can't be redefined, so make your own on
-  it), or run `/toolkit remove web_search` in a session. This may change: which toolkits a plugin tool joins is still
-  to be designed ([Toolkits](configuration.md#toolkits)).
+- **Toolkits:** the tool follows a kit's list like a built-in ([Toolkits](configuration.md#toolkits)). `full` (and
+  any kit on `base: full`) declares it (about 150 tokens per request); on `lean`, `child` and the kits built on them
+  it is reachable, not declared: the model finds it with `find_tools` (`chi/web_search`) and calls it with
+  `call_tool` (on `api: anthropic` it goes deferred and is called by name). To declare it on such a kit, `add:` it
+  (or `/toolkit add web_search` in a session); to keep it away entirely, `remove:` it (or `/toolkit remove
+  web_search`).
 
   ```yaml
   toolkit:
-    default: quiet
+    default: search
     kits:
-      quiet: { base: lean, remove: [web_search] }
+      search: { base: lean, add: [web_search] }
+      quiet: { base: full, remove: [web_search] }
   ```
 
 ### Running SearXNG locally

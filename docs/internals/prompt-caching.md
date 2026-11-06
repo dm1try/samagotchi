@@ -108,9 +108,13 @@ right-hand column happens.
   Claude 5.x cost the preserved thinking each time).
 - find_tools' description is a function of the toolkit and the source groups **at load**: `ToolIndex#declare`
   snapshots source group names and description lines (name, summary, callable count). `ToolIndex#refresh!` (from
-  `ToolkitBinding#apply!`) filters that snapshot by the new toolkit and rebuilds the `chi` line from the built-ins
-  it reaches; it never consults live group names. The same group filter drives searches, deferred MCP tools and
-  whether `find_tools`/`call_tool` are declared (`Registry#index_needed?`). An MCP server that finishes booting
+  `ToolkitBinding#apply!` at a toolkit change, and from `Engine#apply_staged_tools!` when a plugin's tool set
+  changed) filters that snapshot by the toolkit and rebuilds the `chi` line from the built-ins and plugin tools it
+  reaches; it never consults live group names. The same group filter drives searches and deferred MCP tools.
+  Whether `find_tools`/`call_tool` are declared (`Registry#index_needed?`) reads the groups and the entries
+  registered at load (`Registry::Index#loaded`), never later ones: a plugin tool `chi.replace_tools` adds doesn't
+  bring them in, and a loaded plugin tool it later removes still counts, so `find_tools` stays declared, perhaps
+  with an empty `chi` group. That is deliberate: the declared tools stay the same for the worker's life. An MCP server that finishes booting
   between load and the first turn changes search answers only, so two sessions on the same toolkit with the same
   MCP cache send the same bytes. Kits that omit `groups:` keep their previous request bytes; switching only
   groups changes the prompt key and asks `/toolkit` to confirm the cache cost once the session has history.

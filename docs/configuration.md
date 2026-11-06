@@ -1501,17 +1501,18 @@ toolkit:
 
 | toolkit | declares |
 |---|---|
-| `full` | every built-in; the default |
+| `full` | every built-in and every plugin tool (a bundle's `chi.tool`, such as `web_search`); the default |
 | `lean` | `execute`, `read`, `write`, `edit`, `memory_read`, `memory_write`, `task_create`, `task_wait`, `task_get`, `task_list`, `task_stop`, `ask_user_question`, `web_fetch`, `context_read` |
 | `child` | `lean` plus `send_note`, without `memory_write`, `delegate`, `delegate_result` |
 | `coordinator` | `lean` plus `delegate`, `delegate_result`, `list_sessions`, `objectives` (declared by the coordinator bundle) |
 | `coding` | `child`, with the prompt text `- Be concise in your responses` / `- Show file paths clearly when working with files` (declared by the coordinator bundle, for build and fix children) |
 | `review` | `read`, `memory_read` (not `forget_outputs`, even under the `forget` layer): what a [participant's](internals/participants.md#turns) turn may call, whatever the session declares (the review boundary, [guardrails](guardrails.md#a-participants-review-boundary)). Reserved: `toolkit.kits.review` is refused ("review is reserved for participants' turns"), and a bundle can't declare it. A session may run on it too, as any kit |
 
-- **Plugin tools** are declared in every toolkit unless its `remove:` names them, and so is `forget_outputs` under
-  the `forget` layer. A `kits:` entry takes `base:` (default `full`), `add:`, `remove:`, `prompt:`, `groups:` and
-  `description:`
-  (any other key, a typo or a `tools:` list, is ignored with a warning); it can't reuse a built-in's name
+- **Plugin tools** (a bundle's `chi.tool`, such as web-search's `web_search`) follow a kit's list as built-ins do:
+  `full` (and every kit on `base: full`, the `kits:` default) declares them, another kit leaves them **reachable**
+  (below) unless its `remove:` names them, and `add:` declares one (`search: { base: lean, add: [web_search] }`).
+  `forget_outputs` is declared in every toolkit under the `forget` layer, unless removed. A `kits:` entry takes
+  `base:` (default `full`), `add:`, `remove:`, `prompt:`, `groups:` and `description:` (any other key, a typo or a `tools:` list, is ignored with a warning); it can't reuse a built-in's name
   (`review`'s least of all: it is the participants' boundary). A bundle declares its own with `chi.toolkit`
   ([plugins](plugins.md#chitoolkitname-base-add--remove--prompt-nil-groups-nil-description-nil)).
   `description:` is optional classifier input, up to 300 characters; it is not included in the session prompt.
@@ -1565,7 +1566,7 @@ toolkit:
   reaches none. A kit whose base doesn't resolve (an unknown name, a cycle) falls back to `full`, which reaches
   every group.
   A selector that matches no group in that load-time snapshot warns once. `find_tools` and `call_tool` are
-  declared only when the toolkit reaches a source group or has a reachable built-in. Calls naming an unreached
+  declared only when the toolkit reaches a source group or has a reachable tool (a built-in or a plugin tool). Calls naming an unreached
   group are refused before guardrails and do not start its server. The first-run init wait is unchanged: it can
   still block the first turn even when its server's group is unreached; `start: eager` and stale-cache refreshes
   also still start. `/mcp` marks servers outside the current toolkit.
@@ -1599,17 +1600,21 @@ toolkit:
   them with `/toolkit`. The configured default is always listed. A pick closes the list and shows a `tools: lean`
   chip on the row (a dot on 🧰 on a phone); it is for that create only, never remembered. A review session is
   always `chosen`: with review files set the list says it starts on the default unless you pick a kit.
-- **Left out: reachable or removed.** A built-in missing from a kit's base list (`lean` has no `delegate`; a
-  `kits:` entry on `base: lean` or `child` inherits that) is left out softly: it is **reachable**. `find_tools` searches it as group `chi` (`chi/delegate`, with its inputSchema) beside
-  the MCP servers' tools, and `call_tool(tool: "chi/delegate", args: {…})` runs it as `delegate` itself, through the
-  usual guardrails, approvals and hooks ([plugins](plugins.md#chitool_sourcecall-acts_as-label-wait-prefix)). A
+- **Left out: reachable or removed.** A built-in or plugin tool missing from a kit's base list (`lean` has no
+  `delegate` and no `web_search`; a `kits:` entry on `base: lean` or `child` inherits that) is left out softly: it
+  is **reachable**. `find_tools` searches it as group `chi` (`chi/delegate`, `chi/web_search`, with its
+  inputSchema) beside the MCP servers' tools, and `call_tool(tool: "chi/delegate", args: {…})` runs it as `delegate`
+  itself, through the usual guardrails, approvals and hooks ([plugins](plugins.md#chitool_sourcecall-acts_as-label-wait-prefix)). A
   tool in a toolkit's `remove:`, a `--no-tool` or a `/toolkit remove` is **removed**: hard, also after an add, and
   call_tool can't reach it (`child` removes `memory_write`, `delegate` and `delegate_result`, so a child on it
-  starts no children). To keep a built-in away from the model, name it under `remove:`. `find_tools` and `call_tool`
-  are declared when a toolkit has a reachable built-in or reaches a source group; `full` with no reachable source
-  declares neither, and removing them there (`--no-tool call_tool`) leaves nothing out: no prompt line, no chip.
+  starts no children). To keep a tool away from the model, name it under `remove:`. `find_tools` and `call_tool`
+  are declared when a toolkit has a reachable tool or reaches a source group, as the tools stood when the
+  session's worker started; `full` with no reachable source declares neither, and removing them there
+  (`--no-tool call_tool`) leaves nothing out: no prompt line, no chip. A plugin tool that arrives later
+  (`chi.replace_tools`) on a kit that declared neither stays out of reach for that worker, with one warn notice
+  (`/toolkit add NAME` declares it).
 - **On `api: anthropic`, reachable tools are callable by name.** Every tool `call_tool` reaches (the reachable
-  built-ins, tools from reached MCP groups as `mcp_<server>_<tool>`) also goes in the request's tools deferred
+  built-ins and plugin tools, tools from reached MCP groups as `mcp_<server>_<tool>`) also goes in the request's tools deferred
   (`defer_loading`: Messages keeps them out of the model's view until something loads them, at a flat ~100 tokens).
   A direct call of one (`list_sessions`, `mcp_fs_read`) runs, under the same guardrails, approvals and rows as
   through `call_tool` (an MCP tool's call is `call_tool`'s). A `find_tools` hit **loads** its matches (up to 5):

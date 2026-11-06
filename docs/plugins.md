@@ -244,8 +244,13 @@ Web only: the terminals type the command (`/claude validate <text>`).
 
 ### `chi.tool(name, description, params:, schema:, label:, preview:, targets:, refs:) { |args, ctx| … }`
 
-This adds a tool the model can call. It is declared in the system prompt and
-in the chat path's `tools:`, after chi's own tools.
+This adds a tool the model can call. A session's toolkit decides whether it
+is declared, as for a built-in ([Toolkits](configuration.md#toolkits)): `full`
+(and any kit on `base: full`) declares it, in the system prompt and in the
+chat path's `tools:`, after chi's own tools; a kit that doesn't list it (`lean`,
+`child`) leaves it **reachable**, found with `find_tools` as `chi/<name>` and
+run by `call_tool` as the tool itself ([the chi group](#chitool_sourcecall-acts_as-label-wait-prefix));
+`add:` declares it there, `remove:` takes it away.
 
 - `name`: a–z first, then a–z, 0–9 and `_`, up to 48 characters.
 - `params`: `{ name => property }`, where a property is a JSON Schema
@@ -462,6 +467,12 @@ end
   tool raises `ArgumentError` at once, as `chi.tool` does, and nothing is
   staged.
 - Inside `register`, use `chi.tool`: `replace_tools` raises there.
+- Whether the session needs `find_tools` and `call_tool` is set by the tools
+  registered when its worker started. A tool a set adds on a kit that
+  leaves it out is reachable when the kit declares them anyway (`lean` does,
+  for its left-out built-ins); on a kit that declares neither it stays out
+  of reach until the user declares it (`/toolkit add NAME`), with one warn
+  notice by your bundle's name.
 
 ### `chi.on(event, priority: 100) { |event, ctx| … }`
 
@@ -684,11 +695,12 @@ two tools in all, whatever the number of sources: `find_tools(query,
 group?)` (a keyword search that answers each match's `inputSchema`) and
 `call_tool(tool, args)` (calls one as `<group>/<tool>`; its row label is the
 first source's `label`). The index has one group of its own, **`chi`**: the
-built-ins the session's toolkit leaves out but doesn't remove
-([toolkits](configuration.md#toolkits)), each with its registered schema.
+built-ins and plugin tools (`chi.tool`) the session's toolkit leaves out but
+doesn't remove ([toolkits](configuration.md#toolkits)), each with its
+registered schema; never `find_tools` and `call_tool` themselves.
 The two tools are registered once, after the plugins load, and declared per
-toolkit when it reaches a source group or has a reachable built-in (`full`
-with no source declares neither). Nothing a
+toolkit when it reaches a source group or has a reachable tool, as the tools
+stood then (`full` with no source declares neither). Nothing a
 source publishes later changes the request's tools, only what a search
 answers, so the prompt cache keeps: the search tool's description lists the
 source groups as they were at load, and a `chi` line first, per toolkit.
@@ -703,24 +715,25 @@ session's toolkit. A source's
 group named `chi`, or named like an earlier group, is left out of search,
 lookup and the description, with one warning per name.
 
-**A built-in through `call_tool` runs as that built-in.** `call_tool(tool:
+**A chi tool through `call_tool` runs as that tool.** `call_tool(tool:
 "chi/delegate", args: {…})` (or a bare `delegate` while it's reachable) is
 turned into the `delegate` call itself before the guardrails, so rules on
 `delegate`, approvals (keyed `delegate:…`, the same as a direct call's),
 `before_tool_call`/`after_tool_call` hooks and the row see `delegate`, with
 `call[:via] == "call_tool"`; the row reads "delegate (via call_tool)", live
-and after a reload. `tool: call_tool` rules see MCP calls and misses only. A
-`chi/` name the toolkit removes or declares, or any built-in once
-`call_tool` itself is removed, is refused by its name before the guardrails
-(no hook, no card).
+and after a reload. A plugin tool's the same: `chi/web_search` runs as
+`web_search`, with its `label:`, `preview:` and `targets:`. `tool:
+call_tool` rules see MCP calls and misses only. A `chi/` name the toolkit
+removes or declares, or any chi tool once `call_tool` itself is removed, is
+refused by its name before the guardrails (no hook, no card).
 
 **On a Messages host the model calls them by name too.** With `api:
 anthropic` (not Fireworks' dialect), every tool `call_tool` reaches goes in
 the request's tools deferred (`defer_loading`: its name only, until
-something loads it): a built-in by its name, a source's tool by its
+something loads it): a built-in or plugin tool by its name, a source's tool by its
 `acts_as` (`mcp_fs_read`; one with a refusal, an acts_as two tools share, or
 a name another tool has stays out). A direct call of one runs whether
-anything loaded it or not: a built-in as itself (as if declared), a
+anything loaded it or not: a built-in or plugin tool as itself (as if declared), a
 source's tool as the `call_tool` call it stands for, so its rules,
 approvals, hooks and row are `call_tool`'s. Elsewhere such a call is
 refused with the `call_tool` route, as before.
@@ -865,9 +878,9 @@ full label, `plugin.rb (bundle my-bundle)`.
 | `ctx.http` | an HTTP client for calling services (`get`, `post_json`, `request`): see [Calling services](#calling-services-ctxhttp) |
 | `ctx.sessions` | fork, send to, read, list and stop other sessions: see [Other sessions](#other-sessions-ctxsessions) |
 | `ctx.toolkit` | the name of the session's toolkit (`full` for a session from before toolkits); nil with no session |
-| `ctx.declared_tools` | the tool names the session's next turn declares (its toolkit resolved, with its own adds and removes): ask this, not the name, whether a tool is there |
+| `ctx.declared_tools` | the tool names the session's next turn declares (its toolkit resolved, with its own adds and removes): ask this, not the name, whether a tool is there. Your bundle's own `chi.tool` tools are in it only on a kit that declares them (`full`, an `add:`); elsewhere they are reachable, not declared (the testing kit answers every tool, as on full, unless `bundle.set(declared_tools: […])`) |
 | `ctx.use_toolkit(name)` | put the session on toolkit `name` (yours from `chi.toolkit`, or chi's): saved, applied at the next turn's start and announced (`toolkit> toolkit: NAME from the next turn's start`, the web's tools chip follows). Only before the session's first model reply and outside a turn (the declared tools start every request, and a plugin doesn't ask first); otherwise it returns false and changes nothing: tell the user to run `/toolkit NAME`. An unknown name raises ArgumentError. Needs chi 0.66.0 |
-| `ctx.load_tools(names)` | load tools the session reaches but doesn't declare, so the model calls them by name: built-ins (`"delegate"`, `"chi/delegate"`), MCP tools (`"mcp_fs_read"`, `"fs/read"`). Returns the names it staged (the wire names); a declared tool, one loaded before, a removed or unknown one is skipped (an unknown one logged), so calling it every turn is fine. From a `before_turn` hook it loads for that turn; anywhere else (mid-turn too) from the next turn's start. Call it from a hook: before the session's first turn its toolkit isn't applied yet and nothing resolves. **A hint, not access**: the tools keep their guardrails and approvals, and only a host that takes tool changes (`api: anthropic`, not Fireworks) gets one, as a system message after the user's (`[tools loaded: delegate (your-bundle)]` in the session, a notice line live); elsewhere nothing is sent or saved, and the tools stay reachable with `call_tool`. A hook may switch the model after you call it, so the return value can't promise delivery. Raises ArgumentError for anything but an Array. Needs chi 0.99.0 |
+| `ctx.load_tools(names)` | load tools the session reaches but doesn't declare, so the model calls them by name: built-ins and plugin tools (`"delegate"`, `"chi/delegate"`, `"chi/web_search"`), MCP tools (`"mcp_fs_read"`, `"fs/read"`). Returns the names it staged (the wire names); a declared tool, one loaded before, a removed or unknown one is skipped (an unknown one logged), so calling it every turn is fine. From a `before_turn` hook it loads for that turn; anywhere else (mid-turn too) from the next turn's start. Call it from a hook: before the session's first turn its toolkit isn't applied yet and nothing resolves. **A hint, not access**: the tools keep their guardrails and approvals, and only a host that takes tool changes (`api: anthropic`, not Fireworks) gets one, as a system message after the user's (`[tools loaded: delegate (your-bundle)]` in the session, a notice line live); elsewhere nothing is sent or saved, and the tools stay reachable with `call_tool`. A hook may switch the model after you call it, so the return value can't promise delivery. Raises ArgumentError for anything but an Array. Needs chi 0.99.0 |
 | `ctx.context` | attach outside text to this session and list it: see [Attached context](#attached-context-ctxcontext) |
 | `ctx.cache_confirm(line, changed:)` | inside a command: nil to apply a prompt-cache-restarting change now, or a confirm to return as `[text, confirm]`: see [Commands that ask](#commands-that-ask-ctxcache_confirm). Needs chi 0.132.0 |
 
@@ -1497,6 +1510,7 @@ bundle.judgments.runs("progress").last["asked"]          # the runs as chi saves
 bundle.sessions.on(:children) { |all:| [] }              # ctx.sessions, scripted and recorded
 bundle.http.stub(:post, "http://127.0.0.1:9000/classify", json: { label: "safe" })   # ctx.http, never the network
 bundle.set(running: false)                               # the session's values: cwd:, messages:, cancelled: …
+bundle.set(declared_tools: %w[read])                     # ctx.declared_tools (default: every tool, as on full)
 bundle.set(cost: 2.5)                                    # ctx.cost: reported USD, or { reported:, estimated:, side:, known: }
 bundle.set(usage: { tool_calls: 40, active_ms: 600_000 }) # ctx.usage: { turns:, tool_calls:, tool_calls_by_tool:, steps:, active_ms:, tool_ms_by_tool: }
 bundle.set(turn_author: "p:p_0123abcd")                  # a participant's turn: ctx.turn_author, and author: on every event

@@ -841,11 +841,13 @@ trade-off, when such a clash exists:
 - deny rules cover both, which is the point.
 
 A `call_tool` of one of chi's own tools (`chi/delegate`: a built-in the
-session's toolkit leaves out, [toolkits](configuration.md#toolkits)) is
-gated **as that tool**: it is turned into the `delegate` call before the
-guardrails run, so every rule on `delegate` (or `execute`'s `command:`, the
-`rm` check, a delegate child's boundary) gives the same verdict as for a
-direct call, and an approval is keyed `delegate:…` either way. `tool:
+session's toolkit leaves out, [toolkits](configuration.md#toolkits)), or of
+a bundle's `chi.tool` it leaves out (`chi/web_search`), is gated **as that
+tool**: it is turned into the `delegate` call before the guardrails run, so
+every rule on `delegate` (or `execute`'s `command:`, the `rm` check, a
+delegate child's boundary, a plugin tool's `targets:`) gives the same
+verdict as for a direct call, and an approval is keyed `delegate:…` either
+way. `tool:
 call_tool` rules no longer see such calls, only MCP calls and misses. A
 `chi/` name the toolkit removes is refused before the gate, with no card.
 

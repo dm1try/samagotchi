@@ -57,7 +57,8 @@ Engine#run_turn(session, prompt, on_event:, max_iterations:, cancel_controller:,
   │     #   local System 1 host they wait for the turn's end: started before warm_up_next_turn, whose warm-up
   │     #   waits for them, or from run_turn's ensure; docs/context.md, The judge);
   │     #   then the session's toolkit (apply_toolkit!: Registry#toolkit, ToolIndex#refresh! for find_tools'
-  │     #   chi line, a prompt rebuild when it changed). A Stop during the probes or the waits returns false
+  │     #   chi line, a prompt rebuild when it changed; a warn notice per plugin tool that arrived mid-session
+  │     #   with nothing to reach it, Registry#stranded_names). A Stop during the probes or the waits returns false
   │     #   (the ask's line says canceled; an ensure marks one the turn never settled failed).
   │     # fires the :session_start hook on the Engine's first turn, then the :before_turn hook
   │     #   (a frozen copy of the history, the prompt, and resumed)
@@ -298,12 +299,13 @@ One iteration with tool calls:
                                       on_stream_event:, max_tool_output_chars:)
           → under TurnSettings#loads_tools, a direct call of a source tool's acts_as (mcp_fs_read) is wrapped
             into the call_tool call it stands for (Registry::Index#wrap, ToolIndex#wrap)
-          → first, the call's entry unwraps it (Registry::Entry#unwrap: a call_tool of chi/<built-in> becomes
-            that built-in's call with via: "call_tool", ToolIndex#unwrap); the rest sees the real call
+          → first, the call's entry unwraps it (Registry::Entry#unwrap: a call_tool of chi/<name>, a built-in or
+            a plugin tool, becomes that tool's call with via: "call_tool", ToolIndex#unwrap); the rest sees the
+            real call
           → a tool the session's toolkit leaves out (Registry#left_out; with via:, one Registry#indexed doesn't
             reach) skips the gate: no hooks, no card; KernelLoop#dispatch answers it (the call_tool route for a
             reachable tool, the not-loaded error for a removed one). Under TurnSettings#loads_tools a reachable
-            built-in called by its own name is no such call: it runs through the gate, and KernelLoop#dispatch
+            built-in or plugin tool called by its own name is no such call: it runs through the gate, and KernelLoop#dispatch
             takes it (#loaded_entry)
           → Guardrails::Gate#evaluate (the before_tool_call hooks, then the core checks)
           → :tool_call_started
@@ -644,7 +646,9 @@ Engine initialization (in this order, among other things):
   the bundles' plugins load (load_plugins → ExtensionLoad#load_plugins; each plugin's ctx is a
     Plugin::Context over plugin_host, whose ctx.sessions it builds itself: the test kit passes its own, sessions:),
     then (plugins or not) @tool_index.declare(@tools): find_tools + call_tool (source "index", not core),
-    declared per toolkit by Registry#declared? (a source registered at load, or a reachable built-in) and
+    declared per toolkit by Registry#declared? (a source registered at load, or a tool registered then that
+    the toolkit leaves reachable: Registry::Index#loaded; Toolkit::Resolved#declares? treats built-ins and
+    plugin tools alike: full declares both, another kit its list and adds) and
     sets call_tool's unwrap (Tools::ToolIndex: the chi group from Registry#reachable_names, the sources'
     groups, search, call checks, the unwrap; a source runs the call with its own plugin Context)
   @reminder_store = ReminderStore.new (the kernel gets it), @reminder_queue, @reminders

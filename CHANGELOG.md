@@ -10,7 +10,11 @@ and commands may change between minor versions. How releases are made:
 
 ### Added
 
-- A `web-search` bundle (`chi bundle install web-search`, in no profile): a `web_search` tool that searches the web through your own SearXNG and returns titles, URLs and snippets for `web_fetch` to read. [docs/bundles.md](docs/bundles.md#the-web-search-bundle)
+- A `web-search` bundle (`chi bundle install web-search`, in no profile): a `web_search` tool that searches the web through your own SearXNG and returns titles, URLs and snippets for `web_fetch` to read. It is declared on `full` and kits on `base: full`; on kits built on `lean` or `child` it is reachable (`find_tools` finds `chi/web_search`, `call_tool` runs it); `add: [web_search]` in a kit declares it. [docs/bundles.md](docs/bundles.md#the-web-search-bundle)
+
+### Changed
+
+- A bundle's tools (`chi.tool`) follow a toolkit's tool list as built-ins do: `full`, the kits on `base: full` (the `kits:` default) and a kit's `add:` declare them, any other kit leaves them reachable through `find_tools` / `call_tool` (deferred on `api: anthropic`), and `remove:` removes them. [docs/configuration.md](docs/configuration.md#toolkits)
 
 ### Fixed
 

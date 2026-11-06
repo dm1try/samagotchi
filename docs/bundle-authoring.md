@@ -119,7 +119,7 @@ end
 `questions` record effects; `bundle.answer` / `model_answers` provide `ask_user` / `ask_model` answers.
 `bundle.judgments` answers `ctx.judge` and records its asks and runs (each judgment is on in the kit, off in chi until the user sets it);
 `bundle.http.stub` stubs `ctx.http`; `bundle.question_asked(text, question:)` fires `:question_asked` and returns
-the refs; `sandbox.config`, `sandbox.fake_executable` and `bundle.install` cover setup.
+the refs; `sandbox.config`, `sandbox.fake_executable` and `bundle.install` cover setup. The kit's `ctx.declared_tools` is every tool, as on `full`; in chi a `chi.tool` is declared only on `full` and by a kit's `add:`, and on `lean` or `child` the model reaches it with `find_tools` (`chi/<name>`) and `call_tool` ([Toolkits](configuration.md#toolkits)), so `bundle.set(declared_tools: %w[read])` tests that case and the tool's description should be easy to search.
 The full list is in [plugins.md, Testing a bundle](plugins.md#testing-a-bundle-experimental). The kit is
 experimental (it may change before chi 1.0). A failing matcher that meets `ENV` prints `#<the process ENV, contents not shown>`, not your keys. If a test needs a fake of chi's own (a stub of a `Samagotchi::`
 class, a hand-built `ctx`), that is a gap in the kit: say so to the user rather than reaching into chi.
