@@ -177,7 +177,7 @@ module Samagotchi
         plugin = record ? prov.plugin_path(record) : nil
         manifest = record&.manifest
         # A key of the record that doesn't parse isn't built as empty: the build refuses, as it always has.
-        problem = manifest&.problems&.values&.first
+        problem = manifest&.key_problems&.values&.first
         raise BuildError, "the installed #{name}'s record: #{problem}" if problem
 
         InstalledParts.new(

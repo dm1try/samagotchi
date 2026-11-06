@@ -194,6 +194,20 @@ RSpec.describe "Bundle guardrail rule files" do
       expect(warnings(events).map { |e| e[:message][/bundle g \S+/] }).to eq(["bundle g 2.0.0", "bundle g 2.1.0"])
     end
 
+    it "re-reads the rules when only the kept manifest.yml changes (a --dev source's requires_chi)" do
+      src = write_bundle("g", { "rules.yml" => push_rules })
+      Samagotchi::MemoryBundle::Installer.new(source: src, name: "g", scope: "system", strict: true, dev: true).run
+      eng = engine
+      events = []
+      eng.subscribe(observer: ->(e) { events << e })
+      expect(evaluate(eng, "git push").rule).to eq("git-push")
+
+      manifest_path = File.join(src, "manifest.yml")
+      File.write(manifest_path, YAML.dump(YAML.safe_load_file(manifest_path).merge("requires_chi" => ">= 99.0")))
+      expect(evaluate(eng, "git push").rule).to eq("git-push")
+      expect(warnings(events).map { |e| e[:message] }).to include(start_with("bundle g 1.0.0 needs chi >= 99.0"))
+    end
+
     it "shows the notice as a turn event during a turn" do
       eng = engine
       sink = []

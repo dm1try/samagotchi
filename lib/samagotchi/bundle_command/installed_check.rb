@@ -58,15 +58,15 @@ module Samagotchi
       private_class_method :in_child
 
       # What the child sends: an edited file, which the copy's own shas can't
-      # tell, a manifest key of the record that doesn't parse (the copy
-      # holds it as empty: InstalledManifest#problems), and Check's warnings
+      # tell, a manifest key that doesn't parse (the copy holds the mirror's
+      # value or none: InstalledManifest#key_problems), and Check's warnings
       # and errors, naming the installed bundle's folder rather than the copy's.
       def answer_of(bundle)
         edited = MemoryBundle::ShippedUpdate.edited_executables(bundle.name, bundle).map do |file|
           Check::Finding.new(level: :warn, code: :edited, file: file, line: nil, fix: "chi bundle upgrade #{bundle.name}, or reinstall it",
                              message: "changed since it was installed, so chi doesn't load it")
         end
-        edited += bundle.manifest.problems.values.map do |message|
+        edited += bundle.manifest.key_problems.values.map do |message|
           Check::Finding.new(level: :error, code: :manifest, file: "manifest.yml", line: nil, message: message, fix: nil)
         end
         edited = edited.map { |finding| { level: finding.level, text: finding.to_s } }

@@ -146,7 +146,7 @@ chi bundle build --scope system --out updated.zip
 
 ### Provenance internals (for debugging)
 
-- Each installed bundle is recorded at `<system dir>/.bundles/<name>/manifest.json` + `bases/<file>.md` snapshots (`Provenance`). Used only for upgrade `Merger` and `status`/`diff`. Build does **not** write provenance.
+- Each installed bundle is recorded at `<system dir>/.bundles/<name>/manifest.json` + `bases/<file>.md` snapshots (`Provenance`), with the bundle's own `manifest.yml` kept beside it (chi reads the manifest from there at load). Used only for upgrade `Merger` and `status`/`diff`. Build does **not** write provenance.
 - A bundle records only the files it wrote. `index.md` updates aren't fatal: a failed one is a warning in the install/uninstall output.
 
 ## Best practices for the agent

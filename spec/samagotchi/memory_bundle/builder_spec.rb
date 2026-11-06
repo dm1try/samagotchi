@@ -203,6 +203,7 @@ RSpec.describe Samagotchi::MemoryBundle::Builder do
     src = write_bundle_with_hooks({ "identity.md" => "# Id\n" }, {}, name: "broken-prs")
     Samagotchi::MemoryBundle::Installer.new(source: src, name: "broken-prs", scope: "system", strict: true).run
     record = File.join(Samagotchi::MemoryBundle::Provenance.bundles_dir, "broken-prs", "manifest.json")
+    FileUtils.rm_f(File.join(File.dirname(record), "manifest.yml")) # a record from before chi kept it: the mirror is read
     File.write(record, JSON.generate(JSON.parse(File.read(record)).merge("context_providers" => [{ "match" => "x" }])))
 
     expect { described_class.new(scope: "system", name: "broken-prs", out: File.join(tmpdir, "out-broken")).run }

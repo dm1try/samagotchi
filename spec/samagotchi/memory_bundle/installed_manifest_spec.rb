@@ -3,6 +3,8 @@
 require "spec_helper"
 require "json"
 require "tmpdir"
+require "fileutils"
+require "digest"
 require "samagotchi/memory_bundle/installed_bundle"
 require "samagotchi/memory_bundle/installed_manifest"
 
@@ -88,6 +90,169 @@ RSpec.describe Samagotchi::MemoryBundle::InstalledManifest do
       expect(record("requires_chi" => ">= 9").dir).to be_nil
       expect(record("requires_chi" => ">= 9").manifest.requires_chi).to eq(">= 9")
       expect(installed.unreadable("x", "why").manifest).to have_attributes(requires_chi: nil, hooks: {}, problems: {})
+    end
+  end
+
+  describe ".of with a kept manifest.yml" do
+    let(:tmp) { Dir.mktmpdir("chi-kept-manifest-") }
+    let(:kept_yml) do
+      <<~YAML
+        name: b
+        version: 1.0.0
+        description: Draws diagrams
+        scripts:
+          draw.js: sha256:dd
+        block_renderers:
+          - lang: mermaid
+            load: [draw.js]
+        card_layouts: [wide]
+      YAML
+    end
+    let(:recorded) { { "version" => "1.0.0", "scripts" => { "draw.js" => { "sha256" => "sha256:dd" } } } }
+
+    after { FileUtils.rm_rf(tmp) }
+
+    # The record at <tmp>/b/manifest.json beside its kept manifest.yml (+yml+;
+    # none when nil), read as each_installed reads it. sha: :match records the
+    # kept file's sha, nil none (a chi without the kept manifest rewrote it).
+    def kept_bundle(record_raw = recorded, yml = kept_yml, sha: :match)
+      dir = File.join(tmp, "b")
+      FileUtils.mkdir_p(dir)
+      kept = File.join(dir, "manifest.yml")
+      File.write(kept, yml) if yml
+      raw = record_raw.dup
+      raw["manifest_sha"] = sha == :match ? "sha256:#{Digest::SHA256.file(kept).hexdigest}" : sha if yml && sha
+      File.write(File.join(dir, "manifest.json"), JSON.generate(raw))
+      installed.read("b", File.join(dir, "manifest.json"))
+    end
+
+    it "reads a key the record lacks from the kept manifest (block_renderers: installed before chi read it)" do
+      manifest = kept_bundle.manifest
+      expect(manifest).to have_attributes(origin: :kept, problems: {}, description: "Draws diagrams",
+                                          unknown_keys: ["card_layouts"], script_names: ["draw.js"], trust_level: "experimental")
+      expect(manifest.block_renderers.map(&:to_h)).to eq([{ "lang" => "mermaid", "load" => ["draw.js"] }])
+    end
+
+    it "reads the record's mirror when no manifest.yml is kept, when its sha isn't recorded, and when it changed" do
+      none = kept_bundle(recorded, nil).manifest
+      expect(none).to have_attributes(origin: :record, problems: {}, block_renderers: [])
+
+      stale = kept_bundle(recorded, kept_yml, sha: nil).manifest
+      expect(stale).to have_attributes(origin: :record, block_renderers: [], unknown_keys: [])
+      expect(stale.problems).to eq("manifest.yml" => :stale)
+      expect(stale.standing).to eq(:stale)
+
+      edited = kept_bundle(recorded, kept_yml, sha: "sha256:0000").manifest
+      expect(edited).to have_attributes(origin: :record, block_renderers: [])
+      expect(edited.problems).to eq("manifest.yml" => :edited)
+      expect(edited.key_problems).to eq({})
+    end
+
+    it "says the kept file is missing when the record has its sha and no file is there (or a dir is)" do
+      gone = kept_bundle(recorded.merge("manifest_sha" => "sha256:0000"), nil).manifest
+      expect(gone).to have_attributes(origin: :record, standing: :missing, key_problems: {})
+
+      FileUtils.mkdir_p(File.join(tmp, "b", "manifest.yml"))
+      expect(installed.read("b", File.join(tmp, "b", "manifest.json")).manifest.standing).to eq(:missing)
+    end
+
+    it "hands out a frozen value, all the way down (callers share the cached one)" do
+      manifest = kept_bundle(recorded.merge("hooks" => { "g.rb" => { "sha256" => "sha256:hh", "event" => "x" } },
+                                            "needs" => ["jq"]), kept_yml + "needs: [gh]\n").manifest
+      expect([manifest.hooks, manifest.needs, manifest.needs.first, manifest.needs.first[:command], manifest.script_names,
+              manifest.unknown_keys, manifest.problems, manifest.file_descriptions, manifest.description]).to all(be_frozen)
+    end
+
+    it "takes a profile's includes from the record, never the kept manifest" do
+      yml = "name: b\nversion: 1.0.0\nincludes: [x, y, z]\n"
+      expect(kept_bundle({ "version" => "1.0.0", "includes" => %w[x y] }, yml).manifest.includes).to eq(%w[x y])
+      expect(kept_bundle({ "version" => "1.0.0" }, yml).manifest.includes).to be_nil
+    end
+
+    it "takes a kept file that isn't YAML, or isn't a mapping, as edited" do
+      expect(kept_bundle(recorded, "name: [b\n").manifest).to have_attributes(origin: :record, problems: { "manifest.yml" => :edited })
+      expect(kept_bundle(recorded, "- a\n").manifest).to have_attributes(origin: :record, problems: { "manifest.yml" => :edited })
+    end
+
+    it "never checks a dev install's link, and reads its source's manifest live" do
+      source = File.join(tmp, "src").tap { |dir| FileUtils.mkdir_p(dir) }
+      File.write(File.join(source, "manifest.yml"), kept_yml)
+      bundle = kept_bundle(recorded.merge("dev" => true, "manifest_sha" => "sha256:dev"), nil)
+      File.symlink(File.join(source, "manifest.yml"), bundle.kept_manifest_path)
+      expect(bundle.manifest.block_renderers.map(&:lang)).to eq(["mermaid"])
+
+      File.write(File.join(source, "manifest.yml"), kept_yml.sub("lang: mermaid", "lang: mmd"))
+      expect(bundle.manifest.block_renderers.map(&:lang)).to eq(["mmd"])
+    end
+
+    it "reads a kept key that doesn't parse as the mirror's value, with its problem, and keeps the other keys" do
+      yml = kept_yml + "needs: gh\ncontext_providers: {}\nrequires_chi: \">= 0.2\"\n"
+      manifest = kept_bundle(recorded.merge("needs" => ["jq"], "requires_chi" => ">= 0.1"), yml).manifest
+      expect(manifest).to have_attributes(origin: :kept, needs: [{ command: "jq", why: nil, hint: nil }],
+                                          context_providers: [], requires_chi: ">= 0.2")
+      expect(manifest.problems.keys).to eq(%w[needs context_providers])
+      expect(manifest.problems["needs"]).to eq("needs: must be a list of commands")
+      expect(manifest.block_renderers.map(&:lang)).to eq(["mermaid"])
+    end
+
+    it "checks block_renderers against the record's scripts when the kept scripts: doesn't parse" do
+      yml = kept_yml.sub("scripts:\n  draw.js: sha256:dd\n", "scripts: [draw.js]\n")
+      manifest = kept_bundle(recorded, yml).manifest
+      expect(manifest.problems.keys).to eq(["scripts"])
+      expect(manifest).to have_attributes(script_names: ["draw.js"])
+      expect(manifest.block_renderers.map(&:lang)).to eq(["mermaid"])
+
+      without = kept_bundle(recorded.merge("scripts" => {}), yml).manifest
+      expect(without.problems.keys).to eq(%w[scripts block_renderers])
+      expect(without.block_renderers).to eq([])
+    end
+
+    it "takes each recorded hook's events from the kept manifest with the record's sha, and nothing the record lacks" do
+      record_hooks = { "g.rb" => { "sha256" => "sha256:hh", "event" => "before_tool_call", "on_error" => "fail_closed" },
+                       "found.rb" => { "sha256" => "sha256:ff", "event" => "" } }
+      yml = kept_yml + <<~YAML
+        hooks:
+          g.rb:
+            sha256: sha256:other
+            events: [before_tool_call, after_tool_call]
+            on_error: fail_closed
+            priority: 5
+          extra.rb:
+            event: before_turn
+      YAML
+      hooks = kept_bundle(recorded.merge("hooks" => record_hooks), yml).manifest.hooks
+      expect(hooks.keys).to eq(%w[g.rb found.rb])
+      expect(hooks["g.rb"]).to eq(hook.new(sha256: "sha256:hh", events: %w[before_tool_call after_tool_call],
+                                           on_error: "fail_closed", priority: 5))
+      expect(hooks["g.rb"].fail_closed?("before_tool_call")).to be(true)
+      expect(hooks["found.rb"]).to eq(hook.new(sha256: "sha256:ff"))
+    end
+
+    it "keeps the record's hooks whole when one kept hook entry doesn't parse" do
+      record_hooks = { "g.rb" => { "sha256" => "sha256:hh", "event" => "before_tool_call" },
+                       "h.rb" => { "sha256" => "sha256:ii", "event" => "after_tool_call" } }
+      yml = kept_yml + "hooks:\n  g.rb:\n    events: [after_turn]\n  h.rb:\n    event: x\n    events: [y]\n"
+      manifest = kept_bundle(recorded.merge("hooks" => record_hooks), yml).manifest
+      expect(manifest.problems.keys).to eq(["hooks"])
+      expect(manifest.hooks).to eq("g.rb" => hook.new(sha256: "sha256:hh", event: "before_tool_call"),
+                                   "h.rb" => hook.new(sha256: "sha256:ii", event: "after_tool_call"))
+    end
+
+    it "reads session_settings and settings with their types from the kept manifest, each falling back alone" do
+      yml = kept_yml + "session_settings: {cap: number}\nsettings: {limit: nope}\n"
+      manifest = kept_bundle(recorded.merge("settings" => ["old"]), yml).manifest
+      expect(manifest).to have_attributes(session_settings: ["cap"], session_setting_types: { "cap" => "number" },
+                                          settings: ["old"], setting_types: {})
+      expect(manifest.problems.keys).to eq(["settings"])
+    end
+
+    it "reads the new manifest once the kept file is rewritten" do
+      bundle = kept_bundle
+      expect(bundle.manifest.block_renderers.map(&:lang)).to eq(["mermaid"])
+      expect(bundle.manifest).to equal(bundle.manifest)
+
+      rewritten = kept_bundle(recorded, kept_yml.sub("lang: mermaid", "lang: mmd"))
+      expect(rewritten.manifest.block_renderers.map(&:lang)).to eq(["mmd"])
     end
   end
 

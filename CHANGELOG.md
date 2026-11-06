@@ -12,6 +12,10 @@ and commands may change between minor versions. How releases are made:
 
 - `chi bundle install` and `chi bundle check` say when a manifest has a key this chi doesn't read (`unknown-key`): it is ignored, and a newer chi may read it. `chi bundle check` also warns (`requires-chi-floor`) when the manifest itself uses a key newer than the oldest chi its `requires_chi` admits, the way it already does for plugin API calls.
 
+### Changed
+
+- An installed bundle keeps its `manifest.yml`, and chi reads it at load (hook events, `context_providers:`, `block_renderers:`, settings, `requires_chi`): for a bundle installed by this chi or later, a key the chi that installed it didn't know is read by a newer chi with no reinstall (a bundle installed before keeps reading what its install recorded until `chi bundle upgrade NAME`). An edited `manifest.yml` isn't read; chi falls back to what the install recorded. `chi bundle install --dev` links it, so a manifest edit follows the source. [docs/internals/bundles.md](docs/internals/bundles.md)
+
 ### Fixed
 
 - `chi bundle upgrade NAME` upgrades a bundle installed from a folder, an archive or a git URL from where it came from: the name alone is enough, the source its record keeps is used (a recorded `#ref` included), and the line says `Upgrading NAME from SOURCE`. A dev install is still refused, in the Installer's own words; a record whose source is gone says so and asks for the path or URL.

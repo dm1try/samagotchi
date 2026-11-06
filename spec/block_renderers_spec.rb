@@ -154,6 +154,15 @@ RSpec.describe Samagotchi::BlockRenderers do
       expect(described_class.for_installed).to eq([])
     end
 
+    it "reads them from the kept manifest.yml when the record lacks them (installed before chi read them)" do
+      install(source)
+      record = File.join(bundles_dir, "drawer", "manifest.json")
+      File.write(record, JSON.generate(JSON.parse(File.read(record)).except("block_renderers")))
+
+      expect(described_class.for_installed.map(&:to_h)).to eq([{ lang: "mermaid", bundle: "drawer", files: %w[lib.js draw.js] }])
+      expect(described_class.script_path("drawer", "draw.js")).to eq(File.join(bundles_dir, "drawer", "scripts", "draw.js"))
+    end
+
     it "gives a language to the first bundle by name" do
       install(source(name: "zz"), name: "zz")
       install(source(name: "aa"), name: "aa")
@@ -174,8 +183,9 @@ RSpec.describe Samagotchi::BlockRenderers do
       expect(described_class.for_installed).to eq([])
     end
 
-    it "skips and logs a record whose list doesn't parse" do
+    it "skips and logs a record whose list doesn't parse (one from before chi kept its manifest.yml)" do
       install(source)
+      FileUtils.rm_f(File.join(bundles_dir, "drawer", "manifest.yml"))
       path = File.join(bundles_dir, "drawer", "manifest.json")
       File.write(path, JSON.generate(JSON.parse(File.read(path)).merge("block_renderers" => [{ "lang" => "BAD" }])))
       expect(Samagotchi::Log).to receive(:warn).with(:web, "block_renderers_unreadable", hash_including(bundle: "drawer"))
@@ -183,8 +193,9 @@ RSpec.describe Samagotchi::BlockRenderers do
     end
   end
 
-  describe "a record with bytes that aren't UTF-8" do
+  describe "a record with bytes that aren't UTF-8 (one from before chi kept its manifest.yml)" do
     def corrupt(field, bytes)
+      FileUtils.rm_f(File.join(bundles_dir, "drawer", "manifest.yml"))
       path = File.join(bundles_dir, "drawer", "manifest.json")
       File.binwrite(path, File.binread(path).gsub(field, bytes))
     end

@@ -668,6 +668,24 @@ Hooks removed: 1\n\z})
       expect(Dir.exist?(memories)).to be(false)
     end
 
+    it "links manifest.yml too, so an edit to the source's block_renderers: is read with no re-install" do
+      src = File.join(@root, "src", "drawer")
+      FileUtils.mkdir_p(File.join(src, "scripts"))
+      File.write(File.join(src, "scripts", "draw.js"), "chi.defineRenderer({});\n")
+      manifest = { "name" => "drawer", "version" => "1.0.0", "files" => {}, "scripts" => { "draw.js" => "sha256:x" },
+                   "block_renderers" => [{ "lang" => "mermaid", "load" => ["draw.js"] }] }
+      File.write(File.join(src, "manifest.yml"), YAML.dump(manifest))
+      expect(chi("install", "--dev", src)[2]).to eq(0)
+      expect(File.symlink?(File.join(bundle_dir("drawer"), "manifest.yml"))).to be(true)
+
+      with_sandbox_env do
+        expect(Samagotchi::BlockRenderers.for_installed.map(&:lang)).to eq(["mermaid"])
+        manifest["block_renderers"].first["lang"] = "mmd"
+        File.write(File.join(src, "manifest.yml"), YAML.dump(manifest))
+        expect(Samagotchi::BlockRenderers.for_installed.map(&:lang)).to eq(["mmd"])
+      end
+    end
+
     it "refuses shipped bundles and profiles with a usage hint" do
       shipped_dir = Samagotchi::MemoryBundle::SourceNormalizer::SHIPPED_DIR
       sources = %w[guardrails core].map { |name| File.join(shipped_dir, name) }

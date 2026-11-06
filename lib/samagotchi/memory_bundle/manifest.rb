@@ -161,6 +161,28 @@ module Samagotchi
         !@includes.empty?
       end
 
+      # An installed bundle's kept manifest.yml read key by key
+      # (InstalledManifest): each key parsed as #initialize parses it, in its
+      # own rescue and in this order, so a key that doesn't parse under this
+      # chi (a newer chi tightened it, or an older one wrote it) costs only
+      # that key, which reads as empty with its message in the problems:
+      #   name, version (never checked: identity is the record's), scope;
+      #   files and their descriptions, scripts, plugin; hooks (one bad entry
+      #   fails the whole key); needs, context_providers; block_renderers
+      #   (against +fallback_scripts+ when scripts: failed); includes (after
+      #   what its check reads); session_settings with its types, settings
+      #   with theirs (one raw value each, so one problem); requires_chi,
+      #   trust_level, description. Then unknown_keys.
+      # @param fallback_scripts [Array<String>] the script names block_renderers
+      #   is checked against when scripts: doesn't parse (the record's)
+      # @return [Array(Manifest, Hash{String => String})] the manifest and
+      #   key => message for each key that didn't parse
+      # @raise [ValidationError] the file isn't YAML or isn't a mapping
+      def self.tolerant(path:, fallback_scripts: [])
+        manifest = allocate
+        [manifest, manifest.send(:read_tolerantly, path, fallback_scripts)]
+      end
+
       def self.read(dir:)
         manifest_path = File.join(dir, "manifest.yml")
         raise ValidationError, "manifest.yml not found in #{dir}" unless File.exist?(manifest_path)
@@ -345,6 +367,51 @@ module Samagotchi
 
       private
 
+      # Manifest.tolerant's read: the order and the keys are its comment's.
+      def read_tolerantly(path, fallback_scripts)
+        @path = path
+        raw = @raw = load_mapping(path)
+        problems = {}
+        @name = raw["name"].to_s
+        @version = raw["version"].to_s
+        @scope = normalize_scope(raw["scope"])
+        @files, @file_descriptions = tolerate(problems, "files", [{}, {}]) do
+          [parse_files(raw["files"] || {}), parse_file_descriptions(raw["files"])]
+        end
+        @scripts = tolerate(problems, "scripts", {}) { parse_scripts(raw["scripts"]) }
+        @plugin = tolerate(problems, "plugin", nil) { parse_plugin(raw["plugin"]) }
+        @hooks = tolerate(problems, "hooks", {}) { parse_hooks(raw["hooks"] || {}) }
+        @needs = tolerate(problems, "needs", []) { self.class.parse_needs(raw["needs"]) }
+        @context_providers = tolerate(problems, "context_providers", []) { parse_context_providers(raw["context_providers"]) }
+        script_names = problems.key?("scripts") ? fallback_scripts.map(&:to_s) : @scripts.keys
+        @block_renderers = tolerate(problems, "block_renderers", []) { parse_block_renderers(raw["block_renderers"], script_names) }
+        @includes = tolerate(problems, "includes", []) { parse_includes(raw["includes"]) }
+        @session_settings, @session_setting_types = tolerate(problems, "session_settings", [[], {}]) do
+          [self.class.parse_session_settings(raw["session_settings"]), self.class.parse_session_setting_types(raw["session_settings"])]
+        end
+        @settings, @setting_types = tolerate(problems, "settings", [nil, {}]) do
+          next [nil, {}] if raw["settings"].nil?
+
+          [self.class.parse_session_settings(raw["settings"], key: "settings"),
+           self.class.parse_session_setting_types(raw["settings"], key: "settings")]
+        end
+        @requires_chi = tolerate(problems, "requires_chi", nil) { parse_requires_chi(raw["requires_chi"]) }
+        @trust_level = tolerate(problems, "trust_level", "experimental") { (raw["trust_level"] || "experimental").to_s }
+        @description = tolerate(problems, "description", "") { (raw["description"] || "").to_s }
+        @unknown_keys = raw.keys - KEYS
+        problems
+      end
+
+      # The block's value, else +empty+ with the key's problem noted. Anything
+      # a parser raises counts: the file is a load-time input, and one key
+      # must never cost the bundle.
+      def tolerate(problems, key, empty)
+        yield
+      rescue StandardError => e
+        problems[key] = e.message
+        empty
+      end
+
       # The manifest.yml's top-level mapping ({} for an empty file); YAML that
       # doesn't parse, or isn't a mapping, raises ValidationError, as every
       # other manifest problem does.
@@ -437,13 +504,14 @@ module Samagotchi
         raise ValidationError, e.message
       end
 
+      # @param script_names [Array<String>] the scripts: keys each load must be
       # @return [Array<BlockRenderers::Renderer>] each load is a scripts: key
-      def parse_block_renderers(raw)
+      def parse_block_renderers(raw, script_names = @scripts.keys)
         return [] if raw.nil?
 
         renderers = BlockRenderers.parse_list(raw)
         renderers.each do |renderer|
-          missing = renderer.load - @scripts.keys
+          missing = renderer.load - script_names
           raise ValidationError, "block_renderers: #{renderer.lang} loads #{missing.join(", ")}, not under scripts:" unless missing.empty?
         end
         renderers

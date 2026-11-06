@@ -560,6 +560,8 @@ RSpec.describe Samagotchi::UpdateCommand do
       install_external("bad-cp")
       install_external("bad-needs")
       { "bad-cp" => { "context_providers" => [{ "match" => "x" }] }, "bad-needs" => { "needs" => "gh" } }.each do |name, extra|
+        # A record from before chi kept the manifest: its mirror is what's read.
+        FileUtils.rm_f(File.join(Samagotchi::MemoryBundle::Provenance.bundles_dir, name, "manifest.yml"))
         path = File.join(Samagotchi::MemoryBundle::Provenance.bundles_dir, name, "manifest.json")
         File.write(path, JSON.generate(JSON.parse(File.read(path)).merge(extra)))
       end

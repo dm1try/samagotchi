@@ -273,6 +273,19 @@ RSpec.describe Samagotchi::SessionConfig do
         .to raise_error(described_class::Error, "--set mine.cap: mine takes a number (or off) for cap, not \"five\"")
     end
 
+    it "reads session_settings and their types from the kept manifest.yml when the record lacks them" do
+      record("mine")
+      kept = File.join(dir, "mine", "manifest.yml")
+      File.write(kept, "name: mine\nversion: 1.0.0\nsession_settings: {cap: number}\n")
+      data = JSON.parse(File.read(File.join(dir, "mine", "manifest.json")))
+      File.write(File.join(dir, "mine", "manifest.json"),
+                 JSON.generate(data.merge("manifest_sha" => "sha256:#{Digest::SHA256.file(kept).hexdigest}")))
+
+      available = described_class.availability(dir: dir)
+      expect(available.offered).to eq("mine" => ["cap"])
+      expect(available.types).to eq("mine" => { "cap" => "number" })
+    end
+
     it "says how to refresh a record from before session_settings when the shipped bundle lists them" do
       record("cost-cap")
       record("plain")

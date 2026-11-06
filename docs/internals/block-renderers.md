@@ -10,7 +10,9 @@ model. The TUI is untouched: it shows a fence as source.
    in document order and zips them with the fragment's `<pre>`s, setting `data-lang` after sanitize's walk. Only the first
    word, downcased, matching `BlockRenderers::LANG`. A count that differs sets nothing. **`web.markdown` off means no
    `<pre data-lang>`, so nothing draws.**
-2. `BlockRenderers.for_installed` (manifest `block_renderers:`, read from provenance, so chi web needs no plugins) lists
+2. `BlockRenderers.for_installed` (manifest `block_renderers:`, read through `InstalledBundle#manifest`: the bundle's
+   kept `manifest.yml`, else its record's mirror, so chi web needs no plugins, and a bundle installed by a chi that
+   didn't know the key draws once a kept manifest is there) lists
    who draws what: `GET /api/block_renderers`, `:owner`. `GET /api/block_renderers/:bundle/:file` serves a file, `:owner`:
    the URL's names go through `BlockRenderers.script_path` (membership in a listed renderer's `load` before any path is
    made), then `Provenance.sha_matches?`; a changed file is 409 `renderer_changed`. ETag + `no-cache`, as static files.

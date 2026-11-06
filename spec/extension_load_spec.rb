@@ -4,6 +4,10 @@ require "spec_helper"
 require "samagotchi/extension_load"
 require "samagotchi/guardrails"
 require "samagotchi/memory_bundle/provenance"
+require "samagotchi/memory_bundle/installer"
+require "tmpdir"
+require "json"
+require "yaml"
 
 RSpec.describe Samagotchi::ExtensionLoad do
   subject(:extension_load) { described_class.new(hook_failures: Samagotchi::Guardrails::LoadFailures.new) }
@@ -50,6 +54,35 @@ RSpec.describe Samagotchi::ExtensionLoad do
     expect(Samagotchi::Hooks::BundleLoader).to receive(:load).with(hash_including(hook_failed: nil)).and_return(1)
 
     extension_load.hooks
+  end
+
+  it "registers a hook under the events its kept manifest.yml lists when the record lost them, fail-closed as declared" do
+    Dir.mktmpdir("ext-kept") do |tmp|
+      with_config_home(File.join(tmp, "config")) do
+        allow(Samagotchi::ConfigFile).to receive(:bundle_settings).and_return({})
+        src = File.join(tmp, "src")
+        FileUtils.mkdir_p(File.join(src, "hooks"))
+        File.write(File.join(src, "hooks", "g.rb"), "class G; def call(event); end; end\n")
+        File.write(File.join(src, "manifest.yml"), YAML.dump(
+          "name" => "g", "version" => "1.0.0", "trust_level" => "reviewed",
+          "hooks" => { "g.rb" => { "events" => %w[before_tool_call after_turn], "on_error" => "fail_closed" } }
+        ))
+        Samagotchi::MemoryBundle::Installer.new(source: src, name: "g", scope: "system").run
+        record = File.join(Samagotchi::MemoryPaths.bundles_dir, "g", "manifest.json")
+        raw = JSON.parse(File.read(record))
+        raw["hooks"]["g.rb"] = raw["hooks"]["g.rb"].except("events").merge("event" => "", "on_error" => "skip")
+        File.write(record, JSON.generate(raw))
+
+        # add_bundle_hooks rescues everything a load raises, so the hook is looked at after.
+        passed = nil
+        allow(Samagotchi::Hooks::BundleLoader).to receive(:load) { |metadata:, **| (passed = metadata) && 1 }
+        extension_load.hooks
+        hook = passed.fetch("g.rb")
+        expect(hook.events).to eq(%w[before_tool_call after_turn])
+        expect(hook.fail_closed?("before_tool_call")).to be(true)
+        expect(hook.sha256).to eq(raw["hooks"]["g.rb"]["sha256"])
+      end
+    end
   end
 
   it "reads config.yml bundles: once" do

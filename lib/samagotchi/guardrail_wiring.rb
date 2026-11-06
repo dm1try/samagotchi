@@ -556,11 +556,12 @@ module Samagotchi
     end
 
     # [path, mtime, size] of config.yml and every installed bundle's
-    # manifest.json and guardrails/ file.
+    # manifest.json, kept manifest.yml (its requires_chi is read from there)
+    # and guardrails/ file.
     def rules_stamp
       require_relative "memory_bundle/provenance"
       paths = [Samagotchi::ConfigFile.global_path] +
-              Dir[File.join(MemoryBundle::Provenance.bundles_dir, "*", "{manifest.json,guardrails/*}")]
+              Dir[File.join(MemoryBundle::Provenance.bundles_dir, "*", "{manifest.json,manifest.yml,guardrails/*}")]
       paths.compact.sort.map do |path|
         stat = File.stat(path)
         [path, stat.mtime.to_r, stat.size]

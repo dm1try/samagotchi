@@ -1610,6 +1610,11 @@ gem.
   source directory's, and an edit loads at the next start.
 - Install only copies the file (`--dev` links it). The code first runs at the
   next session start.
+- The bundle's `manifest.yml` is kept at install and checked the same way: chi
+  reads hook events, `context_providers:`, `block_renderers:`, settings and
+  `requires_chi` from it only while it has the sha256 recorded at install. An
+  edited one isn't read (chi falls back to what the install recorded). `--dev`
+  links it, unchecked.
 - Guardrail rules keyed by a tool's name apply to plugin tools, as they do to
   chi's own tools; path and command rules see what `targets:` says.
 
@@ -1618,7 +1623,11 @@ gem.
 - `chi bundle install <dir>`: copies the plugin to
   `<memories>/.bundles/<name>/plugin/`. It records the plugin's sha256 and
   `requires_chi`, and warns about a wrong declared sha256 or an unmet
-  `requires_chi`.
+  `requires_chi`. It keeps the bundle's `manifest.yml` beside the record, and
+  chi reads the manifest from there at load, so for a bundle installed by this
+  chi or later, a key this chi didn't know at install works once a newer chi
+  reads it (one installed before reads what its install recorded until
+  `chi bundle upgrade <name>`).
 - `chi bundle upgrade <name>`: upgrades an installed bundle by name from the
   source its record keeps (its folder, archive or git URL, `#ref` included),
   so a bundle from elsewhere needs no path retyped; `upgrade <source>` takes a
@@ -1633,7 +1642,7 @@ gem.
   `requires_chi`, its `scripts/` and `context_providers:`) into the built
   bundle.
 - `chi bundle uninstall <name>`: removes the plugin with the bundle.
-- `chi bundle install --dev <dir>`: links the bundle's plugin, hooks, rules and scripts to `<dir>` instead of
+- `chi bundle install --dev <dir>`: links the bundle's plugin, hooks, rules, scripts and `manifest.yml` to `<dir>` instead of
   copying them, with no sha256 check, so an edit applies at the next worker start
   ([cli.md](cli.md#writing-a-bundle-new-test-check)).
 - `chi bundle new`, `test` and `check`: start a bundle, run its tests on chi's Ruby, check it as an install takes

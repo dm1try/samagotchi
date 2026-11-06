@@ -133,8 +133,10 @@ The loop for a bundle you're writing (the whole path: [bundle-authoring.md](bund
   chi's Ruby (minitest is one of chi's gems; rspec is optional). The tests run the bundle's code as written, with
   your environment (the kit sandboxes each test's HOME and XDG dirs, not the process).
 - `chi bundle install --dev PATH` installs the bundle in the local directory `PATH` (not a git URL, archive or name:
-  exit 2) as a link to it: its plugin, hooks, rules and scripts are `PATH`'s own files, so an edit applies at the
-  next worker or `chi web` restart with no re-install, and their sha256 isn't checked, for this bundle only (the
+  exit 2) as a link to it: its plugin, hooks, rules, scripts and `manifest.yml` are `PATH`'s own files, so an edit applies at the
+  next worker or `chi web` restart with no re-install (a manifest edit to `block_renderers:` shows in chi web's next
+  request; a new `scripts:`, `hooks:` or `plugin:` entry needs `chi bundle install --dev PATH` again, since the record
+  has no entry for it), and their sha256 isn't checked, for this bundle only (the
   record says `dev`; every other bundle is checked as before). Its memories are copied at install. `chi bundle
   status` shows `NAME vX dev → /abs/path`. `chi bundle upgrade NAME` refuses it (it follows its source already; to
   leave dev mode: `chi bundle uninstall NAME`, then `chi bundle install` without `--dev`), as does a plain install

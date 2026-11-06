@@ -83,6 +83,15 @@ RSpec.describe Samagotchi::ContextProviders do
         .to raise_error(described_class::Invalid, /bundle prs makes "PR acme" of it, which isn't a source name/)
     end
 
+    it "reads the providers from the kept manifest.yml when the record lacks them" do
+      dir = install_normally
+      record = File.join(dir, "manifest.json")
+      File.write(record, JSON.generate(JSON.parse(File.read(record)).except("context_providers")))
+
+      expect(described_class.resolve("https://example.com/acme/pull/12")&.name).to eq("pr-12")
+      expect(described_class.any?).to be(true)
+    end
+
     it "skips a bundle whose providers don't parse" do
       install("bad", providers: [{ "match" => "(" }])
       install
