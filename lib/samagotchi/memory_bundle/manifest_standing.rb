@@ -58,6 +58,19 @@ module Samagotchi
         end
       end
 
+      # #line as chi bundle status says it: for a record chi update would keep
+      # from its folder, a dry Provenance#adopt_manifest first, so the line says
+      # whether it will or why not (an archive isn't extracted here: chi update
+      # tries it).
+      # @return [String, nil]
+      def status_line(bundle)
+        source = bundle.source.to_s.strip
+        tryable = bundle.manifest_unkept? && !bundle.dev && !bundle.profile? && File.directory?(source) && source.start_with?("/")
+        return line(bundle) unless tryable
+
+        line(bundle, refused: Provenance.new(name: bundle.name).adopt_manifest(source, dry_run: true))
+      end
+
       # Keeps the manifest of a record without a usable kept one (UNKEPT, not
       # dev) from +source_dir+, else from the record's source: a dir as it is,
       # a zip or tar extracted and removed after; a git URL is never cloned.
@@ -108,11 +121,16 @@ module Samagotchi
         return Installer.source_gone_line(bundle.name, source) if gone?(source, refused)
 
         shipped = SourceIdentity.of(source)&.shipped?
+        # chi update keeps a profile's only when chi ships it (ShippedUpdate).
+        return "chi bundle upgrade #{bundle.name} reads it again from #{source}" if bundle.profile? && !shipped
+
         if refused
           upgrade = shipped ? "chi bundle upgrade #{bundle.name}" : "chi bundle upgrade #{bundle.name} reads it again from #{source}"
           return "#{upgrade} (#{refused})"
         end
-        shipped ? "chi update keeps it" : "chi update keeps it from #{source}"
+        return "chi update keeps it" if shipped
+
+        File.file?(source) ? "chi update tries to keep it from #{source}" : "chi update keeps it from #{source}"
       end
 
       def gone?(source, refused) = refused == :gone || (refused.nil? && !SourceIdentity.of(source)&.shipped? && !local?(source))

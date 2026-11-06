@@ -1217,6 +1217,30 @@ Hooks removed: 1\n\z})
                                   "chi bundle upgrade demo reads it again from https://example.invalid/demo\n")
     end
 
+    it "says why chi update wouldn't keep it from a folder that isn't what's installed" do
+      FileUtils.rm_f(File.join(bundle_dir, "manifest.yml"))
+      edit_record { |raw| raw.except("manifest_sha", "installed_by") }
+      File.write(File.join(source, "manifest.yml"), File.read(File.join(source, "manifest.yml")).sub("version: 1.0.0", "version: 2.0.0"))
+      expect(manifest_line).to eq("  Manifest: [from the install record] installed by an older chi, which didn't keep its manifest: " \
+                                  "chi bundle upgrade demo reads it again from #{source} (#{source} has demo 2.0.0, not 1.0.0)\n")
+    end
+
+    it "says chi update tries an archive, without extracting it here" do
+      FileUtils.rm_f(File.join(bundle_dir, "manifest.yml"))
+      zip = File.join(@root, "demo.zip")
+      File.write(zip, "not read by status")
+      edit_record { |raw| raw.except("manifest_sha", "installed_by").merge("source" => zip) }
+      expect(manifest_line).to eq("  Manifest: [from the install record] installed by an older chi, which didn't keep its manifest: " \
+                                  "chi update tries to keep it from #{zip}\n")
+    end
+
+    it "promises nothing of chi update for a profile chi doesn't ship" do
+      FileUtils.rm_f(File.join(bundle_dir, "manifest.yml"))
+      edit_record { |raw| raw.except("manifest_sha", "installed_by").merge("includes" => []) }
+      expect(manifest_line).to eq("  Manifest: [from the install record] installed by an older chi, which didn't keep its manifest: " \
+                                  "chi bundle upgrade demo reads it again from #{source}\n")
+    end
+
     it "says a stale record's file may be an earlier version's" do
       edit_record { |raw| raw.except("manifest_sha", "installed_by").merge("source" => "https://example.invalid/demo") }
       expect(manifest_line).to eq("  Manifest: [from the install record] an older chi rewrote its record after the install, so its " \

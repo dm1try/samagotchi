@@ -575,7 +575,7 @@ module Samagotchi
     def manifest_line(record)
       require_relative "memory_bundle/manifest_standing"
       standing = Samagotchi::MemoryBundle::ManifestStanding
-      ["Manifest:", standing.label(record), standing.line(record)].compact.join(" ")
+      ["Manifest:", standing.label(record), standing.status_line(record)].compact.join(" ")
     end
 
     # " dev → /path (missing)" when a dev install's source isn't there, else "".
