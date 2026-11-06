@@ -436,12 +436,12 @@ RSpec.describe Samagotchi::MemoryBundle::ShippedUpdate do
       .to eq([["broken", :skipped, "manifest.json unreadable"], ["list", :skipped, "manifest.json unreadable"]])
   end
 
-  it "leaves the system bundle to SystemBundle and lists shipped bundles that aren't installed, grouped under their profile" do
+  it "leaves the system bundle to SystemBundle and lists shipped bundles that aren't installed, grouped under their profile (one in no profile by its own name)" do
     install(old_copy("system"), "samagotchi-system")
     install(old_copy("btw"), "btw")
     expect(described_class.plan.map(&:name)).to eq(["btw"])
     expect(described_class.not_installed.map(&:name)).not_to include("btw", "samagotchi-system")
-    expect(described_class.not_installed.map(&:name)).to eq(%w[core dev])
+    expect(described_class.not_installed.map(&:name)).to eq(%w[core dev web-search])
     expect(described_class.not_installed.find { |s| s.name == "dev" }.includes).to eq(%w[known-names mcp skills source-links github-pr coordinator claude-peer codex-peer ruby model-notes decision-card])
   end
 

@@ -27,10 +27,14 @@ RSpec.describe "The shipped bundle profiles" do
     expect(metas["core"].includes).to eq(%w[loop-guard check-in guardrails slow-commands agents-md cost-cap work-cap])
   end
 
-  it "puts every shipped bundle but the system bundle and the profiles in exactly one profile" do
+  # Bundles no profile installs: they need a service the user runs (web-search: a SearXNG).
+  in_no_profile = %w[web-search]
+
+  it "puts every shipped bundle but the system bundle, the profiles and the ones in no profile in exactly one profile" do
     members = metas.values.flat_map(&:includes)
     expect(members.tally.select { |_, n| n > 1 }).to eq({})
-    expect(members.sort).to eq(plain.keys.sort)
+    expect(members.sort).to eq((plain.keys - in_no_profile).sort)
+    expect(plain.keys & in_no_profile).to eq(in_no_profile)
   end
 
   it "names only shipped bundles that aren't metas, by the name their manifest gives" do

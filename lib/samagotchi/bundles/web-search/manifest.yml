@@ -1,0 +1,13 @@
+---
+name: web-search
+version: 0.1.0
+scope: system
+description: "web_search: the model searches the web through your SearXNG (its JSON API) and gets titles, URLs and snippets to read with web_fetch"
+trust_level: reviewed
+plugin:
+  file: plugin.rb
+  sha256: sha256:ff79881a370a10dfd1762b5fecb02833dd30c8c5e1f8578e3f1f1a214d6f78a5
+# settings: is new in chi 0.143.0 (ctx.http in 0.80.0)
+requires_chi: ">= 0.143.0"
+# config.yml bundles: web-search: (another key warns; an older chi ignores this)
+settings: {url: string, max_results: number, timeout: number, language: string, safesearch: number, categories: string, engines: string}

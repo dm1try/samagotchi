@@ -502,8 +502,8 @@ Hooks removed: 1\n\z})
       expect([err, code]).to eq(["", 0])
       expect(out).to start_with("No installed bundles.\n\nAvailable (shipped with chi, install with: chi bundle install <name>):\n")
       expect(out.lines.drop(3)).to all(match(/\A  [a-z-]+ +v\S+  \S/))
-      # every shipped bundle is in a profile: the profiles list them
-      expect(out.lines.drop(3).map { |l| l.split.first }).to eq(%w[core dev])
+      # every shipped bundle but web-search (it needs a SearXNG) is in a profile: the profiles list them
+      expect(out.lines.drop(3).map { |l| l.split.first }).to eq(%w[core dev web-search])
       expect(out).to match(/^  core +v\S+  .*\(loop-guard, check-in, guardrails, slow-commands, agents-md, cost-cap, work-cap\)$/)
       expect(out).to match(/^  dev +v\S+  .*\(known-names, mcp, btw, skills, source-links, github-pr, coordinator, claude-peer, codex-peer, ruby, model-notes, decision-card\)$/)
 

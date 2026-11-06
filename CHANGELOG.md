@@ -8,6 +8,10 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Added
+
+- A `web-search` bundle (`chi bundle install web-search`, in no profile): a `web_search` tool that searches the web through your own SearXNG and returns titles, URLs and snippets for `web_fetch` to read. [docs/bundles.md](docs/bundles.md#the-web-search-bundle)
+
 ### Fixed
 
 - An attached context change that arrives while the worker's leaving pass is already in flight is saved as a note before the worker stops, instead of being dropped with its poller.

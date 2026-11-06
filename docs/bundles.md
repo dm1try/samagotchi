@@ -225,6 +225,87 @@ bundles:
   tools, or with different args, stay distinct, since the tool is in the
   args).
 
+## The web-search bundle
+
+`chi bundle install web-search` installs the bundle shipped with chi (`lib/samagotchi/bundles/web-search/plugin.rb`).
+No profile includes it, since it needs a running [SearXNG](https://docs.searxng.org), so `chi update` lists it as
+not installed until you install it. It gives the model one tool, `web_search`, which asks your SearXNG through its
+JSON API. `web_fetch` fetches a URL but can't find one; `web_search` finds them, and the model then reads the ones it
+wants with `web_fetch`. It is an ordinary plugin tool, so it works on every host and loop.
+
+- **The tool:** `web_search(query, time_range?, page?)`. `time_range` is `day`, `week`, `month` or `year`; `page`
+  starts at 1. It returns plain text: a header, the first answer SearXNG gives (if any), a numbered list of results
+  (title, URL, and a snippet of at most 300 characters), and SearXNG's suggestions:
+
+  ```
+  SearXNG results for "ruby prism parser" (page 1):
+  1. Prism — Ruby parser
+     https://github.com/ruby/prism
+     A portable, error-tolerant Ruby parser…
+  Suggestions: ruby prism gem, prism vs parser
+  ```
+
+  With nothing found it says `No results for "<query>".` and names the engines that failed. A SearXNG that can't be
+  reached, a 403 (JSON not enabled), a 429 (its limiter) or an answer that isn't JSON each give an `Error:` line that
+  says what to fix.
+
+```yaml
+# config.yml
+bundles:
+  web-search:
+    url: http://127.0.0.1:8888   # the SearXNG root
+    max_results: 8               # results listed, 1..20
+    timeout: 10                  # seconds per read
+    # optional, sent only when set:
+    language: en
+    safesearch: 0                # 0, 1 or 2
+    categories: general          # comma-separated
+    engines: duckduckgo,brave    # comma-separated
+```
+
+| key | default | |
+|---|---|---|
+| `url` | `http://127.0.0.1:8888` | the SearXNG root, `http` or `https` with a host; a trailing `/` is fine |
+| `max_results` | `8` | clamped to 1..20 |
+| `timeout` | `10` | seconds; a value that isn't a positive number uses the default |
+| `language` | unset | e.g. `en` |
+| `safesearch` | unset | `0`, `1` or `2` |
+| `categories`, `engines` | unset | comma-separated. SearXNG silently drops names it doesn't know, so a typo gives its defaults |
+
+- **Privacy:** the query goes to your SearXNG and on to the engines it is configured with. No guardrail rule asks
+  about it by default; add one (`tool: web_search`, `verdict: ask`) if you want to approve each search. A review
+  turn can't call it.
+- **Toolkits:** for now the tool is declared in every toolkit once the bundle is installed (about 150 tokens per
+  request). To leave it out, name it in a kit's `remove:` (a built-in kit can't be redefined, so make your own on
+  it), or run `/toolkit remove web_search` in a session. This may change: which toolkits a plugin tool joins is still
+  to be designed ([Toolkits](configuration.md#toolkits)).
+
+  ```yaml
+  toolkit:
+    default: quiet
+    kits:
+      quiet: { base: lean, remove: [web_search] }
+  ```
+
+### Running SearXNG locally
+
+```sh
+mkdir -p searxng
+cat > searxng/settings.yml <<'YAML'
+use_default_settings: true
+server:
+  secret_key: "change-me-to-a-random-string"   # openssl rand -hex 32
+  limiter: false          # a local instance: no rate limiting (else 429s)
+search:
+  formats: [html, json]   # json is off by default (else 403)
+YAML
+docker run -d --name searxng -p 127.0.0.1:8888:8080 -v ./searxng:/etc/searxng searxng/searxng
+```
+
+The port is bound to loopback, not the LAN. Under colima, run it from a folder in your home directory: colima
+shares only that with its VM by default, and elsewhere SearXNG starts on its own default settings (JSON off).
+`curl 'http://127.0.0.1:8888/search?q=ruby&format=json'` should answer JSON.
+
 ## The loop-guard bundle
 
 `chi bundle install loop-guard` installs the bundle shipped with chi (`chi
