@@ -159,7 +159,8 @@ module Samagotchi
       # repository (a worktree the parent meant to pass as cwd:), which makes
       # every write there an ask for the user (child-boundary). One warning
       # line, however many are named; nil when the task names none, or names
-      # only the checkout holding the child's folder (or a subfolder of it).
+      # only the checkout holding the child's folder (or a subfolder of it),
+      # or main while the child itself runs in a worktree of it.
       # Never raises: a started child must not come back as an Error:.
       # @return [String, nil]
       def self.other_checkout(task, folder, parent:, child_id:, no_cwd:)
@@ -180,6 +181,9 @@ module Samagotchi
       # not the one holding +folder+: the first path token in the task that
       # belongs to one (the deepest containing it), else nil. Reads files
       # only, no git process, so a spec stubbing Process.spawn is unaffected.
+      # A child started in a linked worktree is never pointed at main: its
+      # work belongs in the worktree, so naming a main-checkout file - mostly
+      # to read it - is not a cwd: the parent forgot.
       # @return [String, nil] an absolute checkout folder
       def self.foreign_checkout(task, folder)
         common = MemoryPaths.common_git_dir(folder)
@@ -187,16 +191,30 @@ module Samagotchi
 
         checkouts = Guardrails::GitInfo.checkouts(common).map { |checkout| File.realpath(checkout) }
         own = deepest_checkout(File.realpath(folder), checkouts)
+        main = main_checkout(common)
         task.to_s.scan(PATH_TOKEN) do |token|
           path = existing_ancestor(File.expand_path(token.sub(/[.:!?]+\z/, ""), folder))
           next if path.nil?
 
           found = deepest_checkout(path, checkouts)
-          return found if found && found != own
+          next if found.nil? || found == own || found == main
+
+          return found
         end
         nil
       end
       private_class_method :foreign_checkout
+
+      # The main checkout of a common git dir (the folder holding it), nil for
+      # a bare or separate-git-dir layout, which has none.
+      def self.main_checkout(common)
+        return nil unless File.basename(common) == ".git"
+
+        File.realpath(File.dirname(common))
+      rescue StandardError
+        nil
+      end
+      private_class_method :main_checkout
 
       # The checkout containing +path+, matched by whole components (so
       # /x/app is not found in /x/app-fix): the deepest, so a nested worktree's

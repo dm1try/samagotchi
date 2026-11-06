@@ -550,15 +550,29 @@ RSpec.describe "delegate tools" do
         expect(out).to include(line(fix, child_id(out)))
       end
 
-      it "warns from a worktree parent that names the main checkout" do
+      it "says nothing from a worktree parent whose task names the main checkout" do
         git("-C", repo, "worktree", "add", "-q", "../app-fix", "-b", "fix/thing")
         worktree_parent = make(cwd: fix, prompt: "the plan", model: "big-model")
         fix_peers = Samagotchi::Tools::Peers.new(session_id: worktree_parent.id, cwd: fix, state_dir: tmpdir)
 
         out = described_class.call("check #{repo} too", wait: false, peers: fix_peers)
 
-        expect(out).to include("this child runs in #{fix}, but its task names #{repo}. If it should work there")
+        expect(out).to start_with("session: ")
+        expect(out).not_to include("Warning")
         expect(Samagotchi::Session.load(out[/session: ([0-9a-f-]+)/, 1], state_dir: tmpdir).working_directory).to eq(fix)
+      end
+
+      it "warns from a worktree parent that names a sibling worktree" do
+        git("-C", repo, "worktree", "add", "-q", "../app-fix", "-b", "fix/thing")
+        git("-C", repo, "worktree", "add", "-q", "../app-other", "-b", "other/thing")
+        other = File.join(File.dirname(repo), "app-other")
+        worktree_parent = make(cwd: fix, prompt: "the plan", model: "big-model")
+        fix_peers = Samagotchi::Tools::Peers.new(session_id: worktree_parent.id, cwd: fix, state_dir: tmpdir)
+
+        out = described_class.call("copy #{File.join(other, "lib", "a.rb")}", wait: false, peers: fix_peers)
+
+        expect(out).to include("this child runs in #{fix}, but its task names #{other}. If it should work there")
+        expect(Samagotchi::Session.load(child_id(out), state_dir: tmpdir).working_directory).to eq(fix)
       end
 
       it "attributes a nested worktree's path to that worktree, not to main" do
