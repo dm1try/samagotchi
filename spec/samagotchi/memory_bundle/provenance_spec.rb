@@ -280,6 +280,110 @@ RSpec.describe Samagotchi::MemoryBundle::Provenance do
     end
   end
 
+  describe "#adopt_manifest (a record an older chi wrote, without its manifest.yml)" do
+    let(:source) do
+      File.join(tmpdir, "src").tap do |dir|
+        make_file(dir, "manifest.yml", "name: old\nversion: 1.0.0\nplugin:\n  file: plugin.rb\nfuture_key: 1\n")
+        make_file(dir, "a.md", "A\n")
+        make_file(dir, "plugin.rb", "class Plugin; end\n")
+        make_file(dir, "hooks/h.rb", "# hook\n")
+        make_file(dir, "scripts/s.sh", "echo\n")
+        make_file(dir, "guardrails/g.yml", "rules: []\n")
+      end
+    end
+    let(:kept) { File.join(bundles_dir, "old", "manifest.yml") }
+    let(:prov) { described_class.new(name: "old") }
+
+    # The record as a chi before the kept manifest wrote it: no manifest_from.
+    def write_legacy(version: "1.0.0", dev: false)
+      prov.write(files: { "a.md" => File.join(source, "a.md") }, scope: "system", version: version, source_path: source,
+                 plugin_file: File.join(source, "plugin.rb"), hooks: { "h.rb" => { "event" => "after_turn" } },
+                 hooks_files: { "h.rb" => File.join(source, "hooks/h.rb") }, scripts_files: { "s.sh" => File.join(source, "scripts/s.sh") },
+                 guardrails_files: { "g.yml" => File.join(source, "guardrails/g.yml") }, requires_chi: ">= 0.1", dev: dev)
+    end
+
+    def raw = JSON.parse(File.read(File.join(bundles_dir, "old", "manifest.json")))
+
+    it "keeps the source's manifest.yml and records its sha when the source is what's installed, touching nothing else" do
+      write_legacy
+      before = raw
+      expect(prov.adopt_manifest(source)).to be_nil
+      expect(File.read(kept)).to eq(File.read(File.join(source, "manifest.yml")))
+      expect(raw).to eq(before.merge("manifest_sha" => "sha256:#{Digest::SHA256.file(kept).hexdigest}"))
+      expect(prov.record.manifest.origin).to eq(:kept)
+    end
+
+    it "writes nothing in a dry run, and says nothing against it" do
+      write_legacy
+      before = raw
+      expect(prov.adopt_manifest(source, dry_run: true)).to be_nil
+      expect(File.exist?(kept)).to be(false)
+      expect(raw).to eq(before)
+    end
+
+    it "replaces the file of a stale record (a kept file, no manifest_sha)" do
+      write_legacy
+      make_file(File.join(bundles_dir, "old"), "manifest.yml", "name: old\nversion: 0.9.0\n")
+      expect(prov.record.manifest.standing).to eq(:stale)
+      expect(prov.adopt_manifest(source)).to be_nil
+      expect(File.read(kept)).to eq(File.read(File.join(source, "manifest.yml")))
+      expect(prov.record.manifest.origin).to eq(:kept)
+    end
+
+    it "keeps one whose recorded kept file is gone, and its installed_by" do
+      prov.write(files: {}, scope: "system", version: "1.0.0", source_path: source, manifest_from: source)
+      FileUtils.rm_f(kept)
+      installed_by = raw["installed_by"]
+      expect(prov.adopt_manifest(source)).to be_nil
+      expect(raw["installed_by"]).to eq(installed_by)
+      expect(prov.record.manifest.origin).to eq(:kept)
+    end
+
+    it "refuses another version, and writes nothing" do
+      write_legacy(version: "0.9.0")
+      before = raw
+      expect(prov.adopt_manifest(source)).to eq("#{source} has old 1.0.0, not 0.9.0")
+      expect(File.exist?(kept)).to be(false)
+      expect(raw).to eq(before)
+    end
+
+    it "refuses another bundle's manifest" do
+      write_legacy
+      File.write(File.join(source, "manifest.yml"), "name: other\nversion: 1.0.0\n")
+      expect(prov.adopt_manifest(source)).to eq("#{source} has other 1.0.0, not old 1.0.0")
+    end
+
+    it "refuses a source whose plugin, hook, script or rule isn't the installed one" do
+      %w[plugin.rb hooks/h.rb scripts/s.sh guardrails/g.yml].each do |file|
+        write_legacy
+        original = File.read(File.join(source, file))
+        File.write(File.join(source, file), "changed\n")
+        expect(prov.adopt_manifest(source)).to eq("#{source}'s #{file} isn't the installed one")
+        expect(File.exist?(kept)).to be(false)
+        File.write(File.join(source, file), original)
+      end
+    end
+
+    it "refuses a source with no manifest.yml, or one that doesn't read" do
+      write_legacy
+      FileUtils.rm_f(File.join(source, "manifest.yml"))
+      expect(prov.adopt_manifest(source)).to eq("#{source} has no manifest.yml")
+      File.write(File.join(source, "manifest.yml"), "- a list\n")
+      expect(prov.adopt_manifest(source)).to start_with("#{source}'s manifest.yml doesn't read: ")
+    end
+
+    it "never adopts for a dev install: its next install --dev links it" do
+      write_legacy(dev: true)
+      expect(prov.adopt_manifest(source)).to eq("old is a dev install")
+      expect(File.exist?(kept)).to be(false)
+    end
+
+    it "leaves a record that keeps its manifest alone" do
+      prov.write(files: {}, scope: "system", version: "1.0.0", source_path: source, manifest_from: source)
+      expect(prov.adopt_manifest(source)).to eq("old keeps its manifest already")
+    end
+  end
+
   describe "#read" do
     it "returns nil when not installed" do
       prov = described_class.new(name: "nonexistent")

@@ -89,32 +89,53 @@ module Samagotchi
 
       # Runs the Installer for each :would_update row, Remerge for each
       # :would_merge row; the others pass through. A failing bundle doesn't
-      # stop the rest.
+      # stop the rest. A bundle at the shipped version whose record an older
+      # chi wrote keeps the shipped manifest.yml (#keep_manifest).
       # @return [Array<Row>]
       def apply(rows)
-        rows.map do |row|
-          next apply_remerge(row) if row.status == :would_merge
-          next row unless row.status == :would_update
-          next apply_profile(row) if row.adds
+        rows.map { |row| keep_manifest(apply_row(row)) }
+      end
 
-          installer = Installer.new(source: row.source_dir, name: row.name, scope: row.scope, strict: true, upgrade: true,
-                                    shipped_dir: File.dirname(row.source_dir))
-          installer.run
-          row.dup.tap do |r|
-            r.status = :updated
-            r.merged = installer.merged_files
-            r.behind = installer.behind
-            r.trash_copy = installer.trash_copy_line
-          end
-        rescue StandardError => e
-          row.dup.tap do |r|
-            r.status = :failed
-            r.note = e.message.lines.first.to_s.strip
-            r.merged = installer&.merged_files || []
-            r.behind = installer&.behind || []
-            r.trash_copy = installer&.trash_copy_line
-          end
+      def apply_row(row)
+        return apply_remerge(row) if row.status == :would_merge
+        return row unless row.status == :would_update
+        return apply_profile(row) if row.adds
+
+        installer = Installer.new(source: row.source_dir, name: row.name, scope: row.scope, strict: true, upgrade: true,
+                                  shipped_dir: File.dirname(row.source_dir))
+        installer.run
+        row.dup.tap do |r|
+          r.status = :updated
+          r.merged = installer.merged_files
+          r.behind = installer.behind
+          r.trash_copy = installer.trash_copy_line
         end
+      rescue StandardError => e
+        row.dup.tap do |r|
+          r.status = :failed
+          r.note = e.message.lines.first.to_s.strip
+          r.merged = installer&.merged_files || []
+          r.behind = installer&.behind || []
+          r.trash_copy = installer&.trash_copy_line
+        end
+      end
+
+      # The statuses of a row at the shipped version (the plan's same-version
+      # rows, after apply): its record can keep the shipped dir's manifest.yml.
+      SAME_VERSION = %i[up_to_date merged].freeze
+
+      # Provenance#adopt_manifest from the shipped dir, for a same-version row
+      # whose record has no usable kept manifest (an older chi wrote it). A
+      # bumped bundle gets the file from its Installer.
+      # @return [Row] the row
+      def keep_manifest(row)
+        return row unless row.source_dir && SAME_VERSION.include?(row.status)
+
+        bundle = Provenance.new(name: row.name).record
+        Provenance.new(name: row.name).adopt_manifest(row.source_dir) if bundle&.manifest_unkept?
+        row
+      rescue JSON::ParserError, SystemCallError
+        row
       end
 
       def apply_remerge(row)

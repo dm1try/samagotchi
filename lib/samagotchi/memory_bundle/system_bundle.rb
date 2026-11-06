@@ -117,7 +117,9 @@ module Samagotchi
             dry_run ? planned_update(gem_manifest, from, to) : upgrade_existing(from, to)
           else
             # Already at desired version — still verify files present (e.g. user deleted one)
-            # and retry the files marked conflict.
+            # and retry the files marked conflict. A record an older chi wrote keeps
+            # the shipped manifest.yml (once: then it has it).
+            keep_manifest(bundle) unless dry_run
             verified = verify_files_present(gem_manifest, from, dry_run)
             next remerge(bundle, verified, dry_run) if verified.status == :up_to_date
 
@@ -247,11 +249,20 @@ module Samagotchi
         result(:updated, from: from, to: to, merged: forecast.merged, behind: forecast.behind)
       end
 
+      # Provenance#adopt_manifest from the shipped dir, for a record without a
+      # usable kept manifest. A refusal (a checkout whose bundle changed at the
+      # same version) leaves the record reading its mirror, as before.
+      def keep_manifest(bundle)
+        return unless bundle.manifest_unkept?
+
+        Provenance.new(name: BUNDLE_NAME).adopt_manifest(GEM_BUNDLE_DIR)
+      end
+
       def upgrade_installer
         Installer.new(source: GEM_BUNDLE_DIR, name: BUNDLE_NAME, scope: SCOPE, force: false, strict: true, upgrade: true,
                       shipped_dir: File.dirname(GEM_BUNDLE_DIR))
       end
-      private_class_method :with_lock, :note_newer_installed, :install_fresh, :upgrade_existing, :verify_files_present, :restore_file, :remerge,
+      private_class_method :with_lock, :note_newer_installed, :install_fresh, :keep_manifest, :upgrade_existing, :verify_files_present, :restore_file, :remerge,
                            :upgrade_installer, :result, :planned_update
     end
   end

@@ -113,6 +113,12 @@ module Samagotchi
       # Its kept manifest.yml (Provenance#kept_manifest_path), nil with no dir.
       def kept_manifest_path = dir && File.join(dir, "manifest.yml")
 
+      # Whether it lacks a kept manifest.yml chi can read (Provenance#adopt_manifest
+      # keeps one): an older chi's record has no manifest_sha (with or without a
+      # file there, InstalledManifest's legacy and :stale), or the file it
+      # recorded is gone (:missing). false with no dir.
+      def manifest_unkept? = !dir.nil? && (manifest_sha.to_s.empty? || !File.file?(kept_manifest_path))
+
       # What its manifest says (requires_chi, hook metadata, needs, providers,
       # renderers, settings…): the one way to read manifest data of an
       # installed bundle.

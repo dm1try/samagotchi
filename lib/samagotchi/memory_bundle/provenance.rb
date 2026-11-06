@@ -10,6 +10,7 @@ require_relative "../version"
 require_relative "bundle_hook"
 require_relative "file_digest"
 require_relative "installed_bundle"
+require_relative "manifest"
 
 module Samagotchi
   module MemoryBundle
@@ -426,6 +427,33 @@ module Samagotchi
         nil
       end
 
+      # Keeps +dir+/manifest.yml for an installed bundle whose record has no
+      # usable kept manifest (InstalledBundle#manifest_unkept?: an older chi
+      # wrote it, or the file is gone), when +dir+ is the source of what's
+      # installed: its manifest names this bundle at the recorded version, and
+      # every sha the record has for a plugin, hook, script or rule is the
+      # source file's. Then the file is copied to #kept_manifest_path and the
+      # record gains its manifest_sha, and nothing else changes (installed_at,
+      # the mirror, installed_by). A dev record is never adopted: its next
+      # install --dev links the file. Read-only with dry_run.
+      # @return [String, nil] why it wasn't (wouldn't be) kept, nil when it was
+      def adopt_manifest(dir, dry_run: false)
+        bundle = record
+        return "#{@name} isn't installed" unless bundle
+        return "#{@name} is a dev install" if bundle.dev
+        return "#{@name} keeps its manifest already" unless bundle.manifest_unkept?
+
+        source = File.join(dir.to_s, "manifest.yml")
+        why = adoption_mismatch(bundle, dir.to_s, source)
+        return why if why || dry_run
+
+        raw = JSON.parse(File.read(File.join(@bundle_dir, "manifest.json")))
+        write_manifest(raw.merge("manifest_sha" => keep_manifest(source, false)))
+        nil
+      rescue JSON::ParserError, SystemCallError => e
+        "#{@name}'s record can't take it: #{e.message}"
+      end
+
       # The installed bundle's record, nil when it isn't installed.
       # @return [InstalledBundle, nil]
       # @raise [JSON::ParserError] manifest.json doesn't parse
@@ -482,6 +510,41 @@ module Samagotchi
         FileDigest.sha256(dest)
       end
       private :keep_manifest
+
+      # Why +dir+ isn't the source of what +bundle+ installed (#adopt_manifest), nil when it is.
+      def adoption_mismatch(bundle, dir, source)
+        return "#{dir} has no manifest.yml" unless File.file?(source)
+
+        manifest = begin
+          Manifest.new(path: source)
+        rescue Manifest::ValidationError, Psych::Exception, EncodingError => e
+          return "#{dir}'s manifest.yml doesn't read: #{e.message}"
+        end
+        found = "#{manifest.name} #{manifest.version}"
+        return "#{dir} has #{found}, not #{@name} #{bundle.version}" unless manifest.name == @name
+        return "#{dir} has #{found}, not #{bundle.version}" unless manifest.version == bundle.version.to_s
+
+        installed_shas(bundle, manifest).each do |rel, sha|
+          next if self.class.recorded_sha(sha).empty?
+          return "#{dir}'s #{rel} isn't the installed one" unless self.class.file_sha(File.join(dir, rel)) == self.class.recorded_sha(sha)
+        end
+        nil
+      end
+      private :adoption_mismatch
+
+      # Each file the record has a sha for, by its path in the bundle's source => that sha.
+      def installed_shas(bundle, manifest)
+        shas = {}
+        if bundle.plugin
+          file = manifest.plugin && manifest.plugin[:file].to_s
+          shas[file && File.basename(file) == bundle.plugin.file ? file : bundle.plugin.file] = bundle.plugin.sha256
+        end
+        bundle.hooks.each { |file, hook| shas["hooks/#{file}"] = hook.sha256 }
+        bundle.scripts.each { |file, sha| shas["scripts/#{file}"] = sha }
+        bundle.guardrails.each { |file, sha| shas["guardrails/#{file}"] = sha }
+        shas
+      end
+      private :installed_shas
 
       def mark_fields(mark)
         { conflict: true, why: mark.why, missed: mark.missed.empty? ? nil : mark.missed,

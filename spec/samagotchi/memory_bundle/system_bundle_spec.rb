@@ -350,6 +350,49 @@ RSpec.describe Samagotchi::MemoryBundle::SystemBundle do
       end
     end
 
+    describe "a record an older chi wrote, without the kept manifest" do
+      let(:bundle_dir) { File.join(Samagotchi::MemoryBundle::Provenance.bundles_dir, described_class::BUNDLE_NAME) }
+      let(:kept) { File.join(bundle_dir, "manifest.yml") }
+
+      def record = JSON.parse(File.read(File.join(bundle_dir, "manifest.json")))
+
+      # What a chi before the kept manifest leaves: no manifest_sha, no installed_by, maybe a file.
+      def make_legacy(keep_file: false)
+        File.write(File.join(bundle_dir, "manifest.json"), JSON.generate(record.except("manifest_sha", "installed_by")))
+        keep_file ? File.write(kept, "name: samagotchi-system\nversion: 0.0.1\n") : FileUtils.rm_f(kept)
+      end
+
+      it "keeps the shipped manifest at the same version, once, and nothing else of the record moves" do
+        ship("0.1.6", "old\n")
+        described_class.sync
+        make_legacy
+        before = record
+
+        expect(described_class.sync.status).to eq(:up_to_date)
+        expect(File.read(kept)).to eq(File.read(File.join(described_class::GEM_BUNDLE_DIR, "manifest.yml")))
+        expect(record).to eq(before.merge("manifest_sha" => "sha256:#{Digest::SHA256.file(kept).hexdigest}"))
+        expect { described_class.sync }.not_to(change { File.mtime(File.join(bundle_dir, "manifest.json")) })
+      end
+
+      it "keeps nothing in a dry run" do
+        ship("0.1.6", "old\n")
+        described_class.sync
+        make_legacy
+        described_class.sync(dry_run: true)
+        expect(File.exist?(kept)).to be(false)
+        expect(record.keys).not_to include("manifest_sha")
+      end
+
+      it "keeps it again over a stale file (an older chi rewrote the record)" do
+        ship("0.1.6", "old\n")
+        described_class.sync
+        make_legacy(keep_file: true)
+        described_class.sync
+        expect(File.read(kept)).to eq(File.read(File.join(described_class::GEM_BUNDLE_DIR, "manifest.yml")))
+        expect(Samagotchi::MemoryBundle::Provenance.new(name: described_class::BUNDLE_NAME).record.manifest.origin).to eq(:kept)
+      end
+    end
+
     it "leaves a newer installed bundle alone when the shipped one is older" do
       ship("0.1.7", "new\n")
       described_class.ensure!

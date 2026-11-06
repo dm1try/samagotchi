@@ -94,6 +94,39 @@ RSpec.describe Samagotchi::MemoryBundle::ShippedUpdate do
     expect(described_class.plan.first.status).to eq(:up_to_date)
   end
 
+  describe "a shipped bundle an older chi installed at this version, without its manifest.yml" do
+    let(:bundle_dir) { File.join(Samagotchi::MemoryBundle::Provenance.bundles_dir, "btw") }
+    let(:kept) { File.join(bundle_dir, "manifest.yml") }
+
+    def record = JSON.parse(File.read(File.join(bundle_dir, "manifest.json")))
+
+    # Installed from the shipped dir, then as a chi before the kept manifest left it.
+    def install_legacy(keep_file: false)
+      install(File.join(shipped, "btw"), "btw")
+      File.write(File.join(bundle_dir, "manifest.json"), JSON.generate(record.except("manifest_sha", "installed_by")))
+      keep_file ? File.write(kept, "name: btw\nversion: 0.0.1\n") : FileUtils.rm_f(kept)
+    end
+
+    it "keeps it on apply, the plan writing nothing, and touches nothing else of the record" do
+      install_legacy
+      before = record
+      rows = described_class.plan
+      expect(rows.map { |r| [r.name, r.status] }).to eq([["btw", :up_to_date]])
+      expect(File.exist?(kept)).to be(false)
+
+      described_class.apply(rows)
+      expect(File.read(kept)).to eq(File.read(File.join(shipped, "btw", "manifest.yml")))
+      expect(record).to eq(before.merge("manifest_sha" => "sha256:#{Digest::SHA256.file(kept).hexdigest}"))
+    end
+
+    it "keeps it again over a stale file" do
+      install_legacy(keep_file: true)
+      described_class.apply(described_class.plan)
+      expect(File.read(kept)).to eq(File.read(File.join(shipped, "btw", "manifest.yml")))
+      expect(Samagotchi::MemoryBundle::Provenance.new(name: "btw").record.manifest.origin).to eq(:kept)
+    end
+  end
+
   describe "an edit that merges clean" do
     let(:root) { File.join(tmp, "gem", "lib", "samagotchi", "bundles") }
     let(:dir) { File.join(root, "merged") }
