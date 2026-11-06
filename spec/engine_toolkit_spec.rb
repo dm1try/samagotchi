@@ -306,6 +306,50 @@ RSpec.describe Samagotchi::Engine, "toolkit" do
       turn(sess)
       expect(kernel.tools.names).to include("late_tool")
     end
+
+    it "leaves the search tool's description as it was when the reachable tools didn't change" do
+      allow(kernel).to receive(:run).and_return(result)
+      sess = session(Samagotchi::Toolkit.new(name: "lean"))
+      arrive("late_tool")
+      turn(sess)
+      before = kernel.tools["find_tools"].schema[:description]
+
+      expect(engine.apply_staged_tools!).to be(false)
+      arrive("late_tool")
+      turn(sess)
+
+      expect(kernel.tools.reachable_names).to include("late_tool")
+      expect(kernel.tools["find_tools"].schema[:description]).to eq(before)
+    end
+  end
+
+  describe "a plugin tool registered at load that chi.replace_tools takes out mid-session" do
+    # Registered before the index is declared, as a plugin's chi.tool at load.
+    before do
+      spec = Samagotchi::Plugin::ToolSpec.build("early_tool", "An early tool.") { "ok" }
+      allow_any_instance_of(Samagotchi::Tools::ToolIndex).to receive(:declare).and_wrap_original do |original, tools, **opts|
+        Samagotchi::Plugin::ToolSpec.apply(tools, "early-bundle", [spec], nil)
+        original.call(tools, **opts)
+      end
+    end
+
+    it "keeps find_tools and call_tool declared, its chi group now empty: the declared tools stay for the session" do
+      allow(kernel).to receive(:run).and_return(result)
+      left_out = %w[register_reminder cancel_reminder list_reminders list_sessions send_note delegate delegate_result
+                    objectives]
+      sess = session(Samagotchi::Toolkit.new(name: "lean", add: left_out))
+      turn(sess)
+      expect(kernel.tools.names).to include("find_tools", "call_tool")
+      expect(kernel.tools.reachable_names).to eq(["early_tool"])
+      expect(kernel.tools["find_tools"].schema[:description]).to include("- chi: ", "(1 tool)")
+
+      engine.send(:stage_tools, "early-bundle", [], nil)
+      turn(sess)
+
+      expect(kernel.tools.names).to include("find_tools", "call_tool")
+      expect(kernel.tools.reachable_names).to eq([])
+      expect(kernel.tools["find_tools"].schema[:description]).not_to include("- chi")
+    end
   end
 
   # The host that loads tools is the one the turn runs on after its

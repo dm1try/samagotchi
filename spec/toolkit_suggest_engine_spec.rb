@@ -93,6 +93,33 @@ RSpec.describe Samagotchi::Engine do
     FileUtils.rm_rf(dir) if dir
   end
 
+  it "logs a plugin's tools apart from the built-ins, and the index's find_tools and call_tool in neither" do
+    engine = build_engine
+    spec = Samagotchi::Plugin::ToolSpec.build("web_search", "Search the web.") { "ok" }
+    Samagotchi::Plugin::ToolSpec.apply(engine.tools, "web-search", [spec], nil)
+    # A source group registered at load (an MCP server's) declares the index's
+    # own tools on every kit, so they are among the entries the log reads.
+    engine.tools.index = engine.tools.index.with(groups: ["mcp"])
+    expect(engine.tools.entries(toolkit: nil).map(&:name)).to include("find_tools", "call_tool")
+    dir = Dir.mktmpdir("toolkit-audit")
+    engine.instance_variable_set(:@session_state_dir, File.join(dir, "sessions"))
+    engine.instance_variable_set(:@host_registry, double(host_for_model: [double(name: "model", remote?: true, root_url: "https://model:443"), nil],
+                                                         find_entry: nil))
+    allow(engine).to receive(:effective_model_name).and_return("model")
+    answer = Samagotchi::SystemOne::Answer.new(id: "toolkit", type: :choice, choice: "kit:web", confidence: 0.9)
+    allow(Samagotchi::SystemOne::Client).to receive(:from_config)
+      .and_return(instance_double(Samagotchi::SystemOne::Client, host: "judge", ask: { "toolkit" => answer }))
+
+    start(engine)
+    join!(engine.instance_variable_get(:@side_judgments).thread(:toolkit), "the toolkit audit")
+    line = JSON.parse(File.readlines(File.join(dir, Samagotchi::ToolkitSuggest::FILE)).last)
+
+    expect(line["plugin_tools"]).to eq(["web_search"])
+    expect(line["core_tools"]).not_to include("web_search", "find_tools", "call_tool")
+  ensure
+    FileUtils.rm_rf(dir) if dir
+  end
+
   it "joins the audit thread on shutdown, with the short audit timeout" do
     engine = build_engine
     started = Queue.new
