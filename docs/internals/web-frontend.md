@@ -23,7 +23,7 @@ page. A factory dep a new version stops passing is the same hazard the other way
 out of `send_turn.js`, `session_actions.js` and `lists_view.js`); a page loaded before keeps all its old modules
 until a reload, so the risk is a mixed cache, not an open tab. `answer_fold.js`, `details_motion.js`,
 `turn_range.js`, `history_reveal.js`, `latest.js`, `session_payload.js`, `method_api.js`, `session_store.js`,
-`session_fields.js`, `feature_gates.js`, `revise_stack.js`, `revise_switch.js`, `shell_command.js`, `stale_params.js`, `popover_modal.js`, `more_sheet.js`, `hash_intent.js` (what the hash asks for: session, all, start or keep), `worker_features.js`, `block_open.js`, `text_roots.js`, `block_source.js`, `block_frame.js`, `block_host.js`, `version_notices.js`, `owner_claim.js`, `owner_verify.js`, `composer_mode.js` and the `objectives_*.js` modules are new modules for that reason. The last three `block_*` draw a bundle's fenced blocks: [block-renderers.md](block-renderers.md).
+`session_fields.js`, `feature_gates.js`, `revise_stack.js`, `revise_switch.js`, `shell_command.js`, `stale_params.js`, `popover_modal.js`, `more_sheet.js`, `hash_intent.js` (what the hash asks for: session, all, start or keep), `worker_features.js`, `version_notices.js`, `owner_claim.js`, `owner_verify.js`, `composer_mode.js`, `strip_hidden.js`, `block_open.js`, `text_roots.js`, `block_source.js`, `block_frame.js`, `block_host.js` and the `objectives_*.js` modules are new modules for that reason. The last three `block_*` draw a bundle's fenced blocks: [block-renderers.md](block-renderers.md).
 
 ## Two pages, two models
 
@@ -115,7 +115,7 @@ set's and the participants' `onChange`, the continue and review in-flight sets
 (`session_actions.js`); `composer` and `infoBar` for `liveTurn.running` (`setTurnRunning`, with `settingsPanel`:
 the open ⚙ panel's running-turn note) and at the end of `renderSessionView` (a whole view drawn). Left as they are,
 on purpose: `composer_mode.js`'s phone-width listener calls its `update()` (the bar doesn't read it),
-`applyStripHidden`/`applyView` call `updateSessionTitle()`, and `closeStream`/`stream.restart` set
+`strip_hidden.js`'s apply and `applyView` call `updateSessionTitle()`, and `closeStream`/`stream.restart` set
 `streamControl = null` without a redraw (a resync or a workerGone follows).
 
 A function that writes more than once batches its synchronous part, so each redraw runs once: `select` (before its
@@ -323,7 +323,7 @@ reach another device or the server.
 | `chi_model`, `chi_model_recent` | `model_pick.js`, `model_picker.js`, `start_page.js` | the start page's model and its recent list |
 | `chi_composer_collapsed` | `composer_fold.js` | the composer folded (a card's text field folds it for the time it has the focus on a narrow or touch screen, `composer_grip.js watchCardField`, on top of this and of the visit's state: neither is written) |
 | `chi_composer_floor` | `composer_grip.js`, `composer_mount.js` | the composer's dragged height |
-| `chi_strip_hidden` (`chi_zen`: the old name, read once) | app.js | the session strip hidden |
+| `chi_strip_hidden` (`chi_zen`: the old name, read once) | `strip_hidden.js` | the session strip hidden |
 | `chi_stage_collapsed` | `stage_view.js` | the stage collapsed |
 | `chi_working_set_collapsed` | `working_set_rail.js` | the working set rail collapsed |
 | `chi_markdown_tip_dismissed` | `markdown_tip.js` | the markdown tip dismissed |
