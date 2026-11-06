@@ -163,6 +163,15 @@ module Samagotchi
         lines.any? ? lines.join("\n") : "No files to install."
       end
 
+      # The one words for a dev install an upgrade or a plain install meets:
+      # it follows its source already. `Installer#refuse_dev_mismatch` raises
+      # with them, and `chi bundle upgrade NAME` (which never reaches the
+      # Installer for a dev record) prints the same line.
+      def self.dev_install_line(name, source)
+        "#{name} is a dev install of #{source}: it follows its source already " \
+          "(to leave dev mode: chi bundle uninstall #{name}, then chi bundle install without --dev)"
+      end
+
       private
 
       # The steps that replace files: memories, the bundle's own folder, then
@@ -233,9 +242,9 @@ module Samagotchi
         return if @existing.nil? || @existing.dev == @dev
 
         if @existing.dev
-          raise InstallError, "#{@name} is a dev install of #{@existing.source}: it follows its source already " \
-                              "(to leave dev mode: chi bundle uninstall #{@name}, then chi bundle install without --dev)"
+          raise InstallError, self.class.dev_install_line(@name, @existing.source)
         end
+
         raise InstallError, "#{@name} is installed normally; `chi bundle uninstall #{@name}` first, then chi bundle install --dev"
       end
 

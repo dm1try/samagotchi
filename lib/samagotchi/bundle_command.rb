@@ -17,9 +17,10 @@ module Samagotchi
           Source is the path/URL to the bundle (dir/zip/tar.gz/git).
           --force overwrites existing entries (one that differs is copied to the trash first); default skips them.
 
-        upgrade <source> [--scope system|project] [--force] [--dry-run] [--agent|--no-agent]
+        upgrade <source|name> [--scope system|project] [--force] [--dry-run] [--agent|--no-agent]
           Upgrade a bundle (3-way: a file you didn't edit updates; one you edited takes a text
           merge, the old file in the bundle trash; a real conflict leaves it as it is).
+          A bare NAME upgrades the bundle installed under that name from the source it came from.
           --dry-run shows what would change. --agent launches interactive session on conflict.
 
         uninstall <bundle> [--scope system|project] [--force]
@@ -75,7 +76,7 @@ module Samagotchi
           their sha256 isn't checked, for this bundle only. Its memories are copied; re-install with --force to
           pick up memory edits. Upgrade refuses it; uninstall removes the link, never PATH's files.
     TEXT
-    UPGRADE_HELP = "Usage: chi bundle upgrade <source> [--scope system|project] [--force] [--dry-run] [--agent|--no-agent]"
+    UPGRADE_HELP = "Usage: chi bundle upgrade <source|name> [--scope system|project] [--force] [--dry-run] [--agent|--no-agent]"
     UNINSTALL_HELP = "Usage: chi bundle uninstall <bundle> [--scope system|project] [--force]"
     BUILD_HELP = <<~TEXT
       Usage: chi bundle build [--scope system|project] [--name NAME] [--version VER] [--description DESC] [--out PATH] [FILES...]
@@ -210,7 +211,13 @@ module Samagotchi
         @stderr.puts UPGRADE_HELP
         return CLI::Exit::USAGE
       end
-      expanded_source = expand_source(source)
+      expanded_source, record = upgrade_source(source)
+      return 1 if expanded_source.nil?
+
+      # The record's source: said once, so it is clear which bundle and where
+      # it comes from when the name alone was given.
+      @stdout.puts "Upgrading #{record.name} from #{expanded_source}" if record
+
       if Samagotchi::MemoryBundle::Profile.shipped_meta?(expanded_source)
         return install_profile(expanded_source, scope: scope, force: force, dry_run: dry_run, word: "Upgrade")
       end
@@ -946,6 +953,35 @@ module Samagotchi
       return src if Samagotchi::MemoryBundle::SourceNormalizer.git_url?(src)
 
       Samagotchi::MemoryBundle::SourceNormalizer.shipped_bundle_dir(src) || File.expand_path(src)
+    end
+
+    # Where an upgrade comes from: the source as given — a git URL, an
+    # existing path, a shipped bundle's name, as install takes them — or,
+    # for the bare name of an installed bundle, the source its record keeps.
+    # A dev install is refused (it already follows its source), and a record
+    # whose source is relative, empty or gone says so. nil after such a
+    # refusal, written to stderr.
+    # @return [Array(String, InstalledBundle, nil), nil] [the source, the
+    #   record that named it (nil for a source as given)]
+    def upgrade_source(source)
+      normalizer = Samagotchi::MemoryBundle::SourceNormalizer
+      given = normalizer.git_url?(source) || normalizer.shipped_bundle_dir(source) || File.exist?(File.expand_path(source))
+      return [expand_source(source), nil] if given
+
+      record = Samagotchi::MemoryBundle::Provenance.new(name: source.to_s.strip).record
+      return [expand_source(source), nil] if record.nil? || record.error?
+
+      if record.dev
+        @stderr.puts "Upgrade failed: #{Samagotchi::MemoryBundle::Installer.dev_install_line(record.name, record.source)}"
+        return nil
+      end
+
+      recorded = record.source.to_s.strip
+      return [recorded, record] if normalizer.git_url?(recorded) || (recorded.start_with?("/") && File.exist?(recorded))
+
+      owner = recorded.empty? ? "#{record.name} has no recorded source" : "#{record.name}'s recorded source #{recorded} is gone"
+      @stderr.puts "Upgrade failed: #{owner}: chi bundle upgrade <path or URL>"
+      nil
     end
 
     def build_conflict_prompt(bundle_name, conflicts, expanded_source)

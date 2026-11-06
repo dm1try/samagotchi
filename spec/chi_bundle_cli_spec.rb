@@ -30,9 +30,10 @@ RSpec.describe "chi bundle (CLI)" do
         Source is the path/URL to the bundle (dir/zip/tar.gz/git).
         --force overwrites existing entries (one that differs is copied to the trash first); default skips them.
 
-      upgrade <source> [--scope system|project] [--force] [--dry-run] [--agent|--no-agent]
+      upgrade <source|name> [--scope system|project] [--force] [--dry-run] [--agent|--no-agent]
         Upgrade a bundle (3-way: a file you didn't edit updates; one you edited takes a text
         merge, the old file in the bundle trash; a real conflict leaves it as it is).
+        A bare NAME upgrades the bundle installed under that name from the source it came from.
         --dry-run shows what would change. --agent launches interactive session on conflict.
 
       uninstall <bundle> [--scope system|project] [--force]
@@ -173,7 +174,7 @@ RSpec.describe "chi bundle (CLI)" do
 
     it "prints each subcommand's own --help" do
       expect(chi("install", "--help")).to eq([INSTALL_USAGE, "", 0])
-      expect(chi("upgrade", "--help")).to eq(["Usage: chi bundle upgrade <source> [--scope system|project] [--force] [--dry-run] [--agent|--no-agent]\n", "", 0])
+      expect(chi("upgrade", "--help")).to eq(["Usage: chi bundle upgrade <source|name> [--scope system|project] [--force] [--dry-run] [--agent|--no-agent]\n", "", 0])
       expect(chi("uninstall", "--help")).to eq(["Usage: chi bundle uninstall <bundle> [--scope system|project] [--force]\n", "", 0])
       expect(chi("build", "--help")).to eq([BUILD_USAGE, "", 0])
     end
@@ -215,6 +216,95 @@ RSpec.describe "chi bundle (CLI)" do
       expect(chi("upgrade", v2)).to eq(["#{change}Updated: a.md\n#{provenance_line("demo")}", "", 0])
       expect(chi("upgrade", v2)).to eq(["Skipped: a.md\n#{provenance_line("demo")}", "", 0])
       expect(File.read(File.join(memories, "a.md"))).to eq("two\n")
+    end
+
+    # A bundle installed from a path, an archive or a git URL keeps that
+    # source in its record, so its name alone is enough to upgrade it: the
+    # first line says where it comes from, and nothing "Source changes".
+    it "upgrades an installed bundle by its name, from the source its record keeps" do
+      src = self.class.make_bundle(File.join(@root, "mine"), name: "demo", version: "1.0.0", content: "one\n")
+      expect(chi("install", src)).to eq(["Installed: a.md\n#{provenance_line("demo")}", "", 0])
+      # The author's next version, in the same folder.
+      self.class.make_bundle(src, name: "demo", version: "2.0.0", content: "two\n")
+
+      expect(chi("upgrade", "demo"))
+        .to eq(["Upgrading demo from #{src}\nUpdated: a.md\n#{provenance_line("demo")}", "", 0])
+      expect(File.read(File.join(memories, "a.md"))).to eq("two\n")
+      expect(chi("upgrade", "demo", "--dry-run"))
+        .to eq(["Upgrading demo from #{src}\nSkipped: a.md\n(dry-run: no changes written)\n", "", 0])
+      expect(JSON.parse(File.read(File.join(memories, ".bundles", "demo", "manifest.json")))["version"]).to eq("2.0.0")
+    end
+
+    it "upgrades a bundle installed from a git URL by its name, cloning again with the #ref it recorded" do
+      repo = self.class.make_bundle(File.join(@root, "repo-dir"), name: "git-demo", version: "1.0.0", content: "one\n")
+      git = ->(*args) { system("git", "-C", repo, *args, out: File::NULL, err: File::NULL) }
+      expect(git.call("init", "-q") && git.call("add", ".") &&
+             git.call("-c", "user.email=t@example.com", "-c", "user.name=t", "commit", "-qm", "v1")).to be(true)
+      branch = `git -C #{repo} rev-parse --abbrev-ref HEAD`.strip
+      url = "file://#{repo}##{branch}"
+      expect(chi("install", url)).to eq(["Installed: a.md\n#{provenance_line("git-demo")}", "", 0])
+
+      self.class.make_bundle(repo, name: "git-demo", version: "2.0.0", content: "two\n")
+      expect(git.call("add", ".") && git.call("-c", "user.email=t@example.com", "-c", "user.name=t", "commit", "-qm", "v2")).to be(true)
+
+      expect(chi("upgrade", "git-demo"))
+        .to eq(["Upgrading git-demo from #{url}\nUpdated: a.md\n#{provenance_line("git-demo")}", "", 0])
+      expect(File.read(File.join(memories, "a.md"))).to eq("two\n")
+    end
+
+    it "upgrades a bundle installed from a zip by its name, extracting it again" do
+      dir = self.class.make_bundle(File.join(@root, "zipped"), name: "zipped", version: "1.0.0", content: "one\n")
+      zip = File.join(@root, "zipped.zip")
+      expect(system("zip", "-qr", zip, ".", chdir: dir)).to be(true)
+      expect(chi("install", zip)).to eq(["Installed: a.md\n#{provenance_line("zipped")}", "", 0])
+
+      self.class.make_bundle(dir, name: "zipped", version: "2.0.0", content: "two\n")
+      expect(system("zip", "-qr", zip, ".", chdir: dir)).to be(true)
+
+      expect(chi("upgrade", "zipped"))
+        .to eq(["Upgrading zipped from #{zip}\nUpdated: a.md\n#{provenance_line("zipped")}", "", 0])
+    end
+
+    # The name is taken from the record only when it isn't a source: a
+    # directory of that name in the cwd is the source, as for install.
+    it "upgrades by name from a directory of that name in the cwd, when there is one" do
+      mine = self.class.make_bundle(File.join(@root, "mine"), name: "demo", version: "1.0.0", content: "one\n")
+      self.class.make_bundle(File.join(@root, "cwd", "demo"), name: "demo", version: "3.0.0", content: "here\n")
+      chi("install", mine)
+
+      # /var is a symlink, so the cwd's own path comes back realpathed.
+      expect(chi("upgrade", "demo"))
+        .to eq(["Source changes: #{mine} → #{File.realpath(File.join(@root, "cwd", "demo"))}\nUpdated: a.md\n#{provenance_line("demo")}", "", 0])
+      expect(File.read(File.join(memories, "a.md"))).to eq("here\n")
+    end
+
+    it "upgrades a shipped bundle by name from chi's own copy, not from its record" do
+      expect(chi("install", "btw")).to eq(["Installed: plugin.rb\nPlugin: plugin.rb (loads at the next chi start)\n#{provenance_line("btw")}", "", 0])
+
+      out, err, code = chi("upgrade", "btw")
+      expect([err, code]).to eq(["", 0])
+      expect(out).to eq("Skipped: plugin.rb\nPlugin: plugin.rb (loads at the next chi start)\n#{provenance_line("btw")}")
+      record = JSON.parse(File.read(File.join(memories, ".bundles", "btw", "manifest.json")))
+      expect(record["source"]).to eq(File.expand_path("../lib/samagotchi/bundles/btw", __dir__))
+    end
+
+    # A record whose source no longer exists (or was never recorded as one):
+    # refuse, and say what to give it.
+    it "refuses an upgrade by name when the recorded source is gone, and says what to pass" do
+      src = self.class.make_bundle(File.join(@root, "mine"), name: "demo", version: "1.0.0", content: "one\n")
+      chi("install", src)
+      record_path = File.join(memories, ".bundles", "demo", "manifest.json")
+      hint = "chi bundle upgrade <path or URL>\n"
+
+      FileUtils.rm_rf(src)
+      expect(chi("upgrade", "demo")).to eq(["", "Upgrade failed: demo's recorded source #{src} is gone: #{hint}", 1])
+
+      # An older record with a relative source, and one with none.
+      File.write(record_path, JSON.generate(JSON.parse(File.read(record_path)).merge("source" => "./mine")))
+      expect(chi("upgrade", "demo")).to eq(["", "Upgrade failed: demo's recorded source ./mine is gone: #{hint}", 1])
+      File.write(record_path, JSON.generate(JSON.parse(File.read(record_path)).merge("source" => nil)))
+      expect(chi("upgrade", "demo")).to eq(["", "Upgrade failed: demo has no recorded source: #{hint}", 1])
+      expect(File.read(File.join(memories, "a.md"))).to eq("one\n")
     end
 
     # A manifest can take an installed bundle's name: an install from another
@@ -352,7 +442,7 @@ RSpec.describe "chi bundle (CLI)" do
     end
 
     it "refuses upgrade and uninstall without a source or name, and an unknown bundle" do
-      expect(chi("upgrade")).to eq(["", "Usage: chi bundle upgrade <source> [--scope system|project] [--force] [--dry-run] [--agent|--no-agent]\n", 2])
+      expect(chi("upgrade")).to eq(["", "Usage: chi bundle upgrade <source|name> [--scope system|project] [--force] [--dry-run] [--agent|--no-agent]\n", 2])
       expect(chi("upgrade", "--bogus")).to eq(["", "Unknown bundle upgrade flag: --bogus\n", 2])
       expect(chi("uninstall")).to eq(["", "Usage: chi bundle uninstall <bundle> [--scope system|project] [--force]\n", 2])
       expect(chi("uninstall", "--bogus")).to eq(["", "Unknown bundle uninstall flag: --bogus\n", 2])
@@ -712,6 +802,10 @@ Hooks removed: 1\n\z})
       hint = "Upgrade failed: sample-plugin is a dev install of #{File.realpath(@plugin_src)}: it follows its source already " \
              "(to leave dev mode: chi bundle uninstall sample-plugin, then chi bundle install without --dev)\n"
       expect(chi("upgrade", @plugin_src)).to eq(["", hint, 1])
+      # Its name alone finds it, and the refusal is the Installer's own line.
+      expect(chi("upgrade", "sample-plugin")).to eq(["", hint, 1])
+      expect(Samagotchi::MemoryBundle::Installer.dev_install_line("sample-plugin", File.realpath(@plugin_src)))
+        .to eq(hint.sub("Upgrade failed: ", "").chomp)
       expect(chi("install", @plugin_src)[1]).to start_with("Install failed: sample-plugin is a dev install")
 
       chi("install", @hooks_src)

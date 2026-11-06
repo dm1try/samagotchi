@@ -1619,6 +1619,11 @@ gem.
   `<memories>/.bundles/<name>/plugin/`. It records the plugin's sha256 and
   `requires_chi`, and warns about a wrong declared sha256 or an unmet
   `requires_chi`.
+- `chi bundle upgrade <name>`: upgrades an installed bundle by name from the
+  source its record keeps (its folder, archive or git URL, `#ref` included),
+  so a bundle from elsewhere needs no path retyped; `upgrade <source>` takes a
+  new one and says `Source changes: old → new`. A dev install is refused: it
+  already follows its source.
 - `chi bundle status [<name>]`: shows `plugin=plugin.rb` in the list. For
   one bundle it shows `Plugin: plugin.rb [ok|modified|missing]` and a
   `requires_chi` failure.

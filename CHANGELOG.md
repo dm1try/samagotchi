@@ -14,6 +14,7 @@ and commands may change between minor versions. How releases are made:
 
 ### Fixed
 
+- `chi bundle upgrade NAME` upgrades a bundle installed from a folder, an archive or a git URL from where it came from: the name alone is enough, the source its record keeps is used (a recorded `#ref` included), and the line says `Upgrading NAME from SOURCE`. A dev install is still refused, in the Installer's own words; a record whose source is gone says so and asks for the path or URL.
 - An objectives proposal card no longer appears after a turn that was canceled, cut with Ctrl-C or failed: only a turn that completed shows the changes it proposed.
 - A bundle `files:` entry with no checksum no longer warns "Checksum mismatch ... expected , got ..." on every strict install: an entry that declares no sha is not verified, while a wrong one still warns.
 - A `delegate` child started in a linked worktree is no longer told to re-delegate with the main checkout as `cwd:` when its task only names a file of main: the work belongs in the worktree. A task naming another worktree still gets that line.
