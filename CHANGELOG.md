@@ -8,25 +8,31 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+## [0.152.0] - 2026-11-06
+
 ### Added
 
-- `chi bundle install` and `chi bundle check` say when a manifest has a key this chi doesn't read (`unknown-key`): it is ignored, and a newer chi reads it from the installed manifest. `chi bundle check` also warns (`requires-chi-floor`) when the manifest itself uses a key newer than the oldest chi its `requires_chi` admits, the way it already does for plugin API calls.
+- `chi bundle install` and `chi bundle check` name a manifest key this chi doesn't read (`unknown-key`); `chi bundle check` also warns (`requires-chi-floor`) when a manifest uses a key newer than its `requires_chi` admits. [docs/plugins.md](docs/plugins.md)
+- `chi bundle status NAME` has a `Manifest:` line saying where the bundle's manifest is read from, and why.
 
 ### Changed
 
-- `chi bundle install` and `chi bundle upgrade` refuse a bundle whose `requires_chi` this chi doesn't meet: exit 1, `NAME can't be installed: it requires chi … (this is chi …)`, and nothing is written (a dry run is refused too). `--force` installs it anyway, with the warnings that its plugin, hooks and rules won't load. `chi bundle check`, `chi bundle try` and `chi update` already pass `--force` or skip such a bundle first. [docs/plugins.md](docs/plugins.md)
-- An installed bundle keeps its `manifest.yml`, and chi reads it at load (hook events, `context_providers:`, `block_renderers:`, settings, `requires_chi`): for a bundle installed by this chi or later, a key the chi that installed it didn't know is read by a newer chi with no reinstall (for a bundle installed before, `chi update` keeps its manifest where it has the bundle's own at the installed version — a bundle chi ships, or one from a folder or archive that is still there — and the system bundle keeps it at the next chi start; for one from git, `chi update` names the `chi bundle upgrade NAME` that reads it again, and `chi bundle status NAME` says on a new `Manifest:` line which a bundle is). An edited `manifest.yml` isn't read; chi falls back to what the install recorded. `chi bundle install --dev` links it, so a manifest edit follows the source. [docs/internals/bundles.md](docs/internals/bundles.md)
+- An installed bundle keeps its `manifest.yml` and chi reads it live, so a newer chi reads keys the installing chi didn't know, with no reinstall. Bundles installed earlier get theirs on `chi update` (shipped bundles, or a folder or archive that is still there; the system bundle at the next start); for one from git, `chi update` names the `chi bundle upgrade NAME` to run. [docs/internals/bundles.md](docs/internals/bundles.md)
+- `chi bundle install` and `chi bundle upgrade` refuse a bundle whose `requires_chi` this chi doesn't meet, and write nothing; `--force` installs it anyway. [docs/plugins.md](docs/plugins.md)
+- `chi bundle upgrade NAME` upgrades a bundle from a folder, archive or git URL from the source its record keeps: the name alone is enough.
+- "Stable for bundles" now covers the manifest schema. [docs/plugins.md](docs/plugins.md)
 
 ### Fixed
 
-- A `chi bundle install` of a bundle that is already installed from the same source says what it actually did: a file that already holds the bundle's bytes is `Up to date: …` rather than `Skipped: …` (which now names only the files really left out), and the last line reads `NAME was already installed from SOURCE: its hooks, rules, plugin and scripts now match it and its record was rewritten`, adding `your own copies of its memories were kept (chi bundle upgrade NAME merges the bundle's changes into them)` when a memory of yours was kept. [docs/internals/bundles.md](docs/internals/bundles.md)
-- `ContextProviders` (a bundle's `context_providers:`) now checks `requires_chi`: an installed bundle this chi is too old for is skipped when a URL is resolved (said once per process per bundle and version), and a source already attached to one is refused by name (`bundle X: it requires chi …`) rather than running its script.
-- `chi bundle upgrade NAME` upgrades a bundle installed from a folder, an archive or a git URL from where it came from: the name alone is enough, the source its record keeps is used (a recorded `#ref` included), and the line says `Upgrading NAME from SOURCE`. A dev install is still refused, in the Installer's own words; a record whose source is gone says so and asks for the path or URL of a copy.
-- An objectives proposal card no longer appears after a turn that was canceled, cut with Ctrl-C or failed: only a turn that completed shows the changes it proposed.
-- A bundle `files:` entry with no checksum no longer warns "Checksum mismatch ... expected , got ..." on every strict install: an entry that declares no sha is not verified, while a wrong one still warns.
-- A `delegate` child started in a linked worktree is no longer told to re-delegate with the main checkout as `cwd:` when its task only names a file of main: the work belongs in the worktree. A task naming another worktree still gets that line.
-- `chi bundle diff NAME FILE` now prints the bundle's new text after the base and your file when the file stays behind, so the sections the "stays behind" line names can be read.
-- `chi bundle try` no longer passes the user's filtered settings (guardrails, memories, hooks, log, web, update…) to the chi it runs in its sandbox through the environment: a variable the sandbox dropped was still inherited by the child, since a spawn environment is merged onto the spawner's rather than replacing it. [docs/internals/bundles.md](docs/internals/bundles.md)
+- `chi bundle diff NAME FILE` shows the bundle's new text for a file that stays behind, so the sections the "stays behind" line names can be read.
+- `chi bundle try` no longer passes the user's dropped settings (guardrails, memories, hooks, log…) to its sandboxed chi through the environment.
+- A bundle's `context_providers:` are skipped when this chi is older than the bundle's `requires_chi`.
+- Reinstalling a bundle from the same source says what it did: `Up to date:` for unchanged files, and a last line naming what was rewritten and which of your memories were kept.
+- A `files:` entry with no checksum no longer warns "Checksum mismatch" on every install.
+- Objectives proposal cards no longer appear after a canceled or failed turn.
+- A `delegate` child in a linked worktree is no longer told to re-delegate to the main checkout.
+
+Update with `chi update` (agents-md 0.1.2, btw 0.1.4, loop-guard 0.3.10, mcp 0.7.6, skills 0.1.9, slow-commands 0.2.5: their `requires_chi` now names the chi that reads their settings).
 
 ## [0.151.0] - 2026-11-05
 
@@ -5711,7 +5717,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.151.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.152.0...HEAD
+[0.152.0]: https://github.com/dm1try/samagotchi/compare/v0.151.0...v0.152.0
 [0.151.0]: https://github.com/dm1try/samagotchi/compare/v0.150.0...v0.151.0
 [0.150.0]: https://github.com/dm1try/samagotchi/compare/v0.149.0...v0.150.0
 [0.149.0]: https://github.com/dm1try/samagotchi/compare/v0.148.0...v0.149.0
