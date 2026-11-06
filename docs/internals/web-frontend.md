@@ -10,8 +10,9 @@ only library. Pure modules (`*_model.js`, `session_state.js`, `sessions_list.js`
 and have `node --test` specs under `spec/web/public/` (happy-dom for the DOM ones); the pages as a whole are covered
 by `npm run e2e` (`spec/e2e/`). `app.js` has no unit spec.
 
-**`app.js` has a size cap**: `npm run lint` fails past `max-lines` in `eslint.config.js` (counted as `wc -l` counts,
-a little over its size today). A new feature goes into a module of its own, wired from `app.js` in a few lines; a
+**`app.js` has a size cap**: `npm run lint` fails past `max-lines` in `eslint.config.js` (counted as `wc -l` counts:
+2000, ratcheted down from 2250 when the versions, the owner's claim links and Verify, the composer's mode and the
+strip's hide went into modules of their own, which left room for a few features' wiring). A new feature goes into a module of its own, wired from `app.js` in a few lines; a
 refactor that shrinks `app.js` ratchets the cap down with it. Never raise it: extract instead.
 
 **New exports go in new modules.** The static JS is served at unversioned URLs. Today every load revalidates
