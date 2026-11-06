@@ -8,6 +8,8 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+## [0.153.0] - 2026-11-06
+
 ### Added
 
 - A `web-search` bundle (`chi bundle install web-search`, in no profile): a `web_search` tool that searches the web through your own SearXNG and returns titles, URLs and snippets for `web_fetch` to read. It is declared on `full` and kits on `base: full`; on kits built on `lean` or `child` it is reachable (`find_tools` finds `chi/web_search`, `call_tool` runs it); `add: [web_search]` in a kit declares it. [docs/bundles.md](docs/bundles.md#the-web-search-bundle)
@@ -19,6 +21,8 @@ and commands may change between minor versions. How releases are made:
 ### Fixed
 
 - An attached context change that arrives while the worker's leaving pass is already in flight is saved as a note before the worker stops, instead of being dropped with its poller.
+
+Update with `chi update` (no installed bundle's version moved; `chi bundle install web-search` adds the new one).
 
 ## [0.152.0] - 2026-11-06
 
@@ -5729,7 +5733,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.152.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.153.0...HEAD
+[0.153.0]: https://github.com/dm1try/samagotchi/compare/v0.152.0...v0.153.0
 [0.152.0]: https://github.com/dm1try/samagotchi/compare/v0.151.0...v0.152.0
 [0.151.0]: https://github.com/dm1try/samagotchi/compare/v0.150.0...v0.151.0
 [0.150.0]: https://github.com/dm1try/samagotchi/compare/v0.149.0...v0.150.0
