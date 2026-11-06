@@ -516,17 +516,21 @@ module ReleaseTools
 
   # A new plugin API call waits in a comment in Plugin::Api::SINCE until it
   # is released (docs/releasing.md); a release that left it there ships it
-  # with no floor for `chi bundle check`'s requires-chi-floor.
+  # with no floor for `chi bundle check`'s requires-chi-floor. A new manifest
+  # key waits the same way in Manifest::SINCE.
   PLUGIN_API = "lib/samagotchi/plugin/api.rb"
+  MANIFEST_KEYS = "lib/samagotchi/memory_bundle/manifest.rb"
   UNRELEASED_API = /^\s*#\s*Unreleased\b.*$/
 
   def unreleased_api_problems(root, version)
-    path = File.join(root, PLUGIN_API)
-    comment = File.exist?(path) ? File.read(path)[UNRELEASED_API] : nil
-    return [] unless comment
+    [[PLUGIN_API, "Plugin::Api::SINCE"], [MANIFEST_KEYS, "Manifest::SINCE"]].filter_map do |rel, table|
+      path = File.join(root, rel)
+      comment = File.exist?(path) ? File.read(path)[UNRELEASED_API] : nil
+      next unless comment
 
-    ["#{PLUGIN_API}: Plugin::Api::SINCE's Unreleased comment still names #{comment.scan(/"([^"]+)"/).flatten.join(", ")}: " \
-     "give each \"#{version}\" in SINCE and drop the comment"]
+      "#{rel}: #{table}'s Unreleased comment still names #{comment.scan(/"([^"]+)"/).flatten.join(", ")}: " \
+        "give each \"#{version}\" in SINCE and drop the comment"
+    end
   end
 
   # The remote attach's temporary refusals (TerminalUI::RemoteLink::NOT_YET:

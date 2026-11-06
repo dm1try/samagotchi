@@ -553,9 +553,30 @@ RSpec.describe ReleaseTools do
       expect(described_class.consistency_problems(tmp)).to eq([])
     end
 
-    it "reads the real Plugin::Api's comment: reworded, the check would pass it by" do
-      lines = File.readlines(File.join(repo_root, ReleaseTools::PLUGIN_API)).grep(/unreleased/i)
-      expect(lines).to all(match(ReleaseTools::UNRELEASED_API).and(match(/"[^"]+"/)))
+    it "names the manifest keys still waiting in Manifest::SINCE's Unreleased comment, in the same words" do
+      write(ReleaseTools::MANIFEST_KEYS, <<~RUBY)
+        SINCE = {
+          "includes" => "0.8.0"
+          # Unreleased (moved up, with its version, at the release: docs/releasing.md): "block_renderers".
+        }.freeze
+      RUBY
+      git("add", ".")
+      git("commit", "-q", "-m", "unreleased key")
+      expect(described_class.consistency_problems(tmp)).to eq(
+        ["#{ReleaseTools::MANIFEST_KEYS}: Manifest::SINCE's Unreleased comment still names block_renderers: " \
+         "give each \"0.2.0\" in SINCE and drop the comment"]
+      )
+
+      write(ReleaseTools::MANIFEST_KEYS, %(SINCE = { "includes" => "0.8.0", "block_renderers" => "0.2.0" }.freeze\n))
+      git("commit", "-q", "-am", "moved up")
+      expect(described_class.consistency_problems(tmp)).to eq([])
+    end
+
+    it "reads both real files' comments: reworded, the check would pass them by" do
+      [ReleaseTools::PLUGIN_API, ReleaseTools::MANIFEST_KEYS].each do |rel|
+        lines = File.readlines(File.join(repo_root, rel)).grep(/unreleased/i)
+        expect(lines).to all(match(ReleaseTools::UNRELEASED_API).and(match(/"[^"]+"/)))
+      end
     end
   end
 end

@@ -86,9 +86,10 @@ module Samagotchi
       # admits a chi that never saw the key. A key the first tag (v0.2.0)
       # already reads has no entry. `files.description` is a files: entry given
       # as a mapping, `*.types` a session_settings:/settings: given as a mapping
-      # of keys to types, `hooks.events` a hook entry with an events: list.
-      # A key added while unreleased waits here as an `# Unreleased` comment,
-      # the way Plugin::Api::SINCE does (docs/releasing.md).
+      # of keys to types, `hooks.events` a hook entry with an events: list. A key
+      # whose release is not out yet waits here as a comment naming it, the way
+      # Plugin::Api::SINCE does, until `release:bump` gives it its version
+      # (docs/releasing.md).
       SINCE = {
         "includes" => "0.8.0",
         "scripts" => "0.32.0",
