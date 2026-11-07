@@ -7,10 +7,10 @@ module Samagotchi
     # by bundle and name. That order doesn't depend on which plugin
     # finished its init first or re-registered a changed tool, so the
     # tool list (part of the prompt's cached prefix) is the same in every
-    # session with the same tools. The
-    # native prompts are rendered from #entries; a turn's loops read the
-    # Tools::ToolSurface built from it (the chat path's tools:, and the
-    # entry whose handler KernelLoop#dispatch runs).
+    # session with the same tools. Its readers (the prompt, a turn's
+    # loops, the tool index, /toolkit) read the Tools::ToolSurface built
+    # from its lists (#entries, #reachable_names, #left_out_names,
+    # #removed_names, #stranded_names) under a toolkit and layers.
     class Registry
       # @!attribute name [String]
       # @!attribute schema [Hash] {name:, description:, parameters:}, as in
@@ -70,7 +70,7 @@ module Samagotchi
       attr_accessor :index
 
       # The session's resolved toolkit (Toolkit::Resolved), which the lists
-      # below and #offered filter by; nil declares every tool (full). The
+      # below filter by; nil declares every tool (full). The
       # Engine sets it at a turn's start, before the prompt is built, and
       # only there: a request's declared tools never change mid-turn.
       attr_accessor :toolkit
@@ -98,36 +98,12 @@ module Samagotchi
 
       def key?(name) = @entries.key?(name.to_s)
 
-      # The entry +name+ names when a turn under +layers+ offers it (the
-      # one a call dispatches to).
-      # @return [Entry, nil]
-      def offered(name, layers: [])
-        entry = self[name]
-        entry if entry&.offered?(layers) && declared?(entry)
-      end
-
-      # The entry +name+ names when the session's toolkit leaves it out (a
-      # real tool the model can't call here, by its name), nil otherwise.
-      # @return [Entry, nil]
-      def left_out(name, layers: [])
-        entry = self[name]
-        entry if entry && left_out?(entry, layers, @toolkit)
-      end
-
       # The tools +toolkit+ (the session's by default) leaves out of a turn
       # under +layers+. The tool index's own aren't, unless it removes them:
       # they are declared when there is something to reach.
       # @return [Array<String>] in declaration order
       def left_out_names(layers: [], toolkit: @toolkit)
         ordered(@entries.values.select { |entry| left_out?(entry, layers, toolkit) }).map(&:name)
-      end
-
-      # The tool +name+ names (a built-in or a plugin's) when the session's
-      # toolkit leaves it out but the tool index reaches it (#reachable_names).
-      # @return [Entry, nil]
-      def indexed(name, layers: [], toolkit: @toolkit)
-        entry = self[name]
-        entry if entry && call_offered?(toolkit) && soft?(entry, layers, toolkit)
       end
 
       # The tools +toolkit+ leaves out of a turn under +layers+ that the tool
@@ -187,9 +163,6 @@ module Samagotchi
       def entries(layers: [], toolkit: @toolkit)
         ordered(@entries.values.select { |entry| entry.offered?(layers) && declared?(entry, toolkit) })
       end
-
-      # @return [Array<Hash>] the schemas, in declaration order
-      def schemas(layers: []) = entries(layers: layers).map(&:schema)
 
       def freeze
         @entries.freeze

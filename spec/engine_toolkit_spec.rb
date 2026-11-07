@@ -294,7 +294,7 @@ RSpec.describe Samagotchi::Engine, "toolkit" do
       turn(sess)
 
       expect(kernel.tools.names).to eq(before)
-      expect(kernel.tools.indexed("late_tool")).to be_nil
+      expect(Samagotchi::Tools::ToolSurface.for(kernel.tools).indexed_entry("late_tool")).to be_nil
       expect(engine.system_prompt).to include("Not loaded in this session (toolkit lean): late_tool. Only the user can load one")
       notices = events.select { |e| e[:type] == :hook_notice && e[:level] == :warn }
       expect(notices.map { |e| [e[:hook], e[:text]] }).to eq(

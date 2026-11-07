@@ -89,15 +89,16 @@ module Samagotchi
       # @return [Array<Hash>] the declared tools' schemas, in prompt order
       def schemas = declared.map(&:schema)
 
-      # The declared entry +name+ names (Registry#offered), nil otherwise.
+      # The declared entry +name+ names (the one a call dispatches to), nil
+      # otherwise.
       # @return [Registry::Entry, nil]
       def declared_entry(name) = declared.find { |entry| entry.name == name.to_s }
 
-      # The entry +name+ names when call_tool reaches it (Registry#indexed).
+      # The entry +name+ names when call_tool reaches it (#index_only).
       # @return [Registry::Entry, nil]
       def indexed_entry(name) = index_only.find { |entry| entry.name == name.to_s }
 
-      # Whether the toolkit leaves +name+'s real tool out (Registry#left_out).
+      # Whether the toolkit leaves +name+'s real tool out (#left_out).
       def left_out?(name) = left_out.key?(name.to_s)
 
       # Whether any tool, declared or not, is registered as +name+.

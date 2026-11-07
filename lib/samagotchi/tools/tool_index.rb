@@ -738,7 +738,8 @@ module Samagotchi
 
         # A chi tool the session declares (a built-in or a plugin's) is no
         # starting server's tool. A layer's tool (forget_outputs) isn't
-        # counted, as before the surface (Registry#offered without layers).
+        # counted, as before the surface (the Registry was asked without
+        # the turn's layers).
         declared = surface.declared_entry(name)
         if declared && declared.source != SOURCE && declared.layer.nil?
           return "Error: #{name} is declared; call it directly"

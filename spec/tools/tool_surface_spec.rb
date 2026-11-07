@@ -29,7 +29,7 @@ RSpec.describe Samagotchi::Tools::ToolSurface do
   it "holds what the Registry declares, reaches and leaves out, in declaration order" do
     s = surface
     expect(s.declared_names).to eq(registry.names)
-    expect(s.schemas).to eq(registry.schemas)
+    expect(s.schemas).to eq(registry.entries.map(&:schema))
     expect(s.index_only.map(&:name)).to eq(registry.reachable_names)
     expect(s.left_out.keys).to eq(registry.left_out_names)
     expect(s.left_out["delegate"]).to eq(:user_only)
