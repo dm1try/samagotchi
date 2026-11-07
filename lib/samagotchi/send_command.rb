@@ -799,6 +799,9 @@ module Samagotchi
              end
       @info.puts("#{short}  sent#{with_images}#{note}")
       true
+    rescue SessionManager::ScratchSession => e
+      @info.puts("#{short}  refused: #{e.message}")
+      false
     rescue SessionManager::OwnedByTUI
       @info.puts("#{short}  refused: it is #{OwnerLock::TUI_BUSY}; send once it ends")
       false

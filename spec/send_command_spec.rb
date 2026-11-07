@@ -523,6 +523,17 @@ RSpec.describe Samagotchi::SendCommand do
       expect(inputs_of(repl)).to be_empty
     end
 
+    it "refuses a live chi scratch session in its one wording, and exits 1" do
+      scratch = make(owner: "worker")
+      scratch.scratch = true
+      scratch.save(state_dir: tmpdir)
+      allow(Process).to receive(:spawn)
+
+      expect(run("-m", "x", scratch.id)).to eq(1)
+      expect(out.string).to eq("#{short(scratch)}  refused: #{Samagotchi::Session::SCRATCH_REFUSED}\n")
+      expect(inputs_of(scratch)).to be_empty
+    end
+
     it "reports a failure in one line, no backtrace" do
       a = make(owner: "worker")
       allow(Samagotchi::SessionManager).to receive(:deliver_turn).and_raise(Errno::EACCES, "input")

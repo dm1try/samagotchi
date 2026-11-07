@@ -128,6 +128,8 @@ module Samagotchi
         when :timeout then raise Error, "session #{sid[0, 8]}'s worker did not answer in time; the message was not sent"
         else raise Error, "the message to session #{sid[0, 8]} could not be written"
         end
+      rescue SessionManager::ScratchSession => e
+        raise Error, "session #{sid[0, 8]}: #{e.message}"
       rescue SessionManager::OwnedByTUI
         raise Error, "session #{sid[0, 8]} is #{OwnerLock::TUI_BUSY}, which takes no messages from others"
       end

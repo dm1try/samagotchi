@@ -229,7 +229,12 @@ module Samagotchi
           SessionManager::DeliverResult.new(status: :accepted, via: via, ack: ack.except("via"))
         when 504 then SessionManager::DeliverResult.new(status: :timeout, ack: { "detail" => ack["detail"] })
         when 409
-          raise SessionManager::OwnedByTUI, ack["session_id"] || id if ack["error"] == "owned_by_tui"
+          if ack["error"] == "owned_by_tui"
+            # A chi scratch session (scratch: true; an older chi web sends none).
+            raise SessionManager::ScratchSession, ack["session_id"] || id if ack["scratch"] == true
+
+            raise SessionManager::OwnedByTUI, ack["session_id"] || id
+          end
 
           SessionManager::DeliverResult.new(status: :refused, code: 409, ack: ack)
         when 404 then raise_refusal(reply)
@@ -709,7 +714,10 @@ module Samagotchi
         case error
         when "not_found" then raise ArgumentError, message.to_s
         when "ambiguous_id" then raise Session::AmbiguousId.new(message, ids: Array(json["ids"]))
-        when "owned_by_tui" then raise SessionManager::OwnedByTUI, sid
+        when "owned_by_tui"
+          raise SessionManager::ScratchSession, sid if json["scratch"] == true
+
+          raise SessionManager::OwnedByTUI, sid
         when "worker_running", "still_stopping" then raise SessionManager::DeleteRefused.new(sid, reason)
         when "busy", "scratch"
           raise SessionManager::ArchiveRefused.new(sid, reason, busy_id: json["busy_id"]) if reason

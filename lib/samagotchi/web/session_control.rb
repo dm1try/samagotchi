@@ -489,8 +489,12 @@ module Samagotchi
       end
 
       # 409 owned_by_tui in OwnedByTUI's own words (stop, restart, a turn, a
-      # command).
-      def owned_by_tui(error) = refusal_response(409, "owned_by_tui", error, session_id: error.session_id)
+      # command); scratch: true for a chi scratch session
+      # (SessionManager::ScratchSession), which a remote client raises again.
+      def owned_by_tui(error)
+        scratch = error.is_a?(SessionManager::ScratchSession) || nil
+        refusal_response(409, "owned_by_tui", error, session_id: error.session_id, scratch: scratch)
+      end
 
       # 409 scratch or busy (every other reason: a turn, a queued prompt, an
       # open step-limit question, in it or a delegate, +busy_id+), with the
