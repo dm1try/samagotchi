@@ -60,6 +60,21 @@ paths (replace them with placeholders), no PATH tools (the suite pins `rg` as fo
 that sets PATH to test the lookup is tagged `:real_rg`), no Ruby-version-dependent `inspect` (a Hash's or an
 exception's text changes between Ruby versions: write the string yourself).
 
+The whole-turn goldens (`spec/engine_turn_golden_spec.rb`, `spec/fixtures/turn_goldens/`) run a real
+`Engine#run_turn` (its own KernelLoop, ChatLoop, ToolRunner, Gate and GuardrailWiring) over `FakeProviderServer` on
+the native (llama.cpp `/completion`, Qwen tool calls), `api: openai` and `api: anthropic` wires: a turn of two tool
+iterations (a muted `memory_read` and a `read`, then a `write` a config rule asks about, allowed through the question
+flow), a `before_turn` hook switching the model (the request names the new model with the old one's sampling), and a
+review participant's turn whose `write` the review boundary refuses. Each golden pins every request (the chi-set
+headers, the body in its key order, the native prompt as text), the turn's events (keys sorted; the context-status
+estimates and clock values masked), each `before_tool_call` payload, the approval asked and the session's messages.
+System 1, the toolkit suggestion, the context judge, the recap and the warm-up are off by config, so the order is the
+turn's own. The arch P3 refactors (TurnContext, turn stages, ToolSurface) keep them byte-identical: a phase that
+changes one stops and asks. An intended change elsewhere: `UPDATE_PROMPTS=1 bundle exec rspec
+spec/engine_turn_golden_spec.rb`, then read `git diff spec/fixtures/turn_goldens/`; a failure writes what the run got
+to `tmp/turn_goldens/<golden>.actual` and names the `diff` to run. Changes to the turn path (engine, kernel loop, chat loop,
+tool runner, gate, guardrail wiring, system prompt, tool declarations, registry) pick it in `script/affected-specs`.
+
 The web specs run in plain node. One that loads lit-html, itself or through a module it imports (`turn_block.js`,
 `turn_html.js`, `card.js`, `copy.js`, `images.js`, `scope.js`, `command_view.js`, `diff_view.js`, `read_view.js`,
 `question_cards.js`, `stream_handlers.js`, `stage_view.js`, `bubbles.js`, `cards_place.js`, the chips, `info_bar.js`, `info_bar_model.js`, `lists_view.js`, `context_chips.js`, `families_view.js`,

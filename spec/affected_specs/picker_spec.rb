@@ -165,6 +165,18 @@ RSpec.describe AffectedSpecs::Picker do
     expect(paths(pick("lib/samagotchi/turn_flow.rb").ruby)).to eq(%w[spec/terminal_ui/event_renderer_spec.rb spec/terminal_ui/attached_loop_spec.rb])
   end
 
+  it "picks the whole-turn goldens for the turn path's files, by a rule" do
+    files["spec/engine_turn_golden_spec.rb"] = ""
+    %w[lib/samagotchi/kernel_loop.rb lib/samagotchi/tool_runner.rb lib/samagotchi/guardrail_wiring.rb
+       lib/samagotchi/llm/chat_loop.rb lib/samagotchi/engine/turn_end.rb].each do |changed|
+      files[changed] = ""
+      golden = pick(changed).ruby.find { |picked| picked.path == "spec/engine_turn_golden_spec.rb" }
+
+      expect(golden&.reason).to eq("rule: whole-turn goldens: a real Engine#run_turn's requests, events and hook " \
+                                   "payloads per wire (#{changed})")
+    end
+  end
+
   it "picks the specs of PrivateFiles' callers, which check it through their own errors, by a rule" do
     users = %w[spec/grants_spec.rb spec/web/push/store_spec.rb spec/web/server_spec.rb]
     users.each { |path| files[path] = "" }
