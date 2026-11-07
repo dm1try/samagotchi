@@ -77,7 +77,7 @@ right-hand column happens.
   would differ from the turn's prompt. Under `full` nothing is filtered and no line is added: the bytes are what
   they were before toolkits.
 - A toolkit suggestion (`toolkit.suggest.mode: on`) is set before `apply_toolkit!` of the turn it was asked on
-  (`Engine#settle_toolkit_suggestion` → `ToolkitBinding#suggest`), and no request goes out before that, so on a
+  (`TurnStages::ToolkitSuggestion#settle` → `ToolkitBinding#suggest`), and no request goes out before that, so on a
   session's first turn it costs nothing. Its **deferred switch** (a later prompt after `undecided`, within
   `toolkit.suggest.defer_turns` / `defer_tokens`) is engine-side, so `/toolkit`'s CacheConfirm doesn't apply: it
   changes the declared tools at the front of the request, and the server re-reads **system prompt + tools +

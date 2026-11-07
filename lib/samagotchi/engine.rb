@@ -55,6 +55,8 @@ require_relative "objectives_audit"
 require_relative "owner_prompt"
 require_relative "side_judgments"
 require_relative "toolkit_suggest"
+require_relative "turn_stages/context_judge"
+require_relative "turn_stages/toolkit_suggestion"
 require_relative "tool_loads"
 require_relative "answer_tail"
 require_relative "archive_store"
@@ -224,11 +226,6 @@ module Samagotchi
       @chat_backend_mutex = Mutex.new
       @side_judgments = SideJudgments.new
       @judgments = build_judgments
-      # On mode's cards an answer brought while a turn ran: shown once it
-      # has ended (#show_context_cards_after_turn).
-      @context_cards_after_turn = []
-      @context_cards_mutex = Mutex.new
-      @toolkit_warmup_thread = nil
       @host_registry = host_registry || HostRegistry.new
       # A model given here (a worker's session model) is the one it runs,
       # so its host is checked; the config default is only checked once it
@@ -380,6 +377,11 @@ module Samagotchi
       # The session's toolkit: the kits (the plugins' too, chi.toolkit),
       # what its next turn declares, the turn-start apply.
       @toolkit_binding = build_toolkit_binding
+      # The turn stages over it and the side asks (TurnStages): System 1's
+      # toolkit suggestion and the attached-context candidate judge, which a
+      # plugin may reach as it loads.
+      @toolkit_suggestion = build_toolkit_suggestion
+      @context_judge = build_context_judge
       # The tools plugins publish without declaring (chi.tool_source), and
       # the search and call tools that reach them (Tools::ToolIndex).
       @tool_index = Tools::ToolIndex.new
@@ -677,7 +679,7 @@ module Samagotchi
       end
       @side_judgments.join(SIDE_JUDGMENTS_JOIN_SECONDS)
       # The warm-up's answer is dropped anyway.
-      stop_toolkit_warmup
+      @toolkit_suggestion.stop_warmup
       left = threads.count(&:alive?)
       Log.warn(:plugins, "anytime_commands_left", count: left) if left.positive?
       @plugin_tasks.kill_leftovers
@@ -926,7 +928,7 @@ module Samagotchi
         raise
       ensure
         release_turn(probe_cancel_before)
-        show_context_cards_after_turn
+        @context_judge.show_cards_after_turn
         # Only a completed turn shows its proposal cards: a canceled, failed
         # or rolled-back turn keeps none, and its proposals are dropped here
         # so the next turn does not show them either.
@@ -1033,7 +1035,7 @@ module Samagotchi
       # On mode's ask starts here too; the turn joins it before
       # apply_toolkit! below, so its latency hides behind the probes and
       # the init wait.
-      toolkit_suggestion = start_toolkit_suggestion(turn)
+      @toolkit_suggestion.start(turn)
 
       # The window and the profile probes run after run_turn's probe-cancel
       # swap, so a Stop cuts them; a failure ends the turn as turn_failed.
@@ -1050,7 +1052,7 @@ module Samagotchi
       # A Stop during the probes: the turn ends before the load-failure
       # warnings, which show once, so the next turn still shows them.
       if turn.controller.cancelled?
-        toolkit_suggestion&.abandon(:canceled)
+        @toolkit_suggestion.abandon(turn, :canceled)
         return false
       end
 
@@ -1067,10 +1069,10 @@ module Samagotchi
       apply_staged_tools!
       # On mode: the suggested kit, before anything is declared (a Stop
       # during the wait is caught by the check below).
-      settle_toolkit_suggestion(turn, toolkit_suggestion)
+      @toolkit_suggestion.settle(turn)
       # The candidate judge: its asks run beside the turn; on mode's
       # attaches reach the model at the next between-turn delivery.
-      start_context_judge(turn)
+      @context_judge.start(turn)
       audit_objectives_incoming(turn)
       apply_toolkit!(session, turn.on_event)
       refresh_participants!(session)
@@ -1094,7 +1096,7 @@ module Samagotchi
     ensure
       # A turn that ended (a failure, an Interrupt) before it settled the
       # ask: its line says so. Nothing once it was settled.
-      toolkit_suggestion&.abandon(:failed)
+      @toolkit_suggestion.abandon(turn, :failed)
     end
     private :prepare_turn
 

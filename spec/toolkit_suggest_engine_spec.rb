@@ -36,7 +36,7 @@ RSpec.describe Samagotchi::Engine do
 
   def start(engine, session: self.session, prompt: "Fix the browser workflow")
     turn = Struct.new(:session, :prompt, :origin).new(session, prompt, Struct.new(:author).new(nil))
-    engine.send(:start_toolkit_suggestion, turn)
+    engine.send(:toolkit_suggestion).start(turn)
   end
 
   it "runs the ask off the turn thread using a copied question and leaves the session unchanged" do
@@ -70,16 +70,14 @@ RSpec.describe Samagotchi::Engine do
   it "logs every offered kit's rules and the built-ins, with no tool list taken before plugins load" do
     engine = build_engine
     dir = Dir.mktmpdir("toolkit-audit")
-    engine.instance_variable_set(:@session_state_dir, File.join(dir, "sessions"))
-    engine.instance_variable_set(:@host_registry, double(host_for_model: [double(name: "model", remote?: true, root_url: "https://model:443"), nil],
-                                                         find_entry: nil))
+    engine.session_state_dir = File.join(dir, "sessions")
     allow(engine).to receive(:effective_model_name).and_return("model")
     answer = Samagotchi::SystemOne::Answer.new(id: "toolkit", type: :choice, choice: "kit:web", confidence: 0.9)
     system_one = instance_double(Samagotchi::SystemOne::Client, host: "judge", ask: { "toolkit" => answer })
     allow(Samagotchi::SystemOne::Client).to receive(:from_config).and_return(system_one)
 
     start(engine)
-    join!(engine.instance_variable_get(:@side_judgments).thread(:toolkit), "the toolkit audit")
+    join!(engine.send(:toolkit_suggestion).ask_thread, "the toolkit audit")
     line = JSON.parse(File.readlines(File.join(dir, Samagotchi::ToolkitSuggest::FILE)).last)
 
     expect(line["kits"].keys).to contain_exactly("full", "web", "coding")
@@ -102,16 +100,14 @@ RSpec.describe Samagotchi::Engine do
     engine.tools.index = engine.tools.index.with(groups: ["mcp"])
     expect(engine.tools.entries(toolkit: nil).map(&:name)).to include("find_tools", "call_tool")
     dir = Dir.mktmpdir("toolkit-audit")
-    engine.instance_variable_set(:@session_state_dir, File.join(dir, "sessions"))
-    engine.instance_variable_set(:@host_registry, double(host_for_model: [double(name: "model", remote?: true, root_url: "https://model:443"), nil],
-                                                         find_entry: nil))
+    engine.session_state_dir = File.join(dir, "sessions")
     allow(engine).to receive(:effective_model_name).and_return("model")
     answer = Samagotchi::SystemOne::Answer.new(id: "toolkit", type: :choice, choice: "kit:web", confidence: 0.9)
     allow(Samagotchi::SystemOne::Client).to receive(:from_config)
       .and_return(instance_double(Samagotchi::SystemOne::Client, host: "judge", ask: { "toolkit" => answer }))
 
     start(engine)
-    join!(engine.instance_variable_get(:@side_judgments).thread(:toolkit), "the toolkit audit")
+    join!(engine.send(:toolkit_suggestion).ask_thread, "the toolkit audit")
     line = JSON.parse(File.readlines(File.join(dir, Samagotchi::ToolkitSuggest::FILE)).last)
 
     expect(line["plugin_tools"]).to eq(["web_search"])
@@ -140,14 +136,13 @@ RSpec.describe Samagotchi::Engine do
       release << true
     end
 
-    expect(engine.instance_variable_get(:@side_judgments).thread(:toolkit)).not_to be_alive
+    expect(engine.send(:toolkit_suggestion).ask_thread).not_to be_alive
     expect(Samagotchi::Engine::SIDE_JUDGMENTS_JOIN_SECONDS).to be < Samagotchi::Engine::SHUTDOWN_JOIN_SECONDS
     expect(Samagotchi::Engine::SIDE_JUDGMENTS_JOIN_SECONDS).to be >= 1.0
   end
 
   it "says so when an eligible turn goes unasked because the last ask still runs" do
     engine = build_engine
-    engine.instance_variable_set(:@host_registry, double(host_for_model: [double(name: "model", remote?: true), nil]))
     allow(engine).to receive(:effective_model_name).and_return("model")
     started = Queue.new
     release = Queue.new
@@ -175,9 +170,6 @@ RSpec.describe Samagotchi::Engine do
 
   it "asks a System 1 host under another name for the model's own server root" do
     engine = build_engine
-    model_host = double(name: "splash", remote?: false, root_url: "http://127.0.0.1:8080")
-    registry = double(host_for_model: [model_host, nil], find_entry: double(root_url: "HTTP://127.0.0.1:8080"))
-    engine.instance_variable_set(:@host_registry, registry)
     allow(engine).to receive(:effective_model_name).and_return("model")
     asked = Queue.new
     system_one = instance_double(Samagotchi::SystemOne::Client, host: "judge")
@@ -219,8 +211,6 @@ RSpec.describe Samagotchi::Engine do
 
   it "warns when the audit ask fails without affecting the turn" do
     engine = build_engine
-    model_host = double(name: "model", remote?: true)
-    engine.instance_variable_set(:@host_registry, double(host_for_model: [model_host, nil]))
     allow(engine).to receive(:effective_model_name).and_return("model")
     system_one = instance_double(Samagotchi::SystemOne::Client, host: "judge")
     allow(system_one).to receive(:ask).and_raise("request failed")
@@ -232,7 +222,7 @@ RSpec.describe Samagotchi::Engine do
 
     s = session
     start(engine, session: s)
-    engine.instance_variable_get(:@side_judgments).thread(:toolkit).join
+    engine.send(:toolkit_suggestion).ask_thread.join
 
     expect(s.toolkit.name).to eq("full")
     expect(s.toolkit_origin).to eq("default")

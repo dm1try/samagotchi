@@ -40,7 +40,7 @@ RSpec.describe Samagotchi::Engine do
   def build_engine
     client = test_client
     @engine = described_class.new(client: client, kernel: test_kernel(client: client), model_name: "Gemma-4B-it")
-    @engine.instance_variable_set(:@session_state_dir, state_dir)
+    @engine.session_state_dir = state_dir
     allow(@engine).to receive(:effective_model_name).and_return("model")
     @engine
   end
@@ -64,8 +64,8 @@ RSpec.describe Samagotchi::Engine do
   end
 
   def judge(engine, session, prompt, author: nil)
-    engine.send(:start_context_judge, turn(session, prompt, author: author))
-    thread = engine.instance_variable_get(:@side_judgments).thread(:context)
+    engine.send(:context_judge).start(turn(session, prompt, author: author))
+    thread = engine.send(:context_judge).asks_thread
     join!(thread, "the context asks") if thread
   end
 
@@ -151,7 +151,7 @@ RSpec.describe Samagotchi::Engine do
     propose(session, "pr-412")
 
     judge(engine, session, "Fix the login redirect")
-    join!(engine.instance_variable_get(:@side_judgments).thread(:context), "the asks")
+    join!(engine.send(:context_judge).asks_thread, "the asks")
     line = store.lines["context.candidate"].first
     expect(line).to include("judgment" => "context.candidate", "session_id" => session.id, "session_model" => "model")
     expect(line["state"]["candidate"]).to include("Fix the login redirect")
@@ -179,7 +179,7 @@ RSpec.describe Samagotchi::Engine do
     # there to be seen while the turn is running.
     def model_waits_for_the_asks(engine, seen = {})
       allow(kernel).to receive(:run) do |messages, **|
-        thread = engine.instance_variable_get(:@side_judgments).thread(:context)
+        thread = engine.send(:context_judge).asks_thread
         join!(thread, "the asks during the turn") if requests.empty? && thread
         seen[:running] = engine.turn_running? if requests.empty?
         seen[:judged] = lines("judged").size if requests.empty?
@@ -241,7 +241,7 @@ RSpec.describe Samagotchi::Engine do
     propose(session, "pr-412")
 
     engine.send(:judge_late_candidates)
-    join!(engine.instance_variable_get(:@side_judgments).thread(:context), "the late ask")
+    join!(engine.send(:context_judge).asks_thread, "the late ask")
 
     expect(lines("judged").first).to include("phase" => "late", "owner_prompts" => 1)
   end
@@ -303,9 +303,9 @@ RSpec.describe Samagotchi::Engine do
       expect(lines("carded").size).to eq(1)
 
       running = false
-      engine.send(:show_context_cards_after_turn)
+      engine.send(:context_judge).show_cards_after_turn
       expect(engine).to have_received(:show_card).once.with(hash_including(id: "context-candidate-pr-412"))
-      engine.send(:show_context_cards_after_turn)
+      engine.send(:context_judge).show_cards_after_turn
       expect(engine).to have_received(:show_card).once
     end
 

@@ -192,7 +192,7 @@ RSpec.describe Samagotchi::Engine, "toolkit suggestion on mode" do
     expect(notices.map { |e| [e[:level], e[:text]] })
       .to eq([[:warn, "toolkit: full (no suggestion: System 1 took over 100 ms) · /toolkit to change"]])
     release << true
-    join!(engine.instance_variable_get(:@side_judgments).thread(:toolkit), "the toolkit ask")
+    join!(engine.send(:toolkit_suggestion).ask_thread, "the toolkit ask")
     expect(log_lines.last).to include("would" => "suggested", "did" => "timeout")
   ensure
     release << true
@@ -225,7 +225,7 @@ RSpec.describe Samagotchi::Engine, "toolkit suggestion on mode" do
     expect(result).not_to be_nil
     expect([sess.toolkit.name, sess.toolkit_origin]).to eq(%w[full default])
     release << true
-    join!(engine.instance_variable_get(:@side_judgments).thread(:toolkit), "the toolkit ask")
+    join!(engine.send(:toolkit_suggestion).ask_thread, "the toolkit ask")
     expect(log_lines.last).to include("did" => "canceled")
   ensure
     release << true
@@ -242,7 +242,7 @@ RSpec.describe Samagotchi::Engine, "toolkit suggestion on mode" do
 
     turn(session, cancel_controller: controller)
     release << true
-    join!(engine.instance_variable_get(:@side_judgments).thread(:toolkit), "the toolkit ask")
+    join!(engine.send(:toolkit_suggestion).ask_thread, "the toolkit ask")
 
     expect(declared).to be_empty
     expect(log_lines.last).to include("did" => "canceled")
@@ -282,7 +282,7 @@ RSpec.describe Samagotchi::Engine, "toolkit suggestion on mode" do
     expect(asked).to be_empty
   end
 
-  def ask_thread = engine.instance_variable_get(:@side_judgments).thread(:toolkit)
+  def ask_thread = engine.send(:toolkit_suggestion).ask_thread
 
   it "lets a Stop win over an answer already in: no switch, the line says canceled (M1)" do
     answers << pick("kit:web", 0.9)
@@ -402,7 +402,7 @@ RSpec.describe Samagotchi::Engine, "toolkit suggestion on mode" do
       sess = session
       during = []
       allow(kernel).to receive(:run) do |messages, **|
-        thread = engine.instance_variable_get(:@side_judgments).thread(:toolkit)
+        thread = engine.send(:toolkit_suggestion).ask_thread
         join!(thread, "the audit ask") if thread
         during << [engine.turn_running?, asked.size]
         Samagotchi::LLM::ModelResult.new(text: "ok", conversation: messages.reject { |m| m[:role].to_s == "system" } +
@@ -421,7 +421,7 @@ RSpec.describe Samagotchi::Engine, "toolkit suggestion on mode" do
       engine.session = session
 
       engine.warm_toolkit_suggestion!
-      join!(engine.instance_variable_get(:@toolkit_warmup_thread), "the warm-up")
+      join!(engine.send(:toolkit_suggestion).warmup_thread, "the warm-up")
 
       expect(asked.size).to eq(1)
     end
@@ -435,7 +435,7 @@ RSpec.describe Samagotchi::Engine, "toolkit suggestion on mode" do
     it "saves the real ask as toolkit.suggest's run" do
       answers << pick("kit:web", 0.9)
       turn(session)
-      join!(engine.instance_variable_get(:@side_judgments).thread(:toolkit), "the ask")
+      join!(engine.send(:toolkit_suggestion).ask_thread, "the ask")
       line = store.lines["toolkit.suggest"].first
       expect(line).to include("judgment" => "toolkit.suggest", "host" => "judge", "mode" => "on", "asked" => true)
       expect(store.versions["toolkit.suggest"].size).to eq(1)
@@ -455,7 +455,7 @@ RSpec.describe Samagotchi::Engine, "toolkit suggestion on mode" do
       sess = session
       sess.scratch = true
       turn(sess)
-      join!(engine.instance_variable_get(:@side_judgments).thread(:toolkit), "the ask")
+      join!(engine.send(:toolkit_suggestion).ask_thread, "the ask")
       expect(store.lines).to be_empty
     end
 
@@ -483,7 +483,7 @@ RSpec.describe Samagotchi::Engine, "toolkit suggestion on mode" do
     sess = session
     engine.session = sess
     engine.warm_toolkit_suggestion!
-    warmup = engine.instance_variable_get(:@toolkit_warmup_thread)
+    warmup = engine.send(:toolkit_suggestion).warmup_thread
     pop!(entered, "the warm-up ask")
 
     turn(sess)
@@ -509,7 +509,7 @@ RSpec.describe Samagotchi::Engine, "toolkit suggestion on mode" do
       engine.session = sess
 
       engine.warm_toolkit_suggestion!
-      join!(engine.instance_variable_get(:@toolkit_warmup_thread), "the warm-up")
+      join!(engine.send(:toolkit_suggestion).warmup_thread, "the warm-up")
 
       expect(asked).to eq([{ project: File.basename(sess.project_root.to_s), prompt: Samagotchi::ToolkitSuggest::WARMUP_PROMPT }])
       expect(log_lines).to be_empty
@@ -525,7 +525,7 @@ RSpec.describe Samagotchi::Engine, "toolkit suggestion on mode" do
         engine.warm_toolkit_suggestion!
       end
 
-      expect(engine.instance_variable_get(:@toolkit_warmup_thread)).to be_nil
+      expect(engine.send(:toolkit_suggestion).warmup_thread).to be_nil
       expect(backend.calls).to eq(0)
     end
 
@@ -535,7 +535,7 @@ RSpec.describe Samagotchi::Engine, "toolkit suggestion on mode" do
 
       engine.warm_toolkit_suggestion!
 
-      expect(engine.instance_variable_get(:@toolkit_warmup_thread)).to be_nil
+      expect(engine.send(:toolkit_suggestion).warmup_thread).to be_nil
     end
   end
 end
