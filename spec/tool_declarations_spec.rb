@@ -8,7 +8,7 @@ require "samagotchi/kernel_loop"
 # flattened for the native prompts, below).
 RSpec.describe Samagotchi::ToolDeclarations do
   it "is the built-in registry's schemas, in order, and declares every built-in tool class" do
-    expect(Samagotchi::Tools::Builtins.default.schemas).to eq(described_class::TOOL_SCHEMAS)
+    expect(Samagotchi::Tools::ToolSurface.for(Samagotchi::Tools::Builtins.default).schemas).to eq(described_class::TOOL_SCHEMAS)
     expect(described_class::TOOL_SCHEMAS.map { |s| s[:name] })
       .to match_array(Samagotchi::KernelLoop::TOOLS.map { |t| t::NAME })
   end
@@ -24,7 +24,7 @@ RSpec.describe Samagotchi::ToolDeclarations do
   end
 
   it "declares no description on execute with execute.description off, in every format" do
-    schemas = Samagotchi::Tools::Builtins.registry(command_description: false).schemas
+    schemas = Samagotchi::Tools::ToolSurface.for(Samagotchi::Tools::Builtins.registry(command_description: false)).schemas
     execute = schemas.find { |s| s[:name] == "execute" }
     expect(execute[:parameters][:properties].keys).to eq(%i[command cwd])
     expect(schemas - [execute]).to eq(described_class::TOOL_SCHEMAS.reject { |s| s[:name] == "execute" })
@@ -37,11 +37,11 @@ RSpec.describe Samagotchi::ToolDeclarations do
   end
 
   it "tells the model a task it leaves running is reported when it finishes, only for a worker's finish wake" do
-    schemas = Samagotchi::Tools::Builtins.registry(task_finish_notes: true).schemas
+    schemas = Samagotchi::Tools::ToolSurface.for(Samagotchi::Tools::Builtins.registry(task_finish_notes: true)).schemas
     changed = schemas.reject { |s| described_class::TOOL_SCHEMAS.include?(s) }
     expect(changed.map { |s| s[:name] }).to eq(%w[execute task_create])
     expect(changed.map { |s| s[:description] }).to all(include("end your turn before it finishes, chi tells you when it does"))
-    expect(Samagotchi::Tools::Builtins.registry.schemas).to eq(described_class::TOOL_SCHEMAS)
+    expect(Samagotchi::Tools::ToolSurface.for(Samagotchi::Tools::Builtins.registry).schemas).to eq(described_class::TOOL_SCHEMAS)
   end
 
   it "only overrides parameters that exist" do
@@ -129,9 +129,9 @@ RSpec.describe Samagotchi::ToolDeclarations, ".flat_schema" do
   it "leaves the built-ins as they are, and the chat path gets a plugin's schema whole" do
     registry = Samagotchi::Tools::Builtins.registry
     registry.register("save_note", schema: schema, handler: ->(*) { "" }, source: "sample-plugin")
-    native = described_class.native_schemas(registry)
+    native = described_class.native_schemas(Samagotchi::Tools::ToolSurface.for(registry))
     expect(native.first(described_class::TOOL_SCHEMAS.size)).to eq(described_class::TOOL_SCHEMAS)
     expect(native.last).to eq(described_class.flat_schema(schema))
-    expect(described_class.chat_schemas(registry.schemas).last).to eq(schema)
+    expect(described_class.chat_schemas(Samagotchi::Tools::ToolSurface.for(registry).schemas).last).to eq(schema)
   end
 end

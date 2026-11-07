@@ -46,7 +46,7 @@ RSpec.describe Samagotchi::Utf8Default do
 
   describe "the system prompt under US-ASCII (no apply!)" do
     let(:tmp) { Dir.mktmpdir("utf8-") }
-    let(:prompt) { Samagotchi::SystemPrompt.new(profile: -> {}, tools: -> { [] }, session: -> {}, thinking: -> {}) }
+    let(:prompt) { Samagotchi::SystemPrompt.new(profile: -> {}, tools: -> {}, session: -> {}, thinking: -> {}) }
 
     around { |example| with_config_home(File.join(tmp, "config")) { example.run } }
     after { FileUtils.rm_rf(tmp) }

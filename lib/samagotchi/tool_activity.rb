@@ -58,11 +58,11 @@ module Samagotchi
     # @param registry [Tools::Registry, nil] the session's tools
     # @param cwd [String, nil] what a file tool's title is relative to (the
     #   worker runs in its session's working directory)
-    def tool_activity_event(tool_name, call, result, registry: nil, cwd: Dir.pwd)
+    def tool_activity_event(tool_name, call, result, registry: nil, cwd: Dir.pwd, surface: nil)
       event = {
         action: tool_activity_action(tool_name, registry: registry, call: call),
         tool: tool_name,
-        params: tool_activity_params(tool_name, call, registry: registry),
+        params: tool_activity_params(tool_name, call, registry: registry, surface: surface),
         status: tool_activity_status(result, tool_name, command: call.is_a?(Hash) ? call[:content] : nil)
       }
       # A grep that found nothing: ok, and the web row says "no match".
@@ -359,7 +359,9 @@ module Samagotchi
       name == "git" && args.first == "diff" && args.intersect?(%w[--quiet --exit-code])
     end
 
-    def tool_activity_params(tool_name, call, registry: nil)
+    # +surface+: the turn's Tools::ToolSurface, for a preview that reads it
+    # (call_tool's); nil outside a turn.
+    def tool_activity_params(tool_name, call, registry: nil, surface: nil)
       case tool_name
       when Tools::Execute::NAME
         "command=#{preview_tool_param(call[:content])}"
@@ -453,7 +455,7 @@ module Samagotchi
         parts << "options=#{preview_tool_param(Array(opts).join(","))}" if opts && !Array(opts).empty?
         parts.join(" ")
       else
-        registry_params(registry_entry(registry, tool_name), call)
+        registry_params(registry_entry(registry, tool_name), call, surface)
       end
     end
 
@@ -472,13 +474,13 @@ module Samagotchi
     # the web's reload also has); nil for a tool the registry doesn't know
     # that has no args:, and for a built-in without its own words above
     # (the reminder tools).
-    def registry_params(entry, call)
+    def registry_params(entry, call, surface = nil)
       return nil if entry&.core?
       return nil if entry.nil? && !call[:args].is_a?(Hash)
 
       if entry&.preview
         begin
-          return entry.preview.call(call)
+          return entry.preview_of(call, surface)
         rescue StandardError => e
           Log.warn(:plugins, "plugin_preview_failed", tool: entry.name, error: e.class.name,
                                                       msg: "#{entry.name} preview failed: #{e.message}")

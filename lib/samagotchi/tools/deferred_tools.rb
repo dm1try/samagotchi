@@ -66,13 +66,13 @@ module Samagotchi
         index = surface.index
         return [] unless index&.deferrable && surface.declared_entry(index.call_name)
 
-        index.deferrable.call.map do |tool|
+        index.deferrable.call(surface).map do |tool|
           Deferred.new(name: tool.acts_as, description: tool.description, schema: tool.schema)
         end
       end
 
       def stub_description(surface, name)
-        tool = surface.index&.unreached_tool(name)
+        tool = surface.index&.unreached_tool(name, surface)
         return STUB_DESCRIPTION unless tool
 
         ToolIndex::ToolkitGroupRefusal.for(tool, surface).stub_description

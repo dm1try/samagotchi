@@ -2,6 +2,7 @@
 
 require "spec_helper"
 require "samagotchi/guardrails"
+require "samagotchi/kernel_loop"
 require "samagotchi/tools/builtins"
 require "samagotchi/tools/tool_index"
 require "samagotchi/plugin/api"
@@ -122,7 +123,7 @@ RSpec.describe Samagotchi::Tools::ToolIndex do
       end
 
       it "declares flat schemas to the native prompts" do
-        schemas = Samagotchi::ToolDeclarations.native_schemas(registry).select { |s| [find_name, call_name].include?(s[:name]) }
+        schemas = Samagotchi::ToolDeclarations.native_schemas(Samagotchi::Tools::ToolSurface.for(registry)).select { |s| [find_name, call_name].include?(s[:name]) }
         expect(schemas).to eq([call_entry, find_entry].map { |e| Samagotchi::ToolDeclarations.flat_schema(e.schema) })
       end
     end
@@ -304,6 +305,44 @@ RSpec.describe Samagotchi::Tools::ToolIndex do
       expect(find_entry.handler.call({ name: find_name, args: { "query" => "delegate", "server" => "x" } }, nil))
         .to start_with("(searched every group)\nCall one with call_tool")
       expect(index.find("delegate", "chi")).to include("chi/delegate: ")
+    end
+
+    it "searches and calls on the turn's surface (the handler's ToolContext), not the Registry as it is now" do
+      lean!
+      turn = Samagotchi::Tools::ToolSurface.for(registry)
+      kctx = instance_double(Samagotchi::KernelLoop::ToolContext, surface: turn)
+      spec = Samagotchi::Plugin::ToolSpec.build("web_search", "Search the web for a query.",
+                                                params: { query: { type: "string", required: true } }) { "found" }
+      Samagotchi::Plugin::ToolSpec.apply(registry, "web-search", [spec], nil)
+
+      expect(index.find("search web")).to include("chi/web_search: ")
+      expect(find_entry.handler.call({ name: find_name, args: { "query" => "search web" } }, kctx))
+        .not_to include("chi/web_search")
+      expect(index.deferred_name("chi/web_search")).to eq("web_search")
+      expect(index.deferred_name("chi/web_search", turn)).to be_nil
+      call = { name: call_name, args: { "tool" => "chi/web_search", "args" => { "query" => "x" } } }
+      expect(index.unwrap(call, turn)).to be_nil
+      expect(index.unwrap(call)).to include(name: "web_search", via: call_name)
+    end
+
+    it "gives call_tool's row and targets what the turn reaches, not a tool registered after it" do
+      lean!
+      turn = Samagotchi::Tools::ToolSurface.for(registry)
+      call_entry = registry[call_name]
+      spec = Samagotchi::Plugin::ToolSpec.build("web_search", "Search the web for a query.",
+                                                params: { query: { type: "string", required: true },
+                                                          n: { type: "integer" } }) { "found" }
+      Samagotchi::Plugin::ToolSpec.apply(registry, "web-search", [spec], nil)
+      call = ->(tool) { { name: call_name, args: { "tool" => tool, "args" => { "query" => "x", "n" => "2" } } } }
+
+      # The Registry now has it: its row and its typed args.
+      expect(call_entry.preview_of(call["chi/web_search"])).to eq("chi/web_search query=x n=2")
+      expect(call_entry.targets_of(call["chi/web_search"])).to include(args: { "query" => "x", "n" => 2 })
+      # The turn's surface doesn't: the row names no args and the args go
+      # untyped, as for a chi/ name the session never had.
+      expect(call_entry.preview_of(call["chi/web_search"], turn)).to eq("chi/web_search")
+      expect(call_entry.targets_of(call["chi/web_search"], turn))
+        .to eq(call_entry.targets_of(call["chi/nope"], turn).merge(acts_as: "web_search", label: "chi: web_search"))
     end
 
     it "never runs a chi tool as a source call (fail closed: only the unwrap runs it)" do

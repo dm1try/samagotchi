@@ -7,10 +7,10 @@ module Samagotchi
     # by bundle and name. That order doesn't depend on which plugin
     # finished its init first or re-registered a changed tool, so the
     # tool list (part of the prompt's cached prefix) is the same in every
-    # session with the same tools. The
-    # native prompts are rendered from #entries; a turn's loops read the
-    # Tools::ToolSurface built from it (the chat path's tools:, and the
-    # entry whose handler KernelLoop#dispatch runs).
+    # session with the same tools. Its readers (the prompt, a turn's
+    # loops, the tool index, /toolkit) read the Tools::ToolSurface built
+    # from its lists (#entries, #reachable_names, #left_out_names,
+    # #removed_names, #stranded_names) under a toolkit and layers.
     class Registry
       # @!attribute name [String]
       # @!attribute schema [Hash] {name:, description:, parameters:}, as in
@@ -27,13 +27,28 @@ module Samagotchi
       # @!attribute layer [Symbol, nil] the LLM context layer the tool
       #   belongs to (LLMContextStrategy): offered only in a turn running
       #   under it (forget_outputs, :forget); nil: always
-      # @!attribute unwrap [#call, nil] (call, layers) → the call it stands
-      #   for, run in its place before the guardrail gate (call_tool on one
-      #   of chi's own tools: Tools::ToolIndex#unwrap), or nil to run it as
-      #   it is; nil on every other tool
+      # @!attribute unwrap [#call, nil] (call, surface) → the call it stands
+      #   for under the turn's Tools::ToolSurface, run in its place before
+      #   the guardrail gate (call_tool on one of chi's own tools:
+      #   Tools::ToolIndex#unwrap), or nil to run it as it is; nil on every
+      #   other tool
       Entry = Struct.new(:name, :schema, :handler, :label, :preview, :targets, :refs, :source, :layer, :unwrap,
                          keyword_init: true) do
         def core? = source == "core"
+
+        # Its preview on +call+ (the row's params), nil without one.
+        # +surface+, the turn's Tools::ToolSurface (nil: none), goes to a
+        # preview that takes a second argument (call_tool's: what the turn
+        # reaches); a plugin's takes the call only.
+        def preview_of(call, surface = nil) = preview && Entry.per_call(preview, call, surface)
+
+        # Its targets on +call+ (what guardrail rules match), nil without
+        # any; +surface+ as #preview_of.
+        def targets_of(call, surface = nil) = targets && Entry.per_call(targets, call, surface)
+
+        def self.per_call(callable, call, surface)
+          callable.arity == 1 ? callable.call(call) : callable.call(call, surface)
+        end
 
         # Offered in a turn under +layers+ (the turn's LLM context layers).
         def offered?(layers) = layer.nil? || Array(layers).include?(layer)
@@ -44,17 +59,19 @@ module Samagotchi
       # name, and +groups+ the source groups registered when the plugins
       # loaded; +loaded+ the entries registered then (nil: whatever is
       # registered now), which alone decide whether the index's tools are
-      # needed (Registry#index_needed?). +deferrable+ (→ the sources'
-      # tools a host that loads tools may declare deferred) and +wrap+
-      # (call → the call_tool call a direct call of one of them runs as, or
-      # nil) are nil when nothing reaches them.
+      # needed (Registry#index_needed?). +deferrable+ (surface → the
+      # sources' tools a host that loads tools may declare deferred),
+      # +wrap+ ((call, surface) → the call_tool call a direct call of one
+      # of them runs as, or nil) and +unreached+ ((name, surface) → a
+      # source tool the toolkit doesn't reach) are nil when nothing reaches
+      # them; each is given the turn's Tools::ToolSurface.
       Index = Data.define(:source, :call_name, :groups, :deferrable, :wrap, :unreached, :loaded) do
         def initialize(source:, call_name:, groups:, deferrable: nil, wrap: nil, unreached: nil, loaded: nil)
           super(source: source, call_name: call_name, groups: Array(groups).map(&:to_s).uniq.freeze,
                 deferrable: deferrable, wrap: wrap, unreached: unreached, loaded: loaded&.dup&.freeze)
         end
 
-        def unreached_tool(name) = unreached&.call(name)
+        def unreached_tool(name, surface) = unreached&.call(name, surface)
       end
 
       def initialize
@@ -67,7 +84,7 @@ module Samagotchi
       attr_accessor :index
 
       # The session's resolved toolkit (Toolkit::Resolved), which the lists
-      # below and #offered filter by; nil declares every tool (full). The
+      # below filter by; nil declares every tool (full). The
       # Engine sets it at a turn's start, before the prompt is built, and
       # only there: a request's declared tools never change mid-turn.
       attr_accessor :toolkit
@@ -95,36 +112,12 @@ module Samagotchi
 
       def key?(name) = @entries.key?(name.to_s)
 
-      # The entry +name+ names when a turn under +layers+ offers it (the
-      # one a call dispatches to).
-      # @return [Entry, nil]
-      def offered(name, layers: [])
-        entry = self[name]
-        entry if entry&.offered?(layers) && declared?(entry)
-      end
-
-      # The entry +name+ names when the session's toolkit leaves it out (a
-      # real tool the model can't call here, by its name), nil otherwise.
-      # @return [Entry, nil]
-      def left_out(name, layers: [])
-        entry = self[name]
-        entry if entry && left_out?(entry, layers, @toolkit)
-      end
-
       # The tools +toolkit+ (the session's by default) leaves out of a turn
       # under +layers+. The tool index's own aren't, unless it removes them:
       # they are declared when there is something to reach.
       # @return [Array<String>] in declaration order
       def left_out_names(layers: [], toolkit: @toolkit)
         ordered(@entries.values.select { |entry| left_out?(entry, layers, toolkit) }).map(&:name)
-      end
-
-      # The tool +name+ names (a built-in or a plugin's) when the session's
-      # toolkit leaves it out but the tool index reaches it (#reachable_names).
-      # @return [Entry, nil]
-      def indexed(name, layers: [], toolkit: @toolkit)
-        entry = self[name]
-        entry if entry && call_offered?(toolkit) && soft?(entry, layers, toolkit)
       end
 
       # The tools +toolkit+ leaves out of a turn under +layers+ that the tool
@@ -184,9 +177,6 @@ module Samagotchi
       def entries(layers: [], toolkit: @toolkit)
         ordered(@entries.values.select { |entry| entry.offered?(layers) && declared?(entry, toolkit) })
       end
-
-      # @return [Array<Hash>] the schemas, in declaration order
-      def schemas(layers: []) = entries(layers: layers).map(&:schema)
 
       def freeze
         @entries.freeze

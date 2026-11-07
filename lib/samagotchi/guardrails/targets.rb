@@ -113,7 +113,9 @@ module Samagotchi
       # @param model_name [String, nil] the bare model name, for a rule's models:
       # @param registry [Tools::Registry, nil] the session's tools: a plugin
       #   tool's entry says what it acts on (its targets:)
-      def self.for(call, context, model_key: nil, model_name: nil, registry: nil)
+      # @param surface [Tools::ToolSurface, nil] the turn's: call_tool's
+      #   targets name what the turn reaches (nil: the Registry now)
+      def self.for(call, context, model_key: nil, model_name: nil, registry: nil, surface: nil)
         tool = call[:name].to_s
         base = context.cwd
         command = nil
@@ -136,7 +138,7 @@ module Samagotchi
         when "memory_write"
           paths << memory_path(call, model_key)
         else
-          given = plugin_targets(call, registry)
+          given = plugin_targets(call, registry, surface)
           command = given[:command]
           given_cwd = given[:cwd].to_s.strip
           cwd = File.expand_path(given_cwd, base) unless given_cwd.empty?
@@ -163,12 +165,12 @@ module Samagotchi
       # logged) when it names a core tool or another bundle's tool, so a
       # call can't pass for one and match (or reuse the approvals of) its
       # rules. label: counts when it is one short line (.label_of).
-      def self.plugin_targets(call, registry)
+      def self.plugin_targets(call, registry, surface = nil)
         entry = registry && registry[call[:name].to_s]
         none = { command: nil, paths: [], cwd: nil, acts_as: nil, args: nil, label: nil }
         return none unless entry && !entry.core? && entry.targets
 
-        given = entry.targets.call(call)
+        given = entry.targets_of(call, surface)
         return none unless given.is_a?(Hash)
 
         given = given.transform_keys(&:to_sym)

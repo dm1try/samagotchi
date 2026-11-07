@@ -60,7 +60,12 @@ RSpec.describe Samagotchi::Engine, "tool surface" do
     published = nil
     calls.replace(%w[read nope])
     mid_turn << -> { published = engine.send(:turn_context).surface }
-    expect(Samagotchi::Tools::ToolSurface).to receive(:for).once.and_call_original
+    # The prompt, the toolkit's apply and the tool index read the Registry
+    # as a surface of their own; the turn's is generate's (the only one
+    # built with the host's loads_tools).
+    allow(Samagotchi::Tools::ToolSurface).to receive(:for).and_call_original
+    expect(Samagotchi::Tools::ToolSurface).to receive(:for).with(engine.tools, hash_including(:loads_tools))
+                                                           .once.and_call_original
 
     engine.run_turn(session, "hi")
 
@@ -69,6 +74,23 @@ RSpec.describe Samagotchi::Engine, "tool surface" do
     expect(published).to equal(surface)
     expect(surface.declared_names).to eq(engine.tools.names)
     expect(outputs.first.last).to start_with("Error: no such tool. Available: ")
+  end
+
+  it "hands the turn's surface itself to the tool index's handlers, never one read from the Registry" do
+    received = []
+    index = engine.instance_variable_get(:@tool_index)
+    allow(index).to receive(:find).and_wrap_original do |original, *args, **kwargs|
+      received << kwargs[:surface]
+      original.call(*args, **kwargs)
+    end
+    calls.replace(%w[find_tools])
+
+    engine.run_turn(session(Samagotchi::Toolkit.new(name: "lean")), "hi")
+
+    surface = contexts.first.surface
+    expect(surface.declared_names).to include("find_tools")
+    expect(received.size).to eq(2)
+    expect(received).to all(equal(surface))
   end
 
   it "keeps the running turn's tools through a /toolkit change, a plugin's new tool set and a direct register; " \
@@ -107,8 +129,7 @@ RSpec.describe Samagotchi::Engine, "tool surface" do
     prompt_surfaces = []
     builder = engine.instance_variable_get(:@prompt_builder)
     allow(builder).to receive(:build).and_wrap_original do |original, **kwargs|
-      prompt_surfaces << Samagotchi::Tools::ToolSurface.for(engine.tools, layers: kwargs[:layers])
-      original.call(**kwargs)
+      original.call(**kwargs).tap { prompt_surfaces << builder.instance_variable_get(:@last).surface }
     end
 
     engine.run_turn(sess, "hi")

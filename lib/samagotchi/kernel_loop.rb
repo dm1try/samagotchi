@@ -122,6 +122,11 @@ module Samagotchi
       # forget_outputs: the forget layer's call on the running turn's
       # conversation (KernelLoop#forget_outputs).
       def forget_outputs(call) = @kernel.forget_outputs(call, @context)
+
+      # The turn's Tools::ToolSurface (TurnContext#surface), else one
+      # computed now from the kernel's tools (a bare kernel): what the tool
+      # index's handlers (find_tools, call_tool) read.
+      def surface = Tools::ToolSurface.of(@context, @kernel.tools)
     end
 
     DEFAULT_MAX_TOOL_OUTPUT_CHARS = 10_000
@@ -1227,7 +1232,7 @@ module Samagotchi
         result = surface.unknown_tool_error(call[:name], via: call[:via])
         return {
           output: result,
-          activity: ToolActivity.tool_activity_event(call[:name], call, result, registry: tools)
+          activity: ToolActivity.tool_activity_event(call[:name], call, result, registry: tools, surface: surface)
         }
       end
 
@@ -1245,7 +1250,7 @@ module Samagotchi
       dump_log("tool_result", result, model: model, tool: call[:name])
       dispatched = {
         output: "[#{call[:name]}]\n#{result}",
-        activity: ToolActivity.tool_activity_event(call[:name], call, result, registry: tools)
+        activity: ToolActivity.tool_activity_event(call[:name], call, result, registry: tools, surface: surface)
       }
       # Images the tool returned (read's ImageResult, a plugin's ToolResult):
       # ToolRunner attaches them (or says why not).
@@ -1268,7 +1273,7 @@ module Samagotchi
       result = "Error: #{e.message}"
       {
         output: "[#{call[:name]}] #{result}",
-        activity: ToolActivity.tool_activity_event(call[:name], call, result, registry: tools)
+        activity: ToolActivity.tool_activity_event(call[:name], call, result, registry: tools, surface: surface)
       }
     end
   end

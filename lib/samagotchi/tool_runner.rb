@@ -91,7 +91,7 @@ module Samagotchi
       # on (the gate, the row, the result): rules, approvals and hooks see
       # the real call, with via: (Tools::ToolIndex#unwrap).
       call = unwrapped(call, context)
-      params = ToolActivity.tool_activity_params(call[:name], call, registry: tools)
+      params = ToolActivity.tool_activity_params(call[:name], call, registry: tools, surface: surface(context))
       # The gate runs first, so tool_call_started shows the call that runs.
       # A tool the session's toolkit leaves out skips it: no before_tool_call
       # hook, no approval card for a call that can't run (KernelLoop#dispatch
@@ -108,7 +108,7 @@ module Samagotchi
                   evaluate(call, context, iteration, params)
                 end
       call = verdict.call
-      params = ToolActivity.tool_activity_params(call[:name], call, registry: tools)
+      params = ToolActivity.tool_activity_params(call[:name], call, registry: tools, surface: surface(context))
       label = plugin_label(call[:name])
       # Kept on the raw event for in-worker hooks and metrics, not sent to SSE clients.
       started = { type: :tool_call_started, iteration: iteration, call_count: call_count, call_index: call_index,
@@ -137,7 +137,7 @@ module Samagotchi
       entry_before = before.equal?(NOT_AN_EDIT) ? nil : MemoryBundle::EntrySize.measure_file(Tools::ToolPath.normalize(call[:path]))
       elapsed_ms = nil
       if verdict.deny?
-        result = denied(call, verdict)
+        result = denied(call, verdict, context)
       else
         dispatched_at = @clock.call
         result = dispatch(call, context)
@@ -157,7 +157,7 @@ module Samagotchi
       tool_text = output.sub(/\A\[#{Regexp.escape(call[:name].to_s)}\](?:\n| )/, "")
       # The gate may have replaced the call (known-names corrects a near
       # miss): one leading line tells the model what actually ran.
-      if (changed = changed_call_line(original, call))
+      if (changed = changed_call_line(original, call, context))
         output = "#{changed}\n#{output}"
       end
       cap = output_cap(call, max_tool_output_chars, context)
@@ -422,7 +422,7 @@ module Samagotchi
 
       surface = surface(context)
       call = wrapped(surface, call)
-      surface.declared_entry(call[:name])&.unwrap&.call(call, surface.layers) || call
+      surface.declared_entry(call[:name])&.unwrap&.call(call, surface) || call
     rescue StandardError => e
       Log.warn(:turn, "tool_unwrap_failed", tool: call[:name].to_s, error: "#{e.class}: #{e.message}")
       call
@@ -434,7 +434,7 @@ module Samagotchi
       wrap = surface.index&.wrap
       return call unless wrap && surface.loads_tools && !surface.registered?(call[:name])
 
-      wrap.call(call) || call
+      wrap.call(call, surface) || call
     end
 
     # A call that can't run in this turn as it is, by its name: a real tool
@@ -460,7 +460,7 @@ module Samagotchi
 
       surface = surface(context)
       index = surface.index
-      return unless index.respond_to?(:unreached_tool)
+      return unless index
 
       name = if call[:name] == index.call_name
                args = call[:args].is_a?(Hash) ? call[:args] : {}
@@ -468,7 +468,7 @@ module Samagotchi
              else
                call[:name]
              end
-      tool = index.unreached_tool(name)
+      tool = index.unreached_tool(name, surface)
       tool && Tools::ToolIndex::ToolkitGroupRefusal.for(tool, surface)
     end
 
@@ -485,10 +485,10 @@ module Samagotchi
     # asked for: "ran as: <tool> <changed args>", or nil when nothing
     # changed. The args are the changed call's activity params, so the line
     # stays short.
-    def changed_call_line(original, call)
+    def changed_call_line(original, call, context)
       return nil if original == call
 
-      params = ToolActivity.tool_activity_params(call[:name], call, registry: tools)
+      params = ToolActivity.tool_activity_params(call[:name], call, registry: tools, surface: surface(context))
       ["ran as: #{call[:name]}", params].compact.join(" ")
     end
 
@@ -522,10 +522,10 @@ module Samagotchi
 
     # A legacy veto keeps its old text; a verdict's deny tells the model
     # who decided and not to route around it.
-    def denied(call, verdict)
+    def denied(call, verdict, context)
       if verdict.rule == Tools::ToolIndex::ToolkitGroupRefusal::RULE
         output = "[#{call[:name]}] #{verdict.reason}"
-        activity = ToolActivity.tool_activity_event(call[:name], call, output, registry: tools)
+        activity = ToolActivity.tool_activity_event(call[:name], call, output, registry: tools, surface: surface(context))
         return { output: output, activity: activity.merge(status: "blocked", guardrail: verdict.to_activity) }
       end
 
@@ -535,7 +535,7 @@ module Samagotchi
                else
                  "[#{call[:name]}] Error: #{verdict.deny_text}"
                end
-      activity = ToolActivity.tool_activity_event(call[:name], call, output, registry: tools)
+      activity = ToolActivity.tool_activity_event(call[:name], call, output, registry: tools, surface: surface(context))
       { output: output, activity: activity.merge(status: "blocked", guardrail: verdict.to_activity) }
     end
 

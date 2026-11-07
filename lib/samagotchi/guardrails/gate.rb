@@ -120,7 +120,8 @@ module Samagotchi
       end
 
       def targets_for(call, judged, turn)
-        Targets.for(call, judged, model_key: turn.model_key, model_name: turn.model_name, registry: @tools)
+        Targets.for(call, judged, model_key: turn.model_key, model_name: turn.model_name, registry: @tools,
+                                  surface: turn.surface)
       end
 
       # Registry#fire_each rescues a raising hook itself.

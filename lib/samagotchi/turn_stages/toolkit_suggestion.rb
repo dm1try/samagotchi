@@ -202,7 +202,8 @@ module Samagotchi
         end.freeze
         default_snapshot = ToolkitSuggest::Candidate.new(name: default.name.dup.freeze, description: nil,
                                                          rules: ToolkitSuggest.rules(default.resolve(kits)))
-        registered = @tools.entries(toolkit: nil).reject { |entry| entry.source == Tools::ToolIndex::SOURCE }
+        registered = Tools::ToolSurface.for(@tools, toolkit: nil).declared
+                                       .reject { |entry| entry.source == Tools::ToolIndex::SOURCE }
         core_tools, plugin_tools = registered.partition(&:core?).map { |entries| entries.map { |entry| entry.name.dup.freeze }.freeze }
         state = ToolkitSuggest.question(
           default: default, kits: kits, project: File.basename(session.project_root.to_s),

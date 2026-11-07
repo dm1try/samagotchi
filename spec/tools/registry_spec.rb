@@ -24,7 +24,7 @@ RSpec.describe Samagotchi::Tools::Registry do
   it "keeps entries in declaration order and refuses a second one with the same name" do
     registry = extended_registry
     expect(registry.names.last).to eq("echo")
-    expect(registry.schemas.last).to eq(schema)
+    expect(Samagotchi::Tools::ToolSurface.for(registry).schemas.last).to eq(schema)
     expect(registry["echo"].core?).to be(false)
     expect { registry.register("echo", schema: schema, handler: ->(*) {}) }.to raise_error(ArgumentError)
   end
@@ -49,8 +49,8 @@ RSpec.describe Samagotchi::Tools::Registry do
 
       builtins = Samagotchi::Tools::Builtins.default.names
       expect(first.names).to eq(builtins + %w[checkin_wait mcp_alpha mcp_zeta])
-      expect(second.schemas).to eq(first.schemas)
-      expect(Samagotchi::ToolDeclarations.native_schemas(second)).to eq(Samagotchi::ToolDeclarations.native_schemas(first))
+      expect(Samagotchi::Tools::ToolSurface.for(second).schemas).to eq(Samagotchi::Tools::ToolSurface.for(first).schemas)
+      expect(Samagotchi::ToolDeclarations.native_schemas(Samagotchi::Tools::ToolSurface.for(second))).to eq(Samagotchi::ToolDeclarations.native_schemas(Samagotchi::Tools::ToolSurface.for(first)))
     end
 
     it "keeps a changed tool in its place" do
@@ -73,13 +73,13 @@ RSpec.describe Samagotchi::Tools::Registry do
       registry = gated_registry
       builtins = Samagotchi::Tools::Builtins.default.names
       expect(registry.names).to eq(builtins + %w[echo])
-      expect(registry.schemas).not_to include(include(name: "tidy"))
+      expect(Samagotchi::Tools::ToolSurface.for(registry).schemas).not_to include(include(name: "tidy"))
       expect(registry.names(layers: [:stale])).to eq(builtins + %w[echo])
       expect(registry.names(layers: %i[stale forget])).to eq(builtins + %w[forget_outputs tidy echo])
-      expect(Samagotchi::ToolDeclarations.native_schemas(registry, layers: [:forget]).map { |s| s[:name] }).to include("tidy")
-      expect(registry.offered("tidy")).to be_nil
-      expect(registry.offered("tidy", layers: [:forget]).name).to eq("tidy")
-      expect(registry.offered("echo").name).to eq("echo")
+      expect(Samagotchi::ToolDeclarations.native_schemas(Samagotchi::Tools::ToolSurface.for(registry, layers: [:forget])).map { |s| s[:name] }).to include("tidy")
+      expect(Samagotchi::Tools::ToolSurface.for(registry).declared_entry("tidy")).to be_nil
+      expect(Samagotchi::Tools::ToolSurface.for(registry, layers: [:forget]).declared_entry("tidy").name).to eq("tidy")
+      expect(Samagotchi::Tools::ToolSurface.for(registry).declared_entry("echo").name).to eq("echo")
     end
 
     it "is an unknown tool to the kernel and missing from the chat tools unless the turn runs under its layer" do
@@ -183,7 +183,7 @@ RSpec.describe Samagotchi::Tools::Registry do
     engine = Samagotchi::Engine.new(client: instance_double(Samagotchi::Client), kernel: kernel,
                                     profile: :gemma4)
     expect(kernel.tools).not_to be(Samagotchi::Tools::Builtins.default)
-    expect(kernel.tools.schemas).to eq(Samagotchi::ToolDeclarations::TOOL_SCHEMAS)
+    expect(Samagotchi::Tools::ToolSurface.for(kernel.tools).schemas).to eq(Samagotchi::ToolDeclarations::TOOL_SCHEMAS)
     expect(engine.assist_system_prompt).to include("declaration:execute{")
   end
 
@@ -197,20 +197,20 @@ RSpec.describe Samagotchi::Tools::Registry do
       expect(registry.names).to include("execute")
       expect(registry.names(toolkit: lean.changed(add: ["echo"]))).to include("echo")
       expect(registry.names(layers: [:forget])).to include("forget_outputs")
-      expect(registry.schemas.map { |schema| schema[:name] }).to eq(registry.names)
-      expect(Samagotchi::ToolDeclarations.native_schemas(registry).map { |schema| schema[:name] }).to eq(registry.names)
+      expect(Samagotchi::Tools::ToolSurface.for(registry).schemas.map { |schema| schema[:name] }).to eq(registry.names)
+      expect(Samagotchi::ToolDeclarations.native_schemas(Samagotchi::Tools::ToolSurface.for(registry)).map { |schema| schema[:name] }).to eq(registry.names)
     end
 
     it "doesn't offer a left-out tool, and says it is one" do
       registry = extended_registry
       registry.toolkit = lean
-      expect(registry.offered("delegate")).to be_nil
-      expect(registry.left_out("delegate")&.name).to eq("delegate")
-      expect(registry.left_out("execute")).to be_nil
-      expect(registry.left_out("nope")).to be_nil
+      expect(Samagotchi::Tools::ToolSurface.for(registry).declared_entry("delegate")).to be_nil
+      expect(Samagotchi::Tools::ToolSurface.for(registry).left_out?("delegate")).to be(true)
+      expect(Samagotchi::Tools::ToolSurface.for(registry).left_out?("execute")).to be(false)
+      expect(Samagotchi::Tools::ToolSurface.for(registry).left_out?("nope")).to be(false)
       expect(registry.left_out_names).to eq(%w[register_reminder cancel_reminder list_reminders list_sessions send_note
                                                delegate delegate_result objectives echo])
-      expect(registry.left_out("echo")&.name).to eq("echo")
+      expect(Samagotchi::Tools::ToolSurface.for(registry).left_out?("echo")).to be(true)
       expect(registry["delegate"]).not_to be_nil
     end
 
@@ -232,10 +232,10 @@ RSpec.describe Samagotchi::Tools::Registry do
         expect(registry.reachable_names).to eq(%w[register_reminder cancel_reminder list_reminders list_sessions send_note
                                                   delegate_result objectives])
         expect(registry.removed_names).to eq(%w[delegate echo])
-        expect(registry.indexed("send_note")&.name).to eq("send_note")
-        expect(registry.indexed("delegate")).to be_nil
-        expect(registry.indexed("execute")).to be_nil
-        expect(registry.indexed("forget_outputs", layers: [:forget])).to be_nil
+        expect(Samagotchi::Tools::ToolSurface.for(registry).indexed_entry("send_note")&.name).to eq("send_note")
+        expect(Samagotchi::Tools::ToolSurface.for(registry).indexed_entry("delegate")).to be_nil
+        expect(Samagotchi::Tools::ToolSurface.for(registry).indexed_entry("execute")).to be_nil
+        expect(Samagotchi::Tools::ToolSurface.for(registry, layers: [:forget]).indexed_entry("forget_outputs")).to be_nil
       end
 
       it "reaches a plugin tool the kit leaves out like a built-in, never the index's own or a layer's tool" do
@@ -245,15 +245,15 @@ RSpec.describe Samagotchi::Tools::Registry do
         expect(registry.reachable_names.last).to eq("echo")
         expect(registry.reachable_names).not_to include("find_tools", "call_tool", "forget_outputs")
         expect(registry.reachable_names(layers: [:forget])).not_to include("forget_outputs")
-        expect(registry.indexed("echo")&.name).to eq("echo")
-        expect(registry.indexed("call_tool")).to be_nil
+        expect(Samagotchi::Tools::ToolSurface.for(registry).indexed_entry("echo")&.name).to eq("echo")
+        expect(Samagotchi::Tools::ToolSurface.for(registry).indexed_entry("call_tool")).to be_nil
         expect(registry.names).to include("find_tools", "call_tool")
 
         registry.toolkit = kit(add: %w[echo])
         expect(registry.names).to include("echo")
-        expect(registry.indexed("echo")).to be_nil
+        expect(Samagotchi::Tools::ToolSurface.for(registry).indexed_entry("echo")).to be_nil
         registry.toolkit = kit(remove: %w[echo])
-        expect(registry.indexed("echo")).to be_nil
+        expect(Samagotchi::Tools::ToolSurface.for(registry).indexed_entry("echo")).to be_nil
         expect(registry.removed_names).to eq(%w[echo])
       end
 
@@ -314,7 +314,7 @@ RSpec.describe Samagotchi::Tools::Registry do
       it "is nothing when the toolkit removes call_tool, or on full" do
         registry.toolkit = kit(remove: %w[call_tool])
         expect(registry.reachable_names).to eq([])
-        expect(registry.indexed("send_note")).to be_nil
+        expect(Samagotchi::Tools::ToolSurface.for(registry).indexed_entry("send_note")).to be_nil
         registry.toolkit = nil
         expect(registry.reachable_names).to eq([])
         expect(registry.removed_names).to eq([])
@@ -323,7 +323,7 @@ RSpec.describe Samagotchi::Tools::Registry do
 
     it "declares everything with none (full), as before" do
       registry = extended_registry
-      expect(registry.schemas).to eq(Samagotchi::ToolDeclarations::TOOL_SCHEMAS + [schema])
+      expect(Samagotchi::Tools::ToolSurface.for(registry).schemas).to eq(Samagotchi::ToolDeclarations::TOOL_SCHEMAS + [schema])
       expect(registry.left_out_names).to eq([])
     end
 

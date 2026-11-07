@@ -81,7 +81,7 @@ RSpec.describe "ChatLoop's deferred tools" do
     registry.toolkit = Samagotchi::Toolkit::Resolved.new(name: "coding", all_core: true, groups: [])
     index.refresh!
 
-    expect(Samagotchi::ToolDeclarations.native_schemas(registry).map { |schema| schema[:name] })
+    expect(Samagotchi::ToolDeclarations.native_schemas(Samagotchi::Tools::ToolSurface.for(registry)).map { |schema| schema[:name] })
       .not_to include("find_tools", "call_tool")
 
     chat = adapter(FakeChatAdapter.text("ok"))
