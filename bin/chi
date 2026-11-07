@@ -436,13 +436,13 @@ if launch == :attached
   exit Samagotchi::TerminalUI::AttachLauncher.exit_status(ended)
 end
 
+# --non-interactive: the -p prompt's one turn in this process (TerminalUI,
+# the one-shot host); bare, a no-op that creates no session.
 require "samagotchi/cli/exit"
 begin
   ended = Samagotchi::TerminalUI.new(
     prompt: options[:prompt],
     session_id: options[:resume],
-    no_interrupt: options[:no_interrupt] || options[:non_interactive],
-    no_default_input: options[:no_default_input],
     memories: options[:memories] || [],
     muted_memories: options[:muted] || [],
     llm_context: options[:llm_context] || {},
@@ -452,13 +452,11 @@ begin
     toolkit_flags: options[:toolkit_flags] || [],
     settings: options[:settings],
     parent_answers: options[:parent_answers],
-    non_interactive: options[:non_interactive],
     model_name: options[:model],
     scratch: scratch
   ).run
-  # `chi -p X </dev/null`: the turn failed (nothing was sent again); -p
-  # --non-interactive: the turn ended with no answer or at the iteration
-  # limit, or Ctrl-C cancelled it.
+  # The turn failed, ended with no answer or at the iteration limit, or
+  # Ctrl-C cancelled it.
   exit 1 if %i[turn_failed empty_answer iteration_limit].include?(ended)
   exit Samagotchi::CLI::Exit::INTERRUPTED if ended == :interrupted
 rescue Samagotchi::TerminalUI::SessionBusy, Samagotchi::TerminalUI::SessionNotFound, Samagotchi::ModelProfile::MissingModel,
@@ -466,11 +464,11 @@ rescue Samagotchi::TerminalUI::SessionBusy, Samagotchi::TerminalUI::SessionNotFo
   warn "Error: #{e.message}"
   exit 1
 rescue Samagotchi::LLM::ProviderError => e
-  # -p --non-interactive: the turn failed; its prompt is in the session.
+  # The turn failed; its prompt is in the session.
   warn "Error: #{e.summary}"
   exit 1
 rescue Samagotchi::ImageStore::Error => e
-  # -p --non-interactive: an @path image that can't be used.
+  # An @path image that can't be used.
   warn "Error: #{e.message}"
   exit 1
 end

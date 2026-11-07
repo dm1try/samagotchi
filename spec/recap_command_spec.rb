@@ -112,16 +112,6 @@ RSpec.describe "/recap on|off|default", :recap do
     lines = commands.run("/help").output.lines.map(&:rstrip)
     recap = lines.select { |line| line.split.first == "/recap" }
     expect(recap).to eq(["  /recap              show the session's recap (in a terminal); on|off|default sets this session's own  (mid-turn too)"])
-    expect(engine.command_registry.completions(:repl).count("/recap")).to eq(1)
-  end
-
-  it "saves the REPL's session when it changed, and the bare /recap then says it is off for this session" do
-    ui = Samagotchi::TerminalUI.new(client: instance_double(Samagotchi::Client), surface: Class.new { def commit(*) = nil }.new)
-    ui.engine.session = session
-    allow(session).to receive(:save)
-    ui.send(:run_input_line, session, "/recap off")
-    expect(session).to have_received(:save).once
-    expect(ui.engine.recap).to be_nil
-    expect(ui.send(:handle_recap_command)).to eq(Samagotchi::TerminalUI::Formatting::RECAP_SESSION_OFF_TEXT)
+    expect(engine.command_registry.completions(:attached).count("/recap")).to eq(1)
   end
 end

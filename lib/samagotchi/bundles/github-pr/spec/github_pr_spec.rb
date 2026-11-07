@@ -635,27 +635,25 @@ RSpec.describe "The github-pr bundle", :bundle do
       # A ctx with other settings for the same session (another load's).
       def ctx_with(new_settings) = load(new_settings).ctx
 
-      %i[repl non_interactive].each do |name|
-        context "in #{name == :repl ? "the REPL" : "-p --non-interactive"}" do
-          let(:interface) { name }
+      context "in -p --non-interactive" do
+        let(:interface) { :non_interactive }
 
-          it "proposes the branch's PR (gh pr view) but fetches no line-link data (no gh api)" do
+        it "proposes the branch's PR (gh pr view) but fetches no line-link data (no gh api)" do
+          fake_gh_with_view
+          expect(run_hooks).to eq("proposed pr-42")
+          expect(gh_calls).to include(a_string_starting_with("pr view"))
+          expect(api_calls).to eq([])
+          expect(answer("see lib/foo.rb:28")).to eq("see lib/foo.rb:28")
+        end
+
+        context "with line_links: always" do
+          let(:settings) { { "line_links" => "always" } }
+
+          it "fetches and links as a worker does" do
             fake_gh_with_view
-            expect(run_hooks).to eq("proposed pr-42")
-            expect(gh_calls).to include(a_string_starting_with("pr view"))
-            expect(api_calls).to eq([])
-            expect(answer("see lib/foo.rb:28")).to eq("see lib/foo.rb:28")
-          end
-
-          context "with line_links: always" do
-            let(:settings) { { "line_links" => "always" } }
-
-            it "fetches and links as a worker does" do
-              fake_gh_with_view
-              run_hooks
-              expect(api_calls).to include(a_string_including("/files"))
-              expect(answer("see lib/foo.rb:28")).to eq("see [lib/foo.rb:28](#{anchor("lib/foo.rb", "R28")})")
-            end
+            run_hooks
+            expect(api_calls).to include(a_string_including("/files"))
+            expect(answer("see lib/foo.rb:28")).to eq("see [lib/foo.rb:28](#{anchor("lib/foo.rb", "R28")})")
           end
         end
       end

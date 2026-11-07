@@ -77,7 +77,7 @@ module Samagotchi
       @origin = TurnOrigin::NONE
     end
 
-    # Who can answer an approval: :repl, :worker or :non_interactive (the
+    # Who can answer an approval: :worker or :non_interactive (the
     # default, so a bare Engine denies instead of waiting for nobody). Set
     # by the host (TerminalUI, Worker).
     def interface
@@ -293,7 +293,7 @@ module Samagotchi
     end
 
     # Ask the user to approve a call the gate voted `ask` on, through the
-    # question flow (REPL sync handler, attached TUI, web). Settles the
+    # question flow (the attached TUI, the web). Settles the
     # verdict: allow with the picked scope, or deny with a note for the
     # model. A --non-interactive run has no one to ask and denies at once.
     # @param verdict [Guardrails::Verdict]

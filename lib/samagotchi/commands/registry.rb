@@ -29,9 +29,9 @@ module Samagotchi
       # @!attribute mid_turn [Symbol, #call] what a line of it does while a
       #   turn runs (MID_TURN): a symbol, or a lambda line (stripped) → one
       # @!attribute local [Boolean] the UI runs it; completion and help only
-      # @!attribute uis [Array<Symbol>, nil] a local entry's UIs (:repl,
-      #   :attached, :web) for completion and /help; nil means every UI
-      #   (for a local entry, every terminal)
+      # @!attribute uis [Array<Symbol>, nil] a local entry's UIs (:attached,
+      #   :web) for completion and /help; nil means every UI (for a local
+      #   entry, the terminal)
       # @!attribute match [#call] line (stripped) → whether it is this command
       # @!attribute handler [Proc, nil] runs it; SessionCommands instance_execs
       #   a built-in's with the line, and calls a bundle's with the text
@@ -190,7 +190,7 @@ module Samagotchi
         end
       end
 
-      # @param ui [Symbol] :repl or :attached
+      # @param ui [Symbol] :attached
       # @return [Array<String>] the /names Tab offers in +ui+, sorted
       def completions(ui)
         @entries.select { |entry| entry.slash? && entry.in_ui?(ui) }.map(&:name).uniq.sort

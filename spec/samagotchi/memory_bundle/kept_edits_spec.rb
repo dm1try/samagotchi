@@ -7,7 +7,7 @@ require "yaml"
 require "stringio"
 
 require "samagotchi/bundle_command"
-require "samagotchi/terminal_ui"
+require "samagotchi/terminal_ui/attach_launcher"
 require "samagotchi/memory_bundle/installer"
 require "samagotchi/memory_bundle/uninstaller"
 require "samagotchi/memory_bundle/status"
@@ -474,11 +474,9 @@ RSpec.describe "Kept edits in a bundle" do
                                          "b.md" => { "sha256" => "fake", "description" => "B" } } })
     end
 
-    # An upgrade whose agent step (the TerminalUI) does +agent+.
+    # An upgrade whose agent step (the attached TUI) does +agent+.
     def upgrade_with_agent(&agent)
-      ui = instance_double(Samagotchi::TerminalUI)
-      allow(ui).to receive(:run) { agent&.call }
-      allow(Samagotchi::TerminalUI).to receive(:new).and_return(ui)
+      allow(Samagotchi::TerminalUI::AttachLauncher).to receive(:run) { agent&.call }
       Samagotchi::BundleCommand.new(["upgrade", source, "--agent"], stdin: StringIO.new, stdout: stdout, stderr: stderr).run
     end
 

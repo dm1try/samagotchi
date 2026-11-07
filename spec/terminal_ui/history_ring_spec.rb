@@ -3,7 +3,7 @@
 require "spec_helper"
 require "tmpdir"
 require "reline"
-require "samagotchi/terminal_ui"
+require "samagotchi/terminal_ui/input_support"
 require "samagotchi/prompt_history"
 
 # A running TUI picks up the lines other processes (the web, another TUI)

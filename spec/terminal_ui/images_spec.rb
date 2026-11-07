@@ -91,68 +91,6 @@ RSpec.describe "TerminalUI images" do
     end
   end
 
-  describe "the REPL" do
-    let(:client) { instance_double(Samagotchi::Client) }
-    let(:surface) { RecordingSurface.new }
-    let(:agent) { Samagotchi::TerminalUI.new(client: client, surface: surface) }
-    let(:engine) { agent.engine }
-    let(:session) { instance_double(Samagotchi::Session, id: "s1", messages: [], save: nil) }
-    let(:result) { Samagotchi::LLM::ModelResult.new(text: "a red square", conversation: [], tool_activity: []) }
-
-    before do
-      allow(agent).to receive(:persist_recent_history)
-      allow(agent.instance_variable_get(:@turn_flow)).to receive(:prompt_turn_failed)
-    end
-
-    it "sends a prompt's @path images with the text as typed" do
-      sent = nil
-      allow(engine).to receive(:run_turn) { |_s, prompt, images:, **| sent = [prompt, images]; result }
-      allow(agent).to receive(:finish_turn)
-
-      agent.send(:run_input_line, session, "what is @#{png}?")
-
-      expect(sent).to eq(["what is @#{png}?", [{ path: png }]])
-    end
-
-    it "puts the typed text back when the model can't see images" do
-      allow(engine).to receive(:run_turn).and_raise(Samagotchi::LLM::VisionUnsupported.new("main: the server has no vision", host: "main"))
-      allow(agent).to receive_messages(restore_prompt_for_retry: "prompt restored for retry", piped_input?: false)
-
-      agent.send(:run_input_line, session, "what is @#{png}?")
-
-      expect(agent).to have_received(:restore_prompt_for_retry).with("what is @#{png}?")
-      # The failure's own line is the renderer's (:turn_failed).
-      expect(surface.lines.join("\n")).to include("prompt restored for retry")
-    end
-
-    it "puts the typed text back when an @path image can't be used" do
-      allow(engine).to receive(:run_turn).and_raise(Samagotchi::ImageStore::Error, "shot.png is too large; install ImageMagick or downscale it")
-      allow(agent).to receive_messages(restore_prompt_for_retry: "prompt restored for retry", piped_input?: false)
-
-      agent.send(:run_input_line, session, "look @#{png}")
-
-      expect(surface.lines.join("\n")).to include("prompt restored for retry")
-    end
-
-    it "leaves a steering line with images for the next turn" do
-      repl_input = Samagotchi::TerminalUI::ReplInput.new(prompt: -> { "> " }, read: ->(*) {}, surface: surface)
-      agent.instance_variable_set(:@pending_input_queue, Samagotchi::PendingInputQueue.new)
-      agent.instance_variable_set(:@repl_input, repl_input)
-      drained = nil
-      allow(engine).to receive(:run_turn) do |*, pending_input:, **|
-        repl_input << [:line, "now look at @#{png}"] << [:line, "and be brief"]
-        drained = pending_input.call
-        result
-      end
-
-      agent.run_engine_turn(session, "go")
-
-      expect(drained).to eq(["and be brief"])
-      expect(repl_input.pop(timeout: 0)).to eq([:line, "now look at @#{png}"])
-      expect(surface.lines).to include("(a line with images runs as the next turn)")
-    end
-  end
-
   describe Samagotchi::TerminalUI::AttachedLoop do
     let(:screen) { RecordingSurface.new(columns: 100) }
     let(:stream) { double("stream", close: nil) }

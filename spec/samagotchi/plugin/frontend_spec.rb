@@ -6,8 +6,8 @@ require "samagotchi/terminal_ui"
 require "samagotchi/plugin/context"
 
 # ctx.frontend: what runs the session, read now (the host sets it after
-# the plugins load): :repl (the REPL, -p without --non-interactive),
-# :one_shot (-p --non-interactive, a bare Engine) or :worker (a session
+# the plugins load): :one_shot (-p --non-interactive, a bare Engine) or
+# :worker (a session
 # worker: the web, an attached TUI). A host without it reads :worker.
 RSpec.describe "ctx.frontend" do
   let(:registry) { Samagotchi::HostRegistry.new(hosts_config: { "box" => { host: "box.test", port: 8080 } }) }
@@ -28,17 +28,13 @@ RSpec.describe "ctx.frontend" do
     ctx = ctx_of(engine)
     expect(ctx.frontend).to eq(:one_shot)
 
-    engine.interface = :repl
-    expect(ctx.frontend).to eq(:repl)
     engine.interface = :worker
     expect(ctx.frontend).to eq(:worker)
   end
 
-  it "is :one_shot for -p --non-interactive and :repl for the REPL and a plain -p" do
-    ui = Samagotchi::TerminalUI.new(host_registry: registry, prompt: "hi", non_interactive: true)
+  it "is :one_shot for -p --non-interactive" do
+    ui = Samagotchi::TerminalUI.new(host_registry: registry, prompt: "hi")
     expect(ctx_of(ui.engine).frontend).to eq(:one_shot)
-    expect(ctx_of(Samagotchi::TerminalUI.new(host_registry: registry, prompt: "hi").engine).frontend).to eq(:repl)
-    expect(ctx_of(Samagotchi::TerminalUI.new(host_registry: registry).engine).frontend).to eq(:repl)
   end
 
   it "is :worker on a host without it" do

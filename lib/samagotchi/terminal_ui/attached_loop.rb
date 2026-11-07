@@ -63,6 +63,9 @@ module Samagotchi
       include Sending
 
       PROMPT = "> "
+      # The prompt while a question or a continue offer waits for its answer
+      # (its choices are in the notes slot).
+      QUESTION_PROMPT = "? "
       # A second Ctrl-C at an empty idle prompt within this many seconds detaches.
       DETACH_WINDOW = 2.0
       DETACH_HINT = "Ctrl-D to detach, /exit stops the worker"

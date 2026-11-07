@@ -931,7 +931,7 @@ module Samagotchi
     EMPTY_SKELETON_DIRS = (EMPTY_DIRS + [SessionInbox::OUTPUT_DIR]).freeze
 
     # session.keep_empty off: sessions left with nothing in them are deleted
-    # (the worker as it exits, the TUI at /exit, the retention sweep).
+    # (the worker as it exits, the retention sweep).
     def self.discard_empty?
       Samagotchi::Config.get("session.keep_empty") != true
     rescue StandardError
@@ -940,25 +940,14 @@ module Samagotchi
 
     # Whether a session being left (or found left) is deleted: session.keep_empty
     # is off and nothing happened in it (#empty_session?). The worker as it
-    # leaves, the REPL at /exit and the retention sweep all ask this.
+    # leaves and the retention sweep both ask this.
     # @param default_model [String, nil] what a new session starts on
-    # @param model_name [String, nil] the model its owner runs now (the REPL
-    #   keeps /model in its Engine); the saved one is checked either way
     # @param used_memory_names [Array<String>] memory its owner's Engine used
     #   before any save
-    # @param unsaved [Session, nil] the REPL's working copy, judged instead
-    #   when the session was never saved
-    def self.discardable?(session_id, default_model:, state_dir: nil, model_name: default_model, used_memory_names: [],
-                          unsaved: nil)
-      return false unless discard_empty? && same_model?(model_name, default_model) && Array(used_memory_names).empty?
+    def self.discardable?(session_id, default_model:, state_dir: nil, used_memory_names: [])
+      return false unless discard_empty? && Array(used_memory_names).empty?
 
-      sd = state_dir || Session.default_state_dir
-      if unsaved && !File.exist?(Session.session_file(session_id, state_dir: sd))
-        return no_conversation?(unsaved.messages) && unsaved.last_prompt.to_s.strip.empty? &&
-               empty_session_dir?(Session.session_dir(session_id, state_dir: sd))
-      end
-
-      empty_session?(session_id, state_dir: sd, default_model: default_model)
+      empty_session?(session_id, state_dir: state_dir || Session.default_state_dir, default_model: default_model)
     end
 
     # A session nothing happened in: no conversation, no turn tried (a failed

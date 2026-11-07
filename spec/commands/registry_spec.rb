@@ -29,10 +29,11 @@ RSpec.describe Samagotchi::Commands::Registry do
     registry.register("/model", "model")
     registry.register("/stats", "stats", local: true)
     registry.register("/detach", "detach", local: true, uis: [:attached])
+    registry.register("/cut", "cut", local: true, uis: [:web])
     registry.register("!", "shell", match: ->(text) { text.start_with?("!") })
     expect(registry.command?("/stats")).to be(false)
-    expect(registry.completions(:repl)).to eq(%w[/model /stats])
     expect(registry.completions(:attached)).to eq(%w[/detach /model /stats])
+    expect(registry.completions(:web)).to eq(%w[/cut /model /stats])
   end
 
   it "refuses a second entry with the same name, and a frozen registry refuses any" do
@@ -47,7 +48,7 @@ RSpec.describe Samagotchi::Commands::Registry do
     registry.register("/r", "show", local: true, match: ->(text) { text == "/r" })
     expect(registry.lookup("/r off")&.description).to eq("set")
     expect(registry.lookup_local("/r")&.description).to eq("show")
-    expect(registry.completions(:repl)).to eq(%w[/r])
+    expect(registry.completions(:attached)).to eq(%w[/r])
     expect { registry.register("/r", "third", local: true) }.to raise_error(ArgumentError, /already registered/)
     registry.register("/p", "a bundle's", source: "plug")
     expect { registry.register("/p", "local", local: true, source: "plug") }.to raise_error(ArgumentError, /already registered/)
@@ -170,15 +171,13 @@ RSpec.describe Samagotchi::Commands::Registry do
       expect(builtins.listing.find { |item| item[:name] == "/models" }).to include(anytime: true, mid_turn: "anytime")
     end
 
-    it "offers the same Tab lists in the REPL and the attached TUI, but /detach, /unqueue, /share and /participants (the REPL owns its session and its own queue)" do
-      expect(builtins.completions(:repl))
-        .to eq(%w[/archive /context /continue /cut /exit /guardrails /help /llm-context /model /models /objectives /parent-answers /queue /quit /reasoning-history /recap /stats /thinking /title /toolkit /working-set])
+    it "offers the attached TUI's Tab list, its own commands among them" do
       expect(builtins.completions(:attached))
         .to eq(%w[/archive /context /continue /cut /detach /exit /guardrails /help /llm-context /model /models /objectives /parent-answers /participants /queue /quit /reasoning-history /recap /share /stats /thinking /title /toolkit /unqueue
                   /working-set])
     end
 
-    # Both terminal UIs dispatch their own commands on these ids.
+    # The attached TUI dispatches its own commands on these ids.
     it "names the terminal's own commands by id, whatever the case, with --delete after an exit word" do
       ids = ["exit", "/exit", "/EXIT --DELETE", "/quit", "/quit --delete", "/archive", "/ARCHIVE", "/detach", "/Detach",
              "/stats", "/stats now", "/recap"].map { |line| builtins.lookup_local(line)&.id }

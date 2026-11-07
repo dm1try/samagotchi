@@ -78,8 +78,8 @@ RSpec.describe "The bundle test kit's contract" do
     expect([ctx.scratch?, ctx.messages_partial?, ctx.cancelled?, ctx.prompt_files]).to eq([false, false, false, []])
     expect(ctx.messages).to eq([{ role: "user", content: "hi" }])
 
-    recorder.set(cwd: "/other", cancelled: true, frontend: :repl, declared_tools: %w[a b], running: false)
-    expect([ctx.cwd, ctx.cancelled?, ctx.frontend, ctx.declared_tools]).to eq(["/other", true, :repl, %w[a b]])
+    recorder.set(cwd: "/other", cancelled: true, frontend: :non_interactive, declared_tools: %w[a b], running: false)
+    expect([ctx.cwd, ctx.cancelled?, ctx.frontend, ctx.declared_tools]).to eq(["/other", true, :one_shot, %w[a b]])
     expect(ctx.steer("late")).to be false
     expect { recorder.set(nope: 1) }.to raise_error(ArgumentError, "unknown host values: nope")
   end
