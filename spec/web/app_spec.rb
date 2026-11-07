@@ -182,6 +182,47 @@ RSpec.describe Samagotchi::Web::App do
     end
   end
 
+  # Only its terminal uses a chi scratch session: a tab hand-opened at its
+  # id gets the refusal every other client does (POST …/wake's 409 scratch),
+  # and its stream never reaches the worker (it would keep it up).
+  describe "a chi scratch session's page and stream" do
+    let(:state_dir) { Dir.mktmpdir }
+    let(:scratch) do
+      Samagotchi::Session.new_session(mode: "assist", model_name: "TestModel", working_directory: Dir.pwd).tap do |s|
+        s.scratch = true
+        s.save(state_dir: state_dir)
+      end
+    end
+    let(:refusal) do
+      { "error" => "scratch", "detail" => Samagotchi::Session::SCRATCH_REFUSED,
+        "message" => Samagotchi::Session::SCRATCH_REFUSED, "session_id" => scratch.id }
+    end
+
+    def scratch_app
+      build_app(state_dir: state_dir, session_class: Samagotchi::Session).tap do |app|
+        allow(app).to receive(:worker_link).and_return(link_at(9_999))
+        allow(app).to receive(:link_client)
+        allow(app).to receive(:bridge_get_json)
+      end
+    end
+
+    it "refuses the stream (409 scratch) without opening the worker's" do
+      app = scratch_app
+      status, _headers, body = app.call(env_for("/api/sessions/#{scratch.id}/stream"))
+
+      expect([status, JSON.parse(body.first)]).to eq([409, refusal])
+      expect(app).not_to have_received(:link_client)
+    end
+
+    it "refuses the page's read (409 scratch) without asking the worker" do
+      app = scratch_app
+      status, _headers, body = app.call(env_for("/api/sessions/#{scratch.id}"))
+
+      expect([status, JSON.parse(body.first)]).to eq([409, refusal])
+      expect(app).not_to have_received(:bridge_get_json)
+    end
+  end
+
   describe "GET /api/sessions/:id/stream" do
     def stub_stream_open(app)
       opened = Samagotchi::BridgeClient::StreamOpen::Opened.new(sock: StringIO.new, status: 200, headers: {})

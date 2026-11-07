@@ -196,6 +196,15 @@ module Samagotchi
       @mutex.synchronize { @open_streams - (client_id ? @streams_by_client[client_id] : 0) }
     end
 
+    # Streams held by the clients whose id starts with +prefix+
+    # (ClientId::TUI_PREFIX: the attached terminals, which a scratch worker
+    # counts, Worker#scratch_unattended?). A stream that named no client
+    # (a web tab's, through the chi web proxy) is none of them.
+    # @return [Integer]
+    def open_streams_of(prefix)
+      @mutex.synchronize { @streams_by_client.sum { |client_id, count| client_id.start_with?(prefix) ? count : 0 } }
+    end
+
     # Monotonic time of the last request, stream open or stream close. The
     # worker's idle exit counts from it. A connect that sends no request (the
     # sidecar liveness probe) doesn't count.

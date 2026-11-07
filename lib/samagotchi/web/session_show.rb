@@ -40,6 +40,10 @@ module Samagotchi
         return handle_brief_read(id) if req.params["brief"] == "1"
 
         session = @session_class.load(id, state_dir: default_state_dir)
+        # A tab opened at a chi scratch session's id: its terminal's alone.
+        # (The light re-reads come after a full read only.)
+        return scratch_refused(id) if session.scratch
+
         # Read-only preview: selecting a session never spawns a worker.
         # The worker is woken only on POST /turn (handle_turn) via
         # SessionManager.resume_session + write_turn_input. This avoids

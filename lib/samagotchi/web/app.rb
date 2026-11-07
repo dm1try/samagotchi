@@ -1558,10 +1558,12 @@ module Samagotchi
       def handle_stream(req, id)
         # Validate session exists
         begin
-          @session_class.load(id, state_dir: default_state_dir)
+          session = @session_class.load(id, state_dir: default_state_dir)
         rescue ArgumentError
           return error_response(404, "not_found", "Session not found: #{id}")
         end
+        # Its terminal's alone: a tab's stream would keep its worker up.
+        return scratch_refused(id) if session.scratch
 
         link = worker_link(id)
         if link.is_a?(WorkerLink::Starting)

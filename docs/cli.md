@@ -537,13 +537,15 @@ refused. Its first line says it is a scratch session.
   session (`Scratch session deleted.`). `/archive` is refused. The lines typed
   are not added to the prompt history. With `-p … --non-interactive` it is one
   turn in this process, and the session is deleted as the run ends.
-- The worker deletes the session too once its terminal is gone (no stream
-  left for about 25 s, twice the terminal's reconnect retries, so a dropped
-  stream that reconnects keeps it; or none came within 30 s), so a closed
-  terminal window or a `kill -9` of the terminal leaves nothing: a turn still
-  running then is cancelled first. It refuses `chi sessions restart`.
+- The worker deletes the session too once its terminal is gone (no terminal
+  stream left for about 28 s, twice the terminal's reconnect retries, so a
+  dropped stream that reconnects keeps it; or none came within 30 s), so a
+  closed terminal window or a `kill -9` of the terminal leaves nothing: a turn
+  still running then is cancelled first. Another client's stream never keeps
+  it. It refuses `chi sessions restart`.
 - It never shows in `chi web`, and only its terminal uses it: `chi send`, the
-  web's routes, `chi --resume` and `--attach` refuse it (exit 1), in one
+  web's routes (a tab opened at its id too: its page and stream answer 409
+  `scratch`), `chi --resume` and `--attach` refuse it (exit 1), in one
   wording: "that's a chi scratch session: only the terminal that started it
   uses it (a leftover one is deleted at the next sweep: chi sessions clean)".
   A session left behind when both died is marked `"scratch": true` in its
