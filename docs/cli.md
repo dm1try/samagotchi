@@ -707,7 +707,7 @@ session file and its whole directory (notes, images, queued input). Each id
 (or unique prefix) gets one line: `deleted`, or `refused` with the reason. A
 session whose worker runs is refused unless `--force` stops the worker first;
 one a `--non-interactive` run has is always refused ("in use by a one-turn chi
---non-interactive run; let it finish first"). Exit
+--non-interactive run or an older chi's terminal; let it finish first"). Exit
 status: 0 when all are gone, 1 when any was refused or unknown, 2 on a usage
 error. The Web UI deletes too: `delete` in the info bar, or the ✕ on a card in
 All sessions; it asks first and stops a live worker.
@@ -727,7 +727,7 @@ wording. See [Sessions](sessions.md#cli).
 **One-turn runs.** `chi -p TEXT --non-interactive` (also with `--resume ID`)
 runs its turn in this process, with no worker, and holds the session until it
 ends. Meanwhile the session is "in use by a one-turn chi --non-interactive
-run": `--resume`, `--attach`, `chi send`, `chi note` and the Web UI's sends
+run or an older chi's terminal": `--resume`, `--attach`, `chi send`, `chi note` and the Web UI's sends
 refuse it, and the Web UI shows it read-only. `--attach` can't be combined with
 `--non-interactive`.
 
