@@ -360,8 +360,9 @@ module Samagotchi
       name == "git" && args.first == "diff" && args.intersect?(%w[--quiet --exit-code])
     end
 
-    # +surface+: the turn's Tools::ToolSurface, for a preview that reads it
-    # (call_tool's: none raises Tools::MissingSurface); nil outside a turn.
+    # +surface+: the turn's Tools::ToolSurface, which a tool's entry is
+    # looked up in, for a preview that reads it (call_tool's); nil outside a
+    # turn (+registry+'s entry then).
     def tool_activity_params(tool_name, call, registry: nil, surface: nil)
       case tool_name
       when Tools::Execute::NAME
@@ -456,7 +457,8 @@ module Samagotchi
         parts << "options=#{preview_tool_param(Array(opts).join(","))}" if opts && !Array(opts).empty?
         parts.join(" ")
       else
-        registry_params(registry_entry(registry, tool_name), call, surface)
+        registry_params(surface ? surface.registered[tool_name.to_s] : registry_entry(registry, tool_name), call,
+                        surface)
       end
     end
 

@@ -64,4 +64,17 @@ RSpec.describe Samagotchi::Tools::MissingSurface do
     end.to raise_error(described_class)
     expect(ran).to eq([])
   end
+
+  it "looks the call's entry up in the turn's surface, not the Registry now (one source per call)" do
+    surface = Samagotchi::Tools::ToolSurface.for(registry)
+    registry.register("late", schema: { name: "late" }, handler: ->(*) { "" }, source: "x",
+                              preview: ->(_c) { "late row" }, targets: ->(_c) { { command: "late cmd" } })
+    late = { name: "late", args: { "q" => "1" } }
+    context = Samagotchi::Guardrails::Context.new(cwd: Dir.pwd)
+
+    expect(Samagotchi::Guardrails::Targets.for(late, context, registry: registry, surface: surface).command).to be_nil
+    expect(Samagotchi::ToolActivity.tool_activity_params("late", late, registry: registry, surface: surface)).to eq('q="1"')
+    # Without a turn's surface (the bundle test kit's gate) the Registry's entry counts.
+    expect(Samagotchi::Guardrails::Targets.for(late, context, registry: registry).command).to eq("late cmd")
+  end
 end

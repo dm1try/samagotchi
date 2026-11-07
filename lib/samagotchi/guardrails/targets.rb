@@ -113,8 +113,9 @@ module Samagotchi
       # @param model_name [String, nil] the bare model name, for a rule's models:
       # @param registry [Tools::Registry, nil] the session's tools: a plugin
       #   tool's entry says what it acts on (its targets:)
-      # @param surface [Tools::ToolSurface, nil] the turn's: call_tool's
-      #   targets name what the turn reaches (none raises
+      # @param surface [Tools::ToolSurface, nil] the turn's: the entry is
+      #   looked up in it (.entry_of) and call_tool's targets name what it
+      #   reaches (nil: the registry's entry; call_tool's then raises
       #   Tools::MissingSurface)
       def self.for(call, context, model_key: nil, model_name: nil, registry: nil, surface: nil)
         tool = call[:name].to_s
@@ -144,7 +145,7 @@ module Samagotchi
           given_cwd = given[:cwd].to_s.strip
           cwd = File.expand_path(given_cwd, base) unless given_cwd.empty?
           paths.concat(given[:paths].flat_map { |path| absolutes(path, cwd) })
-          entry = registry && registry[tool]
+          entry = entry_of(tool, registry, surface)
           args = given[:args] || call[:args] if entry && !entry.core? && call[:args].is_a?(Hash)
           acts_as = given[:acts_as]
           label = given[:label]
@@ -170,7 +171,7 @@ module Samagotchi
       # nothing: call_tool's acts_as would go missing, and with it the
       # mcp_* rules on the call (fail-open).
       def self.plugin_targets(call, registry, surface = nil)
-        entry = registry && registry[call[:name].to_s]
+        entry = entry_of(call[:name], registry, surface)
         none = { command: nil, paths: [], cwd: nil, acts_as: nil, args: nil, label: nil }
         return none unless entry && !entry.core? && entry.targets
 
@@ -180,7 +181,7 @@ module Samagotchi
         given = given.transform_keys(&:to_sym)
         command = given[:command].to_s
         { command: command.empty? ? nil : command, paths: Array(given[:paths]).map(&:to_s), cwd: given[:cwd],
-          acts_as: acts_as_of(given[:acts_as], entry, registry), args: given[:args].is_a?(Hash) ? given[:args] : nil,
+          acts_as: acts_as_of(given[:acts_as], entry, registry, surface), args: given[:args].is_a?(Hash) ? given[:args] : nil,
           label: label_of(given[:label], entry) }
       rescue Tools::MissingSurface
         raise
@@ -198,22 +199,30 @@ module Samagotchi
       # name, ToolIndex#claimed), so the registry is the wrong owner test,
       # and a bundle tool sharing an MCP tool's name would otherwise take
       # call_tool calls of that tool out of its mcp_* rules.
-      def self.acts_as_of(name, entry, registry)
+      def self.acts_as_of(name, entry, registry, surface = nil)
         name = name.to_s.strip
         return nil if name.empty? || name == entry.name
 
-        other = registry[name]
+        other = entry_of(name, registry, surface)
         whose = if CORE_TOOLS.include?(name) || other&.core? then "a core tool"
                 elsif other && other.source != entry.source && entry.source != Tools::ToolIndex::SOURCE
                   "bundle #{other.source}'s tool"
                 end
         return name unless whose
 
-        if first_drop?(registry, entry.name, name)
+        if first_drop?(registry || surface, entry.name, name)
           Log.warn(:plugins, "plugin_acts_as_dropped", tool: entry.name, acts_as: name,
                                                        msg: "#{entry.name} targets: acts_as #{name} dropped: it is #{whose}")
         end
         nil
+      end
+
+      # The tool +name+ names: the turn's entry (+surface+'s registered),
+      # else +registry+'s (a gate without a turn's surface); nil for none.
+      # @return [Tools::Registry::Entry, nil]
+      def self.entry_of(name, registry, surface)
+        name = name.to_s
+        surface ? surface.registered[name] : registry&.[](name)
       end
 
       # The drops logged, per registry (a session's): each tool's acts_as
