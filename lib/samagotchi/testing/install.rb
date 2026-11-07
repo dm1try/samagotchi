@@ -31,7 +31,7 @@ module Samagotchi
       # What a bundle registered (#registered): commands, tools (names),
       # hooks per event, inits (labels), toolkits, tool sources and peer
       # sources (names).
-      Registered = Data.define(:commands, :tools, :hooks, :inits, :toolkits, :tool_sources, :peer_sources)
+      Registered = Data.define(:commands, :tools, :hooks, :inits, :toolkits, :tool_sources, :peer_sources, :prompt_sections)
       # A command: its mid_turn policy and its selection-bar labels (chi.annotation).
       Command = Data.define(:name, :mid_turn, :labels)
       # A hook on an event: the bundle, the hook (its file, or the plugin's) and its priority.
@@ -98,7 +98,8 @@ module Samagotchi
           inits: inits.map { |init| init[:label] },
           toolkits: Array(registries.toolkits).map(&:name),
           tool_sources: registries.tool_index.sources.map(&:label),
-          peer_sources: registries.peer_sources.names
+          peer_sources: registries.peer_sources.names,
+          prompt_sections: registries.prompt_sections.names(name)
         )
       end
 
