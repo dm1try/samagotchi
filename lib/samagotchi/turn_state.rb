@@ -6,7 +6,8 @@ module Samagotchi
   # A session's turn as other threads see it: whether one runs, its cancel
   # controller and event sink, the plugin steers waiting for its next
   # boundary, whether a person's message waits for it (its caller's
-  # input_waiting: probe), and the activity clock the idle jobs read.
+  # input_waiting: probe), the turn's TurnContext (#context, and the last
+  # turn's, #last_context), and the activity clock the idle jobs read.
   #
   # The turn thread writes it (Engine#begin_turn, #release_turn); the idle
   # scheduler, the bridge's request threads, plugin threads and the UIs
@@ -27,6 +28,8 @@ module Samagotchi
       @ended = false
       @input_waiting = nil
       @input_waiting_warned = false
+      @context = nil
+      @last_context = nil
       @steers = []
       @carried_steers = []
     end
@@ -70,12 +73,16 @@ module Samagotchi
     end
 
     # A turn begins, on the calling thread (the turn's own): running, with
-    # its controller, sink and input_waiting probe, in one step.
+    # its context, controller, sink and input_waiting probe, in one step, so
+    # no reader sees a running turn with the previous turn's context.
+    # @param context [TurnContext, nil] the turn's, built before (nil: none,
+    #   a spec's bare turn)
     # @param input_waiting [#call, nil] true while a person's message waits
     #   for the turn's next boundary (Engine#input_waiting?); nil: never
-    def begin!(controller:, sink:, input_waiting: nil)
+    def begin!(controller:, sink:, context: nil, input_waiting: nil)
       @lock.synchronize do
         @running = true
+        @context = context
         @controller = controller
         @sink = sink
         @thread = Thread.current
@@ -87,10 +94,18 @@ module Samagotchi
       end
     end
 
-    # The turn is over: not running, no controller, sink, probe or steers.
+    # The turn is over: not running, no context, controller, sink, probe or
+    # steers. Its context stays as the last one (#last_context); one that
+    # never got its settings (a turn stopped before Engine#generate) keeps
+    # the last settings there, as the kernel kept the last turn's before.
     # @return [Array<Hash>] the steers it never took ({text:, source:})
     def finish!
       @lock.synchronize do
+        if @context
+          settings = @context.settings || @last_context&.settings
+          @last_context = settings.equal?(@context.settings) ? @context : @context.with(settings: settings)
+        end
+        @context = nil
         @running = false
         @controller = nil
         @sink = nil
@@ -105,6 +120,33 @@ module Samagotchi
     # its after_turn / session_end hooks, is post-turn work, up to #finish!.
     def ended!
       @lock.synchronize { @ended = true }
+    end
+
+    # @return [TurnContext, nil] the running turn's context (nil between
+    #   turns); its settings are nil until Engine#generate
+    def context
+      @lock.synchronize { @context }
+    end
+
+    # @return [TurnContext, nil] the last finished turn's context (nil
+    #   before any), kept while the next turn runs
+    def last_context
+      @lock.synchronize { @last_context }
+    end
+
+    # The turn thread's new context for its running turn (Engine#generate's
+    # settings): one assignment of a frozen value. Only the turn's own
+    # thread, and only for the same turn.
+    # @param context [TurnContext]
+    # @raise [ArgumentError] from another thread, outside a turn, or for
+    #   another turn's context
+    def replace_context(context)
+      @lock.synchronize do
+        raise ArgumentError, "no turn runs on this thread" unless @running && @thread.equal?(Thread.current)
+        raise ArgumentError, "not the running turn's context" unless @context.nil? || @context.id == context.id
+
+        @context = context
+      end
     end
 
     # @return [CancellationController, nil] the running turn's controller

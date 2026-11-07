@@ -2,6 +2,7 @@
 
 require "samagotchi/turn_state"
 require "samagotchi/cancellation_controller"
+require "samagotchi/turn_context"
 
 RSpec.describe Samagotchi::TurnState do
   subject(:state) { described_class.new(clock: -> { now }) }
@@ -62,6 +63,52 @@ RSpec.describe Samagotchi::TurnState do
 
     it "cancel! is false with no turn" do
       expect(state.cancel!(:manual)).to be(false)
+    end
+  end
+
+  describe "the turn's context (TurnContext)" do
+    def context(id, **) = Samagotchi::TurnContext.none(id: id, settings: nil, **)
+    let(:settings) { Samagotchi::LLM::TurnSettings.none.with(model_name: "m") }
+
+    it "is published by begin! with the running flag, and kept as the last by finish!" do
+      expect([state.context, state.last_context]).to eq([nil, nil])
+      first = context("t1", author: "p:a")
+      state.begin!(context: first, controller: controller, sink: nil)
+      expect([state.running?, state.context, state.last_context]).to eq([true, first, nil])
+      state.finish!
+      expect([state.running?, state.context, state.last_context]).to eq([false, nil, first])
+    end
+
+    it "keeps the last one while the next turn runs, until that one finishes" do
+      first = context("t1").with(settings: settings)
+      state.begin!(context: first, controller: controller, sink: nil)
+      state.finish!
+      second = context("t2")
+      state.begin!(context: second, controller: controller, sink: nil)
+      expect([state.context, state.last_context]).to eq([second, first])
+    end
+
+    it "replace_context swaps the running turn's for the turn's own thread, one frozen value" do
+      state.begin!(context: context("t1"), controller: controller, sink: nil)
+      with_settings = state.context.with(settings: settings)
+      state.replace_context(with_settings)
+      expect(state.context).to equal(with_settings)
+      expect(state.context).to be_frozen
+    end
+
+    it "replace_context refuses another thread, another turn's context, and no turn" do
+      expect { state.replace_context(context("t1")) }.to raise_error(ArgumentError)
+      state.begin!(context: context("t1"), controller: controller, sink: nil)
+      expect { state.replace_context(context("t2")) }.to raise_error(ArgumentError, /not the running turn's/)
+      expect { Thread.new { state.replace_context(context("t1")) }.join }.to raise_error(ArgumentError, /this thread/)
+    end
+
+    it "a turn that ended before its settings keeps the last settings in the last context, its own author" do
+      state.begin!(context: context("t1").with(settings: settings), controller: controller, sink: nil)
+      state.finish!
+      state.begin!(context: context("t2", author: "p:b"), controller: controller, sink: nil)
+      state.finish!
+      expect(state.last_context).to have_attributes(id: "t2", author: "p:b", settings: settings)
     end
   end
 
