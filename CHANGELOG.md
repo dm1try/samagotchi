@@ -8,6 +8,10 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Changed
+
+- chi now writes a warning to the debug log when part of its work falls back after an error (a system prompt section left out, a Bridge route or a chi web answer given empty, a session command's lookup) instead of dropping it silently: once per process for each kind, later ones at `debug`.
+
 ### Fixed
 
 - chi web: a diagram drawn by a block renderer is usable without a mouse: a screen reader hears that its source is behind the "Show the source" button, and a button that shows on keyboard focus zooms it to full size and back.

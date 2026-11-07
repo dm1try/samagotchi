@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "config"
+require_relative "degrade"
 require_relative "model_profile"
 require_relative "served_model"
 require_relative "prompt_note"
@@ -884,65 +885,61 @@ module Samagotchi
       return unless session
 
       @engine.store_model!(session)
-      begin
-        @save.call(session)
-      rescue StandardError
-        nil
-      end
+      Degrade.call(:model, "model_switch_save_failed") { @save.call(session) }
     end
 
     # "; served: <name>" when the server serves another model than asked
     # and its host's served: doesn't expect it.
     def served_note
-      served, asked = @engine.served_model
-      ServedModel.differs?(asked, served) && !@engine.served_expected?(served) ? "; served: #{served}" : ""
-    rescue StandardError
-      ""
+      Degrade.call(:model, "served_note_failed", fallback: "") do
+        served, asked = @engine.served_model
+        ServedModel.differs?(asked, served) && !@engine.served_expected?(served) ? "; served: #{served}" : ""
+      end
     end
 
     # "; sampling: temperature=0.6 (hosts.work)" when the model has any.
     def sampling_note
-      summary = @engine.sampling_summary
-      summary ? "; sampling: #{summary}" : ""
-    rescue StandardError
-      ""
+      Degrade.call(:model, "sampling_note_failed", fallback: "") do
+        summary = @engine.sampling_summary
+        summary ? "; sampling: #{summary}" : ""
+      end
     end
 
     # "; steer cut: after 60 s (models: qwen)", or "; steer cut: never
     # (hosts.splash)" for 0 or less, when the model has one configured;
     # "" for the default.
     def steer_cut_after_note
-      summary = @engine.steer_cut_summary
-      summary ? "; steer cut: #{summary}" : ""
-    rescue StandardError
-      ""
+      Degrade.call(:model, "steer_cut_note_failed", fallback: "") do
+        summary = @engine.steer_cut_summary
+        summary ? "; steer cut: #{summary}" : ""
+      end
     end
 
     # "; notes: model_notes_deepseek (system, 612 chars)": the model notes
     # the session's prompt carries (after a switch, the ones the new
     # model's prompt loads); "" without any.
     def notes_note
-      text = PromptNote.text(@engine.prompt_notes)
-      text.empty? ? "" : "; notes: #{text}"
-    rescue StandardError
-      ""
+      Degrade.call(:model, "notes_note_failed", fallback: "") do
+        text = PromptNote.text(@engine.prompt_notes)
+        text.empty? ? "" : "; notes: #{text}"
+      end
     end
 
     # "; thinking: off (models: qwen)" when the model has a level set.
     def thinking_note
-      summary = @engine.thinking_summary
-      summary ? "; thinking: #{summary}" : ""
-    rescue StandardError
-      ""
+      Degrade.call(:model, "thinking_note_failed", fallback: "") do
+        summary = @engine.thinking_summary
+        summary ? "; thinking: #{summary}" : ""
+      end
     end
 
     # "; reasoning history: drop (models: qwen)" when the chat model has a
     # level set.
     def reasoning_history_note
-      summary = @engine.reasoning_history_summary
-      summary ? "; reasoning history: #{summary}" : ""
-    rescue StandardError
-      ""
+      Degrade.call(:model, "reasoning_history_note_failed", fallback: "") do
+        summary = @engine.reasoning_history_summary
+        summary ? "; reasoning history: #{summary}" : ""
+      end
     end
 
     # " (default: x, profile=qwen36, name)": +extra+ and the prompt profile,
@@ -954,9 +951,9 @@ module Samagotchi
     end
 
     def chat_model?
-      @engine.chat_model?
-    rescue StandardError
-      false
+      Degrade.call(:model, "chat_model_unresolved", fallback: false) do
+        @engine.chat_model?
+      end
     end
 
     # "profile=qwen36, server (chat_template)": the profile and where it came from.
