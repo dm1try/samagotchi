@@ -560,7 +560,6 @@ Samagotchi/SilentRescue:
     - lib/samagotchi/terminal_ui/reline_history_hook.rb
     - lib/samagotchi/thinking_tails.rb
     - lib/samagotchi/thinking.rb
-    - lib/samagotchi/tool_runner.rb
     - lib/samagotchi/toolkit.rb
     - lib/samagotchi/tools/delegate.rb
     - lib/samagotchi/tools/execute.rb
