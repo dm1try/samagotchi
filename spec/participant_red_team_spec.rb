@@ -31,7 +31,7 @@ RSpec.describe "a participant red-teaming a session" do
   let(:root) { File.realpath(Dir.mktmpdir("red-team")) }
   let(:project) { File.join(root, "proj") }
   let(:state_dir) { File.join(Samagotchi::Paths.state_dir, "sessions") }
-  let(:grants) { Samagotchi::Web::Grants.new(Samagotchi::Web::Grants.path(state_dir: state_dir)) }
+  let(:grants) { Samagotchi::Grants.new(Samagotchi::Grants.path(state_dir: state_dir)) }
   let(:session) do
     Samagotchi::Session.new_session(mode: "assist", model_name: "Gemma-4B-it", working_directory: project).tap do |s|
       s.save(state_dir: state_dir)

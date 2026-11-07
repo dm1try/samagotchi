@@ -213,7 +213,7 @@ with a "Machine-local" comment; the rest branch on `@access.remote?` (`SendComma
   (`App#principal(req)`), so a handler reads the principal and never trusts the body for it. Each `ROUTES` row names
   who may use it (its permission column, `:owner` or `:participant`; `Principal#permits?`; any other answers 403
   `not_permitted`). The owner passes every route (`local_viewer?` only hides `editor_url`). A participant, a
-  `Web::Grants` token for one session, reaches only the `:participant` rows, and another session's id is a 404
+  `Grants` token for one session, reaches only the `:participant` rows, and another session's id is a 404
   ([participants.md](participants.md)). A turn's author comes from the principal
   (`Principal#author`, nil for the owner) and rides with the turn (`SessionManager.deliver_turn(author:)` →
   `BridgeClient#post_turn` → `Bridge#handle_post_turn` → the input file, the fallback's too → the turn's `origin`);

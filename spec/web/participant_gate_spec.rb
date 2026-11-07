@@ -10,7 +10,7 @@ require "samagotchi/grants"
 require "samagotchi/participants"
 require "samagotchi/archive_store"
 
-# chi web's gate for a participant's token (a Web::Grants grant): who they
+# chi web's gate for a participant's token (a Grants grant): who they
 # are, the three routes they reach, and every refusal that is theirs.
 RSpec.describe Samagotchi::Web::App, "participant gate" do
   let(:owner_token) { "t0ken-t0ken-t0ken-t0ken-t0ken-t0ken-t0ken" }
@@ -25,7 +25,7 @@ RSpec.describe Samagotchi::Web::App, "participant gate" do
     end
   end
   let(:now) { [Time.now] }
-  let(:grants) { Samagotchi::Web::Grants.new(Samagotchi::Web::Grants.path(state_dir: state_dir), clock: -> { now.first }) }
+  let(:grants) { Samagotchi::Grants.new(Samagotchi::Grants.path(state_dir: state_dir), clock: -> { now.first }) }
   let(:app) do
     described_class.new(state_dir: state_dir, public_dir: public_dir, bridge_wait_timeout: 0, grants: grants,
                         lan: { ip: lan_ip, token: owner_token })
@@ -276,7 +276,7 @@ RSpec.describe Samagotchi::Web::App, "participant gate" do
 
     it "answers 401 token_expired after its expiry (an injected clock), and audits it once" do
       token
-      now[0] += Samagotchi::Web::Grants::DEFAULT_TTL
+      now[0] += Samagotchi::Grants::DEFAULT_TTL
       2.times do
         status, body = json("/api/sessions/#{session.id}")
         expect([status, body["error"], body["detail"]])
@@ -351,7 +351,7 @@ RSpec.describe Samagotchi::Web::App, "participant gate" do
       other_grant = Samagotchi::Participants.invite(grants, session_id: session.id, name: "Kim", state_dir: state_dir)
       expiring = app.send(:stream_running, Samagotchi::Web::Principal.new(kind: :participant, grant: other_grant.grant))
       expect(expiring.call).to be(true)
-      now[0] += Samagotchi::Web::Grants::DEFAULT_TTL
+      now[0] += Samagotchi::Grants::DEFAULT_TTL
       expect(expiring.call).to be(false)
 
       expect(app.send(:stream_running, Samagotchi::Web::Principal::OWNER).call).to be(true)

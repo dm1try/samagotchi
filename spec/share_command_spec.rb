@@ -17,7 +17,7 @@ RSpec.describe Samagotchi::ShareCommand do
   let(:state_dir) { File.join(tmpdir, "samagotchi", "sessions") }
   let(:out) { StringIO.new }
   let(:err) { StringIO.new }
-  let(:grants) { Samagotchi::Web::Grants.new(Samagotchi::Web::Grants.path(state_dir: state_dir)) }
+  let(:grants) { Samagotchi::Grants.new(Samagotchi::Grants.path(state_dir: state_dir)) }
   let(:session) { new_session }
 
   # No chi web of this machine's answers (a real one may run on the port).
@@ -294,13 +294,13 @@ RSpec.describe Samagotchi::ShareCommand do
 
       it "refuses --identity on a chi web with no proxy that names the user (the link would never open)" do
         expect(run(session.id, "--name", "Alex", "--identity", "alex@corp.test")).to eq(2)
-        expect(err.string).to eq("chi share: #{Samagotchi::Web::Grants::Unbindable.new.message} (see chi share --help)\n")
+        expect(err.string).to eq("chi share: #{Samagotchi::Grants::Unbindable.new.message} (see chi share --help)\n")
         expect(grants.list).to eq([])
       end
 
       it "refuses an --identity that isn't one address" do
         expect(run(session.id, "--name", "Alex", "--identity", "alex")).to eq(2)
-        expect(err.string).to include(Samagotchi::Web::Grants::BadIdentity.new.message)
+        expect(err.string).to include(Samagotchi::Grants::BadIdentity.new.message)
         expect(grants.list).to eq([])
       end
 

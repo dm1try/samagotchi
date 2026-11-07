@@ -56,7 +56,7 @@ RSpec.describe "a participant's author on delivery" do
     let(:drained) { Queue.new }
     let(:events) { Queue.new }
     let(:grant) do
-      grants = Samagotchi::Web::Grants.new(Samagotchi::Web::Grants.path(state_dir: tmpdir))
+      grants = Samagotchi::Grants.new(Samagotchi::Grants.path(state_dir: tmpdir))
       Samagotchi::Participants.invite(grants, session_id: session.id, name: "Alex", mode: "pair", state_dir: tmpdir).grant
     end
 
@@ -190,7 +190,7 @@ RSpec.describe "a participant's author on delivery" do
       allow(engine).to receive(:run_turn) do |*_args, **_opts|
         check = engine.instance_variable_get(:@participant_stop)
         reasons << check.call(author).inspect
-        grants = Samagotchi::Web::Grants.new(Samagotchi::Web::Grants.path(state_dir: tmpdir))
+        grants = Samagotchi::Grants.new(Samagotchi::Grants.path(state_dir: tmpdir))
         Samagotchi::Participants.revoke(grants, session_id: session.id, id: grant.id, state_dir: tmpdir)
         reasons << check.call(author).inspect
         result
@@ -231,7 +231,7 @@ RSpec.describe "a participant's author on delivery" do
       author = grant.author
       dequeued = Queue.new
       engine.subscribe(observer: ->(event) { dequeued << event if event[:type] == :turn_dequeued })
-      grants = Samagotchi::Web::Grants.new(Samagotchi::Web::Grants.path(state_dir: tmpdir))
+      grants = Samagotchi::Grants.new(Samagotchi::Grants.path(state_dir: tmpdir))
       Samagotchi::Participants.revoke(grants, session_id: session.id, id: grant.id, state_dir: tmpdir)
       allow(engine).to receive(:run_turn).and_return(result)
       start_worker
@@ -366,7 +366,7 @@ RSpec.describe "a participant's author on delivery" do
           Samagotchi::Session.load(session.id, state_dir: tmpdir).pending_question&.kind.to_s == "continue"
         end
 
-        grants = Samagotchi::Web::Grants.new(Samagotchi::Web::Grants.path(state_dir: tmpdir))
+        grants = Samagotchi::Grants.new(Samagotchi::Grants.path(state_dir: tmpdir))
         Samagotchi::Participants.revoke(grants, session_id: session.id, id: grant.id, state_dir: tmpdir)
         write_queued(prompt: "/continue no")
 

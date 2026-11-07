@@ -19,7 +19,7 @@ require_relative "../log"
 
 module Samagotchi
   module Web
-    # What a participant (a Web::Grants token) may do in chi web, mixed into
+    # What a participant (a Grants token) may do in chi web, mixed into
     # App: the gate's lookup of their grant, the refusals that are theirs
     # (token_revoked, token_expired with its ended page, token_bound for a
     # link bound to another account, another session's

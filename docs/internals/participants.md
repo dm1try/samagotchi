@@ -18,7 +18,7 @@ works on this machine only) is the participant, never the owner.
 
 ## Grants
 
-A grant (`Web::Grants`, `lib/samagotchi/web/grants.rb`) binds **one random token** to **one session**, **one
+A grant (`Grants`, `lib/samagotchi/grants.rb`) binds **one random token** to **one session**, **one
 participant** and **one role**, until it expires or is revoked.
 
 - **Token.** `chp_` + 43 URL-safe characters (32 random bytes, as the owner's `Web::Token`). The prefix lets the gate
@@ -57,7 +57,7 @@ participant** and **one role**, until it expires or is revoked.
   an invite can't keep only its own grant and lose every other digest. The owner's invite, cap, revoke and list are
   refused with one message naming the file (`Grants::Corrupt`: `chi share` exits 1, chi web answers 500 with it);
   an archive or delete still goes ahead. Fix the file, or move it aside to end every link.
-- **Exposure** (`exposure`, `Web::ParticipantExposure`; the review-composer plan's D3): what the participant learns
+- **Exposure** (`exposure`, `ParticipantExposure`; the review-composer plan's D3): what the participant learns
   of the review's usage, their review data's `viewer.usage` ([below](#what-a-participant-sees)). One level today,
   `own`, every grant's: their own spend and cap, their own queued turns and queue limit, their link's expiry, and the
   session's model; never another participant's or the owner's usage, nor the session's. `ParticipantExposure::LEVELS`

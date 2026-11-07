@@ -77,7 +77,7 @@ RSpec.describe "the system prompt's participants line" do
         FileUtils.mkdir_p(Samagotchi::Session.session_dir(s.id, state_dir: state_dir))
       end
     end
-    let(:grants) { Samagotchi::Web::Grants.new(Samagotchi::Web::Grants.path(state_dir: state_dir)) }
+    let(:grants) { Samagotchi::Grants.new(Samagotchi::Grants.path(state_dir: state_dir)) }
     let(:prompts) { [] }
 
     before do

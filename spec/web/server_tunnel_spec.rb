@@ -22,7 +22,7 @@ RSpec.describe Samagotchi::Web::Server, "with --tunnel tailscale" do
 
   before do
     allow(described_class).to receive(:probe).and_return(:free)
-    allow(Samagotchi::Web::Grants).to receive(:check_permissions!)
+    allow(Samagotchi::Grants).to receive(:check_permissions!)
   end
 
   def launch(restarted: false)
@@ -169,10 +169,10 @@ RSpec.describe Samagotchi::Web::Server, "with --tunnel tailscale" do
 
     it "turns the adopted handler off when its start is refused after prepare" do
       allow(described_class).to receive(:start)
-      allow(Samagotchi::Web::Grants).to receive(:check_permissions!).and_raise(Samagotchi::Web::Grants::Insecure, "0644")
+      allow(Samagotchi::Grants).to receive(:check_permissions!).and_raise(Samagotchi::Grants::Insecure, "0644")
       expect { expect(launch(restarted: true)).to eq(1) }
         .to output("Tailscale Serve: port 443 is off again.\n").to_stdout.and output("Error: 0644\n").to_stderr
-      allow(Samagotchi::Web::Grants).to receive(:check_permissions!)
+      allow(Samagotchi::Grants).to receive(:check_permissions!)
       fake.serve = "serve-443-on.json"
       allow(Samagotchi::Web::Push).to receive(:preflight!).and_raise(Samagotchi::Web::Push::Refused, "push")
       expect { expect(launch(restarted: true)).to eq(1) }.to output(/off again/).to_stdout.and output("Error: push\n").to_stderr
@@ -239,10 +239,10 @@ RSpec.describe Samagotchi::Web::Server, "with --tunnel tailscale" do
     expect { expect(described_class.launch(port: 4568, start_dir: "/", tunnel: "tailscale")).to eq(1) }
       .to output(/\AError: Tailscale Serve already serves port 443 here/).to_stderr
     fake.serve = "serve-off.json"
-    allow(Samagotchi::Web::Grants).to receive(:check_permissions!).and_raise(Samagotchi::Web::Grants::Insecure, "0644")
+    allow(Samagotchi::Grants).to receive(:check_permissions!).and_raise(Samagotchi::Grants::Insecure, "0644")
     expect { expect(launch).to eq(1) }.to output("Error: 0644\n").to_stderr
     expect(described_class).not_to have_received(:start)
-    allow(Samagotchi::Web::Grants).to receive(:check_permissions!)
+    allow(Samagotchi::Grants).to receive(:check_permissions!)
     fake.fail!("serve-bg", "Serve is not enabled on your tailnet.")
     bound
     expect { expect(launch).to eq(1) }.to output(/\AError: tailscale serve --bg .* failed: Serve is not enabled/).to_stderr

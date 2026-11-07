@@ -13,7 +13,7 @@ require_relative "web/qr"
 
 module Samagotchi
   # `chi share`: invite a participant to review a session (the
-  # shared-sessions plan: a Web::Grants grant, one session, one person or
+  # shared-sessions plan: a Grants grant, one session, one person or
   # agent, 7 days unless --expires says otherwise), list the participants,
   # revoke them. Local or through chi --remote NAME (SessionAccess). The
   # token is printed once, in the link; chi keeps only its digest. See
@@ -95,9 +95,9 @@ module Samagotchi
       return parsed if parsed.is_a?(Integer)
 
       send(:"run_#{@sub || "invite"}", parsed.options, parsed.args)
-    rescue SessionAccess::BadRequest, Web::Grants::BadIdentity => e
+    rescue SessionAccess::BadRequest, Grants::BadIdentity => e
       usage_error(e.message)
-    rescue Web::Grants::Unwritable => e
+    rescue Grants::Unwritable => e
       error_line("#{command_name}: #{e.message}")
       CLI::Exit::FAILED
     rescue ArgumentError => e
@@ -114,13 +114,13 @@ module Samagotchi
       return usage_error("give one session ID") unless args.size == 1
       return usage_error("--name NAME: who the link is for") if options[:name].to_s.strip.empty?
 
-      ttl = Web::Grants.parse_ttl(options[:expires])
+      ttl = Grants.parse_ttl(options[:expires])
       return usage_error("--expires takes Nh or Nd, 1h to 30d (e.g. 3d)") if ttl == false
 
       cap = options[:cap] && dollars(options[:cap])
       return usage_error(CAP_USAGE) if cap == false
 
-      identity = options[:identity] && Web::Grants.clean_identity(options[:identity])
+      identity = options[:identity] && Grants.clean_identity(options[:identity])
 
       id = @access.resolve(args.first)
       invitation = @access.invite(id, name: options[:name], kind: options[:agent] ? "agent" : "human", ttl: ttl, cap: cap,
@@ -149,13 +149,13 @@ module Samagotchi
       0
     end
 
-    CAP_USAGE = "a cap is dollars, $0 to $#{Web::Grants::MAX_CAP.to_i} (e.g. --cap 5)".freeze
+    CAP_USAGE = "a cap is dollars, $0 to $#{Grants::MAX_CAP.to_i} (e.g. --cap 5)".freeze
 
     def run_cap(_options, args)
       return usage_error("give a session ID, a participant and dollars (chi share cap ID p_… 5)") unless args.size == 3
 
       participant = args[1]
-      return usage_error("not a participant: #{participant} (chi share ls lists them)") unless Web::Grants::ID_RE.match?(participant)
+      return usage_error("not a participant: #{participant} (chi share ls lists them)") unless Grants::ID_RE.match?(participant)
 
       cap = dollars(args[2])
       return usage_error(CAP_USAGE) if cap == false
@@ -172,7 +172,7 @@ module Samagotchi
       return false unless text.match?(/\A\d+(?:\.\d+)?\z/)
 
       value = text.to_f
-      Web::Grants.cap?(value) ? value : false
+      Grants.cap?(value) ? value : false
     end
 
     def money(value) = value.nil? ? "-" : format("$%.2f", value)
@@ -184,7 +184,7 @@ module Samagotchi
         return usage_error("give a session ID (and a participant), or --all")
       end
       participant = args[1]
-      return usage_error("not a participant: #{participant} (chi share ls lists them)") if participant && !Web::Grants::ID_RE.match?(participant)
+      return usage_error("not a participant: #{participant} (chi share ls lists them)") if participant && !Grants::ID_RE.match?(participant)
 
       id = args.first && @access.resolve(args.first)
       revoked = @access.revoke_participants(id, participant: participant)

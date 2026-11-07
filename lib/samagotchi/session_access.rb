@@ -98,7 +98,7 @@ module Samagotchi
     class BadRequest < Refused; end
 
     # One participant's grant as chi share ls shows it
-    # (Web::Grants::Grant#public_h): never its token or digest. +state+
+    # (Grants::Grant#public_h): never its token or digest. +state+
     # "active", "revoked" or "expired".
     # +cap+ dollars and +queue+ turns (nil from a chi web before them).
     # +identity+ the email the grant is bound to, nil for any.

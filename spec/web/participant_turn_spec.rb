@@ -21,7 +21,7 @@ RSpec.describe Samagotchi::Web::App, "a participant's turn" do
   let(:lan_ip) { "192.168.1.55" }
   let(:root) { Dir.mktmpdir("web-participant-turn") }
   let(:state_dir) { File.join(root, "samagotchi", "sessions") }
-  let(:grants) { Samagotchi::Web::Grants.new(Samagotchi::Web::Grants.path(state_dir: state_dir)) }
+  let(:grants) { Samagotchi::Grants.new(Samagotchi::Grants.path(state_dir: state_dir)) }
   let(:app) do
     described_class.new(state_dir: state_dir, bridge_wait_timeout: 0, grants: grants, lan: { ip: lan_ip, token: owner_token })
   end

@@ -9,11 +9,11 @@ require "samagotchi/archive_store"
 require "samagotchi/web/public_url"
 
 # A session's participants: the sidecar the worker reads, the audit trail,
-# and the invite/revoke steps that keep them with Web::Grants.
+# and the invite/revoke steps that keep them with Grants.
 RSpec.describe Samagotchi::Participants do
   let(:root) { Dir.mktmpdir("participants") }
   let(:state_dir) { File.join(root, "samagotchi", "sessions") }
-  let(:grants) { Samagotchi::Web::Grants.new(Samagotchi::Web::Grants.path(state_dir: state_dir)) }
+  let(:grants) { Samagotchi::Grants.new(Samagotchi::Grants.path(state_dir: state_dir)) }
   let(:session) do
     Samagotchi::Session.new_session(mode: "assist", model_name: "m", working_directory: root).tap { |s| s.save(state_dir: state_dir) }
   end
@@ -62,7 +62,7 @@ RSpec.describe Samagotchi::Participants do
       FileUtils.mkdir_p(dir)
       Samagotchi::ArchiveStore.archive(session.id, state_dir: state_dir)
       expect { described_class.invite(grants, session_id: session.id, name: "A", state_dir: state_dir) }
-        .to raise_error(Samagotchi::Web::Grants::Invalid, /is archived: unarchive it/)
+        .to raise_error(Samagotchi::Grants::Invalid, /is archived: unarchive it/)
       expect(grants.list).to eq([])
     end
   end
@@ -89,7 +89,7 @@ RSpec.describe Samagotchi::Participants do
         expect do
           described_class.invite(grants, session_id: session.id, name: "Alex", identity: "alex@corp.test",
                                          public_url: public_url, state_dir: state_dir)
-        end.to raise_error(Samagotchi::Web::Grants::Unbindable, /only on a chi web behind an auth proxy that names the signed-in user/)
+        end.to raise_error(Samagotchi::Grants::Unbindable, /only on a chi web behind an auth proxy that names the signed-in user/)
       end
       expect(grants.list).to eq([])
       expect(File.exist?(File.join(dir, described_class::LOG))).to be(false)
@@ -132,7 +132,7 @@ RSpec.describe Samagotchi::Participants do
   # or two writers finishing out of order can lose a revoke there.
   describe "the sidecar and the grants lock" do
     def lock_held?
-      lock = File.join(File.dirname(grants.path), Samagotchi::Web::Grants::LOCK)
+      lock = File.join(File.dirname(grants.path), Samagotchi::Grants::LOCK)
       File.open(lock, File::RDWR | File::CREAT, 0o600) do |io|
         # Another open file description: refused while the lock is held.
         !io.flock(File::LOCK_EX | File::LOCK_NB)

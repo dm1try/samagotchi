@@ -220,8 +220,8 @@ RSpec.describe Samagotchi::SessionAccess::Remote do
       message = "/x/participants.json can't be read (not JSON): chi won't write over it"
       access, = scripted([409, { error: "grants_unwritable", detail: message }], [409, { error: "grants_unwritable", detail: message }],
                          info: bound_info)
-      expect { access.invite("s", name: "Alex", kind: "human") }.to raise_error(Samagotchi::Web::Grants::Unwritable, message)
-      expect { access.participants("s") }.to raise_error(Samagotchi::Web::Grants::Unwritable, message)
+      expect { access.invite("s", name: "Alex", kind: "human") }.to raise_error(Samagotchi::Grants::Unwritable, message)
+      expect { access.participants("s") }.to raise_error(Samagotchi::Grants::Unwritable, message)
     end
 
     it "reads the identity header from the owner's /api/info, nil without a proxy or from an older chi web" do
@@ -304,7 +304,7 @@ RSpec.describe Samagotchi::SessionAccess::Remote do
 
   describe "a participant's token (one message per condition)" do
     let(:state) { File.join(tmpdir, "samagotchi", "sessions") }
-    let(:grants) { Samagotchi::Web::Grants.new(Samagotchi::Web::Grants.path(state_dir: state)) }
+    let(:grants) { Samagotchi::Grants.new(Samagotchi::Grants.path(state_dir: state)) }
     let(:session) do
       Samagotchi::Session.new_session(mode: "assist", model_name: "m", working_directory: tmpdir).tap do |s|
         s.save(state_dir: state)

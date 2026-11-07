@@ -357,7 +357,7 @@ RSpec.describe Samagotchi::Web::Server do
 
   it "reexecs when the web server returns :restart" do
     allow(described_class).to receive(:probe).and_return(:free)
-    allow(Samagotchi::Web::Grants).to receive(:check_permissions!)
+    allow(Samagotchi::Grants).to receive(:check_permissions!)
     allow(described_class).to receive(:start).and_return(:restart)
     allow(Samagotchi::InstalledGem).to receive_messages(spec: double("installed gem"), wrapper: "/gem/bin/chi")
     allow(Samagotchi::ChildEnv).to receive(:unbundled).and_return({})
@@ -924,8 +924,8 @@ RSpec.describe Samagotchi::Web::Server do
       allow(described_class).to receive(:start)
       Dir.mktmpdir("server-grants") do |state|
         with_env("XDG_STATE_HOME" => state) do
-          path = Samagotchi::Web::Grants.path
-          Samagotchi::Web::Grants.new(path).issue(session_id: "s1", name: "Alex")
+          path = Samagotchi::Grants.path
+          Samagotchi::Grants.new(path).issue(session_id: "s1", name: "Alex")
           File.chmod(0o755, File.dirname(path))
 
           expect { expect(described_class.launch(port: 4567)).to eq(1) }

@@ -59,7 +59,7 @@ module Samagotchi
       def remote? = true
       def name = @entry.name
 
-      # Web::Grants::PREFIX, without loading chi web.
+      # Grants::PREFIX, without loading chi web.
       PARTICIPANT_PREFIX = "chp_"
 
       # Whether the token is a participant's (chi share's link), not the
@@ -728,7 +728,7 @@ module Samagotchi
         # A toolkit whose config kit's groups: is invalid there: the same.
         when "toolkit_refused" then raise Toolkit::Refused, message.to_s
         # The grants store doesn't read there: chi share says what it says here.
-        when "grants_unwritable" then raise Web::Grants::Unwritable, message.to_s
+        when "grants_unwritable" then raise Grants::Unwritable, message.to_s
         when /\Ainvalid_/, "missing_fields", "bad_images"
           # invalid_participant: chi share's name, kind or ttl, an archived session
           raise BadRequest.new(message.to_s, code: error)

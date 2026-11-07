@@ -99,7 +99,7 @@ RSpec.describe Samagotchi::Worker, "participants joining and leaving" do
   end
   let(:session_dir) { Samagotchi::Session.session_dir(session.id, state_dir: tmpdir) }
   let!(:engine) { Samagotchi::Engine.new(client: test_client, kernel: test_kernel) }
-  let(:grants) { Samagotchi::Web::Grants.new(Samagotchi::Web::Grants.path(state_dir: tmpdir)) }
+  let(:grants) { Samagotchi::Grants.new(Samagotchi::Grants.path(state_dir: tmpdir)) }
   let(:events) { Queue.new }
 
   before do

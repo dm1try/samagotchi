@@ -143,7 +143,7 @@ module Samagotchi
     end
 
     # What inviting a participant to +session+ now means: the grant's mode
-    # (Web::Grants::PAIR_MODE only when the owner is shown PAIR_WARNING: a
+    # (Grants::PAIR_MODE only when the owner is shown PAIR_WARNING: a
     # working session whose live worker runs pair turns; nil otherwise, a
     # review participant), the mode their turns get (:pair or :review) and
     # the warning shown for it (nil for a review session). One read of the

@@ -28,7 +28,7 @@ RSpec.describe Samagotchi::Engine, "a pair turn's mid-turn cap" do
   # A participant invited to act (their grant's mode: pair).
   let(:grant) do
     FileUtils.mkdir_p(Samagotchi::Session.session_dir(session.id, state_dir: state_dir))
-    grants = Samagotchi::Web::Grants.new(Samagotchi::Web::Grants.path(state_dir: state_dir))
+    grants = Samagotchi::Grants.new(Samagotchi::Grants.path(state_dir: state_dir))
     Samagotchi::Participants.invite(grants, session_id: session.id, name: "Alex", mode: "pair", state_dir: state_dir).grant
   end
   let(:author) { grant.author }
@@ -69,7 +69,7 @@ RSpec.describe Samagotchi::Engine, "a pair turn's mid-turn cap" do
   end
 
   it "never checks a working session's participant invited before pair (a review turn)" do
-    grants = Samagotchi::Web::Grants.new(Samagotchi::Web::Grants.path(state_dir: state_dir))
+    grants = Samagotchi::Grants.new(Samagotchi::Grants.path(state_dir: state_dir))
     FileUtils.mkdir_p(Samagotchi::Session.session_dir(session.id, state_dir: state_dir))
     old = Samagotchi::Participants.invite(grants, session_id: session.id, name: "Bo", state_dir: state_dir).grant
     run({ client_id: "review:#{old.id}", author: old.author })

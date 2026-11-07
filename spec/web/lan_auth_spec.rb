@@ -285,7 +285,7 @@ RSpec.describe Samagotchi::Web::App, "LAN access token" do
     end
 
     it "trades a link's one-time owner code (#code=, POST /api/token) for the cookie, once" do
-      code = Samagotchi::Web::LinkCodes.for_grants(Samagotchi::Web::Grants.path(state_dir: state_dir))
+      code = Samagotchi::Web::LinkCodes.for_grants(Samagotchi::Grants.path(state_dir: state_dir))
                                        .issue(kind: :owner, ttl: Samagotchi::Web::LinkCodes::OWNER_TTL)
       trade = lambda do
         call("/api/token", **local, peer: "127.0.0.1", method: "POST",

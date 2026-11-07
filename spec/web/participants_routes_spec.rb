@@ -17,7 +17,7 @@ require "samagotchi/analytics_file"
 RSpec.describe Samagotchi::Web::App, "participants routes" do
   let(:root) { Dir.mktmpdir("web-participants") }
   let(:state_dir) { File.join(root, "samagotchi", "sessions") }
-  let(:grants) { Samagotchi::Web::Grants.new(Samagotchi::Web::Grants.path(state_dir: state_dir)) }
+  let(:grants) { Samagotchi::Grants.new(Samagotchi::Grants.path(state_dir: state_dir)) }
   let(:lan) { { ip: "192.168.1.55", token: "owner-token" } }
   let(:app) { described_class.new(state_dir: state_dir, bridge_wait_timeout: 0, grants: grants, lan: lan) }
   let(:session) { new_session }
@@ -67,7 +67,7 @@ RSpec.describe Samagotchi::Web::App, "participants routes" do
       status, body = call("/api/sessions/#{session.id}/participants", method: "POST",
                                                                       body: { name: "Alex", identity: "alex@corp.test" })
       expect([status, body]).to eq([400, { "error" => "invalid_participant",
-                                           "detail" => Samagotchi::Web::Grants::Unbindable.new.message }])
+                                           "detail" => Samagotchi::Grants::Unbindable.new.message }])
       expect(grants.list).to eq([])
     end
 
@@ -101,7 +101,7 @@ RSpec.describe Samagotchi::Web::App, "participants routes" do
       _, invited = call("/api/sessions/#{session.id}/participants", method: "POST", body: { name: "Alex" })
       id = invited["participant"]["id"]
       expect(call("/api/sessions/#{session.id}/participants/#{id}/cap", method: "POST", body: { cap: "5" }))
-        .to eq([400, { "error" => "invalid_participant", "detail" => Samagotchi::Web::Grants::CAP_RANGE }])
+        .to eq([400, { "error" => "invalid_participant", "detail" => Samagotchi::Grants::CAP_RANGE }])
       expect(call("/api/sessions/#{session.id}/participants/p_00000000/cap", method: "POST", body: { cap: 1 }).first).to eq(400)
       expect(call("/api/sessions/#{session.id}/participants/x/cap", method: "POST", body: { cap: 1 }).first).to eq(400)
       expect(call("/api/sessions/#{session.id}/participants", method: "POST", body: { name: "B", cap: 5000 }).first).to eq(400)
@@ -191,7 +191,7 @@ RSpec.describe Samagotchi::Web::App, "participants routes" do
       allow(Samagotchi::Log).to receive(:warn) # the store says so itself (grants_unreadable)
       FileUtils.mkdir_p(File.dirname(grants.path))
       File.write(grants.path, "{not json")
-      message = Samagotchi::Web::Grants::Corrupt.new(grants.path, "not JSON").message
+      message = Samagotchi::Grants::Corrupt.new(grants.path, "not JSON").message
       routes = [["/api/sessions/#{session.id}/participants", "GET"], ["/api/participants", "GET"],
                 ["/api/sessions/#{session.id}/participants", "POST", { name: "Alex" }],
                 ["/api/sessions/#{session.id}/participants", "DELETE"], ["/api/participants", "DELETE"],
@@ -202,7 +202,7 @@ RSpec.describe Samagotchi::Web::App, "participants routes" do
     it "refuses a write into a newer chi's store with that store's message, and still lists it" do
       invited = Samagotchi::Participants.invite(grants, session_id: session.id, name: "Alex", state_dir: state_dir)
       File.write(grants.path, JSON.generate(JSON.parse(File.read(grants.path)).merge("version" => 99)))
-      message = Samagotchi::Web::Grants::Newer.new(grants.path, 99).message
+      message = Samagotchi::Grants::Newer.new(grants.path, 99).message
       routes = [["/api/sessions/#{session.id}/participants", "POST", { name: "Sam" }],
                 ["/api/sessions/#{session.id}/participants", "DELETE"],
                 ["/api/sessions/#{session.id}/participants/#{invited.grant.id}/cap", "POST", { cap: 1 }]]

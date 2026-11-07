@@ -42,7 +42,7 @@ reference); a subcommand's class is `XCommand` under `lib/samagotchi/` (`chi hom
   `RemoteAttachCommand`, branched in bin/chi after `RunOptions.parse`); what `SessionAccess::Contract` lists as
   local-only (`Contract::RUN` for the run flags) exits 2; `--dir` is remote-only. See docs/cli.md (Remote sessions),
   docs/internals/remote-sessions.md.
-- `chi share` (the owner inviting participants) makes `Web::Grants` grants (`chp_` tokens, one session, digest-only) that reach only that
+- `chi share` (the owner inviting participants) makes `Grants` grants (`chp_` tokens, one session, digest-only) that reach only that
   session's `:participant` routes through chi web; `ParticipantMode.of` decides what their turn is: a read-only
   review turn (`Guardrails::ReviewBoundary`) or, for a grant stamped `mode: pair` at invite, a pair turn under the
   owner's guardrails (`Guardrails::PairBoundary`). `chi review` starts a review session (`ReviewStart`; subjects checked
@@ -103,7 +103,7 @@ reference); a subcommand's class is `XCommand` under `lib/samagotchi/` (`chi hom
 - chi web behind an auth proxy (`web.public_url`, `Web::ProxyGate`, identity header + token, Bridges refusing proxy
   traces) → `docs/configuration.md` (Behind an auth proxy); the gate → `docs/internals/participants.md` (The gate)
 - Web Push (`Web::Push`, the Notifier, the service worker, the Home Screen app's bell) → `docs/internals/web-push.md`; the user side → `docs/configuration.md` (Phone notifications)
-- Participants (`chi share`, `Web::Grants`, the participant gate and routes, review turns, `participants.json`) → `docs/internals/participants.md`; their review boundary → `docs/guardrails.md`
+- Participants (`chi share`, `Grants`, the participant gate and routes, review turns, `participants.json`) → `docs/internals/participants.md`; their review boundary → `docs/guardrails.md`
 - chi run by another agent (`chi send --wait`, `chi answer`) → `docs/sub-agent.md`
 - `chi broadcast` → `docs/broadcast.md`
 - macOS desktop helper → `docs/desktop.md`

@@ -68,7 +68,7 @@ RSpec.describe "a turn's author on the record" do
     # A worker's session has its dir (the owner lock, inputs); the sidecar goes there.
     def invite(name, mode: nil)
       FileUtils.mkdir_p(Samagotchi::Session.session_dir(session.id, state_dir: state_dir))
-      grants = Samagotchi::Web::Grants.new(Samagotchi::Web::Grants.path(state_dir: state_dir))
+      grants = Samagotchi::Grants.new(Samagotchi::Grants.path(state_dir: state_dir))
       Samagotchi::Participants.invite(grants, session_id: session.id, name: name, mode: mode, state_dir: state_dir).grant
     end
 
