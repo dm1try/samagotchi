@@ -5,6 +5,7 @@ require_relative "llm_context_strategy"
 require_relative "llm_context_edit"
 require_relative "llm_context_stale"
 require_relative "cache_confirm"
+require_relative "session"
 
 module Samagotchi
   # /llm-context, the session's own LLM context values
@@ -49,7 +50,7 @@ module Samagotchi
       args, yes = CacheConfirm.split(args, downcase: false)
       return [listing(@engine.llm_context_explained), false, nil] if args.empty?
 
-      session = @engine.session or raise ArgumentError, "no session yet"
+      session = @engine.session or raise ArgumentError, Session::NONE_YET
       before = @engine.llm_context_explained
       updated = args.casecmp?(RESET) ? LLMContextOverride.new : LLMContextOverride.update(@engine.llm_context_override, words(args))
       ask = confirm && !yes ? ask(session, before, updated, args) : nil

@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "cache_confirm"
+require_relative "session"
 
 module Samagotchi
   # A command for a session's own level of a setting (/thinking,
@@ -47,7 +48,7 @@ module Samagotchi
       known, own = spec.parse.call(word)
       raise ArgumentError, "unknown #{spec.label} level #{word}\n#{spec.usage}" unless known
 
-      session = @engine.session or raise ArgumentError, "no session yet"
+      session = @engine.session or raise ArgumentError, Session::NONE_YET
       before = explained
       ask = confirm && !yes ? ask(before, own, word) : nil
       return ask if ask

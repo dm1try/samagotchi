@@ -28,7 +28,7 @@ module Samagotchi
     # @return [Array(String, Boolean, Symbol)] the reply, whether the
     #   title changed, and :ok or :error
     def run(args)
-      session = @engine.session or return ["no session yet", false, :error]
+      session = @engine.session or return [Session::NONE_YET, false, :error]
       text = args.to_s.gsub(/\s+/, " ").strip
       return [listing(session), false, :ok] if text.empty?
       # "--clear and more" is a slip, not a title.

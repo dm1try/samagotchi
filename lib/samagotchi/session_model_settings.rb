@@ -7,6 +7,7 @@ require_relative "session_setting"
 require_relative "steer_cut"
 require_relative "steer_cut_after"
 require_relative "thinking"
+require_relative "session"
 
 module Samagotchi
   # The session's settings on its effective model, as the Engine reads them:
@@ -163,7 +164,7 @@ module Samagotchi
     # @raise [ArgumentError] with no session yet
     def reasoning_history_override=(level)
       session = @session.call
-      raise ArgumentError, "no session yet" unless session
+      raise ArgumentError, Session::NONE_YET unless session
 
       SessionSetting::REASONING_HISTORY.set(session, level)
     end
@@ -178,7 +179,7 @@ module Samagotchi
     # @raise [ArgumentError] with no session yet
     def thinking_override=(level)
       session = @session.call
-      raise ArgumentError, "no session yet" unless session
+      raise ArgumentError, Session::NONE_YET unless session
 
       SessionSetting::THINKING.set(session, level)
     end

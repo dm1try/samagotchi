@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "guardrails/parent_policy"
+require_relative "session"
 
 module Samagotchi
   # /parent-answers, the session's own guardrails.parent_answers
@@ -51,7 +52,7 @@ module Samagotchi
     # @return [Array(String, Boolean, Symbol)] the reply, whether the
     #   session's value changed, and :ok or :error
     def run(args, user_ui:)
-      session = @engine.session or return ["no session yet", false, :error]
+      session = @engine.session or return [Session::NONE_YET, false, :error]
       kind, value = self.class.parse(args)
       return [USAGE, false, :error] if kind == :usage
       return [listing(session), false, :ok] if kind == :show
