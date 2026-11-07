@@ -145,12 +145,21 @@ RSpec.describe Samagotchi::Tools::ToolSurface do
   end
 
   describe ".of" do
-    it "takes the context's surface, else computes one from the registry under its layers and loads_tools" do
+    it "takes the context's surface; a context without one raises MissingSurface (no Registry read now)" do
       built = surface
-      expect(described_class.of(Samagotchi::TurnContext.none(surface: built), registry)).to equal(built)
+      expect(described_class.of(Samagotchi::TurnContext.none(surface: built))).to equal(built)
+      expect { described_class.of(Samagotchi::TurnContext.none) }.to raise_error(Samagotchi::Tools::MissingSurface)
+    end
+  end
+
+  describe ".bare" do
+    it "keeps a context's surface, else builds one from the registry under its layers and loads_tools" do
+      built = surface
+      given = Samagotchi::TurnContext.none(surface: built)
+      expect(described_class.bare(given, registry)).to equal(given)
 
       settings = Samagotchi::LLM::TurnSettings.none.with(loads_tools: true)
-      computed = described_class.of(Samagotchi::TurnContext.none(settings: settings), registry)
+      computed = described_class.bare(Samagotchi::TurnContext.none(settings: settings), registry).surface
       expect(computed).not_to equal(built)
       expect(computed.loads_tools).to be(true)
       expect(computed.declared_names).to eq(built.declared_names)

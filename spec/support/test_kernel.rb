@@ -4,6 +4,7 @@ require "samagotchi/client"
 require "samagotchi/kernel_loop"
 require "samagotchi/reminder_store"
 require "samagotchi/turn_context"
+require "samagotchi/tools/tool_surface"
 
 # The kernel and client an Engine spec hands in: a real KernelLoop (the
 # contract the Engine talks to; stub #run on it as a partial double) and a
@@ -41,10 +42,15 @@ module TestKernel
   # A TurnContext outside an Engine turn (TurnContext.none): +settings+
   # (LLM::TurnSettings.none by default; a kernel's own are
   # kernel.turn_settings) and any other field given (session:, author:,
-  # participant_mode:, cwd:, session_dir:, model_key:…).
+  # participant_mode:, cwd:, session_dir:, model_key:…). +tools+ (a
+  # Tools::Registry, a kernel's are kernel.tools; nil: none): its surface, built as a
+  # bare kernel builds its own (Tools::ToolSurface.bare, under the
+  # settings' layers and loads_tools); a context handed to a loop, a
+  # runner or a dispatch needs one (none raises Tools::MissingSurface).
   # @return [Samagotchi::TurnContext]
-  def run_context(settings: Samagotchi::LLM::TurnSettings.none, **)
-    Samagotchi::TurnContext.none(settings: settings, **)
+  def run_context(settings: Samagotchi::LLM::TurnSettings.none, **fields)
+    context = Samagotchi::TurnContext.none(settings: settings, **fields.except(:tools))
+    fields.key?(:tools) ? Samagotchi::Tools::ToolSurface.bare(context, fields[:tools]) : context
   end
 
   # @param stubs [Hash] more Client methods and their answers

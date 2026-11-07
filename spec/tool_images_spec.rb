@@ -44,7 +44,7 @@ RSpec.describe "tool results with images" do
 
     def run(images, vision: self.vision)
       kernel = Samagotchi::KernelLoop.new(client: instance_double(Samagotchi::Client), services: Samagotchi::KernelLoop::Services.none(tools: registry_with(images)))
-      context = run_context(settings: kernel.turn_settings.with(vision: vision))
+      context = run_context(tools: kernel.tools, settings: kernel.turn_settings.with(vision: vision))
       Samagotchi::ToolRunner.new(kernel).run({ name: "shots", args: {} }, context: context, iteration: 1, call_index: 1, call_count: 1,
                                                                          on_stream_event: ->(e) { events << e }, max_tool_output_chars: nil)
     end
@@ -90,7 +90,7 @@ RSpec.describe "tool results with images" do
   describe "the chat loop" do
     it "follows the tool message with one user message holding both pictures" do
       kernel = Samagotchi::KernelLoop.new(client: instance_double(Samagotchi::Client), services: Samagotchi::KernelLoop::Services.none(tools: registry_with([{ path: png_path }, { path: gif_path }])))
-      context = run_context(settings: kernel.turn_settings.with(vision: vision))
+      context = run_context(tools: kernel.tools, settings: kernel.turn_settings.with(vision: vision))
       adapter = FakeChatAdapter.new(FakeChatAdapter.tools(["c1", "shots", {}]), FakeChatAdapter.text("two"))
       result = Samagotchi::LLM::ChatLoop.new(kernel: kernel, adapter: adapter)
                                         .complete(messages: [{ role: "user", content: "shoot" }], model_name: "m", context: context)
@@ -119,7 +119,7 @@ RSpec.describe "tool results with images" do
         calls.size == 1 ? "<tool_call><function=shots></function></tool_call>" : "a red square and a gif"
       end
       kernel = Samagotchi::KernelLoop.new(client: client, profile: Samagotchi::ModelProfile.qwen36, services: Samagotchi::KernelLoop::Services.none(tools: registry_with([{ path: png_path }, { path: gif_path }])))
-      context = run_context(settings: kernel.turn_settings.with(vision: vision))
+      context = run_context(tools: kernel.tools, settings: kernel.turn_settings.with(vision: vision))
 
       result = kernel.run([{ role: "user", content: "take two shots" }], context: context)
       tool_response = result.conversation.find { |m| m[:role] == "tool_response" }

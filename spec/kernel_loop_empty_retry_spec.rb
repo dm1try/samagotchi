@@ -29,7 +29,7 @@ RSpec.describe Samagotchi::KernelLoop, "empty answer retry" do
 
   def run(**options)
     kernel.run([{ role: "user", content: "hi" }], on_stream_event: ->(e) { events << e },
-                                                  context: run_context(settings: settings), **options)
+                                                  context: run_context(settings: settings, tools: kernel.tools), **options)
   end
 
   it "drops the empty generation, nudges and answers in the same turn" do

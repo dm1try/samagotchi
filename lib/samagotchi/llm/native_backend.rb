@@ -27,7 +27,7 @@ module Samagotchi
           max_tool_output_chars: max_tool_output_chars,
           pending_input: pending_input,
           reasoning_since: reasoning_since,
-          context: context || @kernel.context
+          context: context || @kernel.own_context
         )
       end
     end

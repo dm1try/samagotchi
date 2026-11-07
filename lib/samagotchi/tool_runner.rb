@@ -407,9 +407,9 @@ module Samagotchi
     # The kernel's tools, for the activity line of a tool that isn't built in.
     def tools = @kernel.tools
 
-    # The turn's Tools::ToolSurface (+context+'s), else one computed now
-    # from the kernel's tools (a runner outside an Engine turn).
-    def surface(context) = Tools::ToolSurface.of(context, tools)
+    # The turn's Tools::ToolSurface (+context+'s; none raises
+    # Tools::MissingSurface).
+    def surface(context) = Tools::ToolSurface.of(context)
 
     # The call its tool's entry unwraps it to (call_tool on a built-in),
     # else the call as it is. On a host that loads tools, a direct call of

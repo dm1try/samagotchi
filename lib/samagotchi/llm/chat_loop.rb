@@ -137,10 +137,9 @@ module Samagotchi
       # (ToolSurface#deferred_for).
       def deferred_tools(conversation) = surface.deferred_for(conversation)
 
-      # The turn's ToolSurface (#turn_context's), else one computed now from
-      # the kernel's tools (a bare loop).
+      # The turn's ToolSurface (#turn_context's).
       # @return [Tools::ToolSurface]
-      def surface = Tools::ToolSurface.of(turn_context, tools)
+      def surface = Tools::ToolSurface.of(turn_context)
 
       # Whether the adapter takes tools it doesn't declare up front for
       # +model+ (AnthropicMessages#loads_tools?); OpenAIChat doesn't.
@@ -159,9 +158,12 @@ module Samagotchi
 
       # The TurnContext of the run in progress, else of the last run
       # (#complete's context:); before any, the one it was built with, else a
-      # context of the kernel's own settings (a bare loop). Read on the turn's thread only.
+      # context of the kernel's own settings and a surface of its tools
+      # built now (a bare loop, Tools::ToolSurface.bare). Read on the turn's thread only.
       # @return [TurnContext]
-      def turn_context = @turn_context || TurnContext.none(settings: @kernel.turn_settings)
+      def turn_context
+        @turn_context || Tools::ToolSurface.bare(TurnContext.none(settings: @kernel.turn_settings), tools)
+      end
 
       # The turn's LLM::TurnSettings (#turn_context's).
       def settings = turn_context.settings

@@ -123,10 +123,10 @@ module Samagotchi
       # conversation (KernelLoop#forget_outputs).
       def forget_outputs(call) = @kernel.forget_outputs(call, @context)
 
-      # The turn's Tools::ToolSurface (TurnContext#surface), else one
-      # computed now from the kernel's tools (a bare kernel): what the tool
+      # The turn's Tools::ToolSurface (TurnContext#surface; a bare kernel's
+      # own context has one too, KernelLoop#own_context): what the tool
       # index's handlers (find_tools, call_tool) read.
-      def surface = Tools::ToolSurface.of(@context, @kernel.tools)
+      def surface = Tools::ToolSurface.of(@context)
     end
 
     DEFAULT_MAX_TOOL_OUTPUT_CHARS = 10_000
@@ -288,11 +288,11 @@ module Samagotchi
     #   their thought blocks (#prepare_conversation), as within one run. nil:
     #   every earlier thought is stripped.
     # @param context [TurnContext] the run's turn (Engine#generate's); a
-    #   bare kernel's last (#context) by default. Its settings take the
+    #   bare kernel's own (#own_context) by default. Its settings take the
     #   run's model name: this run's own copy, never published.
     # @return [LLM::ModelResult] final visible response with continuation metadata
     def run(messages, max_iterations: IterationLimit::DEFAULT, on_stream_event: nil, cancel_controller: nil, model_name: nil, max_tool_output_chars: nil, pending_input: nil,
-            reasoning_since: nil, context: @context)
+            reasoning_since: nil, context: own_context)
       settings = context.settings || LLM::TurnSettings.none
       @context = context.with(settings: settings.with(model_name: completion_model_name(model_name)))
       @last_slot = nil
@@ -1212,10 +1212,17 @@ module Samagotchi
     # first (see Samagotchi::LLM::NativeToolNormalizer); dispatch itself never
     # parses provider text. +context+: the call's turn (TurnContext: its
     # ToolSurface, the handler's ToolContext); a bare kernel's own
-    # (#context) by default.
-    def dispatch_tool_call(call, context = @context)
+    # (#own_context) by default.
+    def dispatch_tool_call(call, context = own_context)
       dispatch(call, context)
     end
+
+    # The context a bare kernel (no Engine: a spec, a bench) runs in when
+    # given none: #context, with a Tools::ToolSurface built now from the
+    # kernel's tools when it has none (Tools::ToolSurface.bare). An
+    # Engine's turn always hands its own down (Engine#generate's surface).
+    # @return [TurnContext]
+    def own_context = Tools::ToolSurface.bare(@context, tools)
 
     private
 
@@ -1223,10 +1230,10 @@ module Samagotchi
     # (Tools::ToolSurface#entry_for: a call_tool-reached one only while the
     # toolkit reaches it that way, a reachable one by its name on a host
     # that loads tools); without one it gets ToolSurface#unknown_tool_error.
-    # A context without a surface (a bare kernel) computes one now.
+    # A context without a surface raises Tools::MissingSurface.
     def dispatch(call, context)
       model = context.settings&.model_name
-      surface = Tools::ToolSurface.of(context, tools)
+      surface = Tools::ToolSurface.of(context)
       entry = surface.entry_for(call)
       unless entry
         result = surface.unknown_tool_error(call[:name], via: call[:via])

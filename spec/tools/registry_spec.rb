@@ -110,7 +110,7 @@ RSpec.describe Samagotchi::Tools::Registry do
 
       resolved = Samagotchi::LLMContextStrategy::Resolved.new(layers: %i[stale forget], strategy: %i[stale forget],
                                                               source: :config)
-      context = run_context(settings: kernel.turn_settings.with(llm_context: resolved))
+      context = run_context(settings: kernel.turn_settings.with(llm_context: resolved), tools: kernel.tools)
       allow(chat).to receive(:turn_context).and_return(context)
       expect(kernel.dispatch_tool_call({ name: "tidy", content: "" }, context)[:output]).to eq("[tidy]\ntidied")
       expect(names.call).to include("tidy")
@@ -183,7 +183,7 @@ RSpec.describe Samagotchi::Tools::Registry do
       end
       attach_services(kernel, tools: tools, peers: :peers)
 
-      result = kernel.dispatch_tool_call({ name: "echo", content: "hi" }, run_context(model_key: "gemma4"))
+      result = kernel.dispatch_tool_call({ name: "echo", content: "hi" }, run_context(model_key: "gemma4", tools: kernel.tools))
 
       expect(result[:output]).to eq("[echo]\ndone")
       expect(result[:activity]).to include(tool: "echo", status: "ok")

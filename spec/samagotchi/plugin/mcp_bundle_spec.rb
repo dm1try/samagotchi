@@ -46,11 +46,11 @@ RSpec.describe "The mcp bundle" do
 
   it "previews call_tool as <server>/<tool> and its arguments, find_tools as its query" do
     preview = tools["call_tool"].preview
-    expect(preview.call({ name: "call_tool", args: { "tool" => "fake/echo", "args" => { "text" => "hi there" } } }))
+    expect(preview.call({ name: "call_tool", args: { "tool" => "fake/echo", "args" => { "text" => "hi there" } } }, surface_now))
       .to eq("fake/echo text=hi there")
-    expect(preview.call({ name: "call_tool", args: { "tool" => "mcp_fake_echo", "args" => '{"text": "json"}' } }))
+    expect(preview.call({ name: "call_tool", args: { "tool" => "mcp_fake_echo", "args" => '{"text": "json"}' } }, surface_now))
       .to eq("fake/echo text=json")
-    expect(preview.call({ name: "call_tool", args: { "tool" => "fake/nope" } })).to eq("fake/nope")
+    expect(preview.call({ name: "call_tool", args: { "tool" => "fake/nope" } }, surface_now)).to eq("fake/nope")
     expect(tools["find_tools"].preview.call({ name: "find_tools", args: { "query" => "add", "group" => "fake" } }))
       .to eq("add in fake")
   end
@@ -219,12 +219,12 @@ RSpec.describe "The mcp bundle" do
 
     it "gives guardrails the tool it acts as (today's name), its arguments and the question's label" do
       targets = tools["call_tool"].targets
-      expect(targets.call({ name: "call_tool", args: { "tool" => "fake/add", "args" => { "a" => "1", "b" => 2 } } }))
+      expect(targets.call({ name: "call_tool", args: { "tool" => "fake/add", "args" => { "a" => "1", "b" => 2 } } }, surface_now))
         .to eq(acts_as: "mcp_fake_add", args: { "a" => 1, "b" => 2 }, label: "fake: add")
       # Not indexed: named from what the model gave, so a rule on mcp_fake_* still sees it.
-      expect(targets.call({ name: "call_tool", args: { "tool" => "fake/nope" } }))
+      expect(targets.call({ name: "call_tool", args: { "tool" => "fake/nope" } }, surface_now))
         .to eq(acts_as: "mcp_fake_nope", args: {}, label: "fake: nope")
-      expect(targets.call({ name: "call_tool", args: { "tool" => "nope" } })).to eq({})
+      expect(targets.call({ name: "call_tool", args: { "tool" => "nope" } }, surface_now)).to eq({})
     end
 
     context "with a rule on one server's tools" do
@@ -324,9 +324,9 @@ RSpec.describe "The mcp bundle" do
           @engine.start_init_tasks!
           expect(find("echo")).to include("fake (starting, try again)")
           targets = tools["call_tool"].targets
-          expect(targets.call({ name: "call_tool", args: { "tool" => "fake/echo", "args" => { "text" => "x" } } }))
+          expect(targets.call({ name: "call_tool", args: { "tool" => "fake/echo", "args" => { "text" => "x" } } }, surface_now))
             .to eq(acts_as: "mcp_fake_echo", args: { "text" => "x" }, label: "fake: echo")
-          expect(targets.call({ name: "call_tool", args: { "tool" => "mcp_fake_echo" } })).to eq(acts_as: "mcp_fake_echo", args: {})
+          expect(targets.call({ name: "call_tool", args: { "tool" => "mcp_fake_echo" } }, surface_now)).to eq(acts_as: "mcp_fake_echo", args: {})
           gate = @engine.instance_variable_get(:@kernel).guardrail_gate
           verdict = gate.evaluate({ name: "call_tool", args: { "tool" => "fake/echo", "args" => { "text" => "x" } } }, context: engine_turn_context(@engine), iteration: 1, params: "")
           expect(verdict).to be_deny
@@ -336,7 +336,7 @@ RSpec.describe "The mcp bundle" do
     end
 
     it "refuses a tool whose name isn't the one guardrails were given (a bare tool name)" do
-      expect(tools["call_tool"].targets.call({ name: "call_tool", args: { "tool" => "echo" } })).to eq({})
+      expect(tools["call_tool"].targets.call({ name: "call_tool", args: { "tool" => "echo" } }, surface_now)).to eq({})
       expect(handle("call_tool", { "tool" => "echo", "args" => { "text" => "x" } })).to start_with("Error: no tool echo.")
     end
   end

@@ -114,7 +114,8 @@ module Samagotchi
       # @param registry [Tools::Registry, nil] the session's tools: a plugin
       #   tool's entry says what it acts on (its targets:)
       # @param surface [Tools::ToolSurface, nil] the turn's: call_tool's
-      #   targets name what the turn reaches (nil: the Registry now)
+      #   targets name what the turn reaches (none raises
+      #   Tools::MissingSurface)
       def self.for(call, context, model_key: nil, model_name: nil, registry: nil, surface: nil)
         tool = call[:name].to_s
         base = context.cwd
@@ -164,7 +165,10 @@ module Samagotchi
       # logged). args: counts when it is a Hash; acts_as: is dropped (and
       # logged) when it names a core tool or another bundle's tool, so a
       # call can't pass for one and match (or reuse the approvals of) its
-      # rules. label: counts when it is one short line (.label_of).
+      # rules. label: counts when it is one short line (.label_of). A
+      # missing surface (Tools::MissingSurface) is raised, never taken as
+      # nothing: call_tool's acts_as would go missing, and with it the
+      # mcp_* rules on the call (fail-open).
       def self.plugin_targets(call, registry, surface = nil)
         entry = registry && registry[call[:name].to_s]
         none = { command: nil, paths: [], cwd: nil, acts_as: nil, args: nil, label: nil }
@@ -178,6 +182,8 @@ module Samagotchi
         { command: command.empty? ? nil : command, paths: Array(given[:paths]).map(&:to_s), cwd: given[:cwd],
           acts_as: acts_as_of(given[:acts_as], entry, registry), args: given[:args].is_a?(Hash) ? given[:args] : nil,
           label: label_of(given[:label], entry) }
+      rescue Tools::MissingSurface
+        raise
       rescue StandardError => e
         Log.warn(:plugins, "plugin_targets_failed", tool: call[:name].to_s, error: e.class.name,
                                                     msg: "#{call[:name]} targets failed: #{e.message}")

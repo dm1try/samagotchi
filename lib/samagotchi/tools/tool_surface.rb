@@ -2,6 +2,7 @@
 
 require_relative "builtin_calls"
 require_relative "deferred_tools"
+require_relative "registry"
 
 module Samagotchi
   module Tools
@@ -14,8 +15,10 @@ module Samagotchi
     # tool_definitions/deferred_tools and ToolRunner's left-out, unwrap
     # and refusal checks read it. A change made while the turn runs (a
     # /toolkit change, chi.replace_tools: staged anyway) shapes the next
-    # turn's surface only. Outside a turn (a bare kernel, a spec) a reader
-    # computes one on read (.of): nothing is cached or invalidated.
+    # turn's surface only. Outside a turn a caller builds one (.for): a bare
+    # kernel or loop at its own context (KernelLoop#own_context), the tool
+    # index at load and at #refresh!, the readers off the turn thread from
+    # ToolkitBinding#published.
     #
     # +declared+    the entries the request declares, in prompt order (Registry#entries)
     # +index_only+  the entries the toolkit leaves out that call_tool reaches (Registry#reachable_names)
@@ -67,14 +70,25 @@ module Samagotchi
               layers: frozen_copy(Array(layers)), **)
       end
 
-      # The turn's surface (+context+'s, an Engine turn's), else one computed
-      # now from +registry+ under +context+'s layers and loads_tools (a bare
-      # kernel or loop, a spec).
+      # The turn's surface (+context+'s: an Engine turn's, or a bare kernel's
+      # or loop's own, KernelLoop#own_context); a context without one raises
+      # MissingSurface (no reader falls back to the Registry as it is now).
       # @param context [TurnContext]
       # @return [ToolSurface]
-      def self.of(context, registry)
-        context.surface || self.for(registry, layers: context.llm_context_layers,
-                                              loads_tools: context.settings&.loads_tools == true)
+      def self.of(context) = context.surface || raise(MissingSurface)
+
+      # A bare kernel's or loop's own +context+ (no Engine turn: a spec, a
+      # bench) with a surface: its own, else one built now from +registry+
+      # under its layers and loads_tools. Only their own default context
+      # goes through here (KernelLoop#own_context, ChatLoop#turn_context);
+      # a context handed down is read as it is (.of).
+      # @param context [TurnContext]
+      # @return [TurnContext]
+      def self.bare(context, registry)
+        return context if context.surface
+
+        context.with(surface: self.for(registry, layers: context.llm_context_layers,
+                                                 loads_tools: context.settings&.loads_tools == true))
       end
 
       def self.empty(layers, loads_tools)

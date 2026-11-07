@@ -231,8 +231,11 @@ RSpec.describe Samagotchi::LLMContextStale do
 
     after { FileUtils.remove_entry(dir) }
 
-    # A run's turn under +llm_context+.
-    def under(llm_context) = run_context(settings: Samagotchi::LLM::TurnSettings.none.with(llm_context: llm_context))
+    # A run's turn under +llm_context+, on test_kernel's tools (the built-ins).
+    def under(llm_context)
+      run_context(settings: Samagotchi::LLM::TurnSettings.none.with(llm_context: llm_context),
+                  tools: Samagotchi::Tools::Builtins.default)
+    end
 
     describe "the native loop" do
       def prompts(llm_context)

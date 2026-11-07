@@ -60,7 +60,7 @@ RSpec.describe "The slow-commands bundle" do
       @installer.run
     end
 
-    def run(c) = runner.run(c, context: Samagotchi::TurnContext.none, iteration: 1, call_index: 1, call_count: 1, on_stream_event: ->(_) {}, max_tool_output_chars: nil)
+    def run(c) = runner.run(c, context: Samagotchi::TurnContext.none(surface: Samagotchi::Tools::ToolSurface.for(nil)), iteration: 1, call_index: 1, call_count: 1, on_stream_event: ->(_) {}, max_tool_output_chars: nil)
 
     it "installs cleanly and loads" do
       expect(@installer.warnings).to be_empty

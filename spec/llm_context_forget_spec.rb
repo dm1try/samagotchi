@@ -235,7 +235,7 @@ RSpec.describe Samagotchi::LLMContextForget do
       events = []
       result = kernel.run([{ role: "system", content: "base" }, { role: "user", content: "go" }], max_iterations: 10,
                           on_stream_event: ->(event) { events << event },
-                          context: run_context(settings: Samagotchi::LLM::TurnSettings.none.with(llm_context: llm_context)))
+                          context: run_context(tools: Samagotchi::Tools::Builtins.default, settings: Samagotchi::LLM::TurnSettings.none.with(llm_context: llm_context)))
 
       expect(sent[1]).to include("[read]\n[#t1] line 1 of a.rb")
       # One ✂ row, the forget's own batch, while its call runs.
@@ -260,7 +260,7 @@ RSpec.describe Samagotchi::LLMContextForget do
       names = -> { chat.tool_definitions.map { |tool| tool[:function][:name] } }
       expect(names.call).not_to include("forget_outputs")
 
-      forget = run_context(settings: Samagotchi::LLM::TurnSettings.none.with(llm_context: llm_context(protect_steps: 0)))
+      forget = run_context(tools: Samagotchi::Tools::Builtins.default, settings: Samagotchi::LLM::TurnSettings.none.with(llm_context: llm_context(protect_steps: 0)))
       events = []
       chat.complete(messages: [{ role: "system", content: "base" }, { role: "user", content: "go" }], max_iterations: 5,
                     on_stream_event: ->(event) { events << event }, context: forget)
@@ -282,7 +282,7 @@ RSpec.describe Samagotchi::LLMContextForget do
       kernel = test_kernel
       # The turn's session pins the file; its folder is +dir+.
       session = Struct.new(:working_set_pins).new([Samagotchi::WorkingSetPin.new(kind: "file", key: file)])
-      context = run_context(settings: Samagotchi::LLM::TurnSettings.none.with(llm_context: llm_context(protect_steps: 0)),
+      context = run_context(tools: Samagotchi::Tools::Builtins.default, settings: Samagotchi::LLM::TurnSettings.none.with(llm_context: llm_context(protect_steps: 0)),
                             session: session, cwd: dir)
       chat = Samagotchi::LLM::ChatLoop.new(kernel: kernel, adapter: adapter)
 

@@ -2,6 +2,14 @@
 
 module Samagotchi
   module Tools
+    # A reader of the turn's tools (Tools::ToolSurface) given none: a
+    # context or call that should carry the turn's carries nothing. Never
+    # taken as a failing preview's or targets' (ToolActivity, Guardrails::
+    # Targets re-raise it): a rule's acts_as must not silently go missing.
+    class MissingSurface < StandardError
+      def initialize(msg = "no ToolSurface: the turn's tools are missing (TurnContext#surface)") = super
+    end
+
     # The tools a session offers the model, in declaration order: the
     # built-ins (Tools::Builtins) as registered, then the ones bundles add,
     # by bundle and name. That order doesn't depend on which plugin
@@ -41,7 +49,8 @@ module Samagotchi
 
         # Its preview on +call+ (the row's params), nil without one.
         # +surface+, the turn's Tools::ToolSurface (nil: none), is what
-        # call_tool's reads (what the turn reaches); a plugin's ignores it.
+        # call_tool's reads (what the turn reaches: it raises MissingSurface
+        # without one); a plugin's ignores it.
         def preview_of(call, surface = nil) = preview&.call(call, surface)
 
         # Its targets on +call+ (what guardrail rules match), nil without
