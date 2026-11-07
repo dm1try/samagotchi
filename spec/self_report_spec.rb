@@ -379,7 +379,7 @@ RSpec.describe Samagotchi::SelfReport do
       expect(field("model")).to eq("main:spec-model (this session abcd1234, the default)")
     end
 
-    it "leaves out the session id when there is none (a REPL without a session)" do
+    it "leaves out the session id when there is none (a run without a session)" do
       env.merge!("SAMAGOTCHI_SESSION_MODEL" => "splash:Qwen3.8-27B", "SAMAGOTCHI_PARENT_SESSION" => "chi")
       expect(field("model")).to eq("splash:Qwen3.8-27B (this session; default main:spec-model)")
     end

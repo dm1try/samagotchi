@@ -12,7 +12,7 @@ module Samagotchi
   # (title: the auto title the recap reply led with, RecapTitle; absent in
   # a recap saved before it, or when no reply gave one).
   # A separate file, so it never races the session-file save at the end of a
-  # turn. Follows the Engine's current session (the REPL can switch).
+  # turn. Follows the Engine's current session.
   class RecapStore
     FILE = "recap.json"
     # A session card's or the picker's recap line.

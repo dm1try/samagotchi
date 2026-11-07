@@ -33,7 +33,7 @@ The recipients are your own sessions, in every project:
   (unless `chi broadcast` itself runs as one, `SAMAGOTCHI_ENV=test`).
 
 A session a one-turn `chi -p … --non-interactive` run has can't take notes: it
-is listed as skipped, "in use by a one-turn chi --non-interactive run".
+is listed as skipped, "in use by a one-turn chi --non-interactive run or an older chi's terminal".
 
 ## Tags: which sessions it concerns
 
@@ -101,7 +101,7 @@ broadcast b-7f3a1c9e  "payments API returns 500 since 14:00 (PAY-123)"
 5e1f0a77  delivered  model: yes (p 0.91)
 77aa0b3c  delivered  unchecked: triage deadline
 c0ffee12  skipped    model: no
-d00dad00  skipped    in use by a one-turn chi --non-interactive run
+d00dad00  skipped    in use by a one-turn chi --non-interactive run or an older chi's terminal
 delivered 4 · skipped 2 · 1 unchecked: triage deadline
 ```
 

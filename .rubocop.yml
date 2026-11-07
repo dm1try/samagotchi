@@ -550,7 +550,6 @@ Samagotchi/SilentRescue:
     - lib/samagotchi/steer_cut.rb
     - lib/samagotchi/steer.rb
     - lib/samagotchi/system_one/judgment_settings.rb
-    - lib/samagotchi/terminal_ui.rb
     - lib/samagotchi/terminal_ui/attached_loop.rb
     - lib/samagotchi/terminal_ui/attached_loop/composer.rb
     - lib/samagotchi/terminal_ui/attached_view.rb

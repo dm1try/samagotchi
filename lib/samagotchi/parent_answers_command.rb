@@ -10,13 +10,13 @@ module Samagotchi
   # soft) or `default` (none of its own) sets it, saved at once, for the next
   # answer a parent gives. It may only tighten config.yml's
   # (Guardrails::ParentPolicy.effective). Tightening goes from anyone;
-  # loosening (toward soft, or default) only from a user at a UI: the REPL,
-  # an attached TUI, the web (+user_ui+). A parent agent's line (chi send,
+  # loosening (toward soft, or default) only from a user at a UI: an
+  # attached TUI, the web (+user_ui+). A parent agent's line (chi send,
   # a piped or marked attach, a delegate's follow-up) is refused.
   class ParentAnswersCommand
     NAME = "/parent-answers"
     USAGE = "usage: #{NAME} [hard|standard|soft|default]".freeze
-    REFUSED = "loosening parent_answers is the user's: #{NAME} in chi --attach, the REPL or the web " \
+    REFUSED = "loosening parent_answers is the user's: #{NAME} in a chi terminal or the web " \
               "(not chi send or a parent agent)".freeze
 
     # What +args+ (the text after the name) asks for.

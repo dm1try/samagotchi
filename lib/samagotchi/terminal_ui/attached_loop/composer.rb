@@ -106,8 +106,7 @@ module Samagotchi
           route = ComposerRoute.call(text, running: @running, registry: command_registry)
           return submit_delivery(route) if route.choice
 
-          # The terminal's own commands (SessionCommands registers them, the
-          # REPL reads the same words). Before the continue offer: the
+          # The terminal's own commands (SessionCommands registers them). Before the continue offer: the
           # leaving ones are no answer to it.
           local = route.local
           return submit(nil) if local == :detach
@@ -134,7 +133,7 @@ module Samagotchi
           elsif %i[share participants].include?(local)
             @screen.commit(participant_commands.run(text))
           elsif route.kind == :command
-            # The history keeps !cmds, as the REPL's does (prompts: #send_prompt).
+            # The history keeps !cmds (prompts: #send_prompt).
             persist_recent_history(text) if PromptHistory.shell_line?(text)
             send_command(text)
           elsif route.kind == :typo
@@ -146,7 +145,7 @@ module Samagotchi
           nil
         end
 
-        # One read on the reader thread: the REPL's multiline read with Tab
+        # One read on the reader thread: a multiline read with Tab
         # completion at the main prompt, a plain line for a question's choice
         # or the continue offer's answer.
         def read_input_line(prompt, prefill)
@@ -173,7 +172,7 @@ module Samagotchi
 
         # The session's commands as its worker's snapshot names them (its
         # plugins' too); the built-ins until one arrives, or from a worker too
-        # old to name them. An unknown /foo is a prompt, as in the REPL.
+        # old to name them. An unknown /foo is a prompt.
         def command_registry = @command_registry || SessionCommands.builtin_registry
 
         # Ctrl-C cancels the running turn (whoever started it). At an idle
@@ -207,7 +206,7 @@ module Samagotchi
 
         # On the reader thread, from Reline's Ctrl-C: what the line held, and
         # when. During a turn the press goes to the loop (it cancels the turn)
-        # and the read goes on with the typed text still in it, as in the REPL;
+        # and the read goes on with the typed text still in it;
         # otherwise it is noted for the Interrupt the LineReader queues next.
         # @return [Boolean] true: handled, the read goes on; false: Reline ends
         #   the read with Interrupt

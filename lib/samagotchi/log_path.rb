@@ -4,7 +4,7 @@ require_relative "config"
 require_relative "paths"
 
 module Samagotchi
-  # Where the debug log (DebugLog) goes, for the REPL, the attached terminal
+  # Where the debug log (DebugLog) goes, for a one-shot, the attached terminal
   # and the background worker alike: nil when log.disable is set, else log.file
   # (~ and relative paths expanded against cwd), else
   # $XDG_STATE_HOME/samagotchi/samagotchi.log (~/.local/state/... by default),

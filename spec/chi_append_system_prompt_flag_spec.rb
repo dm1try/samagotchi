@@ -4,7 +4,7 @@ require "tmpdir"
 require "json"
 require "support/fake_provider_server"
 
-# --append-system-prompt FILE on the plain REPL path (--non-interactive): the
+# --append-system-prompt FILE on the one-shot path (--non-interactive): the
 # file's text is in the prompt after config.yml's append_system_prompt:
 # entries, and the session saves the flag's files (not the config's). A
 # file that can't be used stops chi before anything starts. One run is a

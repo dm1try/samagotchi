@@ -25,8 +25,8 @@ module Samagotchi
   # SessionMetrics is a persistent, error-isolated collector of per-session
   # analytics. It implements the same #call(event) sink contract as
   # SessionObserver subscribers, so Engine#run_turn feeds it (it forwards every
-  # event to its SessionObserver): the REPL, the -p/--non-interactive/--resume
-  # paths and SessionManager background workers.
+  # event to its SessionObserver): a --non-interactive one-shot and the
+  # session workers.
   #
   # Each finished turn leaves a record (status, timings, model, prompt and
   # completion tokens, tool calls, iterations, retries, cuts); session totals are

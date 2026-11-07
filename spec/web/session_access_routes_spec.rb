@@ -306,7 +306,7 @@ RSpec.describe Samagotchi::Web::App, "session access routes" do
       status, body = note(repl, { text: "fyi" })
       expect(status).to eq(409)
       expect(body).to include("error" => "owned_by_tui", "status" => "refused", "session_id" => repl.id,
-                              "message" => "session #{repl.id} is in use by a one-turn chi --non-interactive run; let it finish first")
+                              "message" => "session #{repl.id} is in use by a one-turn chi --non-interactive run or an older chi's terminal; let it finish first")
       expect(note(idle, { text: "  " })).to match([400, include("error" => "note_rejected")])
       expect(note(idle, {})).to match([400, include("error" => "missing_fields")])
       expect(note(idle, { text: "x", source: "broadcast" }))
@@ -582,8 +582,8 @@ RSpec.describe Samagotchi::Web::App, "session access routes" do
       own(session, kind: "tui")
 
       expect(call("/api/sessions/#{session.id}/stop", method: "POST", body: {}))
-        .to eq([409, { "error" => "owned_by_tui", "detail" => "session #{session.id} is in use by a one-turn chi --non-interactive run; let it finish first",
-                       "message" => "session #{session.id} is in use by a one-turn chi --non-interactive run; let it finish first",
+        .to eq([409, { "error" => "owned_by_tui", "detail" => "session #{session.id} is in use by a one-turn chi --non-interactive run or an older chi's terminal; let it finish first",
+                       "message" => "session #{session.id} is in use by a one-turn chi --non-interactive run or an older chi's terminal; let it finish first",
                        "session_id" => session.id }])
       idle = make
       status, body = call("/api/sessions/#{idle.id}/restart", method: "POST", body: {})

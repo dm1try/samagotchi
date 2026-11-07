@@ -109,7 +109,7 @@ RSpec.describe Samagotchi::BroadcastCommand do
          "#{short(pay)}  delivered  ticket PAY-123 matches (branch)",
          "#{short(prd)}  delivered  link notion.so/team/checkout-v2 matches (messages); waits for its next start",
          "#{short(other)}  skipped    model: no",
-         "#{short(repl)}  skipped    in use by a one-turn chi --non-interactive run",
+         "#{short(repl)}  skipped    in use by a one-turn chi --non-interactive run or an older chi's terminal",
          "delivered 2 · skipped 2"]
       )
       expect(judged).to eq([other.id])
@@ -133,7 +133,7 @@ RSpec.describe Samagotchi::BroadcastCommand do
          "#{short(pay)}  delivered  --all",
          "#{short(prd)}  delivered  --all; waits for its next start",
          "#{short(other)}  delivered  --all",
-         "#{short(repl)}  skipped    in use by a one-turn chi --non-interactive run",
+         "#{short(repl)}  skipped    in use by a one-turn chi --non-interactive run or an older chi's terminal",
          "delivered 3 · skipped 1"]
       )
       expect([pay, prd, other].map { |s| notes_of(s).map { |n| n["text"] } })

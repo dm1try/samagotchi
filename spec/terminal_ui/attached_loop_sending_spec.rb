@@ -37,7 +37,7 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "a failed turn's prompt" do
     @push.call("type" => "prompt_restored", "prompt" => "boom", "origin" => { "client_id" => "tui:1", "enqueued_id" => enqueued_id })
   end
 
-  it "puts its own prompt back in the input, as the REPL does" do
+  it "puts its own prompt back in the input" do
     typed << "boom"
     expect(reads.pop(timeout: 2)).to be_nil
 
@@ -76,7 +76,7 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "commands and the continue 
 
   before { feed(joined) }
 
-  it "shows its own command's output as the REPL does: model> lines, a !cmd's own output as is" do
+  it "shows its own command's output: model> lines, a !cmd's own output as is" do
     feed(ran(line: "/model", output: "runtime model: m1 (profile=qwen36)"), ran(line: "!ls", output: "a\nb\n"))
 
     expect(screen.lines).to eq(["model> runtime model: m1 (profile=qwen36)", "a\nb\n"])

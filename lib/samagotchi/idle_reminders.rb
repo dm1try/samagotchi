@@ -11,8 +11,7 @@ module Samagotchi
   #      Engine#run_turn) as [SYSTEM: REMINDERS DUE <local time>] and marks it fired.
   #   2. Synthetic turns: when this job's tick finds due reminders while
   #      idle, it fires @auto_turn_callback, which queues their names
-  #      (Engine#note_due_reminders) for the worker's or the REPL's
-  #      reminder turn. While names are queued the tick waits; whoever
+  #      (Engine#note_due_reminders) for the worker's reminder turn. While names are queued the tick waits; whoever
   #      clears them (a turn's injection, the reminder turn's consumer)
   #      re-arms it. The queue is the only "already due" state.
   class IdleReminders
@@ -64,8 +63,8 @@ module Samagotchi
 
       # Signal the engine to create a synthetic turn via callback.
       # The callback is responsible for triggering a turn (e.g. SessionManager
-      # writes a file, TerminalUI queues input). The engine's run_turn or
-      # REPL injection point then picks up and delivers the reminders.
+      # writes a file). The engine's run_turn then picks up and delivers
+      # the reminders.
       return unless @auto_turn_callback
 
       @auto_turn_callback.call(due_names)

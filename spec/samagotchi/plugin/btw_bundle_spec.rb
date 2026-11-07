@@ -97,7 +97,7 @@ RSpec.describe "The btw bundle" do
     expect(session.messages).to eq(before)
   end
 
-  it "notes a REPL mid-turn question is about the conversation before the turn" do
+  it "notes a one-shot's mid-turn question is about the conversation before the turn" do
     allow(engine).to receive(:turn_running?).and_return(true)
     btw("/btw q")
     expect(cards.map { |c| c[:body] }).to all(end_with("(About the conversation before the running turn.)"))

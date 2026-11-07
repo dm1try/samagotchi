@@ -403,7 +403,7 @@ RSpec.describe Samagotchi::Engine, "#run_turn as the TUI seam" do
     expect(session.messages.last).to include(role: "system", kind: "turn_note")
     expect(session.messages.last[:content]).to include("cancelled (ctrl-c)").and include("no answer had been shown")
     expect(session.messages.length).to eq(2)
-    # The REPL keeps result.conversation: the note is there too.
+    # The session keeps result.conversation: the note is there too.
     expect(result.conversation.last).to eq(session.messages.last)
   end
 

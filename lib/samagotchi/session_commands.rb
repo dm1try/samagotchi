@@ -32,7 +32,7 @@ module Samagotchi
   # load budget (spec/samagotchi/testing/sandbox_spec.rb).
   autoload :ObjectivesCommand, File.expand_path("objectives_command", __dir__)
 
-  # The session commands a REPL and a session worker both run: /model,
+  # The session commands a session worker runs (a -p one-shot too): /model,
   # /models, /llm-context, /guardrails, /context, !rollback, !cmd and the answer to a continue offer. They act on
   # the Engine and its TurnFlow; the host prints the result's output and
   # runs a continue turn when asked to (#run never runs a turn).
@@ -310,8 +310,8 @@ module Samagotchi
     # @param as_parent [Boolean] a parent agent sent it (client cli:answer):
     #   a /continue yes is held to guardrails.parent_answers, as chi
     #   answer --option Continue is (Guardrails::ParentPolicy)
-    # @param user_ui [Boolean] a user at a UI sent it (the REPL, an attached
-    #   TUI, the web; not a piped or marked one): only such a line loosens
+    # @param user_ui [Boolean] a user at a UI sent it (an attached TUI, the
+    #   web; not a piped or marked one): only such a line loosens
     #   /parent-answers
     # @return [Result, nil] nil when +line+ is not one of these commands
     def run(line, confirm: true, as_parent: false, user_ui: false)
@@ -428,7 +428,7 @@ module Samagotchi
     end
 
     # The output goes into the conversation for the next turn. Not saved
-    # here (as in the REPL, the next turn saves it). No parent-session
+    # here (the next turn saves it). No parent-session
     # marker: the user runs this, not the model. A worker's `chi --model X`
     # default is unset, though: it was that run's, not the default of a chi
     # run here (Tools::Builtins.cli_model_unset). It runs in the session's
@@ -727,7 +727,7 @@ module Samagotchi
 
     # /recap on|off|default (RecapCommand); :recap in changed when this
     # session's own recap.enabled moved. It doesn't save: its host does on
-    # a changed result (Worker#run_command, the REPL).
+    # a changed result (Worker#run_command).
     def recap_setting(text)
       output, changed, status = RecapCommand.new(engine: @engine).run(text.delete_prefix(RECAP_COMMAND))
       reply(output, status: status, changed: changed ? [:recap] : [])

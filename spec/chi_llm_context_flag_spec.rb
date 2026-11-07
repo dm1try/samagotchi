@@ -4,7 +4,7 @@ require "tmpdir"
 require "json"
 require "support/fake_provider_server"
 
-# --llm-context on the plain REPL path (--non-interactive): the session
+# --llm-context on the one-shot path (--non-interactive): the session
 # starts with its own strategy (saved in its file), and the native prompt
 # declares forget_outputs under forget. One run is a real bin/chi; the rest
 # fork it (ChiCli#fork_chi).

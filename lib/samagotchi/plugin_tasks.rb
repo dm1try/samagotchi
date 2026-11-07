@@ -70,8 +70,7 @@ module Samagotchi
     end
 
     # Start the init tasks not started yet, each on its own thread. The
-    # worker calls it once its Bridge is up, the REPL once it renders
-    # events, and every turn (a -p run has only that); later calls start
+    # worker calls it once its Bridge is up, and every turn (a -p run has only that); later calls start
     # nothing new.
     def start!
       @mutex.synchronize do

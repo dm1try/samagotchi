@@ -885,7 +885,7 @@ RSpec.describe "delegate tools" do
         expect(described_class.call("x", session: child.id, peers: peers)).to eq("Error: the message to session #{child.id[0, 8]} could not be written")
         allow(Samagotchi::SessionManager).to receive(:deliver_turn).and_raise(Samagotchi::SessionManager::OwnedByTUI.new(child.id))
         expect(described_class.call("x", session: child.id, peers: peers))
-          .to eq("Error: session #{child.id[0, 8]} is in use by a one-turn chi --non-interactive run, which can't take a delegated message")
+          .to eq("Error: session #{child.id[0, 8]} is in use by a one-turn chi --non-interactive run or an older chi's terminal, which can't take a delegated message")
       end
 
       it "returns at once without waiting" do
@@ -909,7 +909,7 @@ RSpec.describe "delegate tools" do
                                "don't poll with delegate_result.")
       end
 
-      it "promises no report to a parent that can't get one (a REPL, -p: no relay)" do
+      it "promises no report to a parent that can't get one (a -p one-shot: no relay)" do
         allow(Samagotchi::SessionManager).to receive(:deliver_turn).and_return(Samagotchi::SessionManager::DeliverResult.new(status: :accepted, via: :bridge))
         out = described_class.call("more", session: child.id, wait: false, peers: peers)
         expect(out).to include("Sent the follow-up to delegate #{child.id[0, 8]}; delegate_result waits for its reply.")
@@ -1169,7 +1169,7 @@ RSpec.describe "delegate tools" do
         expect(canceled(worker_peers)).to end_with("chi brings its reply as a delegate report")
       end
 
-      it "off, or a parent with no relay (a REPL, -p): delegate_result waits again, as before reports" do
+      it "off, or a parent with no relay (a -p one-shot): delegate_result waits again, as before reports" do
         mode[0] = "off"
         off = [timed_out(worker_peers), asked(worker_peers)]
         mode[0] = "wake"

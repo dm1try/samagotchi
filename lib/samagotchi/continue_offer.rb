@@ -134,7 +134,7 @@ module Samagotchi
     # The continue offer was answered yes: resume the conversation without a
     # user message, with the iteration limit the offer's turn had, from the
     # run that turn started (TurnFlow#resume_from: its reasoning stays). A failure
-    # keeps the offer, as the REPL does ("continue prompt preserved"), and
+    # keeps the offer ("continue prompt preserved"), and
     # asks again, one before the turn began too (logged, no :turn_failed).
     # The answer's text is carried into the turn as it begins; a turn that
     # never began leaves it to no other.

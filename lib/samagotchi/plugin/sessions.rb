@@ -110,7 +110,7 @@ module Samagotchi
       # @param delivery [Symbol, String, nil] nil or :next_step (default),
       #   :queue
       # @return [String] the id of the session it went to
-      # @raise [Error] no such session, a REPL owns it, it wasn't taken
+      # @raise [Error] no such session, a one-shot owns it, it wasn't taken
       #   (a worker older than queueing refuses a queue), or delivery is
       #   :cut or unknown
       def send(id, text, delivery: nil)
@@ -184,7 +184,7 @@ module Samagotchi
       # its worker to let go.
       # @return [String] the child's id
       # @raise [Error] not a child of this session, no such session, or a
-      #   REPL owns it
+      #   one-shot owns it
       def stop(id)
         state_dir = self.state_dir
         sid = resolve(id, state_dir)

@@ -22,7 +22,7 @@ module Samagotchi
   # chi's own settings, keys, proxies or dirs (LLM calls, HostKeys, Config,
   # Paths, hooks, plugins). A pair turn's tools don't get it either. A
   # mise.toml edit reaches a session at its next worker (`chi sessions
-  # restart`). The REPL modes run no worker and keep the shell's env.
+  # restart`). A --non-interactive one-shot runs no worker and keeps the shell's env.
   # docs/sessions.md (Project env).
   #
   # And `chi` inside those tools stays the chi home's (ChiShim): the project's
@@ -75,7 +75,7 @@ module Samagotchi
     Overlay = Data.define(:env, :applied, :reason, :ruby) do
       def marker = applied ? "mise:#{ruby || "no ruby"}" : "none:#{reason}"
     end
-    # No project env: specs, the REPL modes, a worker before #install!.
+    # No project env: specs, a one-shot, a worker before #install!.
     NONE = Overlay.new(env: {}.freeze, applied: false, reason: "none", ruby: nil)
 
     class Failed < StandardError; end

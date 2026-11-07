@@ -622,7 +622,7 @@ RSpec.describe Samagotchi::SessionCommands do
       expect(result).to have_attributes(status: :ok, output: "hi\n", shell: true, changed: [:messages])
       expect(session.messages.last).to eq(role: "user", content: "!(echo hi)\nhi\n")
       expect(commands.run("!rollback").output).to eq("nothing to rollback")
-      # As in the REPL, the next turn saves it.
+      # The next turn saves it.
       expect(saved).to be_empty
     end
 

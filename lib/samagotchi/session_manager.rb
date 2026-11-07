@@ -329,7 +329,8 @@ module Samagotchi
     # +project_root+ unless asked for every project.
     # @param live [Boolean] only sessions a worker owns now (the owner lock,
     #   not the saved status, which a dead worker leaves at "running"); a
-    #   REPL-owned session is left out: it can't take notes
+    #   session a one-shot (or an older chi's REPL) owns is left out: it
+    #   can't take notes
     # @param cwd [String, nil] only sessions in this folder or below it
     # @param project_root [String, nil] only this project's sessions
     #   (Session#project_root)
@@ -981,7 +982,7 @@ module Samagotchi
       false
     end
 
-    # Only the system prompt (the REPL seeds one, a saved session keeps
+    # Only the system prompt (an Engine seeds one, a saved session keeps
     # it); a context note is a system message too, but with its kind.
     # A turn note (the tail system message after a failed, cancelled or empty
     # turn) is not a conversation either: a session whose only turn failed

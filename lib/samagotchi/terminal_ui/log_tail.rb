@@ -29,6 +29,8 @@ module Samagotchi
         @ino = nil
         @buffer = +""
         @record = nil
+        @stopping = false
+        @wake = Thread::Queue.new
       end
 
       # Start following from the file's current end.
@@ -40,11 +42,19 @@ module Samagotchi
         self
       end
 
-      # The records written since the last look are shown first.
+      # How long #stop waits for the record being handed on.
+      STOP_WAIT = 1
+
+      # The records written since the last look are shown first. The tail
+      # ends after the look it is in (a record half committed is finished);
+      # one stuck past STOP_WAIT is killed.
       def stop
-        @thread&.kill
-        @thread&.join(1)
-        Degrade.call(:attached, "log_tail_failed") { poll } if @thread
+        if @thread
+          @stopping = true
+          @wake << :stop
+          @thread.kill unless @thread.join(STOP_WAIT)
+          Degrade.call(:attached, "log_tail_failed") { poll }
+        end
         @io&.close
         @io = nil
       end
@@ -54,20 +64,25 @@ module Samagotchi
         reopen_if_rotated
         return unless @io
 
-        chunk = @io.read_nonblock(1 << 16, exception: false)
-        while chunk.is_a?(String)
-          @buffer << chunk
-          chunk = @io.read_nonblock(1 << 16, exception: false)
-        end
+        drain
         take_lines
       end
 
       private
 
       def follow
-        loop do
+        until @stopping
           Degrade.call(:attached, "log_tail_failed") { poll }
-          sleep(@poll_interval)
+          @wake.pop(timeout: @poll_interval)
+        end
+      end
+
+      # What the open file holds past the last read, into the buffer.
+      def drain
+        chunk = @io.read_nonblock(1 << 16, exception: false)
+        while chunk.is_a?(String)
+          @buffer << chunk
+          chunk = @io.read_nonblock(1 << 16, exception: false)
         end
       end
 
@@ -85,6 +100,9 @@ module Samagotchi
         stat = File.stat(@path)
         return if stat.ino == @ino && stat.size >= @io.pos
 
+        # Renamed: what the worker wrote to it since the last look is still
+        # there, read before the new file (a truncated one has nothing left).
+        drain if stat.ino != @ino
         @io.close
         open_at(:start)
       rescue SystemCallError

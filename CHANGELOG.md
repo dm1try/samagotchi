@@ -12,7 +12,7 @@ and commands may change between minor versions. How releases are made:
 
 - `chi scratch` in a terminal runs attached, on a session worker of its own that saves nothing (no memory writes, no delegates, approvals for this session only). Ctrl-D, `/detach`, `/exit` or a second Ctrl-C ends it: the worker stops and the session is deleted ("Scratch session deleted."); a worker whose terminal is gone (a killed terminal) deletes it too. `chi send`, chi web and `chi --attach`/`--resume` refuse a scratch session, in one wording. `chi scratch -p TEXT --non-interactive` still runs its turn in this process.
 - `chi -v` runs attached: the terminal shows the session's debug records (raw LLM responses, tool calls and results) above the prompt, and a worker this chi starts logs at debug. A worker that was already running keeps the level it started with, and one line says so. With `--non-interactive`, `-v` still mirrors the records to stderr.
-- A session a `chi -p … --non-interactive` run has open is refused as "in use by a one-turn chi --non-interactive run" (`chi send`, `chi note`, `chi sessions delete`/`archive`, chi web, the delegate tools), not as "open in a chi REPL".
+- A session a `chi -p … --non-interactive` run has open is refused as "in use by a one-turn chi --non-interactive run or an older chi's terminal" (`chi send`, `chi note`, `chi sessions delete`/`archive`, chi web, the delegate tools), not as "open in a chi REPL".
 - `chi bundle upgrade --agent` merges the conflicts in the attached terminal.
 - chi now writes a warning to the debug log when part of its work falls back after an error (a system prompt section left out, a Bridge route or a chi web answer given empty, a session command's lookup) instead of dropping it silently: once per process for each kind, later ones at `debug`.
 
@@ -24,6 +24,7 @@ and commands may change between minor versions. How releases are made:
 
 ### Fixed
 
+- `chi scratch`: a terminal whose stream drops and reconnects no longer has its turn cancelled and its session deleted by the worker; the worker waits about 25 s with no stream before it takes the terminal as gone.
 - chi web: a diagram drawn by a block renderer is usable without a mouse: a screen reader hears that its source is behind the "Show the source" button, and a button that shows on keyboard focus zooms it to full size and back.
 - The objectives tool refuses a proposal its card's Apply would refuse (an add or reword whose text is only a status like `[done]` or only `(done when: …)`, or `done` for a dropped objective), so the model hears why instead of leaving a card that can't apply.
 - A thought the model never closed no longer reaches the continue note's "Its last answer" or decision-card's `/short`: both read the answer as you saw it, with the one rule a Check this record uses (a bundle gets it as `ctx.last_answer`). decision-card 0.2.1.

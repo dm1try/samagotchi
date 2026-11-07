@@ -8,7 +8,7 @@ require "samagotchi/terminal_ui"
 require "samagotchi/terminal_ui/attached_loop"
 require_relative "../support/recording_surface"
 
-RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "input parity with the REPL" do
+RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "input" do
   let(:screen) { RecordingSurface.new(columns: 80) }
   let(:client) { instance_double(Samagotchi::BridgeClient, session_id: "s-1234") }
   let(:history_dir) { Dir.mktmpdir("attached-history") }
@@ -40,7 +40,7 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "input parity with the REPL
     reads
   end
 
-  it "keeps what was typed in the REPL's history file, and loads it on the next run" do
+  it "keeps what was typed in the prompt history file, and loads it on the next run" do
     run_loop(["hello", "!ls", "/model", "!rollback", "/stats"].tap { allow(client).to receive(:get_json) })
 
     expect(JSON.parse(File.read(ENV["SAMAGOTCHI_HISTORY_FILE"]))).to eq(["hello", "!ls"])
@@ -49,7 +49,7 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "input parity with the REPL
     expect(Reline::HISTORY.to_a).to eq(["hello", "!ls"])
   end
 
-  it "sends #name as typed, as the REPL does" do
+  it "sends #name as typed" do
     run_loop(["PR #1: check #notes and #project/todo"])
 
     expect(client).to have_received(:post_turn)
@@ -144,7 +144,7 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "Ctrl-C and exit at an idle
     expect(client).to have_received(:cancel).with(reason: "ctrl_c")
   end
 
-  it "asks the worker to exit on a bare exit, any case, as the REPL exits" do
+  it "asks the worker to exit on a bare exit, any case" do
     allow(client).to receive(:request_exit).and_return(Samagotchi::BridgeClient::Response.new(status: 200, body: '{"status":"exiting"}'))
 
     expect(run_reads("exit")).to eq(:detached)

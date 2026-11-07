@@ -52,6 +52,39 @@ RSpec.describe Samagotchi::TerminalUI::LogTail do
     expect(shown.map(&:event)).to eq(["new"])
   end
 
+  it "reads what the old file got after its last look before it follows the rotation" do
+    append(record("abcdef12", "old"))
+    tail.send(:open_at, :end)
+    append(record("abcdef12", "late"))
+    File.rename(path, "#{path}.1")
+    append(record("abcdef12", "new"))
+    tail.poll
+
+    expect(shown.map(&:event)).to eq(%w[late new])
+  end
+
+  it "stops after the record it is handing on, never in the middle of it" do
+    started = Queue.new
+    release = Queue.new
+    done = []
+    slow = described_class.new(path: path, session_id: "abcdef12-3456", poll_interval: 0.01, on_record: lambda { |record|
+      started << record
+      release.pop
+      done << record.event
+    })
+    append(record("abcdef12", "old"))
+    slow.start
+    append(record("abcdef12", "mid"))
+    pop!(started, "the tail to hand on a record")
+
+    stopper = Thread.new { slow.stop }
+    wait_for("stop to wait on the tail") { stopper.status == "sleep" || !stopper.alive? }
+    release << true
+    join!(stopper, "the stop")
+
+    expect(done).to eq(["mid"])
+  end
+
   it "keeps a torn last line for the next look" do
     tail.send(:open_at, :end)
     line = record("abcdef12", "torn")

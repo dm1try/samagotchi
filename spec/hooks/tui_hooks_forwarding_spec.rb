@@ -72,7 +72,7 @@ RSpec.describe "TUI hooks forwarding regression" do
       expect(kernel.hooks).to be(engine_hooks)
     end
 
-    it "hook registered via Engine fires during TUI's KernelLoop run (interactive REPL path)" do
+    it "hook registered via Engine fires during a KernelLoop run driven directly (not Engine#run_turn)" do
       # Stub a single generation with no tool calls so KernelLoop.run completes in 1 iteration
       allow(client).to receive(:complete).and_return("hi from model")
 
@@ -85,7 +85,7 @@ RSpec.describe "TUI hooks forwarding regression" do
       engine.register_hook(:before_generation) { |ev| gen_fired << ev[:type] }
       engine.register_hook(:before_tool_call) { |ev| tool_fired << ev[:type] }
 
-      # TUI REPL drives KernelLoop directly, not via Engine#run_turn.
+      # KernelLoop driven directly, not via Engine#run_turn.
       # Before the fix kernel.hooks is nil, so no kernel-level hooks fire.
       result = kernel.run([{ role: "system", content: "sys" }, { role: "user", content: "hi" }])
       expect(result).to be_a(Samagotchi::LLM::ModelResult)

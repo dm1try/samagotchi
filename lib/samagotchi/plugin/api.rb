@@ -235,7 +235,7 @@ module Samagotchi
       # says how to stop it. It starts on first svc.value, or now with
       # eager: true (a raise then fails the plugin's load, unless the
       # plugin rescues it). The Engine stops its services when it shuts
-      # down (the REPL or the session's worker exits), newest first.
+      # down (the session's worker or a one-shot exits), newest first.
       # @param name [String, Symbol] unique in the plugin
       # @return [Service]
       def service(name, eager: false, &block)

@@ -7,8 +7,8 @@ require_relative "session"
 require_relative "version"
 
 module Samagotchi
-  # One line at the first interactive start of a new chi version (REPL,
-  # attached, chi web) when something chi update would update is behind:
+  # One line at the first interactive start of a new chi version (a
+  # terminal, chi web) when something chi update would update is behind:
   # "chi 0.3.1: 2 bundles and the desktop helper can be updated: chi update".
   # Noted once per version in $XDG_STATE_HOME/samagotchi/update_noted,
   # whether or not anything was behind. No network; nothing is changed (the

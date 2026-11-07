@@ -8,8 +8,8 @@ module Samagotchi
   #
   # The ReminderStore is the truth (a reminder is due once its interval
   # passed). This adds the names the idle tick found due and handed to the
-  # UI's callback (#note_pending): the worker and the REPL run a reminder
-  # turn while they are pending. A turn injects whatever is due then
+  # UI's callback (#note_pending): the worker runs a reminder turn while
+  # they are pending. A turn injects whatever is due then
   # (#inject!), which marks it fired and clears the pending names.
   class ReminderQueue
     # The reminders message's first line at +time+ (a Time in the zone to

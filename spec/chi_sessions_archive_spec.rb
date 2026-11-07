@@ -51,7 +51,7 @@ RSpec.describe "chi sessions archive" do
       expect(archived?(parent) && archived?(plain)).to be(true)
     end
 
-    it "refuses a busy session, a REPL's and a scratch one, archives the rest, and exits 1" do
+    it "refuses a busy session, a one-shot's and a scratch one, archives the rest, and exits 1" do
       busy = make("busy", id: "aaaa1111-0000", owner: "worker")
       Samagotchi::Session.load(busy.id, state_dir: state_dir).tap { |s| s.status = Samagotchi::Session::STATUS_RUNNING }.save(state_dir: state_dir)
       make("open", id: "bbbb2222-0000", owner: "tui")
@@ -62,7 +62,7 @@ RSpec.describe "chi sessions archive" do
 
       expect(out.string).to eq(<<~TEXT)
         aaaa1111  refused: a turn is running; wait for it or cancel it first
-        bbbb2222  refused: it is in use by a one-turn chi --non-interactive run; let it finish first
+        bbbb2222  refused: it is in use by a one-turn chi --non-interactive run or an older chi's terminal; let it finish first
         cccc3333  refused: a scratch session is deleted when you leave; nothing to archive
         dddd4444  archived
       TEXT
@@ -70,12 +70,12 @@ RSpec.describe "chi sessions archive" do
       expect(archived?(busy)).to be(false)
     end
 
-    it "tells a REPL on a delegate from one on the session itself" do
+    it "tells a one-shot on a delegate from one on the session itself" do
       parent = make("parent", id: "aaaa1111-0000")
       make("child", parent: parent, owner: "tui")
 
       expect(run("archive", "aaaa")).to eq(1)
-      expect(out.string).to eq("aaaa1111  refused: a delegate of it is in use by a one-turn chi --non-interactive run; let it finish first\n")
+      expect(out.string).to eq("aaaa1111  refused: a delegate of it is in use by a one-turn chi --non-interactive run or an older chi's terminal; let it finish first\n")
     end
 
     it "unarchives, says so for one that isn't archived, and names an unknown id" do

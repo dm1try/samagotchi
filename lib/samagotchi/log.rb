@@ -71,7 +71,7 @@ module Samagotchi
         @monitor.synchronize { close_state }
       end
 
-      # The session this process works for (a worker, the REPL); records
+      # The session this process works for (a worker, a one-shot); records
       # carry its first SID_LENGTH chars unless they pass their own sid:.
       attr_accessor :session_id
 

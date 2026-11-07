@@ -19,8 +19,8 @@ module Samagotchi
     end
 
     # Append a message to the queue. Nil/empty strings are ignored.
-    # +seq+ is the sender's own order number for it (the REPL numbers every
-    # line it takes during a turn, so its leftovers keep send order across
+    # +seq+ is the sender's own order number for it (a sender that numbers
+    # every line it takes during a turn, so its leftovers keep send order across
     # this queue and its after-turn list: #drain_entries).
     def push(text, seq: nil)
       text = text.to_s

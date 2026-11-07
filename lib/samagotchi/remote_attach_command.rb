@@ -15,7 +15,7 @@ module Samagotchi
   # attached TUI on a session of another machine, through its chi web
   # (bin/chi branches here after RunOptions.parse, before its own checks,
   # which are this machine's). The run flags come parsed; the ones that
-  # run this machine's REPL or read its files were refused already
+  # run this machine's Engine or read its files were refused already
   # (SessionAccess::Contract::RUN). The setup flags go as typed: that
   # machine checks them against its own config and bundles.
   class RemoteAttachCommand

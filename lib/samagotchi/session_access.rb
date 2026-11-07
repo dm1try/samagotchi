@@ -238,7 +238,7 @@ module Samagotchi
     # @!attribute known_turn [Boolean, nil] with a turn asked for
     #   (--turn), ReplyWait.known_turn?; nil without one
     # @!attribute running [Boolean] the session's status was running
-    # @!attribute live [Boolean] running, or a worker or a REPL owns it
+    # @!attribute live [Boolean] running, or a worker or a one-shot owns it
     # @!attribute settled [Boolean] idle, a turn ended and no question
     #   stands (a continue offer waits for its answer)
     # @!attribute last_turn_id [String, nil] the last ended turn's

@@ -10,7 +10,7 @@ require_relative "thinking_line"
 
 module Samagotchi
   class TerminalUI
-    # EventRenderer's view in both TUIs (attached mode and the REPL), drawn
+    # EventRenderer's view in the attached TUI, drawn
     # on a Screen: the thinking feedback is the activity slot, one row right
     # above the prompt (spinner frame, then the running tool or the newest
     # sentence of the model's thinking or text, ThinkingLine), and every
@@ -60,8 +60,7 @@ module Samagotchi
         @screen.commit(text)
       end
 
-      # Draw on +surface+ from now on (the REPL swaps in its live region
-      # after the view is built, and back when it ends): what the slot shows
+      # Draw on +surface+ from now on (no caller since the REPL went): what the slot shows
       # moves there.
       def surface=(surface)
         @lock.synchronize do

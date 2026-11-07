@@ -30,7 +30,7 @@ module Samagotchi
     DEFAULT_KEEP_STATUS = [].freeze
 
     # How long a session may sit empty before the sweep takes it: its
-    # worker (or a REPL) deletes it as it leaves, so the sweep only catches
+    # worker deletes it as it leaves, so the sweep only catches
     # those killed first (a reboot, kill -9).
     EMPTY_GRACE_SECONDS = 3600
 
@@ -69,7 +69,7 @@ module Samagotchi
     end
 
     # Directories with no session file and nothing but the skeleton, nobody
-    # owning them: a REPL killed before its first save, or a worker woken
+    # owning them: a one-shot killed before its first save, or a worker woken
     # just as its session was discarded.
     # @return [Array<String>] their ids
     private_class_method def self.prune_orphan_dirs(state_dir, dry_run:)
@@ -161,7 +161,7 @@ module Samagotchi
     # +any_age+ makes every session eligible, whatever its age and the
     # count (`chi sessions clean` with no --days: test runs are throwaway).
     #
-    # A scratch session nobody owns (its REPL was killed) goes whatever its
+    # A scratch session nobody owns (its terminal and worker were killed) goes whatever its
     # age, its status and the count; +test_only+ takes it too.
     #
     # +max_count+ counts the sessions that stay: one deleted whatever its

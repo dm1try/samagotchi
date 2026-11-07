@@ -119,7 +119,7 @@ module Samagotchi
                 check: ->(value) { "N or N-M (1-#{IdleRecap::RecapPrompt::MAX_SENTENCES})" unless IdleRecap::RecapPrompt.sentences_range(value) }),
 
       # chi broadcast (Broadcast::Recipients, Broadcast::Tags): a session that ended no turn in this many hours (and
-      # no worker or REPL runs) gets no broadcast; a ticket id in the note and in a session's branch or prompts
+      # no worker runs) gets no broadcast; a ticket id in the note and in a session's branch or prompts
       # delivers it there without triage.
       Entry.new(key: "broadcast.active_hours",   yaml_path: %w[broadcast active_hours],   type: :float,   default: 8.0,             expose: %i[env config], lifecycle: :next_broadcast),
       Entry.new(key: "broadcast.ticket_pattern", yaml_path: %w[broadcast ticket_pattern], type: :string,  default: '\b[A-Z][A-Z0-9]+-\d+\b', expose: %i[env config], lifecycle: :next_broadcast),

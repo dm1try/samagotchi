@@ -143,7 +143,7 @@ module Samagotchi
       # "wake" (a delegate report, a turn of its own when idle), "queue" (a
       # report at its next step or turn, no wake) or "off" (only
       # delegate_result). Only a worker's session reads its children's rings
-      # (its Engine gives a relay); a REPL, a -p run or a scratch session
+      # (its Engine gives a relay); a -p --non-interactive run or a scratch session
       # never gets a report.
       # @param peers [Peers]
       # @return [String] "wake", "queue" or "off"

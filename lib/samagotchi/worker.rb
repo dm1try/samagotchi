@@ -52,7 +52,7 @@ module Samagotchi
   # It runs the session's Engine and Bridge, takes queued prompts from the
   # input dir one turn at a time, and returns when nobody has used it for the
   # idle-exit timeout. A failed turn is rolled back and its prompt handed back
-  # (:prompt_restored), as in the REPL, and the loop goes on. A stop marked on
+  # (:prompt_restored), and the loop goes on. A stop marked on
   # disk exits the process; an error outside a turn marks the session and
   # exits with 1.
   #
@@ -348,7 +348,7 @@ module Samagotchi
                                      @bridge.queue_command(line, client_id: client_id, after_file: after_file,
                                                                  enqueued_id: enqueued_id, author: author)
                                    })
-      # /model's default is the config's, as in the REPL; the Engine started
+      # /model's default is the config's; the Engine started
       # on the session's model.  nil when there is no default.model.
       @default_model = ModelProfile.default_model_name
       @commands = SessionCommands.new(engine: @engine, turn_flow: @turn_flow,
@@ -867,7 +867,7 @@ module Samagotchi
       nil
     end
 
-    # A due reminder runs as a continue turn, as in the REPL: Engine#run_turn
+    # A due reminder runs as a continue turn: Engine#run_turn
     # injects the reminders as a tail system message, and no user message is
     # added. A prompt's turn may have injected them already (a stale latch):
     # then there is nothing to run.
@@ -1451,7 +1451,7 @@ module Samagotchi
     # WorkerInbound.save_or_log: a failed save between turns is logged.
     def save_or_log(at, &) = WorkerInbound.save_or_log(at, &)
 
-    # Back to the conversation before the failed turn, as the REPL does (so
+    # Back to the conversation before the failed turn (so
     # failed prompts don't pile up as consecutive user messages), and each
     # prompt it took (its own and any merged into it) goes back to its
     # sender, who can send it again. The rollback and the announcements are
@@ -1600,16 +1600,31 @@ module Samagotchi
     # (AttachLauncher attaches within BRIDGE_WAIT of the spawn).
     SCRATCH_JOIN_GRACE = 30
 
+    # How long a scratch worker's terminal may have no stream open, after
+    # it had one, before it counts as gone: twice the attached terminal's
+    # whole reconnect ladder (TerminalUI::LocalLink#reconnect_delays), so
+    # a reconnect gap (a dropped stream, a slow worker) never reads as a
+    # terminal that left.
+    SCRATCH_GONE_AFTER = 2 * BridgeClient::EventStream::REDISCOVER_DELAYS.sum
+
     # Whether this is a `chi scratch` session's worker whose terminal is
-    # gone: no stream open, after one was (a killed TUI's closes as its
-    # writer reads the hang-up), or none came within SCRATCH_JOIN_GRACE.
-    # Its terminal deletes it on every way out it sees; this is for the ones
-    # it doesn't (kill -9, a closed terminal window).
+    # gone: no stream open for SCRATCH_GONE_AFTER, after one was (a killed
+    # TUI's closes as its writer reads the hang-up), or none came within
+    # SCRATCH_JOIN_GRACE. Its terminal deletes it on every way out it sees;
+    # this is for the ones it doesn't (kill -9, a closed terminal window).
     def scratch_unattended?
       return false unless @session&.scratch && @bridge
-      return false if @bridge.open_streams.positive?
 
-      @bridge.streams_served.positive? || monotonic_now - @started_at >= SCRATCH_JOIN_GRACE
+      if @bridge.open_streams.positive?
+        @unattended_since = nil
+        return false
+      end
+      return monotonic_now - @started_at >= SCRATCH_JOIN_GRACE unless @bridge.streams_served.positive?
+
+      # Set by the first look (the scratch watch or the idle pass) that
+      # finds no stream; a stream back resets it above.
+      @unattended_since ||= monotonic_now
+      monotonic_now - @unattended_since >= SCRATCH_GONE_AFTER
     end
 
     def monotonic_now = Process.clock_gettime(Process::CLOCK_MONOTONIC)

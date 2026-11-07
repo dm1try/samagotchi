@@ -176,7 +176,7 @@ module Samagotchi
         .filter_map { |candidate, state| candidate if state == "proposed" }
     end
 
-    # Turn start (Worker#run_prompt before its absorb; the REPL's turn):
+    # Turn start (Worker#run_prompt before its absorb; a one-shot's turn):
     # the proposed candidates +prompt+ (or an earlier owner prompt: a late
     # proposal) mentions are attached, then each gets one first fetch
     # (together within +seconds+), so the note reaches this turn. Only an
@@ -192,7 +192,7 @@ module Samagotchi
       return [] if own.candidates.empty? || !OwnerPrompt.turn?(session: session, author: author)
 
       # The earlier owner prompts too: a proposal that came while one ran
-      # (the REPL's plugins never see a running turn's prompt).
+      # (a one-shot's plugins never see a running turn's prompt).
       texts = owner_texts(session.messages) + (prompt.is_a?(String) ? [prompt] : [])
       found = hits(texts, proposed(session.id, project_root: session.project_root, state_dir: state_dir))
       names = found.filter_map { |hit| attach(hit, own: own, state_dir: state_dir) }
@@ -203,7 +203,8 @@ module Samagotchi
       []
     end
 
-    # The REPL's turn start (it has no ContextAbsorber running): the notes
+    # A --non-interactive one-shot's turn start (it has no ContextAbsorber
+    # running, TerminalUI#attach_mentioned_context): the notes
     # of the sources attached from candidates, as the worker's absorb gives
     # them, added to +engine+'s session and marked delivered.
     # @return [Integer] how many notes were added

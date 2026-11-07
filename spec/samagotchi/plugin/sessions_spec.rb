@@ -283,7 +283,7 @@ RSpec.describe Samagotchi::Plugin::Sessions do
       expect(Samagotchi::SessionManager).to have_received(:stop_session).with(child.id, state_dir: tmpdir, wait: 2)
     end
 
-    it "refuses a session that isn't its child, an unknown one, a child whose file is corrupt, and one a REPL owns" do
+    it "refuses a session that isn't its child, an unknown one, a child whose file is corrupt, and one a one-shot owns" do
       stranger = Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: tmpdir)
       stranger.save(state_dir: tmpdir)
       allow(Samagotchi::SessionManager).to receive(:stop_session).and_call_original
@@ -300,7 +300,7 @@ RSpec.describe Samagotchi::Plugin::Sessions do
       expect(Samagotchi::SessionManager).not_to have_received(:stop_session)
 
       allow(Samagotchi::SessionManager).to receive(:stop_session).and_raise(Samagotchi::SessionManager::OwnedByTUI, child.id)
-      expect { sessions.stop(child.id) }.to raise_error(described_class::Error, "session #{child.id[0, 8]} is in use by a one-turn chi --non-interactive run; let it finish")
+      expect { sessions.stop(child.id) }.to raise_error(described_class::Error, "session #{child.id[0, 8]} is in use by a one-turn chi --non-interactive run or an older chi's terminal; let it finish")
     end
   end
 end

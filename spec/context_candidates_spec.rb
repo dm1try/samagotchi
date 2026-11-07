@@ -122,7 +122,7 @@ RSpec.describe Samagotchi::ContextCandidates do
       expect(own.snapshot("pr-412")).to have_attributes(text: nil, checked_at: nil, error: nil)
     end
 
-    it "attaches one an earlier owner prompt mentions (a proposal that came while it ran: the REPL)" do
+    it "attaches one an earlier owner prompt mentions (a proposal that came while it ran)" do
       session.messages = [{ role: "user", turn_id: "t1", content: "look at #412" }, { role: "model", content: "ok" },
                           { role: "user", turn_id: "t2", content: "#999", author: "p:abc" }]
 
@@ -153,7 +153,7 @@ RSpec.describe Samagotchi::ContextCandidates do
     end
   end
 
-  describe ".deliver_notes (the REPL's turn start)" do
+  describe ".deliver_notes (a one-shot's turn start)" do
     it "adds the attached notes of candidate sources only, once" do
       own.add_candidate(candidate)
       described_class.before_turn(session: session, prompt: "#412", author: nil, state_dir: state_dir)

@@ -283,7 +283,7 @@ RSpec.describe Samagotchi::Worker do
       expect(next_turn&.first).to eq("from another process")
     end
 
-    it "runs a due reminder at once, as a continue turn with no user message (as the REPL)" do
+    it "runs a due reminder at once, as a continue turn with no user message" do
       allow(engine).to receive(:reminders_due?).and_return(true)
       start_worker(poll_interval: 60)
 
@@ -1115,7 +1115,8 @@ RSpec.describe Samagotchi::Worker do
         expect(Samagotchi::Engine).to have_received(:new).with(hash_including(scratch: true))
       end
 
-      it "stays up while its terminal's stream is open, and leaves once it closes (idle exit off), with no recap" do
+      it "stays up while its terminal's stream is open, and leaves once it has been closed for SCRATCH_GONE_AFTER (idle exit off), with no recap" do
+        stub_const("Samagotchi::Worker::SCRATCH_GONE_AFTER", 0.2)
         allow(engine).to receive(:write_recap_now)
         start_worker(poll_interval: 0.05, idle_exit_minutes: 0)
         stream = follow
@@ -1130,7 +1131,8 @@ RSpec.describe Samagotchi::Worker do
         expect(engine).not_to have_received(:write_recap_now)
       end
 
-      it "cancels a turn running when its terminal leaves (a question it waits on too), then leaves" do
+      it "cancels a turn running when its terminal has left for SCRATCH_GONE_AFTER (a question it waits on too), then leaves" do
+        stub_const("Samagotchi::Worker::SCRATCH_GONE_AFTER", 0.2)
         calls = []
         start_worker(poll_interval: 0.05, idle_exit_minutes: 0)
         stream = follow
@@ -1151,6 +1153,32 @@ RSpec.describe Samagotchi::Worker do
 
         expect(join!(@thread, "the scratch worker").value).to eq(:scratch_left)
         expect(calls).to eq([[:question, "session_stopped"], %i[turn session_stopped]])
+      end
+
+      it "cancels nothing in a reconnect gap shorter than SCRATCH_GONE_AFTER (its terminal is still there)" do
+        stub_const("Samagotchi::Worker::SCRATCH_GONE_AFTER", 30)
+        calls = []
+        start_worker(poll_interval: 0.05, idle_exit_minutes: 0)
+        follow
+        wait_for("the terminal's stream") { open_streams == 1 }
+        allow(engine).to receive(:turn_running?).and_return(true)
+        allow(engine).to receive(:cancel_current_turn!) { |reason| calls << reason }
+        ticks = 0
+        allow(@worker).to receive(:cancel_unattended_turn).and_wrap_original do |original|
+          ticks += 1
+          original.call
+        end
+        bridge = @worker.instance_variable_get(:@bridge)
+
+        # The gap: no stream open for a few watch ticks, then the terminal's
+        # reconnect is back.
+        allow(bridge).to receive(:open_streams).and_return(0)
+        wait_for("the scratch watch to tick in the gap") { ticks >= 3 }
+        allow(bridge).to receive(:open_streams).and_call_original
+        loop_rounds
+
+        expect(calls).to be_empty
+        expect(@thread).to be_alive
       end
 
       it "leaves when no terminal joined within the grace" do

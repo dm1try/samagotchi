@@ -21,8 +21,7 @@ module Samagotchi
   # Owns the inactivity clock bookkeeping shared across UIs: it reads the
   # Engine's `last_activity_at` / `activity_seq` / `turn_running?` seam (the
   # single source of truth) rather than tracking its own timeline, so the
-  # clock behaves identically for the interactive REPL and any Engine-backed
-  # worker.
+  # clock behaves identically for any Engine-backed worker.
   #
   # When the session has been idle for `@inactivity` seconds, no turn is
   # running, and there are >= `@min_user_turns` user turns, the job
@@ -285,7 +284,7 @@ module Samagotchi
     attr_reader :generation, :inactivity, :min_user_turns, :sentences, :timeout
 
     # @param callable [#call] true while a continue offer waits for an
-    #   answer (the Worker's or the REPL's TurnFlow); read at each attempt
+    #   answer (the Worker's TurnFlow); read at each attempt
     attr_writer :awaiting_continue
 
     # @return [Hash, nil] the last recap written: {text:, title:, covered:,
@@ -345,7 +344,7 @@ module Samagotchi
 
       @mutex = Monitor.new
       # Serializes the attempt state machine (#tick on the scheduler thread,
-      # #request_now on a Bridge or REPL thread, #write_now). Never held by
+      # #request_now on a Bridge thread, #write_now). Never held by
       # #state, so a snapshot reading it doesn't wait on an emit.
       @run_mutex = Monitor.new
       @generation = 0
@@ -389,7 +388,7 @@ module Samagotchi
     end
 
     # Write a recap now and wait for it, bounded by the timeout: the worker
-    # (or the REPL) leaving. Skips the inactivity window and the once-per-
+    # leaving. Skips the inactivity window and the once-per-
     # window latch, not the rules on what to recap (minimum user turns,
     # something new). Takes over an attempt already in flight. Call it with
     # the idle scheduler stopped.

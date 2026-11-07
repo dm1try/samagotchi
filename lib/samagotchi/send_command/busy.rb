@@ -23,7 +23,7 @@ module Samagotchi
     #   parent_answers
     Busy = Data.define(:error, :session_id, :question, :strategy) do
       # @param session [Session] the session as just read
-      # @param owner [OwnerLock::Owner, nil] the worker or REPL that owns it
+      # @param owner [OwnerLock::Owner, nil] the worker or one-shot that owns it
       # @param queue [Boolean] chi send --queue
       # @return [Busy, nil] nil when the message may go in
       def self.for(session, owner:, queue:)

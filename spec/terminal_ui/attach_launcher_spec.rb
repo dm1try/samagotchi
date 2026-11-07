@@ -103,7 +103,7 @@ RSpec.describe Samagotchi::TerminalUI::AttachLauncher do
         .and_raise(Samagotchi::SessionManager::OwnedByTUI, session.id)
 
       expect { connect(attach: session.id) }
-        .to raise_error(described_class::Error, "session #{session.id} is in use by a one-turn chi --non-interactive run; let it finish first")
+        .to raise_error(described_class::Error, "session #{session.id} is in use by a one-turn chi --non-interactive run or an older chi's terminal; let it finish first")
     end
 
     it "rejects an unknown session" do
@@ -256,7 +256,7 @@ RSpec.describe Samagotchi::TerminalUI::AttachLauncher do
         .and_raise(Samagotchi::SessionManager::OwnedByTUI, session.id)
 
       expect { connect(resume: session.id) }
-        .to raise_error(described_class::Error, /in use by a one-turn chi --non-interactive run; let it finish first/)
+        .to raise_error(described_class::Error, /in use by a one-turn chi --non-interactive run or an older chi's terminal; let it finish first/)
     end
 
     it "starts a chi scratch session's worker on a scratch session" do

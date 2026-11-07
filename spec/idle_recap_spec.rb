@@ -1068,7 +1068,7 @@ RSpec.describe Samagotchi::IdleRecap do
       expect(idle.state).to include(text: "old")
     end
 
-    it "reloads when the session changes under it (the REPL's /new or /resume)" do
+    it "reloads when the session changes under it" do
       store = store_class.new("s1", { text: "old", covered: 2, covered_digest: "x" })
       idle = idle_with(store, history)
       expect(idle.state).to include(text: "old")

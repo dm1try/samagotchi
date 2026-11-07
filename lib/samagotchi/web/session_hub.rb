@@ -41,8 +41,8 @@ module Samagotchi
       # The flock leaves no file trace when its holder dies, so owners are
       # probed: every tick for the sessions the projection believes owned
       # (a handful; OwnerLock.owner is open + LOCK_SH|LOCK_NB + close), and
-      # all sessions this often (a plain REPL that opened an old session
-      # without saving it has no file signal until its first save).
+      # all sessions this often (a one-shot or an older chi's REPL that
+      # opened an old session without saving it has no file signal until its first save).
       FULL_PROBE_INTERVAL = 10.0
 
       # What a subscriber gets: `session` with {session: summary} for an

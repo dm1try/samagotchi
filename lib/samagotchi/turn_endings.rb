@@ -34,7 +34,7 @@ module Samagotchi
 
     # What the session keeps of a turn that ended normally (nil: nothing to
     # replace). Runs under the event lock: it also adds the turn's note to
-    # result.conversation, which the REPL keeps as-is.
+    # result.conversation, which the session keeps as-is.
     # A turn that ran out of iterations ends at its tool results, so a
     # continue resumes from them rather than after a made-up reply (and a
     # step-limit Continue from its run's start: ModelResult#run_start).
@@ -43,7 +43,7 @@ module Samagotchi
       # Nothing visible (no text) is a turn the model should know ended
       # that way: the note, and nothing made up as its answer. The note's
       # marker is for the UIs (the notice, and the empty steps after a
-      # reload); it goes on the result's conversation too (the REPL keeps it).
+      # reload); it goes on the result's conversation too (the session keeps it).
       # A retry's nudge at the tail goes: this note says it all. An earlier
       # turn's note stays: it says why that turn ended.
       if result.empty_answer?

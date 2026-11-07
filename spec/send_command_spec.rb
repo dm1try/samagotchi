@@ -517,7 +517,7 @@ RSpec.describe Samagotchi::SendCommand do
       allow(Process).to receive(:spawn)
 
       expect(run("-m", "x", repl.id, live.id)).to eq(1)
-      expect(out.string.lines).to eq(["#{short(repl)}  refused: it is in use by a one-turn chi --non-interactive run; send once it ends\n",
+      expect(out.string.lines).to eq(["#{short(repl)}  refused: it is in use by a one-turn chi --non-interactive run or an older chi's terminal; send once it ends\n",
                                       "#{short(live)}  sent\n"])
       expect(Process).not_to have_received(:spawn)
       expect(inputs_of(repl)).to be_empty

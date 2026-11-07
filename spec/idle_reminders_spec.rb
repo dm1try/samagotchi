@@ -10,7 +10,7 @@ RSpec.describe Samagotchi::IdleReminders do
       queue: queue,
       inactivity: 60.0,
       clock: clock,
-      # As the worker's and the REPL's do (Engine#note_due_reminders).
+      # As the worker's does (Engine#note_due_reminders).
       callback: lambda { |names|
         fired << names
         queue.note_pending(names)

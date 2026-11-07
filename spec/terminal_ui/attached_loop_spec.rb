@@ -758,7 +758,7 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "idle status line" do
 
   def status = screen.slots[:status]&.first
 
-  it "shows the REPL's segments: the worker's model and the session's memories, from the join" do
+  it "shows the status segments: the worker's model and the session's memories, from the join" do
     feed(join(used_memory_names: %w[notes todo]))
 
     expect(status).to eq("status> model=m1 | mem: notes, todo")

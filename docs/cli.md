@@ -538,8 +538,10 @@ refused. Its first line says it is a scratch session.
   are not added to the prompt history. With `-p … --non-interactive` it is one
   turn in this process, and the session is deleted as the run ends.
 - The worker deletes the session too once its terminal is gone (no stream
-  left, or none came within 30 s), so a closed terminal window or a `kill -9`
-  of the terminal leaves nothing. It refuses `chi sessions restart`.
+  left for about 25 s, twice the terminal's reconnect retries, so a dropped
+  stream that reconnects keeps it; or none came within 30 s), so a closed
+  terminal window or a `kill -9` of the terminal leaves nothing: a turn still
+  running then is cancelled first. It refuses `chi sessions restart`.
 - It never shows in `chi web`, and only its terminal uses it: `chi send`, the
   web's routes, `chi --resume` and `--attach` refuse it (exit 1), in one
   wording: "that's a chi scratch session: only the terminal that started it
@@ -705,7 +707,7 @@ session file and its whole directory (notes, images, queued input). Each id
 (or unique prefix) gets one line: `deleted`, or `refused` with the reason. A
 session whose worker runs is refused unless `--force` stops the worker first;
 one a `--non-interactive` run has is always refused ("in use by a one-turn chi
---non-interactive run; let it finish first"). Exit
+--non-interactive run or an older chi's terminal; let it finish first"). Exit
 status: 0 when all are gone, 1 when any was refused or unknown, 2 on a usage
 error. The Web UI deletes too: `delete` in the info bar, or the ✕ on a card in
 All sessions; it asks first and stops a live worker.
@@ -725,7 +727,7 @@ wording. See [Sessions](sessions.md#cli).
 **One-turn runs.** `chi -p TEXT --non-interactive` (also with `--resume ID`)
 runs its turn in this process, with no worker, and holds the session until it
 ends. Meanwhile the session is "in use by a one-turn chi --non-interactive
-run": `--resume`, `--attach`, `chi send`, `chi note` and the Web UI's sends
+run or an older chi's terminal": `--resume`, `--attach`, `chi send`, `chi note` and the Web UI's sends
 refuse it, and the Web UI shows it read-only. `--attach` can't be combined with
 `--non-interactive`.
 
