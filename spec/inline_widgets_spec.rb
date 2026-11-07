@@ -134,6 +134,19 @@ RSpec.describe Samagotchi::InlineWidgets do
       expect(widget.data["rows"].first).to include("options" => ["A: delete at exit", "B: keep 1 h"], "why" => "a: b")
     end
 
+    it "keeps a quoted value's escapes as written in the lenient pass (L2, as it is)" do
+      widget = parse(picks(row.sub("text: Bridge drops the replay buffer", %(text: "say \\"hi\\" now"\n    why: a: b))))
+
+      expect(widget).to be_lenient
+      expect(widget.data["rows"].first["text"]).to eq('say \\"hi\\" now')
+    end
+
+    it "matches within a line: the indent before a value or an item never spans a blank line" do
+      lenient = Samagotchi::InlineWidgets::Lenient
+      expect("a\n\n  - x\n".match(lenient::ITEM)[1]).to eq("  - ")
+      expect("a\n\n  text: x\n".match(lenient::VALUE)[1]).to eq("  text: ")
+    end
+
     it "takes a value that starts with a quoted word, through the lenient pass" do
       widget = parse(picks(row.sub("text: Bridge drops the replay buffer", 'text: "reset" drops the buffer')))
 
@@ -215,6 +228,7 @@ RSpec.describe Samagotchi::InlineWidgets do
     it "caps the actors at 2-5 and the steps at 30" do
       expect(parse(walk(steps, actors: "[user]")).error).to eq("walk has 1 actors (2-5)")
       expect(parse(walk(steps, actors: "[user, web, a, b, c, d]")).error).to eq("walk has 6 actors (2-5)")
+      expect(parse(walk(steps, actors: "[user, web, user]")).error).to eq('actor "user" is listed twice')
       many = (1..31).map { |n| "  - id: s#{n}\n    actor: user\n    does: x\n" }.join
       expect(parse(walk(many)).error).to eq("walk has 31 steps (at most 30)")
     end
@@ -235,9 +249,13 @@ RSpec.describe Samagotchi::InlineWidgets do
       expect(widget).not_to be_lenient
     end
 
-    it "refuses a tag" do
-      expect(parse("type: picks\nrows: !ruby/object:Object {}\n").error).to eq("YAML tags aren't allowed (!ruby/object:Object)")
-      expect(parse("type: !!str picks\n").error).to start_with("YAML tags aren't allowed")
+    it "refuses a tag, without repeating it" do
+      expect(parse("type: picks\nrows: !ruby/object:Object {}\n").error).to eq("YAML tags aren't allowed")
+      expect(parse("type: !#{"x" * 15_000} picks\n").error).to eq("YAML tags aren't allowed")
+    end
+
+    it "repeats at most 40 characters of a bad type" do
+      expect(parse("type: #{"x" * 15_000}\n").error).to eq("unknown type #{("x" * 40).inspect}... (picks or walk)")
     end
 
     it "refuses a block that nests too deep, in a thread's smaller stack too" do
@@ -251,6 +269,10 @@ RSpec.describe Samagotchi::InlineWidgets do
       allow(Samagotchi::InlineWidgets::Schema).to receive(:picks).and_raise(SystemStackError)
 
       expect(parse(picks(row)).error).to eq("the block nests too deep")
+    end
+
+    it "refuses text that isn't valid UTF-8" do
+      expect(parse("type: picks\ntitle: \xFF\n".b).error).to eq("the block is not valid text (UTF-8)")
     end
 
     it "refuses a root that isn't a mapping, an unknown type, more than one document and an empty block" do

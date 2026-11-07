@@ -41,21 +41,24 @@ module Samagotchi
     # The deepest legal block nests 5 (root, steps, a step, cases, a case);
     # past this it is refused before the stack can overflow.
     MAX_DEPTH = 8
+    # How much of a bad type value an error repeats.
+    MAX_ECHO = 40
 
     module_function
 
     # @return [Result]
     def parse(source)
-      source = source.to_s
+      source = source.to_s.dup.force_encoding(Encoding::UTF_8)
       lenient = false
       raise Refused, "the block is over #{MAX_SOURCE_BYTES / 1024} KB" if source.bytesize > MAX_SOURCE_BYTES
+      raise Refused, "the block is not valid text (UTF-8)" unless source.valid_encoding?
 
       tree, lenient = load(source)
       raise Refused, "the block isn't a mapping (type: picks or walk first)" unless tree.root.is_a?(Hash)
 
       type = tree.root["type"]
       raise Refused, "the block needs type: picks or walk" if type.nil?
-      raise Refused, "unknown type #{type.is_a?(String) ? type.inspect : "(not text)"} (picks or walk)" unless TYPES.include?(type)
+      raise Refused, "unknown type #{echo(type)} (picks or walk)" unless TYPES.include?(type)
 
       data = type == "picks" ? Schema.picks(tree.root) : Schema.walk(tree.root)
       Result.new(type: type, data: data, lenient: lenient, error: nil)
@@ -65,6 +68,12 @@ module Samagotchi
       # MAX_DEPTH stops a deep block first; this is the backstop, since a stack
       # overflow is no StandardError and would break every render of the text.
       Result.new(type: nil, data: nil, lenient: lenient, error: "the block nests too deep")
+    end
+
+    def echo(type)
+      return "(not text)" unless type.is_a?(String)
+
+      type.size > MAX_ECHO ? "#{type[0, MAX_ECHO].inspect}..." : type.inspect
     end
 
     # [Tree, lenient?]: strict first; only a block that isn't YAML gets the
@@ -102,7 +111,7 @@ module Samagotchi
       def node(node, depth)
         raise Refused, "the block nests too deep" if depth > MAX_DEPTH
         raise Refused, "YAML aliases and anchors aren't allowed" if node.is_a?(Psych::Nodes::Alias) || node.anchor
-        raise Refused, "YAML tags aren't allowed (#{node.tag})" if node.tag
+        raise Refused, "YAML tags aren't allowed" if node.tag
 
         case node
         when Psych::Nodes::Mapping then mapping(node, depth)
@@ -134,8 +143,8 @@ module Samagotchi
     module Lenient
       TEXT_KEYS = %w[title text why does sees behind when recommended].freeze
       ITEM_KEYS = %w[id when goto actor does sees].freeze
-      VALUE = /^(\s*(?:- )?(?:#{TEXT_KEYS.join("|")}):[ \t]+)(.+?)[ \t]*$/
-      ITEM = /^(\s*- )(?!(?:#{ITEM_KEYS.join("|")}):)(.+?)[ \t]*$/
+      VALUE = /^([ \t]*(?:- )?(?:#{TEXT_KEYS.join("|")}):[ \t]+)(.+?)[ \t]*$/
+      ITEM = /^([ \t]*- )(?!(?:#{ITEM_KEYS.join("|")}):)(.+?)[ \t]*$/
 
       module_function
 
@@ -192,6 +201,9 @@ module Samagotchi
         title = text(tree["title"], "the title", required: true)
         actors = list(tree["actors"], "actors").map { |actor| text(actor, "an actor", required: true) }
         raise Refused, "walk has #{actors.size} actors (#{ACTORS.min}-#{ACTORS.max})" unless ACTORS.cover?(actors.size)
+
+        twice = actors.tally.find { |_actor, count| count > 1 }
+        raise Refused, "actor #{twice.first.inspect} is listed twice" if twice
 
         steps = list(tree["steps"], "steps")
         raise Refused, "walk has #{steps.size} steps (at most #{MAX_STEPS})" if steps.size > MAX_STEPS
