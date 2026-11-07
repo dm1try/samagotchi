@@ -24,6 +24,7 @@ require_relative "reasoning_history"
 require_relative "thought_stream_splitter"
 require_relative "tools/builtins"
 require_relative "tools/builtin_calls"
+require_relative "tools/tool_surface"
 require_relative "muted_memories"
 require_relative "tool_activity"
 require_relative "tool_runner"
@@ -1205,74 +1206,25 @@ module Samagotchi
     # are responsible for normalizing the provider's native call into this shape
     # first (see Samagotchi::LLM::NativeToolNormalizer); dispatch itself never
     # parses provider text. +context+: the call's turn (TurnContext: its
-    # layers, its host's loads_tools, the handler's ToolContext); a bare
-    # kernel's own (#context) by default.
+    # ToolSurface, the handler's ToolContext); a bare kernel's own
+    # (#context) by default.
     def dispatch_tool_call(call, context = @context)
       dispatch(call, context)
     end
 
     private
 
-    # Shell-like names (the harness's is `execute`). The unknown-tool error
-    # never echoes the name the model used — a model that sees its own wrong
-    # name again calls it again (a steer that named `bash` raised one model's
-    # bash rate from 9% to 30%); the activity event and the logs keep it.
-    SHELL_LIKE_TOOL_NAMES = %w[
-      bash sh zsh shell terminal cmd command run run_command run_shell exec execute_command
-    ].freeze
-
-    # The error an unknown tool name gets back. A shell-like name with
-    # `execute` offered this turn points at `execute`; every other unknown
-    # name lists what is offered. Neither echoes the wrong name.
-    #
-    # A tool the session's toolkit leaves out is a real one, so its error
-    # does name it (deliberately, against the rule above): the model learns
-    # it exists, and how to reach it (call_tool, when the toolkit reaches
-    # it that way) or that only the user can load it. A call reached
-    # through call_tool (+via+) of a tool the toolkit declares is told to
-    # call it directly: the model's call_tool(tool: "chi/read") with read
-    # declared, or a hook's rewrite (a direct call can't carry via:).
-    # The built-in +name+ names when the turn's host loads tools and the
-    # toolkit reaches it (Registry#indexed): a direct call runs it.
-    def loaded_entry(name, context)
-      return nil unless context.settings&.loads_tools && tools.respond_to?(:indexed)
-
-      tools.indexed(name, layers: context.llm_context_layers)
-    end
-
-    def unknown_tool_error(name, layers, via: nil)
-      names = tools.names(layers: layers)
-      toolkit = tools.toolkit&.name
-      in_toolkit = " in this session#{" (toolkit #{toolkit})" if toolkit}"
-      if via && tools.offered(name, layers: layers)
-        "Error: #{name} is declared#{in_toolkit}; call it directly. Available: #{names.join(", ")}"
-      elsif !via && tools.respond_to?(:indexed) && tools.indexed(name, layers: layers)
-        "Error: #{name} isn't declared#{in_toolkit}; call it with #{Tools::BuiltinCalls::VIA}(tool: \"chi/#{name}\", args: {…}) " \
-          "(find_tools gives its inputSchema). Available: #{names.join(", ")}"
-      elsif tools.respond_to?(:left_out) && tools.left_out(name, layers: layers)
-        "Error: #{name} isn't loaded#{in_toolkit} and can't be loaded from " \
-          "here; only the user can (/toolkit add #{name}). Available: #{names.join(", ")}"
-      elsif SHELL_LIKE_TOOL_NAMES.include?(name.to_s.downcase) && names.include?("execute")
-        "Error: no such tool. Shell commands run with `execute` (same arguments)."
-      else
-        "Error: no such tool. Available: #{names.join(", ")}"
-      end
-    end
-
+    # The call runs on the entry the turn's surface gives it
+    # (Tools::ToolSurface#entry_for: a call_tool-reached one only while the
+    # toolkit reaches it that way, a reachable one by its name on a host
+    # that loads tools); without one it gets ToolSurface#unknown_tool_error.
+    # A context without a surface (a bare kernel) computes one now.
     def dispatch(call, context)
-      # A built-in reached through call_tool runs only while the toolkit
-      # reaches it that way (Registry#indexed); any other call by its name,
-      # on a host that loads tools (TurnSettings#loads_tools) a reachable
-      # one too.
-      layers = context.llm_context_layers
       model = context.settings&.model_name
-      entry = if call[:via]
-                tools.respond_to?(:indexed) ? tools.indexed(call[:name], layers: layers) : nil
-              else
-                tools.offered(call[:name], layers: layers) || loaded_entry(call[:name], context)
-              end
+      surface = Tools::ToolSurface.of(context, tools)
+      entry = surface.entry_for(call)
       unless entry
-        result = unknown_tool_error(call[:name], layers, via: call[:via])
+        result = surface.unknown_tool_error(call[:name], via: call[:via])
         return {
           output: result,
           activity: ToolActivity.tool_activity_event(call[:name], call, result, registry: tools)

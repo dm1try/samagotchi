@@ -31,7 +31,8 @@ module Samagotchi
   # +model_key+, +fallback_model_key+ the memory overlay keys (memory_read, memory_write,
   #   rules' models:), +model_name+ the bare model name the gate's rules match: frozen at
   #   Engine#generate with the settings (a before_turn hook may switch the model)
-  # +surface+    reserved for the turn's ToolSurface (arch P3.4): nil
+  # +surface+    the turn's Tools::ToolSurface (what its loops declare, defer and dispatch):
+  #   nil until Engine#generate builds it; a reader without one computes one (ToolSurface.of)
   #
   # Only the turn thread replaces it (TurnState#replace_context), one frozen
   # value per write; other threads read the published one (Engine#turn_context,

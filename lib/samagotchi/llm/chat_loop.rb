@@ -24,7 +24,7 @@ require_relative "../tool_runner"
 require_relative "../tool_response"
 require_relative "../tool_ids"
 require_relative "../tool_declarations"
-require_relative "../tools/deferred_tools"
+require_relative "../tools/tool_surface"
 require_relative "../tool_loads"
 require_relative "../vision_context"
 require_relative "../log"
@@ -115,14 +115,14 @@ module Samagotchi
       end
 
       # Tool definitions for the request: the schemas the native prompts are
-      # rendered from (the kernel's registry, the tools the turn's LLM
-      # context layers offer), with the chat-only enums and closed
-      # parameters. On an adapter that loads tools for +model+
-      # (#loads_tools?), every tool the session reaches but doesn't declare
-      # follows, deferred (Tools::DeferredTools: +conversation+, the
+      # rendered from (the turn's ToolSurface: what it declares), with the
+      # chat-only enums and closed parameters. On an adapter that loads
+      # tools for +model+ (#loads_tools?, asked per request: a refusal turns
+      # it off mid-turn), every tool the session reaches but doesn't declare
+      # follows, deferred (ToolSurface#deferred_for: +conversation+, the
       # request's, names the ones it loaded); never without a declared one.
       def tool_definitions(conversation = nil, model: nil)
-        declared = ToolDeclarations.chat_schemas(tools.schemas(layers: llm_context_layers)).map do |schema|
+        declared = ToolDeclarations.chat_schemas(surface.schemas).map do |schema|
           { type: "function", function: schema.slice(:name, :description, :parameters) }
         end
         return declared if declared.empty? || !loads_tools?(model)
@@ -134,10 +134,13 @@ module Samagotchi
       end
 
       # The tools a request on a host that loads tools declares deferred
-      # (Tools::DeferredTools).
-      def deferred_tools(conversation)
-        Tools::DeferredTools.list(tools, conversation, layers: llm_context_layers)
-      end
+      # (ToolSurface#deferred_for).
+      def deferred_tools(conversation) = surface.deferred_for(conversation)
+
+      # The turn's ToolSurface (#turn_context's), else one computed now from
+      # the kernel's tools (a bare loop).
+      # @return [Tools::ToolSurface]
+      def surface = Tools::ToolSurface.of(turn_context, tools)
 
       # Whether the adapter takes tools it doesn't declare up front for
       # +model+ (AnthropicMessages#loads_tools?); OpenAIChat doesn't.

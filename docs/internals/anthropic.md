@@ -36,7 +36,7 @@ Paths are under `lib/samagotchi/llm/`.
 | `anthropic_wire.rb` | `AnthropicWire`: ChatLoop's wire messages as Messages' `system` and `messages`, the two breakpoints, tool ids and names |
 | `anthropic_assembly.rb` | `AnthropicAssembly`: a response from a whole body (`.from_message`) or stream events (`#add`), its usage in the OpenAI shape |
 | `dialect.rb` | `Dialect` (`STANDARD`, `FIREWORKS`): what a provider's `/v1/messages` does differently |
-| `../tools/deferred_tools.rb` | `Tools::DeferredTools.list`: the tools a request declares deferred (Deferred tools) |
+| `../tools/deferred_tools.rb` | `Tools::DeferredTools.list`: the tools a request declares deferred, from the turn's `ToolSurface` (Deferred tools) |
 | `prompt_cache.rb` | `PromptCache.control`: the `cache_control` a breakpoint carries (`cache.ttl`) |
 | `chat_loop.rb` | `ChatLoop#replay_blocks`, `#reasoning_history`'s floor, `Run#with_thinking` (saves `anthropic_content`), `#settle_dropped_thinking!` |
 
@@ -222,10 +222,10 @@ ones: the model sees their names only when something loads them, and the API acc
 `AnthropicMessages#loads_tools?(model)` says whether a request does this: the dialect's `tool_loading`, unless the
 host refused it for that model.
 
-`ChatLoop#tool_definitions(conversation, model:)` appends them (`Tools::DeferredTools.list`) only on such an
+`ChatLoop#tool_definitions(conversation, model:)` appends them (`ToolSurface#deferred_for`) only on such an
 adapter, and only with at least one tool declared (Messages wants one). The list, per request:
 
-1. the built-ins and plugin tools the toolkit reaches (`Registry#reachable_names`), in registry order;
+1. the built-ins and plugin tools the toolkit reaches (`ToolSurface#index_only`), in registry order;
 2. the tool index's source tools while `call_tool` is declared (`ToolIndex#deferrable`, via
    `Registry::Index#deferrable`): callable, the only tool with its acts_as, a name Messages takes, no registered
    tool's name; by acts_as (`mcp_<server>_<tool>`), sorted by name;
@@ -270,7 +270,7 @@ sets `:tool_changes` for the model: the retry and every later request drop the s
 
 A direct call of a deferred tool runs whether something loaded it or not (the API doesn't check): the Engine sets
 `TurnSettings#loads_tools` from the turn's final model (after the before_turn hooks), and then `ToolRunner#run` and
-`KernelLoop#dispatch` take a reachable built-in or plugin tool by its own name (`Registry#indexed`) through the normal gate, and wrap
+`KernelLoop#dispatch` take a reachable built-in or plugin tool by its own name (`ToolSurface#entry_for`) through the normal gate, and wrap
 an MCP tool's acts_as into the `call_tool` call it stands for (`ToolIndex#wrap`): `call_tool`'s row, rules and
 approvals. A reload rebuilds that wrapped call from the saved one (`BuiltinCalls.wrap_saved`). Each such call is
 logged (`tool_direct_deferred`, with `loaded:` whether the conversation had loaded it). On `api: openai` and the

@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 require "samagotchi/tools/builtins"
-require "samagotchi/tools/deferred_tools"
+require "samagotchi/tools/tool_surface"
 require "samagotchi/tools/tool_index"
 require "samagotchi/toolkit"
 
@@ -27,7 +27,8 @@ RSpec.describe Samagotchi::Tools::DeferredTools do
     index.refresh!
   end
 
-  def names(conversation = [], layers: []) = described_class.list(registry, conversation, layers: layers).map(&:name)
+  def surface(tools = registry, layers: []) = Samagotchi::Tools::ToolSurface.for(tools, layers: layers)
+  def names(conversation = [], layers: []) = described_class.list(surface(layers: layers), conversation).map(&:name)
 
   it "lists the reachable built-ins in registry order, then the source tools by name" do
     source!(Samagotchi::Tools::ToolIndex::Group.new(name: "fs", tools: [tool("write"), tool("read")]))
@@ -36,7 +37,7 @@ RSpec.describe Samagotchi::Tools::DeferredTools do
 
     expect(names).to eq(%w[register_reminder cancel_reminder list_reminders list_sessions send_note delegate
                            delegate_result objectives mcp_fs_read mcp_fs_write])
-    first = described_class.list(registry, []).first
+    first = described_class.list(surface, []).first
     expect(first.description).to start_with("Register a periodic reminder.")
     expect(first.schema).to include(type: "object")
   end
@@ -64,7 +65,7 @@ RSpec.describe Samagotchi::Tools::DeferredTools do
     full = Samagotchi::Tools::Builtins.registry
     Samagotchi::Tools::ToolIndex.new.declare(full)
     full.toolkit = Samagotchi::Toolkit.new(name: "full").resolve(Samagotchi::Toolkit.kits)
-    expect(described_class.list(full, [])).to eq([])
+    expect(described_class.list(surface(full), [])).to eq([])
   end
 
   it "follows the turn's layers: a layer's tool is declared under it, never deferred" do
@@ -84,7 +85,7 @@ RSpec.describe Samagotchi::Tools::DeferredTools do
                     { role: "system", kind: "tool_change", content: "y", tool_change: { add: %w[mcp_later read] } },
                     { "role" => "tool_response", "content" => "z", "loaded" => %w[mcp_gone_tool] }]
 
-    list = described_class.list(registry, conversation)
+    list = described_class.list(surface, conversation)
 
     expect(list.map(&:name).last(2)).to eq(%w[mcp_gone_tool mcp_later])
     expect(list.last).to have_attributes(description: described_class::STUB_DESCRIPTION, schema: described_class::STUB_SCHEMA)
@@ -99,7 +100,7 @@ RSpec.describe Samagotchi::Tools::DeferredTools do
     registry.toolkit = registry.toolkit.with(groups: [])
     conversation = [{ role: "tool_response", content: "x", loaded: ["mcp_fs_read"] }]
 
-    stub = described_class.list(registry, conversation).last
+    stub = described_class.list(surface, conversation).last
 
     expect(stub.name).to eq("mcp_fs_read")
     expect(stub.description).to eq("Not available in this session's toolkit (lean); only the user can switch " \
@@ -114,7 +115,7 @@ RSpec.describe Samagotchi::Tools::DeferredTools do
     registry.reaching_kit = ->(group) { group == "fs" ? "web" : nil }
     conversation = [{ role: "tool_response", content: "x", loaded: ["mcp_fs_read"] }]
 
-    stub = described_class.list(registry, conversation).last
+    stub = described_class.list(surface, conversation).last
 
     expect(stub.description).to eq("Not available in this session's toolkit (lean); only the user can switch " \
                                     "(/toolkit web, which reaches fs).")
