@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require_relative "degrade"
 require_relative "session_setting"
 require_relative "token_usage"
 
@@ -171,16 +172,16 @@ module Samagotchi
     # doesn't count. Without a model (EffectiveModel), no probe. A remote
     # chat host has no /props: nil until a turn. The name asked is never
     # resolved (HostRegistry#bare_name), so it holds on a broken resolve.
-    def served_model_for(snapshot, model: nil)
-      asked = bare_model_name(model ? model.name : effective_model_name)
-      return [snapshot[:served_model], asked] if snapshot[:served_model] && snapshot[:served_model_for] == asked
-      return [nil, nil] unless model
-
-      model.served_from_props(asked)
     # Only bare_model_name and the snapshot lookup are left to fail here:
     # the probe's failure is EffectiveModel#served_from_props's.
-    rescue StandardError
-      [nil, nil]
+    def served_model_for(snapshot, model: nil)
+      Degrade.call(:model, "served_model_unreadable", fallback: [nil, nil]) do
+        asked = bare_model_name(model ? model.name : effective_model_name)
+        return [snapshot[:served_model], asked] if snapshot[:served_model] && snapshot[:served_model_for] == asked
+        return [nil, nil] unless model
+
+        model.served_from_props(asked)
+      end
     end
 
     # The next turn's kit prompt text for /stats: its kit and its estimated
