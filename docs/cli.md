@@ -460,7 +460,7 @@ invalid option (exit 1).
 | `--llm-context-budget TOKENS` | This session's own context budget: `64000`, `64k` (4k to 10M), or `off` (wins over the model's budget). |
 | `--no-interrupt` | Raise the tool-call limit to 1000 iterations for long tasks. |
 | `--no-default-input` | Skip the default input (`SAMAGOTCHI_DEFAULT_INPUT`) typed into a new session's first prompt. |
-| `-v`, `--verbose` | Log at debug level (raw LLM responses, tool call/result payloads). Attached, the terminal shows this session's debug records above the prompt as they come, and a worker this chi starts logs at debug too; a worker that was already running keeps its own level (a one-line note says so). With `--non-interactive`, every log record goes to stderr too. This machine only (exit 2 with `--remote`). |
+| `-v`, `--verbose` | Log at debug level (raw LLM responses, tool call/result payloads). Attached, the terminal shows this session's debug records above the prompt as they come, and a worker this chi starts logs at debug too; a worker that was already running keeps its own level (a one-line note says so). `chi web -v` logs at debug too (its `/api/` requests among them) and so does every worker it starts from then on (a new session, a wake, a restart: they all take `SAMAGOTCHI_LOG_LEVEL=debug`, `Config.cli_env`), into the same log; a worker already running keeps its level. With `--non-interactive`, every log record goes to stderr too. This machine only (exit 2 with `--remote`). |
 | `--version` | Print `chi <version>` and exit (`chi self` shows it with the paths). |
 
 Every setting in the config registry (`lib/samagotchi/config.rb`) that exposes a CLI
