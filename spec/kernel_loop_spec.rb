@@ -7,6 +7,7 @@ require "samagotchi/message_parts"
 require "fileutils"
 require "tmpdir"
 require "support/task_dirs"
+require "support/pending_input_queue"
 
 RSpec.describe Samagotchi::KernelLoop do
   include TaskDirs
@@ -2084,7 +2085,7 @@ Need to inspect the filesystem first.
   end
 
   describe "pending input injection" do
-    let(:queue) { Samagotchi::PendingInputQueue.new }
+    let(:queue) { PendingInputQueue.new }
 
     it "injects a queued message as one merged user message before the next iteration" do
       responses = [
@@ -2146,7 +2147,7 @@ Need to inspect the filesystem first.
     it "converts the no-tool-calls break into continue when input is queued" do
       # First generation returns plain text (would normally end the turn), but
       # a queued message must keep the turn alive for one more round.
-      steering = Samagotchi::PendingInputQueue.new
+      steering = PendingInputQueue.new
       responses = ["first answer", "second answer"]
       allow(client).to receive(:complete) do
         response = responses.shift
@@ -2195,7 +2196,7 @@ Need to inspect the filesystem first.
     end
 
     it "names the answer a merge follows on :pending_input_merged (none after tool results)" do
-      steering = Samagotchi::PendingInputQueue.new
+      steering = PendingInputQueue.new
       responses = [%(<|tool_call>call:execute{command: "true"}<tool_call|>), "first answer", "second answer"]
       allow(client).to receive(:complete) do
         response = responses.shift
