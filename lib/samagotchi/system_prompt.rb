@@ -77,6 +77,10 @@ module Samagotchi
       # a new process. The files' text is read at each build.
       @config_appended = Degrade.call(:prompt, "appended_list_unreadable", fallback: []) { ConfigFile.appended_prompt_files }
       @cli_appended = Array(appended_files).map { |path| File.expand_path(path.to_s) }
+      # { [chat, thinking, layers] => Built }, swapped for a new one by #reset!
+      @cache = {}
+      # The Built #build returned last; nil before a build and after #reset!.
+      @last = nil
     end
 
     # @return [Array<String>] the names the session preloads, known before
@@ -85,37 +89,35 @@ module Samagotchi
       @requested_memories.map { |raw| split_memory_scope(raw).last }.uniq
     end
 
+    # A prompt #build made, with what it read while it did: the memory
+    # index sizes (#memory_index), the model notes, the files and the
+    # plugins' sections it holds, and its stable part's length (chat).
+    Built = Data.define(:prompt, :memory_index, :notes, :files, :sections, :stable_length)
+
     # The full prompt: #base wrapped with the index and the rest. Built once
     # per loop and level (until #reset!) so the prompt prefix, and the
     # server's KV cache for it, stay stable.
+    #
+    # #reset! runs on other threads (a plugin's tools_changed! /
+    # prompt_changed!, a /stats re-resolving the profile) and, through the
+    # profile lookup, inside a build on this one. So a build reads @cache
+    # once and computes into locals: a reset meanwhile swaps in a new cache
+    # and this build's result goes into the dropped one, so it is returned
+    # (the same bytes as without the reset) but not kept, and the next
+    # build reads the sources again. No lock: the build reads memory files
+    # and calls the lookups, one of which takes ModelBinding's mutex, whose
+    # holder (a /stats thread) may itself call #reset!.
     # @param chat [Boolean] for the chat loop
     # @param thinking [Symbol, nil] the level (Thinking); nil: the effective model's
     # @param layers [Array<Symbol>] the turn's LLM context layers: the
     #   native prompt declares the tools they add (Tools::Registry#entries)
     def build(chat: false, thinking: nil, layers: [])
       key = [chat, thinking, layers]
-      @built ||= {}
-      @index_sizes ||= {}
-      @notes_loaded ||= {}
-      @files_loaded ||= {}
-      @sections_loaded ||= {}
-      unless @built.key?(key)
-        @section_notes = nil
-        @section_files = []
-        @section_plugins = []
-        @built[key] = system_prompt_with_index(
-          assist_system_prompt(chat: chat, layers: layers), chat: chat, thinking: thinking, layers: layers
-        )
-        @index_sizes[key] = @measured_index
-        @notes_loaded[key] = @section_notes || []
-        @files_loaded[key] = @section_files.freeze
-        @sections_loaded[key] = @section_plugins.freeze
-      end
-      @memory_index = @index_sizes[key]
-      @prompt_notes = @notes_loaded[key]
-      @prompt_files = @files_loaded[key]
-      @prompt_sections = @sections_loaded[key]
-      @built[key]
+      cache = @cache
+      built = cache[key] || (cache[key] = build_prompt(chat: chat, thinking: thinking, layers: layers))
+      @memory_index = built.memory_index
+      @last = built
+      built.prompt
     end
 
     # The memory indexes the prompt #build returned last holds, per scope
@@ -130,7 +132,7 @@ module Samagotchi
     # (Array<ModelNotes::Note>, [] with none), nil before a build and after
     # #reset!. Read when the prompt is built, as the section is.
     # @return [Array<ModelNotes::Note>, nil]
-    attr_reader :prompt_notes
+    def prompt_notes = @last&.notes
 
     # The files whose text the prompt #build returned last holds, as
     # absolute paths in prompt order: the AGENTS.md chain, then the
@@ -138,26 +140,21 @@ module Samagotchi
     # build and after #reset!. Read when the prompt is built, as the
     # sections are.
     # @return [Array<String>]
-    def prompt_files = @prompt_files || []
+    def prompt_files = @last&.files || []
 
     # The plugins' prompt sections the prompt #build returned last holds
     # (Plugin::PromptSections::Built, prompt order), [] before a build and
     # after #reset!.
     # @return [Array<Plugin::PromptSections::Built>]
-    def prompt_sections = @prompt_sections || []
+    def prompt_sections = @last&.sections || []
 
     # Drops the built prompts: the next #build reads the profile, tools,
     # indexes and memories again (a model or profile switch, changed tools).
     def reset!
-      @built = nil
-      @index_sizes = nil
-      @notes_loaded = nil
-      @prompt_notes = nil
-      @files_loaded = nil
-      @prompt_files = nil
-      @sections_loaded = nil
-      @prompt_sections = nil
-      @stable_lengths = nil
+      # Single assignments: a build in flight keeps the cache it read
+      # (#build), so it neither fails nor is kept.
+      @cache = {}
+      @last = nil
     end
 
     # The length of +prompt+'s stable part when it is a chat prompt #build
@@ -165,7 +162,12 @@ module Samagotchi
     # a remote prompt cache can keep for every session (PromptCache). nil
     # for any other text, or a prompt without those lines.
     # @return [Integer, nil]
-    def stable_length(prompt) = @stable_lengths&.[](prompt)
+    def stable_length(prompt)
+      last = @last
+      return last.stable_length if last&.prompt == prompt
+
+      @cache.each_value.find { |built| built.prompt == prompt }&.stable_length
+    end
 
     # The base prompt (specs, plugins' declarations), with Gemma's tool
     # declarations at its end as #build has them.
@@ -181,6 +183,20 @@ module Samagotchi
     end
 
     private
+
+    # One #build's work: the prompt and what it read, in a Built. The
+    # @section_* and @measured_* scratch is this build's (the turn thread's)
+    # alone: #reset! never touches it.
+    def build_prompt(chat:, thinking:, layers:)
+      @section_notes = nil
+      @section_files = []
+      @section_plugins = []
+      @measured_stable_length = nil
+      prompt = system_prompt_with_index(assist_system_prompt(chat: chat, layers: layers),
+                                        chat: chat, thinking: thinking, layers: layers)
+      Built.new(prompt: prompt, memory_index: @measured_index, notes: @section_notes || [],
+                files: @section_files.freeze, sections: @section_plugins.freeze, stable_length: @measured_stable_length)
+    end
 
     def profile = @profile_lookup.call
 
@@ -331,7 +347,7 @@ module Samagotchi
       return with_tail_declarations(stable_text, chat: chat, layers: layers) if volatile.empty?
 
       prompt = "#{stable_text}\n#{volatile.join("\n")}"
-      (@stable_lengths ||= {})[prompt] = stable_text.length + 1 if chat
+      @measured_stable_length = stable_text.length + 1 if chat
       with_tail_declarations(prompt, chat: chat, layers: layers)
     end
 
