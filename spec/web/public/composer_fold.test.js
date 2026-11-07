@@ -84,6 +84,14 @@ test("opensOnKey: not while a field has the focus (input, textarea, select, cont
   assert.equal(opensOnKey(key("h"), { ...page, active: { tagName: "DIV", isContentEditable: true } }), false);
 });
 
+test("opensOnKey: a field inside a shadow root counts (a chi-ui widget's note: activeElement is its host)", () => {
+  const host = (inner) => ({ tagName: "DIV", shadowRoot: { activeElement: inner } });
+  assert.equal(opensOnKey(key("x"), { ...page, active: host({ tagName: "INPUT" }) }), false);
+  assert.equal(opensOnKey(key("x"), { ...page, active: host(host({ tagName: "TEXTAREA" })) }), false);
+  assert.equal(opensOnKey(key("x"), { ...page, active: host({ tagName: "BUTTON" }) }), true);
+  assert.equal(opensOnKey(key("x"), { ...page, active: host(null) }), true);
+});
+
 test("opensOnKey: not while the all-sessions view or the lightbox is open", () => {
   assert.equal(opensOnKey(key("h"), { ...page, allView: true }), false);
   assert.equal(opensOnKey(key("h"), { ...page, lightbox: true }), false);
