@@ -172,7 +172,7 @@ module Samagotchi
           # id, which a card's stamp names (Bridge::CardPlaces#opening_of).
           opening_id = m[:opening_id] || m["opening_id"]
           message[:opening_id] = opening_id.to_s if norm_role == "user" && opening_id && !turn_id && !message[:merged]
-          # The turn it revised (a Revise stack, Engine#stamp_opening), and
+          # The turn it revised (a Revise stack, TurnStages::VerifyAnchors#stamp_opening), and
           # whether it was a Verify turn (the page offers no Revise on its
           # answer).
           if norm_role == "user" && turn_id && !message[:merged]

@@ -153,7 +153,7 @@ module Samagotchi
     # The strategy the set is built under: the running turn's
     # (TurnSettings#llm_context: what its requests send), the last turn's
     # while the running one has no settings yet (before Engine#generate);
-    # between turns the next turn's (as #warm_up_next_turn: the last turn's
+    # between turns the next turn's (as TurnStages::Warmup#after: the last turn's
     # settings are stale after a /llm-context or /model change), the last
     # turn's when it can't be resolved. One read of each published context
     # (TurnState): any thread may ask (/working-set's anytime list).

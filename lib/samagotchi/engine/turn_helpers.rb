@@ -5,8 +5,9 @@ module Samagotchi
     # What a turn's steps use before and around the model: its settings,
     # images and vision, the model ref and resumed run start it generates
     # with, the used memories it publishes, and the turn-end warm-up of the
-    # next one. Writes @next_turn_waiting; reads @model_settings, @kernel,
-    # @prompt_warmup, @thinking_notices, @turn_state and the turn's TurnContext.
+    # next one (TurnStages::Warmup, built here). Writes @next_turn_waiting;
+    # reads @model_settings, @kernel, @prompt_warmup, @thinking_notices,
+    # @turn_state, @turn_warmup.
     module TurnHelpersPart
       # The turn's settings for the kernel (LLM::TurnSettings): vision,
       # sampling and thinking, the thinking resolved before the hooks run.
@@ -34,49 +35,20 @@ module Samagotchi
       # warm-up then. nil: neither.
       attr_accessor :next_turn_waiting
 
-      # After a completed turn, prefill the next turn's prompt up to its user
-      # message while the user reads (PromptWarmup, cache.warmup). Only on a
-      # local llama.cpp host on the native loop, and not when the next turn's
-      # start differs anyway or starts at once: a reminder due, a continue
-      # offer (the turn ran out of steps), a carried steer or queued input.
-      # Never fails the turn.
-      def warm_up_next_turn(turn, result)
-        return if result.canceled? || result.resumable?
+      # The turn-end warm-up's stage (TurnStages::Warmup).
+      attr_reader :turn_warmup
+      private :turn_warmup
 
-        model = effective_model
-        client = model.client
-        return unless warmup_target?(model, client)
-        return if reminders_due? || @turn_state.carried_steers? || @next_turn_waiting&.call
-
-        messages = ContextNote.with_system_head(turn.session.messages.dup, { role: "system", content: system_prompt(model) })
-        # Under the next turn's strategy (a /model switch may have changed it);
-        # the last turn's when it can't be resolved; the turn's settings
-        # (TurnContext, set in #generate) for the rest.
-        settings = turn.context.settings
-        prompt, images = @kernel.warmup_prompt(messages, llm_context: @model_settings.turn_llm_context || settings.llm_context,
-                                                         vision: settings.vision)
-        return unless prompt
-
-        # The model name as the native run sent it (KernelLoop#run's
-        # completion name: the default model for a blank one).
-        started = @prompt_warmup.start(client: client, prompt: prompt, model: ModelProfile.required_model_name(settings.model_name),
-                                       slot: @kernel.last_slot, images: images)
-        @kernel.warmed_up! if started
-      rescue StandardError => e
-        Log.warn(:model, "warmup_skipped", error: e.class.name, msg: e.message.to_s[0, 200])
+      # The stage over the kernel and the Engine's PromptWarmup (built in
+      # #initialize, once the kernel is).
+      def build_turn_warmup
+        TurnStages::Warmup.new(
+          prompt_warmup: @prompt_warmup, kernel: @kernel, turn_state: @turn_state, model_settings: @model_settings,
+          model: -> { effective_model }, system_prompt: ->(model) { system_prompt(model) },
+          reminders_due: -> { reminders_due? }, next_turn_waiting: -> { next_turn_waiting&.call }
+        )
       end
-      private :warm_up_next_turn
-
-      # Never a paid or remote host (cache.warmup auto means local only), nor
-      # the chat loop (Splash keeps its own cache; llama.cpp's chat path is
-      # not measured), nor a client that can't warm up (a spec's stub).
-      def warmup_target?(model, client)
-        return false if model.chat? || model.entry.remote?
-        return false unless client.respond_to?(:warm_up)
-
-        PromptWarmup.enabled?
-      end
-      private :warmup_target?
+      private :build_turn_warmup
 
       # The ref (host:model, as asked) a turn's generations ran on: the model
       # #generate resolved, after the before_turn hooks (which may switch it).

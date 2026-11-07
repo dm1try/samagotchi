@@ -117,7 +117,7 @@ module Samagotchi
         # a display version of the answer (AnswerDisplay) and event[:refs]
         # for refs on it (AnswerRefs).
         session = turn.session
-        audit_objectives_outgoing(turn, result) unless canceled || result.exhausted?
+        @objectives_stage.outgoing(turn, result) unless canceled || result.exhausted?
         display = AnswerDisplay.new(session.messages)
         refs = AnswerRefs.new(session.messages, cwd: session.working_directory)
         after_turn = { type: :after_turn, status: canceled ? "canceled" : "completed",
