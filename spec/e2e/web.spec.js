@@ -370,6 +370,22 @@ test("a session whose prompt carried a model note names it in the info bar", asy
   }
 });
 
+// The history's order as the openings and a card read it: each prompt (or
+// reason line) by its text, the card as "card". A reload must draw it as live.
+async function openingsAndCard(page) {
+  return page.locator("#history > :is(.bubble.user:not(.steered):not(.failed), .bubble.note.turn-start, .plugin-card)")
+    .evaluateAll((els, title) => els.filter((el) => !el.matches(".plugin-card") || el.textContent.includes(title))
+      .map((el) => (el.matches(".plugin-card") ? "card" : el.querySelector(".user-message")?.textContent.trim().split("\n")[0] ?? el.textContent.trim())), STAMP_CARD);
+}
+const STAMP_CARD = "Proposal dismissed";
+
+// A card a command shows between turns (an objectives proposal's fold).
+async function showIdleCard(page) {
+  await page.locator("#prompt").fill("/objectives --card e2e-stamp dismiss");
+  await page.locator("#actionBtn").click();
+  await expect(page.locator("#history > .plugin-card", { hasText: STAMP_CARD })).toHaveCount(1);
+}
+
 test("cancel mid-turn shows the canceled turn (its timing line too), and the next send works", async ({ page, script }) => {
   script("hold");
   await send(page, "Take your time");
@@ -384,6 +400,29 @@ test("cancel mid-turn shows the canceled turn (its timing line too), and the nex
   await send(page, "Say pong");
   await expect(answer(page)).toHaveText("PONG from the fake model. It streams word by word. Then the turn ends.");
   await turnEnded(page, 2);
+
+  // Canceled again, a card, then !rollback takes that turn back: the card
+  // stays after the turn before it (CardStore's rule), and a reload draws it
+  // where it was live, by its stamp (card_stamps.js).
+  script("hold");
+  await send(page, "Take your time again");
+  await page.locator("#turnStage .ts-cancel").click();
+  await expect(page.locator(`${H} .bubble.cancel`)).toHaveCount(2);
+  await showIdleCard(page);
+  await page.locator("#prompt").fill("!rollback");
+  await page.locator("#actionBtn").click();
+  await expect(page.locator("#history .bubble.user", { hasText: "Take your time again" })).toHaveCount(0);
+  const rolledBack = ["Take your time", "Say pong", "card"];
+  await expect.poll(() => openingsAndCard(page)).toEqual(rolledBack);
+  await page.reload();
+  await expect.poll(() => openingsAndCard(page)).toEqual(rolledBack);
+  script("plain");
+  await send(page, "Say pong once more");
+  await expect(page.locator("#history .turn-timing:not(.live)")).toHaveCount(3);
+  const after = ["Take your time", "Say pong", "card", "Say pong once more"];
+  await expect.poll(() => openingsAndCard(page)).toEqual(after);
+  await page.reload();
+  await expect.poll(() => openingsAndCard(page)).toEqual(after);
 });
 
 test("a question card: the answer lets the turn go on", async ({ page, script }) => {
@@ -453,6 +492,26 @@ test("a turn at its step limit asks to continue: the card survives a reload, Con
   await expect(answer(page)).toHaveText("Finished after the continue: STEP-LIMIT-DONE");
   await expect(page.locator(`${H} .bubble.question.step-limit .question-result`)).toHaveText("Continued");
   await expect(page.locator("#topStrip .card.waiting")).toHaveCount(0);
+
+  // At the limit again, Stop with a reason: the reason's line opens no turn
+  // the worker ran, yet the page draws it as one. A card shown after it stays
+  // below it and above the next turn, live and after a reload (its stamp is
+  // the reason line's opening_id).
+  await send(page, "Do another long task");
+  const again = page.locator(`${HC} .bubble.question.step-limit:not(.answered)`);
+  await again.locator(".continue-reason").fill("too slow");
+  await again.locator(".continue-no").click();
+  const reason = page.locator("#history > .bubble.user", { hasText: "I chose not to continue the turn that ran out of steps because: too slow" });
+  await expect(reason).toHaveCount(1);
+  await showIdleCard(page);
+  script("plain");
+  await send(page, "Say pong");
+  await expect(answer(page)).toHaveText("PONG from the fake model. It streams word by word. Then the turn ends.");
+  const order = ["Do a long task", "Do another long task", "I chose not to continue the turn that ran out of steps because: too slow", "card", "Say pong"];
+  await expect.poll(() => openingsAndCard(page)).toEqual(order);
+  await page.reload();
+  await expect.poll(() => openingsAndCard(page)).toEqual(order);
+  await expect(reason).toHaveAttribute("data-opening-id", /^[0-9a-f-]{36}$/);
 });
 
 // A waiting card reads from its top: what asks and what it approves inside the

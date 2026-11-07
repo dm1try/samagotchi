@@ -72,7 +72,7 @@ the "asking again" and steer-cut rows, ✂ rows and questions (with how they wer
 - **The stamp.** Next to `turns_since`, an entry lists `opening_id` (`CardPlaces#opening_of`): the id of the opening its count
   reaches, the one it comes after: a prompt's `turn_id` (a wake note's too), or `/continue no`'s reason line's `opening_id`. It is
   resolved at `list` time from the same anchor (an entry's own turn often has no bubble: a Continue, a failed or rolled-back turn),
-  so the stamp and the count always name one place, and a page can find it by the bubble, not by counting
+  so the stamp and the count always name one place, and the page finds it by the bubble (`card_stamps.js`: `data-turn-id`, or `data-opening-id` on a wake's note or a reason line), not by counting
   bubbles. An entry shown after reason lines also saves which one it came after (`after_opening`, beside `past_idless`): read
   first while that line is still in the run, so a later release can drop the count. No stamp (the page counts `turns_since`) for
   an entry before every opening, after a line an older chi wrote with no id, or from a version 1 file (`base_since`). A rollback
