@@ -1278,10 +1278,10 @@ module Samagotchi
     rescue StandardError => e
       dump_log("tool_error", e.message, model: context.settings&.model_name, tool: call[:name], error: e.class.name)
       result = "Error: #{e.message}"
-      {
-        output: "[#{call[:name]}] #{result}",
-        activity: ToolActivity.tool_activity_event(call[:name], call, result, registry: tools, surface: surface)
-      }
+      # No surface (Tools::MissingSurface from ToolSurface.of): no row either,
+      # it would read the surface again.
+      activity = surface && ToolActivity.tool_activity_event(call[:name], call, result, registry: tools, surface: surface)
+      { output: "[#{call[:name]}] #{result}", activity: activity }
     end
   end
 end

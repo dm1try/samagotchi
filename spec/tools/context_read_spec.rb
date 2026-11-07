@@ -6,6 +6,7 @@ require "samagotchi/tools/context_read"
 require "samagotchi/tools/peers"
 require "samagotchi/tools/builtins"
 require "samagotchi/kernel_loop"
+require "support/test_kernel"
 
 RSpec.describe Samagotchi::Tools::ContextRead do
   let(:tmpdir) { Dir.mktmpdir("context-read") }

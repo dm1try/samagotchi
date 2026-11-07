@@ -4,6 +4,7 @@ require "tmpdir"
 require "spec_helper"
 require "samagotchi/engine"
 require "samagotchi/kernel_loop"
+require "support/test_kernel"
 require "samagotchi/reply_wait"
 
 RSpec.describe "list_sessions and send_note in the loops" do

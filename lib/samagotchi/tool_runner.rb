@@ -416,13 +416,16 @@ module Samagotchi
     # a source's tool by its acts_as runs as the call_tool call first
     # (Registry::Index#wrap): call_tool's row, rules and approvals. One
     # that fails runs as it is: call_tool then refuses a built-in (fail
-    # closed).
+    # closed). A context without a surface raises Tools::MissingSurface
+    # here, before the gate: the call never runs.
     def unwrapped(call, context)
       return call if tools.nil? || call[:name].nil?
 
       surface = surface(context)
       call = wrapped(surface, call)
       surface.declared_entry(call[:name])&.unwrap&.call(call, surface) || call
+    rescue Tools::MissingSurface
+      raise
     rescue StandardError => e
       Log.warn(:turn, "tool_unwrap_failed", tool: call[:name].to_s, error: "#{e.class}: #{e.message}")
       call

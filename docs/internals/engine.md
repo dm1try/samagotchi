@@ -436,16 +436,16 @@ request, so a late MCP server joins mid-turn as before). Its readers: `KernelLoo
 `#loads_tools?`, asked per request: a refusal turns it off mid-turn), `ToolRunner`'s unwrap, wrap, left-out and
 group-refusal checks, and the tool index: `find_tools`' and `call_tool`'s handlers take the surface from their
 `KernelLoop::ToolContext#surface`, the call tool's unwrap and the index's `deferrable` / `wrap` / `unreached` the
-runner's or the deferred list's (its `chi` group is the surface's `index_only`), `call_targets` / `call_preview` the
-gate's and the row's, which look the entry up in it (an entry's `preview` / `targets` take `(call, surface)`;
-`Registry#register` wraps a plugin's one-argument one). A change while the turn runs (`/toolkit`, a staged
-`chi.replace_tools`, a `Registry#register`) shapes the next turn's tools only. A context without one raises
-`Tools::MissingSurface` (`ToolSurface.of`; the `targets:` / `preview:` rescues re-raise it); a bare kernel's or loop's
-own context builds one (`ToolSurface.bare`: `KernelLoop#own_context`, `ChatLoop#turn_context`; specs
-`run_context(tools:)`). Built from the Registry outside a turn's context (`ToolSurface.for`), on the turn thread: the
-system prompt, cached per build before `generate` knows `loads_tools` (`SystemPrompt::Built#surface`), `#warn_stranded`,
-the toolkit suggestion's lists, the index's `#declare` and `#refresh!`; off it, from `ToolkitBinding#published` (below):
-`#explained` (`/toolkit`, the snapshot, `declared_tools`) and `ctx.load_tools`.
+runner's or the deferred list's, `call_targets` / `call_preview` the gate's and the row's, which look the entry up in it
+(an entry's `preview` / `targets` take `(call, surface)`: a plugin's from `ToolSpec#entry_fields`, a direct one-argument
+one wrapped by `Registry#register`). A change mid-turn (`/toolkit`, a staged `chi.replace_tools`) shapes the next turn's
+only. A context without one raises `Tools::MissingSurface` (`ToolSurface.of`: the `targets:` / `preview:` rescues and
+the runner's unwrap re-raise it, so the call never reaches the gate); a bare kernel's or loop's own context builds one
+(`ToolSurface.bare`: `KernelLoop#own_context`, `ChatLoop#turn_context`). Built from the Registry outside a turn's
+context (`ToolSurface.for`), on the turn thread: the prompt, cached per build before `generate` knows `loads_tools`
+(`SystemPrompt::Built#surface`), `#warn_stranded`, the suggestion's lists, the index's `#declare` and `#refresh!`; off
+it, from `ToolkitBinding#published` (below): `#explained` (`/toolkit`, the snapshot, `declared_tools`),
+`ctx.load_tools`.
 
 ## State management
 

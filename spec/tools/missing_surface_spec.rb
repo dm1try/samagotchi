@@ -55,14 +55,22 @@ RSpec.describe Samagotchi::Tools::MissingSurface do
       .to raise_error(described_class)
   end
 
-  it "stops a runner given a context without one before the gate: the call never runs" do
+  it "stops a runner given a context without one before the gate: it raises, no hook fires, the call never runs" do
     ran = []
+    gated = []
+    hooks.register(:before_tool_call) { |e| gated << e[:call][:name] }
     allow(kernel).to receive(:dispatch_tool_call) { |c, *| ran << c }
+    expect(Samagotchi::Log).not_to receive(:warn).with(:turn, "tool_unwrap_failed", anything)
     expect do
       Samagotchi::ToolRunner.new(kernel).run(call, context: run_context, iteration: 1, call_index: 1, call_count: 1,
                                                    on_stream_event: nil, max_tool_output_chars: nil)
     end.to raise_error(described_class)
-    expect(ran).to eq([])
+    expect([gated, ran]).to eq([[], []])
+  end
+
+  it "answers a dispatch without one with the error and no row (the row would read the surface again)" do
+    result = kernel.dispatch_tool_call({ name: "read", content: "a.txt" }, run_context)
+    expect(result).to eq(output: "[read] Error: #{described_class.new.message}", activity: nil)
   end
 
   it "looks the call's entry up in the turn's surface, not the Registry now (one source per call)" do
