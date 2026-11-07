@@ -35,17 +35,26 @@ module Samagotchi
       # @param loads_tools [Boolean] the turn's host's (TurnSettings#loads_tools)
       # @return [ToolSurface]
       def self.for(registry, layers: [], loads_tools: false)
-        layers = Array(layers).dup.freeze
+        layers = Array(layers)
         return empty(layers, loads_tools) if registry.nil?
 
         reachable = registry.reachable_names(layers: layers)
-        new(declared: registry.entries(layers: layers).freeze,
-            index_only: reachable.map { |name| registry[name] }.freeze,
+        new(declared: registry.entries(layers: layers),
+            index_only: reachable.map { |name| registry[name] },
             left_out: registry.left_out_names(layers: layers)
-                              .to_h { |name| [name, reachable.include?(name) ? :indexed : :user_only] }.freeze,
-            registered: registry.registered.to_h { |entry| [entry.name, entry] }.freeze,
+                              .to_h { |name| [name, reachable.include?(name) ? :indexed : :user_only] },
+            registered: registry.registered.to_h { |entry| [entry.name, entry] },
             toolkit: registry.toolkit, reaching_kit: registry.reaching_kit, index: registry.index,
             layers: layers, loads_tools: loads_tools == true)
+      end
+
+      # Its lists frozen (copies of the ones given), whichever way it is
+      # made (.for, .new, #with): no reader can change a turn's surface.
+      # The entries in them stay the Registry's own.
+      def initialize(declared:, index_only:, left_out:, registered:, layers:, **)
+        super(declared: frozen_copy(Array(declared)), index_only: frozen_copy(Array(index_only)),
+              left_out: frozen_copy(left_out.to_h), registered: frozen_copy(registered.to_h),
+              layers: frozen_copy(Array(layers)), **)
       end
 
       # The turn's surface (+context+'s, an Engine turn's), else one computed
@@ -59,8 +68,8 @@ module Samagotchi
       end
 
       def self.empty(layers, loads_tools)
-        new(declared: [].freeze, index_only: [].freeze, left_out: {}.freeze, registered: {}.freeze, toolkit: nil,
-            reaching_kit: nil, index: nil, layers: layers, loads_tools: loads_tools == true)
+        new(declared: [], index_only: [], left_out: {}, registered: {}, toolkit: nil, reaching_kit: nil, index: nil,
+            layers: layers, loads_tools: loads_tools == true)
       end
       private_class_method :empty
 
@@ -142,6 +151,12 @@ module Samagotchi
       # asked now (a late MCP server joins the list mid-turn, as before).
       # @return [Array<DeferredTools::Deferred>]
       def deferred_for(conversation) = DeferredTools.list(self, conversation)
+
+      private
+
+      # +list+ itself when frozen, else a frozen copy (the caller's stays
+      # as it is).
+      def frozen_copy(list) = list.frozen? ? list : list.dup.freeze
     end
   end
 end

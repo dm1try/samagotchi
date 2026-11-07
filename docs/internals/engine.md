@@ -433,8 +433,10 @@ holds `declared` (the entries the request declares, in prompt order), `index_onl
 request, so a late MCP server joins mid-turn as before). Its readers: `KernelLoop#dispatch`,
 `ChatLoop#tool_definitions` / `#deferred_tools` (whether to append the deferred ones is still the adapter's
 `#loads_tools?`, asked per request: a refusal turns it off mid-turn) and `ToolRunner`'s unwrap, wrap, left-out and
-group-refusal checks. A change while the turn runs (`/toolkit`, a staged `chi.replace_tools`, even a direct
-`Registry#register`) shapes the next turn's surface only. A context without one (a bare kernel or loop, a spec)
+group-refusal checks. A change while the turn runs (`/toolkit`, a staged `chi.replace_tools`, a direct
+`Registry#register`) shapes the next turn's declared and dispatched tools only; the ToolIndex's handlers (`call_tool`,
+`find_tools`) still read the live Registry (`ToolIndex#deferred_name`'s `Registry#indexed`, `#registry_groups`'
+`Registry#reachable_names`) until they read the surface too (arch P3.4b). A context without one (a bare kernel or loop, a spec)
 computes one on read (`ToolSurface.of(context, registry)`); nothing caches or invalidates it. The system prompt still
 reads the Registry under the same layers in `turn_messages` (spec/engine_tool_surface_spec.rb checks it declares
 generate's surface).
@@ -559,8 +561,8 @@ end
   `LLM::TurnSettings` the requests send), `model_key`/`fallback_model_key` (memory overlays) and `model_name` (the
   gate's rules' `models:`) are nil until `generate` sets them, after the `before_turn` hook that may switch the
   model (`turn.prepared_settings`, computed before the hooks, give vision, sampling and thinking: a hook's switch
-  gets the old model's, as before). `surface` (the turn's `Tools::ToolSurface`, see "Shared: ToolResponse and
-  ToolRunner") is nil until `generate` builds it with the settings.
+  gets the old model's, as before). `surface` (the turn's `Tools::ToolSurface`, see "Shared: ToolResponse (per
+  batch) and ToolRunner (per call)") is nil until `generate` builds it with the settings.
 - The live bits are objects it holds, not copies: `session` (its working-set pins are read at call time),
   `controller` (cancel state), `git` (`Guardrails::GitInfo`, the per-turn git cache).
 - Down the tool path it is an argument: `ModelBackend#complete(context:)` → `KernelLoop#run(context:)` (the run's

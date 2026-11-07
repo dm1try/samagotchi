@@ -54,6 +54,19 @@ RSpec.describe Samagotchi::Tools::ToolSurface do
     expect([s.declared, s.index_only, s.left_out, s.registered, s.layers]).to all(be_frozen)
   end
 
+  it "freezes its lists however it is made (.new, #with), never the caller's" do
+    declared = registry.entries
+    made = described_class.new(declared: declared, index_only: [], left_out: { "x" => :user_only }, registered: {},
+                               toolkit: nil, reaching_kit: nil, index: nil, layers: [:forget], loads_tools: false)
+    changed = made.with(declared: [declared.first], layers: [])
+
+    [made, changed].each do |s|
+      expect([s.declared, s.index_only, s.left_out, s.registered, s.layers]).to all(be_frozen)
+    end
+    expect(changed.declared).to eq([declared.first])
+    expect(declared).not_to be_frozen
+  end
+
   it "keeps what it saw: a later Registry change shapes only a surface built after it" do
     s = surface
     registry.toolkit = Samagotchi::Toolkit.new(name: "lean").adding("register_reminder").resolve(Samagotchi::Toolkit.kits)
