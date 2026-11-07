@@ -441,13 +441,11 @@ runs (`/toolkit`, a staged `chi.replace_tools`, a direct `Registry#register`) sh
 searched and dispatched tools only. A context without one (a bare kernel or loop, a spec) computes one on read
 (`ToolSurface.of(context, registry)`); nothing caches or invalidates it.
 
-Readers outside a turn compute one on read from the Registry (`ToolSurface.for`): the system prompt, one per build
-under the build's layers in `turn_messages`, before `generate` knows `loads_tools` (`SystemPrompt::Built#surface`;
-spec/engine_tool_surface_spec.rb checks it equals generate's but for `loads_tools`); `ToolkitBinding#explained`
-(`/toolkit`, the snapshot, the plugin host's `declared_tools`), under the toolkit it explains; `#warn_stranded`;
-the toolkit suggestion's logged tool lists (what `chi toolkit report` grades), under full; and the tool index's
-callers without a turn (`#declare`, `#refresh!`, a rule's `call_targets`, the row's `call_preview`,
-`ctx.load_tools`' `#deferred_name`).
+Readers outside a turn compute one on read (`ToolSurface.for`). On the turn thread, from the Registry: the system
+prompt, once per build before `generate` knows `loads_tools` (`SystemPrompt::Built#surface`; engine_tool_surface_spec
+checks it), `#warn_stranded`, the toolkit suggestion's logged lists (under full), the tool index's `#declare`,
+`#refresh!`, `call_targets` and `call_preview`. Off it, from `ToolkitBinding#published` (below): `#explained`
+(`/toolkit`, the snapshot, the plugin host's `declared_tools`) and `ctx.load_tools`' `#deferred_name`.
 
 ## State management
 
@@ -497,7 +495,9 @@ Engine ivar. The readers that do: `Engine#turn_author` (`ctx.turn_author`, the h
 `#live_conversation` (nil unless the loop's `LLMContextForget::Turn#turn_id` is the running turn's). The turn's own
 code takes the context as an argument (the tool path, `guard_participant_spend`, `TurnStages::Warmup#after`'s
 `turn.context.settings`); cancel stays `TurnState#controller` (a Stop never reads `context.controller` off the
-turn). `spec/turn_context_readers_spec.rb` reads each from a thread the moment a turn is published.
+turn). `spec/turn_context_readers_spec.rb` reads each from a thread the moment a turn is published. The tool
+Registry likewise: off the turn thread it is `ToolkitBinding#published`, a frozen `Registry#snapshot` (its entry set;
+the `Entry` Structs shared) swapped at the Engine's build, after `apply_staged_tools!` and after `apply_toolkit!`.
 
 ### EffectiveModel (a snapshot per read)
 
