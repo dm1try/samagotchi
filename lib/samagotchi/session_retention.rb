@@ -18,7 +18,7 @@ module Samagotchi
   # (session.retention_days), count (session.max_count, counting only the
   # sessions that stay), statuses kept (session.keep_status), sessions left
   # empty (SessionManager.discardable?, an hour on), leftover scratch
-  # sessions and skeleton-only directories; a session with a live owner
+  # sessions (once past SCRATCH_START_GRACE) and skeleton-only directories; a session with a live owner
   # always stays.
   module SessionRetention
     # The session.retention_days / max_count / keep_status defaults.
@@ -93,6 +93,16 @@ module Samagotchi
       end
     end
 
+    # How long after its save an unowned scratch session may still be
+    # waiting for the worker just spawned for it to take its owner lock.
+    SCRATCH_START_GRACE = SessionManager::WORKER_START_GRACE
+
+    private_class_method def self.scratch_starting?(path, now)
+      now - File.mtime(path) < SCRATCH_START_GRACE
+    rescue SystemCallError
+      false
+    end
+
     # Lazy sweep guard: runs prune at most once per SWEEP_INTERVAL_HOURS
     # (session.sweep_interval_hours).
     MARKER = ".last_retention"
@@ -162,7 +172,9 @@ module Samagotchi
     # count (`chi sessions clean` with no --days: test runs are throwaway).
     #
     # A scratch session nobody owns (its terminal and worker were killed) goes whatever its
-    # age, its status and the count; +test_only+ takes it too.
+    # age, its status and the count; +test_only+ takes it too. One saved
+    # within SCRATCH_START_GRACE (its file's mtime, against +now+) stays: its
+    # worker may not have taken the owner lock yet.
     #
     # +max_count+ counts the sessions that stay: one deleted whatever its
     # place (scratch, left empty, expired, +any_age+) takes no slot.
@@ -173,7 +185,7 @@ module Samagotchi
     # @return [Hash] { deleted: [ids], kept: [ids], skipped: [ids] }
     def self.apply(state_dir: Session.default_state_dir, days: DEFAULT_RETENTION_DAYS, max_count: DEFAULT_MAX_COUNT,
                    keep_status: DEFAULT_KEEP_STATUS, dry_run: false, test_only: false, alive_check: nil,
-                   empty_check: nil, any_age: false)
+                   empty_check: nil, any_age: false, now: Time.now)
       keep_status = Array(keep_status).map(&:to_s)
       # Fetch all sessions sorted newest-first for count logic
       all = Session.list(state_dir: state_dir, sort: "updated_at", order: "desc")
@@ -182,7 +194,6 @@ module Samagotchi
         all = all.select { |session| session.test_run || session.scratch }
       end
 
-      now = Time.now
       cutoff = days.to_i.positive? ? now - (days.to_i * 86_400) : nil
       max = max_count.to_i
 
@@ -215,6 +226,15 @@ module Samagotchi
           rescue StandardError
             nil
           end
+        end
+
+        # A scratch session saved within SCRATCH_START_GRACE: `chi scratch`
+        # saves it, then spawns the worker that takes its owner lock, so no
+        # owner yet doesn't mean a leftover. Kept, it takes no count slot.
+        if session.scratch && scratch_starting?(path, now)
+          kept << session.id
+          passed_over += 1
+          next
         end
 
         left_empty = begin
