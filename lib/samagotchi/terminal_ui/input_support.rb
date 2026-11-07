@@ -5,6 +5,7 @@ require "fileutils"
 require "reline"
 
 require_relative "../config"
+require_relative "../degrade"
 require_relative "../memory_paths"
 require_relative "../prompt_history"
 require_relative "../tools/memory"
@@ -90,20 +91,18 @@ module Samagotchi
         fragment = slash_fragment.to_s.strip
         return [] unless fragment.start_with?("/")
 
-        begin
+        # Only at the line's start: "/x" mid-line is a path, not a command.
+        Degrade.call(:attached, "completion_line_unreadable") do
           buf = Reline.line_buffer.to_s
-          if !buf.empty? && !buf.lstrip.start_with?("/")
-            return []
-          end
-        rescue StandardError
-          nil
+          return [] if !buf.empty? && !buf.lstrip.start_with?("/")
         end
 
         lowered = fragment.downcase
         return slash_commands.dup if lowered == "/"
 
         slash_commands.select { |cmd| cmd.start_with?(lowered) }
-      rescue StandardError
+      rescue StandardError => e
+        Degrade.note(:attached, "slash_completion_failed", e)
         []
       end
 
@@ -134,7 +133,8 @@ module Samagotchi
           relative_path = "#{relative_path}/" if File.directory?(absolute_path)
           "#{AT_PATH_COMPLETION_PREFIX}#{relative_path}"
         end
-      rescue StandardError
+      rescue StandardError => e
+        Degrade.note(:attached, "path_completion_failed", e)
         []
       end
 
@@ -190,7 +190,8 @@ module Samagotchi
             yield scope, name
           end
         end
-      rescue StandardError
+      rescue StandardError => e
+        Degrade.note(:attached, "memory_completion_failed", e)
         []
       end
 
@@ -207,8 +208,8 @@ module Samagotchi
         @history_signature = PromptHistory.signature
         @history_seen = PromptHistory.entries
         @history_seen.last(PromptHistory::LIMIT).each { |entry| Reline::HISTORY << entry }
-      rescue StandardError
-        nil
+      rescue StandardError => e
+        Degrade.note(:attached, "history_load_failed", e)
       end
 
       # A scratch session keeps nothing, its typed lines neither.
@@ -223,8 +224,8 @@ module Samagotchi
           history_lock.synchronize { forget_own_line(own) } if own
           raise
         end
-      rescue StandardError
-        nil
+      rescue StandardError => e
+        Degrade.note(:attached, "history_append_failed", e)
       end
 
       # Before a main-prompt read, and on the first ↑ of a walk at an open
@@ -255,8 +256,8 @@ module Samagotchi
           @history_signature = signature
           @history_seen = entries
           history_lock.synchronize { add_others_lines(fresh) }
-        rescue StandardError
-          nil
+        rescue StandardError => e
+          Degrade.note(:attached, "history_pickup_failed", e)
         end
       end
 

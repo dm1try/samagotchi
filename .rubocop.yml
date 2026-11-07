@@ -553,7 +553,6 @@ Samagotchi/SilentRescue:
     - lib/samagotchi/terminal_ui/attached_loop.rb
     - lib/samagotchi/terminal_ui/attached_loop/composer.rb
     - lib/samagotchi/terminal_ui/attached_view.rb
-    - lib/samagotchi/terminal_ui/input_support.rb
     - lib/samagotchi/terminal_ui/line_reader.rb
     - lib/samagotchi/terminal_ui/reline_history_hook.rb
     - lib/samagotchi/thinking_tails.rb
