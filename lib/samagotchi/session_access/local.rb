@@ -269,7 +269,7 @@ module Samagotchi
       # @return [Boolean] whether the worker released the session
       def stop(id, wait:) = SessionManager.stop_session(id, wait: wait, **dir)
 
-      # @return [SessionManager::RestartResult]
+      # @return [SessionManager::Restarted]
       def restart(id) = SessionManager.restart_session(id, **dir)
 
       # @return [SessionManager::ArchiveResult]

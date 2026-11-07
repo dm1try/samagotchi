@@ -14,8 +14,8 @@ Samagotchi is split into a core **Engine** (`lib/samagotchi/engine.rb`) and a
   Its concerns are `include`d parts in `lib/samagotchi/engine/` (`Engine::<Concern>Part`).
 - A session's **Worker** (`lib/samagotchi/worker.rb`) builds its `Engine` and runs it with
   the session's **Bridge** (`lib/samagotchi/bridge.rb`, a localhost SSE + HTTP surface);
-  `SessionManager` forks/spawns the workers. `chi web` (`Web::App`) is the browser's control
-  plane over the workers' Bridges and the session files.
+  `SessionManager` (parts in `lib/samagotchi/session_manager/`) forks/spawns the workers. `chi web`
+  (`Web::App`) is the browser's control plane over the workers' Bridges and the session files.
 - Interactive `bin/chi` always runs **attached** (`LaunchMode.resolve`: `:attached`):
   `TerminalUI::AttachLauncher` finds or starts the worker and `TerminalUI::AttachedLoop` is
   a client of its Bridge, with no `Engine` in the terminal. There is no in-process REPL.
