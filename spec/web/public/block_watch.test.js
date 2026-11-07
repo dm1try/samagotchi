@@ -146,3 +146,34 @@ test("rejoin puts a figure back with its pre inside a code wrap", () => {
   rejoin(pre);
   assert.ok(figureOf(pre));
 });
+
+test("a drawer that throws or rejects fails its block with a line; the rest of the batch draws", async (t) => {
+  const errors = t.mock.method(console, "error", () => {});
+  const drawn = [];
+  const throwing = { claims: (l) => l === "bad", needsDraw: () => true, draw() { throw new Error("broke at once"); } };
+  const rejecting = { claims: (l) => l === "later", needsDraw: () => true, draw: async () => { throw new Error("broke later"); } };
+  const root = makeRoot(answer(block("a", "bad") + block("b", "chi-ui") + block("c", "later")));
+  const batch = [];
+  createBlockWatch({ roots: [root], sessionId: () => "s1", drawers: [throwing, rejecting, coreDrawer("chi-ui", drawn)], watch: (_el, _s, onNear) => batch.push(onNear), win: window });
+  for (const onNear of batch) onNear(); // one observer batch
+  await settle();
+  const [bad, good, later] = root.querySelectorAll("pre");
+  assert.deepEqual(drawn, [good]);
+  for (const [pre, words] of [[bad, "broke at once"], [later, "broke later"]]) {
+    assert.equal(pre.dataset.blockFailed, "1");
+    assert.match(pre.nextElementSibling.dataset.text, new RegExp(words));
+  }
+  assert.equal(errors.mock.callCount(), 2);
+});
+
+test("a throw after an asynchronous claim fails the block instead of going unhandled", async (t) => {
+  const errors = t.mock.method(console, "error", () => {});
+  const drawer = { claims: () => Promise.resolve(true), needsDraw() { throw new Error("needsDraw broke"); }, draw() {} };
+  const root = makeRoot(answer(block("a", "x")));
+  createBlockWatch({ roots: [root], sessionId: () => "s1", drawers: [drawer], watch: (_el, _s, onNear) => onNear(), win: window });
+  await settle();
+  const pre = root.querySelector("pre");
+  assert.equal(pre.dataset.blockFailed, "1");
+  assert.match(root.querySelector(".block-note").dataset.text, /needsDraw broke/);
+  assert.equal(errors.mock.callCount(), 1);
+});
