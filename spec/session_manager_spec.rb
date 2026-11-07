@@ -7,31 +7,10 @@ require "samagotchi/engine"
 require "samagotchi/session_manager"
 require "samagotchi/bridge"
 require "samagotchi/reminder_store"
-require_relative "support/worker_links"
+require_relative "support/session_manager_context"
 
 RSpec.describe Samagotchi::SessionManager do
-  include WorkerLinks
-
-  session_manager_class = described_class
-  let(:tmpdir) { Dir.mktmpdir("session-manager-spec") }
-  let(:spawn_manager) { session_manager_class }
-
-  after do
-    spawn_manager.forget_spawns
-    FileUtils.rm_rf(tmpdir)
-    if @owner_pid
-      begin
-        Process.kill("KILL", @owner_pid)
-      rescue Errno::ESRCH
-        nil
-      end
-      begin
-        Process.wait(@owner_pid)
-      rescue Errno::ECHILD
-        nil
-      end
-    end
-  end
+  include_context "session manager files"
 
   describe ".live_spawn_pids" do
     it "returns the unique pids of live worker starters" do
@@ -42,13 +21,6 @@ RSpec.describe Samagotchi::SessionManager do
 
       expect(described_class.live_spawn_pids).to eq([123])
     end
-  end
-
-  # A stand-in worker: another process holding the owner lock (needs the
-  # example group's session and session_dir; spec/support/lock_holder.rb).
-  def spawn_owner(ignore_term: false)
-    @owner_pid = spawn_lock_holder(session_dir, ignore_term: ignore_term)
-    expect(described_class.session_owner(session.id, state_dir: tmpdir)&.pid).to eq(@owner_pid)
   end
 
   describe ".list_sessions" do

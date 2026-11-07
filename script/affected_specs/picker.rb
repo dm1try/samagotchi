@@ -80,6 +80,10 @@ module AffectedSpecs
     { match: %w[lib/samagotchi/turn_endings.rb],
       specs: %w[spec/engine_turn_endings_spec.rb spec/engine_ctrl_c_progress_spec.rb spec/engine_empty_answer_retry_spec.rb],
       why: "Engine's turn endings, tested through the Engine" },
+    { match: %w[lib/samagotchi/session_manager.rb lib/samagotchi/session_manager/*.rb],
+      specs: %w[spec/session_manager/*_spec.rb spec/session_manager_spec.rb spec/worker_contract_spec.rb
+                spec/require_cycle_spec.rb],
+      why: "SessionManager's parts, tested through the facade" },
     { match: %w[samagotchi.gemspec],
       specs: %w[spec/gem_contents_spec.rb], why: "builds the gem and lists its files" },
     { match: %w[bin/chi],
