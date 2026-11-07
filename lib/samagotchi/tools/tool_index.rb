@@ -4,7 +4,6 @@ require "json"
 require_relative "args"
 require_relative "builtin_calls"
 require_relative "registry"
-require_relative "tool_surface"
 require_relative "../log"
 require_relative "../token_usage"
 require_relative "../tool_declarations"
@@ -12,6 +11,10 @@ require_relative "../plugin/tool_spec"
 
 module Samagotchi
   module Tools
+    # Read only when a reader asks (#live_surface, a handler): the bundle
+    # test kit loads this file for ToolIndex.new and never builds one.
+    autoload :ToolSurface, File.expand_path("tool_surface", __dir__)
+
     # The tools a session knows but doesn't declare one by one, and the two
     # tools that reach them (docs/plugins.md, "Publishing tools to the
     # index"): find_tools, a keyword search that answers each match's
