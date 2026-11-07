@@ -127,7 +127,7 @@ RSpec.describe Samagotchi::Web::MarkdownRenderer do
     end
 
     it "sets nothing when the blocks and the fences don't pair" do
-      allow(renderer).to receive(:fence_languages).and_return(%w[ruby mermaid])
+      allow(renderer).to receive(:fences).and_return(%w[ruby mermaid].map { |lang| described_class::Fence.new(language: lang, literal: "") })
 
       expect(langs("```ruby\na\n```")).to eq([nil])
     end
@@ -136,6 +136,51 @@ RSpec.describe Samagotchi::Web::MarkdownRenderer do
       expect(Commonmarker).not_to receive(:parse)
 
       expect(langs("    just indented\n")).to eq([nil])
+    end
+  end
+
+  describe "a chi-ui block (what the page draws as a widget)" do
+    let(:picks) { "type: picks\nrows:\n  - id: 1\n    text: Drop the buffer?\n    options: [fix, skip]\n" }
+
+    def pres(markdown) = Nokogiri::HTML5.fragment(renderer.render(markdown)).css("pre")
+
+    it "carries the parsed widget as JSON, or the reason it stays source" do
+      good, bad = pres("```chi-ui\n#{picks}```\n\n```chi-ui\ntype: table\n```\n")
+
+      expect(JSON.parse(good["data-widget"])).to eq("type" => "picks", "rows" => [{ "id" => "1", "text" => "Drop the buffer?",
+                                                                                    "options" => %w[fix skip] }])
+      expect(good["data-lang"]).to eq("chi-ui")
+      expect(good["data-widget-error"]).to be_nil
+      expect(good["data-widget-lenient"]).to be_nil
+      expect(bad["data-widget-error"]).to eq('unknown type "table" (picks or walk)')
+      expect(bad["data-widget"]).to be_nil
+    end
+
+    it "marks a block the lenient pass mended" do
+      pre = pres("```chi-ui\n#{picks.sub("Drop the buffer?", "Asked: drop it?")}```\n").first
+
+      expect(JSON.parse(pre["data-widget"])["rows"].first["text"]).to eq("Asked: drop it?")
+      expect(pre["data-widget-lenient"]).to eq("")
+    end
+
+    it "lands on its own block when an answer mixes chi-ui, mermaid and plain fences, in a list item too" do
+      markdown = "```mermaid\ngraph TD\n```\n\n- item\n\n  ```chi-ui\n#{picks.gsub(/^/, "  ")}  ```\n\n```\nplain\n```\n"
+      mermaid, widget, plain = pres(markdown)
+
+      expect(mermaid.attributes.keys).to contain_exactly("class", "data-lang")
+      expect(mermaid["data-lang"]).to eq("mermaid")
+      expect(JSON.parse(widget["data-widget"])["type"]).to eq("picks")
+      expect(plain.attributes.keys).to eq(["class"])
+    end
+
+    it "keeps model HTML in a step inert: it is JSON in an attribute" do
+      walk = "type: walk\ntitle: t\nactors: [a, b]\nsteps:\n  - id: s1\n    actor: a\n    does: <img src=x onerror=alert(1)>\n"
+      html = renderer.render("```chi-ui\n#{walk}```\n")
+      pre = Nokogiri::HTML5.fragment(html).at_css("pre")
+
+      expect(JSON.parse(pre["data-widget"])["steps"].first["does"]).to eq("<img src=x onerror=alert(1)>")
+      expect(Nokogiri::HTML5.fragment(html).css("img")).to be_empty
+      expect(html).not_to include("<img")
     end
   end
 

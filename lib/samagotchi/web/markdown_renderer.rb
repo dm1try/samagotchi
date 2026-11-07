@@ -3,6 +3,7 @@
 require "nokogiri"
 require "uri"
 require_relative "../block_renderers"
+require_relative "../inline_widgets"
 
 module Samagotchi
   module Web
@@ -24,6 +25,12 @@ module Samagotchi
         render: { escape: true }, # escape raw HTML from source; highlighter output is still emitted
         extension: { header_ids: nil }
       }.freeze
+
+      # A code block as the parse tree has it: its language (nil for an indented
+      # block or a bare fence) and its literal, the source between the fences.
+      Fence = Data.define(:language, :literal)
+      # A JSON string's < > & as \u escapes: the same JSON once parsed.
+      JSON_MARKUP = { "<" => "\\u003c", ">" => "\\u003e", "&" => "\\u0026" }.freeze
 
       def initialize(enabled: false)
         @enabled = enabled
@@ -61,7 +68,7 @@ module Samagotchi
         })
         return nil unless html
 
-        sanitize(html, fence_languages(markdown.to_s))
+        sanitize(html, fences(markdown.to_s))
       end
 
       private
@@ -81,17 +88,17 @@ module Samagotchi
         @commonmarker_installed = Gem::Specification.find_all_by_name("commonmarker").any?
       end
 
-      # Every code block's language, in document order (nil for an indented block
-      # or a bare fence): the highlighter drops it from the HTML, the parse tree
-      # has it. [] for a text with no fence: its blocks have no language.
-      def fence_languages(markdown)
+      # Every code block, in document order: the highlighter drops the language
+      # from the HTML, the parse tree has it. [] for a text with no fence: its
+      # blocks have no language.
+      def fences(markdown)
         return [] unless markdown.include?("```") || markdown.include?("~~~")
 
-        languages = []
+        fences = []
         Commonmarker.parse(markdown, options: OPTIONS).walk do |node|
-          languages << language_of(node.fence_info) if node.type == :code_block
+          fences << Fence.new(language: language_of(node.fence_info), literal: node.string_content) if node.type == :code_block
         end
-        languages
+        fences
       end
 
       def language_of(info)
@@ -100,16 +107,34 @@ module Samagotchi
       end
 
       # After the walk, which drops every attribute it doesn't know. Blocks and
-      # languages pair by position; a count that differs says the two parses
+      # fences pair by position; a count that differs says the two parses
       # disagree, and then no block gets one (it shows as source).
-      def mark_languages(fragment, languages)
+      def mark_languages(fragment, fences)
         blocks = fragment.css("pre")
-        return unless blocks.size == languages.size
+        return unless blocks.size == fences.size
 
-        blocks.zip(languages) { |pre, language| pre["data-lang"] = language if language }
+        blocks.zip(fences) do |pre, fence|
+          next unless fence.language
+
+          pre["data-lang"] = fence.language
+          mark_widget(pre, fence.literal) if fence.language == InlineWidgets::LANG
+        end
       end
 
-      def sanitize(html, languages)
+      # A chi-ui block carries what the page draws or why it doesn't. The JSON
+      # is an attribute value (Nokogiri escapes its quotes), and its < > & are
+      # \u escapes, so the HTML holds no model markup even as attribute text.
+      def mark_widget(pre, literal)
+        widget = InlineWidgets.parse(literal)
+        if widget.ok?
+          pre["data-widget"] = widget.widget_json.gsub(/[<>&]/, JSON_MARKUP)
+        else
+          pre["data-widget-error"] = widget.error
+        end
+        pre["data-widget-lenient"] = "" if widget.lenient?
+      end
+
+      def sanitize(html, fences)
         fragment = Nokogiri::HTML5.fragment(html)
         fragment.traverse do |node|
           next unless node.element?
@@ -122,7 +147,7 @@ module Samagotchi
             sanitize_attributes(node)
           end
         end
-        mark_languages(fragment, languages)
+        mark_languages(fragment, fences)
         fragment.to_html
       end
 
