@@ -1,0 +1,43 @@
+type: walk
+title: A decision card shows up
+actors: [user, chi, model]
+steps:
+  - id: s1
+    actor: chi
+    does: works in a session with an active objective
+    behind: without an objective the bundle never acts
+  - id: s2
+    actor: chi
+    does: the owner's turn completes
+    behind: stopped, participant and --non-interactive turns do not count
+  - id: s3
+    actor: chi
+    does: checks the gate on the prose
+    behind: at least 1200 chars, and a ? ending a word in the last 300 chars; code left out of both
+  - id: s4
+    actor: chi
+    does: asks a cheap model on a side thread (ctx.ask_model)
+    behind: for a short summary, the question, and the objective it concerns
+  - id: s5
+    actor: user
+    sees: nothing yet — the turn's end does not wait for the side request
+  - id: s6
+    actor: model
+    does: answers the side request
+    branches:
+      - when: it says nothing is asked, or leaves out the summary or the question
+        goto: s9
+      - when: the request fails
+        goto: s9
+  - id: s7
+    actor: user
+    sees: a card with the summary, the question and the objective
+    behind: no buttons — it lives in cards.json, so the turn's request stays byte for byte the same
+  - id: s8
+    actor: user
+    does: types the answer in the composer and sends the next turn
+    behind: a pending side request is cancelled, an undelivered card dropped, and the shown card folds to "Asked: …"
+  - id: s9
+    actor: chi
+    does: shows nothing
+    behind: a failed request is only logged (no_card)

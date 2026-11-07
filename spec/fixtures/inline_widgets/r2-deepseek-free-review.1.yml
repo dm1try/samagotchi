@@ -1,0 +1,33 @@
+type: picks
+title: What to do about the risky parts
+rows:
+  - id: "1"
+    text: participants.json no longer locked
+    options:
+      - temp-file + rename
+      - revert the lock removal
+      - keep as is
+    recommended: temp-file + rename
+    why: non-atomic writes truncate on crash, readers can see partial JSON
+  - id: "2"
+    text: expired-grant spec deleted
+    options:
+      - move the spec to the gate
+      - keep one at Grants#find too
+      - leave it deleted
+    recommended: move the spec to the gate
+    why: coverage should move with the logic, not vanish
+  - id: "3"
+    text: digest compared with ==
+    options:
+      - secure_compare
+      - leave as is
+    recommended: secure_compare
+    why: one-line change, removes the timing oracle
+  - id: "4"
+    text: prefix check now only in Grants.parse
+    options:
+      - verify status codes + all callers
+      - assume unchanged
+    recommended: verify status codes + all callers
+    why: find may now accept tokens it used to reject

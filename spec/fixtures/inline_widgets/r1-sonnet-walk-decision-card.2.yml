@@ -1,0 +1,46 @@
+type: walk
+title: A decision card in chi web
+actors: [user, web, worker, model]
+steps:
+  - id: s1
+    actor: user
+    does: sends a message in a session with an active objective
+    sees: the answer streams in as usual
+    behind: the decision-card bundle does nothing without an active objective
+  - id: s2
+    actor: worker
+    does: the owner's turn completes and the gate is checked
+    behind: "needs >= 1200 chars, and a '?' ending a word in the last 300 chars of prose (code excluded)"
+    branches:
+      - when: the gate fails
+        goto: s7
+  - id: s3
+    actor: worker
+    does: starts a side request on a thread (ctx.ask_model)
+    sees: the turn ends normally, with no waiting and no spinner
+    behind: asks a cheap model for a short summary, the question and the objective it concerns
+    branches:
+      - when: the user starts a new turn first
+        goto: s7
+  - id: s4
+    actor: model
+    does: returns summary, question and objective
+    behind: no card if the answer asks nothing or the summary or question is missing; a failed request is only logged as no_card
+    branches:
+      - when: nothing asked, a field missing, or the request failed
+        goto: s7
+  - id: s5
+    actor: web
+    does: shows the decision card
+    sees: a card with summary and question, with no buttons
+    behind: the card is saved in cards.json; nothing enters the conversation
+  - id: s6
+    actor: user
+    does: answers in the composer and sends
+    sees: the card folds to a line "Asked: …"
+    behind: the next request is byte for byte the same as without the card
+  - id: s7
+    actor: web
+    does: no card is shown
+    sees: nothing, with no notice even on failure
+    behind: a card still to come is dropped when a new turn cancels the side request

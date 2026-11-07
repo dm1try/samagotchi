@@ -1,0 +1,40 @@
+type: walk
+title: A review with a participant, end to end
+actors: [owner, participant, agent]
+steps:
+  - id: s1
+    actor: owner
+    does: runs `chi review <subject>`
+    sees: a review session is open
+    behind: ReviewStart starts the session; Guardrails::ReviewPaths vets the subject paths
+  - id: s2
+    actor: owner
+    does: runs `chi share`
+    sees: a link to hand to the participant
+    behind: creates a grant — a chp_ token bound to that one session, stored only as a digest
+  - id: s3
+    actor: participant
+    does: opens the link in chi web
+    sees: only that session's participant routes, nothing else
+    behind: the presented token is checked against the stored digest
+  - id: s4
+    actor: participant
+    does: asks a question in the thread
+    behind: the turn runs read-only; Guardrails::ReviewBoundary denies any write
+    branches:
+      - when: the turn tries to write anyway
+        goto: s5
+  - id: s5
+    actor: agent
+    does: answers and proposes the change as text
+    sees: a proposal in the conversation, not an applied edit
+  - id: s6
+    actor: owner
+    does: reads the thread, then presses Apply
+    sees: the change lands
+    behind: ReviewApply runs as the owner's own turn — the owner is the one who writes
+  - id: s7
+    actor: owner
+    does: revokes the grant whenever they like
+    sees: the link stops working
+    behind: the digest is invalidated; the grant covers one session regardless

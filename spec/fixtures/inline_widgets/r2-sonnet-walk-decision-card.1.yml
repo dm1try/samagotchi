@@ -1,0 +1,58 @@
+type: walk
+title: Life of a decision card
+actors: [user, chi, model]
+steps:
+  - id: s1
+    actor: user
+    does: sends a message in a session with an active objective
+    behind: the decision-card bundle does nothing without an active objective
+  - id: s2
+    actor: chi
+    does: the owner's turn completes
+    behind: stopped turns, participants' turns and --non-interactive turns are skipped
+  - id: s3
+    actor: chi
+    does: checks the gate on the answer
+    behind: at least 1200 chars, and a question mark ends a word in the last 300 chars of prose (code left out)
+    cases:
+      - when: the gate passes
+        goto: s4
+      - when: the gate fails
+        goto: s8
+  - id: s4
+    actor: chi
+    does: fires a side request on a thread (ctx.ask_model)
+    behind: the turn's end doesn't wait for it
+    cases:
+      - when: the user starts a new turn first
+        goto: s8
+      - when: the request is still running, no new turn
+        goto: s5
+  - id: s5
+    actor: model
+    does: a cheap model returns a short summary, the question and the objective it concerns
+    cases:
+      - when: it says the answer asks nothing, or summary or question is missing
+        goto: s8
+      - when: the request fails (only logged as no_card, no notice)
+        goto: s8
+      - when: all fields are present
+        goto: s6
+  - id: s6
+    actor: user
+    sees: a decision card with the summary and question, and no buttons
+    behind: the card is stored in cards.json
+  - id: s7
+    actor: user
+    does: answers in the composer and sends the next turn
+    sees: the card folds to a line "Asked: …"
+    behind: nothing enters the conversation, so the next request is byte for byte the same
+    next: s9
+  - id: s8
+    actor: chi
+    does: no card is shown
+    sees: nothing changes for the user
+    next: s9
+  - id: s9
+    actor: user
+    does: the conversation goes on as usual

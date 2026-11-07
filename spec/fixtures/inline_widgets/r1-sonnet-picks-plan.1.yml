@@ -1,0 +1,23 @@
+type: picks
+title: Scratch sessions - open decisions
+rows:
+  - id: D1
+    text: "When the worker exits: A delete the file, B keep it 1 h"
+    options: [A, B]
+    recommended: B
+    why: A would not fix the lost-answer complaint
+  - id: D2
+    text: "Web list: A hide scratch sessions, B show with a scratch mark"
+    options: [A, B]
+    recommended: B
+    why: users need to find the session again; the mark keeps it distinct
+  - id: D3
+    text: "chi --resume: A refuse, B allow while the file exists"
+    options: [A, B]
+    recommended: B
+    why: matches D1; otherwise the kept file can't be reopened
+  - id: D4
+    text: "Memory writes: A allow all, B deny project scope, allow system"
+    options: [A, B]
+    recommended: B
+    why: throwaway sessions shouldn't add to a repo's shared project notes

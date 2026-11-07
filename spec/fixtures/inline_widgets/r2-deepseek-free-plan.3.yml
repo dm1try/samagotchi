@@ -1,0 +1,35 @@
+type: picks
+title: Open decisions on the cost chip
+rows:
+  - id: "1"
+    text: Local models / zero cost
+    options:
+      - hide the chip entirely
+      - quiet "$0.00"
+      - show "local" / "free"
+    recommended: hide the chip entirely
+    why: "\"$0.00\" reads like a bug; don't reserve bar space for a concept the session lacks"
+  - id: "2"
+    text: Who sees the cost
+    options:
+      - owner and participants, hidden for anonymous/read-only viewers
+      - everyone who can open the session
+      - only the owner
+    recommended: owner and participants, hidden for anonymous/read-only viewers
+    why: a public share link shouldn't leak spend; collaborators on the session can see it
+  - id: "3"
+    text: Precision in the bar
+    options:
+      - cents, but "&lt;$0.01" for a nonzero sub-cent total
+      - always 3 decimals
+      - cents only
+    recommended: cents, but "&lt;$0.01" for a nonzero sub-cent total
+    why: plain cents shows "$0.00" for ten cheap turns, then jumps; exact value in tooltip and /stats
+  - id: "4"
+    text: 80% cost-cap warning
+    options:
+      - warning colour at 80%, distinct "over cap" state at 100%
+      - only at 100%
+      - skip it
+    recommended: warning colour at 80%, distinct "over cap" state at 100%
+    why: it's a pure function of the cost you already send, so it costs nothing extra

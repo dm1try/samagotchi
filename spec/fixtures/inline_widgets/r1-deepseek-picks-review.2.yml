@@ -1,0 +1,38 @@
+type: picks
+title: What to do with each item
+rows:
+  - id: "1"
+    text: Push fires even when the owner's tab is focused
+    options: [gate on visibility, ask user first, accept for now]
+    recommended: gate on visibility
+    why: in-app card plus OS banner is a duplicate; needs a client signal
+  - id: "2"
+    text: config.yml re-read on every call instead of loaded Config
+    options: [inject Config, memoize, leave]
+    recommended: inject Config
+    why: file read can diverge from env overrides; disk hit per turn
+  - id: "3"
+    text: Push title embeds the full tool command (may hold a secret)
+    options: [redact to tool label, truncate only, leave]
+    recommended: redact to tool label
+    why: truncation still leaks the leading token; label is safe and stable
+  - id: "4"
+    text: No spec for a session with no subscriptions
+    options: [add spec, skip]
+    recommended: add spec
+    why: assert no-op and no raise, and that config is not read
+  - id: "5"
+    text: notify_waiting also covers questions
+    options: [rename to requires_action, keep name]
+    recommended: rename to requires_action
+    why: matches the existing turn state, and covers both cases
+  - id: "6"
+    text: Check — expired endpoints (410/404) never pruned
+    options: [prune on 410, later, skip]
+    recommended: prune on 410
+    why: stale rows waste a request per notify and can mask real failures
+  - id: "7"
+    text: Check — a re-notify stacks duplicate pushes for one turn
+    options: [collapse via tag, dedupe server-side, skip]
+    recommended: collapse via tag
+    why: same tag replaces the banner instead of piling up

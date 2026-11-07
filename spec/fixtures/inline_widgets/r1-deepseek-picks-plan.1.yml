@@ -1,0 +1,23 @@
+type: picks
+title: Scratch-session open decisions
+rows:
+  - id: D1
+    text: Delete the session file when the worker exits, or keep it 1 h
+    options: [keep 1 h, delete at exit]
+    recommended: keep 1 h
+    why: deleting at exit is the loss users complained about
+  - id: D2
+    text: Show scratch sessions in chi web's list
+    options: [show with scratch mark, hide]
+    recommended: show with scratch mark
+    why: a hidden file can't be recovered from the UI
+  - id: D3
+    text: Allow `chi --resume` of a scratch session
+    options: [allow while file exists, refuse]
+    recommended: allow while file exists
+    why: resuming is the whole recovery path
+  - id: D4
+    text: Allow a scratch session's memory writes
+    options: [deny project, allow system, allow both, deny both]
+    recommended: deny project, allow system
+    why: throwaway runs shouldn't pollute a repo's memories

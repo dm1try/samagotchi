@@ -1,0 +1,27 @@
+type: picks
+title: Three follow-ups from this review
+rows:
+  - id: "1"
+    text: Existing plaintext grants stop verifying after this change
+    options:
+      - backfill digests
+      - accept both during a transition
+      - skip, nothing stored yet
+    recommended: backfill digests
+    why: one-off SHA256 of the stored token, then reset
+  - id: "2"
+    text: Expiry is now only enforced in the gate
+    options:
+      - add a gate spec
+      - restore find check + spec
+      - skip, already covered
+    recommended: add a gate spec
+    why: keeps the regression without duplicating the rule
+  - id: "3"
+    text: participants.json writes are unlocked
+    options:
+      - mutex + atomic rename
+      - restore the file lock
+      - skip, single writer is certain
+    recommended: mutex + atomic rename
+    why: one process still has many threads; rename survives crashes

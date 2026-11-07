@@ -1,0 +1,23 @@
+type: picks
+title: Scratch sessions — four decisions
+rows:
+  - id: D1
+    text: The scratch session file when its worker exits
+    options: [keep 1 h, delete at exit]
+    recommended: keep 1 h
+    why: recovering the lost answer needs a grace window
+  - id: D2
+    text: Scratch sessions in chi web's session list
+    options: [show with scratch mark, hide]
+    recommended: show with scratch mark
+    why: a recoverable answer is useless if it isn't findable
+  - id: D3
+    text: `chi --resume` on a scratch session
+    options: [allow while the file exists, refuse]
+    recommended: allow while the file exists
+    why: same recovery path, and the 1 h expiry self-limits it
+  - id: D4
+    text: Memory writes from a scratch session
+    options: [system only, allow both scopes, deny all]
+    recommended: system only
+    why: throwaway questions shouldn't leave project notes

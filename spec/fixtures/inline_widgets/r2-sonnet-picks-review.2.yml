@@ -1,0 +1,43 @@
+type: picks
+title: What to do with each problem
+rows:
+  - id: "3"
+    text: Push title includes the full tool command (secret leak)
+    options:
+      - fix now
+      - later
+      - skip
+    recommended: fix now
+    why: push goes through third-party services; use a generic title like "Approval needed"
+  - id: "1"
+    text: Push is sent while the owner's tab is focused and visible
+    options:
+      - fix now
+      - later
+      - skip
+    recommended: fix now
+    why: skip the push when a visible tab exists; it's redundant noise
+  - id: "2"
+    text: Reads config.yml on every call instead of the loaded Config
+    options:
+      - fix now
+      - later
+      - skip
+    recommended: fix now
+    why: use the loaded Config; avoids disk reads and drift from runtime overrides
+  - id: "4"
+    text: No spec for a session with no subscriptions
+    options:
+      - fix now
+      - later
+      - skip
+    recommended: fix now
+    why: cheap spec; it should assert nothing is sent and nothing raises
+  - id: "5"
+    text: notify_waiting is also called for questions
+    options:
+      - rename
+      - document
+      - skip
+    recommended: rename
+    why: a name like notify_needs_input matches both cases; update the call sites and specs

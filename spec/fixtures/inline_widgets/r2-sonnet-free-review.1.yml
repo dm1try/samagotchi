@@ -1,0 +1,33 @@
+type: picks
+title: Open decisions on this change
+rows:
+  - id: "1"
+    text: Expired-grant spec deleted, not moved to gate spec
+    options:
+      - move to gate spec
+      - leave deleted
+    recommended: move to gate spec
+    why: expiry is now untested
+  - id: "2"
+    text: participants.json writes without file lock
+    options:
+      - restore lock
+      - atomic temp+rename only
+      - keep as is
+    recommended: restore lock
+    why: threads/workers can lose updates
+  - id: "3"
+    text: Digest comparison with ==
+    options:
+      - secure_compare
+      - lookup by digest key
+      - keep ==
+    recommended: lookup by digest key
+    why: avoids a timing side channel if find loops
+  - id: "4"
+    text: Direct callers of find bypassing Grants.parse
+    options:
+      - audit callers
+      - skip
+    recommended: audit callers
+    why: prefix check no longer in the route

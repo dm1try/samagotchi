@@ -1,0 +1,52 @@
+type: walk
+title: A tab loses its connection and comes back
+actors: [user, tab, bridge]
+steps:
+  - id: s1
+    actor: tab
+    does: loses the SSE stream
+    sees: a "reconnecting" mark appears
+    behind: GET /events was closed, and the tab retries
+  - id: s2
+    actor: tab
+    does: reconnects to GET /events
+    behind: "sends Last-Event-ID: N, the last event it saw"
+    cases:
+      - when: the worker is still running
+        goto: s3
+      - when: the worker exited (idle exit after session.idle_exit_minutes)
+        goto: s7
+  - id: s3
+    actor: bridge
+    does: looks for N in its replay buffer
+    cases:
+      - when: N is still buffered
+        goto: s4
+      - when: N is too old
+        goto: s5
+  - id: s4
+    actor: bridge
+    does: replays the events after N, then goes live
+    sees: the missed steps appear
+    next: s8
+  - id: s5
+    actor: bridge
+    does: sends a `reset` event
+  - id: s6
+    actor: tab
+    does: re-reads the turn and redraws it
+    sees: the turn is redrawn and open cards come back
+    behind: GET /api/sessions/:id returns the TurnAccumulator snapshot, and open cards come from CardStore
+    next: s8
+  - id: s7
+    actor: tab
+    does: finds no worker to answer
+    sees: the session shows as not running
+  - id: s7b
+    actor: user
+    does: sends a new prompt
+    behind: this starts the worker again
+  - id: s8
+    actor: tab
+    does: continues on the live stream
+    sees: the "reconnecting" mark is gone

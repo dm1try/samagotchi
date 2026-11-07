@@ -1,0 +1,47 @@
+type: walk
+title: When a decision card shows up
+actors: [chi, model, user]
+steps:
+  - id: s1
+    actor: chi
+    does: finishes the owner's turn
+    sees: the answer is on screen
+    behind: only with an active objective, and never after a stopped turn, a participant's turn, or --non-interactive
+    next: s2
+  - id: s2
+    actor: chi
+    does: checks the gate
+    cases:
+      - when: the answer is under 1200 chars, or no word ends in "?" inside the last 300 chars of prose (code ignored)
+        goto: s7
+      - when: both hold
+        goto: s3
+  - id: s3
+    actor: chi
+    does: ends the turn without waiting
+    behind: a side request (ctx.ask_model) on a thread asks a cheap model for a short summary, the question, the objective it concerns; a new turn cancels it and any card still to come is dropped
+    next: s4
+  - id: s4
+    actor: model
+    does: answers on the thread
+    cases:
+      - when: it says the answer asks nothing, or leaves out the summary or the question
+        goto: s7
+      - when: the request fails
+        goto: s7
+      - when: all three come back
+        goto: s5
+  - id: s5
+    actor: user
+    does: sees the card appear
+    sees: it has no buttons
+    next: s6
+  - id: s6
+    actor: user
+    does: types the answer in the composer and sends it
+    sees: the card folds to "Asked: …"
+    behind: the card lives in cards.json, nothing enters the conversation, so the next request is byte for byte the same
+  - id: s7
+    actor: chi
+    does: shows nothing
+    behind: a failed request is only logged (no_card), with no notice

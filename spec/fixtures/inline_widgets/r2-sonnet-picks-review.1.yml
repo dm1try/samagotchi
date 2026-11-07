@@ -1,0 +1,43 @@
+type: picks
+title: What to do with the findings
+rows:
+  - id: "3"
+    text: Push title includes the full tool command (secret leak)
+    options:
+      - fix now
+      - skip
+      - later
+    recommended: fix now
+    why: push goes through third-party services and shows on lock screens. Use a generic title like "Approval needed: <tool name>" with no args.
+  - id: "1"
+    text: Push sent while the owner's tab is focused and visible
+    options:
+      - fix now
+      - skip
+      - later
+    recommended: fix now
+    why: it's noise when the user is already looking at the card. Skip the push if a client is visible, checked in the service worker or from tracked presence.
+  - id: "2"
+    text: Reads config.yml on every call instead of the loaded Config
+    options:
+      - fix now
+      - skip
+      - later
+    recommended: fix now
+    why: it does disk I/O per push and can disagree with the live config, for example after overrides or reloads. Inject or use Config.
+  - id: "4"
+    text: No spec for a session with no subscriptions
+    options:
+      - fix now
+      - skip
+      - later
+    recommended: fix now
+    why: it's the common edge case. The spec should check that it returns quietly, makes no network call and raises nothing.
+  - id: "5"
+    text: "notify_waiting" is also called for questions
+    options:
+      - rename
+      - skip
+      - later
+    recommended: rename
+    why: a name like notify_needs_attention fits both cases. Renaming is cheapest before more callers appear. The title text can still differ for approvals and questions.

@@ -1,0 +1,31 @@
+type: picks
+title: Scratch session decisions
+rows:
+  - id: "D1"
+    text: Session file when the worker exits
+    options:
+      - A delete at exit
+      - B keep 1 h
+    recommended: B keep 1 h
+    why: file is what lets users recover the lost answer
+  - id: "D2"
+    text: Scratch sessions in chi web's list
+    options:
+      - A hide
+      - B show with scratch mark
+    recommended: B show with scratch mark
+    why: users need to find the session they lost
+  - id: "D3"
+    text: chi --resume of a scratch session
+    options:
+      - A refuse
+      - B allow while file exists
+    recommended: B allow while file exists
+    why: direct fix for the accidental-close complaint
+  - id: "D4"
+    text: Memory writes from a scratch session
+    options:
+      - A allow
+      - B deny project, allow system
+    recommended: B deny project, allow system
+    why: throwaway sessions shouldn't change project memory

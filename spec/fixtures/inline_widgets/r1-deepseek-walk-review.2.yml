@@ -1,0 +1,31 @@
+type: walk
+title: A review with a participant
+actors: [owner, participant, agent]
+steps:
+  - id: s1
+    actor: owner
+    does: runs `chi review <subject>`
+    behind: ReviewStart opens a review session; Guardrails::ReviewPaths vets the subject
+  - id: s2
+    actor: owner
+    does: runs `chi share` and sends the link over
+    sees: a single chp_ link
+    behind: a grant is made for one session; only its digest is stored
+  - id: s3
+    actor: participant
+    does: opens the link in chi web
+    sees: only that session's participant routes, nothing else
+  - id: s4
+    actor: participant
+    does: writes a message in the thread
+    sees: the agent answers with proposed changes as text
+    behind: each message is a read-only review turn; Guardrails::ReviewBoundary denies any write
+  - id: s5
+    actor: owner
+    does: watches the conversation, then presses Apply
+    sees: the proposed changes are made
+    behind: ReviewApply runs as the owner's own turn
+  - id: s6
+    actor: owner
+    does: revokes the grant whenever they want
+    sees: the link stops working

@@ -1,0 +1,61 @@
+type: walk
+title: A tool call hits an "ask" rule
+actors: [model, guardrails, judge, user]
+steps:
+  - id: s1
+    actor: model
+    does: calls a tool
+    behind: guardrail rules return allow, ask or deny
+    branches:
+      - when: rule says allow
+        goto: s6
+      - when: rule says deny
+        goto: s7
+  - id: s2
+    actor: guardrails
+    does: rule says ask
+    behind: in a review turn, ReviewBoundary denies writes before any card
+    branches:
+      - when: review turn and the call is a write
+        goto: s7
+      - when: System 1 is off
+        goto: s4
+  - id: s3
+    actor: judge
+    does: System 1 is asked first, timeout_ms 2000
+    sees: an auto-allowed mark on the step if it allows
+    branches:
+      - when: judge says allow
+        goto: s6
+  - id: s4
+    actor: user
+    does: gets an approval card (Allow / Deny)
+    sees: a web push too if away; the turn waits
+    behind: the judge was unsure or timed out
+    branches:
+      - when: user denies
+        goto: s7
+      - when: user stops the turn
+        goto: s8
+  - id: s5
+    actor: user
+    does: clicks Allow
+  - id: s6
+    actor: guardrails
+    does: the call runs
+    branches:
+      - when: always
+        goto: s9
+  - id: s7
+    actor: guardrails
+    does: the call is denied
+    behind: the model gets an error or denial and continues
+    branches:
+      - when: always
+        goto: s9
+  - id: s8
+    actor: guardrails
+    does: the turn is cancelled
+  - id: s9
+    actor: model
+    does: continues the turn

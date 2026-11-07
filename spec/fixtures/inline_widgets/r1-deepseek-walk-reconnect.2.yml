@@ -1,0 +1,43 @@
+type: walk
+title: A tab reconnects to a running session
+actors: [user, page, bridge]
+steps:
+  - id: s1
+    actor: user
+    does: laptop sleeps or Wi-Fi drops mid-turn
+    sees: the page shows a "reconnecting" mark
+    behind: the tab keeps retrying GET /events with Last-Event-ID: N
+  - id: s2
+    actor: bridge
+    does: gets the reconnect with Last-Event-ID: N
+    branches:
+      - when: N is still in the replay buffer
+        goto: s3
+      - when: N is too old
+        goto: s4
+      - when: the worker exited meanwhile (idle exit)
+        goto: s6
+  - id: s3
+    actor: bridge
+    does: replays the events after N, then the live stream continues
+    sees: the missed steps appear, the turn goes on as normal
+  - id: s4
+    actor: bridge
+    does: sends a reset event
+    behind: N fell out of the buffer, so replay is not possible
+    goto_note: the page then rebuilds from scratch
+  - id: s5
+    actor: page
+    does: re-reads the turn snapshot (TurnAccumulator) via GET /api/sessions/:id and redraws the turn
+    sees: the turn is back in full, no missed steps
+    behind: open cards come back from CardStore
+  - id: s6
+    actor: page
+    does: shows the session as not running
+    sees: the session marked as not running
+    behind: reconciliation (replay or reset) still runs first
+  - id: s7
+    actor: user
+    does: types a new prompt
+    sees: the session running again
+    behind: the new prompt starts the worker again

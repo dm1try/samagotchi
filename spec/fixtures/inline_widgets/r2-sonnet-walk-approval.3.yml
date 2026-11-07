@@ -1,0 +1,59 @@
+type: walk
+title: A tool call meets the guardrails
+actors: [model, guardrails, judge, user]
+steps:
+  - id: s1
+    actor: model
+    does: calls a tool
+  - id: s2
+    actor: guardrails
+    does: checks the call against the rules
+    cases:
+      - when: allow
+        goto: s7
+      - when: deny, or a write in a review turn (ReviewBoundary)
+        goto: s8
+      - when: ask
+        goto: s3
+  - id: s3
+    actor: guardrails
+    does: checks whether System 1 is on
+    cases:
+      - when: System 1 is on
+        goto: s4
+      - when: System 1 is off
+        goto: s6
+  - id: s4
+    actor: judge
+    does: is asked, timeout_ms 2000
+    cases:
+      - when: says allow
+        goto: s5
+      - when: unsure or times out
+        goto: s6
+  - id: s5
+    actor: judge
+    does: auto-allows the call
+    sees: the step shows an auto-allowed mark
+    next: s7
+  - id: s6
+    actor: user
+    does: gets an approval card, Allow / Deny
+    sees: a card, plus a web push if away; the turn waits
+    behind: a stop during the wait cancels the turn
+    cases:
+      - when: Allow
+        goto: s7
+      - when: Deny
+        goto: s8
+  - id: s7
+    actor: guardrails
+    does: the call runs
+    next: s9
+  - id: s8
+    actor: guardrails
+    does: returns an error or denial to the model
+    next: s9
+  - id: s9
+    actor: model
+    does: continues the turn

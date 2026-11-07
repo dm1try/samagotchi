@@ -1,0 +1,28 @@
+type: picks
+title: Review of Notifier#notify_waiting
+rows:
+  - id: "3"
+    text: Push title includes the full tool command (secret leak)
+    options: [fix, skip, later]
+    recommended: fix
+    why: use a fixed title like "Approval needed" plus the tool name only; keep the command in the in-app card
+  - id: "1"
+    text: Push is sent while the owner's tab is focused and visible
+    options: [fix, skip, later]
+    recommended: fix
+    why: skip the push when a tab reports visible, using a presence or heartbeat signal; this needs a small client signal
+  - id: "2"
+    text: Reads config.yml on every call instead of the loaded Config
+    options: [fix, skip]
+    recommended: fix
+    why: inject or use the loaded Config; this removes the disk read and stops it disagreeing with runtime overrides
+  - id: "4"
+    text: No spec for a session with no subscriptions
+    options: [fix, skip]
+    recommended: fix
+    why: add a spec that it returns quietly and sends nothing; this is the most common real case
+  - id: "5"
+    text: Name says "waiting" but it's also called for questions
+    options: [rename, document, skip]
+    recommended: rename
+    why: rename to something like notify_attention_needed, or notify_blocked, while there are few callers

@@ -1,0 +1,28 @@
+type: picks
+title: What to do with each finding
+rows:
+  - id: "1"
+    text: Push fires while the owner's tab is focused and visible
+    options: [SW check, server hint, skip]
+    recommended: SW check
+    why: the service worker can check clients.matchAll for a visible, focused client and skip show()
+  - id: "2"
+    text: Reads config.yml per call instead of the loaded Config
+    options: [inject config, memoize, skip]
+    recommended: inject config
+    why: a per-call file read also drifts from env overrides and breaks stubbing in specs
+  - id: "3"
+    text: Push title carries the raw tool command (may hold a secret)
+    options: [tool name only, scrub command, skip]
+    recommended: tool name only
+    why: push text is lockscreen-visible; the detail belongs in the tab, not the notification
+  - id: "4"
+    text: No spec for a session with no subscriptions
+    options: [no-subs spec, plus 410 prune, skip]
+    recommended: plus 410 prune
+    why: a dead subscription (404/410) is the likelier real case, and it must not raise
+  - id: "5"
+    text: Name says waiting, but it's also called for questions
+    options: [rename, keep + document, skip]
+    recommended: rename
+    why: the harness already has a name for this state — requires_action

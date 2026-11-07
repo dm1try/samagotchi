@@ -1,0 +1,31 @@
+type: picks
+title: Scratch session open decisions
+rows:
+  - id: D1
+    text: Session file when the worker exits
+    options:
+      - keep 1 h
+      - delete at exit
+    recommended: keep 1 h
+    why: the complaint is exactly losing the answer on an accidental close
+  - id: D2
+    text: Scratch sessions in chi web's list
+    options:
+      - show with a scratch mark
+      - hide
+    recommended: show with a scratch mark
+    why: the 1 h window is useless if the UI never surfaces it
+  - id: D3
+    text: chi --resume of a scratch session
+    options:
+      - allow while the file exists
+      - refuse
+    recommended: allow while the file exists
+    why: recovery only exists if resume can reach it
+  - id: D4
+    text: Memory writes from a scratch session
+    options:
+      - "deny project scope, allow system"
+      - allow both
+    recommended: "deny project scope, allow system"
+    why: keeps throwaway questions out of the repo's shared memories

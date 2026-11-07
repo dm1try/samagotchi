@@ -1,0 +1,23 @@
+type: picks
+title: Open decisions for scratch session persistence
+rows:
+  - id: D1
+    text: When the worker exits, delete the session file or keep it 1 hour?
+    options: [A delete at exit, B keep 1 h]
+    recommended: B keep 1 h
+    why: deleting at exit brings back the lost-answer problem
+  - id: D2
+    text: Show scratch sessions in chi web's list?
+    options: [A hide, B show with mark]
+    recommended: B show with mark
+    why: users need to find the session to recover the answer
+  - id: D3
+    text: Allow `chi --resume` of a scratch session?
+    options: [A refuse, B allow while file exists]
+    recommended: B allow while file exists
+    why: matches D1, so the 1 h window is usable
+  - id: D4
+    text: Allow memory writes from a scratch session?
+    options: [A allow, B deny project, allow system]
+    recommended: B deny project, allow system
+    why: throwaway sessions shouldn't add to project memory

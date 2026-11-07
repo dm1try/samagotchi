@@ -1,0 +1,28 @@
+type: picks
+title: What to do with the findings
+rows:
+  - id: "1"
+    text: Push is sent even when the owner's tab is focused and visible
+    options: [fix, skip, later]
+    recommended: fix
+    why: a push on top of a card already on screen is noise; skip it if a visible tab is connected
+  - id: "2"
+    text: config.yml is read on every call instead of the loaded Config
+    options: [fix, skip, later]
+    recommended: fix
+    why: it bypasses overrides and defaults and adds file I/O to each notification
+  - id: "3"
+    text: Push title includes the full tool command, which may hold a secret
+    options: [fix, skip, later]
+    recommended: fix
+    why: use a fixed title like "Approval needed" plus the tool name, and keep the command out of the payload
+  - id: "4"
+    text: No spec for a session with no subscriptions
+    options: [fix, skip, later]
+    recommended: fix
+    why: it's the most common case and should send nothing and not raise
+  - id: "5"
+    text: "notify_waiting" is also called for questions
+    options: [fix, skip, later]
+    recommended: fix
+    why: rename it to something like notify_attention_needed while there are few callers, or document that it covers both
