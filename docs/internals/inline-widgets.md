@@ -55,10 +55,21 @@ Pure Ruby, no web, no Engine. `parse(source)` returns a `Result`: `ok?`, `type`,
 
 | | Required | Optional | Rules |
 |---|---|---|---|
-| picks | `rows`: rows of `id`, `text`, `options` (2-4 texts) | `title`; on a row `recommended`, `why` | ids unique; `recommended` is one of the options |
-| walk | `title`, `actors` (2-5 texts), `steps`: steps of `id`, `actor`, `does` or `sees` | on a step `behind`, `next`, `cases` (each `when` + `goto`) | ids unique; actors unique; `actor` is one of the actors; `next` and every `goto` name a step |
+| picks | `rows`: rows of `id`, `text`, `options` (2-4 texts) | `title`; on a row `recommended`, `why` | ids unique; a row's options unique; `recommended` is one of the options |
+| walk | `title`, `actors` (2-5 texts), `steps`: steps of `id`, `actor`, `does` or `sees` | on a step `behind`, `next`, `cases` (each `when` + `goto`) | ids unique, none of them `end`; actors unique; `actor` is one of the actors; `next` names a step or is `end`, and not the step itself; every `goto` names a step |
 
 Eval round 1's `branches:` (the same shape as `cases:`) is read as `cases`.
+
+**`next: end`** ends the walk at that step: a branch that ends early, such as a success step written before the
+error step it must not run into. The normalised JSON keeps `"next": "end"`, and the page shows the step as the last
+one (its "end" tag, then "Start over"). A `goto` can't be `end`. In YAML:
+
+```yaml
+  - id: s4
+    actor: user
+    sees: the saved form
+    next: end
+```
 
 ### The caps
 
@@ -73,15 +84,18 @@ bundles' frame drawer through `createBlockHost`'s `drawers`. So a `chi-ui` block
 session switch, a turn's end, Revise's clones, the stage's hand-off to `#history`.
 
 - **What it draws.** A `<pre>` with `data-widget` gets a light-DOM `<figure class="block-drawn widget">` right before it,
-  holding a `.widget-host` and the shared `.block-toggle` (block_source.js `setSourceShown`, the same icon and
-  `aria-label` as a renderer's). The `<pre>` stays, hidden: the DOM is the state, copy.js gives it its `.code-wrap`
+  holding a `.widget-host` and the shared `.block-toggle` (block_source.js `setSourceShown`, the same icon; the
+  figure's `data-toggle-picture` makes its other label "Show the widget"). The `<pre>` stays, hidden: the DOM is the state, copy.js gives it its `.code-wrap`
   copy button (it copies the YAML, which is the answer's text), and the toggle shows it. The toggle is in the light DOM
   because a click in a shadow root reaches the page's delegated listeners retargeted at the host.
-- **Shadow DOM.** The host has an open shadow root holding `<link rel="stylesheet" href="/assets/widgets.css">` and the
-  widget. Its words are then out of the bubble's `textContent`, which the shown-texts dedupe (`seedSeenFromDom`), copy's
+- **Shadow DOM.** The host has an open shadow root holding the widget, with `widgets.css` adopted
+  (`adoptedStyleSheets`): the page fetches it once into a constructable `CSSStyleSheet` (`loadWidgetSheet`), and `draw`
+  returns a Promise that places the widget once it is there, so no widget flashes unstyled and the view held
+  (`holdingView`) measures the styled one. A failed fetch draws unstyled and the next draw tries again. Its words are then out of the bubble's `textContent`, which the shown-texts dedupe (`seedSeenFromDom`), copy's
   fallback and an annotation's quote read, as with a renderer's `<img>`-only figure. chi's `:root` tokens reach it as
   inherited custom properties, so light and dark follow the page. Playwright's locators pierce an open shadow root;
-  `page.evaluate`'s DOM calls don't.
+  `page.evaluate`'s DOM calls don't. Whatever asks `document.activeElement` whether a field has the focus looks
+  through shadow roots (`composer_fold.js editable`, `stage_watch.js`), or typing in a note opens a folded composer.
 - **A clone redraws.** `cloneNode` doesn't copy a shadow root: a Revise clone (`revise_switch.js viewOf`) arrives with
   the figure and an empty host, which `needsDraw` sees, and `draw` fills it again with a fresh widget and its own
   listeners. A widget's position and picks live in the widget, so a clone or a rewrite starts over (accepted for v1).
@@ -90,8 +104,10 @@ session switch, a turn's end, Revise's clones, the stage's hand-off to `#history
   the watcher. A `chi-ui` `<pre>` with neither attribute (an older server) is left alone.
 - **walk** (`widget_walk.js`): the swimlane (one column per actor, one row per step; the current, seen and a hovered
   case's target marked; a click jumps), the step card (actor, `does`, "You see", the dashed "Behind it"), a fork's
-  "Which case?" buttons, Back / Next / Start over, the path taken, and ← → while the widget has the focus. `walkRoutes`
-  resolves where a step goes: its `next`, else the step below; a fork's `cases` as written, a case whose `when` is no
+  "Which case?" buttons, Back / Next / Start over, the path taken, and ← → while the widget has the focus
+  (a move that removes or hides the focused button leaves the focus on the widget; a click on the current step is no
+  move). `walkRoutes`
+  resolves where a step goes: its `next` (`end`: nowhere), else the step below; a fork's `cases` as written, a case whose `when` is no
   condition (round 1's `always`) reading as the usual path, alone it is the step's next. At a phone's width the
   swimlane scrolls sideways inside the widget; the page doesn't.
 - **picks** (`widget_picks.js`): one row per item, its options as chips (`aria-pressed`), the recommended one marked
