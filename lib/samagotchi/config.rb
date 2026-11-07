@@ -698,7 +698,7 @@ module Samagotchi
         # Live resolve so ENV changes (as in specs) are reflected without explicit reload
         # Use current ENV and file (via ConfigFile's cached reader), plus any CLI
         # overrides captured via reload!
-        path = Samagotchi::ConfigFile.global_path rescue nil
+        path = Samagotchi::ConfigFile.global_path rescue nil # degrade-ok: Config↔Log: Log resolves its file and level through Config
         file_data = Samagotchi::ConfigFile.read_yaml(path: path) if path
         resolve_with_origin(entry.key, file_data: file_data, env: ENV, cli_overrides: cli_overrides, session: session)
       end
@@ -1231,7 +1231,7 @@ module Samagotchi
       return [] unless raw.is_a?(Hash)
 
       raw.filter_map { |name, cfg| name.to_s.strip.downcase if cfg.is_a?(Hash) && HostConfig.disabled?(cfg) }
-    rescue StandardError
+    rescue StandardError # degrade-ok: Config↔Log: Log resolves its file and level through Config
       []
     end
 
@@ -1277,7 +1277,7 @@ module Samagotchi
 
       items = raw.is_a?(Array) ? raw : [raw]
       items.flat_map { |v| v.to_s.split(",") }.map(&:strip).reject(&:empty?)
-    rescue StandardError
+    rescue StandardError # degrade-ok: Config↔Log: Log resolves its file and level through Config
       []
     end
 
@@ -1296,7 +1296,7 @@ module Samagotchi
               else []
               end
       items.select { |v| v.is_a?(String) }.map(&:strip).reject(&:empty?).filter_map { |v| expand_appended_entry(v) }
-    rescue StandardError
+    rescue StandardError # degrade-ok: Config↔Log: Log resolves its file and level through Config
       []
     end
 
@@ -1355,7 +1355,7 @@ module Samagotchi
       end
 
       raw.each_with_object({}) { |(name, value), acc| acc[name.to_s] = value.is_a?(Hash) ? value : {} }
-    rescue StandardError
+    rescue StandardError # degrade-ok: Config↔Log: Log resolves its file and level through Config
       {}
     end
 
@@ -1414,7 +1414,7 @@ module Samagotchi
 
         result[key.downcase] = val
       end
-    rescue StandardError
+    rescue StandardError # degrade-ok: Config↔Log: Log resolves its file and level through Config
       {}
     end
 
@@ -1432,7 +1432,7 @@ module Samagotchi
         settings = ModelSettings.parse(key, v)
         result[key] = settings if settings
       end
-    rescue StandardError
+    rescue StandardError # degrade-ok: Config↔Log: Log resolves its file and level through Config
       {}
     end
 

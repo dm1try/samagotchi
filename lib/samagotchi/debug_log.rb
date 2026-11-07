@@ -101,7 +101,7 @@ module Samagotchi
 
     def close_io
       @io&.close
-    rescue StandardError
+    rescue StandardError # degrade-ok: the log writer itself: a failure here must not recurse into Log
       nil
     ensure
       @io = nil

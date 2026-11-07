@@ -127,7 +127,7 @@ module Samagotchi
         state[:writer].write(text)
         mirror(text) if state[:mirror] && !echo
         text
-      rescue StandardError
+      rescue StandardError # degrade-ok: Log's own internals: a failure here must not recurse into Log
         nil
       end
 
@@ -152,7 +152,7 @@ module Samagotchi
           ts: Time.now, level: level.to_s.upcase, tag: tag, pid: Process.pid,
           sid: sid && sid.to_s[0, SID_LENGTH], event: event, fields: fields, payload: payload
         ))
-      rescue StandardError
+      rescue StandardError # degrade-ok: Log's own internals: a failure here must not recurse into Log
         nil
       end
 
@@ -170,13 +170,13 @@ module Samagotchi
 
       def echo_to_stderr(text)
         $stderr.puts(text)
-      rescue StandardError
+      rescue StandardError # degrade-ok: Log's own internals: a failure here must not recurse into Log
         nil
       end
 
       def mirror(text)
         $stderr.write(text)
-      rescue StandardError
+      rescue StandardError # degrade-ok: Log's own internals: a failure here must not recurse into Log
         nil
       end
 
@@ -201,8 +201,8 @@ module Samagotchi
       def build_state
         options = @options
         path = options.fetch(:path, :auto)
-        path = LogPath.resolve rescue nil if path == :auto
-        level = options[:level] || (Config.get("log.level") rescue nil)
+        path = LogPath.resolve rescue nil if path == :auto # degrade-ok: Log's own internals: a failure here must not recurse into Log
+        level = options[:level] || (Config.get("log.level") rescue nil) # degrade-ok: Log's own internals: a failure here must not recurse into Log
         level = LEVELS.key?(level.to_s.downcase.to_sym) ? level.to_s.downcase.to_sym : DEFAULT_LEVEL
         { writer: DebugLog.new(path: path), level: LEVELS.fetch(level), mirror: options[:mirror] ? true : false }
       end
