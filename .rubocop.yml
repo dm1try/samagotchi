@@ -494,7 +494,7 @@ Samagotchi/SilentRescue:
     - lib/samagotchi/client.rb
     - lib/samagotchi/context_window.rb
     - lib/samagotchi/desktop/macos.rb
-    - lib/samagotchi/engine.rb
+    - lib/samagotchi/engine/plugins.rb
     - lib/samagotchi/guardrail_wiring.rb
     - lib/samagotchi/guardrails_command.rb
     - lib/samagotchi/guardrails/chi_dirs.rb
