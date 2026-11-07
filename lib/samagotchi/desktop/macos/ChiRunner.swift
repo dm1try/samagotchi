@@ -199,7 +199,7 @@ final class ChiRunner {
   private static let recentFlags = ["--limit", "20"]
 
   /// The live rows, then up to +recentCount+ of the recent list that are
-  /// neither live nor a REPL's; a failed recent list adds none.
+  /// neither live nor held by an owner (a one-turn run); a failed recent list adds none.
   private static func rows(live: [LiveSession], recent: Result<[LiveSession], ChiError>, recentCount: Int) -> [LiveSession] {
     let liveIds = Set(live.map(\.id))
     let stopped = ((try? recent.get()) ?? [])
