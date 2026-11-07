@@ -7,7 +7,7 @@ require "samagotchi/engine"
 require "samagotchi/session_manager"
 require "samagotchi/bridge"
 require "samagotchi/reminder_store"
-require_relative "support/session_manager_context"
+require_relative "../support/session_manager_context"
 
 RSpec.describe Samagotchi::SessionManager do
   include_context "session manager files"
