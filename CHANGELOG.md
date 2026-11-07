@@ -14,6 +14,7 @@ and commands may change between minor versions. How releases are made:
 - A card in chi web comes back where it was after a reload: the page finds the turn it came after (or `/continue no`'s reason line) by its id instead of counting the turns drawn after it, so the page and the worker can no longer disagree on the count.
 - A Qwen model's turn that was asked to finish an open tool call no longer splits in two after a reload of chi web: the request to finish it is part of the turn, drawn as nothing, as it was live.
 - chi web starting just as `chi scratch` did no longer deletes the new scratch session before its worker takes it (the worker crashed with "Session not found" and the terminal said the Bridge did not start in time): the retention sweep, `chi sessions prune` and `clean` leave an unowned scratch session alone for 30 s after its last save.
+- A terminal joining a session (`chi --attach`, `--resume`) shows the last turn's own prompt instead of a Qwen model's request to finish an open tool call, with the input merged into that turn on its `input>` lines; the idle recap no longer counts either as a turn of its own.
 
 ## [0.154.0] - 2026-11-07
 

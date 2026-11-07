@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 require "samagotchi/steer"
-require "samagotchi/pending_input_queue"
+require "support/pending_input_queue"
 require "samagotchi/cancellation_controller"
 
 RSpec.describe Samagotchi::Steer do
@@ -102,7 +102,7 @@ RSpec.describe Samagotchi::Steer do
 
   describe ".drain" do
     it "passes at_answer only to a drain that takes it" do
-      queue = Samagotchi::PendingInputQueue.new
+      queue = PendingInputQueue.new
       queue.push("line")
       seen = nil
 

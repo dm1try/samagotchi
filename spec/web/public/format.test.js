@@ -46,7 +46,7 @@ test("ownerBadge marks live sessions by who holds them", () => {
     kind: "worker", text: "live", title: "A worker runs this session; a terminal joins with: chi --attach abc",
   });
   assert.deepEqual(ownerBadge("tui", "abc"), {
-    kind: "tui", text: "terminal", title: "A terminal chi runs one turn in this session (chi --non-interactive) and lets go as it ends",
+    kind: "tui", text: "terminal", title: "In use by a one-turn chi --non-interactive run or an older chi's terminal",
   });
   assert.equal(ownerBadge(null, "abc"), null);
   assert.equal(ownerBadge(undefined, "abc"), null);

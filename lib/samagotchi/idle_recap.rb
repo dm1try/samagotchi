@@ -473,7 +473,9 @@ module Samagotchi
       parsed = safe_parse(@engine.messages_json_for_recap)
       return :too_short if parsed.nil?
 
-      user_turns = parsed.count { |message| Steer.prompt?(message) }
+      # The turns as the page counts them (Steer.turn_opening?): not Qwen's
+      # recovery line, nor input merged into a running turn.
+      user_turns = parsed.count { |message| Steer.turn_opening?(message) }
       if parsed.empty? || user_turns < @min_user_turns
         drop_stale(parsed)
         return :too_short

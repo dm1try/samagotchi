@@ -39,7 +39,7 @@ test("a running turn: steering's placeholder, Send, the button left as it is; a 
 
 test("a session a terminal owns: no sending from here, no hint, no attach, the row off", () => {
   assert.deepEqual(composerMode({ selected: "s1", owner: "tui", running: false, narrow: false }), {
-    placeholder: "A terminal chi owns this session · its one-turn run (chi --non-interactive) lets go as it ends",
+    placeholder: "A terminal chi owns this session · a one-turn chi --non-interactive run or an older chi's terminal",
     hint: "", button: "Send", disabled: true, empty: false, clearHistory: false, attachHidden: true, delivery: "off",
   });
   assert.equal(composerMode({ selected: "s1", owner: "tui", running: false, narrow: true }).placeholder,
