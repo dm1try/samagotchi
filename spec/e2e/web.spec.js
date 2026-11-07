@@ -996,18 +996,24 @@ test("archive hides a session from the strip, include archived finds it, unarchi
   await page.locator("#stripGrip").click();
   await expect(stripCard).toBeVisible();
 
-  await expect(page.locator("#infoBar > button:visible")).toHaveText(["continue →", "archive", "stop session", "delete"]);
+  await expect(page.locator("#infoActions > button:visible")).toHaveText(["continue →", "archive", "stop session", "delete"]);
   // A long model name gives way (the chip cuts it) instead of pushing the
   // telemetry chips under the buttons (the clock once read through continue →).
   const overlaps = await page.evaluate(() => {
     document.querySelector("#infoBar .meta .status + .model").textContent = "main:ISTA-DASLab/Qwen3.8-Flash-Next-GSQ-RCO-GGUF:Q2_0";
     const hit = (a, b) => a.right > b.left && a.left < b.right && a.bottom > b.top && a.top < b.bottom;
     const chips = [...document.querySelectorAll("#infoBar .meta .bar-group > *")].filter((el) => el.offsetParent);
-    const buttons = [...document.querySelectorAll("#infoBar > button")].filter((el) => el.offsetParent);
+    const buttons = [...document.querySelectorAll("#infoActions > button")].filter((el) => el.offsetParent);
     return chips.flatMap((c) => buttons.filter((b) => hit(c.getBoundingClientRect(), b.getBoundingClientRect()))
       .map((b) => `${c.className} × ${b.id}`));
   });
   expect(overlaps).toEqual([]);
+  // Too narrow for both, the buttons wrap as one group: all on one line, none left alone.
+  const viewport = page.viewportSize();
+  await page.setViewportSize({ width: 1100, height: viewport.height });
+  const tops = await page.locator("#infoActions > button:visible").evaluateAll((els) => els.map((b) => Math.round(b.getBoundingClientRect().top)));
+  expect(new Set(tops).size, `button tops ${tops}`).toBe(1);
+  await page.setViewportSize(viewport);
   // The active card's ✎ renames it (/title through the worker): the input
   // over the card's title, the card following the saved file.
   await page.locator("#topStrip .card.active .card-rename").click();

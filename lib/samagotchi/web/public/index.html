@@ -1148,6 +1148,9 @@ button.ws-row:hover:not(:disabled){filter:none}@media(hover:hover){button.ws-row
 #infoBar .meta .worker-restart{padding:1px 8px;border-radius:5px;font-size:11px;font-weight:600;background:var(--bg-raised);color:var(--warn-bright);border:1px solid var(--warn-border)}
 @media(hover:hover){#infoBar .meta .worker-restart:hover:not(:disabled){background:var(--warn-border);color:var(--on-warn)}}
 #infoBar .meta .worker-restart:disabled{opacity:.7;cursor:default}
+/* The bar's action buttons are one flex item: when they don't fit beside the info line they wrap to a line of their
+   own together, never one button alone. */
+#infoBar .info-actions{display:flex;flex:none;gap:10px;align-items:center}
 #infoBar button{padding:4px 12px;border-radius:8px;font-size:12px;font-weight:600}
 #infoBar #infoStopBtn{background:var(--bg-raised);color:var(--warn-text);border:1px solid var(--border-strong)}
 @media(hover:hover){#infoBar #infoStopBtn:hover{background:var(--warn-bg);border-color:var(--warn-border)}}
@@ -1373,7 +1376,7 @@ body.has-session.composer-folded #infoBar{border-top-color:transparent}
   #infoBar .meta .bar-group{display:contents}
   #infoBar .meta .bar-sep{display:none}
   #infoBar .meta :is(.tools-chip,.notes-chip,.mem-chip,.ws-chip,.chain-link,.parent,.children-chip,.participants-chip,.dir,.ctx,.speed,.session-time,.worker-badge){display:none}
-  #infoBar>button:not(#infoMoreBtn){display:none}
+  #infoBar .info-actions{display:none}
   #infoBar .meta .status+.model{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis}
   /* ⚙ alone, the start page's dot when the session set its own (its values in the tooltip and accessible name). */
   #infoBar .meta .settings-chip .sc-own{display:none}
@@ -1840,10 +1843,12 @@ a{color:var(--accent)}
       <div id="infoBar" class="composer-card-foot">
         <div class="info" id="infoText"></div>
         <div id="contextChips" aria-label="Attached context" hidden></div>
-        <button class="ghost" id="infoContinueBtn" title="Continue: start the next link of this session's chain from its recap (this one is archived)" style="display:none">continue →</button>
-        <button class="ghost" id="infoArchiveBtn" title="Archive: hide from the lists, keep for good" style="display:none">archive</button>
-        <button class="ghost" id="infoStopBtn" title="Stop session (terminate worker)" style="display:none">stop session</button>
-        <button class="ghost" id="infoDeleteBtn" title="Delete session (for good)" style="display:none">delete</button>
+        <div class="info-actions" id="infoActions">
+          <button class="ghost" id="infoContinueBtn" title="Continue: start the next link of this session's chain from its recap (this one is archived)" style="display:none">continue →</button>
+          <button class="ghost" id="infoArchiveBtn" title="Archive: hide from the lists, keep for good" style="display:none">archive</button>
+          <button class="ghost" id="infoStopBtn" title="Stop session (terminate worker)" style="display:none">stop session</button>
+          <button class="ghost" id="infoDeleteBtn" title="Delete session (for good)" style="display:none">delete</button>
+        </div>
         <button type="button" class="ghost" id="infoMoreBtn" data-anchor-stand-in aria-label="More" title="More" aria-haspopup="dialog" aria-expanded="false"><span aria-hidden="true">⋯</span></button>
       </div>
     </div>
