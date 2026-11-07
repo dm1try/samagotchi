@@ -46,7 +46,7 @@ module Samagotchi
       def checkpoint_metrics = @metrics.persist(state_dir: session_state_dir, running_turn: true)
 
       # What a Bridge adds to a plugin's ctx.messages while a turn runs (the
-      # turn so far, as messages); nil without a Bridge (the REPL).
+      # turn so far, as messages); nil without a Bridge (a one-shot).
       attr_writer :running_turn_messages
 
       # The system prompt for a target's loop (default: the effective model's):
@@ -91,8 +91,8 @@ module Samagotchi
 
       # The relay's view of this Engine, or nil when it can't host a relay: a
       # worker's Engine only (its Bridge is what a child verifies against;
-      # --non-interactive has no one to ask), never with a REPL's sync
-      # handler (no wait loop, no watch).
+      # --non-interactive has no one to ask), never with a sync handler (no
+      # wait loop, no watch).
       # @return [RelayPeer, nil]
       def relay_peer
         return nil unless interface == :worker && !@question_desk.sync_handler?
@@ -103,19 +103,19 @@ module Samagotchi
       # @return [String] the state dir holding this Engine's sessions
       def peer_state_dir = @state_dir
 
-      # Set the current session outside a turn (the REPL does, before its first
-      # turn, so the messages API and recap see it)
+      # Set the current session outside a turn (the worker and the one-shot
+      # do, before the first turn, so the messages API and recap see it)
       def session=(session)
         @session = session
-        # One session per REPL/worker process: its records carry this sid.
+        # One session per worker or one-shot process: its records carry this sid.
         Log.session_id = session.id if session&.id
         # Its own recap values (chi --set recap.enabled=false) rebuild the job.
         rebuild_recap!
         # A woken worker's /stats and status line count the turns before it.
         bind_metrics(session)
         @used_memories.absorb(session)
-        # Loaded on another model than its last turn ran on (a --resume'd
-        # REPL's --model, a worker woken after a /model with no turn since):
+        # Loaded on another model than its last turn ran on (a --resume
+        # one-shot's --model, a worker woken after a /model with no turn since):
         # the saved ctx % was that model's window's. Drop it and count it as
         # /model does, on a configured window only: this runs before a
         # worker's Bridge serves, so no /props GET or model list here (a slow

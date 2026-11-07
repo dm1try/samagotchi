@@ -190,7 +190,7 @@ module Samagotchi
       private :plugin_cancel_controller
 
       # A plugin's ctx.messages: the conversation without the system prompt
-      # (the REPL's starts with it, a worker's new session doesn't), and,
+      # (a session saved by an older chi's REPL may start with it), and,
       # while a turn runs, the turn so far from the Bridge (plan O1). Read
       # with the event log held, so a turn is in exactly one of the two.
       def plugin_messages

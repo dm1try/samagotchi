@@ -64,8 +64,8 @@ module Samagotchi
       # ── Load events ───────────────────────────────────────────────────────
 
       # Announce what failed to load and what plugins showed while loading,
-      # once, as soon as the owner can show it (the worker's Bridge is up, the
-      # REPL renders events): the guardrail and plugin warnings, an orphaned
+      # once, as soon as the owner can show it (the worker's Bridge is up):
+      # the guardrail and plugin warnings, an orphaned
       # project memory folder (label: "memory", MemoryOrphans), then the
       # held notices (between_turns) and cards (in_turn: false, so late
       # joiners get them). Without this call the first turn announces them
@@ -90,8 +90,8 @@ module Samagotchi
 
       # Run the block holding back the cards and between-turns notices it
       # announces on this thread, so the caller announces them after its own
-      # event (a worker's command: its command_ran first, as the REPL prints
-      # the command's output before its cards).
+      # event (a worker's command: its command_ran first, so a UI prints the
+      # command's output before its cards).
       # @return [Array(Object, Array<Hash>)] the block's value and the held events
       def holding_announcements
         key = :"samagotchi_held_#{object_id}"

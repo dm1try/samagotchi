@@ -7,12 +7,12 @@ module Samagotchi
     # conversation a hook reads, and the due reminders. Reads @hooks,
     # @hook_routes, @reminder_queue, @reminder_store.
     module HooksPart
-      # @return [Array<String>] reminder names queued for a synthetic REPL turn
+      # @return [Array<String>] reminder names queued for a reminder turn
       def due_reminder_names
         @reminder_queue.pending_names
       end
 
-      # Queue reminder names for a synthetic REPL turn (IdleReminders callback).
+      # Queue reminder names for a reminder turn (IdleReminders callback).
       def note_due_reminders(names)
         @reminder_queue.note_pending(names)
       end
@@ -64,7 +64,7 @@ module Samagotchi
       # Each turn injects the reminders due then (#turn_messages,
       # ReminderQueue#inject!). Between turns the idle tick (IdleReminders)
       # finds them due and its callback queues their names
-      # (#note_due_reminders); the worker and the REPL run a reminder turn
+      # (#note_due_reminders); the worker runs a reminder turn
       # (a continue turn) for them.
 
       # @return [Boolean] whether any reminder is due now (the store's view,

@@ -152,7 +152,7 @@ module Samagotchi
       # turn-scoped hooks cleared.
       def release_turn(probe_cancel_before)
         # A completed turn is activity: release the turn flag and advance the
-        # shared inactivity clock so the idle recap detector (shared with the REPL)
+        # shared inactivity clock so the idle recap detector
         # treats the just-finished turn as activity and re-arms its window.
         left = @turn_state.finish!
         @steer_cut.finished!
