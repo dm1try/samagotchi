@@ -1,5 +1,9 @@
 # frozen_string_literal: true
 
+require_relative "../delivery"
+require_relative "../steer"
+require_relative "../participant_messages"
+
 module Samagotchi
   class SessionManager
     # How long a turn waits for the Bridge of a worker a resume just spawned.

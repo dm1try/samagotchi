@@ -1,5 +1,11 @@
 # frozen_string_literal: true
 
+require_relative "../system_one/runs"
+require_relative "../continue_offer"
+require_relative "../plugin_session_state"
+require_relative "../context_sources"
+require_relative "../context_candidates_log"
+
 module Samagotchi
   class SessionManager
     # A delete that would pull the session from under its live worker.

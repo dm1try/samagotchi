@@ -28,6 +28,20 @@ RSpec.describe "loading session_manager and terminal_ui" do
     expect(status).to be_success, err
   end
 
+  # A file declaring `autoload :SessionManager` that loads while
+  # SessionManager autoloads (one a part requires, after the facade's class
+  # exists) re-declares it and drops the half-built class: the parts then
+  # build another, without the facade's methods.
+  %w[samagotchi/terminal_ui samagotchi/child_move].each do |file|
+    it "autoloads SessionManager from #{file} whole: the facade's methods and its parts'" do
+      script = "require '#{file}'; sm = Samagotchi::SessionManager; " \
+               'abort "partial" unless sm.respond_to?(:session_owner) && sm.respond_to?(:delete_session)'
+      _out, err, status = Open3.capture3(RbConfig.ruby, "-w", "-I", lib, "-e", script)
+
+      expect(status).to be_success, err
+    end
+  end
+
   # bin/chi's subcommands: each loads alone (BundleCommand keeps TerminalUI
   # lazy, so the check above doesn't fit them).
   { "samagotchi/sessions_command" => "Samagotchi::SessionsCommand",
