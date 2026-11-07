@@ -261,11 +261,13 @@ RSpec.describe "Engine turn goldens" do
   # -- the golden's text --------------------------------------------------
 
   # Machine state out: the temp root, the home folder, the project memory
-  # folder's hash of the temp path, the server's port, uuids numbered by
-  # first sight.
+  # folder's hash of the temp path, the memory indexes' managed-line dates
+  # (the day the example's bundles were installed: Date.today), the
+  # server's port, uuids numbered by first sight.
   def scrub(text)
     text = text.gsub(tmp, "<TMP>").gsub(Dir.home, "<HOME>")
     text = text.gsub(%r{(memories/projects/project)_[0-9a-f]{8}}, '\1_<HASH>')
+    text = text.gsub(/( · (?:system|project) · )\d{4}-\d{2}-\d{2}( · )/, '\1<DATE>\2')
     text = text.gsub("127.0.0.1:#{server.port}", "127.0.0.1:<PORT>")
     @uuids ||= {}
     text.gsub(/\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/) do |uuid|

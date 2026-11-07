@@ -3,6 +3,7 @@
 require "yaml"
 require "samagotchi/config"
 require "samagotchi/host_model"
+require "samagotchi/host_registry"
 require "samagotchi/llm/openai_chat"
 
 # hosts.<name>.models: the ids a host serves whatever its /v1/models lists.

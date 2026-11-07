@@ -98,13 +98,18 @@ RSpec.describe Samagotchi::Worker, "task finish wakes" do
   # A queue that gets an entry each time +worker+'s loop goes to sleep
   # (Waker#wait), the number of turns finished by then: with a long poll
   # interval, nothing runs after that until it is woken, so a spec can
-  # change a task's record with no pass racing it.
+  # change a task's record with no pass racing it. A wait with a wake
+  # already queued (one that came while the pass ran: the spec's own wake
+  # landing before the loop first slept, say) returns at once into another
+  # pass, so it is no park: counting it let that pass race the spec's next
+  # step (CI run 42420103432: a wake turn ahead of the exit request).
   def parks(worker)
+    waker = worker.instance_variable_get(:@waker)
     Queue.new.tap do |parked|
       # In place of count_loop_rounds' wrap, so it counts the rounds too.
-      allow(worker.instance_variable_get(:@waker)).to receive(:wait).and_wrap_original do |original, *args|
+      allow(waker).to receive(:wait).and_wrap_original do |original, *args|
         @rounds[0] += 1
-        parked << @finished_turns
+        parked << @finished_turns if waker.instance_variable_get(:@queue).empty?
         original.call(*args)
       end
     end
