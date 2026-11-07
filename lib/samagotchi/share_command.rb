@@ -8,7 +8,7 @@ require_relative "cli/flags"
 require_relative "session"
 require_relative "session_access"
 require_relative "session_access/local"
-require_relative "web/grants"
+require_relative "grants"
 require_relative "web/qr"
 
 module Samagotchi

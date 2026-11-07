@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 require "spec_helper"
-require "samagotchi/web/participant_exposure"
+require "samagotchi/participant_exposure"
 
 # The exposure policy: a grant's level → the usage fields a participant's
 # review data shows (the review-composer plan's D3). One level today, own.

@@ -11,7 +11,7 @@ require "samagotchi/worker"
 require "samagotchi/participants"
 require "samagotchi/analytics_file"
 require "samagotchi/verify_fresh"
-require "samagotchi/web/grants"
+require "samagotchi/grants"
 
 # A Verify fresh child's worker: its turns are its requester's (their
 # author, the parent's participants.json, their cap counted across the

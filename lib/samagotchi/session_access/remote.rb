@@ -12,7 +12,7 @@ require_relative "../bridge_client"
 require_relative "../session_continue"
 require_relative "../guardrails/parent_policy"
 require_relative "../model_profile"
-require_relative "../web/grants"
+require_relative "../grants"
 require_relative "http_transport"
 require_relative "../chi_invocation"
 

@@ -8,7 +8,7 @@ require "rack/mock"
 require "samagotchi/web/app"
 require "samagotchi/web/session_hub"
 require "samagotchi/web/token"
-require "samagotchi/web/grants"
+require "samagotchi/grants"
 require "samagotchi/web/link_codes"
 require "samagotchi/session"
 

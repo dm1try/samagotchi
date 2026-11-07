@@ -18,7 +18,7 @@ require "samagotchi/prompt_history"
 require "samagotchi/analytics_file"
 require "samagotchi/toolkit"
 require "samagotchi/web/app"
-require "samagotchi/web/grants"
+require "samagotchi/grants"
 require "samagotchi/review_start"
 require "samagotchi/review_apply"
 

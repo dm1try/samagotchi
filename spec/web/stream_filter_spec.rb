@@ -6,7 +6,7 @@ require "tmpdir"
 
 require "rack/mock"
 require "samagotchi/web/app"
-require "samagotchi/web/grants"
+require "samagotchi/grants"
 
 # The stream proxy's frame-filter seam: the owner's stream is the Bridge's
 # bytes unchanged (no filter); a filter, when a principal has one, sees each

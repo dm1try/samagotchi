@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 require "json"
-require_relative "grants"
+require_relative "../grants"
 require_relative "principal"
 require_relative "participant_view"
 require_relative "../archive_store"

@@ -3,7 +3,7 @@
 require_relative "participant_view"
 require_relative "token"
 require_relative "participant_stream_filter"
-require_relative "participant_exposure"
+require_relative "../participant_exposure"
 require_relative "../session_metrics"
 require_relative "../review_start"
 require_relative "../guardrails/review_paths"

@@ -4,7 +4,7 @@ require "spec_helper"
 require "tmpdir"
 require "json"
 
-require "samagotchi/web/grants"
+require "samagotchi/grants"
 
 # Participants' grants (Web::Grants): one token per session and participant,
 # stored as a digest only, with an expiry and a revoke.

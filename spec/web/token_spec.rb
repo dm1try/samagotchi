@@ -5,7 +5,7 @@ require "tmpdir"
 require "fileutils"
 
 require "samagotchi/web/token"
-require "samagotchi/web/grants"
+require "samagotchi/grants"
 require "samagotchi/web/link_codes"
 
 RSpec.describe Samagotchi::Web::Token do

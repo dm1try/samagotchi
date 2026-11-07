@@ -6,7 +6,7 @@ require "json"
 require "rack/mock"
 
 require "samagotchi/web/app"
-require "samagotchi/web/grants"
+require "samagotchi/grants"
 require "samagotchi/participants"
 require "samagotchi/analytics_file"
 

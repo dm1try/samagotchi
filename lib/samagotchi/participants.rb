@@ -7,7 +7,7 @@ require_relative "atomic_file"
 require_relative "participant_messages"
 require_relative "archive_store"
 require_relative "session"
-require_relative "web/grants"
+require_relative "grants"
 
 module Samagotchi
   # A session's participants: the people (or agents) its owner invited to

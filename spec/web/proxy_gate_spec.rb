@@ -7,7 +7,7 @@ require "rack/mock"
 require "webrick"
 
 require "samagotchi/web/app"
-require "samagotchi/web/grants"
+require "samagotchi/grants"
 require "samagotchi/web/public_url"
 require "samagotchi/web/server"
 require "samagotchi/web/session_hub"
