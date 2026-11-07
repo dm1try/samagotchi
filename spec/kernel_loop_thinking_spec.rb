@@ -33,7 +33,7 @@ RSpec.describe Samagotchi::KernelLoop, "thinking level" do
 
   def run
     kernel.run([{ role: "user", content: "hi" }], on_stream_event: ->(e) { events << e },
-                                                  context: run_context(settings: settings))
+                                                  context: run_context(settings: settings, tools: kernel.tools))
   end
 
   it "prefills the empty thought after the cue for off, and keeps it in the turn's model messages" do

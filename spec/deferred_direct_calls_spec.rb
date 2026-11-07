@@ -56,15 +56,17 @@ RSpec.describe "direct calls of deferred tools" do
     hooks.register(:before_tool_call) { |e| seen << e[:call].slice(:name, :via, :args) }
   end
 
-  # The calls' turn (a bare kernel's settings), as the specs shape it.
-  def context = @context ||= run_context(settings: kernel.turn_settings)
+  # The calls' turn (a bare kernel's settings), as the specs shape it, and
+  # its surface built when a call runs (the kernel's tools under them).
+  def turn = @turn ||= run_context(settings: kernel.turn_settings)
+  def context = Samagotchi::Tools::ToolSurface.bare(turn, kernel.tools)
 
   def loads_tools!(value = true)
-    @context = context.with(settings: context.settings.with(loads_tools: value))
+    @turn = turn.with(settings: turn.settings.with(loads_tools: value))
   end
 
   # A participant's turn in +mode+ (TurnContext#author, #participant_mode).
-  def participant!(mode) = @context = context.with(author: "p:review", participant_mode: mode)
+  def participant!(mode) = @turn = turn.with(author: "p:review", participant_mode: mode)
 
   def run(call)
     Samagotchi::ToolRunner.new(kernel).run(call, context: context, iteration: 1, call_index: 1, call_count: 1,
@@ -136,7 +138,7 @@ RSpec.describe "direct calls of deferred tools" do
       deferred = Samagotchi::Tools::ToolSurface.for(registry).deferred_for([])
       expect(deferred.map(&:name)).to include("web_search")
       expect(deferred.find { |tool| tool.name == "web_search" }.description).to eq("Search the web.")
-      expect(index.deferred_name("chi/web_search")).to eq("web_search")
+      expect(index.deferred_name("chi/web_search", context.surface)).to eq("web_search")
 
       result = run(Samagotchi::Tools::BuiltinCalls.build("web_search", { "query" => "ruby" }))
 
@@ -182,7 +184,7 @@ RSpec.describe "direct calls of deferred tools" do
       deferred = Samagotchi::Tools::ToolSurface.for(registry).deferred_for([])
       expect(deferred.map(&:name).count("mcp_fs_read_file")).to eq(1)
       expect(deferred.find { |tool| tool.name == "mcp_fs_read_file" }.description).to eq("The plugin's own.")
-      expect(index.deferrable.map(&:acts_as)).not_to include("mcp_fs_read_file")
+      expect(index.deferrable(Samagotchi::Tools::ToolSurface.for(registry)).map(&:acts_as)).not_to include("mcp_fs_read_file")
     end
   end
 

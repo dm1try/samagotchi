@@ -32,7 +32,8 @@ module Samagotchi
   #   rules' models:), +model_name+ the bare model name the gate's rules match: frozen at
   #   Engine#generate with the settings (a before_turn hook may switch the model)
   # +surface+    the turn's Tools::ToolSurface (what its loops declare, defer and dispatch):
-  #   nil until Engine#generate builds it; a reader without one computes one (ToolSurface.of)
+  #   nil until Engine#generate builds it; a reader given none raises Tools::MissingSurface
+  #   (ToolSurface.of), a bare kernel's or loop's own context builds one (ToolSurface.bare)
   #
   # Only the turn thread replaces it (TurnState#replace_context), one frozen
   # value per write; other threads read the published one (Engine#turn_context,

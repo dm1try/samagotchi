@@ -78,7 +78,7 @@ RSpec.describe "ChatLoop OpenAI wire goldens" do
       loop.session_id = "sess-golden"
 
       loop.complete(messages: conversation, model_name: "box-model", on_stream_event: ->(_event) {},
-                    context: run_context(settings: settings))
+                    context: run_context(settings: settings, tools: kernel.tools))
 
       expect(chat_requests.size).to eq(2)
       expect_golden("chat_loop_tool_turn_#{name}.json", recorded)

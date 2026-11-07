@@ -215,8 +215,11 @@ RSpec.describe Samagotchi::LLMContextApply do
       "<tool_call>\n<function=#{name}>\n#{body}\n</function>\n</tool_call>"
     end
 
-    # A run's turn under +llm_context+.
-    def under(llm_context) = run_context(settings: Samagotchi::LLM::TurnSettings.none.with(llm_context: llm_context))
+    # A run's turn under +llm_context+, on test_kernel's tools (the built-ins).
+    def under(llm_context)
+      run_context(settings: Samagotchi::LLM::TurnSettings.none.with(llm_context: llm_context),
+                  tools: Samagotchi::Tools::Builtins.default)
+    end
 
     # The native loop on +steps+ (the model's answers in order): the prompts sent, the result, the kernel;
     # the stream's events in +events+.

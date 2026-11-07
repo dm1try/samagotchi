@@ -136,19 +136,21 @@ module Samagotchi
       def [](key) = (public_send(key) if members.include?(key))
 
       # Registry#register's keywords for it: its block wrapped as a handler
-      # (typed args, the Context), preview, targets, refs.
+      # (typed args, the Context), preview, targets (in the entry's form,
+      # (call, surface): a plugin's reads the call only), refs (call only).
       def entry_fields(context)
         block = self.block
         parameters = schema[:parameters]
         preview = per_call(self.preview, parameters)
+        targets = per_call(self.targets, parameters)
         {
           schema: schema, label: label,
           handler: lambda { |call, _kctx|
             result = block.call(ToolSpec.args_of(call, parameters), context)
             ToolSpec.result_text(result)
           },
-          preview: preview && ->(call) { preview.call(call)&.to_s },
-          targets: per_call(targets, parameters),
+          preview: preview && ->(call, _surface = nil) { preview.call(call)&.to_s },
+          targets: targets && ->(call, _surface = nil) { targets.call(call) },
           refs: per_call(refs, parameters)
         }
       end

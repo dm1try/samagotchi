@@ -109,8 +109,8 @@ RSpec.describe Samagotchi::ToolActivity do
     kernel = Samagotchi::KernelLoop.new(client: instance_double(Samagotchi::Client), profile: :gemma4)
     attach_services(kernel, tools: registry)
     events = []
-    Samagotchi::ToolRunner.new(kernel).run({ name: "jira_search", query: "bug" }, context: run_context, iteration: 1, call_index: 1, call_count: 1,
-                                           on_stream_event: ->(event) { events << event }, max_tool_output_chars: nil)
+    Samagotchi::ToolRunner.new(kernel).run({ name: "jira_search", query: "bug" }, context: run_context(tools: registry), iteration: 1,
+                                           call_index: 1, call_count: 1, on_stream_event: ->(event) { events << event }, max_tool_output_chars: nil)
     expect(events.find { |e| e[:type] == :tool_call_started }[:params]).to eq('query="bug"')
     expect(events.find { |e| e[:type] == :tool_call_completed }[:activity]).to include(params: 'query="bug"', status: "ok")
   end

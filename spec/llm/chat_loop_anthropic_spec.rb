@@ -50,7 +50,7 @@ RSpec.describe "ChatLoop on a Messages host" do
 
   def run(messages = [{ role: "user", content: "go" }])
     backend.complete(messages: messages, model_name: "m", on_stream_event: ->(event) { events << event },
-                     context: run_context(settings: settings))
+                     context: run_context(settings: settings, tools: kernel.tools))
   end
 
   # The blocks as a fixture's stream builds them (AnthropicAssembly).
@@ -331,7 +331,7 @@ RSpec.describe "ChatLoop on a Messages host" do
         })
 
         result = backend.complete(messages: history, model_name: "m", on_stream_event: ->(event) { events << event },
-                                  cancel_controller: controller, context: run_context(settings: settings))
+                                  cancel_controller: controller, context: run_context(settings: settings, tools: kernel.tools))
 
         expect(result).to be_canceled
         expect(result.conversation[1][:anthropic_content].first).to eq(thinking_block("sig1"))

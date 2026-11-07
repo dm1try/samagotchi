@@ -41,7 +41,7 @@ RSpec.describe Samagotchi::LLM::ChatLoop do
 
   def run(messages = [{ role: "user", content: "go" }], **options)
     backend.complete(messages: messages, model_name: "m", on_stream_event: ->(event) { events << event },
-                     context: run_context(settings: settings), **options)
+                     context: run_context(settings: settings, tools: fake_kernel.tools), **options)
   end
 
   def text(value, **options) = FakeChatAdapter.text(value, **options)

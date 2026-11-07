@@ -27,7 +27,7 @@ RSpec.describe "ChatLoop images" do
   # wire_messages outside a run reads the loop's run context: the turn's.
   let(:loop) do
     Samagotchi::LLM::ChatLoop.new(kernel: kernel, adapter: FakeChatAdapter.new(FakeChatAdapter.text("seen"))).tap do |chat|
-      allow(chat).to receive(:turn_context) { run_context(settings: settings) }
+      allow(chat).to receive(:turn_context) { run_context(settings: settings, tools: kernel.tools) }
     end
   end
 
@@ -130,7 +130,7 @@ RSpec.describe "ChatLoop images" do
         adapter = Samagotchi::LLM::OpenAIChat.new(base_url: server.base_url, host_name: "box", env: {})
         Samagotchi::LLM::ChatLoop.new(kernel: kernel, adapter: adapter)
                                  .complete(messages: [{ role: "user", content: "what's this?", images: [png] }], model_name: "m",
-                                           context: run_context(settings: settings))
+                                           context: run_context(settings: settings, tools: kernel.tools))
         content = server.requests.last.json["messages"].first["content"]
         expect(content).to eq([{ "type" => "text", "text" => "what's this?" },
                                { "type" => "image_url", "image_url" => { "url" => png_uri } }])

@@ -28,7 +28,7 @@ RSpec.describe Samagotchi::ToolRunner do
   end
   let(:dispatched) { [] }
   let(:hooks) { Samagotchi::Hooks::Registry.new }
-  let(:context) { run_context }
+  let(:context) { run_context(tools: kernel.tools) }
 
   describe Samagotchi::ToolRun do
     it "defaults every field to nil" do
@@ -362,7 +362,7 @@ RSpec.describe Samagotchi::ToolRunner do
       end
     end
 
-    let(:context) { run_context(session_dir: @session_dir) }
+    let(:context) { run_context(tools: kernel.tools, session_dir: @session_dir) }
     let(:kernel) do
       k = Struct.new(:hooks, :dispatched, :tools, :guardrail_gate, :output) do
         def dispatch_tool_call(_call, _context = nil) = { output: output, activity: { tool: "execute", status: "ok" } }
@@ -461,7 +461,7 @@ RSpec.describe Samagotchi::ToolRunner do
     end
 
     it "says the output wasn't saved with no session, and how to see the rest" do
-      text = capped_run(5000, run_context(session_dir: nil)).capped_output
+      text = capped_run(5000, run_context(tools: kernel.tools, session_dir: nil)).capped_output
 
       expect(text).to end_with("exit: 0")
       expect(text).to include("the whole output wasn't saved (no session); to look past this, rerun with the output " \
@@ -804,6 +804,7 @@ RSpec.describe Samagotchi::ToolRunner do
       k.define_singleton_method(:tools) { tools }
       described_class.new(k)
     end
+    let(:context) { run_context(tools: registry) }
 
     it "is the preview a plugin tool showed" do
       result = run({ name: "save_note", args: { "path" => "w.md", "text" => "hello world!" } })
@@ -890,7 +891,7 @@ RSpec.describe Samagotchi::ToolRunner do
 
       it "resolves a relative path against the session's folder, as FileRef does" do
         File.write(path, "a\n")
-        expect(run({ name: "read", content: "f.txt" }, in_context: run_context(cwd: @dir)).stamp).to eq(stamp_of(path))
+        expect(run({ name: "read", content: "f.txt" }, in_context: run_context(tools: kernel.tools, cwd: @dir)).stamp).to eq(stamp_of(path))
       end
 
       it "is nil for another tool, a call that isn't ok, a directory and a file that isn't there" do
@@ -1028,6 +1029,7 @@ RSpec.describe Samagotchi::ToolRunner do
   # A tool the session's toolkit leaves out is refused before the gate: no
   # before_tool_call hook, no approval card for a call that can't run.
   describe "a call to a tool the toolkit leaves out" do
+    let(:context) { run_context(tools: real_kernel.tools) }
     let(:asked) { [] }
     let(:before_calls) { [] }
     let(:after_calls) { [] }

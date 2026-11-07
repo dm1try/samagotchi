@@ -22,10 +22,14 @@ module Samagotchi
       # turn's staged tool sets and its toolkit apply.
       def publish_tools! = @toolkit_binding.publish!
 
+      # That published Registry (ToolkitBinding#published): what a reader
+      # off the turn thread (/toolkit) reads of the tools.
+      def published_tools = @toolkit_binding.published
+
       # The tools this session registered (Tools::Registry), declared or not.
       attr_reader :tools
 
-      public :tools, :toolkit_kits, :resolved_toolkit, :toolkit_explained, :toolkit_summary
+      public :tools, :published_tools, :toolkit_kits, :resolved_toolkit, :toolkit_explained, :toolkit_summary
 
       # A plugin's ctx.load_tools: stage the reachable tools +names+ names
       # (Tools::ToolIndex#deferred_name, on the published Registry) that the
@@ -35,7 +39,7 @@ module Samagotchi
       # @return [Array<String>] the wire names staged
       def load_tools(names, bundle)
         added = ToolLoads.added(@session&.messages)
-        published = @toolkit_binding.published
+        published = published_tools
         surface = Tools::ToolSurface.for(published)
         wanted = names.filter_map do |name|
           wire = @tool_index.deferred_name(name, surface)

@@ -81,8 +81,16 @@ RSpec.shared_context "the mcp bundle in an Engine" do
 
   def tools = engine.instance_variable_get(:@tools)
 
+  # The Registry's surface now: what a turn starting now would see (call_tool's
+  # preview and targets read one).
+  def surface_now = Samagotchi::Tools::ToolSurface.for(tools)
+
+  # A tool's handler on a call, as a turn's dispatch runs it: its
+  # ToolContext carries #surface_now.
   def handle(name, args = {})
-    tools[name].handler.call({ name: name, args: args }, nil)
+    turn = Samagotchi::TurnContext.none(surface: surface_now)
+    tools[name].handler.call({ name: name, args: args },
+                             Samagotchi::KernelLoop::ToolContext.new(engine.instance_variable_get(:@kernel), turn))
   end
 
   # An MCP tool through call_tool (<server>/<tool>).
@@ -123,7 +131,9 @@ RSpec.shared_context "the mcp bundle in an Engine" do
   def run_tool(name, args = {}, vision: nil)
     kernel = engine.instance_variable_get(:@kernel)
     vision ||= Samagotchi::VisionContext.new(session_dir: session_dir, resizer: Samagotchi::ImageResizer.new(nil))
-    context = Samagotchi::TurnContext.none(settings: kernel.turn_settings.with(vision: vision))
+    context = Samagotchi::Tools::ToolSurface.bare(
+      Samagotchi::TurnContext.none(settings: kernel.turn_settings.with(vision: vision)), kernel.tools
+    )
     Samagotchi::ToolRunner.new(kernel).run({ name: name, args: args }, context: context, iteration: 1, call_index: 1, call_count: 1,
                                                                        on_stream_event: nil, max_tool_output_chars: nil)
   end

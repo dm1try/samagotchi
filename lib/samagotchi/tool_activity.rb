@@ -5,6 +5,7 @@ require_relative "log"
 require_relative "command_steps"
 require_relative "tool_view"
 require_relative "tools/execute"
+require_relative "tools/registry"
 require_relative "tools/read"
 require_relative "tools/write"
 require_relative "tools/memory"
@@ -359,8 +360,9 @@ module Samagotchi
       name == "git" && args.first == "diff" && args.intersect?(%w[--quiet --exit-code])
     end
 
-    # +surface+: the turn's Tools::ToolSurface, for a preview that reads it
-    # (call_tool's); nil outside a turn.
+    # +surface+: the turn's Tools::ToolSurface, which a tool's entry is
+    # looked up in, for a preview that reads it (call_tool's); nil outside a
+    # turn (+registry+'s entry then).
     def tool_activity_params(tool_name, call, registry: nil, surface: nil)
       case tool_name
       when Tools::Execute::NAME
@@ -455,7 +457,8 @@ module Samagotchi
         parts << "options=#{preview_tool_param(Array(opts).join(","))}" if opts && !Array(opts).empty?
         parts.join(" ")
       else
-        registry_params(registry_entry(registry, tool_name), call, surface)
+        registry_params(surface ? surface.registered[tool_name.to_s] : registry_entry(registry, tool_name), call,
+                        surface)
       end
     end
 
@@ -473,7 +476,8 @@ module Samagotchi
     # key="value" (the parsers' args:, which a registry-less reader such as
     # the web's reload also has); nil for a tool the registry doesn't know
     # that has no args:, and for a built-in without its own words above
-    # (the reminder tools).
+    # (the reminder tools). A missing surface (Tools::MissingSurface) is
+    # raised, never taken as a failing preview.
     def registry_params(entry, call, surface = nil)
       return nil if entry&.core?
       return nil if entry.nil? && !call[:args].is_a?(Hash)
@@ -481,6 +485,8 @@ module Samagotchi
       if entry&.preview
         begin
           return entry.preview_of(call, surface)
+        rescue Tools::MissingSurface
+          raise
         rescue StandardError => e
           Log.warn(:plugins, "plugin_preview_failed", tool: entry.name, error: e.class.name,
                                                       msg: "#{entry.name} preview failed: #{e.message}")

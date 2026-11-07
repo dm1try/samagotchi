@@ -110,11 +110,25 @@ RSpec.describe Samagotchi::Tools::Registry do
 
       resolved = Samagotchi::LLMContextStrategy::Resolved.new(layers: %i[stale forget], strategy: %i[stale forget],
                                                               source: :config)
-      context = run_context(settings: kernel.turn_settings.with(llm_context: resolved))
+      context = run_context(settings: kernel.turn_settings.with(llm_context: resolved), tools: kernel.tools)
       allow(chat).to receive(:turn_context).and_return(context)
       expect(kernel.dispatch_tool_call({ name: "tidy", content: "" }, context)[:output]).to eq("[tidy]\ntidied")
       expect(names.call).to include("tidy")
     end
+  end
+
+  it "takes a preview and targets in one form, (call, surface): a one-argument one is wrapped at registration" do
+    registry = described_class.new
+    entry = registry.register("plain", schema: { name: "plain" }, handler: ->(*) { "" }, source: "x",
+                                       preview: ->(c) { "p #{c[:name]}" }, targets: ->(c) { { command: c[:name] } })
+    both = registry.register("both", schema: { name: "both" }, handler: ->(*) { "" }, source: "x",
+                                     preview: (given = ->(c, s = nil) { "#{c[:name]} #{s.inspect}" }))
+    expect([entry.preview_of({ name: "plain" }), entry.preview_of({ name: "plain" }, :turn)]).to eq(["p plain"] * 2)
+    expect(entry.targets_of({ name: "plain" }, :turn)).to eq(command: "plain")
+    # A spec's or a bundle's one-argument .call keeps working.
+    expect(entry.preview.call({ name: "plain" })).to eq("p plain")
+    expect(both.preview).to equal(given)
+    expect(both.preview_of({ name: "both" }, :turn)).to eq("both :turn")
   end
 
   it "unregisters a tool, and registers the name again after that" do
@@ -169,7 +183,7 @@ RSpec.describe Samagotchi::Tools::Registry do
       end
       attach_services(kernel, tools: tools, peers: :peers)
 
-      result = kernel.dispatch_tool_call({ name: "echo", content: "hi" }, run_context(model_key: "gemma4"))
+      result = kernel.dispatch_tool_call({ name: "echo", content: "hi" }, run_context(model_key: "gemma4", tools: kernel.tools))
 
       expect(result[:output]).to eq("[echo]\ndone")
       expect(result[:activity]).to include(tool: "echo", status: "ok")

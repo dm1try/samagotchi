@@ -50,7 +50,7 @@ RSpec.describe "The loop-guard bundle" do
   end
 
   def run(call)
-    runner.run(call, context: Samagotchi::TurnContext.none, iteration: 1, call_index: 1, call_count: 1, on_stream_event: ->(_) {}, max_tool_output_chars: nil)
+    runner.run(call, context: Samagotchi::TurnContext.none(surface: Samagotchi::Tools::ToolSurface.for(nil)), iteration: 1, call_index: 1, call_count: 1, on_stream_event: ->(_) {}, max_tool_output_chars: nil)
   end
 
   it "installs cleanly, with no memory" do
@@ -82,7 +82,7 @@ RSpec.describe "The loop-guard bundle" do
     hooks.fire(:before_turn, { type: :before_turn, prompt: "update my config" })
 
     6.times do |i|
-      runner.run(find.dup, context: Samagotchi::TurnContext.none, iteration: i + 1, call_index: 1, call_count: 1, max_tool_output_chars: nil,
+      runner.run(find.dup, context: Samagotchi::TurnContext.none(surface: Samagotchi::Tools::ToolSurface.for(nil)), iteration: i + 1, call_index: 1, call_count: 1, max_tool_output_chars: nil,
                            on_stream_event: ->(event) { seen << [:row, i + 1] if event[:type] == :tool_call_completed })
     end
 

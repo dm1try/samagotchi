@@ -170,7 +170,7 @@ RSpec.describe "The sample-plugin bundle (Plugin::Api and Plugin::Context)" do
                                                     "reason" => "secrets stay put" }], source: "config")
       allow(engine.instance_variable_get(:@guardrail_wiring)).to receive(:rules).and_return(Samagotchi::Guardrails::Rules.new(rule))
       run = lambda do |call|
-        Samagotchi::ToolRunner.new(kernel).run(call, context: run_context, iteration: 1, call_index: 1, call_count: 1,
+        Samagotchi::ToolRunner.new(kernel).run(call, context: run_context(tools: kernel.tools), iteration: 1, call_index: 1, call_count: 1,
                                                      on_stream_event: nil, max_tool_output_chars: nil)
       end
       Dir.mktmpdir do |dir|
@@ -244,7 +244,7 @@ RSpec.describe "The sample-plugin bundle (Plugin::Api and Plugin::Context)" do
       RUBY
     end
 
-    def run_tool(call, context = run_context)
+    def run_tool(call, context = run_context(tools: kernel.tools))
       events = []
       run = Samagotchi::ToolRunner.new(kernel).run(call, context: context, iteration: 1, call_index: 1, call_count: 1,
                                                          on_stream_event: ->(e) { events << e }, max_tool_output_chars: nil)
@@ -274,7 +274,7 @@ RSpec.describe "The sample-plugin bundle (Plugin::Api and Plugin::Context)" do
 
     it "resolves a file against the session's folder (its real path), not the process's" do
       # The session's folder comes with the turn (TurnContext#cwd, Engine#begin_turn).
-      run, = run_tool({ name: "ticket", args: { "id" => "JIRA-7" } }, run_context(cwd: session.working_directory))
+      run, = run_tool({ name: "ticket", args: { "id" => "JIRA-7" } }, run_context(tools: kernel.tools, cwd: session.working_directory))
 
       expect(run.refs.last[:target]).to eq(path: File.join(File.realpath(tmpdir), "lib/login.rb"), line: 4)
     end
@@ -314,7 +314,7 @@ RSpec.describe "The sample-plugin bundle (Plugin::Api and Plugin::Context)" do
     end
 
     def run(call, settings = kernel.turn_settings)
-      Samagotchi::ToolRunner.new(kernel).run(call, context: run_context(settings: settings), iteration: 1, call_index: 1, call_count: 1,
+      Samagotchi::ToolRunner.new(kernel).run(call, context: run_context(settings: settings, tools: kernel.tools), iteration: 1, call_index: 1, call_count: 1,
                                                    on_stream_event: nil, max_tool_output_chars: nil)
     end
 

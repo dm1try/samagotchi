@@ -37,6 +37,11 @@ RSpec.describe Samagotchi::Tools::ToolIndex do
 
   def added(**) = source(**).tap { |s| index.add(s) }
 
+  # The Registry's surface now (what a turn starting now would see), and a
+  # handler's ToolContext carrying it: every reader of the index is given one.
+  def now = Samagotchi::Tools::ToolSurface.for(registry)
+  def kctx_now = instance_double(Samagotchi::KernelLoop::ToolContext, surface: now)
+
   context "without a source" do
     it "registers both, declared only when the toolkit leaves a built-in reachable: full's tools are the ones it had" do
       before = registry.names
@@ -77,11 +82,11 @@ RSpec.describe Samagotchi::Tools::ToolIndex do
       fs.publish([described_class::Group.new(name: "fs", summary: "files", tools: [echo]),
                   described_class::Group.new(name: "slow", tools: [tool("slow", "wait")])])
       expect(registry[find_name].schema[:description]).to end_with("\n- slow") # declared once
-      expect(index.find("wait")).to include("slow/wait: ") # searches read what is published now
+      expect(index.find("wait", surface: now)).to include("slow/wait: ") # searches read what is published now
     end
 
     it "runs a call with its source's Context and the arguments typed by the tool's schema" do
-      expect(call_entry.handler.call({ name: call_name, args: { "tool" => "fs/echo", "args" => { "n" => "2" } } }, nil))
+      expect(call_entry.handler.call({ name: call_name, args: { "tool" => "fs/echo", "args" => { "n" => "2" } } }, kctx_now))
         .to eq("ran echo")
       expect(calls).to eq([["fs/echo", { "n" => 2 }, context]])
     end
@@ -89,12 +94,12 @@ RSpec.describe Samagotchi::Tools::ToolIndex do
     it "passes a source's ToolResult on, images and all" do
       result = Samagotchi::Plugin::ToolResult.new("shot", images: [{ path: "/tmp/a.png", name: "a.png" }])
       index.instance_variable_get(:@sources).first.instance_variable_set(:@call, ->(*) { result })
-      expect(call_entry.handler.call({ name: call_name, args: { "tool" => "fs/echo" } }, nil)).to be(result)
+      expect(call_entry.handler.call({ name: call_name, args: { "tool" => "fs/echo" } }, kctx_now)).to be(result)
     end
 
     it "refuses a published refusal before the source sees the call" do
       fs.publish([described_class::Group.new(name: "fs", tools: [echo.with(refusal: "bad schema", mark: "(bad schema)")])])
-      expect(index.call("fs/echo", {})).to eq("Error: fs/echo can't be called: bad schema")
+      expect(index.call("fs/echo", {}, surface: now)).to eq("Error: fs/echo can't be called: bad schema")
       expect(calls).to be_empty
     end
 
@@ -103,7 +108,7 @@ RSpec.describe Samagotchi::Tools::ToolIndex do
         fs.publish([])
         original.call(*args)
       end
-      expect(index.call("mcp_fs_echo", {})).to eq("Error: the tool list changed and fs is gone; search with find_tools")
+      expect(index.call("mcp_fs_echo", {}, surface: now)).to eq("Error: the tool list changed and fs is gone; search with find_tools")
       expect(calls).to be_empty
     end
 
@@ -112,14 +117,15 @@ RSpec.describe Samagotchi::Tools::ToolIndex do
 
       it "gives guardrails the tool it acts as, its arguments and the question's label" do
         targets = Samagotchi::Guardrails::Targets.for(call, Samagotchi::Guardrails::Context.new(cwd: Dir.pwd),
-                                                      registry: registry)
+                                                      registry: registry, surface: now)
         expect([targets.tool, targets.acts_as, targets.args, targets.label])
           .to eq([call_name, "mcp_fs_echo", { "n" => 3 }, "fs: echo"])
       end
 
       it "names the row by its label with the call's preview" do
         expect(Samagotchi::ToolActivity.plugin_label(call_name, registry: registry)).to eq("mcp")
-        expect(Samagotchi::ToolActivity.tool_activity_params(call_name, call, registry: registry)).to eq("fs/echo n=3")
+        expect(Samagotchi::ToolActivity.tool_activity_params(call_name, call, registry: registry, surface: now))
+          .to eq("fs/echo n=3")
       end
 
       it "declares flat schemas to the native prompts" do
@@ -166,20 +172,20 @@ RSpec.describe Samagotchi::Tools::ToolIndex do
       registry.toolkit = Samagotchi::Toolkit.new(name: "web").resolve(kits)
       index.refresh!
 
-      expect(index.all_groups.map(&:name)).to include("chrome", "postgres", "chi")
-      expect(index.reached_groups.map(&:name)).to include("chrome", "chi")
-      expect(index.reached_groups.map(&:name)).not_to include("postgres")
+      expect(index.all_groups(now).map(&:name)).to include("chrome", "postgres", "chi")
+      expect(index.reached_groups(now).map(&:name)).to include("chrome", "chi")
+      expect(index.reached_groups(now).map(&:name)).not_to include("postgres")
       expect(registry[find_name].schema[:description]).to include("- chrome: browser (1 tool)")
       expect(registry[find_name].schema[:description]).not_to include("postgres")
-      expect(index.find("query")).not_to include("postgres/query")
-      expect(index.find("query", "postgres")).to eq("Error: no group postgres. Groups: chi, chrome")
-      expect(index.call("postgres/query", {})).to start_with("Error: no tool postgres/query")
-      expect(index.unreached_tool("postgres/query")&.full_name).to eq("postgres/query")
+      expect(index.find("query", surface: now)).not_to include("postgres/query")
+      expect(index.find("query", "postgres", surface: now)).to eq("Error: no group postgres. Groups: chi, chrome")
+      expect(index.call("postgres/query", {}, surface: now)).to start_with("Error: no tool postgres/query")
+      expect(index.unreached_tool("postgres/query", now)&.full_name).to eq("postgres/query")
       expect(waited).to be_empty
       expect(source.declared_groups).to eq(["chrome"])
 
       source.publish(source.groups + [described_class::Group.new(name: "chrome_extra", tools: [tool("chrome_extra", "late")])])
-      expect(index.reached_groups.map(&:name)).not_to include("chrome_extra")
+      expect(index.reached_groups(now).map(&:name)).not_to include("chrome_extra")
     end
 
     it "keeps claims and acts_as clashes global when one of the source groups is unreached" do
@@ -198,12 +204,12 @@ RSpec.describe Samagotchi::Tools::ToolIndex do
       registry.toolkit = Samagotchi::Toolkit::Resolved.new(name: "web", all_core: true, groups: ["chrome"])
       index.refresh!
 
-      expect(index.reached_groups.map(&:name)).to include("chrome")
-      expect(index.reached_groups.map(&:name)).not_to include("postgres")
-      expect(index.deferrable).to be_empty
-      expect(index.call_targets({ "tool" => "postgres/read" }))
+      expect(index.reached_groups(now).map(&:name)).to include("chrome")
+      expect(index.reached_groups(now).map(&:name)).not_to include("postgres")
+      expect(index.deferrable(now)).to be_empty
+      expect(index.call_targets({ "tool" => "postgres/read" }, now))
         .to eq(acts_as: "mcp_same", args: {}, label: "postgres: read")
-      expect(index.unreached_tool("postgres/read")&.full_name).to eq("postgres/read")
+      expect(index.unreached_tool("postgres/read", now)&.full_name).to eq("postgres/read")
     end
   end
 
@@ -222,16 +228,16 @@ RSpec.describe Samagotchi::Tools::ToolIndex do
     end
 
     it "are a keyword answer's matches: a built-in by name, a source tool by acts_as, never a refused or odd name" do
-      expect(index.find("echo").loaded).to eq(%w[mcp_fs_echo])
-      expect(index.find("sessions").loaded).to eq(%w[list_sessions send_note delegate delegate_result])
-      expect(index.find("sessions", server: "fs")).to start_with("(searched every group)")
-      expect(index.find("sessions", server: "fs").loaded).to eq(%w[list_sessions send_note delegate delegate_result])
+      expect(index.find("echo", surface: now).loaded).to eq(%w[mcp_fs_echo])
+      expect(index.find("sessions", surface: now).loaded).to eq(%w[list_sessions send_note delegate delegate_result])
+      expect(index.find("sessions", server: "fs", surface: now)).to start_with("(searched every group)")
+      expect(index.find("sessions", server: "fs", surface: now).loaded).to eq(%w[list_sessions send_note delegate delegate_result])
     end
 
     it "are none for the names listing, a miss or an unknown group" do
-      expect(index.find("").loaded).to eq([])
-      expect(index.find("zebra").loaded).to eq([])
-      expect(index.find("echo", "nope").loaded).to eq([])
+      expect(index.find("", surface: now).loaded).to eq([])
+      expect(index.find("zebra", surface: now).loaded).to eq([])
+      expect(index.find("echo", "nope", surface: now).loaded).to eq([])
     end
   end
 
@@ -246,7 +252,7 @@ RSpec.describe Samagotchi::Tools::ToolIndex do
 
     it "lists them per toolkit, never a removed or layer-gated one, first in the description" do
       lean!
-      chi = index.all_groups.first
+      chi = index.all_groups(now).first
       expect(chi.name).to eq("chi")
       expect(chi.tools.map(&:name)).to eq(%w[register_reminder cancel_reminder list_reminders list_sessions send_note
                                              delegate delegate_result objectives])
@@ -255,12 +261,12 @@ RSpec.describe Samagotchi::Tools::ToolIndex do
       )
 
       registry.toolkit = kit("child")
-      expect(index.all_groups.first.tools.map(&:name)).to eq(%w[register_reminder cancel_reminder list_reminders
-                                                                list_sessions objectives])
+      expect(index.all_groups(now).first.tools.map(&:name)).to eq(%w[register_reminder cancel_reminder list_reminders
+                                                                     list_sessions objectives])
       registry.toolkit = kit(remove: %w[delegate])
-      expect(index.all_groups.first.tools.map(&:name)).not_to include("delegate", "forget_outputs")
+      expect(index.all_groups(now).first.tools.map(&:name)).not_to include("delegate", "forget_outputs")
       registry.toolkit = nil
-      expect(index.all_groups).to eq([])
+      expect(index.all_groups(now)).to eq([])
     end
 
     it "lists a plugin tool (chi.tool) the kit leaves out after the built-ins, never find_tools or call_tool" do
@@ -268,20 +274,20 @@ RSpec.describe Samagotchi::Tools::ToolIndex do
                                                 params: { query: { type: "string", required: true } }) { "found" }
       Samagotchi::Plugin::ToolSpec.apply(registry, "web-search", [spec], nil)
       lean!
-      chi = index.all_groups.first
+      chi = index.all_groups(now).first
       expect(chi.tools.map(&:name)).to eq(%w[register_reminder cancel_reminder list_reminders list_sessions send_note
                                              delegate delegate_result objectives web_search])
       expect(find_entry.schema[:description]).to end_with("bundles' tools not declared in this session (9 tools)")
-      expect(index.find("search web")).to include("chi/web_search: Search the web for a query.")
-      expect(index.find("search web").loaded).to include("web_search")
-      expect(index.find("tools").to_s).not_to include("chi/find_tools", "chi/call_tool")
-      expect(index.find("").to_s).not_to include("find_tools,", "call_tool,")
-      expect(index.call_targets({ "tool" => "chi/web_search", "args" => { "query" => "x" } }))
+      expect(index.find("search web", surface: now)).to include("chi/web_search: Search the web for a query.")
+      expect(index.find("search web", surface: now).loaded).to include("web_search")
+      expect(index.find("tools", surface: now).to_s).not_to include("chi/find_tools", "chi/call_tool")
+      expect(index.find("", surface: now).to_s).not_to include("find_tools,", "call_tool,")
+      expect(index.call_targets({ "tool" => "chi/web_search", "args" => { "query" => "x" } }, now))
         .to eq(acts_as: "web_search", args: { "query" => "x" }, label: "chi: web_search")
 
       registry.toolkit = kit(add: %w[web_search])
-      expect(index.all_groups.first.tools.map(&:name)).not_to include("web_search")
-      expect(index.call("web_search", {})).to eq("Error: web_search is declared; call it directly")
+      expect(index.all_groups(now).first.tools.map(&:name)).not_to include("web_search")
+      expect(index.call("web_search", {}, surface: now)).to eq("Error: web_search is declared; call it directly")
     end
 
     it "answers a search with the tool's name, its registered schema, and how to call it" do
@@ -292,7 +298,7 @@ RSpec.describe Samagotchi::Tools::ToolIndex do
                                                                                           "remove" => [] } })
                                                 .merge("tiny" => Samagotchi::Toolkit::Kit.new(name: "tiny",
                                                                                               tools: %w[read])))
-      answer = index.find("run shell command")
+      answer = index.find("run shell command", surface: Samagotchi::Tools::ToolSurface.for(registry))
       expect(answer).to start_with("Call one with call_tool(tool: \"<group>/<tool>\", args: {…}).\n\nchi/execute: ")
       schema = Samagotchi::ToolDeclarations.chat_schemas([registry["execute"].schema]).first[:parameters]
       expect(answer).to include("inputSchema: #{JSON.generate(schema)}")
@@ -302,9 +308,9 @@ RSpec.describe Samagotchi::Tools::ToolIndex do
 
     it "notes that a search given the old server: parameter searched every group" do
       lean!
-      expect(find_entry.handler.call({ name: find_name, args: { "query" => "delegate", "server" => "x" } }, nil))
+      expect(find_entry.handler.call({ name: find_name, args: { "query" => "delegate", "server" => "x" } }, kctx_now))
         .to start_with("(searched every group)\nCall one with call_tool")
-      expect(index.find("delegate", "chi")).to include("chi/delegate: ")
+      expect(index.find("delegate", "chi", surface: now)).to include("chi/delegate: ")
     end
 
     it "searches and calls on the turn's surface (the handler's ToolContext), not the Registry as it is now" do
@@ -315,14 +321,14 @@ RSpec.describe Samagotchi::Tools::ToolIndex do
                                                 params: { query: { type: "string", required: true } }) { "found" }
       Samagotchi::Plugin::ToolSpec.apply(registry, "web-search", [spec], nil)
 
-      expect(index.find("search web")).to include("chi/web_search: ")
+      expect(index.find("search web", surface: now)).to include("chi/web_search: ")
       expect(find_entry.handler.call({ name: find_name, args: { "query" => "search web" } }, kctx))
         .not_to include("chi/web_search")
-      expect(index.deferred_name("chi/web_search")).to eq("web_search")
+      expect(index.deferred_name("chi/web_search", now)).to eq("web_search")
       expect(index.deferred_name("chi/web_search", turn)).to be_nil
       call = { name: call_name, args: { "tool" => "chi/web_search", "args" => { "query" => "x" } } }
       expect(index.unwrap(call, turn)).to be_nil
-      expect(index.unwrap(call)).to include(name: "web_search", via: call_name)
+      expect(index.unwrap(call, now)).to include(name: "web_search", via: call_name)
     end
 
     it "gives call_tool's row and targets what the turn reaches, not a tool registered after it" do
@@ -336,8 +342,8 @@ RSpec.describe Samagotchi::Tools::ToolIndex do
       call = ->(tool) { { name: call_name, args: { "tool" => tool, "args" => { "query" => "x", "n" => "2" } } } }
 
       # The Registry now has it: its row and its typed args.
-      expect(call_entry.preview_of(call["chi/web_search"])).to eq("chi/web_search query=x n=2")
-      expect(call_entry.targets_of(call["chi/web_search"])).to include(args: { "query" => "x", "n" => 2 })
+      expect(call_entry.preview_of(call["chi/web_search"], now)).to eq("chi/web_search query=x n=2")
+      expect(call_entry.targets_of(call["chi/web_search"], now)).to include(args: { "query" => "x", "n" => 2 })
       # The turn's surface doesn't: the row names no args and the args go
       # untyped, as for a chi/ name the session never had.
       expect(call_entry.preview_of(call["chi/web_search"], turn)).to eq("chi/web_search")
@@ -347,9 +353,9 @@ RSpec.describe Samagotchi::Tools::ToolIndex do
 
     it "never runs a chi tool as a source call (fail closed: only the unwrap runs it)" do
       lean!
-      expect(index.call("chi/delegate", { "task" => "x" })).to eq("Error: chi/delegate can't be called through call_tool here")
-      expect(index.call("delegate", "nope")).to start_with("Error: args must be an object.")
-      expect(index.call_targets({ "tool" => "chi/delegate", "args" => { "task" => "x" } }))
+      expect(index.call("chi/delegate", { "task" => "x" }, surface: now)).to eq("Error: chi/delegate can't be called through call_tool here")
+      expect(index.call("delegate", "nope", surface: now)).to start_with("Error: args must be an object.")
+      expect(index.call_targets({ "tool" => "chi/delegate", "args" => { "task" => "x" } }, now))
         .to eq(acts_as: "delegate", args: { "task" => "x" }, label: "chi: delegate")
     end
 
@@ -394,12 +400,12 @@ RSpec.describe Samagotchi::Tools::ToolIndex do
     second.publish([described_class::Group.new(name: "fs", tools: [tool("fs", "other")])])
     index.declare(registry)
 
-    expect(index.all_groups.map(&:name)).to eq(["fs"])
+    expect(index.all_groups(now).map(&:name)).to eq(["fs"])
     expect(registry[find_name].schema[:description]).to end_with("\nGroups:\n- fs (1 tool)")
-    expect(index.find("echo")).to include("fs/echo")
-    expect(index.find("echo")).not_to include("chi/echo")
-    expect(index.find("other")).to start_with("No tool matches")
-    index.all_groups
+    expect(index.find("echo", surface: now)).to include("fs/echo")
+    expect(index.find("echo", surface: now)).not_to include("chi/echo")
+    expect(index.find("other", surface: now)).to start_with("No tool matches")
+    index.all_groups(now)
     expect(Samagotchi::Log).to have_received(:warn).with(:plugins, "tool_group_dropped", hash_including(group: "chi")).once
     expect(Samagotchi::Log).to have_received(:warn).with(:plugins, "tool_group_dropped", hash_including(group: "fs")).once
   end
@@ -410,17 +416,17 @@ RSpec.describe Samagotchi::Tools::ToolIndex do
   it "asks for <group>/<tool> on a bare acts_as of a source with no prefix" do
     added(prefix: nil).publish([described_class::Group.new(name: "fs", tools: [echo])])
     index.declare(registry)
-    expect(index.call("mcp_fs_echo", {})).to eq("Error: call mcp_fs_echo as fs/echo")
-    expect(index.call("fs/echo", {})).to eq("ran echo")
+    expect(index.call("mcp_fs_echo", {}, surface: now)).to eq("Error: call mcp_fs_echo as fs/echo")
+    expect(index.call("fs/echo", {}, surface: now)).to eq("ran echo")
   end
 
   it "answers a declared built-in's bare name at once, without waiting for a starting server" do
     waited = []
     added(wait: ->(group) { waited << group }).publish([described_class::Group.new(name: "slow", state: :starting)])
     index.declare(registry)
-    expect(index.call("read", {})).to eq("Error: read is declared; call it directly")
+    expect(index.call("read", {}, surface: now)).to eq("Error: read is declared; call it directly")
     expect(waited).to eq([])
-    expect(index.call("nope", {})).to start_with("Error: no tool nope")
+    expect(index.call("nope", {}, surface: now)).to start_with("Error: no tool nope")
     expect(waited).to eq(["slow"])
   end
 

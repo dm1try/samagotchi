@@ -57,7 +57,7 @@ RSpec.describe "A find_tools hit loads its tools (ChatLoop on a Messages host)" 
   def run(chat_adapter = adapter, messages = [{ role: "system", content: "sys" }, { role: "user", content: "list my sessions" }])
     Samagotchi::LLM::ChatLoop.new(kernel: kernel, adapter: chat_adapter, sleeper: ->(_s) {})
                              .complete(messages: messages, model_name: "m", on_stream_event: ->(_e) {},
-                                       context: run_context(settings: settings))
+                                       context: run_context(settings: settings, tools: kernel.tools))
   end
 
   # A body's messages without cache marks (they move to the last block).

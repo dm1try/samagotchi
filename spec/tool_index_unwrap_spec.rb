@@ -24,7 +24,6 @@ RSpec.describe "call_tool on a built-in" do
   let(:seen) { [] }
   let(:ran) { [] }
   let(:checks) { [] }
-  let(:context) { run_context(settings: kernel.turn_settings) }
   # A kit whose list leaves execute and write out (none chi ships does):
   # the same-verdict cases.
   let(:kits) { Samagotchi::Toolkit.kits.merge("tiny" => Samagotchi::Toolkit::Kit.new(name: "tiny", tools: %w[read])) }
@@ -37,6 +36,9 @@ RSpec.describe "call_tool on a built-in" do
                                             checks_for: ->(_turn) { checks })
     test_kernel(hooks: hooks, tools: registry, gate: gate)
   end
+
+  # The calls' turn, its surface the Registry's when the call runs.
+  def context = run_context(tools: kernel.tools, settings: kernel.turn_settings)
 
   before do
     %w[delegate execute write send_note].each do |name|

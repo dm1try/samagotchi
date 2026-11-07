@@ -70,12 +70,12 @@ RSpec.describe "Request goldens per toolkit and wire" do
   end
 
   # The run's turn: high thinking, every reasoning sent back.
-  def golden_context(kernel) = run_context(settings: kernel.turn_settings.with(thinking: :high, reasoning_history: :all))
+  def golden_context(kernel) = run_context(settings: kernel.turn_settings.with(thinking: :high, reasoning_history: :all), tools: kernel.tools)
 
-  # A find_tools hit and its answer (with the tools it loads, as
-  # ToolResponse.single saves them), then a new prompt.
-  def conversation(index)
-    found = index.find("sessions")
+  # A find_tools hit on +kernel+'s tools and its answer (with the tools it
+  # loads, as ToolResponse.single saves them), then a new prompt.
+  def conversation(index, kernel)
+    found = index.find("sessions", surface: Samagotchi::Tools::ToolSurface.for(kernel.tools))
     result = { role: "tool_response", content: "[find_tools]\n#{found}", tool_call_id: "toolu_find1" }
     result[:loaded] = found.loaded unless found.loaded.empty?
     [{ role: "system", content: "You are chi. Use tools when needed." },
@@ -101,7 +101,7 @@ RSpec.describe "Request goldens per toolkit and wire" do
       loop = Samagotchi::LLM::ChatLoop.new(kernel: kernel, adapter: adapter)
       loop.session_id = "sess-golden"
 
-      loop.complete(messages: conversation(index), model_name: "box-model", on_stream_event: ->(_event) {},
+      loop.complete(messages: conversation(index, kernel), model_name: "box-model", on_stream_event: ->(_event) {},
                     context: golden_context(kernel))
 
       expect_golden("#{name}_openai.json", recorded("/v1/chat/completions", %w[content-type session-id]))
@@ -114,7 +114,7 @@ RSpec.describe "Request goldens per toolkit and wire" do
       loop = Samagotchi::LLM::ChatLoop.new(kernel: kernel, adapter: adapter, sleeper: ->(_s) {})
       loop.session_id = "sess-golden"
 
-      loop.complete(messages: conversation(index), model_name: "claude-golden", on_stream_event: ->(_event) {},
+      loop.complete(messages: conversation(index, kernel), model_name: "claude-golden", on_stream_event: ->(_event) {},
                     context: golden_context(kernel))
 
       expect_golden("#{name}_anthropic.json",
@@ -127,7 +127,7 @@ RSpec.describe "Request goldens per toolkit and wire" do
       declarations = Samagotchi::ToolDeclarations.qwen_declarations(
         Samagotchi::ToolDeclarations.native_schemas(Samagotchi::Tools::ToolSurface.for(kernel.tools))
       )
-      messages = conversation(index)
+      messages = conversation(index, kernel)
       messages[0] = messages[0].merge(content: "#{messages[0][:content]}\n\n#{declarations}")
 
       expect_golden("#{name}_native.txt", Samagotchi::Prompt.format(messages, profile: profile))

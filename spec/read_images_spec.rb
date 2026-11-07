@@ -48,7 +48,7 @@ RSpec.describe "read on images" do
     let(:events) { [] }
 
     def run_read(settings = kernel.turn_settings)
-      Samagotchi::ToolRunner.new(kernel).run({ name: "read", content: png_path }, context: run_context(settings: settings), iteration: 1, call_index: 1, call_count: 1,
+      Samagotchi::ToolRunner.new(kernel).run({ name: "read", content: png_path }, context: run_context(tools: kernel.tools, settings: settings), iteration: 1, call_index: 1, call_count: 1,
                                                                                   on_stream_event: ->(e) { events << e }, max_tool_output_chars: nil)
     end
 
@@ -93,7 +93,7 @@ RSpec.describe "read on images" do
           "a red square"
         end
       end
-      context = run_context(settings: kernel.turn_settings.with(vision: vision))
+      context = run_context(tools: kernel.tools, settings: kernel.turn_settings.with(vision: vision))
 
       result = kernel.run([{ role: "user", content: "check #{png_path} and describe it" }], context: context)
 
@@ -113,7 +113,7 @@ RSpec.describe "read on images" do
     end
 
     it "follows the tool message with a user message holding the picture (tool messages take text only)" do
-      context = run_context(settings: kernel.turn_settings.with(vision: vision))
+      context = run_context(tools: kernel.tools, settings: kernel.turn_settings.with(vision: vision))
       result = Samagotchi::LLM::ChatLoop.new(kernel: kernel, adapter: adapter)
                                         .complete(messages: [{ role: "user", content: "check the png" }], model_name: "m",
                                                   context: context)
