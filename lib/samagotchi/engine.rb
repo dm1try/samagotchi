@@ -109,6 +109,8 @@ require_relative "working_set"
 require_relative "participants_watch"
 require_relative "session_participants"
 require_relative "engine/steering"
+require_relative "engine/side_requests"
+require_relative "engine/recap"
 
 module Samagotchi
   # Engine owns the core agent logic: system prompt construction, tool
@@ -126,6 +128,8 @@ module Samagotchi
   # included here; they share Engine's ivars.
   class Engine
     include SteeringPart
+    include SideRequestsPart
+    include RecapPart
 
     # Raised by #answer_question when the question it targets is no longer
     # open (never asked, superseded, already answered or cancelled). A subclass
@@ -600,68 +604,6 @@ module Samagotchi
 
     def clear_due_reminder_names!
       @reminder_queue.clear_pending!
-    end
-
-    # Snapshot the current session messages as a JSON string for the idle
-    # recap. The array is never mutated in place (a turn or a note replaces
-    # it), so the reference read here is a consistent snapshot; a dup'd
-    # copy is serialized. Never mutates session.messages.
-    # @return [String] JSON array of the messages
-    def messages_json_for_recap
-      snapshot = @session&.messages
-      return "[]" if snapshot.nil?
-
-      JSON.generate(AnswerDisplay.strip_all(snapshot).map(&:dup))
-    end
-
-    # Emit a :recap_ready event (additive slot) carrying the generated recap
-    # and the generation id an observer uses to reject an invalidated recap.
-    # +covered+ counts the session messages it summarizes; +created_at+ is
-    # the saved recap's (UTC ISO; the UIs show its local time).
-    def emit_recap(recap:, generation:, covered: nil, created_at: nil)
-      event = { type: :recap_ready, recap: recap, generation: generation, covered: covered }
-      event[:created_at] = created_at if created_at
-      @session_observer.notify(event)
-    end
-
-    # Count one side request (a recap, a plugin's ctx.ask_model: IdleClient's
-    # on_usage) in the session's side line, apart from its turns' totals.
-    # Folded and announced as :side_usage under the event lock, so the side
-    # blocks reach the UIs in fold order (the lock order event lock →
-    # metrics mutex is the existing one); then, between turns, saved to
-    # analytics.json (a running turn's end or checkpoint saves it), unless
-    # the session is gone (no session file: a late recap thread must not
-    # recreate a deleted session's folder; the folder itself may not exist
-    # yet before a first turn). Safe from any thread: the recap's, a
-    # plugin's, the turn's.
-    # A side request counts against the participant who caused it
-    # (#side_author), its usage's own author when it names one.
-    # @param usage [SideUsage]
-    # @return [void]
-    def note_side_usage(usage)
-      usage = usage.with(author: side_author(usage.kind)) if usage.author.nil?
-      synchronize_events do
-        block = @metrics.add_side(usage)
-        @session_observer.notify(type: :side_usage, kind: usage.kind, side: block)
-      end
-      sid = @metrics.session_id
-      return if sid.nil? || turn_running?
-      return unless File.exist?(Session.session_file(sid, state_dir: session_state_dir))
-
-      @metrics.persist(state_dir: session_state_dir)
-    end
-
-    # Who caused a side request of +kind+ now: the running turn's author (a
-    # plugin's ctx.ask_model in it), the last turn's for the idle recap
-    # (it recaps that turn); nil, the owner's, for anything else (an owner
-    # command's ask_model between turns).
-    # @return [String, nil]
-    def side_author(kind)
-      # Check this is only ever the owner's, whichever turn runs as it ends.
-      return nil if kind.to_s == ObjectivesCheck::SOURCE
-      return nil unless turn_running? || kind.to_s == RECAP_SIDE_KIND
-
-      @guardrail_wiring.turn_author
     end
 
     RECAP_SIDE_KIND = "recap"
@@ -2095,16 +2037,6 @@ module Samagotchi
     end
     private :model_switched_since_last_turn?
 
-    # @return [IdleRecap, nil] the idle recap detector, or nil when disabled
-    attr_reader :recap
-
-    # Whether a continue offer waits (the Worker's or the REPL's TurnFlow),
-    # for the recap job: this one and any rebuilt one (IdleRecap#awaiting_continue=).
-    def recap_awaiting_continue=(callable)
-      @recap_awaiting_continue = callable
-      @recap&.awaiting_continue = callable
-    end
-
     # The idle recap job (RecapSetup.build) under the current session's own
     # recap values, which it records.
     # @return [IdleRecap, nil]
@@ -2118,95 +2050,6 @@ module Samagotchi
       recap
     end
     private :build_recap
-
-    # The bound session's own recap.* values ({} for none).
-    def session_recap_values
-      (@session&.settings&.core || {}).select { |key, _| key.start_with?("recap.") }
-    end
-    private :session_recap_values
-
-    # A new recap job when the bound session's own recap values differ from
-    # the ones the current job was built under (none at start): the old one
-    # is dropped (an attempt in flight goes stale) and the scheduler swaps
-    # it, keeping its one thread. Binding the same session again changes
-    # nothing (the REPL binds it twice).
-    def rebuild_recap!
-      return if session_recap_values == @recap_built_for
-
-      old = @recap
-      old&.invalidate!
-      @recap = build_recap
-      @idle_scheduler&.replace_job(old, @recap)
-    end
-
-    # /recap on|off|default: the bound session's own recap.enabled (true,
-    # false; nil removes it, so config.yml's applies again), and the recap
-    # job rebuilt under it at once. It doesn't save: the command says
-    # changed: [:recap] and its host saves (Worker#run_command).
-    # @param enabled [Boolean, nil]
-    # @raise [ArgumentError] no session is bound
-    def recap_override=(enabled)
-      raise ArgumentError, "no session" unless @session
-
-      core = @session.settings.core.dup
-      enabled.nil? ? core.delete(RECAP_ENABLED_KEY) : core[RECAP_ENABLED_KEY] = enabled
-      @session.settings = @session.settings.with(core: core)
-      rebuild_recap!
-    end
-
-    # The bound session's own recap.enabled (/recap on|off, --set), or nil.
-    # @return [Boolean, nil]
-    def recap_override = @session&.settings&.core&.fetch(RECAP_ENABLED_KEY, nil)
-
-    # Write the recap now, before the session is left (IdleRecap#write_now).
-    # @return [String, nil] the recap written, nil when none was (recap off,
-    #   nothing new, an error, the timeout)
-    def write_recap_now(on_start: nil)
-      @recap&.write_now(on_start: on_start)
-    end
-
-    # The longest #write_recap_now waits (recap.timeout), nil when no recap
-    # is set up.
-    # @return [Float, nil]
-    def recap_timeout = @recap&.timeout
-
-    # Ask for a recap now (/recap), without waiting for the idle window.
-    # @return [Symbol] IdleRecap#request_now's answer, or :off
-    def request_recap
-      @recap ? @recap.request_now : :off
-    end
-
-    # The recap saved with the current session (recap.json), and how many
-    # user turns came after it (0: it is current).
-    # @return [Hash, nil] {text:, covered:, turns_since:, created_at:}
-    def saved_recap
-      state = @recap&.state
-      return nil unless state
-
-      messages = @session&.messages || []
-      covered = state[:covered].to_i
-      turns_since = Array(messages).drop(covered).count { |m| Steer.turn_opening?(m) }
-      { text: state[:text], covered: covered, turns_since: turns_since, created_at: state[:created_at] }
-    end
-
-    # Start the shared idle scheduler (reminders + optional recap). The recap
-    # job is only registered when recap is configured; the reminders job is
-    # always present. TerminalUI calls this before the REPL and SessionManager
-    # workers call it so reminders can trigger turns; one-shot/worker paths
-    # that never start it poll nothing.
-    def start_idle
-      @idle_scheduler&.start
-      self
-    end
-
-    # Stop the shared idle scheduler (TerminalUI calls this when the REPL
-    # exits). +join+: wait for a tick under way (IdleScheduler#stop); a
-    # caller holding #synchronize_events passes false, since a recap's emit
-    # in that tick waits for the same lock.
-    def stop_idle(join: true)
-      @idle_scheduler&.stop(join: join)
-      self
-    end
 
     # One turn's values, for #run_turn and its endings. Per turn and
     # single-threaded: the cross-thread turn state (the cancel slot, the
@@ -3252,24 +3095,6 @@ module Samagotchi
     end
     private :toolkit_suggestion_log
 
-    # +client+ (nil for none) saving its asks as +judgment+'s runs. Anything
-    # going wrong here leaves the client as it was: a run is never worth a
-    # judgment.
-    #
-    # A scratch session's asks aren't saved; a participant's turn is never
-    # judged, so it never comes here.
-    # @param mode [String, nil] the use's mode, for its runs (Recording.wrap)
-    def system_one_recording(client, judgment, session, mode: nil)
-      return client if client.nil? || session&.scratch
-
-      context = SystemOne::Recording::Context.of(session, session_model: session && effective_model_name)
-      SystemOne::Recording.wrap(client, judgment: judgment, runs: system_one_runs, context: context, recorded_mode: mode)
-    rescue StandardError => e
-      Log.warn(:system_one, "system_one_recording_failed", error: e.class.name, msg: e.message.to_s[0, 200])
-      client
-    end
-    private :system_one_recording
-
     # Bundles' judgments (chi.judgment), on this Engine's Runs and side asks.
     # A judgment's own host and model are for bundles only: core's clients
     # above never pass them (D2, JudgmentSettings).
@@ -3286,10 +3111,6 @@ module Samagotchi
       )
     end
     private :build_judgments
-
-    # Where this Engine's runs are saved; read each time, as the settings are.
-    def system_one_runs = SystemOne::Runs.for_sessions_dir(session_state_dir)
-    private :system_one_runs
 
     # The candidate judge (ContextJudge) at an owner turn's start, after
     # the toolkit's ask settled: the session's candidates' status changes
@@ -3554,66 +3375,6 @@ module Samagotchi
       end
     end
     private :plugin_messages
-
-    # ctx.ask_model's request: the session's current model on its host, as
-    # a turn resolves them (a /model switch counts), or a configured +model+
-    # (a host:id ref, an alias, a bare id one of a host's models), through its own
-    # IdleClient, so it shares nothing with the turn's backend. The client
-    # is kept while the target and timeout stay (what it learned, e.g. a
-    # refused thinking-off, holds for the next request); the session's id
-    # goes with the request. Its usage counts in the session's side line
-    # (#note_side_usage) under +source+, the asking bundle's name.
-    # @return [String] the answer
-    def ask_side_model(request, timeout:, max_tokens:, cancel_controller:, model: nil, source: nil)
-      target = model.nil? ? session_model_recap_target : configured_side_target(model)
-      client = side_model_client(target, timeout)
-      started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
-      answer = client.ask(request, max_tokens: max_tokens, cancel_controller: cancel_controller, session_id: @session&.id,
-                                   kind: source.to_s.empty? ? "ask" : source.to_s, on_usage: method(:note_side_usage))
-      Log.info(:plugins, "ask_model", model: target.label, answer_model: answer.model, chars: answer.text.length,
-                                      ms: ((Process.clock_gettime(Process::CLOCK_MONOTONIC) - started) * 1000).round)
-      answer.text
-    end
-    private :ask_side_model
-
-    # The target of ctx.ask_model(model:): +model+ as a turn resolves it,
-    # once it is known to name something configured. IdleTarget.of_model
-    # never raises (an unknown host falls to the default host, an unknown id
-    # to the default entry), so a typo would silently ask another model.
-    # @raise [ArgumentError] +model+ names no configured host and is no
-    #   host's model (cached, declared or saved lists; nothing is asked)
-    def configured_side_target(model)
-      ref = @host_registry.model_ref(model)
-      unless ref.host_name || ref.alias_name || @host_registry.hosts_with_model(ref.id).any?
-        raise ArgumentError, "ask_model: unknown model #{model.to_s.inspect} (use a configured host:id, an alias, " \
-                             "or a model id one of your hosts lists)"
-      end
-
-      IdleTarget.of_model(@host_registry, model)
-    end
-    private :configured_side_target
-
-    # The IdleClient for +target+ at +timeout+: the last one when both are
-    # the same, else a new one.
-    def side_model_client(target, timeout)
-      @side_client_mutex.synchronize do
-        key = [target, timeout]
-        unless @side_client && @side_client_key == key
-          @side_client = IdleClient.for(target, timeout: timeout)
-          @side_client_key = key
-        end
-        @side_client
-      end
-    end
-    private :side_model_client
-
-    # The session's current model as a recap target: its host's OpenAI API
-    # (native llama.cpp hosts serve /v1/chat/completions too), key variable
-    # and bare model name, as a turn resolves them.
-    # @return [IdleTarget]
-    def session_model_recap_target
-      IdleTarget.of_model(@host_registry, effective_model_name)
-    end
 
     # Build the idle reminders job. Always created (reminders are opt-in
     # via the agent calling register_reminder). The shared IdleScheduler
