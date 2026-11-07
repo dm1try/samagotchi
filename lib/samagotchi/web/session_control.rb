@@ -16,7 +16,7 @@ module Samagotchi
     # a task, dequeue a queued turn, what it could stop and stop it
     # (handle_session_holds, handle_stop_holds — the page's Stop asks about
     # these first), stop, restart, archive, unarchive and delete
-    # (handle_question_answer … handle_delete), with the refusals they answer (owned_by_repl, owned_by_tui, archive_refused). Included in App:
+    # (handle_question_answer … handle_delete), with the refusals they answer (owned_by_one_shot, owned_by_tui, archive_refused). Included in App:
     # its ROUTES name the handlers, and its helpers (json_response,
     # error_response, parse_json, request_body, relay, not_live,
     # bridge_error, reply_detail, worker_timeout, bridge_client,
@@ -451,7 +451,7 @@ module Samagotchi
         json_response(200, { status: "archived", session_id: result.id, archived: result.archived,
                              stopped: result.stopped, discarded: result.discarded })
       rescue SessionManager::OwnedByTUI => e
-        owned_by_repl(id, e)
+        owned_by_one_shot(id, e)
       rescue SessionManager::ArchiveRefused => e
         archive_refused(e)
       end
@@ -474,7 +474,7 @@ module Samagotchi
         @hub&.touch(result[:id])
         json_response(200, { status: "deleted", session_id: result[:id], stopped: result[:stopped] })
       rescue SessionManager::OwnedByTUI => e
-        owned_by_repl(id, e)
+        owned_by_one_shot(id, e)
       rescue SessionManager::DeleteRefused => e
         detail = e.reason == :still_stopping ? "#{e.message}; try again in a moment" : e.message
         refusal_response(409, e.reason.to_s, e, detail: detail, session_id: e.session_id, reason: e.reason.to_s)
@@ -482,7 +482,7 @@ module Samagotchi
 
       # 409 owned_by_tui in the words a refused archive, delete or continue
       # shows (stop, restart, a turn and a command show OwnedByTUI's own).
-      def owned_by_repl(id, error = nil)
+      def owned_by_one_shot(id, error = nil)
         named = SessionManager::OwnedByTUI.new(id)
         error ||= named
         refusal_response(409, "owned_by_tui", error, detail: named.message, session_id: error.session_id)

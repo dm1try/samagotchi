@@ -352,9 +352,7 @@ For models on that host, chi uses the chat loop (its own OpenAI chat adapter): i
 takes the OpenAI base (`url:`, else `http://HOST:PORT/v1`) and streams messages plus
 function schemas from `/v1/chat/completions`; the model's reasoning (`reasoning_content`)
 shows as thinking. This works with Splash and with llama.cpp servers that
-expose the OpenAI-compatible chat endpoint. In verbose mode (`-v`), chi prints the loop the
-starting model uses (`[verbose] backend=chat` or `backend=native`); request
-bodies are not logged. Workers, `--non-interactive` one-shots and resumed
+expose the OpenAI-compatible chat endpoint. Workers, `--non-interactive` one-shots and resumed
 sessions all use the loop of the model's host. Hosts without
 a chat `api:` keep using llama.cpp's native `/completion`.
 

@@ -182,8 +182,8 @@ final class ChiRunner {
   /// The live sessions, oldest started first, then up to +recentCount+
   /// stopped ones, newest first. The live order is by creation so ⌘1…⌘9
   /// stay on their sessions as turns update them; a new one comes last.
-  /// A session a chi REPL holds is in neither: it takes no notes or
-  /// messages. A failed second call just leaves "recent" empty. Calls
+  /// A session a one-turn chi --non-interactive run holds is in neither: it
+  /// takes no notes or messages. A failed second call just leaves "recent" empty. Calls
   /// back on +queue+ (a headless seam waits on another one).
   func sessions(recentCount: Int = 3, queue: DispatchQueue = .main,
                 completion: @escaping (Result<[LiveSession], ChiError>) -> Void) {

@@ -339,7 +339,7 @@ module Samagotchi
       rescue SessionManager::ArchiveRefused => e
         [nil, archive_refused(e)]
       rescue SessionManager::OwnedByTUI => e
-        [nil, owned_by_repl(given, e)]
+        [nil, owned_by_one_shot(given, e)]
       rescue ModelProfile::MissingModel => e
         [nil, error_response(400, "invalid_model", e.message)]
       rescue Session::AmbiguousId => e
