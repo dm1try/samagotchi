@@ -11,14 +11,20 @@ module Samagotchi
     # rolled-back one, a prompt stopped before the model) counts nothing, and
     # an opening with no turn id (/continue no's reason) counts as it does on
     # the page. Nothing orders such an opening against an entry, so
-    # an entry says how many it came after (+past_idless+, #idless_after). Pure:
-    # no Engine, no file.
+    # an entry says how many it came after (+past_idless+, #idless_after), and
+    # which one that is when it has an id (+after_opening+, #after_opening).
+    #
+    # The same place as a stamp (#opening_of): the id of the opening the entry
+    # comes after (a prompt's turn_id, a line's opening_id), which the page
+    # finds by its bubble, not by counting. Pure: no Engine, no file.
     class CardPlaces
       # @param turn_log [Array<String>] the turn ids, oldest first
       # @param messages [Array<Hash>] the messages the page draws
       def initialize(turn_log, messages)
         positions = turn_log.each_with_index.to_h
-        @ids = Array(messages).select { |message| Steer.turn_opening?(message) }.map { |message| message[:turn_id] || message["turn_id"] }
+        openings = Array(messages).select { |message| Steer.turn_opening?(message) }
+        @ids = openings.map { |message| message[:turn_id] || message["turn_id"] }
+        @stamps = openings.map { |message| stamp_of(message) }
         @openings = @ids.size
         @opened = @ids.compact.to_set
         @places = @ids.map { |id| positions[id] }
@@ -45,13 +51,44 @@ module Samagotchi
         entry[:base_since].to_i + since
       end
 
+      # The opening +entry+ comes after, as #turns_since counts: its id (a
+      # prompt's turn_id, a line's opening_id), the page's stamp. nil when it
+      # comes before every opening, when that opening has no id (a line an
+      # older chi wrote), or for an entry from an older file (+base_since+):
+      # the page counts those (turns_since).
+      # @param entry [Hash] a store's entry: :turn_id, :past_idless, :after_opening, :base_since
+      # @return [String, nil]
+      def opening_of(entry)
+        return nil if entry[:base_since]
+
+        at_or_before = counted_from(entry[:turn_id])
+        return nil unless at_or_before
+
+        run = at_or_before..(at_or_before + idless_run(at_or_before))
+        # The line it saved it came after, while that line is in the run (as
+        # the count past it, the two save together); else the count's.
+        after = entry[:after_opening] && @stamps.index(entry[:after_opening])
+        @stamps[after && run.cover?(after) ? after : [at_or_before + entry[:past_idless].to_i, run.end].min]
+      end
+
+      # The id of the last opening with no turn id right after the one
+      # +turn_id+ counts from (#idless_after's run), nil when there is none or
+      # it has no id either.
+      # @return [String, nil]
+      def after_opening(turn_id)
+        at_or_before = counted_from(turn_id)
+        return nil unless at_or_before
+
+        run = idless_run(at_or_before)
+        run.positive? ? @stamps[at_or_before + run] : nil
+      end
+
       # The openings with no id right after the one +turn_id+ counts from: what
       # an entry shown now has come after. A rollback can only shorten the run, so
       # a count read back against it never eats a later turn.
       # @return [Integer]
       def idless_after(turn_id)
-        position = @positions.fetch(turn_id, -1)
-        at_or_before = position >= 0 ? @last_at_or_before[position] : nil
+        at_or_before = counted_from(turn_id)
         at_or_before ? idless_run(at_or_before) : 0
       end
 
@@ -69,6 +106,18 @@ module Samagotchi
       end
 
       private
+
+      # The last opening whose turn is at or before +turn_id+'s in the log
+      # (an index into the openings), nil for none.
+      def counted_from(turn_id)
+        position = @positions.fetch(turn_id, -1)
+        position >= 0 ? @last_at_or_before[position] : nil
+      end
+
+      def stamp_of(message)
+        id = message[:turn_id] || message["turn_id"] || message[:opening_id] || message["opening_id"]
+        id.is_a?(String) && !id.empty? ? id : nil
+      end
 
       def idless_run(opening)
         @ids.drop(opening + 1).take_while(&:nil?).size

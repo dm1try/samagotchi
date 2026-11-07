@@ -37,7 +37,20 @@ RSpec.describe "Cards" do
   # A store's events as a real turn sends them: an id at :turn_started, and by
   # a kept turn's end event its opening in the conversation the listing reads.
   def conversation = (@conversation ||= [])
-  def listed(of = store) = of.list(messages: conversation)
+  def listed(of = store) = of.list(messages: conversation).tap { |list| expect_stamps_agree(list) }
+
+  # Every listing's stamp names the opening its count reaches (CardPlaces#opening_of
+  # against #turns_since): a page placing by either puts an entry in one place.
+  def expect_stamps_agree(list)
+    stamps = conversation.select { |m| Samagotchi::Steer.turn_opening?(m) }.map { |m| m[:turn_id] || m[:opening_id] }
+    list.each do |entry|
+      next unless entry[:opening_id]
+
+      expect(stamps.count(entry[:opening_id])).to eq(1)
+      expect(stamps.size - stamps.index(entry[:opening_id]) - 1).to eq(entry[:turns_since]), "stamp vs count: #{entry}"
+    end
+  end
+
   def opened(id) = conversation << { role: "user", content: "p", turn_id: id }
   def rollback = conversation.pop
 
@@ -449,9 +462,10 @@ RSpec.describe "Cards" do
       store.call({ type: :empty_answer_retry, iteration: 1, attempt: 1, of: 1 }) # no turn runs: nothing to place it in
 
       expect(listed(store)).to eq([
-        { type: :empty_answer_retry, attempt: 1, of: 2, in_turn: true, iteration: 1, calls: 0, turns_since: 0, current: false },
+        { type: :empty_answer_retry, attempt: 1, of: 2, in_turn: true, iteration: 1, calls: 0, turns_since: 0, opening_id: "t1",
+          current: false },
         { type: :empty_answer_retry, attempt: 2, of: 2, stopped_by: "loop-guard", in_turn: true, iteration: 1, calls: 1,
-          turns_since: 0, current: false }
+          turns_since: 0, opening_id: "t1", current: false }
       ])
     end
 
@@ -512,9 +526,9 @@ RSpec.describe "Cards" do
 
       expect(listed(store)).to eq([
         { type: :question, pending_question: q1, answer: { selected: ["A"] }, in_turn: true, iteration: 1, calls: 0,
-          turns_since: 0, current: false },
+          turns_since: 0, opening_id: "t1", current: false },
         { type: :question, pending_question: q2, cancelled: true, reason: "turn ended", in_turn: true, iteration: 1, calls: 1,
-          turns_since: 0, current: false }
+          turns_since: 0, opening_id: "t1", current: false }
       ])
     end
 
@@ -684,6 +698,69 @@ RSpec.describe "Cards" do
           turn(:turn_completed, on: counted)
           expect(reads).to be > 1
         end
+      end
+    end
+
+    describe "the stamp (opening_id: the opening an entry comes after, which the page finds by its bubble)" do
+      def reason(id = "o1") = conversation << { role: "user", content: "too slow", **(id ? { opening_id: id } : {}) }
+
+      it "is the turn's id for a card after it, a turn's own row and a card from beside the running turn" do
+        turn(:turn_started, :turn_completed)
+        store.call(card("after"))
+        turn(:turn_started)
+        store.call(card("own", in_turn: true))
+        store.call(card("beside"))
+        turn(:turn_completed)
+        expect(listed.map { |c| [c[:id], c[:opening_id], c[:turns_since]] }).to eq([["after", "t1", 1], ["own", "t2", 0], ["beside", "t2", 0]])
+      end
+
+      it "is /continue no's reason line's opening_id for a card shown after it, kept as after_opening; a card before it keeps the turn's" do
+        turn(:turn_started, :turn_completed)
+        store.call(card("before"))
+        turn(:turn_started, continue: true)
+        turn(:turn_completed, opener: false)
+        reason
+        store.call(card("after"))
+        turn(:turn_started, :turn_completed)
+        expect(listed.map { |c| [c[:id], c[:opening_id]] }).to eq([%w[before t1], %w[after o1]])
+      end
+
+      it "names a Continue's own row by the turn it continued" do
+        turn(:turn_started, :turn_completed)
+        turn(:turn_started, continue: true)
+        store.call(card("own", in_turn: true))
+        turn(:turn_completed, opener: false)
+        expect(listed.first).to include(in_turn: true, opening_id: "t1")
+      end
+
+      it "names the opening before a rolled-back turn for its cards (today's rule: they stay where the count puts them)" do
+        turn(:turn_started, :turn_completed)
+        turn(:turn_started)
+        store.call(card("own", in_turn: true))
+        turn(:turn_canceled)
+        store.call(card("after"))
+        rollback
+        expect(listed.map { |c| [c[:id], c[:opening_id], c[:in_turn]] }).to eq([["own", "t1", false], ["after", "t1", false]])
+      end
+
+      it "goes when the reason it named went (a rollback), back to the turn before" do
+        turn(:turn_started, :turn_completed)
+        reason
+        store.call(card("c"))
+        expect(listed.first[:opening_id]).to eq("o1")
+        rollback
+        expect(listed.first[:opening_id]).to eq("t1")
+      end
+
+      it "is none before any opening, after a line an older chi wrote with no id, or without messages: the page counts" do
+        store.call(card("first"))
+        turn(:turn_started, :turn_completed)
+        expect(listed.first).not_to have_key(:opening_id)
+        reason(nil)
+        store.call(card("after-old-line"))
+        expect(listed.last).to include(turns_since: 0)
+        expect(listed.last).not_to have_key(:opening_id)
+        expect(store.list.map { |c| c.key?(:opening_id) }).to eq([false, false])
       end
     end
 
@@ -859,9 +936,9 @@ RSpec.describe "Cards" do
       later = Samagotchi::Bridge::CardStore.new(path: path)
       expect(listed(later)).to eq([
         { type: :hook_notice, hook: "loop-guard", text: "loop: execute repeated, denied", level: "warn", in_turn: true,
-          iteration: 3, calls: 1, earlier: true, turns_since: 0, current: false },
+          iteration: 3, calls: 1, earlier: true, turns_since: 0, opening_id: "t1", current: false },
         { type: :card, id: "stop", source: "loop-guard", title: "stop", body: "**why**", level: "warn", actions: [],
-          in_turn: true, earlier: true, turns_since: 0, current: false }
+          in_turn: true, earlier: true, turns_since: 0, opening_id: "t1", current: false }
       ])
       turn(:turn_started, :turn_completed, on: later)
       expect(listed(later).map { |entry| entry[:turns_since] }).to eq([1, 1])
@@ -1076,6 +1153,23 @@ RSpec.describe "Cards" do
         expect(listed(worker).first[:turns_since]).to eq(1)
       end
 
+      it "saves an entry's after_opening and lists the same stamp after a restart; main's file (none saved) stamps by its count" do
+        store = worker
+        turn(:turn_started, :turn_completed, on: store)
+        conversation << { role: "user", content: "too slow", opening_id: "o1" }
+        store.call(card("c"))
+        expect(JSON.parse(File.read(path))["entries"].first).to include("past_idless" => 1, "after_opening" => "o1")
+        expect(listed(worker).first).to include(turns_since: 0, opening_id: "o1")
+        expect(saved.first).to include(turns_since: 0, opening_id: "o1")
+        expect(saved.first).not_to have_key(:after_opening)
+
+        # As 0.154.0 wrote it: past_idless alone.
+        File.write(path, JSON.generate({ version: 2, turn_log: ["t1"], entries: [{ type: "card", id: "c", in_turn: false, turn_id: "t1", past_idless: 1 }] }))
+        expect(saved.first).to include(turns_since: 0, opening_id: "o1")
+        File.write(path, JSON.generate({ version: 2, turn_log: ["t1"], entries: [{ type: "card", id: "c", in_turn: false, turn_id: "t1" }] }))
+        expect(saved.first).to include(turns_since: 1, opening_id: "t1")
+      end
+
       it "writes at a turn's end with nothing else: a :during card's flag goes" do
         store = worker
         store.call(card("own").merge(in_turn: false))
@@ -1091,7 +1185,7 @@ RSpec.describe "Cards" do
         File.write(path, JSON.generate({ version: 2, turn_log: [], entries: [
           good, good.merge(id: "list", base_since: [1]), good.merge(id: "negative", base_since: -1),
           good.merge(id: "text", base_since: "1"), good.merge(id: "past", past_idless: [1]), good.merge(id: "backwards", past_idless: -1),
-          good.merge(id: "anchor", turn_id: [1])
+          good.merge(id: "anchor", turn_id: [1]), good.merge(id: "after", after_opening: 1)
         ] }))
         expect(saved.map { |c| [c[:id], c[:turns_since]] }).to eq([["good", 1]])
       end
@@ -1226,6 +1320,8 @@ RSpec.describe "Cards" do
         later.call(card("a").merge(in_turn: false))
         expect(listed(later).map { |c| [c[:id], c[:turns_since]] }).to eq([["a", 1]])
         expect(JSON.parse(File.read(path))["entries"].first).to include("base_since" => 1)
+        # Counted from an older file: no stamp, the page counts.
+        expect(listed(later).first).not_to have_key(:opening_id)
       end
     end
 

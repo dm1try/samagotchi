@@ -16,7 +16,7 @@ rescues its own errors: an observer must never break the running turn.
 | `RingBuffer` | `ring_buffer.rb` | The last `ring_capacity` (256) raw events by `event_seq`, in memory, for a reconnect's replay. The capture observer feeds it. |
 | `TurnAccumulator` | `turn_accumulator.rb` | The turn in progress, folded from events. |
 | `CardStore` | `card_store.rb` | The last cards and notices, saved in `cards.json`, each anchored to its turn. |
-| `CardPlaces` | `card_places.rb` | Pure: where `CardStore`'s entries sit in the messages the page draws (`turns_since`). |
+| `CardPlaces` | `card_places.rb` | Pure: where `CardStore`'s entries sit in the messages the page draws (`turns_since`, and the `opening_id` stamp). |
 | `PendingCard` | `pending_card.rb` | `pending_card.json` `{id:, bundle:}`: the running turn's open card with actions (check-in's Nudge), written and removed with that card, so chi web's hub, which watches files and not workers, can notify. |
 
 Per connection there is an `SSEWriter` (with a `BoundedQueue`); `ClientEvent` and `EventId` are pure helpers. The
@@ -68,7 +68,15 @@ the "asking again" and steer-cut rows, ✂ rows and questions (with how they wer
   anchored to T2, now counts from T1 and reads above the reason and the first card). That rare inversion is accepted. A turn's own rows don't read it: they count such a line, which sits below them. `current` is a card of the running turn. A card that
   comes mid-turn but isn't the turn's (an anytime command's, such as `/btw`) goes after that turn (`during`), and so does a
   between-turns notice. A card with an earlier card's id replaces it in place and keeps its anchor. A `list` with no messages
-  (`?cards=1`'s bodies, `chi bundle try`'s trace) has no `turns_since`.
+  (`?cards=1`'s bodies, `chi bundle try`'s trace) has no `turns_since` and no `opening_id`.
+- **The stamp.** Next to `turns_since`, an entry lists `opening_id` (`CardPlaces#opening_of`): the id of the opening its count
+  reaches, the one it comes after: a prompt's `turn_id` (a wake note's too), or `/continue no`'s reason line's `opening_id`. It is
+  resolved at `list` time from the same anchor (an entry's own turn often has no bubble: a Continue, a failed or rolled-back turn),
+  so the stamp and the count always name one place, and a page can find it by the bubble, not by counting
+  bubbles. An entry shown after reason lines also saves which one it came after (`after_opening`, beside `past_idless`): read
+  first while that line is still in the run, so a later release can drop the count. No stamp (the page counts `turns_since`) for
+  an entry before every opening, after a line an older chi wrote with no id, or from a version 1 file (`base_since`). A rollback
+  keeps today's rule: a rolled-back turn's cards name the opening before it.
 - **A turn that leaves nothing** is read, not told: an in-turn entry not `current` whose turn has no opening in the messages
   (a `!rollback`, a failed turn with nothing kept, a prompt stopped before the model) lists as a between-turns entry at its
   place, a card without its actions and a hook's notice without its step; its other rows, having no step to sit in, aren't
@@ -86,7 +94,9 @@ the "asking again" and steer-cut rows, ✂ rows and questions (with how they wer
   is what chi web reads for a session no worker runs. The file is `{version: 2, turn_log:, entries:}`. The log is pruned at
   a turn's start and end and at an idle show (a running turn's rows reuse the start's, as finding it walks the messages) to start at the opening the earliest anchor counts from (all of it while an entry has none, or for a store with no
   `messages:`), so a restart reads an entry as the live store did; an old card therefore keeps it whole. `seed` drops an entry
-  whose `turn_id`, `base_since` or `past_idless` isn't an id or a non-negative integer. Load warnings
+  whose `turn_id`, `after_opening`, `base_since` or `past_idless` isn't an id or a non-negative integer. A file 0.154.0 wrote
+  (no `after_opening`) lists the same stamps, from its counts; an older chi reading this one keeps `after_opening` (it seeds
+  entries whole) and lists it, unused. Load warnings
   are the worker's own (each start announces them) and an unanswered question waits for no one: neither is saved or seeded. An
   entry from an earlier worker lists with `earlier: true`; one shown during a turn comes back **without its actions** (their
   turn no longer runs), while a between-turns card keeps its buttons.
