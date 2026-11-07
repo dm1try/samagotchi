@@ -204,15 +204,19 @@ end
 # session's own level); a session-starting run's is that session's own
 # (TerminalUI, AttachLauncher), not a process setting.
 cli_overrides["thinking.level"] = options[:thinking] if web && options[:thinking]
+# -v: debug records, in this process and in a worker it spawns (Config.cli_env).
+cli_overrides["log.level"] = "debug" if options[:verbose]
 
 # Apply CLI precedence: CLI > ENV > file. Workers this chi spawns get
 # these through their env (Config.cli_env).
 Samagotchi::Config.reload!(cli_overrides: cli_overrides) unless cli_overrides.empty?
 
 # The debug log (Samagotchi::LogPath, level log.level) for every command.
-# -v (the plain REPL only): debug records, each mirrored to stderr.
+# -v: debug records; a --non-interactive one-shot mirrors each to stderr,
+# the attached TUI shows its session's above the live region (LogTail).
 require "samagotchi/log"
-Samagotchi::Log.configure(level: options[:verbose] ? :debug : nil, mirror: options[:verbose])
+Samagotchi::Log.configure(level: options[:verbose] ? :debug : nil,
+                          mirror: options[:verbose] && options[:non_interactive])
 
 # chi --remote NAME --attach ID (--resume ID, --dir DIR, -p TEXT): the
 # attached TUI on that machine's session. Nothing below runs: it checks
@@ -420,7 +424,7 @@ if launch == :attached
                                                        toolkit_flags: options[:toolkit_flags] || [],
                                                        settings: options[:settings],
                                                        parent_answers: options[:parent_answers],
-                                                       scratch: scratch)
+                                                       scratch: scratch, verbose: options[:verbose])
   rescue Samagotchi::TerminalUI::AttachLauncher::Error, Samagotchi::Toolkit::Refused => e
     warn "Error: #{e.message}"
     exit 1

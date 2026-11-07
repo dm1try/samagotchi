@@ -312,6 +312,41 @@ RSpec.describe Samagotchi::TerminalUI::AttachLauncher, ".run" do
     expect(described_class).to have_received(:close_surface).with(surface)
   end
 
+  describe "-v" do
+    let(:client) { instance_double(Samagotchi::BridgeClient, session_id: "s-verbose") }
+    let(:tail) { instance_double(Samagotchi::TerminalUI::LogTail, stop: nil) }
+
+    before do
+      allow(described_class).to receive_messages(connect: client, open_surface: nil, close_surface: nil)
+      allow(Samagotchi::TerminalUI::AttachedLoop).to receive(:new)
+        .and_return(instance_double(Samagotchi::TerminalUI::AttachedLoop, run: :detached))
+      allow(Samagotchi::Log).to receive(:path).and_return("/tmp/chi.log")
+      allow(Samagotchi::TerminalUI::LogTail).to receive(:new).and_return(tail)
+      allow(tail).to receive(:start).and_return(tail)
+    end
+
+    it "follows the session's records in the debug log while attached, and stops with the loop" do
+      described_class.run(verbose: true)
+
+      expect(Samagotchi::TerminalUI::LogTail).to have_received(:new).with(hash_including(path: "/tmp/chi.log", session_id: "s-verbose"))
+      expect(tail).to have_received(:stop)
+    end
+
+    it "says a worker running before this launch keeps its own level, once, and nothing for a new one" do
+      allow(described_class).to receive(:worker_running?).and_return(true, false)
+
+      expect { described_class.run(attach: "s-verbose", verbose: true) }
+        .to output("#{format(described_class::VERBOSE_RUNNING, "/tmp/chi.log")}\n").to_stderr
+      expect { described_class.run(verbose: true) }.not_to output.to_stderr
+    end
+
+    it "follows nothing without it" do
+      described_class.run
+
+      expect(Samagotchi::TerminalUI::LogTail).not_to have_received(:new)
+    end
+  end
+
   describe "chi scratch" do
     let(:client) { instance_double(Samagotchi::BridgeClient, session_id: "s-scratch") }
     let(:out) { StringIO.new }
@@ -503,7 +538,6 @@ RSpec.describe "bin/chi --attach flags" do
 
   {
     %w[--attach s1 -p hi --non-interactive] => "--attach can't be combined with --non-interactive",
-    %w[--attach s1 -v] => "--attach can't be combined with --verbose",
     %w[--attach s1 --resume s1] => "use either --attach ID or --resume ID"
   }.each do |args, message|
     it "rejects #{args.join(" ")}" do

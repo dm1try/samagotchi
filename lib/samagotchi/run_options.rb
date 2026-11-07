@@ -260,8 +260,9 @@ module Samagotchi
         opts.on("--llm-context-budget TOKENS", "This session's own context budget: tokens (64000, 64k) or off") { |v| (options[:llm_context] ||= {})[:budget_tokens] = v }
         opts.on("--no-interrupt", "Raise the tool call limit to 1000 iterations (useful for long tasks)") { options[:no_interrupt] = true; cli_overrides["no_interrupt"] = true }
         opts.on("--non-interactive", "Run the -p prompt in this process, one turn, and exit (implies --no-interrupt)") { options[:non_interactive] = true }
-        opts.on("-v", "--verbose", "Print raw LLM responses and tool calls/results (runs a plain REPL, not attached)") { options[:verbose] = true }
-        opts.on("--no-default-input", "Skip default REPL input prefill") { options[:no_default_input] = true; cli_overrides["no_default_input"] = true }
+        opts.on("-v", "--verbose", "Show the session's debug records (raw LLM responses, tool calls/results) as they come; " \
+                                 "a worker this chi starts logs at debug (with --non-interactive: on stderr)") { options[:verbose] = true }
+        opts.on("--no-default-input", "Skip the default input typed into a new session's first read (SAMAGOTCHI_DEFAULT_INPUT)") { options[:no_default_input] = true; cli_overrides["no_default_input"] = true }
         opts.on("--port PORT", "Port for `chi web` (default: 4567, env SAMAGOTCHI_WEB_PORT)") { |p| options[:web_port] = p.to_i; cli_overrides["web.port"] = p.to_s }
         opts.on("--open", "Open browser for `chi web`") { options[:web_open] = true }
         opts.on("--new-token", "`chi web`: replace the LAN access token (web.host: lan); links and QR codes made with the old one stop working") { options[:new_token] = true }

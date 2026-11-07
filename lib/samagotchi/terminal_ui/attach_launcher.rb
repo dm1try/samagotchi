@@ -13,6 +13,8 @@ require_relative "../launch_mode"
 require_relative "live_region"
 require_relative "plain_surface"
 require_relative "attached_loop"
+require_relative "log_tail"
+require_relative "formatting"
 
 module Samagotchi
   class TerminalUI
@@ -21,6 +23,9 @@ module Samagotchi
     # (AttachedLoop). It takes no OwnerLock and builds no Engine: the worker
     # owns the session, and any number of UIs can attach to it.
     module AttachLauncher
+      # #paint, for the -v records.
+      extend Formatting
+
       # Why attaching failed, worded for the terminal.
       class Error < StandardError; end
 
@@ -31,6 +36,10 @@ module Samagotchi
       # `chi scratch`'s first line, and its last once the session is gone.
       SCRATCH_BANNER = "Scratch session: nothing is kept, it is deleted when you leave."
       SCRATCH_DELETED = "Scratch session deleted."
+      # chi -v on a worker that was running before this launch (%s: the
+      # debug log): its level is its own.
+      VERBOSE_RUNNING = "(--verbose: this worker was already running and logs at the level it started with; " \
+                        "its records show here only if it writes to %s: one chi web started may log elsewhere)"
 
       module_function
 
@@ -68,6 +77,10 @@ module Samagotchi
       # @param scratch [Boolean] `chi scratch`: a new scratch session (its
       #   worker's Engine saves nothing), stopped and deleted however the
       #   attach ends; its worker deletes it too once no client is left
+      # @param verbose [Boolean] -v: the session's debug records in the
+      #   debug log (Log.path), shown above the live region as they come
+      #   (LogTail); a worker this launch spawns logs at debug (bin/chi's
+      #   log.level override reaches it through Config.cli_env)
       # @param state_dir [String, nil] where the sessions are (the default
       #   state dir by default): the worker's, for the attached loop too
       # @param connector [#connect, nil] finds or starts the session
@@ -81,8 +94,10 @@ module Samagotchi
       #   (AttachedLoop#run)
       def run(attach: nil, resume: nil, prompt: nil, model: nil, no_interrupt: false, default_input: true,
               memories: [], muted_memories: [], llm_context: {}, thinking: nil, appended_prompt_files: [], toolkit: nil,
-              toolkit_flags: [], settings: nil, parent_answers: nil, scratch: false, state_dir: nil, connector: nil)
+              toolkit_flags: [], settings: nil, parent_answers: nil, scratch: false, verbose: false, state_dir: nil,
+              connector: nil)
         state_dir ||= Session.default_state_dir
+        running_before = verbose && !connector && worker_running?(attach || resume, state_dir)
         link = connector && (connector.connect || raise(Error, NOTHING_CONNECTED))
         client = if connector
                    link.client
@@ -101,7 +116,9 @@ module Samagotchi
         commands << LLMContextOverride.command_line(llm_context) if (attach || resume) && !llm_context.empty?
         commands << "#{ThinkingCommand::NAME} #{thinking} --yes" if (attach || resume) && thinking
         first_command = commands.size > 1 ? commands : commands.first
+        $stderr.puts(format(VERBOSE_RUNNING, Log.path)) if running_before
         surface = open_surface
+        tail = (start_log_tail(surface, client.session_id) if verbose && Log.path)
         options = { screen: surface, client_id: client_id(connector), first_prompt: prompt,
                     first_command: first_command, no_interrupt: no_interrupt,
                     default_input: default_input && !prompt && !attach && !resume,
@@ -115,6 +132,7 @@ module Samagotchi
         ended = begin
           attached.run
         ensure
+          tail&.stop
           close_surface(surface)
         end
         if ended == :unanswered && attached.unanswered
@@ -130,6 +148,20 @@ module Samagotchi
         # Every way out (Ctrl-D, /exit, the worker gone, an error, Ctrl-C or
         # a signal): only kill -9 leaves it to its worker (and the sweep).
         end_scratch(client.session_id, state_dir: state_dir, quiet: !$!.nil?) if scratch && client
+      end
+
+      # Whether +session_id+'s worker runs now (nil: a new session).
+      def worker_running?(session_id, state_dir)
+        return false unless session_id && Session.valid_id?(session_id)
+
+        WorkerLink.resolve(Session.session_dir(session_id, state_dir: state_dir), unlink: false).live?
+      end
+
+      # The session's debug records, dim, above the live region.
+      def start_log_tail(surface, session_id)
+        LogTail.new(path: Log.path, session_id: session_id, on_record: lambda { |record|
+          surface.commit(paint(LogLine.format(record).chomp, 2))
+        }).start
       end
 
       # Stop the scratch session's worker and delete the session; its worker

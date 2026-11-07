@@ -6,7 +6,7 @@ module Samagotchi
   # (TerminalUI, the one-shot host).
   module LaunchMode
     # What an attached run can't be combined with.
-    ATTACHED_CONFLICTS = { non_interactive: "--non-interactive", verbose: "--verbose" }.freeze
+    ATTACHED_CONFLICTS = { non_interactive: "--non-interactive" }.freeze
     # A worker spawned or resumed for an attach whose Bridge never came (%s:
     # the session id). A worker whose chi home couldn't load chi logs
     # SessionManager::HOME_BOOT_FAILED and exits: HomeDoctor's boot row says
@@ -21,14 +21,12 @@ module Samagotchi
     module_function
 
     # @param options [Hash] bin/chi's parsed options
-    # @return [Symbol] :attached, :one_shot (--non-interactive: one turn in
-    #   this process), or :repl (--verbose, until it runs attached)
+    # @return [Symbol] :attached, or :one_shot (--non-interactive: one turn
+    #   in this process)
     def resolve(options)
       return :attached if options[:attach]
-      return :one_shot if options[:non_interactive]
-      return :repl if options[:verbose]
 
-      :attached
+      options[:non_interactive] ? :one_shot : :attached
     end
 
     # Why an attached run's flags don't go together, or nil when they do.

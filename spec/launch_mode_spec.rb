@@ -16,6 +16,11 @@ RSpec.describe Samagotchi::LaunchMode do
     expect(resolve(model: "m", no_interrupt: true, memories: ["a"], muted: ["b"])).to eq(:attached)
   end
 
+  it "attaches -v, which shows the session's debug records there" do
+    expect(resolve(verbose: true)).to eq(:attached)
+    expect(resolve(verbose: true, attach: "s1")).to eq(:attached)
+  end
+
   it "runs --non-interactive's one turn in this process, --resume ID too" do
     expect(resolve(prompt: "hi", non_interactive: true)).to eq(:one_shot)
     expect(resolve(prompt: "hi", resume: "s1", non_interactive: true)).to eq(:one_shot)
