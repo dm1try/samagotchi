@@ -505,7 +505,7 @@ Hooks removed: 1\n\z})
       # every shipped bundle but web-search (it needs a SearXNG) is in a profile: the profiles list them
       expect(out.lines.drop(3).map { |l| l.split.first }).to eq(%w[core dev web-search])
       expect(out).to match(/^  core +v\S+  .*\(loop-guard, check-in, guardrails, slow-commands, agents-md, cost-cap, work-cap\)$/)
-      expect(out).to match(/^  dev +v\S+  .*\(known-names, mcp, btw, skills, source-links, github-pr, coordinator, claude-peer, codex-peer, ruby, model-notes, decision-card\)$/)
+      expect(out).to match(/^  dev +v\S+  .*\(known-names, mcp, btw, skills, source-links, github-pr, coordinator, claude-peer, codex-peer, ruby, model-notes, decision-card, inline-widgets\)$/)
 
       out, err, code = chi("install", "btw")
       expect([err, code]).to eq(["", 0])

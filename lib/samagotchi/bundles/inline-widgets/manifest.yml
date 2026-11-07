@@ -1,0 +1,12 @@
+---
+name: inline-widgets
+version: 0.1.0
+scope: system
+description: "Teaches the model the chi-ui blocks chi web draws: picks (rows of options that fill your reply) and walk (a scenario stepped through)"
+trust_level: reviewed
+plugin:
+  file: plugin.rb
+  sha256: sha256:24ad0c3f0ffb592826b4a7389111d76723e9f28ea4d94ab63abda7986d3311bb
+# chi.prompt_section is 0.132.0's; the web draws chi-ui blocks only from the next release
+requires_chi: ">= 0.132.0"
+requires_chi_next: true
