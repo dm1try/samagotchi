@@ -424,22 +424,30 @@ A denied call gets denial text in place of its output; the rest of the batch sti
 
 **ToolSurface** (`lib/samagotchi/tools/tool_surface.rb`, `Tools::ToolSurface`): the turn's tools as one frozen
 value, built once in `Engine#generate` (`ToolSurface.for(registry, layers:, loads_tools:)`, the settings' LLM context
-layers and the host's `loads_tools` known there) into `TurnContext#surface`. The Registry is its only input. It
-holds `declared` (the entries the request declares, in prompt order), `index_only` (left out, reached by
-`call_tool`), `left_out` (`{name => :indexed | :user_only}`), `registered`, `toolkit`, `reaching_kit`, `index`,
-`layers` and `loads_tools`, and answers `entry_for(call)` (a `via:` call only from `index_only`; a direct one from
+layers and the host's `loads_tools` known there) into `TurnContext#surface`. The Registry is its only input (its
+lists `entries`, `reachable_names`, `left_out_names`, `removed_names`, `stranded_names`, read under the Registry's
+toolkit or a `toolkit:` given). It holds `declared` (the entries the request declares, in prompt order), `index_only`
+(left out, reached by `call_tool`), `left_out` (`{name => :indexed | :user_only}`), `removed`, `stranded`,
+`registered`, `toolkit`, `reaching_kit`, `index`, `layers` and `loads_tools`, and answers `entry_for(call)` (a `via:` call only from `index_only`; a direct one from
 `declared`, or `index_only` under `loads_tools`), `unknown_tool_error(name, via:)`, `schemas` and
 `deferred_for(conversation)` (`Tools::DeferredTools.list` over the surface; the index's source tools are asked per
 request, so a late MCP server joins mid-turn as before). Its readers: `KernelLoop#dispatch`,
 `ChatLoop#tool_definitions` / `#deferred_tools` (whether to append the deferred ones is still the adapter's
-`#loads_tools?`, asked per request: a refusal turns it off mid-turn) and `ToolRunner`'s unwrap, wrap, left-out and
-group-refusal checks. A change while the turn runs (`/toolkit`, a staged `chi.replace_tools`, a direct
-`Registry#register`) shapes the next turn's declared and dispatched tools only; the ToolIndex's handlers (`call_tool`,
-`find_tools`) still read the live Registry (`ToolIndex#deferred_name`'s `Registry#indexed`, `#registry_groups`'
-`Registry#reachable_names`) until they read the surface too (arch P3.4b). A context without one (a bare kernel or loop, a spec)
-computes one on read (`ToolSurface.of(context, registry)`); nothing caches or invalidates it. The system prompt still
-reads the Registry under the same layers in `turn_messages` (spec/engine_tool_surface_spec.rb checks it declares
-generate's surface).
+`#loads_tools?`, asked per request: a refusal turns it off mid-turn), `ToolRunner`'s unwrap, wrap, left-out and
+group-refusal checks, and the tool index: `find_tools`' and `call_tool`'s handlers take the surface from their
+`KernelLoop::ToolContext#surface`, and the call tool's unwrap and the index's `deferrable` / `wrap` / `unreached`
+are given the runner's or the deferred list's (its `chi` group is the surface's `index_only`). A change while the turn
+runs (`/toolkit`, a staged `chi.replace_tools`, a direct `Registry#register`) shapes the next turn's declared,
+searched and dispatched tools only. A context without one (a bare kernel or loop, a spec) computes one on read
+(`ToolSurface.of(context, registry)`); nothing caches or invalidates it.
+
+Readers outside a turn compute one on read from the Registry (`ToolSurface.for`): the system prompt, one per build
+under the build's layers in `turn_messages`, before `generate` knows `loads_tools` (`SystemPrompt::Built#surface`;
+spec/engine_tool_surface_spec.rb checks it equals generate's but for `loads_tools`); `ToolkitBinding#explained`
+(`/toolkit`, the snapshot, the plugin host's `declared_tools`), under the toolkit it explains; `#warn_stranded`;
+the toolkit suggestion's logged tool lists (what `chi toolkit report` grades), under full; and the tool index's
+callers without a turn (`#declare`, `#refresh!`, a rule's `call_targets`, the row's `call_preview`,
+`ctx.load_tools`' `#deferred_name`).
 
 ## State management
 
@@ -761,7 +769,7 @@ Engine initialization (in this order, among other things):
     declared per toolkit by Registry#declared? (a source registered at load, or a tool registered then that
     the toolkit leaves reachable: Registry::Index#loaded; Toolkit::Resolved#declares? treats built-ins and
     plugin tools alike: full declares both, another kit its list and adds) and
-    sets call_tool's unwrap (Tools::ToolIndex: the chi group from Registry#reachable_names, the sources'
+    sets call_tool's unwrap (Tools::ToolIndex: the chi group from ToolSurface#index_only, the sources'
     groups, search, call checks, the unwrap; a source runs the call with its own plugin Context)
   @reminder_store = ReminderStore.new (the kernel gets it), @reminder_queue, @reminders
   wire_kernel: one KernelLoop::Services (Engine-lifetime, never per turn: hooks, tools, reminder_store,

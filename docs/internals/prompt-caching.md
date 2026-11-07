@@ -76,7 +76,9 @@ right-hand column happens.
   beside `apply_staged_tools!`, then `reset!`): the chat loop builds `tools:` per request from the turn's
   `Tools::ToolSurface` (built once in `Engine#generate` from the Registry, under the layers the turn's prompt was
   built with), so its requests declare what the turn's prompt does, and a mid-turn change shapes only the next
-  turn's surface. Under `full` nothing is filtered and no line is added: the bytes are what they were before
+  turn's surface. The native declarations, the not-loaded line and the kit prompt come from a surface too: each
+  `SystemPrompt` build reads the Registry once as `ToolSurface.for(registry, layers:)` (its `declared`, `left_out`
+  and `index_only`, its toolkit's prompt), so the three agree and match the turn's (engine.md, "ToolSurface"). Under `full` nothing is filtered and no line is added: the bytes are what they were before
   toolkits.
 - A toolkit suggestion (`toolkit.suggest.mode: on`) is set before `apply_toolkit!` of the turn it was asked on
   (`TurnStages::ToolkitSuggestion#settle` → `ToolkitBinding#suggest`), and no request goes out before that, so on a
