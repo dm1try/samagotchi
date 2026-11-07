@@ -726,7 +726,8 @@ module Samagotchi
       turn.pending_tool_calls = false
       if turn.qwen_partial && turn.qwen_attempts < QWEN_INCOMPLETE_TOOL_CALL_RECOVERY_LIMIT
         turn.qwen_attempts += 1
-        turn.conversation << { role: "user", content: QWEN_INCOMPLETE_TOOL_CALL_RECOVERY_PROMPT, preserve_literals: true }
+        turn.conversation << { role: "user", kind: Steer::RECOVERY_KIND, content: QWEN_INCOMPLETE_TOOL_CALL_RECOVERY_PROMPT,
+                               preserve_literals: true }
         return :next
       end
 

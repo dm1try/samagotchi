@@ -26,7 +26,9 @@ module Samagotchi
     # holds the id of the turn it belongs to or follows (+turn_id+: the running
     # turn's, else the last one's, nil before any) and lists with +turns_since+,
     # the turns drawn after it, counted from the messages the page draws
-    # (CardPlaces, with the turn log the store keeps), and +current+ for a card
+    # (CardPlaces, with the turn log the store keeps), +opening_id+, the same
+    # place as a stamp (the id of the opening it comes after, which the page
+    # finds by its bubble; none where only the count can say), and +current+ for a card
     # of the turn running now. A card that isn't the turn's but comes while one
     # runs (an anytime command's, such as /btw) goes after that turn: its prompt
     # is already in the history. Listed against messages, an in-turn entry of a
@@ -70,7 +72,7 @@ module Samagotchi
       SAVED_ON = (%i[turn_started card hook_notice empty_answer_retry steer_cut llm_context_edited question_requested question_answered
                      question_cancelled question_relay] + Events::TURN_END).freeze
       # What only the store reads: never listed.
-      INTERNAL_FIELDS = %i[turn_id continued base_since past_idless during after_failed command].freeze
+      INTERNAL_FIELDS = %i[turn_id continued base_since past_idless after_opening during after_failed command].freeze
 
       # What a session's saved file lists, as a store started from it lists
       # (no turn running): the web's cards for a session no worker runs.
@@ -118,7 +120,8 @@ module Samagotchi
       #   them (a body re-read, a trace): no turns_since:, nothing to tell a turn
       #   that left nothing by.
       # @return [Array<Hash>] oldest first: the card's (or notice's) fields
-      #   plus current:, turns_since: with +messages+, earlier: true for one an
+      #   plus current:, turns_since: and opening_id: (CardPlaces#opening_of,
+      #   when it has one) with +messages+, earlier: true for one an
       #   earlier worker saved, during: true for a card that came while the
       #   running turn runs but isn't that turn's (it goes after the running
       #   turn's prompt), and after_failed: true for one shown after the last
@@ -141,6 +144,8 @@ module Samagotchi
 
         out = shown.except(*INTERNAL_FIELDS)
         out[:turns_since] = places.turns_since(entry) if places
+        stamp = places&.opening_of(entry)
+        out[:opening_id] = stamp if stamp
         out[:current] = current
         out[:during] = true if entry[:during]
         out[:after_failed] = true if entry[:after_failed] && entry[:turn_id] == @failed_turn
@@ -255,7 +260,7 @@ module Samagotchi
       # A hand-edited or foreign file's entry goes, rather than break every later
       # listing of the session.
       def sound_place?(entry)
-        return false unless entry[:turn_id].nil? || entry[:turn_id].is_a?(String)
+        return false unless [entry[:turn_id], entry[:after_opening]].all? { |id| id.nil? || id.is_a?(String) }
 
         entry.values_at(:base_since, :past_idless).compact.all? { |count| count.is_a?(Integer) && !count.negative? }
       end
@@ -315,8 +320,8 @@ module Samagotchi
         shown = @entries.select { |entry| entry[:turn_id] == @running_turn && !entry[:in_turn] }
         return if shown.empty? || !@messages
 
-        run = CardPlaces.new(@turn_log, @messages.call).idless_after(@running_turn)
-        shown.each { |entry| entry[:past_idless] = run if run.positive? }
+        places = CardPlaces.new(@turn_log, @messages.call)
+        shown.each { |entry| note_idless(entry, places) }
       end
 
       # The entry's anchor: the running turn, else the last one.
@@ -331,7 +336,7 @@ module Samagotchi
           # button's command replaced, which nobody typed).
           old = @entries[index]
           @entries[index] = card.except(:command).merge(updated: true, **old.slice(:in_turn, :turn_id, :during, :continued, :base_since,
-                                                                                   :past_idless, :after_failed, :command))
+                                                                                   :past_idless, :after_opening, :after_failed, :command))
         else
           entry = card.merge(in_turn: event[:in_turn] ? true : false, turn_id: anchor)
           entry[:during] = true if @running_turn && !event[:in_turn]
@@ -393,8 +398,18 @@ module Samagotchi
       def note_past_idless(entry)
         return unless @messages
 
-        run = CardPlaces.new(@turn_log, @messages.call).idless_after(entry[:turn_id])
-        entry[:past_idless] = run if run.positive?
+        note_idless(entry, CardPlaces.new(@turn_log, @messages.call))
+      end
+
+      # How many openings with no turn id +entry+ came after, and the last
+      # one's own id when it has one (+after_opening+: its stamp, #list).
+      def note_idless(entry, places)
+        run = places.idless_after(entry[:turn_id])
+        return unless run.positive?
+
+        entry[:past_idless] = run
+        after = places.after_opening(entry[:turn_id])
+        entry[:after_opening] = after if after
       end
 
       # Which cap +entry+ counts against: :notice, :llm_context or :card.

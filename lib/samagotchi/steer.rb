@@ -28,6 +28,12 @@ module Samagotchi
   module Steer
     KIND = "steer"
     INPUT_KIND = "input"
+    # KernelLoop's line asking a Qwen model to finish the tool call it left
+    # open: a user line inside the running turn, the model's alone. No turn
+    # opens with it (#turn_prompt?), and the page draws nothing for it, as it
+    # showed nothing live. Its kind adds no header (#header): its bytes go
+    # out as before it had one.
+    RECOVERY_KIND = "recovery"
 
     # A drain item for an input line with its sender (source nil = the user).
     # A plain String is still a valid item: the user's line. +mark+: fields
@@ -317,6 +323,11 @@ module Samagotchi
       message.is_a?(Hash) && (message[:role] || message["role"]).to_s == "user" && !steer?(message)
     end
 
+    # KernelLoop's recovery line (RECOVERY_KIND).
+    def recovery?(message)
+      message.is_a?(Hash) && (message[:kind] || message["kind"]).to_s == RECOVERY_KIND
+    end
+
     # The user's lines merged into a running turn (Merge#messages).
     def input?(message)
       message.is_a?(Hash) && (message[:kind] || message["kind"]).to_s == INPUT_KIND
@@ -333,7 +344,7 @@ module Samagotchi
       start = (message[:turn_start] || message["turn_start"]) == true
       return start if (message[:role] || message["role"]).to_s == "system"
 
-      prompt?(message) && (!input?(message) || start)
+      prompt?(message) && !recovery?(message) && (!input?(message) || start)
     end
 
     # A stored `!shell` line: "!(cmd)\n<output>", no turn id. A user message,

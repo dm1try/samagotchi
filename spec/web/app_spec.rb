@@ -1305,6 +1305,20 @@ RSpec.describe Samagotchi::Web::App do
         .to eq([{ role: "note", content: "Updated: pr-1.", label: "context pr-1", at: message_at, turn_start: true, turn_id: "T2" }])
     end
 
+    it "leaves out KernelLoop's recovery line (a row of its turn, shown live as nothing) and passes an id-less opening's opening_id" do
+      messages = [{ role: "user", content: "run", turn_id: "T1" },
+                  { role: "assistant", content: "<tool_call>" },
+                  { role: "user", kind: Samagotchi::Steer::RECOVERY_KIND, content: "Continue the previous assistant message" },
+                  { role: "assistant", content: "done" },
+                  { "role" => "user", "content" => "I chose not to continue", "opening_id" => "o-1" },
+                  { role: "user", content: "a merged line", kind: "input", opening_id: "o-2" }]
+
+      shown = build_app(state_dir: Dir.mktmpdir).send(:messages_for_display, messages)
+      expect(shown.map { |m| m[:content] }).to eq(["run", "done", "I chose not to continue", "a merged line"])
+      expect(shown[2]).to include(role: "user", opening_id: "o-1")
+      expect(shown[3]).not_to have_key(:opening_id)
+    end
+
     it "passes a turn opening's Revise stamp (prompt or wake note), string-keyed too; never a malformed one or a merged line's" do
       v1 = "123e4567-e89b-12d3-a456-426614174000"
       note = Samagotchi::ContextNote.message(note_id: "ctx-pr-1-2-ab", text: "Updated: pr-1.", source: "context pr-1",

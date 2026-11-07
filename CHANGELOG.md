@@ -11,6 +11,8 @@ and commands may change between minor versions. How releases are made:
 ### Fixed
 
 - chi web refuses a scratch session's page and stream (409 `scratch`, in the words every other client gets) when a tab is opened at its id by hand, and a scratch worker counts only its terminal's stream: such a tab no longer keeps the worker up after its terminal is killed.
+- A card in chi web comes back where it was after a reload: the page finds the turn it came after (or `/continue no`'s reason line) by its id instead of counting the turns drawn after it, so the page and the worker can no longer disagree on the count.
+- A Qwen model's turn that was asked to finish an open tool call no longer splits in two after a reload of chi web: the request to finish it is part of the turn, drawn as nothing, as it was live.
 
 ## [0.154.0] - 2026-11-07
 

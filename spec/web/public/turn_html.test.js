@@ -18,6 +18,16 @@ const userBodyHtml = (c) => markupOf(userBodyTemplate(c));
 const steerRowHtml = (s, o) => markupOf(steerRowTemplate(s, o));
 const answerBubbleHtml = (m, opts) => markupOf(answerBubbleTemplate(m, opts));
 
+test("a card's stamp on the bubbles: a reason line's data-opening-id, a wake note's turn id; a prompt keeps data-turn-id", () => {
+  assert.match(userBubbleHtml({ content: "too slow", opening_id: "o1" }), /data-opening-id="o1"/);
+  const prompt = userBubbleHtml({ content: "hi", turn_id: "t1", opening_id: "o1" });
+  assert.match(prompt, /data-turn-id="t1"/);
+  assert.doesNotMatch(prompt, /data-opening-id/);
+  assert.match(noteHtml({ content: "woke", turn_start: true, turn_id: "t2" }), /data-opening-id="t2"/);
+  assert.doesNotMatch(noteHtml({ content: "woke", turn_start: true, turn_id: "t2" }), /data-turn-id/);
+  assert.doesNotMatch(noteHtml({ content: "note", turn_id: "t2" }), /data-opening-id/);
+});
+
 test("userBubbleTemplate: a plain prompt keeps its text as the copy source, its `>` lines as quotes", () => {
   assert.equal(userBubbleHtml({ content: "> quoted\nask" }),
     canon('<div class="bubble user" data-copy-source="&gt; quoted\nask"><div class="user-message"><blockquote>quoted</blockquote>ask</div></div>'));

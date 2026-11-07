@@ -410,6 +410,11 @@ RSpec.describe Samagotchi::TurnFlow do
       expect(note[:role]).to eq("user")
       expect(note[:content]).to start_with("I chose not to continue the turn that ran out of steps because: too slow")
       expect(note[:content]).to include("- original_prompt: the task", "- interrupted_tools: (none)", "- last_model_intent: working")
+      # It opens a turn on the page (Steer.turn_opening?) with an id of its own, which no turn has
+      # (a card placed after it finds it by that; claim links and folds read turn_id only).
+      expect(Samagotchi::Steer.turn_opening?(note)).to be(true)
+      expect(note[:opening_id]).to match(/\A\h{8}-\h{4}-\h{4}-\h{4}-\h{12}\z/)
+      expect(note).not_to have_key(:turn_id)
       expect(flow.awaiting_continue?).to be(false)
     end
   end

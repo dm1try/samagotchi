@@ -134,6 +134,9 @@ module Samagotchi
           end
           next if role == "system"
           next if role == "tool_response"
+          # KernelLoop's recovery line: a row of its turn the page showed as
+          # nothing live (no turn opens with it, Steer.recovery?).
+          next if Samagotchi::Steer.recovery?(m)
 
           stripped = Samagotchi::OutputFormatter.strip_markup(content)
           did = parts && %w[model assistant].include?(role) ? message_parts(list, index, cwd, marks) : nil
@@ -165,6 +168,10 @@ module Samagotchi
           # record by this, not by its place.
           turn_id = m[:turn_id] || m["turn_id"]
           message[:turn_id] = turn_id.to_s if norm_role == "user" && turn_id
+          # An opening no turn ran (TurnFlow#abort_continue!'s reason): its own
+          # id, which a card's stamp names (Bridge::CardPlaces#opening_of).
+          opening_id = m[:opening_id] || m["opening_id"]
+          message[:opening_id] = opening_id.to_s if norm_role == "user" && opening_id && !turn_id && !message[:merged]
           # The turn it revised (a Revise stack, Engine#stamp_opening), and
           # whether it was a Verify turn (the page offers no Revise on its
           # answer).

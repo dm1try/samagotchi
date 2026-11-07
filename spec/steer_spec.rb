@@ -266,6 +266,17 @@ RSpec.describe Samagotchi::Steer do
     expect(described_class.turn_opening?(described_class.message(text: "x", source: "s"))).to be(false)
   end
 
+  it ".recovery? is KernelLoop's mid-turn line: a user line that opens no turn" do
+    line = { role: "user", kind: Samagotchi::Steer::RECOVERY_KIND, content: "Continue the previous assistant message" }
+    expect(described_class.recovery?(line)).to be(true)
+    expect(described_class.recovery?(line.transform_keys(&:to_s))).to be(true)
+    expect(described_class.recovery?({ role: "user", content: "hi" })).to be(false)
+    expect(described_class.turn_prompt?(line)).to be(false)
+    expect(described_class.turn_opening?(line)).to be(false)
+    expect(described_class.prompt?(line)).to be(true)
+    expect(described_class.header(line)).to be_nil
+  end
+
   it ".prompt? is a user message that is not a steer, with either key kind" do
     expect(described_class.prompt?({ role: "user", content: "x" })).to be(true)
     expect(described_class.prompt?({ "role" => "user", "content" => "x" })).to be(true)
