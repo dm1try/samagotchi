@@ -3,7 +3,7 @@
 A model can write a ```` ```chi-ui ```` fence in an answer: YAML, `type:` first, a **picks** (rows of options to choose
 from, which fill the reply) or a **walk** (a scenario stepped through). Core draws it, not a bundle: the server parses
 the YAML once and the page draws from the parsed data. Where it doesn't draw (the terminal, `web.markdown` off, a
-refused block) the YAML reads as text. This page is the server half; the page half comes with the drawers.
+refused block) the YAML reads as text. The server half (the parse) and the page half (the drawers) are below.
 
 ## The path
 
@@ -65,6 +65,47 @@ Eval round 1's `branches:` (the same shape as `cases:`) is read as `cases`.
 The source is at most 16 KB, checked before the parse. After it: a picks has at most 12 rows, a walk at most 30 steps
 and 2-5 unique actors, and every string is at most 300 characters. An error repeats at most 40 characters of a bad
 `type`, and never a tag.
+
+## The page (`inline_widgets.js`)
+
+`createWidgetDrawer` is a core drawer of `block_watch.js` (its header has the contract), wired in `app.js` ahead of the
+bundles' frame drawer through `createBlockHost`'s `drawers`. So a `chi-ui` block gets the watcher's paths: a reload, a
+session switch, a turn's end, Revise's clones, the stage's hand-off to `#history`.
+
+- **What it draws.** A `<pre>` with `data-widget` gets a light-DOM `<figure class="block-drawn widget">` right before it,
+  holding a `.widget-host` and the shared `.block-toggle` (block_source.js `setSourceShown`, the same icon and
+  `aria-label` as a renderer's). The `<pre>` stays, hidden: the DOM is the state, copy.js gives it its `.code-wrap`
+  copy button (it copies the YAML, which is the answer's text), and the toggle shows it. The toggle is in the light DOM
+  because a click in a shadow root reaches the page's delegated listeners retargeted at the host.
+- **Shadow DOM.** The host has an open shadow root holding `<link rel="stylesheet" href="/assets/widgets.css">` and the
+  widget. Its words are then out of the bubble's `textContent`, which the shown-texts dedupe (`seedSeenFromDom`), copy's
+  fallback and an annotation's quote read, as with a renderer's `<img>`-only figure. chi's `:root` tokens reach it as
+  inherited custom properties, so light and dark follow the page. Playwright's locators pierce an open shadow root;
+  `page.evaluate`'s DOM calls don't.
+- **A clone redraws.** `cloneNode` doesn't copy a shadow root: a Revise clone (`revise_switch.js viewOf`) arrives with
+  the figure and an empty host, which `needsDraw` sees, and `draw` fills it again with a fresh widget and its own
+  listeners. A widget's position and picks live in the widget, so a clone or a rewrite starts over (accepted for v1).
+- **A refused block** (`data-widget-error`) stays source under `failBlock`'s muted `.block-note` ("Couldn't draw this
+  chi-ui block: …", an attribute CSS shows, a click copies it). Bad JSON or an unknown `type` fails the same way, from
+  the watcher. A `chi-ui` `<pre>` with neither attribute (an older server) is left alone.
+- **walk** (`widget_walk.js`): the swimlane (one column per actor, one row per step; the current, seen and a hovered
+  case's target marked; a click jumps), the step card (actor, `does`, "You see", the dashed "Behind it"), a fork's
+  "Which case?" buttons, Back / Next / Start over, the path taken, and ← → while the widget has the focus. `walkRoutes`
+  resolves where a step goes: its `next`, else the step below; a fork's `cases` as written, a case whose `when` is no
+  condition (round 1's `always`) reading as the usual path, alone it is the step's next. At a phone's width the
+  swimlane scrolls sideways inside the widget; the page doesn't.
+- **picks** (`widget_picks.js`): one row per item, its options as chips (`aria-pressed`), the recommended one marked
+  and picked to start with, a "+ note" per row, and "Fill reply".
+
+**The only way out is composer text.** Fill reply builds `id: option (note) · …` from the picked rows (a row with no
+pick is left out) and hands it to app.js's `fillComposer`, after a typed draft on a new line (`withDraft`; the draft
+is kept). It never sends: the owner reads the text and sends it or not. A walk has no way out at all. The model's
+strings reach the page through `textContent` and attributes only, never `innerHTML`, so a step reading
+`<img src=x onerror=…>` shows as those characters.
+
+**What doesn't draw.** The participant page (`participant.js` wires no block host), `web.markdown` off (no
+`data-lang`), a live answer while it streams (its YAML shows until the turn's end re-renders it as markdown), and
+anything outside `TEXTS`: cards, question replies, the asking slot, delegate reports. The terminal shows the YAML.
 
 ## The fixtures
 

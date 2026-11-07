@@ -18,7 +18,7 @@ model. The TUI is untouched: it shows a fence as source.
    made), then `Provenance.sha_matches?`; a changed file is 409 `renderer_changed`. ETag + `no-cache`, as static files.
 3. `block_watch.js` (`createBlockWatch`, made by `block_host.js`'s `createBlockHost`, wired in `app.js`; `participant.js`
    isn't) finds and watches the blocks; `block_host.js` is its frame drawer (`createFrameDrawer`). The watcher asks an
-   ordered list of drawers, core ones first (none yet), then the frame drawer, which waits for `/api/block_renderers`;
+   ordered list of drawers, core ones first (`inline_widgets.js` for `chi-ui`: [inline-widgets.md](inline-widgets.md)), then the frame drawer, which waits for `/api/block_renderers`;
    the first that `claims` the block's language draws it, and a language none claims is left alone. The contract
    (`claims`, `needsDraw`, `draw`, its `reconsider`, `sessionChanged`) is in the module's header. The shared DOM
    helpers live there too: `failBlock` and its `.block-note` (a click copies it), `holdingView`, `rejoin`, the
