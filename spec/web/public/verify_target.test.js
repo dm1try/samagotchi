@@ -1,5 +1,5 @@
 // Where Verify is offered (verify_target.js): only in an ended turn's final
-// answer, Engine#verified_anchor's rule, over the owner's real history
+// answer, TurnStages::VerifyAnchors#verified's rule, over the owner's real history
 // markup (turnHistoryNodes) and the participant page's thread shape.
 import "./dom_shim.js";
 import test from "node:test";

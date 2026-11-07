@@ -56,7 +56,10 @@ require_relative "owner_prompt"
 require_relative "side_judgments"
 require_relative "toolkit_suggest"
 require_relative "turn_stages/context_judge"
+require_relative "turn_stages/objectives"
 require_relative "turn_stages/toolkit_suggestion"
+require_relative "turn_stages/verify_anchors"
+require_relative "turn_stages/warmup"
 require_relative "tool_loads"
 require_relative "answer_tail"
 require_relative "archive_store"
@@ -209,8 +212,6 @@ module Samagotchi
       # steers) and the idle layer's activity clock. Built first: a plugin
       # may steer or ask whether a turn runs while it loads.
       @turn_state = TurnState.new(clock: -> { monotonic_now })
-      @objective_proposals = []
-      @objective_proposals_mutex = Mutex.new
       # A message for the running turn cutting its generation.
       @steer_cut = SteerCut.new(clock: -> { monotonic_now }, controller: -> { active_cancel_controller },
                                 cut_after: -> { steer_cut_after })
@@ -227,6 +228,10 @@ module Samagotchi
       @side_judgments = SideJudgments.new
       @judgments = build_judgments
       @host_registry = host_registry || HostRegistry.new
+      # The turn stages over the objectives (its audit, view and proposals)
+      # and the Verify/Revise anchors (TurnStages).
+      @objectives_stage = build_objectives_stage
+      @verify_anchors = build_verify_anchors
       # A model given here (a worker's session model) is the one it runs,
       # so its host is checked; the config default is only checked once it
       # is used (the one-shot checks the model it starts on, #switch_model!).
@@ -300,6 +305,8 @@ module Samagotchi
       # The kernel (built here, or a spec's) and what it reads of the Engine;
       # then the native backend over it.
       wire_kernel(kernel, muted_memories)
+      # The turn-end warm-up's stage, over that kernel.
+      @turn_warmup = build_turn_warmup
       Log.debug(:model, "backend", provider: backend.provider) if Log.level?(:debug)
       @resume_session = session_id ? Session.load(session_id) : nil
       @prompt_builder = build_system_prompt(memories, appended_prompt_files)
@@ -711,13 +718,13 @@ module Samagotchi
         kept, event = yield(seconds)
         event[:turn_id] = turn.id
         event[:verify] = true if turn.verify
-        revises = stamp_opening(kept, turn, outcome)
+        revises = @verify_anchors.stamp_opening(kept, turn, outcome)
         replace_session_messages(turn.session, kept) if kept
-        verdict = record_verdict(turn, outcome)
+        verdict = @verify_anchors.record_verdict(turn, outcome)
         event[:verdict] = verdict if verdict
         event[:revises] = revises.to_h if revises
         emit_working_set(turn.on_event, turn.session, turn.session.messages)
-        announce_objectives(turn.session)
+        @objectives_stage.announce(turn.session)
         turn.session.status = Session::STATUS_IDLE
         record_last_turn(turn.session, outcome, seconds, turn.origin, event, limit: exhausted ? turn.limit : nil)
         emit_event(turn.on_event, turn.tag(event))
@@ -870,7 +877,7 @@ module Samagotchi
     #   wake's note) names it with this id
     # @param verify [VerifyAnchor, nil] a Verify turn's claim (its verdict)
     # @param revises [ReviseAnchor, nil] a Revise turn's draft: stamped on
-    #   the prompt at the turn's end, metadata only (#stamp_opening)
+    #   the prompt at the turn's end, metadata only (TurnStages::VerifyAnchors#stamp_opening)
     #
     # An Interrupt (SIGINT) cancels the turn: what it got to is kept in the
     # session as after a Stop (the prompt, the loop's finished tool
@@ -901,7 +908,7 @@ module Samagotchi
                                 pending_input: pending_input)
         publish_used_memories(session, on_event)
         complete_turn(turn, result)
-        warm_up_next_turn(turn, result)
+        @turn_warmup.after(turn, result)
         result
       rescue Interrupt => e
         # After the end event (in the after_turn/session_end hooks) the
@@ -929,10 +936,9 @@ module Samagotchi
       ensure
         release_turn(probe_cancel_before)
         @context_judge.show_cards_after_turn
-        # Only a completed turn shows its proposal cards: a canceled, failed
-        # or rolled-back turn keeps none, and its proposals are dropped here
-        # so the next turn does not show them either.
-        turn.completed? ? show_objective_proposals : discard_objective_proposals(turn)
+        # Only a completed turn shows its proposal cards; any other's are
+        # dropped, so the next turn does not show them either.
+        @objectives_stage.finally(turn)
       end
     end
 
@@ -945,7 +951,7 @@ module Samagotchi
       # A participant's Verify fresh child: every turn is theirs (their
       # author, boundary and cap), whoever started it.
       origin = session.verify_fresh.origin_for(origin) if session.respond_to?(:verify_fresh) && session.verify_fresh
-      verify = verified_anchor(session, VerifyAnchor.from(verify))
+      verify = @verify_anchors.verified(session, VerifyAnchor.from(verify))
       # Track the active session for recap and status snapshot.
       @session = session
       # status is turn state: running now, idle again before the turn's end
@@ -1073,7 +1079,7 @@ module Samagotchi
       # The candidate judge: its asks run beside the turn; on mode's
       # attaches reach the model at the next between-turn delivery.
       @context_judge.start(turn)
-      audit_objectives_incoming(turn)
+      @objectives_stage.incoming(turn)
       apply_toolkit!(session, turn.on_event)
       refresh_participants!(session)
       # A Stop during the waits above: the turn ends here,

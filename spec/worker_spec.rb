@@ -2366,7 +2366,7 @@ RSpec.describe Samagotchi::Worker do
         expect(seen.find { |e| e[:type] == :command_queued && e[:line] == "!rollback" }).not_to have_key(:waits)
       end
 
-      # The turn-end warm-up (Engine#warm_up_next_turn) would prefill a
+      # The turn-end warm-up (TurnStages::Warmup#after) would prefill a
       # prompt the queued change throws away (all of it on Gemma).
       it "counts a command queued mid-turn (/thinking low) as a next turn waiting: no warm-up then" do
         start_worker(poll_interval: 5)

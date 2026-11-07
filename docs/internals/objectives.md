@@ -116,9 +116,9 @@ Bridge's `TurnAccumulator#current_messages`) leaves tool calls out. A move shows
 
 `action: propose` (`change` add, reword, done or drop; `id`; `text`; `note`, why) checks the change against the list
 (`Objectives::Proposal#refusal`: its line through `Objectives::Edit`, the edit the card's Apply runs, so the tool refuses
-what Apply would) and hands it to `Engine#propose_objective`, which keeps it until the turn is over,
-as `TurnStages::ContextJudge`'s cards are kept. `run_turn`'s ensure shows them only for a turn that completed: a canceled or
-failed one drops them (`Engine#discard_objective_proposals`), so its Apply card never outlives a turn whose call a
+what Apply would) and hands it to `Engine#propose_objective` (`TurnStages::Objectives#propose`), which keeps it until the turn is over,
+as `TurnStages::ContextJudge`'s cards are kept. `run_turn`'s ensure (`TurnStages::Objectives#finally`) shows them only for a turn that completed: a canceled or
+failed one drops them, so its Apply card never outlives a turn whose call a
 rollback has taken out of the history, and nothing carries over to the next turn. A card is between turns (no
 `in_turn`), so it writes no `pending_card.json`, the stage doesn't say it waits, and it keeps its buttons over a
 restart (`CardStore` takes them only from a card shown in a turn). The same change twice in a turn is one card. A P3
@@ -139,7 +139,7 @@ any call. An add's text can't split on ` | `. The body names the line, for a ter
 
 `Objectives.view` (`List#to_view`) is what the page draws: the items, each with its last move, and `pending`, whether
 the newest list is a file still waiting. The session read (`objectives`, no key with no list) and the live
-`:objectives_updated` carry it. `Engine#announce_objectives` emits when the view differs from the last: after an edit,
+`:objectives_updated` carry it. `Engine#announce_objectives` (`TurnStages::Objectives#announce`) emits when the view differs from the last: after an edit,
 once a list note is in (`add_context_note`), at a turn's end (its moves) and after a rollback between turns. A session
 with no list emits nothing. Between two tabs that is all it takes. A participant gets neither: the event is in
 `ParticipantView::DROPPED`.
@@ -259,7 +259,9 @@ turn isn't on the page until the turn's end (`announce_objectives`), so its tap 
 
 ## System 1 in audit
 
-`ObjectivesAudit`, off unless `objectives.system_one: audit`. See [system-one.md](../system-one.md#objectives-in-audit).
+`ObjectivesAudit`, off unless `objectives.system_one: audit`. `TurnStages::Objectives` asks it: `incoming` at an owner's
+turn's start (a person's prompt only), `outgoing` after the end event of a completed answer, `note` for a note added
+between turns (docs/internals/engine.md, "Turn stages"). See [system-one.md](../system-one.md#objectives-in-audit).
 
 ## Not in this version
 
@@ -269,4 +271,4 @@ Taking it out: old notes stay readable framed bubbles and keep being sent, and t
 stay as history; with a kit no longer declaring the tool, they are ordinary saved calls. The card's bundle uninstalls. The
 page's pieces are the `objectives_*.js` modules and `objectives.css`, wired in a few lines of `app.js`; without them a list note
 falls back to the default bubble once `noteBubbleTemplate`'s first line goes. Check this is `objectives_check.rb`, its line in the command and
-the `check` key; the audit is `objectives_audit.rb` and three calls in `Engine`. Old `objective_checks.jsonl` files and saved runs are then read by nothing.
+the `check` key; the audit is `objectives_audit.rb` and three calls in `TurnStages::Objectives`. Old `objective_checks.jsonl` files and saved runs are then read by nothing.

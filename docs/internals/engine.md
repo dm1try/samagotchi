@@ -24,6 +24,8 @@ Engine#run_turn(session, prompt, on_event:, max_iterations:, cancel_controller:,
                 pending_input:, continue:, origin:, images:, id:, resumed:, resume_from:, input_waiting:)
   │
   ├── begin_turn(session, prompt, on_event:, cancel_controller:, origin:, continue:, id:, input_waiting:)
+  │     # a Verify turn's claim checked first: @verify_anchors.verified(session, anchor) (nil when its
+  │     #   quote isn't in the source session's answer)
   │     # (then, on a continue, turn.resumed = resumed (a step-limit Continue) and
   │     #  turn.resume_from = resume_from (its run's start; nil: it starts cold))
   │     # @session = session, session.status = RUNNING, used memories absorbed,
@@ -54,7 +56,7 @@ Engine#run_turn(session, prompt, on_event:, max_iterations:, cancel_controller:,
   │     announce_guardrail_failures; start_init_tasks!; await_init_tasks; apply_staged_tools!
   │     @toolkit_suggestion.settle(turn)         # on mode: the turn joins the ask, before anything is declared
   │     @context_judge.start(turn)               # owner turns only; its asks run beside the turn
-  │     audit_objectives_incoming(turn)
+  │     @objectives_stage.incoming(turn)         # System 1's objectives audit, owner and human prompts only
   │     apply_toolkit!(session, on_event)        # Registry#toolkit, ToolIndex#refresh! for find_tools' chi
   │     #   line, a prompt rebuild when it changed; a warn per plugin tool that arrived mid-session with
   │     #   nothing to reach it (Registry#stranded_names)
@@ -90,9 +92,12 @@ Engine#run_turn(session, prompt, on_event:, max_iterations:, cancel_controller:,
   │     #   a continue turn's origin carries its offer turn's, ContinueOffer#run_continue_turn),
   │     #   and :turn_completed {result, turn_summary, display_pending} or :turn_canceled
   │     #   {cancellation_reason, cancelled_by, duration_ms} is emitted; before the replace,
-  │     #   stamp_opening puts a Verify turn's `verify` and a completed Revise turn's `revises`
-  │     #   (re-targeted to its stack's top) on the opening message, metadata never sent, and
-  │     #   every end event carries `turn_id`, :turn_completed `verify` / `verdict` / `revises` when there are
+  │     #   @verify_anchors.stamp_opening puts a Verify turn's `verify` and a completed Revise turn's
+  │     #   `revises` (re-targeted to its stack's top) on the opening message, metadata never sent,
+  │     #   @verify_anchors.record_verdict adds a completed Verify turn's verdict, the working set and
+  │     #   @objectives_stage.announce(session) go out in the same step, and every end event carries
+  │     #   `turn_id`, :turn_completed `verify` / `verdict` / `revises` when there are
+  │     # then @objectives_stage.outgoing(turn, result) (not for a canceled or exhausted turn)
   │     # then the :after_turn hook (status, messages, present: the AnswerDisplay presenter,
   │     #   refs: the AnswerRefs adder)
   │     # store_answer_display (one replace of the answer: `display` and/or `display_refs`;
@@ -100,7 +105,7 @@ Engine#run_turn(session, prompt, on_event:, max_iterations:, cancel_controller:,
   │     #   attached refs, or display: nil when the web was told to wait for it)
   │     # then the :session_end hook
   │
-  ├── warm_up_next_turn(turn, result)
+  ├── @turn_warmup.after(turn, result)
   │     # local llama.cpp on the native loop only: prefills the next turn's prompt while the user
   │     # reads (PromptWarmup; see prompt-caching.md, "The turn-end warm-up"). Never fails the turn.
   │
@@ -111,23 +116,27 @@ Engine#run_turn(session, prompt, on_event:, max_iterations:, cancel_controller:,
         # probe cancel swapped back
         # the context window cache dropped, so the next turn asks the server again
         # steers left logged as dropped, activity recorded, turn-scoped hooks cleared
-        # then @context_judge.show_cards_after_turn (after the flag is released), the objective proposals
+        # then @context_judge.show_cards_after_turn (after the flag is released), then
+        # @objectives_stage.finally(turn): a completed turn's proposals shown, any other's dropped
 ```
 
 ### Turn stages
 
-A step that keeps state across the turn's preparation is a collaborator under `lib/samagotchi/turn_stages/`, built
+A step that keeps state across the turn (its preparation, its end) is a collaborator under `lib/samagotchi/turn_stages/`, built
 in `Engine#initialize` (before the plugins load) from constructor arguments, never reading the Engine's ivars, and
 called by name from the skeleton above, next to the STOP CHECKs. Their input is the `Turn` (and its `TurnContext`);
-their state is their own. The Engine's public methods forward to them (`warm_toolkit_suggestion!`, the private
-`judge_late_candidates`).
+their state is their own. The Engine's public methods forward to them (`warm_toolkit_suggestion!`,
+`announce_objectives`, `propose_objective`, the private `judge_late_candidates`).
 
 | Stage | Built with | Called | State |
 |---|---|---|---|
 | `TurnStages::ToolkitSuggestion` (ToolkitSuggest's ask: audit and on mode, one eligibility, a copied snapshot, SideJudgments' `:toolkit` kind) | `side_judgments`, `host_registry`, `toolkit_binding`, `tools`, `state_dir`, `recording`, `runs` | `start(turn)` before `refresh_profile!`; `settle(turn)` after `apply_staged_tools!` (on mode: waits up to System 1's timeout from its start, or a Stop, which wins over an answer already in and cuts the ask through `Pending#cancel_controller`; a pick ≥ threshold → `ToolkitBinding#suggest`); `abandon(turn, why)` at STOP CHECK A (`:canceled`) and in the ensure (`:failed`), then `finish(turn)` there; `warm!(session)` / `stop_warmup` (Worker start, `shutdown`) | the turn's `ToolkitSuggest::Pending` while it prepares (turn thread only; another turn's is never touched; dropped at `finish`), the warm-up thread |
 | `TurnStages::ContextJudge` (the attached-context candidate judge: [attached-context.md](attached-context.md), [context.md](../context.md) "The judge") | `side_judgments`, `host_registry`, `state_dir`, `recording`, `session`, `messages`, `turn_running`, `show_card` | `start(turn)` after `settle`, before `apply_toolkit!` (owner turns only: `ContextCandidatesLog#look`, then unless `context.candidates.mode` is off the due asks on SideJudgments' `:context` kind); `late_candidates` (a plugin's late proposal); `show_cards_after_turn` from `run_turn`'s ensure, after `release_turn` | the cards an answer brought while a turn ran, under their mutex |
+| `TurnStages::Objectives` (System 1's objectives audit, ObjectivesAudit; the view; the model's proposals: [objectives.md](objectives.md)) | `side_judgments`, `host_registry`, `state_dir`, `recording`, `runs`, `synchronize`, `announce`, `running`, `show_card` | `incoming(turn)` after the judge's `start`; `announce(session)` inside `end_turn`'s event step (and `Engine#announce_objectives` between turns); `outgoing(turn, result)` in `complete_turn`, after the end event and before `:after_turn`; `note(session, note)` (`add_context_note`); `propose(proposal)` (`Engine#propose_objective`); `finally(turn)` in `run_turn`'s ensure, after the judge's cards | the turn's proposals under their mutex (drained at `finally`), the last view announced, the audit |
+| `TurnStages::Warmup` (the turn-end warm-up, PromptWarmup: [prompt-caching.md](prompt-caching.md), "The turn-end warm-up") | `prompt_warmup`, `kernel`, `turn_state`, `model_settings`, `model`, `system_prompt`, `reminders_due`, `next_turn_waiting` | `after(turn, result)` after `complete_turn` (reads `turn.context.settings`) | none (the PromptWarmup keeps its pin and thread) |
+| `TurnStages::VerifyAnchors` (Verify and Revise anchors) | `state_dir` | `verified(session, anchor)` in `begin_turn`; `stamp_opening(messages, turn, outcome)` and `record_verdict(turn, outcome)` inside `end_turn`'s event step | none |
 
-On a shared local System 1 host the judge's asks wait for the turn's end: started before `warm_up_next_turn`, whose
+On a shared local System 1 host the judge's asks wait for the turn's end: started before `TurnStages::Warmup#after`, whose
 warm-up waits for them, or from `run_turn`'s ensure (docs/context.md, The judge). See configuration.md (Toolkits) and
 guardrails.md (System 1) for the suggestion.
 
@@ -457,7 +466,7 @@ Engine ivar. The readers that do: `Engine#turn_author` (`ctx.turn_author`, the h
 `participant:`, `ObjectivesCheck`), `#side_author` (the recap's: the last turn's), `EventFanout#working_set_llm_context`
 (`/working-set`'s list: the running turn's settings, the last turn's until it has its own) and
 `#live_conversation` (nil unless the loop's `LLMContextForget::Turn#turn_id` is the running turn's). The turn's own
-code takes the context as an argument (the tool path, `guard_participant_spend`, `warm_up_next_turn`'s
+code takes the context as an argument (the tool path, `guard_participant_spend`, `TurnStages::Warmup#after`'s
 `turn.context.settings`); cancel stays `TurnState#controller` (a Stop never reads `context.controller` off the
 turn). `spec/turn_context_readers_spec.rb` reads each from a thread the moment a turn is published.
 
@@ -965,19 +974,19 @@ Paths are under `lib/samagotchi/`.
 | `engine/model_settings.rb` | `Engine::ModelSettingsPart`: the session's model settings (SessionModelSettings) and the snapshots (EngineSnapshots), forwarded |
 | `engine/events.rb` | `Engine::EventsPart`: observers, `#announce`, the event lock, held announcements, load events, the emit helpers |
 | `engine/cards.rb` | `Engine::CardsPart`: `#show_card`, anytime commands and their threads |
-| `engine/objectives.rb` | `Engine::ObjectivesPart`: the objectives' view, proposals and audit |
+| `engine/objectives.rb` | `Engine::ObjectivesPart`: the objectives' stage builder, `announce_objectives` and `propose_objective` (forwarded), Check this's side request |
 | `engine/messages.rb` | `Engine::MessagesPart`: the session messages API (out-of-turn edits, checkpoints, the live conversation) |
 | `engine/plugins.rb` | `Engine::PluginsPart`: loading plugins, init tasks and staged tools, `Plugin::Host` |
 | `engine/hooks.rb` | `Engine::HooksPart`: turn-scoped hooks, the hook runtime (HookRoutes, forwarded), reminders |
 | `engine/guardrails.rb` | `Engine::GuardrailsPart`: the guardrails' readers and the first turn's load warnings |
 | `engine/participants.rb` | `Engine::ParticipantsPart`: the turn's author, a pair turn's stop, the participants line |
 | `engine/session.rb` | `Engine::SessionPart`: `#session=`, the state dir, the relay's view, the system prompt and its memory names |
-| `engine/verify.rb` | `Engine::VerifyPart`: Verify and Revise anchors at a turn's end, the verdict |
+| `engine/verify.rb` | `Engine::VerifyPart`: the Verify/Revise anchors' stage builder |
 | `engine/questions.rb` | `Engine::QuestionsPart`: ask-user-question (QuestionDesk, forwarded) |
 | `engine/toolkit.rb` | `Engine::ToolkitPart`: the toolkit, `ctx.load_tools`, System 1's toolkit suggestion (the stage's builder and `warm_toolkit_suggestion!`, forwarded) |
 | `engine/context_judge.rb` | `Engine::ContextJudgePart`: the candidate judge's stage builder and `judge_late_candidates`, forwarded |
-| `turn_stages/toolkit_suggestion.rb`, `turn_stages/context_judge.rb` | `TurnStages::ToolkitSuggestion`, `TurnStages::ContextJudge`: the turn stages ("Turn stages" above) |
-| `engine/turn_helpers.rb` | `Engine::TurnHelpersPart`: a turn's settings, images, model ref, used memories, the turn-end warm-up |
+| `turn_stages/toolkit_suggestion.rb`, `turn_stages/context_judge.rb`, `turn_stages/objectives.rb`, `turn_stages/warmup.rb`, `turn_stages/verify_anchors.rb` | `TurnStages::ToolkitSuggestion`, `TurnStages::ContextJudge`, `TurnStages::Objectives`, `TurnStages::Warmup`, `TurnStages::VerifyAnchors`: the turn stages ("Turn stages" above) |
+| `engine/turn_helpers.rb` | `Engine::TurnHelpersPart`: a turn's settings, images, model ref, used memories, the turn-end warm-up's stage builder |
 | `engine/turn_end.rb` | `Engine::TurnEndPart`: the normal ending and after-turn hooks, release, what an ending keeps, last_turn, the answer's display |
 | `event_fanout.rb` | `EventFanout`: how an event reaches the turn's sink and the observers (`emit_event`), the loops' stream handler, the working set's emit and dedupe; the Engine forwards |
 | `engine_snapshots.rb` | `EngineSnapshots`: the UIs' read model, `session_state_snapshot` (cheap, never raises) and `stats_snapshot` (may probe `/props`); the Engine forwards |

@@ -171,7 +171,7 @@ right-hand column happens.
 The next turn's prompt differs from the turn's last request at its tail: the previous answer's thinking is
 stripped (the models' specs require it). A hybrid model on llama.cpp can only resume from a restore point, so the
 next turn prefills from well before the end, more with every turn. `PromptWarmup` moves that work into the time
-the user reads: after a completed turn, `Engine#warm_up_next_turn` formats the next prompt up to where the new
+the user reads: after a completed turn, `TurnStages::Warmup#after` formats the next prompt up to where the new
 user message starts (`KernelLoop#warmup_prompt`) and sends it in a thread (`Client#warm_up`: native
 `/completion`, `n_predict: 1`, not streamed, no retries, log purpose `warmup`, then a `model warmup` line with
 `cached=`, `prefilled=` and `prefill_ms=`).

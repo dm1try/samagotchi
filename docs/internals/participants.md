@@ -469,7 +469,7 @@ fields: a field added to an event later reaches nobody until it is named there.
   its final assistant reply (`AnswerTail`: the turn's last assistant message with text) contains the quote. Matching is case-sensitive, collapses whitespace, and strips common
   Markdown presentation (links, headings, list/blockquote prefixes, emphasis and code delimiters) from both sides;
   this matches the rendered text the page selects without treating different casing as the same claim. The quote may
-  also be in the answer as the pages show it (`Engine#verify_quote_in?`, `Redact.text`: the session's
+  also be in the answer as the pages show it (`TurnStages::VerifyAnchors#quote_in?`, `Redact.text`: the session's
   folder relative, home `~`, secret shapes `[redacted]`): a participant's page has only that text, and the owner's
   page quotes it the same way (`owner_claim.js` `opts()`, `normalizeClaim`; `spec/fixtures/redact_cases.json` keeps the two
   sides alike), so a claim naming a path is taken on both. A fresh child

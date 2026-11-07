@@ -5,7 +5,7 @@ require_relative "verify_anchor"
 module Samagotchi
   # The earlier turn a Revise turn rewrites the answer of, carried only by
   # a Revise turn (TurnAnchors). Its stamp on the turn's opening message
-  # is display metadata, never in the prompt (Engine#revision_target).
+  # is display metadata, never in the prompt (TurnStages::VerifyAnchors#revision_target).
   ReviseAnchor = Data.define(:turn_id) do
     def self.from(value)
       return value if value.is_a?(self)
