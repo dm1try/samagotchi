@@ -646,6 +646,20 @@ RSpec.describe Samagotchi::IdleRecap do
       drive(idle_recap)
       expect(engine).not_to have_received(:emit_recap)
     end
+
+    it "counts turns as the page does: Qwen's recovery line and merged input open none" do
+      messages = JSON.generate([
+        { "role" => "user", "content" => "Hi" },
+        { "role" => "model", "content" => "Calling" },
+        { "role" => "user", "kind" => Samagotchi::Steer::RECOVERY_KIND, "content" => "Continue the previous assistant message" },
+        { "role" => "user", "kind" => "input", "content" => "also this" },
+        { "role" => "model", "content" => "Done" }
+      ])
+      engine = stub_engine(messages: messages)
+      idle = described_class.new(engine: engine, model: model, base_url: base_url, inactivity: 0.0, min_user_turns: 2,
+                                 timeout: 1.0, client: double("client", summarize: "recap"), clock: -> { base_time })
+      expect(idle.request_now).to eq(:too_short)
+    end
   end
 
   describe "tool count in prompt" do

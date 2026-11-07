@@ -77,8 +77,11 @@ module Samagotchi
         Log.session_id = @link.client.session_id
         Log.info(:attached, "joined", session: @link.client.session_id, messages: exchange.size,
                                       notes: messages.count { |m| ContextNote.note?(m) })
-        last_user = exchange.rindex { |m| Steer.prompt?(m) }
-        render_join_notes(messages)
+        # The last turn's own prompt (Steer.turn_prompt?, as the page's
+        # turns): not Qwen's recovery line, nor input merged into the turn.
+        last_user = exchange.rindex { |m| Steer.turn_prompt?(m) }
+        from = last_user && messages.index { |m| m.equal?(exchange[last_user]) }
+        render_join_notes(messages, from)
         return unless last_user
 
         @screen.commit(join_prompt_line(exchange[last_user]))
@@ -86,7 +89,6 @@ module Samagotchi
         unless ImageRef.placeholder_only?(exchange[last_user][:content])
           Array(exchange[last_user][:images]).each { |ref| @screen.commit(format_image_line(ref)) }
         end
-        from = messages.index { |m| m.equal?(exchange[last_user]) }
         render_join_steps(messages, from, durations: join_tool_records(exchange[last_user]))
         record = @link.saved_turn_record(exchange[last_user][:turn_id] || exchange[last_user]["turn_id"])
         failed = join_failed_record(record)
@@ -114,19 +116,21 @@ module Samagotchi
                                              .find { |text| !text.empty? }
           @screen.commit(last_lines(answer)) if answer
         end
-        render_join_notes(messages, after_exchange: true)
+        render_join_notes(messages, from, after_exchange: true)
       end
 
       # What the last exchange did, as the live turn drew it: each saved
       # call's tool row (action, params, status from its result, and its
       # duration from +durations+, the turn's saved tool records) and a
-      # plugin's steer where it came. The step texts stay out, as live (the
-      # ticker's).
+      # plugin's steer and the user's input merged into the turn where they
+      # came. The step texts stay out, as live (the ticker's).
       def render_join_steps(messages, from, durations: [])
         records = durations.dup
         messages.each_with_index.drop(from + 1).each do |m, i|
           if Steer.steer?(m)
             @screen.commit(format_steer_line(source: m[:source], text: m[:content]))
+          elsif Steer.input?(m) && !Steer.turn_prompt?(m)
+            @screen.commit("input> #{m[:content]}")
           elsif %w[model assistant].include?(m[:role].to_s)
             responses = messages.drop(i + 1).take_while { |r| r[:role].to_s == "tool_response" }
             Array(MessageParts.for_message(m, responses)&.dig(:tools)).each do |part|
@@ -209,13 +213,13 @@ module Samagotchi
         format_tool_guardrail_suffix({ decided_by: "system one", p: saved["p"] || saved[:p] })
       end
 
-      # The context notes that came since the last prompt (all of them in a
-      # session with none), after the exchange the header shows.
-      def render_join_notes(messages, after_exchange: false)
-        last_user = messages.rindex { |m| Steer.prompt?(m) }
-        return if after_exchange != !last_user.nil?
+      # The context notes that came since the last prompt (+from+, its index
+      # in +messages+; all of them in a session with none), after the
+      # exchange the header shows.
+      def render_join_notes(messages, from, after_exchange: false)
+        return if after_exchange != !from.nil?
 
-        messages[(last_user ? last_user + 1 : 0)..].select { |m| ContextNote.note?(m) }.each do |m|
+        messages[(from ? from + 1 : 0)..].select { |m| ContextNote.note?(m) }.each do |m|
           @screen.commit(context_note_line(ContextNote.label_of(m), ContextNote.text_of(m)))
         end
       end

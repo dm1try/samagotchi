@@ -40,6 +40,16 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop do
       expect(attached).not_to be_running
     end
 
+    it "shows the last turn's own prompt, not Qwen's recovery line, and the input merged into it" do
+      feed(snapshot(messages: [{ role: "user", content: "fix it", turn_id: "t1" }, { role: "model", content: "Fixing" },
+                               { role: "user", kind: Samagotchi::Steer::RECOVERY_KIND,
+                                 content: "Continue the previous assistant message" },
+                               { role: "user", kind: "input", content: "also the docs" },
+                               { role: "model", content: "fixed both" }]))
+
+      expect(screen.lines).to eq(["user> fix it", "input> also the docs", "fixed both"])
+    end
+
     it "moves to a new worker (a restart): requests go there, and its snapshot resyncs without repeating the join" do
       allow(client).to receive(:host).and_return("127.0.0.1")
       found = instance_double(Samagotchi::BridgeClient, session_id: "s-1234", port: 4321, host: "127.0.0.1")
