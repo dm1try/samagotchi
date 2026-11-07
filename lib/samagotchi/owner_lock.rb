@@ -16,10 +16,12 @@ module Samagotchi
   # (even in the owner's own process) never releases the owner's lock.
   class OwnerLock
     FILE = "owner.lock"
-    # Who holds a "tui" lock now (a -p --non-interactive one-shot,
-    # TerminalUI), in every refusal's words (SessionManager::OwnedByTUI and
-    # the callers that add what they refused).
-    TUI_BUSY = "in use by a one-turn chi --non-interactive run"
+    # Who holds a "tui" lock now: a -p --non-interactive one-shot
+    # (TerminalUI), or an older chi's interactive REPL while an update is
+    # under way (N-1). In every refusal's words (SessionManager::OwnedByTUI
+    # and the callers that add what they refused); no parentheses: the
+    # web's continueRefusal reads "<short> (why)" out of a refusal.
+    TUI_BUSY = "in use by a one-turn chi --non-interactive run or an older chi's terminal"
     DEFAULT_WAIT = 2.0
     RETRY_INTERVAL = 0.05
     OWNER_READ_ATTEMPTS = 10

@@ -97,7 +97,7 @@ RSpec.describe Samagotchi::SessionDeleteCommand do
 
       expect(run("--force", open.id)).to eq(1)
 
-      expect(out.string).to include("aaaa1111  refused: it is in use by a one-turn chi --non-interactive run; let it finish first")
+      expect(out.string).to include("aaaa1111  refused: it is in use by a one-turn chi --non-interactive run or an older chi's terminal; let it finish first")
       expect(gone?(open)).to be false
     end
 

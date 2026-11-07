@@ -885,7 +885,7 @@ RSpec.describe "delegate tools" do
         expect(described_class.call("x", session: child.id, peers: peers)).to eq("Error: the message to session #{child.id[0, 8]} could not be written")
         allow(Samagotchi::SessionManager).to receive(:deliver_turn).and_raise(Samagotchi::SessionManager::OwnedByTUI.new(child.id))
         expect(described_class.call("x", session: child.id, peers: peers))
-          .to eq("Error: session #{child.id[0, 8]} is in use by a one-turn chi --non-interactive run, which can't take a delegated message")
+          .to eq("Error: session #{child.id[0, 8]} is in use by a one-turn chi --non-interactive run or an older chi's terminal, which can't take a delegated message")
       end
 
       it "returns at once without waiting" do

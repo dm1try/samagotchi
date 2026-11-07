@@ -1222,7 +1222,7 @@ RSpec.describe Samagotchi::SessionManager do
       allow(Process).to receive(:kill)
 
       expect { described_class.resume_session(session.id, state_dir: tmpdir) }
-        .to raise_error(described_class::OwnedByTUI, "session #{session.id} is in use by a one-turn chi --non-interactive run; let it finish first")
+        .to raise_error(described_class::OwnedByTUI, "session #{session.id} is in use by a one-turn chi --non-interactive run or an older chi's terminal; let it finish first")
       expect { described_class.stop_session(session.id, state_dir: tmpdir) }
         .to raise_error(described_class::OwnedByTUI)
       expect(Process).not_to have_received(:spawn)

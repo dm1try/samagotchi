@@ -82,7 +82,7 @@ RSpec.describe Samagotchi::NoteCommand do
       expect(code).to eq(1)
       expect(notes_of(repl)).to be_empty
       expect(notes_of(live).size).to eq(1)
-      expect(out.string).to include("#{repl.id[0, 8]}  refused: it is in use by a one-turn chi --non-interactive run; send the note once it ends")
+      expect(out.string).to include("#{repl.id[0, 8]}  refused: it is in use by a one-turn chi --non-interactive run or an older chi's terminal; send the note once it ends")
     end
 
     it "refuses a live chi scratch session in its one wording and exits 1" do

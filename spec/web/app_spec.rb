@@ -722,7 +722,7 @@ RSpec.describe Samagotchi::Web::App do
           { "session_id" => "refused", "state" => "refused", "reason" => "fallback_held",
             "detail" => Samagotchi::SessionManager::RestartRefused.words("refused", :fallback_held, nil, [:turn_running]),
             "holds" => ["turn_running"] },
-          { "session_id" => "owned", "state" => "owned_by_tui", "detail" => "session owned is in use by a one-turn chi --non-interactive run; let it finish first" }
+          { "session_id" => "owned", "state" => "owned_by_tui", "detail" => "session owned is in use by a one-turn chi --non-interactive run or an older chi's terminal; let it finish first" }
         ])
         expect(hub.update_state[:operation]).to eq("workers")
       end
@@ -3889,7 +3889,7 @@ RSpec.describe Samagotchi::Web::App do
         status, _headers, body = app.call(env_for("/api/sessions/#{session.id}/archive", method: "POST"))
         expect(status).to eq(409)
         expect(JSON.parse(body.first)).to include("error" => "owned_by_tui",
-                                                  "detail" => "session #{session.id} is in use by a one-turn chi --non-interactive run; let it finish first")
+                                                  "detail" => "session #{session.id} is in use by a one-turn chi --non-interactive run or an older chi's terminal; let it finish first")
         expect(archived?).to be(false)
       end
 
@@ -3963,7 +3963,7 @@ RSpec.describe Samagotchi::Web::App do
 
         expect(status).to eq(409)
         expect(JSON.parse(body.first)).to include("error" => "owned_by_tui",
-                                                  "detail" => "session #{session.id} is in use by a one-turn chi --non-interactive run; let it finish first")
+                                                  "detail" => "session #{session.id} is in use by a one-turn chi --non-interactive run or an older chi's terminal; let it finish first")
         expect(Process).not_to have_received(:kill)
         expect(File.exist?(session_file)).to be true
       end
