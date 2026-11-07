@@ -17,22 +17,29 @@ module Samagotchi
       def toolkit_explained(toolkit = nil) = @toolkit_binding.explained(toolkit)
       def toolkit_summary = @toolkit_binding.summary
 
+      # The Registry published for readers off the turn thread
+      # (ToolkitBinding#publish!): at the end of the Engine's build, after a
+      # turn's staged tool sets and its toolkit apply.
+      def publish_tools! = @toolkit_binding.publish!
+
       # The tools this session registered (Tools::Registry), declared or not.
       attr_reader :tools
 
       public :tools, :toolkit_kits, :resolved_toolkit, :toolkit_explained, :toolkit_summary
 
       # A plugin's ctx.load_tools: stage the reachable tools +names+ names
-      # (Tools::ToolIndex#deferred_name) that the session neither declares
-      # nor loaded with an earlier tool change, for bundle +bundle+. A name
-      # that names no tool at all is logged; a declared or removed one is
-      # skipped quietly.
+      # (Tools::ToolIndex#deferred_name, on the published Registry) that the
+      # session neither declares nor loaded with an earlier tool change, for
+      # bundle +bundle+. A name that names no tool at all is logged; a
+      # declared or removed one is skipped quietly.
       # @return [Array<String>] the wire names staged
       def load_tools(names, bundle)
         added = ToolLoads.added(@session&.messages)
+        published = @toolkit_binding.published
+        surface = Tools::ToolSurface.for(published)
         wanted = names.filter_map do |name|
-          wire = @tool_index.deferred_name(name)
-          Log.info(:plugins, "load_tools_skipped", bundle: bundle, tool: name) unless wire || @tools.key?(name)
+          wire = @tool_index.deferred_name(name, surface)
+          Log.info(:plugins, "load_tools_skipped", bundle: bundle, tool: name) unless wire || published.key?(name)
           wire
         end
         @tool_loads.stage(wanted - added, by: bundle)

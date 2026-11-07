@@ -183,6 +183,18 @@ module Samagotchi
         super
       end
 
+      # A frozen copy of its entry set, with its toolkit, reaching_kit and
+      # index as they are now (ToolkitBinding#publish!, on the turn thread):
+      # registering or unregistering here leaves it as it was. Shallow: the
+      # Entry Structs are this Registry's own, their fields set in place on
+      # the turn thread (Plugin::ToolSpec.apply, ToolIndex#refresh!).
+      # @return [Registry]
+      def snapshot
+        copy = dup
+        copy.instance_variable_set(:@entries, @entries.dup)
+        copy.freeze
+      end
+
       private
 
       # Declared by +toolkit+ (nil: every tool, full). The tool index's
