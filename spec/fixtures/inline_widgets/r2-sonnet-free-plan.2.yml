@@ -1,0 +1,35 @@
+type: picks
+title: Cost indicator decisions
+rows:
+  - id: "1"
+    text: Show cost for local models (cost 0)?
+    options:
+      - hide when unpriced
+      - always show
+      - show only if cost > 0
+    recommended: hide when unpriced
+    why: "$0.00" implies a measurement that never happened
+  - id: "2"
+    text: Should participants see the cost?
+    options:
+      - owner only
+      - everyone
+      - owner + config toggle
+    recommended: owner only
+    why: it's the owner's spend, and it's easy to open up later
+  - id: "3"
+    text: Rounding
+    options:
+      - always cents
+      - 3 decimals under $1, cents above
+      - always 3 decimals
+    recommended: 3 decimals under $1, cents above
+    why: cents hides early movement, since most turns cost under a cent
+  - id: "4"
+    text: Warn at 80% of cost-cap?
+    options:
+      - tint the bar
+      - toast
+      - no warning
+    recommended: tint the bar
+    why: it's visible but doesn't interrupt, and only applies if a cap is set

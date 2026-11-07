@@ -1,0 +1,41 @@
+type: walk
+title: A tab reconnects to a running session
+actors: [user, page, bridge, worker]
+steps:
+  - id: s1
+    actor: page
+    does: loses the SSE stream to the worker's Bridge
+    sees: a "reconnecting" mark on the page
+  - id: s2
+    actor: page
+    does: "reconnects: GET /events with Last-Event-ID: N"
+    cases:
+      - when: the worker is still running
+        goto: s3
+      - when: the worker exited while the tab was away
+        goto: s6
+  - id: s3
+    actor: bridge
+    does: checks whether N is still in the replay buffer
+    cases:
+      - when: N is still buffered
+        goto: s4
+      - when: N is too old
+        goto: s5
+  - id: s4
+    actor: bridge
+    does: replays the events after N, then keeps streaming live
+    sees: the missed steps appear
+    next: s7
+  - id: s5
+    actor: bridge
+    does: sends a reset event
+    sees: the page re-reads the turn snapshot (TurnAccumulator) via GET /api/sessions/:id and redraws the turn, with open cards restored from CardStore
+    next: s7
+  - id: s6
+    actor: page
+    does: shows the session as not running
+  - id: s7
+    actor: user
+    does: types a new prompt
+    behind: starts the worker again

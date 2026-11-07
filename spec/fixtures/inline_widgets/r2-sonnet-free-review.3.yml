@@ -1,0 +1,34 @@
+type: picks
+title: Decisions on this change
+rows:
+  - id: "1"
+    text: participants.json writes without the file lock
+    options:
+      - restore lock
+      - mutex + atomic write
+      - keep as is
+    recommended: restore lock
+    why: concurrent requests can lose updates or leave a partial file
+  - id: "2"
+    text: Removed "rejects an expired grant" spec
+    options:
+      - move to gate spec
+      - drop
+    recommended: move to gate spec
+    why: expiry still needs coverage, and other callers of find may skip the gate
+  - id: "3"
+    text: Existing plaintext grants after the digest switch
+    options:
+      - migrate in place
+      - invalidate all
+      - dual-lookup for a while
+    recommended: migrate in place
+    why: otherwise every live grant silently stops working
+  - id: "4"
+    text: Digest comparison
+    options:
+      - secure_compare
+      - lookup by digest
+      - keep ==
+    recommended: secure_compare
+    why: no cost, removes the question

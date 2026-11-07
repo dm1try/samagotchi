@@ -1,0 +1,31 @@
+type: picks
+title: Scratch session lifetime — four open decisions
+rows:
+  - id: D1
+    text: When the worker exits, delete the session file or keep it 1 hour?
+    options:
+      - A: delete at exit
+      - B: keep 1 h
+    recommended: B: keep 1 h
+    why: deleting at exit is exactly the complaint — the answer dies with the terminal
+  - id: D2
+    text: Do scratch sessions appear in chi web's session list?
+    options:
+      - A: hide
+      - B: show with a scratch mark
+    recommended: B: show with a scratch mark
+    why: a visible file that the list hides is a black hole; the mark carries the "throwaway" signal
+  - id: D3
+    text: Allow chi --resume of a scratch session?
+    options:
+      - A: refuse
+      - B: allow while the file exists
+    recommended: B: allow while the file exists
+    why: it needs to be reopenable to help at all; D1 already bounds how long
+  - id: D4
+    text: Are a scratch session's memory writes allowed?
+    options:
+      - A: allow project and system scope
+      - B: deny project scope, allow system
+    recommended: A: allow project and system scope
+    why: one rule for all sessions; a hidden carve-out costs more than polluted entries

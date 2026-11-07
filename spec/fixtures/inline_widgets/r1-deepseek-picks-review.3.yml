@@ -1,0 +1,33 @@
+type: picks
+title: What I'd do with each finding
+rows:
+  - id: "3"
+    text: Push title carries the full tool command
+    options: [notify with tool name only, redact args only, later]
+    recommended: notify with tool name only
+    why: titles render on lock screens and in the OS notification DB; args add nothing a user needs mid-turn
+  - id: "2"
+    text: config.yml re-read on every call
+    options: [inject loaded Config, memoize in the class, later]
+    recommended: inject loaded Config
+    why: one parse at boot; also makes the notifier testable without touching disk
+  - id: "4"
+    text: No spec for a session with zero subscriptions
+    options: [add spec, verify no-op, then spec, later]
+    recommended: add spec, verify no-op, then spec
+    why: empty case often hides a .first/raise; assert it returns quietly and never calls the push service
+  - id: "5"
+    text: Name says waiting, also called for questions
+    options: [rename to notify_requires_action, keep waiting, later]
+    recommended: rename to notify_requires_action
+    why: matches the existing requires_action turn state; free now, a rename touches one call site later
+  - id: "1"
+    text: Push fires even when the owner's tab is focused
+    options: [gate in the service worker, server-side presence, send anyway, later]
+    recommended: gate in the service worker
+    why: the SW can clients.matchAll({type:"window"}) and skip when one is focused and visible; no new presence protocol
+  - id: "6"
+    text: Push subscription endpoints that return 410/404 are never pruned
+    options: [prune on 410/404, prune on any 4xx, separate issue]
+    recommended: prune on 410/404
+    why: dead endpoints mean every later turn pays a failed request; the notifier is where you first learn they're dead

@@ -1,0 +1,49 @@
+type: walk
+title: A decision card appears
+actors: [user, chi, model]
+steps:
+  - id: s1
+    actor: user
+    does: asks something in a session with an active objective
+    behind: the session has an objective, so the bundle is active
+  - id: s2
+    actor: chi
+    does: finishes its turn normally
+    sees: the full answer
+    behind: gate check — >= 1200 chars, and a "?" ends a word in the last 300 chars of prose (code excluded)
+    branches:
+      - when: turn was stopped, or was a participant's, or --non-interactive
+        goto: s7
+      - when: too short, or no question mark
+        goto: s7
+  - id: s3
+    actor: chi
+    does: fires a side request on a thread
+    behind: ctx.ask_model asks a cheap model for a short summary, the question, and the objective it concerns
+  - id: s4
+    actor: chi
+    does: ends the turn without waiting for that answer
+    sees: the normal reply, no card yet
+    behind: a new turn cancels the request; a card still to come is dropped
+    branches:
+      - when: the model reports no question, or omits summary/question
+        goto: s7
+      - when: the request fails
+        goto: s8
+  - id: s5
+    actor: user
+    does: reads the card
+    sees: a decision card with no buttons — the composer is the way to answer
+    behind: written to cards.json only; nothing enters the conversation
+  - id: s6
+    actor: user
+    does: starts the next turn
+    sees: the card folds down to a line "Asked: …"
+    behind: the next request is byte for byte identical to what it would have been
+  - id: s7
+    actor: chi
+    does: no card is shown
+  - id: s8
+    actor: chi
+    does: logs no_card and says nothing
+    sees: no notice, no card

@@ -1,0 +1,31 @@
+type: picks
+title: Scratch session decisions
+rows:
+  - id: d1
+    text: Session file lifetime after the worker exits
+    options:
+      - keep 1 hour
+      - delete at exit
+    recommended: keep 1 hour
+    why: deleting at exit re-creates the complaint it fixes
+  - id: d2
+    text: Scratch sessions in chi web's list
+    options:
+      - show with a scratch mark
+      - hide
+    recommended: show with a scratch mark
+    why: an invisible session can't be reopened by a user who has no id
+  - id: d3
+    text: chi --resume on a scratch session
+    options:
+      - allow while the file exists
+      - refuse
+    recommended: allow while the file exists
+    why: resume is the recovery path; the file's lifetime bounds it
+  - id: d4
+    text: Memory writes from a scratch session
+    options:
+      - deny project, allow system
+      - allow
+    recommended: deny project, allow system
+    why: throwaway context shouldn't write shared project state

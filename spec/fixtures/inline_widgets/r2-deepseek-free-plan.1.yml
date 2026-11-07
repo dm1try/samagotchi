@@ -1,0 +1,35 @@
+type: picks
+title: Cost in the info bar — open decisions
+rows:
+  - id: "1"
+    text: Show the chip for local models (cost 0)?
+    options:
+      - show $0.000
+      - hide the chip entirely
+      - show a "local" label instead
+    recommended: show $0.000
+    why: hiding it reads as "cost tracking is broken" when you switch models
+  - id: "2"
+    text: Who sees the cost?
+    options:
+      - owner only
+      - everyone sees the session total
+      - everyone sees their own share
+    recommended: owner only
+    why: cost exposes your key's usage; simplest permission model, and matches who /stats is for
+  - id: "3"
+    text: Precision in the bar
+    options:
+      - always 3 decimals
+      - cents (2 decimals)
+      - adaptive, 2 below $0.10
+    recommended: always 3 decimals
+    why: most single turns are sub-cent, so cents shows a frozen $0.00
+  - id: "4"
+    text: Warn at 80 % of the cost cap?
+    options:
+      - yes, owner only
+      - yes, everyone in the session
+      - no warning, number only
+    recommended: yes, owner only
+    why: a cap is your budget concern, and participants can't act on it anyway

@@ -1,0 +1,33 @@
+type: picks
+title: Cost indicator decisions
+rows:
+  - id: "1"
+    text: Show cost for local models (cost 0)
+    options:
+      - hide when 0
+      - always show
+    recommended: hide when 0
+    why: a permanent $0.00 is noise and implies tracking
+  - id: "2"
+    text: Who sees the cost
+    options:
+      - owner only
+      - participants too
+    recommended: owner only
+    why: easier to widen later than to retract
+  - id: "3"
+    text: Rounding
+    options:
+      - cents only
+      - 3 decimals
+      - 3 decimals under 1 cent
+    recommended: 3 decimals under 1 cent
+    why: cheap turns stay visible, normal totals stay readable
+  - id: "4"
+    text: Warn at 80% of cost-cap
+    options:
+      - color change in bar
+      - popup
+      - no warning
+    recommended: color change in bar
+    why: cheap to add, doesn't interrupt the user

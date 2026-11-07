@@ -1,0 +1,23 @@
+type: picks
+title: Scratch sessions — four open decisions
+rows:
+  - id: D1
+    text: Session file when the worker exits
+    options: [delete at exit, keep 1 h]
+    recommended: keep 1 h
+    why: deleting at exit discards exactly the answer users are complaining about
+  - id: D2
+    text: Scratch sessions in chi web's list
+    options: [hide, show with scratch mark]
+    recommended: show with scratch mark
+    why: after an accidental close, the list is how they find the lost answer
+  - id: D3
+    text: `chi --resume` of a scratch session
+    options: [refuse, allow while file exists]
+    recommended: allow while file exists
+    why: consistent with D1; the 1 h window is the contract
+  - id: D4
+    text: Memory writes from a scratch session
+    options: [allow all, deny project, allow system]
+    recommended: deny project, allow system
+    why: throwaway content shouldn't land in shared project memories

@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 module Samagotchi
+  autoload :InlineWidgets, File.expand_path("inline_widgets", __dir__)
   autoload :Log, File.expand_path("log", __dir__)
   autoload :VERSION, File.expand_path("version", __dir__)
   module MemoryBundle
@@ -34,6 +35,9 @@ module Samagotchi
     # A language a block can carry: a fence's first word, downcased
     # (MarkdownRenderer sets it as data-lang under this same pattern).
     LANG = /\A[a-z0-9_+-]{1,32}\z/
+    # Languages core draws itself: a bundle's renderer for one would be a
+    # second drawer for the same block.
+    RESERVED = [InlineWidgets::LANG].freeze
 
     module_function
 
@@ -60,6 +64,7 @@ module Samagotchi
       unless lang.is_a?(String) && lang.match?(LANG)
         raise Invalid, "block_renderers: lang #{lang.inspect} isn't a fence's language (lowercase letters, digits, _ + -; at most 32)"
       end
+      raise Invalid, "block_renderers: #{lang} is drawn by chi itself; a bundle can't render it" if RESERVED.include?(lang)
 
       load = data["load"]
       unless load.is_a?(Array) && !load.empty? && load.all? { |file| file.is_a?(String) && file.match?(MemoryBundle::Manifest::SCRIPT_FILE) }

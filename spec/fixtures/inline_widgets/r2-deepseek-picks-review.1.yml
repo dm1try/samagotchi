@@ -1,0 +1,43 @@
+type: picks
+title: What to do with each finding
+rows:
+  - id: "3"
+    text: Push title carries the full tool command, possibly a secret
+    options:
+      - send tool name only
+      - drop payload detail
+      - keep full command
+    recommended: send tool name only
+    why: highest severity; args in a lock-screen preview are the real leak
+  - id: "1"
+    text: Push sent even when the owner's tab is focused and visible
+    options:
+      - suppress when client reports visible
+      - suppress when SSE connected
+      - leave as is
+    recommended: suppress when client reports visible
+    why: only if a presence signal exists; else start with the SSE proxy
+  - id: "2"
+    text: Reads config.yml on every call instead of the loaded Config
+    options:
+      - inject loaded Config
+      - memoize the read
+      - leave as is
+    recommended: inject loaded Config
+    why: cheap, and it's what makes finding 4 testable
+  - id: "4"
+    text: No spec for a session with no subscriptions
+    options:
+      - spec no-op + add guard
+      - spec current behaviour
+      - skip
+    recommended: spec no-op + add guard
+    why: decide first whether it should no-op or raise
+  - id: "5"
+    text: Named notify_waiting but also called for questions
+    options:
+      - rename to notify_requires_action
+      - keep name, document it
+      - keep
+    recommended: rename to notify_requires_action
+    why: one call site today, matches the existing blocked-turn state

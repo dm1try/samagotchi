@@ -1387,6 +1387,8 @@ block_renderers:
   it refuses with "No memories to build".
 - The first installed bundle (by name) with a language draws it. A bundle whose `requires_chi` this chi doesn't meet
   draws nothing.
+- `chi-ui` is reserved: chi draws it itself (inline widgets, [internals/inline-widgets.md](internals/inline-widgets.md)),
+  so a manifest that lists it is refused.
 - **What it needs of the page:** `web.markdown` on (a default-off setting, and the commonmarker gem). With it off a
   fence has no language in the page and nothing draws, though a hint in the bundle's prompt section still reaches
   the model: say so in the bundle's README.

@@ -1,0 +1,55 @@
+type: walk
+title: When a decision card shows up
+actors: [chi, model, user]
+steps:
+  - id: gate
+    actor: chi
+    does: finishes an owner's turn
+    behind: "with an active objective, the bundle checks the gate — the answer has at least 1200 chars, and a question mark ends a word in its last 300 chars of prose (code left out)"
+    cases:
+      - when: the turn stopped, or is a participant's or --non-interactive turn
+        goto: none
+      - when: the answer is shorter than 1200 chars, or no question ends a word in the tail
+        goto: none
+      - when: the gate passes
+        goto: ask
+  - id: ask
+    actor: chi
+    does: fires a side request (ctx.ask_model) on a thread
+    behind: asks a cheap model for a short summary, the question, and the objective it concerns; the turn's end does not wait for it
+    cases:
+      - when: a new turn starts first
+        goto: none
+        why: the request is cancelled, and a card still to come is dropped
+      - when: the request fails
+        goto: none
+        why: logged as no_card, with no notice to the user
+      - when: the model replies
+        goto: verdict
+  - id: verdict
+    actor: model
+    does: returns the summary, the question, and the objective
+    cases:
+      - when: it says the answer asks nothing, or the summary or the question is missing
+        goto: none
+      - when: all three come back
+        goto: card
+  - id: card
+    actor: chi
+    sees: a decision card with the summary, the question, and the objective — no buttons
+    behind: the card is stored in cards.json; nothing enters the conversation
+    next: answer
+  - id: answer
+    actor: user
+    does: answers in the composer
+    sees: the card just sits there, no buttons to click
+    next: fold
+  - id: none
+    actor: chi
+    sees: no card appears — and no notice either
+    behind: "the reason stays in the log (no_card), silent to the user"
+  - id: fold
+    actor: user
+    does: starts the next turn
+    sees: "the card folds down to one line — Asked: …"
+    behind: the conversation never held the card, so the next request is byte for byte the same

@@ -1,0 +1,35 @@
+type: picks
+title: Four open calls on the cost chip
+rows:
+  - id: local
+    text: Local models where cost is 0
+    options:
+      - hide the chip
+      - show "$0.00"
+      - show token count instead
+    recommended: hide the chip
+    why: a permanent $0.00 reads as a bug
+  - id: participants
+    text: Who sees the number
+    options:
+      - same session total for everyone
+      - session owner only
+      - hidden unless the owner opts in
+    recommended: same session total for everyone
+    why: it's the session's spend, one rule beats three
+  - id: precision
+    text: Chip precision
+    options:
+      - cents, rounded up
+      - exact 3 decimals
+      - 3 decimals below $0.01, else cents
+    recommended: cents, rounded up
+    why: glanceable; exact figure lives in /stats
+  - id: cap
+    text: The 80% cost-cap warning
+    options:
+      - chip turns amber on the crossing
+      - separate toast notification
+      - leave it out for now
+    recommended: chip turns amber on the crossing
+    why: state on the chip, not another alert channel

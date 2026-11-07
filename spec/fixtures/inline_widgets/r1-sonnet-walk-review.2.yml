@@ -1,0 +1,47 @@
+type: walk
+title: A review with a participant
+actors: [owner, participant, chi]
+steps:
+  - id: s1
+    actor: owner
+    does: runs `chi review <subject>`
+    sees: a review session starts
+    behind: ReviewStart creates the session; Guardrails::ReviewPaths checks the subject
+    branches:
+      - when: the subject fails the ReviewPaths check
+        goto: s1
+  - id: s2
+    actor: owner
+    does: runs `chi share` to invite a participant
+    sees: a link to give to the participant
+    behind: a grant is made (chp_ token, tied to one session, only a digest is stored)
+  - id: s3
+    actor: participant
+    does: opens the link in chi web
+    sees: only that session's participant routes
+    behind: the token is checked against the stored digest
+  - id: s4
+    actor: participant
+    does: sends a message
+    behind: runs a read-only review turn; Guardrails::ReviewBoundary denies any write
+    branches:
+      - when: the owner has revoked the grant
+        goto: s7
+  - id: s5
+    actor: chi
+    does: answers and proposes changes as text only
+    sees: the discussion grows; the participant can reply again
+    behind: nothing on disk changes
+    branches:
+      - when: the participant keeps discussing
+        goto: s4
+  - id: s6
+    actor: owner
+    does: reads the conversation and presses Apply
+    sees: the changes are made
+    behind: ReviewApply runs as the owner's own turn, with the owner's permissions
+  - id: s7
+    actor: owner
+    does: revokes the grant (possible at any time)
+    sees: the participant's link stops working
+    behind: the grant is invalidated, so the token no longer resolves

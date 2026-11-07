@@ -1,0 +1,74 @@
+type: walk
+title: When a decision card shows up
+actors: [user, turn, side, web]
+steps:
+  - id: s0
+    actor: user
+    does: sends the task in the composer
+    behind: an owner's turn runs; the bundle acts only in a session with an active objective
+    next: s1
+  - id: s1
+    actor: turn
+    does: finishes the answer
+    cases:
+      - when: the turn was stopped
+        goto: s8
+      - when: it is a participant's turn, or --non-interactive
+        goto: s8
+      - when: it is a normal owner turn
+        goto: s2
+  - id: s2
+    actor: turn
+    does: checks the gate
+    behind: at least 1200 characters, and a question mark ends a word in the last 300 characters of the prose (code left out)
+    cases:
+      - when: the gate fails
+        goto: s8
+      - when: the gate passes
+        goto: s3
+  - id: s3
+    actor: side
+    does: asks a cheap model on a thread
+    behind: ctx.ask_model wants a short summary, the question and the objective it concerns; the turn's end does not wait for it
+    next: s4
+  - id: s4
+    actor: side
+    does: replies
+    cases:
+      - when: a new turn started meanwhile
+        goto: s8
+      - when: the model says the answer asks nothing
+        goto: s8
+      - when: the summary or the question is missing
+        goto: s8
+      - when: the request failed
+        goto: s7
+      - when: all three came back
+        goto: s5
+  - id: s5
+    actor: web
+    does: shows the card
+    sees: a card with the summary, the question, the objective — and no buttons
+    next: s6
+  - id: s6
+    actor: user
+    does: answers in the composer, like any other message
+    next: s9
+  - id: s7
+    actor: turn
+    does: logs no_card
+    behind: the failure is only in the log, the user is not told
+    next: s8
+  - id: s8
+    actor: web
+    does: shows nothing
+    sees: no card, and no notice that one was dropped
+    next: s10
+  - id: s9
+    actor: web
+    does: folds the card to one line "Asked: …"
+    behind: the card lives in cards.json; nothing enters the conversation, so the next request is byte for byte the same
+    next: s10
+  - id: s10
+    actor: user
+    does: carries on with the task

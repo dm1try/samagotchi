@@ -1,0 +1,28 @@
+type: picks
+title: What to do with each problem
+rows:
+  - id: "1"
+    text: Push is sent while the owner's tab is focused and visible
+    options: [fix, skip, later]
+    recommended: fix
+    why: duplicates what the approval card already shows; needs a presence signal from the tab
+  - id: "2"
+    text: config.yml is read on every call instead of the loaded Config
+    options: [fix, skip]
+    recommended: fix
+    why: bypasses overrides and test config, and adds a disk read per push
+  - id: "3"
+    text: Push title includes the full tool command (may hold a secret)
+    options: [fix, skip]
+    recommended: fix
+    why: use a generic title like "Approval needed"; show the command only after the user opens the app
+  - id: "4"
+    text: No spec for a session with no subscriptions
+    options: [fix, skip]
+    recommended: fix
+    why: it's the common case, and the spec should check that nothing is sent and nothing raises
+  - id: "5"
+    text: notify_waiting is also called for questions
+    options: [rename, skip, later]
+    recommended: rename
+    why: a name like notify_needs_input matches both callers and avoids confusion later

@@ -1,0 +1,47 @@
+type: walk
+title: A decision card in chi web
+actors: [user, web, bundle, model]
+steps:
+  - id: s1
+    actor: user
+    does: sends a message in a session with an active objective
+    sees: the answer streams in as usual
+    behind: the owner's turn runs; the bundle does nothing without an active objective
+  - id: s2
+    actor: bundle
+    does: checks the gate when the owner's turn completes
+    behind: "stopped, participant and --non-interactive turns are skipped. Needs >= 1200 chars and a '?' ending a word in the last 300 chars of prose (code excluded)"
+    branches:
+      - when: the gate fails
+        goto: s7
+  - id: s3
+    actor: bundle
+    does: starts a side request (ctx.ask_model) on a thread
+    sees: nothing yet; the turn is already finished
+    behind: the turn's end doesn't wait for it
+    branches:
+      - when: the user starts a new turn first
+        goto: s7
+  - id: s4
+    actor: model
+    does: a cheap model returns summary, question and the objective it concerns
+    behind: the answer may ask nothing, or the summary or question may be missing
+    branches:
+      - when: it asks nothing or leaves out summary or question
+        goto: s7
+      - when: the request fails (only logged as no_card, no notice)
+        goto: s7
+  - id: s5
+    actor: web
+    does: shows the card, with no buttons
+    sees: a card with the summary, the question and the objective
+    behind: stored in cards.json; nothing enters the conversation
+  - id: s6
+    actor: user
+    does: answers in the composer and sends
+    sees: the card folds to a line "Asked: …"
+    behind: the fold happens when the next turn starts; the next request is byte for byte the same as without the card
+  - id: s7
+    actor: web
+    does: no card; the user just sees the answer
+    behind: reached only through the branches above

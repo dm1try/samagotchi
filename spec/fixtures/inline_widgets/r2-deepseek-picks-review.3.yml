@@ -1,0 +1,42 @@
+type: picks
+title: What to do with the review findings
+rows:
+  - id: "1"
+    text: Push fires even when the owner's tab is focused
+    options:
+      - suppress when a visible tab is connected
+      - always push
+      - soften (silent / replaces itself)
+    recommended: suppress when a visible tab is connected
+    why: a push for something already on screen trains the owner to ignore pushes
+  - id: "2"
+    text: Reads config.yml on every call
+    options:
+      - use the loaded Config
+      - inject config once at construction
+      - leave as is
+    recommended: use the loaded Config
+    why: per-call file reads are slow and can pick up a half-written file
+  - id: "3"
+    text: Title carries the full tool command, which may hold a secret
+    options:
+      - title = tool name only
+      - redact env-var-looking tokens
+      - truncate to N chars
+    recommended: title = tool name only
+    why: pushes land on lock screens and push servers; truncating does not help
+  - id: "4"
+    text: No spec for a session with no subscriptions
+    options:
+      - add spec: no-op, no raise
+      - skip
+    recommended: add spec: no-op, no raise
+    why: cheapest of the five, and it pins the empty-subscription path
+  - id: "5"
+    text: Name says waiting, but it is also called for questions
+    options:
+      - rename to notify_attention
+      - keep name, add a kind parameter
+      - leave the name
+    recommended: rename to notify_attention
+    why: renaming costs nothing now, and it reads wrong at every future call site

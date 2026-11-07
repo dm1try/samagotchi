@@ -1,0 +1,43 @@
+type: picks
+title: What to do with the findings
+rows:
+  - id: "1"
+    text: Push sent while owner's tab is focused
+    options:
+      - fix now
+      - later
+      - skip
+    recommended: fix now
+    why: needs a presence signal; send anyway if unknown
+  - id: "2"
+    text: Reads config.yml instead of loaded Config
+    options:
+      - fix now
+      - later
+      - skip
+    recommended: fix now
+    why: avoids disk I/O and config drift
+  - id: "3"
+    text: Full tool command in push title (secret leak)
+    options:
+      - fix now
+      - later
+      - skip
+    recommended: fix now
+    why: payload goes through third-party push services
+  - id: "4"
+    text: No spec for session without subscriptions
+    options:
+      - fix now
+      - later
+      - skip
+    recommended: fix now
+    why: cheap, pins the no-op behaviour
+  - id: "5"
+    text: Name says waiting, also used for questions
+    options:
+      - keep name, fix doc and title
+      - rename to notify_attention
+      - skip
+    recommended: keep name, fix doc and title
+    why: questions are also a wait on the user

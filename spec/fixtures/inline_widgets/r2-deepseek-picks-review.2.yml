@@ -1,0 +1,43 @@
+type: picks
+title: What to do with the five findings
+rows:
+  - id: secret-in-title
+    text: Push title includes the full tool command
+    options:
+      - fix now: drop the command (Recommended)
+      - redact known secrets only
+      - skip
+    recommended: "fix now: drop the command (Recommended)"
+    why: title = tool name, body = "open the tab"; args can't be un-leaked once shown
+  - id: focused-tab
+    text: Sends a push while the owner's tab is focused
+    options:
+      - fix now: suppress in the service worker (Recommended)
+      - server-side visibility heartbeat
+      - skip
+    recommended: "fix now: suppress in the service worker (Recommended)"
+    why: server can't see focus; a heartbeat round-trip is racy against the push
+  - id: reread-config
+    text: Reads config.yml on every call
+    options:
+      - fix now: inject the loaded Config (Recommended)
+      - memoize inside the class
+      - skip
+    recommended: "fix now: inject the loaded Config (Recommended)"
+    why: I/O per notification, and the spec can pass a fake instead of a file
+  - id: rename
+    text: Name says waiting, also fires for questions
+    options:
+      - fix now: notify_requires_action (Recommended)
+      - keep the name, document it
+      - skip
+    recommended: "fix now: notify_requires_action (Recommended)"
+    why: matches the existing requires_action turn state
+  - id: no-sub-spec
+    text: No spec for a session with no subscriptions
+    options:
+      - empty case + a 410 prune case (Recommended)
+      - just the empty case
+      - skip
+    recommended: "empty case + a 410 prune case (Recommended)"
+    why: empty should be a silent no-op, not an error; 410 is the case that bites live

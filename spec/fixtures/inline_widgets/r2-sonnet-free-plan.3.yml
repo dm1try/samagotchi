@@ -1,0 +1,35 @@
+type: picks
+title: Cost indicator decisions
+rows:
+  - id: "1"
+    text: Show cost for local models (cost 0)?
+    options:
+      - hide when unpriced
+      - always show
+      - show $0.00
+    recommended: hide when unpriced
+    why: "$0.00" reads as "free" when it may just mean no pricing data
+  - id: "2"
+    text: Should participants see the cost?
+    options:
+      - owner only
+      - everyone
+      - owner-configurable
+    recommended: owner only
+    why: it is the owner's money, and /stats may expose more than the bar
+  - id: "3"
+    text: Rounding
+    options:
+      - cents, "<$0.01" when tiny
+      - always 3 decimals
+      - 3 decimals under $1
+    recommended: cents, "<$0.01" when tiny
+    why: a quiet bar wants a short number, and /stats can hold the precise figure
+  - id: "4"
+    text: Warn at 80% of cost-cap?
+    options:
+      - yes, bar color change
+      - yes, toast once
+      - no
+    recommended: yes, bar color change
+    why: it gives early notice without interrupting, and applies only when a cap is set

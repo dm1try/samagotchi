@@ -1,0 +1,34 @@
+type: picks
+title: What to do with the findings
+rows:
+  - id: "1"
+    text: Drop file lock on participants.json
+    options:
+      - restore lock
+      - atomic write only
+      - keep as is
+    recommended: restore lock
+    why: threads/workers still race; crashes can corrupt the file
+  - id: "2"
+    text: Removed "rejects an expired grant" spec
+    options:
+      - move to gate spec
+      - skip
+    recommended: move to gate spec
+    why: expiry would otherwise be untested
+  - id: "3"
+    text: Digest comparison with ==
+    options:
+      - secure_compare
+      - lookup by digest
+      - skip
+    recommended: lookup by digest
+    why: avoids comparison timing entirely
+  - id: "4"
+    text: Existing plaintext grants after the digest change
+    options:
+      - backfill migration
+      - invalidate them
+      - later
+    recommended: backfill migration
+    why: otherwise live grants silently stop working

@@ -1,0 +1,60 @@
+type: walk
+title: When a tool call needs your approval
+actors: [model, guardrail, judge, user]
+steps:
+  - id: s1
+    actor: model
+    does: requests a tool call
+    next: s2
+  - id: s2
+    actor: guardrail
+    does: checks the call against its rules
+    cases:
+      - when: the rule is allow
+        goto: s3
+      - when: the rule is deny
+        goto: s4
+      - when: the rule is ask
+        goto: s5
+  - id: s3
+    actor: guardrail
+    does: runs the call
+    next: s8
+  - id: s4
+    actor: guardrail
+    does: returns an error to the model
+    next: s8
+  - id: s5
+    actor: judge
+    does: System 1 judge is asked, timeout_ms 2000
+    cases:
+      - when: it says allow
+        goto: s6
+      - when: it is unsure or times out
+        goto: s7
+  - id: s6
+    actor: guardrail
+    does: runs the call
+    sees: the turn's step shows an auto-allowed mark
+    next: s8
+  - id: s7
+    actor: user
+    does: "decides on the card: Allow or Deny"
+    sees: an approval card, plus a web push if they are away
+    behind: the turn waits on the card
+    cases:
+      - when: Allow
+        goto: s9
+      - when: Deny
+        goto: s10
+  - id: s9
+    actor: guardrail
+    does: runs the call
+    next: s8
+  - id: s10
+    actor: guardrail
+    does: returns the denial to the model
+    next: s8
+  - id: s8
+    actor: model
+    does: continues the turn

@@ -1,0 +1,54 @@
+type: walk
+title: A decision card, from answer to fold
+actors: [user, web, bundle, model]
+steps:
+  - id: s1
+    actor: bundle
+    does: checks the gate when the owner's turn completes
+    sees: the answer shows as usual
+    behind: needs >= 1200 chars and a "?" ending a word in the last 300 chars of prose (code left out)
+    branches:
+      - when: the gate fails
+        goto: s7
+  - id: s2
+    actor: bundle
+    does: starts a side request (ctx.ask_model) on a thread
+    sees: the turn ends normally, with no waiting
+    behind: a new turn cancels it, and a card still to come is dropped
+    branches:
+      - when: the user starts a new turn first
+        goto: s7
+  - id: s3
+    actor: model
+    does: a cheap model returns a summary, the question and the objective
+    behind: a failed request is only logged (no_card), with no notice
+    branches:
+      - when: the answer asks nothing, or the summary or question is missing
+        goto: s7
+      - when: the request fails
+        goto: s7
+  - id: s4
+    actor: web
+    does: shows the card
+    sees: a card with summary, question and objective, and no buttons
+    behind: stored in cards.json, and nothing enters the conversation
+  - id: s5
+    actor: user
+    does: answers in the composer
+    sees: the card stays visible while they type
+  - id: s6
+    actor: web
+    does: folds the card when the user's next turn starts
+    sees: one line, "Asked: …"
+    behind: the next request is byte for byte the same, since the card isn't in the history
+    branches:
+      - when: done
+        goto: s8
+  - id: s7
+    actor: web
+    does: no card shows
+    sees: nothing changes, and there is no error notice
+    behind: a failed request leaves only a no_card log line
+  - id: s8
+    actor: user
+    does: carries on with the conversation

@@ -1,0 +1,77 @@
+type: walk
+title: A tool call hits an "ask" rule
+actors: [model, guardrails, system1, user]
+steps:
+  - id: s1
+    actor: model
+    does: calls a tool
+    behind: guardrail rules check the call
+    cases:
+      - when: rule says allow
+        goto: s2
+      - when: rule says deny
+        goto: s3
+      - when: rule says ask
+        goto: s4
+  - id: s2
+    actor: guardrails
+    does: runs the call
+    next: s11
+  - id: s3
+    actor: guardrails
+    does: returns an error to the model
+    next: s11
+  - id: s4
+    actor: guardrails
+    does: checks whether this is a review turn
+    cases:
+      - when: review turn (participant) and the call writes
+        goto: s5
+      - when: normal turn
+        goto: s6
+  - id: s5
+    actor: guardrails
+    does: ReviewBoundary denies the write before any card
+    next: s3
+  - id: s6
+    actor: guardrails
+    does: checks whether System 1 is on
+    cases:
+      - when: System 1 is off
+        goto: s8
+      - when: System 1 is on
+        goto: s7
+  - id: s7
+    actor: system1
+    does: judges the call (timeout_ms 2000)
+    cases:
+      - when: says allow
+        goto: s7a
+      - when: unsure or times out
+        goto: s8
+  - id: s7a
+    actor: guardrails
+    does: runs the call
+    sees: the step shows an auto-allowed mark
+    next: s11
+  - id: s8
+    actor: user
+    does: gets an approval card with Allow / Deny
+    sees: the turn waits on the card
+    behind: a web push goes out if the user is away
+    cases:
+      - when: Allow
+        goto: s9
+      - when: Deny
+        goto: s10
+  - id: s9
+    actor: guardrails
+    does: runs the call
+    next: s11
+  - id: s10
+    actor: guardrails
+    does: returns a denial to the model
+    next: s11
+  - id: s11
+    actor: model
+    does: continues the turn with the result or the denial

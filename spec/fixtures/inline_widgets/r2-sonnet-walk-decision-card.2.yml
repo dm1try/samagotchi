@@ -1,0 +1,46 @@
+type: walk
+title: When a decision card appears
+actors: [user, web, model]
+steps:
+  - id: s1
+    actor: web
+    does: an owner's turn completes and the bundle checks the gate
+    behind: needs an active objective. A stopped turn, a participant's turn or a --non-interactive turn doesn't count. The answer needs at least 1200 chars, and a "?" must end a word in the last 300 chars of prose (code left out).
+    cases:
+      - when: objective active and gate passes
+        goto: s2
+      - when: no objective, or the gate fails
+        goto: s5
+  - id: s2
+    actor: web
+    does: starts a side request on a thread
+    sees: the answer appears and the turn ends right away, with no waiting
+    behind: ctx.ask_model asks a cheap model for a short summary, the question and the objective it concerns
+  - id: s3
+    actor: model
+    does: replies to the side request
+    cases:
+      - when: a good summary and question come back
+        goto: s4
+      - when: the answer asks nothing, or the summary or question is missing
+        goto: s5
+      - when: the request fails (only logged as no_card, no notice)
+        goto: s5
+      - when: the user starts a new turn first (request cancelled, card dropped)
+        goto: s5
+  - id: s4
+    actor: web
+    does: shows the decision card
+    sees: a card with the summary, the question and the objective. It has no buttons.
+    behind: the card is saved in cards.json and nothing enters the conversation
+    next: s6
+  - id: s5
+    actor: web
+    does: shows no card
+    sees: just the normal answer
+    next: s6
+  - id: s6
+    actor: user
+    does: answers in the composer and sends the next turn
+    sees: if there was a card, it folds to one line "Asked: …"
+    behind: the next request is byte for byte the same as without a card, because cards never enter the conversation
