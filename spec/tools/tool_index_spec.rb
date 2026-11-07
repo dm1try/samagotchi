@@ -325,6 +325,26 @@ RSpec.describe Samagotchi::Tools::ToolIndex do
       expect(index.unwrap(call)).to include(name: "web_search", via: call_name)
     end
 
+    it "gives call_tool's row and targets what the turn reaches, not a tool registered after it" do
+      lean!
+      turn = Samagotchi::Tools::ToolSurface.for(registry)
+      call_entry = registry[call_name]
+      spec = Samagotchi::Plugin::ToolSpec.build("web_search", "Search the web for a query.",
+                                                params: { query: { type: "string", required: true },
+                                                          n: { type: "integer" } }) { "found" }
+      Samagotchi::Plugin::ToolSpec.apply(registry, "web-search", [spec], nil)
+      call = ->(tool) { { name: call_name, args: { "tool" => tool, "args" => { "query" => "x", "n" => "2" } } } }
+
+      # The Registry now has it: its row and its typed args.
+      expect(call_entry.preview_of(call["chi/web_search"])).to eq("chi/web_search query=x n=2")
+      expect(call_entry.targets_of(call["chi/web_search"])).to include(args: { "query" => "x", "n" => 2 })
+      # The turn's surface doesn't: the row names no args and the args go
+      # untyped, as for a chi/ name the session never had.
+      expect(call_entry.preview_of(call["chi/web_search"], turn)).to eq("chi/web_search")
+      expect(call_entry.targets_of(call["chi/web_search"], turn))
+        .to eq(call_entry.targets_of(call["chi/nope"], turn).merge(acts_as: "web_search", label: "chi: web_search"))
+    end
+
     it "never runs a chi tool as a source call (fail closed: only the unwrap runs it)" do
       lean!
       expect(index.call("chi/delegate", { "task" => "x" })).to eq("Error: chi/delegate can't be called through call_tool here")

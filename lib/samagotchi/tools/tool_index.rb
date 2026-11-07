@@ -312,7 +312,7 @@ module Samagotchi
 
           unwrap = (->(call, surface) { unwrap(call, surface) } if spec.name == CALL_NAME)
           registry.register(spec.name, source: SOURCE, unwrap: unwrap,
-                                       **spec.entry_fields(nil).merge(handler: own_handler(spec)))
+                                       **spec.entry_fields(nil).merge(own_fields(spec)))
           spec
         end
         registry.index = Registry::Index.new(source: SOURCE, call_name: CALL_NAME, groups: @declared_group_names,
@@ -500,9 +500,10 @@ module Samagotchi
         BuiltinCalls.build(CALL_NAME, { "tool" => tool.full_name, "args" => args })
       end
 
-      # The call tool's activity row: <group>/<tool> and its arguments.
-      def call_preview(args)
-        tool = lookup_quietly(args["tool"].to_s, live_surface)
+      # The call tool's activity row: <group>/<tool> and its arguments, as
+      # +surface+ (the turn's) reaches it.
+      def call_preview(args, surface = live_surface)
+        tool = lookup_quietly(args["tool"].to_s, surface)
         name = tool ? tool.full_name : args["tool"].to_s.strip
         inner = tool && inner_args(args["args"], tool)
         inner ? [name, preview(inner)].reject(&:empty?).join(" ") : name
@@ -513,10 +514,9 @@ module Samagotchi
       # indexed yet (its server still starting) is named from what the
       # model gave (#claimed), so a rule on it fires before the call waits
       # for the server. Nothing for a name that can't be a tool (the call
-      # refuses it).
-      def call_targets(args)
+      # refuses it). +surface+: the turn's (the gate's).
+      def call_targets(args, surface = live_surface)
         name = args["tool"].to_s.strip
-        surface = live_surface
         tool = lookup_quietly(name, surface)
         acts_as, label = tool ? [tool.acts_as, "#{tool.group}: #{tool.name}"] : claimed(name, surface)
         return {} unless acts_as
@@ -532,16 +532,22 @@ module Samagotchi
       # @return [ToolSurface]
       def live_surface = ToolSurface.for(@registry)
 
-      # The handler +spec+'s tool registers with: its block given the
-      # call's typed args and the turn's surface (the ToolContext's: a
-      # bare kernel's computed on read; none, a spec's nil, reads the
-      # Registry now).
-      def own_handler(spec)
+      # The fields +spec+'s tool registers with beside its entry_fields: a
+      # handler whose block is given the call's typed args and the turn's
+      # surface (the ToolContext's: a bare kernel's computed on read; none,
+      # a spec's nil, reads the Registry now), and call_tool's preview and
+      # targets, given the turn's surface by the row and the gate
+      # (Registry::Entry#preview_of / #targets_of; nil: the Registry now).
+      def own_fields(spec)
         parameters = spec.schema[:parameters]
-        lambda do |call, kctx|
-          Plugin::ToolSpec.result_text(spec.block.call(Plugin::ToolSpec.args_of(call, parameters),
-                                                       kctx&.surface || live_surface))
-        end
+        args = ->(call) { Plugin::ToolSpec.args_of(call, parameters) }
+        fields = { handler: lambda { |call, kctx|
+          Plugin::ToolSpec.result_text(spec.block.call(args.call(call), kctx&.surface || live_surface))
+        } }
+        return fields unless spec.name == CALL_NAME
+
+        fields.merge(preview: ->(call, surface = nil) { call_preview(args.call(call), surface || live_surface) },
+                     targets: ->(call, surface = nil) { call_targets(args.call(call), surface || live_surface) })
       end
 
       def find_spec

@@ -36,6 +36,20 @@ module Samagotchi
                          keyword_init: true) do
         def core? = source == "core"
 
+        # Its preview on +call+ (the row's params), nil without one.
+        # +surface+, the turn's Tools::ToolSurface (nil: none), goes to a
+        # preview that takes a second argument (call_tool's: what the turn
+        # reaches); a plugin's takes the call only.
+        def preview_of(call, surface = nil) = preview && Entry.per_call(preview, call, surface)
+
+        # Its targets on +call+ (what guardrail rules match), nil without
+        # any; +surface+ as #preview_of.
+        def targets_of(call, surface = nil) = targets && Entry.per_call(targets, call, surface)
+
+        def self.per_call(callable, call, surface)
+          callable.arity == 1 ? callable.call(call) : callable.call(call, surface)
+        end
+
         # Offered in a turn under +layers+ (the turn's LLM context layers).
         def offered?(layers) = layer.nil? || Array(layers).include?(layer)
       end

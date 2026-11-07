@@ -1232,7 +1232,7 @@ module Samagotchi
         result = surface.unknown_tool_error(call[:name], via: call[:via])
         return {
           output: result,
-          activity: ToolActivity.tool_activity_event(call[:name], call, result, registry: tools)
+          activity: ToolActivity.tool_activity_event(call[:name], call, result, registry: tools, surface: surface)
         }
       end
 
@@ -1250,7 +1250,7 @@ module Samagotchi
       dump_log("tool_result", result, model: model, tool: call[:name])
       dispatched = {
         output: "[#{call[:name]}]\n#{result}",
-        activity: ToolActivity.tool_activity_event(call[:name], call, result, registry: tools)
+        activity: ToolActivity.tool_activity_event(call[:name], call, result, registry: tools, surface: surface)
       }
       # Images the tool returned (read's ImageResult, a plugin's ToolResult):
       # ToolRunner attaches them (or says why not).
@@ -1273,7 +1273,7 @@ module Samagotchi
       result = "Error: #{e.message}"
       {
         output: "[#{call[:name]}] #{result}",
-        activity: ToolActivity.tool_activity_event(call[:name], call, result, registry: tools)
+        activity: ToolActivity.tool_activity_event(call[:name], call, result, registry: tools, surface: surface)
       }
     end
   end
