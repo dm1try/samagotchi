@@ -25,9 +25,6 @@ module Samagotchi
         @prompt_builder.preloaded_memory_names
       end
 
-      # Where the approval store lives: beside Session's state dir
-      # ($XDG_STATE_HOME/samagotchi/guardrails/). A Worker with its own state
-      # dir passes it.
       # Where sessions live (a session's images/ are under it); a worker sets
       # its own.
       attr_writer :session_state_dir

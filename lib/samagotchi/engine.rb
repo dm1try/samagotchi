@@ -1159,7 +1159,8 @@ module Samagotchi
 
     # Bundles' judgments (chi.judgment), on this Engine's Runs and side asks.
     # A judgment's own host and model are for bundles only: core's clients
-    # above never pass them (D2, JudgmentSettings).
+    # (#system_one_recording's, engine/side_requests.rb) never pass them (D2,
+    # JudgmentSettings).
     def build_judgments
       SystemOne::Judgments.new(
         client_for: lambda { |_name, settings|
