@@ -119,6 +119,8 @@ require_relative "engine/objectives"
 require_relative "engine/messages"
 require_relative "engine/plugins"
 require_relative "engine/hooks"
+require_relative "engine/guardrails"
+require_relative "engine/participants"
 
 module Samagotchi
   # Engine owns the core agent logic: system prompt construction, tool
@@ -146,6 +148,8 @@ module Samagotchi
     include MessagesPart
     include PluginsPart
     include HooksPart
+    include GuardrailsPart
+    include ParticipantsPart
 
     # Raised by #answer_question when the question it targets is no longer
     # open (never asked, superseded, already answered or cancelled). A subclass
@@ -605,11 +609,6 @@ module Samagotchi
 
     RECAP_SIDE_KIND = "recap"
 
-    # The running turn's author when a participant wrote it, else nil
-    # (ctx.turn_author, the hooks' author).
-    # @return [String, nil]
-    def turn_author = turn_running? ? @guardrail_wiring.turn_author : nil
-
     # @return [SessionMetrics] the per-session analytics collector
     attr_reader :metrics
 
@@ -696,19 +695,6 @@ module Samagotchi
       @prompt_builder.preloaded_memory_names
     end
 
-    # ── Guardrails ─────────────────────────────────────────────────────────────
-
-    # Who can answer an approval: :repl, :worker or :non_interactive (the
-    # default, so a bare Engine denies instead of waiting for nobody). Set
-    # by the host (TerminalUI, Worker).
-    def interface
-      @guardrail_wiring.interface
-    end
-
-    def interface=(value)
-      @guardrail_wiring.interface = value
-    end
-
     # Where the approval store lives: beside Session's state dir
     # ($XDG_STATE_HOME/samagotchi/guardrails/). A Worker with its own state
     # dir passes it.
@@ -726,33 +712,8 @@ module Samagotchi
 
     def session_state_dir = @session_state_dir || Session.default_state_dir
 
-    # Whether a participant's pair turn must stop, read before each of its
-    # generations (#guard_participant_spend): author ("p:<id>") → why (their
-    # link ended, or they passed their cap), nil while it may go on. The
-    # Worker sets it (Worker#participant_turn_stop); without one (the REPL)
-    # nothing is checked mid-turn.
-    attr_writer :participant_stop
-
     # What a participant turn's stop is attributed to (HookRoutes#stop_turn).
     PARTICIPANTS_HOOK = "participants"
-
-    # Before each generation (KernelLoop#generation_guard): a pair turn whose
-    # participant's link ended, or whose spend (Engine#metrics: their
-    # finished turns, this one's finished generations, their side requests)
-    # passed their cap, stops on the plugins' stop path (cost-cap's,
-    # work-cap's), with its notice. A generation's own cost is known only
-    # once it ends, so a turn can pass the cap by its last generation. The
-    # turn-start check is the Worker's (Worker#participant_refusal); a
-    # review turn only reads, and keeps to it.
-    def guard_participant_spend
-      author = turn_author
-      return if author.nil? || @participant_stop.nil?
-      return unless @guardrail_wiring.turn_mode == ParticipantMode::PAIR
-
-      reason = @participant_stop.call(author) or return
-      hook_stop_turn(reason, PARTICIPANTS_HOOK)
-    end
-    private :guard_participant_spend
 
     # The running turn's metrics so far, saved as a turn a worker died in
     # would leave them (SessionMetrics#persist's running_turn): a worker's
@@ -763,68 +724,6 @@ module Samagotchi
     # What a Bridge adds to a plugin's ctx.messages while a turn runs (the
     # turn so far, as messages); nil without a Bridge (the REPL).
     attr_writer :running_turn_messages
-
-    def guardrail_state_dir=(state_dir)
-      # Also where list_sessions and send_note look for other sessions.
-      @state_dir = state_dir
-      @guardrail_wiring.state_dir = state_dir
-    end
-
-    # The YAML rules, read again when a file changed (GuardrailWiring#rules).
-    # @return [Guardrails::Rules]
-    def guardrail_rules
-      @guardrail_wiring.rules
-    end
-
-    # @return [Guardrails::LoadFailures]
-    attr_reader :guardrail_failures
-
-    # @return [Guardrails::Approvals]
-    def guardrail_approvals
-      @guardrail_wiring.approvals
-    end
-
-    # @return [Guardrails::LoadFailures] the plugins that failed to load
-    attr_reader :plugin_failures
-
-    # Once per Engine, on its first turn: what failed to load, so every UI
-    # (REPL, attached TUI, web) shows it: the guardrails, then the plugins
-    # (label: "plugins"; the UIs say guardrails without one), an orphaned
-    # project memory folder (label: "memory"), then the notices and cards plugins showed as they loaded.
-    def announce_guardrail_failures(on_event)
-      return if @guardrail_failures_announced
-
-      @guardrail_failures_announced = true
-      message = @guardrail_failures.message
-      emit_event(on_event, { type: :guardrail_warning, message: message }) if message
-      plugins = @plugin_failures.message
-      emit_event(on_event, { type: :guardrail_warning, message: plugins, label: "plugins" }) if plugins
-      memory = MemoryOrphans.message
-      emit_event(on_event, { type: :guardrail_warning, message: memory, label: "memory" }) if memory
-      @extension_load.held_events.each { |event| emit_event(on_event, event) }
-    end
-    private :announce_guardrail_failures
-
-    # The warning the first turn announced (nil before it, or with nothing
-    # failed), for a UI that joins later (Bridge#snapshot).
-    def guardrail_warning
-      @guardrail_failures.message if @guardrail_failures_announced
-    end
-
-    # The plugins' load warning the first turn announced, likewise, and what
-    # their failed chi.on handlers told (HookRoutes#plugin_hook_failed).
-    def plugin_warning
-      loaded = @plugin_failures.message if @guardrail_failures_announced
-      [loaded, @hook_routes.hook_failures_message].compact.join("; ").then { |text| text unless text.empty? }
-    end
-
-    # Ask the user to approve a call the gate voted `ask` on
-    # (GuardrailWiring#request_approval).
-    # @param verdict [Guardrails::Verdict]
-    # @return [Guardrails::Verdict]
-    def request_approval(verdict)
-      @guardrail_wiring.request_approval(verdict)
-    end
 
     # How the turn ended, on the session (Session#last_turn): the caller's
     # save puts it in the file the session hub watches. Public for the
@@ -841,50 +740,6 @@ module Samagotchi
                                        enqueued_id: enqueued_id.to_s.empty? ? nil : enqueued_id.to_s,
                                        author: origin.participant_author,
                                        **stop_facts(event))
-    end
-
-    # A participant joined (invited) or left (revoked, expired) since the
-    # last look: :participants_changed to the observers (ParticipantsWatch;
-    # the worker looks on its idle tick). The first look announces nobody.
-    # @return [ParticipantsWatch::Change, nil]
-    def announce_participants
-      change = @participants_watch.changes or return nil
-
-      announce(change.to_event)
-      change
-    end
-
-    # Reads the session's participants at a turn's start; the first to join,
-    # the first invited to act (a pair participant: the line's words) and
-    # the last to leave rebuild the system prompt (its participants line),
-    # once each: a turn in between sends the same prefix.
-    def refresh_participants!(session)
-      line = @participants.refresh!(session).prompt_mode(session)
-      return if line == @participants_line
-
-      @participants_line = line
-      @prompt_builder.reset!
-    end
-    private :refresh_participants!
-
-    # The author fields a message +author+ wrote carries (Steer.author_fields:
-    # author:, and author_name: from participants.json), {} for the owner.
-    # The worker's drain names a participant's merged lines with it, and
-    # its running save a participant's prompt.
-    # @param author [String, nil] a turn's or a line's author (TurnOrigin#author)
-    # @param session [Session, nil] the session it is for (the turn's)
-    def author_fields(author, session: @session)
-      return {} unless Steer.participant_author?(author)
-
-      Steer.author_fields(author, @participants.name_for(author, session: session))
-    end
-
-    # A participant's opening message keeps the rules it was delivered under
-    # (ParticipantMode), stamped before any request carries it, so its header
-    # never changes when the session's mode does.
-    def participant_mode_fields(author)
-      mode = Steer.participant_author?(author) && @guardrail_wiring.turn_mode
-      mode ? { participant_mode: mode.to_s } : {}
     end
 
     # Why a turn stopped (TurnEndings#stop_facts).
