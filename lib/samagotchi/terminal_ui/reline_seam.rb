@@ -44,11 +44,6 @@ module Samagotchi
         # @return [#call, nil]
         attr_accessor :interrupt_handler
 
-        # Called with no arguments for each key a read takes (typing is
-        # activity for an idle clock; nobody sets it now).
-        # @return [#call, nil]
-        attr_accessor :key_handler
-
         # @return [Boolean] a Reline read is open (it owns stdin)
         def reading? = @reading == true
 
@@ -148,11 +143,6 @@ module Samagotchi
         RelineSeam.unanswered_query_at = nil
         RelineSeam.reading = true
         @rendered_screen.base_y = 0 if RelineSeam.screen
-      end
-
-      def update(key)
-        RelineSeam.key_handler&.call
-        super
       end
 
       def screen_height

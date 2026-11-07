@@ -60,15 +60,6 @@ module Samagotchi
         @screen.commit(text)
       end
 
-      # Draw on +surface+ from now on (no caller since the REPL went): what the slot shows
-      # moves there.
-      def surface=(surface)
-        @lock.synchronize do
-          @screen = surface
-          redraw_status if status_text
-        end
-      end
-
       # A new turn: its tally starts over too.
       def reset_turn_feedback
         @lock.synchronize do

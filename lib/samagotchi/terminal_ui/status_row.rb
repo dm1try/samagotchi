@@ -54,13 +54,6 @@ module Samagotchi
         @shown = nil
       end
 
-      # The surface it draws on (no caller since the REPL went): the row
-      # is drawn there at the next change.
-      def surface=(surface)
-        @surface = surface
-        @shown = nil
-      end
-
       def [](field) = @values[field]
 
       # Change some fields; the row is redrawn when its text changed.

@@ -45,15 +45,6 @@ RSpec.describe Samagotchi::TerminalUI::StatusRow do
     expect(surface.events.count { |event| event[0] == :set_slot }).to eq(2)
   end
 
-  it "draws again on a new surface" do
-    row.update(model: "m1")
-    other = RecordingSurface.new(columns: 120)
-    row.surface = other
-    row.refresh
-
-    expect(other.slots[:status]).to eq(["status> model=m1"])
-  end
-
   it "draws nothing with status.line off" do
     ENV["SAMAGOTCHI_STATUS_LINE"] = "off"
     row.update(model: "m1")
