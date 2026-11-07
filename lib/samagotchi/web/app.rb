@@ -12,6 +12,7 @@ require "rack/request"
 
 require_relative "../analytics_file"
 require_relative "../client_id"
+require_relative "../degrade"
 require_relative "../delivery"
 require_relative "../answer_tail"
 require_relative "../answer_refs"
@@ -969,11 +970,7 @@ module Samagotchi
 
         root = dir && ProjectScope.root_for(dir)
         # Lazy retention sweep (once per 24h)
-        begin
-          @manager.retention_sweep_if_due(state_dir: @state_dir)
-        rescue StandardError
-          nil
-        end
+        Degrade.call(:web, "retention_sweep_failed") { @manager.retention_sweep_if_due(state_dir: @state_dir) }
         limit = sanitize_limit(req.params["limit"])
         offset = sanitize_offset(req.params["offset"])
         all = @hub.snapshot(project_root: root, sort: sanitize_sort(req.params["sort"]), order: sanitize_order(req.params["order"]))
@@ -1067,11 +1064,7 @@ module Samagotchi
       end
 
       def handle_models(_req)
-        default = begin
-          ModelProfile.required_model_name
-        rescue StandardError
-          nil
-        end
+        default = Degrade.call(:web, "default_model_unresolved") { ModelProfile.required_model_name }
         models = []
         warnings = []
         begin
@@ -1156,35 +1149,35 @@ module Samagotchi
       # and each model's LLM context (LLMContextStrategy::Explained#summary).
       # A config that can't be read leaves the list as it is.
       def add_sampling(models, registry)
-        return if registry.nil? || models.empty?
+        Degrade.call(:web, "model_sampling_unreadable") do
+          return if registry.nil? || models.empty?
 
-        settings = ConfigFile.model_settings
-        models.each do |model|
-          target = registry.resolve(model[:name])
-          names = registry.lookup_names(model[:name], target: target)
-          summary = SamplingSettings.summary(target, names: names, models: settings)
-          model[:sampling] = summary if summary
-          add_llm_context(model, target, names, settings)
-          add_thinking(model, target, names, settings)
+          settings = ConfigFile.model_settings
+          models.each do |model|
+            target = registry.resolve(model[:name])
+            names = registry.lookup_names(model[:name], target: target)
+            summary = SamplingSettings.summary(target, names: names, models: settings)
+            model[:sampling] = summary if summary
+            add_llm_context(model, target, names, settings)
+            add_thinking(model, target, names, settings)
+          end
         end
-      rescue StandardError
-        nil
       end
 
       # The LLM context +model+ starts under (the start page's ⚙ panel);
       # one that can't be read leaves this model without, not the others.
       def add_llm_context(model, target, names, settings)
-        model[:llm_context] = LLMContextStrategy.explain(target, names: names, models: settings).summary(nil)
-      rescue StandardError
-        nil
+        Degrade.call(:web, "model_llm_context_unreadable") do
+          model[:llm_context] = LLMContextStrategy.explain(target, names: names, models: settings).summary(nil)
+        end
       end
 
       # The thinking level +model+ starts at, with where it came from (the
       # start page's ⚙ panel; SettingExplained#summary, no session).
       def add_thinking(model, target, names, settings)
-        model[:thinking] = Thinking.explain(target, names: names, models: settings).summary
-      rescue StandardError
-        nil
+        Degrade.call(:web, "model_thinking_unreadable") do
+          model[:thinking] = Thinking.explain(target, names: names, models: settings).summary
+        end
       end
 
       # The served model a session's last generation reported (analytics.json,
@@ -1193,25 +1186,25 @@ module Samagotchi
       # Engine#served_model does, with the host whose served: expects it.
       # {} when none applies.
       def saved_served_model(session, persisted)
-        served = persisted["served_model"]
-        model = session.model_name.to_s
-        return {} unless served.is_a?(String) && !served.empty? && !model.empty?
+        Degrade.call(:web, "served_model_unreadable", fallback: {}) do
+          served = persisted["served_model"]
+          model = session.model_name.to_s
+          return {} unless served.is_a?(String) && !served.empty? && !model.empty?
 
-        registry = host_registry
-        asked = registry.bare_name(model)
-        return {} unless persisted["served_model_for"] == asked
+          registry = host_registry
+          asked = registry.bare_name(model)
+          return {} unless persisted["served_model_for"] == asked
 
-        { served_model: served, served_model_for: asked, served_expected_by: saved_served_expected_by(registry, model, served) }
-      rescue StandardError
-        {}
+          { served_model: served, served_model_for: asked, served_expected_by: saved_served_expected_by(registry, model, served) }
+        end
       end
 
       # See ServedModel.expected_by; nil when the model doesn't resolve (the
       # mismatch still shows).
       def saved_served_expected_by(registry, model, served)
-        ServedModel.expected_by(registry.resolve(model), served)
-      rescue StandardError
-        nil
+        Degrade.call(:web, "served_expected_by_unresolved") do
+          ServedModel.expected_by(registry.resolve(model), served)
+        end
       end
 
       # Built again when config.yml's hosts: changed (compared as read: the
@@ -1343,9 +1336,9 @@ module Samagotchi
 
       # The process holding the session (an OwnerLock::Owner), or nil. A worker always runs a Bridge; a TUI (plain `chi`) doesn't share.
       def session_owner(id)
-        @manager.session_owner(id, state_dir: @state_dir)
-      rescue StandardError
-        nil
+        Degrade.call(:web, "session_owner_unreadable") do
+          @manager.session_owner(id, state_dir: @state_dir)
+        end
       end
 
       # ── The working set (web.working_set) ───────────────────────────────
@@ -1871,11 +1864,7 @@ module Samagotchi
         # Try ISO8601, then float timestamp
         Time.iso8601(val.to_s)
       rescue ArgumentError
-        begin
-          Time.at(Float(val.to_s))
-        rescue StandardError
-          nil
-        end
+        Degrade.call(:web, "since_unparsable") { Time.at(Float(val.to_s)) }
       end
 
       def default_state_dir

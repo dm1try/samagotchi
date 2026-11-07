@@ -574,7 +574,6 @@ Samagotchi/SilentRescue:
     - lib/samagotchi/update_hint.rb
     - lib/samagotchi/vision_context.rb
     - lib/samagotchi/vision_support.rb
-    - lib/samagotchi/web/app.rb
     - lib/samagotchi/web/message_display.rb
     - lib/samagotchi/web/participant_review.rb
     - lib/samagotchi/web/session_control.rb
