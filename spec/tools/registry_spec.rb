@@ -29,6 +29,22 @@ RSpec.describe Samagotchi::Tools::Registry do
     expect { registry.register("echo", schema: schema, handler: ->(*) {}) }.to raise_error(ArgumentError)
   end
 
+  it "snapshots its entry set, toolkit and index frozen, as they are when taken" do
+    registry = extended_registry
+    lean = Samagotchi::Toolkit::Resolved.new(name: "lean", core: %w[read])
+    registry.toolkit = lean
+    snapshot = registry.snapshot
+    registry.unregister("echo")
+    registry.toolkit = nil
+
+    expect(snapshot).to be_frozen
+    expect(snapshot.key?("echo")).to be(true)
+    expect(snapshot.toolkit).to eq(lean)
+    expect(snapshot["read"]).to be(registry["read"])
+    expect { snapshot.register("more", schema: schema, handler: ->(*) {}) }.to raise_error(FrozenError)
+    expect(registry).not_to be_frozen
+  end
+
   # The tool list is part of the prompt's cached prefix: it must not
   # depend on which plugin's init finished first.
   describe "bundle tools' order" do
