@@ -407,7 +407,7 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop do
     results = feed(snapshot, { type: "stream_closed", reason: "unreachable" })
 
     expect(results.last).to eq(:closed)
-    expect(screen.lines.last).to eq("Lost the session's worker (unreachable). Resume it with: chi --shared --resume s-1234")
+    expect(screen.lines.last).to eq("Lost the session's worker (unreachable). Resume it with: chi --resume s-1234")
   end
 end
 

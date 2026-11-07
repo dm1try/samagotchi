@@ -14,12 +14,12 @@ RSpec.describe "chi without a configured model" do
   let(:home) { Dir.mktmpdir("chi-first-run") }
   let(:env) do
     { "HOME" => home, "XDG_CONFIG_HOME" => File.join(home, "config"), "XDG_STATE_HOME" => File.join(home, "state"),
-      "SAMAGOTCHI_DEFAULT_MODEL" => nil, "SAMAGOTCHI_SESSION_SHARED" => nil }
+      "SAMAGOTCHI_DEFAULT_MODEL" => nil }
   end
 
   after { FileUtils.rm_rf(home) }
 
-  [[], ["--no-shared"], ["-p", "hi", "--non-interactive"]].each do |args|
+  [[], ["-p", "hi", "--non-interactive"]].each do |args|
     it "says where to set the model (chi #{args.join(" ")})".rstrip do
       _out, err, status =
         if args.empty?

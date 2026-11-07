@@ -103,6 +103,11 @@ RSpec.describe "Samagotchi::Config.validate_yaml_sections" do
     )
   end
 
+  it "warns that session.shared is gone (chi always runs attached)" do
+    expect(problems("session: {shared: false}"))
+      .to eq(["config: unknown key 'session.shared': removed: chi always runs attached"])
+  end
+
   describe "system_one.judgments" do
     it "takes a bundle's entries, an unquoted mode: on and off among them" do
       expect(problems("system_one: {judgments: {check-in.progress: {mode: on, host: h, model: m}, b.x: {mode: off}, c.y: {mode: audit}}}")).to eq([])

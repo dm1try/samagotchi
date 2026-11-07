@@ -36,32 +36,28 @@ RSpec.describe "chi --resume with no default.model" do
   def hosts_yaml = "hosts:\n  main:\n    host: 127.0.0.1\n    port: #{TCPServer.open("127.0.0.1", 0) { |s| s.addr[1] }}\n"
 
   # A config with hosts but no default.model: the resumed session's model
-  # runs in the REPL (no shared worker).  This is part B: part A made the
-  # worker path work; the REPL still needed fixes.
+  # runs in the in-process one-shot (--non-interactive), which checks it here.
   it "runs the resumed session's own model (no config default)" do
     Dir.mktmpdir do |dir|
       write_config(dir, hosts_yaml)
       id = save_session(dir, model_name: "main:spec-model")
 
-      out, err, status = run_chi("--resume", id, "--no-shared", env: isolated_chi_env(dir), chdir: dir)
+      out, err, status = run_chi("--resume", id, "--non-interactive", "-p", "/model", env: isolated_chi_env(dir), chdir: dir)
 
       expect(status.exitstatus).to eq(0), err
-      expect(err).to eq("")
-      expect(out).to include("Resumed session: #{id}")
-      expect(out).to include("model=main:spec-model")
-      expect(out).not_to include("(default")
+      expect(err).to eq("Resumed session: #{id}\n")
+      expect(out).to eq("runtime model: main:spec-model (profile=qwen36, default)\n")
     end
   end
 
-  # --non-interactive with --resume and -p goes to the in-process REPL
-  # (attached mode refuses --non-interactive); with no default, it should
-  # still run on the session's model.
+  # --non-interactive with --resume and -p runs in this process; with no
+  # default, it still runs on the session's model.
   it "runs -p --non-interactive on a session model (no config default)" do
     Dir.mktmpdir do |dir|
       write_config(dir, hosts_yaml)
       id = save_session(dir, model_name: "main:spec-model")
 
-      _out, err, status = fork_chi("--no-shared", "--resume", id, "--non-interactive", "-p", "/help",
+      _out, err, status = fork_chi("--resume", id, "--non-interactive", "-p", "/help",
                                    env: isolated_chi_env(dir), chdir: dir)
 
       expect(status.exitstatus).to eq(0), err
@@ -76,7 +72,7 @@ RSpec.describe "chi --resume with no default.model" do
       write_config(dir, hosts_yaml)
       id = save_session(dir, model_name: "")
 
-      out, err, status = fork_chi("--resume", id, "--no-shared", env: isolated_chi_env(dir), chdir: dir)
+      out, err, status = fork_chi("--resume", id, "--non-interactive", "-p", "/model", env: isolated_chi_env(dir), chdir: dir)
 
       expect(status.exitstatus).to eq(1)
       expect(out).to eq("")

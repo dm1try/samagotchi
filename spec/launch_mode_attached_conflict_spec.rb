@@ -9,23 +9,17 @@ RSpec.describe Samagotchi::LaunchMode, ".attached_conflict" do
 
   it "says nothing when the flags go together" do
     expect(conflict(attach: "s1")).to be_nil
-    expect(conflict(shared: true, resume: "s1", prompt: "hi")).to be_nil
-    expect(conflict(shared: true, verbose: false, non_interactive: false)).to be_nil
+    expect(conflict(resume: "s1", prompt: "hi")).to be_nil
+    expect(conflict(verbose: false, non_interactive: false)).to be_nil
   end
 
-  it "refuses --attach with --shared, and with --resume" do
-    expect(conflict(attach: "s1", shared: true)).to eq("use either --attach ID or --shared")
-    expect(conflict(attach: "s1", resume: "s2")).to eq("--attach takes the session id; --resume goes with --shared")
+  it "refuses --attach with --resume" do
+    expect(conflict(attach: "s1", resume: "s2")).to eq("use either --attach ID or --resume ID")
   end
 
   it "names the in-process flag an attached run can't take, --non-interactive first" do
-    expect(conflict(shared: true, non_interactive: true)).to eq("--attach/--shared can't be combined with --non-interactive")
-    expect(conflict(attach: "s1", verbose: true)).to eq("--attach/--shared can't be combined with --verbose")
-    expect(conflict(shared: true, verbose: true, non_interactive: true)).to end_with("--non-interactive")
-  end
-
-  it "checks --attach with --shared before the others" do
-    expect(conflict(attach: "s1", shared: true, resume: "s2", verbose: true)).to eq("use either --attach ID or --shared")
+    expect(conflict(attach: "s1", non_interactive: true)).to eq("--attach can't be combined with --non-interactive")
+    expect(conflict(attach: "s1", verbose: true, non_interactive: true)).to end_with("--non-interactive")
   end
 
   it "words a Bridge that didn't come" do

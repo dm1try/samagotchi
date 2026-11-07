@@ -67,8 +67,7 @@ RSpec.describe "chi scratch" do
 
   {
     "--resume" => %w[--resume abc],
-    "--attach" => %w[--attach abc],
-    "--shared" => %w[--shared]
+    "--attach" => %w[--attach abc]
   }.each do |flag, args|
     it "refuses #{flag}" do
       _out, err, status, left = chi_scratch("scratch", *args)

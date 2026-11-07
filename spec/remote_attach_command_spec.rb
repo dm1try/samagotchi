@@ -75,9 +75,7 @@ RSpec.describe Samagotchi::RemoteAttachCommand do
 
   it "refuses conflicting flags in chi --attach's words (exit 1)" do
     expect(run(attach: "a", resume: "b")).to eq(1)
-    expect(run(attach: "a", shared: true)).to eq(1)
-    expect(err.string).to eq("Error: --attach takes the session id; --resume goes with --shared\n" \
-                             "Error: use either --attach ID or --shared\n")
+    expect(err.string).to eq("Error: use either --attach ID or --resume ID\n")
   end
 
   it "fails a launch in the words it failed with: too old, ambiguous, not found, refused there (exit 1); a bad flag there exits 2" do

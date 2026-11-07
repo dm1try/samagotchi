@@ -104,16 +104,16 @@ RSpec.describe Samagotchi::RunOptions do
 
   it "takes a flag's whole name only: an abbreviation is an unknown option (a remote can't read it past its contract)" do
     { %w[--verb] => "--verb", %w[--mem x] => "--mem", %w[--non-inter] => "--non-inter", %w[--append x] => "--append",
-      %w[--no-share] => "--no-share", %w[--att ab] => "--att" }.each do |argv, flag|
+      %w[--att ab] => "--att" }.each do |argv, flag|
       expect(refusal(*argv)).to eq(["Error: invalid option: #{flag} (see chi --help)\n", 1]), argv.join(" ")
     end
-    options, = parse("--verbose", "--memory", "x", "--no-shared", "-v")
-    expect(options).to include(verbose: true, memories: ["x"], shared: false)
+    options, = parse("--verbose", "--memory", "x", "-v")
+    expect(options).to include(verbose: true, memories: ["x"])
   end
 
   describe ".switches" do
     it "lists every switch the parser takes, long and short, --no-tool too" do
-      expect(described_class.switches).to include("-p", "--prompt", "--attach", "--resume", "--shared", "--no-shared",
+      expect(described_class.switches).to include("-p", "--prompt", "--attach", "--resume",
                                                   "--model", "--thinking", "--toolkit", "--tool", "--no-tool", "--set",
                                                   "--parent-answers", "--memory", "--mute", "--append-system-prompt",
                                                   "--llm-context", "--llm-context-apply", "--llm-context-budget",

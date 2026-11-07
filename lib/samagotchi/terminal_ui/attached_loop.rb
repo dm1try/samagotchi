@@ -419,7 +419,7 @@ module Samagotchi
 
         # Here a stopped session has always read as unreachable.
         reason = "unreachable" if reason == "stopped"
-        "Lost the session's worker (#{reason}). Resume it with: #{via.command("--shared --resume #{id}")}"
+        "Lost the session's worker (#{reason}). Resume it with: #{via.command("--resume #{id}")}"
       end
 
       # Each reason in its own words (the remote's name, its chi web's

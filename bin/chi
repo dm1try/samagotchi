@@ -193,7 +193,7 @@ end
 
 # A scratch session is new, runs here and goes when it ends.
 if scratch
-  flag = { resume: "--resume", attach: "--attach", shared: "--shared" }.find { |key, _flag| options[key] }&.last
+  flag = { resume: "--resume", attach: "--attach" }.find { |key, _flag| options[key] }&.last
   if flag
     warn "Error: chi scratch starts a new session in this terminal and keeps nothing; it can't take #{flag}"
     exit 1
@@ -396,12 +396,7 @@ end
 
 chi_update_hint.call
 require "samagotchi/launch_mode"
-launch, launch_note = if scratch
-                        [options[:non_interactive] || options[:verbose] ? :repl : :attached, nil]
-                      else
-                        Samagotchi::LaunchMode.resolve(options, shared_config: Samagotchi::Config.get("session.shared"))
-                      end
-warn launch_note if launch_note
+launch = Samagotchi::LaunchMode.resolve(options)
 
 if launch == :attached
   error = Samagotchi::LaunchMode.attached_conflict(options)
@@ -412,7 +407,7 @@ if launch == :attached
 
   require "samagotchi/terminal_ui/attach_launcher"
   begin
-    ended = Samagotchi::TerminalUI::AttachLauncher.run(attach: options[:attach], shared: !options[:attach], resume: options[:resume],
+    ended = Samagotchi::TerminalUI::AttachLauncher.run(attach: options[:attach], resume: options[:resume],
                                                        prompt: options[:prompt], model: options[:model],
                                                        no_interrupt: !!options[:no_interrupt],
                                                        default_input: !options[:no_default_input],

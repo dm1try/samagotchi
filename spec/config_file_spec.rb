@@ -116,11 +116,8 @@ RSpec.describe Samagotchi::ConfigFile do
         expect(described_class.cli_entries.map(&:key)).not_to include("session.max_children")
       end
 
-      it "runs plain chi attached unless session.shared is turned off" do
-        expect(described_class.resolve("session.shared", file_data: {}, env: {})).to be(true)
-        expect(described_class.resolve("session.shared", file_data: {}, env: { "SAMAGOTCHI_SESSION_SHARED" => "0" })).to be(false)
-        expect(described_class.resolve("session.shared", file_data: { "session" => { "shared" => false } }, env: {})).to be(false)
-        expect(described_class.cli_entries.map(&:key)).not_to include("session.shared")
+      it "has no session.shared any more (chi always runs attached)" do
+        expect(described_class.find_by_key("session.shared")).to be_nil
       end
     end
 

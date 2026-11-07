@@ -14,7 +14,7 @@ module Samagotchi
   module RunOptions
     # The flags an underscored spelling is refused for (--recap_base_url),
     # with the config registry's.
-    KNOWN = %w[--prompt --resume --attach --shared --no-shared --model --thinking --toolkit --tool --no-tool --set --parent-answers --memory --mute --append-system-prompt --dir --llm-context --llm-context-apply --llm-context-budget --no-interrupt --non-interactive --verbose --no-default-input --port --open --new-token --tunnel --start-dir].freeze
+    KNOWN = %w[--prompt --resume --attach --model --thinking --toolkit --tool --no-tool --set --parent-answers --memory --mute --append-system-prompt --dir --llm-context --llm-context-apply --llm-context-budget --no-interrupt --non-interactive --verbose --no-default-input --port --open --new-token --tunnel --start-dir].freeze
 
     # An OptionParser that also records each switch it took, as the
     # normalized [flag] or [flag, value] (a --[no-]x as --x or --no-x; an
@@ -221,12 +221,11 @@ module Samagotchi
           (each subcommand takes --help)
 
         BANNER
-        opts.on("-p", "--prompt PROMPT", "Run PROMPT as the first turn, then stay in the session (attached; the REPL with --no-shared)") { |p| options[:prompt] = p }
+        opts.on("-p", "--prompt PROMPT", "Run PROMPT as the first turn, then stay in the session (attached; one turn and out with --non-interactive)") { |p| options[:prompt] = p }
         opts.on("--resume SESSION_ID", "Resume a previous session by its ID (or a unique prefix of it)") { |s| options[:resume] = s }
         opts.on("--attach SESSION_ID", "Attach to a session's worker, waking one if it has exited; ID or a unique prefix") { |s| options[:attach] = s }
         opts.on("--dir DIR", "With --remote: a new session's folder on that machine, its absolute path (required there; " \
                              "here cd instead)") { |d| options[:dir] = d }
-        opts.on("--[no-]shared", "Run the session in a background worker and attach to it, so `chi web` can share it (the default, config session.shared; with --resume: that session); --no-shared runs a plain in-process REPL") { |v| options[:shared] = v }
         opts.on("--model NAME", "Model for this run, not saved (overrides --resume's; config default.model) [env SAMAGOTCHI_DEFAULT_MODEL]") { |m| options[:model] = m; cli_overrides["default.model"] = m }
         opts.on("--profile NAME", Samagotchi::ModelProfile::NAMES,
                 "Prompt profile for every model in this run (#{Samagotchi::ModelProfile::NAMES.join("|")}) [alias for --model-profile]") { |p| cli_overrides["model.profile"] = p }
@@ -260,7 +259,7 @@ module Samagotchi
         opts.on("--llm-context-apply RULE", "This session's own apply rule for it: payoff|next_request|turn_end") { |v| (options[:llm_context] ||= {})[:apply] = v }
         opts.on("--llm-context-budget TOKENS", "This session's own context budget: tokens (64000, 64k) or off") { |v| (options[:llm_context] ||= {})[:budget_tokens] = v }
         opts.on("--no-interrupt", "Raise the tool call limit to 1000 iterations (useful for long tasks)") { options[:no_interrupt] = true; cli_overrides["no_interrupt"] = true }
-        opts.on("--non-interactive", "Run a single prompt and exit (no REPL, implies --no-interrupt)") { options[:non_interactive] = true }
+        opts.on("--non-interactive", "Run the -p prompt in this process, one turn, and exit (implies --no-interrupt)") { options[:non_interactive] = true }
         opts.on("-v", "--verbose", "Print raw LLM responses and tool calls/results (runs a plain REPL, not attached)") { options[:verbose] = true }
         opts.on("--no-default-input", "Skip default REPL input prefill") { options[:no_default_input] = true; cli_overrides["no_default_input"] = true }
         opts.on("--port PORT", "Port for `chi web` (default: 4567, env SAMAGOTCHI_WEB_PORT)") { |p| options[:web_port] = p.to_i; cli_overrides["web.port"] = p.to_s }

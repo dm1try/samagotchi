@@ -71,7 +71,7 @@ RSpec.describe "The guardrails bundle's rules" do
                             "echo '{}' > #{ENV.fetch("XDG_STATE_HOME")}/samagotchi/context/projects/app_1/pr-1.json",
                             "rm -r $XDG_STATE_HOME/samagotchi/context/sessions/abc"],
     "chi-answer-piped" => ["printf '3\\n' | chi --attach abc", "(sleep 3; printf 'y\\n') | chi --attach abc",
-                           "echo y | chi --no-shared -p go", "yes | bundle exec bin/chi --prompt go",
+                           "echo y | chi -p go", "yes | bundle exec bin/chi --prompt go",
                            "chi --attach abc < answers.txt", "chi -p go <<< 1", "chi --attach abc <<EOF",
                            "chi -p go < /dev/null.txt", "chi -p go < /dev/null <<< 1",
                            "printf '3\\n' | chi --remote studio --attach abc", "chi --remote=studio -p go <<< 1",

@@ -5,12 +5,13 @@ require "json"
 require "tmpdir"
 require "support/fake_provider_server"
 
-# `chi --no-shared -p X </dev/null`: the prompt runs once. A failed turn
-# restored its prompt for a retry, and Reline, reading from no terminal,
-# handed it back as the next line: the prompt went again and again (447
-# requests in 5 s against a host that answers 400). Now the error shows
-# once and chi exits 1; the provider's retries inside the turn still run.
-RSpec.describe "chi --no-shared -p with no terminal" do
+# `chi -p X </dev/null` (attached): the prompt runs once. In the old
+# in-process REPL a failed turn restored its prompt for a retry, and Reline,
+# reading from no terminal, handed it back as the next line: the prompt went
+# again and again (447 requests in 5 s against a host that answers 400).
+# The error shows once and chi exits 1; the provider's retries inside the
+# turn still run.
+RSpec.describe "chi -p with no terminal" do
   let(:server) { FakeProviderServer.start }
   let(:dir) { Dir.mktmpdir("chi-p-pipe") }
 
@@ -38,7 +39,7 @@ RSpec.describe "chi --no-shared -p with no terminal" do
         base_delay: 0.01
       recap: false
     YAML
-    out, _err, status = super("--no-shared", "-p", "hello", env: isolated_chi_env(dir), timeout: 30)
+    out, _err, status = super("-p", "hello", env: isolated_chi_env(dir), timeout: 30)
     [out, status]
   end
 

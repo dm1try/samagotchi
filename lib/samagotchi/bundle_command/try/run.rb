@@ -30,7 +30,7 @@ module Samagotchi
 
         def run(prompt:, options:, timeout:)
           command = [RbConfig.ruby, "-I", Sandbox::LIB_DIR, Sandbox::CHI,
-                     "--no-shared", "--non-interactive", "-p", prompt, *child_options(options)]
+                     "--non-interactive", "-p", prompt, *child_options(options)]
           trap_state, old_traps = trap_forwarding
           pid = nil
           streams = []

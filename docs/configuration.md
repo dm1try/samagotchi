@@ -64,11 +64,9 @@ model_aliases:
   small: your-small-model-id
   tiny: small-box:your-small-model-id  # alias may be bare or host:model (hybrid)
 
-# Plain chi runs its session in a background worker and attaches to it, so the
-# web UI can share it (default true; env SAMAGOTCHI_SESSION_SHARED). false keeps
-# the in-process REPL; --no-shared does for one run.
+# A session runs in a background worker; chi attaches to it, and the web UI
+# shares it.
 session:
-  shared: true
   # idle_exit_minutes: 30   # an unused worker exits after this (0 = never)
   # project_env: mise      # a worker's tools get its folder's `mise env` (off: the starter's env)
   # keep_empty: false       # true keeps sessions nothing happened in (default: deleted when left)
@@ -172,7 +170,6 @@ or `chi web` restart.
 | `system_one.host`, `system_one.model`, `system_one.timeout_ms`, `system_one.runs`, `system_one.judgments` | Next tool call or approval | Each ask reads them. |
 | `hooks`, `bundles` | Worker start | Hooks, plugins and their bundle settings load with the engine. |
 | `recap.*` | Worker start | The engine builds its recap job at start, and again when it binds a session with its own `recap.enabled` or `recap.sentences` (`--set`, see "Per-session settings") and when `/recap on\|off\|default` changes the session's own value. |
-| `session.shared` | Next `chi` invocation | It selects attached-worker or in-process mode for that invocation. |
 | `session.idle_exit_minutes`, `session.project_env`, `session.carry_last_answer`, `session.keep_empty`, `session.max_children`, `session.delegate_reports`, `session.task_wakes`, `session.max_wakes` | Worker start or next matching lifecycle decision | Existing workers keep their idle-exit timer and project env; the other values are read for the next corresponding decision. |
 | `session.retention_*`, `session.max_count`, `session.keep_status`, `session.sweep_interval_hours` | Next retention sweep | `chi web` sweeps on its configured schedule and on `GET /api/sessions`; `chi sessions prune` uses the values for that invocation. The sweep interval is checked on the next hub tick. |
 | `web.*` except `web.participants.*` | `chi web` start | Restart `chi web` to change its bind address, port or page settings. |
@@ -1479,8 +1476,8 @@ work tree top when inside it, else with `~`.
   every request`). The files are saved in the session (`appended_prompt_files`),
   so a respawned worker builds the same prompt, and a fork or a continue keeps
   them; a delegate child doesn't. With `--attach` or `--resume` the flag is
-  ignored with one line, as `--memory` is; a REPL `--resume` (`--no-shared`)
-  adds them for that run only.
+  ignored with one line, as `--memory` is; a `--resume ID --non-interactive`
+  one-shot adds them for that run only.
 - The files' text is read at each prompt build, as AGENTS.md's is: an edit is
   picked up by a new process or a rebuild (`/model`). `/stats` lists the files
   in the prompt on its `prompt files:` line.
@@ -2226,7 +2223,6 @@ column says so, a `--kebab-name` flag. The maps (`hosts:`, `models:`,
 | `broadcast.triage_parallel` | `4` | | Triage requests at a time. |
 | `broadcast.triage_deadline` | `20` | | Seconds triage may take in all; a recipient not judged by then gets the note unchecked. |
 | `broadcast.threshold` | `0.5` | | The P(yes) a recipient needs, when the triage host gives logprobs; a plain yes or no is 1 or 0. |
-| `session.shared` | `true` | | Plain `chi` runs its session in a worker and attaches; `--no-shared` per run. |
 | `session.idle_exit_minutes` | `30` | yes | An unused worker exits after this; `0` = never. |
 | `session.project_env` | `mise` | | The commands a session's worker runs follow its project: `mise` runs them in the session folder's `mise env`, read once at worker start (`chi sessions restart` picks up a mise.toml edit); `off` doesn't ask mise: the tools keep the env of whoever started the worker (with a chi home, the home's `chi` still goes first on their PATH). See [Project env](sessions.md#project-env). |
 | `session.carry_last_answer` | `true` | | A continue's carry note holds the previous session's last answer after its recap; `false`: the recap only. See [Session chains](sessions.md#session-chains). |

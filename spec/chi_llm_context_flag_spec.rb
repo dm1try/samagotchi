@@ -48,10 +48,10 @@ RSpec.describe "chi --llm-context" do
               "SAMAGOTCHI_DEFAULT_MODEL" => "spec-model", "SAMAGOTCHI_MODEL_PROFILE" => nil,
               "SAMAGOTCHI_SERVER_HOST" => "127.0.0.1", "SAMAGOTCHI_SERVER_PORT" => server.port.to_s }
       chi_run = ->(*args) { fork_chi(*args, env: env, chdir: dir) }
-      chi_run.call("--no-shared", "--non-interactive", "-p", "hi")
+      chi_run.call("--non-interactive", "-p", "hi")
       id = File.basename(Dir.glob(File.join(dir, "state", "**", "*.json")).find { |path| File.basename(path).match?(/\A\h{8}-/) }, ".json")
 
-      _out, err, status = chi_run.call("--no-shared", "--resume", id, "--llm-context", "stale", "--non-interactive", "-p", "/help")
+      _out, err, status = chi_run.call("--resume", id, "--llm-context", "stale", "--non-interactive", "-p", "/help")
       expect(status).to be_success, err
       saved = JSON.parse(File.read(Dir.glob(File.join(dir, "state", "**", "#{id}.json")).first))
       expect(saved["llm_context"]).to eq("strategy" => ["stale"])

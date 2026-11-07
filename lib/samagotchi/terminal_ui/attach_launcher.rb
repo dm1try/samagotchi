@@ -16,7 +16,7 @@ require_relative "attached_loop"
 
 module Samagotchi
   class TerminalUI
-    # `chi --attach ID` and `chi --shared [--resume ID]`: find or start the
+    # `chi`, `chi --attach ID` and `chi --resume ID`: find or start the
     # session's worker, then run the TUI as a client of its Bridge
     # (AttachedLoop). It takes no OwnerLock and builds no Engine: the worker
     # owns the session, and any number of UIs can attach to it.
@@ -79,7 +79,7 @@ module Samagotchi
       #   :failed when the --model switch didn't go through, or (input from a
       #   pipe) :turn_failed / :empty_answer / :removed / :unanswered
       #   (AttachedLoop#run)
-      def run(attach: nil, shared: false, resume: nil, prompt: nil, model: nil, no_interrupt: false, default_input: true,
+      def run(attach: nil, resume: nil, prompt: nil, model: nil, no_interrupt: false, default_input: true,
               memories: [], muted_memories: [], llm_context: {}, thinking: nil, appended_prompt_files: [], toolkit: nil,
               toolkit_flags: [], settings: nil, parent_answers: nil, scratch: false, state_dir: nil, connector: nil)
         state_dir ||= Session.default_state_dir
@@ -87,7 +87,7 @@ module Samagotchi
         client = if connector
                    link.client
                  else
-                   connect(attach: attach, shared: shared, resume: resume, model: model, state_dir: state_dir,
+                   connect(attach: attach, resume: resume, model: model, state_dir: state_dir,
                            memories: memories, muted_memories: muted_memories, llm_context: llm_context,
                            thinking: thinking, appended_prompt_files: appended_prompt_files, toolkit: toolkit,
                            toolkit_flags: toolkit_flags, settings: settings, parent_answers: parent_answers,
@@ -207,7 +207,7 @@ module Samagotchi
 
       # @return [BridgeClient] a client for the live Bridge of the session
       # @raise [Error]
-      def connect(attach: nil, shared: false, resume: nil, model: nil, state_dir: nil, wait: BRIDGE_WAIT,
+      def connect(attach: nil, resume: nil, model: nil, state_dir: nil, wait: BRIDGE_WAIT,
                   memories: [], muted_memories: [], llm_context: {}, thinking: nil, appended_prompt_files: [], toolkit: nil,
                   toolkit_flags: [], settings: nil, parent_answers: nil, scratch: false, err: $stderr)
         sd = state_dir || Session.default_state_dir

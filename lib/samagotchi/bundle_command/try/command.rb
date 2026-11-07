@@ -42,7 +42,7 @@ module Samagotchi
           f.switch "--json"
           f.switch "--keep"
           f.value "--timeout"
-          f.refuse "--attach", "--shared", "chi bundle try can't use --attach or --shared"
+          f.refuse "--attach", "chi bundle try can't use --attach"
         end
         DEFAULT_TIMEOUT = 300
         # The sandbox's cost-cap bundle setting (--set cost-cap.cap=N).
