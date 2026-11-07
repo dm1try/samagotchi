@@ -16,7 +16,14 @@ model. The TUI is untouched: it shows a fence as source.
    who draws what: `GET /api/block_renderers`, `:owner`. `GET /api/block_renderers/:bundle/:file` serves a file, `:owner`:
    the URL's names go through `BlockRenderers.script_path` (membership in a listed renderer's `load` before any path is
    made), then `Provenance.sha_matches?`; a changed file is 409 `renderer_changed`. ETag + `no-cache`, as static files.
-3. `block_host.js` (`createBlockHost`, wired in `app.js`; `participant.js` isn't): one `MutationObserver` per turn root,
+3. `block_watch.js` (`createBlockWatch`, made by `block_host.js`'s `createBlockHost`, wired in `app.js`; `participant.js`
+   isn't) finds and watches the blocks; `block_host.js` is its frame drawer (`createFrameDrawer`). The watcher asks an
+   ordered list of drawers, core ones first (none yet), then the frame drawer, which waits for `/api/block_renderers`;
+   the first that `claims` the block's language draws it, and a language none claims is left alone. The contract
+   (`claims`, `needsDraw`, `draw`, its `reconsider`, `sessionChanged`) is in the module's header. The shared DOM
+   helpers live there too: `failBlock` and its `.block-note` (a click copies it), `holdingView`, `rejoin`, the
+   toggle's listener; frames, the cache, hang marks, size checks, the zoom and the theme redraw stay in
+   `block_host.js`. One `MutationObserver` per turn root,
    filtered to `TEXTS` (`text_roots.js`), so cards, the asking slot, question replies and delegate reports never draw, and
    every path that adds a block to a root is seen the same way. One `IntersectionObserver` per scroller, with an explicit `root`
    (with `root: null`, `rootMargin` doesn't pass an `overflow: auto` in between). Closed `<details>` fire on open. **A
