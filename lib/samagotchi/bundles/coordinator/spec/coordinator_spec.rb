@@ -25,6 +25,11 @@ RSpec.describe "The coordinator plugin", :bundle do
   end
   # What ctx.sessions.children answers.
   let(:children) { [] }
+  # The refusal ctx.sessions.send raises for a session a one-turn run holds, in chi's current words (a
+  # bundle spec reaches no internal constant: Testing::Boundary).
+  let(:busy) do
+    "session aaaabbbb is in use by a one-turn chi --non-interactive run or an older chi's terminal, which takes no messages from others"
+  end
 
   def run(name, args = "") = bundle.command("#{name} #{args}")
 
@@ -127,10 +132,10 @@ RSpec.describe "The coordinator plugin", :bundle do
     end
 
     it "shows the request to send yourself where the session takes no messages (a one-turn run)" do
-      @send_error = "session aaaabbbb is in use by a one-turn chi --non-interactive run, which takes no messages from others"
+      @send_error = busy
 
       expect(run("/coordinate", "do x")).to eq(
-        "/coordinate: session aaaabbbb is in use by a one-turn chi --non-interactive run, which takes no messages from others. Send this yourself:\n\n" \
+        "/coordinate: #{busy}. Send this yourself:\n\n" \
         "Read the skill_coordinator memory and follow it for this goal:\n\ndo x"
       )
     end
@@ -299,9 +304,9 @@ RSpec.describe "The coordinator plugin", :bundle do
     end
 
     it "shows the request to send yourself where the session takes no messages (a one-turn run)" do
-      @send_error = "session aaaabbbb is in use by a one-turn chi --non-interactive run, which takes no messages from others"
+      @send_error = busy
 
-      expect(run("/coordinate", "end")).to start_with("/coordinate: session aaaabbbb is in use by a one-turn chi --non-interactive run")
+      expect(run("/coordinate", "end")).to start_with("/coordinate: #{busy}. ")
         .and end_with("Send this yourself:\n\nRead the skill_coordinator memory and follow its End of day now: " \
                       "bring your handoff up to date and give me the end-of-day report.")
     end

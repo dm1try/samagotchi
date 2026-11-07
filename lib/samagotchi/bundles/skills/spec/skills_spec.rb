@@ -421,10 +421,12 @@ RSpec.describe "The skills plugin", :bundle do
       expect(sent).to be_empty
     end
 
-    it "shows the request for the user to send when the session takes no messages (a REPL)" do
-      @send_error = "session sess-1 is in use by a one-turn chi --non-interactive run, which takes no messages from others"
+    it "shows the request for the user to send when the session takes no messages (a one-turn run)" do
+      # ctx.sessions.send's refusal in chi's current words (no internal constant in a bundle spec: Testing::Boundary)
+      @send_error = "session sess-1 is in use by a one-turn chi --non-interactive run or an older chi's terminal, " \
+                    "which takes no messages from others"
       reply = skill(plugin, "save release")
-      expect(reply).to start_with("/skill save: session sess-1 is in use by a one-turn chi --non-interactive run, which takes no messages from others. " \
+      expect(reply).to start_with("/skill save: #{@send_error}. " \
                                   "Send this yourself:\n\nSave what we just did as skill `skill_release`")
     end
   end
