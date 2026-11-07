@@ -62,6 +62,11 @@ module Samagotchi
 
     # Qwen3.6 thinking blocks: <think>...</think> (including empty)
     QWEN_THINK_RE = %r{<think>.*?</think>}m
+    # A Qwen thought cut off before it closed (no </think>), when the text
+    # opens with it (after any closed ones): the rest is thought, as with the
+    # Gemma channel. Only #strip_markup drops it; #remove_tokens (a streamed
+    # thought being shown) keeps it. A <think> mentioned mid-answer stays.
+    UNCLOSED_THINK_RE = /\A\s*<think>.*\z/m
     # Qwen tool_call XML blocks that survive when a tool call is rendered as text
     # e.g. <tool_call>\n<function=list_reminders>\n</function>\n</tool_call>
     QWEN_TOOL_CALL_RE = %r{<tool_call>.*?</tool_call>}m
@@ -93,7 +98,8 @@ module Samagotchi
     # a native Gemma step's closed tool-call blocks go with their bodies, as
     # Qwen's do (a step that only calls a tool has no text).
     def strip_markup(text)
-      remove_tokens(text.to_s.gsub(GEMMA_TOOL_CALL_RE, "")).gsub(/\n[ \t]*\n(?:[ \t]*\n)+/, "\n\n").strip
+      text = text.to_s.gsub(GEMMA_TOOL_CALL_RE, "").gsub(QWEN_THINK_RE, "").sub(UNCLOSED_THINK_RE, "")
+      remove_tokens(text).gsub(/\n[ \t]*\n(?:[ \t]*\n)+/, "\n\n").strip
     end
 
     def remove_tokens(text)

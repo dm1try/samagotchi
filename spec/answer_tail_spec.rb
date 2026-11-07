@@ -112,6 +112,13 @@ RSpec.describe Samagotchi::AnswerTail do
     end
   end
 
+  it "a reply that is only a thought cut off before it closed: no answer, as the web shows none" do
+    msgs = [{ role: "assistant", content: "the answer" }, { role: "assistant", content: "<think>still going" }]
+    expect(described_class.answer?(msgs.last)).to be(false)
+    expect(described_class.find(msgs)[:content]).to eq("the answer")
+    expect(new_walk(msgs).map { |m| m[:content] }).to eq(["the answer"])
+  end
+
   it "returns the raw message itself, not a copy" do
     answer = { role: "assistant", content: "the answer" }
     expect(described_class.find([{ role: "user", content: "q" }, answer])).to equal(answer)
