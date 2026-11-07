@@ -504,7 +504,6 @@ Samagotchi/SilentRescue:
     - lib/samagotchi/host_registry.rb
     - lib/samagotchi/idle_recap.rb
     - lib/samagotchi/image_store.rb
-    - lib/samagotchi/kernel_loop.rb
     - lib/samagotchi/llm_context_strategy.rb
     - lib/samagotchi/llm/chat_loop.rb
     - lib/samagotchi/llm/http.rb

@@ -11,6 +11,7 @@ require_relative "prompt_literal_guard"
 require_relative "token_usage"
 require_relative "client"
 require_relative "llm/errors"
+require_relative "degrade"
 require_relative "log"
 require_relative "empty_answer_retry"
 require_relative "cut"
@@ -198,9 +199,9 @@ module Samagotchi
     # memory_read's overflow guard. nil when it can't be read.
     # @return [ContextWindow::Resolved, nil]
     def tool_output_window
-      ContextWindow.resolve(client: @client, model: @turn_settings&.model_name, setting: @turn_settings&.window_setting)
-    rescue StandardError
-      nil
+      Degrade.call(:model, "context_window_unresolved") do
+        ContextWindow.resolve(client: @client, model: @turn_settings&.model_name, setting: @turn_settings&.window_setting)
+      end
     end
 
     def guard_generation
@@ -383,9 +384,9 @@ module Samagotchi
     end
 
     def model_props
-      @client.respond_to?(:server_props) ? @client.server_props(model: @turn_settings.model_name) : nil
-    rescue StandardError
-      nil
+      Degrade.call(:model, "server_props_unreadable") do
+        @client.respond_to?(:server_props) ? @client.server_props(model: @turn_settings.model_name) : nil
+      end
     end
 
     # One iteration. Returns :next, :answer (the turn ends), or the turn's
@@ -831,10 +832,9 @@ module Samagotchi
                                                            cancel_controller: turn.cancel_controller, answer: answer)
     end
 
+    # A failing stream callback (a UI gone) must not break the turn.
     def emit_stream_event(callback, event)
-      callback&.call(event)
-    rescue StandardError
-      nil
+      Degrade.call(:turn, "stream_event_callback_failed", type: (event[:type] if event.is_a?(Hash))) { callback&.call(event) }
     end
 
     # ── Hook dispatch helper ───────────────────────────────────────────────────
@@ -849,9 +849,8 @@ module Samagotchi
     def fire_hook(name, event)
       return unless @hooks
 
-      @hooks.fire(name, event)
-    rescue StandardError
       # A failing hook must not break the turn.
+      Degrade.call(:hooks, "hook_fire_failed", hook: name) { @hooks.fire(name, event) }
     end
 
     # Coerce a value to boolean — handles true/false, nil, and string "true"/"false".
