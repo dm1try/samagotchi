@@ -111,6 +111,8 @@ require_relative "session_participants"
 require_relative "engine/steering"
 require_relative "engine/side_requests"
 require_relative "engine/recap"
+require_relative "engine/models"
+require_relative "engine/model_settings"
 
 module Samagotchi
   # Engine owns the core agent logic: system prompt construction, tool
@@ -130,6 +132,8 @@ module Samagotchi
     include SteeringPart
     include SideRequestsPart
     include RecapPart
+    include ModelsPart
+    include ModelSettingsPart
 
     # Raised by #answer_question when the question it targets is no longer
     # open (never asked, superseded, already answered or cancelled). A subclass
@@ -587,11 +591,6 @@ module Samagotchi
       Process.clock_gettime(Process::CLOCK_MONOTONIC)
     end
 
-    # The backend for the next turn: the loop the effective model's host speaks.
-    def backend(model = effective_model)
-      backend_for(model)
-    end
-
     # @return [Array<String>] reminder names queued for a synthetic REPL turn
     def due_reminder_names
       @reminder_queue.pending_names
@@ -616,115 +615,6 @@ module Samagotchi
     # @return [SessionMetrics] the per-session analytics collector
     attr_reader :metrics
 
-    # The model as given (maybe an alias; HostRegistry#resolve applies it).
-    def effective_model_name = @model_binding.choice.name
-
-    # The model as typed at start or at the last /model.
-    def typed_model_name = @model_binding.choice.typed
-
-    # The resolved ref a session stores for the effective model (ModelRef#ref:
-    # the alias applied, "host:id" when it names a host).
-    def effective_model_ref
-      model_ref_for(effective_model_name)
-    end
-
-    # The effective model as the system prompt names it (SystemPrompt::ModelIdentity):
-    # the ref, its host, the overlay key and, for a local llama.cpp host
-    # only, the model its /props names when that differs. Never a new
-    # request: only the /props answer profile resolution already cached.
-    def model_identity
-      model = effective_model
-      entry = model.entry
-      host = entry && "host #{entry.name}, #{entry.url || "#{entry.host}:#{entry.port}"}"
-      SystemPrompt::ModelIdentity.new(ref: model.ref, host: host, key: @model_binding.model_key,
-                                      served: model.prompt_served, fallback_key: @model_binding.fallback_model_key)
-    end
-
-    # The model notes for the effective model (ModelNotes): matched on its
-    # bare id and key, the session's mutes left out.
-    # @return [Array<ModelNotes::Note>]
-    def model_notes
-      ModelNotes.for(name: guardrail_model_name, key: @model_binding.model_key, fallback_key: @model_binding.fallback_model_key,
-                     muted: @muted_memory_names)
-    end
-
-    # The model notes the session's prompt carried at its last build
-    # (Session#prompt_notes): a resumed session's or a woken worker's saved
-    # ones until this process builds its prompt; a fresh session (no build
-    # yet, no messages) has none saved, so the effective model's prompt
-    # would load them: the notes #model_notes names, as without a session.
-    # The three readers (/model, /stats, the web) share this.
-    # @return [Array<PromptNote>]
-    def prompt_notes
-      return model_notes.map { |note| PromptNote.from_note(note) } unless @session
-
-      saved = @session.prompt_notes
-      return saved.dup if !@prompt_builder.prompt_notes.nil? || !saved.empty? || @session.messages.to_a.any?
-
-      model_notes.map { |note| PromptNote.from_note(note) }
-    rescue StandardError => e
-      Log.warn(:model, "prompt_notes_failed", error: e.class.name, msg: e.message.to_s[0, 200])
-      []
-    end
-
-    # Records +notes+ (ModelNotes::Note) on the session as the ones its
-    # prompt carries; saved with it.
-    def record_prompt_notes(notes)
-      @session.prompt_notes = Array(notes).map { |note| PromptNote.from_note(note) } if @session && notes
-    end
-    private :record_prompt_notes
-
-    # A failed turn's one line (the error's #summary). A host's failure
-    # under an alias says what the alias became (HostRegistry#alias_note):
-    # "host main" alone doesn't tell --model splash's user it was splash.
-    # @return [String]
-    def failure_summary(error)
-      summary = error.respond_to?(:summary) ? error.summary : error.message
-      return summary unless error.is_a?(LLM::ProviderError) && error.host
-
-      note = @host_registry.alias_note(effective_model_name)
-      note && note.end_with?("on host #{error.host}") ? "#{summary} (#{note})" : summary
-    rescue StandardError => e
-      EffectiveModel::Unresolved.fallback(:alias_note_failed, effective_model_name, e, summary)
-    end
-
-    # +name+'s resolved ref (ModelRef#ref).
-    def model_ref_for(name)
-      @host_registry.model_ref(name).ref
-    end
-
-    # The ref #switch_model! would switch +model_name+ to, checked the way it
-    # checks one (UnknownHost, MissingModel), without switching.
-    # @return [String]
-    def model_switch_ref(model_name)
-      model_ref_for(ModelProfile.check_host!(ModelProfile.required_model_name(model_name), hosts: @host_registry.entries))
-    end
-
-    # Writes the effective model to +session+: the resolved ref, and the
-    # name as typed when that differs (model_typed: an alias, for the
-    # models: lookup after a resume).
-    def store_model!(session)
-      ref = effective_model_ref
-      session.model_name = ref
-      typed = typed_model_name
-      session.model_typed = typed.to_s == ref ? nil : typed
-      session
-    end
-
-    # The effective model's key (ModelOverlay.key_for its bare name): memory
-    # overlays, guardrail rules' models:.
-    # @return [String, nil]
-    def model_key = @model_binding.model_key
-
-    # The prompt profile for the effective model (see #profile_resolution).
-    # @return [ModelProfile]
-    def profile = profile_resolution.profile
-
-    # Which profile the effective model gets and where that came from,
-    # kept with the model choice it was resolved for
-    # (ModelBinding#profile_resolution).
-    # @return [ModelProfile::Resolution]
-    def profile_resolution = @model_binding.profile_resolution
     attr_reader :default_model_name, :host_registry, :client
 
     # @return [Commands::Registry] the commands this session runs: the
@@ -733,31 +623,6 @@ module Samagotchi
 
     # @return [PeerSources] the sources the peer bundles declared
     attr_reader :peer_sources
-
-    # The model id sent for +full_ref+ (its alias applied, the host prefix off).
-    def bare_model_name(full_ref)
-      @host_registry.bare_name(full_ref)
-    end
-
-    # The memory overlay keys follow the model sent (ModelBinding#sync_model_key!).
-    def sync_model_key! = @model_binding.sync_model_key!
-    private :sync_model_key!
-
-    # The effective model's bare name for the guardrails' models: rules;
-    # nil without a model name.
-    def guardrail_model_name
-      model = effective_model_name
-      name = model && bare_model_name(model)
-      name.to_s.strip.empty? ? nil : name
-    end
-
-    # Point the kernel (and a chat backend) at the effective model's host
-    # (after /model, --model, resume).
-    def sync_kernel_client!(model = effective_model)
-      @client = model.client
-      @kernel.client = model.client if @kernel.client != model.client
-      backend_for(model)
-    end
 
     # Subscribe a persistent observer to engine events.
     #
@@ -1140,72 +1005,6 @@ module Samagotchi
     end
     private :announce_or_hold
 
-    # ── Model switching ────────────────────────────────────────────────────────
-
-    # @param typed [String, nil] the name the model was typed as when
-    #   +model_name+ is a stored ref (a resumed session's model_typed)
-    # @return [String] the resolved ref the session stores (ModelRef#ref)
-    def switch_model!(model_name, persist_default: false, typed: nil)
-      # The alias is applied where the model is resolved (HostRegistry#resolve),
-      # once; checked here: an unknown host, an alias naming another host.
-      resolved = ModelProfile.check_host!(ModelProfile.required_model_name(model_name), hosts: @host_registry.entries)
-      choice = ModelChoice.new(name: resolved, typed: typed.to_s.strip.empty? ? model_name : typed.to_s.strip)
-      @model_binding.switch!(choice)
-      sync_model_key!
-      @prompt_builder.reset!
-      # The notes the new model's prompt loads at its next build, so /model,
-      # /stats and the web name them before the next turn does.
-      record_prompt_notes(model_notes) if @session
-      sync_kernel_client!
-      @client.invalidate_context_window!
-      @metrics.forget_model_reports!
-      # The last turn's ctx % was the old model's window's
-      # (#announce_switched_context! sends the new one's).
-      @last_context_status = nil
-      ref = effective_model_ref
-      if persist_default
-        ConfigFile.write_default_model!(ref)
-        @default_model_name = ref
-      end
-      ref
-    end
-
-    # After /model: how full the context is on the new model's window,
-    # before its first turn: the last turn's count (the old model's
-    # tokenizer's, replaced at the next generation) against the new model's
-    # window (EffectiveModel#context_window, ContextWindow.resolve: the
-    # running server first, one /props GET that a remote chat host is
-    # spared; else the host's cached model list; else the configured
-    # window) and the
-    # session's budget. Sent as a :context_status event (the web's ctx
-    # meter, the attached TUI's status row) with context_window_tokens, and
-    # kept for a client that joins later (#session_state_snapshot; the
-    # window in the metrics' context too, which a page counts from). A window
-    # that can't be resolved sends usage nil: the UIs clear the % until the
-    # next generation. Nothing before the session's first counted turn.
-    # +configured_only+: the configured window only, never asking a server
-    # (EffectiveModel#configured_context_window): a loaded session's (#session=).
-    # @return [Hash, nil] the event sent
-    def announce_switched_context!(configured_only: false)
-      used = @metrics.snapshot.dig(:context, :used_tokens)
-      return nil unless used.is_a?(Integer)
-
-      model = effective_model
-      window = configured_only ? model.configured_context_window : current_context_window(model)
-      display = window && saved_context_status({ used_tokens: used, window_tokens: window.tokens })
-      @last_context_status = display&.dup
-      @metrics.note_context_window(window.tokens, window.source) if window
-      usage = display && { estimated_pct: display[:est_pct], estimated_used_tokens: used, window_tokens: window.tokens,
-                           window_source: window.source.to_s, source: "switch" }
-      event = { type: :context_status, usage: usage, bucket: display&.dig(:bucket),
-                context_window_tokens: window&.tokens, context_window_source: window&.source&.to_s }
-      @session_observer.notify(event)
-      event
-    rescue StandardError => e
-      Log.warn(:model, "switched_context_failed", error: e.class.name, msg: e.message.to_s[0, 200])
-      nil
-    end
-
     # ── Hooks API ──────────────────────────────────────────────────────────────
 
     # Register a hook callback for a named lifecycle event.
@@ -1260,102 +1059,6 @@ module Samagotchi
 
     # @return [ReminderStore] the reminder store for inspection
     attr_reader :reminder_store
-
-    # The metrics for /stats, which may make one short /props GET
-    # (EngineSnapshots#stats_snapshot).
-    # @return [Hash] @metrics.snapshot, filled in
-    def stats_snapshot = @engine_snapshots.stats_snapshot
-
-    # ── The session's model settings (SessionModelSettings) ──────────────────
-
-    # The session's own thinking, reasoning_history and llm_context values
-    # over the effective model's, the summaries /model and /stats show, and
-    # the saved context's status: SessionModelSettings' (resolved on every
-    # read); these forward.
-    def saved_context_status(context, model: :current) = @model_settings.saved_context_status(context, model: model)
-    def llm_context_explained(own: :session) = @model_settings.llm_context_explained(own: own)
-    def llm_context_summary = @model_settings.llm_context_summary
-    def llm_context_override = @model_settings.llm_context_override
-    def chat_model? = @model_settings.chat_model?
-    def sampling_summary = @model_settings.sampling_summary
-    def thinking_summary = @model_settings.thinking_summary
-    def steer_cut_after_explained = @model_settings.steer_cut_after_explained
-    def steer_cut_after = @model_settings.steer_cut_after
-    def steer_cut_summary = @model_settings.steer_cut_summary
-    def thinking_explained(own: thinking_override) = @model_settings.thinking_explained(own: own)
-    def reasoning_history_summary = @model_settings.reasoning_history_summary
-    def reasoning_history_cache_cost(from, to) = @model_settings.reasoning_history_cache_cost(from, to)
-    def reasoning_history_override = @model_settings.reasoning_history_override
-    def thinking_override = @model_settings.thinking_override
-    def served_expected_by(served) = @model_settings.served_expected_by(served)
-    def served_expected?(served) = @model_settings.served_expected?(served)
-
-    def reasoning_history_explained(native: false, own: reasoning_history_override)
-      @model_settings.reasoning_history_explained(native: native, own: own)
-    end
-
-    # Set the session's own reasoning_history or thinking level (nil unsets
-    # it): SessionModelSettings'. The caller saves the session.
-    # @raise [ArgumentError] with no session yet
-    def reasoning_history_override=(level)
-      @model_settings.reasoning_history_override = level
-    end
-
-    def thinking_override=(level)
-      @model_settings.thinking_override = level
-    end
-
-    # Set the session's own llm_context values (an empty override unsets
-    # them); the next turn's start resolves them, never a running one (its
-    # TurnSettings are fixed). The caller saves the session.
-    # @raise [ArgumentError] with no session yet
-    def llm_context_override=(override)
-      raise ArgumentError, "no session yet" unless @session
-
-      SessionSetting::LLM_CONTEXT.set(@session, override)
-      # The status a later client reads counts against the new budget.
-      @last_context_status = saved_context_status(@metrics.snapshot[:context]) || @last_context_status if @last_context_status
-    end
-
-    # Whether the session has a model reply (a cache to restart at all).
-    def history?
-      Array(@session&.messages).any? { |entry| entry[:role].to_s == "model" }
-    end
-
-    # The latest known context size used by a request, for a cache-restart
-    # confirmation; nil before any request reports a count.
-    # @return [Integer, nil]
-    def cache_restart_tokens
-      used = @metrics.snapshot.dig(:context, :used_tokens)
-      used if used.is_a?(Integer)
-    end
-
-    # Whether a cache restart can invalidate preserved thinking blocks.
-    def cache_restart_anthropic?
-      effective_model.entry&.api.to_s == "anthropic"
-    end
-
-    # What a thinking level change costs the effective model's prompt
-    # cache (Thinking.cache_cost): :full, :provider or :tail.
-    # @return [Symbol]
-    def thinking_cache_cost
-      effective_model.thinking_cache_cost { profile }
-    end
-
-    # The model the server serves for the current model, and the name asked
-    # for: what the last generation of that name reported, else llama.cpp's
-    # model_alias (/props, one short cached probe; not with probe: false),
-    # else [nil, nil].
-    # @return [Array(String, String), Array(nil, nil)]
-    def served_model(probe: true)
-      @engine_snapshots.served_model_for(@metrics.served_report, model: probe ? effective_model : nil)
-    end
-
-    # Read-only snapshot of the engine's view of the current session plus the
-    # live event sequence; cheap, never probes, never raises
-    # (EngineSnapshots#session_state_snapshot has its keys).
-    # @return [Hash]
-    def session_state_snapshot = @engine_snapshots.session_state_snapshot
 
     # @return [Array<String>] deduped used memory names (thread-safe copy)
     def used_memory_names
@@ -2026,17 +1729,6 @@ module Samagotchi
       announce_switched_context!(configured_only: true)
     end
 
-    # Whether the last turn that named its model ran on another one than
-    # the effective model; false before any (or when the ref can't be told).
-    def model_switched_since_last_turn?
-      last = @metrics.last_model_ref
-      !last.nil? && last != effective_model_ref
-    rescue StandardError => e
-      Log.warn(:model, "switch_check_failed", error: e.class.name, msg: e.message.to_s[0, 200])
-      false
-    end
-    private :model_switched_since_last_turn?
-
     # The idle recap job (RecapSetup.build) under the current session's own
     # recap values, which it records.
     # @return [IdleRecap, nil]
@@ -2654,11 +2346,6 @@ module Samagotchi
                         capability: -> { model.vision_support(profile) })
     end
 
-    # The effective model's sampling and thinking level as the next turn
-    # reads them (SessionModelSettings).
-    def turn_sampling = @model_settings.turn_sampling
-    def turn_thinking = @model_settings.turn_thinking
-
     # A model known not to see images fails a turn with images up front.
     def refuse_images!(vision)
       return if vision.sendable?
@@ -2755,19 +2442,6 @@ module Samagotchi
 
     def replace_session_messages(session, messages)
       session.messages = messages
-    end
-
-    # Pick the loop for +model+ (EffectiveModel); the chat loop is pointed
-    # at its host's adapter (one per host, kept for its cached model list).
-    def backend_for(model)
-      return @native_backend unless model.chat?
-
-      @chat_backend_mutex.synchronize do
-        @chat_backend ||= LLM::ChatLoop.new(kernel: @kernel, stable_length: ->(text) { @prompt_builder.stable_length(text) })
-        @chat_backend.adapter = @host_registry.adapter_for(model.entry)
-        @chat_backend.session_id = session&.id
-        @chat_backend
-      end
     end
 
     def load_plugins
@@ -3406,35 +3080,5 @@ module Samagotchi
     def stream_watch(cancel_controller) = @event_fanout.stream_watch(cancel_controller)
     private :stream_watch
     def emit_event(on_event, event) = @event_fanout.emit_event(on_event, event)
-
-    # The effective model's window_tokens and price, read per turn
-    # (SessionModelSettings).
-    def turn_window_setting = @model_settings.turn_window_setting
-    def turn_price = @model_settings.turn_price
-
-    # The snapshots' helpers are EngineSnapshots' (#build_engine_snapshots);
-    # these forward to it.
-    def served_model_for(...) = @engine_snapshots.served_model_for(...)
-    def kit_prompt_stats = @engine_snapshots.kit_prompt_stats
-
-    # The window as +model+'s loop would see it (EffectiveModel#context_window).
-    def current_context_window(model) = model.context_window
-
-    # +settings+' chips (EngineSnapshots#setting_chips).
-    def setting_chips(settings, model) = @engine_snapshots.setting_chips(settings, model)
-
-    # The effective model now, resolved on each call, never kept
-    # (SessionModelSettings#effective_model). Raises as HostRegistry#resolve does.
-    # @return [EffectiveModel]
-    def effective_model(choice = @model_binding.choice) = @model_settings.effective_model(choice)
-
-    # ── Prompt profile ─────────────────────────────────────────────────────────
-
-    # The profile's resolve, keep, apply and retry are ModelBinding's
-    # (#build_model_binding); these forward to it.
-    def resolve_profile(choice) = @model_binding.resolve_profile(choice)
-    def store_profile(choice, resolution) = @model_binding.store_profile(choice, resolution)
-    def apply_profile(resolution) = @model_binding.apply_profile(resolution)
-    def refresh_profile! = @model_binding.refresh_profile!
   end
 end
