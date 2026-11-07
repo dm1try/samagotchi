@@ -7,6 +7,7 @@ require_relative "file_ref"
 require_relative "guardrails"
 require_relative "vision_context"
 require_relative "degrade"
+require_relative "stream_event"
 require_relative "log"
 require_relative "edit_preview"
 require_relative "tool_output_cut"
@@ -562,7 +563,7 @@ module Samagotchi
 
     # A failing stream callback (a UI gone) must not break the call either.
     def emit(callback, event)
-      Degrade.call(:turn, "tool_event_callback_failed", type: (event[:type] if event.is_a?(Hash))) { callback&.call(event) }
+      StreamEvent.emit(callback, event, failure: "tool_event_callback_failed")
     end
   end
 end

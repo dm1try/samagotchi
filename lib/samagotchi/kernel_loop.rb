@@ -20,6 +20,7 @@ require_relative "thinking"
 require_relative "hooks"
 require_relative "pending_input_queue"
 require_relative "steer"
+require_relative "stream_event"
 require_relative "reasoning_history"
 require_relative "thought_stream_splitter"
 require_relative "tools/builtins"
@@ -835,7 +836,7 @@ module Samagotchi
 
     # A failing stream callback (a UI gone) must not break the turn.
     def emit_stream_event(callback, event)
-      Degrade.call(:turn, "stream_event_callback_failed", type: (event[:type] if event.is_a?(Hash))) { callback&.call(event) }
+      StreamEvent.emit(callback, event, failure: "stream_event_callback_failed")
     end
 
     # ── Hook dispatch helper ───────────────────────────────────────────────────
