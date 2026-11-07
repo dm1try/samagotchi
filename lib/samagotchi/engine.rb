@@ -113,6 +113,8 @@ require_relative "engine/side_requests"
 require_relative "engine/recap"
 require_relative "engine/models"
 require_relative "engine/model_settings"
+require_relative "engine/events"
+require_relative "engine/cards"
 
 module Samagotchi
   # Engine owns the core agent logic: system prompt construction, tool
@@ -134,6 +136,8 @@ module Samagotchi
     include RecapPart
     include ModelsPart
     include ModelSettingsPart
+    include EventsPart
+    include CardsPart
 
     # Raised by #answer_question when the question it targets is no longer
     # open (never asked, superseded, already answered or cancelled). A subclass
@@ -624,30 +628,6 @@ module Samagotchi
     # @return [PeerSources] the sources the peer bundles declared
     attr_reader :peer_sources
 
-    # Subscribe a persistent observer to engine events.
-    #
-    # Unlike the turn-scoped `on_event:` sink, a subscribed observer keeps
-    # receiving events across every `run_turn` call on this Engine. Each
-    # delivery carries a locally-monotonic `event_seq`. The returned handle can
-    # be used to unsubscribe later.
-    # @param observer [#call] receives event hashes (with `event_seq:` merged in)
-    # @return [Samagotchi::SessionObserver::SubscribedObserver] handle to unsubscribe
-    def subscribe(observer:)
-      @session_observer.subscribe(observer: observer)
-    end
-
-    # Unsubscribe a previously-registered observer.
-    # @param handle [Samagotchi::SessionObserver::SubscribedObserver]
-    # @return [Boolean] whether the observer was removed (nil/unknown never raises)
-    def unsubscribe(handle:)
-      @session_observer.unsubscribe(handle: handle)
-    end
-
-    # @return [Integer] total engine events emitted so far (locally monotonic)
-    def event_count
-      @session_observer.event_count
-    end
-
     # Event types #announce accepts: facts about the session's input queue,
     # a failed turn's prompt handed back and the continue offer, which live
     # UIs need in the event log, emitted outside any turn's stream; a
@@ -656,35 +636,6 @@ module Samagotchi
                              command_queued command_ran context_added card hook_notice guardrail_warning
                              plugin_init_started plugin_init_finished working_set_updated participants_changed
                              verdict_recorded objectives_updated].freeze
-
-    # Put a transport-level event into the ordered event log. Unlike turn
-    # events it reaches only persistent observers (no turn sink, no memory
-    # capture).
-    # @param event [Hash] with :type in ANNOUNCEABLE_EVENTS
-    # @raise [ArgumentError] for any other type
-    def announce(event)
-      unless ANNOUNCEABLE_EVENTS.include?(event[:type])
-        raise ArgumentError, "cannot announce #{event[:type].inspect} (allowed: #{ANNOUNCEABLE_EVENTS.join(", ")})"
-      end
-
-      @session_observer.notify(event)
-    end
-
-    # Run the block with the event log held: no event is numbered or
-    # delivered meanwhile, and events the block emits keep their order.
-    def synchronize_events(&)
-      @session_observer.synchronize(&)
-    end
-
-    # The working set's :working_set_updated, announced between turns
-    # (after a command changed what the next request sends), when it
-    # differs from the last one emitted (#emit_working_set). Under the
-    # event lock, so it is ordered with the change's own events.
-    def announce_working_set(session = @session)
-      return unless session
-
-      synchronize_events { emit_working_set(nil, session, session.messages) }
-    end
 
     # The session's objectives as the page draws them (Objectives.view), when
     # that differs from the last announced: after an edit (its file written,
@@ -801,73 +752,6 @@ module Samagotchi
       end
     end
 
-    # ── Cards ───────────────────────────────────────────────────────────────
-
-    # Show a card in every UI (docs/plugins.md, Cards): {type: :card, id:,
-    # source:, title:, body:, level:, actions: [{label:, command:}], in_turn:}.
-    # Where it goes (held while the plugins load, an anytime command's, an
-    # init task's, a turn event, else announced) is EventRoutes#route's,
-    # marked in_turn: (CARD_MARKS). A card with the id of an earlier one
-    # replaces it (btw's "thinking…" → the answer).
-    # @param source [String] who shows it (a bundle's name)
-    # @param actions [Array<Hash>] {label:, command:}; a command is a line
-    #   the session runs, as typed (D3)
-    # @return [String] the card's id
-    # @raise [ArgumentError] a card without a title, or a bad action
-    def show_card(source:, title:, body: "", actions: [], level: :info, id: nil)
-      card = Plugin::Card.build(source: source, title: title, body: body, actions: actions, level: level, id: id)
-      command = Thread.current[running_command_key]
-      card[:command] = command if command
-      @event_routes.route(card, **EventRoutes::CARD_MARKS)
-      card[:id]
-    end
-
-    # Run an anytime command's block (D8): the cards and notices it shows on
-    # this thread are announced at once, marked anytime: true, and are
-    # never a running turn's events. They belong to the command, not the
-    # turn, and a UI shows them after the command's own line (a web
-    # command bubble drawn at its command_queued), even mid-turn.
-    # @return the block's value
-    def running_anytime
-      key = :"samagotchi_anytime_#{object_id}"
-      outer = Thread.current[key]
-      Thread.current[key] = true
-      yield
-    ensure
-      Thread.current[key] = outer
-    end
-
-    # Run a session command's dispatch: a card shown on this thread says
-    # it's that command's (:card's command:), for a reload that no longer has
-    # the command's line above it (Bridge::CardStore). A thread of its own
-    # isn't the command, nor a card shown after it.
-    # @param name [String] the command, "/short"
-    # @return the block's value
-    def running_command(name)
-      outer = Thread.current[running_command_key]
-      Thread.current[running_command_key] = name
-      yield
-    ensure
-      Thread.current[running_command_key] = outer
-    end
-
-    # Whether an anytime command (/btw) still runs on its thread.
-    def anytime_running?
-      @lifecycle_mutex.synchronize { @anytime_threads.any?(&:alive?) }
-    end
-
-    # Start an anytime command on its own thread (D8), one #shutdown waits
-    # for, so its command_ran is announced before the process leaves.
-    # @return [Thread]
-    def spawn_anytime(&)
-      thread = Thread.new(&)
-      @lifecycle_mutex.synchronize do
-        @anytime_threads.select!(&:alive?)
-        @anytime_threads << thread
-      end
-      thread
-    end
-
     # ── Plugin init tasks (chi.init) ──────────────────────────────────────
 
     # A plugin's slow setup (docs/plugins.md, Init tasks): PluginTasks.
@@ -904,33 +788,6 @@ module Samagotchi
     # The init task this thread runs, or nil.
     def current_init_task = @plugin_tasks.current
     private :current_init_task
-
-    # ── Load events ───────────────────────────────────────────────────────
-
-    # Announce what failed to load and what plugins showed while loading,
-    # once, as soon as the owner can show it (the worker's Bridge is up, the
-    # REPL renders events): the guardrail and plugin warnings, an orphaned
-    # project memory folder (label: "memory", MemoryOrphans), then the
-    # held notices (between_turns) and cards (in_turn: false, so late
-    # joiners get them). Without this call the first turn announces them
-    # (#announce_guardrail_failures).
-    def announce_load_events!
-      synchronize_events do
-        next if @guardrail_failures_announced
-
-        @guardrail_failures_announced = true
-        message = @guardrail_failures.message
-        announce({ type: :guardrail_warning, message: message }) if message
-        plugins = @plugin_failures.message
-        announce({ type: :guardrail_warning, message: plugins, label: "plugins" }) if plugins
-        memory = MemoryOrphans.message
-        announce({ type: :guardrail_warning, message: memory, label: "memory" }) if memory
-        @extension_load.held_events.each do |event|
-          announce(event[:type] == :card ? event.merge(in_turn: false) : event.merge(between_turns: true))
-        end
-      end
-      nil
-    end
 
     # How long #shutdown waits for the running anytime commands, in all.
     SHUTDOWN_JOIN_SECONDS = 3.0
@@ -972,38 +829,6 @@ module Samagotchi
       @services.stop_all
       self
     end
-
-    def anytime_thread? = Thread.current[:"samagotchi_anytime_#{object_id}"] == true
-    private :anytime_thread?
-
-    def announce_anytime(event)
-      event = event.merge(anytime: true)
-      announce(event)
-      event
-    end
-    private :announce_anytime
-
-    # Run the block holding back the cards and between-turns notices it
-    # announces on this thread, so the caller announces them after its own
-    # event (a worker's command: its command_ran first, as the REPL prints
-    # the command's output before its cards).
-    # @return [Array(Object, Array<Hash>)] the block's value and the held events
-    def holding_announcements
-      key = :"samagotchi_held_#{object_id}"
-      outer = Thread.current[key]
-      Thread.current[key] = []
-      value = yield
-      [value, Thread.current[key]]
-    ensure
-      Thread.current[key] = outer
-    end
-
-    # Announce +event+ now, or keep it for #holding_announcements' caller.
-    def announce_or_hold(event)
-      held = Thread.current[:"samagotchi_held_#{object_id}"]
-      held ? held << event : announce(event)
-    end
-    private :announce_or_hold
 
     # ── Hooks API ──────────────────────────────────────────────────────────────
 
@@ -3065,20 +2890,5 @@ module Samagotchi
         callback: @auto_turn_callback
       )
     end
-
-    # ── Event helpers ──────────────────────────────────────────────────────────
-
-    # The stream handler, the working set and the event fan-out are
-    # EventFanout's (#build_event_fanout); these forward to it.
-    def build_stream_event_handler(...) = @event_fanout.build_stream_event_handler(...)
-    def emit_working_set(...) = @event_fanout.emit_working_set(...)
-    private :emit_working_set
-    def working_set_llm_context = @event_fanout.working_set_llm_context
-    private :working_set_llm_context
-    def with_generation_report(event) = @event_fanout.with_generation_report(event)
-    private :with_generation_report
-    def stream_watch(cancel_controller) = @event_fanout.stream_watch(cancel_controller)
-    private :stream_watch
-    def emit_event(on_event, event) = @event_fanout.emit_event(on_event, event)
   end
 end
