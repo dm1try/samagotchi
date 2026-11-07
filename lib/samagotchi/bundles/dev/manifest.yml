@@ -1,6 +1,6 @@
 ---
 name: dev
-version: 0.7.7
+version: 0.7.8
 scope: system
 description: "Developer tools"
 trust_level: reviewed
@@ -18,3 +18,4 @@ includes:
 - ruby
 - model-notes
 - decision-card
+- inline-widgets

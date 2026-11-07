@@ -5,6 +5,10 @@ from, which fill the reply) or a **walk** (a scenario stepped through). Core dra
 the YAML once and the page draws from the parsed data. Where it doesn't draw (the terminal, `web.markdown` off, a
 refused block) the YAML reads as text. The server half (the parse) and the page half (the drawers) are below.
 
+What tells the model the blocks exist is the shipped inline-widgets bundle
+([bundles.md](../bundles.md#the-inline-widgets-bundle)): two prompt sections, `picks` and `walk`, each with an example
+its spec holds to a strict parse. Without it nothing here changes, and blocks already in a history still draw.
+
 ## The path
 
 1. `Web::MarkdownRenderer#fences` walks the `code_block` nodes, as for block renderers' `data-lang`

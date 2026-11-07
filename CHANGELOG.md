@@ -8,6 +8,10 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Added
+
+- The inline-widgets bundle (in the `dev` profile, `chi update`): it teaches the model the `chi-ui` blocks chi web draws, so an answer that leaves you several things to decide comes with picks that fill your reply, and a "how does this work" answer with a walk you step through. The terminal shows the block's YAML; a delegate child and a `-p --non-interactive` run don't get it.
+
 ### Fixed
 
 - At the very start of a turn, a plugin's `ctx.turn_author`, a hook's `author:` and `/objectives` could still see the previous turn (its participant, its conversation); they now see the turn that just started.

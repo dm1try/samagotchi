@@ -63,6 +63,13 @@ module Samagotchi
         @mutex.synchronize { @sections.any? { |section| section.bundle == bundle.to_s && section.name == name.to_s } }
       end
 
+      # The names +bundle+ registered, in prompt order (what it registered, for
+      # Testing::Install and chi bundle check).
+      # @return [Array<String>]
+      def names(bundle)
+        @mutex.synchronize { @sections.select { |section| section.bundle == bundle.to_s }.map(&:name) }
+      end
+
       # Run every block for +session_id+ and keep what they gave.
       # @param session_id [String, nil] whose last good text a failure keeps
       # @return [Array<Built>] in prompt order, the sections with text

@@ -1358,3 +1358,24 @@ bundles:
     timeout: 120       # seconds the side request may take (a number)
     max_tokens: 300    # the side answer's limit
 ```
+
+## The inline-widgets bundle
+
+`chi bundle install inline-widgets` (or the `dev` profile) installs the bundle shipped with chi. It is written only against
+this API (`lib/samagotchi/bundles/inline-widgets/plugin.rb`) and has no settings, commands or memories: it adds two
+[prompt sections](plugins.md#chiprompt_sectionname--ctx---and-chiprompt_changed) that tell the model chi web draws
+```` ```chi-ui ```` blocks ([the blocks](internals/inline-widgets.md)).
+
+- **picks**: when an answer leaves you two or more things to decide (review findings, a plan's open questions), a row
+  per item with its options as buttons, the recommended one picked to start with, a note per row, and **Fill reply**,
+  which puts your picks in the composer. Nothing is sent until you send it.
+- **walk**: a scenario you step through: who does what, what you see, what happens behind it, with a fork's cases to
+  choose from.
+- **Where it draws**: chi web, in the answers. The terminal shows the block's YAML, and a block chi can't read stays
+  YAML with a short note under it.
+- **Where the prompt has none**: a delegate child (its parent reads the report, nobody sees it drawn) and a one-shot
+  `chi -p … --non-interactive`. `/stats` lists the sections a session's prompt holds: `picks (inline-widgets), walk
+  (inline-widgets)`.
+- **Cost**: about 2,900 characters in the stable part of the prompt, the same at every build, so the prompt cache keeps.
+- **Uninstall**: `chi bundle uninstall inline-widgets` takes the sections out of new sessions' prompts (a session you
+  have open needs `chi sessions restart ID`); blocks already in a history still draw, since the drawing is chi web's own.

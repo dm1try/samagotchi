@@ -94,6 +94,13 @@ module Samagotchi
           "Samagotchi::AnswerRefs.new" => "spec: after_turn's refs: helper, as chi's fire site builds it",
           "Samagotchi::Log" => "spec: stubs Log to check what ctx.log recorded: a kit log recorder could replace it"
         },
+        "inline-widgets" => {
+          'require "samagotchi/inline_widgets"' => "spec: for InlineWidgets",
+          "Samagotchi::InlineWidgets.parse" => "spec: each example the sections teach parses strictly, as chi web " \
+                                               "parses a block (the drawing is core's, so is the parse)",
+          "Samagotchi::Plugin::PromptSections::MAX" => "spec: the prompt-section limit a section over is dropped at: " \
+                                                       "could be a stable constant"
+        },
         "loop-guard" => {
           'require "samagotchi/llm/native_tool_normalizer"' => "spec: for NativeToolNormalizer",
           "Samagotchi::LLM::NativeToolNormalizer.normalize" => "spec: replays recorded calls in the shape chi's parser gives",

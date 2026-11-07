@@ -421,7 +421,7 @@ module Samagotchi
           end
         end
         { "init" => registered.inits, "toolkit" => registered.toolkits, "tool source" => registered.tool_sources,
-          "peer source" => registered.peer_sources }.each do |what, names|
+          "peer source" => registered.peer_sources, "prompt section" => registered.prompt_sections }.each do |what, names|
           names.each { |name| add(:info, :registered, plugin, "#{what} #{name}") }
         end
       end
