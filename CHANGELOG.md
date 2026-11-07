@@ -8,6 +8,8 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+## [0.154.1] - 2026-11-07
+
 ### Fixed
 
 - chi web refuses a scratch session's page and stream (409 `scratch`, in the words every other client gets) when a tab is opened at its id by hand, and a scratch worker counts only its terminal's stream: such a tab no longer keeps the worker up after its terminal is killed.
@@ -16,6 +18,8 @@ and commands may change between minor versions. How releases are made:
 - chi web starting just as `chi scratch` did no longer deletes the new scratch session before its worker takes it (the worker crashed with "Session not found" and the terminal said the Bridge did not start in time): the retention sweep, `chi sessions prune` and `clean` leave an unowned scratch session alone for 30 s after its last save.
 - A terminal joining a session (`chi --attach`, `--resume`) shows the last turn's own prompt instead of a Qwen model's request to finish an open tool call, with the input merged into that turn on its `input>` lines; the idle recap no longer counts either as a turn of its own.
 - A turn no longer fails when a plugin changes its tools or prompt section (or a profile change drops the system prompt) at the moment the system prompt is built.
+
+Update with `chi update` (btw 0.1.5, coordinator 0.8.1, github-pr 0.6.4, skills 0.1.10: comments only; the desktop helper rebuilds once).
 
 ## [0.154.0] - 2026-11-07
 
@@ -5768,7 +5772,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.154.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.154.1...HEAD
+[0.154.1]: https://github.com/dm1try/samagotchi/compare/v0.154.0...v0.154.1
 [0.154.0]: https://github.com/dm1try/samagotchi/compare/v0.153.0...v0.154.0
 [0.153.0]: https://github.com/dm1try/samagotchi/compare/v0.152.0...v0.153.0
 [0.152.0]: https://github.com/dm1try/samagotchi/compare/v0.151.0...v0.152.0
