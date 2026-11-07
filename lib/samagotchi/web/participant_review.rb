@@ -3,7 +3,7 @@
 require_relative "participant_view"
 require_relative "token"
 require_relative "participant_stream_filter"
-require_relative "participant_exposure"
+require_relative "../participant_exposure"
 require_relative "../session_metrics"
 require_relative "../review_start"
 require_relative "../guardrails/review_paths"
@@ -44,7 +44,7 @@ module Samagotchi
       # cookie value.
       def participant_viewer(req, session)
         author = principal(req).owner? ? nil : principal(req).grant.author
-        ParticipantView::Viewer.new(author: author, cwd: session.working_directory, secrets: owner_secrets)
+        Redact::Viewer.new(author: author, cwd: session.working_directory, secrets: owner_secrets)
       end
 
       def owner_secrets
@@ -119,7 +119,7 @@ module Samagotchi
 
       def review_subject(path, full, viewer)
         raw = File.open(full, File::RDONLY | File::NOFOLLOW | File::BINARY) { |file| file.read(SUBJECT_BYTES + 1) }.to_s
-        text = ParticipantView::Redact.text(raw.byteslice(0, SUBJECT_BYTES).force_encoding(Encoding::UTF_8).scrub, viewer)
+        text = Redact.text(raw.byteslice(0, SUBJECT_BYTES).force_encoding(Encoding::UTF_8).scrub, viewer)
         entry = { path: path, text: text, truncated: raw.bytesize > SUBJECT_BYTES }
         markdown = MARKDOWN_EXT.include?(File.extname(path).downcase)
         entry[:html] = @markdown_renderer.render(text) if markdown && @markdown_renderer.available?
@@ -226,7 +226,7 @@ module Samagotchi
         return nil if ref.to_s.empty?
 
         name = host_registry.bare_name(ref.to_s)
-        name.to_s.empty? ? nil : ParticipantView::Redact.text(name.to_s, viewer)
+        name.to_s.empty? ? nil : Redact.text(name.to_s, viewer)
       rescue StandardError
         nil
       end
@@ -235,7 +235,7 @@ module Samagotchi
       # enqueued id, for dequeue, and the text), and how many others wait.
       def review_queue(queued, viewer)
         mine, others = queued.partition { |entry| entry.is_a?(Hash) && viewer.own?(entry["author"]) }
-        { mine: mine.map { |entry| ParticipantView::Redact.deep({ "enqueued_id" => entry["enqueued_id"].to_s, "prompt" => entry["prompt"].to_s }, viewer) },
+        { mine: mine.map { |entry| Redact.deep({ "enqueued_id" => entry["enqueued_id"].to_s, "prompt" => entry["prompt"].to_s }, viewer) },
           others: others.size }
       end
 

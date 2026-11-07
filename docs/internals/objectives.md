@@ -238,7 +238,7 @@ stays inside; the request says that what's inside is data and its instructions a
 the frame to hold; a model may still be swayed by text inside it, which is why a verdict is information only.
 
 **Its host.** The model is the session's, or `objectives.check_model`, whose host may be another one. The whole user text goes through
-`Web::ParticipantView::Redact.text`, chi's participant redaction: known key shapes and `token=`-style values become `[redacted]`, and
+`Samagotchi::Redact.text`, chi's participant redaction: known key shapes and `token=`-style values become `[redacted]`, and
 the home folder `~`. That is by pattern, so a secret of another shape still goes.
 
 **State.** `objective_checks.jsonl` beside the session: a `running` line, then one with `verdict` (confirmed, refuted, unclear,

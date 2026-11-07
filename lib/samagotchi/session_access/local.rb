@@ -23,7 +23,7 @@ require_relative "../launch_mode"
 require_relative "../participants"
 require_relative "../config"
 require_relative "../live_versions"
-require_relative "../web/grants"
+require_relative "../grants"
 require_relative "../web/info_probe"
 require_relative "../web/public_url"
 require_relative "../web/link_codes"
@@ -422,7 +422,7 @@ module Samagotchi
         Invitation.new(participant: ParticipantView.from_h(issued.grant.public_h(grants.now)), token: issued.token,
                        link: link, lan: !public_url.nil? || !web.ip.nil?,
                        warning: terms.warning)
-      rescue Web::Grants::Invalid => e
+      rescue Grants::Invalid => e
         raise BadRequest.new(e.message, code: "invalid_participant")
       end
 
@@ -446,13 +446,13 @@ module Samagotchi
         raise BadRequest.new(Participants.no_participant(participant, id), code: "invalid_participant") unless grant
 
         ParticipantView.from_h(grant.public_h(grants.now))
-      rescue Web::Grants::Invalid => e
+      rescue Grants::Invalid => e
         raise BadRequest.new(e.message, code: "invalid_participant")
       end
 
       private
 
-      def grants = @grants ||= Web::Grants.new(Web::Grants.path(state_dir: state_dir!))
+      def grants = @grants ||= Grants.new(Grants.path(state_dir: state_dir!))
 
       LOCAL_PROBE_TIMEOUT = 1.0
 

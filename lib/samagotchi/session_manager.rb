@@ -81,7 +81,7 @@ module Samagotchi
   autoload :SessionRetention, File.expand_path("session_retention", __dir__)
   # session_continue requires this file.
   autoload :SessionContinue, File.expand_path("session_continue", __dir__)
-  # Needed only on an archive or a delete (it loads Web::Grants).
+  # Needed only on an archive or a delete (it loads Grants).
   autoload :Participants, File.expand_path("participants", __dir__)
 
   class SessionManager

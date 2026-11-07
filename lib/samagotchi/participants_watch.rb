@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 module Samagotchi
-  # Loaded only when a sidecar is read: it brings Web::Grants (and Rack).
+  # Loaded only when a sidecar is read: it brings Grants.
   autoload :Participants, File.expand_path("participants", __dir__)
 
   # Who is in a session's review now, and who came or went since the last

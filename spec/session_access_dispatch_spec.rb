@@ -149,7 +149,7 @@ RSpec.describe Samagotchi::SessionAccess::Dispatch do
                .run(subcommands, stderr: err, transport: owner)).to eq(0), err.string
       expect(out.string).to include("Alex (human, reviewer)", "http://#{RemoteBackend::LAN_IP}:4567/?token=chp_")
 
-      grants = Samagotchi::Web::Grants.new(Samagotchi::Web::Grants.path(state_dir: state_dir))
+      grants = Samagotchi::Grants.new(Samagotchi::Grants.path(state_dir: state_dir))
       token = Samagotchi::Participants.invite(grants, session_id: session.id, name: "Bot", kind: "agent", state_dir: state_dir).token
       Samagotchi::Remotes.put(RemoteBackend.entry(token: token), path: File.join(tmpdir, "config", "samagotchi", "remotes.yml"))
       participant = RemoteBackend::RackTransport.new(app, token: token)

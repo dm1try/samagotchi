@@ -4,11 +4,11 @@ require "spec_helper"
 require "tmpdir"
 require "json"
 
-require "samagotchi/web/grants"
+require "samagotchi/grants"
 
-# Participants' grants (Web::Grants): one token per session and participant,
+# Participants' grants (Grants): one token per session and participant,
 # stored as a digest only, with an expiry and a revoke.
-RSpec.describe Samagotchi::Web::Grants do
+RSpec.describe Samagotchi::Grants do
   let(:root) { Dir.mktmpdir("web-grants") }
   let(:path) { File.join(root, "samagotchi", "web-grants", "grants.json") }
   let(:now) { [Time.utc(2026, 10, 23, 12, 0, 0)] }

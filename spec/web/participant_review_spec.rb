@@ -6,7 +6,7 @@ require "json"
 require "rack/mock"
 
 require "samagotchi/web/app"
-require "samagotchi/web/grants"
+require "samagotchi/grants"
 require "samagotchi/participants"
 require "samagotchi/analytics_file"
 
@@ -18,7 +18,7 @@ RSpec.describe Samagotchi::Web::App, "participant review" do
   let(:lan_ip) { "192.168.1.55" }
   let(:root) { File.realpath(Dir.mktmpdir("web-review")) }
   let(:state_dir) { File.join(root, "samagotchi", "sessions") }
-  let(:grants) { Samagotchi::Web::Grants.new(Samagotchi::Web::Grants.path(state_dir: state_dir)) }
+  let(:grants) { Samagotchi::Grants.new(Samagotchi::Grants.path(state_dir: state_dir)) }
   let(:app) do
     described_class.new(state_dir: state_dir, bridge_wait_timeout: 0, grants: grants, lan: { ip: lan_ip, token: owner_token })
   end

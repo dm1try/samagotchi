@@ -142,9 +142,9 @@ RSpec.describe Samagotchi::Web::App, "principals and route permissions" do
     end
 
     it "refuses an :owner route to a principal that isn't the owner (403 not_permitted)" do
-      grant = Samagotchi::Web::Grants::Grant.new(id: "p_0123abcd", session_id: "s1", digest: "d", kind: "human", name: "Alex",
-                                                 role: "reviewer", created_at: nil, expires_at: nil, revoked_at: nil,
-                                                 revoked_by: nil, last_used_at: nil)
+      grant = Samagotchi::Grants::Grant.new(id: "p_0123abcd", session_id: "s1", digest: "d", kind: "human", name: "Alex",
+                                            role: "reviewer", created_at: nil, expires_at: nil, revoked_at: nil,
+                                            revoked_by: nil, last_used_at: nil)
       other = Samagotchi::Web::Principal.new(kind: :participant, grant: grant)
       allow(app).to receive(:principal_for).and_return(other)
       allow(app).to receive(:participant_seen)

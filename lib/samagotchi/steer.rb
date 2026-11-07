@@ -136,7 +136,7 @@ module Samagotchi
     PARTICIPANT_SOURCE = "participant"
     # The owner's author, when one is written out; absent means the same.
     OWNER_AUTHOR = "owner"
-    # A participant's author: this prefix, then its id (Web::Grants'
+    # A participant's author: this prefix, then its id (Grants'
     # grant id), "p:<id>" (#author_for, #participant_id).
     PARTICIPANT_PREFIX = "p:"
     # A participant's message's keys, which every message copy keeps.

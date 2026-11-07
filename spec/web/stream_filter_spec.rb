@@ -6,7 +6,7 @@ require "tmpdir"
 
 require "rack/mock"
 require "samagotchi/web/app"
-require "samagotchi/web/grants"
+require "samagotchi/grants"
 
 # The stream proxy's frame-filter seam: the owner's stream is the Bridge's
 # bytes unchanged (no filter); a filter, when a principal has one, sees each
@@ -66,9 +66,9 @@ RSpec.describe Samagotchi::Web::App, "stream filter" do
     it "is none for the owner; the participant view's and a participant's filter the frames, nothing theirs for the owner" do
       session = Samagotchi::Session.new_session(mode: "assist", model_name: "m", working_directory: state_dir)
       session.save(state_dir: state_dir)
-      grant = Samagotchi::Web::Grants::Grant.new(id: "p_0123abcd", session_id: session.id, digest: "d", kind: "human", name: "Alex",
-                                                 role: "reviewer", created_at: nil, expires_at: nil, revoked_at: nil,
-                                                 revoked_by: nil, last_used_at: nil)
+      grant = Samagotchi::Grants::Grant.new(id: "p_0123abcd", session_id: session.id, digest: "d", kind: "human", name: "Alex",
+                                            role: "reviewer", created_at: nil, expires_at: nil, revoked_at: nil,
+                                            revoked_by: nil, last_used_at: nil)
       request = lambda do |principal, query = ""|
         env = Rack::MockRequest.env_for("/api/sessions/#{session.id}/stream#{query}")
         env[described_class::PRINCIPAL_ENV] = principal

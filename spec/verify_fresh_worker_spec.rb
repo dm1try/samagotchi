@@ -11,7 +11,7 @@ require "samagotchi/worker"
 require "samagotchi/participants"
 require "samagotchi/analytics_file"
 require "samagotchi/verify_fresh"
-require "samagotchi/web/grants"
+require "samagotchi/grants"
 
 # A Verify fresh child's worker: its turns are its requester's (their
 # author, the parent's participants.json, their cap counted across the
@@ -37,7 +37,7 @@ RSpec.describe Samagotchi::Worker, "Verify fresh" do
       FileUtils.mkdir_p(Samagotchi::Session.session_dir(s.id, state_dir: tmpdir))
     end
   end
-  let(:grants) { Samagotchi::Web::Grants.new(Samagotchi::Web::Grants.path(state_dir: tmpdir)) }
+  let(:grants) { Samagotchi::Grants.new(Samagotchi::Grants.path(state_dir: tmpdir)) }
   let!(:grant) do
     Samagotchi::Participants.invite(grants, session_id: parent.id, name: "Alex", mode: "pair", state_dir: tmpdir).grant
   end

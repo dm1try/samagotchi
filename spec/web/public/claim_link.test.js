@@ -23,7 +23,7 @@ test("normalized on the owner's page as the participant page shows it: the folde
   assert.equal(normalizeClaim("/Users/samuel/x", OWNER), "/Users/samuel/x");
 });
 
-// The cases Redact.text reads the same (participant_view_spec.rb): the
+// The cases Redact.text reads the same (redact_spec.rb): the
 // JS patterns are Ruby's.
 const REDACT = JSON.parse(fs.readFileSync(new URL("../../fixtures/redact_cases.json", import.meta.url), "utf8"));
 

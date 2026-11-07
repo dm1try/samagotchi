@@ -134,14 +134,14 @@ module Samagotchi
       def hard_cut(id, shown)
         text = @held.sub(/\S*\z/, "")
         # A key word or a key's BEGIN line before that run goes with it.
-        open = ParticipantView::Redact::OPEN_VALUE.match(text[-80..] || text)
+        open = Redact::OPEN_VALUE.match(text[-80..] || text)
         text = text[0, text.size - open[0].size] if open
         @dropped = +""
         @dropped_key = false
         dropping = @held[text.size..]
         @held = +""
         @held << undropped(dropping)
-        frame(id, shown.merge("text" => "#{lines_of(text)}#{ParticipantView::Redact::MARK}"))
+        frame(id, shown.merge("text" => "#{lines_of(text)}#{Redact::MARK}"))
       end
 
       # The last newline (past MAX_HELD, the last space) the held text may
@@ -162,11 +162,11 @@ module Samagotchi
       # a secret's value would go on.
       def open_value?(at)
         from = [at - 80, 0].max
-        ParticipantView::Redact::OPEN_VALUE.match?(@held[from..at])
+        Redact::OPEN_VALUE.match?(@held[from..at])
       end
 
-      SPAN_PATTERNS = (ParticipantView::Redact::PATTERNS - [ParticipantView::Redact::PRIVATE_KEY] +
-                       ParticipantView::Redact::VALUES).freeze
+      SPAN_PATTERNS = (Redact::PATTERNS - [Redact::PRIVATE_KEY] +
+                       Redact::VALUES).freeze
 
       # [from, to) of every match Redact would redact in +text+ (but a
       # private key's block: lines_of withholds it by its lines).
@@ -220,15 +220,15 @@ module Samagotchi
           if @in_key
             @in_key = opens_key?(line) if PEM_END.match?(line)
           elsif opens_key?(line)
-            out << ParticipantView::Redact.text(run, @viewer)
+            out << Redact.text(run, @viewer)
             run = +""
             @in_key = true
-            out << "#{ParticipantView::Redact::MARK}#{"\n" if line.end_with?("\n")}"
+            out << "#{Redact::MARK}#{"\n" if line.end_with?("\n")}"
           else
             run << line
           end
         end
-        out << ParticipantView::Redact.text(run, @viewer)
+        out << Redact.text(run, @viewer)
       end
 
       # Whether +line+ leaves a private key block open: a BEGIN line with

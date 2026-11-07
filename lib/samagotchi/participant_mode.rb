@@ -38,7 +38,7 @@ module Samagotchi
     end
 
     # The mode a turn of the participant +entry+ (a Participants::Entry or a
-    # Web::Grants::Grant; nil: unknown) runs under in +session+.
+    # Grants::Grant; nil: unknown) runs under in +session+.
     # @return [Symbol]
     def for_turn(session, entry, features: nil)
       return REVIEW unless of(session, features: features) == PAIR

@@ -5,7 +5,7 @@ module Samagotchi
   # line of at most MAX characters with no brackets (nor Unicode line
   # breaks, nor full-width square brackets), so a name can't close or forge
   # the review-contribution header (Steer.review_header). The grants store
-  # cleans a name at issue (Web::Grants.clean_name); the header cleans it
+  # cleans a name at issue (Grants.clean_name); the header cleans it
   # again, whatever a session file or a sidecar holds.
   module ParticipantName
     MAX = 64

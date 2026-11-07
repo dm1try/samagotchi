@@ -783,7 +783,7 @@ module Samagotchi
     end
 
     # A participant's cap in dollars: their own, else the config's.
-    def participant_cap(entry) = entry&.cap.is_a?(Numeric) ? entry.cap.to_f : Web::Grants.default_cap
+    def participant_cap(entry) = entry&.cap.is_a?(Numeric) ? entry.cap.to_f : Grants.default_cap
 
     # A participant's cleaned name, else their id.
     def participant_label(author, name)

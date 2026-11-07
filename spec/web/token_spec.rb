@@ -5,7 +5,7 @@ require "tmpdir"
 require "fileutils"
 
 require "samagotchi/web/token"
-require "samagotchi/web/grants"
+require "samagotchi/grants"
 require "samagotchi/web/link_codes"
 
 RSpec.describe Samagotchi::Web::Token do
@@ -59,7 +59,7 @@ RSpec.describe Samagotchi::Web::Token do
       expect(value).to match(/\Achl_[A-Za-z0-9_-]{43}\z/)
       expect(described_class.loopback_cookie(token)).to eq(value)
       expect(value).not_to include(token)
-      expect(Samagotchi::Web::Grants.token?(value)).to be(false)
+      expect(Samagotchi::Grants.token?(value)).to be(false)
       expect(Samagotchi::Web::LinkCodes.code?(value)).to be(false)
     end
 

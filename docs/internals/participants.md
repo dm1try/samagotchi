@@ -18,7 +18,7 @@ works on this machine only) is the participant, never the owner.
 
 ## Grants
 
-A grant (`Web::Grants`, `lib/samagotchi/web/grants.rb`) binds **one random token** to **one session**, **one
+A grant (`Grants`, `lib/samagotchi/grants.rb`) binds **one random token** to **one session**, **one
 participant** and **one role**, until it expires or is revoked.
 
 - **Token.** `chp_` + 43 URL-safe characters (32 random bytes, as the owner's `Web::Token`). The prefix lets the gate
@@ -57,7 +57,7 @@ participant** and **one role**, until it expires or is revoked.
   an invite can't keep only its own grant and lose every other digest. The owner's invite, cap, revoke and list are
   refused with one message naming the file (`Grants::Corrupt`: `chi share` exits 1, chi web answers 500 with it);
   an archive or delete still goes ahead. Fix the file, or move it aside to end every link.
-- **Exposure** (`exposure`, `Web::ParticipantExposure`; the review-composer plan's D3): what the participant learns
+- **Exposure** (`exposure`, `ParticipantExposure`; the review-composer plan's D3): what the participant learns
   of the review's usage, their review data's `viewer.usage` ([below](#what-a-participant-sees)). One level today,
   `own`, every grant's: their own spend and cap, their own queued turns and queue limit, their link's expiry, and the
   session's model; never another participant's or the owner's usage, nor the session's. `ParticipantExposure::LEVELS`
@@ -469,7 +469,7 @@ fields: a field added to an event later reaches nobody until it is named there.
   its final assistant reply (`AnswerTail`: the turn's last assistant message with text) contains the quote. Matching is case-sensitive, collapses whitespace, and strips common
   Markdown presentation (links, headings, list/blockquote prefixes, emphasis and code delimiters) from both sides;
   this matches the rendered text the page selects without treating different casing as the same claim. The quote may
-  also be in the answer as the pages show it (`Engine#verify_quote_in?`, `ParticipantView::Redact.text`: the session's
+  also be in the answer as the pages show it (`Engine#verify_quote_in?`, `Redact.text`: the session's
   folder relative, home `~`, secret shapes `[redacted]`): a participant's page has only that text, and the owner's
   page quotes it the same way (`owner_claim.js` `opts()`, `normalizeClaim`; `spec/fixtures/redact_cases.json` keeps the two
   sides alike), so a claim naming a path is taken on both. A fresh child
@@ -555,7 +555,7 @@ fields: a field added to an event later reaches nobody until it is named there.
   paste, drop or pick with one line (the image button is hidden) until participant images land. The grip's floor and
   the fold are the owner page's keys (`chi_composer_floor`, `chi_composer_collapsed`), per browser. The owner's
   participant view mounts none: its dock stays hidden.
-- **Redaction** (`ParticipantView::Redact`, on every string that goes out): secret shapes (`sk-…`, `ghp_…`,
+- **Redaction** (`Samagotchi::Redact`, `lib/samagotchi/redact.rb`, on every string that goes out): secret shapes (`sk-…`, `ghp_…`,
   `github_pat_…`, `AKIA…`, `xox…-`, `chp_…`, `AIza…`, `rk_live_…`, JWTs, Slack webhooks, private key blocks, an
   `Authorization:` header's value, any `…token` / `…api_key` / `…secret` / `…password` value, `=` or `:`, quoted or
   not, and a URL's password), the owner's web token, the session's folder (shown as relative paths) and the home

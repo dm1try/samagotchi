@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-require_relative "grants"
+require_relative "../grants"
 require_relative "qr"
 require_relative "../review_start"
 require_relative "../review_apply"

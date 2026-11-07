@@ -75,7 +75,7 @@ dropped that way, and an unknown id is ignored.
 That is how a subscription iOS revoked silently (Apple keeps answering 201, so `:gone` never comes) leaves the store:
 the user turns the bell off and on, the page has no live subscription to delete, and the new one replaces it. Every write is a read-change-write under
 `store.lock` (chi web's request threads and the sender thread both write). A `subscriptions.json` that doesn't read
-lists no device and is never written over. `Store#check_permissions!` uses `Web::PrivateFiles.check!`, the check the
+lists no device and is never written over. `Store#check_permissions!` uses `PrivateFiles.check!`, the check the
 grants use, worded with what the folder holds; `Server.launch` runs it (`Push.preflight!`, with the contact and the
 key) before any tunnel goes up, and a refusal is one `Error:` line, exit 1.
 

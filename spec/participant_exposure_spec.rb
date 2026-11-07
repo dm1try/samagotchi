@@ -1,11 +1,11 @@
 # frozen_string_literal: true
 
 require "spec_helper"
-require "samagotchi/web/participant_exposure"
+require "samagotchi/participant_exposure"
 
 # The exposure policy: a grant's level → the usage fields a participant's
 # review data shows (the review-composer plan's D3). One level today, own.
-RSpec.describe Samagotchi::Web::ParticipantExposure do
+RSpec.describe Samagotchi::ParticipantExposure do
   let(:sources) do
     { spent: -> { 0.5 }, cap: -> { 2.0 }, queued: -> { 1 }, queue_limit: -> { 3 },
       expires_at: -> { "2026-11-02T10:00:00Z" }, model: -> { "m" } }

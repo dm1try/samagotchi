@@ -4,7 +4,7 @@ require_relative "steer"
 require_relative "participant_mode"
 
 module Samagotchi
-  # Loaded only when a session is read: it brings Web::Grants (and Rack).
+  # Loaded only when a session is read: it brings Grants.
   autoload :Participants, File.expand_path("participants", __dir__)
 
   # What a session's Engine knows of its participants: participants.json

@@ -7,7 +7,7 @@ require "rack/mock"
 require "webrick"
 
 require "samagotchi/web/app"
-require "samagotchi/web/grants"
+require "samagotchi/grants"
 require "samagotchi/web/public_url"
 require "samagotchi/web/server"
 require "samagotchi/web/session_hub"
@@ -39,7 +39,7 @@ RSpec.describe Samagotchi::Web::App, "behind an auth proxy" do
   end
   let(:now) { [Time.now] }
   let(:grants) do
-    Samagotchi::Web::Grants.new(Samagotchi::Web::Grants.path(state_dir: state_dir), clock: -> { now.first })
+    Samagotchi::Grants.new(Samagotchi::Grants.path(state_dir: state_dir), clock: -> { now.first })
   end
   let(:app) do
     described_class.new(state_dir: state_dir, public_dir: public_dir, bridge_wait_timeout: 0, grants: grants,
@@ -680,7 +680,7 @@ RSpec.describe Samagotchi::Web::App, "behind an auth proxy" do
 
       status, _, body = call(path, method: "POST", body: '{"name":"Kim","identity":"kim"}', headers: proxied(owner, [bearer]))
       expect([status, JSON.parse(body)]).to eq([400, { "error" => "invalid_participant",
-                                                       "detail" => Samagotchi::Web::Grants::BadIdentity.new.message }])
+                                                       "detail" => Samagotchi::Grants::BadIdentity.new.message }])
       expect(grants.list.size).to eq(1)
     end
 
