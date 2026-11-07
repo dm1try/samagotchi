@@ -184,6 +184,8 @@ RSpec.describe Samagotchi::ToolkitCommand do
     expect { command.run("add Delegate") }.to raise_error(ArgumentError, "no tool named Delegate in this session")
     expect { command.run("add") }.to raise_error(ArgumentError, /needs a tool name/)
     engine.tools.register("Mixed_Tool", schema: { name: "Mixed_Tool" }, handler: ->(*) {}, source: "mcp")
+    # /toolkit reads the Registry as a turn's start publishes it.
+    engine.send(:publish_tools!)
     command.run("lean")
     command.run("remove Mixed_Tool --yes")
     expect(session.toolkit.remove).to eq(["Mixed_Tool"])

@@ -14,6 +14,12 @@ module Samagotchi
   # ctx.use_toolkit (#use) and the turn-start apply into the tool Registry
   # (#apply!), with its load warnings said once per process.
   #
+  # Its readers off the turn thread (#explained: /toolkit, the snapshot,
+  # the plugin host's declared_tools; ctx.load_tools) read #published, the
+  # Registry as the turn thread last published it (#publish!: the Engine's
+  # build, a turn's start), never the live one. #kits' lazy reads may run
+  # on any thread: each one stores what any other would.
+  #
   # What it needs from the Engine comes through lookups, called at use.
   class ToolkitBinding
     # @param tools        [#call] → Tools::Registry
@@ -45,6 +51,21 @@ module Samagotchi
 
     # @return [Array<Toolkit::Kit>] the plugins' kits (Plugin::Registries' toolkits:)
     attr_reader :plugin_kits
+
+    # Publish the Registry as it is now (Tools::Registry#snapshot), on the
+    # turn thread or at the Engine's build only: after the tool index is
+    # declared, after a turn's staged tool sets and its toolkit apply.
+    # One assignment of a frozen value.
+    # @return [Tools::Registry] the snapshot
+    def publish!
+      @published = @tools.call.snapshot
+    end
+
+    # The Registry as last published (#publish!); before the first publish
+    # (a plugin reading while the Engine is built, on its thread), the
+    # Registry read now.
+    # @return [Tools::Registry]
+    def published = @published || @tools.call.snapshot
 
     # The kits a session's toolkit resolves against: built-ins, config,
     # plugins, then project and system memory kits. Config and memory kits
@@ -78,14 +99,14 @@ module Samagotchi
     end
 
     # +toolkit+ (the session's by default) as its next turn would declare
-    # it (/toolkit, the UIs' chip): the Registry read now as a
+    # it (/toolkit, the UIs' chip): the #published Registry read now as a
     # Tools::ToolSurface under that toolkit.
     # @return [Toolkit::Explained]
     def explained(toolkit = nil)
       toolkit ||= Toolkit.of(@session.call&.toolkit)
       resolved = toolkit.resolve(kits)
       filter = resolved.everything? ? nil : resolved
-      tools = @tools.call
+      tools = published
       surface = Tools::ToolSurface.for(tools, toolkit: filter)
       Toolkit::Explained.new(toolkit: toolkit, resolved: resolved, declared: surface.declared,
                              left_out: surface.left_out.keys, reachable: surface.index_only.map(&:name),
@@ -187,6 +208,7 @@ module Samagotchi
     # again when what it declares (or its kit's prompt text) changed. A
     # name that doesn't resolve (a typo, an uninstalled bundle) declares
     # everything for now and says so once; the saved toolkit stays as it is.
+    # Publishes the Registry it leaves (#publish!).
     # @return [Boolean] whether the declared tools (or the kit's prompt text) changed
     def apply!(session, on_event = nil)
       errors = []
@@ -202,6 +224,7 @@ module Samagotchi
         @refresh_index.call
         @reset_prompt.call
       end
+      publish!
       warn_stranded(tools)
       changed
     end

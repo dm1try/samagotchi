@@ -101,11 +101,13 @@ module Samagotchi
       # Apply the staged tool sets, on the turn thread, before the turn's
       # system prompt is built (PluginTasks#apply_staged_tools!). A changed
       # set may change the chi group the search tool's description counts
-      # (a plugin tool the toolkit leaves out).
+      # (a plugin tool the toolkit leaves out). Publishes the Registry it
+      # leaves (#publish_tools!).
       # @return [Boolean] whether the tools changed
       def apply_staged_tools!
         changed = @plugin_tasks.apply_staged_tools!
         @tool_index.refresh! if changed
+        publish_tools!
         changed
       end
       public :apply_staged_tools!

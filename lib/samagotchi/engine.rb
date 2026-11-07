@@ -407,6 +407,8 @@ module Samagotchi
       # with no plugins too: a toolkit's left-out tools are reachable
       # either way (declared per toolkit, Tools::Registry).
       @tool_index.declare(@tools, failures: @plugin_failures)
+      # What readers off the turn thread see until the first turn's start.
+      publish_tools!
     end
     private :build_tools_and_plugins
 
