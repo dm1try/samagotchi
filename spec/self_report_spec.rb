@@ -754,4 +754,25 @@ RSpec.describe Samagotchi::SelfReport do
     expect(lines.size).to eq(described_class.fields(env: env).size)
     expect(lines.first).to match(/\Aversion\s{2,}\S/)
   end
+
+  describe "a lookup that fails" do
+    before { allow(Samagotchi::Log).to receive(:warn) }
+
+    it "keeps its fallback and is logged: the model window, the session's mutes, the shipped bundle" do
+      allow(Samagotchi::ConfigFile).to receive(:model_settings).and_raise(IOError, "config gone")
+      expect(described_class.model_window(env, "m")).to be_nil
+
+      allow(Samagotchi::Session).to receive(:valid_id?).and_raise(IOError, "state gone")
+      expect(described_class.session_muted(env.merge("SAMAGOTCHI_PARENT_SESSION" => "abc"))).to eq([])
+
+      shipped = Samagotchi::MemoryBundle::SystemBundle::GEM_BUNDLE_DIR
+      allow(Samagotchi::MemoryBundle::Manifest).to receive(:read).and_call_original
+      allow(Samagotchi::MemoryBundle::Manifest).to receive(:read).with(dir: shipped).and_raise(IOError, "bundle gone")
+      expect(described_class.bundles_summary).to be_a(String)
+
+      expect(Samagotchi::Log).to have_received(:warn).with(:config, "model_window_unreadable", hash_including(error: "IOError", msg: "config gone"))
+      expect(Samagotchi::Log).to have_received(:warn).with(:config, "session_mutes_unreadable", hash_including(msg: "state gone"))
+      expect(Samagotchi::Log).to have_received(:warn).with(:memory, "shipped_bundle_unreadable", hash_including(msg: "bundle gone"))
+    end
+  end
 end

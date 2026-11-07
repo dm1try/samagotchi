@@ -3,6 +3,7 @@
 require_relative "version"
 require_relative "config"
 require_relative "context_window"
+require_relative "degrade"
 require_relative "session"
 require_relative "log_path"
 require_relative "model_profile"
@@ -177,19 +178,19 @@ module Samagotchi
 
     # [tokens, "models: KEY" | "hosts.NAME"], or nil when neither is set.
     def model_window(env, model)
-      return nil unless model
+      Degrade.call(:config, "model_window_unreadable") do
+        return nil unless model
 
-      registry = HostRegistry.new(env: env)
-      target = registry.resolve(model)
-      names = registry.lookup_names(model, target: target)
-      models = ConfigFile.model_settings(env: env)
-      window = ContextWindow.setting(target, names: names, models: models)
-      return nil unless window
-      return [window.tokens, "hosts.#{target.entry.name}"] if window.source == :host_setting
+        registry = HostRegistry.new(env: env)
+        target = registry.resolve(model)
+        names = registry.lookup_names(model, target: target)
+        models = ConfigFile.model_settings(env: env)
+        window = ContextWindow.setting(target, names: names, models: models)
+        return nil unless window
+        return [window.tokens, "hosts.#{target.entry.name}"] if window.source == :host_setting
 
-      [window.tokens, "models: #{ConfigFile.model_setting(names, :window_tokens, models: models).key}"]
-    rescue StandardError
-      nil
+        [window.tokens, "models: #{ConfigFile.model_setting(names, :window_tokens, models: models).key}"]
+      end
     end
 
     SESSION_MODEL_ENV = "SAMAGOTCHI_SESSION_MODEL"
@@ -220,11 +221,11 @@ module Samagotchi
     end
 
     def same_model?(one, other, env)
-      return true if one == other
+      Degrade.call(:config, "model_ref_unresolved", fallback: false) do
+        return true if one == other
 
-      ConfigFile.model_ref(one, env: env).ref == ConfigFile.model_ref(other, env: env).ref
-    rescue StandardError
-      false
+        ConfigFile.model_ref(one, env: env).ref == ConfigFile.model_ref(other, env: env).ref
+      end
     end
 
     # The memory overlay key (ModelOverlay.key_for the bare id, as the
@@ -257,41 +258,41 @@ module Samagotchi
     # session chi self runs in has one (an alias), else of the name chi self
     # reports. nil when that is the key itself. Read-only, never raising.
     def fallback_model_key(model, key, env)
-      typed = session_typed_model(env) || model
-      typed_key = ModelOverlay.key_for(HostRegistry.new(env: env).parse_qualified_model(typed).last)
-      typed_key == key ? nil : typed_key
-    rescue StandardError
-      nil
+      Degrade.call(:model, "fallback_key_unresolved") do
+        typed = session_typed_model(env) || model
+        typed_key = ModelOverlay.key_for(HostRegistry.new(env: env).parse_qualified_model(typed).last)
+        typed_key == key ? nil : typed_key
+      end
     end
 
     # The model name the session chi self runs in was typed as (an alias),
     # its model_typed, else nil.
     def session_typed_model(env)
-      id = env[PARENT_SESSION_ENV].to_s
-      return nil if id.empty? || !Session.valid_id?(id)
+      Degrade.call(:config, "session_typed_model_unreadable") do
+        id = env[PARENT_SESSION_ENV].to_s
+        return nil if id.empty? || !Session.valid_id?(id)
 
-      state_dir = Session.default_state_dir(env: env)
-      return nil unless Session.exist?(id, state_dir: state_dir)
+        state_dir = Session.default_state_dir(env: env)
+        return nil unless Session.exist?(id, state_dir: state_dir)
 
-      session = Session.load(id, state_dir: state_dir)
-      typed = session.model_typed.to_s.strip
-      typed.empty? ? nil : typed
-    rescue StandardError
-      nil
+        session = Session.load(id, state_dir: state_dir)
+        typed = session.model_typed.to_s.strip
+        typed.empty? ? nil : typed
+      end
     end
 
     # The --mute list of the session chi self runs in (its execute exports
     # SAMAGOTCHI_PARENT_SESSION); [] outside one.
     def session_muted(env)
-      id = env[PARENT_SESSION_ENV].to_s
-      return [] if id.empty? || !Session.valid_id?(id)
+      Degrade.call(:config, "session_mutes_unreadable", fallback: []) do
+        id = env[PARENT_SESSION_ENV].to_s
+        return [] if id.empty? || !Session.valid_id?(id)
 
-      state_dir = Session.default_state_dir(env: env)
-      return [] unless Session.exist?(id, state_dir: state_dir)
+        state_dir = Session.default_state_dir(env: env)
+        return [] unless Session.exist?(id, state_dir: state_dir)
 
-      MutedMemories.normalize_list(Session.load(id, state_dir: state_dir).muted_memory_names)
-    rescue StandardError
-      []
+        MutedMemories.normalize_list(Session.load(id, state_dir: state_dir).muted_memory_names)
+      end
     end
 
     def model_name
@@ -489,7 +490,9 @@ module Samagotchi
 
     # "samagotchi-system 0.1.5 (shipped 0.1.5), other 1.0.0"
     def bundles_summary
-      shipped = MemoryBundle::Manifest.read(dir: MemoryBundle::SystemBundle::GEM_BUNDLE_DIR).version rescue nil
+      shipped = Degrade.call(:memory, "shipped_bundle_unreadable") do
+        MemoryBundle::Manifest.read(dir: MemoryBundle::SystemBundle::GEM_BUNDLE_DIR).version
+      end
       installed = MemoryBundle::Provenance.each_installed.map do |name, bundle|
         version = bundle.version || "?"
         label = "#{name} #{version}"
