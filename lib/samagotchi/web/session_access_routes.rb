@@ -54,6 +54,14 @@ module Samagotchi
         json_response(status, { error: code, detail: detail, message: error.message, **fields }.compact)
       end
 
+      # 409 scratch for a chi scratch session +id+, which only its terminal
+      # uses (Session::SCRATCH_REFUSED): the session page's read and stream
+      # (a tab opened at its id by hand: the hub never lists it), as
+      # POST …/wake refuses it.
+      def scratch_refused(id)
+        refusal_response(409, "scratch", SessionManager::ScratchSession.new(id), session_id: id)
+      end
+
       # The body as a Hash ({} when there is none), or nil when it isn't one.
       def body_hash(req)
         raw = request_body(req)

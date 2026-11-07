@@ -544,7 +544,8 @@ refused. Its first line says it is a scratch session.
   still running then is cancelled first. Another client's stream never keeps
   it. It refuses `chi sessions restart`.
 - It never shows in `chi web`, and only its terminal uses it: `chi send`, the
-  web's routes, `chi --resume` and `--attach` refuse it (exit 1), in one
+  web's routes (a tab opened at its id too: its page and stream answer 409
+  `scratch`), `chi --resume` and `--attach` refuse it (exit 1), in one
   wording: "that's a chi scratch session: only the terminal that started it
   uses it (a leftover one is deleted at the next sweep: chi sessions clean)".
   A session left behind when both died is marked `"scratch": true` in its
