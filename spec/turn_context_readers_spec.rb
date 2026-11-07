@@ -33,7 +33,7 @@ RSpec.describe Samagotchi::Engine, "cross-thread readers of the running turn" do
     seen = []
     allow(state).to receive(:begin!).and_wrap_original do |original, **kwargs|
       original.call(**kwargs)
-      Thread.new { seen << yield }.join
+      join!(Thread.new { seen << yield }, "the reader thread")
     end
     engine.run_turn(session, "next", origin: origin)
     seen.first

@@ -984,11 +984,12 @@ module Samagotchi
     end
     private :new_turn_context
 
-    # The session's folder, nil for a session whose id isn't one (a cut
-    # tool output then says it wasn't saved).
+    # The session's folder, nil when it can't be named (an id that isn't
+    # one, a lookup that raised): a cut tool output then says it wasn't saved.
     def turn_session_dir(session)
       Session.session_dir(session.id, state_dir: session_state_dir)
-    rescue Session::InvalidId
+    rescue StandardError => e
+      Log.warn(:turn, "tool_output_save_failed", error: e.class.name)
       nil
     end
     private :turn_session_dir
@@ -1005,8 +1006,6 @@ module Samagotchi
     # @return [TurnContext, nil]
     def last_turn_context = @turn_state.last_context
     private :last_turn_context
-
-    private :begin_turn
 
     # Everything before the model is asked: :turn_started, the kernel's
     # per-turn settings, the plugins' setup, the session_start/before_turn

@@ -57,7 +57,9 @@ module Samagotchi
                                                          vision: settings.vision)
         return unless prompt
 
-        started = @prompt_warmup.start(client: client, prompt: prompt, model: settings.model_name,
+        # The model name as the native run sent it (KernelLoop#run's
+        # completion name: the default model for a blank one).
+        started = @prompt_warmup.start(client: client, prompt: prompt, model: ModelProfile.required_model_name(settings.model_name),
                                        slot: @kernel.last_slot, images: images)
         @kernel.warmed_up! if started
       rescue StandardError => e

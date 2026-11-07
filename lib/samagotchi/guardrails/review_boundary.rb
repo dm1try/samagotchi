@@ -45,7 +45,8 @@ module Samagotchi
       MEMORY_SCOPE = "a participant's review turn reads project memories only: call memory_read with scope: project"
 
       # @param author [#call] → String, nil: the running turn's author
-      #   (GuardrailWiring#turn_author); the check is off unless it is a
+      #   (the call's TurnContext#author, GuardrailWiring#review_boundary /
+      #   #pair_boundary); the check is off unless it is a
       #   participant's (Steer.participant_author?)
       # @param root [#call] → String, nil: the session's project root (the
       #   work tree top of its folder); nil denies every read

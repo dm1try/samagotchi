@@ -100,7 +100,8 @@ RSpec.describe Samagotchi::TurnState do
       expect { state.replace_context(context("t1")) }.to raise_error(ArgumentError)
       state.begin!(context: context("t1"), controller: controller, sink: nil)
       expect { state.replace_context(context("t2")) }.to raise_error(ArgumentError, /not the running turn's/)
-      expect { Thread.new { state.replace_context(context("t1")) }.join }.to raise_error(ArgumentError, /this thread/)
+      other = Thread.new { state.replace_context(context("t1")) }
+      expect { join!(other, "the other thread") }.to raise_error(ArgumentError, /this thread/)
     end
 
     it "a turn that ended before its settings keeps the last settings in the last context, its own author" do

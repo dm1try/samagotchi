@@ -146,7 +146,8 @@ module Samagotchi
       )
 
       # @param author [#call] → String, nil: the running turn's author
-      #   (GuardrailWiring#turn_author); the check is off unless it is a
+      #   (the call's TurnContext#author, GuardrailWiring#review_boundary /
+      #   #pair_boundary); the check is off unless it is a
       #   participant's (Steer.participant_author?)
       # @param denied_dirs [#call] → Array<String>: chi's own dirs
       # @param home [#call] → String, nil

@@ -528,6 +528,9 @@ end
   `ToolRunner#run` → `Guardrails::Gate#evaluate` / `#settle_ask` and `KernelLoop#dispatch_tool_call(call, context)` →
   the handler's `KernelLoop::ToolContext.new(kernel, context)` (`participant_mode`, `model_key`, `muted_memory_read`,
   `forget_outputs`). The generation guard gets it too (`KernelLoop#generation_guard`, `guard_participant_spend`).
+- After a chat-loop turn the kernel's own `context` / `turn_settings` still hold the last native run's (a chat run
+  never sets them), and `ChatLoop#turn_context` keeps its last run's: both are the turn thread's working copies, so
+  a reader outside the turn uses `Engine#turn_context` / `#last_turn_context` instead.
 - A spec runs a loop, a runner or a gate outside an Engine turn with `run_context(settings: …)` (spec/support/test_kernel.rb).
 
 - `messages` is what the Engine sends: system head, history, reminders, the prompt. The loop works on its own
