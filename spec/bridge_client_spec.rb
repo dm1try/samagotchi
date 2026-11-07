@@ -248,6 +248,18 @@ RSpec.describe Samagotchi::BridgeClient do
       closed = TCPServer.new("127.0.0.1", 0).then { |srv| srv.local_address.ip_port.tap { srv.close } }
       expect(described_class.new(session_id: "s1", port: closed, secret: nil).get("tail")).to eq([nil, nil])
     end
+
+    it "no reply is no answer, unlogged; any other failure is [nil, nil] too, logged" do
+      allow(Samagotchi::Log).to receive(:warn)
+      closed = TCPServer.new("127.0.0.1", 0).then { |srv| srv.local_address.ip_port.tap { srv.close } }
+      expect(described_class.new(session_id: "s1", port: closed, secret: nil).get("tail")).to eq([nil, nil])
+      expect(Samagotchi::Log).not_to have_received(:warn)
+
+      client = described_class.new(session_id: "s1", port: closed, secret: nil)
+      allow(client).to receive(:get_response).and_raise(TypeError, "no implicit conversion")
+      expect(client.get("tail")).to eq([nil, nil])
+      expect(Samagotchi::Log).to have_received(:warn).with(:bridge, "get_failed", hash_including(error: "TypeError", path: "tail"))
+    end
   end
 
   describe "a worker that takes the request and never answers" do

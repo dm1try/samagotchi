@@ -19,24 +19,17 @@ module Samagotchi
     end
 
     # Append a message to the queue. Nil/empty strings are ignored.
-    # +seq+ is the sender's own order number for it (a sender that numbers
-    # every line it takes during a turn, so its leftovers keep send order across
-    # this queue and its after-turn list: #drain_entries).
-    def push(text, seq: nil)
+    def push(text)
       text = text.to_s
       return if text.empty?
 
-      @mutex.synchronize { @messages << [seq, text] }
+      @mutex.synchronize { @messages << text }
       nil
     end
 
     # Remove and return all queued messages in FIFO order. Non-blocking.
     # @return [Array<String>]
-    def drain = drain_entries.map(&:last)
-
-    # #drain with each message's +seq+ (nil when pushed without one).
-    # @return [Array(Integer|nil, String)]
-    def drain_entries
+    def drain
       @mutex.synchronize do
         drained = @messages
         @messages = []

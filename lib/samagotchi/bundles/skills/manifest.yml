@@ -1,12 +1,12 @@
 ---
 name: skills
-version: 0.1.9
+version: 0.1.10
 scope: system
 description: "Skills (skill_<name> memories, the steps of a task done together): /skill save, list, show and diff; older versions kept with a short diff line on every update; a nudge when a followed skill's step fails"
 trust_level: reviewed
 plugin:
   file: plugin.rb
-  sha256: sha256:781d943749d59ade0e24d04ba774449d31267eb8ca435835c36c67a3e523e632
+  sha256: sha256:8d72d29286d0807c18d2c37225455ca06d45f4f974f9335b76cc77916043838c
 requires_chi: ">= 0.143.0"
 # config.yml bundles: skills: (another key warns; an older chi ignores this)
 settings: [history_keep, nudge]

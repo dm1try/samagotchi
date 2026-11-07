@@ -16,8 +16,9 @@
 # (ctx.sessions.stop, by session id) and shows the card again.
 #
 # /coordinate <goal> asks the model, in this session, to follow the skill
-# for the goal. A REPL session (--no-shared) takes no messages: the request
-# is shown for the user to send.
+# for the goal. A session a one-turn run holds (-p --non-interactive, or an
+# older chi's terminal) takes no messages: the request is shown for the user
+# to send.
 #
 # /coordinate resume picks up a coordinator handoff: the open handoff_*
 # memories of this project (an index line whose description doesn't start

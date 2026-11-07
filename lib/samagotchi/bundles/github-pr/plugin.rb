@@ -29,11 +29,11 @@ require "samagotchi/git_env"
 # diff" (or "File at head") action the web's ref menu offers. The
 # after_turn hook links from a per-PR cache and never runs gh (the web holds the answer until the hooks are
 # done); before_turn, before_generation and the init task fill the cache
-# off the turn's thread (`gh api`), in a session worker only: the REPL and
-# -p --non-interactive show no web page while they run (ctx.frontend; a chi
+# off the turn's thread (`gh api`), in a session worker only: -p
+# --non-interactive shows no web page while it runs (ctx.frontend; a chi
 # without it counts as a worker), and a scratch session never fetches.
 # `bundles: github-pr: line_links:` false turns it off, "always" fetches in
-# the REPL and -p too (still not for a scratch session).
+# -p --non-interactive too (still not for a scratch session).
 #
 # `bundles: github-pr: auto_attach:` says what the init task does with the
 # branch's open PR: `propose` (the default, above), `attach` (attached at

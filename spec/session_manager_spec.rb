@@ -311,6 +311,15 @@ RSpec.describe Samagotchi::SessionManager do
       allow(Samagotchi::Config).to receive(:get).with("session.keep_empty").and_return(true)
       expect(described_class.discard_empty?).to be false
     end
+
+    it "keeps sessions when the setting can't be read, and logs it" do
+      allow(Samagotchi::Log).to receive(:warn)
+      allow(Samagotchi::Config).to receive(:get).and_call_original
+      allow(Samagotchi::Config).to receive(:get).with("session.keep_empty").and_raise(ArgumentError, "bad yaml")
+
+      expect(described_class.discard_empty?).to be false
+      expect(Samagotchi::Log).to have_received(:warn).with(:config, "keep_empty_unreadable", hash_including(error: "ArgumentError"))
+    end
   end
 
   describe ".delete_session" do

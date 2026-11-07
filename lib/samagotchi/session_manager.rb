@@ -33,6 +33,7 @@ require_relative "worker_idle_exit"
 require_relative "worker_signals"
 require_relative "chi_invocation"
 require_relative "log"
+require_relative "degrade"
 require_relative "log_path"
 require_relative "paths"
 require_relative "project_env"
@@ -282,7 +283,7 @@ module Samagotchi
       child_env[ModelProfile::MODEL_FROM_CLI_ENV] = "1" if child_env.key?(ModelProfile::MODEL_ENV)
       # And the spawner's debug log, absolute: a relative log.file would
       # otherwise land in the worker's (the session's) directory.
-      log_path = begin LogPath.resolve rescue nil end
+      log_path = begin LogPath.resolve rescue nil end # degrade-ok: no log to say it in; the worker's is off (below)
       if log_path
         child_env["SAMAGOTCHI_LOG_FILE"] = log_path
       else
@@ -936,9 +937,7 @@ module Samagotchi
     # session.keep_empty off: sessions left with nothing in them are deleted
     # (the worker as it exits, the retention sweep).
     def self.discard_empty?
-      Samagotchi::Config.get("session.keep_empty") != true
-    rescue StandardError
-      false
+      Degrade.call(:config, "keep_empty_unreadable", fallback: false) { Samagotchi::Config.get("session.keep_empty") != true }
     end
 
     # Whether a session being left (or found left) is deleted: session.keep_empty
@@ -977,9 +976,9 @@ module Samagotchi
       return true if one.to_s == other.to_s
       return false if one.nil? || other.nil?
 
-      ConfigFile.model_ref(one).ref == ConfigFile.model_ref(other).ref
-    rescue StandardError
-      false
+      Degrade.call(:config, "model_ref_unresolved", fallback: false) do
+        ConfigFile.model_ref(one).ref == ConfigFile.model_ref(other).ref
+      end
     end
 
     # Only the system prompt (an Engine seeds one, a saved session keeps
@@ -1281,9 +1280,7 @@ module Samagotchi
     end
 
     def self.config_idle_exit_minutes
-      Samagotchi::Config.get("session.idle_exit_minutes")
-    rescue StandardError
-      nil
+      Degrade.call(:config, "idle_exit_minutes_unreadable") { Samagotchi::Config.get("session.idle_exit_minutes") }
     end
 
     private_class_method def self.setup_session_directory(session_dir, session, state_dir:)
@@ -1640,9 +1637,7 @@ module Samagotchi
     end
 
     private_class_method def self.delivery_owner(manager, session_id, state_dir)
-      manager.session_owner(session_id, state_dir: state_dir)
-    rescue StandardError
-      nil
+      Degrade.call(:worker, "owner_unreadable", sid: session_id) { manager.session_owner(session_id, state_dir: state_dir) }
     end
 
     def self.stopped_on_disk?(session_id, state_dir:)

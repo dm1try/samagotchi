@@ -544,9 +544,9 @@ RSpec.describe "the desktop helper's Swift sources", :macos_build do
         session(1, cwd: dirs[1], updated: "2026-10-27T11:00:00.123Z", busy: true),
         session(2, cwd: File.join(tmp, "gone"), updated: "2026-10-27T12:00:00Z")
       ]))
-      # Newest first: a live one, a REPL's, a non-UUID id, then four stopped.
+      # Newest first: a live one, a one-turn run's, a non-UUID id, then four stopped.
       File.write(File.join(tmp, "recent.json"), JSON.generate([
-        session(1), session(3, owner: "repl"), session(4).merge("id" => "--flag"),
+        session(1), session(3, owner: "tui"), session(4).merge("id" => "--flag"),
         session(5, desc: nil), session(6), session(7), session(8)
       ]))
     end
@@ -576,7 +576,7 @@ RSpec.describe "the desktop helper's Swift sources", :macos_build do
       expect(File.readlines(File.join(tmp, "path"), chomp: true).uniq).to eq([baked_path])
     end
 
-    it "lists the live sessions in chi's order, then up to 3 stopped ones neither live nor a REPL's, newest first" do
+    it "lists the live sessions in chi's order, then up to 3 stopped ones neither live nor a one-turn run's, newest first" do
       result, err, status = sessions
 
       expect([err, status]).to eq(["", 0])

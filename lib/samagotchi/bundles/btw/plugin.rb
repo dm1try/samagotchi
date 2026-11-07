@@ -15,7 +15,7 @@ class Plugin
   SYSTEM = "Answer the user's question about the conversation below, briefly. The user asks it on the side: " \
            "don't continue the conversation's task, and don't say what you would do next."
   # How many answers /btw keep can still fork: the last ones, for the
-  # worker's (or the REPL's) life.
+  # worker's life.
   KEPT = 10
   TITLE_CHARS = 72
   EARLIER = "(About the conversation before the running turn.)"

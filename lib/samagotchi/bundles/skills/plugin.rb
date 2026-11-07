@@ -242,8 +242,9 @@ class Plugin
   # what was just done (the model has seen the commands; a side answer
   # wouldn't). The request runs as a turn; sent while a turn runs it joins
   # that turn at its next step, and the request says to finish the task
-  # first. A REPL session (--no-shared) takes no messages: the request is
-  # shown for the user to send.
+  # first. A session a one-turn run holds (-p --non-interactive, or an older
+  # chi's terminal) takes no messages: the request is shown for the user to
+  # send.
   def save(rest, ctx)
     words = rest.split
     scope = words.delete("--system") ? "system" : "project"

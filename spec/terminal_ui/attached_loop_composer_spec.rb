@@ -64,6 +64,15 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "input" do
     expect(attached.send(:assist_path_completion_candidates, "/mo")).to eq(%w[/model /models])
   end
 
+  it "offers no @path when the folder can't be listed, and logs it" do
+    attached = described_class.new(client: client, screen: screen, client_id: "tui:1")
+    allow(Samagotchi::Log).to receive(:warn)
+    allow(Dir).to receive(:children).and_raise(Errno::EACCES, "lib")
+
+    expect(attached.send(:assist_path_completion_candidates, "@li")).to eq([])
+    expect(Samagotchi::Log).to have_received(:warn).with(:attached, "path_completion_failed", hash_including(error: "Errno::EACCES"))
+  end
+
   it "types the default input into a new session's first read, unless told not to" do
     ENV["SAMAGOTCHI_DEFAULT_INPUT"] = "Please "
 

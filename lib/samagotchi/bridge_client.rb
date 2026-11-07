@@ -309,12 +309,16 @@ module Samagotchi
     # older worker's 404 for a route it lacks from a refused connect, a
     # timeout or a 500.
     # @return [Array(Integer, Object)] the status and the parsed JSON body
-    #   (nil when it isn't JSON); [nil, nil] when no reply came
+    #   (nil when it isn't JSON); [nil, nil] when no reply came (a refused
+    #   connect, a timeout, a cut or garbled reply), and when anything else
+    #   failed, which is logged
     def get(path)
-      response = get_response(path)
-      [response.status, response.json]
-    rescue StandardError
-      [nil, nil]
+      Degrade.call(:bridge, "get_failed", fallback: [nil, nil], path: path) do
+        response = get_response(path)
+        [response.status, response.json]
+      rescue SystemCallError, IOError
+        [nil, nil]
+      end
     end
 
     # GET /session/:id/<path>, preserving the raw response and raising on I/O.
