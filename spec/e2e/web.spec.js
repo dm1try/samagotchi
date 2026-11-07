@@ -1013,6 +1013,14 @@ test("archive hides a session from the strip, include archived finds it, unarchi
   await page.setViewportSize({ width: 1100, height: viewport.height });
   const tops = await page.locator("#infoActions > button:visible").evaluateAll((els) => els.map((b) => Math.round(b.getBoundingClientRect().top)));
   expect(new Set(tops).size, `button tops ${tops}`).toBe(1);
+  // Narrower still, the info line's groups wrap: no chip is cut at the bar's right edge.
+  await page.setViewportSize({ width: 700, height: viewport.height });
+  const past = await page.locator("#infoBar").evaluate((bar) => {
+    const right = bar.getBoundingClientRect().right;
+    return [...bar.querySelectorAll(".meta .bar-group > *")]
+      .filter((el) => el.offsetParent && el.getBoundingClientRect().right > right + 0.5).map((el) => el.className);
+  });
+  expect(past).toEqual([]);
   await page.setViewportSize(viewport);
   // The active card's ✎ renames it (/title through the worker): the input
   // over the card's title, the card following the saved file.

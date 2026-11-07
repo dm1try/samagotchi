@@ -1132,6 +1132,15 @@ button.ws-row:hover:not(:disabled){filter:none}@media(hover:hover){button.ws-row
   #infoBar .meta .telemetry>.dir{max-width:48ch}
   #infoBar .meta .model{max-width:40ch;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 }
+/* Below 900px the buttons already have a line of their own, and the meta's one line can be wider than the bar: its
+   groups wrap instead of being cut, the telemetry first. The setup's basis is 0 (its min-content, the model at 10ch)
+   and its grow wins up to its max-content, so a group moves down only when the min-contents don't fit; the room left
+   is the telemetry's (its folder). The info never asks for more than the bar. */
+@media(min-width:601px) and (max-width:899px){
+  #infoBar .info{max-width:100%}
+  #infoBar .meta{flex-wrap:wrap;row-gap:4px}
+  #infoBar .meta .bar-group.setup{flex:1000 1 0;max-width:max-content}
+}
 /* The plain chips (spans, links) and the status take the button chips' 1px border, transparent and outside their tint, so every chip is one height: a chip wrapping onto a row of plain ones doesn't grow it. */
 #infoBar .meta :is(span,a).model,#infoBar .meta .status{border:1px solid transparent;background-clip:padding-box}
 /* The chips a running turn rewrites (the session clock each second, the last generation's speed, ctx): tabular digits in a reserved width, so a tick ("9.5s" → "10s" → "1m 00s") or a new number doesn't widen the line and move the chips after it. The speed and the clock show from the session's start, a muted placeholder until there is a number. */
