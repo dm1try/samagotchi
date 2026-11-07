@@ -1073,7 +1073,14 @@ Paths are under `lib/samagotchi/`.
 | `session.rb` | Session model (status, messages, persistence) |
 | `turn_checkpoint.rb` | `TurnCheckpoint`: a worker's running turn saved at the loop's iteration boundaries (`Session#turn_checkpoint`), so a killed worker loses at most `INTERVAL` of it |
 | `context_status.rb` | `ContextStatus`: one turn's context tracking (the status line's value, the `:context_status` event, the model's guidance line) ([context-telemetry.md](context-telemetry.md)) |
-| `session_manager.rb` | Background session processes (workers) and their IPC |
+| `session_manager.rb` | Background session processes (workers) and their IPC: the facade (`OwnedByTUI`, `session_owner`, `refuse_tui!`) over its parts, each a module it extends |
+| `session_manager/spawn.rb` | `SpawnPart`: starting a session's worker (`spawn_session`, `resume_session`, `wake_for_report`), the spawns remembered |
+| `session_manager/worker_boot.rb` | `WorkerBootPart`: the worker process (`spawn_options`, `worker_command`, `run_session_loop`, `start_bridge`); the CROSS-VERSION CONTRACT (`spec/worker_contract_spec.rb`) |
+| `session_manager/listing.rb` | `ListingPart`: `list_sessions`, `session_summaries`, `children_of`, `read_responses` |
+| `session_manager/delivery.rb` | `DeliveryPart`: `deliver_turn`, `write_turn_input`, `DeliverResult` |
+| `session_manager/lifecycle.rb` | `LifecyclePart`: `stop_session`, `restart_session` (`RestartRefused`, `Restarted`) |
+| `session_manager/removal.rb` | `RemovalPart`: `archive_session`, `unarchive_session`, `delete_session` |
+| `session_manager/emptiness.rb` | `EmptinessPart`: `empty_session?`, `discardable?` |
 | `worker_wakes.rb` | `WorkerWakes`: a worker's wake budget for the turns nobody typed (`session.max_wakes`) |
 | `task_watch.rb`, `task_finish_note.rb` | `TaskWatch`: the background tasks a worker's session started that the model hasn't seen finish; `TaskFinishNote`: the note one leaves when it does ([background-tasks.md](background-tasks.md#finish-wake)) |
 | `side_usage.rb` | `SideUsage`: one side request's usage (a recap, `ctx.ask_model`), folded into the session's side sums (`:side_usage`) |

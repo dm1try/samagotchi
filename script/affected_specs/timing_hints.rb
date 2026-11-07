@@ -17,7 +17,7 @@ module AffectedSpecs
     WAITS = /\bjoin!|\bwait_for\b|\bwith_task_dir\b|\bProcess\.wait2?\b/
     # A bare spawn( is Kernel#spawn, which does start a process — unless the
     # file defines its own spawn helper (`def spawn(...)` builds a session with
-    # Process.spawn stubbed, as spec/session_manager_spec.rb and
+    # Process.spawn stubbed, as spec/session_manager/spawn_spec.rb and
     # spec/chi_bundle_cli_spec.rb do), which starts nothing.
     BARE_SPAWN = /(?<![\w.:])spawn\s*\(/
     SPAWN_HELPER = /^\s*def spawn\b/
