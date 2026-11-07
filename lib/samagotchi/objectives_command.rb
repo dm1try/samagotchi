@@ -99,7 +99,7 @@ module Samagotchi
     def deliver(list, session)
       result = NoteDelivery.deliver(session.id, text: list.text, source: Objectives::SOURCE,
                                                 state_dir: @engine.session_state_dir, objectives: list.to_payload)
-      return ["refused: #{NoteDelivery::REPL_REFUSAL}", :error] unless result.delivered?
+      return ["refused: #{result.refusal}", :error] unless result.delivered?
 
       @engine.announce_objectives(session)
       ["#{lines_of(list)}\n#{BETWEEN_TURNS}", :ok]

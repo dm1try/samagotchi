@@ -10,21 +10,28 @@ module Samagotchi
   autoload :SessionManager, File.expand_path("session_manager", __dir__)
 
   # The one rule for putting a context note into a session, shared by
-  # `chi note`, the agent's send_note and `chi broadcast`: a session a chi
-  # REPL owns refuses it (notes need attached mode); any other gets the
-  # note in its notes/ folder, which a live worker adds within seconds and
-  # a session with no worker at its next start. Callers word the outcome.
+  # `chi note`, the agent's send_note and `chi broadcast`: a session a
+  # one-turn chi run owns, or a chi scratch session, refuses it; any other
+  # gets the note in its notes/ folder, which a live worker adds within
+  # seconds and a session with no worker at its next start. Callers word
+  # the outcome (#refusal for a refused one).
   module NoteDelivery
     # Why a one-turn chi run's session takes no note.
-    REPL_REFUSAL = "it is #{OwnerLock::TUI_BUSY}; send the note once it ends"
+    ONE_SHOT_REFUSAL = "it is #{OwnerLock::TUI_BUSY}; send the note once it ends"
 
     # The outcome for one session.
     # @!attribute status [Symbol] :queued (a worker runs it), :waits (no
-    #   worker: it waits for the next start) or :refused (a one-turn chi run owns it)
+    #   worker: it waits for the next start) or :refused (a one-turn chi run
+    #   owns it, or it is a chi scratch session: +scratch+)
     # @!attribute queued [Integer] notes waiting in its notes/ folder
     #   (:waits only; 0 otherwise)
-    Result = Data.define(:id, :status, :queued) do
+    Result = Data.define(:id, :status, :queued, :scratch) do
+      def initialize(id:, status:, queued:, scratch: false) = super
+
       def delivered? = status != :refused
+
+      # Why a refused note was refused, in its condition's one wording.
+      def refusal = scratch ? Session::SCRATCH_REFUSED : ONE_SHOT_REFUSAL
     end
 
     module_function
@@ -36,6 +43,8 @@ module Samagotchi
     def deliver(id, text:, source:, state_dir:, from_session: nil, from_cwd: nil, objectives: nil)
       owner = SessionManager.session_owner(id, state_dir: state_dir)
       return Result.new(id: id, status: :refused, queued: 0) if owner&.tui?
+      # Its terminal's alone, live or left behind.
+      return Result.new(id: id, status: :refused, queued: 0, scratch: true) if Session.load(id, state_dir: state_dir).scratch
 
       path = SessionInbox.write_note(id, text: text, source: source, from_session: from_session, from_cwd: from_cwd,
                                          objectives: objectives, state_dir: state_dir)

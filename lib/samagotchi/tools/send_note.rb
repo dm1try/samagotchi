@@ -28,6 +28,7 @@ module Samagotchi
 
         result = NoteDelivery.deliver(id, text: content, source: "session", from_session: peers.session_id,
                                           from_cwd: peers.cwd, state_dir: peers.state_dir)
+        return "Error: session #{id[0, 8]}: #{result.refusal}" if result.scratch
         return "Error: session #{id[0, 8]} is #{OwnerLock::TUI_BUSY}, which can't take notes" unless result.delivered?
 
         where = result.status == :queued ? "its worker adds it before its next turn" : "it has no worker now, so it waits for its next start"

@@ -55,6 +55,17 @@ RSpec.describe Samagotchi::NoteDelivery do
     expect(notes_of(repl)).to eq([])
   end
 
+  it "refuses a chi scratch session, live worker or not, writing nothing" do
+    scratch = make(owner: "worker")
+    scratch.scratch = true
+    scratch.save(state_dir: tmpdir)
+
+    result = deliver(scratch)
+    expect(result).to have_attributes(status: :refused, delivered?: false, scratch: true)
+    expect(result.refusal).to eq(Samagotchi::Session::SCRATCH_REFUSED)
+    expect(notes_of(scratch)).to eq([])
+  end
+
   it "raises for an empty note" do
     expect { deliver(make, "  ") }.to raise_error(Samagotchi::SessionInbox::NoteRejected)
   end

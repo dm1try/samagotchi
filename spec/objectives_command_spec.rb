@@ -212,7 +212,7 @@ RSpec.describe Samagotchi::ObjectivesCommand do
     output, status = run("set A")
 
     expect(status).to eq(:error)
-    expect(output).to eq("refused: #{Samagotchi::NoteDelivery::REPL_REFUSAL}")
+    expect(output).to eq("refused: #{Samagotchi::NoteDelivery::ONE_SHOT_REFUSAL}")
     expect(files).to be_empty
     expect(run("").last).to eq(:ok)
   end

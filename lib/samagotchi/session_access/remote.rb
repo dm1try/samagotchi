@@ -321,7 +321,9 @@ module Samagotchi
 
           NoteDelivery::Result.new(id: id, status: json["status"].to_sym, queued: json["queued"].to_i)
         when 409
-          return NoteDelivery::Result.new(id: id, status: :refused, queued: 0) if json["error"] == "owned_by_tui"
+          if json["error"] == "owned_by_tui"
+            return NoteDelivery::Result.new(id: id, status: :refused, queued: 0, scratch: json["scratch"] == true)
+          end
 
           raise_refusal(reply)
         when 400

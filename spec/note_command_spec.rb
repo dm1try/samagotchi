@@ -85,6 +85,16 @@ RSpec.describe Samagotchi::NoteCommand do
       expect(out.string).to include("#{repl.id[0, 8]}  refused: it is in use by a one-turn chi --non-interactive run; send the note once it ends")
     end
 
+    it "refuses a live chi scratch session in its one wording and exits 1" do
+      scratch = make(owner: "worker")
+      scratch.scratch = true
+      scratch.save(state_dir: tmpdir)
+
+      expect(run("-m", "x", scratch.id)).to eq(1)
+      expect(notes_of(scratch)).to be_empty
+      expect(out.string).to eq("#{scratch.id[0, 8]}  refused: #{Samagotchi::Session::SCRATCH_REFUSED}\n")
+    end
+
     it "reports an unknown or ambiguous id and exits 1" do
       live = make(owner: "worker")
 

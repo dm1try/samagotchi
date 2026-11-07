@@ -438,8 +438,9 @@ module Samagotchi
         session_access.show(id)
         result = session_access.note(id, text: text, source: source.strip)
         if result.status == :refused
-          error = SessionManager::OwnedByTUI.new(id)
-          return refusal_response(409, "owned_by_tui", error, session_id: id, status: "refused", queued: 0)
+          error = result.scratch ? SessionManager::ScratchSession.new(id) : SessionManager::OwnedByTUI.new(id)
+          return refusal_response(409, "owned_by_tui", error, session_id: id, status: "refused", queued: 0,
+                                                             scratch: result.scratch || nil)
         end
 
         json_response(200, { status: result.status.to_s, session_id: id, queued: result.queued })
