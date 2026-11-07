@@ -44,9 +44,9 @@ RSpec.describe Samagotchi::Engine, "a pair turn's mid-turn cap" do
       "Alex reached their $2.00 cap"
     }
     # Two generations, each behind the guard, as both loops ask it.
-    allow(kernel).to receive(:run) do |messages, cancel_controller: nil, **|
+    allow(kernel).to receive(:run) do |messages, cancel_controller: nil, context: nil, **|
       2.times do
-        kernel.guard_generation
+        kernel.guard_generation(context)
         break if cancel_controller&.cancelled?
 
         generations << :ran

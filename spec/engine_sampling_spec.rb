@@ -30,12 +30,10 @@ RSpec.describe Samagotchi::Engine, "#run_turn sampling" do
 
   before do
     allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_return("")
-    allow(kernel).to receive(:turn_settings=).and_wrap_original do |original, settings|
-      sampling_set << settings.sampling
-      thinking_set << settings.thinking
-      original.call(settings)
-    end
-    allow(kernel).to receive(:run) do |messages, **|
+    # The settings each turn runs with: its TurnContext's (Engine#generate).
+    allow(kernel).to receive(:run) do |messages, context:, **|
+      sampling_set << context.settings.sampling
+      thinking_set << context.settings.thinking
       Samagotchi::LLM::ModelResult.new(text: "ok", conversation: messages + [{ role: "model", content: "ok" }],
                                        exhausted: false, pending_tool_calls: false, tool_activity: [], canceled: false)
     end
@@ -91,12 +89,14 @@ RSpec.describe Samagotchi::Engine, "#run_turn LLM context strategy" do
   end
   let(:session) { Samagotchi::Session.new_session(mode: "assist", model_name: "Ornith", working_directory: Dir.pwd) }
   let(:views) { [] }
+  let(:settings) { [] }
 
   before do
     Samagotchi::ConfigFile.reset_warnings!
     allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_return("")
-    allow(kernel).to receive(:run) do |messages, **|
-      views << kernel.llm_context_view
+    allow(kernel).to receive(:run) do |messages, context:, **|
+      settings << context.settings
+      views << kernel.llm_context_view(context.settings.llm_context)
       Samagotchi::LLM::ModelResult.new(text: "ok", conversation: messages + [{ role: "model", content: "ok" }],
                                        exhausted: false, pending_tool_calls: false, tool_activity: [], canceled: false)
     end
@@ -120,8 +120,8 @@ RSpec.describe Samagotchi::Engine, "#run_turn LLM context strategy" do
     engine.run_turn(session, "and again")
 
     expect(views.map(&:strategy)).to eq([:none, [:stale], %i[stale forget]])
-    expect(kernel.turn_settings.llm_context.to_h).to include(layers: %i[stale forget], strategy: %i[stale forget],
-                                                             source: :model_setting)
+    expect(settings.last.llm_context.to_h).to include(layers: %i[stale forget], strategy: %i[stale forget],
+                                                      source: :model_setting)
   end
 
   it "puts the session's own values first, from the next turn's start: the strategy, the apply rule and the budget" do
@@ -135,7 +135,7 @@ RSpec.describe Samagotchi::Engine, "#run_turn LLM context strategy" do
     engine.run_turn(session, "and again")
 
     expect(views.map(&:strategy)).to eq([[:stale], %i[stale forget], :none])
-    expect(kernel.turn_settings.llm_context.to_h).to include(strategy: :none, source: :session, budget_tokens: 1000)
+    expect(settings.last.llm_context.to_h).to include(strategy: :none, source: :session, budget_tokens: 1000)
     expect(engine.llm_context_explained.budget_tokens.source).to eq(:model_setting)
   end
 
@@ -220,8 +220,8 @@ RSpec.describe Samagotchi::Engine, "#run_turn price" do
 
   before do
     allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_return("")
-    allow(kernel).to receive(:run) do |messages, **|
-      prices << kernel.turn_settings.price
+    allow(kernel).to receive(:run) do |messages, context:, **|
+      prices << context.settings.price
       Samagotchi::LLM::ModelResult.new(text: "ok", conversation: messages + [{ role: "model", content: "ok" }],
                                        exhausted: false, pending_tool_calls: false, tool_activity: [], canceled: false)
     end

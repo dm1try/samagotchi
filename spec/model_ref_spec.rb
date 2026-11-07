@@ -291,11 +291,11 @@ RSpec.describe Samagotchi::ModelRef do
       end
 
       it "keys memory overlays and guardrail rules by the target, reading the alias's old overlay key as a fallback" do
-        kernel = Samagotchi::KernelLoop.new(client: nil, profile: :gemma4)
-        allow(kernel).to receive(:sync_model_key!).and_call_original
-        e = engine(kernel: kernel)
+        e = engine(kernel: Samagotchi::KernelLoop.new(client: nil, profile: :gemma4))
         expect([e.model_key, e.guardrail_model_name]).to eq(%w[gemma-small gemma-small])
-        expect(kernel).to have_received(:sync_model_key!).with("gemma-small", fallback: "small")
+        # What each turn's TurnContext takes at generate (memory_read's keys).
+        binding = e.instance_variable_get(:@model_binding)
+        expect([binding.model_key, binding.fallback_model_key]).to eq(%w[gemma-small small])
       end
     end
 

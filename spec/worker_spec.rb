@@ -1011,9 +1011,10 @@ RSpec.describe Samagotchi::Worker do
         allow(engine).to receive(:run_turn).and_call_original
         # A loop: its conversation registered on the kernel, a boundary
         # (the drain) before each step, then it waits to be released.
-        allow(kernel).to receive(:run) do |messages, pending_input:, **|
+        allow(kernel).to receive(:run) do |messages, pending_input:, context:, **|
           conversation = messages.map(&:dup)
-          kernel.llm_context_turn = Samagotchi::LLMContextForget::Turn.new(conversation: conversation, context: nil, emit: nil)
+          kernel.llm_context_turn = Samagotchi::LLMContextForget::Turn.new(conversation: conversation, context: nil, emit: nil,
+                                                                           turn_id: context.id)
           [1, 2].each do |n|
             Samagotchi::SessionInbox.write_input(session_dir, prompt: "steer me", client_id: "web:x") if n == @steer_at
             Samagotchi::Steer.inject!(conversation, pending_input, iteration: n, emit: ->(_) {}, cancel_controller: nil)

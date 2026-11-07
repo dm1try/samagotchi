@@ -374,18 +374,13 @@ RSpec.describe Samagotchi::Engine, "toolkit" do
       sess = Samagotchi::Session.new_session(mode: "assist", model_name: from, working_directory: Dir.pwd)
       engine.store_model!(sess)
       engine.session = sess
-      kernel = engine.instance_variable_get(:@kernel)
-      seen = []
-      allow(kernel).to receive(:turn_settings=).and_wrap_original do |original, value|
-        seen << value.loads_tools
-        original.call(value)
-      end
       engine.register_hook(:before_turn) { |_event| engine.switch_model!(to) }
       server.enqueue("/v1/messages", sse: FakeProviderServer.fixture("text_stream.hand-written.sse", api: "anthropic"))
       server.enqueue("/v1/chat/completions", sse: FakeProviderServer.fixture("text_stream.sse"))
       allow_any_instance_of(Samagotchi::Client).to receive(:server_props).and_return(nil)
       engine.run_turn(sess, "hi")
-      seen.last
+      # The settings the turn ran with (its TurnContext's, set in generate).
+      engine.send(:last_turn_context).settings.loads_tools
     end
 
     it "is true when a hook switched the turn to a Messages host, false when it switched away" do

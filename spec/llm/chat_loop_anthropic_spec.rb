@@ -41,12 +41,16 @@ RSpec.describe "ChatLoop on a Messages host" do
   def answer(name) = server.enqueue("/v1/messages", sse: fixture(name))
   def bodies = server.requests.select { |r| r.path == "/v1/messages" }.map(&:json)
 
+  # The run's settings: the kernel's, at the reasoning history level given.
+  def settings = @settings ||= kernel.turn_settings
+
   def level(value)
-    kernel.turn_settings = kernel.turn_settings.with(reasoning_history: value)
+    @settings = settings.with(reasoning_history: value)
   end
 
   def run(messages = [{ role: "user", content: "go" }])
-    backend.complete(messages: messages, model_name: "m", on_stream_event: ->(event) { events << event })
+    backend.complete(messages: messages, model_name: "m", on_stream_event: ->(event) { events << event },
+                     context: run_context(settings: settings))
   end
 
   # The blocks as a fixture's stream builds them (AnthropicAssembly).
@@ -327,7 +331,7 @@ RSpec.describe "ChatLoop on a Messages host" do
         })
 
         result = backend.complete(messages: history, model_name: "m", on_stream_event: ->(event) { events << event },
-                                  cancel_controller: controller)
+                                  cancel_controller: controller, context: run_context(settings: settings))
 
         expect(result).to be_canceled
         expect(result.conversation[1][:anthropic_content].first).to eq(thinking_block("sig1"))

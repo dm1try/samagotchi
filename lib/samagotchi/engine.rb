@@ -79,6 +79,7 @@ require_relative "tools/memory"
 require_relative "muted_memories"
 require_relative "used_memories"
 require_relative "turn_state"
+require_relative "turn_context"
 require_relative "steer_cut"
 require_relative "engine_peers"
 require_relative "engine_snapshots"
@@ -424,9 +425,11 @@ module Samagotchi
     end
     private :subscribe_session_observers
 
-    # The kernel and what it holds of the Engine (stores, hooks, tools, the
-    # mutes, the question flow, the gate, peers, warm-up, the hook runtime),
-    # and the native backend over it. After the plugins load.
+    # The kernel and what it holds of the Engine for its life (stores, hooks,
+    # tools, the mutes, the question flow, the gate, peers, warm-up, the
+    # generation guard, the hook runtime), and the native backend over it.
+    # After the plugins load. Nothing per turn: a turn's TurnContext goes
+    # down the backend's complete (#generate).
     def wire_kernel(kernel, muted_memories)
       # A given kernel (specs) gets the Engine's store, hooks and tools, as
       # the one built here does.
@@ -448,18 +451,9 @@ module Samagotchi
       self.guardrail_state_dir = Session.default_state_dir
       # list_sessions and send_note speak for whichever session runs now.
       @kernel.peers = PeerView.new(self)
-      # A plugin tool's row refs resolve against the session's folder, as
-      # answer refs do (AnswerRefs), not the process's.
-      @kernel.session_cwd = -> { @session&.working_directory }
-      # forget_outputs refuses what the user pinned in the working set.
-      @kernel.working_set_pins = -> { @session&.working_set_pins || [] }
-      # A cut tool output is saved whole in the session's folder.
-      @kernel.session_dir = -> { @session&.id && Session.session_dir(@session.id, state_dir: session_state_dir) }
       @kernel.guardrail_gate = @guardrail_wiring.gate
-      @kernel.participant_turn = -> { Steer.participant_author?(turn_author) }
-      @kernel.participant_mode = -> { @guardrail_wiring.turn_mode }
       # A pair turn stops once its participant passed their cap.
-      @kernel.generation_guard = -> { guard_participant_spend }
+      @kernel.generation_guard = ->(context) { guard_participant_spend(context) }
       # The turn-end warm-up; the kernel asks it for a slot pin per request.
       @prompt_warmup = PromptWarmup.new
       @kernel.warmup = @prompt_warmup
@@ -479,8 +473,6 @@ module Samagotchi
         hooks: -> { @hooks },
         tools: -> { @tools },
         session: -> { @session },
-        model_key: -> { @model_binding.model_key },
-        model_name: -> { guardrail_model_name },
         cancelled: -> { !!active_cancel_controller&.cancelled? },
         # An approval of the model's call: :question_asked first (QuestionAsked).
         ask: ->(fields) { open_question(question_asked(QuestionAsked::KIND_APPROVAL, fields)) },
@@ -495,7 +487,7 @@ module Samagotchi
         system_one_runs: -> { system_one_runs },
         cancel_controller: -> { active_cancel_controller },
         # A participant's turn: their name on the owner's card, their
-        # grant's mode for the turn's (GuardrailWiring#turn_mode).
+        # grant's mode for the turn's (GuardrailWiring#begin_turn).
         participant: ->(author) { @participants.entry_for(author, session: @session) }
       )
     end
@@ -511,7 +503,8 @@ module Samagotchi
         thinking_notices: -> { @thinking_notices },
         metrics: -> { @metrics },
         hooks: -> { @hooks },
-        kernel: -> { @kernel },
+        turn_context: -> { turn_context },
+        last_turn_context: -> { last_turn_context },
         model_settings: -> { @model_settings },
         session: -> { @session },
         live_conversation: -> { live_conversation },
@@ -778,14 +771,15 @@ module Samagotchi
     end
     private :build_recap
 
-    # One turn's values, for #run_turn and its endings. Per turn and
-    # single-threaded: the cross-thread turn state (the cancel slot, the
-    # sink, steers) stays on the Engine.
+    # One turn's lifecycle state, for #run_turn and its endings. Per turn
+    # and single-threaded: the cross-thread turn state (the published
+    # TurnContext, the cancel slot, the sink, steers) stays in TurnState.
+    # +context+: the turn's TurnContext, the one source of truth for its
+    # id, session, origin and controller (read through #id, #session,
+    # #origin, #controller); #generate replaces it with the settings in.
     # +ended+: the end event is out (what follows is post-turn work).
-    # +settings+: the kernel's LLM::TurnSettings, made in #prepare_turn and
-    # set on the kernel in #generate.
-    # +id+: names the turn on :turn_started (its metrics record's id) and on
-    # its saved prompt, so a UI pairs the two whatever left the conversation.
+    # +prepared_settings+: the LLM::TurnSettings #prepare_turn makes (before
+    # the hooks); #generate completes them into the context's.
     # +limit+: the iteration limit #generate ran it with.
     # +resumed+: a step-limit Continue (run_turn's resumed:).
     # +resume_from+: where its reasoning starts, the run it resumes
@@ -794,8 +788,15 @@ module Samagotchi
     # +wall+: the wall time it started (MessageTime.now, once): the
     # :turn_started event's at and its user message's (and reminders') stamp.
     # +verify+, +revises+: a Verify turn's claim, a Revise turn's draft.
-    Turn = Struct.new(:session, :prompt, :continue, :on_event, :controller, :origin, :started_at, :messages, :ended,
-                      :settings, :id, :limit, :resumed, :resume_from, :wall, :verify, :revises, :outcome) do
+    Turn = Struct.new(:context, :prompt, :continue, :on_event, :started_at, :messages, :ended, :prepared_settings,
+                      :limit, :resumed, :resume_from, :wall, :verify, :revises, :outcome) do
+      # The turn's id (:turn_started's turn_id, its metrics record's id and
+      # its saved prompt's), session, origin and controller: its context's.
+      def id = context.id
+      def session = context.session
+      def origin = context.origin
+      def controller = context.controller
+
       def resumed? = resumed ? true : false
 
       # The turn ended as a completed one (not canceled, not failed): the
@@ -933,8 +934,8 @@ module Samagotchi
     end
 
     # The turn's state before anything can fail it: the session running,
-    # the turn flag, its cancel controller and sink. The cross-thread state
-    # is set here and cleared in #release_turn only.
+    # its TurnContext, the turn flag, its cancel controller and sink. The
+    # cross-thread state is set here and cleared in #release_turn only.
     def begin_turn(session, prompt, on_event:, cancel_controller:, origin:, continue:, id: nil, verify: nil, revises: nil,
                    input_waiting: nil)
       origin = TurnOrigin.of(origin)
@@ -950,23 +951,61 @@ module Samagotchi
       @used_memories.absorb(session)
       # Provide a cancellable controller for this turn (cross-process cancel via file flag)
       effective_controller = cancel_controller || CancellationController.new
-      # The turn runs, with its controller and sink, in one step: a Stop
-      # or a plugin's card from another thread never sees a running turn
-      # without them. The idle recap detector does not fire (or render an
-      # invalidated recap) while the model is working. A hook's notice goes
-      # where the turn's events go (a one-shot prints only its sink; a
-      # worker's observers carry it to the bridge).
-      @turn_state.begin!(controller: effective_controller, sink: on_event, input_waiting: input_waiting)
+      # The turn's context, whole before the turn is published: who queued
+      # it, a participant's mode (participants.json), git asked afresh.
+      context = new_turn_context(session, origin, effective_controller, id || SecureRandom.uuid)
+      # The turn runs, with its context, controller and sink, in one step:
+      # a Stop, a plugin's card or its ctx.turn_author from another thread
+      # never sees a running turn without them (or with the last turn's).
+      # The idle recap detector does not fire (or render an invalidated
+      # recap) while the model is working. A hook's notice goes where the
+      # turn's events go (a one-shot prints only its sink; a worker's
+      # observers carry it to the bridge).
+      @turn_state.begin!(context: context, controller: effective_controller, sink: on_event, input_waiting: input_waiting)
       # Drop a recap already in flight: the turn makes it stale.
       @recap&.invalidate!
-      # The gate's context: who queued this turn, and git asked afresh.
-      @guardrail_wiring.begin_turn(origin)
 
-      Turn.new(session: session, prompt: continue ? nil : prompt, continue: continue, on_event: on_event,
-               controller: effective_controller, origin: origin, started_at: Process.clock_gettime(Process::CLOCK_MONOTONIC),
-               id: id || SecureRandom.uuid, wall: MessageTime.now, verify: VerifyAnchor.from(verify),
-               revises: ReviseAnchor.from(revises))
+      Turn.new(context: context, prompt: continue ? nil : prompt, continue: continue, on_event: on_event,
+               started_at: Process.clock_gettime(Process::CLOCK_MONOTONIC), wall: MessageTime.now,
+               verify: VerifyAnchor.from(verify), revises: ReviseAnchor.from(revises))
     end
+    private :begin_turn
+
+    # A new turn's TurnContext (#begin_turn): the gate's turn facts
+    # (GuardrailWiring#begin_turn), the session's folders. Its settings and
+    # model come in #generate.
+    def new_turn_context(session, origin, controller, id)
+      start = @guardrail_wiring.begin_turn(origin, session: session)
+      TurnContext.new(id: id, session: session, origin: origin, author: origin.participant_author,
+                      participant_mode: start.mode, participant: start.participant, controller: controller,
+                      cwd: (session.working_directory if session.respond_to?(:working_directory)), session_dir: turn_session_dir(session),
+                      state_dir: session_state_dir, git: start.git, settings: nil, model_key: nil,
+                      fallback_model_key: nil, model_name: nil, surface: nil)
+    end
+    private :new_turn_context
+
+    # The session's folder, nil for a session whose id isn't one (a cut
+    # tool output then says it wasn't saved).
+    def turn_session_dir(session)
+      Session.session_dir(session.id, state_dir: session_state_dir)
+    rescue Session::InvalidId
+      nil
+    end
+    private :turn_session_dir
+
+    # The running turn's TurnContext as other threads see it (TurnState),
+    # nil between turns; its settings are nil until #generate.
+    # @return [TurnContext, nil]
+    def turn_context = @turn_state.context
+    private :turn_context
+
+    # The last finished turn's TurnContext (TurnState#last_context), nil
+    # before any: its author (the recap's), its settings (the working set's
+    # between turns).
+    # @return [TurnContext, nil]
+    def last_turn_context = @turn_state.last_context
+    private :last_turn_context
+
     private :begin_turn
 
     # Everything before the model is asked: :turn_started, the kernel's
@@ -987,7 +1026,7 @@ module Samagotchi
       # A participant's turn names them (author, author_name) for the UIs'
       # badge; the owner's turn_started stays as it was.
       turn_started.merge!(author_fields(turn.origin.author, session: session),
-                          participant_mode_fields(turn.origin.author))
+                          participant_mode_fields(turn.context))
       emit_event(turn.on_event, turn.tag(turn_started))
       raise image_error if image_error
 
@@ -1006,8 +1045,8 @@ module Samagotchi
       refresh_profile!
 
       # Before anything of the turn is kept or a reminder is used up.
-      turn.settings = turn_settings(session)
-      refuse_images!(turn.settings.vision) unless image_refs.empty?
+      turn.prepared_settings = turn_settings(session)
+      refuse_images!(turn.prepared_settings.vision) unless image_refs.empty?
       # A Stop during the probes: the turn ends before the load-failure
       # warnings, which show once, so the next turn still shows them.
       if turn.controller.cancelled?
@@ -1087,7 +1126,7 @@ module Samagotchi
 
       unless turn.continue
         user_message = { role: "user", content: turn.prompt, turn_id: turn.id, **author_fields(turn.origin.author),
-                         **participant_mode_fields(turn.origin.author), MessageTime::KEY => turn.at }
+                         **participant_mode_fields(turn.context), MessageTime::KEY => turn.at }
         user_message[:verify] = turn.verify.to_h if turn.verify
         user_message[:images] = image_refs unless image_refs.empty?
         turn.messages << user_message
@@ -1106,17 +1145,22 @@ module Samagotchi
       # Route model name as bare (without host prefix) to the server;
       # host selection already done via active client.
       bare_for_backend = bare_model_name(model.name)
-      # The turn's settings, set once here. The chat loop dispatches tools
-      # through the kernel without its #run: tag those dumps with this
-      # turn's model, not the last native one.
+      # The turn's settings, set once here into its context (with the model
+      # key and name the gate and memory_read use: frozen now, after the
+      # hooks that may switch the model), which goes down the backend's
+      # complete to every tool call, and is published (TurnState).
       explained = model.llm_context_explained(@model_settings.llm_context_session_args)
       model_backend = backend(model)
       # A host that loads tools runs a direct call of one the session
       # reaches but doesn't declare (ToolRunner, KernelLoop#dispatch).
       loads_tools = model_backend.respond_to?(:loads_tools?) && model_backend.loads_tools?(bare_for_backend)
-      @kernel.turn_settings = turn.settings.with(model_name: bare_for_backend, window_setting: model.window_setting,
-                                                 llm_context: explained&.resolved, price: model.price,
-                                                 loads_tools: loads_tools)
+      settings = turn.prepared_settings.with(model_name: bare_for_backend, window_setting: model.window_setting,
+                                             llm_context: explained&.resolved, price: model.price,
+                                             loads_tools: loads_tools)
+      turn.context = turn.context.with(settings: settings, model_key: @model_binding.model_key,
+                                       fallback_model_key: @model_binding.fallback_model_key,
+                                       model_name: guardrail_model_name)
+      @turn_state.replace_context(turn.context)
       log_llm_context(explained)
 
       turn.limit = @no_interrupt ? IterationLimit.for(no_interrupt: true) : max_iterations || IterationLimit.for
@@ -1133,7 +1177,8 @@ module Samagotchi
         model_name: bare_for_backend,
         max_tool_output_chars: max_tool_output_chars,
         pending_input: turn_drain(pending_input),
-        reasoning_since: reasoning_since
+        reasoning_since: reasoning_since,
+        context: turn.context
       )
       result.run_start = run_start
       result

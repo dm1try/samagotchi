@@ -63,17 +63,20 @@ RSpec.describe Samagotchi::ToolOutputFiles do
     expect { described_class.save(session_dir, "x", tool: "execute") }.to raise_error(Errno::ENOSPC)
   end
 
-  describe "the Engine's kernel" do
-    it "names the session's folder under the state dir (XDG_STATE_HOME)" do
+  describe "the Engine's turn" do
+    it "names the session's folder under the state dir (XDG_STATE_HOME) in its TurnContext" do
       with_env("XDG_STATE_HOME" => @dir) do
         client = test_client
-        engine = Samagotchi::Engine.new(client: client, kernel: test_kernel(client: client), profile: "qwen36")
-        kernel = engine.instance_variable_get(:@kernel)
-        expect(kernel.session_dir.call).to be_nil
-
+        kernel = test_kernel(client: client)
+        seen = nil
+        allow(kernel).to receive(:run) do |messages, context:, **|
+          seen = context
+          Samagotchi::LLM::ModelResult.new(text: "ok", conversation: messages + [{ role: "model", content: "ok" }])
+        end
+        engine = Samagotchi::Engine.new(client: client, kernel: kernel, profile: "qwen36")
         session = Samagotchi::Session.new_session(mode: "assist", model_name: "m", working_directory: Dir.pwd)
-        engine.session = session
-        expect(kernel.session_dir.call).to eq(File.join(@dir, "samagotchi", "sessions", session.id))
+        engine.run_turn(session, "hi")
+        expect(seen.session_dir).to eq(File.join(@dir, "samagotchi", "sessions", session.id))
       end
     end
   end

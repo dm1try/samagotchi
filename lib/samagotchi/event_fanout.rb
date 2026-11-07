@@ -26,7 +26,8 @@ module Samagotchi
     # @param thinking_notices  [#call] → ThinkingNotices
     # @param metrics           [#call] → SessionMetrics
     # @param hooks             [#call] → Hooks::Registry
-    # @param kernel            [#call] → KernelLoop
+    # @param turn_context      [#call] → TurnContext, nil: the running turn's (Engine#turn_context)
+    # @param last_turn_context [#call] → TurnContext, nil: the last finished turn's
     # @param model_settings    [#call] → SessionModelSettings
     # @param session           [#call] → Session, nil
     # @param live_conversation [#call] → Array<Hash>, the running turn's conversation
@@ -35,8 +36,8 @@ module Samagotchi
     # @param working_set_strategy [#call] → the strategy the working set is built under
     # @param turn_running      [#call] → Boolean
     # @param announce_or_hold  [#call] (event) → announces the event, or holds it
-    def initialize(observer:, used_memories:, muted:, steer_cut:, thinking_notices:, metrics:, hooks:, kernel:,
-                   model_settings:, session:, live_conversation:, used_memory_names:, served_expected_by:,
+    def initialize(observer:, used_memories:, muted:, steer_cut:, thinking_notices:, metrics:, hooks:, turn_context:,
+                   last_turn_context:, model_settings:, session:, live_conversation:, used_memory_names:, served_expected_by:,
                    working_set_strategy:, turn_running:, announce_or_hold:)
       @observer = observer
       @used_memories = used_memories
@@ -45,7 +46,8 @@ module Samagotchi
       @thinking_notices = thinking_notices
       @metrics = metrics
       @hooks = hooks
-      @kernel = kernel
+      @turn_context = turn_context
+      @last_turn_context = last_turn_context
       @model_settings = model_settings
       @session = session
       @live_conversation = live_conversation
@@ -149,15 +151,18 @@ module Samagotchi
     end
 
     # The strategy the set is built under: the running turn's
-    # (TurnSettings#llm_context: what its requests send); between turns
-    # the next turn's (as #warm_up_next_turn: the turn's settings keep the
-    # last turn's, stale after a /llm-context or /model change), the last
-    # turn's when it can't be resolved.
+    # (TurnSettings#llm_context: what its requests send), the last turn's
+    # while the running one has no settings yet (before Engine#generate);
+    # between turns the next turn's (as #warm_up_next_turn: the last turn's
+    # settings are stale after a /llm-context or /model change), the last
+    # turn's when it can't be resolved. One read of each published context
+    # (TurnState): any thread may ask (/working-set's anytime list).
     def working_set_llm_context
-      turn = kernel.respond_to?(:turn_settings) ? kernel.turn_settings&.llm_context : nil
-      return turn if turn_running?
+      running = turn_context
+      last = last_turn_context&.settings&.llm_context
+      return running.settings ? running.settings.llm_context : last if running
 
-      model_settings.turn_llm_context || turn
+      model_settings.turn_llm_context || last
     end
 
     # A :generation_completed with the generation's decode speed (`speed:`
@@ -222,7 +227,8 @@ module Samagotchi
     def thinking_notices = @thinking_notices.call
     def metrics = @metrics.call
     def hooks = @hooks.call
-    def kernel = @kernel.call
+    def turn_context = @turn_context.call
+    def last_turn_context = @last_turn_context.call
     def model_settings = @model_settings.call
     def session = @session.call
     def live_conversation = @live_conversation.call

@@ -29,11 +29,11 @@ RSpec.describe "direct calls of deferred tools" do
   let(:kernel) do
     test_kernel(hooks: hooks).tap do |k|
       k.tools = registry
-      approver = lambda do |verdict|
+      approver = lambda do |verdict, _turn|
         asked << [verdict.call[:name], Samagotchi::Guardrails::Approvals.key_for(verdict), verdict.rule]
         verdict.settle!(:allow)
       end
-      gate = Samagotchi::Guardrails::Gate.new(-> { hooks }, approver: approver, checks_lookup: -> { checks },
+      gate = Samagotchi::Guardrails::Gate.new(-> { hooks }, approver: approver, checks_for: ->(_turn) { checks },
                                                             tools_lookup: -> { registry })
       k.define_singleton_method(:guardrail_gate) { gate }
     end
@@ -59,12 +59,18 @@ RSpec.describe "direct calls of deferred tools" do
     hooks.register(:before_tool_call) { |e| seen << e[:call].slice(:name, :via, :args) }
   end
 
+  # The calls' turn (a bare kernel's settings), as the specs shape it.
+  def context = @context ||= run_context(settings: kernel.turn_settings)
+
   def loads_tools!(value = true)
-    kernel.turn_settings = kernel.turn_settings.with(loads_tools: value)
+    @context = context.with(settings: context.settings.with(loads_tools: value))
   end
 
+  # A participant's turn in +mode+ (TurnContext#author, #participant_mode).
+  def participant!(mode) = @context = context.with(author: "p:review", participant_mode: mode)
+
   def run(call)
-    Samagotchi::ToolRunner.new(kernel).run(call, iteration: 1, call_index: 1, call_count: 1,
+    Samagotchi::ToolRunner.new(kernel).run(call, context: context, iteration: 1, call_index: 1, call_count: 1,
                                                  on_stream_event: ->(e) { events << e }, max_tool_output_chars: nil)
   end
 
@@ -214,8 +220,7 @@ RSpec.describe "direct calls of deferred tools" do
     it "lets a participant's review boundary deny before the toolkit-group refusal" do
       loads_tools!
       registry.toolkit = registry.toolkit.with(groups: [])
-      kernel.participant_turn = -> { true }
-      kernel.participant_mode = -> { :review }
+      participant!(:review)
       boundary = Samagotchi::Guardrails::ReviewBoundary.new(author: -> { "p:review" }, root: -> { Dir.pwd },
                                                             denied_dirs: -> { [] })
       checks << boundary
@@ -231,8 +236,7 @@ RSpec.describe "direct calls of deferred tools" do
       loads_tools!
       registry.toolkit = registry.toolkit.with(groups: [])
       registry.reaching_kit = ->(group) { group == "fs" ? "web" : nil }
-      kernel.participant_turn = -> { true }
-      kernel.participant_mode = -> { :pair }
+      participant!(:pair)
 
       result = run(Samagotchi::Tools::BuiltinCalls.build("call_tool", { "tool" => "fs/read_file" }))
 

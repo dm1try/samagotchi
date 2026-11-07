@@ -76,14 +76,17 @@ module Samagotchi
       # register it on the kernel's llm_context_turn): the same array the loop
       # appends to, not a copy, so read it on the turn's thread (the pending
       # input drain, at an iteration boundary: TurnCheckpoint), or from another
-      # only as a dup, read only (/objectives). nil when no
-      # turn runs (llm_context_turn is never cleared, and still holds the
-      # last turn's then).
+      # only as a dup, read only (/objectives). nil when no turn runs, and
+      # while the running turn's loop has yet to register its own
+      # (llm_context_turn is never cleared, and still holds the last turn's
+      # then: its turn_id tells them apart).
       # @return [Array<Hash>, nil]
       def live_conversation
-        return nil unless turn_running? && @kernel.respond_to?(:llm_context_turn)
+        running = turn_context
+        return nil unless running && @kernel.respond_to?(:llm_context_turn)
 
-        @kernel.llm_context_turn&.conversation
+        forget = @kernel.llm_context_turn
+        forget&.turn_id == running.id ? forget.conversation : nil
       end
 
       # Append messages to the current session's conversation.

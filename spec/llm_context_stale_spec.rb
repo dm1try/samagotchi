@@ -231,10 +231,8 @@ RSpec.describe Samagotchi::LLMContextStale do
 
     after { FileUtils.remove_entry(dir) }
 
-    def under(kernel, llm_context)
-      kernel.turn_settings = Samagotchi::LLM::TurnSettings.none.with(llm_context: llm_context)
-      kernel
-    end
+    # A run's turn under +llm_context+.
+    def under(llm_context) = run_context(settings: Samagotchi::LLM::TurnSettings.none.with(llm_context: llm_context))
 
     describe "the native loop" do
       def prompts(llm_context)
@@ -247,8 +245,8 @@ RSpec.describe Samagotchi::LLMContextStale do
           on_chunk&.call(content: text, payload: { "content" => text })
           text
         end
-        kernel = under(test_kernel(client: client, profile: Samagotchi::ModelProfile.qwen36), llm_context)
-        [kernel.run([head, { role: "user", content: "read it twice" }]), sent]
+        kernel = test_kernel(client: client, profile: Samagotchi::ModelProfile.qwen36)
+        [kernel.run([head, { role: "user", content: "read it twice" }], context: under(llm_context)), sent]
       end
 
       it "stubs the first read in the request after the second, and keeps the original in the conversation" do
@@ -265,7 +263,7 @@ RSpec.describe Samagotchi::LLMContextStale do
 
       it "warms the next turn's prompt with the stubs it will send, on its own copy of the entries" do
         result, = prompts(nil)
-        kernel = under(test_kernel(profile: Samagotchi::ModelProfile.qwen36), nil)
+        kernel = test_kernel(profile: Samagotchi::ModelProfile.qwen36)
 
         warm, = kernel.warmup_prompt(result.conversation, llm_context: stale)
 
@@ -287,10 +285,9 @@ RSpec.describe Samagotchi::LLMContextStale do
         adapter = FakeChatAdapter.new(FakeChatAdapter.tools(["c1", "read", { "path" => file }]),
                                       FakeChatAdapter.tools(["c2", "read", { "path" => file }]),
                                       FakeChatAdapter.text("Done."))
-        kernel = under(test_kernel, llm_context)
-        Samagotchi::LLM::ChatLoop.new(kernel: kernel, adapter: adapter)
+        Samagotchi::LLM::ChatLoop.new(kernel: test_kernel, adapter: adapter)
                                  .complete(messages: [head, { role: "user", content: "read it twice" }], model_name: "m",
-                                           max_iterations: 5)
+                                           max_iterations: 5, context: under(llm_context))
         adapter.requests
       end
 

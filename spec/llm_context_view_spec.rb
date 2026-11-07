@@ -101,7 +101,7 @@ RSpec.describe Samagotchi::LLMContextView do
     it "runs under the turn's strategy (TurnSettings#llm_context), none without one" do
       expect(kernel.llm_context_view).to be_none
       resolved = Samagotchi::LLMContextStrategy::Resolved.new(layers: [:stale], strategy: [:stale], source: :config)
-      kernel.turn_settings = Samagotchi::LLM::TurnSettings.none.with(llm_context: resolved)
+      kernel.run(conversation.first(2), context: run_context(settings: Samagotchi::LLM::TurnSettings.none.with(llm_context: resolved)))
 
       expect(kernel.llm_context_view.layers).to eq([:stale])
     end

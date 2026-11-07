@@ -231,11 +231,11 @@ RSpec.describe Samagotchi::LLMContextForget do
         text
       end
       kernel = test_kernel(client: client, profile: Samagotchi::ModelProfile.qwen36)
-      kernel.turn_settings = Samagotchi::LLM::TurnSettings.none.with(llm_context: llm_context)
 
       events = []
       result = kernel.run([{ role: "system", content: "base" }, { role: "user", content: "go" }], max_iterations: 10,
-                          on_stream_event: ->(event) { events << event })
+                          on_stream_event: ->(event) { events << event },
+                          context: run_context(settings: Samagotchi::LLM::TurnSettings.none.with(llm_context: llm_context)))
 
       expect(sent[1]).to include("[read]\n[#t1] line 1 of a.rb")
       # One ✂ row, the forget's own batch, while its call runs.
@@ -260,12 +260,11 @@ RSpec.describe Samagotchi::LLMContextForget do
       names = -> { chat.tool_definitions.map { |tool| tool[:function][:name] } }
       expect(names.call).not_to include("forget_outputs")
 
-      kernel.turn_settings = Samagotchi::LLM::TurnSettings.none.with(llm_context: llm_context(protect_steps: 0))
-      expect(names.call.last).to eq("forget_outputs")
-
+      forget = run_context(settings: Samagotchi::LLM::TurnSettings.none.with(llm_context: llm_context(protect_steps: 0)))
       events = []
       chat.complete(messages: [{ role: "system", content: "base" }, { role: "user", content: "go" }], max_iterations: 5,
-                    on_stream_event: ->(event) { events << event })
+                    on_stream_event: ->(event) { events << event }, context: forget)
+      expect(names.call.last).to eq("forget_outputs")
       expect(events.select { |event| event[:type] == :llm_context_edited }.map { |row| row[:text] })
         .to eq(["✂ forgot 1 output · frees ~#{events.find { |e| e[:type] == :llm_context_edited }[:freed_tokens]} tokens"])
 
@@ -281,13 +280,14 @@ RSpec.describe Samagotchi::LLMContextForget do
                                     FakeChatAdapter.tools(["b", "forget_outputs", { "ids" => ["t1"], "note" => "40 lines" }]),
                                     FakeChatAdapter.text("Done."))
       kernel = test_kernel
-      kernel.session_cwd = -> { dir }
-      kernel.working_set_pins = -> { [Samagotchi::WorkingSetPin.new(kind: "file", key: file)] }
-      kernel.turn_settings = Samagotchi::LLM::TurnSettings.none.with(llm_context: llm_context(protect_steps: 0))
+      # The turn's session pins the file; its folder is +dir+.
+      session = Struct.new(:working_set_pins).new([Samagotchi::WorkingSetPin.new(kind: "file", key: file)])
+      context = run_context(settings: Samagotchi::LLM::TurnSettings.none.with(llm_context: llm_context(protect_steps: 0)),
+                            session: session, cwd: dir)
       chat = Samagotchi::LLM::ChatLoop.new(kernel: kernel, adapter: adapter)
 
       chat.complete(messages: [{ role: "system", content: "base" }, { role: "user", content: "go" }], max_iterations: 5,
-                    on_stream_event: ->(_event) {})
+                    on_stream_event: ->(_event) {}, context: context)
 
       last = adapter.requests.last[:messages]
       expect(last.find { |message| message[:tool_call_id] == "a" }[:content]).to include("line 40 of a.rb")

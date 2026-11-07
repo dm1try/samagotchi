@@ -5,6 +5,7 @@ require "fileutils"
 require "open3"
 require "samagotchi/guardrails"
 require "samagotchi/guardrail_wiring"
+require "samagotchi/turn_context"
 require "samagotchi/tools/memory"
 require "support/hard_link"
 
@@ -425,9 +426,11 @@ RSpec.describe "GuardrailWiring: the child boundary" do
   let(:session) { nil }
   let(:wiring) do
     s = session
-    Samagotchi::GuardrailWiring.new(scratch: false, hooks: -> {}, tools: -> {}, session: -> { s }, model_key: -> {},
+    Samagotchi::GuardrailWiring.new(scratch: false, hooks: -> {}, tools: -> {}, session: -> { s },
                                     cancelled: -> { false }, ask: ->(_) {}).tap { |w| w.state_dir = File.join(dir, "sessions") }
   end
+  # The owner's turn the checks are for (one GitInfo, as a turn has).
+  let(:turn) { Samagotchi::TurnContext.none(session: session) }
 
   after { FileUtils.rm_rf(dir) }
 
@@ -435,13 +438,13 @@ RSpec.describe "GuardrailWiring: the child boundary" do
     Samagotchi::Session.new_session(mode: "assist", model_name: "m", working_directory: dir, **opts)
   end
 
-  def boundary? = wiring.checks.any?(Samagotchi::Guardrails::ChildBoundary)
+  def boundary? = wiring.checks(turn).any?(Samagotchi::Guardrails::ChildBoundary)
 
   context "in a delegate child" do
     let(:session) { new_session(parent_id: "p", delegate: true) }
 
     it "gets the check, before the rules" do
-      checks = wiring.checks
+      checks = wiring.checks(turn)
       expect(checks.index { |c| c.is_a?(Samagotchi::Guardrails::ChildBoundary) })
         .to be < checks.index { |c| c.is_a?(Samagotchi::Guardrails::Rules) }
     end
@@ -451,9 +454,9 @@ RSpec.describe "GuardrailWiring: the child boundary" do
       allow(Samagotchi::Config).to receive(:get).with("guardrails.enabled").and_return(false)
       expect(wiring.rules.enabled?).to be(false)
       v = Samagotchi::Guardrails::Verdict.new(call: { name: "write", path: "/elsewhere/x.rb", content: "x" })
-      v.context = wiring.context
+      v.context = wiring.context(turn)
       v.targets = Samagotchi::Guardrails::Targets.for(v.call, v.context)
-      wiring.checks.each { |c| c.check(v) }
+      wiring.checks(turn).each { |c| c.check(v) }
       expect([v.decision, v.rule]).to eq([:ask, "child-boundary"])
     end
   end
@@ -470,9 +473,9 @@ RSpec.describe "GuardrailWiring: the child boundary" do
                { name: "write", path: "/elsewhere/child/x.rb", content: "x" }]
       calls.each do |call|
         v = Samagotchi::Guardrails::Verdict.new(call: call)
-        v.context = wiring.context
+        v.context = wiring.context(turn)
         v.targets = Samagotchi::Guardrails::Targets.for(call, v.context)
-        wiring.checks.each { |c| c.check(v) }
+        wiring.checks(turn).each { |c| c.check(v) }
         expect(v.rule).not_to eq("child-boundary")
       end
     end

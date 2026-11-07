@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "samagotchi/kernel_loop"
+require_relative "support/test_kernel"
 require "samagotchi/model_profile"
 
 # The native loop's empty-answer retry (EmptyAnswerRetry): the empty
@@ -22,8 +23,13 @@ RSpec.describe Samagotchi::KernelLoop, "empty answer retry" do
     calls
   end
 
+  # The run's settings: the kernel's own, as a spec changes them (#use_settings).
+  def settings = @settings ||= kernel.turn_settings
+  def use_settings(**) = @settings = settings.with(**)
+
   def run(**options)
-    kernel.run([{ role: "user", content: "hi" }], on_stream_event: ->(e) { events << e }, **options)
+    kernel.run([{ role: "user", content: "hi" }], on_stream_event: ->(e) { events << e },
+                                                  context: run_context(settings: settings), **options)
   end
 
   it "drops the empty generation, nudges and answers in the same turn" do
@@ -40,7 +46,7 @@ RSpec.describe Samagotchi::KernelLoop, "empty answer retry" do
   end
 
   it "keeps a configured temperature for the retry" do
-    kernel.turn_settings = kernel.turn_settings.with(sampling: { temperature: 0.2 })
+    use_settings(sampling: { temperature: 0.2 })
     calls = script("", "PONG")
 
     run

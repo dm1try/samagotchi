@@ -17,7 +17,7 @@ module Samagotchi
       def provider = :native
 
       def complete(messages:, max_iterations: IterationLimit::DEFAULT, on_stream_event: nil, cancel_controller: nil,
-                   model_name: nil, max_tool_output_chars: nil, pending_input: nil, reasoning_since: nil)
+                   model_name: nil, max_tool_output_chars: nil, pending_input: nil, reasoning_since: nil, context: nil)
         @kernel.run(
           messages,
           max_iterations: max_iterations,
@@ -26,7 +26,8 @@ module Samagotchi
           model_name: model_name,
           max_tool_output_chars: max_tool_output_chars,
           pending_input: pending_input,
-          reasoning_since: reasoning_since
+          reasoning_since: reasoning_since,
+          context: context || @kernel.context
         )
       end
     end

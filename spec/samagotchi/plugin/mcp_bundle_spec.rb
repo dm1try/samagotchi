@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative "../../support/engine_turn_context"
+require "samagotchi/turn_context"
 require "spec_helper"
 require "pp"
 require_relative "../../support/mcp_bundle"
@@ -234,10 +236,10 @@ RSpec.describe "The mcp bundle" do
       it "asks for a call_tool to that server, by <server>: <tool>, and not for a search" do
         gate = engine.instance_variable_get(:@kernel).guardrail_gate
         call = { name: "call_tool", args: { "tool" => "fake/echo", "args" => { "text" => "hi" } } }
-        verdict = gate.evaluate(call, iteration: 1, params: "")
+        verdict = gate.evaluate(call, context: engine_turn_context(engine), iteration: 1, params: "")
         expect(verdict).to be_ask
         expect(verdict.rule).to eq("fake-ask")
-        expect(gate.evaluate({ name: "find_tools", args: { "query" => "echo" } }, iteration: 1, params: "")).not_to be_ask
+        expect(gate.evaluate({ name: "find_tools", args: { "query" => "echo" } }, context: engine_turn_context(engine), iteration: 1, params: "")).not_to be_ask
         engine.interface = :worker
         thread = Thread.new { engine.request_approval(verdict) }
         pending = wait_for("the call's approval question") { engine.pending_question }
@@ -326,8 +328,7 @@ RSpec.describe "The mcp bundle" do
             .to eq(acts_as: "mcp_fake_echo", args: { "text" => "x" }, label: "fake: echo")
           expect(targets.call({ name: "call_tool", args: { "tool" => "mcp_fake_echo" } })).to eq(acts_as: "mcp_fake_echo", args: {})
           gate = @engine.instance_variable_get(:@kernel).guardrail_gate
-          verdict = gate.evaluate({ name: "call_tool", args: { "tool" => "fake/echo", "args" => { "text" => "x" } } },
-                                  iteration: 1, params: "")
+          verdict = gate.evaluate({ name: "call_tool", args: { "tool" => "fake/echo", "args" => { "text" => "x" } } }, context: engine_turn_context(@engine), iteration: 1, params: "")
           expect(verdict).to be_deny
           expect(verdict.rule).to eq("fake-deny")
         end

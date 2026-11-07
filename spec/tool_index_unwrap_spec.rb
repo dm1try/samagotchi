@@ -24,17 +24,18 @@ RSpec.describe "call_tool on a built-in" do
   let(:seen) { [] }
   let(:ran) { [] }
   let(:checks) { [] }
+  let(:context) { run_context(settings: kernel.turn_settings) }
   # A kit whose list leaves execute and write out (none chi ships does):
   # the same-verdict cases.
   let(:kits) { Samagotchi::Toolkit.kits.merge("tiny" => Samagotchi::Toolkit::Kit.new(name: "tiny", tools: %w[read])) }
   let(:kernel) do
     test_kernel(hooks: hooks).tap do |k|
       k.tools = registry
-      approver = lambda do |verdict|
+      approver = lambda do |verdict, _turn|
         asked << [verdict.call[:name], Samagotchi::Guardrails::Approvals.key_for(verdict), verdict.rule]
         verdict.settle!(:allow)
       end
-      gate = Samagotchi::Guardrails::Gate.new(-> { hooks }, approver: approver, checks_lookup: -> { checks },
+      gate = Samagotchi::Guardrails::Gate.new(-> { hooks }, approver: approver, checks_for: ->(_turn) { checks },
                                                             tools_lookup: -> { registry })
       k.define_singleton_method(:guardrail_gate) { gate }
     end
@@ -56,7 +57,7 @@ RSpec.describe "call_tool on a built-in" do
   end
 
   def run(call)
-    Samagotchi::ToolRunner.new(kernel).run(call, iteration: 1, call_index: 1, call_count: 1,
+    Samagotchi::ToolRunner.new(kernel).run(call, context: context, iteration: 1, call_index: 1, call_count: 1,
                                                  on_stream_event: ->(e) { events << e }, max_tool_output_chars: nil)
   end
 

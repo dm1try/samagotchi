@@ -42,9 +42,12 @@ module Samagotchi
       def side_author(kind)
         # Check this is only ever the owner's, whichever turn runs as it ends.
         return nil if kind.to_s == ObjectivesCheck::SOURCE
-        return nil unless turn_running? || kind.to_s == RECAP_SIDE_KIND
 
-        @guardrail_wiring.turn_author
+        # One read each of the published contexts (TurnState): any thread.
+        running = turn_context
+        return running.author if running
+
+        kind.to_s == RECAP_SIDE_KIND ? last_turn_context&.author : nil
       end
 
       private

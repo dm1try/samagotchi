@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative "../support/engine_turn_context"
+require "samagotchi/turn_context"
 require "samagotchi/engine"
 require "samagotchi/memory_bundle/provenance"
 require "tmpdir"
@@ -9,7 +11,7 @@ RSpec.describe "Engine guardrail wiring" do
   let(:engine) { Samagotchi::Engine.new(client: instance_double(Samagotchi::Client)) }
 
   # The context the Engine's gate sees now (GuardrailWiring#context).
-  def guardrail_context(engine) = engine.instance_variable_get(:@guardrail_wiring).context
+  def guardrail_context(engine) = engine.instance_variable_get(:@guardrail_wiring).context(engine_turn_context(engine))
 
   it "defaults the interface to non_interactive and validates it" do
     expect(engine.interface).to eq(:non_interactive)
@@ -31,7 +33,7 @@ RSpec.describe "Engine guardrail wiring" do
   it "runs the Engine's hooks through the kernel's gate" do
     engine.register_hook(:before_tool_call) { |e| e[:guardrail].deny!("no") }
     gate = engine.instance_variable_get(:@kernel).guardrail_gate
-    expect(gate.evaluate({ name: "execute", content: "ls" }, iteration: 1, params: "")).to be_deny
+    expect(gate.evaluate({ name: "execute", content: "ls" }, context: engine_turn_context(engine), iteration: 1, params: "")).to be_deny
   end
 
   describe "#request_approval" do
@@ -206,7 +208,7 @@ RSpec.describe "Engine guardrail wiring" do
           e[:guardrail].ask!("check", rule: "r", source: "config", scopes: %w[once])
         end
         gate = engine.instance_variable_get(:@kernel).guardrail_gate
-        verdict = gate.evaluate({ name: "write", path: path, content: "original\n" }, iteration: 1, params: "")
+        verdict = gate.evaluate({ name: "write", path: path, content: "original\n" }, context: engine_turn_context(engine), iteration: 1, params: "")
         pending = pending_for(engine, verdict)
         expect(pending.approval[:preview]).to include(text: "@@ -0,0 +1 @@\n+replaced", new_file: true)
       end
@@ -250,7 +252,7 @@ RSpec.describe "Engine guardrail rules reload" do
   def deny_rule(command) = "guardrails:\n  rules:\n    - {id: no-#{command}, tool: shell, command: 'echo #{command}', verdict: deny, reason: no}\n"
 
   def verdict(engine, command)
-    engine.instance_variable_get(:@kernel).guardrail_gate.evaluate({ name: "execute", content: "echo #{command}" }, iteration: 1, params: "")
+    engine.instance_variable_get(:@kernel).guardrail_gate.evaluate({ name: "execute", content: "echo #{command}" }, context: engine_turn_context(engine), iteration: 1, params: "")
   end
 
   it "applies config.yml rules edited after the engine started, and drops a load failure once fixed" do

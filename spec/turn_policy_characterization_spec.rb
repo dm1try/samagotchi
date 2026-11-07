@@ -10,6 +10,7 @@ require "samagotchi/vision_support"
 require "samagotchi/llm/native_backend"
 require "samagotchi/llm/chat_loop"
 require_relative "support/fake_chat_adapter"
+require_relative "support/test_kernel"
 
 # One turn's policy, as data: each row is a scripted turn run through the
 # native loop (a real KernelLoop, Qwen 3.6 and Gemma 4, with a client fake
@@ -173,7 +174,7 @@ RSpec.describe "Turn policy characterization" do
       kernel = Samagotchi::KernelLoop.new(client: client, profile: profile_for(loop_name), tools: registry)
       backend = Samagotchi::LLM::NativeBackend.new(kernel: kernel)
     end
-    kernel.turn_settings = kernel.turn_settings.with(vision: vision)
+    context = run_context(settings: kernel.turn_settings.with(vision: vision))
     if row[:raising_dispatch]
       allow(kernel).to receive(:dispatch_tool_call).and_raise(RuntimeError, "dispatcher broke")
     end
@@ -196,7 +197,7 @@ RSpec.describe "Turn policy characterization" do
     messages = [{ role: "user", content: row[:prompt] || "hi" }]
     result = with_env(row[:env] || {}) do
       backend.complete(messages: messages, max_iterations: row[:max_iterations] || 10, on_stream_event: sink,
-                       cancel_controller: controller, model_name: "m", pending_input: drain)
+                       cancel_controller: controller, model_name: "m", pending_input: drain, context: context)
     end
     observe(row, kernel, result, events, loop_name == :chat ? adapter.requests : client.requests)
   end

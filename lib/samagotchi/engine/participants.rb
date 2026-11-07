@@ -5,13 +5,16 @@ module Samagotchi
     # The session's participants: the running turn's author, a pair turn's
     # stop check, who came or went, the system prompt's participants line and
     # a participant's author fields. Writes @participant_stop,
-    # @participants_line; reads @participants, @participants_watch,
-    # @guardrail_wiring.
+    # @participants_line; reads @participants, @participants_watch and the
+    # turn's TurnContext.
     module ParticipantsPart
       # The running turn's author when a participant wrote it, else nil
-      # (ctx.turn_author, the hooks' author).
+      # (ctx.turn_author, the hooks' author, the judgments' participant:,
+      # ObjectivesCheck): one read of the published TurnContext, so any
+      # thread sees the running turn's author from its first moment, never
+      # the last turn's.
       # @return [String, nil]
-      def turn_author = turn_running? ? @guardrail_wiring.turn_author : nil
+      def turn_author = turn_context&.author
 
       # Whether a participant's pair turn must stop, read before each of its
       # generations (#guard_participant_spend): author ("p:<id>") → why (their
@@ -28,10 +31,11 @@ module Samagotchi
       # once it ends, so a turn can pass the cap by its last generation. The
       # turn-start check is the Worker's (Worker#participant_refusal); a
       # review turn only reads, and keeps to it.
-      def guard_participant_spend
-        author = turn_author
+      # @param context [TurnContext] the running turn's (the loop's)
+      def guard_participant_spend(context)
+        author = context&.author
         return if author.nil? || @participant_stop.nil?
-        return unless @guardrail_wiring.turn_mode == ParticipantMode::PAIR
+        return unless context.participant_mode == ParticipantMode::PAIR
 
         reason = @participant_stop.call(author) or return
         hook_stop_turn(reason, PARTICIPANTS_HOOK)
@@ -77,8 +81,9 @@ module Samagotchi
       # A participant's opening message keeps the rules it was delivered under
       # (ParticipantMode), stamped before any request carries it, so its header
       # never changes when the session's mode does.
-      def participant_mode_fields(author)
-        mode = Steer.participant_author?(author) && @guardrail_wiring.turn_mode
+      # @param context [TurnContext] the turn's
+      def participant_mode_fields(context)
+        mode = context.participant? && context.participant_mode
         mode ? { participant_mode: mode.to_s } : {}
       end
     end

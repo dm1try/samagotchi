@@ -34,14 +34,15 @@ module Samagotchi
     # own go to +on_stream_event+. An Interrupt (Ctrl-C) mid-batch yields an
     # #interrupted run for every call left (the one it cut short too), so
     # the loop's conversation answers each call, then goes on up: the turn
-    # keeps its progress (Engine#ctrl_c_messages).
+    # keeps its progress (Engine#ctrl_c_messages). +context+: the calls'
+    # turn (TurnContext), each run's (ToolRunner#run).
     # @return [Array<ToolRun>] the runs
-    def run_batch(runner, calls, iteration:, emit:, on_stream_event:, cap:)
+    def run_batch(runner, calls, context:, iteration:, emit:, on_stream_event:, cap:)
       # Before anything can be interrupted: the rescue counts it.
       runs = []
       emit.call({ type: :tool_dispatch_started, iteration: iteration, call_count: calls.length })
       calls.each_with_index do |call, index|
-        runs << runner.run(call, iteration: iteration, call_index: index + 1, call_count: calls.length,
+        runs << runner.run(call, context: context, iteration: iteration, call_index: index + 1, call_count: calls.length,
                                  on_stream_event: on_stream_event, max_tool_output_chars: cap)
         yield runs.last, index if block_given?
       end

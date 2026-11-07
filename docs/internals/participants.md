@@ -214,10 +214,10 @@ the list's `mode` (the panel's words) and the grant's stamp: `Grant#mode` / the 
 turns) stays review until the owner invites them again.
 
 A turn's mode is `ParticipantMode.for_turn(session, entry)`: `:pair` only for a stamped entry in a pair session.
-The worker decides it once at the turn's start (`GuardrailWiring#begin_turn` → `#turn_mode`, from the entry
+The worker decides it once at the turn's start (`GuardrailWiring#begin_turn` → `TurnStart#mode`, into the turn's `TurnContext#participant_mode`, from the entry
 `SessionParticipants#entry_for` reads), and everything in the turn reads that: the stamp on the opening message
 (`participant_mode`), the boundary in `GuardrailWiring#checks`, `ToolRunner#unreached_group_refusal` (through
-`KernelLoop#participant_mode`: a review turn's boundary words the refusal; a pair turn gets the owner's), the
+the call's `TurnContext`: a review turn's boundary words the refusal; a pair turn gets the owner's), the
 mid-turn stop and the cap notice's words. The system prompt's line is the pair one once an active participant is
 stamped pair (`SessionParticipants#prompt_mode`); the participant page's `viewer.mode` is their own grant's
 (`ParticipantMode.live_for`).
@@ -510,7 +510,7 @@ fields: a field added to an event later reaches nobody until it is named there.
     `pair` only for a grant stamped to act in a working session whose worker runs pair turns, else `review`). Every
     turn of a participant's child is theirs, whoever starts it (the owner typing into it, a continue, a reminder):
     `VerifyFreshOrigin#origin_for` sets the author in `Engine#begin_turn` and in the worker, so their boundary
-    (`GuardrailWiring#turn_mode` reads the saved mode, never a lookup), their System 1 skip, their once-only asks to
+    (`GuardrailWiring#begin_turn` reads the saved mode, never a lookup), their System 1 skip, their once-only asks to
     the owner and the stamps on their messages follow. The child has no `participants.json`: its participant lookups
     (`Session#participants_source_id`) read the parent's, so a revoke, an expiry or the parent's archive refuses the
     child's next turn and stops a pair turn mid-turn, as in the parent; their audit lines go to the parent's

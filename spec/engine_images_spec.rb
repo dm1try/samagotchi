@@ -47,7 +47,12 @@ RSpec.describe Samagotchi::Engine, "#run_turn with images" do
   it "stores a {path:} image, announces its ref and sends it on the user message" do
     allow(Samagotchi::VisionSupport).to receive(:for).and_return(answer(true))
     sent = nil
-    allow(kernel).to receive(:run) { |messages, **| sent = messages; result_for(messages) }
+    turn_context = nil
+    allow(kernel).to receive(:run) do |messages, context: nil, **|
+      sent = messages
+      turn_context = context
+      result_for(messages)
+    end
 
     turn(images: [{ path: shot }])
 
@@ -57,7 +62,7 @@ RSpec.describe Samagotchi::Engine, "#run_turn with images" do
     expect(File.binread(File.join(@state_dir, session.id, ref[:file]))).to eq(File.binread(shot))
     expect(sent.last.except(:turn_id)).to eq({ role: "user", content: "what's this?", images: [ref], at: message_at })
     expect(session.messages[-2]).to include(images: [ref])
-    expect(kernel.turn_settings.vision.session_dir).to eq(File.join(@state_dir, session.id))
+    expect(turn_context.settings.vision.session_dir).to eq(File.join(@state_dir, session.id))
   end
 
   it "accepts a {file:} ref already in the session, rebuilt from the file" do

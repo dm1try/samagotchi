@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require "samagotchi/turn_context"
 require "samagotchi/guardrails"
 require "samagotchi/hooks"
 
@@ -8,7 +9,7 @@ RSpec.describe Samagotchi::Guardrails::Gate do
   let(:gate) { described_class.new(-> { hooks }) }
   let(:call) { { name: "execute", content: "ls" } }
 
-  def evaluate = gate.evaluate(call, iteration: 1, params: 'command="ls"')
+  def evaluate = gate.evaluate(call, context: Samagotchi::TurnContext.none, iteration: 1, params: 'command="ls"')
 
   it "allows the call when no hook votes" do
     verdict = evaluate
@@ -28,11 +29,12 @@ RSpec.describe Samagotchi::Guardrails::Gate do
     expect(evaluate.call).to eq({ name: "execute", content: "pwd" })
   end
 
-  it "denies at once, without asking the hooks, once the turn was cancelled" do
+  it "denies at once, without asking the hooks, once the call's turn was cancelled" do
     asked = false
     hooks.register(:before_tool_call) { |_e| asked = true }
-    cancelled = described_class.new(-> { hooks }, cancelled_lookup: -> { true })
-    verdict = cancelled.evaluate(call, iteration: 1, params: "")
+    controller = Samagotchi::CancellationController.new
+    controller.cancel!(:stop)
+    verdict = gate.evaluate(call, context: Samagotchi::TurnContext.none(controller: controller), iteration: 1, params: "")
     expect(verdict).to be_deny
     expect(verdict.deny_text).to start_with("denied by guardrail (core): the turn was stopped.")
     expect(asked).to be(false)
@@ -42,14 +44,14 @@ RSpec.describe Samagotchi::Guardrails::Gate do
     seen = nil
     hooks.register(:before_tool_call) { |e| seen = e.slice(:blocked, :block_reason) }
     given = Samagotchi::Guardrails::Verdict.new(call: { name: "other" }).deny!("earlier")
-    verdict = gate.evaluate(call, iteration: 1, params: "", verdict: given)
+    verdict = gate.evaluate(call, context: Samagotchi::TurnContext.none, iteration: 1, params: "", verdict: given)
     expect(verdict).to be(given)
     expect(verdict.call).to eq(call)
     expect(seen).to eq(blocked: true, block_reason: "earlier")
   end
 
   it "allows when there is no registry" do
-    expect(described_class.new(-> {}).evaluate(call, iteration: 1, params: "")).to be_allow
+    expect(described_class.new(-> {}).evaluate(call, context: Samagotchi::TurnContext.none, iteration: 1, params: "")).to be_allow
   end
 
   it "does not change the caller's call hash" do
@@ -106,19 +108,19 @@ end
 RSpec.describe Samagotchi::Guardrails::Gate, "context and targets" do
   let(:hooks) { Samagotchi::Hooks::Registry.new }
   let(:context) { Samagotchi::Guardrails::Context.new(cwd: "/tmp", session_id: "s1", interface: :worker) }
-  let(:gate) { described_class.new(-> { hooks }, context_lookup: -> { context }) }
+  let(:gate) { described_class.new(-> { hooks }, context_for: ->(_turn) { context }) }
 
   it "gives hooks the context and the call's targets" do
     seen = nil
     hooks.register(:before_tool_call) { |e| seen = e.slice(:context, :targets) }
-    gate.evaluate({ name: "execute", content: "ls", cwd: "sub" }, iteration: 1, params: "")
+    gate.evaluate({ name: "execute", content: "ls", cwd: "sub" }, context: Samagotchi::TurnContext.none, iteration: 1, params: "")
     expect(seen[:context]).to include(cwd: "/tmp", session_id: "s1", interface: :worker)
     expect(seen[:targets]).to include(command: "ls", cwd: "/tmp/sub")
   end
 
   it "rebuilds the targets from a replaced call" do
     hooks.register(:before_tool_call) { |e| e[:call] = { name: "execute", content: "pwd" } }
-    verdict = gate.evaluate({ name: "execute", content: "ls" }, iteration: 1, params: "")
+    verdict = gate.evaluate({ name: "execute", content: "ls" }, context: Samagotchi::TurnContext.none, iteration: 1, params: "")
     expect(verdict.targets.command).to eq("pwd")
     expect(verdict.context).to be(context)
   end

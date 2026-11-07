@@ -8,6 +8,10 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Fixed
+
+- At the very start of a turn, a plugin's `ctx.turn_author`, a hook's `author:` and `/objectives` could still see the previous turn (its participant, its conversation); they now see the turn that just started.
+
 ## [0.154.1] - 2026-11-07
 
 ### Fixed

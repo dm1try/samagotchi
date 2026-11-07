@@ -215,10 +215,8 @@ RSpec.describe Samagotchi::LLMContextApply do
       "<tool_call>\n<function=#{name}>\n#{body}\n</function>\n</tool_call>"
     end
 
-    def under(kernel, llm_context)
-      kernel.turn_settings = Samagotchi::LLM::TurnSettings.none.with(llm_context: llm_context)
-      kernel
-    end
+    # A run's turn under +llm_context+.
+    def under(llm_context) = run_context(settings: Samagotchi::LLM::TurnSettings.none.with(llm_context: llm_context))
 
     # The native loop on +steps+ (the model's answers in order): the prompts sent, the result, the kernel;
     # the stream's events in +events+.
@@ -231,8 +229,8 @@ RSpec.describe Samagotchi::LLMContextApply do
         on_chunk&.call(content: text, payload: { "content" => text })
         text
       end
-      kernel = under(test_kernel(client: client, profile: Samagotchi::ModelProfile.qwen36), llm_context)
-      [sent, kernel.run([head, { role: "user", content: "go" }], max_iterations: 10,
+      kernel = test_kernel(client: client, profile: Samagotchi::ModelProfile.qwen36)
+      [sent, kernel.run([head, { role: "user", content: "go" }], max_iterations: 10, context: under(llm_context),
                                                                    on_stream_event: ->(event) { events << event }), kernel]
     end
 
@@ -339,8 +337,8 @@ RSpec.describe Samagotchi::LLMContextApply do
         on_chunk&.call(content: text, payload: { "content" => text })
         text
       end
-      kernel = under(test_kernel(client: client, profile: Samagotchi::ModelProfile.qwen36), strategy(:turn_end))
-      cut_short = kernel.run([head, { role: "user", content: "go" }], max_iterations: 3)
+      kernel = test_kernel(client: client, profile: Samagotchi::ModelProfile.qwen36)
+      cut_short = kernel.run([head, { role: "user", content: "go" }], max_iterations: 3, context: under(strategy(:turn_end)))
 
       expect(cut_short.conversation.count { |entry| entry.key?(:edits) }).to eq(0)
     end
@@ -369,8 +367,8 @@ RSpec.describe Samagotchi::LLMContextApply do
         on_chunk&.call(content: text, payload: { "content" => text })
         text
       end
-      kernel = under(test_kernel(client: client, profile: Samagotchi::ModelProfile.qwen36), strategy(:turn_end))
-      exhausted = kernel.run([head, { role: "user", content: "go" }], max_iterations: 3)
+      kernel = test_kernel(client: client, profile: Samagotchi::ModelProfile.qwen36)
+      exhausted = kernel.run([head, { role: "user", content: "go" }], max_iterations: 3, context: under(strategy(:turn_end)))
 
       expect(exhausted).to be_exhausted
       expect(exhausted.conversation.count { |entry| entry.key?(:edits) }).to eq(0)
@@ -381,9 +379,10 @@ RSpec.describe Samagotchi::LLMContextApply do
         adapter = FakeChatAdapter.new(FakeChatAdapter.tools(["c1", "read", { "path" => file }]),
                                       FakeChatAdapter.tools(["c2", "read", { "path" => file }]),
                                       FakeChatAdapter.text("Done."))
-        result = Samagotchi::LLM::ChatLoop.new(kernel: under(test_kernel, llm_context), adapter: adapter)
+        result = Samagotchi::LLM::ChatLoop.new(kernel: test_kernel, adapter: adapter)
                                           .complete(messages: [head, { role: "user", content: "go" }], model_name: "m",
-                                                    max_iterations: 5, on_stream_event: ->(event) { events << event })
+                                                    max_iterations: 5, on_stream_event: ->(event) { events << event },
+                                                    context: under(llm_context))
         stubbed = adapter.requests.map do |request|
           request[:messages].any? { |message| message[:tool_call_id] == "c1" && message[:content] == stub_line }
         end
@@ -421,8 +420,9 @@ RSpec.describe Samagotchi::LLMContextApply do
 
         stubbed, result = chat(strategy(:turn_end))
         expect(stubbed).to eq([false, false, false])
-        wire = Samagotchi::LLM::ChatLoop.new(kernel: under(test_kernel, strategy(:turn_end)), adapter: FakeChatAdapter.new)
-                                        .wire_messages(result.conversation)
+        next_turn = Samagotchi::LLM::ChatLoop.new(kernel: test_kernel, adapter: FakeChatAdapter.new)
+        allow(next_turn).to receive(:turn_context).and_return(under(strategy(:turn_end)))
+        wire = next_turn.wire_messages(result.conversation)
         expect(wire.find { |message| message[:tool_call_id] == "c1" }[:content]).to eq(stub_line)
       end
     end

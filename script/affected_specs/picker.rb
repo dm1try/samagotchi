@@ -52,9 +52,14 @@ module AffectedSpecs
     { match: %w[lib/samagotchi/engine.rb lib/samagotchi/engine/*.rb lib/samagotchi/kernel_loop.rb lib/samagotchi/llm/chat_loop.rb
                 lib/samagotchi/llm/native_backend.rb lib/samagotchi/tool_runner.rb lib/samagotchi/tool_response.rb
                 lib/samagotchi/guardrails/gate.rb lib/samagotchi/guardrail_wiring.rb lib/samagotchi/system_prompt.rb
-                lib/samagotchi/tool_declarations.rb lib/samagotchi/tools/registry.rb],
+                lib/samagotchi/tool_declarations.rb lib/samagotchi/tools/registry.rb lib/samagotchi/turn_context.rb
+                lib/samagotchi/turn_state.rb],
       specs: %w[spec/engine_turn_golden_spec.rb],
       why: "whole-turn goldens: a real Engine#run_turn's requests, events and hook payloads per wire" },
+    { match: %w[lib/samagotchi/turn_context.rb lib/samagotchi/turn_state.rb lib/samagotchi/event_fanout.rb
+                lib/samagotchi/engine/participants.rb lib/samagotchi/engine/side_requests.rb lib/samagotchi/engine/messages.rb],
+      specs: %w[spec/turn_context_readers_spec.rb],
+      why: "the Engine's cross-thread readers of the published TurnContext" },
     { match: %w[lib/samagotchi/event_fanout.rb],
       specs: %w[spec/engine_stream_hooks_spec.rb spec/engine_event_routes_characterization_spec.rb spec/engine_working_set_spec.rb],
       why: "Engine's event fanout, tested through the Engine" },

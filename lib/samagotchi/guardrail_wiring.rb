@@ -24,8 +24,17 @@ module Samagotchi
   # a tool call is judged in, the approval question, and the Gate the kernel
   # asks before every tool call.
   #
-  # What it needs from the Engine comes through lookups, read at call time.
+  # What it needs from the Engine comes through lookups, read at call time;
+  # what it needs of a turn (its author, participant mode, git facts,
+  # origin) comes with the turn's TurnContext, which the Gate is given per
+  # call. It keeps no per-turn state.
   class GuardrailWiring
+    # What #begin_turn decides for a turn, once (Engine#begin_turn puts it
+    # in the TurnContext): its Guardrails::GitInfo (asked afresh), the
+    # participant's Participants::Entry and their turn's mode (nil both for
+    # the owner's turns).
+    TurnStart = Data.define(:git, :participant, :mode)
+
     # @return [Guardrails::LoadFailures] what failed to load (hooks, rules)
     attr_reader :failures
 
@@ -36,8 +45,6 @@ module Samagotchi
     # @param hooks     [#call] → Hooks::Registry
     # @param tools     [#call] → Tools::Registry
     # @param session   [#call] → Session, nil
-    # @param model_key [#call] → String, the effective model's overlay key
-    # @param model_name [#call] → String, nil: the effective model's bare name
     # @param cancelled [#call] → Boolean, whether the running turn is cancelled
     # @param ask       [#call] (fields) → the answer; the Engine's question flow
     # @param notify    [#call] (message) → shows a guardrails line in every UI
@@ -50,15 +57,12 @@ module Samagotchi
     # @param participant [#call] (author) → the participant's
     #   Participants::Entry (participants.json: their name, their grant's
     #   mode), nil for none
-    def initialize(scratch:, hooks:, tools:, session:, model_key:, cancelled:, ask:, model_name: -> {},
-                   notify: ->(_message) {}, system_one: -> {}, system_one_runs: -> {}, cancel_controller: -> {},
-                   participant: ->(_author) {})
+    def initialize(scratch:, hooks:, tools:, session:, cancelled:, ask:, notify: ->(_message) {}, system_one: -> {},
+                   system_one_runs: -> {}, cancel_controller: -> {}, participant: ->(_author) {})
       @scratch = scratch
       @hooks_lookup = hooks
       @tools_lookup = tools
       @session_lookup = session
-      @model_key_lookup = model_key
-      @model_name_lookup = model_name
       @cancelled_lookup = cancelled
       @ask = ask
       @notify = notify
@@ -66,15 +70,12 @@ module Samagotchi
       @system_one_runs = system_one_runs
       @cancel_controller = cancel_controller
       @participant = participant
-      @turn_mode = nil
       # Bundle name → the rules last loaded from it whole, kept while the
       # installed version needs a newer chi; [name, version] said so once.
       @loaded_bundle_rules = {}
       @kept_noticed = {}
       @failures = Guardrails::LoadFailures.new
       @rules_mutex = Mutex.new
-      @git = Guardrails::GitInfo.new
-      @origin = TurnOrigin::NONE
     end
 
     # Who can answer an approval: :worker or :non_interactive (the
@@ -104,52 +105,41 @@ module Samagotchi
       @protected = nil
     end
 
-    # A turn starts: its origin (Engine#run_turn's TurnOrigin; nil or a
-    # Hash is read as one, TurnOrigin.of), the git facts read afresh, and
-    # a participant's turn's mode decided once for the whole turn
-    # (#turn_mode).
-    def begin_turn(origin)
-      @origin = TurnOrigin.of(origin)
-      @git = Guardrails::GitInfo.new
-      author = turn_author
-      @turn_entry = author && @participant.call(author)
-      @turn_mode = author && participant_turn_mode(@session_lookup.call, @turn_entry)
+    # A turn starts (Engine#begin_turn, before it is published): the git
+    # facts read afresh, and a participant's turn's mode decided once for
+    # the whole turn from its origin (Engine#run_turn's TurnOrigin; nil or a
+    # Hash is read as one, TurnOrigin.of). Nothing is kept here.
+    # @param session [Session, nil] the turn's
+    # @return [TurnStart]
+    def begin_turn(origin, session:)
+      author = TurnOrigin.of(origin).participant_author
+      entry = author && @participant.call(author)
+      TurnStart.new(git: Guardrails::GitInfo.new, participant: entry,
+                    mode: author && participant_turn_mode(session, entry))
     end
 
     # A participant's turn's mode: in a Verify fresh child the one saved
     # on it at spawn (VerifyFreshOrigin#turn_mode: :review unless saved
-    # :pair), never looked up again; elsewhere ParticipantMode.for_turn.
+    # :pair), never looked up again; elsewhere ParticipantMode.for_turn
+    # (:pair only in a working session for a participant invited to act).
     def participant_turn_mode(session, entry)
       fresh = session.respond_to?(:verify_fresh) && session.verify_fresh
       fresh ? fresh.turn_mode : ParticipantMode.for_turn(session, entry)
     end
     private :participant_turn_mode
 
-    # The running participant turn's mode (ParticipantMode.for_turn: :pair
-    # only in a working session for a participant invited to act), decided
-    # at its start; nil for the owner's turns. The boundary in #checks, the
-    # Engine's stamp and mid-turn stop, and ToolRunner read it.
-    # @return [Symbol, nil]
-    attr_reader :turn_mode
-
-    # Who wrote the running turn when it isn't the session's owner (its
-    # origin's participant author); nil for the owner's turns and every
-    # other origin.
-    # @return [String, nil]
-    def turn_author = @origin.participant_author
-
-    # The gate every tool call asks first.
+    # The gate every tool call asks first, given the call's TurnContext
+    # (Guardrails::Gate#evaluate's context:): its judged context (#context),
+    # its checks (#checks) and its approval (#request_approval) are that
+    # turn's.
     # @return [Guardrails::Gate]
     def gate
       Guardrails::Gate.new(
         -> { @hooks_lookup.call },
-        context_lookup: -> { context },
-        model_key_lookup: -> { @model_key_lookup.call },
-        model_name_lookup: -> { @model_name_lookup.call },
-        approver: ->(verdict) { request_approval(verdict) },
+        context_for: ->(turn) { context(turn) },
+        approver: ->(verdict, turn) { request_approval(verdict, turn) },
         approvals_lookup: -> { @approvals },
-        checks_lookup: -> { checks },
-        cancelled_lookup: -> { @cancelled_lookup.call },
+        checks_for: ->(turn) { checks(turn) },
         tools_lookup: -> { @tools_lookup.call }
       )
     end
@@ -161,39 +151,42 @@ module Samagotchi
     # ParticipantMode: a review turn's (ReviewBoundary) or a pair turn's
     # (PairBoundary). Either denies what a participant's turn may not do,
     # never asks about it; both are no-ops for the owner's turns.
-    def checks
+    # @param turn [TurnContext] the call's turn
+    def checks(turn)
       rules = self.rules
-      [@failures, participant_boundary, rules.hook_asks, protected_paths,
-       (@scratch_writes ||= Guardrails::ScratchWrites.new if @scratch), child_boundary, rules].compact
+      [@failures, participant_boundary(turn), rules.hook_asks, protected_paths,
+       (@scratch_writes ||= Guardrails::ScratchWrites.new if @scratch), child_boundary(turn), rules].compact
     end
 
-    # The boundary for a participant's turn in this session (#checks).
-    def participant_boundary
-      @turn_mode == ParticipantMode::PAIR ? pair_boundary : review_boundary
+    # The boundary for a participant's turn in this session (#checks), by
+    # the turn's mode.
+    def participant_boundary(turn)
+      turn.participant_mode == ParticipantMode::PAIR ? pair_boundary(turn) : review_boundary(turn)
     end
 
     # A participant's review turn's boundary (Guardrails::ReviewBoundary): a
-    # no-op unless the running turn's author is a participant's.
-    def review_boundary
-      @review_boundary ||= Guardrails::ReviewBoundary.new(author: -> { turn_author }, root: -> { boundary_root })
+    # no-op unless +turn+'s author is a participant's.
+    def review_boundary(turn)
+      Guardrails::ReviewBoundary.new(author: -> { turn.author }, root: -> { boundary_root(turn.git) })
     end
 
     # A participant's pair turn's boundary (Guardrails::PairBoundary): a
-    # no-op unless the running turn's author is a participant's.
-    def pair_boundary
-      @pair_boundary ||= Guardrails::PairBoundary.new(author: -> { turn_author }, root: -> { boundary_root })
+    # no-op unless +turn+'s author is a participant's.
+    def pair_boundary(turn)
+      Guardrails::PairBoundary.new(author: -> { turn.author }, root: -> { boundary_root(turn.git) })
     end
 
-    # The delegate child's boundary (Guardrails::ChildBoundary); nil for
-    # any other session.
-    def child_boundary
+    # The delegate child's boundary (Guardrails::ChildBoundary), on +turn+'s
+    # git facts; nil for any other session.
+    def child_boundary(turn)
       return nil unless @session_lookup.call&.delegate?
 
-      @child_boundary ||= Guardrails::ChildBoundary.new(
-        root: -> { boundary_root },
-        worktrees: -> { (root = boundary_root) ? @git.worktrees(root) : [] },
-        common_dir: -> { (root = boundary_root) && @git.common_dir(root) },
-        branch: -> { (root = boundary_root) && @git.branch(root) }
+      git = turn.git
+      Guardrails::ChildBoundary.new(
+        root: -> { boundary_root(git) },
+        worktrees: -> { (root = boundary_root(git)) ? git.worktrees(root) : [] },
+        common_dir: -> { (root = boundary_root(git)) && git.common_dir(root) },
+        branch: -> { (root = boundary_root(git)) && git.branch(root) }
       )
     end
 
@@ -285,11 +278,13 @@ module Samagotchi
       end
     end
 
-    # The context the gate sees for a tool call now.
+    # The context the gate sees for a tool call of +turn+ now: the process
+    # cwd, the session, the interface, the turn's origin and git facts.
+    # @param turn [TurnContext]
     # @return [Guardrails::Context]
-    def context
+    def context(turn)
       Guardrails::Context.new(cwd: Dir.pwd, session_id: @session_lookup.call&.id, interface: interface,
-                              origin: @origin.wire, git: @git)
+                              origin: turn.origin.wire, git: turn.git)
     end
 
     # Ask the user to approve a call the gate voted `ask` on, through the
@@ -297,8 +292,10 @@ module Samagotchi
     # verdict: allow with the picked scope, or deny with a note for the
     # model. A --non-interactive run has no one to ask and denies at once.
     # @param verdict [Guardrails::Verdict]
+    # @param turn [TurnContext, nil] the call's turn (its author, the
+    #   participant's name); nil: the owner's
     # @return [Guardrails::Verdict]
-    def request_approval(verdict)
+    def request_approval(verdict, turn = nil)
       if interface == :non_interactive
         return verdict.settle!(:deny, decided_by: "no one", note: "No one to approve it (non-interactive run).")
       end
@@ -313,10 +310,10 @@ module Samagotchi
       # verdict.call is the call that will run (a hook may have replaced it).
       # A participant's turn's ask names them and offers once only
       # (Approval.payload's author:), whichever session it is.
-      author = turn_author
+      author = turn&.author
       payload = Guardrails::Approval.payload(verdict, label: label, preview: approval_preview(verdict.call),
                                                       only: (SCRATCH_SCOPES if @scratch), author: author,
-                                                      author_name: (@turn_entry&.name if author))
+                                                      author_name: (turn.participant&.name if author))
       # A call on chi's own config, hooks or guardrails is the user's to
       # allow, never a parent agent's (Guardrails::ParentPolicy).
       payload[:user_only] = Guardrails::ParentApprovals.protected_facts?(payload[:approval])
@@ -324,8 +321,8 @@ module Samagotchi
       # one that passes every gate is allowed once without reaching them
       # (docs/guardrails.md, "System 1").
       judgment = begin
-        system_one_judge(payload, targets: verdict.targets, ask_user: verdict.fresh_ask? || verdict.second_rule_ask?,
-                         other_rules: verdict.other_ask_rules)
+        system_one_judge(payload, author: author, targets: verdict.targets,
+                                  ask_user: verdict.fresh_ask? || verdict.second_rule_ask?, other_rules: verdict.other_ask_rules)
       rescue LLM::RequestCancelled
         return turn_stopped(verdict)
       end
@@ -370,9 +367,10 @@ module Samagotchi
     # so the failures are in the log too.
     # With +ask_user+ (a fresh ask, a second rule's) it is judged and logged, never answered.
     # +other_rules+ are the ids of the other rules asking about the same call.
+    # +author+ is the turn's (TurnContext#author).
     # @return [Hash, nil] {id:, p:, auto:}, nil when nothing was written
-    def system_one_judge(payload, targets: nil, ask_user: false, other_rules: nil)
-      return nil if Steer.participant_author?(turn_author)
+    def system_one_judge(payload, author: nil, targets: nil, ask_user: false, other_rules: nil)
+      return nil if Steer.participant_author?(author)
 
       client = @system_one.call
       log = system_one_log
@@ -513,13 +511,14 @@ module Samagotchi
     end
 
     # The work tree top of the session's working_directory (the folder
-    # itself outside a repo, or when it's gone); never Dir.pwd, which is
-    # the waker's cwd for a worker whose folder is gone.
-    def boundary_root
+    # itself outside a repo, or when it's gone), asked of +git+ (the turn's
+    # GitInfo); never Dir.pwd, which is the waker's cwd for a worker whose
+    # folder is gone.
+    def boundary_root(git)
       dir = @session_lookup.call&.working_directory.to_s
       return nil if dir.empty?
 
-      @git.root(dir) || File.expand_path(dir)
+      git.root(dir) || File.expand_path(dir)
     end
 
     # The rules of a bundle that needs a newer chi: the ones last loaded

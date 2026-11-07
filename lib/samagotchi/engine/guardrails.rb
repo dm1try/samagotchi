@@ -76,11 +76,13 @@ module Samagotchi
       end
 
       # Ask the user to approve a call the gate voted `ask` on
-      # (GuardrailWiring#request_approval).
+      # (GuardrailWiring#request_approval), for the running turn (its
+      # author), else the last one. The gate's own asks come with their
+      # call's TurnContext instead.
       # @param verdict [Guardrails::Verdict]
       # @return [Guardrails::Verdict]
       def request_approval(verdict)
-        @guardrail_wiring.request_approval(verdict)
+        @guardrail_wiring.request_approval(verdict, turn_context || last_turn_context)
       end
     end
   end

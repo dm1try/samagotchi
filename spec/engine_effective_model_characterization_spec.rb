@@ -105,11 +105,13 @@ RSpec.describe "Engine effective model (characterization)" do
     }
   end
 
+  # The settings each turn runs with, as Engine#generate puts them in its
+  # TurnContext and publishes it (TurnState#replace_context).
   def record_turn_settings(engine)
     [].tap do |settings|
-      allow(engine.instance_variable_get(:@kernel)).to receive(:turn_settings=).and_wrap_original do |original, value|
-        settings << value
-        original.call(value)
+      allow(engine.send(:turn_state)).to receive(:replace_context).and_wrap_original do |original, context|
+        settings << context.settings
+        original.call(context)
       end
     end
   end

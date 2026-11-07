@@ -11,6 +11,7 @@ require_relative "../tools/tool_index"
 require_relative "../peer_sources"
 require_relative "../toolkit"
 require_relative "../guardrails/gate"
+require_relative "../turn_context"
 require_relative "../memory_bundle/manifest"
 require_relative "../memory_bundle/source"
 require_relative "../session_setup"
@@ -239,8 +240,9 @@ module Samagotchi
         dispatched = nil
         capture = Hooks::Registry.new
         capture.register(:before_tool_call) { |event| dispatched = event.dup }
-        gate = Guardrails::Gate.new(-> { capture }, context_lookup: -> { context }, tools_lookup: -> { tools })
-        gate.evaluate(call, iteration: iteration, params: params, verdict: verdict || Verdict.new(call: call))
+        gate = Guardrails::Gate.new(-> { capture }, context_for: ->(_turn) { context }, tools_lookup: -> { tools })
+        gate.evaluate(call, context: TurnContext.none, iteration: iteration, params: params,
+                            verdict: verdict || Verdict.new(call: call))
         raise ArgumentError, "guardrails did not dispatch a before_tool_call event for #{call[:name].inspect}" unless dispatched
 
         dispatched.slice(:type, :iteration, :call, :params, :blocked, :block_reason, :guardrail, :context, :targets)
@@ -256,11 +258,11 @@ module Samagotchi
       def tool_call(call, params: nil, cwd: nil, context: nil, verdict: nil, iteration: 1)
         context ||= Guardrails::Context.new(cwd: cwd || @recorder[:cwd], session_id: @recorder[:session_id],
                                             interface: @recorder[:frontend])
-        gate = Guardrails::Gate.new(-> { hooks }, context_lookup: -> { context }, tools_lookup: -> { tools },
-                                                  checks_lookup: -> { [] })
+        gate = Guardrails::Gate.new(-> { hooks }, context_for: ->(_turn) { context }, tools_lookup: -> { tools },
+                                                  checks_for: ->(_turn) { [] })
         verdict ||= Verdict.new(call: call)
         params ||= "#{call[:name]} #{call[:content] || call[:path]}".strip
-        failing { gate.evaluate(call, iteration: iteration, params: params, verdict: verdict) }
+        failing { gate.evaluate(call, context: TurnContext.none, iteration: iteration, params: params, verdict: verdict) }
       end
 
       # Run a command line ("/name args") as chi does: the first matching

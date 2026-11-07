@@ -34,7 +34,7 @@ RSpec.describe Samagotchi::ToolResponse do
 
   def batch(names, &block)
     calls = names.map { |name| { name: name } }
-    described_class.run_batch(runner, calls, iteration: 2, emit: ->(event) { events << event },
+    described_class.run_batch(runner, calls, context: :turn, iteration: 2, emit: ->(event) { events << event },
                                              on_stream_event: :sink, cap: 50, &block)
   end
 
@@ -47,8 +47,8 @@ RSpec.describe Samagotchi::ToolResponse do
       expect(events).to eq([{ type: :tool_dispatch_started, iteration: 2, call_count: 2 },
                             { type: :tool_dispatch_completed, iteration: 2, call_count: 2 }])
       expect(runner.calls.map(&:last)).to eq([
-        { iteration: 2, call_index: 1, call_count: 2, on_stream_event: :sink, max_tool_output_chars: 50 },
-        { iteration: 2, call_index: 2, call_count: 2, on_stream_event: :sink, max_tool_output_chars: 50 }
+        { context: :turn, iteration: 2, call_index: 1, call_count: 2, on_stream_event: :sink, max_tool_output_chars: 50 },
+        { context: :turn, iteration: 2, call_index: 2, call_count: 2, on_stream_event: :sink, max_tool_output_chars: 50 }
       ])
       expect(yielded).to eq([["[shots]\none shot", 0], ["[write]\nwrote", 1]])
       expect(runs.size).to eq(2)
@@ -60,7 +60,7 @@ RSpec.describe Samagotchi::ToolResponse do
       emit = ->(event) { raise Interrupt if event[:type] == :tool_dispatch_started }
 
       expect do
-        described_class.run_batch(runner, calls, iteration: 2, emit: emit, on_stream_event: :sink, cap: 50) do |run, index|
+        described_class.run_batch(runner, calls, context: :turn, iteration: 2, emit: emit, on_stream_event: :sink, cap: 50) do |run, index|
           yielded << [run.output, index]
         end
       end.to raise_error(Interrupt)

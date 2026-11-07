@@ -6,11 +6,16 @@ and the attached TUI, a `--non-interactive` one-shot) runs turns the same way wi
 they render.
 
 ```
-Engine#run_turn → backend.complete(...) → KernelLoop#run (native) or ChatLoop#complete (chat)
-  → per iteration: one generation, then ToolResponse.run_batch over the calls
-      → ToolRunner#run per call → Guardrails::Gate → KernelLoop#dispatch_tool_call
+Engine#run_turn → backend.complete(..., context:) → KernelLoop#run (native) or ChatLoop#complete (chat)
+  → per iteration: one generation, then ToolResponse.run_batch(context:) over the calls
+      → ToolRunner#run(call, context:) per call → Guardrails::Gate#evaluate(call, context:)
+        → KernelLoop#dispatch_tool_call(call, context) → the handler's ToolContext(kernel, context)
   → repeat until the model answers without tool calls, or the iteration limit
 ```
+
+`context` is the turn's `TurnContext` (`lib/samagotchi/turn_context.rb`, see "Turn and TurnContext" below): every
+step of the tool path takes it as an argument; none of them reads the turn from the kernel, the wiring or the
+Engine's ivars.
 
 ## Quick reference: the turn lifecycle
 
@@ -22,13 +27,16 @@ Engine#run_turn(session, prompt, on_event:, max_iterations:, cancel_controller:,
   │     # (then, on a continue, turn.resumed = resumed (a step-limit Continue) and
   │     #  turn.resume_from = resume_from (its run's start; nil: it starts cold))
   │     # @session = session, session.status = RUNNING, used memories absorbed,
-  │     # TurnState#begin!(controller:, sink:, input_waiting:) (a new CancellationController when none
-  │     # is given; input_waiting: the caller's peek, Engine#input_waiting?, which task_wait,
-  │     # delegate_result's wait and execute's early hand-over poll),
-  │     # a recap in flight invalidated, GuardrailWiring#begin_turn(origin)
-  │     # Returns a Turn {session, prompt (nil on a continue), continue, on_event, controller,
-  │     #                 origin, started_at, id (the caller's id:, else a new uuid), resumed, resume_from,
-  │     #                 wall (MessageTime.now)}
+  │     # the TurnContext built whole first (new_turn_context: GuardrailWiring#begin_turn(origin, session:)
+  │     #   → TurnStart {git (a fresh GitInfo), participant (participants.json), mode}; id: the caller's
+  │     #   id:, else a new uuid; cwd, session_dir, state_dir; settings nil until generate),
+  │     # then TurnState#begin!(context:, controller:, sink:, input_waiting:): the context published with
+  │     # the running flag in one step (a new CancellationController when none is given; input_waiting:
+  │     # the caller's peek, Engine#input_waiting?, which task_wait, delegate_result's wait and execute's
+  │     # early hand-over poll), a recap in flight invalidated
+  │     # Returns a Turn {context, prompt (nil on a continue), continue, on_event, started_at, resumed,
+  │     #                 resume_from, wall (MessageTime.now)}; turn.id/session/origin/controller read
+  │     #                 the context
   │
   ├── Client.swap_probe_cancel(turn.controller)   # a Stop cuts this turn's /props probes
   │
@@ -42,8 +50,8 @@ Engine#run_turn(session, prompt, on_event:, max_iterations:, cancel_controller:,
   │     #   returns a ToolkitSuggest::Pending the turn joins below. See configuration.md (Toolkits) and
   │     #   guardrails.md (System 1).
   │     # refresh_profile! (may ask the server's /props once)
-  │     # turn.settings = LLM::TurnSettings (vision, sampling, thinking; model_name, loads_tools … are set in
-  │     #   generate, after the hooks, from the final model),
+  │     # turn.prepared_settings = LLM::TurnSettings (vision, sampling, thinking; model_name, loads_tools …
+  │     #   are set in generate, after the hooks, from the final model),
   │     #   from one EffectiveModel; ThinkingNotices#turn_started keeps the level and says one the host can't do
   │     # announces guardrail load failures, starts and awaits plugin init tasks, applies staged tools,
   │     #   then (on mode) settle_toolkit_suggestion: waits for the ask up to System 1's timeout from its
@@ -69,11 +77,14 @@ Engine#run_turn(session, prompt, on_event:, max_iterations:, cancel_controller:,
   │
   ├── generate(turn, max_iterations:, max_tool_output_chars:, pending_input:)
   │     # one EffectiveModel (after the hooks, which may switch the model): sync_kernel_client!, then
-  │     #   @kernel.turn_settings = turn.settings with model_name, window_setting, llm_context (the
-  │     #   session's, the model's/host's, else llm_context.strategy) and price
-  │     #   (hosts.<name>.models.<id>.price), all read per turn
+  │     #   turn.context = turn.context.with(settings: turn.prepared_settings with model_name,
+  │     #   window_setting, llm_context (the session's, the model's/host's, else llm_context.strategy),
+  │     #   price (hosts.<name>.models.<id>.price) and loads_tools, model_key/fallback_model_key (the
+  │     #   memory overlay keys) and model_name (the gate's rules' models:), all frozen now),
+  │     #   published by TurnState#replace_context
   │     # turn.limit = max_iterations or IterationLimit.for
-  │     # backend(model).complete(messages: turn.messages, ..., pending_input: turn_drain(pending_input))
+  │     # backend(model).complete(messages: turn.messages, ..., pending_input: turn_drain(pending_input),
+  │     #                         context: turn.context)
   │     # Returns LLM::ModelResult (text, conversation, canceled?, exhausted?, tool_activity,
   │     #                          context_status, empty_steps, empty_retries)
   │
@@ -100,7 +111,8 @@ Engine#run_turn(session, prompt, on_event:, max_iterations:, cancel_controller:,
   │     # reads (PromptWarmup; see prompt-caching.md, "The turn-end warm-up"). Never fails the turn.
   │
   └── ensure: release_turn(probe_cancel_before)
-        # TurnState#finish! (turn flag off, controller, sink and steers cleared)
+        # TurnState#finish! (turn flag off, controller, sink and steers cleared; the context kept as
+        #   the last one, Engine#last_turn_context, with the last settings when it never got its own)
         # SteerCut#finished! (its GenerationPhase finished, its WaitingSteer cleared)
         # probe cancel swapped back
         # the context window cache dropped, so the next turn asks the server again
@@ -298,10 +310,11 @@ Both loops run a batch of calls the same way:
 ```
 One iteration with tool calls:
   KernelLoop#dispatch_calls / ChatLoop::Run#dispatch
-    → ToolResponse.run_batch(runner, calls, iteration:, emit:, on_stream_event:, cap:)
-       # chat passes a block, called with each run as it finishes
+    → ToolResponse.run_batch(runner, calls, context:, iteration:, emit:, on_stream_event:, cap:)
+       # context: the turn's TurnContext (the native run's, ChatLoop::Run's); chat passes a block,
+       # called with each run as it finishes
       → :tool_dispatch_started {iteration, call_count}
-      → for each call: ToolRunner#run(call, iteration:, call_index:, call_count:,
+      → for each call: ToolRunner#run(call, context:, iteration:, call_index:, call_count:,
                                       on_stream_event:, max_tool_output_chars:)
           → under TurnSettings#loads_tools, a direct call of a source tool's acts_as (mcp_fs_read) is wrapped
             into the call_tool call it stands for (Registry::Index#wrap, ToolIndex#wrap)
@@ -313,10 +326,10 @@ One iteration with tool calls:
             reachable tool, the not-loaded error for a removed one). Under TurnSettings#loads_tools a reachable
             built-in or plugin tool called by its own name is no such call: it runs through the gate, and KernelLoop#dispatch
             takes it (#loaded_entry)
-          → Guardrails::Gate#evaluate (the before_tool_call hooks, then the core checks)
+          → Guardrails::Gate#evaluate(call, context:) (the before_tool_call hooks, then the core checks)
           → :tool_call_started
-          → an ask verdict: Gate#settle_ask (asks the user, records waited_ms)
-          → KernelLoop#dispatch_tool_call, or the denial text
+          → an ask verdict: Gate#settle_ask(verdict, context:) (asks the user, records waited_ms)
+          → KernelLoop#dispatch_tool_call(call, context), or the denial text
           → :tool_call_completed, then the :after_tool_call hook
           → returns a ToolRun value object with output, capped_output, truncated, activity, images, shown_params,
             shown_label, refs, diff and output_file; fields a call doesn't produce are nil
@@ -328,7 +341,9 @@ One iteration with tool calls:
       (one per call of the batch for native, one for chat); LLM context edits name outputs by them
 ```
 
-**ToolRunner** (`ToolRunner#run`):
+**ToolRunner** (`ToolRunner#run`): what it reads of the turn is the `context:` it is given (a `TurnContext`): the
+session's folders (`cwd`, `session_dir`), the settings' vision, LLM context layers and `loads_tools`, the
+participant's author and mode; the kernel gives it only what lives as long as the Engine (tools, hooks, the gate).
 - Unwraps a call_tool of a built-in first (`Registry::Entry#unwrap`), so `original`, the params and the label
   are the built-in's and no "ran as:" line follows.
 - Runs the gate first, so `:tool_call_started` shows the call that will run (a before_tool_call hook may
@@ -344,7 +359,7 @@ One iteration with tool calls:
   `refs` is a plugin tool's row refs: its registry entry's `refs` (chi.tool's `refs:` lambda, `ToolSpec#per_call`), run
   once per call by `RowRefs.for` (never raises: a raise or a non-list gives none, `tool_refs_failed`; each entry a
   `Ref`, a bad one dropped, `tool_refs_rejected`; a relative file resolved against the session's folder
-  (`KernelLoop#session_cwd`, else the process's), one outside it (its spelling or its real path) dropped, a kept one
+  (`TurnContext#cwd`, else the process's), one outside it (its spelling or its real path) dropped, a kept one
   stored under the real path; at most `RowRefs::MAX_REFS` and `MAX_BYTES`). `ToolRowFields.for` can't build it (no plugins on a reload), so the run carries it
   as `refs:`, saved with the result as `tool_refs` (`ToolResponse::SAVED_KEYS`, never sent), and
   `MessageParts#tool_part` reads it back through `RowRefs.for_display` (checked again). The page binds them to the
@@ -360,7 +375,7 @@ One iteration with tool calls:
   policy: `read` and most tools are cut to their head and end with `[cut: N of M chars; read it in parts]` (N
   kept of M, the whole within the cap unless the cap is shorter than that line); an `execute` result keeps a head
   and a long tail with a gap line between them, its whole output saved in `sessions/<id>/tool_output/`
-  (`ToolOutputFiles`, through `KernelLoop#session_dir`, which the Engine sets). See
+  (`ToolOutputFiles`, in the turn's `TurnContext#session_dir`). See
   [Tool output guardrails](tool-output-limits.md#the-runners-cut-max_tool_output_chars). The model (both loops), the
   event and the after_tool_call hook get that text.
 - Emits `:tool_call_completed` {iteration, call_count, call_index, tool, output, output_truncated, output_file,
@@ -394,6 +409,8 @@ read: the idle scheduler, the Bridge's request threads, plugin threads, the UIs.
 ```
 TurnState
   ├── running?
+  ├── context           (the running turn's TurnContext; nil between turns)
+  ├── last_context      (the last finished turn's, kept while the next one runs)
   ├── controller        (the running turn's CancellationController)
   ├── thread, ended     (the turn's own thread; its end event is out: post-turn work)
   ├── sink              (the turn's on_event)
@@ -402,19 +419,35 @@ TurnState
   └── activity clock    (last_activity_at, activity_seq)
 ```
 
-- `begin!(controller:, sink:)`: running, with controller and sink (and the calling thread, the turn's own), in one
-  step; carried steers become steers.
+- `begin!(context:, controller:, sink:)`: running, with the turn's context, controller and sink (and the calling
+  thread, the turn's own), in one step; carried steers become steers. `Engine#begin_turn` builds the context whole
+  before it (GuardrailWiring#begin_turn's mode and git included), so no reader sees a running turn with the last
+  turn's author.
+- `replace_context(context)`: the turn thread's new context for its running turn (`generate`'s settings), one
+  assignment of a frozen value; refused from another thread or for another turn's id.
 - `ended!`: the turn's end is decided (`end_turn`, next to `turn.ended`): its after_turn / session_end hooks run
   after it and before `finish!`.
 - `own_controller(handler:)`: the controller for work done for the turn itself, which a plugin's `ctx.http` call
   without `cancel:` stops with (`Plugin::Host#cancel_controller`, `Engine#plugin_cancel_controller`): the turn's, on
   its thread or inside a plugin handler, until `ended!`; nil elsewhere (an anytime command, a service, a plugin's
   own thread) and outside a turn. An init task's own controller wins inside one.
-- `finish!`: not running, controller, thread and sink cleared; returns the steers never taken (logged as dropped).
+- `finish!`: not running, context, controller, thread and sink cleared, the context kept as `last_context` (with the
+  last settings when the turn never reached `generate`); returns the steers never taken (logged as dropped).
 - `steer(text, source:)`: queues a steer for the running turn (false with no turn).
 - `steer_next_turn(text, source:)`: queues a steer for the next turn that begins.
 
 The lock is a leaf: nothing is called out while it is held.
+
+**Reading the turn from another thread.** A thread off the turn (a Bridge request, an anytime command, a plugin's
+thread, a hook fired by one) reads the running turn only through `Engine#turn_context` (`TurnState#context`, nil
+between turns) and `Engine#last_turn_context`, one read each, never through the kernel, `GuardrailWiring` or an
+Engine ivar. The readers that do: `Engine#turn_author` (`ctx.turn_author`, the hooks' `author:`, the judgments'
+`participant:`, `ObjectivesCheck`), `#side_author` (the recap's: the last turn's), `EventFanout#working_set_llm_context`
+(`/working-set`'s list: the running turn's settings, the last turn's until it has its own) and
+`#live_conversation` (nil unless the loop's `LLMContextForget::Turn#turn_id` is the running turn's). The turn's own
+code takes the context as an argument (the tool path, `guard_participant_spend`, `warm_up_next_turn`'s
+`turn.context.settings`); cancel stays `TurnState#controller` (a Stop never reads `context.controller` off the
+turn). `spec/turn_context_readers_spec.rb` reads each from a thread the moment a turn is published.
 
 ### EffectiveModel (a snapshot per read)
 
@@ -464,18 +497,38 @@ host can't do, off the model didn't honour, a host refusing the thinking fields 
 keeps the turn's `[level, ModelTarget]` and whether the generation thought; `turn_settings` and the stream handler
 call it. Turn thread only.
 
-### Turn (Engine::Turn)
+### Turn and TurnContext
 
-The turn as the Engine sees it (the KernelLoop has its own `Turn` struct):
+One source of truth: the `TurnContext` holds what the tool path reads of a turn, and `Engine::Turn` keeps only
+its lifecycle state, reading the rest from its context (`turn.id`, `turn.session`, `turn.origin`,
+`turn.controller` are the context's). The KernelLoop has its own `Turn` struct, a run's.
 
 ```ruby
-Turn = Struct.new(:session, :prompt, :continue, :on_event, :controller, :origin, :started_at, :messages, :ended,
-                  :settings, :id, :limit, :resumed, :resume_from) do
+TurnContext = Data.define(:id, :session, :origin, :author, :participant_mode, :participant, :controller, :cwd,
+                          :session_dir, :state_dir, :git, :settings, :model_key, :fallback_model_key, :model_name,
+                          :surface)   # frozen; TurnContext.none for a bare kernel, a spec, the bundle test kit
+Turn = Struct.new(:context, :prompt, :continue, :on_event, :started_at, :messages, :ended, :prepared_settings,
+                  :limit, :resumed, :resume_from, :wall, :verify, :revises, :outcome) do
   def resumed? = resumed ? true : false                           # a step-limit Continue
-  def tag(event) = origin ? event.merge(origin: origin.to_h) : event   # boundary events carry the origin's wire Hash
+  def tag(event) = origin.empty? ? event : event.merge(origin: origin.to_h)   # boundary events carry the origin
   def elapsed = ...                                               # seconds since started_at
 end
 ```
+
+- `TurnContext` is built in `begin_turn` (`new_turn_context`) and published by `TurnState#begin!`; `settings` (the
+  `LLM::TurnSettings` the requests send), `model_key`/`fallback_model_key` (memory overlays) and `model_name` (the
+  gate's rules' `models:`) are nil until `generate` sets them, after the `before_turn` hook that may switch the
+  model (`turn.prepared_settings`, computed before the hooks, give vision, sampling and thinking: a hook's switch
+  gets the old model's, as before). `surface` is reserved for the turn's ToolSurface (arch P3.4).
+- The live bits are objects it holds, not copies: `session` (its working-set pins are read at call time),
+  `controller` (cancel state), `git` (`Guardrails::GitInfo`, the per-turn git cache).
+- Down the tool path it is an argument: `ModelBackend#complete(context:)` → `KernelLoop#run(context:)` (the run's
+  own copy takes the run's model name; `KernelLoop#context` / `#turn_settings` read it on the turn thread, the last
+  run's after it) or `ChatLoop#complete(context:)` (`ChatLoop#turn_context`, its Run's) → `ToolResponse.run_batch` →
+  `ToolRunner#run` → `Guardrails::Gate#evaluate` / `#settle_ask` and `KernelLoop#dispatch_tool_call(call, context)` →
+  the handler's `KernelLoop::ToolContext.new(kernel, context)` (`participant_mode`, `model_key`, `muted_memory_read`,
+  `forget_outputs`). The generation guard gets it too (`KernelLoop#generation_guard`, `guard_participant_spend`).
+- A spec runs a loop, a runner or a gate outside an Engine turn with `run_context(settings: …)` (spec/support/test_kernel.rb).
 
 - `messages` is what the Engine sends: system head, history, reminders, the prompt. The loop works on its own
   copy; the Engine keeps `result.conversation` after a normal end or a Stop, and the error's partial
@@ -485,9 +538,10 @@ end
 - `on_event` is the turn's sink.
 - `ended` is set by `end_turn`.
 - The live conversation: both loops register the array they append to on the kernel
-  (`KernelLoop#llm_context_turn`, `LLMContextForget::Turn#conversation`; `KernelLoop#start_turn`,
-  `ChatLoop::Run#initialize`). `Engine#live_conversation` returns it while a turn runs (nil otherwise: the kernel
-  never clears it). A worker's drain (`Worker#pending_input_drain`, on the turn's thread at every iteration
+  (`KernelLoop#llm_context_turn`, `LLMContextForget::Turn#conversation`, tagged with the run's `turn_id`;
+  `KernelLoop#start_turn`, `ChatLoop::Run#initialize`). `Engine#live_conversation` returns it while a turn runs and
+  only once its loop registered it (nil otherwise: the kernel never clears it, and the turn id tells the last turn's
+  from this one's). A worker's drain (`Worker#pending_input_drain`, on the turn's thread at every iteration
   boundary) copies it, with the lines that boundary merges, into `Session#turn_checkpoint` (`TurnCheckpoint`):
   every save while the turn runs writes that copy with an `interrupted_turn` mark instead of the session's
   messages, written at the first boundary and then at most every 10 s, so a killed worker loses at most that much
@@ -581,9 +635,10 @@ make theirs, and `Engine#run_turn`, the Worker and `GuardrailWiring` pass it on.
 `TurnOrigin#participant_author` does. The boundary events (`:turn_started`, `:turn_completed`, `:turn_canceled`, `:turn_failed`) also carry
 `origin` when the turn was queued with one: `{client_id:, enqueued_id:}`, plus `author:` when someone other than
 the session's owner wrote it (its input file's `author`, stamped by chi web from the request's `Web::Principal`).
-An owner's turn has no `author` anywhere: not in its input file, its origin or the session. `GuardrailWiring#begin_turn`
-gets the origin, and `#turn_author` reads its participant author for the gate's checks; the guardrails `Context`
-(the hooks' `context`) keeps the wire Hash.
+An owner's turn has no `author` anywhere: not in its input file, its origin or the session. The turn's
+`TurnContext` carries the origin and its participant author (`TurnContext#author`) for the gate's checks
+(`GuardrailWiring#begin_turn` decides the participant's mode from it); the guardrails `Context` (the hooks'
+`context`) keeps the wire Hash.
 
 Where a participant's author (`"p:<id>"`; `Steer.participant_author?`: any author but none or `"owner"`) goes:
 
@@ -606,13 +661,14 @@ Where a participant's author (`"p:<id>"`; `Steer.participant_author?`: any autho
   `Worker#run_prompt` checks their link and cap (`participant_refusal`: `participants.json`'s entry and cap against
   `SessionMetrics#spend`) before their turn starts and after it ends (the owner's notice, once per cap). A Continue
   keeps the offer turn's author (`ContinueOffer#run_continue_turn`, from `last_turn.author`).
-- **The gate**: `GuardrailWiring#participant_boundary` is the core check after the load failures, picked by
-  `#turn_mode`: `Guardrails::PairBoundary` for a pair turn, `Guardrails::ReviewBoundary` for a review one. Both read
-  `#turn_author` and are no-ops for the owner's turns; the review boundary denies a participant's turn everything
+- **The gate**: `GuardrailWiring#participant_boundary(turn)` is the core check after the load failures, picked by
+  the call's `TurnContext#participant_mode`: `Guardrails::PairBoundary` for a pair turn, `Guardrails::ReviewBoundary`
+  for a review one. Both read the turn's `author` and are no-ops for the owner's turns; the review boundary denies a participant's turn everything
   outside `Toolkit::REVIEW_TOOLS` (not `forget_outputs`), the pair boundary denies secrets, owner-voiced tools and
   `ask_user_question` and always asks before a write that may land outside the project (docs/guardrails.md).
   The declared tools stay the session's (D3: no rebuild per author).
-- **Hooks and plugins**: `Engine#turn_author` (the running turn's participant author, nil otherwise) is the hook
+- **Hooks and plugins**: `Engine#turn_author` (the running turn's participant author, nil otherwise: the
+  published `TurnContext#author`, so any thread reads the running turn's from its first moment) is the hook
   runtime's `turn_author` (`Hooks::Registry#with_runtime` adds `author:` to every event of such a turn) and the
   plugin host's (`ctx.turn_author`).
 - **Spend**: the analytics turn record's `author` feeds `SessionMetrics#spend` / `spend_by_author` (the snapshot's
@@ -672,7 +728,8 @@ Model switching, Engine#switch_model!(model_name, persist_default:, typed:):
     one assignment)
   → drops the given profile and the profile resolution (resolved again on first need; one that another
     thread finishes for the old model is neither kept nor applied: #store_profile)
-  → sync_model_key!, @prompt_builder.reset! (the system prompt is built again)
+  → sync_model_key! (the next turn's TurnContext takes the keys), @prompt_builder.reset! (the system prompt is
+    built again)
   → sync_kernel_client! (the kernel talks to the new host), the context window cache dropped
   → the old model's ctx dropped: @metrics.forget_model_reports! (its window and profile reports) and
     @last_context_status = nil; /model (SessionCommands#switch_model) then calls #announce_switched_context!
@@ -766,7 +823,9 @@ step's text ([architecture.md](../architecture.md), the `display_refs` paragraph
 
 ## Guardrails
 
-`ToolRunner` asks the kernel's `Guardrails::Gate` (set by the Engine from `GuardrailWiring`) before each call;
+`ToolRunner` asks the kernel's `Guardrails::Gate` (set by the Engine from `GuardrailWiring`) before each call,
+with the call's `TurnContext` (`Gate#evaluate(call, context:)`: its controller, model key and name, and what
+`GuardrailWiring#context(turn)` / `#checks(turn)` make of it; `GuardrailWiring` keeps no per-turn state);
 the gate is not itself a hook. `Gate#evaluate` fires the `:before_tool_call` hooks (the voters, e.g. the
 known-names bundle or a config hook), which vote through `event[:guardrail]` (`deny!`, `ask!`) or the legacy
 `event[:blocked]` flag. A deny stays a deny for the hooks after it; a hook's ask is dropped when guardrails are

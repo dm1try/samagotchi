@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require "samagotchi/turn_context"
 require "spec_helper"
 require "tmpdir"
 require "fileutils"
@@ -344,9 +345,9 @@ RSpec.describe Samagotchi::Testing::Bundle do
     dispatched = nil
     hooks = Samagotchi::Hooks::Registry.new
     hooks.register(:before_tool_call) { |payload| dispatched = payload.dup }
-    gate = Samagotchi::Guardrails::Gate.new(-> { hooks }, context_lookup: -> { context },
+    gate = Samagotchi::Guardrails::Gate.new(-> { hooks }, context_for: ->(_turn) { context },
                                                                     tools_lookup: -> { bundle.tools })
-    gate.evaluate(call, iteration: 2, params: "read notes.md", verdict: Samagotchi::Testing::Verdict.new(call: call))
+    gate.evaluate(call, context: Samagotchi::TurnContext.none, iteration: 2, params: "read notes.md", verdict: Samagotchi::Testing::Verdict.new(call: call))
     real_event = dispatched.slice(:type, :iteration, :call, :params, :blocked, :block_reason, :guardrail, :context,
                                   :targets)
 

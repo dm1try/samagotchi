@@ -167,12 +167,10 @@ RSpec.describe "a turn's author" do
       allow(kernel).to receive(:run).and_return(result)
     end
 
-    def wiring = engine.instance_variable_get(:@guardrail_wiring)
-
-    it "hands the origin's author to the guardrails and the boundary events" do
+    it "hands the origin's author to the guardrails (the turn's context, as published) and the boundary events" do
       authors = []
-      allow(kernel).to receive(:run) do
-        authors << wiring.turn_author
+      allow(kernel).to receive(:run) do |_messages, context:, **|
+        authors << [context.author, engine.turn_author]
         result
       end
       events = []
@@ -180,14 +178,15 @@ RSpec.describe "a turn's author" do
 
       engine.run_turn(session, "hi", origin: origin, on_event: ->(e) { events << e })
 
-      expect(authors).to eq(["p:p_1"])
+      expect(authors).to eq([%w[p:p_1 p:p_1]])
       expect(events.find { |e| e[:type] == :turn_started }).to include(origin: origin)
     end
 
     it "leaves an owner's turn without one: no author for the guardrails, none in the saved session" do
       engine.run_turn(session, "hi", origin: { client_id: "web:t", enqueued_id: "e1" })
 
-      expect(wiring.turn_author).to be_nil
+      expect(engine.turn_author).to be_nil
+      expect(engine.send(:last_turn_context).author).to be_nil
       expect(JSON.generate(session.to_h)).not_to include("author")
     end
   end

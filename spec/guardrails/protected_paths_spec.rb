@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require_relative "../support/engine_turn_context"
 require "tmpdir"
 require "samagotchi/guardrails"
 require "samagotchi/engine"
@@ -174,7 +175,7 @@ RSpec.describe "Engine: editing config.yml after an approval" do
       nil
     end
     call = { name: "write", path: config_path, content: "#{original}# edited\n" }
-    result = Samagotchi::ToolRunner.new(kernel).run(call, iteration: 1, call_index: 1, call_count: 1,
+    result = Samagotchi::ToolRunner.new(kernel).run(call, context: engine_turn_context(engine), iteration: 1, call_index: 1, call_count: 1,
                                                       on_stream_event: nil, max_tool_output_chars: nil)
     [result, asked]
   end
