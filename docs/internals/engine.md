@@ -527,11 +527,15 @@ end
   run's after it) or `ChatLoop#complete(context:)` (`ChatLoop#turn_context`, its Run's) → `ToolResponse.run_batch` →
   `ToolRunner#run` → `Guardrails::Gate#evaluate` / `#settle_ask` and `KernelLoop#dispatch_tool_call(call, context)` →
   the handler's `KernelLoop::ToolContext.new(kernel, context)` (`participant_mode`, `model_key`, `muted_memory_read`,
-  `forget_outputs`). The generation guard gets it too (`KernelLoop#generation_guard`, `guard_participant_spend`).
+  `forget_outputs`). The generation guard gets it too (`KernelLoop::Services#generation_guard`, `guard_participant_spend`).
 - After a chat-loop turn the kernel's own `context` / `turn_settings` still hold the last native run's (a chat run
   never sets them), and `ChatLoop#turn_context` keeps its last run's: both are the turn thread's working copies, so
   a reader outside the turn uses `Engine#turn_context` / `#last_turn_context` instead.
 - A spec runs a loop, a runner or a gate outside an Engine turn with `run_context(settings: …)` (spec/support/test_kernel.rb).
+- What lasts the Engine's life is not in it: `KernelLoop::Services` (hooks, tools, reminder store, mutes, the
+  question handler, peers, the gate, warm-up, the generation guard), one frozen value the kernel gets at
+  `KernelLoop.new(services:)` or `#attach` (a spec's kernel: `attach_services(kernel, tools: …)`). No turn field
+  goes in Services, no Engine-lifetime one in TurnContext.
 
 - `messages` is what the Engine sends: system head, history, reminders, the prompt. The loop works on its own
   copy; the Engine keeps `result.conversation` after a normal end or a Stop, and the error's partial
@@ -717,8 +721,11 @@ Engine initialization (in this order, among other things):
     sets call_tool's unwrap (Tools::ToolIndex: the chi group from Registry#reachable_names, the sources'
     groups, search, call checks, the unwrap; a source runs the call with its own plugin Context)
   @reminder_store = ReminderStore.new (the kernel gets it), @reminder_queue, @reminders
-  wire_kernel: @kernel = KernelLoop.new(client:, profile:, hooks:, reminder_store:, tools:)
-  @kernel.guardrail_gate = @guardrail_wiring.gate; @kernel.warmup = PromptWarmup.new
+  wire_kernel: one KernelLoop::Services (Engine-lifetime, never per turn: hooks, tools, reminder_store,
+    muted_memory_names, question_handler, peers (PeerView), gate (@guardrail_wiring.gate(hooks:, tools:): values,
+    both built by now), warmup (PromptWarmup), generation_guard) →
+    @kernel = KernelLoop.new(client:, profile:, model_name:, services:), or a given kernel's #attach(services);
+    then sync_kernel_client! (the client is no service: a model switch swaps it, KernelLoop#client=)
   @hooks.runtime = @hook_routes.runtime (HookRoutes, built first: what a hook or plugin does reaches the UIs)
   @native_backend = LLM::NativeBackend.new(kernel: @kernel)
   @prompt_builder = SystemPrompt.new(...)
@@ -789,7 +796,7 @@ loops). It is display-only and never reaches the wire (prompt-caching.md, rule 7
 `MessageTime.gap_line` (10 min, `GAP_SECONDS`).
 
 `:question_asked` (`QuestionAsked`, `question_asked.rb`) fires from the two Engine seams where a question of the
-model's opens, never from `QuestionDesk`: `Engine#request_question` (the kernel's `question_handler`, after
+model's opens, never from `QuestionDesk`: `Engine#request_question` (the kernel's `Services#question_handler`, after
 `AskUserQuestion.validate`; not with `interface == :non_interactive`) and the guardrail wiring's `ask:` lambda
 (`GuardrailWiring#request_approval`, after a stored approval and the non-interactive deny). So `ask_for_hook`, a
 relayed approval (`Engine::RelayPeer#open_question` → `Engine#open_question`) and `post` (the step-limit question) never

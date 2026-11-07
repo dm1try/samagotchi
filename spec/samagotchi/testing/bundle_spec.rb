@@ -345,8 +345,8 @@ RSpec.describe Samagotchi::Testing::Bundle do
     dispatched = nil
     hooks = Samagotchi::Hooks::Registry.new
     hooks.register(:before_tool_call) { |payload| dispatched = payload.dup }
-    gate = Samagotchi::Guardrails::Gate.new(-> { hooks }, context_for: ->(_turn) { context },
-                                                                    tools_lookup: -> { bundle.tools })
+    gate = Samagotchi::Guardrails::Gate.new(hooks: hooks, context_for: ->(_turn) { context },
+                                            tools: bundle.tools)
     gate.evaluate(call, context: Samagotchi::TurnContext.none, iteration: 2, params: "read notes.md", verdict: Samagotchi::Testing::Verdict.new(call: call))
     real_event = dispatched.slice(:type, :iteration, :call, :params, :blocked, :block_reason, :guardrail, :context,
                                   :targets)

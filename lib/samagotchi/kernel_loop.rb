@@ -71,7 +71,7 @@ module Samagotchi
       end
 
       def reminder_store = @kernel.reminder_store
-      def peers = @kernel.peers
+      def peers = @kernel.services.peers
 
       # The participant turn's mode (TurnContext#participant_mode: :pair,
       # :review), nil for the owner's turns.
@@ -84,7 +84,7 @@ module Samagotchi
       # loses the muted memories' lines; a muted name in a comma list is
       # refused with its own error line and the rest is read as usual.
       def muted_memory_read(call)
-        muted = Array(@kernel.muted_memory_names)
+        muted = Array(@kernel.services.muted_memory_names)
         content = call[:content].to_s
         read = lambda do |names|
           Tools::MemoryRead.call(names, scope: call[:scope], model_key: model_key, fallback_model_key: @context.fallback_model_key)
@@ -103,14 +103,14 @@ module Samagotchi
       end
 
       # ask_user_question: validate the call, then hand the payload to the
-      # Engine's question flow (the kernel's question_handler, which blocks
+      # Engine's question flow (the kernel's Services#question_handler, which blocks
       # until the user answers). Without one (headless), the payload as JSON
       # so the model sees the options and can ask in plain text.
       def ask_user_question(call)
         payload = Tools::AskUserQuestion.validate(call)
         return payload if payload.is_a?(String)
 
-        handler = @kernel.question_handler
+        handler = @kernel.services.question_handler
         return JSON.pretty_generate(payload) unless handler
 
         handler.call(payload).to_s
@@ -129,15 +129,49 @@ module Samagotchi
     MALFORMED_TAIL_CHARS = 400
     QWEN_INCOMPLETE_TOOL_CALL_RECOVERY_PROMPT = "Continue the previous assistant message by finishing the open <tool_call> XML block. Output only the remaining XML needed to complete the tool call."
 
-    # @param tools [Tools::Registry, nil] the tools calls dispatch to (the
-    #   Engine's; nil: the built-ins alone)
+    # What a kernel holds of its Engine for the Engine's life, one value
+    # (Engine#wire_kernel builds it; a spec's kernel takes one through
+    # #attach): nothing per turn (a turn's TurnContext goes down #run).
+    #
+    # - hooks: the Hooks::Registry the loop fires (nil: none); the Engine's
+    # - tools: the Tools::Registry #dispatch runs (the built-ins by default)
+    # - reminder_store: the ReminderStore the reminder tools write (nil: none)
+    # - muted_memory_names: the session's muted memories (normalized names,
+    #   MutedMemories), refused by memory_read; nil: none
+    # - question_handler: answers ask_user_question (payload → answer
+    #   string; the Engine's blocking request_question); nil: headless
+    # - peers: Tools::Peers (or the Engine's PeerView): the session
+    #   list_sessions and send_note speak for; nil outside a session
+    # - gate: the Guardrails::Gate ToolRunner asks before each call; nil:
+    #   ToolRunner's own, hooks only
+    # - warmup: the Engine's PromptWarmup, asked for a slot pin per request
+    #   (#take_pin) while the turn-end warm-up runs; nil: never pinned
+    # - generation_guard: called before each generation with the turn's
+    #   TurnContext, before the before_generation hook; the Engine's check
+    #   that may stop the turn (a pair turn past its participant's cap,
+    #   Engine#guard_participant_spend); nil: none
+    #
+    # The client is not one of them: a model switch swaps it
+    # (#client=, Engine#sync_kernel_client!).
+    Services = Data.define(:hooks, :tools, :reminder_store, :muted_memory_names, :question_handler, :peers, :gate,
+                           :warmup, :generation_guard) do
+      # A bare kernel's (specs, a kernel built without its Engine): the
+      # built-in tools and nothing else, or the +fields+ given.
+      # @return [Services]
+      def self.none(**fields)
+        new(hooks: nil, tools: Tools::Builtins.default, reminder_store: nil, muted_memory_names: nil,
+            question_handler: nil, peers: nil, gate: nil, warmup: nil, generation_guard: nil).with(**fields)
+      end
+    end
+
+    # @param services [Services, nil] what the kernel holds of its Engine
+    #   (Services.none by default: the built-in tools alone)
     # @param sleeper [#call, nil] waits the given seconds before a dropped
     #   stream's step is asked again (specs pass one that doesn't sleep)
-    def initialize(client: nil, profile: nil, model_name: nil, hooks: nil, reminder_store: nil, model_key: nil, tools: nil,
-                   sleeper: nil)
+    def initialize(client: nil, profile: nil, model_name: nil, model_key: nil, services: nil, sleeper: nil)
       @client = client || Client.new
       @sleeper = sleeper || ->(seconds) { sleep(seconds) }
-      @tools = tools || Tools::Builtins.default
+      @services = services || Services.none
       resolved_model_name = ModelProfile.required_model_name(model_name)
       # The context of the run in progress, else of the last run (#context):
       # a kernel that ran none has its own (no turn, no settings but its
@@ -148,13 +182,29 @@ module Samagotchi
       # Where @profile came from, as /stats shows it (a Resolution's label
       # once the Engine resolves one, see #use_profile!).
       @profile_source = profile ? "given" : "name"
-      @hooks = hooks
-      @reminder_store = reminder_store
     end
 
-    # @return [ReminderStore, nil] the reminder store the reminder tools
-    #   write; the Engine's own (it hands it to a kernel it was given).
-    attr_accessor :reminder_store
+    # @return [Services] what the kernel holds of its Engine (#attach)
+    attr_reader :services
+
+    # Hand the kernel its Engine's services, all at once: the Engine does
+    # for a kernel it is given (specs) what KernelLoop.new does for its own.
+    # @param services [Services]
+    # @return [Services]
+    def attach(services)
+      @services = services
+    end
+
+    # @return [Hooks::Registry, nil] the hooks the loop fires (Services#hooks)
+    def hooks = @services.hooks
+    # @return [Tools::Registry] the tools #dispatch runs (Services#tools)
+    def tools = @services.tools
+    # @return [ReminderStore, nil] the store the reminder tools write
+    #   (Services#reminder_store)
+    def reminder_store = @services.reminder_store
+    # @return [Guardrails::Gate, nil] the gate ToolRunner asks before each
+    #   call (Services#gate)
+    def guardrail_gate = @services.gate
 
     # @return [Float, nil] the last counted request's chars per token
     #   (ContextStatus#counted_chars_per_token), for the next turn's first
@@ -164,28 +214,8 @@ module Samagotchi
     # @return [ModelProfile] the active prompt profile
     attr_reader :profile
 
-    # @return [Samagotchi::Hooks::Registry, nil] hooks registry shared with Engine.
-    #   Engine owns the registry; KernelLoop only fires events. Accessor allows
-    #   Engine to hand its registry to a kernel it is given (specs).
-    attr_accessor :hooks
-    # @return [Tools::Registry] the tools #dispatch runs. The Engine sets
-    #   its own on a kernel it is given, as with hooks.
-    attr_accessor :tools
+    # The model client; a model switch swaps it (Engine#sync_kernel_client!).
     attr_accessor :client
-    # @return [Array<String>, nil] the session's muted memories (normalized
-    #   names, see MutedMemories); memory_read refuses them. The Engine sets it.
-    attr_accessor :muted_memory_names
-    # @return [Proc, nil] answers ask_user_question (payload → answer string);
-    #   Engine sets it to its blocking request_question.
-    attr_accessor :question_handler
-    # The Guardrails::Gate ToolRunner asks before each call; the Engine sets
-    # it (nil: ToolRunner's own, hooks only).
-    attr_accessor :guardrail_gate
-    # Called before each generation, before the before_generation hook (a
-    # callable taking the turn's TurnContext, nil: none): the Engine's check
-    # that may stop the turn (a pair turn past its participant's cap,
-    # Engine#guard_participant_spend).
-    attr_accessor :generation_guard
 
     # @return [String, nil] the model key a kernel was built with (its own
     #   #context's, for a run given none)
@@ -204,7 +234,7 @@ module Samagotchi
     # The generation guard for +context+'s turn, if any; one that raises
     # never breaks the turn.
     def guard_generation(context = @context)
-      @generation_guard&.call(context)
+      @services.generation_guard&.call(context)
     rescue StandardError => e
       Log.warn(:turn, "generation_guard_failed", error: "#{e.class}: #{e.message}")
       nil
@@ -221,12 +251,6 @@ module Samagotchi
     #   sets the model name); the thinking level is its own field, since the
     #   native path sends the sampling as is.
     def turn_settings = @context.settings
-    # Tools::Peers (or the Engine's live view of it): the session
-    # list_sessions and send_note speak for; nil outside a session.
-    attr_accessor :peers
-    # The Engine's PromptWarmup: a request asks it for a slot pin
-    # (#take_pin) while the turn-end warm-up still runs; nil: never pinned.
-    attr_accessor :warmup
     # The turn a forget_outputs call works on (LLMContextForget::Turn: its
     # conversation and ContextStatus); both loops set it as a turn starts.
     attr_accessor :llm_context_turn
@@ -451,7 +475,7 @@ module Samagotchi
       # Before the generation starts: a hook that waits (a question) isn't
       # the generation's time, and a Stop there leaves none started.
       guard_generation(@context)
-      fire_hook(:before_generation, { type: :before_generation, iteration: turn.iteration }) if @hooks
+      fire_hook(:before_generation, { type: :before_generation, iteration: turn.iteration }) if hooks
       raise Client::RequestCancelled, turn.cancel_controller.reason if turn.cancel_controller&.cancelled?
 
       # Each ask splits its own stream (run_generation rebuilds the
@@ -656,7 +680,7 @@ module Samagotchi
       dump_log("response", generation.response, iteration: turn.iteration)
       # The after_generation hook (after the model returns, before the tool
       # parse), with a read-only copy of the conversation as sent.
-      return unless @hooks
+      return unless hooks
 
       fire_hook(:after_generation, { type: :after_generation, iteration: turn.iteration, response: generation.response,
                                      messages: AnswerDisplay.strip_all(turn.conversation).map(&:dup).freeze })
@@ -838,10 +862,10 @@ module Samagotchi
     end
 
     def fire_hook(name, event)
-      return unless @hooks
+      return unless hooks
 
       # A failing hook must not break the turn.
-      Degrade.call(:hooks, "hook_fire_failed", hook: name) { @hooks.fire(name, event) }
+      Degrade.call(:hooks, "hook_fire_failed", hook: name) { hooks.fire(name, event) }
     end
 
     # Coerce a value to boolean — handles true/false, nil, and string "true"/"false".
@@ -858,7 +882,7 @@ module Samagotchi
     def request_generation(prompt, generation_controller:, cancel_controller:, **)
       kwargs = complete_kwargs(cancel_controller: generation_controller || cancel_controller, **)
       # Behind a turn-end warm-up still running on its slot (PromptWarmup).
-      slot = @warmup&.take_pin(@client)
+      slot = @services.warmup&.take_pin(@client)
       kwargs[:slot] = slot if slot
       @client.complete(prompt, **kwargs)
     end
@@ -1211,21 +1235,21 @@ module Samagotchi
     # The built-in +name+ names when the turn's host loads tools and the
     # toolkit reaches it (Registry#indexed): a direct call runs it.
     def loaded_entry(name, context)
-      return nil unless context.settings&.loads_tools && @tools.respond_to?(:indexed)
+      return nil unless context.settings&.loads_tools && tools.respond_to?(:indexed)
 
-      @tools.indexed(name, layers: context.llm_context_layers)
+      tools.indexed(name, layers: context.llm_context_layers)
     end
 
     def unknown_tool_error(name, layers, via: nil)
-      names = @tools.names(layers: layers)
-      toolkit = @tools.toolkit&.name
+      names = tools.names(layers: layers)
+      toolkit = tools.toolkit&.name
       in_toolkit = " in this session#{" (toolkit #{toolkit})" if toolkit}"
-      if via && @tools.offered(name, layers: layers)
+      if via && tools.offered(name, layers: layers)
         "Error: #{name} is declared#{in_toolkit}; call it directly. Available: #{names.join(", ")}"
-      elsif !via && @tools.respond_to?(:indexed) && @tools.indexed(name, layers: layers)
+      elsif !via && tools.respond_to?(:indexed) && tools.indexed(name, layers: layers)
         "Error: #{name} isn't declared#{in_toolkit}; call it with #{Tools::BuiltinCalls::VIA}(tool: \"chi/#{name}\", args: {…}) " \
           "(find_tools gives its inputSchema). Available: #{names.join(", ")}"
-      elsif @tools.respond_to?(:left_out) && @tools.left_out(name, layers: layers)
+      elsif tools.respond_to?(:left_out) && tools.left_out(name, layers: layers)
         "Error: #{name} isn't loaded#{in_toolkit} and can't be loaded from " \
           "here; only the user can (/toolkit add #{name}). Available: #{names.join(", ")}"
       elsif SHELL_LIKE_TOOL_NAMES.include?(name.to_s.downcase) && names.include?("execute")
@@ -1243,15 +1267,15 @@ module Samagotchi
       layers = context.llm_context_layers
       model = context.settings&.model_name
       entry = if call[:via]
-                @tools.respond_to?(:indexed) ? @tools.indexed(call[:name], layers: layers) : nil
+                tools.respond_to?(:indexed) ? tools.indexed(call[:name], layers: layers) : nil
               else
-                @tools.offered(call[:name], layers: layers) || loaded_entry(call[:name], context)
+                tools.offered(call[:name], layers: layers) || loaded_entry(call[:name], context)
               end
       unless entry
         result = unknown_tool_error(call[:name], layers, via: call[:via])
         return {
           output: result,
-          activity: ToolActivity.tool_activity_event(call[:name], call, result, registry: @tools)
+          activity: ToolActivity.tool_activity_event(call[:name], call, result, registry: tools)
         }
       end
 
@@ -1269,7 +1293,7 @@ module Samagotchi
       dump_log("tool_result", result, model: model, tool: call[:name])
       dispatched = {
         output: "[#{call[:name]}]\n#{result}",
-        activity: ToolActivity.tool_activity_event(call[:name], call, result, registry: @tools)
+        activity: ToolActivity.tool_activity_event(call[:name], call, result, registry: tools)
       }
       # Images the tool returned (read's ImageResult, a plugin's ToolResult):
       # ToolRunner attaches them (or says why not).
@@ -1292,7 +1316,7 @@ module Samagotchi
       result = "Error: #{e.message}"
       {
         output: "[#{call[:name]}] #{result}",
-        activity: ToolActivity.tool_activity_event(call[:name], call, result, registry: @tools)
+        activity: ToolActivity.tool_activity_event(call[:name], call, result, registry: tools)
       }
     end
   end

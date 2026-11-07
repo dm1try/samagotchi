@@ -39,7 +39,7 @@ RSpec.describe "Tool call wrapper parity" do
       prompts << prompt
       replies.shift
     end
-    kernel = Samagotchi::KernelLoop.new(client: client, hooks: hooks, profile: "gemma4")
+    kernel = Samagotchi::KernelLoop.new(client: client, profile: "gemma4", services: Samagotchi::KernelLoop::Services.none(hooks: hooks))
     context = run_context(settings: kernel.turn_settings, session_dir: session_dir)
     result = kernel.run([{ role: "user", content: "read it" }], on_stream_event: on_event,
                         max_tool_output_chars: max_tool_output_chars, context: context)
@@ -51,7 +51,7 @@ RSpec.describe "Tool call wrapper parity" do
 
   def run_chat(max_tool_output_chars: nil, call: ["c1", "read", { "path" => file }], session_dir: nil, window: nil,
                adapter_class: FakeChatAdapter)
-    kernel = Samagotchi::KernelLoop.new(client: double("client", context_window: window), hooks: hooks, profile: "gemma4")
+    kernel = Samagotchi::KernelLoop.new(client: double("client", context_window: window), profile: "gemma4", services: Samagotchi::KernelLoop::Services.none(hooks: hooks))
     context = run_context(settings: kernel.turn_settings, session_dir: session_dir)
     adapter = adapter_class.new(FakeChatAdapter.tools(call), FakeChatAdapter.text("done"))
     backend = Samagotchi::LLM::ChatLoop.new(kernel: kernel, adapter: adapter)

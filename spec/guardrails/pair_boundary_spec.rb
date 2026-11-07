@@ -911,14 +911,14 @@ RSpec.describe "GuardrailWiring: a participant's boundary by ParticipantMode" do
   after { FileUtils.rm_rf(base) }
 
   def wiring(session, entry: pair_entry)
-    w = Samagotchi::GuardrailWiring.new(scratch: false, hooks: -> {}, tools: -> {}, session: -> { session },
+    w = Samagotchi::GuardrailWiring.new(scratch: false, tools: -> {}, session: -> { session },
                                         cancelled: -> { false }, ask: ->(_) {},
                                         participant: ->(_author) { entry })
     w.state_dir = File.join(base, "state")
     turn_of.new(w, wiring_turn_context(w, { client_id: "review:p_0123abcd", author: author }, session: session))
   end
 
-  def evaluate(turn, call) = turn.wiring.gate.evaluate(call, context: turn.context, iteration: 1, params: "")
+  def evaluate(turn, call) = turn.wiring.gate(hooks: nil, tools: nil).evaluate(call, context: turn.context, iteration: 1, params: "")
 
   def checks(turn) = turn.wiring.checks(turn.context)
 
@@ -961,7 +961,7 @@ RSpec.describe "GuardrailWiring: a participant's boundary by ParticipantMode" do
   it "asks the owner before a pair turn writes outside the project, even with the owner's stored approval" do
     asked = []
     session = working
-    w = Samagotchi::GuardrailWiring.new(scratch: false, hooks: -> {}, tools: -> {}, session: -> { session },
+    w = Samagotchi::GuardrailWiring.new(scratch: false, tools: -> {}, session: -> { session },
                                         cancelled: -> { false }, participant: ->(_a) { pair_entry },
                                         ask: lambda { |payload|
                                           asked << payload
@@ -978,7 +978,7 @@ RSpec.describe "GuardrailWiring: a participant's boundary by ParticipantMode" do
     owner.scope = "session"
     w.approvals.add(owner, "session")
     turn = turn_of.new(w, wiring_turn_context(w, { client_id: "review:p_0123abcd", author: author }, session: session))
-    verdict = w.gate.settle_ask(evaluate(turn, call), context: turn.context)
+    verdict = w.gate(hooks: nil, tools: nil).settle_ask(evaluate(turn, call), context: turn.context)
 
     expect(asked.size).to eq(1)
     expect(asked.first[:approval]).to include(rule: "pair-boundary", scopes: ["once"], author: author)
@@ -1016,7 +1016,7 @@ RSpec.describe "GuardrailWiring: a Verify fresh child's boundary" do
   end
 
   def wiring(session, entry: nil, author: "p:alex")
-    w = Samagotchi::GuardrailWiring.new(scratch: false, hooks: -> {}, tools: -> {}, session: -> { session },
+    w = Samagotchi::GuardrailWiring.new(scratch: false, tools: -> {}, session: -> { session },
                                         cancelled: -> { false }, ask: ->(_) {},
                                         participant: ->(_author) { entry })
     w.state_dir = File.join(base, "state")
@@ -1024,7 +1024,7 @@ RSpec.describe "GuardrailWiring: a Verify fresh child's boundary" do
     turn_of.new(w, wiring_turn_context(w, origin, session: session))
   end
 
-  def evaluate(turn, call) = turn.wiring.gate.evaluate(call, context: turn.context, iteration: 1, params: "")
+  def evaluate(turn, call) = turn.wiring.gate(hooks: nil, tools: nil).evaluate(call, context: turn.context, iteration: 1, params: "")
   def write(turn) = evaluate(turn, { name: "write", path: File.join(project, "docs", "plan.md"), content: "x" })
   def checks(turn) = turn.wiring.checks(turn.context)
 

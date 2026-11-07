@@ -167,11 +167,11 @@ RSpec.describe "Turn policy characterization" do
     steps = row[:steps].map { |step| fill(step) }
     if loop_name == :chat
       adapter = FakeChatAdapter.new(*steps.map { |step| chat_step(step, controller) })
-      kernel = Samagotchi::KernelLoop.new(client: TurnPolicyFakeClient.new([]), profile: profile_for(:qwen), tools: registry)
+      kernel = Samagotchi::KernelLoop.new(client: TurnPolicyFakeClient.new([]), profile: profile_for(:qwen), services: Samagotchi::KernelLoop::Services.none(tools: registry))
       backend = Samagotchi::LLM::ChatLoop.new(kernel: kernel, adapter: adapter)
     else
       client = TurnPolicyFakeClient.new(steps.map { |step| native_step(loop_name, step, controller) })
-      kernel = Samagotchi::KernelLoop.new(client: client, profile: profile_for(loop_name), tools: registry)
+      kernel = Samagotchi::KernelLoop.new(client: client, profile: profile_for(loop_name), services: Samagotchi::KernelLoop::Services.none(tools: registry))
       backend = Samagotchi::LLM::NativeBackend.new(kernel: kernel)
     end
     context = run_context(settings: kernel.turn_settings.with(vision: vision))

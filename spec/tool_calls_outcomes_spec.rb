@@ -34,7 +34,7 @@ RSpec.describe "Tool call outcomes per model format" do
   let(:dir) { Dir.mktmpdir("tool-call-outcomes") }
   let(:file) { File.join(dir, "a.txt").tap { |path| File.write(path, "keep x</old>y me\n") } }
   let(:store) { Samagotchi::ReminderStore.new }
-  let(:kernel) { Samagotchi::KernelLoop.new(client: nil, reminder_store: store) }
+  let(:kernel) { Samagotchi::KernelLoop.new(client: nil, services: Samagotchi::KernelLoop::Services.none(reminder_store: store)) }
 
   after { FileUtils.rm_rf(dir) }
 

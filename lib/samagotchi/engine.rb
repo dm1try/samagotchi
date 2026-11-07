@@ -425,38 +425,39 @@ module Samagotchi
     end
     private :subscribe_session_observers
 
-    # The kernel and what it holds of the Engine for its life (stores, hooks,
-    # tools, the mutes, the question flow, the gate, peers, warm-up, the
-    # generation guard, the hook runtime), and the native backend over it.
-    # After the plugins load. Nothing per turn: a turn's TurnContext goes
-    # down the backend's complete (#generate).
+    # The kernel and what it holds of the Engine for its life, one
+    # KernelLoop::Services (stores, hooks, tools, the mutes, the question
+    # flow, peers, the gate, warm-up, the generation guard), and the native
+    # backend over it. After the plugins load. Nothing per turn: a turn's
+    # TurnContext goes down the backend's complete (#generate).
     def wire_kernel(kernel, muted_memories)
-      # A given kernel (specs) gets the Engine's store, hooks and tools, as
-      # the one built here does.
-      @kernel = kernel || KernelLoop.new(client: @client, profile: @model_binding.given_profile, model_name: effective_model_name,
-                                         hooks: @hooks, reminder_store: @reminder_store, tools: @tools)
-      @kernel.reminder_store = @reminder_store
-      @kernel.hooks = @hooks
-      @kernel.tools = @tools
-      sync_kernel_client!
-      sync_model_key!
-      # The mutes never change during a session, so no re-sync: the kernel's
-      # memory_read guard reads the same list for every turn.
+      # The mutes never change during a session: the kernel's memory_read
+      # guard reads the same list for every turn.
       @muted_memory_names = MutedMemories.normalize_list(muted_memories)
-      @kernel.muted_memory_names = @muted_memory_names
-      # ask_user_question blocks on the Engine's question flow (TUI/Web answer it).
-      @kernel.question_handler = proc { |payload| request_question(payload) }
-      # Every tool call asks this gate first. The kernel is never rebuilt, so
-      # it holds across model switches.
+      # Where the approvals live; also where list_sessions and send_note
+      # look for other sessions (a worker moves it, Worker).
       self.guardrail_state_dir = Session.default_state_dir
-      # list_sessions and send_note speak for whichever session runs now.
-      @kernel.peers = PeerView.new(self)
-      @kernel.guardrail_gate = @guardrail_wiring.gate
-      # A pair turn stops once its participant passed their cap.
-      @kernel.generation_guard = ->(context) { guard_participant_spend(context) }
       # The turn-end warm-up; the kernel asks it for a slot pin per request.
       @prompt_warmup = PromptWarmup.new
-      @kernel.warmup = @prompt_warmup
+      services = KernelLoop::Services.new(
+        hooks: @hooks, tools: @tools, reminder_store: @reminder_store, muted_memory_names: @muted_memory_names,
+        # ask_user_question blocks on the Engine's question flow (TUI/Web answer it).
+        question_handler: proc { |payload| request_question(payload) },
+        # list_sessions and send_note speak for whichever session runs now.
+        peers: PeerView.new(self),
+        # Every tool call asks this gate first. The kernel is never rebuilt,
+        # so it holds across model switches.
+        gate: @guardrail_wiring.gate(hooks: @hooks, tools: @tools),
+        warmup: @prompt_warmup,
+        # A pair turn stops once its participant passed their cap.
+        generation_guard: ->(context) { guard_participant_spend(context) }
+      )
+      # A given kernel (specs) gets the same services as the one built here.
+      @kernel = kernel || KernelLoop.new(client: @client, profile: @model_binding.given_profile,
+                                         model_name: effective_model_name, services: services)
+      @kernel.attach(services) if kernel
+      sync_kernel_client!
+      sync_model_key!
       # What a hook can do beyond reading its event (event[:notify],
       # event[:ask_user], event[:stop_turn]): the Engine's routes to the UIs.
       @hooks.runtime = hook_runtime
@@ -470,7 +471,7 @@ module Samagotchi
     def build_guardrail_wiring
       GuardrailWiring.new(
         scratch: @scratch,
-        hooks: -> { @hooks },
+        # Built before the tools (the hooks load into its failures).
         tools: -> { @tools },
         session: -> { @session },
         cancelled: -> { !!active_cancel_controller&.cancelled? },

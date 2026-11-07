@@ -107,7 +107,7 @@ RSpec.describe Samagotchi::ToolActivity do
 
   it "reaches the tool_call_started params (the spinner) and the completed activity through ToolRunner" do
     kernel = Samagotchi::KernelLoop.new(client: instance_double(Samagotchi::Client), profile: :gemma4)
-    kernel.tools = registry
+    attach_services(kernel, tools: registry)
     events = []
     Samagotchi::ToolRunner.new(kernel).run({ name: "jira_search", query: "bug" }, context: run_context, iteration: 1, call_index: 1, call_count: 1,
                                            on_stream_event: ->(event) { events << event }, max_tool_output_chars: nil)

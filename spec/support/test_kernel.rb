@@ -14,14 +14,28 @@ require "samagotchi/turn_context"
 #   let(:kernel) { test_kernel(client: client) }
 #   before { allow(kernel).to receive(:run) { |messages, **| ... } }
 #
+# What the Engine would hand the kernel (KernelLoop::Services: hooks:,
+# tools:, gate:, peers:…) goes in as test_kernel's options, or onto a
+# kernel already built with attach_services(kernel, tools: …).
+#
 # A run outside an Engine turn takes its turn as a TurnContext
 # (#run_context): kernel.run(messages, context: run_context(settings: …)),
 # ChatLoop#complete(context:), ToolRunner#run(call, context:),
 # Guardrails::Gate#evaluate(call, context:).
 module TestKernel
-  # @param opts [Hash] more KernelLoop.new options (profile:, tools:, hooks:)
-  def test_kernel(client: test_client, **)
-    Samagotchi::KernelLoop.new(client: client, reminder_store: Samagotchi::ReminderStore.new, **)
+  # @param profile [ModelProfile, Symbol, String, nil] KernelLoop.new's
+  # @param services [Hash] KernelLoop::Services fields (a fresh
+  #   ReminderStore, the built-in tools and nothing else by default)
+  def test_kernel(client: test_client, profile: nil, **services)
+    Samagotchi::KernelLoop.new(client: client, profile: profile,
+                               services: Samagotchi::KernelLoop::Services.none(reminder_store: Samagotchi::ReminderStore.new, **services))
+  end
+
+  # Swap some of +kernel+'s services (KernelLoop::Services fields), the
+  # rest kept: KernelLoop#attach with them.
+  # @return [Samagotchi::KernelLoop::Services]
+  def attach_services(kernel, **fields)
+    kernel.attach(kernel.services.with(**fields))
   end
 
   # A TurnContext outside an Engine turn (TurnContext.none): +settings+

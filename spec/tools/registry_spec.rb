@@ -84,7 +84,7 @@ RSpec.describe Samagotchi::Tools::Registry do
 
     it "is an unknown tool to the kernel and missing from the chat tools unless the turn runs under its layer" do
       kernel = Samagotchi::KernelLoop.new(client: instance_double(Samagotchi::Client), profile: :gemma4)
-      kernel.tools = gated_registry
+      attach_services(kernel, tools: gated_registry)
       chat = Samagotchi::LLM::ChatLoop.new(kernel: kernel)
       names = -> { chat.tool_definitions.map { |tool| tool[:function][:name] } }
 
@@ -140,18 +140,18 @@ RSpec.describe Samagotchi::Tools::Registry do
         registry.register(entry.name, schema: entry.schema, handler: entry.handler, label: entry.label,
                                     preview: entry.preview, targets: entry.targets, source: entry.source, layer: entry.layer)
       end
-      kernel.tools = registry
+      attach_services(kernel, tools: registry)
       expect(kernel.dispatch_tool_call(name: "run", content: "ls")[:output]).to start_with("Error: no such tool. Available:")
       expect(kernel.dispatch_tool_call(name: "run", content: "ls")[:output]).not_to include("run")
     end
 
     it "runs a set registry's handler with the call and the kernel's context" do
       seen = nil
-      kernel.tools = extended_registry do |call, kctx|
+      tools = extended_registry do |call, kctx|
         seen = [call[:content], kctx.reminder_store, kctx.peers, kctx.model_key]
         "done"
       end
-      kernel.peers = :peers
+      attach_services(kernel, tools: tools, peers: :peers)
 
       result = kernel.dispatch_tool_call({ name: "echo", content: "hi" }, run_context(model_key: "gemma4"))
 
@@ -162,14 +162,14 @@ RSpec.describe Samagotchi::Tools::Registry do
     end
 
     it "turns a raising handler into the tool's Error line" do
-      kernel.tools = extended_registry { |_call, _kctx| raise "boom" }
+      attach_services(kernel, tools: extended_registry { |_call, _kctx| raise "boom" })
       expect(kernel.dispatch_tool_call(name: "echo", content: "")[:output]).to eq("[echo] Error: boom")
     end
   end
 
   it "the chat loop declares its kernel's tools" do
     kernel = Samagotchi::KernelLoop.new(client: instance_double(Samagotchi::Client), profile: :gemma4)
-    kernel.tools = extended_registry
+    attach_services(kernel, tools: extended_registry)
     names = ->(loop) { loop.tool_definitions.map { |tool| tool[:function][:name] } }
 
     expect(names.call(Samagotchi::LLM::ChatLoop.new(kernel: kernel)).last).to eq("echo")

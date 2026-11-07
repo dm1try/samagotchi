@@ -166,7 +166,7 @@ module Samagotchi
     # The rule set as a worker would load it now, the rule's id looked up in
     # it. Every other answer than ASKS names what stands in the way.
     def rule_status(id)
-      wiring = GuardrailWiring.new(scratch: false, hooks: -> {}, tools: -> {}, session: -> {},
+      wiring = GuardrailWiring.new(scratch: false, tools: -> {}, session: -> {},
                                    cancelled: -> { false }, ask: ->(_fields) {})
       rules = wiring.rules
       failed = wiring.failures.required

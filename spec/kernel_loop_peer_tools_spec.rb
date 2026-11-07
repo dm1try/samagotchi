@@ -24,7 +24,7 @@ RSpec.describe "list_sessions and send_note in the loops" do
 
   it "KernelLoop dispatches send_note with its peers, and labels the activity" do
     kernel = Samagotchi::KernelLoop.new(client: instance_double(Samagotchi::Client), profile: :gemma4)
-    kernel.peers = Samagotchi::Tools::Peers.new(session_id: me.id, cwd: "/work/me", state_dir: tmpdir)
+    attach_services(kernel, peers: Samagotchi::Tools::Peers.new(session_id: me.id, cwd: "/work/me", state_dir: tmpdir))
 
     result = kernel.dispatch_tool_call(name: "send_note", content: "api moved", session: other.id[0, 8])
 
@@ -38,7 +38,7 @@ RSpec.describe "list_sessions and send_note in the loops" do
 
   it "KernelLoop dispatches delegate and delegate_result with its peers, and labels the activity" do
     kernel = Samagotchi::KernelLoop.new(client: instance_double(Samagotchi::Client), profile: :gemma4)
-    kernel.peers = Samagotchi::Tools::Peers.new(session_id: me.id, cwd: "/work/me", state_dir: tmpdir)
+    attach_services(kernel, peers: Samagotchi::Tools::Peers.new(session_id: me.id, cwd: "/work/me", state_dir: tmpdir))
     allow(Process).to receive(:spawn).and_return(12_345)
     allow(Process).to receive(:detach)
 
@@ -61,14 +61,14 @@ RSpec.describe "list_sessions and send_note in the loops" do
     engine.guardrail_state_dir = tmpdir
     engine.session = me
 
-    peers = engine.instance_variable_get(:@kernel).peers
+    peers = engine.instance_variable_get(:@kernel).services.peers
 
     expect([peers.session_id, peers.cwd, peers.state_dir]).to eq([me.id, "/work/me", tmpdir])
   end
 
   it "the Engine's peers see the running turn's cancel, so a waiting tool can return" do
     engine = Samagotchi::Engine.new(client: instance_double(Samagotchi::Client), profile: "gemma4")
-    peers = engine.instance_variable_get(:@kernel).peers
+    peers = engine.instance_variable_get(:@kernel).services.peers
     expect(peers.cancelled?).to be(false)
 
     ctrl = Samagotchi::CancellationController.new

@@ -426,7 +426,7 @@ RSpec.describe "GuardrailWiring: the child boundary" do
   let(:session) { nil }
   let(:wiring) do
     s = session
-    Samagotchi::GuardrailWiring.new(scratch: false, hooks: -> {}, tools: -> {}, session: -> { s },
+    Samagotchi::GuardrailWiring.new(scratch: false, tools: -> {}, session: -> { s },
                                     cancelled: -> { false }, ask: ->(_) {}).tap { |w| w.state_dir = File.join(dir, "sessions") }
   end
   # The owner's turn the checks are for (one GitInfo, as a turn has).

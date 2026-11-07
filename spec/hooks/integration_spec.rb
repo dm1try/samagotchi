@@ -52,7 +52,7 @@ RSpec.describe "Hooks integration with Engine and KernelLoop" do
   describe "KernelLoop receives hooks" do
     let(:hooks_registry) { Samagotchi::Hooks::Registry.new }
     let(:kernel) do
-      Samagotchi::KernelLoop.new(hooks: hooks_registry)
+      Samagotchi::KernelLoop.new(services: Samagotchi::KernelLoop::Services.none(hooks: hooks_registry))
     end
 
     it "accepts a hooks registry" do

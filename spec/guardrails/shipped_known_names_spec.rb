@@ -35,7 +35,7 @@ RSpec.describe "The known-names bundle" do
     )
     registry
   end
-  let(:gate) { Samagotchi::Guardrails::Gate.new(-> { registry }, context_for: ->(_turn) { context }) }
+  let(:gate) { Samagotchi::Guardrails::Gate.new(hooks: registry, context_for: ->(_turn) { context }) }
 
   # The repo and its GitInfo, made once: the examples only read the repo, so a repo
   # and rev-parse probes each gave the same answers.

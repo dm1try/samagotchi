@@ -58,8 +58,8 @@ module Samagotchi
     # loads_tools, the participant's mode), passed on to the gate and the
     # kernel's dispatch.
     #
-    # @param kernel [KernelLoop] read lazily: Engine sets its hooks after
-    #   the kernel is built.
+    # @param kernel [KernelLoop] its services (KernelLoop::Services: hooks,
+    #   tools, gate) are read per call: a spec's kernel may #attach new ones.
     # @param clock [#call] monotonic seconds, for the approval wait and the
     #   dispatch time (after_tool_call's elapsed_ms)
     # @param window [#call, nil] (settings) → ContextWindow::Resolved or nil:
@@ -491,10 +491,11 @@ module Samagotchi
       ["ran as: #{call[:name]}", params].compact.join(" ")
     end
 
-    # The Engine sets the kernel's gate (its context, later the approval
-    # flow); a bare kernel (specs) gets one that only runs the hooks.
+    # The kernel's gate (the Engine's, KernelLoop::Services#gate: its
+    # context, the approval flow); a bare kernel (specs) gets one that only
+    # runs its hooks, built per call from what the kernel holds now.
     def gate
-      @kernel.guardrail_gate || (@gate ||= Guardrails::Gate.new(-> { @kernel.hooks }, tools_lookup: -> { tools }))
+      @kernel.guardrail_gate || Guardrails::Gate.new(hooks: @kernel.hooks, tools: tools)
     end
 
     # A gate that fails denies the call (fail closed).

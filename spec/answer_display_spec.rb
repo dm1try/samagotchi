@@ -394,7 +394,7 @@ RSpec.describe "The display field and the model payloads" do
     generation = nil
     registry.register(:after_generation) { |e| generation = e[:messages] }
 
-    result = Samagotchi::KernelLoop.new(client: client, hooks: registry).run(history.map(&:dup))
+    result = Samagotchi::KernelLoop.new(client: client, services: Samagotchi::KernelLoop::Services.none(hooks: registry)).run(history.map(&:dup))
 
     expect(prompts.join).to include("ok")
     expect(prompts.join).not_to include(marker)

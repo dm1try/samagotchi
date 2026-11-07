@@ -54,7 +54,7 @@ RSpec.describe Samagotchi::KernelLoop do
       allow(registry).to receive(:fire).and_raise(IOError, "registry gone")
       allow(client).to receive(:complete).and_return("Hello!")
 
-      loop = described_class.new(client: client, hooks: registry)
+      loop = described_class.new(client: client, services: described_class::Services.none(hooks: registry))
       result = loop.run([{ role: "user", content: "hi" }], on_stream_event: ->(_e) { raise IOError, "client gone" })
 
       expect(result.output).to eq("Hello!")
@@ -71,7 +71,7 @@ RSpec.describe Samagotchi::KernelLoop do
       registry.register(:after_generation) { |event| seen << event[:messages] }
       allow(client).to receive(:complete).and_return("Hello!")
 
-      described_class.new(client: client, hooks: registry).run([{ role: "user", content: "hi" }])
+      described_class.new(client: client, services: described_class::Services.none(hooks: registry)).run([{ role: "user", content: "hi" }])
 
       expect(seen).to eq([[{ role: "user", content: "hi" }]])
       expect(seen.first).to be_frozen
@@ -84,8 +84,8 @@ RSpec.describe Samagotchi::KernelLoop do
       registry.register(:before_generation) { |event| seen << [event[:iteration], events.map { |e| e[:type] }] }
       allow(client).to receive(:complete).and_return("Hello!")
 
-      described_class.new(client: client, hooks: registry).run([{ role: "user", content: "hi" }],
-                                                               on_stream_event: ->(e) { events << e })
+      described_class.new(client: client, services: described_class::Services.none(hooks: registry)).run([{ role: "user", content: "hi" }],
+                                                                                                         on_stream_event: ->(e) { events << e })
 
       expect(seen.first.first).to eq(1)
       expect(seen.first.last).not_to include(:generation_started)
@@ -99,12 +99,24 @@ RSpec.describe Samagotchi::KernelLoop do
       allow(client).to receive(:complete).and_return("never")
       events = []
 
-      result = described_class.new(client: client, hooks: registry)
+      result = described_class.new(client: client, services: described_class::Services.none(hooks: registry))
                               .run([{ role: "user", content: "hi" }], on_stream_event: ->(e) { events << e },
                                                                       cancel_controller: controller)
 
       expect(result).to be_canceled
       expect(events.map { |e| e[:type] }).not_to include(:generation_started)
+    end
+
+    it "holds the built-in tools and nothing else until it is given services; #attach swaps them all at once" do
+      expect(kernel.services).to eq(described_class::Services.none)
+      expect(kernel.tools).to be(Samagotchi::Tools::Builtins.default)
+      expect(kernel.hooks).to be_nil
+
+      registry = Samagotchi::Hooks::Registry.new
+      store = Samagotchi::ReminderStore.new
+      kernel.attach(described_class::Services.none(hooks: registry, reminder_store: store))
+
+      expect([kernel.hooks, kernel.reminder_store, kernel.guardrail_gate]).to eq([registry, store, nil])
     end
 
     it "asks the generation guard before before_generation; a guard that cancels starts no generation" do
@@ -113,11 +125,11 @@ RSpec.describe Samagotchi::KernelLoop do
       registry = Samagotchi::Hooks::Registry.new
       registry.register(:before_generation) { |_event| order << :hook }
       allow(client).to receive(:complete).and_return("never")
-      kernel = described_class.new(client: client, hooks: registry)
-      kernel.generation_guard = lambda { |_context|
+      guard = lambda { |_context|
         order << :guard
         controller.cancel!
       }
+      kernel = described_class.new(client: client, services: described_class::Services.none(hooks: registry, generation_guard: guard))
 
       result = kernel.run([{ role: "user", content: "hi" }], cancel_controller: controller)
 
@@ -173,7 +185,7 @@ RSpec.describe Samagotchi::KernelLoop do
             verdict
           end
         end.new.tap { |g| g.instance_variable_set(:@seen, seen); g.instance_variable_set(:@rules, rules) }
-        kernel.guardrail_gate = gate
+        attach_services(kernel, gate: gate)
 
         responses = [
           %(<|tool_call>call:bash{command: "rm -rf nope"}<tool_call|>),
@@ -278,7 +290,7 @@ RSpec.describe Samagotchi::KernelLoop do
 
         %(<|tool_call>call:execute{command: "echo hi"}<tool_call|><|tool_call>call:save_note{path:<|"|>w.md<|"|>}<tool_call|>)
       end
-      result = described_class.new(client: client, tools: registry).run([{ role: "user", content: "check" }])
+      result = described_class.new(client: client, services: described_class::Services.none(tools: registry)).run([{ role: "user", content: "check" }])
       tool_response = result.conversation.find { |message| message[:role] == "tool_response" }
       expect(tool_response[:tool_params]).to eq([nil, "PREVIEW:w.md"])
       expect(tool_response[:tool_labels]).to eq([nil, "notes: save"])
@@ -757,8 +769,8 @@ RSpec.describe Samagotchi::KernelLoop do
           "ok"
         end
         events = []
-        result = drop_kernel(hooks: registry).run([{ role: "user", content: "go" }],
-                                                  on_stream_event: ->(e) { events << e })
+        result = drop_kernel(services: described_class::Services.none(hooks: registry)).run([{ role: "user", content: "go" }],
+                                                                                            on_stream_event: ->(e) { events << e })
 
         expect(result.output).to eq("ok")
         expect(fired).to eq([[:before, 1], [:after, "ok"]])
@@ -1883,13 +1895,14 @@ Need to inspect the filesystem first.
 
       it "lists the available tools for a shell-like name when execute is not offered" do
         registry = Samagotchi::Tools::Builtins.default.entries.reject { |entry| entry.name == "execute" }
-        kernel.tools = Samagotchi::Tools::Registry.new.tap do |r|
+        tools = Samagotchi::Tools::Registry.new.tap do |r|
           registry.each do |entry|
             r.register(entry.name, schema: entry.schema, handler: entry.handler, label: entry.label,
                                         preview: entry.preview, targets: entry.targets, source: entry.source,
                                         layer: entry.layer)
           end
         end
+        attach_services(kernel, tools: tools)
 
         events = []
         allow(client).to receive(:complete).and_return(
