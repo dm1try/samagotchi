@@ -38,6 +38,9 @@ module Samagotchi
     ACTORS = (2..5)
     OPTIONS = (2..4)
     MAX_STRING = 300
+    # The deepest legal block nests 5 (root, steps, a step, cases, a case);
+    # past this it is refused before the stack can overflow.
+    MAX_DEPTH = 8
 
     module_function
 
@@ -48,25 +51,30 @@ module Samagotchi
       raise Refused, "the block is over #{MAX_SOURCE_BYTES / 1024} KB" if source.bytesize > MAX_SOURCE_BYTES
 
       tree, lenient = load(source)
-      raise Refused, "the block isn't a mapping (type: picks or walk first)" unless tree.is_a?(Hash)
+      raise Refused, "the block isn't a mapping (type: picks or walk first)" unless tree.root.is_a?(Hash)
 
-      type = tree["type"]
+      type = tree.root["type"]
       raise Refused, "the block needs type: picks or walk" if type.nil?
       raise Refused, "unknown type #{type.is_a?(String) ? type.inspect : "(not text)"} (picks or walk)" unless TYPES.include?(type)
 
-      data = type == "picks" ? Schema.picks(tree) : Schema.walk(tree)
+      data = type == "picks" ? Schema.picks(tree.root) : Schema.walk(tree.root)
       Result.new(type: type, data: data, lenient: lenient, error: nil)
     rescue Refused => e
       Result.new(type: TYPES.include?(type) ? type : nil, data: nil, lenient: lenient, error: e.message)
+    rescue SystemStackError
+      # MAX_DEPTH stops a deep block first; this is the backstop, since a stack
+      # overflow is no StandardError and would break every render of the text.
+      Result.new(type: nil, data: nil, lenient: lenient, error: "the block nests too deep")
     end
 
-    # [tree, lenient?]: strict first; only a block that isn't YAML gets the
+    # [Tree, lenient?]: strict first; only a block that isn't YAML gets the
     # lenient pass. A refused feature (an alias) is final either way.
     def load(source)
-      [Tree.plain(Psych.parse_stream(source)), false]
+      [Tree.new(Psych.parse_stream(source)), false]
     rescue Psych::Exception
       begin
-        [Tree.plain(Psych.parse_stream(Lenient.quote(source))), true]
+        quoted = Lenient.quote(source)
+        [Tree.new(Psych.parse_stream(quoted)), true]
       rescue Psych::SyntaxError => e
         raise Refused, "not YAML: #{e.problem} at line #{e.line}"
       rescue Psych::Exception => e
@@ -75,37 +83,40 @@ module Samagotchi
     end
 
     # Psych's node tree to Hashes, Arrays and Strings (nil for a plain empty
-    # or null value), the scalars' own text.
-    module Tree
+    # or null value), the scalars' own text, at most MAX_DEPTH deep.
+    class Tree
       NULLS = ["", "~", "null", "Null", "NULL"].freeze
 
-      module_function
+      attr_reader :root
 
-      def plain(stream)
+      def initialize(stream)
         documents = stream.children
         raise Refused, "the block is empty" if documents.empty?
         raise Refused, "one YAML document only" if documents.size > 1
 
-        node(documents.first.root)
+        @root = node(documents.first.root, 1)
       end
 
-      def node(node)
+      private
+
+      def node(node, depth)
+        raise Refused, "the block nests too deep" if depth > MAX_DEPTH
         raise Refused, "YAML aliases and anchors aren't allowed" if node.is_a?(Psych::Nodes::Alias) || node.anchor
         raise Refused, "YAML tags aren't allowed (#{node.tag})" if node.tag
 
         case node
-        when Psych::Nodes::Mapping then mapping(node)
-        when Psych::Nodes::Sequence then node.children.map { |child| node(child) }
+        when Psych::Nodes::Mapping then mapping(node, depth)
+        when Psych::Nodes::Sequence then node.children.map { |child| node(child, depth + 1) }
         else scalar(node)
         end
       end
 
-      def mapping(node)
+      def mapping(node, depth)
         node.children.each_slice(2).to_h do |key, value|
-          key = node(key)
+          key = node(key, depth + 1)
           raise Refused, "a key must be a plain word" unless key.is_a?(String)
 
-          [key, node(value)]
+          [key, node(value, depth + 1)]
         end
       end
 

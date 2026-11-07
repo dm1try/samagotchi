@@ -156,6 +156,15 @@ RSpec.describe Samagotchi::Web::MarkdownRenderer do
       expect(bad["data-widget"]).to be_nil
     end
 
+    it "marks a block that nests too deep as an error, in a thread, and renders the rest" do
+      markdown = "```chi-ui\ntype: picks\nrows: #{"[" * 1000}#{"]" * 1000}\n```\n\nafter\n"
+      html = Thread.new { renderer.render(markdown) }.value
+      fragment = Nokogiri::HTML5.fragment(html)
+
+      expect(fragment.at_css("pre")["data-widget-error"]).to eq("the block nests too deep")
+      expect(fragment.at_css("p").text).to eq("after")
+    end
+
     it "marks a block the lenient pass mended" do
       pre = pres("```chi-ui\n#{picks.sub("Drop the buffer?", "Asked: drop it?")}```\n").first
 

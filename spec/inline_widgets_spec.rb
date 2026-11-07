@@ -240,6 +240,19 @@ RSpec.describe Samagotchi::InlineWidgets do
       expect(parse("type: !!str picks\n").error).to start_with("YAML tags aren't allowed")
     end
 
+    it "refuses a block that nests too deep, in a thread's smaller stack too" do
+      deep = "type: picks\nrows: #{"[" * 1000}#{"]" * 1000}\n"
+
+      expect(Thread.new { parse(deep) }.value.error).to eq("the block nests too deep")
+      expect(parse("type: picks\nrows: #{"[" * 8}#{"]" * 8}\n").error).to eq("the block nests too deep")
+    end
+
+    it "falls back on a stack overflow it didn't see coming" do
+      allow(Samagotchi::InlineWidgets::Schema).to receive(:picks).and_raise(SystemStackError)
+
+      expect(parse(picks(row)).error).to eq("the block nests too deep")
+    end
+
     it "refuses a root that isn't a mapping, an unknown type, more than one document and an empty block" do
       expect(parse("- type: picks\n").error).to eq("the block isn't a mapping (type: picks or walk first)")
       expect(parse("just words\n").error).to eq("the block isn't a mapping (type: picks or walk first)")
