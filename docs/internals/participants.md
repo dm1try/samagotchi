@@ -469,7 +469,7 @@ fields: a field added to an event later reaches nobody until it is named there.
   its final assistant reply (`AnswerTail`: the turn's last assistant message with text) contains the quote. Matching is case-sensitive, collapses whitespace, and strips common
   Markdown presentation (links, headings, list/blockquote prefixes, emphasis and code delimiters) from both sides;
   this matches the rendered text the page selects without treating different casing as the same claim. The quote may
-  also be in the answer as the pages show it (`Engine#verify_quote_in?`, `ParticipantView::Redact.text`: the session's
+  also be in the answer as the pages show it (`Engine#verify_quote_in?`, `Redact.text`: the session's
   folder relative, home `~`, secret shapes `[redacted]`): a participant's page has only that text, and the owner's
   page quotes it the same way (`owner_claim.js` `opts()`, `normalizeClaim`; `spec/fixtures/redact_cases.json` keeps the two
   sides alike), so a claim naming a path is taken on both. A fresh child
@@ -555,7 +555,7 @@ fields: a field added to an event later reaches nobody until it is named there.
   paste, drop or pick with one line (the image button is hidden) until participant images land. The grip's floor and
   the fold are the owner page's keys (`chi_composer_floor`, `chi_composer_collapsed`), per browser. The owner's
   participant view mounts none: its dock stays hidden.
-- **Redaction** (`ParticipantView::Redact`, on every string that goes out): secret shapes (`sk-…`, `ghp_…`,
+- **Redaction** (`Samagotchi::Redact`, `lib/samagotchi/redact.rb`, on every string that goes out): secret shapes (`sk-…`, `ghp_…`,
   `github_pat_…`, `AKIA…`, `xox…-`, `chp_…`, `AIza…`, `rk_live_…`, JWTs, Slack webhooks, private key blocks, an
   `Authorization:` header's value, any `…token` / `…api_key` / `…secret` / `…password` value, `=` or `:`, quoted or
   not, and a URL's password), the owner's web token, the session's folder (shown as relative paths) and the home

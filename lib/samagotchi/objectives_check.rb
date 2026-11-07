@@ -11,6 +11,7 @@ require_relative "config"
 require_relative "context_note"
 require_relative "llm_context_stale"
 require_relative "log"
+require_relative "redact"
 require_relative "session"
 require_relative "steer"
 require_relative "verdict"
@@ -161,7 +162,7 @@ module Samagotchi
 
     # The chat request: the objective, the claim and the record, in a frame whose
     # tag no text in them could know, so tool output can't close it. Secrets
-    # chi's participant redaction knows (ParticipantView::Redact, by shape and
+    # chi's participant redaction knows (Redact, by shape and
     # by name, no model involved) don't leave: objectives.check_model may be
     # another host.
     # @param item [Objectives::Item]
@@ -176,8 +177,7 @@ module Samagotchi
     end
 
     def redacted(text)
-      require_relative "web/participant_view"
-      Web::ParticipantView::Redact.text(text, Web::ParticipantView::Viewer.new(cwd: nil))
+      Redact.text(text, Redact::Viewer.new(cwd: nil))
     end
     private_class_method :redacted
 
