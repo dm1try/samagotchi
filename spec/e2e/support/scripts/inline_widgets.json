@@ -1,0 +1,8 @@
+{
+  "delay": 0.01,
+  "iterations": [
+    {
+      "text": "Here is how it goes.\n\n```chi-ui\ntype: walk\ntitle: A tab reconnects\nactors: [user, web, worker]\nsteps:\n  - id: s1\n    actor: user\n    does: reopens the laptop\n    sees: '<img src=x onerror=\"window.pwned=1\">'\n  - id: s2\n    actor: worker\n    does: checks the event id\n    cases:\n      - when: the id is still buffered\n        goto: s3\n      - when: the id is too old\n        goto: s4\n  - id: s3\n    actor: worker\n    does: replays the missed events\n    next: s5\n  - id: s4\n    actor: web\n    does: reloads the session\n    behind: the stream sends reset\n  - id: s5\n    actor: user\n    sees: the page as it was\n```\n\nAnd what to do with the findings:\n\n```chi-ui\ntype: picks\ntitle: Findings\nrows:\n  - id: \"1\"\n    text: Bridge drops the replay buffer on reset\n    options: [fix now, skip, later]\n    recommended: fix now\n  - id: D4\n    text: Cache key\n    options: [A, B]\n    recommended: A\n```\n"
+    }
+  ]
+}

@@ -2352,6 +2352,57 @@ test("a block in a long streamed answer draws after the stage hands it to the hi
   await expect(page.locator("#history figure.block-drawn img")).toHaveCount(1);
 });
 
+// chi-ui blocks (inline_widgets.js) are core's: a walk and a picks draw in
+// the answer's shadow roots (Playwright's locators pierce open ones), live and
+// after a reload; a case click moves the step; Fill reply puts the picks after
+// the draft and sends nothing; the model's markup is text, and the widget's
+// words aren't the bubble's text. The variants are inline_widgets.test.js's.
+test("a chi-ui walk and picks draw in the answer; a case moves the step; Fill reply fills the composer and never sends", async ({ page, script }) => {
+  const check = async () => {
+    const output = page.locator("#history .bubble.output").last();
+    const pres = output.locator('pre[data-lang="chi-ui"]');
+    await expect(pres).toHaveCount(2);
+    await expect(output.locator("figure.block-drawn.widget")).toHaveCount(2);
+    for (const pre of await pres.all()) await expect(pre).toBeHidden();
+    const walk = output.locator(".w.walk");
+    await expect(walk.locator(".ww-cell")).toHaveCount(5);
+    await expect(walk.locator(".ww-sees")).toContainText('<img src=x onerror="window.pwned=1">');
+    expect(await walk.locator("img").count()).toBe(0);
+    await walk.getByRole("button", { name: "Next →" }).click();
+    await expect(walk.locator(".ww-does")).toHaveText("checks the event id");
+    await walk.locator(".ww-case", { hasText: "the id is too old" }).click();
+    await expect(walk.locator(".ww-does")).toHaveText("reloads the session");
+    await expect(walk.locator(".ww-behind")).toContainText("the stream sends reset");
+    await expect(walk.locator(".ww-trail")).toHaveText("path 1 → 2 → 4");
+    await expect(walk.locator(".ww-cell.cur")).toContainText("reloads the session");
+    // The widget's own words (its count, its button), not the YAML's.
+    await expect(walk.locator(".w-count")).toHaveText("step 4 of 5");
+    expect(await output.evaluate((el) => /step 4 of 5|Fill reply/.test(el.textContent))).toBe(false);
+    expect(await page.evaluate(() => window.pwned)).toBeUndefined();
+  };
+  script("inline_widgets");
+  await send(page, "How does it reconnect?");
+  await turnEnded(page, 1);
+  await check();
+  const turnPosts = [];
+  page.on("request", (req) => { if (req.method() === "POST" && /\/turn$/.test(req.url())) turnPosts.push(req.url()); });
+  const picks = page.locator("#history .bubble.output").last().locator(".w.picks");
+  await expect(picks.locator('.wp-opt[aria-pressed="true"]')).toHaveText(["fix nowrec", "Arec"]);
+  await picks.locator(".wp-opt", { hasText: "B" }).click();
+  await picks.getByRole("button", { name: "+ note" }).first().click();
+  await picks.getByRole("textbox", { name: "Note for 1" }).fill("today");
+  await page.locator("#prompt").fill("my draft");
+  await picks.getByRole("button", { name: "Fill reply" }).click();
+  await expect(page.locator("#prompt")).toHaveValue("my draft\n1: fix now (today) · D4: B");
+  await expect(page.locator("#prompt")).toBeFocused();
+  await expect(page.locator("#history .bubble.user")).toHaveCount(1);
+  expect(turnPosts).toEqual([]);
+  await page.locator("#prompt").fill("");
+  await page.reload();
+  await turnEnded(page, 1);
+  await check();
+});
+
 // The github-pr bundle's line links (its gh is support/fake_gh.sh): a
 // `path:line` in the answer links to that line of the PR the prompt names,
 // the Files changed anchor inside a hunk, the file at the PR's head outside.
