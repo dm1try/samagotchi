@@ -478,7 +478,6 @@ Samagotchi/SilentRescue:
     - lib/samagotchi/bootstrap_command.rb
     - lib/samagotchi/bootstrap/config_writer.rb
     - lib/samagotchi/bootstrap/probe.rb
-    - lib/samagotchi/bridge_client.rb
     - lib/samagotchi/bridge_client/event_stream.rb
     - lib/samagotchi/bridge_client/stream_request.rb
     - lib/samagotchi/bridge/card_store.rb

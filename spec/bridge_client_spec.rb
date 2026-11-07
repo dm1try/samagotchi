@@ -314,6 +314,15 @@ RSpec.describe Samagotchi::BridgeClient do
     expect(finish.call).to start_with("GET /session/s1/state HTTP/1.1\r\n")
   end
 
+  it "a /state it can't read the cursor from: nil, logged" do
+    allow(Samagotchi::Log).to receive(:warn)
+    port, finish = serve_once(json_reply("200 OK", '["not", "a", "snapshot"]'))
+
+    expect(described_class.new(session_id: "s1", port: port, secret: nil).event_seq).to be_nil
+    finish.call
+    expect(Samagotchi::Log).to have_received(:warn).with(:bridge, "event_seq_unreadable", hash_including(error: "TypeError"))
+  end
+
   it "streams raw SSE bytes, forwarding the reconnect cursor" do
     port, finish = serve_once("HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\n\r\nid: 8\r\ndata: {}\r\n\r\n")
     chunks = []
