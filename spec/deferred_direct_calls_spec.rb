@@ -8,7 +8,7 @@ require "samagotchi/tools/builtins"
 require "samagotchi/tools/builtin_calls"
 require "samagotchi/tools/tool_index"
 require "samagotchi/toolkit"
-require "samagotchi/tools/deferred_tools"
+require "samagotchi/tools/tool_surface"
 require "samagotchi/plugin/tool_spec"
 require "support/test_kernel"
 
@@ -133,7 +133,7 @@ RSpec.describe "direct calls of deferred tools" do
     it "goes out deferred by its name, and runs by it through the gate as itself (not call_tool)" do
       loads_tools!
       rules({ "id" => "ask-ws", "tool" => "web_search", "verdict" => "ask", "reason" => "off-machine" })
-      deferred = Samagotchi::Tools::DeferredTools.list(registry, [])
+      deferred = Samagotchi::Tools::ToolSurface.for(registry).deferred_for([])
       expect(deferred.map(&:name)).to include("web_search")
       expect(deferred.find { |tool| tool.name == "web_search" }.description).to eq("Search the web.")
       expect(index.deferred_name("chi/web_search")).to eq("web_search")
@@ -148,7 +148,7 @@ RSpec.describe "direct calls of deferred tools" do
 
     it "is declared, not deferred, on full; refused with the call_tool route when the host doesn't load tools" do
       registry.toolkit = nil
-      expect(Samagotchi::Tools::DeferredTools.list(registry, []).map(&:name)).not_to include("web_search")
+      expect(Samagotchi::Tools::ToolSurface.for(registry).deferred_for([]).map(&:name)).not_to include("web_search")
       expect(registry.names).to include("web_search")
 
       registry.toolkit = Samagotchi::Toolkit.new(name: "lean").resolve(Samagotchi::Toolkit.kits)
@@ -179,7 +179,7 @@ RSpec.describe "direct calls of deferred tools" do
                                   "call one as <group>/<tool>")
       expect(seen.first).to include(name: "call_tool")
       expect(ran).to eq([])
-      deferred = Samagotchi::Tools::DeferredTools.list(registry, [])
+      deferred = Samagotchi::Tools::ToolSurface.for(registry).deferred_for([])
       expect(deferred.map(&:name).count("mcp_fs_read_file")).to eq(1)
       expect(deferred.find { |tool| tool.name == "mcp_fs_read_file" }.description).to eq("The plugin's own.")
       expect(index.deferrable.map(&:acts_as)).not_to include("mcp_fs_read_file")

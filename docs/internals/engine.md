@@ -285,9 +285,10 @@ ChatLoop#complete(messages:, max_iterations:, on_stream_event:, cancel_controlle
 
 The differences from the native loop:
 
-- The tools go in each request's `tools` field (`tool_definitions(conversation, model:)`), not in the system prompt.
+- The tools go in each request's `tools` field (`tool_definitions(conversation, model:)`, the turn's
+  `ToolSurface#schemas`), not in the system prompt.
   On an adapter that loads tools (`#loads_tools?`: `AnthropicMessages`), the tools the session reaches but doesn't
-  declare follow, `defer_loading: true` (`Tools::DeferredTools`; anthropic.md, "Deferred tools"); the Run keeps the
+  declare follow, `defer_loading: true` (`ToolSurface#deferred_for`; anthropic.md, "Deferred tools"); the Run keeps the
   last request's deferred names and logs a call of one (`tool_direct_deferred`).
 - The conversation is converted to the OpenAI wire format (`wire_messages`), for every chat host;
   `AnthropicMessages` translates that again into Messages' `system` and content blocks (`LLM::AnthropicWire`).
@@ -342,11 +343,11 @@ One iteration with tool calls:
           → first, the call's entry unwraps it (Registry::Entry#unwrap: a call_tool of chi/<name>, a built-in or
             a plugin tool, becomes that tool's call with via: "call_tool", ToolIndex#unwrap); the rest sees the
             real call
-          → a tool the session's toolkit leaves out (Registry#left_out; with via:, one Registry#indexed doesn't
-            reach) skips the gate: no hooks, no card; KernelLoop#dispatch answers it (the call_tool route for a
-            reachable tool, the not-loaded error for a removed one). Under TurnSettings#loads_tools a reachable
+          → a tool the session's toolkit leaves out (ToolSurface#left_out; with via:, one the surface's index_only
+            doesn't hold) skips the gate: no hooks, no card; KernelLoop#dispatch answers it (the call_tool route for a
+            reachable tool, the not-loaded error for a removed one). Under the surface's loads_tools a reachable
             built-in or plugin tool called by its own name is no such call: it runs through the gate, and KernelLoop#dispatch
-            takes it (#loaded_entry)
+            takes it (ToolSurface#entry_for)
           → Guardrails::Gate#evaluate(call, context:) (the before_tool_call hooks, then the core checks)
           → :tool_call_started
           → an ask verdict: Gate#settle_ask(verdict, context:) (asks the user, records waited_ms)
@@ -387,8 +388,9 @@ participant's author and mode; the kernel gives it only what lives as long as th
   row's title (`refs.js bindRowRefs`, from `turn_block.js` live and on a reload): the first ref on it, the rest in its
   menu.
 - Settles an ask verdict after `:tool_call_started`, so a UI shows the tool line and then the approval.
-- Dispatches through `KernelLoop#dispatch_tool_call`, or writes the denial text. Unknown tools are answered in
-  `KernelLoop#dispatch` ("Error: no such tool ...", never repeating the wrong name).
+- Dispatches through `KernelLoop#dispatch_tool_call`, or writes the denial text. `KernelLoop#dispatch` runs the call
+  on the entry `ToolSurface#entry_for` gives; one without an entry gets `ToolSurface#unknown_tool_error` ("Error: no
+  such tool ...", never repeating the wrong name).
 - For edit and write: diffs the file before and after, and refreshes a memory's index line
   (`MemoryBundle::IndexSync`).
 - Attaches returned images, at most `MAX_IMAGES_PER_RESULT` (4) per result.
@@ -419,6 +421,23 @@ participant's author and mode; the kernel gives it only what lives as long as th
 
 A denied call gets denial text in place of its output; the rest of the batch still runs. After a hook's
 `stop_turn`, the gate denies every remaining call of the batch.
+
+**ToolSurface** (`lib/samagotchi/tools/tool_surface.rb`, `Tools::ToolSurface`): the turn's tools as one frozen
+value, built once in `Engine#generate` (`ToolSurface.for(registry, layers:, loads_tools:)`, the settings' LLM context
+layers and the host's `loads_tools` known there) into `TurnContext#surface`. The Registry is its only input. It
+holds `declared` (the entries the request declares, in prompt order), `index_only` (left out, reached by
+`call_tool`), `left_out` (`{name => :indexed | :user_only}`), `registered`, `toolkit`, `reaching_kit`, `index`,
+`layers` and `loads_tools`, and answers `entry_for(call)` (a `via:` call only from `index_only`; a direct one from
+`declared`, or `index_only` under `loads_tools`), `unknown_tool_error(name, via:)`, `schemas` and
+`deferred_for(conversation)` (`Tools::DeferredTools.list` over the surface; the index's source tools are asked per
+request, so a late MCP server joins mid-turn as before). Its readers: `KernelLoop#dispatch`,
+`ChatLoop#tool_definitions` / `#deferred_tools` (whether to append the deferred ones is still the adapter's
+`#loads_tools?`, asked per request: a refusal turns it off mid-turn) and `ToolRunner`'s unwrap, wrap, left-out and
+group-refusal checks. A change while the turn runs (`/toolkit`, a staged `chi.replace_tools`, even a direct
+`Registry#register`) shapes the next turn's surface only. A context without one (a bare kernel or loop, a spec)
+computes one on read (`ToolSurface.of(context, registry)`); nothing caches or invalidates it. The system prompt still
+reads the Registry under the same layers in `turn_messages` (spec/engine_tool_surface_spec.rb checks it declares
+generate's surface).
 
 ## State management
 
@@ -540,7 +559,8 @@ end
   `LLM::TurnSettings` the requests send), `model_key`/`fallback_model_key` (memory overlays) and `model_name` (the
   gate's rules' `models:`) are nil until `generate` sets them, after the `before_turn` hook that may switch the
   model (`turn.prepared_settings`, computed before the hooks, give vision, sampling and thinking: a hook's switch
-  gets the old model's, as before). `surface` is reserved for the turn's ToolSurface (arch P3.4).
+  gets the old model's, as before). `surface` (the turn's `Tools::ToolSurface`, see "Shared: ToolResponse and
+  ToolRunner") is nil until `generate` builds it with the settings.
 - The live bits are objects it holds, not copies: `session` (its working-set pins are read at call time),
   `controller` (cancel state), `git` (`Guardrails::GitInfo`, the per-turn git cache).
 - Down the tool path it is an argument: `ModelBackend#complete(context:)` → `KernelLoop#run(context:)` (the run's

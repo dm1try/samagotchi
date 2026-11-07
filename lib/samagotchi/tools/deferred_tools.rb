@@ -10,7 +10,7 @@ module Samagotchi
     # session reaches but doesn't declare, so a find_tools hit can load it
     # and the model calls it by its own name. In order:
     # 1. the chi tools (built-ins and plugin tools) the toolkit leaves out
-    #    but doesn't remove (Registry#reachable_names), in registry order;
+    #    but doesn't remove (ToolSurface#index_only), in registry order;
     # 2. the tool index's source tools (an MCP server's, by acts_as), only
     #    while call_tool is declared (ToolIndex#deferrable: sorted by name);
     # 3. every other name the conversation loaded (a find result's
@@ -28,18 +28,17 @@ module Samagotchi
 
       module_function
 
-      # @param registry [Registry]
+      # @param surface [ToolSurface] the turn's (ToolSurface#deferred_for)
       # @param conversation [Array<Hash>, nil] the request's (engine format)
-      # @param layers [Array<Symbol>] the turn's LLM context layers
       # @return [Array<Deferred>]
-      def list(registry, conversation, layers: [])
-        deferred = builtins(registry, layers) + sourced(registry, layers)
+      def list(surface, conversation)
+        deferred = builtins(surface) + sourced(surface)
         taken = deferred.map(&:name)
         loaded_names(conversation).each do |name|
-          next if taken.include?(name) || registry.offered(name, layers: layers)
+          next if taken.include?(name) || surface.declared_entry(name)
 
           taken << name
-          deferred << Deferred.new(name: name, description: stub_description(registry, name), schema: STUB_SCHEMA)
+          deferred << Deferred.new(name: name, description: stub_description(surface, name), schema: STUB_SCHEMA)
         end
         deferred
       end
@@ -56,30 +55,27 @@ module Samagotchi
         end.uniq
       end
 
-      def builtins(registry, layers)
-        return [] unless registry.respond_to?(:reachable_names)
-
-        registry.reachable_names(layers: layers).map do |name|
-          schema = ToolDeclarations.chat_schemas([registry[name].schema]).first
-          Deferred.new(name: name, description: schema[:description].to_s, schema: schema[:parameters])
+      def builtins(surface)
+        surface.index_only.map do |entry|
+          schema = ToolDeclarations.chat_schemas([entry.schema]).first
+          Deferred.new(name: entry.name, description: schema[:description].to_s, schema: schema[:parameters])
         end
       end
 
-      def sourced(registry, layers)
-        index = registry.respond_to?(:index) ? registry.index : nil
-        return [] unless index&.deferrable && registry.offered(index.call_name, layers: layers)
+      def sourced(surface)
+        index = surface.index
+        return [] unless index&.deferrable && surface.declared_entry(index.call_name)
 
         index.deferrable.call.map do |tool|
           Deferred.new(name: tool.acts_as, description: tool.description, schema: tool.schema)
         end
       end
 
-      def stub_description(registry, name)
-        index = registry.respond_to?(:index) ? registry.index : nil
-        tool = index&.unreached_tool(name)
+      def stub_description(surface, name)
+        tool = surface.index&.unreached_tool(name)
         return STUB_DESCRIPTION unless tool
 
-        ToolIndex::ToolkitGroupRefusal.for(tool, registry).stub_description
+        ToolIndex::ToolkitGroupRefusal.for(tool, surface).stub_description
       end
 
       private_class_method :builtins, :sourced, :stub_description

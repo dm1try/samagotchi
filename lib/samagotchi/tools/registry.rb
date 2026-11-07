@@ -8,8 +8,9 @@ module Samagotchi
     # finished its init first or re-registered a changed tool, so the
     # tool list (part of the prompt's cached prefix) is the same in every
     # session with the same tools. The
-    # native prompts and the chat path's tools: are rendered from #schemas,
-    # and KernelLoop#dispatch runs a call through its entry's handler.
+    # native prompts are rendered from #entries; a turn's loops read the
+    # Tools::ToolSurface built from it (the chat path's tools:, and the
+    # entry whose handler KernelLoop#dispatch runs).
     class Registry
       # @!attribute name [String]
       # @!attribute schema [Hash] {name:, description:, parameters:}, as in

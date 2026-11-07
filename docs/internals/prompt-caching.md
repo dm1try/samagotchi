@@ -73,9 +73,11 @@ right-hand column happens.
 - The tools layer is shared **per toolkit** (configuration.md, "Toolkits"): sessions on the same toolkit share it,
   and a chain's links keep theirs. A session's toolkit is saved when it is created and never resolved again from
   config. A change (`/toolkit`, `ctx.use_toolkit`) is applied only at a turn's start (`Engine#apply_toolkit!`,
-  beside `apply_staged_tools!`, then `reset!`): the chat loop builds `tools:` per request, so a mid-turn change
-  would differ from the turn's prompt. Under `full` nothing is filtered and no line is added: the bytes are what
-  they were before toolkits.
+  beside `apply_staged_tools!`, then `reset!`): the chat loop builds `tools:` per request from the turn's
+  `Tools::ToolSurface` (built once in `Engine#generate` from the Registry, under the layers the turn's prompt was
+  built with), so its requests declare what the turn's prompt does, and a mid-turn change shapes only the next
+  turn's surface. Under `full` nothing is filtered and no line is added: the bytes are what they were before
+  toolkits.
 - A toolkit suggestion (`toolkit.suggest.mode: on`) is set before `apply_toolkit!` of the turn it was asked on
   (`TurnStages::ToolkitSuggestion#settle` → `ToolkitBinding#suggest`), and no request goes out before that, so on a
   session's first turn it costs nothing. Its **deferred switch** (a later prompt after `undecided`, within

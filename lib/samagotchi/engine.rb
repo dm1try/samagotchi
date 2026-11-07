@@ -30,6 +30,7 @@ require_relative "kernel_loop"
 require_relative "tools/builtins"
 require_relative "tools/task_runtime"
 require_relative "tools/tool_index"
+require_relative "tools/tool_surface"
 require_relative "peer_sources"
 require_relative "session_commands"
 require_relative "plugin/loader"
@@ -1166,9 +1167,15 @@ module Samagotchi
       settings = turn.prepared_settings.with(model_name: bare_for_backend, window_setting: model.window_setting,
                                              llm_context: explained&.resolved, price: model.price,
                                              loads_tools: loads_tools)
+      # The turn's tools (Tools::ToolSurface), built once from the Registry
+      # under those settings' layers and loads_tools: what the loops declare,
+      # defer and dispatch until the turn ends; a change meanwhile (a
+      # /toolkit change, a staged chi.replace_tools) is the next turn's.
+      surface = Tools::ToolSurface.for(@tools, layers: settings.llm_context&.active_layers || [],
+                                               loads_tools: loads_tools)
       turn.context = turn.context.with(settings: settings, model_key: @model_binding.model_key,
                                        fallback_model_key: @model_binding.fallback_model_key,
-                                       model_name: guardrail_model_name)
+                                       model_name: guardrail_model_name, surface: surface)
       @turn_state.replace_context(turn.context)
       log_llm_context(explained)
 

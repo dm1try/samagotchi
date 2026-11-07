@@ -14,6 +14,7 @@ require_relative "tool_output_cut"
 require_relative "tool_output_files"
 require_relative "tools/output_guardrails"
 require_relative "tools/tool_path"
+require_relative "tools/tool_surface"
 require_relative "tools/memory"
 require_relative "config"
 require_relative "memory_bundle/index_sync"
@@ -54,8 +55,8 @@ module Samagotchi
     private_constant :NOT_AN_EDIT
 
     # What a call needs of its turn comes with it: #run's +context:+ (a
-    # TurnContext: the session's folders, the settings' vision, layers and
-    # loads_tools, the participant's mode), passed on to the gate and the
+    # TurnContext: the session's folders, the settings' vision, its
+    # ToolSurface, the participant's mode), passed on to the gate and the
     # kernel's dispatch.
     #
     # @param kernel [KernelLoop] its services (KernelLoop::Services: hooks,
@@ -406,6 +407,10 @@ module Samagotchi
     # The kernel's tools, for the activity line of a tool that isn't built in.
     def tools = @kernel.tools
 
+    # The turn's Tools::ToolSurface (+context+'s), else one computed now
+    # from the kernel's tools (a runner outside an Engine turn).
+    def surface(context) = Tools::ToolSurface.of(context, tools)
+
     # The call its tool's entry unwraps it to (call_tool on a built-in),
     # else the call as it is. On a host that loads tools, a direct call of
     # a source's tool by its acts_as runs as the call_tool call first
@@ -413,12 +418,11 @@ module Samagotchi
     # that fails runs as it is: call_tool then refuses a built-in (fail
     # closed).
     def unwrapped(call, context)
-      registry = tools
-      return call unless registry.respond_to?(:offered) && !call[:name].nil?
+      return call if tools.nil? || call[:name].nil?
 
-      layers = context.llm_context_layers
-      call = wrapped(registry, call, context)
-      registry.offered(call[:name], layers: layers)&.unwrap&.call(call, layers) || call
+      surface = surface(context)
+      call = wrapped(surface, call)
+      surface.declared_entry(call[:name])&.unwrap&.call(call, surface.layers) || call
     rescue StandardError => e
       Log.warn(:turn, "tool_unwrap_failed", tool: call[:name].to_s, error: "#{e.class}: #{e.message}")
       call
@@ -426,9 +430,9 @@ module Samagotchi
 
     # +call+ as the call_tool call it runs as when it names a deferred
     # source tool, on a host that loads tools; else as it is.
-    def wrapped(registry, call, context)
-      wrap = registry.respond_to?(:index) ? registry.index&.wrap : nil
-      return call unless wrap && loads_tools?(context) && !registry.key?(call[:name])
+    def wrapped(surface, call)
+      wrap = surface.index&.wrap
+      return call unless wrap && surface.loads_tools && !surface.registered?(call[:name])
 
       wrap.call(call) || call
     end
@@ -439,23 +443,23 @@ module Samagotchi
     # a host that loads tools, a built-in the toolkit reaches runs by its
     # own name (KernelLoop#dispatch takes it too).
     def left_out?(call, context)
-      registry = tools
-      return false unless registry.respond_to?(:left_out) && !call[:name].nil?
+      return false if tools.nil? || call[:name].nil?
 
-      layers = context.llm_context_layers
-      return registry.indexed(call[:name], layers: layers).nil? if call[:via]
-      return false if loads_tools?(context) && registry.indexed(call[:name], layers: layers)
+      surface = surface(context)
+      return surface.indexed_entry(call[:name]).nil? if call[:via]
+      return false if surface.loads_tools && surface.indexed_entry(call[:name])
 
-      !registry.left_out(call[:name], layers: layers).nil?
+      surface.left_out?(call[:name])
     end
 
     def unreached_group_refusal(call, context)
       # A review turn's boundary denies it first (and words why); a pair
       # turn gets the owner's refusal.
       return if context.participant? && context.participant_mode != ParticipantMode::PAIR
+      return if tools.nil?
 
-      registry = tools
-      index = registry&.index if registry.respond_to?(:index)
+      surface = surface(context)
+      index = surface.index
       return unless index.respond_to?(:unreached_tool)
 
       name = if call[:name] == index.call_name
@@ -465,11 +469,8 @@ module Samagotchi
                call[:name]
              end
       tool = index.unreached_tool(name)
-      tool && Tools::ToolIndex::ToolkitGroupRefusal.for(tool, registry)
+      tool && Tools::ToolIndex::ToolkitGroupRefusal.for(tool, surface)
     end
-
-    # Whether the turn's host loads tools (TurnSettings#loads_tools).
-    def loads_tools?(context) = context.settings&.loads_tools == true
 
     # A tool the registry has from a plugin (not core, not unknown).
     def plugin_tool?(name)
