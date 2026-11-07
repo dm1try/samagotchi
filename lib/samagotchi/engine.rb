@@ -126,6 +126,8 @@ require_relative "engine/verify"
 require_relative "engine/questions"
 require_relative "engine/toolkit"
 require_relative "engine/context_judge"
+require_relative "engine/turn_helpers"
+require_relative "engine/turn_end"
 
 module Samagotchi
   # Engine owns the core agent logic: system prompt construction, tool
@@ -160,6 +162,8 @@ module Samagotchi
     include QuestionsPart
     include ToolkitPart
     include ContextJudgePart
+    include TurnHelpersPart
+    include TurnEndPart
 
     # Raised by #answer_question when the question it targets is no longer
     # open (never asked, superseded, already answered or cancelled). A subclass
@@ -691,27 +695,6 @@ module Samagotchi
     # What a participant turn's stop is attributed to (HookRoutes#stop_turn).
     PARTICIPANTS_HOOK = "participants"
 
-    # How the turn ended, on the session (Session#last_turn): the caller's
-    # save puts it in the file the session hub watches. Public for the
-    # Worker's turn that failed before it began (no #end_turn ran).
-    # @param limit [Integer, nil] the turn ran out of iterations at this
-    #   limit: "exhausted" => true, "limit" => N, so a wait with nobody to
-    #   answer the continue offer says so (ReplyWait, ParentReport "limit")
-    # @param origin [TurnOrigin] the turn's (TurnOrigin::NONE for no sender)
-    # @param event [Hash] the turn's end event (#stop_facts)
-    def record_last_turn(session, outcome, seconds, origin, event, limit: nil)
-      enqueued_id = origin.enqueued_id
-      session.last_turn = LastTurn.new(outcome: outcome, ended_at: Time.now.iso8601(3), seconds: seconds.round(1),
-                                       origin: origin.source, exhausted: limit ? true : nil, limit: limit,
-                                       enqueued_id: enqueued_id.to_s.empty? ? nil : enqueued_id.to_s,
-                                       author: origin.participant_author,
-                                       **stop_facts(event))
-    end
-
-    # Why a turn stopped (TurnEndings#stop_facts).
-    def stop_facts(event) = @turn_endings.stop_facts(event)
-    private :stop_facts
-
     # How every turn ends (completed, canceled, failed): the session gets
     # what the turn kept, goes idle and records the ending, and the end
     # event is announced, as one step of the event log (a snapshot taken
@@ -750,47 +733,6 @@ module Samagotchi
       @metrics.persist(state_dir: session_state_dir)
     end
     private :end_turn
-
-    def save_quietly(session)
-      session.save(state_dir: session_state_dir)
-    rescue StandardError => e
-      Log.warn(:turn, "turn_end_save_failed", error: e.class.name, msg: e.message.to_s[0, 200])
-      nil
-    end
-    private :save_quietly
-
-    # Keep what the after_turn hooks presented as the answer's `display`
-    # and the refs they attached as its `display_refs` (AnswerRefs, one
-    # replace for both), and tell the observers (:answer_display, the
-    # display or nil, and how many refs), after the turn_completed they
-    # already had: the web re-reads the answer then. A turn_completed
-    # with display_pending (after_turn hooks were about to run) always gets
-    # one, `display: nil` when nothing was presented, so the web holds the
-    # answer's pop until then and never swaps it after. Terminals are not
-    # sinks of it; they printed the answer already. The session is saved by
-    # the caller, as after every turn.
-    def store_answer_display(session, display, refs, pending: false)
-      synchronize_events do
-        # A plugin that kept event[:refs] and calls it later gets nil: the
-        # list is stored now (and the turn is over on every path).
-        refs.close!
-        messages = Array(session.messages)
-        changed = display.changed? && messages.last.equal?(display.target)
-        added = refs.added? && messages.last.equal?(refs.target)
-        if changed || added
-          merged = messages.last.dup
-          merged[AnswerDisplay::KEY] = display.text if changed
-          merged[AnswerRefs::KEY] = refs.to_a if added
-          replace_session_messages(session, messages[0...-1] + [merged])
-          event = { type: :answer_display, display: changed ? display.text : nil }
-          event[:refs] = refs.count if added
-          @session_observer.notify(event)
-        elsif pending
-          @session_observer.notify({ type: :answer_display, display: nil })
-        end
-      end
-    end
-    private :store_answer_display
 
     # What a notice may stand in for (hook_notify's fallback_for:).
     NOTICE_FALLBACKS = HookRoutes::NOTICE_FALLBACKS
@@ -1118,90 +1060,6 @@ module Samagotchi
     end
     private :prepare_turn
 
-    # A turn stopped before the model was asked (#prepare_turn returned
-    # false): canceled with nothing kept, like a Ctrl-C there; the result
-    # has no conversation, so a UI's checkpoint stands.
-    def stopped_before_model(turn)
-      reason = turn.controller.reason
-      end_turn(turn, "canceled") do |seconds|
-        [nil, { type: :turn_canceled, cancellation_reason: reason, cancelled_by: cancelled_by(turn),
-                duration_ms: (seconds * 1000).round }]
-      end
-      LLM::ModelResult.new(text: "", canceled: true, cancellation_reason: reason)
-    end
-    private :stopped_before_model
-
-    # Who stopped a turn a hook stopped or cut (the controller's detail: the
-    # bundle, or the hook's label), for the UIs' "stopped by loop-guard";
-    # nil for any other cancel.
-    def cancelled_by(turn) = turn.controller.stopped_by
-    private :cancelled_by
-
-    # The turn's settings for the kernel (LLM::TurnSettings): vision,
-    # sampling and thinking, the thinking resolved before the hooks run.
-    # The model name is added in #generate, after the hooks that may switch
-    # the model.
-    # One resolve for all of them: nothing runs between them that could
-    # change what a resolve gives.
-    def turn_settings(session)
-      model = effective_model
-      vision = turn_vision(session, model)
-      sampling = model.sampling
-      level = @model_settings.thinking_level(model)
-      @thinking_notices.turn_started(level, model.target)
-      LLM::TurnSettings.new(vision: vision, sampling: sampling, thinking: level,
-                            reasoning_history: @model_settings.reasoning_history_level(model), model_name: nil,
-                            window_setting: nil, llm_context: nil, price: nil)
-    end
-    private :turn_settings
-
-    # @return [PromptWarmup] the turn-end warm-up (specs, measurements)
-    attr_reader :prompt_warmup
-
-    # A caller's check that the next turn starts at once (input queued for
-    # it: a worker's inbox) or that none follows (a one-shot run): no
-    # warm-up then. nil: neither.
-    attr_accessor :next_turn_waiting
-
-    # After a completed turn, prefill the next turn's prompt up to its user
-    # message while the user reads (PromptWarmup, cache.warmup). Only on a
-    # local llama.cpp host on the native loop, and not when the next turn's
-    # start differs anyway or starts at once: a reminder due, a continue
-    # offer (the turn ran out of steps), a carried steer or queued input.
-    # Never fails the turn.
-    def warm_up_next_turn(turn, result)
-      return if result.canceled? || result.resumable?
-
-      model = effective_model
-      client = model.client
-      return unless warmup_target?(model, client)
-      return if reminders_due? || @turn_state.carried_steers? || @next_turn_waiting&.call
-
-      messages = ContextNote.with_system_head(turn.session.messages.dup, { role: "system", content: system_prompt(model) })
-      # Under the next turn's strategy (a /model switch may have changed it);
-      # the last turn's when it can't be resolved.
-      prompt, images = @kernel.warmup_prompt(messages, llm_context: @model_settings.turn_llm_context || @kernel.turn_settings&.llm_context)
-      return unless prompt
-
-      started = @prompt_warmup.start(client: client, prompt: prompt, model: @kernel.turn_settings.model_name,
-                                     slot: @kernel.last_slot, images: images)
-      @kernel.warmed_up! if started
-    rescue StandardError => e
-      Log.warn(:model, "warmup_skipped", error: e.class.name, msg: e.message.to_s[0, 200])
-    end
-    private :warm_up_next_turn
-
-    # Never a paid or remote host (cache.warmup auto means local only), nor
-    # the chat loop (Splash keeps its own cache; llama.cpp's chat path is
-    # not measured), nor a client that can't warm up (a spec's stub).
-    def warmup_target?(model, client)
-      return false if model.chat? || model.entry.remote?
-      return false unless client.respond_to?(:warm_up)
-
-      PromptWarmup.enabled?
-    end
-    private :warmup_target?
-
     # The messages the turn sends: the history under the system head, due
     # reminders, the prompt. turn.messages is set first and grown in place,
     # so a Ctrl-C or a failure meanwhile keeps what is there.
@@ -1282,176 +1140,6 @@ module Samagotchi
       result
     end
     private :generate
-
-    # The ref (host:model, as asked) a turn's generations ran on: the model
-    # #generate resolved, after the before_turn hooks (which may switch it).
-    # SessionMetrics keys its per-model segments on it. nil when it can't be
-    # named (the turn's record then has none).
-    def generation_model_ref(model)
-      model.ref
-    rescue StandardError => e
-      Log.warn(:turn, "model_ref_failed", error: e.class.name, msg: e.message.to_s[0, 200])
-      nil
-    end
-    private :generation_model_ref
-
-    # A step-limit Continue's resume_from, when it is inside the messages the
-    # run gets (a wrong one only drops reasoning: it is ignored, logged).
-    # Entries before it never move between the turns (#turn_messages adds
-    # at the tail, and the system head is replaced in place).
-    def resumed_run_start(turn, run_start)
-      start = turn.resume_from
-      return nil if start.nil?
-      return start if start.is_a?(Integer) && start.between?(0, run_start)
-
-      Log.warn(:turn, "resume_start_invalid", resume_from: start, length: run_start)
-      nil
-    end
-    private :resumed_run_start
-
-    # The turn's LLM context strategy and where it came from, in the turn
-    # log: when it runs a layer, or the session set it (none too).
-    def log_llm_context(explained)
-      return unless explained
-      return if explained.resolved.active_layers.empty? && explained.strategy.source != :session
-
-      summary = explained.summary
-      Log.info(:turn, "llm_context", **summary.slice(:strategy, :strategy_source, :apply, :apply_source, :budget_tokens,
-                                                     :budget_source).compact)
-    end
-    private :log_llm_context
-
-    def publish_used_memories(session, on_event)
-      # Persist deduped used memories onto the session for Web + reload.
-      begin
-        session.used_memory_names = used_memory_names
-      rescue StandardError => e
-        Log.warn(:memory, "used_memories_store_failed", error: e.class.name, msg: e.message.to_s[0, 200])
-      end
-      # Notify live observers of the updated memory list (so yellow bar refreshes
-      # even without a tool_call event if the preload was the only addition).
-      # Only emit when there is something to report to avoid noisy event_count drift.
-      return unless used_memory_names.any?
-
-      begin
-        emit_event(on_event, { type: :used_memories_updated, used_memory_names: used_memory_names })
-      rescue StandardError => e
-        Log.warn(:memory, "used_memories_emit_failed", error: e.class.name, msg: e.message.to_s[0, 200])
-      end
-    end
-    private :publish_used_memories
-
-    # The normal ending (an answer, an empty answer, a Stop, the iteration
-    # limit), then the after-turn hooks.
-    def complete_turn(turn, result)
-      canceled = result.canceled?
-      # after_turn hooks run below and may present the answer (the web
-      # holds its pop until it knows).
-      display_pending = !canceled && @hooks.any?(:after_turn)
-      end_turn(turn, canceled ? "canceled" : "completed", exhausted: !canceled && result.exhausted?) do |seconds|
-        kept = kept_messages(turn, result, seconds)
-        if canceled
-          [kept, { type: :turn_canceled, cancellation_reason: result.cancellation_reason, cancelled_by: cancelled_by(turn),
-                   duration_ms: (seconds * 1000).round }]
-        else
-          # For a client that attaches later (session_state_snapshot).
-          @last_context_status = result.context_status.dup if result.context_status
-          [kept, { type: :turn_completed, result: result, turn_summary: turn_summary(result),
-                   display_pending: display_pending }]
-        end
-      end
-
-      # Fire :after_turn hook (an answer or a Stop; an Interrupt or a failure
-      # ends the turn in #run_turn without it), with a read-only
-      # copy of the conversation the turn stored, event[:answer] (the answer's
-      # text: the native loop's stored message still holds its thought),
-      # event[:present] for
-      # a display version of the answer (AnswerDisplay) and event[:refs]
-      # for refs on it (AnswerRefs).
-      session = turn.session
-      audit_objectives_outgoing(turn, result) unless canceled || result.exhausted?
-      display = AnswerDisplay.new(session.messages)
-      refs = AnswerRefs.new(session.messages, cwd: session.working_directory)
-      after_turn = { type: :after_turn, status: canceled ? "canceled" : "completed",
-                     messages: hook_messages(session.messages),
-                     answer: (result.text unless canceled || result.exhausted?) }
-      after_turn[:present] = display.presenter(after_turn)
-      after_turn[:refs] = refs.adder(after_turn)
-      @hooks.fire(:after_turn, after_turn)
-      store_answer_display(session, display, refs, pending: display_pending)
-
-      # Fire :session_end after the turn (turn-level lifecycle), as :after_turn
-      @hooks.fire(:session_end, { type: :session_end, session_id: session.id })
-    end
-    private :complete_turn
-
-    # What each turn ending keeps and announces is TurnEndings'
-    # (#build_turn_endings); these forward to it.
-    def kept_messages(turn, result, seconds) = @turn_endings.kept_messages(turn, result, seconds)
-    private :kept_messages
-    def ctrl_c_messages(turn, interrupt, seconds) = @turn_endings.ctrl_c_messages(turn, interrupt, seconds)
-    private :ctrl_c_messages
-    def loop_conversation(error) = @turn_endings.loop_conversation(error)
-    private :loop_conversation
-    def failed_messages(turn, error) = @turn_endings.failed_messages(turn, error)
-    private :failed_messages
-    def failed_event(error, seconds) = @turn_endings.failed_event(error, seconds)
-    private :failed_event
-
-    # However the turn ended (#run_turn's ensure): the turn flag off, the
-    # probe cancel restored, the cancel controller, sink and steers cleared
-    # (a steer left is logged as dropped), activity recorded, the
-    # turn-scoped hooks cleared.
-    def release_turn(probe_cancel_before)
-      # A completed turn is activity: release the turn flag and advance the
-      # shared inactivity clock so the idle recap detector (shared with the REPL)
-      # treats the just-finished turn as activity and re-arms its window.
-      left = @turn_state.finish!
-      @steer_cut.finished!
-      Client.swap_probe_cancel(probe_cancel_before)
-      # The next turn's window and served model are asked again: the cache
-      # (this host's, process-wide) is dropped here, at the turn's end,
-      # rather than at its start, so what this turn read (the profile's own
-      # probe included) is not asked for a second time within the turn. A
-      # restart with another -c between turns is still noticed: the next
-      # turn's first probe goes to the server.
-      @client.invalidate_context_window!
-      log_dropped_steers(left, "turn_ended")
-      record_activity
-      # Clear hooks so they remain turn-scoped and never leak into the next turn.
-      clear_hooks
-    end
-    private :release_turn
-
-    # [refs, nil] for a turn's images, or [[], error] when one can't be used
-    # (the turn then fails right after :turn_started).
-    def turn_image_refs(session, images)
-      return [[], nil] if Array(images).empty?
-
-      [ImageStore.resolve_all(Session.session_dir(session.id, state_dir: session_state_dir), images), nil]
-    rescue ImageStore::Error => e
-      [[], e]
-    end
-
-    # The turn's VisionContext: the session's images folder, and whether the
-    # effective model can see images, asked only when a request carries one.
-    def turn_vision(session, model = effective_model)
-      VisionContext.new(session_dir: Session.session_dir(session.id, state_dir: session_state_dir),
-                        capability: -> { model.vision_support(profile) })
-    end
-
-    # A model known not to see images fails a turn with images up front.
-    def refuse_images!(vision)
-      return if vision.sendable?
-
-      host = effective_model.host_name
-      raise LLM::VisionUnsupported.new("#{host}: #{vision.refusal_reason}", host: host)
-    end
-
-    # JSON-safe digest of a finished turn for renderers (TurnEndings#turn_summary).
-    # @param result [LLM::ModelResult]
-    # @return [Hash]
-    def turn_summary(result) = @turn_endings.turn_summary(result)
 
     private
 
