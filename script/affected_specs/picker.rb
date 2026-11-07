@@ -73,6 +73,9 @@ module AffectedSpecs
                 lib/samagotchi/hooks/**/* lib/samagotchi/guardrails/gate.rb],
       specs: %w[lib/samagotchi/bundles/*/spec/**/*_spec.rb],
       why: "the shipped bundles' own specs run on the test kit and chi's plugin and hook seams (they name neither)" },
+    { match: %w[lib/samagotchi/private_files.rb],
+      specs: %w[spec/grants_spec.rb spec/web/push/store_spec.rb spec/web/server_spec.rb],
+      why: "PrivateFiles, checked through Grants', the push store's and chi web's refusals (none names it)" },
     { match: %w[lib/samagotchi/turn_flow.rb lib/samagotchi/turn_note.rb],
       specs: %w[spec/terminal_ui/event_renderer_spec.rb spec/terminal_ui/attached_loop_spec.rb],
       why: "the attached TUI prints their turn-end and continue words" }

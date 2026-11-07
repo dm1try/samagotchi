@@ -165,6 +165,16 @@ RSpec.describe AffectedSpecs::Picker do
     expect(paths(pick("lib/samagotchi/turn_flow.rb").ruby)).to eq(%w[spec/terminal_ui/event_renderer_spec.rb spec/terminal_ui/attached_loop_spec.rb])
   end
 
+  it "picks the specs of PrivateFiles' callers, which check it through their own errors, by a rule" do
+    users = %w[spec/grants_spec.rb spec/web/push/store_spec.rb spec/web/server_spec.rb]
+    users.each { |path| files[path] = "" }
+    files["lib/samagotchi/private_files.rb"] = "module Samagotchi\n  module PrivateFiles\n  end\nend\n"
+
+    result = pick("lib/samagotchi/private_files.rb")
+    expect(paths(result.ruby)).to eq(users)
+    expect(result.ruby.map(&:reason)).to all(start_with("rule: "))
+  end
+
   it "picks a docs-reading spec for its doc, and nothing else for a doc" do
     expect(paths(pick("docs/configuration.md").ruby)).to eq(%w[spec/docs_configuration_spec.rb])
   end
