@@ -52,6 +52,17 @@ RSpec.describe Samagotchi::TerminalUI::LogTail do
     expect(shown.map(&:event)).to eq(["new"])
   end
 
+  it "reads what the old file got after its last look before it follows the rotation" do
+    append(record("abcdef12", "old"))
+    tail.send(:open_at, :end)
+    append(record("abcdef12", "late"))
+    File.rename(path, "#{path}.1")
+    append(record("abcdef12", "new"))
+    tail.poll
+
+    expect(shown.map(&:event)).to eq(%w[late new])
+  end
+
   it "keeps a torn last line for the next look" do
     tail.send(:open_at, :end)
     line = record("abcdef12", "torn")
