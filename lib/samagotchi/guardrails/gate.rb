@@ -20,9 +20,8 @@ module Samagotchi
       # call's turn (TurnContext: its controller, model key and name, and
       # what +context_for+ and +checks_for+ make of it).
       #
-      # @param hooks_lookup [#call] returns the Hooks::Registry (or nil);
-      #   read per call, since the Engine sets the kernel's hooks after
-      #   the kernel is built.
+      # @param hooks [Hooks::Registry, nil] the before_tool_call voters (the
+      #   Engine's registry, built before its gate; nil: no hooks)
       # @param context_for [#call] (turn) → the Context for a call of that
       #   turn (the Engine's: session, interface, origin, the turn's git cache)
       # @param approver [#call, nil] (verdict, turn) settles an ask
@@ -30,16 +29,17 @@ module Samagotchi
       # @param approvals_lookup [#call] returns the Approvals store (or nil)
       # @param checks_for [#call] (turn) → core checks (#check(verdict)) run
       #   on the final call after the hooks: protected paths, then the rules
-      # @param tools_lookup [#call] returns the Tools::Registry (or nil): a
-      #   plugin tool's targets: say what its call acts on
-      def initialize(hooks_lookup, context_for: ->(_turn) { Context.new }, approver: nil, approvals_lookup: -> {},
-                     checks_for: ->(_turn) { [] }, tools_lookup: -> {})
-        @hooks_lookup = hooks_lookup
+      # @param tools [Tools::Registry, nil] the session's tools (the Engine's,
+      #   built before its gate): a plugin tool's targets: say what its call
+      #   acts on
+      def initialize(hooks: nil, tools: nil, context_for: ->(_turn) { Context.new }, approver: nil, approvals_lookup: -> {},
+                     checks_for: ->(_turn) { [] })
+        @hooks = hooks
         @context_for = context_for
         @approver = approver
         @approvals_lookup = approvals_lookup
         @checks_for = checks_for
-        @tools_lookup = tools_lookup
+        @tools = tools
       end
 
       # @param call [Hash] the parsed tool call
@@ -120,12 +120,12 @@ module Samagotchi
       end
 
       def targets_for(call, judged, turn)
-        Targets.for(call, judged, model_key: turn.model_key, model_name: turn.model_name, registry: @tools_lookup.call)
+        Targets.for(call, judged, model_key: turn.model_key, model_name: turn.model_name, registry: @tools)
       end
 
       # Registry#fire_each rescues a raising hook itself.
       def fire_each(name, event, &)
-        @hooks_lookup.call&.fire_each(name, event, &)
+        @hooks&.fire_each(name, event, &)
       end
     end
   end

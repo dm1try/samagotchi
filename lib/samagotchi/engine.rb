@@ -451,7 +451,7 @@ module Samagotchi
       self.guardrail_state_dir = Session.default_state_dir
       # list_sessions and send_note speak for whichever session runs now.
       @kernel.peers = PeerView.new(self)
-      @kernel.guardrail_gate = @guardrail_wiring.gate
+      @kernel.guardrail_gate = @guardrail_wiring.gate(hooks: @hooks, tools: @tools)
       # A pair turn stops once its participant passed their cap.
       @kernel.generation_guard = ->(context) { guard_participant_spend(context) }
       # The turn-end warm-up; the kernel asks it for a slot pin per request.
@@ -470,7 +470,7 @@ module Samagotchi
     def build_guardrail_wiring
       GuardrailWiring.new(
         scratch: @scratch,
-        hooks: -> { @hooks },
+        # Built before the tools (the hooks load into its failures).
         tools: -> { @tools },
         session: -> { @session },
         cancelled: -> { !!active_cancel_controller&.cancelled? },

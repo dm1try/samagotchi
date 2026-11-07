@@ -238,7 +238,7 @@ RSpec.describe Samagotchi::Guardrails::Gate, "with an approval store" do
       v
     end
     ctx = Samagotchi::Guardrails::Context.new(cwd: state, session_id: "s1")
-    described_class.new(-> { hooks }, context_for: ->(_turn) { ctx }, approver: approver, approvals_lookup: -> { store })
+    described_class.new(hooks: hooks, context_for: ->(_turn) { ctx }, approver: approver, approvals_lookup: -> { store })
   end
 
   before { hooks.register(:before_tool_call) { |e| e[:guardrail].ask!("sure?", rule: "r", source: "config") } }
@@ -298,8 +298,8 @@ RSpec.describe Samagotchi::Guardrails::Gate, "with the bundle's git-outside-repo
       v
     end
     ctx = Samagotchi::Guardrails::Context.new(cwd: repo, session_id: "s1")
-    described_class.new(-> {}, context_for: ->(_turn) { ctx }, approver: approver, approvals_lookup: -> { store },
-                               checks_for: ->(_turn) { [rules] })
+    described_class.new(context_for: ->(_turn) { ctx }, approver: approver, approvals_lookup: -> { store },
+                        checks_for: ->(_turn) { [rules] })
   end
 
   after { FileUtils.rm_rf(base) }

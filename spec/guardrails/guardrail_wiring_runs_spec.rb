@@ -19,7 +19,7 @@ RSpec.describe "GuardrailWiring: System 1's saved runs" do
 
   def wiring(client, ask: ->(_payload) { once })
     recording = s1::Recording.wrap(client, judgment: s1::ApprovalQuestion::JUDGMENT, runs: runs)
-    Samagotchi::GuardrailWiring.new(scratch: false, hooks: -> {}, tools: -> {}, session: -> { session },
+    Samagotchi::GuardrailWiring.new(scratch: false, tools: -> {}, session: -> { session },
                                     cancelled: -> { false }, ask: ask, system_one: -> { recording }, system_one_runs: -> { runs },
                                     cancel_controller: -> {}).tap do |w|
       w.state_dir = File.join(base, "sessions")
@@ -78,7 +78,7 @@ RSpec.describe "GuardrailWiring: System 1's saved runs" do
   it "hangs nothing on a scratch session's ask: no run, no gates, no label" do
     session.scratch = true
     runs_file = s1::Runs.new(store: store)
-    w = Samagotchi::GuardrailWiring.new(scratch: true, hooks: -> {}, tools: -> {}, session: -> { session },
+    w = Samagotchi::GuardrailWiring.new(scratch: true, tools: -> {}, session: -> { session },
                                         cancelled: -> { false }, ask: ->(_) { once },
                                         system_one: -> { s1::Client.new(backend: judge, mode: "audit", host: "splash") },
                                         system_one_runs: -> { runs_file }, cancel_controller: -> {})
@@ -100,7 +100,7 @@ RSpec.describe "GuardrailWiring: System 1's saved runs" do
 
   it "reads no gate with runs off" do
     off = s1::Runs.new
-    w = Samagotchi::GuardrailWiring.new(scratch: false, hooks: -> {}, tools: -> {}, session: -> { session },
+    w = Samagotchi::GuardrailWiring.new(scratch: false, tools: -> {}, session: -> { session },
                                         cancelled: -> { false }, ask: ->(_) { once },
                                         system_one: -> { s1::Client.new(backend: judge, mode: "audit", host: "splash") },
                                         system_one_runs: -> { off }, cancel_controller: -> {})

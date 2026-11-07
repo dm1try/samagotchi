@@ -22,7 +22,7 @@ RSpec.describe "GuardrailWiring: System 1 on an approval (audit)" do
   after { FileUtils.rm_rf(base) }
 
   def wiring(system_one: client, ask: ->(_payload) { answer }, cancelled: -> { false })
-    Samagotchi::GuardrailWiring.new(scratch: false, hooks: -> {}, tools: -> {}, session: -> { session },
+    Samagotchi::GuardrailWiring.new(scratch: false, tools: -> {}, session: -> { session },
                                     cancelled: cancelled, ask: ask,
                                     system_one: -> { system_one }, cancel_controller: -> {}).tap do |w|
       w.state_dir = state_dir
@@ -164,7 +164,7 @@ RSpec.describe "GuardrailWiring: System 1 on an approval (audit)" do
   it "asks the owner about a participant's pair turn call, naming them, once only, never auto-allowed in on mode" do
     on = S1::Client.new(backend: judge, mode: "on", host: "splash", model: "judge-model")
     asked = []
-    w = Samagotchi::GuardrailWiring.new(scratch: false, hooks: -> {}, tools: -> {}, session: -> { session },
+    w = Samagotchi::GuardrailWiring.new(scratch: false, tools: -> {}, session: -> { session },
                                         cancelled: -> { false },
                                         ask: lambda { |payload|
                                           asked << payload

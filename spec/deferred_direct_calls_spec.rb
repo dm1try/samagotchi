@@ -33,8 +33,8 @@ RSpec.describe "direct calls of deferred tools" do
         asked << [verdict.call[:name], Samagotchi::Guardrails::Approvals.key_for(verdict), verdict.rule]
         verdict.settle!(:allow)
       end
-      gate = Samagotchi::Guardrails::Gate.new(-> { hooks }, approver: approver, checks_for: ->(_turn) { checks },
-                                                            tools_lookup: -> { registry })
+      gate = Samagotchi::Guardrails::Gate.new(hooks: hooks, approver: approver, checks_for: ->(_turn) { checks },
+                                              tools: registry)
       k.define_singleton_method(:guardrail_gate) { gate }
     end
   end

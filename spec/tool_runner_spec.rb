@@ -139,7 +139,7 @@ RSpec.describe Samagotchi::ToolRunner do
     end
 
     it "leaves the approval wait out of elapsed_ms" do
-      gate = Samagotchi::Guardrails::Gate.new(-> { hooks }, approver: lambda { |verdict, _turn|
+      gate = Samagotchi::Guardrails::Gate.new(hooks: hooks, approver: lambda { |verdict, _turn|
         now[0] += 5
         verdict.settle!(:allow).tap { verdict.scope = "once" }
       })
@@ -735,7 +735,7 @@ RSpec.describe Samagotchi::ToolRunner do
         answer == :allow ? verdict.settle!(:allow).tap { verdict.scope = "once" } : verdict.settle!(:deny, note: "The user declined this call.")
       end
       k = kernel
-      gate = Samagotchi::Guardrails::Gate.new(-> { hooks }, approver: approver)
+      gate = Samagotchi::Guardrails::Gate.new(hooks: hooks, approver: approver)
       k.define_singleton_method(:guardrail_gate) { gate }
       described_class.new(k)
     end
@@ -759,7 +759,7 @@ RSpec.describe Samagotchi::ToolRunner do
           answer == :allow ? verdict.settle!(:allow).tap { verdict.scope = "once" } : verdict.settle!(:deny, note: "no")
         end
         k = kernel
-        gate = Samagotchi::Guardrails::Gate.new(-> { hooks }, approver: approver)
+        gate = Samagotchi::Guardrails::Gate.new(hooks: hooks, approver: approver)
         k.define_singleton_method(:guardrail_gate) { gate }
         described_class.new(k, clock: -> { now.first })
       end
@@ -1039,7 +1039,7 @@ RSpec.describe Samagotchi::ToolRunner do
           asked << verdict.call[:name]
           verdict.settle!(:allow)
         end
-        gate = Samagotchi::Guardrails::Gate.new(-> { hooks }, approver: approver)
+        gate = Samagotchi::Guardrails::Gate.new(hooks: hooks, approver: approver)
         k.define_singleton_method(:guardrail_gate) { gate }
       end
     end

@@ -491,10 +491,11 @@ module Samagotchi
       ["ran as: #{call[:name]}", params].compact.join(" ")
     end
 
-    # The Engine sets the kernel's gate (its context, later the approval
-    # flow); a bare kernel (specs) gets one that only runs the hooks.
+    # The Engine sets the kernel's gate (its context, the approval flow); a
+    # bare kernel (specs) gets one that only runs its hooks, built per call
+    # from what the kernel holds now.
     def gate
-      @kernel.guardrail_gate || (@gate ||= Guardrails::Gate.new(-> { @kernel.hooks }, tools_lookup: -> { tools }))
+      @kernel.guardrail_gate || Guardrails::Gate.new(hooks: @kernel.hooks, tools: tools)
     end
 
     # A gate that fails denies the call (fail closed).

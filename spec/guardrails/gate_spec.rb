@@ -6,7 +6,7 @@ require "samagotchi/hooks"
 
 RSpec.describe Samagotchi::Guardrails::Gate do
   let(:hooks) { Samagotchi::Hooks::Registry.new }
-  let(:gate) { described_class.new(-> { hooks }) }
+  let(:gate) { described_class.new(hooks: hooks) }
   let(:call) { { name: "execute", content: "ls" } }
 
   def evaluate = gate.evaluate(call, context: Samagotchi::TurnContext.none, iteration: 1, params: 'command="ls"')
@@ -51,7 +51,7 @@ RSpec.describe Samagotchi::Guardrails::Gate do
   end
 
   it "allows when there is no registry" do
-    expect(described_class.new(-> {}).evaluate(call, context: Samagotchi::TurnContext.none, iteration: 1, params: "")).to be_allow
+    expect(described_class.new.evaluate(call, context: Samagotchi::TurnContext.none, iteration: 1, params: "")).to be_allow
   end
 
   it "does not change the caller's call hash" do
@@ -108,7 +108,7 @@ end
 RSpec.describe Samagotchi::Guardrails::Gate, "context and targets" do
   let(:hooks) { Samagotchi::Hooks::Registry.new }
   let(:context) { Samagotchi::Guardrails::Context.new(cwd: "/tmp", session_id: "s1", interface: :worker) }
-  let(:gate) { described_class.new(-> { hooks }, context_for: ->(_turn) { context }) }
+  let(:gate) { described_class.new(hooks: hooks, context_for: ->(_turn) { context }) }
 
   it "gives hooks the context and the call's targets" do
     seen = nil

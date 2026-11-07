@@ -240,7 +240,7 @@ module Samagotchi
         dispatched = nil
         capture = Hooks::Registry.new
         capture.register(:before_tool_call) { |event| dispatched = event.dup }
-        gate = Guardrails::Gate.new(-> { capture }, context_for: ->(_turn) { context }, tools_lookup: -> { tools })
+        gate = Guardrails::Gate.new(hooks: capture, tools: tools, context_for: ->(_turn) { context })
         gate.evaluate(call, context: TurnContext.none, iteration: iteration, params: params,
                             verdict: verdict || Verdict.new(call: call))
         raise ArgumentError, "guardrails did not dispatch a before_tool_call event for #{call[:name].inspect}" unless dispatched
@@ -258,8 +258,8 @@ module Samagotchi
       def tool_call(call, params: nil, cwd: nil, context: nil, verdict: nil, iteration: 1)
         context ||= Guardrails::Context.new(cwd: cwd || @recorder[:cwd], session_id: @recorder[:session_id],
                                             interface: @recorder[:frontend])
-        gate = Guardrails::Gate.new(-> { hooks }, context_for: ->(_turn) { context }, tools_lookup: -> { tools },
-                                                  checks_for: ->(_turn) { [] })
+        gate = Guardrails::Gate.new(hooks: hooks, tools: tools, context_for: ->(_turn) { context },
+                                    checks_for: ->(_turn) { [] })
         verdict ||= Verdict.new(call: call)
         params ||= "#{call[:name]} #{call[:content] || call[:path]}".strip
         failing { gate.evaluate(call, context: TurnContext.none, iteration: iteration, params: params, verdict: verdict) }

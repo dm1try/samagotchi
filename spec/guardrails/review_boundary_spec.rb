@@ -127,7 +127,7 @@ RSpec.describe Samagotchi::Guardrails::ReviewBoundary do
   describe "in GuardrailWiring" do
     let(:session) { Struct.new(:id, :working_directory) { def delegate? = false }.new("s1", project) }
     let(:wiring) do
-      Samagotchi::GuardrailWiring.new(scratch: false, hooks: -> {}, tools: -> {}, session: -> { session },
+      Samagotchi::GuardrailWiring.new(scratch: false, tools: -> {}, session: -> { session },
                                       cancelled: -> { false }, ask: ->(_) {}).tap do |w|
         w.state_dir = File.join(base, "state")
       end

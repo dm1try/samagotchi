@@ -42,8 +42,9 @@ module Samagotchi
     attr_reader :approvals
 
     # @param scratch   [Boolean] a `chi scratch` session (writes into the memories are denied)
-    # @param hooks     [#call] → Hooks::Registry
-    # @param tools     [#call] → Tools::Registry
+    # @param tools     [#call] → Tools::Registry: an approval's plugin label.
+    #   A lookup: the Engine builds its wiring (and so the load failures its
+    #   hooks are loaded into, ExtensionLoad) before its tools and hooks.
     # @param session   [#call] → Session, nil
     # @param cancelled [#call] → Boolean, whether the running turn is cancelled
     # @param ask       [#call] (fields) → the answer; the Engine's question flow
@@ -57,10 +58,9 @@ module Samagotchi
     # @param participant [#call] (author) → the participant's
     #   Participants::Entry (participants.json: their name, their grant's
     #   mode), nil for none
-    def initialize(scratch:, hooks:, tools:, session:, cancelled:, ask:, notify: ->(_message) {}, system_one: -> {},
+    def initialize(scratch:, tools:, session:, cancelled:, ask:, notify: ->(_message) {}, system_one: -> {},
                    system_one_runs: -> {}, cancel_controller: -> {}, participant: ->(_author) {})
       @scratch = scratch
-      @hooks_lookup = hooks
       @tools_lookup = tools
       @session_lookup = session
       @cancelled_lookup = cancelled
@@ -132,15 +132,17 @@ module Samagotchi
     # (Guardrails::Gate#evaluate's context:): its judged context (#context),
     # its checks (#checks) and its approval (#request_approval) are that
     # turn's.
+    # @param hooks [Hooks::Registry, nil] the voters (the Engine's)
+    # @param tools [Tools::Registry, nil] the session's tools (the Engine's)
     # @return [Guardrails::Gate]
-    def gate
+    def gate(hooks:, tools:)
       Guardrails::Gate.new(
-        -> { @hooks_lookup.call },
+        hooks: hooks,
+        tools: tools,
         context_for: ->(turn) { context(turn) },
         approver: ->(verdict, turn) { request_approval(verdict, turn) },
         approvals_lookup: -> { @approvals },
-        checks_for: ->(turn) { checks(turn) },
-        tools_lookup: -> { @tools_lookup.call }
+        checks_for: ->(turn) { checks(turn) }
       )
     end
 

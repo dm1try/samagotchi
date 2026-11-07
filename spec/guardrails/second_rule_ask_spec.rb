@@ -30,7 +30,7 @@ RSpec.describe "A second rule's ask on one call" do
   let(:context) { Samagotchi::Guardrails::Context.new(cwd: repo, session_id: "s1", git: git) }
   let(:asked) { [] }
   let(:gate) do
-    Samagotchi::Guardrails::Gate.new(-> {}, context_for: ->(_turn) { context }, approvals_lookup: -> { store }, checks_for: ->(_turn) { [rules] },
+    Samagotchi::Guardrails::Gate.new(context_for: ->(_turn) { context }, approvals_lookup: -> { store }, checks_for: ->(_turn) { [rules] },
                                      approver: lambda { |verdict, _turn|
                                        asked << verdict
                                        verdict.settle!(:deny, decided_by: "user", note: "no")
@@ -184,7 +184,7 @@ RSpec.describe "A second rule's ask on one call" do
     let(:cards) { [] }
     let(:wiring) do
       client = s1::Client.new(backend: judge, mode: "on", host: "splash", model: "jev")
-      Samagotchi::GuardrailWiring.new(scratch: false, hooks: -> {}, tools: -> {}, session: -> { session },
+      Samagotchi::GuardrailWiring.new(scratch: false, tools: -> {}, session: -> { session },
                                       cancelled: -> { false }, ask: lambda { |payload|
                                         cards << payload
                                         nil
