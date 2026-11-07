@@ -23,7 +23,7 @@ module Samagotchi
       # nothing is checked mid-turn.
       attr_writer :participant_stop
 
-      # Before each generation (KernelLoop#generation_guard): a pair turn whose
+      # Before each generation (KernelLoop::Services#generation_guard): a pair turn whose
       # participant's link ended, or whose spend (Engine#metrics: their
       # finished turns, this one's finished generations, their side requests)
       # passed their cap, stops on the plugins' stop path (cost-cap's,

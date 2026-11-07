@@ -118,7 +118,7 @@ module Samagotchi
     end
 
     # Ask the model's question (ask_user_question): the kernel's
-    # question_handler, called on the turn thread with the payload
+    # Services#question_handler, called on the turn thread with the payload
     # Tools::AskUserQuestion.validate made. Opens it (#open_question) and
     # returns the answer as JSON for the tool result.
     # @param payload [Hash] {question:, options:, header:, multi_select:, allow_freeform:},

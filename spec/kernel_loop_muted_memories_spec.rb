@@ -32,7 +32,7 @@ RSpec.describe "memory_read with muted memories" do
   end
 
   it "refuses a muted name and reads the rest of a comma list" do
-    kernel.muted_memory_names = ["gh-helper"]
+    attach_services(kernel, muted_memory_names: ["gh-helper"])
     expect(read("gh-helper,cli_usage")).to eq(
       "[memory_read]\nBODY-cli_usage#{Samagotchi::Tools::MemoryRead::SEPARATOR}Error: memory 'gh-helper' is muted for this session"
     )
@@ -40,13 +40,13 @@ RSpec.describe "memory_read with muted memories" do
   end
 
   it "answers a lone muted name with the error only, without reading" do
-    kernel.muted_memory_names = ["gh-helper"]
+    attach_services(kernel, muted_memory_names: ["gh-helper"])
     expect(read("gh-helper", scope: "system")).to eq("[memory_read]\nError: memory 'gh-helper' is muted for this session")
     expect(Samagotchi::Tools::MemoryRead).not_to have_received(:call)
   end
 
   it "filters the muted line out of the blank-name index" do
-    kernel.muted_memory_names = ["gh-helper"]
+    attach_services(kernel, muted_memory_names: ["gh-helper"])
     out = read("")
     expect(out).not_to include("gh-helper")
     expect(out).to include("- **cli_usage** · system · 2026-09-01 · 80 — CLI")
@@ -57,7 +57,7 @@ RSpec.describe "memory_read with muted memories" do
     engine = Samagotchi::Engine.new(client: client, profile: "gemma4", kernel: kernel,
                                     muted_memories: ["project/gh-helper.md"])
     expect(engine.muted_memory_names).to eq(["gh-helper"])
-    expect(kernel.muted_memory_names).to eq(["gh-helper"])
+    expect(kernel.services.muted_memory_names).to eq(["gh-helper"])
   end
 
   it "Engine does not count a refused read as a used memory" do

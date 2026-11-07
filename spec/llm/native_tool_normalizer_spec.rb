@@ -153,7 +153,7 @@ RSpec.describe Samagotchi::LLM::NativeToolNormalizer do
 
     it "registers a real reminder end to end through KernelLoop#dispatch" do
       store = Samagotchi::ReminderStore.new
-      kernel = Samagotchi::KernelLoop.new(client: double("client"), reminder_store: store)
+      kernel = Samagotchi::KernelLoop.new(client: double("client"), services: Samagotchi::KernelLoop::Services.none(reminder_store: store))
       call = tool_call(name: "register_reminder",
                        arguments: { "name" => "api_health", "description" => "check the API", "interval_minutes" => 15 })
 

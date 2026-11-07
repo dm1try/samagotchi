@@ -864,10 +864,10 @@ RSpec.describe Samagotchi::LLM::ChatLoop do
       registry = Samagotchi::Hooks::Registry.new
       registry.register(:before_generation) { |_event| order << :hook }
       allow(fake_kernel).to receive(:hooks).and_return(registry)
-      fake_kernel.generation_guard = lambda { |_context|
+      attach_services(fake_kernel, generation_guard: lambda { |_context|
         order << :guard
         controller.cancel!
-      }
+      })
 
       result = run(cancel_controller: controller)
 

@@ -323,7 +323,7 @@ and `ctx.turn_author` names it ([hooks](../hooks.md#participants-turns)).
   their $2.00 review cap: their comments are refused until you raise it (chi share cap ID p_… AMOUNT)." (a working
   session's: "Alex reached their $2.00 cap: their turns stop and are refused until you raise it (…)"). A review
   turn's spend counts from its end, so a review turn can finish past the cap. A pair turn stops mid-turn: before each
-  generation (`KernelLoop#generation_guard`, both loops) `Engine#guard_participant_spend` asks the worker's check
+  generation (`KernelLoop::Services#generation_guard`, both loops) `Engine#guard_participant_spend` asks the worker's check
   (`Worker#participant_turn_stop`: `metrics.spend(author)` counts the running turn's finished generations) and, past
   the cap, stops the turn on the plugins' stop path (`HookRoutes#stop_turn`: "stopped the turn: Alex reached their
   $2.00 cap"), with the owner's notice once per cap. A generation's cost is known only when it ends, so a pair turn

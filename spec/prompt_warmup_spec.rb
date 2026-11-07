@@ -218,7 +218,7 @@ RSpec.describe Samagotchi::KernelLoop, "turn-end warm-up" do
     kernel = kernel_for(Samagotchi::ModelProfile.qwen36)
     warmup = instance_double(Samagotchi::PromptWarmup)
     allow(warmup).to receive(:take_pin).with(client).and_return(1, nil)
-    kernel.warmup = warmup
+    attach_services(kernel, warmup: warmup)
     tool_call = "<tool_call>\n<function=read>\n<parameter=path>\nnope.txt\n</parameter>\n</function>\n</tool_call>"
     script(tool_call, "done")
 

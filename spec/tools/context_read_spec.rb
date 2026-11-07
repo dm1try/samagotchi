@@ -139,7 +139,7 @@ RSpec.describe Samagotchi::Tools::ContextRead do
     add(own, "notes")
     push(own, "notes", "hello")
     kernel = Samagotchi::KernelLoop.new(client: nil)
-    kernel.peers = peers
+    attach_services(kernel, peers: peers)
 
     result = kernel.dispatch_tool_call(name: "context_read", content: "notes")
 

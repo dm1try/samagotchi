@@ -4,7 +4,7 @@ require_relative "objectives"
 
 module Samagotchi
   # The views of an Engine its peers get: the kernel's tools
-  # (Engine#initialize sets @kernel.peers) and a delegate's approval relay
+  # (KernelLoop::Services#peers, Engine#wire_kernel) and a delegate's approval relay
   # (Engine#relay_peer).
   class Engine
     # The kernel's Tools::Peers, following the current session. cancelled?

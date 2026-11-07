@@ -322,7 +322,7 @@ RSpec.describe "Engine ask_user_question (cross-thread path)" do
     it "is there for a worker's Engine and opens questions on its own desk, watch included" do
       engine = build_engine
       engine.interface = :worker
-      relay = engine.instance_variable_get(:@kernel).peers.relay
+      relay = engine.instance_variable_get(:@kernel).services.peers.relay
       expect(relay.interface).to eq(:worker)
 
       result = nil

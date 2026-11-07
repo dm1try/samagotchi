@@ -15,7 +15,7 @@ module Samagotchi
       end
 
       # Ask the model's question (ask_user_question): the kernel's
-      # question_handler, called on the turn thread with the payload
+      # Services#question_handler, called on the turn thread with the payload
       # Tools::AskUserQuestion.validate made (QuestionDesk#request), after
       # the :question_asked hooks (QuestionAsked) gave the step its refs; a
       # --non-interactive run has no one to ask, so they don't fire there.

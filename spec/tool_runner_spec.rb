@@ -1032,16 +1032,13 @@ RSpec.describe Samagotchi::ToolRunner do
     let(:before_calls) { [] }
     let(:after_calls) { [] }
     let(:real_kernel) do
-      test_kernel(hooks: hooks).tap do |k|
-        k.tools = Samagotchi::Tools::Builtins.registry
-        k.tools.toolkit = Samagotchi::Toolkit.new(name: "lean").resolve(Samagotchi::Toolkit.kits)
-        approver = lambda do |verdict, _turn|
-          asked << verdict.call[:name]
-          verdict.settle!(:allow)
-        end
-        gate = Samagotchi::Guardrails::Gate.new(hooks: hooks, approver: approver)
-        k.define_singleton_method(:guardrail_gate) { gate }
+      tools = Samagotchi::Tools::Builtins.registry
+      tools.toolkit = Samagotchi::Toolkit.new(name: "lean").resolve(Samagotchi::Toolkit.kits)
+      approver = lambda do |verdict, _turn|
+        asked << verdict.call[:name]
+        verdict.settle!(:allow)
       end
+      test_kernel(hooks: hooks, tools: tools, gate: Samagotchi::Guardrails::Gate.new(hooks: hooks, approver: approver))
     end
 
     before do

@@ -260,7 +260,7 @@ any other file requires it, so a spec file run alone still finds its requires. E
 | `reply_wait_looks.rb` | `ReplyWaitLooks`: counts a `ReplyWait`'s polls, so a step waits for the looks instead of a delay |
 | `stamps.rb` | *helper*: `next_stamp`, distinct ordered times for the lib's `now:` seams; the pinned history clock |
 | `task_dirs.rb` | `with_task_dir`: a tasks' folder of its own, every task stopped and its recorders joined after |
-| `test_kernel.rb` | `TestKernel`: `test_kernel` (a real `KernelLoop` to stub `#run` on) and `test_client` for Engine specs |
+| `test_kernel.rb` | `TestKernel`: `test_kernel` (a real `KernelLoop` to stub `#run` on; its options are `KernelLoop::Services` fields), `attach_services` (swap some of a kernel's services), `run_context` and `test_client` for Engine specs |
 | `thinking_off.rb` | shared context "thinking off": `SAMAGOTCHI_THINKING_LEVEL=off` for the example |
 | `virtual_terminal.rb` | `VirtualTerminal`: just enough VT100 to check what a Screen leaves on the terminal |
 | `waiting.rb` | *helper*: `SpecWaiting` (`wait_for`, `wait_until`, `join!`, `pop!`, …), the test kit's helpers ([Waiting and time](#waiting-and-time)) |

@@ -31,12 +31,27 @@ RSpec.describe "TUI hooks forwarding regression" do
     end
 
     it "hands its own reminder store and tools to an externally-supplied KernelLoop" do
-      external_kernel = Samagotchi::KernelLoop.new(client: client, reminder_store: Samagotchi::ReminderStore.new)
+      external_kernel = Samagotchi::KernelLoop.new(client: client, services: Samagotchi::KernelLoop::Services.none(reminder_store: Samagotchi::ReminderStore.new))
 
       engine = Samagotchi::Engine.new(client: client, kernel: external_kernel)
 
       expect(external_kernel.reminder_store).to be(engine.reminder_store)
       expect(external_kernel.tools).to be(engine.instance_variable_get(:@tools))
+    end
+
+    it "hands an externally-supplied KernelLoop all its services at once, as it builds its own with" do
+      external_kernel = Samagotchi::KernelLoop.new(client: client)
+
+      engine = Samagotchi::Engine.new(client: client, kernel: external_kernel, muted_memories: ["gh-helper"])
+
+      services = external_kernel.services
+      expect(services).to be_frozen
+      expect(services.gate).to be_a(Samagotchi::Guardrails::Gate)
+      expect(services.peers).to be_a(Samagotchi::Engine::PeerView).and(have_attributes(engine: engine))
+      expect(services.warmup).to be_a(Samagotchi::PromptWarmup)
+      expect(services.question_handler).to respond_to(:call)
+      expect(services.generation_guard).to respond_to(:call)
+      expect(services.muted_memory_names).to eq(engine.muted_memory_names)
     end
 
     it "shares the same registry instance so Engine#register_hook is visible to KernelLoop" do

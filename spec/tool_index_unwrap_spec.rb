@@ -29,16 +29,13 @@ RSpec.describe "call_tool on a built-in" do
   # the same-verdict cases.
   let(:kits) { Samagotchi::Toolkit.kits.merge("tiny" => Samagotchi::Toolkit::Kit.new(name: "tiny", tools: %w[read])) }
   let(:kernel) do
-    test_kernel(hooks: hooks).tap do |k|
-      k.tools = registry
-      approver = lambda do |verdict, _turn|
-        asked << [verdict.call[:name], Samagotchi::Guardrails::Approvals.key_for(verdict), verdict.rule]
-        verdict.settle!(:allow)
-      end
-      gate = Samagotchi::Guardrails::Gate.new(hooks: hooks, approver: approver, checks_for: ->(_turn) { checks },
-                                              tools: registry)
-      k.define_singleton_method(:guardrail_gate) { gate }
+    approver = lambda do |verdict, _turn|
+      asked << [verdict.call[:name], Samagotchi::Guardrails::Approvals.key_for(verdict), verdict.rule]
+      verdict.settle!(:allow)
     end
+    gate = Samagotchi::Guardrails::Gate.new(hooks: hooks, tools: registry, approver: approver,
+                                            checks_for: ->(_turn) { checks })
+    test_kernel(hooks: hooks, tools: registry, gate: gate)
   end
 
   before do
@@ -198,9 +195,7 @@ RSpec.describe "call_tool on a built-in" do
 
     hooks2 = Samagotchi::Hooks::Registry.new
     hooks2.register(:before_tool_call) { |e| e[:call] = e[:call].except(:via) }
-    allow(kernel).to receive(:hooks).and_return(hooks2)
-    gate = Samagotchi::Guardrails::Gate.new(hooks: hooks2)
-    allow(kernel).to receive(:guardrail_gate).and_return(gate)
+    attach_services(kernel, hooks: hooks2, gate: Samagotchi::Guardrails::Gate.new(hooks: hooks2))
     toolkit!
     expect(run(via("chi/delegate", { "task" => "x" })).output).to include("\nError: delegate isn't declared")
     expect(ran).to eq([])
