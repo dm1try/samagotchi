@@ -9,6 +9,7 @@ require "openssl"
 require "time"
 require_relative "atomic_file"
 require_relative "bridge_secret"
+require_relative "degrade"
 require_relative "delivery"
 require_relative "session_inbox"
 require_relative "turn_anchors"
@@ -236,7 +237,7 @@ module Samagotchi
       @mutex.synchronize { @stopped = true }
       begin
         @server&.close
-      rescue StandardError
+      rescue StandardError # degrade-ok: stopping: a server socket already closed is fine
         nil
       end
       wake_acceptor
@@ -254,7 +255,7 @@ module Samagotchi
       @mutex.synchronize { @stopped = true }
       begin
         @server&.close
-      rescue StandardError
+      rescue StandardError # degrade-ok: stopping: a server socket already closed is fine
         nil
       end
       wake_acceptor
@@ -268,13 +269,13 @@ module Samagotchi
       # the web, which then queues the prompt again from the input file.
       await_answers(REQUEST_GRACE_SECONDS)
       remove_sidecar
-      @connection_threads.each { |t| t.kill rescue nil }
+      @connection_threads.each { |t| t.kill rescue nil } # degrade-ok: stopping: a thread already gone is fine
       @connection_threads.clear
       # Its relay watchers (RelayWatcher) end with it.
       watchers = @mutex.synchronize { (@relay_watchers || []).tap { @relay_watchers = [] } }
       watchers.each { |thread| thread.kill.join(RELAY_WATCHER_JOIN_SECONDS) }
       @accept_thread&.join(2)
-      [@wake_reader, @wake_writer].each { |io| io&.close rescue nil }
+      [@wake_reader, @wake_writer].each { |io| io&.close rescue nil } # degrade-ok: stopping: a closed pipe is fine
       nil
     end
 
@@ -399,9 +400,10 @@ module Samagotchi
     # O(1) and non-blocking.
     def capture_observer
       @capture_proc ||= proc do |event|
-        @ring.push(seq: event[:event_seq], data: event)
-      rescue StandardError
-        nil
+        # Per event: the first failure warns, the rest log at debug.
+        Degrade.call(:bridge, "event_capture_failed") do
+          @ring.push(seq: event[:event_seq], data: event)
+        end
       end
     end
 
@@ -527,7 +529,7 @@ module Samagotchi
       Thread.current[:bridge_answering] = false
       begin
         io.close
-      rescue StandardError
+      rescue StandardError # degrade-ok: the client may be gone already; closing is all that's left
         nil
       end
     end
@@ -1425,44 +1427,44 @@ module Samagotchi
     # else fall back to the explicit `?from_seq=` query param used by clients
     # that remember their own cursor.
     def reconnect_cursor(headers, query)
-      cursor = headers["last-event-id"]
-      return cursor if cursor && !cursor.empty?
+      Degrade.call(:bridge, "sse_cursor_unparsable") do
+        cursor = headers["last-event-id"]
+        return cursor if cursor && !cursor.empty?
 
-      return nil unless query
+        return nil unless query
 
-      URI.decode_www_form(query).to_h["from_seq"]
-    rescue StandardError
-      nil
+        URI.decode_www_form(query).to_h["from_seq"]
+      end
     end
 
     # `?snapshot=1`: join with a snapshot frame instead of a replay.
     def snapshot_requested?(query)
-      return false unless query
+      Degrade.call(:bridge, "snapshot_query_unparsable", fallback: false) do
+        return false unless query
 
-      URI.decode_www_form(query).to_h["snapshot"].to_s == "1"
-    rescue StandardError
-      false
+        URI.decode_www_form(query).to_h["snapshot"].to_s == "1"
+      end
     end
 
     # `?raw=1`: events as the engine emitted them (a chunk's provider
     # payload), not as clients get them (ClientEvent). For debugging on the
     # worker's port: chi web never passes it on.
     def raw_requested?(query)
-      return false unless query
+      Degrade.call(:bridge, "raw_query_unparsable", fallback: false) do
+        return false unless query
 
-      URI.decode_www_form(query).to_h["raw"].to_s == "1"
-    rescue StandardError
-      false
+        URI.decode_www_form(query).to_h["raw"].to_s == "1"
+      end
     end
 
     # `?client_id=`: whose stream it is (see #open_streams_except).
     def stream_client_id(query)
-      return nil unless query
+      Degrade.call(:bridge, "client_id_query_unparsable") do
+        return nil unless query
 
-      id = URI.decode_www_form(query).to_h["client_id"].to_s
-      id.empty? ? nil : id
-    rescue StandardError
-      nil
+        id = URI.decode_www_form(query).to_h["client_id"].to_s
+        id.empty? ? nil : id
+      end
     end
 
     def close_after_request?(headers)
@@ -1534,11 +1536,11 @@ module Samagotchi
     # same session may have written its own since (a file without an epoch
     # is only ever an older worker's).
     def remove_sidecar
-      return unless @server
+      Degrade.call(:bridge, "sidecar_remove_failed") do
+        return unless @server
 
-      File.unlink(WorkerSidecar.path(session_dir)) if WorkerSidecar.read(session_dir)&.epoch == @epoch.to_s
-    rescue StandardError
-      nil
+        File.unlink(WorkerSidecar.path(session_dir)) if WorkerSidecar.read(session_dir)&.epoch == @epoch.to_s
+      end
     end
 
     def session_dir

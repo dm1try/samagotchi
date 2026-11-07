@@ -481,7 +481,6 @@ Samagotchi/SilentRescue:
     - lib/samagotchi/bridge_client.rb
     - lib/samagotchi/bridge_client/event_stream.rb
     - lib/samagotchi/bridge_client/stream_request.rb
-    - lib/samagotchi/bridge.rb
     - lib/samagotchi/bridge/card_store.rb
     - lib/samagotchi/bridge/pending_card.rb
     - lib/samagotchi/bridge/sse_writer.rb
