@@ -298,7 +298,7 @@ RSpec.describe Samagotchi::Web::App, "session access routes" do
       expect(sources.join).to include("ci")
     end
 
-    it "refuses a chi REPL's session (409 owned_by_tui), an empty note, no text and the broadcast source" do
+    it "refuses a one-turn chi run's session (409 owned_by_tui), an empty note, no text and the broadcast source" do
       repl = make
       own(repl, kind: "tui")
       idle = make
@@ -306,7 +306,7 @@ RSpec.describe Samagotchi::Web::App, "session access routes" do
       status, body = note(repl, { text: "fyi" })
       expect(status).to eq(409)
       expect(body).to include("error" => "owned_by_tui", "status" => "refused", "session_id" => repl.id,
-                              "message" => "session #{repl.id} is open in a chi REPL; close it there first")
+                              "message" => "session #{repl.id} is in use by a one-turn chi --non-interactive run; let it finish first")
       expect(note(idle, { text: "  " })).to match([400, include("error" => "note_rejected")])
       expect(note(idle, {})).to match([400, include("error" => "missing_fields")])
       expect(note(idle, { text: "x", source: "broadcast" }))
@@ -577,13 +577,13 @@ RSpec.describe Samagotchi::Web::App, "session access routes" do
                        "reason" => "busy", "busy_id" => session.id }])
     end
 
-    it "gives a chi REPL's session its OwnedByTUI message and id, and a restart refusal its reason" do
+    it "gives a one-turn chi run's session its OwnedByTUI message and id, and a restart refusal its reason" do
       session = make
       own(session, kind: "tui")
 
       expect(call("/api/sessions/#{session.id}/stop", method: "POST", body: {}))
-        .to eq([409, { "error" => "owned_by_tui", "detail" => "session #{session.id} is open in a chi REPL; close it there first",
-                       "message" => "session #{session.id} is open in a chi REPL; close it there first",
+        .to eq([409, { "error" => "owned_by_tui", "detail" => "session #{session.id} is in use by a one-turn chi --non-interactive run; let it finish first",
+                       "message" => "session #{session.id} is in use by a one-turn chi --non-interactive run; let it finish first",
                        "session_id" => session.id }])
       idle = make
       status, body = call("/api/sessions/#{idle.id}/restart", method: "POST", body: {})
@@ -721,7 +721,7 @@ RSpec.describe Samagotchi::Web::App, "session access routes" do
       expect(Samagotchi::WorkerLink).to have_received(:await).with(session.id, session_dir: dir_of(session), timeout: 0.5)
     end
 
-    it "refuses a chi REPL's session (409 owned_by_tui), a leftover scratch one (409 scratch) and a bad wait (400)" do
+    it "refuses a one-turn chi run's session (409 owned_by_tui), a leftover scratch one (409 scratch) and a bad wait (400)" do
       repl = make
       own(repl, kind: "tui")
       status, body = wake(repl)
@@ -747,7 +747,7 @@ RSpec.describe Samagotchi::Web::App, "session access routes" do
       end
     end
 
-    it "reads the worker without starting one: live with its epoch, idle, stopped, a chi REPL's" do
+    it "reads the worker without starting one: live with its epoch, idle, stopped, a one-turn chi run's" do
       allow(Samagotchi::SessionManager).to receive(:resume_session)
       live = make
       own(live)

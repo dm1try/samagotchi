@@ -23,9 +23,9 @@ module Samagotchi
   #   past START_LIMIT without one;
   # - Leaving: the worker closed its Bridge and holds the lock for its last work;
   # - Skew: a worker whose sidecar speaks a newer PROTOCOL than this chi;
-  # - Stale: a sidecar, but the lock is free (or a chi REPL holds it, which
+  # - Stale: a sidecar, but the lock is free (or a one-turn chi run holds it, which
   #   writes none): its worker died;
-  # - None: no worker and no sidecar, or a chi REPL.
+  # - None: no worker and no sidecar, or a one-turn chi run.
   # A kernel releases a dead worker's lock, so a free lock is the proof of
   # death a TCP probe never gave (a port can be reused by another session's
   # Bridge).
@@ -80,7 +80,7 @@ module Samagotchi
     end
 
     # No worker: no sidecar in the session folder, and no worker's lock (a
-    # chi REPL's, +owner+, is no worker's).
+    # one-turn chi run's, +owner+, is no worker's).
     None = Data.define(:owner) do
       def initialize(owner: nil) = super
 

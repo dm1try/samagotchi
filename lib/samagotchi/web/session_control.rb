@@ -443,7 +443,7 @@ module Samagotchi
 
       # POST /api/sessions/:id/archive: hide it (and its delegates) from the
       # lists, keep it for good. A live idle worker is stopped first; a turn
-      # running in it or a delegate, a chi REPL's session and a scratch one
+      # running in it or a delegate, a one-turn chi run's session and a scratch one
       # are refused (409).
       def handle_archive(_req, id)
         result = @manager.archive_session(id, state_dir: @state_dir, wait: STOP_WAIT_SECONDS)
@@ -466,7 +466,7 @@ module Samagotchi
       # DELETE /api/sessions/:id?force=true: the session for good. With
       # force a live worker is stopped first (the page sends it: its confirm
       # says so); without it a live worker's session is refused, 409
-      # worker_running, as chi sessions delete without --force. A chi REPL's
+      # worker_running, as chi sessions delete without --force. A one-turn chi run's
       # session is always refused.
       def handle_delete(req, id)
         result = @manager.delete_session(id, state_dir: @state_dir, stop: truthy_param?(req.params["force"]),

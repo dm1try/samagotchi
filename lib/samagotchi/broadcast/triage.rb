@@ -23,7 +23,7 @@ module Samagotchi
       # @!attribute by [String] who decided: "tags" (a shared tag),
       #   "model", "fallback" (delivered unchecked: deadline, error, an
       #   answer that is no yes or no), "scope" (the note's first line
-      #   names another project), "all" (--all) or "repl" (a chi REPL owns
+      #   names another project), "all" (--all) or "repl" (a one-turn chi run owns
       #   it: no notes)
       # @!attribute match [Match, nil] the shared tag (by "tags")
       Verdict = Data.define(:relevant, :p, :reason, :by, :match) do

@@ -16,6 +16,10 @@ module Samagotchi
   # (even in the owner's own process) never releases the owner's lock.
   class OwnerLock
     FILE = "owner.lock"
+    # Who holds a "tui" lock now (a -p --non-interactive one-shot,
+    # TerminalUI), in every refusal's words (SessionManager::OwnedByTUI and
+    # the callers that add what they refused).
+    TUI_BUSY = "in use by a one-turn chi --non-interactive run"
     DEFAULT_WAIT = 2.0
     RETRY_INTERVAL = 0.05
     OWNER_READ_ATTEMPTS = 10
@@ -101,7 +105,7 @@ module Samagotchi
     # Wait for a leaving worker (Owner#leaving?) to release the lock: up to
     # its leave_wait still to run plus LEAVE_MARGIN, looking every
     # RELEASE_POLL seconds. An owner that isn't leaving (a live worker, a
-    # stuck one, a chi REPL) or no owner returns at once. A Ctrl-C (Interrupt)
+    # stuck one, a one-turn chi run) or no owner returns at once. A Ctrl-C (Interrupt)
     # stops the wait as it would any sleep.
     # @param on_wait [#call, nil] called once with the Owner before waiting
     # @return [Symbol] :not_leaving, :released, or :timeout (still held)

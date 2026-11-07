@@ -205,7 +205,7 @@ RSpec.describe Samagotchi::ObjectivesCommand do
     expect(files).to be_empty
   end
 
-  it "refuses an edit in a session a chi REPL owns, with the note's own reason; a show still answers" do
+  it "refuses an edit in a session a one-turn chi run owns, with the note's own reason; a show still answers" do
     locks.pop.release
     locks << Samagotchi::OwnerLock.acquire(session_dir, kind: "tui")
 

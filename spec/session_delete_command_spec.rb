@@ -92,12 +92,12 @@ RSpec.describe Samagotchi::SessionDeleteCommand do
       expect(gone?(live)).to be false
     end
 
-    it "never deletes a session a chi REPL has open, --force or not" do
+    it "never deletes a session a one-turn chi run has open, --force or not" do
       open = make(owner: "tui", id: "aaaa1111-0000")
 
       expect(run("--force", open.id)).to eq(1)
 
-      expect(out.string).to include("aaaa1111  refused: it is open in a chi REPL; close it there first")
+      expect(out.string).to include("aaaa1111  refused: it is in use by a one-turn chi --non-interactive run; let it finish first")
       expect(gone?(open)).to be false
     end
 

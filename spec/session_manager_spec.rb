@@ -428,7 +428,7 @@ RSpec.describe Samagotchi::SessionManager do
       expect(File.exist?(session_file)).to be true
     end
 
-    it "refuses a session a chi REPL owns, even with stop:" do
+    it "refuses a session a one-turn chi run owns, even with stop:" do
       lock = Samagotchi::OwnerLock.acquire(session_dir, kind: "tui")
       allow(Process).to receive(:kill)
 
@@ -1222,7 +1222,7 @@ RSpec.describe Samagotchi::SessionManager do
       allow(Process).to receive(:kill)
 
       expect { described_class.resume_session(session.id, state_dir: tmpdir) }
-        .to raise_error(described_class::OwnedByTUI, "session #{session.id} is open in a chi REPL; close it there first")
+        .to raise_error(described_class::OwnedByTUI, "session #{session.id} is in use by a one-turn chi --non-interactive run; let it finish first")
       expect { described_class.stop_session(session.id, state_dir: tmpdir) }
         .to raise_error(described_class::OwnedByTUI)
       expect(Process).not_to have_received(:spawn)

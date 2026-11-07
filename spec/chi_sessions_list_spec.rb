@@ -420,7 +420,7 @@ RSpec.describe "chi sessions list" do
       expect(run_chi("--live", "--format", "tsv").first).to eq("#{live.id}\tapp · fix it\n")
     end
 
-    it "--format json: owner is worker, tui (a chi REPL) or null; the text and tsv lines don't change" do
+    it "--format json: owner is worker, tui (a one-turn chi run) or null; the text and tsv lines don't change" do
       stopped = make("stopped")
       repl = make("in a repl", owner: "tui")
       live = make("live", live: true)

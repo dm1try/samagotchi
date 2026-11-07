@@ -175,7 +175,7 @@ test("canStopSession: only when a worker runs the session", () => {
   assert.equal(canStopSession({ owner: null, streaming: true }), true);
   // Stopped or idle-exited: nothing to stop.
   assert.equal(canStopSession({ owner: null, streaming: false }), false);
-  // A chi REPL owns it: the server refuses (owned_by_tui).
+  // A one-turn chi run owns it: the server refuses (owned_by_tui).
   assert.equal(canStopSession({ owner: "tui", streaming: true }), false);
 });
 

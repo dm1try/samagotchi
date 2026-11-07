@@ -85,16 +85,18 @@ module Samagotchi
   autoload :Participants, File.expand_path("participants", __dir__)
 
   class SessionManager
-    # Raised when the interactive TUI owns the session: it runs its own Engine
-    # and reads no input files, so a worker must not be spawned or signalled.
+    # Raised when a terminal's own chi owns the session (OwnerLock kind
+    # "tui": a -p --non-interactive one-shot, TerminalUI): it runs its own
+    # Engine and reads no input files, so a worker must not be spawned or
+    # signalled.
     class OwnedByTUI < StandardError
-      # @return [String] the session the REPL owns (a delegate's, when an
-      #   archive met one)
+      # @return [String] the session it owns (a delegate's, when an archive
+      #   met one)
       attr_reader :session_id
 
       def initialize(session_id, words = nil)
         @session_id = session_id
-        super(words || "session #{session_id} is open in a chi REPL; close it there first")
+        super(words || "session #{session_id} is #{OwnerLock::TUI_BUSY}; let it finish first")
       end
     end
 
@@ -416,7 +418,7 @@ module Samagotchi
     # stopped first; the marker is written even while it shuts down.
     # @return [ArchiveResult]
     # @raise [ArgumentError] unknown id (Session::AmbiguousId for a prefix of several)
-    # @raise [OwnedByTUI] a chi REPL owns it or one of its children
+    # @raise [OwnedByTUI] a one-turn chi run owns it or one of its children
     # @raise [ArchiveRefused] a turn runs in it or in a child, a prompt is
     #   queued in one (a later resume would run it), a live one offers to
     #   continue past the step limit, or it is a scratch session
@@ -458,7 +460,7 @@ module Samagotchi
     # turn runs), :queued (input/ holds a prompt, which outlives the stop and
     # runs on a resume, live worker or not), :offer (a live worker's continue
     # offer, which the stop would drop), or nil.
-    # @raise [OwnedByTUI] a chi REPL owns it
+    # @raise [OwnedByTUI] a one-turn chi run owns it
     def self.archive_refusal(sid, owner, state_dir)
       raise OwnedByTUI, sid if owner&.tui?
 
@@ -589,7 +591,7 @@ module Samagotchi
 
     # A delegate child rang a parent that has no worker (ChildRing): start
     # one, which runs a turn for the report. Not for a parent that is gone,
-    # stopped, archived, a scratch session, open in a chi REPL, or a
+    # stopped, archived, a scratch session, a one-turn run's, or a
     # continue's new link still taking its delegates (its own spawn comes):
     # the ring waits on disk for whoever runs it next (#resume_session
     # itself would clear the stop). A stop landing between the check and
@@ -740,7 +742,7 @@ module Samagotchi
     # be lost and starts its successor. If the worker cannot be asked, stop
     # it without a stop marker and resume only when disk shows no work to lose.
     # @return [Restarted]
-    # @raise [OwnedByTUI] a chi REPL owns the session
+    # @raise [OwnedByTUI] a one-turn chi run owns the session
     # @raise [RestartRefused]
     # @raise [ArgumentError] no such session
     def self.restart_session(session_id, state_dir: nil, wait: RESTART_WAIT, client_id: ClientId::CLI_RESTART)
@@ -1052,7 +1054,7 @@ module Samagotchi
     # @param stop [Boolean] stop a live worker first (waits +wait+ seconds)
     # @return [Hash] {id:, removed: [paths], stopped: whether a worker was stopped}
     # @raise [ArgumentError] unknown id (Session::AmbiguousId for a prefix of several)
-    # @raise [OwnedByTUI] a chi REPL owns it (never stopped from here)
+    # @raise [OwnedByTUI] a one-turn chi run owns it (never stopped from here)
     # @raise [DeleteRefused] a worker owns it and +stop+ is false, or it
     #   outlived the wait
     # @param purge_runs [Boolean] also delete System 1's saved runs of it and
@@ -1497,7 +1499,7 @@ module Samagotchi
     #   a worker that doesn't queue (no file then: it would steer), :timeout
     #   when it took the request but never answered (no file then), or
     #   :failed when the input file couldn't be written
-    # @raise [OwnedByTUI] a chi REPL owns the session
+    # @raise [OwnedByTUI] a one-turn chi run owns the session
     # @raise [ArgumentError] no such session
     def self.deliver_turn(session_id, prompt:, client_id: nil, images: [], delivery: nil, no_interrupt: false,
                           author: nil, pending_limit: nil, anchors: nil, state_dir: nil, manager: self, bridge: nil)
@@ -1552,7 +1554,7 @@ module Samagotchi
       # A participant's file only for a worker started after it: a worker
       # still holding the session with its Bridge gone (exiting) may be an
       # older one, which would run it without the review boundary.
-      # (A chi REPL holding it is refused as for anyone, below.)
+      # (A one-turn chi run holding it is refused as for anyone, below.)
       if Steer.participant_author?(author) && (holder = delivery_owner(manager, session_id, state_dir)) && !holder.tui?
         return DeliverResult.new(status: :timeout, via: :file,
                                  ack: { "error" => "worker_timeout",

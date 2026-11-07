@@ -722,7 +722,7 @@ RSpec.describe Samagotchi::Web::App do
           { "session_id" => "refused", "state" => "refused", "reason" => "fallback_held",
             "detail" => Samagotchi::SessionManager::RestartRefused.words("refused", :fallback_held, nil, [:turn_running]),
             "holds" => ["turn_running"] },
-          { "session_id" => "owned", "state" => "owned_by_tui", "detail" => "session owned is open in a chi REPL; close it there first" }
+          { "session_id" => "owned", "state" => "owned_by_tui", "detail" => "session owned is in use by a one-turn chi --non-interactive run; let it finish first" }
         ])
         expect(hub.update_state[:operation]).to eq("workers")
       end
@@ -3889,7 +3889,7 @@ RSpec.describe Samagotchi::Web::App do
         status, _headers, body = app.call(env_for("/api/sessions/#{session.id}/archive", method: "POST"))
         expect(status).to eq(409)
         expect(JSON.parse(body.first)).to include("error" => "owned_by_tui",
-                                                  "detail" => "session #{session.id} is open in a chi REPL; close it there first")
+                                                  "detail" => "session #{session.id} is in use by a one-turn chi --non-interactive run; let it finish first")
         expect(archived?).to be(false)
       end
 
@@ -3955,7 +3955,7 @@ RSpec.describe Samagotchi::Web::App do
         expect(File.exist?(session_file)).to be true
       end
 
-      it "answers 409 for a session a chi REPL has open, and signals nothing" do
+      it "answers 409 for a session a one-turn chi run has open, and signals nothing" do
         @lock = Samagotchi::OwnerLock.acquire(session_dir, kind: "tui")
         allow(Process).to receive(:kill)
 
@@ -3963,7 +3963,7 @@ RSpec.describe Samagotchi::Web::App do
 
         expect(status).to eq(409)
         expect(JSON.parse(body.first)).to include("error" => "owned_by_tui",
-                                                  "detail" => "session #{session.id} is open in a chi REPL; close it there first")
+                                                  "detail" => "session #{session.id} is in use by a one-turn chi --non-interactive run; let it finish first")
         expect(Process).not_to have_received(:kill)
         expect(File.exist?(session_file)).to be true
       end

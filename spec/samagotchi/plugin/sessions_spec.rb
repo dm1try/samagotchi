@@ -300,7 +300,7 @@ RSpec.describe Samagotchi::Plugin::Sessions do
       expect(Samagotchi::SessionManager).not_to have_received(:stop_session)
 
       allow(Samagotchi::SessionManager).to receive(:stop_session).and_raise(Samagotchi::SessionManager::OwnedByTUI, child.id)
-      expect { sessions.stop(child.id) }.to raise_error(described_class::Error, "session #{child.id[0, 8]} is open in a chi REPL; stop it there")
+      expect { sessions.stop(child.id) }.to raise_error(described_class::Error, "session #{child.id[0, 8]} is in use by a one-turn chi --non-interactive run; let it finish")
     end
   end
 end

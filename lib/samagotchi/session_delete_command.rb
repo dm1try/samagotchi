@@ -9,7 +9,7 @@ require_relative "session_access/local"
 module Samagotchi
   # `chi sessions delete`: remove sessions for good (SessionManager.delete_session),
   # one line per id. A live worker's session is refused unless --force stops
-  # the worker first; a chi REPL's never is.
+  # the worker first; a one-turn chi run's never is.
   class SessionDeleteCommand
     include CLI::Command
 
@@ -18,8 +18,8 @@ module Samagotchi
         Deletes each session: its history, notes, images and queued input.
         This can't be undone.
         -f, --force   stop a session's running worker first (without it,
-                      a live session is refused); a session open in a
-                      chi REPL is always refused
+                      a live session is refused); a session in a one-turn
+                      chi run (chi --non-interactive) is always refused
     TEXT
     PREVIEW_LIMIT = 60
     FLAGS = CLI::Flags.new(help: CLI::Command::HELP_WORDS) { |f| f.switch "-f", "--force" }
@@ -67,7 +67,7 @@ module Samagotchi
       @stdout.puts(["#{short}  deleted#{" (stopped its worker)" if result[:stopped]}", preview].compact.join("  "))
       true
     rescue SessionManager::OwnedByTUI
-      @stdout.puts("#{short}  refused: it is open in a chi REPL; close it there first")
+      @stdout.puts("#{short}  refused: it is #{OwnerLock::TUI_BUSY}; let it finish first")
       false
     rescue SessionManager::DeleteRefused => e
       line = if e.reason == :still_stopping then "its worker is still shutting down; try again in a moment"

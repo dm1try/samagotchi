@@ -160,7 +160,7 @@ RSpec.describe Samagotchi::ReplyWait do
     expect(wait(owner_grace: 0.1).status).to eq(:worker_gone)
   end
 
-  it "does not report a question a chi REPL holds" do
+  it "does not report a question a one-turn chi run holds" do
     locks << Samagotchi::OwnerLock.acquire(Samagotchi::Session.session_dir(session.id, state_dir: tmpdir), kind: "tui")
     set(pending_question: { id: "q1", question: "Which?" })
 

@@ -160,7 +160,7 @@ RSpec.describe Samagotchi::Web::SessionSummary do
       expect(described_class.build(s, owner: nil, session_dir: session_dir(s))[:pending_question]).to be_nil
     end
 
-    it "has no question while a chi REPL owns the session: the web can't answer it there" do
+    it "has no question while a one-turn chi run owns the session: the web can't answer it there" do
       s = session(status: "running")
       s.pending_question = { id: "q1", question: "Which?" }
       repl = Samagotchi::OwnerLock::Owner.new(kind: "tui", pid: 1)

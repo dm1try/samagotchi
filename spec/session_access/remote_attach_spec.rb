@@ -59,7 +59,7 @@ RSpec.describe Samagotchi::SessionAccess::Remote, "for a remote attach" do
     expect(woke.strategy).to be_a(Samagotchi::Guardrails::ParentPolicy::Strategy)
   end
 
-  it "refuses a wake as Local does: a chi REPL's session, a leftover scratch one, a late Bridge, no session" do
+  it "refuses a wake as Local does: a one-turn chi run's session, a leftover scratch one, a late Bridge, no session" do
     repl = make
     lock = Samagotchi::OwnerLock.acquire(dir_of(repl), kind: "tui")
     expect { remote.attach_wake(repl.id, wait: 1) }

@@ -89,14 +89,14 @@ RSpec.describe Samagotchi::RemoteAttachCommand do
     expect(run(attach: "ab")).to eq(1)
 
     allow(remote).to receive(:resolve).and_return("ab12")
-    allow(launcher).to receive(:run).and_raise(Samagotchi::TerminalUI::AttachLauncher::Error, "session ab12 is open in a chi REPL; close it there first")
+    allow(launcher).to receive(:run).and_raise(Samagotchi::TerminalUI::AttachLauncher::Error, "session ab12 is in use by a one-turn chi --non-interactive run; let it finish first")
     expect(run(attach: "ab")).to eq(1)
 
     allow(remote).to receive(:create).and_raise(Samagotchi::SessionAccess::BadRequest.new("unknown toolkit nope", code: "invalid_toolkit"))
     expect(run(dir: "/x", toolkit: "nope")).to eq(2)
 
     expect(err.string.lines).to eq(["Error: #{too_old}\n", "Error: ab matches several sessions\n",
-                                    "Error: session ab12 is open in a chi REPL; close it there first\n",
+                                    "Error: session ab12 is in use by a one-turn chi --non-interactive run; let it finish first\n",
                                     "Error: unknown toolkit nope\n"])
   end
 

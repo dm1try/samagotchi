@@ -8,7 +8,7 @@ module Samagotchi
   # /objectives: with no arguments the session's list (Objectives), each
   # objective's latest move under it (the model's objectives tool; a move
   # changes nothing); `set`, `add`, `edit`, `done`, `drop` and `undo` edit it. An edit is a
-  # whole new list in a note file (NoteDelivery, with its refusal of a chi REPL's session), so it is
+  # whole new list in a note file (NoteDelivery, with its refusal of a one-turn chi run's session), so it is
   # safe from any thread, a turn running or not: it goes into the conversation
   # at the worker's next pass between turns, and a second edit stacks on an
   # unabsorbed first. Nothing here saves the session.

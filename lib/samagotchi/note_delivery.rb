@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "session"
+require_relative "owner_lock"
 require_relative "session_inbox"
 
 module Samagotchi
@@ -14,12 +15,12 @@ module Samagotchi
   # note in its notes/ folder, which a live worker adds within seconds and
   # a session with no worker at its next start. Callers word the outcome.
   module NoteDelivery
-    # Why a chi REPL's session takes no note.
-    REPL_REFUSAL = "it is open in a chi REPL; notes need attached mode"
+    # Why a one-turn chi run's session takes no note.
+    REPL_REFUSAL = "it is #{OwnerLock::TUI_BUSY}; send the note once it ends"
 
     # The outcome for one session.
     # @!attribute status [Symbol] :queued (a worker runs it), :waits (no
-    #   worker: it waits for the next start) or :refused (a chi REPL owns it)
+    #   worker: it waits for the next start) or :refused (a one-turn chi run owns it)
     # @!attribute queued [Integer] notes waiting in its notes/ folder
     #   (:waits only; 0 otherwise)
     Result = Data.define(:id, :status, :queued) do

@@ -163,7 +163,7 @@ module Samagotchi
     # A session as a session command reads it (Local: the Session itself;
     # Remote: chi web's brief read). The fields the commands use, and
     # Session's #display_title.
-    # @!attribute owner [OwnerLock::Owner, nil] its worker or chi REPL
+    # @!attribute owner [OwnerLock::Owner, nil] its worker or one-turn chi run
     # @!attribute pending_question [PendingQuestion, nil] the file's
     SessionView = Data.define(:id, :status, :title, :display_title, :project_root, :working_directory, :model_name,
                               :model_typed, :parent_answers, :owner, :pending_question)
@@ -189,7 +189,7 @@ module Samagotchi
       #   features, epoch; nil: none answers)
       def sidecar = link.live? ? link.sidecar : nil
 
-      # @return [OwnerLock::Owner, nil] a worker, a chi REPL, nil
+      # @return [OwnerLock::Owner, nil] a worker, a one-turn chi run, nil
       def owner = link.owner
 
       def live? = link.live?

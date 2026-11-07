@@ -207,7 +207,7 @@ module Samagotchi
       )
       case format
       when "json"
-        # owner: "worker", "tui" (a chi REPL: it takes no notes or messages)
+        # owner: "worker", "tui" (a one-turn chi run: it takes no notes or messages)
         # or nil; recap: the saved recap's first sentence, or nil; project:
         # its git project's root, or nil
         # parent_id: the session that delegated it (the delegate tool), or nil

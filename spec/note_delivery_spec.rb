@@ -48,7 +48,7 @@ RSpec.describe Samagotchi::NoteDelivery do
     expect(deliver(idle, "two")).to have_attributes(status: :waits, queued: 2, delivered?: true)
   end
 
-  it "refuses a session a chi REPL owns, writing nothing" do
+  it "refuses a session a one-turn chi run owns, writing nothing" do
     repl = make(owner: "tui")
 
     expect(deliver(repl)).to have_attributes(status: :refused, delivered?: false)

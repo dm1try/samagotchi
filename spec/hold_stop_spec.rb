@@ -63,7 +63,7 @@ RSpec.describe Samagotchi::HoldStop do
     expect(stopper.stop_all.delegates).to eq([])
     expect(Samagotchi::Log).to have_received(:warn)
       .with(:worker, "exit_stop_delegate_failed", child: "c1c1c1c1", error: "Samagotchi::SessionManager::OwnedByTUI",
-           msg: "session c1c1c1c1-1111 is open in a chi REPL; close it there first")
+           msg: "session c1c1c1c1-1111 is in use by a one-turn chi --non-interactive run; let it finish first")
   end
 
   it "says nothing was stopped when there was nothing to stop" do

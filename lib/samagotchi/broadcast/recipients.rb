@@ -12,7 +12,7 @@ module Samagotchi
     # A session a broadcast may concern.
     # @!attribute project [String, nil] its git project's root
     # @!attribute live [Boolean] a worker runs it now
-    # @!attribute owner [String, nil] "worker", "tui" (a chi REPL, which
+    # @!attribute owner [String, nil] "worker", "tui" (a one-turn chi run, which
     #   takes no notes) or nil
     Recipient = Data.define(:id, :short_id, :project, :cwd, :desc, :live, :owner) do
       def repl? = owner == "tui"
@@ -20,7 +20,7 @@ module Samagotchi
 
     # Who a broadcast goes to: the user's own sessions, not delegate
     # children (their parent relays what concerns them) and not scratch
-    # ones, that a worker or a chi REPL runs now or that ended a turn in
+    # ones, that a worker or a one-turn chi run runs now or that ended a turn in
     # the last +active_hours+. Forks count: they are the user's sessions.
     # Archived sessions don't; test runs only when chi runs as one.
     module Recipients

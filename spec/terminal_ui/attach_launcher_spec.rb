@@ -97,13 +97,13 @@ RSpec.describe Samagotchi::TerminalUI::AttachLauncher do
       expect(err.string).to eq("")
     end
 
-    it "refuses a session a chi REPL has open" do
+    it "refuses a session a one-turn chi run has open" do
       allow(Samagotchi::WorkerLink).to receive(:resolve).and_return(none_link)
       allow(Samagotchi::SessionManager).to receive(:resume_session)
         .and_raise(Samagotchi::SessionManager::OwnedByTUI, session.id)
 
       expect { connect(attach: session.id) }
-        .to raise_error(described_class::Error, "session #{session.id} is open in a chi REPL; close it there first")
+        .to raise_error(described_class::Error, "session #{session.id} is in use by a one-turn chi --non-interactive run; let it finish first")
     end
 
     it "rejects an unknown session" do
@@ -251,12 +251,12 @@ RSpec.describe Samagotchi::TerminalUI::AttachLauncher do
       expect(Samagotchi::SessionManager).to have_received(:resume_session).with(session.id, state_dir: state_dir)
     end
 
-    it "refuses a session a chi REPL has open" do
+    it "refuses a session a one-turn chi run has open" do
       allow(Samagotchi::SessionManager).to receive(:resume_session)
         .and_raise(Samagotchi::SessionManager::OwnedByTUI, session.id)
 
       expect { connect(resume: session.id) }
-        .to raise_error(described_class::Error, /open in a chi REPL; close it there first/)
+        .to raise_error(described_class::Error, /in use by a one-turn chi --non-interactive run; let it finish first/)
     end
 
     it "starts a chi scratch session's worker on a scratch session" do

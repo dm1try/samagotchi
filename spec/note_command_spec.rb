@@ -73,7 +73,7 @@ RSpec.describe Samagotchi::NoteCommand do
       expect(out.string.lines.last).to eq("#{a.id[0, 8]}  waits for the session's next start (2 notes queued)\n")
     end
 
-    it "refuses a session open in a chi REPL and exits 1, still queueing the others" do
+    it "refuses a session open in a one-turn chi run and exits 1, still queueing the others" do
       repl = make(owner: "tui")
       live = make(owner: "worker")
 
@@ -82,7 +82,7 @@ RSpec.describe Samagotchi::NoteCommand do
       expect(code).to eq(1)
       expect(notes_of(repl)).to be_empty
       expect(notes_of(live).size).to eq(1)
-      expect(out.string).to include("#{repl.id[0, 8]}  refused: it is open in a chi REPL; notes need attached mode")
+      expect(out.string).to include("#{repl.id[0, 8]}  refused: it is in use by a one-turn chi --non-interactive run; send the note once it ends")
     end
 
     it "reports an unknown or ambiguous id and exits 1" do

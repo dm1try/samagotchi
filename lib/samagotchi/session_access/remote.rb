@@ -584,7 +584,7 @@ module Samagotchi
       # when none runs, waited for up to +wait+ seconds there (a leaving
       # worker first: +read_timeout+ covers that wait too).
       # @return [WakeReply]
-      # @raise [SessionManager::OwnedByTUI] a chi REPL has it there
+      # @raise [SessionManager::OwnedByTUI] a one-turn chi run has it there
       # @raise [Refused] a leftover scratch session (code scratch), or its
       #   Bridge didn't come in time (code worker_timeout): chi web's words,
       #   LaunchMode's constants

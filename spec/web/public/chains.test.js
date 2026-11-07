@@ -242,7 +242,7 @@ test("continueRefusal: open delegates are named with their preview and state", (
     { id: "aaaaaaaa-1", status: "running", first_preview: "fix the flaky spec" },
     { id: "bbbbbbbb-2", status: "idle", first_preview: "write docs", pending_question: { id: "q", kind: "question" } },
   ];
-  const detail = "d3 has delegates still open that can't move to the next link: aaaaaaaa (older chi worker 0.46.1; restart it), cccccccc (open in a chi REPL; close it there); then continue (or wait for them, stop them or archive them)";
+  const detail = "d3 has delegates still open that can't move to the next link: aaaaaaaa (older chi worker 0.46.1; restart it), cccccccc (in use by a one-turn chi --non-interactive run; let it finish); then continue (or wait for them, stop them or archive them)";
   const r = continueRefusal(refused("open_children", { ids: ["aaaaaaaa-1", "bbbbbbbb-2", "cccccccc-3", "dddddddd-4"] },
     detail), kids);
   assert.equal(r.kind, "children");
@@ -251,7 +251,7 @@ test("continueRefusal: open delegates are named with their preview and state", (
   assert.deepEqual(r.children, [
     { id: "aaaaaaaa-1", short: "aaaaaaaa", text: "fix the flaky spec (older chi worker 0.46.1; restart it)" },
     { id: "bbbbbbbb-2", short: "bbbbbbbb", text: "write docs (waiting)" },
-    { id: "cccccccc-3", short: "cccccccc", text: "(open in a chi REPL; close it there)" },
+    { id: "cccccccc-3", short: "cccccccc", text: "(in use by a one-turn chi --non-interactive run; let it finish)" },
     { id: "dddddddd-4", short: "dddddddd", text: "" },
   ]);
   const html = openChildrenHtml("d3d3d3d3-x", r.children, (id) => `#/s/${id}`);

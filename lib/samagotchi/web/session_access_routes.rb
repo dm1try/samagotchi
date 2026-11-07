@@ -256,7 +256,7 @@ module Samagotchi
       # status row), parent_strategy, installed (the newest chi here)}. A
       # worker still leaving is waited for first (Local#wake: its recap's
       # timeout and a margin, on top of +wait+); 409
-      # owned_by_tui (a chi REPL has it), 409 scratch (a leftover scratch
+      # owned_by_tui (a one-turn chi run has it), 409 scratch (a leftover scratch
       # session, as chi --attach here says); 504 worker_timeout (its Bridge
       # didn't come in time); 409 worker_newer (a worker whose protocol is newer
       # than this chi's, not resumed); 404 not_found.
@@ -425,7 +425,7 @@ module Samagotchi
       # session (NoteDelivery, as chi note; source: where it came from,
       # "cli" by default, never "broadcast"). 200 {status: "queued" (a
       # worker adds it) or "waits" (the next start does), session_id,
-      # queued}; 409 owned_by_tui (status refused: a chi REPL has it); 400
+      # queued}; 409 owned_by_tui (status refused: a one-turn chi run has it); 400
       # note_rejected (empty, or over 16 KiB).
       def handle_notes(req, id)
         body = body_hash(req) or return error_response(400, "invalid_json", "invalid JSON body")

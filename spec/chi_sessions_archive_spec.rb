@@ -62,7 +62,7 @@ RSpec.describe "chi sessions archive" do
 
       expect(out.string).to eq(<<~TEXT)
         aaaa1111  refused: a turn is running; wait for it or cancel it first
-        bbbb2222  refused: it is open in a chi REPL; close it there first
+        bbbb2222  refused: it is in use by a one-turn chi --non-interactive run; let it finish first
         cccc3333  refused: a scratch session is deleted when you leave; nothing to archive
         dddd4444  archived
       TEXT
@@ -75,7 +75,7 @@ RSpec.describe "chi sessions archive" do
       make("child", parent: parent, owner: "tui")
 
       expect(run("archive", "aaaa")).to eq(1)
-      expect(out.string).to eq("aaaa1111  refused: a delegate of it is open in a chi REPL; close it there first\n")
+      expect(out.string).to eq("aaaa1111  refused: a delegate of it is in use by a one-turn chi --non-interactive run; let it finish first\n")
     end
 
     it "unarchives, says so for one that isn't archived, and names an unknown id" do

@@ -56,7 +56,7 @@ RSpec.describe Samagotchi::WorkerLink do
       server&.close
     end
 
-    it "is Stale under a chi REPL's lock: a TUI writes no sidecar" do
+    it "is Stale under a one-turn chi run's lock: a TUI writes no sidecar" do
       Samagotchi::WorkerSidecar.new(port: 5001, pid: 4242).write(dir)
 
       hold_worker(dir, kind: "tui") do

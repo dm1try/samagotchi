@@ -131,7 +131,7 @@ RSpec.describe Samagotchi::OwnerLock do
       lock.release
     end
 
-    it "returns at once for an owner that isn't leaving, a chi REPL, or none" do
+    it "returns at once for an owner that isn't leaving, a one-turn chi run, or none" do
       expect(await).to eq(:not_leaving)
       worker = described_class.acquire(dir, kind: "worker")
       expect(await(on_wait: ->(_) { raise "no line" })).to eq(:not_leaving)

@@ -24,7 +24,7 @@ module Samagotchi
     # A continue that can't happen (#run). reason: :continued
     # (another session continues it already: +ids+ names it), :open_children
     # (open children it can't move to the new link: on an older chi's
-    # worker or open in a chi REPL; +ids+ names them) or :folder_gone (its
+    # worker or open in a one-turn chi run; +ids+ names them) or :folder_gone (its
     # folder isn't there).
     class Refused < StandardError
       attr_reader :session_id, :reason, :ids
