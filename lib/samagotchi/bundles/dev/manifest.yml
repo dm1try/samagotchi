@@ -4,7 +4,7 @@ version: 0.7.8
 scope: system
 description: "Developer tools"
 trust_level: reviewed
-requires_chi: ">= 0.154.0"
+requires_chi: ">= 0.155.0"
 includes:
 - known-names
 - mcp

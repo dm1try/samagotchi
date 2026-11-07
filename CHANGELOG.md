@@ -8,13 +8,19 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+## [0.155.0] - 2026-11-07
+
 ### Added
 
 - The inline-widgets bundle (in the `dev` profile, `chi update`): it teaches the model the `chi-ui` blocks chi web draws, so an answer that leaves you several things to decide comes with picks that fill your reply, and a "how does this work" answer with a walk you step through. The terminal shows the block's YAML; a delegate child and a `-p --non-interactive` run don't get it.
+- `chi bundle check` lists a bundle's prompt sections among what it registers.
 
 ### Fixed
 
 - At the very start of a turn, a plugin's `ctx.turn_author`, a hook's `author:` and `/objectives` could still see the previous turn (its participant, its conversation); they now see the turn that just started.
+- chi web's session bar no longer slides its time and speed chips under the buttons with a long model name: the model name shortens, the buttons move to their own line together, and on a narrow window the ctx/speed/time chips get a line of their own instead of being cut off.
+
+Update with `chi update` (the dev profile 0.7.8, inline-widgets 0.1.0 new).
 
 ## [0.154.1] - 2026-11-07
 
@@ -5780,7 +5786,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.154.1...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.155.0...HEAD
+[0.155.0]: https://github.com/dm1try/samagotchi/compare/v0.154.1...v0.155.0
 [0.154.1]: https://github.com/dm1try/samagotchi/compare/v0.154.0...v0.154.1
 [0.154.0]: https://github.com/dm1try/samagotchi/compare/v0.153.0...v0.154.0
 [0.153.0]: https://github.com/dm1try/samagotchi/compare/v0.152.0...v0.153.0
