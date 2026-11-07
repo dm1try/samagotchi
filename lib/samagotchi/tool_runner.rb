@@ -422,7 +422,7 @@ module Samagotchi
 
       surface = surface(context)
       call = wrapped(surface, call)
-      surface.declared_entry(call[:name])&.unwrap&.call(call, surface.layers) || call
+      surface.declared_entry(call[:name])&.unwrap&.call(call, surface) || call
     rescue StandardError => e
       Log.warn(:turn, "tool_unwrap_failed", tool: call[:name].to_s, error: "#{e.class}: #{e.message}")
       call
@@ -434,7 +434,7 @@ module Samagotchi
       wrap = surface.index&.wrap
       return call unless wrap && surface.loads_tools && !surface.registered?(call[:name])
 
-      wrap.call(call) || call
+      wrap.call(call, surface) || call
     end
 
     # A call that can't run in this turn as it is, by its name: a real tool
@@ -468,7 +468,7 @@ module Samagotchi
              else
                call[:name]
              end
-      tool = index.unreached_tool(name)
+      tool = index.unreached_tool(name, surface)
       tool && Tools::ToolIndex::ToolkitGroupRefusal.for(tool, surface)
     end
 

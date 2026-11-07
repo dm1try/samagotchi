@@ -2,6 +2,7 @@
 
 require "spec_helper"
 require "samagotchi/guardrails"
+require "samagotchi/kernel_loop"
 require "samagotchi/tools/builtins"
 require "samagotchi/tools/tool_index"
 require "samagotchi/plugin/api"
@@ -304,6 +305,24 @@ RSpec.describe Samagotchi::Tools::ToolIndex do
       expect(find_entry.handler.call({ name: find_name, args: { "query" => "delegate", "server" => "x" } }, nil))
         .to start_with("(searched every group)\nCall one with call_tool")
       expect(index.find("delegate", "chi")).to include("chi/delegate: ")
+    end
+
+    it "searches and calls on the turn's surface (the handler's ToolContext), not the Registry as it is now" do
+      lean!
+      turn = Samagotchi::Tools::ToolSurface.for(registry)
+      kctx = instance_double(Samagotchi::KernelLoop::ToolContext, surface: turn)
+      spec = Samagotchi::Plugin::ToolSpec.build("web_search", "Search the web for a query.",
+                                                params: { query: { type: "string", required: true } }) { "found" }
+      Samagotchi::Plugin::ToolSpec.apply(registry, "web-search", [spec], nil)
+
+      expect(index.find("search web")).to include("chi/web_search: ")
+      expect(find_entry.handler.call({ name: find_name, args: { "query" => "search web" } }, kctx))
+        .not_to include("chi/web_search")
+      expect(index.deferred_name("chi/web_search")).to eq("web_search")
+      expect(index.deferred_name("chi/web_search", turn)).to be_nil
+      call = { name: call_name, args: { "tool" => "chi/web_search", "args" => { "query" => "x" } } }
+      expect(index.unwrap(call, turn)).to be_nil
+      expect(index.unwrap(call)).to include(name: "web_search", via: call_name)
     end
 
     it "never runs a chi tool as a source call (fail closed: only the unwrap runs it)" do

@@ -4,6 +4,7 @@ require "json"
 require_relative "args"
 require_relative "builtin_calls"
 require_relative "registry"
+require_relative "tool_surface"
 require_relative "../log"
 require_relative "../token_usage"
 require_relative "../tool_declarations"
@@ -18,10 +19,17 @@ module Samagotchi
     # A source (the mcp bundle, chi.tool_source) publishes its groups (an
     # MCP server each) and runs the calls; the index's own group, chi, is
     # the tools the session's toolkit leaves out but doesn't remove, chi's
-    # built-ins and its bundles' (chi.tool) alike (Registry#reachable_names),
+    # built-ins and its bundles' (chi.tool) alike (ToolSurface#index_only),
     # and a call_tool of one runs as that tool (#unwrap, before the
     # guardrail gate). The index searches the
     # groups, looks a call's tool up and checks it.
+    #
+    # What it reads of the session's tools is a ToolSurface: the turn's
+    # (TurnContext#surface) where the caller has one (the two tools'
+    # handlers, through their ToolContext; #unwrap, #wrap, #deferrable and
+    # #unreached_tool, given it by the runner and the deferred list), else
+    # the Registry #declare registered in, read now (#live_surface: at
+    # load, a turn's start, a guardrail rule's targets, ctx.load_tools).
     #
     # The two tools are registered once, after the plugins load, and
     # declared per toolkit (Registry#declared?): when a source registered
@@ -70,10 +78,11 @@ module Samagotchi
       class ToolkitGroupRefusal < StandardError
         RULE = "toolkit-group"
 
-        # The refusal of +tool+ under +registry+'s toolkit, naming a kit that
-        # reaches its group when the registry can tell (Registry#reaching_kit).
-        def self.for(tool, registry)
-          new(tool, registry.toolkit, kit: registry.respond_to?(:reaching_kit) ? registry.reaching_kit&.call(tool.group) : nil)
+        # The refusal of +tool+ under +surface+'s toolkit (a ToolSurface),
+        # naming a kit that reaches its group when it can tell
+        # (ToolSurface#reaching_kit).
+        def self.for(tool, surface)
+          new(tool, surface.toolkit, kit: surface.reaching_kit&.call(tool.group))
         end
 
         def initialize(tool, toolkit, kit: nil)
@@ -248,12 +257,12 @@ module Samagotchi
       # @return [Array<Source>] the sources added, in order
       def sources = @sources.dup
 
-      # Every group, now: the index's own (#registry_groups), then the
-      # sources'. A source group with a reserved name, or one an earlier
-      # group has, is left out of search, lookup and the description (said
-      # once per name: a source publishes after load too).
-      def all_groups
-        own = registry_groups
+      # Every group, now: the index's own (#registry_groups, from
+      # +surface+), then the sources'. A source group with a reserved name,
+      # or one an earlier group has, is left out of search, lookup and the
+      # description (said once per name: a source publishes after load too).
+      def all_groups(surface = live_surface)
+        own = registry_groups(surface)
         taken = own.map(&:name) | RESERVED_GROUPS
         kept = @sources.flat_map(&:groups).select do |group|
           why = if RESERVED_GROUPS.include?(group.name) then "reserved"
@@ -266,9 +275,11 @@ module Samagotchi
         own + kept
       end
 
-      def reached_groups
-        groups = all_groups
-        toolkit = @registry&.toolkit
+      # The groups +surface+'s toolkit reaches (#all_groups' own, and the
+      # source groups #declare found that it reaches).
+      def reached_groups(surface = live_surface)
+        groups = all_groups(surface)
+        toolkit = surface.toolkit
         return groups if toolkit.nil? || toolkit.groups == :all
 
         declared = @declared_group_names || groups.reject { |group| own?(group) }.map(&:name)
@@ -285,7 +296,7 @@ module Samagotchi
       # @return [Array<String>] the names registered
       def declare(registry, failures: nil)
         @registry = registry
-        @described = description_lines(all_groups.reject { |group| own?(group) }).freeze
+        @described = description_lines(all_groups(live_surface).reject { |group| own?(group) }).freeze
         @declared_group_names = @described.keys.freeze
         loaded = registry.registered
         specs = [find_spec, call_spec]
@@ -296,13 +307,16 @@ module Samagotchi
             next
           end
 
-          unwrap = (->(call, layers) { unwrap(call, layers) } if spec.name == CALL_NAME)
-          registry.register(spec.name, source: SOURCE, unwrap: unwrap, **spec.entry_fields(nil))
+          unwrap = (->(call, surface) { unwrap(call, surface) } if spec.name == CALL_NAME)
+          registry.register(spec.name, source: SOURCE, unwrap: unwrap,
+                                       **spec.entry_fields(nil).merge(handler: own_handler(spec)))
           spec
         end
         registry.index = Registry::Index.new(source: SOURCE, call_name: CALL_NAME, groups: @declared_group_names,
-                                             deferrable: -> { deferrable }, wrap: ->(call) { wrap(call) },
-                                             unreached: ->(name) { unreached_tool(name) }, loaded: loaded)
+                                             deferrable: ->(surface) { deferrable(surface) },
+                                             wrap: ->(call, surface) { wrap(call, surface) },
+                                             unreached: ->(name, surface) { unreached_tool(name, surface) },
+                                             loaded: loaded)
         declared!(declared)
         declared.map(&:name)
       end
@@ -340,10 +354,10 @@ module Samagotchi
       # server's: its name, and its summary if it has one). Never every
       # tool: knowing the names, a model searches less and guesses
       # arguments.
-      def find_description
+      def find_description(surface = live_surface)
         "Search tools this session doesn't declare, by keywords. It answers up to #{FIND_RESULTS} tools, each with " \
           "its name (<group>/<tool>) and inputSchema; call one with #{CALL_NAME}. An empty query lists every tool's " \
-          "name.\nGroups:\n#{(description_lines(registry_groups).values + described_groups.values).join("\n")}"
+          "name.\nGroups:\n#{(description_lines(registry_groups(surface)).values + described_groups(surface).values).join("\n")}"
       end
 
       # ── Search ──────────────────────────────────────────────────────────
@@ -351,10 +365,10 @@ module Samagotchi
       # The search tool: the best matches with their schemas, or with an
       # empty query every group's tool names. +server+ is the parameter's
       # name before it was +group+: a model that still gives it is told
-      # every group was searched.
+      # every group was searched. +surface+: the turn's (the handler's).
       # @return [FoundText]
-      def find(query, only = nil, server: nil)
-        answer = find_in(query, only)
+      def find(query, only = nil, server: nil, surface: live_surface)
+        answer = find_in(query, only, surface)
         return answer unless (only.nil? || only.strip.empty?) && !server.to_s.strip.empty?
 
         FoundText.new("(searched every group)\n#{answer}", answer.loaded)
@@ -366,11 +380,12 @@ module Samagotchi
       # run by its source. It fails closed: a tool that isn't the one
       # guardrails were given (#claimed) is refused, and so is one of the
       # index's own (a chi tool runs as itself, #unwrap, or not at all).
-      def call(name, args)
-        tool = lookup(name)
+      # +surface+: the turn's (the handler's).
+      def call(name, args, surface: live_surface)
+        tool = lookup(name, surface)
         return tool if tool.is_a?(String)
 
-        unless claimed(name.strip)&.first == tool.acts_as
+        unless claimed(name.strip, surface)&.first == tool.acts_as
           # A bare acts_as of a source with no prefix: guardrails can't
           # name it before its tool is listed (#claimed), so only
           # <group>/<tool> is taken.
@@ -399,16 +414,16 @@ module Samagotchi
       # any registered built-in or plugin tool: one the toolkit removes or declares
       # is then refused by its name before the gate (ToolRunner#left_out?),
       # with no hook or card. Nil, so the call runs as call_tool, when the
-      # turn under +layers+ doesn't offer call_tool, for an MCP tool, a miss
+      # turn's +surface+ doesn't declare call_tool, for an MCP tool, a miss
       # or arguments that aren't an object.
       # @return [Hash, nil]
-      def unwrap(call, layers = [])
-        return nil unless @registry&.offered(CALL_NAME, layers: layers)
+      def unwrap(call, surface = live_surface)
+        return nil unless surface.declared_entry(CALL_NAME)
 
         args = call[:args].is_a?(Hash) ? call[:args] : {}
         name = args["tool"].to_s.strip
-        tool = lookup_quietly(name)
-        entry = tool&.entry || builtin_named(name)
+        tool = lookup_quietly(name, surface)
+        entry = tool&.entry || builtin_named(name, surface)
         return nil unless entry
 
         inner = inner_args(args["args"], tool)
@@ -421,13 +436,13 @@ module Samagotchi
       # registered tool's. Sorted by acts_as, so the same index gives the
       # same list in any session and after a respawn.
       # @return [Array<Tool>]
-      def deferrable
-        all = all_groups.reject { |group| own?(group) }.flat_map(&:tools)
-        reached = reached_groups.reject { |group| own?(group) }.flat_map(&:tools)
+      def deferrable(surface = live_surface)
+        all = all_groups(surface).reject { |group| own?(group) }.flat_map(&:tools)
+        reached = reached_groups(surface).reject { |group| own?(group) }.flat_map(&:tools)
         counts = all.map(&:acts_as).tally
         reached.select do |tool|
           tool.refusal.nil? && counts[tool.acts_as] == 1 && tool.acts_as.match?(DEFERRABLE_NAME) &&
-            !@registry&.key?(tool.acts_as)
+            !surface.registered?(tool.acts_as)
         end.sort_by(&:acts_as)
       end
 
@@ -437,29 +452,29 @@ module Samagotchi
       # <group>/<tool>). Nil for any other: declared, removed, unknown, or a
       # source tool that can't be deferred. Never waits for a start.
       # @return [String, nil]
-      def deferred_name(name)
+      def deferred_name(name, surface = live_surface)
         name = name.to_s.strip
         bare = name.delete_prefix("#{CHI_GROUP}/")
-        return bare if @registry&.indexed(bare)
+        return bare if surface.indexed_entry(bare)
 
-        tool = lookup_quietly(name) or return nil
+        tool = lookup_quietly(name, surface) or return nil
         return nil if tool.entry || tool.refusal
 
-        deferrable.any? { |t| t.acts_as == tool.acts_as } ? tool.acts_as : nil
+        deferrable(surface).any? { |t| t.acts_as == tool.acts_as } ? tool.acts_as : nil
       end
 
       # Finds a source tool regardless of the active toolkit, without
       # waiting for a starting group. Used only to refuse a call or explain
       # a deferred stub for a group the session cannot reach.
-      def unreached_tool(name)
+      def unreached_tool(name, surface = live_surface)
         name = name.to_s.strip
         return nil if name.empty?
 
-        groups = all_groups.reject { |group| own?(group) }
+        groups = all_groups(surface).reject { |group| own?(group) }
         groups.select! { |group| @declared_group_names.include?(group.name) } if @declared_group_names
         tool = tool_in(name, groups)
         return nil unless tool
-        return nil if reached_groups.any? { |group| group.name == tool.group }
+        return nil if reached_groups(surface).any? { |group| group.name == tool.group }
 
         tool
       end
@@ -473,18 +488,18 @@ module Samagotchi
       # loads tools): the call tool's row, rules and approvals. Nil for any
       # other call.
       # @return [Hash, nil]
-      def wrap(call)
+      def wrap(call, surface = live_surface)
         name = call[:name].to_s
-        return nil if name.empty? || @registry&.key?(name)
+        return nil if name.empty? || surface.registered?(name)
 
-        tool = deferrable.find { |t| t.acts_as == name } or return nil
+        tool = deferrable(surface).find { |t| t.acts_as == name } or return nil
         args = call[:args].is_a?(Hash) ? call[:args] : {}
         BuiltinCalls.build(CALL_NAME, { "tool" => tool.full_name, "args" => args })
       end
 
       # The call tool's activity row: <group>/<tool> and its arguments.
       def call_preview(args)
-        tool = lookup_quietly(args["tool"].to_s)
+        tool = lookup_quietly(args["tool"].to_s, live_surface)
         name = tool ? tool.full_name : args["tool"].to_s.strip
         inner = tool && inner_args(args["args"], tool)
         inner ? [name, preview(inner)].reject(&:empty?).join(" ") : name
@@ -498,8 +513,9 @@ module Samagotchi
       # refuses it).
       def call_targets(args)
         name = args["tool"].to_s.strip
-        tool = lookup_quietly(name)
-        acts_as, label = tool ? [tool.acts_as, "#{tool.group}: #{tool.name}"] : claimed(name)
+        surface = live_surface
+        tool = lookup_quietly(name, surface)
+        acts_as, label = tool ? [tool.acts_as, "#{tool.group}: #{tool.name}"] : claimed(name, surface)
         return {} unless acts_as
 
         { acts_as: acts_as, args: inner_args(args["args"], tool) || {}, label: label }.compact
@@ -507,20 +523,38 @@ module Samagotchi
 
       private
 
+      # The Registry #declare registered in, read now as a ToolSurface (its
+      # toolkit, every layer's tools left aside: the index's own group never
+      # holds one): what a caller without a turn's surface sees.
+      # @return [ToolSurface]
+      def live_surface = ToolSurface.for(@registry)
+
+      # The handler +spec+'s tool registers with: its block given the
+      # call's typed args and the turn's surface (the ToolContext's: a
+      # bare kernel's computed on read; none, a spec's nil, reads the
+      # Registry now).
+      def own_handler(spec)
+        parameters = spec.schema[:parameters]
+        lambda do |call, kctx|
+          Plugin::ToolSpec.result_text(spec.block.call(Plugin::ToolSpec.args_of(call, parameters),
+                                                       kctx&.surface || live_surface))
+        end
+      end
+
       def find_spec
         Plugin::ToolSpec.build(FIND_NAME, find_description, params: FIND_PARAMS,
                                                            preview: lambda { |args|
                                                              [args["query"].to_s.strip, args["group"] && "in #{args["group"]}"].compact.join(" ")
-                                                           }) do |args, _ctx|
-          find(args["query"].to_s, args["group"], server: args["server"])
+                                                           }) do |args, surface|
+          find(args["query"].to_s, args["group"], server: args["server"], surface: surface)
         end
       end
 
       def call_spec
         Plugin::ToolSpec.build(CALL_NAME, CALL_DESCRIPTION, params: CALL_PARAMS, label: @sources.first&.label,
                                                            preview: ->(args) { call_preview(args) },
-                                                           targets: ->(args) { call_targets(args) }) do |args, _ctx|
-          call(args["tool"].to_s, args["args"])
+                                                           targets: ->(args) { call_targets(args) }) do |args, surface|
+          call(args["tool"].to_s, args["args"], surface: surface)
         end
       end
 
@@ -532,8 +566,8 @@ module Samagotchi
         @sources.find { |source| source.groups.any? { |g| g.name == group } }
       end
 
-      def find_in(query, only)
-        all = reached_groups
+      def find_in(query, only, surface)
+        all = reached_groups(surface)
         searched = all
         if only && !only.strip.empty?
           searched = all.select { |group| group.name == only.strip }
@@ -548,19 +582,19 @@ module Samagotchi
         unsearched = searched.filter_map { |group| "#{group.name} #{group.note}" if group.tools.empty? && group.note }
         blocks << "Not searched: #{unsearched.join("; ")}." unless unsearched.empty?
         FoundText.new("#{CALL_HINT}\n\n#{blocks.join("\n\n")}",
-                      loadable(matches))
+                      loadable(matches, surface))
       end
 
       # The wire names of +matches+ a request can declare deferred: a
       # chi tool of the index's own groups by its name, a source's tool by
       # its acts_as when it is #deferrable.
-      def loadable(matches)
+      def loadable(matches, surface)
         sourced = nil
         matches.filter_map do |tool|
           next tool.name if tool.entry
           next if tool.refusal
 
-          sourced ||= deferrable.map(&:acts_as)
+          sourced ||= deferrable(surface).map(&:acts_as)
           tool.acts_as if sourced.include?(tool.acts_as)
         end
       end
@@ -573,36 +607,36 @@ module Samagotchi
         @sources.each { |source| source.declared!(names, tokens, groups) }
       end
 
-      def described_groups
-        return @described unless @registry&.toolkit && @registry.toolkit.groups != :all
+      def described_groups(surface)
+        toolkit = surface.toolkit
+        return @described unless toolkit && toolkit.groups != :all
 
-        @described.select { |name, _line| @registry.toolkit.reaches_group?(name) }
+        @described.select { |name, _line| toolkit.reaches_group?(name) }
       end
 
       def own?(group) = RESERVED_GROUPS.include?(group.name)
 
       # The registered chi tool chi/<name> names (a built-in or a plugin's,
       # never the index's own), reachable or not.
-      def builtin_named(name)
+      def builtin_named(name, surface)
         return nil unless name.start_with?("#{CHI_GROUP}/")
 
-        entry = @registry[name.delete_prefix("#{CHI_GROUP}/")]
+        entry = surface.registered[name.delete_prefix("#{CHI_GROUP}/")]
         entry unless entry.nil? || entry.source == SOURCE
       end
 
       # The index's own groups: chi, the tools (built-ins and plugin tools)
-      # the Registry's toolkit leaves out but reaches (none: no group). Each tool's schema is its
-      # registered entry's (a config's execute description included), and
-      # it acts as itself.
+      # +surface+'s toolkit leaves out but reaches (ToolSurface#index_only;
+      # none: no group). Each tool's schema is its registered entry's (a
+      # config's execute description included), and it acts as itself.
       # @return [Array<Group>]
-      def registry_groups
-        names = @registry ? @registry.reachable_names : []
-        return [] if names.empty?
+      def registry_groups(surface)
+        entries = surface.index_only
+        return [] if entries.empty?
 
-        tools = names.map do |name|
-          entry = @registry[name]
+        tools = entries.map do |entry|
           schema = ToolDeclarations.chat_schemas([entry.schema]).first
-          Tool.new(group: CHI_GROUP, name: name, acts_as: name, description: schema[:description].to_s,
+          Tool.new(group: CHI_GROUP, name: entry.name, acts_as: entry.name, description: schema[:description].to_s,
                    schema: JSON.parse(JSON.generate(schema[:parameters])), entry: entry)
         end
         [Group.new(name: CHI_GROUP, summary: CHI_SUMMARY, tools: tools)]
@@ -687,9 +721,9 @@ module Samagotchi
       # miss is the error text: a failed group's error, else the closest
       # tools.
       # @return [Tool, String]
-      def lookup(name, waited: false)
+      def lookup(name, surface, waited: false)
         name = name.strip
-        all = reached_groups
+        all = reached_groups(surface)
         tool = all.lazy.filter_map do |group|
           next unless name.start_with?("#{group.name}/")
 
@@ -703,17 +737,20 @@ module Samagotchi
         return "Error: #{name} names #{same.map(&:full_name).join(" and ")}; call one as <group>/<tool>" if same.size > 1
 
         # A chi tool the session declares (a built-in or a plugin's) is no
-        # starting server's tool.
-        declared = @registry&.offered(name)
-        return "Error: #{name} is declared; call it directly" if declared && declared.source != SOURCE
+        # starting server's tool. A layer's tool (forget_outputs) isn't
+        # counted, as before the surface (Registry#offered without layers).
+        declared = surface.declared_entry(name)
+        if declared && declared.source != SOURCE && declared.layer.nil?
+          return "Error: #{name} is declared; call it directly"
+        end
 
         # A name with a group's <group>/ waits for that group only; any
         # other name (an acts_as) for every one starting.
-        named = reached_groups.select { |group| name.start_with?("#{group.name}/") }
-        starting = (named.empty? ? reached_groups : named).select { |group| group.state == :starting }
+        named = reached_groups(surface).select { |group| name.start_with?("#{group.name}/") }
+        starting = (named.empty? ? reached_groups(surface) : named).select { |group| group.state == :starting }
         unless waited || starting.empty?
           starting.each { |group| source_of(group.name)&.wait(group.name) }
-          return lookup(name, waited: true)
+          return lookup(name, surface, waited: true)
         end
 
         failed = all.find { |group| group.state == :failed && name.start_with?("#{group.name}/") }
@@ -726,8 +763,8 @@ module Samagotchi
       end
 
       # #lookup's tool, without waiting for a start: nil on a miss.
-      def lookup_quietly(name)
-        tool = lookup(name, waited: true)
+      def lookup_quietly(name, surface)
+        tool = lookup(name, surface, waited: true)
         tool.is_a?(Tool) ? tool : nil
       end
 
@@ -750,8 +787,8 @@ module Samagotchi
       # bare name with a source's prefix as it is (no label). Nil for
       # anything else.
       # @return [Array(String, String), Array(String, nil), nil]
-      def claimed(name)
-        all = all_groups
+      def claimed(name, surface)
+        all = all_groups(surface)
         if (own = all.select { |g| own?(g) }.find { |g| g.tools.any? { |t| t.acts_as == name } })
           return [name, "#{own.name}: #{name}"]
         end

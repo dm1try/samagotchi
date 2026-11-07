@@ -122,6 +122,11 @@ module Samagotchi
       # forget_outputs: the forget layer's call on the running turn's
       # conversation (KernelLoop#forget_outputs).
       def forget_outputs(call) = @kernel.forget_outputs(call, @context)
+
+      # The turn's Tools::ToolSurface (TurnContext#surface), else one
+      # computed now from the kernel's tools (a bare kernel): what the tool
+      # index's handlers (find_tools, call_tool) read.
+      def surface = Tools::ToolSurface.of(@context, @kernel.tools)
     end
 
     DEFAULT_MAX_TOOL_OUTPUT_CHARS = 10_000

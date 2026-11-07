@@ -27,10 +27,11 @@ module Samagotchi
       # @!attribute layer [Symbol, nil] the LLM context layer the tool
       #   belongs to (LLMContextStrategy): offered only in a turn running
       #   under it (forget_outputs, :forget); nil: always
-      # @!attribute unwrap [#call, nil] (call, layers) → the call it stands
-      #   for, run in its place before the guardrail gate (call_tool on one
-      #   of chi's own tools: Tools::ToolIndex#unwrap), or nil to run it as
-      #   it is; nil on every other tool
+      # @!attribute unwrap [#call, nil] (call, surface) → the call it stands
+      #   for under the turn's Tools::ToolSurface, run in its place before
+      #   the guardrail gate (call_tool on one of chi's own tools:
+      #   Tools::ToolIndex#unwrap), or nil to run it as it is; nil on every
+      #   other tool
       Entry = Struct.new(:name, :schema, :handler, :label, :preview, :targets, :refs, :source, :layer, :unwrap,
                          keyword_init: true) do
         def core? = source == "core"
@@ -44,17 +45,19 @@ module Samagotchi
       # name, and +groups+ the source groups registered when the plugins
       # loaded; +loaded+ the entries registered then (nil: whatever is
       # registered now), which alone decide whether the index's tools are
-      # needed (Registry#index_needed?). +deferrable+ (→ the sources'
-      # tools a host that loads tools may declare deferred) and +wrap+
-      # (call → the call_tool call a direct call of one of them runs as, or
-      # nil) are nil when nothing reaches them.
+      # needed (Registry#index_needed?). +deferrable+ (surface → the
+      # sources' tools a host that loads tools may declare deferred),
+      # +wrap+ ((call, surface) → the call_tool call a direct call of one
+      # of them runs as, or nil) and +unreached+ ((name, surface) → a
+      # source tool the toolkit doesn't reach) are nil when nothing reaches
+      # them; each is given the turn's Tools::ToolSurface.
       Index = Data.define(:source, :call_name, :groups, :deferrable, :wrap, :unreached, :loaded) do
         def initialize(source:, call_name:, groups:, deferrable: nil, wrap: nil, unreached: nil, loaded: nil)
           super(source: source, call_name: call_name, groups: Array(groups).map(&:to_s).uniq.freeze,
                 deferrable: deferrable, wrap: wrap, unreached: unreached, loaded: loaded&.dup&.freeze)
         end
 
-        def unreached_tool(name) = unreached&.call(name)
+        def unreached_tool(name, surface) = unreached&.call(name, surface)
       end
 
       def initialize
