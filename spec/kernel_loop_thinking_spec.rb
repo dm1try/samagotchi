@@ -2,6 +2,7 @@
 
 require "json"
 require "samagotchi/kernel_loop"
+require_relative "support/test_kernel"
 require "samagotchi/model_profile"
 
 # The native loop with a thinking level: Qwen with thinking off gets an
@@ -26,12 +27,17 @@ RSpec.describe Samagotchi::KernelLoop, "thinking level" do
     prompts
   end
 
+  # The run's settings: the kernel's own, as a spec changes them (#use_settings).
+  def settings = @settings ||= kernel.turn_settings
+  def use_settings(**) = @settings = settings.with(**)
+
   def run
-    kernel.run([{ role: "user", content: "hi" }], on_stream_event: ->(e) { events << e })
+    kernel.run([{ role: "user", content: "hi" }], on_stream_event: ->(e) { events << e },
+                                                  context: run_context(settings: settings))
   end
 
   it "prefills the empty thought after the cue for off, and keeps it in the turn's model messages" do
-    kernel.turn_settings = kernel.turn_settings.with(thinking: :off)
+    use_settings(thinking: :off)
     prompts = script(tool_call, "PONG")
 
     result = run
@@ -46,7 +52,7 @@ RSpec.describe Samagotchi::KernelLoop, "thinking level" do
 
   it "leaves the prompt tail alone for default and an effort" do
     %i[default low].each do |level|
-      kernel.turn_settings = kernel.turn_settings.with(thinking: level)
+      use_settings(thinking: level)
       prompts = script("PONG")
 
       expect(run.conversation.last).to eq(role: "model", content: "PONG", at: message_at)
@@ -55,7 +61,7 @@ RSpec.describe Samagotchi::KernelLoop, "thinking level" do
   end
 
   it "strips the empty thought from the history of the next turn" do
-    kernel.turn_settings = kernel.turn_settings.with(thinking: :off)
+    use_settings(thinking: :off)
     script("PONG")
     first = run
     prompts = script("again")
@@ -135,10 +141,10 @@ RSpec.describe Samagotchi::KernelLoop, "thinking level" do
     end
 
     it "opens it for an effort too, and keeps the empty thought for off" do
-      kernel.turn_settings = kernel.turn_settings.with(thinking: :high)
+      use_settings(thinking: :high)
       high = stream(second)
       run
-      kernel.turn_settings = kernel.turn_settings.with(thinking: :off)
+      use_settings(thinking: :off)
       off = script("PONG")
       run
 

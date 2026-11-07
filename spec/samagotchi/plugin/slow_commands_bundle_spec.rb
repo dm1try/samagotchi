@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require "samagotchi/turn_context"
 require "spec_helper"
 require "json"
 require "tmpdir"
@@ -33,7 +34,7 @@ RSpec.describe "The slow-commands bundle" do
     let(:runner) do
       out = output
       kernel = Struct.new(:hooks, :tools, :guardrail_gate) do
-        define_method(:dispatch_tool_call) { |c| { output: out.first, activity: { tool: c[:name], status: "error" } } }
+        define_method(:dispatch_tool_call) { |c, _context| { output: out.first, activity: { tool: c[:name], status: "error" } } }
       end
       Samagotchi::ToolRunner.new(kernel.new(hooks))
     end
@@ -59,7 +60,7 @@ RSpec.describe "The slow-commands bundle" do
       @installer.run
     end
 
-    def run(c) = runner.run(c, iteration: 1, call_index: 1, call_count: 1, on_stream_event: ->(_) {}, max_tool_output_chars: nil)
+    def run(c) = runner.run(c, context: Samagotchi::TurnContext.none, iteration: 1, call_index: 1, call_count: 1, on_stream_event: ->(_) {}, max_tool_output_chars: nil)
 
     it "installs cleanly and loads" do
       expect(@installer.warnings).to be_empty

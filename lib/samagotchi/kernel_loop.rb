@@ -38,6 +38,7 @@ require_relative "answer_display"
 require_relative "message_time"
 require_relative "llm/model_result"
 require_relative "llm/turn_settings"
+require_relative "turn_context"
 require_relative "llm/stream_drops"
 
 module Samagotchi
@@ -59,21 +60,25 @@ module Samagotchi
     # The built-in tool classes (Tools::Builtins registers them).
     TOOLS = Tools::Builtins::CLASSES
 
-    # What a tool handler (call, kctx) gets from the kernel: the reminder
-    # store, the peers, the model key, and the memory read and ask-user
-    # flows that need its state (read through the kernel's public readers).
+    # What a tool handler (call, kctx) gets: the kernel's reminder store
+    # and peers, the call's turn (+context+, a TurnContext: the participant's
+    # mode, the model key), and the memory read and ask-user flows that need
+    # them. One per dispatched call.
     class ToolContext
-      def initialize(kernel)
+      def initialize(kernel, context)
         @kernel = kernel
+        @context = context
       end
 
       def reminder_store = @kernel.reminder_store
       def peers = @kernel.peers
 
-      # The running participant turn's mode (KernelLoop#participant_mode:
-      # :pair, :review), nil for the owner's turns.
-      def participant_mode = @kernel.participant_mode&.call
-      def model_key = @kernel.model_key
+      # The participant turn's mode (TurnContext#participant_mode: :pair,
+      # :review), nil for the owner's turns.
+      def participant_mode = @context.participant_mode
+      # The memory overlay key (TurnContext#model_key, frozen at the turn's
+      # generate).
+      def model_key = @context.model_key
 
       # memory_read with the session's mutes applied: a blank name (the index)
       # loses the muted memories' lines; a muted name in a comma list is
@@ -82,7 +87,7 @@ module Samagotchi
         muted = Array(@kernel.muted_memory_names)
         content = call[:content].to_s
         read = lambda do |names|
-          Tools::MemoryRead.call(names, scope: call[:scope], model_key: model_key, fallback_model_key: @kernel.model_key_fallback)
+          Tools::MemoryRead.call(names, scope: call[:scope], model_key: model_key, fallback_model_key: @context.fallback_model_key)
         end
         return read.call(content) if muted.empty?
         return MutedMemories.filter_index(read.call(content), muted) if content.strip.empty?
@@ -115,7 +120,7 @@ module Samagotchi
 
       # forget_outputs: the forget layer's call on the running turn's
       # conversation (KernelLoop#forget_outputs).
-      def forget_outputs(call) = @kernel.forget_outputs(call)
+      def forget_outputs(call) = @kernel.forget_outputs(call, @context)
     end
 
     DEFAULT_MAX_TOOL_OUTPUT_CHARS = 10_000
@@ -134,20 +139,17 @@ module Samagotchi
       @sleeper = sleeper || ->(seconds) { sleep(seconds) }
       @tools = tools || Tools::Builtins.default
       resolved_model_name = ModelProfile.required_model_name(model_name)
-      # The turn's settings (LLM::TurnSettings). Its model name is the
-      # resolved model id actually used for this run (per-run override wins
-      # over the config alias); on every debug dump so we can see exactly
-      # which model each request went to. The Engine sets them per turn:
-      # the chat loop dispatches tools here without going through #run.
-      @turn_settings = LLM::TurnSettings.none.with(model_name: resolved_model_name)
+      # The context of the run in progress, else of the last run (#context):
+      # a kernel that ran none has its own (no turn, no settings but its
+      # model name, its model key). #run takes the one it is given.
+      @context = TurnContext.none(settings: LLM::TurnSettings.none.with(model_name: resolved_model_name),
+                                  model_key: model_key)
       @profile = profile ? ModelProfile.normalize(profile) : ModelProfile.from_model_name(resolved_model_name)
       # Where @profile came from, as /stats shows it (a Resolution's label
       # once the Engine resolves one, see #use_profile!).
       @profile_source = profile ? "given" : "name"
       @hooks = hooks
       @reminder_store = reminder_store
-      @model_key = model_key
-      @model_key_fallback = nil
     end
 
     # @return [ReminderStore, nil] the reminder store the reminder tools
@@ -169,10 +171,7 @@ module Samagotchi
     # @return [Tools::Registry] the tools #dispatch runs. The Engine sets
     #   its own on a kernel it is given, as with hooks.
     attr_accessor :tools
-    attr_accessor :client, :model_key
-    # @return [String, nil] the key whose overlay memory_read takes when
-    #   #model_key has none (#sync_model_key!)
-    attr_reader :model_key_fallback
+    attr_accessor :client
     # @return [Array<String>, nil] the session's muted memories (normalized
     #   names, see MutedMemories); memory_read refuses them. The Engine sets it.
     attr_accessor :muted_memory_names
@@ -182,53 +181,46 @@ module Samagotchi
     # The Guardrails::Gate ToolRunner asks before each call; the Engine sets
     # it (nil: ToolRunner's own, hooks only).
     attr_accessor :guardrail_gate
-    # Whether the current turn belongs to a participant, so pre-gate
-    # refusals can defer to ReviewBoundary.
-    attr_accessor :participant_turn
-    # The running participant turn's mode (a callable → :pair, :review or
-    # nil: GuardrailWiring#turn_mode): ToolRunner reads it. The Engine sets it.
-    attr_accessor :participant_mode
     # Called before each generation, before the before_generation hook (a
-    # callable, nil: none): the Engine's check that may stop the turn (a
-    # pair turn past its participant's cap, Engine#guard_participant_spend).
+    # callable taking the turn's TurnContext, nil: none): the Engine's check
+    # that may stop the turn (a pair turn past its participant's cap,
+    # Engine#guard_participant_spend).
     attr_accessor :generation_guard
 
-    # The generation guard, if any; one that raises never breaks the turn.
+    # @return [String, nil] the model key a kernel was built with (its own
+    #   #context's, for a run given none)
+    def model_key = @context.model_key
+
     # The model's context window as this loop knows it (ContextWindow.resolve
-    # on the client and the turn's setting): ToolRunner halves it for
-    # memory_read's overflow guard. nil when it can't be read.
+    # on the client and +settings+, a turn's LLM::TurnSettings): ToolRunner
+    # halves it for memory_read's overflow guard. nil when it can't be read.
     # @return [ContextWindow::Resolved, nil]
-    def tool_output_window
+    def tool_output_window(settings = turn_settings)
       Degrade.call(:model, "context_window_unresolved") do
-        ContextWindow.resolve(client: @client, model: @turn_settings&.model_name, setting: @turn_settings&.window_setting)
+        ContextWindow.resolve(client: @client, model: settings&.model_name, setting: settings&.window_setting)
       end
     end
 
-    def guard_generation
-      @generation_guard&.call
+    # The generation guard for +context+'s turn, if any; one that raises
+    # never breaks the turn.
+    def guard_generation(context = @context)
+      @generation_guard&.call(context)
     rescue StandardError => e
       Log.warn(:turn, "generation_guard_failed", error: "#{e.class}: #{e.message}")
       nil
     end
 
-    def participant_turn? = @participant_turn&.call == true
-    # @return [LLM::TurnSettings] the turn's vision, sampling, thinking and
-    #   model name, set by the Engine per turn (#run sets the model name
-    #   too); the thinking level is its own field, since the native path
-    #   sends the sampling as is.
-    attr_accessor :turn_settings
-    # The session's working directory (a callable → String or nil), which
-    # a plugin tool's row refs resolve their files against (ToolRunner,
-    # RowRefs); the Engine sets it. nil: the process's own (Dir.pwd).
-    attr_accessor :session_cwd
-    # The session's working-set pins (a callable → Array<WorkingSetPin>),
-    # which forget_outputs refuses (LLMContextForget); the Engine sets it.
-    # nil: none.
-    attr_accessor :working_set_pins
-    # The session's folder (a callable → String or nil), where ToolRunner
-    # saves a cut output whole (ToolOutputFiles); the Engine sets it. nil:
-    # none (a bare kernel), the cut says the output wasn't saved.
-    attr_accessor :session_dir
+    # @return [TurnContext] the context of the run in progress, else of the
+    #   last run (the kernel's own before any): its turn's settings,
+    #   session folders and participant mode. Read on the turn's thread
+    #   only; another thread reads the Engine's (Engine#turn_context).
+    attr_reader :context
+
+    # @return [LLM::TurnSettings] the vision, sampling, thinking and model
+    #   name of the run in progress, else of the last one (#context's; #run
+    #   sets the model name); the thinking level is its own field, since the
+    #   native path sends the sampling as is.
+    def turn_settings = @context.settings
     # Tools::Peers (or the Engine's live view of it): the session
     # list_sessions and send_note speak for; nil outside a session.
     attr_accessor :peers
@@ -265,10 +257,14 @@ module Samagotchi
     #   run it resumes started in +messages+; that run's model messages keep
     #   their thought blocks (#prepare_conversation), as within one run. nil:
     #   every earlier thought is stripped.
+    # @param context [TurnContext] the run's turn (Engine#generate's); a
+    #   bare kernel's last (#context) by default. Its settings take the
+    #   run's model name: this run's own copy, never published.
     # @return [LLM::ModelResult] final visible response with continuation metadata
     def run(messages, max_iterations: IterationLimit::DEFAULT, on_stream_event: nil, cancel_controller: nil, model_name: nil, max_tool_output_chars: nil, pending_input: nil,
-            reasoning_since: nil)
-      @turn_settings = @turn_settings.with(model_name: completion_model_name(model_name))
+            reasoning_since: nil, context: @context)
+      settings = context.settings || LLM::TurnSettings.none
+      @context = context.with(settings: settings.with(model_name: completion_model_name(model_name)))
       @last_slot = nil
       turn = start_turn(messages, on_stream_event: on_stream_event, cancel_controller: cancel_controller,
                                   pending_input: pending_input, cap: resolve_output_char_cap(max_tool_output_chars),
@@ -302,13 +298,6 @@ module Samagotchi
     def use_profile!(resolution)
       @profile = resolution.profile
       @profile_source = resolution.label
-    end
-
-    # @param fallback [String, nil] a key whose overlay memory_read takes
-    #   when +key+ has none (the alias a model was typed as)
-    def sync_model_key!(key, fallback: nil)
-      @model_key = key
-      @model_key_fallback = fallback
     end
 
     # Resolve the per-output character cap for the tool outputs the model
@@ -354,10 +343,11 @@ module Samagotchi
 
     def start_turn(messages, on_stream_event:, cancel_controller:, pending_input:, cap:, reasoning_since: nil)
       conversation = prepare_conversation(messages, keep_thought_from: ReasoningHistory.run_start(messages, reasoning_since))
-      context = ContextStatus.new(conversation: conversation, llm_context: @turn_settings.llm_context,
+      context = ContextStatus.new(conversation: conversation, llm_context: turn_settings.llm_context,
                                   counted_chars_per_token: @counted_chars_per_token)
       emit = ->(event) { emit_stream_event(on_stream_event, event) }
-      @llm_context_turn = LLMContextForget::Turn.new(conversation: conversation, context: context, emit: emit)
+      @llm_context_turn = LLMContextForget::Turn.new(conversation: conversation, context: context, emit: emit,
+                                                     turn_id: @context.id)
       Turn.new(
         conversation: conversation, context: context,
         empty_retry: EmptyAnswerRetry.new, empty_steps: [], tool_activity: [], buffer: +"", streamed_thinking: +"",
@@ -366,8 +356,8 @@ module Samagotchi
         # answers at once; on, an open one where the server's template has
         # it. Kept in the turn's model messages, so each tool-loop prompt
         # starts with what the server already has cached.
-        prefill: native_prefill(@turn_settings.thinking || Thinking::DEFAULT),
-        pending_tool_calls: false, model_name: @turn_settings.model_name, pending_input: pending_input,
+        prefill: native_prefill(turn_settings.thinking || Thinking::DEFAULT),
+        pending_tool_calls: false, model_name: turn_settings.model_name, pending_input: pending_input,
         on_stream_event: on_stream_event, cancel_controller: cancel_controller, cap: cap,
         emit: emit
       )
@@ -385,7 +375,7 @@ module Samagotchi
 
     def model_props
       Degrade.call(:model, "server_props_unreadable") do
-        @client.respond_to?(:server_props) ? @client.server_props(model: @turn_settings.model_name) : nil
+        @client.respond_to?(:server_props) ? @client.server_props(model: turn_settings.model_name) : nil
       end
     end
 
@@ -435,7 +425,7 @@ module Samagotchi
       apply_llm_context!(turn.conversation, context: turn.context, emit: turn.emit)
       prompt, images = format_prompt(turn)
       image_tokens = images.empty? ? 0 : ImagePlan.estimated_tokens(turn.conversation)
-      window = ContextWindow.resolve(client: @client, model: turn.model_name, setting: @turn_settings.window_setting)
+      window = ContextWindow.resolve(client: @client, model: turn.model_name, setting: turn_settings.window_setting)
       emit_context_status_event(turn.on_stream_event, turn.context, prompt, iteration_index: turn.iteration - 1,
                                                                              window: window, image_tokens: image_tokens)
       if (line = turn.context.take_guidance)
@@ -450,7 +440,7 @@ module Samagotchi
 
     def format_prompt(turn)
       Prompt.format_with_images(llm_context_view.messages(turn.conversation), profile: @profile,
-                                                                             vision: @turn_settings.vision, prefill: turn.prefill)
+                                                                             vision: turn_settings.vision, prefill: turn.prefill)
     end
 
     # One streamed request, under the generation's own controller: a
@@ -460,7 +450,7 @@ module Samagotchi
     def generate(turn, request)
       # Before the generation starts: a hook that waits (a question) isn't
       # the generation's time, and a Stop there leaves none started.
-      guard_generation
+      guard_generation(@context)
       fire_hook(:before_generation, { type: :before_generation, iteration: turn.iteration }) if @hooks
       raise Client::RequestCancelled, turn.cancel_controller.reason if turn.cancel_controller&.cancelled?
 
@@ -469,7 +459,7 @@ module Samagotchi
       # leave the next one "inside" it.
       emit(turn, type: :generation_started, iteration: turn.iteration, context_window_tokens: request.window.tokens,
                  context_window_source: request.window.source, profile: @profile.name, profile_source: @profile_source,
-                 price: @turn_settings.price&.to_h)
+                 price: turn_settings.price&.to_h)
       # This generation's own server counts (the run-long ones in the
       # context tracker can be an earlier one's), and the thinking it
       # streamed, for the log (a stuck thinking generation shows as
@@ -505,7 +495,7 @@ module Samagotchi
       # The empty-retry sampling is taken once, before the ask-again loop:
       # a drop's restart must still carry the nudge's 0.6 (as ChatLoop does
       # per step), not lose it when request_sampling is asked again.
-      sampling = turn.empty_retry.request_sampling(@turn_settings.sampling)
+      sampling = turn.empty_retry.request_sampling(turn_settings.sampling)
       count = LLM::StreamDrops::DropCount.new(0, 0)
       begin
         # Each ask splits its own stream: a drop mid tool call (or mid
@@ -780,7 +770,7 @@ module Samagotchi
       turn.qwen_partial = nil
       runs = []
       begin
-        ToolResponse.run_batch(tool_runner, calls, iteration: turn.iteration, emit: turn.emit,
+        ToolResponse.run_batch(tool_runner, calls, context: @context, iteration: turn.iteration, emit: turn.emit,
                                                    on_stream_event: turn.on_stream_event, cap: turn.cap) { |run, _| runs << run }
       rescue Interrupt
         # A Ctrl-C mid-batch: the entry still answers every call (the
@@ -856,8 +846,6 @@ module Samagotchi
 
     # Coerce a value to boolean — handles true/false, nil, and string "true"/"false".
     def truthy?(val) = Tools::Builtins.truthy?(val)
-
-    def tool_context = @tool_context ||= ToolContext.new(self)
 
     # ── Output char cap resolution ─────────────────────────────────────────────
 
@@ -940,10 +928,10 @@ module Samagotchi
 
     # A payload dump (model response, tool call/result, context status): the
     # debug level only, tagged with the model it came from.
-    def dump_log(event, payload, **fields)
+    def dump_log(event, payload, model: turn_settings.model_name, **fields)
       return unless Log.level?(:debug)
 
-      Log.debug(:model, event, payload: payload, model: @turn_settings.model_name, **fields)
+      Log.debug(:model, event, payload: payload, model: model, **fields)
     end
 
     # Estimate context usage for this iteration's prompt (ContextStatus#observe)
@@ -971,12 +959,14 @@ module Samagotchi
     # for the model the next turn runs on, after a /model switch too),
     # else the last turn's. Returns [prompt, images], or nil when the cut
     # isn't found.
-    def warmup_prompt(messages, llm_context: @turn_settings&.llm_context)
+    # +vision+: the next turn's VisionContext (the last turn's settings'),
+    # else the last run's.
+    def warmup_prompt(messages, llm_context: turn_settings&.llm_context, vision: turn_settings.vision)
       conversation = prepare_conversation(messages)
       apply_llm_context!(conversation, llm_context, warmup: true)
       conversation << { role: "user", content: WARMUP_CUT }
       prompt, images = Prompt.format_with_images(llm_context_view(llm_context).messages(conversation),
-                                                 profile: @profile, vision: @turn_settings.vision)
+                                                 profile: @profile, vision: vision)
       head = prompt[0, prompt.index(WARMUP_CUT) || 0]
       cut = head.rindex(user_opener)
       cut&.positive? ? [head[0, cut], images] : nil
@@ -990,34 +980,35 @@ module Samagotchi
     # one given (the warm-up's, the next turn's): the prompt, the warm-up
     # and the chat messages all format through it, so the warm-up warms
     # the prompt the next turn sends.
-    def llm_context_view(llm_context = @turn_settings&.llm_context)
+    def llm_context_view(llm_context = turn_settings&.llm_context)
       LLMContextView.new(strategy: llm_context&.strategy || LLMContextView::NONE)
     end
 
-    # The turn's LLM context layers ([] under none): the tools they add
-    # (Tools::Registry#entries) are the turn's to offer and dispatch.
-    def llm_context_layers = @turn_settings&.llm_context&.active_layers || []
-
     # The model's forget_outputs call (LLMContextForget) on the running
-    # turn, under its strategy; the apply rule runs on the turn's
-    # conversation at once, as at a request, so the result says whether the
-    # stubs go with the next request or wait for the turn's end.
+    # turn (the loop's llm_context_turn), under +context+'s strategy (the
+    # call's TurnContext); the apply rule runs on the turn's conversation at
+    # once, as at a request, so the result says whether the stubs go with
+    # the next request or wait for the turn's end.
     # @return [String] the tool result
-    def forget_outputs(call)
-      llm_context = @turn_settings&.llm_context
+    def forget_outputs(call, context)
+      llm_context = context.settings&.llm_context
       turn = @llm_context_turn
       unless turn && llm_context&.active_layers&.include?(:forget)
         return "Error: forget_outputs is off (the llm_context strategy has no forget layer)"
       end
 
-      apply = -> { apply_llm_context!(turn.conversation, llm_context, context: turn.context, emit: turn.emit) }
-      LLMContextForget.call(turn, call, llm_context: llm_context, apply: apply, pinned: method(:pinned_ids))
+      apply = lambda {
+        apply_llm_context!(turn.conversation, llm_context, context: turn.context, emit: turn.emit,
+                                                           model: context.settings.model_name)
+      }
+      LLMContextForget.call(turn, call, llm_context: llm_context, apply: apply,
+                                        pinned: ->(conversation) { pinned_ids(conversation, context) })
     end
 
-    # The ids of +conversation+'s outputs the session's pins hold.
-    def pinned_ids(conversation)
-      pins = Array(@working_set_pins&.call)
-      WorkingSet.pinned_ids(conversation, pins: pins, cwd: @session_cwd&.call)
+    # The ids of +conversation+'s outputs the session's pins hold (the
+    # working-set pins of +context+'s session, read now).
+    def pinned_ids(conversation, context)
+      WorkingSet.pinned_ids(conversation, pins: context.working_set_pins, cwd: context.cwd)
     end
     private :pinned_ids
 
@@ -1034,8 +1025,9 @@ module Samagotchi
     # shown to the user as a ✂ row (+emit+ takes the :llm_context_edited
     # event, LLMContextNotice; the warm-up's own copy has none).
     # @return [LLMContextApply::Outcome]
-    def apply_llm_context!(conversation, llm_context = @turn_settings&.llm_context, moment: :request, context: nil,
-                           warmup: false, emit: nil)
+    # +model+: the run's model name, in the log line (the chat loop's own).
+    def apply_llm_context!(conversation, llm_context = turn_settings&.llm_context, moment: :request, context: nil,
+                           warmup: false, emit: nil, model: turn_settings&.model_name)
       view = llm_context_view(llm_context)
       return LLMContextApply::Outcome.none if view.none?
 
@@ -1047,19 +1039,19 @@ module Samagotchi
         # The prompt just shrank: the context estimate counts from it.
         context&.edited!
         unless warmup
-          log_llm_context(outcome, llm_context, moment)
+          log_llm_context(outcome, llm_context, moment, model)
           emit_llm_context(emit, conversation, outcome, moment) if emit
         end
       end
       outcome
     end
 
-    def log_llm_context(outcome, llm_context, moment)
+    def log_llm_context(outcome, llm_context, moment, model)
       Log.info(:model, "llm_context_apply", rule: llm_context.apply, at: moment, why: outcome.why,
                                             applied: outcome.applied.size, ids: outcome.applied.map(&:id).join(","),
                                             staged: outcome.staged, freed: (outcome.freed_chars / TokenUsage::CHARS_PER_TOKEN).ceil,
                                             tail: (outcome.tail_chars / TokenUsage::CHARS_PER_TOKEN).ceil,
-                                            model: @turn_settings&.model_name)
+                                            model: model)
     end
     private :log_llm_context
 
@@ -1188,9 +1180,11 @@ module Samagotchi
     # unknown-tool handling, and activity events are shared, not duplicated. Callers
     # are responsible for normalizing the provider's native call into this shape
     # first (see Samagotchi::LLM::NativeToolNormalizer); dispatch itself never
-    # parses provider text.
-    def dispatch_tool_call(call)
-      dispatch(call)
+    # parses provider text. +context+: the call's turn (TurnContext: its
+    # layers, its host's loads_tools, the handler's ToolContext); a bare
+    # kernel's own (#context) by default.
+    def dispatch_tool_call(call, context = @context)
+      dispatch(call, context)
     end
 
     private
@@ -1216,10 +1210,10 @@ module Samagotchi
     # declared, or a hook's rewrite (a direct call can't carry via:).
     # The built-in +name+ names when the turn's host loads tools and the
     # toolkit reaches it (Registry#indexed): a direct call runs it.
-    def loaded_entry(name)
-      return nil unless @turn_settings&.loads_tools && @tools.respond_to?(:indexed)
+    def loaded_entry(name, context)
+      return nil unless context.settings&.loads_tools && @tools.respond_to?(:indexed)
 
-      @tools.indexed(name, layers: llm_context_layers)
+      @tools.indexed(name, layers: context.llm_context_layers)
     end
 
     def unknown_tool_error(name, layers, via: nil)
@@ -1241,25 +1235,27 @@ module Samagotchi
       end
     end
 
-    def dispatch(call)
+    def dispatch(call, context)
       # A built-in reached through call_tool runs only while the toolkit
       # reaches it that way (Registry#indexed); any other call by its name,
       # on a host that loads tools (TurnSettings#loads_tools) a reachable
       # one too.
+      layers = context.llm_context_layers
+      model = context.settings&.model_name
       entry = if call[:via]
-                @tools.respond_to?(:indexed) ? @tools.indexed(call[:name], layers: llm_context_layers) : nil
+                @tools.respond_to?(:indexed) ? @tools.indexed(call[:name], layers: layers) : nil
               else
-                @tools.offered(call[:name], layers: llm_context_layers) || loaded_entry(call[:name])
+                @tools.offered(call[:name], layers: layers) || loaded_entry(call[:name], context)
               end
       unless entry
-        result = unknown_tool_error(call[:name], llm_context_layers, via: call[:via])
+        result = unknown_tool_error(call[:name], layers, via: call[:via])
         return {
           output: result,
           activity: ToolActivity.tool_activity_event(call[:name], call, result, registry: @tools)
         }
       end
 
-      dump_log("tool_call", call[:content], tool: call[:name], path: call[:path], scope: call[:scope])
+      dump_log("tool_call", call[:content], model: model, tool: call[:name], path: call[:path], scope: call[:scope])
 
       if call[:called_as]
         # The model's spelling for a tool an alias ran (bash → execute); its
@@ -1268,9 +1264,9 @@ module Samagotchi
         Log.info(:turn, "tool_alias", name: call[:called_as], as: call[:name])
       end
 
-      result = entry.handler.call(call, tool_context)
+      result = entry.handler.call(call, ToolContext.new(self, context))
 
-      dump_log("tool_result", result, tool: call[:name])
+      dump_log("tool_result", result, model: model, tool: call[:name])
       dispatched = {
         output: "[#{call[:name]}]\n#{result}",
         activity: ToolActivity.tool_activity_event(call[:name], call, result, registry: @tools)
@@ -1292,7 +1288,7 @@ module Samagotchi
       end
       dispatched
     rescue StandardError => e
-      dump_log("tool_error", e.message, tool: call[:name], error: e.class.name)
+      dump_log("tool_error", e.message, model: context.settings&.model_name, tool: call[:name], error: e.class.name)
       result = "Error: #{e.message}"
       {
         output: "[#{call[:name]}] #{result}",

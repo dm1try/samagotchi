@@ -8,7 +8,7 @@ module Samagotchi
   # An Engine's model choice (ModelChoice: the model as given and as typed)
   # and the prompt profile resolved for it, under one mutex; the counterpart
   # of ToolkitBinding. The memory overlay keys follow the choice
-  # (#sync_model_key!).
+  # (#sync_model_key!), which each turn's TurnContext takes.
   #
   # The choice changes in one assignment under the mutex (#switch!), so a
   # reader on another thread sees the old pair or the new one. A resolution
@@ -126,13 +126,13 @@ module Samagotchi
     # The memory overlay key follows the model sent (ModelOverlay.key_for
     # its id). A model typed as an alias used to key overlays by the alias
     # (before aliases were applied there): that key is read when the
-    # target's overlay is missing (KernelLoop#sync_model_key!).
+    # target's overlay is missing. A turn takes both in its TurnContext
+    # (Engine#generate): memory_read and the gate read them there.
     def sync_model_key!
       choice = @choice
       @model_key = ModelOverlay.key_for(@bare_name.call(choice.name))
       typed_key = ModelOverlay.key_for(@registry.parse_qualified_model(choice.typed).last)
       @fallback_model_key = typed_key == @model_key ? nil : typed_key
-      @kernel.call.sync_model_key!(@model_key, fallback: @fallback_model_key)
     end
   end
 end

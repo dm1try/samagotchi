@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require "support/test_kernel"
 require "spec_helper"
 require "samagotchi/engine"
 require "samagotchi/kernel_loop"
@@ -93,8 +94,9 @@ RSpec.describe Samagotchi::Tools::Registry do
 
       resolved = Samagotchi::LLMContextStrategy::Resolved.new(layers: %i[stale forget], strategy: %i[stale forget],
                                                               source: :config)
-      kernel.turn_settings = kernel.turn_settings.with(llm_context: resolved)
-      expect(kernel.dispatch_tool_call(name: "tidy", content: "")[:output]).to eq("[tidy]\ntidied")
+      context = run_context(settings: kernel.turn_settings.with(llm_context: resolved))
+      allow(chat).to receive(:turn_context).and_return(context)
+      expect(kernel.dispatch_tool_call({ name: "tidy", content: "" }, context)[:output]).to eq("[tidy]\ntidied")
       expect(names.call).to include("tidy")
     end
   end
@@ -149,10 +151,9 @@ RSpec.describe Samagotchi::Tools::Registry do
         seen = [call[:content], kctx.reminder_store, kctx.peers, kctx.model_key]
         "done"
       end
-      kernel.model_key = "gemma4"
       kernel.peers = :peers
 
-      result = kernel.dispatch_tool_call(name: "echo", content: "hi")
+      result = kernel.dispatch_tool_call({ name: "echo", content: "hi" }, run_context(model_key: "gemma4"))
 
       expect(result[:output]).to eq("[echo]\ndone")
       expect(result[:activity]).to include(tool: "echo", status: "ok")

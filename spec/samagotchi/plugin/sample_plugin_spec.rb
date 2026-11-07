@@ -10,6 +10,7 @@ require "samagotchi/session"
 require "samagotchi/session_commands"
 require "samagotchi/turn_flow"
 require "samagotchi/llm/chat_loop"
+require "support/test_kernel"
 require "samagotchi/memory_bundle/installer"
 require "samagotchi/log_line"
 
@@ -169,7 +170,7 @@ RSpec.describe "The sample-plugin bundle (Plugin::Api and Plugin::Context)" do
                                                     "reason" => "secrets stay put" }], source: "config")
       allow(engine.instance_variable_get(:@guardrail_wiring)).to receive(:rules).and_return(Samagotchi::Guardrails::Rules.new(rule))
       run = lambda do |call|
-        Samagotchi::ToolRunner.new(kernel).run(call, iteration: 1, call_index: 1, call_count: 1,
+        Samagotchi::ToolRunner.new(kernel).run(call, context: run_context, iteration: 1, call_index: 1, call_count: 1,
                                                      on_stream_event: nil, max_tool_output_chars: nil)
       end
       Dir.mktmpdir do |dir|
@@ -243,9 +244,9 @@ RSpec.describe "The sample-plugin bundle (Plugin::Api and Plugin::Context)" do
       RUBY
     end
 
-    def run_tool(call)
+    def run_tool(call, context = run_context)
       events = []
-      run = Samagotchi::ToolRunner.new(kernel).run(call, iteration: 1, call_index: 1, call_count: 1,
+      run = Samagotchi::ToolRunner.new(kernel).run(call, context: context, iteration: 1, call_index: 1, call_count: 1,
                                                          on_stream_event: ->(e) { events << e }, max_tool_output_chars: nil)
       [run, events]
     end
@@ -272,8 +273,8 @@ RSpec.describe "The sample-plugin bundle (Plugin::Api and Plugin::Context)" do
     end
 
     it "resolves a file against the session's folder (its real path), not the process's" do
-      engine.session = session
-      run, = run_tool(name: "ticket", args: { "id" => "JIRA-7" })
+      # The session's folder comes with the turn (TurnContext#cwd, Engine#begin_turn).
+      run, = run_tool({ name: "ticket", args: { "id" => "JIRA-7" } }, run_context(cwd: session.working_directory))
 
       expect(run.refs.last[:target]).to eq(path: File.join(File.realpath(tmpdir), "lib/login.rb"), line: 4)
     end
@@ -312,15 +313,14 @@ RSpec.describe "The sample-plugin bundle (Plugin::Api and Plugin::Context)" do
       FileUtils.mkdir_p(session_dir)
     end
 
-    def run(call)
-      Samagotchi::ToolRunner.new(kernel).run(call, iteration: 1, call_index: 1, call_count: 1,
+    def run(call, settings = kernel.turn_settings)
+      Samagotchi::ToolRunner.new(kernel).run(call, context: run_context(settings: settings), iteration: 1, call_index: 1, call_count: 1,
                                                    on_stream_event: nil, max_tool_output_chars: nil)
     end
 
     it "attaches the images, and a bad entry is an Error: line for that image only" do
       vision = Samagotchi::VisionContext.new(session_dir: session_dir, resizer: Samagotchi::ImageResizer.new(nil))
-      kernel.turn_settings = kernel.turn_settings.with(vision: vision)
-      result = run(name: "shoot", args: { "path" => png_path })
+      result = run({ name: "shoot", args: { "path" => png_path } }, kernel.turn_settings.with(vision: vision))
       expect(result.output).to eq("[shoot]\ntook 2 shots\nError: image 3 is not {path:} or {bytes:, name:}")
       expect(result.images.map { |ref| ref[:name] }).to eq(%w[tiny.png frame.png])
     end
@@ -328,8 +328,7 @@ RSpec.describe "The sample-plugin bundle (Plugin::Api and Plugin::Context)" do
     it "keeps the text when the model can't see images" do
       blind = Samagotchi::VisionContext.new(session_dir: session_dir,
                                             capability: Samagotchi::VisionSupport::Answer.new(value: false, reason: "no"))
-      kernel.turn_settings = kernel.turn_settings.with(vision: blind)
-      result = run(name: "shoot", args: { "path" => png_path })
+      result = run({ name: "shoot", args: { "path" => png_path } }, kernel.turn_settings.with(vision: blind))
       expect(result.output).to start_with("[shoot]\ntook 2 shots\ntiny.png is an image; this model can't see images\n")
       expect(result.images).to be_nil
     end

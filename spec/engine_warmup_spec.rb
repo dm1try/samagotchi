@@ -72,7 +72,7 @@ RSpec.describe Samagotchi::Engine, "turn-end warm-up", :warmup do
     engine.run_turn(session, "hi")
     sent_warmups
 
-    expect(kernel).to have_received(:warmup_prompt).with(anything, llm_context: after)
+    expect(kernel).to have_received(:warmup_prompt).with(anything, hash_including(llm_context: after))
   end
 
   it "warms under the last turn's strategy when the next one can't be resolved" do
@@ -89,7 +89,7 @@ RSpec.describe Samagotchi::Engine, "turn-end warm-up", :warmup do
     engine.run_turn(session, "hi")
     sent_warmups
 
-    expect(kernel).to have_received(:warmup_prompt).with(anything, llm_context: during)
+    expect(kernel).to have_received(:warmup_prompt).with(anything, hash_including(llm_context: during))
   end
 
   it "tells the kernel a warm-up ran (the re-prefill baseline restarts), and not when none started" do

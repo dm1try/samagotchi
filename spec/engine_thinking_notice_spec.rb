@@ -78,7 +78,7 @@ RSpec.describe Samagotchi::Engine, "thinking notices" do
     session.thinking = :medium
 
     expect(notices.map { |n| n[:text] }).to contain_exactly(include("medium", "qwen36", "box"))
-    expect(kernel.turn_settings.thinking).to eq(:medium)
+    expect(engine.send(:last_turn_context).settings.thinking).to eq(:medium)
   end
 
   describe "an effort on a llama.cpp chat host whose /props says the template takes none" do

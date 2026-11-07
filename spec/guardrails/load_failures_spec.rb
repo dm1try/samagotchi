@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative "../support/engine_turn_context"
+require "samagotchi/turn_context"
 require "samagotchi/guardrails"
 require "samagotchi/engine"
 
@@ -47,7 +49,7 @@ RSpec.describe "Engine: guardrail load failures" do
     expect { engine = Samagotchi::Engine.new(client: instance_double(Samagotchi::Client)) }
       .to output(/gone_guard_hook.rb failed to load/).to_stderr
     gate = engine.instance_variable_get(:@kernel).guardrail_gate
-    verdict = gate.evaluate({ name: "read", content: "README.md" }, iteration: 1, params: "")
+    verdict = gate.evaluate({ name: "read", content: "README.md" }, context: engine_turn_context(engine), iteration: 1, params: "")
     expect(verdict).to be_deny
     expect(verdict.rule).to eq("guardrail-load")
 

@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative "../support/engine_turn_context"
+require "samagotchi/turn_context"
 require "tmpdir"
 require "fileutils"
 require "samagotchi/guardrails"
@@ -896,6 +898,8 @@ RSpec.describe "GuardrailWiring: a participant's boundary by ParticipantMode" do
   let(:review) { Struct.new(:id, :working_directory) { def review? = true; def delegate? = false }.new("s1", project) }
   # A participant invited to act (their grant's mode), or one from before pair (none).
   let(:pair_entry) { Struct.new(:name, :mode).new("Sam", "pair") }
+  # The wiring and its participant turn's TurnContext (#begin_turn's mode).
+  let(:turn_of) { Data.define(:wiring, :context) }
 
   # The spec's dirs are under Dir.tmpdir, which a pair turn writes into freely.
   before do
@@ -907,30 +911,31 @@ RSpec.describe "GuardrailWiring: a participant's boundary by ParticipantMode" do
   after { FileUtils.rm_rf(base) }
 
   def wiring(session, entry: pair_entry)
-    Samagotchi::GuardrailWiring.new(scratch: false, hooks: -> {}, tools: -> {}, session: -> { session },
-                                    model_key: -> {}, cancelled: -> { false }, ask: ->(_) {},
-                                    participant: ->(_author) { entry }).tap do |w|
-      w.state_dir = File.join(base, "state")
-      w.begin_turn({ client_id: "review:p_0123abcd", author: author })
-    end
+    w = Samagotchi::GuardrailWiring.new(scratch: false, hooks: -> {}, tools: -> {}, session: -> { session },
+                                        cancelled: -> { false }, ask: ->(_) {},
+                                        participant: ->(_author) { entry })
+    w.state_dir = File.join(base, "state")
+    turn_of.new(w, wiring_turn_context(w, { client_id: "review:p_0123abcd", author: author }, session: session))
   end
 
-  def evaluate(wiring, call) = wiring.gate.evaluate(call, iteration: 1, params: "")
+  def evaluate(turn, call) = turn.wiring.gate.evaluate(call, context: turn.context, iteration: 1, params: "")
+
+  def checks(turn) = turn.wiring.checks(turn.context)
 
   it "seats PairBoundary for a working session and ReviewBoundary for a review session" do
     pair = wiring(working)
-    expect(pair.checks[1]).to be(pair.pair_boundary)
-    expect(pair.checks).not_to include(pair.review_boundary)
+    expect(checks(pair)[1]).to be_a(Samagotchi::Guardrails::PairBoundary)
+    expect(checks(pair)).not_to include(be_a(Samagotchi::Guardrails::ReviewBoundary))
     reviewing = wiring(review)
-    expect(reviewing.checks[1]).to be(reviewing.review_boundary)
-    expect(reviewing.checks).not_to include(reviewing.pair_boundary)
+    expect(checks(reviewing)[1]).to be_a(Samagotchi::Guardrails::ReviewBoundary)
+    expect(checks(reviewing)).not_to include(be_a(Samagotchi::Guardrails::PairBoundary))
   end
 
   it "keeps a working session's participant invited before pair (no grant mode, or unknown) in the review boundary" do
     [Struct.new(:name, :mode).new("Old", nil), nil].each do |entry|
       w = wiring(working, entry: entry)
-      expect(w.turn_mode).to eq(:review)
-      expect(w.checks[1]).to be(w.review_boundary)
+      expect(w.context.participant_mode).to eq(:review)
+      expect(checks(w)[1]).to be_a(Samagotchi::Guardrails::ReviewBoundary)
       write = evaluate(w, { name: "write", path: File.join(project, "docs", "plan.md"), content: "x" })
       expect(write.rule).to eq("review-boundary")
     end
@@ -957,7 +962,7 @@ RSpec.describe "GuardrailWiring: a participant's boundary by ParticipantMode" do
     asked = []
     session = working
     w = Samagotchi::GuardrailWiring.new(scratch: false, hooks: -> {}, tools: -> {}, session: -> { session },
-                                        model_key: -> {}, cancelled: -> { false }, participant: ->(_a) { pair_entry },
+                                        cancelled: -> { false }, participant: ->(_a) { pair_entry },
                                         ask: lambda { |payload|
                                           asked << payload
                                           Samagotchi::QuestionAnswer.new(id: "q", selected: ["Deny"], selected_indices: [1])
@@ -966,14 +971,14 @@ RSpec.describe "GuardrailWiring: a participant's boundary by ParticipantMode" do
     w.interface = :worker
     outside = File.join(base, "elsewhere.txt")
     call = { name: "write", path: outside, content: "x" }
-    w.begin_turn({ client_id: "web:o" })
-    owner = evaluate(w, call)
+    owner_turn = turn_of.new(w, wiring_turn_context(w, { client_id: "web:o" }, session: session))
+    owner = evaluate(owner_turn, call)
     owner.ask!("owner asked", scopes: %w[session], rule: "x", source: "config")
     owner.settle!(:allow)
     owner.scope = "session"
     w.approvals.add(owner, "session")
-    w.begin_turn({ client_id: "review:p_0123abcd", author: author })
-    verdict = w.gate.settle_ask(evaluate(w, call))
+    turn = turn_of.new(w, wiring_turn_context(w, { client_id: "review:p_0123abcd", author: author }, session: session))
+    verdict = w.gate.settle_ask(evaluate(turn, call), context: turn.context)
 
     expect(asked.size).to eq(1)
     expect(asked.first[:approval]).to include(rule: "pair-boundary", scopes: ["once"], author: author)
@@ -992,6 +997,10 @@ RSpec.describe "GuardrailWiring: a Verify fresh child's boundary" do
   let(:base) { File.realpath(Dir.mktmpdir("fresh-wiring")) }
   let(:project) { File.join(base, "proj") }
   let(:anchor) { { "turn_id" => "11111111-2222-3333-4444-555555555555", "quote" => "claim" } }
+  # The child has no participants.json: the author's lookup finds nobody
+  # (nil), or someone the parent invited to act (a pair entry).
+  # The wiring and the child's turn's TurnContext (#begin_turn's mode).
+  let(:turn_of) { Data.define(:wiring, :context) }
 
   before do
     FileUtils.mkdir_p(File.join(project, "docs"))
@@ -1006,44 +1015,43 @@ RSpec.describe "GuardrailWiring: a Verify fresh child's boundary" do
                                     delegate: true).tap { |s| s.verify_fresh = fresh }
   end
 
-  # The child has no participants.json: the author's lookup finds nobody
-  # (nil), or someone the parent invited to act (a pair entry).
   def wiring(session, entry: nil, author: "p:alex")
-    Samagotchi::GuardrailWiring.new(scratch: false, hooks: -> {}, tools: -> {}, session: -> { session },
-                                    model_key: -> {}, cancelled: -> { false }, ask: ->(_) {},
-                                    participant: ->(_author) { entry }).tap do |w|
-      w.state_dir = File.join(base, "state")
-      w.begin_turn(session.verify_fresh.origin_for(Samagotchi::TurnOrigin.new(client_id: "web:x", author: author)))
-    end
+    w = Samagotchi::GuardrailWiring.new(scratch: false, hooks: -> {}, tools: -> {}, session: -> { session },
+                                        cancelled: -> { false }, ask: ->(_) {},
+                                        participant: ->(_author) { entry })
+    w.state_dir = File.join(base, "state")
+    origin = session.verify_fresh.origin_for(Samagotchi::TurnOrigin.new(client_id: "web:x", author: author))
+    turn_of.new(w, wiring_turn_context(w, origin, session: session))
   end
 
-  def write(w) = w.gate.evaluate({ name: "write", path: File.join(project, "docs", "plan.md"), content: "x" },
-                                 iteration: 1, params: "")
+  def evaluate(turn, call) = turn.wiring.gate.evaluate(call, context: turn.context, iteration: 1, params: "")
+  def write(turn) = evaluate(turn, { name: "write", path: File.join(project, "docs", "plan.md"), content: "x" })
+  def checks(turn) = turn.wiring.checks(turn.context)
 
   it "keeps a review requester's child read-only though the child's own lookup finds nobody" do
     w = wiring(child({ "author" => "p:alex", "mode" => "review", "of" => "c1", "anchor" => anchor }), author: nil)
-    expect(w.turn_author).to eq("p:alex")
-    expect(w.turn_mode).to eq(:review)
+    expect(w.context.author).to eq("p:alex")
+    expect(w.context.participant_mode).to eq(:review)
     expect(write(w).rule).to eq("review-boundary")
   end
 
   it "runs a pair requester's child under PairBoundary from the saved mode, not the lookup" do
     w = wiring(child({ "author" => "p:alex", "mode" => "pair", "of" => "c1", "anchor" => anchor }),
                entry: Struct.new(:name, :mode).new("Alex", nil))
-    expect(w.turn_mode).to eq(:pair)
-    expect(w.checks[1]).to be(w.pair_boundary)
-    expect(w.gate.evaluate({ name: "delegate", content: "x" }, iteration: 1, params: "")).to be_deny
+    expect(w.context.participant_mode).to eq(:pair)
+    expect(checks(w)[1]).to be_a(Samagotchi::Guardrails::PairBoundary)
+    expect(evaluate(w, { name: "delegate", content: "x" })).to be_deny
   end
 
   it "fails closed to review for a field that doesn't read" do
     w = wiring(child({ "author" => "p:alex", "mode" => "root", "of" => "c1", "anchor" => anchor }), author: nil)
-    expect(w.turn_mode).to eq(:review)
+    expect(w.context.participant_mode).to eq(:review)
     expect(write(w).rule).to eq("review-boundary")
   end
 
   it "leaves the owner's child as any delegate child (the owner's turns, ChildBoundary)" do
     w = wiring(child({ "of" => "c1", "anchor" => anchor }), author: nil)
-    expect([w.turn_author, w.turn_mode]).to eq([nil, nil])
-    expect(w.checks).to include(w.child_boundary)
+    expect([w.context.author, w.context.participant_mode]).to eq([nil, nil])
+    expect(checks(w)).to include(be_a(Samagotchi::Guardrails::ChildBoundary))
   end
 end

@@ -79,8 +79,11 @@ module Samagotchi
       #   prompt's part every session shares (SystemPrompt#stable_length), or nil
       # @param sleeper [#call, nil] waits the given seconds before a dropped
       #   stream's step is asked again (specs pass one that doesn't sleep)
-      def initialize(kernel:, adapter: nil, stable_length: nil, sleeper: nil)
+      # @param context [TurnContext, nil] the turn its helpers read before any
+      #   #complete (a bench building wire messages); a run's replaces it
+      def initialize(kernel:, adapter: nil, stable_length: nil, sleeper: nil, context: nil)
         @kernel = kernel
+        @turn_context = context
         @adapter = adapter
         @stable_length = stable_length
         @sleeper = sleeper || ->(seconds) { sleep(seconds) }
@@ -93,10 +96,14 @@ module Samagotchi
 
       # +reasoning_since+ (ModelBackend#complete): the resumed run's start,
       # the Run's own start then (Run#initialize, #reasoning_boundary).
+      # +context+: the run's turn (TurnContext, Engine#generate's): its
+      # settings are what the requests send, its tool calls run in it; a
+      # bare loop's (#turn_context) when none is given.
       def complete(messages:, max_iterations: IterationLimit::DEFAULT, on_stream_event: nil, cancel_controller: nil,
-                   model_name: nil, max_tool_output_chars: nil, pending_input: nil, reasoning_since: nil)
+                   model_name: nil, max_tool_output_chars: nil, pending_input: nil, reasoning_since: nil, context: nil)
         raise ArgumentError, "ChatLoop has no adapter" unless @adapter
 
+        @turn_context = context if context
         conversation = Array(messages).map(&:dup)
         Run.new(self, conversation, on_stream_event, cancel_controller, model_name, pending_input, start: reasoning_since)
            .call(max_iterations: max_iterations || 1, cap: KernelLoop.resolve_output_char_cap(max_tool_output_chars))
@@ -147,22 +154,33 @@ module Samagotchi
       # The kernel's tools.
       def tools = @kernel.tools
 
-      # The turn's LLM context layers (KernelLoop#llm_context_layers).
-      def llm_context_layers = @kernel.llm_context_layers
+      # The TurnContext of the run in progress, else of the last run
+      # (#complete's context:); before any, the one it was built with, else a
+      # context of the kernel's own settings (a bare loop). Read on the turn's thread only.
+      # @return [TurnContext]
+      def turn_context = @turn_context || TurnContext.none(settings: @kernel.turn_settings)
+
+      # The turn's LLM::TurnSettings (#turn_context's).
+      def settings = turn_context.settings
+
+      # The turn's LLM context layers (TurnContext#llm_context_layers).
+      def llm_context_layers = turn_context.llm_context_layers
 
       # The turn's LLM context strategy (LLMContextStrategy::Resolved), nil
       # when none was resolved.
-      def llm_context = @kernel.turn_settings&.llm_context
+      def llm_context = settings&.llm_context
 
       # KernelLoop#reprefilled_tokens, the kernel's request history.
       def reprefilled_tokens(model, **) = @kernel.reprefilled_tokens(model, **)
 
-      # The kernel's LLMContextView, the turn's strategy.
-      def llm_context_view = @kernel.llm_context_view
+      # The kernel's LLMContextView under the turn's strategy.
+      def llm_context_view = @kernel.llm_context_view(llm_context)
 
       # The strategy's own edits before a request and at turn end
-      # (KernelLoop#apply_llm_context!).
-      def apply_llm_context!(conversation, **) = @kernel.apply_llm_context!(conversation, **)
+      # (KernelLoop#apply_llm_context!), under the turn's strategy.
+      def apply_llm_context!(conversation, **)
+        @kernel.apply_llm_context!(conversation, llm_context, model: settings&.model_name, **)
+      end
 
       # The running turn, for forget_outputs (KernelLoop#llm_context_turn).
       def llm_context_turn=(turn)
@@ -267,7 +285,7 @@ module Samagotchi
       TOOL_IMAGES_TEXT = "[images from tool results]"
 
       # Whether this turn's requests carry tool changes (the turn's model).
-      def tool_change_wire? = tool_changes?(@kernel.turn_settings&.model_name)
+      def tool_change_wire? = tool_changes?(settings&.model_name)
 
       # The first index whose model entries carry their reasoning (nil:
       # none do) under +level+. Under turn: +since+ when given, where a
@@ -298,14 +316,14 @@ module Samagotchi
         conversation.drop(boundary).sum { |entry| entry[:role].to_s == "model" && thought?(entry) ? entry[:thinking].length : 0 }
       end
 
-      # The turn's ReasoningHistory level (the kernel's turn_settings); drop
+      # The turn's ReasoningHistory level (the turn's settings); drop
       # without settings, and for a +model+ whose host refused it
       # (#reasoning_history_refused!). An adapter that sends its blocks back
       # (#replays_content?) is floored at turn: the running run's thinking
       # blocks always go back (a tool loop with thinking needs the last
       # assistant turn's), whatever the level says.
       def reasoning_history(model = nil)
-        level = model && @refusals.refused?(:reasoning_history, model) ? :drop : @kernel.turn_settings&.reasoning_history
+        level = model && @refusals.refused?(:reasoning_history, model) ? :drop : settings&.reasoning_history
         level ||= :drop
         level == :drop && replays_content? ? :turn : level
       end
@@ -320,18 +338,17 @@ module Samagotchi
         @refusals.remember(:reasoning_history, model)
       end
 
-      # The turn's VisionContext (the Engine sets the kernel's
-      # turn_settings), or nil.
-      def vision = @kernel.turn_settings.vision
+      # The turn's VisionContext (its settings'), or nil.
+      def vision = settings.vision
 
-      # The turn's configured price (the kernel's turn_settings), or nil.
-      def price = (@kernel.turn_settings&.price if @kernel.respond_to?(:turn_settings))
+      # The turn's configured price (its settings'), or nil.
+      def price = settings&.price
 
-      # The turn's request parameters (the kernel's turn_settings).
-      def sampling = @kernel.turn_settings.sampling || {}
+      # The turn's request parameters (its settings').
+      def sampling = settings.sampling || {}
 
-      # The turn's thinking level (the kernel's turn_settings).
-      def thinking = @kernel.turn_settings.thinking || Thinking::DEFAULT
+      # The turn's thinking level (its settings').
+      def thinking = settings.thinking || Thinking::DEFAULT
 
       # The request fields the thinking level adds, as the adapter's wire
       # takes them (OpenAIChat#thinking_fields: Thinking.chat_fields); none
@@ -375,24 +392,24 @@ module Samagotchi
       def strip_model_thought(text) = @kernel.strip_model_thought(text)
 
       def tool_runner
-        @tool_runner ||= ToolRunner.new(@kernel, window: -> { context_window(@kernel.turn_settings&.model_name) })
+        @tool_runner ||= ToolRunner.new(@kernel, window: ->(run_settings) { context_window(run_settings&.model_name, run_settings) })
       end
 
       # The window for +model+: the kernel's client probes the server it
       # points at (Engine keeps it on the effective model's host; a local
       # llama.cpp answers /props), then the host's model list, the model's
       # or host's window_tokens, config, env and the default. A remote
-      # provider has no /props to probe.
-      def context_window(model)
+      # provider has no /props to probe. +run_settings+: the LLM::TurnSettings
+      # whose window_setting counts (the turn's by default).
+      def context_window(model, run_settings = settings)
         client = @adapter.remote? ? nil : @kernel.client
-        ContextWindow.resolve(client: client, model: model, adapter: @adapter,
-                              setting: (@kernel.turn_settings&.window_setting if @kernel.respond_to?(:turn_settings)))
+        ContextWindow.resolve(client: client, model: model, adapter: @adapter, setting: run_settings&.window_setting)
       rescue StandardError
         nil
       end
 
-      # The kernel's generation guard (KernelLoop#guard_generation).
-      def guard_generation = @kernel.respond_to?(:guard_generation) ? @kernel.guard_generation : nil
+      # The kernel's generation guard for the turn (KernelLoop#guard_generation).
+      def guard_generation = @kernel.respond_to?(:guard_generation) ? @kernel.guard_generation(turn_context) : nil
 
       # A hook failing must not break the turn (as in ToolRunner).
       def fire_hook(name, event)
@@ -609,8 +626,10 @@ module Samagotchi
           @deferred = []
           @context = ContextStatus.new(conversation: conversation, llm_context: loop.llm_context,
                                        counted_chars_per_token: loop.counted_chars_per_token)
+          # The run's turn: its tool calls run in it.
+          @turn_context = loop.turn_context
           loop.llm_context_turn = LLMContextForget::Turn.new(conversation: conversation, context: @context,
-                                                             emit: method(:emit))
+                                                             emit: method(:emit), turn_id: @turn_context.id)
         end
 
         def call(max_iterations:, cap:)
@@ -1094,7 +1113,7 @@ module Samagotchi
         def dispatch(tool_calls, iteration, cap)
           log_direct_deferred(tool_calls)
           calls = tool_calls.map { |tool_call| NativeToolNormalizer.normalize(tool_call) }
-          runs = ToolResponse.run_batch(@loop.tool_runner, calls, iteration: iteration, emit: method(:emit),
+          runs = ToolResponse.run_batch(@loop.tool_runner, calls, context: @turn_context, iteration: iteration, emit: method(:emit),
                                                                   on_stream_event: @on_stream_event, cap: cap) do |run, index|
             @conversation << ToolResponse.single(run, tool_call_id: tool_calls[index].id,
                                                       ids: ToolIds.next_ids(@conversation, 1))

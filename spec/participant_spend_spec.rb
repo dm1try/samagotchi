@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require "samagotchi/turn_context"
 require "tmpdir"
 require "json"
 require "spec_helper"
@@ -80,12 +81,17 @@ RSpec.describe "a participant's spend" do
   describe Samagotchi::Engine, "#note_side_usage" do
     let(:engine) { described_class.new(client: test_client, kernel: test_kernel) }
 
-    before { engine.instance_variable_get(:@guardrail_wiring).begin_turn({ client_id: "review:x", author: alex }) }
+    # Their turn, as the Engine publishes it (TurnState): running, then the last one.
+    let(:their_turn) do
+      origin = Samagotchi::TurnOrigin.new(client_id: "review:x", author: alex)
+      Samagotchi::TurnContext.none(origin: origin, author: origin.participant_author)
+    end
 
     it "charges a side request in a participant's turn, and the recap after it, to them; an owner's command's to the owner" do
       allow(engine).to receive(:turn_running?).and_return(true)
+      allow(engine).to receive(:turn_context).and_return(their_turn)
       engine.note_side_usage(Samagotchi::SideUsage.new(kind: "btw", cost: 0.25))
-      allow(engine).to receive(:turn_running?).and_return(false)
+      allow(engine).to receive_messages(turn_running?: false, turn_context: nil, last_turn_context: their_turn)
       engine.note_side_usage(Samagotchi::SideUsage.new(kind: "recap", cost: 0.5))
       engine.note_side_usage(Samagotchi::SideUsage.new(kind: "btw", cost: 1.0))
 

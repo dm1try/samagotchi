@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require "samagotchi/turn_context"
 require "samagotchi/hooks/loader"
 require "samagotchi/guardrails"
 require "tmpdir"
@@ -234,7 +235,7 @@ RSpec.describe Samagotchi::Hooks::Loader do
       registry = load_hooks([{ "path" => "gated_guard_hook.rb", "required" => true }])
       seen = nil
       registry.register(:before_tool_call) { |e| seen = e.slice(:blocked, :block_reason) }
-      verdict = Samagotchi::Guardrails::Gate.new(-> { registry }).evaluate({ name: "execute" }, iteration: 1, params: "")
+      verdict = Samagotchi::Guardrails::Gate.new(-> { registry }).evaluate({ name: "execute" }, context: Samagotchi::TurnContext.none, iteration: 1, params: "")
       reason = "required hook gated_guard_hook.rb raised RuntimeError: boom"
       expect([verdict.decision, verdict.reason, verdict.decided_by]).to eq([:deny, reason, "core"])
       expect(seen).to eq(blocked: true, block_reason: reason)

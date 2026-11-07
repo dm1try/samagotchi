@@ -101,6 +101,7 @@ terminal renders the events it gets over the Bridge.
 | Core | `Samagotchi::Engine` | System prompt, memory injection, tool declarations, session lifecycle, model↔tool loop (`run_turn`). No terminal coupling. |
 | UI | `Samagotchi::TerminalUI`, `TerminalUI::AttachLauncher` / `AttachedLoop` | `TerminalUI`: the `--non-interactive` one-shot host, its own `Engine`. The attached TUI (every interactive `chi`): a client of the session worker's Bridge, no `Engine`. |
 | Model loops | `KernelLoop` (via `LLM::NativeBackend`), `LLM::ChatLoop` | The model↔tool loop: raw prompt, or a chat API (OpenAI chat, Anthropic Messages), chosen per host (see below). |
+| Turn | `TurnContext`, `TurnState`, `Engine::Turn` | One turn's frozen `TurnContext` (id, session, origin, author, participant mode, controller, folders, git facts, settings and model key/name from `generate`): built by `Engine#begin_turn`, published with the running flag by `TurnState` (the only way another thread reads the running turn: `Engine#turn_context` / `#last_turn_context`), handed explicitly down the tool path (`ModelBackend#complete(context:)`, `ToolRunner#run`, `Guardrails::Gate#evaluate`, `KernelLoop#dispatch_tool_call`). `Engine::Turn` keeps only the lifecycle state ([internals/engine.md](internals/engine.md), "Turn and TurnContext"). |
 | Adapters | `Samagotchi::Client`, `LLM::OpenAIChat`, `LLM::AnthropicMessages`, `LLM::HTTP` | Raw-prompt servers, the OpenAI chat API, Anthropic's Messages API, and the HTTP they share. |
 | Tools | `lib/samagotchi/tools/*` | Execute, read, edit, write, memory, task_*, web_fetch, delegate/delegate_result, ask_user_question, reminders, send_note, list_sessions, context_read, objectives, forget_outputs, find_tools/call_tool (the tool index), plus runtime/output-guardrails. |
 | Bundles | `lib/samagotchi/memory_bundle/*`, `BundleCommand` | `chi bundle`: install/upgrade (3-way, with a text merge of edited memories), build, uninstall; the install record under `.bundles/<name>/` that the hook, guardrail and plugin loaders read ([internals/bundles.md](internals/bundles.md)). |
@@ -519,7 +520,7 @@ on every read, never kept, since config.yml and a model listing can move it with
 
 Both return an `LLM::ModelResult` and emit the same stream events; tool calls in
 both go through `ToolRunner` (events, hooks, veto, output cap) and
-`KernelLoop#dispatch_tool_call`. Every format's built-in calls (Gemma, Qwen,
+`KernelLoop#dispatch_tool_call`, given the turn's `TurnContext` as an argument. Every format's built-in calls (Gemma, Qwen,
 chat `tool_calls`) are built by one table, `Tools::BuiltinCalls`, from the
 parsed `{name, args}` (derived from `TOOL_SCHEMAS`), so a call looks the same to
 hooks and tools whichever model made it. Both loops' `generation_chunk` carries

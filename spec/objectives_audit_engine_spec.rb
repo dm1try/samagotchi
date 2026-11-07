@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require "samagotchi/turn_context"
 require "json"
 require "tmpdir"
 require "samagotchi/engine"
@@ -114,7 +115,7 @@ RSpec.describe Samagotchi::Engine do
 
   it "a check's side request is the owner's even when a participant's turn runs as it ends" do
     allow(engine).to receive(:turn_running?).and_return(true)
-    engine.instance_variable_get(:@guardrail_wiring).begin_turn(Samagotchi::TurnOrigin.new(author: "p:abc"))
+    allow(engine).to receive(:turn_context).and_return(Samagotchi::TurnContext.none(author: "p:abc"))
 
     expect(engine.side_author(Samagotchi::ObjectivesCheck::SOURCE)).to be_nil
     expect(engine.side_author("other")).to eq("p:abc")

@@ -63,18 +63,48 @@ RSpec.describe Samagotchi::ToolOutputFiles do
     expect { described_class.save(session_dir, "x", tool: "execute") }.to raise_error(Errno::ENOSPC)
   end
 
-  describe "the Engine's kernel" do
-    it "names the session's folder under the state dir (XDG_STATE_HOME)" do
+  describe "the Engine's turn" do
+    it "names the session's folder under the state dir (XDG_STATE_HOME) in its TurnContext" do
       with_env("XDG_STATE_HOME" => @dir) do
         client = test_client
-        engine = Samagotchi::Engine.new(client: client, kernel: test_kernel(client: client), profile: "qwen36")
-        kernel = engine.instance_variable_get(:@kernel)
-        expect(kernel.session_dir.call).to be_nil
-
+        kernel = test_kernel(client: client)
+        seen = nil
+        allow(kernel).to receive(:run) do |messages, context:, **|
+          seen = context
+          Samagotchi::LLM::ModelResult.new(text: "ok", conversation: messages + [{ role: "model", content: "ok" }])
+        end
+        engine = Samagotchi::Engine.new(client: client, kernel: kernel, profile: "qwen36")
         session = Samagotchi::Session.new_session(mode: "assist", model_name: "m", working_directory: Dir.pwd)
-        engine.session = session
-        expect(kernel.session_dir.call).to eq(File.join(@dir, "samagotchi", "sessions", session.id))
+        engine.run_turn(session, "hi")
+        expect(seen.session_dir).to eq(File.join(@dir, "samagotchi", "sessions", session.id))
       end
+    end
+
+    it "has no session folder when it can't be named, logged, and the turn still runs" do
+      client = test_client
+      kernel = test_kernel(client: client)
+      seen = nil
+      allow(kernel).to receive(:run) do |messages, context:, **|
+        seen = context
+        Samagotchi::LLM::ModelResult.new(text: "ok", conversation: messages + [{ role: "model", content: "ok" }])
+      end
+      engine = Samagotchi::Engine.new(client: client, kernel: kernel, profile: "qwen36")
+      session = Samagotchi::Session.new_session(mode: "assist", model_name: "m", working_directory: Dir.pwd)
+      # The turn's first lookup of its folder is the context's (Engine#begin_turn):
+      # that one raises, the later ones (its images' folder) answer.
+      raised = false
+      allow(Samagotchi::Session).to receive(:session_dir).and_wrap_original do |original, *args, **kwargs|
+        next original.call(*args, **kwargs) if raised
+
+        raised = true
+        raise Samagotchi::Session::InvalidId, "bad"
+      end
+      allow(Samagotchi::Log).to receive(:warn).and_call_original
+
+      engine.run_turn(session, "hi")
+
+      expect(seen.session_dir).to be_nil
+      expect(Samagotchi::Log).to have_received(:warn).with(:turn, "tool_output_save_failed", error: "Samagotchi::Session::InvalidId")
     end
   end
 end

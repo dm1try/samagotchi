@@ -1007,7 +1007,7 @@ RSpec.describe Samagotchi::Engine do
 
       kernel = engine.instance_variable_get(:@kernel)
       expect(kernel).to be_a(Samagotchi::KernelLoop)
-      expect(kernel.instance_variable_get(:@turn_settings).model_name).to eq("splash:some-id")
+      expect(kernel.turn_settings.model_name).to eq("splash:some-id")
     end
   end
 end

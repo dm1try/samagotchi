@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative "../support/engine_turn_context"
+require "samagotchi/turn_context"
 require "spec_helper"
 require "tmpdir"
 require "fileutils"
@@ -59,7 +61,7 @@ RSpec.describe "Bundle guardrail rule files" do
   def engine = Samagotchi::Engine.new(client: instance_double(Samagotchi::Client))
 
   def evaluate(eng, content)
-    eng.instance_variable_get(:@kernel).guardrail_gate.evaluate({ name: "execute", content: content }, iteration: 1, params: "")
+    eng.instance_variable_get(:@kernel).guardrail_gate.evaluate({ name: "execute", content: content }, context: engine_turn_context(eng), iteration: 1, params: "")
   end
 
   describe "install" do

@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require "support/test_kernel"
 require "tmpdir"
 require "samagotchi/kernel_loop"
 require "samagotchi/tools/builtins"
@@ -43,8 +44,8 @@ RSpec.describe "tool results with images" do
 
     def run(images, vision: self.vision)
       kernel = Samagotchi::KernelLoop.new(client: instance_double(Samagotchi::Client), tools: registry_with(images))
-      kernel.turn_settings = kernel.turn_settings.with(vision: vision)
-      Samagotchi::ToolRunner.new(kernel).run({ name: "shots", args: {} }, iteration: 1, call_index: 1, call_count: 1,
+      context = run_context(settings: kernel.turn_settings.with(vision: vision))
+      Samagotchi::ToolRunner.new(kernel).run({ name: "shots", args: {} }, context: context, iteration: 1, call_index: 1, call_count: 1,
                                                                          on_stream_event: ->(e) { events << e }, max_tool_output_chars: nil)
     end
 
@@ -90,10 +91,10 @@ RSpec.describe "tool results with images" do
     it "follows the tool message with one user message holding both pictures" do
       kernel = Samagotchi::KernelLoop.new(client: instance_double(Samagotchi::Client),
                                           tools: registry_with([{ path: png_path }, { path: gif_path }]))
-      kernel.turn_settings = kernel.turn_settings.with(vision: vision)
+      context = run_context(settings: kernel.turn_settings.with(vision: vision))
       adapter = FakeChatAdapter.new(FakeChatAdapter.tools(["c1", "shots", {}]), FakeChatAdapter.text("two"))
       result = Samagotchi::LLM::ChatLoop.new(kernel: kernel, adapter: adapter)
-                                        .complete(messages: [{ role: "user", content: "shoot" }], model_name: "m")
+                                        .complete(messages: [{ role: "user", content: "shoot" }], model_name: "m", context: context)
 
       wire = adapter.requests.last[:messages]
       expect(wire.map { |m| m[:role] }).to eq(%w[user assistant tool user])
@@ -120,9 +121,9 @@ RSpec.describe "tool results with images" do
       end
       kernel = Samagotchi::KernelLoop.new(client: client, profile: Samagotchi::ModelProfile.qwen36,
                                           tools: registry_with([{ path: png_path }, { path: gif_path }]))
-      kernel.turn_settings = kernel.turn_settings.with(vision: vision)
+      context = run_context(settings: kernel.turn_settings.with(vision: vision))
 
-      result = kernel.run([{ role: "user", content: "take two shots" }])
+      result = kernel.run([{ role: "user", content: "take two shots" }], context: context)
       tool_response = result.conversation.find { |m| m[:role] == "tool_response" }
       expect(tool_response[:images].map { |ref| ref[:name] }).to eq(%w[tiny.png tiny.gif])
       expect(tool_response[:image_counts]).to eq([2])

@@ -5,6 +5,7 @@ require "samagotchi/kernel_loop"
 require "samagotchi/hooks"
 require "samagotchi/llm/chat_loop"
 require_relative "../support/fake_chat_adapter"
+require_relative "../support/test_kernel"
 
 # How each loop wraps a single tool call: the text the model gets back, the
 # tool_call_started/completed events, the before/after hooks, the veto and
@@ -39,9 +40,9 @@ RSpec.describe "Tool call wrapper parity" do
       replies.shift
     end
     kernel = Samagotchi::KernelLoop.new(client: client, hooks: hooks, profile: "gemma4")
-    kernel.session_dir = session_dir
+    context = run_context(settings: kernel.turn_settings, session_dir: session_dir)
     result = kernel.run([{ role: "user", content: "read it" }], on_stream_event: on_event,
-                        max_tool_output_chars: max_tool_output_chars)
+                        max_tool_output_chars: max_tool_output_chars, context: context)
     tool_response = result.conversation.find { |m| m[:role] == "tool_response" }
     [result, tool_response[:content]]
   end
@@ -51,11 +52,11 @@ RSpec.describe "Tool call wrapper parity" do
   def run_chat(max_tool_output_chars: nil, call: ["c1", "read", { "path" => file }], session_dir: nil, window: nil,
                adapter_class: FakeChatAdapter)
     kernel = Samagotchi::KernelLoop.new(client: double("client", context_window: window), hooks: hooks, profile: "gemma4")
-    kernel.session_dir = session_dir
+    context = run_context(settings: kernel.turn_settings, session_dir: session_dir)
     adapter = adapter_class.new(FakeChatAdapter.tools(call), FakeChatAdapter.text("done"))
     backend = Samagotchi::LLM::ChatLoop.new(kernel: kernel, adapter: adapter)
     result = backend.complete(messages: [{ role: "user", content: "read it" }], on_stream_event: on_event,
-                              max_tool_output_chars: max_tool_output_chars)
+                              max_tool_output_chars: max_tool_output_chars, context: context)
     tool_response = result.conversation.find { |m| m[:role] == "tool_response" }
     [result, tool_response[:content]]
   end
@@ -153,7 +154,7 @@ RSpec.describe "Tool call wrapper parity" do
     it "an execute result: both loops give the model the same head, tail and saved file" do
       long = "stdout:\n#{(1..500).map { |i| "line #{i}" }.join("\n")}\n9 examples, 0 failures\nexit: 0"
       allow(Samagotchi::Tools::Execute).to receive(:call).and_return(long)
-      session = -> { dir }
+      session = dir
       _result, native = run_native(max_tool_output_chars: 2000, call: %(call:execute{command: "rspec"}), session_dir: session)
       events.clear
       _result, chat = run_chat(max_tool_output_chars: 2000, call: ["c1", "execute", { "command" => "rspec" }],

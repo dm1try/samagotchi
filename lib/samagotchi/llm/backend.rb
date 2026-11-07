@@ -19,9 +19,11 @@ module Samagotchi
     # in +messages+ (Engine#run_turn resume_from:); the replies from there on
     # keep the model's reasoning (thought blocks), as within one run. nil:
     # the run starts here, as every other turn's does.
+    # +context+: the run's turn (TurnContext, Engine#generate's), handed down
+    # the tool path explicitly; nil: the backend's own (a bare kernel's).
     class ModelBackend
       def complete(messages:, max_iterations: IterationLimit::DEFAULT, on_stream_event: nil, cancel_controller: nil,
-                   model_name: nil, max_tool_output_chars: nil, pending_input: nil, reasoning_since: nil)
+                   model_name: nil, max_tool_output_chars: nil, pending_input: nil, reasoning_since: nil, context: nil)
         raise NotImplementedError, "#{self.class}#complete must be implemented"
       end
     end

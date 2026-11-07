@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require "samagotchi/turn_context"
 require "json"
 require "tmpdir"
 require "yaml"
@@ -29,8 +30,8 @@ RSpec.describe "A second rule's ask on one call" do
   let(:context) { Samagotchi::Guardrails::Context.new(cwd: repo, session_id: "s1", git: git) }
   let(:asked) { [] }
   let(:gate) do
-    Samagotchi::Guardrails::Gate.new(-> {}, context_lookup: -> { context }, approvals_lookup: -> { store }, checks_lookup: -> { [rules] },
-                                     approver: lambda { |verdict|
+    Samagotchi::Guardrails::Gate.new(-> {}, context_for: ->(_turn) { context }, approvals_lookup: -> { store }, checks_for: ->(_turn) { [rules] },
+                                     approver: lambda { |verdict, _turn|
                                        asked << verdict
                                        verdict.settle!(:deny, decided_by: "user", note: "no")
                                      })
@@ -38,7 +39,7 @@ RSpec.describe "A second rule's ask on one call" do
 
   after { FileUtils.rm_rf(base) }
 
-  def evaluate(command) = gate.evaluate({ name: "execute", content: command }, iteration: 1, params: "")
+  def evaluate(command) = gate.evaluate({ name: "execute", content: command }, context: Samagotchi::TurnContext.none, iteration: 1, params: "")
 
   # Allow +rule+'s ask for +scope+, as the store would have it from the user.
   def grant(command, scope = "rule")
@@ -50,12 +51,12 @@ RSpec.describe "A second rule's ask on one call" do
     before { grant("git merge x") }
 
     it "passes a merge with no ask" do
-      verdict = gate.settle_ask(evaluate("git merge y"))
+      verdict = gate.settle_ask(evaluate("git merge y"), context: Samagotchi::TurnContext.none)
       expect([verdict.decision, verdict.decided_by, verdict.scope, asked]).to eq([:allow, "approval", "rule", []])
     end
 
     it "passes two merges: the same rule, no second ask" do
-      verdict = gate.settle_ask(evaluate("git merge y && git merge z"))
+      verdict = gate.settle_ask(evaluate("git merge y && git merge z"), context: Samagotchi::TurnContext.none)
       expect([verdict.decision, verdict.decided_by, asked]).to eq([:allow, "approval", []])
     end
 
@@ -67,7 +68,7 @@ RSpec.describe "A second rule's ask on one call" do
       it "asks about #{what} chained after it, once only, naming the first rule" do
         verdict = evaluate(command)
         expect([verdict.rule, verdict.scopes, verdict.second_rule_ask?, verdict.fresh_ask?]).to eq(["git-merge", %w[once], true, false])
-        expect(gate.settle_ask(verdict)).to be_deny
+        expect(gate.settle_ask(verdict, context: Samagotchi::TurnContext.none)).to be_deny
         expect(asked).to eq([verdict])
       end
     end
@@ -80,7 +81,7 @@ RSpec.describe "A second rule's ask on one call" do
 
   it "closes the gap in existing rule pairs: a granted git-push doesn't cover the reset" do
     grant("git push")
-    verdict = gate.settle_ask(evaluate("git push && git reset --hard"))
+    verdict = gate.settle_ask(evaluate("git push && git reset --hard"), context: Samagotchi::TurnContext.none)
     expect([verdict.decision, asked.size]).to eq([:deny, 1])
   end
 
@@ -90,13 +91,13 @@ RSpec.describe "A second rule's ask on one call" do
     %w[repo session].each do |scope|
       it "takes a stored #{scope} entry for exactly this command as the answer" do
         store.add(evaluate(chain), scope)
-        verdict = gate.settle_ask(evaluate(chain))
+        verdict = gate.settle_ask(evaluate(chain), context: Samagotchi::TurnContext.none)
         expect([verdict.decision, verdict.decided_by, verdict.scope, asked]).to eq([:allow, "approval", scope, []])
       end
 
       it "doesn't take a #{scope} entry for another command" do
         store.add(evaluate(chain), scope)
-        expect(gate.settle_ask(evaluate("#{chain} && echo more"))).to be_deny
+        expect(gate.settle_ask(evaluate("#{chain} && echo more"), context: Samagotchi::TurnContext.none)).to be_deny
         expect(asked.size).to eq(1)
       end
     end
@@ -106,7 +107,7 @@ RSpec.describe "A second rule's ask on one call" do
       expect(verdict.scopes).to eq(%w[once session repo])
       expect(Samagotchi::Guardrails::Approval.payload(verdict)[:options]).to eq(["Allow once", "Allow this call for the session", "Allow this call in this repo (repo)", "Deny"])
       store.add(verdict, "repo")
-      expect(gate.settle_ask(evaluate(chain))).to be_allow
+      expect(gate.settle_ask(evaluate(chain), context: Samagotchi::TurnContext.none)).to be_allow
     end
 
     it "offers only what both allow: the merge rule's once and rule leave once" do
@@ -127,7 +128,7 @@ RSpec.describe "A second rule's ask on one call" do
     it "takes no stored rule grant of either rule, both granted or not" do
       grant("git branch -D feat/y")
       grant("git push")
-      expect(gate.settle_ask(evaluate(chain))).to be_deny
+      expect(gate.settle_ask(evaluate(chain), context: Samagotchi::TurnContext.none)).to be_deny
       expect(asked.size).to eq(1)
     end
   end
@@ -139,7 +140,7 @@ RSpec.describe "A second rule's ask on one call" do
     store.add(verdict, "rule")
     pair = evaluate("git push")
     pair.fresh_ask = true
-    expect(gate.settle_ask(pair)).to be_deny
+    expect(gate.settle_ask(pair, context: Samagotchi::TurnContext.none)).to be_deny
     expect(asked).to eq([pair])
   end
 
@@ -183,7 +184,7 @@ RSpec.describe "A second rule's ask on one call" do
     let(:cards) { [] }
     let(:wiring) do
       client = s1::Client.new(backend: judge, mode: "on", host: "splash", model: "jev")
-      Samagotchi::GuardrailWiring.new(scratch: false, hooks: -> {}, tools: -> {}, session: -> { session }, model_key: -> {},
+      Samagotchi::GuardrailWiring.new(scratch: false, hooks: -> {}, tools: -> {}, session: -> { session },
                                       cancelled: -> { false }, ask: lambda { |payload|
                                         cards << payload
                                         nil

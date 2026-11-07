@@ -4,6 +4,7 @@ require "tmpdir"
 require "fileutils"
 require "samagotchi/guardrails"
 require "samagotchi/guardrail_wiring"
+require_relative "../support/engine_turn_context"
 
 RSpec.describe Samagotchi::Guardrails::ReviewBoundary do
   let(:base) { File.realpath(Dir.mktmpdir("review-boundary")) }
@@ -127,20 +128,20 @@ RSpec.describe Samagotchi::Guardrails::ReviewBoundary do
     let(:session) { Struct.new(:id, :working_directory) { def delegate? = false }.new("s1", project) }
     let(:wiring) do
       Samagotchi::GuardrailWiring.new(scratch: false, hooks: -> {}, tools: -> {}, session: -> { session },
-                                      model_key: -> {}, cancelled: -> { false }, ask: ->(_) {}).tap do |w|
+                                      cancelled: -> { false }, ask: ->(_) {}).tap do |w|
         w.state_dir = File.join(base, "state")
       end
     end
 
     it "comes before the rules, for a participant's turn only" do
-      expect(wiring.checks.index(wiring.review_boundary)).to eq(1)
-      wiring.begin_turn({ client_id: "review:p_0123abcd", author: author })
+      participant = wiring_turn_context(wiring, { client_id: "review:p_0123abcd", author: author }, session: session)
+      expect(wiring.checks(participant)[1]).to be_a(described_class)
       verdict = Samagotchi::Guardrails::Verdict.new(call: { name: "write", path: "docs/plan.md", content: "x" })
       verdict.targets = Samagotchi::Guardrails::Targets.for(verdict.call, Samagotchi::Guardrails::Context.new(cwd: project, git: git))
-      expect(wiring.review_boundary.check(verdict)).to be_deny
-      wiring.begin_turn({ client_id: "web:tab" })
+      expect(wiring.checks(participant)[1].check(verdict)).to be_deny
+      owner = wiring_turn_context(wiring, { client_id: "web:tab" }, session: session)
       verdict = Samagotchi::Guardrails::Verdict.new(call: { name: "write", path: "docs/plan.md", content: "x" })
-      expect(wiring.review_boundary.check(verdict)).to be_allow
+      expect(wiring.checks(owner)[1].check(verdict)).to be_allow
     end
   end
 end

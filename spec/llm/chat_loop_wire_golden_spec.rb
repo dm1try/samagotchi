@@ -72,13 +72,13 @@ RSpec.describe "ChatLoop OpenAI wire goldens" do
     it "keeps the request bodies of a tool turn at thinking #{level}, reasoning history #{history}" do
       server.enqueue("/v1/chat/completions", sse: FakeProviderServer.fixture("reasoning_tool_stream.sse"))
       server.enqueue("/v1/chat/completions", sse: FakeProviderServer.fixture("text_stream.sse"))
-      kernel.turn_settings = kernel.turn_settings.with(thinking: level, sampling: { temperature: 0.6 },
-                                                       reasoning_history: history)
+      settings = kernel.turn_settings.with(thinking: level, sampling: { temperature: 0.6 }, reasoning_history: history)
       adapter = Samagotchi::LLM::OpenAIChat.new(base_url: server.base_url, host_name: "box", env: {}, sleeper: ->(_s) {})
       loop = Samagotchi::LLM::ChatLoop.new(kernel: kernel, adapter: adapter)
       loop.session_id = "sess-golden"
 
-      loop.complete(messages: conversation, model_name: "box-model", on_stream_event: ->(_event) {})
+      loop.complete(messages: conversation, model_name: "box-model", on_stream_event: ->(_event) {},
+                    context: run_context(settings: settings))
 
       expect(chat_requests.size).to eq(2)
       expect_golden("chat_loop_tool_turn_#{name}.json", recorded)

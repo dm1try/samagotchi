@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "samagotchi/kernel_loop"
+require_relative "support/test_kernel"
 require "samagotchi/hooks"
 require "samagotchi/session"
 require "samagotchi/message_parts"
@@ -113,7 +114,7 @@ RSpec.describe Samagotchi::KernelLoop do
       registry.register(:before_generation) { |_event| order << :hook }
       allow(client).to receive(:complete).and_return("never")
       kernel = described_class.new(client: client, hooks: registry)
-      kernel.generation_guard = lambda {
+      kernel.generation_guard = lambda { |_context|
         order << :guard
         controller.cancel!
       }
@@ -164,7 +165,7 @@ RSpec.describe Samagotchi::KernelLoop do
         )
         gate = Class.new do
           define_method(:seen) { @seen }
-          def evaluate(call, iteration:, params:)
+          def evaluate(call, context:, iteration:, params:)
             @seen << { tool: call[:name], command: call[:content] }
             verdict = Samagotchi::Guardrails::Verdict.new(call: call)
             verdict.targets = Samagotchi::Guardrails::Targets.for(call, Samagotchi::Guardrails::Context.new)
@@ -2815,11 +2816,10 @@ Need to inspect the filesystem first.
         "done"
       end
 
+      own = qwen_kernel.turn_settings
       qwen_kernel.run([{ role: "user", content: "hi" }])
-      qwen_kernel.turn_settings = qwen_kernel.turn_settings.with(sampling: { temperature: 0.6 })
-      qwen_kernel.run([{ role: "user", content: "hi" }])
-      qwen_kernel.turn_settings = qwen_kernel.turn_settings.with(sampling: {})
-      qwen_kernel.run([{ role: "user", content: "hi" }])
+      qwen_kernel.run([{ role: "user", content: "hi" }], context: run_context(settings: own.with(sampling: { temperature: 0.6 })))
+      qwen_kernel.run([{ role: "user", content: "hi" }], context: run_context(settings: own.with(sampling: {})))
 
       expect(seen.map { |kwargs| kwargs[:sampling] }).to eq([nil, { temperature: 0.6 }, nil])
     end
@@ -3030,12 +3030,6 @@ Need to inspect the filesystem first.
     it "defaults to nil" do
       kernel = described_class.new(client: client)
       expect(kernel.model_key).to be_nil
-    end
-
-    it "sync_model_key! updates the key" do
-      kernel = described_class.new(client: client, model_key: "initial")
-      kernel.sync_model_key!("updated")
-      expect(kernel.model_key).to eq("updated")
     end
   end
 

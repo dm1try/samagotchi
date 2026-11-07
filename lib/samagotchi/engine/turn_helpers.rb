@@ -6,7 +6,7 @@ module Samagotchi
     # images and vision, the model ref and resumed run start it generates
     # with, the used memories it publishes, and the turn-end warm-up of the
     # next one. Writes @next_turn_waiting; reads @model_settings, @kernel,
-    # @prompt_warmup, @thinking_notices, @turn_state.
+    # @prompt_warmup, @thinking_notices, @turn_state and the turn's TurnContext.
     module TurnHelpersPart
       # The turn's settings for the kernel (LLM::TurnSettings): vision,
       # sampling and thinking, the thinking resolved before the hooks run.
@@ -50,11 +50,16 @@ module Samagotchi
 
         messages = ContextNote.with_system_head(turn.session.messages.dup, { role: "system", content: system_prompt(model) })
         # Under the next turn's strategy (a /model switch may have changed it);
-        # the last turn's when it can't be resolved.
-        prompt, images = @kernel.warmup_prompt(messages, llm_context: @model_settings.turn_llm_context || @kernel.turn_settings&.llm_context)
+        # the last turn's when it can't be resolved; the turn's settings
+        # (TurnContext, set in #generate) for the rest.
+        settings = turn.context.settings
+        prompt, images = @kernel.warmup_prompt(messages, llm_context: @model_settings.turn_llm_context || settings.llm_context,
+                                                         vision: settings.vision)
         return unless prompt
 
-        started = @prompt_warmup.start(client: client, prompt: prompt, model: @kernel.turn_settings.model_name,
+        # The model name as the native run sent it (KernelLoop#run's
+        # completion name: the default model for a blank one).
+        started = @prompt_warmup.start(client: client, prompt: prompt, model: ModelProfile.required_model_name(settings.model_name),
                                        slot: @kernel.last_slot, images: images)
         @kernel.warmed_up! if started
       rescue StandardError => e

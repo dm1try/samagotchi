@@ -102,7 +102,8 @@ when it has outputs and none is `sent`. An edit-only item, a failed run's file o
 pending: [Steering: add and unadd](#steering-add-and-unadd)) (`Engine#emit_working_set`, `EventFanout`'s):
 - after each `:generation_started`, in `build_stream_event_handler` (`EventFanout`), from the running turn's
   conversation (`Engine#live_conversation`, read on the turn's thread) under the turn's strategy
-  (`@kernel.turn_settings.llm_context`). Both loops start a generation after `apply_llm_context!`, so the set is
+  (`TurnContext#settings`' `llm_context`; `EventFanout#working_set_llm_context`: the running turn's, the last turn's
+  until it has its own). Both loops start a generation after `apply_llm_context!`, so the set is
   what that request sends;
 - once in `Engine#end_turn`, after `replace_session_messages` and before the end event, from the kept messages (the
   turn-end apply has run by then);

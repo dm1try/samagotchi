@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require "samagotchi/turn_context"
 require "tmpdir"
 require "yaml"
 require "digest"
@@ -34,7 +35,7 @@ RSpec.describe "The known-names bundle" do
     )
     registry
   end
-  let(:gate) { Samagotchi::Guardrails::Gate.new(-> { registry }, context_lookup: -> { context }) }
+  let(:gate) { Samagotchi::Guardrails::Gate.new(-> { registry }, context_for: ->(_turn) { context }) }
 
   # The repo and its GitInfo, made once: the examples only read the repo, so a repo
   # and rev-parse probes each gave the same answers.
@@ -56,7 +57,7 @@ RSpec.describe "The known-names bundle" do
     allow(ENV).to receive(:[]).with("USER").and_return("johndoe")
   end
 
-  def verdict_for(call) = gate.evaluate(call, iteration: 1, params: "#{call[:name]} #{call[:content] || call[:path]}")
+  def verdict_for(call) = gate.evaluate(call, context: Samagotchi::TurnContext.none, iteration: 1, params: "#{call[:name]} #{call[:content] || call[:path]}")
   def shell(command) = verdict_for({ name: "execute", content: command })
 
   caught = {

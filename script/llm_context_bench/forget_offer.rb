@@ -139,13 +139,14 @@ module LLMContextBench
 
       def view = Samagotchi::LLMContextView.new(strategy: LAYERS)
 
-      # A chat loop on a kernel that runs the turn under [stale, forget]:
-      # its wire messages and tools are what chi sends.
+      # A chat loop whose turn runs under [stale, forget] (the context it is
+      # built with, ChatLoop#turn_context): its wire messages and tools are
+      # what chi sends.
       def chat_loop
         kernel = Samagotchi::KernelLoop.new(client: Object.new, profile: Samagotchi::ModelProfile.qwen36,
                                             model_name: "bench")
-        kernel.turn_settings = kernel.turn_settings.with(llm_context: llm_context)
-        Samagotchi::LLM::ChatLoop.new(kernel: kernel)
+        turn = Samagotchi::TurnContext.none(settings: kernel.turn_settings.with(llm_context: llm_context))
+        Samagotchi::LLM::ChatLoop.new(kernel: kernel, context: turn)
       end
 
       # The forget_outputs calls in a response, each its id and arguments.

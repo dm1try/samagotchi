@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative "../support/engine_turn_context"
+require "samagotchi/turn_context"
 require "tmpdir"
 require "samagotchi/guardrails"
 require "samagotchi/engine"
@@ -39,7 +41,7 @@ RSpec.describe "Engine: a scratch session" do
 
   def run_call(engine, call)
     kernel = engine.instance_variable_get(:@kernel)
-    Samagotchi::ToolRunner.new(kernel).run(call, iteration: 1, call_index: 1, call_count: 1,
+    Samagotchi::ToolRunner.new(kernel).run(call, context: engine_turn_context(engine), iteration: 1, call_index: 1, call_count: 1,
                                                  on_stream_event: nil, max_tool_output_chars: nil).output
   end
 
@@ -94,8 +96,8 @@ RSpec.describe "Engine: a scratch session's approvals" do
   def evaluate(engine, scope)
     verdict = nil
     thread = Thread.new do
-      verdict = gate(engine).evaluate({ name: "execute", content: "git push" }, iteration: 1, params: "")
-      gate(engine).settle_ask(verdict)
+      verdict = gate(engine).evaluate({ name: "execute", content: "git push" }, context: engine_turn_context(engine), iteration: 1, params: "")
+      gate(engine).settle_ask(verdict, context: engine_turn_context(engine))
     end
     offered = nil
     if scope

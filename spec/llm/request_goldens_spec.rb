@@ -63,12 +63,14 @@ RSpec.describe "Request goldens per toolkit and wire" do
     index.declare(kernel.tools)
     kernel.tools.toolkit = Samagotchi::Toolkit.new(name: toolkit).resolve(Samagotchi::Toolkit.kits)
     index.refresh!
-    kernel.turn_settings = kernel.turn_settings.with(thinking: :high, reasoning_history: :all)
     allow(kernel).to receive(:dispatch_tool_call) do |call|
       { output: "[#{call[:name]}] done", activity: { action: "ran #{call[:name]}", tool: call[:name].to_s, status: "ok" } }
     end
     [kernel, index]
   end
+
+  # The run's turn: high thinking, every reasoning sent back.
+  def golden_context(kernel) = run_context(settings: kernel.turn_settings.with(thinking: :high, reasoning_history: :all))
 
   # A find_tools hit and its answer (with the tools it loads, as
   # ToolResponse.single saves them), then a new prompt.
@@ -99,7 +101,8 @@ RSpec.describe "Request goldens per toolkit and wire" do
       loop = Samagotchi::LLM::ChatLoop.new(kernel: kernel, adapter: adapter)
       loop.session_id = "sess-golden"
 
-      loop.complete(messages: conversation(index), model_name: "box-model", on_stream_event: ->(_event) {})
+      loop.complete(messages: conversation(index), model_name: "box-model", on_stream_event: ->(_event) {},
+                    context: golden_context(kernel))
 
       expect_golden("#{name}_openai.json", recorded("/v1/chat/completions", %w[content-type session-id]))
     end
@@ -111,7 +114,8 @@ RSpec.describe "Request goldens per toolkit and wire" do
       loop = Samagotchi::LLM::ChatLoop.new(kernel: kernel, adapter: adapter, sleeper: ->(_s) {})
       loop.session_id = "sess-golden"
 
-      loop.complete(messages: conversation(index), model_name: "claude-golden", on_stream_event: ->(_event) {})
+      loop.complete(messages: conversation(index), model_name: "claude-golden", on_stream_event: ->(_event) {},
+                    context: golden_context(kernel))
 
       expect_golden("#{name}_anthropic.json",
                     recorded("/v1/messages", %w[content-type anthropic-version anthropic-beta session-id]))

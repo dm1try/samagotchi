@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require "samagotchi/turn_context"
 require "spec_helper"
 require "tmpdir"
 require "fileutils"
@@ -186,7 +187,7 @@ RSpec.describe Samagotchi::Hooks::BundleLoader do
       described_class.load(bundle_name: "fail-bundle", hooks_dir: hooks_dir, metadata: meta, registry: registry)
       seen = nil
       registry.register(:before_tool_call) { |e| seen = e.slice(:blocked, :block_reason) }
-      verdict = Samagotchi::Guardrails::Gate.new(-> { registry }).evaluate({ name: "execute" }, iteration: 1, params: "")
+      verdict = Samagotchi::Guardrails::Gate.new(-> { registry }).evaluate({ name: "execute" }, context: Samagotchi::TurnContext.none, iteration: 1, params: "")
       reason = "guardrail guardrails.rb (bundle fail-bundle) raised RuntimeError: boom"
       expect([verdict.decision, verdict.reason]).to eq([:deny, reason])
       expect(seen).to eq(blocked: true, block_reason: reason)

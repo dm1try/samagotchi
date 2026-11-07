@@ -19,7 +19,7 @@ RSpec.describe Samagotchi::ToolRunner do
   let(:events) { [] }
   let(:kernel) do
     k = Struct.new(:hooks, :dispatched, :tools, :guardrail_gate) do
-      def dispatch_tool_call(call)
+      def dispatch_tool_call(call, _context = nil)
         dispatched << call
         { output: "[#{call[:name]}]\nran", activity: { tool: call[:name], status: "ok" } }
       end
@@ -28,6 +28,7 @@ RSpec.describe Samagotchi::ToolRunner do
   end
   let(:dispatched) { [] }
   let(:hooks) { Samagotchi::Hooks::Registry.new }
+  let(:context) { run_context }
 
   describe Samagotchi::ToolRun do
     it "defaults every field to nil" do
@@ -39,8 +40,8 @@ RSpec.describe Samagotchi::ToolRunner do
     end
   end
 
-  def run(c = call)
-    runner.run(c, iteration: 1, call_index: 1, call_count: 1,
+  def run(c = call, in_context: context)
+    runner.run(c, context: in_context, iteration: 1, call_index: 1, call_count: 1,
                   on_stream_event: ->(e) { events << e }, max_tool_output_chars: nil)
   end
 
@@ -51,7 +52,7 @@ RSpec.describe Samagotchi::ToolRunner do
       allow(hooks).to receive(:fire).and_call_original
       allow(hooks).to receive(:fire).with(:after_tool_call, anything).and_raise(IOError, "registry gone")
 
-      result = runner.run(call, iteration: 1, call_index: 1, call_count: 1,
+      result = runner.run(call, context: context, iteration: 1, call_index: 1, call_count: 1,
                                 on_stream_event: ->(_e) { raise IOError, "client gone" }, max_tool_output_chars: nil)
 
       expect(result.output).to include("ran")
@@ -78,7 +79,7 @@ RSpec.describe Samagotchi::ToolRunner do
         { output: "[execute]\n#{"x" * 50}\nexit: 2", activity: { tool: "execute", status: "error" } }
       end
 
-      runner.run(call, iteration: 1, call_index: 1, call_count: 1, on_stream_event: nil, max_tool_output_chars: 10)
+      runner.run(call, context: context, iteration: 1, call_index: 1, call_count: 1, on_stream_event: nil, max_tool_output_chars: 10)
 
       expect(statuses).to eq(%w[error])
     end
@@ -120,7 +121,7 @@ RSpec.describe Samagotchi::ToolRunner do
 
     it "gives the result uncut when the model's output is capped" do
       allow(kernel).to receive(:dispatch_tool_call) { { output: "[execute]\n#{"x" * 50}", activity: nil } }
-      runner.run(call, iteration: 1, call_index: 1, call_count: 1, on_stream_event: nil, max_tool_output_chars: 20)
+      runner.run(call, context: context, iteration: 1, call_index: 1, call_count: 1, on_stream_event: nil, max_tool_output_chars: 20)
       expect(seen.first[:result]).to eq("x" * 50)
     end
 
@@ -138,7 +139,7 @@ RSpec.describe Samagotchi::ToolRunner do
     end
 
     it "leaves the approval wait out of elapsed_ms" do
-      gate = Samagotchi::Guardrails::Gate.new(-> { hooks }, approver: lambda { |verdict|
+      gate = Samagotchi::Guardrails::Gate.new(-> { hooks }, approver: lambda { |verdict, _turn|
         now[0] += 5
         verdict.settle!(:allow).tap { verdict.scope = "once" }
       })
@@ -157,7 +158,7 @@ RSpec.describe Samagotchi::ToolRunner do
   it "emits tool_call_completed before firing after_tool_call" do
     order = []
     hooks.register(:after_tool_call) { |_e| order << :after_tool_call }
-    runner.run(call, iteration: 1, call_index: 1, call_count: 1,
+    runner.run(call, context: context, iteration: 1, call_index: 1, call_count: 1,
                      on_stream_event: ->(e) { order << e[:type] }, max_tool_output_chars: nil)
     expect(order).to eq(%i[tool_call_started tool_call_completed after_tool_call])
   end
@@ -230,7 +231,7 @@ RSpec.describe Samagotchi::ToolRunner do
     end
 
     def capped_run(cap)
-      runner.run(call, iteration: 1, call_index: 1, call_count: 1, on_stream_event: ->(e) { events << e },
+      runner.run(call, context: context, iteration: 1, call_index: 1, call_count: 1, on_stream_event: ->(e) { events << e },
                        max_tool_output_chars: cap)
     end
 
@@ -272,7 +273,7 @@ RSpec.describe Samagotchi::ToolRunner do
     before { allow(kernel).to receive(:dispatch_tool_call) { { output: full, activity: { tool: "memory_read", status: "ok" } } } }
 
     def capped_run(c = call, cap: 100)
-      runner.run(c, iteration: 1, call_index: 1, call_count: 1, on_stream_event: ->(e) { events << e }, max_tool_output_chars: cap)
+      runner.run(c, context: context, iteration: 1, call_index: 1, call_count: 1, on_stream_event: ->(e) { events << e }, max_tool_output_chars: cap)
     end
 
     it "comes back whole, past max_tool_output_chars, with output_truncated false" do
@@ -307,7 +308,7 @@ RSpec.describe Samagotchi::ToolRunner do
       def window(tokens, source) = Samagotchi::ContextWindow::Resolved.new(tokens: tokens, source: source)
 
       def guarded(win, c = call)
-        described_class.new(kernel, window: -> { win }).run(c, iteration: 1, call_index: 1, call_count: 1, on_stream_event: nil,
+        described_class.new(kernel, window: ->(_settings) { win }).run(c, context: context, iteration: 1, call_index: 1, call_count: 1, on_stream_event: nil,
                                                               max_tool_output_chars: 10)
       end
 
@@ -323,14 +324,14 @@ RSpec.describe Samagotchi::ToolRunner do
       it "doesn't guard the default window, an unreadable one or a result under half" do
         expect(guarded(window(250, :default)).truncated).to be(false)
         expect(guarded(nil).truncated).to be(false)
-        expect(described_class.new(kernel, window: -> { raise "no" }).run(call, iteration: 1, call_index: 1, call_count: 1,
+        expect(described_class.new(kernel, window: ->(_settings) { raise "no" }).run(call, context: context, iteration: 1, call_index: 1, call_count: 1,
                                                                             on_stream_event: nil, max_tool_output_chars: 10).truncated).to be(false)
         expect(guarded(window(100_000, :config)).truncated).to be(false)
       end
 
       it "asks the kernel's tool_output_window when no reader is given" do
-        kernel.define_singleton_method(:tool_output_window) { Samagotchi::ContextWindow::Resolved.new(tokens: 250, source: :model_list) }
-        expect(runner.run(call, iteration: 1, call_index: 1, call_count: 1, on_stream_event: nil,
+        kernel.define_singleton_method(:tool_output_window) { |_settings = nil| Samagotchi::ContextWindow::Resolved.new(tokens: 250, source: :model_list) }
+        expect(runner.run(call, context: context, iteration: 1, call_index: 1, call_count: 1, on_stream_event: nil,
                                 max_tool_output_chars: 10).truncated).to be(true)
       end
 
@@ -361,12 +362,12 @@ RSpec.describe Samagotchi::ToolRunner do
       end
     end
 
-    let(:session_dir) { -> { @session_dir } }
+    let(:context) { run_context(session_dir: @session_dir) }
     let(:kernel) do
-      k = Struct.new(:hooks, :dispatched, :tools, :guardrail_gate, :session_dir, :output) do
-        def dispatch_tool_call(_call) = { output: output, activity: { tool: "execute", status: "ok" } }
+      k = Struct.new(:hooks, :dispatched, :tools, :guardrail_gate, :output) do
+        def dispatch_tool_call(_call, _context = nil) = { output: output, activity: { tool: "execute", status: "ok" } }
       end
-      k.new(hooks, dispatched, nil, nil, session_dir, full)
+      k.new(hooks, dispatched, nil, nil, full)
     end
     let(:filler) { (1..400).map { |i| "  example #{i} passed .........................." }.join("\n") }
     let(:full) { "[execute]\nstdout:\n#{filler}\n744 examples, 0 failures\nexit: 0" }
@@ -374,8 +375,8 @@ RSpec.describe Samagotchi::ToolRunner do
 
     before { hooks.register(:after_tool_call) { |event| outputs << event[:output] } }
 
-    def capped_run(cap = 10_000)
-      runner.run(call, iteration: 1, call_index: 1, call_count: 1, on_stream_event: ->(e) { events << e },
+    def capped_run(cap = 10_000, in_context = context)
+      runner.run(call, context: in_context, iteration: 1, call_index: 1, call_count: 1, on_stream_event: ->(e) { events << e },
                        max_tool_output_chars: cap)
     end
 
@@ -460,8 +461,7 @@ RSpec.describe Samagotchi::ToolRunner do
     end
 
     it "says the output wasn't saved with no session, and how to see the rest" do
-      kernel.session_dir = nil
-      text = capped_run(5000).capped_output
+      text = capped_run(5000, run_context(session_dir: nil)).capped_output
 
       expect(text).to end_with("exit: 0")
       expect(text).to include("the whole output wasn't saved (no session); to look past this, rerun with the output " \
@@ -501,11 +501,6 @@ RSpec.describe Samagotchi::ToolRunner do
       expect(text).not_to include("don't rerun")
     end
 
-    it "falls back to no session when the session's folder can't be looked up" do
-      kernel.session_dir = -> { raise "gone" }
-      expect(capped_run(5000).capped_output).to include("wasn't saved (no session)")
-    end
-
     it "gets the head cut, nothing saved, under a cap too small for a tail" do
       text = capped_run(300).capped_output
 
@@ -522,7 +517,7 @@ RSpec.describe Samagotchi::ToolRunner do
 
     it "leaves a read over the cap to the head cut, nothing saved" do
       read = { name: "read", path: "big.txt" }
-      result = runner.run(read, iteration: 1, call_index: 1, call_count: 1, on_stream_event: nil,
+      result = runner.run(read, context: context, iteration: 1, call_index: 1, call_count: 1, on_stream_event: nil,
                                 max_tool_output_chars: 5000)
 
       expect(result.capped_output).to eq(Samagotchi::ToolOutputCut.head(full, 5000))
@@ -542,7 +537,7 @@ RSpec.describe Samagotchi::ToolRunner do
     end
 
     it "keeps the header and the tail's end, names the log, saves nothing" do
-      result = runner.run(call, iteration: 1, call_index: 1, call_count: 1, on_stream_event: nil,
+      result = runner.run(call, context: context, iteration: 1, call_index: 1, call_count: 1, on_stream_event: nil,
                                 max_tool_output_chars: 3000)
       text = result.capped_output
 
@@ -559,7 +554,7 @@ RSpec.describe Samagotchi::ToolRunner do
           ref_stderr_path: "/tasks/t1.err" }
       end
 
-      text = runner.run(call, iteration: 1, call_index: 1, call_count: 1, on_stream_event: nil,
+      text = runner.run(call, context: context, iteration: 1, call_index: 1, call_count: 1, on_stream_event: nil,
                               max_tool_output_chars: 3000).capped_output
 
       expect(text).to match(%r{^\[cut: \d+ of #{full.length} chars not shown; the task's whole output is in /tasks/t1\.log \(its stderr in /tasks/t1\.err\): read it with start_line/end_line or rg it\]$})
@@ -654,15 +649,15 @@ RSpec.describe Samagotchi::ToolRunner do
       registry.register("mcp_chrome_screenshot", schema: { parameters: { properties: {} } }, handler: ->(*) { "ok" },
                                                  source: "mcp", label: "chrome: screenshot")
       labelled = Struct.new(:hooks, :tools, :guardrail_gate) do
-        def dispatch_tool_call(call) = { output: "[#{call[:name]}]\nok", activity: { tool: call[:name], status: "ok" } }
+        def dispatch_tool_call(call, _context = nil) = { output: "[#{call[:name]}]\nok", activity: { tool: call[:name], status: "ok" } }
       end.new(hooks, registry)
-      result = described_class.new(labelled).run({ name: "mcp_chrome_screenshot" }, iteration: 1, call_index: 1, call_count: 1,
+      result = described_class.new(labelled).run({ name: "mcp_chrome_screenshot" }, context: context, iteration: 1, call_index: 1, call_count: 1,
                                                  on_stream_event: ->(e) { events << e }, max_tool_output_chars: nil)
       expect(events.first).to include(type: :tool_call_started, tool: "mcp_chrome_screenshot", label: "chrome: screenshot")
       expect(result.shown_label).to eq("chrome: screenshot")
 
       events.clear
-      result = described_class.new(labelled).run({ name: "execute", content: "ls" }, iteration: 1, call_index: 1, call_count: 1,
+      result = described_class.new(labelled).run({ name: "execute", content: "ls" }, context: context, iteration: 1, call_index: 1, call_count: 1,
                                                  on_stream_event: ->(e) { events << e }, max_tool_output_chars: nil)
       expect(events.first).not_to have_key(:label)
       expect(result.shown_label).to be_nil
@@ -735,7 +730,7 @@ RSpec.describe Samagotchi::ToolRunner do
     let(:asked) { [] }
     let(:answer) { :allow }
     let(:runner) do
-      approver = lambda do |verdict|
+      approver = lambda do |verdict, _turn|
         asked << events.map { |e| e[:type] }
         answer == :allow ? verdict.settle!(:allow).tap { verdict.scope = "once" } : verdict.settle!(:deny, note: "The user declined this call.")
       end
@@ -759,7 +754,7 @@ RSpec.describe Samagotchi::ToolRunner do
     context "with a clock" do
       let(:now) { [100.0] }
       let(:runner) do
-        approver = lambda do |verdict|
+        approver = lambda do |verdict, _turn|
           now[0] += 2.5
           answer == :allow ? verdict.settle!(:allow).tap { verdict.scope = "once" } : verdict.settle!(:deny, note: "no")
         end
@@ -826,7 +821,7 @@ RSpec.describe Samagotchi::ToolRunner do
 
     let(:kernel) do
       k = Struct.new(:hooks, :dispatched, :tools, :guardrail_gate) do
-        def dispatch_tool_call(call)
+        def dispatch_tool_call(call, _context = nil)
           dispatched << call
           out = case call[:name]
                 when "edit" then Samagotchi::Tools::Edit.call(path: call[:path], old_text: call[:old_text], new_text: call[:new_text])
@@ -895,9 +890,7 @@ RSpec.describe Samagotchi::ToolRunner do
 
       it "resolves a relative path against the session's folder, as FileRef does" do
         File.write(path, "a\n")
-        dir = @dir
-        kernel.define_singleton_method(:session_cwd) { -> { dir } }
-        expect(run({ name: "read", content: "f.txt" }).stamp).to eq(stamp_of(path))
+        expect(run({ name: "read", content: "f.txt" }, in_context: run_context(cwd: @dir)).stamp).to eq(stamp_of(path))
       end
 
       it "is nil for another tool, a call that isn't ok, a directory and a file that isn't there" do
@@ -1042,7 +1035,7 @@ RSpec.describe Samagotchi::ToolRunner do
       test_kernel(hooks: hooks).tap do |k|
         k.tools = Samagotchi::Tools::Builtins.registry
         k.tools.toolkit = Samagotchi::Toolkit.new(name: "lean").resolve(Samagotchi::Toolkit.kits)
-        approver = lambda do |verdict|
+        approver = lambda do |verdict, _turn|
           asked << verdict.call[:name]
           verdict.settle!(:allow)
         end
@@ -1060,7 +1053,7 @@ RSpec.describe Samagotchi::ToolRunner do
     end
 
     it "gets the not-loaded error naming it, with no hook or card" do
-      result = described_class.new(real_kernel).run({ name: "delegate", task: "x" }, iteration: 1, call_index: 1, call_count: 1,
+      result = described_class.new(real_kernel).run({ name: "delegate", task: "x" }, context: context, iteration: 1, call_index: 1, call_count: 1,
                                                                            on_stream_event: ->(e) { events << e }, max_tool_output_chars: nil)
 
       expect(result.output).to start_with("Error: delegate isn't loaded in this session (toolkit lean) and can't be " \
@@ -1072,7 +1065,7 @@ RSpec.describe Samagotchi::ToolRunner do
     end
 
     it "leaves an unknown name's error as it was (never echoed)" do
-      result = described_class.new(real_kernel).run({ name: "nope" }, iteration: 1, call_index: 1, call_count: 1,
+      result = described_class.new(real_kernel).run({ name: "nope" }, context: context, iteration: 1, call_index: 1, call_count: 1,
                                                             on_stream_event: nil, max_tool_output_chars: nil)
       expect(result.output).to start_with("Error: no such tool. Available: execute")
       expect(result.output).not_to include("delegate")

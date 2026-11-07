@@ -4,6 +4,7 @@ require "json"
 require "tmpdir"
 require "samagotchi/guardrail_wiring"
 require "samagotchi/system_one"
+require_relative "../support/engine_turn_context"
 
 RSpec.describe "GuardrailWiring: System 1 on an approval (audit)" do
   S1 = Samagotchi::SystemOne
@@ -22,7 +23,7 @@ RSpec.describe "GuardrailWiring: System 1 on an approval (audit)" do
 
   def wiring(system_one: client, ask: ->(_payload) { answer }, cancelled: -> { false })
     Samagotchi::GuardrailWiring.new(scratch: false, hooks: -> {}, tools: -> {}, session: -> { session },
-                                    model_key: -> {}, cancelled: cancelled, ask: ask,
+                                    cancelled: cancelled, ask: ask,
                                     system_one: -> { system_one }, cancel_controller: -> {}).tap do |w|
       w.state_dir = state_dir
       w.interface = :worker
@@ -154,8 +155,8 @@ RSpec.describe "GuardrailWiring: System 1 on an approval (audit)" do
 
   it "judges nothing for a participant's turn" do
     w = wiring
-    w.begin_turn({ client_id: "review:p_0123abcd", author: "p_0123abcd" })
-    verdict = w.request_approval(verdict_for)
+    turn = wiring_turn_context(w, { client_id: "review:p_0123abcd", author: "p_0123abcd" }, session: session)
+    verdict = w.request_approval(verdict_for, turn)
     expect(verdict).to be_allow
     expect(File.exist?(log_path)).to be false
   end
@@ -164,7 +165,7 @@ RSpec.describe "GuardrailWiring: System 1 on an approval (audit)" do
     on = S1::Client.new(backend: judge, mode: "on", host: "splash", model: "judge-model")
     asked = []
     w = Samagotchi::GuardrailWiring.new(scratch: false, hooks: -> {}, tools: -> {}, session: -> { session },
-                                        model_key: -> {}, cancelled: -> { false },
+                                        cancelled: -> { false },
                                         ask: lambda { |payload|
                                           asked << payload
                                           answer
@@ -175,11 +176,11 @@ RSpec.describe "GuardrailWiring: System 1 on an approval (audit)" do
                                         })
     w.state_dir = state_dir
     w.interface = :worker
-    w.begin_turn({ client_id: "review:p_0123abcd", author: "p:p_0123abcd" })
-    expect(w.turn_mode).to eq(:pair)
+    turn = wiring_turn_context(w, { client_id: "review:p_0123abcd", author: "p:p_0123abcd" }, session: session)
+    expect(turn.participant_mode).to eq(:pair)
     expect(on).not_to receive(:ask)
 
-    verdict = w.request_approval(verdict_for(scopes: %w[once session repo rule]))
+    verdict = w.request_approval(verdict_for(scopes: %w[once session repo rule]), turn)
 
     expect(asked.size).to eq(1)
     payload = asked.first

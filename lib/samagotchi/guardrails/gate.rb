@@ -16,65 +16,65 @@ module Samagotchi
     # deny. A hook may replace event[:call]; the verdict carries the final
     # call.
     class Gate
+      # What a call is judged in comes with it: #evaluate's +context:+, the
+      # call's turn (TurnContext: its controller, model key and name, and
+      # what +context_for+ and +checks_for+ make of it).
+      #
       # @param hooks_lookup [#call] returns the Hooks::Registry (or nil);
       #   read per call, since the Engine sets the kernel's hooks after
       #   the kernel is built.
-      # @param context_lookup [#call] returns the Context for this call
-      #   (the Engine's: session, interface, origin, per-turn git cache)
-      # @param model_key_lookup [#call] the model key (memory overlays, rules' models:)
-      # @param model_name_lookup [#call] the bare model name (rules' models:)
-      # @param approver [#call, nil] settles an ask (Engine#request_approval);
-      #   without one an ask is denied
+      # @param context_for [#call] (turn) → the Context for a call of that
+      #   turn (the Engine's: session, interface, origin, the turn's git cache)
+      # @param approver [#call, nil] (verdict, turn) settles an ask
+      #   (GuardrailWiring#request_approval); without one an ask is denied
       # @param approvals_lookup [#call] returns the Approvals store (or nil)
-      # @param checks_lookup [#call] core checks (#check(verdict)) run on the
-      #   final call after the hooks: protected paths, then the rules
-      # @param cancelled_lookup [#call] true once the turn was cancelled (a
-      #   hook's stop_turn): the rest of a batch is denied without a vote
+      # @param checks_for [#call] (turn) → core checks (#check(verdict)) run
+      #   on the final call after the hooks: protected paths, then the rules
       # @param tools_lookup [#call] returns the Tools::Registry (or nil): a
       #   plugin tool's targets: say what its call acts on
-      def initialize(hooks_lookup, context_lookup: -> { Context.new }, model_key_lookup: -> {}, model_name_lookup: -> {},
-                     approver: nil, approvals_lookup: -> {}, checks_lookup: -> { [] }, cancelled_lookup: -> { false },
-                     tools_lookup: -> {})
+      def initialize(hooks_lookup, context_for: ->(_turn) { Context.new }, approver: nil, approvals_lookup: -> {},
+                     checks_for: ->(_turn) { [] }, tools_lookup: -> {})
         @hooks_lookup = hooks_lookup
-        @context_lookup = context_lookup
-        @model_key_lookup = model_key_lookup
-        @model_name_lookup = model_name_lookup
+        @context_for = context_for
         @approver = approver
         @approvals_lookup = approvals_lookup
-        @checks_lookup = checks_lookup
-        @cancelled_lookup = cancelled_lookup
+        @checks_for = checks_for
         @tools_lookup = tools_lookup
       end
 
       # @param call [Hash] the parsed tool call
+      # @param context [TurnContext] the call's turn: a cancelled one's
+      #   controller denies the call without a vote (a hook's stop_turn: the
+      #   rest of a batch); its model key and name go to the targets
+      #   (memory overlays, rules' models:)
       # @param iteration [Integer]
       # @param params [String] the call's one-line preview
       # @param verdict [Verdict, nil] the one the voters vote on (the test
       #   kit's recording one, maybe with a vote already in); default a new
       #   one for +call+
       # @return [Verdict]
-      def evaluate(call, iteration:, params:, verdict: nil)
-        context = @context_lookup.call
+      def evaluate(call, context:, iteration:, params:, verdict: nil)
+        judged = @context_for.call(context)
         verdict ||= Verdict.new(call: call)
         verdict.call = call
-        if @cancelled_lookup.call
+        if context.cancelled?
           verdict.deny!("the turn was stopped", decided_by: "core")
-          verdict.context = context
-          verdict.targets = targets_for(call, context)
+          verdict.context = judged
+          verdict.targets = targets_for(call, judged, context)
           return verdict
         end
         before = { type: :before_tool_call, iteration: iteration, call: call.dup, params: params,
                    blocked: verdict.deny?, block_reason: (verdict.reason if verdict.deny?), guardrail: verdict,
-                   context: context.to_h, targets: targets_for(call, context).to_h }
+                   context: judged.to_h, targets: targets_for(call, judged, context).to_h }
         fire_each(:before_tool_call, before) do |event|
           verdict.legacy_deny!(event[:block_reason]) if event[:blocked]
           event[:blocked] = verdict.deny?
           event[:block_reason] = verdict.reason if verdict.deny?
         end
         verdict.call = before[:call] || call
-        verdict.context = context
-        verdict.targets = targets_for(verdict.call, context)
-        Array(@checks_lookup.call).each { |check| check.check(verdict) }
+        verdict.context = judged
+        verdict.targets = targets_for(verdict.call, judged, context)
+        Array(@checks_for.call(context)).each { |check| check.check(verdict) }
         verdict
       end
 
@@ -83,7 +83,8 @@ module Samagotchi
       # @return [Verdict]
       # A stored approval that covers the call allows it without asking; an
       # answer that allows it beyond this once is stored.
-      def settle_ask(verdict)
+      # @param context [TurnContext] the call's turn (the approver's)
+      def settle_ask(verdict, context:)
         approvals = @approvals_lookup.call
         if !verdict.fresh_ask? && (entry = stored(approvals, verdict))
           verdict.settle!(:allow, decided_by: "approval")
@@ -92,7 +93,7 @@ module Samagotchi
         end
         return verdict.settle!(:deny, decided_by: "no one", note: "No one to approve it.") unless @approver
 
-        @approver.call(verdict)
+        @approver.call(verdict, context)
         return verdict.settle!(:deny, decided_by: "no one", note: "No one to approve it.") if verdict.ask?
 
         remember(approvals, verdict)
@@ -118,9 +119,8 @@ module Samagotchi
         Log.warn(:guardrails, "approval_store_failed", echo: "[samagotchi:guardrails] could not store the approval: #{e.class}: #{e.message}", error: e.class.name)
       end
 
-      def targets_for(call, context)
-        Targets.for(call, context, model_key: @model_key_lookup.call, model_name: @model_name_lookup.call,
-                                   registry: @tools_lookup.call)
+      def targets_for(call, judged, turn)
+        Targets.for(call, judged, model_key: turn.model_key, model_name: turn.model_name, registry: @tools_lookup.call)
       end
 
       # Registry#fire_each rescues a raising hook itself.

@@ -53,14 +53,20 @@ module Samagotchi
     NOT_AN_EDIT = Object.new.freeze
     private_constant :NOT_AN_EDIT
 
+    # What a call needs of its turn comes with it: #run's +context:+ (a
+    # TurnContext: the session's folders, the settings' vision, layers and
+    # loads_tools, the participant's mode), passed on to the gate and the
+    # kernel's dispatch.
+    #
     # @param kernel [KernelLoop] read lazily: Engine sets its hooks after
     #   the kernel is built.
     # @param clock [#call] monotonic seconds, for the approval wait and the
     #   dispatch time (after_tool_call's elapsed_ms)
-    # @param window [#call, nil] → ContextWindow::Resolved or nil: the
-    #   model's window, for memory_read's overflow guard. nil: the kernel's
-    #   own reader (KernelLoop#tool_output_window); a loop whose window comes
-    #   from more than the kernel's client (LLM::ChatLoop's adapter) passes it.
+    # @param window [#call, nil] (settings) → ContextWindow::Resolved or nil:
+    #   the model's window under the turn's LLM::TurnSettings, for
+    #   memory_read's overflow guard. nil: the kernel's own reader
+    #   (KernelLoop#tool_output_window); a loop whose window comes from more
+    #   than the kernel's client (LLM::ChatLoop's adapter) passes it.
     def initialize(kernel, clock: -> { Process.clock_gettime(Process::CLOCK_MONOTONIC) }, window: nil)
       @kernel = kernel
       @clock = clock
@@ -78,26 +84,27 @@ module Samagotchi
     #   RowRefs; saved likewise), and diff: what an edit/write changed in its
     #   file (EditPreview.change; also on tool_call_completed, never in the
     #   model's output)
-    def run(call, iteration:, call_index:, call_count:, on_stream_event:, max_tool_output_chars:)
+    # @param context [TurnContext] the call's turn
+    def run(call, context:, iteration:, call_index:, call_count:, on_stream_event:, max_tool_output_chars:)
       # A call_tool of one of chi's own tools runs as that tool, from here
       # on (the gate, the row, the result): rules, approvals and hooks see
       # the real call, with via: (Tools::ToolIndex#unwrap).
-      call = unwrapped(call)
+      call = unwrapped(call, context)
       params = ToolActivity.tool_activity_params(call[:name], call, registry: tools)
       # The gate runs first, so tool_call_started shows the call that runs.
       # A tool the session's toolkit leaves out skips it: no before_tool_call
       # hook, no approval card for a call that can't run (KernelLoop#dispatch
       # answers it with the not-loaded error).
       original = call.dup
-      refusal = unreached_group_refusal(call)
+      refusal = unreached_group_refusal(call, context)
       verdict = if refusal
                   Guardrails::Verdict.new(call: call).deny!(refusal.message,
                                                             rule: Tools::ToolIndex::ToolkitGroupRefusal::RULE,
                                                             source: "core", decided_by: "core")
-                elsif left_out?(call)
+                elsif left_out?(call, context)
                   Guardrails::Verdict.new(call: call)
                 else
-                  evaluate(call, iteration, params)
+                  evaluate(call, context, iteration, params)
                 end
       call = verdict.call
       params = ToolActivity.tool_activity_params(call[:name], call, registry: tools)
@@ -110,7 +117,7 @@ module Samagotchi
       # plugin tool's refs); the worker runs in its session's working
       # directory.
       fields = ToolRowFields.for(call[:name], call, cwd: Dir.pwd)
-      refs = RowRefs.for(tools && !call[:name].nil? ? tools[call[:name]]&.refs : nil, call, cwd: session_cwd)
+      refs = RowRefs.for(tools && !call[:name].nil? ? tools[call[:name]]&.refs : nil, call, cwd: session_cwd(context))
       fields[:refs] = refs unless refs.empty?
       started.merge!(fields)
       emit(on_stream_event, started)
@@ -121,7 +128,7 @@ module Samagotchi
       waited_ms = nil
       if verdict.ask?
         asked_at = @clock.call
-        settle_ask(verdict)
+        settle_ask(verdict, context)
         waited_ms = ((@clock.call - asked_at) * 1000).round
       end
       before = verdict.deny? ? NOT_AN_EDIT : file_before(call)
@@ -132,7 +139,7 @@ module Samagotchi
         result = denied(call, verdict)
       else
         dispatched_at = @clock.call
-        result = dispatch(call)
+        result = dispatch(call, context)
         elapsed_ms = ((@clock.call - dispatched_at) * 1000).round
       end
       diff = file_change(call, before)
@@ -141,7 +148,7 @@ module Samagotchi
         result = with_entry_note(result, entry_before, call)
       end
       result = approved(result, verdict) if verdict.allow? && verdict.decided_by
-      result, images = attach_images(call, result) if result[:images]
+      result, images = attach_images(call, result, context.settings&.vision) if result[:images]
 
       output = scrub(result[:output].to_s)
       # The tool's own text, for after_tool_call: no "[tool]" lead, no
@@ -152,9 +159,9 @@ module Samagotchi
       if (changed = changed_call_line(original, call))
         output = "#{changed}\n#{output}"
       end
-      cap = output_cap(call, max_tool_output_chars)
+      cap = output_cap(call, max_tool_output_chars, context)
       truncated = !cap.nil? && output.length > cap
-      capped, saved = truncated ? cut(call, output, cap, result) : output
+      capped, saved = truncated ? cut(call, output, cap, result, context) : output
       output_file = saved.path if saved.is_a?(ToolOutputFiles::Saved)
 
       # The call's outcome as its activity line has it (worked out from the
@@ -180,7 +187,7 @@ module Samagotchi
                   images: images&.any? ? images : nil,
                   shown_params: params && plugin_tool?(call[:name]) ? params : nil,
                   shown_label: label, refs: refs.empty? ? nil : refs, diff: diff, output_file: output_file,
-                  loaded: result[:loaded], stamp: status == "ok" ? file_stamp(call) : nil)
+                  loaded: result[:loaded], stamp: status == "ok" ? file_stamp(call, context) : nil)
     end
 
     private
@@ -189,8 +196,8 @@ module Samagotchi
     # {path:, mtime_ns:, size:}, the path as FileRef has it (against the
     # session's folder, no realpath). nil for any other tool, a path it
     # can't place and a stat that fails or isn't a file's.
-    def file_stamp(call)
-      ref = FileRef.for(call[:name], call, cwd: session_cwd)
+    def file_stamp(call, context)
+      ref = FileRef.for(call[:name], call, cwd: session_cwd(context))
       return nil unless ref
 
       stat = File.stat(ref.path)
@@ -209,8 +216,9 @@ module Samagotchi
     #   for task_wait and delegate; ref_stderr_path, a task's stderr log
     # @return [Array(String, Object)] the text, and the saved file (or why
     #   there is none) when it was cut that way
-    def cut(call, output, cap, result)
-      ToolOutputCut.apply(output, cap: cap, tool: call[:name], save: ->(text, dry: false) { save_output(call, text, dry: dry) },
+    def cut(call, output, cap, result, context)
+      ToolOutputCut.apply(output, cap: cap, tool: call[:name],
+                                  save: ->(text, dry: false) { save_output(call, text, context.session_dir, dry: dry) },
                                   line: (memory_cut_line(call) if call[:name] == MEMORY_READ),
                                   ref: result[:ref_path], ref_stderr: result[:ref_stderr_path],
                                   head_chars: Tools::OutputGuardrails.config_positive_int("execute.cut_head_chars",
@@ -223,11 +231,11 @@ module Samagotchi
     # for every tool but memory_read, which memory.read_max_chars caps (0:
     # no fixed cap) and, with none set, a known window's half (#window_guard).
     # A nil +cap+ stays nil.
-    def output_cap(call, cap)
+    def output_cap(call, cap, context)
       return cap unless cap && call[:name] == MEMORY_READ
 
       fixed = Config.get("memory.read_max_chars").to_i
-      fixed.positive? ? fixed : window_guard
+      fixed.positive? ? fixed : window_guard(context.settings)
     end
 
     # Half the model's context window in characters, the most one memory_read
@@ -235,9 +243,9 @@ module Samagotchi
     # and a retry repeats the read). nil when the window isn't known (the
     # default isn't a window) or can't be read. It checks this result, not the
     # context already used.
-    def window_guard
+    def window_guard(settings)
       Degrade.call(:memory, "read_window_unknown") do
-        window = @window ? @window.call : (@kernel.tool_output_window if @kernel.respond_to?(:tool_output_window))
+        window = @window ? @window.call(settings) : (@kernel.tool_output_window(settings) if @kernel.respond_to?(:tool_output_window))
         return nil unless window&.tokens&.positive? && window.source != :default
 
         (window.tokens * MemoryBundle::IndexSize.chars_per_token / 2).floor
@@ -254,12 +262,12 @@ module Samagotchi
     end
 
     # The whole output in the session's tool_output folder
-    # (ToolOutputFiles), or why it isn't saved: no session (a bare kernel)
-    # or the error's class. Never fails the call. +dry+: where it would go,
-    # nothing written (ToolOutputFiles.planned).
+    # (ToolOutputFiles; +dir+: the turn's TurnContext#session_dir), or why it
+    # isn't saved: no session (a bare kernel) or the error's class. Never
+    # fails the call. +dry+: where it would go, nothing written
+    # (ToolOutputFiles.planned).
     # @return [ToolOutputFiles::Saved, String]
-    def save_output(call, text, dry: false)
-      dir = session_dir
+    def save_output(call, text, dir, dry: false)
       return "no session" if dir.to_s.empty?
       return ToolOutputFiles.planned(dir, text, tool: call[:name]) if dry
 
@@ -267,15 +275,6 @@ module Samagotchi
     rescue SystemCallError => e
       Log.warn(:turn, "tool_output_save_failed", tool: call[:name], error: e.class.name)
       e.class.name
-    end
-
-    # The session's folder (KernelLoop#session_dir), nil for a bare kernel
-    # or a lookup that failed.
-    def session_dir
-      @kernel.respond_to?(:session_dir) ? @kernel.session_dir&.call : nil
-    rescue StandardError => e
-      Log.warn(:turn, "tool_output_save_failed", error: e.class.name)
-      nil
     end
 
     # edit/write only: the file just before the call runs. The row diffs it
@@ -351,8 +350,8 @@ module Samagotchi
     # and keeps the text and the other images; for read, whose text only
     # says the image is attached, that line replaces the text.
     # @return [Array(Hash, Array<Hash>)] the result and its refs
-    def attach_images(call, result)
-      vision = @kernel.turn_settings.vision
+    # +vision+: the turn's VisionContext (TurnSettings#vision).
+    def attach_images(call, result, vision)
       reason = if vision.nil? then "images can't be attached here"
                elsif !vision.sendable? then ImagePlan::CANT_SEE
                end
@@ -397,17 +396,15 @@ module Samagotchi
       [result[:output], *notes].join("\n")
     end
 
-    # The session's folder (the Engine's, KernelLoop#session_cwd), else the
+    # The session's folder (the turn's TurnContext#cwd), else the
     # process's: a bare kernel (specs) has none.
-    def session_cwd
-      cwd = @kernel.session_cwd&.call if @kernel.respond_to?(:session_cwd)
+    def session_cwd(context)
+      cwd = context.cwd
       cwd.to_s.empty? ? Dir.pwd : cwd
     end
 
     # The kernel's tools, for the activity line of a tool that isn't built in.
     def tools = @kernel.tools
-
-    def layers = @kernel.respond_to?(:llm_context_layers) ? @kernel.llm_context_layers : []
 
     # The call its tool's entry unwraps it to (call_tool on a built-in),
     # else the call as it is. On a host that loads tools, a direct call of
@@ -415,11 +412,12 @@ module Samagotchi
     # (Registry::Index#wrap): call_tool's row, rules and approvals. One
     # that fails runs as it is: call_tool then refuses a built-in (fail
     # closed).
-    def unwrapped(call)
+    def unwrapped(call, context)
       registry = tools
       return call unless registry.respond_to?(:offered) && !call[:name].nil?
 
-      call = wrapped(registry, call)
+      layers = context.llm_context_layers
+      call = wrapped(registry, call, context)
       registry.offered(call[:name], layers: layers)&.unwrap&.call(call, layers) || call
     rescue StandardError => e
       Log.warn(:turn, "tool_unwrap_failed", tool: call[:name].to_s, error: "#{e.class}: #{e.message}")
@@ -428,9 +426,9 @@ module Samagotchi
 
     # +call+ as the call_tool call it runs as when it names a deferred
     # source tool, on a host that loads tools; else as it is.
-    def wrapped(registry, call)
+    def wrapped(registry, call, context)
       wrap = registry.respond_to?(:index) ? registry.index&.wrap : nil
-      return call unless wrap && loads_tools? && !registry.key?(call[:name])
+      return call unless wrap && loads_tools?(context) && !registry.key?(call[:name])
 
       wrap.call(call) || call
     end
@@ -440,19 +438,21 @@ module Samagotchi
     # (via:) that the toolkit doesn't reach that way (a hook's rewrite). On
     # a host that loads tools, a built-in the toolkit reaches runs by its
     # own name (KernelLoop#dispatch takes it too).
-    def left_out?(call)
+    def left_out?(call, context)
       registry = tools
       return false unless registry.respond_to?(:left_out) && !call[:name].nil?
+
+      layers = context.llm_context_layers
       return registry.indexed(call[:name], layers: layers).nil? if call[:via]
-      return false if loads_tools? && registry.indexed(call[:name], layers: layers)
+      return false if loads_tools?(context) && registry.indexed(call[:name], layers: layers)
 
       !registry.left_out(call[:name], layers: layers).nil?
     end
 
-    def unreached_group_refusal(call)
+    def unreached_group_refusal(call, context)
       # A review turn's boundary denies it first (and words why); a pair
       # turn gets the owner's refusal.
-      return if participant_turn? && participant_mode != ParticipantMode::PAIR
+      return if context.participant? && context.participant_mode != ParticipantMode::PAIR
 
       registry = tools
       index = registry&.index if registry.respond_to?(:index)
@@ -468,19 +468,8 @@ module Samagotchi
       tool && Tools::ToolIndex::ToolkitGroupRefusal.for(tool, registry)
     end
 
-    def participant_turn?
-      @kernel.respond_to?(:participant_turn?) && @kernel.participant_turn?
-    end
-
-    # The running participant turn's mode (KernelLoop#participant_mode,
-    # GuardrailWiring#turn_mode), nil without one.
-    def participant_mode
-      lookup = @kernel.respond_to?(:participant_mode) ? @kernel.participant_mode : nil
-      lookup&.call
-    end
-
     # Whether the turn's host loads tools (TurnSettings#loads_tools).
-    def loads_tools? = @kernel.respond_to?(:turn_settings) && @kernel.turn_settings&.loads_tools == true
+    def loads_tools?(context) = context.settings&.loads_tools == true
 
     # A tool the registry has from a plugin (not core, not unknown).
     def plugin_tool?(name)
@@ -509,15 +498,15 @@ module Samagotchi
     end
 
     # A gate that fails denies the call (fail closed).
-    def evaluate(call, iteration, params)
-      gate.evaluate(call, iteration: iteration, params: params)
+    def evaluate(call, context, iteration, params)
+      gate.evaluate(call, context: context, iteration: iteration, params: params)
     rescue StandardError => e
       Guardrails::Verdict.new(call: call).deny!("the guardrail check failed: #{e.class}: #{e.message}",
                                                 decided_by: "core")
     end
 
-    def settle_ask(verdict)
-      gate.settle_ask(verdict)
+    def settle_ask(verdict, context)
+      gate.settle_ask(verdict, context: context)
     rescue StandardError => e
       verdict.settle!(:deny, decided_by: "core", note: "The approval failed (#{e.class}: #{e.message}).")
     end
@@ -550,8 +539,8 @@ module Samagotchi
 
     # KernelLoop#dispatch turns tool errors into "[name] Error: …" itself;
     # this rescue only catches a failing dispatcher.
-    def dispatch(call)
-      @kernel.dispatch_tool_call(call)
+    def dispatch(call, context)
+      @kernel.dispatch_tool_call(call, context)
     rescue StandardError => e
       { output: "[#{call[:name]}] Error: #{e.class}: #{e.message}", activity: nil }
     end

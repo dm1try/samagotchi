@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require "support/test_kernel"
 require "json"
 require "tmpdir"
 require "samagotchi/prompt"
@@ -167,9 +168,9 @@ RSpec.describe "Native images" do
     it "passes the prompt's images to the client, and none on a text-only turn" do
       calls = []
       allow(client).to receive(:complete) { |prompt, **kwargs| calls << [prompt, kwargs]; "a red square" }
-      kernel.turn_settings = kernel.turn_settings.with(vision: vision)
+      context = run_context(settings: kernel.turn_settings.with(vision: vision))
 
-      kernel.run([{ role: "user", content: "look", images: [png] }])
+      kernel.run([{ role: "user", content: "look", images: [png] }], context: context)
       kernel.run([{ role: "user", content: "no picture" }])
 
       expect(calls[0][0]).to include(marker)

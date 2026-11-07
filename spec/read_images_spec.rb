@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require "support/test_kernel"
 require "tmpdir"
 require "samagotchi/kernel_loop"
 require "samagotchi/llm/chat_loop"
@@ -46,14 +47,13 @@ RSpec.describe "read on images" do
     let(:kernel) { Samagotchi::KernelLoop.new(client: instance_double(Samagotchi::Client)) }
     let(:events) { [] }
 
-    def run_read
-      Samagotchi::ToolRunner.new(kernel).run({ name: "read", content: png_path }, iteration: 1, call_index: 1, call_count: 1,
+    def run_read(settings = kernel.turn_settings)
+      Samagotchi::ToolRunner.new(kernel).run({ name: "read", content: png_path }, context: run_context(settings: settings), iteration: 1, call_index: 1, call_count: 1,
                                                                                   on_stream_event: ->(e) { events << e }, max_tool_output_chars: nil)
     end
 
     it "stores the image with the session and returns its ref on the run and the event" do
-      kernel.turn_settings = kernel.turn_settings.with(vision: vision)
-      run = run_read
+      run = run_read(kernel.turn_settings.with(vision: vision))
       expect(run.output).to eq("[read]\nImage tiny.png (3×2 PNG) attached.")
       expect(run.images.first).to include(name: "tiny.png", source: "tool", width: 3, height: 2)
       expect(File.exist?(File.join(dir, run.images.first[:file]))).to be(true)
@@ -61,8 +61,7 @@ RSpec.describe "read on images" do
     end
 
     it "tells the model it can't see images, and attaches nothing" do
-      kernel.turn_settings = kernel.turn_settings.with(vision: blind)
-      run = run_read
+      run = run_read(kernel.turn_settings.with(vision: blind))
       expect(run.output).to eq("[read]\ntiny.png (3×2 PNG) is an image; this model can't see images")
       expect(run.images).to be_nil
       expect(events.last).not_to have_key(:images)
@@ -94,9 +93,9 @@ RSpec.describe "read on images" do
           "a red square"
         end
       end
-      kernel.turn_settings = kernel.turn_settings.with(vision: vision)
+      context = run_context(settings: kernel.turn_settings.with(vision: vision))
 
-      result = kernel.run([{ role: "user", content: "check #{png_path} and describe it" }])
+      result = kernel.run([{ role: "user", content: "check #{png_path} and describe it" }], context: context)
 
       expect(result.output).to eq("a red square")
       prompt, kwargs = calls.last
@@ -114,9 +113,10 @@ RSpec.describe "read on images" do
     end
 
     it "follows the tool message with a user message holding the picture (tool messages take text only)" do
-      kernel.turn_settings = kernel.turn_settings.with(vision: vision)
+      context = run_context(settings: kernel.turn_settings.with(vision: vision))
       result = Samagotchi::LLM::ChatLoop.new(kernel: kernel, adapter: adapter)
-                                        .complete(messages: [{ role: "user", content: "check the png" }], model_name: "m")
+                                        .complete(messages: [{ role: "user", content: "check the png" }], model_name: "m",
+                                                  context: context)
 
       expect(result.text).to eq("a red square")
       wire = adapter.requests.last[:messages]

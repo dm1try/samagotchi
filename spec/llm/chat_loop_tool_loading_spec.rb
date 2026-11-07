@@ -27,9 +27,10 @@ RSpec.describe "A find_tools hit loads its tools (ChatLoop on a Messages host)" 
       k.tools.toolkit = Samagotchi::Toolkit.new(name: "lean").resolve(Samagotchi::Toolkit.kits)
       index.refresh!
       k.tools["list_sessions"].handler = ->(_call, _kctx) { "abc123 idle ~/w" }
-      k.turn_settings = k.turn_settings.with(thinking: :high, reasoning_history: :all, loads_tools: true)
     end
   end
+  # The turn's settings: high thinking, all reasoning, a host that loads tools.
+  let(:settings) { kernel.turn_settings.with(thinking: :high, reasoning_history: :all, loads_tools: true) }
   let(:adapter) do
     Samagotchi::LLM::AnthropicMessages.new(base_url: server.root_url, host_name: "msg", env: {}, retries: false)
   end
@@ -55,7 +56,8 @@ RSpec.describe "A find_tools hit loads its tools (ChatLoop on a Messages host)" 
 
   def run(chat_adapter = adapter, messages = [{ role: "system", content: "sys" }, { role: "user", content: "list my sessions" }])
     Samagotchi::LLM::ChatLoop.new(kernel: kernel, adapter: chat_adapter, sleeper: ->(_s) {})
-                             .complete(messages: messages, model_name: "m", on_stream_event: ->(_e) {})
+                             .complete(messages: messages, model_name: "m", on_stream_event: ->(_e) {},
+                                       context: run_context(settings: settings))
   end
 
   # A body's messages without cache marks (they move to the last block).

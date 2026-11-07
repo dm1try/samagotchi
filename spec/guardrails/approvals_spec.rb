@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require "samagotchi/turn_context"
 require "yaml"
 
 require "tmpdir"
@@ -230,22 +231,22 @@ RSpec.describe Samagotchi::Guardrails::Gate, "with an approval store" do
   let(:asked) { [] }
   let(:pick) { "repo" }
   let(:gate) do
-    approver = lambda do |v|
+    approver = lambda do |v, _turn|
       asked << v.call[:content]
       v.settle!(:allow)
       v.scope = pick
       v
     end
     ctx = Samagotchi::Guardrails::Context.new(cwd: state, session_id: "s1")
-    described_class.new(-> { hooks }, context_lookup: -> { ctx }, approver: approver, approvals_lookup: -> { store })
+    described_class.new(-> { hooks }, context_for: ->(_turn) { ctx }, approver: approver, approvals_lookup: -> { store })
   end
 
   before { hooks.register(:before_tool_call) { |e| e[:guardrail].ask!("sure?", rule: "r", source: "config") } }
   after { FileUtils.rm_rf(state) }
 
   def settle(content)
-    v = gate.evaluate({ name: "execute", content: content }, iteration: 1, params: "")
-    gate.settle_ask(v)
+    v = gate.evaluate({ name: "execute", content: content }, context: Samagotchi::TurnContext.none, iteration: 1, params: "")
+    gate.settle_ask(v, context: Samagotchi::TurnContext.none)
   end
 
   it "stores an answer beyond once, and doesn't ask for that call again" do
@@ -269,7 +270,7 @@ RSpec.describe Samagotchi::Guardrails::Gate, "with an approval store" do
   it "never relaxes a deny" do
     settle("git push")
     hooks.register(:before_tool_call) { |e| e[:guardrail].deny!("no") }
-    v = gate.evaluate({ name: "execute", content: "git push" }, iteration: 1, params: "")
+    v = gate.evaluate({ name: "execute", content: "git push" }, context: Samagotchi::TurnContext.none, iteration: 1, params: "")
     expect(v).to be_deny
   end
 end
@@ -290,22 +291,22 @@ RSpec.describe Samagotchi::Guardrails::Gate, "with the bundle's git-outside-repo
     )
   end
   let(:gate) do
-    approver = lambda do |v|
+    approver = lambda do |v, _turn|
       asked << [v.call[:content], v.rule, v.scopes]
       v.settle!(:allow)
       v.scope = "rule"
       v
     end
     ctx = Samagotchi::Guardrails::Context.new(cwd: repo, session_id: "s1")
-    described_class.new(-> {}, context_lookup: -> { ctx }, approver: approver, approvals_lookup: -> { store },
-                               checks_lookup: -> { [rules] })
+    described_class.new(-> {}, context_for: ->(_turn) { ctx }, approver: approver, approvals_lookup: -> { store },
+                               checks_for: ->(_turn) { [rules] })
   end
 
   after { FileUtils.rm_rf(base) }
 
   def settle(content)
-    v = gate.evaluate({ name: "execute", content: content }, iteration: 1, params: "")
-    v.ask? ? gate.settle_ask(v) : v
+    v = gate.evaluate({ name: "execute", content: content }, context: Samagotchi::TurnContext.none, iteration: 1, params: "")
+    v.ask? ? gate.settle_ask(v, context: Samagotchi::TurnContext.none) : v
   end
 
   it "asks once; after rule in this repo, later git there runs unasked" do

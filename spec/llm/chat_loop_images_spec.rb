@@ -20,12 +20,20 @@ RSpec.describe "ChatLoop images" do
   let(:vision) { Samagotchi::VisionContext.new(capability: capability, session_dir: dir, limits: limits) }
   let(:kernel) do
     test_kernel.tap do |k|
-      k.turn_settings = k.turn_settings.with(vision: vision)
       allow(k).to receive(:strip_model_thought) { |text| text }
       allow(k).to receive(:dispatch_tool_call) { |call| { output: "[#{call[:name]}] ok", activity: nil } }
     end
   end
-  let(:loop) { Samagotchi::LLM::ChatLoop.new(kernel: kernel, adapter: FakeChatAdapter.new(FakeChatAdapter.text("seen"))) }
+  # wire_messages outside a run reads the loop's run context: the turn's.
+  let(:loop) do
+    Samagotchi::LLM::ChatLoop.new(kernel: kernel, adapter: FakeChatAdapter.new(FakeChatAdapter.text("seen"))).tap do |chat|
+      allow(chat).to receive(:turn_context) { run_context(settings: settings) }
+    end
+  end
+
+  # The turn's settings: the kernel's with the turn's vision (#use_vision).
+  def settings = @settings ||= kernel.turn_settings.with(vision: vision)
+  def use_vision(context) = @settings = settings.with(vision: context)
 
   after { FileUtils.rm_rf(dir) }
 
@@ -78,7 +86,7 @@ RSpec.describe "ChatLoop images" do
 
   it "sends only the newest max_per_request images (D6)" do
     tight = Samagotchi::VisionContext.new(session_dir: dir, limits: limits.with(max_per_request: 1))
-    kernel.turn_settings = kernel.turn_settings.with(vision: tight)
+    use_vision(tight)
     wire = loop.wire_messages([{ role: "user", content: "one", images: [png] }, { role: "model", content: "ok" },
                                { role: "user", content: "two", images: [gif] }])
     expect(wire[0][:content]).to eq([{ type: "text", text: "one\n[image tiny.png 3×2 not sent: an older image (chi sends up to the newest 1)]" }])
@@ -87,7 +95,7 @@ RSpec.describe "ChatLoop images" do
 
   it "drops older images in batches, so earlier messages stay byte-stable until a step boundary" do
     tight = Samagotchi::VisionContext.new(session_dir: dir, limits: limits.with(max_per_request: 4))
-    kernel.turn_settings = kernel.turn_settings.with(vision: tight)
+    use_vision(tight)
     conversation = ->(count) { Array.new(count) { |i| { role: "user", content: "m#{i}", images: [png] } } }
     wires = (4..9).to_h { |count| [count, loop.wire_messages(conversation.call(count))] }
     sent = wires.transform_values { |wire| wire.count { |m| m[:content].any? { |part| part[:type] == "image_url" } } }
@@ -104,7 +112,7 @@ RSpec.describe "ChatLoop images" do
   end
 
   it "sends placeholders when the turn has no vision context" do
-    kernel.turn_settings = kernel.turn_settings.with(vision: nil)
+    use_vision(nil)
     wire = loop.wire_messages([{ role: "user", content: "x", images: [png] }])
     expect(JSON.generate(wire)).not_to include("image_url")
   end
@@ -121,7 +129,8 @@ RSpec.describe "ChatLoop images" do
         server.enqueue("/v1/chat/completions", sse: FakeProviderServer.fixture("text_stream.sse"))
         adapter = Samagotchi::LLM::OpenAIChat.new(base_url: server.base_url, host_name: "box", env: {})
         Samagotchi::LLM::ChatLoop.new(kernel: kernel, adapter: adapter)
-                                 .complete(messages: [{ role: "user", content: "what's this?", images: [png] }], model_name: "m")
+                                 .complete(messages: [{ role: "user", content: "what's this?", images: [png] }], model_name: "m",
+                                           context: run_context(settings: settings))
         content = server.requests.last.json["messages"].first["content"]
         expect(content).to eq([{ "type" => "text", "text" => "what's this?" },
                                { "type" => "image_url", "image_url" => { "url" => png_uri } }])

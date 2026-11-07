@@ -34,8 +34,14 @@ RSpec.describe Samagotchi::LLM::ChatLoop do
   let(:backend) { described_class.new(kernel: fake_kernel, adapter: adapter, sleeper: ->(seconds) { sleeps << seconds }) }
   let(:events) { [] }
 
+  # The run's settings (the kernel's own until a spec changes them), each
+  # run's TurnContext (run_context).
+  def settings = @settings ||= fake_kernel.turn_settings
+  def use_settings(**) = @settings = settings.with(**)
+
   def run(messages = [{ role: "user", content: "go" }], **options)
-    backend.complete(messages: messages, model_name: "m", on_stream_event: ->(event) { events << event }, **options)
+    backend.complete(messages: messages, model_name: "m", on_stream_event: ->(event) { events << event },
+                     context: run_context(settings: settings), **options)
   end
 
   def text(value, **options) = FakeChatAdapter.text(value, **options)
@@ -62,7 +68,7 @@ RSpec.describe Samagotchi::LLM::ChatLoop do
 
   it "sends the kernel's sampling as the request options of every generation, none without" do
     run
-    fake_kernel.turn_settings = fake_kernel.turn_settings.with(sampling: { temperature: 0.6 })
+    use_settings(sampling: { temperature: 0.6 })
     backend.adapter = FakeChatAdapter.new(tools(["c1", "read", { "path" => "a.rb" }]), text("done"))
     run
 
@@ -72,7 +78,7 @@ RSpec.describe Samagotchi::LLM::ChatLoop do
 
   it "sends a positive default.max_tokens as max_tokens, sampling's other keys next to it, none when unset or 0" do
     original = ENV.fetch("SAMAGOTCHI_DEFAULT_MAX_TOKENS", nil)
-    fake_kernel.turn_settings = fake_kernel.turn_settings.with(sampling: { temperature: 0.6 })
+    use_settings(sampling: { temperature: 0.6 })
     ENV["SAMAGOTCHI_DEFAULT_MAX_TOKENS"] = "4096"
     run
     ENV["SAMAGOTCHI_DEFAULT_MAX_TOKENS"] = "0"
@@ -87,7 +93,7 @@ RSpec.describe Samagotchi::LLM::ChatLoop do
 
   describe "thinking level" do
     it "takes the level's fields from the adapter (its wire's shape)" do
-      fake_kernel.turn_settings = fake_kernel.turn_settings.with(thinking: :high)
+      use_settings(thinking: :high)
       allow(adapter).to receive(:thinking_fields).with(:high).and_return({ wire_thinking: "deep" })
 
       run
@@ -96,7 +102,7 @@ RSpec.describe Samagotchi::LLM::ChatLoop do
     end
 
     def options_for(thinking, sampling = {})
-      fake_kernel.turn_settings = fake_kernel.turn_settings.with(thinking: thinking, sampling: sampling)
+      use_settings(thinking: thinking, sampling: sampling)
       run
       adapter.requests.last[:options]
     end
@@ -130,7 +136,7 @@ RSpec.describe Samagotchi::LLM::ChatLoop do
     end
 
     before do
-      fake_kernel.turn_settings = fake_kernel.turn_settings.with(thinking: :off, sampling: { temperature: 0.6 })
+      use_settings(thinking: :off, sampling: { temperature: 0.6 })
     end
 
     it "asks again once without them, says so in a stream event, and leaves them out for that model after" do
@@ -177,7 +183,7 @@ RSpec.describe Samagotchi::LLM::ChatLoop do
       expect { run }.to raise_error(Samagotchi::LLM::BadRequest)
       expect(backend.adapter.requests.size).to eq(1)
 
-      fake_kernel.turn_settings = fake_kernel.turn_settings.with(thinking: :default)
+      use_settings(thinking: :default)
       backend.adapter = FakeChatAdapter.new(refused)
       expect { run }.to raise_error(Samagotchi::LLM::BadRequest)
       expect(backend.adapter.requests.size).to eq(1)
@@ -197,7 +203,7 @@ RSpec.describe Samagotchi::LLM::ChatLoop do
     end
 
     it "asks the empty answer's retry again without temperature, keeps the effort level, and sends none after" do
-      fake_kernel.turn_settings = fake_kernel.turn_settings.with(thinking: :high)
+      use_settings(thinking: :high)
       backend.adapter = FakeChatAdapter.new(text(""), refused, text("done"), text("again"))
 
       expect(run.text).to eq("done")
@@ -213,7 +219,7 @@ RSpec.describe Samagotchi::LLM::ChatLoop do
     end
 
     it "drops a configured temperature for the model after the refusal" do
-      fake_kernel.turn_settings = fake_kernel.turn_settings.with(sampling: { temperature: 0.6, top_p: 0.9, min_p: 0.1 })
+      use_settings(sampling: { temperature: 0.6, top_p: 0.9, min_p: 0.1 })
       backend.adapter = FakeChatAdapter.new(refused, text("done"))
 
       run
@@ -237,7 +243,7 @@ RSpec.describe Samagotchi::LLM::ChatLoop do
     def reasoning_sent(request) = request[:messages].filter_map { |m| m[:reasoning_content] }
 
     before do
-      fake_kernel.turn_settings = fake_kernel.turn_settings.with(reasoning_history: :turn, thinking: :high)
+      use_settings(reasoning_history: :turn, thinking: :high)
     end
 
     it "asks the step again without it, marks the model and sends none after; the thinking fields stay" do
@@ -596,7 +602,7 @@ RSpec.describe Samagotchi::LLM::ChatLoop do
       backend.adapter = FakeChatAdapter.new(text("ok"))
       allow(fake_kernel).to receive(:client).and_return(double("client", context_window: nil))
       setting = Samagotchi::ContextWindow::Resolved.new(tokens: 40_000, source: :host_setting)
-      allow(fake_kernel).to receive(:turn_settings).and_return(Samagotchi::LLM::TurnSettings.none.with(window_setting: setting))
+      @settings = Samagotchi::LLM::TurnSettings.none.with(window_setting: setting)
 
       run
 
@@ -608,7 +614,7 @@ RSpec.describe Samagotchi::LLM::ChatLoop do
       backend.adapter = FakeChatAdapter.new(text("ok"))
       allow(fake_kernel).to receive(:client).and_return(double("client", context_window: nil))
       price = Samagotchi::ModelPrice.new(input: 1, cache_read: 0.5, cache_write: 1, output: 2)
-      allow(fake_kernel).to receive(:turn_settings).and_return(Samagotchi::LLM::TurnSettings.none.with(price: price))
+      @settings = Samagotchi::LLM::TurnSettings.none.with(price: price)
 
       run
 
@@ -858,7 +864,7 @@ RSpec.describe Samagotchi::LLM::ChatLoop do
       registry = Samagotchi::Hooks::Registry.new
       registry.register(:before_generation) { |_event| order << :hook }
       allow(fake_kernel).to receive(:hooks).and_return(registry)
-      fake_kernel.generation_guard = lambda {
+      fake_kernel.generation_guard = lambda { |_context|
         order << :guard
         controller.cancel!
       }
@@ -1231,7 +1237,7 @@ RSpec.describe Samagotchi::LLM::ChatLoop do
     end
 
     it "keeps a configured temperature for the retry, and goes back to the turn's sampling after it" do
-      fake_kernel.turn_settings = fake_kernel.turn_settings.with(sampling: { temperature: 0.2, top_p: 0.9 })
+      use_settings(sampling: { temperature: 0.2, top_p: 0.9 })
       backend.adapter = adapter = FakeChatAdapter.new(text(""), tools(["c1", "read", { "path" => "a" }]), text("done"))
 
       run
@@ -1589,7 +1595,7 @@ RSpec.describe Samagotchi::LLM::ChatLoop do
       expect(run(history).conversation[1]).to eq(role: "model", content: "ok", thinking: "hm")
     end
 
-    def with_history(level) = fake_kernel.turn_settings = fake_kernel.turn_settings.with(reasoning_history: level)
+    def with_history(level) = use_settings(reasoning_history: level)
 
     def reasoning_sent(request) = request[:messages].filter_map { |m| m[:reasoning_content] }
 

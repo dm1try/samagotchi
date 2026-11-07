@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative "../support/engine_turn_context"
+require "samagotchi/turn_context"
 require "tmpdir"
 require "samagotchi/guardrails"
 require "samagotchi/hooks"
@@ -532,7 +534,7 @@ RSpec.describe "Engine: YAML guardrail rules from config.yml" do
   end
 
   def evaluate(engine, call)
-    engine.instance_variable_get(:@kernel).guardrail_gate.evaluate(call, iteration: 1, params: "")
+    engine.instance_variable_get(:@kernel).guardrail_gate.evaluate(call, context: engine_turn_context(engine), iteration: 1, params: "")
   end
 
   it "votes with the config's rules" do

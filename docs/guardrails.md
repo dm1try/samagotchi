@@ -410,7 +410,7 @@ under the owner's guardrails, as the owner's own turns do: the rules, the
 protected paths and every approval the owner already granted apply, and an ask
 goes to the owner. It is a pair turn only when all three hold
 (`ParticipantMode.for_turn`, decided once at the turn's start:
-`GuardrailWiring#turn_mode`): the session has no `review:` key, its worker
+`GuardrailWiring#begin_turn`, into the turn's `TurnContext#participant_mode`): the session has no `review:` key, its worker
 names the `pair_turns` feature, and the participant's grant was issued with
 `mode: pair`, which chi share and the web's Invite stamp only when the warning
 they showed said their turns act. A grant from before, or one issued while an
@@ -690,7 +690,7 @@ runs with the owner's rules or System 1's auto-allows. The mode is decided once,
 at the start, from their grant's mode there (`ParticipantMode.live_for`) and
 saved on the child (`verify_fresh.mode`): `review` keeps every turn of it
 inside `ReviewBoundary` (read only), `pair` inside `PairBoundary`.
-`GuardrailWiring#turn_mode` reads the saved mode and never looks it up again,
+`GuardrailWiring#begin_turn` reads the saved mode and never looks it up again,
 and every turn of the child carries the participant as its author, whoever
 started it, so the boundary can't fall away for a turn the owner typed into it
 or for an author lookup that finds nobody (the child has no

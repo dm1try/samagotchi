@@ -52,9 +52,11 @@ module Samagotchi
     # The turn a forget_outputs call runs in: its conversation (the
     # entries the edits are saved on), its ContextStatus (nil: none) and
     # its stream (+emit+, nil: none), which gets an applied batch's ✂ row
-    # (LLMContextNotice).
-    Turn = Data.define(:conversation, :context, :emit) do
-      def initialize(emit: nil, **fields) = super
+    # (LLMContextNotice); +turn_id+: the Engine turn the run is for
+    # (TurnContext#id; nil: none), so a reader tells the running turn's
+    # conversation from the last one's (Engine#live_conversation).
+    Turn = Data.define(:conversation, :context, :emit, :turn_id) do
+      def initialize(emit: nil, turn_id: nil, **fields) = super
     end
 
     # One output a call may name: its entry, its ToolIds ref, its tool,

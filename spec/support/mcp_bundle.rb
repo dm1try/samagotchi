@@ -123,8 +123,8 @@ RSpec.shared_context "the mcp bundle in an Engine" do
   def run_tool(name, args = {}, vision: nil)
     kernel = engine.instance_variable_get(:@kernel)
     vision ||= Samagotchi::VisionContext.new(session_dir: session_dir, resizer: Samagotchi::ImageResizer.new(nil))
-    kernel.turn_settings = kernel.turn_settings.with(vision: vision)
-    Samagotchi::ToolRunner.new(kernel).run({ name: name, args: args }, iteration: 1, call_index: 1, call_count: 1,
+    context = Samagotchi::TurnContext.none(settings: kernel.turn_settings.with(vision: vision))
+    Samagotchi::ToolRunner.new(kernel).run({ name: name, args: args }, context: context, iteration: 1, call_index: 1, call_count: 1,
                                                                        on_stream_event: nil, max_tool_output_chars: nil)
   end
 
@@ -155,7 +155,7 @@ RSpec.shared_context "the mcp bundle in an Engine" do
   def definition_tokens(schemas)
     tools = Samagotchi::Tools::Registry.new
     schemas.each { |schema| tools.register(schema[:name], schema: schema, handler: ->(*) {}, source: "mcp") }
-    chat = Samagotchi::LLM::ChatLoop.new(kernel: Struct.new(:tools, :llm_context_layers).new(tools, []))
+    chat = Samagotchi::LLM::ChatLoop.new(kernel: Struct.new(:tools, :turn_settings).new(tools, Samagotchi::LLM::TurnSettings.none))
     chat.tool_definitions.sum { |definition| Samagotchi::TokenUsage.estimate(JSON.generate(definition)) }
   end
 
