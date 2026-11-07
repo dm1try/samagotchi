@@ -40,6 +40,9 @@ module Samagotchi
     ACTORS = (2..5)
     OPTIONS = (2..4)
     MAX_STRING = 300
+    # A step's `next: end`: the walk ends there (a branch that ends early).
+    # No step may take it as its id.
+    END_NEXT = "end"
     # The deepest legal block nests 6 (root, steps, a step, cases, a case, a
     # folded option); past this it is refused before the stack can overflow.
     MAX_DEPTH = 8
@@ -215,6 +218,9 @@ module Samagotchi
         raise Refused, "#{where} has #{options.size} options (#{OPTIONS.min}-#{OPTIONS.max})" unless OPTIONS.cover?(options.size)
 
         options = options.map { |option| text(option, "#{where}'s option", required: true, free: true) }
+        twice = options.tally.find { |_option, count| count > 1 }
+        raise Refused, "#{where}: option #{twice.first.inspect} is listed twice" if twice
+
         recommended = text(row["recommended"], "#{where}'s recommended", free: true)
         if recommended && !options.include?(recommended)
           raise Refused, "#{where}: recommended #{recommended.inspect} isn't one of its options"
@@ -237,6 +243,8 @@ module Samagotchi
 
         steps = steps.each_with_index.map { |step, index| step(step, index, actors) }
         ids = unique(steps, "step")
+        raise Refused, "step id #{END_NEXT.inspect} is taken by next: #{END_NEXT}" if ids.include?(END_NEXT)
+
         steps.each { |step| targets(step, ids) }
         { "title" => title, "actors" => actors, "steps" => steps }
       end
@@ -254,8 +262,11 @@ module Samagotchi
         sees = text(step["sees"], "#{where}'s sees", free: true)
         raise Refused, "#{where} needs does or sees" unless does || sees
 
+        nxt = text(step["next"], "#{where}'s next")
+        raise Refused, "#{where}: next is the step itself" if nxt == id
+
         compact("id" => id, "actor" => actor, "does" => does, "sees" => sees,
-                "behind" => text(step["behind"], "#{where}'s behind", free: true), "next" => text(step["next"], "#{where}'s next"),
+                "behind" => text(step["behind"], "#{where}'s behind", free: true), "next" => nxt,
                 "cases" => cases(step, where))
       end
 
@@ -273,7 +284,8 @@ module Samagotchi
       end
 
       def targets(step, ids)
-        names = [step["next"], *Array(step["cases"]).map { |item| item["goto"] }].compact
+        nxt = step["next"] unless step["next"] == END_NEXT
+        names = [nxt, *Array(step["cases"]).map { |item| item["goto"] }].compact
         missing = names.find { |name| !ids.include?(name) }
         raise Refused, "step #{step["id"]}: #{missing.inspect} isn't a step" if missing
       end

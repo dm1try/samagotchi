@@ -133,6 +133,7 @@ RSpec.describe Samagotchi::InlineWidgets do
       expect(parse(picks(row.sub(/^ *- skip\n/, ""))).error).to eq("row 1 has 1 options (2-4)")
       five = row.sub(/^( *)- skip\n/, "\\1- skip\n\\1- a\n\\1- b\n\\1- c\n")
       expect(parse(picks(five)).error).to eq("row 1 has 5 options (2-4)")
+      expect(parse(picks(row.sub(/^( *)- skip\n/, "\\1- fix now\n"))).error).to eq('row 1: option "fix now" is listed twice')
     end
 
     it "takes a value with a colon in it, through the lenient pass" do
@@ -248,6 +249,20 @@ RSpec.describe Samagotchi::InlineWidgets do
       expect(parse(walk(steps.sub("next: s1", "next: s0"))).error).to eq('step s3: "s0" isn\'t a step')
       expect(parse(walk(steps.sub("id: s3", "id: s2"))).error).to eq('step id "s2" is used twice')
       expect(parse(walk(steps.sub("actor: web", "actor: worker"))).error).to eq('step s2: actor "worker" isn\'t one of the actors')
+    end
+
+    it "takes next: end, which ends the walk there, and keeps it as written" do
+      widget = parse(walk(steps.sub("next: s1", "next: end")))
+
+      expect(widget).to be_ok
+      expect(widget.data["steps"].last["next"]).to eq("end")
+    end
+
+    it "refuses end as a step id, end as a goto, and a next that is the step itself" do
+      expect(parse(walk(steps.sub("id: s3", "id: end").sub("goto: s3", "goto: end"))).error)
+        .to eq('step id "end" is taken by next: end')
+      expect(parse(walk(steps.sub("goto: s3", "goto: end"))).error).to eq('step s2: "end" isn\'t a step')
+      expect(parse(walk(steps.sub("next: s1", "next: s3"))).error).to eq("step s3: next is the step itself")
     end
 
     it "caps the actors at 2-5 and the steps at 30" do
