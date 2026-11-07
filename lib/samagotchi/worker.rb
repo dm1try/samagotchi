@@ -1600,16 +1600,31 @@ module Samagotchi
     # (AttachLauncher attaches within BRIDGE_WAIT of the spawn).
     SCRATCH_JOIN_GRACE = 30
 
+    # How long a scratch worker's terminal may have no stream open, after
+    # it had one, before it counts as gone: twice the attached terminal's
+    # whole reconnect ladder (TerminalUI::LocalLink#reconnect_delays), so
+    # a reconnect gap (a dropped stream, a slow worker) never reads as a
+    # terminal that left.
+    SCRATCH_GONE_AFTER = 2 * BridgeClient::EventStream::REDISCOVER_DELAYS.sum
+
     # Whether this is a `chi scratch` session's worker whose terminal is
-    # gone: no stream open, after one was (a killed TUI's closes as its
-    # writer reads the hang-up), or none came within SCRATCH_JOIN_GRACE.
-    # Its terminal deletes it on every way out it sees; this is for the ones
-    # it doesn't (kill -9, a closed terminal window).
+    # gone: no stream open for SCRATCH_GONE_AFTER, after one was (a killed
+    # TUI's closes as its writer reads the hang-up), or none came within
+    # SCRATCH_JOIN_GRACE. Its terminal deletes it on every way out it sees;
+    # this is for the ones it doesn't (kill -9, a closed terminal window).
     def scratch_unattended?
       return false unless @session&.scratch && @bridge
-      return false if @bridge.open_streams.positive?
 
-      @bridge.streams_served.positive? || monotonic_now - @started_at >= SCRATCH_JOIN_GRACE
+      if @bridge.open_streams.positive?
+        @unattended_since = nil
+        return false
+      end
+      return monotonic_now - @started_at >= SCRATCH_JOIN_GRACE unless @bridge.streams_served.positive?
+
+      # Set by the first look (the scratch watch or the idle pass) that
+      # finds no stream; a stream back resets it above.
+      @unattended_since ||= monotonic_now
+      monotonic_now - @unattended_since >= SCRATCH_GONE_AFTER
     end
 
     def monotonic_now = Process.clock_gettime(Process::CLOCK_MONOTONIC)
