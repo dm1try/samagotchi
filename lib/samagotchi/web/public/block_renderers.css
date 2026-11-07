@@ -8,6 +8,8 @@
 .block-img{display:block;max-width:100%;max-height:50000px;object-fit:contain;height:auto;margin:0 auto;cursor:zoom-in}
 .block-drawn.natural .block-img{max-width:50000px;margin:0;cursor:zoom-out}
 .block-drawn.source .block-scroll{display:none}
+/* A chi-ui widget (inline_widgets.js): its host holds the shadow root, whose own sheet is widgets.css; the source hides it as the picture. */
+.block-drawn.source>.widget-host{display:none}
 .block-toggle,.block-zoom{position:absolute;top:5px;right:5px;z-index:1;display:inline-flex;align-items:center;justify-content:center;height:24px;min-width:24px;padding:0 5px;border-radius:6px;background:var(--bg-raised);border:1px solid var(--border-strong);color:var(--text-3);opacity:0;transition:opacity .12s}
 .code-wrap>.block-drawn>.block-toggle{right:34px}
 .block-zoom{right:34px}
