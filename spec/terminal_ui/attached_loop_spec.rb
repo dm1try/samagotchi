@@ -446,6 +446,30 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "#run" do
     expect(stream).to have_received(:close)
   end
 
+  describe "a chi scratch session" do
+    let(:attached) { described_class.new(client: client, screen: screen, client_id: "tui:1", scratch: true) }
+
+    before { allow(client).to receive(:request_exit) }
+
+    it "ends at Ctrl-D, /detach and /exit alike, with no line (its launcher deletes it), never asking the worker" do
+      [[nil], ["/detach"], ["/exit"], ["/exit --delete"]].each do |inputs|
+        expect(run_with(inputs)).to eq(:detached)
+      end
+      expect(screen.lines.grep(/Detached|Re-attach/)).to be_empty
+      expect(client).not_to have_received(:request_exit)
+    end
+
+    it "ends at a second Ctrl-C, its hint naming the scratch session's end" do
+      expect(run_with(%i[interrupt interrupt])).to eq(:detached)
+      expect(screen.lines).to include(described_class::SCRATCH_DETACH_HINT)
+    end
+
+    it "refuses /archive in ArchiveRefused's words, and stays" do
+      expect(run_with(["/archive", nil])).to eq(:detached)
+      expect(screen.lines).to include(Samagotchi::SessionManager::ArchiveRefused.new("s-1234", :scratch).message)
+    end
+  end
+
   it "sends a first prompt (chi -p) once it has joined, shown as the user's own line" do
     allow(client).to receive(:post_turn).and_return(ack)
     loop_with_prompt = described_class.new(client: client, screen: screen, client_id: "tui:1", first_prompt: "hello")

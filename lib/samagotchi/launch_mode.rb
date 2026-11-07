@@ -13,9 +13,6 @@ module Samagotchi
     REPL_ONLY = { verbose: "--verbose" }.freeze
     # What an attached run can't be combined with (the worker runs its turns).
     ATTACHED_CONFLICTS = { non_interactive: "--non-interactive", verbose: "--verbose" }.freeze
-    # Opening a `chi scratch` session a killed REPL left behind would turn it
-    # into a kept one.
-    SCRATCH_LEFTOVER = "that's a leftover scratch session; it is deleted at the next sweep (chi sessions clean)"
     # A worker spawned or resumed for an attach whose Bridge never came (%s:
     # the session id). A worker whose chi home couldn't load chi logs
     # SessionManager::HOME_BOOT_FAILED and exits: HomeDoctor's boot row says

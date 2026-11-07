@@ -68,7 +68,7 @@ RSpec.describe Samagotchi::SessionAccess::Remote, "for a remote attach" do
 
     scratch = make(scratch: true)
     expect { remote.attach_wake(scratch.id, wait: 1) }
-      .to raise_error(Samagotchi::SessionAccess::Refused, Samagotchi::LaunchMode::SCRATCH_LEFTOVER) { |e| expect(e.code).to eq("scratch") }
+      .to raise_error(Samagotchi::SessionAccess::Refused, Samagotchi::Session::SCRATCH_REFUSED) { |e| expect(e.code).to eq("scratch") }
 
     late = make
     allow(Samagotchi::SessionManager).to receive(:resume_session)

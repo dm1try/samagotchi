@@ -188,6 +188,10 @@ module Samagotchi
     # checks again then).
     def discard? = @discard
 
+    # Whether this worker runs a `chi scratch` session: deleted as it leaves
+    # (SessionManager.run_session_loop).
+    def scratch? = !!@session&.scratch
+
     # Whether delegate reports wait that an idle parent runs a turn for
     # (#wake_state): SessionManager.run_session_loop starts a new worker
     # for them after this one leaves. Reports the budget or a failure held
@@ -201,8 +205,9 @@ module Samagotchi
     #   to exit (Bridge POST /exit), :restart when it asked for a restart
     #   (the caller starts a new worker), :stopped when the session was stopped
     #   (chi stop), :signal when a signal stopped it (WorkerSignals),
-    #   :crashed when the loop raised (the session is marked errored);
-    #   SessionManager.run_session_loop turns it into the exit
+    #   :crashed when the loop raised (the session is marked errored),
+    #   :scratch_left when a scratch session's terminal is gone (the caller
+    #   deletes it); SessionManager.run_session_loop turns it into the exit
     def run
       # The thread a signal's expired grace raises in (the main thread in a
       # worker process).
@@ -248,6 +253,8 @@ module Samagotchi
     # The session, its Engine and what runs its turns, before anyone can
     # reach it.
     def start
+      # A scratch worker's grace for its terminal's first stream counts from here.
+      @started_at = monotonic_now
       # The wake turns' budget (delegate reports, attached context, peers), from now.
       @wakes = WorkerWakes.new(grace: WAKE_START_GRACE)
       # This worker holds the session now (a continue's starting marker held
@@ -468,6 +475,7 @@ module Samagotchi
       return if run_wake_turn
       return if run_task_wake
       return if run_due_reminders
+      return left(:scratch_left) if scratch_unattended? && leave_scratch
       return left(:idle_exit) if @idle_exit.due? && leave_idle
 
       leaving = @exit_requested && leave_on_request
@@ -571,6 +579,8 @@ module Samagotchi
       engine = nil
       engine = Samagotchi::Engine.new(
         model_name: @session.model_name,
+        # `chi scratch`: no memory_write, no delegates, approvals in memory.
+        scratch: @session.scratch,
         model_typed: @session.model_typed,
         # The session's --memory and --mute lists: the same prompt on every
         # (re)spawn.
@@ -1559,6 +1569,41 @@ module Samagotchi
       end
     end
 
+    # How long a scratch worker waits for its terminal's first stream
+    # (AttachLauncher attaches within BRIDGE_WAIT of the spawn).
+    SCRATCH_JOIN_GRACE = 30
+
+    # Whether this is a `chi scratch` session's worker whose terminal is
+    # gone: no stream open, after one was (a killed TUI's closes as its
+    # writer reads the hang-up), or none came within SCRATCH_JOIN_GRACE.
+    # Its terminal deletes it on every way out it sees; this is for the ones
+    # it doesn't (kill -9, a closed terminal window).
+    def scratch_unattended?
+      return false unless @session&.scratch && @bridge
+      return false if @bridge.open_streams.positive?
+
+      @bridge.streams_served.positive? || monotonic_now - @started_at >= SCRATCH_JOIN_GRACE
+    end
+
+    def monotonic_now = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+
+    # #leave_idle for a scratch worker its terminal left: checked again with
+    # the event log held, then the intake closes. The session is deleted
+    # once the lock is free (SessionManager.run_session_loop: :scratch_left).
+    # @return [Boolean] false when a client came back since
+    def leave_scratch
+      stop_bridge_after do
+        @engine.synchronize_events do
+          next false unless scratch_unattended?
+
+          @bridge&.close_intake
+          @engine.stop_idle(join: false)
+          Log.info(:worker, "scratch_left", served: @bridge.streams_served)
+          true
+        end
+      end
+    end
+
     # Check again with the event log held, which the Bridge holds while it
     # queues a POST /turn, then close the Bridge's intake so no client can
     # queue one after the check, and stop the idle jobs (reminder callback,
@@ -1694,6 +1739,9 @@ module Samagotchi
     # @return [WorkerIdleExit::Hold, nil]
     def exit_hold(client_id, kind:, stop:, ask:)
       if kind == :restart
+        # A scratch session's worker ends with its terminal: never restarted.
+        return WorkerIdleExit::Hold.new(reason: :scratch) if @session.scratch
+
         hold = @idle_exit.hold_for_restart
         return hold && WorkerIdleExit::Hold.new(reason: hold)
       end
@@ -1792,7 +1840,7 @@ module Samagotchi
     # A restart keeps even an empty session (a new worker takes it over at
     # once) and leaves the recap to the conversation's next real pause.
     def left(result)
-      deleting = result == :exit_requested && @exit_deletes
+      deleting = (result == :exit_requested && @exit_deletes) || result == :scratch_left
       # The attached context goes with this process: a change that landed after
       # the leaving pass looked at it has no later pass to note it, so note it
       # here (no wake turn: the worker is on its way out). Not into a session
@@ -1805,7 +1853,7 @@ module Samagotchi
       # session /exit --delete deletes next: its save could land after the
       # delete and write the session back.
       @task_wakes.absorb unless deleting
-      return result if result == :restart
+      return result if %i[restart scratch_left].include?(result)
 
       @discard = empty_session?
       write_recap_on_leave unless @discard || deleting

@@ -732,8 +732,8 @@ RSpec.describe Samagotchi::Web::App, "session access routes" do
         made.scratch = true
         made.save(state_dir: state_dir)
       end
-      expect(wake(scratch)).to eq([409, { "error" => "scratch", "detail" => Samagotchi::LaunchMode::SCRATCH_LEFTOVER,
-                                          "message" => Samagotchi::LaunchMode::SCRATCH_LEFTOVER,
+      expect(wake(scratch)).to eq([409, { "error" => "scratch", "detail" => Samagotchi::Session::SCRATCH_REFUSED,
+                                          "message" => Samagotchi::Session::SCRATCH_REFUSED,
                                           "session_id" => scratch.id }])
 
       expect(wake(make, { wait: "soon" }).first(1)).to eq([400])

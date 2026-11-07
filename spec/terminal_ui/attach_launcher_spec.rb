@@ -118,7 +118,7 @@ RSpec.describe Samagotchi::TerminalUI::AttachLauncher do
 
       expect(connect(shared: true)).to be(client)
       expect(Samagotchi::SessionManager).to have_received(:spawn_session)
-        .with(prompt: nil, model_name: nil, state_dir: state_dir, memories: [], muted_memories: [], setup: Samagotchi::SessionSetup.new)
+        .with(prompt: nil, model_name: nil, state_dir: state_dir, memories: [], muted_memories: [], setup: Samagotchi::SessionSetup.new, scratch: false)
       expect(Samagotchi::WorkerLink).to have_received(:await)
         .with(session.id, session_dir: Samagotchi::Session.session_dir(session.id, state_dir: state_dir), timeout: 0.2)
     end
@@ -131,7 +131,7 @@ RSpec.describe Samagotchi::TerminalUI::AttachLauncher do
 
       expect(Samagotchi::SessionManager).to have_received(:spawn_session)
         .with(prompt: nil, model_name: "fast", state_dir: state_dir,
-              memories: [], muted_memories: [], setup: Samagotchi::SessionSetup.new)
+              memories: [], muted_memories: [], setup: Samagotchi::SessionSetup.new, scratch: false)
     end
 
     it "starts a new session with its own --llm-context values" do
@@ -151,7 +151,7 @@ RSpec.describe Samagotchi::TerminalUI::AttachLauncher do
       expect { connect(shared: true, memories: ["cli_usage"], muted_memories: ["gh-helper"]) }.not_to output.to_stderr
       expect(Samagotchi::SessionManager).to have_received(:spawn_session)
         .with(prompt: nil, model_name: nil, state_dir: state_dir, memories: ["cli_usage"], muted_memories: ["gh-helper"],
-              setup: Samagotchi::SessionSetup.new)
+              setup: Samagotchi::SessionSetup.new, scratch: false)
     end
 
     it "starts a new session with --append-system-prompt's files in its setup" do
@@ -259,6 +259,25 @@ RSpec.describe Samagotchi::TerminalUI::AttachLauncher do
         .to raise_error(described_class::Error, /open in a chi REPL; close it there first/)
     end
 
+    it "starts a chi scratch session's worker on a scratch session" do
+      allow(Samagotchi::SessionManager).to receive(:spawn_session).and_return(session)
+      allow(Samagotchi::WorkerLink).to receive(:await).and_return(live_link(client: client))
+
+      expect(connect(shared: true, scratch: true)).to be(client)
+      expect(Samagotchi::SessionManager).to have_received(:spawn_session).with(hash_including(scratch: true))
+    end
+
+    it "deletes a scratch session whose worker's Bridge never came" do
+      session.scratch = true
+      allow(Samagotchi::SessionManager).to receive(:spawn_session).and_return(session)
+      allow(Samagotchi::SessionManager).to receive(:delete_session)
+      allow(Samagotchi::WorkerLink).to receive(:await).and_return(none_link)
+
+      expect { connect(shared: true, scratch: true) }.to raise_error(described_class::Error, /did not start its Bridge/)
+      expect(Samagotchi::SessionManager).to have_received(:delete_session)
+        .with(session.id, state_dir: state_dir, stop: true, wait: Samagotchi::TerminalUI::LocalLink::DELETE_WAIT)
+    end
+
     it "gives up when the worker's Bridge doesn't come up" do
       allow(Samagotchi::SessionManager).to receive(:spawn_session).and_return(session)
       allow(Samagotchi::WorkerLink).to receive(:await).and_return(none_link)
@@ -278,7 +297,7 @@ RSpec.describe Samagotchi::TerminalUI::AttachLauncher, ".run" do
     attached = instance_double(Samagotchi::TerminalUI::AttachedLoop, run: :detached)
     allow(described_class).to receive(:connect)
       .with(attach: nil, shared: true, resume: nil, model: nil, memories: [], muted_memories: [], llm_context: {}, thinking: nil, appended_prompt_files: [], toolkit: nil, toolkit_flags: [], settings: nil, parent_answers: nil,
-            state_dir: Samagotchi::Session.default_state_dir)
+            scratch: false, state_dir: Samagotchi::Session.default_state_dir)
       .and_return(client)
     allow(described_class).to receive(:open_surface).and_return(surface)
     allow(described_class).to receive(:close_surface)
@@ -289,8 +308,54 @@ RSpec.describe Samagotchi::TerminalUI::AttachLauncher, ".run" do
     expect(Samagotchi::TerminalUI::AttachedLoop).to have_received(:new)
       .with(client: client, screen: surface, client_id: "tui:#{Process.pid}", first_prompt: "hi",
             first_command: nil, no_interrupt: false, default_input: false, wait_at_eof: false,
-            as_parent: false, state_dir: Samagotchi::Session.default_state_dir)
+            scratch: false, as_parent: false, state_dir: Samagotchi::Session.default_state_dir)
     expect(described_class).to have_received(:close_surface).with(surface)
+  end
+
+  describe "chi scratch" do
+    let(:client) { instance_double(Samagotchi::BridgeClient, session_id: "s-scratch") }
+    let(:out) { StringIO.new }
+
+    before do
+      allow($stdout).to receive(:puts) { |line| out.puts(line) }
+      allow(described_class).to receive_messages(connect: client, open_surface: nil, close_surface: nil)
+      allow(Samagotchi::SessionManager).to receive(:delete_session)
+    end
+
+    def loop_ending(&run)
+      attached = instance_double(Samagotchi::TerminalUI::AttachedLoop)
+      allow(attached).to receive(:run, &run)
+      allow(Samagotchi::TerminalUI::AttachedLoop).to receive(:new).and_return(attached)
+    end
+
+    it "says what it is, tells the loop, then stops and deletes the session as it ends, saying so" do
+      loop_ending { :detached }
+
+      expect(described_class.run(shared: true, scratch: true)).to eq(:detached)
+
+      expect(Samagotchi::TerminalUI::AttachedLoop).to have_received(:new).with(hash_including(scratch: true))
+      expect(Samagotchi::SessionManager).to have_received(:delete_session)
+        .with("s-scratch", state_dir: Samagotchi::Session.default_state_dir, stop: true,
+                           wait: Samagotchi::TerminalUI::LocalLink::DELETE_WAIT)
+      expect(out.string).to eq("#{described_class::SCRATCH_BANNER}\n#{described_class::SCRATCH_DELETED}\n")
+    end
+
+    it "deletes it when the loop ends on an error (or Ctrl-C) too, quietly" do
+      loop_ending { raise Interrupt }
+
+      expect { described_class.run(shared: true, scratch: true) }.to raise_error(Interrupt)
+      expect(Samagotchi::SessionManager).to have_received(:delete_session).once
+      expect(out.string).not_to include(described_class::SCRATCH_DELETED)
+    end
+
+    it "takes a session its worker deleted first as deleted" do
+      loop_ending { :closed }
+      allow(Samagotchi::SessionManager).to receive(:delete_session).and_raise(ArgumentError, "no session s-scratch")
+
+      described_class.run(shared: true, scratch: true)
+
+      expect(out.string).to end_with("#{described_class::SCRATCH_DELETED}\n")
+    end
   end
 
   it "tells the attached loop when a parent agent drives it (piped stdin, an agent marker)" do
@@ -346,7 +411,7 @@ RSpec.describe Samagotchi::TerminalUI::AttachLauncher, ".run" do
     expect(default_inputs).to eq([false, false, true])
     expect(described_class).to have_received(:connect)
       .with(attach: nil, shared: true, resume: nil, model: "qwen_moe", memories: [], muted_memories: [], llm_context: {}, thinking: nil, appended_prompt_files: [], toolkit: nil, toolkit_flags: [], settings: nil, parent_answers: nil,
-            state_dir: Samagotchi::Session.default_state_dir)
+            scratch: false, state_dir: Samagotchi::Session.default_state_dir)
   end
 
   it "sets a resumed or attached session's --llm-context through its worker, after the --model; a new one starts with it" do
@@ -368,7 +433,7 @@ RSpec.describe Samagotchi::TerminalUI::AttachLauncher, ".run" do
                             "/llm-context apply turn_end --yes", nil])
     expect(described_class).to have_received(:connect)
       .with(attach: nil, shared: true, resume: nil, model: nil, memories: [], muted_memories: [], llm_context: words, thinking: nil, appended_prompt_files: [], toolkit: nil, toolkit_flags: [], settings: nil, parent_answers: nil,
-            state_dir: Samagotchi::Session.default_state_dir)
+            scratch: false, state_dir: Samagotchi::Session.default_state_dir)
   end
 end
 
@@ -393,7 +458,7 @@ RSpec.describe Samagotchi::TerminalUI::AttachLauncher, "--thinking" do
     expect(commands).to eq([["/model qwen_moe --yes", "/llm-context apply turn_end --yes", "/thinking low --yes"], "/thinking default --yes", nil])
     expect(described_class).to have_received(:connect)
       .with(attach: nil, shared: true, resume: nil, model: nil, memories: [], muted_memories: [], llm_context: {}, thinking: "high", appended_prompt_files: [], toolkit: nil, toolkit_flags: [], settings: nil, parent_answers: nil,
-            state_dir: Samagotchi::Session.default_state_dir)
+            scratch: false, state_dir: Samagotchi::Session.default_state_dir)
   end
 
   it "spawns a new session with the level as its own" do

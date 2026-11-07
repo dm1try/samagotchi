@@ -3,6 +3,7 @@
 require "tmpdir"
 require "json"
 require "samagotchi/session"
+require "samagotchi/log_path"
 require "support/fake_provider_server"
 
 # `chi scratch`: the run options, for a plain REPL session that leaves
@@ -18,7 +19,8 @@ RSpec.describe "chi scratch" do
       out, err, status = run_or_fork_chi(*args, spawn: spawn, env: env, chdir: dir)
       sessions = File.join(dir, "state", "samagotchi", "sessions")
       left = Dir.exist?(sessions) ? Dir.children(sessions).reject { |name| name.start_with?(".") } : []
-      [out, err, status, left]
+      log = File.join(dir, "state", "samagotchi", Samagotchi::LogPath::FILENAME)
+      [out, err, status, left, File.exist?(log) ? File.read(log) : ""]
     end
   end
 
@@ -41,6 +43,28 @@ RSpec.describe "chi scratch" do
     server&.stop
   end
 
+  it "runs attached without --non-interactive: a scratch worker answers, and the session and its worker go as it ends" do
+    server = FakeProviderServer.start
+    server.default("/completion", sse: ["data: #{JSON.generate(content: "PONG", stop: true)}\n\n"])
+
+    # stdin is empty: the attached TUI runs the -p turn, then leaves at the
+    # input's end, as Ctrl-D does.
+    out, err, status, left, log = chi_scratch("scratch", "-p", "Reply with exactly: PONG", server: server, spawn: true)
+
+    expect(status.exitstatus).to eq(0), err
+    expect(out).to start_with("Scratch session: nothing is kept, it is deleted when you leave.\n")
+    expect(out).to include("PONG")
+    expect(out.lines.last).to eq("Scratch session deleted.\n")
+    expect(left).to be_empty
+    # A worker ran the session, and was gone before chi exited.
+    expect(log).to match(/worker .* start cwd=/).and include("stop reason=", "scratch_deleted")
+    # The worker's Engine is a scratch one: no delegate tool, memory_write refuses.
+    prompt = server.requests.find { |r| r.path == "/completion" }.json["prompt"]
+    expect(prompt).not_to match(/\bdelegate\b.*child session/i)
+  ensure
+    server&.stop
+  end
+
   {
     "--resume" => %w[--resume abc],
     "--attach" => %w[--attach abc],
@@ -56,7 +80,7 @@ RSpec.describe "chi scratch" do
   end
 
   %w[--resume --attach].each do |flag|
-    it "refuses #{flag} on a scratch session a killed REPL left behind, and keeps it for the sweep" do
+    it "refuses #{flag} on a scratch session (a killed terminal's leftover here), and keeps it for the sweep" do
       Dir.mktmpdir do |dir|
         env = { "XDG_CONFIG_HOME" => File.join(dir, "config"), "XDG_STATE_HOME" => File.join(dir, "state"), "HOME" => dir,
                 "SAMAGOTCHI_SERVER_PORT" => "9" }
@@ -67,7 +91,7 @@ RSpec.describe "chi scratch" do
         _out, err, status = fork_chi(flag, leftover.id[0, 8], env: env, chdir: dir)
 
         expect(status.exitstatus).to eq(1)
-        expect(err).to eq("Error: that's a leftover scratch session; it is deleted at the next sweep (chi sessions clean)\n")
+        expect(err).to eq("Error: #{Samagotchi::Session::SCRATCH_REFUSED}\n")
         expect(Samagotchi::Session.load(leftover.id, state_dir: state_dir).scratch).to be(true)
       end
     end

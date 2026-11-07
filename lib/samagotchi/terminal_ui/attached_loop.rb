@@ -66,6 +66,8 @@ module Samagotchi
       # A second Ctrl-C at an empty idle prompt within this many seconds detaches.
       DETACH_WINDOW = 2.0
       DETACH_HINT = "Ctrl-D to detach, /exit stops the worker"
+      # A `chi scratch` session's: every way out ends it.
+      SCRATCH_DETACH_HINT = "Ctrl-D or /exit ends the scratch session (nothing is kept)"
       attr_reader :client_id
 
       # @return [String, nil] the model the worker's turns run on, as the
@@ -107,8 +109,11 @@ module Samagotchi
       #   session folder (@path images, saved records) is under it
       # @param link [AttachLink, nil] where the session is, instead of
       #   +client+ and the keywords that make a LocalLink
+      # @param scratch [Boolean] a `chi scratch` session: Ctrl-D, /detach,
+      #   /exit and a second Ctrl-C all end it (its AttachLauncher deletes
+      #   it), /archive is refused, and typed lines stay out of the history
       def initialize(screen:, client_id:, client: nil, first_prompt: nil, first_command: nil, no_interrupt: false,
-                     default_input: false, wait_at_eof: false, as_parent: false,
+                     default_input: false, wait_at_eof: false, as_parent: false, scratch: false,
                      clock: -> { Process.clock_gettime(Process::CLOCK_MONOTONIC) }, now: -> { MessageTime.now },
                      delete_session: ->(id) { SessionManager.delete_session(id, stop: true, wait: LocalLink::DELETE_WAIT) },
                      archive_session: ->(id) { SessionManager.archive_session(id, wait: LocalLink::DELETE_WAIT) },
@@ -119,6 +124,7 @@ module Samagotchi
                                       archive_session: archive_session, installed_version: installed_version,
                                       children_counts: children_counts)
         @client = @link.client
+        @scratch = scratch
         @screen = screen
         @client_id = client_id
         # A parent agent drives this attach (AttachLauncher:

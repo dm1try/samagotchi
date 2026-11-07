@@ -94,11 +94,11 @@ module Samagotchi
       # a margin), so the resume finds the session free.
       # @return [Woken] its sidecar nil when the Bridge didn't come in time
       # @raise [ArgumentError] no such session
-      # @raise [Refused] code scratch: a leftover chi scratch session
+      # @raise [Refused] code scratch: a chi scratch session (its terminal's alone)
       # @raise [SessionManager::OwnedByTUI] a chi REPL has it
       def wake(id, wait:)
         session = show(id)
-        raise Refused.new(LaunchMode::SCRATCH_LEFTOVER, code: "scratch") if session.scratch
+        raise Refused.new(Session::SCRATCH_REFUSED, code: "scratch") if session.scratch
 
         link = WorkerLink.resolve(session_dir(id), unlink: true)
         case link

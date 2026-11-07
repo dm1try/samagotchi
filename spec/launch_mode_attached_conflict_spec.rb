@@ -28,9 +28,7 @@ RSpec.describe Samagotchi::LaunchMode, ".attached_conflict" do
     expect(conflict(attach: "s1", shared: true, resume: "s2", verbose: true)).to eq("use either --attach ID or --shared")
   end
 
-  it "words the scratch leftover and a Bridge that didn't come" do
-    expect(described_class::SCRATCH_LEFTOVER)
-      .to eq("that's a leftover scratch session; it is deleted at the next sweep (chi sessions clean)")
+  it "words a Bridge that didn't come" do
     expect(format(described_class::BRIDGE_LATE, "s1")).to eq("the worker for session s1 did not start its Bridge in time (chi home doctor shows a worker that failed to boot)")
   end
 end

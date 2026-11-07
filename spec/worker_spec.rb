@@ -1093,6 +1093,65 @@ RSpec.describe Samagotchi::Worker do
       end
     end
 
+    describe "a chi scratch session" do
+      before do
+        session.scratch = true
+        session.save(state_dir: tmpdir)
+      end
+
+      after { Array(@streams).each(&:close) }
+
+      def follow
+        stream = Samagotchi::WorkerLink.client(session.id, session_dir: session_dir).follow(client_id: "tui:1") { |_| nil }
+        (@streams ||= []) << stream
+        stream
+      end
+
+      def open_streams = @worker.instance_variable_get(:@bridge).open_streams
+
+      it "builds a scratch Engine" do
+        start_worker(poll_interval: 0.05)
+
+        expect(Samagotchi::Engine).to have_received(:new).with(hash_including(scratch: true))
+      end
+
+      it "stays up while its terminal's stream is open, and leaves once it closes (idle exit off), with no recap" do
+        allow(engine).to receive(:write_recap_now)
+        start_worker(poll_interval: 0.05, idle_exit_minutes: 0)
+        stream = follow
+        wait_for("the terminal's stream") { open_streams == 1 }
+        loop_rounds
+        expect(@thread).to be_alive
+
+        stream.close
+
+        expect(join!(@thread, "the scratch worker").value).to eq(:scratch_left)
+        expect(@worker.scratch?).to be(true)
+        expect(engine).not_to have_received(:write_recap_now)
+      end
+
+      it "leaves when no terminal joined within the grace" do
+        stub_const("Samagotchi::Worker::SCRATCH_JOIN_GRACE", 0.1)
+        start_worker(poll_interval: 0.05, idle_exit_minutes: 0)
+
+        expect(join!(@thread, "the scratch worker").value).to eq(:scratch_left)
+      end
+
+      it "refuses a restart" do
+        start_worker(poll_interval: 0.05)
+        follow
+        wait_for("the terminal's stream") { open_streams == 1 }
+
+        port = JSON.parse(File.read(sidecar))["port"]
+        res = Net::HTTP.post(URI("http://127.0.0.1:#{port}/session/#{session.id}/exit"),
+                             JSON.generate(client_id: "web:1", restart: true), "Content-Type" => "application/json",
+                             **bridge_auth(sidecar))
+        expect([res.code.to_i, JSON.parse(res.body)["reason"]]).to eq([409, "scratch"])
+        loop_rounds
+        expect(@thread).to be_alive
+      end
+    end
+
     describe "an exit request (POST /exit)" do
       def post_exit(client_id: "tui:1", stop: false)
         port = JSON.parse(File.read(sidecar))["port"]

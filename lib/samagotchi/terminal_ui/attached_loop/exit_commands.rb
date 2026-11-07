@@ -19,6 +19,22 @@ module Samagotchi
           :detach
         end
 
+        # A scratch session's way out (Ctrl-D, /detach, /exit, a second
+        # Ctrl-C): the loop ends with no line; its AttachLauncher stops the
+        # worker and deletes the session, and says so.
+        # @return [Symbol] :detach
+        def end_scratch
+          @view.finish_thinking_spinner
+          :detach
+        end
+
+        # /archive in a scratch session: nothing to archive (ArchiveRefused's words).
+        # @return [nil]
+        def refuse_scratch_archive
+          @screen.commit(SessionManager::ArchiveRefused.new(@client.session_id, :scratch).message)
+          nil
+        end
+
         # Detach, and ask the worker to exit now. The worker decides: it stays
         # up while anything still needs it (a turn, queued input, a continue
         # offer, another UI, reminders), and the line says which. When the only

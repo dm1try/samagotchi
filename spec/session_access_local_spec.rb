@@ -115,7 +115,7 @@ RSpec.describe Samagotchi::SessionAccess::Local do
       scratch = saved_session(scratch: true)
 
       expect { access.wake(scratch.id, wait: 0.1) }
-        .to raise_error(Samagotchi::SessionAccess::Refused, Samagotchi::LaunchMode::SCRATCH_LEFTOVER) { |e| expect(e.code).to eq("scratch") }
+        .to raise_error(Samagotchi::SessionAccess::Refused, Samagotchi::Session::SCRATCH_REFUSED) { |e| expect(e.code).to eq("scratch") }
       expect { access.wake("0000dead", wait: 0.1) }.to raise_error(ArgumentError)
     end
 

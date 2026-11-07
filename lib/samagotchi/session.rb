@@ -38,6 +38,11 @@ module Samagotchi
     STATUS_ERROR = "error"
     STATUS_STOPPED = "stopped"
     TOOLKIT_ORIGINS = %w[chosen default inherited suggested].freeze
+    # Why anything but the terminal that started a `chi scratch` session is
+    # refused it (chi --attach/--resume, chi send, chi web's wake, turn and
+    # command routes): one wording for a live one and a leftover one.
+    SCRATCH_REFUSED = "that's a chi scratch session: only the terminal that started it uses it " \
+                      "(a leftover one is deleted at the next sweep: chi sessions clean)"
 
     # A stopped session's marker, <session dir>/stopped: a stop (chi
     # sessions stop, from another process) creates it instead of rewriting
@@ -119,8 +124,9 @@ module Samagotchi
     # nil. Not a parent: archiving one link leaves the next alone. The chain
     # itself is derived (SessionChain), never stored.
     attr_accessor :continues
-    # A `chi scratch` session: deleted when its REPL ends, and by the next
-    # sweep (or `chi sessions clean`) when the process died first.
+    # A `chi scratch` session: deleted when its terminal leaves (its worker
+    # deletes it too once its last client is gone), and by the next sweep
+    # (or `chi sessions clean`) when both died first.
     attr_accessor :scratch
     # The question this session waits on (PendingQuestion), saved as
     # session.json's "pending_question"; nil with none. A Hash (a saved

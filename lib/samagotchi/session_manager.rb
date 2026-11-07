@@ -92,10 +92,17 @@ module Samagotchi
       #   archive met one)
       attr_reader :session_id
 
-      def initialize(session_id)
+      def initialize(session_id, words = nil)
         @session_id = session_id
-        super("session #{session_id} is open in a chi REPL; close it there first")
+        super(words || "session #{session_id} is open in a chi REPL; close it there first")
       end
+    end
+
+    # A `chi scratch` session: its terminal's alone (Session::SCRATCH_REFUSED).
+    # An OwnedByTUI, so every caller that refuses a terminal's session
+    # (chi send, chi web's 409 owned_by_tui) refuses it the same way.
+    class ScratchSession < OwnedByTUI
+      def initialize(session_id) = super(session_id, Session::SCRATCH_REFUSED)
     end
 
     # A delete that would pull the session from under its live worker.
@@ -173,12 +180,15 @@ module Samagotchi
     #   requester, rules and claim (VerifyFresh.start)
     # @param before_spawn [#call, nil] (session) runs once the session and
     #   its note are saved, before its worker spawns
+    # @param scratch [Boolean] a `chi scratch` session (its terminal's
+    #   AttachLauncher): its worker runs a scratch Engine and deletes it
+    #   once its last client is gone
     # @return [Session] with #seed_images_dropped: refs whose file was gone,
     #   and #model_warning: an id its host's saved list doesn't have
     def self.spawn_session(prompt:, mode: "assist", working_directory: nil, model_name: nil, state_dir: nil,
                            memories: [], muted_memories: [], parent_id: nil, messages: [], images_from: nil,
                            preview: nil, title: nil, delegate: false, setup: SessionSetup.new, continues: nil, note: nil,
-                           note_source: "chi", before_spawn: nil, review: nil, verify_fresh: nil)
+                           note_source: "chi", before_spawn: nil, review: nil, verify_fresh: nil, scratch: false)
       sd = state_dir || Session.default_state_dir
       # The resolved ref is stored (a resumed session keeps its model when an
       # alias is retargeted), with the name as typed beside it. A wrong host
@@ -201,7 +211,8 @@ module Samagotchi
         delegate: delegate,
         setup: setup,
         continues: continues,
-        review: review
+        review: review,
+        scratch: scratch
       )
       session.toolkit = Toolkit.configured(delegate: delegate) if session.toolkit.nil?
       session.toolkit_origin = setup.toolkit_origin || "default"
@@ -555,6 +566,8 @@ module Samagotchi
     def self.resume_session(session_id, state_dir: nil)
       sd = state_dir || Session.default_state_dir
       session = Session.load(session_id, state_dir: sd)
+      # Its terminal's worker came from spawn_session; nothing wakes another.
+      raise ScratchSession, session.id if session.scratch
       return session if refuse_tui!(session.id, state_dir: sd)
 
       # status is turn state, not liveness: a new worker runs no turn yet,
@@ -686,7 +699,8 @@ module Samagotchi
         reminders: "it has reminders, which its worker's older chi can't carry over a restart",
         command_running: "a /btw (or another command) is still running",
         relays_open: "a delegate's approval relayed here is open or just answered",
-        background_tasks: "background tasks it started are still running"
+        background_tasks: "background tasks it started are still running",
+        scratch: "a chi scratch session's worker ends with its terminal"
       }.merge(WorkerIdleExit::LEAVING_WORDS).freeze
 
       # What the CLI and the web say.
@@ -1130,7 +1144,7 @@ module Samagotchi
     #   ticks (nil: Worker::FALLBACK_TICK_SECONDS); queued turns wake it at once
     # A stopped session's worker exits 0 (a signalled one too) and a
     # crashed one 1, there.
-    # @return [Symbol] :idle_exit, :exit_requested or :restart
+    # @return [Symbol] :idle_exit, :exit_requested, :restart or :scratch_left
     def self.run_session_loop(session_id, state_dir: nil, owner_wait: OwnerLock::DEFAULT_WAIT,
                               idle_exit_minutes: nil, poll_interval: nil)
       # A worker inherits chi's locale (LC_ALL=C too): read files as UTF-8.
@@ -1175,6 +1189,13 @@ module Samagotchi
         signals.restore!
       end
       Log.info(:worker, "stop", reason: result)
+      # A scratch session goes with its worker however it leaves (its
+      # terminal deletes it too, whichever comes first); nothing resumes it.
+      if worker.scratch?
+        delete_left_scratch(session_id, state_dir: sd)
+        exit(result == :crashed ? 1 : 0) if %i[stopped signal crashed].include?(result)
+        return result
+      end
       # A stopped session is left as it is: no resume for input that came
       # in, no discard. One whose worker a signal stopped isn't discarded
       # either; input that came in (queued behind the turn it stopped)
@@ -1229,6 +1250,16 @@ module Samagotchi
         sleep(OwnerLock::RETRY_INTERVAL)
       end
       Process.exit!(0)
+    end
+
+    # Delete a scratch session its worker left (its terminal gone:
+    # Worker#leave_scratch, or any other way out), now the lock is free.
+    # Its terminal may have deleted it first.
+    private_class_method def self.delete_left_scratch(session_id, state_dir:)
+      delete_session(session_id, state_dir: state_dir)
+      Log.info(:worker, "scratch_deleted", sid: session_id)
+    rescue DeleteRefused, ArgumentError, SystemCallError => e
+      Log.info(:worker, "scratch_kept", sid: session_id, error: e.class.name, msg: e.message)
     end
 
     # Delete a session its worker left empty. Checked again now the lock is

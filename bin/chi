@@ -139,7 +139,8 @@ if ARGV[0] == "web" && ARGV[1] == "push"
 end
 
 # `chi scratch`: the run options below, for a session that leaves nothing
-# behind (TerminalUI scratch:). The word goes before OptionParser sees it.
+# behind (AttachLauncher scratch:; TerminalUI's with --non-interactive). The
+# word goes before OptionParser sees it.
 scratch = ARGV[0] == "scratch"
 ARGV.shift if scratch
 
@@ -274,8 +275,9 @@ rescue Samagotchi::Session::AmbiguousId => e
   exit 1
 end
 
-# A `chi scratch` session a killed REPL left behind would turn into a kept
-# one if opened again; the next sweep deletes it.
+# A `chi scratch` session is its terminal's (a live one), or one a killed
+# terminal left behind, which would turn into a kept one if opened again;
+# the next sweep deletes it.
 %i[resume attach].each do |key|
   next unless options[key]
 
@@ -286,8 +288,7 @@ end
   end
   next unless leftover
 
-  require "samagotchi/launch_mode"
-  warn "Error: #{Samagotchi::LaunchMode::SCRATCH_LEFTOVER}"
+  warn "Error: #{Samagotchi::Session::SCRATCH_REFUSED}"
   exit 1
 end
 
@@ -396,7 +397,7 @@ end
 chi_update_hint.call
 require "samagotchi/launch_mode"
 launch, launch_note = if scratch
-                        [:repl, nil]
+                        [options[:non_interactive] || options[:verbose] ? :repl : :attached, nil]
                       else
                         Samagotchi::LaunchMode.resolve(options, shared_config: Samagotchi::Config.get("session.shared"))
                       end
@@ -423,7 +424,8 @@ if launch == :attached
                                                        toolkit: options[:toolkit_value],
                                                        toolkit_flags: options[:toolkit_flags] || [],
                                                        settings: options[:settings],
-                                                       parent_answers: options[:parent_answers])
+                                                       parent_answers: options[:parent_answers],
+                                                       scratch: scratch)
   rescue Samagotchi::TerminalUI::AttachLauncher::Error, Samagotchi::Toolkit::Refused => e
     warn "Error: #{e.message}"
     exit 1
