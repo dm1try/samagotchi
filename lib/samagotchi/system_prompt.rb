@@ -2,6 +2,7 @@
 
 require_relative "config"
 require_relative "log"
+require_relative "degrade"
 require_relative "log_path"
 require_relative "memory_paths"
 require_relative "paths"
@@ -74,11 +75,7 @@ module Samagotchi
       @requested_memories = effective_preload_list(preload_memory_list(memories))
       # Read once, as the memories: list is: a config edit is picked up by
       # a new process. The files' text is read at each build.
-      @config_appended = begin
-        ConfigFile.appended_prompt_files
-      rescue StandardError
-        []
-      end
+      @config_appended = Degrade.call(:prompt, "appended_list_unreadable", fallback: []) { ConfigFile.appended_prompt_files }
       @cli_appended = Array(appended_files).map { |path| File.expand_path(path.to_s) }
     end
 
@@ -386,11 +383,11 @@ module Samagotchi
     # (Plugin::PromptSections). nil with none: the prompt is what it was
     # before prompt sections.
     def plugin_prompt_section
-      built = Array(@sections_lookup.call)
-      @section_plugins = built
-      Plugin::PromptSections.text(built)
-    rescue StandardError
-      nil
+      Degrade.call(:prompt, "plugin_section_failed") do
+        built = Array(@sections_lookup.call)
+        @section_plugins = built
+        Plugin::PromptSections.text(built)
+      end
     end
 
     def with_tail_declarations(prompt, chat:, layers:)
@@ -405,35 +402,35 @@ module Samagotchi
     # Identity is not tracked as an "activated" memory for the sticky status line
     # to avoid always showing `mem: identity`.
     def system_identity_section
-      DEFAULT_SYSTEM_MEMORIES.each do |name|
-        next if memory_muted?(name)
+      Degrade.call(:prompt, "identity_unreadable") do
+        DEFAULT_SYSTEM_MEMORIES.each do |name|
+          next if memory_muted?(name)
 
-        body = Tools::MemoryRead.call(name, scope: "system", **overlay_keys)
-        next if body.start_with?("Error:")
-        next if body.strip.empty?
+          body = Tools::MemoryRead.call(name, scope: "system", **overlay_keys)
+          next if body.start_with?("Error:")
+          next if body.strip.empty?
 
-        return "System identity (auto-loaded, scope=system):\n#{body}"
+          return "System identity (auto-loaded, scope=system):\n#{body}"
+        end
+        nil
       end
-      nil
-    rescue StandardError
-      nil
     end
 
     # The model notes for the session's model (ModelNotes), right after
     # identity: a heading per scope, each note under its name, the models:
     # line left out. nil without any, so the prompt stays as it was.
     def model_notes_section
-      @section_notes = []
-      notes = Array(@model_notes_lookup.call)
-      return nil if notes.empty?
+      Degrade.call(:prompt, "model_notes_failed") do
+        @section_notes = []
+        notes = Array(@model_notes_lookup.call)
+        return nil if notes.empty?
 
-      ref = @model_lookup.call&.ref
-      notes.group_by(&:scope).map do |scope, list|
-        heading = ref.to_s.empty? ? "Model notes (scope=#{scope}):" : "Model notes (for #{ref}, scope=#{scope}):"
-        [heading, *list.map { |note| "## #{note.name}\n#{note.body}" }].join("\n\n")
-      end.join("\n\n").tap { @section_notes = notes }
-    rescue StandardError
-      nil
+        ref = @model_lookup.call&.ref
+        notes.group_by(&:scope).map do |scope, list|
+          heading = ref.to_s.empty? ? "Model notes (scope=#{scope}):" : "Model notes (for #{ref}, scope=#{scope}):"
+          [heading, *list.map { |note| "## #{note.name}\n#{note.body}" }].join("\n\n")
+        end.join("\n\n").tap { @section_notes = notes }
+      end
     end
 
     # ── Memory helpers ─────────────────────────────────────────────────────────
@@ -441,23 +438,23 @@ module Samagotchi
     # The session model's overlay keys, so the prompt's own memory bodies
     # (identity, preloads) get `<name>.<key>.md` as memory_read gives it.
     def overlay_keys
-      model = @model_lookup.call
-      return {} unless model&.key
+      Degrade.call(:prompt, "overlay_keys_failed", fallback: {}) do
+        model = @model_lookup.call
+        return {} unless model&.key
 
-      { model_key: model.key, fallback_model_key: model.fallback_key }
-    rescue StandardError
-      {}
+        { model_key: model.key, fallback_model_key: model.fallback_key }
+      end
     end
 
     # { system: { tokens:, lines: }, project: { … } } of the index texts
     # the prompt holds; nil when they can't be measured.
     def measure_indexes(indexes)
-      chars_per_token = MemoryBundle::IndexSize.chars_per_token
-      %i[system project].to_h do |scope|
-        [scope, MemoryBundle::IndexSize.of_text(scope, indexes[scope], chars_per_token: chars_per_token).figures]
+      Degrade.call(:prompt, "index_size_failed") do
+        chars_per_token = MemoryBundle::IndexSize.chars_per_token
+        %i[system project].to_h do |scope|
+          [scope, MemoryBundle::IndexSize.of_text(scope, indexes[scope], chars_per_token: chars_per_token).figures]
+        end
       end
-    rescue StandardError
-      nil
     end
 
     # The scope's index text without the muted memories' lines, nor the
@@ -473,11 +470,7 @@ module Samagotchi
     # comma-split and appended without duplicates (same ref shape as --memory:
     # bare name or scope/name).
     def preload_memory_list(cli_memories)
-      baseline = begin
-        ConfigFile.preloaded_memories
-      rescue StandardError
-        []
-      end
+      baseline = Degrade.call(:prompt, "preload_list_unreadable", fallback: []) { ConfigFile.preloaded_memories }
 
       merged = Array(baseline).dup
       # For the warning when one can't be loaded: it names where it came from.
@@ -555,15 +548,15 @@ module Samagotchi
     # The AGENTS.md chain from the top of the git work tree down to the cwd
     # (PromptFiles.agents_sections), one section per file with text.
     def project_specific_description
-      return nil if skip_agent_description?
+      Degrade.call(:prompt, "agents_md_unreadable") do
+        return nil if skip_agent_description?
 
-      sections = PromptFiles.agents_sections(Dir.pwd)
-      return nil if sections.empty?
+        sections = PromptFiles.agents_sections(Dir.pwd)
+        return nil if sections.empty?
 
-      @section_files&.concat(sections.map(&:path))
-      sections.map(&:text).join("\n\n")
-    rescue StandardError
-      nil
+        @section_files&.concat(sections.map(&:path))
+        sections.map(&:text).join("\n\n")
+      end
     end
 
     # The appended files' text, right after AGENTS.md (the stable, cached
@@ -572,26 +565,26 @@ module Samagotchi
     # then --append-system-prompt's. A file the AGENTS.md chain holds, a
     # repeat and an empty or vanished file are left out.
     def appended_section
-      cwd = Dir.pwd
-      top = MemoryPaths.work_tree_root(cwd)
-      seen = Set.new((skip_agent_description? ? [] : PromptFiles.agents_paths(cwd)).map { |path| canonical_path(path) })
-      sections = []
-      appended_candidates(cwd).each do |path, source|
-        next unless seen.add?(canonical_path(path))
+      Degrade.call(:prompt, "appended_files_failed") do
+        cwd = Dir.pwd
+        top = MemoryPaths.work_tree_root(cwd)
+        seen = Set.new((skip_agent_description? ? [] : PromptFiles.agents_paths(cwd)).map { |path| canonical_path(path) })
+        sections = []
+        appended_candidates(cwd).each do |path, source|
+          next unless seen.add?(canonical_path(path))
 
-        unless File.file?(path)
-          Log.debug(:config, "appended_prompt_file_missing", path: path, source: source)
-          next
+          unless File.file?(path)
+            Log.debug(:config, "appended_prompt_file_missing", path: path, source: source)
+            next
+          end
+          text = PromptFiles.section(path, "Appended from #{PromptFiles.display_path(path, top: top)}:")
+          next unless text
+
+          @section_files&.push(path)
+          sections << text
         end
-        text = PromptFiles.section(path, "Appended from #{PromptFiles.display_path(path, top: top)}:")
-        next unless text
-
-        @section_files&.push(path)
-        sections << text
+        sections.empty? ? nil : sections.join("\n\n")
       end
-      sections.empty? ? nil : sections.join("\n\n")
-    rescue StandardError
-      nil
     end
 
     # [absolute path, "config" | "cli"], in prompt order.
@@ -617,27 +610,27 @@ module Samagotchi
     # The home directory is spelled out once so the model copies the right
     # sequence, with the advice to write it as ~ or $HOME instead.
     def project_location
-      cwd = Dir.pwd
-      top = MemoryPaths.work_tree_root(cwd)
-      lines = ["Current working directory:", cwd]
-      if top && top != cwd
-        lines << "Top of this checkout (where the project's commands run from; stay inside it):"
-        lines << top
-      elsif top
-        lines << "This checkout (the project's files; its commands run here):"
-        lines << top
+      Degrade.call(:prompt, "location_failed") do
+        cwd = Dir.pwd
+        top = MemoryPaths.work_tree_root(cwd)
+        lines = ["Current working directory:", cwd]
+        if top && top != cwd
+          lines << "Top of this checkout (where the project's commands run from; stay inside it):"
+          lines << top
+        elsif top
+          lines << "This checkout (the project's files; its commands run here):"
+          lines << top
+        end
+        if top && MemoryPaths.project_root(cwd) != top
+          lines << "This checkout is a linked git worktree: read, edit, run and commit only in it, never in the " \
+                   "repository's other checkouts."
+        end
+        home = Dir.home
+        lines << "Home directory: #{home} (write it as ~ or $HOME in commands and paths)" unless home.to_s.empty?
+        lines << "Project memories folder (your notes about the project, not its files; never work or run commands there):"
+        lines << Paths.tilde(Tools::MemoryRead.memories_dir("project"))
+        lines.join("\n")
       end
-      if top && MemoryPaths.project_root(cwd) != top
-        lines << "This checkout is a linked git worktree: read, edit, run and commit only in it, never in the " \
-                 "repository's other checkouts."
-      end
-      home = Dir.home
-      lines << "Home directory: #{home} (write it as ~ or $HOME in commands and paths)" unless home.to_s.empty?
-      lines << "Project memories folder (your notes about the project, not its files; never work or run commands there):"
-      lines << Paths.tilde(Tools::MemoryRead.memories_dir("project"))
-      lines.join("\n")
-    rescue StandardError
-      nil
     end
 
     # Only while the session has participants (people its owner invited to
@@ -662,12 +655,12 @@ module Samagotchi
     # once a participant invited to act is in a working session, the review
     # line for review participants; nothing with none (nil, false).
     def participants_section
-      mode = @participants_lookup.call
-      return nil unless mode
+      Degrade.call(:prompt, "participants_line_failed") do
+        mode = @participants_lookup.call
+        return nil unless mode
 
-      mode == ParticipantMode::PAIR ? PAIR_PARTICIPANTS_LINE : PARTICIPANTS_LINE
-    rescue StandardError
-      nil
+        mode == ParticipantMode::PAIR ? PAIR_PARTICIPANTS_LINE : PARTICIPANTS_LINE
+      end
     end
 
     # The model this session runs on. A model guesses its name from
@@ -675,19 +668,19 @@ module Samagotchi
     # says to answer from here. It depends only on the effective model, and
     # the prompt is rebuilt only on a switch (#reset!): no per-turn churn.
     def current_model
-      model = @model_lookup.call
-      return nil unless model && !model.ref.to_s.empty?
+      Degrade.call(:prompt, "model_line_failed") do
+        model = @model_lookup.call
+        return nil unless model && !model.ref.to_s.empty?
 
-      details = [model.host, model.key && "model key #{model.key}", model.served && "the server says it serves #{model.served}"]
-      details = details.compact.reject(&:empty?)
-      where = details.empty? ? "" : " (#{details.join("; ")})"
-      "Model: this session runs on #{model.ref}#{where}.\n" \
-        "Asked which model you are, answer with this line, not from training: a fine-tuned model often knows only " \
-        "its base model's name, but this session runs what is named here; it changes only with /model. " \
-        "Guidance for this model only goes in a model note: a memory named model_notes_<name> whose first line is " \
-        "`models: <glob on this model's id or key>`."
-    rescue StandardError
-      nil
+        details = [model.host, model.key && "model key #{model.key}", model.served && "the server says it serves #{model.served}"]
+        details = details.compact.reject(&:empty?)
+        where = details.empty? ? "" : " (#{details.join("; ")})"
+        "Model: this session runs on #{model.ref}#{where}.\n" \
+          "Asked which model you are, answer with this line, not from training: a fine-tuned model often knows only " \
+          "its base model's name, but this session runs what is named here; it changes only with /model. " \
+          "Guidance for this model only goes in a model note: a memory named model_notes_<name> whose first line is " \
+          "`models: <glob on this model's id or key>`."
+      end
     end
 
     # Fixed for the session's lifetime, so it doesn't churn the prompt cache.
@@ -701,7 +694,7 @@ module Samagotchi
       line = "Current session id: #{id} (resume later with `chi --resume #{id}`)"
       # The log path too: asked what went wrong, a model that has to look
       # it up guesses ~/.local/state first (the self-awareness probes).
-      log = begin; LogPath.resolve; rescue StandardError; nil; end
+      log = Degrade.call(:prompt, "log_path_failed") { LogPath.resolve }
       line = "#{line}\nMy debug log: #{log} (one record per line; this session's carry sid=#{id[0, Log::SID_LENGTH]})" if log
       parent = session.parent_id.to_s
       return line if parent.empty?

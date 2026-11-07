@@ -181,6 +181,9 @@ whose value is dropped, an example's last line included, `expect(wait_until { â€
 `Timeout.timeout`, or a statement `thread.join(N)`, whose N is unscaled and whose nil is dropped: use `join!`) live in `rubocop/` and run in `rake lint`, so CI fails on them. RSpec counts `wait_for`,
 `eventually`, `join!` and `pop!` as an example's expectation (`RSpec/NoExpectationExample`), so a wait can be an
 example's last line. What the cops can't see, `script/affected-specs` hints at (`timing:`, below).
+One lib cop sits beside them: `Samagotchi/SilentRescue` (a `rescue` of StandardError whose body is only a literal,
+`nil`, `[]`â€¦: use `Degrade`, or tag a right silence `# degrade-ok: why`; docs/internals/engine.md, Degrading). The
+files that had such rescues when it came are excluded in `.rubocop.yml`: that list only shrinks.
 
 ### Flakes
 

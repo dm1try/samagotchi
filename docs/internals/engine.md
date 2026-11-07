@@ -173,6 +173,12 @@ Stopped before the model was asked (prepare_turn returned false):
   → LLM::ModelResult(text: "", canceled: true, cancellation_reason: reason)
 ```
 
+**Degrading.** Work that has a fallback when it fails (a prompt section left out, an empty list from the Bridge) runs
+in `Degrade.call(area, event, fallback:, rescue:) { … }` (`degrade.rb`): same rescue class and fallback as a bare rescue,
+plus one WARN in the debug log per process for each `[area, event]` (DEBUG after; nothing on stderr). A bare `rescue`
+whose body is only a literal (`nil`, `false`, `[]`, `{}`, `""`, `0`) is flagged in lib by the `Samagotchi/SilentRescue`
+cop; a silence that is right (a client gone, a routine probe, Log's own internals) carries `# degrade-ok: why`.
+
 ## The model↔tool loop
 
 The Engine does not talk to models directly. `Engine#backend` picks the loop the effective model's host speaks:

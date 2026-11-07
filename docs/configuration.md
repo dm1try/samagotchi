@@ -1250,7 +1250,8 @@ One record is one line, plus indented payload lines at debug level:
 - Tags: `turn` (a session's event trail), `http` (model requests),
   `worker`, `bridge`, `web`, `attached`, `repl`, `idle`, `recap`, `hooks`,
   `plugins`, `guardrails`, `config`, `memory`, `model` (debug dumps), `context` (attached context fetches),
-  `broadcast` (chi broadcast's triage).
+  `broadcast` (chi broadcast's triage), `toolkit`, `system_one`, `prompt` (a system prompt section left out
+  after an error).
 - The format is parsed by `Samagotchi::LogLine` (`parse`, `each_record`);
   keep tools that read it on that parser.
 
@@ -1259,7 +1260,9 @@ What each level adds:
 - `error`: crashes (a worker, a bridge connection, the idle scheduler, a
   recap) with the first 20 backtrace frames; failed model requests.
 - `warn`: retries (429, 5xx, network), failed turns, hook and guardrail
-  problems, config warnings. Warnings `chi` prints on stderr are logged too,
+  problems, config warnings, and a fallback after an error (a prompt section or a
+  Bridge reply chi left out, `Degrade`): once per process for each kind, later ones
+  at `debug`. Warnings `chi` prints on stderr are logged too,
   with the same text as `msg=`; a worker's (its stderr goes nowhere) now
   only reach the file.
 - `info`: turns, generations and tool calls with sizes and times (never the

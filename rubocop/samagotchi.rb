@@ -7,3 +7,4 @@ require "rubocop"
 
 require_relative "cop/samagotchi/spec_sleep"
 require_relative "cop/samagotchi/silent_wait"
+require_relative "cop/samagotchi/silent_rescue"

@@ -28,6 +28,9 @@ class FakeResponsesManager
     @resume_calls = []
   end
 
+  # No process holds the session (the real one answers nil too).
+  def session_owner(_session_id, state_dir: nil) = nil
+
   def read_responses(_session_id, since_time: nil, state_dir: nil)
     return @responses if since_time.nil? || @times.nil?
 

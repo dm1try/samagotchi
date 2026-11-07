@@ -203,9 +203,9 @@ RSpec.describe Samagotchi::Log do
     end
   end
 
-  it "only uses tags from the closed list anywhere in lib/" do
+  it "only uses tags from the closed list anywhere in lib/, Degrade's areas included" do
     used = Dir[File.expand_path("../lib/**/*.rb", __dir__)].flat_map do |file|
-      File.read(file).scan(/\bLog\.(?:debug|info|warn|error|exception)\(\s*:(\w+)/).flatten
+      File.read(file).scan(/\b(?:Log\.(?:debug|info|warn|error|exception)|Degrade\.(?:call|note)?)\(\s*:(\w+)/).flatten
     end
 
     expect(used).not_to be_empty

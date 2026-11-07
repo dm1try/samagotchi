@@ -275,3 +275,33 @@ RSpec.describe Samagotchi::SystemPrompt, "appended files" do
     expect(Samagotchi::ConfigFile).to have_received(:appended_prompt_files).twice
   end
 end
+
+RSpec.describe Samagotchi::SystemPrompt, "a section that fails" do
+  let(:dir) { Dir.mktmpdir("samagotchi-prompt-log") }
+  let(:log_path) { File.join(dir, "chi.log") }
+
+  after { FileUtils.remove_entry(dir) }
+
+  def warns
+    return [] unless File.exist?(log_path)
+
+    File.open(log_path) { |io| Samagotchi::LogLine.each_record(io).to_a }.select { |r| r.level == "WARN" }
+  end
+
+  def with_sections(sections)
+    described_class.new(profile: -> { Samagotchi::ModelProfile.gemma4 }, tools: -> { Samagotchi::Tools::Registry.new },
+                        session: -> {}, thinking: -> {}, sections: sections)
+  end
+
+  it "is left out as before and writes one warn per process, however many builds" do
+    Samagotchi::Log.configure(path: log_path, level: :debug)
+    clean = with_sections(-> { [] }).build
+    failing = with_sections(-> { raise IOError, "plugin gone" })
+
+    expect(failing.build).to eq(clean)
+    failing.reset!
+    expect(failing.build).to eq(clean)
+    expect(warns.map { |r| [r.tag, r.event, r.fields["error"], r.fields["msg"]] })
+      .to eq([["prompt", "plugin_section_failed", "IOError", "plugin gone"]])
+  end
+end

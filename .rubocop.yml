@@ -11,8 +11,9 @@ plugins:
   - rubocop-rspec
 
 # Our own cops (rubocop/): the only non-style rules of the repo's own, for a
-# flake pattern no stock cop sees (a spec that sleeps to wait, a wait that
-# times out naming nothing). docs/testing.md, "Waiting and time".
+# pattern no stock cop sees (a spec that sleeps to wait, a wait that times
+# out naming nothing, a rescue that drops an error silently). docs/testing.md,
+# "Waiting and time".
 require:
   - ./rubocop/samagotchi.rb
 
@@ -458,3 +459,122 @@ Samagotchi/SilentWait:
   Include:
     - spec/**/*
     - lib/samagotchi/bundles/*/spec/**/*
+
+# A rescue whose fallback is a bare literal (nil, [], {}…) drops the error
+# with no trace: Degrade.call(area, event, fallback:) { … } logs it once
+# (docs/internals/engine.md, Degrading). A silence that is right carries
+# "# degrade-ok: why".
+Samagotchi/SilentRescue:
+  Enabled: true
+  Include:
+    - lib/**/*.rb
+  Exclude:
+    - lib/samagotchi/bundles/*/spec/**/*
+    # The files that had silent rescues when the cop came: shrink this list,
+    # never grow it. A file here is exempt whole, so a new silent rescue in
+    # it goes unflagged too; convert the file and take it off the list.
+    - lib/samagotchi/answer_refs.rb
+    - lib/samagotchi/archive_store.rb
+    - lib/samagotchi/bootstrap_command.rb
+    - lib/samagotchi/bootstrap/config_writer.rb
+    - lib/samagotchi/bootstrap/probe.rb
+    - lib/samagotchi/bridge_client.rb
+    - lib/samagotchi/bridge_client/event_stream.rb
+    - lib/samagotchi/bridge_client/stream_request.rb
+    - lib/samagotchi/bridge/card_store.rb
+    - lib/samagotchi/bridge/pending_card.rb
+    - lib/samagotchi/bridge/sse_writer.rb
+    - lib/samagotchi/bridge/turn_accumulator.rb
+    - lib/samagotchi/bundle_command.rb
+    - lib/samagotchi/bundles/github-pr/plugin.rb
+    - lib/samagotchi/bundles/known-names/hooks/known_names.rb
+    - lib/samagotchi/bundles/mcp/plugin.rb
+    - lib/samagotchi/bundles/slow-commands/plugin.rb
+    - lib/samagotchi/cancellation_controller.rb
+    - lib/samagotchi/client.rb
+    - lib/samagotchi/context_window.rb
+    - lib/samagotchi/desktop/macos.rb
+    - lib/samagotchi/engine.rb
+    - lib/samagotchi/guardrail_wiring.rb
+    - lib/samagotchi/guardrails_command.rb
+    - lib/samagotchi/guardrails/chi_dirs.rb
+    - lib/samagotchi/guardrails/gate.rb
+    - lib/samagotchi/guardrails/pair_command.rb
+    - lib/samagotchi/guardrails/targets.rb
+    - lib/samagotchi/home_notice.rb
+    - lib/samagotchi/host_registry.rb
+    - lib/samagotchi/idle_recap.rb
+    - lib/samagotchi/image_store.rb
+    - lib/samagotchi/kernel_loop.rb
+    - lib/samagotchi/llm_context_strategy.rb
+    - lib/samagotchi/llm/chat_loop.rb
+    - lib/samagotchi/llm/http.rb
+    - lib/samagotchi/llm/model_listing.rb
+    - lib/samagotchi/llm/openai_chat.rb
+    - lib/samagotchi/log_subscriber.rb
+    - lib/samagotchi/memory_bundle/entry_size.rb
+    - lib/samagotchi/memory_bundle/index_size.rb
+    - lib/samagotchi/memory_bundle/index_sync.rb
+    - lib/samagotchi/memory_bundle/index_updater.rb
+    - lib/samagotchi/memory_bundle/installed_manifest.rb
+    - lib/samagotchi/memory_bundle/provenance.rb
+    - lib/samagotchi/memory_bundle/shipped_history.rb
+    - lib/samagotchi/memory_bundle/system_bundle.rb
+    - lib/samagotchi/memory_bundle/trash.rb
+    - lib/samagotchi/memory_usage.rb
+    - lib/samagotchi/message_parts.rb
+    - lib/samagotchi/model_catalog.rb
+    - lib/samagotchi/model_list_store.rb
+    - lib/samagotchi/model_notes.rb
+    - lib/samagotchi/model_profile.rb
+    - lib/samagotchi/participant_mode.rb
+    - lib/samagotchi/plugin/sessions.rb
+    - lib/samagotchi/plugin/side_question.rb
+    - lib/samagotchi/prompt_files.rb
+    - lib/samagotchi/prompt_history.rb
+    - lib/samagotchi/prompt_warmup.rb
+    - lib/samagotchi/question_desk.rb
+    - lib/samagotchi/reasoning_history_command.rb
+    - lib/samagotchi/reasoning_history.rb
+    - lib/samagotchi/recap_setup.rb
+    - lib/samagotchi/recap_store.rb
+    - lib/samagotchi/row_refs.rb
+    - lib/samagotchi/sampling_settings.rb
+    - lib/samagotchi/self_report.rb
+    - lib/samagotchi/session_access/web_bridge_client.rb
+    - lib/samagotchi/session_inbox.rb
+    - lib/samagotchi/session_manager.rb
+    - lib/samagotchi/session_metrics.rb
+    - lib/samagotchi/session_observer.rb
+    - lib/samagotchi/session_participants.rb
+    - lib/samagotchi/session_retention.rb
+    - lib/samagotchi/session_setting.rb
+    - lib/samagotchi/steer_cut_after.rb
+    - lib/samagotchi/steer_cut.rb
+    - lib/samagotchi/steer.rb
+    - lib/samagotchi/system_one/judgment_settings.rb
+    - lib/samagotchi/terminal_ui.rb
+    - lib/samagotchi/terminal_ui/attached_loop.rb
+    - lib/samagotchi/terminal_ui/attached_loop/composer.rb
+    - lib/samagotchi/terminal_ui/attached_view.rb
+    - lib/samagotchi/terminal_ui/input_support.rb
+    - lib/samagotchi/terminal_ui/line_reader.rb
+    - lib/samagotchi/terminal_ui/reline_history_hook.rb
+    - lib/samagotchi/thinking_tails.rb
+    - lib/samagotchi/thinking.rb
+    - lib/samagotchi/tool_runner.rb
+    - lib/samagotchi/toolkit.rb
+    - lib/samagotchi/tools/delegate.rb
+    - lib/samagotchi/tools/execute.rb
+    - lib/samagotchi/tools/memory.rb
+    - lib/samagotchi/tools/task_runtime.rb
+    - lib/samagotchi/tools/tool_index.rb
+    - lib/samagotchi/update_command.rb
+    - lib/samagotchi/update_hint.rb
+    - lib/samagotchi/vision_context.rb
+    - lib/samagotchi/vision_support.rb
+    - lib/samagotchi/web/message_display.rb
+    - lib/samagotchi/web/participant_review.rb
+    - lib/samagotchi/web/session_control.rb
+    - lib/samagotchi/web/session_hub.rb
+    - lib/samagotchi/web/session_summary.rb

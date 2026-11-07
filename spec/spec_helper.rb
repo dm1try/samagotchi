@@ -219,6 +219,7 @@ RSpec.configure do |config|
     # The log facade is process-wide: unconfigured again, it resolves its
     # file from this example's config (the temp XDG_STATE_HOME by default).
     Samagotchi::Log.reset! if defined?(Samagotchi::Log)
+    Samagotchi::Degrade.reset! if defined?(Samagotchi::Degrade)
     Samagotchi::HostKeys.keychain = Samagotchi::HostKeys::NullKeychain
     # Every history stamp (MessageTime::KEY) an example's lib code makes is
     # one fixed time (SpecStamps#message_at), so whole-message expectations
@@ -323,6 +324,7 @@ RSpec.configure do |config|
     ENV.delete("SAMAGOTCHI_RECAP_ENABLED")
     WebMock.allow_net_connect!
     Samagotchi::Log.reset! if defined?(Samagotchi::Log)
+    Samagotchi::Degrade.reset! if defined?(Samagotchi::Degrade)
     example.run
   ensure
     ENV["XDG_CONFIG_HOME"] = SPEC_XDG_CONFIG_HOME
@@ -333,6 +335,7 @@ RSpec.configure do |config|
     ENV["SAMAGOTCHI_CACHE_WARMUP"] = "off"
     ENV["SAMAGOTCHI_UPDATE_NOTIFY"] = "off"
     Samagotchi::Log.reset! if defined?(Samagotchi::Log)
+    Samagotchi::Degrade.reset! if defined?(Samagotchi::Degrade)
   end
 
   config.around(:each, :warmup) do |example|
