@@ -1119,12 +1119,17 @@ button.ws-row:hover:not(:disabled){filter:none}@media(hover:hover){button.ws-row
 #infoBar .meta .bar-group{display:flex;gap:8px;align-items:center;min-width:0;flex:none}
 #infoBar .meta .bar-sep{flex:none;width:1px;height:14px;background:var(--border-strong)}
 /* Above the phone's one scrolling line the meta is one line too: the telemetry takes the room left and its folder gives
-   way first (it already loses its start); a chip is capped, cut with "…", their full text in the title. */
+   way first (it already loses its start), then the model chip, down to 10ch; a chip is capped, cut with "…", their full
+   text in the title. The two groups are column grids: the giving chip's track (minmax(…, max-content)) leaves the
+   other chips as the group's min-content, so a group never shrinks under its fixed chips (they once slid under
+   continue →), and the info keeps that min-width: past it the bar's buttons wrap to a line of their own. */
 @media(min-width:601px){
+  #infoBar .info{min-width:auto}
   #infoBar .meta{flex-wrap:nowrap}
-  #infoBar .meta .bar-group.telemetry{flex:1 1 0}
-  #infoBar .meta .telemetry>*{flex:none}
-  #infoBar .meta .telemetry>.dir{flex:0 1 auto;max-width:48ch}
+  #infoBar .meta .bar-group:is(.setup,.telemetry){display:grid;grid-auto-flow:column;grid-auto-columns:max-content}
+  #infoBar .meta .bar-group.setup{flex:0 1 auto;min-width:auto;grid-template-columns:max-content max-content minmax(10ch,max-content)}
+  #infoBar .meta .bar-group.telemetry{flex:1 1 0;min-width:auto;grid-template-columns:minmax(0,max-content)}
+  #infoBar .meta .telemetry>.dir{max-width:48ch}
   #infoBar .meta .model{max-width:40ch;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 }
 /* The plain chips (spans, links) and the status take the button chips' 1px border, transparent and outside their tint, so every chip is one height: a chip wrapping onto a row of plain ones doesn't grow it. */
