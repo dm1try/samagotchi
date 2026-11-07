@@ -559,10 +559,10 @@ module Samagotchi
         end
       end
 
+      # The call tool's declaration; its preview and targets are own_fields'.
       def call_spec
-        Plugin::ToolSpec.build(CALL_NAME, CALL_DESCRIPTION, params: CALL_PARAMS, label: @sources.first&.label,
-                                                           preview: ->(args) { call_preview(args) },
-                                                           targets: ->(args) { call_targets(args) }) do |args, surface|
+        Plugin::ToolSpec.build(CALL_NAME, CALL_DESCRIPTION, params: CALL_PARAMS,
+                                                           label: @sources.first&.label) do |args, surface|
           call(args["tool"].to_s, args["args"], surface: surface)
         end
       end

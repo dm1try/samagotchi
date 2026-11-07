@@ -19,8 +19,11 @@ module Samagotchi
       #   "Error: …" marks a failure); kctx is the KernelLoop's ToolContext
       # @!attribute label [String, nil] the activity line's action ("calling
       #   tool" when nil); ToolActivity knows the built-ins' own
-      # @!attribute preview [#call, nil] call → the activity line's params
-      # @!attribute targets [#call, nil] call → what guardrail rules match
+      # @!attribute preview [#call, nil] (call, surface) → the activity line's
+      #   params; +surface+ the turn's Tools::ToolSurface (nil: none)
+      # @!attribute targets [#call, nil] (call, surface) → what guardrail
+      #   rules match. #register takes a one-argument preview or targets
+      #   (call only, a plugin's) and gives it this form (.per_call)
       # @!attribute refs [#call, nil] call → the row's refs (a plugin's
       #   refs:, RowRefs checks what it gives)
       # @!attribute source [String] "core", or the bundle that added it
@@ -37,17 +40,21 @@ module Samagotchi
         def core? = source == "core"
 
         # Its preview on +call+ (the row's params), nil without one.
-        # +surface+, the turn's Tools::ToolSurface (nil: none), goes to a
-        # preview that takes a second argument (call_tool's: what the turn
-        # reaches); a plugin's takes the call only.
-        def preview_of(call, surface = nil) = preview && Entry.per_call(preview, call, surface)
+        # +surface+, the turn's Tools::ToolSurface (nil: none), is what
+        # call_tool's reads (what the turn reaches); a plugin's ignores it.
+        def preview_of(call, surface = nil) = preview&.call(call, surface)
 
         # Its targets on +call+ (what guardrail rules match), nil without
         # any; +surface+ as #preview_of.
-        def targets_of(call, surface = nil) = targets && Entry.per_call(targets, call, surface)
+        def targets_of(call, surface = nil) = targets&.call(call, surface)
 
-        def self.per_call(callable, call, surface)
-          callable.arity == 1 ? callable.call(call) : callable.call(call, surface)
+        # +callable+ as (call, surface) → value, the one form an entry's
+        # preview and targets take: a one-argument one (call only) is given
+        # the call alone. The arity is read here, once, at registration.
+        def self.per_call(callable)
+          return callable if callable.nil? || callable.arity != 1
+
+          ->(call, _surface = nil) { callable.call(call) }
         end
 
         # Offered in a turn under +layers+ (the turn's LLM context layers).
@@ -99,8 +106,9 @@ module Samagotchi
                    unwrap: nil)
         raise ArgumentError, "tool #{name} is already registered" if @entries.key?(name)
 
-        @entries[name] = Entry.new(name: name, schema: schema, handler: handler, label: label, preview: preview,
-                                   targets: targets, refs: refs, source: source, layer: layer, unwrap: unwrap)
+        @entries[name] = Entry.new(name: name, schema: schema, handler: handler, label: label,
+                                   preview: Entry.per_call(preview), targets: Entry.per_call(targets), refs: refs,
+                                   source: source, layer: layer, unwrap: unwrap)
       end
 
       # Remove a tool (a plugin's tool set changed after load).
