@@ -218,7 +218,7 @@ RSpec.describe "Bundles' judgments on the Engine" do
 
     it "only the bundles' layer passes a host or a model to from_config" do
       lib = File.expand_path("../../../lib/samagotchi", __dir__)
-      source = [File.join(lib, "engine.rb"), *Dir[File.join(lib, "engine/*.rb")].sort].map { |path| File.read(path) }.join
+      source = [File.join(lib, "engine.rb"), *Dir[File.join(lib, "{engine,turn_stages}/*.rb")].sort].map { |path| File.read(path) }.join
       calls = source.scan(/SystemOne::Client\.from_config\(.*?\)/m)
       with_own = calls.select { |call| call.match?(/\b(host|model):/) }
       expect(calls.size).to be >= 4

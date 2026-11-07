@@ -40,40 +40,34 @@ Engine#run_turn(session, prompt, on_event:, max_iterations:, cancel_controller:,
   │
   ├── Client.swap_probe_cancel(turn.controller)   # a Stop cuts this turn's /props probes
   │
-  ├── prepare_turn(turn, images)
-  │     # Emits :turn_started {session_id, prompt, turn_id, at (the turn's wall time, Turn#wall: read once,
-  │     #                      the user message's and the reminders' stamp too), continue: true (only on a continue),
-  │     #                      resumed: true (only on a step-limit Continue: resumed: given),
-  │     #                      images (only when there are any), cut_after (the model's cut wait, s)}
-  │     # start_toolkit_suggestion: ToolkitSuggest's ask on its own thread from a copied snapshot (audit and on
-  │     #   mode: one eligibility; SideJudgments' :toolkit kind: one in flight, warn-not-raise). Audit never blocks the turn or changes the session; on mode
-  │     #   returns a ToolkitSuggest::Pending the turn joins below. See configuration.md (Toolkits) and
-  │     #   guardrails.md (System 1).
-  │     # refresh_profile! (may ask the server's /props once)
-  │     # turn.prepared_settings = LLM::TurnSettings (vision, sampling, thinking; model_name, loads_tools …
-  │     #   are set in generate, after the hooks, from the final model),
-  │     #   from one EffectiveModel; ThinkingNotices#turn_started keeps the level and says one the host can't do
-  │     # announces guardrail load failures, starts and awaits plugin init tasks, applies staged tools,
-  │     #   then (on mode) settle_toolkit_suggestion: waits for the ask up to System 1's timeout from its
-  │     #   start, or a Stop (which wins over an answer already in, and cuts the ask's request through
-  │     #   Pending#cancel_controller; a Stop after a timeout doesn't), and on a candidate picked ≥ threshold
-  │     #   ToolkitBinding#suggest sets the session's toolkit, origin suggested, saved, with the notice;
-  │     #   then start_context_judge (owner turns only: ContextCandidatesLog#look, and unless
-  │     #   context.candidates.mode is off, ContextJudge's asks on SideJudgments' :context kind, each answer to
-  │     #   ContextCandidateChoice#after_judged (on mode: attach to the session's folder, or a card held while a
-  │     #   turn runs and shown from run_turn's ensure, show_context_cards_after_turn); on a shared
-  │     #   local System 1 host they wait for the turn's end: started before warm_up_next_turn, whose warm-up
-  │     #   waits for them, or from run_turn's ensure; docs/context.md, The judge);
-  │     #   then the session's toolkit (apply_toolkit!: Registry#toolkit, ToolIndex#refresh! for find_tools'
-  │     #   chi line, a prompt rebuild when it changed; a warn notice per plugin tool that arrived mid-session
-  │     #   with nothing to reach it, Registry#stranded_names). A Stop during the probes or the waits returns false
-  │     #   (the ask's line says canceled; an ensure marks one the turn never settled failed).
-  │     # fires the :session_start hook on the Engine's first turn, then the :before_turn hook
-  │     #   (a frozen copy of the history, the prompt, and resumed)
-  │     # turn_messages: system head + history + due reminders (:reminder_injected) + the user message
-  │     #   + the plugins' staged tool loads (ctx.load_tools: a kind "tool_change" system entry per bundle,
-  │     #   only when the turn's host takes tool changes; #append_tool_loads)
-  │     # Returns false when a Stop came during the probes, the init wait or the toolkit ask, else true
+  ├── prepare_turn(turn, images)                 # its skeleton; the stages are in "Turn stages" below
+  │     # emit :turn_started {session_id, prompt, turn_id, at (the turn's wall time, Turn#wall: read once,
+  │     #   the user message's and the reminders' stamp too), continue: true (only on a continue),
+  │     #   resumed: true (only on a step-limit Continue), images (only when there are any),
+  │     #   cut_after (the model's cut wait, s)}; an image error raised after it
+  │     @toolkit_suggestion.start(turn)          # before the probes: its latency hides behind them
+  │     refresh_profile!                         # may ask the server's /props once
+  │     turn.prepared_settings = turn_settings(session); refuse_images!
+  │     #   (LLM::TurnSettings: vision, sampling, thinking from one EffectiveModel; model_name, loads_tools …
+  │     #   come in generate, after the hooks; ThinkingNotices#turn_started says a level the host can't do)
+  │     STOP CHECK A → @toolkit_suggestion.abandon(turn, :canceled); return false
+  │     announce_guardrail_failures; start_init_tasks!; await_init_tasks; apply_staged_tools!
+  │     @toolkit_suggestion.settle(turn)         # on mode: the turn joins the ask, before anything is declared
+  │     @context_judge.start(turn)               # owner turns only; its asks run beside the turn
+  │     audit_objectives_incoming(turn)
+  │     apply_toolkit!(session, on_event)        # Registry#toolkit, ToolIndex#refresh! for find_tools' chi
+  │     #   line, a prompt rebuild when it changed; a warn per plugin tool that arrived mid-session with
+  │     #   nothing to reach it (Registry#stranded_names)
+  │     refresh_participants!(session)
+  │     STOP CHECK B → return false              # before the hooks run or a reminder is used up
+  │     :session_start hook (the Engine's first turn), then :before_turn (a frozen copy of the history,
+  │     #   the prompt, resumed)
+  │     turn_messages(turn, image_refs)          # system head + history + due reminders (:reminder_injected)
+  │     #   + the user message + the plugins' staged tool loads (ctx.load_tools: a kind "tool_change" system
+  │     #   entry per bundle, only when the turn's host takes tool changes; #append_tool_loads)
+  │     ensure: @toolkit_suggestion.abandon(turn, :failed)   # nothing once the ask was settled;
+  │     #   then @toolkit_suggestion.finish(turn): the stage lets the turn and its Pending go
+  │     # Returns false at a STOP CHECK (stopped_before_model ends the turn canceled), else true
   │
   ├── generate(turn, max_iterations:, max_tool_output_chars:, pending_input:)
   │     # one EffectiveModel (after the hooks, which may switch the model): sync_kernel_client!, then
@@ -117,7 +111,25 @@ Engine#run_turn(session, prompt, on_event:, max_iterations:, cancel_controller:,
         # probe cancel swapped back
         # the context window cache dropped, so the next turn asks the server again
         # steers left logged as dropped, activity recorded, turn-scoped hooks cleared
+        # then @context_judge.show_cards_after_turn (after the flag is released), the objective proposals
 ```
+
+### Turn stages
+
+A step that keeps state across the turn's preparation is a collaborator under `lib/samagotchi/turn_stages/`, built
+in `Engine#initialize` (before the plugins load) from constructor arguments, never reading the Engine's ivars, and
+called by name from the skeleton above, next to the STOP CHECKs. Their input is the `Turn` (and its `TurnContext`);
+their state is their own. The Engine's public methods forward to them (`warm_toolkit_suggestion!`, the private
+`judge_late_candidates`).
+
+| Stage | Built with | Called | State |
+|---|---|---|---|
+| `TurnStages::ToolkitSuggestion` (ToolkitSuggest's ask: audit and on mode, one eligibility, a copied snapshot, SideJudgments' `:toolkit` kind) | `side_judgments`, `host_registry`, `toolkit_binding`, `tools`, `state_dir`, `recording`, `runs` | `start(turn)` before `refresh_profile!`; `settle(turn)` after `apply_staged_tools!` (on mode: waits up to System 1's timeout from its start, or a Stop, which wins over an answer already in and cuts the ask through `Pending#cancel_controller`; a pick ≥ threshold → `ToolkitBinding#suggest`); `abandon(turn, why)` at STOP CHECK A (`:canceled`) and in the ensure (`:failed`), then `finish(turn)` there; `warm!(session)` / `stop_warmup` (Worker start, `shutdown`) | the turn's `ToolkitSuggest::Pending` while it prepares (turn thread only; another turn's is never touched; dropped at `finish`), the warm-up thread |
+| `TurnStages::ContextJudge` (the attached-context candidate judge: [attached-context.md](attached-context.md), [context.md](../context.md) "The judge") | `side_judgments`, `host_registry`, `state_dir`, `recording`, `session`, `messages`, `turn_running`, `show_card` | `start(turn)` after `settle`, before `apply_toolkit!` (owner turns only: `ContextCandidatesLog#look`, then unless `context.candidates.mode` is off the due asks on SideJudgments' `:context` kind); `late_candidates` (a plugin's late proposal); `show_cards_after_turn` from `run_turn`'s ensure, after `release_turn` | the cards an answer brought while a turn ran, under their mutex |
+
+On a shared local System 1 host the judge's asks wait for the turn's end: started before `warm_up_next_turn`, whose
+warm-up waits for them, or from `run_turn`'s ensure (docs/context.md, The judge). See configuration.md (Toolkits) and
+guardrails.md (System 1) for the suggestion.
 
 ### Error paths
 
@@ -962,8 +974,9 @@ Paths are under `lib/samagotchi/`.
 | `engine/session.rb` | `Engine::SessionPart`: `#session=`, the state dir, the relay's view, the system prompt and its memory names |
 | `engine/verify.rb` | `Engine::VerifyPart`: Verify and Revise anchors at a turn's end, the verdict |
 | `engine/questions.rb` | `Engine::QuestionsPart`: ask-user-question (QuestionDesk, forwarded) |
-| `engine/toolkit.rb` | `Engine::ToolkitPart`: the toolkit, `ctx.load_tools`, System 1's toolkit suggestion |
-| `engine/context_judge.rb` | `Engine::ContextJudgePart`: the attached-context candidate judge and its cards |
+| `engine/toolkit.rb` | `Engine::ToolkitPart`: the toolkit, `ctx.load_tools`, System 1's toolkit suggestion (the stage's builder and `warm_toolkit_suggestion!`, forwarded) |
+| `engine/context_judge.rb` | `Engine::ContextJudgePart`: the candidate judge's stage builder and `judge_late_candidates`, forwarded |
+| `turn_stages/toolkit_suggestion.rb`, `turn_stages/context_judge.rb` | `TurnStages::ToolkitSuggestion`, `TurnStages::ContextJudge`: the turn stages ("Turn stages" above) |
 | `engine/turn_helpers.rb` | `Engine::TurnHelpersPart`: a turn's settings, images, model ref, used memories, the turn-end warm-up |
 | `engine/turn_end.rb` | `Engine::TurnEndPart`: the normal ending and after-turn hooks, release, what an ending keeps, last_turn, the answer's display |
 | `event_fanout.rb` | `EventFanout`: how an event reaches the turn's sink and the observers (`emit_event`), the loops' stream handler, the working set's emit and dedupe; the Engine forwards |

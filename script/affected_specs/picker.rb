@@ -53,7 +53,7 @@ module AffectedSpecs
                 lib/samagotchi/llm/native_backend.rb lib/samagotchi/tool_runner.rb lib/samagotchi/tool_response.rb
                 lib/samagotchi/guardrails/gate.rb lib/samagotchi/guardrail_wiring.rb lib/samagotchi/system_prompt.rb
                 lib/samagotchi/tool_declarations.rb lib/samagotchi/tools/registry.rb lib/samagotchi/turn_context.rb
-                lib/samagotchi/turn_state.rb],
+                lib/samagotchi/turn_state.rb lib/samagotchi/turn_stages/*.rb],
       specs: %w[spec/engine_turn_golden_spec.rb],
       why: "whole-turn goldens: a real Engine#run_turn's requests, events and hook payloads per wire" },
     { match: %w[lib/samagotchi/turn_context.rb lib/samagotchi/turn_state.rb lib/samagotchi/event_fanout.rb
@@ -73,6 +73,10 @@ module AffectedSpecs
       why: "Engine's model choice and profile, tested through the Engine" },
     { match: %w[lib/samagotchi/engine/*.rb],
       specs: %w[spec/engine_spec.rb spec/engine_*_spec.rb], why: "Engine's parts (engine/*.rb), tested through the Engine" },
+    { match: %w[lib/samagotchi/turn_stages/*.rb],
+      specs: %w[spec/toolkit_suggest_engine_spec.rb spec/toolkit_suggest_on_spec.rb spec/context_judge_engine_spec.rb
+                spec/samagotchi/plugin/judgments_engine_spec.rb],
+      why: "the turn stages (TurnStages), tested through the Engine's turn" },
     { match: %w[lib/samagotchi/turn_endings.rb],
       specs: %w[spec/engine_turn_endings_spec.rb spec/engine_ctrl_c_progress_spec.rb spec/engine_empty_answer_retry_spec.rb],
       why: "Engine's turn endings, tested through the Engine" },

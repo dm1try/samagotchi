@@ -144,8 +144,10 @@ source's why. `task_p < TASK_MIN` (0.5) leaves the candidate unjudged; `due?` de
 lines (never twice at one owner-prompt count; one re-ask after `reask_after_turns`; then done). No answer writes
 nothing, so the next owner prompt asks again.
 
-The driver is the Engine, not the judge: `Engine#start_context_judge` (an owner turn's start; skipped for participants,
-review sessions and a Continue) and `judge_late_candidates` (a proposal after the prompts) call `context_judge_pass`.
+The driver is the turn stage `TurnStages::ContextJudge` (`turn_stages/context_judge.rb`), not the judge:
+`Engine#prepare_turn` calls its `start(turn)` after the toolkit suggestion settled and before `apply_toolkit!` (an owner
+turn's start; skipped for participants, review sessions and a Continue), and `Engine#judge_late_candidates` (a proposal
+after the prompts) forwards to its `late_candidates`; both make one pass (docs/internals/engine.md, "Turn stages").
 It first logs status changes (`ContextCandidatesLog.look`), returns at `mode: off`, builds the due `Job`s, and hands
 them to `SideJudgments` (`:context` kind: one thread, one batch per session at a time), asked at once on any host,
 the model's own server too.
@@ -153,10 +155,10 @@ the model's own server too.
 `ContextCandidateChoice.after_judged` acts on `fields["would"]` in `on` mode only: *attach* → `judge_attach` (a
 session source with `JUDGE_WHY`, no probability in the model-visible why), *offer* → one card (`offer_card`, buttons
 `/context attach NAME` and `/context decline NAME`, guarded by a `carded` log line). It re-checks that the candidate
-is still proposed, since the user may have chosen while it was asked. Cards are shown through the Engine's
-`context_choice` lambda, which holds them while a turn runs (`@context_cards_after_turn`). `choose` is the
-`/context attach|decline` command's body (`SessionCommands`), shared by the card's buttons; it refuses in a review
-session. An attach only writes the session folder: its note comes with the next between-turn delivery, never into a
+is still proposed, since the user may have chosen while it was asked. Cards are shown through the stage's choice
+lambda, which holds them while a turn runs; `run_turn`'s ensure shows them after `release_turn`
+(`show_cards_after_turn`). `choose` is the `/context attach|decline` command's body (`SessionCommands`), shared by the
+card's buttons; it refuses in a review session. An attach only writes the session folder: its note comes with the next between-turn delivery, never into a
 running turn.
 
 `ContextCandidatesLog` is `context_candidates.jsonl` beside the sessions folder (a `SideJudgments.log`: 0600, one

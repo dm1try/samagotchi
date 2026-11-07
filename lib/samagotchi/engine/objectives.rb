@@ -38,7 +38,7 @@ module Samagotchi
       end
 
       # A change the model proposes (the objectives tool), kept until the turn
-      # is over, as #context_choice's cards are: a card shown then is a quiet one, between turns, with its Apply kept
+      # is over, as TurnStages::ContextJudge's cards are: a card shown then is a quiet one, between turns, with its Apply kept
       # over a restart (CardStore), not a running turn's that says it waits on the
       # user. The same change twice in a turn is one card.
       # @return [Boolean] false past Objectives::PROPOSALS_PER_TURN

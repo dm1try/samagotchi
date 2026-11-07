@@ -130,7 +130,7 @@ module Samagotchi
       true
     end
 
-    # On mode's suggestion (Engine#settle_toolkit_suggestion), on the turn
+    # On mode's suggestion (TurnStages::ToolkitSuggestion#settle), on the turn
     # thread before #apply!: put +session+ on kit +name+ with origin
     # suggested, saved, and tell the user through #use's notice path. Not
     # when the session's toolkit isn't the default any more (a /toolkit or
@@ -157,8 +157,8 @@ module Samagotchi
       true
     end
 
-    # On mode's ask gave the turn no suggestion to judge (Engine
-    # #settle_toolkit_suggestion: a timeout, no answer): say, as a warn
+    # On mode's ask gave the turn no suggestion to judge
+    # (TurnStages::ToolkitSuggestion#settle: a timeout, no answer): say, as a warn
     # notice, that +session+ runs its default (not once a toolkit was
     # chosen meanwhile). +why+ is fallback_notice's.
     def fell_back(session, why)
