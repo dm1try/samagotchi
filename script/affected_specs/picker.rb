@@ -60,6 +60,8 @@ module AffectedSpecs
       specs: %w[spec/engine_profile_resolution_spec.rb spec/engine_effective_model_characterization_spec.rb
                 spec/engine_run_turn_seam_spec.rb],
       why: "Engine's model choice and profile, tested through the Engine" },
+    { match: %w[lib/samagotchi/engine/*.rb],
+      specs: %w[spec/engine_spec.rb spec/engine_*_spec.rb], why: "Engine's parts (engine/*.rb), tested through the Engine" },
     { match: %w[lib/samagotchi/turn_endings.rb],
       specs: %w[spec/engine_turn_endings_spec.rb spec/engine_ctrl_c_progress_spec.rb spec/engine_empty_answer_retry_spec.rb],
       why: "Engine's turn endings, tested through the Engine" },

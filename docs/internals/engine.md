@@ -876,7 +876,27 @@ Paths are under `lib/samagotchi/`.
 
 | File | Role |
 |---|---|
-| `engine.rb` | Engine: turn lifecycle, event emission, plugins, model switching |
+| `engine.rb` | Engine: the wiring (`initialize`, the `build_*` methods, the kernel), the turn skeleton (`run_turn`, `begin_turn`, `prepare_turn`'s ordered steps, `generate`, `end_turn`) and `shutdown`; the rest is in its parts, below |
+| `engine/steering.rb` | `Engine::SteeringPart`: steering the running turn (or the next), the drains, the cut, the activity clock, the cancel |
+| `engine/side_requests.rb` | `Engine::SideRequestsPart`: ctx.ask_model's and Check this's side requests, their side usage, System 1's recording |
+| `engine/recap.rb` | `Engine::RecapPart`: the idle recap job and `/recap`, the idle scheduler's start and stop |
+| `engine/models.rb` | `Engine::ModelsPart`: the model's names, identity and notes, `/model`'s switch, the profile, the loop it runs on |
+| `engine/model_settings.rb` | `Engine::ModelSettingsPart`: the session's model settings (SessionModelSettings) and the snapshots (EngineSnapshots), forwarded |
+| `engine/events.rb` | `Engine::EventsPart`: observers, `#announce`, the event lock, held announcements, load events, the emit helpers |
+| `engine/cards.rb` | `Engine::CardsPart`: `#show_card`, anytime commands and their threads |
+| `engine/objectives.rb` | `Engine::ObjectivesPart`: the objectives' view, proposals and audit |
+| `engine/messages.rb` | `Engine::MessagesPart`: the session messages API (out-of-turn edits, checkpoints, the live conversation) |
+| `engine/plugins.rb` | `Engine::PluginsPart`: loading plugins, init tasks and staged tools, `Plugin::Host` |
+| `engine/hooks.rb` | `Engine::HooksPart`: turn-scoped hooks, the hook runtime (HookRoutes, forwarded), reminders |
+| `engine/guardrails.rb` | `Engine::GuardrailsPart`: the guardrails' readers and the first turn's load warnings |
+| `engine/participants.rb` | `Engine::ParticipantsPart`: the turn's author, a pair turn's stop, the participants line |
+| `engine/session.rb` | `Engine::SessionPart`: `#session=`, the state dir, the relay's view, the system prompt and its memory names |
+| `engine/verify.rb` | `Engine::VerifyPart`: Verify and Revise anchors at a turn's end, the verdict |
+| `engine/questions.rb` | `Engine::QuestionsPart`: ask-user-question (QuestionDesk, forwarded) |
+| `engine/toolkit.rb` | `Engine::ToolkitPart`: the toolkit, `ctx.load_tools`, System 1's toolkit suggestion |
+| `engine/context_judge.rb` | `Engine::ContextJudgePart`: the attached-context candidate judge and its cards |
+| `engine/turn_helpers.rb` | `Engine::TurnHelpersPart`: a turn's settings, images, model ref, used memories, the turn-end warm-up |
+| `engine/turn_end.rb` | `Engine::TurnEndPart`: the normal ending and after-turn hooks, release, what an ending keeps, last_turn, the answer's display |
 | `event_fanout.rb` | `EventFanout`: how an event reaches the turn's sink and the observers (`emit_event`), the loops' stream handler, the working set's emit and dedupe; the Engine forwards |
 | `engine_snapshots.rb` | `EngineSnapshots`: the UIs' read model, `session_state_snapshot` (cheap, never raises) and `stats_snapshot` (may probe `/props`); the Engine forwards |
 | `model_binding.rb` | `ModelBinding`: the model choice and the prompt profile resolved for it, under one mutex, and the overlay keys; the Engine forwards |
