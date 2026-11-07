@@ -270,17 +270,19 @@ RSpec.describe Samagotchi::SessionRetention do
       expect(Dir.exist?(corrupt)).to be(true)
     end
 
-    it "deletes a leftover scratch session at once, keeping one a terminal's one-shot still owns" do
+    it "deletes a leftover scratch session whatever its age, keeping one a terminal's one-shot still owns" do
       scratch = lambda do |s|
         s.messages << { role: "user", content: "hi" }
         s.scratch = true
       end
-      leftover = saved(age: Time.now, &scratch)
-      running = saved(age: Time.now, &scratch)
+      past_start = Time.now - described_class::SCRATCH_START_GRACE - 1
+      leftover = saved(age: past_start, &scratch)
+      running = saved(age: past_start, &scratch)
       lock = Samagotchi::OwnerLock.acquire(Samagotchi::Session.session_dir(running.id, state_dir: tmpdir), kind: "tui")
 
       # keep_status running doesn't save a leftover: nobody runs it.
       Samagotchi::Session.load(leftover.id, state_dir: tmpdir).tap { |s| s.status = Samagotchi::Session::STATUS_RUNNING }.save(state_dir: tmpdir)
+      File.utime(past_start, past_start, File.join(tmpdir, "#{leftover.id}.json"))
       result = described_class.prune(state_dir: tmpdir, keep_status: "running")
 
       expect(result[:deleted]).to eq([leftover.id])
@@ -289,6 +291,51 @@ RSpec.describe Samagotchi::SessionRetention do
       expect(File.exist?(File.join(tmpdir, "#{running.id}.json"))).to be(true)
     ensure
       lock&.release
+    end
+  end
+
+  # `chi scratch` saves its session, then spawns the worker that takes its
+  # owner lock: a sweep in between (chi web starting at that moment) must
+  # not take the session from under it.
+  describe ".apply and a scratch session being started" do
+    def scratch_saved_at(time)
+      session = Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp",
+                                                scratch: true)
+      session.save(state_dir: tmpdir)
+      File.utime(time, time, File.join(tmpdir, "#{session.id}.json"))
+      session
+    end
+
+    let(:saved_at) { Time.at(1_800_000_000) }
+    let(:grace) { described_class::SCRATCH_START_GRACE }
+
+    it "keeps an unowned scratch session saved within the worker start grace" do
+      starting = scratch_saved_at(saved_at)
+
+      result = described_class.apply(state_dir: tmpdir, days: 14, max_count: 500, alive_check: ->(_) { false },
+                                     now: saved_at + grace - 1)
+
+      expect(result[:kept]).to eq([starting.id])
+      expect(File.exist?(File.join(tmpdir, "#{starting.id}.json"))).to be(true)
+    end
+
+    it "deletes it once the grace has passed and still nobody owns it" do
+      leftover = scratch_saved_at(saved_at)
+
+      result = described_class.apply(state_dir: tmpdir, days: 14, max_count: 500, alive_check: ->(_) { false },
+                                     now: saved_at + grace + 1)
+
+      expect(result[:deleted]).to eq([leftover.id])
+    end
+
+    it "keeps it under chi sessions clean (test_only, any_age) too" do
+      starting = scratch_saved_at(saved_at)
+
+      result = described_class.apply(state_dir: tmpdir, days: 0, max_count: 0, test_only: true, any_age: true,
+                                     alive_check: ->(_) { false }, now: saved_at + 1)
+
+      expect(result[:deleted]).to be_empty
+      expect(result[:kept]).to eq([starting.id])
     end
   end
 
@@ -360,6 +407,8 @@ RSpec.describe Samagotchi::SessionRetention do
       scratch = aged(status: Samagotchi::Session::STATUS_IDLE, days_old: 0)
       path = File.join(tmpdir, "#{scratch.id}.json")
       File.write(path, JSON.generate(JSON.parse(File.read(path)).merge("scratch" => true)))
+      past_start = Time.now - described_class::SCRATCH_START_GRACE - 1
+      File.utime(past_start, past_start, path)
 
       result = described_class.prune(state_dir: tmpdir, days: 0, max_count: 1)
 
