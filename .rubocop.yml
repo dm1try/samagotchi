@@ -478,7 +478,6 @@ Samagotchi/SilentRescue:
     - lib/samagotchi/bootstrap_command.rb
     - lib/samagotchi/bootstrap/config_writer.rb
     - lib/samagotchi/bootstrap/probe.rb
-    - lib/samagotchi/bridge_client.rb
     - lib/samagotchi/bridge_client/event_stream.rb
     - lib/samagotchi/bridge_client/stream_request.rb
     - lib/samagotchi/bridge/card_store.rb
@@ -505,7 +504,6 @@ Samagotchi/SilentRescue:
     - lib/samagotchi/host_registry.rb
     - lib/samagotchi/idle_recap.rb
     - lib/samagotchi/image_store.rb
-    - lib/samagotchi/kernel_loop.rb
     - lib/samagotchi/llm_context_strategy.rb
     - lib/samagotchi/llm/chat_loop.rb
     - lib/samagotchi/llm/http.rb
@@ -540,7 +538,6 @@ Samagotchi/SilentRescue:
     - lib/samagotchi/recap_store.rb
     - lib/samagotchi/row_refs.rb
     - lib/samagotchi/sampling_settings.rb
-    - lib/samagotchi/self_report.rb
     - lib/samagotchi/session_access/web_bridge_client.rb
     - lib/samagotchi/session_inbox.rb
     - lib/samagotchi/session_manager.rb
@@ -562,7 +559,6 @@ Samagotchi/SilentRescue:
     - lib/samagotchi/terminal_ui/reline_history_hook.rb
     - lib/samagotchi/thinking_tails.rb
     - lib/samagotchi/thinking.rb
-    - lib/samagotchi/tool_runner.rb
     - lib/samagotchi/toolkit.rb
     - lib/samagotchi/tools/delegate.rb
     - lib/samagotchi/tools/execute.rb

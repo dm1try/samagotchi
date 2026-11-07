@@ -3,6 +3,7 @@
 require_relative "working_set"
 require_relative "working_set_steer"
 require_relative "tools/memory"
+require_relative "session"
 
 module Samagotchi
   # /working-set: with no arguments the session's working set (WorkingSet,
@@ -50,7 +51,7 @@ module Samagotchi
       return [listing, [], :ok] if verb.nil?
       raise ArgumentError, USAGE unless VERBS.include?(verb) && !words.empty?
 
-      session = @engine.session or raise ArgumentError, "no session yet"
+      session = @engine.session or raise ArgumentError, Session::NONE_YET
       cwd = session.working_directory
       strategy = @engine.working_set_strategy
       messages = @engine.clone_messages(session.messages)
@@ -79,7 +80,7 @@ module Samagotchi
     # The set under the strategy the next turn runs, and the pending ops.
     def listing
       session = @engine.session
-      return "no session yet" unless session
+      return Session::NONE_YET unless session
 
       messages = Array(session.messages)
       items = WorkingSet.build(messages, cwd: session.working_directory, strategy: @engine.working_set_strategy,

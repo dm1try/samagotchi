@@ -6,6 +6,7 @@ require "open3"
 require "tempfile"
 require "time"
 require_relative "../paths"
+require_relative "../session"
 
 module Samagotchi
   module Plugin
@@ -149,7 +150,7 @@ module Samagotchi
       def pair_again(ctx)
         peer = self.class
         previous = ctx.continues or return "not a continue"
-        id = ctx.session_id or return "no session yet"
+        id = ctx.session_id or return Session::NONE_YET
         left = ctx.context.left_behind.find { |row| row.name == peer::INBOX }
         hint = left&.hint.to_s.strip
         return "no #{peer::INBOX} left behind" if hint.empty?

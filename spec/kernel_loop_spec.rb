@@ -46,6 +46,23 @@ RSpec.describe Samagotchi::KernelLoop do
       expect(kernel.run([{ role: "user", content: "hi" }]).output).to eq("Hello!")
     end
 
+    it "a stream callback, a hook fire or a context window lookup that raises doesn't break the turn and is logged" do
+      allow(Samagotchi::Log).to receive(:warn)
+      registry = Samagotchi::Hooks::Registry.new
+      allow(registry).to receive(:fire).and_raise(IOError, "registry gone")
+      allow(client).to receive(:complete).and_return("Hello!")
+
+      loop = described_class.new(client: client, hooks: registry)
+      result = loop.run([{ role: "user", content: "hi" }], on_stream_event: ->(_e) { raise IOError, "client gone" })
+
+      expect(result.output).to eq("Hello!")
+      allow(Samagotchi::ContextWindow).to receive(:resolve).and_raise(IOError, "window gone")
+      expect(loop.tool_output_window).to be_nil
+      expect(Samagotchi::Log).to have_received(:warn).with(:turn, "stream_event_callback_failed", hash_including(msg: "client gone"))
+      expect(Samagotchi::Log).to have_received(:warn).with(:hooks, "hook_fire_failed", hash_including(msg: "registry gone"))
+      expect(Samagotchi::Log).to have_received(:warn).with(:model, "context_window_unresolved", hash_including(msg: "window gone"))
+    end
+
     it "gives after_generation a frozen copy of the conversation as sent" do
       registry = Samagotchi::Hooks::Registry.new
       seen = []

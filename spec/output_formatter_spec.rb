@@ -31,6 +31,14 @@ RSpec.describe Samagotchi::OutputFormatter do
       expect(described_class.strip_markup("<|tool_call>call:read{path:x}<tool_call|>")).to eq("")
       expect(described_class.strip_markup("a <|tool_call>never closed")).to eq("a never closed")
     end
+
+    it "drops a thought cut off before it closed when the text opens with it, as the Gemma channel's" do
+      expect(described_class.strip_markup("<think>still going")).to eq("")
+      expect(described_class.strip_markup("<think>done</think>\n<think>still going")).to eq("")
+      expect(described_class.strip_markup("<|channel>thought\nstill going")).to eq("")
+      # A tag mentioned mid-answer is no open thought: the text stays.
+      expect(described_class.strip_markup("Use <think> tags")).to eq("Use  tags")
+    end
   end
 
   describe ".strip" do

@@ -44,6 +44,22 @@ RSpec.describe Samagotchi::ToolRunner do
                   on_stream_event: ->(e) { events << e }, max_tool_output_chars: nil)
   end
 
+  describe "a stream callback or an after_tool_call fire that raises" do
+    before { allow(Samagotchi::Log).to receive(:warn) }
+
+    it "doesn't break the call and is logged" do
+      allow(hooks).to receive(:fire).and_call_original
+      allow(hooks).to receive(:fire).with(:after_tool_call, anything).and_raise(IOError, "registry gone")
+
+      result = runner.run(call, iteration: 1, call_index: 1, call_count: 1,
+                                on_stream_event: ->(_e) { raise IOError, "client gone" }, max_tool_output_chars: nil)
+
+      expect(result.output).to include("ran")
+      expect(Samagotchi::Log).to have_received(:warn).with(:turn, "tool_event_callback_failed", hash_including(msg: "client gone"))
+      expect(Samagotchi::Log).to have_received(:warn).with(:hooks, "tool_hook_fire_failed", hash_including(msg: "registry gone"))
+    end
+  end
+
   describe "after_tool_call's status" do
     let(:statuses) { [] }
 

@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "config"
+require_relative "session"
 
 module Samagotchi
   # /recap on|off|default, the setting form of /recap (the bare /recap,
@@ -27,7 +28,7 @@ module Samagotchi
     def run(args)
       word = args.to_s.strip.downcase
       return [USAGE, false, :error] unless CHOICES.key?(word)
-      return ["no session yet", false, :error] unless @engine.session
+      return [Session::NONE_YET, false, :error] unless @engine.session
 
       value = CHOICES.fetch(word)
       changed = @engine.recap_override != value

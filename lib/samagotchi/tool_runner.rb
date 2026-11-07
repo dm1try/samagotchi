@@ -6,6 +6,7 @@ require_relative "row_refs"
 require_relative "file_ref"
 require_relative "guardrails"
 require_relative "vision_context"
+require_relative "degrade"
 require_relative "log"
 require_relative "edit_preview"
 require_relative "tool_output_cut"
@@ -234,12 +235,12 @@ module Samagotchi
     # default isn't a window) or can't be read. It checks this result, not the
     # context already used.
     def window_guard
-      window = @window ? @window.call : (@kernel.tool_output_window if @kernel.respond_to?(:tool_output_window))
-      return nil unless window&.tokens&.positive? && window.source != :default
+      Degrade.call(:memory, "read_window_unknown") do
+        window = @window ? @window.call : (@kernel.tool_output_window if @kernel.respond_to?(:tool_output_window))
+        return nil unless window&.tokens&.positive? && window.source != :default
 
-      (window.tokens * MemoryBundle::IndexSize.chars_per_token / 2).floor
-    rescue StandardError
-      nil
+        (window.tokens * MemoryBundle::IndexSize.chars_per_token / 2).floor
+      end
     end
 
     # memory_read's cut line: the rest is in the memory's file, in the dir(s)
@@ -307,12 +308,12 @@ module Samagotchi
     # (MemoryBundle::IndexSize), nil for any other path, or when
     # memory.index_warn_tokens is off: other writes cost nothing.
     def memory_index_size(call)
-      scope = MemoryBundle::IndexSync.memory_scope(Tools::ToolPath.normalize(call[:path]))
-      return nil unless scope && MemoryBundle::IndexSize.warn_limit.positive?
+      Degrade.call(:memory, "index_size_unreadable") do
+        scope = MemoryBundle::IndexSync.memory_scope(Tools::ToolPath.normalize(call[:path]))
+        return nil unless scope && MemoryBundle::IndexSize.warn_limit.positive?
 
-      MemoryBundle::IndexSize.measure(scope)
-    rescue StandardError
-      nil
+        MemoryBundle::IndexSize.measure(scope)
+      end
     end
 
     # +result+ with the note memory_write gives when the refreshed index
@@ -556,15 +557,12 @@ module Samagotchi
 
     # A failing hook must not break the turn.
     def fire(name, event)
-      @kernel.hooks&.fire(name, event)
-    rescue StandardError
-      nil
+      Degrade.call(:hooks, "tool_hook_fire_failed", hook: name) { @kernel.hooks&.fire(name, event) }
     end
 
+    # A failing stream callback (a UI gone) must not break the call either.
     def emit(callback, event)
-      callback&.call(event)
-    rescue StandardError
-      nil
+      Degrade.call(:turn, "tool_event_callback_failed", type: (event[:type] if event.is_a?(Hash))) { callback&.call(event) }
     end
   end
 end

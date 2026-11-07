@@ -3,6 +3,7 @@
 require "json"
 require_relative "cache_confirm"
 require_relative "toolkit"
+require_relative "session"
 
 module Samagotchi
   # /toolkit, the session's toolkit (Session#toolkit): with no argument,
@@ -40,7 +41,7 @@ module Samagotchi
       words, yes = CacheConfirm.split(args, downcase: false)
       return [listing(@engine.toolkit_explained), false, nil] if words.empty?
 
-      session = @engine.session or raise ArgumentError, "no session yet"
+      session = @engine.session or raise ArgumentError, Session::NONE_YET
       before = @engine.toolkit_explained
       after = @engine.toolkit_explained(changed(before.toolkit, words.split))
       # Nothing the prompt carries changes (full +delegate on full): only

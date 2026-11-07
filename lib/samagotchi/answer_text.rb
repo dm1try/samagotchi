@@ -14,8 +14,6 @@ module Samagotchi
   # cut off before it closed too, then the calls and the wire tokens.
   module AnswerText
     QWEN_THINK = %r{<think>.*?</think>}m
-    # A thought cut off before it closed: the rest of the text is thought.
-    UNCLOSED_THINK = /\A\s*<think>.*\z/m
     # The template opened the block, so the text starts inside it.
     TEMPLATE_OPENED_THINK = %r{\A.*?</think>}m
 
@@ -27,10 +25,10 @@ module Samagotchi
       text = text.to_s.scrub
       template_opened = !text.include?("<think>")
       gemma = ToolCallParser::Gemma.new(ModelProfile.gemma4)
-      text = gemma.strip_thought(text).gsub(QWEN_THINK, "").sub(UNCLOSED_THINK, "")
+      text = gemma.strip_thought(text).gsub(QWEN_THINK, "")
       text = text.sub(TEMPLATE_OPENED_THINK, "") if template_opened
       text = ToolCallParser.strip_calls(gemma.strip_tool_calls(text), "<tool_call>", "</tool_call>")
-      OutputFormatter.strip_markup(text)
+      OutputFormatter.strip_markup(text) # drops a thought cut off before it closed
     end
   end
 end

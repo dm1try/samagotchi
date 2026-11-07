@@ -4,6 +4,7 @@ require "digest"
 require "json"
 require "socket"
 
+require_relative "degrade"
 require_relative "worker_sidecar"
 require_relative "bridge_secret"
 require_relative "delivery"
@@ -329,17 +330,17 @@ module Samagotchi
       body = response.split("\r\n\r\n", 2)[1] || ""
       Response.new(status: status.to_i, body: body)
     ensure
-      sock&.close rescue nil
+      sock&.close rescue nil # degrade-ok: done with the socket; one already closed is fine
     end
 
     # Monotonic SSE cursor of the live Engine, from GET /session/:id/state.
     # @return [Integer, nil]
     def event_seq
-      state = get_json("state")
-      seq = state && state.dig("session_state_snapshot", "event_seq")
-      seq.nil? ? nil : seq.to_i
-    rescue StandardError
-      nil
+      Degrade.call(:bridge, "event_seq_unreadable") do
+        state = get_json("state")
+        seq = state && state.dig("session_state_snapshot", "event_seq")
+        seq.nil? ? nil : seq.to_i
+      end
     end
 
     # Open GET /session/:id/stream and classify the response before the
@@ -358,7 +359,7 @@ module Samagotchi
         if connection
           sock, status, headers = connection
           unless !block_given? || yield(sock)
-            sock.close rescue nil
+            sock.close rescue nil # degrade-ok: the stream is given up; a socket already closed is fine
             return StreamOpen::Unreachable.new(attempts: count)
           end
           return StreamOpen.classify(sock, status, headers)
@@ -389,7 +390,7 @@ module Samagotchi
           break
         end
       ensure
-        sock&.close rescue nil
+        sock&.close rescue nil # degrade-ok: done with the socket; one already closed is fine
       end
     end
 
@@ -435,7 +436,7 @@ module Samagotchi
       body = read_body ? reply.split("\r\n\r\n", 2)[1] : nil
       Response.new(status: reply[STATUS_LINE, 1].to_i, body: body)
     ensure
-      sock&.close rescue nil
+      sock&.close rescue nil # degrade-ok: done with the socket; one already closed is fine
     end
 
     # The reply up to the Bridge's close (or its first line only), within
