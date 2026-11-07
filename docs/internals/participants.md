@@ -5,8 +5,8 @@ chi web with a link of their own. This page is the identity layer: grants, the g
 reaches, and what is written where; and their **turns**: review turns queued, read-only, limited and capped, pair
 turns that act under the owner's guardrails; and what they **see**: their page and its reads, all through one
 filter. Participants are experimental. An agent participant waits on its own turns' replies through the API. The
-code and docs say "participants", "review" and "pair", never "shared": `session.shared` already means "attached by
-default".
+code and docs say "participants", "review" and "pair", never "shared": that word means several UIs
+on one worker.
 
 Participants reach chi web on the **LAN** (`web.host: lan`), or **behind an auth proxy** with `web.public_url`
 (experimental; docs/configuration.md, "Behind an auth proxy"): there every request needs a token, this machine's too,
@@ -749,7 +749,7 @@ participant TUI in v1.
   participant; the status row counts who is in.
 - **Commands.** `/share`, `/participants` (`TerminalUI::ParticipantCommands`) run `ShareCommand` for the attached
   session through the link's `SessionAccess` (`AttachLink#session_access`: `Local`, or the remote's), so their words
-  and refusals are `chi share`'s, led by the command as typed. The REPL answers them with a note.
+  and refusals are `chi share`'s, led by the command as typed.
 
 ## Invariants
 

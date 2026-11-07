@@ -71,8 +71,8 @@ the payload, so an edit and a continue carry none: a new link starts with no las
   counts. A leading `[done]`, `[dropped]` or `[active]` is stripped, so a text can't pass for a status. Any whitespace
   collapses, Unicode line separators too, so each item stays one line of the frame.
 - It never writes session.json and runs on any thread: it only adds a file to `notes/`.
-- It is refused in a session a chi REPL owns (`--no-shared`), with the reason `chi note` gives
-  (`NoteDelivery::REPL_REFUSAL`). A show still answers there.
+- It is refused while a `--non-interactive` one-shot has the session, with the reason `chi note` gives
+  (`NoteDelivery::REPL_REFUSAL`, in `OwnerLock::TUI_BUSY`'s words).
 - A second edit stacks on an unabsorbed first, since the current list reads the pending file.
 - `WorkerInbound#absorb_notes` adds only the newest list in a batch and deletes the others, so edits made during a
   turn cost one entry. It runs between turns: an idle edit lands at the worker's next pass (the fallback tick, or just

@@ -24,7 +24,7 @@ selection: see [Desktop helper](desktop.md#everyone-it-concerns).
 
 The recipients are your own sessions, in every project:
 
-- a worker or a chi REPL runs them now, or their last turn ended within
+- a worker or a one-turn `chi --non-interactive` run runs them now, or their last turn ended within
   `broadcast.active_hours` (default 8). A session with no turn yet counts
   by its last save;
 - not a delegate child: its parent relays what concerns it (the
@@ -32,8 +32,8 @@ The recipients are your own sessions, in every project:
 - not a `chi scratch` session, not an archived one, and not a test run
   (unless `chi broadcast` itself runs as one, `SAMAGOTCHI_ENV=test`).
 
-A session open in a plain chi REPL (`--no-shared`) can't take notes: it is
-listed as skipped, "open in a chi REPL".
+A session a one-turn `chi -p … --non-interactive` run has can't take notes: it
+is listed as skipped, "in use by a one-turn chi --non-interactive run".
 
 ## Tags: which sessions it concerns
 
@@ -101,7 +101,7 @@ broadcast b-7f3a1c9e  "payments API returns 500 since 14:00 (PAY-123)"
 5e1f0a77  delivered  model: yes (p 0.91)
 77aa0b3c  delivered  unchecked: triage deadline
 c0ffee12  skipped    model: no
-d00dad00  skipped    open in a chi REPL
+d00dad00  skipped    in use by a one-turn chi --non-interactive run
 delivered 4 · skipped 2 · 1 unchecked: triage deadline
 ```
 
@@ -193,7 +193,7 @@ any shell command that runs it, once at a time, and only you may allow it
 
 | Setting | Default | What it does |
 |---|---|---|
-| `broadcast.active_hours` | `8` | A session with no worker or REPL counts when its last turn ended within this many hours. |
+| `broadcast.active_hours` | `8` | A session with no worker or one-turn run counts when its last turn ended within this many hours. |
 | `broadcast.ticket_pattern` | `\b[A-Z][A-Z0-9]+-\d+\b` | A Ruby regex for ticket ids; an invalid one warns and the default is used. |
 | `broadcast.triage_model` | recap's, else `default.model` | The triage model, a model ref (`box:qwen3.5-9b`). |
 | `broadcast.triage_host_ref` | none | A `hosts:` name for it. |

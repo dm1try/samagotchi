@@ -125,11 +125,11 @@ name (or whose hint is its URL) is attached, *declined* while the declined marke
   "PR", branch names ≥ 6 chars with `/ - _`, exact URLs, fenced code blanked). Only `OwnerPrompt` texts count
   (`owner_texts`), so a participant's message, a steer, a note or a reminder never attaches anything; a review
   session skips all of it.
-- **Where it runs.** `before_turn` (from `Worker#run_prompt` before the absorb, and the REPL's turn start): attach
+- **Where it runs.** `before_turn` (from `Worker#run_prompt` before the absorb, and a `--non-interactive` one-shot's turn start, `TerminalUI`): attach
   each proposed candidate the owner's prompts so far mention (`attach` writes a session `Source` through
   `source_for`: a URL resolves through `ContextProviders`, else the candidate's own `cmd`), then `first_fetch` them
   together within `FIRST_FETCH_SECONDS` (10) so the note lands in this turn; cut short, the fetch records nothing and
-  the poller tries soon. `after_propose` does the same for a late proposal. The REPL has no absorber running, so
+  the poller tries soon. `after_propose` does the same for a late proposal. A one-shot has no absorber running, so
   `deliver_notes` runs one.
 - Forks and continues take no candidates.
 

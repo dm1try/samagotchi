@@ -96,9 +96,8 @@ This adds a slash command. `name` is `/name`: a lowercase letter first, then a�
 block returns the text to show (a String), or nil to show nothing. If the
 block raises, the user sees `/name: <error>`.
 
-A plugin command works in all three UIs:
+A plugin command works in both UIs, and in a `chi -p "/hello" --non-interactive` one-shot:
 
-- **REPL** (`chi --no-shared`): typed at the prompt, and Tab completes it.
 - **Attached TUI** (the default `chi`): the worker's snapshot names the
   session's commands, so the TUI sends `/hello` to the worker and Tab
   completes it. It needs a worker started after the bundle was installed.
@@ -107,7 +106,7 @@ A plugin command works in all three UIs:
   runs it too.
 
 A line that is not a known command keeps its old meaning: in the terminal
-UIs `/foo` goes to the model as a prompt; the web refuses it and names the
+`/foo` goes to the model as a prompt; the web refuses it and names the
 commands it knows.
 
 Any whitespace may follow the name, a newline too: `/hello` on its own line
@@ -117,7 +116,7 @@ blank lines and indentation as typed; only the ends are stripped).
 #### `anytime: true`
 
 A plugin's normal command waits for its turn: typed while a turn runs, it is
-refused as busy (the REPL puts it back into the prompt, the web into an empty composer; a plugin command can't
+refused as busy (the web puts it back into an empty composer; a plugin command can't
 ask to run after the turn, as the built-in `/model X` does). An `anytime: true` command
 runs **at once, on its own thread, beside the running turn**, and the turn
 goes on:
@@ -128,9 +127,6 @@ goes on:
   then its cards and notices **as it shows them**, and its output (the
   `command_ran`) when it finishes. So a card can say "working…" first and
   be replaced by the result.
-- In the REPL, typed while a turn runs, it starts on a thread. Its cards
-  print as it shows them, above the live region; its output prints there
-  too while the turn runs, or at the prompt once the turn has ended.
 
 Between turns an anytime command runs like any other, except that its
 cards print as it shows them rather than after its output.
@@ -142,8 +138,8 @@ running turn: they are not rows of the turn's step, and their events carry
 Its block runs on another thread than the turn, so it must be thread-safe:
 
 - Read the conversation through `ctx.messages`, a frozen copy. While a turn
-  runs, a worker's holds that turn so far; the REPL's is the conversation
-  **before** that turn (`ctx.messages_partial?` says so).
+  runs, a worker's holds that turn so far; a `--non-interactive` one-shot's
+  is the conversation **before** that turn (`ctx.messages_partial?` says so).
 - Show things only through `ctx` (`ctx.card`, `ctx.notify`), and return
   the text to show.
 - Keep your own state (instance variables) behind a `Mutex` if two
@@ -171,8 +167,7 @@ thinking is dropped). The TUI prefills `line --yes`, the web shows an Apply butt
 then runs again with `--yes` in `args` (drop it from your words). Outside a command (a hook, an init task, your
 own thread) it is always nil. A plain String or nil return is unchanged.
 
-A command that asks must not be `anytime: true`: the REPL shows only an anytime command's text, so its Apply would
-be lost. Needs chi 0.132.0.
+A command that asks must not be `anytime: true`: its Apply would be lost. Needs chi 0.132.0.
 
 ```ruby
 chi.command "/tone", "show or set this session's tone" do |args, ctx|
@@ -191,8 +186,8 @@ end
 `/help` (itself an anytime command) lists every command the session knows:
 chi's own, each bundle's with the bundle's name, and the terminal UIs' own
 (`/stats`, `/exit`, `/detach` …), marked where they run: `terminal only`,
-`attached only`, `repl only`, or `terminal and web only` (`/cut`).
-It works in all three UIs.
+`web only`, or `terminal and web only` (`/cut`).
+It works in both UIs.
 
 ### `chi.annotation(label, command:, template: "{quote}", send: false)`
 
@@ -559,8 +554,8 @@ end
   so far run, and the next `value` tries again.
 - `service.running?`, `service.state` (`:idle`, `:running`, `:stopped`) and
   `service.stop`.
-- The services stop when chi leaves: the REPL exits, or the session's
-  worker exits (an idle exit, `/exit`, a crash, TERM). See
+- The services stop when chi leaves: the session's worker exits (an idle
+  exit, `/exit`, a crash, TERM), or a `--non-interactive` one-shot ends. See
   [Shutdown](#shutdown). A stopped service never starts again; `value`
   raises `Samagotchi::Plugin::Service::Stopped`.
 - A plugin whose load fails after it started services has them stopped.
@@ -576,7 +571,7 @@ repo, logging in, starting a server for the first time. `register` itself
 should return at once (everything in it runs before the session's UI is
 up), so it hands the slow part to `chi.init`. The block runs **on its own
 thread** once the session can show it: in a worker right after its Bridge
-is up (so a new web chat opens at once), in the REPL at its first prompt.
+is up (so a new web chat opens at once), in a `--non-interactive` one-shot as its turn starts.
 
 ```ruby
 class Plugin
@@ -600,7 +595,7 @@ end
 
 - **What the UIs show.** Every UI shows a running task (web: a spinner line
   over the composer, `mcp · Starting MCP server chrome (first run, saving
-  its tools)…`; the attached TUI: its activity row; the REPL: a line) and a
+  its tools)…`; the attached TUI: its activity row) and a
   line when it is done: `✓` and what the block returned, a short summary
   (`chrome ready, 3 tools`), or `<label>: done` for anything else. A UI that
   joins while it runs sees it too.
@@ -819,7 +814,7 @@ A cheap System 1 question this bundle asks with `ctx.judge` or `ctx.judge_later`
 The plugin's context (the `ctx` its handlers get), for `register` itself:
 its settings, log and data_dir, for example. A `ctx.notify` or `ctx.card`
 while chi starts (inside `register`) is shown once the session's UI can show
-it (a worker's Bridge is up, the REPL's first prompt), after the plugins'
+it (a worker's Bridge is up), after the plugins'
 load warnings; a UI that joins later still gets it.
 
 ### Names
@@ -848,7 +843,7 @@ full label, `plugin.rb (bundle my-bundle)`.
 | `ctx.scratch?` | whether the session is a `chi scratch` one (deleted when it ends) |
 | `ctx.delegate?` | whether the session is a delegate child: a task another session handed over |
 | `ctx.review?` | whether the session is a review session (`chi review`): one its participants read, not the owner's working session |
-| `ctx.frontend` | what runs the session, read now: `:repl` (the REPL, `-p` without `--non-interactive`), `:one_shot` (`-p --non-interactive`: one turn, then exit) or `:worker` (a session worker: the web, an attached TUI). Only a worker's answers reach the web while it runs; a REPL's show there once the session is opened. Until the host sets it (while the plugins load, inside `Engine.new`) it reads `:one_shot`, so read it in hooks and init tasks, not in `register` |
+| `ctx.frontend` | what runs the session, read now: `:one_shot` (`-p --non-interactive`: one turn, then exit) or `:worker` (a session worker: the web, an attached TUI). There is no `:repl` any more: a bundle that checks for it never matches. Only a worker's answers reach the web while it runs; a one-shot's show there once the session is opened. Until the host sets it (while the plugins load, inside `Engine.new`) it reads `:one_shot`, so read it in hooks and init tasks, not in `register` |
 | `ctx.continues` | the id of the session this one continues (a [continue](sessions.md#session-chains)'s new link), else nil |
 | `ctx.fork?` | whether the session is a fork (`ctx.sessions.fork`): it has a parent but isn't a delegate child, and started from a conversation, so its first prompt isn't its first user message |
 | `ctx.model` | the model the session runs on now: its resolved ref (`host:id`), right after `/model` too |
@@ -861,9 +856,9 @@ full label, `plugin.rb (bundle my-bundle)`.
 | `ctx.data_dir` | `$XDG_STATE_HOME/samagotchi/plugins/<bundle>/`, created on first use: what the bundle keeps across sessions |
 | `ctx.session_dir` | this session's own folder there, created on use, read now; nil with no session yet. `ctx.session_dir(create: false)` is the same path with no folder made, for a read, so a session that saved nothing leaves none (a `File.read` of what isn't there raises `Errno::ENOENT`); needs chi newer than 0.143.0. chi removes it when the session is deleted, discarded or pruned, so don't build the path yourself. A `sessions/<id>.json` an older version of your bundle kept moves in as `state.json` (chi still removes one left there). Needs chi newer than 0.142.0 |
 | `ctx.log` | `ctx.log.info(:event, key: value)`: debug-log records tagged `plugins`, with `bundle=<bundle>` |
-| `ctx.messages` | the conversation, as a frozen copy, without the system prompt. While a turn runs, a session worker's (attached, web) adds that turn so far: its prompt, the model's text and the lines merged into it (no tool calls or thinking); the REPL's is the conversation before that turn. An entry may carry `at`, when it happened (docs/sessions.md, Message times) |
+| `ctx.messages` | the conversation, as a frozen copy, without the system prompt. While a turn runs, a session worker's (attached, web) adds that turn so far: its prompt, the model's text and the lines merged into it (no tool calls or thinking); a `--non-interactive` one-shot's is the conversation before that turn. An entry may carry `at`, when it happened (docs/sessions.md, Message times) |
 | `ctx.last_answer` | the newest answer's text as the user saw it: the newest answer bubble of `ctx.messages`, its thoughts (one cut off before it closed too) and tool-call markup taken out, the rule chi's continue note uses. nil when there is none or it was a thought alone; mid-turn, a worker's can be the running turn's interim text. Needs chi newer than 0.153.0 |
-| `ctx.messages_partial?` | whether `ctx.messages` leaves out a running turn (the REPL mid-turn), so a plugin can say what its answer is about |
+| `ctx.messages_partial?` | whether `ctx.messages` leaves out a running turn (a `--non-interactive` one-shot mid-turn), so a plugin can say what its answer is about |
 | `ctx.prompt_files` | the files whose text is in the session's system prompt now: the AGENTS.md chain (the work tree top down to the cwd) and the appended files (`append_system_prompt:`, `--append-system-prompt`); absolute paths, in prompt order, `[]` before the first build |
 | `ctx.objectives` | the session's [objectives](internals/objectives.md), read now, as a frozen value: `empty?`, `items` (each `id`, `text`, `status` `"active"`, `"done"` or `"dropped"`, `done_when`), `find(id)`, `text` (the lines the model is shown) and `moves` (the latest move per id; mid-turn, a worker's leaves the running turn's out). An edit not yet absorbed counts. Empty when the session has none. Use its methods, not its class. Needs chi newer than 0.148.0 |
 | `ctx.notify(text, level: :info, fallback_for: nil)` | one line to the user, labelled by the bundle (`my-bundle> …`). Every UI shows it, during a turn (a tool, a hook) or between turns (a command). `fallback_for: :display` marks a line that repeats the answer's display (`event[:present]`), which a UI that renders the display leaves out (`fallback_for: :editor`: a file the viewer could open from a ref in its editor): see [Hooks](hooks.md#what-a-hook-can-do-the-runtime). The keyword needs chi 0.35.0 (it raises on an older chi) |
@@ -909,7 +904,7 @@ keeps JSON numbers and booleans. A name that is a core session setting is always
 ## Cards
 
 A card is a small framed message with buttons: a title, a body and
-actions. Core draws it in all three UIs; a plugin has no JS or CSS of its
+actions. Core draws it in both UIs (the attached TUI and the web); a plugin has no JS or CSS of its
 own.
 
 ```ruby
@@ -947,7 +942,6 @@ Where it shows:
 
 | | during a turn (a tool, a hook) | between turns (a command) |
 |---|---|---|
-| REPL | where it happens, above the live region | at the prompt, after the command's output |
 | attached TUI | where it happens | as it arrives |
 | web | a row of the running step | between the turns |
 
@@ -1232,7 +1226,7 @@ ctx.sessions.review(subjects: ["docs/plan.md"], seed: handoff)  # => a review se
   prefix); it runs as a turn, and a stopped session is woken. It waits up to
   5 s for the session's worker, so call it from an anytime command or a
   thread of your own, never from a tool or hook of a running turn. A
-  session open in a chi REPL can't take it.
+  session a `--non-interactive` one-shot has can't take it.
   - A running turn takes it at its next step. `delivery: :queue` runs it as
     a turn of its own after that turn instead (as `/queue TEXT` does; to an
     idle session it simply runs). A plugin never cuts the running turn's
@@ -1596,8 +1590,8 @@ docs/testing.md). **Minitest:** `require "samagotchi/testing/minitest"` and subc
 
 ## Shutdown
 
-When the REPL exits, or a session's worker exits (an idle exit, `/exit`, a
-crash, TERM), chi shuts the session's Engine down:
+When a session's worker exits (an idle exit, `/exit`, a crash, TERM), or a
+`--non-interactive` one-shot ends, chi shuts the session's Engine down:
 
 1. The idle jobs (reminders, the recap) stop.
 2. The plugins' init tasks are cancelled (`ctx.cancelled?` turns true).
@@ -1608,8 +1602,8 @@ crash, TERM), chi shuts the session's Engine down:
 
 ## Loading, and when it fails
 
-Plugins load when a session starts (`Engine.new`, in the REPL or a
-worker), after the bundle hooks. The steps are:
+Plugins load when a session starts (`Engine.new`, in a worker or a
+`--non-interactive` one-shot), after the bundle hooks. The steps are:
 
 1. The file must match the sha256 recorded at install (not checked for a bundle installed with `--dev`).
 2. chi must meet `requires_chi`. A bundle whose `requires_chi` this chi doesn't

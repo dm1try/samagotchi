@@ -98,11 +98,11 @@ the "asking again" and steer-cut rows, ✂ rows and questions (with how they wer
   `chi guardrails replay` reads. A plain upgrade doesn't reach this: a worker already running seeded before and keeps its own version 1
   file, and a spawn runs the newest chi installed (`SessionManager.worker_command`), unless that activation raises LoadError: the boot
   line then falls back to the spawner's or the home's pinned version, which can be older. Otherwise it takes an older process starting
-  on a session a newer one wrote: a downgrade, a chi home whose newest chi is older (`home_older_than_spawner`), or a REPL or `bin/chi`
+  on a session a newer one wrote: a downgrade, a chi home whose newest chi is older (`home_older_than_spawner`), or a `bin/chi`
   from an older gem or checkout on the same state dir. Nothing on this side stops
   it: an older chi can't be changed, and having it read the file would mean writing fake `turns` counters into every file.
 - **A killed turn needs nothing special.** `TurnCheckpoint` keeps a running turn's prompt in the session file, with its id from
-  the start (`Worker#run_engine_turn` settles it first), so it counts as any opening. A REPL keeps no running turn in the
+  the start (`Worker#run_engine_turn` settles it first), so it counts as any opening. A `--non-interactive` one-shot keeps no running turn in the
   session, so a kill takes the prompt along and there's nothing to count.
 
 ## SSEWriter
@@ -401,7 +401,7 @@ for client discovery, with the Bridge's secret (see above).
 **Worker link.** Every client asks `WorkerLink` (`worker_link.rb`) whether a session's worker can be reached, never
 reading `bridge.json` or probing a port itself: `WorkerLink.resolve(session_dir, unlink:, owner:)` answers a typed
 outcome. The rule is the owner lock plus the sidecar's `pid`; there is no port probe (a port can be reused by another
-session's Bridge, a free lock is the kernel's proof the worker died). In order: no lock holder, or a chi REPL's: a
+session's Bridge, a free lock is the kernel's proof the worker died). In order: no lock holder, or a one-shot's (kind `"tui"`): a
 sidecar is `Stale(:lock_free)` (removed with `unlink: true`, only if it is still the file that was read and the lock,
 read again just before, is still free: a worker that took it meanwhile is resolved as that worker), else `None`;
 a holder with no kind yet: `Starting`; a leaving worker: `Leaving` (marked before its Bridge stops, on every way out:

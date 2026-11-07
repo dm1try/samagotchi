@@ -80,7 +80,7 @@ models and aliases (from [`chi models`](cli.md#listing-the-models)), at most nin
 The chooser needs a chi with `chi models`: an older helper works with a newer chi, not the reverse
 (`chi desktop upgrade` after updating chi).
 
-A session open in a `chi --no-shared` REPL isn't listed: it takes no notes or messages.
+A session a one-turn `chi -p … --non-interactive` run has isn't listed: it takes no notes or messages.
 
 ## Images
 

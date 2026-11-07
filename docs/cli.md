@@ -1,4 +1,4 @@
-# CLI and REPL
+# CLI and terminal
 
 ## Commands
 
@@ -7,8 +7,7 @@
 - `chi -p "your prompt"` — run a prompt, then stay attached
 - `chi -p "your prompt" --non-interactive` — run a prompt, print the answer, exit
 - `chi --resume <session-id>` — resume a prior session (in its worker)
-- `chi --no-shared [--resume <session-id>]` — the plain in-process REPL instead, for this run
-- `chi scratch [options]` — a one-time session in the plain in-process REPL, in this folder, that leaves nothing behind (see [Scratch sessions](#scratch-sessions))
+- `chi scratch [options]` — a one-time session in this folder, attached like plain `chi`, that leaves nothing behind (see [Scratch sessions](#scratch-sessions))
 - `chi --attach <session-id>` — attach the terminal to a session's worker (e.g. one started from the Web UI), waking one if it has exited
 - A session id can be shortened to any unique prefix (like git): `chi --attach 2ea8`. `--resume`, `--attach`, `sessions stop`, `sessions archive` and `sessions delete` take one; an ambiguous prefix lists the sessions it matches.
 - `chi web [--port 4567] [--open] [--scope=all] [--start-dir DIR]` — start the Web UI (single localhost port session control plane) on this git project's sessions (`--scope=all`, or a folder in no repo: `/?scope=all`, every session); if a chi web already runs on the port, print (with `--open`, open) its page for this folder and exit. Something else on the port (an older chi web too) exits 1 with "port N is in use"
@@ -441,11 +440,9 @@ invalid option (exit 1).
 
 | Flag | Purpose |
 |------|---------|
-| `-p`, `--prompt TEXT` | Feed `TEXT` as the first turn (also prefill-equivalent; `-p` feeds **and** runs). |
-| `--non-interactive` | Run a single turn then exit the REPL (sets a high iteration cap; implies `--no-interrupt`). Harmless no-op when given without `-p`. |
+| `-p`, `--prompt TEXT` | Run `TEXT` as the first turn, then stay attached to the session (`-p` feeds **and** runs); with `--non-interactive`, one turn and exit. |
+| `--non-interactive` | Run the `-p` prompt as one turn in this process, then exit: no worker, no TUI (sets a high iteration cap; implies `--no-interrupt`). Harmless no-op when given without `-p`. |
 | `--resume SESSION_ID` | Load a prior session's history instead of creating a fresh one. |
-| `--shared` | Run the session (new, or `--resume`'s) in a background worker and attach to it: the default, and the way to get it when `session.shared` is off. See [Sharing a session](#sharing-a-session). |
-| `--no-shared` | Run the plain in-process REPL for this run. |
 | `--attach SESSION_ID` | Attach to a session's worker, waking one if it has exited. |
 | `--remote NAME` | Before a session command (`chi --remote studio send …`) or the run flags (`chi --remote studio --attach ID`, `--resume ID`, `--dir DIR -p TEXT`): run it against that remote's sessions, through its chi web; beats `CHI_REMOTE`. Commands and flags that run on this machine only exit 2. See [Remote sessions](#remote-sessions). |
 | `--dir DIR` | With `--remote`: a new session's folder on that machine, its absolute path (required for a new session there). Without `--remote` it exits 2: cd there instead. |
@@ -462,8 +459,8 @@ invalid option (exit 1).
 | `--llm-context-apply RULE` | This session's own apply rule: `payoff`, `next_request` or `turn_end`. |
 | `--llm-context-budget TOKENS` | This session's own context budget: `64000`, `64k` (4k to 10M), or `off` (wins over the model's budget). |
 | `--no-interrupt` | Raise the tool-call limit to 1000 iterations for long tasks. |
-| `--no-default-input` | Skip prefilling the first REPL line from `SAMAGOTCHI_DEFAULT_INPUT`. |
-| `-v`, `--verbose` | Log at debug level (raw LLM responses, tool call/result payloads) and print every log record to stderr too. |
+| `--no-default-input` | Skip the default input (`SAMAGOTCHI_DEFAULT_INPUT`) typed into a new session's first prompt. |
+| `-v`, `--verbose` | Log at debug level (raw LLM responses, tool call/result payloads). Attached, the terminal shows this session's debug records above the prompt as they come, and a worker this chi starts logs at debug too; a worker that was already running keeps its own level (a one-line note says so). With `--non-interactive`, every log record goes to stderr too. This machine only (exit 2 with `--remote`). |
 | `--version` | Print `chi <version>` and exit (`chi self` shows it with the paths). |
 
 Every setting in the config registry (`lib/samagotchi/config.rb`) that exposes a CLI
@@ -486,13 +483,12 @@ as an unknown key).
 |---------|----------|
 | `chi` | Start a fresh session in a worker and attach to it. |
 | `chi -p "refactor this"` | Start a session in a worker, send the prompt, **stay attached**. |
-| `chi -p "refactor this" --non-interactive` | Run one turn in this process, save, **exit** (no REPL, no worker). |
+| `chi -p "refactor this" --non-interactive` | Run one turn in this process, save, **exit** (no TUI, no worker). |
 | `chi --non-interactive` | Harmless no-op exit; no session created, no error. |
 | `chi --resume ID` | Resume session `ID` in a worker (or join the worker already running it) and attach. |
 | `chi --resume ID -p "next step" --non-interactive` | Resume `ID`, run the prompt, save, exit. |
 | `chi --resume ID -p "next step"` | Resume `ID`, send the prompt, **stay attached** to that session. |
-| `chi --no-shared [...]` | The same, in the plain in-process REPL. |
-| `chi scratch [-p ...] [--non-interactive]` | A new session in the plain REPL, deleted when it ends. |
+| `chi scratch [-p ...] [--non-interactive]` | A new session, attached (or one turn with `--non-interactive`), deleted when it ends. |
 
 Notes:
 
@@ -507,14 +503,14 @@ Notes:
   script, `chi send --new --wait` is the better entry point: stdout holds the
   answer alone (see [Starting a session](sessions.md#starting-a-session)).
 - `-p` always feeds **and** runs the prompt; there is no feed-and-edit variant. To
-  prefill (edit, not execute) the first REPL line, use the
+  prefill (edit, not execute) a new session's first prompt, use the
   `SAMAGOTCHI_DEFAULT_INPUT` environment variable instead.
 - Prompt history (↑) is one file shared by every session (see [Persistent Prompt
   History](#persistent-prompt-history)); `--resume` preserves the session's prior
   messages as turn context (a `-p` run on a resumed session never clobbers its
   conversation).
 - Non-interactive runs (`-p` with `--non-interactive`, or bare `--non-interactive`)
-  print only the final result output on stdout — no spinner, status line, or REPL.
+  print only the final result output on stdout — no spinner, status line, or prompt.
   Everything else goes to stderr: the `Session: ID` line first, before the turn;
   retry lines and hooks' notices as they come, the after_turn hooks' ones
   (source-links' `sources:`) after the answer; and the error of a failed turn,
@@ -531,19 +527,26 @@ Notes:
 
 ### Scratch sessions
 
-`chi scratch` is `chi --no-shared` for a session you won't keep: a quick
-question, a try-out. It takes the run options (`-p`, `--non-interactive`,
-`--model`, `--profile`, `--memory`, `--mute`, `-v`, …); `--resume`, `--attach`
-and `--shared` are refused. Its first line says it is a scratch session.
+`chi scratch` is plain `chi` for a session you won't keep: a quick question, a
+try-out. It takes the run options (`-p`, `--non-interactive`, `--model`,
+`--profile`, `--memory`, `--mute`, `-v`, …); `--resume` and `--attach` are
+refused. Its first line says it is a scratch session.
 
-- The session is deleted however it ends: `/exit`, Ctrl-D, Ctrl-C at the
-  prompt, an error, SIGTERM or SIGHUP. There is no recap, and the lines typed
-  are not added to the prompt history.
-- It never shows in `chi web`. A process killed with `kill -9` leaves its
-  session behind, marked `"scratch": true` in its session.json: `chi sessions
-  list` shows it as `[scratch]`, and the next sweep or `chi sessions clean`
-  deletes it. `chi --resume` and `--attach` refuse it (exit 1), so it never
-  turns into a kept session.
+- It runs attached, on a worker of its own. Ctrl-D, `/detach`, `/exit` and a
+  second Ctrl-C all end it: the terminal stops the worker and deletes the
+  session (`Scratch session deleted.`). `/archive` is refused. The lines typed
+  are not added to the prompt history. With `-p … --non-interactive` it is one
+  turn in this process, and the session is deleted as the run ends.
+- The worker deletes the session too once its terminal is gone (no stream
+  left, or none came within 30 s), so a closed terminal window or a `kill -9`
+  of the terminal leaves nothing. It refuses `chi sessions restart`.
+- It never shows in `chi web`, and only its terminal uses it: `chi send`, the
+  web's routes, `chi --resume` and `--attach` refuse it (exit 1), in one
+  wording: "that's a chi scratch session: only the terminal that started it
+  uses it (a leftover one is deleted at the next sweep: chi sessions clean)".
+  A session left behind when both died is marked `"scratch": true` in its
+  session.json: `chi sessions list` shows it as `[scratch]`, and the next
+  sweep or `chi sessions clean` deletes it.
 - Memories are read and preloaded as usual, but nothing is saved: `memory_write`
   answers "scratch session: nothing is saved", and `write`/`edit` into the
   memories folder are denied (a guardrail, rule `scratch-session`). `execute`
@@ -557,13 +560,13 @@ and `--shared` are refused. Its first line says it is a scratch session.
 
 ### Sharing a session
 
-Two different things share a session: `session.shared` is about UIs — several
-terminals and the Web UI attached to one worker — while `chi share` invites
-other people, participants with a link of their own (see
-[Participants](#participants)).
+Two different things share a session: several terminals and the Web UI
+attached to one worker, and `chi share`, which invites other people,
+participants with a link of their own (see [Participants](#participants)).
+This section is about the first.
 
 Plain `chi` runs the session in a background worker and attaches the terminal
-to it (`session.shared`, default `true`). A worker's session can have any number
+to it; every interactive `chi` does (plain, `-p`, `--resume`, `--attach`). A worker's session can have any number
 of UIs at once: the Web UI and attached terminals (`chi`, `--resume`,
 `--attach`). They all see the same turns as they happen, and any of them can send
 a prompt, also while a turn runs (it merges into that turn as steering: the model
@@ -639,7 +642,7 @@ In an attached terminal:
   was started), whichever terminal you attach from.
 - `-p` sends its prompt once attached, `--model` switches the worker's model
   first, and `--no-interrupt` applies to each prompt this terminal sends.
-- History, completion and the idle status line work as in the REPL.
+- Prompt history (↑), Tab completion and the idle status line work there.
 - The attached view needs reline 0.6.x to draw around the open prompt; with
   another version it prints plainly.
 
@@ -686,7 +689,7 @@ sessions restart ID`, the terminal with `/detach` and `chi --attach ID`), and
 the web's, `list_sessions`) and keeps them for good: the retention sweep never
 deletes an archived session, nor counts it. Its delegates go with it. A live
 worker is stopped first; a session running a turn (or with a delegate running
-one), open in a plain REPL, or a `chi scratch` one is refused. `chi sessions
+one), one a `--non-interactive` run has, or a `chi scratch` one is refused. `chi sessions
 list --archived` shows them too, marked `[archived]` (`archived: true` in
 `--format json`); `chi sessions unarchive ID...` brings them back, and so does
 a message you send to one (the web, an attached terminal, `chi send`), but not
@@ -701,7 +704,8 @@ it). See
 session file and its whole directory (notes, images, queued input). Each id
 (or unique prefix) gets one line: `deleted`, or `refused` with the reason. A
 session whose worker runs is refused unless `--force` stops the worker first;
-one open in a plain REPL is always refused ("close it there first"). Exit
+one a `--non-interactive` run has is always refused ("in use by a one-turn chi
+--non-interactive run; let it finish first"). Exit
 status: 0 when all are gone, 1 when any was refused or unknown, 2 on a usage
 error. The Web UI deletes too: `delete` in the info bar, or the ✕ on a card in
 All sessions; it asks first and stops a live worker.
@@ -718,18 +722,12 @@ object `{session_id, status, live, metrics, settings}` (`settings`: the session'
 exits 0. An unknown or ambiguous id exits 1 with `chi sessions stop`'s
 wording. See [Sessions](sessions.md#cli).
 
-**The plain REPL.** Some launches run the session in this process instead, with
-no worker:
-
-- `--no-shared`, for one run, or `session.shared: false` in the config
-  (`SAMAGOTCHI_SESSION_SHARED=0`), for every run.
-- `--non-interactive`, a one-shot with no REPL.
-- `--verbose`, which attached mode can't honor (the worker prints nothing). It
-  prints a one-line note, `(session.shared: --verbose runs in a plain REPL)`.
-
-A session the REPL has open can't be shared: `--resume` and `--attach` on it say
-"close it there first", and the Web UI shows it read-only. `--attach`/`--shared`
-can't be combined with `--non-interactive` or `--verbose`.
+**One-turn runs.** `chi -p TEXT --non-interactive` (also with `--resume ID`)
+runs its turn in this process, with no worker, and holds the session until it
+ends. Meanwhile the session is "in use by a one-turn chi --non-interactive
+run": `--resume`, `--attach`, `chi send`, `chi note` and the Web UI's sends
+refuse it, and the Web UI shows it read-only. `--attach` can't be combined with
+`--non-interactive`.
 
 ### Muting a memory
 
@@ -741,8 +739,8 @@ file and index line stay as they are; only this session doesn't see it.
 - `--memory` and `--mute` are session fields (`preloaded_memory_names`,
   `muted_memory_names` in the session's JSON), written before the worker
   starts. A worker respawned by `--resume`, `--attach` or `chi send` builds
-  the same prompt, and a REPL `--resume` of that session keeps the lists too
-  (merged with the flags it is given).
+  the same prompt, and a `--resume ID --non-interactive` one-shot keeps the
+  lists too (merged with the flags it is given).
 - A mute wins: `--mute user_preferences` drops that config baseline entry for
   one session, and `--memory x --mute x` is a mute (one warning line).
 - Names are checked before the launch, warnings only: `Warning: --memory 'x'
@@ -908,7 +906,7 @@ guardrails.parent_answers: soft)`). `/parent-answers hard|standard|soft` sets th
 session's own, `/parent-answers default` drops it; it is saved at once and
 holds from the next answer. It never goes looser than config.yml's (the reply
 says when config.yml's applies instead). Anyone may tighten it; only you loosen
-it, at the REPL, an attached terminal or the web: `chi send`, a piped or marked
+it, at an attached terminal or the web: `chi send`, a piped or marked
 attach and `chi -p --non-interactive` are refused. `/parent-answers` alone answers
 mid-turn too; a change waits for the turn's end. No chip: its reply is where the
 web shows it. See [Guardrails](guardrails.md#answers-from-a-parent-agent).
@@ -937,21 +935,19 @@ the model's `objectives` tool); [Objectives](sessions.md#objectives) has what th
   `check: …` under the move. Information only: it edits nothing, and it is refused for an objective with no move or a dropped one, and during a participant's turn. See [Objectives](sessions.md#objectives).
 
 All of them run mid-turn too. An edit answers with the new list at once and goes into the conversation between turns.
-Refused in a chi REPL's session (`--no-shared`), as `chi note` is; `/objectives` alone still answers there.
+Refused while a `--non-interactive` run has the session, as `chi note` is.
 
 A `/model`, `/llm-context`, `/thinking`, `/reasoning-history` or `/toolkit` change that restarts the prompt cache
 asks first: the reply says what it costs, changes nothing, and names the line
 that applies it (`/thinking low --yes`, `/model qwen --default --yes`). `--yes` (or `-y`) applies it at once.
 The terminal puts that line in the next input (Enter applies it); the web's
 reply has an Apply button. `chi send ID "/thinking low"`,
-`chi -p "/thinking low" --non-interactive` and lines piped into the REPL apply
-without asking (a plain `chi -p` opens the REPL, which asks). See "Changes that
+and `chi -p "/thinking low" --non-interactive` apply without asking. See "Changes that
 restart the prompt cache" in [configuration.md](configuration.md).
 
 ### Typing during a turn
 
-The prompt stays open while a turn runs, in an attached terminal and in the plain
-REPL alike:
+The prompt stays open while a turn runs in an attached terminal:
 
 - A line you submit merges into the running turn at its next step (after the
   current tool call or answer): `(goes in at the next step)` at once, then
@@ -968,7 +964,7 @@ REPL alike:
   off; goes in at the next step)` (`steer.cut_after` is 0, per host/model:
   `steer_cut_after`, or no generation to cut).
 - `/queue TEXT` runs TEXT as a turn of its own after this one, in an attached
-  terminal, the plain REPL and the web composer alike: `(queued: runs after this
+  terminal and the web composer alike: `(queued: runs after this
   turn)` (the web draws it as a queued bubble until its turn starts). It never
   merges into the running turn, and a plain line sent after it still does.
   Several queued lines run one turn each, in the order sent; they still run
@@ -980,7 +976,7 @@ REPL alike:
   with images works the same way: it waits for the turn's end, and the lines
   sent after it still go in at the next step.
   At the open prompt (no turn running) `/cut TEXT` and `/queue TEXT` run TEXT
-  as a normal prompt, and the terminals say so: `(nothing is running: sent now)`.
+  as a normal prompt, and the terminal says so: `(nothing is running: sent now)`.
 - `/unqueue` (attached terminal) takes back the newest line this terminal
   queued that hasn't started: `removed: <its first 60 characters>`, and its text
   goes back into the input to change and send again (not over typed text: then
@@ -991,8 +987,7 @@ REPL alike:
   `(not removed: it already started)` when its turn won the race, `(not removed:
   it is already gone)` when another client removed it. Other terminals that
   showed it say `(a queued message was removed)`; the web drops its bubble. A
-  worker older than it is not asked: `(/unqueue needs a newer worker: …)`. In
-  the plain REPL it answers with a note (its own queue is not touched), and the
+  worker older than it is not asked: `(/unqueue needs a newer worker: …)`. The
   web's composer points at the × on the bubble.
 - **The web composer** has a row above the text field in a session (always
   there, so the composer never changes height): the keys while idle, and while
@@ -1050,24 +1045,16 @@ REPL alike:
   typed comes back once it closes. The choices then go, and one line stays:
   `? Pick a fruit → Banana`.
 - Ctrl-C cancels the turn and keeps what you typed.
-- In the plain REPL, Ctrl-D on an empty prompt (or `exit`, `/exit`, `/quit`) mid-turn
-  exits once the turn ends: `(exits after this turn; Ctrl-C cancels it)`
-  (`/exit --delete` deletes the session then too). In an
-  attached terminal it detaches at once and the turn goes on in the worker
-  (`/exit` then says the worker stays up: a turn is running).
-- `/archive` mid-turn archives once the turn ends:
-  `(archives after this turn; Ctrl-C cancels it)` in the plain REPL,
-  `(archives after this turn)` in an attached terminal, which also waits for
-  the commands queued behind the turn.
-
-With stdin that isn't a terminal (a pipe), the REPL reads a line only between
-turns.
+- Ctrl-D on an empty prompt mid-turn detaches at once and the turn goes on in
+  the worker (`/exit` then says the worker stays up: a turn is running).
+- `/archive` mid-turn archives once the turn ends: `(archives after this
+  turn)`; it also waits for the commands queued behind the turn.
 
 ### Images
 
 A model that can see images gets them these ways:
 
-- **`@path` in a prompt** (REPL, attached terminal, `-p`): `what's wrong in
+- **`@path` in a prompt** (attached terminal, `-p`): `what's wrong in
   @shot.png?`, `@~/Desktop/a.jpg`, `@"my shot.png"`. Each `@` token that names an
   image file (png, jpeg, gif, webp; bmp, tiff and heic are converted) goes with
   the prompt, and a dim line shows it: `[image shot.png 1280×800 · ~1.3k tokens]`.
@@ -1583,7 +1570,7 @@ chi --remote studio --dir /Users/me/app -p "hi"        # a new session there (--
   `--attach`/`--resume` they work as here (`--model`, `--thinking`,
   `--llm-context*` change the session; the others are named as ignored).
   `--non-interactive` (use `chi --remote studio send --new --dir D -m TEXT
-  --wait`), `--verbose`, `--no-shared`, `--memory`, `--mute` and
+  --wait`), `--verbose`, `--memory`, `--mute` and
   `--append-system-prompt` run on this machine only (exit 2).
 - `@path` images are this machine's files (read and downscaled here, then
   uploaded); Tab completes `/` commands and `@path`, not memory names. The
@@ -1736,8 +1723,7 @@ chi share revoke --all          # every link to every session
   `/share NAME [--agent] [--expires 3d] [--cap 2]` (the link and its QR code, once), `/participants` (the list),
   `/participants revoke [P]` (one participant, or everyone) and `/participants cap P DOLLARS`. They are `chi share`'s
   own, so under `chi --remote NAME` they reach that machine's chi web, as `chi --remote NAME share` does; an invite or
-  a revoke made with them isn't announced again by the `participants>` line. The REPL
-  (`--no-shared`) answers them with a note: a participant's turns run on the session's worker.
+  a revoke made with them isn't announced again by the `participants>` line.
 
 #### Review sessions
 
@@ -1806,8 +1792,7 @@ A short recap of the session, for when you come back to it: what you were
 working on, what came of it and what is still open, not a turn-by-turn log.
 
 - It is written once the session has sat idle for `recap.inactivity` (180 s)
-  after at least `recap.min_user_turns` (2) prompts, and as a worker (or the
-  REPL) exits, when something new was said since the last one. Each one
+  after at least `recap.min_user_turns` (2) prompts, and as a worker exits, when something new was said since the last one. Each one
   builds on the previous recap, so it only sends what is new.
 - It is saved with the session (`<session>/recap.json`) and shown as a dim
   `recap>` block when you attach or `--resume`, noting how many turns came
@@ -1835,8 +1820,8 @@ working on, what came of it and what is still open, not a turn-by-turn log.
 
 ## Time gaps (terminal)
 
-Both terminals (attached and the REPL) show when things happened without a
-time on every line:
+The attached terminal shows when things happened without a time on every
+line:
 
 - A dim divider marks a quiet gap of 10 minutes or more, before what comes
   next: `── 14:32 · 47 min later ──`, the date added when the day changed
@@ -1848,11 +1833,10 @@ time on every line:
   activity.
 - Attaching to a session whose last activity was 10 minutes ago or more
   says when, after the join block: `── last activity 14:32 · 47 min ago ──`
-  (from the newest timed message, else the saved recap's time). With
-  `--resume` the REPL marks the gap before the first prompt instead.
+  (from the newest timed message, else the saved recap's time).
 - A recap names the local time it was written: `recap 14:32>`, `recap 14:32
   (before the last 2 turns)>`.
-- Only live activity and the join: neither terminal replays the history, so
+- Only live activity and the join: the terminal doesn't replay the history, so
   older gaps aren't marked. `--non-interactive` prints none.
 
 ## Tool Activity Log
@@ -1872,14 +1856,15 @@ Parameter previews are normalized to one line and truncated to keep output conci
 This is separate from verbose mode:
 
 - Default output shows short activity status lines only.
-- `-v/--verbose` prints the debug log's records (raw LLM responses and full
-  tool call/result payloads among them) to stderr as well; see
+- `-v/--verbose` shows the session's debug records (raw LLM responses and full
+  tool call/result payloads among them): dim, above the prompt, in the
+  attached terminal; on stderr with `--non-interactive`. See
   [Debug Log File](configuration.md#debug-log-file).
 
 ## Persistent Prompt History
 
 Assist mode keeps a persistent prompt history across restarts, one for every
-chi prompt: the REPL, attached mode and the `chi web` composer (↑/↓ there)
+chi prompt: the attached terminal and the `chi web` composer (↑/↓ there)
 share it.
 
 - Default history file: `$XDG_STATE_HOME/samagotchi/history.json`
@@ -1895,7 +1880,7 @@ share it.
 Behavior details:
 
 - Prompt history is loaded on startup before the first `>` prompt.
-- A running REPL or attached TUI picks up the lines other chi processes (the
+- A running attached TUI picks up the lines other chi processes (the
   web, another terminal) added: before each `>` prompt and on the first ↑ at
   an open one (Ctrl-P, vi `k` too), when the file changed, its new lines join
   the ↑ list after the ones already there, without a
@@ -1914,7 +1899,7 @@ Behavior details:
 
 ## Status Line
 
-The REPL and attached mode show one status row under the prompt, drawn when what it says
+The attached terminal shows one status row under the prompt, drawn when what it says
 changes:
 
 ```
@@ -1932,11 +1917,11 @@ status> model=Qwen3.6-35B | ⑂ 2 running · 1 waiting | 2 participants | ctx=8.
 - `⑂ …`: this session's delegate children (forks aren't counted): how many run and how many wait
   for an answer; only the counts there are, nothing when none does (`/children` has the rest:
   done, failed, whether a reply was reported). The terminal reads them from the children's files
-  (the delegates in the session's `delegates.json`): an attached one when it joins, when a turn
-  ends and when a delegate's report merges into a turn, the REPL whenever it draws the row. A
+  (the delegates in the session's `delegates.json`) when it joins, when a turn
+  ends and when a delegate's report merges into a turn. A
   child that starts waiting on an approval (which doesn't wake the parent) shows at the next of
   those.
-- `N participants`: who is in the session's review now ([Participants](#participants)), attached only.
+- `N participants`: who is in the session's review now ([Participants](#participants)).
 - `ctx=`: the kernel's context estimate and its bucket, updated during a turn (on hosts that
   report none, `api: openai`, at the turn's end).
 - `mem:`: the memories the session read, with its `--memory` list; `muted:` its `--mute` list.
@@ -1960,7 +1945,7 @@ It lists the top 3 tools by count (ties go to the tool used first), the failed c
 (a call a guardrail or an approval blocked counts as a call, not as failed) and the last
 call with its parameters, cut to the terminal width. It starts over with each turn.
 
-- The REPL and attached mode: the second row of the activity slot, shown while the slot is (the
+- The terminal: the second row of the activity slot, shown while the slot is (the
   model generating or a tool running). Joining a turn mid-way seeds it from the turn so far.
 - The web: the activity panel's summary reads `activity · 12 tool calls (2 failed) · execute ×7 · …`
   (without `last:`: the rows show it).
@@ -1968,7 +1953,7 @@ call with its parameters, cut to the terminal width. It starts over with each tu
 ## Activity Row
 
 While a turn runs, one row above the prompt says what it is doing, the spinner frame first
-(the REPL and attached mode alike):
+(in the attached terminal):
 
 - `| thinking…` while the model starts, then `| thinking · <sentence>`: the newest complete
   sentence of its thinking, or of its answer (`writing ·`), like the web's thinking ticker: the
@@ -2003,7 +1988,7 @@ Behavior notes:
   tool steps keeps them, as a cancel does, with the dim `partial progress kept; !rollback restores the pre-turn state`
   (the model reads a note saying how many steps ran and why it stopped; `chi send --wait` and a delegating parent
   read `the turn failed after N tool steps: <why>; its work so far stays`). The
-  REPL and attached mode say the same; the web ends a failed turn whose steps stayed with `✕ turn failed: <summary>;
+  attached terminal says the same; the web ends a failed turn whose steps stayed with `✕ turn failed: <summary>;
   partial progress kept (!rollback restores the pre-turn state)`, after a reload too, and says `■ canceled (Ctrl-C)`
   (`stopped` for its Stop button, `by a hook` for a hook's). A turn a bundle's plugin stopped names it: `■ turn stopped by loop-guard` (the web:
   `■ stopped by loop-guard`).
@@ -2030,9 +2015,6 @@ Behavior notes:
   answers it too. If the worker exits (a stop, a crash), the offer goes with it.
 - In the attached terminal (`chi --attach`) the question's prompt reads the continue words: Enter alone, `yes`, `y`
   or `/continue` continue; `no` stops; `no, <reason>` stops and tells the model why; `1` and `2` pick the options.
-- In the plain REPL (`--no-shared`) the CLI asks at the `? ` prompt, with the choices listed under it: `yes` (Enter
-  alone, or `/continue`) resumes, `no` stops, and `no, <explanation>` stops while keeping the reason in conversation
-  context. Once answered, one line stays: `? The turn ran out of iterations. Continue it? → no, too slow`.
 - Continue goes on with the same turn: the model keeps the reasoning (thinking) of the run it continues, on chat and
   native hosts, so a local server's prompt cache stays warm. Continue's text is a steer: on a chat host the reasoning
   starts again from it. See "Reasoning history" in [configuration.md](configuration.md).

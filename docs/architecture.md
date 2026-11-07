@@ -10,9 +10,9 @@ A compact visual overview of the current architecture, then the core API in pros
                        │                                          │
   ┌────────────────────┴────────────────────┐    ┌───────────────┴────────────────┐
   │                TerminalUI               │    │        Web::App (Rack)         │  ← browser UI
-  │  attached (default): AttachLauncher +   │    │  session hub · /api/events     │
+  │  interactive: AttachLauncher +          │    │  session hub · /api/events     │
   │    AttachedLoop, no Engine              │    │  /api/* · reads session files  │
-  │  REPL (--no-shared …): its own Engine   │    └───────────────┬────────────────┘
+  │  --non-interactive: its own Engine      │    └───────────────┬────────────────┘
   └────────────────────┬────────────────────┘                    │ App#relay, bridge_get,
                        │ BridgeClient (SSE + HTTP)               │ /stream proxy
                        └────────────────────┬────────────────────┘
@@ -60,7 +60,7 @@ A compact visual overview of the current architecture, then the core API in pros
 
 ```
 TerminalUI  ──  delegates  ──▶  Engine
-(REPL / render / commands)         (pure logic, no terminal)
+(one-shot host)                 (pure logic, no terminal)
         ▲                                  │
         └────────── on_event: ◀────────────┘
              (turn_started, turn_completed,
@@ -69,13 +69,14 @@ TerminalUI  ──  delegates  ──▶  Engine
 
 - **`Engine`** (`lib/samagotchi/engine.rb`) owns *all* agent logic and knows nothing
   about the terminal ([internals/engine.md](internals/engine.md)).
-- **`TerminalUI`** (`lib/samagotchi/terminal_ui.rb`) owns the REPL and rendering; it
-  delegates all core work to an `Engine`.
+- **`TerminalUI`** (`lib/samagotchi/terminal_ui.rb`) is the one-shot host: `chi -p TEXT
+  --non-interactive` (with `--resume ID` or `chi scratch` too) runs that one turn in this
+  process, its answer alone on stdout, and delegates all core work to its `Engine`. Every
+  interactive terminal is the attached one (`TerminalUI::AttachLauncher`, `AttachedLoop`).
 - The `on_event:` seam on `run_turn` exposes raw `KernelLoop` events plus the
   higher-level turn events, so any new UI can render without terminal coupling.
 - **`ComposerRoute`** (`lib/samagotchi/composer_route.rb`) decides where a line typed at
-  either terminal's prompt goes (the REPL's `steer_line` / `run_input_line`, the attached
-  `AttachedLoop::Composer#submit`): `/cut TEXT` / `/queue TEXT`, a terminal's own word, a session
+  the attached terminal's prompt goes (`AttachedLoop::Composer#submit`): `/cut TEXT` / `/queue TEXT`, a terminal's own word, a session
   command, a typo, a prompt. Each UI keeps what it does with the route. The web's
   `composer.js#routeComposerLine` decides the same; `spec/fixtures/composer_routes.json`
   holds the cases both answer (see [testing.md](testing.md)).
@@ -90,7 +91,7 @@ bin/chi ─▶ TerminalUI ─▶ Engine#run_turn ─▶ KernelLoop / ChatLoop �
                                     (turn started / completed / canceled)
 ```
 
-That is the REPL; attached (the default) the session's `Worker` calls `Engine#run_turn` and the
+That is a `--non-interactive` one-shot; interactive, the session's `Worker` calls `Engine#run_turn` and the
 terminal renders the events it gets over the Bridge.
 
 ## Layers at a glance
@@ -98,7 +99,7 @@ terminal renders the events it gets over the Bridge.
 | Layer | Class(es) | Responsibility |
 |-------|-----------|----------------|
 | Core | `Samagotchi::Engine` | System prompt, memory injection, tool declarations, session lifecycle, model↔tool loop (`run_turn`). No terminal coupling. |
-| UI | `Samagotchi::TerminalUI` | REPL (Reline), rendering, REPL commands. Delegates all core work to an `Engine`. |
+| UI | `Samagotchi::TerminalUI`, `TerminalUI::AttachLauncher` / `AttachedLoop` | `TerminalUI`: the `--non-interactive` one-shot host, its own `Engine`. The attached TUI (every interactive `chi`): a client of the session worker's Bridge, no `Engine`. |
 | Model loops | `KernelLoop` (via `LLM::NativeBackend`), `LLM::ChatLoop` | The model↔tool loop: raw prompt, or a chat API (OpenAI chat, Anthropic Messages), chosen per host (see below). |
 | Adapters | `Samagotchi::Client`, `LLM::OpenAIChat`, `LLM::AnthropicMessages`, `LLM::HTTP` | Raw-prompt servers, the OpenAI chat API, Anthropic's Messages API, and the HTTP they share. |
 | Tools | `lib/samagotchi/tools/*` | Execute, read, edit, write, memory, task_*, web_fetch, delegate/delegate_result, ask_user_question, reminders, send_note, list_sessions, context_read, objectives, forget_outputs, find_tools/call_tool (the tool index), plus runtime/output-guardrails. |
@@ -109,29 +110,27 @@ terminal renders the events it gets over the Bridge.
 
 ## Entry points
 
-- `LaunchMode.resolve` picks the terminal's mode. By default (`session.shared: true`)
-  plain `bin/chi`, `-p` and `--resume ID` run attached, like `--shared`; `--no-shared`,
-  `session.shared: false`, `--non-interactive` and `--verbose` run the REPL. `--memory`
+- `LaunchMode.resolve` picks the terminal's mode: `:attached` (plain `bin/chi`, `-p`,
+  `--resume ID`, `--attach ID`, `-v`) or `:one_shot` (`--non-interactive`). `--memory`
   and `--mute` are session fields (`preloaded_memory_names`, `muted_memory_names`) the
   worker reads when it builds its `Engine`; `MutedMemories` filters the prompt's index and
   the kernel's `memory_read`.
-- The REPL → builds `TerminalUI`. `TerminalUI#run` is the single dispatch
-  for the REPL, `-p`/`--prompt`, `--non-interactive`, and `--resume`.
-- Attached (`bin/chi`, `--attach ID`, `--shared [--resume ID]`) → `TerminalUI::AttachLauncher`: no `Engine`
+- One-shot → builds `TerminalUI`: the `-p` prompt's one turn (a new session, `--resume ID`'s or
+  `chi scratch`'s) under an `OwnerLock` of kind `"tui"`; bare `--non-interactive` is a no-op.
+- Attached (`bin/chi`, `-p`, `--attach ID`, `--resume ID`) → `TerminalUI::AttachLauncher`: no `Engine`
   and no `OwnerLock`; finds or starts the session's worker and runs `TerminalUI::AttachedLoop`
   as a client of its Bridge (`BridgeClient#follow`, `post_turn`, `post_command`, `cancel`, `answer`,
   `dismiss_question`; opening the SSE connection answers `BridgeClient::StreamOpen::Opened`, `Refused` or `Unreachable`). The worker runs in the session's `working_directory`, so `!cmd` and
   the tools don't depend on where the terminal attached from.
 - `bin/chi web` → builds `Web::Server` (Rack+WEBrick on `127.0.0.1:4567`, `--port`/`SAMAGOTCHI_WEB_PORT`, `--open`;
   `web.host: lan` adds a LAN address, `--new-token` replaces its access token).
-- `bin/chi sessions {list,stop,restart,archive,unarchive,delete,prune,clean,stats}` (`SessionsCommand`; not the REPL's `SessionCommands`) → retention & ordering (`SessionRetention`, `updated_at desc`, dry-run, test-only); `stop` is `SessionManager.stop_session(wait:)`, which waits for the worker to release `owner.lock`; `delete` (`SessionDeleteCommand`) is `SessionManager.delete_session(stop:)`, which the TUI's `/exit --delete` and the web's `DELETE /api/sessions/:id` use too.
+- `bin/chi sessions {list,stop,restart,archive,unarchive,delete,prune,clean,stats}` (`SessionsCommand`; not the session's `SessionCommands`) → retention & ordering (`SessionRetention`, `updated_at desc`, dry-run, test-only); `stop` is `SessionManager.stop_session(wait:)`, which waits for the worker to release `owner.lock`; `delete` (`SessionDeleteCommand`) is `SessionManager.delete_session(stop:)`, which the TUI's `/exit --delete` and the web's `DELETE /api/sessions/:id` use too.
 - Session commands (`chi send`, `answer`, `note`, a session's `context`, `sessions list/stop/restart/archive/unarchive/delete`) →
   `SessionAccess` (`session_access.rb`): what they ask of a session goes through one backend object,
   `SessionAccess::Local` (`session_access/local.rb`) on this machine's files and workers; a `--wait`'s pre-send state
   (cursor, baseline, own turn) is `prepare_wait`'s `WaitStart`. `SessionAccess::Contract` lists which commands and flags
   run against a remote and which on this machine only.
-- In REPL mode `TerminalUI` builds the `Engine` in process (`-p` and `--non-interactive` too);
-  otherwise the session's `Worker` (`lib/samagotchi/worker.rb`, spawned by `SessionManager`) builds it.
+- A one-shot's `TerminalUI` builds the `Engine` in process; otherwise the session's `Worker` (`lib/samagotchi/worker.rb`, spawned by `SessionManager`) builds it.
 
 ## How chi launches itself
 
@@ -207,22 +206,20 @@ agent logic and can be used without any terminal rendering; the UI is a thin lay
 | Layer | Class | Responsibility |
 |-------|-------|----------------|
 | Core | `Samagotchi::Engine` | System prompt, memory injection, tool declarations, session lifecycle, the model↔tool loop (`run_turn`). No terminal coupling. |
-| UI | `Samagotchi::TerminalUI` | Interactive REPL (Reline), rendering (ANSI, spinner, status line), REPL commands. Delegates all core work to an `Engine`. |
+| UI | `Samagotchi::TerminalUI`, `TerminalUI::AttachLauncher` / `AttachedLoop` | The attached TUI: rendering (ANSI, spinner, status line) and the terminal's own commands over the worker's Bridge. `TerminalUI`: the `--non-interactive` one-shot host, which delegates all core work to its `Engine`. |
 | Model loops and adapters | `KernelLoop`, `LLM::ChatLoop`, `Samagotchi::Client`, `LLM::OpenAIChat`, `LLM::AnthropicMessages`, `LLM::HTTP` | The model↔tool loops and the HTTP adapters they talk through (see "Model loops and adapters"). |
 | Bridge (SSE/HTTP) ([internals/bridge.md](internals/bridge.md)) | `Samagotchi::Bridge`, `SessionManager` | The **single live client transport**: an SSE read stream + HTTP POST turn/cancel/answer surface that attaches to a worker's existing `Engine` via `Engine#subscribe`. Every session worker starts it (bound `127.0.0.1`, localhost-only), and it answers only a request that names its secret (`X-Chi-Bridge`, from the worker's 0600 `bridge.json`). |
 | Web (Rack) | `Samagotchi::Web::App`, `SessionManager` | Single-port `127.0.0.1:4567` control plane via `rack`+`webrick` (serve `index.html` + `/api/*`). With `web.host: lan` (or one of this machine's IPv4 addresses) the server also listens on that address, where every request needs the access token, this machine's on loopback too (`App#token_gate`: the `chi_token` cookie, on loopback a value derived from the token (`Token.loopback_cookie`), or `Authorization: Bearer`; chi web prints a `Local:` link with a one-time code; [CLI](cli.md#chi-web-on-your-phone)). Experimental: behind an auth proxy (`web.public_url`, `Web::ProxyGate`) every request needs the token, this machine's too, and one that came through the proxy also the configured identity header for the owner ([configuration.md](configuration.md#behind-an-auth-proxy)). A request goes through, in order: the Host check (`local_host_header?`: loopback names, the LAN address, the public host), the cross-site check (`cross_site?`: Origin this server's or the public origin, no `Sec-Fetch-Site` cross-site/same-site on a POST or `/api`), the frame check (`framed?`: a frame/embed/object load from another origin, 403 `framed`; every HTML answer carries `X-Frame-Options: DENY` and `frame-ancestors 'none'; frame-src 'none'`, so a page's own frames can't navigate either), the token gate (`token_gate` → `principal_for`, `proxied_principal` for a proxied request; the `?token=` / `POST /api/token` trade sets the cookie, `__Host-chi_token` through the proxy; with `web.public_url` a direct request takes Bearer only, and with it or LAN mode chi's token-less `/api/info` probe gets `probe_info`), then the route's permission (`Principal#permits?`). It talks to each worker's Bridge (`App#relay`, `bridge_get`; `/stream` proxies it) and reads the session files; no `Engine` of its own. Markdown (`web.markdown`) is rendered here only (`Web::MarkdownRenderer`): the answers it serves, card bodies, and `POST /api/render` for a text the page already shows. `App` keeps the gate, `ROUTES` and the helpers the handlers share; its handlers live in mixins it includes, each a `Web::` module with private methods: `SessionAccessRoutes` (`web/session_access_routes.rb`), `ParticipantAccess` (`web/participant_access.rb`), `ParticipantsAdmin` (`web/participants_admin.rb`), `ParticipantReview` (`web/participant_review.rb`), `MessageDisplay` (`web/message_display.rb`), `SessionShow` (`web/session_show.rb`), `SessionCreate` (`web/session_create.rb`), `SessionControl` (`web/session_control.rb`), `PushRoutes` (`web/push_routes.rb`) and `ProxyGate` (`web/proxy_gate.rb`). Exact paths in `GATE_FREE_PATHS` are served before the token gate (the fragment trade's script, and the Home Screen app's manifest, service worker and icons). `bin/chi web` entrypoint. |
 | Sessions | `Samagotchi::Session`, `SessionManager` | File-based `~/.local/state/samagotchi/sessions/<uuid>.json` + sidecar `input/`/`output/`; retention (14d/500) + ordering (`updated_at desc`). |
 
-- `bin/chi` in REPL mode (see `LaunchMode` above) builds `TerminalUI`. `TerminalUI#run` is the single
-  dispatch for the REPL, `-p`/`--prompt`, `--non-interactive`, and `--resume`: it
-  builds the working session once, runs a single prompt turn when `-p` is given,
-  then either exits (`--non-interactive`) or drops into the REPL carrying the
-  post-turn conversation.
+- `bin/chi` in one-shot mode (`--non-interactive`, see `LaunchMode` above) builds `TerminalUI`.
+  `TerminalUI#run` builds the session (new, `--resume`'s or `chi scratch`'s), runs the `-p`
+  turn with the answer alone on stdout and the session lines on stderr, and exits.
 - A session's `Worker` (spawned by `SessionManager`) builds its `Engine` (no terminal rendering).
-- `bin/chi` in attached mode (the default, `--attach`, `--shared`) builds no `Engine`: `TerminalUI::AttachLauncher` finds
+- `bin/chi` in attached mode (every interactive run) builds no `Engine`: `TerminalUI::AttachLauncher` finds
   or starts the worker, and `TerminalUI::AttachedLoop` is a client of its Bridge
   (`BridgeClient#follow` for events, `post_turn`/`cancel`/`answer` for input). It
-  renders through the same `EventRenderer` as the REPL, on an `AttachedView` that
+  renders through `EventRenderer`, on an `AttachedView` that
   draws on a `Screen`: a live region at the bottom of the terminal (activity row,
   prompt, status/notes/hints) under normal scrollback. From a turn's 3rd tool call the
   activity slot gets a second, dim row: the turn's tool tally (`TurnTally`, seeded from the
@@ -593,7 +590,7 @@ credit held by in-flight requests, retried after 20 s), `OutOfCredits` (any othe
 402), `ServerError`, `AuthError`, `BadRequest` (`context_overflow?`) or `ProtocolError`. Engine keeps the turn's
 conversation (the prompt plus completed tool iterations) and emits
 `:turn_failed` with `error_kind:`, `retryable:`, `host:` and a one-line
-`summary:`, which the REPL, the attached TUI and the web show.
+`summary:`, which the attached TUI, a one-shot's stderr and the web show.
 
 **Usage and models.** A turn's token counts are `SessionMetrics`', read from the
 stream events (server counts, else a chars/4 estimate). Model lists are `LLM::ModelInfo`
@@ -628,7 +625,7 @@ A map of the parts the overview above doesn't name (paths under `lib/samagotchi/
 | Worker link | `worker_link.rb` (`WorkerLink`: `Live`, `Starting`, `Leaving`, `Skew`, `Stale`, `None`), `worker_sidecar.rb` (`WorkerSidecar`) | Whether a session's worker can be reached and the client for it: every Bridge client asks `WorkerLink.resolve` / `.client` / `.await` (*Worker link* above); `WorkerSidecar` is the `bridge.json` it reads. |
 | Session access | `session_access.rb` (`SessionAccess`: `NewSession`, `SetupWords`, `WaitStart`, `SessionView`, `Created`, `ContextEntry`, `ContextPush`, the errors `RemoteFailed`, `RemoteTooOld`, `Refused`, `BadRequest`), `session_access/local.rb` (`SessionAccess::Local`), `session_access/remote.rb` (`SessionAccess::Remote`), `session_access/http_transport.rb`, `session_access/web_bridge_client.rb` (`SessionAccess::WebBridgeClient`, a remote attach's worker through chi web), `session_access/dispatch.rb` (`SessionAccess::Dispatch`), `session_access/contract.rb` (`SessionAccess::Contract`), `remotes.rb` (`Remotes`), `remote_command.rb` (`chi remote`), `web/session_access_routes.rb` (`Web::SessionAccessRoutes`) | The seam between the session commands and where the sessions live: `Local` is this machine's (the `SessionManager`, `ReplyWait`, `NoteDelivery`, `ContextSources` and Bridge calls the commands made); `Remote` is another machine's, the same methods as requests to its chi web's routes of the same name (Bearer token, `HTTPTransport`), results as Local's value objects and refusals as the classes Local's callees raise, built from the fields chi web sends; waits and prefixes run on the server, a wait asked again per 30 s slice. `Dispatch` is bin/chi's front for `--remote NAME` / `CHI_REMOTE` (taken off before the subcommand lookup): it refuses what the contract table lists `local_only` (exit 2, one message) and runs the command with a `Remote` on the `Remotes` entry (`$XDG_CONFIG_HOME/samagotchi/remotes.yml`, 0600). chi web's routes answer from `Local` (*chi web's routes for the session commands* above). Checks that read this machine's config or files (vision, parent answers, the cwd's project, `SAMAGOTCHI_PARENT_SESSION`) stay in the commands and are skipped under a `Remote`, where chi web's create, turn and wait routes run the vision, parent-answers and busy checks with the server's config and the worker checks a parent's answer. See [internals/remote-sessions.md](internals/remote-sessions.md). |
 | Idle work | `idle_scheduler.rb` (`IdleScheduler`), `idle_recap.rb` (`IdleRecap`), `idle_reminders.rb` | One poller for an idle session's recap and reminders. |
-| Attached context | `context_sources.rb` (`ContextSources`), `context_poller.rb`, `context_absorber.rb`, `context_candidates.rb` (`ContextCandidates`: proposed sources, attached on the owner's mention at a turn's start, before the worker's absorb, or in the REPL's turn; `owner_prompt.rb` decides whose words count), `peer_sources.rb` (`PeerSources`: the sources peer bundles declare) | External sources a session keeps fresh, and the peer loop's wakes ([context.md](context.md)). |
+| Attached context | `context_sources.rb` (`ContextSources`), `context_poller.rb`, `context_absorber.rb`, `context_candidates.rb` (`ContextCandidates`: proposed sources, attached on the owner's mention at a turn's start, before the worker's absorb, or in a one-shot's turn; `owner_prompt.rb` decides whose words count), `peer_sources.rb` (`PeerSources`: the sources peer bundles declare) | External sources a session keeps fresh, and the peer loop's wakes ([context.md](context.md)). |
 | LLM context strategies | `llm_context_strategy.rb`, `llm_context_view.rb`, `llm_context_stale.rb`, `llm_context_forget.rb` | What a request sends of the history (none, stale, forget) ([internals/llm-context-forget.md](internals/llm-context-forget.md)). |
 | Session chains | `session_continue.rb` (`SessionContinue`), `session_chain.rb` (`SessionChain`) | A session that continues an earlier one. `SessionChain.opener_for` gives the text web `continue →` prefills in the new link: the previous link's own first typed message when that link continues one itself, else nil (the 201's `opener`; not saved) ([sessions.md](sessions.md)). |
 | Review sessions | `review_start.rb` (`ReviewStart`), `session_review.rb` (`SessionReview`, the session's `review` field), `review_command.rb` (`ReviewCommand`, `chi review`), `review_apply.rb` (`ReviewApply`) | A session made to be shared: idle, its subjects project files checked by `Guardrails::ReviewPaths`, a fork of a working session from its recap (`--from`); Apply quotes a participant's review turn into the owner's composer ([sessions.md](sessions.md#review-sessions), [internals/participants.md](internals/participants.md)). |

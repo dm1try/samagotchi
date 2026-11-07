@@ -1,8 +1,8 @@
 # Engine: the core agent loop
 
 The Engine (`lib/samagotchi/engine.rb`) runs a session's turns. It owns the turn lifecycle, the hooks and
-plugins, and the model↔tool cycle, and it reports what happens as events, so every UI (the REPL, a worker
-behind the web and the attached TUI, one-shot CLI runs) runs turns the same way without the Engine knowing how
+plugins, and the model↔tool cycle, and it reports what happens as events, so every UI (a worker behind the web
+and the attached TUI, a `--non-interactive` one-shot) runs turns the same way without the Engine knowing how
 they render.
 
 ```
@@ -120,7 +120,7 @@ StandardError in run_turn:
      # error_kind, retryable, host and summary.
   → re-raised
 
-Interrupt (Ctrl-C; the REPL only: a worker traps INT, see the signal row below):
+Interrupt (Ctrl-C; a one-shot only: a worker traps INT, see the signal row below):
   → if turn.ended: re-raised only
   → turn.controller.cancel!(:ctrl_c)
   → end_turn(turn, "canceled"): ctrl_c_messages keeps the loop's conversation, else turn.messages
@@ -432,7 +432,7 @@ what a resolve gives, all without a `/model`. Frozen, so any thread may hold one
 - Never resolved (they hold on a broken resolve): `effective_model_ref`, `bare_model_name`,
   `guardrail_model_name`, `sync_model_key!`, `served_model(probe: false)` (`HostRegistry#model_ref`/`#bare_name`).
 - Readers on other threads: the Bridge (`/state`, `/stats`, the SSE reset, a steer's cut wait), the worker's
-  command thread, the recap thread and plugin threads (`session_model_recap_target`), the REPL.
+  command thread, the recap thread and plugin threads (`session_model_recap_target`).
 - `ModelChoice` (`ModelBinding#choice`) holds the name and the typed name as one value, so a reader on another
   thread never pairs one model's name with another's typed name.
 - `EffectiveModel.of_session` builds a saved session's (no worker): `Web::App`, `LLMContextStrategy.for_session`.
@@ -523,7 +523,7 @@ drain hands the message to the model at a boundary, or until the turn ends (`Ste
 ### The turn's sink (`on_event`) and the observers
 
 `Engine#emit_event` (`EventFanout#emit_event`, `event_fanout.rb`, which also builds the loops' stream handler and
-emits the working set) sends each turn event to the turn's sink (`on_event`, the REPL's renderer) and then to the
+emits the working set) sends each turn event to the turn's sink (`on_event`, a one-shot's renderer) and then to the
 persistent observers (`Engine#subscribe`), which get a copy with a monotonic `event_seq`. The observers are the
 metrics, the debug log, the thinking tails, and in a worker the Bridge, which streams to the web and the attached
 TUI. Errors in the sink or an observer are caught; they never break the turn.
@@ -783,7 +783,7 @@ The verdict is one of:
 - **allow**: the call runs.
 - **deny**: that call's output is replaced with denial text; the rest of the batch still runs.
 - **ask**: `Gate#settle_ask` first looks for a stored approval that covers the call. Otherwise
-  `Engine#request_approval` asks the user through the question flow (REPL, attached TUI, web). A
+  `Engine#request_approval` asks the user through the question flow (attached TUI, web). A
   `--non-interactive` run has no one to ask, so the call is denied. An approval wider than this once is stored.
 
 docs/guardrails.md covers the rules and the approval scopes.

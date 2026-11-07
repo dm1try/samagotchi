@@ -67,7 +67,7 @@
   `docs/bundle-authoring.md` in my source dir first.
 
 ## Where things live (relative to the source dir)
-- `docs/`: `cli.md` (flags, subcommands, REPL commands), `configuration.md` (config.yml keys,
+- `docs/`: `cli.md` (flags, subcommands, the terminal's commands), `configuration.md` (config.yml keys,
   hosts, the server api), `hooks.md` (hook events table), `plugins.md` (plugin API), `bundles.md` (each shipped bundle: btw, mcp, cost-cap…),
   `guardrails.md`, `memory.md`, `sessions.md`. `README.md` is only the quickstart.
 - `lib/samagotchi/tools/<tool>.rb`: each tool's real limits and defaults (e.g. `execute.rb`,
