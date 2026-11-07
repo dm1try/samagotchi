@@ -1553,7 +1553,7 @@ RSpec.describe Samagotchi::SessionManager do
       expect(client).not_to have_received(:request_exit)
     end
 
-    it "is refused with no live worker, and raises OwnedByTUI for a REPL's session" do
+    it "is refused with no live worker, and raises OwnedByTUI for a one-shot's session" do
       allow(described_class).to receive(:session_owner).and_return(nil)
       expect { described_class.restart_session(session.id, state_dir: tmpdir) }
         .to raise_error(described_class::RestartRefused) { |e| expect(e.reason).to eq(:not_running) }
@@ -2644,7 +2644,7 @@ RSpec.describe Samagotchi::SessionManager do
       expect(Process).not_to have_received(:spawn)
     end
 
-    it "raises OwnedByTUI up front for a REPL-owned session and queues nothing" do
+    it "raises OwnedByTUI up front for a one-shot's session and queues nothing" do
       own("tui")
 
       expect do
@@ -2899,7 +2899,7 @@ RSpec.describe Samagotchi::SessionManager do
       expect(summary[:preview]).to eq("answer: the build failed nested same bug?")
     end
 
-    it "WorkerLink reads a session worker-owned only while a worker holds it, not a REPL" do
+    it "WorkerLink reads a session worker-owned only while a worker holds it, not a one-shot" do
       worker = make
       repl = make
       none = make
@@ -2912,7 +2912,7 @@ RSpec.describe Samagotchi::SessionManager do
       expect(owned.call(none)).to be(false)
     end
 
-    it "live: only sessions a worker owns now, not a REPL's and not a stale running status" do
+    it "live: only sessions a worker owns now, not a one-shot's and not a stale running status" do
       worker = make(updated: "2026-09-24T10:00:00Z")
       repl = make(updated: "2026-09-24T11:00:00Z")
       stale = make(updated: "2026-09-24T12:00:00Z", status: Samagotchi::Session::STATUS_RUNNING)

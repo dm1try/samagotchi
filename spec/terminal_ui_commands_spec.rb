@@ -12,7 +12,7 @@ RSpec.describe Samagotchi::TerminalUI do
 
   around { |example| with_env("SAMAGOTCHI_DEFAULT_MODEL" => "Gemma-4B-it") { example.run } }
 
-  describe "stats REPL commands" do
+  describe "/stats text" do
     it "renders the session metrics summary via format_session_metrics" do
       metrics = agent.engine.metrics
       metrics.call(type: :turn_started, session_id: "s", prompt: "x")

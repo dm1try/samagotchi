@@ -291,7 +291,7 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "questions" do
     expect(screen.lines).to include("? Which one? → (already answered in another UI)")
   end
 
-  it "dismisses the question on an empty answer, as the REPL does" do
+  it "dismisses the question on an empty answer" do
     allow(client).to receive(:dismiss_question).and_return(Samagotchi::BridgeClient::Response.new(status: 200))
     start(first: snapshot(pending_question: question))
     wait_for("the question prompt") { prompts.last == "? " }

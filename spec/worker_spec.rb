@@ -283,7 +283,7 @@ RSpec.describe Samagotchi::Worker do
       expect(next_turn&.first).to eq("from another process")
     end
 
-    it "runs a due reminder at once, as a continue turn with no user message (as the REPL)" do
+    it "runs a due reminder at once, as a continue turn with no user message" do
       allow(engine).to receive(:reminders_due?).and_return(true)
       start_worker(poll_interval: 60)
 

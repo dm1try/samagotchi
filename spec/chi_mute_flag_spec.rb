@@ -4,7 +4,7 @@ require "tmpdir"
 require "json"
 require "support/fake_provider_server"
 
-# --mute on the plain REPL path (--non-interactive): the muted memory is
+# --mute on the one-shot path (--non-interactive): the muted memory is
 # out of the prompt bin/chi's TerminalUI builds. The identity memory is the
 # one the system bundle installs into any fresh config dir, so it is there
 # to mute without a fixture. One run is a real bin/chi; the rest fork it
@@ -28,7 +28,7 @@ RSpec.describe "chi --mute" do
     server&.stop
   end
 
-  it "keeps the muted memory out of the REPL's prompt: its index line and the identity auto-load" do
+  it "keeps the muted memory out of the one-shot's prompt: its index line and the identity auto-load" do
     prompt, = sent_prompt
     expect(prompt).to include("**identity**")
     expect(prompt).to include("System identity (auto-loaded")

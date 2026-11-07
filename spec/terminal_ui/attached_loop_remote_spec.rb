@@ -128,7 +128,7 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop, "through a remote" do
       expect(screen.lines.last).to eq("(no metrics: #{down})")
     end
 
-    it "/recap: the saved recap in the REPL's words, and why when chi web couldn't give it" do
+    it "/recap: the saved recap in Formatting's words, and why when chi web couldn't give it" do
       allow(client).to receive(:request_recap)
         .and_return(response(200, { enabled: true, saved: { text: "Fixed the spec.", turns_since: 0 }, request: "started", min_user_turns: 1 }))
 

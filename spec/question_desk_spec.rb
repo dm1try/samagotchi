@@ -171,7 +171,7 @@ RSpec.describe Samagotchi::QuestionDesk do
     end
   end
 
-  # The REPL answers on the turn thread: a handler may return the tool
+  # A one-shot answers on the turn thread: a handler may return the tool
   # result's text itself.
   describe "a sync handler that returns text" do
     it "returns the text and leaves no question pending, in memory or the session file" do

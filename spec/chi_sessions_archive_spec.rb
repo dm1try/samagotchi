@@ -51,7 +51,7 @@ RSpec.describe "chi sessions archive" do
       expect(archived?(parent) && archived?(plain)).to be(true)
     end
 
-    it "refuses a busy session, a REPL's and a scratch one, archives the rest, and exits 1" do
+    it "refuses a busy session, a one-shot's and a scratch one, archives the rest, and exits 1" do
       busy = make("busy", id: "aaaa1111-0000", owner: "worker")
       Samagotchi::Session.load(busy.id, state_dir: state_dir).tap { |s| s.status = Samagotchi::Session::STATUS_RUNNING }.save(state_dir: state_dir)
       make("open", id: "bbbb2222-0000", owner: "tui")
@@ -70,7 +70,7 @@ RSpec.describe "chi sessions archive" do
       expect(archived?(busy)).to be(false)
     end
 
-    it "tells a REPL on a delegate from one on the session itself" do
+    it "tells a one-shot on a delegate from one on the session itself" do
       parent = make("parent", id: "aaaa1111-0000")
       make("child", parent: parent, owner: "tui")
 

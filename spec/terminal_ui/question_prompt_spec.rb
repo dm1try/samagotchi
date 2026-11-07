@@ -146,7 +146,7 @@ RSpec.describe Samagotchi::TerminalUI::QuestionPrompt, "approval" do
         .to eq("(question cancelled)")
     end
 
-    it "says a question closed in a non-interactive run had no one to answer, as the REPL's own line does" do
+    it "says a question closed in a non-interactive run had no one to answer, as the one-shot's own line does" do
       plain = described_class.new("id" => "q1", "question" => "Which one?", "options" => %w[A B])
       expect(plain.closed_text("non_interactive")).to eq("(dismissed: no one to answer in a non-interactive run)")
       expect(described_class.new(relayed).closed_text("non_interactive"))

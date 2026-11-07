@@ -270,7 +270,7 @@ RSpec.describe Samagotchi::SessionRetention do
       expect(Dir.exist?(corrupt)).to be(true)
     end
 
-    it "deletes a leftover scratch session at once, keeping one its REPL still owns" do
+    it "deletes a leftover scratch session at once, keeping one a terminal's one-shot still owns" do
       scratch = lambda do |s|
         s.messages << { role: "user", content: "hi" }
         s.scratch = true
@@ -294,7 +294,7 @@ RSpec.describe Samagotchi::SessionRetention do
 
   describe ".prune with the default keep_status" do
     # status is turn state: a "running" left by a crashed worker protects
-    # nothing; the live owner (worker or REPL lock) is what keeps a session.
+    # nothing; the live owner (worker or one-shot lock) is what keeps a session.
     def aged(status:, days_old: 20)
       session = Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp")
       session.messages << { role: "user", content: "hi" }
@@ -314,7 +314,7 @@ RSpec.describe Samagotchi::SessionRetention do
       expect(described_class::DEFAULT_KEEP_STATUS).to eq([])
     end
 
-    it "prunes an old session left running by a dead worker, and keeps old ones a worker or a REPL still owns" do
+    it "prunes an old session left running by a dead worker, and keeps old ones a worker or a one-shot still owns" do
       crashed = aged(status: Samagotchi::Session::STATUS_RUNNING)
       # The crashed worker's lock file is left behind, no longer held.
       Samagotchi::OwnerLock.acquire(session_dir(crashed), kind: "worker").release

@@ -6,7 +6,7 @@ require "samagotchi/session"
 require "samagotchi/log_path"
 require "support/fake_provider_server"
 
-# `chi scratch`: the run options, for a plain REPL session that leaves
+# `chi scratch`: the run options, for a session that leaves
 # nothing behind (a fake model server answers the one turn). One example
 # runs a real bin/chi; the rest fork it (ChiCli#fork_chi).
 RSpec.describe "chi scratch" do

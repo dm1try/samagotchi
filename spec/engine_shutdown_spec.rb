@@ -3,7 +3,7 @@
 require "spec_helper"
 require "samagotchi/engine"
 
-# Engine#shutdown (plan P5): the REPL's and the worker's way out.
+# Engine#shutdown (plan P5): the worker's and a one-shot's way out.
 RSpec.describe "Engine#shutdown" do
   around { |example| with_env("SAMAGOTCHI_DEFAULT_MODEL" => "Gemma-4B-it") { example.run } }
 

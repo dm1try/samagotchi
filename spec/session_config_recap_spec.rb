@@ -35,7 +35,7 @@ RSpec.describe "a session's own recap settings", :recap do
     expect(built.session_state_snapshot).to include(recap_enabled: false)
   end
 
-  it "binds the same session twice without a second rebuild (the REPL does)" do
+  it "binds the same session twice without a second rebuild" do
     built = engine
     session = session_with("recap.sentences" => "3")
     built.session = session

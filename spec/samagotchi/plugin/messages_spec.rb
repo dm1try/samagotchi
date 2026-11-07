@@ -11,7 +11,7 @@ require "support/thinking_off"
 require "support/test_kernel"
 
 # ctx.messages (plan O1): no system prompt; mid-turn a worker's holds the
-# turn so far (from its Bridge), the REPL's is the conversation before it.
+# turn so far (from its Bridge), a one-shot's is the conversation before it.
 RSpec.describe "ctx.messages" do
   include_context "thinking off"
 
@@ -36,7 +36,7 @@ RSpec.describe "ctx.messages" do
     end
   end
 
-  it "leaves out the system prompt the REPL's conversation starts with" do
+  it "leaves out the system prompt an Engine's conversation starts with" do
     session.messages = [{ role: "system", content: "the prompt" }, { role: "user", content: "hi" },
                         { role: "system", content: "a note", kind: "context_note" }]
     engine.session = session
@@ -45,7 +45,7 @@ RSpec.describe "ctx.messages" do
     expect(ctx.messages_partial?).to be(false)
   end
 
-  it "is the conversation before a running turn without a Bridge (the REPL), and says so" do
+  it "is the conversation before a running turn without a Bridge (a one-shot), and says so" do
     session.messages = [{ role: "system", content: "the prompt" }, { role: "user", content: "earlier" }]
     engine.session = session
     engine.run_turn(session, "now", on_event: ->(_e) {})

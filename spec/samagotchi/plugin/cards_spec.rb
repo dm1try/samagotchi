@@ -968,7 +968,7 @@ RSpec.describe "Cards" do
         expect(listed(worker_store).first[:turns_since]).to eq(2)
       end
 
-      it "doesn't count a kill before the turn began, or a REPL's kill: the prompt isn't in the session" do
+      it "doesn't count a kill before the turn began, or a one-shot's kill: the prompt isn't in the session" do
         worker_store.tap do |store|
           store.call(between("before"))
           turn(:turn_started, on: store)

@@ -265,8 +265,8 @@ RSpec.describe "Engine ask_user_question (cross-thread path)" do
     end
   end
 
-  # The REPL answers on the turn thread itself, through a sync handler.
-  describe "a synchronous handler (REPL)" do
+  # A --non-interactive one-shot answers on the turn thread itself, through a sync handler.
+  describe "a synchronous handler (a one-shot)" do
     it "returns the answer the handler recorded and announces it" do
       engine = build_engine
       events = []
@@ -331,7 +331,7 @@ RSpec.describe "Engine ask_user_question (cross-thread path)" do
       expect(result).to include(error: "cancelled", reason: "child_gone")
     end
 
-    it "is nil for an Engine that isn't a worker's, or answers through a REPL's sync handler" do
+    it "is nil for an Engine that isn't a worker's, or answers through a sync handler" do
       engine = build_engine
       engine.interface = :non_interactive
       expect(engine.relay_peer).to be_nil

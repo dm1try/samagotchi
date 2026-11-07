@@ -1415,7 +1415,7 @@ RSpec.describe Samagotchi::Web::App do
       expect(payload["messages"].map { |m| m["content"] }).to eq(["hello", "hi there"])
     end
 
-    it "draws the file's pending question only while a worker owns the session (a dead worker's or a REPL's can't be answered)" do
+    it "draws the file's pending question only while a worker owns the session (a dead worker's or a one-shot's can't be answered)" do
       loader = Class.new(StubSessionLoader) do
         def self.load(id, state_dir: nil)
           super.tap { |s| s.pending_question = { id: "q1", question: "Which?", status: "pending" } }
@@ -3876,7 +3876,7 @@ RSpec.describe Samagotchi::Web::App do
         expect(archived?).to be(true)
       end
 
-      it "answers 409 busy while a turn runs, owned_by_tui for a REPL's, and archives nothing" do
+      it "answers 409 busy while a turn runs, owned_by_tui for a one-shot's, and archives nothing" do
         @lock = Samagotchi::OwnerLock.acquire(session_dir, kind: "worker")
         Samagotchi::Session.load(session.id, state_dir: state_dir).tap { |s| s.status = Samagotchi::Session::STATUS_RUNNING }.save(state_dir: state_dir)
 
