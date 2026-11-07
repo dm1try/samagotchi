@@ -56,6 +56,11 @@ RSpec.describe Samagotchi::BlockRenderers do
       expect { described_class.parse_list(twice) }.to raise_error(described_class::Invalid, /mermaid listed more than once/)
     end
 
+    it "refuses chi-ui: chi draws it itself (InlineWidgets)" do
+      expect { described_class.parse("lang" => "chi-ui", "load" => ["a.js"]) }
+        .to raise_error(described_class::Invalid, "block_renderers: chi-ui is drawn by chi itself; a bundle can't render it")
+    end
+
     it "refuses a language the page could never route to" do
       ["", "Mermaid", "a b", "x" * 33, nil].each do |lang|
         expect { described_class.parse("lang" => lang, "load" => ["a.js"]) }.to raise_error(described_class::Invalid, /lang/), lang.inspect
