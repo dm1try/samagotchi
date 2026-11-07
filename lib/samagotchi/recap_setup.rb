@@ -42,7 +42,7 @@ module Samagotchi
       if session.key?("recap.enabled")
         return nil unless session["recap.enabled"]
       else
-        # The REPL and a worker pass nothing: the config is read here alone
+        # A worker passes nothing: the config is read here alone
         # (a scalar `recap: false` is only seen this way).
         return nil if recap.nil? && ConfigFile.recap_config == false
         return nil if Samagotchi::Config.get("recap.enabled") == false

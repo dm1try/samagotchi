@@ -15,7 +15,7 @@ module Samagotchi
   # `strategy <layers|none>`, `apply <rule>` and `budget <N|off>` (any of
   # them, in one line; `default` unsets one) it sets the session's own, and
   # `reset` unsets them all. A change takes effect at the next turn's
-  # start (the REPL and the worker run it between turns), and the reply
+  # start (the worker runs it between turns), and the reply
   # says what it costs: forget on or off changes the tool list and the
   # system prompt (a full cache break); stale turned on stages the reads
   # already superseded as one batch under the apply rule; a layer turned

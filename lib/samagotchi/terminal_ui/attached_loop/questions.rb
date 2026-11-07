@@ -27,8 +27,7 @@ module Samagotchi
           nil
         end
 
-        # A bare answer at the continue prompt, as the REPL reads it (an empty
-        # one is yes).
+        # A bare answer at the continue prompt (an empty one is yes).
         def continue_line(text)
           text.empty? ? SessionCommands::CONTINUE_COMMAND : "#{SessionCommands::CONTINUE_COMMAND} #{text}"
         end
@@ -149,7 +148,7 @@ module Samagotchi
           nil
         end
 
-        # An empty answer dismisses the question, as in the REPL: the tool
+        # An empty answer dismisses the question: the tool
         # returns unanswered (an approval: denied) and the turn goes on. The
         # :question_cancelled every UI gets finds it already closed here.
         def dismiss_question

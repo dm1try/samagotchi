@@ -149,7 +149,7 @@ module Samagotchi
 
       # bin/chi's run flags under a remote (chi --remote NAME --attach ID,
       # RemoteAttachCommand): what a remote attach takes, and what runs
-      # this machine's REPL or reads this machine's files (P4-D2..D4). A
+      # this machine's Engine or reads this machine's files (P4-D2..D4). A
       # config registry flag (--recap-base-url …) is this machine's
       # config: LOCAL_ONLY without being listed.
       RUN = {

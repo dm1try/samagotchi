@@ -39,13 +39,13 @@ module Samagotchi
         attr_reader :screen
 
         # Asked first on Ctrl-C during a read, with or without a screen: a
-        # truthy answer means it handled the key (the REPL cancelled a running
-        # turn) and the read goes on with the typed text as it is.
+        # truthy answer means it handled the key (the attached loop cancelled a
+        # running turn) and the read goes on with the typed text as it is.
         # @return [#call, nil]
         attr_accessor :interrupt_handler
 
         # Called with no arguments for each key a read takes (typing is
-        # activity for the REPL's idle clock).
+        # activity for an idle clock; nobody sets it now).
         # @return [#call, nil]
         attr_accessor :key_handler
 

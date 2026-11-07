@@ -10,8 +10,8 @@ module Samagotchi
   # soft) or `default` (none of its own) sets it, saved at once, for the next
   # answer a parent gives. It may only tighten config.yml's
   # (Guardrails::ParentPolicy.effective). Tightening goes from anyone;
-  # loosening (toward soft, or default) only from a user at a UI: the REPL,
-  # an attached TUI, the web (+user_ui+). A parent agent's line (chi send,
+  # loosening (toward soft, or default) only from a user at a UI: an
+  # attached TUI, the web (+user_ui+). A parent agent's line (chi send,
   # a piped or marked attach, a delegate's follow-up) is refused.
   class ParentAnswersCommand
     NAME = "/parent-answers"

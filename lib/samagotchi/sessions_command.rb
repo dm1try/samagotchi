@@ -21,7 +21,7 @@ module Samagotchi
   # `chi sessions`: list, stop, restart, archive/unarchive, delete, prune,
   # clean and stats sessions from the shell (bin/chi dispatches here before
   # OptionParser; the subcommands have their own flags). Not SessionCommands,
-  # the REPL's slash commands for sessions (session_commands.rb).
+  # the slash commands a session's worker runs (session_commands.rb).
   class SessionsCommand
     include CLI::Command
 
@@ -214,8 +214,8 @@ module Samagotchi
         # delegate: started by the delegate tool (a fork has a parent_id too)
         # continues: the session it continues (its chain's previous link), or nil
         # archived: hidden from the lists (only with --archived can it be true)
-        # scratch: a `chi scratch` session (deleted when its REPL ends, a
-        # leftover one at the next sweep)
+        # scratch: a `chi scratch` session (deleted when its terminal leaves,
+        # a leftover one at the next sweep)
         # ctx_pct: how full the context was after the last turn, or nil
         # title: the session's own name (/title; desc shows it too), or nil;
         # auto_title: the one its recap gave it (RecapTitle), or nil

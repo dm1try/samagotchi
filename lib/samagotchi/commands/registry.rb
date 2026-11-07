@@ -165,8 +165,8 @@ module Samagotchi
       end
 
       # @return [Entry, nil] the first entry the UI runs itself (local) that
-      #   matches +line+, whatever its uis (a UI answers the others' too:
-      #   the REPL's /detach note)
+      #   matches +line+, whatever its uis (a UI answers the others' too,
+      #   with a note)
       def lookup_local(line)
         text = line.to_s.strip
         @entries.find { |entry| entry.local && entry.match?(text) }

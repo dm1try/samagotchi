@@ -6,8 +6,8 @@ module Samagotchi
   class TerminalUI
     # Reads input lines on its own thread, so output keeps rendering while
     # the user types, and hands each line (nil = Ctrl-D) or Ctrl-C to a sink
-    # (anything with #<<, such as a Thread::Queue); the attached loop and the
-    # REPL both read this way. #reprompt makes it drop the open read and start
+    # (anything with #<<, such as a Thread::Queue); the attached loop reads
+    # this way. #reprompt makes it drop the open read and start
     # again with the current prompt (a question opened or closed); #prefill
     # starts it again with text already typed in (a failed prompt).
     class LineReader

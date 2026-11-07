@@ -5,8 +5,8 @@ require_relative "log"
 
 module Samagotchi
   # A turn's iteration limit (how many model ↔ tool rounds before the turn
-  # stops and offers to continue), one resolver for the Engine, the worker
-  # and the REPL.
+  # stops and offers to continue), one resolver for the Engine and the
+  # worker.
   module IterationLimit
     KEY = "turn.max_iterations"
     # A turn's limit unless turn.max_iterations says otherwise, and the

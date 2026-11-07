@@ -12,7 +12,7 @@ module Samagotchi
     # print as lines. The activity slot is dropped, because redrawing it in
     # place needs cursor movement (the turn's lines still print as they end).
     # The prompt is Reline's own, so output may cross it; the editor slot
-    # prints the prompt of a plain read (the REPL's ? off a terminal).
+    # prints the prompt of a plain read (a question's ? off a terminal).
     class PlainSurface
       include Surface
 

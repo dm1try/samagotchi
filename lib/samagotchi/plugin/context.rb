@@ -319,7 +319,7 @@ module Samagotchi
       # The conversation so far, a frozen copy, without the system prompt.
       # While a turn runs, a session worker's (attached TUI, web) adds the
       # turn so far: its prompt, the model's text and the lines merged into
-      # it; the REPL's is the conversation before that turn
+      # it; a one-shot's is the conversation before that turn
       # (#messages_partial?).
       # @return [Array<Hash>]
       def messages
@@ -342,7 +342,7 @@ module Samagotchi
       # then belongs to that turn's block.
       def turn_running? = !!@host.turn_running&.call
 
-      # Whether #messages leaves out a running turn (the REPL mid-turn), so
+      # Whether #messages leaves out a running turn (a one-shot mid-turn), so
       # a plugin can say what its answer is about.
       def messages_partial? = !!@host.messages_partial&.call
 

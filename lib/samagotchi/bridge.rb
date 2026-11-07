@@ -871,7 +871,7 @@ module Samagotchi
       end
     end
 
-    # Dismiss the pending question (an empty answer, as in the REPL): the
+    # Dismiss the pending question (an empty answer at a terminal): the
     # tool returns without an answer and every UI gets :question_cancelled.
     # Only the question the client saw, and only while nobody has answered
     # it: Engine#cancel_question checks both under the question lock. A past

@@ -191,8 +191,8 @@ module Samagotchi
       # tell the user. Never how to allow it (the web, chi --attach): that
       # is the user's.
       # @param reason [Symbol] what #refusal returned
-      # @param typed [Boolean] the answer was typed at a ? prompt (the
-      #   REPL), not given to chi answer
+      # @param typed [Boolean] the answer was typed at a terminal's ?
+      #   prompt, not given to chi answer
       def message(reason, pending:, strategy:, typed: false)
         deny = deny_label(pending)
         case reason.to_sym

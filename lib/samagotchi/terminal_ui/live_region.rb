@@ -7,8 +7,8 @@ require_relative "reline_seam"
 module Samagotchi
   class TerminalUI
     # Opens and closes a live region: a Screen with Reline drawing into it
-    # through RelineSeam. The REPL and attached mode both use one when the
-    # terminal can show it, and fall back to their own plain output otherwise.
+    # through RelineSeam. Attached mode uses one when the terminal can show
+    # it, and falls back to a PlainSurface otherwise.
     module LiveRegion
       module_function
 

@@ -6,8 +6,8 @@ module Samagotchi
   class TerminalUI
     # The status row under the prompt, the same for both TUIs:
     # `status> Title | model=… | ↳ parent | ⑂ 2 running · 1 waiting | 2 participants | ctx=12.3% (under20) | mem: … | muted: …`.
-    # A UI feeds it what it learns (attached mode from the Bridge's events,
-    # the REPL from its Engine's) through #update, and the row is redrawn in
+    # The attached TUI feeds it what it learns from the Bridge's events
+    # through #update, and the row is redrawn in
     # the surface's status slot only when its text changes.
     class StatusRow
       include Formatting
@@ -54,7 +54,7 @@ module Samagotchi
         @shown = nil
       end
 
-      # The surface it draws on (the REPL swaps in a live region): the row
+      # The surface it draws on (no caller since the REPL went): the row
       # is drawn there at the next change.
       def surface=(surface)
         @surface = surface
@@ -72,8 +72,8 @@ module Samagotchi
         refresh
       end
 
-      # Take a session's state: the REPL's Engine#session_state_snapshot, or
-      # the one a worker sends an attached TUI when it joins. A key the state
+      # Take a session's state: the one a worker sends an attached TUI when
+      # it joins (Engine#session_state_snapshot). A key the state
       # lacks (an older worker's) leaves its field as it was; the served pair
       # is cleared without one, and the model is kept without a name.
       # @param default_model [String, nil] the config's default, named beside
@@ -94,8 +94,7 @@ module Samagotchi
       STATE_LISTS = { used_memories: :used_memory_names, preloaded: :preloaded_memory_names,
                       muted: :muted_memory_names }.freeze
 
-      # Take what a turn event says about the row (the Engine's events in
-      # the REPL, the Bridge's in attached mode): ctx, the memories used,
+      # Take what a turn event says about the row (the Bridge's events): ctx, the memories used,
       # the model the server served, whether a turn runs (the steer
       # hint). Other events change nothing.
       def take_event(event)
@@ -178,7 +177,7 @@ module Samagotchi
       end
 
       # `⑂ 2 running · 1 waiting`, the counts there are; "" with neither (no
-      # children, or all ended). Not "not reported": a REPL parent is never
+      # children, or all ended). Not "not reported": a one-shot parent is never
       # given its children's replies (no wakes there), and a worker moves
       # the cursors only after the turn_completed a terminal refreshes on.
       def children_text(counts)

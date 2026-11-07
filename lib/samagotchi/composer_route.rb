@@ -3,11 +3,10 @@
 require_relative "delivery"
 
 module Samagotchi
-  # Where a line typed at a terminal's prompt goes, for both terminals (the
-  # REPL's TerminalUI#steer_line / #run_input_line, the attached
-  # AttachedLoop#submit). It only classifies; each UI keeps what it does
-  # with the answer (the REPL's mid-turn command policy and image lines, the
-  # attached TUI's continue offer and question). The web's composer.js
+  # Where a line typed at a terminal's prompt goes (AttachedLoop#submit; a
+  # -p prompt's /cut or /queue: TerminalUI#run). It only classifies; each
+  # UI keeps what it does with the answer (the attached TUI's continue
+  # offer and question). The web's composer.js
   # routeComposerLine decides the same; spec/fixtures/composer_routes.json
   # holds the cases both answer (docs/testing.md).
   #

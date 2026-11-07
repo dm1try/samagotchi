@@ -10,7 +10,7 @@ module Samagotchi
     # stderr. stdout is the answer's alone, printed after the turn: a
     # script or a parent agent reads it.
     #
-    # It prints the retry lines the REPL shows: the loop asking again after
+    # It prints the retry lines the attached terminal shows: the loop asking again after
     # an empty answer (:empty_answer_retry), and a generation retried after
     # a failed request (:generation_retrying). And the hooks' notices
     # (:hook_notice): one during the turn as it comes, one the after_turn
@@ -18,7 +18,7 @@ module Samagotchi
     # #flush, which the caller runs after it has printed the answer. And
     # the load warnings the first turn announces (:guardrail_warning: the
     # guardrails, the plugins, an orphaned project memory folder), as the
-    # REPL's "<label>> …" lines.
+    # attached terminal's "<label>> …" lines.
     class OneShotSink
       include Formatting
 

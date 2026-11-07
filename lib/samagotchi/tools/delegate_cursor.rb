@@ -67,9 +67,9 @@ module Samagotchi
     end
 
     # The parent's cursors, one per child, in <parent dir>/delegates.json, so
-    # a respawned worker (or a REPL resuming the session) doesn't hand the
-    # model a reply it already had. Written by whoever owns the parent (its
-    # worker, or the REPL its kernel runs in), and by a continue moving
+    # a respawned worker (or a one-shot resuming the session) doesn't hand
+    # the model a reply it already had. Written by whoever owns the parent
+    # (its worker, or the one-shot its kernel runs in), and by a continue moving
     # delegates to the chain's new link (ChildMove, from another process):
     # a Mutex for the owner's turn thread vs its loop thread, and a flock on
     # LOCK_FILE between processes; the file is replaced whole.

@@ -17,7 +17,8 @@ module Samagotchi
   # An Engine's question flow: the one open question (ask_user_question, a
   # hook's ask_user, a guardrail approval), its answer and its cancel, shared
   # by every UI. The turn thread blocks in #open_question; the UIs answer or
-  # cancel from theirs (a REPL answers inline through the sync handler).
+  # cancel from theirs (a --non-interactive run dismisses it inline through
+  # the sync handler).
   #
   # A standing question (#post: a worker's step-limit question, kind
   # "continue") blocks nobody: it waits between turns, its answer goes to
@@ -52,7 +53,7 @@ module Samagotchi
       end
 
       # The line for the parent (ParentPolicy.message).
-      # @param typed [Boolean] typed at a ? prompt (the REPL)
+      # @param typed [Boolean] typed at a terminal's ? prompt
       def detail(typed: false)
         Guardrails::ParentPolicy.message(reason, pending: @pending, strategy: @strategy, typed: typed)
       end
@@ -212,8 +213,8 @@ module Samagotchi
       id = pending.id
 
       # If a synchronous UI handler is registered (TUI), invoke it inline on the
-      # SAME thread that called request_question (TerminalUI's REPL thread is the
-      # turn thread — no second thread exists to answer). This avoids deadlock.
+      # SAME thread that called request_question (a --non-interactive run's
+      # TerminalUI thread is the turn thread — no second thread exists to answer). This avoids deadlock.
       # This path is TUI-specific but the surrounding emit/clear is generic, so
       # any future UI that registers a sync handler gets the same guarantee.
       if @sync_handler
@@ -369,7 +370,7 @@ module Samagotchi
 
     attr_writer :sync_handler
 
-    # @return [Boolean] a REPL answers inline (no wait loop)
+    # @return [Boolean] a sync handler answers inline (a --non-interactive run: no wait loop)
     def sync_handler? = !@sync_handler.nil?
 
     # Cancel the pending question (e.g. /cancel, a dismiss). Announces which
@@ -402,8 +403,8 @@ module Samagotchi
       true
     end
 
-    # A question through the question flow (REPL sync handler, attached TUI,
-    # web), single-select, kind "hook". A --non-interactive run has no one
+    # A question through the question flow (the one-shot's sync handler,
+    # attached TUI, web), single-select, kind "hook". A --non-interactive run has no one
     # to ask: nil at once. Anything but an answer (a sync handler's text, no
     # answer, cancelled) is nil too.
     # @param asked [HookQuestion] its effects (label => effect for a parent

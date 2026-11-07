@@ -66,7 +66,7 @@ module Samagotchi
     end
 
     # One line to the user (:hook_notice). During a turn it is a turn
-    # event: the turn's sink (the REPL) and the observers (bridge, log).
+    # event: the turn's sink (its on_event:) and the observers (bridge, log).
     # Outside one (a plugin's command at the prompt) it is announced with
     # between_turns: true, which every UI shows as cards are shown. While the
     # plugins load it is held; on an anytime command's thread or an init task
@@ -121,8 +121,8 @@ module Samagotchi
       lines.empty? ? nil : lines.join("; ")
     end
 
-    # A question through the question flow (REPL sync handler, attached TUI,
-    # web), single-select, kind "hook". A --non-interactive run has no one
+    # A question through the question flow (the one-shot's sync handler,
+    # attached TUI, web), single-select, kind "hook". A --non-interactive run has no one
     # to ask: nil at once. Anything but an answer (a sync handler's text, no
     # answer, cancelled) is nil too.
     # @param question [HookQuestion]

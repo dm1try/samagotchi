@@ -52,7 +52,7 @@ module Samagotchi
   # It runs the session's Engine and Bridge, takes queued prompts from the
   # input dir one turn at a time, and returns when nobody has used it for the
   # idle-exit timeout. A failed turn is rolled back and its prompt handed back
-  # (:prompt_restored), as in the REPL, and the loop goes on. A stop marked on
+  # (:prompt_restored), and the loop goes on. A stop marked on
   # disk exits the process; an error outside a turn marks the session and
   # exits with 1.
   #
@@ -348,7 +348,7 @@ module Samagotchi
                                      @bridge.queue_command(line, client_id: client_id, after_file: after_file,
                                                                  enqueued_id: enqueued_id, author: author)
                                    })
-      # /model's default is the config's, as in the REPL; the Engine started
+      # /model's default is the config's; the Engine started
       # on the session's model.  nil when there is no default.model.
       @default_model = ModelProfile.default_model_name
       @commands = SessionCommands.new(engine: @engine, turn_flow: @turn_flow,
@@ -867,7 +867,7 @@ module Samagotchi
       nil
     end
 
-    # A due reminder runs as a continue turn, as in the REPL: Engine#run_turn
+    # A due reminder runs as a continue turn: Engine#run_turn
     # injects the reminders as a tail system message, and no user message is
     # added. A prompt's turn may have injected them already (a stale latch):
     # then there is nothing to run.
@@ -1451,7 +1451,7 @@ module Samagotchi
     # WorkerInbound.save_or_log: a failed save between turns is logged.
     def save_or_log(at, &) = WorkerInbound.save_or_log(at, &)
 
-    # Back to the conversation before the failed turn, as the REPL does (so
+    # Back to the conversation before the failed turn (so
     # failed prompts don't pile up as consecutive user messages), and each
     # prompt it took (its own and any merged into it) goes back to its
     # sender, who can send it again. The rollback and the announcements are

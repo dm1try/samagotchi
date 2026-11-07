@@ -8,9 +8,8 @@ module Samagotchi
     # Renders one UI's view of Engine turn events: the thinking spinner while
     # the model generates, a `tool>` line per completed tool call, and the
     # answer (with any tool activity not already shown) from :turn_completed's
-    # turn_summary, and how a turn ended. It is the `on_event:` sink the REPL
-    # hands Engine#run_turn, and renders what attached mode gets over the
-    # Bridge.
+    # turn_summary, and how a turn ended. It renders what attached mode gets
+    # over the Bridge.
     #
     # Drawing is delegated to a +view+ (an AttachedView in both TUIs). The
     # renderer keeps
@@ -158,8 +157,7 @@ module Samagotchi
       end
 
       # Start a turn's bookkeeping and reset the view's per-turn feedback.
-      # Also called directly by REPL paths that drive the kernel without
-      # Engine#run_turn (so no :turn_started).
+      # Also called from #call on a :turn_started.
       def begin_turn
         @streamed_tool_activity = Hash.new(0)
         @tool_started_at = {}

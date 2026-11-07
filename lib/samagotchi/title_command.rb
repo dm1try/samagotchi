@@ -9,7 +9,7 @@ module Samagotchi
   # `/title --clear` drops it, and the lists show the first message again.
   # Anyone who may send the session a command may name it (a parent agent
   # its delegates too). It doesn't save: its host saves a changed result at
-  # once (Worker, the REPL). It runs mid-turn as well (anytime): the
+  # once (Worker). It runs mid-turn as well (anytime): the
   # worker's save takes the session's lock and writes a running turn's
   # checkpoint, as a turn's own saves do.
   class TitleCommand

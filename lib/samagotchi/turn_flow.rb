@@ -6,8 +6,8 @@ require_relative "context_note"
 require_relative "llm/errors"
 
 module Samagotchi
-  # The state around turns that the REPL and a session worker share, kept out
-  # of either loop: the pre-turn checkpoint (what !rollback and a failed turn
+  # The state around turns a session worker (and a one-shot) keeps out of
+  # its loop: the pre-turn checkpoint (what !rollback and a failed turn
   # restore), the continue offer after a turn that ran out of iterations, and
   # the checkpoint a continue turn starts from.
   #
@@ -189,9 +189,8 @@ module Samagotchi
     end
 
     # Restore the pre-turn checkpoint (!rollback after a Ctrl-C). A pending
-    # offer goes too: the turn it offered to continue is gone. (The REPL
-    # reads every line as an answer while an offer is pending; a worker
-    # also takes !rollback then.) The cards' places follow the messages
+    # offer goes too: the turn it offered to continue is gone. (A worker
+    # takes !rollback while an offer is pending.) The cards' places follow the messages
     # (Bridge::CardStore).
     # @return [Boolean] false when there is none
     def rollback!

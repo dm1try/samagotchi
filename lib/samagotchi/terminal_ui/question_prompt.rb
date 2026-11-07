@@ -11,8 +11,7 @@ module Samagotchi
     # slot content (#slot), the line it leaves (#summary) and the parsing of
     # a typed answer ("2", "1,3", "1 3; text", option labels). No I/O:
     # callers draw the slot and print the messages, and
-    # record the answer (the REPL on its Engine, an attached UI over the
-    # Bridge). An approval (kind "approval") takes only a number, an exact
+    # record the answer (an attached UI over the Bridge). An approval (kind "approval") takes only a number, an exact
     # label, y (the first option, Allow once) or n (the last, Deny), plus
     # an optional "; reason"; a substring would pick the wrong one ("y" is
     # in "Deny"). The step-limit question (kind "continue") reads the
@@ -86,8 +85,8 @@ module Samagotchi
       end
 
       # The line a question dismissed in a --non-interactive run leaves (no
-      # one could answer it there): the REPL's own, and an attached UI's on
-      # its cancel (QuestionDesk::UNANSWERABLE_REASON).
+      # one could answer it there): the one-shot's own, and an attached UI's
+      # on its cancel (QuestionDesk::UNANSWERABLE_REASON).
       UNANSWERABLE_TEXT = "(dismissed: no one to answer in a non-interactive run)"
 
       # What a question closed with no answer here says: a relayed approval
@@ -220,7 +219,7 @@ module Samagotchi
       end
 
       # The continue words, or an option's number. Empty is Continue (Enter
-      # alone, as at the REPL's continue prompt).
+      # alone).
       def parse_continue(raw)
         text = raw.to_s.strip
         if text.match?(/\A\d+\z/)

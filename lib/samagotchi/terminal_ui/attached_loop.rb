@@ -52,7 +52,7 @@ module Samagotchi
     # #handle_event turns the worker's event stream into terminal output:
     # the snapshot a join starts with (the last exchange, queued prompts,
     # the turn so far), prompts other clients sent, and each turn through the
-    # same EventRenderer the local REPL uses, drawn by an AttachedView.
+    # EventRenderer, drawn by an AttachedView.
     class AttachedLoop
       include Formatting
       include InputSupport
@@ -97,7 +97,7 @@ module Samagotchi
       #   through, the launch stops
       # @param no_interrupt [Boolean] post every turn with no_interrupt
       # @param default_input [Boolean] type SAMAGOTCHI_DEFAULT_INPUT into
-      #   the first read (a new session with no -p, as the REPL)
+      #   the first read (a new session with no -p)
       # @param clock [#call] monotonic seconds (the Ctrl-C detach window)
       # @param now [#call] the wall clock, a Time (the gap dividers)
       # @param delete_session [#call] session id -> deletes it (/exit --delete)
@@ -294,7 +294,7 @@ module Samagotchi
           @gaps.touch
           refresh_children
           own_turn_ended(event)
-        # The renderer says how it ended (the REPL's words too).
+        # The renderer says how it ended (a one-shot's words too).
         when :turn_canceled, :turn_failed
           @status.take_event(event)
           @renderer.call(event)
@@ -487,7 +487,7 @@ module Samagotchi
       end
 
       # The saved recap, and a new one asked for at once (it arrives as
-      # :recap_ready), with the REPL's words.
+      # :recap_ready), in Formatting's /recap words.
       def show_recap
         reply = @client.request_recap
         answer = reply.status == 200 ? reply.json : nil
@@ -513,11 +513,11 @@ module Samagotchi
       end
 
       # The worker rolled a failed turn back and handed its prompt back: ours
-      # goes back into the input, as the REPL restores it for a retry.
+      # goes back into the input for a retry.
       def restore_prompt(event)
         origin = origin_of(event[:origin])
         return unless own?(origin.client_id) && @own_turns.sent?(origin.enqueued_id)
-        # Lines from a pipe: nobody to retry it (the REPL's rule).
+        # Lines from a pipe: nobody to retry it.
         return if @wait_at_eof
 
         if @reader&.prefill(event[:prompt].to_s)

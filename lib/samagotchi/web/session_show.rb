@@ -120,8 +120,8 @@ module Samagotchi
       end
 
       # The file's question only while a worker owns the session: one a
-      # dead worker saved can't be answered (its turn is gone), nor a chi
-      # REPL's (it shares nothing with the web).
+      # dead worker saved can't be answered (its turn is gone), nor a
+      # one-shot's or an older chi's REPL's (they share nothing with the web).
       # A question between turns (the step-limit one) is the snapshot's own.
       # Its refs (the asking reply's, QuestionAsked) are checked again.
       def shown_pending_question(session, turn_snapshot, owner)

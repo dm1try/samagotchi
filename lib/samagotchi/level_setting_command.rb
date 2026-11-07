@@ -8,7 +8,7 @@ module Samagotchi
   # /reasoning-history): with no argument, the level the next turn runs at
   # and where it came from; with a level, sets the session's own (the
   # setting's unset word unsets it). A change takes effect at the next
-  # turn's start (the REPL and the worker run it between turns), and the
+  # turn's start (the worker runs it between turns), and the
   # reply says what it costs the prompt cache. A costly change asks first
   # (CacheConfirm); --yes (or -y) applies it.
   #

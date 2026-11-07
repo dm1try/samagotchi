@@ -17,14 +17,14 @@ require_relative "model_segments_text"
 
 module Samagotchi
   class TerminalUI
-    # Line formatting shared by the REPL and the attached view: colour, the
+    # Line formatting shared by the attached view and a one-shot: colour, the
     # `tool>` line, elapsed durations. Pure apart from reading whether
     # $stdout is a colour terminal.
     module Formatting
       include ModelSegmentsText
 
-      # The /stats text for a metrics snapshot, for the REPL and attached
-      # views (an instance includes the module) and for `chi sessions stats`
+      # The /stats text for a metrics snapshot, for the attached view (an
+      # instance includes the module) and for `chi sessions stats`
       # (no UI: the same text from the CLI).
       # @return [String] "(no metrics yet)" without a snapshot
       def self.format_session_metrics(snapshot)
@@ -420,7 +420,7 @@ module Samagotchi
         text.strip.empty? ? [] : lines
       end
 
-      # ── Turn ends: one set of words for the REPL, attached mode and the
+      # ── Turn ends: one set of words for a one-shot, attached mode and the
       # web (timing.js cancelLineText, format.js failedTurnText) ──────────
 
       # A cancel's reason as the UIs name it (anything else as it is);
@@ -552,7 +552,7 @@ module Samagotchi
       # Off by the session's own recap.enabled (/recap off, --set recap.enabled=false).
       RECAP_SESSION_OFF_TEXT = "recap is off for this session (/recap on turns it on, /recap default goes back to config.yml)"
 
-      # What /recap says (the REPL's words, attached mode's too): the saved
+      # What /recap says (attached mode's words): the saved
       # recap, then what came of asking for a new one.
       # @param saved [Hash, nil] {text:, turns_since:}
       # @param request [Symbol, String, nil] IdleRecap#request_now's answer
@@ -573,7 +573,7 @@ module Samagotchi
         lines.compact.join("\n")
       end
 
-      # ── The status line (the REPL's, and attached mode's idle one) ────────
+      # ── The status line (attached mode's idle one) ───────────────────────
 
       # status.line: off hides it.
       STATUS_LINE_OFF = "off"
@@ -662,7 +662,7 @@ module Samagotchi
       end
 
       # Render the analytics snapshot as a compact, user-facing report. Raw event
-      # logs (debug-only) are intentionally excluded; this surface is for the REPL
+      # logs (debug-only) are intentionally excluded; this surface is for /stats
       # and `chi sessions stats` (the module function above).
       def format_session_metrics(snapshot)
         return "(no metrics yet)" unless snapshot.is_a?(Hash)
