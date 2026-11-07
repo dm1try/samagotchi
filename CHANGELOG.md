@@ -15,6 +15,7 @@ and commands may change between minor versions. How releases are made:
 - A Qwen model's turn that was asked to finish an open tool call no longer splits in two after a reload of chi web: the request to finish it is part of the turn, drawn as nothing, as it was live.
 - chi web starting just as `chi scratch` did no longer deletes the new scratch session before its worker takes it (the worker crashed with "Session not found" and the terminal said the Bridge did not start in time): the retention sweep, `chi sessions prune` and `clean` leave an unowned scratch session alone for 30 s after its last save.
 - A terminal joining a session (`chi --attach`, `--resume`) shows the last turn's own prompt instead of a Qwen model's request to finish an open tool call, with the input merged into that turn on its `input>` lines; the idle recap no longer counts either as a turn of its own.
+- A turn no longer fails when a plugin changes its tools or prompt section (or a profile change drops the system prompt) at the moment the system prompt is built.
 
 ## [0.154.0] - 2026-11-07
 

@@ -67,7 +67,9 @@ right-hand column happens.
   the loop, the thinking level, the turn's LLM context layers; a `/thinking` change builds under another key). All
   of them are dropped only on `@prompt_builder.reset!`: a model switch (`Engine#switch_model!`), a plugin's
   `tools_changed!` or `prompt_changed!` (`Engine#prompt_changed!`), a profile change, or a toolkit change
-  (`Engine#apply_toolkit!`). A per-turn rebuild would break everything below it.
+  (`Engine#apply_toolkit!`). A per-turn rebuild would break everything below it. `reset!` swaps in a new cache
+  (no lock; it runs on plugin and Bridge threads, and inside a build through the profile lookup): a build it lands
+  in returns the same bytes but is not kept, so the next build reads the sources again.
 - The tools layer is shared **per toolkit** (configuration.md, "Toolkits"): sessions on the same toolkit share it,
   and a chain's links keep theirs. A session's toolkit is saved when it is created and never resolved again from
   config. A change (`/toolkit`, `ctx.use_toolkit`) is applied only at a turn's start (`Engine#apply_toolkit!`,
