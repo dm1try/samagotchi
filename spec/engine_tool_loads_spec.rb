@@ -124,8 +124,9 @@ RSpec.describe "ctx.load_tools" do
     index.declare(engine.tools)
     engine.tools.toolkit = Samagotchi::Toolkit::Resolved.new(name: "coding", all_core: true, groups: [])
     index.refresh!
-    # ctx.load_tools reads the Registry as a turn's start publishes it.
-    engine.send(:publish_tools!)
+    # ctx.load_tools reads the Registry as a turn's start publishes it
+    # (nothing staged: apply_staged_tools! only publishes).
+    engine.apply_staged_tools!
     allow(Samagotchi::Log).to receive(:info).and_call_original
 
     expect(ctx(engine).load_tools(["mcp_fs_read_file"])).to eq([])

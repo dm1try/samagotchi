@@ -115,7 +115,7 @@ module Samagotchi
         raise ArgumentError, "#{NAME} #{verb} needs a tool name\n#{USAGE}" if tools.empty?
 
         tools.reduce(toolkit) do |kit, tool|
-          raise ArgumentError, "no tool named #{tool} in this session" unless @engine.tools.key?(tool)
+          raise ArgumentError, "no tool named #{tool} in this session" unless @engine.published_tools.key?(tool)
 
           verb.casecmp?("add") ? kit.adding(tool) : kit.removing(tool)
         end
