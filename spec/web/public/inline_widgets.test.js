@@ -1,14 +1,15 @@
 import "./dom_shim.js";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createWidgetDrawer, hostOf, STYLESHEET } from "../../../lib/samagotchi/web/public/inline_widgets.js";
+import { createWidgetDrawer, hostOf, TOGGLE_PICTURE } from "../../../lib/samagotchi/web/public/inline_widgets.js";
 import { createBlockWatch } from "../../../lib/samagotchi/web/public/block_watch.js";
-import { figureOf } from "../../../lib/samagotchi/web/public/block_source.js";
+import { figureOf, setSourceShown } from "../../../lib/samagotchi/web/public/block_source.js";
 import { viewOf } from "../../../lib/samagotchi/web/public/revise_switch.js";
 import { createWalker, drawWalk, swimlaneCells, trailText, USUAL, walkRoutes } from "../../../lib/samagotchi/web/public/widget_walk.js";
 import { drawPicks, initialPicks, replyText, withDraft } from "../../../lib/samagotchi/web/public/widget_picks.js";
 
 const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+const SHEET = new window.CSSStyleSheet();
 
 const WALK = {
   type: "walk",
@@ -231,7 +232,7 @@ function setup(html, deps = {}) {
   const root = document.createElement("div");
   root.innerHTML = `<div class="bubble output markdown">${html}</div>`;
   document.body.append(root);
-  const drawer = createWidgetDrawer({ roots: [root], composerText: () => "", fillComposer() {}, doc: document, win: window, ...deps });
+  const drawer = createWidgetDrawer({ roots: [root], composerText: () => "", fillComposer() {}, doc: document, win: window, sheet: async () => SHEET, ...deps });
   createBlockWatch({ roots: [root], sessionId: () => "s1", drawers: [drawer], watch: (_el, _sc, onNear) => onNear(), win: window });
   return root;
 }
@@ -245,10 +246,15 @@ test("a valid block: a figure with the toggle and a shadow host before the hidde
   const figure = figureOf(source);
   assert.ok(figure);
   assert.ok(source.hidden);
-  assert.ok(figure.querySelector(":scope > .block-toggle"));
+  const toggle = figure.querySelector(":scope > .block-toggle");
+  assert.equal(toggle.getAttribute("aria-label"), "Show the source");
+  setSourceShown(figure, source, true);
+  assert.equal(toggle.getAttribute("aria-label"), TOGGLE_PICTURE);
+  setSourceShown(figure, source, false);
   const shadow = hostOf(figure).shadowRoot;
   assert.ok(shadow);
-  assert.equal(shadow.querySelector("link").getAttribute("href"), STYLESHEET);
+  assert.deepEqual(shadow.adoptedStyleSheets, [SHEET]);
+  assert.equal(shadow.querySelectorAll("link, style").length, 0);
   assert.ok(shadow.querySelector(".ww-swim"));
   assert.equal(root.querySelector(".bubble").textContent, "type: walk");
 });
