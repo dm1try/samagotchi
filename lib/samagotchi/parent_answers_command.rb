@@ -16,7 +16,7 @@ module Samagotchi
   class ParentAnswersCommand
     NAME = "/parent-answers"
     USAGE = "usage: #{NAME} [hard|standard|soft|default]".freeze
-    REFUSED = "loosening parent_answers is the user's: #{NAME} in chi --attach, the REPL or the web " \
+    REFUSED = "loosening parent_answers is the user's: #{NAME} in a chi terminal or the web " \
               "(not chi send or a parent agent)".freeze
 
     # What +args+ (the text after the name) asks for.
