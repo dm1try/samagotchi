@@ -8,6 +8,8 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+## [0.154.0] - 2026-11-07
+
 ### Changed
 
 - `chi scratch` in a terminal runs attached, on a session worker of its own that saves nothing (no memory writes, no delegates, approvals for this session only). Ctrl-D, `/detach`, `/exit` or a second Ctrl-C ends it: the worker stops and the session is deleted ("Scratch session deleted."); a worker whose terminal is gone (a killed terminal) deletes it too. `chi send`, chi web and `chi --attach`/`--resume` refuse a scratch session, in one wording. `chi scratch -p TEXT --non-interactive` still runs its turn in this process.
@@ -29,6 +31,8 @@ and commands may change between minor versions. How releases are made:
 - The objectives tool refuses a proposal its card's Apply would refuse (an add or reword whose text is only a status like `[done]` or only `(done when: …)`, or `done` for a dropped objective), so the model hears why instead of leaving a card that can't apply.
 - A thought the model never closed no longer reaches the continue note's "Its last answer" or decision-card's `/short`: both read the answer as you saw it, with the one rule a Check this record uses (a bundle gets it as `ctx.last_answer`). decision-card 0.2.1.
 - chi web: a reply that is only a thought the model never closed is no longer shown as an answer or taken as the session's last answer.
+
+Update with `chi update` (decision-card 0.2.1, the dev profile 0.7.7).
 
 ## [0.153.0] - 2026-11-06
 
@@ -5755,7 +5759,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.153.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.154.0...HEAD
+[0.154.0]: https://github.com/dm1try/samagotchi/compare/v0.153.0...v0.154.0
 [0.153.0]: https://github.com/dm1try/samagotchi/compare/v0.152.0...v0.153.0
 [0.152.0]: https://github.com/dm1try/samagotchi/compare/v0.151.0...v0.152.0
 [0.151.0]: https://github.com/dm1try/samagotchi/compare/v0.150.0...v0.151.0
