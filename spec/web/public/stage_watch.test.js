@@ -90,3 +90,21 @@ test("a touch or wheel counts as use", (t) => {
     watch.stop();
   }
 });
+
+test("a field typed in inside a shadow root in the stage counts as use (a chi-ui widget's note)", (t) => {
+  t.mock.timers.enable({ apis: ["setInterval", "Date"], now: 0 });
+  const { stage, watch, ticks } = watchOf();
+  const host = document.createElement("div");
+  stage.append(host);
+  const input = document.createElement("input");
+  host.attachShadow({ mode: "open" }).append(input);
+  try {
+    watch.start();
+    input.focus();
+    t.mock.timers.tick(200);
+    assert.equal(ticks[0].inUse, true);
+  } finally {
+    watch.stop();
+    input.blur();
+  }
+});
