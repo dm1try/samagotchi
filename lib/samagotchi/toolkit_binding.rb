@@ -5,6 +5,7 @@ require_relative "memory_paths"
 require_relative "model_overlay"
 require_relative "muted_memories"
 require_relative "toolkit"
+require_relative "tools/tool_surface"
 require "yaml"
 
 module Samagotchi
@@ -77,17 +78,18 @@ module Samagotchi
     end
 
     # +toolkit+ (the session's by default) as its next turn would declare
-    # it (/toolkit, the UIs' chip).
+    # it (/toolkit, the UIs' chip): the Registry read now as a
+    # Tools::ToolSurface under that toolkit.
     # @return [Toolkit::Explained]
     def explained(toolkit = nil)
       toolkit ||= Toolkit.of(@session.call&.toolkit)
       resolved = toolkit.resolve(kits)
       filter = resolved.everything? ? nil : resolved
       tools = @tools.call
-      Toolkit::Explained.new(toolkit: toolkit, resolved: resolved, declared: tools.entries(toolkit: filter),
-                             left_out: tools.left_out_names(toolkit: filter),
-                             reachable: tools.reachable_names(toolkit: filter),
-                             removed: tools.removed_names(toolkit: filter), pending: filter != tools.toolkit)
+      surface = Tools::ToolSurface.for(tools, toolkit: filter)
+      Toolkit::Explained.new(toolkit: toolkit, resolved: resolved, declared: surface.declared,
+                             left_out: surface.left_out.keys, reachable: surface.index_only.map(&:name),
+                             removed: surface.removed, pending: filter != tools.toolkit)
     end
 
     # The session's toolkit for the UIs (the snapshot, command_ran): nil on
@@ -214,13 +216,14 @@ module Samagotchi
 
     # A notice (by its bundle, once per tool and worker) for each plugin
     # tool that arrived mid-session on a kit that leaves it out without
-    # the tool index to reach it (Tools::Registry#stranded_names).
+    # the tool index to reach it (Tools::ToolSurface#stranded, the
+    # Registry read now under the toolkit #apply! set).
     def warn_stranded(tools)
-      return unless tools.respond_to?(:stranded_names)
-
-      (tools.stranded_names - @stranded).each do |name|
+      surface = Tools::ToolSurface.for(tools)
+      (surface.stranded - @stranded).each do |name|
         @stranded << name
-        @notify.call(self.class.stranded_notice(name, tools.toolkit.name), :warn, tools[name]&.source.to_s, extra: {})
+        @notify.call(self.class.stranded_notice(name, surface.toolkit.name), :warn,
+                     surface.registered[name]&.source.to_s, extra: {})
       end
     end
     private :warn_stranded

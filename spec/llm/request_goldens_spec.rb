@@ -125,7 +125,7 @@ RSpec.describe "Request goldens per toolkit and wire" do
       kernel, index = kernel_for(toolkit, mcp)
       profile = Samagotchi::ModelProfile.normalize("qwen36")
       declarations = Samagotchi::ToolDeclarations.qwen_declarations(
-        Samagotchi::ToolDeclarations.native_schemas(kernel.tools, layers: [])
+        Samagotchi::ToolDeclarations.native_schemas(Samagotchi::Tools::ToolSurface.for(kernel.tools))
       )
       messages = conversation(index)
       messages[0] = messages[0].merge(content: "#{messages[0][:content]}\n\n#{declarations}")

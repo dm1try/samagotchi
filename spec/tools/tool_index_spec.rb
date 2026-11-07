@@ -122,7 +122,7 @@ RSpec.describe Samagotchi::Tools::ToolIndex do
       end
 
       it "declares flat schemas to the native prompts" do
-        schemas = Samagotchi::ToolDeclarations.native_schemas(registry).select { |s| [find_name, call_name].include?(s[:name]) }
+        schemas = Samagotchi::ToolDeclarations.native_schemas(Samagotchi::Tools::ToolSurface.for(registry)).select { |s| [find_name, call_name].include?(s[:name]) }
         expect(schemas).to eq([call_entry, find_entry].map { |e| Samagotchi::ToolDeclarations.flat_schema(e.schema) })
       end
     end

@@ -50,7 +50,7 @@ RSpec.describe Samagotchi::Tools::Registry do
       builtins = Samagotchi::Tools::Builtins.default.names
       expect(first.names).to eq(builtins + %w[checkin_wait mcp_alpha mcp_zeta])
       expect(second.schemas).to eq(first.schemas)
-      expect(Samagotchi::ToolDeclarations.native_schemas(second)).to eq(Samagotchi::ToolDeclarations.native_schemas(first))
+      expect(Samagotchi::ToolDeclarations.native_schemas(Samagotchi::Tools::ToolSurface.for(second))).to eq(Samagotchi::ToolDeclarations.native_schemas(Samagotchi::Tools::ToolSurface.for(first)))
     end
 
     it "keeps a changed tool in its place" do
@@ -76,7 +76,7 @@ RSpec.describe Samagotchi::Tools::Registry do
       expect(registry.schemas).not_to include(include(name: "tidy"))
       expect(registry.names(layers: [:stale])).to eq(builtins + %w[echo])
       expect(registry.names(layers: %i[stale forget])).to eq(builtins + %w[forget_outputs tidy echo])
-      expect(Samagotchi::ToolDeclarations.native_schemas(registry, layers: [:forget]).map { |s| s[:name] }).to include("tidy")
+      expect(Samagotchi::ToolDeclarations.native_schemas(Samagotchi::Tools::ToolSurface.for(registry, layers: [:forget])).map { |s| s[:name] }).to include("tidy")
       expect(registry.offered("tidy")).to be_nil
       expect(registry.offered("tidy", layers: [:forget]).name).to eq("tidy")
       expect(registry.offered("echo").name).to eq("echo")
@@ -198,7 +198,7 @@ RSpec.describe Samagotchi::Tools::Registry do
       expect(registry.names(toolkit: lean.changed(add: ["echo"]))).to include("echo")
       expect(registry.names(layers: [:forget])).to include("forget_outputs")
       expect(registry.schemas.map { |schema| schema[:name] }).to eq(registry.names)
-      expect(Samagotchi::ToolDeclarations.native_schemas(registry).map { |schema| schema[:name] }).to eq(registry.names)
+      expect(Samagotchi::ToolDeclarations.native_schemas(Samagotchi::Tools::ToolSurface.for(registry)).map { |schema| schema[:name] }).to eq(registry.names)
     end
 
     it "doesn't offer a left-out tool, and says it is one" do

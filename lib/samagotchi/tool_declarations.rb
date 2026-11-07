@@ -635,10 +635,10 @@ module Samagotchi
 
     # The schemas the native (Gemma, Qwen) prompts declare: the built-ins
     # as they are, and each plugin tool's flattened (.flat_schema).
-    # @param registry [Tools::Registry]
-    # @param layers [Array<Symbol>] the turn's LLM context layers (Registry#entries)
-    def native_schemas(registry, layers: [])
-      registry.entries(layers: layers).map { |entry| entry.core? ? entry.schema : flat_schema(entry.schema) }
+    # @param surface [Tools::ToolSurface] the tools a turn (or a build
+    #   under its layers) declares (ToolSurface#declared)
+    def native_schemas(surface)
+      surface.declared.map { |entry| entry.core? ? entry.schema : flat_schema(entry.schema) }
     end
 
     # A plugin tool's schema in the shape the built-ins have, which is all

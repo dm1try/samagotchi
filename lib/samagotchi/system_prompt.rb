@@ -8,6 +8,7 @@ require_relative "memory_paths"
 require_relative "paths"
 require_relative "tool_declarations"
 require_relative "tools/memory"
+require_relative "tools/tool_surface"
 require_relative "muted_memories"
 require_relative "model_notes"
 require_relative "bundle_needs"
@@ -46,7 +47,8 @@ module Samagotchi
     attr_reader :requested_memories
 
     # @param profile  [#call] → ModelProfile
-    # @param tools    [#call] → Tools::Registry
+    # @param tools    [#call] → Tools::Registry, nil (no tools): each build
+    #   reads it as a Tools::ToolSurface under the build's layers
     # @param session  [#call] → Session, nil
     # @param thinking [#call] → Symbol, the effective model's level (Thinking)
     # @param model    [#call] → ModelIdentity, nil (the section is left out)
@@ -91,8 +93,10 @@ module Samagotchi
 
     # A prompt #build made, with what it read while it did: the memory
     # index sizes (#memory_index), the model notes, the files and the
-    # plugins' sections it holds, and its stable part's length (chat).
-    Built = Data.define(:prompt, :memory_index, :notes, :files, :sections, :stable_length)
+    # plugins' sections it holds, its stable part's length (chat) and the
+    # Tools::ToolSurface it declares (the tools, the not-loaded line, the
+    # kit's prompt text).
+    Built = Data.define(:prompt, :memory_index, :notes, :files, :sections, :stable_length, :surface)
 
     # The full prompt: #base wrapped with the index and the rest. Built once
     # per loop and level (until #reset!) so the prompt prefix, and the
@@ -110,7 +114,7 @@ module Samagotchi
     # @param chat [Boolean] for the chat loop
     # @param thinking [Symbol, nil] the level (Thinking); nil: the effective model's
     # @param layers [Array<Symbol>] the turn's LLM context layers: the
-    #   native prompt declares the tools they add (Tools::Registry#entries)
+    #   native prompt declares the tools they add (Tools::ToolSurface#declared)
     def build(chat: false, thinking: nil, layers: [])
       key = [chat, thinking, layers]
       cache = @cache
@@ -172,7 +176,8 @@ module Samagotchi
     # The base prompt (specs, plugins' declarations), with Gemma's tool
     # declarations at its end as #build has them.
     def base(chat: false, layers: [])
-      with_tail_declarations(assist_system_prompt(chat: chat, layers: layers), chat: chat, layers: layers)
+      surface = tool_surface(layers)
+      with_tail_declarations(assist_system_prompt(chat: chat, surface: surface), chat: chat, surface: surface)
     end
 
     # Names activated via preloaded --memory entries during prompt
@@ -192,11 +197,19 @@ module Samagotchi
       @section_files = []
       @section_plugins = []
       @measured_stable_length = nil
-      prompt = system_prompt_with_index(assist_system_prompt(chat: chat, layers: layers),
-                                        chat: chat, thinking: thinking, layers: layers)
+      surface = tool_surface(layers)
+      prompt = system_prompt_with_index(assist_system_prompt(chat: chat, surface: surface),
+                                        chat: chat, thinking: thinking, surface: surface)
       Built.new(prompt: prompt, memory_index: @measured_index, notes: @section_notes || [],
-                files: @section_files.freeze, sections: @section_plugins.freeze, stable_length: @measured_stable_length)
+                files: @section_files.freeze, sections: @section_plugins.freeze, stable_length: @measured_stable_length,
+                surface: surface)
     end
+
+    # The session's tools as a build under +layers+ declares them, read
+    # from the Registry now (one per build: the declarations, the
+    # not-loaded line and the kit's text agree).
+    # @return [Tools::ToolSurface]
+    def tool_surface(layers) = Tools::ToolSurface.for(@tools_lookup.call, layers: layers)
 
     def profile = @profile_lookup.call
 
@@ -208,8 +221,8 @@ module Samagotchi
 
     # ── Tool declarations ──────────────────────────────────────────────────────
 
-    def tool_declarations(layers)
-      schemas = ToolDeclarations.native_schemas(@tools_lookup.call, layers: layers)
+    def tool_declarations(surface)
+      schemas = ToolDeclarations.native_schemas(surface)
       case profile.name
       when "qwen36"
         ToolDeclarations.qwen_declarations(schemas)
@@ -232,7 +245,7 @@ module Samagotchi
 
     # @param chat [Boolean] for the chat loop: no tool declarations or call
     #   syntax (its tools go as schemas with each request)
-    def assist_system_prompt(chat: false, layers: [])
+    def assist_system_prompt(surface:, chat: false)
       return chat_system_prompt if chat
 
       hint = tool_call_hint
@@ -241,7 +254,7 @@ module Samagotchi
       tools = if gemma_tail_declarations?
                 "Your tools are declared at the end of this system prompt."
               else
-                "You have access to the following tools:\n\n#{tool_declarations(layers)}\n"
+                "You have access to the following tools:\n\n#{tool_declarations(surface)}\n"
               end
 
       <<~SYS
@@ -332,7 +345,7 @@ module Samagotchi
     # memory write changes them) after all of them; the model, the location
     # and the session close the prompt (Gemma's tool declarations still
     # follow them).
-    def system_prompt_with_index(base, chat: false, thinking: nil, layers: [])
+    def system_prompt_with_index(base, chat: false, thinking: nil, surface: tool_surface([]))
       thinking_token = chat ? "" : Thinking.native(thinking || turn_thinking, profile).system_token
       indexes = { project: read_memory_index("project"), system: read_memory_index("system") }
       @measured_index = measure_indexes(indexes)
@@ -340,15 +353,15 @@ module Samagotchi
         "Project memories:\n#{indexes[:project]}",
         "System memories:\n#{indexes[:system]}"
       ].join("\n\n")
-      stable = [thinking_token + base, not_loaded_line(layers), rg_guidance, system_identity_section, model_notes_section, explicit_memory_section,
-                project_specific_description, appended_section, kit_prompt_section, plugin_prompt_section, memory_sections]
+      stable = [thinking_token + base, not_loaded_line(surface), rg_guidance, system_identity_section, model_notes_section, explicit_memory_section,
+                project_specific_description, appended_section, kit_prompt_section(surface), plugin_prompt_section, memory_sections]
       stable_text = stable.compact.join("\n")
       volatile = [participants_section, current_model, project_location, current_session].compact
-      return with_tail_declarations(stable_text, chat: chat, layers: layers) if volatile.empty?
+      return with_tail_declarations(stable_text, chat: chat, surface: surface) if volatile.empty?
 
       prompt = "#{stable_text}\n#{volatile.join("\n")}"
       @measured_stable_length = stable_text.length + 1 if chat
-      with_tail_declarations(prompt, chat: chat, layers: layers)
+      with_tail_declarations(prompt, chat: chat, surface: surface)
     end
 
     # The tools the session's toolkit leaves out, named once right after the
@@ -357,15 +370,12 @@ module Samagotchi
     # the prompt is what it was before toolkits. The ones call_tool reaches
     # and the ones the toolkit removes (only the user brings those back)
     # get a sentence each; with call_tool not declared, one list.
-    def not_loaded_line(layers)
-      registry = @tools_lookup.call
-      return nil unless registry.respond_to?(:left_out_names)
-
-      names = registry.left_out_names(layers: layers)
+    def not_loaded_line(surface)
+      names = surface.left_out.keys
       return nil if names.empty?
 
-      toolkit = "(toolkit #{registry.toolkit&.name})"
-      reachable = registry.reachable_names(layers: layers)
+      toolkit = "(toolkit #{surface.toolkit&.name})"
+      reachable = surface.index_only.map(&:name)
       if reachable.empty?
         return "Not loaded in this session #{toolkit}: #{names.join(", ")}. Only the user can load one (/toolkit add <name>)."
       end
@@ -387,10 +397,7 @@ module Samagotchi
     # sessions on that kit share it, and a memory write doesn't move it.
     # nil on a kit without one and on full: the prompt is what it was
     # before kit prompts.
-    def kit_prompt_section
-      registry = @tools_lookup.call
-      registry.respond_to?(:toolkit) ? registry.toolkit&.prompt : nil
-    end
+    def kit_prompt_section(surface) = surface.toolkit&.prompt
 
     # The plugins' prompt sections (chi.prompt_section), right after the
     # kit prompt and before the memory indexes: a plugin's text depends on
@@ -406,8 +413,8 @@ module Samagotchi
       end
     end
 
-    def with_tail_declarations(prompt, chat:, layers:)
-      chat || !gemma_tail_declarations? ? prompt : prompt.rstrip + tool_declarations(layers)
+    def with_tail_declarations(prompt, chat:, surface:)
+      chat || !gemma_tail_declarations? ? prompt : prompt.rstrip + tool_declarations(surface)
     end
 
     def gemma_tail_declarations? = profile.name == "gemma4"

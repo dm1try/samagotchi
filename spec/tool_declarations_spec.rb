@@ -129,7 +129,7 @@ RSpec.describe Samagotchi::ToolDeclarations, ".flat_schema" do
   it "leaves the built-ins as they are, and the chat path gets a plugin's schema whole" do
     registry = Samagotchi::Tools::Builtins.registry
     registry.register("save_note", schema: schema, handler: ->(*) { "" }, source: "sample-plugin")
-    native = described_class.native_schemas(registry)
+    native = described_class.native_schemas(Samagotchi::Tools::ToolSurface.for(registry))
     expect(native.first(described_class::TOOL_SCHEMAS.size)).to eq(described_class::TOOL_SCHEMAS)
     expect(native.last).to eq(described_class.flat_schema(schema))
     expect(described_class.chat_schemas(registry.schemas).last).to eq(schema)

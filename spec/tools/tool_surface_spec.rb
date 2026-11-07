@@ -38,6 +38,18 @@ RSpec.describe Samagotchi::Tools::ToolSurface do
     expect(s.index).to equal(registry.index)
     expect(s.registered?("delegate")).to be(true)
     expect(s.registered?("nope")).to be(false)
+    expect(s.removed).to eq(registry.removed_names).and eq(["delegate"])
+    expect(s.stranded).to eq(registry.stranded_names)
+  end
+
+  it "reads the Registry under another toolkit when given one (what a change would declare)" do
+    full = described_class.for(registry, toolkit: nil)
+    expect(full.toolkit).to be_nil
+    expect(full.declared_names).to eq(registry.names(toolkit: nil))
+    expect(full.left_out).to be_empty
+    expect(full.removed).to be_empty
+    # The Registry's own toolkit is untouched, and stays the default.
+    expect(surface.left_out).to include("delegate" => :user_only)
   end
 
   it "follows the turn's layers: a layer's tool is declared under it only" do
