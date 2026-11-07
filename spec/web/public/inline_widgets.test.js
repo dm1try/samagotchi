@@ -69,6 +69,30 @@ test("cases normalised from round 1's branches: 'always' alone is the next; amon
   assert.deepEqual(r.casesOf(3), [{ when: "it fails", to: 0 }, { when: USUAL, to: 4 }]);
 });
 
+test("next: end ends the walk at that step: no next, an end tag, Start over", () => {
+  const walk = {
+    actors: ["user", "app"],
+    steps: [
+      { id: "1", actor: "user", does: "submits" },
+      { id: "2", actor: "app", does: "checks", cases: [{ when: "valid", goto: "3" }, { when: "invalid", goto: "5" }] },
+      { id: "3", actor: "app", does: "saves" },
+      { id: "4", actor: "user", sees: "success", next: "end" },
+      { id: "5", actor: "user", sees: "the error" },
+    ],
+  };
+  const r = walkRoutes(walk);
+  assert.ok(r.nextOf(3) === null);
+  assert.equal(swimlaneCells(walk, r)[3].tag.text, "end");
+  const box = drawWalk(walk, document);
+  for (let i = 0; i < 2; i++) box.dispatchEvent(new window.KeyboardEvent("keydown", { key: "ArrowRight" }));
+  box.querySelectorAll(".ww-case")[0].click();
+  box.querySelector(".ww-nav .primary").click();
+  assert.equal(box.querySelector(".ww-sees").textContent, "You seesuccess");
+  assert.equal(box.querySelector(".ww-nav .primary").textContent, "Start over");
+  box.querySelector(".ww-nav .primary").click();
+  assert.equal(box.querySelector(".ww-does").textContent, "submits");
+});
+
 test("the walker: go, back, next, and next at the end starts over", () => {
   const r = walkRoutes(WALK);
   const w = createWalker(r);
@@ -84,6 +108,7 @@ test("the walker: go, back, next, and next at the end starts over", () => {
   assert.deepEqual(w.path, [0]);
   assert.ok(!w.seen(4));
   w.go(null);
+  w.go(0);
   assert.deepEqual(w.path, [0]);
   assert.equal(trailText([0]), "");
   assert.equal(trailText([0, 1, 4]), "path 1 → 2 → 5");
@@ -126,6 +151,22 @@ test("the drawn walk: a case click moves the step and the path, Back returns, ar
   box.querySelectorAll(".ww-cell")[3].click();
   assert.equal(card(), "never reached");
   assert.ok(box.querySelectorAll(".ww-cell")[1].classList.contains("seen"));
+});
+
+test("a keyboard move that removes or hides the focused button keeps the focus in the widget", () => {
+  const box = drawWalk(WALK, document);
+  document.body.append(box);
+  box.querySelector(".ww-nav .primary").focus();
+  box.querySelector(".ww-nav .primary").click(); // to the fork: Next hides
+  assert.equal(document.activeElement, box);
+  const [first] = box.querySelectorAll(".ww-case");
+  first.focus();
+  first.click(); // the cases go
+  assert.equal(document.activeElement, box);
+  box.querySelectorAll(".ww-cell")[0].click();
+  assert.deepEqual(box.querySelector(".ww-trail").textContent, "path 1 → 2 → 3 → 1");
+  box.querySelectorAll(".ww-cell")[0].click(); // the current step: no move
+  assert.deepEqual(box.querySelector(".ww-trail").textContent, "path 1 → 2 → 3 → 1");
 });
 
 test("a step's markup is text: no element is made from the model's words", () => {
