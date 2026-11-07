@@ -65,7 +65,8 @@ Engine#run_turn(session, prompt, on_event:, max_iterations:, cancel_controller:,
   │     turn_messages(turn, image_refs)          # system head + history + due reminders (:reminder_injected)
   │     #   + the user message + the plugins' staged tool loads (ctx.load_tools: a kind "tool_change" system
   │     #   entry per bundle, only when the turn's host takes tool changes; #append_tool_loads)
-  │     ensure: @toolkit_suggestion.abandon(turn, :failed)   # nothing once the ask was settled
+  │     ensure: @toolkit_suggestion.abandon(turn, :failed)   # nothing once the ask was settled;
+  │     #   then @toolkit_suggestion.finish(turn): the stage lets the turn and its Pending go
   │     # Returns false at a STOP CHECK (stopped_before_model ends the turn canceled), else true
   │
   ├── generate(turn, max_iterations:, max_tool_output_chars:, pending_input:)
@@ -123,7 +124,7 @@ their state is their own. The Engine's public methods forward to them (`warm_too
 
 | Stage | Built with | Called | State |
 |---|---|---|---|
-| `TurnStages::ToolkitSuggestion` (ToolkitSuggest's ask: audit and on mode, one eligibility, a copied snapshot, SideJudgments' `:toolkit` kind) | `side_judgments`, `host_registry`, `toolkit_binding`, `tools`, `state_dir`, `recording`, `runs` | `start(turn)` before `refresh_profile!`; `settle(turn)` after `apply_staged_tools!` (on mode: waits up to System 1's timeout from its start, or a Stop, which wins over an answer already in and cuts the ask through `Pending#cancel_controller`; a pick ≥ threshold → `ToolkitBinding#suggest`); `abandon(turn, why)` at STOP CHECK A (`:canceled`) and in the ensure (`:failed`); `warm!(session)` / `stop_warmup` (Worker start, `shutdown`) | the turn's `ToolkitSuggest::Pending` (turn thread only; another turn's is never touched), the warm-up thread |
+| `TurnStages::ToolkitSuggestion` (ToolkitSuggest's ask: audit and on mode, one eligibility, a copied snapshot, SideJudgments' `:toolkit` kind) | `side_judgments`, `host_registry`, `toolkit_binding`, `tools`, `state_dir`, `recording`, `runs` | `start(turn)` before `refresh_profile!`; `settle(turn)` after `apply_staged_tools!` (on mode: waits up to System 1's timeout from its start, or a Stop, which wins over an answer already in and cuts the ask through `Pending#cancel_controller`; a pick ≥ threshold → `ToolkitBinding#suggest`); `abandon(turn, why)` at STOP CHECK A (`:canceled`) and in the ensure (`:failed`), then `finish(turn)` there; `warm!(session)` / `stop_warmup` (Worker start, `shutdown`) | the turn's `ToolkitSuggest::Pending` while it prepares (turn thread only; another turn's is never touched; dropped at `finish`), the warm-up thread |
 | `TurnStages::ContextJudge` (the attached-context candidate judge: [attached-context.md](attached-context.md), [context.md](../context.md) "The judge") | `side_judgments`, `host_registry`, `state_dir`, `recording`, `session`, `messages`, `turn_running`, `show_card` | `start(turn)` after `settle`, before `apply_toolkit!` (owner turns only: `ContextCandidatesLog#look`, then unless `context.candidates.mode` is off the due asks on SideJudgments' `:context` kind); `late_candidates` (a plugin's late proposal); `show_cards_after_turn` from `run_turn`'s ensure, after `release_turn` | the cards an answer brought while a turn ran, under their mutex |
 
 On a shared local System 1 host the judge's asks wait for the turn's end: started before `warm_up_next_turn`, whose

@@ -39,10 +39,11 @@ module Samagotchi
         @warmup_thread = nil
       end
 
-      # The running warm-up (#warm!), nil when none started or it was stopped.
+      # For specs: the running warm-up (#warm!), nil when none started or it
+      # was stopped.
       attr_reader :warmup_thread
 
-      # The ask's thread (SideJudgments' :toolkit kind), nil before any.
+      # For specs: the ask's thread (SideJudgments' :toolkit kind), nil before any.
       def ask_thread = @side_judgments.thread(:toolkit)
 
       # Start the toolkit classifier after :turn_started, for audit and on
@@ -99,6 +100,16 @@ module Samagotchi
       # ensure calls it too). Nothing when +turn+ started no ask.
       def abandon(turn, reason)
         pending_for(turn)&.abandon(reason)
+      end
+
+      # +turn+'s suggestion is done (prepare_turn's ensure, after #abandon):
+      # its Pending and the turn are let go, so nothing of it outlives its
+      # preparation. Nothing for another turn's.
+      def finish(turn)
+        return unless @pending_turn.equal?(turn)
+
+        @pending = nil
+        @pending_turn = nil
       end
 
       # On mode, as an idle worker starts (Worker#start_background): one ask

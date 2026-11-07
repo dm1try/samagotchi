@@ -1097,6 +1097,7 @@ module Samagotchi
       # A turn that ended (a failure, an Interrupt) before it settled the
       # ask: its line says so. Nothing once it was settled.
       @toolkit_suggestion.abandon(turn, :failed)
+      @toolkit_suggestion.finish(turn)
     end
     private :prepare_turn
 

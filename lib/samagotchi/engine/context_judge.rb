@@ -5,7 +5,7 @@ module Samagotchi
     # The attached-context candidate judge (TurnStages::ContextJudge,
     # forwarded): prepare_turn starts its pass, run_turn's ensure shows the
     # cards it held, and a plugin's late candidate asks it. Reads
-    # @context_judge, @side_judgments, @host_registry, @session.
+    # @context_judge, @side_judgments, @host_registry.
     module ContextJudgePart
       private
 
@@ -23,7 +23,7 @@ module Samagotchi
         TurnStages::ContextJudge.new(
           side_judgments: @side_judgments, host_registry: @host_registry, state_dir: -> { session_state_dir },
           recording: ->(client, judgment, session, mode:) { system_one_recording(client, judgment, session, mode: mode) },
-          session: -> { @session }, messages: -> { plugin_messages }, turn_running: -> { turn_running? },
+          session: -> { session }, messages: -> { plugin_messages }, turn_running: -> { turn_running? },
           show_card: ->(**card) { show_card(**card) }
         )
       end

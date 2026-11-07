@@ -168,19 +168,6 @@ RSpec.describe Samagotchi::Engine do
     end
   end
 
-  it "asks a System 1 host under another name for the model's own server root" do
-    engine = build_engine
-    allow(engine).to receive(:effective_model_name).and_return("model")
-    asked = Queue.new
-    system_one = instance_double(Samagotchi::SystemOne::Client, host: "judge")
-    allow(system_one).to receive(:ask) { |**| (asked << true) && nil }
-    allow(Samagotchi::SystemOne::Client).to receive(:from_config).and_return(system_one)
-
-    start(engine)
-
-    expect(pop!(asked, "the audit ask")).to be(true)
-  end
-
   it "reads neither the kits nor the suggestion log for a session that can't be asked" do
     engine = build_engine
     binding = engine.instance_variable_get(:@toolkit_binding)

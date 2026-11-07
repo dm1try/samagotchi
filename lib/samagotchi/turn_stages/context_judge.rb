@@ -43,7 +43,7 @@ module Samagotchi
         @cards_mutex = Mutex.new
       end
 
-      # The asks' thread (SideJudgments' :context kind), nil before any.
+      # For specs: the asks' thread (SideJudgments' :context kind), nil before any.
       def asks_thread = @side_judgments.thread(:context)
 
       # The candidate judge at an owner turn's start, after the toolkit's
