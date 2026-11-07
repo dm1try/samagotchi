@@ -13,14 +13,19 @@ require_relative "../launch_mode"
 require_relative "live_region"
 require_relative "plain_surface"
 require_relative "attached_loop"
+require_relative "log_tail"
+require_relative "formatting"
 
 module Samagotchi
   class TerminalUI
-    # `chi --attach ID` and `chi --shared [--resume ID]`: find or start the
+    # `chi`, `chi --attach ID` and `chi --resume ID`: find or start the
     # session's worker, then run the TUI as a client of its Bridge
     # (AttachedLoop). It takes no OwnerLock and builds no Engine: the worker
     # owns the session, and any number of UIs can attach to it.
     module AttachLauncher
+      # #paint, for the -v records.
+      extend Formatting
+
       # Why attaching failed, worded for the terminal.
       class Error < StandardError; end
 
@@ -28,6 +33,13 @@ module Samagotchi
       # A connector that answered no session (its own failures raise Error
       # with their words).
       NOTHING_CONNECTED = "could not attach: no session was found or started"
+      # `chi scratch`'s first line, and its last once the session is gone.
+      SCRATCH_BANNER = "Scratch session: nothing is kept, it is deleted when you leave."
+      SCRATCH_DELETED = "Scratch session deleted."
+      # chi -v on a worker that was running before this launch (%s: the
+      # debug log): its level is its own.
+      VERBOSE_RUNNING = "(--verbose: this worker was already running and logs at the level it started with; " \
+                        "its records show here only if it writes to %s: one chi web started may log elsewhere)"
 
       module_function
 
@@ -62,6 +74,13 @@ module Samagotchi
       #   own guardrails.parent_answers; an existing session keeps its own
       #   (never sent as a /parent-answers command: that would be a
       #   loosening route from a command line)
+      # @param scratch [Boolean] `chi scratch`: a new scratch session (its
+      #   worker's Engine saves nothing), stopped and deleted however the
+      #   attach ends; its worker deletes it too once no client is left
+      # @param verbose [Boolean] -v: the session's debug records in the
+      #   debug log (Log.path), shown above the live region as they come
+      #   (LogTail); a worker this launch spawns logs at debug (bin/chi's
+      #   log.level override reaches it through Config.cli_env)
       # @param state_dir [String, nil] where the sessions are (the default
       #   state dir by default): the worker's, for the attached loop too
       # @param connector [#connect, nil] finds or starts the session
@@ -73,19 +92,23 @@ module Samagotchi
       #   :failed when the --model switch didn't go through, or (input from a
       #   pipe) :turn_failed / :empty_answer / :removed / :unanswered
       #   (AttachedLoop#run)
-      def run(attach: nil, shared: false, resume: nil, prompt: nil, model: nil, no_interrupt: false, default_input: true,
+      def run(attach: nil, resume: nil, prompt: nil, model: nil, no_interrupt: false, default_input: true,
               memories: [], muted_memories: [], llm_context: {}, thinking: nil, appended_prompt_files: [], toolkit: nil,
-              toolkit_flags: [], settings: nil, parent_answers: nil, state_dir: nil, connector: nil)
+              toolkit_flags: [], settings: nil, parent_answers: nil, scratch: false, verbose: false, state_dir: nil,
+              connector: nil)
         state_dir ||= Session.default_state_dir
+        running_before = verbose && !connector && worker_running?(attach || resume, state_dir)
         link = connector && (connector.connect || raise(Error, NOTHING_CONNECTED))
         client = if connector
                    link.client
                  else
-                   connect(attach: attach, shared: shared, resume: resume, model: model, state_dir: state_dir,
+                   connect(attach: attach, resume: resume, model: model, state_dir: state_dir,
                            memories: memories, muted_memories: muted_memories, llm_context: llm_context,
                            thinking: thinking, appended_prompt_files: appended_prompt_files, toolkit: toolkit,
-                           toolkit_flags: toolkit_flags, settings: settings, parent_answers: parent_answers)
+                           toolkit_flags: toolkit_flags, settings: settings, parent_answers: parent_answers,
+                           scratch: scratch)
                  end
+        $stdout.puts(SCRATCH_BANNER) if scratch
         commands = []
         # --yes on /model and /thinking: typing the flag is the choice (no
         # confirm step); its applied reply ends the launch's command.
@@ -93,11 +116,13 @@ module Samagotchi
         commands << LLMContextOverride.command_line(llm_context) if (attach || resume) && !llm_context.empty?
         commands << "#{ThinkingCommand::NAME} #{thinking} --yes" if (attach || resume) && thinking
         first_command = commands.size > 1 ? commands : commands.first
+        $stderr.puts(format(VERBOSE_RUNNING, Log.path)) if running_before
         surface = open_surface
+        tail = (start_log_tail(surface, client.session_id) if verbose && Log.path)
         options = { screen: surface, client_id: client_id(connector), first_prompt: prompt,
                     first_command: first_command, no_interrupt: no_interrupt,
                     default_input: default_input && !prompt && !attach && !resume,
-                    wait_at_eof: !$stdin.tty?,
+                    wait_at_eof: !$stdin.tty?, scratch: scratch,
                     as_parent: Guardrails::ParentApprovals.parent_process? }
         attached = if connector
                      AttachedLoop.new(link: link, **options)
@@ -107,6 +132,7 @@ module Samagotchi
         ended = begin
           attached.run
         ensure
+          tail&.stop
           close_surface(surface)
         end
         if ended == :unanswered && attached.unanswered
@@ -119,6 +145,34 @@ module Samagotchi
         ended
       ensure
         link&.close
+        # Every way out (Ctrl-D, /exit, the worker gone, an error, Ctrl-C or
+        # a signal): only kill -9 leaves it to its worker (and the sweep).
+        end_scratch(client.session_id, state_dir: state_dir, quiet: !$!.nil?) if scratch && client
+      end
+
+      # Whether +session_id+'s worker runs now (nil: a new session).
+      def worker_running?(session_id, state_dir)
+        return false unless session_id && Session.valid_id?(session_id)
+
+        WorkerLink.resolve(Session.session_dir(session_id, state_dir: state_dir), unlink: false).live?
+      end
+
+      # The session's debug records, dim, above the live region.
+      def start_log_tail(surface, session_id)
+        LogTail.new(path: Log.path, session_id: session_id, on_record: lambda { |record|
+          surface.commit(paint(LogLine.format(record).chomp, 2))
+        }).start
+      end
+
+      # Stop the scratch session's worker and delete the session; its worker
+      # may have deleted it first (it found no client left).
+      def end_scratch(session_id, state_dir:, quiet: false, out: $stdout, err: $stderr)
+        SessionManager.delete_session(session_id, state_dir: state_dir, stop: true, wait: LocalLink::DELETE_WAIT)
+        out.puts(SCRATCH_DELETED) unless quiet
+      rescue ArgumentError
+        out.puts(SCRATCH_DELETED) unless quiet
+      rescue SessionManager::DeleteRefused, SystemCallError => e
+        err.puts("Scratch session #{session_id} was not deleted (#{e.message}): chi sessions delete #{session_id}")
       end
 
       # This TUI's client id: tui:PID, or the connector's own (a remote one
@@ -185,10 +239,11 @@ module Samagotchi
 
       # @return [BridgeClient] a client for the live Bridge of the session
       # @raise [Error]
-      def connect(attach: nil, shared: false, resume: nil, model: nil, state_dir: nil, wait: BRIDGE_WAIT,
+      def connect(attach: nil, resume: nil, model: nil, state_dir: nil, wait: BRIDGE_WAIT,
                   memories: [], muted_memories: [], llm_context: {}, thinking: nil, appended_prompt_files: [], toolkit: nil,
-                  toolkit_flags: [], settings: nil, parent_answers: nil, err: $stderr)
+                  toolkit_flags: [], settings: nil, parent_answers: nil, scratch: false, err: $stderr)
         sd = state_dir || Session.default_state_dir
+        connected = false
         if attach || resume
           warn_memory_flags_ignored(attach || resume, memories, muted_memories, err, appended_prompt_files: appended_prompt_files,
                                                                                      toolkit_flags: toolkit_flags)
@@ -211,14 +266,21 @@ module Samagotchi
                                                                          thinking: Thinking.session_level(thinking),
                                                                          appended_prompt_files: appended_prompt_files,
                                                                          toolkit: toolkit, settings: settings,
-                                                                         parent_answers: parent_answers))
+                                                                         parent_answers: parent_answers),
+                                                 scratch: scratch)
                   end
         link = WorkerLink.await(session.id, session_dir: Session.session_dir(session.id, state_dir: sd), timeout: wait)
-        link.live? ? link.client(session.id) : raise(Error, format(LaunchMode::BRIDGE_LATE, session.id))
+        raise(Error, format(LaunchMode::BRIDGE_LATE, session.id)) unless link.live?
+
+        connected = true
+        link.client(session.id)
       rescue SessionManager::OwnedByTUI => e
         raise Error, e.message
       rescue ArgumentError => e
         raise Error, e.message
+      ensure
+        # A scratch session whose Bridge never came (or Ctrl-C meanwhile).
+        end_scratch(session.id, state_dir: sd, quiet: true, err: err) if scratch && session && !connected
       end
 
       # The session's previous worker may still be leaving: its Bridge

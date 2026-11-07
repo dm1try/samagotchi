@@ -10,7 +10,7 @@ module Samagotchi
     module GuardrailsPart
       # ── Guardrails ─────────────────────────────────────────────────────────────
 
-      # Who can answer an approval: :repl, :worker or :non_interactive (the
+      # Who can answer an approval: :worker or :non_interactive (the
       # default, so a bare Engine denies instead of waiting for nobody). Set
       # by the host (TerminalUI, Worker).
       def interface
@@ -45,7 +45,7 @@ module Samagotchi
       attr_reader :plugin_failures
 
       # Once per Engine, on its first turn: what failed to load, so every UI
-      # (REPL, attached TUI, web) shows it: the guardrails, then the plugins
+      # (the attached TUI, the web, a one-shot's stderr) shows it: the guardrails, then the plugins
       # (label: "plugins"; the UIs say guardrails without one), an orphaned
       # project memory folder (label: "memory"), then the notices and cards plugins showed as they loaded.
       def announce_guardrail_failures(on_event)

@@ -19,13 +19,13 @@ RSpec.describe "Engine guardrail wiring" do
   end
 
   it "gives its kernel a gate whose context names the session, the interface and the cwd" do
-    engine.interface = :repl
+    engine.interface = :worker
     session = Samagotchi::Session.new_session(mode: "assist", model_name: "m", working_directory: Dir.pwd)
     engine.session = session
     gate = engine.instance_variable_get(:@kernel).guardrail_gate
     expect(gate).to be_a(Samagotchi::Guardrails::Gate)
     ctx = guardrail_context(engine)
-    expect([ctx.session_id, ctx.interface, ctx.cwd]).to eq([session.id, :repl, Dir.pwd])
+    expect([ctx.session_id, ctx.interface, ctx.cwd]).to eq([session.id, :worker, Dir.pwd])
   end
 
   it "runs the Engine's hooks through the kernel's gate" do

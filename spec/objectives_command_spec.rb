@@ -205,14 +205,14 @@ RSpec.describe Samagotchi::ObjectivesCommand do
     expect(files).to be_empty
   end
 
-  it "refuses an edit in a session a chi REPL owns, with the note's own reason; a show still answers" do
+  it "refuses an edit in a session a one-turn chi run owns, with the note's own reason; a show still answers" do
     locks.pop.release
     locks << Samagotchi::OwnerLock.acquire(session_dir, kind: "tui")
 
     output, status = run("set A")
 
     expect(status).to eq(:error)
-    expect(output).to eq("refused: #{Samagotchi::NoteDelivery::REPL_REFUSAL}")
+    expect(output).to eq("refused: #{Samagotchi::NoteDelivery::ONE_SHOT_REFUSAL}")
     expect(files).to be_empty
     expect(run("").last).to eq(:ok)
   end

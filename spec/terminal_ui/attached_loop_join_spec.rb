@@ -91,7 +91,7 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop do
       expect(attached.send(:live_worker)).to eq([:gone, "stopped"])
       # The stream closes with that reason; here the line reads as it always has.
       attached.handle_event({ "type" => "stream_closed", "reason" => "stopped" })
-      expect(screen.lines.last).to eq("Lost the session's worker (unreachable). Resume it with: chi --shared --resume s-1234")
+      expect(screen.lines.last).to eq("Lost the session's worker (unreachable). Resume it with: chi --resume s-1234")
     end
 
     it "says what to restart when the worker asks for a secret this terminal doesn't send" do

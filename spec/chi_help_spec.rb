@@ -14,17 +14,14 @@ RSpec.describe "chi --help" do
 
     expect(status.exitstatus).to eq(0)
     prompt_line = out.lines.find { |l| l.include?("--prompt") }
-    expect(prompt_line).to include("then stay in the session (attached; the REPL with --no-shared)")
-    expect(prompt_line).not_to include("exit")
+    expect(prompt_line).to include("then stay in the session (attached; one turn and out with --non-interactive)")
     expect(out.lines.find { |l| l.include?("--non-interactive ") }).to include("exit")
   end
 
-  it "says plain chi runs attached by default and --no-shared opts out" do
-    out, _err, _status = @help
+  it "has no --shared/--no-shared any more" do
+    out, = @help
 
-    shared_line = out.lines.find { |l| l.include?("--[no-]shared") }
-    expect(shared_line).to include("the default")
-    expect(shared_line).to include("--no-shared runs a plain in-process REPL")
+    expect(out).not_to include("shared")
   end
 
   it "lists --mute next to --memory, neither tied to the plain REPL" do
@@ -89,8 +86,17 @@ RSpec.describe "chi --help" do
     expect(err).to eq("Error: invalid option: --bogus (see chi --help)\n")
   end
 
+  it "refuses the removed --shared and --no-shared as any unknown flag" do
+    %w[--shared --no-shared].each do |flag|
+      _out, err, status = fork_chi(flag)
+
+      expect(status.exitstatus).to eq(1)
+      expect(err).to eq("Error: invalid option: #{flag} (see chi --help)\n")
+    end
+  end
+
   it "refuses an unknown command instead of starting a session" do
-    _out, err, status = fork_chi("bogus", "--non-interactive", env: { "SAMAGOTCHI_SESSION_SHARED" => "0" }, timeout: 10)
+    _out, err, status = fork_chi("bogus", "--non-interactive", timeout: 10)
 
     expect(status.exitstatus).to eq(1)
     expect(err).to eq("Error: unknown command bogus (see chi --help)\n")

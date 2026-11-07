@@ -75,9 +75,7 @@ RSpec.describe Samagotchi::RemoteAttachCommand do
 
   it "refuses conflicting flags in chi --attach's words (exit 1)" do
     expect(run(attach: "a", resume: "b")).to eq(1)
-    expect(run(attach: "a", shared: true)).to eq(1)
-    expect(err.string).to eq("Error: --attach takes the session id; --resume goes with --shared\n" \
-                             "Error: use either --attach ID or --shared\n")
+    expect(err.string).to eq("Error: use either --attach ID or --resume ID\n")
   end
 
   it "fails a launch in the words it failed with: too old, ambiguous, not found, refused there (exit 1); a bad flag there exits 2" do
@@ -91,14 +89,14 @@ RSpec.describe Samagotchi::RemoteAttachCommand do
     expect(run(attach: "ab")).to eq(1)
 
     allow(remote).to receive(:resolve).and_return("ab12")
-    allow(launcher).to receive(:run).and_raise(Samagotchi::TerminalUI::AttachLauncher::Error, "session ab12 is open in a chi REPL; close it there first")
+    allow(launcher).to receive(:run).and_raise(Samagotchi::TerminalUI::AttachLauncher::Error, "session ab12 is in use by a one-turn chi --non-interactive run; let it finish first")
     expect(run(attach: "ab")).to eq(1)
 
     allow(remote).to receive(:create).and_raise(Samagotchi::SessionAccess::BadRequest.new("unknown toolkit nope", code: "invalid_toolkit"))
     expect(run(dir: "/x", toolkit: "nope")).to eq(2)
 
     expect(err.string.lines).to eq(["Error: #{too_old}\n", "Error: ab matches several sessions\n",
-                                    "Error: session ab12 is open in a chi REPL; close it there first\n",
+                                    "Error: session ab12 is in use by a one-turn chi --non-interactive run; let it finish first\n",
                                     "Error: unknown toolkit nope\n"])
   end
 

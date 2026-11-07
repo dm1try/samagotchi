@@ -5,13 +5,11 @@ require "spec_helper"
 require "samagotchi/bridge"
 require "samagotchi/session_manager"
 require "samagotchi/worker"
-require "samagotchi/terminal_ui"
 require "samagotchi/session_retention"
 
 # "Is this session empty, so it goes?" as each place that deletes one asks
-# it: the worker as it leaves (Worker#empty_session?), the REPL at /exit
-# (TerminalUI#discard_on_exit?) and the retention sweep (SessionRetention.prune,
-# sessions left empty an hour). One table of session states, one answer per
+# it: the worker as it leaves (Worker#empty_session?) and the retention sweep
+# (SessionRetention.prune, sessions left empty an hour). One table of session states, one answer per
 # asker; nil where that asker never meets the state.
 RSpec.describe "discarding an empty session" do
   let(:tmpdir) { Dir.mktmpdir("session-discardable-spec") }
@@ -24,7 +22,7 @@ RSpec.describe "discarding an empty session" do
 
   # A fresh session on the default model, its directory the worker's
   # skeleton; the row's block changes it, then it is saved (unless the row
-  # says the REPL never saved it).
+  # says it was never saved).
   def build(row)
     session = Samagotchi::Session.new_session(mode: "assist", model_name: model, working_directory: "/tmp",
                                               scratch: row.fetch(:scratch, false))
@@ -55,105 +53,95 @@ RSpec.describe "discarding an empty session" do
     worker.send(:empty_session?)
   end
 
-  def repl_says(row, session)
-    repl = Samagotchi::TerminalUI.allocate
-    repl.instance_variable_set(:@engine, engine_double(row))
-    repl.instance_variable_set(:@default_model_name, model)
-    repl.instance_variable_set(:@effective_model_name, row.fetch(:repl_model, model))
-    repl.discard_on_exit?(session)
-  end
-
   def sweep_says(session)
     result = Samagotchi::SessionRetention.prune(state_dir: tmpdir, days: 0, max_count: 0, keep_status: "none", dry_run: true)
     result[:deleted].include?(session.id)
   end
 
   rows = [
-    { name: "fresh, on the default model", worker: true, repl: true, sweep: true },
-    { name: "session.keep_empty", keep_empty: true, worker: false, repl: false, sweep: false },
+    { name: "fresh, on the default model", worker: true, sweep: true },
+    { name: "session.keep_empty", keep_empty: true, worker: false, sweep: false },
     { name: "a conversation", change: ->(s, _) { s.messages << { role: "user", content: "hi" } },
-      worker: false, repl: false, sweep: false },
+      worker: false, sweep: false },
     { name: "a context note", change: ->(s, _) { s.messages << { role: "system", kind: "note", content: "n" } },
-      worker: false, repl: false, sweep: false },
+      worker: false, sweep: false },
     { name: "only a turn note (a first turn failed)",
       change: ->(s, _) { s.messages << Samagotchi::TurnNote.message("the previous turn failed before any answer") },
-      worker: true, repl: true, sweep: true },
+      worker: true, sweep: true },
     { name: "a failed turn's last_prompt", change: ->(s, _) { s.last_prompt = "hi?" },
-      worker: false, repl: false, sweep: false },
+      worker: false, sweep: false },
     { name: "a first prompt waiting", change: ->(s, _) { s.first_preview = "hello" },
-      worker: false, repl: false, sweep: false },
+      worker: false, sweep: false },
     { name: "a pending question", change: ->(s, _) { s.pending_question = { question: "which?" } },
-      worker: false, repl: false, sweep: false },
+      worker: false, sweep: false },
     { name: "memory saved as used", change: ->(s, _) { s.used_memory_names = ["notes"] },
-      worker: false, repl: false, sweep: false },
-    { name: "memory used in the Engine only", engine_memory: ["notes"], worker: false, repl: false, sweep: nil },
+      worker: false, sweep: false },
+    { name: "memory used in the Engine only", engine_memory: ["notes"], worker: false, sweep: nil },
     { name: "saved on another model", change: ->(s, _) { s.model_name = "other/model" },
-      worker: false, repl: false, sweep: false },
-    { name: "the REPL on another model (/model, --model)", repl_model: "other/model", worker: nil, repl: false, sweep: nil },
-    { name: "another mode", change: ->(s, _) { s.mode = "other" }, worker: false, repl: false, sweep: false },
+      worker: false, sweep: false },
+    { name: "another mode", change: ->(s, _) { s.mode = "other" }, worker: false, sweep: false },
     { name: "queued input", change: ->(_, d) { File.write(File.join(d, "input", "1.json"), "{}") },
-      worker: false, repl: false, sweep: false },
+      worker: false, sweep: false },
     { name: "an image", change: ->(_, d) { File.write(File.join(d, "images", "a.png"), "") },
-      worker: false, repl: false, sweep: false },
+      worker: false, sweep: false },
     { name: "a recorded turn",
       change: ->(_, d) { File.write(File.join(d, "analytics.json"), JSON.generate("turn_records" => [{ "id" => "t" }])) },
-      worker: false, repl: false, sweep: false },
+      worker: false, sweep: false },
     { name: "cards shown before any turn (a plugin's notice at start)",
       change: ->(_, d) { File.write(File.join(d, "cards.json"), JSON.generate("turns" => 0, "entries" => [{ "type" => "hook_notice" }])) },
-      worker: true, repl: true, sweep: true },
+      worker: true, sweep: true },
     { name: "a turn's saved cards",
       change: ->(_, d) { File.write(File.join(d, "cards.json"), JSON.generate("turns" => 1, "entries" => [{ "type" => "card" }])) },
-      worker: false, repl: false, sweep: false },
+      worker: false, sweep: false },
     # As a real store writes them (version 2), the shapes above are an older file's.
     { name: "a store's file from before any turn",
       change: lambda { |_, d|
         Samagotchi::Bridge::CardStore.new(path: File.join(d, "cards.json")).call({ type: :hook_notice, hook: "h", text: "n", between_turns: true })
       },
-      worker: true, repl: true, sweep: true },
+      worker: true, sweep: true },
     { name: "a store's file with a turn",
       change: lambda { |_, d|
         store = Samagotchi::Bridge::CardStore.new(path: File.join(d, "cards.json"))
         store.call({ type: :turn_started, turn_id: "t1" })
         store.call({ type: :card, id: "c1", in_turn: true })
       },
-      worker: false, repl: false, sweep: false },
+      worker: false, sweep: false },
     # A broken analytics.json or cards.json is "not empty" everywhere: the
-    # worker, the REPL and the sweep all keep the folder, none crashes.
+    # worker and the sweep both keep the folder, neither crashes.
     { name: "corrupt analytics.json (not JSON)",
       change: ->(_, d) { File.write(File.join(d, "analytics.json"), "{not json") },
-      worker: false, repl: false, sweep: false },
+      worker: false, sweep: false },
     { name: "corrupt cards.json (not JSON)",
       change: ->(_, d) { File.write(File.join(d, "cards.json"), "{not json") },
-      worker: false, repl: false, sweep: false },
+      worker: false, sweep: false },
     # A JSON file of the wrong shape (turns not a number) is "not empty"
     # everywhere too: it reads as kept, not as a raise.
     { name: "a cards.json whose turns is an array (wrong shape)",
       change: ->(_, d) { File.write(File.join(d, "cards.json"), JSON.generate("turns" => [])) },
-      worker: false, repl: false, sweep: false },
+      worker: false, sweep: false },
     { name: "a cards.json whose turns is a hash (wrong shape)",
       change: ->(_, d) { File.write(File.join(d, "cards.json"), JSON.generate("turns" => {})) },
-      worker: false, repl: false, sweep: false },
+      worker: false, sweep: false },
     { name: "an analytics.json whose turn_records is a hash (wrong shape)",
       change: ->(_, d) { File.write(File.join(d, "analytics.json"), JSON.generate("turn_records" => {})) },
-      worker: false, repl: false, sweep: false },
+      worker: false, sweep: false },
     { name: "archived", change: ->(_, d) { File.write(File.join(d, Samagotchi::ArchiveStore::FILE), "{}") },
-      worker: false, repl: false, sweep: false },
-    # The REPL deletes a scratch session before it asks; the sweep takes
-    # one whatever is in it.
-    { name: "a scratch session, empty", scratch: true, worker: true, repl: true, sweep: true },
+      worker: false, sweep: false },
+    # The sweep takes a scratch session whatever is in it.
+    { name: "a scratch session, empty", scratch: true, worker: true, sweep: true },
     { name: "a scratch session, used", scratch: true, change: ->(s, _) { s.messages << { role: "user", content: "hi" } },
-      worker: false, repl: false, sweep: true },
-    { name: "never saved, empty", unsaved: true, worker: false, repl: true, sweep: nil },
+      worker: false, sweep: true },
+    { name: "never saved, empty", unsaved: true, worker: false, sweep: nil },
     { name: "never saved, a conversation", unsaved: true,
-      change: ->(s, _) { s.messages << { role: "user", content: "hi" } }, worker: false, repl: false, sweep: nil },
+      change: ->(s, _) { s.messages << { role: "user", content: "hi" } }, worker: false, sweep: nil },
     { name: "never saved, a failed turn", unsaved: true, change: ->(s, _) { s.last_prompt = "hi?" },
-      worker: false, repl: false, sweep: nil },
+      worker: false, sweep: nil },
     { name: "never saved, queued input", unsaved: true,
-      change: ->(_, d) { File.write(File.join(d, "input", "1.json"), "{}") }, worker: false, repl: false, sweep: nil }
+      change: ->(_, d) { File.write(File.join(d, "input", "1.json"), "{}") }, worker: false, sweep: nil }
   ].freeze
 
   rows.each do |row|
-    it "answers for #{row[:name]}: worker #{row[:worker].inspect}, REPL #{row[:repl].inspect}, sweep #{row[:sweep].inspect}" do
+    it "answers for #{row[:name]}: worker #{row[:worker].inspect}, sweep #{row[:sweep].inspect}" do
       if row[:keep_empty]
         allow(Samagotchi::Config).to receive(:get).and_call_original
         allow(Samagotchi::Config).to receive(:get).with("session.keep_empty").and_return(true)
@@ -162,11 +150,10 @@ RSpec.describe "discarding an empty session" do
 
       answers = {
         worker: row[:worker].nil? ? nil : worker_says(row, session),
-        repl: row[:repl].nil? ? nil : repl_says(row, session),
         sweep: row[:sweep].nil? ? nil : sweep_says(session)
       }
 
-      expect(answers).to eq(row.slice(:worker, :repl, :sweep))
+      expect(answers).to eq(row.slice(:worker, :sweep))
     end
   end
 end

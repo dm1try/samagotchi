@@ -157,6 +157,9 @@ module Samagotchi
       # Open streams by the client_id a stream named (`?client_id=`); web
       # tabs, through the `chi web` proxy, name none.
       @streams_by_client = Hash.new(0)
+      # Streams served since the start, open or closed (a scratch worker
+      # leaves once its terminal's has gone: Worker#scratch_unattended?).
+      @streams_served = 0
       @last_client_activity_at = monotonic_now
     end
 
@@ -177,6 +180,11 @@ module Samagotchi
     # @return [Integer] SSE streams open now: one per attached TUI or web tab
     def open_streams
       @mutex.synchronize { @open_streams }
+    end
+
+    # @return [Integer] SSE streams served since the Bridge started
+    def streams_served
+      @mutex.synchronize { @streams_served }
     end
 
     # Streams held by anyone but +client_id+: a client's own stream (or two,
@@ -557,6 +565,7 @@ module Samagotchi
       )
       @mutex.synchronize do
         @open_streams += 1
+        @streams_served += 1
         @streams_by_client[client_id] += 1 if client_id
       end
       begin

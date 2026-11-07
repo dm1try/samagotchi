@@ -234,7 +234,7 @@ RSpec.describe "Kernel contract (characterization)" do
     after { Thread.current[:contract_generations] = nil }
 
     it "shares its reminder store with the ReminderQueue, fires the hooks and dispatches a plugin's tool" do
-      ui = Samagotchi::TerminalUI.new(host_registry: registry, surface: surface, non_interactive: true)
+      ui = Samagotchi::TerminalUI.new(host_registry: registry, surface: surface)
       engine = ui.engine
       session = session_for("box:Qwen3.6")
       server.enqueue("/completion", sse: sse(qwen_call("register_reminder", name: "tea", description: "brew it", interval_minutes: 5)))

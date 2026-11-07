@@ -160,7 +160,7 @@ module Samagotchi
       end
 
       # Only a question a live worker holds waits for an answer (the lists'
-      # rule): one a dead worker left waits for no one, and a chi REPL's is
+      # rule): one a dead worker left waits for no one, and a one-turn chi run's is
       # answered there.
       def question(session)
         pending = session.pending_question
@@ -171,7 +171,7 @@ module Samagotchi
         Result.new(status: :waiting_for_answer, question: pending, session: session)
       end
 
-      # A worker holds the session's lock (a chi REPL's question is its own).
+      # A worker holds the session's lock (a one-turn chi run's question is its own).
       def worker_owned?
         WorkerLink.resolve(Session.session_dir(@id, state_dir: @state_dir), unlink: false).worker_owned?
       end

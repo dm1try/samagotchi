@@ -9,8 +9,8 @@ require "samagotchi/session"
 
 # `chi --resume ID` when config.yml's default.model names a host that isn't
 # configured: the resumed session's own model is what runs, so the bad
-# default must not stop it. (--no-shared forces the in-process REPL, where
-# the default is checked.) The first example runs a real bin/chi; the other
+# default must not stop it. (--non-interactive runs it in this process,
+# where the default is checked.) The first example runs a real bin/chi; the other
 # forks it (ChiCli#fork_chi).
 RSpec.describe "chi --resume with a bad default.model" do
   def write_config(dir, yaml)
@@ -45,12 +45,11 @@ RSpec.describe "chi --resume with a bad default.model" do
       write_config(dir, config_yaml)
       id = save_session(dir, model_name: "main:spec-model")
 
-      out, err, status = run_chi("--resume", id, "--no-shared", env: isolated_chi_env(dir), chdir: dir)
+      out, err, status = run_chi("--resume", id, "--non-interactive", "-p", "/model", env: isolated_chi_env(dir), chdir: dir)
 
       expect(status.exitstatus).to eq(0), err
-      expect(err).to eq("")
-      expect(out).to include("Resumed session: #{id}")
-      expect(out).to include("model=main:spec-model (default: nosuch:org/model)")
+      expect(err).to eq("Resumed session: #{id}\n")
+      expect(out).to include("runtime model: main:spec-model (default: nosuch:org/model,")
     end
   end
 
@@ -59,7 +58,7 @@ RSpec.describe "chi --resume with a bad default.model" do
       write_config(dir, config_yaml)
       id = save_session(dir, model_name: "")
 
-      out, err, status = fork_chi("--resume", id, "--no-shared", env: isolated_chi_env(dir), chdir: dir)
+      out, err, status = fork_chi("--resume", id, "--non-interactive", "-p", "/model", env: isolated_chi_env(dir), chdir: dir)
 
       expect(status.exitstatus).to eq(1)
       expect(out).to eq("")

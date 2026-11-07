@@ -46,7 +46,7 @@ module Samagotchi
         note from "broadcast": background the model sees on its next turn,
         not a prompt. It starts no turn.
         Recipients: your own sessions (not delegate children, not scratch
-        ones) that a worker or a chi REPL runs now, or that ended a turn in
+        ones) that a worker or a one-turn chi run runs now, or that ended a turn in
         the last broadcast.active_hours (8). One gets the note when it shares
         a tag with it: a ticket id (PAY-123) in its branch or your prompts
         there, a pull request (PR #42, its URL) attached to it, a link in
@@ -190,13 +190,13 @@ module Samagotchi
                                                    corrections: []), decisions, cards)
     end
 
-    # Every recipient's verdict: a chi REPL takes no notes, --all takes the
+    # Every recipient's verdict: a one-turn chi run takes no notes, --all takes the
     # rest, else Broadcast::Triage (tags, the scope line, the model).
     # @return [Array<Decision>] in +recipients+' order
     def decide(text, recipients, cards, note_tags, all:)
       fixed = recipients.to_h do |r|
         verdict = if r.repl?
-                    Broadcast::Triage::Verdict.new(relevant: false, p: nil, reason: "open in a chi REPL", by: "repl")
+                    Broadcast::Triage::Verdict.new(relevant: false, p: nil, reason: OwnerLock::TUI_BUSY, by: "repl")
                   elsif all
                     Broadcast::Triage::Verdict.new(relevant: true, p: nil, reason: "--all", by: "all")
                   end
@@ -254,7 +254,7 @@ module Samagotchi
 
         result = NoteDelivery.deliver(d.recipient.id, text: body(broadcast.text, d.verdict), source: SOURCE,
                                                       state_dir: @state_dir)
-        next [d, "skipped", "open in a chi REPL"] unless result.delivered?
+        next [d, "skipped", OwnerLock::TUI_BUSY] unless result.delivered?
 
         [d, "delivered", "#{d.verdict.reason}#{"; waits for its next start" if result.status == :waits}"]
       rescue SessionInbox::NoteRejected, SystemCallError => e
@@ -369,7 +369,7 @@ module Samagotchi
 
       result = NoteDelivery.deliver(id, text: passed_on_body(record), source: SOURCE, state_dir: @state_dir)
       unless result.delivered?
-        @stdout.puts(line_for(id, "skipped", "open in a chi REPL"))
+        @stdout.puts(line_for(id, "skipped", OwnerLock::TUI_BUSY))
         return Broadcast::TriageLog::Delivery.new(session: id, result: "refused")
       end
 

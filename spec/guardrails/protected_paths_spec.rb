@@ -166,7 +166,7 @@ RSpec.describe "Engine: editing config.yml after an approval" do
   after { File.write(config_path, original) }
 
   def write_config(answer)
-    engine.interface = :repl
+    engine.interface = :worker
     asked = []
     engine.set_question_sync_handler do |pending|
       asked << pending

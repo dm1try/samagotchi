@@ -155,14 +155,14 @@ RSpec.describe AffectedSpecs::Picker do
     expect(paths(pick("lib/samagotchi/terminal_ui.rb").ruby)).to include("spec/terminal_ui_golden_spec.rb")
   end
 
-  it "picks the terminal UI golden for the turn files outside terminal_ui/ whose words the REPL prints, by a rule" do
+  it "picks the attached TUI's specs for the turn files outside terminal_ui/ whose words it prints, by a rule" do
     files.merge!("lib/samagotchi/turn_note.rb" => "", "lib/samagotchi/turn_flow.rb" => "",
-                 "spec/terminal_ui_golden_spec.rb" => "")
+                 "spec/terminal_ui/event_renderer_spec.rb" => "", "spec/terminal_ui/attached_loop_spec.rb" => "")
 
     result = pick("lib/samagotchi/turn_note.rb")
-    expect(paths(result.ruby)).to eq(%w[spec/terminal_ui_golden_spec.rb])
+    expect(paths(result.ruby)).to eq(%w[spec/terminal_ui/event_renderer_spec.rb spec/terminal_ui/attached_loop_spec.rb])
     expect(result.ruby.first.reason).to start_with("rule: ")
-    expect(paths(pick("lib/samagotchi/turn_flow.rb").ruby)).to eq(%w[spec/terminal_ui_golden_spec.rb])
+    expect(paths(pick("lib/samagotchi/turn_flow.rb").ruby)).to eq(%w[spec/terminal_ui/event_renderer_spec.rb spec/terminal_ui/attached_loop_spec.rb])
   end
 
   it "picks a docs-reading spec for its doc, and nothing else for a doc" do

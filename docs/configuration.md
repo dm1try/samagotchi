@@ -64,11 +64,9 @@ model_aliases:
   small: your-small-model-id
   tiny: small-box:your-small-model-id  # alias may be bare or host:model (hybrid)
 
-# Plain chi runs its session in a background worker and attaches to it, so the
-# web UI can share it (default true; env SAMAGOTCHI_SESSION_SHARED). false keeps
-# the in-process REPL; --no-shared does for one run.
+# A session runs in a background worker; chi attaches to it, and the web UI
+# shares it.
 session:
-  shared: true
   # idle_exit_minutes: 30   # an unused worker exits after this (0 = never)
   # project_env: mise      # a worker's tools get its folder's `mise env` (off: the starter's env)
   # keep_empty: false       # true keeps sessions nothing happened in (default: deleted when left)
@@ -172,7 +170,6 @@ or `chi web` restart.
 | `system_one.host`, `system_one.model`, `system_one.timeout_ms`, `system_one.runs`, `system_one.judgments` | Next tool call or approval | Each ask reads them. |
 | `hooks`, `bundles` | Worker start | Hooks, plugins and their bundle settings load with the engine. |
 | `recap.*` | Worker start | The engine builds its recap job at start, and again when it binds a session with its own `recap.enabled` or `recap.sentences` (`--set`, see "Per-session settings") and when `/recap on\|off\|default` changes the session's own value. |
-| `session.shared` | Next `chi` invocation | It selects attached-worker or in-process mode for that invocation. |
 | `session.idle_exit_minutes`, `session.project_env`, `session.carry_last_answer`, `session.keep_empty`, `session.max_children`, `session.delegate_reports`, `session.task_wakes`, `session.max_wakes` | Worker start or next matching lifecycle decision | Existing workers keep their idle-exit timer and project env; the other values are read for the next corresponding decision. |
 | `session.retention_*`, `session.max_count`, `session.keep_status`, `session.sweep_interval_hours` | Next retention sweep | `chi web` sweeps on its configured schedule and on `GET /api/sessions`; `chi sessions prune` uses the values for that invocation. The sweep interval is checked on the next hub tick. |
 | `web.*` except `web.participants.*` | `chi web` start | Restart `chi web` to change its bind address, port or page settings. |
@@ -355,10 +352,8 @@ For models on that host, chi uses the chat loop (its own OpenAI chat adapter): i
 takes the OpenAI base (`url:`, else `http://HOST:PORT/v1`) and streams messages plus
 function schemas from `/v1/chat/completions`; the model's reasoning (`reasoning_content`)
 shows as thinking. This works with Splash and with llama.cpp servers that
-expose the OpenAI-compatible chat endpoint. In verbose mode (`-v`), chi prints the loop the
-starting model uses (`[verbose] backend=chat` or `backend=native`); request
-bodies are not logged. The interactive REPL, `--prompt`,
-workers, and resumed sessions all use the loop of the model's host. Hosts without
+expose the OpenAI-compatible chat endpoint. Workers, `--non-interactive` one-shots and resumed
+sessions all use the loop of the model's host. Hosts without
 a chat `api:` keep using llama.cpp's native `/completion`.
 
 ### API keys from the Keychain
@@ -655,7 +650,7 @@ models:
   it, a delegate child starts without it (it runs at its model's level). Set it with:
   - `/thinking LEVEL` in the session (`/thinking default` unsets it, `/thinking` alone shows the level and where it
     came from);
-  - `chi --thinking LEVEL` on a run that starts or resumes a session (the REPL, `-p`, `--resume`, an attached one);
+  - `chi --thinking LEVEL` on a run that starts or resumes a session (plain `chi`, `-p`, `--resume`, an attached one);
   - `chi send --new --thinking LEVEL`;
   - the web's ⚙ panel in the session bar (its Thinking row), and the start page's ⚙ panel (`POST /api/sessions` takes `"thinking": "low"`;
     anything that isn't a level answers `400 invalid_thinking`).
@@ -849,15 +844,15 @@ first: an unknown host or a bad alias is an error at once, not a question.
   a full-prefix change also says preserved thinking in replies is dropped from then on.
 - `Nothing changed yet: send /thinking low --yes to apply.` names the line that applies it.
 - `--yes` (or `-y`, anywhere after the command) applies it at once.
-- The terminal (the REPL and an attached TUI) puts the `--yes` line in the next input: Enter applies it.
+- The attached terminal puts the `--yes` line in the next input: Enter applies it.
 - The web's reply bubble has an **Apply (restarts the cache)** button. The session bar's ⚙ panel is already an
   explicit choice: a tap sends the `--yes` line, and its note says what a change costs. Command bubbles are page-only, so
   the button is gone after a reload.
 - Only a person at a web tab or a chi TUI is asked. `chi send ID "/thinking low"`,
-  `chi -p "/thinking low" --non-interactive`, lines piped into the REPL, a delegate, a plugin and a card's action
+  `chi -p "/thinking low" --non-interactive`, a delegate, a plugin and a card's action
   apply directly, since nobody would see the question; so do the start flags (`chi --thinking`, `--model` and
   `--llm-context` on a resumed or attached session send `/thinking LEVEL --yes`, `/model NAME --yes` and
-  `/llm-context … --yes`). A plain `chi -p` opens the REPL, which asks.
+  `/llm-context … --yes`).
 
 ## Llama HTTP Timeouts
 
@@ -1107,7 +1102,7 @@ retry:
 `retry.empty_answer` is a different thing: the request worked, but the model's answer had no visible text and no
 tool calls (thinking only, or nothing; a thinking loop cut by the provider's output cap looks like this). chi then
 asks again in the same turn with a hidden note ("your last reply had no visible answer…"), at `temperature: 0.6`
-unless `sampling:` sets one; the REPL prints `↻ empty answer, asking again (1/1)` and the web shows it as a row of
+unless `sampling:` sets one; the terminal prints `↻ empty answer, asking again (1/1)` and the web shows it as a row of
 the step. `retry.empty_answer` (default `1`, at most `3`, env `SAMAGOTCHI_RETRY_EMPTY_ANSWER`, no CLI flag) is how
 many times per turn; `0` ends the turn at the empty answer as before. An answer cut because the context is full
 (90 % or more) is not retried. When the retries run out the turn ends with no answer: every UI shows one muted line,
@@ -1209,8 +1204,8 @@ The turn's prompt and its completed tool calls stay in the session.
 
 ## Debug Log File
 
-Every `chi` process (the REPL, the attached terminal, the background
-workers, `chi web`) appends tagged records to one log file, so you can see
+Every `chi` process (the attached terminal, a `--non-interactive` one-shot,
+the background workers, `chi web`) appends tagged records to one log file, so you can see
 what happened in a session, what went over the wire and why something
 failed, without `--verbose`.
 
@@ -1248,7 +1243,7 @@ One record is one line, plus indented payload lines at debug level:
   space, quote or `=` is a JSON string, so a record never spans lines;
   control characters (terminal colours in tool output) are escaped.
 - Tags: `turn` (a session's event trail), `http` (model requests),
-  `worker`, `bridge`, `web`, `attached`, `repl`, `idle`, `recap`, `hooks`,
+  `worker`, `bridge`, `web`, `attached`, `idle`, `recap`, `hooks`,
   `plugins`, `guardrails`, `config`, `memory`, `model` (debug dumps), `context` (attached context fetches),
   `broadcast` (chi broadcast's triage), `toolkit`, `system_one`, `prompt` (a system prompt section left out
   after an error).
@@ -1273,8 +1268,12 @@ What each level adds:
   and results, context status), probes and model lists, every web API and
   bridge request.
 
-`-v`/`--verbose` (the plain REPL only) logs at `debug` and prints every
-record to stderr as well.
+`-v`/`--verbose` logs at `debug`, in this chi and in a worker it starts
+(a worker that was already running keeps its own level, and a one-line note
+says so: one `chi web` started may log to another file). The attached
+terminal shows the session's records (by `sid`) dim, above the prompt, as
+they come; a `--non-interactive` one-shot prints every record to stderr
+as well.
 
 ### Rotation and secrets
 
@@ -1479,8 +1478,8 @@ work tree top when inside it, else with `~`.
   every request`). The files are saved in the session (`appended_prompt_files`),
   so a respawned worker builds the same prompt, and a fork or a continue keeps
   them; a delegate child doesn't. With `--attach` or `--resume` the flag is
-  ignored with one line, as `--memory` is; a REPL `--resume` (`--no-shared`)
-  adds them for that run only.
+  ignored with one line, as `--memory` is; a `--resume ID --non-interactive`
+  one-shot adds them for that run only.
 - The files' text is read at each prompt build, as AGENTS.md's is: an edit is
   picked up by a new process or a rebuild (`/model`). `/stats` lists the files
   in the prompt on its `prompt files:` line.
@@ -2218,7 +2217,7 @@ column says so, a `--kebab-name` flag. The maps (`hosts:`, `models:`,
 | `recap.timeout` | `30` | yes | Seconds a recap request may take. |
 | `recap.min_user_turns` | `2` | yes | Prompts a session needs before it gets a recap. |
 | `recap.sentences` | `2-4` | yes | Recap length, `N` or `N-M` (1–10). Per session too: `--set recap.sentences=3`. |
-| `broadcast.active_hours` | `8` | | `chi broadcast` reaches a session a worker or a chi REPL runs, or whose last turn ended within this many hours. See [Broadcast](broadcast.md). |
+| `broadcast.active_hours` | `8` | | `chi broadcast` reaches a session a worker or a one-turn `--non-interactive` run has, or whose last turn ended within this many hours. See [Broadcast](broadcast.md). |
 | `broadcast.ticket_pattern` | `\b[A-Z][A-Z0-9]+-\d+\b` | | A Ruby regex for ticket ids; one in the note and in a session's branch (any case) or prompts delivers the broadcast there. See [Broadcast](broadcast.md). |
 | `broadcast.triage_model` | recap's | | The model that judges a recipient no tag matched (a model ref, as `recap.model`); unset: the recap's model, else `default.model`. A ~9B dense instruct model or larger; 4B-class ones say yes to nearly everything. See [Broadcast](broadcast.md#triage). |
 | `broadcast.triage_host_ref` | none | | A `hosts:` name for the triage model. |
@@ -2226,7 +2225,6 @@ column says so, a `--kebab-name` flag. The maps (`hosts:`, `models:`,
 | `broadcast.triage_parallel` | `4` | | Triage requests at a time. |
 | `broadcast.triage_deadline` | `20` | | Seconds triage may take in all; a recipient not judged by then gets the note unchecked. |
 | `broadcast.threshold` | `0.5` | | The P(yes) a recipient needs, when the triage host gives logprobs; a plain yes or no is 1 or 0. |
-| `session.shared` | `true` | | Plain `chi` runs its session in a worker and attaches; `--no-shared` per run. |
 | `session.idle_exit_minutes` | `30` | yes | An unused worker exits after this; `0` = never. |
 | `session.project_env` | `mise` | | The commands a session's worker runs follow its project: `mise` runs them in the session folder's `mise env`, read once at worker start (`chi sessions restart` picks up a mise.toml edit); `off` doesn't ask mise: the tools keep the env of whoever started the worker (with a chi home, the home's `chi` still goes first on their PATH). See [Project env](sessions.md#project-env). |
 | `session.carry_last_answer` | `true` | | A continue's carry note holds the previous session's last answer after its recap; `false`: the recap only. See [Session chains](sessions.md#session-chains). |
@@ -2258,7 +2256,7 @@ column says so, a `--kebab-name` flag. The maps (`hosts:`, `models:`,
 | `log.file` | state dir | yes | See "Debug Log File". |
 | `log.disable` | `false` | yes | No file logging. |
 | `log.level` | `info` | yes | `debug`, `info`, `warn`, `error`. |
-| `status.line` | `on` | yes | The status row under the prompt (the REPL's and attached mode's), `on` or `off`. |
+| `status.line` | `on` | yes | The status row under the attached terminal's prompt, `on` or `off`. |
 | `context.status` | `true` | yes | Context-usage telemetry for the model. See [context telemetry](internals/context-telemetry.md). |
 | `context.window_tokens` | server's, else 256000 | yes | Context window when the server doesn't report one. `models.<key>.window_tokens` and `hosts.<name>.window_tokens` come first; see "The context window". |
 | `models.<key>.window_tokens`, `hosts.<name>.window_tokens` | none | | A model's or host's context window when the server and its model list report none. |

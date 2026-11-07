@@ -55,7 +55,7 @@ session's first counted turn. A
 hook's switch (`before_turn`) sends nothing: its turn's first request counts on the new model anyway.
 
 A process that loads the session on another model than its last turn ran on (`Engine#session=`:
-`SessionMetrics#last_model_ref` differs from `effective_model_ref`; a `--resume`'d REPL with `--model`, a worker woken
+`SessionMetrics#last_model_ref` differs from `effective_model_ref`; a `--resume`'d one-shot with `--model`, a worker woken
 after a `/model` with no turn since) drops the old window (`forget_model_reports!`) and calls
 `announce_switched_context!(configured_only: true)`: the configured window only
 (`EffectiveModel#configured_context_window`, no `/props` GET or model list, since a worker runs it before its Bridge

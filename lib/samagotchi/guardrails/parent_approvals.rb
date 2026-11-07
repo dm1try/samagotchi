@@ -52,8 +52,8 @@ module Samagotchi
 
       # Whether an answer typed into this process is a parent agent's (so
       # ParentPolicy applies to it): stdin isn't a terminal (a pipe, a file,
-      # /dev/null), or an agent marker is set. A person at chi --attach or
-      # the REPL has a terminal and no marker.
+      # /dev/null), or an agent marker is set. A person at the attached TUI
+      # has a terminal and no marker.
       def parent_process?(env: ENV, stdin: $stdin)
         return true if AGENT_MARKERS.any? { |key| !env.fetch(key, "").to_s.strip.empty? }
 

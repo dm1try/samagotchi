@@ -7,7 +7,7 @@ require "yaml"
 require "digest"
 require "stringio"
 require "samagotchi/bundle_command"
-require "samagotchi/terminal_ui"
+require "samagotchi/terminal_ui/attach_launcher"
 
 # `chi bundle upgrade --agent` from an owned source (a zip): the conflict
 # prompt hands the agent an incoming: path inside the extracted temp dir, so
@@ -45,18 +45,15 @@ RSpec.describe "chi bundle upgrade --agent from a zip source" do
     system("zip", "-r", zip, ".", chdir: v2)
 
     seen = {}
-    fake = Class.new do
-      define_method(:initialize) do |prompt:|
-        seen[:prompt] = prompt
-        incoming = prompt[/incoming: (\S+)/, 1]
-        seen[:incoming] = incoming
-        seen[:existed] = incoming && File.exist?(incoming)
-        seen[:content] = incoming && File.exist?(incoming) ? File.read(incoming) : nil
-      end
+    allow(Samagotchi::TerminalUI::AttachLauncher).to receive(:run) do |prompt:|
+      seen[:prompt] = prompt
+      incoming = prompt[/incoming: (\S+)/, 1]
+      seen[:incoming] = incoming
+      seen[:existed] = incoming && File.exist?(incoming)
+      seen[:content] = incoming && File.exist?(incoming) ? File.read(incoming) : nil
       # The agent merges: only a changed file counts as resolved.
-      define_method(:run) { File.write(File.join(Samagotchi::MemoryPaths.system_dir, "a.md"), "edited\ntwo\n") }
+      File.write(File.join(Samagotchi::MemoryPaths.system_dir, "a.md"), "edited\ntwo\n")
     end
-    stub_const("Samagotchi::TerminalUI", fake)
 
     code = run("upgrade", zip, "--agent")
 
@@ -78,11 +75,7 @@ RSpec.describe "chi bundle upgrade --agent from a zip source" do
     system("zip", "-r", zip, ".", chdir: v2)
 
     seen = {}
-    fake = Class.new do
-      define_method(:initialize) { |prompt:| seen[:incoming] = prompt[/incoming: (\S+)/, 1] }
-      define_method(:run) { nil }
-    end
-    stub_const("Samagotchi::TerminalUI", fake)
+    allow(Samagotchi::TerminalUI::AttachLauncher).to receive(:run) { |prompt:| seen[:incoming] = prompt[/incoming: (\S+)/, 1] }
 
     expect(run("upgrade", zip, "--agent")).to eq(Samagotchi::BundleCommand::CONFLICTS_KEPT)
     expect(out.string).to include("Nothing changed in a.md: still behind.")

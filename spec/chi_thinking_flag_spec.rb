@@ -73,10 +73,10 @@ RSpec.describe "chi --thinking" do
               "SAMAGOTCHI_DEFAULT_MODEL" => "spec-model", "SAMAGOTCHI_MODEL_PROFILE" => nil,
               "SAMAGOTCHI_SERVER_HOST" => "127.0.0.1", "SAMAGOTCHI_SERVER_PORT" => server.port.to_s }
       chi_run = ->(*args) { fork_chi(*args, env: env, chdir: dir) }
-      chi_run.call("--no-shared", "--non-interactive", "-p", "hi")
+      chi_run.call("--non-interactive", "-p", "hi")
       path = Dir.glob(File.join(dir, "state", "**", "*.json")).find { |p| File.basename(p).match?(/\A\h{8}-/) }
 
-      _out, err, status = chi_run.call("--no-shared", "--resume", File.basename(path, ".json"), "--thinking", "high",
+      _out, err, status = chi_run.call("--resume", File.basename(path, ".json"), "--thinking", "high",
                                        "--non-interactive", "-p", "/help")
       expect(status).to be_success, err
       expect(JSON.parse(File.read(path))["thinking"]).to eq("high")

@@ -8,10 +8,9 @@ module Samagotchi
     # session, the host (interface) and who queued the turn (origin). Repo
     # root and branch come from git, asked once per directory per turn.
     class Context
-      # :repl — the plain REPL answers on the turn thread;
-      # :worker — a shared-session worker (attached TUI / web answer);
+      # :worker — a session worker (the attached TUI or the web answers);
       # :non_interactive — nobody can answer (-p --non-interactive, specs).
-      INTERFACES = %i[repl worker non_interactive].freeze
+      INTERFACES = %i[worker non_interactive].freeze
 
       attr_reader :cwd, :session_id, :interface, :origin
 

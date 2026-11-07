@@ -99,7 +99,7 @@ test("api errors carry the server's error code", async () => {
   const fail = (body, status) => api("/api/sessions/1/turn", { fetchImpl: () => Promise.resolve(okResponse(body, status)) });
   await assert.rejects(() => fail({ error: "bad_images", detail: "unknown image ref" }, 400),
     (e) => e.code === "bad_images" && e.status === 400 && e.message === "unknown image ref");
-  await assert.rejects(() => fail({ error: "owned_by_tui", detail: "open in a chi REPL" }, 409), (e) => e.code === "owned_by_tui");
+  await assert.rejects(() => fail({ error: "owned_by_tui", detail: "open in a one-turn chi run" }, 409), (e) => e.code === "owned_by_tui");
   await assert.rejects(() => fail({}, 500), (e) => e.code === null);
 });
 

@@ -69,9 +69,9 @@ command, or a flag of a supported command is missing from both lists, or when th
 exist. **A new session command or flag fails that spec until you choose one.**
 
 `Contract::RUN` does the same for bin/chi's run flags (`RunOptions.switches`): `SUPPORTED` (`--attach`, `--resume`,
-`-p`, `--shared`, `--model`, `--thinking`, `--llm-context*`, `--toolkit`, `--tool`, `--no-tool`, `--set`,
+`-p`, `--model`, `--thinking`, `--llm-context*`, `--toolkit`, `--tool`, `--no-tool`, `--set`,
 `--parent-answers`, `--no-interrupt`, `--no-default-input`, `--dir`, `--help`, `--version`) or `LOCAL_ONLY`
-(`--no-shared`, `--non-interactive` and `--verbose`: the in-process REPL, P4-D4; `--memory`, `--mute`,
+(`--non-interactive`: one turn in this process, P4-D4; `--verbose`: this machine's debug log; `--memory`, `--mute`,
 `--append-system-prompt`: this machine's memories and files, P4-D2/D3; `chi web`'s flags; `--profile`). A config
 registry flag (`--recap-base-url` …) is this machine's config: `LOCAL_ONLY` without being listed
 (`Contract.run_status`). The contract spec fails on a run flag in neither.
@@ -152,7 +152,7 @@ the session commands*. Keep that table in step with `SessionAccessRoutes`.
 - **A remote attach.** Before the loop runs (resolve, create, wake, the feature check) every failure is
   `AttachLauncher::Error` or the command's own line, exit 1 (`BadRequest`: exit 2): the wake's 409 `owned_by_tui`
   is `OwnedByTUI` (its message is the one `chi --attach` prints here too: `AttachLauncher.connect` now uses it), its
-  409 `scratch` and 504 `worker_timeout` are `Refused` with `LaunchMode::SCRATCH_LEFTOVER` / `BRIDGE_LATE`'s words
+  409 `scratch` and 504 `worker_timeout` are `Refused` with `Session::SCRATCH_REFUSED` / `BRIDGE_LATE`'s words
   (`Remote#attach_wake`). Once the loop runs, `WebBridgeClient` turns every `RemoteFailed` into `Unreachable`
   (an `IOError`), so the loop's rescues catch it and `AttachedLoop#worker_down` prints its message as is ("could not
   send the prompt (remote studio (http://…): the token was refused …)"); the stream's end is worded by its reason
@@ -190,7 +190,7 @@ with a "Machine-local" comment; the rest branch on `@access.remote?` (`SendComma
 | `context`'s default session (`SAMAGOTCHI_PARENT_SESSION`, `ContextCommand#inside_session`) | client | no default: ids are required (`added_by` still reads it) |
 | A context URL's provider (`ContextProviders.resolve`) | client's bundles | server's bundles (`Remote#context_add_url`) |
 | UI-only slash commands (`SessionCommands.ui_only_entry`), `--image` ingest, note text (`SessionInbox.checked_text`), push text (`ContextSources.parse_output`) | client | client too (the server checks note and push text again) |
-| A remote attach's `--attach`/`--resume` id (`Session.resolve_id`), the leftover scratch check, the "open in a chi REPL" refusal | client (bin/chi, `AttachLauncher.connect`) | server: `Remote#resolve`, then `POST …/wake`'s 409s |
+| A remote attach's `--attach`/`--resume` id (`Session.resolve_id`), the leftover scratch check, the one-turn run's refusal (`OwnerLock::TUI_BUSY`) | client (bin/chi, `AttachLauncher.connect`) | server: `Remote#resolve`, then `POST …/wake`'s 409s |
 | A new attached session's `--toolkit`, `--set`, `--thinking`, `--llm-context*`, `--parent-answers`, `--model` | client (bin/chi) | server: `POST /api/sessions` with `idle: true` and `SetupWords`; its warnings printed as `send --new` prints them |
 | The status row's default model, the newest chi for the version line, what a parent may pick (exit 3) | client | server: the wake's `default_model`, `installed`, `parent_strategy` (the last read again from `GET …/worker` at report time) |
 | `@path` images (ingest, convert, downscale) | client, into the session's `images/` | client, into a scratch dir, then uploaded (`POST …/images`) |
@@ -297,7 +297,7 @@ bin/chi ── RunOptions.parse ── a remote, run flags ──> RemoteAttachC
 **chi web's routes** (tabled in [architecture.md](../architecture.md)): `POST …/wake` (`Local#wake`: the live worker
 as is, else `SessionManager.resume_session` and `WorkerLink.await`, at most `WAKE_MAX_WAIT` 10 s, the attach's
 `BRIDGE_WAIT` here, after waiting for a worker still leaving to let go of its lock, `OwnerLock.await_release`: its
-recap on leave's timeout plus 5 s; a leftover scratch session is refused in `LaunchMode::SCRATCH_LEFTOVER`'s words, a late Bridge
+recap on leave's timeout plus 5 s; a leftover scratch session is refused in `Session::SCRATCH_REFUSED`'s words, a late Bridge
 in `LaunchMode::BRIDGE_LATE`'s; a worker on a newer sidecar protocol is refused, 409 `worker_newer`, never resumed over) and `GET …/worker` (`Local#worker`: live, the stop marker, the owner, `leaving` and `leave_seconds` when its worker
 is leaving, `WorkerState#leaving?`, `stuck` for a worker that never published its Bridge, `skew` for a newer protocol; it never starts one; it also names that machine's `default_model`), both answering the worker as `{epoch, started_at, version,
 features}`; `POST …/exit` (the worker's exit, `client_id` passed on only when it is a `tui:` one), `POST …/recap`,
@@ -436,7 +436,7 @@ the closing line reads `stopped` as `unreachable`, the words it always had.
     writes the stream's GET (host, port, path, extra headers) and reads its headers, for a stream through chi web too.
   - `RunOptions.parse(argv)` is bin/chi's one run-flag parser (`RunOptions.switches` lists its flags), so a remote
     branch can take the parsed options before bin/chi's local checks; `LaunchMode.attached_conflict` and
-    `LaunchMode::SCRATCH_LEFTOVER` / `BRIDGE_LATE` are the words both would print.
+    `Session::SCRATCH_REFUSED` / `BRIDGE_LATE` are the words both would print.
 
   An https chi web (a pod behind a proxy) needs TLS and chunked decoding in `StreamRequest`.
 - **Shared sessions (guests, roles).** The only access point is `App#token_gate`: one token, the owner's. Roles would

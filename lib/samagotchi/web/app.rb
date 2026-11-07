@@ -1053,8 +1053,8 @@ module Samagotchi
       # A line the page sent, once the worker took it, into the shared prompt
       # history; "history": false (an image-only send's placeholder text)
       # keeps it out. A failed write never fails the send. There's no scratch
-      # check: a live scratch session is the REPL's (OwnedByTUI, 409 before
-      # any delivery), and one whose REPL died is left as an edge case.
+      # check: a scratch session is refused before any delivery
+      # (SessionManager::ScratchSession, an OwnedByTUI: 409).
       def record_history(body, line)
         return if body["history"] == false
 

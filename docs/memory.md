@@ -33,8 +33,8 @@ dir has a folder of the same basename with another hash, chi says so, naming bot
 `mv` that fixes it (a name match can't prove it's the same project, so nothing is renamed for you):
 
 - at session start, a `memory>` load warning (a `:guardrail_warning` with label `memory`; the attached
-  TUI, the REPL, `--non-interactive` and the web show it; a UI that attaches later gets it from the
-  worker's cards), once per worker or REPL process, so a respawn or resume says it again;
+  TUI, `--non-interactive` and the web show it; a UI that attaches later gets it from the
+  worker's cards), once per worker or `--non-interactive` process, so a respawn or resume says it again;
 - under a `memory_read` miss that looked in project scope (`scope: "project"` or none), and under the
   project index read, on a `Hint:` line after `Error: memory not found: …`. A system-scope read never
   gets it.

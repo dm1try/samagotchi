@@ -55,7 +55,7 @@ RSpec.describe Samagotchi::TerminalUI::RemoteConnector do
 
   it "fails in the words the wake failed with" do
     [Samagotchi::SessionManager::OwnedByTUI.new("ab12"),
-     Samagotchi::SessionAccess::Refused.new(Samagotchi::LaunchMode::SCRATCH_LEFTOVER, code: "scratch"),
+     Samagotchi::SessionAccess::Refused.new(Samagotchi::Session::SCRATCH_REFUSED, code: "scratch"),
      Samagotchi::SessionAccess::RemoteFailed.new("remote studio (http://x): connection refused"),
      ArgumentError.new("Session not found: ab12")].each do |error|
       allow(remote).to receive(:attach_wake).and_raise(error)

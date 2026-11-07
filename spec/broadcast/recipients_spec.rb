@@ -30,7 +30,7 @@ RSpec.describe Samagotchi::Broadcast::Recipients do
 
   def ids(include_tests: false) = described_class.list(state_dir: tmpdir, active_hours: 8, include_tests: include_tests, now: now).map(&:id)
 
-  it "takes sessions a worker or a chi REPL runs, and ones whose last turn ended within active_hours" do
+  it "takes sessions a worker or a one-turn chi run runs, and ones whose last turn ended within active_hours" do
     worker = make(owner: "worker", ended: 30)
     repl = make(owner: "tui", ended: 30)
     recent = make(ended: 2)

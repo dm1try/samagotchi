@@ -230,7 +230,7 @@ RSpec.describe "Session archive" do
       expect(Samagotchi::SessionManager).not_to have_received(:stop_session)
     end
 
-    it "refuses a session a chi REPL owns, as delete does" do
+    it "refuses a session a one-turn chi run owns, as delete does" do
       open_one = make(owner: "tui")
 
       expect { Samagotchi::SessionManager.archive_session(open_one.id, state_dir: tmpdir) }
@@ -238,7 +238,7 @@ RSpec.describe "Session archive" do
       expect(archived?(open_one)).to be(false)
     end
 
-    it "names the delegate a chi REPL owns in the error's session_id" do
+    it "names the delegate a one-turn chi run owns in the error's session_id" do
       parent = make
       child = make(parent: parent, owner: "tui")
 

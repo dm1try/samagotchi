@@ -12,10 +12,11 @@ module Samagotchi
       # Input composition and Ctrl-C handling for the attached loop.
       # Reads @client, @clock, @command_registry, @continue_offer, @exit_ask,
       # @gaps, @link, @prefilled, @question, @queue, @queued_ids, @reader,
-      # @running, @screen; writes @prefilled, @last_idle_interrupt_at.
+      # @running, @scratch, @screen; writes @prefilled, @last_idle_interrupt_at.
       # Calls the loop helpers #answer_continue, #answer_exit_ask, #answer_question,
       # #archive_after_turn, #command_registry, #detach, #echo_answer, #exit_and_archive,
-      # #exit_and_delete, #exit_worker, #gap_divider, #participant_commands, #persist_recent_history,
+      # #end_scratch, #exit_and_delete, #exit_worker, #refuse_scratch_archive, #gap_divider,
+      # #participant_commands, #persist_recent_history,
       # #queue_input_prefill, #read_prompt_line, #send_command, #send_prompt,
       # #show_recap, #show_stats, #submit_delivery, #unqueue_newest, #via, and
       # #worker_down.
@@ -46,6 +47,7 @@ module Samagotchi
             return answer_exit_ask(line)
           end
 
+          return end_scratch if line.nil? && @scratch
           return detach("Detached; the session keeps running. Re-attach with: #{via.attach(@client.session_id)}") if line.nil?
 
           text = line.strip
@@ -109,6 +111,8 @@ module Samagotchi
           # leaving ones are no answer to it.
           local = route.local
           return submit(nil) if local == :detach
+          return end_scratch if local == :exit && @scratch
+          return refuse_scratch_archive if local == :archive && @scratch
           return SessionCommands.delete_on_exit?(text) ? exit_and_delete : exit_worker if local == :exit
           return archive_after_turn if local == :archive && (@running || !@queued_ids.empty?)
           return exit_and_archive if local == :archive
@@ -197,7 +201,7 @@ module Samagotchi
           return submit(nil) if @last_idle_interrupt_at && now - @last_idle_interrupt_at <= DETACH_WINDOW
 
           @last_idle_interrupt_at = now
-          @screen.commit(DETACH_HINT)
+          @screen.commit(@scratch ? SCRATCH_DETACH_HINT : DETACH_HINT)
           nil
         end
 

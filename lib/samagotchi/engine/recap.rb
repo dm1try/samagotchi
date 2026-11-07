@@ -32,7 +32,7 @@ module Samagotchi
       # @return [IdleRecap, nil] the idle recap detector, or nil when disabled
       attr_reader :recap
 
-      # Whether a continue offer waits (the Worker's or the REPL's TurnFlow),
+      # Whether a continue offer waits (the Worker's or the one-shot's TurnFlow),
       # for the recap job: this one and any rebuilt one (IdleRecap#awaiting_continue=).
       def recap_awaiting_continue=(callable)
         @recap_awaiting_continue = callable
@@ -49,7 +49,7 @@ module Samagotchi
       # the ones the current job was built under (none at start): the old one
       # is dropped (an attempt in flight goes stale) and the scheduler swaps
       # it, keeping its one thread. Binding the same session again changes
-      # nothing (the REPL binds it twice).
+      # nothing.
       def rebuild_recap!
         return if session_recap_values == @recap_built_for
 
@@ -111,16 +111,14 @@ module Samagotchi
 
       # Start the shared idle scheduler (reminders + optional recap). The recap
       # job is only registered when recap is configured; the reminders job is
-      # always present. TerminalUI calls this before the REPL and SessionManager
-      # workers call it so reminders can trigger turns; one-shot/worker paths
-      # that never start it poll nothing.
+      # always present. SessionManager workers call it so reminders can
+      # trigger turns; a one-shot never starts it and polls nothing.
       def start_idle
         @idle_scheduler&.start
         self
       end
 
-      # Stop the shared idle scheduler (TerminalUI calls this when the REPL
-      # exits). +join+: wait for a tick under way (IdleScheduler#stop); a
+      # Stop the shared idle scheduler (a worker as it leaves). +join+: wait for a tick under way (IdleScheduler#stop); a
       # caller holding #synchronize_events passes false, since a recap's emit
       # in that tick waits for the same lock.
       def stop_idle(join: true)

@@ -138,7 +138,7 @@ children's approvals go to its own user as its own approvals, and its model
 sees only how each was answered. See
 [Sessions: Delegating](sessions.md#delegating). What follows is for other
 parents (Claude Code, Codex, a script), and for a chi parent that can't host
-the relay (a `--no-shared` REPL, `--non-interactive`).
+the relay (a `--non-interactive` run).
 
 An approval is a guardrail rule with `verdict: ask`: its user said "ask me". A
 parent may always deny it (`--option Deny --text "why"`, `--text` alone, or
@@ -162,7 +162,7 @@ Start a child in the folder it should change (`chi send --new --dir PATH`):
 writes and mutating git outside its own repo ask (`write-outside-repo`,
 `git-outside-repo`), which a parent can at most allow once per call.
 
-An answer typed into `chi --attach` or the REPL counts as a parent's too when
+An answer typed into the attached TUI (`chi`, `chi --attach`) counts as a parent's too when
 stdin isn't a terminal or an agent marker (`CLAUDECODE`, `AI_AGENT`,
 `CODEX_THREAD_ID`, `SAMAGOTCHI_PARENT_SESSION`) is set.
 

@@ -142,7 +142,7 @@ RSpec.describe "The :question_asked event in a turn" do
 
   let(:client) { test_client }
   let(:kernel) { test_kernel(client: client) }
-  let(:engine) { Samagotchi::Engine.new(client: client, kernel: kernel, profile: "gemma4").tap { |e| e.interface = :repl } }
+  let(:engine) { Samagotchi::Engine.new(client: client, kernel: kernel, profile: "gemma4").tap { |e| e.interface = :worker } }
   let(:session) { Samagotchi::Session.new_session(mode: "assist", model_name: "Gemma-4B-it", working_directory: Dir.pwd) }
   let(:hooks) { engine.instance_variable_get(:@hooks) }
   let(:fired) { [] }
@@ -282,7 +282,7 @@ RSpec.describe "The :question_asked event in a turn" do
       runs = Array.new(2) do |index|
         prompts.clear
         engine = Samagotchi::Engine.new(client: client, kernel: test_kernel(client: client), profile: "gemma4")
-        engine.interface = :repl
+        engine.interface = :worker
         engine.set_question_sync_handler { |pending| { selected: [pending[:options].first] } }
         if index == 1
           engine.instance_variable_get(:@hooks).register_bundle("b", :question_asked, hook_name: "q.rb") do |event|
@@ -368,7 +368,7 @@ RSpec.describe "The :question_asked event in a turn" do
         { status: 200, headers: { "Content-Type" => "application/json" }, body: JSON.generate(responses[bodies.length - 1]) }
       end
       engine = Samagotchi::Engine.new(client: client, kernel: kernel, profile: "gemma4")
-      engine.interface = :repl
+      engine.interface = :worker
       engine.set_question_sync_handler { |pending| { selected: [pending[:options].first] } }
       if with_refs
         engine.instance_variable_get(:@hooks).register_bundle("b", :question_asked, hook_name: "q.rb") do |event|

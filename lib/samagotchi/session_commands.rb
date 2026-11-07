@@ -160,24 +160,24 @@ module Samagotchi
       registry.register("/quit", "leave, like /exit", id: :exit, local: true, match: exit_match("/quit"))
       registry.register("/archive", "leave and archive the session: hidden from the lists, kept for good", local: true,
                                                                                                           match: ->(text) { text.casecmp?("/archive") })
-      # The REPL owns its session: it answers /detach with a note, and doesn't offer it.
+      # The terminal's: the web has no worker to leave running.
       registry.register("/detach", "leave and keep the worker running", local: true, uis: [:attached],
                                                                         match: ->(text) { text.casecmp?("/detach") })
       # /cut TEXT and /queue TEXT while a turn runs: a delivery the UIs parse
       # themselves (ComposerRoute.steer_choice) before any command check; the
       # entries exist for Tab completion and /help. The web composer sends
-      # /cut too (its queue is Alt+Enter). Both terminals queue: the REPL in
-      # its own list, the attached TUI's worker in its input files.
+      # /cut too (its queue is Alt+Enter). The attached TUI queues in its
+      # worker's input files.
       registry.register("/cut", "cut the running generation and go in now (/cut TEXT)",
-                        local: true, uis: %i[repl attached web], match: ->(text) { text.casecmp?("/cut") || text.match?(%r{\A/cut\s+\S}) })
+                        local: true, uis: %i[attached web], match: ->(text) { text.casecmp?("/cut") || text.match?(%r{\A/cut\s+\S}) })
       registry.register("/queue", "run as the next turn after this one (/queue TEXT)",
-                        local: true, uis: %i[repl attached], match: ->(text) { text.casecmp?("/queue") || text.match?(%r{\A/queue\s+\S}) })
+                        local: true, uis: [:attached], match: ->(text) { text.casecmp?("/queue") || text.match?(%r{\A/queue\s+\S}) })
       # Takes back the newest message this attached TUI queued, before it
       # runs (the worker's POST turn/dequeue); the web has × on the bubble.
       registry.register("/unqueue", "remove your newest queued message before it runs", local: true, uis: [:attached],
                                                                                           match: ->(text) { text.casecmp?("/unqueue") })
       # chi share for the attached session (TerminalUI::ParticipantCommands):
-      # a participant's turns run on its worker, so the REPL points there.
+      # a participant's turns run on its worker.
       registry.register("/share", "invite someone to review this session (/share NAME [--agent] [--expires 3d] [--cap 2])",
                         local: true, uis: [:attached], match: ->(text) { text.match?(%r{\A/share(?:\s.*)?\z}i) })
       registry.register("/participants", "list this session's participants (revoke [P], cap P DOLLARS)",
@@ -287,15 +287,15 @@ module Samagotchi
       "commands:\n#{lines.join("\n")}"
     end
 
-    # Where a UI's own entry runs, for /help: both terminals are
-    # "terminal" (also for no uis: every terminal), then "web".
+    # Where a UI's own entry runs, for /help: the attached TUI is
+    # "terminal" (also for no uis: the terminal), then "web". An older
+    # worker's :repl is no UI any more.
     # @param uis [Array<Symbol>, nil]
-    # @return [String] "terminal", "repl", "terminal and web" …
+    # @return [String] "terminal", "web", "terminal and web"
     def ui_words(uis)
       return "terminal" if uis.nil?
 
-      terminals = uis & %i[repl attached]
-      words = terminals.size == 2 ? ["terminal"] : terminals.map(&:to_s)
+      words = uis.include?(:attached) ? ["terminal"] : []
       words << "web" if uis.include?(:web)
       words.join(" and ")
     end

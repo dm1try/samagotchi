@@ -23,7 +23,7 @@ The UI shows the tool line first, then the approval under it.
 
 ## Ask
 
-The REPL, the attached TUI and the web show what would run, where and why:
+The attached TUI and the web show what would run, where and why:
 
 ```
 Approve tool call?
@@ -65,8 +65,7 @@ card comes back through `ApprovalFacts.from_h` (string or symbol keys, missing f
 
 Who answers:
 
-- REPL (`chi --no-shared`, with or without `-p`): at the `? ` prompt.
-- A shared session's worker (plain `chi` and `chi -p …` while `session.shared` is on, the default): any attached TUI or web page. With none attached,
+- A session's worker (plain `chi`, `chi -p …`, the web): any attached TUI or web page. With none attached,
   the approval waits (in the session file) and shows on attach.
 - `-p … --non-interactive`: nobody; the call is denied ("No one to approve it
   (non-interactive run)").
@@ -134,7 +133,7 @@ others come back to the parent's model with the block below. A dismissal
 always passes (the hook decides what no answer means): the strategy is a
 convention for an honest parent, not a barrier. This section is
 the path for other agents, and for a chi parent that can't host the relay (a
-`--no-shared` REPL, `--non-interactive`): there the model gets the question
+`--non-interactive` one-shot): there the model gets the question
 block and the rules below. With the relay, the same rules still hold for a
 parent model that answers its own relay card (a piped or marked `chi --attach`
 on the parent): that answer is a parent agent's, checked by the parent and
@@ -197,10 +196,10 @@ value that isn't a level reads as `hard`.
 config.yml's; `/parent-answers LEVEL` sets the session's own, `/parent-answers
 default` drops it (config.yml's applies). Anyone may tighten it, a parent too
 (`chi send ID -m "/parent-answers hard"`). Loosening it (toward `soft`, or
-`default`) is yours alone: the line must come from you at the REPL, an attached
+`default`) is yours alone: the line must come from you at an attached
 terminal or the web composer. chi refuses it (`loosening parent_answers is the
 user's: …`) from `chi send` (a parent's or yours: the worker can't tell them
-apart), from a piped or marked `chi --attach` or REPL, from `chi -p
+apart), from a piped or marked `chi --attach`, from `chi -p
 --non-interactive`, from a delegate's follow-up and from a plugin; `chi answer`
 has no command route. `--parent-answers` on `--attach`/`--resume` is ignored,
 never sent as the command.
@@ -277,7 +276,7 @@ no running turn, pending question or approval, queued prompt, or running
 background task; when one exists, stop it explicitly and then send a prompt.
 
 A parent may also type its answer into chi itself: a piped `chi --attach ID`
-or `printf '2\n' | chi --no-shared -p …`. So chi treats an answer as a
+or `printf '2\n' | chi -p …`. So chi treats an answer as a
 parent's, held to the same setting, when its input isn't a terminal or an
 agent marker is set: `CLAUDECODE` (Claude Code), `AI_AGENT`, `CODEX_THREAD_ID`
 (Codex CLI), or `SAMAGOTCHI_PARENT_SESSION`,
@@ -1327,9 +1326,8 @@ allows), and how many got no judgment. `--threshold` overrides
 for this run; `--dry-run` judges and prints without writing a line. Without a
 client (`mode: off`, or no `host`) it exits 2 saying what to set.
 
-Two limits on what the replay can see: `CardStore` keeps only the last 20
-questions per session, and a `--no-shared` REPL session never writes a
-`cards.json` at all, so its asks are not replayable.
+A limit on what the replay can see: `CardStore` keeps only the last 20
+questions per session, so older asks are not replayable.
 
 ## The guardrails bundle
 

@@ -18,11 +18,8 @@ only against this API (`lib/samagotchi/bundles/btw/plugin.rb`).
 - The card's **Keep as session** runs `/btw keep <id>`. It forks the
   conversation, the question and the answer into an idle child session, and
   shows a card `kept as <id>`.
-- The last 10 answers can be kept, while the session's worker (or REPL)
-  runs. After that, or after a restart, `keep` says expired.
-- In the REPL, a question asked during a turn is about the conversation
-  before that turn, and the card says so. In a worker it includes the turn
-  so far.
+- The last 10 answers can be kept, while the session's worker runs. After that, or after a restart, `keep` says expired.
+- A question asked during a turn includes the turn so far.
 - Settings: `bundles: btw: {max_tokens: 1024, timeout: 120}`.
 - It ships no memory, so it adds no line to the prompt's memory index. Its
   0.1.0 shipped `btw.md` as one, and `chi bundle upgrade btw` leaves that file
@@ -803,7 +800,7 @@ file; skills themselves work without it ([docs/memory.md](memory.md#skills)).
 
 | | |
 |---|---|
-| `/skill save [name] [--system]` | sends this session a request to save what was just done as `skill_<name>` (chi picks a name when none is given), project scope unless `--system`. The request holds the skill's shape, so the result is the same with a model that never read the memory guide. It runs as a turn; sent while a turn runs, it joins that turn at its next step (the request says to finish the task first). An existing skill is updated. In a `--no-shared` REPL, which takes no messages, the command shows the request to send yourself |
+| `/skill save [name] [--system]` | sends this session a request to save what was just done as `skill_<name>` (chi picks a name when none is given), project scope unless `--system`. The request holds the skill's shape, so the result is the same with a model that never read the memory guide. It runs as a turn; sent while a turn runs, it joins that turn at its next step (the request says to finish the task first). An existing skill is updated. When the session can't take a message (a `--non-interactive` one-shot's), the command shows the request to send yourself |
 | `/skill list` | the `skill_*` memories of both scopes, with the date and description from the index |
 | `/skill show <name>` | one skill as saved (project first, as `memory_read` looks) |
 | `/skill diff <name> [N]` | the skill now against its N-th newest older version (default 1: before the last change), unified |
@@ -869,7 +866,7 @@ and a summary of what changed in counts, authors and states only; it wakes
 the session for a review requesting changes, checks turning red, or the PR
 merged or closed. In the web, a `path:line` in a worker's answer links to
 that line of the session's PR ([Line links](context.md#line-links); `line_links:
-always` for the REPL and `chi -p` too), and its ref menu offers the file
+always` for a `chi -p … --non-interactive` one-shot too), and its ref menu offers the file
 here and a "PR diff" action (`event[:refs]`). `auto_attach: attach` attaches
 it at once (the old default), `off` does nothing ([Propose, attach or
 off](context.md#propose-attach-or-off)).
@@ -884,9 +881,9 @@ chi bundle install coordinator    # in the dev profile
 chi as a coordinator of parallel work, the way you would run several agents
 yourself: split the work, one git worktree and child session per task, keep
 talking while they run, check each report, and merge only when you allow it. It
-works in a session with a worker (plain `chi`, the web). A `--no-shared` REPL
-or `-p` gets no delegate reports, so the children's replies wouldn't come back
-by themselves there.
+works in a session with a worker (plain `chi`, `chi -p`, the web). A
+`--non-interactive` one-shot gets no delegate reports, so the children's
+replies wouldn't come back by themselves there.
 
 - **The skill.** `skill_coordinator` (system scope; its index line says what
   it is for, from the manifest's `description:`) holds the steps. The model
@@ -915,8 +912,8 @@ by themselves there.
   reads the open handoff, checks it against git and the session list (git
   wins; mismatches are reported) and goes on from the first open step.
 - **`/coordinate <goal>`** sends this session a turn asking the model to
-  follow the skill for the goal (in a `--no-shared` REPL it shows the text to
-  send yourself). Asking "do this in parallel" works too: the index line leads
+  follow the skill for the goal (when the session can't take a message, as
+  in a `--non-interactive` one-shot, it shows the text to send yourself). Asking "do this in parallel" works too: the index line leads
   the model to the skill. **`/coordinate resume`** asks it to resume this
   project's open handoff; with several open it shows a card with a Resume
   action each (`/coordinate resume <name>` picks one), with none it says so.

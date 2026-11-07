@@ -367,8 +367,8 @@ module Samagotchi
       prompt = build_conflict_prompt(bundle_name, installer.conflicts, expanded_source)
       before = installer.conflicts.to_h { |key, info| [key, Samagotchi::MemoryBundle::Merger.digest(info[:current])] }
       @stdout.puts "Launching an interactive session to merge them… (/exit when done)"
-      require "samagotchi/terminal_ui"
-      Samagotchi::TerminalUI.new(prompt: prompt).run
+      require "samagotchi/terminal_ui/attach_launcher"
+      Samagotchi::TerminalUI::AttachLauncher.run(prompt: prompt)
       settle_conflicts(installer.conflicts, before, bundle_name)
     ensure
       # An owned source (git/zip/tar) was kept for the incoming files above;

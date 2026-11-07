@@ -84,7 +84,7 @@ RSpec.describe "The sample-plugin bundle (Plugin::Api and Plugin::Context)" do
       expect(result.status).to eq(:ok)
       expect(result.output).to eq("hello, Jordan (session #{session.id}, 2 messages)")
       expect(commands.run("/hello").output).to start_with("hello, there")
-      expect(engine.command_registry.completions(:repl)).to include("/hello")
+      expect(engine.command_registry.completions(:attached)).to include("/hello")
     end
 
     it "shows a card with one action; each /hello updates it (the same id)" do

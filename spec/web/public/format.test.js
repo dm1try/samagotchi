@@ -46,7 +46,7 @@ test("ownerBadge marks live sessions by who holds them", () => {
     kind: "worker", text: "live", title: "A worker runs this session; a terminal joins with: chi --attach abc",
   });
   assert.deepEqual(ownerBadge("tui", "abc"), {
-    kind: "tui", text: "terminal", title: "A terminal chi owns this session and doesn't share it (chi --shared would)",
+    kind: "tui", text: "terminal", title: "A terminal chi runs one turn in this session (chi --non-interactive) and lets go as it ends",
   });
   assert.equal(ownerBadge(null, "abc"), null);
   assert.equal(ownerBadge(undefined, "abc"), null);
@@ -175,7 +175,7 @@ test("canStopSession: only when a worker runs the session", () => {
   assert.equal(canStopSession({ owner: null, streaming: true }), true);
   // Stopped or idle-exited: nothing to stop.
   assert.equal(canStopSession({ owner: null, streaming: false }), false);
-  // A chi REPL owns it: the server refuses (owned_by_tui).
+  // A one-turn chi run owns it: the server refuses (owned_by_tui).
   assert.equal(canStopSession({ owner: "tui", streaming: true }), false);
 });
 

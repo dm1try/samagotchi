@@ -23,7 +23,7 @@ RSpec.describe "chi --append-system-prompt" do
       env = { "XDG_CONFIG_HOME" => File.join(dir, "config"), "XDG_STATE_HOME" => File.join(dir, "state"), "HOME" => dir,
               "SAMAGOTCHI_DEFAULT_MODEL" => "spec-model", "SAMAGOTCHI_MODEL_PROFILE" => nil,
               "SAMAGOTCHI_SERVER_HOST" => "127.0.0.1", "SAMAGOTCHI_SERVER_PORT" => server.port.to_s }
-      _out, err, status = run_or_fork_chi(*args, "--no-shared", "--non-interactive", "-p", "hi", spawn: spawn, env: env,
+      _out, err, status = run_or_fork_chi(*args, "--non-interactive", "-p", "hi", spawn: spawn, env: env,
                                                                                                    chdir: dir)
       request = server.requests.find { |r| r.path == "/completion" }
       files = Dir.glob(File.join(dir, "state", "**", "*.json")).select { |path| File.basename(path, ".json").match?(/\A\h{8}-/) }

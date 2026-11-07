@@ -47,7 +47,7 @@ module Samagotchi
     # What a continue does with the previous link's children: +move+ the
     # direct children whose subtree has an open node (they go to the new
     # link, their subtrees with them), +refuse+ the open ones it can't move
-    # (SessionContinue::OpenChild, why: an older chi worker or a chi REPL).
+    # (SessionContinue::OpenChild, why: an older chi worker or a one-turn chi run).
     Plan = Data.define(:move, :refuse)
     # A move under way: from the session, the children moved, and those
     # already sent their note (so a move finished again notes no one twice).
@@ -87,14 +87,14 @@ module Samagotchi
       Plan.new(move: move, refuse: refuse)
     end
 
-    # Why a child's live owner keeps it from moving: a chi REPL holds its
+    # Why a child's live owner keeps it from moving: a one-turn chi run holds its
     # own Session and never reads the override; a worker on an older chi
     # neither. A worker with no sidecar yet is starting, on the newest chi
     # installed (SessionManager.worker_command): it moves.
     # @return [String, nil]
     def unmovable(child_id, state_dir:)
       link = WorkerLink.resolve(Session.session_dir(child_id, state_dir: state_dir), unlink: false)
-      return "open in a chi REPL; close it there" if link.owner&.tui?
+      return "#{OwnerLock::TUI_BUSY}; let it finish" if link.owner&.tui?
       return nil if !link.live? || link.features.include?(FEATURE)
 
       "older chi worker#{" #{link.version}" if link.version}; restart it"

@@ -31,7 +31,7 @@ RSpec.describe Samagotchi::TerminalUI::AttachLauncher, ".run with a connector" d
     expect(described_class).not_to have_received(:connect)
     expect(Samagotchi::TerminalUI::AttachedLoop).to have_received(:new)
       .with(link: link, screen: surface, client_id: "tui:#{Process.pid}", first_prompt: nil, first_command: "/model m --yes",
-            no_interrupt: false, default_input: false, wait_at_eof: false, as_parent: false)
+            no_interrupt: false, default_input: false, wait_at_eof: false, scratch: false, as_parent: false)
   end
 
   it "names this TUI with the connector's client id when it has one" do

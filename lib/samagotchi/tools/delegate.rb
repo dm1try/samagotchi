@@ -336,8 +336,10 @@ module Samagotchi
         when :timeout then "Error: the worker of session #{id[0, 8]} did not answer in time, so the message was not sent"
         else "Error: the message to session #{id[0, 8]} could not be written"
         end
+      rescue SessionManager::ScratchSession => e
+        "Error: session #{id[0, 8]}: #{e.message}"
       rescue SessionManager::OwnedByTUI
-        "Error: session #{id[0, 8]} is open in a chi REPL, which can't take a delegated message"
+        "Error: session #{id[0, 8]} is #{OwnerLock::TUI_BUSY}, which can't take a delegated message"
       rescue Session::AmbiguousId => e
         "Error: #{e.message}"
       end

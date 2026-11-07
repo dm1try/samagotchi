@@ -231,7 +231,7 @@ module Samagotchi
       @host_registry = host_registry || HostRegistry.new
       # A model given here (a worker's session model) is the one it runs,
       # so its host is checked; the config default is only checked once it
-      # is used (the REPL checks the model it starts on, #switch_model!).
+      # is used (the one-shot checks the model it starts on, #switch_model!).
       @default_model_name = ModelProfile.required_model_name(model_name)
       ModelProfile.check_host!(model_name, hosts: @host_registry.entries) unless model_name.to_s.strip.empty?
       # The model choice and the profile resolved for it, under one mutex.
@@ -323,9 +323,8 @@ module Samagotchi
       end
       # The idle subsystems' (session recap + reminders) inactivity clock
       # starts now, after the plugins loaded. `record_activity` is the
-      # single seam every UI calls (run_turn itself, the REPL on keystrokes
-      # and after a reminder turn), so the idle layer's clock is identical
-      # across UIs.
+      # single seam every host calls (run_turn itself, the worker after a
+      # reminder turn), so the idle layer's clock is identical across hosts.
       @turn_state.restart_clock!
       @side_client_mutex = Mutex.new
       # Kept for a rebuild under a bound session's own recap values.
@@ -413,7 +412,7 @@ module Samagotchi
     # The persistent observers of every turn's events.
     def subscribe_session_observers
       # The metrics collector is a persistent observer so every run_turn event
-      # (the REPL, -p/--non-interactive/--resume and SessionManager workers)
+      # (a -p --non-interactive one-shot and SessionManager workers)
       # feeds it automatically.
       @session_observer.subscribe(observer: @metrics)
       # And the event trail in the debug log (`turn` records).
@@ -658,8 +657,8 @@ module Samagotchi
     # after its turn), in all; a slower ask goes unlogged.
     SIDE_JUDGMENTS_JOIN_SECONDS = 1.0
 
-    # The REPL or the session's worker is leaving (/exit, an idle exit, a
-    # crash, TERM): stop the idle jobs, give the running anytime commands
+    # The session's worker (or a one-shot run) is leaving (/exit, an idle
+    # exit, a crash, TERM): stop the idle jobs, give the running anytime commands
     # up to +join_timeout+ seconds to finish (their command_ran is
     # announced), then stop the plugins' services, newest first. Once;
     # later calls do nothing.
@@ -920,7 +919,7 @@ module Samagotchi
 
         # Keep what the turn got to (the prompt plus the loop's completed
         # tool iterations) like a cancel does, and save it: a worker exits
-        # after a failed turn. The REPL still rolls back to its checkpoint.
+        # after a failed turn.
         end_turn(turn, "failed", save: true) { |seconds| [failed_messages(turn, e), failed_event(e, seconds)] }
         raise
       ensure
@@ -955,7 +954,7 @@ module Samagotchi
       # or a plugin's card from another thread never sees a running turn
       # without them. The idle recap detector does not fire (or render an
       # invalidated recap) while the model is working. A hook's notice goes
-      # where the turn's events go (the REPL renders only its sink; a
+      # where the turn's events go (a one-shot prints only its sink; a
       # worker's observers carry it to the bridge).
       @turn_state.begin!(controller: effective_controller, sink: on_event, input_waiting: input_waiting)
       # Drop a recap already in flight: the turn makes it stale.

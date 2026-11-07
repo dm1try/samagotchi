@@ -18,7 +18,7 @@ module Samagotchi
         Usage: chi sessions archive (ID|PREFIX)...
           Hides each session (and its delegates) from every list and keeps it
           for good: the retention sweep never deletes it. A live worker is
-          stopped first; a session running a turn, or open in a chi REPL, is
+          stopped first; a session running a turn, or in a one-turn chi run, is
           refused. chi sessions list --archived shows them; a message you send
           to one brings it back.
       TEXT
@@ -76,7 +76,7 @@ module Samagotchi
       true
     rescue SessionManager::OwnedByTUI => e
       where = e.session_id == id ? "it is" : "a delegate of it is"
-      @stdout.puts("#{short}  refused: #{where} open in a chi REPL; close it there first")
+      @stdout.puts("#{short}  refused: #{where} #{OwnerLock::TUI_BUSY}; let it finish first")
       false
     rescue SessionManager::ArchiveRefused => e
       @stdout.puts("#{short}  refused: #{e.message}")

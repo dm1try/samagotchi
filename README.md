@@ -119,7 +119,6 @@ hosts:
 
 ```sh
 chi                                       # interactive session the web UI can join too
-chi --no-shared                           # the plain in-process REPL
 chi -p "explain lib/" --non-interactive   # one turn, print the answer, exit
 chi --resume <session-id>                 # continue a saved session
 chi web --open                            # web UI: this project's sessions (--scope=all: every one)
@@ -200,7 +199,7 @@ Rules come from `config.yml` (`guardrails:`), installed bundles and hooks;
 the `guardrails` bundle (in `core`, which `chi bootstrap` installs; else
 `chi bundle install guardrails`) adds a default set (asks before `git push`,
 history rewrites, wide `rm -rf`, `curl | sh`, writes outside the repo; denies
-writes to `.git/hooks`). You answer in the REPL, the attached TUI or the web:
+writes to `.git/hooks`). You answer in the attached TUI or the web:
 once, for the session, for the repo, or for the whole rule in the repo.
 `/guardrails` lists the rules and your approvals. See [Guardrails](docs/guardrails.md).
 
@@ -209,7 +208,7 @@ once, for the session, for the repo, or for the whole rule in the repo.
 - [CHANGELOG](CHANGELOG.md): what changed in each release
 - [Releasing](docs/releasing.md): versions, the changelog, how a release is published
 
-- [CLI and REPL](docs/cli.md): flags, sharing a session, web UI, `/model`, status line
+- [CLI and terminal](docs/cli.md): flags, sharing a session, web UI, `/model`, status line
 - [Configuration](docs/configuration.md): `config.yml`, hosts, model server APIs, timeouts, retries, logs
 - [Memory](docs/memory.md): scopes, model-specific overlays and model notes
 - [Sessions](docs/sessions.md): storage, retention, `chi sessions`

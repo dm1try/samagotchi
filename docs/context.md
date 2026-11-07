@@ -617,13 +617,13 @@ show the answer as it is.
   after a push links may be a few lines off until the next read. Without
   `gh` or its login, nothing is linked.
 - **Where it reads**: only in a session worker (the web, an attached chi),
-  whose answers the web shows while the session runs. The REPL and
-  `chi -p` read nothing (no `gh api` calls), so their answers have no links,
+  whose answers the web shows while the session runs. A
+  `chi -p … --non-interactive` run reads nothing (no `gh api` calls), so its answers have no links,
   in the web too; a scratch session never reads. The PR itself is still
   attached and its context still reaches the model everywhere.
 
 `line_links:` takes `false` (off), `true` (the default: a worker only) or
-`always` (the REPL and `chi -p` read too, so their answers are linked when
+`always` (a `chi -p … --non-interactive` run reads too, so its answers are linked when
 you open the session in the web later):
 
 ```yaml

@@ -48,11 +48,22 @@ RSpec.describe Samagotchi::NoteDelivery do
     expect(deliver(idle, "two")).to have_attributes(status: :waits, queued: 2, delivered?: true)
   end
 
-  it "refuses a session a chi REPL owns, writing nothing" do
+  it "refuses a session a one-turn chi run owns, writing nothing" do
     repl = make(owner: "tui")
 
     expect(deliver(repl)).to have_attributes(status: :refused, delivered?: false)
     expect(notes_of(repl)).to eq([])
+  end
+
+  it "refuses a chi scratch session, live worker or not, writing nothing" do
+    scratch = make(owner: "worker")
+    scratch.scratch = true
+    scratch.save(state_dir: tmpdir)
+
+    result = deliver(scratch)
+    expect(result).to have_attributes(status: :refused, delivered?: false, scratch: true)
+    expect(result.refusal).to eq(Samagotchi::Session::SCRATCH_REFUSED)
+    expect(notes_of(scratch)).to eq([])
   end
 
   it "raises for an empty note" do

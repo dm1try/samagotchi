@@ -15,7 +15,7 @@ module AffectedSpecs
   Result = Data.define(:ruby, :node, :hints, :unmatched, :notes)
 
   # Specs that read docs or source as text, or print a file's words through
-  # another layer (the REPL golden), which no name points at: a changed path
+  # another layer (the attached TUI's), which no name points at: a changed path
   # matching one of +match+ (File.fnmatch, ** spans folders) picks +specs+
   # (globs too, matched against the spec files).
   # Keep it short; a rule earns its place when a full run caught what the
@@ -74,7 +74,8 @@ module AffectedSpecs
       specs: %w[lib/samagotchi/bundles/*/spec/**/*_spec.rb],
       why: "the shipped bundles' own specs run on the test kit and chi's plugin and hook seams (they name neither)" },
     { match: %w[lib/samagotchi/turn_flow.rb lib/samagotchi/turn_note.rb],
-      specs: %w[spec/terminal_ui_golden_spec.rb], why: "the REPL golden prints their turn-end and continue words" }
+      specs: %w[spec/terminal_ui/event_renderer_spec.rb spec/terminal_ui/attached_loop_spec.rb],
+      why: "the attached TUI prints their turn-end and continue words" }
   ].freeze
 
   # A constant named in more spec files than this is a hub: listing them

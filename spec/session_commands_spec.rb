@@ -107,12 +107,12 @@ RSpec.describe Samagotchi::SessionCommands do
                   /archive /cut /detach /exit /participants /queue /quit /share /stats /unqueue])
       expect(lines).to include("  /hello              greet  (sample-plugin)", "  /side               ask aside  (btw; mid-turn too)",
                                start_with("  /model              show or switch the model  (show: mid-turn too)"),
-                               "  /detach             leave and keep the worker running  (attached only)",
+                               "  /detach             leave and keep the worker running  (terminal only)",
                                "  /cut                cut the running generation and go in now (/cut TEXT)  (terminal and web only)",
                                "  /queue              run as the next turn after this one (/queue TEXT)  (terminal only)",
-                               "  /unqueue            remove your newest queued message before it runs  (attached only)",
+                               "  /unqueue            remove your newest queued message before it runs  (terminal only)",
                                "  /stats              show the session's stats  (terminal only)",
-                               "  /participants       list this session's participants (revoke [P], cap P DOLLARS)  (attached only)")
+                               "  /participants       list this session's participants (revoke [P], cap P DOLLARS)  (terminal only)")
       expect(result.status).to eq(:ok)
       expect(engine.command_registry.lookup("/help").anytime).to be(true)
       expect(lines).to include("  /title              show or set this session's title (--clear: back to its first message)  (mid-turn too)")

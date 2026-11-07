@@ -16,7 +16,7 @@ module Samagotchi
     # a task, dequeue a queued turn, what it could stop and stop it
     # (handle_session_holds, handle_stop_holds — the page's Stop asks about
     # these first), stop, restart, archive, unarchive and delete
-    # (handle_question_answer … handle_delete), with the refusals they answer (owned_by_repl, owned_by_tui, archive_refused). Included in App:
+    # (handle_question_answer … handle_delete), with the refusals they answer (owned_by_one_shot, owned_by_tui, archive_refused). Included in App:
     # its ROUTES name the handlers, and its helpers (json_response,
     # error_response, parse_json, request_body, relay, not_live,
     # bridge_error, reply_detail, worker_timeout, bridge_client,
@@ -443,7 +443,7 @@ module Samagotchi
 
       # POST /api/sessions/:id/archive: hide it (and its delegates) from the
       # lists, keep it for good. A live idle worker is stopped first; a turn
-      # running in it or a delegate, a chi REPL's session and a scratch one
+      # running in it or a delegate, a one-turn chi run's session and a scratch one
       # are refused (409).
       def handle_archive(_req, id)
         result = @manager.archive_session(id, state_dir: @state_dir, wait: STOP_WAIT_SECONDS)
@@ -451,7 +451,7 @@ module Samagotchi
         json_response(200, { status: "archived", session_id: result.id, archived: result.archived,
                              stopped: result.stopped, discarded: result.discarded })
       rescue SessionManager::OwnedByTUI => e
-        owned_by_repl(id, e)
+        owned_by_one_shot(id, e)
       rescue SessionManager::ArchiveRefused => e
         archive_refused(e)
       end
@@ -466,7 +466,7 @@ module Samagotchi
       # DELETE /api/sessions/:id?force=true: the session for good. With
       # force a live worker is stopped first (the page sends it: its confirm
       # says so); without it a live worker's session is refused, 409
-      # worker_running, as chi sessions delete without --force. A chi REPL's
+      # worker_running, as chi sessions delete without --force. A one-turn chi run's
       # session is always refused.
       def handle_delete(req, id)
         result = @manager.delete_session(id, state_dir: @state_dir, stop: truthy_param?(req.params["force"]),
@@ -474,7 +474,7 @@ module Samagotchi
         @hub&.touch(result[:id])
         json_response(200, { status: "deleted", session_id: result[:id], stopped: result[:stopped] })
       rescue SessionManager::OwnedByTUI => e
-        owned_by_repl(id, e)
+        owned_by_one_shot(id, e)
       rescue SessionManager::DeleteRefused => e
         detail = e.reason == :still_stopping ? "#{e.message}; try again in a moment" : e.message
         refusal_response(409, e.reason.to_s, e, detail: detail, session_id: e.session_id, reason: e.reason.to_s)
@@ -482,15 +482,19 @@ module Samagotchi
 
       # 409 owned_by_tui in the words a refused archive, delete or continue
       # shows (stop, restart, a turn and a command show OwnedByTUI's own).
-      def owned_by_repl(id, error = nil)
+      def owned_by_one_shot(id, error = nil)
         named = SessionManager::OwnedByTUI.new(id)
         error ||= named
         refusal_response(409, "owned_by_tui", error, detail: named.message, session_id: error.session_id)
       end
 
       # 409 owned_by_tui in OwnedByTUI's own words (stop, restart, a turn, a
-      # command).
-      def owned_by_tui(error) = refusal_response(409, "owned_by_tui", error, session_id: error.session_id)
+      # command); scratch: true for a chi scratch session
+      # (SessionManager::ScratchSession), which a remote client raises again.
+      def owned_by_tui(error)
+        scratch = error.is_a?(SessionManager::ScratchSession) || nil
+        refusal_response(409, "owned_by_tui", error, session_id: error.session_id, scratch: scratch)
+      end
 
       # 409 scratch or busy (every other reason: a turn, a queued prompt, an
       # open step-limit question, in it or a delegate, +busy_id+), with the

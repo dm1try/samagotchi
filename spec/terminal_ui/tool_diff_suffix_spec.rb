@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
-require "samagotchi/terminal_ui"
+require "samagotchi/terminal_ui/attached_view"
+require "samagotchi/terminal_ui/event_renderer"
 require_relative "../support/recording_surface"
 
 # An edit/write row's " +3 −1" (the diff itself is on the web).

@@ -97,14 +97,14 @@ class Watchful
   def call(event)
     case event[:type]
     when :after_generation
-      # One line in the REPL, the attached TUI and the web ("<bundle>> text",
+      # One line in the attached TUI and the web ("<bundle>> text",
       # or "hook> text" for a config hook); level: :warn colours it.
       # fallback_for: :display marks a line a UI that renders the answer's
       # display may leave out (below).
       event[:notify].call("the model repeated itself", level: :warn)
     when :before_tool_call
-      # A single-select question through the question flow (REPL, attached
-      # TUI, web); returns {selected: [...], freeform:, selected_indices:}
+      # A single-select question through the question flow (the attached
+      # TUI, the web); returns {selected: [...], freeform:, selected_indices:}
       # or nil when there is no one to ask (--non-interactive), the
       # question was dismissed, or the options (or effects) were invalid.
       # effects: says what an option does for a parent agent's answer (see
@@ -156,7 +156,7 @@ that a UI that already shows it can leave the line out. The main value is
 links), for a UI that doesn't render that display. The hook never names a UI;
 each decides by what it renders. The web with markdown on (`web.markdown` and
 the commonmarker gem) leaves such a line out, live and after a reload; with
-markdown off it shows, as it does in the REPL, the attached TUI and
+markdown off it shows, as it does in the attached TUI and
 `chi -p`, which print the answer as text (in the web its http(s) URLs are
 links, as in any hook's notice line). The log keeps the line with
 `fallback_for=display`. `:editor` marks a line that names a file the viewer
@@ -304,8 +304,8 @@ end
   kept), on a live turn and after a reload. Its copy button copies the
   display text. The page learns about it from an `answer_display` event
   that comes after `turn_completed` (the hooks run after the turn ended).
-- **Terminals** (the REPL, the attached TUI) have printed the answer by then
-  and do not change it; use `event[:notify]` for something they should show.
+- **The terminal** (the attached TUI, a `--non-interactive` one-shot) has printed the answer by then
+  and does not change it; use `event[:notify]` for something it should show.
 
 A plugin gets the same from `chi.on(:after_turn) { |event, ctx| event[:present].call { … } }`.
 
@@ -569,7 +569,7 @@ the voter's own (a guard that wants the model to retry a corrected call:
 `Retry with "…".`).
 
 `event[:context]` is `{cwd:, repo_root:, branch:, session_id:, interface:, origin:}`
-(`interface` is `:repl`, `:worker` or `:non_interactive`). `event[:targets]` is
+(`interface` is `:worker` or `:non_interactive`). `event[:targets]` is
 what the call acts on, resolved as the tools resolve it:
 `{command:, paths:, cwd:, repo_root:, outside_repo:, git_dirs:}`. `outside_repo`
 is measured from the session's repo, not the call's `cwd:`; `git_dirs` lists where
@@ -855,8 +855,8 @@ qualified ref:
 
 **Where `{repo}` and `{host}` come from.** Without a named group that took
 part, they come from `git remote get-url <remote>` run in the session's
-working directory (the worker's; the in-process REPL's is the terminal's
-current directory). `remote:` picks the remote, default `origin` — a fork
+working directory (the worker's; a `--non-interactive` one-shot's is the
+terminal's current directory). `remote:` picks the remote, default `origin` — a fork
 sets `remote: upstream`. Git applies `insteadOf` rewrites and includes, and a
 worktree reports its main repo's remote. The URL forms understood are
 `https://`, `http://`, `ssh://`, `git://` (credentials and port dropped) and

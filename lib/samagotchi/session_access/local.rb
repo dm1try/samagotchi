@@ -76,7 +76,7 @@ module Samagotchi
       # @raise [ArgumentError] no such session
       def show(id) = Session.load(id, **dir)
 
-      # @return [OwnerLock::Owner, nil] the worker or chi REPL that owns it
+      # @return [OwnerLock::Owner, nil] the worker or one-turn chi run that owns it
       def owner(id) = SessionManager.session_owner(id, **dir)
 
       # SessionManager.list_sessions: Session objects, for chi sessions list.
@@ -94,11 +94,11 @@ module Samagotchi
       # a margin), so the resume finds the session free.
       # @return [Woken] its sidecar nil when the Bridge didn't come in time
       # @raise [ArgumentError] no such session
-      # @raise [Refused] code scratch: a leftover chi scratch session
-      # @raise [SessionManager::OwnedByTUI] a chi REPL has it
+      # @raise [Refused] code scratch: a chi scratch session (its terminal's alone)
+      # @raise [SessionManager::OwnedByTUI] a one-turn chi run has it
       def wake(id, wait:)
         session = show(id)
-        raise Refused.new(LaunchMode::SCRATCH_LEFTOVER, code: "scratch") if session.scratch
+        raise Refused.new(Session::SCRATCH_REFUSED, code: "scratch") if session.scratch
 
         link = WorkerLink.resolve(session_dir(id), unlink: true)
         case link
@@ -177,7 +177,7 @@ module Samagotchi
       end
 
       # @return [SessionManager::DeliverResult]
-      # @raise [SessionManager::OwnedByTUI] a chi REPL owns it
+      # @raise [SessionManager::OwnedByTUI] a one-turn chi run owns it
       def deliver_turn(id, prompt:, client_id:, images:, delivery: nil)
         SessionManager.deliver_turn(id, prompt: prompt, client_id: client_id, images: images, delivery: delivery, **dir)
       end

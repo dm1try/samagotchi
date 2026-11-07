@@ -120,7 +120,7 @@ right-hand column happens.
   groups changes the prompt key and asks `/toolkit` to confirm the cache cost once the session has history.
 - A worker's `execute` and `task_create` descriptions carry the finish wake's sentence ("if you end your turn before
   it finishes, chi tells you when it does"; `Engine.new(task_finish_notes:)`, set once as the worker builds its
-  Engine); the `--no-shared` REPL's, and a worker's under `session.task_wakes: off`, don't. A session that moves
+  Engine); a `--non-interactive` one-shot's, and a worker's under `session.task_wakes: off`, don't. A session that moves
   between the two, or whose worker restarts after `task_wakes` changed, misses the cache once.
 - On remote Claude, `LLM::PromptCache.mark` sends the system message as two text parts. The stable part carries
   breakpoint #1, so a **new session** reads it from the cache. The last non-system message carries breakpoint

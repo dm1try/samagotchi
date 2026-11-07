@@ -81,7 +81,7 @@ RSpec.describe Samagotchi::BundleCommand::Try::Sandbox do
         "SAMAGOTCHI_PARENT_SESSION" => "parent-id",
         "SAMAGOTCHI_GUARDRAILS_TEST" => "deny",
         "SAMAGOTCHI_LOG_FILE" => "/tmp/user.log",
-        "SAMAGOTCHI_SESSION_SHARED" => "true",
+        "SAMAGOTCHI_SESSION_IDLE_EXIT_MINUTES" => "5",
         "SAMAGOTCHI_SESSION_RETENTION_DAYS" => "2",
         "SAMAGOTCHI_MEMORIES" => "private",
         "SAMAGOTCHI_APPEND_SYSTEM_PROMPT" => "private.md",
@@ -98,7 +98,7 @@ RSpec.describe Samagotchi::BundleCommand::Try::Sandbox do
         expect(sandbox.child_env["SAMAGOTCHI_PARENT_SESSION"]).to be_nil
         expect(sandbox.child_env["SAMAGOTCHI_GUARDRAILS_TEST"]).to be_nil
         expect(sandbox.child_env["SAMAGOTCHI_LOG_FILE"]).to be_nil
-        expect(sandbox.child_env.values_at("SAMAGOTCHI_SESSION_SHARED", "SAMAGOTCHI_SESSION_RETENTION_DAYS",
+        expect(sandbox.child_env.values_at("SAMAGOTCHI_SESSION_IDLE_EXIT_MINUTES", "SAMAGOTCHI_SESSION_RETENTION_DAYS",
                                            "SAMAGOTCHI_MEMORIES", "SAMAGOTCHI_APPEND_SYSTEM_PROMPT",
                                            "SAMAGOTCHI_RECAP_MODEL", "SAMAGOTCHI_BROADCAST_THRESHOLD")).to all(be_nil)
         expect(sandbox.child_env["SAMAGOTCHI_RECAP_ENABLED"]).to eq("false")

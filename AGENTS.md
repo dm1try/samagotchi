@@ -16,23 +16,24 @@ Samagotchi is split into a core **Engine** (`lib/samagotchi/engine.rb`) and a
   the session's **Bridge** (`lib/samagotchi/bridge.rb`, a localhost SSE + HTTP surface);
   `SessionManager` forks/spawns the workers. `chi web` (`Web::App`) is the browser's control
   plane over the workers' Bridges and the session files.
-- Interactive `bin/chi` runs **attached** by default (`session.shared: true`;
-  `LaunchMode.resolve`): `TerminalUI::AttachLauncher` finds or starts the worker and
-  `TerminalUI::AttachedLoop` is a client of its Bridge, with no `Engine` in the terminal.
-  `--no-shared`, `--non-interactive` and `--verbose` run the in-process REPL instead:
-  `TerminalUI` owns the REPL (Reline), rendering and REPL commands, and delegates all core
-  work to its own `Engine`.
+- Interactive `bin/chi` always runs **attached** (`LaunchMode.resolve`: `:attached`):
+  `TerminalUI::AttachLauncher` finds or starts the worker and `TerminalUI::AttachedLoop` is
+  a client of its Bridge, with no `Engine` in the terminal. There is no in-process REPL.
+  Only `-p X --non-interactive` (`:one_shot`) runs in process: `TerminalUI` is the one-shot
+  host, one turn on its own `Engine`, the answer on stdout, session lines on stderr.
 - The `on_event:` seam on `run_turn` exposes raw `KernelLoop` events plus higher-level
   `:turn_started` / `:turn_completed` / `:turn_canceled` events, so any new UI can render
   without terminal coupling.
 
 ## CLI Usage (`bin/chi`)
-The flags, subcommands and REPL commands are in `docs/cli.md` (its Flags table and Entrypoint scenarios are the
+The flags, subcommands and session commands are in `docs/cli.md` (its Flags table and Entrypoint scenarios are the
 reference); a subcommand's class is `XCommand` under `lib/samagotchi/` (`chi home` is `HomeCommand`). What an agent gets wrong without being told:
-- In REPL mode `TerminalUI#run` is the single dispatch for the REPL, `-p`/`--prompt`, `--non-interactive` and
-  `--resume`; attached (the default), `-p` and `--resume` go to `TerminalUI::AttachLauncher`. `-p` **feeds and runs**
-  the prompt and, without `--non-interactive`, **stays in the session** (the attached TUI; the REPL with
-  `--no-shared`). `--non-interactive` is one turn then exit; bare, it is a no-op that creates no session.
+- Plain `chi`, `-p`, `--resume` and `--attach` go to `TerminalUI::AttachLauncher`; `-p X --non-interactive` (with
+  `--resume` too) goes to `TerminalUI#run`, the one-shot. `-p` **feeds and runs** the prompt and, without
+  `--non-interactive`, **stays in the session** (the attached TUI). `--non-interactive` is one turn then exit; bare,
+  it is a no-op that creates no session. `--shared`/`--no-shared` and `session.shared` are gone. `-v` runs attached:
+  the TUI shows its session's debug records (`TerminalUI::LogTail`). `chi scratch` runs attached on a scratch worker
+  that deletes the session when its terminal leaves.
 - Flags that shape a *new* session (`--memory`, `--mute`, `--toolkit`/`--tool`/`--no-tool`, `--append-system-prompt`,
   `--set`) are saved in it at creation and ignored with `--attach`/`--resume`; `--model` is for this run only,
   `--thinking` and `--llm-context*` are the session's own, saved. Saved means a respawn, a fork and a continue keep
@@ -48,7 +49,7 @@ reference); a subcommand's class is `XCommand` under `lib/samagotchi/` (`chi hom
   review turn (`Guardrails::ReviewBoundary`) or, for a grant stamped `mode: pair` at invite, a pair turn under the
   owner's guardrails (`Guardrails::PairBoundary`). `chi review` starts a review session (`ReviewStart`; subjects checked
   by `Guardrails::ReviewPaths`; the owner's Apply is `ReviewApply`). **Code and docs say "participants" / "review" /
-  "pair", never "shared"** (`session.shared` already means attached by default). See docs/cli.md (Participants),
+  "pair", never "shared"**. See docs/cli.md (Participants),
   docs/sessions.md (Review sessions), docs/internals/participants.md.
 - `chi web --tunnel tailscale` (`Web::Tunnel::Tailscale`) never uses Funnel and never writes config.yml. Specs reach
   no real `tailscale`: `spec_helper` points `SAMAGOTCHI_TAILSCALE_CLI` at a missing file (docs/testing.md); the
@@ -110,7 +111,7 @@ reference); a subcommand's class is `XCommand` under `lib/samagotchi/` (`chi hom
 - macOS desktop helper → `docs/desktop.md`
 - Memory scopes, tools, overlays, model notes, skills, bundles' memories → `docs/memory.md`
 - Settings, config.yml, env vars → `docs/configuration.md`
-- CLI commands and REPL → `docs/cli.md`
+- CLI commands and the terminal → `docs/cli.md`
 - Gemma 4 native tool calls and thought context → `docs/internals/gemma4-contract.md`
 - Specs, affected specs, lint, worktrees → `docs/testing.md`
 - Versions, bundle versions, release runbook → `docs/releasing.md`

@@ -85,17 +85,26 @@ module Samagotchi
   autoload :Participants, File.expand_path("participants", __dir__)
 
   class SessionManager
-    # Raised when the interactive TUI owns the session: it runs its own Engine
-    # and reads no input files, so a worker must not be spawned or signalled.
+    # Raised when a terminal's own chi owns the session (OwnerLock kind
+    # "tui": a -p --non-interactive one-shot, TerminalUI): it runs its own
+    # Engine and reads no input files, so a worker must not be spawned or
+    # signalled.
     class OwnedByTUI < StandardError
-      # @return [String] the session the REPL owns (a delegate's, when an
-      #   archive met one)
+      # @return [String] the session it owns (a delegate's, when an archive
+      #   met one)
       attr_reader :session_id
 
-      def initialize(session_id)
+      def initialize(session_id, words = nil)
         @session_id = session_id
-        super("session #{session_id} is open in a chi REPL; close it there first")
+        super(words || "session #{session_id} is #{OwnerLock::TUI_BUSY}; let it finish first")
       end
+    end
+
+    # A `chi scratch` session: its terminal's alone (Session::SCRATCH_REFUSED).
+    # An OwnedByTUI, so every caller that refuses a terminal's session
+    # (chi send, chi web's 409 owned_by_tui) refuses it the same way.
+    class ScratchSession < OwnedByTUI
+      def initialize(session_id) = super(session_id, Session::SCRATCH_REFUSED)
     end
 
     # A delete that would pull the session from under its live worker.
@@ -173,12 +182,15 @@ module Samagotchi
     #   requester, rules and claim (VerifyFresh.start)
     # @param before_spawn [#call, nil] (session) runs once the session and
     #   its note are saved, before its worker spawns
+    # @param scratch [Boolean] a `chi scratch` session (its terminal's
+    #   AttachLauncher): its worker runs a scratch Engine and deletes it
+    #   once its last client is gone
     # @return [Session] with #seed_images_dropped: refs whose file was gone,
     #   and #model_warning: an id its host's saved list doesn't have
     def self.spawn_session(prompt:, mode: "assist", working_directory: nil, model_name: nil, state_dir: nil,
                            memories: [], muted_memories: [], parent_id: nil, messages: [], images_from: nil,
                            preview: nil, title: nil, delegate: false, setup: SessionSetup.new, continues: nil, note: nil,
-                           note_source: "chi", before_spawn: nil, review: nil, verify_fresh: nil)
+                           note_source: "chi", before_spawn: nil, review: nil, verify_fresh: nil, scratch: false)
       sd = state_dir || Session.default_state_dir
       # The resolved ref is stored (a resumed session keeps its model when an
       # alias is retargeted), with the name as typed beside it. A wrong host
@@ -201,7 +213,8 @@ module Samagotchi
         delegate: delegate,
         setup: setup,
         continues: continues,
-        review: review
+        review: review,
+        scratch: scratch
       )
       session.toolkit = Toolkit.configured(delegate: delegate) if session.toolkit.nil?
       session.toolkit_origin = setup.toolkit_origin || "default"
@@ -405,7 +418,7 @@ module Samagotchi
     # stopped first; the marker is written even while it shuts down.
     # @return [ArchiveResult]
     # @raise [ArgumentError] unknown id (Session::AmbiguousId for a prefix of several)
-    # @raise [OwnedByTUI] a chi REPL owns it or one of its children
+    # @raise [OwnedByTUI] a one-turn chi run owns it or one of its children
     # @raise [ArchiveRefused] a turn runs in it or in a child, a prompt is
     #   queued in one (a later resume would run it), a live one offers to
     #   continue past the step limit, or it is a scratch session
@@ -447,7 +460,7 @@ module Samagotchi
     # turn runs), :queued (input/ holds a prompt, which outlives the stop and
     # runs on a resume, live worker or not), :offer (a live worker's continue
     # offer, which the stop would drop), or nil.
-    # @raise [OwnedByTUI] a chi REPL owns it
+    # @raise [OwnedByTUI] a one-turn chi run owns it
     def self.archive_refusal(sid, owner, state_dir)
       raise OwnedByTUI, sid if owner&.tui?
 
@@ -555,6 +568,8 @@ module Samagotchi
     def self.resume_session(session_id, state_dir: nil)
       sd = state_dir || Session.default_state_dir
       session = Session.load(session_id, state_dir: sd)
+      # Its terminal's worker came from spawn_session; nothing wakes another.
+      raise ScratchSession, session.id if session.scratch
       return session if refuse_tui!(session.id, state_dir: sd)
 
       # status is turn state, not liveness: a new worker runs no turn yet,
@@ -576,7 +591,7 @@ module Samagotchi
 
     # A delegate child rang a parent that has no worker (ChildRing): start
     # one, which runs a turn for the report. Not for a parent that is gone,
-    # stopped, archived, a scratch session, open in a chi REPL, or a
+    # stopped, archived, a scratch session, a one-turn run's, or a
     # continue's new link still taking its delegates (its own spawn comes):
     # the ring waits on disk for whoever runs it next (#resume_session
     # itself would clear the stop). A stop landing between the check and
@@ -686,7 +701,8 @@ module Samagotchi
         reminders: "it has reminders, which its worker's older chi can't carry over a restart",
         command_running: "a /btw (or another command) is still running",
         relays_open: "a delegate's approval relayed here is open or just answered",
-        background_tasks: "background tasks it started are still running"
+        background_tasks: "background tasks it started are still running",
+        scratch: "a chi scratch session's worker ends with its terminal"
       }.merge(WorkerIdleExit::LEAVING_WORDS).freeze
 
       # What the CLI and the web say.
@@ -726,7 +742,7 @@ module Samagotchi
     # be lost and starts its successor. If the worker cannot be asked, stop
     # it without a stop marker and resume only when disk shows no work to lose.
     # @return [Restarted]
-    # @raise [OwnedByTUI] a chi REPL owns the session
+    # @raise [OwnedByTUI] a one-turn chi run owns the session
     # @raise [RestartRefused]
     # @raise [ArgumentError] no such session
     def self.restart_session(session_id, state_dir: nil, wait: RESTART_WAIT, client_id: ClientId::CLI_RESTART)
@@ -917,7 +933,7 @@ module Samagotchi
     EMPTY_SKELETON_DIRS = (EMPTY_DIRS + [SessionInbox::OUTPUT_DIR]).freeze
 
     # session.keep_empty off: sessions left with nothing in them are deleted
-    # (the worker as it exits, the TUI at /exit, the retention sweep).
+    # (the worker as it exits, the retention sweep).
     def self.discard_empty?
       Samagotchi::Config.get("session.keep_empty") != true
     rescue StandardError
@@ -926,25 +942,14 @@ module Samagotchi
 
     # Whether a session being left (or found left) is deleted: session.keep_empty
     # is off and nothing happened in it (#empty_session?). The worker as it
-    # leaves, the REPL at /exit and the retention sweep all ask this.
+    # leaves and the retention sweep both ask this.
     # @param default_model [String, nil] what a new session starts on
-    # @param model_name [String, nil] the model its owner runs now (the REPL
-    #   keeps /model in its Engine); the saved one is checked either way
     # @param used_memory_names [Array<String>] memory its owner's Engine used
     #   before any save
-    # @param unsaved [Session, nil] the REPL's working copy, judged instead
-    #   when the session was never saved
-    def self.discardable?(session_id, default_model:, state_dir: nil, model_name: default_model, used_memory_names: [],
-                          unsaved: nil)
-      return false unless discard_empty? && same_model?(model_name, default_model) && Array(used_memory_names).empty?
+    def self.discardable?(session_id, default_model:, state_dir: nil, used_memory_names: [])
+      return false unless discard_empty? && Array(used_memory_names).empty?
 
-      sd = state_dir || Session.default_state_dir
-      if unsaved && !File.exist?(Session.session_file(session_id, state_dir: sd))
-        return no_conversation?(unsaved.messages) && unsaved.last_prompt.to_s.strip.empty? &&
-               empty_session_dir?(Session.session_dir(session_id, state_dir: sd))
-      end
-
-      empty_session?(session_id, state_dir: sd, default_model: default_model)
+      empty_session?(session_id, state_dir: state_dir || Session.default_state_dir, default_model: default_model)
     end
 
     # A session nothing happened in: no conversation, no turn tried (a failed
@@ -1049,7 +1054,7 @@ module Samagotchi
     # @param stop [Boolean] stop a live worker first (waits +wait+ seconds)
     # @return [Hash] {id:, removed: [paths], stopped: whether a worker was stopped}
     # @raise [ArgumentError] unknown id (Session::AmbiguousId for a prefix of several)
-    # @raise [OwnedByTUI] a chi REPL owns it (never stopped from here)
+    # @raise [OwnedByTUI] a one-turn chi run owns it (never stopped from here)
     # @raise [DeleteRefused] a worker owns it and +stop+ is false, or it
     #   outlived the wait
     # @param purge_runs [Boolean] also delete System 1's saved runs of it and
@@ -1130,7 +1135,7 @@ module Samagotchi
     #   ticks (nil: Worker::FALLBACK_TICK_SECONDS); queued turns wake it at once
     # A stopped session's worker exits 0 (a signalled one too) and a
     # crashed one 1, there.
-    # @return [Symbol] :idle_exit, :exit_requested or :restart
+    # @return [Symbol] :idle_exit, :exit_requested, :restart or :scratch_left
     def self.run_session_loop(session_id, state_dir: nil, owner_wait: OwnerLock::DEFAULT_WAIT,
                               idle_exit_minutes: nil, poll_interval: nil)
       # A worker inherits chi's locale (LC_ALL=C too): read files as UTF-8.
@@ -1175,6 +1180,13 @@ module Samagotchi
         signals.restore!
       end
       Log.info(:worker, "stop", reason: result)
+      # A scratch session goes with its worker however it leaves (its
+      # terminal deletes it too, whichever comes first); nothing resumes it.
+      if worker.scratch?
+        delete_left_scratch(session_id, state_dir: sd)
+        exit(result == :crashed ? 1 : 0) if %i[stopped signal crashed].include?(result)
+        return result
+      end
       # A stopped session is left as it is: no resume for input that came
       # in, no discard. One whose worker a signal stopped isn't discarded
       # either; input that came in (queued behind the turn it stopped)
@@ -1229,6 +1241,16 @@ module Samagotchi
         sleep(OwnerLock::RETRY_INTERVAL)
       end
       Process.exit!(0)
+    end
+
+    # Delete a scratch session its worker left (its terminal gone:
+    # Worker#leave_scratch, or any other way out), now the lock is free.
+    # Its terminal may have deleted it first.
+    private_class_method def self.delete_left_scratch(session_id, state_dir:)
+      delete_session(session_id, state_dir: state_dir)
+      Log.info(:worker, "scratch_deleted", sid: session_id)
+    rescue DeleteRefused, ArgumentError, SystemCallError => e
+      Log.info(:worker, "scratch_kept", sid: session_id, error: e.class.name, msg: e.message)
     end
 
     # Delete a session its worker left empty. Checked again now the lock is
@@ -1477,7 +1499,7 @@ module Samagotchi
     #   a worker that doesn't queue (no file then: it would steer), :timeout
     #   when it took the request but never answered (no file then), or
     #   :failed when the input file couldn't be written
-    # @raise [OwnedByTUI] a chi REPL owns the session
+    # @raise [OwnedByTUI] a one-turn chi run owns the session
     # @raise [ArgumentError] no such session
     def self.deliver_turn(session_id, prompt:, client_id: nil, images: [], delivery: nil, no_interrupt: false,
                           author: nil, pending_limit: nil, anchors: nil, state_dir: nil, manager: self, bridge: nil)
@@ -1532,7 +1554,7 @@ module Samagotchi
       # A participant's file only for a worker started after it: a worker
       # still holding the session with its Bridge gone (exiting) may be an
       # older one, which would run it without the review boundary.
-      # (A chi REPL holding it is refused as for anyone, below.)
+      # (A one-turn chi run holding it is refused as for anyone, below.)
       if Steer.participant_author?(author) && (holder = delivery_owner(manager, session_id, state_dir)) && !holder.tui?
         return DeliverResult.new(status: :timeout, via: :file,
                                  ack: { "error" => "worker_timeout",

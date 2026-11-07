@@ -14,7 +14,7 @@ require_relative "reline_history_hook"
 
 module Samagotchi
   class TerminalUI
-    # Input the REPL and the attached TUI share: the persistent prompt
+    # The attached TUI's input: the persistent prompt
     # history, Tab completion (/commands, @path in the cwd, #memory, which
     # inserts #name and the model reads it as typed), multiline reads at the
     # main prompt, and a one-shot prefill of the next read (the default
@@ -28,12 +28,6 @@ module Samagotchi
       AT_PATH_COMPLETION_MAX_CANDIDATES = 200
 
       private
-
-      # The /commands Tab offers: the session's registry, the REPL's own
-      # among them.
-      def slash_commands = command_registry.completions(:repl)
-
-      def command_registry = @commands&.registry || SessionCommands.builtin_registry
 
       # Whether a new session's first read gets the default input
       # (SAMAGOTCHI_DEFAULT_INPUT); --no-default-input says no.

@@ -18,7 +18,7 @@ Single registry `Samagotchi::Config` (`Config::ENTRIES` in `lib/samagotchi/confi
 
 Sections forbid `_`/`-` (`SECTION_RE` `/\A[a-z0-9]+\z/`), since an env or CLI name is derived from them; a config-only section (`system_one`: `expose: [:config]`, no derived name) may carry `_`. Leaves keep `snake_case` in YAML (`base_url`) and become kebab in CLI (`base-url`) via registry derivation — no generic string split, registry lookup avoids flat vs nested collision.
 
-**Universal entries** (`expose: [:env,:config,:cli]`): `default.model`, `server.host/port/open_timeout/read_timeout`, `server.first_token_timeout` (env and config only), `recap.model/base_url/host_ref/inactivity/timeout/min_user_turns/sentences`, `session.retention_days/max_count/keep_status/sweep_interval_hours/idle_exit_minutes`, `session.shared/keep_empty/max_children` (env and config only), `log.file/disable`, `status.line`, `context.status/window_tokens/chars_per_token/status_thresholds`, `memory.index_warn_tokens/entry_warn_tokens/read_max_chars`, `default.max_tokens`, `max_tool_output_chars`, `retry.max/base_delay/max_delay`, `read.*`, `execute.*`, `web.port/host`, `no_interrupt`, `no_default_input` etc. (`Config::ENTRIES`; `expose` says which of env/config/cli each takes). Precedence is `CLI > ENV > file > default`.
+**Universal entries** (`expose: [:env,:config,:cli]`): `default.model`, `server.host/port/open_timeout/read_timeout`, `server.first_token_timeout` (env and config only), `recap.model/base_url/host_ref/inactivity/timeout/min_user_turns/sentences`, `session.retention_days/max_count/keep_status/sweep_interval_hours/idle_exit_minutes`, `session.keep_empty/max_children` (env and config only), `log.file/disable`, `status.line`, `context.status/window_tokens/chars_per_token/status_thresholds`, `memory.index_warn_tokens/entry_warn_tokens/read_max_chars`, `default.max_tokens`, `max_tool_output_chars`, `retry.max/base_delay/max_delay`, `read.*`, `execute.*`, `web.port/host`, `no_interrupt`, `no_default_input` etc. (`Config::ENTRIES`; `expose` says which of env/config/cli each takes). Precedence is `CLI > ENV > file > default`.
 
 Example `config.yml` (new nested form, preferred):
 
@@ -40,10 +40,9 @@ recap:
 session:
   retention_days: 14
   max_count: 500
-  keep_status: ""        # the default: no status protects a session from pruning; a live worker or REPL always does
+  keep_status: ""        # the default: no status protects a session from pruning; a live worker or a one-turn run always does
   sweep_interval_hours: 24
   idle_exit_minutes: 30   # a background worker nobody uses exits; 0 = never
-  shared: true            # the default: plain `chi` runs its session in a background worker and attaches (as `chi --shared`); false keeps the in-process REPL (env SAMAGOTCHI_SESSION_SHARED; no CLI flag, `--no-shared` opts out per run)
   keep_empty: false       # the default: a session nothing happened in (no prompt, default model, no note/image) is deleted when left; true keeps it (env SAMAGOTCHI_SESSION_KEEP_EMPTY)
   max_children: 4         # running child sessions one session may have delegated at a time (the delegate tool; env SAMAGOTCHI_SESSION_MAX_CHILDREN)
 log:
@@ -77,7 +76,7 @@ guardrails:
   disable: [guardrails:git-rebase]
 ```
 
-- `bundles:` map of installed bundle name → its settings (one Hash, string keys, handed to the bundle's hook/plugin `initialize(settings)`). Read when a session's Engine starts: after a change restart the session's worker (`chi sessions stop <id>`) or the REPL. Unknown keys are ignored by the bundle, not validated. `chi bundle list` names the bundles; each bundle's keys are in `docs/bundles.md` / `docs/guardrails.md`.
+- `bundles:` map of installed bundle name → its settings (one Hash, string keys, handed to the bundle's hook/plugin `initialize(settings)`). Read when a session's Engine starts: after a change restart the session's worker (`chi sessions stop <id>`). Unknown keys are ignored by the bundle, not validated. `chi bundle list` names the bundles; each bundle's keys are in `docs/bundles.md` / `docs/guardrails.md`.
 
 ```yaml
 bundles:

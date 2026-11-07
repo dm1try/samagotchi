@@ -55,7 +55,7 @@ per-message judge on an objective didn't work as a gate on the pod (AUC about .5
 - The state: `objective` (its text and done-when, no id or status) and `message` (2000 characters: a message's head, an answer's tail).
   **That text goes to the System 1 host**, a hosted one too, and into the run. A participant's turn, a review session and a scratch session are never asked about.
 - At most 6 objectives per message. Each direction has one ask running: what comes meanwhile is a run with `asked: false`, `skipped: busy`.
-- The asks run on `SideJudgments`' threads beside the turn, so a turn doesn't wait; on a one-slot server shared with the session's model, a request can still queue behind or ahead of them. They share `/v1/systemone` with approvals: on a slow one-slot host an approval can wait behind up to 2 in-flight asks and time out to the user. A failed ask is a run with its `failure` and one log line (`system_one_failed`), and a `--no-shared` REPL's stderr shows that line as for any System 1 ask.
+- The asks run on `SideJudgments`' threads beside the turn, so a turn doesn't wait; on a one-slot server shared with the session's model, a request can still queue behind or ahead of them. They share `/v1/systemone` with approvals: on a slow one-slot host an approval can wait behind up to 2 in-flight asks and time out to the user. A failed ask is a run with its `failure` and one log line (`system_one_failed`).
 
 ## The store
 

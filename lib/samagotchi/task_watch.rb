@@ -9,7 +9,7 @@ require_relative "tools/task_runtime"
 module Samagotchi
   # The background tasks a worker's session started that the model hasn't
   # seen finish (docs/internals/background-tasks.md, Finish wake). Held by
-  # the Worker (the --no-shared REPL has none) and fed by the Engine's raw
+  # the Worker (a --non-interactive one-shot has none) and fed by the Engine's raw
   # :tool_call_completed events (#observe), the input Bridge#own_task_ids
   # reads too; the idle loop takes the finished ones (#take_finished) for a
   # wake turn or a plain note. In memory only: a crash loses them, and they

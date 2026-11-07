@@ -168,12 +168,12 @@ RSpec.describe "peer tools" do
       expect(notes_of(other).size).to eq(1)
     end
 
-    it "refuses this session, a REPL-owned one, an unknown id and an empty note" do
+    it "refuses this session, a one-turn run's, an unknown id and an empty note" do
       repl = make(owner: "tui")
       live = make(owner: "worker")
 
       expect(described_class.call("x", peers: peers, session: me.id)).to start_with("Error:").and include("this session")
-      expect(described_class.call("x", peers: peers, session: repl.id)).to start_with("Error:").and include("chi REPL")
+      expect(described_class.call("x", peers: peers, session: repl.id)).to start_with("Error:").and include("one-turn chi --non-interactive run")
       expect(described_class.call("x", peers: peers, session: "nope")).to start_with("Error:").and include("nope")
       expect(described_class.call("  ", peers: peers, session: live.id)).to start_with("Error:").and include("empty")
       expect(described_class.call("x", peers: peers, session: "")).to start_with("Error:")

@@ -140,8 +140,6 @@ module Samagotchi
       Entry.new(key: "session.idle_exit_minutes",     yaml_path: %w[session idle_exit_minutes],     type: :float,   default: 30.0, expose: %i[env config cli], lifecycle: :worker_start),
       # Tools follow the project: a worker applies its folder's `mise env` at start (ProjectEnv); off keeps the spawner's env.
       Entry.new(key: "session.project_env",           yaml_path: %w[session project_env],           type: :enum,    default: "mise", expose: %i[env config], enum_values: %w[mise off], lifecycle: :worker_start),
-      # Plain `chi` runs like `chi --shared` (bin/chi, LaunchMode); false, or --no-shared per run, keeps the plain REPL. No CLI flag: that would duplicate --shared.
-      Entry.new(key: "session.shared",                yaml_path: %w[session shared],                type: :bool,    default: true,  expose: %i[env config], lifecycle: :next_invocation),
       # false: a continue's carry note holds the previous link's recap only (SessionChain.note_text), not its last answer too.
       Entry.new(key: "session.carry_last_answer",     yaml_path: %w[session carry_last_answer],     type: :bool,    default: true,  expose: %i[env config], lifecycle: :next_lifecycle_decision),
       # false: a session nothing happened in is deleted when it is left (SessionManager.discardable?).
@@ -817,7 +815,7 @@ module Samagotchi
       end
 
       # Keys replaced by another, and what the warning adds: it names the new
-      # one (no alias).
+      # one (no alias). A key removed with nothing in its place has nil.
       PARENT_ANSWERS_HINT = "hard, standard or soft; see docs/guardrails.md"
       SYSTEM_ONE_MOVED_HINT = "it has moved: until all of host, model and timeout_ms have, nothing is judged or " \
                               "auto-allowed, and every ask goes to you; see docs/configuration.md"
@@ -826,14 +824,18 @@ module Samagotchi
         "turn.parent_continue" => ["guardrails.parent_answers", PARENT_ANSWERS_HINT],
         "guardrails.system_one.host" => ["system_one.host", SYSTEM_ONE_MOVED_HINT],
         "guardrails.system_one.model" => ["system_one.model", SYSTEM_ONE_MOVED_HINT],
-        "guardrails.system_one.timeout_ms" => ["system_one.timeout_ms", SYSTEM_ONE_MOVED_HINT]
+        "guardrails.system_one.timeout_ms" => ["system_one.timeout_ms", SYSTEM_ONE_MOVED_HINT],
+        "session.shared" => [nil, "chi always runs attached"]
       }.freeze
 
       # nil when +dotted+ is a key the file may hold.
       def key_problem(dotted)
         return nil if known_config_keys.include?(dotted)
         return "config: #{ConfigFile.removed_transport_problem("'#{dotted}'")}" if dotted == "server.transport"
+
         if (replaced = REPLACED_KEYS[dotted])
+          return "config: unknown key '#{dotted}': removed: #{replaced.last}" unless replaced.first
+
           return "config: unknown key '#{dotted}': replaced by '#{replaced.first}' (#{replaced.last})"
         end
 

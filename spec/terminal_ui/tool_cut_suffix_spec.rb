@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
-require "samagotchi/terminal_ui"
+require "samagotchi/terminal_ui/attached_view"
+require "samagotchi/terminal_ui/event_renderer"
 require_relative "../support/recording_surface"
 
 # A tool output longer than max_tool_output_chars is cut (the model gets the

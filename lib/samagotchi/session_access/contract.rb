@@ -153,10 +153,10 @@ module Samagotchi
       # config registry flag (--recap-base-url …) is this machine's
       # config: LOCAL_ONLY without being listed.
       RUN = {
-        SUPPORTED => %w[--attach --resume -p --prompt --shared --model --thinking --llm-context --llm-context-apply
+        SUPPORTED => %w[--attach --resume -p --prompt --model --thinking --llm-context --llm-context-apply
                         --llm-context-budget --toolkit --tool --no-tool --set --parent-answers --no-interrupt
                         --no-default-input --dir --version -h --help],
-        LOCAL_ONLY => %w[--no-shared --non-interactive -v --verbose --append-system-prompt --memory --mute --profile
+        LOCAL_ONLY => %w[--non-interactive -v --verbose --append-system-prompt --memory --mute --profile
                          --port --open --new-token --tunnel --start-dir --scope --web-markdown --no-web-markdown]
       }.freeze
       # A short run flag's name in a refusal.

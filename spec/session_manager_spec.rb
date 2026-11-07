@@ -428,7 +428,7 @@ RSpec.describe Samagotchi::SessionManager do
       expect(File.exist?(session_file)).to be true
     end
 
-    it "refuses a session a chi REPL owns, even with stop:" do
+    it "refuses a session a one-turn chi run owns, even with stop:" do
       lock = Samagotchi::OwnerLock.acquire(session_dir, kind: "tui")
       allow(Process).to receive(:kill)
 
@@ -1222,7 +1222,7 @@ RSpec.describe Samagotchi::SessionManager do
       allow(Process).to receive(:kill)
 
       expect { described_class.resume_session(session.id, state_dir: tmpdir) }
-        .to raise_error(described_class::OwnedByTUI, "session #{session.id} is open in a chi REPL; close it there first")
+        .to raise_error(described_class::OwnedByTUI, "session #{session.id} is in use by a one-turn chi --non-interactive run; let it finish first")
       expect { described_class.stop_session(session.id, state_dir: tmpdir) }
         .to raise_error(described_class::OwnedByTUI)
       expect(Process).not_to have_received(:spawn)
@@ -1567,7 +1567,7 @@ RSpec.describe Samagotchi::SessionManager do
     it "starts the next worker after a restart, once its lock is free, and never discards the session" do
       session = Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp")
       session.save(state_dir: tmpdir)
-      worker = instance_double(Samagotchi::Worker, run: :restart, discard?: false)
+      worker = instance_double(Samagotchi::Worker, scratch?: false, run: :restart, discard?: false)
       allow(Samagotchi::Worker).to receive(:new).and_return(worker)
       owner_at_resume = :unset
       allow(described_class).to receive(:resume_session) do |id, state_dir:|
@@ -1584,7 +1584,7 @@ RSpec.describe Samagotchi::SessionManager do
     it "computes the project env only in a spawned worker, never in an in-process loop" do
       session = Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp")
       session.save(state_dir: tmpdir)
-      allow(Samagotchi::Worker).to receive(:new).and_return(instance_double(Samagotchi::Worker, run: :stopped))
+      allow(Samagotchi::Worker).to receive(:new).and_return(instance_double(Samagotchi::Worker, scratch?: false, run: :stopped))
       allow(Samagotchi::ProjectEnv).to receive(:compute)
       expect { described_class.run_session_loop(session.id, state_dir: tmpdir) }.to raise_error(SystemExit)
       expect(Samagotchi::ProjectEnv).not_to have_received(:compute)
@@ -1635,7 +1635,7 @@ RSpec.describe Samagotchi::SessionManager do
       session.save(state_dir: tmpdir)
       dir = Samagotchi::Session.session_dir(session.id, state_dir: tmpdir)
       carry = File.join(dir, Samagotchi::ReminderCarry::FILE)
-      worker = instance_double(Samagotchi::Worker, discard?: false)
+      worker = instance_double(Samagotchi::Worker, scratch?: false, discard?: false)
       allow(worker).to receive(:run) do
         # The stop's marker and its file remove, then the hand-off written as the worker left.
         Samagotchi::Session.mark_stopped(session.id, state_dir: tmpdir)
@@ -1656,11 +1656,31 @@ RSpec.describe Samagotchi::SessionManager do
       session.save(state_dir: tmpdir)
       allow(described_class).to receive(:resume_session)
       [true, false].each do |due|
-        worker = instance_double(Samagotchi::Worker, run: :idle_exit, discard?: false, wake_due?: due)
+        worker = instance_double(Samagotchi::Worker, scratch?: false, run: :idle_exit, discard?: false, wake_due?: due)
         allow(Samagotchi::Worker).to receive(:new).and_return(worker)
         described_class.run_session_loop(session.id, state_dir: tmpdir)
       end
       expect(described_class).to have_received(:resume_session).once
+    end
+
+    it "deletes a chi scratch session as its worker leaves, however it leaves, and resumes nothing" do
+      allow(described_class).to receive(:resume_session)
+      { scratch_left: nil, idle_exit: nil, signal: 0, stopped: 0 }.each do |result, status|
+        session = Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp", scratch: true)
+        session.save(state_dir: tmpdir)
+        described_class.write_turn_input(session.id, prompt: "queued", state_dir: tmpdir)
+        allow(Samagotchi::Worker).to receive(:new)
+          .and_return(instance_double(Samagotchi::Worker, scratch?: true, run: result, discard?: false, wake_due?: true))
+
+        if status
+          expect { described_class.run_session_loop(session.id, state_dir: tmpdir) }
+            .to raise_error(SystemExit) { |e| expect(e.status).to eq(status) }
+        else
+          expect(described_class.run_session_loop(session.id, state_dir: tmpdir)).to eq(result)
+        end
+        expect(Samagotchi::Session.exist?(session.id, state_dir: tmpdir)).to be(false), result.to_s
+      end
+      expect(described_class).not_to have_received(:resume_session)
     end
 
     it "exits 0 after a signal stopped the worker, logging stop reason=signal, with no discard, nor a resume with nothing queued" do
@@ -1668,7 +1688,7 @@ RSpec.describe Samagotchi::SessionManager do
       session.save(state_dir: tmpdir)
       log = File.join(tmpdir, "chi.log")
       Samagotchi::Config.reload!(cli_overrides: { "log.file" => log })
-      worker = instance_double(Samagotchi::Worker, run: :signal, discard?: true, wake_due?: true)
+      worker = instance_double(Samagotchi::Worker, scratch?: false, run: :signal, discard?: true, wake_due?: true)
       allow(Samagotchi::Worker).to receive(:new).and_return(worker)
       allow(described_class).to receive(:resume_session)
       allow(described_class).to receive(:delete_session)
@@ -1688,7 +1708,7 @@ RSpec.describe Samagotchi::SessionManager do
       session = Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp")
       session.save(state_dir: tmpdir)
       described_class.write_turn_input(session.id, prompt: "queued", state_dir: tmpdir)
-      allow(Samagotchi::Worker).to receive(:new).and_return(instance_double(Samagotchi::Worker, run: :signal))
+      allow(Samagotchi::Worker).to receive(:new).and_return(instance_double(Samagotchi::Worker, scratch?: false, run: :signal))
       owner_at_resume = :unset
       allow(described_class).to receive(:resume_session) do |id, state_dir:|
         owner_at_resume = described_class.session_owner(id, state_dir: state_dir)
@@ -1704,7 +1724,7 @@ RSpec.describe Samagotchi::SessionManager do
       session = Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp")
       session.save(state_dir: tmpdir)
       allow(Samagotchi::Worker).to receive(:new)
-        .and_return(instance_double(Samagotchi::Worker, run: :idle_exit, discard?: false, wake_due?: false))
+        .and_return(instance_double(Samagotchi::Worker, scratch?: false, run: :idle_exit, discard?: false, wake_due?: false))
       allow_any_instance_of(Samagotchi::WorkerSignals).to receive(:install!) { |signals| signals }
       restored = []
       allow_any_instance_of(Samagotchi::WorkerSignals).to receive(:restore!) { |signals| restored << signals }
@@ -1723,7 +1743,7 @@ RSpec.describe Samagotchi::SessionManager do
       given = []
       allow(Samagotchi::Worker).to receive(:new) do |**kwargs|
         given << kwargs[:signals]
-        instance_double(Samagotchi::Worker, run: :idle_exit, discard?: false, wake_due?: false)
+        instance_double(Samagotchi::Worker, scratch?: false, run: :idle_exit, discard?: false, wake_due?: false)
       end
       installed = []
       allow_any_instance_of(Samagotchi::WorkerSignals).to receive(:install!) { |signals| (installed << signals).last }
@@ -1745,7 +1765,7 @@ RSpec.describe Samagotchi::SessionManager do
       session = Samagotchi::Session.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp")
       session.save(state_dir: tmpdir)
       allow(Samagotchi::Worker).to receive(:new)
-        .and_return(instance_double(Samagotchi::Worker, run: :idle_exit, discard?: false, wake_due?: false))
+        .and_return(instance_double(Samagotchi::Worker, scratch?: false, run: :idle_exit, discard?: false, wake_due?: false))
       order = []
       allow(described_class).to receive(:detach_from_spawner) { order << :detach }
       allow(Samagotchi::OwnerLock).to receive(:acquire).and_wrap_original do |original, *args, **kwargs|
@@ -1808,7 +1828,7 @@ RSpec.describe Samagotchi::SessionManager do
       session.save(state_dir: tmpdir)
       log = File.join(tmpdir, "chi.log")
       Samagotchi::Config.reload!(cli_overrides: { "log.file" => log })
-      worker = instance_double(Samagotchi::Worker)
+      worker = instance_double(Samagotchi::Worker, scratch?: false)
       allow(worker).to receive(:run).and_raise(NoMethodError, "undefined method 'x'")
       allow(Samagotchi::Worker).to receive(:new).and_return(worker)
 
@@ -2607,6 +2627,21 @@ RSpec.describe Samagotchi::SessionManager do
       # Once by the resume, once more since still nobody owns it after the write.
       expect(Process).to have_received(:spawn).twice
       expect(input_files.size).to eq(1)
+    end
+
+    it "refuses a chi scratch session, live worker or not, in its one wording, and queues nothing" do
+      session.scratch = true
+      session.save(state_dir: tmpdir)
+      own("worker")
+      allow(Process).to receive(:spawn)
+
+      expect do
+        described_class.deliver_turn(session.id, prompt: "hi", state_dir: tmpdir, bridge: -> { raise "not reached" })
+      end.to raise_error(described_class::ScratchSession, Samagotchi::Session::SCRATCH_REFUSED)
+      expect { described_class.resume_session(session.id, state_dir: tmpdir) }
+        .to raise_error(described_class::OwnedByTUI, Samagotchi::Session::SCRATCH_REFUSED)
+      expect(input_files).to be_empty
+      expect(Process).not_to have_received(:spawn)
     end
 
     it "raises OwnedByTUI up front for a REPL-owned session and queues nothing" do

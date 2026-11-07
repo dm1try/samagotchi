@@ -422,9 +422,9 @@ RSpec.describe "The skills plugin", :bundle do
     end
 
     it "shows the request for the user to send when the session takes no messages (a REPL)" do
-      @send_error = "session sess-1 is open in a chi REPL, which takes no messages from others"
+      @send_error = "session sess-1 is in use by a one-turn chi --non-interactive run, which takes no messages from others"
       reply = skill(plugin, "save release")
-      expect(reply).to start_with("/skill save: session sess-1 is open in a chi REPL, which takes no messages from others. " \
+      expect(reply).to start_with("/skill save: session sess-1 is in use by a one-turn chi --non-interactive run, which takes no messages from others. " \
                                   "Send this yourself:\n\nSave what we just did as skill `skill_release`")
     end
   end

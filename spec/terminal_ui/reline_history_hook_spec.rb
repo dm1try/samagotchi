@@ -5,7 +5,7 @@ require "open3"
 require "rbconfig"
 require "tmpdir"
 require "reline"
-require "samagotchi/terminal_ui"
+require "samagotchi/terminal_ui/input_support"
 require "samagotchi/prompt_history"
 require "samagotchi/terminal_ui/reline_history_hook"
 

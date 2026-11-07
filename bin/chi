@@ -139,7 +139,8 @@ if ARGV[0] == "web" && ARGV[1] == "push"
 end
 
 # `chi scratch`: the run options below, for a session that leaves nothing
-# behind (TerminalUI scratch:). The word goes before OptionParser sees it.
+# behind (AttachLauncher scratch:; TerminalUI's with --non-interactive). The
+# word goes before OptionParser sees it.
 scratch = ARGV[0] == "scratch"
 ARGV.shift if scratch
 
@@ -192,7 +193,7 @@ end
 
 # A scratch session is new, runs here and goes when it ends.
 if scratch
-  flag = { resume: "--resume", attach: "--attach", shared: "--shared" }.find { |key, _flag| options[key] }&.last
+  flag = { resume: "--resume", attach: "--attach" }.find { |key, _flag| options[key] }&.last
   if flag
     warn "Error: chi scratch starts a new session in this terminal and keeps nothing; it can't take #{flag}"
     exit 1
@@ -203,15 +204,19 @@ end
 # session's own level); a session-starting run's is that session's own
 # (TerminalUI, AttachLauncher), not a process setting.
 cli_overrides["thinking.level"] = options[:thinking] if web && options[:thinking]
+# -v: debug records, in this process and in a worker it spawns (Config.cli_env).
+cli_overrides["log.level"] = "debug" if options[:verbose]
 
 # Apply CLI precedence: CLI > ENV > file. Workers this chi spawns get
 # these through their env (Config.cli_env).
 Samagotchi::Config.reload!(cli_overrides: cli_overrides) unless cli_overrides.empty?
 
 # The debug log (Samagotchi::LogPath, level log.level) for every command.
-# -v (the plain REPL only): debug records, each mirrored to stderr.
+# -v: debug records; a --non-interactive one-shot mirrors each to stderr,
+# the attached TUI shows its session's above the live region (LogTail).
 require "samagotchi/log"
-Samagotchi::Log.configure(level: options[:verbose] ? :debug : nil, mirror: options[:verbose])
+Samagotchi::Log.configure(level: options[:verbose] ? :debug : nil,
+                          mirror: options[:verbose] && options[:non_interactive])
 
 # chi --remote NAME --attach ID (--resume ID, --dir DIR, -p TEXT): the
 # attached TUI on that machine's session. Nothing below runs: it checks
@@ -274,8 +279,9 @@ rescue Samagotchi::Session::AmbiguousId => e
   exit 1
 end
 
-# A `chi scratch` session a killed REPL left behind would turn into a kept
-# one if opened again; the next sweep deletes it.
+# A `chi scratch` session is its terminal's (a live one), or one a killed
+# terminal left behind, which would turn into a kept one if opened again;
+# the next sweep deletes it.
 %i[resume attach].each do |key|
   next unless options[key]
 
@@ -286,8 +292,7 @@ end
   end
   next unless leftover
 
-  require "samagotchi/launch_mode"
-  warn "Error: #{Samagotchi::LaunchMode::SCRATCH_LEFTOVER}"
+  warn "Error: #{Samagotchi::Session::SCRATCH_REFUSED}"
   exit 1
 end
 
@@ -395,12 +400,7 @@ end
 
 chi_update_hint.call
 require "samagotchi/launch_mode"
-launch, launch_note = if scratch
-                        [:repl, nil]
-                      else
-                        Samagotchi::LaunchMode.resolve(options, shared_config: Samagotchi::Config.get("session.shared"))
-                      end
-warn launch_note if launch_note
+launch = Samagotchi::LaunchMode.resolve(options)
 
 if launch == :attached
   error = Samagotchi::LaunchMode.attached_conflict(options)
@@ -411,7 +411,7 @@ if launch == :attached
 
   require "samagotchi/terminal_ui/attach_launcher"
   begin
-    ended = Samagotchi::TerminalUI::AttachLauncher.run(attach: options[:attach], shared: !options[:attach], resume: options[:resume],
+    ended = Samagotchi::TerminalUI::AttachLauncher.run(attach: options[:attach], resume: options[:resume],
                                                        prompt: options[:prompt], model: options[:model],
                                                        no_interrupt: !!options[:no_interrupt],
                                                        default_input: !options[:no_default_input],
@@ -423,7 +423,8 @@ if launch == :attached
                                                        toolkit: options[:toolkit_value],
                                                        toolkit_flags: options[:toolkit_flags] || [],
                                                        settings: options[:settings],
-                                                       parent_answers: options[:parent_answers])
+                                                       parent_answers: options[:parent_answers],
+                                                       scratch: scratch, verbose: options[:verbose])
   rescue Samagotchi::TerminalUI::AttachLauncher::Error, Samagotchi::Toolkit::Refused => e
     warn "Error: #{e.message}"
     exit 1
@@ -435,13 +436,13 @@ if launch == :attached
   exit Samagotchi::TerminalUI::AttachLauncher.exit_status(ended)
 end
 
+# --non-interactive: the -p prompt's one turn in this process (TerminalUI,
+# the one-shot host); bare, a no-op that creates no session.
 require "samagotchi/cli/exit"
 begin
   ended = Samagotchi::TerminalUI.new(
     prompt: options[:prompt],
     session_id: options[:resume],
-    no_interrupt: options[:no_interrupt] || options[:non_interactive],
-    no_default_input: options[:no_default_input],
     memories: options[:memories] || [],
     muted_memories: options[:muted] || [],
     llm_context: options[:llm_context] || {},
@@ -451,13 +452,11 @@ begin
     toolkit_flags: options[:toolkit_flags] || [],
     settings: options[:settings],
     parent_answers: options[:parent_answers],
-    non_interactive: options[:non_interactive],
     model_name: options[:model],
     scratch: scratch
   ).run
-  # `chi -p X </dev/null`: the turn failed (nothing was sent again); -p
-  # --non-interactive: the turn ended with no answer or at the iteration
-  # limit, or Ctrl-C cancelled it.
+  # The turn failed, ended with no answer or at the iteration limit, or
+  # Ctrl-C cancelled it.
   exit 1 if %i[turn_failed empty_answer iteration_limit].include?(ended)
   exit Samagotchi::CLI::Exit::INTERRUPTED if ended == :interrupted
 rescue Samagotchi::TerminalUI::SessionBusy, Samagotchi::TerminalUI::SessionNotFound, Samagotchi::ModelProfile::MissingModel,
@@ -465,11 +464,11 @@ rescue Samagotchi::TerminalUI::SessionBusy, Samagotchi::TerminalUI::SessionNotFo
   warn "Error: #{e.message}"
   exit 1
 rescue Samagotchi::LLM::ProviderError => e
-  # -p --non-interactive: the turn failed; its prompt is in the session.
+  # The turn failed; its prompt is in the session.
   warn "Error: #{e.summary}"
   exit 1
 rescue Samagotchi::ImageStore::Error => e
-  # -p --non-interactive: an @path image that can't be used.
+  # An @path image that can't be used.
   warn "Error: #{e.message}"
   exit 1
 end

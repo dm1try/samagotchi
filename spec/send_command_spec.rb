@@ -510,17 +510,28 @@ RSpec.describe Samagotchi::SendCommand do
       expect(inputs_of(a).first["prompt"]).to eq("wake up")
     end
 
-    it "refuses a session open in a chi REPL and exits 1, still sending to the others" do
+    it "refuses a session open in a one-turn chi run and exits 1, still sending to the others" do
       repl = make(owner: "tui")
       live = make(owner: "worker")
       serve(live)
       allow(Process).to receive(:spawn)
 
       expect(run("-m", "x", repl.id, live.id)).to eq(1)
-      expect(out.string.lines).to eq(["#{short(repl)}  refused: it is open in a chi REPL; messages need attached mode\n",
+      expect(out.string.lines).to eq(["#{short(repl)}  refused: it is in use by a one-turn chi --non-interactive run; send once it ends\n",
                                       "#{short(live)}  sent\n"])
       expect(Process).not_to have_received(:spawn)
       expect(inputs_of(repl)).to be_empty
+    end
+
+    it "refuses a live chi scratch session in its one wording, and exits 1" do
+      scratch = make(owner: "worker")
+      scratch.scratch = true
+      scratch.save(state_dir: tmpdir)
+      allow(Process).to receive(:spawn)
+
+      expect(run("-m", "x", scratch.id)).to eq(1)
+      expect(out.string).to eq("#{short(scratch)}  refused: #{Samagotchi::Session::SCRATCH_REFUSED}\n")
+      expect(inputs_of(scratch)).to be_empty
     end
 
     it "reports a failure in one line, no backtrace" do

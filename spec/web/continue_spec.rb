@@ -205,7 +205,7 @@ RSpec.describe Samagotchi::Web::App, "POST /api/sessions continues" do
     expect(body["moved_context"]).to eq("moved" => ["ci"], "stayed" => [{ "name" => "notes", "why" => "pushed" }])
   end
 
-  it "answers 409 open_children naming a delegate still open that can't move (a chi REPL holds it)" do
+  it "answers 409 open_children naming a delegate still open that can't move (a one-turn chi run holds it)" do
     previous = previous_link
     child = Samagotchi::Session.new_session(mode: "assist", model_name: "m", working_directory: folder,
                                             parent_id: previous.id, delegate: true)

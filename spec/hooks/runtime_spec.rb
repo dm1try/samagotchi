@@ -118,8 +118,8 @@ RSpec.describe "The hook runtime through the Engine" do
       expect(result).to be_nil
     end
 
-    it "is nil when a sync handler (the REPL) answers with text instead of a choice" do
-      engine.interface = :repl
+    it "is nil when a sync handler answers with text instead of a choice" do
+      engine.interface = :worker
       engine.set_question_sync_handler { |_pending| "some typed text" }
       result = :unset
       engine.register_hook(:before_turn) { |e| result = e[:ask_user].call(question: "which?", options: %w[a b]) }

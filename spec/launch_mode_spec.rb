@@ -3,56 +3,30 @@
 require "samagotchi/launch_mode"
 
 RSpec.describe Samagotchi::LaunchMode do
-  def resolve(shared_config, **options) = described_class.resolve(options, shared_config: shared_config)
+  def resolve(**options) = described_class.resolve(options)
 
-  context "with session.shared off" do
-    it "runs a plain REPL" do
-      expect(resolve(false)).to eq([:repl, nil])
-      expect(resolve(false, resume: "s1")).to eq([:repl, nil])
-      expect(resolve(false, prompt: "hi")).to eq([:repl, nil])
-    end
-
-    it "attaches for an explicit --shared or --attach" do
-      expect(resolve(false, shared: true)).to eq([:attached, nil])
-      expect(resolve(false, attach: "s1")).to eq([:attached, nil])
-    end
+  it "attaches plain chi, -p, --resume ID and --attach ID" do
+    expect(resolve).to eq(:attached)
+    expect(resolve(prompt: "hi")).to eq(:attached)
+    expect(resolve(resume: "s1")).to eq(:attached)
+    expect(resolve(attach: "s1")).to eq(:attached)
   end
 
-  context "with session.shared on" do
-    it "attaches plain chi and chi --resume ID" do
-      expect(resolve(true)).to eq([:attached, nil])
-      expect(resolve(true, resume: "s1")).to eq([:attached, nil])
-    end
+  it "attaches with --model, --no-interrupt, --memory and --mute, which reach the worker" do
+    expect(resolve(model: "m", no_interrupt: true, memories: ["a"], muted: ["b"])).to eq(:attached)
+  end
 
-    it "runs a plain REPL for --no-shared" do
-      expect(resolve(true, shared: false)).to eq([:repl, nil])
-    end
+  it "attaches -v, which shows the session's debug records there" do
+    expect(resolve(verbose: true)).to eq(:attached)
+    expect(resolve(verbose: true, attach: "s1")).to eq(:attached)
+  end
 
-    it "never attaches a --non-interactive one-shot" do
-      expect(resolve(true, prompt: "hi", non_interactive: true)).to eq([:repl, nil])
-    end
+  it "runs --non-interactive's one turn in this process, --resume ID too" do
+    expect(resolve(prompt: "hi", non_interactive: true)).to eq(:one_shot)
+    expect(resolve(prompt: "hi", resume: "s1", non_interactive: true)).to eq(:one_shot)
+  end
 
-    it "attaches -p, which then sends the prompt" do
-      expect(resolve(true, prompt: "hi")).to eq([:attached, nil])
-    end
-
-    it "runs a plain REPL, with a note, for --verbose" do
-      expect(resolve(true, verbose: true)).to eq([:repl, "(session.shared: --verbose runs in a plain REPL)"])
-    end
-
-    it "attaches with --model and --no-interrupt, which reach the worker" do
-      expect(resolve(true, model: "m")).to eq([:attached, nil])
-      expect(resolve(true, no_interrupt: true, prompt: "hi")).to eq([:attached, nil])
-    end
-
-    it "attaches with --memory and --mute, which the worker reads from the session" do
-      expect(resolve(true, memories: ["a"])).to eq([:attached, nil])
-      expect(resolve(true, muted: ["a"])).to eq([:attached, nil])
-    end
-
-    it "keeps the explicit flags' behavior" do
-      expect(resolve(true, shared: true, model: "m")).to eq([:attached, nil])
-      expect(resolve(true, attach: "s1")).to eq([:attached, nil])
-    end
+  it "leaves --attach with --non-interactive to attached_conflict" do
+    expect(resolve(attach: "s1", non_interactive: true)).to eq(:attached)
   end
 end

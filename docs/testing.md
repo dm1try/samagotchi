@@ -81,11 +81,11 @@ back (`t.mock` restores itself). A test that sets off a module's timer (a flash,
 node running until it fires (a 4 s one made the run 6 s for 2 s of work). One file:
 `node --test spec/web/public/NAME.test.js`.
 
-Where a composer line goes is decided twice, in Ruby (`ComposerRoute`, both terminals) and in the web
+Where a composer line goes is decided twice, in Ruby (`ComposerRoute`, the attached terminal) and in the web
 (`composer.js#routeComposerLine`). `spec/fixtures/composer_routes.json` holds the cases both answer: rspec
 (`spec/composer_route_spec.rb`) and `npm test` (`spec/web/public/composer.test.js`) run every row. A change to
-either router adds its row there; a row where a UI differs on purpose (or a found divergence) carries a `web` or
-`repl` override and a `note`. The Ruby side runs each row with every core command (a new one fails its
+either router adds its row there; a row where a UI differs on purpose (or a found divergence) carries a `web`
+override and a `note`. The Ruby side runs each row with every core command (a new one fails its
 `CORE_ROUTES` check until listed there); a row's names that core lacks stand for plugin commands.
 
 ## Levels
@@ -318,8 +318,8 @@ A builder runs these while working, not the full suite: the specs the change tou
 files it changed (`lib/samagotchi/foo/bar.rb` → `spec/foo/bar_spec.rb`, `bar_*_spec.rb`…;
 `lib/samagotchi/foo/bar/baz.rb` → `spec/foo/bar_baz_spec.rb`), the specs that read
 docs or source as text (its `RULES`: add one when a full run catches what the names missed) and the golden of a changed
-file's layer (any `terminal_ui/*.rb` → `spec/terminal_ui_golden_spec.rb`; `turn_flow.rb` and `turn_note.rb`, whose
-words the REPL prints, pick it by a rule). Changes to `tool_declarations.rb` and `system_prompt.rb` also pick the
+file's layer (any `foo/*.rb` → `spec/foo_golden_spec.rb` when there is one; `turn_flow.rb` and `turn_note.rb`, whose
+words the attached TUI prints, pick its `event_renderer` and `attached_loop` specs by a rule). Changes to `tool_declarations.rb` and `system_prompt.rb` also pick the
 effective-model, request, prompt-snapshot and full system-prompt goldens because they hash the request's prompt and
 tools. Then come the other name matches (a spec named after several changed files first, e.g. `engine_toolkit_spec.rb` for `engine.rb` and
 `toolkit.rb`; then one beside the file, so `plugin/context.rb` picks `spec/samagotchi/plugin/*context*` before

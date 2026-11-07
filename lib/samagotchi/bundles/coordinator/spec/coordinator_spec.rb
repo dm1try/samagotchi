@@ -126,11 +126,11 @@ RSpec.describe "The coordinator plugin", :bundle do
       expect(sent).to eq([[session_id, "Read the skill_coordinator memory and follow it for this goal:\n\nadd two small features"]])
     end
 
-    it "shows the request to send yourself where the session takes no messages (a REPL)" do
-      @send_error = "session aaaabbbb is open in a chi REPL, which takes no messages from others"
+    it "shows the request to send yourself where the session takes no messages (a one-turn run)" do
+      @send_error = "session aaaabbbb is in use by a one-turn chi --non-interactive run, which takes no messages from others"
 
       expect(run("/coordinate", "do x")).to eq(
-        "/coordinate: session aaaabbbb is open in a chi REPL, which takes no messages from others. Send this yourself:\n\n" \
+        "/coordinate: session aaaabbbb is in use by a one-turn chi --non-interactive run, which takes no messages from others. Send this yourself:\n\n" \
         "Read the skill_coordinator memory and follow it for this goal:\n\ndo x"
       )
     end
@@ -298,10 +298,10 @@ RSpec.describe "The coordinator plugin", :bundle do
                                                "bring your handoff up to date and give me the end-of-day report."]])
     end
 
-    it "shows the request to send yourself where the session takes no messages (a REPL)" do
-      @send_error = "session aaaabbbb is open in a chi REPL, which takes no messages from others"
+    it "shows the request to send yourself where the session takes no messages (a one-turn run)" do
+      @send_error = "session aaaabbbb is in use by a one-turn chi --non-interactive run, which takes no messages from others"
 
-      expect(run("/coordinate", "end")).to start_with("/coordinate: session aaaabbbb is open in a chi REPL")
+      expect(run("/coordinate", "end")).to start_with("/coordinate: session aaaabbbb is in use by a one-turn chi --non-interactive run")
         .and end_with("Send this yourself:\n\nRead the skill_coordinator memory and follow its End of day now: " \
                       "bring your handoff up to date and give me the end-of-day report.")
     end

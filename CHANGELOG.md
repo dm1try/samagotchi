@@ -10,7 +10,17 @@ and commands may change between minor versions. How releases are made:
 
 ### Changed
 
+- `chi scratch` in a terminal runs attached, on a session worker of its own that saves nothing (no memory writes, no delegates, approvals for this session only). Ctrl-D, `/detach`, `/exit` or a second Ctrl-C ends it: the worker stops and the session is deleted ("Scratch session deleted."); a worker whose terminal is gone (a killed terminal) deletes it too. `chi send`, chi web and `chi --attach`/`--resume` refuse a scratch session, in one wording. `chi scratch -p TEXT --non-interactive` still runs its turn in this process.
+- `chi -v` runs attached: the terminal shows the session's debug records (raw LLM responses, tool calls and results) above the prompt, and a worker this chi starts logs at debug. A worker that was already running keeps the level it started with, and one line says so. With `--non-interactive`, `-v` still mirrors the records to stderr.
+- A session a `chi -p … --non-interactive` run has open is refused as "in use by a one-turn chi --non-interactive run" (`chi send`, `chi note`, `chi sessions delete`/`archive`, chi web, the delegate tools), not as "open in a chi REPL".
+- `chi bundle upgrade --agent` merges the conflicts in the attached terminal.
 - chi now writes a warning to the debug log when part of its work falls back after an error (a system prompt section left out, a Bridge route or a chi web answer given empty, a session command's lookup) instead of dropping it silently: once per process for each kind, later ones at `debug`.
+
+### Removed
+
+- The in-process REPL: an interactive `chi` (plain, `-p`, `--resume`, `--attach`) always runs attached to its session's worker; `--non-interactive` runs its one turn in this process as before.
+- The `--shared` and `--no-shared` flags (they are an unknown option now) and the `session.shared` setting (config.yml warns "removed: chi always runs attached"; `SAMAGOTCHI_SESSION_SHARED` is ignored).
+- The `:repl` interface: a hook event's `interface` and a plugin's `ctx.frontend` are never `:repl` (a bundle that checks for it never matches).
 
 ### Fixed
 
