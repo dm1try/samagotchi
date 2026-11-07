@@ -1119,13 +1119,27 @@ button.ws-row:hover:not(:disabled){filter:none}@media(hover:hover){button.ws-row
 #infoBar .meta .bar-group{display:flex;gap:8px;align-items:center;min-width:0;flex:none}
 #infoBar .meta .bar-sep{flex:none;width:1px;height:14px;background:var(--border-strong)}
 /* Above the phone's one scrolling line the meta is one line too: the telemetry takes the room left and its folder gives
-   way first (it already loses its start); a chip is capped, cut with "…", their full text in the title. */
+   way first (it already loses its start), then the model chip, down to 10ch; a chip is capped, cut with "…", their full
+   text in the title. The two groups are column grids: the giving chip's track (minmax(…, max-content)) leaves the
+   other chips as the group's min-content, so a group never shrinks under its fixed chips (they once slid under
+   continue →), and the info keeps that min-width: past it the bar's buttons wrap to a line of their own. */
 @media(min-width:601px){
+  #infoBar .info{min-width:auto}
   #infoBar .meta{flex-wrap:nowrap}
-  #infoBar .meta .bar-group.telemetry{flex:1 1 0}
-  #infoBar .meta .telemetry>*{flex:none}
-  #infoBar .meta .telemetry>.dir{flex:0 1 auto;max-width:48ch}
+  #infoBar .meta .bar-group:is(.setup,.telemetry){display:grid;grid-auto-flow:column;grid-auto-columns:max-content}
+  #infoBar .meta .bar-group.setup{flex:0 1 auto;min-width:auto;grid-template-columns:max-content max-content minmax(10ch,max-content)}
+  #infoBar .meta .bar-group.telemetry{flex:1 1 0;min-width:auto;grid-template-columns:minmax(0,max-content)}
+  #infoBar .meta .telemetry>.dir{max-width:48ch}
   #infoBar .meta .model{max-width:40ch;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+}
+/* Below 900px the buttons already have a line of their own, and the meta's one line can be wider than the bar: its
+   groups wrap instead of being cut, the telemetry first. The setup's basis is 0 (its min-content, the model at 10ch)
+   and its grow wins up to its max-content, so a group moves down only when the min-contents don't fit; the room left
+   is the telemetry's (its folder). The info never asks for more than the bar. */
+@media(min-width:601px) and (max-width:899px){
+  #infoBar .info{max-width:100%}
+  #infoBar .meta{flex-wrap:wrap;row-gap:4px}
+  #infoBar .meta .bar-group.setup{flex:1000 1 0;max-width:max-content}
 }
 /* The plain chips (spans, links) and the status take the button chips' 1px border, transparent and outside their tint, so every chip is one height: a chip wrapping onto a row of plain ones doesn't grow it. */
 #infoBar .meta :is(span,a).model,#infoBar .meta .status{border:1px solid transparent;background-clip:padding-box}
@@ -1143,6 +1157,9 @@ button.ws-row:hover:not(:disabled){filter:none}@media(hover:hover){button.ws-row
 #infoBar .meta .worker-restart{padding:1px 8px;border-radius:5px;font-size:11px;font-weight:600;background:var(--bg-raised);color:var(--warn-bright);border:1px solid var(--warn-border)}
 @media(hover:hover){#infoBar .meta .worker-restart:hover:not(:disabled){background:var(--warn-border);color:var(--on-warn)}}
 #infoBar .meta .worker-restart:disabled{opacity:.7;cursor:default}
+/* The bar's action buttons are one flex item: when they don't fit beside the info line they wrap to a line of their
+   own together, never one button alone. */
+#infoBar .info-actions{display:flex;flex:none;gap:10px;align-items:center}
 #infoBar button{padding:4px 12px;border-radius:8px;font-size:12px;font-weight:600}
 #infoBar #infoStopBtn{background:var(--bg-raised);color:var(--warn-text);border:1px solid var(--border-strong)}
 @media(hover:hover){#infoBar #infoStopBtn:hover{background:var(--warn-bg);border-color:var(--warn-border)}}
@@ -1368,7 +1385,7 @@ body.has-session.composer-folded #infoBar{border-top-color:transparent}
   #infoBar .meta .bar-group{display:contents}
   #infoBar .meta .bar-sep{display:none}
   #infoBar .meta :is(.tools-chip,.notes-chip,.mem-chip,.ws-chip,.chain-link,.parent,.children-chip,.participants-chip,.dir,.ctx,.speed,.session-time,.worker-badge){display:none}
-  #infoBar>button:not(#infoMoreBtn){display:none}
+  #infoBar .info-actions{display:none}
   #infoBar .meta .status+.model{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis}
   /* ⚙ alone, the start page's dot when the session set its own (its values in the tooltip and accessible name). */
   #infoBar .meta .settings-chip .sc-own{display:none}
@@ -1835,10 +1852,12 @@ a{color:var(--accent)}
       <div id="infoBar" class="composer-card-foot">
         <div class="info" id="infoText"></div>
         <div id="contextChips" aria-label="Attached context" hidden></div>
-        <button class="ghost" id="infoContinueBtn" title="Continue: start the next link of this session's chain from its recap (this one is archived)" style="display:none">continue →</button>
-        <button class="ghost" id="infoArchiveBtn" title="Archive: hide from the lists, keep for good" style="display:none">archive</button>
-        <button class="ghost" id="infoStopBtn" title="Stop session (terminate worker)" style="display:none">stop session</button>
-        <button class="ghost" id="infoDeleteBtn" title="Delete session (for good)" style="display:none">delete</button>
+        <div class="info-actions" id="infoActions">
+          <button class="ghost" id="infoContinueBtn" title="Continue: start the next link of this session's chain from its recap (this one is archived)" style="display:none">continue →</button>
+          <button class="ghost" id="infoArchiveBtn" title="Archive: hide from the lists, keep for good" style="display:none">archive</button>
+          <button class="ghost" id="infoStopBtn" title="Stop session (terminate worker)" style="display:none">stop session</button>
+          <button class="ghost" id="infoDeleteBtn" title="Delete session (for good)" style="display:none">delete</button>
+        </div>
         <button type="button" class="ghost" id="infoMoreBtn" data-anchor-stand-in aria-label="More" title="More" aria-haspopup="dialog" aria-expanded="false"><span aria-hidden="true">⋯</span></button>
       </div>
     </div>
