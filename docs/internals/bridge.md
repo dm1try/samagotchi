@@ -152,7 +152,8 @@ The Bridge exposes:
   `?from_seq=` (a plain `event_seq` is still accepted); a `: ping` heartbeat keeps idle proxies alive;
   too-old reconnects, and cursors from another worker's epoch, receive a `reset` marker carrying
   `session_state_snapshot`. `?snapshot=1` joins with a snapshot frame instead of a replay;
-  `?client_id=` names whose stream it is (`Bridge#open_streams_except`, used by `POST /exit`).
+  `?client_id=` names whose stream it is (`Bridge#open_streams_except`, used by `POST /exit`; `Bridge#open_streams_of`,
+  by a scratch worker, which counts only `tui:` streams: a web tab's, through chi web, names none).
   Each event goes out as clients get it (`Bridge::ClientEvent.project`, in `SSEWriter#write_event`, live
   and replayed alike); `generation_chunk`, `tool_call_started` and `turn_completed` are projected to the
   contracts below. The ring retains raw events for replay and `?raw=1`.

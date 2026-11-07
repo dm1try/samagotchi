@@ -942,6 +942,22 @@ RSpec.describe Samagotchi::Bridge do
         expect(@bridge.open_streams_except("tui:2")).to eq(1)
       end
 
+      it "counts the streams of the clients whose id has a prefix (a web tab's, naming none, is no terminal's)" do
+        start_bridge
+        @clients << SSEClient.new(@bridge_port, @session.id, client_id: "tui:1", secret: @bridge_secret).start
+        @clients << SSEClient.new(@bridge_port, @session.id, client_id: "tui:2", secret: @bridge_secret).start
+        @clients << SSEClient.new(@bridge_port, @session.id, client_id: "web:1", secret: @bridge_secret).start
+        web = SSEClient.new(@bridge_port, @session.id, secret: @bridge_secret).start
+        @clients << web
+        wait_for("four open streams") { @bridge.open_streams == 4 }
+        expect(@bridge.open_streams_of(Samagotchi::ClientId::TUI_PREFIX)).to eq(2)
+        expect(@bridge.open_streams_of(Samagotchi::ClientId::WEB_PREFIX)).to eq(1)
+
+        @clients.first.stop
+        wait_for("the terminal's stream to be uncounted") { @bridge.open_streams == 3 }
+        expect(@bridge.open_streams_of(Samagotchi::ClientId::TUI_PREFIX)).to eq(1)
+      end
+
       it "notes client activity on a request and when a stream closes" do
         start_bridge
         before = @bridge.last_client_activity_at

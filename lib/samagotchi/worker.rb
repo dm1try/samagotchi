@@ -1608,14 +1608,17 @@ module Samagotchi
     SCRATCH_GONE_AFTER = 2 * BridgeClient::EventStream::REDISCOVER_DELAYS.sum
 
     # Whether this is a `chi scratch` session's worker whose terminal is
-    # gone: no stream open for SCRATCH_GONE_AFTER, after one was (a killed
-    # TUI's closes as its writer reads the hang-up), or none came within
-    # SCRATCH_JOIN_GRACE. Its terminal deletes it on every way out it sees;
-    # this is for the ones it doesn't (kill -9, a closed terminal window).
+    # gone: no terminal stream (a tui: client id's) open for
+    # SCRATCH_GONE_AFTER, after a stream was (a killed TUI's closes as its
+    # writer reads the hang-up), or none came within SCRATCH_JOIN_GRACE.
+    # Any other stream (a web tab's, which chi web refuses for a scratch
+    # session anyway) never keeps it. Its terminal deletes it on every way
+    # out it sees; this is for the ones it doesn't (kill -9, a closed
+    # terminal window).
     def scratch_unattended?
       return false unless @session&.scratch && @bridge
 
-      if @bridge.open_streams.positive?
+      if @bridge.open_streams_of(ClientId::TUI_PREFIX).positive?
         @unattended_since = nil
         return false
       end

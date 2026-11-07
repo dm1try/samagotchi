@@ -1101,8 +1101,8 @@ RSpec.describe Samagotchi::Worker do
 
       after { Array(@streams).each(&:close) }
 
-      def follow
-        stream = Samagotchi::WorkerLink.client(session.id, session_dir: session_dir).follow(client_id: "tui:1") { |_| nil }
+      def follow(client_id: "tui:1")
+        stream = Samagotchi::WorkerLink.client(session.id, session_dir: session_dir).follow(client_id: client_id) { |_| nil }
         (@streams ||= []) << stream
         stream
       end
@@ -1129,6 +1129,20 @@ RSpec.describe Samagotchi::Worker do
         expect(join!(@thread, "the scratch worker").value).to eq(:scratch_left)
         expect(@worker.scratch?).to be(true)
         expect(engine).not_to have_received(:write_recap_now)
+      end
+
+      it "leaves once its terminal's stream has closed though a web tab's stream (a chi web proxy's, no client id) is still open" do
+        stub_const("Samagotchi::Worker::SCRATCH_GONE_AFTER", 0.2)
+        start_worker(poll_interval: 0.05, idle_exit_minutes: 0)
+        terminal = follow
+        follow(client_id: nil)
+        wait_for("both streams") { open_streams == 2 }
+        loop_rounds
+        expect(@thread).to be_alive
+
+        terminal.close
+
+        expect(join!(@thread, "the scratch worker").value).to eq(:scratch_left)
       end
 
       it "cancels a turn running when its terminal has left for SCRATCH_GONE_AFTER (a question it waits on too), then leaves" do
@@ -1172,9 +1186,9 @@ RSpec.describe Samagotchi::Worker do
 
         # The gap: no stream open for a few watch ticks, then the terminal's
         # reconnect is back.
-        allow(bridge).to receive(:open_streams).and_return(0)
+        allow(bridge).to receive(:open_streams_of).and_return(0)
         wait_for("the scratch watch to tick in the gap") { ticks >= 3 }
-        allow(bridge).to receive(:open_streams).and_call_original
+        allow(bridge).to receive(:open_streams_of).and_call_original
         loop_rounds
 
         expect(calls).to be_empty
