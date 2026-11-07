@@ -432,7 +432,8 @@ module Samagotchi
       # Array), plus a model turn's tool_calls and thinking (the host's
       # reasoning, sent back as #wire_messages says), a result's tool_call_id, the image
       # refs of a user message or a tool result, a prompt's turn_id and its
-      # Verify/Revise anchors (Engine, never sent) and a wake turn's report's turn_start (Steer, never sent), and a plugin tool result's tool_params and tool_labels
+      # Verify/Revise anchors (Engine, never sent), an opening's opening_id
+      # (TurnFlow#abort_continue!'s reason line, never sent) and a wake turn's report's turn_start (Steer, never sent), and a plugin tool result's tool_params and tool_labels
       # (the live row's params line and label, never sent back), an
       # edit/write result's tool_diffs (never sent), an empty-answer
       # note's marker (TurnNote.empty, never sent), and an answer's display
@@ -448,6 +449,7 @@ module Samagotchi
           message[:tool_call_id] = entry[:tool_call_id] if entry[:tool_call_id]
           message[:images] = entry[:images] if entry[:images].is_a?(Array) && !entry[:images].empty?
           message[:turn_id] = entry[:turn_id] if entry[:turn_id]
+          message[:opening_id] = entry[:opening_id] if entry[:opening_id].is_a?(String)
           message[:turn_start] = true if entry[:turn_start] == true
           message[:verify] = entry[:verify] if entry[:verify].is_a?(Hash)
           message[:revises] = entry[:revises] if entry[:revises].is_a?(Hash)

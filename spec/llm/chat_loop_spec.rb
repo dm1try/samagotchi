@@ -428,6 +428,14 @@ RSpec.describe Samagotchi::LLM::ChatLoop do
       ])
     end
 
+    it "sends an opening's opening_id and a recovery line's kind nowhere: role and content only" do
+      run([{ role: "user", content: "no, too slow", opening_id: "o-1" },
+           { role: "user", kind: Samagotchi::Steer::RECOVERY_KIND, content: "finish it", preserve_literals: true }])
+
+      expect(adapter.requests.last[:messages]).to eq([{ role: "user", content: [{ type: "text", text: "no, too slow" }] },
+                                                      { role: "user", content: [{ type: "text", text: "finish it" }] }])
+    end
+
     it "passes multi-part user content through" do
       parts = [{ type: "text", text: "What is this?" }, { type: "image_url", image_url: { url: "data:image/png;base64,AA" } }]
 
@@ -2050,6 +2058,15 @@ RSpec.describe Samagotchi::LLM::ChatLoop do
 
       expect(backend.plain([report])).to eq([report])
       expect(backend.send(:wire_messages, [report]).first.keys).to eq(%i[role content])
+    end
+  end
+
+  describe "an opening no turn ran (/continue no's reason) and KernelLoop's recovery line" do
+    it "keeps the reason's opening_id and the line's kind in the conversation it hands back" do
+      reason = { role: "user", content: "no, too slow", opening_id: "o-1" }
+      recovery = { role: "user", kind: Samagotchi::Steer::RECOVERY_KIND, content: "finish it" }
+
+      expect(backend.plain([reason, recovery])).to eq([reason, recovery])
     end
   end
 

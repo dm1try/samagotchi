@@ -57,7 +57,9 @@ the "asking again" and steer-cut rows, ✂ rows and questions (with how they wer
   the page's `TURN_PROMPT` and the recap count) after the last one whose id is in the log at or before the entry's, else from
   the first one whose id is later in the log, else 0. The log only orders; the messages count. So a turn with no opening (a
   reminder, a Continue, a failed or rolled-back one, a prompt stopped before the model) moves nothing, a wake's note does, and
-  an opening with no id (`/continue no`'s reason, Qwen's recovery line) counts as on the page. Nothing orders such an opening
+  an opening with no turn id (`/continue no`'s reason, which carries an `opening_id` of its own instead, `TurnFlow#abort_continue!`)
+  counts as on the page. KernelLoop's Qwen recovery line (kind `recovery`, `Steer.recovery?`) is a row of its turn, no opening:
+  the page draws nothing for it (`MessageDisplay`), as live. Nothing orders such an opening
   against an entry, so the store reads the session's messages (its `messages:` lambda) when an entry is shown between turns, and
   at the turn's end for what a running turn showed that isn't its own: `past_idless` is how many of them, right after the opening
   it counts from, the entry already came after, and they don't count for it. A `!rollback` usually only shortens that run, and the count

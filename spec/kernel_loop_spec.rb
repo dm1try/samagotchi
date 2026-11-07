@@ -2719,6 +2719,10 @@ Need to inspect the filesystem first.
 
       expect(result.output).to eq("done")
       expect(prompts[1]).to include("Continue the previous assistant message by finishing the open <tool_call> XML block")
+      # Its line is a row of the turn, no opening (Steer.recovery?): a page and a card count no turn by it.
+      recovery = result.conversation.find { |m| m[:content] == described_class::QWEN_INCOMPLETE_TOOL_CALL_RECOVERY_PROMPT }
+      expect(recovery).to include(role: "user", kind: Samagotchi::Steer::RECOVERY_KIND)
+      expect(result.conversation.count { |m| Samagotchi::Steer.turn_opening?(m) }).to eq(1)
       expect(prompts[2]).to include("stdout:")
       expect(prompts[2]).to include("4")
     end

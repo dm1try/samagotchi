@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require "securerandom"
 require_relative "output_formatter"
 require_relative "turn_note"
 require_relative "context_note"
@@ -175,9 +176,13 @@ module Samagotchi
     # Answer the offer with no (Stop): the interrupted turn stays, as
     # after a Ctrl-C or a new prompt (!rollback still erases it), and the
     # model reads that it wasn't continued: a note, or the user's reason
-    # (with a summary of that turn).
+    # (with a summary of that turn). The reason's line opens a turn on the
+    # page (Steer.turn_opening?) that no turn runs: it carries an
+    # +opening_id+ of its own, never a turn_id (a claim link, a fold, Revise
+    # and Apply read a turn_id as a turn), so a card shown after it finds its
+    # place by that id (Bridge::CardPlaces#opening_of).
     def abort_continue!(reason: nil)
-      message = reason ? { role: "user", content: reason_message(reason) } : TurnNote.not_continued
+      message = reason ? { role: "user", content: reason_message(reason), opening_id: SecureRandom.uuid } : TurnNote.not_continued
       @engine.append_messages([message])
       @offer = nil
     end

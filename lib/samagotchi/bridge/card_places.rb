@@ -9,8 +9,8 @@ module Samagotchi
     # the recap share (Steer.turn_opening?); the store's turn log only orders
     # the ids. So a turn with no opening (a reminder, a Continue, a failed or
     # rolled-back one, a prompt stopped before the model) counts nothing, and
-    # an opening with no id (/continue no's reason, Qwen's recovery line) counts
-    # as it does on the page. Nothing orders such an opening against an entry, so
+    # an opening with no turn id (/continue no's reason) counts as it does on
+    # the page. Nothing orders such an opening against an entry, so
     # an entry says how many it came after (+past_idless+, #idless_after). Pure:
     # no Engine, no file.
     class CardPlaces
