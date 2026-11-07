@@ -56,12 +56,27 @@ RSpec.describe RuboCop::Cop::Samagotchi::SilentRescue do
     RUBY
   end
 
+  it "flags an array of silent literals: an empty tuple" do
+    expect_offense(<<~RUBY)
+      a rescue [nil, nil]
+        ^^^^^^ #{message}
+      begin
+        a
+      rescue StandardError
+      ^^^^^^ #{message}
+        [nil, false, [], 0]
+      end
+    RUBY
+  end
+
   it "allows a body that does something, a non-empty literal and a narrower class" do
     expect_no_offenses(<<~RUBY)
       a rescue log_it
       a rescue "unknown"
       a rescue 1
       a rescue [:x]
+      a rescue [nil, :x]
+      a rescue [nil, load]
       begin
         a
       rescue StandardError => e

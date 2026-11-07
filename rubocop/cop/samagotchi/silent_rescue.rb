@@ -28,7 +28,8 @@ module RuboCop
       #
       # Flagged: a bare `rescue`, a modifier `rescue`, or one naming
       # StandardError, whose body is empty or exactly one of nil, false,
-      # true, [], {}, "" or 0. A body that does anything else (logs, calls,
+      # true, [], {}, "" or 0, or an array of only those ([nil, nil]: a
+      # tuple with nothing in it). A body that does anything else (logs, calls,
       # assigns, re-raises) isn't. A silence that is right (a client gone,
       # a probe that fails routinely, Log's own internals) carries
       # "# degrade-ok: why" on the rescue's line, the line above or the
@@ -61,7 +62,8 @@ module RuboCop
 
           case body.type
           when :nil, :false, :true then true # rubocop:disable Lint/BooleanSymbol -- AST node types
-          when :array, :hash then body.children.empty?
+          when :array then body.children.all? { |element| silent_body?(element) }
+          when :hash then body.children.empty?
           when :str then body.value.empty?
           when :int then body.value.zero?
           else false
