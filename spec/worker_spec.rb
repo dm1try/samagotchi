@@ -1130,6 +1130,29 @@ RSpec.describe Samagotchi::Worker do
         expect(engine).not_to have_received(:write_recap_now)
       end
 
+      it "cancels a turn running when its terminal leaves (a question it waits on too), then leaves" do
+        calls = []
+        start_worker(poll_interval: 0.05, idle_exit_minutes: 0)
+        stream = follow
+        wait_for("the terminal's stream") { open_streams == 1 }
+        # A turn waiting on a question from here on (the join saw none).
+        running = true
+        allow(engine).to receive(:turn_running?) { running }
+        allow(engine).to receive(:pending_question) { running ? Object.new : nil }
+        allow(engine).to receive(:cancel_question) { |reason, **| calls << [:question, reason] }
+        allow(engine).to receive(:cancel_current_turn!) do |reason|
+          calls << [:turn, reason]
+          running = false
+        end
+        loop_rounds
+        expect(calls).to be_empty
+
+        stream.close
+
+        expect(join!(@thread, "the scratch worker").value).to eq(:scratch_left)
+        expect(calls).to eq([[:question, "session_stopped"], %i[turn session_stopped]])
+      end
+
       it "leaves when no terminal joined within the grace" do
         stub_const("Samagotchi::Worker::SCRATCH_JOIN_GRACE", 0.1)
         start_worker(poll_interval: 0.05, idle_exit_minutes: 0)

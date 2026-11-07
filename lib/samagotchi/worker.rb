@@ -14,6 +14,7 @@ require_relative "turn_note"
 require_relative "steer"
 require_relative "turn_origin"
 require_relative "worker_idle_exit"
+require_relative "degrade"
 require_relative "hold_stop"
 require_relative "children_status"
 require_relative "worker_wakes"
@@ -423,6 +424,31 @@ module Samagotchi
       @context_poller = ContextPoller.new(session_id: @session_id, state_dir: @state_dir,
                                           project_root: @session.project_root, cwd: @session.working_directory,
                                           on_change: -> { @waker.wake }).start
+      @scratch_watch = start_scratch_watch if @session.scratch
+    end
+
+    # A scratch session's turn never runs on with no terminal: a turn
+    # waiting on a question or an approval would keep the worker up for
+    # nobody. Each tick while a turn runs and its terminal is gone
+    # (#scratch_unattended?), the question is dropped and the turn
+    # cancelled as a stop cancels it; the idle pass then leaves
+    # (:scratch_left) and the session is deleted.
+    def start_scratch_watch
+      Thread.new do
+        loop do
+          sleep(@poll_interval)
+          Degrade.call(:worker, "scratch_watch_failed") { cancel_unattended_turn }
+        end
+      end.tap { |thread| thread.report_on_exception = false }
+    end
+
+    def cancel_unattended_turn
+      return unless @engine.turn_running? && scratch_unattended?
+
+      Log.info(:worker, "scratch_turn_cancelled", sid: @session_id)
+      @engine.cancel_question(SessionManager::STOP_CANCEL_REASON) if @engine.pending_question
+      @engine.cancel_current_turn!(SessionManager::STOP_CANCEL_REASON.to_sym)
+      @waker.wake
     end
 
     # One pass of the loop: the first work found runs (queued commands, a
@@ -475,7 +501,7 @@ module Samagotchi
       return if run_wake_turn
       return if run_task_wake
       return if run_due_reminders
-      return left(:scratch_left) if scratch_unattended? && leave_scratch
+      return left(:scratch_left) if scratch_unattended? && !@engine.turn_running? && leave_scratch
       return left(:idle_exit) if @idle_exit.due? && leave_idle
 
       leaving = @exit_requested && leave_on_request
@@ -561,6 +587,7 @@ module Samagotchi
     TEARDOWN_LEAVE_WAIT = 10
 
     def teardown
+      @scratch_watch&.kill
       @config_restart_unsubscribe&.call
       @context_poller&.stop
       drop_queued_commands
@@ -1594,7 +1621,8 @@ module Samagotchi
     def leave_scratch
       stop_bridge_after do
         @engine.synchronize_events do
-          next false unless scratch_unattended?
+          # A turn still running is the scratch watch's to cancel first.
+          next false unless scratch_unattended? && !@engine.turn_running?
 
           @bridge&.close_intake
           @engine.stop_idle(join: false)
