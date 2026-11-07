@@ -115,6 +115,8 @@ require_relative "engine/models"
 require_relative "engine/model_settings"
 require_relative "engine/events"
 require_relative "engine/cards"
+require_relative "engine/objectives"
+require_relative "engine/messages"
 
 module Samagotchi
   # Engine owns the core agent logic: system prompt construction, tool
@@ -138,6 +140,8 @@ module Samagotchi
     include ModelSettingsPart
     include EventsPart
     include CardsPart
+    include ObjectivesPart
+    include MessagesPart
 
     # Raised by #answer_question when the question it targets is no longer
     # open (never asked, superseded, already answered or cancelled). A subclass
@@ -636,121 +640,6 @@ module Samagotchi
                              command_queued command_ran context_added card hook_notice guardrail_warning
                              plugin_init_started plugin_init_finished working_set_updated participants_changed
                              verdict_recorded objectives_updated].freeze
-
-    # The session's objectives as the page draws them (Objectives.view), when
-    # that differs from the last announced: after an edit (its file written,
-    # pending), once a list note is in, at a turn's end (its moves) and after
-    # a rollback. A session with no list announces nothing. It only informs:
-    # a failure is logged, never the turn's.
-    def announce_objectives(session = @session)
-      return unless session
-
-      synchronize_events do
-        view = Objectives.view(session.id, session.messages, state_dir: session_state_dir, running: live_conversation&.dup)
-        next if view.nil? || view == @objectives_announced
-
-        @objectives_announced = view
-        announce({ type: :objectives_updated, session_id: session.id, **view })
-      end
-    rescue StandardError => e
-      Log.warn(:turn, "objectives_announce_failed", error: e.class.name, msg: e.message)
-    end
-
-    # Check this (ObjectivesCheck)'s one side request. Its usage is in the
-    # session's side line. Raises as ctx.ask_model's request does.
-    # @param request [Array<Hash>] chat messages
-    # @param model [String, nil] a configured model; nil: the session's
-    # @return [String] the answer
-    def ask_objective_check(request, model:)
-      ask_side_model(request, timeout: ObjectivesCheck::TIMEOUT_SECONDS, max_tokens: ObjectivesCheck::MAX_TOKENS,
-                              cancel_controller: nil, model: model, source: ObjectivesCheck::SOURCE)
-    end
-
-    # A change the model proposes (the objectives tool), kept until the turn
-    # is over, as #context_choice's cards are: a card shown then is a quiet one, between turns, with its Apply kept
-    # over a restart (CardStore), not a running turn's that says it waits on the
-    # user. The same change twice in a turn is one card.
-    # @return [Boolean] false past Objectives::PROPOSALS_PER_TURN
-    def propose_objective(proposal)
-      @objective_proposals_mutex.synchronize do
-        next true if @objective_proposals.any? { |p| p.line == proposal.line }
-        next false if @objective_proposals.size >= Objectives::PROPOSALS_PER_TURN
-
-        @objective_proposals << proposal
-        true
-      end
-    end
-
-    def show_objective_proposals
-      drain_objective_proposals.each do |proposal|
-        id = "objectives-#{SecureRandom.hex(4)}"
-        show_card(source: Objectives::SOURCE, id: id, title: proposal.title, body: proposal.body,
-                  actions: [{ label: "Apply", command: proposal.action_line(id) },
-                            { label: "Dismiss", command: "/objectives --card #{id} dismiss" }])
-      end
-    rescue StandardError => e
-      Log.warn(:turn, "objectives_proposal_failed", error: e.class.name, msg: e.message)
-    end
-    private :show_objective_proposals
-
-    # A turn that did not complete (canceled, failed) takes its proposals
-    # off the buffer without showing them: their Apply card would sit after a
-    # turn whose `objectives propose` call is not in the history (a rollback
-    # after Ctrl-C drops it), and leaving them in the buffer would show them
-    # at the end of the next turn.
-    def discard_objective_proposals(turn)
-      dropped = drain_objective_proposals
-      Log.info(:turn, "objectives_proposals_dropped", count: dropped.size, outcome: turn.outcome.to_s) unless dropped.empty?
-    end
-    private :discard_objective_proposals
-
-    def drain_objective_proposals
-      @objective_proposals_mutex.synchronize { @objective_proposals.slice!(0..) }
-    end
-    private :drain_objective_proposals
-
-    # The strategy the working set is built under now, as LLMContextView
-    # takes it: the running turn's, else the next turn's (#emit_working_set).
-    # /working-set's ops act under it.
-    # @return [Symbol, Array<Symbol>]
-    def working_set_strategy
-      working_set_llm_context&.strategy || LLMContextView::NONE
-    end
-
-    # Replace the current session's conversation, between turns (a
-    # /working-set op's copy: #clone_messages, then its edits).
-    # @param messages [Array<Hash>]
-    # @return [Array<Hash>] the session's messages
-    def replace_messages(messages)
-      raise ArgumentError, "no current session" unless @session
-
-      replace_session_messages(@session, messages)
-    end
-
-    # Add a context note to the session's conversation, between turns: a
-    # tail system message the next turn sees, announced as :context_added.
-    # The array is replaced, not mutated, and the append and the event
-    # happen under the event lock, so a joining UI sees both or neither.
-    # The caller saves the session.
-    # @param note [Hash] SessionInbox.read_note's shape
-    # @return [Hash, nil] the message, or nil when the conversation already
-    #   holds this note (a note file re-read after a crash)
-    def add_context_note(session, note)
-      synchronize_events do
-        next nil if Array(session.messages).any? { |m| m[:note_id] == note[:note_id] }
-
-        message = ContextNote.message(**note)
-        entry = note[:objectives] && Objectives.entry(note[:objectives], before: Objectives.build(session.messages))
-        replace_session_messages(session, Array(session.messages) + [message])
-        announce({ type: :context_added, session_id: session.id, note_id: note[:note_id], source: note[:source],
-                   label: ContextNote.label_of(message), from_session: note[:from_session],
-                   from_cwd: note[:from_cwd], text: note[:text], context_source: note[:context_source],
-                   created_at: note[:created_at], objectives: entry }.compact)
-        announce_objectives(session) if entry
-        objectives_audit.note(session, note)
-        message
-      end
-    end
 
     # ── Plugin init tasks (chi.init) ──────────────────────────────────────
 
@@ -2184,75 +2073,6 @@ module Samagotchi
     # @return [Hash]
     def turn_summary(result) = @turn_endings.turn_summary(result)
 
-    # ── Session messages API ───────────────────────────────────────────────
-    #
-    # Out-of-turn edits to the current session's conversation (`!cmd` output,
-    # rollback after Ctrl-C). Each replaces the array rather than mutating it,
-    # so the recap's lock-free snapshot never sees a half-applied edit.
-
-    # The answer a UI shows last (AnswerTail), a copy of that one message
-    # only: walked back from the end, never a #messages_checkpoint of the
-    # whole conversation (the Bridge's GET tail). +turn_id+: that turn's
-    # answer (AnswerTail.find); unknown or nil: the newest.
-    # @return [Hash, nil]
-    def last_answer_message(turn_id: nil)
-      AnswerTail.find(@session&.messages, turn_id: turn_id)&.dup
-    end
-
-    # @return [Array<Hash>] a copy of the current session's messages to hand
-    #   back to #rollback_to later
-    def messages_checkpoint
-      clone_messages(@session&.messages)
-    end
-
-    # The running turn's conversation as its loop builds it (both loops
-    # register it on the kernel's llm_context_turn): the same array the loop
-    # appends to, not a copy, so read it on the turn's thread (the pending
-    # input drain, at an iteration boundary: TurnCheckpoint), or from another
-    # only as a dup, read only (/objectives). nil when no
-    # turn runs (llm_context_turn is never cleared, and still holds the
-    # last turn's then).
-    # @return [Array<Hash>, nil]
-    def live_conversation
-      return nil unless turn_running? && @kernel.respond_to?(:llm_context_turn)
-
-      @kernel.llm_context_turn&.conversation
-    end
-
-    # Append messages to the current session's conversation.
-    # @param messages [Array<Hash>]
-    # @return [Array<Hash>] the session's messages
-    def append_messages(messages)
-      raise ArgumentError, "no current session" unless @session
-
-      replace_session_messages(@session, Array(@session.messages) + clone_messages(messages))
-    end
-
-    # Restore the current session's conversation to a #messages_checkpoint.
-    # Between turns the working set is announced when that changed it (a
-    # !rollback or a canceled continue dropping the turn's tool calls, the
-    # set emptied too), so the page doesn't keep the dropped items until
-    # the next request.
-    # @param checkpoint [Array<Hash>]
-    # @return [Array<Hash>] the session's messages
-    def rollback_to(checkpoint)
-      raise ArgumentError, "no current session" unless @session
-
-      messages = replace_session_messages(@session, clone_messages(checkpoint))
-      unless turn_running?
-        announce_working_set
-        announce_objectives
-      end
-      messages
-    end
-
-    # Clone a messages array (shallow dup of each element).
-    # @param messages [Array<Hash>]
-    # @return [Array<Hash>]
-    def clone_messages(messages)
-      Array(messages).map(&:dup)
-    end
-
     private
 
     def running_command_key = :"samagotchi_command_#{object_id}"
@@ -2624,36 +2444,6 @@ module Samagotchi
       context_judge_pass(session, ContextCandidates.owner_texts(session.messages) + [turn.prompt], phase: "turn")
     end
     private :start_context_judge
-
-    # System 1 on the objectives, in audit (ObjectivesAudit): the owner's turns
-    # only, and for a message a person's: a reminder's or a delegate's prompt isn't one.
-    def audit_objectives_incoming(turn)
-      return unless turn.prompt.is_a?(String) && turn.origin.human? && OwnerPrompt.turn?(session: turn.session, author: turn.origin.author)
-
-      objectives_audit.incoming(turn.session, turn.prompt)
-    end
-    private :audit_objectives_incoming
-
-    def audit_objectives_outgoing(turn, result)
-      return unless OwnerPrompt.turn?(session: turn.session, author: turn.origin.author)
-
-      objectives_audit.outgoing(turn.session, result.text)
-    end
-    private :audit_objectives_outgoing
-
-    # With saving off nothing would come of an ask, so none is made.
-    def objectives_audit
-      @objectives_audit ||= ObjectivesAudit.new(
-        side: @side_judgments, state_dir: -> { session_state_dir },
-        client_for: lambda do |judgment, session|
-          next nil unless system_one_runs.on?
-
-          system_one_recording(SystemOne::Client.from_config(host_registry: @host_registry, mode: ObjectivesAudit::MODE, tag: :system_one),
-                               judgment, session)
-        end
-      )
-    end
-    private :objectives_audit
 
     # A late proposal no owner prompt mentions (Plugin::Host
     # #candidate_proposed: github-pr's init task runs beside the first
