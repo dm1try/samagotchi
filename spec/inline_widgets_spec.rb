@@ -48,9 +48,9 @@ RSpec.describe Samagotchi::InlineWidgets do
       expect(got).to eq(manifest)
     end
 
-    it "draws 46 of round 2's 47" do
+    it "draws all 47 of round 2's" do
       drawn = manifest.count { |name, outcome| name.start_with?("r2-") && outcome != "error" }
-      expect(drawn).to eq(46)
+      expect(drawn).to eq(47)
     end
   end
 
@@ -87,18 +87,43 @@ RSpec.describe Samagotchi::InlineWidgets do
                                                    "options" => %w[yes no on ~x], "recommended" => "no")
     end
 
-    it "refuses options given as mappings" do
+    it "takes an option or a free-text value YAML read as a one-pair mapping as the text written, and marks it lenient" do
       widget = parse(picks(<<~YAML.gsub(/^/, "  ")))
         - id: "1"
           text: Push title includes the command
           options:
-            - fix now: drop the command
+            - fix now: drop the  command é
+            - skip
+          recommended: "fix now: drop the  command é"
+          why: {a: b}
+      YAML
+
+      expect(widget).to be_ok
+      expect(widget).to be_lenient
+      expect(widget.data["rows"].first).to include("options" => ["fix now: drop the  command é", "skip"], "why" => "a: b")
+    end
+
+    it "folds a pair written over lines as key: value" do
+      widget = parse(picks(<<~YAML.gsub(/^/, "  ")))
+        - id: "1"
+          text: Push title
+          options:
+            - fix now: drop
+                the command
             - skip
       YAML
 
-      expect(widget).not_to be_ok
-      expect(widget.error).to eq("row 1's option must be text, not a mapping")
-      expect(widget.type).to eq("picks")
+      expect(widget.data["rows"].first["options"]).to eq(["fix now: drop the command", "skip"])
+    end
+
+    it "refuses options as mappings of several pairs or of a list, and a fold where an id or an actor goes" do
+      several = "    - id: \"1\"\n      text: t\n      options:\n        - {a: b, c: d}\n        - skip\n"
+      nested = "    - id: \"1\"\n      text: t\n      options:\n        - a: [b]\n        - skip\n"
+      id = "    - id: {a: b}\n      text: t\n      options: [x, y]\n"
+
+      expect(parse(picks(several)).error).to eq("row 1's option must be text, not a mapping")
+      expect(parse(picks(nested)).error).to eq("row 1's option must be text, not a mapping")
+      expect(parse(picks(id)).error).to eq("row 1's id must be text, not a mapping")
     end
 
     it "refuses a recommended that isn't an option, a duplicate id, and the option count" do
@@ -266,7 +291,7 @@ RSpec.describe Samagotchi::InlineWidgets do
     end
 
     it "falls back on a stack overflow it didn't see coming" do
-      allow(Samagotchi::InlineWidgets::Schema).to receive(:picks).and_raise(SystemStackError)
+      allow(Samagotchi::InlineWidgets::Schema).to receive(:new).and_raise(SystemStackError)
 
       expect(parse(picks(row)).error).to eq("the block nests too deep")
     end

@@ -13,7 +13,9 @@ module Samagotchi
   # date a Date), and nothing beyond plain data gets through: an anchor, an
   # alias or a tag is refused. A block that isn't YAML gets one more try after
   # the lenient pass (Lenient), which quotes the free-text values models leave
-  # bare. See docs/internals/inline-widgets.md.
+  # bare; one that is, but has an option or a free-text value read as a
+  # one-pair mapping (`- fix now: drop it`), gets that text back (Tree#folds).
+  # See docs/internals/inline-widgets.md.
   module InlineWidgets
     # error is nil when the block draws; type is set whenever the root names a
     # known one, so a refused block still says what it tried to be.
@@ -38,8 +40,8 @@ module Samagotchi
     ACTORS = (2..5)
     OPTIONS = (2..4)
     MAX_STRING = 300
-    # The deepest legal block nests 5 (root, steps, a step, cases, a case);
-    # past this it is refused before the stack can overflow.
+    # The deepest legal block nests 6 (root, steps, a step, cases, a case, a
+    # folded option); past this it is refused before the stack can overflow.
     MAX_DEPTH = 8
     # How much of a bad type value an error repeats.
     MAX_ECHO = 40
@@ -60,8 +62,9 @@ module Samagotchi
       raise Refused, "the block needs type: picks or walk" if type.nil?
       raise Refused, "unknown type #{echo(type)} (picks or walk)" unless TYPES.include?(type)
 
-      data = type == "picks" ? Schema.picks(tree.root) : Schema.walk(tree.root)
-      Result.new(type: type, data: data, lenient: lenient, error: nil)
+      schema = Schema.new(tree.folds)
+      data = type == "picks" ? schema.picks(tree.root) : schema.walk(tree.root)
+      Result.new(type: type, data: data, lenient: lenient || schema.folded?, error: nil)
     rescue Refused => e
       Result.new(type: TYPES.include?(type) ? type : nil, data: nil, lenient: lenient, error: e.message)
     rescue SystemStackError
@@ -79,11 +82,11 @@ module Samagotchi
     # [Tree, lenient?]: strict first; only a block that isn't YAML gets the
     # lenient pass. A refused feature (an alias) is final either way.
     def load(source)
-      [Tree.new(Psych.parse_stream(source)), false]
+      [Tree.new(source, Psych.parse_stream(source)), false]
     rescue Psych::Exception
       begin
         quoted = Lenient.quote(source)
-        [Tree.new(Psych.parse_stream(quoted)), true]
+        [Tree.new(quoted, Psych.parse_stream(quoted)), true]
       rescue Psych::SyntaxError => e
         raise Refused, "not YAML: #{e.problem} at line #{e.line}"
       rescue Psych::Exception => e
@@ -92,13 +95,17 @@ module Samagotchi
     end
 
     # Psych's node tree to Hashes, Arrays and Strings (nil for a plain empty
-    # or null value), the scalars' own text, at most MAX_DEPTH deep.
+    # or null value), the scalars' own text. folds: each one-pair mapping of
+    # scalars (`fix now: drop it`), by identity, to the text it was written as,
+    # which Schema takes where it wants text.
     class Tree
       NULLS = ["", "~", "null", "Null", "NULL"].freeze
 
-      attr_reader :root
+      attr_reader :root, :folds
 
-      def initialize(stream)
+      def initialize(source, stream)
+        @lines = source.lines
+        @folds = {}.compare_by_identity
         documents = stream.children
         raise Refused, "the block is empty" if documents.empty?
         raise Refused, "one YAML document only" if documents.size > 1
@@ -121,18 +128,30 @@ module Samagotchi
       end
 
       def mapping(node, depth)
-        node.children.each_slice(2).to_h do |key, value|
+        hash = node.children.each_slice(2).to_h do |key, value|
           key = node(key, depth + 1)
           raise Refused, "a key must be a plain word" unless key.is_a?(String)
 
           [key, node(value, depth + 1)]
         end
+        fold(hash, *node.children) if node.children.size == 2
+        hash
       end
 
       def scalar(node)
         return nil if node.plain && NULLS.include?(node.value)
 
         node.value
+      end
+
+      # The pair's text as written when it sits on one line, else key: value.
+      def fold(hash, key, value)
+        return unless key.is_a?(Psych::Nodes::Scalar) && key.plain && value.is_a?(Psych::Nodes::Scalar)
+        return unless hash.values.first.is_a?(String)
+
+        line = @lines[key.start_line] if key.start_line == value.end_line
+        written = line&.[](key.start_column...value.end_column)
+        @folds[hash] = written&.start_with?(key.value) ? written : "#{key.value}: #{value.value}"
       end
     end
 
@@ -166,8 +185,16 @@ module Samagotchi
 
     # The two schemas, as the page reads them: string keys, ids as strings,
     # every other key dropped, and an optional value absent rather than nil.
-    module Schema
-      module_function
+    # Where free text is wanted (an option, title, text, why, does, sees,
+    # behind, when, recommended), a folded one-pair mapping (Tree) is taken as
+    # its text, and folded? says one was.
+    class Schema
+      def initialize(folds)
+        @folds = folds
+        @folded = false
+      end
+
+      def folded? = @folded
 
       def picks(tree)
         rows = list(tree["rows"], "rows")
@@ -175,7 +202,7 @@ module Samagotchi
 
         rows = rows.each_with_index.map { |row, index| row(row, index) }
         unique(rows, "row")
-        compact("title" => text(tree["title"], "the title"), "rows" => rows)
+        compact("title" => text(tree["title"], "the title", free: true), "rows" => rows)
       end
 
       def row(row, index)
@@ -187,18 +214,18 @@ module Samagotchi
         options = list(row["options"], "#{where}'s options")
         raise Refused, "#{where} has #{options.size} options (#{OPTIONS.min}-#{OPTIONS.max})" unless OPTIONS.cover?(options.size)
 
-        options = options.map { |option| text(option, "#{where}'s option", required: true) }
-        recommended = text(row["recommended"], "#{where}'s recommended")
+        options = options.map { |option| text(option, "#{where}'s option", required: true, free: true) }
+        recommended = text(row["recommended"], "#{where}'s recommended", free: true)
         if recommended && !options.include?(recommended)
           raise Refused, "#{where}: recommended #{recommended.inspect} isn't one of its options"
         end
 
-        compact("id" => id, "text" => text(row["text"], "#{where}'s text", required: true), "options" => options,
-                "recommended" => recommended, "why" => text(row["why"], "#{where}'s why"))
+        compact("id" => id, "text" => text(row["text"], "#{where}'s text", required: true, free: true), "options" => options,
+                "recommended" => recommended, "why" => text(row["why"], "#{where}'s why", free: true))
       end
 
       def walk(tree)
-        title = text(tree["title"], "the title", required: true)
+        title = text(tree["title"], "the title", required: true, free: true)
         actors = list(tree["actors"], "actors").map { |actor| text(actor, "an actor", required: true) }
         raise Refused, "walk has #{actors.size} actors (#{ACTORS.min}-#{ACTORS.max})" unless ACTORS.cover?(actors.size)
 
@@ -223,12 +250,12 @@ module Samagotchi
         actor = text(step["actor"], "#{where}'s actor", required: true)
         raise Refused, "#{where}: actor #{actor.inspect} isn't one of the actors" unless actors.include?(actor)
 
-        does = text(step["does"], "#{where}'s does")
-        sees = text(step["sees"], "#{where}'s sees")
+        does = text(step["does"], "#{where}'s does", free: true)
+        sees = text(step["sees"], "#{where}'s sees", free: true)
         raise Refused, "#{where} needs does or sees" unless does || sees
 
         compact("id" => id, "actor" => actor, "does" => does, "sees" => sees,
-                "behind" => text(step["behind"], "#{where}'s behind"), "next" => text(step["next"], "#{where}'s next"),
+                "behind" => text(step["behind"], "#{where}'s behind", free: true), "next" => text(step["next"], "#{where}'s next"),
                 "cases" => cases(step, where))
       end
 
@@ -240,7 +267,7 @@ module Samagotchi
         given.flatten(1).map do |item|
           raise Refused, "#{where}: each case needs when and goto" unless item.is_a?(Hash)
 
-          { "when" => text(item["when"], "#{where}'s when", required: true),
+          { "when" => text(item["when"], "#{where}'s when", required: true, free: true),
             "goto" => text(item["goto"], "#{where}'s goto", required: true) }
         end
       end
@@ -265,7 +292,11 @@ module Samagotchi
         value
       end
 
-      def text(value, where, required: false)
+      def text(value, where, required: false, free: false)
+        if free && value.is_a?(Hash) && @folds.key?(value)
+          value = @folds[value]
+          @folded = true
+        end
         raise Refused, "#{where} must be text, not a #{value.is_a?(Hash) ? "mapping" : "list"}" if value.is_a?(Hash) || value.is_a?(Array)
 
         value = value&.strip

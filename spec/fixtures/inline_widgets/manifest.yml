@@ -1,4 +1,5 @@
-# The expected outcome of each fixture: the eval's (0013-inline-widgets) check() at the time of the copy.
+# The expected outcome of each fixture: the eval's (0013-inline-widgets) check() at the time of the copy, but for
+# r2-deepseek-picks-review.2 (an error there): its one-pair mapping options fold back to text, so it is lenient here.
 r2-deepseek-free-plan.1.yml: ok
 r2-deepseek-free-plan.2.yml: ok
 r2-deepseek-free-plan.3.yml: ok
@@ -8,7 +9,7 @@ r2-deepseek-picks-plan.1.yml: ok
 r2-deepseek-picks-plan.2.yml: lenient
 r2-deepseek-picks-plan.3.yml: ok
 r2-deepseek-picks-review.1.yml: ok
-r2-deepseek-picks-review.2.yml: error
+r2-deepseek-picks-review.2.yml: lenient
 r2-deepseek-picks-review.3.yml: lenient
 r2-deepseek-walk-approval.1.yml: ok
 r2-deepseek-walk-approval.2.yml: ok
