@@ -1,14 +1,5 @@
 # frozen_string_literal: true
 
-require_relative "../chi_home"
-require_relative "../child_env"
-require_relative "../utf8_default"
-require_relative "../worker_signals"
-require_relative "../log_path"
-require_relative "../paths"
-require_relative "../project_env"
-require_relative "../installed_gem"
-
 module Samagotchi
   class SessionManager
     # CROSS-VERSION CONTRACT: this boot string, run_session_loop(id,

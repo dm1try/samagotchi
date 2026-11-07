@@ -1,8 +1,5 @@
 # frozen_string_literal: true
 
-require_relative "../analytics_file"
-require_relative "../turn_note"
-
 module Samagotchi
   class SessionManager
     # What a session's directory holds before anything happened in it. Any

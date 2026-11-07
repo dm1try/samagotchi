@@ -1,12 +1,5 @@
 # frozen_string_literal: true
 
-require_relative "../client_id"
-require_relative "../process_group"
-require_relative "../bridge_client"
-require_relative "../worker_idle_exit"
-require_relative "../chi_invocation"
-require_relative "../tools/task_runtime"
-
 module Samagotchi
   class SessionManager
     # A restart that can't happen now. reason: :not_running (no live worker:

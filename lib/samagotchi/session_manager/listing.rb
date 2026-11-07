@@ -1,10 +1,5 @@
 # frozen_string_literal: true
 
-require_relative "../session_metrics"
-require_relative "../llm_context_strategy"
-require_relative "../host_registry"
-require_relative "../recap_store"
-
 module Samagotchi
   class SessionManager
     SUMMARY_DESC_LIMIT = 60

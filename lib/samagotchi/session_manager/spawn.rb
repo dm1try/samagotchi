@@ -1,9 +1,5 @@
 # frozen_string_literal: true
 
-require_relative "../session_setup"
-require_relative "../image_store"
-require_relative "../session_chain"
-
 module Samagotchi
   class SessionManager
     # How long after a spawn a resume trusts that worker to take the

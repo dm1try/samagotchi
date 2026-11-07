@@ -5,22 +5,58 @@ require "json"
 require "time"
 require "securerandom"
 require "rbconfig"
+# Everything the parts (session_manager/*.rb, required at the end) need loads
+# here, before the class opens: a file declaring `autoload :SessionManager`
+# (child_move, reply_wait, ...) loaded after that point, while
+# SessionManager autoloads, drops the half-built class, and the parts then
+# build another without the facade's methods (spec/require_cycle_spec.rb).
+# So parts require nothing themselves.
+require_relative "chi_home"
+require_relative "system_one/runs"
+require_relative "child_env"
+require_relative "client_id"
+require_relative "analytics_file"
 require_relative "atomic_file"
 require_relative "config"
+require_relative "delivery"
+require_relative "steer"
+require_relative "participant_messages"
+
 require_relative "session"
 require_relative "session_inbox"
+require_relative "session_metrics"
+require_relative "llm_context_strategy"
+require_relative "session_setup"
+require_relative "host_registry"
+require_relative "utf8_default"
+require_relative "turn_note"
 require_relative "owner_lock"
+require_relative "process_group"
+require_relative "bridge_client"
 require_relative "worker_sidecar"
 require_relative "worker_link"
+require_relative "worker_idle_exit"
+require_relative "worker_signals"
+require_relative "chi_invocation"
 require_relative "log"
 require_relative "degrade"
+require_relative "log_path"
+require_relative "paths"
+require_relative "project_env"
 require_relative "model_profile"
+require_relative "installed_gem"
 require_relative "installed_versions"
+require_relative "recap_store"
 require_relative "reminder_carry"
 require_relative "archive_store"
-# Stays here, before the class: it declares autoload :SessionManager, which
-# once the class exists would drop the class this file is defining.
+require_relative "continue_offer"
+require_relative "image_store"
+require_relative "plugin_session_state"
+require_relative "context_sources"
+require_relative "context_candidates_log"
+require_relative "session_chain"
 require_relative "child_move"
+require_relative "tools/task_runtime"
 
 module Samagotchi
   # SessionManager coordinates background session processes.
