@@ -60,23 +60,23 @@ module Samagotchi
       move = []
       refuse = []
       SessionManager.children_of(prev_id, state_dir: state_dir).each do |row|
-        subtree = [row[:id], *SessionManager.descendant_ids(row[:id], state_dir)]
+        subtree = [row.id, *SessionManager.descendant_ids(row.id, state_dir)]
         next if (subtree & open_ids).empty?
 
-        if row[:archived]
+        if row.archived
           # An open delegate below an archived one: the archive's cascade
           # would take it, the move doesn't (only unarchived ones move).
           refuse.concat(open.select { |c| subtree.include?(c.id) }.map do |c|
-            c.with(why: "under archived #{row[:id][0, 8]}; unarchive that one or archive this one")
+            c.with(why: "under archived #{row.short_id}; unarchive that one or archive this one")
           end)
           next
         end
 
-        why = unmovable(row[:id], state_dir: state_dir)
+        why = unmovable(row.id, state_dir: state_dir)
         if why
-          refuse << SessionContinue::OpenChild.new(id: row[:id], short_id: row[:id][0, 8], why: why)
+          refuse << SessionContinue::OpenChild.new(id: row.id, short_id: row.short_id, why: why)
         else
-          move << row[:id]
+          move << row.id
         end
       end
       Plan.new(move: move, refuse: refuse)

@@ -102,8 +102,8 @@ RSpec.describe Samagotchi::SessionManager do
       expect(rows[older.id]).to include(parent_id: parent.id, parent_short_id: parent.id[0, 8])
 
       children = described_class.children_of(parent.id, state_dir: tmpdir)
-      expect(children.map { |s| s[:id] }).to eq([newer.id, older.id])
-      expect(children.count { |s| s[:busy] }).to eq(1)
+      expect(children.map(&:id)).to eq([newer.id, older.id])
+      expect(children.count(&:busy)).to eq(1)
       expect(described_class.children_of(nil, state_dir: tmpdir)).to eq([])
       expect(described_class.children_of(older.id, state_dir: tmpdir)).to eq([])
     end

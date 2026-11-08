@@ -32,11 +32,6 @@ module Samagotchi
       # A path in a task: absolute, ~/ or ../, not glued to a word (a URL's
       # /api is not one) and stopping at quotes, backticks or punctuation.
       PATH_TOKEN = %r{(?<![\w./~-])(?:~/|\.\./|/(?!/))[^\s`'"<>()\[\]{},;&|]*}
-      # A child spawned this many seconds ago counts as running even before
-      # its worker holds the owner lock: two delegate calls in one model
-      # message come milliseconds apart, and the first child's worker is
-      # still starting when the second call counts.
-      STARTING_GRACE_SECONDS = 15
       # The memory every child starts with, scoped so a project memory of
       # the same name cannot shadow it.
       CHILD_MEMORIES = [Session::DELEGATE_MEMORY].freeze
@@ -135,7 +130,7 @@ module Samagotchi
         running = running_children(parent.id, state_dir: state_dir)
         max = max_children
         if running.size >= max
-          ids = running.map { |s| s[:short_id] }.join(", ")
+          ids = running.map(&:short_id).join(", ")
           return "Error: #{running.size} delegate#{"s" if running.size != 1} of this session #{running.size == 1 ? "is" : "are"} running " \
                  "(the most is #{max}, #{MAX_CHILDREN_KEY}): #{ids}. #{full_hint(peers)}"
         end
@@ -388,23 +383,13 @@ module Samagotchi
 
       # The children of +parent_id+ that count against session.max_children
       # (a plugin's ctx.sessions.fork counts them too).
-      # @return [Array<Hash>] SessionManager.children_of rows
+      # A child spawned moments ago counts as running even before its worker
+      # holds the owner lock (SessionRow#running_or_starting?): two delegate
+      # calls in one model message come milliseconds apart, and the first
+      # child's worker is still starting when the second call counts.
+      # @return [Array<SessionRow>] SessionManager.children_of rows
       def self.running_children(parent_id, state_dir:)
-        SessionManager.children_of(parent_id, state_dir: state_dir).select { |s| running?(s) }
-      end
-
-      # busy (a worker runs its turn), or running with a worker on its way
-      # (ChildrenStatus asks it too).
-      # @param summary [Hash] a children_of row, or the same keys: busy,
-      #   saved_status (the file's: the displayed status shows a worker on
-      #   its way as idle), live, updated_at
-      def self.running?(summary)
-        return true if summary[:busy]
-        return false unless summary[:saved_status] == Session::STATUS_RUNNING && !summary[:live]
-
-        Time.now - Time.iso8601(summary[:updated_at].to_s) < STARTING_GRACE_SECONDS
-      rescue ArgumentError
-        false
+        SessionManager.children_of(parent_id, state_dir: state_dir).select(&:running_or_starting?)
       end
 
       def self.max_children

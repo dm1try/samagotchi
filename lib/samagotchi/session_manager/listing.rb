@@ -61,13 +61,14 @@ module Samagotchi
       def session_summaries(**filters) = session_rows(**filters).map(&:to_summary_h)
 
       # The sessions delegated by +parent_id+ (the `delegate` tool), newest
-      # first, as .session_summaries rows. A running one (busy) counts against
+      # first, as .session_rows. A running one (busy) counts against
       # session.max_children. Archived ones too.
+      # @return [Array<SessionRow>]
       def children_of(parent_id, state_dir: nil)
         return [] if parent_id.to_s.empty?
 
-        session_summaries(state_dir: state_dir, include_tests: true, include_archived: true)
-          .select { |s| s[:parent_id] == parent_id.to_s }
+        session_rows(state_dir: state_dir, include_tests: true, include_archived: true)
+          .select { |s| s.parent_id == parent_id.to_s }
       end
 
       # Children, their children, …: a delegated session doesn't delegate
@@ -77,10 +78,10 @@ module Samagotchi
         queue = [id]
         until queue.empty?
           children_of(queue.shift, state_dir: state_dir).each do |child|
-            next if seen.include?(child[:id]) || except.include?(child[:id])
+            next if seen.include?(child.id) || except.include?(child.id)
 
-            seen << child[:id]
-            queue << child[:id]
+            seen << child.id
+            queue << child.id
           end
         end
         seen.drop(1)

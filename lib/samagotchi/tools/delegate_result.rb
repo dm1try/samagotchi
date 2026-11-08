@@ -45,7 +45,7 @@ module Samagotchi
       end
 
       def self.newest_running_child(parent_id, state_dir:)
-        SessionManager.children_of(parent_id, state_dir: state_dir).find { |s| s[:busy] }&.fetch(:id)
+        SessionManager.children_of(parent_id, state_dir: state_dir).find(&:busy)&.id
       end
       private_class_method :newest_running_child
     end

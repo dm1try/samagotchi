@@ -128,14 +128,14 @@ RSpec.describe "The btw bundle" do
     expect(btw(keep).output).to be_nil
 
     child = Samagotchi::SessionManager.children_of(session.id, state_dir: state_dir).first
-    loaded = Samagotchi::Session.load(child[:id], state_dir: state_dir)
+    loaded = Samagotchi::Session.load(child.id, state_dir: state_dir)
     expect(loaded.messages.map { |m| [m[:role], m[:content]] }).to eq(
       [["user", "rename foo"], ["model", "renamed to bar"], ["user", "what did we rename?"], ["model", "It was renamed to bar."]]
     )
     expect(loaded).to have_attributes(parent_id: session.id, status: "idle", first_preview: "btw: what did we rename?")
     expect(cards[-2]).to include(actions: [], body: "It was renamed to bar.")
-    expect(cards.last[:title]).to eq("kept as #{child[:id][0, 8]}")
-    expect(btw(keep).output).to eq("btw keep #{keep.split.last}: already kept as session #{child[:id]}")
+    expect(cards.last[:title]).to eq("kept as #{child.short_id}")
+    expect(btw(keep).output).to eq("btw keep #{keep.split.last}: already kept as session #{child.id}")
   end
 
   it "says expired for an answer it no longer holds, and keeps only the last 10" do

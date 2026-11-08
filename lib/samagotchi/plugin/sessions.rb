@@ -223,7 +223,7 @@ module Samagotchi
         return if running.size < max
 
         raise Error, "#{running.size} child sessions of this session are running (the most is #{max}, " \
-                     "#{Tools::Delegate::MAX_CHILDREN_KEY}): #{running.map { |s| s[:short_id] }.join(", ")}"
+                     "#{Tools::Delegate::MAX_CHILDREN_KEY}): #{running.map(&:short_id).join(", ")}"
       end
 
       def live_snapshot(sid, state_dir)

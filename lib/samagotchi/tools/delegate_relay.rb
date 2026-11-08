@@ -262,16 +262,16 @@ module Samagotchi
         #   oldest question first
         def waiting
           rows = SessionManager.children_of(@parent_id, state_dir: @state_dir).select do |row|
-            row[:id] != @except && KINDS.include?(row[:waiting].to_s) && !@done[row[:waiting_id].to_s]
+            row.id != @except && KINDS.include?(row.waiting.to_s) && !@done[row.waiting_id.to_s]
           end
           rows.filter_map do |row|
-            child = Session.load(row[:id], state_dir: @state_dir)
+            child = Session.load(row.id, state_dir: @state_dir)
             pending = child.pending_question
-            next nil unless pending && pending.id.to_s == row[:waiting_id].to_s
+            next nil unless pending && pending.id.to_s == row.waiting_id.to_s
             next nil unless DelegateRelay.relayable?(@relay, pending, strategy: Guardrails::ParentPolicy.for_session(child),
-                                                                      child_id: row[:id])
+                                                                      child_id: row.id)
 
-            [row[:id], pending]
+            [row.id, pending]
           rescue ArgumentError
             nil
           end.sort_by { |_, pending| pending.created_at.to_s }

@@ -495,7 +495,7 @@ RSpec.describe Samagotchi::SessionContinue, ".run" do
       link = continue(previous.id)
 
       expect(link.moved_children).to match_array(moved)
-      expect(manager.children_of(link.id, state_dir: tmpdir).map { |r| r[:id] }).to match_array(moved)
+      expect(manager.children_of(link.id, state_dir: tmpdir).map(&:id)).to match_array(moved)
       moved.each do |id|
         expect(Samagotchi::Session.parent_override(id, state_dir: tmpdir)).to eq(link.id)
         expect(archived?(id)).to be(false)
@@ -532,7 +532,7 @@ RSpec.describe Samagotchi::SessionContinue, ".run" do
 
       expect(JSON.parse(File.read(File.join(tmpdir, "#{child.id}.json")))["parent_id"]).to eq(previous.id)
       expect(Samagotchi::Session.list(state_dir: tmpdir).find { |s| s.id == child.id }.parent_id).to eq(link.id)
-      expect(manager.children_of(link.id, state_dir: tmpdir).map { |r| r[:id] }).to eq([child.id])
+      expect(manager.children_of(link.id, state_dir: tmpdir).map(&:id)).to eq([child.id])
       expect(manager.children_of(previous.id, state_dir: tmpdir)).to be_empty
     end
 
