@@ -612,6 +612,24 @@ RSpec.describe Samagotchi::SendCommand, "--wait" do
           expect(JSON.parse(out.string)).to include("status" => "canceled", "cancel_reason" => "worker_stopped")
         end
 
+        # A timed-out wait names the message's own id (turn_id, the hint's
+        # --turn): waiting again by it follows the record to that turn.
+        it "waits again by the message's own id (--turn) for that turn's reply" do
+          @on_deliver = -> { later { merge_into("h1") } }
+          expect(run("--wait", "--format", "json", "--timeout", "0.3", "-m", "go", idle.id)).to eq(4), err.string
+          expect(JSON.parse(out.string)).to include("status" => "running", "turn_id" => "m1")
+
+          out.truncate(0)
+          out.rewind
+          later do
+            Samagotchi::SessionInbox.write_output(dir, "host answer", enqueued_id: "h1")
+            update(idle, status: "idle", last_turn: Samagotchi::LastTurn.new(outcome: "completed", ended_at: Time.now.iso8601(3),
+                                                                             enqueued_id: "h1"))
+          end
+          expect(run("--wait", "--turn", "m1", "--format", "json", "--timeout", "5", idle.id)).to eq(0), err.string
+          expect(JSON.parse(out.string)).to include("status" => "answered", "text" => "host answer", "turn_id" => "m1")
+        end
+
         it "prints that turn's reply, by its record or (a 0.156 worker) inferred" do
           [true, false].each do |record|
             out.truncate(0)

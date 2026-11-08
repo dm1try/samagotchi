@@ -1087,15 +1087,28 @@ RSpec.describe Samagotchi::ReplyWait do
           expect(wait(baseline: base, turn: "y1").question).to have_attributes(id: "q-a1")
         end
 
-        it "keeps the guards: a tombstone (with no turn of its) still reads as removed" do
+        # A dequeue's tombstone that lost the claim to a drain (the merge
+        # done, its file gone, before the dequeue takes the tombstone back).
+        it "never reads a merged input as removed, even with a stray tombstone" do
           plain_input("y1")
           base = baseline
+          merge("y1", into: "a1")
           FileUtils.mkdir_p(File.join(dir, "input", "removed"))
           File.write(File.join(dir, "input", "removed", "y1"), "")
-          merge("y1", into: "a1")
-          write_turn_reply("a1 answer", "a1")
+          later do
+            write_turn_reply("a1 answer", "a1")
+            end_turn("a1")
+          end
 
-          expect(wait(baseline: base, turn: "y1", timeout: 2).to_h).to include(status: :no_reply, outcome: "removed")
+          expect(wait(baseline: base, turn: "y1").text).to eq("a1 answer")
+        end
+
+        it "names it a known turn (chi send --wait --turn), as its merge record says" do
+          plain_input("y1")
+          merge("y1", into: "a1")
+          loaded = Samagotchi::Session.load(session.id, state_dir: tmpdir)
+          expect(described_class.known_turn?(loaded, session_dir: dir, turn: "y1")).to be(true)
+          expect(described_class.known_turn?(loaded, session_dir: dir, turn: "y2")).to be(false)
         end
 
         it "never follows a queued input's record (it runs as its own turn)" do

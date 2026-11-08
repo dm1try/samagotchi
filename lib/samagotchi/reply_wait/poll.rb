@@ -110,8 +110,11 @@ module Samagotchi
         Result.new(status: :no_reply, outcome: "removed", session: session)
       end
 
+      # Its turn ran, or a drain merged it (its merge record): a dequeue's
+      # tombstone that lost the claim to the drain is a stray too.
       def turn_ran?(session)
-        session.last_turn&.enqueued_id == @turn || !SessionInbox.reply_for(@session_dir, @turn).nil?
+        session.last_turn&.enqueued_id == @turn || !SessionInbox.reply_for(@session_dir, @turn).nil? ||
+          !SessionInbox.merged_into(@session_dir, @turn).nil?
       end
 
       def note_own_running(session)
