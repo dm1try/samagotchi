@@ -60,11 +60,12 @@ RSpec.describe Samagotchi::Engine do
   end
 
   def turn(session, prompt, author: nil)
-    Struct.new(:session, :prompt, :origin).new(session, prompt, Struct.new(:author).new(author))
+    Struct.new(:session, :prompt, :origin, :context).new(session, prompt, Struct.new(:author).new(author),
+                                                         Struct.new(:state_dir).new(state_dir))
   end
 
   def judge(engine, session, prompt, author: nil)
-    engine.send(:context_judge).start(turn(session, prompt, author: author))
+    engine.send(:context_judge).start(turn(session, prompt, author: author), recorder: engine.send(:system_one_recorder))
     thread = engine.send(:context_judge).asks_thread
     join!(thread, "the context asks") if thread
   end
@@ -293,7 +294,7 @@ RSpec.describe Samagotchi::Engine do
       engine = build_engine
       allow(engine).to receive(:show_card).and_call_original
       running = true
-      allow(engine).to receive(:turn_running?) { running }
+      allow(engine.instance_variable_get(:@turn_state)).to receive(:running?) { running }
       session = new_session
       propose(session, "pr-412")
       answers.push([0.7, 0.9])

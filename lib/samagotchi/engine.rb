@@ -1082,7 +1082,7 @@ module Samagotchi
       @toolkit_suggestion.settle(turn)
       # The candidate judge: its asks run beside the turn; on mode's
       # attaches reach the model at the next between-turn delivery.
-      @context_judge.start(turn)
+      @context_judge.start(turn, recorder: system_one_recorder)
       @objectives_stage.incoming(turn)
       apply_toolkit!(session, turn.on_event)
       refresh_participants!(session)
