@@ -80,6 +80,13 @@ accumulator's final fold of the turn (its parts in order, in-turn cards included
   (`TextDiff`'s cut); images are refs.
 - **Reading.** `TurnDrawings.read(dir)` skips an unknown `v`, a torn or broken line and one missing a field, and is
   cached by the file's path, size and mtime. `#last` is the newest line this worker wrote or started from.
+- **The show.** chi web's full read with `?parts=1&drawings=1` (the page's) stamps each display item of a kind a
+  drawing draws (the opening, steps, steers, merged lines, the empty answer) in a valid range with `drawn: <turn_id>`
+  and drops its `parts` (its ✂ marks stay as `marks: {tool_id => edit}`), and sends `turn_drawings: {turn_id =>
+  {events, end}}`: `TurnAccumulator.replay_events(drawing, cards: true)`, the one unfold, in Ruby. A context note in
+  a range and a `!cmd`'s record are not stamped. Without `drawings=1` (an older page) the read is what it was.
+  CardStore lists an in-turn entry's turn as `of_turn`, so the page leaves a drawn turn's own rows and cards to its
+  drawing (`cards_place.js`).
 - **Compat.** An older worker writes nothing (its turns fall back); an older chi web never opens the file. A fork
   or a continue copies no drawings: its turns fall back. A one-shot run (no Bridge) writes none.
 
