@@ -47,6 +47,10 @@ module Samagotchi
         def initialize(word:, state: nil, action: nil, note: nil) = super
       end
 
+      # An upgrade dry run's word for each UPGRADE action's word (the real
+      # run's). A conflict is a conflict in both.
+      UPGRADE_DRY_WORDS = { updated: :fast_forward, kept: :keep, up_to_date: :noop, merged: :would_merge }.freeze
+
       attr_reader :results, :warnings, :placeholder_warnings, :conflicts
 
       # Each file this run left behind (FileStanding::Behind).
@@ -78,7 +82,7 @@ module Samagotchi
         @conflicts = {}
         @behind = []
         @replaced = []
-        @outcomes = {}
+        @actions = {}
         @overlays = []
         @trash = Trash.new(name)
       end
@@ -425,7 +429,7 @@ module Samagotchi
             @trash.copy(target_path) if File.exist?(target_path) && !FileUtils.identical?(file_path, target_path)
             FileUtils.cp(file_path, target_path)
             @owned << file_key
-            @outcomes[file_key] = Merger::INSTALL
+            @actions[file_key] = FileActions::WRITE
             @results[file_key] = FileResult.new(word: :installed)
             update_target_index(@target_scope, target_path, file_key)
           end
@@ -448,42 +452,47 @@ module Samagotchi
         MemoryFiles.symlinks(@bundle_dir, @manifest).each { |name| @warnings << "#{name} is a symlink (not installed)" }
       end
 
-      # An upgrade's 3-way merge of one file (Merger::Upgrade against the
-      # base the last install recorded); a clean text merge replaces the file;
-      # a conflict leaves it and is recorded in @conflicts for the agent step.
+      # An upgrade's 3-way merge of one file: its FileState's UPGRADE action
+      # (Merger::Upgrade#decision, a :decide cell answered by the text merge
+      # against the base the last install recorded). A clean merge replaces
+      # the file; a conflict leaves it and is recorded in @conflicts for the
+      # agent step.
       def merge_memory(file_key, file_path, target_path)
-        outcome = @outcomes[file_key] = upgrade_view.outcome(file_key)
-        case outcome.status
-        when :install
+        decision = upgrade_view.decision(file_key)
+        action = @actions[file_key] = decision.action
+        result = FileResult.new(word: action.word, state: decision.state, action: action)
+        case action.do
+        when :write_incoming
+          save_marked_file(file_key, target_path) if action.save_first
           FileUtils.cp(file_path, target_path)
-          @results[file_key] = FileResult.new(word: :installed)
-        when :fast_forward
-          save_marked_file(file_key, target_path)
-          FileUtils.cp(file_path, target_path)
-          @results[file_key] = FileResult.new(word: :updated, note: "auto-merged (not edited)")
-        when :keep
-          @results[file_key] = FileResult.new(word: :kept, note: outcome == Merger::KEEP ? "bundle unchanged, local edits preserved" : "local edits already hold the bundle's changes")
-        when :noop
-          @results[file_key] = FileResult.new(word: :up_to_date)
-        when :merged
-          if Merger.write_merged(target_path, outcome, @trash)
-            @results[file_key] = FileResult.new(word: :merged, note: "the bundle's changes joined to local edits")
+          @results[file_key] = action.word == :updated ? result.with(note: "auto-merged (not edited)") : result
+        when :merge
+          if Merger.write_merged(target_path, decision.outcome, @trash)
+            @results[file_key] = result.with(note: "the bundle's changes joined to local edits")
           else
-            note_conflict(file_key, @outcomes[file_key] = Merger::CONFLICT.with(merge: TextMerge.failed(TextMerge::RACED)))
+            @actions[file_key] = FileActions::BEHIND
+            note_conflict(file_key, Merger::CONFLICT.with(merge: TextMerge.failed(TextMerge::RACED)), decision.state)
           end
-        when :conflict
-          note_conflict(file_key, outcome)
-        else raise ArgumentError, "unknown outcome status #{outcome.status.inspect} for #{file_key}" # the base would move with nothing written
+        when :keep
+          if action.behind?
+            note_conflict(file_key, decision.outcome, decision.state)
+          elsif action.word == :kept
+            @results[file_key] = result.with(note: decision.outcome == Merger::KEEP ? "bundle unchanged, local edits preserved" : "local edits already hold the bundle's changes")
+          else
+            @results[file_key] = result
+          end
+        else raise ArgumentError, "no upgrade step for #{action.do.inspect} (#{file_key})" # the base would move with nothing written
         end
         update_target_index(@target_scope, target_path, file_key)
       end
 
       # The file stays as it is, with the old base and the mark, in FileStanding's
       # words.
-      def note_conflict(file_key, outcome)
+      def note_conflict(file_key, outcome, state = nil)
         behind = upgrade_view.behind(file_key, outcome, @manifest&.version)
         @behind << behind
-        @results[file_key] = FileResult.new(word: :conflict, note: behind.state(dry_run: @dry_run))
+        @results[file_key] = FileResult.new(word: :conflict, state: state, action: state && FileActions::BEHIND,
+                                            note: behind.state(dry_run: @dry_run))
         @conflicts[file_key] = upgrade_view.paths(file_key)
         @warnings << "#{behind.line(dry_run: @dry_run)} (#{FileStanding::FORCE_TAKES})"
       end
@@ -507,8 +516,6 @@ module Samagotchi
       # file goes. A copy is kept, and it says so. (Merger::Upgrade#outcome stops
       # an older chi's mark otherwise.)
       def save_marked_file(file_key, target_path)
-        return unless @existing.files.dig(file_key, :conflict)
-
         @trash.copy(target_path)
         @warnings << "#{file_key} was marked as kept but matched its recorded base, so it took the update; your copy is in the trash"
       end
@@ -522,10 +529,11 @@ module Samagotchi
         end
 
         if @upgrade && @existing
-          outcome = upgrade_view.outcome(file_key)
-          return note_conflict(file_key, outcome) if outcome.conflict?
+          decision = upgrade_view.decision(file_key)
+          return note_conflict(file_key, decision.outcome, decision.state) if decision.action.behind?
 
-          @results[file_key] = FileResult.new(word: outcome.merged? ? :would_merge : outcome.status)
+          @results[file_key] = FileResult.new(word: UPGRADE_DRY_WORDS.fetch(decision.action.word), state: decision.state,
+                                              action: decision.action)
         elsif FileUtils.identical?(file_path, target_path)
           @results[file_key] = FileResult.new(word: :up_to_date)
         else
@@ -637,7 +645,7 @@ module Samagotchi
         @owned.each do |file_key|
           next unless File.exist?(File.join(@target_dir, file_key))
 
-          files[file_key] = next_base(file_key, @outcomes.fetch(file_key))
+          files[file_key] = next_base(file_key, @actions.fetch(file_key))
         end
         @existing.files.each_key do |old_key_str|
           next if @bundle_md.include?(old_key_str)
@@ -648,15 +656,15 @@ module Samagotchi
         files
       end
 
-      # The file an Outcome's base names. nil for a kept file with no base:
-      # the user's file must not become one, or the next upgrade fast-forwards
-      # over it.
-      def next_base(file_key, outcome)
-        case outcome.base
+      # The file an action's next_base names. nil for a kept file with no
+      # base: the user's file must not become one, or the next upgrade
+      # fast-forwards over it.
+      def next_base(file_key, action)
+        case action.next_base
         when :recorded then recorded_base(@provenance.base_path(file_key))
         when :on_disk then File.join(@target_dir, file_key)
         when :incoming then File.join(@bundle_dir, file_key)
-        else raise ArgumentError, "unknown base #{outcome.base.inspect} for #{file_key}" # nil would drop the base silently
+        else raise ArgumentError, "unknown base #{action.next_base.inspect} for #{file_key}" # nil would drop the base silently
         end
       end
 

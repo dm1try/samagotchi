@@ -17,8 +17,8 @@ module Samagotchi
       #   :write_incoming  the bundle's text replaces it (or is put there)
       #   :merge           the text merge's result replaces it (Merger::Outcome)
       #   :decide          not a function of kind and mark: the caller asks
-      #                    Merger::Upgrade#decide, and FileActions.decided turns
-      #                    its Outcome into the action
+      #                    Merger::Upgrade#decision, and FileActions.decided
+      #                    turns its Outcome into the action
       #   :keep            left as it is (already the bundle's, or kept)
       #   :skip            left as it is, the bundle doesn't take it
       #   :move_to_trash   moved to the trash (a removal)
@@ -35,6 +35,9 @@ module Samagotchi
       #   it was, mark and all), :clear_mark, :drop, :not_owned (never recorded)
       Action = Data.define(:do, :save_first, :next_base, :word, :record) do
         def initialize(do:, word:, next_base: :recorded, record: :own, save_first: false) = super
+
+        # The file stays behind the bundle, marked (a conflict to the report).
+        def behind? = record == :mark
       end
 
       WRITE = Action.new(do: :write_incoming, word: :installed, next_base: :on_disk)
@@ -157,7 +160,7 @@ module Samagotchi
         table[[state.kind, state.mark]] || table[[state.kind, :any]]
       end
 
-      # A :decide cell's answer: the action Merger::Upgrade#decide's Outcome
+      # A :decide cell's answer: the action Merger::Upgrade#decision's Outcome
       # stands for. Remerge never fast-forwards (the next upgrade does) and
       # settles a file with nothing left to miss.
       # @param outcome [Merger::Outcome]
