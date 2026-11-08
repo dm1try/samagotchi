@@ -4,6 +4,7 @@ require "securerandom"
 require "tmpdir"
 require "spec_helper"
 require "samagotchi/schedules"
+require "samagotchi/memory_usage"
 require "samagotchi/session_manager"
 
 # Durable schedules (docs/scheduling.md): the store, the lock, the recurrence
@@ -37,7 +38,8 @@ RSpec.describe Samagotchi::Schedules do
   end
 
   it "writes every entry under the lock, so nothing is lost" do
-    Dir.mktmpdir("schedules-lock") do |dir|
+    Dir.mktmpdir("schedules-lock") do |root|
+      dir = File.join(root, "sessions")
       id = session(dir).id
       schedules = store(dir)
       held = File.open(File.join(dir, described_class::LOCK), File::RDWR | File::CREAT, 0o600) # rubocop:disable Style/FileOpen -- held open on purpose, closed at the end
@@ -54,8 +56,29 @@ RSpec.describe Samagotchi::Schedules do
     end
   end
 
+  it "keeps schedules.json beside the sessions dir, not inside it" do
+    Dir.mktmpdir("schedules-location") do |root|
+      dir = File.join(root, "sessions")
+      schedules = described_class.new(state_dir: dir)
+      id = session(dir).id
+      schedules.add(target: id, prompt: "Audit", recurrence: every("1h"))
+
+      expect(schedules.store_dir).to eq(File.expand_path(root))
+      expect(schedules.path).to eq(File.join(File.expand_path(root), described_class::FILE))
+      expect(schedules.lock_path).to eq(File.join(File.expand_path(root), described_class::LOCK))
+      expect(File.exist?(schedules.path)).to be(true)
+      expect(File.exist?(File.join(dir, described_class::FILE))).to be(false)
+
+      # Nothing in the sessions dir looks like a session: MemoryUsage and the
+      # listing see the one session, not the schedule file.
+      sessions, unreadable = Samagotchi::MemoryUsage.load_sessions(state_dir: dir)
+      expect([sessions.map(&:id), unreadable]).to eq([[id], 0])
+    end
+  end
+
   it "adds a weekday schedule due at the next local occurrence" do
-    Dir.mktmpdir("schedules-weekday") do |dir|
+    Dir.mktmpdir("schedules-weekday") do |root|
+      dir = File.join(root, "sessions")
       id = session(dir).id
       entry = store(dir).add(target: id, prompt: "Audit", recurrence: described_class.recurrence(weekday: 1, time: "09:00"),
                              title: "Monday audit")
@@ -74,7 +97,8 @@ RSpec.describe Samagotchi::Schedules do
   end
 
   it "refuses a prompt that is blank or bigger than 16 KiB" do
-    Dir.mktmpdir("schedules-prompt") do |dir|
+    Dir.mktmpdir("schedules-prompt") do |root|
+      dir = File.join(root, "sessions")
       id = session(dir).id
       schedules = store(dir)
       expect { schedules.add(target: id, prompt: "   ", recurrence: every("1h")) }.to raise_error(described_class::Usage, /needs a prompt/)
@@ -85,7 +109,8 @@ RSpec.describe Samagotchi::Schedules do
   end
 
   it "refuses a scratch session at add, not at the tick" do
-    Dir.mktmpdir("schedules-scratch") do |dir|
+    Dir.mktmpdir("schedules-scratch") do |root|
+      dir = File.join(root, "sessions")
       scratch = Samagotchi::Session.new(id: SecureRandom.uuid, mode: "assist", model_name: "main:m", working_directory: Dir.tmpdir,
                                         created_at: Time.now.utc.iso8601, updated_at: Time.now.utc.iso8601,
                                         scratch: true, messages: [])
@@ -105,7 +130,8 @@ RSpec.describe Samagotchi::Schedules do
   end
 
   it "keeps a weekday schedule on its wall clock across a DST change" do
-    Dir.mktmpdir("schedules-dst") do |dir|
+    Dir.mktmpdir("schedules-dst") do |root|
+      dir = File.join(root, "sessions")
       previous_zone = ENV["TZ"]
       ENV["TZ"] = "America/New_York"
       begin
@@ -127,7 +153,8 @@ RSpec.describe Samagotchi::Schedules do
   end
 
   it "matches Sunday with weekday 7: today when the time is still ahead, next week when it is past" do
-    Dir.mktmpdir("schedules-sunday") do |dir|
+    Dir.mktmpdir("schedules-sunday") do |root|
+      dir = File.join(root, "sessions")
       id = session(dir).id
       # 2026-11-08 is a Sunday.
       schedules = store(dir, now: Time.local(2026, 11, 8, 12, 0))
@@ -142,7 +169,8 @@ RSpec.describe Samagotchi::Schedules do
   end
 
   it "keeps a Sunday schedule on its wall clock across a DST change" do
-    Dir.mktmpdir("schedules-sunday-dst") do |dir|
+    Dir.mktmpdir("schedules-sunday-dst") do |root|
+      dir = File.join(root, "sessions")
       previous_zone = ENV["TZ"]
       ENV["TZ"] = "America/New_York"
       begin
@@ -159,7 +187,8 @@ RSpec.describe Samagotchi::Schedules do
   end
 
   it "fires a chain entry once, archiving the previous link and moving the head" do
-    Dir.mktmpdir("schedules-chain") do |dir|
+    Dir.mktmpdir("schedules-chain") do |root|
+      dir = File.join(root, "sessions")
       allow(Process).to receive(:spawn).and_return(12_345)
       anchor = session(dir).id
       schedules = store(dir)
@@ -180,7 +209,8 @@ RSpec.describe Samagotchi::Schedules do
   end
 
   it "changes nothing on --dry-run" do
-    Dir.mktmpdir("schedules-dry") do |dir|
+    Dir.mktmpdir("schedules-dry") do |root|
+      dir = File.join(root, "sessions")
       anchor = session(dir).id
       schedules = store(dir)
       entry = schedules.add(target: anchor, prompt: "Audit", recurrence: every("1m"))
@@ -194,7 +224,8 @@ RSpec.describe Samagotchi::Schedules do
   end
 
   it "leaves next_due alone when the target is busy, and disables after max_skips" do
-    Dir.mktmpdir("schedules-skip") do |dir|
+    Dir.mktmpdir("schedules-skip") do |root|
+      dir = File.join(root, "sessions")
       anchor = session(dir).id
       schedules = store(dir)
       entry = schedules.add(target: anchor, prompt: "Audit", recurrence: every("1m"))
@@ -218,7 +249,8 @@ RSpec.describe Samagotchi::Schedules do
   end
 
   it "resets skips and failures when a firing succeeds" do
-    Dir.mktmpdir("schedules-reset") do |dir|
+    Dir.mktmpdir("schedules-reset") do |root|
+      dir = File.join(root, "sessions")
       allow(Process).to receive(:spawn).and_return(12_345)
       anchor = session(dir).id
       schedules = store(dir)
@@ -236,7 +268,8 @@ RSpec.describe Samagotchi::Schedules do
   end
 
   it "moves to the next occurrence with catch_up none instead of firing late" do
-    Dir.mktmpdir("schedules-catchup") do |dir|
+    Dir.mktmpdir("schedules-catchup") do |root|
+      dir = File.join(root, "sessions")
       anchor = session(dir).id
       schedules = store(dir)
       entry = schedules.add(target: anchor, prompt: "Audit", recurrence: every("1h"), catch_up: "none")
@@ -251,7 +284,8 @@ RSpec.describe Samagotchi::Schedules do
   end
 
   it "counts a skip, not a failure, when a delegate child is running" do
-    Dir.mktmpdir("schedules-child") do |dir|
+    Dir.mktmpdir("schedules-child") do |root|
+      dir = File.join(root, "sessions")
       anchor = session(dir).id
       child = session(dir, parent: anchor, delegate: true, status: Samagotchi::Session::STATUS_RUNNING)
       lock = Samagotchi::OwnerLock.acquire(Samagotchi::Session.session_dir(child.id, state_dir: dir), kind: "tui")
@@ -268,7 +302,8 @@ RSpec.describe Samagotchi::Schedules do
   end
 
   it "fails and disables after max_failures against a gone session" do
-    Dir.mktmpdir("schedules-failures") do |dir|
+    Dir.mktmpdir("schedules-failures") do |root|
+      dir = File.join(root, "sessions")
       anchor = session(dir).id
       schedules = store(dir)
       entry = schedules.add(target: anchor, prompt: "Audit", recurrence: every("1m"), max_failures: 3)
@@ -285,7 +320,8 @@ RSpec.describe Samagotchi::Schedules do
   end
 
   it "prunes the links behind the kept window with their delegates, never the anchor" do
-    Dir.mktmpdir("schedules-prune") do |dir|
+    Dir.mktmpdir("schedules-prune") do |root|
+      dir = File.join(root, "sessions")
       allow(Process).to receive(:spawn).and_return(12_345)
       anchor = session(dir).id
       schedules = store(dir)
@@ -312,7 +348,8 @@ RSpec.describe Samagotchi::Schedules do
   end
 
   it "never prunes the links that came before the schedule's anchor" do
-    Dir.mktmpdir("schedules-anchor-history") do |dir|
+    Dir.mktmpdir("schedules-anchor-history") do |root|
+      dir = File.join(root, "sessions")
       allow(Process).to receive(:spawn).and_return(12_345)
       root = session(dir).id
       middle = session(dir, continues: root).id
@@ -334,7 +371,8 @@ RSpec.describe Samagotchi::Schedules do
   end
 
   it "keeps everything with keep_links 0" do
-    Dir.mktmpdir("schedules-keep-all") do |dir|
+    Dir.mktmpdir("schedules-keep-all") do |root|
+      dir = File.join(root, "sessions")
       allow(Process).to receive(:spawn).and_return(12_345)
       anchor = session(dir).id
       schedules = store(dir)
@@ -348,7 +386,8 @@ RSpec.describe Samagotchi::Schedules do
   end
 
   it "stops pruning when an archived link still has a worker, and records no failure" do
-    Dir.mktmpdir("schedules-prune-stop") do |dir|
+    Dir.mktmpdir("schedules-prune-stop") do |root|
+      dir = File.join(root, "sessions")
       allow(Process).to receive(:spawn).and_return(12_345)
       anchor = session(dir).id
       schedules = store(dir)
@@ -375,7 +414,8 @@ RSpec.describe Samagotchi::Schedules do
   end
 
   it "fires a same-mode entry by queueing a turn" do
-    Dir.mktmpdir("schedules-same") do |dir|
+    Dir.mktmpdir("schedules-same") do |root|
+      dir = File.join(root, "sessions")
       anchor = session(dir).id
       schedules = store(dir)
       entry = schedules.add(target: anchor, prompt: "Check the queue", recurrence: every("1m"), mode: described_class::SAME)
@@ -393,7 +433,8 @@ RSpec.describe Samagotchi::Schedules do
   end
 
   it "refuses to wake an archived session in same mode" do
-    Dir.mktmpdir("schedules-archived") do |dir|
+    Dir.mktmpdir("schedules-archived") do |root|
+      dir = File.join(root, "sessions")
       anchor = session(dir).id
       Samagotchi::ArchiveStore.archive(anchor, state_dir: dir)
       schedules = store(dir)
@@ -407,7 +448,8 @@ RSpec.describe Samagotchi::Schedules do
   end
 
   it "does not fire an `every 30m` schedule at every tick" do
-    Dir.mktmpdir("schedules-every") do |dir|
+    Dir.mktmpdir("schedules-every") do |root|
+      dir = File.join(root, "sessions")
       allow(Process).to receive(:spawn).and_return(12_345)
       anchor = session(dir).id
       schedules = store(dir)
@@ -420,7 +462,8 @@ RSpec.describe Samagotchi::Schedules do
   end
 
   it "disables a `date` schedule once it has fired: there is no next occurrence" do
-    Dir.mktmpdir("schedules-date") do |dir|
+    Dir.mktmpdir("schedules-date") do |root|
+      dir = File.join(root, "sessions")
       allow(Process).to receive(:spawn).and_return(12_345)
       anchor = session(dir).id
       schedules = store(dir)
@@ -437,7 +480,8 @@ RSpec.describe Samagotchi::Schedules do
   end
 
   it "finds an entry by title for enable, disable and cancel" do
-    Dir.mktmpdir("schedules-title") do |dir|
+    Dir.mktmpdir("schedules-title") do |root|
+      dir = File.join(root, "sessions")
       anchor = session(dir).id
       schedules = store(dir)
       entry = schedules.add(target: anchor, prompt: "Audit", title: "Audit", recurrence: every("1h"))
@@ -453,7 +497,8 @@ RSpec.describe Samagotchi::Schedules do
   end
 
   it "skips a chain firing whose live worker has no /activity route" do
-    Dir.mktmpdir("schedules-old-worker") do |dir|
+    Dir.mktmpdir("schedules-old-worker") do |root|
+      dir = File.join(root, "sessions")
       anchor = session(dir).id
       session_dir = Samagotchi::Session.session_dir(anchor, state_dir: dir)
       lock = Samagotchi::OwnerLock.acquire(session_dir, kind: "worker")
@@ -470,7 +515,8 @@ RSpec.describe Samagotchi::Schedules do
   end
 
   it "answers a tick that finds the lock held with nothing due" do
-    Dir.mktmpdir("schedules-locked-tick") do |dir|
+    Dir.mktmpdir("schedules-locked-tick") do |root|
+      dir = File.join(root, "sessions")
       anchor = session(dir).id
       schedules = store(dir)
       entry = schedules.add(target: anchor, prompt: "Audit", recurrence: every("1m"))
@@ -485,7 +531,8 @@ RSpec.describe Samagotchi::Schedules do
   end
 
   it "records a failure when the firing itself blows up, and puts the clock back" do
-    Dir.mktmpdir("schedules-firing") do |dir|
+    Dir.mktmpdir("schedules-firing") do |root|
+      dir = File.join(root, "sessions")
       allow(Process).to receive(:spawn).and_raise(Errno::ENOSPC)
       allow(Samagotchi::Log).to receive(:warn)
       anchor = session(dir).id
@@ -509,7 +556,8 @@ RSpec.describe Samagotchi::Schedules do
       ["weekday", described_class.recurrence(weekday: 1, time: "09:00")],
       ["date", described_class.recurrence(date: "2026-01-01T09:00")]
     ].each do |kind, recurrence|
-      Dir.mktmpdir("schedules-killed") do |dir|
+      Dir.mktmpdir("schedules-killed") do |root|
+        dir = File.join(root, "sessions")
         anchor = session(dir).id
         schedules = store(dir)
         entry = schedules.add(target: anchor, prompt: "Audit", recurrence: recurrence)
@@ -533,7 +581,8 @@ RSpec.describe Samagotchi::Schedules do
   end
 
   it "keeps the occurrence when the firing is refused, and fires it at the next tick" do
-    Dir.mktmpdir("schedules-race-skip") do |dir|
+    Dir.mktmpdir("schedules-race-skip") do |root|
+      dir = File.join(root, "sessions")
       allow(Process).to receive(:spawn).and_return(12_345)
       anchor = session(dir).id
       child = session(dir, parent: anchor, delegate: true, status: Samagotchi::Session::STATUS_RUNNING)

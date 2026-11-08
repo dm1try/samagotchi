@@ -118,17 +118,21 @@ module Samagotchi
     end
 
     # @param state_dir [String] the sessions' directory; the schedule file and
-    #   its lock sit next to them
+    #   its lock sit in the state root above it (docs/scheduling.md), so the
+    #   session listing never mistakes it for a session
     # @param clock [#call] "now", as a Time
     def initialize(state_dir: nil, clock: -> { Time.now })
       @state_dir = state_dir || Session.default_state_dir
+      # ~/.local/state/samagotchi for the default sessions dir; expand_path
+      # first so a trailing slash does not make the parent the sessions dir.
+      @store_dir = File.dirname(File.expand_path(@state_dir))
       @clock = clock
     end
 
-    attr_reader :state_dir
+    attr_reader :state_dir, :store_dir
 
-    def path = File.join(@state_dir, FILE)
-    def lock_path = File.join(@state_dir, LOCK)
+    def path = File.join(@store_dir, FILE)
+    def lock_path = File.join(@store_dir, LOCK)
 
     # @param include_disabled [Boolean] the disabled and the fired one-offs too
     # @return [Array<Entry>] every entry, the earliest due first
@@ -208,6 +212,7 @@ module Samagotchi
       pending = []
       index = nil
 
+      FileUtils.mkdir_p(@store_dir)
       FileUtils.mkdir_p(@state_dir)
       File.open(lock_path, File::RDWR | File::CREAT, 0o600) do |lock|
         unless lock.flock(File::LOCK_EX | File::LOCK_NB)
@@ -401,6 +406,7 @@ module Samagotchi
     end
 
     def write(list:)
+      FileUtils.mkdir_p(@store_dir)
       FileUtils.mkdir_p(@state_dir)
       body = { "version" => VERSION, "updated_at" => Time.now.utc.iso8601, "schedules" => list.map(&:to_h) }
       AtomicFile.write(path, "#{JSON.pretty_generate(body)}\n")
@@ -408,6 +414,7 @@ module Samagotchi
 
     # Every write of the file is a read-modify-write under the lock.
     def write_under_lock
+      FileUtils.mkdir_p(@store_dir)
       FileUtils.mkdir_p(@state_dir)
       File.open(lock_path, File::RDWR | File::CREAT, 0o600) do |lock|
         lock.flock(File::LOCK_EX)

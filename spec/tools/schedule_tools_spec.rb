@@ -29,7 +29,8 @@ RSpec.describe Samagotchi::Tools::ScheduleTask do
   end
 
   it "registers a schedule anchored at the session the model is in" do
-    Dir.mktmpdir("schedule-task") do |dir|
+    Dir.mktmpdir("schedule-task") do |root|
+      dir = File.join(root, "sessions")
       id = session(dir).id
       answer = described_class.call(nil, title: "Monday audit", prompt: "Audit the queue",
                                    weekday: 1, time: "09:00", peers: peers(dir, id))
@@ -41,7 +42,8 @@ RSpec.describe Samagotchi::Tools::ScheduleTask do
   end
 
   it "takes the prompt from the tool's content when prompt: is not given" do
-    Dir.mktmpdir("schedule-task") do |dir|
+    Dir.mktmpdir("schedule-task") do |root|
+      dir = File.join(root, "sessions")
       id = session(dir).id
       described_class.call("Check the build", every: "30m", peers: peers(dir, id))
 
@@ -51,7 +53,8 @@ RSpec.describe Samagotchi::Tools::ScheduleTask do
   end
 
   it "answers an error for a bad recurrence, a blank prompt and a session it cannot name" do
-    Dir.mktmpdir("schedule-task") do |dir|
+    Dir.mktmpdir("schedule-task") do |root|
+      dir = File.join(root, "sessions")
       id = session(dir).id
 
       expect(described_class.call(nil, every: "1d", weekday: 1, time: "09:00", prompt: "x", peers: peers(dir, id)))
@@ -68,7 +71,8 @@ RSpec.describe Samagotchi::Tools::ScheduleTask do
   end
 
   it "refuses a scratch session up front" do
-    Dir.mktmpdir("schedule-task") do |dir|
+    Dir.mktmpdir("schedule-task") do |root|
+      dir = File.join(root, "sessions")
       now = Time.now.utc.iso8601
       scratch = Samagotchi::Session.new(id: SecureRandom.uuid, mode: "assist", model_name: "main:m",
                                         working_directory: Dir.tmpdir, created_at: now, updated_at: now,
@@ -87,13 +91,15 @@ RSpec.describe Samagotchi::Tools::ListSchedules do
   end
 
   it "says when there are none" do
-    Dir.mktmpdir("schedule-list") do |dir|
+    Dir.mktmpdir("schedule-list") do |root|
+      dir = File.join(root, "sessions")
       expect(described_class.call(nil, peers: peers(dir))).to eq("No schedules.")
     end
   end
 
   it "prints one line per enabled schedule, with the skips and the disabled ones on request" do
-    Dir.mktmpdir("schedule-list") do |dir|
+    Dir.mktmpdir("schedule-list") do |root|
+      dir = File.join(root, "sessions")
       now = Time.now.utc.iso8601
       anchor = Samagotchi::Session.new(id: SecureRandom.uuid, mode: "assist", model_name: "main:m",
                                        working_directory: Dir.tmpdir, created_at: now, updated_at: now,
@@ -116,7 +122,8 @@ RSpec.describe Samagotchi::Tools::ListSchedules do
   end
 
   it "reads include_disabled from a string too" do
-    Dir.mktmpdir("schedule-list") do |dir|
+    Dir.mktmpdir("schedule-list") do |root|
+      dir = File.join(root, "sessions")
       now = Time.now.utc.iso8601
       anchor = Samagotchi::Session.new(id: SecureRandom.uuid, mode: "assist", model_name: "main:m",
                                        working_directory: Dir.tmpdir, created_at: now, updated_at: now,
@@ -136,7 +143,8 @@ RSpec.describe Samagotchi::Tools::CancelSchedule do
   end
 
   it "cancels by id, a prefix or the title" do
-    Dir.mktmpdir("schedule-cancel") do |dir|
+    Dir.mktmpdir("schedule-cancel") do |root|
+      dir = File.join(root, "sessions")
       now = Time.now.utc.iso8601
       anchor = Samagotchi::Session.new(id: SecureRandom.uuid, mode: "assist", model_name: "main:m",
                                        working_directory: Dir.tmpdir, created_at: now, updated_at: now,
@@ -155,7 +163,8 @@ RSpec.describe Samagotchi::Tools::CancelSchedule do
   end
 
   it "names what it needs and says when nothing matches" do
-    Dir.mktmpdir("schedule-cancel") do |dir|
+    Dir.mktmpdir("schedule-cancel") do |root|
+      dir = File.join(root, "sessions")
       expect(described_class.call("", peers: peers(dir))).to eq("Error: cancel_schedule needs the schedule's id or title")
       expect(described_class.call("gone", peers: peers(dir))).to eq("No schedule named gone.")
     end

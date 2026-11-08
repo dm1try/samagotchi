@@ -15,7 +15,8 @@ require "samagotchi/session_access/dispatch"
 RSpec.describe Samagotchi::ScheduleCommand do
   around do |example|
     Dir.mktmpdir("schedule-command") do |tmp|
-      @dir = File.realpath(tmp)
+      @dir = File.join(File.realpath(tmp), "sessions")
+      FileUtils.mkdir_p(@dir)
       example.run
     end
   end
