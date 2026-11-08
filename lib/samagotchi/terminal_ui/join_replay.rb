@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require_relative "../bridge/turn_accumulator"
 require_relative "../context_note"
 require_relative "../image_store"
 require_relative "../log"
@@ -31,9 +32,30 @@ module Samagotchi
         @renderer = renderer
       end
 
+      # A snapshot's last_turn_drawing (Bridge#snapshot: the last exchange's
+      # turn as live drew it) draws that turn's rows; without one (an older
+      # worker, a turn before drawings) they are rebuilt from the messages.
       def render_join(snapshot, saved)
-        render_join_header(Array(snapshot[:messages]))
+        render_join_header(Array(snapshot[:messages]), drawing: snapshot[:last_turn_drawing])
         render_join_gap(snapshot, saved)
+      end
+
+      # One replayed event of a turn's rows (TurnAccumulator.replay_events),
+      # as live drew it: a joined running turn's (AttachedLoop#render_current_turn)
+      # and a drawn finished one's (#render_drawn_turn). Its tool rows with
+      # their action and duration, merged input, reminders, a plugin's steer,
+      # a hook's notice, a retry's, a steer cut's and a ✂ row's line. The
+      # step text, the turn's start and questions are the caller's (the
+      # pending one is asked after the replay, answered ones showed no line).
+      def replay_row(event)
+        case event[:type]
+        when :tool_call_started then @renderer.call(event)
+        when :tool_call_completed then replay_tool_completed(event)
+        when :merged_input then @screen.commit("input> #{event[:content]}")
+        when :reminder_injected then @screen.commit(reminder_line(event[:reminders]))
+        when :pending_input_merged, :hook_notice, :empty_answer_retry, :steer_cut, :llm_context_edited
+          @renderer.call(event)
+        end
       end
 
       # The snapshot's cards and between-turns notices (Bridge CardStore):
@@ -60,6 +82,18 @@ module Samagotchi
 
       private
 
+      # A finished tool call: the live row (action, duration: none when the
+      # part has none, never the replay's own clock). A snapshot from an
+      # older worker has no action: its row names the tool only.
+      def replay_tool_completed(event)
+        return @renderer.call({ duration_ms: nil }.merge(event)) if event.dig(:activity, :action)
+
+        activity = EventRenderer.described(event) || {}
+        @screen.commit(snapshot_tool_line({ tool: event[:tool], params: activity[:params], status: activity[:status],
+                                            description: activity[:description], output_truncated: event[:output_truncated],
+                                            images: event[:images], diff: event[:diff] }))
+      end
+
       # Where the session's last activity was: its newest stamped entry,
       # else its saved recap's time. A gap ago (and no turn running): one
       # line after the join block says when.
@@ -71,7 +105,7 @@ module Samagotchi
         @screen.commit(gap_divider(line)) if line
       end
 
-      def render_join_header(messages)
+      def render_join_header(messages, drawing: nil)
         exchange = messages.select { |m| %w[user model assistant].include?(m[:role].to_s) }
         # The id stays findable: the detach line and chi sessions list show it.
         Log.session_id = @link.client.session_id
@@ -89,6 +123,11 @@ module Samagotchi
         unless ImageRef.placeholder_only?(exchange[last_user][:content])
           Array(exchange[last_user][:images]).each { |ref| @screen.commit(format_image_line(ref)) }
         end
+        if (drawn = drawn_turn(drawing, exchange[last_user]))
+          render_drawn_turn(*drawn, exchange[(last_user + 1)..])
+          return render_join_notes(messages, from, after_exchange: true)
+        end
+
         render_join_steps(messages, from, durations: join_tool_records(exchange[last_user]))
         record = @link.saved_turn_record(exchange[last_user][:turn_id] || exchange[last_user]["turn_id"])
         failed = join_failed_record(record)
@@ -109,14 +148,53 @@ module Samagotchi
           @screen.commit(@view.turn_canceled_line(record["cancellation_reason"], record["duration_ms"], by: record["cancelled_by"]))
           @screen.commit(@view.turn_end_hint(ROLLBACK_HINT)) unless record["continue"]
         else
-          # The saved answer is raw: the latest keeps its thinking, and one may
-          # be only a tool call.
-          answer = exchange[(last_user + 1)..].reverse_each
-                                             .map { |m| OutputFormatter.strip_markup(m[:content]) }
-                                             .find { |text| !text.empty? }
-          @screen.commit(last_lines(answer)) if answer
+          render_join_answer(exchange[(last_user + 1)..])
         end
         render_join_notes(messages, from, after_exchange: true)
+      end
+
+      # The last answer of the messages after the prompt (+after+). The saved
+      # answer is raw: the latest keeps its thinking, and one may be only a
+      # tool call.
+      def render_join_answer(after)
+        answer = after.reverse_each.map { |m| OutputFormatter.strip_markup(m[:content]) }.find { |text| !text.empty? }
+        @screen.commit(last_lines(answer)) if answer
+      end
+
+      # The snapshot's drawing as [turn, end event] when it is +prompt+'s
+      # turn (a Continue's or a reminder's drawing isn't the prompt's: the
+      # rows are rebuilt), else nil.
+      def drawn_turn(drawing, prompt)
+        return nil unless drawing.is_a?(Hash) && drawing[:drawing].is_a?(Hash) && drawing[:end].is_a?(Hash)
+
+        turn = Bridge::TurnAccumulator.from_wire(drawing[:drawing])
+        id = prompt[:turn_id] || prompt["turn_id"]
+        return nil unless id && turn[:turn_id].to_s == id.to_s
+
+        [turn, EventRenderer.symbolize(Bridge::TurnAccumulator.from_wire(drawing[:end]))]
+      end
+
+      # The last turn from its drawing, through the renderer as live drew it
+      # (the running turn's join path, AttachedLoop#render_current_turn): its
+      # rows with their status and duration, a retry's line, a hook's notice,
+      # steers, merged input and reminders; no step text (the live ticker's)
+      # and no cards (the snapshot's cards are drawn after). Then its end: a
+      # cancel's or a failure's line from the end event, else the empty
+      # answer's notice or the saved answer (+after+, the messages after the
+      # prompt).
+      def render_drawn_turn(turn, ending, after)
+        Bridge::TurnAccumulator.replay_events(turn).each do |event|
+          # The prompt line named its images already.
+          event[:type] == :turn_started ? @renderer.call(event.except(:images)) : replay_row(event)
+        end
+        case ending[:type]
+        when :turn_canceled, :turn_failed then @renderer.call(ending)
+        else
+          empty = ending.dig(:turn_summary, :empty_answer)
+          empty ? @screen.commit(format_empty_answer_line(empty[:retries], empty[:refusal])) : render_join_answer(after)
+        end
+        # A call the turn never answered left the tool slot running.
+        @view.finish_thinking_spinner
       end
 
       # What the last exchange did, as the live turn drew it: each saved

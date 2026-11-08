@@ -42,6 +42,7 @@ and commands may change between minor versions. How releases are made:
 - A context window given with `--context-window-tokens` to a one-shot run (`-p … --non-interactive`) is named `cli`, not `config`, where its source shows: the debug log, and chi web's context tooltip for that session.
 - A tool row's duration is the same live, after a reload and in the attached terminal (each timed the call with its own clock).
 - chi web draws a finished turn after a reload or a reconnect exactly as it drew it live: the empty answer's "asking again" row stays in its step, a failed turn keeps its last step, a card the turn showed comes back where it was, and the reminders that went into a turn are shown. Turns from before this release, or run by a worker not yet restarted, show as before.
+- `chi --attach` shows the last turn's tool rows as they ran (status, duration, retries).
 - In chi web, a turn that fails after its tool steps shows the same time on its timing line live as after a reload (the turn record's, as a canceled turn does).
 
 Update with `chi update` (known-names 0.2.0, source-links 0.7.0).
