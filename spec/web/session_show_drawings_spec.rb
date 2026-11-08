@@ -164,6 +164,22 @@ RSpec.describe Samagotchi::Web::App, "the show's turn drawings" do
     expect(data["messages"][1]).to include("drawn" => "turn-tools", "marks" => { "t1" => { "kind" => "forgot" } })
   end
 
+  it "draws only the newest SHOWN_MAX turns from their drawings: older ones keep their parts and today's reload" do
+    stub_const("Samagotchi::Bridge::TurnDrawings::SHOWN_MAX", 1)
+    first = fixture("reminder_only")
+    messages = first["messages"]
+    older = { "v" => 1, "turn_id" => "turn-0", "kind" => "completed", "from" => 1, "to" => 3,
+              "from_digest" => Samagotchi::Bridge::TurnDrawings.digest(messages[1]),
+              "to_digest" => Samagotchi::Bridge::TurnDrawings.digest(messages[2]), "drawing" => { "prompt" => "earlier", "parts" => [] },
+              "end" => { "type" => "turn_completed" } }
+    write_lines([older, *first["lines"]])
+
+    data = show(app_for(messages))
+
+    expect(data["turn_drawings"].keys).to eq(["turn-reminder-only"])
+    expect(data["messages"].map { |m| m["drawn"] }).to eq([nil, nil, "turn-reminder-only"])
+  end
+
   it "has no turn_drawings without a file" do
     data = show(app_for(fixture("plain_answer")["messages"]))
 

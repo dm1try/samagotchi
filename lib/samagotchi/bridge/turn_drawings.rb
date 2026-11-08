@@ -38,6 +38,10 @@ module Samagotchi
       # to leave that entry to the drawing. chi web draws no drawings for a
       # live worker without it (an older one: its rows would show twice).
       FEATURE = "turn_drawings"
+      # A show draws at most this many turns from their drawings, the newest
+      # (the payload and the page's offscreen render stay bounded in a long
+      # session); older turns draw as before, from their messages.
+      SHOWN_MAX = 100
       VERSION = 1
       # The end event's keys the page draws a finished turn's end from (not
       # the answer: its text, html and refs stay the message's; not the range:
@@ -245,7 +249,9 @@ module Samagotchi
         def cache_mutex = (@cache_mutex ||= Mutex.new)
       end
 
-      CACHE_SIZE = 64
+      # Sessions whose parsed file chi web keeps (a long one's is tens of MB
+      # of objects; the mtime moves at every turn end anyway).
+      CACHE_SIZE = 8
       # Read from the end at start (#last): a drawing is a few KB, its outputs cut.
       TAIL_BYTES = 1024 * 1024
       private_constant :CACHE_SIZE, :TAIL_BYTES
