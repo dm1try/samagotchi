@@ -260,7 +260,7 @@ module Samagotchi
         when :no_reply
           result(child_id, status, "#{no_reply_text(wait, child_id, strategy: strategy)}; its session shows what happened")
         when :worker_gone
-          gone = wait.outcome == DID_NOT_START ? "its worker did not start" : "the child's worker is gone (it stopped or crashed)"
+          gone = wait.outcome == DID_NOT_START ? WorkerLink.did_not_start : "the child's worker is gone (it stopped or crashed)"
           result(child_id, status, "#{gone}; delegate with session: #{child_id} starts it again with a message")
         else
           timeout_result(child_id, timeout, reports: reports)

@@ -113,6 +113,9 @@ module Samagotchi
 
     def not_live(session_id) = "no live worker for session #{session_id}"
     def unanswered(session_id) = "the worker for session #{session_id} didn't answer"
+    # A worker chi started that never came up within its wait (chi send
+    # --new's, a delegate child's).
+    def did_not_start = "its worker did not start"
 
     # @param session_dir [String]
     # @param unlink [Boolean] remove a Stale sidecar (the clients that would

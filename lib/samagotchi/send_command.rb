@@ -4,6 +4,7 @@ require_relative "client_id"
 require_relative "delivery"
 require_relative "terminal_ui/formatting"
 require_relative "session"
+require_relative "worker_link"
 require_relative "session_commands"
 require_relative "parent_answers_command"
 require_relative "session_inbox"
@@ -668,7 +669,7 @@ module Samagotchi
       # its preview; the user can attach and send it again.
       unless result
         attach = @access.invocation.attach(session.id)
-        @info.puts("#{session.id}  failed: its worker did not start; the session is kept (#{attach})")
+        @info.puts("#{session.id}  failed: #{WorkerLink.did_not_start}; the session is kept (#{attach})")
         return false
       end
       unless result.accepted?
