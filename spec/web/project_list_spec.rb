@@ -64,6 +64,17 @@ RSpec.describe Samagotchi::Web::ProjectList do
                           updated_at: nil, default: true, current: false }])
   end
 
+  it "lists a current project with no sessions last before other projects" do
+    current = File.join(@tmp, "notes")
+    FileUtils.mkdir_p(File.join(current, ".chi"))
+    File.write(File.join(current, Samagotchi::MemoryPaths::MARKER), "")
+
+    rows = described_class.build([summary(other)], start_dir: folder, current_root: current)
+
+    expect(rows.map { |row| row[:root] }).to eq([root, other, current])
+    expect(rows.last).to include(root: current, sessions: 0, default: false, current: true)
+  end
+
   it "puts the default project first, then orders projects by latest session update" do
     rows = described_class.build(
       [summary(other, updated_at: "2026-10-27T14:00:00Z"),

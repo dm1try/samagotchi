@@ -43,7 +43,7 @@ RSpec.describe Samagotchi::ProjectCommand do
       notes = File.join(@tmp, "notes")
 
       expect(run("init", notes)).to eq(0), err.string
-      expect(File.read(marker(notes))).to eq(described_class::MARKER_TEXT)
+      expect(File.read(marker(notes))).to eq(Samagotchi::ProjectInit::MARKER_TEXT)
       expect(out.string).to eq("#{notes} is now a chi project (#{marker(notes)})\n" \
                                "memories #{File.join(projects, key(notes))}\n")
     end

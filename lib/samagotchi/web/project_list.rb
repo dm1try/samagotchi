@@ -6,8 +6,8 @@ require_relative "push/attention"
 
 module Samagotchi
   module Web
-    # Projects represented by the session hub, plus the start project even
-    # when it has no sessions.
+    # Projects represented by the session hub, plus the start and current
+    # projects even when they have no sessions.
     module ProjectList
       module_function
 
@@ -24,6 +24,7 @@ module Samagotchi
           (groups[root] ||= []) << summary
         end
         groups[default_root] ||= [] if valid_root?(default_root)
+        groups[current_root] ||= [] if valid_root?(current_root)
 
         rows = groups.map do |root, sessions|
           default = root == default_root
