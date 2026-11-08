@@ -72,6 +72,8 @@ module Samagotchi
       # @return [Result, nil]
       def look
         look_at_input
+        # Before the load: the turn it names began before what the load sees.
+        merge = merge_record
         session = Session.load(@id, state_dir: @state_dir)
         # Who runs it, read once for this look's checks.
         @live = Liveness.new(@id, state_dir: @state_dir)
@@ -80,7 +82,7 @@ module Samagotchi
         end
 
         note_own_running(session)
-        follow_merge(session)
+        follow_merge(session, merge)
         reply(session) || settled_turn(session) || status_end(session) || question(session) || held(session) || canceled ||
           ended_before_reply(session) || ended_before_turn(session) || turn_end(session) || owner_gone(session) ||
           message_waiting || timed_out
@@ -121,14 +123,37 @@ module Samagotchi
 
       # Taken but never run as a turn of its own: a running turn's drain
       # merged it as a steer, so that turn's reply (or question) is its
-      # answer. Waited for as the next reply past the cursor, as without
-      # turn:, never as a turn that will not come.
-      def follow_merge(session)
-        return unless @turn && @claimed && !@seen_own && !@own_turn_input &&
-                      ReplyWait.merged_elsewhere?(session, @turn, @baseline, @session_dir)
+      # answer. With the drain's merge record (SessionInbox.mark_merged)
+      # the wait is that turn's from here on, as if it had been bound to it
+      # (#follow_into). Without one (a 0.156 worker, a turn with no id, a
+      # merge from before the update) the merge is inferred
+      # (ReplyWait.merged_elsewhere?) and waited for as the next reply past
+      # the cursor, as without turn:, never as a turn that will not come.
+      def follow_merge(session, merge)
+        return unless may_follow?
 
-        @turn = nil
-        @seen_running = running?(session)
+        if merge
+          follow_into(session, merge)
+        elsif ReplyWait.merged_elsewhere?(session, @turn, @baseline, @session_dir)
+          @turn = nil
+          @seen_running = running?(session)
+        end
+      end
+
+      def may_follow? = @turn && @claimed && !@seen_own && !@own_turn_input
+
+      def merge_record = may_follow? ? SessionInbox.merged_into(@session_dir, @turn) : nil
+
+      # Bound to the turn that took it, once (its own input ran as its own
+      # turn). Not running in this look, which loaded after the record:
+      # that turn is over (its end, its reply, its settle say how), and a
+      # turn that ended after the merge with last_turn not its is past it
+      # (#own_turn_end).
+      def follow_into(session, merge)
+        @turn = merge.into
+        @own_turn_input = true
+        note_own_running(session)
+        @merged_at = merge.at unless @seen_own
       end
 
       def reply(session)
@@ -273,6 +298,7 @@ module Samagotchi
         # died), or it ended with no reply and a next turn ran and ended
         # between two looks. Waiting on would sit through those turns.
         return Result.new(status: :no_reply, session: session) if @seen_own && ReplyWait.past_own?(session, @turn, @own_base)
+        return Result.new(status: :no_reply, session: session) if @merged_at && ReplyWait.ended_after?(session, @merged_at)
 
         nil
       end

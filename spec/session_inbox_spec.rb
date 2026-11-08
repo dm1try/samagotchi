@@ -243,7 +243,7 @@ RSpec.describe Samagotchi::SessionInbox do
 
         raw = JSON.parse(File.read(File.join(input_dir, described_class::MERGED_DIR, "m1")))
         expect(raw).to eq("into" => "host-1", "at" => at.iso8601(3))
-        expect(described_class.merged_into(session_dir, "m1")).to eq("host-1")
+        expect(described_class.merged_into(session_dir, "m1")).to eq(described_class::Merge.new(into: "host-1", at: at))
         expect(described_class.merged_into(session_dir, "m2")).to be_nil
       end
 

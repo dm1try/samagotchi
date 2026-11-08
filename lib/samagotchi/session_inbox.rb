@@ -492,13 +492,25 @@ module Samagotchi
       Log.warn(:worker, "merge_record_write_failed", error: e.class.name, msg: e.message, enqueued_id: id)
     end
 
-    # @return [String, nil] the enqueued_id of the turn the input +id+ was
-    #   merged into (#mark_merged), nil without a readable record
+    # A merge record (#mark_merged): the enqueued_id of the turn an input
+    # went into, and when (a Time, nil when unreadable).
+    Merge = Data.define(:into, :at)
+
+    # @return [Merge, nil] the turn the input +id+ was merged into
+    #   (#mark_merged), nil without a readable record
     def self.merged_into(session_dir, id)
       return nil unless ENQUEUED_ID_NAME.match?(id.to_s)
 
-      into = JSON.parse(File.read(File.join(session_dir, INPUT_DIR, MERGED_DIR, id.to_s)))["into"]
-      ENQUEUED_ID_NAME.match?(into.to_s) ? into : nil
+      raw = JSON.parse(File.read(File.join(session_dir, INPUT_DIR, MERGED_DIR, id.to_s)))
+      into = raw["into"]
+      return nil unless ENQUEUED_ID_NAME.match?(into.to_s)
+
+      at = begin
+        Time.iso8601(raw["at"].to_s)
+      rescue ArgumentError
+        nil
+      end
+      Merge.new(into: into, at: at)
     rescue JSON::ParserError, SystemCallError, TypeError, NoMethodError
       nil
     end

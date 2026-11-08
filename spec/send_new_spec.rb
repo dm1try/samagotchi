@@ -587,6 +587,51 @@ RSpec.describe Samagotchi::SendCommand, "--wait" do
         expect(JSON.parse(out.string)).to include("status" => "canceled", "cancel_reason" => "worker_stopped",
                                                   "turn_id" => "m1")
       end
+
+      # A turn starting at that moment merged it as a steer: the drain's
+      # record (input/merged/m1) says which, and that turn's end is the
+      # answer. A 0.156 worker writes none: the merge is inferred.
+      describe "merged into a turn that started at that moment" do
+        def merge_into(host, record: true)
+          Samagotchi::SessionInbox.mark_merged(dir, "m1", into: host) if record
+          run_turn(host)
+        end
+
+        it "ends canceled (worker_stopped) when that turn's worker died in it, by its merge record" do
+          @on_deliver = lambda do
+            later do
+              merge_into("h1")
+              looked(2)
+              s = Samagotchi::Session.load(idle.id, state_dir: tmpdir)
+              Samagotchi::TurnCheckpoint.settle(s, session_dir: dir)
+              s.save(state_dir: tmpdir)
+            end
+          end
+
+          expect(run("--wait", "--format", "json", "--timeout", "5", "-m", "go", idle.id)).to eq(1), err.string
+          expect(JSON.parse(out.string)).to include("status" => "canceled", "cancel_reason" => "worker_stopped")
+        end
+
+        it "prints that turn's reply, by its record or (a 0.156 worker) inferred" do
+          [true, false].each do |record|
+            out.truncate(0)
+            out.rewind
+            @on_deliver = lambda do
+              later do
+                merge_into("h-#{record}", record: record)
+                looked(2)
+                Samagotchi::SessionInbox.write_output(dir, "host answer #{record}", enqueued_id: "h-#{record}")
+                update(idle, status: "idle", last_turn: Samagotchi::LastTurn.new(outcome: "completed", ended_at: Time.now.iso8601(3),
+                                                                                 enqueued_id: "h-#{record}"))
+              end
+            end
+
+            expect(run("--wait", "--format", "json", "--timeout", "5", "-m", "go", idle.id)).to eq(0), err.string
+            expect(JSON.parse(out.string)).to include("status" => "answered", "text" => "host answer #{record}")
+            FileUtils.rm_rf(File.join(dir, "input", "merged"))
+          end
+        end
+      end
     end
 
     # A turn nobody typed (a reminder, a wake) runs under an id its worker

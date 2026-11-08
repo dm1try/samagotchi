@@ -507,7 +507,7 @@ RSpec.describe Samagotchi::Worker do
         on_disk = {}
         allow(FileUtils).to receive(:rm_f).and_wrap_original do |original, path, *rest|
           if path.to_s.end_with?(".json.processing")
-            on_disk[File.basename(path.to_s)] = Samagotchi::SessionInbox.merged_into(session_dir, "m1")
+            on_disk[File.basename(path.to_s)] = Samagotchi::SessionInbox.merged_into(session_dir, "m1")&.into
           end
           original.call(path, *rest)
         end
@@ -527,7 +527,7 @@ RSpec.describe Samagotchi::Worker do
         expect(on_disk.values).to include("host-1")
         merged_dir = File.join(session_dir, Samagotchi::SessionInbox::INPUT_DIR, Samagotchi::SessionInbox::MERGED_DIR)
         expect(Dir.children(merged_dir)).to eq(["m1"])
-        expect(Samagotchi::SessionInbox.merged_into(session_dir, "m1")).to eq("host-1")
+        expect(Samagotchi::SessionInbox.merged_into(session_dir, "m1")&.into).to eq("host-1")
         expect(Samagotchi::TurnCheckpoint.settled_turn(session_dir, "m1")).to be_nil
       end
 

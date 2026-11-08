@@ -294,6 +294,16 @@ module Samagotchi
       !ended.nil? && ended != own_base
     end
 
+    # Whether the session's last turn ended after +at+ (a Time): a turn
+    # that isn't own_turn_end's (its last_turn is checked first) ended
+    # after the turn a merge record named began, so that turn is over.
+    def ended_after?(session, at)
+      ended = session.last_turn&.ended_at
+      !ended.to_s.empty? && Time.iso8601(ended.to_s) > at
+    rescue ArgumentError
+      false
+    end
+
     # @return [Result, nil] :done with the reply of the turn that ran the
     #   input +turn+ (its enqueued_id)
     def reply_for_turn(id, state_dir:, turn:)
