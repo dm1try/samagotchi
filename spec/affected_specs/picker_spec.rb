@@ -187,6 +187,20 @@ RSpec.describe AffectedSpecs::Picker do
     expect(result.ruby.map(&:reason)).to all(start_with("rule: "))
   end
 
+  it "picks the bundle-state corpus for the bundle code, chi bundle, the corpus's fixtures and helpers, by a rule" do
+    corpus = %w[spec/samagotchi/memory_bundle/file_state_corpus/cases_spec.rb
+                spec/samagotchi/memory_bundle/file_state_corpus/upgrade_spec.rb]
+    corpus.each { |path| files[path] = "" }
+
+    %w[lib/samagotchi/memory_bundle/installer.rb lib/samagotchi/bundle_command.rb spec/fixtures/bundle_states/expect/upgrade.yml
+       spec/samagotchi/memory_bundle/file_state_corpus/observe.rb].each do |changed|
+      picked = pick(changed).ruby.select { |pick| corpus.include?(pick.path) }
+
+      expect(paths(picked)).to match_array(corpus), changed
+      expect(picked.map(&:reason)).to all(eq("rule: pins every bundle file state × command (#{changed})"))
+    end
+  end
+
   it "picks a docs-reading spec for its doc, and nothing else for a doc" do
     expect(paths(pick("docs/configuration.md").ruby)).to eq(%w[spec/docs_configuration_spec.rb])
   end
