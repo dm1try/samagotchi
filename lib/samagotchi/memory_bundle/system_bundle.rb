@@ -214,7 +214,11 @@ module Samagotchi
         missing = MemoryFiles.select(GEM_BUNDLE_DIR, gem_manifest).reject { |key| File.exist?(File.join(target_dir, key)) }
         missing = restored_rows(missing, target_dir) unless missing.empty?
         return result(:up_to_date, from: version, to: version) if missing.empty?
-        return result(:restored, from: version, to: version) if dry_run
+
+        if dry_run
+          warnings = missing.filter_map { |key| restore_mismatch(key, gem_manifest) }
+          return result(:restored, from: version, to: version, warnings: warnings)
+        end
 
         warnings = missing.flat_map { |key| restore_file(key, gem_manifest) }
         result(:restored, from: version, to: version, warnings: warnings)
@@ -238,13 +242,17 @@ module Samagotchi
         description = gem_manifest.file_descriptions[key]
         FileUtils.cp(source, target)
         Provenance.new(name: BUNDLE_NAME).record_restored(key, source, description: description)
-        warnings = [FileDigest.mismatch(key, target, gem_manifest.checksum_for(key))].compact
+        warnings = [restore_mismatch(key, gem_manifest)].compact
         begin
           IndexUpdater.update_index(SCOPE, key.delete_suffix(".md"), File.size(target), description, source: BUNDLE_NAME)
         rescue StandardError => e
           warnings << "index.md: line for #{key.delete_suffix(".md")} not updated (#{e.message})"
         end
         warnings
+      end
+
+      def restore_mismatch(key, gem_manifest)
+        FileDigest.mismatch(key, File.join(GEM_BUNDLE_DIR, key), gem_manifest.checksum_for(key))
       end
 
       # An up-to-date bundle's marked files, retried. No marks: nothing is read.
@@ -264,7 +272,10 @@ module Samagotchi
         owned = provenance.record&.files&.keys || []
         forecast = Merger::Upgrade.new(provenance: provenance, target_dir: MemoryPaths.system_dir, source_dir: GEM_BUNDLE_DIR)
                                   .forecast(gem_manifest.files.keys.map(&:to_s).sort & owned, version: to)
-        result(:updated, from: from, to: to, merged: forecast.merged, behind: forecast.behind)
+        installer = upgrade_installer(dry_run: true)
+        installer.run
+        warnings = installer.warnings.grep(/\AChecksum mismatch/)
+        result(:updated, from: from, to: to, merged: forecast.merged, behind: forecast.behind, warnings: warnings)
       end
 
       # Provenance#adopt_manifest from the shipped dir, for a record without a
@@ -276,9 +287,9 @@ module Samagotchi
         Provenance.new(name: BUNDLE_NAME).adopt_manifest(GEM_BUNDLE_DIR)
       end
 
-      def upgrade_installer
+      def upgrade_installer(dry_run: false)
         Installer.new(source: GEM_BUNDLE_DIR, name: BUNDLE_NAME, scope: SCOPE, force: false, strict: true, upgrade: true,
-                      shipped_dir: File.dirname(GEM_BUNDLE_DIR))
+                      dry_run: dry_run, shipped_dir: File.dirname(GEM_BUNDLE_DIR))
       end
       private_class_method :with_lock, :note_newer_installed, :install_fresh, :keep_manifest, :upgrade_existing, :verify_files_present, :restore_file, :remerge,
                            :upgrade_installer, :result, :planned_update

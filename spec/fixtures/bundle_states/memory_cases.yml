@@ -548,11 +548,12 @@ cases:
   # The integrity check: a written file's manifest sha is wrong, or absent.
   - id: missing_wrong_sha
     kind: missing
-    changed: [restore-unchecked, dry-source]
+    changed: [restore-unchecked, dry-source, plan-checksum]
     note: >-
       restore-unchecked: restore (SystemBundle.sync) put the file back with no checksum warning, where install and
       upgrade warn; it warns too since. dry-source: the dry runs checked the disk (nothing there) and said nothing; they
-      check the source file the write would copy since, and warn as the real run does
+      check the source file the write would copy since, and warn as the real run does. plan-checksum: chi update's plan
+      now reports the same checksum mismatch warning as its dry upgrade
     base: abc
     disk: null
     incoming: abC
@@ -563,23 +564,24 @@ cases:
     disk: abc
     incoming: abC
     sha: wrong
-    changed: [D4, U7, dry-source]
+    changed: [D4, U7, dry-source, plan-checksum]
     note: >-
       U7: upgrade fast-forwarded it (Updated) with no checksum warning: the integrity check skipped a fast-forward,
       where an installed file warns (missing_wrong_sha); since U7 every write of the bundle's text is checked, so
       upgrade and install warn. dry-source: their dry runs said nothing; they check the source file since, and warn as
-      the real runs do. D4: install skipped the never-edited file as already exists, as pristine; since P1.10 it takes
-      the new text
+      the real runs do. plan-checksum: chi update's plan now reports the checksum mismatch too. D4: install skipped the
+      never-edited file as already exists, as pristine; since P1.10 it takes the new text
   - id: diverged_wrong_sha
     kind: diverged
     base: abc
     disk: Abc
     incoming: abC
     sha: wrong
-    changed: merge-checked
+    changed: [merge-checked, plan-checksum]
     note: >-
       merge-checked: an upgrade merged the bundle's text into the edit with no checksum warning; the incoming file is
-      checked since, so the upgrade and its dry run warn (remerge, at the shipped version, still doesn't)
+      checked since, so the upgrade and its dry run warn (remerge, at the shipped version, checks a merge now).
+      plan-checksum: chi update's plan now reports the checksum mismatch too
   - id: new_no_sha
     kind: new
     owned: false
