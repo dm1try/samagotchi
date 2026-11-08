@@ -1392,7 +1392,8 @@ denies every call until the bundle is reinstalled.
 chi bundle install known-names    # or chi bundle install dev
 ```
 
-installs one `before_tool_call` hook and a short memory. A local model that
+installs a plugin with one `before_tool_call` hook (`chi.on`, priority 50; a
+`hooks/known_names.rb` file before known-names 0.2.0) and a short memory. A local model that
 once misspells a name inside a path (`jonathandoe` → `jonathndoe`)
 keeps copying the wrong spelling from its context, and every call after
 that fails. The hook knows the right names and compares strings: the

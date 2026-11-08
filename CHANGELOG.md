@@ -22,6 +22,7 @@ and commands may change between minor versions. How releases are made:
 - A turn nobody typed (a reminder, an attached context change, a finished task, a delegate report) has an id of its own, `wake-` and 16 hex digits: `chi send --wait --format json` names it as the `turn_id`, and the `--turn` hints carry it.
 - `chi send --wait -m` to a session left running by a worker that died names the message's own id as the `turn_id` in `--format json`, where it named the running turn's.
 - `chi bundle install` of a bundle already installed from a source that moved on now takes the new text of each memory you never edited, as `chi bundle upgrade` would, and records the new version; a memory you edited is still kept (`--force` or `chi bundle upgrade` brings the bundle's changes).
+- The known-names and source-links bundles hook through their plugin (known-names 0.2.0, source-links 0.7.0); `chi update` installs them. Nothing changes in what they do.
 
 ### Fixed
 
@@ -42,6 +43,8 @@ and commands may change between minor versions. How releases are made:
 - A tool row's duration is the same live, after a reload and in the attached terminal (each timed the call with its own clock).
 - chi web draws a finished turn after a reload or a reconnect exactly as it drew it live: the empty answer's "asking again" row stays in its step, a failed turn keeps its last step, a card the turn showed comes back where it was, and the reminders that went into a turn are shown. Turns from before this release, or run by a worker not yet restarted, show as before.
 - In chi web, a turn that fails after its tool steps shows the same time on its timing line live as after a reload (the turn record's, as a canceled turn does).
+
+Update with `chi update` (known-names 0.2.0, source-links 0.7.0).
 
 ## [0.156.0] - 2026-11-08
 
