@@ -552,15 +552,15 @@ module Samagotchi
         @results[file_key] = FileResult.new(word: word, state: state, action: action)
       end
 
-      # Strict mode: a memory written from the bundle whose sha256 differs
-      # from its manifest's warns. One that wasn't copied (kept, skipped, a
-      # dry run's keep and would_skip: a local edit isn't a bad download) or
-      # was merged (merged, a dry run's would_merge) isn't checked.
+      # Strict mode: a memory installed from the bundle (its action writes the
+      # bundle's text, word :installed: a new or missing file, --force) whose
+      # sha256 differs from its manifest's warns, a dry run's too. One kept,
+      # skipped or merged isn't checked (a local edit isn't a bad download),
+      # nor, today, one an upgrade fast-forwards (:updated).
       def verify_memory_checksums
         @bundle_md.each do |file_key|
-          next if @conflicts.key?(file_key)
-
-          next if %i[kept keep kept_pruned fast_forward updated up_to_date kept_own would_skip merged would_merge].include?(@results[file_key]&.word)
+          action = @results[file_key]&.action
+          next unless action&.do == :write_incoming && action.word == :installed
 
           target_path = File.join(@target_dir, file_key)
           next unless File.exist?(target_path)

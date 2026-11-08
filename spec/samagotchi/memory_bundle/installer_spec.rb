@@ -359,6 +359,25 @@ RSpec.describe Samagotchi::MemoryBundle::Installer do
           expect(installer.warnings.any? { |w| w.include?("Checksum mismatch") }).to be true
         end
 
+        it "checks a --force install over a file that already has the bundle's text, and its dry run" do
+          bundle_dir = File.join(tmpdir, "bundle_checksum_forced")
+          FileUtils.mkdir_p(bundle_dir)
+          File.write(File.join(bundle_dir, "identity.md"), "# Identity\n")
+          FileUtils.mkdir_p(system_memories_dir)
+          File.write(File.join(system_memories_dir, "identity.md"), "# Identity\n")
+          File.write(File.join(bundle_dir, "manifest.yml"),
+                     YAML.dump("name" => "cksum-forced", "version" => "1.0", "files" => { "identity.md" => "sha256:#{"0" * 64}" }))
+
+          dry = described_class.new(source: bundle_dir, name: "cksum-forced", scope: "system", strict: true, force: true, dry_run: true)
+          dry.run
+          installer = installer_for(source: bundle_dir, name: "cksum-forced", scope: "system", force: true)
+          installer.run
+
+          expect(dry.warnings.grep(/Checksum mismatch for identity\.md/).size).to eq(1)
+          expect(installer.warnings.grep(/Checksum mismatch for identity\.md/).size).to eq(1)
+          expect(installer.summary).to include("Installed: identity.md")
+        end
+
         it "does not warn when checksums match" do
           require "digest"
           bundle_dir = File.join(tmpdir, "bundle_cksum_ok")

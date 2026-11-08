@@ -82,8 +82,9 @@ module Samagotchi
       # edit copied to the trash first. Its dropped rows are upgrade --force's
       # (a plain install --force never prunes: its dropped files are INSTALL's).
       FORCE = NOT_OWNED.merge(
-        %i[new any] => FORCED, %i[user_same any] => UP_TO_DATE.with(word: :installed), %i[user_file any] => FORCED,
-        %i[level any] => UP_TO_DATE.with(word: :installed),
+        # A file that already has the bundle's text is written all the same
+        # (nothing to save): it is installed, and checked, as any other.
+        %i[new any] => FORCED, %i[user_same any] => FORCED, %i[user_file any] => FORCED, %i[level any] => FORCED,
         %i[pristine any] => FORCED, %i[edited any] => FORCED, %i[diverged any] => FORCED,
         %i[pristine_no_base any] => FORCED, %i[edited_no_base any] => FORCED,
         %i[dropped_pristine any] => REMOVE, %i[dropped_edited any] => REMOVE, %i[dropped_missing any] => DROPPED_GONE,
