@@ -119,7 +119,7 @@ module Samagotchi
       # recorded is gone (:missing). false with no dir.
       def manifest_unkept? = !dir.nil? && (manifest_sha.to_s.empty? || !File.file?(kept_manifest_path))
 
-      # What its manifest says (requires_chi, hook metadata, needs, providers,
+      # What its manifest says (requires_chi, needs, providers,
       # renderers, settings…): the one way to read manifest data of an
       # installed bundle.
       # @return [InstalledManifest]

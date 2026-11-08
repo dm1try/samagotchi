@@ -48,7 +48,6 @@ RSpec.describe Samagotchi::BundleCommand::Check do
     expect(check).to eq([
       "info registered plugin.rb: command /greet",
       "info registered plugin.rb: hook after_tool_call (priority 100)",
-      "info registered hooks/watch.rb: hook after_turn (priority 100)",
       "info tests #{dir}: no tests (fix: chi bundle new NAME writes one to copy)",
       "ok: 0 errors, 0 warnings (#{dir})"
     ])
@@ -64,21 +63,32 @@ RSpec.describe Samagotchi::BundleCommand::Check do
   end
 
   it "missing-file: a listed file that isn't there, at its manifest line" do
-    FileUtils.rm(File.join(dir, "hooks", "watch.rb"))
-    expect(findings(:error)).to eq(["error missing-file manifest.yml:14: lists hooks/watch.rb, which isn't in the bundle " \
+    FileUtils.rm(File.join(dir, "check_note.md"))
+    expect(findings(:error)).to eq(["error missing-file manifest.yml:9: lists check_note.md, which isn't in the bundle " \
                                     "(fix: add the file or drop the entry)"])
   end
 
-  it "unlisted: a memory, plugin, hook or script an install leaves out; a README isn't one" do
+  it "hooks-retired: a manifest that lists hooks, or hooks/*.rb with no key, and the run stops there (exit 1)" do
+    words = Samagotchi::MemoryBundle::Manifest::HooksRetired::WORDS
+    fix = "(fix: hook the events from plugin.rb with chi.on, then remove hooks/ and the manifest's hooks:)"
+    FileUtils.mkdir_p(File.join(dir, "hooks"))
+    File.write(File.join(dir, "hooks", "watch.rb"), "class Watch; end\n")
+    expect(findings).to eq(["error hooks-retired hooks/: hooks/watch.rb: #{words} #{fix}"])
+    expect(@status).to eq(1)
+
+    out.truncate(0)
+    out.rewind
+    edit("manifest.yml") { |text| "#{text}hooks:\n  watch.rb:\n    event: after_turn\n" }
+    expect(findings).to eq(["error hooks-retired manifest.yml:13: hooks: #{words} #{fix}"])
+  end
+
+  it "unlisted: a memory, plugin or script an install leaves out; a README isn't one" do
     File.write(File.join(dir, "extra.md"), "x")
-    File.write(File.join(dir, "hooks", "loose.rb"), "x")
     FileUtils.mkdir_p(File.join(dir, "scripts"))
     File.write(File.join(dir, "scripts", "run.sh"), "x")
     expect(findings(:warn)).to eq([
       "warn unlisted extra.md: manifest.yml's files: doesn't list it, so an install leaves it out " \
       "(fix: list it under files:, then chi bundle check --fix)",
-      "warn unlisted hooks/loose.rb: manifest.yml's hooks: doesn't list it, so an install leaves it out " \
-      "(fix: list it under hooks:, then chi bundle check --fix)",
       "warn unlisted scripts/run.sh: manifest.yml's scripts: doesn't list it, so an install leaves it out " \
       "(fix: list it under scripts:, then chi bundle check --fix)"
     ])
@@ -177,9 +187,9 @@ RSpec.describe Samagotchi::BundleCommand::Check do
   it "unknown-key: a manifest key this chi ignores, at its line, and the run still passes" do
     edit("manifest.yml") { |text| "#{text}card_layouts: [cards]\napi_version: 3\n" }
     expect(findings(:warn).grep(/unknown-key/)).to eq([
-      "warn unknown-key manifest.yml:17: this chi (#{Samagotchi::VERSION}) doesn't know the manifest key card_layouts:, " \
+      "warn unknown-key manifest.yml:13: this chi (#{Samagotchi::VERSION}) doesn't know the manifest key card_layouts:, " \
       "so it ignores it (fix: update chi, or remove card_layouts: if it's a typo)",
-      "warn unknown-key manifest.yml:18: this chi (#{Samagotchi::VERSION}) doesn't know the manifest key api_version:, " \
+      "warn unknown-key manifest.yml:14: this chi (#{Samagotchi::VERSION}) doesn't know the manifest key api_version:, " \
       "so it ignores it (fix: update chi, or remove api_version: if it's a typo)"
     ])
     expect(@status).to eq(0)
@@ -188,7 +198,7 @@ RSpec.describe Samagotchi::BundleCommand::Check do
   it "requires-chi-floor: a manifest key newer than the oldest chi requires_chi admits" do
     edit("manifest.yml") { |text| "#{text}session_settings: [cap]\n" }
     refresh!
-    expect(findings(:warn)).to eq(["warn requires-chi-floor manifest.yml:17: requires_chi \">= 0.80.0\" admits chi 0.80.0, " \
+    expect(findings(:warn)).to eq(["warn requires-chi-floor manifest.yml:13: requires_chi \">= 0.80.0\" admits chi 0.80.0, " \
                                    "but the manifest uses session_settings:, which needs chi 0.84.0 " \
                                    "(fix: requires_chi: \">= 0.84.0\")"])
   end
@@ -226,7 +236,7 @@ RSpec.describe Samagotchi::BundleCommand::Check do
     refresh!
     lines = installed_findings
     expect(lines.grep(/unknown-key/)).to eq([
-      "warn unknown-key manifest.yml:17: this chi (#{Samagotchi::VERSION}) doesn't know the manifest key card_layouts:, " \
+      "warn unknown-key manifest.yml:13: this chi (#{Samagotchi::VERSION}) doesn't know the manifest key card_layouts:, " \
       "so it ignores it (fix: update chi, or remove card_layouts: if it's a typo)"
     ])
     expect(lines.grep(/requires-chi-floor/)).to eq([])
@@ -365,13 +375,6 @@ RSpec.describe Samagotchi::BundleCommand::Check do
     expect(@status).to eq(1)
   end
 
-  it "install: a hook file that doesn't load names hooks/<file>:line" do
-    edit("hooks/watch.rb") { |text| text.sub("def call", "def initialize = Missing\n\n  def call") }
-    refresh!
-    expect(findings(:error)).to match([a_string_starting_with("error install hooks/watch.rb:4: hook watch.rb (bundle check-clean) " \
-                                                           "failed to load: NameError")])
-  end
-
   it "install: --set gives the load a setting" do
     edit("plugin.rb") { |text| text.sub('chi.command("/greet"', 'chi.command("/#{@word}"') } # rubocop:disable Lint/InterpolationCheck
     refresh!
@@ -394,14 +397,6 @@ RSpec.describe Samagotchi::BundleCommand::Check do
     refresh!
     expect(installed_findings).to eq(["warn boundary plugin.rb: Samagotchi::OldInternal::Thing is gone from this chi, " \
                                       "so this bundle may fail (fix: use chi.* / ctx, or the names docs/plugins.md lists as stable)"])
-  end
-
-  it "registered: a manifest hook with events: is one line per event" do
-    edit("manifest.yml") { |text| text.sub("    event: after_turn", "    events: [after_turn, before_turn]") }
-    refresh!
-    expect(findings(:info)).to include("info registered hooks/watch.rb: hook after_turn (priority 100)",
-                                       "info registered hooks/watch.rb: hook before_turn (priority 100)")
-    expect(@status).to eq(0)
   end
 
   it "hook-event: a chi.on event chi never fires" do
@@ -438,7 +433,7 @@ RSpec.describe Samagotchi::BundleCommand::Check do
 
   it "trust: a trust_level the author set" do
     edit("manifest.yml") { |text| "#{text}trust_level: reviewed\n" }
-    expect(findings(:warn)).to eq(["warn trust manifest.yml:17: trust_level: reviewed is set by the bundle's author " \
+    expect(findings(:warn)).to eq(["warn trust manifest.yml:13: trust_level: reviewed is set by the bundle's author " \
                                    "(fix: leave it out unless someone reviewed the bundle)"])
   end
 

@@ -15,7 +15,7 @@ module Samagotchi
     # A bundle as chi installs and loads it, unlike Bundle (its source as it
     # is): MemoryBundle::Installer copies it into the sandbox's state (sha256
     # and requires_chi checked), then chi's own loaders load what is
-    # installed (ExtensionLoad: the bundle hooks, then the plugins). What
+    # installed (ExtensionLoad: config hooks, then the plugins). What
     # failed names the bundle's source files, not the installed copies.
     #
     #   result = Samagotchi::Testing::Install.run("path/to/bundle", settings: { "every" => 3 })
@@ -23,8 +23,8 @@ module Samagotchi
     module Install
       # warnings: the Installer's; plugin_failures / hook_failures:
       # [Guardrails::LoadFailures::Failure] of this bundle, each location
-      # in the source dir (hook_failures: the guardrails', a required
-      # plugin's among them); registered: what it registered (#registered).
+      # in the source dir (hook_failures: the guardrails': a required
+      # plugin's load failure, a config hook's); registered: what it registered (#registered).
       Result = Data.define(:name, :warnings, :plugin_failures, :hook_failures, :registered) do
         def failures = plugin_failures + hook_failures
       end
@@ -35,7 +35,7 @@ module Samagotchi
       Registered = Data.define(:commands, :tools, :hooks, :inits, :toolkits, :tool_sources, :peer_sources, :prompt_sections)
       # A command: its mid_turn policy and its selection-bar labels (chi.annotation).
       Command = Data.define(:name, :mid_turn, :labels)
-      # A hook on an event: the bundle, the hook (its file, or the plugin's) and its priority.
+      # A hook on an event: the bundle, the hook (the plugin's label) and its priority.
       Hook = Data.define(:bundle, :hook, :priority)
 
       module_function
@@ -119,7 +119,7 @@ module Samagotchi
       # installed copy to the source dir.
       def own(failures, name, installed, dir)
         failures.list.select { |f| f.what.end_with?("(bundle #{name})") }.map do |failure|
-          # The plugin is installed into plugin/, the hooks into hooks/.
+          # The plugin is installed into plugin/.
           location = failure.location&.sub(%r{\A#{Regexp.escape(installed)}/(?:plugin/)?}, "#{dir}/")
           failure.dup.tap { |copy| copy.location = location }
         end

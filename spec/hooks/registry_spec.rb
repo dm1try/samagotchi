@@ -223,8 +223,7 @@ RSpec.describe Samagotchi::Hooks::Registry, "the hook runtime on the event" do
 end
 
 RSpec.describe Samagotchi::Hooks, "Hooks.wrap's failure notice" do
-  # A hook file's wrap, as Hooks::BundleLoader builds it: label names the
-  # file, the bundle and the event.
+  # A hook's wrap whose label names the file, the bundle and the event.
   def wrapped(policy:, on_failure: nil, &block)
     Samagotchi::Hooks.wrap(label: "audit.rb (bundle b) after_tool_call hook", event: :after_tool_call,
                            policy: policy, echo: false, on_failure: on_failure, &block)

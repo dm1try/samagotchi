@@ -414,4 +414,33 @@ RSpec.describe Samagotchi::Plugin::Loader do
     expect(events[1]).to include(hook: "plugin.rb (bundle starter)", text: "server x didn't start", level: :warn)
     expect(events[2]).to include(source: "starter", title: "starter", in_turn: true)
   end
+
+  describe ".namespace_for" do
+    it "gives each bundle its own module under Samagotchi::Bundles, the same one each time" do
+      expect(described_class.namespace_for("a")).not_to eq(described_class.namespace_for("b"))
+      expect(described_class.namespace_for("a")).to equal(described_class.namespace_for("a"))
+      expect(described_class.namespace_for("a").to_s).to start_with("Samagotchi::Bundles::")
+    end
+
+    it "gives hyphen and underscore names distinct modules (injective)" do
+      expect(described_class.namespace_for("my-bundle")).not_to eq(described_class.namespace_for("my_bundle"))
+    end
+  end
+
+  describe ".sha_mismatch" do
+    let(:file) { File.join(tmpdir, "plugin.rb").tap { |path| File.write(path, "class Plugin; end\n") } }
+    let(:sha) { Digest::SHA256.file(file).hexdigest }
+
+    it "is nil for the recorded sha, bare or prefixed, and for a dev install's" do
+      expect(described_class.sha_mismatch(file, sha)).to be_nil
+      expect(described_class.sha_mismatch(file, "sha256:#{sha}")).to be_nil
+      expect(described_class.sha_mismatch(file, Samagotchi::MemoryBundle::Provenance::DEV_SHA)).to be_nil
+    end
+
+    it "says the file changed since install, or that no sha was recorded" do
+      expect(described_class.sha_mismatch(file, "0" * 64))
+        .to eq("its sha256 #{sha[0, 12]}… differs from the installed #{"0" * 12}… (edited after install? reinstall the bundle)")
+      expect(described_class.sha_mismatch(file, nil)).to eq("no sha256 recorded for it (reinstall the bundle)")
+    end
+  end
 end

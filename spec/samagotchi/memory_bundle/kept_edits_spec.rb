@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "spec_helper"
+require "support/legacy_hooks_record"
 require "tmpdir"
 require "fileutils"
 require "yaml"
@@ -335,17 +336,12 @@ RSpec.describe "Kept edits in a bundle" do
     end
   end
 
+  # And an older chi's class-file hook (hooks/h.rb), which an install or
+  # upgrade removes (AssetInstaller#retire_hooks).
   describe "hooks, rules, the plugin and scripts" do
-    def asset_source(version, body, hook: "h.rb", rule: "r.yml", plugin: "plugin.rb", script: "s.sh")
+    def asset_source(version, body, rule: "r.yml", plugin: "plugin.rb", script: "s.sh")
       write_source(version, { "a.md" => "same\n" })
       extra = {}
-      if hook
-        FileUtils.mkdir_p(File.join(source, "hooks"))
-        File.write(File.join(source, "hooks", hook), "# hook #{body}\n")
-        extra["hooks"] = { hook => { "event" => "after_turn", "on_error" => "log" } }
-      else
-        extra["hooks"] = {}
-      end
       if rule
         FileUtils.mkdir_p(File.join(source, "guardrails"))
         File.write(File.join(source, "guardrails", rule), "# rule #{body}\n")
@@ -372,6 +368,7 @@ RSpec.describe "Kept edits in a bundle" do
     before do
       asset_source("1.0.0", "one")
       run_installer
+      LegacyHooksRecord.legacy_hooks_record("demo", hooks: { "h.rb" => "# hook one\n" })
     end
 
     it "copies each edited file an upgrade replaces, in its own subfolder, and says so" do
@@ -380,25 +377,25 @@ RSpec.describe "Kept edits in a bundle" do
       up = run_installer(upgrade: true)
 
       expect(trash_files).to eq(installed.to_h { |label, path| [label, "edited #{File.basename(path)}\n"] })
-      expect(File.read(installed["hooks/h.rb"])).to eq("# hook two\n")
+      expect(File.exist?(installed["hooks/h.rb"])).to be(false)
       expect(up.summary).to include("Copied to the trash first: ")
       expect(up.summary).to include("hooks/h.rb", "guardrails/r.yml", "plugin/plugin.rb", "scripts/s.sh")
     end
 
     it "keeps same-name files of two kinds apart" do
-      asset_source("1.0.1", "one", hook: "x", rule: nil, plugin: nil, script: "x")
+      asset_source("1.0.1", "one", rule: nil, plugin: nil, script: "x")
       run_installer(upgrade: true)
-      File.write(File.join(provenance.hooks_dir, "x"), "my hook\n")
+      LegacyHooksRecord.legacy_hooks_record("demo", hooks: { "x" => "# hook\n" }, edited: ["x"])
       File.write(File.join(provenance.scripts_dir, "x"), "my script\n")
-      asset_source("2.0.0", "two", hook: "x", rule: nil, plugin: nil, script: "x")
+      asset_source("2.0.0", "two", rule: nil, plugin: nil, script: "x")
       run_installer(upgrade: true)
 
-      expect(trash_files).to eq("hooks/x" => "my hook\n", "scripts/x" => "my script\n")
+      expect(trash_files).to eq("hooks/x" => "# edited by hand\n", "scripts/x" => "my script\n")
     end
 
     it "copies each edited file an upgrade prunes" do
       installed.each_value { |path| File.write(path, "edited\n") }
-      asset_source("2.0.0", "two", hook: nil, rule: nil, plugin: nil, script: nil)
+      asset_source("2.0.0", "two", rule: nil, plugin: nil, script: nil)
       run_installer(upgrade: true)
 
       expect(trash_files.keys).to match_array(installed.keys)
@@ -414,7 +411,7 @@ RSpec.describe "Kept edits in a bundle" do
     end
 
     it "copies nothing when an edited file already has the incoming bytes" do
-      File.write(installed["hooks/h.rb"], "# hook two\n")
+      File.write(installed["guardrails/r.yml"], "# rule two\n")
       asset_source("2.0.0", "two")
       run_installer(upgrade: true)
 
@@ -439,19 +436,20 @@ RSpec.describe "Kept edits in a bundle" do
 
   describe "a dev install's links" do
     it "are never copied to the trash, replaced or pruned" do
-      write_source("1.0.0", { "a.md" => "one\n" }, extra: { "hooks" => { "h.rb" => { "event" => "after_turn" } } })
-      FileUtils.mkdir_p(File.join(source, "hooks"))
-      File.write(File.join(source, "hooks", "h.rb"), "# hook\n")
+      write_source("1.0.0", { "a.md" => "one\n" }, extra: { "scripts" => { "s.sh" => { "sha256" => "" } } })
+      FileUtils.mkdir_p(File.join(source, "scripts"))
+      File.write(File.join(source, "scripts", "s.sh"), "# script\n")
+      File.chmod(0o755, File.join(source, "scripts", "s.sh"))
       run_installer(dev: true)
-      link = File.join(provenance.hooks_dir, "h.rb")
+      link = File.join(provenance.scripts_dir, "s.sh")
       expect(File.symlink?(link)).to be true
 
-      File.write(File.join(source, "hooks", "h.rb"), "# edited in the source\n")
+      File.write(File.join(source, "scripts", "s.sh"), "# edited in the source\n")
       run_installer(dev: true)
       expect(trash_files).to be_empty
 
-      FileUtils.rm_f(File.join(source, "hooks", "h.rb"))
-      manifest = YAML.safe_load_file(File.join(source, "manifest.yml")).merge("hooks" => {})
+      FileUtils.rm_f(File.join(source, "scripts", "s.sh"))
+      manifest = YAML.safe_load_file(File.join(source, "manifest.yml")).merge("scripts" => {})
       File.write(File.join(source, "manifest.yml"), YAML.dump(manifest))
       run_installer(dev: true)
       expect(trash_files).to be_empty
@@ -776,20 +774,20 @@ RSpec.describe "Kept edits in a bundle" do
     end
   end
 
-  # A bundle with a memory, a hook, a rule, a plugin and a script.
+  # A bundle with a memory, a rule, a plugin and a script.
   def full_source(version, memory: true)
     write_source(version, memory ? { "a.md" => "same\n" } : {})
-    { "hooks/h.rb" => "# hook\n", "guardrails/r.yml" => "# rule\n", "plugin.rb" => "# plugin\n", "scripts/s.sh" => "# script\n" }.each do |file, text|
+    { "guardrails/r.yml" => "# rule\n", "plugin.rb" => "# plugin\n", "scripts/s.sh" => "# script\n" }.each do |file, text|
       FileUtils.mkdir_p(File.dirname(File.join(source, file)))
       File.write(File.join(source, file), "#{text.chomp} #{version}\n")
     end
     manifest = YAML.safe_load_file(File.join(source, "manifest.yml"))
-    manifest.merge!("hooks" => { "h.rb" => { "event" => "after_turn", "on_error" => "log" } },
-                    "plugin" => { "file" => "plugin.rb", "sha256" => "" }, "scripts" => { "s.sh" => { "sha256" => "" } })
+    manifest.merge!("plugin" => { "file" => "plugin.rb", "sha256" => "" }, "scripts" => { "s.sh" => { "sha256" => "" } })
     File.write(File.join(source, "manifest.yml"), YAML.dump(manifest))
     source
   end
 
+  # With an older chi's hooks/h.rb (#legacy_hook!).
   def installed_assets
     { "hooks/h.rb" => File.join(provenance.hooks_dir, "h.rb"), "guardrails/r.yml" => File.join(provenance.guardrails_dir, "r.yml"),
       "plugin/plugin.rb" => File.join(provenance.plugin_dir, "plugin.rb"), "scripts/s.sh" => File.join(provenance.scripts_dir, "s.sh") }
@@ -797,16 +795,19 @@ RSpec.describe "Kept edits in a bundle" do
 
   def uninstall(**opts) = Samagotchi::MemoryBundle::Uninstaller.new(name: "demo", **opts).tap(&:run)
 
+  def legacy_hook! = LegacyHooksRecord.legacy_hooks_record("demo", hooks: { "h.rb" => "# hook 1.0.0\n" })
+
   describe "an uninstall" do
     before do
       full_source("1.0.0")
       run_installer
+      legacy_hook!
     end
 
     it "copies each edited hook, rule, plugin and script to the trash, with --force or without" do
       [{}, { force: true }].each do |opts|
         full_source("1.0.0")
-        run_installer unless provenance.installed?
+        run_installer && legacy_hook! unless provenance.installed?
         installed_assets.each_value { |path| File.write(path, "edited #{File.basename(path)}\n") }
         un = uninstall(**opts)
 
@@ -856,11 +857,11 @@ RSpec.describe "Kept edits in a bundle" do
       uninstall
       full_source("1.0.0")
       run_installer(dev: true)
-      expect(File.symlink?(installed_assets["hooks/h.rb"])).to be true
+      expect(File.symlink?(installed_assets["scripts/s.sh"])).to be true
       un = uninstall
 
       expect(un.trash_copy_line).to be_nil
-      expect(File.read(File.join(source, "hooks", "h.rb"))).to eq("# hook 1.0.0\n")
+      expect(File.read(File.join(source, "scripts", "s.sh"))).to eq("# script 1.0.0\n")
     end
   end
 

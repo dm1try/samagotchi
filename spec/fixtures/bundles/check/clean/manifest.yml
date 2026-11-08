@@ -10,7 +10,3 @@ files:
 plugin:
   file: plugin.rb
   sha256: sha256:
-hooks:
-  watch.rb:
-    sha256: sha256:
-    event: after_turn

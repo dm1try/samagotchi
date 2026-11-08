@@ -12,11 +12,18 @@ and commands may change between minor versions. How releases are made:
 
 - A folder in no git repository can be a chi project: `chi project init [DIR]` writes `DIR/.chi/project.yml`, and DIR and every subfolder share one project memories folder, group their sessions (`chi sessions list`, chi web's projects) and take `chi context --project`. `chi project` shows which project a folder is in. A git repository stays the project wherever there is one (init writes nothing there), and `$HOME` or a folder above it can't be marked. A folder chi already ran in at its top keeps its memories. A session in a subfolder of a marked project reads the AGENTS.md chain from the project's top, and `delegate`'s `cwd:` takes any folder of it (not a nested repository or marked project); sessions already running in a folder when it is marked keep the old project until `chi sessions restart`.
 
+### Removed
+
+- Bundles can no longer ship class-file hooks (`hooks/*.rb` and the manifest's `hooks:`): a bundle hooks events from its `plugin.rb` with `chi.on` (docs/plugins.md). An installed bundle that still has them keeps its memories, rules, plugin and scripts, and chi says at the first turn that its hooks no longer load (`chi bundle status` and `chi update` say so too); installing or upgrading it is refused until they move. An older install's `on_error: fail_closed` class-file hook (chi-nah 0.1.x) stops guarding: move it to `chi.on(…, on_error: :fail_closed)` with `plugin: required: true` (docs/plugins.md). Your config's own `hooks:` are unchanged.
+- The next install or upgrade of such a bundle from a source without hooks removes its old `hooks/` (an edited hook is copied to the trash first; `--dry-run` lists the hooks under "Would remove", and `chi update`'s plan names an edited one), and `chi bundle uninstall` still removes them. An external bundle whose source still ships hooks stays on the first-turn warning until its source moves them or you uninstall it. `chi bundle build` no longer copies an installed bundle's hooks, and `chi bundle check` reports a source's hooks as `hooks-retired`.
+- The test kit's `Testing::Bundle#hooks_namespace` (the module a bundle's hook files were loaded in); `Testing::Install::Result#hook_failures` and `Registered#hooks` stay, filled from the plugin and config hooks.
+
 ### Fixed
 
 - A session whose first message, last prompt or title held bytes that aren't valid UTF-8 (pasted binary, a broken terminal) no longer fails to save; the bad bytes are saved as `?`.
 - A damaged turn-drawings file no longer stops a terminal from joining a session or chi web from showing it; the turn is drawn from the saved messages instead.
 - `chi bundle try --json` no longer crashes when the answer or the trace holds non-ASCII text.
+- `chi bundle upgrade` (and `chi update`) list a plugin or script that the new version adds under Installed, not Updated.
 
 ## [0.157.0] - 2026-11-08
 

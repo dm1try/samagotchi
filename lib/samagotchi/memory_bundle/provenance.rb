@@ -8,7 +8,6 @@ require "tmpdir"
 require_relative "../atomic_file"
 require_relative "../memory_paths"
 require_relative "../version"
-require_relative "bundle_hook"
 require_relative "file_digest"
 require_relative "installed_bundle"
 require_relative "manifest"
@@ -195,7 +194,6 @@ module Samagotchi
       #   the record. nil keeps an entry with no base (a kept edit that has
       #   none: the user's file must never become it), with its recorded
       #   checksum.
-      # @param hooks_files [Hash] basename => path for hook file snapshots (optional)
       # @param guardrails_files [Hash] basename => installed rule file; the
       #   sha256 of each is recorded (the Engine checks it at load)
       # @param plugin_file [String, nil] the installed plugin file; its name
@@ -229,7 +227,9 @@ module Samagotchi
       #   (requires_chi … setting_types) are still written from the kwargs:
       #   an older chi sharing this memories dir reads only them
       #   (docs/internals/bundles.md); a key a later manifest gains is never added
-      def write(files:, scope:, version:, source_path:, hooks: {}, trust_level: nil, source_commit: nil, hooks_files: {},
+      # The record has no hooks ("hooks" => {}: class-file hooks are retired)
+      # and an older record's hook bases go.
+      def write(files:, scope:, version:, source_path:, trust_level: nil, source_commit: nil,
                 guardrails_files: {}, plugin_file: nil, plugin_required: false, requires_chi: nil, needs: nil, marks: [], incoming_dir: nil, includes: nil,
                 scripts_files: {}, context_providers: [], block_renderers: [], file_descriptions: {}, session_settings: [], session_setting_types: {}, settings: nil, setting_types: {},
                 dev: false, manifest_from: nil)
@@ -275,40 +275,8 @@ module Samagotchi
           end
         end
 
-        # Hooks provenance: persist metadata and base snapshots for hooks
-        hooks_map = {}
-        # Incoming hooks: basename => BundleHook (or its metadata hash)
-        normalized_hooks = {}
-        if hooks.is_a?(Hash)
-          hooks.each do |k, v|
-            next unless k.is_a?(String) && !k.empty?
-            next unless v.is_a?(Hash) || v.is_a?(BundleHook)
-
-            normalized_hooks[k] = BundleHook.parse(v)
-          end
-        end
-        # Prune stale hook bases
-        existing&.hooks&.each_key do |old_key_str|
-          FileUtils.rm_f(File.join(bases_dir, old_key_str)) unless normalized_hooks.key?(old_key_str)
-        end
-        # Save base snapshots for hooks where a file path was provided, and
-        # record the sha256 of the installed file itself: the load-time check
-        # compares against it, and a declared sha can be wrong (installing
-        # only warns about that).
-        hooks_files = {} unless hooks_files.is_a?(Hash)
-        normalized_hooks.each do |k, hook|
-          src = hooks_files[k] || hooks_files[k.to_sym]
-          hook = hook.with(sha256: BundleHook.of_file(src.to_s).sha256) if src && File.exist?(src.to_s)
-          hook = hook.with(sha256: DEV_SHA) if dev
-          hooks_map[k] = hook.to_record
-          next unless src && File.exist?(src.to_s)
-
-          begin
-            File.write(File.join(bases_dir, k), File.read(src.to_s))
-          rescue StandardError
-            nil
-          end
-        end
+        # An older chi's hooks: their bases go with them (AssetInstaller#retire_hooks).
+        existing&.hooks&.each_key { |old_key_str| FileUtils.rm_f(File.join(bases_dir, old_key_str)) }
 
         manifest_data = {
           "name" => @name,
@@ -317,7 +285,7 @@ module Samagotchi
           "source" => source_path.to_s,
           "installed_at" => DateTime.now.iso8601,
           "files" => merged_entries,
-          "hooks" => hooks_map
+          "hooks" => {}
         }
         manifest_data["dev"] = true if dev
         if guardrails_files.is_a?(Hash) && !guardrails_files.empty?
@@ -460,7 +428,7 @@ module Samagotchi
       # wrote it, or the file is gone), when +dir+ is the source of what's
       # installed: its manifest names this bundle at the recorded version and
       # says what the record keeps (#manifest_difference), and every sha the
-      # record has for a memory, plugin, hook, script or rule is the source
+      # record has for a memory, plugin, script or rule is the source
       # file's. Then the file is copied to #kept_manifest_path and the
       # record gains its manifest_sha, and nothing else changes (installed_at,
       # the mirror, installed_by). A dev record is never adopted: its next
@@ -585,8 +553,8 @@ module Samagotchi
       # The first manifest key in which +manifest+ says other than what the
       # record keeps, nil when none: each mirrored key as #write records it (one
       # the record lacks is fine only when an older chi couldn't have known it:
-      # Manifest::SINCE has it), then each recorded hook's events, on_error and
-      # priority.
+      # Manifest::SINCE has it). An older record's hooks don't count: they
+      # no longer load, and the source can't list any (Manifest::HooksRetired).
       def manifest_difference(bundle, manifest)
         recorded = plain(bundle.mirror)
         source = plain(self.class.mirror_fields(
@@ -595,18 +563,11 @@ module Samagotchi
           session_settings: manifest.session_settings, session_setting_types: manifest.session_setting_types,
           settings: manifest.settings, setting_types: manifest.setting_types
         ))
-        differing = InstalledBundle::MIRROR_KEYS.find do |key|
+        InstalledBundle::MIRROR_KEYS.find do |key|
           next false if recorded[key] == source[key]
 
           !(recorded[key].nil? && Manifest::SINCE.key?(MIRROR_SINCE.fetch(key, key)))
         end
-        return differing if differing
-
-        same_hooks = bundle.hooks.all? do |file, hook|
-          theirs = manifest.hooks.fetch(file, BundleHook.new)
-          [hook.events, hook.on_error, hook.priority] == [theirs.events, theirs.on_error, theirs.priority]
-        end
-        same_hooks ? nil : "hooks"
       end
       private :manifest_difference
 
@@ -614,7 +575,7 @@ module Samagotchi
       private :plain
 
       # Each file the record has a sha for, by its path in the bundle's source
-      # => that sha: the plugin, hooks, scripts, rules, and each memory whose
+      # => that sha: the plugin, scripts, rules, and each memory whose
       # entry has a checksum and no conflict mark (its base is the bundle's text).
       def installed_shas(bundle, manifest)
         shas = bundle.files.each_with_object({}) do |(key, entry), acc|
@@ -624,7 +585,6 @@ module Samagotchi
           file = manifest.plugin && manifest.plugin[:file].to_s
           shas[file && File.basename(file) == bundle.plugin.file ? file : bundle.plugin.file] = bundle.plugin.sha256
         end
-        bundle.hooks.each { |file, hook| shas["hooks/#{file}"] = hook.sha256 }
         bundle.scripts.each { |file, sha| shas["scripts/#{file}"] = sha }
         bundle.guardrails.each { |file, sha| shas["guardrails/#{file}"] = sha }
         shas

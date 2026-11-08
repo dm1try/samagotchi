@@ -25,16 +25,12 @@ RSpec.describe Samagotchi::Testing::Install do
 
   after { FileUtils.rm_rf(File.dirname(dir)) }
 
-  def bundle(plugin, hook: nil, plugin_sha: nil, requires_chi: nil)
-    FileUtils.mkdir_p(File.join(dir, "hooks"))
+  def bundle(plugin, plugin_sha: nil, requires_chi: nil)
+    FileUtils.mkdir_p(dir)
     File.write(File.join(dir, "plugin.rb"), plugin)
     manifest = "name: greet\nversion: 0.1.0\nplugin:\n  file: plugin.rb\n  " \
                 "sha256: sha256:#{plugin_sha || Digest::SHA256.hexdigest(plugin)}\n"
     manifest << "requires_chi: \"#{requires_chi}\"\n" if requires_chi
-    if hook
-      File.write(File.join(dir, "hooks", "h.rb"), hook)
-      manifest << "hooks:\n  h.rb:\n    sha256: sha256:#{Digest::SHA256.hexdigest(hook)}\n    event: after_turn\n"
-    end
     File.write(File.join(dir, "manifest.yml"), manifest)
   end
 
@@ -62,14 +58,13 @@ RSpec.describe Samagotchi::Testing::Install do
     )
   end
 
-  it "names a syntax error's line, and a hook file's" do
-    bundle("class Plugin\n  def register(chi)\n    chi.command(\n  end\nend\n",
-           hook: "class H\n  def initialize\n    nil.boom\n  end\nend\n")
+  it "names a syntax error's line" do
+    bundle("class Plugin\n  def register(chi)\n    chi.command(\n  end\nend\n")
 
     result = described_class.run(dir)
 
     expect(result.plugin_failures.first.location).to match(%r{\A#{Regexp.escape(dir)}/plugin\.rb:\d+\z})
-    expect(result.hook_failures.map(&:location)).to eq(["#{dir}/hooks/h.rb:3"])
+    expect(result.hook_failures).to eq([])
   end
 
   it "returns the Installer's warnings: a stale sha" do

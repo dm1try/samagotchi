@@ -31,10 +31,9 @@ RSpec.describe Samagotchi::MemoryBundle::Shas do
         files:
           a.md: sha256:#{sha("old")}
           "q.md": sha256:#{sha("q")}
-        hooks:
-          h.rb:
+          m.md:
             sha256: sha256:#{sha("old")}
-            event: before_tool_call
+            description: a mapping
         plugin:
           file: plugin.rb
           sha256: sha256:#{sha("p")}
@@ -45,15 +44,15 @@ RSpec.describe Samagotchi::MemoryBundle::Shas do
     before do
       write("b/a.md", "new a")
       write("b/q.md", "q")
-      write("b/hooks/h.rb", "new h")
+      write("b/m.md", "new m")
       write("b/plugin.rb", "p")
     end
 
     it "recomputes the stale sha lines and keeps everything else byte for byte" do
       text, changes = described_class.refresh(dir, manifest)
-      expect(changes).to eq([["a.md", sha("old"), sha("new a")], ["hooks/h.rb", sha("old"), sha("new h")]])
+      expect(changes).to eq([["a.md", sha("old"), sha("new a")], ["m.md", sha("old"), sha("new m")]])
       expect(text).to eq(manifest.sub("a.md: sha256:#{sha("old")}", "a.md: sha256:#{sha("new a")}")
-                                 .sub("sha256: sha256:#{sha("old")}", "sha256: sha256:#{sha("new h")}"))
+                                 .sub("sha256: sha256:#{sha("old")}", "sha256: sha256:#{sha("new m")}"))
     end
 
     it "refreshes a scripts: line from scripts/<file>" do
@@ -131,24 +130,23 @@ RSpec.describe Samagotchi::MemoryBundle::Shas do
 
     before do
       write("b/plugin.rb", "p")
-      write("b/hooks/h.rb", "h")
+      write("b/scripts/s.rb", "s")
     end
 
     it "reports a placeholder sha and a wrong hex, and nothing for a current one" do
-      write("b/manifest.yml", "name: b\nplugin:\n  file: plugin.rb\n  sha256: sha256:\nhooks:\n  h.rb:\n    sha256: sha256:abc\n")
+      write("b/manifest.yml", "name: b\nplugin:\n  file: plugin.rb\n  sha256: sha256:\nscripts:\n  s.rb: sha256:abc\n")
       expect(described_class.stale(dir)).to eq([described_class::Stale.new("plugin.rb", "", sha("p")),
-                                                described_class::Stale.new("hooks/h.rb", "abc", sha("h"))])
+                                                described_class::Stale.new("scripts/s.rb", "abc", sha("s"))])
 
       write("b/manifest.yml", described_class.refresh(dir).first)
       expect(described_class.stale(dir)).to eq([])
     end
 
-    it "reports a plugin:, hooks: or scripts: entry with no sha line (the installer takes it unchecked)" do
-      write("b/scripts/s.rb", "s")
-      write("b/manifest.yml", "name: b\nplugin:\n  file: plugin.rb\nhooks:\n  h.rb:\n    event: after_turn\nscripts:\n  s.rb:\n")
+    it "reports a plugin: or scripts: entry with no sha line (the installer takes it unchecked)" do
+      write("b/manifest.yml", "name: b\nplugin:\n  file: plugin.rb\nscripts:\n  s.rb:\n")
 
       expect(described_class.stale(dir).map { |s| [s.file, s.old] })
-        .to eq([["plugin.rb", nil], ["hooks/h.rb", nil], ["scripts/s.rb", nil]])
+        .to eq([["plugin.rb", nil], ["scripts/s.rb", nil]])
     end
 
     it "raises on a code file the manifest names but the bundle lacks" do

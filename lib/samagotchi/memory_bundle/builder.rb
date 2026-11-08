@@ -4,7 +4,6 @@ require "digest"
 require_relative "file_digest"
 require "fileutils"
 require "tmpdir"
-require_relative "bundle_hook"
 require_relative "manifest"
 require_relative "placeholder"
 require_relative "../memory_paths"
@@ -12,7 +11,9 @@ require_relative "../model_overlay"
 
 module Samagotchi
   module MemoryBundle
-    # Builds local memories and installed hooks into a shareable bundle.
+    # Builds local memories and an installed bundle's rules, plugin and
+    # scripts into a shareable bundle (class-file hooks are retired: an older
+    # record's hooks/ isn't built).
     #
     # Inverse of Installer: reads from the resolved scope directory,
     # computes SHA256 checksums, writes manifest.yml via Manifest.write,
@@ -27,11 +28,10 @@ module Samagotchi
       # record and its dir), else from the scope dir:
       #   record      the InstalledBundle, nil when none is installed (or
       #               it doesn't read)
-      #   hooks       basename => BundleHook; hook_files basename => path
       #   rules       guardrails/*.yml paths
       #   plugin      the installed plugin file, nil without one
       #   scripts     file name => path; context_providers, block_renderers the parsed lists
-      InstalledParts = Data.define(:record, :hooks, :hook_files, :rules, :plugin, :scripts, :context_providers, :block_renderers)
+      InstalledParts = Data.define(:record, :rules, :plugin, :scripts, :context_providers, :block_renderers)
 
       attr_reader :built_files, :warnings, :placeholder_warnings, :out_path, :staging_dir
 
@@ -138,12 +138,10 @@ module Samagotchi
         end
       end
 
-      # The installed bundle's hooks (a recorded one missing on disk left
-      # out; one with no recorded sha gets its file's), guardrail rules,
-      # plugin, scripts, context providers and block renderers (its
-      # InstalledManifest's). Without hooks or rules in a
-      # record, the scope dir's hooks/*.rb and guardrails/*.yml (building
-      # from a raw bundle dir that is also the memories dir).
+      # The installed bundle's guardrail rules, plugin, scripts, context
+      # providers and block renderers (its InstalledManifest's). Without
+      # rules in a record, the scope dir's guardrails/*.yml (building from a
+      # raw bundle dir that is also the memories dir).
       # @return [InstalledParts]
       def installed_parts(name, target_dir)
         prov = nil
@@ -156,23 +154,6 @@ module Samagotchi
           record = nil
         end
 
-        hooks = {}
-        hook_files = {}
-        if record&.hooks&.any?
-          record.hooks.each do |basename, hook|
-            src = File.join(prov.hooks_dir, basename)
-            next unless File.exist?(src)
-
-            hooks[basename] = hook.sha256.empty? ? hook.with(sha256: BundleHook.of_file(src).sha256) : hook
-            hook_files[basename] = src
-          end
-        else
-          Dir.glob(File.join(target_dir, "hooks", "*.rb")).sort.each do |src|
-            hooks[File.basename(src)] = BundleHook.of_file(src)
-            hook_files[File.basename(src)] = src
-          end
-        end
-
         rules_dir = record&.guardrails&.any? ? prov.guardrails_dir : File.join(target_dir, "guardrails")
         plugin = record ? prov.plugin_path(record) : nil
         manifest = record&.manifest
@@ -181,7 +162,7 @@ module Samagotchi
         raise BuildError, "the installed #{name}'s record: #{problem}" if problem
 
         InstalledParts.new(
-          record: record, hooks: hooks, hook_files: hook_files,
+          record: record,
           rules: Dir.exist?(rules_dir) ? Dir.glob(File.join(rules_dir, "*.yml")).sort : [],
           plugin: plugin && File.file?(plugin) ? plugin : nil,
           scripts: installed_scripts(prov, record),
@@ -190,14 +171,10 @@ module Samagotchi
         )
       end
 
-      # The memories, hooks/, guardrails/, the plugin and scripts/ into the
+      # The memories, guardrails/, the plugin and scripts/ into the
       # staging dir, laid out as Installer reads a bundle.
       def stage_files(staging, candidates, parts)
         candidates.each { |src| FileUtils.cp(src, File.join(staging, File.basename(src))) }
-        unless parts.hook_files.empty?
-          FileUtils.mkdir_p(File.join(staging, "hooks"))
-          parts.hook_files.each { |basename, src| FileUtils.cp(src, File.join(staging, "hooks", basename)) }
-        end
         unless parts.rules.empty?
           FileUtils.mkdir_p(File.join(staging, "guardrails"))
           parts.rules.each { |src| FileUtils.cp(src, File.join(staging, "guardrails", File.basename(src))) }
@@ -225,7 +202,6 @@ module Samagotchi
           scope: @scope,
           description: description,
           files: files_map,
-          hooks: parts.hooks.empty? ? nil : parts.hooks,
           trust_level: trust_level,
           plugin: parts.plugin && { file: File.basename(parts.plugin), sha256: FileDigest.sha256(parts.plugin),
                                     required: manifest&.plugin_required },

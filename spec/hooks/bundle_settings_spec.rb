@@ -2,11 +2,8 @@
 
 require "samagotchi/engine"
 require "samagotchi/config"
-require "samagotchi/memory_bundle/provenance"
-require "tmpdir"
-require "json"
 
-# config.yml `bundles:` reaches a bundle's hooks as their settings.
+# config.yml `bundles:`: the bundles' settings (a plugin's: spec/samagotchi/plugin/).
 RSpec.describe Samagotchi::Engine, "bundle settings" do
   around { |example| with_env("SAMAGOTCHI_DEFAULT_MODEL" => "Gemma-4B-it") { example.run } }
 
@@ -17,73 +14,11 @@ RSpec.describe Samagotchi::Engine, "bundle settings" do
     allow(Samagotchi::ConfigFile).to receive(:read_yaml).with(path: Samagotchi::ConfigFile.global_path).and_return(data)
   end
 
-  def record(name, **raw) = Samagotchi::MemoryBundle::InstalledBundle.parse(name, raw)
-
-  def installed(bundle_name)
-    allow(Samagotchi::MemoryBundle::Provenance).to receive(:each_installed).and_call_original
-    allow(Samagotchi::MemoryBundle::Provenance).to receive(:each_installed).with(holding: :hooks)
-      .and_yield(bundle_name, record(bundle_name, hooks: { "k.rb" => { event: "before_tool_call" } }, trust_level: "reviewed"))
-  end
-
-  it "passes the bundle's section to BundleLoader.load, {} for a bundle without one" do
-    stub_config({ "bundles" => { "known-names" => { "names" => ["x"], "mode" => "ask" } } })
-    installed("known-names")
-    expect(Samagotchi::Hooks::BundleLoader).to receive(:load)
-      .with(hash_including(bundle_name: "known-names", settings: { "names" => ["x"], "mode" => "ask" })).and_return(1)
-    described_class.new(client: client)
-
-    installed("other")
-    expect(Samagotchi::Hooks::BundleLoader).to receive(:load).with(hash_including(bundle_name: "other", settings: {})).and_return(1)
-    described_class.new(client: client)
-  end
-
-  it "passes the bundle's installed manifest to BundleLoader.load, its requires_chi with it" do
-    stub_config({})
-    allow(Samagotchi::MemoryBundle::Provenance).to receive(:each_installed).and_call_original
-    allow(Samagotchi::MemoryBundle::Provenance).to receive(:each_installed).with(holding: :hooks)
-      .and_yield("k", record("k", hooks: { "k.rb" => { event: "before_tool_call" } }, trust_level: "reviewed", requires_chi: ">= 99.0"))
-    loaded_manifest = nil
-    allow(Samagotchi::Hooks::BundleLoader).to receive(:load) { |kwargs| loaded_manifest = kwargs[:manifest] }
-    described_class.new(client: client)
-    expect(loaded_manifest.requires_chi).to eq(">= 99.0")
-    expect(loaded_manifest.requires_chi_failure).to include("this is chi #{Samagotchi::VERSION}")
-  end
-
-  # Engine's own rescues around bundle hook loading: a Ctrl-C reaches the
-  # caller, a hook's exit is reported and chi goes on.
-  it "lets a Ctrl-C while bundle hooks load reach the caller, and contains an exit" do
-    stub_config({})
-    installed("k")
-    allow(Samagotchi::Hooks::BundleLoader).to receive(:load).and_raise(Interrupt)
-    expect { described_class.new(client: client) }.to raise_error(Interrupt)
-
-    allow(Samagotchi::Hooks::BundleLoader).to receive(:load).and_raise(SystemExit)
-    expect { described_class.new(client: client) }.to output(/bundle 'k' failed to load hooks: SystemExit/).to_stderr
-  end
-
   it "ignores a bundles: section that is not a mapping, with one warning" do
     stub_config({ "bundles" => ["known-names"] })
-    installed("known-names")
     expect(Samagotchi::Log).to receive(:warn).with(:hooks, "bundles_section_invalid", anything).once
     allow(Samagotchi::Log).to receive(:warn).and_call_original
-    expect(Samagotchi::Hooks::BundleLoader).to receive(:load).with(hash_including(settings: {})).and_return(1)
     described_class.new(client: client)
-  end
-
-  it "loads the next bundle's hooks when one bundle's manifest.json doesn't parse, and reports the broken one" do
-    Dir.mktmpdir do |home|
-      dir = File.join(home, "samagotchi", "memories", ".bundles")
-      FileUtils.mkdir_p(File.join(dir, "a-broken", "hooks"))
-      File.write(File.join(dir, "a-broken", "manifest.json"), '{"hooks": ')
-      FileUtils.mkdir_p(File.join(dir, "b-valid"))
-      File.write(File.join(dir, "b-valid", "manifest.json"),
-                 JSON.generate(hooks: { "k.rb" => { event: "before_tool_call" } }, trust_level: "reviewed"))
-      stub_config({})
-      expect(Samagotchi::Hooks::BundleLoader).to receive(:load).with(hash_including(bundle_name: "b-valid")).and_return(1)
-      engine = with_env("XDG_CONFIG_HOME" => home) { described_class.new(client: client) }
-      expect(engine.guardrail_failures.message).to include("hooks (bundle a-broken) failed to load (manifest.json is unreadable")
-      expect(engine.guardrail_failures.required).to be_empty
-    end
   end
 
   it "is an accepted top-level config section" do

@@ -2,12 +2,11 @@
 
 require_relative "hooks/registry"
 require_relative "hooks/loader"
-require_relative "hooks/bundle_loader"
 require_relative "hooks/stream_watch"
 
 module Samagotchi
-  # Thin wrapper that exposes the Hooks::Registry, Hooks::Loader and
-  # Hooks::BundleLoader (bundle-owned hook plugins).
+  # Thin wrapper that exposes the Hooks::Registry and Hooks::Loader
+  # (config.yml's hooks; a bundle's hook through its plugin, Plugin::Api#on).
   #
   # The Engine holds an instance of Hooks::Registry and provides:
   # - #register_hook(name, &block) — register a turn-scoped hook

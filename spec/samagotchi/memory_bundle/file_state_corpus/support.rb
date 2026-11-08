@@ -327,6 +327,7 @@ module BundleStateCorpus
   end
 end
 
+require_relative "../../../support/legacy_hooks_record"
 require_relative "observe"
 require_relative "goldens"
 

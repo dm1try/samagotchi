@@ -9,8 +9,10 @@ require "fileutils"
 require "yaml"
 require "stringio"
 require "spec_helper"
+require "support/legacy_hooks_record"
 require "samagotchi/bundle_command"
 require "samagotchi/hooks"
+require "samagotchi/plugin/loader"
 
 # `chi bundle` as a user runs it: the text on each stream and the exit
 # codes, pinned before the command moved out of bin/chi. Each run gets its
@@ -52,7 +54,7 @@ RSpec.describe "chi bundle (CLI)" do
         List installed bundles and the ones shipped with chi that aren't installed.
 
       build [--scope system|project] [--name NAME] [--version VER] [--description DESC] [--out PATH] [FILES...]
-        Build local memories and installed hooks (and plugin) into a shareable bundle (dir or zip).
+        Build local memories and an installed plugin, rules and scripts into a shareable bundle (dir or zip).
         --scope selects source dir (default: system). --out inferred from extension; default <name>.zip.
         FILES... optional allowlist of *.md basenames to include (default: all but installed bundles' ones);
         a named memory brings its model overlays (<name>.<model-key>.md).
@@ -86,7 +88,7 @@ RSpec.describe "chi bundle (CLI)" do
         It also installs a bundle whose requires_chi this chi doesn't meet: without --force that install is
         refused, and the bundle is not written anywhere.
       install --dev PATH
-        Install the bundle in the local directory PATH as a link to it: its plugin, hooks, rules and scripts
+        Install the bundle in the local directory PATH as a link to it: its plugin, rules and scripts
         are PATH's own files (an edit applies at the next worker or chi web restart, with no re-install) and
         their sha256 isn't checked, for this bundle only. Its memories are copied; re-install with --force to
         pick up memory edits. Upgrade refuses it; uninstall removes the link, never PATH's files.
@@ -102,7 +104,7 @@ RSpec.describe "chi bundle (CLI)" do
     Usage: chi bundle build [--scope system|project] [--name NAME] [--version VER] [--description DESC] [--out PATH] [FILES...]
 
       build [--scope system|project] [--name NAME] [--version VER] [--description DESC] [--out PATH] [FILES...]
-        Build local memories and installed hooks into a shareable bundle (dir or zip).
+        Build local memories and an installed plugin, rules and scripts into a shareable bundle (dir or zip).
         --scope selects source dir (default: system). --out inferred from extension; default <name>.zip.
         FILES... optional allowlist of *.md basenames to include (default: all but installed bundles' ones);
         a named memory brings its model overlays (<name>.<model-key>.md).
@@ -150,7 +152,7 @@ RSpec.describe "chi bundle (CLI)" do
   end
 
   # A bundle dir with one memory file, a.md (the shape of
-  # spec/fixtures/sample_hooks_bundle/manifest.yml).
+  # spec/fixtures/sample_memory_bundle/manifest.yml).
   def self.make_bundle(dir, name:, version:, content:)
     FileUtils.mkdir_p(dir)
     File.write(File.join(dir, "a.md"), content)
@@ -167,6 +169,12 @@ RSpec.describe "chi bundle (CLI)" do
 
   def chi(*args, **opts) = self.class.run_in(@root, *args, **opts)
   def memories = File.join(@root, "cfg", "samagotchi", "memories")
+
+  # +name+'s record with class-file hooks, as a 0.157 install left it.
+  def old_hooks!(name, hooks = { "guardrails.rb" => "class Guardrails; def call(e); end; end" }, **)
+    LegacyHooksRecord.legacy_hooks_record(name, hooks: hooks, bundles_dir: File.join(memories, ".bundles"), **)
+  end
+
   def provenance_line(name) = "Provenance written to: #{memories}/.bundles/#{name}/\n"
 
   context "with a fresh sandbox per example" do
@@ -207,36 +215,35 @@ RSpec.describe "chi bundle (CLI)" do
       end
     end
 
-    it "installs a hooks bundle and a plugin bundle" do
-      expect(chi("install", File.join(BUNDLE_FIXTURES, "sample_hooks_bundle")))
-        .to eq(["Installed: identity.md, guardrails.rb\nHooks: 1 hook(s) (guardrails.rb)\n#{provenance_line("sample-hooks-bundle")}", "", 0])
+    it "installs a memory bundle and a plugin bundle" do
+      expect(chi("install", File.join(BUNDLE_FIXTURES, "sample_memory_bundle")))
+        .to eq(["Installed: identity.md\n#{provenance_line("sample-memory-bundle")}", "", 0])
       expect(chi("install", File.join(BUNDLE_FIXTURES, "sample_plugin_bundle")))
         .to eq(["Installed: plugin.rb\nPlugin: plugin.rb (loads at the next chi start)\n#{provenance_line("sample-plugin")}", "", 0])
     end
 
-    # A plain install over an installed bundle rewrites its hooks, rules,
-    # plugin, scripts and record (it is not a skip), and leaves a memory the
+    # A plain install over an installed bundle rewrites its rules, plugin,
+    # scripts and record (it is not a skip), and leaves a memory the
     # user wrote; the summary says both.
     it "says what a second install of the same source rewrote, and the memory it kept" do
-      src = File.join(BUNDLE_FIXTURES, "sample_hooks_bundle")
-      rewritten = "sample-hooks-bundle was already installed from #{src}: its hooks, rules, plugin and scripts " \
+      src = File.join(BUNDLE_FIXTURES, "sample_memory_bundle")
+      rewritten = "sample-memory-bundle was already installed from #{src}: its rules, plugin and scripts " \
                   "now match it and its record was rewritten"
 
       expect(chi("install", src))
-        .to eq(["Installed: identity.md, guardrails.rb\nHooks: 1 hook(s) (guardrails.rb)\n#{provenance_line("sample-hooks-bundle")}", "", 0])
+        .to eq(["Installed: identity.md\n#{provenance_line("sample-memory-bundle")}", "", 0])
 
       expect(chi("install", src))
-        .to eq(["Up to date: identity.md, guardrails.rb\n#{rewritten}\n" \
-                "Hooks: 1 hook(s) (guardrails.rb)\n#{provenance_line("sample-hooks-bundle")}", "", 0])
+        .to eq(["Up to date: identity.md\n#{rewritten}\n#{provenance_line("sample-memory-bundle")}", "", 0])
 
       File.write(File.join(memories, "identity.md"), "# Mine\n")
       out, err, code = chi("install", src)
       expect([err, code]).to eq(["", 0])
-      expect(out).to eq(["Up to date: guardrails.rb\nSkipped: identity.md\n" \
+      expect(out).to eq(["Skipped: identity.md\n" \
                          "Skipped identity.md (already exists; #{Samagotchi::MemoryBundle::FileStanding::FORCE_TAKES})\n" \
                          "#{rewritten}; your own copies of its memories were kept " \
-                         "(chi bundle upgrade sample-hooks-bundle merges the bundle's changes into them)\n" \
-                         "Hooks: 1 hook(s) (guardrails.rb)\n#{provenance_line("sample-hooks-bundle")}"].join(""))
+                         "(chi bundle upgrade sample-memory-bundle merges the bundle's changes into them)\n" \
+                         "#{provenance_line("sample-memory-bundle")}"].join(""))
       expect(File.read(File.join(memories, "identity.md"))).to eq("# Mine\n")
     end
 
@@ -485,16 +492,16 @@ RSpec.describe "chi bundle (CLI)" do
       expect(chi("uninstall", "nope")).to eq(["", "Uninstall failed: Bundle 'nope' is not installed\n", 1])
     end
 
-    it "uninstalls a hooks bundle" do
-      chi("install", File.join(BUNDLE_FIXTURES, "sample_hooks_bundle"))
+    it "uninstalls a record with an older chi's hooks" do
+      chi("install", File.join(BUNDLE_FIXTURES, "sample_memory_bundle"))
+      old_hooks!("sample-memory-bundle")
 
-      out, err, code = chi("uninstall", "sample-hooks-bundle")
+      out, err, code = chi("uninstall", "sample-memory-bundle")
       trash = File.join(memories, ".bundles", ".trash")
       expect([err, code]).to eq(["", 0])
-      expect(out).to match(%r{\AUninstalled bundle 'sample-hooks-bundle'
-Moved to the trash: identity.md \(#{Regexp.escape(trash)}/sample-hooks-bundle-\d{8}-\d{6}\)
-Removed: hooks/guardrails.rb
-Hooks removed: 1\n\z})
+      expect(out).to match(%r{\AUninstalled bundle 'sample-memory-bundle'
+Moved to the trash: identity.md \(#{Regexp.escape(trash)}/sample-memory-bundle-\d{8}-\d{6}\)
+Removed: hooks/guardrails.rb\n\z})
     end
 
     it "lists nothing installed, then a shipped bundle installed by name" do
@@ -572,11 +579,12 @@ Hooks removed: 1\n\z})
     end
 
     it "status goes on past a bundle whose manifest.json doesn't parse" do
-      chi("install", File.join(BUNDLE_FIXTURES, "sample_hooks_bundle"))
+      chi("install", File.join(BUNDLE_FIXTURES, "sample_memory_bundle"))
+      old_hooks!("sample-memory-bundle")
       FileUtils.mkdir_p(File.join(memories, ".bundles", "broken"))
       File.write(File.join(memories, ".bundles", "broken", "manifest.json"), "{bad")
 
-      expect(chi("status")).to eq(["  broken (manifest.json unreadable)\n  sample-hooks-bundle v1.0.0 scope=system files=1 hooks=1 issues=0\n", "", 0])
+      expect(chi("status")).to eq(["  broken (manifest.json unreadable)\n  sample-memory-bundle v1.0.0 scope=system files=1 hooks=1 issues=1\n", "", 0])
     end
 
     it "names the file a profile's --force copied to the trash" do
@@ -666,7 +674,7 @@ Hooks removed: 1\n\z})
     end
   end
 
-  # `chi bundle install --dev PATH`: the bundle's hooks, rules, plugin and
+  # `chi bundle install --dev PATH`: the bundle's rules, plugin and
   # scripts are links to PATH, its sha256 check skipped (that bundle only).
   context "install --dev" do
     before do
@@ -675,7 +683,7 @@ Hooks removed: 1\n\z})
       @hooks_src = File.join(@root, "src", "hooks")
       FileUtils.mkdir_p(File.dirname(@plugin_src))
       FileUtils.cp_r(File.join(BUNDLE_FIXTURES, "sample_plugin_bundle"), @plugin_src)
-      FileUtils.cp_r(File.join(BUNDLE_FIXTURES, "sample_hooks_bundle"), @hooks_src)
+      FileUtils.cp_r(File.join(BUNDLE_FIXTURES, "sample_memory_bundle"), @hooks_src)
     end
 
     after { FileUtils.rm_rf(@root) }
@@ -735,27 +743,21 @@ Hooks removed: 1\n\z})
       end
     end
 
-    it "links the plugin and hooks to PATH, so an edit applies with no re-install and its sha isn't checked" do
+    it "links the plugin to PATH, so an edit applies with no re-install and its sha isn't checked" do
       out, err, code = chi("install", "--dev", @plugin_src)
       expect([err, code]).to eq(["", 0])
       expect(out).to include("Plugin: plugin.rb (loads at the next chi start)")
-      expect(chi("install", "--dev", @hooks_src)[2]).to eq(0)
 
       plugin = File.join(bundle_dir("sample-plugin"), "plugin", "plugin.rb")
-      hook = File.join(bundle_dir("sample-hooks-bundle"), "hooks", "guardrails.rb")
       expect(File.symlink?(plugin)).to be(true)
       expect(File.realpath(plugin)).to eq(File.realpath(File.join(@plugin_src, "plugin.rb")))
-      expect(File.realpath(hook)).to eq(File.realpath(File.join(@hooks_src, "hooks", "guardrails.rb")))
 
       File.write(File.join(@plugin_src, "plugin.rb"), "# edited\n")
-      File.write(File.join(@hooks_src, "hooks", "guardrails.rb"), "# edited\n")
       expect(File.read(plugin)).to eq("# edited\n")
       with_sandbox_env do
         expect(record("sample-plugin")).to have_attributes(dev: true, source: File.realpath(@plugin_src))
-        expect(Samagotchi::Hooks::BundleLoader.sha_mismatch(plugin, record("sample-plugin").plugin.sha256, required: true)).to be_nil
+        expect(Samagotchi::Plugin::Loader.sha_mismatch(plugin, record("sample-plugin").plugin.sha256)).to be_nil
         expect(Samagotchi::MemoryBundle::Provenance.sha_matches?(plugin, record("sample-plugin").plugin.sha256)).to be(true)
-        hook_sha = record("sample-hooks-bundle").hooks.fetch("guardrails.rb").sha256
-        expect(Samagotchi::Hooks::BundleLoader.sha_mismatch(hook, hook_sha, required: true)).to be_nil
       end
     end
 
@@ -767,39 +769,32 @@ Hooks removed: 1\n\z})
       out, err, code = chi("install", "--dev", other)
 
       expect([out, err, code]).to eq([
-        "", "Install failed: sample-hooks-bundle is a dev install of #{File.realpath(@hooks_src)}; " \
+        "", "Install failed: sample-memory-bundle is a dev install of #{File.realpath(@hooks_src)}; " \
             "uninstall it before installing from #{File.realpath(other)}\n", 1
       ])
     end
 
-    it "reinstalls the same dev source cleanly, pruning dropped hooks without changing source files" do
-      manifest_path = File.join(@hooks_src, "manifest.yml")
-      manifest = YAML.safe_load_file(manifest_path)
-      guardrails_hook = File.join(@hooks_src, "hooks", "guardrails.rb")
-      kept_hook = File.join(@hooks_src, "hooks", "kept.rb")
-      FileUtils.cp(guardrails_hook, kept_hook)
-      manifest["hooks"]["kept.rb"] = manifest["hooks"]["guardrails.rb"].dup
-      File.write(manifest_path, YAML.dump(manifest))
+    it "reinstalls the same dev source cleanly, removing an older chi's hook links without changing source files" do
       chi("install", "--dev", @hooks_src)
-
-      manifest = YAML.safe_load_file(manifest_path)
-      manifest["hooks"].delete("guardrails.rb")
-      File.write(manifest_path, YAML.dump(manifest))
-      source_files = -> { Dir.glob(File.join(@hooks_src, "**", "*"), File::FNM_DOTMATCH).select { |path| File.file?(path) } }
+      old_hook = File.join(@root, "src", "old-hooks", "kept.rb")
+      FileUtils.mkdir_p(File.dirname(old_hook))
+      File.write(old_hook, "class Kept; end\n")
+      FileUtils.mkdir_p(File.join(bundle_dir("sample-memory-bundle"), "hooks"))
+      File.symlink(old_hook, File.join(bundle_dir("sample-memory-bundle"), "hooks", "kept.rb"))
+      old_hooks!("sample-memory-bundle", { "kept.rb" => { text: nil } })
+      source_files = -> { Dir.glob(File.join(@root, "src", "**", "*"), File::FNM_DOTMATCH).select { |path| File.file?(path) } }
       before = source_files.call.to_h { |path| [path, File.binread(path)] }
 
       out, err, code = chi("install", "--dev", @hooks_src)
 
       expect([err, code]).to eq(["", 0])
-      expect(out).to include("Up to date: identity.md")
-      expect(out).not_to include("no longer includes hook") # only a link went, not a local file
-      expect(File.exist?(File.join(bundle_dir("sample-hooks-bundle"), "hooks", "guardrails.rb"))).to be(false)
-      expect(File.symlink?(File.join(bundle_dir("sample-hooks-bundle"), "hooks", "kept.rb"))).to be(true)
+      expect(out).to include("Up to date: identity.md", "Removed (chi no longer loads class-file bundle hooks): hooks/kept.rb")
+      expect(out).not_to include("Copied to the trash first") # a link goes, never its target
+      expect(Dir.exist?(File.join(bundle_dir("sample-memory-bundle"), "hooks"))).to be(false)
       with_sandbox_env do
-        expect(record("sample-hooks-bundle").hooks.keys).to eq(["kept.rb"])
+        expect(record("sample-memory-bundle").hooks).to eq({})
       end
-      after = source_files.call.to_h { |path| [path, File.binread(path)] }
-      expect(after).to eq(before)
+      expect(source_files.call.to_h { |path| [path, File.binread(path)] }).to eq(before)
     end
 
     it "checks every other bundle as before: an edited plugin of a normal install still mismatches" do
@@ -812,8 +807,8 @@ Hooks removed: 1\n\z})
       File.write(File.join(bundle_dir("other"), "plugin", "plugin.rb"), "# edited\n")
       with_sandbox_env do
         expect(record("other")).to have_attributes(dev: false)
-        expect(Samagotchi::Hooks::BundleLoader.sha_mismatch(File.join(bundle_dir("other"), "plugin", "plugin.rb"),
-                                                            record("other").plugin.sha256, required: true)).to include("differs")
+        expect(Samagotchi::Plugin::Loader.sha_mismatch(File.join(bundle_dir("other"), "plugin", "plugin.rb"),
+                                                       record("other").plugin.sha256)).to include("differs")
       end
     end
 
@@ -863,7 +858,7 @@ Hooks removed: 1\n\z})
       expect(chi("install", @plugin_src)[1]).to start_with("Install failed: sample-plugin is a dev install")
 
       chi("install", @hooks_src)
-      expect(chi("install", "--dev", @hooks_src)[1]).to start_with("Install failed: sample-hooks-bundle is installed normally")
+      expect(chi("install", "--dev", @hooks_src)[1]).to start_with("Install failed: sample-memory-bundle is installed normally")
     end
 
     it "uninstalls the link and the record, never the files under PATH" do
@@ -872,58 +867,46 @@ Hooks removed: 1\n\z})
       before = Dir.glob(File.join(@root, "src", "**", "*"), File::FNM_DOTMATCH).select { |p| File.file?(p) }.to_h { |p| [p, File.read(p)] }
 
       expect(chi("uninstall", "sample-plugin")[2]).to eq(0)
-      expect(chi("uninstall", "sample-hooks-bundle", "--force")[2]).to eq(0)
+      expect(chi("uninstall", "sample-memory-bundle", "--force")[2]).to eq(0)
 
       expect(Dir.exist?(bundle_dir("sample-plugin"))).to be(false)
-      expect(Dir.exist?(bundle_dir("sample-hooks-bundle"))).to be(false)
+      expect(Dir.exist?(bundle_dir("sample-memory-bundle"))).to be(false)
       after = Dir.glob(File.join(@root, "src", "**", "*"), File::FNM_DOTMATCH).select { |p| File.file?(p) }.to_h { |p| [p, File.read(p)] }
       expect(after).to eq(before)
-      expect(before.keys.size).to eq(5)
+      expect(before.keys.size).to eq(4)
     end
   end
 
   # Base and current of each thing a bundle installs, whole-file.
-  context "with a memory, a hook and a plugin to diff" do
+  context "with a memory and a plugin to diff" do
     before do
       @root = self.class.sandbox
       src = self.class.make_bundle(File.join(@root, "src"), name: "demo", version: "1.0.0", content: "one\n")
-      FileUtils.mkdir_p(File.join(src, "hooks"))
-      File.write(File.join(src, "hooks", "h.rb"), "# hook\n")
       File.write(File.join(src, "plug.rb"), "# plugin\n")
       File.write(File.join(src, "manifest.yml"), <<~YAML, mode: "a")
-        hooks:
-          h.rb:
-            event: before_turn
-            sha256: sha256:#{Digest::SHA256.hexdigest("# hook\n")}
         plugin:
           file: plug.rb
           sha256: sha256:#{Digest::SHA256.hexdigest("# plugin\n")}
       YAML
       chi("install", src)
       File.write(File.join(memories, "a.md"), "edited\n")
-      File.write(File.join(memories, ".bundles", "demo", "hooks", "h.rb"), "# edited hook\n")
       File.write(File.join(memories, ".bundles", "demo", "plugin", "plug.rb"), "# edited plugin\n")
     end
 
     after { FileUtils.rm_rf(@root) }
 
     let(:memory_diff) { "=== a.md ===\n--- base (provenance) ---\none\n--- current (on-disk) ---\nedited\n" }
-    let(:hook_diff) do
-      "=== hooks/h.rb ===\n--- base (provenance) ---\n# hook\n--- current (on-disk) ---\n# edited hook\n" \
-        "--- metadata: event=before_turn on_error=skip priority=100 sha256=sha256:#{Digest::SHA256.hexdigest("# hook\n")}\n"
-    end
     let(:plugin_diff) do
       "=== plugin/plug.rb ===\n--- base (provenance) ---\n# plugin\n--- current (on-disk) ---\n# edited plugin\n" \
         "--- metadata: sha256=sha256:#{Digest::SHA256.hexdigest("# plugin\n")}\n"
     end
 
     it "prints all of them, each followed by a blank line" do
-      expect(chi("diff", "demo")).to eq(["#{memory_diff}\n#{hook_diff}\n#{plugin_diff}\n", "", 0])
+      expect(chi("diff", "demo")).to eq(["#{memory_diff}\n#{plugin_diff}\n", "", 0])
     end
 
-    it "prints the one named: a memory, a hook, a plugin with or without its folder" do
+    it "prints the one named: a memory, a plugin with or without its folder" do
       expect(chi("diff", "demo", "a.md")).to eq(["#{memory_diff}\n", "", 0])
-      expect(chi("diff", "demo", "h.rb")).to eq(["#{hook_diff}\n", "", 0])
       expect(chi("diff", "demo", "plug.rb")).to eq(["#{plugin_diff}\n", "", 0])
       expect(chi("diff", "demo", "plugin/plug.rb")).to eq(["#{plugin_diff}\n", "", 0])
       expect(chi("diff", "demo", "nope.md")).to eq(["=== nope.md ===\n(not found in bundle)\n\n", "", 0])
@@ -1091,65 +1074,35 @@ Hooks removed: 1\n\z})
     end
   end
 
-  context "with a hook on two events installed" do
-    before do
-      @root = self.class.sandbox
-      src = File.join(@root, "src")
-      FileUtils.mkdir_p(File.join(src, "hooks"))
-      File.write(File.join(src, "hooks", "links.rb"), "class Links; def call(_e) = nil; end\n")
-      sha = Digest::SHA256.hexdigest(File.read(File.join(src, "hooks", "links.rb")))
-      File.write(File.join(src, "manifest.yml"), <<~YAML)
-        name: two-events
-        version: 1.0.0
-        scope: system
-        hooks:
-          links.rb:
-            sha256: sha256:#{sha}
-            events: [after_turn, question_asked]
-            on_error: log
-      YAML
-      @sha = sha
-      chi("install", src)
-    end
-
-    after { FileUtils.rm_rf(@root) }
-
-    it "status NAME and diff name both events" do
-      expect(chi("status", "two-events")[0]).to include("    links.rb: events=after_turn,question_asked on_error=log priority=100 [ok]\n")
-      expect(chi("diff", "two-events", "links.rb")[0]).to include(
-        "--- metadata: events=after_turn,question_asked on_error=log priority=100 sha256=sha256:#{@sha}\n"
-      )
-    end
-  end
-
-  context "with a hooks bundle and a plugin bundle installed" do
+  context "with a record an older chi installed with hooks, and a plugin bundle" do
     before(:context) do
       @root = sandbox_root = self.class.sandbox
-      self.class.run_in(sandbox_root, "install", File.join(BUNDLE_FIXTURES, "sample_hooks_bundle"))
+      self.class.run_in(sandbox_root, "install", File.join(BUNDLE_FIXTURES, "sample_memory_bundle"))
       self.class.run_in(sandbox_root, "install", File.join(BUNDLE_FIXTURES, "sample_plugin_bundle"))
+      old_hooks!("sample-memory-bundle")
     end
 
     after(:context) { FileUtils.rm_rf(@root) }
 
     it "status lists both" do
       expect(chi("status")).to eq([
-        "  sample-hooks-bundle v1.0.0 scope=system files=1 hooks=1 issues=0\n  " \
+        "  sample-memory-bundle v1.0.0 scope=system files=1 hooks=1 issues=1\n  " \
         "sample-plugin v1.0.0 scope=system files=0 plugin=plugin.rb issues=0\n", "", 0
       ])
     end
 
     it "status NAME shows files, trust and hooks" do
-      out, err, code = chi("status", "sample-hooks-bundle")
+      out, err, code = chi("status", "sample-memory-bundle")
 
       expect([err, code]).to eq(["", 0])
-      expect(out).to match(/\ABundle: sample-hooks-bundle v1\.0\.0 scope=system installed=\S+\n/)
+      expect(out).to match(/\ABundle: sample-memory-bundle v1\.0\.0 scope=system installed=\S+\n/)
       expect(out.lines.drop(1).join).to eq(<<~TEXT)
         Target: #{memories}
           identity.md: ok
           Manifest: [kept]
           trust_level: reviewed
-          Hooks (1):
-            guardrails.rb: event=before_tool_call on_error=fail_closed priority=10 [ok]
+          Hooks (1): not loaded: #{Samagotchi::MemoryBundle::Manifest::HooksRetired::WORDS}
+            guardrails.rb [ok]
       TEXT
     end
 
@@ -1165,18 +1118,14 @@ Hooks removed: 1\n\z})
       expect(chi("status", "--scope", "project", "sample-plugin")).to eq(["Bundle 'project' not installed.\n", "", 0])
     end
 
-    it "diff shows every file and hook, one file, one hook, and an unknown file" do
-      identity = File.read(File.join(BUNDLE_FIXTURES, "sample_hooks_bundle", "identity.md"))
-      guardrails = File.read(File.join(BUNDLE_FIXTURES, "sample_hooks_bundle", "hooks", "guardrails.rb"))
+    it "diff shows every file, one file, and an unknown file: an older chi's hook is none of the bundle's" do
+      identity = File.read(File.join(BUNDLE_FIXTURES, "sample_memory_bundle", "identity.md"))
       identity_block = "=== identity.md ===\n--- base (provenance) ---\n#{identity}--- current (on-disk) ---\n#{identity}\n"
-      hook_block = "=== hooks/guardrails.rb ===\n--- base (provenance) ---\n#{guardrails}--- current (on-disk) ---\n#{guardrails}" \
-                   "--- metadata: event=before_tool_call on_error=fail_closed priority=10 " \
-                   "sha256=sha256:c85b4847cafaf3f4011833a87b455abcfb57b2bb5715056f779a1aadf820b504\n\n"
 
-      expect(chi("diff", "sample-hooks-bundle")).to eq([identity_block + hook_block, "", 0])
-      expect(chi("diff", "sample-hooks-bundle", "identity.md")).to eq([identity_block, "", 0])
-      expect(chi("diff", "sample-hooks-bundle", "guardrails.rb")).to eq([hook_block, "", 0])
-      expect(chi("diff", "sample-hooks-bundle", "nope.md")).to eq(["=== nope.md ===\n(not found in bundle)\n\n", "", 0])
+      expect(chi("diff", "sample-memory-bundle")).to eq([identity_block, "", 0])
+      expect(chi("diff", "sample-memory-bundle", "identity.md")).to eq([identity_block, "", 0])
+      expect(chi("diff", "sample-memory-bundle", "guardrails.rb")).to eq(["=== guardrails.rb ===\n(not found in bundle)\n\n", "", 0])
+      expect(chi("diff", "sample-memory-bundle", "nope.md")).to eq(["=== nope.md ===\n(not found in bundle)\n\n", "", 0])
     end
 
     it "diff shows a plugin" do
@@ -1307,11 +1256,11 @@ Hooks removed: 1\n\z})
     end
   end
 
-  context "with a hooks bundle this chi is too old for" do
+  context "with a bundle this chi is too old for" do
     before(:context) do
       @root = self.class.sandbox
       src = File.join(@root, "src")
-      FileUtils.cp_r(File.join(BUNDLE_FIXTURES, "sample_hooks_bundle"), src)
+      FileUtils.cp_r(File.join(BUNDLE_FIXTURES, "sample_memory_bundle"), src)
       File.write(File.join(src, "manifest.yml"), "#{File.read(File.join(src, "manifest.yml"))}requires_chi: \">= 99.0\"\n")
       @refused = self.class.run_in(@root, "install", src)
       # What the refused run left behind, before --force installs it.
@@ -1327,25 +1276,16 @@ Hooks removed: 1\n\z})
     it "refuses install without --force, and writes nothing" do
       out, err, code = @refused
       expect([out, err, code]).to eq(
-        ["", "Install failed: sample-hooks-bundle can't be installed: #{failure} " \
+        ["", "Install failed: sample-memory-bundle can't be installed: #{failure} " \
              "(chi update, or --force to install it anyway)\n", 1]
       )
       expect(@left_after_refusal).to eq([])
     end
 
-    it "installs with --force, warning that its hooks won't load" do
+    it "installs with --force" do
       _out, err, code = @install
       expect([err, code]).to eq(["", 0])
-      expect(@install[0]).to include("Bundle sample-hooks-bundle: its hooks won't load: #{failure}")
-    end
-
-    it "status NAME says the hooks aren't loaded, and the list counts it as an issue" do
-      out, err, code = chi("status", "sample-hooks-bundle")
-
-      expect([err, code]).to eq(["", 0])
-      expect(out).to include("    guardrails.rb: event=before_tool_call on_error=fail_closed priority=10 [ok]\n    " \
-                             "requires_chi: >= 99.0\n    not loaded: #{failure}\n")
-      expect(chi("status")[0]).to eq("  sample-hooks-bundle v1.0.0 scope=system files=1 hooks=1 issues=1\n")
+      expect(chi("status")[0]).to eq("  sample-memory-bundle v1.0.0 scope=system files=1 issues=0\n")
     end
   end
 
@@ -1399,17 +1339,17 @@ Hooks removed: 1\n\z})
     end
 
     it "lists trash entries after uninstall" do
-      chi("install", File.join(BUNDLE_FIXTURES, "sample_hooks_bundle"))
-      chi("uninstall", "sample-hooks-bundle")
+      chi("install", File.join(BUNDLE_FIXTURES, "sample_memory_bundle"))
+      chi("uninstall", "sample-memory-bundle")
 
       out, err, code = chi("trash")
       expect([err, code]).to eq(["", 0])
-      expect(out).to match(/\A  sample-hooks-bundle-\d{8}-\d{6}  \d+ file  \d+ B  just now\n\nEmpty it with: chi bundle trash --empty \[--older-than DAYS\]\n\z/)
+      expect(out).to match(/\A  sample-memory-bundle-\d{8}-\d{6}  \d+ file  \d+ B  just now\n\nEmpty it with: chi bundle trash --empty \[--older-than DAYS\]\n\z/)
     end
 
     it "--empty deletes all trash folders" do
-      chi("install", File.join(BUNDLE_FIXTURES, "sample_hooks_bundle"))
-      chi("uninstall", "sample-hooks-bundle")
+      chi("install", File.join(BUNDLE_FIXTURES, "sample_memory_bundle"))
+      chi("uninstall", "sample-memory-bundle")
 
       out, err, code = chi("trash", "--empty")
       expect([err, code]).to eq(["", 0])
@@ -1418,12 +1358,12 @@ Hooks removed: 1\n\z})
     end
 
     it "--empty --dry-run prints what would be deleted" do
-      chi("install", File.join(BUNDLE_FIXTURES, "sample_hooks_bundle"))
-      chi("uninstall", "sample-hooks-bundle")
+      chi("install", File.join(BUNDLE_FIXTURES, "sample_memory_bundle"))
+      chi("uninstall", "sample-memory-bundle")
 
       out, err, code = chi("trash", "--empty", "--dry-run")
       expect([err, code]).to eq(["", 0])
-      expect(out).to match(/\AWould delete: sample-hooks-bundle-\d{8}-\d{6}/)
+      expect(out).to match(/\AWould delete: sample-memory-bundle-\d{8}-\d{6}/)
       # Trash should still exist
       expect(Dir.glob(File.join(memories, ".bundles", ".trash", "*"))).not_to be_empty
     end
@@ -1445,9 +1385,9 @@ Hooks removed: 1\n\z})
     end
 
     it "installs into XDG_CONFIG_HOME, status reads it back, and a failure exits 1" do
-      expect(spawn("install", File.join(BUNDLE_FIXTURES, "sample_hooks_bundle")))
-        .to eq(["Installed: identity.md, guardrails.rb\nHooks: 1 hook(s) (guardrails.rb)\n#{provenance_line("sample-hooks-bundle")}", "", 0])
-      expect(spawn("status")).to eq(["  sample-hooks-bundle v1.0.0 scope=system files=1 hooks=1 issues=0\n", "", 0])
+      expect(spawn("install", File.join(BUNDLE_FIXTURES, "sample_memory_bundle")))
+        .to eq(["Installed: identity.md\n#{provenance_line("sample-memory-bundle")}", "", 0])
+      expect(spawn("status")).to eq(["  sample-memory-bundle v1.0.0 scope=system files=1 issues=0\n", "", 0])
       expect(spawn("uninstall", "nope")).to eq(["", "Uninstall failed: Bundle 'nope' is not installed\n", 1])
     end
   end

@@ -6,6 +6,7 @@ require "fileutils"
 require "yaml"
 require "digest"
 require "samagotchi/memory_bundle/provenance"
+require "support/legacy_hooks_record"
 require "samagotchi/context_providers"
 require "samagotchi/block_renderers"
 
@@ -291,13 +292,10 @@ RSpec.describe Samagotchi::MemoryBundle::Provenance do
             a.md: sha256:#{Digest::SHA256.hexdigest("A\n")}
           plugin:
             file: plugin.rb
-          hooks:
-            h.rb: {event: after_turn}
           future_key: 1
         YAML
         make_file(dir, "a.md", "A\n")
         make_file(dir, "plugin.rb", "class Plugin; end\n")
-        make_file(dir, "hooks/h.rb", "# hook\n")
         make_file(dir, "scripts/s.sh", "echo\n")
         make_file(dir, "guardrails/g.yml", "rules: []\n")
       end
@@ -308,8 +306,7 @@ RSpec.describe Samagotchi::MemoryBundle::Provenance do
     # The record as a chi before the kept manifest wrote it: no manifest_from.
     def write_legacy(version: "1.0.0", dev: false, **more)
       prov.write(files: { "a.md" => File.join(source, "a.md") }, scope: "system", version: version, source_path: source,
-                 plugin_file: File.join(source, "plugin.rb"), hooks: { "h.rb" => { "event" => "after_turn" } },
-                 hooks_files: { "h.rb" => File.join(source, "hooks/h.rb") }, scripts_files: { "s.sh" => File.join(source, "scripts/s.sh") },
+                 plugin_file: File.join(source, "plugin.rb"), scripts_files: { "s.sh" => File.join(source, "scripts/s.sh") },
                  guardrails_files: { "g.yml" => File.join(source, "guardrails/g.yml") }, requires_chi: ">= 0.1",
                  trust_level: "experimental", dev: dev, **more)
     end
@@ -377,8 +374,7 @@ RSpec.describe Samagotchi::MemoryBundle::Provenance do
       changes = {
         "requires_chi" => ->(m) { m.merge("requires_chi" => ">= 99.0") },
         "trust_level" => ->(m) { m.merge("trust_level" => "reviewed") },
-        "needs" => ->(m) { m.merge("needs" => [{ "command" => "gh" }]) },
-        "hooks" => ->(m) { m.merge("hooks" => { "h.rb" => { "event" => "before_tool_call", "on_error" => "ignore" } }) }
+        "needs" => ->(m) { m.merge("needs" => [{ "command" => "gh" }]) }
       }
       changes.each do |key, change|
         write_legacy
@@ -419,8 +415,8 @@ RSpec.describe Samagotchi::MemoryBundle::Provenance do
       expect(prov.adopt_manifest(source)).to eq("#{source} has other 1.0.0, not old 1.0.0")
     end
 
-    it "refuses a source whose plugin, hook, script or rule isn't the installed one" do
-      %w[plugin.rb hooks/h.rb scripts/s.sh guardrails/g.yml].each do |file|
+    it "refuses a source whose plugin, script or rule isn't the installed one" do
+      %w[plugin.rb scripts/s.sh guardrails/g.yml].each do |file|
         write_legacy
         original = File.read(File.join(source, file))
         File.write(File.join(source, file), "changed\n")
@@ -428,6 +424,20 @@ RSpec.describe Samagotchi::MemoryBundle::Provenance do
         expect(File.exist?(kept)).to be(false)
         File.write(File.join(source, file), original)
       end
+    end
+
+    it "adopts a hook-less source over a record with an older chi's class-file hooks: they don't count" do
+      write_legacy
+      LegacyHooksRecord.legacy_hooks_record("old", hooks: { "h.rb" => "# hook\n" })
+      expect(prov.adopt_manifest(source)).to be_nil
+      expect(File.read(kept)).to eq(File.read(File.join(source, "manifest.yml")))
+    end
+
+    it "refuses a source whose manifest still lists hooks, in the retired words" do
+      write_legacy
+      edit_source { |m| m.merge("hooks" => { "h.rb" => { "event" => "after_turn" } }) }
+      expect(prov.adopt_manifest(source))
+        .to eq("#{source}'s manifest.yml doesn't read: hooks: #{Samagotchi::MemoryBundle::Manifest::HooksRetired::WORDS}")
     end
 
     it "refuses a source with no manifest.yml, or one that doesn't read" do
@@ -493,35 +503,25 @@ RSpec.describe Samagotchi::MemoryBundle::Provenance do
       expect(prov.hooks_dir).to eq(File.join(bundles_dir, "my-bundle", "hooks"))
     end
 
-    it "write/read round-trips hooks map and trust_level + source_commit (experimental must survive)" do
+    it "write/read round-trips trust_level + source_commit (experimental must survive), and records no hooks" do
       prov = described_class.new(name: "hook-bundle")
-      prov.write(files: {}, scope: "system", version: "1.0", source_path: "/src",
-                 hooks: { "guardrails.rb" => { "sha256" => "sha256:abc", "event" => "before_tool_call", "on_error" => "fail_closed", "priority" => 10 } },
-                 trust_level: "experimental", source_commit: "deadbeef")
+      prov.write(files: {}, scope: "system", version: "1.0", source_path: "/src", trust_level: "experimental", source_commit: "deadbeef")
       data = prov.read
-      expect(data[:hooks]).to include(:"guardrails.rb")
+      expect(data[:hooks]).to eq({})
       expect(data[:trust_level]).to eq("experimental")
       expect(data[:source_commit]).to eq("deadbeef")
     end
 
-    it "records the sha256 of the installed hook file, not the declared one" do
-      Dir.mktmpdir do |dir|
-        hook = File.join(dir, "guard.rb").tap { |p| File.write(p, "class Guard; def call(e); end; end\n") }
-        prov = described_class.new(name: "sha-bundle")
-        prov.write(files: {}, scope: "system", version: "1.0", source_path: "/src",
-                   hooks: { "guard.rb" => { "sha256" => "sha256:wrong", "event" => "before_tool_call" },
-                            "gone.rb" => { "sha256" => "abc", "event" => "before_tool_call" } },
-                   hooks_files: { "guard.rb" => hook })
-        hooks = prov.read[:hooks]
-        expect(hooks[:"guard.rb"][:sha256]).to eq("sha256:#{Digest::SHA256.hexdigest(File.read(hook))}")
-        expect(hooks[:"gone.rb"][:sha256]).to eq("sha256:abc")
-      end
+    it "drops an older chi's hooks from the record, and their bases" do
+      dir = LegacyHooksRecord.legacy_hooks_record("old-hooks", hooks: { "guard.rb" => "class Guard; end\n" })
+      expect(File.exist?(File.join(dir, "bases", "guard.rb"))).to be(true)
+      described_class.new(name: "old-hooks").write(files: {}, scope: "system", version: "1.1", source_path: "/src")
+      expect(described_class.new(name: "old-hooks").read[:hooks]).to eq({})
+      expect(File.exist?(File.join(dir, "bases", "guard.rb"))).to be(false)
     end
 
     it "each_installed(holding: :hooks) yields only hook-bearing bundles" do
-      p1 = described_class.new(name: "with-hooks")
-      p1.write(files: {}, scope: "system", version: "1.0", source_path: "/src",
-               hooks: { "a.rb" => { "sha256" => "sha256:x", "event" => "e", "on_error" => "skip", "priority" => 100 } })
+      LegacyHooksRecord.legacy_hooks_record("with-hooks", hooks: { "a.rb" => "# a\n" })
       p2 = described_class.new(name: "without-hooks")
       p2.write(files: {}, scope: "system", version: "1.0", source_path: "/src")
       names = []
@@ -537,8 +537,7 @@ RSpec.describe Samagotchi::MemoryBundle::Provenance do
       File.write(File.join(bundles_dir, "a-broken-nohooks", "manifest.json"), "{")
       FileUtils.mkdir_p(File.join(bundles_dir, "a-list"))
       File.write(File.join(bundles_dir, "a-list", "manifest.json"), "[]")
-      described_class.new(name: "b-valid").write(files: {}, scope: "system", version: "1.0", source_path: "/src",
-                                                 hooks: { "k.rb" => { "sha256" => "sha256:x", "event" => "e" } })
+      LegacyHooksRecord.legacy_hooks_record("b-valid", hooks: { "k.rb" => "# k\n" })
       seen = described_class.each_installed(holding: :hooks).to_a
       expect(seen.map(&:first)).to eq(%w[a-broken b-valid])
       expect(seen.first.last.error).to start_with("manifest.json is unreadable")

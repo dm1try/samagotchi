@@ -187,87 +187,40 @@ RSpec.describe Samagotchi::MemoryBundle::Manifest do
     end
   end
 
-  describe "hooks" do
-    it "parses hooks: sha/event/on_error/priority with defaults and both hex forms" do
-      path = write_manifest({
-        "hooks" => {
-          "guardrails.rb" => { "sha256" => "abc123", "event" => "before_tool_call", "on_error" => "fail_closed", "priority" => "10" },
-          "audit.rb" => { "sha256" => "sha256:def456", "event" => "after_tool_call" }
-        },
-        "trust_level" => "reviewed"
-      })
-      m = described_class.new(path: path)
-      expect(m.hooks["guardrails.rb"].sha256).to eq("sha256:abc123")
-      expect(m.hooks["guardrails.rb"].events).to eq(["before_tool_call"])
-      expect(m.hooks["guardrails.rb"].on_error).to eq("fail_closed")
-      expect(m.hooks["guardrails.rb"].priority).to eq(10)
-      expect(m.hooks["audit.rb"].on_error).to eq("skip") # default
-      expect(m.hooks["audit.rb"].priority).to eq(100)
-      expect(m.trust_level).to eq("reviewed")
-    end
+  describe "hooks: (class-file hooks, retired)" do
+    let(:retired) { described_class::HooksRetired }
 
-    it "parses events: a list, one hook for each event it names" do
-      path = write_manifest({ "hooks" => { "links.rb" => { "events" => %w[after_turn question_asked], "on_error" => "log" } } })
-      expect(described_class.new(path: path).hooks["links.rb"].events).to eq(%w[after_turn question_asked])
-    end
-
-    it "refuses an events: that isn't a list of event names, or one given with event:" do
-      error = described_class::ValidationError
-      { "after_turn" => "hooks: h.rb: events: must be a list of event names",
-        [] => "hooks: h.rb: events: must be a list of event names",
-        ["after_turn", 3] => "hooks: h.rb: events: 3 is not an event name",
-        ["After Turn"] => 'hooks: h.rb: events: "After Turn" is not an event name' }.each do |events, message|
-        path = write_manifest({ "hooks" => { "h.rb" => { "events" => events } } })
-        expect { described_class.new(path: path) }.to raise_error(error, message), events.inspect
+    it "refuses a manifest that lists a hook, in the retired words" do
+      [{ "h.rb" => { "event" => "before_tool_call", "on_error" => "fail_closed" } },
+       { "links.rb" => { "events" => %w[after_turn question_asked] } }, ["h.rb"]].each do |hooks|
+        expect { described_class.new(path: write_manifest({ "hooks" => hooks })) }
+          .to raise_error(retired, "hooks: #{retired::WORDS}"), hooks.inspect
       end
-      path = write_manifest({ "hooks" => { "h.rb" => { "event" => "after_turn", "events" => ["question_asked"] } } })
-      expect { described_class.new(path: path) }.to raise_error(error, "hooks: h.rb: give event: or events:, not both")
+      expect(retired.ancestors).to include(described_class::ValidationError)
     end
 
-    it "write round-trips an events: list" do
-      dest = File.join(tmpdir, "out_events")
-      described_class.write(dir: dest, name: "ev", version: "1.0.0", scope: "system", description: "", files: {},
-                            hooks: { "links.rb" => { "events" => %w[after_turn question_asked] } })
-      expect(described_class.read(dir: dest).hooks["links.rb"].events).to eq(%w[after_turn question_asked])
+    it "reads one that keeps the key empty, with no hooks and no unknown key" do
+      [{}, [], nil].each do |hooks|
+        m = described_class.new(path: write_manifest({ "hooks" => hooks }))
+        expect(m.unknown_keys).to eq([]), hooks.inspect
+      end
+    end
+
+    it "is no problem for a tolerant read (an older install's kept manifest.yml): the key is ignored" do
+      manifest, problems = described_class.tolerant(path: write_manifest({ "hooks" => { "h.rb" => { "events" => "not a list" } } }))
+      expect([problems, manifest.unknown_keys]).to eq([{}, []])
+    end
+
+    it "words a source's hooks/*.rb with the same words" do
+      expect(retired.for_files(["hooks/a.rb", "hooks/b.rb"]).message).to eq("hooks/a.rb, hooks/b.rb: #{retired::WORDS}")
+      FileUtils.mkdir_p(File.join(tmpdir, "src", "hooks"))
+      %w[b.rb a.rb notes.txt].each { |file| File.write(File.join(tmpdir, "src", "hooks", file), "") }
+      expect(retired.files_in(File.join(tmpdir, "src"))).to eq(["hooks/a.rb", "hooks/b.rb"])
+      expect(retired.files_in(File.join(tmpdir, "none"))).to eq([])
     end
 
     it "defaults trust_level to experimental" do
-      path = write_manifest({})
-      m = described_class.new(path: path)
-      expect(m.trust_level).to eq("experimental")
-      expect(m.hooks).to eq({})
-    end
-
-    it "ignores non-string hook keys and empty basenames" do
-      path = write_manifest({ "hooks" => { "" => { "sha256" => "abc", "event" => "x" }, 123 => { "sha256" => "abc" } } })
-      m = described_class.new(path: path)
-      expect(m.hooks).to be_empty
-    end
-
-    it "checksum_for_hook strips prefix and handles both forms" do
-      path = write_manifest({ "hooks" => { "a.rb" => { "sha256" => "sha256:xyz", "event" => "e" }, "b.rb" => { "sha256" => "bare", "event" => "e" } } })
-      m = described_class.new(path: path)
-      expect(m.checksum_for_hook("a.rb")).to eq("xyz")
-      expect(m.checksum_for_hook("b.rb")).to eq("bare")
-      expect(m.checksum_for_hook("missing.rb")).to be_nil
-    end
-
-    it "write round-trips hooks and trust_level" do
-      dest = File.join(tmpdir, "out_hooks")
-      described_class.write(
-        dir: dest,
-        name: "hook-bundle",
-        version: "1.0.0",
-        scope: "system",
-        description: "with hooks",
-        files: {},
-        hooks: { "guardrails.rb" => { "sha256" => "sha256:abc", "event" => "before_tool_call", "on_error" => "fail_closed", "priority" => 10 } },
-        trust_level: "reviewed"
-      )
-      m = described_class.read(dir: dest)
-      expect(m.hooks["guardrails.rb"].events).to eq(["before_tool_call"])
-      expect(m.trust_level).to eq("reviewed")
-      expect(m.checksum_for_hook("guardrails.rb")).to eq("abc")
+      expect(described_class.new(path: write_manifest({})).trust_level).to eq("experimental")
     end
   end
 
@@ -340,11 +293,9 @@ RSpec.describe Samagotchi::MemoryBundle::Manifest do
         .to raise_error(described_class::ValidationError, /not a bundle name/)
     end
 
-    it "refuses a meta with files, hooks or a plugin" do
+    it "refuses a meta with files or a plugin" do
       expect { described_class.new(path: write_manifest({ "includes" => ["a"], "files" => { "a.md" => "sha256:0" } })) }
-        .to raise_error(described_class::ValidationError, /holds only its includes/)
-      expect { described_class.new(path: write_manifest({ "includes" => ["a"], "hooks" => { "h.rb" => { "event" => "after_turn" } } })) }
-        .to raise_error(described_class::ValidationError, /holds only its includes/)
+        .to raise_error(described_class::ValidationError, "a bundle with includes: holds only its includes (no files, plugin or scripts)")
       expect { described_class.new(path: write_manifest({ "includes" => ["a"], "plugin" => { "file" => "p.rb" } })) }
         .to raise_error(described_class::ValidationError, /holds only its includes/)
     end
@@ -397,7 +348,7 @@ RSpec.describe Samagotchi::MemoryBundle::Manifest do
         "scope" => "system",
         "description" => "all of them",
         "files" => { "identity.md" => "sha256:aa" },
-        "hooks" => { "h.rb" => { "event" => "after_turn" } },
+        "hooks" => {},
         "trust_level" => "reviewed",
         "plugin" => { "file" => "plugin.rb", "sha256" => "sha256:bb" },
         "requires_chi" => ">= 0.151.0",
@@ -434,24 +385,23 @@ RSpec.describe Samagotchi::MemoryBundle::Manifest do
         })
         expect(manifest.floor_keys).to eq("scripts" => "0.32.0", "context_providers" => "0.32.0",
                                           "block_renderers" => "0.151.0", "session_settings" => "0.84.0", "settings" => "0.143.0")
-        # A profile's includes: is on its own: a meta ships no files, hooks, plugin or scripts.
+        # A profile's includes: is on its own: a meta ships no files, plugin or scripts.
         expect(manifest("includes" => ["core"]).floor_keys).to eq("includes" => "0.8.0")
       end
 
-      it "counts the shapes only a newer chi reads: a files: mapping, a hook's events:, a typed session_settings: or settings:" do
+      it "counts the shapes only a newer chi reads: a files: mapping, a typed session_settings: or settings:" do
         manifest = manifest({
           "files" => { "identity.md" => { "sha256" => "sha256:aa", "description" => "Use when x" } },
-          "hooks" => { "h.rb" => { "events" => ["after_turn"] } },
           "session_settings" => { "cap" => "number" },
           "settings" => { "greeting" => "string" }
         })
-        expect(manifest.floor_keys).to eq("files.description" => "0.34.0", "hooks.events" => "0.98.0",
+        expect(manifest.floor_keys).to eq("files.description" => "0.34.0",
                                           "session_settings" => "0.84.0", "session_settings.types" => "0.92.0",
                                           "settings" => "0.143.0", "settings.types" => "0.92.0")
       end
 
-      it "takes no floor from a plain files: entry or a hook with only event:" do
-        manifest = manifest({ "files" => { "a.md" => "sha256:aa" }, "hooks" => { "h.rb" => { "event" => "after_turn" } } })
+      it "takes no floor from a plain files: entry" do
+        manifest = manifest({ "files" => { "a.md" => "sha256:aa" } })
         expect(manifest.floor_keys).to eq({})
       end
 

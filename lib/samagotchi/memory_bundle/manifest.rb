@@ -5,7 +5,6 @@ require "digest"
 require "fileutils"
 require_relative "../context_providers"
 require_relative "../version"
-require_relative "bundle_hook"
 
 module Samagotchi
   autoload :BlockRenderers, File.expand_path("../block_renderers", __dir__)
@@ -66,6 +65,26 @@ module Samagotchi
     class Manifest
       class ValidationError < StandardError; end
 
+      # Class-file bundle hooks (hooks/*.rb, the manifest's hooks:) are
+      # retired: chi installs and loads none. WORDS is the one wording of
+      # it, wherever chi meets one (the Engine's first-turn line, install,
+      # chi bundle check and status, chi update's row). A strict read of a
+      # manifest with a hooks: entry raises it (.for_key's message); a
+      # tolerant read (a kept manifest.yml) ignores the key.
+      class HooksRetired < ValidationError
+        WORDS = "class-file bundle hooks are retired: chi loads no hooks/*.rb; a bundle hooks events from its " \
+                "plugin.rb with chi.on, see docs/plugins.md"
+
+        # The manifest's hooks: key.
+        def self.for_key = new("hooks: #{WORDS}")
+
+        # A source's hooks/*.rb (+files+, relative), with or without the key.
+        def self.for_files(files) = new("#{files.join(", ")}: #{WORDS}")
+
+        # The source's hooks/*.rb, relative and sorted ([] for none).
+        def self.files_in(dir) = Dir.glob(File.join(dir, "hooks", "*.rb")).map { |f| "hooks/#{File.basename(f)}" }.sort
+      end
+
       # A plugin file is a plain .rb name in the bundle's top directory.
       PLUGIN_FILE = /\A[A-Za-z0-9_][A-Za-z0-9_.-]*\.rb\z/
       # A script is a plain file name in the bundle's scripts/.
@@ -88,7 +107,7 @@ module Samagotchi
       # admits a chi that never saw the key. A key the first tag (v0.2.0)
       # already reads has no entry. `files.description` is a files: entry given
       # as a mapping, `*.types` a session_settings:/settings: given as a mapping
-      # of keys to types, `hooks.events` a hook entry with an events: list. A key
+      # of keys to types. A key
       # whose release is not out yet waits here as a comment naming it, the way
       # Plugin::Api::SINCE does, until `release:bump` gives it its version
       # (docs/releasing.md).
@@ -100,16 +119,14 @@ module Samagotchi
         "session_settings" => "0.84.0",
         "session_settings.types" => "0.92.0",
         "settings.types" => "0.92.0",
-        "hooks.events" => "0.98.0",
         "settings" => "0.143.0",
         "block_renderers" => "0.151.0",
         "plugin.required" => "0.157.0"
       }.freeze
 
       # files: name → "sha256:<hex>" (both forms); file_descriptions: name →
-      # the description a mapping gave, for the files that have one; hooks:
-      # name → BundleHook.
-      attr_reader :name, :version, :scope, :description, :files, :file_descriptions, :hooks, :trust_level, :plugin, :requires_chi, :needs, :includes,
+      # the description a mapping gave, for the files that have one.
+      attr_reader :name, :version, :scope, :description, :files, :file_descriptions, :trust_level, :plugin, :requires_chi, :needs, :includes,
                   :scripts, :context_providers, :block_renderers, :session_settings, :session_setting_types, :settings, :setting_types, :unknown_keys
 
       def initialize(path:)
@@ -131,7 +148,8 @@ module Samagotchi
         @scope    = normalize_scope(raw["scope"])
         @description = (raw["description"] || "").to_s
         @files    = parse_files(raw["files"] || {})
-        @hooks    = parse_hooks(raw["hooks"] || {})
+        raise HooksRetired.for_key if self.class.lists_hooks?(raw["hooks"])
+
         @file_descriptions = parse_file_descriptions(raw["files"])
         @trust_level = (raw["trust_level"] || "experimental").to_s
         @plugin = parse_plugin(raw["plugin"])
@@ -170,8 +188,8 @@ module Samagotchi
       # chi (a newer chi tightened it, or an older one wrote it) costs only
       # that key, which reads as empty with its message in the problems:
       #   name, version (never checked: identity is the record's), scope;
-      #   files and their descriptions, scripts, plugin; hooks (one bad entry
-      #   fails the whole key); needs, context_providers; block_renderers
+      #   files and their descriptions, scripts, plugin (hooks: is ignored,
+      #   HooksRetired); needs, context_providers; block_renderers
       #   (against +fallback_scripts+ when scripts: failed); includes (after
       #   what its check reads); session_settings with its types, settings
       #   with theirs (one raw value each, so one problem); requires_chi,
@@ -185,6 +203,10 @@ module Samagotchi
         manifest = allocate
         [manifest, manifest.send(:read_tolerantly, path, fallback_scripts)]
       end
+
+      # Whether a manifest's hooks: value lists anything (none, {} and []
+      # don't: a manifest may keep an empty key).
+      def self.lists_hooks?(raw) = !(raw.nil? || ((raw.is_a?(Hash) || raw.is_a?(Array)) && raw.empty?))
 
       def self.read(dir:)
         manifest_path = File.join(dir, "manifest.yml")
@@ -201,13 +223,6 @@ module Samagotchi
         return nil unless raw
 
         hex = raw.start_with?("sha256:") ? raw[7..] : raw
-        hex unless hex.nil? || hex.empty?
-      end
-
-      # Returns sha256 hex for a hook basename (e.g. "guardrails.rb"), nil
-      # when it declares none (nothing to verify).
-      def checksum_for_hook(basename)
-        hex = @hooks[basename]&.hex
         hex unless hex.nil? || hex.empty?
       end
 
@@ -242,8 +257,8 @@ module Samagotchi
 
       # The SINCE keys this manifest actually uses, each with the chi release
       # that first read it: the plain keys, and the shapes only a newer chi
-      # reads — a files: entry given as a mapping, a hook entry with an events:
-      # list, a session_settings:/settings: given as a mapping of keys to types.
+      # reads — a files: entry given as a mapping, a session_settings:/settings:
+      # given as a mapping of keys to types.
       # @return [Hash{String => String}]
       def floor_keys
         raw = @raw
@@ -258,15 +273,12 @@ module Samagotchi
         found["files.description"] = SINCE["files.description"] if raw["files"].is_a?(Hash) && raw["files"].values.any?(Hash)
         found["session_settings.types"] = SINCE["session_settings.types"] if raw["session_settings"].is_a?(Hash)
         found["settings.types"] = SINCE["settings.types"] if raw["settings"].is_a?(Hash)
-        if raw["hooks"].is_a?(Hash) && raw["hooks"].values.any? { |entry| entry.is_a?(Hash) && entry.key?("events") }
-          found["hooks.events"] = SINCE["hooks.events"]
-        end
         found
       end
 
       # Writes a fresh manifest.yml from computed checksums at `dir`.
       # +file_descriptions+ (name → text) writes those files as mappings.
-      def self.write(dir:, name:, version:, files:, scope: nil, description: "", hooks: nil, trust_level: nil,
+      def self.write(dir:, name:, version:, files:, scope: nil, description: "", trust_level: nil,
                      plugin: nil, requires_chi: nil, needs: nil, scripts: {}, context_providers: [], block_renderers: [], file_descriptions: {},
                      session_settings: [], session_setting_types: {}, settings: nil, setting_types: {})
         FileUtils.mkdir_p(dir)
@@ -280,7 +292,6 @@ module Samagotchi
           text = file_descriptions[key].to_s.strip
           [key, text.empty? ? sha : { "sha256" => sha, "description" => text }]
         end
-        manifest["hooks"] = hooks.to_h { |k, v| [k.to_s, BundleHook.parse(v).to_record] } if hooks && !hooks.empty?
         manifest["trust_level"] = trust_level.to_s if trust_level && !trust_level.to_s.empty?
         if plugin
           sha = plugin[:sha256].to_s
@@ -389,7 +400,7 @@ module Samagotchi
         end
         @scripts = tolerate(problems, "scripts", {}) { parse_scripts(raw["scripts"]) }
         @plugin = tolerate(problems, "plugin", nil) { parse_plugin(raw["plugin"]) }
-        @hooks = tolerate(problems, "hooks", {}) { parse_hooks(raw["hooks"] || {}) }
+        # An old kept manifest's hooks: is no problem: it isn't read (HooksRetired).
         @needs = tolerate(problems, "needs", []) { self.class.parse_needs(raw["needs"]) }
         @context_providers = tolerate(problems, "context_providers", []) { parse_context_providers(raw["context_providers"]) }
         script_names = problems.key?("scripts") ? fallback_scripts.map(&:to_s) : @scripts.keys
@@ -546,8 +557,8 @@ module Samagotchi
 
           name
         end.uniq
-        if !names.empty? && (!@files.empty? || !@hooks.empty? || @plugin || !@scripts.empty?)
-          raise ValidationError, "a bundle with includes: holds only its includes (no files, hooks, plugin or scripts)"
+        if !names.empty? && (!@files.empty? || @plugin || !@scripts.empty?)
+          raise ValidationError, "a bundle with includes: holds only its includes (no files, plugin or scripts)"
         end
 
         names
@@ -558,34 +569,6 @@ module Samagotchi
 
         text = raw.to_s.strip
         text.empty? ? nil : text
-      end
-
-      def parse_hooks(raw)
-        return {} unless raw.is_a?(Hash)
-
-        raw.each_with_object({}) do |(k, v), acc|
-          next unless k.is_a?(String) && !k.empty?
-          next unless v.is_a?(Hash)
-
-          check_hook_events(k, v)
-          acc[k] = BundleHook.parse(v)
-        end
-      end
-
-      HOOK_EVENT_NAME = /\A[a-z][a-z0-9_]*\z/
-
-      # A hook's events: list holds event names (one instance registered
-      # for each); it and event: are one or the other.
-      def check_hook_events(file, entry)
-        return unless entry.key?("events")
-
-        raw = entry["events"]
-        raise ValidationError, "hooks: #{file}: give event: or events:, not both" if entry.key?("event")
-        raise ValidationError, "hooks: #{file}: events: must be a list of event names" unless raw.is_a?(Array) && !raw.empty?
-
-        raw.each do |item|
-          raise ValidationError, "hooks: #{file}: events: #{item.inspect} is not an event name" unless item.is_a?(String) && item.strip.match?(HOOK_EVENT_NAME)
-        end
       end
     end
   end

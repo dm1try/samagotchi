@@ -36,7 +36,7 @@
 - `chi update [--dry-run] [--to VERSION] [--json] [--no-gem] [--no-bundles] [--no-desktop]` — update an installed chi: the gem, the system bundle, the shipped bundles you installed and the desktop helper, and check the bundles from elsewhere, in one table (see [Updating](#updating))
 - `chi home`, `chi home set [--ruby PATH]`, `chi home doctor` — the chi home: the one Ruby (and its gem path) every chi launch boots, whoever launches it. `chi home` shows it (its Ruby, the newest chi in it, gem home and path, `mise`, when and by which chi it was set, and the chi you ran when that is another one; exit 1 with the problem when it can't boot chi), `set` records this chi's Ruby and gem path (or `--ruby PATH`'s own; it must have samagotchi), `doctor` checks it and what should follow it, one row each with `ok`, `warn` or `fail` and what to run (exit 1 on a `fail`; see [Checking it](configuration.md#checking-it-chi-home-doctor)). At a terminal, a chi on another Ruby than the home's says so in one dim line a day. This machine only (see [The chi home](configuration.md#the-chi-home))
 - `chi project`, `chi project init [DIR]` — this folder's project, and making a folder in no git repository one. `chi project` prints how its project was found (`kind` `git`, `marker` or `none`), its `root` (what memories are keyed on), its `top` (where the AGENTS.md chain starts) and its project `memories` folder, with a `note` for a marker a repository makes ignored, or a `$HOME` that is a git repository. `init` writes `DIR/.chi/project.yml` (DIR defaults to this folder and is created when missing), so DIR and every subfolder share one memories folder, group their sessions and take `chi context --project`; it writes nothing in a git repository (the repository already is the project, exit 0), says so for a folder already marked, refuses `$HOME`, a folder above it and `/` (exit 1), and marks a folder inside another marked project as its own, nested one. It prints the root and the memories folder (with the memories already there: a folder chi ran in at its top keeps them), the running sessions in DIR to restart (`chi sessions restart ID`: their prompt keeps the old project) and, when DIR has saved sessions, that a running chi web groups them after its restart. This machine only. See [Projects without git](memory.md#projects-without-git)
-- `chi bundle install|upgrade|uninstall|status|diff|list|build|trash|new|test|check` — manage memory bundles (see [Bundle hooks](hooks.md#bundle-hooks-unified-workflow-bundle)); `list` shows the installed ones and the ones shipped with chi, which `install <name>` installs; `upgrade <name>` upgrades an installed bundle by name from the source it came from (its folder, archive or git URL), `upgrade <source>` from a new one; `core` and `dev` are profiles that install a set of them (see [Bundle profiles](memory.md#bundle-profiles-core-and-dev),  [Guardrails](guardrails.md), [Bundles](bundles.md#the-btw-bundle), [the mcp bundle](bundles.md#the-mcp-bundle) [the loop-guard bundle](bundles.md#the-loop-guard-bundle), [the check-in bundle](bundles.md#the-check-in-bundle) and [the skills bundle](bundles.md#the-skills-bundle)). `trash` lists and empties the bundle trash (moved files from uninstalls/upgrades). `install`/`upgrade` `--force` overwrites existing entries and also installs a bundle whose `requires_chi` this chi doesn't meet; without it such a bundle is refused (exit 1), nothing written. A plain `install` of a bundle that is already installed from the same source rewrites its hooks, rules, plugin, scripts and record: the summary lists a file that already holds the bundle's bytes as `Up to date: …`, one you wrote as `Skipped: …`, and ends with `NAME was already installed from SOURCE: its hooks, rules, plugin and scripts now match it and its record was rewritten` (plus, when a memory was kept, `your own copies of its memories were kept (chi bundle upgrade NAME merges the bundle's changes into them)`). A usage error (an unknown subcommand or flag, a missing argument, a bad `build --scope`) exits 2, as for the other subcommands. Plain `chi` and `chi web` exit 1 on an unknown flag, a flag missing its value or a stray argument. `new`, `test` and `check` are for writing one: see [Writing a bundle](#writing-a-bundle-new-test-check)
+- `chi bundle install|upgrade|uninstall|status|diff|list|build|trash|new|test|check` — manage memory bundles (see [Plugins](plugins.md) and [Bundle hooks](hooks.md#bundle-hooks)); `list` shows the installed ones and the ones shipped with chi, which `install <name>` installs; `upgrade <name>` upgrades an installed bundle by name from the source it came from (its folder, archive or git URL), `upgrade <source>` from a new one; `core` and `dev` are profiles that install a set of them (see [Bundle profiles](memory.md#bundle-profiles-core-and-dev),  [Guardrails](guardrails.md), [Bundles](bundles.md#the-btw-bundle), [the mcp bundle](bundles.md#the-mcp-bundle) [the loop-guard bundle](bundles.md#the-loop-guard-bundle), [the check-in bundle](bundles.md#the-check-in-bundle) and [the skills bundle](bundles.md#the-skills-bundle)). `trash` lists and empties the bundle trash (moved files from uninstalls/upgrades). `install`/`upgrade` `--force` overwrites existing entries and also installs a bundle whose `requires_chi` this chi doesn't meet; without it such a bundle is refused (exit 1), nothing written. A plain `install` of a bundle that is already installed from the same source rewrites its rules, plugin, scripts and record: the summary lists a file that already holds the bundle's bytes as `Up to date: …`, one you wrote as `Skipped: …`, and ends with `NAME was already installed from SOURCE: its rules, plugin and scripts now match it and its record was rewritten` (plus, when a memory was kept, `your own copies of its memories were kept (chi bundle upgrade NAME merges the bundle's changes into them)`). A source with class-file hooks (`hooks/*.rb` or a manifest `hooks:` entry) is refused, `--dry-run` too; an older install's hooks are removed by the next install or upgrade (`Removed (chi no longer loads class-file bundle hooks): …`, an edited one copied to the trash first; see [Class-file hooks are retired](hooks.md#class-file-hooks-are-retired)). A usage error (an unknown subcommand or flag, a missing argument, a bad `build --scope`) exits 2, as for the other subcommands. Plain `chi` and `chi web` exit 1 on an unknown flag, a flag missing its value or a stray argument. `new`, `test` and `check` are for writing one: see [Writing a bundle](#writing-a-bundle-new-test-check)
 
 - `chi guardrails replay [--dry-run] [--threshold T] [--model M]` — seed System 1's record from the approvals this machine's sessions already answered: each ask is judged by the configured model and written to `guardrails/judgments.jsonl` with the answer the user gave, then a per-rule table prints (asks, allowed, denied, would-be auto-allows, false allows, asks with no judgment). A parent agent's answer is not the user's: only its deny is replayed, and only where the parent could have allowed. `--dry-run` judges without writing, `--threshold` overrides `guardrails.system_one.threshold` for the table, `--model` the configured model for this run. Exit 2 when `guardrails.system_one.mode` is off or no `host` is set; a usage error exits 2 (see [System 1](guardrails.md#system-1-experimental))
 - `chi guardrails rule <id>` — print exactly `asks` when that rule is loaded, not disabled and votes `ask` in this `guardrails.mode` for every model; any other line says why not (no such rule, disabled, another mode, it denies, for some models only, rules that failed to load, `guardrails.enabled: false`). Exit 0 either way, 2 for a usage error. It reads config.yml and the installed bundles as a worker does (`GuardrailWiring#rules`) and takes the rule's id, never a command; the [coordinator skill](bundles.md#the-coordinator-bundle) reads it before it merges without asking
@@ -133,9 +133,9 @@ The loop for a bundle you're writing (the whole path: [bundle-authoring.md](bund
   chi's Ruby (minitest is one of chi's gems; rspec is optional). The tests run the bundle's code as written, with
   your environment (the kit sandboxes each test's HOME and XDG dirs, not the process).
 - `chi bundle install --dev PATH` installs the bundle in the local directory `PATH` (not a git URL, archive or name:
-  exit 2) as a link to it: its plugin, hooks, rules, scripts and `manifest.yml` are `PATH`'s own files, so an edit applies at the
+  exit 2) as a link to it: its plugin, rules, scripts and `manifest.yml` are `PATH`'s own files, so an edit applies at the
   next worker or `chi web` restart with no re-install (a manifest edit to `block_renderers:` shows in chi web's next
-  request; a new `scripts:`, `hooks:` or `plugin:` entry needs `chi bundle install --dev PATH` again, since the record
+  request; a new `scripts:` or `plugin:` entry needs `chi bundle install --dev PATH` again, since the record
   has no entry for it), and their sha256 isn't checked, for this bundle only (the
   record says `dev`; every other bundle is checked as before). Its memories are copied at install. `chi bundle
   status` shows `NAME vX dev → /abs/path`. `chi bundle upgrade NAME` refuses it (it follows its source already; to
@@ -145,10 +145,11 @@ The loop for a bundle you're writing (the whole path: [bundle-authoring.md](bund
 - `chi bundle check [PATH] [--fix] [--set KEY=VALUE]` (PATH defaults to `.`) checks it as an install takes it, one
   finding per line, `error|warn|info CODE file[:line]: message (fix: hint)`, then `ok|failed: N errors, N
   warnings`. Exit 1 on any error, 0 otherwise, 2 for usage. It installs and loads the bundle in a temp sandbox
-  (HOME, config and state), not in yours, but in chi's own process: the plugin's and hooks' code runs as written,
+  (HOME, config and state), not in yours, but in chi's own process: the plugin's code runs as written,
   so run it (and `test`) on code you'd install. The codes, in order: `manifest` (a parse error, verbatim; the run
-  stops), `missing-file`, `unlisted` (warn: a file an install leaves out, by `MemoryFiles`' rules, so a README
-  isn't one), `sha` (a stale or placeholder sha, or a plugin / hook / script entry with no sha line; `--fix`
+  stops), `hooks-retired` (error: a manifest `hooks:` entry, or `hooks/*.rb` files: class-file hooks are retired,
+  hook events from `plugin.rb` with `chi.on`; the run stops), `missing-file`, `unlisted` (warn: a file an install leaves out, by `MemoryFiles`' rules, so a README
+  isn't one), `sha` (a stale or placeholder sha, or a plugin / script entry with no sha line; `--fix`
   rewrites the first two and prints `fixed sha FILE → sha256:…`), `unknown-key` (warn: a manifest key this chi's
   parser never reads, so it ignores it, one row per key at its line; the install keeps the manifest, so a newer
   chi reads the key from it with no reinstall, and `chi update`'s re-check names it too), `requires-chi` (this chi doesn't satisfy it:
@@ -157,7 +158,7 @@ The loop for a bundle you're writing (the whole path: [bundle-authoring.md](bund
   `Manifest::SINCE`; an installed bundle gets the unknown-key row but never the floor, as it's the author's fix),
   `trust` (warn: `trust_level: reviewed|trusted` on a
   bundle chi doesn't ship), `clash` (warn: a name chi ships, or one installed from elsewhere; the sandboxed install
-  then forces), `install` (each Installer warning, a `needs` one as warn, and each plugin or hook load failure at
+  then forces), `install` (each Installer warning, a `needs` one as warn, and each plugin load failure at
   the source `file:line`; skipped while a placeholder sha is unfilled), `registered` (info: each command, tool,
   hook with its priority, init, toolkit, tool source, peer source and prompt section), `hook-event` (warn: a `chi.on` event chi
   never fires), `fail-closed` (warn: a `chi.on(..., on_error: :fail_closed)` in a plugin whose manifest `plugin:` lacks `required: true`, so a load failure would not deny tool calls; not on an installed bundle's re-check), `settings` (warn: a `--set` the manifest's `settings:` rules out, as config.yml's `bundles:` is told), `api` (warn: a `ctx.*` / `chi.*` call or a keyword this chi's API lacks, read from the source with
@@ -340,7 +341,8 @@ Also shipped, not installed: dev (mcp, skills, source-links) (chi bundle install
   the merge itself, and `--force` replacing the file. A dry run and an automatic update
   (`update.auto`) show it and leave it, and so does a failed row or one with no place
   for it (a skipped system bundle). A memory that can't be read at a
-  newer version fails that bundle's row with the file's name. Hooks, rules, the plugin and scripts are replaced. One
+  newer version fails that bundle's row with the file's name. Rules, the plugin and scripts are replaced, and an
+  older install's class-file `hooks/` removed. One
   whose bytes are neither what the install recorded (nothing recorded counts as edited) nor the new version's is
   edited: the row says `replaced edited hooks/x (a copy goes to the trash first)` (`would replace` in the plan), and
   a copy goes to the bundle trash first (`chi bundle trash`; `hooks/x`,
@@ -349,15 +351,16 @@ Also shipped, not installed: dev (mcp, skills, source-links) (chi bundle install
   chi"), a newer installed one is left, one whose new version needs a newer
   chi is skipped, and bundles you didn't install stay uninstalled.
 - **Bundles not from chi** are never changed, but the chi the update leaves
-  checks what is installed of them (the plugin, hooks and rules as they are,
+  checks what is installed of them (the plugin and rules as they are,
   not their source, which may be gone) with `chi bundle check`'s own checks,
   and each warning or error is a row under the bundle's name: `requires_chi`
-  ruling this chi out, a plugin or hook that no longer loads, a hook on an event
+  ruling this chi out, a plugin that no longer loads, a hook on an event
   chi no longer fires, a `ctx`/`chi` call the API lacks, a reference to chi's
   internals that this chi no longer has (`Samagotchi::OldInternal::Thing is gone from this chi, so this bundle may
   fail` — a name that still resolves gets no row, so a bundle reaching `Samagotchi::Log` isn't warned about on every
-  update), a name chi now ships, or a hook or plugin edited since it was installed (it
-  doesn't load). What only an author can act on (shas, unlisted files, tests, a
+  update), a name chi now ships, a rule or plugin edited since it was installed (it
+  doesn't load), or class-file hooks an older chi installed (`hooks-retired`: they no longer load; `chi bundle upgrade
+  NAME` once its source hooks from `plugin.rb`, or `chi bundle uninstall NAME`). What only an author can act on (shas, unlisted files, tests, a
   missing `requires_chi`, its floor, `trust_level`) is left out, and so are
   profiles. A clean bundle gets no row beyond its `skipped (not from chi)`.
   - **They fail nothing:** an error row too has `failed: false` and leaves the exit

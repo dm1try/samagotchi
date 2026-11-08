@@ -39,9 +39,6 @@ module Samagotchi
     #
     #   requires_chi, trust_level   the strings as recorded, nil when none
     #   description                 the kept manifest's, nil from the record
-    #   hooks                       basename => BundleHook: each recorded hook,
-    #                               the kept manifest's events, on_error and
-    #                               priority with the record's sha
     #   needs                       Manifest.parse_needs'
     #   script_names                the scripts/ files it lists
     #   context_providers           Array<ContextProviders::Provider>
@@ -61,7 +58,7 @@ module Samagotchi
     #   floor_keys                  the kept manifest's Manifest#floor_keys (key =>
     #                               the first chi that read it), {} from the record
     #   origin                      :kept or :record
-    class InstalledManifest < Data.define(:name, :version, :requires_chi, :trust_level, :description, :hooks, :needs,
+    class InstalledManifest < Data.define(:name, :version, :requires_chi, :trust_level, :description, :needs,
                                           :script_names, :context_providers, :block_renderers, :session_settings,
                                           :session_setting_types, :settings, :setting_types, :file_descriptions,
                                           :plugin_required, :includes, :unknown_keys, :floor_keys, :problems, :origin)
@@ -130,7 +127,6 @@ module Samagotchi
         new(name: bundle.name, version: bundle.version,
             requires_chi: pick.call("requires_chi", kept.requires_chi, mirrored.requires_chi),
             trust_level: kept.trust_level, description: kept.description.empty? ? nil : kept.description,
-            hooks: pick.call("hooks", kept_hooks(bundle.hooks, kept.hooks), bundle.hooks),
             needs: pick.call("needs", kept.needs, mirrored.needs),
             script_names: pick.call("scripts", kept.scripts.keys, mirrored.script_names),
             context_providers: pick.call("context_providers", kept.context_providers, mirrored.context_providers),
@@ -150,21 +146,11 @@ module Samagotchi
         {}
       end
 
-      # Each recorded hook (what is installed): the kept manifest's metadata
-      # for it with the record's sha; one the manifest doesn't list (a found
-      # hooks/*.rb) as recorded. A manifest hook the record lacks isn't installed.
-      def self.kept_hooks(recorded, declared)
-        recorded.to_h do |file, hook|
-          [file, declared.key?(file) ? declared[file].with(sha256: hook.sha256) : hook]
-        end
-      end
-
       def self.from_record(bundle)
         raw = recorded(bundle)
         problems = {}
         new(name: bundle.name, version: bundle.version,
             requires_chi: raw["requires_chi"]&.to_s, trust_level: raw["trust_level"]&.to_s, description: nil,
-            hooks: bundle.hooks,
             needs: parsed(problems, "needs", [], Manifest::ValidationError) { Manifest.parse_needs(raw["needs"]) },
             script_names: bundle.scripts.keys,
             context_providers: parsed(problems, "context_providers", []) { ContextProviders.parse_list(raw["context_providers"]) },
@@ -204,7 +190,7 @@ module Samagotchi
           acc[key] = text unless text.empty?
         end
       end
-      private_class_method :deep_freeze, :kept_stat, :build, :standing, :from_kept, :floors, :kept_hooks, :from_record, :recorded, :parsed,
+      private_class_method :deep_freeze, :kept_stat, :build, :standing, :from_kept, :floors, :from_record, :recorded, :parsed,
                            :list, :types, :file_descriptions
 
       # Why the kept manifest.yml wasn't read: :missing, :stale or :edited (the class

@@ -51,7 +51,7 @@
   normal session: it shows in `chi sessions list` with `↳ <parent>`, and the user can steer it
   with `chi --attach <id>`. While I wait for a child, its tool approvals go to my user as my own
   approvals (I see only how each was answered); see `docs/sessions.md` "Delegating".
-- Bundles extend me: memories, `hooks/*.rb`, `guardrails/*.yml`, and a `plugin.rb` that adds slash
+- Bundles extend me: memories, `guardrails/*.yml`, and a `plugin.rb` that adds slash
   commands (`anytime:` ones run mid-turn), model tools (they can return images I see), hooks,
   cards, side answers (`ask_model`), System 1 judgments (`chi.judgment`, `ctx.judge`), HTTP calls (`ctx.http`),
   child sessions and services (e.g. MCP server processes). Shipped: `btw` (`/btw` side question),

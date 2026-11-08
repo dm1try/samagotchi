@@ -1,0 +1,7 @@
+name: sample-memory-bundle
+version: 1.0.0
+scope: system
+description: "Sample bundle with one memory"
+files:
+  identity.md: sha256:abb92e44f446b66ef1aa44474bba89ec1854c0ab068f3fe565ac21284cebf3a6
+trust_level: reviewed

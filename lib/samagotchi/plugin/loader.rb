@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require "digest"
 require_relative "api"
 require_relative "context"
 require_relative "../hooks"
@@ -10,6 +11,11 @@ require_relative "../memory_bundle/manifest"
 require_relative "../memory_bundle/provenance"
 
 module Samagotchi
+  # Where installed bundles' plugin code is evaluated: one module per
+  # bundle (Plugin::Loader.namespace_for), so two bundles defining the same
+  # class name can't collide on a top-level constant.
+  module Bundles; end
+
   module Plugin
     # What a plugin registers into: an Engine's own registries.
     # +context_for+ is (bundle_name, settings, label) → the Plugin::Context
@@ -36,7 +42,7 @@ module Samagotchi
     #
     # For each bundle, by name: the file must match the sha256 recorded at
     # install and chi must meet the bundle's requires_chi. The file is
-    # module_eval'd into the bundle's namespace (as its hooks are), the
+    # module_eval'd into the bundle's namespace (#namespace_for), the
     # class named like the file (plugin.rb → Plugin) is built with the
     # bundle's settings, and its #register gets a Plugin::Api. What it
     # registered takes effect only when #register returns: a plugin that
@@ -140,14 +146,45 @@ module Samagotchi
         return failure if failure
         return "the file is missing" unless file && File.file?(file)
 
-        Hooks::BundleLoader.sha_mismatch(file, bundle.plugin.sha256, required: true)
+        sha_mismatch(file, bundle.plugin.sha256)
+      end
+
+      # Why +file+ doesn't match the sha256 recorded at install (+recorded+,
+      # "sha256:<hex>" or bare hex), or nil. None recorded is a mismatch;
+      # Provenance.unchecked? (a dev install) is none.
+      def sha_mismatch(file, recorded)
+        return nil if MemoryBundle::Provenance.unchecked?(recorded)
+
+        expected = MemoryBundle::Provenance.recorded_sha(recorded)
+        return "no sha256 recorded for it (reinstall the bundle)" if expected.empty?
+
+        actual = MemoryBundle::Provenance.file_sha(file)
+        return nil if actual == expected
+
+        "its sha256 #{actual[0, 12]}… differs from the installed #{expected[0, 12]}… (edited after install? reinstall the bundle)"
+      end
+
+      # The (lazily created) namespace module for a bundle, under
+      # Samagotchi::Bundles. The name is sanitized and made injective by a
+      # short digest, so `my-bundle` and `my_bundle` don't collide.
+      def namespace_for(bundle_name)
+        raw = bundle_name.to_s
+        base = raw.gsub(/[^A-Za-z0-9_]/, "_")
+        base = "B_#{base}" unless base.match?(/\A[A-Z]/)
+        ns_name = :"#{base}_#{Digest::MD5.hexdigest(raw)[0, 4]}"
+        if Samagotchi::Bundles.const_defined?(ns_name, false)
+          Samagotchi::Bundles.const_get(ns_name)
+        else
+          Samagotchi::Bundles.const_set(ns_name, Module.new)
+        end
       end
 
       # module_eval the file into a fresh module in the bundle's namespace
       # (Samagotchi::Bundles::<bundle>::PluginLoad<n>: each load gets new
       # classes, not the last load's reopened) and build its class
-      # (plugin.rb → Plugin; my_plugin.rb → MyPlugin) as hooks are built:
-      # an initialize that takes an argument gets the settings.
+      # (plugin.rb → Plugin; my_plugin.rb → MyPlugin) as config hooks are
+      # built (Hooks.build_plugin): an initialize that takes an argument
+      # gets the settings.
       def instantiate(bundle_name, file, settings, namespace: nil)
         namespace ||= fresh_namespace(bundle_name)
         namespace.module_eval(File.read(file), file, 1)
@@ -163,7 +200,7 @@ module Samagotchi
       def fresh_namespace(bundle_name)
         LOADS.synchronize do
           @loads = (@loads || 0) + 1
-          Hooks::BundleLoader.namespace_for(bundle_name).const_set(:"PluginLoad#{@loads}", Module.new)
+          namespace_for(bundle_name).const_set(:"PluginLoad#{@loads}", Module.new)
         end
       end
 

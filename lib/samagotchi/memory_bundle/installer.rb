@@ -34,8 +34,9 @@ module Samagotchi
     class Installer
       class InstallError < StandardError; end
 
-      # What the run did to one file (a memory, or a hook, rule, plugin or
-      # script: AssetInstaller writes them too), as #results holds it. word is
+      # What the run did to one file (a memory, or a rule, plugin or script:
+      # AssetInstaller writes them too, and removes an older chi's hooks), as
+      # #results holds it. word is
       # the report bucket (#summary): a real run's (:installed, :updated,
       # :merged, :kept, :kept_pruned, :kept_shared, :kept_own (a file left as
       # the user's), :up_to_date, :conflict, :removed) or a dry run's
@@ -166,8 +167,10 @@ module Samagotchi
         would_install = with_word(:would_install)
         would_update = with_word(:would_update)
         fast_forward = with_word(:fast_forward)
-        removed = with_word(:removed)
-        would_remove = with_word(:would_remove)
+        # An older chi's class-file hooks this run removes: a line of their
+        # own, with why (AssetInstaller#retire_hooks).
+        retired, removed = with_word(:removed).partition { |key| @results[key].note == AssetInstaller::RETIRED }
+        would_retire, would_remove = with_word(:would_remove).partition { |key| @results[key].note == AssetInstaller::RETIRED }
 
         lines << "Installed: #{installed.join(", ")}" unless installed.empty?
         lines << "Updated: #{updated.join(", ")}" unless updated.empty?
@@ -178,6 +181,8 @@ module Samagotchi
         lines << FileStanding.merged_line(would_merge, @manifest&.version, dry_run: true) unless would_merge.empty?
         lines << "Removed (no longer in the bundle): #{removed.join(", ")}#{" (moved to #{trash_dir})" if trash_dir}" unless removed.empty?
         lines << "Would remove (no longer in the bundle): #{would_remove.join(", ")}" unless would_remove.empty?
+        lines << "Removed (#{AssetInstaller::RETIRED}): #{retired.join(", ")}" unless retired.empty?
+        lines << "Would remove (#{AssetInstaller::RETIRED}): #{would_retire.join(", ")}" unless would_retire.empty?
         lines << "Kept (local edits preserved): #{kept.join(", ")}" unless kept.empty?
         lines << "Up to date: #{up_to_date.join(", ")}" unless up_to_date.empty?
         lines << "Skipped: #{skipped.join(", ")}" unless skipped.empty?
@@ -213,11 +218,11 @@ module Samagotchi
       def with_word(*words) = @results.select { |_, result| words.include?(result.word) }.keys
 
       # A plain install over a bundle that is already installed from the same
-      # source: it rewrote the bundle's hooks, rules, plugin, scripts and its
+      # source: it rewrote the bundle's rules, plugin, scripts and its
       # record, and left a memory the user wrote as it was. So the line says
       # what changed, and points at the upgrade for the memories it kept.
       def reinstall_line
-        line = "#{@name} was already installed from #{@source}: its hooks, rules, plugin and scripts " \
+        line = "#{@name} was already installed from #{@source}: its rules, plugin and scripts " \
                "now match it and its record was rewritten"
         # :kept_own is the only way a memory is left out of a plain install
         # (its KEPT_OWN or HELD row): its bytes differ from the bundle's.
@@ -256,10 +261,10 @@ module Samagotchi
       # #ref; a path resolved); one it can't place (an older record's
       # relative path) never refuses.
       #   - a name chi ships comes from a shipped dir only, unless --force
-      #     (install and upgrade): the plugin and hooks it replaces are chi's;
+      #     (install and upgrade): the plugin and rules it replaces are chi's;
       #   - a plain install over a bundle from another source is refused,
       #     --force too (that overwrites files, it doesn't switch sources):
-      #     it would delete the plugin and hooks and rewrite the record;
+      #     it would delete the plugin and rules and rewrite the record;
       #   - an upgrade may switch sources (a URL and a local copy of it are
       #     one bundle, an archive's file name has its version), and
       #     #source_change says so (the summary's first line).
@@ -351,19 +356,32 @@ module Samagotchi
         @bundle_dir = @source_dir = prepared.dir
         @source_owned = prepared.owned
         @source_commit = prepared.commit
+        refuse_hooks
         @manifest = Manifest.read(dir: @bundle_dir)
         clash = @manifest.session_settings_clash
         raise InstallError, clash if clash
       rescue SourceNormalizer::UnknownSourceError => e
         raise InstallError, "Source normalization failed: #{e.message}"
+      rescue Manifest::HooksRetired => e
+        # A rule, not a strictness option: refused strict or not, a dry run too.
+        raise InstallError, e.message
       rescue Manifest::ValidationError => e
         raise InstallError, e.message if @strict
 
         @warnings << "No manifest found — proceeding without strict manifest validation"
       end
 
+      # A source that ships class-file hooks (hooks/*.rb, listed or not) is
+      # refused before its manifest is read; its manifest's hooks: is
+      # Manifest.read's refusal (Manifest::HooksRetired either way).
+      # @raise [Manifest::HooksRetired]
+      def refuse_hooks
+        files = Manifest::HooksRetired.files_in(@bundle_dir)
+        raise Manifest::HooksRetired.for_files(files) unless files.empty?
+      end
+
       # A bundle whose requires_chi this chi doesn't meet is not installed at
-      # all: --force is what installs it, and its plugin, hooks and rules then
+      # all: --force is what installs it, and its plugin and rules then
       # warn that they won't load (AssetInstaller). The words come from
       # Manifest.requires_chi_failure, so the requirement is said one way.
       # A dry run is refused the same way: nothing there would load either.
@@ -579,7 +597,7 @@ module Samagotchi
 
       # The install's record (Provenance#write), only with a manifest and
       # not on a dry run. An upgrade with conflicts writes it too: the new
-      # version, the plugin's and hooks' new shas, and the old base for each
+      # version, the plugin's new sha, and the old base for each
       # conflicted file, marked conflict (chi bundle status shows it).
       # Skipping it left the replaced plugin failing its sha check.
       # @param installed [AssetInstaller::Installed]
@@ -589,11 +607,8 @@ module Samagotchi
           scope: @target_scope,
           version: @manifest.version,
           source_path: @source,
-          # AssetInstaller added the discovered hooks/*.rb to manifest.hooks.
-          hooks: @manifest.hooks,
           trust_level: @manifest.trust_level,
           source_commit: @source_commit,
-          hooks_files: installed.hook_files,
           guardrails_files: installed.guardrail_files,
           plugin_file: installed.plugin_file,
           plugin_required: @manifest.plugin&.dig(:required) == true,

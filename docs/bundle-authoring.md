@@ -24,7 +24,7 @@ Dev-linked scripts aren't chmodded: chi warns with a `chmod +x PATH/scripts/x` h
 
 `check` prints one finding per line (`error|warn|info CODE file[:line]: message (fix: hint)`), exits 1 on any error
 and installs into a temp sandbox, not the user's config or state; run it after every edit. `check` and `test` run
-the bundle's plugin and hooks in their own process, as written: run them on code you'd install.
+the bundle's plugin in their own process, as written: run them on code you'd install.
 
 ## Trying a bundle
 
@@ -51,8 +51,6 @@ plugin:
   sha256: sha256:<hex>       # `chi bundle check --fix` fills it; never compute it by hand
 # files:                     # memories it installs (top-level *.md); without files: every *.md but README & co.
 #   my_notes.md: sha256:<hex>
-# hooks:                     # hooks/*.rb files (a plugin's chi.on is usually simpler), each with event: NAME
-#                            # or events: [a, b] (one instance for both; chi newer than 0.97.0)
 # needs: [gh]                # outside commands it relies on
 ```
 
@@ -90,7 +88,8 @@ empty), then `exit: N` (`exit: 0 (no output)` when both were empty); a non-zero 
 Act through `ctx`: `ctx.notify(text, level: :warn)`, `ctx.steer(text)` (a line the model reads before its next
 step), `ctx.card(…)`, `ctx.stop_turn(reason)`, `ctx.ask_user(…)`, `ctx.data_dir` (the bundle's state folder),
 `ctx.session_dir` (this session's, removed with it), `ctx.cwd`, `ctx.log`. In a test, each recorded notice, steer or stop names its hook as `"plugin.rb (bundle
-my-bundle)"`, the plugin's label (a `hooks/x.rb` file's is `"x.rb (bundle my-bundle)"`).
+my-bundle)"`, the plugin's label. A bundle hooks events from its plugin only: class-file hooks (`hooks/*.rb`, a
+manifest `hooks:`) are retired, and chi refuses a source that has them ([hooks.md](hooks.md#class-file-hooks-are-retired)).
 
 ## Testing it
 

@@ -97,7 +97,7 @@ RSpec.describe "chi bundle upgrade --agent from a zip source" do
       original.call(*args).tap { |dir, owned, _commit| extracted << dir if owned }
     end
     command = Samagotchi::BundleCommand.new(["upgrade", zip, "--agent"], stdin: StringIO.new(""), stdout: out, stderr: err)
-    allow(command).to receive(:print_hooks_and_plugin).and_raise(IOError, "stdout closed")
+    allow(command).to receive(:print_plugin).and_raise(IOError, "stdout closed")
 
     expect { command.run }.to raise_error(IOError)
     # The bundle name is read from its own extraction; the installer's is the last.

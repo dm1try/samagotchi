@@ -7,20 +7,13 @@ require_relative "plugin/loader"
 
 module Samagotchi
   # What an Engine loads from outside chi as it starts: config.yml's hooks,
-  # installed bundles' hooks and plugins, and config.yml `bundles:` (their
-  # settings). It holds what plugins showed while they loaded (notices,
+  # installed bundles' plugins, and config.yml `bundles:` (their settings). It holds what plugins showed while they loaded (notices,
   # cards): no UI is there yet, so the Engine announces them on the first
   # turn (Engine#announce_load_events!).
   class ExtensionLoad
     # @param hook_failures [Guardrails::LoadFailures] where hooks that fail to load go
-    # @param hook_failed [#call, nil] (label, "Class: message", effect:) when
-    #   an installed bundle's hook file raises at fire time: the Engine's
-    #   HookRoutes, so the user is told once per hook. nil where there is no
-    #   UI to tell (the test kit's sandbox): a hook that raises then says
-    #   nothing, and raises nothing.
-    def initialize(hook_failures:, hook_failed: nil)
+    def initialize(hook_failures:)
       @hook_failures = hook_failures
-      @hook_failed = hook_failed
       @loading = false
       @held_events = []
     end
@@ -40,12 +33,13 @@ module Samagotchi
     end
 
     # The hooks: config.yml's (Hooks::Loader; an empty Registry without a
-    # hooks config), then the installed bundles' added to them.
+    # hooks config). An installed record that still has class-file hooks (a
+    # 0.157 install) adds a not-required failure each, which the Engine
+    # announces at the first turn: they don't load (#tell_retired_hooks).
     # @return [Hooks::Registry]
     def hooks
-      registry = hooks_from_config
-      add_bundle_hooks(registry)
-      registry
+      tell_retired_hooks
+      hooks_from_config
     end
 
     # Load the installed bundles' plugins into +registries+; one that fails
@@ -62,8 +56,7 @@ module Samagotchi
       @loading = false
     end
 
-    # config.yml `bundles:` (ConfigFile.bundle_settings), read once: the
-    # bundle hooks and the plugins both want it.
+    # config.yml `bundles:` (ConfigFile.bundle_settings), read once.
     def bundle_settings
       @bundle_settings ||= Samagotchi::ConfigFile.bundle_settings
     end
@@ -78,36 +71,22 @@ module Samagotchi
       Hooks::Registry.new
     end
 
-    def add_bundle_hooks(registry)
+    # One failure per record whose hooks: map isn't empty; an empty
+    # hooks/ dir is not one, nor a manifest.json that doesn't read (the
+    # plugin loader and the rules report that: a record holding only hooks/
+    # with an unreadable manifest.json is silent at start, as its hooks
+    # wouldn't load anyway; `chi bundle status` lists it unreadable).
+    def tell_retired_hooks
       require_relative "memory_bundle/provenance"
-      settings = bundle_settings
       MemoryBundle::Provenance.each_installed(holding: :hooks) do |bundle_name, bundle|
-        if bundle.error?
-          Log.warn(:hooks, "bundle_manifest_invalid", echo: "[samagotchi:hooks] bundle '#{bundle_name}': #{bundle.error}; its hooks are not loaded",
-                                                      bundle: bundle_name)
-          @hook_failures.add("hooks (bundle #{bundle_name})", bundle.error, required: false)
-          next
-        end
-        bundle_dir = File.join(MemoryBundle::Provenance.bundles_dir, bundle_name)
-        hooks_dir = File.join(bundle_dir, "hooks")
-        manifest = bundle.manifest
-        if manifest.experimental?
-          Log.info(:hooks, "experimental_bundle", echo: "[hooks] Bundle '#{bundle_name}' is experimental — its hooks may change or misbehave.", bundle: bundle_name)
-        end
-        begin
-          Hooks::BundleLoader.load(bundle_name: bundle_name, hooks_dir: hooks_dir, metadata: manifest.hooks, registry: registry,
-                                   failures: @hook_failures, settings: settings[bundle_name.to_s] || {},
-                                   manifest: manifest, hook_failed: @hook_failed)
-        rescue Exception => e # rubocop:disable Lint/RescueException -- a hook's SyntaxError or exit must not stop chi
-          raise if e.is_a?(SignalException) # Ctrl-C and kill signals are the user's
+        next if bundle.error?
 
-          Log.error(:hooks, "bundle_load_failed", echo: "[samagotchi:hooks] bundle '#{bundle_name}' failed to load hooks: #{e.class}: #{e.message}", bundle: bundle_name, error: e.class.name)
-        end
+        Log.warn(:hooks, "bundle_hooks_retired", bundle: bundle_name, hooks: bundle.hooks.size)
+        @hook_failures.add("hooks (bundle #{bundle_name})", MemoryBundle::Manifest::HooksRetired::WORDS, required: false)
       end
-    rescue Exception => e # rubocop:disable Lint/RescueException -- a hook's SyntaxError or exit must not stop chi
-      raise if e.is_a?(SignalException) # Ctrl-C and kill signals are the user's
-
-      Log.error(:hooks, "bundles_load_failed", echo: "[samagotchi:hooks] failed to load bundle hooks: #{e.class}: #{e.message}", error: e.class.name)
+    rescue StandardError => e
+      Log.error(:hooks, "bundles_load_failed", echo: "[samagotchi:hooks] failed to read the installed bundles: #{e.class}: #{e.message}",
+                                               error: e.class.name)
     end
   end
 end

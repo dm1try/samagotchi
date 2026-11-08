@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "spec_helper"
+require "support/legacy_hooks_record"
 require "tmpdir"
 require "fileutils"
 require "yaml"
@@ -95,18 +96,20 @@ RSpec.describe Samagotchi::MemoryBundle::Builder do
     expect(File.exist?(out)).to be false
   end
 
-  it "builds hooks/*.rb and hooks: manifest round-trip" do
-    src = write_bundle_with_hooks({ "identity.md" => "# Id\n" }, { "guardrails.rb" => "class Guardrails; def call(e); end; end" }, name: "build-hook", trust_level: "reviewed")
-    inst = Samagotchi::MemoryBundle::Installer.new(source: src, name: "build-hook", scope: "system", force: false, strict: true)
-    inst.run
+  it "doesn't build an older record's class-file hooks, nor hooks/*.rb in the scope dir" do
+    src = write_bundle_with_hooks({ "identity.md" => "# Id\n" }, {}, name: "build-hook", trust_level: "reviewed")
+    Samagotchi::MemoryBundle::Installer.new(source: src, name: "build-hook", scope: "system", force: false, strict: true).run
+    LegacyHooksRecord.legacy_hooks_record("build-hook", hooks: { "guardrails.rb" => "class Guardrails; end\n" })
+    FileUtils.mkdir_p(File.join(system_dir, "hooks"))
+    File.write(File.join(system_dir, "hooks", "loose.rb"), "class Loose; end\n")
     out = File.join(tmpdir, "out")
-    builder = described_class.new(scope: "system", name: "build-hook", version: "1.0.0", out: out)
-    result = builder.run
-    expect(File.exist?(File.join(out, "hooks", "guardrails.rb"))).to be true
+    result = described_class.new(scope: "system", name: "build-hook", version: "1.0.0", out: out).run
+    expect(Dir.exist?(File.join(out, "hooks"))).to be false
     manifest = YAML.load_file(File.join(out, "manifest.yml"))
-    expect(manifest["hooks"]).to include("guardrails.rb")
+    expect(manifest).not_to have_key("hooks")
     expect(manifest["trust_level"]).to eq("reviewed")
     expect(result[:files]).to include("identity.md")
+    expect { Samagotchi::MemoryBundle::Manifest.read(dir: out) }.not_to raise_error
   end
 
   it "build without hooks still succeeds" do

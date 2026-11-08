@@ -1,17 +1,12 @@
 ---
-# A bundle with a class-file hook, for the specs of upgrading one while chi
-# still loads them (shipped_update_spec). Copied under a temp
-# lib/samagotchi/bundles/ to read as shipped.
+# A bundle whose older install had a class-file hook, for the specs of
+# upgrading such a record (shipped_update_spec): the record's hook comes
+# from LegacyHooksRecord, this source has none (chi refuses one that has).
+# Copied under a temp lib/samagotchi/bundles/ to read as shipped.
 name: hooked
 version: 1.0.0
 scope: system
-description: A fixture bundle with one memory and one class-file hook
+description: A fixture bundle with one memory, whose older install had a class-file hook
 trust_level: reviewed
 files:
   hooked.md: sha256:d138ba7d89603a22f70b9ac1803b333b77daf5877dff63107f39377773ff53b4
-hooks:
-  hooked.rb:
-    sha256: sha256:6ba37f68721b1737733051755f8b7af40c36c94c76435b65e43dff03ef1199f6
-    event: before_tool_call
-    on_error: log
-    priority: 50

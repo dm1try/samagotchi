@@ -19,9 +19,10 @@
 #   unlisted    the manifest has no hooks: key (every hooks/*.rb installs)
 #   linked      the source's hooks/h.rb is a symlink out of the source
 #   fix, fixed, divergent, changed, note   as in memory_cases.yml; asset tags:
-#               dry-checksum (changed: the hook check reads the source),
-#               dry-dropped, dry-trash, hook-stray-left, hook-sha-dropped, hook-status,
-#               new-updated, rule-installed, uninstall-unnamed
+#               new-updated (changed: a file new to the record is Installed),
+#               hook-retired (changed: an install or upgrade removes an old
+#               record's class-file hooks), dry-dropped, dry-trash,
+#               rule-installed, uninstall-unnamed
 texts:
   v1: "# v1\n"
   v2: "# v2\n"
@@ -102,8 +103,8 @@ cases:
     recorded: null
     installed: null
     incoming: v2
-    divergent: new-updated
-    note: "upgrade lists a file the bundle never had before under Updated (the dry run: Would update), not Installed"
+    changed: new-updated
+    note: "new-updated: upgrade listed a file the bundle never had before under Updated (the dry run: Would update); it lists it under Installed since"
   - id: plugin_unchanged
     asset: plugin
     state: unchanged
@@ -189,8 +190,8 @@ cases:
     recorded: null
     installed: null
     incoming: v2
-    divergent: new-updated
-    note: "upgrade lists a file the bundle never had before under Updated (the dry run: Would update), not Installed"
+    changed: new-updated
+    note: "new-updated: upgrade listed a file the bundle never had before under Updated (the dry run: Would update); it lists it under Installed since"
   - {id: script_unchanged, asset: script, state: unchanged, recorded: v1, installed: v1, incoming: v1}
   - {id: script_pristine, asset: script, state: pristine, recorded: v1, installed: v1, incoming: v2}
   - id: script_edited_sha
@@ -238,85 +239,97 @@ cases:
       trash line), and upgrade --dry-run says nothing of it; a dropped hook at least gets "Bundle no longer includes
       hook".
 
+  # Class-file hooks are retired: the record's (an older chi's install)
+  # stays until an install or upgrade of a source without hooks removes them,
+  # an edited one copied to the trash first; a source that still ships one
+  # (incoming) is refused and changes nothing.
   - id: hook_new
     asset: hook
     state: new
     recorded: null
     installed: null
     incoming: v2
-    divergent: new-updated
-    note: "upgrade lists a file the bundle never had before under Updated (the dry run: Would update), not Installed"
+    note: "retired: a source that ships a hook is refused, its dry run too"
   - id: hook_unchanged
     asset: hook
     state: unchanged
     recorded: v1
     installed: v1
     incoming: v1
-    fixed: D3
-    note: "P1: the dry run calls an unchanged hook up to date, as the real run does"
-    fix:
-      - "587 spec/samagotchi/memory_bundle/installer_spec.rb: an upgrade with an identical hook reports it up to date, not Updated"
+    note: "retired: an old record's source that still ships its hook is refused; the record and the hook stay as they were"
   - id: hook_pristine
     asset: hook
     state: pristine
     recorded: v1
     installed: v1
-    incoming: v2
-    fixed: D3
-    changed: dry-checksum
+    incoming: null
+    changed: hook-retired
     note: >-
-      P1: the dry run says Would update for a hook the real run updates. dry-checksum: upgrade --dry-run warned "Checksum mismatch for hook h.rb": it checked the installed (old) hook against the new manifest; it checks the bundle's hook since
+      hook-retired: the new version has no hooks; the upgrade removes the old record's hook (it matches its sha, so no
+      trash copy) and its dry run says it would
   - id: hook_edited_sha
     asset: hook
     state: edited_sha
     recorded: v1
     installed: mine
-    incoming: v2
-    divergent: [hook-status, dry-trash]
-    changed: dry-checksum
+    incoming: null
+    divergent: dry-trash
+    changed: hook-retired
     note: >-
-      dry-checksum: upgrade --dry-run warned "Checksum mismatch for hook h.rb": it checked the installed (old) hook
-      against the new manifest; it checks the bundle's hook since. hook-status: chi bundle status says [ok] for an edited hook the loader refuses (its
-      sha differs); the plugin's line says modified, not loaded dry-trash: upgrade copies the edited file to the trash
-      ("Copied to the trash first"); its dry run never says so (chi update's plan does: replaces).
+      hook-retired: install and upgrade remove the edited hook, copied to the trash first; chi update's plan names it
+      (replaces). dry-trash: upgrade copies the edited file to the trash ("Copied to the trash first"); its dry run
+      never says so (chi update's plan does: replaces).
   - id: hook_edited_no_sha
     asset: hook
     state: edited_no_sha
     recorded: ""
     installed: mine
-    incoming: v2
+    incoming: null
     fixed: D2
     divergent: dry-trash
-    changed: dry-checksum
+    changed: hook-retired
     note: >-
-      P3: chi update's plan names an edited hook installed with no recorded sha. dry-checksum: upgrade --dry-run warned
-      "Checksum mismatch for hook h.rb": it checked the installed (old) hook against the new manifest; it checks the
-      bundle's hook since. dry-trash:
-      upgrade copies the edited file to the trash ("Copied to the trash first"); its dry run never says so (chi
-      update's plan does: replaces).
-  - {id: hook_dev_link, asset: hook, state: dev_link, recorded: dev, installed: v2, incoming: v2}
+      P3: chi update's plan names an edited hook installed with no recorded sha. hook-retired: removed, copied to the
+      trash first. dry-trash: upgrade copies the edited file to the trash ("Copied to the trash first"); its dry run
+      never says so (chi update's plan does: replaces).
+  - {id: hook_dev_link, asset: hook, state: dev_link, recorded: dev, installed: v2, incoming: v2, note: "retired: refused (the source ships the hook)"}
   - id: hook_dropped_pristine
     asset: hook
     state: dropped_pristine
     recorded: v1
     installed: v1
     incoming: null
-    divergent: [hook-stray-left, dry-dropped]
+    changed: hook-retired
     note: >-
-      hook-stray-left: a plain install of a version without the hook drops it from the record but leaves the file in hooks/, unloaded, and no later upgrade removes it (rules, the plugin and scripts go). dry-dropped: upgrade --dry-run says nothing of the hook the upgrade removes
+      hook-retired: a plain install and an upgrade of a version without the hook remove it (hook-stray-left: a plain
+      install used to leave the file in hooks/, and no later upgrade removed it); the dry run says it would
+      (dry-dropped: it used to say nothing)
   - id: hook_dropped_edited
     asset: hook
     state: dropped_edited
     recorded: v1
     installed: mine
     incoming: null
-    divergent: [hook-stray-left, dry-dropped]
+    divergent: dry-trash
+    changed: hook-retired
     note: >-
-      hook-stray-left: a plain install of a version without the hook drops it from the record but leaves the file in hooks/, unloaded, and no later upgrade removes it (rules, the plugin and scripts go). dry-dropped: upgrade --dry-run says nothing of the hook the upgrade copies to the trash
-      and removes
-  # The hook selection install_hooks and ShippedUpdate#trash_bound_hooks must
-  # share (the batch review's LOW 3): their plan and upgrade cells agree.
-  - {id: hook_stray, asset: hook, state: stray, file: extra.rb, beside: true, recorded: null, installed: mine, incoming: null}
+      hook-retired: removed, copied to the trash first, by a plain install too (hook-stray-left: it used to stay);
+      the dry run says it would remove it (dry-dropped: it used to say nothing). dry-trash: its dry run never says
+      it would copy it to the trash (chi update's plan does: replaces).
+  # The selection retire_hooks and ShippedUpdate#trash_bound share
+  # (Trash.edits over hooks/): their plan and upgrade cells agree.
+  - id: hook_stray
+    asset: hook
+    state: stray
+    file: extra.rb
+    beside: true
+    recorded: null
+    installed: mine
+    incoming: null
+    changed: hook-retired
+    note: >-
+      hook-retired: a file in hooks/ the record doesn't know goes with the rest, copied to the trash first (no sha:
+      it counts as edited); it used to stay
   - id: hook_listed_missing
     asset: hook
     state: listed_missing
@@ -324,12 +337,9 @@ cases:
     recorded: v1
     installed: mine
     incoming: null
-    divergent: hook-sha-dropped
     note: >-
-      hook-sha-dropped: only for a listed hook the source lacks with no sha256 declared (a malformed source): install
-      and upgrade keep the edited file and record the hook with sha "", so a hook the loader refused (its sha differed)
-      loads after them; with a declared sha the record takes it and the file keeps failing its check. A fail_closed
-      hook in that state would deny every tool call (no sha256 recorded)
+      retired: the source's manifest still lists a hook (its file isn't there): refused, the edited hook and the
+      record left as they were (hook-sha-dropped, where install recorded it with sha "", is gone)
   - id: hook_unlisted
     asset: hook
     state: unlisted
@@ -337,13 +347,7 @@ cases:
     recorded: v1
     installed: mine
     incoming: v2
-    divergent: [hook-status, dry-trash]
-    note: >-
-      hook-status: with no hooks: key the hook is recorded with no event; status says "event= ... [ok]" while the
-      loader skips a hook with no event, so it never loads. dry-trash: upgrade copies the edited file to the trash
-      ("Copied to the trash first"); its dry run never says so (chi update's plan does: replaces).
-    fix:
-      - "424 spec/samagotchi/memory_bundle/installer_spec.rb: a hook with no declared sha256 (or none declared at all) installs without a checksum warning"
+    note: "retired: a source with hooks/*.rb and no hooks: key is refused all the same"
   - id: hook_linked
     asset: hook
     state: linked
@@ -351,17 +355,15 @@ cases:
     recorded: v1
     installed: mine
     incoming: v2
-    divergent: hook-stray-left
-    note: "a plain install skips the linked source hook and drops it from the record, leaving the edited file in hooks/"
+    note: "retired: a source whose hooks/h.rb is a symlink out of it is refused (refuse_hooks sees the link)"
   - id: hook_pristine_no_sha
     asset: hook
     state: pristine_no_sha
     recorded: ""
     installed: v1
-    incoming: v2
+    incoming: null
     divergent: dry-trash
-    changed: dry-checksum
+    changed: hook-retired
     note: >-
-      dry-checksum: upgrade --dry-run warned "Checksum mismatch for hook h.rb": it checked the installed (old) hook
-      against the new manifest; it checks the bundle's hook since. dry-trash: upgrade copies the edited file to the trash ("Copied to the trash first"); its dry run never
-      says so (chi update's plan does: replaces).
+      hook-retired: removed; with no sha recorded it counts as edited, so it is copied to the trash first. dry-trash:
+      its dry run never says so (chi update's plan does: replaces).

@@ -1,8 +1,6 @@
 # frozen_string_literal: true
 
 require "spec_helper"
-require "tmpdir"
-require "digest"
 require "samagotchi/memory_bundle/bundle_hook"
 
 RSpec.describe Samagotchi::MemoryBundle::BundleHook do
@@ -35,46 +33,5 @@ RSpec.describe Samagotchi::MemoryBundle::BundleHook do
       hook = described_class.new(event: "before_turn")
       expect(described_class.parse(hook)).to be(hook)
     end
-  end
-
-  it ".of_file records the file's sha with the defaults" do
-    Dir.mktmpdir do |dir|
-      path = File.join(dir, "h.rb")
-      File.write(path, "x = 1\n")
-      expect(described_class.of_file(path)).to eq(
-        described_class.new(sha256: "sha256:#{Digest::SHA256.hexdigest("x = 1\n")}")
-      )
-    end
-  end
-
-  it "#to_record is the string-keyed form manifest.yml and manifest.json hold" do
-    expect(described_class.new(sha256: "sha256:abc", event: "before_turn").to_record).to eq(
-      "sha256" => "sha256:abc", "event" => "before_turn", "on_error" => "skip", "priority" => 100
-    )
-  end
-
-  it "#to_record keeps event: for one event (as an older chi reads it) and events: for more" do
-    expect(described_class.new(events: %w[after_turn question_asked]).to_record).to eq(
-      "sha256" => "", "events" => %w[after_turn question_asked], "on_error" => "skip", "priority" => 100
-    )
-    expect(described_class.new.to_record).to include("event" => "")
-    expect(described_class.parse(described_class.new(events: %w[a b]).to_record).events).to eq(%w[a b])
-  end
-
-  it "#events_field names one event or the list" do
-    expect(described_class.new(event: "after_turn").events_field).to eq("event=after_turn")
-    expect(described_class.new(events: %w[after_turn question_asked]).events_field).to eq("events=after_turn,question_asked")
-  end
-
-  it "#fail_closed? holds on before_tool_call only" do
-    hook = described_class.new(events: %w[before_tool_call after_turn], on_error: "fail_closed")
-    expect(hook.fail_closed?(:before_tool_call)).to be(true)
-    expect(hook.fail_closed?("after_turn")).to be(false)
-    expect(described_class.new(event: "before_tool_call").fail_closed?(:before_tool_call)).to be(false)
-  end
-
-  it "#hex is the sha without its prefix" do
-    expect(described_class.new(sha256: "sha256:abc").hex).to eq("abc")
-    expect(described_class.new.hex).to eq("")
   end
 end

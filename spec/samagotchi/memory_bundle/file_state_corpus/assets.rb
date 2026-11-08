@@ -17,7 +17,7 @@ module BundleStateCorpus
     def label = asset == "plugin" ? "plugin/plugin.rb" : source_rel
 
     # Its name in the Installer's summary.
-    def result_key = { "rule" => "guardrails/r.yml", "plugin" => "plugin.rb", "script" => "scripts/s.sh", "hook" => file }.fetch(asset)
+    def result_key = { "rule" => "guardrails/r.yml", "plugin" => "plugin.rb", "script" => "scripts/s.sh", "hook" => "hooks/#{file}" }.fetch(asset)
   end
 
   module Examples
@@ -48,7 +48,8 @@ module BundleStateCorpus
       dir = File.join(@root, "src", kase.id, "v2", NAME)
       return dir if File.directory?(dir)
 
-      write_bundle(kase, dir, "1.1.0", kase.incoming, link: kase.linked, listed: kase.incoming || kase.listed_missing)
+      write_bundle(kase, dir, "1.1.0", kase.incoming, link: kase.linked, listed: kase.incoming || kase.listed_missing,
+                                                      beside: kase.beside && (kase.incoming || kase.listed_missing))
       dir
     end
 
@@ -60,18 +61,21 @@ module BundleStateCorpus
       return dir if File.directory?(dir)
 
       text = kase.recorded.is_a?(String) && !kase.recorded.empty? && !kase.dev? ? kase.recorded : kase.installed
-      write_bundle(kase, dir, "1.0.0", kase.recorded.nil? ? nil : text, link: false, listed: !kase.recorded.nil?)
+      write_bundle(kase, dir, "1.0.0", kase.recorded.nil? ? nil : text, link: false, listed: !kase.recorded.nil?, beside: kase.beside)
       dir
     end
 
     # A bundle dir: its manifest, the case's file (+text+; a link out of the
-    # dir with +link+; listed in the manifest with +listed+) and, beside, an
-    # unchanged hooks/h.rb.
-    def write_bundle(kase, dir, version, text, link:, listed:)
+    # dir with +link+; listed in the manifest with +listed+) and, with
+    # +beside+, an unchanged hooks/h.rb. A hook case's source (v2) ships its
+    # hook only when the case's incoming has one (or the manifest lists one
+    # it lacks): that source is refused; without, an install or upgrade
+    # retires the record's hooks. v1 is the kept manifest.yml, hooks: and all.
+    def write_bundle(kase, dir, version, text, link:, listed:, beside:)
       FileUtils.mkdir_p(dir)
       manifest = { "name" => NAME, "version" => version, "scope" => "system" }
       hooks = {}
-      if kase.beside
+      if beside
         write(File.join(dir, "hooks", "h.rb"), "# v1\n")
         hooks["h.rb"] = HOOK_META.merge("sha256" => "sha256:#{BundleStateCorpus.sha("# v1\n")}")
       end
@@ -126,17 +130,14 @@ module BundleStateCorpus
       beside = File.join(provenance.hooks_dir, "h.rb")
       write(beside, "# v1\n") if kase.beside
       recorded = kase.recorded.nil? ? nil : installed
-      hooks = kase.beside ? { "h.rb" => HOOK_META } : {}
-      hook_files = kase.beside ? { "h.rb" => beside } : {}
-      if kase.asset == "hook" && recorded
-        hooks[kase.file] = HOOK_META
-        hook_files[kase.file] = recorded
-      end
-      provenance.write(files: {}, scope: "system", version: "1.0.0", source_path: source(kase), hooks: hooks, hooks_files: hook_files,
+      provenance.write(files: {}, scope: "system", version: "1.0.0", source_path: source(kase),
                        guardrails_files: kase.asset == "rule" && recorded ? { "r.yml" => recorded } : {},
                        plugin_file: kase.asset == "plugin" && recorded ? recorded : nil,
                        scripts_files: kase.asset == "script" && recorded ? { "s.sh" => recorded } : {},
                        dev: kase.dev?, manifest_from: first_source(kase))
+      hooks = kase.beside ? { "h.rb" => { text: nil, meta: HOOK_META } } : {}
+      hooks[kase.file] = { text: nil, meta: HOOK_META } if kase.asset == "hook" && recorded
+      LegacyHooksRecord.legacy_hooks_record(NAME, hooks: hooks) unless hooks.empty?
       return if kase.recorded.nil? || kase.dev?
 
       path = File.join(provenance.bundle_dir, "manifest.json")
@@ -242,11 +243,14 @@ module BundleStateCorpus
       Samagotchi::BundleCommand.new(["status", NAME], stdout: out, stderr: StringIO.new).run
       return "not installed" if out.string.include?("not installed.")
 
-      prefix = @case.asset == "hook" ? "    #{@case.file}: " : ("  Plugin: " if @case.asset == "plugin")
+      # A hook's line under "Hooks (N): not loaded: …", whole: "h.rb [ok]".
+      prefix = @case.asset == "hook" ? "    #{@case.file} [" : ("  Plugin: " if @case.asset == "plugin")
       return nil unless prefix
 
       line = out.string.lines.map(&:chomp).find { |text| text.start_with?(prefix) }
-      line ? @sandbox.mask(line.delete_prefix(prefix.lstrip).strip) : "-"
+      return "-" unless line
+
+      @sandbox.mask(@case.asset == "hook" ? line.strip : line.delete_prefix(prefix.lstrip).strip)
     end
 
     def names?(line) = line.include?(File.basename(@case.source_rel))

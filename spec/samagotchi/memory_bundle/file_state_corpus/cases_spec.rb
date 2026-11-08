@@ -8,15 +8,15 @@ module BundleStateCorpus
   # What cases_spec.rb checks the corpus against.
   module Checks
     # The file-machinery fixes a state model closes (the research's class B):
-    # each is at least one case, its start lifted from the example that fixed it.
-    B_FIXES = [705, 703, 704, 633, 634, 587, 424, 347, 290, 36, 37, 39, 40, 34, 43, 44, 45, 48, 49, 50, 51, 52, 55, 16, 20].freeze
+    # each is at least one case, its start lifted from the example that fixed it
+    # (424, a hook's, went with class-file hooks).
+    B_FIXES = [705, 703, 704, 633, 634, 587, 347, 290, 36, 37, 39, 40, 34, 43, 44, 45, 48, 49, 50, 51, 52, 55, 16, 20].freeze
     DIVERGENT = %w[U4 dry-trash].freeze
     # Divergent tags a later commit changed the cells of (the plan's P1.9 …).
     CHANGED = %w[D4 U4 U7 dry-noop edited-rule restore-unchecked dry-source merge-checked].freeze
-    ASSET_DIVERGENT = %w[dry-dropped dry-trash hook-stray-left hook-sha-dropped hook-status new-updated rule-installed
-                         uninstall-unnamed].freeze
+    ASSET_DIVERGENT = %w[dry-dropped dry-trash rule-installed uninstall-unnamed].freeze
     # Asset tags a later commit changed the cells of.
-    ASSET_CHANGED = %w[dry-checksum].freeze
+    ASSET_CHANGED = %w[new-updated hook-retired].freeze
     # What a cell's do says when the file's bytes changed or went.
     WRITES = %w[wrote_incoming wrote_merge restored moved deleted].freeze
     ASSET_WRITES = %w[wrote_incoming wrote_other removed].freeze

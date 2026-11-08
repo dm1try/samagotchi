@@ -3,27 +3,28 @@
 require "fileutils"
 require "tmpdir"
 require "yaml"
-require_relative "bundle_hook"
 require_relative "manifest"
 require_relative "provenance"
 
 module Samagotchi
   module MemoryBundle
-    # An installed bundle laid out as a source folder again: the plugin, hooks,
+    # An installed bundle laid out as a source folder again: the plugin,
     # rules and scripts as they are installed (a dev install's links
     # followed), the memories as their bases (the bundle's bytes, not the
     # user's edits). A bundle's source may be gone or be a URL; this is what
     # `chi update` can check of what really runs.
     #
-    # manifest.yml: its files:, hooks:, plugin: and scripts: are the record's
-    # and the copy's (what is installed: a memory the install left out, or one
-    # with no base, and a manifest hook the record lacks aren't listed, so the
-    # check finds no missing-file for them). Every other key is the kept
+    # manifest.yml: its files:, plugin: and scripts: are the record's and
+    # the copy's (what is installed: a memory the install left out, or one
+    # with no base, isn't listed, so the check finds no missing-file for it).
+    # It has no hooks: and no hooks/, whatever the record or the kept
+    # manifest says: class-file hooks don't load (InstalledCheck names a
+    # record's once). Every other key is the kept
     # manifest.yml's when it is read (InstalledManifest origin :kept), so the
     # check sees its unknown keys too; else the record's mirror's.
     #
     # The shas are the files' own, so an edited plugin is checked as written.
-    # A plugin, hook or script the record lists that isn't there stays
+    # A plugin or script the record lists that isn't there stays
     # listed, for the check's missing-file.
     module InstalledCopy
       module_function
@@ -45,7 +46,7 @@ module Samagotchi
           dir: dir, name: bundle.name, version: bundle.version.to_s.empty? ? "0" : bundle.version, trust_level: manifest.trust_level,
           files: memories(bundle, provenance, dir),
           file_descriptions: manifest.file_descriptions,
-          hooks: hooks(bundle, provenance, dir), plugin: plugin(bundle, provenance, dir),
+          plugin: plugin(bundle, provenance, dir),
           scripts: copies(bundle.scripts, provenance.scripts_dir, File.join(dir, "scripts")),
           requires_chi: manifest.requires_chi, needs: manifest.needs,
           context_providers: manifest.context_providers, block_renderers: manifest.block_renderers,
@@ -57,7 +58,8 @@ module Samagotchi
       end
       private_class_method :write
 
-      # What is installed, which the copy's manifest.yml takes from the record.
+      # What is installed, which the copy's manifest.yml takes from the
+      # record (hooks: none, so the kept manifest's isn't taken either).
       INSTALLED_KEYS = %w[name version files hooks plugin scripts].freeze
 
       # The written manifest's INSTALLED_KEYS and +failed+ keys (the value
@@ -79,15 +81,6 @@ module Samagotchi
         end
       end
       private_class_method :memories
-
-      # The recorded hooks with the metadata they load with (InstalledManifest#hooks).
-      def hooks(bundle, provenance, dir)
-        bundle.manifest.hooks.to_h do |file, hook|
-          sha = copy(File.join(provenance.hooks_dir, file), File.join(dir, "hooks", file), hook.sha256)
-          [file, hook.with(sha256: sha)]
-        end
-      end
-      private_class_method :hooks
 
       def plugin(bundle, provenance, dir)
         return nil unless bundle.plugin

@@ -10,7 +10,6 @@ require "samagotchi/memory_bundle/installed_manifest"
 
 RSpec.describe Samagotchi::MemoryBundle::InstalledManifest do
   let(:installed) { Samagotchi::MemoryBundle::InstalledBundle }
-  let(:hook) { Samagotchi::MemoryBundle::BundleHook }
 
   def record(raw) = installed.parse("b", JSON.parse(JSON.generate(raw)))
 
@@ -29,7 +28,6 @@ RSpec.describe Samagotchi::MemoryBundle::InstalledManifest do
       ).manifest
       expect(manifest).to have_attributes(
         name: "b", version: "1.2.0", requires_chi: ">= 0.50", trust_level: "reviewed", description: nil,
-        hooks: { "g.rb" => hook.new(sha256: "sha256:hh", event: "before_tool_call") },
         needs: [{ command: "gh", why: "reads PRs", hint: nil }, { command: "jq", why: nil, hint: nil }],
         script_names: %w[s.rb draw.js], session_settings: ["cap"], session_setting_types: { "cap" => "number" },
         settings: %w[limit], setting_types: { "limit" => "number" }, file_descriptions: { "a.md" => "A" },
@@ -43,7 +41,7 @@ RSpec.describe Samagotchi::MemoryBundle::InstalledManifest do
 
     it "reads a minimal record as empty: experimental, no settings, nothing declared" do
       manifest = record({}).manifest
-      expect(manifest).to have_attributes(requires_chi: nil, trust_level: nil, hooks: {}, needs: [], script_names: [],
+      expect(manifest).to have_attributes(requires_chi: nil, trust_level: nil, needs: [], script_names: [],
                                           context_providers: [], block_renderers: [], session_settings: [],
                                           session_setting_types: {}, settings: nil, setting_types: {},
                                           file_descriptions: {}, includes: nil, problems: {})
@@ -89,7 +87,7 @@ RSpec.describe Samagotchi::MemoryBundle::InstalledManifest do
     it "reads a record with no dir (one parsed alone) and an unreadable one from what they hold" do
       expect(record("requires_chi" => ">= 9").dir).to be_nil
       expect(record("requires_chi" => ">= 9").manifest.requires_chi).to eq(">= 9")
-      expect(installed.unreadable("x", "why").manifest).to have_attributes(requires_chi: nil, hooks: {}, problems: {})
+      expect(installed.unreadable("x", "why").manifest).to have_attributes(requires_chi: nil, problems: {})
     end
   end
 
@@ -157,9 +155,8 @@ RSpec.describe Samagotchi::MemoryBundle::InstalledManifest do
     end
 
     it "hands out a frozen value, all the way down (callers share the cached one)" do
-      manifest = kept_bundle(recorded.merge("hooks" => { "g.rb" => { "sha256" => "sha256:hh", "event" => "x" } },
-                                            "needs" => ["jq"]), kept_yml + "needs: [gh]\n").manifest
-      expect([manifest.hooks, manifest.needs, manifest.needs.first, manifest.needs.first[:command], manifest.script_names,
+      manifest = kept_bundle(recorded.merge("needs" => ["jq"]), kept_yml + "needs: [gh]\n").manifest
+      expect([manifest.needs, manifest.needs.first, manifest.needs.first[:command], manifest.script_names,
               manifest.unknown_keys, manifest.problems, manifest.file_descriptions, manifest.description]).to all(be_frozen)
     end
 
@@ -207,35 +204,11 @@ RSpec.describe Samagotchi::MemoryBundle::InstalledManifest do
       expect(without.block_renderers).to eq([])
     end
 
-    it "takes each recorded hook's events from the kept manifest with the record's sha, and nothing the record lacks" do
-      record_hooks = { "g.rb" => { "sha256" => "sha256:hh", "event" => "before_tool_call", "on_error" => "fail_closed" },
-                       "found.rb" => { "sha256" => "sha256:ff", "event" => "" } }
-      yml = kept_yml + <<~YAML
-        hooks:
-          g.rb:
-            sha256: sha256:other
-            events: [before_tool_call, after_tool_call]
-            on_error: fail_closed
-            priority: 5
-          extra.rb:
-            event: before_turn
-      YAML
-      hooks = kept_bundle(recorded.merge("hooks" => record_hooks), yml).manifest.hooks
-      expect(hooks.keys).to eq(%w[g.rb found.rb])
-      expect(hooks["g.rb"]).to eq(hook.new(sha256: "sha256:hh", events: %w[before_tool_call after_tool_call],
-                                           on_error: "fail_closed", priority: 5))
-      expect(hooks["g.rb"].fail_closed?("before_tool_call")).to be(true)
-      expect(hooks["found.rb"]).to eq(hook.new(sha256: "sha256:ff"))
-    end
-
-    it "keeps the record's hooks whole when one kept hook entry doesn't parse" do
-      record_hooks = { "g.rb" => { "sha256" => "sha256:hh", "event" => "before_tool_call" },
-                       "h.rb" => { "sha256" => "sha256:ii", "event" => "after_tool_call" } }
+    it "finds no problem in an older install's kept hooks:, however it is written (class-file hooks are retired)" do
       yml = kept_yml + "hooks:\n  g.rb:\n    events: [after_turn]\n  h.rb:\n    event: x\n    events: [y]\n"
-      manifest = kept_bundle(recorded.merge("hooks" => record_hooks), yml).manifest
-      expect(manifest.problems.keys).to eq(["hooks"])
-      expect(manifest.hooks).to eq("g.rb" => hook.new(sha256: "sha256:hh", event: "before_tool_call"),
-                                   "h.rb" => hook.new(sha256: "sha256:ii", event: "after_tool_call"))
+      manifest = kept_bundle(recorded.merge("hooks" => { "g.rb" => { "sha256" => "sha256:hh", "event" => "after_turn" } }), yml).manifest
+      expect(manifest.problems).to eq({})
+      expect(manifest.origin).to eq(:kept)
     end
 
     it "reads session_settings and settings with their types from the kept manifest, each falling back alone" do

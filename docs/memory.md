@@ -457,14 +457,14 @@ memory still marked as behind an earlier upgrade keeps its mark either way.
   repo can have a `README.md` without it becoming a memory. A listed file is
   installed whatever its name (`chi bundle build` of your own `security.md`
   lists it). Since chi 0.75.0. Older chi installs every top-level `*.md`
-  whatever `requires_chi` says (it gates hooks, rules and the plugin, not
+  whatever `requires_chi` says (it gates rules and the plugin, not
   memories), so a bundle for older chi too names its readme
   `README.markdown` (or puts docs in a subdirectory).
   `chi bundle upgrade` moves a README an older install made a memory to the
   trash (unless you edited it, like any file a bundle stops shipping).
 - **A symlink is never installed.** A memory that is a symlink is skipped
-  with `notes.md is a symlink (not installed)`, and so is a hook or guardrail
-  rule that is one or lives in a linked dir (`hooks/x.rb is a symlink (not
+  with `notes.md is a symlink (not installed)`, and so is a guardrail rule
+  that is one or lives in a linked dir (`guardrails/x.yml is a symlink (not
   installed)`); a plugin or script that is one fails the install. A tar, zip
   or git repo keeps links, and copying through one would install whatever
   file it points at (`~/.ssh/…`, an API key) as a memory the model reads.
@@ -524,7 +524,7 @@ memory still marked as behind an earlier upgrade keeps its mark either way.
   does an upgrade's removal of a file the new version no longer ships. A
   file you edited still needs `--force`: chi tells by comparing it with what
   the install recorded (the record's checksum, else its base copy; a file with
-  neither counts as edited). A hook, rule, plugin or script you
+  neither counts as edited). A rule, plugin or script (or an older install's hook) you
   edited isn't asked about: it is copied to the same dir (`Copied to the trash
   first: scripts/x (…)`) and the bundle's own copy goes. `chi bundle trash` lists the trash
   (oldest first, with file count, size, and age); `--empty` deletes all
@@ -588,7 +588,8 @@ memory still marked as behind an earlier upgrade keeps its mark either way.
 - **`chi bundle status`** says per file what is `modified` (the uninstall's
   rule above: edited, or with nothing recorded to tell), `missing` or
   `unreadable`, and that a file stays behind and why. Its `issues=` counts files
-  behind, missing or unreadable (and a plugin or hooks that won't load), not edits. A
+  behind, missing or unreadable (and a plugin that won't load, or class-file hooks an older chi installed, which no
+  longer load: `Hooks (N): not loaded`), not edits. A
   file an older chi marked, which no retry has looked at, says `may be behind`, and so
   do the counts in `chi bundle list`, `chi self` and `chi update`'s last line.
   `chi bundle status NAME` also has a `Manifest:` line: `[kept]` when chi reads
@@ -596,7 +597,7 @@ memory still marked as behind an earlier upgrade keeps its mark either way.
   what the install recorded, with why (installed by an older chi, the file edited
   or gone) and the command that fixes it (`chi update` keeps it where it can,
   [CLI: Updating](cli.md#updating)).
-- **A dev install** (`chi bundle install --dev PATH`) links the hooks, rules,
+- **A dev install** (`chi bundle install --dev PATH`) links the rules,
   plugin and scripts to `PATH` but still copies the memories at install, so
   an edit to one of them in `PATH` isn't seen until the next install.
 - **The rest of the manifest** (`plugin:`, `requires_chi`, `session_settings:`,
