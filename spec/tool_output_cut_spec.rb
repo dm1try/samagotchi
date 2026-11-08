@@ -15,6 +15,21 @@ RSpec.describe Samagotchi::ToolOutputCut do
     end
   end
 
+  # The cap both loops and the worker's task notes cut to.
+  describe ".max_chars" do
+    it "takes the override, then max_tool_output_chars, and DEFAULT_MAX_CHARS for nothing or a non-positive value" do
+      allow(Samagotchi::Config).to receive(:get).and_call_original
+      allow(Samagotchi::Config).to receive(:get).with("max_tool_output_chars").and_return(4000)
+      expect(described_class.max_chars(1234)).to eq(1234)
+      expect(described_class.max_chars(nil)).to eq(4000)
+      expect(described_class.max_chars(0)).to eq(described_class::DEFAULT_MAX_CHARS)
+
+      allow(Samagotchi::Config).to receive(:get).with("max_tool_output_chars").and_return(nil)
+      expect(described_class.max_chars(nil)).to eq(10_000)
+      expect(described_class.max_chars("-5")).to eq(10_000)
+    end
+  end
+
   describe ".head" do
     it "keeps the head and ends with the cut line, the whole within the cap" do
       text = described_class.head("x" * 300, 100)

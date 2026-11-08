@@ -27,6 +27,7 @@ require_relative "tools/builtin_calls"
 require_relative "tools/tool_surface"
 require_relative "muted_memories"
 require_relative "tool_activity"
+require_relative "tool_output_cut"
 require_relative "tool_runner"
 require_relative "tool_response"
 require_relative "tool_ids"
@@ -129,7 +130,6 @@ module Samagotchi
       def surface = Tools::ToolSurface.of(@context)
     end
 
-    DEFAULT_MAX_TOOL_OUTPUT_CHARS = 10_000
     QWEN_INCOMPLETE_TOOL_CALL_RECOVERY_LIMIT = 2
     # How much of a malformed generation's end the warning keeps.
     MALFORMED_TAIL_CHARS = 400
@@ -297,7 +297,7 @@ module Samagotchi
       @context = context.with(settings: settings.with(model_name: completion_model_name(model_name)))
       @last_slot = nil
       turn = start_turn(messages, on_stream_event: on_stream_event, cancel_controller: cancel_controller,
-                                  pending_input: pending_input, cap: resolve_output_char_cap(max_tool_output_chars),
+                                  pending_input: pending_input, cap: ToolOutputCut.max_chars(max_tool_output_chars),
                                   reasoning_since: reasoning_since)
 
       max_iterations.times do |iteration_index|
@@ -328,21 +328,6 @@ module Samagotchi
     def use_profile!(resolution)
       @profile = resolution.profile
       @profile_source = resolution.label
-    end
-
-    # Resolve the per-output character cap for the tool outputs the model
-    # gets back and the emitted tool call events.
-    #
-    # Precedence: an explicit override wins, then max_tool_output_chars
-    # (Config). A non-positive value falls back to
-    # DEFAULT_MAX_TOOL_OUTPUT_CHARS (there is intentionally no "unlimited" — live UIs get a
-    # bounded `output:` plus a truthful `output_truncated:` flag). The one
-    # exception is memory_read, which ToolRunner leaves out of this cap
-    # (memory.read_max_chars, 0: no fixed cap; a memory is read whole).
-    # Class-level so the chat loop resolves it the same way.
-    def self.resolve_output_char_cap(override)
-      parsed = (override || Samagotchi::Config.get("max_tool_output_chars")).to_i
-      parsed.positive? ? parsed : DEFAULT_MAX_TOOL_OUTPUT_CHARS
     end
 
     private
@@ -876,12 +861,6 @@ module Samagotchi
 
     # Coerce a value to boolean — handles true/false, nil, and string "true"/"false".
     def truthy?(val) = Tools::Builtins.truthy?(val)
-
-    # ── Output char cap resolution ─────────────────────────────────────────────
-
-    def resolve_output_char_cap(override)
-      self.class.resolve_output_char_cap(override)
-    end
 
     # One request, cancelled by +generation_controller+ (the turn's child)
     # when there is one.

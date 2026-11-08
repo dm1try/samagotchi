@@ -205,7 +205,7 @@ Gemma 4's native contract (and thought context) is [gemma4-contract.md](gemma4-c
 Runs hosts whose api has a chat adapter: `api: openai` on `LLM::OpenAIChat` (OpenRouter, any OpenAI-compatible
 server) and `api: anthropic` on `LLM::AnthropicMessages` ([anthropic.md](anthropic.md)). The Engine sets the
 adapter per turn (`HostRegistry#adapter_for`). `ChatLoop#complete` copies the messages (each `dup`ed) and runs a
-`ChatLoop::Run` (`start: reasoning_since`, cap `KernelLoop.resolve_output_char_cap`). Differences from the native
+`ChatLoop::Run` (`start: reasoning_since`, cap `ToolOutputCut.max_chars`). Differences from the native
 loop:
 
 - The tools go in each request's `tools` field (`ChatLoop#tool_definitions`, the turn's `ToolSurface#schemas`).

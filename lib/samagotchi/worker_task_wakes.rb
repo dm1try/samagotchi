@@ -3,10 +3,10 @@
 require "securerandom"
 
 require_relative "child_reports"
-require_relative "kernel_loop"
 require_relative "log"
 require_relative "task_finish_note"
 require_relative "task_watch"
+require_relative "tool_output_cut"
 require_relative "tools/task_runtime"
 require_relative "worker_inbound"
 require_relative "worker_wakes"
@@ -130,7 +130,7 @@ module Samagotchi
 
     def note(entry, record, wake:, turn_id: nil)
       TaskFinishNote.note(record, limit_sec: entry.limit_sec, early_sec: entry.early_sec, wake: wake, turn_id: turn_id,
-                                  cap: KernelLoop.resolve_output_char_cap(nil))
+                                  cap: ToolOutputCut.max_chars(nil))
     end
 
     def add_note(entry, record)

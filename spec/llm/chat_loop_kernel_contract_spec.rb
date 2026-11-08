@@ -28,7 +28,6 @@ module ChatLoopKernelReach
     "@kernel.strip_model_thought",
     "@kernel.tools",
     "@kernel.turn_settings",
-    "KernelLoop.resolve_output_char_cap",
     "ToolRunner.new(@kernel)",
     "require kernel_loop"
   ].freeze

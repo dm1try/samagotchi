@@ -1751,7 +1751,7 @@ Need to inspect the filesystem first.
     it "emits tool_call_completed events with activity details" do
       Dir.mktmpdir do |dir|
         path = File.join(dir, "big.md")
-        File.write(path, "x" * (Samagotchi::KernelLoop::DEFAULT_MAX_TOOL_OUTPUT_CHARS + 100))
+        File.write(path, "x" * (Samagotchi::ToolOutputCut::DEFAULT_MAX_CHARS + 100))
         events = []
         responses = [
           %(<|tool_call>call:read{path: "#{path}"}<tool_call|>),
@@ -1771,7 +1771,7 @@ Need to inspect the filesystem first.
         # The file exceeds the default cap, so the emitted output is capped and
         # flagged as truncated; the activity summary is unaffected.
         expect(tool_event[:output]).to start_with("[read]\n")
-        expect(tool_event[:output].length).to be <= Samagotchi::KernelLoop::DEFAULT_MAX_TOOL_OUTPUT_CHARS
+        expect(tool_event[:output].length).to be <= Samagotchi::ToolOutputCut::DEFAULT_MAX_CHARS
         expect(tool_event[:output_truncated]).to be(true)
         # The params are cut past a length, and a temp dir's path is as long as
         # the machine's $TMPDIR makes it: only their start is fixed.

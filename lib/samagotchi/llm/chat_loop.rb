@@ -20,6 +20,7 @@ require_relative "../cut_policy"
 require_relative "../context_status"
 require_relative "../context_window"
 require_relative "../context_note"
+require_relative "../tool_output_cut"
 require_relative "../tool_runner"
 require_relative "../tool_response"
 require_relative "../tool_ids"
@@ -106,7 +107,7 @@ module Samagotchi
         @turn_context = context if context
         conversation = Array(messages).map(&:dup)
         Run.new(self, conversation, on_stream_event, cancel_controller, model_name, pending_input, start: reasoning_since)
-           .call(max_iterations: max_iterations || 1, cap: KernelLoop.resolve_output_char_cap(max_tool_output_chars))
+           .call(max_iterations: max_iterations || 1, cap: ToolOutputCut.max_chars(max_tool_output_chars))
       rescue StandardError, Interrupt => e
         # A failure, or a Ctrl-C (its calls answered: ToolResponse.run_batch),
         # carries the conversation so far for the Engine to keep.
