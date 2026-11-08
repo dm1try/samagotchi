@@ -29,23 +29,17 @@ module Samagotchi
                            message: message)
       end
 
-      root = found.marker? ? found.root : nil
-      if root == Guardrails::PathResolve.real(dir)
-        return Outcome.new(kind: :already_marked, reason: nil, root: root, top: found.top, nested_in: nil,
-                           message: "#{Paths.tilde(root)} is already a chi project")
+      # The marked project this folder sits in, if any: the folder itself (already marked) or its parent project.
+      enclosing = found.marker? ? found.root : nil
+      if enclosing == Guardrails::PathResolve.real(dir)
+        return Outcome.new(kind: :already_marked, reason: nil, root: enclosing, top: found.top, nested_in: nil,
+                           message: "#{Paths.tilde(enclosing)} is already a chi project")
       end
 
       write_marker(dir)
       root = File.realpath(dir)
-      nested = if root == found.root
-                 nil
-               else
-                 found.marker? ? found.root : nil
-               end
-      nested_text = nested ? ", its own project nested in #{Paths.tilde(nested)}" : ""
-      message = "#{Paths.tilde(root)} is now a chi project#{nested_text} " \
-                "(#{Paths.tilde(File.join(root, MemoryPaths::MARKER))})"
-      Outcome.new(kind: :created, reason: nil, root: root, top: root, nested_in: nested, message: message)
+      # No message: each surface words its own success (the CLI's report, the web's navigation).
+      Outcome.new(kind: :created, reason: nil, root: root, top: root, nested_in: enclosing, message: nil)
     rescue SystemCallError => e
       marker = File.join(dir, MemoryPaths::MARKER)
       Outcome.new(kind: :refused, reason: :write_failed, root: nil, top: nil, nested_in: nil,

@@ -31,7 +31,7 @@ RSpec.describe Samagotchi::ProjectInit do
     expect([outcome.kind, outcome.reason, outcome.root, outcome.top, outcome.nested_in]).to eq(
       [:created, nil, target, target, nil]
     )
-    expect(outcome.message).to eq("#{target} is now a chi project (#{marker(target)})")
+    expect(outcome.message).to be_nil
     expect(File.file?(marker(target))).to be(true)
   end
 
@@ -45,7 +45,7 @@ RSpec.describe Samagotchi::ProjectInit do
     expect([outcome.kind, outcome.root, outcome.nested_in]).to eq(
       [:created, File.join(outer, "inner"), outer]
     )
-    expect(outcome.message).to include("its own project nested in #{outer}")
+    expect(outcome.message).to be_nil
   end
 
   it "returns the git root and top without writing a marker" do
