@@ -27,8 +27,10 @@
 #   fix         "<tsv id> <spec file>: <example description>": the example
 #               the case's start was lifted from (it stays in its file)
 #   fixed / divergent  a probe the batch fixed (D1..D3), or cells that look
-#               wrong today (one tag or a list): D4, U4, U7 (the plan's), dry-noop
-#               (P1.9), dry-trash, edited-rule, restore-unchecked; note says which
+#               wrong today (one tag or a list): U4, U7 (the plan's),
+#               dry-trash, restore-unchecked; note says which
+#   changed     a divergent tag whose cells a later commit changed (dry-noop:
+#               P1.9, edited-rule, D4: P1.10, U4); note says how
 #   note        why, for a tagged case
 #
 # Texts are named by their three lines; one letter's change is one line's.
@@ -50,22 +52,22 @@ cases:
     base: abc
     disk: abc
     incoming: abc
-    divergent: dry-noop
-    note: "upgrade --dry-run lists it under Skipped, the real upgrade under Up to date (P1.9)"
+    changed: dry-noop
+    note: "upgrade --dry-run listed it under Skipped, the real upgrade under Up to date; both say Up to date since P1.9"
     fix:
       - "703 spec/samagotchi/memory_bundle/installer_spec.rb: skips an existing file identical to the bundle's as already up to date, without a warning"
   - id: level_same_marked
     kind: level
-    divergent: dry-noop
-    note: "upgrade --dry-run lists it under Skipped, the real upgrade under Up to date (P1.9)"
+    changed: dry-noop
+    note: "upgrade --dry-run listed it under Skipped, the real upgrade under Up to date; both say Up to date since P1.9"
     base: abc
     disk: abc
     incoming: abc
     mark: current
   - id: level_same_legacy
     kind: level
-    divergent: dry-noop
-    note: "upgrade --dry-run lists it under Skipped, the real upgrade under Up to date (P1.9)"
+    changed: dry-noop
+    note: "upgrade --dry-run listed it under Skipped, the real upgrade under Up to date; both say Up to date since P1.9"
     base: abc
     disk: abc
     incoming: abc
@@ -75,12 +77,12 @@ cases:
     base: abc
     disk: abC
     incoming: abC
-    divergent: dry-noop
-    note: "upgrade --dry-run lists it under Skipped, the real upgrade under Up to date (P1.9)"
+    changed: dry-noop
+    note: "upgrade --dry-run listed it under Skipped, the real upgrade under Up to date; both say Up to date since P1.9"
   - id: level_marked
     kind: level
-    divergent: dry-noop
-    note: "upgrade --dry-run lists it under Skipped, the real upgrade under Up to date (P1.9)"
+    changed: dry-noop
+    note: "upgrade --dry-run listed it under Skipped, the real upgrade under Up to date; both say Up to date since P1.9"
     base: abc
     disk: abC
     incoming: abC
@@ -89,8 +91,8 @@ cases:
       - "50 spec/samagotchi/memory_bundle/kept_edits_spec.rb: drops it once the file has the incoming bytes"
   - id: level_legacy
     kind: level
-    divergent: dry-noop
-    note: "upgrade --dry-run lists it under Skipped, the real upgrade under Up to date (P1.9)"
+    changed: dry-noop
+    note: "upgrade --dry-run listed it under Skipped, the real upgrade under Up to date; both say Up to date since P1.9"
     base: abc
     disk: abC
     incoming: abC
@@ -100,10 +102,11 @@ cases:
     base: abc
     disk: abc
     incoming: abC
-    divergent: D4
+    changed: D4
     note: >-
-      install (and its dry run) skips a file the user never edited as "already exists", calls it "your own
-      copy", and the record's version moves on with the old text and no mark (P5; P1.10 takes the new text)
+      install (and its dry run) skipped a file the user never edited as "already exists", called it "your own
+      copy", and the record's version moved on with the old text and no mark (P5); since P1.10 it takes the new
+      text (Updated; the dry run Fast-forward)
   - id: pristine_marked
     kind: pristine
     divergent: dry-trash
@@ -196,16 +199,16 @@ cases:
   # Owned, no base: level, the checksum's text (never edited), neither.
   - id: level_no_base
     kind: level
-    divergent: dry-noop
-    note: "upgrade --dry-run lists it under Skipped, the real upgrade under Up to date (P1.9)"
+    changed: dry-noop
+    note: "upgrade --dry-run listed it under Skipped, the real upgrade under Up to date; both say Up to date since P1.9"
     base: null
     disk: abC
     incoming: abC
     recorded: disk
   - id: level_no_base_marked
     kind: level
-    divergent: dry-noop
-    note: "upgrade --dry-run lists it under Skipped, the real upgrade under Up to date (P1.9)"
+    changed: dry-noop
+    note: "upgrade --dry-run listed it under Skipped, the real upgrade under Up to date; both say Up to date since P1.9"
     base: null
     disk: abC
     incoming: abC
@@ -213,8 +216,8 @@ cases:
     mark: current
   - id: level_no_base_legacy
     kind: level
-    divergent: dry-noop
-    note: "upgrade --dry-run lists it under Skipped, the real upgrade under Up to date (P1.9)"
+    changed: dry-noop
+    note: "upgrade --dry-run listed it under Skipped, the real upgrade under Up to date; both say Up to date since P1.9"
     base: null
     disk: abC
     incoming: abC
@@ -222,10 +225,11 @@ cases:
     mark: legacy
   - id: pristine_no_base
     kind: pristine_no_base
-    divergent: [D4, U4]
+    changed: [D4, U4]
     note: >-
-      D4: install skips a never-edited file as already exists, "your own copy" (P5); U4: upgrade leaves it behind
-      (no recorded base) while status and uninstall call it unedited
+      D4: install skipped a never-edited file as already exists, "your own copy" (P5), and takes the new text since
+      P1.10; U4: upgrade left it behind (no recorded base) while status and uninstall call it unedited, and
+      fast-forwards it since the U4 fix
     base: null
     disk: abc
     incoming: abC
@@ -239,8 +243,8 @@ cases:
     mark: current
     divergent: U4
     note: >-
-      U4: upgrade leaves it behind (no recorded base) while status and uninstall call it unedited; U4 has no
-      unmarked-only rule, unlike D4.
+      U4: upgrade leaves it behind (no recorded base) while status and uninstall call it unedited. The U4 fix
+      fast-forwards the unmarked file only (as D4 and U5): a marked one stays the mark's, behind.
   - id: pristine_no_base_legacy
     kind: pristine_no_base
     base: null
@@ -250,8 +254,8 @@ cases:
     mark: legacy
     divergent: U4
     note: >-
-      U4: upgrade leaves it behind (no recorded base) while status and uninstall call it unedited; U4 has no
-      unmarked-only rule, unlike D4.
+      U4: upgrade leaves it behind (no recorded base) while status and uninstall call it unedited. The U4 fix
+      fast-forwards the unmarked file only (as D4 and U5): a marked one stays the mark's, behind.
   - id: edited_no_base
     kind: edited_no_base
     base: null
@@ -455,8 +459,8 @@ cases:
     claimants: [other]
   - id: pristine_shared
     kind: pristine
-    divergent: D4
-    note: "install (and its dry run) skips a never-edited file as already exists and calls it your own copy (P5)"
+    changed: D4
+    note: "install (and its dry run) skipped a never-edited file as already exists and called it your own copy (P5); it takes the new text since P1.10"
     base: abc
     disk: abc
     incoming: abC
@@ -482,17 +486,18 @@ cases:
 
   # A record whose base isn't its checksum's text: the checksum answers first.
   - id: recorded_other
-    kind: edited
+    kind: edited_no_base
     base: abc
     disk: abc
     incoming: abC
     recorded: other
-    divergent: edited-rule
+    changed: edited-rule
     note: >-
-      kind edited: Provenance.unchanged? reads the checksum first, so status says modified and uninstall asks for
-      --force, while Merger.classify reads the base: upgrade fast-forwards it with no trash copy A plain install
-      rewrites its checksum to the file's, so status turns from modified to ok and uninstall stops refusing, with no
-      user action. Its upgrade cell is invariant 1's allowlist entry.
+      Provenance.unchanged? reads the checksum first, so the file is edited (status says modified, uninstall asks for
+      --force), and its base, equal to the file, can't say what the user changed: no base to merge from. Until the
+      edited-rule fix the upgrade read the base and fast-forwarded it with no trash copy (invariant 1's allowlist
+      entry); now the upgrade and its plan leave it behind, marked, as any edit with no base. A plain install still
+      rewrites its checksum to the file's, so status turns from modified to ok with no user action.
 
   # The legacy guard: an older mark on a file equal to its base takes an
   # update that only gains lines; one that removes a line waits, unless
@@ -554,11 +559,12 @@ cases:
     disk: abc
     incoming: abC
     sha: wrong
-    divergent: [U7, D4]
+    divergent: U7
+    changed: D4
     note: >-
       U7: upgrade fast-forwards it (Updated) with no checksum warning: the integrity check skips a fast-forward, where
-      an installed file warns (missing_wrong_sha); the memory twin of restore-unchecked (P1.8). D4: install skips the
-      never-edited file as already exists, as pristine
+      an installed file warns (missing_wrong_sha); the memory twin of restore-unchecked (P1.8). D4: install skipped the
+      never-edited file as already exists, as pristine; since P1.10 it takes the new text, unchecked as an upgrade's
   - id: new_no_sha
     kind: new
     owned: false
@@ -572,8 +578,8 @@ cases:
   # A model overlay (no base memory anywhere: an orphan overlay).
   - id: overlay_pristine
     kind: pristine
-    divergent: D4
-    note: "install (and its dry run) skips a never-edited file as already exists and calls it your own copy (P5)"
+    changed: D4
+    note: "install (and its dry run) skipped a never-edited file as already exists and called it your own copy (P5); it takes the new text since P1.10"
     key: a.mx.md
     base: abc
     disk: abc

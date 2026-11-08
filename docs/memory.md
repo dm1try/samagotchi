@@ -414,6 +414,14 @@ bundle doesn't record it, so `chi bundle upgrade` never merges into it and
 for `chi bundle build` then installing the result on the same machine, and
 for a file another bundle installed.
 
+Installing a bundle again from the source it is installed from, once that
+source has moved on, takes the new text of each of its memories you never
+edited (`Updated`, as `chi bundle upgrade` would; its dry run says
+`Fast-forward`) and records the new version. A memory you edited is kept as
+it is (`Skipped`): `--force` takes the bundle's version, your copy in the
+trash first, and `chi bundle upgrade` merges the bundle's changes into it. A
+memory still marked as behind an earlier upgrade keeps its mark either way.
+
 - **Which files are memories.** A manifest whose `files:` lists any: exactly
   those (a listed name the bundle doesn't ship gets a warning). Without a
   list (no `files:`, or `files: {}`): every top-level `*.md` except a repo's

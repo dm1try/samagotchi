@@ -215,7 +215,7 @@ RSpec.describe "Bundle plugin: manifest, install, provenance, status, build" do
       expect(data[:requires_chi]).to eq(">= 0.1.0")
       expect(provenance.plugin_path).to eq(path)
       expect(File.read(provenance.plugin_base_path("plugin.rb"))).to eq(plugin_source)
-      expect(installer.results["plugin.rb"][:status]).to eq("installed")
+      expect(installer.results["plugin.rb"].word).to eq(:installed)
       expect(installer.warnings).to be_empty
     end
 
@@ -245,7 +245,7 @@ RSpec.describe "Bundle plugin: manifest, install, provenance, status, build" do
     it "an upgrade with an identical plugin reports it up to date, not Updated" do
       install(write_source)
       up = install(write_source, upgrade: true)
-      expect(up.results["plugin.rb"]).to eq(status: "skipped", reason: "already up to date")
+      expect(up.results["plugin.rb"].word).to eq(:up_to_date)
       expect(up.summary).to include("Up to date: identity.md, plugin.rb")
       expect(up.summary).not_to include("Updated:")
     end

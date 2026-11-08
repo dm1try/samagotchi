@@ -4,6 +4,7 @@ require "fileutils"
 require "digest"
 require_relative "../memory_paths"
 require_relative "provenance"
+require_relative "file_actions"
 require_relative "index_updater"
 require_relative "trash"
 require_relative "../model_overlay"
@@ -63,17 +64,22 @@ module Samagotchi
           [key, Provenance.claimants(key, scope: target_scope, except: @name)]
         end.reject { |_, others| others.empty? }
 
+        # Each file's UNINSTALL row (its source-less FileState): an edit
+        # refuses, unless --force (which moves it to the trash with the rest).
         blocked = []
-        files.each do |file_key, meta|
-          file_key_str = file_key.to_s
-          target_path = File.join(target_dir, file_key_str)
-          base_path = provenance.base_path(file_key_str)
-          next unless File.exist?(target_path)
-          next if shared.key?(file_key_str)
+        unless @force
+          files.each_key do |file_key|
+            key = file_key.to_s
+            state = FileState.of(key, record: bundle, provenance: provenance, target_dir: target_dir, source_dir: nil,
+                                      claimants: ->(k) { shared.fetch(k, []) })
+            next unless FileActions.for(:uninstall, state)&.do == :refuse
+            # Kept for another bundle, read or not.
+            next if state.shared_with.any?
 
-          if !@force && !Provenance.unchanged?(target_path, meta, base_path)
-            blocked << file_key_str
-            @warnings << "Skipped #{file_key_str}: local edits detected (#{FileStanding::FORCE_MOVES})"
+            # Whether it was edited can't be told: the read raises (nothing lost).
+            FileDigest.hex(state.paths[:current]) if state.kind == :unreadable
+            blocked << key
+            @warnings << "Skipped #{key}: local edits detected (#{FileStanding::FORCE_MOVES})"
           end
         end
 

@@ -4,6 +4,7 @@ require "digest"
 require_relative "../atomic_file"
 require_relative "file_digest"
 require_relative "installed_bundle"
+require_relative "file_actions"
 
 module Samagotchi
   module MemoryBundle
@@ -13,8 +14,8 @@ module Samagotchi
 
     # 3-way merge helper for bundle upgrades.
     #
-    # Compare base (provenance snapshot), current (on-disk), incoming (new bundle)
-    # and classify per file. Used by Installer#run when provenance exists.
+    # An upgrade's merge: what FileState and FileActions' UPGRADE table say of
+    # a file, as an Outcome, and the text merge where both sides changed it.
     module Merger
       # What an upgrade does to one file. status names the case; base is where
       # the file's next base comes from:
@@ -26,15 +27,13 @@ module Samagotchi
       #              edits, so it must never become the base (the edit is what
       #              differs from the base, and the next upgrade would
       #              fast-forward over it).
-      # Installer#next_base reads it. A new outcome and its base go here; it
-      # also needs a branch in Installer#merge_memory (which raises without
-      # one), #next_base if its base is a new kind, and its status word in
-      # Installer#preview_memory, #verify_memory_checksums' list and #summary.
+      # The same words as FileActions::Action#next_base: an Outcome is what an
+      # UPGRADE cell stands for to a plan, and a :decide cell's answer.
       #
       # merge is Upgrade#outcome's TextMerge::Result, so a merge runs git once
       # and its answer travels with the outcome: a :merged outcome's text, a
       # :conflict's why (nil for a real one). current_sha is the digest of the
-      # file that merge read: write_merged checks it. .classify leaves both nil.
+      # file that merge read: write_merged checks it. The constants leave both nil.
       Outcome = Data.define(:status, :base, :merge, :current_sha) do
         def initialize(status:, base:, merge: nil, current_sha: nil) = super
 
@@ -65,39 +64,38 @@ module Samagotchi
         def conflicts = behind.map(&:file)
       end
 
+      # One file's upgrade, read once (Upgrade#decision): its FileState, the
+      # action the upgrade takes (a :decide cell already answered) and the
+      # Outcome that action stands for.
+      Decision = Data.define(:state, :action, :outcome)
+
       # One bundle's upgrade as seen before it runs: what it does to a file,
       # nothing written. The one way to ask: Installer's merge and dry run,
       # ShippedUpdate's plan and SystemBundle's dry run. Which files to ask
       # about is the caller's, and they differ (see #forecast).
       Upgrade = Data.define(:provenance, :target_dir, :source_dir) do
-        # What the upgrade does to the file: .classify, then, where both sides
-        # changed it, the text merge (git runs here, once per call). A mark from
-        # an older chi fast-forwards only if no line of the file goes or its base
-        # is proved: see .merge_outcome.
-        # @return [Outcome]
-        def outcome(file_key)
-          classified = classified(file_key)
-          return classified unless classified.conflict? || classified == FAST_FORWARD
-
-          legacy = InstalledBundle.legacy_mark?(provenance.record&.files&.fetch(file_key, nil))
-          # Asked only when the guard would otherwise fire.
-          unproved = -> { legacy && !ShippedHistory.shipped?(provenance.name, file_key, paths(file_key)[:base]) }
-          return Merger.merge_outcome(paths(file_key), unproved: unproved) if classified.conflict?
-
-          # The guard's own case at its plainest: the file is the base, which
-          # may be the user's text. One that only gains lines loses nothing, and
-          # save_marked_file keeps a copy.
-          sides = paths(file_key)
-          return classified unless legacy && Merger.removes_lines?(File.binread(sides[:current]), File.binread(sides[:incoming]))
-
-          unproved.call ? CONFLICT.with(merge: TextMerge.failed(FileStanding::LEGACY_BASE)) : classified
+        # What the upgrade does to the file, with what it was read from: its
+        # FileState, the UPGRADE action (a :decide cell answered by #outcome's
+        # merge or legacy guard, through FileActions.decided) and the Outcome.
+        # @param state [FileState] the file's, when the caller has read it
+        # @return [Decision]
+        def decision(file_key, state = state(file_key))
+          action = FileActions.for(:upgrade, state)
+          outcome = outcome_of(file_key, state, action)
+          Decision.new(state: state, action: action.do == :decide ? FileActions.decided(outcome) : action, outcome: outcome)
         end
 
-        # .classify alone: no merge is tried.
+        # What the upgrade does to the file: its FileState's UPGRADE cell, and
+        # where both sides changed it, the text merge (git runs here, once per
+        # call). A mark from an older chi fast-forwards only if no line of the
+        # file goes or its base is proved: see .merge_outcome.
         # @return [Outcome]
-        def classified(file_key)
-          sides = paths(file_key)
-          Merger.classify(base_path: sides[:base], current_path: sides[:current], incoming_path: sides[:incoming])
+        def outcome(file_key) = decision(file_key).outcome
+
+        # The file as the upgrade meets it (FileState, with the source).
+        # @return [FileState]
+        def state(file_key)
+          FileState.of(file_key, record: provenance.record, provenance: provenance, target_dir: target_dir, source_dir: source_dir)
         end
 
         # The ones among +file_keys+ that would merge or end in a conflict. The
@@ -138,38 +136,50 @@ module Samagotchi
           { base: provenance.base_path(file_key), current: File.join(target_dir, file_key),
             incoming: File.join(source_dir, file_key) }
         end
-      end
 
-      # Classify a single file for upgrade.
-      # @return [Outcome]
-      def self.classify(base_path:, current_path:, incoming_path:)
-        base_exists = base_path && File.exist?(base_path)
-        current_exists = File.exist?(current_path)
-        incoming_exists = File.exist?(incoming_path)
+        private
 
-        return NO_INCOMING unless incoming_exists
+        # The Outcome a cell stands for; a :decide cell's is the text merge
+        # (:diverged) or the legacy guard ([:pristine, :legacy]).
+        def outcome_of(file_key, state, action)
+          return NO_INCOMING if state.digests.incoming.nil?
 
-        unless current_exists
-          return INSTALL
+          case action.do
+          when :decide then decide(file_key, state)
+          when :write_incoming then action.word == :installed ? INSTALL : FAST_FORWARD
+          when :keep
+            return no_base(state) if action.behind?
+
+            action.word == :kept ? KEEP : NOOP
+          # A file the bundle doesn't own, the user's: there is no base to merge from.
+          when :skip then no_base(state)
+          # It can't be read: the read raises, as the merge would.
+          when :refuse then FileDigest.hex(paths(file_key)[:current])
+          else raise ArgumentError, "no outcome for #{action.do.inspect} (#{file_key})"
+          end
         end
 
-        # No base (legacy bundle without provenance or first file) -> treat as modified
-        unless base_exists
-          return FileDigest.hex(current_path) == FileDigest.hex(incoming_path) ? NOOP : CONFLICT
+        # No base to merge from: the file stays behind. With none on disk
+        # TextMerge::NO_BASE says why; one the checksum contradicts (the file
+        # equals it, yet is edited) may be the user's own text, as an older
+        # chi's can (FileStanding::LEGACY_BASE).
+        def no_base(state)
+          why = state.digests.base.nil? ? TextMerge::NO_BASE : FileStanding::LEGACY_BASE
+          CONFLICT.with(merge: TextMerge.failed(why))
         end
 
-        base_digest = FileDigest.hex(base_path)
-        current_digest = FileDigest.hex(current_path)
-        incoming_digest = FileDigest.hex(incoming_path)
+        def decide(file_key, state)
+          # Asked only when the guard would otherwise fire.
+          unproved = -> { state.mark == :legacy && !ShippedHistory.shipped?(provenance.name, file_key, paths(file_key)[:base]) }
+          return Merger.merge_outcome(paths(file_key), unproved: unproved) unless state.kind == :pristine
 
-        if current_digest == incoming_digest
-          NOOP
-        elsif current_digest == base_digest
-          FAST_FORWARD
-        elsif incoming_digest == base_digest
-          KEEP
-        else
-          CONFLICT
+          # The guard's own case at its plainest: the file is the base, which
+          # may be the user's text. One that only gains lines loses nothing, and
+          # its save_first keeps a copy (Installer#save_first).
+          sides = paths(file_key)
+          return FAST_FORWARD unless Merger.removes_lines?(File.binread(sides[:current]), File.binread(sides[:incoming]))
+
+          unproved.call ? CONFLICT.with(merge: TextMerge.failed(FileStanding::LEGACY_BASE)) : FAST_FORWARD
         end
       end
 

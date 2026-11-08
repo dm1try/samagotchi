@@ -639,9 +639,12 @@ module Samagotchi
       0
     end
 
+    # The base and the file; a marked one also the bundle's text it stays
+    # behind (its source-less FileState says which).
     def diff_memory(prov, target_dir, key)
-      print_base_and_current(key, prov.base_path(key), File.join(target_dir, key))
-      print_incoming(prov, key)
+      state = Samagotchi::MemoryBundle::FileState.of(key, record: prov.record, provenance: prov, target_dir: target_dir, source_dir: nil)
+      print_base_and_current(key, state.paths[:base], state.paths[:current])
+      print_incoming(prov, key) if state.marked?
     end
 
     # The bundle's text a file stays behind (Provenance#incoming_path), so the

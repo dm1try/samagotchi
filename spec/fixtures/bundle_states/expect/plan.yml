@@ -51,7 +51,7 @@ level_no_base_marked:
 level_no_base_legacy:
   plan: {do: kept, word: would_update, warns: []}
 pristine_no_base:
-  plan: {do: kept, word: "would_update, behind", warns: ["a.md stays behind 1.1.0: no merge possible (no recorded base)"]}
+  plan: {do: kept, word: would_update, warns: []}
 pristine_no_base_marked:
   plan: {do: kept, word: "would_update, behind", warns: ["a.md stays behind 1.1.0: no merge possible (no recorded base)"]}
 pristine_no_base_legacy:
@@ -119,7 +119,7 @@ edited_shared:
 unreadable:
   plan: {do: kept, word: failed, warns: ["Permission denied @ rb_sysopen - <home>/samagotchi/memories/a.md: nothing was lost (your edits are in place or in the trash); fix that and run the command again"]}
 recorded_other:
-  plan: {do: kept, word: would_update, warns: []}
+  plan: {do: kept, word: "would_update, behind", warns: ["a.md stays behind 1.1.0: chi can't tell whether it holds edits of yours (an older chi may have taken your text as the base, and the merge would remove lines from your file); missed 1 place"]}
 pristine_legacy_gains:
   plan: {do: kept, word: would_update, warns: []}
 pristine_legacy_gains_proved:

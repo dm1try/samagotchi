@@ -111,7 +111,8 @@ module AffectedSpecs
     { match: %w[lib/samagotchi/memory_bundle.rb lib/samagotchi/memory_bundle/**/*.rb lib/samagotchi/bundle_command.rb
                 lib/samagotchi/model_overlay.rb lib/samagotchi/memory_paths.rb spec/fixtures/bundle_states/**/*
                 spec/samagotchi/memory_bundle/file_state_corpus/*.rb],
-      specs: %w[spec/samagotchi/memory_bundle/file_state_corpus/*_spec.rb],
+      specs: %w[spec/samagotchi/memory_bundle/file_state_corpus/*_spec.rb spec/samagotchi/memory_bundle/file_state_spec.rb
+                spec/samagotchi/memory_bundle/file_actions_spec.rb],
       why: "pins every bundle file state × command" }
   ].freeze
 

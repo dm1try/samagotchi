@@ -27,7 +27,7 @@ module Samagotchi
       # installed: members installed now; already: members found installed
       # (recorded, not reinstalled); skipped and failed: name => why;
       # kept_own: member installed now => its memory files the user already
-      # had, left as they are and not owned (Installer#skip_existing);
+      # had, left as they are and not owned (the INSTALL rows of a file not owned);
       # trash_copies: "member: line" for what --force copied to the trash
       # (Installer#trash_copy_line).
       InstallResult = Struct.new(:name, :version, :installed, :already, :skipped, :failed, :kept_own, :trash_copies, keyword_init: true) do
@@ -140,11 +140,11 @@ module Samagotchi
       private_class_method :install_member
 
       # An Installer result for a file the user already had, with other
-      # bytes: skipped ("already exists"), or a dry run's would_skip. One
-      # with the bundle's bytes ("already up to date") isn't named: nothing
-      # of the bundle's is missing (it stays the user's all the same).
+      # bytes: kept as the user's own (:kept_own), or a dry run's
+      # :would_skip. One with the bundle's bytes (:up_to_date) isn't named:
+      # nothing of the bundle's is missing (it stays the user's all the same).
       def kept_own?(entry)
-        entry[:status] == "would_skip" || (entry[:status] == "skipped" && entry[:reason] == "already exists")
+        %i[would_skip kept_own].include?(entry.word)
       end
       private_class_method :kept_own?
 

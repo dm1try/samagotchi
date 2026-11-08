@@ -381,7 +381,7 @@ RSpec.describe Samagotchi::MemoryBundle::Remerge do
       write_source("3.0.0", shipped)
       up = install(upgrade: true)
 
-      expect(up.results["a.md"][:status]).to eq("conflict")
+      expect(up.results["a.md"].word).to eq(:conflict)
       expect(up.merged_files).to be_empty
       expect(up.warnings).to include(a_string_including(why))
       expect_kept
@@ -394,7 +394,7 @@ RSpec.describe Samagotchi::MemoryBundle::Remerge do
       install(upgrade: true)
       expect_kept
       write_source("4.0.0", doc(intro: "the intro again", tail: "tail four"))
-      expect(install(upgrade: true).results["a.md"][:status]).to eq("conflict")
+      expect(install(upgrade: true).results["a.md"].word).to eq(:conflict)
       expect_kept
       write_source("5.0.0", shipped)
       install
@@ -418,12 +418,12 @@ RSpec.describe Samagotchi::MemoryBundle::Remerge do
       it "doesn't let an upgrade fast-forward over it, and says why, in a dry run too" do
         write_source("3.0.0", shipped)
         dry = install(upgrade: true, dry_run: true)
-        expect(dry.results["a.md"][:status]).to eq("conflict")
+        expect(dry.results["a.md"].word).to eq(:conflict)
         expect(dry.summary).not_to include("Fast-forward")
         expect(dry.summary).to include(why)
 
         up = install(upgrade: true)
-        expect(up.results["a.md"][:status]).to eq("conflict")
+        expect(up.results["a.md"].word).to eq(:conflict)
         expect(up.warnings).to include(a_string_including(why))
         expect(File.read(target)).to eq(user_text)
         expect(base).to eq(user_text)
@@ -463,7 +463,7 @@ RSpec.describe Samagotchi::MemoryBundle::Remerge do
       write_source("2.0.0", doc(tail: "tail two"))
       up = install(upgrade: true)
 
-      expect(up.results["a.md"][:status]).to eq("conflict")
+      expect(up.results["a.md"].word).to eq(:conflict)
       expect(File.read(target)).to eq(doc)
       expect(base).to eq(doc)
       expect(entry).to include(conflict: true, legacy_base: true)
@@ -480,7 +480,7 @@ RSpec.describe Samagotchi::MemoryBundle::Remerge do
       write_source("3.0.0", shipped)
       dry = install(upgrade: true, dry_run: true)
 
-      expect(dry.results["a.md"][:status]).to eq("conflict")
+      expect(dry.results["a.md"].word).to eq(:conflict)
       expect(dry.summary).to include(why)
       expect(Samagotchi::MemoryBundle::Merger::Upgrade.new(provenance: provenance, target_dir: memories, source_dir: source).forecast(["a.md"]))
         .to have_attributes(merged: [], conflicts: ["a.md"])
@@ -661,7 +661,7 @@ RSpec.describe Samagotchi::MemoryBundle::Remerge do
         write_source("2.0.0", reworded)
         up = install(upgrade: true)
 
-        expect(up.results["a.md"][:status]).to eq("conflict")
+        expect(up.results["a.md"].word).to eq(:conflict)
         expect(File.read(target)).to eq(doc)
         expect(trash_files).to be_empty
       end

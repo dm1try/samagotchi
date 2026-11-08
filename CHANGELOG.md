@@ -20,6 +20,7 @@ and commands may change between minor versions. How releases are made:
 - In chi web, a long tool output's hover shows the same cut live as after a reload (the first 2000 characters of a file read, the start and end of other output).
 - A turn nobody typed (a reminder, an attached context change, a finished task, a delegate report) has an id of its own, `wake-` and 16 hex digits: `chi send --wait --format json` names it as the `turn_id`, and the `--turn` hints carry it.
 - `chi send --wait -m` to a session left running by a worker that died names the message's own id as the `turn_id` in `--format json`, where it named the running turn's.
+- `chi bundle install` of a bundle already installed from a source that moved on now takes the new text of each memory you never edited, as `chi bundle upgrade` would, and records the new version; a memory you edited is still kept (`--force` or `chi bundle upgrade` brings the bundle's changes).
 
 ### Fixed
 
@@ -31,6 +32,9 @@ and commands may change between minor versions. How releases are made:
 - `chi update`'s plan names every edited hook, rule, plugin file and script it replaces or removes, as its `Copied to the trash first` line does; it left out edited scripts and hooks installed with no recorded sha, and its row now says `a copy goes to the trash first` instead of `it wasn't loading`.
 - `chi bundle install --dry-run` and `chi bundle upgrade --dry-run` report hooks, rules, the plugin and scripts as the real run does (`Would update`, `Would install`, `Up to date`); a changed hook showed as skipped, an unchanged rule or plugin as would install, and scripts not at all.
 - `chi bundle install core --dry-run` (a profile's dry run) no longer names a hook it would replace as your own kept file.
+- `chi bundle upgrade --dry-run` lists a memory that already has the bundle's text as up to date, as the upgrade itself does; it listed it as skipped.
+- `chi bundle upgrade` (and `chi update`'s plan) leaves behind a memory that `chi bundle status` calls `modified` but whose base copy equals it, as it does any edit it can't merge; it replaced the file with the bundle's text and kept no copy.
+- `chi bundle upgrade` (and `chi update`'s plan) takes the bundle's new text for a memory you never edited that has no base copy (chi compares it with the checksum its install recorded), as for any unedited memory; it left the file behind as a conflict while `chi bundle status` called it `ok`.
 - A context window given with `--context-window-tokens` to a one-shot run (`-p … --non-interactive`) is named `cli`, not `config`, where its source shows: the debug log, and chi web's context tooltip for that session.
 - A tool row's duration is the same live, after a reload and in the attached terminal (each timed the call with its own clock).
 - In chi web, a turn that fails after its tool steps shows the same time on its timing line live as after a reload (the turn record's, as a canceled turn does).

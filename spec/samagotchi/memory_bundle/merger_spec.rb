@@ -13,33 +13,6 @@ RSpec.describe Samagotchi::MemoryBundle::Merger do
 
   after { FileUtils.rm_rf(tmp) }
 
-  # The outcome for a base, current and incoming text (nil: no such file).
-  def classify(base, current, incoming)
-    paths = { base: base, current: current, incoming: incoming }.to_h do |side, text|
-      path = File.join(tmp, side.to_s)
-      File.write(path, text) if text
-      [:"#{side}_path", path]
-    end
-    described_class.classify(**paths)
-  end
-
-  describe ".classify" do
-    {
-      "a file not on disk" => [["b", nil, "i"], :install, :on_disk],
-      "a file not edited" => [%w[b b i], :fast_forward, :on_disk],
-      "a file that has the bundle's bytes" => [%w[b i i], :noop, :on_disk],
-      "an edit the bundle didn't change" => [%w[b c b], :keep, :recorded],
-      "an edit the bundle changed too" => [%w[b c i], :conflict, :recorded],
-      "an edit with no base" => [[nil, "c", "i"], :conflict, :recorded],
-      "no base, the bundle's bytes" => [[nil, "i", "i"], :noop, :on_disk],
-      "a file the bundle doesn't have" => [["b", "c", nil], :noop, :recorded]
-    }.each do |what, (texts, status, base)|
-      it "reads #{what} as #{status}, its next base #{base}" do
-        expect(classify(*texts)).to have_attributes(status: status, base: base)
-      end
-    end
-  end
-
   describe Samagotchi::MemoryBundle::Merger::Upgrade do
     let(:upgrade) do
       provenance = Samagotchi::MemoryBundle::Provenance.new(name: "demo")
@@ -47,9 +20,35 @@ RSpec.describe Samagotchi::MemoryBundle::Merger do
       described_class.new(provenance: provenance, target_dir: File.join(tmp, "target"), source_dir: File.join(tmp, "source"))
     end
 
-    def sides(key, base:, current:, incoming:)
-      { base: base, current: current, incoming: incoming }.each do |side, text|
-        File.write(upgrade.paths(key)[side], text)
+    # The three sides of each file (nil: no such file), and a record that
+    # owns them all, its checksum the base's.
+    def sides(files)
+      entries = files.to_h do |key, texts|
+        texts.except(:checksum).each do |side, text|
+          path = upgrade.paths(key)[side]
+          text ? File.write(path, text) : FileUtils.rm_f(path)
+        end
+        vouched = texts.fetch(:checksum, texts[:base])
+        [key, vouched ? { checksum: Digest::SHA256.hexdigest(vouched) } : {}]
+      end
+      File.write(File.join(upgrade.provenance.bundle_dir, "manifest.json"),
+                 JSON.generate(name: "demo", version: "1.0.0", scope: "system", files: entries))
+    end
+
+    {
+      "a file not on disk" => [["b", nil, "i"], :install, :on_disk],
+      "a file not edited" => [%w[b b i], :fast_forward, :on_disk],
+      "a file that has the bundle's bytes" => [%w[b i i], :noop, :on_disk],
+      "an edit the bundle didn't change" => [%w[b c b], :keep, :recorded],
+      "an edit the bundle changed too" => [%w[b c i], :conflict, :recorded],
+      "an edit with no base" => [[nil, "c", "i"], :conflict, :recorded],
+      "no base, a file its checksum vouches for" => [[nil, "c", "i", "c"], :fast_forward, :on_disk],
+      "no base, the bundle's bytes" => [[nil, "i", "i"], :noop, :on_disk],
+      "a file the bundle doesn't have" => [["b", "c", nil], :noop, :recorded]
+    }.each do |what, ((base, current, incoming, *checksum), status, next_base)|
+      it "reads #{what} as #{status}, its next base #{next_base}" do
+        sides("a.md" => { base: base, current: current, incoming: incoming }.merge(checksum.empty? ? {} : { checksum: checksum.first }))
+        expect(upgrade.outcome("a.md")).to have_attributes(status: status, base: next_base)
       end
     end
 
@@ -59,12 +58,14 @@ RSpec.describe Samagotchi::MemoryBundle::Merger do
     end
 
     it "answers for one file and picks the conflicts among the files asked about, writing nothing" do
-      sides("edited.md", base: "b\n", current: "c\n", incoming: "i\n")
-      sides("plain.md", base: "b\n", current: "b\n", incoming: "i\n")
-      sides("kept.md", base: "b\n", current: "c\n", incoming: "b\n")
-      sides("unasked.md", base: "b\n", current: "c\n", incoming: "i\n")
+      sides("edited.md" => { base: "b\n", current: "c\n", incoming: "i\n" },
+            "plain.md" => { base: "b\n", current: "b\n", incoming: "i\n" },
+            "kept.md" => { base: "b\n", current: "c\n", incoming: "b\n" },
+            "unasked.md" => { base: "b\n", current: "c\n", incoming: "i\n" })
 
       expect(upgrade.outcome("plain.md")).to eq(Samagotchi::MemoryBundle::Merger::FAST_FORWARD)
+      expect(upgrade.decision("plain.md")).to have_attributes(state: have_attributes(kind: :pristine),
+                                                              action: Samagotchi::MemoryBundle::FileActions::FAST_FORWARD)
       expect(upgrade.forecast(%w[edited.md kept.md plain.md]).conflicts).to eq(%w[edited.md])
       expect(File.read(upgrade.paths("plain.md")[:current])).to eq("b\n")
     end
@@ -125,17 +126,18 @@ RSpec.describe Samagotchi::MemoryBundle::Merger do
       expect(base_text).to eq("v1\n")
     end
 
-    # An outcome the Installer has no code for fails loudly: quietly, the base
+    # An action the Installer has no code for fails loudly: quietly, the base
     # would move on with nothing written, and the miss would be buried.
-    def classify_as(status, base)
-      allow(described_class).to receive(:classify).and_return(described_class::Outcome.new(status: status, base: base))
+    def act_as(action)
+      allow(Samagotchi::MemoryBundle::FileActions).to receive(:for).and_call_original
+      allow(Samagotchi::MemoryBundle::FileActions).to receive(:for).with(:upgrade, anything).and_return(action)
     end
 
-    it "refuses a status merge_memory has no branch for, with nothing moved" do
+    it "refuses an action the Installer has no step for, with nothing moved" do
       File.write(File.join(memories, "a.md"), "edit\n")
-      classify_as(:unheard_of, :on_disk)
+      act_as(Samagotchi::MemoryBundle::FileActions::Action.new(do: :restore, word: :kept, next_base: :on_disk))
 
-      expect { install("2.0.0", "v2\n", upgrade: true) }.to raise_error(ArgumentError, "unknown outcome status :unheard_of for a.md")
+      expect { install("2.0.0", "v2\n", upgrade: true) }.to raise_error(ArgumentError, "no install step for :restore (a.md)")
       expect(base_text).to eq("v1\n")
       expect(provenance.record.version).to eq("1.0.0")
       expect(File.read(File.join(memories, "a.md"))).to eq("edit\n")
@@ -143,7 +145,7 @@ RSpec.describe Samagotchi::MemoryBundle::Merger do
 
     it "refuses a base next_base doesn't know, with the record unmoved" do
       File.write(File.join(memories, "a.md"), "edit\n")
-      classify_as(:keep, :unheard_of)
+      act_as(Samagotchi::MemoryBundle::FileActions::KEEP.with(next_base: :unheard_of))
 
       expect { install("2.0.0", "v1\n", upgrade: true) }.to raise_error(ArgumentError, "unknown base :unheard_of for a.md")
       expect(base_text).to eq("v1\n")

@@ -88,8 +88,8 @@ RSpec.describe "Bundle scripts and context providers: manifest, install, provena
       expect(data[:scripts]).to eq("pr.rb": { sha256: "sha256:#{Digest::SHA256.hexdigest(script)}" })
       expect(data[:context_providers]).to eq([provider.transform_keys(&:to_sym)])
       expect(installer.warnings).to be_empty
-      expect(installer.results["scripts/pr.rb"]).to eq(status: "installed")
-      expect(install(write_source, upgrade: true).results["scripts/pr.rb"]).to eq(status: "skipped", reason: "already up to date")
+      expect(installer.results["scripts/pr.rb"].word).to eq(:installed)
+      expect(install(write_source, upgrade: true).results["scripts/pr.rb"].word).to eq(:up_to_date)
     end
 
     it "fails when the manifest names a script the bundle doesn't have" do

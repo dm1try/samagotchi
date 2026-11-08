@@ -137,7 +137,7 @@ RSpec.describe Samagotchi::MemoryBundle::FileStanding do
       it "records it through a manifest round trip, the upgrade going through" do
         up = install(upgrade: true)
 
-        expect(up.results["a.md"][:status]).to eq("conflict")
+        expect(up.results["a.md"].word).to eq(:conflict)
         expect(provenance.record.version).to eq("2.0.0")
         expect(entry[:missed]).to eq(["## Шаги — главное"])
         expect(behind_lines).to eq(["a.md stays behind 2.0.0: missed ## Шаги — главное"])

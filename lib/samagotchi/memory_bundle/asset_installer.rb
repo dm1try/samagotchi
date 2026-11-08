@@ -144,13 +144,13 @@ module Samagotchi
 
           @bundle_hooks << basename
           if @dry_run
-            @results[basename] = { status: "would_install" }
+            @results[basename] = Installer::FileResult.new(word: :would_install)
           else
             FileUtils.mkdir_p(@provenance.hooks_dir)
             dest = File.join(@provenance.hooks_dir, basename)
             @trash.copy_edit(dest, as: "hooks/#{basename}", recorded: @existing&.hooks&.dig(basename)&.sha256, incoming: src)
             place(src, dest)
-            @results[basename] = { status: "installed" }
+            @results[basename] = Installer::FileResult.new(word: :installed)
             @hook_files[basename] = dest
           end
         end
@@ -303,18 +303,19 @@ module Samagotchi
       # install) or installed. A dry run records #planned of it, so the two
       # can't drift.
       def result_for(src, dest, updated:)
-        if File.file?(dest) && FileUtils.identical?(src, dest) then { status: "skipped", reason: "already up to date" }
-        elsif updated then { status: "updated" }
-        else { status: "installed" }
-        end
+        word = if File.file?(dest) && FileUtils.identical?(src, dest) then :up_to_date
+               elsif updated then :updated
+               else :installed
+               end
+        Installer::FileResult.new(word: word)
       end
 
       # A dry run's word for a result: would_install, would_update, or the
       # up to date result as it is (nothing would be written).
       def planned(result)
-        case result[:status]
-        when "installed" then { status: "would_install" }
-        when "updated" then { status: "would_update" }
+        case result.word
+        when :installed then result.with(word: :would_install)
+        when :updated then result.with(word: :would_update)
         else result
         end
       end
