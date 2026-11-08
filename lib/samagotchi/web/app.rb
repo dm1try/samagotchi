@@ -1013,7 +1013,8 @@ module Samagotchi
         return error_response(400, "invalid_json", "invalid JSON body") unless body.is_a?(Hash)
 
         requested = body["dir"]
-        unless requested.is_a?(String) && !requested.strip.empty? && !requested.include?("\0")
+        requested = requested.strip if requested.is_a?(String)
+        unless requested.is_a?(String) && !requested.empty? && !requested.include?("\0")
           return error_response(400, "invalid_dir", "dir must be an absolute folder")
         end
 
@@ -1027,15 +1028,16 @@ module Samagotchi
               end
         return error_response(400, "invalid_dir", "dir must be an absolute folder") unless dir.start_with?("/")
 
+        # One normal form for the decision, the mkdir and the realpath (a `..` after a symlink would differ).
+        dir = File.expand_path(dir)
         outcome = ProjectInit.call(dir, home: home)
         return error_response(422, outcome.reason.to_s, outcome.message) if outcome.kind == :refused
 
-        begin
-          FileUtils.mkdir_p(dir) if outcome.kind == :git && !File.directory?(dir)
-          dir = File.realpath(dir)
-        rescue SystemCallError => e
-          return error_response(422, "write_failed", "couldn't create #{Paths.tilde(dir)}: #{e.message}")
+        if outcome.kind == :git
+          failed = ProjectInit.ensure_folder(dir)
+          return error_response(422, failed.reason.to_s, failed.message) if failed
         end
+        dir = File.realpath(dir)
         json_response(200, outcome: outcome.kind.to_s, root: outcome.root, dir: dir)
       end
 

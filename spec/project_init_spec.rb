@@ -89,4 +89,33 @@ RSpec.describe Samagotchi::ProjectInit do
     expect([outcome.kind, outcome.reason]).to eq(%i[refused write_failed])
     expect(outcome.message).to include("couldn't write #{marker(File.join(target, "child"))}")
   end
+
+  describe ".ensure_folder" do
+    it "makes a missing folder and returns nil, without a marker" do
+      target = File.join(@tmp, "repo", "new", "sub")
+
+      expect(described_class.ensure_folder(target)).to be_nil
+      expect(File.directory?(target)).to be(true)
+      expect(File.exist?(marker(target))).to be(false)
+    end
+
+    it "leaves an existing folder as it is" do
+      target = File.join(@tmp, "here")
+      FileUtils.mkdir_p(target)
+      File.write(File.join(target, "keep"), "x")
+
+      expect(described_class.ensure_folder(target)).to be_nil
+      expect(File.read(File.join(target, "keep"))).to eq("x")
+    end
+
+    it "words a failure as a refused write_failed outcome" do
+      file = File.join(@tmp, "file")
+      File.write(file, "")
+
+      outcome = described_class.ensure_folder(File.join(file, "child"))
+
+      expect([outcome.kind, outcome.reason]).to eq(%i[refused write_failed])
+      expect(outcome.message).to start_with("couldn't create #{File.join(file, "child")}: ")
+    end
+  end
 end

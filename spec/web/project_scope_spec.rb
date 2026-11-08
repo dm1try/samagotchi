@@ -205,6 +205,34 @@ RSpec.describe Samagotchi::Web::App do
       expect(JSON.parse(body)["detail"]).to include(file)
     end
 
+    it "strips the path and normalizes `..` before deciding, making and resolving" do
+      target = File.join(@tmp, "notes")
+
+      status, _, body = create_project("  #{File.join(@tmp, "other", "..", "notes")}\n")
+
+      expect(status).to eq(200)
+      expect(JSON.parse(body)).to eq("outcome" => "created", "root" => target, "dir" => target)
+    end
+
+    it "makes only the normalized folder in a git repository" do
+      status, _, body = create_project(File.join(repo_a, "stray", "..", "new").to_s)
+
+      expect(status).to eq(200)
+      expect(JSON.parse(body)).to eq("outcome" => "git", "root" => repo_a, "dir" => File.join(repo_a, "new"))
+      expect(File.directory?(File.join(repo_a, "new"))).to be(true)
+      expect(File.exist?(File.join(repo_a, "stray"))).to be(false)
+    end
+
+    it "words a git folder that can't be made like ProjectInit does" do
+      file = File.join(repo_a, "afile")
+      File.write(file, "")
+
+      status, _, body = create_project(File.join(file, "child"))
+
+      expect([status, JSON.parse(body)["error"]]).to eq([422, "write_failed"])
+      expect(JSON.parse(body)["detail"]).to start_with("couldn't create #{File.join(file, "child")}: ")
+    end
+
     it "answers invalid_json for a bad body" do
       status, _, body = call("/api/projects", method: "POST", body: "{")
 

@@ -42,9 +42,22 @@ module Samagotchi
       Outcome.new(kind: :created, reason: nil, root: root, top: root, nested_in: enclosing, message: nil)
     rescue SystemCallError => e
       marker = File.join(dir, MemoryPaths::MARKER)
-      Outcome.new(kind: :refused, reason: :write_failed, root: nil, top: nil, nested_in: nil,
-                  message: "couldn't write #{Paths.tilde(marker)}: #{e.message}")
+      write_failed("couldn't write #{Paths.tilde(marker)}: #{e.message}")
     end
+
+    # chi web opens a folder in a git repository without marking it, so the folder has to exist.
+    # @return [Outcome, nil] a refused (:write_failed) outcome when it can't be made, else nil
+    def ensure_folder(dir)
+      FileUtils.mkdir_p(dir) unless File.directory?(dir)
+      nil
+    rescue SystemCallError => e
+      write_failed("couldn't create #{Paths.tilde(dir)}: #{e.message}")
+    end
+
+    def write_failed(message)
+      Outcome.new(kind: :refused, reason: :write_failed, root: nil, top: nil, nested_in: nil, message: message)
+    end
+    private_class_method :write_failed
 
     def write_marker(dir)
       marker = File.join(dir, MemoryPaths::MARKER)
