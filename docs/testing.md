@@ -156,7 +156,10 @@ Each level owns its own share; a detail is asserted once, at the lowest level th
 - **e2e** is for real-browser behaviour (layout, focus, reload, two tabs), one happy path per Ruby↔web mechanism and
   a few journeys. Before adding a test, extend an existing journey's step; a variant goes to node, a Ruby↔web shape
   variant to a shared fixture (`spec/fixtures/composer_routes.json`). A journey names its stages with `test.step`
-  (the report names the one that failed: web.spec.js's notifications). The `lan` project's chi web is on the LAN only
+  (the report names the one that failed: web.spec.js's notifications). A turn test ends with
+  `expectSameAfterReload` (spec/e2e/support/history_shape.js): the history's shape live, then after a reload, the
+  same (live is the truth). Its allowlist is `history_shape.js ACCEPTED`, each entry with its reason; a test names
+  the entries its scenario has. The `lan` project's chi web is on the LAN only
   when the machine has a private IPv4: without one its LAN tests skip and the participant review journey runs on
   loopback.
 

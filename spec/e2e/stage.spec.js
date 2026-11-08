@@ -4,6 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { test, expect } from "./support/fixtures.js";
 import { expectNoHorizontalOverflow } from "./support/layout.js";
+import { expectSameAfterReload } from "./support/history_shape.js";
 import { frames, momentAt, pageNow, shiftSources, shiftSum, snaps, stageMarks, startSampling, startSnaps, stopSampling, watchFrames, watchShifts, watchStage } from "./support/shifts.js";
 
 const stageEl = (page) => page.locator("#turnStage");
@@ -328,6 +329,12 @@ test("a question card sits in the stage (also after a reload mid-turn), and the 
   expect(kinds).toEqual(["bubble user", "turn-work done", "bubble question", "bubble output", "turn-timing"]);
   // The asking step's text in the history keeps the ref (live, at the turn's end).
   await expect(page.locator('#history .gen > .gen-text [data-ref-kind="issue"]')).toHaveText("JIRA-7");
+  await test.step("the turn, joined mid-way, reads the same after a reload", async () => {
+    await expectSameAfterReload(page, async (p) => {
+      await handedOff(p, 1);
+      await expect(p.locator("#history .bubble.output > .copy-btn")).toHaveCount(1);
+    });
+  });
 });
 
 // A long "plan, then ask" reply: the question room. The stage's cap rises
