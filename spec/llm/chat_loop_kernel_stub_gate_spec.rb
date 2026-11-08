@@ -16,7 +16,7 @@ module ChatLoopStubGate
   MEMBERS = %w[client llm_context_view apply_llm_context! turn_settings reprefilled_tokens hooks tools].freeze
 
   # The stubs still meant, per member: ChatLoop still asks the kernel.
-  ALLOWED = { "client" => 8, "llm_context_view" => 2, "hooks" => 6, "tools" => 2 }.freeze
+  ALLOWED = { "client" => 8, "hooks" => 6, "tools" => 2 }.freeze
 
   STUB = /(?:allow|expect)\((\w*kernel\w*)\)\.to\s+receive\(:(#{MEMBERS.map { |m| Regexp.escape(m) }.join("|")})\)/
   STUBS = /(?:allow|expect)\((\w*kernel\w*)\)\.to\s+receive_messages\(([^)]*)\)/

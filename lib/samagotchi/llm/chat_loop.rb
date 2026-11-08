@@ -28,6 +28,8 @@ require_relative "../tool_declarations"
 require_relative "../tools/tool_surface"
 require_relative "../tool_loads"
 require_relative "../vision_context"
+require_relative "../llm_context_apply"
+require_relative "../llm_context_view"
 require_relative "../log"
 require_relative "../empty_answer_retry"
 require_relative "../steer"
@@ -179,13 +181,13 @@ module Samagotchi
       # KernelLoop#reprefilled_tokens, the kernel's request history.
       def reprefilled_tokens(model, **) = @kernel.reprefilled_tokens(model, **)
 
-      # The kernel's LLMContextView under the turn's strategy.
-      def llm_context_view = @kernel.llm_context_view(llm_context)
+      # The LLMContextView under the turn's strategy (LLMContextView.for).
+      def llm_context_view = LLMContextView.for(llm_context)
 
       # The strategy's own edits before a request and at turn end
-      # (KernelLoop#apply_llm_context!), under the turn's strategy.
+      # (LLMContextApply.apply!), under the turn's strategy and model name.
       def apply_llm_context!(conversation, **)
-        @kernel.apply_llm_context!(conversation, llm_context, model: settings&.model_name, **)
+        LLMContextApply.apply!(conversation, llm_context, model: settings&.model_name, **)
       end
 
       # The running turn, for forget_outputs (KernelLoop#llm_context_turn).

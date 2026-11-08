@@ -984,14 +984,10 @@ module Samagotchi
     WARMUP_CUT = "chi-warmup-cut"
     private_constant :WARMUP_CUT
 
-    # What both loops send of the conversation (LLMContextView), under the
-    # turn's strategy (TurnSettings#llm_context, none without one), or the
-    # one given (the warm-up's, the next turn's): the prompt, the warm-up
-    # and the chat messages all format through it, so the warm-up warms
-    # the prompt the next turn sends.
-    def llm_context_view(llm_context = turn_settings&.llm_context)
-      LLMContextView.new(strategy: llm_context&.strategy || LLMContextView::NONE)
-    end
+    # What the native prompt and the warm-up send of the conversation
+    # (LLMContextView.for), under the turn's strategy or the one given (the
+    # warm-up's, the next turn's).
+    def llm_context_view(llm_context = turn_settings&.llm_context) = LLMContextView.for(llm_context)
 
     # The model's forget_outputs call (LLMContextForget) on the running
     # turn (the loop's llm_context_turn), under +context+'s strategy (the
@@ -1021,56 +1017,13 @@ module Samagotchi
     end
     private :pinned_ids
 
-    # Before each request of both loops (+moment+ :request; the warm-up
-    # too, on its own copy, as the next turn's first request) and at the
-    # end of a turn the model answered (:turn_end): the strategy's layers
-    # stage their edits on +conversation+ and the apply rule
-    # (LLMContextApply, llm_context.apply) saves the batch it lets through
-    # as applied, so the request about to be sent (or the next turn's
-    # first, and the warm-up) is the first with the stubs. +context+: the
-    # turn's ContextStatus (payoff applies in its top bucket; an applied
-    # batch rebases its estimate, ContextStatus#edited!). none changes
-    # nothing. Logged as llm_context_apply when a batch is applied, and
-    # shown to the user as a ✂ row (+emit+ takes the :llm_context_edited
-    # event, LLMContextNotice; the warm-up's own copy has none).
+    # The strategy's edits on +conversation+ (LLMContextApply.apply!), under
+    # the turn's strategy and model name by default: the native run's
+    # requests and turn end, the warm-up's copy, a forget_outputs call.
     # @return [LLMContextApply::Outcome]
-    # +model+: the run's model name, in the log line (the chat loop's own).
-    def apply_llm_context!(conversation, llm_context = turn_settings&.llm_context, moment: :request, context: nil,
-                           warmup: false, emit: nil, model: turn_settings&.model_name)
-      view = llm_context_view(llm_context)
-      return LLMContextApply::Outcome.none if view.none?
-
-      outcome = LLMContextApply.run!(conversation, layers: view.layers, rule: llm_context.apply, moment: moment,
-                                                   protect_steps: llm_context.protect_steps,
-                                                   top_bucket: context&.top_bucket? || false,
-                                                   changes: llm_context.stale_edits)
-      if outcome.applied?
-        # The prompt just shrank: the context estimate counts from it.
-        context&.edited!
-        unless warmup
-          log_llm_context(outcome, llm_context, moment, model)
-          emit_llm_context(emit, conversation, outcome, moment) if emit
-        end
-      end
-      outcome
+    def apply_llm_context!(conversation, llm_context = turn_settings&.llm_context, model: turn_settings&.model_name, **)
+      LLMContextApply.apply!(conversation, llm_context, model: model, **)
     end
-
-    def log_llm_context(outcome, llm_context, moment, model)
-      Log.info(:model, "llm_context_apply", rule: llm_context.apply, at: moment, why: outcome.why,
-                                            applied: outcome.applied.size, ids: outcome.applied.map(&:id).join(","),
-                                            staged: outcome.staged, freed: (outcome.freed_chars / TokenUsage::CHARS_PER_TOKEN).ceil,
-                                            tail: (outcome.tail_chars / TokenUsage::CHARS_PER_TOKEN).ceil,
-                                            model: model)
-    end
-    private :log_llm_context
-
-    # The batch's ✂ row; a row that can't be built never breaks the turn.
-    def emit_llm_context(emit, conversation, outcome, moment)
-      emit.call(LLMContextNotice.event(conversation, outcome, moment: moment))
-    rescue StandardError => e
-      Log.warn(:model, "llm_context_notice_failed", error: e.class.name, message: e.message)
-    end
-    private :emit_llm_context
 
     # A request's re-prefilled tokens, for both loops: of the prompt the
     # last request on +model+ through this client (the host) sent (this

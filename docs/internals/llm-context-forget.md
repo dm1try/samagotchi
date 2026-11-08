@@ -29,7 +29,7 @@ lets the model forget its own tool outputs. The pieces:
   those steps, counted with the forget's own: `protect_steps + 1`) unless the forget keeps lines of it; a keep
   outside the output's lines, of a preview, or holding all of it; an output of `SMALL` (80) chars or less; an output
   with an edit already; an unknown id. What passes is saved as a staged `LLMContextEdit` of kind `:forget` (`by:
-  "model"`, the note, `keep`), and the apply rule runs at once as at a request (`KernelLoop#apply_llm_context!`), so
+  "model"`, the note, `keep`), and the apply rule runs at once as at a request (`LLMContextApply.apply!`, through `KernelLoop#apply_llm_context!`), so
   the result can say whether the batch goes with the next request or waits for the turn's end. `LLMContextApply`'s
   protect_steps hold covers stale's stubs only: a forget was checked when it was made.
 - **Restore** takes the forget off the entry (`LLMContextEdit.remove`, a new edits Hash); the next request sends the
@@ -38,8 +38,13 @@ lets the model forget its own tool outputs. The pieces:
 - **Which edits are sent** is one predicate, `LLMContextView#sends?(edit)`: applied, and its kind one of the view's
   layers or `:drop`. The view stubs by it and `WorkingSet` decides "still sent" by it. The view's layers are
   `LLMContextStrategy::LAYERS` (`stale`, `forget`), the strategy's words, not `LLMContextEdit::KINDS`: whatever a
-  caller passes as the strategy, an edit kind no strategy names never becomes a layer that `apply_llm_context!` would
-  hand to `LLMContextApply.run!`. Under none the view has no layers and, unless an entry holds a drop
+  caller passes as the strategy, an edit kind no strategy names never becomes a layer that `LLMContextApply.apply!` would
+  hand to `LLMContextApply.run!`. Both loops build their view with `LLMContextView.for(llm_context)` (the turn's
+  strategy, none without one) and apply with `LLMContextApply.apply!(conversation, llm_context, moment:, context:,
+  warmup:, emit:, model:)`, module functions that hold no loop state: the run, its `llm_context_apply` log line (with
+  the run's model) and its ✂ row (`LLMContextNotice`; none for the warm-up's copy). `KernelLoop#llm_context_view` and
+  `#apply_llm_context!` are one-line defaults over them (the native run's settings), `ChatLoop`'s the same over its
+  turn's. Under none the view has no layers and, unless an entry holds a drop
   (`LLMContextEdit.drop_on?`, one scan), `#messages` returns the Array it was given.
 - **The user's layer, always on**: an edit of kind `:drop` (`by: "user"`, the working set's drop:
   [working-set.md](working-set.md#steering-drop-and-undrop)) is sent under every strategy, none included, as

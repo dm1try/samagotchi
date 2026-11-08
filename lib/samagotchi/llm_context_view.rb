@@ -73,6 +73,15 @@ module Samagotchi
       end
     end
 
+    # The view under +llm_context+'s strategy (LLMContextStrategy::Resolved,
+    # a turn's TurnSettings#llm_context), none without one: what both loops
+    # format the conversation through, so the warm-up warms the prompt the
+    # next turn sends.
+    # @return [LLMContextView]
+    def self.for(llm_context)
+      new(strategy: llm_context&.strategy || NONE)
+    end
+
     # @param strategy [Symbol, Array<Symbol>] :none, or the layers
     def initialize(strategy: NONE)
       @layers = strategy == NONE ? [] : Array(strategy).map(&:to_sym) & LAYERS

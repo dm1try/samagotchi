@@ -17,12 +17,10 @@ module ChatLoopKernelReach
   # "Callee(@kernel)" for the kernel as an argument, "KernelLoop.name" /
   # "KernelLoop::Name" for a constant, "require kernel_loop".
   REACH = [
-    "@kernel.apply_llm_context!",
     "@kernel.client",
     "@kernel.guard_generation",
     "@kernel.hooks",
     "@kernel.llm_context_turn=",
-    "@kernel.llm_context_view",
     "@kernel.reprefilled_tokens",
     "@kernel.respond_to?",
     "@kernel.strip_model_thought",

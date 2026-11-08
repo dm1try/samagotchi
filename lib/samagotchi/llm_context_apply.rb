@@ -4,8 +4,14 @@ require "time"
 require_relative "llm_context_edit"
 require_relative "llm_context_stale"
 require_relative "llm_context_view"
+require_relative "log"
+require_relative "token_usage"
 
 module Samagotchi
+  # The ✂ row's builder (#apply!), loaded on first use: the test kit loads
+  # this file (through the strategy) and never emits a row.
+  autoload :LLMContextNotice, File.expand_path("llm_context_notice", __dir__)
+
   # When a layer's edits reach the prompt: the apply rule
   # (llm_context.apply, LLMContextStrategy). Every edit breaks the prompt
   # cache from the earliest entry it changes, so the edits due at one point
@@ -58,6 +64,53 @@ module Samagotchi
     end
 
     module_function
+
+    # Before each request of both loops (+moment+ :request; the warm-up
+    # too, on its own copy, as the next turn's first request) and at the
+    # end of a turn the model answered (:turn_end): +llm_context+'s layers
+    # (LLMContextStrategy::Resolved, the turn's) stage their edits on
+    # +conversation+ and its apply rule (#run!) saves the batch it lets
+    # through as applied, so the request about to be sent (or the next
+    # turn's first, and the warm-up) is the first with the stubs.
+    # +context+: the turn's ContextStatus (payoff applies in its top bucket;
+    # an applied batch rebases its estimate, ContextStatus#edited!). none
+    # changes nothing. Logged as llm_context_apply when a batch is applied
+    # (+model+: the run's model name, in the line), and shown to the user as
+    # a ✂ row (+emit+ takes the :llm_context_edited event, LLMContextNotice;
+    # the warm-up's own copy, +warmup+, has neither).
+    # @return [Outcome]
+    def apply!(conversation, llm_context, moment: :request, context: nil, warmup: false, emit: nil, model: nil)
+      view = LLMContextView.for(llm_context)
+      return Outcome.none if view.none?
+
+      outcome = run!(conversation, layers: view.layers, rule: llm_context.apply, moment: moment,
+                                   protect_steps: llm_context.protect_steps, top_bucket: context&.top_bucket? || false,
+                                   changes: llm_context.stale_edits)
+      if outcome.applied?
+        # The prompt just shrank: the context estimate counts from it.
+        context&.edited!
+        unless warmup
+          log_applied(outcome, llm_context, moment, model)
+          emit_applied(emit, conversation, outcome, moment) if emit
+        end
+      end
+      outcome
+    end
+
+    def log_applied(outcome, llm_context, moment, model)
+      Log.info(:model, "llm_context_apply", rule: llm_context.apply, at: moment, why: outcome.why,
+                                            applied: outcome.applied.size, ids: outcome.applied.map(&:id).join(","),
+                                            staged: outcome.staged, freed: (outcome.freed_chars / TokenUsage::CHARS_PER_TOKEN).ceil,
+                                            tail: (outcome.tail_chars / TokenUsage::CHARS_PER_TOKEN).ceil,
+                                            model: model)
+    end
+
+    # The batch's ✂ row; a row that can't be built never breaks the turn.
+    def emit_applied(emit, conversation, outcome, moment)
+      emit.call(LLMContextNotice.event(conversation, outcome, moment: moment))
+    rescue StandardError => e
+      Log.warn(:model, "llm_context_notice_failed", error: e.class.name, message: e.message)
+    end
 
     # Stages what +layers+ find on +conversation+ and applies what +rule+
     # lets through at +moment+.
@@ -160,6 +213,6 @@ module Samagotchi
       end
     end
 
-    private_class_method :stage, :choose, :measure, :saved_staged
+    private_class_method :stage, :choose, :measure, :saved_staged, :log_applied, :emit_applied
   end
 end
