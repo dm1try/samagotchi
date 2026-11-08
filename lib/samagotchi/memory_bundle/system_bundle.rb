@@ -2,6 +2,7 @@
 
 require "fileutils"
 require_relative "installer"
+require_relative "file_digest"
 require_relative "provenance"
 require_relative "manifest"
 require_relative "index_updater"
@@ -206,7 +207,8 @@ module Samagotchi
       # text, so no other file is merged here (Remerge has its guard), and a live
       # session's guardrails, plugin and scripts stay where they are. Which
       # missing file is put back is its RESTORE row (FileActions): one the
-      # record doesn't own too.
+      # record doesn't own too. A put-back file is checked against the
+      # manifest's files: sha, as an installed one is (a bad copy warns).
       def verify_files_present(gem_manifest, version, dry_run)
         target_dir = MemoryPaths.system_dir
         missing = MemoryFiles.select(GEM_BUNDLE_DIR, gem_manifest).reject { |key| File.exist?(File.join(target_dir, key)) }
@@ -214,7 +216,7 @@ module Samagotchi
         return result(:up_to_date, from: version, to: version) if missing.empty?
         return result(:restored, from: version, to: version) if dry_run
 
-        warnings = missing.filter_map { |key| restore_file(key, gem_manifest.file_descriptions[key]) }
+        warnings = missing.flat_map { |key| restore_file(key, gem_manifest) }
         result(:restored, from: version, to: version, warnings: warnings)
       end
 
@@ -228,18 +230,21 @@ module Samagotchi
         end
       end
 
-      # @return [String, nil] a warning: the file is in place, its index line isn't
-      def restore_file(key, description)
+      # @return [Array<String>] warnings: its bytes don't match the manifest's
+      #   sha, or the file is in place and its index line isn't
+      def restore_file(key, gem_manifest)
         source = File.join(GEM_BUNDLE_DIR, key)
         target = File.join(MemoryPaths.system_dir, key)
+        description = gem_manifest.file_descriptions[key]
         FileUtils.cp(source, target)
         Provenance.new(name: BUNDLE_NAME).record_restored(key, source, description: description)
+        warnings = [FileDigest.mismatch(key, target, gem_manifest.checksum_for(key))].compact
         begin
           IndexUpdater.update_index(SCOPE, key.delete_suffix(".md"), File.size(target), description, source: BUNDLE_NAME)
-          nil
         rescue StandardError => e
-          "index.md: line for #{key.delete_suffix(".md")} not updated (#{e.message})"
+          warnings << "index.md: line for #{key.delete_suffix(".md")} not updated (#{e.message})"
         end
+        warnings
       end
 
       # An up-to-date bundle's marked files, retried. No marks: nothing is read.

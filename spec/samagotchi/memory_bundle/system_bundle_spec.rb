@@ -348,6 +348,21 @@ RSpec.describe Samagotchi::MemoryBundle::SystemBundle do
         expect(described_class.sync.status).to eq(:restored)
         expect(installed_identity).to eq("old\n")
       end
+
+      it "checks a restored file against the manifest's sha, as an installed one" do
+        ship("0.1.6", "old\n")
+        described_class.sync
+        File.delete(File.join(Samagotchi::MemoryPaths.system_dir, "identity.md"))
+        Samagotchi::MemoryBundle::Manifest.write(dir: described_class::GEM_BUNDLE_DIR, name: described_class::BUNDLE_NAME,
+                                                 version: "0.1.6", scope: "system",
+                                                 files: { "identity.md" => { "sha256" => "sha256:#{"0" * 64}" } })
+
+        expect(described_class.sync).to have_attributes(
+          status: :restored,
+          warnings: ["Checksum mismatch for identity.md: expected 00000000..., got #{Digest::SHA256.hexdigest("old\n")[0..7]}..."]
+        )
+        expect(installed_identity).to eq("old\n")
+      end
     end
 
     describe "a record an older chi wrote, without the kept manifest" do

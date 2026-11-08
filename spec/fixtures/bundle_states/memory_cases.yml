@@ -28,9 +28,10 @@
 #               the case's start was lifted from (it stays in its file)
 #   fixed / divergent  a probe the batch fixed (D1..D3), or cells that look
 #               wrong today (one tag or a list): U4 (the plan's),
-#               dry-trash, restore-unchecked; note says which
+#               dry-trash; note says which
 #   changed     a divergent tag whose cells a later commit changed (dry-noop:
-#               P1.9, edited-rule, D4: P1.10, U4, U7); note says how
+#               P1.9, edited-rule, D4: P1.10, U4, U7,
+#               restore-unchecked); note says how
 #   note        why, for a tagged case
 #
 # Texts are named by their three lines; one letter's change is one line's.
@@ -547,8 +548,8 @@ cases:
   # The integrity check: a written file's manifest sha is wrong, or absent.
   - id: missing_wrong_sha
     kind: missing
-    divergent: restore-unchecked
-    note: "restore (SystemBundle.sync) puts the file back with no checksum warning; install and upgrade warn"
+    changed: restore-unchecked
+    note: "restore (SystemBundle.sync) put the file back with no checksum warning, where install and upgrade warn; it warns too since restore-unchecked"
     base: abc
     disk: null
     incoming: abC

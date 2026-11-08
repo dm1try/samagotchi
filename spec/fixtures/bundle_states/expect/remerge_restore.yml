@@ -361,7 +361,7 @@ source_moved_marked:
 missing_wrong_sha:
   remerge: {do: none, save_first: false, next_base: old, checksum: old, mark: none, word: null, label: "missing,no-index", warns: []}
   remerge_dry: {do: none, save_first: false, next_base: old, checksum: old, mark: none, word: null, label: "missing,no-index", warns: []}
-  restore: {do: restored, save_first: false, next_base: disk, checksum: disk, mark: none, word: restored, label: ok, warns: []}
+  restore: {do: restored, save_first: false, next_base: disk, checksum: disk, mark: none, word: restored, label: ok, warns: ["Checksum mismatch for a.md: expected 543df89f..., got a8f17a2f..."]}
 pristine_wrong_sha:
   remerge: {do: kept, save_first: false, next_base: old, checksum: old, mark: none, word: null, label: ok, warns: []}
   remerge_dry: {do: kept, save_first: false, next_base: old, checksum: old, mark: none, word: null, label: ok, warns: []}
