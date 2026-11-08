@@ -391,7 +391,7 @@ You are Chi (pronounced "chee"), the friendly name for the Samagotchi assistant 
         },
         "cwd": {
           "type": "string",
-          "description": "The new child's working folder: a worktree or subfolder of this session's repository (create a worktree with execute `git worktree add ../<repo>-<name> -b <branch>` first). Default: this session's folder"
+          "description": "The new child's working folder: a worktree or subfolder of this session's project (a repository, or a `chi project init` folder; create a worktree with execute `git worktree add ../<repo>-<name> -b <branch>` first). Default: this session's folder"
         },
         "toolkit": {
           "type": "string",
@@ -538,7 +538,7 @@ Editing workflow:
   6. Use write for full-file rewrites or creating new files.
 
 Memory convention:
-  Project scope: one folder per git repository, shared by its worktrees and subdirectories (its path is on the "Project memories folder" line below)
+  Project scope: one folder per project (a git repository, shared by its worktrees and subdirectories, or a folder marked by `chi project init` and its subfolders; its path is on the "Project memories folder" line below)
   System scope:  ~/.config/samagotchi/memories/ (cross-project)
   memory_read accepts optional scope (project|system).
   memory_write requires explicit scope and entry name.

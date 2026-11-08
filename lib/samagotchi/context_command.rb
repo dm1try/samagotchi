@@ -409,17 +409,19 @@ module Samagotchi
     end
 
     # A project's sources: local only (SessionAccess::Contract), this
-    # machine's checkout.
+    # machine's checkout or marked folder.
     def project_target
-      unless MemoryPaths.in_repo?(@cwd)
-        error_line("#{command_name}: --project needs a git repository, and #{@cwd} is in none")
+      found = MemoryPaths.lookup(@cwd)
+      unless found.project?
+        error_line("#{command_name}: --project needs a project (a git repository, or a folder marked with " \
+                   "`chi project init`), and #{@cwd} is in none")
         return nil
       end
 
-      root = MemoryPaths.project_root(@cwd)
+      root = found.root
       # Its sources run in the root, or in this checkout when the root is a
       # git dir (ContextSources.project_cwd).
-      Target.new(session_id: nil, project_root: root, cwd: MemoryPaths.work_tree_root(@cwd) || @cwd,
+      Target.new(session_id: nil, project_root: root, cwd: found.top || @cwd,
                  label: "project #{File.basename(root)}")
     end
 

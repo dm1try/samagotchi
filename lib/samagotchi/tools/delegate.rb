@@ -281,9 +281,10 @@ module Samagotchi
       private_class_method :unknown_toolkit
 
       # The new child's folder: the parent's, or +cwd+ (relative to the
-      # parent's) when it is a folder of the parent's repository, in any of
-      # its worktrees (one project_root, from the common git dir). Outside
-      # git only a subfolder of the parent's folder. Nothing is created
+      # parent's) when it is a folder of the parent's project: in any of its
+      # repository's worktrees (one project_root, from the common git dir), or
+      # in its marked folder. Outside both only a subfolder of the parent's
+      # folder. Nothing is created
       # here: the model makes a worktree with execute, where guardrails see it.
       # @return [String] an absolute folder, or an Error: line
       def self.child_cwd(cwd, parent)
@@ -294,8 +295,8 @@ module Samagotchi
         return "Error: cwd #{folder} is not a folder (create the worktree first)" unless File.directory?(folder)
 
         folder = File.realpath(folder)
-        unless same_repository?(folder, base)
-          return "Error: cwd must be a folder of this session's repository (a worktree or subfolder of it), not #{folder}"
+        unless same_project?(folder, base)
+          return "Error: cwd must be a folder of this session's project (a worktree or subfolder of it), not #{folder}"
         end
         if MemoryPaths.in_repo?(base) && !work_tree?(folder)
           return "Error: cwd #{folder} is not in a work tree of this session's repository (a git dir, or a bare " \
@@ -327,8 +328,11 @@ module Samagotchi
       def self.within?(path, dir) = path == dir || path.start_with?("#{dir}/")
       private_class_method :within?
 
-      def self.same_repository?(folder, base)
-        if MemoryPaths.in_repo?(base)
+      # One project (a git repository or a marked folder): the same project
+      # root, so a nested repository or marked project is another one. A base
+      # in no project: a subfolder of it.
+      def self.same_project?(folder, base)
+        if MemoryPaths.in_project?(base)
           MemoryPaths.project_root(folder) == MemoryPaths.project_root(base)
         else
           within?(folder, File.realpath(base))
@@ -336,7 +340,7 @@ module Samagotchi
       rescue SystemCallError
         false
       end
-      private_class_method :same_repository?
+      private_class_method :same_project?
 
       # @return [String] the child's id, or an Error: line
       def self.follow_up(task, session:, parent:, state_dir:)

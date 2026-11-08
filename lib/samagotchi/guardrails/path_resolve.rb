@@ -153,6 +153,17 @@ module Samagotchi
         (low == low_dir || low.start_with?(File.join(low_dir, ""))) && folds_case?(dir)
       end
 
+      # Whether +root+ is the home folder or a folder above it (symlinks
+      # resolved on both; false for a blank one). ReviewPaths (a participant
+      # turn's project) and MemoryPaths (where a chi project marker is
+      # ignored) ask this.
+      # @param root [String, nil] @param home [String, nil]
+      def home_root?(root, home)
+        return false if home.to_s.empty? || root.to_s.empty?
+
+        under?(real(home.to_s), real(root.to_s))
+      end
+
       # Whether +path+ is in +dir+, not +dir+ itself (.under?'s terms).
       def strictly_under?(path, dir, fold: true)
         return true if path.start_with?(File.join(dir, ""))

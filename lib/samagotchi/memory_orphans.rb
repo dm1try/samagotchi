@@ -19,14 +19,14 @@ module Samagotchi
 
     module_function
 
-    # The orphan candidates for +cwd+'s project, or nil: only inside a git
-    # repository (outside one the root is cwd, and every src/ or tmp/ would
-    # match), and only while the computed folder holds no *.md (a
+    # The orphan candidates for +cwd+'s project, or nil: only inside a
+    # project, a git repository or a marked folder (outside both the root is
+    # cwd, and every src/ or tmp/ would match), and only while the computed folder holds no *.md (a
     # memory_write's mkdir_p or a project-scope bundle install alone must
     # not silence it).
     # @return [Found, nil]
     def find(env: ENV, cwd: Dir.pwd)
-      return nil unless MemoryPaths.in_repo?(cwd)
+      return nil unless MemoryPaths.in_project?(cwd)
 
       projects = MemoryPaths.projects_dir(env: env)
       computed = MemoryPaths.project_dir(env: env, cwd: cwd)

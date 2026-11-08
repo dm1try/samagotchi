@@ -198,7 +198,9 @@ RSpec.describe Samagotchi::Engine do
 
     it "points the memory convention at the shown folder instead of a path pattern" do
       prompt = project_prompt_in(repo)
-      expect(prompt).to include("Project scope: one folder per git repository, shared by its worktrees and subdirectories (its path is on the \"Project memories folder\" line below)")
+      expect(prompt).to include("Project scope: one folder per project (a git repository, shared by its worktrees and " \
+                                "subdirectories, or a folder marked by `chi project init` and its subfolders; its path " \
+                                "is on the \"Project memories folder\" line below)")
       expect(prompt).not_to include("<name>_<hash>")
     end
   end

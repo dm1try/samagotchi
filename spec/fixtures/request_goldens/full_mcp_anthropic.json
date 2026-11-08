@@ -497,7 +497,7 @@
             },
             "cwd": {
               "type": "string",
-              "description": "The new child's working folder: a worktree or subfolder of this session's repository (create a worktree with execute `git worktree add ../<repo>-<name> -b <branch>` first). Default: this session's folder"
+              "description": "The new child's working folder: a worktree or subfolder of this session's project (a repository, or a `chi project init` folder; create a worktree with execute `git worktree add ../<repo>-<name> -b <branch>` first). Default: this session's folder"
             },
             "toolkit": {
               "type": "string",

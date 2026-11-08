@@ -19,9 +19,10 @@ module Samagotchi
     module_function
 
     # The AGENTS.md files a session in +cwd+ loads, as absolute paths,
-    # outermost first: inside a git work tree every one from its top (a
-    # linked worktree's own checkout) down to the cwd; outside a repository
-    # only the cwd's ([] with none).
+    # outermost first: inside a project every one from its top
+    # (MemoryPaths.project_top: a git work tree's, a linked worktree's own
+    # checkout, or a folder marked by `chi project init`) down to the cwd;
+    # outside a project only the cwd's ([] with none).
     # @param cwd [String] where the prompt is built (Dir.pwd, not the
     #   session's working directory: /tmp vs /private/tmp would change the
     #   prompt bytes)
@@ -33,10 +34,10 @@ module Samagotchi
     # The sections of the AGENTS.md chain (#agents_paths) with text: the
     # first keeps the plain header (a one-file session's prompt is as it
     # always was), each further one names its directory relative to the
-    # work tree top ("Project specific description for pkg/:").
+    # project's top ("Project specific description for pkg/:").
     # @return [Array<Section>]
     def agents_sections(cwd)
-      top = MemoryPaths.work_tree_root(cwd)
+      top = MemoryPaths.project_top(cwd)
       sections = []
       agents_paths(cwd).each do |path|
         dir = File.dirname(path)
@@ -47,10 +48,12 @@ module Samagotchi
       sections
     end
 
-    # The directories whose AGENTS.md a session in +cwd+ reads, outermost first.
+    # The directories whose AGENTS.md a session in +cwd+ reads, outermost
+    # first: from its project's top (the work tree's, or the marked root)
+    # down to +cwd+.
     def chain_dirs(cwd)
       cwd = File.expand_path(cwd)
-      top = MemoryPaths.work_tree_root(cwd)
+      top = MemoryPaths.project_top(cwd)
       return [cwd] unless top
 
       rel = relative_dir(cwd, top)

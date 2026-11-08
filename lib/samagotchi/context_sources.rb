@@ -658,13 +658,15 @@ module Samagotchi
     end
 
     # Where a project's source runs: the project root when it is a checkout
-    # (its .git is there), else +fallback+ (the session's folder): a bare
+    # (its .git is there) or a marked folder (MemoryPaths::MARKER), else
+    # +fallback+ (the session's folder): a bare
     # repo, proj/.bare or --separate-git-dir makes the root the git dir
     # itself (MemoryPaths.project_root), and a command run there sees no
     # files.
     def project_cwd(project_root, fallback)
       root = project_root.to_s
-      !root.empty? && File.exist?(File.join(root, ".git")) ? root : fallback
+      checkout = !root.empty? && [".git", MemoryPaths::MARKER].any? { |name| File.exist?(File.join(root, name)) }
+      checkout ? root : fallback
     end
 
     # A deleted session's sources, snapshots, subscriptions and markers.

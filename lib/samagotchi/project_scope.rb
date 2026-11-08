@@ -4,9 +4,10 @@ require_relative "memory_paths"
 
 module Samagotchi
   # Which project a folder belongs to, for scoping session lists (web and
-  # terminal alike): the project root memories use (MemoryPaths.project_root),
-  # so every worktree and subfolder of one repository is one project. A
-  # folder in no git repository has no project (nil): its scope is "all".
+  # terminal alike): the project root memories use (MemoryPaths.lookup), so
+  # every worktree and subfolder of one repository, or every subfolder of a
+  # folder marked by `chi project init`, is one project. A folder in neither
+  # has no project (nil): its scope is "all".
   module ProjectScope
     module_function
 
@@ -17,7 +18,8 @@ module Samagotchi
       return nil if dir.empty?
       return cache[dir] if cache&.key?(dir)
 
-      root = MemoryPaths.in_repo?(dir) ? MemoryPaths.project_root(File.expand_path(dir)) : nil
+      found = MemoryPaths.lookup(File.expand_path(dir))
+      root = found.project? ? found.root : nil
       cache[dir] = root if cache
       root
     end

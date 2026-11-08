@@ -3,11 +3,38 @@
 Samagotchi stores memories in two scopes:
 
 - Project scope: `$XDG_CONFIG_HOME/samagotchi/memories/projects/<name>_<hash>/`, one folder per
-  git repository (named and hashed by its root), shared by all its worktrees and
-  subdirectories; outside a repository, one per working directory
+  project (named and hashed by its root): a git repository, shared by all its worktrees and
+  subdirectories, or a folder marked by `chi project init` and its subfolders; outside both, one
+  per working directory
 - System scope: `$XDG_CONFIG_HOME/samagotchi/memories`
 
 `$XDG_CONFIG_HOME` falls back to `~/.config` when unset.
+
+## Projects without git
+
+A folder in no git repository becomes a project with `chi project init [DIR]` (see
+[cli.md](cli.md#commands)): it writes `DIR/.chi/project.yml` (one comment line; the file, not a bare
+`.chi/` dir, is the marker), and DIR and every subfolder share one project memories folder, group their
+sessions (`chi sessions list`, the web's project picker) and take `chi context --project`. Nothing
+chi-specific has to be committed anywhere: a repository never needs the file.
+
+- **Git wins.** chi looks up a folder's `.git` first; only when there is none does it look for the
+  nearest marker above it, so a marker inside a repository is ignored (`chi project` says so) and a
+  marked folder inside another is a project of its own, as nested repositories are. A dotfiles repository
+  at `~` puts every folder under home in that repository, so markers there never apply.
+- **Not at home.** A marker in `$HOME`, in a folder above it, or in `/` is ignored (`chi project init`
+  refuses them), so a marker in `~` never makes every folder under home one project.
+- **The key.** The marked root is the folder's real path (as git's root is), so a folder chi already ran
+  in at its top keeps its memories after `init`, and a later `git init` in the same folder keeps the same
+  key. Memories saved from a *subfolder* before `init` stay in that subfolder's own folder: move them by
+  hand if you want them in the project's.
+- **Restart what runs there.** A session running in the folder when it is marked keeps the old memories
+  folder and AGENTS.md chain in its prompt until `chi sessions restart ID` (init names them); a running
+  `chi web` groups the folder's older sessions under the project after its restart.
+- **Git-only features stay off in a marked project**: guardrails' outside-the-repo rule, the participant
+  boundaries, a plugin's `ctx.repo_root` (and the bundles using it: nested AGENTS.md, slow-commands,
+  known-names), `chi home doctor`'s project checks and delegate's work-tree check measure from a git
+  checkout only.
 
 Tool behavior:
 
@@ -28,7 +55,7 @@ memories copied to a machine (or a path) where the repository lives elsewhere si
 longer reads. Rename the folder to the new key, or move memories with a bundle zip (see
 [What a bundle owns](#what-a-bundle-owns)).
 
-Inside a git repository, when this project's folder is missing or holds no `*.md` while the projects
+Inside a project (a git repository or a marked folder), when this project's folder is missing or holds no `*.md` while the projects
 dir has a folder of the same basename with another hash, chi says so, naming both folders and the
 `mv` that fixes it (a name match can't prove it's the same project, so nothing is renamed for you):
 

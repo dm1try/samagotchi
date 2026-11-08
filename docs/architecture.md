@@ -51,7 +51,7 @@ A compact visual overview of the current architecture, then the core API in pros
         ▼
   ┌──────────────────────────────────────────────────────────────────────────────────┐
   │                                   Persistence                                    │
-  │   Project:  ~/.config/samagotchi/memories/projects/<repo>_<hash>/ (per git repo) │
+  │   Project:  ~/.config/samagotchi/memories/projects/<repo>_<hash>/ (per project)  │
   │   System:   ~/.config/samagotchi/memories/                                       │
   └──────────────────────────────────────────────────────────────────────────────────┘
 ```
@@ -420,7 +420,7 @@ project (the list, the events stream and a new chat follow it), `?scope=all` eve
 `data-scope-dir`, which the page reads when the URL has no `?dir`), else every session. The page never
 redirects, so the `?token=` trade's 303, a link code's `#code=` and the Home Screen app's `start_url` `/`
 all land on the start project; a push opens its session's own project (`/?dir=<root>#/s/<id>`, or
-`/?scope=all#/s/<id>` outside a repo). `?dir=` beats `?scope=all`. A session created
+`/?scope=all#/s/<id>` outside a project: no repository or marked folder). `?dir=` beats `?scope=all`. A session created
 without a folder starts in the start folder.
 Files stay the source of truth and workers don't know the hub. Its watcher is a 1 s tick that
 stats the sessions dir (every session writer goes tmp + rename, which bumps the dir's mtime) and
