@@ -509,8 +509,9 @@ every lookup goes through `Session.resolve!` (an id or a unique prefix), and eve
 
 A model ref (`--model`, `/model`, `default.model`, an alias's target) is parsed
 by one pure resolver, `ModelRef.parse` (host prefix, alias), given the configured
-hosts and aliases; `HostRegistry` routes a name that names no host (its model
-index after `/models`) and builds the `ModelTarget`.
+hosts and aliases; `HostRegistry` (one per process for commands and chi web:
+`HostRegistry.current`) routes a name that names no host (its model index after
+`/models`) and builds the `ModelTarget`.
 
 Engine picks the loop from the effective model's host: `EffectiveModel.of` resolves it (`HostRegistry#resolve`)
 on every read, never kept, since config.yml and a model listing can move it without a `/model`
@@ -646,7 +647,7 @@ A map of the parts the overview above doesn't name (paths under `lib/samagotchi/
 | Tool output cut | `tool_output_cut.rb` (`ToolOutputCut`), `tool_output_files.rb` (`ToolOutputFiles`) | A tool's output over `max_tool_output_chars` (a `memory_read`'s: `memory.read_max_chars`, 0 = none, plus a guard at half a known window), cut by the tool's policy; an execute's whole output saved in the session's `tool_output/` folder ([internals/tool-output-limits.md](internals/tool-output-limits.md)). |
 | Steer delivery | `steer.rb` (`Steer`), `delivery.rb` (`Delivery`), `steer_cut.rb` (`SteerCut`), `generation_phase.rb`, `waiting_steer.rb`, `steer_cut_after.rb` (`SteerCutAfter`), `cut_policy.rb` (`CutPolicy`) | A message for a running turn: at the next boundary, cutting a thinking-only generation, or queued for the turn's end ([internals/engine.md](internals/engine.md)). |
 | Prompt files | `prompt_files.rb` (`PromptFiles`) | The AGENTS.md chain (root → cwd) and the appended files the system prompt carries. |
-| Model settings | `effective_model.rb` (`EffectiveModel`, `ModelChoice`), `model_profile.rb` (`ModelProfile`), `model_settings.rb`, `sampling_settings.rb`, `model_catalog.rb` (`ModelCatalog`), `model_notes.rb` (`ModelNotes`) | The effective model's settings as one snapshot per read, a model's prompt format, its `models:` entry, its request parameters, the pickable model rows (`chi models`, `/api/models`), the notes its prompt loads. |
+| Model settings | `effective_model.rb` (`EffectiveModel`, `ModelChoice`), `model_lookup.rb` (`ModelLookup`: every layer's input), `model_profile.rb` (`ModelProfile`), `model_settings.rb`, `sampling_settings.rb`, `model_catalog.rb` (`ModelCatalog`), `model_notes.rb` (`ModelNotes`) | The effective model's settings as one snapshot per read, a model's prompt format, its `models:` entry, its request parameters, the pickable model rows (`chi models`, `/api/models`), the notes its prompt loads. |
 | Session settings | `session_setting.rb` (`SessionSetting`), `session_model_settings.rb` (`SessionModelSettings`), `level_setting_command.rb` (`/thinking`, `/reasoning-history`), `llm_context_command.rb`, `toolkit_command.rb`, `thinking_notices.rb` (`ThinkingNotices`) | A session's own llm_context, thinking, reasoning_history and toolkit: their chips (session state, `/stats`, `:command_ran`, the web), the commands that set them, the thinking level's notices. |
 | Dialects | `llm/dialect.rb` (`LLM::Dialect`) | What an `api: anthropic` provider's `/v1/messages` does differently (`dialect: fireworks`) ([internals/anthropic.md](internals/anthropic.md)). |
 | Logging | `log.rb` (`Log`), `log_subscriber.rb` (`LogSubscriber`), `log_path.rb` (`LogPath`), `log_line.rb` | The debug log: tagged records, a session's event trail, where the file goes ([configuration.md](configuration.md#debug-log-file)). |

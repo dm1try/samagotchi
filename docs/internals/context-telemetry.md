@@ -114,8 +114,8 @@ Context window lookup (`ContextWindow.resolve`, the first that answers wins; the
    chat host has no `/props`, so the chat loop and the engine skip this step for it.
 2. The host's model list (the chat adapter's `#context_window`, e.g. a provider's `context_length`; `:model_list`).
 3. The config file's `models.<key>.window_tokens` (by the model's lookup names, as sampling and vision look a model
-   up; `:model_setting`), else `hosts.<name>.window_tokens` (`:host_setting`). `ContextWindow.setting` reads it per
-   turn for the effective model, after the hooks that may switch it.
+   up; `:model_setting`), else `hosts.<name>.window_tokens` (`:host_setting`). `ContextWindow.setting(lookup)` (the
+   effective model's `ModelLookup`) reads it per turn for the effective model, after the hooks that may switch it.
 4. `context.window_tokens`: CLI, `SAMAGOTCHI_CONTEXT_WINDOW_TOKENS` or the config file (`:config` or `:env`).
 5. `ContextWindow::DEFAULT_TOKENS`, 256000 (`:default`).
 
