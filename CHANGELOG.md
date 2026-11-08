@@ -20,6 +20,7 @@ and commands may change between minor versions. How releases are made:
 - In chi web, a long tool output's hover shows the same cut live as after a reload (the first 2000 characters of a file read, the start and end of other output).
 - A turn nobody typed (a reminder, an attached context change, a finished task, a delegate report) has an id of its own, `wake-` and 16 hex digits: `chi send --wait --format json` names it as the `turn_id`, and the `--turn` hints carry it.
 - `chi send --wait -m` to a session left running by a worker that died names the message's own id as the `turn_id` in `--format json`, where it named the running turn's.
+- `chi bundle install` of a bundle already installed from a source that moved on now takes the new text of each memory you never edited, as `chi bundle upgrade` would, and records the new version; a memory you edited is still kept (`--force` or `chi bundle upgrade` brings the bundle's changes).
 
 ### Fixed
 

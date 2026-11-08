@@ -123,7 +123,7 @@ The order matters: warnings print in it, and a plugin/script the manifest names 
    (an older record's relative path) never refuses.
 3. `install_memories`, per memory (`MemoryFiles.select`: a non-empty `files:` list, else every top-level `*.md` but
    README, CHANGELOG, LICENSE and the like; a listed name not shipped warns; a symlink is skipped with a warning): an upgrade 3-way merges the files the bundle owns (`merge_memory`: a clean text merge replaces the file through `Merger.write_merged`, and a real conflict, no git or no base leaves it untouched, `note_conflict`, in `#behind`; a fast-forward over an entry this chi marked `conflict`, a file put back by hand, copies it to the trash first: `save_marked_file`), a dry run only
-   classifies (`preview_memory`, `would_merge` for a merge, git running on temp copies; both through `Merger::Upgrade`), a plain install writes new files and skips existing ones (`skip_existing`), and `--force` overwrites, a file that
+   classifies (`preview_memory`, `would_merge` for a merge, git running on temp copies; both through `Merger::Upgrade`), a plain install writes new files, takes the new text of an owned file never edited (`#edited?` false, unmarked: D4, an `Updated` as an upgrade's fast-forward) and skips the others, and `--force` overwrites, a file that
    differs copied to the trash first (`Trash#copy`, said by `#trash_copy_line`; a profile's in `InstallResult#trash_copies`). A
    same-name file the bundle didn't write is the user's: skipped and never recorded (`@owned`). Model overlays
    (`<name>.<key>.md`) get no index line (`note_overlay`).
@@ -163,7 +163,7 @@ out (`:kept_own`, a memory's dry-run `:would_skip`) as `Skipped:`. A memory's dr
 row is never `would_skip`. A plain install over a bundle already installed from the same source ends with `NAME was already
 installed from SOURCE: its hooks, rules, plugin and scripts now match it and its record was rewritten`, plus
 `; your own copies of its memories were kept (chi bundle upgrade NAME merges the bundle's changes into them)` when
-a memory was left out as the user's (`:kept_own`). An upgrade with conflicts keeps an
+a memory was left out as the user's (`:kept_own`: an edited one, or one the bundle doesn't own; a never-edited one takes the new text and isn't named there). An upgrade with conflicts keeps an
 owned source dir alive (`#source_dir`) until `#cleanup_source!`, because the conflict agent reads the incoming
 files; `BundleCommand#settle_conflicts` then runs `Provenance#resolve_conflicts`, which moves a base forward and keeps
 the entry's description, only for a file the agent step changed that holds no markers (`Merger.markers?`), and whose incoming

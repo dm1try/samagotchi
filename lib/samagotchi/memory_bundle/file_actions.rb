@@ -69,8 +69,10 @@ module Samagotchi
 
       # A plain install (a re-install over the record, or a fresh one).
       INSTALL = NOT_OWNED.merge(
-        %i[pristine none] => KEPT_OWN, %i[edited none] => KEPT_OWN, %i[diverged none] => KEPT_OWN,
-        %i[pristine_no_base none] => KEPT_OWN, %i[edited_no_base none] => KEPT_OWN,
+        # A file never edited takes the source's text, as an upgrade's
+        # fast-forward does (D4); an edited one stays (an upgrade merges it).
+        %i[pristine none] => FAST_FORWARD, %i[pristine_no_base none] => FAST_FORWARD,
+        %i[edited none] => KEPT_OWN, %i[diverged none] => KEPT_OWN, %i[edited_no_base none] => KEPT_OWN,
         # A marked file it skips has missed the bundle's change as much as before.
         %i[pristine any] => HELD, %i[edited any] => HELD, %i[diverged any] => HELD,
         %i[pristine_no_base any] => HELD, %i[edited_no_base any] => HELD,

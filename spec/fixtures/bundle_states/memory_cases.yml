@@ -27,10 +27,10 @@
 #   fix         "<tsv id> <spec file>: <example description>": the example
 #               the case's start was lifted from (it stays in its file)
 #   fixed / divergent  a probe the batch fixed (D1..D3), or cells that look
-#               wrong today (one tag or a list): D4, U4, U7 (the plan's),
+#               wrong today (one tag or a list): U4, U7 (the plan's),
 #               dry-trash, restore-unchecked; note says which
 #   changed     a divergent tag whose cells a later commit changed (dry-noop:
-#               P1.9, edited-rule); note says how
+#               P1.9, edited-rule, D4: P1.10); note says how
 #   note        why, for a tagged case
 #
 # Texts are named by their three lines; one letter's change is one line's.
@@ -102,10 +102,11 @@ cases:
     base: abc
     disk: abc
     incoming: abC
-    divergent: D4
+    changed: D4
     note: >-
-      install (and its dry run) skips a file the user never edited as "already exists", calls it "your own
-      copy", and the record's version moves on with the old text and no mark (P5; P1.10 takes the new text)
+      install (and its dry run) skipped a file the user never edited as "already exists", called it "your own
+      copy", and the record's version moved on with the old text and no mark (P5); since P1.10 it takes the new
+      text (Updated; the dry run Fast-forward)
   - id: pristine_marked
     kind: pristine
     divergent: dry-trash
@@ -224,10 +225,11 @@ cases:
     mark: legacy
   - id: pristine_no_base
     kind: pristine_no_base
-    divergent: [D4, U4]
+    divergent: U4
+    changed: D4
     note: >-
-      D4: install skips a never-edited file as already exists, "your own copy" (P5); U4: upgrade leaves it behind
-      (no recorded base) while status and uninstall call it unedited
+      D4: install skipped a never-edited file as already exists, "your own copy" (P5), and takes the new text since
+      P1.10; U4: upgrade leaves it behind (no recorded base) while status and uninstall call it unedited
     base: null
     disk: abc
     incoming: abC
@@ -457,8 +459,8 @@ cases:
     claimants: [other]
   - id: pristine_shared
     kind: pristine
-    divergent: D4
-    note: "install (and its dry run) skips a never-edited file as already exists and calls it your own copy (P5)"
+    changed: D4
+    note: "install (and its dry run) skipped a never-edited file as already exists and called it your own copy (P5); it takes the new text since P1.10"
     base: abc
     disk: abc
     incoming: abC
@@ -557,11 +559,12 @@ cases:
     disk: abc
     incoming: abC
     sha: wrong
-    divergent: [U7, D4]
+    divergent: U7
+    changed: D4
     note: >-
       U7: upgrade fast-forwards it (Updated) with no checksum warning: the integrity check skips a fast-forward, where
-      an installed file warns (missing_wrong_sha); the memory twin of restore-unchecked (P1.8). D4: install skips the
-      never-edited file as already exists, as pristine
+      an installed file warns (missing_wrong_sha); the memory twin of restore-unchecked (P1.8). D4: install skipped the
+      never-edited file as already exists, as pristine; since P1.10 it takes the new text, unchecked as an upgrade's
   - id: new_no_sha
     kind: new
     owned: false
@@ -575,8 +578,8 @@ cases:
   # A model overlay (no base memory anywhere: an orphan overlay).
   - id: overlay_pristine
     kind: pristine
-    divergent: D4
-    note: "install (and its dry run) skips a never-edited file as already exists and calls it your own copy (P5)"
+    changed: D4
+    note: "install (and its dry run) skipped a never-edited file as already exists and called it your own copy (P5); it takes the new text since P1.10"
     key: a.mx.md
     base: abc
     disk: abc

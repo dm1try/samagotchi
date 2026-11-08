@@ -207,6 +207,28 @@ RSpec.describe Samagotchi::MemoryBundle::Installer do
         expect(again.summary).to include("chi bundle upgrade test-bundle")
       end
 
+      # D4 (P5): a source that moved on gives its new text to a memory never edited.
+      it "takes a moved-on source's text for a file never edited, and keeps an edited one" do
+        bundle_dir = write_bundle(tmpdir, { "plain.md" => "# Plain\n", "mine.md" => "# Mine\n" })
+        installer_for(source: bundle_dir, name: "test-bundle", scope: "system").run
+        File.write(File.join(system_memories_dir, "mine.md"), "# Mine, edited\n")
+        write_bundle(tmpdir, { "plain.md" => "# Plain v2\n", "mine.md" => "# Mine v2\n" }, version: "2.0.0")
+
+        dry = described_class.new(source: bundle_dir, name: "test-bundle", scope: "system", strict: true, dry_run: true).tap(&:run)
+        again = installer_for(source: bundle_dir, name: "test-bundle", scope: "system").tap(&:run)
+
+        expect(dry.summary).to include("Fast-forward: plain.md").and include("Skipped: mine.md")
+        expect(again.summary).to include("Updated: plain.md").and include("Skipped: mine.md")
+        expect(again.warnings).to eq(["Skipped mine.md (already exists; #{Samagotchi::MemoryBundle::FileStanding::FORCE_TAKES})"])
+        expect(File.read(File.join(system_memories_dir, "plain.md"))).to eq("# Plain v2\n")
+        expect(File.read(File.join(system_memories_dir, "mine.md"))).to eq("# Mine, edited\n")
+        provenance = Samagotchi::MemoryBundle::Provenance.new(name: "test-bundle")
+        expect(provenance.record.version).to eq("2.0.0")
+        expect(File.read(provenance.base_path("plain.md"))).to eq("# Plain v2\n")
+        status = Samagotchi::MemoryBundle::Status.bundle_status("test-bundle")
+        expect(status.files["plain.md"]).to include(modified: false, missing: false, behind: nil)
+      end
+
       it "a dry run reports an identical file as already up to date" do
         FileUtils.mkdir_p(system_memories_dir)
         File.write(File.join(system_memories_dir, "identity.md"), "# Identity\n")

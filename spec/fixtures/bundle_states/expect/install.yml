@@ -29,9 +29,9 @@ level_legacy:
   install_force: {do: kept, save_first: false, next_base: disk, checksum: disk, mark: cleared, word: Installed, label: ok, warns: []}
   install_dry: {do: kept, save_first: false, next_base: old, checksum: old, mark: kept (legacy), word: Up to date, label: modified, warns: []}
 pristine:
-  install: {do: kept, save_first: false, next_base: old, checksum: old, mark: none, word: Skipped, label: ok, warns: ["Skipped a.md (already exists; --force takes the bundle's version, your file copied to the trash first)", "demo was already installed from <src>/v2/demo: its hooks, rules, plugin and scripts now match it and its record was rewritten; your own copies of its memories were kept (chi bundle upgrade demo merges the bundle's changes into them)"]}
+  install: {do: wrote_incoming, save_first: false, next_base: disk, checksum: disk, mark: none, word: Updated, label: ok, warns: []}
   install_force: {do: wrote_incoming, save_first: true, next_base: disk, checksum: disk, mark: none, word: Installed, label: ok, warns: ["Copied to the trash first: a.md (<home>/samagotchi/memories/.bundles/.trash/demo-<stamp>)"]}
-  install_dry: {do: kept, save_first: false, next_base: old, checksum: old, mark: none, word: Skipped, label: ok, warns: []}
+  install_dry: {do: kept, save_first: false, next_base: old, checksum: old, mark: none, word: Fast-forward, label: ok, warns: []}
 pristine_marked:
   install:
     "0.155": {do: kept, save_first: false, next_base: old, checksum: old, mark: kept, word: Skipped, label: "stays behind 1.1.0: missed 1 place (chi bundle diff demo a.md)", warns: ["Skipped a.md (already exists; --force takes the bundle's version, your file copied to the trash first)", "demo was already installed from <src>/v2/demo: its hooks, rules, plugin and scripts now match it and its record was rewritten; your own copies of its memories were kept (chi bundle upgrade demo merges the bundle's changes into them)"]}
@@ -125,9 +125,9 @@ level_no_base_legacy:
   install_force: {do: kept, save_first: false, next_base: disk, checksum: old, mark: cleared, word: Installed, label: ok, warns: []}
   install_dry: {do: kept, save_first: false, next_base: none, checksum: old, mark: kept (legacy), word: Up to date, label: ok, warns: []}
 pristine_no_base:
-  install: {do: kept, save_first: false, next_base: none, checksum: old, mark: none, word: Skipped, label: ok, warns: ["Skipped a.md (already exists; --force takes the bundle's version, your file copied to the trash first)", "demo was already installed from <src>/v2/demo: its hooks, rules, plugin and scripts now match it and its record was rewritten; your own copies of its memories were kept (chi bundle upgrade demo merges the bundle's changes into them)"]}
+  install: {do: wrote_incoming, save_first: false, next_base: disk, checksum: disk, mark: none, word: Updated, label: ok, warns: []}
   install_force: {do: wrote_incoming, save_first: true, next_base: disk, checksum: disk, mark: none, word: Installed, label: ok, warns: ["Copied to the trash first: a.md (<home>/samagotchi/memories/.bundles/.trash/demo-<stamp>)"]}
-  install_dry: {do: kept, save_first: false, next_base: none, checksum: old, mark: none, word: Skipped, label: ok, warns: []}
+  install_dry: {do: kept, save_first: false, next_base: none, checksum: old, mark: none, word: Fast-forward, label: ok, warns: []}
 pristine_no_base_marked:
   install:
     "0.155": {do: kept, save_first: false, next_base: none, checksum: old, mark: kept, word: Skipped, label: stays behind 1.1.0 (chi bundle diff demo a.md), warns: ["Skipped a.md (already exists; --force takes the bundle's version, your file copied to the trash first)", "demo was already installed from <src>/v2/demo: its hooks, rules, plugin and scripts now match it and its record was rewritten; your own copies of its memories were kept (chi bundle upgrade demo merges the bundle's changes into them)"]}
@@ -285,9 +285,9 @@ dropped_edited_shared:
   install_force: {do: kept, save_first: false, next_base: old, checksum: old, mark: none, word: null, label: modified, warns: []}
   install_dry: {do: kept, save_first: false, next_base: old, checksum: old, mark: none, word: null, label: modified, warns: []}
 pristine_shared:
-  install: {do: kept, save_first: false, next_base: old, checksum: old, mark: none, word: Skipped, label: ok, warns: ["Skipped a.md (already exists; --force takes the bundle's version, your file copied to the trash first)", "demo was already installed from <src>/v2/demo: its hooks, rules, plugin and scripts now match it and its record was rewritten; your own copies of its memories were kept (chi bundle upgrade demo merges the bundle's changes into them)"]}
+  install: {do: wrote_incoming, save_first: false, next_base: disk, checksum: disk, mark: none, word: Updated, label: ok, warns: []}
   install_force: {do: wrote_incoming, save_first: true, next_base: disk, checksum: disk, mark: none, word: Installed, label: ok, warns: ["Copied to the trash first: a.md (<home>/samagotchi/memories/.bundles/.trash/demo-<stamp>)"]}
-  install_dry: {do: kept, save_first: false, next_base: old, checksum: old, mark: none, word: Skipped, label: ok, warns: []}
+  install_dry: {do: kept, save_first: false, next_base: old, checksum: old, mark: none, word: Fast-forward, label: ok, warns: []}
 edited_shared:
   install: {do: kept, save_first: false, next_base: old, checksum: old, mark: none, word: Skipped, label: modified, warns: ["Skipped a.md (already exists; --force takes the bundle's version, your file copied to the trash first)", "demo was already installed from <src>/v2/demo: its hooks, rules, plugin and scripts now match it and its record was rewritten; your own copies of its memories were kept (chi bundle upgrade demo merges the bundle's changes into them)"]}
   install_force: {do: wrote_incoming, save_first: true, next_base: old, checksum: old, mark: none, word: Installed, label: ok, warns: ["Copied to the trash first: a.md (<home>/samagotchi/memories/.bundles/.trash/demo-<stamp>)"]}
@@ -345,14 +345,14 @@ missing_wrong_sha:
   install_force: {do: wrote_incoming, save_first: false, next_base: disk, checksum: disk, mark: none, word: Installed, label: ok, warns: ["Checksum mismatch for a.md: expected 543df89f..., got a8f17a2f..."]}
   install_dry: {do: none, save_first: false, next_base: old, checksum: old, mark: none, word: Would install, label: "missing,no-index", warns: []}
 pristine_wrong_sha:
-  install: {do: kept, save_first: false, next_base: old, checksum: old, mark: none, word: Skipped, label: ok, warns: ["Skipped a.md (already exists; --force takes the bundle's version, your file copied to the trash first)", "demo was already installed from <src>/v2/demo: its hooks, rules, plugin and scripts now match it and its record was rewritten; your own copies of its memories were kept (chi bundle upgrade demo merges the bundle's changes into them)"]}
+  install: {do: wrote_incoming, save_first: false, next_base: disk, checksum: disk, mark: none, word: Updated, label: ok, warns: []}
   install_force: {do: wrote_incoming, save_first: true, next_base: disk, checksum: disk, mark: none, word: Installed, label: ok, warns: ["Copied to the trash first: a.md (<home>/samagotchi/memories/.bundles/.trash/demo-<stamp>)", "Checksum mismatch for a.md: expected 543df89f..., got a8f17a2f..."]}
-  install_dry: {do: kept, save_first: false, next_base: old, checksum: old, mark: none, word: Skipped, label: ok, warns: []}
+  install_dry: {do: kept, save_first: false, next_base: old, checksum: old, mark: none, word: Fast-forward, label: ok, warns: []}
 new_no_sha:
   install: {do: wrote_incoming, save_first: false, next_base: disk, checksum: disk, mark: added, word: Installed, label: ok, warns: []}
   install_force: {do: wrote_incoming, save_first: false, next_base: disk, checksum: disk, mark: added, word: Installed, label: ok, warns: []}
   install_dry: {do: none, save_first: false, next_base: none, checksum: none, mark: absent, word: Would install, label: "-", warns: []}
 overlay_pristine:
-  install: {do: kept, save_first: false, next_base: old, checksum: old, mark: none, word: Skipped, label: ok (model overlay), warns: ["a.mx.md is a model overlay with no a.md; it loads only once a.md exists", "Skipped a.mx.md (already exists; --force takes the bundle's version, your file copied to the trash first)", "demo was already installed from <src>/v2/demo: its hooks, rules, plugin and scripts now match it and its record was rewritten; your own copies of its memories were kept (chi bundle upgrade demo merges the bundle's changes into them)"]}
+  install: {do: wrote_incoming, save_first: false, next_base: disk, checksum: disk, mark: none, word: Updated, label: ok (model overlay), warns: ["a.mx.md is a model overlay with no a.md; it loads only once a.md exists"]}
   install_force: {do: wrote_incoming, save_first: true, next_base: disk, checksum: disk, mark: none, word: Installed, label: ok (model overlay), warns: ["Copied to the trash first: a.mx.md (<home>/samagotchi/memories/.bundles/.trash/demo-<stamp>)", "a.mx.md is a model overlay with no a.md; it loads only once a.md exists"]}
-  install_dry: {do: kept, save_first: false, next_base: old, checksum: old, mark: none, word: Skipped, label: ok (model overlay), warns: ["a.mx.md is a model overlay with no a.md; it loads only once a.md exists"]}
+  install_dry: {do: kept, save_first: false, next_base: old, checksum: old, mark: none, word: Fast-forward, label: ok (model overlay), warns: ["a.mx.md is a model overlay with no a.md; it loads only once a.md exists"]}
