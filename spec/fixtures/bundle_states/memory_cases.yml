@@ -28,9 +28,9 @@
 #               the case's start was lifted from (it stays in its file)
 #   fixed / divergent  a probe the batch fixed (D1..D3), or cells that look
 #               wrong today (one tag or a list): D4, U4, U7 (the plan's),
-#               dry-trash, edited-rule, restore-unchecked; note says which
+#               dry-trash, restore-unchecked; note says which
 #   changed     a divergent tag whose cells a later commit changed (dry-noop:
-#               P1.9); note says how
+#               P1.9, edited-rule); note says how
 #   note        why, for a tagged case
 #
 # Texts are named by their three lines; one letter's change is one line's.
@@ -484,18 +484,18 @@ cases:
 
   # A record whose base isn't its checksum's text: the checksum answers first.
   - id: recorded_other
-    kind: pristine
+    kind: edited_no_base
     base: abc
     disk: abc
     incoming: abC
     recorded: other
-    divergent: edited-rule
+    changed: edited-rule
     note: >-
-      kind pristine while upgrades read the base (D == B); source-less it is edited: Provenance.unchanged? reads the
-      checksum first, so status says modified and uninstall asks for --force, while the upgrade reads the base and
-      fast-forwards it with no trash copy. A plain install
-      rewrites its checksum to the file's, so status turns from modified to ok and uninstall stops refusing, with no
-      user action. Its upgrade cell is invariant 1's allowlist entry.
+      Provenance.unchanged? reads the checksum first, so the file is edited (status says modified, uninstall asks for
+      --force), and its base, equal to the file, can't say what the user changed: no base to merge from. Until the
+      edited-rule fix the upgrade read the base and fast-forwarded it with no trash copy (invariant 1's allowlist
+      entry); now the upgrade and its plan leave it behind, marked, as any edit with no base. A plain install still
+      rewrites its checksum to the file's, so status turns from modified to ok with no user action.
 
   # The legacy guard: an older mark on a file equal to its base takes an
   # update that only gains lines; one that removes a line waits, unless

@@ -17,17 +17,20 @@ module Samagotchi
     #   :user_file         not the bundle's, other bytes (the user's own file)
     #   :missing           the bundle's, not on disk
     #   :level             the bundle's, D == I
-    #   :pristine          D == B: the bundle's text as installed
-    #   :edited            D != B, I == B: the user changed it, the bundle didn't
-    #   :diverged          D != B, I != B: both changed it
+    #   :pristine          never edited (#edited?: D == R's checksum, or with
+    #                      none D == B): the bundle's text as installed
+    #   :edited            edited, D != B, I == B: the user changed it, the
+    #                      bundle didn't
+    #   :diverged          edited, D != B, I != B: both changed it
     #   :pristine_no_base  no B, never edited (D == R's checksum)
-    #   :edited_no_base    no B, edited (or no checksum to tell)
+    #   :edited_no_base    no B, edited (or no checksum to tell); or a B equal
+    #                      to D that the checksum calls edited: no base to
+    #                      merge from
     #   :dropped_pristine / :dropped_edited / :dropped_missing  the bundle no
     #                      longer ships it (no I): unedited, edited, gone
     #   :unreadable        on disk, but it can't be read
-    # With a base, the kinds read B as Merger always has (an upgrade
-    # fast-forwards a file that equals its base); without one, and for a
-    # dropped file, the one edited rule (#edited?, the checksum first) says.
+    # Edited or not is always the one rule (#edited?, the checksum first);
+    # the base then says what the user changed.
     #
     # kind, with no source (status, uninstall, diff): I is unknown, so only
     # :pristine :edited :pristine_no_base :edited_no_base :missing :unreadable,
@@ -115,7 +118,11 @@ module Samagotchi
         return :missing if d.disk.nil?
         return :level if d.disk == d.incoming
         return state.edited? ? :edited_no_base : :pristine_no_base if d.base.nil?
-        return :pristine if d.disk == d.base
+        return :pristine unless state.edited?
+        # Edited by the one rule, yet equal to its base: the base can't say
+        # what the user changed (it isn't the text the record vouches for),
+        # so there is none to merge from.
+        return :edited_no_base if d.disk == d.base
 
         d.incoming == d.base ? :edited : :diverged
       end

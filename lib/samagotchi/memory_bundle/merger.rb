@@ -148,19 +148,25 @@ module Samagotchi
           when :decide then decide(file_key, state)
           when :write_incoming then action.word == :installed ? INSTALL : FAST_FORWARD
           when :keep
-            return no_base if action.behind?
+            return no_base(state) if action.behind?
 
             action.word == :kept ? KEEP : NOOP
           # A file the bundle doesn't own, the user's: there is no base to merge from.
-          when :skip then no_base
+          when :skip then no_base(state)
           # It can't be read: the read raises, as the merge would.
           when :refuse then FileDigest.hex(paths(file_key)[:current])
           else raise ArgumentError, "no outcome for #{action.do.inspect} (#{file_key})"
           end
         end
 
-        # No base, no merge: the file stays behind (TextMerge::NO_BASE says why).
-        def no_base = CONFLICT.with(merge: TextMerge.failed(TextMerge::NO_BASE))
+        # No base to merge from: the file stays behind. With none on disk
+        # TextMerge::NO_BASE says why; one the checksum contradicts (the file
+        # equals it, yet is edited) may be the user's own text, as an older
+        # chi's can (FileStanding::LEGACY_BASE).
+        def no_base(state)
+          why = state.digests.base.nil? ? TextMerge::NO_BASE : FileStanding::LEGACY_BASE
+          CONFLICT.with(merge: TextMerge.failed(why))
+        end
 
         def decide(file_key, state)
           # Asked only when the guard would otherwise fire.
