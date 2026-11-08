@@ -97,9 +97,11 @@ uninstall and status. A cell holds only what a user or the next command sees (th
 the mark, the summary's word, status's label, the warnings), never the Installer's result strings. `expect/*.yml` are
 generated (`UPDATE_GOLDENS=1 bundle exec rspec spec/samagotchi/memory_bundle/file_state_corpus/`, which also writes
 `tmp/bundle_states/review.<file>.txt`, every cell in words); a mismatch names the case, command and shape and writes
-`tmp/bundle_states/<file>.yml.actual` to diff. `cases_spec.rb` holds two invariants that every regeneration keeps: no
-user bytes (neither the base's nor the bundle's) are changed or removed without a copy in the trash first, and the two
-record shapes give one answer except on a marked case (an allowlist entry needs a note). A regenerated cell is
+`tmp/bundle_states/<file>.yml.actual` to diff. A regeneration asserts nothing, so run the folder again without
+`UPDATE_GOLDENS`: that run checks the new cells against `cases_spec.rb`, which holds what every regeneration keeps. No
+user bytes (neither the bundle's text nor what the record vouches for, its checksum first) are changed or removed without
+a copy in the trash first; the two record shapes give one answer except on a marked case (an allowlist entry needs a
+note); and for every asset, chi update's plan lists as replaced exactly the files the upgrade copies to the trash. A regenerated cell is
 reviewed: a refactor that turns the corpus red stops and asks, and only a commit that means to change a cell
 regenerates, its changed cells read one by one; a cell that looks wrong today carries a `divergent:` tag and a note in
 its case.

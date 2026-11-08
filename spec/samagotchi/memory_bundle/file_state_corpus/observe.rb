@@ -7,7 +7,8 @@ module BundleStateCorpus
   #   do         the file's bytes: kept, wrote_incoming, wrote_merge, restored
   #              (put back by a restore), moved (to the trash), deleted, none
   #              (absent before and after), refused (the command failed)
-  #   save_first the old bytes are in the run's trash
+  #   save_first the old bytes are in the run's trash (a case has one file, so
+  #              bytes equal to the old file are its copy)
   #   next_base  the base copy afterwards: old (unchanged), disk (the file's
   #              bytes now), incoming, other, none
   #   checksum   the entry's checksum afterwards, in the same words (old: as
@@ -20,6 +21,10 @@ module BundleStateCorpus
   #   label      chi bundle status NAME's line for the file afterwards ("-":
   #              no line)
   #   warns      the other lines naming the file, paths masked
+  #
+  # install and upgrade run the Installer, not BundleCommand: the CLI's own
+  # footer (what stays behind, the agent step's prompt) isn't observed. status
+  # and uninstall go through BundleCommand.
   class Observer
     def initialize(sandbox, kase)
       @sandbox = sandbox
