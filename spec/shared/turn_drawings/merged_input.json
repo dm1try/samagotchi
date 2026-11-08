@@ -67,6 +67,14 @@
       "steers": []
     },
     {
+      "type": "input_merged",
+      "origins": [
+        {
+          "client_id": "child:abc"
+        }
+      ]
+    },
+    {
       "type": "pending_input_merged",
       "iteration": 2,
       "count": 1,
@@ -205,7 +213,11 @@
             "kind": "input",
             "iteration": 2,
             "text": "[report] child done",
-            "origins": []
+            "origins": [
+              {
+                "client_id": "child:abc"
+              }
+            ]
           },
           {
             "kind": "generation",
@@ -289,7 +301,11 @@
         {
           "type": "merged_input",
           "content": "[report] child done",
-          "origins": []
+          "origins": [
+            {
+              "client_id": "child:abc"
+            }
+          ]
         },
         {
           "type": "generation_started",
@@ -410,7 +426,11 @@
           {
             "type": "merged_input",
             "content": "[report] child done",
-            "origins": []
+            "origins": [
+              {
+                "client_id": "child:abc"
+              }
+            ]
           },
           {
             "type": "generation_started",

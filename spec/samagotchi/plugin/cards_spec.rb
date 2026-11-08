@@ -462,9 +462,9 @@ RSpec.describe "Cards" do
       store.call({ type: :empty_answer_retry, iteration: 1, attempt: 1, of: 1 }) # no turn runs: nothing to place it in
 
       expect(listed(store)).to eq([
-        { type: :empty_answer_retry, attempt: 1, of: 2, in_turn: true, iteration: 1, calls: 0, turns_since: 0, opening_id: "t1",
+        { type: :empty_answer_retry, attempt: 1, of: 2, in_turn: true, of_turn: "t1", iteration: 1, calls: 0, turns_since: 0, opening_id: "t1",
           current: false },
-        { type: :empty_answer_retry, attempt: 2, of: 2, stopped_by: "loop-guard", in_turn: true, iteration: 1, calls: 1,
+        { type: :empty_answer_retry, attempt: 2, of: 2, stopped_by: "loop-guard", in_turn: true, of_turn: "t1", iteration: 1, calls: 1,
           turns_since: 0, opening_id: "t1", current: false }
       ])
     end
@@ -475,7 +475,7 @@ RSpec.describe "Cards" do
       turn(:turn_started, on: store)
       store.call({ type: :generation_started, iteration: 1 })
       store.call({ type: :steer_cut, iteration: 1, source: "chi_send" })
-      expect(listed(store).last).to eq({ type: :steer_cut, source: "chi_send", in_turn: true, iteration: 1, calls: 0,
+      expect(listed(store).last).to eq({ type: :steer_cut, source: "chi_send", in_turn: true, of_turn: "t1", iteration: 1, calls: 0,
                                          turns_since: 0, current: true })
       store.call({ type: :hook_notice, hook: "h", text: "n1", level: :info })
       store.call({ type: :hook_notice, hook: "h", text: "n2", level: :info })
@@ -497,7 +497,7 @@ RSpec.describe "Cards" do
       store.call({ type: :generation_started, iteration: 2 })
       store.call({ type: :tool_call_started, iteration: 2, call_index: 1 })
       store.call(row.call(1))
-      expect(listed(store).last).to eq(row.call(1).merge(in_turn: true, iteration: 2, calls: 1, turns_since: 0, current: true))
+      expect(listed(store).last).to eq(row.call(1).merge(in_turn: true, of_turn: "t1", iteration: 2, calls: 1, turns_since: 0, current: true))
       store.call(row.call(2))
       store.call(row.call(3))
       expect(listed(store).map { |e| e[:id] || e[:text] }).to eq(["a", "n1", row.call(2)[:text], row.call(3)[:text]])
@@ -525,9 +525,9 @@ RSpec.describe "Cards" do
       turn(:turn_completed, on: store)
 
       expect(listed(store)).to eq([
-        { type: :question, pending_question: q1, answer: { selected: ["A"] }, in_turn: true, iteration: 1, calls: 0,
+        { type: :question, pending_question: q1, answer: { selected: ["A"] }, in_turn: true, of_turn: "t1", iteration: 1, calls: 0,
           turns_since: 0, opening_id: "t1", current: false },
-        { type: :question, pending_question: q2, cancelled: true, reason: "turn ended", in_turn: true, iteration: 1, calls: 1,
+        { type: :question, pending_question: q2, cancelled: true, reason: "turn ended", in_turn: true, of_turn: "t1", iteration: 1, calls: 1,
           turns_since: 0, opening_id: "t1", current: false }
       ])
     end
@@ -935,10 +935,10 @@ RSpec.describe "Cards" do
       loop_turn(Samagotchi::Bridge::CardStore.new(path: path))
       later = Samagotchi::Bridge::CardStore.new(path: path)
       expect(listed(later)).to eq([
-        { type: :hook_notice, hook: "loop-guard", text: "loop: execute repeated, denied", level: "warn", in_turn: true,
+        { type: :hook_notice, hook: "loop-guard", text: "loop: execute repeated, denied", level: "warn", in_turn: true, of_turn: "t1",
           iteration: 3, calls: 1, earlier: true, turns_since: 0, opening_id: "t1", current: false },
         { type: :card, id: "stop", source: "loop-guard", title: "stop", body: "**why**", level: "warn", actions: [],
-          in_turn: true, earlier: true, turns_since: 0, opening_id: "t1", current: false }
+          in_turn: true, of_turn: "t1", earlier: true, turns_since: 0, opening_id: "t1", current: false }
       ])
       turn(:turn_started, :turn_completed, on: later)
       expect(listed(later).map { |entry| entry[:turns_since] }).to eq([1, 1])

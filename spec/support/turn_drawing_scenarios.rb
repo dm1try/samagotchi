@@ -130,6 +130,7 @@ module TurnDrawingScenarios
            *tool(1, 1, "read", 'path="a"', "[read]\na", tool_id: "t1", title: "a"), done(1),
            { type: :input_merged, origins: [{ client_id: "web:me", enqueued_id: "e2" }] },
            { type: :pending_input_merged, iteration: 2, count: 1, content: "also check b", steers: [] },
+           { type: :input_merged, origins: [{ client_id: "child:abc" }] },
            { type: :pending_input_merged, iteration: 2, count: 1, content: "[report] child done", source: "delegate_report", steers: [] },
            gen(2), text(2, "Both fine."), done(2), completed(id, 1, 7, "Both fine.")],
           [HEAD, user("check a", id), model("Checking a.", tool_calls: [call("c1", "read", { path: "a" })]),

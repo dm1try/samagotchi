@@ -3,6 +3,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { createCardsPlace, reloadedTurnEls, turnAnswerEl } from "../../../lib/samagotchi/web/public/cards_place.js";
 import { createBubbles } from "../../../lib/samagotchi/web/public/bubbles.js";
+import { drawCard } from "../../../lib/samagotchi/web/public/card.js";
 
 // +markup+ as the history's children.
 function history(markup = "") {
@@ -263,4 +264,27 @@ test("a last turn's notice goes in that turn, not after a failed prompt", () => 
 test("a reloaded turn's elements stop at its prompt, not at a failed one", () => {
   const h = history(`<div class="bubble user">one</div><div class="bubble output">a1</div>${FAILED_PROMPT}<div class="bubble note">n</div>`);
   assert.deepEqual(reloadedTurnEls(h, null).map((el) => el.textContent), ["one", "a1", "failed", "✕ failed", "n"]);
+});
+
+// A turn the history drew from its drawing (data-drawn) has its own rows
+// and cards in it: the snapshot's in-turn entries of that turn (of_turn)
+// aren't placed again; only a card's body refreshes. Another turn's, and a
+// question of the drawn turn, are placed as before.
+test("a drawn turn's own in-turn entries are left to its drawing; its card's body refreshes by id", () => {
+  const h = history('<div class="bubble user" data-drawn="T1">one</div>'
+    + '<details class="turn-work" data-drawn="T1"><summary>s</summary><details class="gen"><summary>x</summary><div class="activity-body">'
+    + '</div></details></details><div class="bubble output" data-drawn="T1">a1</div>');
+  const drawnCard = drawCard(document.createElement("div"), { id: "c1", title: "t", body: "new body", actions: [{ label: "Go", command: "/go" }] });
+  h.querySelector(".activity-body").append(drawnCard);
+  const { cards } = harness(h);
+  cards.placeSnapshotCards([
+    { type: "empty_answer_retry", in_turn: true, of_turn: "T1", iteration: 1, attempt: 1, of: 1, turns_since: 0 },
+    { type: "card", id: "c1", in_turn: true, of_turn: "T1", title: "t", body: "new body", body_html: "<p>rendered</p>", turns_since: 0 },
+    { type: "hook_notice", in_turn: true, of_turn: "T0", iteration: 1, hook: "h", text: "elsewhere", turns_since: 0 },
+  ]);
+  assert.equal(h.querySelectorAll(".hook-notice").length, 1);
+  assert.match(h.textContent, /elsewhere/);
+  assert.doesNotMatch(h.textContent, /asking again/);
+  assert.equal(h.querySelectorAll(".plugin-card").length, 1);
+  assert.equal(h.querySelector(".plugin-card .card-body p")?.textContent, "rendered");
 });

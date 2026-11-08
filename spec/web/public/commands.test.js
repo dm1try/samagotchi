@@ -84,3 +84,18 @@ test("a tap's /objectives edit shows no bubble, unless it was refused", () => {
   assert.equal(commandView({ ...ran, card: false }, "me").hidden, false);
   assert.equal(commandView({ ...ran, line: "/going" }, "me").hidden, false);
 });
+
+// A live reminder's bubble names its turn: a resync that draws that turn
+// from its drawing (which has the reminder) keeps it out, else it shows twice.
+test("restoreCommandBubbles leaves out a kept reminder bubble whose turn is drawn now", () => {
+  const history = document.createElement("div");
+  history.innerHTML = '<div class="bubble user" data-drawn="T1">hi</div><div class="bubble output" data-drawn="T1">ok</div>';
+  const reminder = document.createElement("div");
+  reminder.dataset.turnId = "T1";
+  drawCommandBubble(reminder, { line: "reminder: tea", text: "" });
+  const other = document.createElement("div");
+  drawCommandBubble(other, { line: "/help", text: "help" });
+  restoreCommandBubbles(history, [{ el: reminder, anchor: { users: 1, shells: 0 } }, { el: other, anchor: { users: 1, shells: 0 } }]);
+  assert.equal(history.querySelectorAll(".bubble.command").length, 1);
+  assert.match(history.textContent, /\/help/);
+});
