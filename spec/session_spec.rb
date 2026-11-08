@@ -253,6 +253,27 @@ RSpec.describe Samagotchi::Session do
       expect(session.messages[1][:content].valid_encoding?).to be(false) # the live copy is left alone
     end
 
+    it "saves a first message holding bytes that aren't UTF-8, its preview with ?" do
+      session = described_class.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp",
+                                            messages: [{ role: "user", content: "hi \xFF there".dup.force_encoding(Encoding::UTF_8) }])
+
+      expect { session.save(state_dir: tmpdir) }.not_to raise_error
+      expect(described_class.load(session.id, state_dir: tmpdir).first_preview).to eq("hi ? there")
+    end
+
+    it "saves a last prompt, a title and a set preview holding bytes that aren't UTF-8, as ?; the live copies are left alone" do
+      session = described_class.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp",
+                                            messages: [{ role: "user", content: "ok" }])
+      session.last_prompt = "x \xFF".dup.force_encoding(Encoding::UTF_8)
+      session.title = "t \xFE".b
+      session.first_preview = "p \xFF".b # set, not computed: preview_of's own scrub doesn't run
+
+      expect { session.save(state_dir: tmpdir) }.not_to raise_error
+      file = JSON.parse(File.read(File.join(tmpdir, "#{session.id}.json")))
+      expect(file.values_at("last_prompt", "title", "first_preview")).to eq(["x ?", "t ?", "p ?"])
+      expect(session.last_prompt.valid_encoding?).to be(false)
+    end
+
     it "updates updated_at on save" do
       session = described_class.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp")
       later = Time.iso8601(session.updated_at) + 1
@@ -1063,6 +1084,11 @@ RSpec.describe Samagotchi::Session do
 
     it "keeps a message with no quote as it is" do
       expect(described_class.preview_of("From your thinking: is a phrase\nhere")).to eq("From your thinking: is a phrase here")
+    end
+
+    it "previews a message holding bytes that aren't UTF-8, with ?" do
+      expect(described_class.preview_of("a \xFF b".dup.force_encoding(Encoding::UTF_8))).to eq("a ? b")
+      expect(described_class.preview_of("> q \xFE\nnote".b)).to eq("note")
     end
 
     it "previews a notes-only session by its first note, until a message is typed" do

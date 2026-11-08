@@ -81,6 +81,9 @@ module Samagotchi
     LIST = ->(value) { Array(value) }
     ID = ->(value) { value&.to_s }
     MESSAGES = ->(messages) { SessionField.scrub_utf8(messages.map { |msg| SessionField.stringify_keys(msg) }) }
+    # A text the user typed or pasted (a prompt, a title): the file gets it
+    # as valid UTF-8 (nil stays nil), the session keeps what it was given.
+    SCRUBBED = ->(value) { SessionField.scrub_utf8(value) }
     VERDICTS = lambda do |records|
       records&.map do |record|
         SessionField.scrub_utf8(record.to_h do |key, entry|
@@ -99,7 +102,7 @@ module Samagotchi
       else level
       end
     end
-    private_constant :BOOLEAN, :NAMES, :LIST, :ID, :MESSAGES, :VERDICTS, :TOOLKIT_ORIGIN, :PARENT_ANSWERS
+    private_constant :BOOLEAN, :NAMES, :LIST, :ID, :MESSAGES, :SCRUBBED, :VERDICTS, :TOOLKIT_ORIGIN, :PARENT_ANSWERS
 
     # The fields of <id>.json, in the order #save writes them: key => its
     # SessionField (the value for a file without it, REQUIRED for the ones
@@ -141,12 +144,12 @@ module Samagotchi
       SessionField.plain("created_at", REQUIRED),
       SessionField.plain("updated_at", REQUIRED),
       SessionField.plain("status", STATUS_IDLE),
-      SessionField.plain("last_prompt", ""),
-      SessionField.plain("first_preview", ""),
+      SessionField.plain("last_prompt", "", write: SCRUBBED),
+      SessionField.plain("first_preview", "", write: SCRUBBED),
       # The name the user gave the session (/title, TitleCommand), else nil:
       # every list, card and tab shows it in place of #first_preview (see
       # #display_title). A continue's new link inherits it.
-      SessionField.plain("title", nil),
+      SessionField.plain("title", nil, write: SCRUBBED),
       SessionField.plain("test_run", false, cast: BOOLEAN, write: BOOLEAN),
       # The question this session waits on (PendingQuestion), saved as
       # session.json's "pending_question"; nil with none. A Hash (a saved
@@ -884,8 +887,9 @@ module Samagotchi
     # A prompt as a one-line preview: whitespace collapsed, cut at 80 chars.
     # A quoted or annotated message previews by what was typed under the
     # quote; a quote alone by its words, without the "> " markers or label.
+    # Bytes that aren't UTF-8 preview as ?, as the file saves them.
     def self.preview_of(text)
-      norm = preview_words(text.to_s).gsub(/\s+/, " ").strip
+      norm = preview_words(SessionField.scrub_utf8(text.to_s)).gsub(/\s+/, " ").strip
       norm.length > 80 ? "#{norm[0, 80]}…" : norm
     end
 
