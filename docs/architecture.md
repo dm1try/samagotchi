@@ -436,7 +436,7 @@ from that sidecar `worker_version` (the chi the worker runs) and `worker_feature
 `delivery`, a worker that queues a message for after the turn; `SessionManager.deliver_turn` and
 the attached TUI refuse a queue to a worker without it, which would steer; `turn_ids`, a worker whose running
 turn's mark, continue turn and Stop carry the turn's `enqueued_id`, which `chi answer`, `chi send --wait` with no
-message and `delegate_result` rely on through `ReplyWait.own_turn`). A worker's Bridge snapshot
+message and `delegate_result` rely on through `ReplyWait.own_turn`; every wait's binding is one `ReplyWait::Target`, built by its caller's constructor). A worker's Bridge snapshot
 names its `chi_version` too.
 `POST/DELETE /api/sessions` and `/stop` rescan the session before answering (`SessionHub#touch`).
 `GET /api/sessions` is the hub's projection too (its sort, paging and total). `Server` always builds
@@ -653,6 +653,7 @@ A map of the parts the overview above doesn't name (paths under `lib/samagotchi/
 | Dialects | `llm/dialect.rb` (`LLM::Dialect`) | What an `api: anthropic` provider's `/v1/messages` does differently (`dialect: fireworks`) ([internals/anthropic.md](internals/anthropic.md)). |
 | Logging | `log.rb` (`Log`), `log_subscriber.rb` (`LogSubscriber`), `log_path.rb` (`LogPath`), `log_line.rb` | The debug log: tagged records, a session's event trail, where the file goes ([configuration.md](configuration.md#debug-log-file)). |
 | Stores | `reminder_store.rb` (`ReminderStore`), `recap_store.rb` (`RecapStore`) | A session's reminders, and its idle recap (`recap.json`). |
+| Reply waits | `reply_wait.rb` (`ReplyWait`, `GONE_AFTER`: the one dead-worker rule), `reply_wait/poll.rb` (`ReplyWait::Poll`, one look per poll), `reply_wait/target.rb` (`ReplyWait::Target`: which turn a wait binds, cursor, baseline, `owner_grace`; `first_message`, `message`, `wait_only`, `answer`, `participant`, `from_cursor`), `reply_wait/liveness.rb` (`ReplyWait::Liveness`: one owner and link read per look; `#owner?` for gone, `#worker_owned?` for an open question) | `chi send --wait`, `chi answer`, a participant's wait, the delegate tools and delegate reports wait through `ReplyWait.call(id, **target.to_h, …)` ([sub-agent.md](sub-agent.md)). |
 | Session rows | `session_row.rb` (`SessionRow`) | A session as the lists see it: scalar facts only, built by `SessionManager.session_rows` (one owner, link, recap and analytics read each), `#to_summary_h` the summaries route's body and `.from_summary_h` a remote's rows read back, `#cli_line` the one `chi sessions list` line, `.running_or_starting?` the delegates' and Verify fresh's "running" (a 15 s grace for a worker on its way). A leaf: never session_manager or web. |
 | Setup and update | `bootstrap_command.rb`, `bootstrap/`, `update_command.rb`, `gem_update.rb` | `chi bootstrap` (first config.yml, system bundle, core profile) and `chi update` (the gem, shipped bundles, the macOS helper). |
 | Process groups | `process_group.rb` (`ProcessGroup`) | A command in a process group of its own, stopped as a group (TERM, grace, KILL): execute, tasks, context fetches, the mcp bundle's servers. |

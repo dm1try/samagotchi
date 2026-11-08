@@ -12,6 +12,7 @@ and commands may change between minor versions. How releases are made:
 
 - `/llm-context`, `/stats` and the web's LLM context chip name where a value came from as the other settings do: `session` and `hosts.NAME` (were `the session` and `hosts entry 'NAME'`).
 - `chi sessions list` prints one line wherever it runs: the `--live`, `--cwd` and `--format text` listings and `chi --remote NAME sessions list` show the plain list's state (`idle`, not `live`) and description (no folder prefix), and the plain list's footer.
+- A delegating parent's wait says `worker_gone` 5 s after a child's worker dies (it was 15 s); a child whose worker never starts is reported at once (`its worker did not start`) once the boot limit passes.
 
 ### Fixed
 
