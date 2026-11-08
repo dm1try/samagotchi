@@ -1,7 +1,7 @@
 {
   "model": "claude-x",
   "max_tokens": 64000,
-  "system": "sha256:88563076f8c9f87b2a553e07ff47ac3d5a9336cbf9fe29ad2d00693cdb3cb275",
+  "system": "sha256:d10c17131b8775f3de272ea1113bb1e37863287178d30b039ce895ca37d59e97",
   "messages": [
     {
       "role": "user",

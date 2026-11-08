@@ -59,6 +59,25 @@ RSpec.describe Samagotchi::PromptFiles do
     end
   end
 
+  describe "in a folder marked by chi project init" do
+    let(:notes) do
+      File.join(@tmp, "notes").tap do |dir|
+        write(File.join(dir, ".chi", "project.yml"), "")
+      end
+    end
+
+    it "reads the chain from the marked root down to a subfolder, each further one named by its directory" do
+      write(File.join(notes, "AGENTS.md"), "root")
+      write(File.join(notes, "pkg", "AGENTS.md"), "pkg")
+      FileUtils.mkdir_p(File.join(notes, "pkg", "deep"))
+
+      sections = described_class.agents_sections(File.join(notes, "pkg", "deep"))
+      expect(sections.map(&:path)).to eq([File.join(notes, "AGENTS.md"), File.join(notes, "pkg", "AGENTS.md")])
+      expect(sections.map(&:text)).to eq(["Project specific description:\nroot",
+                                          "Project specific description for pkg/:\npkg"])
+    end
+  end
+
   describe ".agents_sections" do
     before { system("git", "init", "-q", repo, exception: true) }
 

@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "tmpdir"
+require "samagotchi/model_profile"
 require "samagotchi/system_prompt"
 require "samagotchi/tools/registry"
 
@@ -33,6 +34,43 @@ RSpec.describe Samagotchi::SystemPrompt do
   it "doesn't find rg when no PATH folder has it", :real_rg do
     ENV["PATH"] = @bin
     expect(rg_available?).to be(false)
+  end
+
+  describe "project location in a folder marked by chi project init" do
+    let(:notes) { File.join(File.realpath(@bin), "notes") }
+
+    before do
+      FileUtils.mkdir_p(File.join(notes, ".chi"))
+      FileUtils.mkdir_p(File.join(notes, "sub"))
+      File.write(File.join(notes, Samagotchi::MemoryPaths::MARKER), "")
+    end
+
+    def location(cwd) = Dir.chdir(cwd) { prompt.send(:project_location) }
+
+    it "names the top of the project from a subfolder, with no worktree line" do
+      text = location(File.join(notes, "sub"))
+      expect(text).to start_with("Current working directory:\n#{notes}/sub\nTop of this project (where its commands " \
+                                 "run from; stay inside it):\n#{notes}\nHome directory:")
+      expect(text).not_to include("linked git worktree")
+    end
+
+    it "names the project at its top" do
+      expect(location(notes)).to start_with("Current working directory:\n#{notes}\nThis project (its files; its " \
+                                            "commands run here):\n#{notes}\nHome directory:")
+    end
+
+    it "names the real top when the session's folder is reached through a symlink" do
+      link = File.join(File.realpath(@bin), "notes-link")
+      File.symlink(File.join(notes, "sub"), link)
+
+      expect(location(link)).to start_with("Current working directory:\n#{notes}/sub\nTop of this project")
+      expect(location(link)).to include("):\n#{notes}\nHome directory:")
+    end
+
+    it "keys the memories folder on the marked root" do
+      key = Samagotchi::MemoryPaths.key_for_root(notes)
+      expect(location(File.join(notes, "sub"))).to end_with("/projects/#{key}")
+    end
   end
 
   describe "AGENTS.md" do
