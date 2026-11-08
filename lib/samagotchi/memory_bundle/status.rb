@@ -2,6 +2,7 @@
 
 require_relative "file_digest"
 require_relative "provenance"
+require_relative "file_state"
 require_relative "manifest"
 require_relative "../version"
 require_relative "index_updater"
@@ -41,16 +42,12 @@ module Samagotchi
         files.each do |file_key_str, meta|
           next details[file_key_str] = unchecked_file(meta) unless target_dir
 
-          target_path = File.join(target_dir, file_key_str)
-          base_path = provenance.base_path(file_key_str)
-          stored_checksum = meta[:checksum]
-          current_checksum = checksum(target_path)
-          unreadable = current_checksum == :unreadable
-          current_checksum = nil if unreadable
-          base_checksum = checksum(base_path)
-          base_checksum = nil if base_checksum == :unreadable
-          missing = !File.exist?(target_path)
-          modified = !missing && !unreadable && edited?(target_path, meta, base_path)
+          state = FileState.of(file_key_str, record: bundle, provenance: provenance, target_dir: target_dir, source_dir: nil)
+          target_path = state.paths[:current]
+          base_path = state.paths[:base]
+          unreadable = state.kind == :unreadable
+          missing = state.kind == :missing
+          modified = %i[edited edited_no_base].include?(state.kind)
           # A model overlay has no index line (Installer#note_overlay).
           overlay = ModelOverlay.bundle_overlay?(file_key_str, bundle_files: files.keys, target_dir: target_dir)
           index_present = overlay ? nil : index_has_entry?(scope, file_key_str)
@@ -59,9 +56,9 @@ module Samagotchi
             behind: behind[file_key_str],
             merge_note: notes[file_key_str],
             unreadable: unreadable,
-            stored_checksum: stored_checksum,
-            current_checksum: current_checksum,
-            base_checksum: base_checksum,
+            stored_checksum: meta[:checksum],
+            current_checksum: digest_or_nil(state.digests.disk),
+            base_checksum: digest_or_nil(state.digests.base),
             modified: modified,
             missing: missing,
             index_present: index_present,
@@ -75,22 +72,10 @@ module Samagotchi
                    hooks_requires_failure: hooks_requires_failure(bundle), needs: needs_status(bundle))
       end
 
-      # The file's digest, nil when there is none, :unreadable when it can't be read.
-      def self.checksum(path)
-        FileDigest.hex(path)
-      rescue SystemCallError
-        :unreadable
-      end
-      private_class_method :checksum
-
-      # Provenance.unchanged?'s rule; a base it can't read, with no checksum,
-      # is unknown and counts as edited.
-      def self.edited?(target_path, meta, base_path)
-        !Provenance.unchanged?(target_path, meta, base_path)
-      rescue SystemCallError
-        true
-      end
-      private_class_method :edited?
+      # A FileState digest as the Report has it: nil for none, or one that
+      # can't be read (unreadable says which).
+      def self.digest_or_nil(digest) = digest == :unreadable ? nil : digest
+      private_class_method :digest_or_nil
 
       # Why none of the bundle's hooks load (this chi doesn't meet its
       # requires_chi, Hooks::BundleLoader), or nil: it has no hooks or meets it.
