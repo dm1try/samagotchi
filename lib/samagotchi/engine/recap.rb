@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative "../recap_place"
+
 module Samagotchi
   class Engine
     # The idle recap (IdleRecap) and the shared idle scheduler: the recap job
@@ -96,9 +98,10 @@ module Samagotchi
         @recap ? @recap.request_now : :off
       end
 
-      # The recap saved with the current session (recap.json), and how many
-      # user turns came after it (0: it is current).
-      # @return [Hash, nil] {text:, covered:, turns_since:, created_at:}
+      # The recap saved with the current session (recap.json), how many
+      # user turns came after it (0: it is current), and the stamp of the
+      # last turn it covers (RecapPlace: where a page puts it; nil, the count).
+      # @return [Hash, nil] {text:, covered:, turns_since:, opening_id:, created_at:}
       def saved_recap
         state = @recap&.state
         return nil unless state
@@ -106,7 +109,8 @@ module Samagotchi
         messages = @session&.messages || []
         covered = state[:covered].to_i
         turns_since = Array(messages).drop(covered).count { |m| Steer.turn_opening?(m) }
-        { text: state[:text], covered: covered, turns_since: turns_since, created_at: state[:created_at] }
+        { text: state[:text], covered: covered, turns_since: turns_since, opening_id: RecapPlace.opening_id(messages, covered),
+          created_at: state[:created_at] }
       end
 
       # Start the shared idle scheduler (reminders + optional recap). The recap

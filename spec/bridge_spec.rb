@@ -1037,6 +1037,72 @@ RSpec.describe Samagotchi::Bridge do
       expect(line.drawing).to include("prompt" => "hi")
     end
 
+    describe "the snapshot's last_turn_drawing (an attaching TUI draws the last turn from it)" do
+      def answer_turns
+        allow(kernel).to receive(:run) do |messages, **|
+          Samagotchi::LLM::ModelResult.new(text: "ok", conversation: messages + [{ role: "model", content: "ok" }], exhausted: false,
+                                           pending_tool_calls: false, tool_activity: [])
+        end
+      end
+
+      def drawings_path = File.join(Samagotchi::Session.session_dir(@session.id, state_dir: state_dir), Samagotchi::Bridge::TurnDrawings::FILE)
+
+      it "carries the last exchange's line, not unfolded, in the snapshot and over GET snapshot" do
+        start_bridge
+        answer_turns
+        run_turn_sync(@engine, @session, "hi")
+
+        drawn = @bridge.snapshot.fetch(:last_turn_drawing)
+        expect(drawn.keys).to eq(%i[drawing end])
+        expect(drawn[:drawing]).to include("prompt" => "hi", "parts" => an_instance_of(Array))
+        expect(drawn[:end]).to include("type" => "turn_completed")
+        body = Samagotchi::BridgeClient.new(session_id: @session.id, port: @bridge_port, secret: @bridge_secret).get_json("snapshot")
+        expect(body["snapshot"]["last_turn_drawing"]).to eq(JSON.parse(JSON.generate(drawn)))
+      end
+
+      it "is absent before any turn, after a rollback, and once a later message follows the turn (a Continue's note)" do
+        start_bridge
+        expect(@bridge.snapshot).not_to have_key(:last_turn_drawing)
+        answer_turns
+        before = @engine.messages_checkpoint
+        run_turn_sync(@engine, @session, "hi")
+        after = @engine.messages_checkpoint
+        expect(@bridge.snapshot).to have_key(:last_turn_drawing)
+
+        @engine.rollback_to(before)
+        expect(@bridge.snapshot).not_to have_key(:last_turn_drawing)
+
+        @engine.rollback_to(after)
+        @engine.append_messages([Samagotchi::ContextNote.message(note_id: "n1", text: "later", source: "continue")])
+        expect(@bridge.snapshot).not_to have_key(:last_turn_drawing)
+      end
+
+      it "is absent for a line over what a restart reads back (TurnDrawings::TAIL_BYTES)" do
+        start_bridge
+        answer_turns
+        run_turn_sync(@engine, @session, "hi")
+        expect(@bridge.snapshot).to have_key(:last_turn_drawing)
+
+        stub_const("Samagotchi::Bridge::TurnDrawings::TAIL_BYTES", 64)
+        expect(@bridge.snapshot).not_to have_key(:last_turn_drawing)
+      end
+
+      it "starts from the file's last line, and skips one it can't read (another version)" do
+        start_bridge
+        answer_turns
+        run_turn_sync(@engine, @session, "hi")
+        @bridge.stop
+        @bridge = described_class.new(engine: @engine, state_dir: state_dir, session_id: @session.id).start
+        expect(@bridge.snapshot.dig(:last_turn_drawing, :drawing)).to include("prompt" => "hi")
+
+        @bridge.stop
+        line = JSON.parse(File.readlines(drawings_path).last).merge("v" => 99)
+        File.write(drawings_path, "#{JSON.generate(line)}\n")
+        @bridge = described_class.new(engine: @engine, state_dir: state_dir, session_id: @session.id).start
+        expect(@bridge.snapshot).not_to have_key(:last_turn_drawing)
+      end
+    end
+
     it "delivers live events across a turn without a hanging client stalling it" do
       start_bridge
       client = SSEClient.new(@bridge_port, @session.id, secret: @bridge_secret).start

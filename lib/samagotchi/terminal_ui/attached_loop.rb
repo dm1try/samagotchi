@@ -613,37 +613,17 @@ module Samagotchi
                                         lane = :writing
           when :generation_chunk
             tail, lane = event[:thinking].to_s.empty? ? [event[:text], :writing] : [event[:thinking], :thinking]
-          when :tool_call_started
-            running_tool = event[:tool]
-            @renderer.call(event)
-          when :tool_call_completed
-            running_tool = nil
-            replay_tool_completed(event)
-          when :merged_input then @screen.commit("input> #{event[:content]}")
-          when :reminder_injected then @screen.commit(reminder_line(event[:reminders]))
-          # The turn's start (its images), a plugin's steer, and its rows (a
-          # hook's notice, a retry's line), as they were drawn live.
-          # Questions are left out: the pending one is asked after the
-          # replay, answered ones showed no line.
+          # The turn's start (its images), as it was drawn live.
           when :turn_started then @renderer.call(without_named_images(event, turn[:prompt]))
-          when :pending_input_merged, :hook_notice, :empty_answer_retry, :steer_cut, :llm_context_edited
-            @renderer.call(event)
+          # Its rows, as a drawn turn's (JoinReplay#replay_row).
+          else
+            running_tool = event[:tool] if event[:type] == :tool_call_started
+            running_tool = nil if event[:type] == :tool_call_completed
+            @join_replay.replay_row(event)
           end
         end
         @view.resume(tail: tail, lane: lane, tool: running_tool, parts: turn[:parts])
         ask(turn[:pending_question]) if turn[:pending_question]
-      end
-
-      # A finished tool call of the joined turn: the live row (action,
-      # duration). A snapshot from an older worker has no action: its row
-      # names the tool only.
-      def replay_tool_completed(event)
-        return @renderer.call({ duration_ms: nil }.merge(event)) if event.dig(:activity, :action)
-
-        activity = EventRenderer.described(event) || {}
-        @screen.commit(snapshot_tool_line({ tool: event[:tool], params: activity[:params], status: activity[:status],
-                                            description: activity[:description], output_truncated: event[:output_truncated],
-                                            images: event[:images], diff: event[:diff] }))
       end
 
       def start_turn(event)

@@ -40,7 +40,7 @@ RSpec.describe "Engine saved recap", :recap do
     history = [msg("system", "sys"), msg("user", "Bluefin"), msg("model", "ok"), msg("user", "2+2"), msg("model", "4")]
     session = session_with(history)
     write_recap(session, covered: 5, digest_of: history.last)
-    expect(engine_for(session).saved_recap).to eq(text: "We set up Bluefin.", covered: 5, turns_since: 0,
+    expect(engine_for(session).saved_recap).to eq(text: "We set up Bluefin.", covered: 5, turns_since: 0, opening_id: nil,
                                                   created_at: "2026-09-24T10:00:00Z")
   end
 
@@ -57,6 +57,14 @@ RSpec.describe "Engine saved recap", :recap do
     session = session_with(history + [msg("user", "!(ls)\nfile"), wake, msg("model", "x"), msg("user", "!(pwd)\n/"), msg("user", "next"), msg("model", "y")])
     write_recap(session, covered: 2, digest_of: history.last)
     expect(engine_for(session).saved_recap).to include(turns_since: 2)
+  end
+
+  it "stamps it with the last turn it covers (RecapPlace), the page's place for it" do
+    history = [msg("user", "Bluefin").merge("turn_id" => "t1"), msg("model", "ok"), msg("user", "2+2").merge("turn_id" => "t2"),
+               msg("model", "4")]
+    session = session_with(history + [msg("user", "more").merge("turn_id" => "t3"), msg("model", "x")])
+    write_recap(session, covered: 4, digest_of: history.last)
+    expect(engine_for(session).saved_recap).to include(turns_since: 1, opening_id: "t2")
   end
 
   it "is nil with no saved recap, or with recap off" do

@@ -124,6 +124,14 @@ RSpec.describe Samagotchi::Web::ParticipantView do
       expect(shown(frame.merge(type: "reset"))).to eq("type" => "reset")
     end
 
+    # The last turn's drawing holds the owner's tool outputs and thinking.
+    it "never carries a snapshot's last_turn_drawing" do
+      drawing = { drawing: { prompt: "p", parts: [{ kind: "tool", tool: "read", output: "SECRET OUTPUT" }] }, end: { type: "turn_completed" } }
+      frame = { type: "snapshot", snapshot: { messages: [], last_turn_drawing: drawing }, session_state_snapshot: { status: "idle" } }
+      expect(shown(frame)).to eq("type" => "snapshot")
+      expect(shown(frame.merge(type: "reset"))).to eq("type" => "reset")
+    end
+
     it "allows only the verdict-card fields on a completed turn and redacts its reason" do
       event = shown({
         type: "turn_completed", result: { text: "private reply" }, output: "private output",
@@ -303,6 +311,13 @@ RSpec.describe Samagotchi::Web::ParticipantStreamFilter do
   let(:viewer) { Samagotchi::Redact::Viewer.new(author: "p:p_1", cwd: "/p") }
 
   def frame(id, data) = "id: #{id}\r\nevent: #{data[:type]}\r\ndata: #{JSON.generate(data)}\r\n\r\n"
+
+  it "sends a snapshot frame bare on the stream: no last_turn_drawing, no messages" do
+    snapshot = { type: "snapshot", snapshot: { messages: [{ role: "user", content: "secret" }],
+                                               last_turn_drawing: { drawing: { parts: [{ kind: "tool", output: "SECRET OUTPUT" }] }, end: {} } } }
+    out = filter.call(frame("9-ep", snapshot))
+    expect(out).to eq("id: 9-ep\r\nevent: snapshot\r\ndata: {\"type\":\"snapshot\"}\r\n\r\n")
+  end
 
   it "rebuilds shown frames from the filtered event, drops the rest, passes pings, across any chunk split" do
     bytes = frame("1-ep", { type: "generation_chunk", text: "Hi\n", thinking: "secret" }) +

@@ -18,6 +18,15 @@ module Samagotchi
     # comes after (a prompt's turn_id, a line's opening_id), which the page
     # finds by its bubble, not by counting. Pure: no Engine, no file.
     class CardPlaces
+      # An opening's stamp: its turn_id (a prompt's, a wake note's), else its
+      # own opening_id (/continue no's reason line); nil for neither (a line
+      # an older chi wrote). The recap's too (RecapPlace).
+      # @return [String, nil]
+      def self.stamp(message)
+        id = message[:turn_id] || message["turn_id"] || message[:opening_id] || message["opening_id"]
+        id.is_a?(String) && !id.empty? ? id : nil
+      end
+
       # @param turn_log [Array<String>] the turn ids, oldest first
       # @param messages [Array<Hash>] the messages the page draws
       def initialize(turn_log, messages)
@@ -114,10 +123,7 @@ module Samagotchi
         position >= 0 ? @last_at_or_before[position] : nil
       end
 
-      def stamp_of(message)
-        id = message[:turn_id] || message["turn_id"] || message[:opening_id] || message["opening_id"]
-        id.is_a?(String) && !id.empty? ? id : nil
-      end
+      def stamp_of(message) = self.class.stamp(message)
 
       def idless_run(opening)
         @ids.drop(opening + 1).take_while(&:nil?).size

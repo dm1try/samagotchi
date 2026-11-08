@@ -7,6 +7,7 @@ require_relative "../support/worker_links"
 require "samagotchi/terminal_ui"
 require "samagotchi/terminal_ui/attached_loop"
 require_relative "../support/recording_surface"
+require "support/turn_drawing_scenarios"
 
 RSpec.describe Samagotchi::TerminalUI::AttachedLoop do
   include WorkerLinks
@@ -500,6 +501,87 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop do
       feed(snapshot(messages: [{ role: "user", content: "essay" }, { role: "model", content: answer }]))
 
       expect(screen.lines.last).to eq("(… 18 earlier lines)\n#{(19..30).map { |i| "line #{i}" }.join("\n")}")
+    end
+
+    # The snapshot's last_turn_drawing (Bridge#snapshot): the last turn as
+    # live drew it, from the shared scenarios (spec/shared/turn_drawings).
+    describe "from the last turn's drawing" do
+      # The fixture's own time, so no gap divider depends on the clock or the zone.
+      let(:now) { -> { Time.iso8601(TurnDrawingScenarios::AT) + 60 } }
+
+      def fixture(name) = JSON.parse(File.read(TurnDrawingScenarios.path(name)))
+
+      def plain(lines) = lines.map { |line| line.gsub(/\e\[[\d;]*m/, "") }
+
+      # The join of +name+'s session, with its last line as the snapshot's
+      # drawing (+drawing+: false for none, or one of the caller's).
+      def joined(name, drawing: nil)
+        data = fixture(name)
+        line = data["lines"].last
+        drawing = { drawing: line["drawing"], end: line["end"] } if drawing.nil?
+        out = RecordingSurface.new(columns: 80)
+        loop = described_class.new(client: client, screen: out, client_id: "tui:1", now: now)
+        snap = { messages: data["messages"], event_seq: 9 }
+        snap[:last_turn_drawing] = drawing if drawing
+        loop.handle_event(JSON.parse(JSON.generate(type: :snapshot, snapshot: snap, session_state_snapshot: { status: "idle" })))
+        plain(out.lines)
+      end
+
+      # +name+'s live events through an attached TUI that saw the turn run.
+      def live(name)
+        out = RecordingSurface.new(columns: 80)
+        loop = described_class.new(client: client, screen: out, client_id: "tui:1", now: now)
+        loop.handle_event({ "type" => "snapshot", "snapshot" => { "messages" => [], "event_seq" => 0 }, "session_state_snapshot" => {} })
+        fixture(name)["events"].each { |event| loop.handle_event(event) }
+        plain(out.lines)
+      end
+
+      it "draws the rows as live: statuses, durations, an empty answer's retry row" do
+        expect(joined("tools_answer")).to eq(["user> look at a.txt", 'tool> reading file (read path="a.txt"): ok (120ms)',
+                                              "It says alpha, beta."])
+        expect(joined("empty_retry")).to eq(["user> answer please", "↻ empty answer, asking again (1/1)", "Here it is."])
+        expect(joined("no_answer")).to eq(["user> say something", "↻ empty answer, asking again (1/1)",
+                                           "no answer: the model returned nothing (after 1 retry)"])
+      end
+
+      it "draws a canceled and a failed turn's end from the drawing's end event, with the hint" do
+        hint = "  #{Samagotchi::TerminalUI::Formatting::ROLLBACK_HINT}"
+        expect(joined("canceled_steps")).to eq(["user> run the tests", 'tool> running command (execute command="rake"): ok (120ms)',
+                                                "■ turn canceled (stopped) · 3.1s", hint])
+        expect(joined("failed_steps")).to eq(["user> fix it", 'tool> reading file (read path="b.rb"): ok (120ms)',
+                                              "✕ turn failed: the model server is unreachable · 5.0s", hint])
+      end
+
+      it "draws a blocked call as blocked, from its row's status" do
+        line = fixture("tools_answer")["lines"].last
+        line["drawing"]["parts"].find { |part| part["kind"] == "tool" }["status"] = "blocked"
+        expect(joined("tools_answer", drawing: { drawing: line["drawing"], end: line["end"] }))
+          .to include('tool> reading file (read path="a.txt"): blocked (120ms)')
+      end
+
+      it "draws a row without a duration as the running join does, never the replay's own clock" do
+        line = fixture("tools_answer")["lines"].last
+        line["drawing"]["parts"].find { |part| part["kind"] == "tool" }.delete("duration_ms")
+        expect(joined("tools_answer", drawing: { drawing: line["drawing"], end: line["end"] }))
+          .to include('tool> reading file (read path="a.txt"): ok')
+      end
+
+      %w[plain_answer tools_answer empty_retry no_answer canceled_steps failed_steps steer reminder_prompt continue_opener].each do |name|
+        it "draws #{name} after its prompt line as the live terminal did" do
+          expect(joined(name).drop(1)).to eq(live(name).drop(1))
+        end
+      end
+
+      it "rebuilds the rows, as without one, from a drawing that isn't the last prompt's turn (a reminder's)" do
+        expect(joined("reminder_only")).to eq(joined("reminder_only", drawing: false))
+        expect(joined("reminder_only")).to eq(["user> earlier", "Tea time."])
+      end
+
+      it "draws as before without a drawing (an older worker)" do
+        expect(joined("empty_retry", drawing: false)).to eq(["user> answer please", "Here it is."])
+        expect(joined("tools_answer", drawing: false)).to eq(["user> look at a.txt", 'tool> reading file (read path="a.txt"): ok',
+                                                              "It says alpha, beta."])
+      end
     end
 
     it "marks a resync after a reset frame" do
