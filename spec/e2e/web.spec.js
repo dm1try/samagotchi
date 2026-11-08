@@ -165,9 +165,8 @@ test("a reload after the turn shows the same turn and answer", async ({ page, sc
 });
 
 // The first generation has thinking only: the loop asks again in the same
-// turn, the empty step says so, and a reload shows one turn with the answer
-// and the asking-again row (the empty step isn't saved: a row before the
-// answer).
+// turn, the empty step says so, and a reload draws the turn as live did
+// (its drawing): the asking-again row in the step that retried.
 test("an empty answer is asked again in the same turn, and a reload shows one turn with its retry row", async ({ page, script }) => {
   script("empty_retry");
   await send(page, "Say pong");
@@ -175,9 +174,10 @@ test("an empty answer is asked again in the same turn, and a reload shows one tu
   await turnEnded(page, 1);
   await expect(page.locator("#history .turn-work .hook-notice")).toHaveText("↻ empty answer, asking again (1/1)");
   await expect(page.locator("#history .bubble.output")).toHaveCount(1);
-  await test.step("the turn reads the same after a reload (but the retry row's place)", async () => {
-    await expectSameAfterReload(page, ended(1), { allow: ["retry-row"] });
+  await test.step("the turn reads the same after a reload, the retry row in its step", async () => {
+    await expectSameAfterReload(page, ended(1));
   });
+  await expect(page.locator("#history .turn-work .hook-notice")).toHaveText("↻ empty answer, asking again (1/1)");
   await expect(page.locator("#history .bubble.user")).toHaveCount(1);
   await expect(answer(page)).toHaveText("PONG after the retry.");
   await expect(page.locator("#history .bubble.output")).toHaveCount(1);
@@ -247,7 +247,7 @@ test("a reload mid-turn and after it keeps the retry row, the answered card and 
   await turnEnded(page, 1);
   expect(await rows("#history")).toEqual(expected);
   await test.step("the turn joined mid-way reads the same after a reload", async () => {
-    await expectSameAfterReload(page, ended(1), { allow: ["retry-row"] });
+    await expectSameAfterReload(page, ended(1));
   });
   expect(await rows("#history")).toEqual(expected);
   // In the turn's order: the steered line and the card after its steps,
@@ -1904,7 +1904,7 @@ test("a turn that fails after a tool step keeps its step and its failure line, l
   await shown();
   await expect(page.locator("#prompt")).toHaveValue("");
   await test.step("the failed turn reads the same after a reload", async () => {
-    await expectSameAfterReload(page, ended(1, { answered: false }), { allow: ["failed-step"] });
+    await expectSameAfterReload(page, ended(1, { answered: false }));
   });
   await shown();
 });
@@ -2081,7 +2081,7 @@ test("check-in: the card mid-turn, Nudge makes a nudge row before the answer, li
     await expectSameAfterReload(page, async (p) => {
       await ended(1)(p);
       await expect(p.locator("#history .plugin-card")).toHaveCount(1);
-    }, { allow: ["in-turn-card"] });
+    });
   });
   await expect(page.locator("#history .bubble.user")).toHaveCount(1);
   const reloaded = page.locator("#history .steer-row");
