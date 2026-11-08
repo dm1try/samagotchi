@@ -11,6 +11,7 @@ and commands may change between minor versions. How releases are made:
 ### Changed
 
 - `/llm-context`, `/stats` and the web's LLM context chip name where a value came from as the other settings do: `session` and `hosts.NAME` (were `the session` and `hosts entry 'NAME'`).
+- `chi sessions list` prints one line wherever it runs: the `--live`, `--cwd` and `--format text` listings and `chi --remote NAME sessions list` show the plain list's state (`idle`, not `live`) and description (no folder prefix), and the plain list's footer.
 
 ### Fixed
 
