@@ -556,6 +556,37 @@ RSpec.describe Samagotchi::Schedules do
     end
   end
 
+  it "prunes a link only when its whole subtree is archived" do
+    Dir.mktmpdir("schedules-prune-open") do |root|
+      dir = File.join(root, "sessions")
+      allow(Process).to receive(:spawn).and_return(12_345)
+      anchor = session(dir).id
+      schedules = store(dir)
+      entry = schedules.add(target: anchor, prompt: "Audit", recurrence: every("1m"), keep_links: 2)
+
+      schedules.tick(now: Time.now + 120)
+      first = schedules.lookup(entry.id).head
+      child = session(dir, parent: first, delegate: true)
+      set_idle(dir, first)
+      schedules.tick(now: Time.now + 240) # archives `first` and its delegate
+      Samagotchi::ArchiveStore.unarchive(child.id, state_dir: dir)
+
+      # `first` is now behind the window, but one of its descendants is not
+      # archived: nothing in that subtree is deleted.
+      set_idle(dir, schedules.lookup(entry.id).head)
+      expect(schedules.tick(now: Time.now + 360).outcomes.first.status).to eq("fired")
+      expect(archived?(dir, first)).to be(true)
+      expect(Samagotchi::Session.exist?(child.id, state_dir: dir)).to be(true)
+
+      # Archive the delegate too and the whole subtree goes, children first.
+      Samagotchi::ArchiveStore.archive(child.id, state_dir: dir)
+      set_idle(dir, schedules.lookup(entry.id).head)
+      schedules.run_now(entry.id)
+      expect(archived?(dir, first)).to be(false)
+      expect(Samagotchi::Session.exist?(child.id, state_dir: dir)).to be(false)
+    end
+  end
+
   it "keeps everything with keep_links 0" do
     Dir.mktmpdir("schedules-keep-all") do |root|
       dir = File.join(root, "sessions")
