@@ -8,6 +8,11 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+### Fixed
+
+- `chi bundle uninstall` asks for `--force` before taking a memory you edited that has no base copy (chi compares it with the checksum its install recorded; with neither, it counts as edited), as it does for any edited file; it used to move it to the trash without asking.
+- `chi bundle status` says `modified` for an edited memory that has no base copy; it said `ok` while the next upgrade left the file behind.
+
 ## [0.156.0] - 2026-11-08
 
 ### Changed

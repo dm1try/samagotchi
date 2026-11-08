@@ -714,7 +714,7 @@ module Samagotchi
           if others.any?
             @results[key] = { status: "kept_shared", reason: "bundle #{others.join(", ")} has it too" }
             @warnings << "Kept #{key}: no longer in the bundle, but bundle #{others.join(", ")} has it too"
-          elsif @force || installed_unchanged?(target, meta, provenance.base_path(key))
+          elsif @force || Provenance.unchanged?(target, meta, provenance.base_path(key))
             @results[key] = { status: @dry_run ? "would_remove" : "removed", reason: "no longer in the bundle" }
             next if @dry_run
 
@@ -725,15 +725,6 @@ module Samagotchi
             @warnings << "Kept #{key}: no longer in the bundle but edited locally (#{FileStanding::FORCE_MOVES})"
           end
         end
-      end
-
-      # Whether the file on disk is what the previous install wrote: its
-      # recorded checksum, else the base snapshot. Unknown counts as edited.
-      def installed_unchanged?(target, meta, base_path)
-        recorded = meta[:checksum]
-        return Provenance.sha_matches?(target, recorded) unless Provenance.recorded_sha(recorded).empty?
-
-        File.exist?(base_path) && Provenance.file_sha(target) == Provenance.file_sha(base_path)
       end
 
       # One warning per manifest key this chi's parser never reads (docs/cli.md's

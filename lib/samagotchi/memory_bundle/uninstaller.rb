@@ -5,7 +5,6 @@ require "digest"
 require_relative "../memory_paths"
 require_relative "provenance"
 require_relative "index_updater"
-require_relative "merger"
 require_relative "trash"
 require_relative "../model_overlay"
 
@@ -65,14 +64,14 @@ module Samagotchi
         end.reject { |_, others| others.empty? }
 
         blocked = []
-        files.each do |file_key, _meta|
+        files.each do |file_key, meta|
           file_key_str = file_key.to_s
           target_path = File.join(target_dir, file_key_str)
           base_path = provenance.base_path(file_key_str)
           next unless File.exist?(target_path)
           next if shared.key?(file_key_str)
 
-          if !@force && File.exist?(base_path) && Merger.current_modified?(base_path, target_path)
+          if !@force && !Provenance.unchanged?(target_path, meta, base_path)
             blocked << file_key_str
             @warnings << "Skipped #{file_key_str}: local edits detected (#{FileStanding::FORCE_MOVES})"
           end

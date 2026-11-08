@@ -243,12 +243,6 @@ module Samagotchi
       def self.digest(path)
         FileDigest.hex(path)
       end
-
-      def self.current_modified?(base_path, current_path)
-        return true unless base_path && File.exist?(base_path) && File.exist?(current_path)
-
-        FileDigest.hex(base_path) != FileDigest.hex(current_path)
-      end
     end
   end
 end
