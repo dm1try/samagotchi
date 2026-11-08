@@ -31,6 +31,7 @@ require_relative "../vision_context"
 require_relative "../llm_context_apply"
 require_relative "../llm_context_view"
 require_relative "../log"
+require_relative "../reprefill_meter"
 require_relative "../empty_answer_retry"
 require_relative "../steer"
 require_relative "../reasoning_history"
@@ -82,6 +83,9 @@ module Samagotchi
       attr_accessor :counted_chars_per_token
 
       # @param kernel [KernelLoop] tool dispatch, thought stripping, hooks
+      # @param reprefill [ReprefillMeter, nil] the re-prefill baseline its
+      #   requests count against (the Engine's, shared with its KernelLoop;
+      #   its own by default)
       # @param adapter [OpenAIChat, nil] the host to talk to; Engine sets it
       #   per turn for the effective model's host
       # @param stable_length [#call, nil] text → the length of the system
@@ -90,8 +94,9 @@ module Samagotchi
       #   stream's step is asked again (specs pass one that doesn't sleep)
       # @param context [TurnContext, nil] the turn its helpers read before any
       #   #complete (a bench building wire messages); a run's replaces it
-      def initialize(kernel:, adapter: nil, stable_length: nil, sleeper: nil, context: nil)
+      def initialize(kernel:, reprefill: nil, adapter: nil, stable_length: nil, sleeper: nil, context: nil)
         @kernel = kernel
+        @reprefill = reprefill || ReprefillMeter.new
         @turn_context = context
         @adapter = adapter
         @stable_length = stable_length
@@ -184,8 +189,9 @@ module Samagotchi
       # when none was resolved.
       def llm_context = settings&.llm_context
 
-      # KernelLoop#reprefilled_tokens, the kernel's request history.
-      def reprefilled_tokens(model, **) = @kernel.reprefilled_tokens(model, **)
+      # The request's re-prefilled tokens on the loop's meter, against this
+      # loop's host (#client): ReprefillMeter#tokens.
+      def reprefilled_tokens(model, **) = @reprefill.tokens(model, client: @client, **)
 
       # The LLMContextView under the turn's strategy (LLMContextView.for).
       def llm_context_view = LLMContextView.for(llm_context)
@@ -907,7 +913,7 @@ module Samagotchi
           count
         end
 
-        # The request's re-prefilled tokens (KernelLoop#reprefilled_tokens).
+        # The request's re-prefilled tokens (ChatLoop#reprefilled_tokens).
         def reprefill_field(usage)
           return {} unless usage&.source == :server
 

@@ -340,21 +340,29 @@ RSpec.describe Samagotchi::LLM::ChatLoop do
       .to eq([nil, 3_000])
   end
 
-  # The Engine keeps one kernel and makes a chat loop per host: after a host
-  # switch to the same bare model (the kernel's client changed), the first
-  # request's prefill is the switch's, not a re-prefill.
-  it "counts no re-prefill on the first request after the kernel's client (the host) changed" do
+  # The Engine's re-prefill meter is one for its loops: after a host switch
+  # to the same bare model (the loop's client changed), the first request's
+  # prefill is the switch's, not a re-prefill; on the same host it is one.
+  # Both loops share the meter (as the Engine wires them), so the nil isn't
+  # a fresh meter's.
+  it "counts no re-prefill on the first request after the loop's client (the host) changed" do
     usage = ->(prompt, cached) { Samagotchi::LLM::Usage.new(prompt_tokens: prompt, completion_tokens: 3, source: :server, cached_tokens: cached) }
     kernel = test_kernel
-    first = described_class.new(kernel: kernel, adapter: FakeChatAdapter.new(FakeChatAdapter.text("hi", usage: usage.call(10_000, 0))))
-    second = described_class.new(kernel: kernel, adapter: FakeChatAdapter.new(FakeChatAdapter.text("hi", usage: usage.call(12_000, 7_000))))
+    meter = Samagotchi::ReprefillMeter.new
+    loop_on = lambda do |host, prompt, cached|
+      described_class.new(kernel: kernel, reprefill: meter, adapter: FakeChatAdapter.new(FakeChatAdapter.text("hi", usage: usage.call(prompt, cached))))
+                     .tap { |chat| chat.client = host }
+    end
+    complete = ->(chat) { chat.complete(messages: [{ role: "user", content: "go" }], model_name: "m", on_stream_event: ->(event) { events << event }) }
+    host = test_client
 
-    first.complete(messages: [{ role: "user", content: "go" }], model_name: "m", on_stream_event: ->(event) { events << event })
-    kernel.client = test_client
-    second.complete(messages: [{ role: "user", content: "go" }], model_name: "m", on_stream_event: ->(event) { events << event })
+    complete.call(loop_on.call(host, 10_000, 0))
+    complete.call(loop_on.call(test_client, 12_000, 7_000))
+    complete.call(loop_on.call(host, 12_500, 0))
+    complete.call(loop_on.call(host, 13_000, 2_500))
 
     expect(events.select { |event| event[:type] == :generation_completed }.map { |event| event[:reprefill_tokens] })
-      .to eq([nil, nil])
+      .to eq([nil, nil, nil, 10_000])
   end
 
   it "names the provider the adapter reports in :generation_completed, nil when it says none" do

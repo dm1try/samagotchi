@@ -27,6 +27,7 @@ require_relative "tools/builtin_calls"
 require_relative "tools/tool_surface"
 require_relative "muted_memories"
 require_relative "tool_activity"
+require_relative "reprefill_meter"
 require_relative "tool_output_cut"
 require_relative "tool_runner"
 require_relative "tool_response"
@@ -172,12 +173,16 @@ module Samagotchi
 
     # @param services [Services, nil] what the kernel holds of its Engine
     #   (Services.none by default: the built-in tools alone)
+    # @param reprefill [ReprefillMeter, nil] the re-prefill baseline its
+    #   requests count against (the Engine's, shared with its ChatLoop; its
+    #   own by default)
     # @param sleeper [#call, nil] waits the given seconds before a dropped
     #   stream's step is asked again (specs pass one that doesn't sleep)
-    def initialize(client: nil, profile: nil, model_name: nil, model_key: nil, services: nil, sleeper: nil)
+    def initialize(client: nil, profile: nil, model_name: nil, model_key: nil, services: nil, reprefill: nil, sleeper: nil)
       @client = client || Client.new
       @sleeper = sleeper || ->(seconds) { sleep(seconds) }
       @services = services || Services.none
+      @reprefill = reprefill || ReprefillMeter.new
       resolved_model_name = ModelProfile.required_model_name(model_name)
       # The context of the run in progress, else of the last run (#context):
       # a kernel that ran none has its own (no turn, no settings but its
@@ -193,11 +198,14 @@ module Samagotchi
     # @return [Services] what the kernel holds of its Engine (#attach)
     attr_reader :services
 
-    # Hand the kernel its Engine's services, all at once: the Engine does
-    # for a kernel it is given (specs) what KernelLoop.new does for its own.
+    # Hand the kernel its Engine's services, all at once, and its
+    # re-prefill meter (nil keeps the one it has): the Engine does for a
+    # kernel it is given (specs) what KernelLoop.new does for its own.
     # @param services [Services]
+    # @param reprefill [ReprefillMeter, nil]
     # @return [Services]
-    def attach(services)
+    def attach(services, reprefill: nil)
+      @reprefill = reprefill if reprefill
       @services = services
     end
 
@@ -644,7 +652,7 @@ module Samagotchi
     def cache_fields(cache) = cache ? TokenUsage.cache_fields(**cache) : {}
 
     def reprefill_field(model, cache)
-      tokens = cache && reprefilled_tokens(model, prompt: cache[:prompt], cached: cache[:cached])
+      tokens = cache && @reprefill.tokens(model, client: @client, prompt: cache[:prompt], cached: cache[:cached])
       tokens ? { reprefill_tokens: tokens } : {}
     end
 
@@ -1025,33 +1033,11 @@ module Samagotchi
       LLMContextApply.apply!(conversation, llm_context, model: model, **)
     end
 
-    # A request's re-prefilled tokens, for both loops: of the prompt the
-    # last request on +model+ through this client (the host) sent (this
-    # kernel's, any turn), what the server didn't reuse from its cache this
-    # time (that prompt less +cached+), so an LLM context edit's cache break
-    # shows, and so does anything else that rewrote the prompt's middle or
-    # lost the cache. nil under TokenUsage::REPREFILL_MIN_TOKENS (a cache
-    # block's rounding), for a server that reports no cached count (or 0: a
-    # cold cache isn't told from no cache), the first request, a model
-    # switch (another bare model, or the same one on another host: the
-    # Engine points #client at the new host's; SessionMetrics counts that
-    # prefill as the switch's), and the first request after a warm-up
-    # (#warmed_up!).
-    # @return [Integer, nil]
-    def reprefilled_tokens(model, prompt:, cached:)
-      previous = @reprefill_baseline
-      @reprefill_baseline = { model: model, client: @client, prompt: prompt.to_i } if prompt.to_i.positive?
-      return nil unless previous && previous[:model] == model && previous[:client].equal?(@client) && cached.to_i.positive?
-
-      tokens = previous[:prompt] - cached.to_i
-      tokens >= TokenUsage::REPREFILL_MIN_TOKENS ? tokens : nil
-    end
-
     # The Engine started a turn-end warm-up: it prefills the next prompt
     # off the clock, so the next request's cache counts are against it, not
-    # the last request (#reprefilled_tokens starts over).
+    # the last request (the re-prefill meter starts over, ReprefillMeter#reset!).
     def warmed_up!
-      @reprefill_baseline = nil
+      @reprefill.reset!
     end
 
     # Public wrapper so other loops (e.g. the chat loop) can strip

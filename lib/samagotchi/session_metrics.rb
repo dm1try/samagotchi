@@ -142,7 +142,7 @@ module Samagotchi
       :cached_sum,
       :cache_write_sum,
       # What the server prefilled again of the previous request's prompt
-      # (KernelLoop#reprefilled_tokens; an LLM context edit's cache break).
+      # (ReprefillMeter#tokens; an LLM context edit's cache break).
       :reprefill_sum,
       :reasoning_sum,
       :cost_sum,

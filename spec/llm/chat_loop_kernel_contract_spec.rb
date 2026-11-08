@@ -20,7 +20,6 @@ module ChatLoopKernelReach
     "@kernel.guard_generation",
     "@kernel.hooks",
     "@kernel.llm_context_turn=",
-    "@kernel.reprefilled_tokens",
     "@kernel.respond_to?",
     "@kernel.strip_model_thought",
     "@kernel.tools",

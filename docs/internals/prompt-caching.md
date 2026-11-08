@@ -222,7 +222,10 @@ is prefilled once. The native and the chat loop use the same plan.
 - The debug log's `generation_completed` line: `prompt=` (the request's prompt tokens), `cached=` (read from the
   server's cache), `cache_write=` (written to it, where the provider reports writes) and `reprefill=` (of the last
   request's prompt on the same model through the same host, what was prefilled again; a `/model` to the same bare
-  model on another host is the switch's prefill, not a re-prefill). The `http` line of a
+  model on another host is the switch's prefill, not a re-prefill). The baseline is the Engine's `ReprefillMeter`
+  (`reprefill_meter.rb`), one for both loops: the last request whichever loop sent it, keyed by the model and the
+  host's client (`KernelLoop#client`, `ChatLoop#client`), so a switch to another host and back starts over on the
+  way back; the turn-end warm-up resets it (`KernelLoop#warmed_up!`). The `http` line of a
   remote Claude or Messages request shows `cache=on` (or `cache=1h`) when it carried breakpoints.
 - The warm-up logs `model warmup` with `cached=`, `prefilled=` and `prefill_ms=`.
 - `/stats`: "cached N (P%)", "cache writes" and "re-prefilled" for the session.

@@ -1551,6 +1551,8 @@ Need to inspect the filesystem first.
     end
 
     it "puts what the server prefilled again of the last request's prompt on :generation_completed, from the second request" do
+      meter = Samagotchi::ReprefillMeter.new
+      kernel = described_class.new(client: client, reprefill: meter)
       events = []
       counts = [[1_000, 900], [1_500, 600], [1_600, 1_500], [1_700, 1_590], [1_800, 0]]
       allow(client).to receive(:complete) do |_prompt, **kwargs|
@@ -1566,22 +1568,36 @@ Need to inspect the filesystem first.
       completed = events.select { |event| event[:type] == :generation_completed }
       expect(completed.map { |event| event[:reprefill_tokens] }).to eq([nil, 400, nil, nil, nil])
       model = completed.last[:requested_model]
+      # The warm-up's prompt counts nothing; its start (warmed_up!) starts the meter over.
       kernel.warmup_prompt([{ role: "user", content: "hi" }])
-      expect(kernel.reprefilled_tokens(model, prompt: 1_900, cached: 100)).to eq(1_700)
+      expect(meter.tokens(model, client: client, prompt: 1_900, cached: 100)).to eq(1_700)
       kernel.warmed_up!
-      expect(kernel.reprefilled_tokens(model, prompt: 1_800, cached: 100)).to be_nil
-      expect(kernel.reprefilled_tokens("other", prompt: 1_800, cached: 100)).to be_nil
+      expect(meter.tokens(model, client: client, prompt: 1_800, cached: 100)).to be_nil
+      expect(meter.tokens("other", client: client, prompt: 1_800, cached: 100)).to be_nil
     end
 
     # Two hosts can serve the same bare model id: a host switch (the Engine
     # points the kernel at the new host's client) is a model switch too, whose
     # prefill SessionMetrics counts as the switch's, never as a re-prefill.
     it "starts the re-prefill count over when the kernel's client (the host) changes, the bare model the same" do
-      expect(kernel.reprefilled_tokens("m", prompt: 5_000, cached: 4_000)).to be_nil
-      expect(kernel.reprefilled_tokens("m", prompt: 5_200, cached: 1_000)).to eq(4_000)
-      kernel.client = instance_double(Samagotchi::Client)
-      expect(kernel.reprefilled_tokens("m", prompt: 5_400, cached: 1_000)).to be_nil
-      expect(kernel.reprefilled_tokens("m", prompt: 5_600, cached: 1_000)).to eq(4_400)
+      events = []
+      counts = [[5_000, 4_000], [5_200, 1_000], [5_400, 1_000], [5_600, 1_000]]
+      complete = lambda do |_prompt, **kwargs|
+        prompt, cached = counts.shift
+        kwargs[:on_chunk]&.call(content: "Hi", payload: { "content" => "Hi", "stop" => true, "tokens_evaluated" => prompt,
+                                                          "tokens_predicted" => 1, "timings" => { "cache_n" => cached } })
+        "Hi"
+      end
+      other = instance_double(Samagotchi::Client)
+      [client, other].each { |host| allow(host).to receive(:complete, &complete) }
+      run = -> { kernel.run([{ role: "user", content: "hi" }], on_stream_event: ->(event) { events << event }) }
+
+      2.times { run.call }
+      kernel.client = other
+      2.times { run.call }
+
+      expect(events.select { |event| event[:type] == :generation_completed }.map { |event| event[:reprefill_tokens] })
+        .to eq([nil, 4_000, nil, 4_400])
     end
 
     it "counts the generation's thinking in :generation_completed (Gemma: its thought blocks)" do

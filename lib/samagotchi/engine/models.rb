@@ -234,7 +234,8 @@ module Samagotchi
         return @native_backend unless model.chat?
 
         @chat_backend_mutex.synchronize do
-          @chat_backend ||= LLM::ChatLoop.new(kernel: @kernel, stable_length: ->(text) { @prompt_builder.stable_length(text) })
+          @chat_backend ||= LLM::ChatLoop.new(kernel: @kernel, reprefill: @reprefill,
+                                              stable_length: ->(text) { @prompt_builder.stable_length(text) })
           @chat_backend.adapter = @host_registry.adapter_for(model.entry)
           @chat_backend.client = model.client
           @chat_backend.session_id = session&.id
