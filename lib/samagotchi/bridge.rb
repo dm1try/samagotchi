@@ -116,11 +116,14 @@ module Samagotchi
     #   without the worker exiting, for POST /holds/stop; returns the
     #   HoldStop::Stopped the 200's +stopped+ carries; without one that route
     #   answers 501
+    # @param on_activity [#call, nil] what the worker is busy with right now
+    #   (Worker#activity_snapshot: the same signals WorkerIdleExit#hold reads)
+    #   for GET /activity; without one that route answers 501
     def initialize(engine:, state_dir:, session_id:, bind: DEFAULT_BIND,
                    port: 0, ring_capacity: DEFAULT_RING_CAPACITY,
                    heartbeat_interval: DEFAULT_HEARTBEAT_INTERVAL, input_format: nil, on_input: nil,
                    on_command: nil, on_exit_request: nil, exit_discards: nil, exit_stopped: nil,
-                   on_holds: nil, on_holds_stop: nil)
+                   on_holds: nil, on_holds_stop: nil, on_activity: nil)
       @engine = engine
       @on_input = on_input
       @on_command = on_command
@@ -129,6 +132,7 @@ module Samagotchi
       @exit_stopped = exit_stopped
       @on_holds = on_holds
       @on_holds_stop = on_holds_stop
+      @on_activity = on_activity
       @input_format = input_format
       @state_dir = state_dir
       @session_id = session_id
@@ -687,9 +691,12 @@ module Samagotchi
     # pair_turns: a participant's turn in a working session runs as a pair
     # turn (Guardrails::PairBoundary); a worker without it runs it as a
     # review turn, and chi web says so (Delivery::PAIR_FEATURE).
+    # activity: GET /activity answers with Worker#activity_snapshot, so
+    # `chi schedule tick` can ask a live worker what it is busy with.
     FEATURES = ["restart", "task_stop", "reparent", Delivery::QUEUE_FEATURE, ReplyWait::TURN_IDS_FEATURE,
                 VerifyAnchor::FEATURE, ReviseAnchor::FEATURE,
-                SessionInbox::UNQUEUE_FEATURE, Delivery::REVIEW_FEATURE, Delivery::PAIR_FEATURE, TurnDrawings::FEATURE].freeze
+                SessionInbox::UNQUEUE_FEATURE, Delivery::REVIEW_FEATURE, Delivery::PAIR_FEATURE, TurnDrawings::FEATURE,
+                WorkerLink::ACTIVITY_FEATURE].freeze
 
     # The routes, by method and what follows /session/:id/: a handler takes
     # the session id and the request body and returns [headers, status, body].
@@ -706,6 +713,7 @@ module Samagotchi
       %w[POST exit] => :handle_exit_request,
       %w[GET holds] => :handle_holds,
       %w[POST holds/stop] => :handle_holds_stop,
+      %w[GET activity] => :handle_activity,
       %w[POST recap] => :handle_recap,
       %w[POST relay] => :handle_relay,
       %w[POST relay/status] => :handle_relay_status,
@@ -1099,6 +1107,22 @@ module Samagotchi
       Log.info(:bridge, "holds_stop")
       stopped = @on_holds_stop.call
       [{}, 200, { status: "stopped", session_id: @session_id, stopped: stopped.to_h }]
+    end
+
+    # GET /session/:id/activity: what this worker is busy with right now — the
+    # same signals WorkerIdleExit#hold reads (a turn running, input queued, a
+    # continue offer waiting, clients holding the stream, reminders, watched
+    # tasks). A `chi schedule tick` runs out of process: it cannot read a
+    # worker's memory, and the session files cannot see an open tab, so it
+    # asks. Read-only and small: no task list, no transcript.
+    # 200 {session_id, turn_running:, input_pending:, awaiting_continue:,
+    #   open_streams:, reminders:, tasks_holding:}; 501 activity_unavailable
+    # when this worker has no such step.
+    # Returns [headers, status, body].
+    def handle_activity(_session_id, _body = nil)
+      return [{}, 501, { error: "activity_unavailable" }] unless @on_activity
+
+      [{}, 200, { session_id: @session_id, **@on_activity.call }]
     end
 
     # Queue a turn for this session through its file IPC (the worker polls

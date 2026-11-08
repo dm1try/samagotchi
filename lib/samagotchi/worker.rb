@@ -374,7 +374,9 @@ module Samagotchi
                              # chi web's Stop asks about these before TERMed-ing
                              # the worker (its own holds routes).
                              on_holds: -> { @idle_exit&.stoppable_holds },
-                             on_holds_stop: -> { @hold_stop&.stop_all })
+                             on_holds_stop: -> { @hold_stop&.stop_all },
+                             # `chi schedule tick` asks this before firing.
+                             on_activity: method(:activity_snapshot))
       # What failed to load and what plugins showed as they loaded, now that
       # a UI can be there (a late one gets them in the snapshot).
       @engine.announce_load_events!
@@ -410,12 +412,12 @@ module Samagotchi
     #   there is no live SSE or in-process cancel/answer).
     # @param on_input [#call, nil] called after the Bridge queues a turn
     def start_bridge(engine:, state_dir:, session_id:, on_input: nil, on_command: nil, on_exit_request: nil,
-                     exit_discards: nil, exit_stopped: nil, on_holds: nil, on_holds_stop: nil)
+                     exit_discards: nil, exit_stopped: nil, on_holds: nil, on_holds_stop: nil, on_activity: nil)
       require_relative "bridge"
       Samagotchi::Bridge.new(
         engine: engine, state_dir: state_dir, session_id: session_id, input_format: SessionInbox::INPUT_FORMAT,
         on_input: on_input, on_command: on_command, on_exit_request: on_exit_request, exit_discards: exit_discards,
-        exit_stopped: exit_stopped, on_holds: on_holds, on_holds_stop: on_holds_stop
+        exit_stopped: exit_stopped, on_holds: on_holds, on_holds_stop: on_holds_stop, on_activity: on_activity
       ).start
     rescue StandardError => e
       Log.error(:bridge, "start_failed", echo: "Bridge: failed to start for session #{session_id}: #{e.class}: #{e.message}", sid: session_id, error: e.class.name)
@@ -424,6 +426,22 @@ module Samagotchi
 
     def config_idle_exit_minutes
       Degrade.call(:config, "idle_exit_minutes_unreadable") { Samagotchi::Config.get("session.idle_exit_minutes") }
+    end
+
+    # What this worker is busy with right now, for GET /activity: the same
+    # signals WorkerIdleExit#hold reads. A schedule never holds a worker up,
+    # so +reminders+ and +tasks_holding+ are reported for the log but are not a
+    # reason for a tick to skip a firing.
+    # @return [Hash]
+    def activity_snapshot
+      {
+        turn_running: @engine.turn_running?,
+        input_pending: input_pending?,
+        awaiting_continue: @turn_flow.awaiting_continue?,
+        open_streams: @bridge&.open_streams.to_i,
+        reminders: @engine.reminder_store&.any? ? 1 : 0,
+        tasks_holding: Degrade.call(:tasks, "activity_tasks_unreadable") { @task_wakes&.watch&.holding&.size.to_i }
+      }
     end
 
     # The delegate children of this session that are running a turn or have

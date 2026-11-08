@@ -34,6 +34,11 @@ module Samagotchi
     # newer worker's (Skew).
     PROTOCOL = 1
 
+    # A worker whose sidecar publishes this may be asked what it is busy with
+    # (Bridge's GET /activity, Worker#activity_snapshot): a sidecar without it
+    # is an older chi's, and asking it would only cost a 404.
+    ACTIVITY_FEATURE = "activity"
+
     # Seconds a worker may hold the lock without publishing its Bridge before
     # Starting is stuck (SessionManager::WORKER_START_GRACE).
     START_LIMIT = 30.0

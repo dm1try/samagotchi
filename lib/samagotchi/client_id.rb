@@ -30,6 +30,9 @@ module Samagotchi
     # chi's own turns; system:reminder, the turn queued when reminders are due.
     SYSTEM_PREFIX = "system:"
     REMINDER = "system:reminder"
+    # A durable schedule's turn (chi schedule, the schedule tools):
+    # system:schedule:<schedule id>.
+    SCHEDULE_PREFIX = "system:schedule:"
     # A plugin's message (Plugin::Sessions#send).
     PLUGIN = "plugin"
     # A relayed answer (RelayVerifier): relay:<parent8>.
@@ -54,14 +57,15 @@ module Samagotchi
     # runs turns for on its own, by prefix, and a participant's ("review");
     # system:reminder is "reminder", anything else "client".
     ORIGIN_PREFIXES = { DELEGATE_PREFIX => "delegate", CHILD_PREFIX => "delegate_report",
-                        CONTEXT_PREFIX => "context", TASK_PREFIX => "task", REVIEW_PREFIX => "review" }.freeze
+                        CONTEXT_PREFIX => "context", TASK_PREFIX => "task", REVIEW_PREFIX => "review",
+                        SCHEDULE_PREFIX => "schedule" }.freeze
 
     module_function
 
     # What sent a turn: "delegate" (a delegating parent), "delegate_report"
     # (a child's report), "context" (a context wake), "task" (a task finish
-    # wake), "review" (a participant), "reminder", else "client" (the
-    # owner, chi send, a plugin, nil).
+    # wake), "review" (a participant), "reminder", "schedule" (a durable
+    # schedule's firing), else "client" (the owner, chi send, a plugin, nil).
     # @return [String]
     def origin(client_id)
       id = client_id.to_s
@@ -93,5 +97,11 @@ module Samagotchi
 
     # Whether +client_id+ is a participant's (review:).
     def review?(client_id) = client_id.to_s.start_with?(REVIEW_PREFIX)
+
+    # The client id a durable schedule's turn carries: system:schedule:<id>.
+    def schedule(schedule_id) = "#{SCHEDULE_PREFIX}#{schedule_id}"
+
+    # Whether +client_id+ is a schedule's firing.
+    def schedule?(client_id) = client_id.to_s.start_with?(SCHEDULE_PREFIX)
   end
 end

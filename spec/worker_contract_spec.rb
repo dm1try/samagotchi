@@ -155,6 +155,9 @@ RSpec.describe "Cross-version worker contract" do
   it "keeps the routes and client ids one session's worker uses on another's" do
     expect(Samagotchi::Bridge::ROUTES).to include(%w[POST relay/status] => :handle_relay_status)
     expect(Samagotchi::Bridge::ROUTES.keys).to include(%w[POST relay])
+    # A `chi schedule tick` asks a live worker what it is busy with (FR7).
+    expect(Samagotchi::Bridge::ROUTES).to include(%w[GET activity] => :handle_activity)
+    expect(Samagotchi::Bridge::FEATURES).to include("activity")
     expect(Samagotchi::ClientId::CLI_ANSWER).to eq("cli:answer")
     expect(Samagotchi::ClientId::RELAY_PREFIX).to eq("relay:")
   end
