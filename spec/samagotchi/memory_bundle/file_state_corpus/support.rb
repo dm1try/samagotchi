@@ -58,6 +58,10 @@ module BundleStateCorpus
     "remerge_restore" => %w[remerge remerge_dry restore],
     "uninstall_status" => %w[uninstall uninstall_force status]
   }.freeze
+  # The plan's time fallback (2.6): these files run the 0.149 shape for the
+  # marked cases only, where the shapes can differ (invariant 2); an unmarked
+  # case's one cell stands for both. upgrade_spec ran over 3 s under load.
+  MARKED_ONLY_149 = %w[upgrade].freeze
 
   MemoryCase = Data.define(:id, :kind, :installed, :owned, :key, :base, :disk, :incoming, :recorded, :sha, :mark,
                            :marked_incoming, :shipped_history, :claimants, :unreadable, :fix, :fixed, :divergent, :note) do
@@ -335,11 +339,12 @@ module BundleStateCorpus
       allow(Samagotchi::MemoryBundle::ShippedHistory).to receive(:shipped?).and_return(kase.shipped_history)
       columns = MEMORY_GROUPS.fetch(goldens.name)
       stub_const("Samagotchi::MemoryBundle::SystemBundle::GEM_BUNDLE_DIR", @sandbox.same_source(kase)) if columns.include?("restore")
-      expect_cells(goldens, kase, Observer.new(@sandbox, kase), columns)
+      shapes = MARKED_ONLY_149.include?(goldens.name) && !kase.marked? ? SHAPES.first(1) : SHAPES
+      expect_cells(goldens, kase, Observer.new(@sandbox, kase), columns, shapes)
     end
 
-    def expect_cells(goldens, kase, observer, columns)
-      goldens.record(kase.id, columns.to_h { |column| [column, SHAPES.to_h { |shape| [shape, observer.cell(shape, column)] }] })
+    def expect_cells(goldens, kase, observer, columns, shapes = SHAPES)
+      goldens.record(kase.id, columns.to_h { |column| [column, shapes.to_h { |shape| [shape, observer.cell(shape, column)] }] })
       return if Goldens.update?
 
       problems = goldens.mismatches(kase.id)

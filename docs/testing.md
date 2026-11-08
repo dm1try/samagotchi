@@ -101,7 +101,8 @@ generated (`UPDATE_GOLDENS=1 bundle exec rspec spec/samagotchi/memory_bundle/fil
 `UPDATE_GOLDENS`: that run checks the new cells against `cases_spec.rb`, which holds what every regeneration keeps. No
 user bytes (neither the bundle's text nor what the record vouches for, its checksum first) are changed or removed without
 a copy in the trash first; the two record shapes give one answer except on a marked case (an allowlist entry needs a
-note); and for every asset, chi update's plan lists as replaced exactly the files the upgrade copies to the trash. A regenerated cell is
+note); and for every asset, chi update's plan lists as replaced exactly the files the upgrade copies to the trash. To stay
+under 3 s, `upgrade_spec.rb` runs the 0.149 shape for marked cases only (`MARKED_ONLY_149`), where the shapes can differ. A regenerated cell is
 reviewed: a refactor that turns the corpus red stops and asks, and only a commit that means to change a cell
 regenerates, its changed cells read one by one; a cell that looks wrong today carries a `divergent:` tag and a note in
 its case.
