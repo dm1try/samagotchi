@@ -239,7 +239,7 @@ module Samagotchi
 
     # Whether it sees images (VisionSupport.for) under +profile+.
     def vision_support(profile)
-      VisionSupport.for(target, profile: profile, adapter: vision_adapter, names: names)
+      VisionSupport.for(lookup, profile: profile, adapter: vision_adapter)
     end
 
     # A chat host's adapter (what it says of images), nil on a native host.

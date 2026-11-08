@@ -21,15 +21,15 @@ module Samagotchi
       def no? = value == false
     end
 
-    # @param target [HostRegistry::ModelTarget]
+    # @param lookup [ModelLookup] the model's layers (EffectiveModel#lookup);
+    #   its target is the one the probes ask
     # @param profile [ModelProfile, nil] the model's prompt profile (native)
     # @param adapter [LLM::OpenAIChat, nil] the chat host's adapter
-    # @param models [Hash{String => ModelSettings}, nil] ModelSettings.all (specs)
-    # @param names [Array<String>] the model's lookup names (HostRegistry#lookup_names)
     # @return [Answer]
-    def self.for(target, names:, profile: nil, adapter: nil, models: nil)
+    def self.for(lookup, profile: nil, adapter: nil)
+      target = lookup.target
       entry = target.entry
-      configured = configured(target, entry, models, names)
+      configured = configured(lookup)
       return configured if configured&.no?
 
       if entry.chat?
@@ -45,18 +45,15 @@ module Samagotchi
       marker.is_a?(String) && !marker.empty? ? marker : nil
     end
 
-    def self.configured(_target, entry, models, names)
-      models ||= begin
-        ModelSettings.all
-      rescue StandardError
-        {}
-      end
-      if (setting = ModelSettings.find(names, :vision, models: models))
+    def self.configured(lookup)
+      if (setting = lookup.model(:vision))
         return Answer.new(value: setting.value, reason: setting.value ? nil : "models: #{setting.key} sets vision: false")
       end
-      return nil if entry.vision.nil?
 
-      Answer.new(value: entry.vision, reason: entry.vision ? nil : "hosts.#{entry.name} sets vision: false")
+      vision = lookup.host(:vision)
+      return nil if vision.nil?
+
+      Answer.new(value: vision, reason: vision ? nil : "hosts.#{lookup.host_name} sets vision: false")
     end
 
     def self.native(target, _entry, profile, trust_config:)
