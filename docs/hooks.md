@@ -623,6 +623,9 @@ stripped of surrounding whitespace, except file text, an edit's
 | `register_reminder` | `name` | — | `description`, `interval_minutes` |
 | `cancel_reminder` | `name` | — | — |
 | `list_reminders` | — | — | — |
+| `schedule_task` | `prompt` | — | `title`, `every`, `weekday`, `time`, `date`, `mode`, `keep_links` |
+| `list_schedules` | — | — | `include_disabled` |
+| `cancel_schedule` | `name` | — | — |
 | `list_sessions` | — | — | `cwd` |
 | `send_note` | `text` | — | `session` |
 | `context_read` | `name` | — | `offset`, `limit` |
