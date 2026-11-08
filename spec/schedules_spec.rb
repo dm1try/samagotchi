@@ -37,22 +37,48 @@ RSpec.describe Samagotchi::Schedules do
     described_class.new(state_dir: state_dir, clock: -> { now })
   end
 
-  it "writes every entry under the lock, so nothing is lost" do
+  it "writes every entry under the lock, so two writers in flight lose nothing" do
     Dir.mktmpdir("schedules-lock") do |root|
       dir = File.join(root, "sessions")
       id = session(dir).id
       schedules = store(dir)
-      held = File.open(File.join(dir, described_class::LOCK), File::RDWR | File::CREAT, 0o600) # rubocop:disable Style/FileOpen -- held open on purpose, closed at the end
+      # Both adds are in the file at once: each reads the list, pauses, then
+      # writes. Without flock both threads read the same (empty) list and the
+      # second write erases the first.
+      allow(schedules).to receive(:read).and_wrap_original do |original|
+        sleep 0.2 # sleep-ok: the overlap the lock is meant to prevent
+        original.call
+      end
+
+      threads = %w[one two].map { |prompt| Thread.new { schedules.add(target: id, prompt: prompt, recurrence: every("1h")) } }
+      threads.each(&:join)
+
+      expect(schedules.entries.map(&:prompt).sort).to eq(%w[one two])
+    end
+  end
+
+  it "waits for a lock another writer holds, and the tick reports it instead of firing" do
+    Dir.mktmpdir("schedules-held-lock") do |root|
+      dir = File.join(root, "sessions")
+      id = session(dir).id
+      schedules = store(dir)
+      entry = schedules.add(target: id, prompt: "Audit", recurrence: every("1m"))
+
+      held = File.open(schedules.lock_path, File::RDWR | File::CREAT, 0o600) # rubocop:disable Style/FileOpen -- held open on purpose, closed at the end
       held.flock(File::LOCK_EX)
-
-      blocked = Thread.new { schedules.add(target: id, prompt: "one", recurrence: every("1h")) }
+      blocked = Thread.new { schedules.add(target: id, prompt: "later", recurrence: every("2h")) }
       sleep 0.2 # sleep-ok: the blocked thread's wait on the lock is the behaviour being tested
-      held.flock(File::LOCK_UN)
-      schedules.add(target: id, prompt: "two", recurrence: every("2h"))
-      blocked.join
+      expect(schedules.entries.map(&:prompt)).to eq(["Audit"])
 
-      expect(schedules.entries.map(&:prompt)).to eq(%w[one two])
+      tick = schedules.tick(now: Time.now + 120)
+      expect([tick.locked, tick.outcomes]).to eq([true, []])
+
+      held.flock(File::LOCK_UN)
+      blocked.join
       held.close
+
+      expect(schedules.entries.map(&:prompt).sort).to eq(%w[Audit later])
+      expect(schedules.lookup(entry.id).skips).to eq(0)
     end
   end
 
@@ -615,6 +641,71 @@ RSpec.describe Samagotchi::Schedules do
       expect(schedules.lookup("Audit").enabled).to be(true)
       expect(schedules.cancel("Audit").id).to eq(entry.id)
       expect(schedules.entries).to be_empty
+    end
+  end
+
+  it "asks a live worker what it is busy with, and skips on each of those signals" do
+    [["chain", { turn_running: true }, "a turn is running in it"],
+     ["chain", { input_pending: true }, "a prompt is queued for it"],
+     ["chain", { awaiting_continue: true }, "its step-limit question waits for an answer"],
+     ["chain", { open_streams: 1 }, "a terminal or a web tab is open on it"],
+     ["same", { turn_running: true }, "a turn is running in it"]].each do |mode, snapshot, reason|
+      Dir.mktmpdir("schedules-live-worker") do |root|
+        dir = File.join(root, "sessions")
+        anchor = session(dir).id
+        session_dir = Samagotchi::Session.session_dir(anchor, state_dir: dir)
+        Samagotchi::WorkerSidecar.new(port: 9, session_id: anchor, pid: Process.pid,
+                                      features: [Samagotchi::WorkerLink::ACTIVITY_FEATURE]).write(session_dir)
+        lock = Samagotchi::OwnerLock.acquire(session_dir, kind: "worker")
+        allow(Samagotchi::BridgeClient).to receive(:new).and_return(double("client", get: [200, snapshot]))
+
+        schedules = store(dir)
+        entry = schedules.add(target: anchor, prompt: "Audit", recurrence: every("1m"), mode: mode)
+        outcome = schedules.tick(now: Time.now + 120).outcomes.first
+
+        expect([outcome.status, outcome.detail]).to eq(["skipped", reason])
+        expect(schedules.lookup(entry.id).skips).to eq(1)
+        lock.release
+      end
+    end
+  end
+
+  it "queues a turn in same mode even when a tab is open on the worker" do
+    Dir.mktmpdir("schedules-live-same") do |root|
+      dir = File.join(root, "sessions")
+      anchor = session(dir).id
+      session_dir = Samagotchi::Session.session_dir(anchor, state_dir: dir)
+      Samagotchi::WorkerSidecar.new(port: 9, session_id: anchor, pid: Process.pid,
+                                    features: [Samagotchi::WorkerLink::ACTIVITY_FEATURE]).write(session_dir)
+      lock = Samagotchi::OwnerLock.acquire(session_dir, kind: "worker")
+      allow(Samagotchi::BridgeClient).to receive(:new).and_return(double("client", get: [200, { open_streams: 2 }]))
+      allow(Samagotchi::SessionManager).to receive(:deliver_turn) do |_id, prompt:, **_kwargs|
+        Samagotchi::SessionManager::DeliverResult.new(status: :accepted, via: :file, ack: {})
+      end
+
+      schedules = store(dir)
+      schedules.add(target: anchor, prompt: "Check", recurrence: every("1m"), mode: described_class::SAME)
+      outcome = schedules.tick(now: Time.now + 120).outcomes.first
+      expect([outcome.status, outcome.detail]).to eq(["fired", "queued a turn"])
+      lock.release
+    end
+  end
+
+  it "skips when the live worker does not answer at all" do
+    Dir.mktmpdir("schedules-live-dead") do |root|
+      dir = File.join(root, "sessions")
+      anchor = session(dir).id
+      session_dir = Samagotchi::Session.session_dir(anchor, state_dir: dir)
+      Samagotchi::WorkerSidecar.new(port: 9, session_id: anchor, pid: Process.pid,
+                                    features: [Samagotchi::WorkerLink::ACTIVITY_FEATURE]).write(session_dir)
+      lock = Samagotchi::OwnerLock.acquire(session_dir, kind: "worker")
+      allow(Samagotchi::BridgeClient).to receive(:new).and_return(double("client", get: [nil, nil]))
+
+      schedules = store(dir)
+      schedules.add(target: anchor, prompt: "Audit", recurrence: every("1m"))
+      outcome = schedules.tick(now: Time.now + 120).outcomes.first
+      expect([outcome.status, outcome.detail]).to eq(["skipped", "its worker is not answering"])
+      lock.release
     end
   end
 

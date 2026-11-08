@@ -6,6 +6,7 @@ require "fileutils"
 require "json"
 
 require "samagotchi/web/session_hub"
+require "samagotchi/schedules"
 require "samagotchi/session"
 require "samagotchi/owner_lock"
 
@@ -607,6 +608,36 @@ RSpec.describe Samagotchi::Web::SessionHub do
       expect(built).to eq([%w[box], %w[box new]])
       expect(hub.send(:hub_registry)).to be(second)
       expect(built).to eq([%w[box], %w[box new]])
+    end
+  end
+
+  describe "the schedule tick (schedule.auto_tick, docs/scheduling.md)" do
+    def hub_with(auto)
+      hub = described_class.new(state_dir: state_dir, installed_versions: installed)
+      schedules = Samagotchi::Schedules.new(state_dir: state_dir)
+      allow(Samagotchi::Schedules).to receive(:new).and_return(schedules)
+      allow(schedules).to receive(:tick)
+      allow(Samagotchi::Config).to receive(:get).and_call_original
+      allow(Samagotchi::Config).to receive(:get).with("schedule.auto_tick").and_return(auto)
+      [hub, schedules]
+    end
+
+    it "ticks the schedules when auto_tick is on, once per tick_interval_minutes" do
+      hub, schedules = hub_with(true)
+
+      hub.send(:schedule_tick)
+      expect(schedules).to have_received(:tick).once
+
+      hub.send(:schedule_tick) # still inside the interval: the hub does not tick twice
+      expect(schedules).to have_received(:tick).once
+    end
+
+    it "never ticks when auto_tick is off" do
+      hub, schedules = hub_with(false)
+
+      hub.send(:schedule_tick)
+      hub.send(:schedule_tick)
+      expect(schedules).not_to have_received(:tick)
     end
   end
 end
