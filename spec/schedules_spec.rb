@@ -370,6 +370,71 @@ RSpec.describe Samagotchi::Schedules do
     end
   end
 
+  it "deletes a delegate before the link above it, so a refused child leaves that link standing" do
+    Dir.mktmpdir("schedules-prune-order") do |root|
+      dir = File.join(root, "sessions")
+      allow(Process).to receive(:spawn).and_return(12_345)
+      anchor = session(dir).id
+      schedules = store(dir)
+      entry = schedules.add(target: anchor, prompt: "Audit", recurrence: every("1m"), keep_links: 1)
+
+      schedules.tick(now: Time.now + 120)
+      first = schedules.lookup(entry.id).head
+      child = session(dir, parent: first, delegate: true)
+      Samagotchi::ArchiveStore.archive(child.id, state_dir: dir)
+      # The child's delete is refused (its worker is still there).
+      allow(Samagotchi::SessionManager).to receive(:delete_session).and_call_original
+      allow(Samagotchi::SessionManager).to receive(:delete_session).with(child.id, state_dir: dir) do
+        raise Samagotchi::SessionManager::DeleteRefused.new(child.id, :worker_running)
+      end
+
+      set_idle(dir, first)
+      outcome = schedules.tick(now: Time.now + 240).outcomes.first
+      expect(outcome.status).to eq("fired")
+
+      # Children first: the child does not go, so its link is untouched and
+      # still archived. Deleting the link first would leave a delegate under
+      # a link that no longer exists, unreachable by the next firing.
+      expect(archived?(dir, first)).to be(true)
+      expect(Samagotchi::Session.exist?(child.id, state_dir: dir)).to be(true)
+      expect(schedules.lookup(entry.id).failures).to eq(0)
+    end
+  end
+
+  it "leaves a link whose subtree still has a worker, and prunes it once the worker is gone" do
+    Dir.mktmpdir("schedules-prune-owner") do |root|
+      dir = File.join(root, "sessions")
+      allow(Process).to receive(:spawn).and_return(12_345)
+      anchor = session(dir).id
+      schedules = store(dir)
+      entry = schedules.add(target: anchor, prompt: "Audit", recurrence: every("1m"), keep_links: 2)
+
+      schedules.tick(now: Time.now + 120)
+      first = schedules.lookup(entry.id).head          # still inside the window
+      set_idle(dir, first)
+      schedules.tick(now: Time.now + 240)
+      head = schedules.lookup(entry.id).head
+
+      child = session(dir, parent: first, delegate: true)
+      Samagotchi::ArchiveStore.archive(child.id, state_dir: dir)
+      lock = Samagotchi::OwnerLock.acquire(Samagotchi::Session.session_dir(child.id, state_dir: dir), kind: "worker")
+
+      # This firing pushes `first` out of the window: its subtree has a worker,
+      # so nothing in it is deleted.
+      set_idle(dir, head)
+      expect(schedules.tick(now: Time.now + 480).outcomes.first.status).to eq("fired")
+      # Nothing in that subtree is deleted while a worker owns part of it.
+      expect(archived?(dir, first)).to be(true)
+      expect(Samagotchi::Session.exist?(child.id, state_dir: dir)).to be(true)
+
+      lock.release
+      set_idle(dir, schedules.lookup(entry.id).head)
+      schedules.run_now(entry.id)
+      expect(archived?(dir, first)).to be(false)
+      expect(Samagotchi::Session.exist?(child.id, state_dir: dir)).to be(false)
+    end
+  end
+
   it "keeps everything with keep_links 0" do
     Dir.mktmpdir("schedules-keep-all") do |root|
       dir = File.join(root, "sessions")
