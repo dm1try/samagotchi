@@ -219,6 +219,25 @@ RSpec.describe Samagotchi::UpdateCommand do
                                    trash_copy: "Copied to the trash first: identity.md (/t)")
   end
 
+  it "puts what the system bundle's run warned of on its row: installed, updated, restored" do
+    mismatch = "Checksum mismatch for identity.md: expected 00000000..., got 11111111..."
+    rows = %i[installed updated restored].map do |status|
+      result = Samagotchi::MemoryBundle::SystemBundle::Result.new(from: "1", to: "2", status: status, merged: [], behind: [], warnings: [mismatch])
+      allow(Samagotchi::MemoryBundle::SystemBundle).to receive(:sync).and_return(result)
+      described_class.new(["--no-gem"], stdout: out, stderr: err).send(:system_bundle_row)
+    end
+
+    expect(rows.map(&:status)).to eq(["installed (#{mismatch})", "updated (#{mismatch})", "restored missing files (#{mismatch})"])
+  end
+
+  it "puts a shipped bundle update's checksum warning on its row" do
+    mismatch = "Checksum mismatch for skill.md: expected 00000000..., got 11111111..."
+    update = Samagotchi::MemoryBundle::ShippedUpdate::Row.new(name: "coordinator", from: "0.8.0", to: "0.9.0", status: :updated,
+                                                              merged: [], behind: [], replaced: [], note: mismatch)
+    row = described_class.new(["--no-gem"], stdout: out, stderr: err).send(:bundle_row, update)
+    expect(row.status).to eq("updated (#{mismatch})")
+  end
+
   it "reads as merged for a file merged at the same version, with no to" do
     update = Samagotchi::MemoryBundle::ShippedUpdate::Row.new(
       name: "coordinator", from: "0.8.0", status: :merged, merged: ["skill.md"], behind: [], replaced: [],

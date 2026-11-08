@@ -171,22 +171,17 @@ module Samagotchi
         end
       end
 
-      # Strict mode: an installed hook whose sha256 differs from the one its
-      # manifest declares warns (as verify_memory_checksums does).
+      # Strict mode: a hook whose sha256 differs from the one its manifest
+      # declares warns (as verify_memory_checksums does). The bundle's file is
+      # checked, the one the install copies, so a dry run checks what it
+      # would install, not the old hook in place.
       def verify_hook_checksums
         @bundle_hooks.each do |basename|
           next if @conflicts.key?(basename)
 
-          expected = @manifest.checksum_for_hook(basename)
-          next unless expected
-
-          dest = File.join(@provenance.hooks_dir, basename)
-          next unless File.exist?(dest)
-
-          actual = FileDigest.hex(dest)
-          if actual != expected
-            @warnings << "Checksum mismatch for hook #{basename}: expected #{expected[0..7]}..., got #{actual[0..7]}..."
-          end
+          warning = FileDigest.mismatch("hook #{basename}", File.join(@bundle_dir, "hooks", basename),
+                                        @manifest.checksum_for_hook(basename))
+          @warnings << warning if warning
         end
       end
 
@@ -248,11 +243,8 @@ module Samagotchi
         FileUtils.mkdir_p(@provenance.plugin_dir)
         place(src, dest)
         @results[plugin[:file]] = result
-        expected = @manifest.checksum_for_plugin
-        actual = FileDigest.hex(dest)
-        if @strict && !@dev && expected && actual != expected
-          @warnings << "Checksum mismatch for plugin #{plugin[:file]}: expected #{expected[0..7]}..., got #{actual[0..7]}..."
-        end
+        warning = FileDigest.mismatch("plugin #{plugin[:file]}", dest, @manifest.checksum_for_plugin) if @strict && !@dev
+        @warnings << warning if warning
         dest
       end
 
@@ -289,11 +281,8 @@ module Samagotchi
           place(File.join(@bundle_dir, "scripts", file), dest)
           @results["scripts/#{file}"] = results[file]
           FileUtils.chmod(0o755, dest) unless @dev
-          actual = FileDigest.hex(dest)
-          expected = declared.to_s.delete_prefix("sha256:")
-          if @strict && !@dev && !expected.empty? && actual != expected
-            @warnings << "Checksum mismatch for script #{file}: expected #{expected[0..7]}..., got #{actual[0..7]}..."
-          end
+          warning = FileDigest.mismatch("script #{file}", dest, declared.to_s.delete_prefix("sha256:")) if @strict && !@dev
+          @warnings << warning if warning
           [file, dest]
         end
       end

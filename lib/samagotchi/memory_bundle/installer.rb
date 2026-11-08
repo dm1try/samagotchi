@@ -549,26 +549,20 @@ module Samagotchi
         @results[file_key] = FileResult.new(word: DRY_WORDS.fetch(action.word), state: state, action: action)
       end
 
-      # Strict mode: a memory installed from the bundle (its action writes the
-      # bundle's text, word :installed: a new or missing file, --force) whose
-      # sha256 differs from its manifest's warns, a dry run's too. One kept,
-      # skipped or merged isn't checked (a local edit isn't a bad download),
-      # nor, today, one an upgrade fast-forwards (:updated).
+      # Strict mode: a memory that takes the bundle's text (Action#takes_source?:
+      # a new or missing file, --force, an upgrade's or a re-install's
+      # fast-forward, a merge into a local edit) warns when the bundle's file
+      # differs from its manifest's sha256. One kept or skipped isn't checked
+      # (it takes nothing from the bundle). What is checked is the source
+      # file, the bytes the write or merge takes, so a dry run checks what it
+      # would bring in, never the user's bytes on disk.
       def verify_memory_checksums
         @bundle_md.each do |file_key|
-          action = @results[file_key]&.action
-          next unless action&.do == :write_incoming && action.word == :installed
+          result = @results[file_key]
+          next unless result&.action&.takes_source?
 
-          target_path = File.join(@target_dir, file_key)
-          next unless File.exist?(target_path)
-
-          expected = @manifest.checksum_for(file_key)
-          next unless expected
-
-          actual = FileDigest.hex(target_path)
-          if actual != expected
-            @warnings << "Checksum mismatch for #{file_key}: expected #{expected[0..7]}..., got #{actual[0..7]}..."
-          end
+          warning = FileDigest.mismatch(file_key, result.state.paths[:incoming], @manifest.checksum_for(file_key))
+          @warnings << warning if warning
         end
       end
 

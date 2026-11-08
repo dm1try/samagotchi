@@ -56,4 +56,21 @@ RSpec.describe Samagotchi::MemoryBundle::FileDigest do
       expect(described_class.sha256(File.join(tmp, "nope.rb"))).to be_nil
     end
   end
+
+  describe ".mismatch" do
+    it "is the integrity warning for bytes the declared sha doesn't match, nil when it does" do
+      path = write("a.md", "a\n")
+      actual = Digest::SHA256.hexdigest("a\n")
+      expect(described_class.mismatch("a.md", path, "0" * 64))
+        .to eq("Checksum mismatch for a.md: expected 00000000..., got #{actual[0..7]}...")
+      expect(described_class.mismatch("a.md", path, actual)).to be_nil
+    end
+
+    it "is nil with nothing to check: no sha declared, or no file" do
+      path = write("a.md", "a\n")
+      expect(described_class.mismatch("a.md", path, nil)).to be_nil
+      expect(described_class.mismatch("a.md", path, "")).to be_nil
+      expect(described_class.mismatch("a.md", File.join(tmp, "nope.md"), "0" * 64)).to be_nil
+    end
+  end
 end

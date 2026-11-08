@@ -45,8 +45,9 @@ module Samagotchi
     # a project-scope bundle: chi bundle upgrade in the project.
     module ShippedUpdate
       # status: :would_update, :would_merge (plan), :updated, :merged,
-      # :up_to_date, :skipped, :failed. note says why for skipped/failed, and
-      # what a retry at the same version warned of. merged and replaced are file
+      # :up_to_date, :skipped, :failed. note says why for skipped/failed,
+      # what a retry at the same version warned of, and an update's Checksum
+      # mismatch warnings. merged and replaced are file
       # names, behind FileStanding::Behind; under plan they are what apply would
       # merge, replace or leave behind.
       # adds is nil but for a profile: the members it installs.
@@ -118,6 +119,10 @@ module Samagotchi
           r.merged = installer.merged_files
           r.behind = installer.behind
           r.trash_copy = installer.trash_copy_line
+          # The integrity check's warnings; the rest of the Installer's say
+          # what the row's merged and behind already do.
+          mismatches = installer.warnings.grep(/\AChecksum mismatch/)
+          r.note = mismatches.join("; ") unless mismatches.empty?
         end
       rescue StandardError => e
         row.dup.tap do |r|

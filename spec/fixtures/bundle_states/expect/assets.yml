@@ -185,21 +185,21 @@ hook_unchanged:
 hook_pristine:
   install: {do: wrote_incoming, save_first: false, recorded: disk, word: Installed, label: "h.rb: event=before_tool_call on_error=skip priority=100 [ok]", warns: []}
   upgrade: {do: wrote_incoming, save_first: false, recorded: disk, word: Updated, label: "h.rb: event=before_tool_call on_error=skip priority=100 [ok]", warns: []}
-  upgrade_dry: {do: kept, save_first: false, recorded: old, word: Would update, label: "h.rb: event=before_tool_call on_error=skip priority=100 [ok]", warns: ["Checksum mismatch for hook h.rb: expected 4a5fafcb..., got b67c82e2..."]}
+  upgrade_dry: {do: kept, save_first: false, recorded: old, word: Would update, label: "h.rb: event=before_tool_call on_error=skip priority=100 [ok]", warns: []}
   uninstall: {do: removed, save_first: false, recorded: none, word: Removed, label: not installed, warns: []}
   plan: {do: kept, word: would_update, warns: []}
   status: {label: "h.rb: event=before_tool_call on_error=skip priority=100 [ok]"}
 hook_edited_sha:
   install: {do: wrote_incoming, save_first: true, recorded: disk, word: Installed, label: "h.rb: event=before_tool_call on_error=skip priority=100 [ok]", warns: ["Copied to the trash first: hooks/h.rb (<home>/samagotchi/memories/.bundles/.trash/demo-<stamp>)"]}
   upgrade: {do: wrote_incoming, save_first: true, recorded: disk, word: Updated, label: "h.rb: event=before_tool_call on_error=skip priority=100 [ok]", warns: ["Copied to the trash first: hooks/h.rb (<home>/samagotchi/memories/.bundles/.trash/demo-<stamp>)", "Hook h.rb was locally modified; overwriting"]}
-  upgrade_dry: {do: kept, save_first: false, recorded: old, word: Would update, label: "h.rb: event=before_tool_call on_error=skip priority=100 [ok]", warns: ["Checksum mismatch for hook h.rb: expected 4a5fafcb..., got 49cf24c7..."]}
+  upgrade_dry: {do: kept, save_first: false, recorded: old, word: Would update, label: "h.rb: event=before_tool_call on_error=skip priority=100 [ok]", warns: []}
   uninstall: {do: removed, save_first: true, recorded: none, word: Removed, label: not installed, warns: ["Copied to the trash first: hooks/h.rb (<home>/samagotchi/memories/.bundles/.trash/demo-<stamp>)"]}
   plan: {do: kept, word: "would_update, replaces", warns: []}
   status: {label: "h.rb: event=before_tool_call on_error=skip priority=100 [ok]"}
 hook_edited_no_sha:
   install: {do: wrote_incoming, save_first: true, recorded: disk, word: Installed, label: "h.rb: event=before_tool_call on_error=skip priority=100 [ok]", warns: ["Copied to the trash first: hooks/h.rb (<home>/samagotchi/memories/.bundles/.trash/demo-<stamp>)"]}
   upgrade: {do: wrote_incoming, save_first: true, recorded: disk, word: Updated, label: "h.rb: event=before_tool_call on_error=skip priority=100 [ok]", warns: ["Copied to the trash first: hooks/h.rb (<home>/samagotchi/memories/.bundles/.trash/demo-<stamp>)"]}
-  upgrade_dry: {do: kept, save_first: false, recorded: empty, word: Would update, label: "h.rb: event=before_tool_call on_error=skip priority=100 [ok]", warns: ["Checksum mismatch for hook h.rb: expected 4a5fafcb..., got 49cf24c7..."]}
+  upgrade_dry: {do: kept, save_first: false, recorded: empty, word: Would update, label: "h.rb: event=before_tool_call on_error=skip priority=100 [ok]", warns: []}
   uninstall: {do: removed, save_first: true, recorded: none, word: Removed, label: not installed, warns: ["Copied to the trash first: hooks/h.rb (<home>/samagotchi/memories/.bundles/.trash/demo-<stamp>)"]}
   plan: {do: kept, word: "would_update, replaces", warns: []}
   status: {label: "h.rb: event=before_tool_call on_error=skip priority=100 [ok]"}
@@ -255,7 +255,7 @@ hook_linked:
 hook_pristine_no_sha:
   install: {do: wrote_incoming, save_first: true, recorded: disk, word: Installed, label: "h.rb: event=before_tool_call on_error=skip priority=100 [ok]", warns: ["Copied to the trash first: hooks/h.rb (<home>/samagotchi/memories/.bundles/.trash/demo-<stamp>)"]}
   upgrade: {do: wrote_incoming, save_first: true, recorded: disk, word: Updated, label: "h.rb: event=before_tool_call on_error=skip priority=100 [ok]", warns: ["Copied to the trash first: hooks/h.rb (<home>/samagotchi/memories/.bundles/.trash/demo-<stamp>)"]}
-  upgrade_dry: {do: kept, save_first: false, recorded: empty, word: Would update, label: "h.rb: event=before_tool_call on_error=skip priority=100 [ok]", warns: ["Checksum mismatch for hook h.rb: expected 4a5fafcb..., got b67c82e2..."]}
+  upgrade_dry: {do: kept, save_first: false, recorded: empty, word: Would update, label: "h.rb: event=before_tool_call on_error=skip priority=100 [ok]", warns: []}
   uninstall: {do: removed, save_first: true, recorded: none, word: Removed, label: not installed, warns: ["Copied to the trash first: hooks/h.rb (<home>/samagotchi/memories/.bundles/.trash/demo-<stamp>)"]}
   plan: {do: kept, word: "would_update, replaces", warns: []}
   status: {label: "h.rb: event=before_tool_call on_error=skip priority=100 [ok]"}

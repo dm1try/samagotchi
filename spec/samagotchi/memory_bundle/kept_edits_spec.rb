@@ -4,6 +4,7 @@ require "spec_helper"
 require "tmpdir"
 require "fileutils"
 require "yaml"
+require "digest"
 require "stringio"
 
 require "samagotchi/bundle_command"
@@ -31,7 +32,7 @@ RSpec.describe "Kept edits in a bundle" do
     files.each { |name, text| File.write(File.join(dir, name), text) }
     File.write(File.join(dir, "manifest.yml"),
                YAML.dump({ "name" => "demo", "version" => version, "scope" => "system",
-                           "files" => files.keys.to_h { |k| [k, "sha256:fake"] } }.merge(extra)))
+                           "files" => files.to_h { |k, text| [k, "sha256:#{Digest::SHA256.hexdigest(text)}"] } }.merge(extra)))
     dir
   end
 

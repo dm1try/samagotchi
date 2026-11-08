@@ -26,6 +26,19 @@ module Samagotchi
         hex = hex(path)
         hex && "sha256:#{hex}"
       end
+
+      # The integrity check's one warning: +path+'s bytes against the sha
+      # hex a manifest declares for it. nil when they match, or when there is
+      # nothing to check (no sha declared, no file).
+      # @param label [String] what the file is ("a.md", "hook guard.rb")
+      def self.mismatch(label, path, expected)
+        return nil if expected.nil? || expected.empty?
+
+        actual = hex(path)
+        return nil if actual.nil? || actual == expected
+
+        "Checksum mismatch for #{label}: expected #{expected[0..7]}..., got #{actual[0..7]}..."
+      end
     end
   end
 end

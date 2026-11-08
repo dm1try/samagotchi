@@ -18,7 +18,8 @@
 #   listed_missing  the manifest lists the hook, the source has no such file
 #   unlisted    the manifest has no hooks: key (every hooks/*.rb installs)
 #   linked      the source's hooks/h.rb is a symlink out of the source
-#   fix, fixed, divergent, note   as in memory_cases.yml; asset tags: dry-checksum,
+#   fix, fixed, divergent, changed, note   as in memory_cases.yml; asset tags:
+#               dry-checksum (changed: the hook check reads the source),
 #               dry-dropped, dry-trash, hook-stray-left, hook-sha-dropped, hook-status,
 #               new-updated, rule-installed, uninstall-unnamed
 texts:
@@ -262,19 +263,20 @@ cases:
     installed: v1
     incoming: v2
     fixed: D3
-    divergent: dry-checksum
+    changed: dry-checksum
     note: >-
-      P1: the dry run says Would update for a hook the real run updates. dry-checksum: upgrade --dry-run warns "Checksum mismatch for hook h.rb": it checks the installed (old) hook against the new manifest
+      P1: the dry run says Would update for a hook the real run updates. dry-checksum: upgrade --dry-run warned "Checksum mismatch for hook h.rb": it checked the installed (old) hook against the new manifest; it checks the bundle's hook since
   - id: hook_edited_sha
     asset: hook
     state: edited_sha
     recorded: v1
     installed: mine
     incoming: v2
-    divergent: [dry-checksum, hook-status, dry-trash]
+    divergent: [hook-status, dry-trash]
+    changed: dry-checksum
     note: >-
-      dry-checksum: upgrade --dry-run warns "Checksum mismatch for hook h.rb": it checks the installed (old) hook
-      against the new manifest. hook-status: chi bundle status says [ok] for an edited hook the loader refuses (its
+      dry-checksum: upgrade --dry-run warned "Checksum mismatch for hook h.rb": it checked the installed (old) hook
+      against the new manifest; it checks the bundle's hook since. hook-status: chi bundle status says [ok] for an edited hook the loader refuses (its
       sha differs); the plugin's line says modified, not loaded dry-trash: upgrade copies the edited file to the trash
       ("Copied to the trash first"); its dry run never says so (chi update's plan does: replaces).
   - id: hook_edited_no_sha
@@ -284,10 +286,12 @@ cases:
     installed: mine
     incoming: v2
     fixed: D2
-    divergent: [dry-checksum, dry-trash]
+    divergent: dry-trash
+    changed: dry-checksum
     note: >-
-      P3: chi update's plan names an edited hook installed with no recorded sha. dry-checksum: upgrade --dry-run warns
-      "Checksum mismatch for hook h.rb": it checks the installed (old) hook against the new manifest dry-trash:
+      P3: chi update's plan names an edited hook installed with no recorded sha. dry-checksum: upgrade --dry-run warned
+      "Checksum mismatch for hook h.rb": it checked the installed (old) hook against the new manifest; it checks the
+      bundle's hook since. dry-trash:
       upgrade copies the edited file to the trash ("Copied to the trash first"); its dry run never says so (chi
       update's plan does: replaces).
   - {id: hook_dev_link, asset: hook, state: dev_link, recorded: dev, installed: v2, incoming: v2}
@@ -355,8 +359,9 @@ cases:
     recorded: ""
     installed: v1
     incoming: v2
-    divergent: [dry-checksum, dry-trash]
+    divergent: dry-trash
+    changed: dry-checksum
     note: >-
-      upgrade --dry-run warns "Checksum mismatch for hook h.rb": it checks the installed (old) hook against the new
-      manifest dry-trash: upgrade copies the edited file to the trash ("Copied to the trash first"); its dry run never
+      dry-checksum: upgrade --dry-run warned "Checksum mismatch for hook h.rb": it checked the installed (old) hook
+      against the new manifest; it checks the bundle's hook since. dry-trash: upgrade copies the edited file to the trash ("Copied to the trash first"); its dry run never
       says so (chi update's plan does: replaces).
