@@ -150,6 +150,19 @@ RSpec.describe Samagotchi::Bridge::TurnAccumulator do
     expect(acc.current_turn[:parts].last).to include(action: "Running command", duration_ms: 1500)
   end
 
+  it "takes a tool call's duration from the event when it carries one, and keeps and replays its tool_id" do
+    feed({ type: :turn_started, prompt: "hi" },
+         { type: :tool_call_started, iteration: 1, call_index: 1, tool: "execute", params: "ls", tool_id: "t3" })
+    clock[0] += 2.5
+    feed({ type: :tool_call_completed, iteration: 1, call_index: 1, tool: "execute", output: "x", waited_ms: 1000,
+           duration_ms: 1498, tool_id: "t3", activity: { tool: "execute", params: "ls", status: "ok" } })
+
+    expect(acc.current_turn[:parts].last).to include(tool_id: "t3", duration_ms: 1498)
+    replayed = described_class.replay_events(acc.current_turn).select { |e| e[:type].to_s.start_with?("tool_call") }
+    expect(replayed.map { |e| e[:tool_id] }).to eq(%w[t3 t3])
+    expect(replayed.last[:duration_ms]).to eq(1498)
+  end
+
   it "gives a running call's part the time it has run so far, so a join times the row from its start" do
     feed({ type: :turn_started, prompt: "hi" },
          { type: :tool_call_started, iteration: 1, call_index: 1, tool: "delegate", params: "task" })

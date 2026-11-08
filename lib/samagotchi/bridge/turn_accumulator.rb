@@ -183,6 +183,7 @@ module Samagotchi
       def self.tool_replay_events(part)
         call = { iteration: part[:iteration], call_index: part[:call_index], tool: part[:tool] }
         call[:label] = part[:label] if part[:label]
+        call[:tool_id] = part[:tool_id] if part[:tool_id]
         # Its row fields (ToolRowFields), each in its place: title and, for
         # an alias's call, the name the model used, also in the activity.
         title = part.slice(*ToolRowFields::ACTIVITY_KEYS).compact
@@ -326,6 +327,8 @@ module Samagotchi
           part = { kind: "tool", iteration: event[:iteration], call_index: event[:call_index],
                    tool: event[:tool], params: event[:params], status: "running" }
           part[:label] = event[:label] if event[:label]
+          # The id its output is saved under (ToolIds; not a row field).
+          part[:tool_id] = event[:tool_id] if event[:tool_id]
           ToolRowFields::KEYS.each { |key| part[key] = event[key] if event[key] }
           parts << part
           @tool_started_at[[event[:iteration], event[:call_index]]] = @clock.call
@@ -348,10 +351,15 @@ module Samagotchi
           tool[:diff] = event[:diff] if event[:diff]
           action = event.dig(:activity, :action)
           tool[:action] = action.to_s if action
-          # As the live row times it (EventRenderer): from tool_call_started,
-          # less an approval wait.
+          # The event's (ToolRunner's: the figure every UI shows); without
+          # one (an older worker's event), as the live row times it: from
+          # tool_call_started, less an approval wait.
           started_at = @tool_started_at.delete([event[:iteration], event[:call_index]])
-          tool[:duration_ms] = [((@clock.call - started_at) * 1000) - event[:waited_ms].to_f, 0].max.round if started_at
+          if event[:duration_ms].is_a?(Integer)
+            tool[:duration_ms] = event[:duration_ms]
+          elsif started_at
+            tool[:duration_ms] = [((@clock.call - started_at) * 1000) - event[:waited_ms].to_f, 0].max.round
+          end
         when :pending_input_merged
           # A steer-only merge (count 0) has no user part: the origins stay
           # for the user lines' own merge.

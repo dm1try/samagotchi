@@ -35,15 +35,17 @@ module Samagotchi
     # #interrupted run for every call left (the one it cut short too), so
     # the loop's conversation answers each call, then goes on up: the turn
     # keeps its progress (Engine#ctrl_c_messages). +context+: the calls'
-    # turn (TurnContext), each run's (ToolRunner#run).
+    # turn (TurnContext), each run's (ToolRunner#run). +ids+: the calls'
+    # ToolIds, in call order (ToolIds.next_ids before the batch: the ids the
+    # entries are saved under), each on its run's tool events; nil: none.
     # @return [Array<ToolRun>] the runs
-    def run_batch(runner, calls, context:, iteration:, emit:, on_stream_event:, cap:)
+    def run_batch(runner, calls, context:, iteration:, emit:, on_stream_event:, cap:, ids: nil)
       # Before anything can be interrupted: the rescue counts it.
       runs = []
       emit.call({ type: :tool_dispatch_started, iteration: iteration, call_count: calls.length })
       calls.each_with_index do |call, index|
         runs << runner.run(call, context: context, iteration: iteration, call_index: index + 1, call_count: calls.length,
-                                 on_stream_event: on_stream_event, max_tool_output_chars: cap)
+                                 on_stream_event: on_stream_event, max_tool_output_chars: cap, tool_id: ids&.[](index))
         yield runs.last, index if block_given?
       end
       emit.call({ type: :tool_dispatch_completed, iteration: iteration, call_count: calls.length })

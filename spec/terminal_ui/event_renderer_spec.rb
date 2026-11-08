@@ -192,6 +192,15 @@ RSpec.describe Samagotchi::TerminalUI::EventRenderer do
     expect(view.lines).to eq(["read 250.0"])
   end
 
+  it "shows the event's duration when it carries one (the worker's, as the web and a reload show it)" do
+    started, completed = tool_events(activity)
+    renderer.call(started)
+    now[0] = 13.0
+    renderer.call(completed.merge(waited_ms: 2750, duration_ms: 248))
+
+    expect(view.lines).to eq(["read 248"])
+  end
+
   it "does not repeat streamed tool activity in the turn summary" do
     other = activity.merge(tool: "execute")
     tool_events(activity).each { |e| renderer.call(e) }

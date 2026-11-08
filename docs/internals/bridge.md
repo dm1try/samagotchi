@@ -28,8 +28,9 @@ whose seq a cursor is) and its **secret**; both are published in `bridge.json` (
 A joining UI must draw a turn already half done, and the ring may have dropped its early events. The accumulator
 folds the event log into one hash, `current_turn`: the prompt, `turn_id`, origin, `at`, and ordered `parts`
 (generation, thinking, text, tool, input, steer, reminder, notice), plus `pending_question`. A tool part keeps its
-row fields (`ToolRowFields`), its output cut head-and-tail at `ToolOutputCut::WEB_PREVIEW_CHARS` so a joined row is the
-row a reload draws, and `elapsed_ms` while it runs (the accumulator times running calls itself, `clock:`). A
+row fields (`ToolRowFields`), its `tool_id`, its output cut head-and-tail at `ToolOutputCut::WEB_PREVIEW_CHARS` so a
+joined row is the row a reload draws, `elapsed_ms` while it runs (the accumulator times running calls itself, `clock:`)
+and, once finished, the event's `duration_ms` (its own clock only for an older worker's event that has none). A
 `notice` part holds the event of a row that is neither text nor a tool call (`TurnNotice::FIELDS`: a hook's notice,
 the "asking again" row, a steer's cut, a ✂ row, a question and its answer), so a join replays it through the handler
 that drew it live.
@@ -194,6 +195,12 @@ The Bridge exposes:
   data: {"type":"tool_call_started","iteration":2,"call_index":1,"tool":"write",
          "params":"path=notes.txt","event_seq":812}
   ```
+
+  Both tool events carry the run's `tool_id` (`ToolIds`, the id its output is saved under in the session's
+  `tool_ids`, handed out before the batch runs), and `tool_call_completed` carries `duration_ms`: the call's time from
+  the `tool_call_started` emit to its own, less an approval's `waited_ms`, rounded first (SessionMetrics' tool record
+  definition). It is the one duration every UI shows: the web's live row, the tool record a reload draws, the attached
+  terminal's line; each keeps its own clock only for an older worker's event without it.
 
   A `turn_completed` frame omits `result`; `turn_summary.output` carries the answer:
 

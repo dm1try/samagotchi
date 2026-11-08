@@ -9,6 +9,7 @@ require "tmpdir"
 require "samagotchi/kernel_loop"
 require "samagotchi/toolkit"
 require "support/test_kernel"
+require "samagotchi/session_metrics"
 
 # ToolRunner's per-call contract around the before_tool_call veto. The loop
 # level (text the model gets, both loops) is in
@@ -788,6 +789,77 @@ RSpec.describe Samagotchi::ToolRunner do
         expect(result.output).to eq("[execute] Error: The user declined this call. It needed approval (hook): sure? Do not retry it " \
                                       "or reach the same result another way; ask the user how to proceed.")
       end
+    end
+  end
+
+  # The row's duration and its output's id, the same in every UI: the
+  # event's duration_ms is SessionMetrics' tool record (a reload's figure).
+  describe "tool_call_completed's duration_ms and both events' tool_id" do
+    let(:now) { [100.0] }
+    let(:ask) { false }
+    let(:runner) do
+      approver = lambda do |verdict, _turn|
+        now[0] += 2.0
+        verdict.settle!(:allow).tap { verdict.scope = "once" }
+      end
+      k = kernel
+      gate = Samagotchi::Guardrails::Gate.new(hooks: hooks, approver: approver)
+      k.define_singleton_method(:guardrail_gate) { gate }
+      described_class.new(k, clock: -> { now.first })
+    end
+    let(:metrics) { Samagotchi::SessionMetrics.new(clock: -> { now.first }, wall_clock: -> { Time.utc(2026, 11, 8) }) }
+
+    before do
+      allow(kernel).to receive(:dispatch_tool_call) do |c|
+        now[0] += 0.0374
+        { output: "[#{c[:name]}]\nran", activity: { tool: c[:name], status: "ok" } }
+      end
+    end
+
+    def run_with_id(id = "t7")
+      runner.run(call, context: context, iteration: 1, call_index: 1, call_count: 1,
+                       on_stream_event: ->(e) { events << e }, max_tool_output_chars: nil, tool_id: id)
+    end
+
+    it "times the call from the started emit, and names its output's id on both events" do
+      run_with_id
+
+      expect(events.map { |e| e[:tool_id] }).to eq(%w[t7 t7])
+      expect(events.last[:duration_ms]).to eq(37)
+    end
+
+    it "carries no tool_id without one" do
+      run
+
+      expect(events).to all(satisfy { |e| !e.key?(:tool_id) })
+      expect(events.last[:duration_ms]).to eq(37)
+    end
+
+    it "leaves an approval's wait out" do
+      hooks.register(:before_tool_call) { |e| e[:guardrail].ask!("sure?") }
+      run_with_id
+
+      expect(events.last).to include(waited_ms: 2000, duration_ms: 37)
+    end
+
+    it "gives a denied call its short real figure" do
+      hooks.register(:before_tool_call) { |e| e[:guardrail].deny!("no", source: "test") }
+      run_with_id
+
+      expect(events.last).to include(duration_ms: 0)
+    end
+
+    it "equals SessionMetrics' own record of the call on the same clock" do
+      hooks.register(:before_tool_call) { |e| e[:guardrail].ask!("sure?") }
+      metrics.call(type: :turn_started, session_id: "s", prompt: "p", turn_id: "turn-1")
+      runner.run(call, context: context, iteration: 1, call_index: 1, call_count: 1, max_tool_output_chars: nil,
+                       on_stream_event: lambda { |e|
+                         metrics.call(e.except(:duration_ms))
+                         events << e
+                       })
+
+      expect(metrics.snapshot[:tool_records].map { |r| r[:duration_ms] }).to eq([events.last[:duration_ms]])
+      expect(events.last[:duration_ms]).to eq(37)
     end
   end
 

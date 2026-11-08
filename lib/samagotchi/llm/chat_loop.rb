@@ -1132,10 +1132,13 @@ module Samagotchi
         def dispatch(tool_calls, iteration, cap)
           log_direct_deferred(tool_calls)
           calls = tool_calls.map { |tool_call| NativeToolNormalizer.normalize(tool_call) }
+          # The batch's ids before it runs (each run's events carry its own):
+          # the same as one next id per result as it lands
+          # (spec/tool_ids_pin_spec.rb).
+          ids = ToolIds.next_ids(@conversation, calls.size)
           runs = ToolResponse.run_batch(@loop.tool_runner, calls, context: @turn_context, iteration: iteration, emit: method(:emit),
-                                                                  on_stream_event: @on_stream_event, cap: cap) do |run, index|
-            @conversation << ToolResponse.single(run, tool_call_id: tool_calls[index].id,
-                                                      ids: ToolIds.next_ids(@conversation, 1))
+                                                                  on_stream_event: @on_stream_event, cap: cap, ids: ids) do |run, index|
+            @conversation << ToolResponse.single(run, tool_call_id: tool_calls[index].id, ids: [ids[index]])
           end
           @tool_activity.concat(ToolResponse.activities(runs))
         end
