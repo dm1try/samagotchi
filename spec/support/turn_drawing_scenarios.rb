@@ -19,11 +19,24 @@ module TurnDrawingScenarios
   DIR = File.expand_path("../shared/turn_drawings", __dir__)
   AT = "2026-11-08T10:00:00.000+01:00"
   HEAD = { role: "system", content: "You are chi." }.freeze
+  # The zone the scenarios are built in: a continue note's header shows its
+  # created_at in local time (ContextNote), so a build in the runner's zone
+  # (UTC on CI) would not match the fixture. Fixed UTC+1 (POSIX inverts the
+  # sign), AT's offset.
+  ZONE = "Etc/GMT-1"
 
   module_function
 
   def all
-    SCENARIOS.map { |name, build| build.call.merge(name: name.to_s) }
+    in_zone { SCENARIOS.map { |name, build| build.call.merge(name: name.to_s) } }
+  end
+
+  def in_zone
+    saved = ENV.fetch("TZ", nil)
+    ENV["TZ"] = ZONE
+    yield
+  ensure
+    saved ? ENV["TZ"] = saved : ENV.delete("TZ")
   end
 
   def user(text, id, **extra) = { role: "user", content: text, turn_id: id, at: AT, **extra }
