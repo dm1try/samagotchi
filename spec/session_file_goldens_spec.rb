@@ -39,8 +39,11 @@ RSpec.describe "Session file goldens (characterization)" do
 
   def session_class = Samagotchi::Session
 
+  # Both spellings of the tmpdir are <TMP>, its realpath first: on macOS
+  # /var/folders and /tmp resolve to /private/..., and ReviewStart stores the
+  # project's realpath, so the unresolved one alone left "/private<TMP>".
   def normalize(text)
-    text.gsub(tmp, "<TMP>").gsub(%("written_by": #{Samagotchi::VERSION.to_json}), %("written_by": "<VERSION>"))
+    text.gsub(File.realpath(tmp), "<TMP>").gsub(tmp, "<TMP>").gsub(%("written_by": #{Samagotchi::VERSION.to_json}), %("written_by": "<VERSION>"))
   end
 
   def expect_golden(name, text)
@@ -60,11 +63,12 @@ RSpec.describe "Session file goldens (characterization)" do
     file_text(session.id)
   end
 
-  # A hand-written input file, with <TMP> as the spec's tmpdir, saved as
+  # A hand-written input file, with <TMP> as the spec's tmpdir (its realpath,
+  # as normalize reads both spellings back to <TMP>), saved as
   # the session +id+'s file.
   def place_input(name, id)
     FileUtils.mkdir_p(state_dir)
-    text = File.read(File.join(golden_dir, name)).gsub("<TMP>", tmp)
+    text = File.read(File.join(golden_dir, name)).gsub("<TMP>", File.realpath(tmp))
     File.write(session_class.session_file(id, state_dir: state_dir), text)
   end
 
