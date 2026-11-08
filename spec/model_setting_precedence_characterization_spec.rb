@@ -248,7 +248,7 @@ RSpec.describe "Model setting precedence (characterization)" do
       session = saved_session("small", llm_context: own)
       {
         effective: effective(registry).llm_context_explained(own&.resolve_args || {})&.summary(own),
-        session_budget: Samagotchi::LLMContextStrategy.session_budget(session, registry: registry),
+        session_budget: Samagotchi::EffectiveModel.session_budget(session, registry: registry),
         api_models: picker(registry, "small").first[:llm_context],
         saved_chip: Samagotchi::SessionSetting::LLM_CONTEXT.saved_summary(session, registry: registry)
       }

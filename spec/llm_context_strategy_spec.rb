@@ -7,6 +7,7 @@ require "yaml"
 require "samagotchi/config"
 require "samagotchi/host_registry"
 require "samagotchi/llm_context_strategy"
+require "samagotchi/model_lookup"
 
 RSpec.describe Samagotchi::LLMContextStrategy do
   def with_config(data)
@@ -21,6 +22,15 @@ RSpec.describe Samagotchi::LLMContextStrategy do
     entry = Samagotchi::HostRegistry::HostEntry.new(name: "box", host: "box", port: 8080, llm_context_strategy: layers,
                                                     llm_context_apply: apply, llm_context_budget_tokens: budget)
     Samagotchi::HostRegistry::ModelTarget.new(model: "box:m", entry: entry, bare_model: "m", client: nil)
+  end
+
+  # The lookup EffectiveModel would build for +target+.
+  def lookup(target, names, models) = Samagotchi::ModelLookup.for(target, names: names, models: models)
+
+  # The global key +key+ as config.yml would give it (ModelLookup#global).
+  def stub_global(key, value)
+    allow(Samagotchi::Config).to receive(:get_with_origin).and_call_original
+    allow(Samagotchi::Config).to receive(:get_with_origin).with(key).and_return([value, :file])
   end
 
   before { Samagotchi::ConfigFile.reset_warnings! }
@@ -48,13 +58,13 @@ RSpec.describe Samagotchi::LLMContextStrategy do
     before { allow(Samagotchi::Config).to receive(:get).and_call_original }
 
     def config(value)
-      allow(Samagotchi::Config).to receive(:get).with(described_class::SETTING).and_return(value)
+      stub_global(described_class::SETTING, value)
     end
 
     it "is none by default, from llm_context.strategy" do
       config("none")
 
-      expect(described_class.resolve(target, names: %w[m], models: {}).to_h)
+      expect(described_class.resolve(lookup(target, %w[m], {})).to_h)
         .to eq(layers: [], strategy: :none, source: :config, apply: :payoff, protect_steps: 3, stale_edits: false,
                budget_tokens: nil)
     end
@@ -63,52 +73,52 @@ RSpec.describe Samagotchi::LLMContextStrategy do
       config("stale")
       models = { "m" => Samagotchi::ModelSettings.new(llm_context_strategy: []) }
 
-      expect(described_class.resolve(target([:stale]), names: %w[box:m m], models: models).source).to eq(:model_setting)
-      expect(described_class.resolve(target([]), names: %w[m], models: {}).source).to eq(:host_setting)
-      expect(described_class.resolve(target, names: %w[m], models: {}).to_h)
+      expect(described_class.resolve(lookup(target([:stale]), %w[box:m m], models)).source).to eq(:model_setting)
+      expect(described_class.resolve(lookup(target([]), %w[m], {})).source).to eq(:host_setting)
+      expect(described_class.resolve(lookup(target, %w[m], {})).to_h)
         .to include(layers: [:stale], strategy: [:stale], source: :config)
     end
 
     it "takes the session's own layers first, once something sets them" do
       models = { "m" => Samagotchi::ModelSettings.new(llm_context_strategy: []) }
 
-      expect(described_class.resolve(target, names: %w[m], models: models, session: []).source).to eq(:session)
+      expect(described_class.resolve(lookup(target, %w[m], models), session: []).source).to eq(:session)
     end
 
     it "runs stale, and stale with forget, and names the layers a turn runs under" do
       models = { "m" => Samagotchi::ModelSettings.new(llm_context_strategy: [:stale]), "d" => Samagotchi::ModelSettings.new(llm_context_strategy: %i[stale forget]) }
       resolved = nil
 
-      expect { resolved = described_class.resolve(target, names: %w[m], models: models) }.not_to output.to_stderr
+      expect { resolved = described_class.resolve(lookup(target, %w[m], models)) }.not_to output.to_stderr
       expect(resolved.to_h).to include(layers: [:stale], strategy: [:stale], source: :model_setting)
-      expect { resolved = described_class.resolve(target, names: %w[d], models: models) }.not_to output.to_stderr
+      expect { resolved = described_class.resolve(lookup(target, %w[d], models)) }.not_to output.to_stderr
       expect(resolved.to_h).to include(layers: %i[stale forget], strategy: %i[stale forget], source: :model_setting)
       expect(resolved.active_layers).to eq(%i[stale forget])
-      expect(described_class.resolve(target, names: %w[x], models: models).active_layers).to eq([])
+      expect(described_class.resolve(lookup(target, %w[x], models)).active_layers).to eq([])
     end
 
     it "takes the apply rule from the session, the model, the host, then llm_context.apply, apart from the layers" do
-      allow(Samagotchi::Config).to receive(:get).with(described_class::APPLY_SETTING).and_return("turn_end")
+      stub_global(described_class::APPLY_SETTING, "turn_end")
       models = { "m" => Samagotchi::ModelSettings.new(llm_context_apply: :next_request), "s" => Samagotchi::ModelSettings.new(llm_context_strategy: [:stale]) }
 
-      expect(described_class.resolve(target(apply: :payoff), names: %w[m], models: models).apply).to eq(:next_request)
-      expect(described_class.resolve(target(apply: :payoff), names: %w[s], models: models).apply).to eq(:payoff)
-      expect(described_class.resolve(target, names: %w[s], models: models).apply).to eq(:turn_end)
-      expect(described_class.resolve(target, names: %w[m], models: models, session_apply: :payoff).apply).to eq(:payoff)
+      expect(described_class.resolve(lookup(target(apply: :payoff), %w[m], models)).apply).to eq(:next_request)
+      expect(described_class.resolve(lookup(target(apply: :payoff), %w[s], models)).apply).to eq(:payoff)
+      expect(described_class.resolve(lookup(target, %w[s], models)).apply).to eq(:turn_end)
+      expect(described_class.resolve(lookup(target, %w[m], models), session_apply: :payoff).apply).to eq(:payoff)
     end
 
     it "turns edit-driven stale stubs on only with llm_context.stale_edits: true (off by default, opt-in)" do
       allow(Samagotchi::Config).to receive(:get).with(described_class::STALE_EDITS_SETTING).and_return(nil, true)
 
-      expect(described_class.resolve(target, names: %w[m], models: {}).stale_edits).to be(false)
-      expect(described_class.resolve(target, names: %w[m], models: {}).stale_edits).to be(true)
+      expect(described_class.resolve(lookup(target, %w[m], {})).stale_edits).to be(false)
+      expect(described_class.resolve(lookup(target, %w[m], {})).stale_edits).to be(true)
     end
 
     it "reads llm_context.protect_steps, a negative one as the default" do
       allow(Samagotchi::Config).to receive(:get).with(described_class::PROTECT_SETTING).and_return(0, -1)
 
-      expect(described_class.resolve(target, names: %w[m], models: {}).protect_steps).to eq(0)
-      expect(described_class.resolve(target, names: %w[m], models: {}).protect_steps).to eq(3)
+      expect(described_class.resolve(lookup(target, %w[m], {})).protect_steps).to eq(0)
+      expect(described_class.resolve(lookup(target, %w[m], {})).protect_steps).to eq(3)
     end
   end
 
@@ -118,20 +128,20 @@ RSpec.describe Samagotchi::LLMContextStrategy do
     it "names where the strategy, the apply rule and the budget each came from" do
       models = { "m" => Samagotchi::ModelSettings.new(llm_context_strategy: [:stale], llm_context_budget_tokens: 48_000) }
 
-      explained = described_class.explain(target(apply: :turn_end), names: %w[m], models: models)
+      explained = described_class.explain(lookup(target(apply: :turn_end), %w[m], models))
 
-      expect(explained.resolved).to eq(described_class.resolve(target(apply: :turn_end), names: %w[m], models: models))
+      expect(explained.resolved).to eq(described_class.resolve(lookup(target(apply: :turn_end), %w[m], models)))
       expect(explained.strategy.to_h).to eq(source: :model_setting, where: "models: m")
       expect(explained.apply.to_h).to eq(source: :host_setting, where: "hosts entry 'box'")
       expect(explained.budget_tokens.to_h).to eq(source: :model_setting, where: "models: m")
-      expect(described_class.explain(target, names: %w[x], models: {}).apply.to_h)
+      expect(described_class.explain(lookup(target, %w[x], {})).apply.to_h)
         .to eq(source: :config, where: "llm_context.apply")
     end
 
     it "takes the session's own values first: none and a budget of 0 (off) too" do
       models = { "m" => Samagotchi::ModelSettings.new(llm_context_strategy: [:stale], llm_context_apply: :turn_end, llm_context_budget_tokens: 48_000) }
 
-      explained = described_class.explain(target, names: %w[m], models: models, session: [], session_apply: :next_request,
+      explained = described_class.explain(lookup(target, %w[m], models), session: [], session_apply: :next_request,
                                                   session_budget: 0)
 
       expect(explained.resolved.to_h).to include(strategy: :none, source: :session, apply: :next_request, budget_tokens: nil)
@@ -155,12 +165,12 @@ RSpec.describe Samagotchi::LLMContextStrategy do
       allow(Samagotchi::Config).to receive(:get).and_call_original
       models = { "m" => Samagotchi::ModelSettings.new(llm_context_budget_tokens: 48_000) }
 
-      expect(described_class.resolve(target, names: %w[x], models: models).budget_tokens).to be_nil
-      expect(described_class.resolve(target(budget: 96_000), names: %w[m], models: models).budget_tokens).to eq(48_000)
-      expect(described_class.resolve(target(budget: 96_000), names: %w[x], models: models).budget_tokens).to eq(96_000)
-      allow(Samagotchi::Config).to receive(:get).with(described_class::BUDGET_SETTING).and_return(64_000)
-      expect(described_class.resolve(target, names: %w[x], models: models).budget_tokens).to eq(64_000)
-      expect(described_class.resolve(target, names: %w[m], models: models, session_budget: 1000).budget_tokens).to eq(1000)
+      expect(described_class.resolve(lookup(target, %w[x], models)).budget_tokens).to be_nil
+      expect(described_class.resolve(lookup(target(budget: 96_000), %w[m], models)).budget_tokens).to eq(48_000)
+      expect(described_class.resolve(lookup(target(budget: 96_000), %w[x], models)).budget_tokens).to eq(96_000)
+      stub_global(described_class::BUDGET_SETTING, 64_000)
+      expect(described_class.resolve(lookup(target, %w[x], models)).budget_tokens).to eq(64_000)
+      expect(described_class.resolve(lookup(target, %w[m], models), session_budget: 1000).budget_tokens).to eq(1000)
     end
 
     it "reads tokens or k as /llm-context budget does (4k to 10M); off and 0 are unset; anything else warns" do
@@ -191,9 +201,8 @@ RSpec.describe Samagotchi::LLMContextStrategy do
       end
       expect { Samagotchi::Config.resolve(described_class::BUDGET_SETTING, file_data: data, env: {}) }.not_to output.to_stderr
       allow(Samagotchi::Config).to receive(:get).and_call_original
-      allow(Samagotchi::Config).to receive(:get).with(described_class::BUDGET_SETTING)
-        .and_return(Samagotchi::Config.resolve(described_class::BUDGET_SETTING, file_data: data, env: {}))
-      expect(described_class.resolve(target, names: %w[x], models: {}).budget_tokens).to eq(64_000)
+      stub_global(described_class::BUDGET_SETTING, Samagotchi::Config.resolve(described_class::BUDGET_SETTING, file_data: data, env: {}))
+      expect(described_class.resolve(lookup(target, %w[x], {})).budget_tokens).to eq(64_000)
       expect(Samagotchi::Config.resolve(described_class::BUDGET_SETTING, file_data: {},
                                         env: { "SAMAGOTCHI_LLM_CONTEXT_BUDGET_TOKENS" => "32k" })).to eq("32k")
     end
@@ -265,19 +274,19 @@ RSpec.describe Samagotchi::LLMContextStrategy do
     end
   end
 
-  describe ".for_session" do
-    # Loaded on its own (a session list's ctx %, before anything loaded
-    # ModelProfile): a session with no model takes the configured default.
+  describe "EffectiveModel.session_llm_context" do
+    # Loaded on its own (a session list's ctx %): a session with no model
+    # takes the configured default.
     it "resolves a session without a model to the default model when loaded alone" do
       script = <<~RUBY
         require "samagotchi/session"
-        require "samagotchi/llm_context_strategy"
+        require "samagotchi/effective_model"
         registry = Object.new
         def registry.resolve(name) = (puts "resolve \#{name}"; nil)
         def registry.lookup_names(*, **) = []
         def registry.env = ENV
         session = Samagotchi::Session.new_session(mode: "assist", model_name: nil, working_directory: "/w")
-        p Samagotchi::LLMContextStrategy.for_session(session, registry: registry)&.fetch(:strategy)
+        p Samagotchi::EffectiveModel.session_llm_context(session, registry: registry)&.fetch(:strategy)
       RUBY
       lib = File.expand_path("../lib", __dir__)
       out, err, status = Open3.capture3(RbConfig.ruby, "-I", lib, "-e", script, stdin_data: "")

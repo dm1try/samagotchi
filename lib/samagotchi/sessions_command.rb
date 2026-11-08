@@ -288,7 +288,7 @@ module Samagotchi
         Samagotchi::SessionMetrics.context_label(
           Samagotchi::SessionMetrics.saved_context_pct(
             Samagotchi::Session.session_dir(s.id, state_dir: state_dir),
-            budget_tokens: -> { Samagotchi::LLMContextStrategy.session_budget(s, registry: budgets ||= Samagotchi::HostRegistry.new) }
+            budget_tokens: -> { Samagotchi::EffectiveModel.session_budget(s, registry: budgets ||= Samagotchi::HostRegistry.new) }
           )
         )
       end

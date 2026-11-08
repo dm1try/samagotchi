@@ -3104,7 +3104,7 @@ RSpec.describe Samagotchi::Web::App do
       registry.define_singleton_method(:lookup_names) { |typed, target:, **| [typed, target.bare_model].uniq }
       allow(Samagotchi::ModelSettings).to receive(:all).and_return({})
       allow(Samagotchi::LLMContextStrategy).to receive(:explain).and_call_original
-      allow(Samagotchi::LLMContextStrategy).to receive(:explain).with(having_attributes(model: "Gemma-4B-it"), any_args)
+      allow(Samagotchi::LLMContextStrategy).to receive(:explain).with(having_attributes(target: having_attributes(model: "Gemma-4B-it")), any_args)
                                                                  .and_raise(RuntimeError, "boom")
 
       models = models_payload(registry)["models"]

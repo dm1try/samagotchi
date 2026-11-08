@@ -55,6 +55,34 @@ module Samagotchi
       of(registry, ModelChoice.new(name: name, typed: session.model_typed || name))
     end
 
+    # A saved session's LLM context strategy, apply rule and budget, each
+    # with where it came from (LLMContextStrategy::Explained#summary), as
+    # its worker would resolve them; nil when they can't be (an unreadable
+    # config, a model that resolves nowhere). From config and the registry
+    # only: no network, no model call. What a session page, a session
+    # list's ctx % and a spawn-time check all read.
+    # @param session [Session, nil]
+    # @param registry [HostRegistry, nil] the hosts to resolve against;
+    #   HostRegistry.new by default
+    # @return [Hash, nil] Explained#summary, symbol keys
+    def self.session_llm_context(session, registry: nil)
+      return nil if session.nil?
+
+      own = session.llm_context
+      of_session(session, registry: registry || HostRegistry.new).llm_context_explained(own&.resolve_args || {})&.summary(own)
+    rescue StandardError # degrade-ok: a saved session's model that resolves nowhere has no budget to show; the readers log their own
+      nil
+    end
+
+    # The budget a saved session's turns run under
+    # (.session_llm_context's :budget_tokens), nil when it is off or can't
+    # be resolved. What a session list's ctx % counts against, so a saved
+    # session's fill reads as the live meter.
+    # @return [Integer, nil]
+    def self.session_budget(session, registry: nil)
+      session_llm_context(session, registry: registry)&.fetch(:budget_tokens, nil)
+    end
+
     def entry = target.entry
     def client = target.client
     def bare = target.bare_model
@@ -155,7 +183,7 @@ module Samagotchi
     # (LLMContextStrategy.explain) under the session's +args+
     # (LLMContextOverride#resolve_args), nil when it can't be resolved.
     def llm_context_explained(args)
-      LLMContextStrategy.explain(target, names: names, **args)
+      LLMContextStrategy.explain(lookup, **args)
     rescue StandardError => e
       unresolved(:llm_context_unresolved, e, nil)
     end
@@ -163,7 +191,7 @@ module Samagotchi
     # The LLM context layers its turns run under; [] when they can't be
     # resolved.
     def llm_context_layers(args)
-      LLMContextStrategy.resolve(target, names: names, **args).active_layers
+      LLMContextStrategy.resolve(lookup, **args).active_layers
     rescue StandardError => e
       unresolved(:llm_context_unresolved, e, [])
     end

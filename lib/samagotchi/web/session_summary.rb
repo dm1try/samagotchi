@@ -7,7 +7,7 @@ require_relative "../verify_fresh"
 require_relative "../recap_store"
 require_relative "../archive_store"
 require_relative "../session_metrics"
-require_relative "../llm_context_strategy"
+require_relative "../effective_model"
 require_relative "../host_registry"
 require_relative "../bridge_client"
 require_relative "../worker_link"
@@ -141,7 +141,7 @@ module Samagotchi
       # no network) is resolved only for a session that has a saved context
       # to count. One registry per caller (the hub) or one built here.
       def budget_resolver(session, registry)
-        -> { LLMContextStrategy.session_budget(session, registry: registry ||= HostRegistry.new) }
+        -> { EffectiveModel.session_budget(session, registry: registry ||= HostRegistry.new) }
       end
       private_class_method :budget_resolver
 

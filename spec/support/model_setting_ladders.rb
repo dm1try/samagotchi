@@ -70,7 +70,7 @@ module ModelSettingLadders
   end
 
   # A saved session no worker runs, as SessionSetting and
-  # LLMContextStrategy.for_session read it.
+  # EffectiveModel.session_llm_context read it.
   SavedSession = Struct.new(:model_name, :model_typed, :thinking, :reasoning_history, :llm_context, :toolkit,
                             keyword_init: true)
 

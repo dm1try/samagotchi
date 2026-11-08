@@ -1161,18 +1161,18 @@ module Samagotchi
             effective = EffectiveModel.of(registry, ModelChoice.new(name: model[:name], typed: model[:name]), models: settings)
             summary = SamplingSettings.summary(effective.lookup)
             model[:sampling] = summary if summary
-            add_llm_context(model, effective.target, effective.names, settings)
+            add_llm_context(model, effective)
             add_thinking(model, effective)
           end
         end
       end
 
       # The LLM context +model+ starts under (the start page's ⚙ panel);
-      # one that can't be read leaves this model without, not the others.
-      def add_llm_context(model, target, names, settings)
-        Degrade.call(:web, "model_llm_context_unreadable") do
-          model[:llm_context] = LLMContextStrategy.explain(target, names: names, models: settings).summary(nil)
-        end
+      # one that can't be read leaves this model without (the key absent),
+      # not the others.
+      def add_llm_context(model, effective)
+        explained = effective.llm_context_explained({})
+        model[:llm_context] = explained.summary(nil) if explained
       end
 
       # The thinking level +model+ starts at, with where it came from (the
