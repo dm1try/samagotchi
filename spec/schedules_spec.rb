@@ -263,9 +263,11 @@ RSpec.describe Samagotchi::Schedules do
       first = schedules.lookup(entry.id).head
       child = session(dir, parent: first, delegate: true)
       Samagotchi::ArchiveStore.archive(child.id, state_dir: dir)
-      3.times do |step|
+      # Three more firings: run_now fires whatever the clock says, so the
+      # window is tested against a real chain length.
+      3.times do
         set_idle(dir, schedules.lookup(entry.id).head)
-        schedules.tick(now: Time.now + 120 + (step * 120))
+        schedules.run_now(entry.id)
       end
 
       head = schedules.lookup(entry.id).head

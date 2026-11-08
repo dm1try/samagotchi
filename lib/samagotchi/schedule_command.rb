@@ -42,6 +42,10 @@ module Samagotchi
 
     SUBCOMMANDS = %w[add list show tick run-now enable disable cancel].freeze
 
+    # A usage error names the subcommand it was given (CLI::Command's
+    # usage_error builds its line from this).
+    def command_name = SUBCOMMANDS.include?(@argv.first.to_s) ? "chi schedule #{@argv.first}" : "chi schedule"
+
     FLAGS = {
       "add" => CLI::Flags.new(args: false) do |f|
         f.value "--session", "--continues", key: :target
@@ -133,21 +137,21 @@ module Samagotchi
       end
 
       @stdout.puts("#{entry.id} added: #{entry.target_words} · #{entry.recurrence_words} · next #{clock(entry.next_due)}")
-      Exit::OK
+      CLI::Exit::OK
     end
 
     def list
       entries = @schedules.entries(include_disabled: @opts[:include_disabled] ? true : false)
       if @opts[:format] == "json"
         @stdout.puts(JSON.pretty_generate(entries.map { |entry| entry_line_json(entry) }))
-        return Exit::OK
+        return CLI::Exit::OK
       end
       if entries.empty?
         @stdout.puts("no schedules")
-        return Exit::OK
+        return CLI::Exit::OK
       end
       entries.each { |entry| @stdout.puts(entry_line(entry)) }
-      Exit::OK
+      CLI::Exit::OK
     end
 
     def show
@@ -164,30 +168,30 @@ module Samagotchi
       @stdout.puts("  skips: #{entry.skips} of #{entry.max_skips}  failures: #{entry.failures} of #{entry.max_failures}")
       @stdout.puts("  keep_links: #{entry.keep_links}  enabled: #{entry.enabled}")
       @stdout.puts("  prompt: #{entry.prompt}")
-      Exit::OK
+      CLI::Exit::OK
     end
 
     def tick
       result = @schedules.tick(dry_run: @opts[:dry_run] ? true : false)
       if @opts[:format] == "json"
         @stdout.puts(JSON.pretty_generate({ "locked" => result.locked, "outcomes" => result.outcomes.map { |outcome| { "id" => outcome.id, "status" => outcome.status, "detail" => outcome.detail } } }))
-        return Exit::OK
+        return CLI::Exit::OK
       end
 
       if result.locked
         @stdout.puts("no schedules due (another tick holds the lock)")
-        return Exit::OK
+        return CLI::Exit::OK
       end
       if result.outcomes.empty?
         @stdout.puts("no schedules due")
-        return Exit::OK
+        return CLI::Exit::OK
       end
 
       result.outcomes.each do |outcome|
         word = outcome.status == "dry" ? "would fire" : outcome.status
         @stdout.puts("#{outcome.id}  #{word}  #{outcome.detail}")
       end
-      Exit::OK
+      CLI::Exit::OK
     end
 
     def act
@@ -199,16 +203,16 @@ module Samagotchi
 
       if result.is_a?(Schedules::Outcome)
         @stdout.puts("#{id}: #{result.status} · #{result.detail}")
-        return result.status == "failed" ? Exit::FAILED : Exit::OK
+        return result.status == "failed" ? CLI::Exit::FAILED : CLI::Exit::OK
       end
 
       @stdout.puts("#{id} #{@argv[0]}: ok")
-      Exit::OK
+      CLI::Exit::OK
     end
 
     def failed(message)
       error_line(message)
-      Exit::FAILED
+      CLI::Exit::FAILED
     end
 
     def clock(iso)

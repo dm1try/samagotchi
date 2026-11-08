@@ -206,6 +206,7 @@ module Samagotchi
       pending = []
       index = nil
 
+      FileUtils.mkdir_p(@state_dir)
       File.open(lock_path, File::RDWR | File::CREAT, 0o600) do |lock|
         unless lock.flock(File::LOCK_EX | File::LOCK_NB)
           # Another tick (cron and the hub, or two crontabs) is already at
@@ -242,7 +243,9 @@ module Samagotchi
             outcomes << Outcome.new(id: entry.id, title: entry.title, status: "missed", detail: "past its time", entry: entry)
             next
           end
-          pending << advance(entry, now)
+          advanced = advance(entry, now)
+          updated[position] = advanced
+          pending << advanced
         end
         write(list: updated) unless dry_run
       end
@@ -403,6 +406,7 @@ module Samagotchi
 
     # Every write of the file is a read-modify-write under the lock.
     def write_under_lock
+      FileUtils.mkdir_p(@state_dir)
       File.open(lock_path, File::RDWR | File::CREAT, 0o600) do |lock|
         lock.flock(File::LOCK_EX)
         list = read
