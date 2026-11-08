@@ -16,7 +16,7 @@
   "test_run": true,
   "pending_question": null,
   "used_memory_names": [],
-  "project_root": "/private<TMP>/project",
+  "project_root": "<TMP>/project",
   "preloaded_memory_names": [],
   "muted_memory_names": [],
   "prompt_notes": [],
