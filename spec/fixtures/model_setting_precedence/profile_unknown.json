@@ -1,0 +1,25 @@
+{
+  "steps": [
+    {
+      "step": "unknown first, valid second",
+      "surfaces": {
+        "model_profile": {
+          "name": "qwen36",
+          "source": "config",
+          "detail": "models: mod-n",
+          "label": "config (models: mod-n)"
+        },
+        "effective": {
+          "name": "qwen36",
+          "source": "config",
+          "detail": "models: mod-n",
+          "label": "config (models: mod-n)"
+        },
+        "self_report": "qwen36 (config models: mod-n)"
+      }
+    }
+  ],
+  "warnings": [
+    "Warning: unknown profile \"bogus\" in models: loc (allowed: qwen36, gemma4) — ignored"
+  ]
+}

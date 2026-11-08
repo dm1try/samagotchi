@@ -1,0 +1,53 @@
+[
+  {
+    "step": "host only",
+    "surfaces": {
+      "effective": {
+        "temperature": 0.5,
+        "top_k": 40
+      },
+      "summary": "temperature=0.5 top_k=40 (hosts.box)",
+      "api_models": "temperature=0.5 top_k=40 (hosts.box)"
+    }
+  },
+  {
+    "step": "model only",
+    "surfaces": {
+      "effective": {
+        "temperature": 0.7
+      },
+      "summary": "temperature=0.7 (models: small)",
+      "api_models": "temperature=0.7 (models: small)"
+    }
+  },
+  {
+    "step": "both",
+    "surfaces": {
+      "effective": {
+        "temperature": 0.7,
+        "top_k": 40
+      },
+      "summary": "temperature=0.7 top_k=40 (hosts.box, models: qwen-a)",
+      "api_models": "temperature=0.7 top_k=40 (hosts.box, models: qwen-a)"
+    }
+  },
+  {
+    "step": "a null key",
+    "surfaces": {
+      "effective": {
+        "temperature": 0.5,
+        "top_k": null
+      },
+      "summary": "temperature=0.5 top_k=(not sent) (hosts.box, models: small)",
+      "api_models": "temperature=0.5 top_k=(not sent) (hosts.box, models: small)"
+    }
+  },
+  {
+    "step": "none",
+    "surfaces": {
+      "effective": {},
+      "summary": null,
+      "api_models": null
+    }
+  }
+]

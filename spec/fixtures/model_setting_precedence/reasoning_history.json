@@ -1,0 +1,140 @@
+[
+  {
+    "step": "session",
+    "surfaces": {
+      "effective": {
+        "level": "all",
+        "source": "session",
+        "own": "all"
+      },
+      "effective_native": {
+        "level": "all",
+        "source": "session",
+        "own": "all"
+      },
+      "summary": "all (session)",
+      "self_report": "drop (SAMAGOTCHI_REASONING_HISTORY)",
+      "self_report_in_session": "all (session)",
+      "saved_chip": {
+        "level": "all",
+        "source": "session",
+        "own": "all"
+      }
+    }
+  },
+  {
+    "step": "env",
+    "surfaces": {
+      "effective": {
+        "level": "drop",
+        "source": "SAMAGOTCHI_REASONING_HISTORY",
+        "own": null
+      },
+      "effective_native": {
+        "level": "drop",
+        "source": "SAMAGOTCHI_REASONING_HISTORY",
+        "own": null
+      },
+      "summary": "drop (SAMAGOTCHI_REASONING_HISTORY)",
+      "self_report": "drop (SAMAGOTCHI_REASONING_HISTORY)",
+      "self_report_in_session": "drop (SAMAGOTCHI_REASONING_HISTORY)",
+      "saved_chip": {
+        "level": "drop",
+        "source": "SAMAGOTCHI_REASONING_HISTORY",
+        "own": null
+      }
+    }
+  },
+  {
+    "step": "models: small",
+    "surfaces": {
+      "effective": {
+        "level": "turn",
+        "source": "models: small",
+        "own": null
+      },
+      "effective_native": {
+        "level": "turn",
+        "source": "models: small",
+        "own": null
+      },
+      "summary": "turn (models: small)",
+      "self_report": "turn (models: small)",
+      "self_report_in_session": "turn (models: small)",
+      "saved_chip": {
+        "level": "turn",
+        "source": "models: small",
+        "own": null
+      }
+    }
+  },
+  {
+    "step": "models: qwen-a",
+    "surfaces": {
+      "effective": {
+        "level": "all",
+        "source": "models: qwen-a",
+        "own": null
+      },
+      "effective_native": {
+        "level": "all",
+        "source": "models: qwen-a",
+        "own": null
+      },
+      "summary": "all (models: qwen-a)",
+      "self_report": "all (models: qwen-a)",
+      "self_report_in_session": "all (models: qwen-a)",
+      "saved_chip": {
+        "level": "all",
+        "source": "models: qwen-a",
+        "own": null
+      }
+    }
+  },
+  {
+    "step": "hosts.box",
+    "surfaces": {
+      "effective": {
+        "level": "drop",
+        "source": "hosts.box",
+        "own": null
+      },
+      "effective_native": {
+        "level": "drop",
+        "source": "hosts.box",
+        "own": null
+      },
+      "summary": "drop (hosts.box)",
+      "self_report": "drop (hosts.box)",
+      "self_report_in_session": "drop (hosts.box)",
+      "saved_chip": {
+        "level": "drop",
+        "source": "hosts.box",
+        "own": null
+      }
+    }
+  },
+  {
+    "step": "default (api: openai)",
+    "surfaces": {
+      "effective": {
+        "level": "turn",
+        "source": null,
+        "own": null
+      },
+      "effective_native": {
+        "level": "turn",
+        "source": null,
+        "own": null
+      },
+      "summary": null,
+      "self_report": "turn (default)",
+      "self_report_in_session": "turn (default)",
+      "saved_chip": {
+        "level": "turn",
+        "source": null,
+        "own": null
+      }
+    }
+  }
+]

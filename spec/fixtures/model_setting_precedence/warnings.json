@@ -1,0 +1,20 @@
+[
+  "Warning: hosts entry 'box': a budget is a number of tokens (64000 or 64k) or off; ignored",
+  "Warning: hosts entry 'box': reasoning_history must be one of drop, turn, all; ignored",
+  "Warning: hosts entry 'box': sampling must be a map of request parameters; ignored",
+  "Warning: hosts entry 'box': steer_cut_after must be whole seconds (0 = never); ignored",
+  "Warning: hosts entry 'box': thinking must be one of off, low, medium, high, default; `on` isn't one, `default` leaves it to the model; ignored",
+  "Warning: hosts entry 'box': unknown llm_context apply never (payoff, next_request, turn_end); using payoff",
+  "Warning: hosts entry 'box': unknown llm_context strategy magic (none, or a list of stale, forget); using none",
+  "Warning: hosts entry 'box': vision must be true or false; ignored",
+  "Warning: hosts entry 'box': window_tokens must be a positive number of tokens; ignored",
+  "Warning: models: small: a budget is a number of tokens (64000 or 64k) or off; ignored",
+  "Warning: models: small: reasoning_history must be one of drop, turn, all; ignored",
+  "Warning: models: small: sampling must be a map of request parameters; ignored",
+  "Warning: models: small: steer_cut_after must be whole seconds (0 = never); ignored",
+  "Warning: models: small: thinking must be one of off, low, medium, high, default; `on` isn't one, `default` leaves it to the model; ignored",
+  "Warning: models: small: unknown llm_context apply never (payoff, next_request, turn_end); using payoff",
+  "Warning: models: small: unknown llm_context strategy magic (none, or a list of stale, forget); using none",
+  "Warning: models: small: vision must be true or false; ignored",
+  "Warning: models: small: window_tokens must be a positive number of tokens; ignored"
+]

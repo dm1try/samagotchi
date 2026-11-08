@@ -1,0 +1,160 @@
+[
+  {
+    "step": "models: small",
+    "surfaces": {
+      "window_setting": {
+        "tokens": 32768,
+        "source": "model_setting"
+      },
+      "configured_context_window": {
+        "tokens": 32768,
+        "source": "model_setting"
+      },
+      "context_window": {
+        "tokens": 32768,
+        "source": "model_setting"
+      },
+      "configured": {
+        "tokens": 50000,
+        "source": "config"
+      },
+      "configured_env": {
+        "tokens": 60000,
+        "source": "env"
+      },
+      "self_report": "32768 (models: small; the server's n_ctx wins at runtime)"
+    }
+  },
+  {
+    "step": "models: qwen-a",
+    "surfaces": {
+      "window_setting": {
+        "tokens": 65536,
+        "source": "model_setting"
+      },
+      "configured_context_window": {
+        "tokens": 65536,
+        "source": "model_setting"
+      },
+      "context_window": {
+        "tokens": 65536,
+        "source": "model_setting"
+      },
+      "configured": {
+        "tokens": 50000,
+        "source": "config"
+      },
+      "configured_env": {
+        "tokens": 60000,
+        "source": "env"
+      },
+      "self_report": "65536 (models: qwen-a; the server's n_ctx wins at runtime)"
+    }
+  },
+  {
+    "step": "hosts.box",
+    "surfaces": {
+      "window_setting": {
+        "tokens": 100000,
+        "source": "host_setting"
+      },
+      "configured_context_window": {
+        "tokens": 100000,
+        "source": "host_setting"
+      },
+      "context_window": {
+        "tokens": 100000,
+        "source": "host_setting"
+      },
+      "configured": {
+        "tokens": 50000,
+        "source": "config"
+      },
+      "configured_env": {
+        "tokens": 60000,
+        "source": "env"
+      },
+      "self_report": "100000 (hosts.box; the server's n_ctx wins at runtime)"
+    }
+  },
+  {
+    "step": "cli",
+    "surfaces": {
+      "window_setting": null,
+      "configured_context_window": null,
+      "context_window": {
+        "tokens": 50000,
+        "source": "config"
+      },
+      "configured": {
+        "tokens": 50000,
+        "source": "config"
+      },
+      "configured_env": {
+        "tokens": 60000,
+        "source": "env"
+      },
+      "self_report": "60000 (env; the server's n_ctx wins at runtime)"
+    }
+  },
+  {
+    "step": "env",
+    "surfaces": {
+      "window_setting": null,
+      "configured_context_window": null,
+      "context_window": {
+        "tokens": 60000,
+        "source": "env"
+      },
+      "configured": {
+        "tokens": 60000,
+        "source": "env"
+      },
+      "configured_env": {
+        "tokens": 60000,
+        "source": "env"
+      },
+      "self_report": "60000 (env; the server's n_ctx wins at runtime)"
+    }
+  },
+  {
+    "step": "file context.window_tokens",
+    "surfaces": {
+      "window_setting": null,
+      "configured_context_window": null,
+      "context_window": {
+        "tokens": 70000,
+        "source": "config"
+      },
+      "configured": {
+        "tokens": 70000,
+        "source": "config"
+      },
+      "configured_env": {
+        "tokens": 70000,
+        "source": "config"
+      },
+      "self_report": "70000 (config; the server's n_ctx wins at runtime)"
+    }
+  },
+  {
+    "step": "default",
+    "surfaces": {
+      "window_setting": null,
+      "configured_context_window": null,
+      "context_window": {
+        "tokens": 256000,
+        "source": "default"
+      },
+      "configured": {
+        "tokens": 256000,
+        "source": "default"
+      },
+      "configured_env": {
+        "tokens": 256000,
+        "source": "default"
+      },
+      "self_report": "256000 (default; the server's n_ctx wins at runtime)"
+    }
+  }
+]

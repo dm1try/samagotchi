@@ -1,0 +1,44 @@
+[
+  {
+    "step": "small",
+    "surfaces": {
+      "names": [
+        "small",
+        "box:qwen-a",
+        "qwen-a"
+      ],
+      "effective": {
+        "level": "off",
+        "source": "models: small",
+        "own": null
+      }
+    }
+  },
+  {
+    "step": "box:qwen-a",
+    "surfaces": {
+      "names": [
+        "box:qwen-a",
+        "qwen-a"
+      ],
+      "effective": {
+        "level": "high",
+        "source": "models: box:qwen-a",
+        "own": null
+      }
+    }
+  },
+  {
+    "step": "qwen-a",
+    "surfaces": {
+      "names": [
+        "qwen-a"
+      ],
+      "effective": {
+        "level": "medium",
+        "source": "models: qwen-a",
+        "own": null
+      }
+    }
+  }
+]

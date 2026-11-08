@@ -1,0 +1,67 @@
+[
+  {
+    "step": "models false",
+    "surfaces": {
+      "effective": {
+        "value": false,
+        "reason": "models: small sets vision: false"
+      },
+      "send_command": {
+        "value": false,
+        "reason": "models: small sets vision: false"
+      }
+    }
+  },
+  {
+    "step": "models true",
+    "surfaces": {
+      "effective": {
+        "value": true,
+        "reason": null
+      },
+      "send_command": {
+        "value": true,
+        "reason": null
+      }
+    }
+  },
+  {
+    "step": "hosts false",
+    "surfaces": {
+      "effective": {
+        "value": false,
+        "reason": "hosts.box sets vision: false"
+      },
+      "send_command": {
+        "value": false,
+        "reason": "hosts.box sets vision: false"
+      }
+    }
+  },
+  {
+    "step": "models true over hosts false",
+    "surfaces": {
+      "effective": {
+        "value": true,
+        "reason": null
+      },
+      "send_command": {
+        "value": true,
+        "reason": null
+      }
+    }
+  },
+  {
+    "step": "none",
+    "surfaces": {
+      "effective": {
+        "value": null,
+        "reason": null
+      },
+      "send_command": {
+        "value": null,
+        "reason": null
+      }
+    }
+  }
+]

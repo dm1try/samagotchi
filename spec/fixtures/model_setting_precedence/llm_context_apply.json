@@ -1,0 +1,258 @@
+[
+  {
+    "step": "session",
+    "surfaces": {
+      "effective": {
+        "strategy": "none",
+        "strategy_source": "config",
+        "strategy_where": "llm_context.strategy",
+        "apply": "turn_end",
+        "apply_source": "session",
+        "apply_where": "the session",
+        "budget_tokens": null,
+        "budget_source": "config",
+        "budget_where": "llm_context.budget_tokens",
+        "own": {
+          "apply": "turn_end"
+        }
+      },
+      "session_budget": null,
+      "api_models": {
+        "strategy": "none",
+        "strategy_source": "config",
+        "strategy_where": "llm_context.strategy",
+        "apply": "next_request",
+        "apply_source": "model_setting",
+        "apply_where": "models: qwen-a",
+        "budget_tokens": null,
+        "budget_source": "config",
+        "budget_where": "llm_context.budget_tokens",
+        "own": null
+      },
+      "saved_chip": {
+        "strategy": "none",
+        "strategy_source": "config",
+        "strategy_where": "llm_context.strategy",
+        "apply": "turn_end",
+        "apply_source": "session",
+        "apply_where": "the session",
+        "budget_tokens": null,
+        "budget_source": "config",
+        "budget_where": "llm_context.budget_tokens",
+        "own": {
+          "apply": "turn_end"
+        }
+      }
+    }
+  },
+  {
+    "step": "models: qwen-a",
+    "surfaces": {
+      "effective": {
+        "strategy": "none",
+        "strategy_source": "config",
+        "strategy_where": "llm_context.strategy",
+        "apply": "next_request",
+        "apply_source": "model_setting",
+        "apply_where": "models: qwen-a",
+        "budget_tokens": null,
+        "budget_source": "config",
+        "budget_where": "llm_context.budget_tokens",
+        "own": null
+      },
+      "session_budget": null,
+      "api_models": {
+        "strategy": "none",
+        "strategy_source": "config",
+        "strategy_where": "llm_context.strategy",
+        "apply": "next_request",
+        "apply_source": "model_setting",
+        "apply_where": "models: qwen-a",
+        "budget_tokens": null,
+        "budget_source": "config",
+        "budget_where": "llm_context.budget_tokens",
+        "own": null
+      },
+      "saved_chip": {
+        "strategy": "none",
+        "strategy_source": "config",
+        "strategy_where": "llm_context.strategy",
+        "apply": "next_request",
+        "apply_source": "model_setting",
+        "apply_where": "models: qwen-a",
+        "budget_tokens": null,
+        "budget_source": "config",
+        "budget_where": "llm_context.budget_tokens",
+        "own": null
+      }
+    }
+  },
+  {
+    "step": "hosts.box",
+    "surfaces": {
+      "effective": {
+        "strategy": "none",
+        "strategy_source": "config",
+        "strategy_where": "llm_context.strategy",
+        "apply": "turn_end",
+        "apply_source": "host_setting",
+        "apply_where": "hosts entry 'box'",
+        "budget_tokens": null,
+        "budget_source": "config",
+        "budget_where": "llm_context.budget_tokens",
+        "own": null
+      },
+      "session_budget": null,
+      "api_models": {
+        "strategy": "none",
+        "strategy_source": "config",
+        "strategy_where": "llm_context.strategy",
+        "apply": "turn_end",
+        "apply_source": "host_setting",
+        "apply_where": "hosts entry 'box'",
+        "budget_tokens": null,
+        "budget_source": "config",
+        "budget_where": "llm_context.budget_tokens",
+        "own": null
+      },
+      "saved_chip": {
+        "strategy": "none",
+        "strategy_source": "config",
+        "strategy_where": "llm_context.strategy",
+        "apply": "turn_end",
+        "apply_source": "host_setting",
+        "apply_where": "hosts entry 'box'",
+        "budget_tokens": null,
+        "budget_source": "config",
+        "budget_where": "llm_context.budget_tokens",
+        "own": null
+      }
+    }
+  },
+  {
+    "step": "env",
+    "surfaces": {
+      "effective": {
+        "strategy": "none",
+        "strategy_source": "config",
+        "strategy_where": "llm_context.strategy",
+        "apply": "next_request",
+        "apply_source": "config",
+        "apply_where": "llm_context.apply",
+        "budget_tokens": null,
+        "budget_source": "config",
+        "budget_where": "llm_context.budget_tokens",
+        "own": null
+      },
+      "session_budget": null,
+      "api_models": {
+        "strategy": "none",
+        "strategy_source": "config",
+        "strategy_where": "llm_context.strategy",
+        "apply": "next_request",
+        "apply_source": "config",
+        "apply_where": "llm_context.apply",
+        "budget_tokens": null,
+        "budget_source": "config",
+        "budget_where": "llm_context.budget_tokens",
+        "own": null
+      },
+      "saved_chip": {
+        "strategy": "none",
+        "strategy_source": "config",
+        "strategy_where": "llm_context.strategy",
+        "apply": "next_request",
+        "apply_source": "config",
+        "apply_where": "llm_context.apply",
+        "budget_tokens": null,
+        "budget_source": "config",
+        "budget_where": "llm_context.budget_tokens",
+        "own": null
+      }
+    }
+  },
+  {
+    "step": "file llm_context.apply",
+    "surfaces": {
+      "effective": {
+        "strategy": "none",
+        "strategy_source": "config",
+        "strategy_where": "llm_context.strategy",
+        "apply": "turn_end",
+        "apply_source": "config",
+        "apply_where": "llm_context.apply",
+        "budget_tokens": null,
+        "budget_source": "config",
+        "budget_where": "llm_context.budget_tokens",
+        "own": null
+      },
+      "session_budget": null,
+      "api_models": {
+        "strategy": "none",
+        "strategy_source": "config",
+        "strategy_where": "llm_context.strategy",
+        "apply": "turn_end",
+        "apply_source": "config",
+        "apply_where": "llm_context.apply",
+        "budget_tokens": null,
+        "budget_source": "config",
+        "budget_where": "llm_context.budget_tokens",
+        "own": null
+      },
+      "saved_chip": {
+        "strategy": "none",
+        "strategy_source": "config",
+        "strategy_where": "llm_context.strategy",
+        "apply": "turn_end",
+        "apply_source": "config",
+        "apply_where": "llm_context.apply",
+        "budget_tokens": null,
+        "budget_source": "config",
+        "budget_where": "llm_context.budget_tokens",
+        "own": null
+      }
+    }
+  },
+  {
+    "step": "default",
+    "surfaces": {
+      "effective": {
+        "strategy": "none",
+        "strategy_source": "config",
+        "strategy_where": "llm_context.strategy",
+        "apply": "payoff",
+        "apply_source": "config",
+        "apply_where": "llm_context.apply",
+        "budget_tokens": null,
+        "budget_source": "config",
+        "budget_where": "llm_context.budget_tokens",
+        "own": null
+      },
+      "session_budget": null,
+      "api_models": {
+        "strategy": "none",
+        "strategy_source": "config",
+        "strategy_where": "llm_context.strategy",
+        "apply": "payoff",
+        "apply_source": "config",
+        "apply_where": "llm_context.apply",
+        "budget_tokens": null,
+        "budget_source": "config",
+        "budget_where": "llm_context.budget_tokens",
+        "own": null
+      },
+      "saved_chip": {
+        "strategy": "none",
+        "strategy_source": "config",
+        "strategy_where": "llm_context.strategy",
+        "apply": "payoff",
+        "apply_source": "config",
+        "apply_where": "llm_context.apply",
+        "budget_tokens": null,
+        "budget_source": "config",
+        "budget_where": "llm_context.budget_tokens",
+        "own": null
+      }
+    }
+  }
+]
