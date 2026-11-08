@@ -432,7 +432,7 @@ shared with `/api/sessions` and the session view; built on the session's `Sessio
 reads, so the page, `chi sessions list` and `/children` agree on status, liveness and a waiting question) carries `owner`, `project_root` and
 `bridge_up` (`WorkerLink` answers Live: a worker holds the lock and its sidecar names its pid; the page attaches its stream on it), and
 from that sidecar `worker_version` (the chi the worker runs) and `worker_features`
-(`Bridge::FEATURES`, what a client may ask of it beyond the routes: `restart`, `task_stop`, `reparent`, `unqueue`,
+(`Bridge::FEATURES`, what a client may ask of it beyond the routes: `restart`, `task_stop`, `reparent`, `unqueue`, `activity` (`GET /activity`, the busy check a schedule tick asks a live worker),
 `delivery`, a worker that queues a message for after the turn; `SessionManager.deliver_turn` and
 the attached TUI refuse a queue to a worker without it, which would steer; `turn_ids`, a worker whose running
 turn's mark, continue turn and Stop carry the turn's `enqueued_id`, which `chi answer`, `chi send --wait` with no

@@ -479,7 +479,7 @@ prompt, two recurrence kinds, a `scratch` target and a `--weekday` without
 `no schedules due`, and a tick that finds the lock held by another prints `no
 schedules due (another tick holds the lock)` — both exit 0, so a crontab line
 that runs every five minutes is quiet. `run-now`, `enable`, `disable` and `cancel`
-take the id, a unique prefix of it, or the title; a missing one exits 1.
+take the id, a unique prefix of it, or the title; a missing one exits 1, an ambiguous one 2 naming the matches.
 
 Point cron at it (see [Scheduling](scheduling.md#running-the-tick) for systemd
 and launchd), or turn on `schedule.auto_tick` and let chi web's hub tick every

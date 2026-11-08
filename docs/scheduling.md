@@ -88,7 +88,8 @@ be known — the saved status is not `running` (and not inside the starting grac
 `GET /session/:id/activity` (`Worker#activity_snapshot`, the same signals
 `WorkerIdleExit#hold` reads): `{turn_running, input_pending, awaiting_continue,
 open_streams, reminders, tasks_holding}`. It is in `Bridge::FEATURES`, so a worker
-from an older chi answers 404.
+from an older chi has no such route, and any non-200 from it is read as "older":
+the tick says to restart that worker.
 
 - `turn_running`, `input_pending` or `awaiting_continue` ⇒ busy, in both modes.
 - `open_streams` (a terminal attached, or a web tab open on the session) counts
@@ -112,8 +113,13 @@ the tick wakes it.
 
 ## Skip, not failure
 
-A firing that cannot run now is a **skip**: nothing happens, `next_due` stays where
-it is (so the next tick tries again), `skips += 1`, `last_result: "skipped"`. Skips
+A firing that cannot run now is a **skip**: nothing happens, `skips += 1`,
+`last_result: "skipped"`, and `next_due` goes back to the occurrence this tick tried
+(the tick advances the clock before acting and keeps that moment as `due_was`, so the
+next tick tries it again — a weekly schedule skipped on its Monday is retried at that
+Monday, not a week later). A failure restores it the same way. A `date` entry is the
+exception: advancing it spends it, so it comes back at that same moment.
+Skips
 are the refusals that mean "not this moment": `ArchiveRefused` with `busy`, `queued`
 or `offer`, or `busy_child`/`queued_child`/`offer_child` (a chain's own running
 delegate refuses the archive, since `archivable!` walks the whole descendant tree),
@@ -134,10 +140,21 @@ both counters**, so twelve skips spread over months do not kill a healthy weekly
 schedule. `list` prints the skip budget as a time window — 12 skips at a 5 minute
 tick is about an hour of patience, which is what the count really measures.
 
-The tick's lock covers the file only, never the action: the clock advances and the
-entry is marked `firing_since` before the work starts, so a tick killed mid-continue
-cannot double-fire, and a `chi schedule add` from a terminal never waits on an
-archive or a recap wait. Chain mode targets `last:<head>`, so `SessionContinue.run`'s
+A chain holds at most `schedule.max_per_session` enabled schedules (default 10) and
+the machine `schedule.max_total` (default 50); `schedule_task` and `chi schedule add`
+refuse past them, naming the key. A schedule the chain already has — the same prompt
+and recurrence, or the same title — is refused too, naming its id, so a routine that
+tells each of its links to "make sure the Monday audit is scheduled" cannot multiply
+itself. `schedule_task`, `list_schedules` and `cancel_schedule` see only schedules of
+the calling session's chain (`all: true` steps outside it); `chi schedule list` is
+always the machine-wide view. An id, prefix or title that matches more than one entry
+is refused with exit 2, naming the matches.
+
+The tick's lock covers the file only, never the action: the clock advances before
+the work starts — for `every` and `weekday` to the next occurrence, for a `date`
+one-off to none — so a tick killed mid-continue cannot fire the same entry twice.
+`firing_since` is what `chi schedule show` prints; the advanced clock is the guard.
+And a `chi schedule add` from a terminal never waits on an archive or a recap wait. Chain mode targets `last:<head>`, so `SessionContinue.run`'s
 own retry loop follows a continue a human made between our resolve and its lock
 instead of racing it.
 
@@ -147,8 +164,10 @@ instead of racing it.
 chain links stay behind the head. After a successful chain firing — and after the
 result is recorded under the lock, so a prune that raises midway cannot lose the
 new `head` — the walk goes backwards from `head` and every link older than the
-window is deleted **together with its delegated children** (`descendant_ids`,
-children first), oldest first. Pruning a link alone would leave its finished
+window is deleted **together with its delegated children** (`descendant_ids`): the
+whole subtree only when every session in it is archived and no worker owns any of
+it, deepest child first and the link last, oldest link first. A subtree with a live
+worker or an unarchived descendant is left whole and retried at the next firing. Pruning a link alone would leave its finished
 delegates archived forever with a dangling `parent_id`: archiving a session archives
 its descendants, and archived sessions are outside the retention sweep
 ([sessions.md](sessions.md)), so the delegate pile is the bulk of the archived

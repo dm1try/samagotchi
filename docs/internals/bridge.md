@@ -365,6 +365,7 @@ The Bridge exposes:
   the kind already taken is answered `200` as that one.
 - `GET  /session/:id/state` — `session_state_snapshot` (JSON).
 - `GET  /session/:id/stats` — `Engine#stats_snapshot` for attached `/stats`: the metrics, with the context window and prompt profile asked from the server before the first turn.
+- `GET  /session/:id/activity` — `Worker#activity_snapshot`: `{session_id, turn_running, input_pending, awaiting_continue, open_streams, reminders, tasks_holding}` — what a `chi schedule tick` asks a live worker before it fires (the tick runs out of process and cannot read a worker's memory). Read-only and small (under 300 bytes). `501 activity_unavailable` when this Bridge was built without an `on_activity:` step; the worker advertises it in `Bridge::FEATURES` (`activity`). See [scheduling.md](../scheduling.md).
 - `GET  /session/:id/snapshot` — the snapshot frame's content as one request (the web server renders
   the messages itself, then streams from its `event_seq`). Read by the web's full show
   (`GET /api/sessions/:id`, `?parts=1`) and the plugin's `list_sessions`; every message is copied.
