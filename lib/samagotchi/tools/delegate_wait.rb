@@ -8,6 +8,7 @@ require_relative "peers"
 require_relative "delegate_relay"
 require_relative "delegate_cursor"
 require_relative "ref_text"
+require_relative "../worker_link"
 
 module Samagotchi
   # Loaded on first use: child_reports requires this file (a circular
@@ -57,7 +58,10 @@ module Samagotchi
       # against +timeout+, and the result gets one outcome line per relayed
       # approval. Without a relay, and for the model's and hooks' questions,
       # the question comes back to the model as before.
-      def call(child_id, peers:, timeout: TIMEOUT_DEFAULT, poll_interval: POLL_INTERVAL, owner_grace: ReplyWait::GONE_AFTER)
+      # @param waited [Numeric] seconds of +timeout+ already spent before
+      #   this wait (Delegate's boot await); the result still names +timeout+
+      def call(child_id, peers:, timeout: TIMEOUT_DEFAULT, poll_interval: POLL_INTERVAL, owner_grace: ReplyWait::GONE_AFTER,
+               waited: 0)
         sd = peers.state_dir || Session.default_state_dir
         key = [peers.session_id, child_id]
         cancelled = -> { peers.cancelled? }
@@ -73,7 +77,7 @@ module Samagotchi
 
         target = ReplyWait::Target.from_cursor(cursor, child: Session.summary_from_file(Session.session_file(child_id, state_dir: sd)),
                                                        owner_grace: owner_grace)
-        left = timeout.to_i
+        left = timeout.to_i - waited
         outcomes = relayed_outcomes.delete(key) || []
         loop do
           started = monotonic
@@ -177,6 +181,10 @@ module Samagotchi
 
       def monotonic = Process.clock_gettime(Process::CLOCK_MONOTONIC)
 
+      # A worker_gone wait's outcome when the child's worker never came up
+      # (#boot_result).
+      DID_NOT_START = "did_not_start"
+
       REPORT_NEXT_REPLY = "chi brings the child's next reply here by itself; don't wait for it with delegate_result."
 
       # Outcomes that tell the parent something about the child's state.
@@ -252,8 +260,8 @@ module Samagotchi
         when :no_reply
           result(child_id, status, "#{no_reply_text(wait, child_id, strategy: strategy)}; its session shows what happened")
         when :worker_gone
-          result(child_id, status,
-                 "the child's worker is gone (it stopped or crashed); delegate with session: #{child_id} starts it again with a message")
+          gone = wait.outcome == DID_NOT_START ? "its worker did not start" : "the child's worker is gone (it stopped or crashed)"
+          result(child_id, status, "#{gone}; delegate with session: #{child_id} starts it again with a message")
         else
           timeout_result(child_id, timeout, reports: reports)
         end
@@ -287,6 +295,20 @@ module Samagotchi
       def mark_started(parent_id, child, state_dir:)
         DelegateCursors.update(parent_id, child.id, state_dir: state_dir) do |cursor|
           cursor.with(turn: child.first_turn_id).with_baseline(ReplyWait.baseline_of(child, question_id: nil))
+        end
+      end
+
+      # How Delegate's boot await ended when no worker came up
+      # (Delegate.await_worker): :gone is worker_gone ("its worker did not
+      # start"), :timeout and :canceled read as a wait's own.
+      # @param boot [Symbol] :gone, :timeout or :canceled
+      def boot_result(child_id, boot, timeout:, peers:)
+        reports = reports_mode(peers)
+        case boot
+        when :canceled then canceled_result(child_id, reports: reports)
+        when :timeout then timeout_result(child_id, timeout, reports: reports)
+        else finish(ReplyWait::Result.new(status: :worker_gone, outcome: DID_NOT_START), child_id, timeout: timeout,
+                                                                                           reports: reports)
         end
       end
 

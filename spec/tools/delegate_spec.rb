@@ -43,7 +43,7 @@ RSpec.describe "delegate tools" do
     # The children here are played by the examples, with no worker to boot:
     # the wait doesn't await one (Delegate.await_worker), but in an example
     # about that await (:real_boot).
-    allow(Samagotchi::Tools::Delegate).to receive(:await_worker).and_return(true) unless example.metadata[:real_boot]
+    allow(Samagotchi::Tools::Delegate).to receive(:await_worker).and_return(:up) unless example.metadata[:real_boot]
     allow(Process).to receive(:spawn).and_return(12_345)
     allow(Process).to receive(:detach)
     allow(Samagotchi::Config).to receive(:get).and_call_original
@@ -418,6 +418,35 @@ RSpec.describe "delegate tools" do
         out = described_class.call("count the specs", timeout: 5, peers: peers)
 
         expect(out).to end_with("status: answered\n---\nbooted and done\n")
+      end
+
+      # The boot await is part of the call's wait: the parent's Stop ends it
+      # and its timeout bounds it, as they do the wait after it.
+      it "ends the boot await on the parent's cancel, as a canceled wait", :real_boot do
+        stub_const("Samagotchi::WorkerLink::START_LIMIT", 10)
+        parent
+        Thread.new do
+          sleep 0.3 # sleep-ok: the user's Stop while the child boots
+          cancelled[0] = true
+        end.tap { |t| threads << t }
+        started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+
+        out = described_class.call("count the specs", timeout: 20, peers: peers)
+
+        child_id = (session_files - [parent.id]).first
+        expect(out).to eq("session: #{child_id}\nstatus: running\nwait canceled; the child keeps running; " \
+                          "delegate_result #{child_id} waits again")
+        expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < 5
+      end
+
+      it "bounds the boot await by the call's timeout, as a wait that timed out", :real_boot do
+        parent
+        started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+
+        out = described_class.call("count the specs", timeout: 1, peers: peers)
+
+        expect(out).to include("status: running\nno reply yet after 1 s; the child keeps running.")
+        expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < 5
       end
     end
 
@@ -828,6 +857,28 @@ RSpec.describe "delegate tools" do
           .to eq("Error: #{stranger.id[0, 8]} is not a delegate of this session; send_note reaches any session")
         expect(described_class.call("and?", session: "nope", peers: peers))
           .to eq("Error: no session nope (list_sessions shows them)")
+      end
+
+      # A child whose worker idle-exited: deliver_turn wakes one and, with no
+      # Bridge up in time, leaves the message as a file; the wait awaits the
+      # woken worker before its gone rule runs.
+      it "awaits the worker a follow-up woke before it calls the child gone", :real_boot do
+        stub_const("Samagotchi::SessionManager::TURN_BRIDGE_WAIT", 0.2)
+        stub_const("Samagotchi::ReplyWait::GONE_AFTER", 0.1)
+        stub_const("Samagotchi::WorkerLink::START_LIMIT", 5)
+        child
+        dir = Samagotchi::Session.session_dir(child.id, state_dir: tmpdir)
+        Thread.new do
+          sleep 0.5 # sleep-ok: the woken worker's boot, longer than GONE_AFTER
+          locks << Samagotchi::OwnerLock.acquire(dir, kind: "worker")
+          looked(1)
+          write_reply(child, "the follow-up's answer")
+          set_status(child, "idle")
+        end.tap { |t| threads << t }
+
+        out = described_class.call("and the second?", session: child.id[0, 8], timeout: 5, peers: peers)
+
+        expect(out).to eq("session: #{child.id}\nstatus: answered\n---\nthe follow-up's answer")
       end
 
       it "delivers the message as delegate:<parent> and returns the reply after it, not the earlier one" do

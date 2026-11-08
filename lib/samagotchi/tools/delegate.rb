@@ -75,9 +75,11 @@ module Samagotchi
 
         note = Array(warnings).map { |warning| "Warning: #{warning}\n" }.join
         if wait
-          return note + worker_did_not_start(child_id) unless await_worker(child_id, state_dir: sd)
+          started = monotonic
+          boot = await_worker(child_id, state_dir: sd, timeout: timeout, cancelled: -> { peers.cancelled? })
+          return note + DelegateWait.boot_result(child_id, boot, timeout: timeout, peers: peers) unless boot == :up
 
-          result = DelegateWait.call(child_id, peers: peers, timeout: timeout)
+          result = DelegateWait.call(child_id, peers: peers, timeout: timeout, waited: monotonic - started)
           return RefText.wrap(note + result, result.respond_to?(:ref_path) ? result.ref_path : nil)
         end
 
@@ -92,21 +94,27 @@ module Samagotchi
       # takes the owner lock only once it has booted, so the wait's one
       # dead-worker rule (ReplyWait::GONE_AFTER) runs from there. A child a
       # worker (or a one-turn run) owns already goes straight on; else its
-      # worker gets WorkerLink::START_LIMIT, the boot limit, to come up.
-      # @return [Boolean] false: no worker came up
-      def self.await_worker(child_id, state_dir:)
+      # worker gets WorkerLink::START_LIMIT, the boot limit, to come up,
+      # within the call's +timeout+ (its time counts against it) and
+      # until the parent's turn is canceled.
+      # @param cancelled [#call] the parent's cancel (Peers#cancelled?)
+      # @return [Symbol] :up (a worker owns it), :gone (none came up within
+      #   the boot limit), :timeout (+timeout+ ran out first) or :canceled
+      def self.await_worker(child_id, state_dir:, timeout:, cancelled: -> { false })
         dir = Session.session_dir(child_id, state_dir: state_dir)
-        return true if OwnerLock.owner(dir)
+        return :up if OwnerLock.owner(dir)
 
-        WorkerLink.await(child_id, session_dir: dir, timeout: WorkerLink::START_LIMIT, unlink: false,
-                                   give_up: ->(link) { link.worker_owned? }).worker_owned?
+        limit = [WorkerLink::START_LIMIT, timeout.to_f].min
+        link = WorkerLink.await(child_id, session_dir: dir, timeout: limit, unlink: false,
+                                          give_up: ->(found) { found.worker_owned? || cancelled.call })
+        return :up if link&.worker_owned?
+        return :canceled if cancelled.call
+
+        limit < WorkerLink::START_LIMIT ? :timeout : :gone
       end
 
-      def self.worker_did_not_start(child_id)
-        DelegateWait.result(child_id, ParentReport.status(ReplyWait::Result.new(status: :worker_gone)),
-                            "its worker did not start; delegate with session: #{child_id} starts it again with a message")
-      end
-      private_class_method :worker_did_not_start
+      def self.monotonic = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+      private_class_method :monotonic
 
       # How the reply of a child left running comes back: a report only
       # reaches a parent that can get one (DelegateWait.reports_mode).
