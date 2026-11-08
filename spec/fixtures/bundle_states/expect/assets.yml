@@ -148,7 +148,7 @@ script_edited_no_sha:
   plan: {do: kept, word: "would_update, replaces", warns: []}
   status: {label: null}
 script_dev_link:
-  install: {do: kept (link), save_first: false, recorded: dev, word: Up to date, label: null, warns: ["scripts/s.sh is not executable; chmod +x <src>/v2/demo/scripts/s.sh"]}
+  install: {do: kept (link), save_first: false, recorded: dev, word: Up to date, label: null, warns: []}
   upgrade: {do: refused, save_first: false, recorded: dev, word: null, label: null, warns: ["demo is a dev install of <src>/v2/demo: it follows its source already (to leave dev mode: chi bundle uninstall demo, then chi bundle install without --dev)"]}
   upgrade_dry: {do: refused, save_first: false, recorded: dev, word: null, label: null, warns: ["demo is a dev install of <src>/v2/demo: it follows its source already (to leave dev mode: chi bundle uninstall demo, then chi bundle install without --dev)"]}
   uninstall: {do: removed, save_first: false, recorded: none, word: null, label: not installed, warns: []}

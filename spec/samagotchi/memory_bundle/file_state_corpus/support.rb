@@ -222,8 +222,8 @@ module BundleStateCorpus
         name = flavor == :system ? SYSTEM : NAME
         FileUtils.mkdir_p(BundleStateCorpus.memories_dir)
         write_claimants(kase)
-        write_record(kase, name, flavor) if kase.installed
         write_disk(kase, name)
+        write_record(kase, name, flavor) if kase.installed
         Shapes.v149!(BundleStateCorpus.bundles_dir) if shape == "0.149"
       end
       home
@@ -247,7 +247,8 @@ module BundleStateCorpus
       end
     end
 
-    # Today's Provenance#write, then the entry's checksum, base and legacy_base as the case says.
+    # Today's Provenance#write, then the entry's checksum and base as the case
+    # says, a mark's words as chi writes them, and legacy_base.
     def write_record(kase, name, flavor)
       source = flavor == :system ? same_source(kase) : source(kase)
       kept = flavor == :system ? source : first_source(kase)
@@ -267,8 +268,27 @@ module BundleStateCorpus
       when "other" then entry["checksum"] = BundleStateCorpus.sha(OTHER)
       when "none" then entry.delete("checksum")
       end
-      entry["legacy_base"] = true if kase.mark == "legacy"
       File.write(path, JSON.pretty_generate(raw))
+      return unless kase.marked?
+
+      provenance.refresh_marks([chi_mark(kase, provenance, incoming_dir)], incoming_dir)
+      return unless kase.mark == "legacy"
+
+      raw = JSON.parse(File.read(path))
+      raw["files"].fetch(kase.key)["legacy_base"] = true
+      File.write(path, JSON.pretty_generate(raw))
+    end
+
+    # The mark's words as chi writes them (Installer#note_conflict): why no
+    # merge, what the bundle's text it speaks of changed, from the base, the
+    # file and that text. A mark chi can't word (no file) says only behind.
+    def chi_mark(kase, provenance, incoming_dir)
+      view = Samagotchi::MemoryBundle::Merger::Upgrade.new(provenance: provenance, target_dir: BundleStateCorpus.memories_dir,
+                                                           source_dir: incoming_dir)
+      outcome = view.outcome(kase.key)
+      view.behind(kase.key, outcome.conflict? ? outcome : Samagotchi::MemoryBundle::Merger::CONFLICT, "1.0.0")
+    rescue SystemCallError
+      Samagotchi::MemoryBundle::FileStanding::Behind.new(file: kase.key, version: "1.0.0")
     end
 
     def scratch_file(name, text)

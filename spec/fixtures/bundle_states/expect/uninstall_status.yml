@@ -34,13 +34,13 @@ pristine_marked:
   uninstall: {do: moved, save_first: true, next_base: none, checksum: none, mark: dropped, word: Moved to the trash, label: not installed, warns: []}
   uninstall_force: {do: moved, save_first: true, next_base: none, checksum: none, mark: dropped, word: Moved to the trash, label: not installed, warns: []}
   status:
-    "0.155": {label: stays behind 1.0.0 (chi bundle diff demo a.md), list: "1 file behind"}
+    "0.155": {label: "stays behind 1.0.0: missed 1 place (chi bundle diff demo a.md)", list: "1 file behind"}
     "0.149": {label: "may be behind 1.0.0: an older chi marked it, and the next upgrade checks it (chi bundle diff demo a.md)", list: "1 file may be behind"}
 pristine_legacy:
   uninstall: {do: moved, save_first: true, next_base: none, checksum: none, mark: dropped, word: Moved to the trash, label: not installed, warns: []}
   uninstall_force: {do: moved, save_first: true, next_base: none, checksum: none, mark: dropped, word: Moved to the trash, label: not installed, warns: []}
   status:
-    "0.155": {label: stays behind 1.0.0 (chi bundle diff demo a.md), list: "1 file behind"}
+    "0.155": {label: "stays behind 1.0.0: missed 1 place (chi bundle diff demo a.md)", list: "1 file behind"}
     "0.149": {label: "may be behind 1.0.0: an older chi marked it, and the next upgrade checks it (chi bundle diff demo a.md)", list: "1 file may be behind"}
 edited:
   uninstall: {do: refused, save_first: false, next_base: old, checksum: old, mark: none, word: null, label: modified, warns: ["Uninstall failed: Uninstall blocked: a.md has local edits (--force moves it to the trash)"]}
@@ -76,35 +76,35 @@ diverged_already:
   status: {label: modified, list: null}
 diverged_clean_marked:
   uninstall:
-    "0.155": {do: refused, save_first: false, next_base: old, checksum: old, mark: kept, word: null, label: "modified; stays behind 1.0.0 (chi bundle diff demo a.md)", warns: ["Uninstall failed: Uninstall blocked: a.md has local edits (--force moves it to the trash)"]}
+    "0.155": {do: refused, save_first: false, next_base: old, checksum: old, mark: kept, word: null, label: "modified; stays behind 1.0.0: missed 1 place (chi bundle diff demo a.md)", warns: ["Uninstall failed: Uninstall blocked: a.md has local edits (--force moves it to the trash)"]}
     "0.149": {do: refused, save_first: false, next_base: old, checksum: old, mark: kept (legacy), word: null, label: "modified; may be behind 1.0.0: an older chi marked it, and the next upgrade checks it (chi bundle diff demo a.md)", warns: ["Uninstall failed: Uninstall blocked: a.md has local edits (--force moves it to the trash)"]}
   uninstall_force: {do: moved, save_first: true, next_base: none, checksum: none, mark: dropped, word: Moved to the trash, label: not installed, warns: []}
   status:
-    "0.155": {label: "modified; stays behind 1.0.0 (chi bundle diff demo a.md)", list: "1 file behind"}
+    "0.155": {label: "modified; stays behind 1.0.0: missed 1 place (chi bundle diff demo a.md)", list: "1 file behind"}
     "0.149": {label: "modified; may be behind 1.0.0: an older chi marked it, and the next upgrade checks it (chi bundle diff demo a.md)", list: "1 file may be behind"}
 diverged_conflict_marked:
   uninstall:
-    "0.155": {do: refused, save_first: false, next_base: old, checksum: old, mark: kept, word: null, label: "modified; stays behind 1.0.0 (chi bundle diff demo a.md)", warns: ["Uninstall failed: Uninstall blocked: a.md has local edits (--force moves it to the trash)"]}
+    "0.155": {do: refused, save_first: false, next_base: old, checksum: old, mark: kept, word: null, label: "modified; stays behind 1.0.0: missed 1 place (chi bundle diff demo a.md)", warns: ["Uninstall failed: Uninstall blocked: a.md has local edits (--force moves it to the trash)"]}
     "0.149": {do: refused, save_first: false, next_base: old, checksum: old, mark: kept (legacy), word: null, label: "modified; may be behind 1.0.0: an older chi marked it, and the next upgrade checks it (chi bundle diff demo a.md)", warns: ["Uninstall failed: Uninstall blocked: a.md has local edits (--force moves it to the trash)"]}
   uninstall_force: {do: moved, save_first: true, next_base: none, checksum: none, mark: dropped, word: Moved to the trash, label: not installed, warns: []}
   status:
-    "0.155": {label: "modified; stays behind 1.0.0 (chi bundle diff demo a.md)", list: "1 file behind"}
+    "0.155": {label: "modified; stays behind 1.0.0: missed 1 place (chi bundle diff demo a.md)", list: "1 file behind"}
     "0.149": {label: "modified; may be behind 1.0.0: an older chi marked it, and the next upgrade checks it (chi bundle diff demo a.md)", list: "1 file may be behind"}
 diverged_clean_legacy:
   uninstall:
-    "0.155": {do: refused, save_first: false, next_base: old, checksum: old, mark: kept (legacy), word: null, label: "modified; stays behind 1.0.0 (chi bundle diff demo a.md)", warns: ["Uninstall failed: Uninstall blocked: a.md has local edits (--force moves it to the trash)"]}
+    "0.155": {do: refused, save_first: false, next_base: old, checksum: old, mark: kept (legacy), word: null, label: "modified; stays behind 1.0.0: missed 1 place (chi bundle diff demo a.md)", warns: ["Uninstall failed: Uninstall blocked: a.md has local edits (--force moves it to the trash)"]}
     "0.149": {do: refused, save_first: false, next_base: old, checksum: old, mark: kept (legacy), word: null, label: "modified; may be behind 1.0.0: an older chi marked it, and the next upgrade checks it (chi bundle diff demo a.md)", warns: ["Uninstall failed: Uninstall blocked: a.md has local edits (--force moves it to the trash)"]}
   uninstall_force: {do: moved, save_first: true, next_base: none, checksum: none, mark: dropped, word: Moved to the trash, label: not installed, warns: []}
   status:
-    "0.155": {label: "modified; stays behind 1.0.0 (chi bundle diff demo a.md)", list: "1 file behind"}
+    "0.155": {label: "modified; stays behind 1.0.0: missed 1 place (chi bundle diff demo a.md)", list: "1 file behind"}
     "0.149": {label: "modified; may be behind 1.0.0: an older chi marked it, and the next upgrade checks it (chi bundle diff demo a.md)", list: "1 file may be behind"}
 diverged_conflict_legacy:
   uninstall:
-    "0.155": {do: refused, save_first: false, next_base: old, checksum: old, mark: kept (legacy), word: null, label: "modified; stays behind 1.0.0 (chi bundle diff demo a.md)", warns: ["Uninstall failed: Uninstall blocked: a.md has local edits (--force moves it to the trash)"]}
+    "0.155": {do: refused, save_first: false, next_base: old, checksum: old, mark: kept (legacy), word: null, label: "modified; stays behind 1.0.0: missed 1 place (chi bundle diff demo a.md)", warns: ["Uninstall failed: Uninstall blocked: a.md has local edits (--force moves it to the trash)"]}
     "0.149": {do: refused, save_first: false, next_base: old, checksum: old, mark: kept (legacy), word: null, label: "modified; may be behind 1.0.0: an older chi marked it, and the next upgrade checks it (chi bundle diff demo a.md)", warns: ["Uninstall failed: Uninstall blocked: a.md has local edits (--force moves it to the trash)"]}
   uninstall_force: {do: moved, save_first: true, next_base: none, checksum: none, mark: dropped, word: Moved to the trash, label: not installed, warns: []}
   status:
-    "0.155": {label: "modified; stays behind 1.0.0 (chi bundle diff demo a.md)", list: "1 file behind"}
+    "0.155": {label: "modified; stays behind 1.0.0: missed 1 place (chi bundle diff demo a.md)", list: "1 file behind"}
     "0.149": {label: "modified; may be behind 1.0.0: an older chi marked it, and the next upgrade checks it (chi bundle diff demo a.md)", list: "1 file may be behind"}
 level_no_base:
   uninstall: {do: moved, save_first: true, next_base: none, checksum: none, mark: dropped, word: Moved to the trash, label: not installed, warns: []}
@@ -126,13 +126,13 @@ pristine_no_base_marked:
   uninstall: {do: moved, save_first: true, next_base: none, checksum: none, mark: dropped, word: Moved to the trash, label: not installed, warns: []}
   uninstall_force: {do: moved, save_first: true, next_base: none, checksum: none, mark: dropped, word: Moved to the trash, label: not installed, warns: []}
   status:
-    "0.155": {label: stays behind 1.0.0 (chi bundle diff demo a.md), list: "1 file behind"}
+    "0.155": {label: "stays behind 1.0.0: no merge possible (no recorded base) (chi bundle diff demo a.md)", list: "1 file behind"}
     "0.149": {label: "may be behind 1.0.0: an older chi marked it, and the next upgrade checks it (chi bundle diff demo a.md)", list: "1 file may be behind"}
 pristine_no_base_legacy:
   uninstall: {do: moved, save_first: true, next_base: none, checksum: none, mark: dropped, word: Moved to the trash, label: not installed, warns: []}
   uninstall_force: {do: moved, save_first: true, next_base: none, checksum: none, mark: dropped, word: Moved to the trash, label: not installed, warns: []}
   status:
-    "0.155": {label: stays behind 1.0.0 (chi bundle diff demo a.md), list: "1 file behind"}
+    "0.155": {label: "stays behind 1.0.0: no merge possible (no recorded base) (chi bundle diff demo a.md)", list: "1 file behind"}
     "0.149": {label: "may be behind 1.0.0: an older chi marked it, and the next upgrade checks it (chi bundle diff demo a.md)", list: "1 file may be behind"}
 edited_no_base:
   uninstall: {do: refused, save_first: false, next_base: none, checksum: old, mark: none, word: null, label: modified, warns: ["Uninstall failed: Uninstall blocked: a.md has local edits (--force moves it to the trash)"]}
@@ -140,19 +140,19 @@ edited_no_base:
   status: {label: modified, list: null}
 edited_no_base_marked:
   uninstall:
-    "0.155": {do: refused, save_first: false, next_base: none, checksum: old, mark: kept, word: null, label: "modified; stays behind 1.0.0 (chi bundle diff demo a.md)", warns: ["Uninstall failed: Uninstall blocked: a.md has local edits (--force moves it to the trash)"]}
+    "0.155": {do: refused, save_first: false, next_base: none, checksum: old, mark: kept, word: null, label: "modified; stays behind 1.0.0: no merge possible (no recorded base) (chi bundle diff demo a.md)", warns: ["Uninstall failed: Uninstall blocked: a.md has local edits (--force moves it to the trash)"]}
     "0.149": {do: refused, save_first: false, next_base: none, checksum: old, mark: kept (legacy), word: null, label: "modified; may be behind 1.0.0: an older chi marked it, and the next upgrade checks it (chi bundle diff demo a.md)", warns: ["Uninstall failed: Uninstall blocked: a.md has local edits (--force moves it to the trash)"]}
   uninstall_force: {do: moved, save_first: true, next_base: none, checksum: none, mark: dropped, word: Moved to the trash, label: not installed, warns: []}
   status:
-    "0.155": {label: "modified; stays behind 1.0.0 (chi bundle diff demo a.md)", list: "1 file behind"}
+    "0.155": {label: "modified; stays behind 1.0.0: no merge possible (no recorded base) (chi bundle diff demo a.md)", list: "1 file behind"}
     "0.149": {label: "modified; may be behind 1.0.0: an older chi marked it, and the next upgrade checks it (chi bundle diff demo a.md)", list: "1 file may be behind"}
 edited_no_base_legacy:
   uninstall:
-    "0.155": {do: refused, save_first: false, next_base: none, checksum: old, mark: kept (legacy), word: null, label: "modified; stays behind 1.0.0 (chi bundle diff demo a.md)", warns: ["Uninstall failed: Uninstall blocked: a.md has local edits (--force moves it to the trash)"]}
+    "0.155": {do: refused, save_first: false, next_base: none, checksum: old, mark: kept (legacy), word: null, label: "modified; stays behind 1.0.0: no merge possible (no recorded base) (chi bundle diff demo a.md)", warns: ["Uninstall failed: Uninstall blocked: a.md has local edits (--force moves it to the trash)"]}
     "0.149": {do: refused, save_first: false, next_base: none, checksum: old, mark: kept (legacy), word: null, label: "modified; may be behind 1.0.0: an older chi marked it, and the next upgrade checks it (chi bundle diff demo a.md)", warns: ["Uninstall failed: Uninstall blocked: a.md has local edits (--force moves it to the trash)"]}
   uninstall_force: {do: moved, save_first: true, next_base: none, checksum: none, mark: dropped, word: Moved to the trash, label: not installed, warns: []}
   status:
-    "0.155": {label: "modified; stays behind 1.0.0 (chi bundle diff demo a.md)", list: "1 file behind"}
+    "0.155": {label: "modified; stays behind 1.0.0: no merge possible (no recorded base) (chi bundle diff demo a.md)", list: "1 file behind"}
     "0.149": {label: "modified; may be behind 1.0.0: an older chi marked it, and the next upgrade checks it (chi bundle diff demo a.md)", list: "1 file may be behind"}
 edited_no_checksum:
   uninstall: {do: refused, save_first: false, next_base: none, checksum: none, mark: none, word: null, label: modified, warns: ["Uninstall failed: Uninstall blocked: a.md has local edits (--force moves it to the trash)"]}
@@ -190,13 +190,13 @@ dropped_pristine_marked:
   uninstall: {do: moved, save_first: true, next_base: none, checksum: none, mark: dropped, word: Moved to the trash, label: not installed, warns: []}
   uninstall_force: {do: moved, save_first: true, next_base: none, checksum: none, mark: dropped, word: Moved to the trash, label: not installed, warns: []}
   status:
-    "0.155": {label: stays behind 1.0.0 (chi bundle diff demo a.md), list: "1 file behind"}
+    "0.155": {label: "stays behind 1.0.0: missed 1 place (chi bundle diff demo a.md)", list: "1 file behind"}
     "0.149": {label: "may be behind 1.0.0: an older chi marked it, and the next upgrade checks it (chi bundle diff demo a.md)", list: "1 file may be behind"}
 dropped_pristine_legacy:
   uninstall: {do: moved, save_first: true, next_base: none, checksum: none, mark: dropped, word: Moved to the trash, label: not installed, warns: []}
   uninstall_force: {do: moved, save_first: true, next_base: none, checksum: none, mark: dropped, word: Moved to the trash, label: not installed, warns: []}
   status:
-    "0.155": {label: stays behind 1.0.0 (chi bundle diff demo a.md), list: "1 file behind"}
+    "0.155": {label: "stays behind 1.0.0: missed 1 place (chi bundle diff demo a.md)", list: "1 file behind"}
     "0.149": {label: "may be behind 1.0.0: an older chi marked it, and the next upgrade checks it (chi bundle diff demo a.md)", list: "1 file may be behind"}
 dropped_pristine_no_base:
   uninstall: {do: moved, save_first: true, next_base: none, checksum: none, mark: dropped, word: Moved to the trash, label: not installed, warns: []}
@@ -206,13 +206,13 @@ dropped_pristine_no_base_marked:
   uninstall: {do: moved, save_first: true, next_base: none, checksum: none, mark: dropped, word: Moved to the trash, label: not installed, warns: []}
   uninstall_force: {do: moved, save_first: true, next_base: none, checksum: none, mark: dropped, word: Moved to the trash, label: not installed, warns: []}
   status:
-    "0.155": {label: stays behind 1.0.0 (chi bundle diff demo a.md), list: "1 file behind"}
+    "0.155": {label: "stays behind 1.0.0: no merge possible (no recorded base) (chi bundle diff demo a.md)", list: "1 file behind"}
     "0.149": {label: "may be behind 1.0.0: an older chi marked it, and the next upgrade checks it (chi bundle diff demo a.md)", list: "1 file may be behind"}
 dropped_pristine_no_base_legacy:
   uninstall: {do: moved, save_first: true, next_base: none, checksum: none, mark: dropped, word: Moved to the trash, label: not installed, warns: []}
   uninstall_force: {do: moved, save_first: true, next_base: none, checksum: none, mark: dropped, word: Moved to the trash, label: not installed, warns: []}
   status:
-    "0.155": {label: stays behind 1.0.0 (chi bundle diff demo a.md), list: "1 file behind"}
+    "0.155": {label: "stays behind 1.0.0: no merge possible (no recorded base) (chi bundle diff demo a.md)", list: "1 file behind"}
     "0.149": {label: "may be behind 1.0.0: an older chi marked it, and the next upgrade checks it (chi bundle diff demo a.md)", list: "1 file may be behind"}
 dropped_edited_no_base:
   uninstall: {do: refused, save_first: false, next_base: none, checksum: old, mark: none, word: null, label: modified, warns: ["Uninstall failed: Uninstall blocked: a.md has local edits (--force moves it to the trash)"]}
@@ -220,19 +220,19 @@ dropped_edited_no_base:
   status: {label: modified, list: null}
 dropped_edited_no_base_marked:
   uninstall:
-    "0.155": {do: refused, save_first: false, next_base: none, checksum: old, mark: kept, word: null, label: "modified; stays behind 1.0.0 (chi bundle diff demo a.md)", warns: ["Uninstall failed: Uninstall blocked: a.md has local edits (--force moves it to the trash)"]}
+    "0.155": {do: refused, save_first: false, next_base: none, checksum: old, mark: kept, word: null, label: "modified; stays behind 1.0.0: no merge possible (no recorded base) (chi bundle diff demo a.md)", warns: ["Uninstall failed: Uninstall blocked: a.md has local edits (--force moves it to the trash)"]}
     "0.149": {do: refused, save_first: false, next_base: none, checksum: old, mark: kept (legacy), word: null, label: "modified; may be behind 1.0.0: an older chi marked it, and the next upgrade checks it (chi bundle diff demo a.md)", warns: ["Uninstall failed: Uninstall blocked: a.md has local edits (--force moves it to the trash)"]}
   uninstall_force: {do: moved, save_first: true, next_base: none, checksum: none, mark: dropped, word: Moved to the trash, label: not installed, warns: []}
   status:
-    "0.155": {label: "modified; stays behind 1.0.0 (chi bundle diff demo a.md)", list: "1 file behind"}
+    "0.155": {label: "modified; stays behind 1.0.0: no merge possible (no recorded base) (chi bundle diff demo a.md)", list: "1 file behind"}
     "0.149": {label: "modified; may be behind 1.0.0: an older chi marked it, and the next upgrade checks it (chi bundle diff demo a.md)", list: "1 file may be behind"}
 dropped_edited_no_base_legacy:
   uninstall:
-    "0.155": {do: refused, save_first: false, next_base: none, checksum: old, mark: kept (legacy), word: null, label: "modified; stays behind 1.0.0 (chi bundle diff demo a.md)", warns: ["Uninstall failed: Uninstall blocked: a.md has local edits (--force moves it to the trash)"]}
+    "0.155": {do: refused, save_first: false, next_base: none, checksum: old, mark: kept (legacy), word: null, label: "modified; stays behind 1.0.0: no merge possible (no recorded base) (chi bundle diff demo a.md)", warns: ["Uninstall failed: Uninstall blocked: a.md has local edits (--force moves it to the trash)"]}
     "0.149": {do: refused, save_first: false, next_base: none, checksum: old, mark: kept (legacy), word: null, label: "modified; may be behind 1.0.0: an older chi marked it, and the next upgrade checks it (chi bundle diff demo a.md)", warns: ["Uninstall failed: Uninstall blocked: a.md has local edits (--force moves it to the trash)"]}
   uninstall_force: {do: moved, save_first: true, next_base: none, checksum: none, mark: dropped, word: Moved to the trash, label: not installed, warns: []}
   status:
-    "0.155": {label: "modified; stays behind 1.0.0 (chi bundle diff demo a.md)", list: "1 file behind"}
+    "0.155": {label: "modified; stays behind 1.0.0: no merge possible (no recorded base) (chi bundle diff demo a.md)", list: "1 file behind"}
     "0.149": {label: "modified; may be behind 1.0.0: an older chi marked it, and the next upgrade checks it (chi bundle diff demo a.md)", list: "1 file may be behind"}
 dropped_edited:
   uninstall: {do: refused, save_first: false, next_base: old, checksum: old, mark: none, word: null, label: modified, warns: ["Uninstall failed: Uninstall blocked: a.md has local edits (--force moves it to the trash)"]}
@@ -240,19 +240,19 @@ dropped_edited:
   status: {label: modified, list: null}
 dropped_edited_marked:
   uninstall:
-    "0.155": {do: refused, save_first: false, next_base: old, checksum: old, mark: kept, word: null, label: "modified; stays behind 1.0.0 (chi bundle diff demo a.md)", warns: ["Uninstall failed: Uninstall blocked: a.md has local edits (--force moves it to the trash)"]}
+    "0.155": {do: refused, save_first: false, next_base: old, checksum: old, mark: kept, word: null, label: "modified; stays behind 1.0.0: missed 1 place (chi bundle diff demo a.md)", warns: ["Uninstall failed: Uninstall blocked: a.md has local edits (--force moves it to the trash)"]}
     "0.149": {do: refused, save_first: false, next_base: old, checksum: old, mark: kept (legacy), word: null, label: "modified; may be behind 1.0.0: an older chi marked it, and the next upgrade checks it (chi bundle diff demo a.md)", warns: ["Uninstall failed: Uninstall blocked: a.md has local edits (--force moves it to the trash)"]}
   uninstall_force: {do: moved, save_first: true, next_base: none, checksum: none, mark: dropped, word: Moved to the trash, label: not installed, warns: []}
   status:
-    "0.155": {label: "modified; stays behind 1.0.0 (chi bundle diff demo a.md)", list: "1 file behind"}
+    "0.155": {label: "modified; stays behind 1.0.0: missed 1 place (chi bundle diff demo a.md)", list: "1 file behind"}
     "0.149": {label: "modified; may be behind 1.0.0: an older chi marked it, and the next upgrade checks it (chi bundle diff demo a.md)", list: "1 file may be behind"}
 dropped_edited_legacy:
   uninstall:
-    "0.155": {do: refused, save_first: false, next_base: old, checksum: old, mark: kept (legacy), word: null, label: "modified; stays behind 1.0.0 (chi bundle diff demo a.md)", warns: ["Uninstall failed: Uninstall blocked: a.md has local edits (--force moves it to the trash)"]}
+    "0.155": {do: refused, save_first: false, next_base: old, checksum: old, mark: kept (legacy), word: null, label: "modified; stays behind 1.0.0: missed 1 place (chi bundle diff demo a.md)", warns: ["Uninstall failed: Uninstall blocked: a.md has local edits (--force moves it to the trash)"]}
     "0.149": {do: refused, save_first: false, next_base: old, checksum: old, mark: kept (legacy), word: null, label: "modified; may be behind 1.0.0: an older chi marked it, and the next upgrade checks it (chi bundle diff demo a.md)", warns: ["Uninstall failed: Uninstall blocked: a.md has local edits (--force moves it to the trash)"]}
   uninstall_force: {do: moved, save_first: true, next_base: none, checksum: none, mark: dropped, word: Moved to the trash, label: not installed, warns: []}
   status:
-    "0.155": {label: "modified; stays behind 1.0.0 (chi bundle diff demo a.md)", list: "1 file behind"}
+    "0.155": {label: "modified; stays behind 1.0.0: missed 1 place (chi bundle diff demo a.md)", list: "1 file behind"}
     "0.149": {label: "modified; may be behind 1.0.0: an older chi marked it, and the next upgrade checks it (chi bundle diff demo a.md)", list: "1 file may be behind"}
 new:
   uninstall: {do: none, save_first: false, next_base: none, checksum: none, mark: absent, word: null, label: not installed, warns: []}
@@ -298,33 +298,33 @@ pristine_legacy_gains:
   uninstall: {do: moved, save_first: true, next_base: none, checksum: none, mark: dropped, word: Moved to the trash, label: not installed, warns: []}
   uninstall_force: {do: moved, save_first: true, next_base: none, checksum: none, mark: dropped, word: Moved to the trash, label: not installed, warns: []}
   status:
-    "0.155": {label: stays behind 1.0.0 (chi bundle diff demo a.md), list: "1 file behind"}
+    "0.155": {label: "stays behind 1.0.0: missed 1 place (chi bundle diff demo a.md)", list: "1 file behind"}
     "0.149": {label: "may be behind 1.0.0: an older chi marked it, and the next upgrade checks it (chi bundle diff demo a.md)", list: "1 file may be behind"}
 pristine_legacy_gains_proved:
   uninstall: {do: moved, save_first: true, next_base: none, checksum: none, mark: dropped, word: Moved to the trash, label: not installed, warns: []}
   uninstall_force: {do: moved, save_first: true, next_base: none, checksum: none, mark: dropped, word: Moved to the trash, label: not installed, warns: []}
   status:
-    "0.155": {label: stays behind 1.0.0 (chi bundle diff demo a.md), list: "1 file behind"}
+    "0.155": {label: "stays behind 1.0.0: missed 1 place (chi bundle diff demo a.md)", list: "1 file behind"}
     "0.149": {label: "may be behind 1.0.0: an older chi marked it, and the next upgrade checks it (chi bundle diff demo a.md)", list: "1 file may be behind"}
 pristine_legacy_removes:
   uninstall: {do: moved, save_first: true, next_base: none, checksum: none, mark: dropped, word: Moved to the trash, label: not installed, warns: []}
   uninstall_force: {do: moved, save_first: true, next_base: none, checksum: none, mark: dropped, word: Moved to the trash, label: not installed, warns: []}
   status:
-    "0.155": {label: stays behind 1.0.0 (chi bundle diff demo a.md), list: "1 file behind"}
+    "0.155": {label: "stays behind 1.0.0: missed 1 place (chi bundle diff demo a.md)", list: "1 file behind"}
     "0.149": {label: "may be behind 1.0.0: an older chi marked it, and the next upgrade checks it (chi bundle diff demo a.md)", list: "1 file may be behind"}
 pristine_legacy_removes_proved:
   uninstall: {do: moved, save_first: true, next_base: none, checksum: none, mark: dropped, word: Moved to the trash, label: not installed, warns: []}
   uninstall_force: {do: moved, save_first: true, next_base: none, checksum: none, mark: dropped, word: Moved to the trash, label: not installed, warns: []}
   status:
-    "0.155": {label: stays behind 1.0.0 (chi bundle diff demo a.md), list: "1 file behind"}
+    "0.155": {label: "stays behind 1.0.0: missed 1 place (chi bundle diff demo a.md)", list: "1 file behind"}
     "0.149": {label: "may be behind 1.0.0: an older chi marked it, and the next upgrade checks it (chi bundle diff demo a.md)", list: "1 file may be behind"}
 source_moved_marked:
   uninstall:
-    "0.155": {do: refused, save_first: false, next_base: old, checksum: old, mark: kept, word: null, label: "modified; stays behind 1.0.0 (chi bundle diff demo a.md)", warns: ["Uninstall failed: Uninstall blocked: a.md has local edits (--force moves it to the trash)"]}
+    "0.155": {do: refused, save_first: false, next_base: old, checksum: old, mark: kept, word: null, label: "modified; stays behind 1.0.0: missed 1 place (chi bundle diff demo a.md)", warns: ["Uninstall failed: Uninstall blocked: a.md has local edits (--force moves it to the trash)"]}
     "0.149": {do: refused, save_first: false, next_base: old, checksum: old, mark: kept (legacy), word: null, label: "modified; may be behind 1.0.0: an older chi marked it, and the next upgrade checks it (chi bundle diff demo a.md)", warns: ["Uninstall failed: Uninstall blocked: a.md has local edits (--force moves it to the trash)"]}
   uninstall_force: {do: moved, save_first: true, next_base: none, checksum: none, mark: dropped, word: Moved to the trash, label: not installed, warns: []}
   status:
-    "0.155": {label: "modified; stays behind 1.0.0 (chi bundle diff demo a.md)", list: "1 file behind"}
+    "0.155": {label: "modified; stays behind 1.0.0: missed 1 place (chi bundle diff demo a.md)", list: "1 file behind"}
     "0.149": {label: "modified; may be behind 1.0.0: an older chi marked it, and the next upgrade checks it (chi bundle diff demo a.md)", list: "1 file may be behind"}
 missing_wrong_sha:
   uninstall: {do: none, save_first: false, next_base: none, checksum: none, mark: dropped, word: null, label: not installed, warns: []}

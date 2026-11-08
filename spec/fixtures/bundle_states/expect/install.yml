@@ -38,13 +38,15 @@ pristine_marked:
     "0.149": {do: kept, save_first: false, next_base: old, checksum: old, mark: kept (legacy), word: Skipped, label: stays behind 1.1.0 (chi bundle diff demo a.md), warns: ["Skipped a.md (already exists; --force takes the bundle's version, your file copied to the trash first)", "demo was already installed from <src>/v2/demo: its hooks, rules, plugin and scripts now match it and its record was rewritten; your own copies of its memories were kept (chi bundle upgrade demo merges the bundle's changes into them)"]}
   install_force: {do: wrote_incoming, save_first: true, next_base: disk, checksum: disk, mark: cleared, word: Installed, label: ok, warns: ["Copied to the trash first: a.md (<home>/samagotchi/memories/.bundles/.trash/demo-<stamp>)"]}
   install_dry:
-    "0.155": {do: kept, save_first: false, next_base: old, checksum: old, mark: kept, word: Skipped, label: stays behind 1.0.0 (chi bundle diff demo a.md), warns: []}
+    "0.155": {do: kept, save_first: false, next_base: old, checksum: old, mark: kept, word: Skipped, label: "stays behind 1.0.0: missed 1 place (chi bundle diff demo a.md)", warns: []}
     "0.149": {do: kept, save_first: false, next_base: old, checksum: old, mark: kept (legacy), word: Skipped, label: "may be behind 1.0.0: an older chi marked it, and the next upgrade checks it (chi bundle diff demo a.md)", warns: []}
 pristine_legacy:
-  install: {do: kept, save_first: false, next_base: old, checksum: old, mark: kept (legacy), word: Skipped, label: stays behind 1.1.0 (chi bundle diff demo a.md), warns: ["Skipped a.md (already exists; --force takes the bundle's version, your file copied to the trash first)", "demo was already installed from <src>/v2/demo: its hooks, rules, plugin and scripts now match it and its record was rewritten; your own copies of its memories were kept (chi bundle upgrade demo merges the bundle's changes into them)"]}
+  install:
+    "0.155": {do: kept, save_first: false, next_base: old, checksum: old, mark: kept (legacy), word: Skipped, label: "stays behind 1.1.0: missed 1 place (chi bundle diff demo a.md)", warns: ["Skipped a.md (already exists; --force takes the bundle's version, your file copied to the trash first)", "demo was already installed from <src>/v2/demo: its hooks, rules, plugin and scripts now match it and its record was rewritten; your own copies of its memories were kept (chi bundle upgrade demo merges the bundle's changes into them)"]}
+    "0.149": {do: kept, save_first: false, next_base: old, checksum: old, mark: kept (legacy), word: Skipped, label: stays behind 1.1.0 (chi bundle diff demo a.md), warns: ["Skipped a.md (already exists; --force takes the bundle's version, your file copied to the trash first)", "demo was already installed from <src>/v2/demo: its hooks, rules, plugin and scripts now match it and its record was rewritten; your own copies of its memories were kept (chi bundle upgrade demo merges the bundle's changes into them)"]}
   install_force: {do: wrote_incoming, save_first: true, next_base: disk, checksum: disk, mark: cleared, word: Installed, label: ok, warns: ["Copied to the trash first: a.md (<home>/samagotchi/memories/.bundles/.trash/demo-<stamp>)"]}
   install_dry:
-    "0.155": {do: kept, save_first: false, next_base: old, checksum: old, mark: kept (legacy), word: Skipped, label: stays behind 1.0.0 (chi bundle diff demo a.md), warns: []}
+    "0.155": {do: kept, save_first: false, next_base: old, checksum: old, mark: kept (legacy), word: Skipped, label: "stays behind 1.0.0: missed 1 place (chi bundle diff demo a.md)", warns: []}
     "0.149": {do: kept, save_first: false, next_base: old, checksum: old, mark: kept (legacy), word: Skipped, label: "may be behind 1.0.0: an older chi marked it, and the next upgrade checks it (chi bundle diff demo a.md)", warns: []}
 edited:
   install: {do: kept, save_first: false, next_base: old, checksum: old, mark: none, word: Skipped, label: modified, warns: ["Skipped a.md (already exists; --force takes the bundle's version, your file copied to the trash first)", "demo was already installed from <src>/v2/demo: its hooks, rules, plugin and scripts now match it and its record was rewritten; your own copies of its memories were kept (chi bundle upgrade demo merges the bundle's changes into them)"]}
@@ -82,7 +84,7 @@ diverged_clean_marked:
     "0.149": {do: kept, save_first: false, next_base: old, checksum: old, mark: kept (legacy), word: Skipped, label: "modified; stays behind 1.1.0 (chi bundle diff demo a.md)", warns: ["Skipped a.md (already exists; --force takes the bundle's version, your file copied to the trash first)", "demo was already installed from <src>/v2/demo: its hooks, rules, plugin and scripts now match it and its record was rewritten; your own copies of its memories were kept (chi bundle upgrade demo merges the bundle's changes into them)"]}
   install_force: {do: wrote_incoming, save_first: true, next_base: disk, checksum: disk, mark: cleared, word: Installed, label: ok, warns: ["Copied to the trash first: a.md (<home>/samagotchi/memories/.bundles/.trash/demo-<stamp>)"]}
   install_dry:
-    "0.155": {do: kept, save_first: false, next_base: old, checksum: old, mark: kept, word: Skipped, label: "modified; stays behind 1.0.0 (chi bundle diff demo a.md)", warns: []}
+    "0.155": {do: kept, save_first: false, next_base: old, checksum: old, mark: kept, word: Skipped, label: "modified; stays behind 1.0.0: missed 1 place (chi bundle diff demo a.md)", warns: []}
     "0.149": {do: kept, save_first: false, next_base: old, checksum: old, mark: kept (legacy), word: Skipped, label: "modified; may be behind 1.0.0: an older chi marked it, and the next upgrade checks it (chi bundle diff demo a.md)", warns: []}
 diverged_conflict_marked:
   install:
@@ -90,19 +92,23 @@ diverged_conflict_marked:
     "0.149": {do: kept, save_first: false, next_base: old, checksum: old, mark: kept (legacy), word: Skipped, label: "modified; stays behind 1.1.0 (chi bundle diff demo a.md)", warns: ["Skipped a.md (already exists; --force takes the bundle's version, your file copied to the trash first)", "demo was already installed from <src>/v2/demo: its hooks, rules, plugin and scripts now match it and its record was rewritten; your own copies of its memories were kept (chi bundle upgrade demo merges the bundle's changes into them)"]}
   install_force: {do: wrote_incoming, save_first: true, next_base: disk, checksum: disk, mark: cleared, word: Installed, label: ok, warns: ["Copied to the trash first: a.md (<home>/samagotchi/memories/.bundles/.trash/demo-<stamp>)"]}
   install_dry:
-    "0.155": {do: kept, save_first: false, next_base: old, checksum: old, mark: kept, word: Skipped, label: "modified; stays behind 1.0.0 (chi bundle diff demo a.md)", warns: []}
+    "0.155": {do: kept, save_first: false, next_base: old, checksum: old, mark: kept, word: Skipped, label: "modified; stays behind 1.0.0: missed 1 place (chi bundle diff demo a.md)", warns: []}
     "0.149": {do: kept, save_first: false, next_base: old, checksum: old, mark: kept (legacy), word: Skipped, label: "modified; may be behind 1.0.0: an older chi marked it, and the next upgrade checks it (chi bundle diff demo a.md)", warns: []}
 diverged_clean_legacy:
-  install: {do: kept, save_first: false, next_base: old, checksum: old, mark: kept (legacy), word: Skipped, label: "modified; stays behind 1.1.0 (chi bundle diff demo a.md)", warns: ["Skipped a.md (already exists; --force takes the bundle's version, your file copied to the trash first)", "demo was already installed from <src>/v2/demo: its hooks, rules, plugin and scripts now match it and its record was rewritten; your own copies of its memories were kept (chi bundle upgrade demo merges the bundle's changes into them)"]}
+  install:
+    "0.155": {do: kept, save_first: false, next_base: old, checksum: old, mark: kept (legacy), word: Skipped, label: "modified; stays behind 1.1.0: missed 1 place (chi bundle diff demo a.md)", warns: ["Skipped a.md (already exists; --force takes the bundle's version, your file copied to the trash first)", "demo was already installed from <src>/v2/demo: its hooks, rules, plugin and scripts now match it and its record was rewritten; your own copies of its memories were kept (chi bundle upgrade demo merges the bundle's changes into them)"]}
+    "0.149": {do: kept, save_first: false, next_base: old, checksum: old, mark: kept (legacy), word: Skipped, label: "modified; stays behind 1.1.0 (chi bundle diff demo a.md)", warns: ["Skipped a.md (already exists; --force takes the bundle's version, your file copied to the trash first)", "demo was already installed from <src>/v2/demo: its hooks, rules, plugin and scripts now match it and its record was rewritten; your own copies of its memories were kept (chi bundle upgrade demo merges the bundle's changes into them)"]}
   install_force: {do: wrote_incoming, save_first: true, next_base: disk, checksum: disk, mark: cleared, word: Installed, label: ok, warns: ["Copied to the trash first: a.md (<home>/samagotchi/memories/.bundles/.trash/demo-<stamp>)"]}
   install_dry:
-    "0.155": {do: kept, save_first: false, next_base: old, checksum: old, mark: kept (legacy), word: Skipped, label: "modified; stays behind 1.0.0 (chi bundle diff demo a.md)", warns: []}
+    "0.155": {do: kept, save_first: false, next_base: old, checksum: old, mark: kept (legacy), word: Skipped, label: "modified; stays behind 1.0.0: missed 1 place (chi bundle diff demo a.md)", warns: []}
     "0.149": {do: kept, save_first: false, next_base: old, checksum: old, mark: kept (legacy), word: Skipped, label: "modified; may be behind 1.0.0: an older chi marked it, and the next upgrade checks it (chi bundle diff demo a.md)", warns: []}
 diverged_conflict_legacy:
-  install: {do: kept, save_first: false, next_base: old, checksum: old, mark: kept (legacy), word: Skipped, label: "modified; stays behind 1.1.0 (chi bundle diff demo a.md)", warns: ["Skipped a.md (already exists; --force takes the bundle's version, your file copied to the trash first)", "demo was already installed from <src>/v2/demo: its hooks, rules, plugin and scripts now match it and its record was rewritten; your own copies of its memories were kept (chi bundle upgrade demo merges the bundle's changes into them)"]}
+  install:
+    "0.155": {do: kept, save_first: false, next_base: old, checksum: old, mark: kept (legacy), word: Skipped, label: "modified; stays behind 1.1.0: missed 1 place (chi bundle diff demo a.md)", warns: ["Skipped a.md (already exists; --force takes the bundle's version, your file copied to the trash first)", "demo was already installed from <src>/v2/demo: its hooks, rules, plugin and scripts now match it and its record was rewritten; your own copies of its memories were kept (chi bundle upgrade demo merges the bundle's changes into them)"]}
+    "0.149": {do: kept, save_first: false, next_base: old, checksum: old, mark: kept (legacy), word: Skipped, label: "modified; stays behind 1.1.0 (chi bundle diff demo a.md)", warns: ["Skipped a.md (already exists; --force takes the bundle's version, your file copied to the trash first)", "demo was already installed from <src>/v2/demo: its hooks, rules, plugin and scripts now match it and its record was rewritten; your own copies of its memories were kept (chi bundle upgrade demo merges the bundle's changes into them)"]}
   install_force: {do: wrote_incoming, save_first: true, next_base: disk, checksum: disk, mark: cleared, word: Installed, label: ok, warns: ["Copied to the trash first: a.md (<home>/samagotchi/memories/.bundles/.trash/demo-<stamp>)"]}
   install_dry:
-    "0.155": {do: kept, save_first: false, next_base: old, checksum: old, mark: kept (legacy), word: Skipped, label: "modified; stays behind 1.0.0 (chi bundle diff demo a.md)", warns: []}
+    "0.155": {do: kept, save_first: false, next_base: old, checksum: old, mark: kept (legacy), word: Skipped, label: "modified; stays behind 1.0.0: missed 1 place (chi bundle diff demo a.md)", warns: []}
     "0.149": {do: kept, save_first: false, next_base: old, checksum: old, mark: kept (legacy), word: Skipped, label: "modified; may be behind 1.0.0: an older chi marked it, and the next upgrade checks it (chi bundle diff demo a.md)", warns: []}
 level_no_base:
   install: {do: kept, save_first: false, next_base: disk, checksum: old, mark: none, word: Up to date, label: ok, warns: []}
@@ -128,13 +134,15 @@ pristine_no_base_marked:
     "0.149": {do: kept, save_first: false, next_base: none, checksum: old, mark: kept (legacy), word: Skipped, label: stays behind 1.1.0 (chi bundle diff demo a.md), warns: ["Skipped a.md (already exists; --force takes the bundle's version, your file copied to the trash first)", "demo was already installed from <src>/v2/demo: its hooks, rules, plugin and scripts now match it and its record was rewritten; your own copies of its memories were kept (chi bundle upgrade demo merges the bundle's changes into them)"]}
   install_force: {do: wrote_incoming, save_first: true, next_base: disk, checksum: disk, mark: cleared, word: Installed, label: ok, warns: ["Copied to the trash first: a.md (<home>/samagotchi/memories/.bundles/.trash/demo-<stamp>)"]}
   install_dry:
-    "0.155": {do: kept, save_first: false, next_base: none, checksum: old, mark: kept, word: Skipped, label: stays behind 1.0.0 (chi bundle diff demo a.md), warns: []}
+    "0.155": {do: kept, save_first: false, next_base: none, checksum: old, mark: kept, word: Skipped, label: "stays behind 1.0.0: no merge possible (no recorded base) (chi bundle diff demo a.md)", warns: []}
     "0.149": {do: kept, save_first: false, next_base: none, checksum: old, mark: kept (legacy), word: Skipped, label: "may be behind 1.0.0: an older chi marked it, and the next upgrade checks it (chi bundle diff demo a.md)", warns: []}
 pristine_no_base_legacy:
-  install: {do: kept, save_first: false, next_base: none, checksum: old, mark: kept (legacy), word: Skipped, label: stays behind 1.1.0 (chi bundle diff demo a.md), warns: ["Skipped a.md (already exists; --force takes the bundle's version, your file copied to the trash first)", "demo was already installed from <src>/v2/demo: its hooks, rules, plugin and scripts now match it and its record was rewritten; your own copies of its memories were kept (chi bundle upgrade demo merges the bundle's changes into them)"]}
+  install:
+    "0.155": {do: kept, save_first: false, next_base: none, checksum: old, mark: kept (legacy), word: Skipped, label: "stays behind 1.1.0: no merge possible (no recorded base) (chi bundle diff demo a.md)", warns: ["Skipped a.md (already exists; --force takes the bundle's version, your file copied to the trash first)", "demo was already installed from <src>/v2/demo: its hooks, rules, plugin and scripts now match it and its record was rewritten; your own copies of its memories were kept (chi bundle upgrade demo merges the bundle's changes into them)"]}
+    "0.149": {do: kept, save_first: false, next_base: none, checksum: old, mark: kept (legacy), word: Skipped, label: stays behind 1.1.0 (chi bundle diff demo a.md), warns: ["Skipped a.md (already exists; --force takes the bundle's version, your file copied to the trash first)", "demo was already installed from <src>/v2/demo: its hooks, rules, plugin and scripts now match it and its record was rewritten; your own copies of its memories were kept (chi bundle upgrade demo merges the bundle's changes into them)"]}
   install_force: {do: wrote_incoming, save_first: true, next_base: disk, checksum: disk, mark: cleared, word: Installed, label: ok, warns: ["Copied to the trash first: a.md (<home>/samagotchi/memories/.bundles/.trash/demo-<stamp>)"]}
   install_dry:
-    "0.155": {do: kept, save_first: false, next_base: none, checksum: old, mark: kept (legacy), word: Skipped, label: stays behind 1.0.0 (chi bundle diff demo a.md), warns: []}
+    "0.155": {do: kept, save_first: false, next_base: none, checksum: old, mark: kept (legacy), word: Skipped, label: "stays behind 1.0.0: no merge possible (no recorded base) (chi bundle diff demo a.md)", warns: []}
     "0.149": {do: kept, save_first: false, next_base: none, checksum: old, mark: kept (legacy), word: Skipped, label: "may be behind 1.0.0: an older chi marked it, and the next upgrade checks it (chi bundle diff demo a.md)", warns: []}
 edited_no_base:
   install: {do: kept, save_first: false, next_base: none, checksum: old, mark: none, word: Skipped, label: modified, warns: ["Skipped a.md (already exists; --force takes the bundle's version, your file copied to the trash first)", "demo was already installed from <src>/v2/demo: its hooks, rules, plugin and scripts now match it and its record was rewritten; your own copies of its memories were kept (chi bundle upgrade demo merges the bundle's changes into them)"]}
@@ -146,13 +154,15 @@ edited_no_base_marked:
     "0.149": {do: kept, save_first: false, next_base: none, checksum: old, mark: kept (legacy), word: Skipped, label: "modified; stays behind 1.1.0 (chi bundle diff demo a.md)", warns: ["Skipped a.md (already exists; --force takes the bundle's version, your file copied to the trash first)", "demo was already installed from <src>/v2/demo: its hooks, rules, plugin and scripts now match it and its record was rewritten; your own copies of its memories were kept (chi bundle upgrade demo merges the bundle's changes into them)"]}
   install_force: {do: wrote_incoming, save_first: true, next_base: disk, checksum: disk, mark: cleared, word: Installed, label: ok, warns: ["Copied to the trash first: a.md (<home>/samagotchi/memories/.bundles/.trash/demo-<stamp>)"]}
   install_dry:
-    "0.155": {do: kept, save_first: false, next_base: none, checksum: old, mark: kept, word: Skipped, label: "modified; stays behind 1.0.0 (chi bundle diff demo a.md)", warns: []}
+    "0.155": {do: kept, save_first: false, next_base: none, checksum: old, mark: kept, word: Skipped, label: "modified; stays behind 1.0.0: no merge possible (no recorded base) (chi bundle diff demo a.md)", warns: []}
     "0.149": {do: kept, save_first: false, next_base: none, checksum: old, mark: kept (legacy), word: Skipped, label: "modified; may be behind 1.0.0: an older chi marked it, and the next upgrade checks it (chi bundle diff demo a.md)", warns: []}
 edited_no_base_legacy:
-  install: {do: kept, save_first: false, next_base: none, checksum: old, mark: kept (legacy), word: Skipped, label: "modified; stays behind 1.1.0 (chi bundle diff demo a.md)", warns: ["Skipped a.md (already exists; --force takes the bundle's version, your file copied to the trash first)", "demo was already installed from <src>/v2/demo: its hooks, rules, plugin and scripts now match it and its record was rewritten; your own copies of its memories were kept (chi bundle upgrade demo merges the bundle's changes into them)"]}
+  install:
+    "0.155": {do: kept, save_first: false, next_base: none, checksum: old, mark: kept (legacy), word: Skipped, label: "modified; stays behind 1.1.0: no merge possible (no recorded base) (chi bundle diff demo a.md)", warns: ["Skipped a.md (already exists; --force takes the bundle's version, your file copied to the trash first)", "demo was already installed from <src>/v2/demo: its hooks, rules, plugin and scripts now match it and its record was rewritten; your own copies of its memories were kept (chi bundle upgrade demo merges the bundle's changes into them)"]}
+    "0.149": {do: kept, save_first: false, next_base: none, checksum: old, mark: kept (legacy), word: Skipped, label: "modified; stays behind 1.1.0 (chi bundle diff demo a.md)", warns: ["Skipped a.md (already exists; --force takes the bundle's version, your file copied to the trash first)", "demo was already installed from <src>/v2/demo: its hooks, rules, plugin and scripts now match it and its record was rewritten; your own copies of its memories were kept (chi bundle upgrade demo merges the bundle's changes into them)"]}
   install_force: {do: wrote_incoming, save_first: true, next_base: disk, checksum: disk, mark: cleared, word: Installed, label: ok, warns: ["Copied to the trash first: a.md (<home>/samagotchi/memories/.bundles/.trash/demo-<stamp>)"]}
   install_dry:
-    "0.155": {do: kept, save_first: false, next_base: none, checksum: old, mark: kept (legacy), word: Skipped, label: "modified; stays behind 1.0.0 (chi bundle diff demo a.md)", warns: []}
+    "0.155": {do: kept, save_first: false, next_base: none, checksum: old, mark: kept (legacy), word: Skipped, label: "modified; stays behind 1.0.0: no merge possible (no recorded base) (chi bundle diff demo a.md)", warns: []}
     "0.149": {do: kept, save_first: false, next_base: none, checksum: old, mark: kept (legacy), word: Skipped, label: "modified; may be behind 1.0.0: an older chi marked it, and the next upgrade checks it (chi bundle diff demo a.md)", warns: []}
 edited_no_checksum:
   install: {do: kept, save_first: false, next_base: none, checksum: none, mark: none, word: Skipped, label: modified, warns: ["Skipped a.md (already exists; --force takes the bundle's version, your file copied to the trash first)", "demo was already installed from <src>/v2/demo: its hooks, rules, plugin and scripts now match it and its record was rewritten; your own copies of its memories were kept (chi bundle upgrade demo merges the bundle's changes into them)"]}
@@ -194,13 +204,13 @@ dropped_pristine_marked:
   install: {do: kept, save_first: false, next_base: old, checksum: old, mark: cleared, word: null, label: ok, warns: []}
   install_force: {do: kept, save_first: false, next_base: old, checksum: old, mark: cleared, word: null, label: ok, warns: []}
   install_dry:
-    "0.155": {do: kept, save_first: false, next_base: old, checksum: old, mark: kept, word: null, label: stays behind 1.0.0 (chi bundle diff demo a.md), warns: []}
+    "0.155": {do: kept, save_first: false, next_base: old, checksum: old, mark: kept, word: null, label: "stays behind 1.0.0: missed 1 place (chi bundle diff demo a.md)", warns: []}
     "0.149": {do: kept, save_first: false, next_base: old, checksum: old, mark: kept (legacy), word: null, label: "may be behind 1.0.0: an older chi marked it, and the next upgrade checks it (chi bundle diff demo a.md)", warns: []}
 dropped_pristine_legacy:
   install: {do: kept, save_first: false, next_base: old, checksum: old, mark: cleared, word: null, label: ok, warns: []}
   install_force: {do: kept, save_first: false, next_base: old, checksum: old, mark: cleared, word: null, label: ok, warns: []}
   install_dry:
-    "0.155": {do: kept, save_first: false, next_base: old, checksum: old, mark: kept (legacy), word: null, label: stays behind 1.0.0 (chi bundle diff demo a.md), warns: []}
+    "0.155": {do: kept, save_first: false, next_base: old, checksum: old, mark: kept (legacy), word: null, label: "stays behind 1.0.0: missed 1 place (chi bundle diff demo a.md)", warns: []}
     "0.149": {do: kept, save_first: false, next_base: old, checksum: old, mark: kept (legacy), word: null, label: "may be behind 1.0.0: an older chi marked it, and the next upgrade checks it (chi bundle diff demo a.md)", warns: []}
 dropped_pristine_no_base:
   install: {do: kept, save_first: false, next_base: none, checksum: old, mark: none, word: null, label: ok, warns: []}
@@ -210,13 +220,13 @@ dropped_pristine_no_base_marked:
   install: {do: kept, save_first: false, next_base: none, checksum: old, mark: cleared, word: null, label: ok, warns: []}
   install_force: {do: kept, save_first: false, next_base: none, checksum: old, mark: cleared, word: null, label: ok, warns: []}
   install_dry:
-    "0.155": {do: kept, save_first: false, next_base: none, checksum: old, mark: kept, word: null, label: stays behind 1.0.0 (chi bundle diff demo a.md), warns: []}
+    "0.155": {do: kept, save_first: false, next_base: none, checksum: old, mark: kept, word: null, label: "stays behind 1.0.0: no merge possible (no recorded base) (chi bundle diff demo a.md)", warns: []}
     "0.149": {do: kept, save_first: false, next_base: none, checksum: old, mark: kept (legacy), word: null, label: "may be behind 1.0.0: an older chi marked it, and the next upgrade checks it (chi bundle diff demo a.md)", warns: []}
 dropped_pristine_no_base_legacy:
   install: {do: kept, save_first: false, next_base: none, checksum: old, mark: cleared, word: null, label: ok, warns: []}
   install_force: {do: kept, save_first: false, next_base: none, checksum: old, mark: cleared, word: null, label: ok, warns: []}
   install_dry:
-    "0.155": {do: kept, save_first: false, next_base: none, checksum: old, mark: kept (legacy), word: null, label: stays behind 1.0.0 (chi bundle diff demo a.md), warns: []}
+    "0.155": {do: kept, save_first: false, next_base: none, checksum: old, mark: kept (legacy), word: null, label: "stays behind 1.0.0: no merge possible (no recorded base) (chi bundle diff demo a.md)", warns: []}
     "0.149": {do: kept, save_first: false, next_base: none, checksum: old, mark: kept (legacy), word: null, label: "may be behind 1.0.0: an older chi marked it, and the next upgrade checks it (chi bundle diff demo a.md)", warns: []}
 dropped_edited_no_base:
   install: {do: kept, save_first: false, next_base: none, checksum: old, mark: none, word: null, label: modified, warns: []}
@@ -226,13 +236,13 @@ dropped_edited_no_base_marked:
   install: {do: kept, save_first: false, next_base: none, checksum: old, mark: cleared, word: null, label: modified, warns: []}
   install_force: {do: kept, save_first: false, next_base: none, checksum: old, mark: cleared, word: null, label: modified, warns: []}
   install_dry:
-    "0.155": {do: kept, save_first: false, next_base: none, checksum: old, mark: kept, word: null, label: "modified; stays behind 1.0.0 (chi bundle diff demo a.md)", warns: []}
+    "0.155": {do: kept, save_first: false, next_base: none, checksum: old, mark: kept, word: null, label: "modified; stays behind 1.0.0: no merge possible (no recorded base) (chi bundle diff demo a.md)", warns: []}
     "0.149": {do: kept, save_first: false, next_base: none, checksum: old, mark: kept (legacy), word: null, label: "modified; may be behind 1.0.0: an older chi marked it, and the next upgrade checks it (chi bundle diff demo a.md)", warns: []}
 dropped_edited_no_base_legacy:
   install: {do: kept, save_first: false, next_base: none, checksum: old, mark: cleared, word: null, label: modified, warns: []}
   install_force: {do: kept, save_first: false, next_base: none, checksum: old, mark: cleared, word: null, label: modified, warns: []}
   install_dry:
-    "0.155": {do: kept, save_first: false, next_base: none, checksum: old, mark: kept (legacy), word: null, label: "modified; stays behind 1.0.0 (chi bundle diff demo a.md)", warns: []}
+    "0.155": {do: kept, save_first: false, next_base: none, checksum: old, mark: kept (legacy), word: null, label: "modified; stays behind 1.0.0: no merge possible (no recorded base) (chi bundle diff demo a.md)", warns: []}
     "0.149": {do: kept, save_first: false, next_base: none, checksum: old, mark: kept (legacy), word: null, label: "modified; may be behind 1.0.0: an older chi marked it, and the next upgrade checks it (chi bundle diff demo a.md)", warns: []}
 dropped_edited:
   install: {do: kept, save_first: false, next_base: old, checksum: old, mark: none, word: null, label: modified, warns: []}
@@ -242,13 +252,13 @@ dropped_edited_marked:
   install: {do: kept, save_first: false, next_base: old, checksum: old, mark: cleared, word: null, label: modified, warns: []}
   install_force: {do: kept, save_first: false, next_base: old, checksum: old, mark: cleared, word: null, label: modified, warns: []}
   install_dry:
-    "0.155": {do: kept, save_first: false, next_base: old, checksum: old, mark: kept, word: null, label: "modified; stays behind 1.0.0 (chi bundle diff demo a.md)", warns: []}
+    "0.155": {do: kept, save_first: false, next_base: old, checksum: old, mark: kept, word: null, label: "modified; stays behind 1.0.0: missed 1 place (chi bundle diff demo a.md)", warns: []}
     "0.149": {do: kept, save_first: false, next_base: old, checksum: old, mark: kept (legacy), word: null, label: "modified; may be behind 1.0.0: an older chi marked it, and the next upgrade checks it (chi bundle diff demo a.md)", warns: []}
 dropped_edited_legacy:
   install: {do: kept, save_first: false, next_base: old, checksum: old, mark: cleared, word: null, label: modified, warns: []}
   install_force: {do: kept, save_first: false, next_base: old, checksum: old, mark: cleared, word: null, label: modified, warns: []}
   install_dry:
-    "0.155": {do: kept, save_first: false, next_base: old, checksum: old, mark: kept (legacy), word: null, label: "modified; stays behind 1.0.0 (chi bundle diff demo a.md)", warns: []}
+    "0.155": {do: kept, save_first: false, next_base: old, checksum: old, mark: kept (legacy), word: null, label: "modified; stays behind 1.0.0: missed 1 place (chi bundle diff demo a.md)", warns: []}
     "0.149": {do: kept, save_first: false, next_base: old, checksum: old, mark: kept (legacy), word: null, label: "modified; may be behind 1.0.0: an older chi marked it, and the next upgrade checks it (chi bundle diff demo a.md)", warns: []}
 new:
   install: {do: wrote_incoming, save_first: false, next_base: disk, checksum: disk, mark: added, word: Installed, label: ok, warns: []}
@@ -291,28 +301,36 @@ recorded_other:
   install_force: {do: wrote_incoming, save_first: true, next_base: disk, checksum: disk, mark: none, word: Installed, label: ok, warns: ["Copied to the trash first: a.md (<home>/samagotchi/memories/.bundles/.trash/demo-<stamp>)"]}
   install_dry: {do: kept, save_first: false, next_base: old, checksum: old, mark: none, word: Skipped, label: modified, warns: []}
 pristine_legacy_gains:
-  install: {do: kept, save_first: false, next_base: old, checksum: old, mark: kept (legacy), word: Skipped, label: stays behind 1.1.0 (chi bundle diff demo a.md), warns: ["Skipped a.md (already exists; --force takes the bundle's version, your file copied to the trash first)", "demo was already installed from <src>/v2/demo: its hooks, rules, plugin and scripts now match it and its record was rewritten; your own copies of its memories were kept (chi bundle upgrade demo merges the bundle's changes into them)"]}
+  install:
+    "0.155": {do: kept, save_first: false, next_base: old, checksum: old, mark: kept (legacy), word: Skipped, label: "stays behind 1.1.0: missed 1 place (chi bundle diff demo a.md)", warns: ["Skipped a.md (already exists; --force takes the bundle's version, your file copied to the trash first)", "demo was already installed from <src>/v2/demo: its hooks, rules, plugin and scripts now match it and its record was rewritten; your own copies of its memories were kept (chi bundle upgrade demo merges the bundle's changes into them)"]}
+    "0.149": {do: kept, save_first: false, next_base: old, checksum: old, mark: kept (legacy), word: Skipped, label: stays behind 1.1.0 (chi bundle diff demo a.md), warns: ["Skipped a.md (already exists; --force takes the bundle's version, your file copied to the trash first)", "demo was already installed from <src>/v2/demo: its hooks, rules, plugin and scripts now match it and its record was rewritten; your own copies of its memories were kept (chi bundle upgrade demo merges the bundle's changes into them)"]}
   install_force: {do: wrote_incoming, save_first: true, next_base: disk, checksum: disk, mark: cleared, word: Installed, label: ok, warns: ["Copied to the trash first: a.md (<home>/samagotchi/memories/.bundles/.trash/demo-<stamp>)"]}
   install_dry:
-    "0.155": {do: kept, save_first: false, next_base: old, checksum: old, mark: kept (legacy), word: Skipped, label: stays behind 1.0.0 (chi bundle diff demo a.md), warns: []}
+    "0.155": {do: kept, save_first: false, next_base: old, checksum: old, mark: kept (legacy), word: Skipped, label: "stays behind 1.0.0: missed 1 place (chi bundle diff demo a.md)", warns: []}
     "0.149": {do: kept, save_first: false, next_base: old, checksum: old, mark: kept (legacy), word: Skipped, label: "may be behind 1.0.0: an older chi marked it, and the next upgrade checks it (chi bundle diff demo a.md)", warns: []}
 pristine_legacy_gains_proved:
-  install: {do: kept, save_first: false, next_base: old, checksum: old, mark: kept (legacy), word: Skipped, label: stays behind 1.1.0 (chi bundle diff demo a.md), warns: ["Skipped a.md (already exists; --force takes the bundle's version, your file copied to the trash first)", "demo was already installed from <src>/v2/demo: its hooks, rules, plugin and scripts now match it and its record was rewritten; your own copies of its memories were kept (chi bundle upgrade demo merges the bundle's changes into them)"]}
+  install:
+    "0.155": {do: kept, save_first: false, next_base: old, checksum: old, mark: kept (legacy), word: Skipped, label: "stays behind 1.1.0: missed 1 place (chi bundle diff demo a.md)", warns: ["Skipped a.md (already exists; --force takes the bundle's version, your file copied to the trash first)", "demo was already installed from <src>/v2/demo: its hooks, rules, plugin and scripts now match it and its record was rewritten; your own copies of its memories were kept (chi bundle upgrade demo merges the bundle's changes into them)"]}
+    "0.149": {do: kept, save_first: false, next_base: old, checksum: old, mark: kept (legacy), word: Skipped, label: stays behind 1.1.0 (chi bundle diff demo a.md), warns: ["Skipped a.md (already exists; --force takes the bundle's version, your file copied to the trash first)", "demo was already installed from <src>/v2/demo: its hooks, rules, plugin and scripts now match it and its record was rewritten; your own copies of its memories were kept (chi bundle upgrade demo merges the bundle's changes into them)"]}
   install_force: {do: wrote_incoming, save_first: true, next_base: disk, checksum: disk, mark: cleared, word: Installed, label: ok, warns: ["Copied to the trash first: a.md (<home>/samagotchi/memories/.bundles/.trash/demo-<stamp>)"]}
   install_dry:
-    "0.155": {do: kept, save_first: false, next_base: old, checksum: old, mark: kept (legacy), word: Skipped, label: stays behind 1.0.0 (chi bundle diff demo a.md), warns: []}
+    "0.155": {do: kept, save_first: false, next_base: old, checksum: old, mark: kept (legacy), word: Skipped, label: "stays behind 1.0.0: missed 1 place (chi bundle diff demo a.md)", warns: []}
     "0.149": {do: kept, save_first: false, next_base: old, checksum: old, mark: kept (legacy), word: Skipped, label: "may be behind 1.0.0: an older chi marked it, and the next upgrade checks it (chi bundle diff demo a.md)", warns: []}
 pristine_legacy_removes:
-  install: {do: kept, save_first: false, next_base: old, checksum: old, mark: kept (legacy), word: Skipped, label: stays behind 1.1.0 (chi bundle diff demo a.md), warns: ["Skipped a.md (already exists; --force takes the bundle's version, your file copied to the trash first)", "demo was already installed from <src>/v2/demo: its hooks, rules, plugin and scripts now match it and its record was rewritten; your own copies of its memories were kept (chi bundle upgrade demo merges the bundle's changes into them)"]}
+  install:
+    "0.155": {do: kept, save_first: false, next_base: old, checksum: old, mark: kept (legacy), word: Skipped, label: "stays behind 1.1.0: missed 1 place (chi bundle diff demo a.md)", warns: ["Skipped a.md (already exists; --force takes the bundle's version, your file copied to the trash first)", "demo was already installed from <src>/v2/demo: its hooks, rules, plugin and scripts now match it and its record was rewritten; your own copies of its memories were kept (chi bundle upgrade demo merges the bundle's changes into them)"]}
+    "0.149": {do: kept, save_first: false, next_base: old, checksum: old, mark: kept (legacy), word: Skipped, label: stays behind 1.1.0 (chi bundle diff demo a.md), warns: ["Skipped a.md (already exists; --force takes the bundle's version, your file copied to the trash first)", "demo was already installed from <src>/v2/demo: its hooks, rules, plugin and scripts now match it and its record was rewritten; your own copies of its memories were kept (chi bundle upgrade demo merges the bundle's changes into them)"]}
   install_force: {do: wrote_incoming, save_first: true, next_base: disk, checksum: disk, mark: cleared, word: Installed, label: ok, warns: ["Copied to the trash first: a.md (<home>/samagotchi/memories/.bundles/.trash/demo-<stamp>)"]}
   install_dry:
-    "0.155": {do: kept, save_first: false, next_base: old, checksum: old, mark: kept (legacy), word: Skipped, label: stays behind 1.0.0 (chi bundle diff demo a.md), warns: []}
+    "0.155": {do: kept, save_first: false, next_base: old, checksum: old, mark: kept (legacy), word: Skipped, label: "stays behind 1.0.0: missed 1 place (chi bundle diff demo a.md)", warns: []}
     "0.149": {do: kept, save_first: false, next_base: old, checksum: old, mark: kept (legacy), word: Skipped, label: "may be behind 1.0.0: an older chi marked it, and the next upgrade checks it (chi bundle diff demo a.md)", warns: []}
 pristine_legacy_removes_proved:
-  install: {do: kept, save_first: false, next_base: old, checksum: old, mark: kept (legacy), word: Skipped, label: stays behind 1.1.0 (chi bundle diff demo a.md), warns: ["Skipped a.md (already exists; --force takes the bundle's version, your file copied to the trash first)", "demo was already installed from <src>/v2/demo: its hooks, rules, plugin and scripts now match it and its record was rewritten; your own copies of its memories were kept (chi bundle upgrade demo merges the bundle's changes into them)"]}
+  install:
+    "0.155": {do: kept, save_first: false, next_base: old, checksum: old, mark: kept (legacy), word: Skipped, label: "stays behind 1.1.0: missed 1 place (chi bundle diff demo a.md)", warns: ["Skipped a.md (already exists; --force takes the bundle's version, your file copied to the trash first)", "demo was already installed from <src>/v2/demo: its hooks, rules, plugin and scripts now match it and its record was rewritten; your own copies of its memories were kept (chi bundle upgrade demo merges the bundle's changes into them)"]}
+    "0.149": {do: kept, save_first: false, next_base: old, checksum: old, mark: kept (legacy), word: Skipped, label: stays behind 1.1.0 (chi bundle diff demo a.md), warns: ["Skipped a.md (already exists; --force takes the bundle's version, your file copied to the trash first)", "demo was already installed from <src>/v2/demo: its hooks, rules, plugin and scripts now match it and its record was rewritten; your own copies of its memories were kept (chi bundle upgrade demo merges the bundle's changes into them)"]}
   install_force: {do: wrote_incoming, save_first: true, next_base: disk, checksum: disk, mark: cleared, word: Installed, label: ok, warns: ["Copied to the trash first: a.md (<home>/samagotchi/memories/.bundles/.trash/demo-<stamp>)"]}
   install_dry:
-    "0.155": {do: kept, save_first: false, next_base: old, checksum: old, mark: kept (legacy), word: Skipped, label: stays behind 1.0.0 (chi bundle diff demo a.md), warns: []}
+    "0.155": {do: kept, save_first: false, next_base: old, checksum: old, mark: kept (legacy), word: Skipped, label: "stays behind 1.0.0: missed 1 place (chi bundle diff demo a.md)", warns: []}
     "0.149": {do: kept, save_first: false, next_base: old, checksum: old, mark: kept (legacy), word: Skipped, label: "may be behind 1.0.0: an older chi marked it, and the next upgrade checks it (chi bundle diff demo a.md)", warns: []}
 source_moved_marked:
   install:
@@ -320,7 +338,7 @@ source_moved_marked:
     "0.149": {do: kept, save_first: false, next_base: old, checksum: old, mark: kept (legacy), word: Skipped, label: "modified; stays behind 1.1.0 (chi bundle diff demo a.md)", warns: ["Skipped a.md (already exists; --force takes the bundle's version, your file copied to the trash first)", "demo was already installed from <src>/v2/demo: its hooks, rules, plugin and scripts now match it and its record was rewritten; your own copies of its memories were kept (chi bundle upgrade demo merges the bundle's changes into them)"]}
   install_force: {do: wrote_incoming, save_first: true, next_base: disk, checksum: disk, mark: cleared, word: Installed, label: ok, warns: ["Copied to the trash first: a.md (<home>/samagotchi/memories/.bundles/.trash/demo-<stamp>)"]}
   install_dry:
-    "0.155": {do: kept, save_first: false, next_base: old, checksum: old, mark: kept, word: Skipped, label: "modified; stays behind 1.0.0 (chi bundle diff demo a.md)", warns: []}
+    "0.155": {do: kept, save_first: false, next_base: old, checksum: old, mark: kept, word: Skipped, label: "modified; stays behind 1.0.0: missed 1 place (chi bundle diff demo a.md)", warns: []}
     "0.149": {do: kept, save_first: false, next_base: old, checksum: old, mark: kept (legacy), word: Skipped, label: "modified; may be behind 1.0.0: an older chi marked it, and the next upgrade checks it (chi bundle diff demo a.md)", warns: []}
 missing_wrong_sha:
   install: {do: wrote_incoming, save_first: false, next_base: disk, checksum: disk, mark: none, word: Installed, label: ok, warns: ["Checksum mismatch for a.md: expected 543df89f..., got a8f17a2f..."]}

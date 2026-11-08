@@ -82,6 +82,7 @@ module BundleStateCorpus
         File.symlink(outside, path)
       elsif text
         write(path, text)
+        FileUtils.chmod(0o755, path) if kase.asset == "script" # as a bundle ships it: a dev link runs it
       end
       sha = text ? "sha256:#{BundleStateCorpus.sha(text)}" : ""
       case kase.asset
