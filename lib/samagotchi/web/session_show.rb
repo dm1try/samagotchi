@@ -4,6 +4,7 @@ require "time" # Time.iso8601
 require "uri"
 
 require_relative "../analytics_file"
+require_relative "../bridge/turn_accumulator"
 require_relative "../answer_refs"
 require_relative "../answer_tail"
 require_relative "../objectives"
@@ -74,6 +75,10 @@ module Samagotchi
                                                        cwd: session.working_directory),
           failed_turn: failed_turn_for(session, raw_messages),
           current_turn: current_turn,
+          # The page's join: the turn in progress and the queue behind it as
+          # the live events that draw them (TurnAccumulator.join_events, one
+          # unfold, here: any worker's snapshot works).
+          replay: replay_events_for(turn_snapshot, timing),
           queued: snapshot_list(turn_snapshot, "queued"),
           # Commands waiting for the running turn's end (their bubbles).
           queued_commands: snapshot_list(turn_snapshot, "queued_commands"),
@@ -108,6 +113,19 @@ module Samagotchi
         symbols = Array(messages).map { |message| message.is_a?(Hash) ? message.transform_keys(&:to_sym) : message }
         view = Samagotchi::Objectives.view(id, symbols, state_dir: default_state_dir)
         view ? { objectives: view } : {}
+      end
+
+      # The live events a joining page replays (`replay`): the worker's
+      # +turn_snapshot+'s turn, queued prompts and commands, the turn's start
+      # from +timing+'s active_turn; [] without a worker or with nothing.
+      def replay_events_for(turn_snapshot, timing)
+        return [] unless turn_snapshot
+
+        wire = Bridge::TurnAccumulator.from_wire(turn_snapshot.slice("current_turn", "queued", "queued_commands"))
+        active = timing[:active_turn]
+        Bridge::TurnAccumulator.join_events(current_turn: wire[:current_turn], queued: wire[:queued],
+                                            queued_commands: wire[:queued_commands],
+                                            started_at: active.is_a?(Hash) ? active["started_at"] : nil)
       end
 
       # A list in the worker's turn +snapshot+ (queued prompts, commands,

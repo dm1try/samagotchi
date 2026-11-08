@@ -41,7 +41,12 @@ needs and the messages lag: `queued` turns (`:turn_enqueued` until started, merg
 the idle `recap` (until a turn starts), a pending `continue_offer`, and the running turn's `working_set`.
 
 Three other users: `replay_events(turn)` turns a `current_turn` back into the live events that would have drawn it
-(the web's `snapshotEvents` replays them; `spec/shared/turn_snapshot.json` pins both sides); `messages_of` gives a
+(the attached TUI's join); `join_events` is the page's unfold of the same turn plus the queue behind it (its
+`turn_started` also carries `at`, `cut_after` and every author key, then a `turn_enqueued` per queued prompt and a
+`command_queued` per waiting command), which chi web's `GET /api/sessions/:id` sends as `replay` from the worker's
+snapshot (`from_wire` symbolizes it), so any worker's snapshot gives the page the same events
+(`spec/shared/turn_snapshot.json` pins it against turn_events.js `snapshotEvents`, the page's own fallback for one
+release); `messages_of` gives a
 plugin's `ctx.messages` the turn so far (`Engine#running_turn_messages`); `participant_turn?` tells `POST /turn` that
 a participant's review turn runs, so the owner's input queues behind it.
 

@@ -206,7 +206,8 @@ RSpec.describe Samagotchi::TerminalUI::AttachedLoop do
         "↻ cut by loop-guard, asking again (1/1)",
         # A snapshot from an older worker: no action, the tool's row.
         'tool> read path="old.rb": ok',
-        "queued web> later"
+        "queued web> later",
+        "queued ann ▸ web> next step"
       ])
       expect(screen.statuses.last).to eq("| running read…")
     end

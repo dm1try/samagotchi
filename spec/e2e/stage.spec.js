@@ -439,6 +439,8 @@ test("a running turn the reload gets no current_turn for keeps Stop turn in the 
     const res = await route.fetch();
     const body = await res.json();
     delete body.current_turn;
+    // chi web's unfold of it too (the queue is empty here).
+    body.replay = [];
     await route.fulfill({ response: res, json: body });
   });
   await page.reload();

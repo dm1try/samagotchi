@@ -180,6 +180,52 @@ module Samagotchi
         events
       end
 
+      # The page's unfold of a session view (chi web's show sends it as
+      # `replay`; turn_events.js snapshotEvents was its JS twin): the turn in
+      # progress as #replay_events has it, its turn_started with what the
+      # page also reads (its wall time `at`, the run's `cut_after`, and every
+      # author key, a pair turn's participant_mode too), then a turn_enqueued
+      # per prompt queued behind it and a command_queued per command waiting
+      # for its end (spec/shared/turn_snapshot.json pins both sides). The TUI
+      # keeps #replay_events.
+      # @param current_turn [Hash, nil] #current_turn's shape, symbol keys
+      #   (a snapshot's: .from_wire)
+      # @param queued [Array<Hash>] #queued's entries
+      # @param queued_commands [Array<Hash>] #queued_commands' entries
+      # @return [Array<Hash>] symbol keys and types
+      def self.join_events(current_turn:, queued: [], queued_commands: [], started_at: nil)
+        events = replay_events(current_turn, started_at: started_at)
+        if (started = events.first)
+          started[:at] = current_turn[:at] if current_turn[:at].is_a?(String)
+          started[:cut_after] = current_turn[:cut_after] unless current_turn[:cut_after].nil?
+          Steer::AUTHOR_KEYS.each { |key| started.delete(key) }
+          Steer::AUTHOR_KEYS.each { |key| started[key] = current_turn[key] if current_turn[key] } if current_turn[:author]
+        end
+        Array(queued).each do |entry|
+          enqueued = { type: :turn_enqueued, enqueued_id: entry[:enqueued_id], client_id: entry[:client_id], prompt: entry[:prompt] }
+          enqueued[:delivery] = entry[:delivery] if entry[:delivery]
+          enqueued[:author] = entry[:author] if entry[:author]
+          events << with_images(enqueued, entry[:images])
+        end
+        Array(queued_commands).each do |entry|
+          command = { type: :command_queued, command_id: entry[:command_id], client_id: entry[:client_id], line: entry[:line],
+                      waits: "turn_end" }
+          command[:author] = entry[:author] if entry[:author]
+          events << command
+        end
+        events
+      end
+
+      # A Bridge snapshot's part (JSON: string keys) as the accumulator's own
+      # shapes: symbol keys all the way down, values as they are.
+      def self.from_wire(value)
+        case value
+        when Hash then value.to_h { |key, item| [key.is_a?(String) ? key.to_sym : key, from_wire(item)] }
+        when Array then value.map { |item| from_wire(item) }
+        else value
+        end
+      end
+
       def self.tool_replay_events(part)
         call = { iteration: part[:iteration], call_index: part[:call_index], tool: part[:tool] }
         call[:label] = part[:label] if part[:label]
