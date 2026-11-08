@@ -89,7 +89,7 @@ module Samagotchi
     def self.load_sessions(state_dir: Session.default_state_dir)
       sessions = []
       unreadable = 0
-      Dir.glob(File.join(state_dir, "*#{Session::FILE_EXT}")).sort.each do |path|
+      Dir.glob(File.join(state_dir, "*#{SessionPaths::FILE_EXT}")).sort.each do |path|
         data = JSON.parse(File.read(path, encoding: "UTF-8"))
         # A project_root that is not a path (a hand-edited file) makes every
         # later step raise, so the file counts as unreadable rather than

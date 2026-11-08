@@ -62,7 +62,7 @@ RSpec.describe Samagotchi::Grants do
       expect { issue(role: "owner") }.to raise_error(described_class::Invalid, /reviewer/)
       expect { issue(ttl: 31 * 86_400) }.to raise_error(described_class::Invalid, /1 hour to 30 days/)
       expect { grants.issue(session_id: session_id, name: " [] ") }.to raise_error(described_class::Invalid, /needs a name/)
-      expect { grants.issue(session_id: "../x", name: "A") }.to raise_error(Samagotchi::Session::InvalidId)
+      expect { grants.issue(session_id: "../x", name: "A") }.to raise_error(Samagotchi::SessionPaths::InvalidId)
       expect(File.exist?(path)).to be(false)
     end
   end

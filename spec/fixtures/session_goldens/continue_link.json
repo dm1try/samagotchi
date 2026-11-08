@@ -1,0 +1,79 @@
+{
+  "metadata_version": 3,
+  "written_by": "<VERSION>",
+  "id": "00000000-0000-4000-8000-000000000001",
+  "mode": "assist",
+  "model_name": "small",
+  "model_typed": null,
+  "working_directory": "<TMP>/project",
+  "messages": [],
+  "created_at": "<NOW>",
+  "updated_at": "<NOW>",
+  "status": "idle",
+  "last_prompt": null,
+  "first_preview": "fix the parser",
+  "title": "Parser fix",
+  "test_run": true,
+  "pending_question": null,
+  "used_memory_names": [],
+  "project_root": null,
+  "preloaded_memory_names": [],
+  "muted_memory_names": [],
+  "prompt_notes": [],
+  "parent_id": null,
+  "scratch": false,
+  "last_turn": null,
+  "delegate": false,
+  "llm_context": {
+    "strategy": [
+      "stale",
+      "forget"
+    ],
+    "apply": "turn_end",
+    "budget_tokens": 64000
+  },
+  "continues": "golden-0001-every-field",
+  "thinking": "high",
+  "reasoning_history": "all",
+  "appended_prompt_files": [
+    "/work/extra.md",
+    "/work/more.md"
+  ],
+  "toolkit": {
+    "name": "lean",
+    "add": [
+      "web_fetch"
+    ],
+    "remove": [
+      "memory_write"
+    ]
+  },
+  "toolkit_origin": "inherited",
+  "bundle_settings": {
+    "cost-cap": {
+      "cap": 5
+    }
+  },
+  "config_settings": {
+    "recap.enabled": false
+  },
+  "interrupted_turn": null,
+  "parent_answers": "soft",
+  "working_set_pins": [
+    {
+      "kind": "file",
+      "key": "/work/project/lib/a.rb"
+    },
+    {
+      "kind": "memory",
+      "key": "project/notes"
+    }
+  ],
+  "review": {
+    "subjects": [
+      "lib/a.rb",
+      "PR #12"
+    ],
+    "from": "golden-0004-source"
+  }
+}

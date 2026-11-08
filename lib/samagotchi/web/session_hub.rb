@@ -343,8 +343,8 @@ module Samagotchi
         return if dir_stat.mtime == @dir_mtime
 
         @dir_mtime = dir_stat.mtime
-        on_disk = Dir.glob(File.join(@state_dir, "*#{Session::FILE_EXT}")).to_h do |path|
-          [File.basename(path, Session::FILE_EXT), path]
+        on_disk = Dir.glob(File.join(@state_dir, "*#{SessionPaths::FILE_EXT}")).to_h do |path|
+          [File.basename(path, SessionPaths::FILE_EXT), path]
         end.select { |id, _| Session.valid_id?(id) }
         (@sessions.keys - on_disk.keys).each { |id| drop(id) }
         on_disk.each_key { |id| @sessions[id] ||= Entry.new }

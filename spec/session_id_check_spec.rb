@@ -50,9 +50,9 @@ RSpec.describe "session id check" do
       (bad_ids + [nil, 42]).each do |id|
         expect(described_class.valid_id?(id)).to be(false), id.inspect
         expect { described_class.session_dir(id, state_dir: state_dir) }
-          .to raise_error(described_class::InvalidId), id.inspect
+          .to raise_error(Samagotchi::SessionPaths::InvalidId), id.inspect
         expect { described_class.session_file(id, state_dir: state_dir) }
-          .to raise_error(described_class::InvalidId), id.inspect
+          .to raise_error(Samagotchi::SessionPaths::InvalidId), id.inspect
         expect(described_class.exist?(id, state_dir: state_dir)).to be(false)
         expect { described_class.load(id, state_dir: state_dir) }.to raise_error(ArgumentError)
       end

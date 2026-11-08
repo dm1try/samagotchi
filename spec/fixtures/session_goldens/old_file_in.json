@@ -1,0 +1,29 @@
+{
+  "metadata_version": 2,
+  "id": "golden-0007-old",
+  "mode": "assist",
+  "model_name": "gemma4",
+  "working_directory": "<TMP>/repo",
+  "messages": [
+    {
+      "role": "user",
+      "content": "hello"
+    },
+    {
+      "role": "model",
+      "content": "hi"
+    }
+  ],
+  "created_at": "2026-01-02T03:04:05.000Z",
+  "updated_at": "2026-01-02T03:04:05.000Z",
+  "status": "idle",
+  "last_prompt": "hello",
+  "first_preview": "hello",
+  "test_run": false,
+  "pending_question": null,
+  "used_memory_names": ["system/style"],
+  "preloaded_memory_names": [],
+  "muted_memory_names": [],
+  "parent_id": null,
+  "scratch": false
+}

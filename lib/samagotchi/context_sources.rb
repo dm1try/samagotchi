@@ -7,6 +7,7 @@ require "time"
 require_relative "atomic_file"
 require_relative "memory_paths"
 require_relative "paths"
+require_relative "session_paths"
 require_relative "session"
 
 module Samagotchi
@@ -617,13 +618,13 @@ module Samagotchi
       nil
     end
 
-    # <state dir>/context; +state_dir+ is the sessions dir (Session.default_state_dir).
+    # <state dir>/context; +state_dir+ is the sessions dir (SessionPaths.default_state_dir).
     def root(state_dir: nil)
-      File.join(File.dirname(state_dir || Session.default_state_dir), DIR)
+      File.join(File.dirname(state_dir || SessionPaths.default_state_dir), DIR)
     end
 
     def session_location(session_id, state_dir: nil)
-      Location.new(scope: "session", dir: File.join(root(state_dir: state_dir), "sessions", Session.check_id!(session_id)),
+      Location.new(scope: "session", dir: File.join(root(state_dir: state_dir), "sessions", SessionPaths.check_id!(session_id)),
                    key: session_id)
     end
 
@@ -669,7 +670,7 @@ module Samagotchi
     # A deleted session's sources, snapshots, subscriptions and markers.
     # @return [Array<String>] the paths removed
     def remove_session(session_id, state_dir: nil)
-      return [] unless Session.valid_id?(session_id.to_s)
+      return [] unless SessionPaths.valid_id?(session_id.to_s)
 
       dir = session_location(session_id, state_dir: state_dir).dir
       return [] unless Dir.exist?(dir)

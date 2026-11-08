@@ -191,7 +191,7 @@ RSpec.describe Samagotchi::BundleCommand::Try::Sandbox do
     Dir.mktmpdir do |dir|
       sandbox = described_class.new(bundle_at(File.join(dir, "source")))
       # A delegate's worker: its own session and group, holding its session's lock.
-      session_dir = File.join(sandbox.state_home, Samagotchi::Session::STATE_SUBDIR, "delegate-1")
+      session_dir = File.join(sandbox.state_home, Samagotchi::SessionPaths::STATE_SUBDIR, "delegate-1")
       worker = spawn_lock_holder(session_dir, pgroup: true)
       Process.detach(worker)
       pids << worker

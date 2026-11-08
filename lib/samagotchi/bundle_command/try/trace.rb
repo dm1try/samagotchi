@@ -28,7 +28,7 @@ module Samagotchi
         def read(exit_code:, answer:, stderr:, sandbox:, timed_out: false)
           return empty_trace(exit_code, answer, stderr, sandbox, timed_out) unless @session_id
 
-          sessions_dir = File.join(@state_home, Session::STATE_SUBDIR)
+          sessions_dir = File.join(@state_home, SessionPaths::STATE_SUBDIR)
           session_dir = Session.session_dir(@session_id, state_dir: sessions_dir)
           session = json_file(Session.session_file(@session_id, state_dir: sessions_dir)) || {}
           messages = Array(session["messages"]).select { |message| message.is_a?(Hash) }

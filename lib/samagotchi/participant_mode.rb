@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "delivery"
+require_relative "session_paths"
 
 module Samagotchi
   # The rules for a participant's turn: the one place that decides them.
@@ -75,7 +76,7 @@ module Samagotchi
 
       require_relative "session"
       require_relative "worker_link"
-      dir = Session.session_dir(session.id, state_dir: state_dir || Session.default_state_dir)
+      dir = SessionPaths.session_dir(session.id, state_dir: state_dir || SessionPaths.default_state_dir)
       link = WorkerLink.resolve(dir, unlink: false)
       link.live? ? link.features : nil
     rescue StandardError

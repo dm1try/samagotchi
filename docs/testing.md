@@ -84,8 +84,17 @@ next round folds the first three into one wiring example each in `effective_mode
 `session_model_settings_spec.rb` and `session_setting_spec.rb`, and the ladders the round after into the setting
 modules' and `model_lookup_spec.rb`.
 
+The session file goldens (`spec/session_file_goldens_spec.rb`, `spec/fixtures/session_goldens/`) pin the bytes `Session#save`
+writes: every field away from its default, a new session, a newer chi's file, an old chi's file in a git repo, every key
+present as `null`, the plain writers' raw values, a running turn's checkpoint and the scrub (the `*_in.json` files are
+hand-written inputs, never regenerated); and the file each path that makes or rewrites a session writes (a fork, a
+continue, a delegate child, a plain spawn, a review, a Verify fresh child, a resume, a respawn, an archive), with
+`carry_matrix.json`, what each keeps of its source. They are pinned before Session's fields became one table and are kept
+as the file format's pins, not retired: a diff is a change to every session file on disk, so only a commit that means to
+change the format regenerates them (`UPDATE_GOLDENS=1 bundle exec rspec spec/session_file_goldens_spec.rb`).
+
 `UPDATE_GOLDENS=1` is the characterization specs' variable (the prompt and turn goldens above use `UPDATE_PROMPTS`):
-the model-setting ones above, claude-peer's goldens and the bundle-state corpus below. Regenerate only for an intended
+the model-setting ones above, the session file goldens, claude-peer's goldens and the bundle-state corpus below. Regenerate only for an intended
 change, then read the diff.
 
 The bundle-state corpus (`spec/samagotchi/memory_bundle/file_state_corpus/`, `spec/fixtures/bundle_states/`) pins what
