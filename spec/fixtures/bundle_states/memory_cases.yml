@@ -237,6 +237,10 @@ cases:
     incoming: abC
     recorded: disk
     mark: current
+    divergent: U4
+    note: >-
+      U4: upgrade leaves it behind (no recorded base) while status and uninstall call it unedited; U4 has no
+      unmarked-only rule, unlike D4.
   - id: pristine_no_base_legacy
     kind: pristine_no_base
     base: null
@@ -244,6 +248,10 @@ cases:
     incoming: abC
     recorded: disk
     mark: legacy
+    divergent: U4
+    note: >-
+      U4: upgrade leaves it behind (no recorded base) while status and uninstall call it unedited; U4 has no
+      unmarked-only rule, unlike D4.
   - id: edited_no_base
     kind: edited_no_base
     base: null
@@ -482,7 +490,9 @@ cases:
     divergent: edited-rule
     note: >-
       kind edited: Provenance.unchanged? reads the checksum first, so status says modified and uninstall asks for
-      --force, while Merger.classify reads the base: upgrade fast-forwards it with no trash copy
+      --force, while Merger.classify reads the base: upgrade fast-forwards it with no trash copy A plain install
+      rewrites its checksum to the file's, so status turns from modified to ok and uninstall stops refusing, with no
+      user action. Its upgrade cell is invariant 1's allowlist entry.
 
   # The legacy guard: an older mark on a file equal to its base takes an
   # update that only gains lines; one that removes a line waits, unless
