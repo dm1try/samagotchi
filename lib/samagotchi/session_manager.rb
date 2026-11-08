@@ -57,6 +57,7 @@ require_relative "context_sources"
 require_relative "context_candidates_log"
 require_relative "session_chain"
 require_relative "child_move"
+require_relative "starting_marker"
 require_relative "tools/task_runtime"
 
 module Samagotchi

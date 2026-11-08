@@ -37,6 +37,7 @@ require_relative "model_profile"
 require_relative "child_reports"
 require_relative "verify_fresh"
 require_relative "child_move"
+require_relative "starting_marker"
 require_relative "context_absorber"
 require_relative "context_candidates"
 require_relative "context_poller"
@@ -261,7 +262,7 @@ module Samagotchi
       # This worker holds the session now (a continue's starting marker held
       # off any other until it did), and a continue that died moving
       # delegates here left its intent: finish it.
-      ChildMove.clear_starting(@session_id, state_dir: @state_dir)
+      StartingMarker.clear(@session_id, state_dir: @state_dir)
       ChildMove.adopt(@session_id, state_dir: @state_dir)
       @session = Session.load(@session_id, state_dir: @state_dir)
       # A newer chi saved it: this worker keeps the fields it doesn't know

@@ -515,7 +515,7 @@ RSpec.describe Samagotchi::SessionContinue, ".run" do
       # The move is done: no intent. The starting marker stays until the
       # spawned worker holds the link (Worker#start clears it).
       expect(Samagotchi::ChildMove.read_intent(link.id, state_dir: tmpdir)).to be_nil
-      expect(Samagotchi::ChildMove.starting?(link.id, state_dir: tmpdir)).to be(true)
+      expect(Samagotchi::StartingMarker.fresh?(link.id, state_dir: tmpdir)).to be(true)
       expect(Process).to have_received(:spawn).once
       expect(Samagotchi::ChildrenStatus.counts(link.id, state_dir: tmpdir))
         .to have_attributes(running: 1, unreported: 1)

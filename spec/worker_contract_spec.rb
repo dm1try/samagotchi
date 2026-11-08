@@ -4,6 +4,7 @@ require "tmpdir"
 require "fileutils"
 require "samagotchi/session_manager"
 require "samagotchi/worker_boot"
+require "samagotchi/starting_marker"
 require "samagotchi/bridge"
 require "samagotchi/client_id"
 
@@ -44,6 +45,17 @@ RSpec.describe "Cross-version worker contract" do
     # The spawner's state and config dirs (spawn_options sets them absolute).
     expect(Samagotchi::Paths.state_home(env: { "XDG_STATE_HOME" => "/spawner/state" })).to eq("/spawner/state")
     expect(Samagotchi::Paths.config_home(env: { "XDG_CONFIG_HOME" => "/spawner/config" })).to eq("/spawner/config")
+  end
+
+  # A continue's starting marker: an older worker clears one a newer
+  # continue wrote, and an older spawner reads it.
+  it "writes the starting marker an older chi reads and clears (starting: {pid, at})" do
+    expect(Samagotchi::StartingMarker::FILE).to eq("starting")
+    Dir.mktmpdir do |dir|
+      Samagotchi::StartingMarker.mark("abc", state_dir: dir)
+      path = File.join(Samagotchi::Session.session_dir("abc", state_dir: dir), "starting")
+      expect(JSON.parse(File.read(path)).keys).to contain_exactly("pid", "at")
+    end
   end
 
   it "reads the input/ files an older chi writes (INPUT_FORMAT 3)" do

@@ -137,7 +137,7 @@ module Samagotchi
         return session if still_starting?(session.id, state_dir: sd)
         # A continue moving delegates to it spawns its worker once they are
         # moved; one spawned now (a moved child's ring) would race the move.
-        return session if ChildMove.starting?(session.id, state_dir: sd)
+        return session if StartingMarker.fresh?(session.id, state_dir: sd)
 
         Session.clear_stopped(session.id, state_dir: sd)
         session.status = Session::STATUS_IDLE
@@ -168,7 +168,7 @@ module Samagotchi
           following = forward && SessionChain.next_of(session_id, state_dir: sd)
           return following ? wake_for_report(following, state_dir: sd, forward: false) : :archived
         end
-        return :starting if ChildMove.starting?(session_id, state_dir: sd)
+        return :starting if StartingMarker.fresh?(session_id, state_dir: sd)
 
         session = Session.load(session_id, state_dir: sd)
         return :stopped if session.status == Session::STATUS_STOPPED
