@@ -10,6 +10,10 @@ require_relative "interrupted_turn"
 require_relative "last_turn"
 require_relative "pending_question"
 require_relative "llm_context_override"
+require_relative "reasoning_history"
+require_relative "thinking"
+require_relative "toolkit"
+require_relative "session_config"
 require_relative "session_setup"
 require_relative "prompt_note"
 require_relative "working_set_pin"
@@ -84,7 +88,18 @@ module Samagotchi
         end)
       end
     end
-    private_constant :BOOLEAN, :NAMES, :LIST, :ID, :MESSAGES, :VERDICTS
+    TOOLKIT_ORIGIN = lambda do |value|
+      origin = value.to_s
+      TOOLKIT_ORIGINS.include?(origin) ? origin : "chosen"
+    end
+    PARENT_ANSWERS = lambda do |value|
+      case (level = Guardrails::ParentPolicy.parse_level(value))
+      when :unset then nil
+      when :invalid then value.to_s.strip
+      else level
+      end
+    end
+    private_constant :BOOLEAN, :NAMES, :LIST, :ID, :MESSAGES, :VERDICTS, :TOOLKIT_ORIGIN, :PARENT_ANSWERS
 
     # The fields of <id>.json, in the order #save writes them: key => its
     # SessionField (the value for a file without it, REQUIRED for the ones
@@ -173,14 +188,26 @@ module Samagotchi
       # Started by the `delegate` tool (a fork has a parent_id too, but isn't
       # one): see #delegate?.
       SessionField.plain("delegate", false, cast: BOOLEAN),
-      SessionField.typed("llm_context", nil),
+      # The session's own llm_context values (LLMContextOverride: strategy,
+      # apply rule, budget), before the model's; nil when it has none (an
+      # empty one is none). Saved, so a --resume and a respawned worker keep
+      # them; a plugin's fork copies them, a delegate child starts without.
+      # A file's parts it can't read are kept (LLMContextOverride.unread).
+      SessionField.level("llm_context", merge_unread: true) { LLMContextOverride },
       # The session this one continues (SessionContinue.run): the
       # previous link of a chain, "the next run of the same routine", else
       # nil. Not a parent: archiving one link leaves the next alone. The chain
       # itself is derived (SessionChain), never stored.
       SessionField.plain("continues", nil, cast: ID),
-      SessionField.typed("thinking", nil),
-      SessionField.typed("reasoning_history", nil),
+      # The session's own thinking level (:off, :low, :medium, :high), before
+      # the process default and the model's (Thinking.resolve); nil when it
+      # has none. Saved, so a --resume, a respawned worker and a continue keep
+      # it; a plugin's fork copies it, a delegate child starts without.
+      SessionField.level("thinking", unset: Thinking::DEFAULT.to_s) { Thinking },
+      # The session's own reasoning_history level (:drop, :turn, :all), before
+      # SAMAGOTCHI_REASONING_HISTORY and the model's (ReasoningHistory.resolve);
+      # nil when it has none. Saved and carried like thinking.
+      SessionField.level("reasoning_history", unset: ReasoningHistory::UNSET) { ReasoningHistory },
       # The files chi --append-system-prompt put into the session's system
       # prompt (absolute paths; config.yml's append_system_prompt: entries
       # aren't stored): kept on respawns, copied by a fork and a continue
@@ -195,7 +222,10 @@ module Samagotchi
       # the one its delegate call named, else toolkit.child
       # (SessionManager.spawn_session). A Hash or a String reads too.
       SessionField.value("toolkit", :from_file) { Toolkit },
-      SessionField.typed("toolkit_origin", "chosen"),
+      # Why this session is on its toolkit (TOOLKIT_ORIGINS; anything else
+      # reads as chosen). Files from before the field read as chosen, so an
+      # old default session is never newly suggested. Cast on every set too.
+      SessionField.plain("toolkit_origin", "chosen", cast: TOOLKIT_ORIGIN),
       # The two parts of #settings (Session.new's settings:, .from_h composes
       # them): its bundles part, then its core part.
       SessionField.file_only("bundle_settings", {}, from: :settings, write: ->(settings) { settings.bundles }),
@@ -204,7 +234,16 @@ module Samagotchi
       # (InterruptedTurn), as loaded; the next worker settles it and sets it
       # to nil. While a turn runs, #turn_checkpoint's marker is saved instead.
       SessionField.value("interrupted_turn", :from_file) { InterruptedTurn },
-      SessionField.typed("parent_answers", nil),
+      # The session's own guardrails.parent_answers (hard|standard|soft), nil
+      # for none (config.yml's). It may only tighten config.yml's
+      # (Guardrails::ParentPolicy.effective); only the user loosens it
+      # (/parent-answers in a UI). Given at creation (chi --parent-answers,
+      # chi send --new --parent-answers); a respawn, a continue and a fork keep
+      # it (SessionSetup.of), a delegate child takes its parent's. Read as
+      # Guardrails::ParentPolicy.parse_level on every set: a level, or nil for
+      # none ("", "default"); a value that isn't a level is kept as written,
+      # stripped (read as hard: ParentPolicy.session_level).
+      SessionField.plain("parent_answers", nil, cast: PARENT_ANSWERS),
       # The working set's items the user pinned (/working-set pin;
       # WorkingSetPin), [] with none: the model's forget_outputs refuses
       # their outputs. A respawn, a continue and a fork keep them
@@ -302,6 +341,31 @@ module Samagotchi
       @verdicts = load_field("verdicts", value)
     end
 
+    # The session's own levels' and setup's readers and writers: a writer
+    # reads its value as its FIELDS row does; thinking, reasoning_history
+    # and llm_context keep what of it they couldn't read (SessionField.level).
+    attr_reader :llm_context, :thinking, :reasoning_history, :toolkit_origin, :parent_answers
+
+    def llm_context=(value)
+      @llm_context = load_field("llm_context", value)
+    end
+
+    def thinking=(value)
+      @thinking = load_field("thinking", value)
+    end
+
+    def reasoning_history=(value)
+      @reasoning_history = load_field("reasoning_history", value)
+    end
+
+    def toolkit_origin=(value)
+      @toolkit_origin = load_field("toolkit_origin", value)
+    end
+
+    def parent_answers=(value)
+      @parent_answers = load_field("parent_answers", value)
+    end
+
     # The running turn's checkpoint (TurnCheckpoint): {messages:, marker:}
     # (marker an InterruptedTurn). While +status+ is running, every save
     # writes these messages and the marker instead of #messages and
@@ -311,71 +375,6 @@ module Samagotchi
     # saves, so that save writes the real messages, without a marker. Not
     # saved; the worker clears it after each turn.
     attr_accessor :turn_checkpoint
-    # The session's own llm_context values (LLMContextOverride: strategy,
-    # apply rule, budget), before the model's; nil when it has none.
-    # Saved, so a --resume and a respawned worker keep them; a plugin's
-    # fork copies them, a delegate child starts without.
-    attr_reader :llm_context
-
-    # @param value [LLMContextOverride, Hash, nil] an empty one is nil; a
-    #   file's Hash keeps the fields it can't read (LLMContextOverride.unread),
-    #   saved back as they were until the session sets its own
-    def llm_context=(value)
-      @llm_context_unread = LLMContextOverride.unread(value)
-      @llm_context = LLMContextOverride.from_file(value)
-    end
-
-    # The session file's "llm_context": the override's fields over the ones
-    # it couldn't read; nil when there are none.
-    def llm_context_file
-      saved = @llm_context_unread.merge(@llm_context&.to_file || {})
-      saved.empty? ? nil : saved
-    end
-
-    # The session's own thinking level (:off, :low, :medium, :high), before
-    # the process default and the model's (Thinking.resolve); nil when it
-    # has none. Saved, so a --resume, a respawned worker and a continue keep
-    # it; a plugin's fork copies it, a delegate child starts without.
-    attr_reader :thinking
-
-    # @param value [Symbol, String, nil] a value that isn't a level reads
-    #   as nil and is saved back as written, until the session sets its own
-    def thinking=(value)
-      @thinking = Thinking.session_level(value)
-      unread = @thinking.nil? && value.is_a?(String) && !value.strip.casecmp?(Thinking::DEFAULT.to_s)
-      @thinking_unread = unread ? value : nil
-    end
-
-    # The session file's "thinking": the level, else a value it couldn't
-    # read; nil when there is neither.
-    def thinking_file = @thinking&.to_s || @thinking_unread
-
-    # The session's own reasoning_history level (:drop, :turn, :all), before
-    # SAMAGOTCHI_REASONING_HISTORY and the model's (ReasoningHistory.resolve);
-    # nil when it has none. Saved and carried like #thinking.
-    attr_reader :reasoning_history
-
-    # @param value [Symbol, String, nil] a value that isn't a level reads
-    #   as nil and is saved back as written, until the session sets its own
-    def reasoning_history=(value)
-      @reasoning_history = ReasoningHistory.session_level(value)
-      unread = @reasoning_history.nil? && value.is_a?(String) && !value.strip.casecmp?(ReasoningHistory::UNSET)
-      @reasoning_history_unread = unread ? value : nil
-    end
-
-    # The session file's "reasoning_history": the level, else a value it
-    # couldn't read; nil when there is neither.
-    def reasoning_history_file = @reasoning_history&.to_s || @reasoning_history_unread
-
-    # Why this session is on its toolkit. Files from before the field read
-    # as chosen, so an old default session is never newly suggested.
-    attr_reader :toolkit_origin
-
-    def toolkit_origin=(value)
-      origin = value.to_s
-      @toolkit_origin = TOOLKIT_ORIGINS.include?(origin) ? origin : "chosen"
-    end
-
     # The session's own settings (chi --set), a SessionConfig::Settings:
     # empty for none and for a session from before them. Its core part
     # ({key => value}: recap.enabled) is the file's config_settings, its
@@ -389,27 +388,6 @@ module Samagotchi
     # @param value [SessionConfig::Settings, nil]
     def settings=(value)
       @settings = SessionConfig::Settings.of(value)
-    end
-
-    # The session's own guardrails.parent_answers (hard|standard|soft), nil
-    # for none (config.yml's). It may only tighten config.yml's
-    # (Guardrails::ParentPolicy.effective); only the user loosens it
-    # (/parent-answers in a UI). Given at creation (chi --parent-answers,
-    # chi send --new --parent-answers); a respawn, a continue and a fork keep
-    # it (SessionSetup.of), a delegate child takes its parent's.
-    attr_reader :parent_answers
-
-    # @param value [String, Symbol, nil] read as
-    #   Guardrails::ParentPolicy.parse_level: a level, or nil for none ("",
-    #   "default"); a value that isn't a level is kept as written, stripped
-    #   (read as hard: ParentPolicy.session_level)
-    def parent_answers=(value)
-      level = Guardrails::ParentPolicy.parse_level(value)
-      @parent_answers = case level
-                        when :unset then nil
-                        when :invalid then value.to_s.strip
-                        else level
-                        end
     end
 
     # Whether this is a review session (chi review, the web's Start review).
@@ -465,19 +443,14 @@ module Samagotchi
 
     # Every FIELDS row's attr is a keyword (a missing required one or an
     # unknown one raises ArgumentError, as Ruby's keywords do), given as is
-    # (cast by the row, or by the typed fields' writers); +settings+ is the
+    # (cast by its row, as the writers cast); +settings+ is the
     # settings pair's one value, +extra_fields+ the file's unknown keys.
     def initialize(extra_fields: {}, settings: nil, **attrs)
       self.class.check_attrs!(attrs)
+      # What the level fields couldn't read, by key (SessionField.level).
+      @unread = {}
       FIELDS.each_value do |field|
-        next unless field.attr
-
-        value = attrs.fetch(field.attr) { field.fresh_value }
-        if field.via_writer
-          public_send(:"#{field.attr}=", value)
-        else
-          instance_variable_set(field.ivar, field.load(value))
-        end
+        instance_variable_set(field.ivar, load_field(field.key, attrs.fetch(field.attr) { field.fresh_value })) if field.attr
       end
       self.settings = settings
       @extra_fields = extra_fields.to_h { |key, value| [key.to_s, value] }.freeze
@@ -813,17 +786,19 @@ module Samagotchi
         value = case field.key
                 when "messages" then field.dump(checkpoint ? checkpoint[:messages] : @messages)
                 when "interrupted_turn" then field.dump(checkpoint ? checkpoint[:marker] : @interrupted_turn)
-                when "llm_context" then llm_context_file
-                when "thinking" then thinking_file
-                when "reasoning_history" then reasoning_history_file
-                else field.dump(instance_variable_get(field.ivar))
+                else field.dump(instance_variable_get(field.ivar), @unread[field.key])
                 end
         file[field.key] = value unless value.nil? && field.optional
       end.merge(@extra_fields.reject { |key, _| FIELDS.key?(key) })
     end
 
-    # +value+ as +key+'s FIELDS row reads it (its writer's value).
-    def load_field(key, value) = FIELDS.fetch(key).load(value)
+    # +value+ as +key+'s FIELDS row reads it (its writer's value); what of
+    # it a level field couldn't read is kept for #to_h.
+    def load_field(key, value)
+      field = FIELDS.fetch(key)
+      @unread[key] = field.unread.call(value) if field.unread
+      field.load(value)
+    end
     private :load_field
 
     # The running turn's checkpoint, while the turn runs (#turn_checkpoint).
