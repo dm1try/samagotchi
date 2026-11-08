@@ -35,8 +35,9 @@ RSpec.describe Samagotchi::Engine do
   end
 
   def start(engine, session: self.session, prompt: "Fix the browser workflow")
-    turn = Struct.new(:session, :prompt, :origin).new(session, prompt, Struct.new(:author).new(nil))
-    engine.send(:toolkit_suggestion).start(turn)
+    context = Struct.new(:state_dir).new(engine.send(:session_state_dir))
+    turn = Struct.new(:session, :prompt, :origin, :context).new(session, prompt, Struct.new(:author).new(nil), context)
+    engine.send(:toolkit_suggestion).start(turn, recorder: engine.send(:system_one_recorder))
   end
 
   it "runs the ask off the turn thread using a copied question and leaves the session unchanged" do

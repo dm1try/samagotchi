@@ -1,14 +1,14 @@
 # frozen_string_literal: true
 
 require "tmpdir"
+require "samagotchi/system_one/recorder"
 require "samagotchi/turn_stages/toolkit_suggestion"
 
 # The stage keeps one turn's Pending, keyed on that very Turn, and lets it
 # go once the turn's suggestion is done.
 RSpec.describe Samagotchi::TurnStages::ToolkitSuggestion do
   let(:stage) do
-    described_class.new(side_judgments: Samagotchi::SideJudgments.new, host_registry: nil, toolkit_binding: nil,
-                        tools: nil, state_dir: -> { Dir.tmpdir }, recording: ->(client, *, **) { client }, runs: -> {})
+    described_class.new(side_judgments: Samagotchi::SideJudgments.new, host_registry: nil, toolkit_binding: nil, tools: nil)
   end
 
   let(:pending) { instance_double(Samagotchi::ToolkitSuggest::Pending, abandon: nil) }
@@ -20,7 +20,7 @@ RSpec.describe Samagotchi::TurnStages::ToolkitSuggestion do
   before { allow(stage).to receive(:ask).and_return(pending) }
 
   it "leaves a turn's Pending alone when another turn abandons" do
-    stage.start(t1)
+    stage.start(t1, recorder: Samagotchi::SystemOne::Recorder::NONE)
 
     stage.abandon(t2, :failed)
     stage.finish(t2)
@@ -31,7 +31,7 @@ RSpec.describe Samagotchi::TurnStages::ToolkitSuggestion do
   end
 
   it "holds nothing of a turn once it is finished" do
-    stage.start(t1)
+    stage.start(t1, recorder: Samagotchi::SystemOne::Recorder::NONE)
     stage.finish(t1)
 
     expect(stage.instance_variables.map { |name| stage.instance_variable_get(name) })

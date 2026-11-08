@@ -101,14 +101,11 @@ module Samagotchi
       public :warm_toolkit_suggestion!
 
       # The stage over this Engine's side asks, binding and tools (built in
-      # #build_tools_and_plugins, before the plugins load).
+      # #build_tools_and_plugins, before the plugins load). Its turn's start
+      # takes the recorder (#system_one_recorder) per call.
       def build_toolkit_suggestion
-        TurnStages::ToolkitSuggestion.new(
-          side_judgments: @side_judgments, host_registry: @host_registry, toolkit_binding: @toolkit_binding,
-          tools: @tools, state_dir: -> { session_state_dir },
-          recording: ->(client, judgment, session, mode:) { system_one_recording(client, judgment, session, mode: mode) },
-          runs: -> { system_one_runs }
-        )
+        TurnStages::ToolkitSuggestion.new(side_judgments: @side_judgments, host_registry: @host_registry,
+                                          toolkit_binding: @toolkit_binding, tools: @tools)
       end
       private :build_toolkit_suggestion
     end

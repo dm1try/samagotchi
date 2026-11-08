@@ -23,17 +23,11 @@ module Samagotchi
       # @param host_registry [HostRegistry] System 1's client resolves its host here
       # @param toolkit_binding [ToolkitBinding] the kits, #suggest and #fell_back
       # @param tools [Tools::Registry] the registered tools, for the snapshot
-      # @param state_dir [#call] the sessions dir (the suggestion log's place)
-      # @param recording [#call] (client, judgment, session, mode:) → the client saving its runs
-      # @param runs [#call] the Engine's SystemOne::Runs
-      def initialize(side_judgments:, host_registry:, toolkit_binding:, tools:, state_dir:, recording:, runs:)
+      def initialize(side_judgments:, host_registry:, toolkit_binding:, tools:)
         @side_judgments = side_judgments
         @host_registry = host_registry
         @toolkit_binding = toolkit_binding
         @tools = tools
-        @state_dir = state_dir
-        @recording = recording
-        @runs = runs
         @pending = nil
         @pending_turn = nil
         @warmup_thread = nil
@@ -52,12 +46,14 @@ module Samagotchi
       # snapshot. Audit never blocks: the thread logs its line. On mode
       # keeps the ask's Pending for +turn+, which #settle joins before
       # apply_toolkit!, with the turn's controller as the request's cancel
-      # controller.
+      # controller. The suggestion log is in the turn's sessions dir
+      # (TurnContext#state_dir).
+      # @param recorder [SystemOne::Recorder] the ask's runs (built for this call)
       # @return [ToolkitSuggest::Pending, nil] nil unless the turn joins an ask
-      def start(turn)
+      def start(turn, recorder:)
         @pending = nil
         @pending_turn = turn
-        @pending = ask(turn)
+        @pending = ask(turn, recorder)
       end
 
       # On mode, before apply_toolkit!: wait for +turn+'s ask (#start) up to
@@ -154,14 +150,14 @@ module Samagotchi
       # never reached #start) is never touched.
       def pending_for(turn) = (@pending if @pending_turn.equal?(turn))
 
-      def ask(turn)
+      def ask(turn, recorder)
         mode = Config.get("toolkit.suggest.mode").to_s
         return if mode == "off"
 
         joined = mode == "on"
         session = turn.session
         default = Toolkit.of(session.toolkit)
-        log = suggestion_log
+        log = suggestion_log(turn.context.state_dir)
         # The predicate checks the session first; the kits (memory kits are
         # read from disk) and the log (read whole) only when it gets there.
         kits = nil
@@ -185,8 +181,8 @@ module Samagotchi
           return
         end
 
-        client = @recording.call(SystemOne::Client.from_config(host_registry: @host_registry, mode: "on", tag: :toolkit),
-                                 ToolkitSuggest::JUDGMENT, session, mode: Config.get("toolkit.suggest.mode").to_s)
+        client = recorder.wrap(SystemOne::Client.from_config(host_registry: @host_registry, mode: "on", tag: :toolkit),
+                               ToolkitSuggest::JUDGMENT, session, mode: Config.get("toolkit.suggest.mode").to_s)
         return unless client
 
         # The warm-up's only value is the cache: the real ask never queues
@@ -215,7 +211,7 @@ module Samagotchi
           state: { project: state[:project].dup.freeze, prompt: state[:prompt].dup.freeze }.freeze
         )
         threshold = Config.get("toolkit.suggest.threshold")
-        runs = session.scratch ? nil : @runs.call
+        runs = session.scratch ? nil : recorder.runs
         pending = ToolkitSuggest::Pending.new(log: log, joined: joined,
                                               acted: runs && ->(judged, did) { runs.acted(judged.fields[:run_id], did) },
                                               timeout_seconds: SystemOne::Client.configured_timeout_ms / 1000.0)
@@ -253,8 +249,8 @@ module Samagotchi
         end
       end
 
-      def suggestion_log
-        SideJudgments.log(ToolkitSuggest.log_path(@state_dir.call), tag: :toolkit, event: "toolkit_suggest_log_failed")
+      def suggestion_log(state_dir)
+        SideJudgments.log(ToolkitSuggest.log_path(state_dir), tag: :toolkit, event: "toolkit_suggest_log_failed")
       end
     end
   end

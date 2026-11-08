@@ -955,7 +955,7 @@ module Samagotchi
       # A participant's Verify fresh child: every turn is theirs (their
       # author, boundary and cap), whoever started it.
       origin = session.verify_fresh.origin_for(origin) if session.respond_to?(:verify_fresh) && session.verify_fresh
-      verify = @verify_anchors.verified(session, VerifyAnchor.from(verify))
+      verify = @verify_anchors.verified(session, VerifyAnchor.from(verify), state_dir: session_state_dir)
       # Track the active session for recap and status snapshot.
       @session = session
       # status is turn state: running now, idle again before the turn's end
@@ -1045,7 +1045,7 @@ module Samagotchi
       # On mode's ask starts here too; the turn joins it before
       # apply_toolkit! below, so its latency hides behind the probes and
       # the init wait.
-      @toolkit_suggestion.start(turn)
+      @toolkit_suggestion.start(turn, recorder: system_one_recorder)
 
       # The window and the profile probes run after run_turn's probe-cancel
       # swap, so a Stop cuts them; a failure ends the turn as turn_failed.

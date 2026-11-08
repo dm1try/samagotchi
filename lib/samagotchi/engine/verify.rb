@@ -11,7 +11,7 @@ module Samagotchi
       # The anchors' stage (TurnStages::VerifyAnchors).
       attr_reader :verify_anchors
 
-      def build_verify_anchors = TurnStages::VerifyAnchors.new(state_dir: -> { session_state_dir })
+      def build_verify_anchors = TurnStages::VerifyAnchors.new
     end
   end
 end

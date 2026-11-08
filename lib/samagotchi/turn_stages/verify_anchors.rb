@@ -17,21 +17,20 @@ module Samagotchi
     # against its source session as the turn begins; at its end (inside
     # Engine#end_turn's event step) the opening's stamp, a Revise turn's
     # draft checked and a Verify turn's verdict recorded. No state of its
-    # own: it reads the turn, and the sessions it loads from the state dir.
+    # own: it reads the turn, and the sessions it loads from the state dir
+    # it is given.
     class VerifyAnchors
-      # @param state_dir [#call] the sessions dir (a fresh Verify child's parent is loaded from it)
-      def initialize(state_dir:)
-        @state_dir = state_dir
-      end
-
       # A Verify turn's claim (Engine#begin_turn), when its quote is in the
       # source session's answer for that turn; nil (logged) otherwise.
       # @param anchor [VerifyAnchor, nil]
+      # @param state_dir [String] the sessions dir (a fresh Verify child's
+      #   parent is loaded from it): the Engine's at the call, as no
+      #   TurnContext holds it yet
       # @return [VerifyAnchor, nil]
-      def verified(session, anchor)
+      def verified(session, anchor, state_dir:)
         return unless anchor
 
-        source = source_session(session, anchor)
+        source = source_session(session, anchor, state_dir)
         return unless source
 
         turn = AnswerTail.turn_slice(Array(source.messages), anchor.turn_id)
@@ -133,14 +132,14 @@ module Samagotchi
         comparison_text(Redact.text(answer, viewer)).include?(quote_text)
       end
 
-      def source_session(session, anchor)
+      def source_session(session, anchor, state_dir)
         return session unless session.verify_fresh
 
         fresh = session.verify_fresh
         return reject_verify(anchor, :fresh_anchor_mismatch) unless fresh.anchor == anchor
         return reject_verify(anchor, :fresh_parent_missing) unless session.parent_id
 
-        Session.load(session.parent_id, state_dir: @state_dir.call)
+        Session.load(session.parent_id, state_dir: state_dir)
       rescue ArgumentError, SystemCallError, IOError => e
         Log.warn(:turn, "verify_anchor_rejected", turn_id: anchor.turn_id, reason: :source_session_unavailable,
                                                    error: e.class.name)

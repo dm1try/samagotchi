@@ -28,8 +28,8 @@ RSpec.describe "turn stages' constructor contract" do
 
   # Each stage's constructor keywords.
   PARAMS = {
-    Samagotchi::TurnStages::VerifyAnchors => %i[state_dir],
-    Samagotchi::TurnStages::ToolkitSuggestion => %i[side_judgments host_registry toolkit_binding tools state_dir recording runs],
+    Samagotchi::TurnStages::VerifyAnchors => [],
+    Samagotchi::TurnStages::ToolkitSuggestion => %i[side_judgments host_registry toolkit_binding tools],
     Samagotchi::TurnStages::ContextJudge => %i[side_judgments host_registry state_dir recording session messages turn_running show_card],
     Samagotchi::TurnStages::Objectives => %i[side_judgments host_registry state_dir recording runs synchronize announce running show_card],
     Samagotchi::TurnStages::Warmup => %i[prompt_warmup kernel turn_state model_settings model system_prompt reminders_due next_turn_waiting]
@@ -37,8 +37,6 @@ RSpec.describe "turn stages' constructor contract" do
 
   # The callables a built Engine's stages hold, as "Stage#@ivar".
   HELD = %w[
-    VerifyAnchors#@state_dir
-    ToolkitSuggestion#@state_dir ToolkitSuggestion#@recording ToolkitSuggestion#@runs
     ContextJudge#@state_dir ContextJudge#@recording ContextJudge#@session ContextJudge#@messages
     ContextJudge#@turn_running ContextJudge#@show_card
     Objectives#@state_dir Objectives#@synchronize Objectives#@announce Objectives#@running Objectives#@show_card
