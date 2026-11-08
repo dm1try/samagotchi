@@ -15,6 +15,7 @@ require_relative "../revise_anchor"
 require_relative "../steer"
 require_relative "../turn_note"
 require_relative "../bridge/card_store"
+require_relative "../bridge/turn_drawings"
 
 module Samagotchi
   module Web
@@ -91,14 +92,22 @@ module Samagotchi
       # @param markdown [Boolean] false: no html for a delegate report or an
       #   answer (the participant review drops both and renders its replies
       #   from their redacted text, ParticipantReview#with_reply_html)
-      def messages_for_display(msgs, parts: false, cwd: nil, markdown: true)
+      # @param drawings [Array<Bridge::TurnDrawings::Line>] the valid lines
+      #   (TurnDrawings.valid against +msgs+): each item of a kind a drawing
+      #   draws (#drawn_kind?) from a line's range gets `drawn: <turn_id>`
+      # @param strip_drawn [Boolean] a stamped item's parts go (the drawing
+      #   has them); it keeps its ✂ marks as `marks: {tool_id => edit}`
+      def messages_for_display(msgs, parts: false, cwd: nil, markdown: true, drawings: [], strip_drawn: false)
         filtered = []
         list = Array(msgs)
+        # Each item's message index, for the drawings' stamps.
+        origins = []
         # The outputs' ✂ marks (LLM context edits), by id, for the parts.
         marks = parts ? MessageParts.edit_marks(list) : {}
         # The list before each objectives note, for what its entry says changed.
         objectives = nil
         list.each_with_index do |m, index|
+          origins.fill(index - 1, origins.size...filtered.size)
           role = (m[:role] || m["role"]).to_s
           content = (m[:content] || m["content"]).to_s
           if Samagotchi::ContextNote.note?(m)
@@ -205,9 +214,43 @@ module Samagotchi
           message[:parts] = did if did
           filtered << message
         end
-        filtered
+        origins.fill(list.size - 1, origins.size...filtered.size)
+        stamp_drawn(filtered, origins, Array(drawings), strip: strip_drawn)
       rescue StandardError
         []
+      end
+
+      # +items+ with a drawn turn's stamp on each item of a kind its drawing
+      # draws (the opening, steps, steers, merged lines, the empty answer):
+      # a context note, a `!cmd`'s record and anything else keep today's
+      # place. +origins+: each item's message index.
+      def stamp_drawn(items, origins, drawings, strip:)
+        return items if drawings.empty?
+
+        items.each_with_index.map do |item, i|
+          line = drawings.find { |l| l.range.cover?(origins[i]) }
+          next item unless line && drawn_kind?(item)
+
+          stamped = item.merge(drawn: line.turn_id)
+          strip ? without_parts(stamped) : stamped
+        end
+      end
+
+      def drawn_kind?(item)
+        case item[:role]
+        when "note" then item[:turn_start] == true
+        when "user" then !(item[:turn_id].nil? && item[:content].match?(/\A!\(.*\)\n/))
+        else %w[assistant steer empty_answer].include?(item[:role])
+        end
+      end
+
+      # A drawn item without its parts: its ✂ marks by output id stay (an
+      # overlay on the drawing's rows: later state, as a card's latest body).
+      def without_parts(item)
+        tools = Array(item.dig(:parts, :tools))
+        marks = tools.filter_map { |tool| [tool[:tool_id], tool[:edit]] if tool[:tool_id] && tool[:edit] }.to_h
+        out = item.except(:parts)
+        marks.empty? ? out : out.merge(marks: marks)
       end
 
       # A turn opening's Revise stamp as {revises: {turn_id:}}, checked again

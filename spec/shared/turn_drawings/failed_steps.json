@@ -226,5 +226,88 @@
         "kept_steps": 1
       }
     }
+  },
+  "show": {
+    "messages": [
+      {
+        "role": "user",
+        "content": "fix it",
+        "at": "2026-11-08T10:00:00.000+01:00",
+        "turn_id": "turn-failed",
+        "drawn": "turn-failed"
+      },
+      {
+        "role": "assistant",
+        "content": "Step one.",
+        "drawn": "turn-failed"
+      }
+    ],
+    "turn_drawings": {
+      "turn-failed": {
+        "events": [
+          {
+            "type": "turn_started",
+            "prompt": "fix it",
+            "origin": {
+              "client_id": "web:me"
+            },
+            "continue": false,
+            "turn_id": "turn-failed"
+          },
+          {
+            "type": "generation_started",
+            "iteration": 1
+          },
+          {
+            "type": "generation_chunk",
+            "text": "Step one.",
+            "thinking": "",
+            "iteration": 1
+          },
+          {
+            "type": "generation_completed"
+          },
+          {
+            "type": "tool_call_started",
+            "iteration": 1,
+            "call_index": 1,
+            "tool": "read",
+            "tool_id": "t1",
+            "params": "path=\"b.rb\"",
+            "title": "b.rb"
+          },
+          {
+            "type": "tool_call_completed",
+            "iteration": 1,
+            "call_index": 1,
+            "tool": "read",
+            "tool_id": "t1",
+            "output": "[read]\nb",
+            "output_truncated": false,
+            "activity": {
+              "tool": "read",
+              "status": "ok",
+              "params": "path=\"b.rb\"",
+              "title": "b.rb",
+              "action": "reading file"
+            },
+            "duration_ms": 120
+          },
+          {
+            "type": "generation_started",
+            "iteration": 2
+          }
+        ],
+        "end": {
+          "type": "turn_failed",
+          "turn_id": "turn-failed",
+          "duration_ms": 5000,
+          "summary": "the model server is unreachable",
+          "message": "connection refused",
+          "error_class": "Errno::ECONNREFUSED",
+          "kept_steps": 1
+        }
+      }
+    }
   }
 }

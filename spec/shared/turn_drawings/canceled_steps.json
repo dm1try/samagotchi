@@ -238,5 +238,96 @@
         "cancellation_reason": "user"
       }
     }
+  },
+  "show": {
+    "messages": [
+      {
+        "role": "user",
+        "content": "run the tests",
+        "at": "2026-11-08T10:00:00.000+01:00",
+        "turn_id": "turn-cancel",
+        "drawn": "turn-cancel"
+      },
+      {
+        "role": "assistant",
+        "content": "Starting.",
+        "drawn": "turn-cancel"
+      },
+      {
+        "role": "assistant",
+        "content": "Halfway",
+        "drawn": "turn-cancel"
+      }
+    ],
+    "turn_drawings": {
+      "turn-cancel": {
+        "events": [
+          {
+            "type": "turn_started",
+            "prompt": "run the tests",
+            "origin": {
+              "client_id": "web:me"
+            },
+            "continue": false,
+            "turn_id": "turn-cancel"
+          },
+          {
+            "type": "generation_started",
+            "iteration": 1
+          },
+          {
+            "type": "generation_chunk",
+            "text": "Starting.",
+            "thinking": "",
+            "iteration": 1
+          },
+          {
+            "type": "generation_completed"
+          },
+          {
+            "type": "tool_call_started",
+            "iteration": 1,
+            "call_index": 1,
+            "tool": "execute",
+            "tool_id": "t1",
+            "params": "command=\"rake\"",
+            "title": "rake"
+          },
+          {
+            "type": "tool_call_completed",
+            "iteration": 1,
+            "call_index": 1,
+            "tool": "execute",
+            "tool_id": "t1",
+            "output": "[execute]\nok",
+            "output_truncated": false,
+            "activity": {
+              "tool": "execute",
+              "status": "ok",
+              "params": "command=\"rake\"",
+              "title": "rake",
+              "action": "running command"
+            },
+            "duration_ms": 120
+          },
+          {
+            "type": "generation_started",
+            "iteration": 2
+          },
+          {
+            "type": "generation_chunk",
+            "text": "Halfway",
+            "thinking": "",
+            "iteration": 2
+          }
+        ],
+        "end": {
+          "type": "turn_canceled",
+          "turn_id": "turn-cancel",
+          "duration_ms": 3100,
+          "cancellation_reason": "user"
+        }
+      }
+    }
   }
 }

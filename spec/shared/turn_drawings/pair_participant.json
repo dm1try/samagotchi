@@ -127,5 +127,56 @@
         "duration_ms": 2400
       }
     }
+  },
+  "show": {
+    "messages": [
+      {
+        "role": "user",
+        "content": "can you check",
+        "at": "2026-11-08T10:00:00.000+01:00",
+        "turn_id": "turn-pair",
+        "author": "p:abc",
+        "author_name": "Ana",
+        "participant_mode": "pair",
+        "drawn": "turn-pair"
+      },
+      {
+        "role": "assistant",
+        "content": "Checked.",
+        "drawn": "turn-pair"
+      }
+    ],
+    "turn_drawings": {
+      "turn-pair": {
+        "events": [
+          {
+            "type": "turn_started",
+            "prompt": "can you check",
+            "origin": {
+              "client_id": "web:me"
+            },
+            "continue": false,
+            "turn_id": "turn-pair",
+            "author": "p:abc",
+            "author_name": "Ana"
+          },
+          {
+            "type": "generation_started",
+            "iteration": 1
+          },
+          {
+            "type": "generation_chunk",
+            "text": "Checked.",
+            "thinking": "",
+            "iteration": 1
+          }
+        ],
+        "end": {
+          "type": "turn_completed",
+          "turn_id": "turn-pair",
+          "duration_ms": 2400
+        }
+      }
+    }
   }
 }

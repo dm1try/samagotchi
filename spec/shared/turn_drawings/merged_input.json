@@ -308,5 +308,127 @@
         "duration_ms": 2400
       }
     }
+  },
+  "show": {
+    "messages": [
+      {
+        "role": "user",
+        "content": "check a",
+        "at": "2026-11-08T10:00:00.000+01:00",
+        "turn_id": "turn-merged",
+        "drawn": "turn-merged"
+      },
+      {
+        "role": "assistant",
+        "content": "Checking a.",
+        "drawn": "turn-merged"
+      },
+      {
+        "role": "user",
+        "content": "also check b",
+        "at": "2026-11-08T10:00:00.000+01:00",
+        "merged": true,
+        "step": 2,
+        "drawn": "turn-merged"
+      },
+      {
+        "role": "user",
+        "content": "[report] child done",
+        "at": "2026-11-08T10:00:00.000+01:00",
+        "merged": true,
+        "step": 2,
+        "source": "delegate_report",
+        "drawn": "turn-merged"
+      },
+      {
+        "role": "assistant",
+        "content": "Both fine.",
+        "drawn": "turn-merged"
+      }
+    ],
+    "turn_drawings": {
+      "turn-merged": {
+        "events": [
+          {
+            "type": "turn_started",
+            "prompt": "check a",
+            "origin": {
+              "client_id": "web:me"
+            },
+            "continue": false,
+            "turn_id": "turn-merged"
+          },
+          {
+            "type": "generation_started",
+            "iteration": 1
+          },
+          {
+            "type": "generation_chunk",
+            "text": "Checking a.",
+            "thinking": "",
+            "iteration": 1
+          },
+          {
+            "type": "generation_completed"
+          },
+          {
+            "type": "tool_call_started",
+            "iteration": 1,
+            "call_index": 1,
+            "tool": "read",
+            "tool_id": "t1",
+            "params": "path=\"a\"",
+            "title": "a"
+          },
+          {
+            "type": "tool_call_completed",
+            "iteration": 1,
+            "call_index": 1,
+            "tool": "read",
+            "tool_id": "t1",
+            "output": "[read]\na",
+            "output_truncated": false,
+            "activity": {
+              "tool": "read",
+              "status": "ok",
+              "params": "path=\"a\"",
+              "title": "a",
+              "action": "reading file"
+            },
+            "duration_ms": 120
+          },
+          {
+            "type": "merged_input",
+            "content": "also check b",
+            "origins": [
+              {
+                "client_id": "web:me",
+                "enqueued_id": "e2"
+              }
+            ]
+          },
+          {
+            "type": "merged_input",
+            "content": "[report] child done",
+            "origins": []
+          },
+          {
+            "type": "generation_started",
+            "iteration": 2
+          },
+          {
+            "type": "generation_chunk",
+            "text": "Both fine.",
+            "thinking": "",
+            "iteration": 2
+          }
+        ],
+        "end": {
+          "type": "turn_completed",
+          "turn_id": "turn-merged",
+          "duration_ms": 2400
+        }
+      }
+    }
   }
 }
