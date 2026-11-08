@@ -75,6 +75,20 @@ module Samagotchi
                       plugin_file: plugin_file, script_files: script_files)
       end
 
+      # Whether the bundle file +src+ reads through a symlink: it is one, or
+      # it (or its dir, hooks/ say) resolves outside +bundle_dir+. A tar,
+      # zip or git repo keeps links; copying through one would install any
+      # file the user can read. MemoryFiles skips linked memories the same
+      # way. ShippedUpdate's plan reads it too.
+      def self.linked?(src, bundle_dir)
+        return true if File.symlink?(src)
+
+        root = File.realpath(bundle_dir)
+        !File.realpath(src).start_with?("#{root}/")
+      rescue SystemCallError
+        true
+      end
+
       private
 
       # Copies the bundle's hooks/*.rb into <bundle_dir>/hooks/: the ones
@@ -316,19 +330,8 @@ module Samagotchi
         @dev ? File.symlink(File.realpath(src), dest) : FileUtils.cp(src, dest)
       end
 
-      # Whether the bundle file +src+ reads through a symlink: it is one, or
-      # it (or its dir, hooks/ say) resolves outside the bundle dir. A tar,
-      # zip or git repo keeps links; copying through one would install any
-      # file the user can read. MemoryFiles skips linked memories the same
-      # way.
-      def linked?(src)
-        return true if File.symlink?(src)
-
-        root = File.realpath(@bundle_dir)
-        !File.realpath(src).start_with?("#{root}/")
-      rescue SystemCallError
-        true
-      end
+      # AssetInstaller.linked? for this bundle's source.
+      def linked?(src) = self.class.linked?(src, @bundle_dir)
 
       # linked? with a "<label> is a symlink (not installed)" warning.
       def linked_out?(src, label)

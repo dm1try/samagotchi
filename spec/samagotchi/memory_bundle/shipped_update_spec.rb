@@ -376,6 +376,37 @@ RSpec.describe Samagotchi::MemoryBundle::ShippedUpdate do
       .to eq(File.read(File.join(Samagotchi::MemoryBundle::Provenance.new(name: "known-names").hooks_dir, "known_names.rb")))
   end
 
+  # The kind/file names of a trash_copy line ("Copied to the trash first:
+  # X, Y (dir)") under hooks/, guardrails/, plugin/ and scripts/.
+  def asset_copies(line)
+    line.to_s[/\ACopied to the trash first: (.*) \(/, 1].to_s.split(", ").grep(%r{\A(hooks|guardrails|plugin|scripts)/}).sort
+  end
+
+  it "the plan names every file the upgrade copies to the trash" do
+    install(old_copy("known-names"), "known-names")
+    install(old_copy("github-pr"), "github-pr")
+    names = Samagotchi::MemoryBundle::Provenance.new(name: "known-names")
+    record = JSON.parse(File.read(File.join(names.bundle_dir, "manifest.json")))
+    record["hooks"]["known_names.rb"].delete("sha256")
+    File.write(File.join(names.bundle_dir, "manifest.json"), JSON.generate(record))
+    File.write(File.join(names.hooks_dir, "known_names.rb"), "# mine\n")
+    File.write(File.join(names.hooks_dir, "extra.rb"), "# a stray file the upgrade leaves\n")
+    File.write(File.join(Samagotchi::MemoryBundle::Provenance.new(name: "github-pr").scripts_dir, "pr_context.rb"), "# mine\n")
+
+    rows = described_class.plan
+    expect(rows.to_h { |row| [row.name, row.replaced] })
+      .to eq("github-pr" => ["scripts/pr_context.rb"], "known-names" => ["hooks/known_names.rb"])
+
+    described_class.apply(rows).each do |row|
+      expect(asset_copies(row.trash_copy)).to eq(rows.find { |r| r.name == row.name }.replaced.sort)
+    end
+  end
+
+  it "leaves an unedited script the bundle didn't change out of the plan" do
+    install(old_copy("github-pr"), "github-pr")
+    expect(described_class.plan.first).to have_attributes(status: :would_update, replaced: [])
+  end
+
   it "reports an edited plugin as replaced" do
     install(old_copy("btw"), "btw")
     File.write(Samagotchi::MemoryBundle::Provenance.new(name: "btw").plugin_path, "# mine\n")

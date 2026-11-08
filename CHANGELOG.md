@@ -12,6 +12,7 @@ and commands may change between minor versions. How releases are made:
 
 - `chi bundle uninstall` asks for `--force` before taking a memory you edited that has no base copy (chi compares it with the checksum its install recorded; with neither, it counts as edited), as it does for any edited file; it used to move it to the trash without asking.
 - `chi bundle status` says `modified` for an edited memory that has no base copy; it said `ok` while the next upgrade left the file behind.
+- `chi update`'s plan names every edited hook, rule, plugin file and script it replaces, as its `Copied to the trash first` line does; it left out edited scripts and hooks installed with no recorded sha, and its row now says `a copy goes to the trash first` instead of `it wasn't loading`.
 
 ## [0.156.0] - 2026-11-08
 
