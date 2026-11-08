@@ -35,11 +35,9 @@ module Samagotchi
     LAYERS = %i[stale forget].freeze
     # The layers a turn can run under so far.
     BUILT = %i[stale forget].freeze
-    # The sentence forget_outputs' description carries (global only):
-    # the plan's D7 line, adapted from CLM's steering example.
+    # The sentence forget_outputs' description carries (global only; its
+    # default is Config::DEFAULT_LLM_CONTEXT_POLICY).
     POLICY_SETTING = "llm_context.policy"
-    DEFAULT_POLICY = "Tidy at subtask boundaries: once a subtask is done, forget its tool outputs and note what it " \
-                     "established; keep anything you'll still edit against."
 
     APPLY_SETTING = "llm_context.apply"
     APPLY_KEY = "llm_context_apply"

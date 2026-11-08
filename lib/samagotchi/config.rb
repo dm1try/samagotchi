@@ -8,11 +8,12 @@ require_relative "config_text_edit"
 require_relative "log"
 require_relative "model_ref"
 require_relative "paths"
-require_relative "llm_context_strategy"
 require_relative "host_model"
 require_relative "config/restart_watch"
 
 module Samagotchi
+  # Which LLM context strategy a turn runs under; it reads Config.
+  autoload :LLMContextStrategy, File.expand_path("llm_context_strategy", __dir__)
   # Parses the thinking: levels of host and model entries (it needs Config).
   autoload :Thinking, File.expand_path("thinking", __dir__)
   # One hosts: entry; it needs ConfigFile's readers.
@@ -88,6 +89,12 @@ module Samagotchi
       next_request_or_turn_end next_update desktop_update web_start next_cli_run next_empty_answer_retry
       next_history_access next_matching_turn_display_poll_write
     ].freeze
+
+    # llm_context.policy's default: the sentence forget_outputs' description
+    # carries (ToolDeclarations::FORGET_OUTPUTS_POLICY), the plan's D7 line,
+    # adapted from CLM's steering example.
+    DEFAULT_LLM_CONTEXT_POLICY = "Tidy at subtask boundaries: once a subtask is done, forget its tool outputs and note " \
+                                 "what it established; keep anything you'll still edit against."
 
     ENTRIES = [
       # universal – env+config+cli
@@ -261,7 +268,7 @@ module Samagotchi
       # and hosts.<name>.llm_context_budget_tokens come first. Kept as written: LLMContextStrategy.parse_budget reads it.
       Entry.new(key: "llm_context.budget_tokens", yaml_path: %w[llm_context budget_tokens], type: :string, default: nil,           expose: %i[env config], lifecycle: :next_matching_turn_display_poll_write),
       # The policy sentence forget_outputs' description carries (the forget layer); blank: none.
-      Entry.new(key: "llm_context.policy",       yaml_path: %w[llm_context policy],       type: :string, default: LLMContextStrategy::DEFAULT_POLICY, expose: %i[env config], lifecycle: :worker_start),
+      Entry.new(key: "llm_context.policy",       yaml_path: %w[llm_context policy],       type: :string, default: DEFAULT_LLM_CONTEXT_POLICY, expose: %i[env config], lifecycle: :worker_start),
 
       # How much models think: off|low|medium|high|default, parsed by Thinking
       # (a :string, since YAML reads an unquoted off as false). The CLI flag

@@ -2,7 +2,7 @@
 
 require "json"
 require_relative "tools/args"
-require_relative "llm_context_strategy"
+require_relative "config"
 require_relative "tools/memory"
 
 module Samagotchi
@@ -482,7 +482,7 @@ module Samagotchi
     # (Tools::Registry's layer gate), so it is not in TOOL_SCHEMAS, which
     # every turn declares. Its description carries llm_context.policy
     # (#forget_outputs_schema); this one the default's.
-    FORGET_OUTPUTS_POLICY = LLMContextStrategy::DEFAULT_POLICY
+    FORGET_OUTPUTS_POLICY = Config::DEFAULT_LLM_CONTEXT_POLICY
     FORGET_OUTPUTS_DESCRIPTION = "Forget tool outputs you no longer need, to free context. Every tool output starts " \
                                  "with an id like [#t42]: list ids to forget, and each output is replaced in place by " \
                                  "a stub with your note (the call stays). %<policy>s\n" \
