@@ -93,10 +93,19 @@ test("it skips a hand-off another turn forced, a running turn, a turn with no id
 });
 
 test("a shape that can't be read is dropped too, no rejection", async () => {
-  const { check, reads } = setup();
+  const { check, posts } = setup();
   const broken = { matches: () => { throw new Error("detached"); } };
   await check.handedOff({ pieces: [...pieces(PROMPT), broken] });
-  assert.deepEqual(reads, []);
+  assert.deepEqual(posts, []);
+});
+
+test("the live pieces are read after the reload's read: a timing line that took its record's figure meanwhile counts as it is then", async () => {
+  const live = pieces(PROMPT + '<div class="bubble output">hello</div><div class="turn-timing">turn 1 · 7ms</div>');
+  const { check, posts } = setup();
+  const done = check.handedOff({ pieces: live });
+  live[2].textContent = "turn 1 · 5ms"; // the turn record's, landed before the read did
+  await done;
+  assert.equal(posts[0][1].same, true);
 });
 
 test("a read or a post that fails is dropped", async () => {
