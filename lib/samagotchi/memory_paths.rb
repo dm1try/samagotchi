@@ -44,7 +44,7 @@ module Samagotchi
       dot_git = find_dot_git(cwd)
       return ProjectLookup.new(kind: :git, root: git_root(dot_git), top: File.dirname(dot_git)) if dot_git
 
-      marked = find_marker(cwd, home)
+      marked = nearest_marker(cwd, home: home)
       return ProjectLookup.new(kind: :marker, root: marked, top: marked) if marked
 
       ProjectLookup.new(kind: :none, root: cwd, top: nil)
@@ -165,9 +165,11 @@ module Samagotchi
     end
 
     # The realpath of the nearest folder at or above +start+ holding MARKER,
-    # or nil. A marker at or above +home+ (#above_home?) ends the walk with
-    # nil: every folder above it is above home too.
-    def find_marker(start, home)
+    # git or not (#lookup asks only outside a repository; `chi project` tells
+    # of one a repository makes ignored), or nil. A marker at or above +home+
+    # (#above_home?) ends the walk with nil: every folder above it is above
+    # home too.
+    def nearest_marker(start, home: default_home)
       dir = File.expand_path(start)
       loop do
         if File.file?(File.join(dir, MARKER))
@@ -203,7 +205,7 @@ module Samagotchi
     rescue SystemCallError
       gitdir
     end
-    private_class_method :find_dot_git, :find_marker, :git_root, :default_home, :gitdir_from_file, :common_dir
+    private_class_method :find_dot_git, :git_root, :default_home, :gitdir_from_file, :common_dir
 
     def project_dir(env: ENV, cwd: Dir.pwd)
       File.join(projects_dir(env: env), project_key(cwd))
