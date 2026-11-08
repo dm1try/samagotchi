@@ -8,11 +8,12 @@ and commands may change between minor versions. How releases are made:
 
 ## [Unreleased]
 
+## [0.158.0] - 2026-11-08
+
 ### Added
 
 - A folder in no git repository can be a chi project: `chi project init [DIR]` writes `DIR/.chi/project.yml`, and DIR and every subfolder share one project memories folder, group their sessions (`chi sessions list`, chi web's projects) and take `chi context --project`. `chi project` shows which project a folder is in. A git repository stays the project wherever there is one (init writes nothing there), and `$HOME` or a folder above it can't be marked. A folder chi already ran in at its top keeps its memories. A session in a subfolder of a marked project reads the AGENTS.md chain from the project's top, and `delegate`'s `cwd:` takes any folder of it (not a nested repository or marked project); sessions already running in a folder when it is marked keep the old project until `chi sessions restart`.
-- chi web's project picker can create a project from a folder path, creating missing folders and marking non-git
-  folders without running `git init`.
+- chi web's project picker has a New project… row: type a folder path, and chi creates the folder if needed and marks it as a project, as `chi project init` does (a folder inside a git repository opens that repository's project).
 
 ### Removed
 
@@ -23,12 +24,14 @@ and commands may change between minor versions. How releases are made:
 ### Fixed
 
 - `chi bundle install --dev` no longer warns of a checksum mismatch for the bundle's memories (stale shas while you edit); `chi bundle check` still flags them.
-- `chi update --dry-run` now shows the same memory Checksum mismatch warnings as the update itself.
+- `chi update --dry-run` now shows the same memory checksum warnings as the update itself.
 - A conflicted memory that chi retries at the same version (at start, or in `chi update`) now warns when the bundle's file doesn't match its manifest's sha256, as an install or an upgrade does.
 - A session whose first message, last prompt or title held bytes that aren't valid UTF-8 (pasted binary, a broken terminal) no longer fails to save; the bad bytes are saved as `?`.
 - A damaged turn-drawings file no longer stops a terminal from joining a session or chi web from showing it; the turn is drawn from the saved messages instead.
 - `chi bundle try --json` no longer crashes when the answer or the trace holds non-ASCII text.
 - `chi bundle upgrade` (and `chi update`) list a plugin or script that the new version adds under Installed, not Updated.
+
+Update with `chi update`.
 
 ## [0.157.0] - 2026-11-08
 
@@ -5862,7 +5865,8 @@ and long-lived sessions.
 - A macOS desktop helper (`chi desktop install`): a "Send to chi" Service and a
   hotkey panel that send selected text or the clipboard to your sessions.
 
-[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.157.0...HEAD
+[Unreleased]: https://github.com/dm1try/samagotchi/compare/v0.158.0...HEAD
+[0.158.0]: https://github.com/dm1try/samagotchi/compare/v0.157.0...v0.158.0
 [0.157.0]: https://github.com/dm1try/samagotchi/compare/v0.156.0...v0.157.0
 [0.156.0]: https://github.com/dm1try/samagotchi/compare/v0.155.0...v0.156.0
 [0.155.0]: https://github.com/dm1try/samagotchi/compare/v0.154.1...v0.155.0
