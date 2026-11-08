@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require_relative "config"
 require_relative "tool_output_files"
 
 module Samagotchi
@@ -28,6 +29,22 @@ module Samagotchi
   # task's log, the child's reply in its output/ folder), which the tool
   # gave with its text (Tools::RefText) and the gap line names.
   module ToolOutputCut
+    # The per-output cap with nothing set (max_tool_output_chars).
+    DEFAULT_MAX_CHARS = 10_000
+
+    # The per-output cap both loops cut tool outputs to (and the emitted
+    # tool call events carry): an explicit +override+ wins, then
+    # max_tool_output_chars (Config). A non-positive value falls back to
+    # DEFAULT_MAX_CHARS (there is intentionally no "unlimited": live UIs get
+    # a bounded `output:` plus a truthful `output_truncated:` flag). The one
+    # exception is memory_read, which ToolRunner leaves out of this cap
+    # (memory.read_max_chars, 0: no fixed cap; a memory is read whole).
+    # @return [Integer]
+    def self.max_chars(override)
+      parsed = (override || Config.get("max_tool_output_chars")).to_i
+      parsed.positive? ? parsed : DEFAULT_MAX_CHARS
+    end
+
     POLICIES = { "execute" => :head_tail_file, "task_wait" => :head_tail_ref, "delegate" => :head_tail_ref,
                  "delegate_result" => :head_tail_ref }.freeze
 

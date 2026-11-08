@@ -72,7 +72,8 @@ file2.rb")
       kernel = test_kernel(client: client)
       allow(kernel).to receive(:run).and_return(result)
       expect(Samagotchi::KernelLoop).to receive(:new)
-        .with(client: client, profile: nil, model_name: "Gemma-4B-it", services: an_instance_of(Samagotchi::KernelLoop::Services)
+        .with(client: client, profile: nil, model_name: "Gemma-4B-it", reprefill: an_instance_of(Samagotchi::ReprefillMeter),
+              services: an_instance_of(Samagotchi::KernelLoop::Services)
           .and(having_attributes(hooks: instance_of(Samagotchi::Hooks::Registry), reminder_store: instance_of(Samagotchi::ReminderStore),
                                  tools: instance_of(Samagotchi::Tools::Registry), gate: instance_of(Samagotchi::Guardrails::Gate))))
         .and_return(kernel)

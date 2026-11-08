@@ -198,6 +198,58 @@ RSpec.describe Samagotchi::LLMContextApply do
     expect(conversation[3][:edits].keys).to eq(%w[t9 t1])
   end
 
+  # Both loops' call (KernelLoop#apply_llm_context!, ChatLoop#apply_llm_context!):
+  # the run, its log line and its ✂ row.
+  describe ".apply!" do
+    def resolved(rule = :next_request)
+      Samagotchi::LLMContextStrategy::Resolved.new(layers: [:stale], strategy: [:stale], source: :config, apply: rule,
+                                                   protect_steps: 0, stale_edits: true)
+    end
+
+    before do
+      allow(Dir).to receive(:pwd).and_return(root)
+      allow(Samagotchi::Log).to receive(:info)
+      allow(Samagotchi::Log).to receive(:warn)
+    end
+
+    it "changes nothing without a strategy, or under none" do
+      conversation = session
+      expect(described_class.apply!(conversation, nil)).to eq(described_class::Outcome.none)
+      none = Samagotchi::LLMContextStrategy::Resolved.new(layers: [], strategy: :none, source: :config)
+      expect(described_class.apply!(conversation, none)).to eq(described_class::Outcome.none)
+      expect(applied_ids(conversation)).to be_empty
+      expect(Samagotchi::Log).not_to have_received(:info)
+    end
+
+    it "applies the batch, rebases the context, logs llm_context_apply with the model and emits the ✂ row" do
+      conversation = session
+      context = instance_double(Samagotchi::ContextStatus, top_bucket?: false, edited!: nil)
+      rows = []
+
+      outcome = described_class.apply!(conversation, resolved, context: context, emit: ->(row) { rows << row }, model: "m1")
+
+      expect(outcome.applied.map(&:id)).to eq(["t1"])
+      expect(context).to have_received(:edited!)
+      expect(Samagotchi::Log).to have_received(:info).with(
+        :model, "llm_context_apply",
+        rule: :next_request, at: :request, why: :next_request, applied: 1, ids: "t1", staged: outcome.staged,
+        freed: (outcome.freed_chars / Samagotchi::TokenUsage::CHARS_PER_TOKEN).ceil,
+        tail: (outcome.tail_chars / Samagotchi::TokenUsage::CHARS_PER_TOKEN).ceil, model: "m1"
+      )
+      expect(rows).to eq([Samagotchi::LLMContextNotice.event(conversation, outcome, moment: :request)])
+    end
+
+    it "logs and emits nothing for the warm-up's copy, and a row that fails never breaks the request" do
+      warm = session
+      described_class.apply!(warm, resolved, warmup: true, emit: ->(_row) { raise "never" })
+      expect(applied_ids(warm)).to eq(["t1"])
+      expect(Samagotchi::Log).not_to have_received(:info)
+
+      described_class.apply!(session, resolved, emit: ->(_row) { raise IOError, "gone" })
+      expect(Samagotchi::Log).to have_received(:warn).with(:model, "llm_context_notice_failed", error: "IOError", message: "gone")
+    end
+  end
+
   describe "in the loops" do
     let(:dir) { Dir.mktmpdir("chi-apply") }
     let(:file) { File.join(dir, "cart.rb").tap { |path| File.write(path, "#{big}\n") } }

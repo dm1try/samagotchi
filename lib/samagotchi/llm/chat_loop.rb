@@ -20,6 +20,7 @@ require_relative "../cut_policy"
 require_relative "../context_status"
 require_relative "../context_window"
 require_relative "../context_note"
+require_relative "../tool_output_cut"
 require_relative "../tool_runner"
 require_relative "../tool_response"
 require_relative "../tool_ids"
@@ -27,7 +28,10 @@ require_relative "../tool_declarations"
 require_relative "../tools/tool_surface"
 require_relative "../tool_loads"
 require_relative "../vision_context"
+require_relative "../llm_context_apply"
+require_relative "../llm_context_view"
 require_relative "../log"
+require_relative "../reprefill_meter"
 require_relative "../empty_answer_retry"
 require_relative "../steer"
 require_relative "../reasoning_history"
@@ -66,6 +70,12 @@ module Samagotchi
       # The session every request is for; Engine sets it with the adapter.
       # Goes out as a Session-Id header (OpenAIChat#chat).
       attr_accessor :session_id
+      # The effective model's host's client (EffectiveModel#client): what
+      # #context_window probes on a local host (a llama.cpp /props) and what
+      # a request's re-prefill is counted against. Engine sets it with the
+      # adapter (Engine#backend_for, under its chat backend mutex, from any
+      # thread a model switch runs on); nil until then (no probe).
+      attr_accessor :client
       # The last counted request's chars per token
       # (ContextStatus#counted_chars_per_token), carried to the next turn's
       # tracker: its first estimate counts the tool schemas the chars leave
@@ -73,6 +83,9 @@ module Samagotchi
       attr_accessor :counted_chars_per_token
 
       # @param kernel [KernelLoop] tool dispatch, thought stripping, hooks
+      # @param reprefill [ReprefillMeter, nil] the re-prefill baseline its
+      #   requests count against (the Engine's, shared with its KernelLoop;
+      #   its own by default)
       # @param adapter [OpenAIChat, nil] the host to talk to; Engine sets it
       #   per turn for the effective model's host
       # @param stable_length [#call, nil] text → the length of the system
@@ -81,8 +94,9 @@ module Samagotchi
       #   stream's step is asked again (specs pass one that doesn't sleep)
       # @param context [TurnContext, nil] the turn its helpers read before any
       #   #complete (a bench building wire messages); a run's replaces it
-      def initialize(kernel:, adapter: nil, stable_length: nil, sleeper: nil, context: nil)
+      def initialize(kernel:, reprefill: nil, adapter: nil, stable_length: nil, sleeper: nil, context: nil)
         @kernel = kernel
+        @reprefill = reprefill || ReprefillMeter.new
         @turn_context = context
         @adapter = adapter
         @stable_length = stable_length
@@ -106,7 +120,7 @@ module Samagotchi
         @turn_context = context if context
         conversation = Array(messages).map(&:dup)
         Run.new(self, conversation, on_stream_event, cancel_controller, model_name, pending_input, start: reasoning_since)
-           .call(max_iterations: max_iterations || 1, cap: KernelLoop.resolve_output_char_cap(max_tool_output_chars))
+           .call(max_iterations: max_iterations || 1, cap: ToolOutputCut.max_chars(max_tool_output_chars))
       rescue StandardError, Interrupt => e
         # A failure, or a Ctrl-C (its calls answered: ToolResponse.run_batch),
         # carries the conversation so far for the Engine to keep.
@@ -175,16 +189,17 @@ module Samagotchi
       # when none was resolved.
       def llm_context = settings&.llm_context
 
-      # KernelLoop#reprefilled_tokens, the kernel's request history.
-      def reprefilled_tokens(model, **) = @kernel.reprefilled_tokens(model, **)
+      # The request's re-prefilled tokens on the loop's meter, against this
+      # loop's host (#client): ReprefillMeter#tokens.
+      def reprefilled_tokens(model, **) = @reprefill.tokens(model, client: @client, **)
 
-      # The kernel's LLMContextView under the turn's strategy.
-      def llm_context_view = @kernel.llm_context_view(llm_context)
+      # The LLMContextView under the turn's strategy (LLMContextView.for).
+      def llm_context_view = LLMContextView.for(llm_context)
 
       # The strategy's own edits before a request and at turn end
-      # (KernelLoop#apply_llm_context!), under the turn's strategy.
+      # (LLMContextApply.apply!), under the turn's strategy and model name.
       def apply_llm_context!(conversation, **)
-        @kernel.apply_llm_context!(conversation, llm_context, model: settings&.model_name, **)
+        LLMContextApply.apply!(conversation, llm_context, model: settings&.model_name, **)
       end
 
       # The running turn, for forget_outputs (KernelLoop#llm_context_turn).
@@ -400,14 +415,13 @@ module Samagotchi
         @tool_runner ||= ToolRunner.new(@kernel, window: ->(run_settings) { context_window(run_settings&.model_name, run_settings) })
       end
 
-      # The window for +model+: the kernel's client probes the server it
-      # points at (Engine keeps it on the effective model's host; a local
-      # llama.cpp answers /props), then the host's model list, the model's
+      # The window for +model+: the loop's client (#client) probes the server
+      # it points at (a local llama.cpp answers /props), then the host's model list, the model's
       # or host's window_tokens, config, env and the default. A remote
       # provider has no /props to probe. +run_settings+: the LLM::TurnSettings
       # whose window_setting counts (the turn's by default).
       def context_window(model, run_settings = settings)
-        client = @adapter.remote? ? nil : @kernel.client
+        client = @adapter.remote? ? nil : @client
         ContextWindow.resolve(client: client, model: model, adapter: @adapter, setting: run_settings&.window_setting)
       rescue StandardError
         nil
@@ -899,7 +913,7 @@ module Samagotchi
           count
         end
 
-        # The request's re-prefilled tokens (KernelLoop#reprefilled_tokens).
+        # The request's re-prefilled tokens (ChatLoop#reprefilled_tokens).
         def reprefill_field(usage)
           return {} unless usage&.source == :server
 

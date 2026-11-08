@@ -27,6 +27,8 @@ require_relative "tools/builtin_calls"
 require_relative "tools/tool_surface"
 require_relative "muted_memories"
 require_relative "tool_activity"
+require_relative "reprefill_meter"
+require_relative "tool_output_cut"
 require_relative "tool_runner"
 require_relative "tool_response"
 require_relative "tool_ids"
@@ -129,7 +131,6 @@ module Samagotchi
       def surface = Tools::ToolSurface.of(@context)
     end
 
-    DEFAULT_MAX_TOOL_OUTPUT_CHARS = 10_000
     QWEN_INCOMPLETE_TOOL_CALL_RECOVERY_LIMIT = 2
     # How much of a malformed generation's end the warning keeps.
     MALFORMED_TAIL_CHARS = 400
@@ -172,12 +173,16 @@ module Samagotchi
 
     # @param services [Services, nil] what the kernel holds of its Engine
     #   (Services.none by default: the built-in tools alone)
+    # @param reprefill [ReprefillMeter, nil] the re-prefill baseline its
+    #   requests count against (the Engine's, shared with its ChatLoop; its
+    #   own by default)
     # @param sleeper [#call, nil] waits the given seconds before a dropped
     #   stream's step is asked again (specs pass one that doesn't sleep)
-    def initialize(client: nil, profile: nil, model_name: nil, model_key: nil, services: nil, sleeper: nil)
+    def initialize(client: nil, profile: nil, model_name: nil, model_key: nil, services: nil, reprefill: nil, sleeper: nil)
       @client = client || Client.new
       @sleeper = sleeper || ->(seconds) { sleep(seconds) }
       @services = services || Services.none
+      @reprefill = reprefill || ReprefillMeter.new
       resolved_model_name = ModelProfile.required_model_name(model_name)
       # The context of the run in progress, else of the last run (#context):
       # a kernel that ran none has its own (no turn, no settings but its
@@ -193,11 +198,14 @@ module Samagotchi
     # @return [Services] what the kernel holds of its Engine (#attach)
     attr_reader :services
 
-    # Hand the kernel its Engine's services, all at once: the Engine does
-    # for a kernel it is given (specs) what KernelLoop.new does for its own.
+    # Hand the kernel its Engine's services, all at once, and its
+    # re-prefill meter (nil keeps the one it has): the Engine does for a
+    # kernel it is given (specs) what KernelLoop.new does for its own.
     # @param services [Services]
+    # @param reprefill [ReprefillMeter, nil]
     # @return [Services]
-    def attach(services)
+    def attach(services, reprefill: nil)
+      @reprefill = reprefill if reprefill
       @services = services
     end
 
@@ -297,7 +305,7 @@ module Samagotchi
       @context = context.with(settings: settings.with(model_name: completion_model_name(model_name)))
       @last_slot = nil
       turn = start_turn(messages, on_stream_event: on_stream_event, cancel_controller: cancel_controller,
-                                  pending_input: pending_input, cap: resolve_output_char_cap(max_tool_output_chars),
+                                  pending_input: pending_input, cap: ToolOutputCut.max_chars(max_tool_output_chars),
                                   reasoning_since: reasoning_since)
 
       max_iterations.times do |iteration_index|
@@ -328,21 +336,6 @@ module Samagotchi
     def use_profile!(resolution)
       @profile = resolution.profile
       @profile_source = resolution.label
-    end
-
-    # Resolve the per-output character cap for the tool outputs the model
-    # gets back and the emitted tool call events.
-    #
-    # Precedence: an explicit override wins, then max_tool_output_chars
-    # (Config). A non-positive value falls back to
-    # DEFAULT_MAX_TOOL_OUTPUT_CHARS (there is intentionally no "unlimited" — live UIs get a
-    # bounded `output:` plus a truthful `output_truncated:` flag). The one
-    # exception is memory_read, which ToolRunner leaves out of this cap
-    # (memory.read_max_chars, 0: no fixed cap; a memory is read whole).
-    # Class-level so the chat loop resolves it the same way.
-    def self.resolve_output_char_cap(override)
-      parsed = (override || Samagotchi::Config.get("max_tool_output_chars")).to_i
-      parsed.positive? ? parsed : DEFAULT_MAX_TOOL_OUTPUT_CHARS
     end
 
     private
@@ -659,7 +652,7 @@ module Samagotchi
     def cache_fields(cache) = cache ? TokenUsage.cache_fields(**cache) : {}
 
     def reprefill_field(model, cache)
-      tokens = cache && reprefilled_tokens(model, prompt: cache[:prompt], cached: cache[:cached])
+      tokens = cache && @reprefill.tokens(model, client: @client, prompt: cache[:prompt], cached: cache[:cached])
       tokens ? { reprefill_tokens: tokens } : {}
     end
 
@@ -877,12 +870,6 @@ module Samagotchi
     # Coerce a value to boolean — handles true/false, nil, and string "true"/"false".
     def truthy?(val) = Tools::Builtins.truthy?(val)
 
-    # ── Output char cap resolution ─────────────────────────────────────────────
-
-    def resolve_output_char_cap(override)
-      self.class.resolve_output_char_cap(override)
-    end
-
     # One request, cancelled by +generation_controller+ (the turn's child)
     # when there is one.
     def request_generation(prompt, generation_controller:, cancel_controller:, **)
@@ -1005,14 +992,10 @@ module Samagotchi
     WARMUP_CUT = "chi-warmup-cut"
     private_constant :WARMUP_CUT
 
-    # What both loops send of the conversation (LLMContextView), under the
-    # turn's strategy (TurnSettings#llm_context, none without one), or the
-    # one given (the warm-up's, the next turn's): the prompt, the warm-up
-    # and the chat messages all format through it, so the warm-up warms
-    # the prompt the next turn sends.
-    def llm_context_view(llm_context = turn_settings&.llm_context)
-      LLMContextView.new(strategy: llm_context&.strategy || LLMContextView::NONE)
-    end
+    # What the native prompt and the warm-up send of the conversation
+    # (LLMContextView.for), under the turn's strategy or the one given (the
+    # warm-up's, the next turn's).
+    def llm_context_view(llm_context = turn_settings&.llm_context) = LLMContextView.for(llm_context)
 
     # The model's forget_outputs call (LLMContextForget) on the running
     # turn (the loop's llm_context_turn), under +context+'s strategy (the
@@ -1042,84 +1025,19 @@ module Samagotchi
     end
     private :pinned_ids
 
-    # Before each request of both loops (+moment+ :request; the warm-up
-    # too, on its own copy, as the next turn's first request) and at the
-    # end of a turn the model answered (:turn_end): the strategy's layers
-    # stage their edits on +conversation+ and the apply rule
-    # (LLMContextApply, llm_context.apply) saves the batch it lets through
-    # as applied, so the request about to be sent (or the next turn's
-    # first, and the warm-up) is the first with the stubs. +context+: the
-    # turn's ContextStatus (payoff applies in its top bucket; an applied
-    # batch rebases its estimate, ContextStatus#edited!). none changes
-    # nothing. Logged as llm_context_apply when a batch is applied, and
-    # shown to the user as a ✂ row (+emit+ takes the :llm_context_edited
-    # event, LLMContextNotice; the warm-up's own copy has none).
+    # The strategy's edits on +conversation+ (LLMContextApply.apply!), under
+    # the turn's strategy and model name by default: the native run's
+    # requests and turn end, the warm-up's copy, a forget_outputs call.
     # @return [LLMContextApply::Outcome]
-    # +model+: the run's model name, in the log line (the chat loop's own).
-    def apply_llm_context!(conversation, llm_context = turn_settings&.llm_context, moment: :request, context: nil,
-                           warmup: false, emit: nil, model: turn_settings&.model_name)
-      view = llm_context_view(llm_context)
-      return LLMContextApply::Outcome.none if view.none?
-
-      outcome = LLMContextApply.run!(conversation, layers: view.layers, rule: llm_context.apply, moment: moment,
-                                                   protect_steps: llm_context.protect_steps,
-                                                   top_bucket: context&.top_bucket? || false,
-                                                   changes: llm_context.stale_edits)
-      if outcome.applied?
-        # The prompt just shrank: the context estimate counts from it.
-        context&.edited!
-        unless warmup
-          log_llm_context(outcome, llm_context, moment, model)
-          emit_llm_context(emit, conversation, outcome, moment) if emit
-        end
-      end
-      outcome
-    end
-
-    def log_llm_context(outcome, llm_context, moment, model)
-      Log.info(:model, "llm_context_apply", rule: llm_context.apply, at: moment, why: outcome.why,
-                                            applied: outcome.applied.size, ids: outcome.applied.map(&:id).join(","),
-                                            staged: outcome.staged, freed: (outcome.freed_chars / TokenUsage::CHARS_PER_TOKEN).ceil,
-                                            tail: (outcome.tail_chars / TokenUsage::CHARS_PER_TOKEN).ceil,
-                                            model: model)
-    end
-    private :log_llm_context
-
-    # The batch's ✂ row; a row that can't be built never breaks the turn.
-    def emit_llm_context(emit, conversation, outcome, moment)
-      emit.call(LLMContextNotice.event(conversation, outcome, moment: moment))
-    rescue StandardError => e
-      Log.warn(:model, "llm_context_notice_failed", error: e.class.name, message: e.message)
-    end
-    private :emit_llm_context
-
-    # A request's re-prefilled tokens, for both loops: of the prompt the
-    # last request on +model+ through this client (the host) sent (this
-    # kernel's, any turn), what the server didn't reuse from its cache this
-    # time (that prompt less +cached+), so an LLM context edit's cache break
-    # shows, and so does anything else that rewrote the prompt's middle or
-    # lost the cache. nil under TokenUsage::REPREFILL_MIN_TOKENS (a cache
-    # block's rounding), for a server that reports no cached count (or 0: a
-    # cold cache isn't told from no cache), the first request, a model
-    # switch (another bare model, or the same one on another host: the
-    # Engine points #client at the new host's; SessionMetrics counts that
-    # prefill as the switch's), and the first request after a warm-up
-    # (#warmed_up!).
-    # @return [Integer, nil]
-    def reprefilled_tokens(model, prompt:, cached:)
-      previous = @reprefill_baseline
-      @reprefill_baseline = { model: model, client: @client, prompt: prompt.to_i } if prompt.to_i.positive?
-      return nil unless previous && previous[:model] == model && previous[:client].equal?(@client) && cached.to_i.positive?
-
-      tokens = previous[:prompt] - cached.to_i
-      tokens >= TokenUsage::REPREFILL_MIN_TOKENS ? tokens : nil
+    def apply_llm_context!(conversation, llm_context = turn_settings&.llm_context, model: turn_settings&.model_name, **)
+      LLMContextApply.apply!(conversation, llm_context, model: model, **)
     end
 
     # The Engine started a turn-end warm-up: it prefills the next prompt
     # off the clock, so the next request's cache counts are against it, not
-    # the last request (#reprefilled_tokens starts over).
+    # the last request (the re-prefill meter starts over, ReprefillMeter#reset!).
     def warmed_up!
-      @reprefill_baseline = nil
+      @reprefill.reset!
     end
 
     # Public wrapper so other loops (e.g. the chat loop) can strip

@@ -38,7 +38,9 @@ RSpec.describe Samagotchi::Engine, "#run_turn with a hung /props" do
   before do
     stub_const("Samagotchi::Client::CONTEXT_WINDOW_PROBE_READ_TIMEOUT", 5)
     allow(Samagotchi::Tools::MemoryRead).to receive(:call).and_return("")
-    allow(engine).to receive(:backend_for).and_return(Samagotchi::LLM::ChatLoop.new(kernel: kernel, adapter: adapter))
+    # The host's client goes with the adapter (Engine#backend_for): the chat loop's window probe.
+    chat = Samagotchi::LLM::ChatLoop.new(kernel: kernel, adapter: adapter).tap { |loop| loop.client = client }
+    allow(engine).to receive(:backend_for).and_return(chat)
     @acceptor = Thread.new do
       loop { accepted << hung.accept }
     rescue IOError, Errno::EBADF

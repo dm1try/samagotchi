@@ -27,6 +27,7 @@ require_relative "thinking_notices"
 require_relative "cancellation_controller"
 require_relative "context_window"
 require_relative "kernel_loop"
+require_relative "reprefill_meter"
 require_relative "tools/builtins"
 require_relative "tools/task_runtime"
 require_relative "tools/tool_index"
@@ -452,6 +453,9 @@ module Samagotchi
       self.guardrail_state_dir = Session.default_state_dir
       # The turn-end warm-up; the kernel asks it for a slot pin per request.
       @prompt_warmup = PromptWarmup.new
+      # One re-prefill baseline for both loops (the native kernel's and the
+      # chat loop's requests), reset by the warm-up (KernelLoop#warmed_up!).
+      @reprefill = ReprefillMeter.new
       services = KernelLoop::Services.new(
         hooks: @hooks, tools: @tools, reminder_store: @reminder_store, muted_memory_names: @muted_memory_names,
         # ask_user_question blocks on the Engine's question flow (TUI/Web answer it).
@@ -467,8 +471,8 @@ module Samagotchi
       )
       # A given kernel (specs) gets the same services as the one built here.
       @kernel = kernel || KernelLoop.new(client: @client, profile: @model_binding.given_profile,
-                                         model_name: effective_model_name, services: services)
-      @kernel.attach(services) if kernel
+                                         model_name: effective_model_name, services: services, reprefill: @reprefill)
+      @kernel.attach(services, reprefill: @reprefill) if kernel
       sync_kernel_client!
       sync_model_key!
       # What a hook can do beyond reading its event (event[:notify],

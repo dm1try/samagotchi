@@ -53,9 +53,18 @@ module AffectedSpecs
                 lib/samagotchi/llm/native_backend.rb lib/samagotchi/tool_runner.rb lib/samagotchi/tool_response.rb
                 lib/samagotchi/guardrails/gate.rb lib/samagotchi/guardrail_wiring.rb lib/samagotchi/system_prompt.rb
                 lib/samagotchi/tool_declarations.rb lib/samagotchi/tools/registry.rb lib/samagotchi/turn_context.rb
-                lib/samagotchi/turn_state.rb lib/samagotchi/turn_stages/*.rb],
+                lib/samagotchi/turn_state.rb lib/samagotchi/turn_stages/*.rb lib/samagotchi/tool_host.rb
+                lib/samagotchi/reprefill_meter.rb],
       specs: %w[spec/engine_turn_golden_spec.rb],
       why: "whole-turn goldens: a real Engine#run_turn's requests, events and hook payloads per wire" },
+    { match: %w[lib/samagotchi/kernel_loop.rb lib/samagotchi/llm/chat_loop.rb lib/samagotchi/tool_runner.rb
+                lib/samagotchi/tool_host.rb lib/samagotchi/reprefill_meter.rb lib/samagotchi/tool_output_cut.rb
+                lib/samagotchi/llm_context_apply.rb lib/samagotchi/llm_context_view.rb lib/samagotchi/engine.rb
+                lib/samagotchi/engine/models.rb lib/samagotchi/engine/messages.rb spec/llm/chat_loop_spec.rb
+                spec/llm_context_view_spec.rb spec/support/test_kernel.rb],
+      specs: %w[spec/tool_host_characterization_spec.rb spec/llm/chat_loop_kernel_contract_spec.rb
+                spec/llm/chat_loop_kernel_stub_gate_spec.rb],
+      why: "what both loops share through one Engine, ChatLoop's reach into the kernel and its specs' kernel stubs" },
     { match: %w[lib/samagotchi/turn_context.rb lib/samagotchi/turn_state.rb lib/samagotchi/event_fanout.rb
                 lib/samagotchi/engine/participants.rb lib/samagotchi/engine/side_requests.rb lib/samagotchi/engine/messages.rb],
       specs: %w[spec/turn_context_readers_spec.rb],

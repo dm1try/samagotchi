@@ -28,14 +28,16 @@ RSpec.describe Samagotchi::LLMContextView do
 
   # A view that records what it was asked for, and the formatter's input:
   # under none the formatter gets the very Array the view was given.
-  def spy_view(kernel)
+  # +owner+.+factory+ hands it out: the native loop asks its kernel
+  # (KernelLoop#llm_context_view), the chat loop LLMContextView.for.
+  def spy_view(owner, factory = :llm_context_view)
     seen = []
     view = described_class.new
     allow(view).to receive(:messages).and_wrap_original do |original, messages|
       seen << messages
       original.call(messages)
     end
-    allow(kernel).to receive(:llm_context_view).and_return(view)
+    allow(owner).to receive(factory).and_return(view)
     seen
   end
 
@@ -115,7 +117,7 @@ RSpec.describe Samagotchi::LLMContextView do
 
     it "builds the wire messages from the view's messages, the same as without it under none" do
       plain = backend.wire_messages(conversation)
-      seen = spy_view(kernel)
+      seen = spy_view(described_class, :for)
 
       expect(backend.wire_messages(conversation)).to eq(plain)
       expect(seen).to eq([conversation])
@@ -358,7 +360,7 @@ RSpec.describe Samagotchi::LLMContextView do
       call = { role: "model", content: "", tool_calls: [{ id: "c1", name: "read", arguments: { "path" => "x" } }] }
       result = { role: "tool_response", content: "[read] lib/x.rb\n1: x", tool_call_id: "c1", tool_ids: %w[t5],
                  images: [{ file: "a.png" }], edits: { "t5" => edit("forget", "x is one line") } }
-      allow(kernel).to receive(:llm_context_view).and_return(described_class.new(strategy: [:forget]))
+      allow(described_class).to receive(:for).and_return(described_class.new(strategy: [:forget]))
 
       wire = backend.wire_messages([{ role: "user", content: "go" }, call, result])
 
