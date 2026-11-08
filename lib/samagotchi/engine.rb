@@ -912,7 +912,7 @@ module Samagotchi
                                 pending_input: pending_input)
         publish_used_memories(session, on_event)
         complete_turn(turn, result)
-        @turn_warmup.after(turn, result)
+        @turn_warmup.after(turn, result, next_turn_waiting: next_turn_waiting)
         result
       rescue Interrupt => e
         # After the end event (in the after_turn/session_end hooks) the

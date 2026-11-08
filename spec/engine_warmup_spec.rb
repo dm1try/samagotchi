@@ -113,7 +113,7 @@ RSpec.describe Samagotchi::Engine, "turn-end warm-up", :warmup do
     engine.next_turn_waiting = -> { true }
     engine.run_turn(session, "queued input")
     engine.next_turn_waiting = nil
-    allow(engine).to receive(:reminders_due?).and_return(true)
+    allow(engine.instance_variable_get(:@reminder_queue)).to receive(:due?).and_return(true)
     engine.run_turn(session, "a reminder is due")
 
     expect(sent_warmups).to be_empty

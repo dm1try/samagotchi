@@ -17,22 +17,17 @@ module Samagotchi
       # @param prompt_warmup [PromptWarmup] the Engine's warm-up (the kernel asks it for a slot pin)
       # @param kernel [KernelLoop] the warm-up prompt, the last slot, warmed_up!
       # @param turn_state [TurnState] whether steers are carried to the next turn
-      # @param model_settings [SessionModelSettings] the next turn's LLM context strategy
-      # @param model [#call] the effective model now (Engine#effective_model)
-      # @param system_prompt [#call] (model) the system prompt (Engine#system_prompt)
-      # @param reminders_due [#call] whether a reminder is due (Engine#reminders_due?)
-      # @param next_turn_waiting [#call] whether the next turn starts at once or none follows
-      #   (Engine#next_turn_waiting, called)
-      def initialize(prompt_warmup:, kernel:, turn_state:, model_settings:, model:, system_prompt:, reminders_due:,
-                     next_turn_waiting:)
+      # @param model_settings [SessionModelSettings] the effective model now, the next turn's LLM context strategy
+      # @param reminder_queue [ReminderQueue] whether a reminder is due
+      # @param system_prompt [#call] (model) the system prompt (Engine#system_prompt): called last, only
+      #   once every check passed, as building it has side effects (the memory index metric, the prompt notes)
+      def initialize(prompt_warmup:, kernel:, turn_state:, model_settings:, reminder_queue:, system_prompt:)
         @prompt_warmup = prompt_warmup
         @kernel = kernel
         @turn_state = turn_state
         @model_settings = model_settings
-        @model = model
+        @reminder_queue = reminder_queue
         @system_prompt = system_prompt
-        @reminders_due = reminders_due
-        @next_turn_waiting = next_turn_waiting
       end
 
       # After a completed turn, prefill the next turn's prompt up to its user
@@ -40,14 +35,18 @@ module Samagotchi
       # local llama.cpp host on the native loop, and not when the next turn's
       # start differs anyway or starts at once: a reminder due, a continue
       # offer (the turn ran out of steps), a carried steer or queued input.
-      # Never fails the turn.
-      def after(turn, result)
+      # Never fails the turn. Each read comes only once the checks before it
+      # passed: the model resolved after the turn's own outcome, the probe
+      # and the prompt only on a target.
+      # @param next_turn_waiting [#call, nil] the host's probe: true when the next turn starts at once or none
+      #   follows (Engine#next_turn_waiting); nil: neither
+      def after(turn, result, next_turn_waiting:)
         return if result.canceled? || result.resumable?
 
-        model = @model.call
+        model = @model_settings.effective_model
         client = model.client
         return unless target?(model, client)
-        return if @reminders_due.call || @turn_state.carried_steers? || @next_turn_waiting.call
+        return if @reminder_queue.due? || @turn_state.carried_steers? || next_turn_waiting&.call
 
         messages = ContextNote.with_system_head(turn.session.messages.dup, { role: "system", content: @system_prompt.call(model) })
         # Under the next turn's strategy (a /model switch may have changed it);
