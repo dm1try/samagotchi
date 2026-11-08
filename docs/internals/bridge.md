@@ -211,6 +211,12 @@ The Bridge exposes:
   (`MessageParts#tool_part`; spec/tool_preview_parity_spec.rb pins the two). The web row and the accumulator's part
   take it; the TUI keeps `output`.
 
+  An end event (`turn_completed`, `turn_canceled`, `turn_failed`) of a turn that kept messages carries `kept_from` and
+  `kept_to`: the turn's own messages are `messages[kept_from...kept_to]` of the session it leaves (`Engine#end_turn`;
+  `kept_from` is the conversation's size under the system head the turn may have added, before its reminders and
+  prompt). Small integers on the event only, never on a message; no client draws them (`Bridge::TurnDrawings` reads
+  them). An older worker's end event has neither.
+
   A `turn_completed` frame omits `result`; `turn_summary.output` carries the answer:
 
   ```

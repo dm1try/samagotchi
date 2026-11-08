@@ -720,7 +720,10 @@ module Samagotchi
     # (its limit goes in last_turn). The end event names its turn
     # (`turn_id:`, as :turn_started does) and, for a Verify turn,
     # `verify: true` (its opening's stamp: a page watching it live offers
-    # no Revise on its answer, verdict or not, as a reload does).
+    # no Revise on its answer, verdict or not, as a reload does). When the
+    # turn keeps messages, the event also names its own range in them,
+    # `kept[kept_from...kept_to]` (display-side: Bridge::TurnDrawings
+    # reads it; no message gains a key).
     def end_turn(turn, outcome, save: false, exhausted: false)
       seconds = turn.elapsed
       turn.outcome = outcome
@@ -729,6 +732,7 @@ module Samagotchi
         event[:turn_id] = turn.id
         event[:verify] = true if turn.verify
         revises = @verify_anchors.stamp_opening(kept, turn, outcome)
+        kept_range!(event, turn, kept)
         replace_session_messages(turn.session, kept) if kept
         verdict = @verify_anchors.record_verdict(turn, outcome)
         event[:verdict] = verdict if verdict
@@ -745,6 +749,20 @@ module Samagotchi
       @metrics.persist(state_dir: session_state_dir)
     end
     private :end_turn
+
+    # The end event's kept_from/kept_to (#end_turn): only when the turn
+    # keeps messages and its start is known (#turn_messages ran). An ending
+    # that replaces an earlier turn's note at the history's tail
+    # (TurnNote.replace_trailing on a Continue stopped before its first step)
+    # leaves only system messages and its own note after it, so the range
+    # still starts at or before the turn's note and draws nothing else.
+    def kept_range!(event, turn, kept)
+      return unless kept && turn.history_size
+
+      event[:kept_from] = turn.history_size
+      event[:kept_to] = kept.size
+    end
+    private :kept_range!
 
     # What a notice may stand in for (hook_notify's fallback_for:).
     NOTICE_FALLBACKS = HookRoutes::NOTICE_FALLBACKS
@@ -808,8 +826,11 @@ module Samagotchi
     # +wall+: the wall time it started (MessageTime.now, once): the
     # :turn_started event's at and its user message's (and reminders') stamp.
     # +verify+, +revises+: a Verify turn's claim, a Revise turn's draft.
+    # +history_size+: turn.messages' size under the system head, before
+    # the reminders and the prompt (#turn_messages): where the turn's own
+    # messages start in what it keeps (the end event's kept_from).
     Turn = Struct.new(:context, :prompt, :continue, :on_event, :started_at, :messages, :ended, :prepared_settings,
-                      :limit, :resumed, :resume_from, :wall, :verify, :revises, :outcome) do
+                      :limit, :resumed, :resume_from, :wall, :verify, :revises, :outcome, :history_size) do
       # The turn's id (:turn_started's turn_id, its metrics record's id and
       # its saved prompt's), session, origin and controller: its context's.
       def id = context.id
@@ -1126,6 +1147,9 @@ module Samagotchi
       # Built once per Engine (and again after a model switch) so the prompt
       # prefix, and the model server's KV cache for it, stay stable.
       turn.messages = ContextNote.with_system_head(turn.messages, { role: "system", content: system_prompt })
+      # Where the turn's own messages start (the end event's kept_from):
+      # after the head this may have added, before the reminders and prompt.
+      turn.history_size = turn.messages.size
       # Explicit --memory preloads are now known after system prompt build.
       @used_memories.add(activated_memory_names).absorb(session)
 
