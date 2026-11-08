@@ -3,6 +3,7 @@
 require_relative "index_updater"
 require_relative "manifest"
 require_relative "memory_files"
+require_relative "file_actions"
 require_relative "merger"
 require_relative "provenance"
 require_relative "trash"
@@ -17,7 +18,8 @@ module Samagotchi
     # scripts, and GuardrailWiring#rules stats per tool call, so a live session
     # could hit a transient deny.
     #
-    # Each marked file, by what Merger::Upgrade says of it:
+    # Each marked file, by its FileState and REMERGE row (FileActions; a
+    # :decide cell by what Merger::Upgrade says of it):
     #   - not shipped now: its mark, base and text stay, and it reads as behind
     #     unless level or missing, as every report has it;
     #   - the shipped text isn't the one the mark names (a checkout at the same
@@ -90,22 +92,33 @@ module Samagotchi
           return
         end
 
-        incoming_sha = Merger.digest(view.paths(key)[:incoming])
-        if entry[:incoming_sha] && entry[:incoming_sha] != incoming_sha
+        state = view.state(key)
+        if state.source_moved?
           @behind << @record.behind_entry(key, entry) if behind
           return
         end
 
-        outcome = view.outcome(key)
-        case outcome.status
-        when :merged then merge_file(key, entry, outcome)
-        when :conflict then mark(key, entry, view.behind(key, outcome, @record.version))
-        when :noop, :keep then @settled << key
-        when :fast_forward then mark(key, entry, behind_for(key, FileStanding::WAITS_FOR_UPGRADE))
-        when :install then @warnings << "#{key}: #{FileStanding::FILE_MISSING}"
-        end
+        retry_row(key, entry, state, FileActions.for(:remerge, state))
       rescue SystemCallError => e
         stay(key, FileStanding.left_as_it_is(e.message))
+      end
+
+      # The file's REMERGE row, done. A :decide cell, and a behind one, asks
+      # Merger::Upgrade#decision for the Outcome (the text merge, the legacy
+      # guard, or why no merge is possible); a fast-forward waits for the
+      # upgrade. A missing file is put back by the next upgrade or a restore;
+      # one it can't read raises here (left as it is, saying why).
+      def retry_row(key, entry, state, action)
+        decision = view.decision(key, state) if action.do == :decide || action.behind?
+        action = FileActions.decided(decision.outcome, :remerge) if action.do == :decide
+        if action.do == :merge then merge_file(key, entry, decision.outcome)
+        elsif action.behind?
+          waits = decision.outcome.status == :fast_forward
+          mark(key, entry, waits ? behind_for(key, FileStanding::WAITS_FOR_UPGRADE) : view.behind(key, decision.outcome, @record.version))
+        elsif action.word == :settled then @settled << key
+        elsif state.kind == :missing then @warnings << "#{key}: #{FileStanding::FILE_MISSING}"
+        elsif state.kind == :unreadable then FileDigest.hex(state.paths[:current])
+        end
       end
 
       def behind_for(key, why) = FileStanding::Behind.new(file: key, version: @record.version, why: why)

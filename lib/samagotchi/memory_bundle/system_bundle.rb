@@ -204,15 +204,28 @@ module Samagotchi
       # A file from the bundle missing on disk (the user deleted it) is put
       # back, and nothing else: at the same version a checkout can carry other
       # text, so no other file is merged here (Remerge has its guard), and a live
-      # session's guardrails, plugin and scripts stay where they are.
+      # session's guardrails, plugin and scripts stay where they are. Which
+      # missing file is put back is its RESTORE row (FileActions): one the
+      # record doesn't own too.
       def verify_files_present(gem_manifest, version, dry_run)
         target_dir = MemoryPaths.system_dir
         missing = MemoryFiles.select(GEM_BUNDLE_DIR, gem_manifest).reject { |key| File.exist?(File.join(target_dir, key)) }
+        missing = restored_rows(missing, target_dir) unless missing.empty?
         return result(:up_to_date, from: version, to: version) if missing.empty?
         return result(:restored, from: version, to: version) if dry_run
 
         warnings = missing.filter_map { |key| restore_file(key, gem_manifest.file_descriptions[key]) }
         result(:restored, from: version, to: version, warnings: warnings)
+      end
+
+      # The ones among +keys+ whose FileState's RESTORE row restores.
+      def restored_rows(keys, target_dir)
+        provenance = Provenance.new(name: BUNDLE_NAME)
+        record = provenance.record
+        keys.select do |key|
+          state = FileState.of(key, record: record, provenance: provenance, target_dir: target_dir, source_dir: GEM_BUNDLE_DIR)
+          FileActions.for(:restore, state)&.do == :restore
+        end
       end
 
       # @return [String, nil] a warning: the file is in place, its index line isn't
