@@ -81,8 +81,15 @@ With `--format json` stdout is one JSON object (see
 when the wait is about a known turn, it includes `turn_id`. Use
 `chi send --wait --format json --turn <turn_id> <session_id>` to wait for
 that exact turn again after exit 4, or after exit 3 if someone else will
-answer the question. A turn id can name the running turn, a queued turn or
-the last turn that ended; any other id is an error.
+answer the question. A turn id can name the running turn, a queued turn,
+the last turn that ended, or a message a running turn merged (waited for as
+that turn); any other id is an error. A turn nobody typed (a
+reminder, an attached context change, a finished task, a delegate report: a
+wake turn) has an id its worker made, `wake-` and 16 hex digits, so
+`chi send --wait` with no message names it too and `--turn` waits for it. A
+message merged into a running turn (a steer) gets that turn's reply or end;
+its `turn_id` stays the message's own, and `--turn` with it waits for that
+turn again.
 
 ```json
 {"status":"question","session_id":"297da360-…","question":{"id":"3f1c…","kind":"question",

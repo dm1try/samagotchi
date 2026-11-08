@@ -43,28 +43,24 @@ module Samagotchi
         new(turn: delivered.enqueued_id, report_turn_id: delivered.enqueued_id, **reads)
       end
 
-      # A message to an existing session. --queue: its own turn, the ack's
-      # id, also when the turn running at the check ended before it went in
-      # (an idle worker's ack says next_step, and the file still runs as
-      # that turn). A file fallback's id names its turn too, and so does a
-      # plain message to an idle session, as #first_message's. Otherwise
-      # (a session left running by a dead worker, the busy check's owner
-      # gone) the next reply, reported as the turn that was running when it
-      # went in (start's own_turn, ReplyWait.own_turn). A plain message the
-      # worker queued (its ack says queue: a participant's review turn was
-      # running, which takes no steer) is a --queue's.
+      # A message to an existing session: its own turn, the ack's id. With
+      # --queue it runs as that turn, also when the turn running at the
+      # check ended before it went in (an idle worker's ack says next_step,
+      # and the file still runs as that turn). A plain one may run as its
+      # own turn or merge into a running one (a session left running by a
+      # dead worker, the busy check's owner gone; or a turn starting then):
+      # that turn's end is its answer (ReplyWait's follow_merge). A plain
+      # message the worker queued (its ack says queue: a participant's
+      # review turn was running, which takes no steer) is a --queue's. An
+      # ack with no id (an older worker): the next reply, reported as the
+      # turn that was running when it went in (start's own_turn).
       # @param start [SessionAccess::WaitStart] read before it went in (its
       #   running says the session was running then)
       def self.message(start, delivered, queue:)
-        running = start.running
         queue ||= delivered.delivery == Delivery::QUEUE
-        turn = delivered.enqueued_id if queue || delivered.file? || !running
-        report = if queue then turn
-                 elsif running then start.own_turn
-                 else delivered.enqueued_id
-                 end
-        new(turn: turn, report_turn_id: report, queued: queue && !turn.nil?, cursor: start.cursor,
-            baseline: start.baseline, owner_grace: ReplyWait::GONE_AFTER)
+        turn = delivered.enqueued_id
+        new(turn: turn, report_turn_id: turn || (start.own_turn if start.running && !queue), queued: queue && !turn.nil?,
+            cursor: start.cursor, baseline: start.baseline, owner_grace: ReplyWait::GONE_AFTER)
       end
 
       # --wait with no message: --turn's (+requested+), or the turn running

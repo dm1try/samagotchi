@@ -18,9 +18,14 @@ and commands may change between minor versions. How releases are made:
 - `chi sessions list` prints one line wherever it runs: the `--live`, `--cwd` and `--format text` listings and `chi --remote NAME sessions list` show the plain list's state (`idle`, not `live`) and description (no folder prefix), and the plain list's footer. The plain list's `ctx N%` now rounds as the picker and chi web round it (it could read 1% apart).
 - A delegating parent's wait says `worker_gone` 5 s after a child's worker dies (was 15 s); a child whose worker never starts is reported `worker_gone` ("its worker did not start") after the 30 s boot limit (or the wait's timeout, if shorter: then the child shows as `running`, as for any wait that timed out).
 - In chi web, a long tool output's hover shows the same cut live as after a reload (the first 2000 characters of a file read, the start and end of other output).
+- A turn nobody typed (a reminder, an attached context change, a finished task, a delegate report) has an id of its own, `wake-` and 16 hex digits: `chi send --wait --format json` names it as the `turn_id`, and the `--turn` hints carry it.
+- `chi send --wait -m` to a session left running by a worker that died names the message's own id as the `turn_id` in `--format json`, where it named the running turn's.
 
 ### Fixed
 
+- A `delegate` follow-up that the child's ending turn didn't take gets its own turn's reply, not the ended turn's.
+- `chi send --wait` with no message on a wake turn (a reminder, a context change, a task's finish, a delegate report) names its `turn_id`, ends `canceled` (`worker_stopped`) when its worker dies in it, and `--turn` waits for it.
+- A message or a delegate follow-up merged into a running turn as a steer waits for that turn's reply or end, which the worker now records, not for the session's next reply (a newer turn's could answer for it).
 - `chi bundle uninstall` asks for `--force` before taking a memory you edited that has no base copy (chi compares it with the checksum its install recorded; with neither, it counts as edited), as it does for any edited file; it used to move it to the trash without asking.
 - `chi bundle status` says `modified` for an edited memory that has no base copy; it said `ok` while the next upgrade left the file behind.
 - `chi update`'s plan names every edited hook, rule, plugin file and script it replaces or removes, as its `Copied to the trash first` line does; it left out edited scripts and hooks installed with no recorded sha, and its row now says `a copy goes to the trash first` instead of `it wasn't loading`.

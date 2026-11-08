@@ -991,6 +991,143 @@ RSpec.describe Samagotchi::ReplyWait do
         expect(wait(baseline: base, turn: "y1").text).to eq("y1 answer")
       end
 
+      # A worker from after 0.156 says which turn took it
+      # (SessionInbox.mark_merged, before the claimed file goes): the wait
+      # waits for that turn, not for the next reply. Without the record (a
+      # 0.156 worker) the examples above infer it.
+      describe "with its merge record (input/merged/<id>)" do
+        def merge(id, into:)
+          Samagotchi::SessionInbox.mark_merged(dir, id, into: into)
+          absorb(id, by: into)
+        end
+
+        def run_turn(id)
+          s = Samagotchi::Session.load(session.id, state_dir: tmpdir)
+          s.status = "running"
+          s.interrupted_turn = { "iteration" => 1, "enqueued_id" => id }
+          s.save(state_dir: tmpdir)
+        end
+
+        it "ends on that turn's end, not on a next turn's reply" do
+          plain_input("y1")
+          base = baseline
+          later do
+            merge("y1", into: "a1")
+            looked(2)
+            end_turn("a1") # no reply
+            run_turn("q2")
+            write_turn_reply("q2 answer", "q2")
+          end
+
+          expect(wait(baseline: base, turn: "y1").to_h).to include(status: :no_reply, outcome: "completed")
+        end
+
+        it "returns that turn's reply, not a newer one written before it" do
+          plain_input("y1")
+          base = baseline
+          later do
+            merge("y1", into: "a1")
+            looked(2)
+            write_reply("someone else's answer")
+            looked(2)
+            write_turn_reply("a1 answer", "a1")
+            end_turn("a1")
+          end
+
+          expect(wait(baseline: base, turn: "y1").text).to eq("a1 answer")
+        end
+
+        it "ends canceled (worker_stopped) when that turn's worker died in it and the next one settled it" do
+          plain_input("y1")
+          base = baseline
+          later do
+            Samagotchi::SessionInbox.mark_merged(dir, "y1", into: "a1")
+            FileUtils.rm_f(claim("y1"))
+            s = Samagotchi::Session.load(session.id, state_dir: tmpdir)
+            s.status = "running"
+            s.interrupted_turn = Samagotchi::InterruptedTurn.new(started_at: Time.now.iso8601(3), iteration: 1, enqueued_id: "a1")
+            s.save(state_dir: tmpdir)
+            looked(2)
+            s = Samagotchi::Session.load(session.id, state_dir: tmpdir)
+            Samagotchi::TurnCheckpoint.settle(s, session_dir: dir)
+            s.save(state_dir: tmpdir)
+          end
+
+          expect(wait(baseline: base, turn: "y1").to_h).to include(status: :no_reply, outcome: "canceled",
+                                                                   cancel_reason: "worker_stopped")
+        end
+
+        it "follows it into a turn already over at its first look: that turn's end, or no_reply once a later turn ended" do
+          plain_input("y1")
+          base = baseline
+          merge("y1", into: "a1")
+          write_turn_reply("a1 answer", "a1")
+          end_turn("a1")
+          expect(wait(baseline: base, turn: "y1", timeout: 2).text).to eq("a1 answer")
+
+          plain_input("y2")
+          base = baseline
+          merge("y2", into: "a2")
+          end_turn("a2")
+          sleep(0.01) # sleep-ok: the later turn's ended_at must come after the record's at (ms precision)
+          end_turn("x3")
+          expect(wait(baseline: base, turn: "y2", timeout: 2).to_h).to include(status: :no_reply, outcome: nil)
+        end
+
+        it "says that turn's question is the answer's, and no other turn's" do
+          own_by_worker
+          plain_input("y1")
+          base = baseline
+          later do
+            merge("y1", into: "a1")
+            looked(2)
+            set(pending_question: { id: "q-a1", kind: "ask", question: "Which?" })
+          end
+
+          expect(wait(baseline: base, turn: "y1").question).to have_attributes(id: "q-a1")
+        end
+
+        # A dequeue's tombstone that lost the claim to a drain (the merge
+        # done, its file gone, before the dequeue takes the tombstone back).
+        it "never reads a merged input as removed, even with a stray tombstone" do
+          plain_input("y1")
+          base = baseline
+          merge("y1", into: "a1")
+          FileUtils.mkdir_p(File.join(dir, "input", "removed"))
+          File.write(File.join(dir, "input", "removed", "y1"), "")
+          later do
+            write_turn_reply("a1 answer", "a1")
+            end_turn("a1")
+          end
+
+          expect(wait(baseline: base, turn: "y1").text).to eq("a1 answer")
+        end
+
+        it "names it a known turn (chi send --wait --turn), as its merge record says" do
+          plain_input("y1")
+          merge("y1", into: "a1")
+          loaded = Samagotchi::Session.load(session.id, state_dir: tmpdir)
+          expect(described_class.known_turn?(loaded, session_dir: dir, turn: "y1")).to be(true)
+          expect(described_class.known_turn?(loaded, session_dir: dir, turn: "y2")).to be(false)
+        end
+
+        it "never follows a queued input's record (it runs as its own turn)" do
+          queue_input("q1")
+          base = baseline
+          Samagotchi::SessionInbox.mark_merged(dir, "q1", into: "a1")
+          later do
+            claim("q1")
+            run_turn("q1")
+            write_turn_reply("a1 answer", "a1")
+            looked(2)
+            write_turn_reply("q1 answer", "q1")
+            end_turn("q1")
+          end
+
+          expect(wait(baseline: base, turn: "q1", queued: true).text).to eq("q1 answer")
+        end
+      end
+
       it "never takes another turn for a queued input: taken, it waits through the idle moment before its own turn" do
         queue_input("q1")
         base = baseline

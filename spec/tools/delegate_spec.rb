@@ -931,14 +931,15 @@ RSpec.describe "delegate tools" do
           allow(Samagotchi::SessionManager).to receive(:deliver_turn).and_return(Samagotchi::SessionManager::DeliverResult.new(status: :accepted, via: :bridge, ack: { "enqueued_id" => id }))
         end
 
-        it "is the running turn's (the follow-up merges into it), whose reply the wait takes over a queued turn's newer one" do
+        it "is its own id while a turn runs; merged into it (its record), the wait takes that turn's reply over a queued turn's newer one" do
           sidecar(%w[delivery turn_ids])
           run_turn("x1")
           deliver_acking("f1")
 
           expect(described_class.call("and this", session: child.id, wait: false, peers: peers)).to include("status: running")
-          expect(cursor.turn).to eq("x1")
+          expect(cursor.turn).to eq("f1")
 
+          Samagotchi::SessionInbox.mark_merged(child_dir, "f1", into: "x1")
           turn_reply("x1 with the follow-up", "x1")
           end_turn("x1")
           turn_reply("queued answer", "q1")
@@ -946,6 +947,28 @@ RSpec.describe "delegate tools" do
           expect(out).to end_with("---\nx1 with the follow-up")
           # Reported: the next wait looks for a later turn, the reply not repeated.
           expect(cursor.turn).to be_nil
+        end
+
+        # The running turn ended before its drain took the follow-up: it
+        # runs as a turn of its own, whose reply is the answer.
+        it "gets its own turn's reply when the running turn ended without taking it, not the ended turn's" do
+          sidecar(%w[delivery turn_ids])
+          run_turn("x1")
+          deliver_acking("f1")
+          Samagotchi::SessionInbox.write_input(child_dir, prompt: "and this", enqueued_id: "f1")
+          described_class.call("and this", session: child.id, wait: false, peers: peers)
+
+          turn_reply("x1 answer", "x1")
+          end_turn("x1")
+          later do
+            file = Samagotchi::SessionInbox.find_new_input_files(child_dir).first
+            processing = Samagotchi::SessionInbox.claim_input_file(file)
+            run_turn("f1")
+            turn_reply("f1 answer", "f1")
+            end_turn("f1")
+            FileUtils.rm_f(processing)
+          end
+          expect(Samagotchi::Tools::DelegateResult.call(session: child.id, timeout: 5, peers: peers)).to end_with("---\nf1 answer")
         end
 
         it "is the ack's id when the child is idle (the follow-up runs as its own turn)" do
@@ -957,7 +980,7 @@ RSpec.describe "delegate tools" do
           expect(cursor.turn).to eq("f1")
         end
 
-        it "is none from a worker without turn_ids, or a running turn with no id (a delegate's first)" do
+        it "is none from a worker without turn_ids; its own id beside a running turn with no id" do
           sidecar(%w[delivery])
           deliver_acking("f1")
           described_class.call("and this", session: child.id, wait: false, peers: peers)
@@ -966,7 +989,7 @@ RSpec.describe "delegate tools" do
           sidecar(%w[delivery turn_ids])
           run_turn(nil)
           described_class.call("and that", session: child.id, wait: false, peers: peers)
-          expect(cursor.turn).to be_nil
+          expect(cursor.turn).to eq("f1")
         end
 
         it "is kept through a question the turn asks, and cleared once its end is reported" do
@@ -974,10 +997,11 @@ RSpec.describe "delegate tools" do
           run_turn("x1")
           deliver_acking("f1")
           described_class.call("and this", session: child.id, wait: false, peers: peers)
+          Samagotchi::SessionInbox.mark_merged(child_dir, "f1", into: "x1")
           set_status(child, "running", pending_question: { id: "q9", question: "Which one?", options: %w[A B] })
 
           expect(Samagotchi::Tools::DelegateResult.call(session: child.id, timeout: 2, peers: peers)).to include("status: question")
-          expect(cursor.turn).to eq("x1")
+          expect(cursor.turn).to eq("f1")
 
           set_status(child, "running", pending_question: nil)
           later do

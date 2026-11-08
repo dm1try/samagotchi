@@ -216,7 +216,8 @@ module Samagotchi
     end
 
     # Whether +turn+ is a turn the caller can wait for: running now, queued
-    # as its own turn, or the last one to have ended.
+    # as its own turn, the last one to have ended, or an input a turn's
+    # drain merged (its merge record: the wait follows it to that turn).
     def known_turn?(session, session_dir:, turn:)
       id = turn.to_s
       return false if id.empty?
@@ -224,7 +225,7 @@ module Samagotchi
       running = session.status == Session::STATUS_RUNNING && session.interrupted_turn&.enqueued_id == id
       queued = SessionInbox.waiting_input(session_dir, id) == :turn_end
       ended = session.last_turn&.enqueued_id == id || !TurnCheckpoint.settled_turn(session_dir, id).nil?
-      running || queued || ended
+      running || queued || ended || !SessionInbox.merged_into(session_dir, id).nil?
     end
 
     # Whether the session's live worker names TURN_IDS_FEATURE.
@@ -292,6 +293,18 @@ module Samagotchi
 
       ended = session.last_turn&.ended_at
       !ended.nil? && ended != own_base
+    end
+
+    # Whether the session's last turn ended after +at+ (a Time): a turn
+    # that isn't own_turn_end's (its last_turn is checked first) ended
+    # after the turn a merge record named began, so that turn is over.
+    # Clock skew can't fire it: +at+ and every ended_at come from the
+    # same machine's clock (its workers'; a remote wait's Poll runs there).
+    def ended_after?(session, at)
+      ended = session.last_turn&.ended_at
+      !ended.to_s.empty? && Time.iso8601(ended.to_s) > at
+    rescue ArgumentError
+      false
     end
 
     # @return [Result, nil] :done with the reply of the turn that ran the

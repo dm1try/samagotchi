@@ -676,13 +676,14 @@ module Samagotchi
       save_or_log(:interrupted_turn) { save_session }
     end
 
-    # The per-input tombstones (removed, settled) older than
+    # The per-input tombstones (removed, settled, merged) older than
     # SessionInbox::TOMBSTONE_MAX_AGE, once per worker start: they only go
     # with the session dir otherwise.
     def prune_tombstones
       removed = SessionInbox.prune_removed(@session_dir)
       settled = TurnCheckpoint.prune_settled(@session_dir)
-      Log.info(:worker, "tombstones_pruned", removed: removed, settled: settled) if (removed + settled).positive?
+      merged = SessionInbox.prune_merged(@session_dir)
+      Log.info(:worker, "tombstones_pruned", removed: removed, settled: settled, merged: merged) if (removed + settled + merged).positive?
     end
 
     # A saved parent_answers that isn't a level reads as hard on every
@@ -910,13 +911,30 @@ module Samagotchi
       # A failure has no prompt to hand back (the Engine announced
       # :turn_failed). The offer went before the turn
       # (ContinueOffer#drop); either way the rollback window closes.
-      run_engine_turn(nil, continue: true, origin: REMINDER_ORIGIN,
+      run_engine_turn(nil, continue: true, origin: wake_origin(REMINDER_ORIGIN),
                            max_iterations: IterationLimit.for) { @turn_flow.after_reminder_turn }
       true
     end
 
-    # A reminder turn's origin: chi's own (system:reminder).
+    # A reminder turn's origin: chi's own (system:reminder). Its run gets
+    # an id of its own (#wake_origin); this constant has none.
     REMINDER_ORIGIN = TurnOrigin.new(client_id: ClientId::REMINDER)
+
+    # A turn nobody typed (a reminder, a wake) with an enqueued_id of its
+    # own, minted here as it runs, so its checkpoint mark, last_turn, reply
+    # file and settle name it (a wait with no message binds it:
+    # ReplyWait.own_turn). Never on the origin constants nor on
+    # ChildReports::Report#origin: a report merged into a turn keeps an
+    # id-less origin, which the web page reads as a report (turn_events.js
+    # promptOps), not as an unmatched steer.
+    # @return [TurnOrigin] +origin+ with an id ("wake-<16 hex>")
+    def wake_origin(origin)
+      origin.enqueued_id ? origin : origin.with(enqueued_id: "#{WAKE_ID_PREFIX}#{SecureRandom.hex(8)}")
+    end
+
+    # A wake turn's minted enqueued_id starts with this
+    # (SessionInbox::ENQUEUED_ID_NAME).
+    WAKE_ID_PREFIX = "wake-"
 
     # :due when an idle parent should run a turn for its delegate
     # children's reports now (session.delegate_reports: wake): rings wait,
@@ -976,7 +994,7 @@ module Samagotchi
     def run_wake(origin:, failed:, kept: nil, mark: nil)
       @turn_flow.before_prompt_turn
       restores = @turn_flow.restores
-      run_engine_turn(nil, continue: true, origin: origin, id: mark&.turn_id,
+      run_engine_turn(nil, continue: true, origin: wake_origin(origin), id: mark&.turn_id,
                            max_iterations: IterationLimit.for) do |result, error|
         if error
           steps_kept = @turn_flow.prompt_turn_failed(error: error, wake: failed, wake_kept: kept) == :kept
@@ -1331,6 +1349,8 @@ module Samagotchi
       origin = fresh_origin(turn_args[:origin])
       # Settled here: the checkpoint's prompt carries it from the start.
       turn_args = turn_args.merge(origin: origin, id: turn_args[:id] || SecureRandom.uuid)
+      # The id its drain's merge records name (SessionInbox.mark_merged).
+      @turn_enqueued_id = origin.enqueued_id
       verdicts_before = @session.verdicts.size
       @reporting_turn = reports_to_parent?(origin)
       # A participant's review turn merges no input (#pending_input_drain).
@@ -1540,6 +1560,9 @@ module Samagotchi
           begin
             input = SessionInbox.read_input(claimed_file)
             prompt = input.prompt.to_s.strip
+            # Which turn took it, on disk before its file goes (a wait for
+            # it reads this, not an inference: ReplyWait::Poll#follow_merge).
+            SessionInbox.mark_merged(@session_dir, input.origin.enqueued_id, into: @turn_enqueued_id) unless prompt.empty?
             prompt.empty? ? nil : [prompt, input.origin]
           ensure
             FileUtils.rm_f(claimed_file)

@@ -292,7 +292,10 @@ RSpec.describe Samagotchi::Worker do
 
       prompt, started_at, kwargs = next_turn
       expect(prompt).to be_nil
-      expect(kwargs).to include(continue: true, origin: Samagotchi::TurnOrigin.new(client_id: "system:reminder"))
+      expect(kwargs).to include(continue: true)
+      # Its own id, minted as it runs; the constant keeps none.
+      expect(kwargs[:origin]).to have_attributes(client_id: "system:reminder", enqueued_id: /\Awake-\h{16}\z/)
+      expect(described_class::REMINDER_ORIGIN.enqueued_id).to be_nil
       expect(started_at - called_at).to be < time_bound(5, below: 60)
       expect(Dir.children(File.join(session_dir, Samagotchi::SessionInbox::INPUT_DIR))).to be_empty
       expect(engine.due_reminder_names).to be_empty
@@ -498,6 +501,47 @@ RSpec.describe Samagotchi::Worker do
         conversation = []
         Samagotchi::Steer.inject!(conversation, -> { lines.first(1) }, iteration: 1, emit: ->(_) {}, cancel_controller: nil)
         expect(conversation).to eq([{ role: "user", kind: "input", source: "chi_send", content: "line 0", at: message_at }])
+      end
+
+      it "records each input it merges into the turn's enqueued_id (input/merged/), before the claimed file goes" do
+        on_disk = {}
+        allow(FileUtils).to receive(:rm_f).and_wrap_original do |original, path, *rest|
+          if path.to_s.end_with?(".json.processing")
+            on_disk[File.basename(path.to_s)] = Samagotchi::SessionInbox.merged_into(session_dir, "m1")&.into
+          end
+          original.call(path, *rest)
+        end
+        allow(engine).to receive(:run_turn) do |_session, prompt, **kwargs|
+          if prompt == "task"
+            Samagotchi::SessionInbox.write_input(session_dir, prompt: "steer", client_id: "cli:send", enqueued_id: "m1")
+            Samagotchi::SessionInbox.write_input(session_dir, prompt: "no id", client_id: "cli:send")
+          end
+          turns << [prompt, mono, kwargs[:pending_input].call]
+          result
+        end
+        start_worker(poll_interval: 0.02)
+        Samagotchi::SessionManager.write_turn_input(session.id, prompt: "task", client_id: "web:x", enqueued_id: "host-1",
+                                                                state_dir: tmpdir)
+
+        expect(next_turn&.last&.map(&:text)).to eq(["steer", "no id"])
+        expect(on_disk.values).to include("host-1")
+        merged_dir = File.join(session_dir, Samagotchi::SessionInbox::INPUT_DIR, Samagotchi::SessionInbox::MERGED_DIR)
+        expect(Dir.children(merged_dir)).to eq(["m1"])
+        expect(Samagotchi::SessionInbox.merged_into(session_dir, "m1")&.into).to eq("host-1")
+        expect(Samagotchi::TurnCheckpoint.settled_turn(session_dir, "m1")).to be_nil
+      end
+
+      it "records no merge for a turn without an enqueued_id (a wait for the input infers it)" do
+        allow(engine).to receive(:run_turn) do |_session, prompt, **kwargs|
+          Samagotchi::SessionInbox.write_input(session_dir, prompt: "steer", client_id: "cli:send", enqueued_id: "m1") if prompt == "task"
+          turns << [prompt, mono, kwargs[:pending_input].call]
+          result
+        end
+        start_worker(poll_interval: 0.02)
+        Samagotchi::SessionManager.write_turn_input(session.id, prompt: "task", client_id: "web:x", state_dir: tmpdir)
+
+        expect(next_turn&.last&.map(&:text)).to eq(["steer"])
+        expect(Samagotchi::SessionInbox.merged_into(session_dir, "m1")).to be_nil
       end
 
       it "gives the turn an input_waiting: probe that peeks at a next-step line, true until the drain merges it" do

@@ -71,8 +71,14 @@ RSpec.describe Samagotchi::ReplyWait::Target do
         .to have_attributes(turn: "e1", report_turn_id: "e1", queued: true, ended_before: false)
     end
 
-    it "waits for a plain message's own turn on an idle session; on a running one, the next reply, reported as its turn's" do
+    # Running (a session left running by a dead worker: Busy.for refuses a
+    # live running turn): its own id too, merged or not (ReplyWait's
+    # follow_merge); an ack with no id (an older worker), the next reply,
+    # reported as the running turn's.
+    it "waits for a plain message's own turn, on an idle session or a running one" do
       expect(message(delivered(:bridge), queue: false, running: true, own_turn: "r0"))
+        .to have_attributes(turn: "e1", report_turn_id: "e1", queued: false)
+      expect(message(delivered(:bridge, nil), queue: false, running: true, own_turn: "r0"))
         .to have_attributes(turn: nil, report_turn_id: "r0", queued: false)
       expect(message(delivered(:bridge), queue: false, running: false))
         .to have_attributes(turn: "e1", report_turn_id: "e1", queued: false)

@@ -147,6 +147,19 @@ test("a delegate report's merge (origin child:<id8>, no enqueued_id) gets a labe
   assert.equal(promptOps(text, { myId: ME, known, unmatchedMerge: "report" })[0].state, "steered");
 });
 
+test("a wake turn's worker-minted id (wake-…) neither adds nor starts a bubble; a report merged into it stays a report", () => {
+  // A delegate report's, a reminder's, a context change's, a task's: a
+  // continue turn with no prompt, its origin carrying the turn's own id.
+  const wakeOrigin = { client_id: "child:3f2a1c9e", enqueued_id: "wake-0123456789abcdef" };
+  const knownNone = { myId: ME, known: () => false };
+  assert.deepEqual(promptOps({ type: "turn_started", prompt: null, continue: true, origin: wakeOrigin, turn_id: "t1" }, knownNone), []);
+  assert.deepEqual(promptOps({ type: "turn_started", prompt: null, continue: true, origin: { client_id: "system:reminder", enqueued_id: "wake-fedcba9876543210" } }, knownNone), []);
+  // The reports it merges keep id-less origins (never the wake id): a
+  // report op, not an unmatched steer.
+  const merged = { type: "input_merged", count: 2, origins: [{ client_id: "child:3f2a1c9e" }, { client_id: "child:77aa00bb" }] };
+  assert.deepEqual(promptOps(merged, knownNone), [{ op: "report" }]);
+});
+
 import { snapshotEvents } from "../../../lib/samagotchi/web/public/turn_events.js";
 
 // Shared contract: spec/shared/turn_snapshot.json, the running turn a join

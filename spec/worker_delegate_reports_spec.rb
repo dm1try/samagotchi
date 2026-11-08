@@ -548,7 +548,8 @@ RSpec.describe Samagotchi::Worker, "delegate reports" do
 
         prompt, kwargs, lines = pop!(wake_turns, "the wake turn")
         expect(prompt).to be_nil
-        expect(kwargs).to include(continue: true, origin: Samagotchi::TurnOrigin.new(client_id: "child:#{child.id[0, 8]}"))
+        expect(kwargs).to include(continue: true)
+        expect(kwargs[:origin]).to have_attributes(client_id: "child:#{child.id[0, 8]}", enqueued_id: /\Awake-\h{16}\z/)
         # A new reason to act, not a step-limit Continue: it doesn't resume
         # the run before it (its reasoning isn't sent back).
         expect(kwargs).not_to have_key(:resume_from)
@@ -559,6 +560,28 @@ RSpec.describe Samagotchi::Worker, "delegate reports" do
         wait_for("the report's ring to be taken") { rings.empty? }
         loop_rounds
         expect(wake_turns).to be_empty
+      end
+
+      it "runs it under a wake id of its own (mark, reply file); the merged report's origin stays id-less" do
+        replied = instance_double(Samagotchi::LLM::ModelResult, output: "on it", canceled?: false, resumable?: false)
+        marks = Queue.new
+        allow(engine).to receive(:run_turn) do |_session, prompt, **kwargs|
+          lines = kwargs[:pending_input].call
+          marks << Samagotchi::Session.load(parent.id, state_dir: tmpdir).interrupted_turn&.enqueued_id
+          wake_turns << [prompt, kwargs, lines]
+          replied
+        end
+        start_worker(parent)
+        child_answers("found it")
+
+        _prompt, kwargs, = pop!(wake_turns, "the wake turn")
+        id = kwargs[:origin].enqueued_id
+        expect(id).to match(/\Awake-\h{16}\z/)
+        expect(pop!(marks, "the wake turn's mark")).to eq(id)
+        merged = nil
+        wait_for("the input_merged event") { merged = drain.find { |e| e[:type] == :input_merged } }
+        expect(merged[:origins]).to eq([{ client_id: "child:#{child.id[0, 8]}" }])
+        wait_for("the wake turn's reply") { Samagotchi::SessionInbox.reply_for(parent_dir, id) }
       end
 
       it "takes a parent.json written while it idles at a wake turn's start too" do

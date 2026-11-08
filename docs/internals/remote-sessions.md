@@ -104,7 +104,9 @@ registry flag (`--recap-base-url` …) is this machine's config: `LOCAL_ONLY` wi
    there, so a `timeout` answer carries the slice's `running_look` (`ReplyWait::RunningLook`: the running turn it saw
    with its checkpoint mark, `{last_end, claimed}`, else null) and the client sends it back on the next slice, as is:
    a dead worker's turn settled between two slices ends the wait `canceled` (`worker_stopped`) as it does locally,
-   not at the timeout. A 503 `server_stopping` (chi web
+   not at the timeout. `running_look` is needed only for a 0.156 worker: a newer one names a wake turn (`wake-…`)
+   and records a steer's merge (`input/merged/`), so a wait binds the turn's id and its settle ends it; it goes
+   two releases on (the wire keeps accepting it and ignores it then). A 503 `server_stopping` (chi web
    shutting down mid-wait: `ReplyWait`'s `cancelled:` returns `:canceled`) is retried after `RETRY_AFTER` (1 s).
    `HTTPTransport::READ_TIMEOUT` (75 s) is set above the longest answer, a wait slice or a create's wait for its worker.
 6. **The report.** `ParentReport.report` prints it as it does locally. It uses `Remote#parent_strategy`, which
