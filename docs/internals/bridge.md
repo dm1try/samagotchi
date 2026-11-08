@@ -27,13 +27,19 @@ whose seq a cursor is) and its **secret**; both are published in `bridge.json` (
 
 A joining UI must draw a turn already half done, and the ring may have dropped its early events. The accumulator
 folds the event log into one hash, `current_turn`: the prompt, `turn_id`, origin, `at`, and ordered `parts`
-(generation, thinking, text, tool, input, steer, reminder, notice), plus `pending_question`. A tool part keeps its
+(generation, thinking, text, tool, input, steer, reminder, notice, card), plus `pending_question`. A tool part keeps its
 row fields (`ToolRowFields`), its `tool_id`, its output cut head-and-tail at `ToolOutputCut::WEB_PREVIEW_CHARS` so a
 joined row is the row a reload draws, `elapsed_ms` while it runs (the accumulator times running calls itself, `clock:`)
 and, once finished, the event's `duration_ms` (its own clock only for an older worker's event that has none). A
 `notice` part holds the event of a row that is neither text nor a tool call (`TurnNotice::FIELDS`: a hook's notice,
 the "asking again" row, a steer's cut, a ✂ row, a question and its answer), so a join replays it through the handler
-that drew it live.
+that drew it live. A `card` part is a card the turn showed in its step (`in_turn`), its latest version in its first
+one's place; `replay_events` and `join_events` skip it (a running turn's join takes its cards from CardStore), and
+only `replay_events(turn, cards: true)` (a finished turn's drawing) replays it as its `card` event.
+
+At the terminal event, before clearing, the accumulator hands a deep copy of the turn and the end event to its
+`on_turn_end:` hook (the Bridge's `TurnDrawings#append`). The hook runs under the accumulator's mutex and the
+observer lock, so it never calls back in; an error is logged (`turn_end_hook_failed`) and the fold goes on.
 
 The turn is cleared on its terminal event (`Events::TURN_END`), the same event that brings its messages into the
 session, so a snapshot shows a turn in exactly one of the two places. Beside the turn it keeps what a snapshot also

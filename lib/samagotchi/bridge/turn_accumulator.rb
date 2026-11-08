@@ -2,6 +2,7 @@
 
 require_relative "../events"
 require_relative "../kernel_loop"
+require_relative "../log"
 require_relative "../steer"
 require_relative "../tool_output_cut"
 require_relative "../tool_row_fields"
@@ -23,10 +24,17 @@ module Samagotchi
       #   its head and tail: a reload's cap, so a joined row is the row a
       #   reload draws
       # @param clock [#call] monotonic seconds: a tool call's duration
+      # @param on_turn_end [#call, nil] (turn, end_event): the turn's final
+      #   fold (a deep copy, #current_turn's shape without elapsed_ms) and its
+      #   end event, at the end event, before the turn is cleared (the Bridge's
+      #   TurnDrawings#append). It runs under this accumulator's mutex and the
+      #   SessionObserver's lock: it must never call back in here. An error is
+      #   logged and the fold goes on.
       def initialize(max_output_chars: ToolOutputCut::WEB_PREVIEW_CHARS,
-                     clock: -> { Process.clock_gettime(Process::CLOCK_MONOTONIC) })
+                     clock: -> { Process.clock_gettime(Process::CLOCK_MONOTONIC) }, on_turn_end: nil)
         @max_output_chars = max_output_chars
         @clock = clock
+        @on_turn_end = on_turn_end
         @mutex = Mutex.new
         @turn = nil
         # When each running tool call started, by [iteration, call_index].
@@ -47,13 +55,14 @@ module Samagotchi
 
       # @return [Hash, nil] a copy of the turn in progress: prompt, turn_id, origin,
       #   continue, at (its wall time), ordered parts (generation / thinking / text / tool /
-      #   input / steer / reminder / notice), pending_question and the last event_seq folded
+      #   input / steer / reminder / notice / card), pending_question and the last event_seq folded
       #   in. A finished tool part keeps the live row's action and duration_ms
       #   too, a running one the time it has run so far (elapsed_ms), so a
       #   join times its row from its start. A notice part holds the event
       #   of one of the turn's rows (TurnNotice: a hook's notice, an
       #   empty-answer retry, a question and its answer), which a UI replays
-      #   through its live handler.
+      #   through its live handler. A card part is a card the turn showed in
+      #   its step (in_turn), its latest version in the place of its first.
       def current_turn
         @mutex.synchronize do
           next nil unless @turn
@@ -132,10 +141,13 @@ module Samagotchi
       # the live activity: action, tool, params, status), a merged_input
       # (the one synthetic type) per merged prompt, a steer-only
       # pending_input_merged per steer, a reminder_injected, and a notice
-      # part's own event.
+      # part's own event. Card parts only with +cards+ (a finished turn's
+      # drawing, chi web's unfold of it): a running turn's join gets its cards
+      # from CardStore's snapshot.
       # @param started_at [String, nil] the turn's start, on turn_started
+      # @param cards [Boolean] replay card parts as their card events
       # @return [Array<Hash>] symbol keys and types; [] with no turn
-      def self.replay_events(turn, started_at: nil)
+      def self.replay_events(turn, started_at: nil, cards: false)
         return [] unless turn
 
         started = { type: :turn_started, prompt: turn[:prompt], origin: turn[:origin], continue: !!turn[:continue] }
@@ -175,6 +187,11 @@ module Samagotchi
           when "steer"
             close_text.call
             events << { type: :pending_input_merged, count: 0, content: nil, steers: [{ source: part[:source], text: part[:text] }] }
+          when "card"
+            next unless cards && part[:event].is_a?(Hash)
+
+            close_text.call
+            events << part[:event].merge(type: :card, in_turn: true)
           end
         end
         events
@@ -343,6 +360,7 @@ module Samagotchi
 
         fold_turn_event(event)
         if Events::TURN_END.include?(type)
+          turn_ended(event)
           @turn = nil
           @merged_origins = []
           @working_set = nil
@@ -425,6 +443,8 @@ module Samagotchi
           end
         when :working_set_updated
           @working_set = { items: event[:items], at: event[:at] }
+        when :card
+          fold_card(parts, event) if event[:in_turn]
         when :reminder_injected
           parts << { kind: "reminder", reminders: Array(event[:reminders]).map(&:dup) }
         when :question_requested
@@ -439,6 +459,27 @@ module Samagotchi
           end
         end
         parts << { kind: "notice", event: TurnNotice.slice(event) } if TurnNotice.notice?(event)
+      end
+
+      # The card fields a UI draws (CardStore keeps the same), a copy.
+      CARD_FIELDS = %i[id source title body level actions].freeze
+      private_constant :CARD_FIELDS
+
+      # A card the turn shows in its step; one with an earlier card's id
+      # replaces that part where it was.
+      def fold_card(parts, event)
+        card = { kind: "card", id: event[:id], event: Marshal.load(Marshal.dump(event.slice(*CARD_FIELDS))) }
+        index = parts.index { |part| part[:kind] == "card" && part[:id] == card[:id] }
+        index ? parts[index] = card : parts << card
+      end
+
+      # The turn's final fold to the hook (#initialize's on_turn_end).
+      def turn_ended(event)
+        return unless @on_turn_end
+
+        @on_turn_end.call(Marshal.load(Marshal.dump(@turn)), event)
+      rescue StandardError => e
+        Log.warn(:bridge, "turn_end_hook_failed", error: "#{e.class}: #{e.message}")
       end
 
       def append_text(iteration, kind, text)
