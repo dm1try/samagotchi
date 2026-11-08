@@ -153,7 +153,7 @@ The order matters: warnings print in it, and a plugin/script the manifest names 
    rules. A file that is a symlink or resolves outside the bundle dir (`AssetInstaller#linked?`) is skipped with a
    warning (a rule) or raises `InstallError` (the plugin, a script).
 5. An upgrade's `prune_dropped_files`: each dropped file's `FileState` (`shipped: false`) and its `UPGRADE` / `FORCE` row: unchanged (`#edited?` false) → trash; edited → kept (`kept_pruned`); owned by another bundle → kept.
-6. `verify_memory_checksums` (strict: a memory whose action takes the bundle's text, `Action#takes_source?`: installed, forced, an upgrade's or a re-install's fast-forward, or merged into a local edit; it checks the source file the write or merge takes its bytes from, so a dry run checks what it would bring in; a `Remerge` merge checks its incoming file too), `warn_missing_needs`.
+6. `verify_memory_checksums` (strict except a dev install, whose own tree may have stale shas; `chi bundle check` flags them: a memory whose action takes the bundle's text, `Action#takes_source?`: installed, forced, an upgrade's or a re-install's fast-forward, or merged into a local edit; it checks the source file the write or merge takes its bytes from, so a dry run checks what it would bring in; a `Remerge` merge checks its incoming file too), `warn_missing_needs`.
 7. `write_provenance` (manifest, not a dry run): each owned file's base comes from its action's `next_base`
    (`Installer#next_base`): the file on disk, which has the bundle's bytes; the incoming file for a merge, since the merged
    file holds the user's edit and taking it would make current == base, so the next upgrade would fast-forward over the

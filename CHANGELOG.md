@@ -20,6 +20,8 @@ and commands may change between minor versions. How releases are made:
 
 ### Fixed
 
+- `chi bundle install --dev` no longer warns of a checksum mismatch for the bundle's memories (stale shas while you
+  edit); `chi bundle check` still flags them.
 - `chi update --dry-run` now shows the same Checksum mismatch warnings as the update itself.
 - A conflicted memory that chi retries at the same version (at start, or in `chi update`) now warns when the bundle's
   file doesn't match its manifest's sha256, as an install or an upgrade does.

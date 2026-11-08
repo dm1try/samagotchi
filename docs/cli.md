@@ -136,8 +136,8 @@ The loop for a bundle you're writing (the whole path: [bundle-authoring.md](bund
   exit 2) as a link to it: its plugin, rules, scripts and `manifest.yml` are `PATH`'s own files, so an edit applies at the
   next worker or `chi web` restart with no re-install (a manifest edit to `block_renderers:` shows in chi web's next
   request; a new `scripts:` or `plugin:` entry needs `chi bundle install --dev PATH` again, since the record
-  has no entry for it), and their sha256 isn't checked, for this bundle only (the
-  record says `dev`; every other bundle is checked as before). Its memories are copied at install. `chi bundle
+  has no entry for it), and no sha256 is checked for any of its files, including its memories, for this bundle only
+  (the record says `dev`; every other bundle is checked as before). Its memories are copied at install. `chi bundle
   status` shows `NAME vX dev → /abs/path`. `chi bundle upgrade NAME` refuses it (it follows its source already; to
   leave dev mode: `chi bundle uninstall NAME`, then `chi bundle install` without `--dev`), as does a plain install
   over it, and `--dev` over a normal install. `uninstall` removes the links and the record, never `PATH`'s files.

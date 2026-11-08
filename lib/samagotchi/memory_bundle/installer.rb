@@ -573,8 +573,11 @@ module Samagotchi
       # differs from its manifest's sha256. One kept or skipped isn't checked
       # (it takes nothing from the bundle). What is checked is the source
       # file, the bytes the write or merge takes, so a dry run checks what it
-      # would bring in, never the user's bytes on disk.
+      # would bring in, never the user's bytes on disk. A dev install follows
+      # its own tree; chi bundle check flags its stale shas instead.
       def verify_memory_checksums
+        return if @dev
+
         @bundle_md.each do |file_key|
           result = @results[file_key]
           next unless result&.action&.takes_source?
