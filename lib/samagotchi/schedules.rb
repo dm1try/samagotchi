@@ -419,7 +419,10 @@ module Samagotchi
       entry = nil
       given = id_or_name.to_s.strip
       write_under_lock do |list|
-        position = list.index { |candidate| candidate.id == given || candidate.id.start_with?(given) }
+        # An id, a unique prefix of one, or the title — the same ways `lookup`
+        # and `chi schedule cancel` find an entry.
+        position = list.index { |candidate| candidate.id == given || candidate.id.start_with?(given) } ||
+                   list.index { |candidate| candidate.title.to_s.casecmp?(given) }
         next if position.nil?
 
         entry = list[position]
@@ -661,9 +664,14 @@ module Samagotchi
         stored = list[position]
         list[position] = if outcome.status == "fired"
                            # Any success clears the skip and failure counters: twelve skips
-                           # spread over months do not kill a healthy schedule.
+                           # spread over months do not kill a healthy schedule. A `date`
+                           # schedule is a one-off: it has no next occurrence, so after it
+                           # fires it is disabled rather than left due at its own moment.
+                           one_off = stored.recurrence[:kind] == "date"
                            stored.with(head: outcome.entry.head, last_result: outcome.detail, firing_since: nil,
-                                       failures: 0, skips: 0, last_fired: @clock.call.utc.iso8601)
+                                       failures: 0, skips: 0, last_fired: @clock.call.utc.iso8601,
+                                       enabled: one_off ? false : stored.enabled,
+                                       next_due: one_off ? nil : stored.next_due)
                          elsif outcome.status == "skipped"
                            skipped(stored, outcome.detail).with(firing_since: nil)
                          else

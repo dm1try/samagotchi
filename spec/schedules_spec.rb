@@ -365,6 +365,39 @@ RSpec.describe Samagotchi::Schedules do
     end
   end
 
+  it "disables a `date` schedule once it has fired: there is no next occurrence" do
+    Dir.mktmpdir("schedules-date") do |dir|
+      allow(Process).to receive(:spawn).and_return(12_345)
+      anchor = session(dir).id
+      schedules = store(dir)
+      entry = schedules.add(target: anchor, prompt: "One thing", recurrence: described_class.recurrence(date: "2026-01-01T09:00"))
+
+      expect(schedules.tick.outcomes.first.status).to eq("fired")
+
+      stored = schedules.lookup(entry.id)
+      expect([stored.enabled, stored.next_due]).to eq([false, nil])
+      expect(schedules.entries).to be_empty
+      expect(schedules.entries(include_disabled: true).map(&:last_result))
+        .to eq(["new link #{stored.head[0, 8]}"])
+    end
+  end
+
+  it "finds an entry by title for enable, disable and cancel" do
+    Dir.mktmpdir("schedules-title") do |dir|
+      anchor = session(dir).id
+      schedules = store(dir)
+      entry = schedules.add(target: anchor, prompt: "Audit", title: "Audit", recurrence: every("1h"))
+
+      expect(schedules.disable("audit").id).to eq(entry.id)
+      expect(schedules.entries).to be_empty
+      expect(schedules.entries(include_disabled: true).first.enabled).to be(false)
+      schedules.enable("Audit")
+      expect(schedules.lookup("Audit").enabled).to be(true)
+      expect(schedules.cancel("Audit").id).to eq(entry.id)
+      expect(schedules.entries).to be_empty
+    end
+  end
+
   it "skips a chain firing whose live worker has no /activity route" do
     Dir.mktmpdir("schedules-old-worker") do |dir|
       anchor = session(dir).id
