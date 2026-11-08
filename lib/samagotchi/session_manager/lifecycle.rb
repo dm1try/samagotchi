@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative "../worker_idle_exit"
+
 module Samagotchi
   class SessionManager
     # A restart that can't happen now. reason: :not_running (no live worker:
@@ -78,8 +80,8 @@ module Samagotchi
 
     # Lifecycle: stop a session's worker (TERM, then CONT) and restart it on
     # the newest chi (its Bridge's POST /exit, else the fallback). Calls
-    # SpawnPart's resume_session and the facade's ownership checks. Loaded
-    # only through samagotchi/session_manager.
+    # SpawnPart's resume_session and the facade's ownership checks. Meant to
+    # be loaded through samagotchi/session_manager.
     module LifecyclePart
       # Hand a session to a new worker on the newest chi installed: ask its
       # worker (POST /exit restart: true), which leaves only when nothing would

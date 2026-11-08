@@ -28,7 +28,7 @@ module Samagotchi
     # to run_session_loop inside it and what it does as it leaves (CROSS-VERSION
     # CONTRACT: spec/worker_contract_spec.rb). Calls SpawnPart's note_spawn and
     # resume_session, EmptinessPart's discardable? and RemovalPart's
-    # delete_session. Loaded only through samagotchi/session_manager.
+    # delete_session. Meant to be loaded through samagotchi/session_manager.
     module WorkerBootPart
       # Build the opts hash passed to Process.spawn for a forked worker. The
       # child inherits this process's ENV and reads config.yml itself (as it

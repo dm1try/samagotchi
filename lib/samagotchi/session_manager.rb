@@ -10,7 +10,8 @@ require "rbconfig"
 # (child_move, reply_wait, ...) loaded after that point, while
 # SessionManager autoloads, drops the half-built class, and the parts then
 # build another without the facade's methods (spec/require_cycle_spec.rb).
-# So parts require nothing themselves.
+# Parts require only the leaves their class bodies read (none autoloads
+# SessionManager: spec/require_cycle_spec.rb).
 require_relative "chi_home"
 require_relative "system_one/runs"
 require_relative "child_env"
@@ -92,7 +93,8 @@ module Samagotchi
   autoload :Participants, File.expand_path("participants", __dir__)
 
   # Its methods live in parts, each a module this class extends (required
-  # at the end of this file; never on their own):
+  # at the end of this file; each loads alone, but is meant to be loaded
+  # through this file):
   #   session_manager/spawn.rb        SpawnPart: start a session's worker, the spawns remembered
   #   session_manager/worker_boot.rb  WorkerBootPart: the worker process (CROSS-VERSION CONTRACT)
   #   session_manager/listing.rb      ListingPart: the session lists and summary rows, children, replies

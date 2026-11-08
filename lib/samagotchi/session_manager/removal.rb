@@ -50,7 +50,7 @@ module Samagotchi
     # Removal: archive, unarchive and delete a session (an archive takes its
     # delegates too), and the retention sweep's entry. Calls LifecyclePart's
     # stop_session, ListingPart's descendant_ids and the facade's ownership
-    # checks. Loaded only through samagotchi/session_manager.
+    # checks. Meant to be loaded through samagotchi/session_manager.
     module RemovalPart
       # Archive a session and its delegated children (ArchiveStore): hidden
       # from every list, kept by the retention sweep. A live idle worker is

@@ -18,6 +18,18 @@ RSpec.describe "loading session_manager and terminal_ui" do
     end
   end
 
+  # A part reads, in its class body, only what it requires itself.
+  Dir[File.join(lib, "samagotchi", "session_manager", "*.rb")].sort.each do |path|
+    file = path.delete_prefix("#{lib}/").delete_suffix(".rb")
+    it "loads the part #{file} alone, with no warning from lib" do
+      _out, err, status = Open3.capture3(RbConfig.ruby, "-w", "-I", lib, "-e", "require '#{file}'")
+
+      expect(status).to be_success, err
+      expect(err).not_to include("circular require")
+      expect(err.lines.grep(%r{/lib/samagotchi/.*warning:})).to be_empty
+    end
+  end
+
   it "does not load TerminalUI or Reline when a worker starts" do
     script = 'require "samagotchi/session_manager"; Samagotchi::Worker.name; ' \
              'require "samagotchi/bridge"; abort "reline" if defined?(Reline); ' \
