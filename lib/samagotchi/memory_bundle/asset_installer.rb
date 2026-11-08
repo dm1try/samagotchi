@@ -121,10 +121,8 @@ module Samagotchi
       # One listed hook; an upgrade overwrites a local edit with a warning.
       def install_hook(basename, src)
         dest = File.join(@provenance.hooks_dir, basename)
-        if @dry_run
-          @results[basename] = { status: File.exist?(dest) && !@force ? "would_skip" : "would_install" }
-          return
-        end
+        result = result_for(src, dest, updated: @upgrade && @existing)
+        return @results[basename] = planned(result) if @dry_run
 
         prev_sha = @existing&.hooks&.dig(basename)&.sha256
         if @upgrade && File.exist?(dest) && !@force && !Provenance.recorded_sha(prev_sha).empty? && !Provenance.sha_matches?(dest, prev_sha)
@@ -132,16 +130,9 @@ module Samagotchi
         end
 
         FileUtils.mkdir_p(@provenance.hooks_dir)
-        unchanged = File.exist?(dest) && FileUtils.identical?(src, dest)
         @trash.copy_edit(dest, as: "hooks/#{basename}", recorded: prev_sha, incoming: src)
         place(src, dest)
-        @results[basename] = if unchanged
-                               { status: "skipped", reason: "already up to date" }
-                             elsif @upgrade && @existing
-                               { status: "updated" }
-                             else
-                               { status: "installed" }
-                             end
+        @results[basename] = result
         @hook_files[basename] = dest
       end
 
@@ -204,16 +195,13 @@ module Samagotchi
       # installed are reported up to date, not "Installed".
       # @return [Hash{String => String}] basename => installed path ({} on a dry run)
       def install_guardrails(incoming_rules)
+        target = @provenance.guardrails_dir
+        results = incoming_rules.to_h { |src| [src, result_for(src, File.join(target, File.basename(src)), updated: false)] }
         if @dry_run
-          incoming_rules.each { |src| @results["guardrails/#{File.basename(src)}"] = { status: "would_install" } }
+          results.each { |src, result| @results["guardrails/#{File.basename(src)}"] = planned(result) }
           return {}
         end
 
-        target = @provenance.guardrails_dir
-        unchanged = incoming_rules.select do |src|
-          dest = File.join(target, File.basename(src))
-          File.file?(dest) && FileUtils.identical?(src, dest)
-        end
         @trash.copy_edits(target, "guardrails", @existing&.guardrails, incoming_rules.to_h { |src| [File.basename(src), src] })
         FileUtils.rm_rf(target)
         return {} if incoming_rules.empty?
@@ -222,8 +210,7 @@ module Samagotchi
         incoming_rules.to_h do |src|
           dest = File.join(target, File.basename(src))
           place(src, dest)
-          @results["guardrails/#{File.basename(src)}"] =
-            unchanged.include?(src) ? { status: "skipped", reason: "already up to date" } : { status: "installed" }
+          @results["guardrails/#{File.basename(src)}"] = results[src]
           [File.basename(src), dest]
         end
       end
@@ -249,24 +236,18 @@ module Samagotchi
         if (failure = Manifest.requires_chi_failure(@manifest.requires_chi, @chi_version))
           @warnings << "Plugin #{plugin[:file]} won't load: #{failure}"
         end
+        dest = File.join(@provenance.plugin_dir, plugin[:file])
+        result = result_for(src, dest, updated: @upgrade && @provenance.installed?)
         if @dry_run
-          @results[plugin[:file]] = { status: "would_install" }
+          @results[plugin[:file]] = planned(result)
           return nil
         end
 
-        dest = File.join(@provenance.plugin_dir, plugin[:file])
-        unchanged = File.file?(dest) && FileUtils.identical?(src, dest)
         @trash.copy_edits(@provenance.plugin_dir, "plugin", @existing&.plugin_shas, { plugin[:file] => src })
         FileUtils.rm_rf(@provenance.plugin_dir)
         FileUtils.mkdir_p(@provenance.plugin_dir)
         place(src, dest)
-        @results[plugin[:file]] = if unchanged
-                                    { status: "skipped", reason: "already up to date" }
-                                  elsif @upgrade && @provenance.installed?
-                                    { status: "updated" }
-                                  else
-                                    { status: "installed" }
-                                  end
+        @results[plugin[:file]] = result
         expected = @manifest.checksum_for_plugin
         actual = FileDigest.hex(dest)
         if @strict && !@dev && expected && actual != expected
@@ -288,12 +269,15 @@ module Samagotchi
 
           @warnings << "scripts/#{file} is not executable; chmod +x #{src}" if @dev && !File.executable?(src) && !page_only?(file)
         end
-        return {} if @dry_run
-
-        unchanged = scripts.keys.select do |file|
-          dest = File.join(@provenance.scripts_dir, file)
-          File.file?(dest) && FileUtils.identical?(File.join(@bundle_dir, "scripts", file), dest)
+        results = scripts.keys.to_h do |file|
+          [file, result_for(File.join(@bundle_dir, "scripts", file), File.join(@provenance.scripts_dir, file),
+                            updated: @upgrade && @provenance.installed?)]
         end
+        if @dry_run
+          results.each { |file, result| @results["scripts/#{file}"] = planned(result) }
+          return {}
+        end
+
         @trash.copy_edits(@provenance.scripts_dir, "scripts", @existing&.scripts,
                           scripts.keys.to_h { |file| [file, File.join(@bundle_dir, "scripts", file)] })
         FileUtils.rm_rf(@provenance.scripts_dir)
@@ -303,10 +287,7 @@ module Samagotchi
         scripts.to_h do |file, declared|
           dest = File.join(@provenance.scripts_dir, file)
           place(File.join(@bundle_dir, "scripts", file), dest)
-          @results["scripts/#{file}"] = if unchanged.include?(file) then { status: "skipped", reason: "already up to date" }
-                                        elsif @upgrade && @provenance.installed? then { status: "updated" }
-                                        else { status: "installed" }
-                                        end
+          @results["scripts/#{file}"] = results[file]
           FileUtils.chmod(0o755, dest) unless @dev
           actual = FileDigest.hex(dest)
           expected = declared.to_s.delete_prefix("sha256:")
@@ -314,6 +295,27 @@ module Samagotchi
             @warnings << "Checksum mismatch for script #{file}: expected #{expected[0..7]}..., got #{actual[0..7]}..."
           end
           [file, dest]
+        end
+      end
+
+      # What the real run reports for +src+ over +dest+: up to date when the
+      # bytes are the same, else updated (+updated+: an upgrade over an
+      # install) or installed. A dry run records #planned of it, so the two
+      # can't drift.
+      def result_for(src, dest, updated:)
+        if File.file?(dest) && FileUtils.identical?(src, dest) then { status: "skipped", reason: "already up to date" }
+        elsif updated then { status: "updated" }
+        else { status: "installed" }
+        end
+      end
+
+      # A dry run's word for a result: would_install, would_update, or the
+      # up to date result as it is (nothing would be written).
+      def planned(result)
+        case result[:status]
+        when "installed" then { status: "would_install" }
+        when "updated" then { status: "would_update" }
+        else result
         end
       end
 

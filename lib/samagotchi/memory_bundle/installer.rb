@@ -155,6 +155,7 @@ module Samagotchi
           status == "would_skip" || status == "noop" || (status == "skipped" && r[:reason] != "already up to date")
         end.keys
         would_install = @results.select { |_, r| r[:status].to_s == "would_install" }.keys
+        would_update = @results.select { |_, r| r[:status].to_s == "would_update" }.keys
         fast_forward = @results.select { |_, r| r[:status].to_s == "fast_forward" }.keys
         removed = @results.select { |_, r| r[:status].to_s == "removed" }.keys
         would_remove = @results.select { |_, r| r[:status].to_s == "would_remove" }.keys
@@ -162,6 +163,7 @@ module Samagotchi
         lines << "Installed: #{installed.join(", ")}" unless installed.empty?
         lines << "Updated: #{updated.join(", ")}" unless updated.empty?
         lines << "Would install: #{would_install.join(", ")}" unless would_install.empty?
+        lines << "Would update: #{would_update.join(", ")}" unless would_update.empty?
         lines << "Fast-forward: #{fast_forward.join(", ")}" unless fast_forward.empty?
         lines << FileStanding.merged_line(merged, @manifest&.version) unless merged.empty?
         lines << FileStanding.merged_line(would_merge, @manifest&.version, dry_run: true) unless would_merge.empty?

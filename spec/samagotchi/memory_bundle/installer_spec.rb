@@ -1104,6 +1104,52 @@ RSpec.describe Samagotchi::MemoryBundle::Installer do
     end
   end
 
+  describe "asset dry run" do
+    let(:assets) { %w[h.rb plugin.rb guardrails/r.yml scripts/s.sh] }
+
+    def asset_bundle(version, hook:)
+      dir = File.join(tmpdir, "assets-#{version}")
+      { "a.md" => "# A\n", "hooks/h.rb" => hook, "plugin.rb" => "# plugin\n", "guardrails/r.yml" => "rules: []\n",
+        "scripts/s.sh" => "#!/bin/sh\necho 1\n" }.each do |file, text|
+        FileUtils.mkdir_p(File.dirname(File.join(dir, file)))
+        File.write(File.join(dir, file), text)
+      end
+      File.write(File.join(dir, "manifest.yml"), YAML.dump(
+        "name" => "assets", "version" => version, "scope" => "system", "files" => { "a.md" => "sha256:fake" },
+        "hooks" => { "h.rb" => { "event" => "before_tool_call" } }, "plugin" => { "file" => "plugin.rb" },
+        "scripts" => { "s.sh" => "" }
+      ))
+      dir
+    end
+
+    def run_assets(dir, **opts)
+      described_class.new(source: dir, name: "assets", scope: "system", strict: true, **opts).tap(&:run)
+    end
+
+    it "reports each asset as the real run does, with would_ where it would write" do
+      run_assets(asset_bundle("1.0.0", hook: "puts 1\n"))
+      v2 = asset_bundle("2.0.0", hook: "puts 2\n")
+
+      dry = run_assets(v2, upgrade: true, dry_run: true)
+      real = run_assets(v2, upgrade: true)
+
+      words = { "updated" => "would_update", "installed" => "would_install" }
+      expect(dry.results.slice(*assets)).to eq(real.results.slice(*assets).transform_values do |result|
+        result.merge(status: words.fetch(result[:status], result[:status]))
+      end)
+      expect(dry.results["h.rb"]).to eq(status: "would_update")
+      expect(dry.summary).to include("Would update: h.rb\n").and include("Up to date: guardrails/r.yml, plugin.rb, scripts/s.sh\n")
+      expect(dry.summary.lines.grep(/\ASkipped:/).join).not_to match(%r{h\.rb|plugin\.rb|guardrails/|scripts/})
+    end
+
+    it "says would install for each asset of a fresh bundle, and writes nothing" do
+      dry = run_assets(asset_bundle("1.0.0", hook: "puts 1\n"), dry_run: true)
+
+      expect(dry.results.slice(*assets)).to eq(assets.to_h { |asset| [asset, { status: "would_install" }] })
+      expect(Dir.exist?(File.join(bundles_dir, "assets"))).to be false
+    end
+  end
+
   describe "needs" do
     let(:fixture) { File.expand_path("../../fixtures/sample_needs_bundle", __dir__) }
 
