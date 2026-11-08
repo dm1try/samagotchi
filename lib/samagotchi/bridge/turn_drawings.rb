@@ -232,6 +232,11 @@ module Samagotchi
           nil
         end
 
+        # Whether +line+ is small enough to send in a snapshot: within what
+        # #tail_line reads back after a restart (TAIL_BYTES), so a join draws
+        # a turn the same before and after one (a bigger line: rebuilt).
+        def sendable?(line) = JSON.generate(line.to_h).bytesize <= TAIL_BYTES
+
         def holds?(line, messages)
           messages.size >= line.to && digest(messages[line.from]) == line.from_digest &&
             digest(messages[line.to - 1]) == line.to_digest

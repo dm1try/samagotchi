@@ -319,13 +319,20 @@ module Samagotchi
     # working_set: the running turn's last :working_set_updated ({items:,
     # at:}, TurnAccumulator#working_set), which the messages lag; nil
     # between turns and before the turn emitted one.
+    # last_turn_drawing: the last exchange's turn as live drew it
+    # ({drawing:, end:}, TurnDrawings#last, not unfolded: an attaching TUI
+    # unfolds it, TurnAccumulator.replay_events), only while it holds against
+    # these messages and ends at their end; absent otherwise (a rollback, a
+    # later Continue or note, an older worker's file).
     # @return [Hash] {messages:, current_turn:, working_set:, queued:, queued_commands:, recap:, saved_recap:, continue_offer:, pending_question:,
-    #   guardrail_warning:, plugin_warning:, init_tasks:, cards:, commands:, chi_version:, event_seq:, event_id:}
+    #   guardrail_warning:, plugin_warning:, init_tasks:, cards:, commands:, chi_version:, event_seq:, event_id:, last_turn_drawing:}
     def snapshot
       @engine.synchronize_events do
         seq = @engine.event_count
+        messages = @engine.messages_checkpoint
+        drawing = last_turn_drawing(messages)
         {
-          messages: @engine.messages_checkpoint,
+          messages: messages,
           current_turn: current_turn_with_generation,
           working_set: @accumulator.working_set,
           queued: @accumulator.queued,
@@ -342,9 +349,23 @@ module Samagotchi
           chi_version: Samagotchi::VERSION,
           event_seq: seq,
           event_id: event_id(seq)
-        }
+        }.merge(drawing ? { last_turn_drawing: drawing } : {})
       end
     end
+
+    # The newest drawing (TurnDrawings#last) as the snapshot sends it, when
+    # it is the last exchange's: its range still holds against +messages+
+    # and ends at their end, and is no bigger than a restart reads back
+    # (TurnDrawings.sendable?). nil otherwise.
+    # @return [Hash, nil] {drawing:, end:} (string keys inside, as the file)
+    def last_turn_drawing(messages)
+      line = @drawings.last
+      return nil unless line && line.to == messages.size && TurnDrawings.holds?(line, messages)
+      return nil unless TurnDrawings.sendable?(line)
+
+      { drawing: line.drawing, end: line.end }
+    end
+    private :last_turn_drawing
 
     # The snapshot and the session state (status, pending question, ...) as
     # one step of the event log, both as of the same event_seq: what a

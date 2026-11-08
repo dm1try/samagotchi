@@ -80,6 +80,11 @@ accumulator's final fold of the turn (its parts in order, in-turn cards included
   (`TextDiff`'s cut); images are refs.
 - **Reading.** `TurnDrawings.read(dir)` skips an unknown `v`, a torn or broken line and one missing a field, and is
   cached by the file's path, size and mtime. `#last` is the newest line this worker wrote or started from.
+- **The snapshot.** `Bridge#snapshot` (the snapshot and reset frames, `GET /snapshot`) adds `last_turn_drawing:
+  {drawing, end}`, `#last` as the file has it, not unfolded, when it holds against the snapshot's messages and its
+  `to` is their size (the last exchange); it is absent otherwise (no turn yet, a rollback, a Continue's note after it,
+  a line of another version, one over the 1 MB a restart reads back: `TurnDrawings.sendable?`). An attaching TUI unfolds it (`TerminalUI::JoinReplay`). A participant never gets it:
+  its stream's snapshot is bare (`ParticipantView`). An older TUI ignores the field; an older worker sends none.
 - **The show.** chi web's full read with `?parts=1&drawings=1` (the page's) stamps each display item of a kind a
   drawing draws (the opening, steps, steers, merged lines, the empty answer) in a valid range with `drawn: <turn_id>`
   and drops its `parts` (its ✂ marks stay as `marks: {tool_id => edit}`), and sends `turn_drawings: {turn_id =>
