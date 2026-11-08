@@ -436,7 +436,7 @@ from that sidecar `worker_version` (the chi the worker runs) and `worker_feature
 `delivery`, a worker that queues a message for after the turn; `SessionManager.deliver_turn` and
 the attached TUI refuse a queue to a worker without it, which would steer; `turn_ids`, a worker whose running
 turn's mark, continue turn and Stop carry the turn's `enqueued_id`, which `chi answer`, `chi send --wait` with no
-message and `delegate_result` rely on through `ReplyWait.own_turn`; every wait's binding is one `ReplyWait::Target`, built by its caller's constructor). A worker's Bridge snapshot
+message and `delegate_result` rely on through `ReplyWait.own_turn` (a wake or reminder turn has one too, worker-minted `wake-…`; a steer's merge is recorded in `input/merged/`, read by `ReplyWait::Poll#follow_merge`); every wait's binding is one `ReplyWait::Target`, built by its caller's constructor). A worker's Bridge snapshot
 names its `chi_version` too.
 `POST/DELETE /api/sessions` and `/stop` rescan the session before answering (`SessionHub#touch`).
 `GET /api/sessions` is the hub's projection too (its sort, paging and total). `Server` always builds
