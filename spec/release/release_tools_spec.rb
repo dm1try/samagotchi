@@ -322,7 +322,7 @@ RSpec.describe ReleaseTools do
 
     it "moves VERSION, the system manifest, Gemfile.lock and the CHANGELOG; never a requires_chi" do
       expect(described_class.bump!(tmp, "0.2.0", date: "2026-09-28"))
-        .to eq(ReleaseTools::Bumped.new(old: "0.1.37", raised: [], profiles: []))
+        .to eq(ReleaseTools::Bumped.new(old: "0.1.37", raised: [], profiles: [], since: {}))
       expect(described_class.gem_version(tmp)).to eq("0.2.0")
       expect(described_class.system_bundle_version(tmp)).to eq("0.2.0")
       expect(read("Gemfile.lock")).to eq("PATH\n  specs:\n    samagotchi (0.2.0)\n      reline\n\nCHECKSUMS\n  samagotchi (0.2.0)\n  webmock (3.26.2) sha256=ab\n")
@@ -462,6 +462,74 @@ RSpec.describe ReleaseTools do
       write("CHANGELOG.md", "## [Unreleased]\n")
       expect { described_class.bump!(tmp, "0.2.0") }.to raise_error(ReleaseTools::Error, /empty/)
       expect([described_class.gem_version(tmp), read("Gemfile.lock")]).to all(include("0.1.37"))
+    end
+
+    # The 0.157.0 bump finished these by hand: a new plugin API call or
+    # manifest key waits in an Unreleased comment until the release.
+    describe "the Unreleased SINCE comments" do
+      let(:api) { "module Samagotchi\n  SINCE = {\n    \"a\" => \"0.1.0\"\n    # Unreleased (moved up, with its version, at the release): \"x\", \"y\".\n  }.freeze\nend\n" }
+      let(:keys) { "module Samagotchi\n  SINCE = {\n    \"k\" => \"0.1.0\",\n    \"l\" => \"0.1.1\"\n    # Unreleased: \"z\".\n  }.freeze\nend\n" }
+
+      def parses?(rel) = RubyVM::InstructionSequence.compile(read(rel)) && true
+
+      it "moves each named entry into SINCE with the new version and drops the comment" do
+        write(ReleaseTools::PLUGIN_API, api)
+        write(ReleaseTools::MANIFEST_KEYS, keys)
+        bumped = described_class.bump!(tmp, "0.2.0", date: "2026-09-28")
+        expect(read(ReleaseTools::PLUGIN_API))
+          .to eq("module Samagotchi\n  SINCE = {\n    \"a\" => \"0.1.0\",\n    \"x\" => \"0.2.0\",\n    \"y\" => \"0.2.0\"\n  }.freeze\nend\n")
+        expect(read(ReleaseTools::MANIFEST_KEYS))
+          .to eq("module Samagotchi\n  SINCE = {\n    \"k\" => \"0.1.0\",\n    \"l\" => \"0.1.1\",\n    \"z\" => \"0.2.0\"\n  }.freeze\nend\n")
+        expect(bumped.since).to eq(ReleaseTools::PLUGIN_API => %w[x y], ReleaseTools::MANIFEST_KEYS => %w[z])
+        expect(described_class.unreleased_api_problems(tmp, "0.2.0")).to eq([])
+        expect([parses?(ReleaseTools::PLUGIN_API), parses?(ReleaseTools::MANIFEST_KEYS)]).to eq([true, true])
+      end
+
+      it "leaves a table with no comment byte for byte" do
+        settled = "module Samagotchi\n  SINCE = {\n    \"a\" => \"0.1.0\"\n  }.freeze\nend\n"
+        write(ReleaseTools::PLUGIN_API, settled)
+        expect(described_class.bump!(tmp, "0.2.0", date: "2026-09-28").since).to eq({})
+        expect(read(ReleaseTools::PLUGIN_API)).to eq(settled)
+      end
+
+      it "changes nothing when a comment names no entry" do
+        write(ReleaseTools::PLUGIN_API, api.sub(': "x", "y".', ": nothing yet."))
+        expect { described_class.bump!(tmp, "0.2.0") }.to raise_error(ReleaseTools::Error, /names no entry/)
+        expect([described_class.gem_version(tmp), read("CHANGELOG.md")]).to eq(["0.1.37", "# Changelog\n\n## [Unreleased]\n\n- chi.\n"])
+      end
+
+      def table(*rows) = "module Samagotchi\n  # Unreleased words outside: \"q\".\n  SINCE = {\n#{rows.map { |r| "    #{r}\n" }.join}  }.freeze\nend\n"
+
+      it "keeps an entry's own trailing comment after the comma it adds, and joins a comment that wraps" do
+        text, names = described_class.release_since(table('"a" => "0.1.0" # a note', '# Unreleased (at the release: docs): "x",', '# "chi.on(on_error:)".'), "0.2.0")
+        expect(names).to eq(["x", "chi.on(on_error:)"])
+        expect(text).to eq(table('"a" => "0.1.0", # a note', '"x" => "0.2.0",', '"chi.on(on_error:)" => "0.2.0"'))
+      end
+
+      it "leaves a comment outside the table alone" do
+        expect(described_class.release_since(table('"a" => "0.1.0"'), "0.2.0")).to eq([table('"a" => "0.1.0"'), []])
+      end
+
+      it "refuses a comment that isn't the table's last lines, one quoting more than names, and a name SINCE has" do
+        expect { described_class.release_since(table('"a" => "0.1.0",', '# Unreleased: "x".', '"b" => "0.1.1"'), "0.2.0") }
+          .to raise_error(ReleaseTools::Error, /right before its closing }/)
+        expect { described_class.release_since(table('"a" => "0.1.0"', '# Unreleased (see "docs/releasing.md"): "x".'), "0.2.0") }
+          .to raise_error(ReleaseTools::Error, /names no entry/)
+        expect { described_class.release_since(table('"a" => "0.1.0"', '# Unreleased: "x", "a".'), "0.2.0") }
+          .to raise_error(ReleaseTools::Error, /names a, which SINCE has already/)
+      end
+
+      it "refuses a result that doesn't parse" do
+        expect { described_class.release_since(table('"a" => (', '# Unreleased: "x".'), "0.2.0") }
+          .to raise_error(ReleaseTools::Error, /doesn't parse/)
+      end
+
+      it "leaves the repository's own tables as they are (no comment in them now)" do
+        [ReleaseTools::PLUGIN_API, ReleaseTools::MANIFEST_KEYS].each do |rel|
+          text = File.read(File.join(repo_root, rel))
+          expect(described_class.release_since(text, "9.9.9")).to eq([text, []])
+        end
+      end
     end
   end
 

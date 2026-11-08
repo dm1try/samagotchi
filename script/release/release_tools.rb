@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "open3"
+require "prism"
 require "yaml"
 require_relative "../../lib/samagotchi/memory_bundle/shas"
 
@@ -411,7 +412,9 @@ module ReleaseTools
 
   # What bump! changed: the version before, the bundles whose
   # requires_chi_next it turned into requires_chi, and the [RaisedProfile]s.
-  Bumped = Data.define(:old, :raised, :profiles)
+  # +since+: the entries moved out of an Unreleased SINCE comment,
+  # {rel_path => [names]} (release_since).
+  Bumped = Data.define(:old, :raised, :profiles, :since)
 
   # VERSION, the system manifest's version, Gemfile.lock's samagotchi lines,
   # the CHANGELOG, the requires_chi of every bundle marked requires_chi_next
@@ -419,7 +422,9 @@ module ReleaseTools
   # below a member's requires_chi (raised to it, with a patch bump of the
   # profile's version unless it moved since the last tag; named in the
   # CHANGELOG's "Update with `chi update`" line). No other requires_chi is
-  # touched. No commit; a Bumped.
+  # touched. The Unreleased comments in Plugin::Api::SINCE and
+  # Manifest::SINCE become entries at +version+ (release_since). No commit;
+  # a Bumped.
   def bump!(root, version, date: Time.now.strftime("%Y-%m-%d"))
     raise Error, "#{version.inspect} isn't a version (x.y.z)" unless version.match?(VERSION_PATTERN)
 
@@ -431,13 +436,82 @@ module ReleaseTools
     raised = raised_requires_chi(root, version)
     profile_texts, profiles = raised_profile_floors(root, raised)
     new_changelog = name_profiles_in_changelog(new_changelog, version, profiles)
+    since_texts, since = released_since(root, version)
 
     edit(root, VERSION_FILE) { |t| t.sub(/VERSION = "[^"]+"/, %(VERSION = "#{version}")) }
     edit(root, SYSTEM_MANIFEST) { |t| t.sub(/^version: .*$/, "version: #{version}") }
     edit(root, "Gemfile.lock") { |t| t.gsub(/^(\s+)samagotchi \(#{Regexp.escape(current)}\)$/, "\\1samagotchi (#{version})") }
     File.write(changelog, new_changelog)
-    raised.merge(profile_texts).each { |path, text| File.write(path, text) }
-    Bumped.new(old: current, raised: raised.keys.map { |path| File.basename(File.dirname(path)) }, profiles: profiles)
+    raised.merge(profile_texts).merge(since_texts).each { |path, text| File.write(path, text) }
+    Bumped.new(old: current, raised: raised.keys.map { |path| File.basename(File.dirname(path)) }, profiles: profiles,
+               since: since)
+  end
+
+  # The SINCE tables' new texts, {path => text}, and the names each moved,
+  # {rel => [names]}, for the tables that hold an Unreleased comment; raises
+  # (so bump! writes nothing) on a comment that names no entry.
+  def released_since(root, version)
+    [PLUGIN_API, MANIFEST_KEYS].each_with_object([{}, {}]) do |rel, (texts, since)|
+      path = File.join(root, rel)
+      next unless File.exist?(path)
+
+      text = File.read(path)
+      new_text, names = begin
+        release_since(text, version)
+      rescue Error => e
+        raise Error, "#{rel}: #{e.message}"
+      end
+      next if names.empty?
+
+      texts[path] = new_text
+      since[rel] = names
+    end
+  end
+
+  SINCE_OPEN = /\A\s*SINCE = \{\s*\z/
+  SINCE_CLOSE = /\A\s*\}\.freeze\s*\z/
+  COMMENT_LINE = /\A\s*#/
+  # The comment's one shape, its wrapped lines joined: `Unreleased`, any
+  # words without a quote up to a colon, then the quoted names.
+  UNRELEASED_SHAPE = /\AUnreleased\b[^"]*?:\s*((?:"[^"]+"\s*,\s*)*"[^"]+")\s*\.?\z/
+
+  # The text with the SINCE table's Unreleased comment (UNRELEASED_API,
+  # with the lines it wraps onto) turned into one `"name" => "version"`
+  # line per quoted name, at the comment's indent, and a comma given to the
+  # entry before it; [new text, names]. Only inside `SINCE = {` ...
+  # `}.freeze`, and only a comment right before the closing `}`. A text
+  # with no comment there comes back as it is, with no names. Raises Error
+  # (bump! then writes nothing) for a comment elsewhere in the table, one
+  # not of its shape, a name the table has already, or a result that
+  # doesn't parse.
+  def release_since(text, version)
+    lines = text.lines
+    open = lines.index { |l| l.match?(SINCE_OPEN) } or return [text, []]
+    close = ((open + 1)...lines.size).find { |i| lines[i].match?(SINCE_CLOSE) } or return [text, []]
+    at = ((open + 1)...close).find { |i| lines[i].match?(UNRELEASED_API) } or return [text, []]
+    unless (at...close).all? { |i| lines[i].match?(COMMENT_LINE) }
+      raise Error, "the Unreleased SINCE comment must be the table's last lines, right before its closing }: #{lines[at].strip}"
+    end
+
+    comment = lines[at...close].map { |l| l.strip.sub(/\A#\s*/, "") }.join(" ")
+    quoted = comment.match(UNRELEASED_SHAPE) or
+      raise Error, "the Unreleased SINCE comment names no entry (# Unreleased (...): \"name\", \"name\".): #{comment}"
+    names = quoted[1].scan(/"([^"]+)"/).flatten
+    entries = lines[(open + 1)...at].grep_v(COMMENT_LINE).join.scan(/"([^"]+)"\s*=>/).flatten
+    taken = names & entries
+    raise Error, "the Unreleased SINCE comment names #{taken.join(", ")}, which SINCE has already" unless taken.empty?
+
+    before = (at - 1).downto(open + 1).find { |i| !lines[i].strip.empty? && !lines[i].match?(COMMENT_LINE) }
+    if before
+      code, note = lines[before].chomp.match(/\A(.*?)(\s+#[^"]*)?\z/).captures
+      lines[before] = "#{code.rstrip.end_with?(",") ? code.rstrip : "#{code.rstrip},"}#{note}\n"
+    end
+    indent = lines[at][/\A\s*/]
+    lines[at...close] = ["#{names.map { |name| %(#{indent}"#{name}" => "#{version}") }.join(",\n")}\n"]
+    out = lines.join
+    raise Error, "moving #{names.join(", ")} into SINCE would leave a file that doesn't parse" unless Prism.parse(out).success?
+
+    [out, names]
   end
 
   def edit(root, rel)
