@@ -1,12 +1,12 @@
 # frozen_string_literal: true
 
-require "fileutils"
 require_relative "cli/command"
 require_relative "cli/exit"
 require_relative "cli/flags"
 require_relative "guardrails/path_resolve"
 require_relative "memory_paths"
 require_relative "paths"
+require_relative "project_init"
 
 module Samagotchi
   # `chi project`: which project this folder is in (MemoryPaths.lookup: a
@@ -27,9 +27,6 @@ module Samagotchi
                      folder and group their sessions. Not in a git repository (it already is the
                      project), nor $HOME or a folder above it
     TEXT
-
-    # What init writes into the marker (P1 reads no fields).
-    MARKER_TEXT = "# chi project marker: this folder is a chi project (docs/memory.md)\n"
 
     SUBCOMMANDS = %w[init].freeze
     FLAGS = {
@@ -119,37 +116,26 @@ module Samagotchi
 
     def run_init(dir)
       dir = File.expand_path(dir, @cwd)
-      found = lookup(dir)
-      if found.git?
+      outcome = ProjectInit.call(dir, home: @home)
+      case outcome.kind
+      when :git
+        found = MemoryPaths::ProjectLookup.new(kind: :git, root: outcome.root, top: outcome.top)
         note = home_repo?(found) ? " ($HOME is a git repository: every folder under it is in it)" : ""
-        @stdout.puts("#{Paths.tilde(dir)} is in the git repository #{Paths.tilde(found.top)}: the repository already is " \
-                     "the project, nothing written#{note}")
-        return CLI::Exit::OK
+        @stdout.puts("#{outcome.message}#{note}")
+        CLI::Exit::OK
+      when :refused
+        error_line("#{command_name}: #{outcome.message}")
+        CLI::Exit::FAILED
+      when :already_marked
+        @stdout.puts(outcome.message)
+        CLI::Exit::OK
+      when :created
+        report_init(outcome.root, nested_in: outcome.nested_in)
+        CLI::Exit::OK
       end
-      if MemoryPaths.above_home?(dir, home: @home)
-        error_line("#{command_name}: #{Paths.tilde(dir)} is $HOME, a folder above it or /: it can't be a chi project " \
-                   "(every folder under it would be one); mark a folder inside it")
-        return CLI::Exit::FAILED
-      end
-
-      root = found.marker? ? found.root : nil
-      if root && root == Guardrails::PathResolve.real(dir)
-        @stdout.puts("#{Paths.tilde(root)} is already a chi project")
-        return CLI::Exit::OK
-      end
-
-      write_marker(dir)
-      report_init(File.realpath(dir), nested_in: root)
-      CLI::Exit::OK
     rescue SystemCallError => e
       error_line("#{command_name}: couldn't write #{Paths.tilde(File.join(dir, MemoryPaths::MARKER))}: #{e.message}")
       CLI::Exit::FAILED
-    end
-
-    def write_marker(dir)
-      marker = File.join(dir, MemoryPaths::MARKER)
-      FileUtils.mkdir_p(File.dirname(marker))
-      File.write(marker, MARKER_TEXT)
     end
 
     def report_init(root, nested_in:)
