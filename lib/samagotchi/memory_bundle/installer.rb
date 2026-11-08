@@ -40,7 +40,7 @@ module Samagotchi
       # :merged, :kept, :kept_pruned, :kept_shared, :kept_own (a file left as
       # the user's), :up_to_date, :conflict, :removed) or a dry run's
       # (:would_install, :would_update, :would_merge, :would_skip, :would_remove,
-      # and an upgrade's :fast_forward, :keep, :noop). state and action: the
+      # and an upgrade's :fast_forward and :keep). state and action: the
       # memory's FileState and FileActions::Action, nil where none was read.
       # note: why, in words (a conflict's Behind#state, a kept file's reason).
       FileResult = Data.define(:word, :state, :action, :note) do
@@ -160,9 +160,9 @@ module Samagotchi
         kept = with_word(:kept, :keep, :kept_pruned)
         # A file whose bytes are already the bundle's was not left out: it is
         # up to date. Skipped keeps the files really left out -- the user's own
-        # memory, and a dry run's would_skip (a dry run's `noop` stays here too).
+        # memory, and a dry run's would_skip.
         up_to_date = with_word(:up_to_date)
-        skipped = with_word(:would_skip, :noop, :kept_own)
+        skipped = with_word(:would_skip, :kept_own)
         would_install = with_word(:would_install)
         would_update = with_word(:would_update)
         fast_forward = with_word(:fast_forward)
@@ -546,10 +546,7 @@ module Samagotchi
         action = decision.action if decision
         return note_conflict(file_key, decision.outcome, state) if action.behind?
 
-        word = DRY_WORDS.fetch(action.word)
-        # An upgrade's dry run calls a file already the bundle's a noop (Skipped).
-        word = :noop if action.word == :up_to_date && action.record != :not_owned && memory_command == :upgrade
-        @results[file_key] = FileResult.new(word: word, state: state, action: action)
+        @results[file_key] = FileResult.new(word: DRY_WORDS.fetch(action.word), state: state, action: action)
       end
 
       # Strict mode: a memory installed from the bundle (its action writes the

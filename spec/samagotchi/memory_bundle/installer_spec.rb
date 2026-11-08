@@ -1157,8 +1157,21 @@ RSpec.describe Samagotchi::MemoryBundle::Installer do
         result.with(word: words.fetch(result.word, result.word))
       end)
       expect(dry.results["h.rb"].word).to eq(:would_update)
-      expect(dry.summary).to include("Would update: h.rb\n").and include("Up to date: guardrails/r.yml, plugin.rb, scripts/s.sh\n")
+      expect(dry.summary).to include("Would update: h.rb\n").and include("Up to date: a.md, guardrails/r.yml, plugin.rb, scripts/s.sh")
       expect(dry.summary.lines.grep(/\ASkipped:/).join).not_to match(%r{h\.rb|plugin\.rb|guardrails/|scripts/})
+    end
+
+    it "lists an unchanged memory and an unchanged rule as up to date, as the real run does" do
+      run_assets(asset_bundle("1.0.0", hook: "puts 1\n"))
+      v2 = asset_bundle("2.0.0", hook: "puts 2\n")
+
+      dry = run_assets(v2, upgrade: true, dry_run: true)
+      real = run_assets(v2, upgrade: true)
+
+      [dry, real].each do |run|
+        expect(run.summary.lines.grep(/\AUp to date:/).join).to include("a.md").and include("guardrails/r.yml")
+        expect(run.summary).not_to match(/^Skipped:/)
+      end
     end
 
     it "says would install for each asset of a fresh bundle, and writes nothing" do

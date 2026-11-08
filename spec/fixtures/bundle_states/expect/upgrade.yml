@@ -3,31 +3,31 @@
 level_same:
   upgrade: {do: kept, save_first: false, next_base: old, checksum: old, mark: none, word: Up to date, label: ok, warns: []}
   upgrade_force: {do: kept, save_first: false, next_base: old, checksum: old, mark: none, word: Installed, label: ok, warns: []}
-  upgrade_dry: {do: kept, save_first: false, next_base: old, checksum: old, mark: none, word: Skipped, label: ok, warns: []}
+  upgrade_dry: {do: kept, save_first: false, next_base: old, checksum: old, mark: none, word: Up to date, label: ok, warns: []}
 level_same_marked:
   upgrade: {do: kept, save_first: false, next_base: old, checksum: old, mark: cleared, word: Up to date, label: ok, warns: []}
   upgrade_force: {do: kept, save_first: false, next_base: old, checksum: old, mark: cleared, word: Installed, label: ok, warns: []}
   upgrade_dry:
-    "0.155": {do: kept, save_first: false, next_base: old, checksum: old, mark: kept, word: Skipped, label: ok, warns: []}
-    "0.149": {do: kept, save_first: false, next_base: old, checksum: old, mark: kept (legacy), word: Skipped, label: ok, warns: []}
+    "0.155": {do: kept, save_first: false, next_base: old, checksum: old, mark: kept, word: Up to date, label: ok, warns: []}
+    "0.149": {do: kept, save_first: false, next_base: old, checksum: old, mark: kept (legacy), word: Up to date, label: ok, warns: []}
 level_same_legacy:
   upgrade: {do: kept, save_first: false, next_base: old, checksum: old, mark: cleared, word: Up to date, label: ok, warns: []}
   upgrade_force: {do: kept, save_first: false, next_base: old, checksum: old, mark: cleared, word: Installed, label: ok, warns: []}
-  upgrade_dry: {do: kept, save_first: false, next_base: old, checksum: old, mark: kept (legacy), word: Skipped, label: ok, warns: []}
+  upgrade_dry: {do: kept, save_first: false, next_base: old, checksum: old, mark: kept (legacy), word: Up to date, label: ok, warns: []}
 level:
   upgrade: {do: kept, save_first: false, next_base: disk, checksum: disk, mark: none, word: Up to date, label: ok, warns: []}
   upgrade_force: {do: kept, save_first: false, next_base: disk, checksum: disk, mark: none, word: Installed, label: ok, warns: []}
-  upgrade_dry: {do: kept, save_first: false, next_base: old, checksum: old, mark: none, word: Skipped, label: modified, warns: []}
+  upgrade_dry: {do: kept, save_first: false, next_base: old, checksum: old, mark: none, word: Up to date, label: modified, warns: []}
 level_marked:
   upgrade: {do: kept, save_first: false, next_base: disk, checksum: disk, mark: cleared, word: Up to date, label: ok, warns: []}
   upgrade_force: {do: kept, save_first: false, next_base: disk, checksum: disk, mark: cleared, word: Installed, label: ok, warns: []}
   upgrade_dry:
-    "0.155": {do: kept, save_first: false, next_base: old, checksum: old, mark: kept, word: Skipped, label: modified, warns: []}
-    "0.149": {do: kept, save_first: false, next_base: old, checksum: old, mark: kept (legacy), word: Skipped, label: modified, warns: []}
+    "0.155": {do: kept, save_first: false, next_base: old, checksum: old, mark: kept, word: Up to date, label: modified, warns: []}
+    "0.149": {do: kept, save_first: false, next_base: old, checksum: old, mark: kept (legacy), word: Up to date, label: modified, warns: []}
 level_legacy:
   upgrade: {do: kept, save_first: false, next_base: disk, checksum: disk, mark: cleared, word: Up to date, label: ok, warns: []}
   upgrade_force: {do: kept, save_first: false, next_base: disk, checksum: disk, mark: cleared, word: Installed, label: ok, warns: []}
-  upgrade_dry: {do: kept, save_first: false, next_base: old, checksum: old, mark: kept (legacy), word: Skipped, label: modified, warns: []}
+  upgrade_dry: {do: kept, save_first: false, next_base: old, checksum: old, mark: kept (legacy), word: Up to date, label: modified, warns: []}
 pristine:
   upgrade: {do: wrote_incoming, save_first: false, next_base: disk, checksum: disk, mark: none, word: Updated, label: ok, warns: []}
   upgrade_force: {do: wrote_incoming, save_first: true, next_base: disk, checksum: disk, mark: none, word: Installed, label: ok, warns: ["Copied to the trash first: a.md (<home>/samagotchi/memories/.bundles/.trash/demo-<stamp>)"]}
@@ -105,17 +105,17 @@ diverged_conflict_legacy:
 level_no_base:
   upgrade: {do: kept, save_first: false, next_base: disk, checksum: old, mark: none, word: Up to date, label: ok, warns: []}
   upgrade_force: {do: kept, save_first: false, next_base: disk, checksum: old, mark: none, word: Installed, label: ok, warns: []}
-  upgrade_dry: {do: kept, save_first: false, next_base: none, checksum: old, mark: none, word: Skipped, label: ok, warns: []}
+  upgrade_dry: {do: kept, save_first: false, next_base: none, checksum: old, mark: none, word: Up to date, label: ok, warns: []}
 level_no_base_marked:
   upgrade: {do: kept, save_first: false, next_base: disk, checksum: old, mark: cleared, word: Up to date, label: ok, warns: []}
   upgrade_force: {do: kept, save_first: false, next_base: disk, checksum: old, mark: cleared, word: Installed, label: ok, warns: []}
   upgrade_dry:
-    "0.155": {do: kept, save_first: false, next_base: none, checksum: old, mark: kept, word: Skipped, label: ok, warns: []}
-    "0.149": {do: kept, save_first: false, next_base: none, checksum: old, mark: kept (legacy), word: Skipped, label: ok, warns: []}
+    "0.155": {do: kept, save_first: false, next_base: none, checksum: old, mark: kept, word: Up to date, label: ok, warns: []}
+    "0.149": {do: kept, save_first: false, next_base: none, checksum: old, mark: kept (legacy), word: Up to date, label: ok, warns: []}
 level_no_base_legacy:
   upgrade: {do: kept, save_first: false, next_base: disk, checksum: old, mark: cleared, word: Up to date, label: ok, warns: []}
   upgrade_force: {do: kept, save_first: false, next_base: disk, checksum: old, mark: cleared, word: Installed, label: ok, warns: []}
-  upgrade_dry: {do: kept, save_first: false, next_base: none, checksum: old, mark: kept (legacy), word: Skipped, label: ok, warns: []}
+  upgrade_dry: {do: kept, save_first: false, next_base: none, checksum: old, mark: kept (legacy), word: Up to date, label: ok, warns: []}
 pristine_no_base:
   upgrade: {do: kept, save_first: false, next_base: none, checksum: old, mark: set, word: null, label: "stays behind 1.1.0: no merge possible (no recorded base) (chi bundle diff demo a.md)", warns: ["a.md stays behind 1.1.0: no merge possible (no recorded base) (--force takes the bundle's version, your file copied to the trash first)"]}
   upgrade_force: {do: wrote_incoming, save_first: true, next_base: disk, checksum: disk, mark: none, word: Installed, label: ok, warns: ["Copied to the trash first: a.md (<home>/samagotchi/memories/.bundles/.trash/demo-<stamp>)"]}

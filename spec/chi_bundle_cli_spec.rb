@@ -267,7 +267,7 @@ RSpec.describe "chi bundle (CLI)" do
         .to eq(["Upgrading demo from #{src}\nUpdated: a.md\n#{provenance_line("demo")}", "", 0])
       expect(File.read(File.join(memories, "a.md"))).to eq("two\n")
       expect(chi("upgrade", "demo", "--dry-run"))
-        .to eq(["Upgrading demo from #{src}\nSkipped: a.md\n(dry-run: no changes written)\n", "", 0])
+        .to eq(["Upgrading demo from #{src}\nUp to date: a.md\n(dry-run: no changes written)\n", "", 0])
       expect(JSON.parse(File.read(File.join(memories, ".bundles", "demo", "manifest.json")))["version"]).to eq("2.0.0")
     end
 
@@ -401,7 +401,7 @@ RSpec.describe "chi bundle (CLI)" do
       expect(chi("install", url)).to eq(["Installed: a.md\n#{provenance_line("other-name")}", "", 0])
       record = JSON.parse(File.read(File.join(memories, ".bundles", "other-name", "manifest.json")))
       expect(record.values_at("source", "source_commit")).to eq([url, `git -C #{repo} rev-parse HEAD`.strip])
-      expect(chi("upgrade", url, "--dry-run")).to eq(["Skipped: a.md\n(dry-run: no changes written)\n", "", 0])
+      expect(chi("upgrade", url, "--dry-run")).to eq(["Up to date: a.md\n(dry-run: no changes written)\n", "", 0])
       expect(chi("upgrade", copy)).to eq(["Source changes: #{url} → #{copy}\nUpdated: a.md\n#{provenance_line("other-name")}", "", 0])
       expect(Dir.children(File.join(memories, ".bundles"))).to eq(["other-name"])
       expect(File.read(File.join(memories, "a.md"))).to eq("two\n")

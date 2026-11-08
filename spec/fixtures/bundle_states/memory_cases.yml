@@ -27,8 +27,10 @@
 #   fix         "<tsv id> <spec file>: <example description>": the example
 #               the case's start was lifted from (it stays in its file)
 #   fixed / divergent  a probe the batch fixed (D1..D3), or cells that look
-#               wrong today (one tag or a list): D4, U4, U7 (the plan's), dry-noop
-#               (P1.9), dry-trash, edited-rule, restore-unchecked; note says which
+#               wrong today (one tag or a list): D4, U4, U7 (the plan's),
+#               dry-trash, edited-rule, restore-unchecked; note says which
+#   changed     a divergent tag whose cells a later commit changed (dry-noop:
+#               P1.9); note says how
 #   note        why, for a tagged case
 #
 # Texts are named by their three lines; one letter's change is one line's.
@@ -50,22 +52,22 @@ cases:
     base: abc
     disk: abc
     incoming: abc
-    divergent: dry-noop
-    note: "upgrade --dry-run lists it under Skipped, the real upgrade under Up to date (P1.9)"
+    changed: dry-noop
+    note: "upgrade --dry-run listed it under Skipped, the real upgrade under Up to date; both say Up to date since P1.9"
     fix:
       - "703 spec/samagotchi/memory_bundle/installer_spec.rb: skips an existing file identical to the bundle's as already up to date, without a warning"
   - id: level_same_marked
     kind: level
-    divergent: dry-noop
-    note: "upgrade --dry-run lists it under Skipped, the real upgrade under Up to date (P1.9)"
+    changed: dry-noop
+    note: "upgrade --dry-run listed it under Skipped, the real upgrade under Up to date; both say Up to date since P1.9"
     base: abc
     disk: abc
     incoming: abc
     mark: current
   - id: level_same_legacy
     kind: level
-    divergent: dry-noop
-    note: "upgrade --dry-run lists it under Skipped, the real upgrade under Up to date (P1.9)"
+    changed: dry-noop
+    note: "upgrade --dry-run listed it under Skipped, the real upgrade under Up to date; both say Up to date since P1.9"
     base: abc
     disk: abc
     incoming: abc
@@ -75,12 +77,12 @@ cases:
     base: abc
     disk: abC
     incoming: abC
-    divergent: dry-noop
-    note: "upgrade --dry-run lists it under Skipped, the real upgrade under Up to date (P1.9)"
+    changed: dry-noop
+    note: "upgrade --dry-run listed it under Skipped, the real upgrade under Up to date; both say Up to date since P1.9"
   - id: level_marked
     kind: level
-    divergent: dry-noop
-    note: "upgrade --dry-run lists it under Skipped, the real upgrade under Up to date (P1.9)"
+    changed: dry-noop
+    note: "upgrade --dry-run listed it under Skipped, the real upgrade under Up to date; both say Up to date since P1.9"
     base: abc
     disk: abC
     incoming: abC
@@ -89,8 +91,8 @@ cases:
       - "50 spec/samagotchi/memory_bundle/kept_edits_spec.rb: drops it once the file has the incoming bytes"
   - id: level_legacy
     kind: level
-    divergent: dry-noop
-    note: "upgrade --dry-run lists it under Skipped, the real upgrade under Up to date (P1.9)"
+    changed: dry-noop
+    note: "upgrade --dry-run listed it under Skipped, the real upgrade under Up to date; both say Up to date since P1.9"
     base: abc
     disk: abC
     incoming: abC
@@ -196,16 +198,16 @@ cases:
   # Owned, no base: level, the checksum's text (never edited), neither.
   - id: level_no_base
     kind: level
-    divergent: dry-noop
-    note: "upgrade --dry-run lists it under Skipped, the real upgrade under Up to date (P1.9)"
+    changed: dry-noop
+    note: "upgrade --dry-run listed it under Skipped, the real upgrade under Up to date; both say Up to date since P1.9"
     base: null
     disk: abC
     incoming: abC
     recorded: disk
   - id: level_no_base_marked
     kind: level
-    divergent: dry-noop
-    note: "upgrade --dry-run lists it under Skipped, the real upgrade under Up to date (P1.9)"
+    changed: dry-noop
+    note: "upgrade --dry-run listed it under Skipped, the real upgrade under Up to date; both say Up to date since P1.9"
     base: null
     disk: abC
     incoming: abC
@@ -213,8 +215,8 @@ cases:
     mark: current
   - id: level_no_base_legacy
     kind: level
-    divergent: dry-noop
-    note: "upgrade --dry-run lists it under Skipped, the real upgrade under Up to date (P1.9)"
+    changed: dry-noop
+    note: "upgrade --dry-run listed it under Skipped, the real upgrade under Up to date; both say Up to date since P1.9"
     base: null
     disk: abC
     incoming: abC

@@ -64,7 +64,7 @@ module BundleStateCorpus
   MARKED_ONLY_149 = %w[upgrade].freeze
 
   MemoryCase = Data.define(:id, :kind, :installed, :owned, :key, :base, :disk, :incoming, :recorded, :sha, :mark,
-                           :marked_incoming, :shipped_history, :claimants, :unreadable, :fix, :fixed, :divergent, :note) do
+                           :marked_incoming, :shipped_history, :claimants, :unreadable, :fix, :fixed, :divergent, :changed, :note) do
     def marked? = mark != "none"
 
     # Whether the file holds bytes of the user's: there, not the bundle's
@@ -99,7 +99,7 @@ module BundleStateCorpus
           mark: row.fetch("mark", "none"), marked_incoming: row.fetch("marked_incoming", "incoming"),
           shipped_history: row.fetch("shipped_history", false), claimants: row.fetch("claimants", []),
           unreadable: row.fetch("unreadable", false), fix: row.fetch("fix", []), fixed: row["fixed"],
-          divergent: row["divergent"], note: row["note"]
+          divergent: row["divergent"], changed: row["changed"], note: row["note"]
         )
       end
     end

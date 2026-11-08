@@ -155,14 +155,15 @@ doesn't own: the Installer's `MemoryFiles.select`; `ShippedUpdate.forecast`' eve
 can name a file dropped from `files:` or now a symlink, which the upgrade doesn't merge: edited, it stays (`kept_pruned`, or `kept_shared` when another bundle has it too); `SystemBundle`'s dry
 run the manifest's `files:`, so a manifest with none plans nothing (the shipped one lists its files).
 
-Results are `@results` (file → `{status:, reason:}`), summarised by `#summary`: a file that already holds the
-bundle's bytes (`reason: "already up to date"`, a memory or a hook/rule/plugin/script) is listed as `Up to date:`,
-and only the files really left out (`already exists`, a memory's dry-run `would_skip`, a dry run upgrade's `noop`) as
-`Skipped:`. A dry run's `would_update` (a hook, plugin or script an upgrade would change) is `Would update:`; an asset
+Results are `@results` (file → `Installer::FileResult`: its `word`, a memory's `FileState` and action, a `note`),
+summarised by `#summary` by word: a file that already holds the bundle's bytes (`:up_to_date`, a memory or a
+hook/rule/plugin/script, in a dry run as in the real run) is listed as `Up to date:`, and only the files really left
+out (`:kept_own`, a memory's dry-run `:would_skip`) as `Skipped:`. A memory's dry-run word is its action's through
+`Installer::DRY_WORDS`. A dry run's `would_update` (a hook, plugin or script an upgrade would change) is `Would update:`; an asset
 row is never `would_skip`. A plain install over a bundle already installed from the same source ends with `NAME was already
 installed from SOURCE: its hooks, rules, plugin and scripts now match it and its record was rewritten`, plus
 `; your own copies of its memories were kept (chi bundle upgrade NAME merges the bundle's changes into them)` when
-a memory was left out as `already exists`. An upgrade with conflicts keeps an
+a memory was left out as the user's (`:kept_own`). An upgrade with conflicts keeps an
 owned source dir alive (`#source_dir`) until `#cleanup_source!`, because the conflict agent reads the incoming
 files; `BundleCommand#settle_conflicts` then runs `Provenance#resolve_conflicts`, which moves a base forward and keeps
 the entry's description, only for a file the agent step changed that holds no markers (`Merger.markers?`), and whose incoming
