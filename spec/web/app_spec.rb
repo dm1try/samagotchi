@@ -1826,6 +1826,28 @@ RSpec.describe Samagotchi::Web::App do
       expect(payload["saved_recap"]).to eq("text" => "Earlier.", "turns_since" => 1)
     end
 
+    # The page places it by that stamp (recap_stamp.js); without one, by the count.
+    it "stamps a saved recap with the last turn it covers: read from the file, or passed on from a live worker" do
+      state_dir = Dir.mktmpdir
+      FileUtils.mkdir_p(File.join(state_dir, "s1"))
+      File.write(File.join(state_dir, "s1", "recap.json"), JSON.generate(text: "Earlier.", covered: 2, covered_digest: "x"))
+      session = Samagotchi::Session.new_session(mode: "assist", model_name: "TestModel", working_directory: Dir.pwd)
+      session.messages = [{ role: "user", content: "hello", turn_id: "t1" }, { role: "assistant", content: "hi" },
+                          { role: "user", content: "more", turn_id: "t2" }, { role: "assistant", content: "ok" }]
+      allow(StubSessionLoader).to receive(:load).and_return(session)
+      app = build_app(manager: FakeResponsesManager.new, state_dir: state_dir)
+
+      expect(JSON.parse(app.call(env_for("/api/sessions/s1"))[2].first)["saved_recap"])
+        .to eq("text" => "Earlier.", "turns_since" => 1, "opening_id" => "t1")
+
+      live = { "snapshot" => { "messages" => [], "event_seq" => 3, "event_id" => "3-e1",
+                               "saved_recap" => { "text" => "Live.", "covered" => 2, "turns_since" => 1, "opening_id" => "t1" } },
+               "session_state_snapshot" => { "status" => "idle", "event_seq" => 3 } }
+      stub_worker(app, live)
+      expect(JSON.parse(app.call(env_for("/api/sessions/s1"))[2].first)["saved_recap"])
+        .to eq("text" => "Live.", "turns_since" => 1, "opening_id" => "t1")
+    end
+
     it "counts a stopped session's recap by the turns the page draws: a wake's note does, a !cmd's record doesn't" do
       state_dir = Dir.mktmpdir
       FileUtils.mkdir_p(File.join(state_dir, "s1"))

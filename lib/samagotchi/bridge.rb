@@ -304,7 +304,7 @@ module Samagotchi
     # the event log: the Engine's messages (not the lagging copy on disk),
     # the turn in progress, turns queued behind it, the idle recap since the
     # last turn, the recap saved with the session (also from before the last
-    # turns: {text:, covered:, turns_since:, created_at:}), a pending continue offer, the guardrail and plugin load warnings,
+    # turns: {text:, covered:, turns_since:, opening_id:, created_at:}), a pending continue offer, the guardrail and plugin load warnings,
     # the plugins' init tasks still running (Engine#init_tasks), the
     # last cards and between-turns notices (CardStore#list), the session's commands (Commands::Registry#listing:
     # what an attached TUI routes and completes, the web's autocomplete), and the event_seq it all covers.

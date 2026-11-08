@@ -133,6 +133,9 @@ the "asking again" and steer-cut rows, ✂ rows and questions (with how they wer
   first while that line is still in the run, so a later release can drop the count. No stamp (the page counts `turns_since`) for
   an entry before every opening, after a line an older chi wrote with no id, or from a version 1 file (`base_since`). A rollback
   keeps today's rule: a rolled-back turn's cards name the opening before it.
+  The saved recap carries the same stamp: `saved_recap`'s `opening_id` (`RecapPlace.opening_id`, the id of the last
+  opening its `covered` messages hold, read at read time, so `recap.json` is unchanged), which the page places it after
+  (`recap_stamp.js`); an older worker's `saved_recap` has none, and the page counts `turns_since`.
 - **A turn that leaves nothing** is read, not told: an in-turn entry not `current` whose turn has no opening in the messages
   (a `!rollback`, a failed turn with nothing kept, a prompt stopped before the model) lists as a between-turns entry at its
   place, a card without its actions and a hook's notice without its step; its other rows, having no step to sit in, aren't

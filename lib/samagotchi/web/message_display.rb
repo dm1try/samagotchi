@@ -9,6 +9,7 @@ require_relative "../message_parts"
 require_relative "../message_time"
 require_relative "../objectives"
 require_relative "../output_formatter"
+require_relative "../recap_place"
 require_relative "../recap_store"
 require_relative "../ref"
 require_relative "../revise_anchor"
@@ -48,20 +49,26 @@ module Samagotchi
       # a live worker's (it counts against its Engine's messages), else
       # recap.json against the session file. A stopped session gets its
       # recap without a worker being woken.
-      # @return [Hash, nil] {text:, turns_since:, created_at:} (created_at:
-      #   when it was written, UTC ISO; absent from an older recap)
+      # The last turn it covers names its place (opening_id, RecapPlace);
+      # an older worker's saved_recap has none: the page counts turns_since.
+      # @return [Hash, nil] {text:, turns_since:, opening_id:, created_at:}
+      #   (created_at: when it was written, UTC ISO; absent from an older
+      #   recap)
       def saved_recap_for(id, session, turn_snapshot)
         if turn_snapshot
           saved = turn_snapshot["saved_recap"]
-          return saved && { text: saved["text"], turns_since: saved["turns_since"].to_i, created_at: saved["created_at"] }.compact
+          return saved && { text: saved["text"], turns_since: saved["turns_since"].to_i, opening_id: saved["opening_id"],
+                            created_at: saved["created_at"] }.compact
         end
 
         saved = RecapStore.read(@session_class.session_dir(id, state_dir: default_state_dir))
         return nil unless saved
 
         messages = Array(session.messages)
-        since = messages.drop(saved[:covered].to_i).count { |m| Samagotchi::Steer.turn_opening?(m) }
-        { text: saved[:text], turns_since: since, created_at: saved[:created_at] }.compact
+        covered = saved[:covered].to_i
+        since = messages.drop(covered).count { |m| Samagotchi::Steer.turn_opening?(m) }
+        { text: saved[:text], turns_since: since, opening_id: RecapPlace.opening_id(messages, covered),
+          created_at: saved[:created_at] }.compact
       rescue StandardError
         nil
       end
