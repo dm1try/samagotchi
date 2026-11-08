@@ -375,28 +375,17 @@ module Samagotchi
       end
       private_class_method :follow_up
 
-      # The child's turn a delivered follow-up joins, for the wait
-      # (DelegateCursor#turn): the running turn's (its checkpoint mark; a
-      # delegate's first turn carries its first_turn_id), the follow-up
-      # merging into it; else the delivery's +enqueued_id+, the follow-up
-      # running as a turn of its own. Only from a worker that names
-      # turn_ids; nil otherwise, or when the running turn has no id: the
-      # wait takes the next reply.
-      # A follow-up steered into a turn that ended before it merged runs as
-      # its own turn, yet the wait is on the ended one (LOW, as before).
-      # One the child's idle look missed being merged into a turn starting
-      # then never runs as its own: ReplyWait falls back to that turn's
-      # reply (merged_elsewhere?).
+      # The child's turn a delivered follow-up's wait is bound to
+      # (DelegateCursor#turn): its own, the delivery's +enqueued_id+,
+      # whether it runs as a turn of its own (the child idle, or its
+      # running turn ended before taking it) or a running turn's drain
+      # merges it (that turn's end is its answer: the drain's merge record,
+      # or ReplyWait's inference for a 0.156 child, ReplyWait::Poll#
+      # follow_merge). Only from a worker that names turn_ids; nil
+      # otherwise: the wait takes the next reply.
       # @return [String, nil]
       def self.follow_up_turn(id, enqueued_id, state_dir:)
-        return nil unless ReplyWait.turn_ids?(Session.session_dir(id, state_dir: state_dir))
-
-        child = Session.load(id, state_dir: state_dir)
-        return child.interrupted_turn&.enqueued_id if child.status == Session::STATUS_RUNNING
-
-        enqueued_id
-      rescue ArgumentError
-        nil
+        ReplyWait.turn_ids?(Session.session_dir(id, state_dir: state_dir)) ? enqueued_id : nil
       end
       private_class_method :follow_up_turn
 
