@@ -47,10 +47,7 @@ module Samagotchi
       # Nothing the prompt carries changes (full +delegate on full): only
       # the origin is saved, so a no-op choice still counts as user-selected.
       if after.prompt_key == before.prompt_key
-        if session.toolkit_origin != "chosen"
-          session.toolkit_origin = "chosen"
-          @save.call(session)
-        end
+        @save.call(session) if session.choose_toolkit_origin!
         return [listing(before) + "\n(no change to what the next turn declares)", false, nil]
       end
 

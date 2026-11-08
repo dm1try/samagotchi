@@ -15,10 +15,11 @@ module Samagotchi
   # block its lambdas call (`type.call`, not `yield`: never while the
   # constructor runs, so Performance/RedundantBlockCall is off for them).
   SessionField = Data.define(:key, :attr, :from, :default, :fresh, :optional, :cast, :write, :unread, :keep) do
-    # A field read as given, or through +cast+.
-    def self.plain(key, default, cast: nil, write: nil, fresh: default, optional: false)
+    # A field read as given, or through +cast+; +unread+ and +keep+ give
+    # it the Unread rule (see .level).
+    def self.plain(key, default, cast: nil, write: nil, fresh: default, optional: false, unread: nil, keep: nil)
       new(key: key, attr: key.to_sym, from: nil, default: default, fresh: fresh, optional: optional, cast: cast,
-          write: write, unread: nil, keep: nil)
+          write: write, unread: unread, keep: keep)
     end
 
     # rubocop:disable Performance/RedundantBlockCall

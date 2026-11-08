@@ -139,10 +139,7 @@ module Samagotchi
 
       toolkit = Toolkit.new(name: name)
       if session.toolkit == toolkit
-        if session.toolkit_origin != "chosen"
-          session.toolkit_origin = "chosen"
-          session.save(state_dir: @state_dir.call)
-        end
+        session.save(state_dir: @state_dir.call) if session.choose_toolkit_origin!
         return true
       end
 

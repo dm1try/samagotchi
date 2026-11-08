@@ -95,6 +95,10 @@ module Samagotchi
       origin = value.to_s
       TOOLKIT_ORIGINS.include?(origin) ? origin : "chosen"
     end
+    TOOLKIT_ORIGIN_UNREAD = ->(value) { value if value.is_a?(String) && !TOOLKIT_ORIGINS.include?(value) }
+    # The kept value while there is one: the written one is the cast
+    # (never nil), so it can't come first as a level's does.
+    KEPT_FIRST = ->(written, kept) { kept || written }
     PARENT_ANSWERS = lambda do |value|
       case (level = Guardrails::ParentPolicy.parse_level(value))
       when :unset then nil
@@ -102,7 +106,8 @@ module Samagotchi
       else level
       end
     end
-    private_constant :BOOLEAN, :NAMES, :LIST, :ID, :MESSAGES, :SCRUBBED, :VERDICTS, :TOOLKIT_ORIGIN, :PARENT_ANSWERS
+    private_constant :BOOLEAN, :NAMES, :LIST, :ID, :MESSAGES, :SCRUBBED, :VERDICTS, :TOOLKIT_ORIGIN, :TOOLKIT_ORIGIN_UNREAD, :KEPT_FIRST,
+                     :PARENT_ANSWERS
 
     # The fields of <id>.json, in the order #save writes them: key => its
     # SessionField (the value for a file without it, REQUIRED for the ones
@@ -228,7 +233,11 @@ module Samagotchi
       # Why this session is on its toolkit (TOOLKIT_ORIGINS; anything else
       # reads as chosen). Files from before the field read as chosen, so an
       # old default session is never newly suggested. Cast on every set too.
-      SessionField.plain("toolkit_origin", "chosen", cast: TOOLKIT_ORIGIN),
+      # An unknown String (a newer chi's origin) is written back as it was
+      # (the Unread rule), until the session sets its own: the kept value
+      # wins over the cast chosen.
+      SessionField.plain("toolkit_origin", "chosen", cast: TOOLKIT_ORIGIN, unread: TOOLKIT_ORIGIN_UNREAD,
+                                                     keep: KEPT_FIRST),
       # The two parts of #settings (Session.new's settings:, .from_h composes
       # them): its bundles part, then its core part.
       SessionField.file_only("bundle_settings", {}, from: :settings, write: ->(settings) { settings.bundles }),
@@ -363,6 +372,18 @@ module Samagotchi
 
     def toolkit_origin=(value)
       @toolkit_origin = load_field("toolkit_origin", value)
+    end
+
+    # The user chose the toolkit (/toolkit, the toolkit binding's use): the
+    # origin is chosen. Whether that changes what the file holds, so the
+    # caller saves only then: a kept unknown origin (the Unread rule) reads
+    # as chosen but is written as it was, so it counts as a change.
+    # @return [Boolean]
+    def choose_toolkit_origin!
+      field = FIELDS.fetch("toolkit_origin")
+      was = field.dump(@toolkit_origin, @unread["toolkit_origin"])
+      self.toolkit_origin = "chosen"
+      was != field.dump(@toolkit_origin, @unread["toolkit_origin"])
     end
 
     def parent_answers=(value)

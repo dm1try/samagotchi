@@ -189,6 +189,19 @@ RSpec.describe Samagotchi::Session do
       expect { described_class.from_h(data.except("mode")) }.to raise_error(KeyError)
     end
 
+    # A newer chi's origin, or a hand edit: the Unread rule, as the levels.
+    it "reads an unknown toolkit_origin as chosen and writes it back as it was, until the session sets its own" do
+      data = described_class.new_session(mode: "assist", model_name: "m", working_directory: "/tmp").to_h
+      future = described_class.from_h(data.merge("toolkit_origin" => "future"))
+      expect([future.toolkit_origin, future.to_h["toolkit_origin"]]).to eq(%w[chosen future])
+      future.toolkit_origin = "default"
+      expect(future.to_h["toolkit_origin"]).to eq("default")
+      [nil, 42].each do |value|
+        session = described_class.from_h(data.merge("toolkit_origin" => value))
+        expect([session.toolkit_origin, session.to_h["toolkit_origin"]]).to eq(%w[chosen chosen])
+      end
+    end
+
     it "restores a chat turn's tool calls with symbol keys (their arguments stay as saved)" do
       session = described_class.new_session(mode: "assist", model_name: "gemma4", working_directory: "/tmp")
       session.messages = [
